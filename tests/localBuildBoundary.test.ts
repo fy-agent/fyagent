@@ -96,6 +96,7 @@ const CURRENT_DOCUMENTS = [
   "README.md",
   "README_ZH.md",
   "README_JA.md",
+  "README_DE.md",
   "CONTRIBUTING.md",
   ".trellis/spec/backend/index.md",
   ".trellis/spec/backend/development-environment.md",

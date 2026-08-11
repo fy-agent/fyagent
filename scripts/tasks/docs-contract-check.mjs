@@ -898,6 +898,7 @@ export function validateDocsContract() {
       "README.md",
       "README_ZH.md",
       "README_JA.md",
+      "README_DE.md",
       "CONTRIBUTING.md",
     ],
     ...walk(".github").filter((file) => file.endsWith(".md")),
