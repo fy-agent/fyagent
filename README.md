@@ -1,476 +1,62 @@
 <div align="center">
-
-# FyAgent
-
-### The All-in-One Manager for Claude Code, Claude Desktop, Codex, Gemini CLI, Grok Build, OpenCode, OpenClaw & Hermes Agent
-
-[![Built with Tauri](https://img.shields.io/badge/built%20with-Tauri%202-orange.svg)](https://tauri.app/)
-
-English | [中文](README_ZH.md) | [日本語](README_JA.md) | [Deutsch](README_DE.md) | [Changelog](CHANGELOG.md)
-
+  <img src="assets/fyagent.png" width="128" alt="FyAgent icon">
+  <h1>FyAgent</h1>
+  <p>A desktop control center for the AI coding tools you already use.</p>
+  <p><a href="README_ZH.md">简体中文</a> · <a href="README_JA.md">日本語</a></p>
 </div>
 
-> [!WARNING]
-> **Trust is release-specific.** Before installing, read the notes attached to
-> the exact [FyAgent Release](https://github.com/fy-agent/fyagent/releases)
-> and verify its SHA-256, source SHA, `signing-status.json`, and GitHub
-> attestation. A Windows setup may be Authenticode signed and verified or
-> explicitly published as `NotSigned`; unsigned installers can trigger Windows
-> trust warnings. The current macOS release workflow does not provide Developer
-> ID signing or notarization: its complete app is sealed only with an
-> identity-free ad-hoc signature, which does not establish Apple trust, and the
-> DMG container is unsigned.
+FyAgent keeps provider settings, extensions, proxy routing, and usage records in one place. It works with Claude Code, Claude Desktop, Codex, Gemini CLI, Grok Build, OpenCode, OpenClaw, and Hermes, so changing a model or endpoint does not mean hand-editing several config files.
 
-## Why FyAgent?
+> **Release status:** FyAgent is under active development. Back up important configuration before upgrading, and review the trust information for each release before installing it.
 
-Modern AI-powered coding relies on tools like Claude Code, Claude Desktop, Codex, Gemini CLI, Grok Build, OpenCode, OpenClaw, and Hermes — but each has its own configuration format. Switching API providers means manually editing JSON, TOML, or `.env` files, and there is no unified way to manage MCP and Skills across multiple tools.
+## What you can do
 
-**FyAgent** gives you a single desktop app to manage all supported AI tools. Instead of editing config files by hand, you get a visual interface to import providers with one click, switch between them instantly, with 50+ built-in provider presets, unified MCP and Skills management, and system tray quick switching — all backed by a reliable SQLite database with atomic writes that protect your configs from corruption.
+- Add providers from built-in presets or your own API-compatible endpoint, then switch between them without rewriting config files.
+- Manage MCP servers, reusable prompts, and Skills across supported tools.
+- Route requests through the local proxy, set failover rules, and test model availability.
+- See token usage and estimated cost in one view.
+- Reopen sessions and workspaces without hunting through tool-specific history folders.
+- Back up and sync configuration while keeping secrets on the device you control.
 
-- **One App, Eight Tools** — Manage Claude Code, Claude Desktop, Codex, Gemini CLI, Grok Build, OpenCode, OpenClaw, and Hermes from a single interface
-- **No More Manual Editing** — 50+ provider presets including AWS Bedrock, NVIDIA NIM, and community relays; just pick and switch
-- **Unified MCP & Skills Management** — One panel to manage MCP servers and Skills across Claude, Codex, Gemini, Grok Build, OpenCode, and Hermes with bidirectional sync
-- **System Tray Quick Switch** — Switch providers instantly from the tray menu, no need to open the full app
-- **Cloud Sync** — Sync provider data across devices via Dropbox, OneDrive, iCloud, or WebDAV servers
-- **Cross-Platform** — Native desktop app for Windows, macOS, and Linux, built with Tauri 2
-- **Built-in Utilities** — Includes utilities for first-launch login confirmation, environment diagnostics, plugin extension sync, and more
+FyAgent stores its working data locally in `~/.fyagent` and uses SQLite plus atomic file writes for safer updates. Deep-link imports use the `fyagent://` protocol and always show what will change before anything is written.
 
-## Screenshots
+## Install
 
-|                  Main Interface                   |                  Add Provider                  |
-| :-----------------------------------------------: | :--------------------------------------------: |
-| ![Main Interface](assets/screenshots/main-en.png) | ![Add Provider](assets/screenshots/add-en.png) |
+Download the build for your platform from [GitHub Releases](https://github.com/fy-agent/fyagent/releases). Release files follow these names:
 
-## Features
+- macOS: `FyAgent-X.Y.Z-macOS.dmg`, `FyAgent-X.Y.Z-macOS.zip`
+- Windows: `FyAgent-X.Y.Z-Windows-x64-setup.exe`, `FyAgent-X.Y.Z-Windows-arm64-setup.exe`
+- Linux x64: `FyAgent-X.Y.Z-Linux-x86_64.AppImage`, `FyAgent-X.Y.Z-Linux-x86_64.deb`, `FyAgent-X.Y.Z-Linux-x86_64.rpm`
+- Linux arm64: `FyAgent-X.Y.Z-Linux-arm64.AppImage`, `FyAgent-X.Y.Z-Linux-arm64.deb`, `FyAgent-X.Y.Z-Linux-arm64.rpm`
 
-[Full Changelog](CHANGELOG.md) | [Latest Release](https://github.com/fy-agent/fyagent/releases/latest)
+Windows releases use an NSIS setup program; MSI and portable ZIP packages are not part of the current release surface. macOS builds are ad-hoc signed, not signed with an Apple Developer ID, and not notarized. Linux Flatpak files are for self-builds and are not official release artifacts.
 
-### Provider Management
+Before installing, read the release notes and verify the published checksums, `signing-status.json`, and build attestation. `NotSigned` is a status, not proof that a file is safe. See the [installation guide](docs/user-manual/en/1-getting-started/1.2-installation.md) for platform-specific steps.
 
-- **8 supported tools, 50+ presets** — Claude Code, Claude Desktop, Codex, Gemini CLI, Grok Build, OpenCode, OpenClaw, Hermes; copy your key and import with one click
-- **Universal providers** — One config syncs to Claude Code, Codex, and Gemini CLI
-- One-click switching, system tray quick access, drag-and-drop sorting, import/export
+## Start here
 
-### Proxy & Failover
+1. Open **Providers** and add the service you use. A preset fills in the common fields; you only need to supply your credential and any custom endpoint.
+2. Select the provider and choose **Apply**. FyAgent previews and writes the matching tool configuration.
+3. Open the target coding tool and send a small test request.
+4. Add MCP servers, Prompts, or Skills only after the basic provider path is working.
 
-- **Local proxy with hot-switching** — Format conversion, auto-failover, circuit breaker, provider health monitoring, and request rectifier
-- **App-level takeover** — Independently proxy Claude, Codex, Gemini, or Grok Build, down to individual providers
+The full guide is available in [English](docs/user-manual/en/README.md), [简体中文](docs/user-manual/zh/README.md), and [日本語](docs/user-manual/ja/README.md). Release history lives in [docs/release-notes](docs/release-notes/README.md).
 
-### MCP, Prompts & Skills
+## Development
 
-- **Unified MCP panel** — Manage MCP servers across Claude, Codex, Gemini, Grok Build, OpenCode, and Hermes with bidirectional sync and Deep Link import
-- **Prompts** — Markdown editor with cross-app sync (CLAUDE.md / AGENTS.md / GEMINI.md) and backfill protection
-- **Skills** — One-click install from GitHub repos or ZIP files, custom repository management, with symlink and file copy support
-
-### Usage & Cost Tracking
-
-- **Usage dashboard** — Track spending, requests, and tokens with trend charts, detailed request logs, and custom per-model pricing
-
-### Session Manager & Workspace
-
-- Browse, search, and restore conversation history across supported session sources
-- **Workspace editor** (OpenClaw) — Edit agent files (AGENTS.md, SOUL.md, etc.) with Markdown preview
-
-### System & Platform
-
-- **Cloud sync** — Custom config directory (Dropbox, OneDrive, iCloud, NAS) and WebDAV server sync
-- **Deep Link** (`fyagent://`) — Import providers, MCP servers, prompts, and skills via URL
-- Dark / Light / System theme, auto-launch, manual release downloads (no in-app auto-update), atomic writes, auto-backups, i18n (zh/zh-TW/en/ja)
-
-## FAQ
-
-<details>
-<summary><strong>Which AI tools does FyAgent support?</strong></summary>
-
-FyAgent supports eight tools: **Claude Code**, **Claude Desktop**, **Codex**, **Gemini CLI**, **Grok Build**, **OpenCode**, **OpenClaw**, and **Hermes**. Each tool has dedicated provider presets and configuration management.
-
-</details>
-
-<details>
-<summary><strong>Do I need to restart the terminal after switching providers?</strong></summary>
-
-For most tools, yes — restart your terminal or the CLI tool for changes to take effect. The exception is **Claude Code**, which currently supports hot-switching of provider data without a restart.
-
-</details>
-
-<details>
-<summary><strong>My plugin configuration disappeared after switching providers — what happened?</strong></summary>
-
-FyAgent provides a "Shared Config Snippet" feature to pass common data (beyond API keys and endpoints) between providers. Go to "Edit Provider" → "Shared Config Panel" → click "Extract from Current Provider" to save all common data. When creating a new provider, check "Write Shared Config" (enabled by default) to include plugin data in the new provider. All your configuration items are preserved in the default provider imported when you first launched the app.
-
-</details>
-
-<details>
-<summary><strong>macOS installation</strong></summary>
-
-The complete macOS app is ad-hoc signed with no certificate identity. It is
-not signed with an Apple Developer ID and is not notarized; the DMG container
-is unsigned. Ad-hoc signing does not establish Apple trust, so macOS may block
-the first launch. After attempting to open FyAgent once, use Apple's supported
-**System Settings → Privacy & Security → Open Anyway** flow and confirm the
-prompt. Verify the exact Release Notes and evidence first; do not disable
-Gatekeeper or remove quarantine metadata.
-
-</details>
-
-<details>
-<summary><strong>Why can't I delete the currently active provider?</strong></summary>
-
-FyAgent follows a "minimal intrusion" design principle — even if you uninstall the app, your CLI tools will continue to work normally. The system always keeps one active configuration, because deleting all configurations would make the corresponding CLI tool unusable. If you rarely use a specific CLI tool, you can hide it in Settings. To switch back to official login, see the next question.
-
-</details>
-
-<details>
-<summary><strong>How do I switch back to official login?</strong></summary>
-
-Add an official provider from the preset list. After switching to it, run the Log out / Log in flow, and then you can freely switch between the official provider and third-party providers. Codex supports switching between different official providers, making it easy to switch between multiple Plus or Team accounts.
-
-</details>
-
-<details>
-<summary><strong>Where is my data stored?</strong></summary>
-
-- **Database**: `~/.fyagent/fyagent.db` (SQLite — providers, MCP, prompts, skills)
-- **Local settings**: `~/.fyagent/settings.json` (device-level UI preferences)
-- **Backups**: `~/.fyagent/backups/` (auto-rotated, keeps 10 most recent)
-- **Skills**: `~/.fyagent/skills/` (symlinked to corresponding apps by default)
-- **Skill Backups**: `~/.fyagent/skill-backups/` (created automatically before uninstall, keeps 20 most recent)
-
-</details>
-
-<details>
-<summary><strong>Linux (Wayland + NVIDIA): clicks don't register and the window black-screens on resize</strong></summary>
-
-The AppImage forces `GDK_BACKEND=x11` (XWayland) to avoid a historical native-Wayland crash. On newer Wayland + NVIDIA setups this can leave the web content area unclickable (the title-bar buttons still work) and black-screen on resize. Launch with the opt-in escape hatch to switch back to native Wayland:
-
-```bash
-FYAGENT_GDK_BACKEND=wayland ./FyAgent-*.AppImage
-```
-
-If you launch from a desktop icon, add it to the `.desktop` `Exec=` line (e.g. `env FYAGENT_GDK_BACKEND=wayland /path/to/AppImage`) or set it in your session environment. The variable is generic: on tiling Wayland compositors (sway/Hyprland) where clicks don't register, try `FYAGENT_GDK_BACKEND=x11` instead. Leaving it unset keeps the default behavior.
-
-</details>
-
-## Documentation
-
-For detailed guides on every feature, check out the **[User Manual](docs/user-manual/en/README.md)** — covering provider management, MCP/Prompts/Skills, proxy & failover, and more.
-
-Contributors should start with the responsibility-based
-**[current development documentation](docs/fyagent/development/README.md)** and
-follow its links to the owning active specs.
-
-## Quick Start
-
-### Basic Usage
-
-1. **Add Provider**: Click "Add Provider" → Choose a preset or create custom configuration
-2. **Switch Provider**:
-   - Main UI: Select provider → Click "Enable"
-   - System Tray: Click provider name directly (instant effect)
-3. **Takes Effect**: Restart your terminal or the corresponding CLI tool to apply changes (Claude Code does not require a restart)
-4. **Back to Official**: Add an "Official Login" preset, restart the CLI tool, then follow its login/OAuth flow
-
-### MCP, Prompts, Skills & Sessions
-
-- **MCP**: Click the "MCP" button → Add servers via templates or custom config → Toggle per-app sync
-- **Prompts**: Click "Prompts" → Create presets with Markdown editor → Activate to sync to live files
-- **Skills**: Click "Skills" → Browse GitHub repos → One-click install to supported apps
-- **Sessions**: Click "Sessions" → Browse, search, and restore conversation history across supported session sources
-
-> **Note**: On first launch, you can manually import existing CLI tool configs as the default provider.
-
-## Download & Installation
-
-### System Requirements
-
-- **Windows**: Windows 10 and above
-- **macOS**: macOS 12 (Monterey) and above
-- **Linux**: Ubuntu 22.04+ / Debian 11+ / Fedora 34+ and other mainstream distributions
-
-### Windows Users
-
-Download `FyAgent-X.Y.Z-Windows-x64-setup.exe` on x64 or
-`FyAgent-X.Y.Z-Windows-arm64-setup.exe` on ARM64 from the
-[Releases](https://github.com/fy-agent/fyagent/releases) page, replacing
-`X.Y.Z` with the Release version. These are per-machine NSIS setup programs;
-FyAgent does not publish an MSI or Windows Portable ZIP.
-
-> **Signing status:** Read the Release's Windows signing table and
-> `signing-status.json`. If an installer is `NotSigned`, Windows SmartScreen may
-> warn. Confirm the exact asset name, digest, source SHA, and attestation before
-> continuing; do not disable SmartScreen or weaken an organization-managed
-> security policy.
-
-### macOS Users
-
-Download `FyAgent-X.Y.Z-macOS.dmg` (recommended) or
-`FyAgent-X.Y.Z-macOS.zip` from the
-[Releases](https://github.com/fy-agent/fyagent/releases) page.
-
-> **Ad-hoc app, unsigned DMG:** The complete app is ad-hoc signed with no
-> certificate identity; both the ZIP and DMG contain that same app. It is not
-> signed with an Apple Developer ID and is not notarized, while the DMG
-> container is unsigned. Ad-hoc signing does not provide Apple trust. After
-> attempting to open the app once, use **System Settings → Privacy & Security →
-> Open Anyway** and confirm the prompt. Verify the exact Release evidence first;
-> do not disable Gatekeeper or strip quarantine metadata.
-
-### Linux Users
-
-Download the matching native Linux build from the
-[Releases](https://github.com/fy-agent/fyagent/releases) page:
-
-- x64: `FyAgent-X.Y.Z-Linux-x86_64.AppImage`,
-  `FyAgent-X.Y.Z-Linux-x86_64.deb`, or
-  `FyAgent-X.Y.Z-Linux-x86_64.rpm`
-- ARM64: `FyAgent-X.Y.Z-Linux-arm64.AppImage`,
-  `FyAgent-X.Y.Z-Linux-arm64.deb`, or
-  `FyAgent-X.Y.Z-Linux-arm64.rpm`
-
-> **Flatpak**: Not included in official releases. You can build it yourself from the `.deb` — see [`flatpak/README.md`](flatpak/README.md) for instructions.
-
-<details>
-<summary><strong>Stable Release attachment contract</strong></summary>
-
-The formal Release contains exactly ten installers: the two macOS files, two
-Windows NSIS setup EXEs, and six Linux files named above. The ten installers,
-`download-manifest.json`, `build-metadata.json`, and `signing-status.json` are
-the 13 attestation subjects. `artifact-attestation.sigstore.json` is the
-fourteenth and final attachment. The workflow rejects missing, duplicate,
-renamed, or extra files; a Release is accepted only after the formal run and an
-independent post-publication verification succeed.
-
-</details>
-
-<details>
-<summary><strong>Architecture Overview</strong></summary>
-
-### Design Principles
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Frontend (React + TS)                    │
-│  ┌─────────────┐  ┌──────────────┐  ┌──────────────────┐    │
-│  │ Components  │  │    Hooks     │  │  TanStack Query  │    │
-│  │   (UI)      │──│ (Bus. Logic) │──│   (Cache/Sync)   │    │
-│  └─────────────┘  └──────────────┘  └──────────────────┘    │
-└────────────────────────┬────────────────────────────────────┘
-                         │ Tauri IPC
-┌────────────────────────▼────────────────────────────────────┐
-│                  Backend (Tauri + Rust)                     │
-│  ┌─────────────┐  ┌──────────────┐  ┌──────────────────┐    │
-│  │  Commands   │  │   Services   │  │  Models/Config   │    │
-│  │ (API Layer) │──│ (Bus. Layer) │──│     (Data)       │    │
-│  └─────────────┘  └──────────────┘  └──────────────────┘    │
-└─────────────────────────────────────────────────────────────┘
-```
-
-**Core Design Patterns**
-
-- **SSOT** (Single Source of Truth): All data stored in `~/.fyagent/fyagent.db` (SQLite)
-- **Dual-layer Storage**: SQLite for syncable data, JSON for device-level settings
-- **Dual-way Sync**: Write to live files on switch, backfill from live when editing active provider
-- **Atomic Writes**: Temp file + rename pattern prevents config corruption
-- **Concurrency Safe**: Mutex-protected database connection avoids race conditions
-- **Layered Architecture**: Clear separation (Commands → Services → DAO → Database)
-
-**Key Components**
-
-- **ProviderService**: Provider CRUD, switching, backfill, sorting
-- **McpService**: MCP server management, import/export, live file sync
-- **ProxyService**: Local proxy mode with hot-switching and format conversion
-- **SessionManager**: Conversation history browsing across supported session sources
-- **ConfigService**: Config import/export, backup rotation
-- **SpeedtestService**: API endpoint latency measurement
-
-</details>
-
-<details>
-<summary><strong>Development Guide</strong></summary>
-
-### Environment Requirements
-
-- [mise](https://mise.jdx.dev/getting-started.html) 2026.8.0 or newer,
-  installed globally
-- [Tauri 2.0 system prerequisites](https://v2.tauri.app/start/prerequisites/)
-
-The repository pins Node.js 24.19.0 in `.node-version`, pnpm 10.12.3 in
-`package.json`, Rust 1.97.1 in `rust-toolchain.toml`, and Python 3.14.7 in
-`.python-version`. `mise.toml` owns the task API and the uv selector;
-`mise.lock`, `uv.lock`, and the uv-managed `.venv` lock the approved Python
-environment. The Tauri CLI is installed with the project dependencies.
-
-After reviewing the repository config, initialize the development environment:
+The repository uses `mise` as its supported entry point:
 
 ```bash
 mise trust
 mise run bootstrap
-mise run system:check
-mise run dev
-```
-
-`mise trust` is an explicit developer security decision and no project task
-runs it automatically. `bootstrap` does not install privileged system packages,
-change Git remotes, refresh locks, or publish. WSL must not resolve managed
-tools from `/mnt/<drive>` or Windows shims. See the generated
-[canonical task catalog](docs/fyagent/development/mise-tasks.md) for the full
-API.
-
-### Native Platform Builds
-
-Local development and packaging support only the current host operating
-system. The standard commands do not accept another OS or architecture target:
-
-```bash
 mise run dev
 mise run build
 ```
 
-FyAgent installers are built only by GitHub Actions on native Windows x64 and
-ARM64, Linux x64 and ARM64, and macOS runners. The macOS job produces the
-Universal build. Local Linux/WSL-to-Windows or macOS packaging is not a
-supported release path.
+Run `mise run check` before opening a pull request. The [development guide](docs/fyagent/development/README.md) explains the required toolchain and the smaller checks available while you work. Please read [CONTRIBUTING.md](CONTRIBUTING.md) before making a larger change.
 
-### Development Commands
+## Project history and license
 
-```bash
-# Install locked dependencies and verify the environment
-mise run bootstrap
+FyAgent grew from CC Switch and keeps the upstream copyright and license notices for the code it inherited. The product name, current development, and FyAgent-owned additions are maintained by the FyAgent project.
 
-# Dev mode (hot reload)
-mise run dev
-
-# Type check
-mise run typecheck
-
-# Format code
-mise run format
-
-# Check code format
-mise run format:check
-
-# Run frontend unit tests
-mise run test:unit
-
-# Run tests in watch mode (recommended for development)
-mise run test:unit:watch
-
-# Build application
-mise run build
-
-# Build debug version
-mise run build:debug
-```
-
-### Rust Backend Development
-
-```bash
-# Format Rust code
-mise run rust:fmt
-
-# Run clippy checks
-mise run rust:clippy
-
-# Run backend tests
-mise run rust:test
-
-# Run specific tests
-mise run rust:test test_name
-
-# Run the complete current-host gate before a pull request
-mise run check
-```
-
-### Testing Guide
-
-**Frontend Testing**:
-
-- Uses **vitest** as test framework
-- Uses **MSW (Mock Service Worker)** to mock Tauri API calls
-- Uses **@testing-library/react** for component testing
-
-**Running Tests**:
-
-```bash
-# Run all tests
-mise run test:unit
-
-# Watch mode (auto re-run)
-mise run test:unit:watch
-
-# Complete frontend gate
-mise run check:frontend
-```
-
-### Tech Stack
-
-**Frontend**: React 18 · TypeScript · Vite · TailwindCSS 3.4 · TanStack Query v5 · react-i18next · react-hook-form · zod · shadcn/ui · @dnd-kit
-
-**Backend**: Tauri 2.8 · Rust · serde · tokio · thiserror · tauri-plugin-process/dialog/store/log
-
-**Testing**: vitest · MSW · @testing-library/react
-
-</details>
-
-<details>
-<summary><strong>Project Structure</strong></summary>
-
-```
-├── src/                        # Frontend (React + TypeScript)
-│   ├── components/
-│   │   ├── providers/          # Provider management
-│   │   ├── mcp/                # MCP panel
-│   │   ├── prompts/            # Prompts management
-│   │   ├── skills/             # Skills management
-│   │   ├── sessions/           # Session Manager
-│   │   ├── proxy/              # Proxy mode panel
-│   │   ├── openclaw/           # OpenClaw config panels
-│   │   ├── settings/           # Settings (Terminal/Backup/About)
-│   │   ├── deeplink/           # Deep Link import
-│   │   ├── env/                # Environment variable management
-│   │   ├── universal/          # Cross-app configuration
-│   │   ├── usage/              # Usage statistics
-│   │   └── ui/                 # shadcn/ui component library
-│   ├── hooks/                  # Custom hooks (business logic)
-│   ├── lib/
-│   │   ├── api/                # Tauri API wrapper (type-safe)
-│   │   └── query/              # TanStack Query config
-│   ├── locales/                # Translations (zh/zh-TW/en/ja)
-│   ├── config/                 # Presets (providers/mcp)
-│   └── types/                  # TypeScript definitions
-├── src-tauri/                  # Backend (Rust)
-│   └── src/
-│       ├── commands/           # Tauri command layer (by domain)
-│       ├── services/           # Business logic layer
-│       ├── database/           # SQLite DAO layer
-│       ├── proxy/              # Proxy module
-│       ├── session_manager/    # Session management
-│       ├── deeplink/           # Deep Link handling
-│       └── mcp/                # MCP sync module
-├── tests/                      # Frontend tests
-└── assets/                     # Screenshots
-```
-
-</details>
-
-## Contributing
-
-Issues and suggestions are welcome!
-
-Before submitting PRs, please ensure:
-
-- Run the complete current-host gate: `mise run check`
-- Use focused tasks from the
-  [canonical task catalog](docs/fyagent/development/mise-tasks.md) while
-  developing
-
-For new features, please open an issue for discussion before submitting a PR. PRs for features that are not a good fit for the project may be closed.
-
-## License
-
-FyAgent is source-available software, not open source as defined by the Open
-Source Initiative. FyAgent-owned components and modifications are licensed
-under the [PolyForm Noncommercial License 1.0.0](LICENSES/PolyForm-Noncommercial-1.0.0.txt).
-Commercial use requires separate written authorization. CC Switch-derived
-portions remain under the MIT License. See [LICENSE](LICENSE),
-[LICENSING.md](LICENSING.md), and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+FyAgent is source-available software, not open source as defined by the Open Source Initiative. FyAgent-owned components and modifications are licensed under the [PolyForm Noncommercial License 1.0.0](LICENSES/PolyForm-Noncommercial-1.0.0.txt); commercial use requires separate written authorization. CC Switch-derived portions remain under the MIT License. See [LICENSE](LICENSE), [LICENSING.md](LICENSING.md), and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

@@ -1,0 +1,29 @@
+{
+  "id": "docs-restructure-current",
+  "name": "docs-restructure-current",
+  "title": "执行当前基线文档重构与视觉资产规划",
+  "description": "基于 b6f60dfe 瘦身三语 README、重组三语用户手册、清理活动文档身份、规划真实截图与营销视觉资产，并通过当前宿主质量门禁。",
+  "status": "completed",
+  "dev_type": null,
+  "scope": "docs",
+  "package": null,
+  "priority": "P1",
+  "creator": "codex",
+  "assignee": "codex",
+  "createdAt": "2026-08-10",
+  "completedAt": "2026-08-11",
+  "branch": "codex/docs-restructure-current",
+  "base_branch": "origin/dev/laiyongjie",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {
+    "dispatch_mode": "inline",
+    "target_sha": "b6f60dfe0b4e815fdb9eb3ba446c827dc41e0527"
+  }
+}

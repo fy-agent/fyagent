@@ -1,134 +1,64 @@
 # FyAgent User Manual
 
-> All-in-One Assistant for Claude Code / Claude Desktop / Codex / Gemini CLI / OpenCode / OpenClaw / Hermes
+This manual is organized around real tasks. Follow Chapter 1 if you are new, or use the shortcuts below when you already know what needs attention.
 
-## Table of Contents
+> Some legacy screenshots still await a real FyAgent runtime retake. Follow the current labels and text; `CC Switch` visible in an old image is not the current product identity.
 
-```
-FyAgent User Manual
-│
-├── 1. Getting Started
-│   ├── 1.1 Introduction
-│   ├── 1.2 Installation Guide
-│   ├── 1.3 Interface Overview
-│   ├── 1.4 Quick Start
-│   └── 1.5 Personalization
-│
-├── 2. Provider Management
-│   ├── 2.1 Add Provider
-│   ├── 2.2 Switch Provider
-│   ├── 2.3 Edit Provider
-│   ├── 2.4 Sort & Duplicate
-│   ├── 2.5 Usage Query
-│   └── 2.6 Claude Desktop
-│
-├── 3. Extensions
-│   ├── 3.1 MCP Server Management
-│   ├── 3.2 Prompts Management
-│   ├── 3.3 Skills Management
-│   ├── 3.4 Session Manager
-│   └── 3.5 Workspace & Memory
-│
-├── 4. Proxy & High Availability
-│   ├── 4.1 Proxy Service
-│   ├── 4.2 App Takeover
-│   ├── 4.3 Failover
-│   ├── 4.4 Usage Statistics
-│   └── 4.5 Model Test
-│
-└── 5. FAQ
-    ├── 5.1 Configuration Files
-    ├── 5.2 FAQ
-    ├── 5.3 Deep Link Protocol
-    └── 5.4 Environment Variable Conflicts
-```
+## Find the right page
 
-## File List
+- FyAgent is not installed yet: read [Installation](./1-getting-started/1.2-installation.md).
+- You want one provider working first: follow the [Quick Start](./1-getting-started/1.4-quickstart.md).
+- You need to install or update tools such as Claude Code: use [Tool installation](./2-agent-tools/2.1-install.md) and [Conflict diagnostics](./2-agent-tools/2.2-update-diagnose.md).
+- You want to manage endpoints and models: start with [Add Provider](./3-providers/3.1-add.md).
+- You need MCP, Prompts, or Skills: go to [Extensions](#4-extensions).
+- You need to write a WorkBuddy model list: read [WorkBuddy configuration](./4-extensions/4.6-workbuddy.md).
+- Requests are unstable or you need usage data: go to [Proxy and reliability](#5-proxy-and-reliability).
+- Configuration does not take effect: check [Common questions](./6-faq/6.2-questions.md) and [Environment conflicts](./6-faq/6.4-env-conflict.md).
 
-### 1. Getting Started
+## 1. Getting started
 
-| File                                                           | Description                                       |
-| -------------------------------------------------------------- | ------------------------------------------------- |
-| [1.1-introduction.md](./1-getting-started/1.1-introduction.md) | Introduction, core features, supported platforms  |
-| [1.2-installation.md](./1-getting-started/1.2-installation.md) | Windows/macOS/Linux installation guide            |
-| [1.3-interface.md](./1-getting-started/1.3-interface.md)       | Interface layout, navigation bar, provider cards  |
-| [1.4-quickstart.md](./1-getting-started/1.4-quickstart.md)     | 5-minute quick start tutorial                     |
-| [1.5-settings.md](./1-getting-started/1.5-settings.md)         | Language, theme, directories, cloud sync settings |
+- [1.1 Introduction](./1-getting-started/1.1-introduction.md)
+- [1.2 Installation](./1-getting-started/1.2-installation.md)
+- [1.3 Interface](./1-getting-started/1.3-interface.md)
+- [1.4 Quick Start](./1-getting-started/1.4-quickstart.md)
+- [1.5 Personal settings](./1-getting-started/1.5-settings.md)
 
-### 2. Provider Management
+## 2. Agent tools
 
-| File                                                         | Description                                                          |
-| ------------------------------------------------------------ | -------------------------------------------------------------------- |
-| [2.1-add.md](./2-providers/2.1-add.md)                       | Using presets, custom configuration, universal providers             |
-| [2.2-switch.md](./2-providers/2.2-switch.md)                 | Main UI switching, tray switching, activation methods                |
-| [2.3-edit.md](./2-providers/2.3-edit.md)                     | Edit configuration, modify API Key, backfill mechanism               |
-| [2.4-sort-duplicate.md](./2-providers/2.4-sort-duplicate.md) | Drag-to-reorder, duplicate provider, delete                          |
-| [2.5-usage-query.md](./2-providers/2.5-usage-query.md)       | Usage query, remaining balance, multi-plan display                   |
-| [2.6-claude-desktop.md](./2-providers/2.6-claude-desktop.md) | Claude Desktop third-party providers, direct mode, and model mapping |
+- [2.1 Install tools and check versions](./2-agent-tools/2.1-install.md)
+- [2.2 Update tools and diagnose conflicts](./2-agent-tools/2.2-update-diagnose.md)
 
-### 3. Extensions
+## 3. Providers
 
-| File                                                | Description                                               |
-| --------------------------------------------------- | --------------------------------------------------------- |
-| [3.1-mcp.md](./3-extensions/3.1-mcp.md)             | MCP protocol, add servers, app binding                    |
-| [3.2-prompts.md](./3-extensions/3.2-prompts.md)     | Create presets, activate/switch, smart backfill           |
-| [3.3-skills.md](./3-extensions/3.3-skills.md)       | Discover skills, install/uninstall, repository management |
-| [3.4-sessions.md](./3-extensions/3.4-sessions.md)   | Session Manager: browse, search, resume, delete sessions  |
-| [3.5-workspace.md](./3-extensions/3.5-workspace.md) | Workspace files and daily memory (OpenClaw)               |
+- [3.1 Add Provider](./3-providers/3.1-add.md)
+- [3.2 Switch Provider](./3-providers/3.2-switch.md)
+- [3.3 Edit Provider](./3-providers/3.3-edit.md)
+- [3.4 Sort, duplicate, and delete](./3-providers/3.4-sort-duplicate.md)
+- [3.5 Usage Query](./3-providers/3.5-usage-query.md)
+- [3.6 Claude Desktop](./3-providers/3.6-claude-desktop.md)
 
-### 4. Proxy & High Availability
+## 4. Extensions
 
-| File                                             | Description                                           |
-| ------------------------------------------------ | ----------------------------------------------------- |
-| [4.1-service.md](./4-proxy/4.1-service.md)       | Start proxy, configuration, running status            |
-| [4.2-routing.md](./4-proxy/4.2-routing.md)       | App routing, configuration changes, status indicators |
-| [4.3-failover.md](./4-proxy/4.3-failover.md)     | Failover queue, circuit breaker, health status        |
-| [4.4-usage.md](./4-proxy/4.4-usage.md)           | Usage statistics, trend charts, pricing configuration |
-| [4.5-model-test.md](./4-proxy/4.5-model-test.md) | Model test, health check, latency testing             |
+- [4.1 MCP servers](./4-extensions/4.1-mcp.md)
+- [4.2 Prompts](./4-extensions/4.2-prompts.md)
+- [4.3 Skills](./4-extensions/4.3-skills.md)
+- [4.4 Sessions](./4-extensions/4.4-sessions.md)
+- [4.5 Workspace and memory](./4-extensions/4.5-workspace.md)
+- [4.6 WorkBuddy configuration](./4-extensions/4.6-workbuddy.md)
 
-### 5. FAQ
+## 5. Proxy and reliability
 
-| File                                               | Description                                            |
-| -------------------------------------------------- | ------------------------------------------------------ |
-| [5.1-config-files.md](./5-faq/5.1-config-files.md) | FyAgent storage, CLI configuration file formats        |
-| [5.2-questions.md](./5-faq/5.2-questions.md)       | Frequently asked questions                             |
-| [5.3-deeplink.md](./5-faq/5.3-deeplink.md)         | Deep link protocol, generation and usage               |
-| [5.4-env-conflict.md](./5-faq/5.4-env-conflict.md) | Environment variable conflict detection and resolution |
+- [5.1 Local proxy service](./5-proxy/5.1-service.md)
+- [5.2 App routing](./5-proxy/5.2-routing.md)
+- [5.3 Failover](./5-proxy/5.3-failover.md)
+- [5.4 Usage statistics](./5-proxy/5.4-usage.md)
+- [5.5 Model tests](./5-proxy/5.5-model-test.md)
 
-## Quick Links
+## 6. Troubleshooting
 
-- **New users**: Start with [1.1 Introduction](./1-getting-started/1.1-introduction.md)
-- **Installation issues**: See [1.2 Installation Guide](./1-getting-started/1.2-installation.md)
-- **Configure providers**: See [2.1 Add Provider](./2-providers/2.1-add.md)
-- **Use Claude Desktop**: See [2.6 Claude Desktop](./2-providers/2.6-claude-desktop.md)
-- **Using proxy**: See [4.1 Proxy Service](./4-proxy/4.1-service.md)
-- **Having trouble**: See [5.2 FAQ](./5-faq/5.2-questions.md)
+- [6.1 Configuration files and storage](./6-faq/6.1-config-files.md)
+- [6.2 Common questions](./6-faq/6.2-questions.md)
+- [6.3 Deep Link imports](./6-faq/6.3-deeplink.md)
+- [6.4 Environment-variable conflicts](./6-faq/6.4-env-conflict.md)
 
-## Documentation Scope
-
-- This manual tracks the current FyAgent repository behavior.
-- Use the matching GitHub Release and its evidence for release-specific
-  version, asset, and trust facts.
-
-### Current Highlights
-
-- **Codex Chat Completions routing**: route Chat-only providers such as DeepSeek, Kimi, GLM, and MiniMax through Codex. See [2.1 Add Provider](./2-providers/2.1-add.md)
-- **Managed CLI tool lifecycle**: install, update, update all, and diagnose Claude / Codex / Gemini / OpenCode / OpenClaw / Hermes from Settings / About. See [1.5 Personalization](./1-getting-started/1.5-settings.md)
-- **Provider and model refresh**: new presets, refreshed default models and pricing, Claude Opus 4.8 defaults, and GPT 5.5 defaults where applicable
-- **Routing support badges**: Claude Code / Codex provider cards indicate whether a provider can be served through Local Routing
-- **Codex OAuth live model discovery**: ChatGPT Codex providers fetch available models from the ChatGPT backend on demand
-- **Filter-driven Usage Hero**: shows cache-normalized real total tokens and cache hit rate, updating with date / provider / model filters — see [4.4 Usage Statistics](./4-proxy/4.4-usage.md)
-- **Lightweight Mode**: Destroys the main window when minimizing to tray — near-zero idle footprint. See [1.5 Personalization](./1-getting-started/1.5-settings.md)
-- **Quota & Balance Display**: Official subscriptions (Claude/Codex/Gemini/Copilot/Codex OAuth) auto-display quotas; Token Plan and third-party balances use built-in templates with one-click enable — see [2.5 Usage Query](./2-providers/2.5-usage-query.md)
-- **Codex OAuth Reverse Proxy**: Reuse your ChatGPT account's Codex service inside Claude Code — see [2.1 Add Provider](./2-providers/2.1-add.md)
-- **Per-App Tray Submenus**: Claude / Codex / Gemini submenus show the current provider and available usage summaries — see [2.2 Switch Provider](./2-providers/2.2-switch.md)
-- **Skills Discovery & Batch Updates**: SHA-256 update detection, batch updates, skills.sh public registry search — see [3.3 Skills Management](./3-extensions/3.3-skills.md)
-- **Full URL Endpoint Mode**: Advanced option to treat `base_url` as the full upstream endpoint — see [2.1 Add Provider](./2-providers/2.1-add.md)
-- **OpenCode / OpenClaw / Hermes Stream Check Coverage**: Stream Check covers Claude / Codex / Gemini / OpenCode / OpenClaw / Hermes — see [4.5 Model Test](./4-proxy/4.5-model-test.md)
-
-## Contributing
-
-Feel free to submit Issues or PRs to improve the documentation:
-
-- [GitHub Issues](https://github.com/fy-agent/fyagent/issues)
-- [GitHub Repository](https://github.com/fy-agent/fyagent)
+This manual describes current repository behavior. Installer names, signing, and trust status can change between releases; use the matching [GitHub Release](https://github.com/fy-agent/fyagent/releases) and its evidence for those facts.

@@ -112,6 +112,41 @@ function read(file: string): string {
   return fs.readFileSync(file, "utf8").replace(/\r\n/g, "\n");
 }
 
+function resolveBashExecutable(): string {
+  if (process.platform !== "win32") return "bash";
+
+  const gitExecPath = spawnSync("git", ["--exec-path"], {
+    encoding: "utf8",
+    windowsHide: true,
+  });
+  if (gitExecPath.status !== 0) {
+    throw new Error(`git --exec-path failed: ${gitExecPath.stderr}`);
+  }
+  const gitRoot = path.resolve(gitExecPath.stdout.trim(), "..", "..", "..");
+  for (const candidate of [
+    path.join(gitRoot, "bin", "bash.exe"),
+    path.join(gitRoot, "usr", "bin", "bash.exe"),
+  ]) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  throw new Error(`Git Bash was not found below ${gitRoot}`);
+}
+
+function trackedMode(file: string): string {
+  const relative = path.relative(ROOT, file).replace(/\\/gu, "/");
+  const result = spawnSync("git", ["ls-files", "--stage", "--", relative], {
+    cwd: ROOT,
+    encoding: "utf8",
+    windowsHide: true,
+  });
+  if (result.status !== 0 || !result.stdout.trim()) {
+    throw new Error(
+      `unable to read Git mode for ${relative}: ${result.stderr}`,
+    );
+  }
+  return result.stdout.trim().split(/\s+/u)[0];
+}
+
 function workflowJobBlock(source: string, job: string, nextJob: string) {
   const start = source.indexOf(`\n  ${job}:\n`);
   const end = source.indexOf(`\n  ${nextJob}:\n`);
@@ -546,15 +581,19 @@ exit 2
 `,
     { mode: 0o755 },
   );
-  const result = spawnSync("bash", [MACOS_ADHOC_VERIFIER, appPath], {
-    encoding: "utf8",
-    env: {
-      ...process.env,
-      FYAGENT_FAKE_CODESIGN_LOG: callLog,
-      FYAGENT_FAKE_MODE: mode,
-      PATH: `${binRoot}:${process.env.PATH ?? ""}`,
+  const result = spawnSync(
+    resolveBashExecutable(),
+    [MACOS_ADHOC_VERIFIER, appPath],
+    {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        FYAGENT_FAKE_CODESIGN_LOG: callLog,
+        FYAGENT_FAKE_MODE: mode,
+        PATH: `${binRoot}:${process.env.PATH ?? ""}`,
+      },
     },
-  });
+  );
   return {
     ...result,
     calls: fs.existsSync(callLog) ? read(callLog).trim().split("\n") : [],
@@ -1682,7 +1721,7 @@ jobs:
       source.indexOf("\n  pin-release-build-inputs:\n"),
     );
     const macAdhocVerifier = read(MACOS_ADHOC_VERIFIER);
-    expect(fs.statSync(MACOS_ADHOC_VERIFIER).mode & 0o111).not.toBe(0);
+    expect(trackedMode(MACOS_ADHOC_VERIFIER)).toBe("100755");
     const tauriConfig = JSON.parse(read(TAURI_CONFIG)) as {
       bundle?: { macOS?: { signingIdentity?: string } };
     };

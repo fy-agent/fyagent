@@ -86,14 +86,14 @@ const DOCUMENTATION_ROOT_FILES = new Set([
   "CONTRIBUTING.md",
   "LICENSE",
   "LICENSING.md",
+  "MEMORY.md",
   "README.md",
-  "README_DE.md",
   "README_JA.md",
   "README_ZH.md",
   "SECURITY.md",
   "SUPPORT.md",
   "THIRD_PARTY_NOTICES.md",
-  "session-manager.md",
+  "docs/fyagent/history/session-manager-prd.md",
 ]);
 
 const CODEX_WINDOWS_PREFIXES = Object.freeze([
@@ -238,7 +238,12 @@ function classifyPath(path, domains) {
     return { matched: true, forceFull: false };
   }
 
-  if (path.startsWith("docs/") || path.startsWith("LICENSES/")) {
+  if (
+    path.startsWith("docs/") ||
+    path.startsWith("LICENSES/") ||
+    path.startsWith("memory/") ||
+    path.startsWith(".omo/")
+  ) {
     addDomains(domains, ["contracts", "docsSpec"]);
     return { matched: true, forceFull: false };
   }

@@ -988,7 +988,7 @@ describe("Codex hook runner contract", () => {
     const root = createHookFixture();
     for (const relativePath of reviewedPythonSources) {
       const sourcePath = path.join(root, relativePath);
-      const source = fs.readFileSync(sourcePath, "utf8");
+      const source = fs.readFileSync(sourcePath, "utf8").replace(/\r\n/g, "\n");
       fs.writeFileSync(sourcePath, source.replace(/\n/g, "\r\n"), "utf8");
     }
 

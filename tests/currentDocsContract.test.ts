@@ -75,12 +75,7 @@ const LOCALIZED_INSTALLATION_GUIDES = [
   },
 ] as const;
 
-const PUBLIC_READMES = [
-  "README.md",
-  "README_DE.md",
-  "README_JA.md",
-  "README_ZH.md",
-] as const;
+const PUBLIC_READMES = ["README.md", "README_JA.md", "README_ZH.md"] as const;
 
 const CURRENT_PUBLIC_REPOSITORY_FILES = [
   ...PUBLIC_READMES,
@@ -98,6 +93,49 @@ const CURRENT_PUBLIC_REPOSITORY_FILES = [
 const INSTALLER_NAME_TEMPLATES = expectedInstallerNames("1.2.3").map((name) =>
   name.replace("1.2.3", "X.Y.Z"),
 );
+
+const MANUAL_LANGUAGES = ["en", "ja", "zh"] as const;
+const EXPECTED_MANUAL_CHAPTERS = [
+  "1-getting-started/1.1-introduction.md",
+  "1-getting-started/1.2-installation.md",
+  "1-getting-started/1.3-interface.md",
+  "1-getting-started/1.4-quickstart.md",
+  "1-getting-started/1.5-settings.md",
+  "2-agent-tools/2.1-install.md",
+  "2-agent-tools/2.2-update-diagnose.md",
+  "3-providers/3.1-add.md",
+  "3-providers/3.2-switch.md",
+  "3-providers/3.3-edit.md",
+  "3-providers/3.4-sort-duplicate.md",
+  "3-providers/3.5-usage-query.md",
+  "3-providers/3.6-claude-desktop.md",
+  "4-extensions/4.1-mcp.md",
+  "4-extensions/4.2-prompts.md",
+  "4-extensions/4.3-skills.md",
+  "4-extensions/4.4-sessions.md",
+  "4-extensions/4.5-workspace.md",
+  "4-extensions/4.6-workbuddy.md",
+  "5-proxy/5.1-service.md",
+  "5-proxy/5.2-routing.md",
+  "5-proxy/5.3-failover.md",
+  "5-proxy/5.4-usage.md",
+  "5-proxy/5.5-model-test.md",
+  "6-faq/6.1-config-files.md",
+  "6-faq/6.2-questions.md",
+  "6-faq/6.3-deeplink.md",
+  "6-faq/6.4-env-conflict.md",
+] as const;
+
+const VISUAL_DELIVERABLES = [
+  "docs/fyagent/audits/user-manual-screenshots.md",
+  "docs/fyagent/marketing/visual-asset-plan.md",
+  "docs/fyagent/marketing/prompts/README.md",
+  "docs/fyagent/marketing/visual-direction-sample-v1.md",
+  "docs/fyagent/marketing/visual-direction-sample-v2.md",
+  "docs/fyagent/marketing/visual-direction-sample-v3.md",
+  "docs/fyagent/marketing/vibekey-reference-audit.md",
+  "docs/release-notes/README.md",
+] as const;
 
 function read(relative: string): string {
   return fs
@@ -134,7 +172,6 @@ function currentAuthorityMarkdownFiles(): string[] {
       ".agents/skills/fyagent-trellis/SKILL.md",
       "CONTRIBUTING.md",
       "README.md",
-      "README_DE.md",
       "README_JA.md",
       "README_ZH.md",
       "flatpak/README.md",
@@ -170,6 +207,7 @@ function operationalTextFiles(): string[] {
     .filter(
       (file) =>
         file.length > 0 &&
+        !file.startsWith(".format-files-") &&
         !file.startsWith(HISTORICAL_TRELLIS_ARCHIVE_PREFIX) &&
         fs.existsSync(path.join(ROOT, file)) &&
         !fs.readFileSync(path.join(ROOT, file)).includes(0),
@@ -280,8 +318,80 @@ describe("current FyAgent documentation authority", () => {
     }
   });
 
+  it("keeps the six-chapter manual and visual evidence plan closed", () => {
+    expect(fs.existsSync(path.join(ROOT, "README_DE.md"))).toBe(false);
+    for (const file of PUBLIC_READMES) {
+      expect(read(file), file).not.toContain("assets/screenshots/");
+    }
+
+    for (const language of MANUAL_LANGUAGES) {
+      const prefix = `docs/user-manual/${language}/`;
+      const chapters = markdownFilesUnder(prefix.slice(0, -1))
+        .filter((file) => file !== `${prefix}README.md`)
+        .map((file) => file.slice(prefix.length));
+      expect(chapters, language).toEqual([...EXPECTED_MANUAL_CHAPTERS]);
+      for (const retiredDirectory of [
+        "2-providers",
+        "3-extensions",
+        "4-proxy",
+        "5-faq",
+      ]) {
+        expect(
+          fs.existsSync(path.join(ROOT, prefix, retiredDirectory)),
+          `${language}/${retiredDirectory}`,
+        ).toBe(false);
+      }
+    }
+
+    const shotCards = markdownFilesUnder("docs/user-manual/assets/shot-cards");
+    expect(shotCards).toHaveLength(16);
+    expect(shotCards).toContain(
+      "docs/user-manual/assets/shot-cards/001-main-overview.md",
+    );
+    expect(shotCards).toContain(
+      "docs/user-manual/assets/shot-cards/015-failover-queue.md",
+    );
+
+    const imageDirectory = path.join(ROOT, "docs/user-manual/assets");
+    const imageNames = fs
+      .readdirSync(imageDirectory, { withFileTypes: true })
+      .filter((entry) => entry.isFile() && entry.name.endsWith(".png"))
+      .map((entry) => entry.name)
+      .sort();
+    expect(imageNames).toHaveLength(40);
+
+    const imageReferences = MANUAL_LANGUAGES.flatMap((language) =>
+      markdownFilesUnder(`docs/user-manual/${language}`).flatMap((file) =>
+        [...read(file).matchAll(/\.\.\/\.\.\/assets\/([^\s)]+\.png)/g)].map(
+          (match) => match[1],
+        ),
+      ),
+    );
+    expect(imageReferences).toHaveLength(84);
+    expect([...new Set(imageReferences)].sort()).toEqual(imageNames);
+
+    const audit = read("docs/fyagent/audits/user-manual-screenshots.md");
+    for (const imageName of imageNames) {
+      expect(audit, imageName).toContain(`\`${imageName}\``);
+    }
+    for (const file of VISUAL_DELIVERABLES) {
+      expect(fs.statSync(path.join(ROOT, file)).isFile(), file).toBe(true);
+    }
+    expect(
+      read("docs/fyagent/marketing/visual-direction-sample-v1.md"),
+    ).toContain("status: superseded");
+    expect(
+      read("docs/fyagent/marketing/visual-direction-sample-v2.md"),
+    ).toContain("status: superseded");
+    expect(
+      read("docs/fyagent/marketing/visual-direction-sample-v3.md"),
+    ).toContain("status: concept_candidate");
+  });
+
   it("keeps every local link in current authority resolvable", () => {
-    for (const file of currentAuthorityMarkdownFiles()) {
+    for (const file of [
+      ...new Set([...currentAuthorityMarkdownFiles(), ...VISUAL_DELIVERABLES]),
+    ].sort()) {
       const source = read(file);
       for (const rawTarget of markdownTargets(source)) {
         if (/^(?:https?:|mailto:|#)/.test(rawTarget)) continue;

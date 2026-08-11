@@ -28,7 +28,10 @@ Included TOMLs use mise's task-file format (top-level task tables, no
 `[tasks]` prefix). Simple leaves wrap pnpm/Cargo/uv directly. Complex,
 parameterized, filesystem, Git, environment, lock, documentation, or
 maintenance logic lives in cross-platform Node `.mjs` scripts; core task
-behavior may not depend on Bash.
+behavior may not depend on Bash. Every tracked `.mjs` file is declared
+`*.mjs text eol=lf` in `.gitattributes`. This is an execution contract, not
+only a formatting preference: a CRLF byte after a shebang can pass direct
+Node execution but fail when Vite/Vitest transforms the module on Windows.
 
 Every public task has:
 
@@ -258,10 +261,14 @@ local command API.
 | A changed JSONL target no longer matches its preflight bytes                       | Preserve the newer bytes and fail                  |
 | A formatted Trellis context file still violates record/schema or containment rules | `trellis:validate` remains the required authority  |
 | Managed Trellis divergence is undeclared or stale                                  | `trellis:verify` fails                             |
+| A tracked `.mjs` file can check out with CRLF                                      | Git-attribute contract fails before module tests  |
 
 ## 8. Tests Required
 
 - `mise tasks validate --errors-only` and `task-contract-check.mjs`.
+- Assert `.gitattributes` pins `*.mjs text eol=lf`, then import shebang-bearing
+  task and CI modules through Vitest on Windows as well as executing them with
+  Node.
 - Required-task subset, metadata/effect/usage, reference closure, check DAG,
   Rust order, retired task, and forbidden command scans.
 - Real parameter/flag transport smoke tests, including dry-run `version:set`,
@@ -317,11 +324,12 @@ local command API.
 
 ## 9. Wrong vs Correct
 
-Wrong: put every command back into one `mise.toml`, rely on Bash, infer safety
-from a task name, concatenate usage input, let check install/update, bypass the
-wrapper with a low-level local target command, or hand-edit generated task
-rows.
+Wrong: put every command back into one `mise.toml`, rely on Bash, allow `.mjs`
+shebangs to check out as CRLF, infer safety from a task name, concatenate usage
+input, let check install/update, bypass the wrapper with a low-level local
+target command, or hand-edit generated task rows.
 
 Correct: domain TOMLs describe a stable API, Node wrappers validate boundaries,
-effects make composition auditable, guarded native wrappers verify and pin the
-current host, and executable tests prove both metadata and real argument flow.
+`.mjs` files keep LF bytes across platforms, effects make composition auditable,
+guarded native wrappers verify and pin the current host, and executable tests
+prove both metadata and real argument flow.
