@@ -483,7 +483,7 @@ describe("current FyAgent documentation authority", () => {
       "<strong>For You Agent</strong>——AI 时代的个人随身数字人格。",
     );
     expect(chinese).toContain(
-      "把你的模型、供应商、技能、提示词和工作方式，带到每一个 AI 工具里。",
+      "把你的模型、AI 账号、技能、提示词和工作方式，带到每一个 AI 工具里。",
     );
     expect(chinese).toContain('href="README_EN.md">English</a>');
     expect(english).toContain('href="README.md">简体中文</a>');

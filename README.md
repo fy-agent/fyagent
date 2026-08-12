@@ -2,7 +2,7 @@
   <img src="assets/brand/github/for-you-gate.svg" width="104" alt="FyAgent For You Gate">
   <h1>FyAgent</h1>
   <p><strong>For You Agent</strong>——AI 时代的个人随身数字人格。</p>
-  <p>把你的模型、供应商、技能、提示词和工作方式，带到每一个 AI 工具里。</p>
+  <p>把你的模型、AI 账号、技能、提示词和工作方式，带到每一个 AI 工具里。</p>
   <p><a href="README_EN.md">English</a> · <a href="README_JA.md">日本語</a></p>
   <p>
     <a href="https://github.com/fy-agent/fyagent/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/fy-agent/fyagent?style=flat-square&label=release&color=0B66FF"></a>
