@@ -251,6 +251,7 @@ pub(crate) struct CodexSwitchInspection {
     pub target: Provider,
     pub target_definition_digest: String,
     pub live_projection_digest: String,
+    pub live_projection_available: bool,
     pub target_projection_digest: String,
     pub baseline_digest: String,
 }
@@ -265,9 +266,33 @@ pub(crate) fn provider_definition_digest(provider: &Provider) -> String {
     digest_json("fyagent.change-plan.provider-definition.v1", &value)
 }
 
+fn codex_projection_for_digest(mut value: Value) -> Value {
+    let Some(object) = value.as_object_mut() else {
+        return value;
+    };
+    let Some(config) = object.get("config").and_then(Value::as_str) else {
+        return value;
+    };
+    let Ok(mut config_value) = config.parse::<toml::Value>() else {
+        return value;
+    };
+    if let Some(table) = config_value.as_table_mut() {
+        // MCP projection is independently managed after the provider write and
+        // therefore is not part of Provider switch identity.
+        table.remove("mcp_servers");
+    }
+    if let Ok(normalized) = toml::to_string(&config_value) {
+        object.insert("config".to_string(), Value::String(normalized));
+    }
+    value
+}
+
 fn live_projection_digest(result: Result<Value, AppError>) -> String {
     match result {
-        Ok(value) => digest_json("fyagent.change-plan.codex-live.v1", &value),
+        Ok(value) => digest_json(
+            "fyagent.change-plan.codex-live.v1",
+            &codex_projection_for_digest(value),
+        ),
         Err(_) => digest_bytes(
             "fyagent.change-plan.codex-live.v1",
             b"projection_unavailable",
@@ -312,12 +337,16 @@ pub(crate) fn inspect_codex_switch(
         })
         .map(|provider| provider_definition_digest(&provider));
     let target_definition_digest = provider_definition_digest(&target);
-    let live_projection_digest = live_projection_digest(read_live_settings(AppType::Codex));
+    let live_projection = read_live_settings(AppType::Codex);
+    let live_projection_available = live_projection.is_ok();
+    let live_projection_digest = live_projection_digest(live_projection);
     let effective_target =
         build_effective_settings_with_common_config(state.db.as_ref(), &AppType::Codex, &target)
             .map_err(|_| ChangePlanErrorCode::Internal)?;
-    let target_projection_digest =
-        digest_json("fyagent.change-plan.codex-live.v1", &effective_target);
+    let target_projection_digest = digest_json(
+        "fyagent.change-plan.codex-live.v1",
+        &codex_projection_for_digest(effective_target),
+    );
     let baseline_value = serde_json::to_value(BaselineDigestInput {
         contract: CHANGE_PLAN_CONTRACT_VERSION,
         db_current_provider_id: &db_current_provider_id,
@@ -338,6 +367,7 @@ pub(crate) fn inspect_codex_switch(
         target,
         target_definition_digest,
         live_projection_digest,
+        live_projection_available,
         target_projection_digest,
         baseline_digest,
     })
@@ -408,6 +438,382 @@ impl ChangePlanService {
             })
             .map_err(|_| ChangePlanErrorCode::Internal)?;
         Ok(public)
+    }
+
+    pub fn apply_codex_switch(
+        state: &AppState,
+        plan_id: &str,
+        plan_digest: &str,
+    ) -> Result<ApplyChangePlanOutcome, ChangePlanErrorCode> {
+        let now = chrono::Utc::now().timestamp();
+        Self::apply_codex_switch_at_with_writer(state, plan_id, plan_digest, now, || {
+            crate::services::ProviderService::with_live_config_result(AppType::Codex, || {
+                crate::services::ProviderService::switch(
+                    state,
+                    AppType::Codex,
+                    &state
+                        .db
+                        .get_stored_change_plan(plan_id)
+                        .map_err(|_| AppError::Message("change plan unavailable".to_string()))?
+                        .ok_or_else(|| AppError::Message("change plan unavailable".to_string()))?
+                        .public
+                        .target_provider_id,
+                )
+            })
+            .map(|result| result.live_config_changed)
+            .map_err(|_| ())
+        })
+    }
+
+    pub(crate) fn apply_codex_switch_at_with_writer<F>(
+        state: &AppState,
+        plan_id: &str,
+        plan_digest: &str,
+        now: i64,
+        writer: F,
+    ) -> Result<ApplyChangePlanOutcome, ChangePlanErrorCode>
+    where
+        F: FnOnce() -> Result<bool, ()>,
+    {
+        let _guard = change_plan_lock()
+            .lock()
+            .map_err(|_| ChangePlanErrorCode::Internal)?;
+        let stored = state
+            .db
+            .get_stored_change_plan(plan_id)
+            .map_err(|_| ChangePlanErrorCode::Internal)?;
+        let Some(stored) = stored else {
+            return Ok(ApplyChangePlanOutcome {
+                kind: ChangeApplyOutcomeKind::Rejected,
+                job: None,
+                error_code: Some(ChangePlanErrorCode::PlanNotFound),
+            });
+        };
+        let observed = inspect_codex_switch(state, &stored.public.target_provider_id)?;
+        let job_id = uuid::Uuid::new_v4().to_string();
+        let admitted = state
+            .db
+            .admit_change_plan(
+                plan_id,
+                plan_digest,
+                &observed.baseline_digest,
+                &job_id,
+                now,
+            )
+            .map_err(|_| ChangePlanErrorCode::Internal)?;
+        if admitted.kind == ChangeApplyOutcomeKind::Rejected {
+            return Ok(admitted);
+        }
+        let mut job = admitted.job.ok_or(ChangePlanErrorCode::Internal)?;
+        set_step(
+            &mut job,
+            ChangeStepKind::Precheck,
+            ChangeStepStatus::Succeeded,
+            "baseline_matched",
+        );
+        set_step(
+            &mut job,
+            ChangeStepKind::Apply,
+            ChangeStepStatus::Running,
+            "writer_started",
+        );
+        advance_job(&mut job, now, "running");
+        state
+            .db
+            .save_change_job(&job, "writer_started")
+            .map_err(|_| ChangePlanErrorCode::Internal)?;
+
+        let writer_result = writer();
+        set_step(
+            &mut job,
+            ChangeStepKind::Apply,
+            if writer_result.is_ok() {
+                ChangeStepStatus::Succeeded
+            } else {
+                ChangeStepStatus::Failed
+            },
+            if writer_result.is_ok() {
+                "writer_returned"
+            } else {
+                "writer_failed"
+            },
+        );
+        set_step(
+            &mut job,
+            ChangeStepKind::Readback,
+            ChangeStepStatus::Running,
+            "readback_started",
+        );
+        advance_job(&mut job, now, "readback");
+        state
+            .db
+            .save_change_job(&job, "readback_started")
+            .map_err(|_| ChangePlanErrorCode::Internal)?;
+
+        let readback = inspect_codex_switch(state, &stored.public.target_provider_id);
+        classify_job(&stored, &mut job, writer_result, readback, now);
+        state
+            .db
+            .save_change_job(&job, "terminal")
+            .map_err(|_| ChangePlanErrorCode::Internal)?;
+        Ok(ApplyChangePlanOutcome {
+            kind: ChangeApplyOutcomeKind::Admitted,
+            job: Some(job),
+            error_code: None,
+        })
+    }
+
+    pub fn get_job(
+        state: &AppState,
+        job_id: &str,
+    ) -> Result<ChangeJobSnapshot, ChangePlanErrorCode> {
+        let job = state
+            .db
+            .get_change_job(job_id)
+            .map_err(|_| ChangePlanErrorCode::Internal)?
+            .ok_or(ChangePlanErrorCode::JobNotFound)?;
+        if job.status.is_terminal() {
+            return Ok(job);
+        }
+        Self::reconcile_job(state, job)
+    }
+
+    fn reconcile_job(
+        state: &AppState,
+        mut job: ChangeJobSnapshot,
+    ) -> Result<ChangeJobSnapshot, ChangePlanErrorCode> {
+        let _guard = change_plan_lock()
+            .lock()
+            .map_err(|_| ChangePlanErrorCode::Internal)?;
+        let stored = state
+            .db
+            .get_stored_change_plan(&job.plan_id)
+            .map_err(|_| ChangePlanErrorCode::Internal)?
+            .ok_or(ChangePlanErrorCode::PlanNotFound)?;
+        let now = chrono::Utc::now().timestamp();
+        set_step(
+            &mut job,
+            ChangeStepKind::Reconcile,
+            ChangeStepStatus::Running,
+            "reconcile_started",
+        );
+        let readback = inspect_codex_switch(state, &stored.public.target_provider_id);
+        classify_job(&stored, &mut job, Err(()), readback, now);
+        let reconcile_status = if job.recovery_state == RecoveryState::RecoveryRequired {
+            ChangeStepStatus::Failed
+        } else {
+            ChangeStepStatus::Succeeded
+        };
+        set_step(
+            &mut job,
+            ChangeStepKind::Reconcile,
+            reconcile_status,
+            "reconciled_without_replay",
+        );
+        state
+            .db
+            .save_change_job(&job, "reconciled")
+            .map_err(|_| ChangePlanErrorCode::Internal)?;
+        Ok(job)
+    }
+
+    pub fn list_recoverable_jobs(
+        state: &AppState,
+    ) -> Result<Vec<ChangeJobSnapshot>, ChangePlanErrorCode> {
+        let jobs = state
+            .db
+            .list_recoverable_change_jobs()
+            .map_err(|_| ChangePlanErrorCode::Internal)?;
+        jobs.into_iter()
+            .map(|job| Self::reconcile_job(state, job))
+            .collect()
+    }
+}
+
+fn set_step(
+    job: &mut ChangeJobSnapshot,
+    kind: ChangeStepKind,
+    status: ChangeStepStatus,
+    code: &str,
+) {
+    if let Some(step) = job.steps.iter_mut().find(|step| step.kind == kind) {
+        step.status = status;
+        step.code = code.to_string();
+    }
+}
+
+fn set_resource(
+    job: &mut ChangeJobSnapshot,
+    kind: ChangeResourceKind,
+    status: ChangeResourceStatus,
+    code: &str,
+) {
+    if let Some(resource) = job.resources.iter_mut().find(|item| item.kind == kind) {
+        resource.status = status;
+        resource.code = code.to_string();
+    }
+}
+
+fn advance_job(job: &mut ChangeJobSnapshot, now: i64, code: &str) {
+    job.revision += 1;
+    job.event_seq += 1;
+    job.status = ChangeJobStatus::Running;
+    job.result_code = ChangeResultCode::Running;
+    job.diagnostic_code = Some(code.to_string());
+    job.updated_at = now;
+}
+
+fn classify_job(
+    stored: &StoredChangePlan,
+    job: &mut ChangeJobSnapshot,
+    writer_result: Result<bool, ()>,
+    readback: Result<CodexSwitchInspection, ChangePlanErrorCode>,
+    now: i64,
+) {
+    job.revision += 1;
+    job.event_seq += 1;
+    job.updated_at = now;
+    let Ok(readback) = readback else {
+        job.status = ChangeJobStatus::Failed;
+        job.result_code = ChangeResultCode::ReadbackUnavailable;
+        job.recovery_state = RecoveryState::RecoveryRequired;
+        job.restart_requirement = RestartRequirement::Unknown;
+        job.diagnostic_code = Some("readback_unavailable".to_string());
+        set_step(
+            job,
+            ChangeStepKind::Readback,
+            ChangeStepStatus::Failed,
+            "readback_unavailable",
+        );
+        return;
+    };
+
+    let target_id = &stored.public.target_provider_id;
+    let db_target = readback.db_current_provider_id.as_ref() == Some(target_id);
+    let device_target = readback.device_current_provider_id.as_ref() == Some(target_id);
+    let definition_target = readback.target_definition_digest == stored.target_definition_digest;
+    let live_target = readback.live_projection_available
+        && readback.live_projection_digest == stored.target_projection_digest;
+    let baseline_db = readback.db_current_provider_id == stored.current_provider_id;
+    let baseline_device = readback.device_current_provider_id == stored.current_provider_id;
+    let baseline_live = readback.live_projection_digest == stored.live_projection_digest;
+
+    set_resource(
+        job,
+        ChangeResourceKind::ProviderDbCurrent,
+        if db_target {
+            ChangeResourceStatus::Matched
+        } else {
+            ChangeResourceStatus::Mismatched
+        },
+        if db_target {
+            "target_current"
+        } else {
+            "target_not_current"
+        },
+    );
+    set_resource(
+        job,
+        ChangeResourceKind::DeviceCurrent,
+        if device_target {
+            ChangeResourceStatus::Matched
+        } else {
+            ChangeResourceStatus::Mismatched
+        },
+        if device_target {
+            "target_current"
+        } else {
+            "target_not_current"
+        },
+    );
+    set_resource(
+        job,
+        ChangeResourceKind::TargetDefinition,
+        if definition_target {
+            ChangeResourceStatus::Matched
+        } else {
+            ChangeResourceStatus::Mismatched
+        },
+        if definition_target {
+            "definition_matched"
+        } else {
+            "definition_drifted"
+        },
+    );
+    set_resource(
+        job,
+        ChangeResourceKind::CodexLiveProjection,
+        if !readback.live_projection_available {
+            ChangeResourceStatus::Unavailable
+        } else if live_target {
+            ChangeResourceStatus::Matched
+        } else {
+            ChangeResourceStatus::Mismatched
+        },
+        if !readback.live_projection_available {
+            "live_unavailable"
+        } else if live_target {
+            "live_matched"
+        } else {
+            "live_mismatched"
+        },
+    );
+
+    if db_target && device_target && definition_target && live_target {
+        job.live_config_changed = writer_result.unwrap_or(false);
+        job.restart_requirement = if job.live_config_changed {
+            RestartRequirement::Recommended
+        } else {
+            RestartRequirement::NotRequired
+        };
+        job.status = if writer_result.is_ok() {
+            ChangeJobStatus::Succeeded
+        } else {
+            ChangeJobStatus::Warning
+        };
+        job.result_code = if writer_result.is_err() {
+            ChangeResultCode::WriterErrorTargetReached
+        } else if job.live_config_changed {
+            ChangeResultCode::AppliedRestartRecommended
+        } else {
+            ChangeResultCode::Applied
+        };
+        job.recovery_state = RecoveryState::NotNeeded;
+        job.diagnostic_code = Some("target_readback_matched".to_string());
+        set_step(
+            job,
+            ChangeStepKind::Readback,
+            ChangeStepStatus::Succeeded,
+            "target_matched",
+        );
+    } else if baseline_db && baseline_device && baseline_live {
+        job.status = ChangeJobStatus::Failed;
+        job.result_code = ChangeResultCode::WriterFailedBaselineRestored;
+        job.restart_requirement = RestartRequirement::NotRequired;
+        job.recovery_state = RecoveryState::Succeeded;
+        job.diagnostic_code = Some("baseline_restored".to_string());
+        set_step(
+            job,
+            ChangeStepKind::Readback,
+            ChangeStepStatus::Succeeded,
+            "baseline_restored",
+        );
+    } else {
+        job.status = ChangeJobStatus::Failed;
+        job.result_code = if readback.live_projection_available {
+            ChangeResultCode::PostWriteMismatch
+        } else {
+            ChangeResultCode::ReadbackUnavailable
+        };
+        job.restart_requirement = RestartRequirement::Unknown;
+        job.recovery_state = RecoveryState::RecoveryRequired;
+        job.diagnostic_code = Some("recovery_required".to_string());
+        set_step(
+            job,
+            ChangeStepKind::Readback,
+            ChangeStepStatus::Failed,
+            "state_mixed",
+        );
     }
 }
 
@@ -624,5 +1030,195 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM change_plans", [], |row| row.get(0))
             .unwrap();
         assert_eq!(count, 0);
+    }
+
+    fn setup_switch_state() -> (
+        tempfile::TempDir,
+        TestHome,
+        Arc<Database>,
+        AppState,
+        Provider,
+        Provider,
+    ) {
+        let home = tempfile::tempdir().expect("test home");
+        let home_guard = TestHome::set(home.path());
+        let db = Arc::new(Database::memory().expect("database"));
+        let current = provider("current", "Current", "gpt-current");
+        let target = provider("target", "Target", "gpt-target");
+        db.save_provider(AppType::Codex.as_str(), &current).unwrap();
+        db.save_provider(AppType::Codex.as_str(), &target).unwrap();
+        db.set_current_provider(AppType::Codex.as_str(), &current.id)
+            .unwrap();
+        crate::settings::set_current_provider(&AppType::Codex, Some(&current.id)).unwrap();
+        write_live_with_common_config(db.as_ref(), &AppType::Codex, &current).unwrap();
+        let state = AppState::new(db.clone());
+        (home, home_guard, db, state, current, target)
+    }
+
+    #[test]
+    #[serial]
+    fn codex_provider_change_job_calls_existing_writer_once_and_rejects_replay() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let (_home, _guard, _db, state, _current, target) = setup_switch_state();
+        let plan = ChangePlanService::plan_codex_switch_at(&state, &target.id, 100).unwrap();
+        let calls = AtomicUsize::new(0);
+        let outcome = ChangePlanService::apply_codex_switch_at_with_writer(
+            &state,
+            &plan.plan_id,
+            &plan.plan_digest,
+            101,
+            || {
+                calls.fetch_add(1, Ordering::SeqCst);
+                crate::services::ProviderService::with_live_config_result(AppType::Codex, || {
+                    crate::services::ProviderService::switch(&state, AppType::Codex, &target.id)
+                })
+                .map(|result| result.live_config_changed)
+                .map_err(|_| ())
+            },
+        )
+        .unwrap();
+        let job = outcome.job.unwrap();
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert_eq!(job.status, ChangeJobStatus::Succeeded);
+        assert!(matches!(
+            job.result_code,
+            ChangeResultCode::Applied | ChangeResultCode::AppliedRestartRecommended
+        ));
+        assert_eq!(job.usage_evidence, UsageEvidence::NotObserved);
+        assert!(job
+            .resources
+            .iter()
+            .all(|resource| resource.status == ChangeResourceStatus::Matched));
+
+        let replay = ChangePlanService::apply_codex_switch_at_with_writer(
+            &state,
+            &plan.plan_id,
+            &plan.plan_digest,
+            102,
+            || {
+                calls.fetch_add(1, Ordering::SeqCst);
+                Ok(false)
+            },
+        )
+        .unwrap();
+        assert_eq!(replay.error_code, Some(ChangePlanErrorCode::Consumed));
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            1,
+            "replay must not call writer"
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn codex_provider_change_job_stale_plan_performs_zero_writes() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let (_home, _guard, db, state, _current, mut target) = setup_switch_state();
+        let plan = ChangePlanService::plan_codex_switch_at(&state, &target.id, 100).unwrap();
+        target.settings_config["config"] = Value::String("model = \"drifted\"\n".into());
+        db.save_provider(AppType::Codex.as_str(), &target).unwrap();
+        let calls = AtomicUsize::new(0);
+        let outcome = ChangePlanService::apply_codex_switch_at_with_writer(
+            &state,
+            &plan.plan_id,
+            &plan.plan_digest,
+            101,
+            || {
+                calls.fetch_add(1, Ordering::SeqCst);
+                Ok(false)
+            },
+        )
+        .unwrap();
+        assert_eq!(outcome.error_code, Some(ChangePlanErrorCode::Stale));
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+        assert_eq!(
+            db.get_current_provider(AppType::Codex.as_str())
+                .unwrap()
+                .as_deref(),
+            Some("current")
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn change_plan_reconciliation_reads_state_without_replaying_writer() {
+        let (_home, _guard, db, state, _current, target) = setup_switch_state();
+        let plan = ChangePlanService::plan_codex_switch_at(&state, &target.id, 100).unwrap();
+        let inspected = inspect_codex_switch(&state, &target.id).unwrap();
+        let admitted = db
+            .admit_change_plan(
+                &plan.plan_id,
+                &plan.plan_digest,
+                &inspected.baseline_digest,
+                "interrupted-job",
+                101,
+            )
+            .unwrap();
+        assert_eq!(admitted.kind, ChangeApplyOutcomeKind::Admitted);
+        crate::services::ProviderService::switch(&state, AppType::Codex, &target.id).unwrap();
+        let before = db.get_current_provider(AppType::Codex.as_str()).unwrap();
+        let reconciled = ChangePlanService::get_job(&state, "interrupted-job").unwrap();
+        assert_eq!(reconciled.status, ChangeJobStatus::Warning);
+        assert_eq!(
+            reconciled.result_code,
+            ChangeResultCode::WriterErrorTargetReached
+        );
+        assert_eq!(
+            db.get_current_provider(AppType::Codex.as_str()).unwrap(),
+            before
+        );
+        assert_eq!(
+            reconciled
+                .steps
+                .iter()
+                .find(|step| step.kind == ChangeStepKind::Reconcile)
+                .unwrap()
+                .code,
+            "reconciled_without_replay"
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn codex_provider_change_job_classifies_recovery_states_from_readback() {
+        let (_home, _guard, db, state, _current, target) = setup_switch_state();
+        let baseline_plan =
+            ChangePlanService::plan_codex_switch_at(&state, &target.id, 100).unwrap();
+        let baseline = ChangePlanService::apply_codex_switch_at_with_writer(
+            &state,
+            &baseline_plan.plan_id,
+            &baseline_plan.plan_digest,
+            101,
+            || Err(()),
+        )
+        .unwrap()
+        .job
+        .unwrap();
+        assert_eq!(
+            baseline.result_code,
+            ChangeResultCode::WriterFailedBaselineRestored
+        );
+        assert_eq!(baseline.recovery_state, RecoveryState::Succeeded);
+
+        let plan = ChangePlanService::plan_codex_switch_at(&state, &target.id, 200).unwrap();
+        let mixed = ChangePlanService::apply_codex_switch_at_with_writer(
+            &state,
+            &plan.plan_id,
+            &plan.plan_digest,
+            201,
+            || {
+                db.set_current_provider(AppType::Codex.as_str(), &target.id)
+                    .unwrap();
+                Err(())
+            },
+        )
+        .unwrap()
+        .job
+        .unwrap();
+        assert_eq!(mixed.status, ChangeJobStatus::Failed);
+        assert_eq!(mixed.recovery_state, RecoveryState::RecoveryRequired);
+        assert_eq!(mixed.result_code, ChangeResultCode::PostWriteMismatch);
     }
 }

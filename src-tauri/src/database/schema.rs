@@ -386,6 +386,12 @@ impl Database {
                 ON change_job_events(job_id, event_seq);",
         )
         .map_err(|e| AppError::Database(e.to_string()))?;
+        Self::add_column_if_missing(
+            conn,
+            "change_plans",
+            "target_projection_digest",
+            "TEXT NOT NULL DEFAULT ''",
+        )?;
 
         // 修复跑过未发布开发版的库：current 标记曾是全局 key，现按应用分组
         // （随 v12 定稿为 current_profile_id_<scope>，不单独 bump 版本）
