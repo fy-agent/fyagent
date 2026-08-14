@@ -1,6 +1,7 @@
 mod app_config;
 mod app_store;
 mod auto_launch;
+mod change_plan;
 mod claude_desktop_config;
 mod claude_mcp;
 mod claude_plugin;
@@ -48,6 +49,10 @@ use crate::codex_desktop::{
     types::JobStage,
 };
 pub use app_config::{AppType, InstalledSkill, McpApps, McpServer, MultiAppConfig, SkillApps};
+pub use change_plan::{
+    ApplyChangePlanOutcome, ChangeApplyOutcomeKind, ChangeJobSnapshot, ChangePlan,
+    ChangePlanErrorCode,
+};
 pub use codex_config::{
     get_codex_auth_path, get_codex_config_path, read_codex_live_settings, write_codex_live_atomic,
 };
