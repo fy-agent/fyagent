@@ -345,6 +345,7 @@ impl Database {
                 current_definition_digest TEXT,
                 target_definition_digest TEXT NOT NULL,
                 live_projection_digest TEXT NOT NULL,
+                target_projection_digest TEXT NOT NULL,
                 contract_digest TEXT NOT NULL,
                 created_at INTEGER NOT NULL,
                 expires_at INTEGER NOT NULL,

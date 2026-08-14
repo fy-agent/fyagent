@@ -14,8 +14,9 @@ impl Database {
                 plan_id, operation, target_provider_id, target_provider_name, plan_digest,
                 baseline_digest, current_provider_id, current_provider_code,
                 target_provider_code, current_definition_digest, target_definition_digest,
-                live_projection_digest, contract_digest, created_at, expires_at, status
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
+                live_projection_digest, target_projection_digest, contract_digest,
+                created_at, expires_at, status
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
             params![
                 plan.public.plan_id,
                 enum_json(plan.public.operation)?,
@@ -29,6 +30,7 @@ impl Database {
                 plan.current_definition_digest,
                 plan.target_definition_digest,
                 plan.live_projection_digest,
+                plan.target_projection_digest,
                 plan.contract_digest,
                 plan.public.created_at,
                 plan.public.expires_at,
@@ -48,12 +50,13 @@ impl Database {
             "SELECT operation, target_provider_id, target_provider_name, plan_digest,
                     baseline_digest, current_provider_id, current_provider_code,
                     target_provider_code, current_definition_digest, target_definition_digest,
-                    live_projection_digest, contract_digest, created_at, expires_at, status
+                    live_projection_digest, target_projection_digest, contract_digest,
+                    created_at, expires_at, status
              FROM change_plans WHERE plan_id = ?1",
             params![plan_id],
             |row| {
                 let operation = serde_json::Value::String(row.get(0)?);
-                let status = serde_json::Value::String(row.get(14)?);
+                let status = serde_json::Value::String(row.get(15)?);
                 Ok(StoredChangePlan {
                     public: ChangePlan {
                         plan_id: plan_id.to_string(),
@@ -63,8 +66,8 @@ impl Database {
                         target_provider_name: row.get(2)?,
                         plan_digest: row.get(3)?,
                         baseline_digest: row.get(4)?,
-                        created_at: row.get(12)?,
-                        expires_at: row.get(13)?,
+                        created_at: row.get(13)?,
+                        expires_at: row.get(14)?,
                         status: serde_json::from_value(status)
                             .map_err(|_| rusqlite::Error::InvalidQuery)?,
                         current_provider_code: row.get(6)?,
@@ -80,7 +83,8 @@ impl Database {
                     current_definition_digest: row.get(8)?,
                     target_definition_digest: row.get(9)?,
                     live_projection_digest: row.get(10)?,
-                    contract_digest: row.get(11)?,
+                    target_projection_digest: row.get(11)?,
+                    contract_digest: row.get(12)?,
                 })
             },
         )
@@ -357,6 +361,7 @@ mod tests {
             current_definition_digest: Some("current-def".into()),
             target_definition_digest: "target-def".into(),
             live_projection_digest: "live-digest".into(),
+            target_projection_digest: "target-live-digest".into(),
             contract_digest: CHANGE_PLAN_CONTRACT_VERSION.into(),
         }
     }
