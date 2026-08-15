@@ -31,6 +31,7 @@
     "research/ucp-contract-gap-audit.md",
     "research/dependency-contract-audit.md",
     "research/provider-create-edit-code-map.md",
+    "research/handoffs/issue-41-design-contract.md",
     "research/prototype/manifest.json",
     "research/prototype/generated-change-plan-reference.png",
     "research/prototype/change-plan-prototype.html",
