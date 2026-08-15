@@ -67,6 +67,7 @@
     "executionReset": "pending_user_approval",
     "scopeCorrectionReview": "pass_round_3_0_p0_0_p1_0_p2",
     "scopeCorrectionProposalSha": "507b09913ce5f4e43eb61bc46a93492edbc4bebd",
+    "scopeCorrectionApprovalCandidateSha": "7093d4feccf988f40fdbf7911e94eb064c58ffe2",
     "implementationStatus": "paused_pending_revision_2_approval",
     "interruptedExplorationBranch": "codex/issue-55-phase2-exploration",
     "interruptedExplorationSha": "2478b7724d07a917fc1ff7a71507bcb225f7ea9a",
