@@ -2,7 +2,7 @@
 
 Status: `PROPOSED_PENDING_USER_APPROVAL`
 
-Evidence class: `planning` / `static_check` only  
+Evidence class: `code_audit` only
 Prepared: 2026-08-15 (Asia/Shanghai)
 
 This addendum preserves the original Issue #55 outcome and the reviewed Change
@@ -43,8 +43,11 @@ publication subsystems.
   checkpoint before it had a terminal module gate. It is preserved, not
   accepted, at local branch `codex/issue-55-phase2-exploration`, commit
   `2478b7724d07a917fc1ff7a71507bcb225f7ea9a`; the original stash is retained.
-- Mainline is clean at
-  `3021c7f7e98f15672e261843ecc75a7099787379`.
+- The Revision-2 proposal is immutable at
+  `507b09913ce5f4e43eb61bc46a93492edbc4bebd`;
+  `3021c7f7e98f15672e261843ecc75a7099787379` is its pre-addendum predecessor.
+  Approval authority will be the later exact reviewed/fixed SHA recorded in
+  `task.json`, not a moving branch tip.
 
 ## 3. Decision scorecard
 
@@ -75,6 +78,11 @@ GitHub readback without merging main or deploying.
 ### In scope
 
 1. Strict v2 Rust request/private/public DTOs and v1 read compatibility.
+   The public snapshot retains stable `planId`, `planDigest`, `schemaVersion`,
+   created/expires timestamps, intent, baseline fingerprint, affected
+   resources, ordered actions, risk, warnings, redacted SecretRef status,
+   preconditions, and recovery hints. Baseline/target/source/SecretRef/
+   precondition drift or expiry requires re-preview.
 2. One canonical JSON implementation and domain-separated intent, baseline,
    credential-requirement, and Plan digests.
 3. Exact affected-resource and ordered-action matrices for Codex Provider
@@ -86,8 +94,11 @@ GitHub readback without merging main or deploying.
 6. Strict TypeScript schema dispatch using Rust-authored fixtures.
 7. Exact `planId + planDigest` one-confirmation admission contract; apply never
    accepts a draft or recomputes form intent.
-8. Protected Provider preparation/commit/readback for the first create/edit/
-   switch slice, with #35-dependent operations typed-disabled.
+8. Protected Provider preparation, atomic one-confirmation admission creating
+   one durable owning job, registered worker/supervisor, private one-use effect
+   permission, cancellation before effect, exact commit/readback, and
+   readback-only interruption reconciliation for the first create/edit/switch
+   slice; #35-dependent operations remain typed-disabled.
 9. Prompt/Memory-V2-aligned four-locale Plan UI and required clean/warning/
    expired/drift/unsupported/secret-missing/running/recovery states.
 10. Proportionate focused, integration, renderer, native, and failure-path
@@ -114,15 +125,19 @@ typed-disable, #41 no-shadow-ledger, native/failure evidence, or final review.
 
 ## 5. Observable closure conditions
 
+Evidence is labelled only as `source_report`, `code_audit`,
+`runtime_screenshot`, `native_runtime`, `failure_path`, or `UAT`. Automated
+evidence never implies UAT, and one class never substitutes for another.
+
 | # | Result | Authority and evidence |
 | --- | --- | --- |
-| 1 | Same intent + same baseline yields the same semantic Plan digest; any relevant change yields a different/invalid Plan | Rust canonical vectors plus TypeScript fixture decode (`static_check`/unit) |
-| 2 | Preview for all five operation variants performs zero forbidden effects and zero outbound Provider/model calls | narrow side-effect spy/fault tests (`local_runtime`) |
-| 3 | v2 Plan persists and reads back without private/secret/path leakage; expiry/drift/secretRef/target/source/precondition changes invalidate it | DAO contract tests and exact readback (`local_runtime`) |
-| 4 | #41 can compile/decode the schema from one immutable SHA without creating another ledger; full execution integration waits for the later guard/worker SHA | source manifest, focused commands, producer review, consumer exact-SHA readback (`readback`) |
-| 5 | Codex create/edit/switch routes through saved Plan → one admission → protected writer → independent readback; stale/replay/no-op paths call no writer | backend/frontend integration and failure-path matrix (`local_runtime`) |
+| 1 | Same intent + same baseline yields the same semantic Plan digest; any relevant change yields a different/invalid Plan | Rust canonical vectors and TypeScript fixture decode (`source_report`); contract inspection (`code_audit`) |
+| 2 | Preview for all five operation variants performs zero forbidden effects and zero outbound Provider/model calls | narrow side-effect spy and fault checks (`failure_path`) |
+| 3 | v2 Plan persists and reads back without private/secret/path leakage; expiry/drift/secretRef/target/source/precondition changes invalidate it | focused DAO results (`source_report`) and invalidation matrix (`failure_path`) |
+| 4 | #41 can compile/decode the schema from one immutable SHA without creating another ledger; full execution integration waits for the later guard/worker SHA | immutable source manifest and producer/consumer contract inspection (`code_audit`); exact command receipts (`source_report`) |
+| 5 | Codex create/edit/switch routes through saved Plan → one admission → protected writer → independent readback; stale/replay/no-op paths call no writer | backend/frontend integration (`source_report`) and stale/replay/interruption matrix (`failure_path`) |
 | 6 | The final UI answers what changes, resources, backup/recovery limits, credential/privacy boundary, invalid reason, and allowed next action in four locales | renderer/browser/native evidence, clearly separated from prototype (`runtime_screenshot`/`native_runtime`) |
-| 7 | Final source SHA passes exact repository gates, review, push/PR/GitHub readback; no main merge or deployment occurs | terminal exits, immutable SHA, Git/GitHub receipts (`readback`) |
+| 7 | Final source SHA passes exact repository gates, review, push/PR/GitHub readback; no main merge or deployment occurs | terminal exits and immutable Git/GitHub receipts (`source_report`); final static review (`code_audit`) |
 
 ## 6. Shortest execution loop
 
@@ -151,15 +166,20 @@ Replace permissive TypeScript fallbacks with strict v1/v2 dispatch, consume the
 Rust-authored fixtures, and publish an immutable
 `contract_surface_compilable_non_executable` receipt. This lets #41 review and
 compile against the schema without pretending the Provider execution seam is
-ready.
+ready. The receipt is non-consumable: it authorizes schema review/compilation
+only, never persistence ownership, command registration, execution integration,
+or a second ledger. Only `source_contract_consumable` authorizes #41
+integration.
 
 ### Slice D — Provider preview and execution seam
 
 Add pure create/edit/switch preparation, non-repairing readers, capability
-gates, one admission, private one-use effect permission, existing writer call,
-and readback. Only credential-free cases execute until #35 hands off an exact
-compatible SHA. After registration and focused review, publish the existing
-`source_contract_consumable` #41 receipt.
+gates, atomic one-confirmation admission that creates one durable owning job,
+registered worker/supervisor, private one-use effect permission, cancellation
+before effect, the existing writer call, exact readback, and readback-only
+interruption reconciliation. Only credential-free cases execute until #35
+hands off an exact compatible SHA. After registration and focused review,
+publish the existing `source_contract_consumable` #41 receipt.
 
 ### Slice E — UI and entry cutover
 
@@ -202,6 +222,8 @@ runner cannot prove a named requirement; document that concrete gap first.
 ## 9. Approval gate
 
 No product source resumes until the user explicitly approves this Revision-2
-planning summary. Approval authorizes Slice A only; later slices unlock in order
-from fresh immutable predecessors. Any material product-contract change returns
-to review rather than being hidden inside implementation.
+planning summary. One explicit approval authorizes uninterrupted execution of
+Slices A–F through final review, push/PR, and GitHub readback. Slice transitions
+require fresh immutable predecessors and their focused gates, but no additional
+user approval unless a material product-contract change, new authority boundary,
+or real blocker appears.
