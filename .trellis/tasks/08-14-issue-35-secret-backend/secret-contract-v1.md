@@ -42,7 +42,7 @@ All numeric revisions are JSON safe positive integers (`1..=9_007_199_254_740_99
 | `SecretMigrationReportId` | `^smr_[0-9a-f]{12}4[0-9a-f]{3}[89ab][0-9a-f]{15}$` |
 | `LegacySourceLocationId` | `^lsl_[0-9a-f]{32}$`; native structural-location identity, never value-derived |
 | `ChangePlanId` | canonical lowercase hyphenated UUIDv4 |
-| `ChangePlanDigest`, `BindingSetDigest`, `SecretRecoveryDigest`, `SecretProjectionDigest`, `RecoveryStructureDigest`, `StagedImportResumeDigest` | exactly 64 lowercase hexadecimal SHA-256 characters; `RecoveryStructureDigest` covers only credential-free structural rows and `StagedImportResumeDigest` covers the closed internal staged-resume preimage |
+| `ChangePlanDigest`, `BindingSetDigest`, `SecretRecoveryDigest`, `SecretProjectionDigest`, `RecoveryStructureDigest`, `StagedImportResumeDigest` | exactly 64 lowercase hexadecimal SHA-256 characters; `RecoveryStructureDigest` covers only credential-free structural rows and `StagedImportResumeDigest` covers the closed operation-bound five-phase internal staged-resume preimage |
 | `OwnerId` | `^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`; an existing stable Provider id, never a name/path/value |
 | `SecretOwnerNamespace` | `^[a-z][a-z0-9-]{0,31}$`; v1 accepts `codex` only after kind validation |
 | `SafeDisplayText` | 1–80 Unicode scalar values; trim-stable, with no control/newline, absolute path or credential-shaped content; every input/output construction validates |
@@ -1127,6 +1127,128 @@ export interface SecretCandidateWithProjection {
 export interface ListSecretCandidatesResult {
   candidates: readonly SecretCandidateWithProjection[];
 }
+
+export type CandidateDiscardConfirmationSlot =
+  | "recordDelete"
+  | "recordMissingReadback";
+export type CandidateDiscardDeleteScope = "candidateDiscardRecordDelete";
+export type CandidateDiscardMissingReadbackScope =
+  "candidateDiscardRecordMissingReadback";
+
+export interface SecretCandidateDiscardDeleteHardwareConfirmStep {
+  schemaVersion: SchemaVersionV1;
+  stepId: SecretConfirmationStepId;
+  operationId: SecretOperationId;
+  operation: "delete";
+  scope: CandidateDiscardDeleteScope;
+  backendInstanceId: SecretBackendInstanceId;
+  device: SecretDeviceDisplay;
+  promptKey: HardwarePromptKey;
+  expiresAt: UtcTimestamp;
+}
+
+export interface SecretCandidateDiscardMissingHardwareConfirmStep {
+  schemaVersion: SchemaVersionV1;
+  stepId: SecretConfirmationStepId;
+  operationId: SecretOperationId;
+  operation: "validate";
+  scope: CandidateDiscardMissingReadbackScope;
+  backendInstanceId: SecretBackendInstanceId;
+  device: SecretDeviceDisplay;
+  promptKey: HardwarePromptKey;
+  expiresAt: UtcTimestamp;
+}
+
+export type SecretCandidateDiscardHardwareConfirmStep =
+  | {
+      slot: "recordDelete";
+      confirmation: SecretCandidateDiscardDeleteHardwareConfirmStep;
+    }
+  | {
+      slot: "recordMissingReadback";
+      confirmation: SecretCandidateDiscardMissingHardwareConfirmStep;
+    };
+
+type SecretCandidateDiscardPreparationViewWire =
+  | {
+      status: "prepared";
+      schemaVersion: SchemaVersionV1;
+      operationId: SecretOperationId;
+      expiresAt: UtcTimestamp;
+    }
+  | {
+      status: "confirmationRequired";
+      schemaVersion: SchemaVersionV1;
+      operationId: SecretOperationId;
+      step: SecretCandidateDiscardHardwareConfirmStep;
+    };
+
+// Native-only strict decoder mirror. It is not a command result and never
+// adds a renderer command or exposes a capability/pending id.
+export type SecretCandidateDiscardPreparationView = Brand<
+  SecretCandidateDiscardPreparationViewWire,
+  "SecretCandidateDiscardPreparationView"
+>;
+
+// Internal durable-decoder mirror. These types never enter a command DTO;
+// role brands prevent equal-shaped candidate/activation/recovery checkpoints
+// from being assigned across roles after strict validation.
+type BackendDeleteAppliedRevision = Brand<
+  number,
+  "BackendDeleteAppliedRevision"
+>;
+interface BackendDeleteAppliedCas {
+  revision: BackendDeleteAppliedRevision;
+  digest: RecoveryStructureDigest;
+}
+type CandidateDiscardDeleteCheckpoint = Brand<
+  {
+    deleteDisposition: "deleted" | "alreadyMissing";
+    backendCompletedAt: UtcTimestamp;
+    deleteAppliedCas: BackendDeleteAppliedCas;
+  },
+  "CandidateDiscardDeleteCheckpoint"
+>;
+type ActivationOldRecordDeleteCheckpoint = Brand<
+  {
+    deleteDisposition: "deleted" | "alreadyMissing";
+    backendCompletedAt: UtcTimestamp;
+    deleteAppliedCas: BackendDeleteAppliedCas;
+  },
+  "ActivationOldRecordDeleteCheckpoint"
+>;
+type RecoveryOldRecordDeleteCheckpoint = Brand<
+  {
+    deleteDisposition: "deleted" | "alreadyMissing";
+    backendCompletedAt: UtcTimestamp;
+    deleteAppliedCas: BackendDeleteAppliedCas;
+  },
+  "RecoveryOldRecordDeleteCheckpoint"
+>;
+type ActivationOldRecordDurableCheckpoint =
+  | { state: "none" }
+  | {
+      state: "oldRecordDeleteApplied";
+      deleteDisposition: "deleted" | "alreadyMissing";
+      backendCompletedAt: UtcTimestamp;
+      deleteAppliedCas: BackendDeleteAppliedCas;
+    };
+type DiscardCandidateRecoveryCheckpointWire =
+  | { state: "intent" }
+  | { state: "backendApplied"; checkpoint: CandidateDiscardDeleteCheckpoint }
+  | {
+      state: "missingReadbackVerified";
+      checkpoint: CandidateDiscardDeleteCheckpoint;
+      missingCheckedAt: UtcTimestamp;
+    };
+type DiscardCandidateJournalPhaseWire =
+  | DiscardCandidateRecoveryCheckpointWire
+  | {
+      state: "recoveryRequired";
+      lastErrorCode: SecretErrorCode;
+      checkpoint: DiscardCandidateRecoveryCheckpointWire;
+    }
+  | { state: "terminal"; terminalDisposition: CandidateTerminalState };
 
 export type DiscardSecretCandidateResult =
   | {
@@ -2263,8 +2385,8 @@ export interface CodexLiveStructuralProjection {
 - For `activationCleanup`, `affectedOwners` and terminal/pending `ownerSummaries` are non-empty, duplicate-free and sorted by `kind,namespace,ownerId,slot`; both equal the recovery CAS owner set, so a shared ref is never collapsed to one owner. Rust serializes them through non-deserializable checked newtypes. A pending activation cleanup returns candidate `cleanupRequired`, every affected owner still bound, and active ref `stale`; other recovery kinds never synthesize that activation-only candidate state.
 - `SecretRecoveryImpact`, `SecretRecoveryResult`, `SecretActivationPreparationView`, `SecretActivationResultDto`, issue/aggregate/owner-state/migration/result/audit DTOs deliberately do not implement Rust `Deserialize`. Their fields/private reprs are constructed only by checked authority factories. Projection/durable input types use private repr plus validating `Deserialize`. The TypeScript adapter decodes the same nested discriminants and exact per-variant key sets; no intersection/spread/passthrough decoder is permitted.
 - `activationCleanup.finalizeLegacyScrub` carries the committed active record's backend identity and its read/compare confirmation policy; `deleteOldRecord` and `verifyOldRecordMissing` carry the old record's independent delete and fresh-missing policies. `confirmationRequired` is legal only for the next prepared slot and the typed operation/scope is respectively `resolveForApply/cleanupActiveRecordCompare`, `delete/cleanupOldRecordDelete`, or `validate/cleanupOldRecordMissingReadback`. Other recovery kinds cannot decode those slots.
-- `SecretOldRecordCleanupTerminal.status=deleted|alreadyMissing` requires `supersession={source:supersededByRotation,revokedAt}` in both TypeScript and Rust; `notApplicable` forbids it. The timestamp is the backend terminal receipt time, never request/plan time.
-- Candidate discard/expiry has no false terminal state. `discarded|alreadyDiscarded` requires the durable terminal target `discarded`; `expired|alreadyExpired` requires target `expired`. `expired` is written only after backend deleted/already-missing, a fresh missing readback and durable candidate-state finalization. Any delete/readback ambiguity leaves `verifiedPendingPlan` with the journal's checked immutable `pendingTerminalDisposition=discarded|expired`, `SECRET_OPERATION_RECOVERY_REQUIRED/action=discardCandidate` and the reachable `discardCandidate` journal; it never creates a general recovery row or the activation-only `cleanupRequired` mapping. `SECRET_CANDIDATE_EXPIRED` is reserved for a durably terminal `state=expired` candidate rejected by a non-discard operation; it is non-retryable with `refreshSummary` and is never the pending-cleanup signal.
+- `SecretOldRecordCleanupTerminal.status=deleted|alreadyMissing` requires `supersession={source:supersededByRotation,revokedAt}` in both TypeScript and Rust; `notApplicable` forbids it. Normal activation, activation recovery, and any `RecoveryRequired` continuation retain the complete `{deleteDisposition,backendCompletedAt,deleteAppliedCas}` old-record checkpoint; its digest/preimage consumes all three fields. The fresh missing receipt and supersession/terminal write are atomic, and `revokedAt` is exactly `backendCompletedAt`, never request/plan/missing-check time.
+- Candidate discard/expiry has no false terminal state. `discarded|alreadyDiscarded` requires the durable terminal target `discarded`; `expired|alreadyExpired` requires target `expired`. `expired` is written only after backend deleted/already-missing, a fresh missing readback and durable candidate-state finalization. Its native-only TypeScript/Rust preparation mirrors are the same strict two-arm algebra: `recordDelete` is `operation=delete/scope=candidateDiscardRecordDelete`, and `recordMissingReadback` is `operation=validate/scope=candidateDiscardRecordMissingReadback`; unknown or mixed slot/operation/scope fields reject, and neither view is a public command result. `BackendApplied` retains exact `{deleteDisposition,backendCompletedAt,deleteAppliedCas}`, while `MissingReadbackVerified` retains that same triple plus `missingCheckedAt`. Any delete/readback ambiguity leaves `verifiedPendingPlan` with the journal's checked immutable `pendingTerminalDisposition=discarded|expired`, `SECRET_OPERATION_RECOVERY_REQUIRED/action=discardCandidate` and the reachable `discardCandidate` journal; it never creates a general recovery row or the activation-only `cleanupRequired` mapping. `SECRET_CANDIDATE_EXPIRED` is reserved for a durably terminal `state=expired` candidate rejected by a non-discard operation; it is non-retryable with `refreshSummary` and is never the pending-cleanup signal.
 - `comparisonPolicy` and `comparisonImpact.policy` must match in candidate durable state, activation projection, #55 admission, projection digest, final-baseline receipt and journal. Automatic migration and `legacyScrubExistingBinding` are exactly `candidateEquality/verifySameValueMigration`; explicit native capture from source/binding conflict, replace, reconcile and rotate are exactly `explicitReplacement/replaceExistingCredential`. Both re-resolve the complete admitted source set and revisions. Only `candidateEquality` constant-time-compares every old occurrence with the candidate; `explicitReplacement` validates the approved replacement impact and scrubs without old==candidate. Any missing/extra/retyped/relocated/revision drift is effect-none in both modes.
 - Ordinary activation accepts only `CurrentLegacySourceExpectations`. `StagedSecretImportActivationProjection` accepts only staging origins and its token is unusable by live readiness/apply/runtime. Its comparison policy has the same two branches, but validation/scrub/readback/cutover run only through the main-integration-owned `ImportCutoverCoordinatorContext`; #41 is not an import coordinator.
 - `SecretCandidateSummary.pendingTerminalDisposition` and `issue` are both absent except for `state=verifiedPendingPlan` with a durable nonterminal discard/expiry delete journal. That form requires the journal-matching disposition plus `SECRET_OPERATION_RECOVERY_REQUIRED/retryable=true/action=discardCandidate` and has no activation recovery pointer. `state=expired|discarded|activated|cleanupRequired` forbids both fields; terminal finalization removes the pending disposition in the same durable transition.
@@ -2356,6 +2478,41 @@ Each actual preimage contains exactly one kind block and only the receipt and re
 
 Unsigned revisions/counts use minimal base-10 ASCII without sign/leading zero; timestamps are canonical RFC3339 UTC; digests and opaque receipt/transaction/commit identifiers are fixed lowercase hex. Every scalar forbids NUL/LF, so there is no escaping or Unicode normalization. `RecoveryAffectedOwner` is the sole durable owner source and binds owner-binding ABA, exact ref and binding revision. Old-record and capture-compensation binding-set counts are exactly zero. `RecoveryStructureDigest` covers only the activation scrub's identical sorted structural source rows. The preimage never contains a backend locator, path, material, value, material digest or value-derived digest. Any phase/checkpoint/receipt/remaining-step/identity change increments `SecretRecoveryCas.revision` before recomputing the digest.
 
+`StagedImportResumeCas` has a separate credential-free canonical preimage. It binds the common journal `operationId` and the exact five-arm `StagedImportResumePhase`; it never substitutes a three-arm last-checkpoint enum or an optional receipt bag. The fixed prefix and row order are:
+
+```text
+fyagent.secret.staged-import-resume.v1\n
+operation\0<operationId>\n
+phase\0<intent|sourcesScrubbed|cutoverCommitted|liveOwnerMinted|localBindingFinalized>\n
+stage\0<tempDatabaseDurableObjectIdHex>\0<processNonceHex>\0<stageId>\0<ownerKind>\0<ownerNamespace>\0<ownerId>\0<ownerSlot>\0<stagedRowRevision>\n
+sourceSet\0<stagedRowRevision>\0<structureDigest>\0<sourceCount>\n
+source\0<locationId>\0<category>\0<origin>\0<structuralRevision>\n
+... all staged source rows in LegacySourceRef byte order ...
+plan\0<admissionIdHex>\0<planId>\0<planDigest>\0<projectionDigest>\n
+candidate\0<candidateId>\0<candidateRevision>\0<comparisonPolicy>\n
+comparison\0<candidateEquality|explicitReplacement>\0<verifySameValueMigration|replaceExistingCredential>\0<affectedSourceCount-or-none>\0<replacesBoundBinding-or-none>\n
+record\0<secretRef>\0<recordRevision>\0<expectedStoreRevision>\0<bindingSetRevision>\0<bindingSetDigest>\0<bindingSetCount>\n
+backend\0<backendInstanceId>\0<backendGeneration>\0<deviceBindingGeneration>\0<capabilityRevision>\n
+expectedLiveBinding\0<unbound|bound>\0<ownerBindingRevision>\0<secretRef-or-none>\0<bindingRevision-or-none>\0<sourceBindingSetRevision-or-none>\0<sourceBindingSetDigest-or-none>\0<sourceBindingSetCount-or-none>\n
+sourcesScrubbed\0<stagedRowRevisionAfterScrub>\0<structureDigest>\00\n
+cutover\0<cutoverReceiptIdHex>\n
+promotedOwner\0<kind>\0<namespace>\0<ownerId>\0<slot>\0<providerRowRevision>\0<ownerBindingRevision>\n
+```
+
+`operationId` is copied from the same `DurableSecretOperationJournal.operation_id`; it is immutable for that journal and is never reconstructed from `stageId` or a fresh attempt. Any mismatch rejects rather than creating another revision of that row. `comparison` is exactly `candidateEquality\0verifySameValueMigration\0none\0none` or `explicitReplacement\0replaceExistingCredential\0<count>\0<true|false>` after its row key; each `none` is a literal rather than an empty field. `expectedLiveBinding` similarly uses the displayed `none` literals for every forbidden value in the unbound arm. The phase arm fixes the exact suffix of that grammar. `intent` forbids `sourcesScrubbed`, `cutover` and `promotedOwner`; `sourcesScrubbed` requires only its same-named row; `cutoverCommitted` requires `sourcesScrubbed + cutover`; `liveOwnerMinted` and `localBindingFinalized` each require all three, with the latter distinguished by its phase literal. Terminal projects its current resume CAS as `localBindingFinalized` with the same three cumulative rows. No arm permits an omitted cumulative receipt, extra row or promoted owner in an earlier phase. Every phase, process nonce, admission, source/CAS, receipt, promoted owner or other mutable preimage identity change first increments `StagedImportResumeCas.revision` and then recomputes its typed 64-lowerhex digest; changing any such byte under the old revision is stale and zero-write.
+
+The canonical digest-fixture plan contains exactly these five positive fixtures, plus one-field mutation negatives for every row they admit:
+
+| Fixture / adjacent crash point | Required phase rows | Forbidden phase rows / resumable suffix |
+| --- | --- | --- |
+| `staged_resume_intent_v1` (intent durable, before scrub) | `phase=intent` | forbid all three; resume scrub onward |
+| `staged_resume_sources_scrubbed_v1` (scrub readback durable, before cutover) | `phase=sourcesScrubbed`, `sourcesScrubbed` | forbid `cutover,promotedOwner`; resume cutover onward |
+| `staged_resume_cutover_committed_v1` (cutover receipt durable, before live owner) | `phase=cutoverCommitted`, `sourcesScrubbed`, `cutover` | forbid `promotedOwner`; resume live-owner mint onward |
+| `staged_resume_live_owner_minted_v1` (owner readback durable, before local binding) | `phase=liveOwnerMinted`, all three cumulative rows | resume local binding only |
+| `staged_resume_local_binding_finalized_v1` (local CAS durable, before terminal) | `phase=localBindingFinalized`, all three cumulative rows | resume terminal only |
+
+Each fixture freezes the exact UTF-8 preimage, revision and expected lowercase SHA-256, round-trips only through the matching Rust phase arm, and pairs with the adjacent crash case that continues only the listed suffix. Each asserts that a changed `operationId` is not the same journal, while changing phase, nonce, admission, source/CAS, a cumulative receipt or promoted owner requires `revision + 1` and a different digest; the prior phase CAS, old nonce and old admission are stale/effect-none. Missing/extra phase rows and same-revision mutations must fail before resume authority is reopened.
+
 `DurableSecretRecoveryRecord` is kind-tagged with no common optional bag. `RecoveryProviderProjection` can be constructed only from `activationCleanup/finalizeLegacyScrub`; #41 is forbidden to decode or infer from `SecretRecoveryAuthoritySnapshot`. Capture/delete are local-only after pre-action hardware preparation. Owner detach requires main integration's already-held `OwnerDetachCoordinatorContext`. Impact, readiness, bundle, coordinator and retry request all match `recoveryKind + recoveryCas` inside one mutation critical section or return `SECRET_RECOVERY_CHANGED/effect=none`.
 
 In the preimage above, `\n` means one LF byte and `\0` means one NUL byte. `SecretProjectionDigest` is non-self-referential: serialize the full projection with `projectionDigest` omitted using RFC 8785 JSON canonicalization, including comparison policy/impact and every source expectation, then prefix with exactly `fyagent.secret.candidate-activation.v1\n`, `fyagent.secret.staged-import-activation.v1\n`, or `fyagent.secret.apply-projection.v1\n` by operation. SHA-256/lowercase-hex the result. #55 admission/final baseline store and compare that complete digest; no later policy/source/impact inference is allowed.
@@ -2373,7 +2530,7 @@ In the preimage above, `\n` means one LF byte and `\0` means one NUL byte. `Secr
 7. Rotation deletes/revokes the old backend record only after the new binding set is active. Old-delete failure produces `activatedCleanupPending` and leaves the new binding active plus an old stale recovery item.
 8. `list_secret_backend_options` atomically reads the existing owner token, purpose, requested intent, current owner-binding, current legacy-source expectation/hidden binding and exact registered backend option set, then mints one short-lived single-use `SecretCaptureIntentId`. `newBinding` requires the stored unbound snapshot; `replaceBinding` requires the stored bound snapshot; `legacyReconcile` additionally requires the stored current legacy snapshot and hidden binding. `begin_secret_capture` accepts only that id plus one returned `backendInstanceId`; the registry claims and revalidates the exact snapshot before material input or writes. The renderer never submits `OwnerBindingExpectation`. `rotateBindingSet` targets exactly every binding in the confirmed `SecretBindingSetCas` and cannot add/remove owners at activation.
 9. Candidate persistence has no admission state. Admission is an ephemeral, consuming native #55 object; the persisted candidate transitions only `verifiedPendingPlan → activated|cleanupRequired` or `verifiedPendingPlan → discarded|expired`. `cleanupRequired` is legal only after activation binding CAS committed; a stale/invalid/cancelled admission or failed discard leaves `verifiedPendingPlan`.
-10. Expiry is not a metadata-only state flip and introduces no journal operation kind. Explicit discard and the startup/list expiry sweep both journal `operationKind=discardCandidate` with a material-free immutable `terminalDisposition`; explicit discard fixes `discarded`, while the expiry sweep fixes `expired`. The exact phases are `intent → backendApplied{deleteDisposition,backendCompletedAt} → missingReadbackVerified{missingCheckedAt} → stateFinalized{terminalDisposition} → terminal{terminalDisposition}`. Delete/already-missing alone never proves terminal state; the fresh missing readback is its own durable checkpoint. The startup/list sweeper may advance an OS-keyring `confirmation=never` intent automatically. For `confirmation=optional|required` it MUST NOT open a background prompt or pending hardware session; it only creates/preserves the reachable intent/issue, and solely an explicit `discard_secret_candidate` prepare/confirm flow may advance it. Retry loads the existing intent and cannot relabel `expired` as `discarded` or the reverse. Any confirmation cancellation/expiry, lock, permission, device/backend/generation drift, ambiguous delete or readback failure keeps `state=verifiedPendingPlan`, emits the checked `pendingTerminalDisposition` equal to that journal target and exposes `issue={code: SECRET_OPERATION_RECOVERY_REQUIRED, retryable: true, action: discardCandidate}`; the same journal remains reachable through a fresh `discard_secret_candidate(candidateId,expectedCandidateRevision)` invocation and the startup/list expiry sweeper. Terminal finalization removes the pending disposition. An `expired|alreadyExpired` result has no pending issue, always returns `action=refreshSummary`, never reuses its old candidate, and cannot directly emit `retryCapture`; after refreshing owner/candidate state, only a newly minted capture intent or rotation flow may continue. No backend entry may survive behind an unreachable terminal candidate.
+10. Expiry is not a metadata-only state flip and introduces no journal operation kind. Explicit discard and the startup/list expiry sweep both journal `operationKind=discardCandidate` with a material-free immutable `terminalDisposition`; explicit discard fixes `discarded`, while the expiry sweep fixes `expired`. The exact progress phases are `intent → backendApplied{deleteDisposition,backendCompletedAt,deleteAppliedCas} → missingReadbackVerified{deleteDisposition,backendCompletedAt,deleteAppliedCas,missingCheckedAt} → terminal{terminalDisposition}`; `RecoveryRequired` retains one exact `DiscardCandidateRecoveryCheckpoint` arm, and there is no candidate-discard `stateFinalized` phase. Preparation has exactly two operation-specific slots, `CandidateDiscardConfirmationSlot::RecordDelete` (`Delete`) and `CandidateDiscardConfirmationSlot::RecordMissingReadback` (`Validate`), each with an independent one-shot authorization. Both may be confirmed before mutation, but the missing-readback authorization is unusable until the exact durable `BackendApplied` transition fulfills its operation-owned `BackendDeleteAppliedCasReservation`. Delete/already-missing alone never proves terminal state; the fresh missing readback is its own durable checkpoint. The startup/list sweeper may advance an OS-keyring `confirmation=never` intent automatically. For `confirmation=optional|required` it MUST NOT open a background prompt or pending hardware session; it only creates/preserves the reachable intent/issue, and solely an explicit `discard_secret_candidate` prepare/confirm flow may advance it. Retry loads the existing intent and cannot relabel `expired` as `discarded` or the reverse. Any confirmation cancellation/expiry, lock, permission, device/backend/generation drift, ambiguous delete or readback failure keeps `state=verifiedPendingPlan`, emits the checked `pendingTerminalDisposition` equal to that journal target and exposes `issue={code: SECRET_OPERATION_RECOVERY_REQUIRED, retryable: true, action: discardCandidate}`; the same journal remains reachable through a fresh `discard_secret_candidate(candidateId,expectedCandidateRevision)` invocation and the startup/list expiry sweeper. Terminal finalization atomically removes the unbound record and pending disposition while writing the exact candidate state/audit and terminal journal phase. An `expired|alreadyExpired` result has no pending issue, always returns `action=refreshSummary`, never reuses its old candidate, and cannot directly emit `retryCapture`; after refreshing owner/candidate state, only a newly minted capture intent or rotation flow may continue. No backend entry may survive behind an unreachable terminal candidate.
 11. Staged SQL import/restore/sync never enters this ordinary current-owner activation. Main integration mints `StagedSecretOwnerToken` from one open temp DB object's structural inventory and obtains the dedicated #55 staged admission. It calls #35 staged prepare/confirm only to prepare authorization, with no candidate/staged read, then constructs its `ImportCutoverCoordinatorContext`. Only through that context may it fresh-validate exact staged source CAS/policy and values, scrub/read back those temp sources, perform sanitized cutover, receive the cutover receipt, mint the live DAO `ExistingSecretOwnerToken`, and finally finalize the local binding. Pre-cutover failure leaves main DB/live/local bindings unchanged; post-cutover failure persists staged-import recovery and blocks consumers until finalization. The staged token cannot authorize ordinary readiness/apply/runtime.
 
 ### 5.2 Change Plan projection rules
@@ -2951,7 +3108,7 @@ wire_enum!(CodexLiveSecretSinkId {
 wire_enum!(SecretBackendOperation {
     CaptureVerify, Validate, ResolveForApply, Delete, Revoke
 });
-// There is no MissingReadback operation variant. All four typed missing-
+// There is no MissingReadback operation variant. All five typed missing-
 // readback scopes map to Validate while retaining distinct slots, consuming
 // authorizations and durable checkpoints.
 wire_enum!(SecretCandidateKind {
@@ -7109,6 +7266,115 @@ pub struct DiscardSecretCandidateRequest {
     pub expected_candidate_revision: SecretCandidateRevision,
 }
 
+wire_enum!(CandidateDiscardDeleteOperation { Delete });
+wire_enum!(CandidateDiscardDeleteScope { CandidateDiscardRecordDelete });
+wire_enum!(CandidateDiscardMissingReadbackOperation { Validate });
+wire_enum!(CandidateDiscardMissingReadbackScope {
+    CandidateDiscardRecordMissingReadback
+});
+
+#[derive(Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum CandidateDiscardConfirmationSlot {
+    RecordDelete,
+    RecordMissingReadback,
+}
+
+#[derive(Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SecretCandidateDiscardDeleteHardwareConfirmStep {
+    pub schema_version: SchemaVersionV1,
+    pub step_id: SecretConfirmationStepId,
+    pub operation_id: SecretOperationId,
+    pub operation: CandidateDiscardDeleteOperation,
+    pub scope: CandidateDiscardDeleteScope,
+    pub backend_instance_id: SecretBackendInstanceId,
+    pub device: SecretDeviceDisplay,
+    pub prompt_key: HardwarePromptKey,
+    pub expires_at: UtcTimestamp,
+}
+
+#[derive(Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SecretCandidateDiscardMissingHardwareConfirmStep {
+    pub schema_version: SchemaVersionV1,
+    pub step_id: SecretConfirmationStepId,
+    pub operation_id: SecretOperationId,
+    pub operation: CandidateDiscardMissingReadbackOperation,
+    pub scope: CandidateDiscardMissingReadbackScope,
+    pub backend_instance_id: SecretBackendInstanceId,
+    pub device: SecretDeviceDisplay,
+    pub prompt_key: HardwarePromptKey,
+    pub expires_at: UtcTimestamp,
+}
+
+#[derive(Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "slot", content = "confirmation", rename_all = "camelCase")]
+pub enum SecretCandidateDiscardHardwareConfirmStep {
+    RecordDelete(SecretCandidateDiscardDeleteHardwareConfirmStep),
+    RecordMissingReadback(SecretCandidateDiscardMissingHardwareConfirmStep),
+}
+
+impl SecretCandidateDiscardHardwareConfirmStep {
+    fn operation_id(&self) -> &SecretOperationId {
+        match self {
+            Self::RecordDelete(step) => &step.operation_id,
+            Self::RecordMissingReadback(step) => &step.operation_id,
+        }
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, Serialize)]
+#[serde(
+    tag = "status",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+enum SecretCandidateDiscardPreparationViewRepr {
+    Prepared {
+        schema_version: SchemaVersionV1,
+        operation_id: SecretOperationId,
+        expires_at: UtcTimestamp,
+    },
+    ConfirmationRequired {
+        schema_version: SchemaVersionV1,
+        operation_id: SecretOperationId,
+        step: SecretCandidateDiscardHardwareConfirmStep,
+    },
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct SecretCandidateDiscardPreparationView(
+    SecretCandidateDiscardPreparationViewRepr,
+);
+
+impl SecretCandidateDiscardPreparationView {
+    fn checked(
+        repr: SecretCandidateDiscardPreparationViewRepr,
+    ) -> Result<Self, SecretInternalError> {
+        if let SecretCandidateDiscardPreparationViewRepr::ConfirmationRequired {
+            operation_id,
+            step,
+            ..
+        } = &repr
+        {
+            if step.operation_id() != operation_id {
+                return Err(SecretInternalError::input_invalid());
+            }
+        }
+        Ok(Self(repr))
+    }
+}
+
+impl Serialize for SecretCandidateDiscardPreparationView {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+
 wire_enum!(DiscardedCandidateTerminalState { Discarded });
 wire_enum!(ExpiredCandidateTerminalState { Expired });
 wire_enum!(RefreshSummaryAction { RefreshSummary });
@@ -8280,10 +8546,17 @@ impl BackendAuthorizationScope {
                     SecretBackendOperation::CaptureVerify
                 }
                 SecretNonApplyBackendOperation::Validate => SecretBackendOperation::Validate,
-                SecretNonApplyBackendOperation::CandidateDelete { .. }
+                SecretNonApplyBackendOperation::CandidateDiscard {
+                    slot: CandidateDiscardConfirmationSlot::RecordDelete,
+                    ..
+                }
                 | SecretNonApplyBackendOperation::DirectDelete => {
                     SecretBackendOperation::Delete
                 }
+                SecretNonApplyBackendOperation::CandidateDiscard {
+                    slot: CandidateDiscardConfirmationSlot::RecordMissingReadback,
+                    ..
+                } => SecretBackendOperation::Validate,
                 SecretNonApplyBackendOperation::Revoke => SecretBackendOperation::Revoke,
             },
         };
@@ -8320,7 +8593,7 @@ impl BackendAuthorizationScope {
         mode: BackendDeleteMode,
     ) -> Result<(), SecretInternalError> {
         let _ = mode;
-        todo!("exact activation/recovery/general delete-or-revoke scope and mode")
+        todo!("exact activation/recovery/general delete-or-revoke scope and mode; CandidateDiscard permits Delete only for RecordDelete and rejects RecordMissingReadback")
     }
 
     fn require_revoke_observation(&self) -> Result<(), SecretInternalError> {
@@ -8343,6 +8616,13 @@ impl BackendAuthorizationScope {
                 slot: RecoveryConfirmationSlot::OldRecordMissingReadback
                     | RecoveryConfirmationSlot::UncommittedRecordMissingReadback
                     | RecoveryConfirmationSlot::AdmittedRecordMissingReadback,
+                ..
+            }
+            | BackendAuthorizationScopeKind::General {
+                operation: SecretNonApplyBackendOperation::CandidateDiscard {
+                    slot: CandidateDiscardConfirmationSlot::RecordMissingReadback,
+                    ..
+                },
                 ..
             } => Ok(()),
             _ => Err(SecretInternalError::dependency_changed()),
@@ -8693,7 +8973,10 @@ struct BackendStagedImportOperationContext {
 enum SecretNonApplyBackendOperation {
     CaptureVerify,
     Validate,
-    CandidateDelete { terminal_state: CandidateTerminalState },
+    CandidateDiscard {
+        terminal_state: CandidateTerminalState,
+        slot: CandidateDiscardConfirmationSlot,
+    },
     DirectDelete,
     Revoke,
 }
@@ -8985,8 +9268,10 @@ impl BackendOperationBroker {
 // or command modules, and rejects a direct BackendOperationContext parameter.
 // The broker also derives and seals the exact terminal-error context; for a
 // non-apply capture it must preserve new/replace/legacy intent or rotation,
-// while validate/candidate-delete/direct-delete/revoke have their fixed
-// validation/discard/delete contexts. A backend edge cannot choose one later.
+// while validate/candidate-discard-record-delete/candidate-discard-record-
+// missing/direct-delete/revoke have their fixed validation/discard/delete
+// contexts. Candidate discard adds exactly those two operation-specific slots;
+// a backend edge cannot choose one later.
 // BackendOperationBroker is also the sole owner/caller of the capture-intent,
 // capability and pending-confirmation registries. SecretServiceDeps and
 // SecretService each retain exactly the same Arc<BackendOperationBroker>; they
@@ -9103,6 +9388,14 @@ pub(crate) struct BackendDeleteReceipt {
     capability_revision: CapabilityRevision,
     disposition: BackendDeleteDisposition,
     completed_at: UtcTimestamp,
+}
+
+impl BackendDeleteReceipt {
+    pub(in crate::secret) fn into_durable_outcome(
+        self,
+    ) -> (BackendDeleteDisposition, UtcTimestamp) {
+        (self.disposition, self.completed_at)
+    }
 }
 
 pub(in crate::secret) struct PlatformDeleteResult {
@@ -10658,6 +10951,7 @@ impl RegisteredPendingConfirmation {
 
 pub(in crate::secret) enum PendingConfirmationKind {
     Apply(SecretApplyRole),
+    CandidateDiscard(CandidateDiscardConfirmationSlot),
     Activation(ActivationConfirmationSlot),
     Recovery(RecoveryConfirmationSlot),
     StagedImport(StagedImportConfirmationSlot),
@@ -10690,6 +10984,94 @@ pub(crate) enum PrepareForApply {
         pending: PendingSecretConfirmation,
     },
 }
+
+pub(crate) struct PreparedCandidateDiscardRecordDelete {
+    operation_id: SecretOperationId,
+    record: BackendRecordHandle,
+    expected_candidate_revision: SecretCandidateRevision,
+    expected_record_revision: SecretRecordRevision,
+    expected_store_revision: SecretStoreRevision,
+    backend_generation: SecretBackendGeneration,
+    device_binding_generation: DeviceBindingGeneration,
+    capability_revision: CapabilityRevision,
+    expires_at: UtcTimestamp,
+    authorization: BackendAuthorizationHandle,
+}
+
+pub(crate) struct PreparedCandidateDiscardRecordMissingReadback {
+    operation_id: SecretOperationId,
+    record: BackendRecordHandle,
+    expected_candidate_revision: SecretCandidateRevision,
+    expected_record_revision: SecretRecordRevision,
+    expected_store_revision: SecretStoreRevision,
+    delete_applied_cas_reservation: BackendDeleteAppliedCasReservation,
+    backend_generation: SecretBackendGeneration,
+    device_binding_generation: DeviceBindingGeneration,
+    capability_revision: CapabilityRevision,
+    expires_at: UtcTimestamp,
+    authorization: BackendAuthorizationHandle,
+}
+
+pub(crate) struct PreparedCandidateDiscardBundle {
+    operation_id: SecretOperationId,
+    journal: CandidateDeleteJournalRow,
+    record_delete: PreparedCandidateDiscardRecordDelete,
+    record_missing_readback: PreparedCandidateDiscardRecordMissingReadback,
+    expires_at: UtcTimestamp,
+}
+
+impl PreparedCandidateDiscardBundle {
+    pub(in crate::secret) fn into_parts(
+        self,
+    ) -> (
+        SecretOperationId,
+        CandidateDeleteJournalRow,
+        PreparedCandidateDiscardRecordDelete,
+        PreparedCandidateDiscardRecordMissingReadback,
+    ) {
+        (
+            self.operation_id,
+            self.journal,
+            self.record_delete,
+            self.record_missing_readback,
+        )
+    }
+}
+
+pub(crate) enum PendingCandidateDiscardConfirmation {
+    RecordDelete {
+        pending_confirmation_id: PendingSecretConfirmationId,
+        operation_id: SecretOperationId,
+        journal: CandidateDeleteJournalRow,
+        step: SecretCandidateDiscardHardwareConfirmStep,
+        pending: BackendPendingConfirmation,
+    },
+    RecordMissingReadback {
+        pending_confirmation_id: PendingSecretConfirmationId,
+        operation_id: SecretOperationId,
+        journal: CandidateDeleteJournalRow,
+        prepared_record_delete: PreparedCandidateDiscardRecordDelete,
+        step: SecretCandidateDiscardHardwareConfirmStep,
+        pending: BackendPendingConfirmation,
+    },
+}
+
+pub(crate) enum PrepareCandidateDiscard {
+    AlreadyTerminal(DiscardSecretCandidateResult),
+    Prepared {
+        public: SecretCandidateDiscardPreparationView,
+        bundle: PreparedCandidateDiscardBundle,
+    },
+    ConfirmationRequired {
+        public: SecretCandidateDiscardPreparationView,
+        pending: PendingCandidateDiscardConfirmation,
+    },
+}
+
+// Both slots are prepared/confirmed before the first backend mutation. The
+// missing slot may therefore be pre-confirmed, but its authorization remains
+// unusable until its operation-owned reservation is fulfilled by the exact
+// durable CandidateDiscardDeleteCheckpoint minted after delete.
 
 pub(crate) struct PreparedActivationCandidateRead {
     operation_id: SecretOperationId,
@@ -11200,12 +11582,26 @@ pub(in crate::secret) struct PromotedLiveOwnerCheckpoint {
     provider_row_revision: ProviderRowRevision,
 }
 
-pub(in crate::secret) enum StagedImportRecoveryCheckpoint {
+// This is the complete resume-CAS phase algebra, not a best-effort checkpoint
+// bag. Every later arm repeats all receipts from the earlier completed arms so
+// omission cannot be confused with an earlier phase. Every
+// staged_source_set_cas_after_scrub has source_count=0.
+pub(in crate::secret) enum StagedImportResumePhase {
+    Intent,
     SourcesScrubbed {
         staged_source_set_cas_after_scrub: StagedSourceSetCas,
     },
-    CutoverCommitted { cutover_receipt_id: ImportCutoverReceiptId },
+    CutoverCommitted {
+        staged_source_set_cas_after_scrub: StagedSourceSetCas,
+        cutover_receipt_id: ImportCutoverReceiptId,
+    },
     LiveOwnerMinted {
+        staged_source_set_cas_after_scrub: StagedSourceSetCas,
+        cutover_receipt_id: ImportCutoverReceiptId,
+        promoted_live_owner: PromotedLiveOwnerCheckpoint,
+    },
+    LocalBindingFinalized {
+        staged_source_set_cas_after_scrub: StagedSourceSetCas,
         cutover_receipt_id: ImportCutoverReceiptId,
         promoted_live_owner: PromotedLiveOwnerCheckpoint,
     },
@@ -11214,6 +11610,8 @@ pub(in crate::secret) enum StagedImportRecoveryCheckpoint {
 // Credential-free internal preimage for public {revision,digest}. None of
 // these fields is part of ResumeStagedImportCutoverRequest or any resume result arm.
 pub(in crate::secret) struct StagedImportResumePreimageIdentity {
+    operation_id: SecretOperationId,
+    expected_store_revision: SecretStoreRevision,
     stage_authority: StagedTempDatabaseJournalIdentity,
     source_expectations: StagedLegacySourceExpectations,
     candidate: JournalCandidateIdentity,
@@ -11224,7 +11622,7 @@ pub(in crate::secret) struct StagedImportResumePreimageIdentity {
 
 pub(in crate::secret) struct StagedImportResumePreimage {
     identity: StagedImportResumePreimageIdentity,
-    checkpoint: StagedImportRecoveryCheckpoint,
+    phase: StagedImportResumePhase,
 }
 
 impl StagedImportResumeCas {
@@ -11232,7 +11630,7 @@ impl StagedImportResumeCas {
         revision: StagedImportResumeRevision,
         preimage: &StagedImportResumePreimage,
     ) -> Result<Self, SecretInternalError> {
-        todo!("canonical hash includes stage/source/candidate/checkpoint/durable-object/process/admission/record/backend/cutover/live-owner fields; output only revision+digest")
+        todo!("hash only the exact canonical rows above, never raw struct/debug serialization: immutable journal operation id plus the closed stage/source/plan/candidate/comparison/record/backend/live-binding/five-arm cumulative phase fields; every after-scrub CAS has count zero; every phase/nonce/admission/source/CAS/receipt/owner change first increments revision, then recomputes digest; output only revision+digest")
     }
 }
 
@@ -11307,15 +11705,30 @@ pub(in crate::secret) enum RotateCandidateJournalPhase {
 // OldRecordDeleteApplied is the crash boundary between the two independent
 // backend authorizations. A successful fresh-missing receipt is the final old
 // record step, so the authority persists supersession and Terminal atomically;
-// it never exposes an empty-suffix missing-verified journal phase.
+// it never exposes an empty-suffix missing-verified journal phase. This
+// delete-specific durable projection is exactly None or the complete
+// three-field applied record; ordinary activation progress stays in its own
+// journal phase and cannot masquerade as an old-record checkpoint.
+pub(in crate::secret) enum ActivationOldRecordDurableCheckpoint {
+    None,
+    OldRecordDeleteApplied {
+        delete_disposition: BackendDeleteDisposition,
+        backend_completed_at: UtcTimestamp,
+        delete_applied_cas: BackendDeleteAppliedCas,
+    },
+}
+
 pub(in crate::secret) enum ActivateCandidateJournalPhase {
     Intent,
     StateFinalized,
     ProviderFinalized,
     OldRecordDeleteIntent,
-    OldRecordDeleteApplied { delete_applied_cas: BackendDeleteAppliedCas },
+    OldRecordDeleteApplied {
+        checkpoint: ActivationOldRecordDeleteCheckpoint,
+    },
     RecoveryRequired {
         last_error_code: SecretErrorCode,
+        checkpoint: ActivationOldRecordDurableCheckpoint,
         recovery: ActivationCleanupRecoveryLink,
     },
     Terminal { outcome: JournalActivationTerminalOutcome },
@@ -11323,18 +11736,24 @@ pub(in crate::secret) enum ActivateCandidateJournalPhase {
 
 pub(in crate::secret) enum DiscardCandidateRecoveryCheckpoint {
     Intent,
-    BackendApplied,
-    MissingReadbackVerified,
+    BackendApplied {
+        checkpoint: CandidateDiscardDeleteCheckpoint,
+    },
+    MissingReadbackVerified {
+        checkpoint: CandidateDiscardDeleteCheckpoint,
+        missing_checked_at: UtcTimestamp,
+    },
 }
 
 pub(in crate::secret) enum DiscardCandidateJournalPhase {
     Intent,
     BackendApplied {
-        delete_disposition: BackendDeleteDisposition,
-        backend_completed_at: UtcTimestamp,
+        checkpoint: CandidateDiscardDeleteCheckpoint,
     },
-    MissingReadbackVerified { missing_checked_at: UtcTimestamp },
-    StateFinalized { terminal_disposition: CandidateTerminalState },
+    MissingReadbackVerified {
+        checkpoint: CandidateDiscardDeleteCheckpoint,
+        missing_checked_at: UtcTimestamp,
+    },
     RecoveryRequired {
         last_error_code: SecretErrorCode,
         checkpoint: DiscardCandidateRecoveryCheckpoint,
@@ -11380,20 +11799,26 @@ pub(in crate::secret) enum StagedImportJournalPhase {
     SourcesScrubbed {
         staged_source_set_cas_after_scrub: StagedSourceSetCas,
     },
-    CutoverCommitted { cutover_receipt_id: ImportCutoverReceiptId },
+    CutoverCommitted {
+        staged_source_set_cas_after_scrub: StagedSourceSetCas,
+        cutover_receipt_id: ImportCutoverReceiptId,
+    },
     LiveOwnerMinted {
+        staged_source_set_cas_after_scrub: StagedSourceSetCas,
         cutover_receipt_id: ImportCutoverReceiptId,
         promoted_live_owner: PromotedLiveOwnerCheckpoint,
     },
     LocalBindingFinalized {
+        staged_source_set_cas_after_scrub: StagedSourceSetCas,
         cutover_receipt_id: ImportCutoverReceiptId,
         promoted_live_owner: PromotedLiveOwnerCheckpoint,
     },
     RecoveryRequired {
         last_error_code: SecretErrorCode,
-        checkpoint: StagedImportRecoveryCheckpoint,
+        resume_phase: StagedImportResumePhase,
     },
     Terminal {
+        staged_source_set_cas_after_scrub: StagedSourceSetCas,
         cutover_receipt_id: ImportCutoverReceiptId,
         promoted_live_owner: PromotedLiveOwnerCheckpoint,
     },
@@ -11416,6 +11841,10 @@ pub(in crate::secret) struct CandidateDeleteJournalRow {
     target_owners: NonEmptySortedJournalTargetOwners,
     expected_bindings: NonEmptySortedJournalBindingExpectations,
     record: JournalBackendIdentity,
+    delete_slot: CandidateDiscardConfirmationSlot,
+    missing_readback_slot: CandidateDiscardConfirmationSlot,
+    delete_confirmation: PhysicalConfirmation,
+    missing_readback_confirmation: PhysicalConfirmation,
     phase: DiscardCandidateJournalPhase,
 }
 
@@ -11434,7 +11863,7 @@ impl CandidateDeleteJournalRow {
         identity: CandidateDeleteIdentity,
         terminal_disposition: CandidateTerminalState,
     ) -> Self {
-        todo!("copy exact candidate/owner/store/backend identity into discardCandidate intent")
+        todo!("copy exact candidate/owner/store/backend identity plus literal RecordDelete/RecordMissingReadback slots and their independent confirmation policies into discardCandidate intent; strict replay accepts only delete -> durable typed BackendApplied -> fresh Validate missing -> MissingReadbackVerified -> immutable terminal sequence")
     }
 }
 
@@ -11542,7 +11971,7 @@ impl DurableSecretOperationJournal {
         updated_at: UtcTimestamp,
         payload: DurableSecretOperationJournalRepr,
     ) -> Result<Self, SecretInternalError> {
-        todo!("validate common envelope plus variant-specific candidate/owner/backend/plan/stage/CAS/phase invariants")
+        todo!("validate common envelope plus variant-specific candidate/owner/backend/plan/stage/CAS/phase invariants; discard retains full delete checkpoint and staged resume CAS hashes this operation_id plus the exact cumulative five-arm phase")
     }
 }
 
@@ -11563,13 +11992,19 @@ impl DurableSecretOperationJournal {
 //   every state-finalization revision with the sorted affected owners;
 //   ActivateCandidate repeats the opaque #55 admission identity, candidate
 //   policy+impact, affected rows, current sources, old-delete expectation and
-//   active backend.
+//   active backend. Its OldRecordDeleteApplied arm embeds the complete
+//   ActivationOldRecordDeleteCheckpoint; RecoveryRequired embeds the exact
+//   None|OldRecordDeleteApplied durable projection without side state.
 // - DiscardCandidate is exactly CandidateDeleteJournalRow. Its generated
 //   operation id, candidate/ref/revisions, zero-binding-set CAS and complete
 //   backend/device/capability tuple are required. Its terminal state and
-//   Intent -> BackendApplied{disposition,backendCompletedAt} ->
-//   MissingReadbackVerified{missingCheckedAt} -> StateFinalized -> Terminal
-//   sequence cannot be relabelled on replay.
+//   Intent -> BackendApplied{deleteDisposition,backendCompletedAt,
+//   deleteAppliedCas} -> MissingReadbackVerified{the same three fields,
+//   missingCheckedAt} -> Terminal sequence cannot be relabelled on replay;
+//   there is no candidate-discard StateFinalized arm. RecoveryRequired retains
+//   exactly the last complete checkpoint. The RecordMissingReadback authorization is independently
+//   prepared/confirmed with Validate policy and remains unusable until the
+//   durable BackendApplied CAS reservation is fulfilled.
 // - DetachProviderOwner.legacy_source_coverage_state is the required literal
 //   Clear; any current-scrubbable or adjacent-blocked occurrence invalidates preview before journal
 //   creation. binding is mandatory and only Bound|Unbound. Bound carries
@@ -11581,17 +12016,24 @@ impl DurableSecretOperationJournal {
 // - StagedImport.admission is the sole staged #55 plan/admission identity;
 //   no ordinary activation-plan identity is also present. stage_authority
 //   binds stage kind, opaque durable object id, fresh process nonce, owner,
-//   staged-row revision and staged-source-set CAS. Phase ordering is Intent ->
-//   SourcesScrubbed -> CutoverCommitted(receipt) -> LiveOwnerMinted(receipt,
-//   promoted owner/Provider-row/owner-binding checkpoint) ->
-//   LocalBindingFinalized -> Terminal. RecoveryRequired contains exactly the
-//   last completed checkpoint. ImportCoordinator may reopen only by proving
+//   staged-row revision and staged-source-set CAS, while the resume preimage
+//   additionally binds the fresh operation id. Phase ordering is Intent ->
+//   SourcesScrubbed(source-set CAS) -> CutoverCommitted(source-set CAS,
+//   receipt) -> LiveOwnerMinted(source-set CAS, receipt, promoted
+//   owner/Provider-row/owner-binding checkpoint) -> LocalBindingFinalized(the
+//   same three cumulative fields) -> Terminal. RecoveryRequired contains one
+//   exact StagedImportResumePhase arm with no optional field bag. A phase,
+//   process nonce, admission, receipt or promoted-owner change increments the
+//   resume revision before digest recomputation. Terminal currentResumeCas is
+//   the exact LocalBindingFinalized projection with all three cumulative
+//   fields. ImportCoordinator may reopen only by proving
 //   that opaque id from the stage row, then minting a new process live-object
 //   identity and rechecking CAS/receipt; no path/snapshot/digest is authority.
 // - RecoveryRequired phases contain exactly one typed link to the separately
 //   stored activationCleanup|captureCompensation|deleteFinalization|
-//   ownerDetachFinalization row. StagedImport instead carries its exact staged
-//   checkpoint. A recovery row is never itself a journal operation variant.
+//   ownerDetachFinalization row. StagedImport instead carries its exact
+//   five-arm resume phase. A recovery row is never itself a journal operation
+//   variant.
 // - Unknown tags/fields, illegal phase payloads, unsorted/duplicate/disjoint
 //   sets or candidate/backend/plan/stage/CAS mismatch reject before replay.
 //   Only typed structural digests are permitted; material/value digests are
@@ -12451,8 +12893,12 @@ pub(crate) enum ActivationCleanupRecoveryPhase {
     StateFinalized,
     ProviderFinalized,
     OldRecordDeleteIntent,
-    OldRecordDeleteApplied { delete_applied_cas: BackendDeleteAppliedCas },
-    RecoveryRequired,
+    OldRecordDeleteApplied {
+        checkpoint: RecoveryOldRecordDeleteCheckpoint,
+    },
+    RecoveryRequired {
+        checkpoint: ActivationOldRecordDurableCheckpoint,
+    },
 }
 
 // Old-record missing readback is independently authorized and consumes the
@@ -12728,10 +13174,15 @@ impl DurableSecretRecoveryRecord {
     // intermediate receipts. Activation Terminal and owner-detach Completed
     // encode their explicit phase plus an empty array. Checked construction
     // rejects every phase/suffix pair not listed by the device-store schema.
+    // Activation OldRecordDeleteApplied and its RecoveryRequired checkpoint
+    // always encode the indivisible deleteDisposition/backendCompletedAt/
+    // deleteAppliedCas triple. The subsequent missing receipt is a commit gate:
+    // it is consumed in the same transaction that writes supersession and
+    // Terminal, whose revokedAt is exactly backendCompletedAt.
     pub(super) fn checked(
         record: DurableSecretRecoveryRecord,
     ) -> Result<Self, SecretInternalError> {
-        todo!("custom strict codec: exact four-arm fields, zero-count/no-legacy literals, phase receipt suffix, sorted owners/steps, CAS and timestamps")
+        todo!("custom strict codec: exact four-arm fields, zero-count/no-legacy literals, phase receipt suffix, sorted owners/steps, full activation delete checkpoint in normal/recovery-required arms, CAS and timestamps; supersession revokedAt equals backendCompletedAt")
     }
 }
 
@@ -12806,6 +13257,66 @@ impl RecoveryProviderProjection {
 pub(crate) struct SecretRecoveryAuthoritySnapshot {
     _private: (),
 }
+
+#[derive(Clone)]
+pub(crate) struct CandidateDiscardDeleteCheckpoint {
+    delete_disposition: BackendDeleteDisposition,
+    backend_completed_at: UtcTimestamp,
+    delete_applied_cas: BackendDeleteAppliedCas,
+}
+
+pub(crate) struct CandidateDiscardDeleteApplied {
+    journal: CandidateDeleteJournalRow,
+    checkpoint: CandidateDiscardDeleteCheckpoint,
+}
+
+pub(crate) struct AuthorizedCandidateDiscardRecordDelete {
+    backend: AuthorizedBackendDelete,
+    journal: CandidateDeleteJournalRow,
+}
+
+impl AuthorizedCandidateDiscardRecordDelete {
+    pub(crate) fn delete_once(
+        self,
+    ) -> Result<CandidateDiscardDeleteApplied, SecretInternalError> {
+        let delete = self.backend.delete_once()?;
+        let (delete_disposition, backend_completed_at) =
+            delete.into_durable_outcome();
+        let _ = (delete_disposition, backend_completed_at);
+        todo!("atomically persist DiscardCandidate BackendApplied with the exact three-field checkpoint and mint its operation-bound deleteAppliedCas")
+    }
+}
+
+pub(crate) struct CandidateDiscardMissingReadbackCheckpoint {
+    journal: CandidateDeleteJournalRow,
+    delete: CandidateDiscardDeleteCheckpoint,
+    missing: BackendMissingReadbackReceipt,
+}
+
+pub(crate) struct AuthorizedCandidateDiscardRecordMissingReadback {
+    backend: AuthorizedBackendMissingReadback,
+    applied: CandidateDiscardDeleteApplied,
+}
+
+impl AuthorizedCandidateDiscardRecordMissingReadback {
+    pub(crate) fn verify_missing_once(
+        self,
+        now: UtcTimestamp,
+    ) -> Result<CandidateDiscardMissingReadbackCheckpoint, SecretInternalError> {
+        let missing = self.backend.readback_missing_once(
+            &self.applied.checkpoint.delete_applied_cas,
+            now,
+        )?;
+        let checkpoint = CandidateDiscardMissingReadbackCheckpoint {
+            journal: self.applied.journal,
+            delete: self.applied.checkpoint,
+            missing,
+        };
+        let _ = checkpoint;
+        todo!("durably persist the independent MissingReadbackVerified phase before returning the checkpoint; terminal state is still forbidden")
+    }
+}
+
 pub(crate) struct CaptureCompensationDeleteCheckpoint {
     snapshot: SecretRecoveryAuthoritySnapshot,
     delete: BackendDeleteReceipt,
@@ -12917,10 +13428,28 @@ pub(crate) struct ProviderFinalizedActivationCheckpoint {
 pub(crate) struct ActivationOldRecordDeletePostconditionReceipt {
     _private: (),
 }
+#[derive(Clone)]
 pub(crate) struct ActivationOldRecordDeleteCheckpoint {
-    postcondition: ActivationOldRecordDeletePostconditionReceipt,
-    backend: BackendDeleteReceipt,
+    delete_disposition: BackendDeleteDisposition,
+    backend_completed_at: UtcTimestamp,
     delete_applied_cas: BackendDeleteAppliedCas,
+}
+
+impl ActivationOldRecordDeleteCheckpoint {
+    fn into_durable_failure_checkpoint(
+        self,
+    ) -> ActivationOldRecordDurableCheckpoint {
+        ActivationOldRecordDurableCheckpoint::OldRecordDeleteApplied {
+            delete_disposition: self.delete_disposition,
+            backend_completed_at: self.backend_completed_at,
+            delete_applied_cas: self.delete_applied_cas,
+        }
+    }
+}
+
+pub(crate) struct ActivationOldRecordDeleteApplied {
+    postcondition: ActivationOldRecordDeletePostconditionReceipt,
+    checkpoint: ActivationOldRecordDeleteCheckpoint,
 }
 pub(crate) struct AuthorizedActivationOldRecordDelete {
     backend: AuthorizedBackendDelete,
@@ -12930,15 +13459,18 @@ pub(crate) struct AuthorizedActivationOldRecordDelete {
 impl AuthorizedActivationOldRecordDelete {
     pub(crate) fn delete_once(
         self,
-    ) -> Result<ActivationOldRecordDeleteCheckpoint, SecretInternalError> {
-        let backend = self.backend.delete_once()?;
-        todo!("persist activation old-record backendApplied and mint a new delete-applied CAS; no supersession yet")
+    ) -> Result<ActivationOldRecordDeleteApplied, SecretInternalError> {
+        let delete = self.backend.delete_once()?;
+        let (delete_disposition, backend_completed_at) =
+            delete.into_durable_outcome();
+        let _ = (delete_disposition, backend_completed_at, self.postcondition);
+        todo!("persist activation OldRecordDeleteApplied with exact disposition/completion/CAS and return postcondition + checkpoint; no supersession yet")
     }
 }
 
 pub(crate) struct AuthorizedActivationOldRecordMissingReadback {
     backend: AuthorizedBackendMissingReadback,
-    checkpoint: ActivationOldRecordDeleteCheckpoint,
+    applied: ActivationOldRecordDeleteApplied,
 }
 
 impl AuthorizedActivationOldRecordMissingReadback {
@@ -12947,17 +13479,18 @@ impl AuthorizedActivationOldRecordMissingReadback {
         now: UtcTimestamp,
     ) -> Result<ActivationOldRecordDeleteCompletion, SecretInternalError> {
         let missing = self.backend.readback_missing_once(
-            &self.checkpoint.delete_applied_cas,
+            &self.applied.checkpoint.delete_applied_cas,
             now,
         )?;
-        let revoked_at = self.checkpoint.backend.completed_at.clone();
+        let revoked_at =
+            self.applied.checkpoint.backend_completed_at.clone();
         let supersession = RotationSupersessionReceipt {
             source: RotationSupersessionSource::SupersededByRotation,
             revoked_at,
         };
         Ok(ActivationOldRecordDeleteCompletion::Completed {
-            postcondition: self.checkpoint.postcondition,
-            backend: self.checkpoint.backend,
+            postcondition: self.applied.postcondition,
+            delete: self.applied.checkpoint,
             missing,
             supersession,
         })
@@ -12972,7 +13505,7 @@ pub(crate) enum ActivationOldRecordDeleteCompletion {
     NotApplicable,
     Completed {
         postcondition: ActivationOldRecordDeletePostconditionReceipt,
-        backend: BackendDeleteReceipt,
+        delete: ActivationOldRecordDeleteCheckpoint,
         missing: BackendMissingReadbackReceipt,
         supersession: RotationSupersessionReceipt,
     },
@@ -12980,7 +13513,7 @@ pub(crate) enum ActivationOldRecordDeleteCompletion {
 pub(crate) enum ActivationRecoveryCheckpoint {
     ProviderScrubPending(ActivationBindingCheckpoint),
     OldRecordDeletePending(ProviderFinalizedActivationCheckpoint),
-    OldRecordMissingReadbackPending(ActivationOldRecordDeleteCheckpoint),
+    OldRecordMissingReadbackPending(ActivationOldRecordDeleteApplied),
 }
 // The two Provider receipts are actually defined in
 // crate::services::configuration_apply::provider; only its lease-bound port
@@ -13010,17 +13543,53 @@ pub(crate) struct AuthorizedRecoveryOldRecordDelete {
     backend: AuthorizedBackendDelete,
 }
 
+#[derive(Clone)]
 pub(crate) struct RecoveryOldRecordDeleteCheckpoint {
-    backend: BackendDeleteReceipt,
+    delete_disposition: BackendDeleteDisposition,
+    backend_completed_at: UtcTimestamp,
     delete_applied_cas: BackendDeleteAppliedCas,
+}
+
+impl RecoveryOldRecordDeleteCheckpoint {
+    fn checked_from_durable_failure_checkpoint(
+        checkpoint: ActivationOldRecordDurableCheckpoint,
+    ) -> Result<Self, SecretInternalError> {
+        match checkpoint {
+            ActivationOldRecordDurableCheckpoint::OldRecordDeleteApplied {
+                delete_disposition,
+                backend_completed_at,
+                delete_applied_cas,
+            } => Ok(Self {
+                delete_disposition,
+                backend_completed_at,
+                delete_applied_cas,
+            }),
+            ActivationOldRecordDurableCheckpoint::None => {
+                Err(SecretInternalError::dependency_changed())
+            }
+        }
+    }
+
+    fn into_recovery_required_checkpoint(
+        self,
+    ) -> ActivationOldRecordDurableCheckpoint {
+        ActivationOldRecordDurableCheckpoint::OldRecordDeleteApplied {
+            delete_disposition: self.delete_disposition,
+            backend_completed_at: self.backend_completed_at,
+            delete_applied_cas: self.delete_applied_cas,
+        }
+    }
 }
 
 impl AuthorizedRecoveryOldRecordDelete {
     pub(crate) fn delete_once(
         self,
     ) -> Result<RecoveryOldRecordDeleteCheckpoint, SecretInternalError> {
-        let backend = self.backend.delete_once()?;
-        todo!("persist recovery old-record backendApplied and mint delete-applied CAS before any probe")
+        let delete = self.backend.delete_once()?;
+        let (delete_disposition, backend_completed_at) =
+            delete.into_durable_outcome();
+        let _ = (delete_disposition, backend_completed_at);
+        todo!("persist recovery old-record exact disposition/completion/CAS checkpoint before any probe")
     }
 }
 
@@ -13038,13 +13607,13 @@ impl AuthorizedRecoveryOldRecordMissingReadback {
             &self.checkpoint.delete_applied_cas,
             now,
         )?;
-        let revoked_at = self.checkpoint.backend.completed_at.clone();
+        let revoked_at = self.checkpoint.backend_completed_at.clone();
         let supersession = RotationSupersessionReceipt {
             source: RotationSupersessionSource::SupersededByRotation,
             revoked_at,
         };
         Ok(RecoveryOldRecordDeleteCompletion::Completed {
-            backend: self.checkpoint.backend,
+            delete: self.checkpoint,
             missing,
             supersession,
         })
@@ -13053,7 +13622,7 @@ impl AuthorizedRecoveryOldRecordMissingReadback {
 pub(crate) enum RecoveryOldRecordDeleteCompletion {
     NotPending,
     Completed {
-        backend: BackendDeleteReceipt,
+        delete: RecoveryOldRecordDeleteCheckpoint,
         missing: BackendMissingReadbackReceipt,
         supersession: RotationSupersessionReceipt,
     },
@@ -13127,6 +13696,36 @@ pub(crate) trait DeviceLocalSecretAuthority: Send + Sync {
         &self,
         candidate_id: &SecretCandidateId,
     ) -> Result<SecretCandidateAuthoritySnapshot, SecretInternalError>;
+
+    fn authorize_candidate_discard_record_delete(
+        &self,
+        permit: &mut SecretMutationPermit<'_>,
+        journal: CandidateDeleteJournalRow,
+        backend: BackendInstanceHandle,
+        prepared: PreparedCandidateDiscardRecordDelete,
+        now: &UtcTimestamp,
+    ) -> Result<AuthorizedCandidateDiscardRecordDelete, SecretInternalError>;
+
+    fn authorize_candidate_discard_record_missing_readback(
+        &self,
+        permit: &mut SecretMutationPermit<'_>,
+        applied: CandidateDiscardDeleteApplied,
+        backend: BackendInstanceHandle,
+        prepared: PreparedCandidateDiscardRecordMissingReadback,
+        now: &UtcTimestamp,
+    ) -> Result<AuthorizedCandidateDiscardRecordMissingReadback, SecretInternalError>;
+    // This method must consume delete_applied_cas_reservation with the exact
+    // operation id + CandidateDiscardDeleteCheckpoint.delete_applied_cas
+    // before BackendInstanceHandle::authorize_missing_readback_once is legal.
+
+    fn finalize_candidate_discard(
+        &self,
+        permit: &mut SecretMutationPermit<'_>,
+        checkpoint: CandidateDiscardMissingReadbackCheckpoint,
+    ) -> Result<DiscardSecretCandidateResult, SecretInternalError>;
+    // Atomically removes the unbound record, writes the candidate/audit state
+    // and Terminal with the journal's immutable discarded|expired target; no
+    // intermediate StateFinalized or general recovery row is created.
 
     fn read_recovery_snapshot(
         &self,
@@ -13233,11 +13832,14 @@ pub(crate) trait DeviceLocalSecretAuthority: Send + Sync {
     fn authorize_activation_old_record_missing_readback(
         &self,
         permit: &mut SecretMutationPermit<'_>,
-        checkpoint: ActivationOldRecordDeleteCheckpoint,
+        applied: ActivationOldRecordDeleteApplied,
         backend: BackendInstanceHandle,
         prepared: PreparedActivationOldRecordMissingReadback,
         now: &UtcTimestamp,
     ) -> Result<AuthorizedActivationOldRecordMissingReadback, SecretInternalError>;
+    // Consumes the prepared reservation against
+    // applied.checkpoint.delete_applied_cas; pre-confirmation alone never
+    // authorizes the missing readback.
 
     fn finalize_activation(
         &self,
@@ -13286,6 +13888,9 @@ pub(crate) trait DeviceLocalSecretAuthority: Send + Sync {
         prepared: PreparedCleanupOldRecordMissingReadback,
         now: &UtcTimestamp,
     ) -> Result<AuthorizedRecoveryOldRecordMissingReadback, SecretInternalError>;
+    // RecoveryRequired must reconstruct this exact three-field checkpoint;
+    // the missing authorization consumes its reservation against the retained
+    // CAS and terminal supersession uses retained backend_completed_at.
 
     fn finalize_recovery(
         &self,
@@ -14514,6 +15119,47 @@ impl SecretService {
         todo!("closed contract implementation")
     }
 
+    // The registered discard_secret_candidate handler calls this native-only
+    // preparation entry. It creates/loads the immutable disposition journal,
+    // generates a fresh operation id and prepares exactly RecordDelete then
+    // reservation-bound RecordMissingReadback before any backend mutation.
+    pub(crate) fn prepare_candidate_discard(
+        &self,
+        request: DiscardSecretCandidateRequest,
+    ) -> Result<PrepareCandidateDiscard, SecretInternalError> {
+        todo!("closed two-slot candidate-discard preparation; terminal replay returns AlreadyTerminal without a slot")
+    }
+
+    pub(crate) fn confirm_candidate_discard(
+        &self,
+        pending: PendingCandidateDiscardConfirmation,
+    ) -> Result<PrepareCandidateDiscard, SecretInternalError> {
+        todo!("consume only the pending variant's fixed slot; after RecordDelete confirmation prepare/confirm RecordMissingReadback before returning a bundle")
+    }
+
+    pub(crate) fn cancel_candidate_discard(
+        &self,
+        pending: PendingCandidateDiscardConfirmation,
+        reason: PendingConfirmationTermination,
+    ) -> Result<(), SecretInternalError> {
+        todo!("terminalize the fresh operation/pending backend session while preserving the durable journal target and candidate reachability")
+    }
+
+    pub(crate) fn discard_prepared_candidate_discard(
+        &self,
+        bundle: PreparedCandidateDiscardBundle,
+        reason: SecretDiscardReason,
+    ) -> Result<(), SecretInternalError> {
+        todo!("invalidate both one-shot authorizations; preserve immutable nonterminal candidate journal")
+    }
+
+    pub(crate) fn execute_candidate_discard(
+        &self,
+        bundle: PreparedCandidateDiscardBundle,
+    ) -> Result<DiscardSecretCandidateResult, SecretInternalError> {
+        todo!("under one candidate mutation permit consume delete, persist three-field checkpoint, unlock/consume Validate missing, persist MissingReadbackVerified, then finalize exact disposition")
+    }
+
     // Activation is prepared separately from live apply. Before #41 takes a
     // lease it prepares the mandatory candidate-read/compare authorization
     // and, when projected, the old-record delete authorization. It never reads
@@ -15258,7 +15904,7 @@ Public/crate visibility of a type is not construction authority. Every row below
 | Opaque type | True owner module | Sole factory/callsite |
 | --- | --- | --- |
 | `BackendRecordLocator` / `BackendRecordHandle` / `BackendVerifyReceiptId` | `crate::secret::backend` subtree | backend adapter lookup/record creation/write-readback receipt minting inside that subtree; locator parse/read and receipt construction never leave it |
-| `BackendAuthorizationHandle` / `BackendPendingConfirmation` / scope-specific `Authorized*Read` / exact delete, delete+missing-readback and missing-readback wrappers | `crate::secret::backend` subtree | registered-backend prepare/confirm/read/delete wrappers only; consuming objects cannot be forged, cloned, deserialized or cross-routed |
+| `BackendAuthorizationHandle` / `BackendPendingConfirmation` / scope-specific `Authorized*Read` / exact independent delete and missing-readback wrappers | `crate::secret::backend` subtree | registered-backend prepare/confirm/read/delete wrappers only; consuming objects cannot be forged, cloned, deserialized, combined or cross-routed |
 | `BackendAuthorizationScope` / `RegisteredBackendHandleBinding` / `PlatformOperationRequirement` | `crate::secret::backend` subtree | private `mint_from_context` plus registered backend prepare only; the exact registered `Arc` and complete scope move into auth/pending/authorized handles and are rechecked before every platform action |
 | `BackendRevocationHint` / `BackendRevocationObservation` | `crate::secret::backend` subtree | ordinary probe/read may produce only a non-persistable hint; the observation wrapper is minted solely by `observe_revocation_once` after consuming exact Revoke authorization and validating source/time capability plus the full registered-handle/store/record/backend/device tuple |
 | `ExistingSecretOwnerToken` | `crate::database::dao::providers` | successful exact Provider-row lookup; renderer `OwnerId` text alone is never authority |
@@ -15288,6 +15934,10 @@ The normative module/file map is one-to-one: `crate::store` startup composition/
 Implementation visibility is frozen to these narrow declarations: crate root declares `pub(crate) mod legacy_source_inventory` and that module exports only `CodexLegacySourceInventoryBridge`, the three opaque identity/authority type names needed by the secret checked factory, and no raw source port; `src-tauri/src/proxy/mod.rs` adds `pub(crate) use forwarder::{ProxyRequestSecretExecution, PreparedProxyRequest, ProxyRequestExecutionReceipt}`; `src-tauri/src/services/provider/mod.rs` adds `pub(crate) use usage::{UsageProbeSecretExecution, PreparedUsageProbeRequest, UsageProbeExecutionReceipt}` and only the exact live writer types needed by #41; `src-tauri/src/database/dao/mod.rs` adds `pub(crate) use providers::ExistingSecretOwnerToken`; `src-tauri/src/services/mod.rs` keeps its existing public `coding_plan`/`model_fetch` modules and adds `pub(crate) mod configuration_apply`, whose `mod.rs` declares `pub(crate) mod provider`; `src-tauri/src/commands/mod.rs` keeps the existing private `provider` and `import_export` children and exports only their exact handler-level opaque context constructors; and `src-tauri/src/secret/mod.rs` re-exports `pub(crate) LegacySourceCoverageReceipt` plus only the service/public views and coordinator-consumed opaque wrappers listed here. `src-tauri/src/lib.rs` adds only feature-gated public `test_support::{AppStateBuilder,SecretTestFixtureMode}`, backed by a crate-private `store.rs` bridge; it does not export secret deps/support/service factories. #35 core contains only route traits and never imports an external concrete callback. Each existing lane-owner or main-integration adapter module implements its exact allowlisted seal/base/route triple after its own types land; no lane type is created or narrow-re-exported merely to make backend.rs compile. No new glob re-export is permitted.
 
 Checked-factory visibility/callsites are also closed: `LegacySourceCoverageReceipt::checked_from_complete_inventory_authority` is `pub(crate)` solely because the sibling main-integration bridge must call it, but its argument is constructible only as a private literal inside `CodexLegacySourceInventoryBridge::collect_complete_inventory_authority`; the bridge immediately consumes that authority and never returns it. The scanner rejects any authority/identity/revision/receipt literal, second authority constructor, receipt factory call outside `CodexLegacySourceInventoryBridge::fresh_complete_coverage`, dynamic domain collection, or receipt `Clone/Serde/Debug/Default` impl. `SecretBackendInstanceView::try_registered` and `SecretRecordCapabilities::try_new` are `pub(in crate::secret)` only because the three backend-owned platform impls need them, and scanner-call only from `crate::secret::backend::RegisteredSecretBackend`; `BackendRecordLocator::parse`, broker-only context literals, `BackendAuthorizationScope::mint_from_context`, `observe_revocation_once`, revocation-receipt construction and auth/pending mint/consume are module-private with only the registered wrapper callsites; `BackendOperationBroker` privately owns the capture-intent/capability/pending registries and is the only registry caller; `SecretReadinessRegistration::checked` and prepared role slots are private to `crate::secret::operation`; the general sorted recovery-step checked constructors are `pub(in crate::secret)` solely for operation registration plus result validation; `CandidateDeleteJournalRow::{for_explicit_discard,for_expiry_sweep}` are private to device-store candidate operation/sweeper callsites and retry has no constructor; `NonEmptySortedRecoveryAffectedOwners::checked`, `NonEmptyRecoverySourceExpectations::checked`, each kind-specific durable recovery expectation factory and `DurableSecretRecoveryRecord::checked` are `pub(super)` inside `crate::secret::device_store::recovery`; root recovery/activation private repr/result factories and affected-owner/summary wrappers are `pub(super)` inside `crate::secret::device_store::result`; `RecoveryProviderProjection::checked_from_recovery` is private to the activation-recovery owner; staged token/projection/durable-object/process-live authority factories, equality comparison and restart reopen/reconcile/fresh-authority factories are private to `crate::commands::import_export`, with only the named handler/#55 readmission callsites; and `PreparedProductionAppState::into_managed_parts`, the one crate-root checked 15+1 registration receipt plus `finish_managed_production_secret_startup` form one scanner-ordered setup sequence after `app.manage`, while later repair may call only the armed `resume_managed_production_secret_startup`. The scanner enumerates those exact calls and rejects any second callsite, struct literal, visibility widening or unchecked `From`/`Default` path.
+
+Candidate discard adds exactly two and only two general-operation confirmation slots: `CandidateDiscardConfirmationSlot::{RecordDelete,RecordMissingReadback}`. The scanner requires their literal operation/scope pairs to be `Delete/candidateDiscardRecordDelete` and `Validate/candidateDiscardRecordMissingReadback`; the durable row must repeat those two fixed slot values and their independent confirmation policies. It requires `CandidateDiscardDeleteCheckpoint` and both durable `BackendApplied`/`RecoveryRequired` encodings to carry exactly `deleteDisposition + backendCompletedAt + deleteAppliedCas`, and requires the missing phase to retain that same typed checkpoint plus `missingCheckedAt`. It rejects a former single-slot `CandidateDelete` variant under `SecretNonApplyBackendOperation`, a combined delete-plus-probe method/type, a missing-readback authorization before the operation-owned `BackendDeleteAppliedCasReservation` is fulfilled by the durable checkpoint, a candidate-discard `StateFinalized` arm, any third candidate slot, or any sixth hardware operation.
+
+Normal activation, durable failure and cleanup recovery keep their three same-field checkpoint types non-interchangeable; scanner allows only `into_durable_failure_checkpoint`, `checked_from_durable_failure_checkpoint` and `into_recovery_required_checkpoint`, never `From/Into`, literals outside the owner or CAS-only reconstruction. The five `StagedImportResumePhase` arms, their cumulative receipt rows, zero-count after-scrub CAS and the immutable common journal `operationId` are likewise scanner-enumerated; an `Option`, flattened bag, former three-arm staged checkpoint type, missing cumulative field or extra phase is rejected.
 
 The contract scanner rejects a struct literal, `new/from_*` call, `Default/Clone/Deserialize` impl or second factory callsite for any row outside its owner. Narrow `pub(crate)` re-exports are fixed: `crate::secret` exposes `SecretService`, coordinator-consumed scope-specific backend objects and public views; backend locators/material/callback seals/platform ports stay inside `crate::secret::{backend,material}`; #55 exports only admitted tokens/immutable identity views; #41 exports only its three apply/activation/activation-recovery contexts, fixed receipts and two live writers; main integration exports only its owner-detach and staged-cutover opaque contexts. It also rejects an `admit/mint` method on #35's `SecretChangePlanAuthority`, an owner-text resolver on `DeviceLocalSecretAuthority`, and `Arc<Database>`, `Database`, `Provider` or a Provider DAO/service field inside `SecretService`. `AppState` itself remains `pub`; existing `db/proxy_service/usage_cache/codex_desktop_service` fields and their visibility remain unchanged. Only the additive `secret_service: Arc<SecretService>` field and its construction token are private, so outside modules cannot use a struct literal and reach it only through the crate-private `secret_service()` accessor. Command/coordinator owners must resolve `OwnerId` to `ExistingSecretOwnerToken` before calling #35; `check_apply_readiness` consumes that opaque token alongside the wire request. All Provider reads/writes used by apply/activation/activation-recovery flow only through the already-held #41 lease-bound context; Provider delete/detach and staged cutover use only their already-held main-integration contexts.
 
@@ -15416,7 +16066,7 @@ The context final-baseline checks stage/temp-live-object/owner/staged-row/source
 
 `StagedSecretImportActivationResultDto` is only the initial staged-activation result. Its `activated|alreadyActivated` arm requires a terminal journal and may return the original candidate/owner summary; its recovery arm returns `currentResumeCas` and `action=resumeStagedImportCutover`. The independent resume handler returns only `ResumeStagedImportCutoverResultDto`. Every resume result data arm has exactly five fields: `{stageId,currentResumeCas,status,action,issue}`. Terminal `activated|alreadyActivated` requires `action=none, issue=null`; `cutoverRecoveryRequired` requires the checked typed `issue` and `action=resumeStagedImportCutover`. Version/command id stay in the common envelope and audit is recorded separately, so schema version, audit event id, candidate id, owner, ref and every summary type are structurally absent from all resume data arms. `SECRET_ACTION_DESTINATIONS_V1` maps the recovery action to the non-#35 main-integration handler `resume_staged_import_cutover`.
 
-Public resume accepts only `{stageId,expectedResumeCas:{revision,digest}}`; it has no request `schemaVersion` field. The handler atomically compares that pair to the current journal CAS before reopening authority. Its digest preimage is internal-only and includes stage/source/candidate/checkpoint/durable-object/process/admission/record/backend/cutover/live-owner identity; none of those fields is accepted from the renderer or emitted in the resume result. On a match, the immutable order repeats: reopen the durable temp object, terminally reconcile the prior admission, mint a fresh process-live token and projection, obtain a new #55 `AdmittedStagedSecretImportPlan`, obtain a new authority-match receipt, prepare/confirm #35, then construct a fresh `ImportCutoverCoordinatorContext`. On a stale/replayed CAS, the handler performs zero backend, Provider, admission or journal writes and returns the recovery arm with the freshly read `currentResumeCas` and checked stale issue. On terminal replay it returns `alreadyActivated` with the freshly read terminal CAS. Neither an old process nonce nor old pending/auth id is reusable. Startup may attempt confirmation-free reconciliation, but the exact handler remains the UAT-visible destination until terminal. This staged recovery is not one of the two #35 cleanup-named commands and does not add a 16th secret command.
+Public resume accepts only `{stageId,expectedResumeCas:{revision,digest}}`; it has no request `schemaVersion` field. The handler atomically compares that pair to the current journal CAS before reopening authority. Its digest preimage is internal-only and includes the immutable common journal operation id plus stage/source/candidate/durable-object/process/admission/record/backend identity and one exact cumulative `intent|sourcesScrubbed|cutoverCommitted|liveOwnerMinted|localBindingFinalized` phase arm. `intent` forbids scrub/cutover/promoted-owner receipts; each later arm requires every receipt of its completed predecessors, and only the last two require the promoted live owner. None of those fields is accepted from the renderer or emitted in the resume result. Every phase/nonce/admission/source-CAS/receipt/promoted-owner change increments the revision before recomputing the digest; an operation-id mismatch is a different journal and rejects. On a match, the immutable order repeats: reopen the durable temp object, terminally reconcile the prior admission, mint a fresh process-live token and projection, obtain a new #55 `AdmittedStagedSecretImportPlan`, obtain a new authority-match receipt, prepare/confirm #35, then construct a fresh `ImportCutoverCoordinatorContext`. On a stale/replayed CAS, the handler performs zero backend, Provider, admission or journal writes and returns the recovery arm with the freshly read `currentResumeCas` and checked stale issue. On terminal replay it returns `alreadyActivated` with the freshly read terminal CAS. Neither an old process nonce nor old pending/auth id is reusable. Startup may attempt confirmation-free reconciliation, but the exact handler remains the UAT-visible destination until terminal. This staged recovery is not one of the two #35 cleanup-named commands and does not add a 16th secret command.
 
 ## 9. Public command envelope and signatures
 
@@ -15510,7 +16160,7 @@ async fn resume_staged_import_cutover(
 ) -> MainIntegrationCommandResult<ResumeStagedImportCutoverResultDto>;
 ```
 
-`activate_candidate_from_change_plan`, staged import activation, all apply/activation/staged `prepare|confirm|cancel|discard` calls, and `prepare_recovery|confirm_recovery|cancel_recovery|discard_prepared_recovery|SecretService::retry_recovery(bundle)` are native-only calls and MUST NOT be registered as additional Tauri commands. `resume_staged_import_cutover` is owned by `crate::commands::import_export`, accepts only its exact closed resume CAS and cannot call a generic secret resolver. The sole #35 recovery pair remains `get_secret_cleanup_impact` / `retry_secret_cleanup`; their historical command names do not narrow the kind-discriminated contract. Renderer activation occurs through #55's plan/apply commands, and staged activation through main integration's existing import flow. There is no `get/read/reveal/copy/export secret` command and no `set_secret(value)` command.
+`activate_candidate_from_change_plan`, staged import activation, all apply/activation/staged `prepare|confirm|cancel|discard` calls, candidate-discard `prepare_candidate_discard|confirm_candidate_discard|cancel_candidate_discard|discard_prepared_candidate_discard|execute_candidate_discard`, and `prepare_recovery|confirm_recovery|cancel_recovery|discard_prepared_recovery|SecretService::retry_recovery(bundle)` are native-only calls and MUST NOT be registered as additional Tauri commands. The existing `discard_secret_candidate` handler alone drives the closed candidate-discard calls and returns only `DiscardSecretCandidateResult`. `resume_staged_import_cutover` is owned by `crate::commands::import_export`, accepts only its exact closed resume CAS and cannot call a generic secret resolver. The sole #35 recovery pair remains `get_secret_cleanup_impact` / `retry_secret_cleanup`; their historical command names do not narrow the kind-discriminated contract. Renderer activation occurs through #55's plan/apply commands, and staged activation through main integration's existing import flow. There is no `get/read/reveal/copy/export secret` command and no `set_secret(value)` command.
 
 The Tauri registration wrapper generates `commandId` before decoding the inner request. Its closed-shape/type/schema stage maps failures to `SECRET_REQUEST_INVALID` without echoing input; the subsequent typed scalar stage maps only a string-valued known `secretRef` grammar failure to `SECRET_REF_INVALID`. This is an explicit decoder error variant, never serde error-text inspection. Therefore malformed transport still receives the same envelope while `REF_INVALID` remains uniquely reachable.
 
@@ -15525,7 +16175,7 @@ Codes not listed for a command are implementation bugs and MUST be converted to 
 | `begin_secret_capture` | `StageSecretCandidateResult` | `REQUEST_INVALID, OWNER_NOT_FOUND, OWNER_CONFLICT, OPERATION_BUSY, INPUT_CANCELLED, INPUT_INVALID, CONFIRMATION_CANCELLED, CONFIRMATION_EXPIRED, CONFIRMATION_REPLAYED, LOCKED, PERMISSION_DENIED, BACKEND_UNAVAILABLE, DEVICE_MISMATCH, WRITE_FAILED, READ_FAILED, VERIFY_FAILED, DEPENDENCY_CHANGED, BACKEND_CHANGED, OPERATION_RECOVERY_REQUIRED` |
 | `rotate_secret` | `StageSecretCandidateResult` | `REQUEST_INVALID, REF_INVALID, OWNER_KIND_UNSUPPORTED, OWNER_NAMESPACE_UNSUPPORTED, OWNER_NOT_FOUND, OWNER_CONFLICT, OPERATION_BUSY, UNSUPPORTED_PURPOSE, INPUT_CANCELLED, INPUT_INVALID, MISSING, STALE, REVOKED, CONFIRMATION_CANCELLED, CONFIRMATION_EXPIRED, CONFIRMATION_REPLAYED, LOCKED, PERMISSION_DENIED, BACKEND_UNAVAILABLE, DEVICE_MISMATCH, WRITE_FAILED, READ_FAILED, VERIFY_FAILED, DEPENDENCY_CHANGED, RECORD_CHANGED, BACKEND_CHANGED, OPERATION_RECOVERY_REQUIRED` |
 | `list_secret_candidates` | `ListSecretCandidatesResult` | `REQUEST_INVALID, OWNER_KIND_UNSUPPORTED, OWNER_NAMESPACE_UNSUPPORTED` |
-| `discard_secret_candidate` | `DiscardSecretCandidateResult` | `REQUEST_INVALID, CANDIDATE_NOT_FOUND, CANDIDATE_CONSUMED, DEPENDENCY_CHANGED, RECORD_CHANGED, BACKEND_CHANGED, CONFIRMATION_CANCELLED, CONFIRMATION_EXPIRED, CONFIRMATION_REPLAYED, DEVICE_MISMATCH, LOCKED, PERMISSION_DENIED, BACKEND_UNAVAILABLE, DELETE_FAILED, OPERATION_RECOVERY_REQUIRED` |
+| `discard_secret_candidate` | `DiscardSecretCandidateResult` | `REQUEST_INVALID, CANDIDATE_NOT_FOUND, CANDIDATE_CONSUMED, DEPENDENCY_CHANGED, RECORD_CHANGED, BACKEND_CHANGED, CONFIRMATION_CANCELLED, CONFIRMATION_EXPIRED, CONFIRMATION_REPLAYED, DEVICE_MISMATCH, LOCKED, PERMISSION_DENIED, BACKEND_UNAVAILABLE, DELETE_FAILED, READ_FAILED, OPERATION_RECOVERY_REQUIRED` |
 | `set_secret_locked` | `SecretMutationResult` | `REQUEST_INVALID, REF_INVALID, MISSING, REVOKED, DEPENDENCY_CHANGED, RECORD_CHANGED` |
 | `get_secret_delete_impact` | `SecretDeleteImpact` | `REQUEST_INVALID, REF_INVALID, MISSING` |
 | `delete_secret` | `SecretDeleteResult` | `REQUEST_INVALID, REF_INVALID, DEPENDENCY_CHANGED, RECORD_CHANGED, CONFIRMATION_CANCELLED, CONFIRMATION_EXPIRED, CONFIRMATION_REPLAYED, DEVICE_MISMATCH, LOCKED, PERMISSION_DENIED, BACKEND_UNAVAILABLE, DELETE_FAILED, OPERATION_RECOVERY_REQUIRED` |
@@ -15542,7 +16192,7 @@ For `discard_secret_candidate`, `delete_secret` and `retry_secret_cleanup`, `SEC
 
 `get_secret_delete_impact` creates a fresh operation id and calls `SecretReadinessRegistry::mint(Delete{...})` with the exact ref/record/store/binding-set/backend/device/capability identity and expiry; only the operation id enters `SecretDeleteReadinessContext`. `delete_secret` uses that text solely for `claim_once`, passing the complete request/current identity, then consumes or terminally terminates the opaque claim. `get_secret_cleanup_impact` likewise mints `Recovery{kind,recoveryId,recoveryCas,pendingSteps}`; `retry_secret_cleanup` must atomically claim the exact row before `prepare_recovery`, may perform only those steps, and returns a kind-tagged remaining set if still partial. A second/missing/expired/claimed/consumed operation id is replay-safe and cannot reach backend preparation. The registered handler completes `prepare_recovery/confirm_recovery` before selecting a context. Only `activationCleanup` asks #41 to acquire a Provider lease and construct `ActivationCleanupCoordinatorContext`; `captureCompensation` and `deleteFinalization` use local operation contexts; `ownerDetachFinalization` receives main integration's already-held `OwnerDetachCoordinatorContext`. It then consumes the bundle through `SecretService::retry_recovery`. Every completion consumes readiness; cancel/expiry/context/baseline failure terminates readiness and discards the bundle. `SecretService` never acquires a Provider lease or DB itself. For hardware `confirmationRequired`, delete/recovery opens and consumes native device confirmation before any Provider lease/backend mutation; cancel/expiry is structured and the current binding remains unchanged. Rotate gets its impact/CAS from the selected `SecretRefAggregate` and does not switch anything until the later Change Plan. Lock is a FyAgent policy mutation and never asks a backend to claim that the OS/device was unlocked.
 
-Candidate discard deliberately remains one command, so the public command count stays 15. Each invocation generates a new native operation id, re-reads the exact candidate revision plus candidate-record store/backend/device/capability generations, then prepares that record's delete. Hardware confirmation is opened and consumed inside that invocation before deletion; cancel/expiry/replay terminally consumes its operation id and returns the corresponding typed error. Permission/device/backend/generation drift returns the exact allowed row error with `effect=none`. For a new explicit intent, `terminalDisposition=discarded`; for an existing expiry-sweep intent it remains `expired`. Delete/already-missing advances `backendApplied`; only the subsequent fresh missing readback advances the separate durable `missingReadbackVerified` phase, after which state finalization writes the immutable disposition. Every failure leaves `verifiedPendingPlan` with its checked immutable pending disposition and reachable issue; `action=discardCandidate` starts a fresh invocation without rewriting that disposition and never replays the terminated operation id. No discard readiness, partial success or activation-cleanup recovery row is fabricated.
+Candidate discard deliberately remains one command, so the public command count stays 15. Each invocation generates a new native operation id, re-reads the exact candidate revision plus candidate-record store/backend/device/capability generations, and constructs exactly two operation-specific preparation slots: `RecordDelete` with a one-shot `Delete` authorization and `RecordMissingReadback` with a distinct one-shot `Validate` authorization. Hardware confirmation for both may complete before mutation, but the missing slot carries a private `BackendDeleteAppliedCasReservation` and cannot execute until the exact operation's durable `backendApplied{deleteDisposition,backendCompletedAt,deleteAppliedCas}` checkpoint fulfills it. Cancel/expiry/replay terminally consumes the operation/pending state and returns the corresponding typed error. Permission/device/backend/generation drift returns the exact allowed row error with `effect=none`. For a new explicit intent, `terminalDisposition=discarded`; for an existing expiry-sweep intent it remains `expired`. Delete/already-missing advances the three-field `backendApplied`; only the subsequent fresh missing readback advances `missingReadbackVerified` with that same triple plus `missingCheckedAt`, after which one atomic transition removes the unbound record, writes the immutable candidate/audit state and persists `terminal`. Delete failure maps to `SECRET_DELETE_FAILED`; fresh-readback failure maps to the newly reachable existing `SECRET_READ_FAILED` row, without adding an error literal. Every failure leaves `verifiedPendingPlan` with its checked immutable pending disposition and reachable issue; `action=discardCandidate` starts a fresh invocation without rewriting that disposition and never replays the terminated operation id. No candidate-discard `stateFinalized`, discard readiness, partial success or activation-cleanup recovery row is fabricated.
 
 ## 10. Stable state derivation
 
@@ -15649,7 +16299,7 @@ The checked factory's context route is exact and is also used for `SECRET_OPERAT
 | same three confirmation codes + `condition=deleteReadiness` | delete operation id terminal; binding unchanged | yes | `refreshDeleteImpact` | `blocked` | `none` |
 | same three confirmation codes + `condition=recoveryReadiness` | recovery operation id terminal; durable recovery unchanged | yes | `refreshRecoveryImpact` | `blocked` | `none` |
 | same three confirmation codes + `condition=applyOrActivationPlan` | prepared apply/activation admission terminal | yes | `reopenChangePlan` | `blocked` | `none` |
-| same three confirmation codes + `condition=stagedImportResume` | staged pending/admission terminal; cutover checkpoint unchanged | yes | `resumeStagedImportCutover` | `blocked` | `none` |
+| same three confirmation codes + `condition=stagedImportResume` | staged pending/admission terminal; exact five-arm phase/CAS unchanged | yes | `resumeStagedImportCutover` | `blocked` | `none` |
 | same three confirmation codes + `condition=validationFreshOperation` | validation operation terminal | yes | `refreshSummary` | `blocked` | `none` |
 | `SECRET_DEVICE_MISMATCH` | `unknown/unavailable` | no | `reconnectDevice` | `blocked` | `none` |
 | `SECRET_WRITE_FAILED` / `SECRET_VERIFY_FAILED` + exact capture intent | no candidate/binding; failed record compensated or recovery journaled | yes | exact capture action in the closed-context table | `failed` | `none` |
@@ -15665,7 +16315,7 @@ The checked factory's context route is exact and is also used for `SECRET_OPERAT
 | `SECRET_READ_FAILED` + `condition=validationFreshOperation` | probe-derived summary or `unknown/unavailable` | yes | `refreshSummary` | `failed` | `none` |
 | `SECRET_READ_FAILED` + `condition=applyOrActivationPlan` | no writer/binding mutation | yes | `reopenChangePlan` | `failed` | `none` |
 | `SECRET_READ_FAILED` + `condition=recoveryReadiness` | durable recovery unchanged | yes | `refreshRecoveryImpact` | `failed` | `none` |
-| `SECRET_READ_FAILED` + `condition=stagedImportResume` | staged checkpoint unchanged | yes | `resumeStagedImportCutover` | `failed` | `none` |
+| `SECRET_READ_FAILED` + `condition=stagedImportResume` | staged five-arm phase/CAS unchanged | yes | `resumeStagedImportCutover` | `failed` | `none` |
 | `SECRET_DELETE_FAILED` + `condition=candidateDiscardFreshOperation` | candidate journal remains nonterminal with same disposition | yes | `discardCandidate` | `failed` | `none` |
 | `SECRET_DELETE_FAILED` + `condition=deleteReadiness` | no durable delete step progressed | yes | `refreshDeleteImpact` | `failed` | `none` |
 | `SECRET_DELETE_FAILED` + `condition=recoveryReadiness` | recovery row and remaining step unchanged | yes | `refreshRecoveryImpact` | `failed` | `none` |
@@ -16323,7 +16973,7 @@ Every historical/user-owned/managed historical finding contributes only to `find
 | central revocation | `centralRevocation=false`, `revocationObservation=unsupported` | `centralRevocation=true` iff validated capability says `revocationObservation=sourceAndTime` and the adapter can return `{source=centralBackend|deviceAdministration, revokedAt}` |
 | fallback | false | false |
 
-Backend write, read/compare, delete and fresh missing-readback confirmation are therefore explicitly represented by exactly five hardware policy operations: `captureVerify`, `validate`, `resolveForApply`, `delete`, `revoke`. Every missing-readback authorization reuses the `validate` policy; it never adds a sixth operation, combines with delete, or reuses delete authorization. Its named confirmation slot and durable delete-applied checkpoint remain independent. A hardware `captureVerify` confirmation is completed before secure input opens. Candidate activation and activation recovery prepare active-record, old-delete and old-missing confirmations independently before #41 takes the Provider lease; no prompt starts under that lease. Dedicated proxy/usage/balance/primary-coding-plan/model-fetch execution is v1-eligible only when confirmation is `never`; it never prompts implicitly. Rotation may activate the new binding before old-record deletion; cancel/failure of either delete or missing readback is `activatedCleanupPending` and creates a callable `activationCleanup` row, never rollback to the old binding.
+Backend write, read/compare, delete and fresh missing-readback confirmation are therefore explicitly represented by exactly five hardware policy operations: `captureVerify`, `validate`, `resolveForApply`, `delete`, `revoke`. Every missing-readback authorization reuses the `validate` policy; it never adds a sixth operation, combines with delete, or reuses delete authorization. Its named confirmation slot and durable delete-applied checkpoint remain independent. The closed operation-specific slot inventory is activation `3` plus recovery `7` plus candidate discard `2`, exactly `12`; exactly `10` of those are delete/missing-specific. A hardware `captureVerify` confirmation is completed before secure input opens. Candidate activation and activation recovery prepare active-record, old-delete and old-missing confirmations independently before #41 takes the Provider lease; no prompt starts under that lease. Dedicated proxy/usage/balance/primary-coding-plan/model-fetch execution is v1-eligible only when confirmation is `never`; it never prompts implicitly. Rotation may activate the new binding before old-record deletion; cancel/failure of either delete or missing readback is `activatedCleanupPending` and creates a callable `activationCleanup` row, never rollback to the old binding.
 
 Ordinary `probe` and authorized read can return only a non-`Clone`, non-serde, non-persistable `BackendRevocationHint`; authority has no method that accepts it. `PlatformRevocationObservation` is obtainable only through `PlatformBackendPort::observe_revocation_once`. The registered wrapper first consumes an authorization whose complete scope is exact `General::Revoke`, then verifies `BackendRevocationObservationCapability::SourceAndTime`, the record's validated `centralRevocation=true` capability, both durable `DeviceInstanceId` equality and process-store `Arc::ptr_eq`, registered binding, ref, store/record revisions, binding-set CAS, backend instance/generation, returned backend/device generations, device-binding generation and capability revision. Only then does it produce one non-`Clone`/non-serde consuming `BackendRevocationObservation` receipt. `DeviceLocalSecretAuthority::persist_backend_revocation_observation` accepts only that receipt (never a caller-supplied ref), fresh-revalidates the same tuple under its mutation permit, consumes it and persists source/time. `missing`, a hint, lock, permission denial, device mismatch and backend unavailable never synthesize revocation. OS keyring capability is always `centralRevocation=false`; a hardware adapter that cannot supply source/time must also publish false. The persisted observation becomes the sole central/device revocation source in summaries, errors and audit rows.
 
@@ -16373,5 +17023,8 @@ This contract supplies a concrete disposition for the contract-layer findings be
 | V9-006 | `SecretLegacyCleanupPending::validate` matches only its two legal arms and every arm returns `Result`; the nonexistent `Self::Summary` branch is absent |
 | V9-007 | backend core declares only generic sealed route traits and its platform callback; #41/main/runtime concrete callback impls live in lane adapter modules, so #35 core has no compile dependency on not-yet-landed external callback types |
 | V9-008 | the checked registration receipt stores the exact 15-element `SecretCommandName` array plus a separately typed `resume_staged_import_cutover` handler proof; resume cannot enter `SecretCommandName` and returns its independent DTO |
+| ARR-001 | candidate discard/expiry has a closed two-slot preparation algebra: independent `RecordDelete/Delete` and `RecordMissingReadback/Validate` one-shot authorizations, an operation-owned CAS reservation, exact three-field durable `BackendApplied`, and a separate fresh-missing phase before one atomic terminal transition; there is no candidate `stateFinalized`, and public counts/recovery kinds do not change |
+| ARR-002 | normal activation and `activationCleanup` retain exact `{deleteDisposition,backendCompletedAt,deleteAppliedCas}` old-record checkpoints, including `RecoveryRequired`; resume/recovery-CAS codecs consume all three, and fresh missing plus supersession/Terminal commit atomically with `revokedAt=backendCompletedAt` |
+| ARR-003 | staged resume CAS binds the common journal `operationId` and exactly five cumulative phase arms `intent|sourcesScrubbed|cutoverCommitted|liveOwnerMinted|localBindingFinalized`; revision/digest advances on phase/nonce/admission/receipt/owner changes, with five named canonical digest fixture plans |
 
 This file does not by itself close non-contract findings about crash-journal implementation, sync/import/restore execution, exact Win32/AppKit APIs, post-freeze resolved-lock/license/advisory/MSRV verification for the planned direct `subtle = 2.6.1` dependency, file-owner adjudication, actual AppState wiring, V2 adapter files, native host provisioning or executable evidence commands. Those remain in their respective authority/design owners and MUST stay open until separately revised and re-reviewed.

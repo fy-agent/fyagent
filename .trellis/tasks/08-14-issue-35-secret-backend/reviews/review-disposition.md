@@ -1,8 +1,8 @@
 # Issue #35 initial review disposition
 
-Status: `WORKING_TREE_AUDIT_APPROVED`, immutable rereviews still pending. The V9 working-tree audit records three independent lanes on one final hash set with `P0=0/P1=0/P2=0`. This historical map does not itself close or approve the immutable design candidate; the next gate is to commit that exact authority as `D` and have all three reviewers reread the same commit. Evidence remains static design only; no test/build/runtime was run.
+Status: `D1_REJECTED_REVISION_IN_PROGRESS`. V9 authorized creation of `D=f2f26b8b6b5aa4acf8bbd257cee9ee22713aebaf`, but its immutable architecture rereview found `P1=3`: candidate-discard missing-readback authority, activation delete checkpoint provenance, and staged-resume five-phase preimage. Product approved `D`; detailed rereview was not run after the architecture rejection. All `D` receipts are historical and invalid for freeze. Evidence remains static design only; no test/build/runtime was run.
 
-The stable-hash V6 and V7 audits are preserved as `REQUEST_CHANGES` history. `v9-working-tree-audit.md` is the independent zero-finding pre-commit receipt. No earlier row is retroactively rewritten, and no row becomes immutable-review authority until the same-SHA rereviews approve `D`.
+The stable-hash V6 and V7 audits remain `REQUEST_CHANGES` history; V9 remains the zero-finding pre-commit receipt for `D`. No earlier row is retroactively rewritten. A corrected `D2` requires new product, architecture and detailed rereviews on its exact SHA before freeze.
 
 ## Product findings
 

@@ -102,9 +102,9 @@ Module order:
 1. strict types/material/envelopes, including durable `DeviceInstanceId` versus process-local store instance and the exact staged-resume result decoder;
 2. device store/permissions/atomic/eight operation journals/four recovery-CAS arms/crash phases;
 3. backend/capture seams, stateful broker-owned capture/capability/pending registries, exact dual-identity instance handle and scope-bound revocation receipt;
-4. capture-intent registry; candidate/activation/prepare/consume/lifecycle; private capability claim/discard; explicit-discard/expiry pending disposition and fresh-readiness actions;
+4. capture-intent registry; candidate/activation/prepare/consume/lifecycle; private capability claim/discard; explicit-discard/expiry independent delete+Validate-missing slots, three-field durable checkpoint, pending disposition and fresh-readiness actions;
 5. legacy source matrix plus non-forgeable no-value coverage receipt, including exact 11-domain inventory-revision/completeness proof, sibling visibility, unique main-integration mint bridge, env/common-config, Provider public chain and legacy-blocked Provider-delete typed capture flow;
-6. proxy/usage/model-fetch/primary-coding-plan/request-override/stream diagnostic/import/restore/sync/sync-protocol/staged admission→prepare and revision-digest resume integrations;
+6. proxy/usage/model-fetch/primary-coding-plan/request-override/stream diagnostic/import/restore/sync/sync-protocol/staged admission→prepare and operationId+five-phase revision-digest resume integrations/fixtures;
 7. V2 decoder/panel/browser fixture;
 8. scanner self-tests.
 
@@ -131,7 +131,7 @@ legacy discovery -> candidate -> #55 activation plan
 -> authority match -> #35 prepare/confirm -> cutover -> revision-digest crash resume with fresh identity/admission
 ```
 
-7. run failure matrix: cancel, missing, policy/backend lock, denied, unavailable, write/read/verify, cross-store or wrong registered backend handle, ordinary-read/probe revocation persistence rejection and revoke-receipt transplant, DB/provider scrub, dependency drift, private capability claim/discard replay/expiry, exact fresh-action routing with no generic retry, capture-intent stale/replay, explicit-discard/expiry restart, each delete→durable checkpoint→missing-readback failure, all eight journal/four recovery crash phases, Provider-delete legacy typed-flow block, hardware no-projection, staged admission/prepare-discard/old-admission/fresh-identity/revision-digest cutover resume, Codex env/common-config/public Provider/request-override/diagnostic canary rejection, MCP Level-3 no-regression, renderer/deeplink-before-preview rejection, history-backup gate and historical artifact scan/report (v1 performs no historical rewrite/delete).
+7. run failure matrix: cancel, missing, policy/backend lock, denied, unavailable, write/read/verify, cross-store or wrong registered backend handle, ordinary-read/probe revocation persistence rejection and revoke-receipt transplant, DB/provider scrub, dependency drift, private capability claim/discard replay/expiry, exact fresh-action routing with no generic retry, capture-intent stale/replay, explicit-discard/expiry delete-checkpoint/missing/restart, each delete→durable `{disposition,completedAt,CAS}` checkpoint→missing-readback failure, activation crash timestamp reconstruction, all eight journal/four recovery crash phases, Provider-delete legacy typed-flow block, hardware no-projection, staged admission/prepare-discard/old-admission/fresh-identity plus all five operationId-bound revision-digest resume phases, Codex env/common-config/public Provider/request-override/diagnostic canary rejection, MCP Level-3 no-regression, renderer/deeplink-before-preview rejection, history-backup gate and historical artifact scan/report (v1 performs no historical rewrite/delete).
 
 Failure returns to the sole owning module; rerun module then integration.
 

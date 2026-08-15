@@ -14,9 +14,9 @@
 4. **MVP 的 `rust-version` 保持 `1.85.0`。** `security-framework 3.7.0` 声明Rust 1.85，`zeroize 1.8.2`声明Rust 1.60，`windows 0.61`已在当前manifest/lock中。Freeze后仍须做exact lock、license、advisory，并在matching native macOS/Windows x64各跑Rust 1.85.0 locked workspace all-targets gate；当前Rust 1.97不能替代。本结论不是dependency-resolution/build evidence。
 5. **OS store 与 local state 之间采用 durable write-ahead journal。** 任一 backend mutation 前先持久化 intent；operation kind恰好八类，每类有独立required authority/phase。Crash只映射四臂strict recovery或staged/discard自己的checkpoint，不依赖keyring枚举，也不创建generic recovery operation。
 6. **device-local binding 永不进入 Provider row。** Provider SQLite 只保留 scrub 后的非敏感配置；`secretRef`、binding、backend instance/capability 只存在于本机 store。远端 Provider row 导入后按本机 owner key 重新关联，远端不能夺走本机 binding。
-7. **local schema/ID/候选语义采用并发收敛的 `secret-contract-v1.md`。** capture/replace/rotate/migrate先产生`verifiedPendingPlan` candidate；它们不直接改binding或scrub Provider。只有#55 admitted immutable Change Plan触发的native `activateCandidate`才能切binding/scrub；discard/expiry不确定时以immutable `pendingTerminalDisposition`保持candidate/journal可达。
+7. **local schema/ID/候选语义采用并发收敛的 `secret-contract-v1.md`。** capture/replace/rotate/migrate先产生`verifiedPendingPlan` candidate；它们不直接改binding或scrub Provider。只有#55 admitted immutable Change Plan触发的native `activateCandidate`才能切binding/scrub；discard/expiry以两枚独立candidate slot与durable三字段delete checkpoint推进，任一不确定都以immutable `pendingTerminalDisposition`保持candidate/journal可达。
 8. **Provider delete先做orthogonal binding/legacy discovery。** 任一current legacy source都阻断preview并返回effect-none resolve action；只有no-legacy bound/unbound分支可mint impact。Owner detach不删除backend record。
-9. **Staged import只有一条authority顺序。** `temp token/projection -> #55 admission -> main-integration authority-match receipt -> #35 prepare/confirm -> cutover context -> staged source read/validate/compare -> scrub/readback -> cutover`；任何其他排序都不能写journal或进入source/cutover port。唯一public resume request是`stageId + expectedResumeCas{revision,digest}`，独立no-value result三arm每次都返回`currentResumeCas`且不含candidate/owner/ref/summary；durable object、fresh process nonce、owner、admission、record/backend/checkpoint与promoted-owner identity只作为digest preimage。每次fresh nonce/admission都递增revision、重算digest并使旧request stale；cancel/discard只由同一broker持有的一次性authority完成。
+9. **Staged import只有一条authority顺序。** `temp token/projection -> #55 admission -> main-integration authority-match receipt -> #35 prepare/confirm -> cutover context -> staged source read/validate/compare -> scrub/readback -> cutover`；任何其他排序都不能写journal或进入source/cutover port。唯一public resume request是`stageId + expectedResumeCas{revision,digest}`，独立no-value result三arm每次都返回`currentResumeCas`且不含candidate/owner/ref/summary；journal operationId、durable object、fresh process nonce、owner、admission、record/backend、exact五arm resume phase累计receipt与promoted-owner identity只作为digest preimage。每次phase/fresh nonce/admission都递增revision、重算digest并使旧request stale；cancel/discard只由同一broker持有的一次性authority完成。
 10. **Backend authority先于platform API。** Durable authority只使用`DeviceInstanceId=dev_*`；每次open另mint non-Serde/non-Clone的process-local `DeviceSecretStoreInstanceId`，live handle/scope以`Arc<DeviceSecretStoreInstanceId>`同时绑定两种identity、exact registered `Arc`、instance/generation与record handle。Process identity绝不进入state/journal/audit/backend locator。Platform raw result必须回报backend/device generation，registered wrapper在任何material、receipt或hint出界前复核。Central/device revocation只能由显式`Revoke` authorization驱动`observe_revocation_once`并产生full-CAS、non-clone、consuming receipt；普通read/probe最多返回不可持久化hint。
 11. **Capture authority来自broker独占的native短期registry。** Backend options query在一个snapshot内读取durable/process store identity、owner/purpose、capture kind、current owner-binding revision与hidden bound expectation；唯一`CodexLegacySourceInventoryBridge`构造`CompleteLegacySourceInventoryAuthority`，由`pub(crate) LegacySourceCoverageReceipt::checked_from_complete_inventory_authority`按value消费并mint原子包含non-value-derived inventory revision、exact 11-domain identity、current-scrubbable exact expectations与adjacent-blocked observations的opaque receipt。Begin只接受intent id和exact backend instance id；operation broker原子claim、bridge fresh revalidate完整receipt并选择自己的private operation context，renderer从不构造binding/legacy authority。New、replace与legacy-conflict reconcile共用这一typed flow。
 
@@ -49,6 +49,9 @@
 | CAV7-007–008 | §4.4、§11.3：operation broker封装private capability id、claim/discard与role extraction；每种backend context私有并消费本种opaque authority |
 | CAV7-009 | §8.2、§11.1：`SecretBootstrapToken`为合法可命名的`pub(crate)` sibling token、字段/constructor仍private且只能从opened store借用 |
 | CAV7-010 | §11.3：device/native只使用合同的exhaustive private `SecretInternalError` factories与total action destination；无unrouted fallback或unregistered legacy destination |
+| ARR-001 | §4.4、§6、§7.1.1、§11.3：candidate discard/expiry拥有`RecordDelete|RecordMissingReadback`两独立slot/auth；Validate missing只消费durable三字段checkpoint，phase到terminal且不新增operation/recovery kind |
+| ARR-002 | §4.2、§6、§7.3–§7.4：normal activation、durable failure与activationCleanup各保留role-specific disposition/time/CAS checkpoint；RecoveryRequired可checked reconstruct且terminal revokedAt只取backend completion time |
+| ARR-003 | §6、§8.3、§13：resume CAS绑定journal operationId与exact五arm累计receipt union；五个canonical digest fixture/crash case覆盖每phase与fresh identity CAS变化 |
 
 此表只代表本模块给出的 closure design。主线程仍须把裁定同步到所有权威文件并由三位 reviewer 对同一 exact working tree 重新回读。
 
@@ -156,7 +159,41 @@ SecretCaptureIntentId     = sci_ + UUIDv4 simple lowercase hex
 
 `DeviceSecretStoreInstanceId`不是上述durable/public ID。它是`SecretBootstrap::open`每次成功取得lifetime lock后随机mint的process-local `[u8;16]` opaque nonce，type本身无Serde/text/Clone/Debug；opened store创建唯一`Arc<DeviceSecretStoreInstanceId>`，随后只把该Arc的clone放入同一`SecretService`拥有的live handle/scope/pending/receipt，teardown时整体失效。Durable `DeviceInstanceId`仍表示当前设备namespace，二者不可互换。`state.json`、journal、audit、backend instance identity和所有canonical hash/preimage只编码durable `deviceInstanceId=dev_*`，绝不编码process nonce、其地址或派生值。每条loaded record在进入backend broker前都包装为同时持有`DeviceInstanceId + Arc<DeviceSecretStoreInstanceId> + RegisteredBackendHandleBinding`的process-local handle；任一durable或process identity不匹配都在platform call前拒绝，因而复制state不能伪造live handle，旧进程的scope/receipt也不能在新open store中重放。
 
-`BackendDeleteAppliedCas { revision: BackendDeleteAppliedRevision, digest: RecoveryStructureDigest }`是不同于store/recovery CAS的operation-bound structural checkpoint。Broker在hardware prepare前只能持有`BackendDeleteAppliedCasReservation { operationId, expectedRevision }`；delete/already-missing receipt已durable写入exact `backendApplied|OldRecordDeleteApplied`后，authority才从该journal的credential-free preimage mint actual CAS。Missing-readback authorization必须消费与reservation同operation/revision一致的actual CAS，`BackendMissingReadbackReceipt`也绑定它；因此预先physical confirm不能越过durable delete checkpoint。
+`BackendDeleteAppliedCas { revision: BackendDeleteAppliedRevision, digest: RecoveryStructureDigest }`是不同于store/recovery CAS的operation-bound structural checkpoint。Broker在hardware prepare前只能持有`BackendDeleteAppliedCasReservation { operationId, expectedRevision }`；delete/already-missing receipt已durable写入exact `backendApplied|OldRecordDeleteApplied`后，authority才从该journal的credential-free preimage mint actual CAS。Missing-readback authorization必须消费与reservation同operation/revision一致的actual CAS，`BackendMissingReadbackReceipt`也绑定它；因此预先physical confirm不能越过durable delete checkpoint。Candidate terminal cleanup与activation old-record cleanup各自使用不可互转的role-specific record，二者都恰好保留同一三字段：
+
+```text
+CandidateDiscardDeleteCheckpoint {
+  deleteDisposition: "deleted" | "alreadyMissing",
+  backendCompletedAt,
+  deleteAppliedCas: BackendDeleteAppliedCas
+}
+
+ActivationOldRecordDeleteCheckpoint {
+  deleteDisposition: "deleted" | "alreadyMissing",
+  backendCompletedAt,
+  deleteAppliedCas: BackendDeleteAppliedCas
+}
+
+RecoveryOldRecordDeleteCheckpoint {
+  deleteDisposition: "deleted" | "alreadyMissing",
+  backendCompletedAt,
+  deleteAppliedCas: BackendDeleteAppliedCas
+}
+
+ActivationOldRecordDurableCheckpoint =
+  | { state: "none" }
+  | { state: "oldRecordDeleteApplied",
+      deleteDisposition: "deleted" | "alreadyMissing",
+      backendCompletedAt,
+      deleteAppliedCas: BackendDeleteAppliedCas }
+
+ActivationOldRecordDeleteApplied {     // process-local runtime proof
+  postcondition: ActivationOldRecordDeletePostconditionReceipt,
+  checkpoint: ActivationOldRecordDeleteCheckpoint
+}
+```
+
+任一checkpoint缺字段、unchecked跨role转换或仅保存CAS都不能mint missing-readback authority。Normal activation只消费`ActivationOldRecordDeleteCheckpoint`，activationCleanup只消费`RecoveryOldRecordDeleteCheckpoint`；durable failure由`ActivationOldRecordDurableCheckpoint`保留exact三字段并通过checked reconstruction生成对应recovery record。`ActivationOldRecordDeleteApplied`另持process-local postcondition，不把它伪装成durable三字段。`backendCompletedAt`来自同一durable `BackendDeleteReceipt`，不是request/missing time。
 
 ### 4.2 `state.json`
 
@@ -282,9 +319,7 @@ ActivationCleanupRecoveryState =
     }
   | {
       phase: "oldRecordDeleteApplied",
-      deleteDisposition: "deleted" | "alreadyMissing",
-      backendCompletedAt,
-      deleteAppliedCas: BackendDeleteAppliedCas,
+      checkpoint: RecoveryOldRecordDeleteCheckpoint,
       remainingSteps: [ActivationVerifyOldRecordMissingStep]
     }
   | {
@@ -293,9 +328,7 @@ ActivationCleanupRecoveryState =
         | { state: "none" }
         | {
             state: "oldRecordDeleteApplied",
-            deleteDisposition: "deleted" | "alreadyMissing",
-            backendCompletedAt,
-            deleteAppliedCas: BackendDeleteAppliedCas
+            checkpoint: RecoveryOldRecordDeleteCheckpoint
           },
       remainingSteps: sorted non-empty ActivationCleanupRecoveryStep[]
     }
@@ -359,9 +392,9 @@ ActivationVerifyOldRecordMissingStep {
   requiresDeleteAppliedCas: true
 }
 
-这里以及`CaptureVerifyMissingStep`、`DeleteVerifyMissingStep`的`readConfirmation`都不是独立missing policy：checked factory必须从同一record的`SecretBackendOperation::Validate`/`operationConfirmation.validate`复制并在CAS preimage中固定它。三种step仍分别使用自己的`*MissingReadback` slot/scope、actual delete-applied CAS、one-shot authorization、platform call、receipt与checkpoint；相同Validate confirmation不能合并authority。
+这里以及`CandidateDiscardVerifyMissingStep`、`CaptureVerifyMissingStep`、`DeleteVerifyMissingStep`的`readConfirmation`都不是独立missing policy：checked factory必须从同一record的`SecretBackendOperation::Validate`/`operationConfirmation.validate`复制并在CAS preimage中固定它。四种step仍分别使用自己的`*MissingReadback` slot/scope、actual delete-applied CAS、one-shot authorization、platform call、receipt与checkpoint；相同Validate confirmation不能合并authority。
 
-`verifyOldRecordMissing`是activation cleanup的最后一步，不存在第四个finalize-supersession step。独立missing authorization消费actual `BackendDeleteAppliedCas`；fresh `BackendMissingReadbackReceipt`只在同一device-authority durable transaction中按value消费，该事务持久化`supersededByRotation + revokedAt=BackendDeleteReceipt.completedAt + terminal`，而不编码receipt/`missingCheckedAt`。Crash只能看见事务前`oldRecordDeleteApplied + [verifyOldRecordMissing]`，或事务后`terminal + []`；不持久/公开standalone old-record missing checkpoint或空suffix nonterminal。
+`verifyOldRecordMissing`是activation cleanup的最后一步，不存在第四个finalize-supersession step。独立missing authorization只消费`RecoveryOldRecordDeleteCheckpoint.deleteAppliedCas`；fresh `BackendMissingReadbackReceipt`只在同一device-authority durable transaction中按value消费，该事务持久化`supersededByRotation + revokedAt=RecoveryOldRecordDeleteCheckpoint.backendCompletedAt + terminal`，而不编码receipt/`missingCheckedAt`。Crash只能看见事务前完整三字段`oldRecordDeleteApplied + [verifyOldRecordMissing]`，或事务后`terminal + []`；不持久/公开standalone old-record missing checkpoint或空suffix nonterminal。
 
 CaptureCompensationRecoveryRecord {
   kind: "captureCompensation",
@@ -673,6 +706,8 @@ oldRecordTerminal\0notApplicable\n
 oldRecordTerminal\0<deleted|alreadyMissing>\n
 supersession\0supersededByRotation\0<backendCompletedAt>\n
 ```
+
+`activationCleanup`的`deleteReceipt`行正是`RecoveryOldRecordDeleteCheckpoint`三字段canonical encoding；normal activation的`ActivationOldRecordDeleteCheckpoint`与durable failure的`ActivationOldRecordDurableCheckpoint`使用同一字段编码但保持role不互转。Terminal arm原子消费missing receipt后用recovery checkpoint的`backendCompletedAt`写supersession，并按上表替换掉intermediate checkpoint rows。
 
 这里只编码仍remaining的step，rank固定`finalizeLegacyScrub < deleteOldRecord < verifyOldRecordMissing`；old-record `bindingSetCount`必须为`0`。Crash-visible checkpoint只能为`none|deleteApplied|stateFinalized`：`deleteApplied`编码delete receipt、backend terminal time、actual `BackendDeleteAppliedCas`与唯一remaining `verifyOldRecordMissing`；missing authorization消费该CAS与fresh missing receipt后，同一device-authority transaction只持久化`supersededByRotation + revokedAt=backendCompletedAt + terminal`，绝不编码standalone missing checkpoint/receipt、`missingCheckedAt`或nonterminal empty suffix。Terminal移除intermediate delete receipt并只编码`oldRecordTerminal\0notApplicable`，或`oldRecordTerminal\0<deleted|alreadyMissing> + supersession\0supersededByRotation\0<backendCompletedAt>`。Delete receipt不能授权missing readback，missing hint不能授权supersession。
 
@@ -1083,13 +1118,13 @@ ActivateCandidateJournalPhase =
   | { state: "providerFinalized" }
   | { state: "oldRecordDeleteIntent" }
   | { state: "oldRecordDeleteApplied",
-      deleteDisposition: "deleted" | "alreadyMissing", backendCompletedAt,
-      deleteAppliedCas: BackendDeleteAppliedCas }
+      checkpoint: ActivationOldRecordDeleteCheckpoint }
   | { state: "recoveryRequired", lastErrorCode,
+      checkpoint: ActivationOldRecordDurableCheckpoint,
       recovery: { kind: "activationCleanup", recoveryId, recoveryCas } }
   | { state: "terminal", outcome: "activated" }
 
-Normal activation也不存在standalone old-record missing checkpoint。`ActivationConfirmationSlot::OldRecordMissingReadback`消费`oldRecordDeleteApplied.deleteAppliedCas`与fresh missing receipt后，同一个device-authority durable transaction只持久化`supersededByRotation`、`revokedAt=BackendDeleteReceipt.completedAt`与`terminal`；不编码receipt/`missingCheckedAt`，后者也不是revokedAt来源。
+Normal activation也不存在standalone old-record missing checkpoint。`ActivationConfirmationSlot::OldRecordMissingReadback`只能消费`oldRecordDeleteApplied.checkpoint.deleteAppliedCas`，而`recoveryRequired`必须原样保留同一role-specific三字段record，使activationCleanup可无side channel重建。Fresh missing receipt后，同一个device-authority durable transaction只持久化`supersededByRotation`、`revokedAt=checkpoint.backendCompletedAt`与`terminal`；不编码receipt/`missingCheckedAt`，后者也不是revokedAt来源。
 
 DiscardCandidateJournal {
   operationKind: "discardCandidate",
@@ -1100,18 +1135,51 @@ DiscardCandidateJournal {
   targetOwners: sorted non-empty SecretOwner[],
   expectedBindings: sorted non-empty OwnerBindingExpectation[],
   record: JournalBackendIdentity,
+  deleteSlot: "CandidateDiscardConfirmationSlot::RecordDelete",
+  missingReadbackSlot: "CandidateDiscardConfirmationSlot::RecordMissingReadback",
+  deleteConfirmation: "never" | "optional" | "required",
+  missingReadbackConfirmation: "never" | "optional" | "required",
   phase: DiscardCandidateJournalPhase
 }
 
 DiscardCandidateJournalPhase =
   | { state: "intent" }
   | { state: "backendApplied",
-      deleteDisposition: "deleted" | "alreadyMissing", backendCompletedAt }
-  | { state: "missingReadbackVerified", missingCheckedAt }
-  | { state: "stateFinalized", terminalDisposition: "discarded" | "expired" }
+      checkpoint: CandidateDiscardDeleteCheckpoint }
+  | { state: "missingReadbackVerified",
+      checkpoint: CandidateDiscardDeleteCheckpoint,
+      missingCheckedAt }
   | { state: "recoveryRequired", lastErrorCode,
-      checkpoint: "intent" | "backendApplied" | "missingReadbackVerified" }
+      checkpoint:
+        | { state: "intent" }
+        | { state: "backendApplied",
+            checkpoint: CandidateDiscardDeleteCheckpoint }
+        | { state: "missingReadbackVerified",
+            checkpoint: CandidateDiscardDeleteCheckpoint,
+            missingCheckedAt } }
   | { state: "terminal", terminalDisposition: "discarded" | "expired" }
+
+CandidateDiscardPreparedBundle {
+  delete: one-shot "CandidateDiscardConfirmationSlot::RecordDelete"
+          authorization for SecretBackendOperation::Delete,
+  missingReadback: one-shot
+          "CandidateDiscardConfirmationSlot::RecordMissingReadback"
+          authorization for SecretBackendOperation::Validate,
+  deleteAppliedCasReservation: BackendDeleteAppliedCasReservation
+}
+
+CandidateDiscardDeleteStep {
+  authorizationSlot: "CandidateDiscardConfirmationSlot::RecordDelete",
+  operation: "Delete"
+}
+
+CandidateDiscardVerifyMissingStep {
+  authorizationSlot: "CandidateDiscardConfirmationSlot::RecordMissingReadback",
+  operation: "Validate",
+  requiresDeleteAppliedCas: true
+}
+
+两个candidate-discard slot在同一次explicit prepare中可完成各自physical confirmation，但missing authorization仍被冻结为reservation，只有`backendApplied.checkpoint`三字段durable后才能消费matching actual CAS。`backendApplied → missingReadbackVerified → terminal`是唯一post-intent phase顺序；terminal transaction完成candidate/record state、audit与journal terminal，不存在candidate-discard `stateFinalized` phase，也不创建general recovery row。
 
 DeleteSecretJournal {
   operationKind: "deleteSecret",
@@ -1189,23 +1257,38 @@ StagedImportJournal {
   phase: StagedImportJournalPhase
 }
 
+StagedImportResumePhase =
+  | { state: "intent" }
+  | { state: "sourcesScrubbed", stagedSourceSetCasAfterScrub }
+  | { state: "cutoverCommitted", stagedSourceSetCasAfterScrub,
+      cutoverReceiptId }
+  | { state: "liveOwnerMinted", stagedSourceSetCasAfterScrub,
+      cutoverReceiptId,
+      promotedLiveOwner: { owner, ownerBindingRevision, providerRowRevision } }
+  | { state: "localBindingFinalized", stagedSourceSetCasAfterScrub,
+      cutoverReceiptId,
+      promotedLiveOwner: { owner, ownerBindingRevision, providerRowRevision } }
+
 StagedImportJournalPhase =
   | { state: "intent" }
   | { state: "sourcesScrubbed", stagedSourceSetCasAfterScrub }
-  | { state: "cutoverCommitted", cutoverReceiptId }
-  | { state: "liveOwnerMinted", cutoverReceiptId,
+  | { state: "cutoverCommitted", stagedSourceSetCasAfterScrub,
+      cutoverReceiptId }
+  | { state: "liveOwnerMinted", stagedSourceSetCasAfterScrub,
+      cutoverReceiptId,
       promotedLiveOwner: { owner, ownerBindingRevision, providerRowRevision } }
-  | { state: "localBindingFinalized", cutoverReceiptId,
+  | { state: "localBindingFinalized", stagedSourceSetCasAfterScrub,
+      cutoverReceiptId,
       promotedLiveOwner: { owner, ownerBindingRevision, providerRowRevision } }
   | { state: "recoveryRequired", lastErrorCode,
-      checkpoint:
-        | { state: "sourcesScrubbed", stagedSourceSetCasAfterScrub }
-        | { state: "cutoverCommitted", cutoverReceiptId }
-        | { state: "liveOwnerMinted", cutoverReceiptId, promotedLiveOwner } }
-  | { state: "terminal", cutoverReceiptId, promotedLiveOwner }
+      resumePhase: StagedImportResumePhase }
+  | { state: "terminal", stagedSourceSetCasAfterScrub,
+      cutoverReceiptId, promotedLiveOwner }
 ```
 
-每个variant与每个phase object都`deny_unknown_fields`并通过private checked factory；上表未列字段必须absent，不能用`Option`/flatten/default把phase receipt、plan、backend、owner或recovery authority藏成generic bag。共同名字不代表可跨variant复用：例如只有activation/staged import有plan admission，只有delete有user-delete admission，只有detach有Provider impact/transaction，缺失的authority不能用null/空串占位。`OperationJournalEnvelope.deviceInstanceId`与每个`JournalBackendIdentity.deviceInstanceId`必须等于opened store加载的durable `DeviceInstanceId`；journal/backend identity绝不编码`DeviceSecretStoreInstanceId`，process binding只在live `BackendRecordHandle/BackendAuthorizationScope`中以Arc保留。Activation old-delete、user-delete和其各自fresh missing readback的slot literal必须与prepared bundle、journal phase、recovery step/CAS逐字一致；任何组合`deleteAndReadback` phase/API均非法。禁止material、secret/value/token/password、raw error、source path、backend locator、secret-bearing Provider JSON/TOML、material/value-derived hash及DB/file content hash。
+`StagedImportResumePhase`是resume CAS唯一phase algebra，也是journal前五个progress arm与`recoveryRequired` last-completed arm的exact isomorphic projection。字段严格累计：`intent`无phase receipt；`sourcesScrubbed`要求`stagedSourceSetCasAfterScrub`；`cutoverCommitted`要求前者加`cutoverReceiptId`；`liveOwnerMinted`再加`promotedLiveOwner`；`localBindingFinalized`保留同三字段并由phase literal证明local CAS已durable。每个arm未列字段必须absent，不能用optional receipt bag或从较晚phase删字段。Terminal的current resume CAS固定投影为`localBindingFinalized`并保留三字段。Unknown phase、`recoveryRequired`缺resumePhase或跨phase额外/缺失字段都strict decode失败。
+
+每个variant与每个phase object都`deny_unknown_fields`并通过private checked factory；上表未列字段必须absent，不能用`Option`/flatten/default把phase receipt、plan、backend、owner或recovery authority藏成generic bag。共同名字不代表可跨variant复用：例如只有activation/staged import有plan admission，只有delete有user-delete admission，只有detach有Provider impact/transaction，缺失的authority不能用null/空串占位。`OperationJournalEnvelope.deviceInstanceId`与每个`JournalBackendIdentity.deviceInstanceId`必须等于opened store加载的durable `DeviceInstanceId`；journal/backend identity绝不编码`DeviceSecretStoreInstanceId`，process binding只在live `BackendRecordHandle/BackendAuthorizationScope`中以Arc保留。Candidate discard、activation old-delete、user-delete和其各自fresh missing readback的slot literal必须与prepared bundle、journal phase、recovery step/CAS逐字一致；每个missing authorization只消费本role durable三字段checkpoint中的actual CAS，任何组合`deleteAndReadback` phase/API均非法。禁止material、secret/value/token/password、raw error、source path、backend locator、secret-bearing Provider JSON/TOML、material/value-derived hash及DB/file content hash。
 
 Crash-to-recovery映射是封闭表：
 
@@ -1226,7 +1309,7 @@ Crash-to-recovery映射是封闭表：
 
 现有`get_secret_cleanup_impact/retry_secret_cleanup`是唯一公开recovery入口，command count不增加；其DTO按`recovery.kind`判别：
 
-- `activationCleanup`：只解码`finalizeLegacyScrub|deleteOldRecord|verifyOldRecordMissing`；携带exact candidate/active ref/affected owners与逐step完整backend identity。`RecoveryConfirmationSlot::{ActiveRecordRead,OldRecordDelete,OldRecordMissingReadback}`是三个独立slot；全部hardware confirmation在#41 Provider lease前完成。Old delete写durable receipt + `BackendDeleteAppliedCas`；missing authorization消费与该actual CAS匹配的reservation及fresh missing receipt，同一durable transaction只持久化`supersededByRotation`、`revokedAt=BackendDeleteReceipt.completedAt`与terminal，无第四step/空suffix phase或terminal receipt/time字段。
+- `activationCleanup`：只解码`finalizeLegacyScrub|deleteOldRecord|verifyOldRecordMissing`；携带exact candidate/active ref/affected owners与逐step完整backend identity。`RecoveryConfirmationSlot::{ActiveRecordRead,OldRecordDelete,OldRecordMissingReadback}`是三个独立slot；全部hardware confirmation在#41 Provider lease前完成。Recovery old delete写durable `RecoveryOldRecordDeleteCheckpoint{deleteDisposition,backendCompletedAt,deleteAppliedCas}`；从activation journal进入该row时只能由`ActivationOldRecordDurableCheckpoint` checked reconstruct，missing authorization只消费recovery checkpoint的actual CAS与fresh missing receipt。同一durable transaction只持久化`supersededByRotation`、`revokedAt=checkpoint.backendCompletedAt`与terminal，无第四step/空suffix phase或terminal receipt/time字段。
 - `captureCompensation`：只解码`deleteUncommittedRecord → verifyUncommittedRecordMissing → finalizeCaptureCompensation`；exact uncommitted candidate/record/backend identity。Broker预备`RecoveryConfirmationSlot::UncommittedRecordDelete`与reservation-bound `UncommittedRecordMissingReadback`；先consume delete，durable `deleteApplied{deleteAppliedCas}`后actual CAS才能满足reservation并consume missing authorization。两者不能共享authorization/context；fresh missing另写`missingReadbackVerified`，随后才retire未提交record/candidate intent。
 - `deleteFinalization`：只解码`deleteAdmittedRecord → verifyDeletedRecordMissing → finalizeDeletedRecord`；exact durable user-delete admission、record/owners/backend与`userDelete` provenance。`RecoveryConfirmationSlot::AdmittedRecordDelete`与reservation-bound `AdmittedRecordMissingReadback`是两个独立prepared slot；delete receipt + actual CAS checkpoint先durable，missing authorization再consume该CAS。Confirmed missing后写truthful revoked tombstones；没有该admission的missing仍是accidental missing。
 - `ownerDetachFinalization`：只解码`finalizeOwnerDetach`；Provider detach impact/transaction/commit及`currentLegacyState=none`已durable，只接受main-integration mint的already-held detach context。Bound arm完成owner tombstone与ref binding-set CAS，unbound arm只完成owner tombstone；不存在legacy arm，也没有backend handle/step，backend secret始终保留。
@@ -1264,11 +1347,11 @@ Crash-to-recovery映射是封闭表：
 
 #### 7.1.1 Candidate expiry/discard cleanup
 
-`expiresAt`只禁止继续activation；它本身不允许把durable state直接翻成`expired`，也不允许遗留不可达backend entry。Explicit discard与expiry sweep都创建/恢复同一个`operationKind=discardCandidate`，并在首次intent把immutable `terminalDisposition`分别固定为`discarded`或`expired`。完整顺序是：fresh-validate candidate/record/backend/device/capability → durable `intent` → broker consume exact candidate-delete authorization/confirmation → delete/already-missing → durable `backendApplied`（含disposition/time）→ 从该checkpoint mint/consume独立candidate-missing-readback authorization → fresh authorized `Validate` confirms missing → durable `missingReadbackVerified` → atomically remove unbound record并写exact terminal candidate state → `stateFinalized`/audit/terminal。retry/startup只能装载原target，不能把expired改写为discarded或反向改写；cancel/discard authority由broker按value消费且只有这一条terminalization path。
+`expiresAt`只禁止继续activation；它本身不允许把durable state直接翻成`expired`，也不允许遗留不可达backend entry。Explicit discard与expiry sweep都创建/恢复同一个`operationKind=discardCandidate`，并在首次intent把immutable `terminalDisposition`分别固定为`discarded`或`expired`。Broker为explicit flow准备`CandidateDiscardConfirmationSlot::{RecordDelete,RecordMissingReadback}`两枚不可互换、one-shot authorization；missing slot执行`SecretBackendOperation::Validate`并复制record的`operationConfirmation.validate`。完整顺序是：fresh-validate candidate/record/backend/device/capability → durable `intent` → consume candidate-delete authorization → delete/already-missing → durable `backendApplied{checkpoint: CandidateDiscardDeleteCheckpoint{deleteDisposition,backendCompletedAt,deleteAppliedCas}}` → candidate-missing authorization消费与该actual CAS匹配的reservation → fresh authorized `Validate` confirms missing → durable `missingReadbackVerified{checkpoint,missingCheckedAt}` → atomically remove unbound record、写exact terminal candidate state/audit与journal `terminal`。Post-intent phase只有`backendApplied → missingReadbackVerified → terminal`，没有`stateFinalized`。Retry/startup只能装载原target，不能把expired改写为discarded或反向改写；cancel/discard authority由broker按value消费且只有这一条terminalization path。
 
 任一confirmation cancel/expiry、locked/denied/unavailable、delete outcome不确定、missing readback失败、crash或state commit失败，都保持candidate=`verifiedPendingPlan`，并公开且仅公开：`pendingTerminalDisposition=<journal target>`、`issue={code:SECRET_OPERATION_RECOVERY_REQUIRED,retryable:true,action:discardCandidate}`。该形态禁止general recovery pointer，但仍由candidate id/revision到达同一journal；它既不是`cleanupRequired`，也不创建第五recovery kind。只有journal terminal后才公开`discarded|expired`并同时移除`pendingTerminalDisposition`与issue。Terminal `expired`的唯一action是`refreshSummary`：先重读current owner/card truth，随后由新的options query mint全新`SecretCaptureIntentId`或由rotation impact mint全新rotation authority；它绝不返回`retryCapture`，也不复用旧candidate、operation、backend authorization或admission。`SECRET_CANDIDATE_EXPIRED`可以解释activation为何被拒绝，但不能代替上述pending cleanup issue或证明backend已删除。
 
-OS-keyring的`delete`与`validate` confirmation均为`never`时startup/list sweep可自动推进；future hardware任一对应policy需要物理确认时，不得后台弹窗或静默回退，只能由显式`discard_secret_candidate` prepare/confirm继续原journal。因此每个terminal candidate都对应exact backend delete/already-missing、fresh authorized Validate missing readback和durable state finalization，任一未清理entry始终可由candidate/journal到达。
+OS-keyring的`delete`与`validate` confirmation均为`never`时startup/list sweep可自动推进；future hardware任一对应policy需要物理确认时，不得后台弹窗或静默回退，只能由显式`discard_secret_candidate` prepare/confirm继续原journal。因此每个terminal candidate都对应exact backend delete/already-missing、含三字段checkpoint的durable `backendApplied`、fresh authorized Validate missing readback与原子terminal state commit，任一未清理entry始终可由candidate/journal到达。
 
 ### 7.2 Legacy migrate
 
@@ -1325,7 +1408,7 @@ staged SQL/restore/sync migration 的 DB cutover 在 §8 定义：需要新 bind
 
 ### 7.3 Bind / activate candidate from admitted Change Plan
 
-`activateCandidate` 是唯一 ordinary current-owner bind入口。#41先分别prepare `ActivationConfirmationSlot::{CandidateRead,OldRecordDelete,OldRecordMissingReadback}`，并在无lease时完成全部hardware confirmation；missing slot只预留`BackendDeleteAppliedCasReservation`，不因预确认而获得probe authority。随后才取得独立activation Provider lease并完成#55 final baseline。#35方法本身不申请lease。它消费native #55 admission/prepared bundle并 re-read candidate/record/backend/capability/`OwnerBindingExpectation`。在lease保护下，对每个 `LegacySourceExpectation` 重新解析当前位置并验证exact set/revision：`candidateEquality`还把每个current value与prepared candidate backend read做常量时间比较；`explicitReplacement`只接受用户已批准的replace impact并scrub exact sources，不做不可能的old==new比较。location/revision缺失或额外source均在durable intent/binding切换前返回 stale/dependency changed、`effect=none`；equality policy的value drift同样失败。成功序列：durable `intent` → exact binding CAS/state commit（candidate=`activated`）→ durable `stateFinalized` →同一lease-bound Provider transaction只scrub projection列明的exact refs并做structural readback→ durable `providerFinalized`。无old record时可audit/terminal；rotation时必须继续：durable `oldRecordDeleteIntent` → consume prepared `OldRecordDelete` → backend delete/already-missing → durable `oldRecordDeleteApplied{deleteAppliedCas}` → `OldRecordMissingReadback`消费与actual CAS匹配的reservation及fresh missing receipt → 同一durable transaction只持久化state old=`revoked/supersededByRotation`、`revokedAt=BackendDeleteReceipt.completedAt`与terminal。不存在standalone old-missing/supersession phase或terminal receipt/time字段；任何实现为一个`delete_and_readback_missing`调用都违反合同。Candidate activation不写live target；#41释放activation lease后，绑定成立的owner重新进入readiness并由#55创建独立live-apply plan，再走prepare/confirm/new lease/backup/resolve。
+`activateCandidate` 是唯一 ordinary current-owner bind入口。#41先分别prepare `ActivationConfirmationSlot::{CandidateRead,OldRecordDelete,OldRecordMissingReadback}`，并在无lease时完成全部hardware confirmation；missing slot只预留`BackendDeleteAppliedCasReservation`，不因预确认而获得probe authority。随后才取得独立activation Provider lease并完成#55 final baseline。#35方法本身不申请lease。它消费native #55 admission/prepared bundle并 re-read candidate/record/backend/capability/`OwnerBindingExpectation`。在lease保护下，对每个 `LegacySourceExpectation` 重新解析当前位置并验证exact set/revision：`candidateEquality`还把每个current value与prepared candidate backend read做常量时间比较；`explicitReplacement`只接受用户已批准的replace impact并scrub exact sources，不做不可能的old==new比较。location/revision缺失或额外source均在durable intent/binding切换前返回 stale/dependency changed、`effect=none`；equality policy的value drift同样失败。成功序列：durable `intent` → exact binding CAS/state commit（candidate=`activated`）→ durable `stateFinalized` →同一lease-bound Provider transaction只scrub projection列明的exact refs并做structural readback→ durable `providerFinalized`。无old record时可audit/terminal；rotation时必须继续：durable `oldRecordDeleteIntent` → consume prepared `OldRecordDelete` → backend delete/already-missing → durable `oldRecordDeleteApplied{checkpoint: ActivationOldRecordDeleteCheckpoint}` → `OldRecordMissingReadback`消费checkpoint内actual CAS及fresh missing receipt → 同一durable transaction只持久化state old=`revoked/supersededByRotation`、`revokedAt=checkpoint.backendCompletedAt`与terminal。Process-local `ActivationOldRecordDeleteApplied`另持postcondition；failure只把三字段写为`ActivationOldRecordDurableCheckpoint`，activationCleanup再checked reconstruct为`RecoveryOldRecordDeleteCheckpoint`。三种role record字段相同但不可unchecked互转；不存在standalone old-missing/supersession phase或terminal receipt/time字段，任何实现为一个`delete_and_readback_missing`调用都违反合同。Candidate activation不写live target；#41释放activation lease后，绑定成立的owner重新进入readiness并由#55创建独立live-apply plan，再走prepare/confirm/new lease/backup/resolve。
 
 若 binding 已切换但 `providerFinalized` 尚未 durable，exact public映射为：owner `credentialState=bound`；对应 ref aggregate `availability=stale` 且 issue=`SECRET_OPERATION_RECOVERY_REQUIRED`；candidate state=`cleanupRequired`，action=`completeRecovery`。所有 Codex resolve/apply/proxy/usage/balance/model-fetch/`codingPlanUsageProbe` consumer均 fail closed，直到 startup或显式cleanup command完成结构化 scrub；不能以自由文案或“public projection已脱敏”替代内部副本清理。
 
@@ -1338,8 +1421,8 @@ staged SQL/restore/sync migration 的 DB cutover 在 §8 定义：需要新 bind
 3. state commit new unbound record + `rotateBindingSet/verifiedPendingPlan` candidate；old binding/record不变；durable `stateFinalized`/audit/terminal。
 4. #55把完整 activation projection纳入 immutable plan；用户批准后走 §7.3 activation。
 5. activation state commit一次性切 plan点名的完整 binding set、candidate=`activated`、old retirement=`stale`；durable `stateFinalized`。
-6. durable `oldRecordDeleteIntent`；consume独立`ActivationConfirmationSlot::OldRecordDelete`，delete/already-missing后durable `oldRecordDeleteApplied{deleteDisposition,backendCompletedAt,deleteAppliedCas}`。此时old record仍是pending cleanup，绝不写supersession。
-7. `ActivationConfirmationSlot::OldRecordMissingReadback`消费与actual CAS匹配的reservation并执行fresh authorized `Validate` missing readback。Confirmed missing receipt在同一device-authority durable transaction内按value消费，该事务只持久化`revoked, revocationSource=supersededByRotation, revokedAt=backendCompletedAt`与terminal/audit；无standalone old-record-missing/supersession-finalized phase或terminal receipt/time字段，`missingCheckedAt`不能替代backend completion time。
+6. durable `oldRecordDeleteIntent`；consume独立`ActivationConfirmationSlot::OldRecordDelete`，delete/already-missing后durable `oldRecordDeleteApplied{checkpoint: ActivationOldRecordDeleteCheckpoint{deleteDisposition,backendCompletedAt,deleteAppliedCas}}`。此时old record仍是pending cleanup，绝不写supersession；转入`recoveryRequired`必须以`ActivationOldRecordDurableCheckpoint`原样保留三字段。
+7. `ActivationConfirmationSlot::OldRecordMissingReadback`消费checkpoint内与actual CAS匹配的reservation并执行fresh authorized `Validate` missing readback。Confirmed missing receipt在同一device-authority durable transaction内按value消费，该事务只持久化`revoked, revocationSource=supersededByRotation, revokedAt=checkpoint.backendCompletedAt`与terminal/audit；无standalone old-record-missing/supersession-finalized phase或terminal receipt/time字段，`missingCheckedAt`不能替代backend completion time。
 
 crash matrix：
 
@@ -1347,7 +1430,7 @@ crash matrix：
 - backendApplied/candidate state未落：expectation仍匹配则落 verified candidate；不匹配则补偿删除 new。
 - candidate stateFinalized、activation前：old binding保持；new entry只可 discard或重新计划，绝不自行切换。
 - activation stateFinalized 之后：**永不回滚 binding 到 old**；startup按exact checkpoint恢复。delete unknown/failure时完整owner set仍绑定new ref，但active new ref=`stale + SECRET_OPERATION_RECOVERY_REQUIRED`、candidate=`cleanupRequired`、所有consumer blocked；old record保持pending cleanup，journal/recovery row提供typed recovery。Delete成功但receipt未durable时只可重做幂等delete；receipt durable后绝不再次把delete结果当missing证明。
-- `oldRecordDeleteApplied`：只能用durable receipt的actual `BackendDeleteAppliedCas`满足已预备missing-readback reservation；present/unknown/locked/denied保留recovery与`remaining=[verifyOldRecordMissing]`，不能supersede。
+- `oldRecordDeleteApplied`：只能用durable role-specific checkpoint的actual `BackendDeleteAppliedCas`满足已预备missing-readback reservation；checkpoint的disposition/time/CAS在normal journal、recovery row与`recoveryRequired`逐字段相同，present/unknown/locked/denied保留该record及`remaining=[verifyOldRecordMissing]`，不能supersede。
 - missing success：不形成空suffix intermediate phase；同一事务consume missing receipt并只持久化supersession/backend-completion timestamp与terminal，因而crash只见事务前`oldRecordDeleteApplied`或事务后`terminal`。
 
 ### 7.5 Delete/revoke
@@ -1504,17 +1587,17 @@ Fresh run exact sequence：
 6. 只有fully prepared bundle才能由main integration从same open temp DB、same admitted plan和同一consumed match chain构造opaque `ImportCutoverCoordinatorContext`。创建`stagedImport.intent`后fresh-check五元组、material-free stage/source-set CAS、plan admission、candidate/record/backend/device/capability与expected live binding。以上2→3→4→5→6是唯一顺序；context构造成功之前的staged source value read/parse/compare/validate/scrub/readback/cutover call count必须为0。
 7. Context按value持有且仍有效后，才首次re-resolve/read exact temp sources；equality mode constant-time compare，replacement mode验证exact approved impact但不要求old==new。Typed receipt后才scrub/readback temp DB并durable `sourcesScrubbed`。
 8. Shared DB owner从当前main DB生成sanitized safety backup/readback，并完整validate staged DB。任一failure仍在cutover前：main DB/live/local binding `effect=none`；temp stage/candidate按其durable状态保留或通过同一broker discard authority显式终止。
-9. ImportCoordinator执行main DB cutover并返回绑定durable object/stage/owner的`cutoverReceiptId`；durable `cutoverCommitted`。此点之后不能回滚或重开普通import，必须按checkpoint恢复。
-10. DAO从cutover后的exact Provider row mint `ExistingSecretOwnerToken`并readback row/revision，durable `liveOwnerMinted`；#35核对receipt/live token/original projection并完成local binding CAS，durable `localBindingFinalized`，再consume admission。Staged token失效且永不进入runtime。
+9. ImportCoordinator执行main DB cutover并返回绑定durable object/stage/owner的`cutoverReceiptId`；durable `cutoverCommitted`累计保留`stagedSourceSetCasAfterScrub + cutoverReceiptId`。此点之后不能回滚或重开普通import，必须按phase恢复。
+10. DAO从cutover后的exact Provider row mint `ExistingSecretOwnerToken`并readback row/revision，durable `liveOwnerMinted`累计再加`promotedLiveOwner`；#35核对receipt/live token/original projection并完成local binding CAS，durable `localBindingFinalized`保留同三字段并以phase literal证明local CAS完成，再consume admission。Staged token失效且永不进入runtime。
 11. Terminal/readback后refresh同一managed AppState/SecretService cache，随后才允许独立#41 live apply；不得新建AppState或reopen device store。
 
-`stagedImport` phase graph仍严格为`intent → sourcesScrubbed → cutoverCommitted → liveOwnerMinted → localBindingFinalized → terminal`；`recoveryRequired`只能携带exact last-completed checkpoint。`intent`的private factory只接受已经构造成功的`ImportCutoverCoordinatorContext`，不能直接接受staged token、projection、admission或scalar identity，因此journal存在本身证明五段authority顺序已完成。它不是四类general recovery之一。Pre-cutover failure（包括已scrub temp但未cutover）对main DB/live/local binding必须`effect=none`；post-cutover failure保留journal并关闭consumer gate，不能从“owner row存在”猜测成功。
+`stagedImport` phase graph仍严格为`intent → sourcesScrubbed → cutoverCommitted → liveOwnerMinted → localBindingFinalized → terminal`；`recoveryRequired`只能携带exact last-completed `StagedImportResumePhase`及其累计required fields。`intent`的private factory只接受已经构造成功的`ImportCutoverCoordinatorContext`，不能直接接受staged token、projection、admission或scalar identity，因此journal存在本身证明五段authority顺序已完成。它不是四类general recovery之一。Pre-cutover failure（包括已scrub temp但未cutover）对main DB/live/local binding必须`effect=none`；post-cutover failure保留journal并关闭consumer gate，不能从“owner row存在”猜测成功。
 
 Crash reopen/resume固定为同一authority顺序：
 
 1. Startup strict-load journal与temp stage registry，先把旧process nonce对应的pending confirmation/prepared bundle视为不可用；向#55 reconciliation port证明旧`admissionId`后将其`consumed|terminated|supersededForRecovery`之一durable terminal。旧admission未能核对/terminal时停止，不能mint并行admission。
 2. ImportCoordinator按journal的`tempDatabaseDurableObjectId`重新打开候选temp object，并从其内部stage row readback exact`durableObjectId + stageId + owner + stagedRowRevision`；path、文件名、snapshot hash或caller text都不能证明identity。
-3. 成功后mint**fresh process nonce**与新`StagedSecretOwnerToken`/recovery projection，fresh-check stage/source set CAS、checkpoint、cutover receipt/live owner checkpoint；立刻递增`resumeCas.revision`并以fresh nonce为preimage重算digest，使所有旧request stale。然后#55 mint仅用于该checkpoint的`AdmittedStagedImportRecovery`，绑定fresh五元组、原plan/projection identity、new admissionId与current `resumeCas`。
+3. 成功后mint**fresh process nonce**与新`StagedSecretOwnerToken`/recovery projection，fresh-check stage/source set CAS、exact five-arm resume phase及其累计scrub/cutover/live-owner fields；立刻递增`resumeCas.revision`并以fresh nonce为preimage重算digest，使所有旧request stale。然后#55 mint仅用于该phase的`AdmittedStagedImportRecovery`，绑定fresh五元组、原plan/projection identity、new admissionId与current `resumeCas`。
 4. Main integration再次通过sealed equality port对fresh token/projection与fresh #55 admission mint新`StagedImportAuthorityMatchReceipt`；旧match receipt、nonce或admission都不能复用。
 5. #35按value消费fresh match，重新prepare/confirm所需backend slot；prepared failure同样由唯一broker discard authority终止fresh admission/bundle。只有完整bundle与同一open object才能构造recovery cutover context并从checkpoint继续。
 
@@ -1546,7 +1629,8 @@ ResumeStagedImportCutoverResultDto =
 
 ```text
 fyagent.secret.staged-import-resume.v1\n
-operation\0<operationId>\0<phase>\n
+operation\0<operationId>\n
+phase\0<intent|sourcesScrubbed|cutoverCommitted|liveOwnerMinted|localBindingFinalized>\n
 stage\0<tempDatabaseDurableObjectIdHex>\0<processNonceHex>\0<stageId>\0<ownerKind>\0<ownerNamespace>\0<ownerId>\0<ownerSlot>\0<stagedRowRevision>\n
 sourceSet\0<stagedRowRevision>\0<structureDigest>\0<sourceCount>\n
 source\0<locationId>\0<category>\0<origin>\0<structuralRevision>\n
@@ -1557,13 +1641,14 @@ comparison\0<candidateEquality|explicitReplacement>\0<verifySameValueMigration|r
 record\0<secretRef>\0<recordRevision>\0<expectedStoreRevision>\0<bindingSetRevision>\0<bindingSetDigest>\0<bindingSetCount>\n
 backend\0<backendInstanceId>\0<backendGeneration>\0<deviceBindingGeneration>\0<capabilityRevision>\n
 expectedLiveBinding\0<unbound|bound>\0<ownerBindingRevision>\0<secretRef-or-none>\0<bindingRevision-or-none>\0<sourceBindingSetRevision-or-none>\0<sourceBindingSetDigest-or-none>\0<sourceBindingSetCount-or-none>\n
-checkpoint\0<intent|sourcesScrubbed|cutoverCommitted|liveOwnerMinted|localBindingFinalized>\n
 sourcesScrubbed\0<stagedRowRevisionAfterScrub>\0<structureDigest>\00\n
 cutover\0<cutoverReceiptIdHex>\n
 promotedOwner\0<kind>\0<namespace>\0<ownerId>\0<slot>\0<providerRowRevision>\0<ownerBindingRevision>\n
 ```
 
-只有checkpoint已达到时才编码对应`sourcesScrubbed/cutover/promotedOwner`行；`comparison`的policy/userMeaning必须是`candidateEquality/verifySameValueMigration/none/none`或`explicitReplacement/replaceExistingCredential/<count>/<true|false>`完整配对。所有`none`都是literal而非空字段。每次fresh nonce/admission、phase/checkpoint/source/CAS/receipt/live-owner变化都先递增revision再重算digest；mint fresh identity/admission本身就是CAS变化，不能复用旧revision。Stale request、old nonce/admission、receipt drift或temp object proof失败均`effect=none`并保留callable resume state；不降级为general recovery或ordinary import。
+`operationId`必须取同一`OperationJournalEnvelope.operationId`，不能由stageId或fresh attempt重建。Phase rows按`StagedImportResumePhase`严格累计：`intent`禁止三个receipt/owner row；`sourcesScrubbed`只编码`sourcesScrubbed`；`cutoverCommitted`编码`sourcesScrubbed + cutover`；`liveOwnerMinted|localBindingFinalized`编码三行全体，且二者仅以closed phase literal区分。Missing/extra row、phase外receipt、terminal投影不是`localBindingFinalized`或generic checkpoint enum都拒绝。`comparison`的policy/userMeaning必须是`candidateEquality/verifySameValueMigration/none/none`或`explicitReplacement/replaceExistingCredential/<count>/<true|false>`完整配对；所有`none`都是literal而非空字段。每次fresh nonce/admission、phase/source/CAS/receipt/live-owner变化都先递增revision再重算digest；mint fresh identity/admission本身就是CAS变化，不能复用旧revision。Stale request、old nonce/admission、receipt drift或temp object proof失败均`effect=none`并保留callable resume state；不降级为general recovery或ordinary import。
+
+SOURCE_FREEZE必须固定五个canonical digest fixtures与五个相邻crash/resume case：`staged_resume_intent_v1`（intent后、scrub前）、`staged_resume_sources_scrubbed_v1`（scrub readback后、cutover前）、`staged_resume_cutover_committed_v1`（cutover receipt durable后、live owner前）、`staged_resume_live_owner_minted_v1`（owner readback后、local binding前）、`staged_resume_local_binding_finalized_v1`（local CAS后、terminal前）。每个fixture记录operationId、exact phase arm、required rows、forbidden rows、revision与expected digest；每个crash case只继续其suffix，并证明前一phase CAS、旧nonce与旧admission均stale/effect-none。五者少一、digest相同、phase变化未递增revision或receipt row可跨arm出现都fail closed。
 
 ### 8.4 Manual binary restore
 
@@ -1877,7 +1962,7 @@ future plugin registration要求：
 1. 服务端生成 `SecretBackendInstanceId`；plugin提供 validated `pluginId`、opaque non-secret locator、backend generation与非敏感 device display。
 2. capabilities按 secret/locator返回并写入 record snapshot，不用 singleton static bool。
 3. device replacement/rebind生成新 backend instance/generation和新 secret ref；不就地改旧 locator。
-4. confirmation step的server-side pending row绑定完整record handle、operation scope、closed slot、lifetime store instance/exact registered Arc、backend instance/generation、store/record/binding/device/capability revisions与expiry；UI只显示step id、device label与timeout，不能拿public step重建authority。Activation exact slots为`ActivationConfirmationSlot::{CandidateRead,OldRecordDelete,OldRecordMissingReadback}`；recovery exact slots为`RecoveryConfirmationSlot::{ActiveRecordRead,OldRecordDelete,OldRecordMissingReadback,UncommittedRecordDelete,UncommittedRecordMissingReadback,AdmittedRecordDelete,AdmittedRecordMissingReadback}`。其中delete/missing-specific slots恰好8个，连同两个read slots共10个；每个missing slot的operation固定为`Validate`并复制`operationConfirmation.validate`，不能用一次physical confirmation/authorization合并任意两slot，future adapter也必须逐slot分别mint并由用户分别确认。
+4. confirmation step的server-side pending row绑定完整record handle、operation scope、closed slot、lifetime store instance/exact registered Arc、backend instance/generation、store/record/binding/device/capability revisions与expiry；UI只显示step id、device label与timeout，不能拿public step重建authority。Activation exact slots为`ActivationConfirmationSlot::{CandidateRead,OldRecordDelete,OldRecordMissingReadback}`；recovery exact slots为`RecoveryConfirmationSlot::{ActiveRecordRead,OldRecordDelete,OldRecordMissingReadback,UncommittedRecordDelete,UncommittedRecordMissingReadback,AdmittedRecordDelete,AdmittedRecordMissingReadback}`，两组仍是3+7=10 slots，其中delete/missing-specific为8。Candidate discard另有`CandidateDiscardConfirmationSlot::{RecordDelete,RecordMissingReadback}`两slot。因此operation-specific prepared slots总数恰好12，delete/missing-specific总数恰好10；每个missing slot的operation固定为`Validate`并复制`operationConfirmation.validate`，不能用一次physical confirmation/authorization合并任意两slot，future adapter也必须逐slot分别mint并由用户分别确认。Hardware operation algebra仍恰好五种，不因新增slot产生第六operation。
 5. `persistentTargetProjection=false` 在 #55 preview和#41 resolve前两次 fail closed。
 6. `DeviceInstanceId` 是随机 local namespace，不是硬件指纹/attestation；复制 state到另一机器只能依赖 exact backend probe发现 missing/mismatch，不得宣称硬件身份认证。
 7. `centralRevocation=true`还要求adapter发布closed source/time capability；revoke前后fresh验证exact handle，结果只能通过non-clone consuming `BackendRevocationObservation` receipt写state。Device mismatch、missing或自由source/time不能替代receipt。
@@ -1946,12 +2031,12 @@ Formal Windows x64 run必须全部通过：real missing、injected backend unava
 
 | Case | Required closure evidence |
 | --- | --- |
-| `activationCleanup` | binding CAS已切new ref后分别中断legacy scrub、old delete与delete-receipt durable；`RecoveryConfirmationSlot::OldRecordDelete`/`OldRecordMissingReadback`是独立authorization并在Provider lease前完成所需hardware confirm，后者消费durable `BackendDeleteAppliedCas`与fresh missing receipt；同一事务只持久化supersession/revokedAt + terminal，崩溃只可见pre-transaction `OldRecordDeleteApplied + [verifyOldRecordMissing]`或post-transaction `Terminal + []` |
+| `activationCleanup` | binding CAS已切new ref后分别中断legacy scrub、old delete与delete-receipt durable；normal `ActivationOldRecordDeleteCheckpoint`、durable-failure `ActivationOldRecordDurableCheckpoint`与recovery `RecoveryOldRecordDeleteCheckpoint`各自保留同一disposition/time/CAS三字段且只能checked reconstruct；`RecoveryConfirmationSlot::OldRecordDelete`/`OldRecordMissingReadback`独立，后者消费recovery checkpoint actual CAS；同一事务用其backendCompletedAt持久化supersession/revokedAt + terminal，崩溃只可见pre-transaction `OldRecordDeleteApplied + [verifyOldRecordMissing]`或post-transaction `Terminal + []` |
 | `captureCompensation` | backend write后、candidate state前注入crash/unknown；exact candidate/record/backend row可达；`RecoveryConfirmationSlot::UncommittedRecordDelete`与`UncommittedRecordMissingReadback`独立claim/authorization，中间`deleteApplied{deleteAppliedCas}` durable checkpoint；fresh missing后state finalize，无orphan entry |
 | `deleteFinalization` | durable user-delete admission后在delete、delete-receipt durable、独立missing-readback与state-finalize处中断；`RecoveryConfirmationSlot::AdmittedRecordDelete`/`AdmittedRecordMissingReadback`各自authorization并由`BackendDeleteAppliedCas`分隔，retry保留owners与`userDelete` provenance，未admitted missing仍显示missing而非revoked |
 | `ownerDetachFinalization` | Provider commit后、local CAS前中断；impact/transaction/commit/no-legacy literal/bound-or-unbound view/remaining owners exact；retry的backend call count固定为0。另测preview后注入legacy source：impact stale/effect-none发生在transaction/journal前，durable detach/recovery row count仍为0 |
-| candidate discard/expiry | 两种flow共用`discardCandidate`且immutable `pendingTerminalDisposition`分别为discarded/expired；任一不确定保持pending可达，无recovery pointer/第五kind；terminal expiry只给`refreshSummary`，refresh后mint全新intent/authority，旧candidate/operation重放零写 |
-| staged import resume | 逐次证明token/projection→#55 admission→authority-match receipt→#35 prepare/confirm→cutover context；pre-cutover failure对main/live/local binding effect-none；旧nonce/admission先terminal，fresh nonce/admission递增CAS并使旧request stale；唯一public request body仅`stageId + expectedResumeCas`，独立`ResumeStagedImportCutoverResultDto`三armdata每次exactly回`stageId/currentResumeCas/status/action/issue`，terminal issue=null、recovery typed，schema/audit/candidate/owner/ref/summary均absent；stale request零写 |
+| candidate discard/expiry | 两种flow共用`discardCandidate`且immutable `pendingTerminalDisposition`分别为discarded/expired；分别断言`CandidateDiscardConfirmationSlot::RecordDelete`与`RecordMissingReadback`的prepare/confirm/one-shot consume，missing固定Validate且在`CandidateDiscardDeleteCheckpoint{deleteDisposition,backendCompletedAt,deleteAppliedCas}` durable前call count=0；crash分别落在backendApplied与missingReadbackVerified，恢复只推进suffix，post-intent相位固定到terminal且无stateFinalized/recovery pointer/第五kind |
+| staged import resume | 五个fixture/crash case逐项为`staged_resume_intent_v1|staged_resume_sources_scrubbed_v1|staged_resume_cutover_committed_v1|staged_resume_live_owner_minted_v1|staged_resume_local_binding_finalized_v1`；每项证明token/projection→#55 admission→authority-match→#35 prepare/confirm→context顺序、operationId+exact phase+累计required/forbidden rows、phase/fresh nonce/admission递增CAS、只推进suffix与旧CAS零写。Public request/result仍只保留冻结字段，schema/audit/candidate/owner/ref/summary均absent |
 
 用户可见confirmation/recovery card在matching host记录`UAT`；deterministic crash/CAS/backend-call assertions记录`failure_path`或module/integration来源，不能用静态review、总case count或单一activation截图替代。
 
@@ -1963,10 +2048,10 @@ Formal Windows x64 run必须全部通过：real missing、injected backend unava
 2. 把 repository 术语改为 native `DeviceLocalSecretStore`；handoff声明 DB/provider plan不持 `secretRef` binding table。
 3. 删除 keyring store crate候选与 `keyring_core::Error` production mapping，改成 §10 direct dependencies/errors/MSRV。
 4. Startup全文只保留`open store → no-backup DB preflight → same AppState/SecretService → reconcile → app.manage/static registration receipt → Clean sanitized backup → publish gate → workers`；`SecretBootstrapCleanReceipt`必须持有经唯一bridge fresh验证的`LegacySourceInventoryRevision + CompleteLegacySourceCoverageIdentity + currentScrubbable + adjacentBlocked`原子authority。零source但缺任一domain proof或两组empty data仍Blocked；Blocked保留same managed state但无backup/consumer/worker，repair resume不得reopen。
-5. Journal operation恰好八类并逐variant定义phase/required authority；四类strict recovery各有独立state/step/CAS preimage。Activation/recovery共有10个exact slots，其中delete/missing-specific恰好8个；每对delete/missing authorization由durable receipt + actual `BackendDeleteAppliedCas`分隔。Activation missing success与supersession/terminal同事务，无第四step或standalone missing phase；capture/delete保留各自`missingReadbackVerified`后再finalize。绝无第九generic recovery、staged第五kind或组合delete+readback API。
-6. Candidate explicit discard/expiry共用immutable `discardCandidate` target；不确定时只公开checked `pendingTerminalDisposition + discardCandidate` pending形态。Terminal expiry只给`refreshSummary`，新capture/rotation必须mint全新authority，旧candidate/operation不复用。
+5. Journal operation恰好八类并逐variant定义phase/required authority；四类strict recovery各有独立state/step/CAS preimage。Activation/recovery仍共有10个exact slots、其中delete/missing-specific 8个；candidate discard另有2个delete/missing slot，故operation-specific prepared slots总数12、delete/missing-specific总数10。每对delete/missing authorization由durable三字段checkpoint + actual `BackendDeleteAppliedCas`分隔，missing固定用五operation之一的`Validate`。Activation missing success与supersession/terminal同事务，无第四step或standalone missing phase；candidate discard固定`backendApplied → missingReadbackVerified → terminal`，capture/delete保留各自`missingReadbackVerified`后再finalize。绝无第九generic recovery、第五recovery kind、第六hardware operation或组合delete+readback API。
+6. Candidate explicit discard/expiry共用immutable `discardCandidate` target与`CandidateDiscardConfirmationSlot::{RecordDelete,RecordMissingReadback}`；durable `CandidateDiscardDeleteCheckpoint{deleteDisposition,backendCompletedAt,deleteAppliedCas}`是Validate missing authorization唯一前置。不确定时只公开checked `pendingTerminalDisposition + discardCandidate` pending形态。Terminal expiry只给`refreshSummary`，新capture/rotation必须mint全新authority，旧candidate/operation不复用。
 7. Provider delete把binding与current legacy discovery正交读取；任何legacy source阻断preview且不mint impact，preview后legacy drift也在transaction/journal前stale/effect-none。Durable detach/recovery只允许no-legacy bound/unbound，stale action固定Provider-owned `refreshProviderDeleteImpact`，owner detach永不backend delete。
-8. Staged import唯一顺序为temp token/projection→#55 admission→sealed authority-match receipt→#35 prepare/confirm→cutover context→source read/validate/compare→scrub/readback→cutover；context前source-value/cutover call count为0，cancel/discard authority唯一。Crash先terminal old admission，再mint fresh nonce/admission并递增/重算CAS；resume handler只接受stage id + exact CAS，独立no-value result三arm每次返回current CAS，full identity只进入preimage。
+8. Staged import唯一顺序为temp token/projection→#55 admission→sealed authority-match receipt→#35 prepare/confirm→cutover context→source read/validate/compare→scrub/readback→cutover；context前source-value/cutover call count为0，cancel/discard authority唯一。Crash先terminal old admission，再mint fresh nonce/admission并递增/重算CAS；resume handler只接受stage id + exact CAS，独立no-value result三arm每次返回current CAS。Internal preimage必须含operationId与exact `StagedImportResumePhase::{Intent,SourcesScrubbed,CutoverCommitted,LiveOwnerMinted,LocalBindingFinalized}`累计receipt rows；五个canonical fixture逐phase冻结，full identity不进入public DTO。
 9. Durable `DeviceInstanceId=dev_*`与process-local non-Clone/non-Serde `DeviceSecretStoreInstanceId`严格分离；state/journal/backend identity只持durable id，live handle/scope/pending/receipt以Arc同时持两者与exact registered Arc。Platform returned generations在material/receipt出界前复核。只有显式Revoke authorization可调用`observe_revocation_once`并mint full-CAS consuming receipt；ordinary hint不可持久化。
 10. 同步strict SecretRef、binding-set revision、separated policy/retirement state、hardware UI hidden boundary与no-fallback。
 11. Manifest owner只使用`#35 module | #55 | #41 | main integration`；Prompt/Memory v17作为保留外部schema lane/dependency记录，不成为owner literal；#35 module worker只占新secret files。

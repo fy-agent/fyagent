@@ -16,10 +16,16 @@ These files preserve the first working-tree review and remain immutable historic
 
 ## Authoritative rereviews
 
-V9 is ready for a candidate design commit. Final review files will be:
+Candidate `D=f2f26b8b6b5aa4acf8bbd257cee9ee22713aebaf` was read immutably:
 
-- `product-rereview.md` — `PENDING`
-- `architecture-rereview.md` — `PENDING`
-- `detailed-design-rereview.md` — `PENDING`
+- `product-rereview.md` — `APPROVE`, `P0=P1=P2=0`
+- `architecture-rereview.md` — `REQUEST_CHANGES`, `P0=0/P1=3/P2=0`
+- detailed rereview was not run after architecture rejected `D`.
 
-All three must name the same immutable design candidate SHA and report `P0=0/P1=0/P2=0`. Any design correction creates a new candidate SHA and invalidates all three prior rereviews. The freeze receipt must point only to the latest same-SHA rereviews while retaining the initial snapshots for provenance.
+`D` is not design authority and cannot be frozen. Its receipts remain immutable history. The next candidate `D2` must receive three new files:
+
+- `product-rereview-d2.md` — `PENDING`
+- `architecture-rereview-d2.md` — `PENDING`
+- `detailed-design-rereview-d2.md` — `PENDING`
+
+All three must name the same immutable design candidate SHA and report `P0=0/P1=0/P2=0`. Any design correction creates a new candidate SHA and invalidates all three prior rereviews. The freeze receipt must point only to the latest same-SHA rereviews while retaining every earlier snapshot for provenance.
