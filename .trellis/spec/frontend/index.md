@@ -42,7 +42,7 @@ Before changing renderer code:
 | [Application Brand Assets](../backend/application-brand-assets.md)         | Cross-platform generated icons and renderer About reuse.                                                         |
 | [Application Identity](../backend/application-identity.md)                 | FyAgent-owned runtime identity and factual repository/provenance boundaries.                                     |
 | [Codex Provider Configuration](../backend/codex-provider-configuration.md) | Codex native-capability controls, warnings, live-change result, and trusted restart handoff.                     |
-| [Unified Change Plan](../backend/unified-change-plan.md)                   | Codex switch preview/apply DTOs, polling/event invalidation, shared result dialog, and no-direct-fallback entry. |
+| [Unified Change Plan](../backend/unified-change-plan.md)                   | V2 create/edit/switch Plan projection, capability gating, one-confirmation UI, query-authoritative jobs, event invalidation, reload/discovery, and no-direct-fallback entries. |
 | [Codex Desktop Installer](../backend/codex-desktop-installer.md)           | Installer/restart facade DTOs, job snapshots, progress presentation, and trusted launch outcomes.                |
 | [WorkBuddy Configuration](../backend/workbuddy-configuration.md)           | Top-level navigation, query isolation, model selection, overwrite confirmation, and credential lifetime.         |
 
