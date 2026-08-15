@@ -27,6 +27,7 @@
     "detailed-design.md",
     "implement.md",
     "design-freeze.md",
+    "scope-correction-revision2.md",
     "research/ownership-and-handoff-audit.md",
     "research/ucp-contract-gap-audit.md",
     "research/dependency-contract-audit.md",
@@ -44,9 +45,9 @@
     ".trellis/spec/backend/deeplink-import-security.md",
     ".trellis/spec/backend/task-runner-contract.md"
   ],
-  "notes": "Planning is based on the terminal UCP handoff 6859e9ce. The source implementation freeze is ca552f4d. The duplicate /worktrees/ucp checkout is unsafe and must not be used. DESIGN_FREEZE and the prototype usability gate are PASS; runtime evidence remains pending and distinct from prototype/code_audit.",
+  "notes": "Planning is based on terminal UCP handoff 6859e9ce and source freeze ca552f4d. Revision-1 design/prototype history remains immutable. After a first-principles audit, the interrupted Phase-2 draft was preserved at checkpoint 2478b772 and mainline returned clean. Revision-2 execution scope is pending explicit user approval; no product source may resume before that gate. The duplicate /worktrees/ucp checkout remains unsafe.",
   "meta": {
-    "phase": "implementation_phase_2_contract_store",
+    "phase": "planning_scope_correction_revision_2",
     "issue": 55,
     "immutableHandoff": "6859e9ce04970008f4cf8b3d4883b4f70316291a",
     "sourceFreeze": "ca552f4d918cacc734f81f7efdef70619da139b8",
@@ -62,6 +63,12 @@
     "prototypeRevision": 3,
     "prototypeSha256": "fe8f8cc0ac389c7c3cca9b3fd5005ff13d51f4cad8a1cb7d3d4a0221a9122dc4",
     "prototypeReferenceSha256": "a70a2845e017405aaea9a12449e2b58c9b0a1023d0748fd655063c9c732d81ea",
-    "usabilityReview": "pass_round_3_0_p0_0_p1_0_p2"
+    "usabilityReview": "pass_round_3_0_p0_0_p1_0_p2",
+    "executionReset": "pending_user_approval",
+    "scopeCorrectionReview": "pending",
+    "implementationStatus": "paused_pending_revision_2_approval",
+    "interruptedExplorationBranch": "codex/issue-55-phase2-exploration",
+    "interruptedExplorationSha": "2478b7724d07a917fc1ff7a71507bcb225f7ea9a",
+    "interruptedExplorationStash": "stash@{0}"
   }
 }
