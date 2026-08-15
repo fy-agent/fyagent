@@ -105,17 +105,17 @@ files.
 
 Starts only after freeze.
 
-- [ ] Load the image generation skill and produce one visual reference aligned
+- [x] Load the image generation skill and produce one visual reference aligned
   to the current Prompt/Memory V2 full-screen interaction pattern.
-- [ ] Store prompt, generated asset, timestamp, dimensions, and SHA-256 under
+- [x] Store prompt, generated asset, timestamp, dimensions, and SHA-256 under
   `research/prototype/manifest.json`; label evidence `prototype`.
-- [ ] Build a non-production high-fidelity prototype covering clean, warning,
+- [x] Build a non-production high-fidelity prototype covering clean, warning,
   expired/drift, unsupported/secret dependency, running/recovery, and candidate
   safety.
-- [ ] Run usability review for hierarchy, exact one-confirmation path,
+- [x] Run usability review for hierarchy, exact one-confirmation path,
   resources/backup/credential/privacy answers, focus/keyboard/screen-reader
   behavior, and state-specific actions.
-- [ ] Close all usability P0/P1/P2 before product-source UI implementation.
+- [x] Close all usability P0/P1/P2 before product-source UI implementation.
 
 Generated images and prototype screenshots are not runtime or native evidence.
 

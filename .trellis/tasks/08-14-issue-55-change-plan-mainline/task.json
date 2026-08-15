@@ -3,7 +3,7 @@
   "name": "issue-55-change-plan-mainline",
   "title": "Issue 55 Change Plan mainline",
   "description": "Integrated Change Plan delivery card: freeze the #55/#56/#57/#58 contracts, hand the shared ledger/job contract to #41, deliver the #63 Codex create/edit/switch slice where dependencies permit, and produce fresh exact-runtime evidence without automatically closing related Issues or merging main.",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": "research,product-contract,state-machine,backend,frontend,database,tauri-ipc,codex-provider-create-edit-switch,prototype,tests,native-evidence; excludes workbuddy,other-app-types,model-requests,main-merge,deployment",
   "package": null,
@@ -31,17 +31,21 @@
     "research/ucp-contract-gap-audit.md",
     "research/dependency-contract-audit.md",
     "research/provider-create-edit-code-map.md",
+    "research/prototype/manifest.json",
+    "research/prototype/generated-change-plan-reference.png",
+    "research/prototype/change-plan-prototype.html",
     "reviews/product-review.md",
     "reviews/architecture-review.md",
     "reviews/detailed-design-review.md",
+    "reviews/usability-review.md",
     ".trellis/spec/backend/unified-change-plan.md",
     ".trellis/spec/backend/codex-provider-configuration.md",
     ".trellis/spec/backend/deeplink-import-security.md",
     ".trellis/spec/backend/task-runner-contract.md"
   ],
-  "notes": "Planning is based on the terminal UCP handoff 6859e9ce. The source implementation freeze is ca552f4d. The duplicate /worktrees/ucp checkout is unsafe and must not be used. No implementation or verification command may run before DESIGN_FREEZE=PASS.",
+  "notes": "Planning is based on the terminal UCP handoff 6859e9ce. The source implementation freeze is ca552f4d. The duplicate /worktrees/ucp checkout is unsafe and must not be used. DESIGN_FREEZE and the prototype usability gate are PASS; runtime evidence remains pending and distinct from prototype/code_audit.",
   "meta": {
-    "phase": "design_frozen_visual",
+    "phase": "implementation_phase_2_contract_store",
     "issue": 55,
     "immutableHandoff": "6859e9ce04970008f4cf8b3d4883b4f70316291a",
     "sourceFreeze": "ca552f4d918cacc734f81f7efdef70619da139b8",
@@ -53,6 +57,10 @@
     "designFreeze": "pass",
     "designFreezeRevision": 1,
     "designFreezeManifestSha256": "2c1b753acf470699b428ae8a9eb401be82dbb0f1f19d9c13a6268350d4edfc5f",
-    "designFreezeReceiptSha256": "0f1ea11d1fa96f81d48860684ed44678125bbc5506878cf8aef179bcad80967b"
+    "designFreezeReceiptSha256": "0f1ea11d1fa96f81d48860684ed44678125bbc5506878cf8aef179bcad80967b",
+    "prototypeRevision": 3,
+    "prototypeSha256": "fe8f8cc0ac389c7c3cca9b3fd5005ff13d51f4cad8a1cb7d3d4a0221a9122dc4",
+    "prototypeReferenceSha256": "a70a2845e017405aaea9a12449e2b58c9b0a1023d0748fd655063c9c732d81ea",
+    "usabilityReview": "pass_round_3_0_p0_0_p1_0_p2"
   }
 }

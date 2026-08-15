@@ -1,1 +1,17 @@
-{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file":".trellis/spec/backend/unified-change-plan.md","reason":"Audit every frozen v2 Plan/job/admission/persistence/recovery/evidence invariant."}
+{"file":".trellis/spec/backend/codex-provider-configuration.md","reason":"Audit Provider preparation/writer/readback and all create/edit/switch bypasses."}
+{"file":".trellis/spec/backend/deeplink-import-security.md","reason":"Audit deep-link safe draft routing and zero-write rejection paths."}
+{"file":".trellis/spec/backend/task-runner-contract.md","reason":"Audit task metadata, generated docs, offline evidence, and mutation semantics."}
+{"file":".trellis/spec/backend/development-environment.md","reason":"Verify exact repository runtime, toolchain, and environment commands."}
+{"file":".trellis/spec/backend/development-hooks.md","reason":"Verify required repository hooks and pre-commit governance checks."}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Audit component responsibilities, accessibility, and UI integration."}
+{"file":".trellis/spec/frontend/hook-guidelines.md","reason":"Audit query/mutation/event sequencing and stale-response handling."}
+{"file":".trellis/spec/frontend/state-management.md","reason":"Audit backend authority, reload discovery, and invalid-state projections."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Audit deny-unknown DTO decoding and removal of permissive fallbacks."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Audit focused and integration frontend verification coverage."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Audit reachable registration and complete Rust-to-renderer data flow."}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Audit reuse and absence of duplicate ledgers, writers, or credential systems."}
+{"file":".trellis/tasks/08-14-issue-55-change-plan-mainline/research/ownership-and-handoff-audit.md","reason":"Audit immutable handoffs, owner epochs, and protected worktrees."}
+{"file":".trellis/tasks/08-14-issue-55-change-plan-mainline/research/ucp-contract-gap-audit.md","reason":"Audit closure of every known gap beyond the completed switch slice."}
+{"file":".trellis/tasks/08-14-issue-55-change-plan-mainline/research/dependency-contract-audit.md","reason":"Audit #35 typed-disable and #41 consumable-source gates."}
+{"file":".trellis/tasks/08-14-issue-55-change-plan-mainline/research/provider-create-edit-code-map.md","reason":"Audit all current and legacy Codex mutation entrypoints."}
