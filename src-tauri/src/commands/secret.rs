@@ -11,17 +11,78 @@ use crate::secret::{
     SecretValidationResult, SetSecretLockedRequest, StageSecretCandidateResult,
     ValidateSecretRequest,
 };
+use crate::store::AppState;
+use tauri::State;
 
 fn unavailable<T>() -> SecretCommandResult<T> {
     crate::secret::command_unavailable()
 }
 
-#[tauri::command]
-pub async fn list_secret_summaries(
+fn require_opened_store(
+    state: &AppState,
+) -> Result<&crate::secret::OpenedDeviceLocalSecretStore, crate::secret::SecretCommandError> {
+    state
+        .secret_store
+        .as_ref()
+        .ok_or_else(crate::secret::command_unavailable_error)
+}
+
+/// Sync helper so tests can exercise fail-closed / load without spinning Tauri.
+///
+/// Contract DTO success mapping is unpublished: `ListSecretSummariesResult`
+/// needs `SecretOwnerCredentialSummary` / `LegacySourceCoverageView` (coverage
+/// receipt + `todo!` constructor) and `SecretRefAggregate::checked_from_authority`
+/// (`todo!`). After a successful `load()` this still returns `unavailable()`.
+pub(crate) fn list_secret_summaries_from_state(
+    state: &AppState,
     request: ListSecretSummariesRequest,
 ) -> SecretCommandResult<ListSecretSummariesResult> {
+    let opened = require_opened_store(state)?;
+    let _payload = opened
+        .store()
+        .load()
+        .map_err(crate::secret::service_command_error)?;
     let _ = request;
     unavailable()
+}
+
+/// Same fail-closed + load, then stop: `ListSecretCandidatesResult` needs
+/// `SecretCandidateActivationProjection::validate_repr` (`todo!`).
+pub(crate) fn list_secret_candidates_from_state(
+    state: &AppState,
+    request: ListSecretCandidatesRequest,
+) -> SecretCommandResult<ListSecretCandidatesResult> {
+    let opened = require_opened_store(state)?;
+    let _payload = opened
+        .store()
+        .load()
+        .map_err(crate::secret::service_command_error)?;
+    let _ = request;
+    unavailable()
+}
+
+/// Fail-closed when the store is missing. Production discard would have to
+/// pretend a Keychain delete (`InMemorySecretBackend` is test-only), and
+/// `DiscardSecretCandidateResult::checked_from_candidate_journal` is `todo!`.
+pub(crate) fn discard_secret_candidate_from_state(
+    state: &AppState,
+    request: DiscardSecretCandidateRequest,
+) -> SecretCommandResult<DiscardSecretCandidateResult> {
+    let opened = require_opened_store(state)?;
+    let _payload = opened
+        .store()
+        .load()
+        .map_err(crate::secret::service_command_error)?;
+    let _ = request;
+    unavailable()
+}
+
+#[tauri::command]
+pub async fn list_secret_summaries(
+    state: State<'_, AppState>,
+    request: ListSecretSummariesRequest,
+) -> SecretCommandResult<ListSecretSummariesResult> {
+    list_secret_summaries_from_state(&state, request)
 }
 
 #[tauri::command]
@@ -50,18 +111,18 @@ pub async fn rotate_secret(
 
 #[tauri::command]
 pub async fn list_secret_candidates(
+    state: State<'_, AppState>,
     request: ListSecretCandidatesRequest,
 ) -> SecretCommandResult<ListSecretCandidatesResult> {
-    let _ = request;
-    unavailable()
+    list_secret_candidates_from_state(&state, request)
 }
 
 #[tauri::command]
 pub async fn discard_secret_candidate(
+    state: State<'_, AppState>,
     request: DiscardSecretCandidateRequest,
 ) -> SecretCommandResult<DiscardSecretCandidateResult> {
-    let _ = request;
-    unavailable()
+    discard_secret_candidate_from_state(&state, request)
 }
 
 #[tauri::command]
@@ -150,6 +211,14 @@ pub async fn resume_staged_import_cutover(
 #[cfg(test)]
 mod secret_command_dto_tests {
     use super::*;
+    use crate::database::Database;
+    use crate::secret::{
+        list_secret_candidates_from_store, list_secret_summaries_from_store,
+        seed_opened_store_pending_candidate, SecretBootstrap,
+    };
+    use crate::store::AppState;
+    use std::sync::Arc;
+    use tempfile::TempDir;
 
     fn reject_unknown<T: serde::de::DeserializeOwned>(json: &str) {
         let err = match serde_json::from_str::<T>(json) {
@@ -161,6 +230,30 @@ mod secret_command_dto_tests {
             msg.contains("unknown field") || msg.contains("did you mean"),
             "{msg}"
         );
+    }
+
+    fn summaries_request() -> ListSecretSummariesRequest {
+        serde_json::from_str(r#"{"schemaVersion":1,"includeUnboundOwners":true,"limit":10}"#)
+            .expect("summaries request")
+    }
+
+    fn candidates_request() -> ListSecretCandidatesRequest {
+        serde_json::from_str(r#"{"schemaVersion":1,"includeTerminal":false}"#)
+            .expect("candidates request")
+    }
+
+    fn discard_request() -> DiscardSecretCandidateRequest {
+        use crate::secret::SecretCandidateId;
+        let candidate_id = SecretCandidateId::generate();
+        serde_json::from_str(&format!(
+            r#"{{"schemaVersion":1,"candidateId":"{}","expectedCandidateRevision":1}}"#,
+            candidate_id.as_str()
+        ))
+        .expect("discard request")
+    }
+
+    fn assert_err_not_empty_ok<T>(result: SecretCommandResult<T>) {
+        assert!(result.is_err(), "missing/unmapped store must not succeed");
     }
 
     #[test]
@@ -215,5 +308,56 @@ mod secret_command_dto_tests {
         )
         .expect("known fields must parse");
         let _ = parsed;
+    }
+
+    #[test]
+    fn secret_app_state_new_without_store_fails_closed_for_local_commands() {
+        let db = Arc::new(Database::memory().expect("memory db"));
+        let state = AppState::new(db);
+        assert!(state.secret_store.is_none());
+        assert_err_not_empty_ok(list_secret_summaries_from_state(&state, summaries_request()));
+        assert_err_not_empty_ok(list_secret_candidates_from_state(&state, candidates_request()));
+        assert_err_not_empty_ok(discard_secret_candidate_from_state(&state, discard_request()));
+    }
+
+    #[test]
+    fn secret_opened_store_seed_lists_local_projection_and_contract_dto_stays_unavailable() {
+        let tmp = TempDir::new().expect("tempdir");
+        let opened = SecretBootstrap::open_for_test(tmp.path().to_path_buf()).expect("open");
+        let seeded = seed_opened_store_pending_candidate(opened.store())
+            .expect("seed on the same opened store");
+
+        let summaries = list_secret_summaries_from_store(opened.store(), None, false)
+            .expect("local summaries");
+        assert!(
+            summaries
+                .refs
+                .iter()
+                .any(|row| row.secret_ref == seeded.secret_ref),
+            "seeded secret_ref must appear in the local projection"
+        );
+        assert!(
+            summaries.owners.iter().any(|owner| {
+                owner.secret_ref.as_deref() == Some(seeded.secret_ref.as_str())
+            }),
+            "seeded owner/ref must appear in the local projection"
+        );
+
+        let candidates = list_secret_candidates_from_store(opened.store(), false)
+            .expect("local candidates");
+        assert!(
+            candidates
+                .iter()
+                .any(|row| row.candidate_id == seeded.candidate_id),
+            "seeded candidate must appear in the local projection"
+        );
+
+        let db = Arc::new(Database::memory().expect("memory db"));
+        let state = AppState::new_with_secret_store(db, opened);
+        assert!(state.secret_store.is_some());
+        // load() succeeded above; contract DTO mapping is unpublished.
+        assert_err_not_empty_ok(list_secret_summaries_from_state(&state, summaries_request()));
+        assert_err_not_empty_ok(list_secret_candidates_from_state(&state, candidates_request()));
+        assert_err_not_empty_ok(discard_secret_candidate_from_state(&state, discard_request()));
     }
 }
