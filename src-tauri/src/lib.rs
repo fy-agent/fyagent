@@ -33,6 +33,7 @@ mod prompt_files;
 mod provider;
 mod proxy;
 mod services;
+mod secret;
 mod session_manager;
 mod settings;
 mod store;
