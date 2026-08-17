@@ -1283,8 +1283,53 @@ impl LegacySourceCoverageView {
     pub(crate) fn checked_from_coverage_receipt(
         receipt: &LegacySourceCoverageReceipt,
     ) -> Result<Self, SecretInternalError> {
-        let _ = receipt;
-        todo!("derive, never accept, exact clear/blocking state, current category/count and adjacent category-only observation/count projection; no location id, path, value or value digest")
+        let current_empty = receipt.current_scrubbable.as_slice().is_empty();
+        let adjacent_empty = receipt.adjacent_blocked.is_empty();
+        let all_absent = receipt.coverage_identity.all_domains_absent();
+        let current_scrubbable = if current_empty {
+            CurrentScrubbableLegacySourceCoverageView::None {
+                source_count: 0,
+                categories: [],
+            }
+        } else {
+            let categories: Vec<LegacySourceCategory> = receipt
+                .current_scrubbable
+                .as_slice()
+                .iter()
+                .map(|expectation| expectation.source.category)
+                .collect();
+            CurrentScrubbableLegacySourceCoverageView::CurrentSourcesPresent {
+                source_count: u32::try_from(categories.len())
+                    .map_err(|_| SecretInternalError::input_invalid())?,
+                categories,
+            }
+        };
+        let adjacent_blocked = if adjacent_empty {
+            AdjacentBlockedLegacySourceCoverageView::None {
+                observation_count: 0,
+                observations: [],
+            }
+        } else {
+            AdjacentBlockedLegacySourceCoverageView::AdjacentBlockedSourcesPresent {
+                observation_count: u32::try_from(receipt.adjacent_blocked.len())
+                    .map_err(|_| SecretInternalError::input_invalid())?,
+                observations: receipt.adjacent_blocked.clone(),
+            }
+        };
+        let repr = match (current_empty, adjacent_empty, all_absent) {
+            (true, true, true) => LegacySourceCoverageRepr::Clear {
+                current_scrubbable,
+                adjacent_blocked,
+            },
+            (false, _, false) | (_, false, false) => {
+                LegacySourceCoverageRepr::BlockingSourcesPresent {
+                    current_scrubbable,
+                    adjacent_blocked,
+                }
+            }
+            _ => return Err(SecretInternalError::input_invalid()),
+        };
+        Ok(Self(repr))
     }
 }
 
@@ -2256,7 +2301,76 @@ impl SecretRefAggregate {
     pub(super) fn checked_from_authority(
         aggregate: SecretRefAggregate,
     ) -> Result<Self, SecretInternalError> {
-        todo!("ref/display/binding-set/backend-capability/presence/availability/lock/revocation/issue/timestamp matrix")
+        let display_matches = aggregate.secret_ref_display
+            == SecretRefDisplay::derive_from(&aggregate.secret_ref);
+        let binding_count_matches = u32::try_from(aggregate.bindings.len())
+            .ok()
+            .is_some_and(|count| count == aggregate.binding_set_cas.count);
+        let bindings_sorted_unique = aggregate.bindings.windows(2).all(|pair| {
+            secret_owner_sort_key(&pair[0].owner) < secret_owner_sort_key(&pair[1].owner)
+        });
+        let backend_capability_matches = aggregate.capabilities.0.backend_kind
+            == aggregate.backend.kind()
+            && aggregate.capabilities.backend_identity()
+                == (
+                    aggregate.backend.instance_id(),
+                    aggregate.backend.generation(),
+                );
+        let ready_has_no_issue = aggregate.availability != SecretStableAvailability::Ready
+            || aggregate.issue.is_none();
+        let ready_is_present = aggregate.availability != SecretStableAvailability::Ready
+            || aggregate.presence == SecretPresence::Present;
+        let revoked_has_revocation =
+            aggregate.availability != SecretStableAvailability::Revoked
+                || aggregate.revocation.is_some();
+        let locked_has_lock = aggregate.availability != SecretStableAvailability::Locked
+            || aggregate.lock.is_some();
+        let issue_matrix = match aggregate.issue.as_ref() {
+            None => true,
+            Some(issue) => {
+                let allowed = matches!(
+                    issue.code,
+                    SecretErrorCode::SecretMissing
+                        | SecretErrorCode::SecretLocked
+                        | SecretErrorCode::SecretPermissionDenied
+                        | SecretErrorCode::SecretBackendUnavailable
+                        | SecretErrorCode::SecretStale
+                        | SecretErrorCode::SecretRevoked
+                        | SecretErrorCode::SecretDeviceMismatch
+                        | SecretErrorCode::SecretOperationRecoveryRequired
+                );
+                let locked_ok = issue.code != SecretErrorCode::SecretLocked
+                    || (issue.lock_source.is_some()
+                        && aggregate.lock.as_ref().is_some_and(|lock| {
+                            issue.lock_source == Some(lock.source)
+                        }));
+                let revoked_ok = issue.code != SecretErrorCode::SecretRevoked
+                    || (issue.revocation_source.is_some()
+                        && aggregate.revocation.as_ref().is_some_and(|revocation| {
+                            issue.revocation_source == Some(revocation.source)
+                        }));
+                let unavailable_ok = issue.code != SecretErrorCode::SecretBackendUnavailable
+                    || issue.backend_unavailable_reason.is_some();
+                let recovery_ok = issue.code
+                    != SecretErrorCode::SecretOperationRecoveryRequired
+                    || issue.recovery.is_some();
+                allowed && locked_ok && revoked_ok && unavailable_ok && recovery_ok
+            }
+        };
+        if display_matches
+            && binding_count_matches
+            && bindings_sorted_unique
+            && backend_capability_matches
+            && ready_has_no_issue
+            && ready_is_present
+            && revoked_has_revocation
+            && locked_has_lock
+            && issue_matrix
+        {
+            Ok(aggregate)
+        } else {
+            Err(SecretInternalError::input_invalid())
+        }
     }
 }
 
@@ -2468,9 +2582,21 @@ impl SecretCandidateActivationProjection {
     fn validate_repr(
         repr: SecretCandidateActivationProjectionRepr,
     ) -> Result<Self, WireValidationError> {
-        let owner_sets_match = todo!(
-            "non-empty strict sorted target owners equal expected-binding owners"
-        );
+        let owner_sets_match = !repr.target_owners.is_empty()
+            && repr.target_owners.len() == repr.expected_bindings.len()
+            && repr.target_owners.windows(2).all(|pair| {
+                secret_owner_sort_key(&pair[0]) < secret_owner_sort_key(&pair[1])
+            })
+            && repr
+                .target_owners
+                .iter()
+                .zip(repr.expected_bindings.iter())
+                .all(|(owner, expectation)| {
+                    owner == match expectation {
+                        OwnerBindingExpectation::Unbound { owner, .. }
+                        | OwnerBindingExpectation::Bound { owner, .. } => owner,
+                    }
+                });
         let policy_matches = match repr.comparison_policy {
             LegacyActivationComparisonPolicy::CandidateEquality => {
                 !repr.legacy_sources_to_scrub.as_slice().is_empty()
@@ -4920,7 +5046,51 @@ impl DiscardSecretCandidateResult {
         repr: DiscardSecretCandidateResultRepr,
         journal: &CandidateDeleteJournalRow,
     ) -> Result<Self, SecretInternalError> {
-        todo!("status/terminal state/candidate exactly match durable terminal journal; expired arms alone carry action=refreshSummary and never a pending issue")
+        let DiscardCandidateJournalPhase::Terminal {
+            terminal_disposition,
+        } = &journal.phase
+        else {
+            return Err(SecretInternalError::input_invalid());
+        };
+        if *terminal_disposition != journal.terminal_disposition {
+            return Err(SecretInternalError::input_invalid());
+        }
+        let matched = match (&repr, journal.terminal_disposition) {
+            (
+                DiscardSecretCandidateResultRepr::Discarded {
+                    terminal_state: DiscardedCandidateTerminalState::Discarded,
+                    candidate_id,
+                    ..
+                }
+                | DiscardSecretCandidateResultRepr::AlreadyDiscarded {
+                    terminal_state: DiscardedCandidateTerminalState::Discarded,
+                    candidate_id,
+                    ..
+                },
+                CandidateTerminalState::Discarded,
+            )
+            | (
+                DiscardSecretCandidateResultRepr::Expired {
+                    terminal_state: ExpiredCandidateTerminalState::Expired,
+                    action: RefreshSummaryAction::RefreshSummary,
+                    candidate_id,
+                    ..
+                }
+                | DiscardSecretCandidateResultRepr::AlreadyExpired {
+                    terminal_state: ExpiredCandidateTerminalState::Expired,
+                    action: RefreshSummaryAction::RefreshSummary,
+                    candidate_id,
+                    ..
+                },
+                CandidateTerminalState::Expired,
+            ) => candidate_id == &journal.candidate.candidate_id,
+            _ => false,
+        };
+        if matched {
+            Ok(Self(repr))
+        } else {
+            Err(SecretInternalError::input_invalid())
+        }
     }
 }
 
@@ -5098,4 +5268,415 @@ impl SecretDeleteResult {
     ) -> Result<Self, SecretInternalError> {
         todo!("status/revocation source/aggregate/audit identity")
     }
+}
+
+#[cfg(test)]
+fn knife4_absent_domain() -> LegacySourceDomainCoverageIdentity {
+    LegacySourceDomainCoverageIdentity::checked_from_structural_inventory(
+        LegacySourceInventoryRevision::checked_from_structural_generation(1)
+            .expect("revision"),
+        LegacySourceDomainPresence::Absent,
+        0,
+    )
+    .expect("absent")
+}
+
+#[cfg(test)]
+fn knife4_present_domain(count: u32) -> LegacySourceDomainCoverageIdentity {
+    LegacySourceDomainCoverageIdentity::checked_from_structural_inventory(
+        LegacySourceInventoryRevision::checked_from_structural_generation(1)
+            .expect("revision"),
+        LegacySourceDomainPresence::Present,
+        count,
+    )
+    .expect("present")
+}
+
+#[cfg(test)]
+fn knife4_clear_receipt() -> LegacySourceCoverageReceipt {
+    LegacySourceCoverageReceipt {
+        inventory_revision: LegacySourceInventoryRevision::checked_from_structural_generation(1)
+            .expect("revision"),
+        coverage_identity: CompleteLegacySourceCoverageIdentity::checked_exact_eleven_domains(
+            knife4_absent_domain(),
+            knife4_absent_domain(),
+            knife4_absent_domain(),
+            knife4_absent_domain(),
+            knife4_absent_domain(),
+            knife4_absent_domain(),
+            knife4_absent_domain(),
+            knife4_absent_domain(),
+            knife4_absent_domain(),
+            knife4_absent_domain(),
+            knife4_absent_domain(),
+        )
+        .expect("identity"),
+        current_scrubbable: CurrentLegacySourceExpectations::checked_from_codex_inventory_bridge(
+            Vec::new(),
+        )
+        .expect("empty current"),
+        adjacent_blocked: Vec::new(),
+    }
+}
+
+#[cfg(test)]
+fn knife4_blocking_adjacent_receipt() -> LegacySourceCoverageReceipt {
+    LegacySourceCoverageReceipt {
+        inventory_revision: LegacySourceInventoryRevision::checked_from_structural_generation(1)
+            .expect("revision"),
+        coverage_identity: CompleteLegacySourceCoverageIdentity::checked_exact_eleven_domains(
+            knife4_absent_domain(),
+            knife4_present_domain(1),
+            knife4_absent_domain(),
+            knife4_absent_domain(),
+            knife4_absent_domain(),
+            knife4_absent_domain(),
+            knife4_absent_domain(),
+            knife4_absent_domain(),
+            knife4_absent_domain(),
+            knife4_absent_domain(),
+            knife4_absent_domain(),
+        )
+        .expect("identity"),
+        current_scrubbable: CurrentLegacySourceExpectations::checked_from_codex_inventory_bridge(
+            Vec::new(),
+        )
+        .expect("empty current"),
+        adjacent_blocked: vec![
+            AdjacentBlockedLegacySourceObservation::checked_from_codex_inventory_bridge(
+                SupplementalLegacySourceCategory::ProcessEnvironment,
+            ),
+        ],
+    }
+}
+
+#[test]
+fn secret_coverage_view_clear_from_empty_receipt() {
+    let view = LegacySourceCoverageView::checked_from_coverage_receipt(&knife4_clear_receipt())
+        .expect("clear view");
+    let json = serde_json::to_value(&view).expect("json");
+    assert_eq!(json["state"], "clear");
+    assert_eq!(json["currentScrubbable"]["state"], "none");
+    assert_eq!(json["currentScrubbable"]["sourceCount"], 0);
+    assert_eq!(json["adjacentBlocked"]["state"], "none");
+    assert_eq!(json["adjacentBlocked"]["observationCount"], 0);
+}
+
+#[test]
+fn secret_coverage_view_blocking_from_adjacent_receipt() {
+    let view = LegacySourceCoverageView::checked_from_coverage_receipt(
+        &knife4_blocking_adjacent_receipt(),
+    )
+    .expect("blocking view");
+    let json = serde_json::to_value(&view).expect("json");
+    assert_eq!(json["state"], "blockingSourcesPresent");
+    assert_eq!(json["currentScrubbable"]["state"], "none");
+    assert_eq!(json["adjacentBlocked"]["state"], "adjacentBlockedSourcesPresent");
+    assert_eq!(json["adjacentBlocked"]["observationCount"], 1);
+}
+
+#[cfg(test)]
+fn knife4_os_backend() -> SecretBackendInstanceView {
+    SecretBackendInstanceView::try_registered(
+        SecretBackendKind::OsKeyring,
+        SecretBackendInstanceId::generate(),
+        SecretBackendGeneration::parse(1).expect("generation"),
+        SecretBackendAvailability::Available,
+        None,
+    )
+    .expect("backend")
+}
+
+#[cfg(test)]
+fn knife4_os_capabilities(
+    backend: &SecretBackendInstanceView,
+) -> SecretRecordCapabilities {
+    SecretRecordCapabilities::try_new(
+        backend,
+        CapabilityRevision::parse(1).expect("capability"),
+        DeviceBindingGeneration::parse(1).expect("device binding"),
+        DeviceBinding::HostUser,
+        StorageResidency::OsProtectedStore,
+        SecretOperationConfirmationCapabilities {
+            capture_verify: PhysicalConfirmation::Never,
+            validate: PhysicalConfirmation::Never,
+            resolve_for_apply: PhysicalConfirmation::Never,
+            delete: PhysicalConfirmation::Never,
+            revoke: PhysicalConfirmation::Never,
+        },
+        vec![
+            SecretRuntimeConsumer::ChangePlanApply,
+            SecretRuntimeConsumer::ProxyRequest,
+            SecretRuntimeConsumer::UsageProbe,
+            SecretRuntimeConsumer::CodingPlanUsageProbe,
+            SecretRuntimeConsumer::ModelFetch,
+        ],
+        vec![
+            SecretRuntimeSink::ProcessMemory,
+            SecretRuntimeSink::ExternalConfigFile,
+        ],
+        true,
+        false,
+        BackendRevocationObservationCapability::Unsupported,
+    )
+    .expect("capabilities")
+}
+
+#[cfg(test)]
+fn knife4_ready_aggregate() -> SecretRefAggregate {
+    let secret_ref = SecretRef::generate();
+    let backend = knife4_os_backend();
+    let capabilities = knife4_os_capabilities(&backend);
+    SecretRefAggregate {
+        schema_version: SchemaVersionV1,
+        secret_ref: secret_ref.clone(),
+        secret_ref_display: SecretRefDisplay::derive_from(&secret_ref),
+        purpose: SecretPurpose::CodexApiKey,
+        record_revision: SecretRecordRevision::parse(1).expect("record"),
+        binding_set_cas: SecretBindingSetCas {
+            revision: SecretBindingSetRevision::parse(1).expect("binding set"),
+            digest: BindingSetDigest::parse("ab".repeat(32)).expect("digest"),
+            count: 0,
+        },
+        backend,
+        capabilities,
+        bindings: Vec::new(),
+        presence: SecretPresence::Present,
+        availability: SecretStableAvailability::Ready,
+        lock: None,
+        revocation: None,
+        issue: None,
+        created_at: UtcTimestamp::parse("2026-08-17T17:00:00.000Z".to_string())
+            .expect("timestamp"),
+        rotated_at: None,
+        last_validated_at: None,
+    }
+}
+
+#[test]
+fn secret_ref_aggregate_accepts_consistent_matrix() {
+    SecretRefAggregate::checked_from_authority(knife4_ready_aggregate())
+        .expect("consistent matrix");
+}
+
+#[test]
+fn secret_ref_aggregate_rejects_display_ref_mismatch() {
+    let mut aggregate = knife4_ready_aggregate();
+    aggregate.secret_ref_display = SecretRefDisplay::derive_from(&SecretRef::generate());
+    assert!(SecretRefAggregate::checked_from_authority(aggregate).is_err());
+}
+
+#[cfg(test)]
+fn knife4_owner(owner_id: &str) -> SecretOwner {
+    SecretOwner {
+        kind: SecretOwnerKind::Provider,
+        namespace: SecretOwnerNamespace::parse("codex".to_string()).expect("namespace"),
+        owner_id: OwnerId::parse(owner_id.to_string()).expect("owner"),
+        slot: SecretSlot::PrimaryApiKey,
+    }
+}
+
+#[cfg(test)]
+fn knife4_unbound_expectation(owner: SecretOwner) -> OwnerBindingExpectation {
+    OwnerBindingExpectation::Unbound {
+        owner,
+        owner_binding_revision: SecretOwnerBindingRevision::parse(1).expect("revision"),
+    }
+}
+
+#[cfg(test)]
+fn knife4_activation_repr(
+    owners: Vec<SecretOwner>,
+    bindings: Vec<OwnerBindingExpectation>,
+) -> SecretCandidateActivationProjectionRepr {
+    let backend_instance_id = SecretBackendInstanceId::generate();
+    SecretCandidateActivationProjectionRepr {
+        contract_version: SecretContractVersionV1::V1,
+        operation: SecretCandidateActivationOperation::SecretCandidateActivation,
+        candidate_id: SecretCandidateId::generate(),
+        candidate_revision: SecretCandidateRevision::parse(1).expect("candidate"),
+        kind: SecretCandidateKind::NewBinding,
+        comparison_policy: LegacyActivationComparisonPolicy::ExplicitReplacement,
+        comparison_impact: LegacyActivationComparisonImpact::ExplicitReplacement {
+            user_meaning: ReplaceExistingCredentialMeaning::ReplaceExistingCredential,
+            affected_source_count: 0,
+            replaces_bound_binding: false,
+        },
+        secret_ref: SecretRef::generate(),
+        purpose: SecretPurpose::CodexApiKey,
+        record_revision: SecretRecordRevision::parse(1).expect("record"),
+        backend_instance_id: backend_instance_id.clone(),
+        backend_generation: SecretBackendGeneration::parse(1).expect("generation"),
+        device_binding_generation: DeviceBindingGeneration::parse(1).expect("device"),
+        capability_revision: CapabilityRevision::parse(1).expect("capability"),
+        target_owners: owners,
+        expected_bindings: bindings,
+        legacy_sources_to_scrub: CurrentLegacySourceExpectations::checked_from_codex_inventory_bridge(
+            Vec::new(),
+        )
+        .expect("empty scrub"),
+        candidate_read: SecretActivationCandidateReadExpectation {
+            operation: ActivationCandidateReadOperation::ResolveForApply,
+            scope: ActivationCandidateReadScope::ActivationCandidateCompare,
+            backend_instance_id,
+            backend_generation: SecretBackendGeneration::parse(1).expect("generation"),
+            device_binding_generation: DeviceBindingGeneration::parse(1).expect("device"),
+            capability_revision: CapabilityRevision::parse(1).expect("capability"),
+            confirmation: PhysicalConfirmation::Never,
+        },
+        old_record_delete: SecretActivationOldRecordDeleteExpectation::NotApplicable,
+        projection_digest: SecretProjectionDigest::parse("cd".repeat(32)).expect("digest"),
+    }
+}
+
+#[test]
+fn secret_activation_projection_validate_repr_owners_match() {
+    let owner = knife4_owner("owner-1");
+    SecretCandidateActivationProjection::validate_repr(knife4_activation_repr(
+        vec![owner.clone()],
+        vec![knife4_unbound_expectation(owner)],
+    ))
+    .expect("owners match");
+}
+
+#[test]
+fn secret_activation_projection_validate_repr_owners_mismatch() {
+    let err = SecretCandidateActivationProjection::validate_repr(knife4_activation_repr(
+        vec![knife4_owner("owner-1")],
+        vec![knife4_unbound_expectation(knife4_owner("owner-2"))],
+    ));
+    assert!(err.is_err());
+}
+
+#[cfg(test)]
+fn knife4_terminal_journal(
+    disposition: CandidateTerminalState,
+    candidate_id: SecretCandidateId,
+) -> CandidateDeleteJournalRow {
+    let owner = knife4_owner("owner-1");
+    CandidateDeleteJournalRow {
+        attempt: JournalAttempt::checked(1).expect("attempt"),
+        expected_store_revision: SecretStoreRevision::parse(1).expect("store"),
+        terminal_disposition: disposition,
+        candidate: JournalCandidateIdentity {
+            candidate_id,
+            candidate_revision: SecretCandidateRevision::parse(1).expect("candidate"),
+            candidate_kind: SecretCandidateKind::NewBinding,
+            comparison_policy: LegacyActivationComparisonPolicy::ExplicitReplacement,
+            comparison_impact: LegacyActivationComparisonImpact::ExplicitReplacement {
+                user_meaning: ReplaceExistingCredentialMeaning::ReplaceExistingCredential,
+                affected_source_count: 0,
+                replaces_bound_binding: false,
+            },
+        },
+        target_owners: NonEmptySortedJournalTargetOwners(vec![owner.clone()]),
+        expected_bindings: NonEmptySortedJournalBindingExpectations(vec![
+            knife4_unbound_expectation(owner),
+        ]),
+        record: JournalBackendIdentity {
+            device_instance_id: DeviceInstanceId::generate(),
+            secret_ref: SecretRef::generate(),
+            record_revision: SecretRecordRevision::parse(1).expect("record"),
+            binding_set_cas: SecretBindingSetCas {
+                revision: SecretBindingSetRevision::parse(1).expect("binding set"),
+                digest: BindingSetDigest::parse("ab".repeat(32)).expect("digest"),
+                count: 0,
+            },
+            backend_instance_id: SecretBackendInstanceId::generate(),
+            backend_generation: SecretBackendGeneration::parse(1).expect("generation"),
+            device_binding_generation: DeviceBindingGeneration::parse(1).expect("device"),
+            capability_revision: CapabilityRevision::parse(1).expect("capability"),
+            confirmation: PhysicalConfirmation::Never,
+        },
+        delete_slot: CandidateDiscardConfirmationSlot::RecordDelete,
+        missing_readback_slot: CandidateDiscardConfirmationSlot::RecordMissingReadback,
+        delete_confirmation: PhysicalConfirmation::Never,
+        missing_readback_confirmation: PhysicalConfirmation::Never,
+        phase: DiscardCandidateJournalPhase::Terminal {
+            terminal_disposition: disposition,
+        },
+    }
+}
+
+#[test]
+fn secret_discard_result_matches_discarded_journal() {
+    let candidate_id = SecretCandidateId::generate();
+    let journal = knife4_terminal_journal(CandidateTerminalState::Discarded, candidate_id.clone());
+    DiscardSecretCandidateResult::checked_from_candidate_journal(
+        DiscardSecretCandidateResultRepr::Discarded {
+            terminal_state: DiscardedCandidateTerminalState::Discarded,
+            candidate_id,
+            audit_event_id: SecretAuditEventId::generate(),
+        },
+        &journal,
+    )
+    .expect("discarded matches terminal journal");
+}
+
+#[test]
+fn secret_discard_result_expired_requires_refresh_summary_and_terminal() {
+    let candidate_id = SecretCandidateId::generate();
+    let journal = knife4_terminal_journal(CandidateTerminalState::Expired, candidate_id.clone());
+    DiscardSecretCandidateResult::checked_from_candidate_journal(
+        DiscardSecretCandidateResultRepr::Expired {
+            terminal_state: ExpiredCandidateTerminalState::Expired,
+            candidate_id,
+            action: RefreshSummaryAction::RefreshSummary,
+            audit_event_id: SecretAuditEventId::generate(),
+        },
+        &journal,
+    )
+    .expect("expired matches terminal journal with refreshSummary");
+}
+
+#[test]
+fn secret_discard_result_mismatch_fail_closed() {
+    let candidate_id = SecretCandidateId::generate();
+    let expired_journal =
+        knife4_terminal_journal(CandidateTerminalState::Expired, candidate_id.clone());
+    assert!(
+        DiscardSecretCandidateResult::checked_from_candidate_journal(
+            DiscardSecretCandidateResultRepr::Discarded {
+                terminal_state: DiscardedCandidateTerminalState::Discarded,
+                candidate_id: candidate_id.clone(),
+                audit_event_id: SecretAuditEventId::generate(),
+            },
+            &expired_journal,
+        )
+        .is_err(),
+        "discarded arm must not match expired journal"
+    );
+
+    let mut pending = knife4_terminal_journal(
+        CandidateTerminalState::Discarded,
+        candidate_id.clone(),
+    );
+    pending.phase = DiscardCandidateJournalPhase::Intent;
+    assert!(
+        DiscardSecretCandidateResult::checked_from_candidate_journal(
+            DiscardSecretCandidateResultRepr::Discarded {
+                terminal_state: DiscardedCandidateTerminalState::Discarded,
+                candidate_id: candidate_id.clone(),
+                audit_event_id: SecretAuditEventId::generate(),
+            },
+            &pending,
+        )
+        .is_err(),
+        "pending journal must fail closed"
+    );
+
+    let other = SecretCandidateId::generate();
+    let journal = knife4_terminal_journal(CandidateTerminalState::Discarded, other);
+    assert!(
+        DiscardSecretCandidateResult::checked_from_candidate_journal(
+            DiscardSecretCandidateResultRepr::Discarded {
+                terminal_state: DiscardedCandidateTerminalState::Discarded,
+                candidate_id,
+                audit_event_id: SecretAuditEventId::generate(),
+            },
+            &journal,
+        )
+        .is_err(),
+        "candidate mismatch must fail closed"
+    );
 }
