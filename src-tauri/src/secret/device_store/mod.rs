@@ -92,7 +92,7 @@ fn persist_state(root: &Path, envelope: &StateEnvelope) -> Result<(), SecretInte
         .map_err(|_| SecretInternalError::input_invalid())
 }
 
-fn utc_now() -> String {
+pub(crate) fn utc_now() -> String {
     Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)
 }
 
