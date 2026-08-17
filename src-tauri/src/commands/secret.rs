@@ -84,12 +84,58 @@ pub async fn list_secret_summaries(
     list_secret_summaries_from_state(&state, request)
 }
 
-#[tauri::command]
-pub async fn list_secret_backend_options(
+/// Sync helper so tests can exercise fail-closed / InMemory mint without
+/// spinning Tauri. Production AppState has no InMemory/registry hold and
+/// returns typed unavailable (no Keychain write). A successful InMemory mint
+/// still fail-closes: `ListSecretBackendOptionsResult::checked_from_registry`
+/// stays unimplemented, so this never returns Ok(contract DTO).
+pub(crate) fn list_secret_backend_options_from_state(
+    state: &AppState,
     request: ListSecretBackendOptionsRequest,
 ) -> SecretCommandResult<ListSecretBackendOptionsResult> {
-    let _ = request;
-    unavailable()
+    let opened = require_opened_store(state)?;
+    #[cfg(test)]
+    {
+        let _ = opened;
+        return list_secret_backend_options_in_memory(state, request);
+    }
+    #[cfg(not(test))]
+    {
+        let _ = (opened, request);
+        unavailable()
+    }
+}
+
+#[cfg(test)]
+fn list_secret_backend_options_in_memory(
+    state: &AppState,
+    request: ListSecretBackendOptionsRequest,
+) -> SecretCommandResult<ListSecretBackendOptionsResult> {
+    let Some(_backend) = state.secret_in_memory_backend.as_ref() else {
+        return unavailable();
+    };
+    let Some(registry) = state.secret_capture_registry.as_ref() else {
+        return unavailable();
+    };
+    let backend_id = crate::secret::SecretBackendInstanceId::generate();
+    match registry.mint(
+        request.owner.owner_id.as_str(),
+        request.purpose,
+        request.intent,
+        backend_id,
+    ) {
+        // Minted into the test registry, but the contract DTO constructor is still todo.
+        Ok(_) => unavailable(),
+        Err(error) => Err(crate::secret::service_command_error(error)),
+    }
+}
+
+#[tauri::command]
+pub async fn list_secret_backend_options(
+    state: State<'_, AppState>,
+    request: ListSecretBackendOptionsRequest,
+) -> SecretCommandResult<ListSecretBackendOptionsResult> {
+    list_secret_backend_options_from_state(&state, request)
 }
 
 /// Sync helper so tests can exercise fail-closed / InMemory stage without
@@ -334,6 +380,13 @@ mod secret_command_dto_tests {
         .expect("begin request")
     }
 
+    fn options_request() -> ListSecretBackendOptionsRequest {
+        serde_json::from_str(
+            r#"{"schemaVersion":1,"owner":{"kind":"provider","namespace":"codex","ownerId":"owner-options-cmd","slot":"primaryApiKey"},"purpose":"codexApiKey","intent":"newBinding"}"#,
+        )
+        .expect("options request")
+    }
+
     fn local_candidates(state: &AppState) -> Vec<crate::secret::LocalCandidateProjection> {
         list_secret_candidates_from_store(
             state.secret_store.as_ref().expect("store").store(),
@@ -433,6 +486,10 @@ mod secret_command_dto_tests {
         assert_err_not_empty_ok(list_secret_candidates_from_state(&state, candidates_request()));
         assert_err_not_empty_ok(discard_secret_candidate_from_state(&state, discard_request()));
         assert_err_not_empty_ok(begin_secret_capture_from_state(&state, begin_request()));
+        assert_err_not_empty_ok(list_secret_backend_options_from_state(
+            &state,
+            options_request(),
+        ));
     }
 
     #[test]
@@ -686,5 +743,96 @@ mod secret_command_dto_tests {
         assert!(payload.secrets.is_empty(), "cancel is zero-write");
         assert!(payload.candidates.is_empty(), "cancel is zero-write");
         assert!(payload.owner_bindings.is_empty(), "cancel is zero-write");
+    }
+
+    #[test]
+    fn secret_list_backend_options_without_in_memory_or_registry_is_unavailable() {
+        let (_tmp, mut state) = opened_state();
+        state.attach_secret_capture_registry(
+            crate::secret::capture::SecretCaptureIntentRegistry::new(),
+        );
+        assert!(state.secret_in_memory_backend.is_none());
+        assert_err_not_empty_ok(list_secret_backend_options_from_state(
+            &state,
+            options_request(),
+        ));
+        let registry = state
+            .secret_capture_registry
+            .as_ref()
+            .expect("registry");
+        assert!(
+            registry.last_minted_id().is_none(),
+            "missing InMemory must not mint"
+        );
+        assert!(
+            registry.ready_ids().is_empty(),
+            "missing InMemory must not leave a Ready intent"
+        );
+
+        let (_tmp, mut state) = opened_state();
+        state.attach_in_memory_secret_backend(InMemorySecretBackend::new());
+        assert!(state.secret_capture_registry.is_none());
+        assert_err_not_empty_ok(list_secret_backend_options_from_state(
+            &state,
+            options_request(),
+        ));
+
+        let (_tmp, state) = opened_state();
+        assert!(state.secret_in_memory_backend.is_none());
+        assert!(state.secret_capture_registry.is_none());
+        assert_err_not_empty_ok(list_secret_backend_options_from_state(
+            &state,
+            options_request(),
+        ));
+    }
+
+    #[test]
+    fn secret_list_backend_options_mints_intent_but_command_stays_err_then_begin_can_claim() {
+        let (_tmp, mut state) = opened_state();
+        state.attach_in_memory_secret_backend(InMemorySecretBackend::new());
+        state.attach_secret_capture_registry(
+            crate::secret::capture::SecretCaptureIntentRegistry::new(),
+        );
+        let result = list_secret_backend_options_from_state(&state, options_request());
+        assert!(
+            result.is_err(),
+            "minted InMemory options must not Ok a contract DTO"
+        );
+        let registry = state
+            .secret_capture_registry
+            .as_ref()
+            .expect("registry");
+        let intent_id = registry.last_minted_id().expect("minted sci_");
+        assert!(
+            intent_id.as_str().starts_with("sci_"),
+            "options mint must produce a capture intent id"
+        );
+        let backend_id = registry
+            .last_minted_backend_id()
+            .expect("minted sbi_");
+        assert!(
+            backend_id.as_str().starts_with("sbi_"),
+            "options mint must record the backend id used for later claim"
+        );
+        assert!(
+            registry
+                .ready_ids()
+                .iter()
+                .any(|id| id == &intent_id),
+            "minted intent must stay Ready for begin claim"
+        );
+        let begin_result = begin_secret_capture_from_state(
+            &state,
+            begin_request_for(intent_id.as_str(), backend_id.as_str()),
+        );
+        assert!(
+            begin_result.is_err(),
+            "begin after options mint must not Ok a contract DTO"
+        );
+        assert_eq!(
+            local_candidates(&state).len(),
+            1,
+            "begin must claim the options-minted sci_ and stage an unbound candidate"
+        );
     }
 }

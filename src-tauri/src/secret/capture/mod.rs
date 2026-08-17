@@ -77,6 +77,8 @@ struct IntentRow {
 /// Process-local single-use capture-intent registry.
 pub(crate) struct SecretCaptureIntentRegistry {
     rows: Mutex<HashMap<String, IntentRow>>,
+    #[cfg(test)]
+    last_minted: Mutex<Option<(SecretCaptureIntentId, SecretBackendInstanceId)>>,
 }
 
 pub(crate) struct ClaimedCaptureIntent {
@@ -91,6 +93,8 @@ impl SecretCaptureIntentRegistry {
     pub(crate) fn new() -> Self {
         Self {
             rows: Mutex::new(HashMap::new()),
+            #[cfg(test)]
+            last_minted: Mutex::new(None),
         }
     }
 
@@ -111,6 +115,8 @@ impl SecretCaptureIntentRegistry {
         backend_instance_id: SecretBackendInstanceId,
     ) -> Result<SecretCaptureIntentId, SecretInternalError> {
         let id = SecretCaptureIntentId::generate();
+        #[cfg(test)]
+        let last = (id.clone(), backend_instance_id.clone());
         let mut rows = self.lock()?;
         rows.insert(
             id.as_str().to_string(),
@@ -122,7 +128,43 @@ impl SecretCaptureIntentRegistry {
                 state: IntentState::Ready,
             },
         );
+        #[cfg(test)]
+        {
+            *self.last_minted.lock().map_err(|_| {
+                SecretInternalError::terminal_operation_failure(
+                    SecretSourceFreeErrorCode::Internal,
+                    SecretTerminalOperationContext::Capture(BeginCaptureIntent::NewBinding),
+                )
+            })? = Some(last);
+        }
         Ok(id)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn last_minted_id(&self) -> Option<SecretCaptureIntentId> {
+        self.last_minted
+            .lock()
+            .ok()
+            .and_then(|guard| guard.as_ref().map(|(id, _)| id.clone()))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn last_minted_backend_id(&self) -> Option<SecretBackendInstanceId> {
+        self.last_minted
+            .lock()
+            .ok()
+            .and_then(|guard| guard.as_ref().map(|(_, id)| id.clone()))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn ready_ids(&self) -> Vec<SecretCaptureIntentId> {
+        let Ok(rows) = self.lock() else {
+            return Vec::new();
+        };
+        rows.iter()
+            .filter(|(_, row)| row.state == IntentState::Ready)
+            .filter_map(|(id, _)| SecretCaptureIntentId::parse(id.clone()).ok())
+            .collect()
     }
 
     pub(crate) fn claim_once(
