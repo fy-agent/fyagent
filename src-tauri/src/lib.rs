@@ -1124,7 +1124,9 @@ pub fn run() {
                 }
             }
 
-            let app_state = AppState::new(db);
+            let opened_secret_store = crate::secret::SecretBootstrap::open(app.handle())?;
+            let app_state = AppState::new_with_secret_store(db, opened_secret_store);
+
 
             // 设置 AppHandle 用于代理故障转移时的 UI 更新
             app_state.proxy_service.set_app_handle(app.handle().clone());

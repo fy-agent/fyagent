@@ -1,5 +1,6 @@
 use crate::codex_desktop_runtime::production_service;
 use crate::database::Database;
+use crate::secret::OpenedDeviceLocalSecretStore;
 use crate::services::{CodexDesktopService, ProxyService, UsageCache};
 use std::sync::Arc;
 
@@ -11,6 +12,10 @@ pub struct AppState {
     /// Process-local installer state. Its factory is inert: no metadata or
     /// package I/O is performed while constructing ordinary application state.
     pub codex_desktop_service: Arc<CodexDesktopService>,
+    /// Device-local secret store opened at startup. `new` leaves this unset so
+    /// existing test callsites keep compiling; production setup uses
+    /// `new_with_secret_store` after `SecretBootstrap::open`.
+    pub(crate) secret_store: Option<OpenedDeviceLocalSecretStore>,
 }
 
 impl AppState {
@@ -23,6 +28,16 @@ impl AppState {
             proxy_service,
             usage_cache: Arc::new(UsageCache::new()),
             codex_desktop_service: Arc::new(production_service()),
+            secret_store: None,
         }
+    }
+
+    pub(crate) fn new_with_secret_store(
+        db: Arc<Database>,
+        secret_store: OpenedDeviceLocalSecretStore,
+    ) -> Self {
+        let mut state = Self::new(db);
+        state.secret_store = Some(secret_store);
+        state
     }
 }
