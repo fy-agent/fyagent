@@ -246,12 +246,24 @@ pub async fn discard_secret_candidate(
     discard_secret_candidate_from_state(&state, request)
 }
 
-#[tauri::command]
-pub async fn set_secret_locked(
+/// Sync helper so tests can exercise fail-closed / contract DTO without
+/// spinning Tauri. Writes only D2 policy_state; never touches Keychain.
+pub(crate) fn set_secret_locked_from_state(
+    state: &AppState,
     request: SetSecretLockedRequest,
 ) -> SecretCommandResult<SecretMutationResult> {
-    let _ = request;
-    unavailable()
+    let opened = require_opened_store(state)?;
+    crate::secret::set_secret_locked_from_store(opened.store(), &request)
+        .map(crate::secret::command_success)
+        .map_err(crate::secret::service_command_error)
+}
+
+#[tauri::command]
+pub async fn set_secret_locked(
+    state: State<'_, AppState>,
+    request: SetSecretLockedRequest,
+) -> SecretCommandResult<SecretMutationResult> {
+    set_secret_locked_from_state(&state, request)
 }
 
 #[tauri::command]
@@ -946,4 +958,58 @@ mod secret_command_dto_tests {
         assert_eq!(json["status"], "ready");
         assert!(json["context"]["projection"].is_object());
     }
+    fn lock_request(secret_ref: &str, locked: bool, revision: u64) -> SetSecretLockedRequest {
+        serde_json::from_str(&format!(
+            r#"{{"schemaVersion":1,"secretRef":"{secret_ref}","locked":{locked},"expectedRecordRevision":{revision},"expectedBindingSet":{{"revision":1,"digest":"{digest}","count":0}}}}"#,
+            digest = "0".repeat(64),
+        ))
+        .expect("lock request")
+    }
+
+    #[test]
+    fn secret_lock_matching_cas_returns_locked_contract_dto() {
+        let tmp = TempDir::new().expect("tempdir");
+        let opened = SecretBootstrap::open_for_test(tmp.path().to_path_buf()).expect("open");
+        let seeded = seed_opened_store_pending_candidate(opened.store()).expect("seed");
+        let db = Arc::new(Database::memory().expect("memory db"));
+        let state = AppState::new_with_secret_store(db, opened);
+        let result = set_secret_locked_from_state(
+            &state,
+            lock_request(&seeded.secret_ref, true, seeded.record_revision),
+        )
+        .unwrap_or_else(|err| {
+            panic!(
+                "matching CAS must Ok lock DTO: {}",
+                serde_json::to_string(&err).unwrap_or_default()
+            )
+        });
+        let json = serde_json::to_value(&result.data).expect("json");
+        assert_eq!(json["aggregate"]["availability"], "locked");
+        assert_eq!(json["aggregate"]["lock"]["source"], "fyAgentPolicy");
+        assert!(json["auditEventId"].is_string());
+    }
+
+    #[test]
+    fn secret_lock_revision_mismatch_fails_closed() {
+        let tmp = TempDir::new().expect("tempdir");
+        let opened = SecretBootstrap::open_for_test(tmp.path().to_path_buf()).expect("open");
+        let seeded = seed_opened_store_pending_candidate(opened.store()).expect("seed");
+        let db = Arc::new(Database::memory().expect("memory db"));
+        let state = AppState::new_with_secret_store(db, opened);
+        assert_err_not_empty_ok(set_secret_locked_from_state(
+            &state,
+            lock_request(&seeded.secret_ref, true, seeded.record_revision.saturating_add(1)),
+        ));
+    }
+
+    #[test]
+    fn secret_lock_without_store_fails_closed() {
+        let db = Arc::new(Database::memory().expect("memory db"));
+        let state = AppState::new(db);
+        assert_err_not_empty_ok(set_secret_locked_from_state(
+            &state,
+            lock_request(crate::secret::SecretRef::generate().as_str(), true, 1),
+        ));
+    }
+
 }

@@ -176,16 +176,26 @@ fn map_secret_ref_aggregate(
         }
         bindings
     };
-    let (presence, availability) = match (row.retirement_state, row.policy_state) {
+    let (presence, availability, lock) = match (row.retirement_state, row.policy_state) {
         (
             device_store::schema::StoredRetirementState::Live,
             device_store::schema::StoredPolicyState::Active,
-        ) => (SecretPresence::Present, SecretStableAvailability::Ready),
+        ) => (SecretPresence::Present, SecretStableAvailability::Ready, None),
         (
             device_store::schema::StoredRetirementState::Stale,
             device_store::schema::StoredPolicyState::Active,
-        ) => (SecretPresence::Present, SecretStableAvailability::Stale),
-        // Locked/revoked need lock/revocation views we do not invent.
+        ) => (SecretPresence::Present, SecretStableAvailability::Stale, None),
+        (
+            device_store::schema::StoredRetirementState::Live,
+            device_store::schema::StoredPolicyState::Locked,
+        ) => (
+            SecretPresence::Present,
+            SecretStableAvailability::Locked,
+            Some(SecretLockView {
+                source: SecretLockSource::FyAgentPolicy,
+                locked_at: parse_wire(UtcTimestamp::parse(row.updated_at.clone()))?,
+            }),
+        ),
         _ => return Err(SecretInternalError::input_invalid()),
     };
     SecretRefAggregate::checked_from_authority(SecretRefAggregate {
@@ -200,7 +210,7 @@ fn map_secret_ref_aggregate(
         bindings,
         presence,
         availability,
-        lock: None,
+        lock,
         revocation: None,
         issue: None,
         created_at: parse_wire(UtcTimestamp::parse(row.created_at.clone()))?,
@@ -1008,6 +1018,52 @@ pub(crate) fn check_secret_apply_readiness_from_store(
             checked_at,
             expires_at,
         },
+    })
+}
+
+
+pub(crate) fn set_secret_locked_from_store(
+    store: &device_store::DeviceLocalSecretStore,
+    request: &SetSecretLockedRequest,
+) -> Result<SecretMutationResult, SecretInternalError> {
+    let mut payload = store.load()?.payload;
+    let idx = payload
+        .secrets
+        .iter()
+        .position(|row| row.secret_ref == request.secret_ref.as_str())
+        .ok_or_else(SecretInternalError::input_invalid)?;
+    let current_cas = map_binding_set_cas(&payload.secrets[idx].binding_set_cas)?;
+    let current_rev = parse_wire(SecretRecordRevision::parse(
+        payload.secrets[idx].record_revision,
+    ))?;
+    if current_rev != request.expected_record_revision
+        || current_cas != request.expected_binding_set
+    {
+        return Err(SecretInternalError::input_invalid());
+    }
+    let now = device_store::utc_now();
+    {
+        let row = &mut payload.secrets[idx];
+        row.policy_state = if request.locked {
+            device_store::schema::StoredPolicyState::Locked
+        } else {
+            device_store::schema::StoredPolicyState::Active
+        };
+        row.record_revision = row.record_revision.saturating_add(1);
+        row.updated_at = now;
+    }
+    payload.store_revision = payload.store_revision.saturating_add(1);
+    let stored = payload.clone();
+    store.store(payload)?;
+    let row = stored
+        .secrets
+        .iter()
+        .find(|row| row.secret_ref == request.secret_ref.as_str())
+        .ok_or_else(SecretInternalError::input_invalid)?;
+    let aggregate = map_secret_ref_aggregate(&stored, row)?;
+    SecretMutationResult::checked_from_authority(SecretMutationResult {
+        aggregate,
+        audit_event_id: SecretAuditEventId::generate(),
     })
 }
 

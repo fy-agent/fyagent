@@ -5328,10 +5328,13 @@ impl SecretValidationResult {
 }
 
 impl SecretMutationResult {
-    fn checked_from_authority(
+    pub(in crate::secret) fn checked_from_authority(
         result: SecretMutationResult,
     ) -> Result<Self, SecretInternalError> {
-        todo!("aggregate/audit identity")
+        Ok(Self {
+            aggregate: SecretRefAggregate::checked_from_authority(result.aggregate)?,
+            audit_event_id: result.audit_event_id,
+        })
     }
 }
 
