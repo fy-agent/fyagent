@@ -1,12 +1,19 @@
 use super::*;
 use super::device_store::{
     DeviceLocalSecretStore,
-    journal::kind_totality,
+    journal::{
+        kind_totality, mint_delete_applied_cas, write_journal, StagedImportResumePreimage,
+    },
     reconcile::recovery_kind_totality,
     schema::{
-        JournalOperationKind, RecoveryKind, StateEnvelope, envelope_from_payload, verify_envelope,
+        ActivationOldRecordDeleteCheckpoint, ActivationOldRecordDurableCheckpoint,
+        CandidateDiscardDeleteCheckpoint, DeleteAppliedCas, DeleteAppliedRole, DeleteDisposition,
+        DiscardSlot, JournalEnvelope, JournalError, JournalOperationKind, PromotedLiveOwner,
+        RecoveryKind, StateEnvelope, StagedImportResumePhase, StagedSourceSetCas, StoredOwner,
+        TerminalDisposition, envelope_from_payload, verify_envelope,
     },
 };
+use super::service::{LocalDiscardOutcome, SecretServiceLocal};
 use tempfile::TempDir;
 
 #[test]
@@ -193,4 +200,355 @@ fn secret_command_request_dto_deny_unknown_fields() {
         Err(err) => err,
     };
     assert!(err.to_string().contains("unknown field"));
+}
+
+
+fn rfc_now() -> String {
+    "2026-08-17T17:00:00.000Z".to_string()
+}
+
+fn hex32(tag: u8) -> String {
+    format!("{tag:02x}") + &"ab".repeat(15)
+}
+
+fn hex64(tag: u8) -> String {
+    format!("{tag:02x}") + &"cd".repeat(31)
+}
+
+fn sop(tag: u8) -> String {
+    format!("sop_{}{}", "a".repeat(12), format!("4aaa8{}", "a".repeat(11)))
+        .chars()
+        .take(4)
+        .collect::<String>()
+        + &{
+            let mut suffix = vec![b'a'; 32];
+            suffix[12] = b'4';
+            suffix[16] = b'8';
+            suffix[31] = b'0' + tag;
+            String::from_utf8(suffix).expect("hex")
+        }
+}
+
+fn dev() -> String {
+    let mut suffix = vec![b'a'; 32];
+    suffix[12] = b'4';
+    suffix[16] = b'8';
+    format!("dev_{}", String::from_utf8(suffix).expect("hex"))
+}
+
+fn sample_owner() -> StoredOwner {
+    StoredOwner {
+        kind: "provider".to_string(),
+        namespace: "codex".to_string(),
+        owner_id: "owner-1".to_string(),
+        slot: "primaryApiKey".to_string(),
+    }
+}
+
+fn after_scrub_cas() -> StagedSourceSetCas {
+    StagedSourceSetCas::after_scrub(1, hex64(1), 0).expect("cas")
+}
+
+#[test]
+fn secret_discard_two_slots_require_three_field_checkpoint() {
+    let tmp = TempDir::new().expect("tempdir");
+    let service = SecretServiceLocal::open(tmp.path().to_path_buf()).expect("open");
+    let material =
+        SecretMaterial::from_native_input(b"discard-key".to_vec(), SecretPurpose::CodexApiKey)
+            .expect("material");
+    let seeded = service
+        .seed_pending_candidate(service.backend(), material, false)
+        .expect("seed");
+
+    let mut journal = JournalEnvelope::discard_intent(
+        sop(1),
+        service.store().device_instance_id().as_str().to_string(),
+        rfc_now(),
+        TerminalDisposition::Discarded,
+    )
+    .expect("intent");
+
+    let skip = journal.consume_discard_slot(
+        DiscardSlot::RecordMissingReadback,
+        None,
+        Some(rfc_now()),
+        rfc_now(),
+    );
+    assert_eq!(skip, Err(JournalError::MissingCheckpoint));
+
+    let swap = journal.consume_discard_slot(
+        DiscardSlot::RecordMissingReadback,
+        Some(
+            CandidateDiscardDeleteCheckpoint::checked(
+                DeleteDisposition::Deleted,
+                rfc_now(),
+                DeleteAppliedCas::checked(1, hex64(2)).expect("cas"),
+            )
+            .expect("checkpoint"),
+        ),
+        Some(rfc_now()),
+        rfc_now(),
+    );
+    assert_eq!(swap, Err(JournalError::SlotSwap));
+
+    let cas = mint_delete_applied_cas(
+        journal.operation_id(),
+        journal.operation_kind(),
+        DeleteAppliedRole::DiscardRecordDelete,
+        DeleteDisposition::Deleted,
+        &rfc_now(),
+        1,
+    )
+    .expect("mint");
+    let checkpoint = CandidateDiscardDeleteCheckpoint::checked(
+        DeleteDisposition::Deleted,
+        rfc_now(),
+        cas,
+    )
+    .expect("three-field");
+    let encoded = serde_json::to_value(&checkpoint).expect("json");
+    let obj = encoded.as_object().expect("object");
+    assert_eq!(
+        obj.keys().cloned().collect::<Vec<_>>(),
+        vec![
+            "deleteDisposition".to_string(),
+            "backendCompletedAt".to_string(),
+            "deleteAppliedCas".to_string()
+        ]
+    );
+
+    journal
+        .consume_discard_slot(
+            DiscardSlot::RecordDelete,
+            Some(checkpoint.clone()),
+            None,
+            rfc_now(),
+        )
+        .expect("record delete");
+    let reuse = journal.consume_discard_slot(
+        DiscardSlot::RecordDelete,
+        Some(checkpoint.clone()),
+        None,
+        rfc_now(),
+    );
+    assert_eq!(reuse, Err(JournalError::SlotReuse));
+
+    journal
+        .consume_discard_slot(
+            DiscardSlot::RecordMissingReadback,
+            None,
+            Some(rfc_now()),
+            rfc_now(),
+        )
+        .expect("missing readback");
+    journal.finalize_discard_terminal(rfc_now()).expect("terminal");
+    write_journal(service.store().root(), &journal).expect("persist");
+
+    let outcome = service
+        .discard_secret_candidate(&seeded.candidate_id, seeded.candidate_revision, service.backend())
+        .expect("service discard");
+    match outcome {
+        LocalDiscardOutcome::Discarded { candidate_id } => {
+            assert_eq!(candidate_id, seeded.candidate_id)
+        }
+        LocalDiscardOutcome::AlreadyTerminal { .. } => panic!("fresh discard must consume slots"),
+    }
+
+    let pending = service.list_secret_candidates(false).expect("pending");
+    assert!(pending.iter().all(|row| row.candidate_id != seeded.candidate_id));
+    let all = service.list_secret_candidates(true).expect("all");
+    let discarded = all
+        .iter()
+        .find(|row| row.candidate_id == seeded.candidate_id)
+        .expect("terminal visible");
+    assert_eq!(discarded.state, super::device_store::schema::StoredCandidateState::Discarded);
+}
+
+#[test]
+fn secret_activation_old_record_three_field_checkpoint() {
+    let cas = mint_delete_applied_cas(
+        &sop(2),
+        JournalOperationKind::ActivateCandidate,
+        DeleteAppliedRole::ActivationOldRecordDelete,
+        DeleteDisposition::Deleted,
+        &rfc_now(),
+        3,
+    )
+    .expect("mint");
+    let checkpoint = ActivationOldRecordDeleteCheckpoint::checked(
+        DeleteDisposition::Deleted,
+        rfc_now(),
+        cas.clone(),
+    )
+    .expect("activation checkpoint");
+    let encoded = serde_json::to_value(&checkpoint).expect("json");
+    let obj = encoded.as_object().expect("object");
+    assert_eq!(
+        obj.keys().cloned().collect::<Vec<_>>(),
+        vec![
+            "deleteDisposition".to_string(),
+            "backendCompletedAt".to_string(),
+            "deleteAppliedCas".to_string()
+        ]
+    );
+
+    let mut journal = JournalEnvelope::activate_old_record_delete_applied(
+        sop(2),
+        dev(),
+        rfc_now(),
+        checkpoint.clone(),
+    )
+    .expect("applied");
+    let persisted = journal.activation_applied_checkpoint().expect("applied view");
+    assert_eq!(persisted.delete_disposition, DeleteDisposition::Deleted);
+    assert_eq!(persisted.backend_completed_at, rfc_now());
+    assert_eq!(persisted.delete_applied_cas, cas);
+
+    journal
+        .activation_recovery_required(
+            "SECRET_DELETE_FAILED".to_string(),
+            "src_aaaaaaaaaaa4aaa8aaaaaaaaaaaaaaa1".to_string(),
+            cas.clone(),
+        )
+        .expect("recovery");
+    let durable = journal.activation_durable_checkpoint().expect("durable");
+    match durable {
+        ActivationOldRecordDurableCheckpoint::OldRecordDeleteApplied {
+            delete_disposition,
+            backend_completed_at,
+            delete_applied_cas,
+        } => {
+            assert_eq!(*delete_disposition, checkpoint.delete_disposition);
+            assert_eq!(backend_completed_at, &checkpoint.backend_completed_at);
+            assert_eq!(delete_applied_cas, &checkpoint.delete_applied_cas);
+        }
+        ActivationOldRecordDurableCheckpoint::None => panic!("must preserve three fields"),
+    }
+
+    let discard = CandidateDiscardDeleteCheckpoint::checked(
+        DeleteDisposition::Deleted,
+        rfc_now(),
+        cas,
+    )
+    .expect("discard checkpoint");
+    assert_eq!(
+        ActivationOldRecordDeleteCheckpoint::try_from_discard(&discard),
+        Err(JournalError::RoleMismatch)
+    );
+    assert_eq!(
+        ActivationOldRecordDurableCheckpoint::try_from_discard(&discard),
+        Err(JournalError::RoleMismatch)
+    );
+}
+
+#[test]
+fn secret_staged_resume_five_arm_preimage_codec() {
+    let operation = sop(3);
+    let cas = after_scrub_cas();
+    let receipt = hex32(9);
+    let owner = PromotedLiveOwner {
+        owner: sample_owner(),
+        owner_binding_revision: 1,
+        provider_row_revision: 2,
+    };
+    let arms = [
+        StagedImportResumePhase::Intent {},
+        StagedImportResumePhase::sources_scrubbed(cas.clone()).expect("scrubbed"),
+        StagedImportResumePhase::cutover_committed(cas.clone(), receipt.clone()).expect("cutover"),
+        StagedImportResumePhase::live_owner_minted(cas.clone(), receipt.clone(), owner.clone())
+            .expect("minted"),
+        StagedImportResumePhase::local_binding_finalized(cas.clone(), receipt.clone(), owner.clone())
+            .expect("finalized"),
+    ];
+    let mut digests = Vec::new();
+    for phase in arms {
+        let preimage = StagedImportResumePreimage::checked(operation.clone(), phase.clone())
+            .expect("preimage");
+        let encoded = preimage.encode().expect("encode");
+        let decoded = StagedImportResumePreimage::decode(&encoded).expect("decode");
+        assert_eq!(decoded, preimage);
+        match &decoded.phase {
+            StagedImportResumePhase::Intent {} => {}
+            StagedImportResumePhase::SourcesScrubbed {
+                staged_source_set_cas_after_scrub,
+            } => assert_eq!(staged_source_set_cas_after_scrub.count, 0),
+            StagedImportResumePhase::CutoverCommitted {
+                staged_source_set_cas_after_scrub,
+                cutover_receipt_id,
+            } => {
+                assert_eq!(staged_source_set_cas_after_scrub.count, 0);
+                assert_eq!(cutover_receipt_id, &receipt);
+            }
+            StagedImportResumePhase::LiveOwnerMinted {
+                staged_source_set_cas_after_scrub,
+                cutover_receipt_id,
+                promoted_live_owner,
+            }
+            | StagedImportResumePhase::LocalBindingFinalized {
+                staged_source_set_cas_after_scrub,
+                cutover_receipt_id,
+                promoted_live_owner,
+            } => {
+                assert_eq!(staged_source_set_cas_after_scrub.count, 0);
+                assert_eq!(cutover_receipt_id, &receipt);
+                assert_eq!(promoted_live_owner.owner.owner_id, "owner-1");
+            }
+        }
+        digests.push(preimage.digest().expect("digest"));
+    }
+    assert_eq!(digests.len(), 5);
+    assert_eq!(digests.iter().collect::<std::collections::BTreeSet<_>>().len(), 5);
+
+    let intent = StagedImportResumePreimage::checked(operation.clone(), StagedImportResumePhase::Intent {})
+        .expect("intent");
+    let other_op = StagedImportResumePreimage::checked(sop(4), StagedImportResumePhase::Intent {})
+        .expect("other op");
+    assert_ne!(intent.digest().unwrap(), other_op.digest().unwrap());
+
+    assert!(StagedSourceSetCas::after_scrub(1, hex64(1), 1).is_err());
+    let unknown = br#"{"operationId":"sop_aaaaaaaaaaa4aaa8aaaaaaaaaaaaaaaa","phase":{"state":"intent","extra":true}}"#;
+    assert!(StagedImportResumePreimage::decode(unknown).is_err());
+    let omitted = br#"{"operationId":"sop_aaaaaaaaaaa4aaa8aaaaaaaaaaaaaaaa","phase":{"state":"cutoverCommitted","stagedSourceSetCasAfterScrub":{"revision":1,"digest":"cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd","count":0}}}"#;
+    assert!(StagedImportResumePreimage::decode(omitted).is_err());
+}
+
+#[test]
+fn secret_service_local_list_summaries_and_candidates() {
+    let tmp = TempDir::new().expect("tempdir");
+    let service = SecretServiceLocal::open(tmp.path().to_path_buf()).expect("open");
+    let first = SecretMaterial::from_native_input(b"first-key".to_vec(), SecretPurpose::CodexApiKey)
+        .expect("first");
+    let second = SecretMaterial::from_native_input(b"second-key".to_vec(), SecretPurpose::CodexApiKey)
+        .expect("second");
+    let a = service
+        .seed_pending_candidate(service.backend(), first, true)
+        .expect("seed a");
+    let b = service
+        .seed_pending_candidate(service.backend(), second, false)
+        .expect("seed b");
+    service.seed_unbound_owner("unbound-owner").expect("unbound");
+
+    let bound_only = service.list_secret_summaries(None, false).expect("bound");
+    assert_eq!(bound_only.refs.len(), 2);
+    assert!(bound_only.owners.iter().all(|owner| owner.state == "bound"));
+    let with_unbound = service.list_secret_summaries(None, true).expect("unbound");
+    assert!(with_unbound.owners.iter().any(|owner| owner.owner_id == "unbound-owner"));
+    let filtered = service
+        .list_secret_summaries(Some(a.secret_ref.as_str()), false)
+        .expect("filter");
+    assert_eq!(filtered.refs.len(), 1);
+    assert_eq!(filtered.refs[0].secret_ref, a.secret_ref);
+
+    let json = serde_json::to_value(&with_unbound).expect("json");
+    let blob = json.to_string();
+    assert!(!blob.contains("first-key"));
+    assert!(!blob.contains("second-key"));
+    assert!(!blob.contains("material"));
+    assert!(!blob.contains("password"));
+    assert!(!blob.contains("token"));
+
+    let pending = service.list_secret_candidates(false).expect("pending");
+    assert_eq!(pending.len(), 2);
+    assert!(pending.iter().any(|row| row.candidate_id == a.candidate_id));
+    assert!(pending.iter().any(|row| row.candidate_id == b.candidate_id));
 }

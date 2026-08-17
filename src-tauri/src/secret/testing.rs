@@ -60,6 +60,33 @@ impl InMemorySecretBackend {
         let _ = material;
         Ok(())
     }
+
+    pub(crate) fn delete_or_already_missing(
+        &self,
+        locator: &str,
+    ) -> Result<super::device_store::schema::DeleteDisposition, SecretInternalError> {
+        let mut guard = self
+            .records
+            .lock()
+            .map_err(|_| SecretInternalError::input_invalid())?;
+        if guard.remove(locator).is_some() {
+            Ok(super::device_store::schema::DeleteDisposition::Deleted)
+        } else {
+            Ok(super::device_store::schema::DeleteDisposition::AlreadyMissing)
+        }
+    }
+
+    pub(crate) fn validate_missing(&self, locator: &str) -> Result<(), SecretInternalError> {
+        let guard = self
+            .records
+            .lock()
+            .map_err(|_| SecretInternalError::input_invalid())?;
+        if guard.contains_key(locator) {
+            Err(SecretInternalError::input_invalid())
+        } else {
+            Ok(())
+        }
+    }
 }
 
 struct TestingWriteCallback<'a> {
