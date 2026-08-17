@@ -25,14 +25,15 @@ mod migration;
 mod redaction;
 pub(crate) mod testing;
 
-#[path = "../commands/secret.rs"]
-mod command_api;
-
 #[cfg(test)]
 #[path = "secret_core_tests.rs"]
 mod secret_core_tests;
 
 pub(crate) use service::command_error_from_internal as service_command_error;
+
+pub(crate) fn command_unavailable<T>() -> SecretCommandResult<T> {
+    Err(service_command_error(SecretInternalError::input_invalid()))
+}
 
 impl From<SecretInternalError> for crate::error::AppError {
     fn from(_: SecretInternalError) -> Self {

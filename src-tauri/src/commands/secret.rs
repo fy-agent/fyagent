@@ -4,121 +4,146 @@ use crate::secret::{
     GetSecretDeleteImpactRequest, ListSecretAuditRequest, ListSecretBackendOptionsRequest,
     ListSecretBackendOptionsResult, ListSecretCandidatesRequest, ListSecretCandidatesResult,
     ListSecretSummariesRequest, ListSecretSummariesResult, MigrateLegacyCodexSecretsRequest,
+    ResumeStagedImportCutoverRequest, ResumeStagedImportCutoverResultDto,
     RetrySecretCleanupRequest, RotateSecretRequest, SecretApplyReadiness, SecretAuditPage,
-    SecretCommandResult, SecretDeleteImpact, SecretDeleteResult, SecretInternalError,
+    SecretCommandResult, SecretDeleteImpact, SecretDeleteResult,
     SecretMigrationReport, SecretMutationResult, SecretRecoveryImpact, SecretRecoveryResult,
-    SecretService, SecretValidationResult, SetSecretLockedRequest, StageSecretCandidateResult,
+    SecretValidationResult, SetSecretLockedRequest, StageSecretCandidateResult,
     ValidateSecretRequest,
 };
 
 fn unavailable<T>() -> SecretCommandResult<T> {
-    Err(crate::secret::service_command_error(
-        SecretInternalError::input_invalid(),
-    ))
+    crate::secret::command_unavailable()
 }
 
+#[tauri::command]
 pub async fn list_secret_summaries(
-    _service: &SecretService,
-    _request: ListSecretSummariesRequest,
+    request: ListSecretSummariesRequest,
 ) -> SecretCommandResult<ListSecretSummariesResult> {
+    let _ = request;
     unavailable()
 }
 
+#[tauri::command]
 pub async fn list_secret_backend_options(
-    _service: &SecretService,
-    _request: ListSecretBackendOptionsRequest,
+    request: ListSecretBackendOptionsRequest,
 ) -> SecretCommandResult<ListSecretBackendOptionsResult> {
+    let _ = request;
     unavailable()
 }
 
+#[tauri::command]
 pub async fn begin_secret_capture(
-    _service: &SecretService,
-    _request: BeginSecretCaptureRequest,
+    request: BeginSecretCaptureRequest,
 ) -> SecretCommandResult<StageSecretCandidateResult> {
+    let _ = request;
     unavailable()
 }
 
+#[tauri::command]
 pub async fn rotate_secret(
-    _service: &SecretService,
-    _request: RotateSecretRequest,
+    request: RotateSecretRequest,
 ) -> SecretCommandResult<StageSecretCandidateResult> {
+    let _ = request;
     unavailable()
 }
 
+#[tauri::command]
 pub async fn list_secret_candidates(
-    _service: &SecretService,
-    _request: ListSecretCandidatesRequest,
+    request: ListSecretCandidatesRequest,
 ) -> SecretCommandResult<ListSecretCandidatesResult> {
+    let _ = request;
     unavailable()
 }
 
+#[tauri::command]
 pub async fn discard_secret_candidate(
-    _service: &SecretService,
-    _request: DiscardSecretCandidateRequest,
+    request: DiscardSecretCandidateRequest,
 ) -> SecretCommandResult<DiscardSecretCandidateResult> {
+    let _ = request;
     unavailable()
 }
 
+#[tauri::command]
 pub async fn set_secret_locked(
-    _service: &SecretService,
-    _request: SetSecretLockedRequest,
+    request: SetSecretLockedRequest,
 ) -> SecretCommandResult<SecretMutationResult> {
+    let _ = request;
     unavailable()
 }
 
+#[tauri::command]
 pub async fn get_secret_delete_impact(
-    _service: &SecretService,
-    _request: GetSecretDeleteImpactRequest,
+    request: GetSecretDeleteImpactRequest,
 ) -> SecretCommandResult<SecretDeleteImpact> {
+    let _ = request;
     unavailable()
 }
 
+#[tauri::command]
 pub async fn delete_secret(
-    _service: &SecretService,
-    _request: DeleteSecretRequest,
+    request: DeleteSecretRequest,
 ) -> SecretCommandResult<SecretDeleteResult> {
+    let _ = request;
     unavailable()
 }
 
+#[tauri::command]
 pub async fn get_secret_cleanup_impact(
-    _service: &SecretService,
-    _request: GetSecretCleanupImpactRequest,
+    request: GetSecretCleanupImpactRequest,
 ) -> SecretCommandResult<SecretRecoveryImpact> {
+    let _ = request;
     unavailable()
 }
 
+#[tauri::command]
 pub async fn retry_secret_cleanup(
-    _service: &SecretService,
-    _request: RetrySecretCleanupRequest,
+    request: RetrySecretCleanupRequest,
 ) -> SecretCommandResult<SecretRecoveryResult> {
+    let _ = request;
     unavailable()
 }
 
+#[tauri::command]
 pub async fn validate_secret(
-    _service: &SecretService,
-    _request: ValidateSecretRequest,
+    request: ValidateSecretRequest,
 ) -> SecretCommandResult<SecretValidationResult> {
+    let _ = request;
     unavailable()
 }
 
+#[tauri::command]
 pub async fn check_secret_apply_readiness(
-    _service: &SecretService,
-    _request: CheckSecretApplyReadinessRequest,
+    request: CheckSecretApplyReadinessRequest,
 ) -> SecretCommandResult<SecretApplyReadiness> {
+    let _ = request;
     unavailable()
 }
 
+#[tauri::command]
 pub async fn migrate_legacy_codex_secrets(
-    _service: &SecretService,
-    _request: MigrateLegacyCodexSecretsRequest,
+    request: MigrateLegacyCodexSecretsRequest,
 ) -> SecretCommandResult<SecretMigrationReport> {
+    let _ = request;
     unavailable()
 }
 
+#[tauri::command]
 pub async fn list_secret_audit(
-    _service: &SecretService,
-    _request: ListSecretAuditRequest,
+    request: ListSecretAuditRequest,
 ) -> SecretCommandResult<SecretAuditPage> {
+    let _ = request;
+    unavailable()
+}
+
+/// Main-integration resume handler (`SecretMainIntegrationCommandName`).
+/// Not a `SecretCommandName`. `MainIntegrationCommandResult` is not in the
+/// crate yet, so this stub uses the existing `SecretCommandResult` envelope.
+#[tauri::command]
+pub async fn resume_staged_import_cutover(
+    request: ResumeStagedImportCutoverRequest,
+) -> SecretCommandResult<ResumeStagedImportCutoverResultDto> {
+    let _ = request;
     unavailable()
 }
 
