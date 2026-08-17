@@ -308,24 +308,301 @@ pub(crate) fn list_secret_summaries_result_from_store(
     })
 }
 
-/// Store-local candidate rows do not carry #55 plan fields
-/// (`comparison_policy`, `projection_digest`, `candidate_read`, paired
-/// `target_owners` / `expected_bindings`). The contract row requires a
-/// validated `SecretCandidateActivationProjection`, so a non-empty list
-/// fail-closes instead of emitting a half-fake projection. An empty store
-/// may return Ok with zero rows.
+/// Mint `SecretCandidateActivationProjection` from D2 store fields
+/// (`comparisonPolicy`, `candidateRead`, `targetOwners`, `expectedBindings`,
+/// `projectionDigest`). A non-empty list is Ok only when every row validates;
+/// constructor mismatch fail-closes the whole list (never Ok a half-fake page).
+/// An empty store may return Ok with zero rows.
 pub(crate) fn list_secret_candidates_result_from_store(
     store: &device_store::DeviceLocalSecretStore,
     request: &ListSecretCandidatesRequest,
 ) -> Result<ListSecretCandidatesResult, SecretInternalError> {
+    let payload = store.load()?.payload;
     let rows = service::list_secret_candidates_from_store(store, request.include_terminal)?;
     if rows.is_empty() {
         return Ok(ListSecretCandidatesResult {
             candidates: Vec::new(),
         });
     }
-    let _ = request.owner.as_ref();
-    Err(SecretInternalError::input_invalid())
+    let mut candidates = Vec::new();
+    for row in rows {
+        let stored = payload
+            .candidates
+            .iter()
+            .find(|candidate| candidate.candidate_id == row.candidate_id)
+            .ok_or_else(SecretInternalError::input_invalid)?;
+        let record = payload
+            .secrets
+            .iter()
+            .find(|secret| secret.secret_ref == stored.secret_ref)
+            .ok_or_else(SecretInternalError::input_invalid)?;
+        let mapped = secret_candidate_with_projection_from_store(&payload, stored, record)?;
+        if let Some(want) = request.owner.as_ref() {
+            if !mapped.candidate.target_owners.iter().any(|owner| owner == want) {
+                continue;
+            }
+        }
+        candidates.push(mapped);
+    }
+    candidates.sort_by(|left, right| {
+        left.candidate
+            .candidate_id
+            .as_str()
+            .cmp(right.candidate.candidate_id.as_str())
+    });
+    Ok(ListSecretCandidatesResult { candidates })
+}
+
+fn map_candidate_state(
+    state: device_store::schema::StoredCandidateState,
+) -> SecretCandidateState {
+    match state {
+        device_store::schema::StoredCandidateState::VerifiedPendingPlan => {
+            SecretCandidateState::VerifiedPendingPlan
+        }
+        device_store::schema::StoredCandidateState::Activated => SecretCandidateState::Activated,
+        device_store::schema::StoredCandidateState::Discarded => SecretCandidateState::Discarded,
+        device_store::schema::StoredCandidateState::CleanupRequired => {
+            SecretCandidateState::CleanupRequired
+        }
+        device_store::schema::StoredCandidateState::Expired => SecretCandidateState::Expired,
+    }
+}
+
+fn map_pending_disposition(
+    disposition: Option<device_store::schema::TerminalDisposition>,
+) -> Option<CandidateTerminalState> {
+    disposition.map(|row| match row {
+        device_store::schema::TerminalDisposition::Discarded => CandidateTerminalState::Discarded,
+        device_store::schema::TerminalDisposition::Expired => CandidateTerminalState::Expired,
+    })
+}
+
+fn empty_legacy_sources() -> Result<CurrentLegacySourceExpectations, SecretInternalError> {
+    CurrentLegacySourceExpectations::checked_from_codex_inventory_bridge(Vec::new())
+        .map_err(|_| SecretInternalError::input_invalid())
+}
+
+fn owner_from_capture_owner_id(owner_id: &str) -> Result<SecretOwner, SecretInternalError> {
+    Ok(SecretOwner {
+        kind: SecretOwnerKind::Provider,
+        namespace: parse_wire(SecretOwnerNamespace::parse("codex".to_string()))?,
+        owner_id: parse_wire(OwnerId::parse(owner_id.to_string()))?,
+        slot: SecretSlot::PrimaryApiKey,
+    })
+}
+
+fn unbound_expectation(owner: SecretOwner) -> Result<OwnerBindingExpectation, SecretInternalError> {
+    Ok(OwnerBindingExpectation::Unbound {
+        owner,
+        owner_binding_revision: parse_wire(SecretOwnerBindingRevision::parse(1))?,
+    })
+}
+
+fn target_owners_for_candidate(
+    payload: &device_store::schema::StatePayload,
+    secret_ref: &str,
+    fallback_owner: Option<&SecretOwner>,
+) -> Result<(Vec<SecretOwner>, Vec<OwnerBindingExpectation>), SecretInternalError> {
+    match journal_target_owners_and_bindings(payload, secret_ref) {
+        Ok((owners, bindings)) => Ok((owners.0, bindings.0)),
+        Err(error) => {
+            let owner = fallback_owner.ok_or(error)?;
+            Ok((
+                vec![owner.clone()],
+                vec![unbound_expectation(owner.clone())?],
+            ))
+        }
+    }
+}
+
+fn candidate_read_from_record(
+    record: &device_store::schema::StoredSecretRecord,
+) -> Result<SecretActivationCandidateReadExpectation, SecretInternalError> {
+    Ok(SecretActivationCandidateReadExpectation {
+        operation: ActivationCandidateReadOperation::ResolveForApply,
+        scope: ActivationCandidateReadScope::ActivationCandidateCompare,
+        backend_instance_id: parse_wire(SecretBackendInstanceId::parse(
+            record.backend_instance_id.clone(),
+        ))?,
+        backend_generation: parse_wire(SecretBackendGeneration::parse(
+            record.backend_generation,
+        ))?,
+        device_binding_generation: parse_wire(DeviceBindingGeneration::parse(
+            record.device_binding_generation,
+        ))?,
+        capability_revision: parse_wire(CapabilityRevision::parse(record.capability_revision))?,
+        confirmation: PhysicalConfirmation::Never,
+    })
+}
+
+fn activation_projection_from_d2_fields(
+    candidate: &device_store::schema::StoredCandidateRecord,
+    record: &device_store::schema::StoredSecretRecord,
+    target_owners: Vec<SecretOwner>,
+    expected_bindings: Vec<OwnerBindingExpectation>,
+) -> Result<SecretCandidateActivationProjection, SecretInternalError> {
+    let kind = map_candidate_kind(candidate.kind);
+    let (comparison_policy, comparison_impact) = comparison_for_kind(kind);
+    let dummy = parse_wire(SecretProjectionDigest::parse("cd".repeat(32)))?;
+    let mut repr = SecretCandidateActivationProjectionRepr {
+        contract_version: SecretContractVersionV1::V1,
+        operation: SecretCandidateActivationOperation::SecretCandidateActivation,
+        candidate_id: parse_wire(SecretCandidateId::parse(candidate.candidate_id.clone()))?,
+        candidate_revision: parse_wire(SecretCandidateRevision::parse(
+            candidate.candidate_revision,
+        ))?,
+        kind,
+        comparison_policy,
+        comparison_impact,
+        secret_ref: parse_wire(SecretRef::parse(candidate.secret_ref.clone()))?,
+        purpose: parse_purpose(&record.purpose)?,
+        record_revision: parse_wire(SecretRecordRevision::parse(candidate.record_revision))?,
+        backend_instance_id: parse_wire(SecretBackendInstanceId::parse(
+            record.backend_instance_id.clone(),
+        ))?,
+        backend_generation: parse_wire(SecretBackendGeneration::parse(
+            record.backend_generation,
+        ))?,
+        device_binding_generation: parse_wire(DeviceBindingGeneration::parse(
+            record.device_binding_generation,
+        ))?,
+        capability_revision: parse_wire(CapabilityRevision::parse(record.capability_revision))?,
+        target_owners,
+        expected_bindings,
+        legacy_sources_to_scrub: empty_legacy_sources()?,
+        candidate_read: candidate_read_from_record(record)?,
+        old_record_delete: SecretActivationOldRecordDeleteExpectation::NotApplicable,
+        projection_digest: dummy,
+    };
+    repr.projection_digest = candidate_activation_projection_digest(&repr)?;
+    SecretCandidateActivationProjection::validate_repr(repr)
+        .map_err(|_| SecretInternalError::input_invalid())
+}
+
+fn secret_candidate_summary_from_store(
+    candidate: &device_store::schema::StoredCandidateRecord,
+    record: &device_store::schema::StoredSecretRecord,
+    projection: &SecretCandidateActivationProjection,
+) -> Result<SecretCandidateSummary, SecretInternalError> {
+    let backend = os_keyring_backend(&record.backend_instance_id, record.backend_generation)?;
+    let capabilities = os_keyring_capabilities(
+        &backend,
+        record.capability_revision,
+        record.device_binding_generation,
+    )?;
+    let secret_ref = parse_wire(SecretRef::parse(candidate.secret_ref.clone()))?;
+    Ok(SecretCandidateSummary {
+        schema_version: SchemaVersionV1,
+        candidate_id: parse_wire(SecretCandidateId::parse(candidate.candidate_id.clone()))?,
+        candidate_revision: parse_wire(SecretCandidateRevision::parse(
+            candidate.candidate_revision,
+        ))?,
+        kind: map_candidate_kind(candidate.kind),
+        comparison_policy: projection.0.comparison_policy,
+        comparison_impact: projection.0.comparison_impact.clone(),
+        state: map_candidate_state(candidate.state),
+        secret_ref: secret_ref.clone(),
+        secret_ref_display: SecretRefDisplay::derive_from(&secret_ref),
+        purpose: parse_purpose(&record.purpose)?,
+        record_revision: parse_wire(SecretRecordRevision::parse(candidate.record_revision))?,
+        backend,
+        capabilities,
+        target_owners: projection.0.target_owners.clone(),
+        expected_bindings: projection.0.expected_bindings.clone(),
+        legacy_sources_to_scrub: projection.0.legacy_sources_to_scrub.clone(),
+        created_at: parse_wire(UtcTimestamp::parse(candidate.created_at.clone()))?,
+        expires_at: parse_wire(UtcTimestamp::parse(candidate.expires_at.clone()))?,
+        pending_terminal_disposition: map_pending_disposition(
+            candidate.pending_terminal_disposition,
+        ),
+        issue: None,
+    })
+}
+
+fn secret_candidate_with_projection_from_parts(
+    payload: &device_store::schema::StatePayload,
+    candidate: &device_store::schema::StoredCandidateRecord,
+    record: &device_store::schema::StoredSecretRecord,
+    fallback_owner: Option<&SecretOwner>,
+) -> Result<SecretCandidateWithProjection, SecretInternalError> {
+    let (target_owners, expected_bindings) =
+        target_owners_for_candidate(payload, &candidate.secret_ref, fallback_owner)?;
+    let projection = activation_projection_from_d2_fields(
+        candidate,
+        record,
+        target_owners,
+        expected_bindings,
+    )?;
+    let summary = secret_candidate_summary_from_store(candidate, record, &projection)?;
+    let snapshot = SecretCandidateAuthoritySnapshot::from_staged(
+        summary.candidate_id.clone(),
+        summary.candidate_revision,
+        summary.kind,
+        summary.comparison_policy,
+        summary.secret_ref.clone(),
+        summary.record_revision,
+        projection.clone(),
+        map_binding_set_cas(&record.binding_set_cas)?,
+        map_owner_binding_summaries_for_ref(payload, &summary.secret_ref)?,
+    )?;
+    SecretCandidateWithProjection::checked_from_candidate_snapshot(
+        SecretCandidateWithProjection {
+            candidate: summary,
+            activation_projection: projection,
+        },
+        &snapshot,
+    )
+}
+
+fn secret_candidate_with_projection_from_store(
+    payload: &device_store::schema::StatePayload,
+    candidate: &device_store::schema::StoredCandidateRecord,
+    record: &device_store::schema::StoredSecretRecord,
+) -> Result<SecretCandidateWithProjection, SecretInternalError> {
+    secret_candidate_with_projection_from_parts(payload, candidate, record, None)
+}
+
+pub(crate) fn stage_secret_candidate_result_from_staged(
+    store: &device_store::DeviceLocalSecretStore,
+    staged: &capture::StagedUnboundCandidate,
+    owner_id: &str,
+) -> Result<StageSecretCandidateResult, SecretInternalError> {
+    let payload = store.load()?.payload;
+    let stored = payload
+        .candidates
+        .iter()
+        .find(|row| row.candidate_id == staged.candidate_id.as_str())
+        .ok_or_else(SecretInternalError::input_invalid)?;
+    let record = payload
+        .secrets
+        .iter()
+        .find(|row| row.secret_ref == staged.secret_ref.as_str())
+        .ok_or_else(SecretInternalError::input_invalid)?;
+    let owner = owner_from_capture_owner_id(owner_id)?;
+    let mapped =
+        secret_candidate_with_projection_from_parts(&payload, stored, record, Some(&owner))?;
+    let snapshot = SecretCandidateAuthoritySnapshot::from_staged(
+        mapped.candidate.candidate_id.clone(),
+        mapped.candidate.candidate_revision,
+        mapped.candidate.kind,
+        mapped.candidate.comparison_policy,
+        mapped.candidate.secret_ref.clone(),
+        mapped.candidate.record_revision,
+        mapped.activation_projection.clone(),
+        map_binding_set_cas(&record.binding_set_cas)?,
+        Vec::new(),
+    )?;
+    StageSecretCandidateResult::checked_from_candidate_snapshot(
+        StageSecretCandidateResult {
+            status: SecretCandidateStageStatus::Staged,
+            candidate: mapped.candidate,
+            activation_projection: mapped.activation_projection,
+            impact: NullableSecretMutationImpact(None),
+            audit_event_id: SecretAuditEventId::generate(),
+        },
+        &snapshot,
+    )
 }
 
 fn map_candidate_kind(

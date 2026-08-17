@@ -43,9 +43,10 @@ pub(crate) fn list_secret_summaries_from_state(
         .map_err(crate::secret::service_command_error)
 }
 
-/// Same fail-closed + load. A non-empty candidate list cannot form a legal
-/// `SecretCandidateActivationProjection` from store-local rows (missing #55
-/// plan fields), so that path fail-closes. An empty store may return Ok([]).
+/// Same fail-closed + load. A non-empty candidate list mints
+/// `SecretCandidateActivationProjection` from D2 store fields and returns the
+/// contract DTO when constructors pass. Constructor mismatch fail-closes.
+/// An empty store may return Ok([]).
 pub(crate) fn list_secret_candidates_from_state(
     state: &AppState,
     request: ListSecretCandidatesRequest,
@@ -140,9 +141,9 @@ pub async fn list_secret_backend_options(
 
 /// Sync helper so tests can exercise fail-closed / InMemory stage without
 /// spinning Tauri. Production AppState has no InMemory hold and returns
-/// typed unavailable (no Keychain write). A successful InMemory stage still
-/// fail-closes: `StageSecretCandidateResult::checked_from_candidate_snapshot`
-/// stays unimplemented, so this never returns Ok(contract DTO).
+/// typed unavailable (no Keychain write). A successful InMemory stage returns
+/// the contract DTO only when `checked_from_candidate_snapshot` accepts the
+/// staged snapshot; mismatch stays Err.
 pub(crate) fn begin_secret_capture_from_state(
     state: &AppState,
     request: BeginSecretCaptureRequest,
@@ -184,6 +185,7 @@ fn begin_secret_capture_in_memory(
         Ok(claim) => claim,
         Err(error) => return Err(crate::secret::service_command_error(error)),
     };
+    let owner_id = claim.owner().to_string();
     let capture = crate::secret::capture::LocalSecretCapture::new(
         opened.store(),
         crate::secret::capture::CaptureLeafBackend::InMemory(backend),
@@ -191,8 +193,13 @@ fn begin_secret_capture_in_memory(
         prompt,
     );
     match capture.begin_after_claim(claim) {
-        // Staged into the store, but the contract DTO constructor is still todo.
-        Ok(_) => unavailable(),
+        Ok(staged) => crate::secret::stage_secret_candidate_result_from_staged(
+            opened.store(),
+            &staged,
+            &owner_id,
+        )
+        .map(crate::secret::command_success)
+        .map_err(crate::secret::service_command_error),
         Err(error) => Err(crate::secret::service_command_error(error)),
     }
 }
@@ -536,7 +543,7 @@ mod secret_command_dto_tests {
     }
 
     #[test]
-    fn secret_opened_store_seed_list_candidates_fail_closed_without_activation_projection() {
+    fn secret_opened_store_seed_list_candidates_returns_activation_projection() {
         let tmp = TempDir::new().expect("tempdir");
         let opened = SecretBootstrap::open_for_test(tmp.path().to_path_buf()).expect("open");
         let seeded = seed_opened_store_pending_candidate(opened.store()).expect("seed");
@@ -550,10 +557,25 @@ mod secret_command_dto_tests {
         );
         let db = Arc::new(Database::memory().expect("memory db"));
         let state = AppState::new_with_secret_store(db, opened);
-        assert_err_not_empty_ok(list_secret_candidates_from_state(
-            &state,
-            candidates_request(),
-        ));
+        let result = list_secret_candidates_from_state(&state, candidates_request())
+            .unwrap_or_else(|err| {
+                panic!(
+                    "seeded candidate must mint activation projection: {}",
+                    serde_json::to_string(&err).unwrap_or_default()
+                )
+            });
+        let json = serde_json::to_value(&result.data).expect("json");
+        let rows = json["candidates"].as_array().expect("candidates");
+        assert!(
+            rows.iter().any(|row| {
+                row["candidate"]["candidateId"] == seeded.candidate_id
+                    && row["activationProjection"]["candidateId"] == seeded.candidate_id
+                    && row["activationProjection"]["projectionDigest"]
+                        .as_str()
+                        .is_some_and(|digest| digest.len() == 64)
+            }),
+            "seeded candidate must appear with a validated activation projection"
+        );
     }
 
     #[test]
@@ -677,7 +699,7 @@ mod secret_command_dto_tests {
     }
 
     #[test]
-    fn secret_begin_capture_with_in_memory_stages_unbound_but_command_stays_err() {
+    fn secret_begin_capture_with_in_memory_stages_unbound_and_returns_contract_dto() {
         let tmp = TempDir::new().expect("tempdir");
         let opened = SecretBootstrap::open_for_test(tmp.path().to_path_buf()).expect("open");
         let db = Arc::new(Database::memory().expect("memory db"));
@@ -687,10 +709,27 @@ mod secret_command_dto_tests {
         let result = begin_secret_capture_from_state(
             &state,
             begin_request_for(intent_id.as_str(), backend_id.as_str()),
-        );
+        )
+        .unwrap_or_else(|err| {
+            panic!(
+                "staged InMemory capture must Ok contract DTO: {}",
+                serde_json::to_string(&err).unwrap_or_default()
+            )
+        });
+        let json = serde_json::to_value(&result.data).expect("json");
+        assert_eq!(json["status"], "staged");
         assert!(
-            result.is_err(),
-            "staged InMemory capture must not Ok a contract DTO"
+            json["candidate"]["candidateId"]
+                .as_str()
+                .is_some_and(|id| id.starts_with("scd_")),
+            "begin DTO must carry the staged candidate"
+        );
+        assert!(json["impact"].is_null(), "begin impact is explicit null");
+        assert!(
+            json["activationProjection"]["projectionDigest"]
+                .as_str()
+                .is_some_and(|digest| digest.len() == 64),
+            "begin DTO must carry a validated activation projection"
         );
         let remaining = local_candidates(&state);
         assert_eq!(remaining.len(), 1, "unbound candidate must be staged");
@@ -824,15 +863,37 @@ mod secret_command_dto_tests {
         let begin_result = begin_secret_capture_from_state(
             &state,
             begin_request_for(intent_id.as_str(), backend_id.as_str()),
-        );
-        assert!(
-            begin_result.is_err(),
-            "begin after options mint must not Ok a contract DTO"
-        );
+        )
+        .unwrap_or_else(|err| {
+            panic!(
+                "begin after options mint must Ok contract DTO: {}",
+                serde_json::to_string(&err).unwrap_or_default()
+            )
+        });
+        let json = serde_json::to_value(&begin_result.data).expect("json");
+        assert_eq!(json["status"], "staged");
+        assert!(json["impact"].is_null(), "begin impact is explicit null");
         assert_eq!(
             local_candidates(&state).len(),
             1,
             "begin must claim the options-minted sci_ and stage an unbound candidate"
         );
+    }
+
+    #[test]
+    fn secret_list_candidates_projection_field_mismatch_fails_closed() {
+        let tmp = TempDir::new().expect("tempdir");
+        let opened = SecretBootstrap::open_for_test(tmp.path().to_path_buf()).expect("open");
+        let _seeded = seed_opened_store_pending_candidate(opened.store()).expect("seed");
+        let mut payload = opened.store().load().expect("load").payload;
+        payload.candidates[0].secret_ref = "not-a-secret-ref".to_string();
+        payload.store_revision = payload.store_revision.saturating_add(1);
+        opened.store().store(payload).expect("store bad row");
+        let db = Arc::new(Database::memory().expect("memory db"));
+        let state = AppState::new_with_secret_store(db, opened);
+        assert_err_not_empty_ok(list_secret_candidates_from_state(
+            &state,
+            candidates_request(),
+        ));
     }
 }

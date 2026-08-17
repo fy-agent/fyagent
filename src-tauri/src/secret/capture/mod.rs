@@ -89,6 +89,12 @@ pub(crate) struct ClaimedCaptureIntent {
     backend_instance_id: SecretBackendInstanceId,
 }
 
+impl ClaimedCaptureIntent {
+    pub(crate) fn owner(&self) -> &str {
+        &self.owner
+    }
+}
+
 impl SecretCaptureIntentRegistry {
     pub(crate) fn new() -> Self {
         Self {

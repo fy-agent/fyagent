@@ -2350,10 +2350,51 @@ pub(crate) struct SecretApplyAuthoritySnapshot {
     _private: (),
 }
 pub(crate) struct SecretCandidateAuthoritySnapshot {
-    _private: (),
+    candidate_id: SecretCandidateId,
+    candidate_revision: SecretCandidateRevision,
+    kind: SecretCandidateKind,
+    comparison_policy: LegacyActivationComparisonPolicy,
+    secret_ref: SecretRef,
+    record_revision: SecretRecordRevision,
+    projection: SecretCandidateActivationProjection,
+    binding_set_cas: SecretBindingSetCas,
+    affected_owners: Vec<SecretOwnerBindingSummary>,
 }
 
 impl SecretCandidateAuthoritySnapshot {
+    fn from_staged(
+        candidate_id: SecretCandidateId,
+        candidate_revision: SecretCandidateRevision,
+        kind: SecretCandidateKind,
+        comparison_policy: LegacyActivationComparisonPolicy,
+        secret_ref: SecretRef,
+        record_revision: SecretRecordRevision,
+        projection: SecretCandidateActivationProjection,
+        binding_set_cas: SecretBindingSetCas,
+        affected_owners: Vec<SecretOwnerBindingSummary>,
+    ) -> Result<Self, SecretInternalError> {
+        if projection.0.candidate_id != candidate_id
+            || projection.0.candidate_revision != candidate_revision
+            || projection.0.kind != kind
+            || projection.0.comparison_policy != comparison_policy
+            || projection.0.secret_ref != secret_ref
+            || projection.0.record_revision != record_revision
+        {
+            return Err(SecretInternalError::input_invalid());
+        }
+        Ok(Self {
+            candidate_id,
+            candidate_revision,
+            kind,
+            comparison_policy,
+            secret_ref,
+            record_revision,
+            projection,
+            binding_set_cas,
+            affected_owners,
+        })
+    }
+
     fn validate_activation_result_identity(
         &self,
         result: &SecretActivationResultDtoRepr,

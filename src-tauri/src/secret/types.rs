@@ -2645,6 +2645,79 @@ impl SecretCandidateActivationProjection {
     }
 }
 
+const CANDIDATE_ACTIVATION_DIGEST_PREFIX: &[u8] =
+    b"fyagent.secret.candidate-activation.v1\n";
+
+fn rfc8785_write(
+    out: &mut String,
+    value: &serde_json::Value,
+) -> Result<(), SecretInternalError> {
+    match value {
+        serde_json::Value::Null => out.push_str("null"),
+        serde_json::Value::Bool(true) => out.push_str("true"),
+        serde_json::Value::Bool(false) => out.push_str("false"),
+        serde_json::Value::Number(number) => {
+            if let Some(unsigned) = number.as_u64() {
+                out.push_str(&unsigned.to_string());
+            } else if let Some(signed) = number.as_i64() {
+                out.push_str(&signed.to_string());
+            } else {
+                return Err(SecretInternalError::input_invalid());
+            }
+        }
+        serde_json::Value::String(text) => {
+            out.push_str(
+                &serde_json::to_string(text).map_err(|_| SecretInternalError::input_invalid())?,
+            );
+        }
+        serde_json::Value::Array(items) => {
+            out.push('[');
+            for (index, item) in items.iter().enumerate() {
+                if index > 0 {
+                    out.push(',');
+                }
+                rfc8785_write(out, item)?;
+            }
+            out.push(']');
+        }
+        serde_json::Value::Object(map) => {
+            let mut keys: Vec<&String> = map.keys().collect();
+            keys.sort();
+            out.push('{');
+            for (index, key) in keys.iter().enumerate() {
+                if index > 0 {
+                    out.push(',');
+                }
+                out.push_str(
+                    &serde_json::to_string(*key)
+                        .map_err(|_| SecretInternalError::input_invalid())?,
+                );
+                out.push(':');
+                rfc8785_write(out, &map[*key])?;
+            }
+            out.push('}');
+        }
+    }
+    Ok(())
+}
+
+fn candidate_activation_projection_digest(
+    repr: &SecretCandidateActivationProjectionRepr,
+) -> Result<SecretProjectionDigest, SecretInternalError> {
+    let mut value =
+        serde_json::to_value(repr).map_err(|_| SecretInternalError::input_invalid())?;
+    let object = value
+        .as_object_mut()
+        .ok_or_else(SecretInternalError::input_invalid)?;
+    object.remove("projectionDigest");
+    let mut canonical = String::new();
+    rfc8785_write(&mut canonical, &value)?;
+    let mut preimage = CANDIDATE_ACTIVATION_DIGEST_PREFIX.to_vec();
+    preimage.extend_from_slice(canonical.as_bytes());
+    SecretProjectionDigest::parse(device_store::schema::sha256_hex(&preimage))
+        .map_err(|_| SecretInternalError::input_invalid())
+}
+
 impl Serialize for SecretCandidateActivationProjection {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -3293,7 +3366,23 @@ impl SecretMutationImpact {
         impact: SecretMutationImpact,
         snapshot: &SecretCandidateAuthoritySnapshot,
     ) -> Result<Self, SecretInternalError> {
-        todo!("ref/revision/binding-set/affected-owner/effect identity")
+        let display_matches =
+            impact.secret_ref_display == SecretRefDisplay::derive_from(&snapshot.secret_ref);
+        let effect_matches = match impact.effect {
+            SecretImpactEffect::AllBindingsAffected => true,
+            SecretImpactEffect::OneBindingAffected => impact.affected_owners.len() == 1,
+        };
+        if impact.secret_ref == snapshot.secret_ref
+            && display_matches
+            && impact.record_revision == snapshot.record_revision
+            && impact.binding_set_cas == snapshot.binding_set_cas
+            && impact.affected_owners == snapshot.affected_owners
+            && effect_matches
+        {
+            Ok(impact)
+        } else {
+            Err(SecretInternalError::input_invalid())
+        }
     }
 }
 
@@ -4137,7 +4226,20 @@ impl StageSecretCandidateResult {
         result: StageSecretCandidateResult,
         snapshot: &SecretCandidateAuthoritySnapshot,
     ) -> Result<Self, SecretInternalError> {
-        todo!("candidate/projection/policy/impact/null/audit identity")
+        if result.status != SecretCandidateStageStatus::Staged {
+            return Err(SecretInternalError::input_invalid());
+        }
+        SecretCandidateWithProjection::checked_from_candidate_snapshot(
+            SecretCandidateWithProjection {
+                candidate: result.candidate.clone(),
+                activation_projection: result.activation_projection.clone(),
+            },
+            snapshot,
+        )?;
+        if let Some(impact) = result.impact.0.clone() {
+            SecretMutationImpact::checked_from_candidate_snapshot(impact, snapshot)?;
+        }
+        Ok(result)
     }
 }
 
@@ -4883,7 +4985,20 @@ impl SecretCandidateWithProjection {
         value: SecretCandidateWithProjection,
         snapshot: &SecretCandidateAuthoritySnapshot,
     ) -> Result<Self, SecretInternalError> {
-        todo!("candidate id/revision/policy and projection identity")
+        let summary = &value.candidate;
+        let projection = &value.activation_projection;
+        let matched = summary.candidate_id == snapshot.candidate_id
+            && summary.candidate_revision == snapshot.candidate_revision
+            && summary.kind == snapshot.kind
+            && summary.comparison_policy == snapshot.comparison_policy
+            && summary.secret_ref == snapshot.secret_ref
+            && summary.record_revision == snapshot.record_revision
+            && projection == &snapshot.projection;
+        if matched {
+            Ok(value)
+        } else {
+            Err(SecretInternalError::input_invalid())
+        }
     }
 }
 
@@ -5678,5 +5793,120 @@ fn secret_discard_result_mismatch_fail_closed() {
         )
         .is_err(),
         "candidate mismatch must fail closed"
+    );
+}
+
+#[cfg(test)]
+fn knife8_binding_set() -> SecretBindingSetCas {
+    SecretBindingSetCas {
+        revision: SecretBindingSetRevision::parse(1).expect("binding set"),
+        digest: BindingSetDigest::parse("ab".repeat(32)).expect("digest"),
+        count: 0,
+    }
+}
+
+#[cfg(test)]
+fn knife8_snapshot_from_projection(
+    projection: SecretCandidateActivationProjection,
+) -> SecretCandidateAuthoritySnapshot {
+    SecretCandidateAuthoritySnapshot::from_staged(
+        projection.0.candidate_id.clone(),
+        projection.0.candidate_revision,
+        projection.0.kind,
+        projection.0.comparison_policy,
+        projection.0.secret_ref.clone(),
+        projection.0.record_revision,
+        projection,
+        knife8_binding_set(),
+        Vec::new(),
+    )
+    .expect("matching projection snapshot")
+}
+
+#[cfg(test)]
+fn knife8_summary_from_projection(
+    projection: &SecretCandidateActivationProjection,
+) -> SecretCandidateSummary {
+    let backend = knife4_os_backend();
+    let capabilities = knife4_os_capabilities(&backend);
+    SecretCandidateSummary {
+        schema_version: SchemaVersionV1,
+        candidate_id: projection.0.candidate_id.clone(),
+        candidate_revision: projection.0.candidate_revision,
+        kind: projection.0.kind,
+        comparison_policy: projection.0.comparison_policy,
+        comparison_impact: projection.0.comparison_impact.clone(),
+        state: SecretCandidateState::VerifiedPendingPlan,
+        secret_ref: projection.0.secret_ref.clone(),
+        secret_ref_display: SecretRefDisplay::derive_from(&projection.0.secret_ref),
+        purpose: projection.0.purpose,
+        record_revision: projection.0.record_revision,
+        backend,
+        capabilities,
+        target_owners: projection.0.target_owners.clone(),
+        expected_bindings: projection.0.expected_bindings.clone(),
+        legacy_sources_to_scrub: projection.0.legacy_sources_to_scrub.clone(),
+        created_at: UtcTimestamp::parse("2026-08-17T17:00:00.000Z".to_string())
+            .expect("timestamp"),
+        expires_at: UtcTimestamp::parse("2026-08-17T17:00:00.000Z".to_string())
+            .expect("timestamp"),
+        pending_terminal_disposition: None,
+        issue: None,
+    }
+}
+
+#[test]
+fn secret_candidate_activation_projection_field_mismatch_fails_closed() {
+    let owner = knife4_owner("owner-1");
+    let projection = SecretCandidateActivationProjection::validate_repr(knife4_activation_repr(
+        vec![owner.clone()],
+        vec![knife4_unbound_expectation(owner)],
+    ))
+    .expect("owners match");
+    assert!(
+        SecretCandidateAuthoritySnapshot::from_staged(
+            SecretCandidateId::generate(),
+            projection.0.candidate_revision,
+            projection.0.kind,
+            projection.0.comparison_policy,
+            projection.0.secret_ref.clone(),
+            projection.0.record_revision,
+            projection,
+            knife8_binding_set(),
+            Vec::new(),
+        )
+        .is_err(),
+        "projection identity mismatch must be Err"
+    );
+}
+
+#[test]
+fn secret_candidate_with_projection_mismatch_fails_closed() {
+    let owner = knife4_owner("owner-1");
+    let projection = SecretCandidateActivationProjection::validate_repr(knife4_activation_repr(
+        vec![owner.clone()],
+        vec![knife4_unbound_expectation(owner.clone())],
+    ))
+    .expect("owners match");
+    let other = SecretCandidateActivationProjection::validate_repr(knife4_activation_repr(
+        vec![owner.clone()],
+        vec![knife4_unbound_expectation(owner)],
+    ))
+    .expect("owners match");
+    let snapshot = knife8_snapshot_from_projection(projection.clone());
+    let matched = SecretCandidateWithProjection {
+        candidate: knife8_summary_from_projection(&projection),
+        activation_projection: projection,
+    };
+    SecretCandidateWithProjection::checked_from_candidate_snapshot(matched, &snapshot)
+        .expect("matching projection");
+    let mismatched = SecretCandidateWithProjection {
+        candidate: knife8_summary_from_projection(&other),
+        activation_projection: other,
+    };
+    assert!(
+        SecretCandidateWithProjection::checked_from_candidate_snapshot(mismatched, &snapshot)
+            .is_err(),
+        "projection field mismatch must be Err, not Ok"
     );
 }
