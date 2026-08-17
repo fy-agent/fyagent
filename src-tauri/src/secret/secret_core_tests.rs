@@ -791,3 +791,26 @@ fn secret_service_local_open_tempdir_uses_in_memory_backend() {
     assert!(projection.refs.is_empty());
     let _ = service.backend();
 }
+
+#[test]
+fn secret_opened_store_accessor_lists_seeded_owner_and_ref() {
+    let tmp = TempDir::new().expect("tempdir");
+    let opened = SecretBootstrap::open_for_test(tmp.path().to_path_buf()).expect("open");
+    let backend = super::testing::InMemorySecretBackend::new();
+    let material = SecretMaterial::from_native_input(
+        b"opened-store-seed".to_vec(),
+        SecretPurpose::CodexApiKey,
+    )
+    .expect("material");
+    let seeded = super::seed_pending_candidate_in_store(opened.store(), &backend, material, true)
+        .expect("seed via opened store accessor");
+    let summaries = super::list_secret_summaries_from_store(opened.store(), None, false)
+        .expect("list via opened store accessor");
+    assert!(summaries.refs.iter().any(|row| row.secret_ref == seeded.secret_ref));
+    assert!(summaries.owners.iter().any(|owner| {
+        owner.secret_ref.as_deref() == Some(seeded.secret_ref.as_str())
+    }));
+    let candidates = super::list_secret_candidates_from_store(opened.store(), false)
+        .expect("candidates via opened store accessor");
+    assert!(candidates.iter().any(|row| row.candidate_id == seeded.candidate_id));
+}

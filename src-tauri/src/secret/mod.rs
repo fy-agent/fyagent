@@ -30,9 +30,20 @@ pub(crate) mod testing;
 mod secret_core_tests;
 
 pub(crate) use service::command_error_from_internal as service_command_error;
+pub(crate) use service::{
+    list_secret_candidates_from_store, list_secret_summaries_from_store,
+    seed_pending_candidate_in_store, seed_unbound_owner_in_store, LocalCandidateProjection,
+    LocalSecretSummaryProjection, SeededPendingCandidate,
+};
+#[cfg(test)]
+pub(crate) use service::seed_opened_store_pending_candidate;
+
+pub(crate) fn command_unavailable_error() -> SecretCommandError {
+    service_command_error(SecretInternalError::input_invalid())
+}
 
 pub(crate) fn command_unavailable<T>() -> SecretCommandResult<T> {
-    Err(service_command_error(SecretInternalError::input_invalid()))
+    Err(command_unavailable_error())
 }
 
 impl From<SecretInternalError> for crate::error::AppError {

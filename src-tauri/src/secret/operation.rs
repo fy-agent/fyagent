@@ -4046,6 +4046,10 @@ impl OpenedDeviceLocalSecretStore {
     pub(crate) fn database_preflight_token(&self) -> &SecretBootstrapToken {
         &self.bootstrap
     }
+
+    pub(crate) fn store(&self) -> &device_store::DeviceLocalSecretStore {
+        &self.lifetime_lock.store
+    }
 }
 
 // crate::store owns this non-secret DB path/config authority. It is produced
