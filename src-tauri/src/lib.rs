@@ -2221,6 +2221,24 @@ pub fn run() {
             commands::codex_desktop_cancel_install,
             commands::codex_desktop_launch,
             commands::codex_desktop_open_log_directory,
+            // Issue #35 secret commands (exact SecretCommandName set)
+            commands::list_secret_summaries,
+            commands::list_secret_backend_options,
+            commands::begin_secret_capture,
+            commands::rotate_secret,
+            commands::list_secret_candidates,
+            commands::discard_secret_candidate,
+            commands::set_secret_locked,
+            commands::get_secret_delete_impact,
+            commands::delete_secret,
+            commands::get_secret_cleanup_impact,
+            commands::retry_secret_cleanup,
+            commands::validate_secret,
+            commands::check_secret_apply_readiness,
+            commands::migrate_legacy_codex_secrets,
+            commands::list_secret_audit,
+            // SecretMainIntegrationCommandName — not a SecretCommandName
+            commands::resume_staged_import_cutover,
         ]);
 
     let context = tauri::generate_context!();
