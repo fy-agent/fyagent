@@ -266,12 +266,23 @@ pub async fn set_secret_locked(
     set_secret_locked_from_state(&state, request)
 }
 
-#[tauri::command]
-pub async fn get_secret_delete_impact(
+/// Read-only impact. Never writes or deletes Keychain.
+pub(crate) fn get_secret_delete_impact_from_state(
+    state: &AppState,
     request: GetSecretDeleteImpactRequest,
 ) -> SecretCommandResult<SecretDeleteImpact> {
-    let _ = request;
-    unavailable()
+    let opened = require_opened_store(state)?;
+    crate::secret::get_secret_delete_impact_from_store(opened.store(), &request)
+        .map(crate::secret::command_success)
+        .map_err(crate::secret::service_command_error)
+}
+
+#[tauri::command]
+pub async fn get_secret_delete_impact(
+    state: State<'_, AppState>,
+    request: GetSecretDeleteImpactRequest,
+) -> SecretCommandResult<SecretDeleteImpact> {
+    get_secret_delete_impact_from_state(&state, request)
 }
 
 #[tauri::command]
@@ -1009,6 +1020,49 @@ mod secret_command_dto_tests {
         assert_err_not_empty_ok(set_secret_locked_from_state(
             &state,
             lock_request(crate::secret::SecretRef::generate().as_str(), true, 1),
+        ));
+    }
+
+    fn delete_impact_request(secret_ref: &str) -> GetSecretDeleteImpactRequest {
+        serde_json::from_str(&format!(
+            r#"{{"schemaVersion":1,"secretRef":"{secret_ref}"}}"#
+        ))
+        .expect("delete impact request")
+    }
+
+    #[test]
+    fn secret_delete_impact_seed_returns_ready_contract_dto() {
+        let tmp = TempDir::new().expect("tempdir");
+        let opened = SecretBootstrap::open_for_test(tmp.path().to_path_buf()).expect("open");
+        let seeded = seed_opened_store_pending_candidate(opened.store()).expect("seed");
+        let db = Arc::new(Database::memory().expect("memory db"));
+        let state = AppState::new_with_secret_store(db, opened);
+        let result = get_secret_delete_impact_from_state(
+            &state,
+            delete_impact_request(&seeded.secret_ref),
+        )
+        .unwrap_or_else(|err| {
+            panic!(
+                "seeded ref must Ok delete impact: {}",
+                serde_json::to_string(&err).unwrap_or_default()
+            )
+        });
+        let json = serde_json::to_value(&result.data).expect("json");
+        assert_eq!(json["readiness"]["status"], "ready");
+        assert_eq!(json["impact"]["secretRef"], seeded.secret_ref);
+        assert_eq!(json["impact"]["noFallback"], true);
+    }
+
+    #[test]
+    fn secret_delete_impact_unknown_ref_fails_closed() {
+        let tmp = TempDir::new().expect("tempdir");
+        let opened = SecretBootstrap::open_for_test(tmp.path().to_path_buf()).expect("open");
+        let _ = seed_opened_store_pending_candidate(opened.store()).expect("seed");
+        let db = Arc::new(Database::memory().expect("memory db"));
+        let state = AppState::new_with_secret_store(db, opened);
+        assert_err_not_empty_ok(get_secret_delete_impact_from_state(
+            &state,
+            delete_impact_request(crate::secret::SecretRef::generate().as_str()),
         ));
     }
 

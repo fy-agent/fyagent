@@ -1067,6 +1067,63 @@ pub(crate) fn set_secret_locked_from_store(
     })
 }
 
+
+pub(crate) fn get_secret_delete_impact_from_store(
+    store: &device_store::DeviceLocalSecretStore,
+    request: &GetSecretDeleteImpactRequest,
+) -> Result<SecretDeleteImpact, SecretInternalError> {
+    let payload = store.load()?.payload;
+    let row = payload
+        .secrets
+        .iter()
+        .find(|row| row.secret_ref == request.secret_ref.as_str())
+        .ok_or_else(SecretInternalError::input_invalid)?;
+    let binding_set_cas = map_binding_set_cas(&row.binding_set_cas)?;
+    let record_revision = parse_wire(SecretRecordRevision::parse(row.record_revision))?;
+    let affected_owners = if binding_set_cas.count == 0 {
+        Vec::new()
+    } else {
+        let owners = map_owner_binding_summaries_for_ref(&payload, &request.secret_ref)?;
+        if u32::try_from(owners.len()).ok() != Some(binding_set_cas.count) {
+            return Err(SecretInternalError::input_invalid());
+        }
+        owners
+    };
+    let effect = if binding_set_cas.count <= 1 {
+        SecretImpactEffect::OneBindingAffected
+    } else {
+        SecretImpactEffect::AllBindingsAffected
+    };
+    let checked_at = parse_wire(UtcTimestamp::parse(device_store::utc_now()))?;
+    let expires_at = parse_wire(UtcTimestamp::parse(
+        "2099-01-01T00:00:00.000Z".to_string(),
+    ))?;
+    Ok(SecretDeleteImpact {
+        impact: SecretMutationImpact {
+            schema_version: SchemaVersionV1,
+            secret_ref: request.secret_ref.clone(),
+            secret_ref_display: SecretRefDisplay::derive_from(&request.secret_ref),
+            record_revision,
+            binding_set_cas: binding_set_cas.clone(),
+            affected_owners,
+            effect,
+            no_fallback: AlwaysTrue,
+        },
+        readiness: SecretDeleteReadiness::Ready {
+            context: SecretDeleteReadinessContext {
+                schema_version: SchemaVersionV1,
+                operation_id: SecretOperationId::generate(),
+                operation: SecretDeleteOperation::Delete,
+                secret_ref: request.secret_ref.clone(),
+                record_revision,
+                binding_set_cas,
+                checked_at,
+                expires_at,
+            },
+        },
+    })
+}
+
 #[allow(dead_code)]
 fn _keep_wire_err<T, E>(err: E) -> Result<T, SecretInternalError> {
     wire_err(err)
