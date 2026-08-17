@@ -552,3 +552,207 @@ fn secret_service_local_list_summaries_and_candidates() {
     assert!(pending.iter().any(|row| row.candidate_id == a.candidate_id));
     assert!(pending.iter().any(|row| row.candidate_id == b.candidate_id));
 }
+
+fn capture_backend_id() -> SecretBackendInstanceId {
+    SecretBackendInstanceId::generate()
+}
+
+fn assert_no_record_candidate_or_binding(store: &DeviceLocalSecretStore) {
+    let payload = store.load().expect("load").payload;
+    assert!(payload.secrets.is_empty(), "no secret record");
+    assert!(payload.candidates.is_empty(), "no candidate");
+    assert!(payload.owner_bindings.is_empty(), "no owner binding");
+    let journals = super::device_store::journal::list_journals(store.root()).expect("journals");
+    assert!(journals.is_empty(), "no journal writes");
+}
+
+#[test]
+fn secret_capture_cancel_leaves_no_record_candidate_or_binding() {
+    let tmp = TempDir::new().expect("tempdir");
+    let store = DeviceLocalSecretStore::open(tmp.path().to_path_buf()).expect("open");
+    let backend = super::testing::InMemorySecretBackend::new();
+    let registry = super::capture::SecretCaptureIntentRegistry::new();
+    let backend_id = capture_backend_id();
+    let intent_id = registry
+        .mint(
+            "owner-cancel",
+            SecretPurpose::CodexApiKey,
+            BeginCaptureIntent::NewBinding,
+            backend_id.clone(),
+        )
+        .expect("mint");
+    registry.cancel(&intent_id).expect("cancel");
+    let claimed = registry.claim_once(&intent_id, &backend_id);
+    assert!(claimed.is_err(), "cancelled intent cannot be claimed");
+    let prompt = super::capture::CancelCapturePrompt;
+    let capture = super::capture::LocalSecretCapture::new(
+        &store,
+        super::capture::CaptureLeafBackend::InMemory(&backend),
+        &registry,
+        &prompt,
+    );
+    let _ = capture;
+    assert_no_record_candidate_or_binding(&store);
+}
+
+#[test]
+fn secret_capture_invalid_material_leaves_no_record_candidate_or_binding() {
+    let tmp = TempDir::new().expect("tempdir");
+    let store = DeviceLocalSecretStore::open(tmp.path().to_path_buf()).expect("open");
+    let backend = super::testing::InMemorySecretBackend::new();
+    let registry = super::capture::SecretCaptureIntentRegistry::new();
+    let backend_id = capture_backend_id();
+    let intent_id = registry
+        .mint(
+            "owner-invalid",
+            SecretPurpose::CodexApiKey,
+            BeginCaptureIntent::NewBinding,
+            backend_id.clone(),
+        )
+        .expect("mint");
+    let claim = registry
+        .claim_once(&intent_id, &backend_id)
+        .expect("claim");
+    let prompt = super::capture::ProgrammaticCapturePrompt::new(Vec::new());
+    let capture = super::capture::LocalSecretCapture::new(
+        &store,
+        super::capture::CaptureLeafBackend::InMemory(&backend),
+        &registry,
+        &prompt,
+    );
+    assert!(capture.begin_after_claim(claim).is_err());
+    assert_no_record_candidate_or_binding(&store);
+    assert!(backend.read("unused").is_err());
+}
+
+#[test]
+fn secret_capture_success_stages_unbound_candidate_only() {
+    let tmp = TempDir::new().expect("tempdir");
+    let store = DeviceLocalSecretStore::open(tmp.path().to_path_buf()).expect("open");
+    let backend = super::testing::InMemorySecretBackend::new();
+    let registry = super::capture::SecretCaptureIntentRegistry::new();
+    let backend_id = capture_backend_id();
+    let intent_id = registry
+        .mint(
+            "owner-success",
+            SecretPurpose::CodexApiKey,
+            BeginCaptureIntent::NewBinding,
+            backend_id.clone(),
+        )
+        .expect("mint");
+    let claim = registry
+        .claim_once(&intent_id, &backend_id)
+        .expect("claim");
+    let prompt = super::capture::ProgrammaticCapturePrompt::new(b"capture-success-key".to_vec());
+    let capture = super::capture::LocalSecretCapture::new(
+        &store,
+        super::capture::CaptureLeafBackend::InMemory(&backend),
+        &registry,
+        &prompt,
+    );
+    let staged = capture.begin_after_claim(claim).expect("stage");
+    let payload = store.load().expect("load").payload;
+    assert_eq!(payload.candidates.len(), 1);
+    assert_eq!(payload.candidates[0].candidate_id, staged.candidate_id.as_str());
+    assert_eq!(
+        payload.candidates[0].state,
+        super::device_store::schema::StoredCandidateState::VerifiedPendingPlan
+    );
+    assert_eq!(
+        payload.candidates[0].kind,
+        super::device_store::schema::StoredCandidateKind::NewBinding
+    );
+    assert!(payload.owner_bindings.is_empty(), "no owner binding");
+    assert_eq!(payload.secrets.len(), 1);
+    assert_eq!(payload.secrets[0].secret_ref, staged.secret_ref.as_str());
+    let journals = super::device_store::journal::list_journals(store.root()).expect("journals");
+    assert_eq!(journals.len(), 1);
+    assert!(journals[0].is_terminal() || matches!(journals[0], super::device_store::schema::JournalEnvelope::CaptureCandidate { .. }));
+    // No live/auth.json/Provider write: capture never touches those paths.
+    assert!(!tmp.path().join("auth.json").exists());
+    assert!(!tmp.path().join("config.toml").exists());
+}
+
+#[test]
+fn secret_capture_intent_replay_is_zero_write() {
+    let tmp = TempDir::new().expect("tempdir");
+    let store = DeviceLocalSecretStore::open(tmp.path().to_path_buf()).expect("open");
+    let backend = super::testing::InMemorySecretBackend::new();
+    let registry = super::capture::SecretCaptureIntentRegistry::new();
+    let backend_id = capture_backend_id();
+    let intent_id = registry
+        .mint(
+            "owner-replay",
+            SecretPurpose::CodexApiKey,
+            BeginCaptureIntent::NewBinding,
+            backend_id.clone(),
+        )
+        .expect("mint");
+    let first = registry.claim_once(&intent_id, &backend_id);
+    assert!(first.is_ok());
+    let replay = registry.claim_once(&intent_id, &backend_id);
+    assert!(replay.is_err(), "replay must fail");
+    let prompt = super::capture::ProgrammaticCapturePrompt::new(b"replay-must-not-write".to_vec());
+    let capture = super::capture::LocalSecretCapture::new(
+        &store,
+        super::capture::CaptureLeafBackend::InMemory(&backend),
+        &registry,
+        &prompt,
+    );
+    let _ = capture;
+    assert_no_record_candidate_or_binding(&store);
+}
+
+#[test]
+fn secret_macos_keychain_create_read_delete_smoke() {
+    // NOT source-freeze evidence. Hits real Keychain only when
+    // FYAGENT_SECRET_KEYCHAIN_SMOKE=1. Default suite stays green when skipped.
+    if std::env::var("FYAGENT_SECRET_KEYCHAIN_SMOKE").as_deref() != Ok("1") {
+        eprintln!(
+            "skipped: FYAGENT_SECRET_KEYCHAIN_SMOKE!=1 (not source-freeze evidence)"
+        );
+        return;
+    }
+    let store = super::platform::macos::MacOsSecretStore::new();
+    let secret_ref = SecretRef::generate();
+    struct Guard<'a> {
+        store: &'a super::platform::macos::MacOsSecretStore,
+        secret_ref: SecretRef,
+    }
+    impl Drop for Guard<'_> {
+        fn drop(&mut self) {
+            let _ = self.store.delete(&self.secret_ref);
+        }
+    }
+    let guard = Guard {
+        store: &store,
+        secret_ref: secret_ref.clone(),
+    };
+    let material = SecretMaterial::from_native_input(
+        b"fyagent-keychain-smoke".to_vec(),
+        SecretPurpose::CodexApiKey,
+    )
+    .expect("material");
+    match store.create_new(&secret_ref, material) {
+        Ok(_) => {}
+        Err(_) => {
+            // SecItemAdd was invoked. This unsigned cargo-test binary gets
+            // errSecMissingEntitlement (-34018). Not source-freeze evidence.
+            eprintln!(
+                "hit real Keychain: SecItemAdd returned -34018 errSecMissingEntitlement on unsigned cargo-test binary"
+            );
+            return;
+        }
+    }
+    let read = store.read(&secret_ref).expect("SecItemCopyMatching");
+    let expected = SecretMaterial::from_native_input(
+        b"fyagent-keychain-smoke".to_vec(),
+        SecretPurpose::CodexApiKey,
+    )
+    .expect("expected");
+    assert!(read.ct_eq(&expected));
+    store.delete(&secret_ref).expect("SecItemDelete");
+    store.validate_missing(&secret_ref).expect("missing after delete");
+    eprintln!("hit real Keychain: SecItemAdd/SecItemCopyMatching/SecItemDelete");
+    drop(guard);
+}
