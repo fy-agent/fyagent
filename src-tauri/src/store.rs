@@ -16,6 +16,9 @@ pub struct AppState {
     /// existing test callsites keep compiling; production setup uses
     /// `new_with_secret_store` after `SecretBootstrap::open`.
     pub(crate) secret_store: Option<OpenedDeviceLocalSecretStore>,
+    /// Test-only InMemory backend hold. Production AppState never carries this.
+    #[cfg(test)]
+    pub(crate) secret_in_memory_backend: Option<crate::secret::InMemorySecretBackend>,
 }
 
 impl AppState {
@@ -29,6 +32,8 @@ impl AppState {
             usage_cache: Arc::new(UsageCache::new()),
             codex_desktop_service: Arc::new(production_service()),
             secret_store: None,
+            #[cfg(test)]
+            secret_in_memory_backend: None,
         }
     }
 
@@ -39,5 +44,13 @@ impl AppState {
         let mut state = Self::new(db);
         state.secret_store = Some(secret_store);
         state
+    }
+
+    #[cfg(test)]
+    pub(crate) fn attach_in_memory_secret_backend(
+        &mut self,
+        backend: crate::secret::InMemorySecretBackend,
+    ) {
+        self.secret_in_memory_backend = Some(backend);
     }
 }
