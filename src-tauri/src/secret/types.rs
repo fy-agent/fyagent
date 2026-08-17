@@ -2747,12 +2747,15 @@ pub struct StagedSecretImportActivationProjection(
 );
 
 impl StagedSecretImportActivationProjection {
-    fn validate_repr(
+    pub(in crate::secret) fn validate_repr(
         repr: StagedSecretImportActivationProjectionRepr,
     ) -> Result<Self, WireValidationError> {
         let exact_count = repr.staged_source_set_cas.source_count as usize
             == repr.source_expectations.0.len();
-        let owner_matches = todo!("expected live binding owner equals projection owner");
+        let owner_matches = match &repr.expected_live_binding {
+            OwnerBindingExpectation::Unbound { owner, .. }
+            | OwnerBindingExpectation::Bound { owner, .. } => owner == &repr.owner,
+        };
         let impact_matches = matches!(
             (&repr.comparison_policy, &repr.comparison_impact),
             (
@@ -5980,5 +5983,78 @@ fn secret_discard_result_mismatch_fail_closed() {
         )
         .is_err(),
         "candidate mismatch must fail closed"
+    );
+}
+
+#[cfg(test)]
+fn knife10_import_repr(owner: SecretOwner, binding_owner: SecretOwner, source_count: u32) -> StagedSecretImportActivationProjectionRepr {
+    let source = LegacySourceExpectation {
+        source: LegacySourceRef {
+            location_id: LegacySourceLocationId::parse(format!("lsl_{}", "11".repeat(16))).expect("loc"),
+            category: LegacySourceCategory::ProviderAuthJson,
+            origin: LegacySourceOrigin::SqlImportStaging,
+        },
+        structural_revision: LegacySourceStructuralRevision::parse(1).expect("src rev"),
+    };
+    let sources = StagedLegacySourceExpectations::validate(vec![source]).expect("staging sources");
+    StagedSecretImportActivationProjectionRepr {
+        contract_version: SecretContractVersionV1::V1,
+        operation: StagedSecretImportActivationOperation::StagedSecretImportActivation,
+        stage_id: ImportStageId::parse(format!("ist_{}", Uuid::new_v4().simple())).expect("stage"),
+        owner,
+        staged_source_set_cas: StagedSourceSetCas {
+            staged_row_revision: StagedRowRevision::parse(1).expect("row"),
+            structure_digest: RecoveryStructureDigest::parse("ab".repeat(32)).expect("struct"),
+            source_count,
+        },
+        source_expectations: sources,
+        candidate_id: SecretCandidateId::generate(),
+        candidate_revision: SecretCandidateRevision::parse(1).expect("cand"),
+        comparison_policy: LegacyActivationComparisonPolicy::CandidateEquality,
+        comparison_impact: LegacyActivationComparisonImpact::CandidateEquality {
+            user_meaning: VerifySameValueMigrationMeaning::VerifySameValueMigration,
+        },
+        secret_ref: SecretRef::generate(),
+        record_revision: SecretRecordRevision::parse(1).expect("record"),
+        backend_instance_id: SecretBackendInstanceId::generate(),
+        backend_generation: SecretBackendGeneration::parse(1).expect("gen"),
+        device_binding_generation: DeviceBindingGeneration::parse(1).expect("device"),
+        capability_revision: CapabilityRevision::parse(1).expect("cap"),
+        expected_live_binding: knife4_unbound_expectation(binding_owner),
+        projection_digest: SecretProjectionDigest::parse("cd".repeat(32)).expect("digest"),
+    }
+}
+
+#[test]
+fn secret_staged_import_projection_validate_repr_owner_matches() {
+    let owner = knife4_owner("owner-import-1");
+    StagedSecretImportActivationProjection::validate_repr(knife10_import_repr(
+        owner.clone(),
+        owner,
+        1,
+    ))
+    .expect("matching owner");
+}
+
+#[test]
+fn secret_staged_import_projection_validate_repr_owner_mismatch_fails_closed() {
+    let owner = knife4_owner("owner-import-1");
+    let other = knife4_owner("owner-import-2");
+    assert!(
+        StagedSecretImportActivationProjection::validate_repr(knife10_import_repr(owner, other, 1))
+            .is_err()
+    );
+}
+
+#[test]
+fn secret_staged_import_projection_validate_repr_count_mismatch_fails_closed() {
+    let owner = knife4_owner("owner-import-1");
+    assert!(
+        StagedSecretImportActivationProjection::validate_repr(knife10_import_repr(
+            owner.clone(),
+            owner,
+            2,
+        ))
+        .is_err()
     );
 }
