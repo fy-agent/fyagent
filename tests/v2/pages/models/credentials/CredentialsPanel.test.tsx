@@ -53,6 +53,23 @@ describe("CredentialsPanel public no-value surface", () => {
     expect(locked).toHaveAttribute("data-availability", "locked");
     expect(within(locked).getByText("已锁定")).toBeVisible();
     expect(within(locked).getByText("解锁 FyAgent")).toBeVisible();
+    expect(within(locked).queryByText("到系统解锁")).not.toBeInTheDocument();
+  });
+
+  it("paints staged candidate list rows as 等待变更计划, never 已绑定/可用", () => {
+    renderPanel();
+    for (const name of ["待计划", "待丢弃", "已过期"]) {
+      const row = rowByName(name);
+      expect(row).toHaveAttribute("data-staged-plan", "true");
+      expect(within(row).getByText("等待变更计划")).toBeVisible();
+      expect(within(row).queryByText("已绑定")).not.toBeInTheDocument();
+      expect(within(row).queryByText("可用")).not.toBeInTheDocument();
+      expect(within(row).queryByText("未绑定")).not.toBeInTheDocument();
+    }
+    const ready = rowByName("主编码");
+    expect(ready).toHaveAttribute("data-staged-plan", "false");
+    expect(within(ready).getByText("已绑定")).toBeVisible();
+    expect(within(ready).getByText("可用")).toBeVisible();
   });
 
   it("shows the exact candidate banner and keeps pending discard as verifiedPendingPlan", async () => {
@@ -99,13 +116,20 @@ describe("CredentialsPanel public no-value surface", () => {
     expect(within(providerDialog).queryByRole("heading", { name: "删除本机凭据" })).not.toBeInTheDocument();
   });
 
-  it("splits locked unlock actions and does not draw revoked as missing", async () => {
+  it("exposes lockSource as a single unlock action", async () => {
     const user = userEvent.setup();
     renderPanel({ initialOwnerId: "delta-locked" });
-    const status = screen.getByTestId("credentials-status");
-    expect(within(status).getByRole("button", { name: "解锁 FyAgent" })).toBeVisible();
-    expect(within(status).getByRole("button", { name: "到系统解锁" })).toBeVisible();
-    expect(within(status).queryByRole("button", { name: "解锁" })).not.toBeInTheDocument();
+    const policy = screen.getByTestId("credentials-status");
+    expect(policy).toHaveAttribute("data-lock-source", "fyAgentPolicy");
+    expect(within(policy).getByRole("button", { name: "解锁 FyAgent" })).toBeVisible();
+    expect(within(policy).queryByRole("button", { name: "到系统解锁" })).not.toBeInTheDocument();
+    expect(within(policy).queryByRole("button", { name: "解锁" })).not.toBeInTheDocument();
+
+    await user.click(rowByName("系统锁定"));
+    const backend = screen.getByTestId("credentials-status");
+    expect(backend).toHaveAttribute("data-lock-source", "backend");
+    expect(within(backend).getByRole("button", { name: "到系统解锁" })).toBeVisible();
+    expect(within(backend).queryByRole("button", { name: "解锁 FyAgent" })).not.toBeInTheDocument();
 
     await user.click(rowByName("撤销项"));
     const revoked = screen.getByTestId("credentials-status");

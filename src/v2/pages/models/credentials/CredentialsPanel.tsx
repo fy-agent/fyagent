@@ -42,6 +42,16 @@ export interface CredentialsPanelProps {
   initialImpact?: ImpactKind;
 }
 
+
+function isStagedCandidateRow(row: CredentialListRow): boolean {
+  const state = row.candidate?.state;
+  return state === "verifiedPendingPlan" || state === "expired";
+}
+
+function lockSourceOf(row: CredentialListRow) {
+  return row.aggregate?.lock?.source ?? row.aggregate?.issue?.lockSource;
+}
+
 function availabilityGlyph(availability: SecretStableAvailability): string {
   switch (availability) {
     case "ready":
@@ -172,14 +182,17 @@ export function CredentialsPanel({
                     data-owner-id={row.ownerId}
                     data-binding-state={row.summary.bindingState.state}
                     data-availability={row.aggregate?.availability ?? "unavailable"}
+                    data-staged-plan={isStagedCandidateRow(row) ? "true" : "false"}
                     data-next-action={row.nextAction}
                     onClick={() => setSelectedOwnerId(row.ownerId)}
                   >
                     <strong className="fy-credentials-row-name">{row.displayName}</strong>
                     <span className="fy-credentials-chip">
-                      {BINDING_STATE_LABELS_ZH[row.summary.bindingState.state]}
+                      {isStagedCandidateRow(row)
+                        ? "等待变更计划"
+                        : BINDING_STATE_LABELS_ZH[row.summary.bindingState.state]}
                     </span>
-                    {row.aggregate ? (
+                    {isStagedCandidateRow(row) ? null : row.aggregate ? (
                       <AvailabilityTriple availability={row.aggregate.availability} />
                     ) : (
                       <span className="fy-credentials-next">
@@ -270,6 +283,7 @@ function StatusCard({
       data-testid="credentials-status"
       data-binding-state={binding.state}
       data-availability={availability ?? "none"}
+      data-lock-source={lockSourceOf(row) ?? ""}
     >
       <h2>{row.displayName}</h2>
       <div className="fy-credentials-chip-row">
@@ -324,23 +338,25 @@ function StatusCard({
             采集凭据
           </button>
         ) : null}
-        {isLocked ? (
-          <>
-            <button
-              className="fy-credentials-primary-action"
-              type="button"
-              data-lock-action="unlockFyAgent"
-            >
-              {SECRET_USER_ACTION_LABELS_ZH.unlockFyAgent}
-            </button>
-            <button
-              className="fy-credentials-secondary-action"
-              type="button"
-              data-lock-action="unlockBackend"
-            >
-              {SECRET_USER_ACTION_LABELS_ZH.unlockBackend}
-            </button>
-          </>
+        {isLocked && lockSourceOf(row) === "fyAgentPolicy" ? (
+          <button
+            className="fy-credentials-primary-action"
+            type="button"
+            data-lock-action="unlockFyAgent"
+            data-lock-source="fyAgentPolicy"
+          >
+            {SECRET_USER_ACTION_LABELS_ZH.unlockFyAgent}
+          </button>
+        ) : null}
+        {isLocked && lockSourceOf(row) === "backend" ? (
+          <button
+            className="fy-credentials-primary-action"
+            type="button"
+            data-lock-action="unlockBackend"
+            data-lock-source="backend"
+          >
+            {SECRET_USER_ACTION_LABELS_ZH.unlockBackend}
+          </button>
         ) : null}
         {isUnavailable ? (
           <>
