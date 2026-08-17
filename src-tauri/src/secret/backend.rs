@@ -1161,9 +1161,10 @@ wire_enum!(BackendDeleteDisposition { Deleted, AlreadyMissing });
 
 mod platform_backend_sealed {
     pub(super) trait Sealed {}
-    // Phase 2A: platform modules are unpublished. Seal only the in-memory store.
-    pub(super) struct UnpublishedPlatformStore;
-    impl Sealed for UnpublishedPlatformStore {}
+    #[cfg(target_os = "macos")]
+    impl Sealed for crate::secret::platform::macos::MacOsSecretStore {}
+    #[cfg(target_os = "windows")]
+    impl Sealed for crate::secret::platform::windows::WindowsSecretStore {}
     #[cfg(any(test, feature = "test-hooks"))]
     impl Sealed for crate::secret::testing::InMemorySecretStore {}
 }
