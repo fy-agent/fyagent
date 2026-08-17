@@ -1,0 +1,652 @@
+/// Knife 5: map opened-store rows through the four frozen constructors
+/// onto the three command success DTOs. Lives in crate::secret via include!
+/// so private contract fields stay in-module.
+
+fn wire_err<T, E>(_: E) -> Result<T, SecretInternalError> {
+    Err(SecretInternalError::input_invalid())
+}
+
+fn parse_wire<T>(result: Result<T, WireValidationError>) -> Result<T, SecretInternalError> {
+    result.map_err(|_| SecretInternalError::input_invalid())
+}
+
+fn clear_legacy_source_coverage_receipt() -> Result<LegacySourceCoverageReceipt, SecretInternalError> {
+    let absent = || {
+        LegacySourceDomainCoverageIdentity::checked_from_structural_inventory(
+            LegacySourceInventoryRevision::checked_from_structural_generation(1)?,
+            LegacySourceDomainPresence::Absent,
+            0,
+        )
+    };
+    Ok(LegacySourceCoverageReceipt {
+        inventory_revision: LegacySourceInventoryRevision::checked_from_structural_generation(1)?,
+        coverage_identity: CompleteLegacySourceCoverageIdentity::checked_exact_eleven_domains(
+            absent()?,
+            absent()?,
+            absent()?,
+            absent()?,
+            absent()?,
+            absent()?,
+            absent()?,
+            absent()?,
+            absent()?,
+            absent()?,
+            absent()?,
+        )?,
+        current_scrubbable: CurrentLegacySourceExpectations::checked_from_codex_inventory_bridge(
+            Vec::new(),
+        )
+        .map_err(|_| SecretInternalError::input_invalid())?,
+        adjacent_blocked: Vec::new(),
+    })
+}
+
+fn parse_purpose(raw: &str) -> Result<SecretPurpose, SecretInternalError> {
+    match raw {
+        "codexApiKey" => Ok(SecretPurpose::CodexApiKey),
+        _ => Err(SecretInternalError::input_invalid()),
+    }
+}
+
+fn parse_owner(row: &device_store::schema::StoredOwner) -> Result<SecretOwner, SecretInternalError> {
+    let kind = match row.kind.as_str() {
+        "provider" => SecretOwnerKind::Provider,
+        "agent" => SecretOwnerKind::Agent,
+        _ => return Err(SecretInternalError::input_invalid()),
+    };
+    let slot = match row.slot.as_str() {
+        "primaryApiKey" => SecretSlot::PrimaryApiKey,
+        _ => return Err(SecretInternalError::input_invalid()),
+    };
+    Ok(SecretOwner {
+        kind,
+        namespace: parse_wire(SecretOwnerNamespace::parse(row.namespace.clone()))?,
+        owner_id: parse_wire(OwnerId::parse(row.owner_id.clone()))?,
+        slot,
+    })
+}
+
+fn os_keyring_backend(
+    instance_id: &str,
+    generation: u64,
+) -> Result<SecretBackendInstanceView, SecretInternalError> {
+    SecretBackendInstanceView::try_registered(
+        SecretBackendKind::OsKeyring,
+        parse_wire(SecretBackendInstanceId::parse(instance_id.to_string()))?,
+        parse_wire(SecretBackendGeneration::parse(generation))?,
+        SecretBackendAvailability::Available,
+        None,
+    )
+}
+
+fn os_keyring_capabilities(
+    backend: &SecretBackendInstanceView,
+    capability_revision: u64,
+    device_binding_generation: u64,
+) -> Result<SecretRecordCapabilities, SecretInternalError> {
+    SecretRecordCapabilities::try_new(
+        backend,
+        parse_wire(CapabilityRevision::parse(capability_revision))?,
+        parse_wire(DeviceBindingGeneration::parse(device_binding_generation))?,
+        DeviceBinding::HostUser,
+        StorageResidency::OsProtectedStore,
+        SecretOperationConfirmationCapabilities {
+            capture_verify: PhysicalConfirmation::Never,
+            validate: PhysicalConfirmation::Never,
+            resolve_for_apply: PhysicalConfirmation::Never,
+            delete: PhysicalConfirmation::Never,
+            revoke: PhysicalConfirmation::Never,
+        },
+        vec![
+            SecretRuntimeConsumer::ChangePlanApply,
+            SecretRuntimeConsumer::ProxyRequest,
+            SecretRuntimeConsumer::UsageProbe,
+            SecretRuntimeConsumer::CodingPlanUsageProbe,
+            SecretRuntimeConsumer::ModelFetch,
+        ],
+        vec![
+            SecretRuntimeSink::ProcessMemory,
+            SecretRuntimeSink::ExternalConfigFile,
+        ],
+        true,
+        false,
+        BackendRevocationObservationCapability::Unsupported,
+    )
+}
+
+fn map_binding_set_cas(
+    cas: &device_store::schema::StoredBindingSetCas,
+) -> Result<SecretBindingSetCas, SecretInternalError> {
+    Ok(SecretBindingSetCas {
+        revision: parse_wire(SecretBindingSetRevision::parse(cas.revision))?,
+        digest: parse_wire(BindingSetDigest::parse(cas.digest.clone()))?,
+        count: u32::try_from(cas.count).map_err(|_| SecretInternalError::input_invalid())?,
+    })
+}
+
+fn map_owner_binding_summaries_for_ref(
+    payload: &device_store::schema::StatePayload,
+    secret_ref: &SecretRef,
+) -> Result<Vec<SecretOwnerBindingSummary>, SecretInternalError> {
+    let mut bindings = Vec::new();
+    for row in &payload.owner_bindings {
+        if row.state != device_store::schema::StoredBindingState::Bound {
+            continue;
+        }
+        if row.secret_ref.as_deref() != Some(secret_ref.as_str()) {
+            continue;
+        }
+        let owner = parse_owner(&row.owner)?;
+        let binding_revision = parse_wire(SecretBindingRevision::parse(
+            row.binding_revision
+                .ok_or_else(SecretInternalError::input_invalid)?,
+        ))?;
+        bindings.push(SecretOwnerBindingSummary {
+            owner,
+            purpose: parse_purpose(&row.purpose)?,
+            binding_revision,
+            created_at: parse_wire(UtcTimestamp::parse(row.created_at.clone()))?,
+            updated_at: parse_wire(UtcTimestamp::parse(row.updated_at.clone()))?,
+        });
+    }
+    bindings.sort_by(|a, b| secret_owner_sort_key(&a.owner).cmp(&secret_owner_sort_key(&b.owner)));
+    Ok(bindings)
+}
+
+fn map_secret_ref_aggregate(
+    payload: &device_store::schema::StatePayload,
+    row: &device_store::schema::StoredSecretRecord,
+) -> Result<SecretRefAggregate, SecretInternalError> {
+    let secret_ref = parse_wire(SecretRef::parse(row.secret_ref.clone()))?;
+    let backend = os_keyring_backend(&row.backend_instance_id, row.backend_generation)?;
+    let capabilities = os_keyring_capabilities(
+        &backend,
+        row.capability_revision,
+        row.device_binding_generation,
+    )?;
+    let binding_set_cas = map_binding_set_cas(&row.binding_set_cas)?;
+    // CAS count is the authority for aggregate.bindings. Seeded rows keep
+    // count=0 even when an owner row exists; that owner is listed separately.
+    let bindings = if binding_set_cas.count == 0 {
+        Vec::new()
+    } else {
+        let bindings = map_owner_binding_summaries_for_ref(payload, &secret_ref)?;
+        if u32::try_from(bindings.len()).ok() != Some(binding_set_cas.count) {
+            return Err(SecretInternalError::input_invalid());
+        }
+        bindings
+    };
+    let (presence, availability) = match (row.retirement_state, row.policy_state) {
+        (
+            device_store::schema::StoredRetirementState::Live,
+            device_store::schema::StoredPolicyState::Active,
+        ) => (SecretPresence::Present, SecretStableAvailability::Ready),
+        (
+            device_store::schema::StoredRetirementState::Stale,
+            device_store::schema::StoredPolicyState::Active,
+        ) => (SecretPresence::Present, SecretStableAvailability::Stale),
+        // Locked/revoked need lock/revocation views we do not invent.
+        _ => return Err(SecretInternalError::input_invalid()),
+    };
+    SecretRefAggregate::checked_from_authority(SecretRefAggregate {
+        schema_version: SchemaVersionV1,
+        secret_ref: secret_ref.clone(),
+        secret_ref_display: SecretRefDisplay::derive_from(&secret_ref),
+        purpose: parse_purpose(&row.purpose)?,
+        record_revision: parse_wire(SecretRecordRevision::parse(row.record_revision))?,
+        binding_set_cas,
+        backend,
+        capabilities,
+        bindings,
+        presence,
+        availability,
+        lock: None,
+        revocation: None,
+        issue: None,
+        created_at: parse_wire(UtcTimestamp::parse(row.created_at.clone()))?,
+        rotated_at: None,
+        last_validated_at: None,
+    })
+}
+
+fn map_owner_summary(
+    row: &device_store::schema::StoredOwnerBindingRecord,
+) -> Result<SecretOwnerCredentialSummary, SecretInternalError> {
+    let owner = parse_owner(&row.owner)?;
+    let binding_state = match row.state {
+        device_store::schema::StoredBindingState::Unbound => {
+            OwnerBindingState(OwnerBindingStateRepr::Unbound)
+        }
+        device_store::schema::StoredBindingState::Bound => {
+            let secret_ref = parse_wire(SecretRef::parse(
+                row.secret_ref
+                    .clone()
+                    .ok_or_else(SecretInternalError::input_invalid)?,
+            ))?;
+            OwnerBindingState(OwnerBindingStateRepr::Bound {
+                secret_ref: secret_ref.clone(),
+                secret_ref_display: SecretRefDisplay::derive_from(&secret_ref),
+                binding_revision: parse_wire(SecretBindingRevision::parse(
+                    row.binding_revision
+                        .ok_or_else(SecretInternalError::input_invalid)?,
+                ))?,
+            })
+        }
+    };
+    let coverage = clear_legacy_source_coverage_receipt()?;
+    Ok(SecretOwnerCredentialSummary {
+        schema_version: SchemaVersionV1,
+        owner,
+        purpose: parse_purpose(&row.purpose)?,
+        owner_binding_revision: parse_wire(SecretOwnerBindingRevision::parse(
+            row.owner_binding_revision,
+        ))?,
+        binding_state,
+        legacy_source_coverage: LegacySourceCoverageView::checked_from_coverage_receipt(&coverage)?,
+    })
+}
+
+pub(crate) fn list_secret_summaries_result_from_store(
+    store: &device_store::DeviceLocalSecretStore,
+    request: &ListSecretSummariesRequest,
+) -> Result<ListSecretSummariesResult, SecretInternalError> {
+    if request.cursor.is_some() {
+        return Err(SecretInternalError::input_invalid());
+    }
+    let payload = store.load()?.payload;
+    let mut refs = Vec::new();
+    for row in &payload.secrets {
+        if let Some(want) = request.secret_ref.as_ref() {
+            if row.secret_ref != want.as_str() {
+                continue;
+            }
+        }
+        let aggregate = map_secret_ref_aggregate(&payload, row)?;
+        if let Some(allowed) = request.availability.as_ref() {
+            if !allowed.contains(&aggregate.availability) {
+                continue;
+            }
+        }
+        refs.push(aggregate);
+    }
+    refs.sort_by(|a, b| a.secret_ref.as_str().cmp(b.secret_ref.as_str()));
+
+    let mut owners = Vec::new();
+    for row in &payload.owner_bindings {
+        match row.state {
+            device_store::schema::StoredBindingState::Unbound if !request.include_unbound_owners => {
+                continue;
+            }
+            _ => {}
+        }
+        if let Some(want) = request.secret_ref.as_ref() {
+            if row.secret_ref.as_deref() != Some(want.as_str()) {
+                continue;
+            }
+        }
+        let summary = map_owner_summary(row)?;
+        if let Some(want) = request.owner.as_ref() {
+            if &summary.owner != want {
+                continue;
+            }
+        }
+        owners.push(summary);
+    }
+    owners.sort_by(|a, b| secret_owner_sort_key(&a.owner).cmp(&secret_owner_sort_key(&b.owner)));
+
+    let limit = usize::from(request.limit.0);
+    if refs.len() > limit {
+        refs.truncate(limit);
+    }
+    if owners.len() > limit {
+        owners.truncate(limit);
+    }
+    Ok(ListSecretSummariesResult {
+        owners,
+        refs,
+        next_cursor: None,
+    })
+}
+
+/// Store-local candidate rows do not carry #55 plan fields
+/// (`comparison_policy`, `projection_digest`, `candidate_read`, paired
+/// `target_owners` / `expected_bindings`). The contract row requires a
+/// validated `SecretCandidateActivationProjection`, so a non-empty list
+/// fail-closes instead of emitting a half-fake projection. An empty store
+/// may return Ok with zero rows.
+pub(crate) fn list_secret_candidates_result_from_store(
+    store: &device_store::DeviceLocalSecretStore,
+    request: &ListSecretCandidatesRequest,
+) -> Result<ListSecretCandidatesResult, SecretInternalError> {
+    let rows = service::list_secret_candidates_from_store(store, request.include_terminal)?;
+    if rows.is_empty() {
+        return Ok(ListSecretCandidatesResult {
+            candidates: Vec::new(),
+        });
+    }
+    let _ = request.owner.as_ref();
+    Err(SecretInternalError::input_invalid())
+}
+
+fn map_candidate_kind(
+    kind: device_store::schema::StoredCandidateKind,
+) -> SecretCandidateKind {
+    match kind {
+        device_store::schema::StoredCandidateKind::NewBinding => SecretCandidateKind::NewBinding,
+        device_store::schema::StoredCandidateKind::ReplaceBinding => {
+            SecretCandidateKind::ReplaceBinding
+        }
+        device_store::schema::StoredCandidateKind::RotateBindingSet => {
+            SecretCandidateKind::RotateBindingSet
+        }
+        device_store::schema::StoredCandidateKind::LegacyReconcile => {
+            SecretCandidateKind::LegacyReconcile
+        }
+        device_store::schema::StoredCandidateKind::LegacyScrubExistingBinding => {
+            SecretCandidateKind::LegacyScrubExistingBinding
+        }
+    }
+}
+
+fn comparison_for_kind(
+    kind: SecretCandidateKind,
+) -> (LegacyActivationComparisonPolicy, LegacyActivationComparisonImpact) {
+    match kind {
+        SecretCandidateKind::LegacyScrubExistingBinding
+        | SecretCandidateKind::LegacyReconcile => (
+            LegacyActivationComparisonPolicy::CandidateEquality,
+            LegacyActivationComparisonImpact::CandidateEquality {
+                user_meaning: VerifySameValueMigrationMeaning::VerifySameValueMigration,
+            },
+        ),
+        _ => (
+            LegacyActivationComparisonPolicy::ExplicitReplacement,
+            LegacyActivationComparisonImpact::ExplicitReplacement {
+                user_meaning: ReplaceExistingCredentialMeaning::ReplaceExistingCredential,
+                affected_source_count: 0,
+                replaces_bound_binding: false,
+            },
+        ),
+    }
+}
+
+fn journal_target_owners_and_bindings(
+    payload: &device_store::schema::StatePayload,
+    secret_ref: &str,
+) -> Result<
+    (
+        NonEmptySortedJournalTargetOwners,
+        NonEmptySortedJournalBindingExpectations,
+    ),
+    SecretInternalError,
+> {
+    let mut owners = Vec::new();
+    let mut bindings = Vec::new();
+    for row in &payload.owner_bindings {
+        if row.secret_ref.as_deref() != Some(secret_ref)
+            && row.state != device_store::schema::StoredBindingState::Unbound
+        {
+            continue;
+        }
+        if row.secret_ref.as_deref() != Some(secret_ref)
+            && row.state == device_store::schema::StoredBindingState::Unbound
+        {
+            continue;
+        }
+        let owner = parse_owner(&row.owner)?;
+        let expectation = match row.state {
+            device_store::schema::StoredBindingState::Unbound => {
+                OwnerBindingExpectation::Unbound {
+                    owner: owner.clone(),
+                    owner_binding_revision: parse_wire(SecretOwnerBindingRevision::parse(
+                        row.owner_binding_revision,
+                    ))?,
+                }
+            }
+            device_store::schema::StoredBindingState::Bound => OwnerBindingExpectation::Bound {
+                owner: owner.clone(),
+                secret_ref: parse_wire(SecretRef::parse(
+                    row.secret_ref
+                        .clone()
+                        .ok_or_else(SecretInternalError::input_invalid)?,
+                ))?,
+                owner_binding_revision: parse_wire(SecretOwnerBindingRevision::parse(
+                    row.owner_binding_revision,
+                ))?,
+                binding_revision: parse_wire(SecretBindingRevision::parse(
+                    row.binding_revision
+                        .ok_or_else(SecretInternalError::input_invalid)?,
+                ))?,
+                source_binding_set: map_binding_set_cas(
+                    &payload
+                        .secrets
+                        .iter()
+                        .find(|secret| secret.secret_ref == secret_ref)
+                        .ok_or_else(SecretInternalError::input_invalid)?
+                        .binding_set_cas,
+                )?,
+            },
+        };
+        owners.push(owner);
+        bindings.push(expectation);
+    }
+    if owners.is_empty() {
+        return Err(SecretInternalError::input_invalid());
+    }
+    let mut paired: Vec<(SecretOwner, OwnerBindingExpectation)> =
+        owners.into_iter().zip(bindings).collect();
+    paired.sort_by(|a, b| {
+        secret_owner_sort_key(&a.0).cmp(&secret_owner_sort_key(&b.0))
+    });
+    let (owners, bindings): (Vec<_>, Vec<_>) = paired.into_iter().unzip();
+    Ok((
+        NonEmptySortedJournalTargetOwners(owners),
+        NonEmptySortedJournalBindingExpectations(bindings),
+    ))
+}
+
+fn candidate_delete_journal_from_store_and_envelope(
+    payload: &device_store::schema::StatePayload,
+    candidate: &device_store::schema::StoredCandidateRecord,
+    record: &device_store::schema::StoredSecretRecord,
+    envelope: &device_store::schema::JournalEnvelope,
+) -> Result<CandidateDeleteJournalRow, SecretInternalError> {
+    let device_store::schema::JournalEnvelope::DiscardCandidate {
+        attempt,
+        terminal_disposition,
+        phase,
+        device_instance_id,
+        ..
+    } = envelope
+    else {
+        return Err(SecretInternalError::input_invalid());
+    };
+    let device_store::schema::DiscardCandidatePhase::Terminal {
+        terminal_disposition: phase_disposition,
+    } = phase
+    else {
+        return Err(SecretInternalError::input_invalid());
+    };
+    if phase_disposition != terminal_disposition {
+        return Err(SecretInternalError::input_invalid());
+    }
+    let terminal = match terminal_disposition {
+        device_store::schema::TerminalDisposition::Discarded => CandidateTerminalState::Discarded,
+        device_store::schema::TerminalDisposition::Expired => CandidateTerminalState::Expired,
+    };
+    let candidate_id = parse_wire(SecretCandidateId::parse(candidate.candidate_id.clone()))?;
+    let kind = map_candidate_kind(candidate.kind);
+    let (comparison_policy, comparison_impact) = comparison_for_kind(kind);
+    let (target_owners, expected_bindings) =
+        journal_target_owners_and_bindings(payload, &candidate.secret_ref)?;
+    Ok(CandidateDeleteJournalRow {
+        attempt: JournalAttempt::checked(*attempt)?,
+        expected_store_revision: SecretStoreRevision::parse(payload.store_revision)?,
+        terminal_disposition: terminal,
+        candidate: JournalCandidateIdentity {
+            candidate_id,
+            candidate_revision: parse_wire(SecretCandidateRevision::parse(
+                candidate.candidate_revision,
+            ))?,
+            candidate_kind: kind,
+            comparison_policy,
+            comparison_impact,
+        },
+        target_owners,
+        expected_bindings,
+        record: JournalBackendIdentity {
+            device_instance_id: parse_wire(DeviceInstanceId::parse(device_instance_id.clone()))?,
+            secret_ref: parse_wire(SecretRef::parse(record.secret_ref.clone()))?,
+            record_revision: parse_wire(SecretRecordRevision::parse(record.record_revision))?,
+            binding_set_cas: map_binding_set_cas(&record.binding_set_cas)?,
+            backend_instance_id: parse_wire(SecretBackendInstanceId::parse(
+                record.backend_instance_id.clone(),
+            ))?,
+            backend_generation: parse_wire(SecretBackendGeneration::parse(
+                record.backend_generation,
+            ))?,
+            device_binding_generation: parse_wire(DeviceBindingGeneration::parse(
+                record.device_binding_generation,
+            ))?,
+            capability_revision: parse_wire(CapabilityRevision::parse(record.capability_revision))?,
+            confirmation: PhysicalConfirmation::Never,
+        },
+        delete_slot: CandidateDiscardConfirmationSlot::RecordDelete,
+        missing_readback_slot: CandidateDiscardConfirmationSlot::RecordMissingReadback,
+        delete_confirmation: PhysicalConfirmation::Never,
+        missing_readback_confirmation: PhysicalConfirmation::Never,
+        phase: DiscardCandidateJournalPhase::Terminal {
+            terminal_disposition: terminal,
+        },
+    })
+}
+
+pub(crate) fn discard_secret_candidate_result_from_store(
+    store: &device_store::DeviceLocalSecretStore,
+    request: &DiscardSecretCandidateRequest,
+    backend: Option<&testing::InMemorySecretBackend>,
+) -> Result<DiscardSecretCandidateResult, SecretInternalError> {
+    let backend = backend.ok_or_else(SecretInternalError::input_invalid)?;
+    let payload = store.load()?.payload;
+    let candidate = payload
+        .candidates
+        .iter()
+        .find(|row| row.candidate_id == request.candidate_id.as_str())
+        .cloned()
+        .ok_or_else(SecretInternalError::input_invalid)?;
+    let record = payload
+        .secrets
+        .iter()
+        .find(|row| row.secret_ref == candidate.secret_ref)
+        .cloned()
+        .ok_or_else(SecretInternalError::input_invalid)?;
+    let outcome = service::discard_secret_candidate_in_store(
+        store,
+        request.candidate_id.as_str(),
+        request.expected_candidate_revision.get(),
+        backend,
+    )?;
+    let service::LocalDiscardOutcome::Discarded { .. } = outcome else {
+        return Err(SecretInternalError::input_invalid());
+    };
+    let journals = device_store::journal::list_journals(store.root())
+        .map_err(|_| SecretInternalError::input_invalid())?;
+    let envelope = journals
+        .iter()
+        .rev()
+        .find(|row| {
+            matches!(
+                row,
+                device_store::schema::JournalEnvelope::DiscardCandidate {
+                    phase: device_store::schema::DiscardCandidatePhase::Terminal { .. },
+                    ..
+                }
+            )
+        })
+        .ok_or_else(SecretInternalError::input_invalid)?;
+    let journal = candidate_delete_journal_from_store_and_envelope(
+        &payload,
+        &candidate,
+        &record,
+        envelope,
+    )?;
+    DiscardSecretCandidateResult::checked_from_candidate_journal(
+        DiscardSecretCandidateResultRepr::Discarded {
+            terminal_state: DiscardedCandidateTerminalState::Discarded,
+            candidate_id: request.candidate_id.clone(),
+            audit_event_id: SecretAuditEventId::generate(),
+        },
+        &journal,
+    )
+}
+
+#[cfg(test)]
+pub(crate) fn secret_discard_result_from_mismatched_journal_is_err() -> bool {
+    let candidate_id = SecretCandidateId::generate();
+    let other = SecretCandidateId::generate();
+    let owner = SecretOwner {
+        kind: SecretOwnerKind::Provider,
+        namespace: SecretOwnerNamespace::parse("codex".to_string()).expect("namespace"),
+        owner_id: OwnerId::parse("owner-mismatch".to_string()).expect("owner"),
+        slot: SecretSlot::PrimaryApiKey,
+    };
+    let journal = CandidateDeleteJournalRow {
+        attempt: JournalAttempt::checked(1).expect("attempt"),
+        expected_store_revision: SecretStoreRevision::parse(1).expect("store"),
+        terminal_disposition: CandidateTerminalState::Discarded,
+        candidate: JournalCandidateIdentity {
+            candidate_id: other,
+            candidate_revision: SecretCandidateRevision::parse(1).expect("candidate"),
+            candidate_kind: SecretCandidateKind::NewBinding,
+            comparison_policy: LegacyActivationComparisonPolicy::ExplicitReplacement,
+            comparison_impact: LegacyActivationComparisonImpact::ExplicitReplacement {
+                user_meaning: ReplaceExistingCredentialMeaning::ReplaceExistingCredential,
+                affected_source_count: 0,
+                replaces_bound_binding: false,
+            },
+        },
+        target_owners: NonEmptySortedJournalTargetOwners(vec![owner.clone()]),
+        expected_bindings: NonEmptySortedJournalBindingExpectations(vec![
+            OwnerBindingExpectation::Unbound {
+                owner,
+                owner_binding_revision: SecretOwnerBindingRevision::parse(1).expect("rev"),
+            },
+        ]),
+        record: JournalBackendIdentity {
+            device_instance_id: DeviceInstanceId::generate(),
+            secret_ref: SecretRef::generate(),
+            record_revision: SecretRecordRevision::parse(1).expect("record"),
+            binding_set_cas: SecretBindingSetCas {
+                revision: SecretBindingSetRevision::parse(1).expect("binding set"),
+                digest: BindingSetDigest::parse("ab".repeat(32)).expect("digest"),
+                count: 0,
+            },
+            backend_instance_id: SecretBackendInstanceId::generate(),
+            backend_generation: SecretBackendGeneration::parse(1).expect("generation"),
+            device_binding_generation: DeviceBindingGeneration::parse(1).expect("device"),
+            capability_revision: CapabilityRevision::parse(1).expect("capability"),
+            confirmation: PhysicalConfirmation::Never,
+        },
+        delete_slot: CandidateDiscardConfirmationSlot::RecordDelete,
+        missing_readback_slot: CandidateDiscardConfirmationSlot::RecordMissingReadback,
+        delete_confirmation: PhysicalConfirmation::Never,
+        missing_readback_confirmation: PhysicalConfirmation::Never,
+        phase: DiscardCandidateJournalPhase::Terminal {
+            terminal_disposition: CandidateTerminalState::Discarded,
+        },
+    };
+    DiscardSecretCandidateResult::checked_from_candidate_journal(
+        DiscardSecretCandidateResultRepr::Discarded {
+            terminal_state: DiscardedCandidateTerminalState::Discarded,
+            candidate_id,
+            audit_event_id: SecretAuditEventId::generate(),
+        },
+        &journal,
+    )
+    .is_err()
+}
+
+#[allow(dead_code)]
+fn _keep_wire_err<T, E>(err: E) -> Result<T, SecretInternalError> {
+    wire_err(err)
+}

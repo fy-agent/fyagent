@@ -14,7 +14,7 @@ use super::testing::InMemorySecretBackend;
 use super::{
     SecretCandidateId, SecretCommandError, SecretCommandId, SecretCommandSuccess,
     SecretContractVersionV1, SecretErrorView, SecretInternalError, SecretMaterial, SecretOperationId,
-    SecretPurpose, SecretRef, SecretService, SchemaVersionV1,
+    SecretBackendInstanceId, SecretPurpose, SecretRef, SecretService, SchemaVersionV1,
 };
 
 pub(crate) fn command_error_from_internal(error: SecretInternalError) -> SecretCommandError {
@@ -185,12 +185,13 @@ pub(crate) fn seed_pending_candidate_in_store(
     let secret_ref = SecretRef::generate().as_str().to_string();
     let candidate_id = SecretCandidateId::generate().as_str().to_string();
     let locator = format!("loc-{}", &secret_ref[4..12]);
+    let backend_instance_id = SecretBackendInstanceId::generate().as_str().to_string();
     backend.write(&locator, material)?;
     let mut payload = store.load()?.payload;
     payload.secrets.push(StoredSecretRecord {
         secret_ref: secret_ref.clone(),
         purpose: "codexApiKey".to_string(),
-        backend_instance_id: "sbi_aaaaaaaaaaa4aaa8aaaaaaaaaaaaaaaa".to_string(),
+        backend_instance_id: backend_instance_id.clone(),
         backend_locator: Some(locator.clone()),
         record_revision: 1,
         binding_set_cas: StoredBindingSetCas {
@@ -213,7 +214,7 @@ pub(crate) fn seed_pending_candidate_in_store(
         state: StoredCandidateState::VerifiedPendingPlan,
         secret_ref: secret_ref.clone(),
         record_revision: 1,
-        backend_instance_id: "sbi_aaaaaaaaaaa4aaa8aaaaaaaaaaaaaaaa".to_string(),
+        backend_instance_id: backend_instance_id,
         backend_generation: 1,
         device_binding_generation: 1,
         capability_revision: 1,
