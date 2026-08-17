@@ -4250,7 +4250,7 @@ pub(crate) struct ResumeStagedImportCutoverHandlerRegistration {
 }
 
 impl ResumeStagedImportCutoverHandlerRegistration {
-    fn checked_after_handler_registration(
+    pub(crate) fn checked_after_handler_registration(
         command: SecretMainIntegrationCommandName,
     ) -> Result<Self, SecretInternalError> {
         if command != SecretMainIntegrationCommandName::ResumeStagedImportCutover {
@@ -4266,7 +4266,7 @@ pub(crate) struct SecretCommandRegistrationReceipt {
 }
 
 impl SecretCommandRegistrationReceipt {
-    fn checked_after_static_registration(
+    pub(crate) fn checked_after_static_registration(
         secret_commands: [SecretCommandName; 15],
         resume_staged_import_cutover: ResumeStagedImportCutoverHandlerRegistration,
     ) -> Result<Self, SecretInternalError> {

@@ -1635,6 +1635,29 @@ pub fn run() {
             );
             // 将同一个实例注入到全局状态，避免重复创建导致的不一致
             app.manage(app_state);
+            let resume_handler = crate::secret::ResumeStagedImportCutoverHandlerRegistration::checked_after_handler_registration(
+                crate::secret::SecretMainIntegrationCommandName::ResumeStagedImportCutover,
+            )?;
+            let _secret_commands_registered = crate::secret::SecretCommandRegistrationReceipt::checked_after_static_registration(
+                [
+                    crate::secret::SecretCommandName::ListSecretSummaries,
+                    crate::secret::SecretCommandName::ListSecretBackendOptions,
+                    crate::secret::SecretCommandName::BeginSecretCapture,
+                    crate::secret::SecretCommandName::RotateSecret,
+                    crate::secret::SecretCommandName::ListSecretCandidates,
+                    crate::secret::SecretCommandName::DiscardSecretCandidate,
+                    crate::secret::SecretCommandName::SetSecretLocked,
+                    crate::secret::SecretCommandName::GetSecretDeleteImpact,
+                    crate::secret::SecretCommandName::DeleteSecret,
+                    crate::secret::SecretCommandName::GetSecretCleanupImpact,
+                    crate::secret::SecretCommandName::RetrySecretCleanup,
+                    crate::secret::SecretCommandName::ValidateSecret,
+                    crate::secret::SecretCommandName::CheckSecretApplyReadiness,
+                    crate::secret::SecretCommandName::MigrateLegacyCodexSecrets,
+                    crate::secret::SecretCommandName::ListSecretAudit,
+                ],
+                resume_handler,
+            )?;
 
             // 初始化 SkillService
             let skill_service = SkillService::new();
