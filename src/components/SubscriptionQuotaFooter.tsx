@@ -16,7 +16,7 @@ interface SubscriptionQuotaViewProps {
   quota: SubscriptionQuota | undefined;
   loading: boolean;
   refetch: () => void;
-  /** 用于 `subscription.expiredHint` 的 {tool} 插值；解耦了 hook 的 appId */
+  /** Selects expiry copy: Official Grok, xAI Auth Center, or generic CLI `{tool}`. */
   appIdForExpiredHint: string;
   inline?: boolean;
 }
@@ -79,6 +79,19 @@ function formatResetTime(
 
 /** 不需要在 inline 模式显示的 tier */
 const HIDDEN_INLINE_TIERS = new Set(["seven_day_sonnet"]);
+
+/** Official Grok → terminal `grok login`; xAI device-code → Auth Center. */
+export function getSubscriptionExpiredHintKey(
+  appIdForExpiredHint: string,
+): string {
+  if (appIdForExpiredHint === "grok" || appIdForExpiredHint === "grokbuild") {
+    return "subscription.grokOfficialExpiredHint";
+  }
+  if (appIdForExpiredHint === "xai_oauth") {
+    return "subscription.xaiOauthExpiredHint";
+  }
+  return "subscription.expiredHint";
+}
 
 /** 格式化相对时间（与 UsageFooter 一致） */
 function formatRelativeTime(
@@ -154,7 +167,9 @@ export const SubscriptionQuotaView: React.FC<SubscriptionQuotaViewProps> = ({
             <div>
               <span className="font-medium">{t("subscription.expired")}</span>
               <span className="ml-2 text-amber-500/70 dark:text-amber-400/70">
-                {t("subscription.expiredHint", { tool: appIdForExpiredHint })}
+                {t(getSubscriptionExpiredHintKey(appIdForExpiredHint), {
+                  tool: appIdForExpiredHint,
+                })}
               </span>
             </div>
           </div>
@@ -424,7 +439,7 @@ const SubscriptionQuotaFooter: React.FC<SubscriptionQuotaFooterProps> = ({
       quota={quota}
       loading={loading}
       refetch={refetch}
-      // expiredHint 里的 {tool} 是 CLI 命令名：Grok 的命令是 `grok` 而非 appId
+      // Official Grok maps to the `grok` CLI id; copy then says `grok login`.
       appIdForExpiredHint={appId === "grokbuild" ? "grok" : appId}
       inline={inline}
     />

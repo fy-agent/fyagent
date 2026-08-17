@@ -120,6 +120,8 @@ interface ProviderPresetSelectorProps {
   onUniversalPresetSelect?: (preset: UniversalProviderPreset) => void;
   onManageUniversalProviders?: () => void;
   category?: ProviderCategory; // 当前选中的分类
+  /** When set, replaces the category-derived hint (e.g. Grok Official). */
+  categoryHint?: ReactNode;
 }
 
 export function ProviderPresetSelector({
@@ -130,6 +132,7 @@ export function ProviderPresetSelector({
   onUniversalPresetSelect,
   onManageUniversalProviders,
   category,
+  categoryHint,
 }: Readonly<ProviderPresetSelectorProps>) {
   const { t } = useTranslation();
   const [searchOpen, setSearchOpen] = useState(false);
@@ -452,7 +455,9 @@ export function ProviderPresetSelector({
         </div>
       )}
 
-      <p className="text-xs text-muted-foreground">{getCategoryHint()}</p>
+      <p className="text-xs text-muted-foreground">
+        {categoryHint ?? getCategoryHint()}
+      </p>
     </div>
   );
 }

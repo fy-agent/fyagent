@@ -1199,6 +1199,7 @@
     "customApiKeyHint": "💡 Custom configuration requires manually filling all necessary fields",
     "omoHint": "💡 OMO config manages Agent model assignments and supports both oh-my-openagent.jsonc and oh-my-opencode.jsonc",
     "officialHint": "💡 Official provider uses browser login, no API Key needed",
+    "grokOfficialHint": "💡 Grok Official uses an empty config. After you save, run `grok login` in a terminal. FyAgent does not log in for you and does not write ~/.grok/auth.json.",
     "providerKeyStatusLoading": "Provider identifier status is still loading. Please try again shortly.",
     "getApiKey": "Get API Key",
     "presets": {
@@ -3180,6 +3181,8 @@
     "extraUsage": "Extra Usage",
     "expired": "Session expired",
     "expiredHint": "Run the {{tool}} command to refresh your login",
+    "grokOfficialExpiredHint": "Run `grok login` in a terminal to refresh this login.",
+    "xaiOauthExpiredHint": "Re-authenticate this xAI account in Auth Center.",
     "queryFailed": "Query failed",
     "refresh": "Refresh"
   },

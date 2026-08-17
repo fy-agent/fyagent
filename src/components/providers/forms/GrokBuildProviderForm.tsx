@@ -430,6 +430,14 @@ export function GrokBuildProviderForm({
             presetCategoryLabels={presetCategoryLabels}
             onPresetChange={handlePresetChange}
             category={category}
+            categoryHint={
+              category === "official"
+                ? t("providerForm.grokOfficialHint", {
+                    defaultValue:
+                      "Grok Official uses an empty config. After you save, run `grok login` in a terminal. FyAgent does not log in for you and does not write ~/.grok/auth.json.",
+                  })
+                : undefined
+            }
           />
         )}
 

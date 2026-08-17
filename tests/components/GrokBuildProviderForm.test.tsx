@@ -24,6 +24,46 @@ vi.mock("@/components/JsonEditor", () => ({
 }));
 
 describe("GrokBuildProviderForm", () => {
+  it("tells the user to run grok login after selecting Grok Official", async () => {
+    const user = userEvent.setup();
+    render(
+      <GrokBuildProviderForm
+        submitLabel="Save"
+        onSubmit={() => {}}
+        onCancel={() => {}}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /Grok Official/ }));
+
+    expect(screen.getByText(/grok login/)).toBeInTheDocument();
+    expect(
+      screen.queryByText(/官方供应商使用浏览器登录/),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/browser login/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("API Key")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("raw-config")).not.toBeInTheDocument();
+    expect(screen.queryByText(/xAI OAuth/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/xaiOauth/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/device code/i)).not.toBeInTheDocument();
+  });
+
+  it("does not show the grok login lecture on third-party presets", async () => {
+    const user = userEvent.setup();
+    render(
+      <GrokBuildProviderForm
+        submitLabel="Save"
+        onSubmit={() => {}}
+        onCancel={() => {}}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /PatewayAI/ }));
+
+    expect(screen.queryByText(/grok login/)).not.toBeInTheDocument();
+    expect(screen.getByLabelText("API Key")).toBeInTheDocument();
+  });
+
   it("offers curated Grok Build presets and applies one", async () => {
     const user = userEvent.setup();
     const { container } = render(
