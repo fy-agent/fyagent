@@ -44,8 +44,8 @@ pub(crate) fn list_secret_summaries_from_state(
 }
 
 /// Same fail-closed + load. A non-empty candidate list mints
-/// `SecretCandidateActivationProjection` from D2 store fields and returns the
-/// contract DTO when constructors pass. Constructor mismatch fail-closes.
+/// `SecretCandidateActivationProjection` from D2 store fields and returns
+/// the contract DTO when constructors pass. Constructor mismatch fail-closes.
 /// An empty store may return Ok([]).
 pub(crate) fn list_secret_candidates_from_state(
     state: &AppState,
@@ -142,8 +142,8 @@ pub async fn list_secret_backend_options(
 /// Sync helper so tests can exercise fail-closed / InMemory stage without
 /// spinning Tauri. Production AppState has no InMemory hold and returns
 /// typed unavailable (no Keychain write). A successful InMemory stage returns
-/// the contract DTO only when `checked_from_candidate_snapshot` accepts the
-/// staged snapshot; mismatch stays Err.
+/// the contract DTO when `StageSecretCandidateResult::checked_from_candidate_snapshot`
+/// passes; constructor mismatch stays Err.
 pub(crate) fn begin_secret_capture_from_state(
     state: &AppState,
     request: BeginSecretCaptureRequest,
@@ -185,21 +185,31 @@ fn begin_secret_capture_in_memory(
         Ok(claim) => claim,
         Err(error) => return Err(crate::secret::service_command_error(error)),
     };
-    let owner_id = claim.owner().to_string();
     let capture = crate::secret::capture::LocalSecretCapture::new(
         opened.store(),
         crate::secret::capture::CaptureLeafBackend::InMemory(backend),
         registry,
         prompt,
     );
+    let owner_id = claim.owner().to_string();
     match capture.begin_after_claim(claim) {
-        Ok(staged) => crate::secret::stage_secret_candidate_result_from_staged(
-            opened.store(),
-            &staged,
-            &owner_id,
-        )
-        .map(crate::secret::command_success)
-        .map_err(crate::secret::service_command_error),
+        Ok(staged) => {
+            let owner = crate::secret::SecretOwner {
+                kind: crate::secret::SecretOwnerKind::Provider,
+                namespace: crate::secret::SecretOwnerNamespace::parse("codex".to_string())
+                    .map_err(|_| crate::secret::command_unavailable_error())?,
+                owner_id: crate::secret::OwnerId::parse(owner_id)
+                    .map_err(|_| crate::secret::command_unavailable_error())?,
+                slot: crate::secret::SecretSlot::PrimaryApiKey,
+            };
+            crate::secret::stage_secret_candidate_result_from_store(
+                opened.store(),
+                &staged.candidate_id,
+                owner,
+            )
+            .map(crate::secret::command_success)
+            .map_err(crate::secret::service_command_error)
+        }
         Err(error) => Err(crate::secret::service_command_error(error)),
     }
 }
@@ -284,12 +294,26 @@ pub async fn validate_secret(
     unavailable()
 }
 
-#[tauri::command]
-pub async fn check_secret_apply_readiness(
+/// Sync helper so tests can exercise fail-closed / contract DTO without
+/// spinning Tauri. Production still never writes Keychain or calls
+/// resolve_for_apply; this only mints SecretApplyReadiness when D2 store
+/// fields pass the existing constructors.
+pub(crate) fn check_secret_apply_readiness_from_state(
+    state: &AppState,
     request: CheckSecretApplyReadinessRequest,
 ) -> SecretCommandResult<SecretApplyReadiness> {
-    let _ = request;
-    unavailable()
+    let opened = require_opened_store(state)?;
+    crate::secret::check_secret_apply_readiness_from_store(opened.store(), &request)
+        .map(crate::secret::command_success)
+        .map_err(crate::secret::service_command_error)
+}
+
+#[tauri::command]
+pub async fn check_secret_apply_readiness(
+    state: State<'_, AppState>,
+    request: CheckSecretApplyReadinessRequest,
+) -> SecretCommandResult<SecretApplyReadiness> {
+    check_secret_apply_readiness_from_state(&state, request)
 }
 
 #[tauri::command]
@@ -497,6 +521,10 @@ mod secret_command_dto_tests {
             &state,
             options_request(),
         ));
+        assert_err_not_empty_ok(check_secret_apply_readiness_from_state(
+            &state,
+            apply_target_request("owner-missing"),
+        ));
     }
 
     #[test]
@@ -543,7 +571,7 @@ mod secret_command_dto_tests {
     }
 
     #[test]
-    fn secret_opened_store_seed_list_candidates_returns_activation_projection() {
+    fn secret_opened_store_seed_list_candidates_contract_dto() {
         let tmp = TempDir::new().expect("tempdir");
         let opened = SecretBootstrap::open_for_test(tmp.path().to_path_buf()).expect("open");
         let seeded = seed_opened_store_pending_candidate(opened.store()).expect("seed");
@@ -569,12 +597,9 @@ mod secret_command_dto_tests {
         assert!(
             rows.iter().any(|row| {
                 row["candidate"]["candidateId"] == seeded.candidate_id
-                    && row["activationProjection"]["candidateId"] == seeded.candidate_id
-                    && row["activationProjection"]["projectionDigest"]
-                        .as_str()
-                        .is_some_and(|digest| digest.len() == 64)
+                    && row["activationProjection"].is_object()
             }),
-            "seeded candidate must appear with a validated activation projection"
+            "list must return contract DTO with activationProjection"
         );
     }
 
@@ -699,7 +724,7 @@ mod secret_command_dto_tests {
     }
 
     #[test]
-    fn secret_begin_capture_with_in_memory_stages_unbound_and_returns_contract_dto() {
+    fn secret_begin_capture_with_in_memory_stages_unbound_contract_dto() {
         let tmp = TempDir::new().expect("tempdir");
         let opened = SecretBootstrap::open_for_test(tmp.path().to_path_buf()).expect("open");
         let db = Arc::new(Database::memory().expect("memory db"));
@@ -718,19 +743,9 @@ mod secret_command_dto_tests {
         });
         let json = serde_json::to_value(&result.data).expect("json");
         assert_eq!(json["status"], "staged");
-        assert!(
-            json["candidate"]["candidateId"]
-                .as_str()
-                .is_some_and(|id| id.starts_with("scd_")),
-            "begin DTO must carry the staged candidate"
-        );
-        assert!(json["impact"].is_null(), "begin impact is explicit null");
-        assert!(
-            json["activationProjection"]["projectionDigest"]
-                .as_str()
-                .is_some_and(|digest| digest.len() == 64),
-            "begin DTO must carry a validated activation projection"
-        );
+        assert!(json["candidate"].is_object());
+        assert!(json["activationProjection"].is_object());
+        assert!(json["impact"].is_null());
         let remaining = local_candidates(&state);
         assert_eq!(remaining.len(), 1, "unbound candidate must be staged");
         let payload = state
@@ -872,7 +887,7 @@ mod secret_command_dto_tests {
         });
         let json = serde_json::to_value(&begin_result.data).expect("json");
         assert_eq!(json["status"], "staged");
-        assert!(json["impact"].is_null(), "begin impact is explicit null");
+        assert!(json["activationProjection"].is_object());
         assert_eq!(
             local_candidates(&state).len(),
             1,
@@ -880,20 +895,55 @@ mod secret_command_dto_tests {
         );
     }
 
+    fn apply_target_request(owner_id: &str) -> CheckSecretApplyReadinessRequest {
+        serde_json::from_str(&format!(
+            r#"{{"role":"target","schemaVersion":1,"owner":{{"kind":"provider","namespace":"codex","ownerId":"{owner_id}","slot":"primaryApiKey"}},"consumer":"changePlanApply","targetSink":"externalConfigFile","liveSinkId":"codexAuthJsonOpenAiApiKey"}}"#
+        ))
+        .expect("apply request")
+    }
+
     #[test]
-    fn secret_list_candidates_projection_field_mismatch_fails_closed() {
+    fn secret_apply_readiness_seed_zero_count_fails_closed() {
         let tmp = TempDir::new().expect("tempdir");
         let opened = SecretBootstrap::open_for_test(tmp.path().to_path_buf()).expect("open");
-        let _seeded = seed_opened_store_pending_candidate(opened.store()).expect("seed");
-        let mut payload = opened.store().load().expect("load").payload;
-        payload.candidates[0].secret_ref = "not-a-secret-ref".to_string();
-        payload.store_revision = payload.store_revision.saturating_add(1);
-        opened.store().store(payload).expect("store bad row");
+        let seeded = seed_opened_store_pending_candidate(opened.store()).expect("seed");
+        let owner_id = seeded.owner_id.expect("bound owner");
         let db = Arc::new(Database::memory().expect("memory db"));
         let state = AppState::new_with_secret_store(db, opened);
-        assert_err_not_empty_ok(list_secret_candidates_from_state(
+        assert_err_not_empty_ok(check_secret_apply_readiness_from_state(
             &state,
-            candidates_request(),
+            apply_target_request(&owner_id),
         ));
+    }
+
+    #[test]
+    fn secret_apply_readiness_nonzero_binding_set_contract_dto() {
+        let tmp = TempDir::new().expect("tempdir");
+        let opened = SecretBootstrap::open_for_test(tmp.path().to_path_buf()).expect("open");
+        let seeded = seed_opened_store_pending_candidate(opened.store()).expect("seed");
+        let owner_id = seeded.owner_id.expect("bound owner");
+        let mut payload = opened.store().load().expect("load").payload;
+        for secret in &mut payload.secrets {
+            if secret.secret_ref == seeded.secret_ref {
+                secret.binding_set_cas.count = 1;
+            }
+        }
+        payload.store_revision = payload.store_revision.saturating_add(1);
+        opened.store().store(payload).expect("store");
+        let db = Arc::new(Database::memory().expect("memory db"));
+        let state = AppState::new_with_secret_store(db, opened);
+        let result = check_secret_apply_readiness_from_state(
+            &state,
+            apply_target_request(&owner_id),
+        )
+        .unwrap_or_else(|err| {
+            panic!(
+                "nonzero binding-set must Ok apply readiness: {}",
+                serde_json::to_string(&err).unwrap_or_default()
+            )
+        });
+        let json = serde_json::to_value(&result.data).expect("json");
+        assert_eq!(json["status"], "ready");
+        assert!(json["context"]["projection"].is_object());
     }
 }

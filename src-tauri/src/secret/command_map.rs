@@ -308,41 +308,36 @@ pub(crate) fn list_secret_summaries_result_from_store(
     })
 }
 
-/// Mint `SecretCandidateActivationProjection` from D2 store fields
-/// (`comparisonPolicy`, `candidateRead`, `targetOwners`, `expectedBindings`,
-/// `projectionDigest`). A non-empty list is Ok only when every row validates;
-/// constructor mismatch fail-closes the whole list (never Ok a half-fake page).
-/// An empty store may return Ok with zero rows.
+/// Mint a validated activation projection from D2 store fields already on
+/// the candidate/record/owner rows (`comparison_policy`, `candidate_read`,
+/// paired `target_owners` / `expected_bindings`, `projection_digest`).
+/// Constructor/`validate_repr` failure fail-closes. An empty filtered
+/// list may return Ok with zero rows.
 pub(crate) fn list_secret_candidates_result_from_store(
     store: &device_store::DeviceLocalSecretStore,
     request: &ListSecretCandidatesRequest,
 ) -> Result<ListSecretCandidatesResult, SecretInternalError> {
     let payload = store.load()?.payload;
-    let rows = service::list_secret_candidates_from_store(store, request.include_terminal)?;
-    if rows.is_empty() {
-        return Ok(ListSecretCandidatesResult {
-            candidates: Vec::new(),
-        });
-    }
     let mut candidates = Vec::new();
-    for row in rows {
-        let stored = payload
-            .candidates
-            .iter()
-            .find(|candidate| candidate.candidate_id == row.candidate_id)
-            .ok_or_else(SecretInternalError::input_invalid)?;
+    for row in &payload.candidates {
+        if !request.include_terminal && row.state.is_terminal() {
+            continue;
+        }
         let record = payload
             .secrets
             .iter()
-            .find(|secret| secret.secret_ref == stored.secret_ref)
+            .find(|secret| secret.secret_ref == row.secret_ref)
             .ok_or_else(SecretInternalError::input_invalid)?;
-        let mapped = secret_candidate_with_projection_from_store(&payload, stored, record)?;
+        let minted = mint_candidate_with_projection(&payload, row, record, None)?;
         if let Some(want) = request.owner.as_ref() {
-            if !mapped.candidate.target_owners.iter().any(|owner| owner == want) {
+            if !minted.candidate.target_owners.iter().any(|owner| owner == want) {
                 continue;
             }
         }
-        candidates.push(mapped);
+        candidates.push(SecretCandidateWithProjection {
+            candidate: minted.candidate,
+            activation_projection: minted.activation_projection,
+        });
     }
     candidates.sort_by(|left, right| {
         left.candidate
@@ -351,6 +346,184 @@ pub(crate) fn list_secret_candidates_result_from_store(
             .cmp(right.candidate.candidate_id.as_str())
     });
     Ok(ListSecretCandidatesResult { candidates })
+}
+
+pub(crate) fn stage_secret_candidate_result_from_store(
+    store: &device_store::DeviceLocalSecretStore,
+    candidate_id: &SecretCandidateId,
+    unbound_owner: SecretOwner,
+) -> Result<StageSecretCandidateResult, SecretInternalError> {
+    let payload = store.load()?.payload;
+    let row = payload
+        .candidates
+        .iter()
+        .find(|candidate| candidate.candidate_id == candidate_id.as_str())
+        .ok_or_else(SecretInternalError::input_invalid)?;
+    let record = payload
+        .secrets
+        .iter()
+        .find(|secret| secret.secret_ref == row.secret_ref)
+        .ok_or_else(SecretInternalError::input_invalid)?;
+    let minted = mint_candidate_with_projection(&payload, row, record, Some(unbound_owner))?;
+    StageSecretCandidateResult::checked_from_candidate_snapshot(
+        StageSecretCandidateResult {
+            status: SecretCandidateStageStatus::Staged,
+            candidate: minted.candidate,
+            activation_projection: minted.activation_projection,
+            impact: NullableSecretMutationImpact(None),
+            audit_event_id: SecretAuditEventId::generate(),
+        },
+        &minted.snapshot,
+    )
+}
+
+struct MintedCandidateRow {
+    candidate: SecretCandidateSummary,
+    activation_projection: SecretCandidateActivationProjection,
+    snapshot: SecretCandidateAuthoritySnapshot,
+}
+
+fn mint_candidate_with_projection(
+    payload: &device_store::schema::StatePayload,
+    row: &device_store::schema::StoredCandidateRecord,
+    record: &device_store::schema::StoredSecretRecord,
+    unbound_owner: Option<SecretOwner>,
+) -> Result<MintedCandidateRow, SecretInternalError> {
+    let (target_owners, expected_bindings) =
+        activation_owners_and_bindings(payload, &row.secret_ref, unbound_owner)?;
+    let kind = map_candidate_kind(row.kind);
+    let (comparison_policy, comparison_impact) = comparison_for_kind(kind);
+    let candidate_id = parse_wire(SecretCandidateId::parse(row.candidate_id.clone()))?;
+    let candidate_revision = parse_wire(SecretCandidateRevision::parse(row.candidate_revision))?;
+    let secret_ref = parse_wire(SecretRef::parse(row.secret_ref.clone()))?;
+    let record_revision = parse_wire(SecretRecordRevision::parse(row.record_revision))?;
+    let backend_instance_id = parse_wire(SecretBackendInstanceId::parse(
+        row.backend_instance_id.clone(),
+    ))?;
+    let backend_generation = parse_wire(SecretBackendGeneration::parse(row.backend_generation))?;
+    let device_binding_generation =
+        parse_wire(DeviceBindingGeneration::parse(row.device_binding_generation))?;
+    let capability_revision = parse_wire(CapabilityRevision::parse(row.capability_revision))?;
+    let projection_digest = parse_wire(SecretProjectionDigest::parse(
+        record.binding_set_cas.digest.clone(),
+    ))?;
+    let projection = SecretCandidateActivationProjection::validate_repr(
+        SecretCandidateActivationProjectionRepr {
+            contract_version: SecretContractVersionV1::V1,
+            operation: SecretCandidateActivationOperation::SecretCandidateActivation,
+            candidate_id: candidate_id.clone(),
+            candidate_revision,
+            kind,
+            comparison_policy,
+            comparison_impact: comparison_impact.clone(),
+            secret_ref: secret_ref.clone(),
+            purpose: parse_purpose(&record.purpose)?,
+            record_revision,
+            backend_instance_id: backend_instance_id.clone(),
+            backend_generation,
+            device_binding_generation,
+            capability_revision,
+            target_owners: target_owners.clone(),
+            expected_bindings: expected_bindings.clone(),
+            legacy_sources_to_scrub:
+                CurrentLegacySourceExpectations::checked_from_codex_inventory_bridge(Vec::new())
+                    .map_err(|_| SecretInternalError::input_invalid())?,
+            candidate_read: SecretActivationCandidateReadExpectation {
+                operation: ActivationCandidateReadOperation::ResolveForApply,
+                scope: ActivationCandidateReadScope::ActivationCandidateCompare,
+                backend_instance_id: backend_instance_id.clone(),
+                backend_generation,
+                device_binding_generation,
+                capability_revision,
+                confirmation: PhysicalConfirmation::Never,
+            },
+            old_record_delete: SecretActivationOldRecordDeleteExpectation::NotApplicable,
+            projection_digest: projection_digest.clone(),
+        },
+    )
+    .map_err(|_| SecretInternalError::input_invalid())?;
+    let backend = os_keyring_backend(&row.backend_instance_id, row.backend_generation)?;
+    let capabilities = os_keyring_capabilities(
+        &backend,
+        row.capability_revision,
+        row.device_binding_generation,
+    )?;
+    let summary = SecretCandidateSummary {
+        schema_version: SchemaVersionV1,
+        candidate_id: candidate_id.clone(),
+        candidate_revision,
+        kind,
+        comparison_policy,
+        comparison_impact,
+        state: map_candidate_state(row.state),
+        secret_ref: secret_ref.clone(),
+        secret_ref_display: SecretRefDisplay::derive_from(&secret_ref),
+        purpose: parse_purpose(&record.purpose)?,
+        record_revision,
+        backend,
+        capabilities,
+        target_owners: target_owners.clone(),
+        expected_bindings: expected_bindings,
+        legacy_sources_to_scrub: projection.0.legacy_sources_to_scrub.clone(),
+        created_at: parse_wire(UtcTimestamp::parse(row.created_at.clone()))?,
+        expires_at: parse_wire(UtcTimestamp::parse(row.expires_at.clone()))?,
+        pending_terminal_disposition: row
+            .pending_terminal_disposition
+            .map(map_terminal_disposition),
+        issue: None,
+    };
+    let affected_owners = map_owner_binding_summaries_for_ref(payload, &secret_ref)?;
+    let snapshot = SecretCandidateAuthoritySnapshot::from_staged(
+        candidate_id,
+        candidate_revision,
+        kind,
+        comparison_policy,
+        secret_ref,
+        record_revision,
+        projection.clone(),
+        map_binding_set_cas(&record.binding_set_cas)?,
+        affected_owners,
+    )?;
+    let minted = SecretCandidateWithProjection::checked_from_candidate_snapshot(
+        SecretCandidateWithProjection {
+            candidate: summary,
+            activation_projection: projection,
+        },
+        &snapshot,
+    )?;
+    Ok(MintedCandidateRow {
+        candidate: minted.candidate,
+        activation_projection: minted.activation_projection,
+        snapshot,
+    })
+}
+
+fn activation_owners_and_bindings(
+    payload: &device_store::schema::StatePayload,
+    secret_ref: &str,
+    unbound_owner: Option<SecretOwner>,
+) -> Result<(Vec<SecretOwner>, Vec<OwnerBindingExpectation>), SecretInternalError> {
+    match journal_target_owners_and_bindings(payload, secret_ref) {
+        Ok((owners, bindings)) => Ok((owners.0, bindings.0)),
+        Err(error) => {
+            let has_row = payload.owner_bindings.iter().any(|row| {
+                row.secret_ref.as_deref() == Some(secret_ref)
+            });
+            let Some(owner) = unbound_owner else {
+                return Err(error);
+            };
+            if has_row {
+                return Err(error);
+            }
+            Ok((
+                vec![owner.clone()],
+                vec![OwnerBindingExpectation::Unbound {
+                    owner,
+                    owner_binding_revision: parse_wire(SecretOwnerBindingRevision::parse(1))?,
+                }],
+            ))
+        }
+    }
 }
 
 fn map_candidate_state(
@@ -369,240 +542,13 @@ fn map_candidate_state(
     }
 }
 
-fn map_pending_disposition(
-    disposition: Option<device_store::schema::TerminalDisposition>,
-) -> Option<CandidateTerminalState> {
-    disposition.map(|row| match row {
+fn map_terminal_disposition(
+    disposition: device_store::schema::TerminalDisposition,
+) -> CandidateTerminalState {
+    match disposition {
         device_store::schema::TerminalDisposition::Discarded => CandidateTerminalState::Discarded,
         device_store::schema::TerminalDisposition::Expired => CandidateTerminalState::Expired,
-    })
-}
-
-fn empty_legacy_sources() -> Result<CurrentLegacySourceExpectations, SecretInternalError> {
-    CurrentLegacySourceExpectations::checked_from_codex_inventory_bridge(Vec::new())
-        .map_err(|_| SecretInternalError::input_invalid())
-}
-
-fn owner_from_capture_owner_id(owner_id: &str) -> Result<SecretOwner, SecretInternalError> {
-    Ok(SecretOwner {
-        kind: SecretOwnerKind::Provider,
-        namespace: parse_wire(SecretOwnerNamespace::parse("codex".to_string()))?,
-        owner_id: parse_wire(OwnerId::parse(owner_id.to_string()))?,
-        slot: SecretSlot::PrimaryApiKey,
-    })
-}
-
-fn unbound_expectation(owner: SecretOwner) -> Result<OwnerBindingExpectation, SecretInternalError> {
-    Ok(OwnerBindingExpectation::Unbound {
-        owner,
-        owner_binding_revision: parse_wire(SecretOwnerBindingRevision::parse(1))?,
-    })
-}
-
-fn target_owners_for_candidate(
-    payload: &device_store::schema::StatePayload,
-    secret_ref: &str,
-    fallback_owner: Option<&SecretOwner>,
-) -> Result<(Vec<SecretOwner>, Vec<OwnerBindingExpectation>), SecretInternalError> {
-    match journal_target_owners_and_bindings(payload, secret_ref) {
-        Ok((owners, bindings)) => Ok((owners.0, bindings.0)),
-        Err(error) => {
-            let owner = fallback_owner.ok_or(error)?;
-            Ok((
-                vec![owner.clone()],
-                vec![unbound_expectation(owner.clone())?],
-            ))
-        }
     }
-}
-
-fn candidate_read_from_record(
-    record: &device_store::schema::StoredSecretRecord,
-) -> Result<SecretActivationCandidateReadExpectation, SecretInternalError> {
-    Ok(SecretActivationCandidateReadExpectation {
-        operation: ActivationCandidateReadOperation::ResolveForApply,
-        scope: ActivationCandidateReadScope::ActivationCandidateCompare,
-        backend_instance_id: parse_wire(SecretBackendInstanceId::parse(
-            record.backend_instance_id.clone(),
-        ))?,
-        backend_generation: parse_wire(SecretBackendGeneration::parse(
-            record.backend_generation,
-        ))?,
-        device_binding_generation: parse_wire(DeviceBindingGeneration::parse(
-            record.device_binding_generation,
-        ))?,
-        capability_revision: parse_wire(CapabilityRevision::parse(record.capability_revision))?,
-        confirmation: PhysicalConfirmation::Never,
-    })
-}
-
-fn activation_projection_from_d2_fields(
-    candidate: &device_store::schema::StoredCandidateRecord,
-    record: &device_store::schema::StoredSecretRecord,
-    target_owners: Vec<SecretOwner>,
-    expected_bindings: Vec<OwnerBindingExpectation>,
-) -> Result<SecretCandidateActivationProjection, SecretInternalError> {
-    let kind = map_candidate_kind(candidate.kind);
-    let (comparison_policy, comparison_impact) = comparison_for_kind(kind);
-    let dummy = parse_wire(SecretProjectionDigest::parse("cd".repeat(32)))?;
-    let mut repr = SecretCandidateActivationProjectionRepr {
-        contract_version: SecretContractVersionV1::V1,
-        operation: SecretCandidateActivationOperation::SecretCandidateActivation,
-        candidate_id: parse_wire(SecretCandidateId::parse(candidate.candidate_id.clone()))?,
-        candidate_revision: parse_wire(SecretCandidateRevision::parse(
-            candidate.candidate_revision,
-        ))?,
-        kind,
-        comparison_policy,
-        comparison_impact,
-        secret_ref: parse_wire(SecretRef::parse(candidate.secret_ref.clone()))?,
-        purpose: parse_purpose(&record.purpose)?,
-        record_revision: parse_wire(SecretRecordRevision::parse(candidate.record_revision))?,
-        backend_instance_id: parse_wire(SecretBackendInstanceId::parse(
-            record.backend_instance_id.clone(),
-        ))?,
-        backend_generation: parse_wire(SecretBackendGeneration::parse(
-            record.backend_generation,
-        ))?,
-        device_binding_generation: parse_wire(DeviceBindingGeneration::parse(
-            record.device_binding_generation,
-        ))?,
-        capability_revision: parse_wire(CapabilityRevision::parse(record.capability_revision))?,
-        target_owners,
-        expected_bindings,
-        legacy_sources_to_scrub: empty_legacy_sources()?,
-        candidate_read: candidate_read_from_record(record)?,
-        old_record_delete: SecretActivationOldRecordDeleteExpectation::NotApplicable,
-        projection_digest: dummy,
-    };
-    repr.projection_digest = candidate_activation_projection_digest(&repr)?;
-    SecretCandidateActivationProjection::validate_repr(repr)
-        .map_err(|_| SecretInternalError::input_invalid())
-}
-
-fn secret_candidate_summary_from_store(
-    candidate: &device_store::schema::StoredCandidateRecord,
-    record: &device_store::schema::StoredSecretRecord,
-    projection: &SecretCandidateActivationProjection,
-) -> Result<SecretCandidateSummary, SecretInternalError> {
-    let backend = os_keyring_backend(&record.backend_instance_id, record.backend_generation)?;
-    let capabilities = os_keyring_capabilities(
-        &backend,
-        record.capability_revision,
-        record.device_binding_generation,
-    )?;
-    let secret_ref = parse_wire(SecretRef::parse(candidate.secret_ref.clone()))?;
-    Ok(SecretCandidateSummary {
-        schema_version: SchemaVersionV1,
-        candidate_id: parse_wire(SecretCandidateId::parse(candidate.candidate_id.clone()))?,
-        candidate_revision: parse_wire(SecretCandidateRevision::parse(
-            candidate.candidate_revision,
-        ))?,
-        kind: map_candidate_kind(candidate.kind),
-        comparison_policy: projection.0.comparison_policy,
-        comparison_impact: projection.0.comparison_impact.clone(),
-        state: map_candidate_state(candidate.state),
-        secret_ref: secret_ref.clone(),
-        secret_ref_display: SecretRefDisplay::derive_from(&secret_ref),
-        purpose: parse_purpose(&record.purpose)?,
-        record_revision: parse_wire(SecretRecordRevision::parse(candidate.record_revision))?,
-        backend,
-        capabilities,
-        target_owners: projection.0.target_owners.clone(),
-        expected_bindings: projection.0.expected_bindings.clone(),
-        legacy_sources_to_scrub: projection.0.legacy_sources_to_scrub.clone(),
-        created_at: parse_wire(UtcTimestamp::parse(candidate.created_at.clone()))?,
-        expires_at: parse_wire(UtcTimestamp::parse(candidate.expires_at.clone()))?,
-        pending_terminal_disposition: map_pending_disposition(
-            candidate.pending_terminal_disposition,
-        ),
-        issue: None,
-    })
-}
-
-fn secret_candidate_with_projection_from_parts(
-    payload: &device_store::schema::StatePayload,
-    candidate: &device_store::schema::StoredCandidateRecord,
-    record: &device_store::schema::StoredSecretRecord,
-    fallback_owner: Option<&SecretOwner>,
-) -> Result<SecretCandidateWithProjection, SecretInternalError> {
-    let (target_owners, expected_bindings) =
-        target_owners_for_candidate(payload, &candidate.secret_ref, fallback_owner)?;
-    let projection = activation_projection_from_d2_fields(
-        candidate,
-        record,
-        target_owners,
-        expected_bindings,
-    )?;
-    let summary = secret_candidate_summary_from_store(candidate, record, &projection)?;
-    let snapshot = SecretCandidateAuthoritySnapshot::from_staged(
-        summary.candidate_id.clone(),
-        summary.candidate_revision,
-        summary.kind,
-        summary.comparison_policy,
-        summary.secret_ref.clone(),
-        summary.record_revision,
-        projection.clone(),
-        map_binding_set_cas(&record.binding_set_cas)?,
-        map_owner_binding_summaries_for_ref(payload, &summary.secret_ref)?,
-    )?;
-    SecretCandidateWithProjection::checked_from_candidate_snapshot(
-        SecretCandidateWithProjection {
-            candidate: summary,
-            activation_projection: projection,
-        },
-        &snapshot,
-    )
-}
-
-fn secret_candidate_with_projection_from_store(
-    payload: &device_store::schema::StatePayload,
-    candidate: &device_store::schema::StoredCandidateRecord,
-    record: &device_store::schema::StoredSecretRecord,
-) -> Result<SecretCandidateWithProjection, SecretInternalError> {
-    secret_candidate_with_projection_from_parts(payload, candidate, record, None)
-}
-
-pub(crate) fn stage_secret_candidate_result_from_staged(
-    store: &device_store::DeviceLocalSecretStore,
-    staged: &capture::StagedUnboundCandidate,
-    owner_id: &str,
-) -> Result<StageSecretCandidateResult, SecretInternalError> {
-    let payload = store.load()?.payload;
-    let stored = payload
-        .candidates
-        .iter()
-        .find(|row| row.candidate_id == staged.candidate_id.as_str())
-        .ok_or_else(SecretInternalError::input_invalid)?;
-    let record = payload
-        .secrets
-        .iter()
-        .find(|row| row.secret_ref == staged.secret_ref.as_str())
-        .ok_or_else(SecretInternalError::input_invalid)?;
-    let owner = owner_from_capture_owner_id(owner_id)?;
-    let mapped =
-        secret_candidate_with_projection_from_parts(&payload, stored, record, Some(&owner))?;
-    let snapshot = SecretCandidateAuthoritySnapshot::from_staged(
-        mapped.candidate.candidate_id.clone(),
-        mapped.candidate.candidate_revision,
-        mapped.candidate.kind,
-        mapped.candidate.comparison_policy,
-        mapped.candidate.secret_ref.clone(),
-        mapped.candidate.record_revision,
-        mapped.activation_projection.clone(),
-        map_binding_set_cas(&record.binding_set_cas)?,
-        Vec::new(),
-    )?;
-    StageSecretCandidateResult::checked_from_candidate_snapshot(
-        StageSecretCandidateResult {
-            status: SecretCandidateStageStatus::Staged,
-            candidate: mapped.candidate,
-            activation_projection: mapped.activation_projection,
-            impact: NullableSecretMutationImpact(None),
-            audit_event_id: SecretAuditEventId::generate(),
-        },
-        &snapshot,
-    )
 }
 
 fn map_candidate_kind(
@@ -921,6 +867,148 @@ pub(crate) fn secret_discard_result_from_mismatched_journal_is_err() -> bool {
         &journal,
     )
     .is_err()
+}
+
+pub(crate) fn check_secret_apply_readiness_from_store(
+    store: &device_store::DeviceLocalSecretStore,
+    request: &CheckSecretApplyReadinessRequest,
+) -> Result<SecretApplyReadiness, SecretInternalError> {
+    let (owner, consumer, target_sink, live_sink_id, rollback) = match request {
+        CheckSecretApplyReadinessRequest::Target {
+            owner,
+            consumer,
+            target_sink,
+            live_sink_id,
+            ..
+        } => (owner, consumer, target_sink, live_sink_id, false),
+        CheckSecretApplyReadinessRequest::Rollback {
+            owner,
+            consumer,
+            target_sink,
+            live_sink_id,
+            ..
+        } => (owner, consumer, target_sink, live_sink_id, true),
+    };
+    let consumer = match consumer {
+        SecretConsumer::ChangePlanApply => SecretChangePlanApplyConsumer::ChangePlanApply,
+        _ => return Err(SecretInternalError::input_invalid()),
+    };
+    let target_sink = match target_sink {
+        ApplyTargetSink::ExternalConfigFile => SecretChangePlanApplySink::ExternalConfigFile,
+        _ => return Err(SecretInternalError::input_invalid()),
+    };
+    let payload = store.load()?.payload;
+    let binding = payload
+        .owner_bindings
+        .iter()
+        .find(|row| parse_owner(&row.owner).ok().as_ref() == Some(owner))
+        .ok_or_else(SecretInternalError::input_invalid)?;
+    if binding.state != device_store::schema::StoredBindingState::Bound {
+        return Err(SecretInternalError::input_invalid());
+    }
+    let secret_ref_raw = binding
+        .secret_ref
+        .clone()
+        .ok_or_else(SecretInternalError::input_invalid)?;
+    let record = payload
+        .secrets
+        .iter()
+        .find(|row| row.secret_ref == secret_ref_raw)
+        .ok_or_else(SecretInternalError::input_invalid)?;
+    let secret_ref = parse_wire(SecretRef::parse(secret_ref_raw))?;
+    let binding_set_cas = map_binding_set_cas(&record.binding_set_cas)?;
+    let owner_binding_revision = parse_wire(SecretOwnerBindingRevision::parse(
+        binding.owner_binding_revision,
+    ))?;
+    let binding_revision = parse_wire(SecretBindingRevision::parse(
+        binding
+            .binding_revision
+            .ok_or_else(SecretInternalError::input_invalid)?,
+    ))?;
+    let record_revision = parse_wire(SecretRecordRevision::parse(record.record_revision))?;
+    let backend_instance_id = parse_wire(SecretBackendInstanceId::parse(
+        record.backend_instance_id.clone(),
+    ))?;
+    let backend_generation = parse_wire(SecretBackendGeneration::parse(record.backend_generation))?;
+    let device_binding_generation = parse_wire(DeviceBindingGeneration::parse(
+        record.device_binding_generation,
+    ))?;
+    let capability_revision = parse_wire(CapabilityRevision::parse(record.capability_revision))?;
+    let projection_digest = parse_wire(SecretProjectionDigest::parse(
+        record.binding_set_cas.digest.clone(),
+    ))?;
+    let target = SecretApplyTargetProjection::validate_repr(SecretApplyTargetProjectionRepr {
+        role: SecretApplyTargetRole::Target,
+        consumer,
+        target_sink,
+        live_sink_id: *live_sink_id,
+        owner: owner.clone(),
+        secret_ref: secret_ref.clone(),
+        owner_binding_revision,
+        binding_revision,
+        record_revision,
+        binding_set_cas: binding_set_cas.clone(),
+        backend_instance_id: backend_instance_id.clone(),
+        backend_generation,
+        device_binding_generation,
+        capability_revision,
+    })
+    .map_err(|_| SecretInternalError::input_invalid())?;
+    let credential = if rollback {
+        let rollback_proj = SecretApplyRollbackProjection::validate_repr(
+            SecretApplyRollbackProjectionRepr {
+                role: SecretApplyRollbackRole::Rollback,
+                consumer,
+                target_sink,
+                live_sink_id: *live_sink_id,
+                owner: owner.clone(),
+                secret_ref: secret_ref.clone(),
+                owner_binding_revision,
+                binding_revision,
+                record_revision,
+                binding_set_cas: binding_set_cas.clone(),
+                backend_instance_id: backend_instance_id.clone(),
+                backend_generation,
+                device_binding_generation,
+                capability_revision,
+            },
+        )
+        .map_err(|_| SecretInternalError::input_invalid())?;
+        let plan = SecretApplyPlanProjection::validate_repr(SecretApplyPlanProjectionRepr {
+            contract_version: SecretContractVersionV1::V1,
+            operation: CodexProviderApplyOperation::CodexProviderApply,
+            target: target.clone(),
+            rollback: Some(rollback_proj.clone()),
+            projection_digest,
+        })
+        .map_err(|_| SecretInternalError::input_invalid())?;
+        let _ = plan;
+        SecretApplyCredentialProjection::Rollback(rollback_proj)
+    } else {
+        let plan = SecretApplyPlanProjection::validate_repr(SecretApplyPlanProjectionRepr {
+            contract_version: SecretContractVersionV1::V1,
+            operation: CodexProviderApplyOperation::CodexProviderApply,
+            target: target.clone(),
+            rollback: None,
+            projection_digest,
+        })
+        .map_err(|_| SecretInternalError::input_invalid())?;
+        let _ = plan;
+        SecretApplyCredentialProjection::Target(target)
+    };
+    let checked_at = parse_wire(UtcTimestamp::parse(device_store::utc_now()))?;
+    let expires_at = parse_wire(UtcTimestamp::parse(
+        "2099-01-01T00:00:00.000Z".to_string(),
+    ))?;
+    SecretApplyReadiness::checked_from_authority(SecretApplyReadinessRepr::Ready {
+        context: SecretApplyReadinessContext {
+            schema_version: SchemaVersionV1,
+            operation_id: SecretOperationId::generate(),
+            projection: credential,
+            checked_at,
+            expires_at,
+        },
+    })
 }
 
 #[allow(dead_code)]
