@@ -5320,10 +5320,29 @@ impl SecretAuditPage {
 }
 
 impl SecretValidationResult {
-    fn checked_from_authority(
+    pub(in crate::secret) fn checked_from_authority(
         result: SecretValidationResult,
     ) -> Result<Self, SecretInternalError> {
-        todo!("outcome/aggregate/audit matrix")
+        let aggregate = SecretRefAggregate::checked_from_authority(result.aggregate)?;
+        let outcome_ok = match result.outcome {
+            SecretValidationOutcome::Valid => {
+                aggregate.availability == SecretStableAvailability::Ready
+                    && aggregate.issue.is_none()
+            }
+            SecretValidationOutcome::Blocked => aggregate.issue.is_some(),
+            SecretValidationOutcome::Missing => {
+                aggregate.availability == SecretStableAvailability::Missing
+            }
+        };
+        if outcome_ok {
+            Ok(Self {
+                outcome: result.outcome,
+                aggregate,
+                audit_event_id: result.audit_event_id,
+            })
+        } else {
+            Err(SecretInternalError::input_invalid())
+        }
     }
 }
 

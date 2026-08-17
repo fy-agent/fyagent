@@ -309,12 +309,23 @@ pub async fn retry_secret_cleanup(
     unavailable()
 }
 
-#[tauri::command]
-pub async fn validate_secret(
+/// Read-only validate. Never writes or deletes Keychain.
+pub(crate) fn validate_secret_from_state(
+    state: &AppState,
     request: ValidateSecretRequest,
 ) -> SecretCommandResult<SecretValidationResult> {
-    let _ = request;
-    unavailable()
+    let opened = require_opened_store(state)?;
+    crate::secret::validate_secret_from_store(opened.store(), &request)
+        .map(crate::secret::command_success)
+        .map_err(crate::secret::service_command_error)
+}
+
+#[tauri::command]
+pub async fn validate_secret(
+    state: State<'_, AppState>,
+    request: ValidateSecretRequest,
+) -> SecretCommandResult<SecretValidationResult> {
+    validate_secret_from_state(&state, request)
 }
 
 /// Sync helper so tests can exercise fail-closed / contract DTO without
@@ -1063,6 +1074,48 @@ mod secret_command_dto_tests {
         assert_err_not_empty_ok(get_secret_delete_impact_from_state(
             &state,
             delete_impact_request(crate::secret::SecretRef::generate().as_str()),
+        ));
+    }
+
+    fn validate_request(secret_ref: &str, revision: u64) -> ValidateSecretRequest {
+        serde_json::from_str(&format!(
+            r#"{{"schemaVersion":1,"secretRef":"{secret_ref}","expectedRecordRevision":{revision}}}"#
+        ))
+        .expect("validate request")
+    }
+
+    #[test]
+    fn secret_validate_matching_revision_returns_valid_contract_dto() {
+        let tmp = TempDir::new().expect("tempdir");
+        let opened = SecretBootstrap::open_for_test(tmp.path().to_path_buf()).expect("open");
+        let seeded = seed_opened_store_pending_candidate(opened.store()).expect("seed");
+        let db = Arc::new(Database::memory().expect("memory db"));
+        let state = AppState::new_with_secret_store(db, opened);
+        let result = validate_secret_from_state(
+            &state,
+            validate_request(&seeded.secret_ref, seeded.record_revision),
+        )
+        .unwrap_or_else(|err| {
+            panic!(
+                "matching revision must Ok validate DTO: {}",
+                serde_json::to_string(&err).unwrap_or_default()
+            )
+        });
+        let json = serde_json::to_value(&result.data).expect("json");
+        assert_eq!(json["outcome"], "valid");
+        assert_eq!(json["aggregate"]["secretRef"], seeded.secret_ref);
+    }
+
+    #[test]
+    fn secret_validate_revision_mismatch_fails_closed() {
+        let tmp = TempDir::new().expect("tempdir");
+        let opened = SecretBootstrap::open_for_test(tmp.path().to_path_buf()).expect("open");
+        let seeded = seed_opened_store_pending_candidate(opened.store()).expect("seed");
+        let db = Arc::new(Database::memory().expect("memory db"));
+        let state = AppState::new_with_secret_store(db, opened);
+        assert_err_not_empty_ok(validate_secret_from_state(
+            &state,
+            validate_request(&seeded.secret_ref, seeded.record_revision.saturating_add(1)),
         ));
     }
 

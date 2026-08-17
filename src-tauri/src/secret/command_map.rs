@@ -1124,6 +1124,29 @@ pub(crate) fn get_secret_delete_impact_from_store(
     })
 }
 
+
+pub(crate) fn validate_secret_from_store(
+    store: &device_store::DeviceLocalSecretStore,
+    request: &ValidateSecretRequest,
+) -> Result<SecretValidationResult, SecretInternalError> {
+    let payload = store.load()?.payload;
+    let row = payload
+        .secrets
+        .iter()
+        .find(|row| row.secret_ref == request.secret_ref.as_str())
+        .ok_or_else(SecretInternalError::input_invalid)?;
+    let current_rev = parse_wire(SecretRecordRevision::parse(row.record_revision))?;
+    if current_rev != request.expected_record_revision {
+        return Err(SecretInternalError::input_invalid());
+    }
+    let aggregate = map_secret_ref_aggregate(&payload, row)?;
+    SecretValidationResult::checked_from_authority(SecretValidationResult {
+        outcome: SecretValidationOutcome::Valid,
+        aggregate,
+        audit_event_id: SecretAuditEventId::generate(),
+    })
+}
+
 #[allow(dead_code)]
 fn _keep_wire_err<T, E>(err: E) -> Result<T, SecretInternalError> {
     wire_err(err)
