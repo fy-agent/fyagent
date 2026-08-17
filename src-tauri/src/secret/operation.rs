@@ -3990,7 +3990,9 @@ pub(crate) struct SecretBootstrapToken {
     _private: (),
 }
 struct DeviceLocalStoreLifetimeLock {
-    _private: (),
+    // Owns DeviceLocalSecretStore (and its exclusive store.lock) for the
+    // process lifetime of this opened handle.
+    store: device_store::DeviceLocalSecretStore,
 }
 pub(crate) struct OpenedDeviceLocalSecretStore {
     root: DeviceLocalSecretRoot,
@@ -4001,11 +4003,42 @@ pub(crate) struct OpenedDeviceLocalSecretStore {
 }
 pub(crate) struct SecretBootstrap;
 
+const DEVICE_LOCAL_SECRET_SUBDIR: &str = "device-local-secrets";
+
+fn open_device_local_secret_store(
+    root: std::path::PathBuf,
+) -> Result<OpenedDeviceLocalSecretStore, SecretInternalError> {
+    let store = device_store::DeviceLocalSecretStore::open(root.clone())?;
+    let device_instance_id = store.device_instance_id().clone();
+    Ok(OpenedDeviceLocalSecretStore {
+        root: DeviceLocalSecretRoot(root),
+        device_instance_id,
+        device_store_instance_id: std::sync::Arc::new(DeviceSecretStoreInstanceId(
+            uuid::Uuid::new_v4().into_bytes(),
+        )),
+        bootstrap: SecretBootstrapToken { _private: () },
+        lifetime_lock: DeviceLocalStoreLifetimeLock { store },
+    })
+}
+
 impl SecretBootstrap {
     pub(crate) fn open(
         app_handle: &tauri::AppHandle,
     ) -> Result<OpenedDeviceLocalSecretStore, SecretInternalError> {
-        todo!("derive exact device-local root, acquire one exclusive lifetime lock")
+        use tauri::Manager;
+        let base = app_handle
+            .path()
+            .app_local_data_dir()
+            .or_else(|_| app_handle.path().app_data_dir())
+            .map_err(|_| SecretInternalError::input_invalid())?;
+        open_device_local_secret_store(base.join(DEVICE_LOCAL_SECRET_SUBDIR))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn open_for_test(
+        root: std::path::PathBuf,
+    ) -> Result<OpenedDeviceLocalSecretStore, SecretInternalError> {
+        open_device_local_secret_store(root)
     }
 }
 

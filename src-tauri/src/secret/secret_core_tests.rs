@@ -756,3 +756,38 @@ fn secret_macos_keychain_create_read_delete_smoke() {
     eprintln!("hit real Keychain: SecItemAdd/SecItemCopyMatching/SecItemDelete");
     drop(guard);
 }
+
+#[test]
+fn secret_bootstrap_open_for_test_holds_exclusive_store() {
+    let tmp = TempDir::new().expect("tempdir");
+    let opened = SecretBootstrap::open_for_test(tmp.path().to_path_buf()).expect("open");
+    let _ = opened.database_preflight_token();
+    assert!(
+        DeviceLocalSecretStore::open(tmp.path().to_path_buf()).is_err(),
+        "exclusive lifetime lock must fail closed on a second open"
+    );
+}
+
+#[test]
+fn secret_bootstrap_open_fail_closed_when_parent_is_not_a_directory() {
+    let tmp = TempDir::new().expect("tempdir");
+    let blocker = tmp.path().join("not-a-directory");
+    std::fs::write(&blocker, b"x").expect("blocker file");
+    let root = blocker.join("device-local-secrets");
+    assert!(
+        SecretBootstrap::open_for_test(root).is_err(),
+        "bootstrap must fail closed when the device-local root cannot be created"
+    );
+}
+
+#[test]
+fn secret_service_local_open_tempdir_uses_in_memory_backend() {
+    let tmp = TempDir::new().expect("tempdir");
+    let service = SecretServiceLocal::open(tmp.path().to_path_buf()).expect("open");
+    let projection = service
+        .list_secret_summaries(None, true)
+        .expect("empty projection");
+    assert!(projection.owners.is_empty());
+    assert!(projection.refs.is_empty());
+    let _ = service.backend();
+}
