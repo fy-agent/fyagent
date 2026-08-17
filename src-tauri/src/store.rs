@@ -19,6 +19,9 @@ pub struct AppState {
     /// Test-only InMemory backend hold. Production AppState never carries this.
     #[cfg(test)]
     pub(crate) secret_in_memory_backend: Option<crate::secret::InMemorySecretBackend>,
+    /// Test-only process-local capture-intent registry. Production never carries this.
+    #[cfg(test)]
+    pub(crate) secret_capture_registry: Option<crate::secret::capture::SecretCaptureIntentRegistry>,
 }
 
 impl AppState {
@@ -34,6 +37,8 @@ impl AppState {
             secret_store: None,
             #[cfg(test)]
             secret_in_memory_backend: None,
+            #[cfg(test)]
+            secret_capture_registry: None,
         }
     }
 
@@ -52,5 +57,13 @@ impl AppState {
         backend: crate::secret::InMemorySecretBackend,
     ) {
         self.secret_in_memory_backend = Some(backend);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn attach_secret_capture_registry(
+        &mut self,
+        registry: crate::secret::capture::SecretCaptureIntentRegistry,
+    ) {
+        self.secret_capture_registry = Some(registry);
     }
 }

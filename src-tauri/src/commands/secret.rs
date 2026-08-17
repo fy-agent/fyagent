@@ -92,12 +92,71 @@ pub async fn list_secret_backend_options(
     unavailable()
 }
 
-#[tauri::command]
-pub async fn begin_secret_capture(
+/// Sync helper so tests can exercise fail-closed / InMemory stage without
+/// spinning Tauri. Production AppState has no InMemory hold and returns
+/// typed unavailable (no Keychain write). A successful InMemory stage still
+/// fail-closes: `StageSecretCandidateResult::checked_from_candidate_snapshot`
+/// stays unimplemented, so this never returns Ok(contract DTO).
+pub(crate) fn begin_secret_capture_from_state(
+    state: &AppState,
     request: BeginSecretCaptureRequest,
 ) -> SecretCommandResult<StageSecretCandidateResult> {
-    let _ = request;
-    unavailable()
+    let opened = require_opened_store(state)?;
+    #[cfg(test)]
+    {
+        return begin_secret_capture_in_memory(
+            state,
+            opened,
+            request,
+            &crate::secret::capture::ProgrammaticCapturePrompt::new(
+                b"capture-success-key".to_vec(),
+            ),
+        );
+    }
+    #[cfg(not(test))]
+    {
+        let _ = (opened, request);
+        unavailable()
+    }
+}
+
+#[cfg(test)]
+fn begin_secret_capture_in_memory(
+    state: &AppState,
+    opened: &crate::secret::OpenedDeviceLocalSecretStore,
+    request: BeginSecretCaptureRequest,
+    prompt: &dyn crate::secret::capture::CapturePrompt,
+) -> SecretCommandResult<StageSecretCandidateResult> {
+    let Some(backend) = state.secret_in_memory_backend.as_ref() else {
+        return unavailable();
+    };
+    let Some(registry) = state.secret_capture_registry.as_ref() else {
+        return unavailable();
+    };
+    let claim = match registry.claim_once(&request.capture_intent_id, &request.backend_instance_id)
+    {
+        Ok(claim) => claim,
+        Err(error) => return Err(crate::secret::service_command_error(error)),
+    };
+    let capture = crate::secret::capture::LocalSecretCapture::new(
+        opened.store(),
+        crate::secret::capture::CaptureLeafBackend::InMemory(backend),
+        registry,
+        prompt,
+    );
+    match capture.begin_after_claim(claim) {
+        // Staged into the store, but the contract DTO constructor is still todo.
+        Ok(_) => unavailable(),
+        Err(error) => Err(crate::secret::service_command_error(error)),
+    }
+}
+
+#[tauri::command]
+pub async fn begin_secret_capture(
+    state: State<'_, AppState>,
+    request: BeginSecretCaptureRequest,
+) -> SecretCommandResult<StageSecretCandidateResult> {
+    begin_secret_capture_from_state(&state, request)
 }
 
 #[tauri::command]
@@ -262,6 +321,44 @@ mod secret_command_dto_tests {
         .expect("discard request")
     }
 
+    fn begin_request() -> BeginSecretCaptureRequest {
+        let intent_id = crate::secret::SecretCaptureIntentId::generate();
+        let backend_id = crate::secret::SecretBackendInstanceId::generate();
+        begin_request_for(intent_id.as_str(), backend_id.as_str())
+    }
+
+    fn begin_request_for(intent_id: &str, backend_id: &str) -> BeginSecretCaptureRequest {
+        serde_json::from_str(&format!(
+            r#"{{"schemaVersion":1,"captureIntentId":"{intent_id}","backendInstanceId":"{backend_id}"}}"#
+        ))
+        .expect("begin request")
+    }
+
+    fn local_candidates(state: &AppState) -> Vec<crate::secret::LocalCandidateProjection> {
+        list_secret_candidates_from_store(
+            state.secret_store.as_ref().expect("store").store(),
+            false,
+        )
+        .expect("local candidates")
+    }
+
+    fn mint_begin_intent(
+        state: &mut AppState,
+    ) -> (crate::secret::SecretCaptureIntentId, crate::secret::SecretBackendInstanceId) {
+        let registry = crate::secret::capture::SecretCaptureIntentRegistry::new();
+        let backend_id = crate::secret::SecretBackendInstanceId::generate();
+        let intent_id = registry
+            .mint(
+                "owner-begin-cmd",
+                crate::secret::SecretPurpose::CodexApiKey,
+                crate::secret::BeginCaptureIntent::NewBinding,
+                backend_id.clone(),
+            )
+            .expect("mint");
+        state.attach_secret_capture_registry(registry);
+        (intent_id, backend_id)
+    }
+
     fn assert_err_not_empty_ok<T>(result: SecretCommandResult<T>) {
         assert!(result.is_err(), "missing/unmapped store must not succeed");
     }
@@ -335,6 +432,7 @@ mod secret_command_dto_tests {
         assert_err_not_empty_ok(list_secret_summaries_from_state(&state, summaries_request()));
         assert_err_not_empty_ok(list_secret_candidates_from_state(&state, candidates_request()));
         assert_err_not_empty_ok(discard_secret_candidate_from_state(&state, discard_request()));
+        assert_err_not_empty_ok(begin_secret_capture_from_state(&state, begin_request()));
     }
 
     #[test]
@@ -508,5 +606,85 @@ mod secret_command_dto_tests {
             crate::secret::secret_discard_result_from_mismatched_journal_is_err(),
             "constructor/journal mismatch must be Err, not Ok(empty)"
         );
+    }
+
+    #[test]
+    fn secret_begin_capture_without_in_memory_is_unavailable() {
+        let (_tmp, state) = opened_state();
+        assert!(state.secret_in_memory_backend.is_none());
+        assert_err_not_empty_ok(begin_secret_capture_from_state(&state, begin_request()));
+        assert!(
+            local_candidates(&state).is_empty(),
+            "unavailable begin must not stage a candidate or touch Keychain"
+        );
+    }
+
+    #[test]
+    fn secret_begin_capture_with_in_memory_stages_unbound_but_command_stays_err() {
+        let tmp = TempDir::new().expect("tempdir");
+        let opened = SecretBootstrap::open_for_test(tmp.path().to_path_buf()).expect("open");
+        let db = Arc::new(Database::memory().expect("memory db"));
+        let mut state = AppState::new_with_secret_store(db, opened);
+        state.attach_in_memory_secret_backend(InMemorySecretBackend::new());
+        let (intent_id, backend_id) = mint_begin_intent(&mut state);
+        let result = begin_secret_capture_from_state(
+            &state,
+            begin_request_for(intent_id.as_str(), backend_id.as_str()),
+        );
+        assert!(
+            result.is_err(),
+            "staged InMemory capture must not Ok a contract DTO"
+        );
+        let remaining = local_candidates(&state);
+        assert_eq!(remaining.len(), 1, "unbound candidate must be staged");
+        let payload = state
+            .secret_store
+            .as_ref()
+            .expect("store")
+            .store()
+            .load()
+            .expect("load")
+            .payload;
+        assert_eq!(payload.candidates.len(), 1);
+        assert_eq!(
+            payload.candidates[0].state,
+            crate::secret::device_store::schema::StoredCandidateState::VerifiedPendingPlan
+        );
+        assert!(
+            payload.owner_bindings.is_empty(),
+            "begin capture must not bind an owner"
+        );
+    }
+
+    #[test]
+    fn secret_begin_capture_cancel_prompt_is_zero_write_and_err() {
+        let tmp = TempDir::new().expect("tempdir");
+        let opened = SecretBootstrap::open_for_test(tmp.path().to_path_buf()).expect("open");
+        let db = Arc::new(Database::memory().expect("memory db"));
+        let mut state = AppState::new_with_secret_store(db, opened);
+        state.attach_in_memory_secret_backend(InMemorySecretBackend::new());
+        let (intent_id, backend_id) = mint_begin_intent(&mut state);
+        let result = begin_secret_capture_in_memory(
+            &state,
+            state.secret_store.as_ref().expect("store"),
+            begin_request_for(intent_id.as_str(), backend_id.as_str()),
+            &crate::secret::capture::CancelCapturePrompt,
+        );
+        assert!(result.is_err(), "cancel must stay fail-closed");
+        assert!(
+            local_candidates(&state).is_empty(),
+            "cancel must not stage a candidate"
+        );
+        let payload = state
+            .secret_store
+            .as_ref()
+            .expect("store")
+            .store()
+            .load()
+            .expect("load")
+            .payload;
+        assert!(payload.secrets.is_empty(), "cancel is zero-write");
+        assert!(payload.candidates.is_empty(), "cancel is zero-write");
+        assert!(payload.owner_bindings.is_empty(), "cancel is zero-write");
     }
 }
