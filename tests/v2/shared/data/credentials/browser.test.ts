@@ -63,6 +63,23 @@ describe("credentials browser fixtures", () => {
       refs[byId["delta-locked"].bindingState.secretRef];
     expect(lockedRef.availability).toBe("locked");
     expect(lockedRef.lock?.source).toBe("fyAgentPolicy");
+    expect(lockedRef.issue?.action).toBe("unlockFyAgent");
+    expect(lockedRef.issue?.lockSource).toBe("fyAgentPolicy");
+
+    expect(byId["xi-syslock"]?.bindingState.state).toBe("bound");
+    const backendLockedRef =
+      refs[byId["xi-syslock"].bindingState.secretRef];
+    expect(backendLockedRef.availability).toBe("locked");
+    expect(backendLockedRef.lock?.source).toBe("backend");
+    expect(backendLockedRef.issue?.action).toBe("unlockBackend");
+    expect(backendLockedRef.issue?.lockSource).toBe("backend");
+
+    expect(byId["theta-plan"]?.bindingState.state).toBe("unbound");
+    expect(byId["kappa-expired"]?.bindingState.state).toBe("unbound");
+    expect(byId["iota-discard"]?.bindingState.state).toBe("bound");
+    expect(byId["iota-discard"].bindingState.secretRef).toBe(
+      byId["alpha-ready"].bindingState.secretRef,
+    );
   });
 
   it("ships the extra viewport fixtures without flipping clocks", () => {

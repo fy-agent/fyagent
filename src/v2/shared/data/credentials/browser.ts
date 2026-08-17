@@ -31,6 +31,7 @@ const REF = {
   cleanup: hexId("sec", "9", "ff67") as SecretRef,
   denied: hexId("sec", "a", "a1b2") as SecretRef,
   stale: hexId("sec", "b", "c3d4") as SecretRef,
+  backendLocked: hexId("sec", "c", "d5e6") as SecretRef,
 };
 
 const DISPLAY: Record<keyof typeof REF, SecretRefDisplay> = {
@@ -45,6 +46,7 @@ const DISPLAY: Record<keyof typeof REF, SecretRefDisplay> = {
   cleanup: secretRefDisplayOf(REF.cleanup),
   denied: secretRefDisplayOf(REF.denied),
   stale: secretRefDisplayOf(REF.stale),
+  backendLocked: secretRefDisplayOf(REF.backendLocked),
 };
 
 function owner(ownerId: string): SecretOwner {
@@ -140,6 +142,7 @@ const OWNERS = {
   cleanup: "lambda-cleanup",
   denied: "mu-denied",
   stale: "nu-stale",
+  backendLocked: "xi-syslock",
   shared: "share-reader",
 } as const;
 
@@ -159,6 +162,7 @@ export const credentialBrowserFixtures: CredentialsSnapshot = {
     [OWNERS.cleanup]: "待清理" as never,
     [OWNERS.denied]: "已拒绝" as never,
     [OWNERS.stale]: "过期待清理" as never,
+    [OWNERS.backendLocked]: "系统锁定" as never,
     [OWNERS.shared]: "共享只读" as never,
   },
   owners: [
@@ -197,12 +201,27 @@ export const credentialBrowserFixtures: CredentialsSnapshot = {
       legacySourceCoverage: clearCoverage,
     },
     boundSummary(OWNERS.locked, REF.locked, DISPLAY.locked),
+    boundSummary(OWNERS.backendLocked, REF.backendLocked, DISPLAY.backendLocked),
     boundSummary(OWNERS.missing, REF.missing, DISPLAY.missing),
     boundSummary(OWNERS.revoked, REF.revoked, DISPLAY.revoked),
     boundSummary(OWNERS.unavailable, REF.unavailable, DISPLAY.unavailable),
-    boundSummary(OWNERS.candidate, REF.candidate, DISPLAY.candidate),
-    boundSummary(OWNERS.discard, REF.discard, DISPLAY.discard),
-    boundSummary(OWNERS.expired, REF.expired, DISPLAY.expired),
+    {
+      schemaVersion: 1,
+      owner: owner(OWNERS.candidate),
+      purpose: "codexApiKey",
+      ownerBindingRevision: 1 as never,
+      bindingState: { state: "unbound" },
+      legacySourceCoverage: clearCoverage,
+    },
+    boundSummary(OWNERS.discard, REF.ready, DISPLAY.ready),
+    {
+      schemaVersion: 1,
+      owner: owner(OWNERS.expired),
+      purpose: "codexApiKey",
+      ownerBindingRevision: 1 as never,
+      bindingState: { state: "unbound" },
+      legacySourceCoverage: clearCoverage,
+    },
     boundSummary(OWNERS.cleanup, REF.cleanup, DISPLAY.cleanup),
     boundSummary(OWNERS.denied, REF.denied, DISPLAY.denied),
     boundSummary(OWNERS.stale, REF.stale, DISPLAY.stale),
@@ -216,6 +235,15 @@ export const credentialBrowserFixtures: CredentialsSnapshot = {
         retryable: true,
         action: "unlockFyAgent",
         lockSource: "fyAgentPolicy",
+      },
+    }),
+    refAggregate(REF.backendLocked, DISPLAY.backendLocked, "locked", {
+      lock: { source: "backend", lockedAt: STAMP as never },
+      issue: {
+        code: "SECRET_LOCKED",
+        retryable: true,
+        action: "unlockBackend",
+        lockSource: "backend",
       },
     }),
     refAggregate(REF.missing, DISPLAY.missing, "missing", {
