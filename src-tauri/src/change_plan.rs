@@ -9,6 +9,8 @@ use crate::services::provider::{build_effective_settings_with_common_config, rea
 use crate::store::AppState;
 use crate::AppError;
 
+mod secret_admission;
+
 pub(crate) const CHANGE_PLAN_CONTRACT_VERSION: &str = "fyagent-change-plan-v1-schema16";
 pub(crate) const CHANGE_PLAN_TTL_SECONDS: i64 = 15 * 60;
 
