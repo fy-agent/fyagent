@@ -414,11 +414,7 @@ fn mint_candidate_with_projection(
     let device_binding_generation =
         parse_wire(DeviceBindingGeneration::parse(row.device_binding_generation))?;
     let capability_revision = parse_wire(CapabilityRevision::parse(row.capability_revision))?;
-    let projection_digest = parse_wire(SecretProjectionDigest::parse(
-        record.binding_set_cas.digest.clone(),
-    ))?;
-    let projection = SecretCandidateActivationProjection::validate_repr(
-        SecretCandidateActivationProjectionRepr {
+    let mut projection_body = SecretCandidateActivationProjectionRepr {
             contract_version: SecretContractVersionV1::V1,
             operation: SecretCandidateActivationOperation::SecretCandidateActivation,
             candidate_id: candidate_id.clone(),
@@ -448,10 +444,12 @@ fn mint_candidate_with_projection(
                 confirmation: PhysicalConfirmation::Never,
             },
             old_record_delete: SecretActivationOldRecordDeleteExpectation::NotApplicable,
-            projection_digest: projection_digest.clone(),
-        },
-    )
-    .map_err(|_| SecretInternalError::input_invalid())?;
+            projection_digest: parse_wire(SecretProjectionDigest::parse("cd".repeat(32)))?,
+        };
+    projection_body.projection_digest = hash_candidate_activation_projection(&projection_body)
+        .map_err(|_| SecretInternalError::input_invalid())?;
+    let projection = SecretCandidateActivationProjection::validate_repr(projection_body)
+        .map_err(|_| SecretInternalError::input_invalid())?;
     let backend = os_keyring_backend(&row.backend_instance_id, row.backend_generation)?;
     let capabilities = os_keyring_capabilities(
         &backend,
@@ -944,9 +942,6 @@ pub(crate) fn check_secret_apply_readiness_from_store(
         record.device_binding_generation,
     ))?;
     let capability_revision = parse_wire(CapabilityRevision::parse(record.capability_revision))?;
-    let projection_digest = parse_wire(SecretProjectionDigest::parse(
-        record.binding_set_cas.digest.clone(),
-    ))?;
     let target = SecretApplyTargetProjection::validate_repr(SecretApplyTargetProjectionRepr {
         role: SecretApplyTargetRole::Target,
         consumer,
@@ -964,7 +959,7 @@ pub(crate) fn check_secret_apply_readiness_from_store(
         capability_revision,
     })
     .map_err(|_| SecretInternalError::input_invalid())?;
-    let credential = if rollback {
+    let (credential, plan) = if rollback {
         let rollback_proj = SecretApplyRollbackProjection::validate_repr(
             SecretApplyRollbackProjectionRepr {
                 role: SecretApplyRollbackRole::Rollback,
@@ -984,33 +979,19 @@ pub(crate) fn check_secret_apply_readiness_from_store(
             },
         )
         .map_err(|_| SecretInternalError::input_invalid())?;
-        let plan = SecretApplyPlanProjection::validate_repr(SecretApplyPlanProjectionRepr {
-            contract_version: SecretContractVersionV1::V1,
-            operation: CodexProviderApplyOperation::CodexProviderApply,
-            target: target.clone(),
-            rollback: Some(rollback_proj.clone()),
-            projection_digest,
-        })
-        .map_err(|_| SecretInternalError::input_invalid())?;
-        let _ = plan;
-        SecretApplyCredentialProjection::Rollback(rollback_proj)
+        let plan = mint_apply_plan_projection(target.clone(), Some(rollback_proj.clone()))
+            .map_err(|_| SecretInternalError::input_invalid())?;
+        (SecretApplyCredentialProjection::Rollback(rollback_proj), plan)
     } else {
-        let plan = SecretApplyPlanProjection::validate_repr(SecretApplyPlanProjectionRepr {
-            contract_version: SecretContractVersionV1::V1,
-            operation: CodexProviderApplyOperation::CodexProviderApply,
-            target: target.clone(),
-            rollback: None,
-            projection_digest,
-        })
-        .map_err(|_| SecretInternalError::input_invalid())?;
-        let _ = plan;
-        SecretApplyCredentialProjection::Target(target)
+        let plan = mint_apply_plan_projection(target.clone(), None)
+            .map_err(|_| SecretInternalError::input_invalid())?;
+        (SecretApplyCredentialProjection::Target(target), plan)
     };
     let checked_at = parse_wire(UtcTimestamp::parse(device_store::utc_now()))?;
     let expires_at = parse_wire(UtcTimestamp::parse(
         "2099-01-01T00:00:00.000Z".to_string(),
     ))?;
-    SecretApplyReadiness::checked_from_authority(SecretApplyReadinessRepr::Ready {
+    let readiness = SecretApplyReadiness::checked_from_authority(SecretApplyReadinessRepr::Ready {
         context: SecretApplyReadinessContext {
             schema_version: SchemaVersionV1,
             operation_id: SecretOperationId::generate(),
@@ -1018,7 +999,9 @@ pub(crate) fn check_secret_apply_readiness_from_store(
             checked_at,
             expires_at,
         },
-    })
+    })?;
+    let _plan = plan;
+    Ok(readiness)
 }
 
 

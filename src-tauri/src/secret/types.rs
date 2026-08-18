@@ -1,7 +1,12 @@
 use chrono::{DateTime, SecondsFormat, Utc};
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
+use sha2::{Digest, Sha256};
 use std::{fmt, hash::Hash};
 use uuid::{Variant, Version, Uuid};
+
+const CANDIDATE_ACTIVATION_DIGEST_PREFIX: &[u8] = b"fyagent.secret.candidate-activation.v1\n";
+const STAGED_IMPORT_DIGEST_PREFIX: &[u8] = b"fyagent.secret.staged-import-activation.v1\n";
+const APPLY_PROJECTION_DIGEST_PREFIX: &[u8] = b"fyagent.secret.apply-projection.v1\n";
 
 const JS_SAFE_INTEGER_MAX: u64 = 9_007_199_254_740_991;
 
@@ -2617,7 +2622,14 @@ impl SecretCandidateActivationProjection {
             != SecretCandidateKind::LegacyScrubExistingBinding
             || repr.comparison_policy
                 == LegacyActivationComparisonPolicy::CandidateEquality;
-        if owner_sets_match && policy_matches && impact_matches && fixed_scrub_policy {
+        let digest_matches = hash_candidate_activation_projection(&repr)
+            .is_ok_and(|expected| expected == repr.projection_digest);
+        if owner_sets_match
+            && policy_matches
+            && impact_matches
+            && fixed_scrub_policy
+            && digest_matches
+        {
             Ok(Self(repr))
         } else {
             Err(WireValidationError("invalid activation projection"))
@@ -2669,6 +2681,107 @@ impl<'de> Deserialize<'de> for SecretCandidateActivationProjection {
 wire_enum!(SecretCandidateActivationOperation { SecretCandidateActivation });
 wire_enum!(StagedSecretImportActivationOperation { StagedSecretImportActivation });
 wire_enum!(CodexProviderApplyOperation { CodexProviderApply });
+
+fn rfc8785_escape_string(value: &str, out: &mut String) {
+    out.push('"');
+    for ch in value.chars() {
+        match ch {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\u{08}' => out.push_str("\\b"),
+            '\u{0c}' => out.push_str("\\f"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 => {
+                out.push_str(&format!("\\u{:04x}", c as u32));
+            }
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+}
+
+fn rfc8785_write(value: &serde_json::Value, out: &mut String) -> Result<(), WireValidationError> {
+    match value {
+        serde_json::Value::Null => out.push_str("null"),
+        serde_json::Value::Bool(true) => out.push_str("true"),
+        serde_json::Value::Bool(false) => out.push_str("false"),
+        serde_json::Value::Number(number) => {
+            if let Some(unsigned) = number.as_u64() {
+                out.push_str(&unsigned.to_string());
+            } else if let Some(signed) = number.as_i64() {
+                out.push_str(&signed.to_string());
+            } else {
+                return Err(WireValidationError("projection digest forbids non-integer numbers"));
+            }
+        }
+        serde_json::Value::String(text) => rfc8785_escape_string(text, out),
+        serde_json::Value::Array(items) => {
+            out.push('[');
+            for (index, item) in items.iter().enumerate() {
+                if index > 0 {
+                    out.push(',');
+                }
+                rfc8785_write(item, out)?;
+            }
+            out.push(']');
+        }
+        serde_json::Value::Object(map) => {
+            let mut keys: Vec<&String> = map.keys().collect();
+            keys.sort();
+            out.push('{');
+            for (index, key) in keys.iter().enumerate() {
+                if index > 0 {
+                    out.push(',');
+                }
+                rfc8785_escape_string(key, out);
+                out.push(':');
+                rfc8785_write(&map[*key], out)?;
+            }
+            out.push('}');
+        }
+    }
+    Ok(())
+}
+
+fn hash_projection_value(
+    prefix: &[u8],
+    value: &serde_json::Value,
+) -> Result<SecretProjectionDigest, WireValidationError> {
+    let mut object = match value {
+        serde_json::Value::Object(map) => map.clone(),
+        _ => return Err(WireValidationError("projection must be an object")),
+    };
+    object.remove("projectionDigest");
+    let mut canonical = String::new();
+    rfc8785_write(&serde_json::Value::Object(object), &mut canonical)?;
+    let mut hasher = Sha256::new();
+    hasher.update(prefix);
+    hasher.update(canonical.as_bytes());
+    SecretProjectionDigest::parse(
+        hasher
+            .finalize()
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect(),
+    )
+}
+
+fn hash_serializable_projection<T: Serialize>(
+    prefix: &[u8],
+    value: &T,
+) -> Result<SecretProjectionDigest, WireValidationError> {
+    let json = serde_json::to_value(value)
+        .map_err(|_| WireValidationError("projection digest serialization failed"))?;
+    hash_projection_value(prefix, &json)
+}
+
+fn hash_candidate_activation_projection(
+    repr: &SecretCandidateActivationProjectionRepr,
+) -> Result<SecretProjectionDigest, WireValidationError> {
+    hash_serializable_projection(CANDIDATE_ACTIVATION_DIGEST_PREFIX, repr)
+}
 
 #[derive(Clone, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
@@ -2766,7 +2879,9 @@ impl StagedSecretImportActivationProjection {
                 LegacyActivationComparisonImpact::ExplicitReplacement { .. },
             )
         );
-        if exact_count && owner_matches && impact_matches {
+        let digest_matches = hash_staged_import_projection(&repr)
+            .is_ok_and(|expected| expected == repr.projection_digest);
+        if exact_count && owner_matches && impact_matches && digest_matches {
             Ok(Self(repr))
         } else {
             Err(WireValidationError("invalid staged import activation projection"))
@@ -3067,8 +3182,45 @@ impl SecretApplyPlanProjection {
             let _ = rollback.0.role;
         }
         let _ = repr.target.0.role;
-        Ok(Self(repr))
+        let expected = hash_apply_plan_projection(&repr)?;
+        if expected == repr.projection_digest {
+            Ok(Self(repr))
+        } else {
+            Err(WireValidationError("invalid apply plan projection"))
+        }
     }
+
+    pub(in crate::secret) fn projection_digest(&self) -> &SecretProjectionDigest {
+        &self.0.projection_digest
+    }
+}
+
+fn hash_apply_plan_projection(
+    repr: &SecretApplyPlanProjectionRepr,
+) -> Result<SecretProjectionDigest, WireValidationError> {
+    hash_serializable_projection(APPLY_PROJECTION_DIGEST_PREFIX, repr)
+}
+
+fn mint_apply_plan_projection(
+    target: SecretApplyTargetProjection,
+    rollback: Option<SecretApplyRollbackProjection>,
+) -> Result<SecretApplyPlanProjection, WireValidationError> {
+    let mut body = SecretApplyPlanProjectionRepr {
+        contract_version: SecretContractVersionV1::V1,
+        operation: CodexProviderApplyOperation::CodexProviderApply,
+        target,
+        rollback,
+        projection_digest: SecretProjectionDigest::parse("cd".repeat(32))
+            .map_err(|_| WireValidationError("invalid apply plan projection"))?,
+    };
+    body.projection_digest = hash_apply_plan_projection(&body)?;
+    SecretApplyPlanProjection::validate_repr(body)
+}
+
+fn hash_staged_import_projection(
+    repr: &StagedSecretImportActivationProjectionRepr,
+) -> Result<SecretProjectionDigest, WireValidationError> {
+    hash_serializable_projection(STAGED_IMPORT_DIGEST_PREFIX, repr)
 }
 
 impl Serialize for SecretApplyPlanProjection {
@@ -5585,7 +5737,7 @@ fn knife4_activation_repr(
     bindings: Vec<OwnerBindingExpectation>,
 ) -> SecretCandidateActivationProjectionRepr {
     let backend_instance_id = SecretBackendInstanceId::generate();
-    SecretCandidateActivationProjectionRepr {
+    let mut body = SecretCandidateActivationProjectionRepr {
         contract_version: SecretContractVersionV1::V1,
         operation: SecretCandidateActivationOperation::SecretCandidateActivation,
         candidate_id: SecretCandidateId::generate(),
@@ -5621,7 +5773,10 @@ fn knife4_activation_repr(
         },
         old_record_delete: SecretActivationOldRecordDeleteExpectation::NotApplicable,
         projection_digest: SecretProjectionDigest::parse("cd".repeat(32)).expect("digest"),
-    }
+    };
+    body.projection_digest =
+        hash_candidate_activation_projection(&body).expect("activation digest");
+    body
 }
 
 #[test]
@@ -5796,6 +5951,7 @@ fn secret_stage_result_checked_from_matching_snapshot_with_null_impact() {
     .expect("null impact is allowed");
 }
 
+#[cfg(test)]
 fn knife9_apply_target_repr(count: u32) -> SecretApplyTargetProjectionRepr {
     let owner = knife4_owner("owner-apply-1");
     SecretApplyTargetProjectionRepr {
@@ -5833,14 +5989,15 @@ fn secret_apply_target_validate_repr_zero_count_fails_closed() {
 #[test]
 fn secret_apply_plan_validate_repr_from_d2_target() {
     let target = SecretApplyTargetProjection::validate_repr(knife9_apply_target_repr(1)).expect("target");
-    SecretApplyPlanProjection::validate_repr(SecretApplyPlanProjectionRepr {
+    let mut body = SecretApplyPlanProjectionRepr {
         contract_version: SecretContractVersionV1::V1,
         operation: CodexProviderApplyOperation::CodexProviderApply,
         target,
         rollback: None,
         projection_digest: SecretProjectionDigest::parse("cd".repeat(32)).expect("digest"),
-    })
-    .expect("plan");
+    };
+    body.projection_digest = hash_apply_plan_projection(&body).expect("apply digest");
+    SecretApplyPlanProjection::validate_repr(body).expect("plan");
 }
 
 #[test]
@@ -6019,7 +6176,7 @@ fn knife10_import_repr(owner: SecretOwner, binding_owner: SecretOwner, source_co
         structural_revision: LegacySourceStructuralRevision::parse(1).expect("src rev"),
     };
     let sources = StagedLegacySourceExpectations::validate(vec![source]).expect("staging sources");
-    StagedSecretImportActivationProjectionRepr {
+    let mut body = StagedSecretImportActivationProjectionRepr {
         contract_version: SecretContractVersionV1::V1,
         operation: StagedSecretImportActivationOperation::StagedSecretImportActivation,
         stage_id: ImportStageId::parse(format!("ist_{}", Uuid::new_v4().simple())).expect("stage"),
@@ -6044,7 +6201,9 @@ fn knife10_import_repr(owner: SecretOwner, binding_owner: SecretOwner, source_co
         capability_revision: CapabilityRevision::parse(1).expect("cap"),
         expected_live_binding: knife4_unbound_expectation(binding_owner),
         projection_digest: SecretProjectionDigest::parse("cd".repeat(32)).expect("digest"),
-    }
+    };
+    body.projection_digest = hash_staged_import_projection(&body).expect("staged digest");
+    body
 }
 
 #[test]
@@ -6079,4 +6238,135 @@ fn secret_staged_import_projection_validate_repr_count_mismatch_fails_closed() {
         ))
         .is_err()
     );
+}
+
+#[cfg(test)]
+fn digest_fixture_id(prefix: &str, fill: u8, variant_tail: u8) -> String {
+    let mut raw = [b'a'; 32];
+    raw.fill(fill);
+    raw[12] = b'4';
+    raw[16] = b'8';
+    raw[17] = variant_tail;
+    format!("{prefix}{}", String::from_utf8(raw.to_vec()).expect("ascii"))
+}
+
+#[cfg(test)]
+fn digest_fixture_activation_body(revision: u64) -> SecretCandidateActivationProjectionRepr {
+    let owner = knife4_owner("digest-owner-1");
+    let backend = SecretBackendInstanceId::parse(digest_fixture_id("sbi_", b'e', b'f')).expect("backend");
+    SecretCandidateActivationProjectionRepr {
+        contract_version: SecretContractVersionV1::V1,
+        operation: SecretCandidateActivationOperation::SecretCandidateActivation,
+        candidate_id: SecretCandidateId::parse(digest_fixture_id("scd_", b'a', b'b')).expect("candidate"),
+        candidate_revision: SecretCandidateRevision::parse(revision).expect("candidate rev"),
+        kind: SecretCandidateKind::NewBinding,
+        comparison_policy: LegacyActivationComparisonPolicy::ExplicitReplacement,
+        comparison_impact: LegacyActivationComparisonImpact::ExplicitReplacement {
+            user_meaning: ReplaceExistingCredentialMeaning::ReplaceExistingCredential,
+            affected_source_count: 0,
+            replaces_bound_binding: false,
+        },
+        secret_ref: SecretRef::parse(digest_fixture_id("sec_", b'c', b'd')).expect("ref"),
+        purpose: SecretPurpose::CodexApiKey,
+        record_revision: SecretRecordRevision::parse(1).expect("record"),
+        backend_instance_id: backend.clone(),
+        backend_generation: SecretBackendGeneration::parse(1).expect("generation"),
+        device_binding_generation: DeviceBindingGeneration::parse(1).expect("device"),
+        capability_revision: CapabilityRevision::parse(1).expect("capability"),
+        target_owners: vec![owner.clone()],
+        expected_bindings: vec![knife4_unbound_expectation(owner)],
+        legacy_sources_to_scrub: CurrentLegacySourceExpectations::checked_from_codex_inventory_bridge(
+            Vec::new(),
+        )
+        .expect("empty scrub"),
+        candidate_read: SecretActivationCandidateReadExpectation {
+            operation: ActivationCandidateReadOperation::ResolveForApply,
+            scope: ActivationCandidateReadScope::ActivationCandidateCompare,
+            backend_instance_id: backend,
+            backend_generation: SecretBackendGeneration::parse(1).expect("generation"),
+            device_binding_generation: DeviceBindingGeneration::parse(1).expect("device"),
+            capability_revision: CapabilityRevision::parse(1).expect("capability"),
+            confirmation: PhysicalConfirmation::Never,
+        },
+        old_record_delete: SecretActivationOldRecordDeleteExpectation::NotApplicable,
+        projection_digest: SecretProjectionDigest::parse("cd".repeat(32)).expect("placeholder"),
+    }
+}
+
+#[test]
+fn secret_projection_digest_is_stable_lowercase_hex_without_sha256_prefix() {
+    let first = hash_candidate_activation_projection(&digest_fixture_activation_body(1))
+        .expect("first hash");
+    let second = hash_candidate_activation_projection(&digest_fixture_activation_body(1))
+        .expect("second hash");
+    assert_eq!(first.as_str(), second.as_str());
+    assert_eq!(first.as_str().len(), 64);
+    assert!(first.as_str().bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)));
+    assert!(!first.as_str().starts_with("sha256:"));
+    assert!(!first.as_str().contains(':'));
+}
+
+#[test]
+fn secret_projection_digest_changes_when_contract_field_changes() {
+    let base = hash_candidate_activation_projection(&digest_fixture_activation_body(1))
+        .expect("base");
+    let changed = hash_candidate_activation_projection(&digest_fixture_activation_body(2))
+        .expect("changed");
+    assert_ne!(base.as_str(), changed.as_str());
+}
+
+#[test]
+fn secret_activation_projection_rejects_unrelated_digest() {
+    assert!(
+        SecretCandidateActivationProjection::validate_repr(digest_fixture_activation_body(1))
+            .is_err()
+    );
+}
+
+#[test]
+fn secret_apply_plan_digest_is_stable_and_rejects_placeholder() {
+    let target = SecretApplyTargetProjection::validate_repr(knife9_apply_target_repr(1)).expect("target");
+    let placeholder = SecretApplyPlanProjectionRepr {
+        contract_version: SecretContractVersionV1::V1,
+        operation: CodexProviderApplyOperation::CodexProviderApply,
+        target: target.clone(),
+        rollback: None,
+        projection_digest: SecretProjectionDigest::parse("cd".repeat(32)).expect("placeholder"),
+    };
+    let first = hash_apply_plan_projection(&placeholder).expect("first");
+    let second = hash_apply_plan_projection(&placeholder).expect("second");
+    assert_eq!(first.as_str(), second.as_str());
+    assert!(!first.as_str().contains(':'));
+    assert!(SecretApplyPlanProjection::validate_repr(placeholder).is_err());
+}
+
+#[test]
+fn secret_mint_apply_plan_projection_matches_hasher() {
+    let target = SecretApplyTargetProjection::validate_repr(knife9_apply_target_repr(1)).expect("target");
+    let plan = mint_apply_plan_projection(target.clone(), None).expect("mint");
+    let mut body = SecretApplyPlanProjectionRepr {
+        contract_version: SecretContractVersionV1::V1,
+        operation: CodexProviderApplyOperation::CodexProviderApply,
+        target,
+        rollback: None,
+        projection_digest: SecretProjectionDigest::parse("cd".repeat(32)).expect("placeholder"),
+    };
+    body.projection_digest = hash_apply_plan_projection(&body).expect("hash");
+    assert_eq!(plan.projection_digest().as_str(), body.projection_digest.as_str());
+    assert_eq!(plan.projection_digest().as_str().len(), 64);
+}
+
+#[test]
+fn secret_staged_import_digest_rejects_cross_decode_and_placeholder() {
+    let owner = knife4_owner("owner-import-1");
+    let valid = knife10_import_repr(owner.clone(), owner, 1);
+    let first = hash_staged_import_projection(&valid).expect("first");
+    let second = hash_staged_import_projection(&valid).expect("second");
+    assert_eq!(first.as_str(), second.as_str());
+    let mut placeholder = valid;
+    placeholder.projection_digest =
+        SecretProjectionDigest::parse("cd".repeat(32)).expect("placeholder");
+    assert!(StagedSecretImportActivationProjection::validate_repr(placeholder).is_err());
+    let activation = serde_json::to_value(digest_fixture_activation_body(1)).expect("json");
+    assert!(serde_json::from_value::<StagedSecretImportActivationProjection>(activation).is_err());
 }
