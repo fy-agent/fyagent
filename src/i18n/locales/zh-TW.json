@@ -3280,5 +3280,25 @@
     "expiredHint": "請執行 {{tool}} 命令重新整理登入",
     "queryFailed": "查詢失敗",
     "refresh": "重新整理"
+  },
+  "agentInstall": {
+    "tab": "Agent 目錄",
+    "title": "首波 Agent 安裝契約",
+    "subtitle": "四層獨立判斷。未知不等於可安裝。",
+    "source": "來源與許可",
+    "integrity": "套件完整性",
+    "preflight": "環境預檢",
+    "plan": "安裝計畫",
+    "installable": "可安裝",
+    "notInstallable": "不可安裝",
+    "needsReconfirm": "需重新確認",
+    "openGuide": "開啟官方入口",
+    "recheck": "重新檢查",
+    "regeneratePlan": "重新產生計畫",
+    "install": "安裝",
+    "copySummary": "複製契約 JSON",
+    "warnContinue": "可繼續，但請先看到警告",
+    "unknownBlocks": "尚未確認",
+    "stalePlan": "計畫已變化，安裝前請重新產生。"
   }
 }

@@ -13,6 +13,7 @@ export { proxyApi } from "./proxy";
 export { openclawApi } from "./openclaw";
 export { sessionsApi } from "./sessions";
 export { workspaceApi } from "./workspace";
+export { agentInstallApi } from "./agent-install";
 export { codexDesktopApi } from "./codex-desktop";
 export { getWorkBuddyError, workBuddyApi } from "./workbuddy";
 export * as configApi from "./config";

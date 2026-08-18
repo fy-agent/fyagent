@@ -1,3 +1,4 @@
+pub mod agent_install;
 mod app_config;
 mod app_store;
 mod auto_launch;
@@ -2220,6 +2221,16 @@ pub fn run() {
             commands::codex_desktop_cancel_install,
             commands::codex_desktop_launch,
             commands::codex_desktop_open_log_directory,
+            commands::agent_install_list_catalog,
+            commands::agent_install_get_contract,
+            commands::agent_install_refresh_preflight,
+            commands::agent_install_create_plan,
+            commands::agent_install_reconfirm_plan,
+            commands::agent_install_start_install,
+            commands::agent_install_get_job,
+            commands::agent_install_cancel_install,
+            commands::agent_install_probe_health,
+            commands::agent_install_open_official_guide,
         ]);
 
     let context = tauri::generate_context!();
@@ -3667,6 +3678,15 @@ mod tests {
         assert_eq!(
             handler.matches("commands::codex_desktop_").count(),
             ORDINARY_COMMANDS.len()
+        );
+        assert!(
+            handler.contains("commands::agent_install_start_install"),
+            "agent install commands must register beside, not inside, Codex Desktop"
+        );
+        assert_eq!(
+            handler.matches("commands::agent_install_").count(),
+            10,
+            "agent_install IPC is a sibling surface and must not absorb Codex Desktop commands"
         );
         for command in ORDINARY_COMMANDS {
             assert!(

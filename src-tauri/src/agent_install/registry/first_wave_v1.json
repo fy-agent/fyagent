@@ -1,0 +1,90 @@
+{
+  "schema": "fyagent-agent-install-registry-v1",
+  "checked_at": "2026-08-12T00:00:00Z",
+  "agents": [
+    {
+      "id": "qoderwork-cn",
+      "official_landing_url": "https://qoder.com.cn/qoderwork",
+      "legal_entity": "通义云启（杭州）信息技术有限公司",
+      "license_url": "https://qoder.com.cn/product-service",
+      "license_scope": "needs_vendor_confirmation",
+      "package_source_kind": "documented",
+      "cache_allowed": false,
+      "redistribution_allowed": false,
+      "install_mode": "official_guide",
+      "evidence_url": "https://qoder.com.cn/qoderwork",
+      "written_permission_needed": true,
+      "source_state": "ok"
+    },
+    {
+      "id": "dingtalk-wukong",
+      "official_landing_url": "https://wukong.dingtalk.com/",
+      "legal_entity": "钉钉",
+      "license_url": "https://wukong.dingtalk.com/docs/quick-start/install-and-launch/",
+      "license_scope": "needs_vendor_confirmation",
+      "package_source_kind": "dynamic",
+      "cache_allowed": false,
+      "redistribution_allowed": false,
+      "install_mode": "official_guide",
+      "evidence_url": "https://wukong.dingtalk.com/",
+      "written_permission_needed": true,
+      "source_state": "ok"
+    },
+    {
+      "id": "workbuddy",
+      "official_landing_url": "https://www.workbuddy.cn/work/",
+      "legal_entity": "腾讯云",
+      "license_url": "https://cloud.tencent.com/document/product/301/106125",
+      "license_scope": "needs_vendor_confirmation",
+      "package_source_kind": "documented",
+      "cache_allowed": false,
+      "redistribution_allowed": false,
+      "install_mode": "official_guide",
+      "evidence_url": "https://www.workbuddy.cn/work/",
+      "written_permission_needed": true,
+      "source_state": "ok"
+    },
+    {
+      "id": "trae-work",
+      "official_landing_url": "https://www.trae.cn/",
+      "legal_entity": "TRAE",
+      "license_url": "https://www.trae.cn/terms-of-service/cn",
+      "license_scope": "restricted_non_commercial",
+      "package_source_kind": "dynamic",
+      "cache_allowed": false,
+      "redistribution_allowed": false,
+      "install_mode": "official_guide",
+      "evidence_url": "https://www.trae.cn/download",
+      "written_permission_needed": true,
+      "source_state": "ok"
+    },
+    {
+      "id": "codex-cli",
+      "official_landing_url": "https://github.com/openai/codex",
+      "legal_entity": "OpenAI",
+      "license_url": "https://github.com/openai/codex/blob/main/LICENSE",
+      "license_scope": "public_open_source",
+      "package_source_kind": "package_manager",
+      "cache_allowed": true,
+      "redistribution_allowed": true,
+      "install_mode": "package_manager",
+      "evidence_url": "https://github.com/openai/codex/blob/main/LICENSE",
+      "written_permission_needed": false,
+      "source_state": "ok"
+    },
+    {
+      "id": "claude-code",
+      "official_landing_url": "https://code.claude.com/docs/en/installation",
+      "legal_entity": "Anthropic PBC",
+      "license_url": "https://code.claude.com/docs/en/installation",
+      "license_scope": "restricted_non_commercial",
+      "package_source_kind": "documented",
+      "cache_allowed": false,
+      "redistribution_allowed": false,
+      "install_mode": "native_verified",
+      "evidence_url": "https://code.claude.com/docs/en/installation",
+      "written_permission_needed": true,
+      "source_state": "ok"
+    }
+  ]
+}

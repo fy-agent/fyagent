@@ -3280,5 +3280,25 @@
       "copied": "错误详情已复制",
       "copyFailed": "无法复制错误详情"
     }
+  },
+  "agentInstall": {
+    "tab": "Agent 目录",
+    "title": "首波 Agent 安装契约",
+    "subtitle": "四层独立判断。未知不等于可安装。",
+    "source": "来源与许可",
+    "integrity": "包完整性",
+    "preflight": "环境预检",
+    "plan": "安装计划",
+    "installable": "可安装",
+    "notInstallable": "不可安装",
+    "needsReconfirm": "需重确认",
+    "openGuide": "打开官方入口",
+    "recheck": "重新检查",
+    "regeneratePlan": "重新生成计划",
+    "install": "安装",
+    "copySummary": "复制契约 JSON",
+    "warnContinue": "可继续，但请先看到警告",
+    "unknownBlocks": "尚未确认",
+    "stalePlan": "计划已变化，安装前请重新生成。"
   }
 }

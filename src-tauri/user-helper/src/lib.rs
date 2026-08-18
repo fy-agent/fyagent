@@ -15,7 +15,8 @@ pub use bridge_control::{
     BRIDGE_CONTROL_VERSION, BRIDGE_OPERATION_ID_BYTES,
 };
 pub use cli::{
-    parse_cli_args, CanonicalJobId, CliError, InstallRequest, PipeNonce, INSTALL_ACTION,
+    parse_cli_args, CanonicalJobId, CliError, HelperAction, InstallRequest, PipeNonce,
+    INSTALL_ACTION, MACHINE_ACTION,
 };
 pub use layout::{
     admission_event_name, cancel_event_name, derive_install_layout, InstallLayout, LayoutError,

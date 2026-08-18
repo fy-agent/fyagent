@@ -3280,5 +3280,25 @@
       "copied": "Error details copied",
       "copyFailed": "Could not copy error details"
     }
+  },
+  "agentInstall": {
+    "tab": "Agent catalog",
+    "title": "First-wave Agent install contract",
+    "subtitle": "Four independent layers. Unknown never means installable.",
+    "source": "Source and license",
+    "integrity": "Package integrity",
+    "preflight": "Environment preflight",
+    "plan": "Install plan",
+    "installable": "Installable",
+    "notInstallable": "Not installable",
+    "needsReconfirm": "Needs reconfirm",
+    "openGuide": "Open official guide",
+    "recheck": "Recheck",
+    "regeneratePlan": "Regenerate plan",
+    "install": "Install",
+    "copySummary": "Copy contract JSON",
+    "warnContinue": "Can continue with a visible warning",
+    "unknownBlocks": "Not confirmed yet",
+    "stalePlan": "Plan changed. Regenerate before install."
   }
 }

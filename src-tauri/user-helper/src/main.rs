@@ -4,9 +4,9 @@
 
 use std::process::ExitCode;
 
-use fyagent_user_helper::parse_cli_args;
 #[cfg(target_os = "windows")]
 use fyagent_user_helper::SETTLED_FAILURE_EXIT_CODE;
+use fyagent_user_helper::{parse_cli_args, HelperAction};
 
 #[cfg(target_os = "windows")]
 mod windows;
@@ -24,6 +24,10 @@ fn main() -> ExitCode {
 
     #[cfg(target_os = "windows")]
     {
+        if request.action() != HelperAction::CodexMsix {
+            eprintln!("fyagent-user-helper: unknown machine payload does not execute");
+            return ExitCode::from(2);
+        }
         match windows::run_install(&request) {
             Ok(()) => ExitCode::SUCCESS,
             Err(error) => {

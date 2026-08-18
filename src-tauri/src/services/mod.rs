@@ -1,3 +1,4 @@
+pub mod agent_install;
 pub mod balance;
 pub mod codex_desktop;
 pub mod codex_oauth_models;
@@ -35,6 +36,7 @@ pub mod webdav_auto_sync;
 pub mod webdav_sync;
 pub mod workbuddy;
 
+pub use agent_install::AgentInstallService;
 pub use codex_desktop::CodexDesktopService;
 pub use config::ConfigService;
 pub use mcp::McpService;

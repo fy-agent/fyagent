@@ -1,6 +1,6 @@
 use crate::codex_desktop_runtime::production_service;
 use crate::database::Database;
-use crate::services::{CodexDesktopService, ProxyService, UsageCache};
+use crate::services::{AgentInstallService, CodexDesktopService, ProxyService, UsageCache};
 use std::sync::Arc;
 
 /// 全局应用状态
@@ -11,6 +11,7 @@ pub struct AppState {
     /// Process-local installer state. Its factory is inert: no metadata or
     /// package I/O is performed while constructing ordinary application state.
     pub codex_desktop_service: Arc<CodexDesktopService>,
+    pub agent_install_service: Arc<AgentInstallService>,
 }
 
 impl AppState {
@@ -23,6 +24,7 @@ impl AppState {
             proxy_service,
             usage_cache: Arc::new(UsageCache::new()),
             codex_desktop_service: Arc::new(production_service()),
+            agent_install_service: Arc::new(AgentInstallService::new()),
         }
     }
 }

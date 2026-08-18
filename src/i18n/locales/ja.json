@@ -3280,5 +3280,25 @@
     "expiredHint": "{{tool}}コマンドを実行してログインを更新してください",
     "queryFailed": "クエリに失敗しました",
     "refresh": "更新"
+  },
+  "agentInstall": {
+    "tab": "Agent カタログ",
+    "title": "第一波 Agent インストール契約",
+    "subtitle": "4層は独立しています。unknown はインストール可能ではありません。",
+    "source": "提供元とライセンス",
+    "integrity": "パッケージ完全性",
+    "preflight": "環境事前確認",
+    "plan": "インストール計画",
+    "installable": "インストール可",
+    "notInstallable": "インストール不可",
+    "needsReconfirm": "再確認が必要",
+    "openGuide": "公式ガイドを開く",
+    "recheck": "再検査",
+    "regeneratePlan": "計画を再生成",
+    "install": "インストール",
+    "copySummary": "契約 JSON をコピー",
+    "warnContinue": "警告付きで続行できます",
+    "unknownBlocks": "未確認",
+    "stalePlan": "計画が変わりました。インストール前に再生成してください。"
   }
 }

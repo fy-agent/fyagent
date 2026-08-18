@@ -129,12 +129,14 @@ describe("Codex current-user helper static contract", () => {
 
   it("accepts only the fixed action, canonical job ID, and pipe nonce", () => {
     expect(cli).toContain('INSTALL_ACTION: &str = "codex-msix-install"');
+    expect(cli).toContain('MACHINE_ACTION: &str = "agent-machine-install"');
     expect(cli).toContain('JOB_ID_FLAG: &str = "--job-id"');
     expect(cli).toContain('PIPE_FLAG: &str = "--pipe"');
     expect(cli).toMatch(/PIPE_NONCE_BYTES:\s*usize\s*=\s*64\s*;/u);
     expect(cli).toMatch(/JOB_ID_BYTES:\s*usize\s*=\s*36\s*;/u);
     expect(cli).toContain("Vec::with_capacity(5)");
-    expect(cli).toMatch(/if raw\[0\] != INSTALL_ACTION/u);
+    expect(cli).toMatch(/INSTALL_ACTION => HelperAction::CodexMsix/u);
+    expect(cli).toMatch(/MACHINE_ACTION => HelperAction::AgentMachine/u);
     expect(cli).toMatch(/if raw\[1\] != JOB_ID_FLAG/u);
     expect(cli).toMatch(/if raw\[3\] != PIPE_FLAG/u);
 

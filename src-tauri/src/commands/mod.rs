@@ -1,5 +1,6 @@
 #![allow(non_snake_case)]
 
+mod agent_install;
 mod auth;
 mod balance;
 mod codex_desktop;
@@ -39,6 +40,7 @@ mod webdav_sync;
 mod workbuddy;
 mod workspace;
 
+pub use agent_install::*;
 pub use auth::*;
 pub use balance::*;
 pub use codex_desktop::*;

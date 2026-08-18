@@ -1,6 +1,7 @@
 use std::{ffi::OsString, fmt};
 
 pub const INSTALL_ACTION: &str = "codex-msix-install";
+pub const MACHINE_ACTION: &str = "agent-machine-install";
 const JOB_ID_FLAG: &str = "--job-id";
 const PIPE_FLAG: &str = "--pipe";
 const JOB_ID_BYTES: usize = 36;
@@ -57,12 +58,23 @@ impl fmt::Debug for PipeNonce {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HelperAction {
+    CodexMsix,
+    AgentMachine,
+}
+
 pub struct InstallRequest {
+    action: HelperAction,
     job_id: CanonicalJobId,
     pipe_nonce: PipeNonce,
 }
 
 impl InstallRequest {
+    pub fn action(&self) -> HelperAction {
+        self.action
+    }
+
     pub fn job_id(&self) -> &CanonicalJobId {
         &self.job_id
     }
@@ -76,6 +88,7 @@ impl fmt::Debug for InstallRequest {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("InstallRequest")
+            .field("action", &self.action)
             .field("job_id", &self.job_id)
             .field("pipe_nonce", &self.pipe_nonce)
             .finish()
@@ -138,9 +151,11 @@ where
         return Err(CliError::WrongArgumentCount);
     }
 
-    if raw[0] != INSTALL_ACTION {
-        return Err(CliError::UnknownAction);
-    }
+    let action = match raw[0].as_str() {
+        INSTALL_ACTION => HelperAction::CodexMsix,
+        MACHINE_ACTION => HelperAction::AgentMachine,
+        _ => return Err(CliError::UnknownAction),
+    };
     if raw[1] != JOB_ID_FLAG {
         return Err(CliError::ExpectedJobIdFlag);
     }
@@ -150,7 +165,11 @@ where
     }
     let pipe_nonce = PipeNonce::parse(&raw[4])?;
 
-    Ok(InstallRequest { job_id, pipe_nonce })
+    Ok(InstallRequest {
+        action,
+        job_id,
+        pipe_nonce,
+    })
 }
 
 fn is_canonical_lowercase_uuid(value: &[u8]) -> bool {
@@ -181,8 +200,36 @@ mod tests {
     #[test]
     fn accepts_only_the_exact_cli_shape() {
         let request = parse_cli_args(valid_args()).expect("the exact helper CLI must parse");
+        assert_eq!(request.action(), HelperAction::CodexMsix);
         assert_eq!(request.job_id().as_str(), JOB_ID);
         assert_eq!(request.pipe_nonce().as_str(), NONCE);
+    }
+
+    #[test]
+    fn accepts_agent_machine_install_exact_shape() {
+        let args = [MACHINE_ACTION, JOB_ID_FLAG, JOB_ID, PIPE_FLAG, NONCE];
+        let request = parse_cli_args(args).expect("second helper verb must parse");
+        assert_eq!(request.action(), HelperAction::AgentMachine);
+    }
+
+    #[test]
+    fn rejects_mixed_or_reordered_machine_flags() {
+        let reordered = [MACHINE_ACTION, PIPE_FLAG, NONCE, JOB_ID_FLAG, JOB_ID];
+        assert_eq!(
+            parse_cli_args(reordered).unwrap_err(),
+            CliError::ExpectedJobIdFlag
+        );
+    }
+
+    #[test]
+    fn rejects_path_command_uri_scope_on_machine_action() {
+        for option in ["--path", "--command", "--uri", "--scope"] {
+            let args = [MACHINE_ACTION, option, JOB_ID, PIPE_FLAG, NONCE];
+            assert_eq!(
+                parse_cli_args(args).unwrap_err(),
+                CliError::ExpectedJobIdFlag
+            );
+        }
     }
 
     #[test]

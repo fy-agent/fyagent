@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FyAgent 安装决策面板 - 原型</title>
+  <style>
+    :root {
+      --bg: #f6f5ff;
+      --panel: #ffffff;
+      --ink: #171717;
+      --muted: #6d6a7b;
+      --ok: #0f8a4d;
+      --warn: #b26f00;
+      --bad: #b02020;
+      --line: #e6e3f1;
+      --chip: #f4f3fa;
+      --pill: #efeefe;
+      --shadow: 0 12px 30px rgba(34, 31, 72, 0.10);
+      --accent: #5f4dd3;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: "Inter", "PingFang SC", "Microsoft Yahei", -apple-system, BlinkMacSystemFont, sans-serif; background: radial-gradient(circle at top right, #ffffff, #f5f3ff 33%, #f2f0ff 100%); color: var(--ink); }
+    .frame { max-width: 1180px; margin: 0 auto; padding: 20px; display: grid; gap: 18px; }
+    .title { font-size: 26px; letter-spacing: 0.3px; color: #2b2860; margin: 0 0 4px; }
+    .subtitle { color: var(--muted); margin: 0 0 12px; }
+    .grid { display: grid; grid-template-columns: 1.3fr 1fr; gap: 16px; }
+    .card { background: var(--panel); border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--shadow); padding: 18px; }
+    .card h2 { margin: 0 0 12px; font-size: 20px; }
+    .badge { display: inline-flex; align-items: center; border-radius: 999px; padding: 4px 10px; font-size: 12px; font-weight: 600; }
+    .badge.ok { background: rgba(15,138,77,0.1); color: var(--ok); }
+    .badge.warn { background: rgba(178,111,0,0.12); color: var(--warn); }
+    .badge.bad { background: rgba(176,32,32,0.12); color: var(--bad); }
+    .row { display: grid; gap: 10px; }
+    .kv { display: flex; justify-content: space-between; gap: 8px; padding: 8px 10px; border: 1px solid #f0edf8; border-radius: 10px; background: #fbfaff; }
+    .kv .k { color: #6b6781; font-size: 13px; }
+    .kv .v { font-weight: 600; color: #25233d; }
+    .small { color: #625d80; font-size: 12px; line-height: 1.55; }
+    .status { display: grid; gap: 10px; margin-top: 8px; }
+    .tile { border: 1px dashed #ddd9f0; border-radius: 14px; padding: 10px; background: linear-gradient(135deg, #ffffff, #faf9ff); }
+    .tag-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 8px; }
+    .tag { border: 1px solid #e3dff2; border-radius: 999px; padding: 8px 12px; background: var(--chip); font-size: 12px; text-align: center; }
+    .plan { display: grid; gap: 8px; }
+    .step { display: grid; grid-template-columns: 26px 1fr; gap: 8px; align-items: start; }
+    .dot { width: 26px; height: 26px; border-radius: 50%; background: #efeefe; border: 1px solid #ddd7ff; display: grid; place-items: center; font-size: 12px; font-weight: 700; color: #4a3bad; }
+    .step .cardline { border-left: 3px solid #d6cff7; padding-left: 10px; }
+    .muted { color: #7a7690; }
+    .footer { margin-top: 8px; padding-top: 12px; border-top: 1px dashed #ddd7f0; color: #746ea3; font-size: 12px; }
+    .actions { display: flex; gap: 10px; }
+    .btn { border: none; border-radius: 12px; padding: 10px 12px; font-size: 14px; font-weight: 700; }
+    .btn.primary { background: #5f4dd3; color: #fff; box-shadow: 0 7px 16px rgba(95,77,211,.26);} 
+    .btn.secondary { background: #ebe8fa; color: #3a3570; }
+    .rightrail .summary { display: grid; gap: 10px; }
+    .pillwrap {display:flex; gap:8px; flex-wrap:wrap}
+    .pillwrap .pill {background: var(--pill); border:1px solid #ddd6f8; padding:4px 10px; border-radius: 999px; font-size:12px}
+    .progress {height:8px; border-radius:999px;background:#e9e5fa; overflow:hidden}
+    .progress .fill {height:100%; width:56%; background:linear-gradient(90deg,#5f4dd3,#7e6be0)}
+    .mono {font-family: Menlo, Monaco, Consolas, 'SFMono-Regular', monospace; font-size: 11px; color:#3f3a67}
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <div>
+      <h1 class="title">FyAgent 安装决策面板 - 高保真原型</h1>
+      <p class="subtitle">来源/完整性/环境预检/安装计划四层状态可视化，禁止单一绿灯替代决策。</p>
+    </div>
+
+    <div class="grid">
+      <section class="card">
+        <h2>1) Agent 条目与来源可信度</h2>
+        <span class="badge warn">LEGAL_SCOPE_NEEDS_VENDOR_CONFIRMATION</span>
+        <div class="row" style="margin-top:12px;">
+          <div class="kv"><span class="k">官方入口</span><span class="v">https://docs.claude.com/...</span></div>
+          <div class="kv"><span class="k">发布方</span><span class="v">Anthropic</span></div>
+          <div class="kv"><span class="k">许可可见性</span><span class="v">需确认（再分发未明）</span></div>
+          <div class="kv"><span class="k">镜像授权</span><span class="v">未授权</span></div>
+          <div class="kv"><span class="k">许可状态说明</span><span class="v">仅官方引导安装</span></div>
+        </div>
+
+        <div class="status">
+          <div class="tile">
+            <strong>源信息快照</strong>
+            <div class="tag-grid">
+              <div class="tag">source_state=VERIFIED_OFFICIAL_SOURCE</div>
+              <div class="tag">distribution_allowed=false</div>
+              <div class="tag">legal_scope=needs_vendor_confirmation</div>
+              <div class="tag">updated_at=2026-08-12T21:00:00Z</div>
+            </div>
+          </div>
+          <p class="small">已分离：官方入口与实际下载 host。官方文档可见不等于可镜像授权，禁止合并为“已就绪”。</p>
+        </div>
+      </section>
+
+      <section class="card rightrail">
+        <h2>2) 执行前全景进度</h2>
+        <div class="summary">
+          <div>
+            <div class="mono">Integrity / Preflight / Plan</div>
+            <div class="progress"><div class="fill"></div></div>
+            <small class="muted">当前可继续: 56%</small>
+          </div>
+          <div class="pillwrap">
+            <span class="pill">Integrity: warning</span>
+            <span class="pill">Preflight: pass</span>
+            <span class="pill">Plan: stale</span>
+          </div>
+          <div class="kv"><span class="k">最新可执行版本</span><span class="v">2.1.89.1</span></div>
+          <div class="kv"><span class="k">执行摘要</span><span class="v">2.1.89.1 · Windows x64</span></div>
+          <div class="kv"><span class="k">动作模板</span><span class="v">codex-msix-install</span></div>
+        </div>
+
+        <div class="actions" style="margin-top:10px">
+          <button class="btn primary">启动并确认快照</button>
+          <button class="btn secondary">查看证据详情</button>
+        </div>
+        <div class="footer">当任意层级变化时，plan hash 会失效，重新生成确认对话框。</div>
+      </section>
+    </div>
+
+    <section class="card">
+      <h2>3) 安装计划（非静默变更）</h2>
+      <div class="plan">
+        <div class="step"><div class="dot">1</div><div class="cardline">
+          <strong>来源与许可冻结</strong>
+          <div class="small">记录：official_landing_url / resolved_download_host / legal_scope / distribution_allowed</div>
+          <div class="small" style="margin-top:4px; color:#9b93b6;">若 legal_scope 为需要确认，按钮提示“待授权，先官方下载”。</div>
+        </div></div>
+        <div class="step"><div class="dot">2</div><div class="cardline">
+          <strong>包完整性计算</strong>
+          <div class="small">显示：vendor manifest、platform signature、撤回状态、computed_sha256、signer/时间戳</div>
+        </div></div>
+        <div class="step"><div class="dot">3</div><div class="cardline">
+          <strong>环境预检</strong>
+          <div class="small">Pass / Warning / Unknown 四态；未知以“人工确认”而非成功推进。</div>
+        </div></div>
+        <div class="step"><div class="dot">4</div><div class="cardline">
+          <strong>计划锁定与回放</strong>
+          <div class="small">确认动作后生成 snapshot_id；version/source/hash/命令模板变化时自动失效，需重签。</div>
+        </div></div>
+      </div>
+    </section>
+  </div>
+</body>
+</html>
