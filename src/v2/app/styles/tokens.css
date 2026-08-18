@@ -1,0 +1,34 @@
+:root {
+  color-scheme: dark;
+  --fy-bg: #172d43;
+  --fy-bg-top: #1d374d;
+  --fy-text: #f5f8fc;
+  --fy-text-secondary: #d1dde8;
+  --fy-text-tertiary: #a9bdcf;
+  --fy-text-disabled: #7189a0;
+  --fy-brand-blue: #28b8f1;
+  --fy-brand-cyan: #59c9d1;
+  --fy-accent: #1763ae;
+  --fy-accent-hover: #196fc4;
+  --fy-accent-text: #70beff;
+  --fy-success: #59c9d1;
+  --fy-warning: #d89a32;
+  --fy-surface: rgba(29, 55, 77, 0.74);
+  --fy-surface-strong: rgba(33, 63, 86, 0.86);
+  --fy-surface-soft: rgba(39, 70, 94, 0.74);
+  --fy-control: rgba(72, 103, 130, 0.3);
+  --fy-border: rgba(206, 224, 240, 0.18);
+  --fy-border-strong: rgba(206, 224, 240, 0.28);
+  --fy-divider: rgba(216, 232, 244, 0.18);
+  --fy-highlight: rgba(245, 248, 252, 0.14);
+  --fy-selected: rgba(25, 103, 181, 0.76);
+  --fy-selected-soft: rgba(36, 90, 136, 0.58);
+  --fy-selected-border: #70beff;
+  --fy-danger-soft: rgba(217, 107, 114, 0.14);
+  --fy-danger-text: #d96b72;
+  --fy-shadow-shell: 0 20px 64px rgba(4, 16, 30, 0.36);
+  --fy-shadow-control: 0 4px 16px rgba(4, 16, 30, 0.18);
+  --fy-focus: #70beff;
+  --fy-top-bar-height: clamp(78px, 9.75vh, 96px);
+  --fy-content-radius: 22px;
+}

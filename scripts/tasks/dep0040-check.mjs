@@ -459,15 +459,20 @@ function unexpectedWatchedReason(entry) {
   if (
     entry.name === "punycode" &&
     /^2(?:\.|$)/.test(entry.version) &&
-    hasOrderedAncestors(entry, [
+    (hasOrderedAncestors(entry, [
       ["jsdom", undefined],
       ["whatwg-url", /^14(?:\.|$)/],
       ["tr46", /^5(?:\.|$)/],
-    ])
+    ]) ||
+      hasOrderedAncestors(entry, [
+        ["eslint", /^10(?:\.|$)/],
+        ["ajv", /^6(?:\.|$)/],
+        ["uri-js", /^4(?:\.|$)/],
+      ]))
   ) {
     return undefined;
   }
-  return "watched dependency is outside the reviewed jsdom native-Fetch path";
+  return "watched dependency is outside the reviewed native-Fetch and ESLint tooling paths";
 }
 
 export function analyzeWhyGraph(document) {

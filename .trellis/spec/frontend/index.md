@@ -8,31 +8,36 @@ FyAgent. They are evidence-based reference material for changes under
 
 Before changing renderer code:
 
-1. Read the nearest relevant guideline and inspect the existing feature,
+1. For any `src/v2/**` change, read the
+   [V2 Shell, Prompt and Memory Contract](./v2-shell.md) first. It is the only exception
+   to the legacy route-placement, styling, primitive, and translation rules;
+   the guidelines below remain authoritative outside V2.
+2. Read the nearest relevant guideline and inspect the existing feature,
    primitive, and executable tests.
-2. Locate the existing Tauri API facade, query hook, type, schema, and test
+3. Locate the existing Tauri API facade, query hook, type, schema, and test
    family before creating another one.
-3. Classify state as local UI state, Context state, or backend/resource state.
-4. For user-visible text, locate the matching keys in all four registered
+4. Classify state as local UI state, Context state, or backend/resource state.
+5. For user-visible text, locate the matching keys in all four registered
    locale files before adding a literal string.
-5. For a backend payload change, inspect both the TypeScript facade and the
+6. For a backend payload change, inspect both the TypeScript facade and the
    matching `src-tauri/` serialization/command code.
-6. For an application-brand icon change, read the shared
+7. For an application-brand icon change, read the shared
    [Application Brand Asset Contract](../backend/application-brand-assets.md)
    before regenerating Tauri or About assets.
-7. For product names, storage keys, serialized markers, deep links, or public
+8. For product names, storage keys, serialized markers, deep links, or public
    source/install links, read the shared
    [Application Identity Contract](../backend/application-identity.md).
-8. Run local tooling through the shared
+9. Run local tooling through the shared
    [Development Environment Contract](../backend/development-environment.md).
-9. For Codex Provider capability/restart UI or WorkBuddy navigation, consult
-   the dedicated cross-layer note below and confirm it against current code and
-   tests; do not infer behavior from an archived feature label.
+10. For Codex Provider capability/restart UI or WorkBuddy navigation, consult
+    the dedicated cross-layer note below and confirm it against current code and
+    tests; do not infer behavior from an archived feature label.
 
 ## Guidelines
 
 | Guide                                                                      | Use it for                                                                                               |
 | -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| [V2 Shell, Prompt and Memory Contract](./v2-shell.md)                      | Isolated V2 routes, local-Agent Prompt/Memory prototypes, standalone preview, platform boundaries, and gates. |
 | [Directory Structure](./directory-structure.md)                            | Selecting the existing frontend layer and test location.                                                 |
 | [Component Guidelines](./component-guidelines.md)                          | UI primitives, props, styling, translation, and form composition.                                        |
 | [Hook Guidelines](./hook-guidelines.md)                                    | Naming, placement, effects, cleanup, and stateful hook APIs.                                             |

@@ -14,6 +14,16 @@ description = "Run strict TypeScript type checking without emitting files"
 env = { FYAGENT_TASK_EFFECT = "read-only" }
 run = "pnpm typecheck"
 
+["lint:v2"]
+description = "Lint only the isolated V2 renderer and its focused tests"
+env = { FYAGENT_TASK_EFFECT = "read-only" }
+run = "pnpm lint:v2"
+
+["typecheck:v2"]
+description = "Type-check only the isolated V2 renderer and focused tests"
+env = { FYAGENT_TASK_EFFECT = "read-only" }
+run = "pnpm typecheck:v2"
+
 [format]
 description = "Apply the repository Prettier configuration to frontend sources"
 env = { FYAGENT_TASK_EFFECT = "source-modifying" }
@@ -58,6 +68,22 @@ arg "[filters]" var=#true help="Vitest file or name filters"
 env = { FYAGENT_TASK_EFFECT = "interactive" }
 interactive = true
 run = "node scripts/tasks/frontend.mjs test-watch"
+
+["test:v2"]
+description = "Run the isolated V2 renderer unit and architecture tests"
+env = { FYAGENT_TASK_EFFECT = "read-only" }
+run = "pnpm test:v2"
+
+["test:v2:watch"]
+description = "Run isolated V2 renderer tests in interactive watch mode"
+env = { FYAGENT_TASK_EFFECT = "interactive" }
+interactive = true
+run = "pnpm test:v2:watch"
+
+["test:v2:browser"]
+description = "Run the V2 Chromium geometry and interaction smoke suite"
+env = { FYAGENT_TASK_EFFECT = "read-only" }
+run = "pnpm test:v2:browser"
 
 ["test:i18n"]
 description = "Verify locale key and schema parity"

@@ -1,0 +1,9 @@
+{"file":".trellis/spec/frontend/index.md","reason":"Verify the final V2 diff against the renderer pre-development and quality checklist."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Check strict compilation, import ownership, and stable internal types."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Verify unit, browser, desktop-shell, and evidence claims remain correctly scoped."}
+{"file":".trellis/spec/backend/development-environment.md","reason":"Confirm every reported command used the locked current-host toolchain."}
+{"file":".trellis/spec/backend/task-runner-contract.md","reason":"Validate new mise tasks, metadata, docs references, and command transport."}
+{"file":".trellis/spec/backend/application-brand-assets.md","reason":"Prove the header-only transparent mark did not alter the application icon generation contract."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Review the Tauri ready/window call path and explicit non-release boundary end to end."}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Review new helpers and dependencies for duplication and boundary leakage."}
+{"file":".trellis/spec/frontend/v2-shell.md","reason":"Verify the final renderer against the authoritative V2 Phase 1 contract."}

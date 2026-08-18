@@ -133,7 +133,7 @@ describe("DEP0040 dependency and deprecation contract", () => {
     ).toThrow("Unsupported pnpm packages entry format");
   });
 
-  it("constructs reverse paths and rejects the historical dependency chain", () => {
+  it("constructs reviewed reverse paths and rejects the historical dependency chain", () => {
     const allowed = analyzeWhyGraph([
       {
         name: "fyagent",
@@ -157,11 +157,33 @@ describe("DEP0040 dependency and deprecation contract", () => {
               },
             },
           },
+          eslint: {
+            from: "eslint",
+            version: "10.8.1",
+            dependencies: {
+              ajv: {
+                from: "ajv",
+                version: "6.15.0",
+                dependencies: {
+                  "uri-js": {
+                    from: "uri-js",
+                    version: "4.4.1",
+                    dependencies: {
+                      punycode: { from: "punycode", version: "2.3.1" },
+                    },
+                  },
+                },
+              },
+            },
+          },
         },
       },
     ]);
     expect(allowed.map((entry: { path: string }) => entry.path)).toContain(
       "fyagent -> jsdom@25.0.1 -> whatwg-url@14.2.0 -> tr46@5.1.1 -> punycode@2.3.1",
+    );
+    expect(allowed.map((entry: { path: string }) => entry.path)).toContain(
+      "fyagent -> eslint@10.8.1 -> ajv@6.15.0 -> uri-js@4.4.1 -> punycode@2.3.1",
     );
     expect(
       reconcileLockAndWhy(
@@ -202,6 +224,29 @@ describe("DEP0040 dependency and deprecation contract", () => {
               version: "1.0.0",
               dependencies: {
                 punycode: { from: "punycode", version: "2.3.1" },
+              },
+            },
+          },
+        },
+      ]),
+    ).toThrow("Unexpected watched dependency paths remain");
+
+    expect(() =>
+      analyzeWhyGraph([
+        {
+          name: "fyagent",
+          devDependencies: {
+            eslint: {
+              from: "eslint",
+              version: "10.8.1",
+              dependencies: {
+                "uri-js": {
+                  from: "uri-js",
+                  version: "4.4.1",
+                  dependencies: {
+                    punycode: { from: "punycode", version: "2.3.1" },
+                  },
+                },
               },
             },
           },

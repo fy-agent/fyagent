@@ -1,0 +1,30 @@
+.fy-primary-nav-item,
+.fy-icon-button,
+.fy-window-control,
+.fy-glass-button,
+.fy-lab-tabs [role="tab"] {
+  transition:
+    color 130ms ease,
+    background-color 150ms ease,
+    border-color 150ms ease,
+    box-shadow 150ms ease,
+    opacity 120ms ease,
+    transform 90ms ease;
+}
+
+.fy-primary-nav-item:active,
+.fy-icon-button:active,
+.fy-window-control:active,
+.fy-glass-button:active {
+  transform: translateY(1px) scale(0.985);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fy-primary-nav-item,
+  .fy-icon-button,
+  .fy-window-control,
+  .fy-glass-button,
+  .fy-lab-tabs [role="tab"] {
+    transition-duration: 0.01ms;
+  }
+}

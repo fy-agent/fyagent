@@ -4,6 +4,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -793,8 +794,8 @@ describe("fresh formal Windows verification and sealing", () => {
     );
 
     expect(probedPaths).toEqual([
-      path.resolve(input.rawAssetPath),
-      path.resolve(input.candidateAssetPath),
+      realpathSync(input.rawAssetPath),
+      realpathSync(input.candidateAssetPath),
     ]);
     expect(record).toEqual(
       fragment("x64", unsignedBytes, "unsigned", unsignedEvidence()),

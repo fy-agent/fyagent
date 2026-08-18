@@ -1,0 +1,321 @@
+.fy-app-shell {
+  position: relative;
+  background:
+    radial-gradient(
+      circle at 16% 2%,
+      rgba(41, 112, 169, 0.18),
+      transparent 30%
+    ),
+    radial-gradient(circle at 70% 0%, rgba(32, 88, 140, 0.12), transparent 34%);
+}
+
+.fy-app-shell::after {
+  position: absolute;
+  z-index: 120;
+  inset: 0;
+  border: 1px solid rgba(112, 190, 255, 0.24);
+  border-radius: 18px;
+  box-shadow: inset 0 1px 0 rgba(245, 248, 252, 0.08);
+  content: "";
+  pointer-events: none;
+}
+
+.fy-top-bar {
+  grid-template-columns:
+    minmax(180px, 308px) minmax(600px, 776px)
+    minmax(312px, 1fr);
+  padding: 0 0 0 44px;
+  border-bottom: 1px solid rgba(206, 224, 240, 0.11);
+  background: rgba(8, 31, 51, 0.22);
+}
+
+.fy-top-bar-trailing {
+  align-self: stretch;
+  gap: 20px;
+}
+
+.fy-titlebar-drag-region {
+  margin-left: 18px;
+}
+
+.fy-brand {
+  gap: 12px;
+}
+
+.fy-brand-mark {
+  width: 34px;
+  height: 34px;
+  filter: saturate(1.16) drop-shadow(0 5px 14px rgba(19, 171, 225, 0.2));
+}
+
+.fy-brand-name {
+  color: var(--fy-text);
+  font-size: clamp(18px, 1.5vw, 24px);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+
+.fy-primary-nav {
+  justify-content: space-between;
+  justify-self: center;
+  width: 100%;
+  height: 62px;
+  padding: 5px;
+  border-color: rgba(206, 224, 240, 0.34);
+  border-radius: 31px;
+  background: rgba(22, 50, 75, 0.54);
+  box-shadow:
+    inset 0 1px 0 rgba(245, 248, 252, 0.08),
+    0 10px 32px rgba(4, 16, 30, 0.14);
+  backdrop-filter: blur(28px) saturate(1.08);
+  -webkit-backdrop-filter: blur(28px) saturate(1.08);
+}
+
+.fy-primary-nav-item {
+  height: 50px;
+  padding: 0 clamp(14px, 1.55vw, 25px);
+  border-radius: 25px;
+  color: var(--fy-text-secondary);
+  font-size: clamp(14px, 1.25vw, 20px);
+  font-weight: 500;
+}
+
+.fy-primary-nav-item-selected::after {
+  display: none;
+}
+
+.fy-primary-nav-item:hover {
+  color: var(--fy-text);
+  background: rgba(72, 103, 130, 0.22);
+}
+
+.fy-primary-nav-item-selected,
+.fy-primary-nav-item-selected:hover {
+  border-color: rgba(112, 190, 255, 0.18);
+  color: var(--fy-text);
+  background: linear-gradient(
+    180deg,
+    rgba(25, 111, 211, 0.94),
+    rgba(17, 84, 174, 0.92)
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(245, 248, 252, 0.14),
+    0 8px 22px rgba(4, 33, 74, 0.28);
+}
+
+.fy-tool-cluster {
+  gap: 12px;
+}
+
+.fy-icon-button {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  color: var(--fy-text);
+}
+
+.fy-icon-button:hover {
+  border-color: var(--fy-border);
+  color: var(--fy-text);
+  background: rgba(72, 103, 130, 0.28);
+  box-shadow: var(--fy-shadow-control);
+}
+
+.fy-avatar-button {
+  position: relative;
+  width: 46px;
+  height: 46px;
+  margin: 0;
+  overflow: hidden;
+  border-color: rgba(206, 224, 240, 0.4);
+  color: transparent;
+  background:
+    radial-gradient(circle at 50% 72%, #172d43 0 15%, transparent 16%),
+    linear-gradient(
+      165deg,
+      transparent 0 42%,
+      rgba(8, 27, 44, 0.78) 43% 56%,
+      rgba(209, 221, 232, 0.42) 57% 61%,
+      rgba(20, 47, 68, 0.82) 62%
+    ),
+    radial-gradient(circle at 36% 28%, #f5f8fc, #7189a0 34%, #213f56 68%);
+  box-shadow:
+    inset 0 0 0 3px rgba(4, 16, 30, 0.44),
+    inset 0 1px 0 rgba(245, 248, 252, 0.46),
+    0 4px 16px rgba(4, 16, 30, 0.24);
+}
+
+.fy-avatar-button svg {
+  display: none;
+}
+
+.fy-window-controls {
+  align-self: stretch;
+  height: 100%;
+  overflow: visible;
+  border: 0;
+  border-left: 1px solid rgba(206, 224, 240, 0.1);
+  border-radius: 0;
+  background: rgba(4, 18, 31, 0.12);
+}
+
+.fy-window-control {
+  width: clamp(42px, 4.16vw, 66px);
+  height: 100%;
+  color: var(--fy-text-secondary);
+}
+
+.fy-window-control + .fy-window-control {
+  border-left-color: transparent;
+}
+
+.fy-window-control:hover {
+  color: var(--fy-text);
+  background: rgba(72, 103, 130, 0.26);
+}
+
+.fy-content-frame {
+  padding: 0 22px 24px;
+}
+
+.fy-content-viewport {
+  border-color: rgba(206, 224, 240, 0.16);
+  background:
+    radial-gradient(circle at 48% 6%, rgba(49, 96, 135, 0.16), transparent 36%),
+    rgba(19, 49, 73, 0.58);
+  box-shadow:
+    inset 0 1px 0 rgba(245, 248, 252, 0.06),
+    0 20px 64px rgba(4, 16, 30, 0.22);
+  backdrop-filter: blur(28px) saturate(1.06);
+  -webkit-backdrop-filter: blur(28px) saturate(1.06);
+}
+
+.fy-tooltip,
+.fy-popover {
+  border-color: var(--fy-border-strong);
+  color: var(--fy-text);
+  background: rgba(23, 45, 67, 0.96);
+  box-shadow: 0 20px 48px rgba(4, 16, 30, 0.38);
+}
+
+.fy-tooltip-arrow,
+.fy-popover-arrow {
+  fill: rgba(23, 45, 67, 0.96);
+}
+
+.fy-glass-button {
+  border-color: var(--fy-border-strong);
+  color: var(--fy-accent-text);
+  background: rgba(33, 63, 86, 0.66);
+  box-shadow:
+    inset 0 1px 0 rgba(245, 248, 252, 0.08),
+    var(--fy-shadow-control);
+}
+
+.fy-glass-button:hover {
+  border-color: var(--fy-selected-border);
+  background: rgba(39, 70, 94, 0.86);
+}
+
+@media (min-width: 1560px) {
+  .fy-top-bar-trailing {
+    gap: 30px;
+  }
+
+  .fy-tool-cluster {
+    gap: 22px;
+  }
+}
+
+@media (min-width: 1181px) and (max-width: 1559px) {
+  .fy-top-bar-trailing {
+    gap: 14px;
+  }
+
+  .fy-window-control {
+    width: 46px;
+  }
+}
+
+@media (max-width: 1180px) {
+  .fy-top-bar {
+    grid-template-columns: minmax(42px, 1fr) auto minmax(206px, 1fr);
+    padding-left: 18px;
+  }
+
+  .fy-brand-name {
+    display: none;
+  }
+
+  .fy-primary-nav {
+    width: min(49vw, 560px);
+    height: 52px;
+    padding: 4px;
+  }
+
+  .fy-primary-nav-item {
+    height: 42px;
+    padding: 0 clamp(6px, 0.8vw, 12px);
+    font-size: clamp(12px, 1.25vw, 15px);
+  }
+
+  .fy-top-bar-trailing {
+    gap: 8px;
+  }
+
+  .fy-tool-cluster {
+    gap: 2px;
+  }
+
+  .fy-icon-button {
+    width: 34px;
+    height: 34px;
+  }
+
+  .fy-avatar-button {
+    width: 34px;
+    height: 34px;
+  }
+
+  .fy-window-control {
+    width: clamp(34px, 3.7vw, 44px);
+  }
+
+  .fy-content-frame {
+    padding: 0 12px 12px;
+  }
+}
+
+@media (max-width: 920px) {
+  .fy-top-bar {
+    padding-left: 12px;
+  }
+
+  .fy-brand-mark {
+    width: 26px;
+    height: 26px;
+  }
+
+  .fy-primary-nav {
+    width: 48vw;
+  }
+
+  .fy-primary-nav-item {
+    padding: 0 5px;
+    font-size: 12px;
+  }
+
+  .fy-icon-button {
+    width: 30px;
+    height: 30px;
+  }
+
+  .fy-avatar-button {
+    width: 30px;
+    height: 30px;
+  }
+
+  .fy-window-control {
+    width: 34px;
+  }
+}

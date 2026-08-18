@@ -47,6 +47,9 @@ the approved `uv = latest` resolution is pinned in `mise.lock`.
 | `test:i18n`                     | Verify locale key and schema parity                                            | —          | read-only        |
 | `test:unit`                     | Run Vitest unit and integration tests with optional controlled filters         | [filters]  | read-only        |
 | `test:unit:watch`               | Run Vitest in interactive watch mode with optional controlled filters          | [filters]  | interactive      |
+| `test:v2`                       | Run the isolated V2 renderer unit and architecture tests                       | —          | read-only        |
+| `test:v2:browser`               | Run the V2 Chromium geometry and interaction smoke suite                       | —          | read-only        |
+| `test:v2:watch`                 | Run isolated V2 renderer tests in interactive watch mode                       | —          | interactive      |
 | `typecheck`                     | Run strict TypeScript type checking without emitting files                     | —          | read-only        |
 
 ## Rust
@@ -136,6 +139,8 @@ the approved `uv = latest` resolution is pinned in `mise.lock`.
 | Task           | Description                                                                 | Usage   | Effect           |
 | -------------- | --------------------------------------------------------------------------- | ------- | ---------------- |
 | `format:files` | Format reviewed files with locked Prettier and lossless JSONL normalization | <files> | source-modifying |
+| `lint:v2`      | Lint only the isolated V2 renderer and its focused tests                    | —       | read-only        |
+| `typecheck:v2` | Type-check only the isolated V2 renderer and focused tests                  | —       | read-only        |
 
 ## Safety Boundaries
 

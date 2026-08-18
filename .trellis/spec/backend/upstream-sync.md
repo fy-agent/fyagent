@@ -119,8 +119,10 @@ behavior suite covers JSON success, non-2xx text errors, empty responses, and
 cross-realm jsdom Headers, and while the dependency report proves that
 `cross-fetch → node-fetch@2 → whatwg-url@5 → tr46@0.0.3 → built-in punycode`
 is absent. Modern jsdom dependencies on `whatwg-url@14`, `tr46@5`, and the
-userland `punycode@2` package are not the DEP0040 root cause and remain allowed
-when both the pnpm lock and `pnpm why --json` explain their reverse paths.
+userland `punycode@2` package are not the DEP0040 root cause. The current
+ESLint 10 tooling path through `ajv@6` and `uri-js@4` also resolves the
+userland `punycode@2` package. Both paths remain allowed only when the pnpm
+lock and `pnpm why --json` explain their reviewed ancestry.
 
 Node 24.19.0's pending-deprecation probe does not reliably surface every warning
 originating under dependencies, so it supplements rather than replaces the

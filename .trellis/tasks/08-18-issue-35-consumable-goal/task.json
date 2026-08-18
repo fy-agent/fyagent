@@ -1,0 +1,30 @@
+{
+  "id": "issue-35-consumable-goal",
+  "name": "issue-35-consumable-goal",
+  "title": "Issue #35 可消费主线",
+  "description": "接手 #35 剩余实现：把三份投影做成 #55 能按 surfaces 核 digest 的可消费面。不关 GitHub #35，不代做 #55/#41 产品，不发明类型。",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": "projection-digest,publish-gate; no github-close, no #55-product, no #41-lease, no keychain-uat",
+  "package": null,
+  "priority": "P0",
+  "creator": "codex",
+  "assignee": "grok",
+  "createdAt": "2026-08-18",
+  "completedAt": null,
+  "branch": "codex/issue-35-secret-backend",
+  "base_branch": "origin/main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {
+    "issue": "https://github.com/fy-agent/fyagent/issues/35",
+    "designAuthority": "a338ee18edad759c5507be6372af3813eff1f429",
+    "inheritedHead": "4c393721f15c9b3c3bddc626c0b57025b6683735"
+  }
+}

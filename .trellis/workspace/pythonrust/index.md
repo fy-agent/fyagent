@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 12
-- **Last Active**: 2026-08-10
+- **Total Sessions**: 14
+- **Last Active**: 2026-08-12
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~408 | Active |
+| `journal-1.md` | ~471 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,8 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 14 | 2026-08-12 | Archive unarchived pythonrust Trellis task | - | `dev/laiyongjie` |
+| 13 | 2026-08-12 | FyAgent frontend V2 Phase 1 shell | `82ea583a` | `dev/laiyongjie` |
 | 12 | 2026-08-10 | Archive FyAgent modernization workstreams | `effdaf09`, `f020147b`, `089e35ae`, `5556b3f4`, `50cca3ac`, `c3282b3b`, `4fb00890`, `ad34cb10`, `2047bc67`, `265a9a8b`, `6830fc5b`, `91a9799a`, `dd3603c9`, `d9e95186`, `99738a00`, `6f66181d` | `dev/laiyongjie` |
 | 11 | 2026-08-09 | Close FyAgent v0.3.0 modernization | `623b6924e3b8682321b26aa69c15dc6f0b9f6f09`, `4645668d5860cb67f2ae70a3a2eba1fc9afe6ecd`, `9e86dbb67d76a736da163a6099d794d2eb903bb6` | `codex/fyagent-v0.3.0-closeout` |
 | 10 | 2026-08-06 | FyAgent 0.2.1 secure installer and version contract | `7049a834` | `feature/fyagent-v1` |

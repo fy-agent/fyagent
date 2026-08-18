@@ -1,0 +1,4 @@
+{"file":".trellis/spec/frontend/v2-shell.md","reason":"Check the final implementation against V2 isolation, content, interaction and evidence contracts"}
+{"file":".trellis/tasks/08-12-prompt-memory-frontend-refactor/research/local-agent-inventory.md","reason":"Check all prototype labels and counts remain grounded in the anonymized local scan"}
+{"file":".trellis/tasks/08-12-prompt-memory-frontend-refactor/research/product-model-backend-gap.md","reason":"Check backend reuse claims and missing fields against current Rust/TypeScript code"}
+{"file":".trellis/tasks/08-12-prompt-memory-frontend-refactor/research/verification.md","reason":"Fresh lint, typecheck, unit, browser, build, standalone and evidence results"}

@@ -1,0 +1,42 @@
+{
+  "id": "issue-35-secret-backend",
+  "name": "issue-35-secret-backend",
+  "title": "Issue #35 凭据引用与本机/硬件可插拔后端",
+  "description": "为 Codex Provider 建立 device-local secretRef/owner-binding 合同，以 macOS Keychain 与 Windows Credential Manager 为 MVP 后端，并冻结物理确认、设备绑定、不落盘及禁止静默回退的硬件端口；Agent 仅 wire-reserved 且本轮 typed reject。",
+  "status": "planning",
+  "dev_type": "fullstack",
+  "scope": "secretRef-contract,device-local-state-journal,backend,keyring,hardware-port,provider-public-boundary,tauri-ipc,frontend-v2,migration,redaction,tests,native-evidence; no SQLite schema/version; excludes cloud secret hosting, heavy KMS, main merge, deployment",
+  "package": "desktop-secret-backend",
+  "priority": "P0",
+  "creator": "codex",
+  "assignee": "codex",
+  "createdAt": "2026-08-14",
+  "completedAt": null,
+  "branch": "codex/issue-35-secret-backend",
+  "base_branch": "origin/codex/prompt-memory-v2-main-pr",
+  "worktree_path": "/Users/serendipity/.codex/worktrees/issue-35-secret-backend",
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "src-tauri/src/secret/**",
+    "src-tauri/src/database/backup.rs",
+    "src-tauri/src/database/dao/providers.rs",
+    "src-tauri/src/services/provider/**",
+    "src/v2/pages/models/**",
+    "src/v2/shared/data/credentials/**",
+    ".trellis/tasks/08-14-issue-35-secret-backend/**"
+  ],
+  "notes": "Issue #35 upstream contract owner for #55 and #41. DESIGN_FREEZE is not yet granted. Design/review stage forbids tests, builds, browser, renderer, native runtime, and servers.",
+  "meta": {
+    "issue": "https://github.com/fy-agent/fyagent/issues/35",
+    "executorLock": "codex",
+    "baseSha": "afc317a7be3883a4a438d48fad5fb8b6d1f1f5ab",
+    "dependencyThreads": {
+      "issue55": "01a0004c-f8a6-77b2-a3e2-a87dc8386103",
+      "issue41": "01a0004d-52f1-7a30-a137-730bd102c0a1"
+    }
+  }
+}

@@ -406,3 +406,66 @@ Archived the five FyAgent modernization children and parent after the user defer
 ### Next Steps
 
 - If formal publication resumes, create a new Trellis task and re-establish live exact-SHA CI, preflight, tag/version, Release, asset, signing, and attestation acceptance.
+
+
+## Session 13: FyAgent frontend V2 Phase 1 shell
+
+**Date**: 2026-08-12
+**Task**: FyAgent frontend V2 Phase 1 shell
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Added the isolated light V2 renderer shell, hash routing, platform adapters, V2-specific quality gates, and durable frontend contracts.
+
+### Main Changes
+
+- Switched the renderer entry to src/v2 while preserving legacy and Rust sources.
+- Added the responsive light shell, six empty routes, transparent Y brand, UI Lab, and browser/Tauri window ports.
+- Added V2 lint, strict typecheck, unit/architecture tests, four-viewport Playwright coverage, and fixed review findings.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `82ea583a` | (see git log) |
+
+### Testing
+
+- [OK] env:check, lint:v2, typecheck:v2, test:v2 (27), renderer build, task/docs contracts, and diff checks passed.
+- [OK] Chromium suite passed 16/16 before final code-only polish; further interactive testing was stopped at user request.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- Human acceptance remains for the complete native window checklist, 150% DPI, full legacy startup semantics, and Release preflight.
+
+
+## Session 14: Archive unarchived pythonrust Trellis task
+
+**Date**: 2026-08-12
+**Task**: Archive unarchived pythonrust Trellis task
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Archived the remaining unarchived Trellis task assigned to pythonrust at the user's request; no source files were changed.
+
+### Main Changes
+
+- Archived 08-10-windows-user-runtime-trellis-decoupling under the 2026-08 archive.
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] Verified no active tasks remain and the Git working tree is clean.
+
+### Status
+
+[OK] **Completed**

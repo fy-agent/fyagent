@@ -1,0 +1,30 @@
+{
+  "id": "prompt-memory-frontend-refactor",
+  "name": "prompt-memory-frontend-refactor",
+  "title": "提示词与记忆前端重构",
+  "description": "基于 dev/laiyongjie 的 V2 前端壳，用本机真实 Agent 工具、实例、指导文件、记忆与会话结构重构 Prompt 与 Memory；后端只读评估，不修改实现。",
+  "status": "review",
+  "dev_type": "frontend",
+  "scope": "src/v2/pages/prompts, src/v2/pages/memory, src/v2/shared and focused V2 tests",
+  "package": "frontend-v2",
+  "priority": "P2",
+  "creator": "codex",
+  "assignee": "codex",
+  "createdAt": "2026-08-12",
+  "completedAt": null,
+  "branch": "codex/prompt-memory-frontend-refactor",
+  "base_branch": "dev/laiyongjie",
+  "worktree_path": null,
+  "commit": "230cacf6",
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "src/v2/pages/prompts/Page.tsx",
+    "src/v2/pages/memory/Page.tsx",
+    ".trellis/spec/frontend/v2-shell.md"
+  ],
+  "notes": "DESIGN_FREEZE=2026-08-12. FINAL_TRELLIS_CHECK=PASS on 2026-08-13. Fresh acceptance on exact Node 24.19.0: lint and typecheck pass; 12 unit files / 82 tests pass; renderer build processes 161 modules; 48 browser tests pass across four viewports; standalone file readback and two 1586x992 runtime screenshots pass. Prototype writes remain local React state. Agent/models/skills/mcp/navigation/router/AppShell and src-tauri remain unchanged from the branch baseline. Status is review, not completed or archived.",
+  "meta": {}
+}

@@ -33,6 +33,7 @@ mod prompt_files;
 mod provider;
 mod proxy;
 mod services;
+mod secret;
 mod session_manager;
 mod settings;
 mod store;
@@ -1123,7 +1124,9 @@ pub fn run() {
                 }
             }
 
-            let app_state = AppState::new(db);
+            let opened_secret_store = crate::secret::SecretBootstrap::open(app.handle())?;
+            let app_state = AppState::new_with_secret_store(db, opened_secret_store);
+
 
             // 设置 AppHandle 用于代理故障转移时的 UI 更新
             app_state.proxy_service.set_app_handle(app.handle().clone());
@@ -1632,6 +1635,29 @@ pub fn run() {
             );
             // 将同一个实例注入到全局状态，避免重复创建导致的不一致
             app.manage(app_state);
+            let resume_handler = crate::secret::ResumeStagedImportCutoverHandlerRegistration::checked_after_handler_registration(
+                crate::secret::SecretMainIntegrationCommandName::ResumeStagedImportCutover,
+            )?;
+            let _secret_commands_registered = crate::secret::SecretCommandRegistrationReceipt::checked_after_static_registration(
+                [
+                    crate::secret::SecretCommandName::ListSecretSummaries,
+                    crate::secret::SecretCommandName::ListSecretBackendOptions,
+                    crate::secret::SecretCommandName::BeginSecretCapture,
+                    crate::secret::SecretCommandName::RotateSecret,
+                    crate::secret::SecretCommandName::ListSecretCandidates,
+                    crate::secret::SecretCommandName::DiscardSecretCandidate,
+                    crate::secret::SecretCommandName::SetSecretLocked,
+                    crate::secret::SecretCommandName::GetSecretDeleteImpact,
+                    crate::secret::SecretCommandName::DeleteSecret,
+                    crate::secret::SecretCommandName::GetSecretCleanupImpact,
+                    crate::secret::SecretCommandName::RetrySecretCleanup,
+                    crate::secret::SecretCommandName::ValidateSecret,
+                    crate::secret::SecretCommandName::CheckSecretApplyReadiness,
+                    crate::secret::SecretCommandName::MigrateLegacyCodexSecrets,
+                    crate::secret::SecretCommandName::ListSecretAudit,
+                ],
+                resume_handler,
+            )?;
 
             // 初始化 SkillService
             let skill_service = SkillService::new();
@@ -2220,6 +2246,24 @@ pub fn run() {
             commands::codex_desktop_cancel_install,
             commands::codex_desktop_launch,
             commands::codex_desktop_open_log_directory,
+            // Issue #35 secret commands (exact SecretCommandName set)
+            commands::list_secret_summaries,
+            commands::list_secret_backend_options,
+            commands::begin_secret_capture,
+            commands::rotate_secret,
+            commands::list_secret_candidates,
+            commands::discard_secret_candidate,
+            commands::set_secret_locked,
+            commands::get_secret_delete_impact,
+            commands::delete_secret,
+            commands::get_secret_cleanup_impact,
+            commands::retry_secret_cleanup,
+            commands::validate_secret,
+            commands::check_secret_apply_readiness,
+            commands::migrate_legacy_codex_secrets,
+            commands::list_secret_audit,
+            // SecretMainIntegrationCommandName — not a SecretCommandName
+            commands::resume_staged_import_cutover,
         ]);
 
     let context = tauri::generate_context!();

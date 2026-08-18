@@ -84,13 +84,16 @@ manifest, active module specifiers, the versioned pnpm lock, and argv-based
 `pnpm why --json` reverse paths. The obsolete chain is
 `cross-fetch → node-fetch@2 → whatwg-url@5 → tr46@0.0.3`; the current jsdom
 chain through `whatwg-url@14`, `tr46@5`, and userland `punycode@2` is permitted
-only when the lock and why graph explain the same versions.
+only when the lock and why graph explain the same versions. The V2 lint stack's
+reviewed `eslint@10 → ajv@6 → uri-js@4 → punycode@2` tooling path is permitted
+under the same lock-and-reverse-graph requirement.
 
 The report fails closed on malformed active modules, non-canonical watched
 lock entries, package/snapshot disagreement, unexplained aliases, and watched
-reverse paths outside that reviewed jsdom ancestry. Its suppression scan owns
-the runnable package, workflow, mise, and script surfaces; statically composed
-JavaScript arguments and shell/PowerShell script files are not escape hatches.
+reverse paths outside those reviewed jsdom and ESLint ancestries. Its
+suppression scan owns the runnable package, workflow, mise, and script
+surfaces; statically composed JavaScript arguments and shell/PowerShell script
+files are not escape hatches.
 Negative detector fixtures belong in the contract test input, not in a scanned
 execution script.
 
