@@ -54,6 +54,28 @@ pub fn official_provider_supports_proxy_takeover(app_type: &AppType, provider: &
         && crate::proxy::providers::is_codex_official_provider(provider)
 }
 
+/// Apply-phase per-app write lock. Same lock as `lock_switch_for_app`.
+/// Not an activation lease.
+pub struct ProviderWriteLease {
+    _guard: Option<tokio::sync::OwnedMutexGuard<()>>,
+}
+
+impl ProviderWriteLease {
+    pub fn acquire(state: &AppState, app_type: &AppType) -> Self {
+        let guard = if matches!(
+            app_type,
+            AppType::Claude | AppType::Codex | AppType::Gemini | AppType::GrokBuild
+        ) {
+            Some(futures::executor::block_on(
+                state.proxy_service.lock_switch_for_app(app_type.as_str()),
+            ))
+        } else {
+            None
+        };
+        Self { _guard: guard }
+    }
+}
+
 /// 统一会话开关变更后，立即按新开关状态重写当前官方 Codex 供应商的
 /// live 配置，使开关即时生效（无需等下一次切换）。
 /// 当前供应商非官方（或不存在）时为 no-op：注入只作用于官方配置，
@@ -3612,16 +3634,7 @@ impl ProviderService {
         // restore backup. Serialize them per app, then decide from the locked
         // current state so a just-started takeover cannot be overwritten by a
         // normal live write.
-        let _switch_guard = if matches!(
-            app_type,
-            AppType::Claude | AppType::Codex | AppType::Gemini | AppType::GrokBuild
-        ) {
-            Some(futures::executor::block_on(
-                state.proxy_service.lock_switch_for_app(app_type.as_str()),
-            ))
-        } else {
-            None
-        };
+        let _switch_guard = ProviderWriteLease::acquire(state, &app_type);
 
         // Backup or live placeholders mean the live file is owned by proxy
         // takeover, even if the proxy server is temporarily stopped or is in the
