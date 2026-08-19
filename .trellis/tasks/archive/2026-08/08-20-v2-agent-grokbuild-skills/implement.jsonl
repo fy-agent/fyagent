@@ -1,0 +1,9 @@
+{"file": ".trellis/spec/frontend/v2-agent-models.md", "reason": "Catalog v4, Grok Build, Agent detail, shared directory, Models quick setup"}
+{"file": ".trellis/spec/frontend/v2-skills-mcp.md", "reason": "Seven assignment targets, disk-observed installed Skills, discovery page scroll"}
+{"file": ".trellis/spec/frontend/v2-prompts-memory.md", "reason": "Prompt rail aligned to Agent catalog order; memory unchanged"}
+{"file": ".trellis/spec/frontend/reuse.md", "reason": "Shared product directory and CatalogOfficialLinks"}
+{"file": ".trellis/spec/frontend/v2-shell.md", "reason": "V2 page chrome and overflow for Skills discovery"}
+{"file": ".trellis/spec/backend/external-agent-p0.md", "reason": "Catalog v4 Grok Build and Skills observation must not widen P0 runtime identity"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Closed catalog/assignment/prompt ID unions"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Share directory and official-link chrome on first commit"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Installed Skills GET union, catalog v4 wire, Provider grokbuild"}
