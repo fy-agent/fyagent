@@ -23,7 +23,9 @@ const ALL_DOMAINS = Object.freeze(
 
 const CONTROL_PLANE_PREFIXES = Object.freeze([
   ".agents/",
+  ".codebuddy/",
   ".codex/",
+  ".cursor/",
   ".github/",
   ".mise/",
   ".trellis/agents/",

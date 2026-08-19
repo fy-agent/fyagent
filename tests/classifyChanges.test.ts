@@ -173,6 +173,8 @@ describe("repository change classifier", () => {
     "scripts/release/release-contract.mjs",
     "scripts/prepare-windows-user-helper.mjs",
     ".codex/hooks.json",
+    ".cursor/skills/trellis-check/SKILL.md",
+    ".codebuddy/settings.json",
     "rust-toolchain.toml",
   ])("forces every domain for control-plane path %s", (changedPath) => {
     expect(classifyChangedPaths([changedPath])).toEqual({

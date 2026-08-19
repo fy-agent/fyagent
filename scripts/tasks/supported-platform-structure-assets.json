@@ -71,11 +71,11 @@
     ],
     [
       "src-tauri/src/codex_desktop/download.rs",
-      "3e220b9c88f5e08373716e6a0424c7756d13da2efbc4590236330919768549c7"
+      "9693ceb2a09cbcbe7cd9b23ab7b4299bcbcd40d3ec38e116795176d3dc460332"
     ],
     [
       "src-tauri/src/codex_desktop/platform.rs",
-      "ae0d468b736531cb6569d35a179d6c8f6e2162954ca2c7afbfc3d8ebdaad2f0c"
+      "b670faa151a2e8b653fcc85d3796934f3ff84ea2ba8e2826ace6655835898fdb"
     ],
     [
       "src-tauri/src/codex_desktop/platform/macos/mod.rs",
@@ -87,7 +87,7 @@
     ],
     [
       "src-tauri/src/codex_desktop/platform/windows/mod.rs",
-      "b127f33866a60df5b0b23a35a447c64b4642183f2e0fbc55e5ff6a2ad81bdcaf"
+      "7d0e328ef1ba98627caa4f16a1fb1fa6de938049bf9bf739446f1e27639822ba"
     ],
     [
       "src-tauri/src/codex_desktop/temp.rs",
@@ -123,7 +123,7 @@
     ],
     [
       "src-tauri/src/lib.rs",
-      "95981f0bdcfff360d8f6e39149a8bbbdc456c4c992d33975312433ed6c32f2e3"
+      "5ad51149fd46b1b2e4f64f574075ec38d4a828da6d99a3038e41b21aedfd11df"
     ],
     [
       "src-tauri/src/lightweight.rs",
@@ -134,8 +134,12 @@
       "89be46db55626e460b0832ced587c517beed6c22969022888d1f0f0a09d3d623"
     ],
     [
+      "src-tauri/src/mcp/traework.rs",
+      "6663adfc080a2df15d15eb360afa791e5b61808817abc590c6d69cb83b7d61a9"
+    ],
+    [
       "src-tauri/src/opencode_config.rs",
-      "30a6162379bc1db1c5af861c5accc4182a9e96a0b57cee6bd3074e5d3b96fd83"
+      "2473cede528e78517401e92dcc2641d40a0cb170d524881a1ac5d388f34b163e"
     ],
     [
       "src-tauri/src/panic_hook.rs",
@@ -147,7 +151,7 @@
     ],
     [
       "src-tauri/src/platform/process_launch.rs",
-      "b6fc904a8cddad84862fc1cc1ea3c7b7bfdee5509e5f2eafe8a770f5c6a4445c"
+      "0603781fa3cbffbbdd642527d3519c5a8da07bc0bdc1e0e5c848822aac4b91c6"
     ],
     [
       "src-tauri/src/proxy/providers/codex_oauth_auth.rs",
@@ -187,15 +191,19 @@
     ],
     [
       "src-tauri/src/services/skill.rs",
-      "91554a3eaa4c79ecd2af4ede3708328d022b9c8663cddcbee8b70cdc2d310892"
+      "60510b6d703098091e4c446a18e7bb0c8546ea1c28e0bf9aa039cf4617cec1d3"
     ],
     [
       "src-tauri/src/services/subscription.rs",
       "c67063e2b7fb49f65635d70b01a6afd21fa7cc0f722ea3fe404b7e164c983a4e"
     ],
     [
+      "src-tauri/src/services/traework_models.rs",
+      "55eb1dc6442b21126f58e468e5824b537a2527b3022e24d989cceba9b51f24f2"
+    ],
+    [
       "src-tauri/src/services/workbuddy/config.rs",
-      "76df4bd1ddde601a7f10dc2120cfda9073d54b6bef0018468ec27b2eb6353c8a"
+      "90951103b2785b10d80373a83481db08413996235f1785b46b83d096bc2651cd"
     ],
     [
       "src-tauri/src/services/workbuddy/mod.rs",
@@ -235,11 +243,11 @@
     ],
     [
       "src-tauri/tests/profile_roundtrip.rs",
-      "9bd637bea4d0fbeaf58d06ea71f46c2919078aee207e062be918abc4d6abdb78"
+      "e8ae4c7726f6e0f2ffc60b678f82bbe8d385024c8a1f9555316a0e6846526125"
     ],
     [
       "src-tauri/tests/skill_sync.rs",
-      "038c3ecf60d93c12f5ac2772e117a285df525ff9163eaf1c96bceb72fcd25f62"
+      "cc4e2eed7f092801eab35fcbfdb45e0eb2074efe5b5dad24350942e78baf90f5"
     ],
     [
       "src-tauri/tests/support.rs",
@@ -259,7 +267,7 @@
     ],
     [
       "src-tauri/user-helper/src/layout.rs",
-      "b7832f7f0290ad759847b64fa6c1b6bed19ba6227161d80e0c8c94415947eec2"
+      "d12c6f46db3f3fe5491e6360ac776c48a3360f061defea72c372a960f0254a9a"
     ],
     [
       "src-tauri/user-helper/src/main.rs",
@@ -290,12 +298,8 @@
       "220bae4f18ccd08a041f5ad2c1982722a35b268934cf9a025b4af7148184139e"
     ],
     [
-      "src/v2/shared/features/presets.ts",
-      "2844c31f9781a975fd50e3485036690baffac05c2cfd0227559ceb2bfadfde64"
-    ],
-    [
       "tests/codexUserHelperContract.test.ts",
-      "348ba3411c89d86dfd1df3f7b651137e0b79257af985025f24a0391a557bf2f7"
+      "6e50b539fc47aba77b267feff7e41f2706b10fba20b292aeb874d45f1ce8f37e"
     ],
     [
       "tests/codexWindowsUserScopeContract.test.ts",
@@ -319,7 +323,7 @@
     ],
     [
       "tests/remainingPlatformSurface.test.ts",
-      "64e75531d3c00075433588bb323d29df611abf0273faf1bd221c12991710558a"
+      "bfb10500a2be1874207c5ee6c01d978347a245f881a2bf652a6f2afcf0a31799"
     ],
     [
       "tests/singleInstanceActivationContract.test.ts",

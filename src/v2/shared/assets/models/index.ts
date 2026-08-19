@@ -54,7 +54,10 @@ const ID_PREFIXES: ReadonlyArray<{
   pattern: RegExp;
   url: string;
 }> = [
-  { pattern: /^(gpt|chatgpt|o[1-9]|davinci|text-embedding)/i, url: openaiIconUrl },
+  {
+    pattern: /^(gpt|chatgpt|o[1-9]|davinci|text-embedding)/i,
+    url: openaiIconUrl,
+  },
   { pattern: /^claude/i, url: claudeIconUrl },
   { pattern: /^anthropic/i, url: anthropicIconUrl },
   { pattern: /^deepseek/i, url: deepseekIconUrl },

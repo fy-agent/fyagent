@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 
 use crate::app_config::{McpApps, McpServer, MultiAppConfig};
 use crate::config::atomic_write;
-#[cfg(not(target_os = "windows"))]
+#[cfg(target_os = "macos")]
 use crate::config::get_home_dir;
 use crate::error::AppError;
 
@@ -24,7 +24,7 @@ fn trae_user_dir() -> PathBuf {
             .join("TRAE SOLO CN")
             .join("User")
     }
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
     {
         get_home_dir()
             .join("Library")

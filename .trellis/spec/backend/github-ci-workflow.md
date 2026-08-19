@@ -80,7 +80,8 @@ domain booleans to jobs, but it must not duplicate repository path globs.
 
 Classification invariants:
 
-- workflow, classifier, release, repository task, mise, optional agent/hook,
+- workflow, classifier, release, repository task, mise, optional agent/hook
+  (including tracked `.cursor/` and `.codebuddy/` Trellis trees),
   and toolchain control-plane paths set `forceFull=true` and every domain true;
 - `package.json` and pnpm dependency roots widen contracts/frontend/desktop;
 - every `src-tauri/**` change reaches contracts plus its backend/native owner,

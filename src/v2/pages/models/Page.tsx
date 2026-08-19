@@ -51,7 +51,11 @@ import {
   type ModelTarget,
   type QuickSetupErrors,
 } from "./quickSetup";
-import { GroupedModelChips, ModelSearchField, ModelVendorIcon } from "./modelChips";
+import {
+  GroupedModelChips,
+  ModelSearchField,
+  ModelVendorIcon,
+} from "./modelChips";
 import { ModelsPanelHeader, NoApiKeyOption, NoticeView } from "./modelsShared";
 import { OpenCodeModelsPanel } from "./OpenCodeModelsPanel";
 import { QoderModelsPanel } from "./QoderModelsPanel";
@@ -98,7 +102,6 @@ type WorkBuddyNoticeField =
   | "draft"
   | "save"
   | "existing";
-
 
 function WorkBuddyPanel({ active }: { active: boolean }) {
   const { ports } = useFeatures();
@@ -953,7 +956,11 @@ function ProviderPanel({
       return;
     }
     setFetchBusy(true);
-    setErrors((current) => ({ ...current, baseUrl: undefined, apiKey: undefined }));
+    setErrors((current) => ({
+      ...current,
+      baseUrl: undefined,
+      apiKey: undefined,
+    }));
     try {
       const models = await ports.providers.fetchModels(
         baseUrl.trim(),

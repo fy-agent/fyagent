@@ -61,19 +61,20 @@ pub(crate) struct TraePaths {
 
 impl TraePaths {
     pub(crate) fn from_home(home: &Path) -> Self {
-        let directory = if cfg!(target_os = "windows") {
-            home.join("AppData")
-                .join("Roaming")
-                .join("TRAE SOLO CN")
-                .join("User")
-                .join("globalStorage")
-        } else {
-            home.join("Library")
-                .join("Application Support")
-                .join("TRAE SOLO CN")
-                .join("User")
-                .join("globalStorage")
-        };
+        #[cfg(target_os = "windows")]
+        let directory = home
+            .join("AppData")
+            .join("Roaming")
+            .join("TRAE SOLO CN")
+            .join("User")
+            .join("globalStorage");
+        #[cfg(target_os = "macos")]
+        let directory = home
+            .join("Library")
+            .join("Application Support")
+            .join("TRAE SOLO CN")
+            .join("User")
+            .join("globalStorage");
         Self {
             db: directory.join("state.vscdb"),
         }
@@ -91,7 +92,7 @@ fn current_paths() -> TraePaths {
             db: directory.join("state.vscdb"),
         }
     }
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
     TraePaths::from_home(&crate::config::get_home_dir())
 }
 
