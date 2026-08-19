@@ -77,7 +77,6 @@ describe("V2 MCP management", () => {
       apps: {
         ...createMcpAssignments(["claude"]),
         gemini: true,
-        grokbuild: true,
         hermes: true,
         hiddenClient: true,
       },
@@ -101,7 +100,7 @@ describe("V2 MCP management", () => {
       await screen.findByRole("heading", { name: "Docs server" }),
     ).toBeVisible();
     expect(document.body).not.toHaveTextContent(secret);
-    expect(screen.getAllByRole("switch")).toHaveLength(6);
+    expect(screen.getAllByRole("switch")).toHaveLength(7);
     expect(
       screen
         .getAllByRole("switch")
@@ -154,7 +153,7 @@ describe("V2 MCP management", () => {
       apps: {
         claude: true,
         gemini: true,
-        grokbuild: true,
+        grokbuild: false,
         hermes: true,
         hiddenClient: true,
       },

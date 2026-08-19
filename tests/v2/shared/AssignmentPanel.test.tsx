@@ -11,7 +11,7 @@ import {
 import { AssignmentPanel } from "@/v2/shared/ui/AssignmentPanel";
 
 describe("AssignmentPanel", () => {
-  it("renders one six-switch Skills panel with decorative local target icons", () => {
+  it("renders one seven-switch Skills panel with decorative local target icons", () => {
     const { container } = render(
       <AssignmentPanel
         apps={createSkillAssignments(["claude", "opencode", "qoderwork"])}
@@ -25,7 +25,7 @@ describe("AssignmentPanel", () => {
     expect(screen.getAllByRole("heading", { name: "应用分配" })).toHaveLength(
       1,
     );
-    expect(screen.getAllByRole("switch")).toHaveLength(6);
+    expect(screen.getAllByRole("switch")).toHaveLength(7);
 
     for (const app of SKILL_TARGETS) {
       expect(screen.getByText(app.label)).toBeVisible();
@@ -44,7 +44,7 @@ describe("AssignmentPanel", () => {
         ".fy-feature-assignment-icon",
       ),
     );
-    expect(icons).toHaveLength(6);
+    expect(icons).toHaveLength(7);
     for (const icon of icons) {
       expect(icon).toHaveAttribute("alt", "");
       expect(icon).toHaveAttribute("aria-hidden", "true");

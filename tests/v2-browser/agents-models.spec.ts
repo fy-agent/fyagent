@@ -16,6 +16,7 @@ const agentOrder = [
   "QoderWork CN",
   "TRAE Work CN",
   "WorkBuddy",
+  "Grok Build",
   "Codex",
   "Claude Code",
   "OpenCode",
@@ -25,6 +26,7 @@ const modelTargetOrder = [
   "QoderWork CN",
   "TRAE Work CN",
   "WorkBuddy",
+  "Grok Build",
   "Codex",
   "Claude Code",
   "OpenCode",
@@ -34,6 +36,7 @@ const modelTargetIconSources = [
   "qoderwork.png",
   "trae-work.png",
   "workbuddy.png",
+  "inline-svg",
   "inline-svg",
   "inline-svg",
   "inline-svg",
@@ -52,18 +55,6 @@ function agentItem(
     .filter({ has: page.getByText(name, { exact: true }) });
 }
 
-async function expectFixtureCommand(
-  page: Parameters<typeof openV2Page>[0],
-  command: string,
-): Promise<void> {
-  await expect
-    .poll(async () => {
-      const calls = await featureFixtureCalls(page);
-      return calls.filter((call) => call.command === command).length;
-    })
-    .toBeGreaterThan(0);
-}
-
 test("Agent catalog keeps exact native order and accessible master-detail selection", async ({
   page,
 }) => {
@@ -75,7 +66,7 @@ test("Agent catalog keeps exact native order and accessible master-detail select
     page.getByRole("heading", { level: 1, name: "Agent 目录" }),
   ).toBeVisible();
   const items = agentSelector(page).locator(".fy-catalog-list-item");
-  await expect(items).toHaveCount(6);
+  await expect(items).toHaveCount(7);
   expect(
     await items.evaluateAll((elements) =>
       elements.map(
@@ -155,7 +146,7 @@ test("Agents and Models share exact catalog geometry, stable gutters, and the 76
 
   const agentRail = agentSelector(page);
   const agentRows = agentRail.locator(".fy-catalog-list-item");
-  await expect(agentRows).toHaveCount(6);
+  await expect(agentRows).toHaveCount(7);
   const agentRailBox = await requiredBox(agentRail, "Agent catalog rail");
   const agentRowGeometry = await agentRows.evaluateAll((rows) =>
     rows.map((row) => {
@@ -212,7 +203,7 @@ test("Agents and Models share exact catalog geometry, stable gutters, and the 76
     name: "模型配置目标",
   });
   const modelRows = modelRail.locator(".fy-catalog-list-item");
-  await expect(modelRows).toHaveCount(6);
+  await expect(modelRows).toHaveCount(7);
   const modelRailBox = await requiredBox(modelRail, "Models catalog rail");
   expect(Math.abs(modelRailBox.x - agentRailBox.x)).toBeLessThanOrEqual(1);
   expect(Math.abs(modelRailBox.width - agentRailBox.width)).toBeLessThanOrEqual(
@@ -315,6 +306,12 @@ test("Agent catalog links invoke exact official URLs and Codex has no external a
     .getByRole("button", { name: "打开 WorkBuddy 官方页面" })
     .click();
 
+  await agentItem(page, "Grok Build").click();
+  await page
+    .getByRole("region", { name: "Grok Build 详情" })
+    .getByRole("button", { name: "打开 Grok Build 官方页面" })
+    .click();
+
   await agentItem(page, "Claude Code").click();
   const claudeDetail = page.getByRole("region", {
     name: "Claude Code 详情",
@@ -350,6 +347,10 @@ test("Agent catalog links invoke exact official URLs and Codex has no external a
       {
         command: "open_external",
         payload: { url: "https://www.workbuddy.cn/" },
+      },
+      {
+        command: "open_external",
+        payload: { url: "https://x.ai/grok" },
       },
       {
         command: "open_external",
@@ -510,7 +511,7 @@ test("Codex Desktop fixture reads safely and starts only after the explicit inst
   await expectHealthyPage(page, health);
 });
 
-test("Agent observations stay lazy, real-read backed, and degrade to unknown", async ({
+test("Agent directory does not observe WorkBuddy or Provider summaries", async ({
   page,
 }) => {
   await installRichTauriFeatureFixture(page, {
@@ -525,26 +526,24 @@ test("Agent observations stay lazy, real-read backed, and degrade to unknown", a
   expect(commands).not.toContain("get_providers");
 
   await agentItem(page, "WorkBuddy").click();
-  const observation = page.getByRole("region", {
-    name: "WorkBuddy 配置概览",
-  });
-  await expect(observation).toContainText("暂时无法读取当前状态，请重试。", {
-    timeout: 10_000,
-  });
-  await expect(observation).not.toContainText("未安装");
-  await expectFixtureCommand(page, "get_workbuddy_status");
-
-  await agentItem(page, "Codex").click();
   await expect(
-    page.getByRole("region", { name: "Codex 模型配置" }),
-  ).toContainText("Fixture Codex Current");
+    page.getByRole("region", { name: "WorkBuddy 配置概览" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("region", { name: "WorkBuddy 详情" }),
+  ).toBeVisible();
+
   await agentItem(page, "Claude Code").click();
   await expect(
     page.getByRole("region", { name: "Claude Code 模型配置" }),
-  ).toContainText("Fixture Claude Current");
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("region", { name: "Claude Code 详情" }),
+  ).toBeVisible();
 
   commands = (await featureFixtureCalls(page)).map((call) => call.command);
-  expect(commands).toContain("get_provider_summary");
+  expect(commands).not.toContain("get_workbuddy_status");
+  expect(commands).not.toContain("get_provider_summary");
   expect(commands).not.toContain("get_providers");
   expect(commands).not.toContain("get_current_provider");
   await expectNoHorizontalOverflow(page);
@@ -572,7 +571,7 @@ test("Agent catalog failure stays explicit and never falls back to a static supp
   await expectHealthyPage(page, health);
 });
 
-test("Models keeps six targets and saves TRAE models natively", async ({
+test("Models keeps seven targets and saves TRAE models natively", async ({
   page,
 }) => {
   await installRichTauriFeatureFixture(page);
@@ -582,7 +581,7 @@ test("Models keeps six targets and saves TRAE models natively", async ({
   const modelPage = page.getByTestId("models-page");
   await expect(modelPage).toBeVisible();
   const targetButtons = modelPage.locator('[data-testid^="model-target-"]');
-  await expect(targetButtons).toHaveCount(6);
+  await expect(targetButtons).toHaveCount(7);
   expect(
     await targetButtons.evaluateAll((elements) =>
       elements.map(
@@ -591,7 +590,7 @@ test("Models keeps six targets and saves TRAE models natively", async ({
     ),
   ).toEqual([...modelTargetOrder]);
   const targetIcons = targetButtons.locator("img");
-  await expect(targetIcons).toHaveCount(6);
+  await expect(targetIcons).toHaveCount(7);
   expect(
     await targetIcons.evaluateAll((elements) =>
       elements.map((element) => ({

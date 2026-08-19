@@ -19,6 +19,10 @@ import {
   usePrompts,
 } from "../../shared/features/queries";
 import {
+  PRODUCT_DIRECTORY,
+  PROMPT_ONLY_DIRECTORY,
+} from "../../shared/features/directory";
+import {
   PROMPT_APP_IDS,
   type ManagedPrompt,
   type PromptAppId,
@@ -47,15 +51,19 @@ import { SplitPanes } from "../../shared/ui/split";
 
 import "./page.css";
 
-const APP_LABELS: Record<PromptAppId, string> = {
-  claude: "Claude",
-  codex: "Codex",
-  gemini: "Gemini",
-  grokbuild: "Grok Build",
-  opencode: "OpenCode",
-  openclaw: "OpenClaw",
-  hermes: "Hermes",
-};
+const APP_LABELS = {
+  ...Object.fromEntries(
+    PRODUCT_DIRECTORY.flatMap((entry) =>
+      entry.promptAppId ? [[entry.promptAppId, entry.displayName]] : [],
+    ),
+  ),
+  ...Object.fromEntries(
+    PROMPT_ONLY_DIRECTORY.map((entry) => [
+      entry.promptAppId,
+      entry.displayName,
+    ]),
+  ),
+} as Record<PromptAppId, string>;
 
 const REFRESH_WARNING = "写入可能已完成，但状态刷新失败";
 const PROMPT_SPLIT_LABELS = ["调整列表与编辑的宽度"];

@@ -1,14 +1,12 @@
-export const MODEL_TARGETS = [
-  "qoderwork",
-  "trae",
-  "workbuddy",
-  "codex",
-  "claude",
-  "opencode",
-] as const;
+import { MODEL_DIRECTORY_IDS } from "../../shared/features/directory";
+
+export const MODEL_TARGETS = MODEL_DIRECTORY_IDS;
 
 export type ModelTarget = (typeof MODEL_TARGETS)[number];
-export type ProviderQuickSetupTarget = Extract<ModelTarget, "claude" | "codex">;
+export type ProviderQuickSetupTarget = Extract<
+  ModelTarget,
+  "claude" | "codex" | "grokbuild"
+>;
 
 export const QUICK_SETUP_PROVIDER_IDS: Record<
   ProviderQuickSetupTarget,
@@ -16,6 +14,7 @@ export const QUICK_SETUP_PROVIDER_IDS: Record<
 > = {
   claude: "fyagent-v2-quick-setup-claude",
   codex: "fyagent-v2-quick-setup-codex",
+  grokbuild: "fyagent-v2-quick-setup-grokbuild",
 };
 
 export interface QuickSetupFormInput {

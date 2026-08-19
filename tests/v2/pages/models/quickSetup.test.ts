@@ -13,6 +13,7 @@ describe("models quick setup helpers", () => {
       "qoderwork",
       "trae",
       "workbuddy",
+      "grokbuild",
       "codex",
       "claude",
       "opencode",

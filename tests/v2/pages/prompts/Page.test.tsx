@@ -167,6 +167,26 @@ describe("PromptsPage native business management", () => {
     expect(
       PROMPT_APP_IDS.map((id) => screen.getByTestId(`prompt-app-${id}`)),
     ).toHaveLength(7);
+    expect([...PROMPT_APP_IDS]).toEqual([
+      "grokbuild",
+      "codex",
+      "claude",
+      "opencode",
+      "gemini",
+      "openclaw",
+      "hermes",
+    ]);
+    expect(
+      Array.from(
+        document.querySelectorAll('[data-testid^="prompt-app-"]'),
+      ).map((node) => node.getAttribute("data-testid")),
+    ).toEqual(PROMPT_APP_IDS.map((id) => `prompt-app-${id}`));
+    expect(screen.getByTestId("prompt-app-grokbuild")).toHaveTextContent(
+      "Grok Build",
+    );
+    expect(screen.getByTestId("prompt-app-claude")).toHaveTextContent(
+      "Claude Code",
+    );
 
     await user.click(screen.getByTestId("prompt-app-codex"));
     expect(
@@ -254,7 +274,7 @@ describe("PromptsPage native business management", () => {
 
     await user.click(screen.getByRole("button", { name: "新建提示词" }));
     expect(
-      screen.getByRole("heading", { name: "新建 Claude 提示词" }),
+      screen.getByRole("heading", { name: "新建 Claude Code 提示词" }),
     ).toBeVisible();
     await user.type(screen.getByRole("textbox", { name: "名称" }), "New rule");
     await user.type(
@@ -360,7 +380,7 @@ describe("PromptsPage native business management", () => {
     });
     const user = userEvent.setup();
     renderPrompts(ports);
-    await screen.findByText("Claude 还没有提示词");
+    await screen.findByText("Claude Code 还没有提示词");
 
     await user.click(screen.getAllByRole("button", { name: "从文件导入" })[0]);
 
@@ -368,7 +388,7 @@ describe("PromptsPage native business management", () => {
       await screen.findByText("提示词已从文件导入失败：请稍后重试。"),
     ).toBeVisible();
     expect(screen.queryByText("提示词文件不存在")).not.toBeInTheDocument();
-    expect(screen.getByText("Claude 还没有提示词")).toBeVisible();
+    expect(screen.getByText("Claude Code 还没有提示词")).toBeVisible();
     expect(
       screen.queryByText("提示词已从文件导入", { exact: true }),
     ).not.toBeInTheDocument();
@@ -529,7 +549,7 @@ describe("PromptsPage native business management", () => {
 
     const empty = statefulPorts();
     renderPrompts(empty.ports);
-    expect(await screen.findByText("Claude 还没有提示词")).toBeVisible();
+    expect(await screen.findByText("Claude Code 还没有提示词")).toBeVisible();
     cleanup();
 
     const failing = statefulPorts();
@@ -538,7 +558,7 @@ describe("PromptsPage native business management", () => {
     });
     renderPrompts(failing.ports);
     expect(
-      await screen.findByText("无法加载 Claude 提示词", undefined, {
+      await screen.findByText("无法加载 Claude Code 提示词", undefined, {
         timeout: 5_000,
       }),
     ).toBeVisible();

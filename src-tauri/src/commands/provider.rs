@@ -223,6 +223,7 @@ impl ProviderQuickSetupRequest {
         let reserved_id = match app_type {
             AppType::Claude => "fyagent-v2-quick-setup-claude",
             AppType::Codex => "fyagent-v2-quick-setup-codex",
+            AppType::GrokBuild => "fyagent-v2-quick-setup-grokbuild",
             _ => "",
         };
         if name.contains(&api_key) || model_id.contains(&api_key) || reserved_id.contains(&api_key)
@@ -273,6 +274,22 @@ impl ProviderQuickSetupRequest {
                     serde_json::json!({
                         "auth": { "OPENAI_API_KEY": api_key },
                         "config": config,
+                    }),
+                )
+            }
+            AppType::GrokBuild => {
+                let model_value = toml_edit::Value::from(model_id.as_str()).to_string();
+                let name_value = toml_edit::Value::from(name.as_str()).to_string();
+                let endpoint_value = toml_edit::Value::from(base_url.as_str()).to_string();
+                let api_key_value = toml_edit::Value::from(api_key.as_str()).to_string();
+                (
+                    "fyagent-v2-quick-setup-grokbuild",
+                    serde_json::json!({
+                        "config": format!(
+                            "[models]\ndefault = {model_value}\n\n[model.{model_value}]\nmodel = {model_value}\nbase_url = {endpoint_value}\nname = {name_value}\napi_key = {api_key_value}\napi_backend = \"{}\"\ncontext_window = {}\n",
+                            crate::grok_config::DEFAULT_API_BACKEND,
+                            crate::grok_config::DEFAULT_CONTEXT_WINDOW,
+                        )
                     }),
                 )
             }
@@ -433,8 +450,11 @@ pub fn add_provider_with_result(
 
 fn parse_provider_draft_app(app: &str) -> Result<AppType, String> {
     let app_type = AppType::from_str(app).map_err(|e| e.to_string())?;
-    if !matches!(app_type, AppType::Claude | AppType::Codex) {
-        return Err("Provider quick setup supports only claude or codex".to_string());
+    if !matches!(
+        app_type,
+        AppType::Claude | AppType::Codex | AppType::GrokBuild
+    ) {
+        return Err("Provider quick setup supports only claude, codex, or grokbuild".to_string());
     }
     Ok(app_type)
 }
@@ -1497,7 +1517,7 @@ mod provider_draft_command_tests {
     use crate::provider::Provider;
 
     #[test]
-    fn quick_setup_drafts_allow_only_claude_and_codex() {
+    fn quick_setup_drafts_allow_claude_codex_and_grokbuild() {
         assert!(matches!(
             parse_provider_draft_app("claude"),
             Ok(AppType::Claude)
@@ -1505,6 +1525,10 @@ mod provider_draft_command_tests {
         assert!(matches!(
             parse_provider_draft_app("codex"),
             Ok(AppType::Codex)
+        ));
+        assert!(matches!(
+            parse_provider_draft_app("grokbuild"),
+            Ok(AppType::GrokBuild)
         ));
         for unsupported in ["gemini", "opencode", "hermes"] {
             assert!(

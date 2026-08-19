@@ -12,13 +12,8 @@ export function QoderModelsPanel() {
       title="QoderWork CN"
       summary="不支持第三方模型配置"
     >
-      <InlineNotice>
-        不支持第三方模型配置。可在应用目录中管理 Hooks 和 MCP。
-      </InlineNotice>
-      <ModelsActionRow
-        title="管理 Hooks 和 MCP"
-        onClick={() => navigate("/agents?target=qoderwork")}
-      />
+      <InlineNotice>不支持第三方模型配置。可在 MCP 页管理 MCP。</InlineNotice>
+      <ModelsActionRow title="管理 MCP" onClick={() => navigate("/mcp")} />
     </ModelsGuidancePanel>
   );
 }

@@ -55,8 +55,8 @@ function catalog(): AgentCatalogResult {
     evidenceIds: ["p0_scope"],
   }));
   return {
-    contractVersion: 3,
-    reviewedAt: "2026-08-14",
+    contractVersion: 4,
+    reviewedAt: "2026-08-20",
     agents: [
       {
         id: "qoderwork",
@@ -129,6 +129,7 @@ describe("V2 Models page", () => {
       "QoderWork CN不支持第三方模型配置",
       "TRAE Work CN需在 TRAE Work CN 中添加模型",
       "WorkBuddy管理模型设置",
+      "Grok Build快速配置模型",
       "Codex快速配置模型",
       "Claude Code快速配置模型",
       "OpenCode管理模型设置",
@@ -138,6 +139,7 @@ describe("V2 Models page", () => {
       getAgentIcon("qoderwork"),
       getAgentIcon("trae-work"),
       getAgentIcon("workbuddy"),
+      getAgentIcon("grokbuild"),
       getAgentIcon("codex"),
       getAgentIcon("claude-code"),
       getAgentIcon("opencode"),
@@ -171,7 +173,7 @@ describe("V2 Models page", () => {
     renderPage(ports, "qoderwork");
 
     expect(
-      await screen.findByRole("button", { name: "管理 Hooks 和 MCP" }),
+      await screen.findByRole("button", { name: "管理 MCP" }),
     ).toBeVisible();
     expect(
       screen.queryByRole("button", { name: "打开官方设置" }),
@@ -216,11 +218,9 @@ describe("V2 Models page", () => {
     );
 
     await user.click(
-      await screen.findByRole("button", { name: "管理 Hooks 和 MCP" }),
+      await screen.findByRole("button", { name: "管理 MCP" }),
     );
-    expect(screen.getByTestId("location-probe")).toHaveTextContent(
-      "/agents?target=qoderwork",
-    );
+    expect(screen.getByTestId("location-probe")).toHaveTextContent("/mcp");
   });
 
   it("shows TRAE guidance and observed IDs without fetch or save controls", async () => {

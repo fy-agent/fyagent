@@ -127,6 +127,7 @@ pub struct ProviderService;
 
 const QUICK_SETUP_CLAUDE_PROVIDER_ID: &str = "fyagent-v2-quick-setup-claude";
 const QUICK_SETUP_CODEX_PROVIDER_ID: &str = "fyagent-v2-quick-setup-codex";
+const QUICK_SETUP_GROKBUILD_PROVIDER_ID: &str = "fyagent-v2-quick-setup-grokbuild";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -269,9 +270,10 @@ fn snapshot_quick_setup_live(app_type: &AppType) -> Result<Vec<QuickSetupFileSna
             crate::codex_config::get_codex_config_path(),
             crate::codex_config::get_codex_model_catalog_path(),
         ],
+        AppType::GrokBuild => vec![crate::grok_config::get_grok_config_path()],
         _ => {
             return Err(AppError::Message(
-                "Provider quick setup supports only claude or codex".to_string(),
+                "Provider quick setup supports only claude, codex, or grokbuild".to_string(),
             ))
         }
     };
@@ -3751,6 +3753,14 @@ impl ProviderService {
         app_type: &AppType,
         provider: &Provider,
     ) -> Result<(), AppError> {
+        let grok_api_key = match app_type {
+            AppType::GrokBuild => provider
+                .settings_config
+                .get("config")
+                .and_then(Value::as_str)
+                .and_then(crate::grok_config::extract_inline_api_key),
+            _ => None,
+        };
         let api_key = match app_type {
             AppType::Claude => provider
                 .settings_config
@@ -3760,6 +3770,7 @@ impl ProviderService {
                 .settings_config
                 .pointer("/auth/OPENAI_API_KEY")
                 .and_then(Value::as_str),
+            AppType::GrokBuild => grok_api_key.as_deref(),
             _ => None,
         }
         .map(str::trim)
@@ -3777,6 +3788,19 @@ impl ProviderService {
                 .and_then(Value::as_str)
                 .and_then(crate::codex_config::codex_top_level_model)
                 .map(|value| value.trim().to_string()),
+            AppType::GrokBuild => provider
+                .settings_config
+                .get("config")
+                .and_then(Value::as_str)
+                .and_then(|config| {
+                    config
+                        .parse::<toml_edit::DocumentMut>()
+                        .ok()?
+                        .get("models")?
+                        .get("default")?
+                        .as_str()
+                        .map(str::to_string)
+                }),
             _ => None,
         };
 
@@ -3817,6 +3841,11 @@ impl ProviderService {
                         .as_str()
                         .map(str::to_string)
                 }),
+            AppType::GrokBuild => provider
+                .settings_config
+                .get("config")
+                .and_then(Value::as_str)
+                .and_then(crate::grok_config::extract_base_url),
             _ => None,
         }
         .ok_or_else(|| AppError::Message("Provider quick setup URL is invalid".to_string()))?;
@@ -3833,6 +3862,14 @@ impl ProviderService {
                 "Provider quick setup URL is invalid".to_string(),
             ));
         }
+        let grok_api_key = match app_type {
+            AppType::GrokBuild => provider
+                .settings_config
+                .get("config")
+                .and_then(Value::as_str)
+                .and_then(crate::grok_config::extract_inline_api_key),
+            _ => None,
+        };
         let api_key = match app_type {
             AppType::Claude => provider
                 .settings_config
@@ -3842,6 +3879,7 @@ impl ProviderService {
                 .settings_config
                 .pointer("/auth/OPENAI_API_KEY")
                 .and_then(Value::as_str),
+            AppType::GrokBuild => grok_api_key.as_deref(),
             _ => None,
         }
         .map(str::trim)
@@ -4043,14 +4081,18 @@ impl ProviderService {
         app_type: AppType,
         provider: Provider,
     ) -> Result<ProviderMutationResult<SwitchResult>, QuickSetupApplyError> {
-        if !matches!(app_type, AppType::Claude | AppType::Codex) {
+        if !matches!(
+            app_type,
+            AppType::Claude | AppType::Codex | AppType::GrokBuild
+        ) {
             return Err(QuickSetupApplyError::rolled_back(
-                "Provider quick setup supports only claude or codex",
+                "Provider quick setup supports only claude, codex, or grokbuild",
             ));
         }
         let reserved_id = match app_type {
             AppType::Claude => QUICK_SETUP_CLAUDE_PROVIDER_ID,
             AppType::Codex => QUICK_SETUP_CODEX_PROVIDER_ID,
+            AppType::GrokBuild => QUICK_SETUP_GROKBUILD_PROVIDER_ID,
             _ => unreachable!("quick setup app allowlist was checked above"),
         };
         if provider.id != reserved_id {

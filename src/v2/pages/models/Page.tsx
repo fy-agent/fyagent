@@ -81,6 +81,7 @@ const TARGET_PRESENTATION: Record<
   qoderwork: { label: "QoderWork CN", summary: "不支持第三方模型配置" },
   trae: { label: "TRAE Work CN", summary: "需在 TRAE Work CN 中添加模型" },
   workbuddy: { label: "WorkBuddy", summary: "管理模型设置" },
+  grokbuild: { label: "Grok Build", summary: "快速配置模型" },
   codex: { label: "Codex", summary: "快速配置模型" },
   claude: { label: "Claude Code", summary: "快速配置模型" },
   opencode: { label: "OpenCode", summary: "管理模型设置" },
@@ -90,6 +91,7 @@ const TARGET_ICON_IDS: Readonly<Record<ModelTarget, AgentIconId>> = {
   qoderwork: "qoderwork",
   trae: "trae-work",
   workbuddy: "workbuddy",
+  grokbuild: "grokbuild",
   codex: "codex",
   claude: "claude-code",
   opencode: "opencode",
@@ -881,6 +883,18 @@ function sanitizeWarningCodes(
   ];
 }
 
+const PROVIDER_LABELS: Readonly<Record<ProviderAppId, string>> = {
+  claude: "Claude Code",
+  codex: "Codex",
+  grokbuild: "Grok Build",
+};
+
+const PROVIDER_DEFAULT_NAMES: Readonly<Record<ProviderAppId, string>> = {
+  claude: "FyAgent Claude",
+  codex: "FyAgent Codex",
+  grokbuild: "FyAgent Grok Build",
+};
+
 function ProviderPanel({
   app,
   active,
@@ -894,9 +908,7 @@ function ProviderPanel({
 }) {
   const { ports } = useFeatures();
   const summaryQuery = useProviderSummary(app, active);
-  const [name, setName] = useState(
-    app === "codex" ? "FyAgent Codex" : "FyAgent Claude",
-  );
+  const [name, setName] = useState(PROVIDER_DEFAULT_NAMES[app]);
   const [baseUrl, setBaseUrl] = useState("");
   const [apiKey, setApiKeyState] = useState("");
   const apiKeyRef = useRef("");
@@ -1105,7 +1117,7 @@ function ProviderPanel({
     }
   };
 
-  const label = app === "codex" ? "Codex" : "Claude Code";
+  const label = PROVIDER_LABELS[app];
   const queryUnavailable = summaryQuery.isError;
   const queryPending = summaryQuery.isLoading;
 
@@ -1338,6 +1350,7 @@ function renderTargetPanel(
       return <WorkBuddyPanel active={active} />;
     case "codex":
     case "claude":
+    case "grokbuild":
       return (
         <ProviderPanel
           app={target}
