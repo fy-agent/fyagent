@@ -7,7 +7,7 @@ import {
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { StrictMode } from "react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
 import { ModelsPage } from "@/v2/pages/models/Page";
@@ -153,9 +153,16 @@ describe("V2 Models page", () => {
       "aria-current",
       "true",
     );
+    const qoderRegion = screen.getByRole("region", {
+      name: "QoderWork CN 模型设置",
+    });
+    expect(qoderRegion).toBeVisible();
+    expect(qoderRegion.querySelector(".fy-control-badge")).toBeNull();
+    expect(qoderRegion.querySelector(".fy-control-button-primary")).toBeNull();
     expect(
-      screen.getByRole("region", { name: "QoderWork CN 模型设置" }),
-    ).toBeVisible();
+      qoderRegion.querySelector(".fy-models-commit-heading"),
+    ).not.toBeNull();
+    expect(qoderRegion.querySelector(".fy-models-existing")).not.toBeNull();
   });
 
   it("does not expose official settings buttons on QoderWork or TRAE model details", async () => {
@@ -169,6 +176,11 @@ describe("V2 Models page", () => {
     expect(
       screen.queryByRole("button", { name: "打开官方设置" }),
     ).not.toBeInTheDocument();
+    expect(
+      screen
+        .getByRole("region", { name: "QoderWork CN 模型设置" })
+        .querySelector(".fy-control-badge"),
+    ).toBeNull();
 
     const view = renderPage(ports, "trae");
     expect(
@@ -178,6 +190,37 @@ describe("V2 Models page", () => {
       screen.queryByRole("button", { name: "打开 TRAE 官方模型设置" }),
     ).not.toBeInTheDocument();
     view.unmount();
+  });
+
+  it("opens the Agent directory from the QoderWork guidance row", async () => {
+    const user = userEvent.setup();
+    const ports = createBrowserFeaturePorts();
+    function LocationProbe() {
+      const location = useLocation();
+      return (
+        <div data-testid="location-probe">{`${location.pathname}${location.search}`}</div>
+      );
+    }
+
+    render(
+      <StrictMode>
+        <MemoryRouter initialEntries={["/models?target=qoderwork"]}>
+          <TooltipProvider delayDuration={0} skipDelayDuration={0}>
+            <FeatureProvider ports={ports}>
+              <ModelsPage />
+              <LocationProbe />
+            </FeatureProvider>
+          </TooltipProvider>
+        </MemoryRouter>
+      </StrictMode>,
+    );
+
+    await user.click(
+      await screen.findByRole("button", { name: "管理 Hooks 和 MCP" }),
+    );
+    expect(screen.getByTestId("location-probe")).toHaveTextContent(
+      "/agents?target=qoderwork",
+    );
   });
 
   it("shows TRAE guidance and observed IDs without fetch or save controls", async () => {
@@ -199,9 +242,7 @@ describe("V2 Models page", () => {
         "自定义模型需在 TRAE Work CN 中添加。FyAgent 不会写入其本地模型配置。",
       ),
     ).toBeVisible();
-    expect(
-      screen.getByText(/以云端模型列表为准/),
-    ).toBeVisible();
+    expect(screen.getByText(/以云端模型列表为准/)).toBeVisible();
     expect(screen.queryByLabelText("服务地址")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("API Key")).not.toBeInTheDocument();
     expect(
@@ -1220,5 +1261,4 @@ describe("V2 Models page", () => {
     expect(ports.traeWork.getModelIds).toHaveBeenCalled();
     view.unmount();
   });
-
 });

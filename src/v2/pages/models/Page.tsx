@@ -1,6 +1,6 @@
 import { CaretDownIcon } from "@phosphor-icons/react/dist/csr/CaretDown";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { useLocation, useSearchParams } from "react-router-dom";
 
 import { getAgentBrand, type AgentIconId } from "../../shared/assets/agents";
 import { classNames } from "../../shared/design-system/classNames";
@@ -17,7 +17,6 @@ import type {
 } from "../../shared/features/types";
 import { PersistentSurface } from "../../shared/ui/PersistentSurface";
 import {
-  Badge,
   Button,
   Checkbox,
   Dialog,
@@ -55,6 +54,7 @@ import {
 import { GroupedModelChips, ModelSearchField, ModelVendorIcon } from "./modelChips";
 import { ModelsPanelHeader, NoApiKeyOption, NoticeView } from "./modelsShared";
 import { OpenCodeModelsPanel } from "./OpenCodeModelsPanel";
+import { QoderModelsPanel } from "./QoderModelsPanel";
 import { TraeModelsPanel } from "./TraeModelsPanel";
 import {
   addUniqueModelIds,
@@ -1320,38 +1320,6 @@ function ProviderPanel({
   );
 }
 
-function QoderGuidancePanel() {
-  const navigate = useNavigate();
-
-  return (
-    <CatalogDetail
-      className="fy-models-config-panel"
-      ariaLabel="QoderWork CN 模型设置"
-    >
-      <header className="fy-models-config-heading">
-        <div>
-          <h2>QoderWork CN</h2>
-          <p>不支持第三方模型配置</p>
-        </div>
-        <Badge tone="neutral">不支持第三方模型配置</Badge>
-      </header>
-
-      <InlineNotice>
-        不支持第三方模型配置。可在应用目录中管理 Hooks 和 MCP。
-      </InlineNotice>
-
-      <div className="fy-models-actions">
-        <Button
-          className="fy-control-button-primary"
-          onClick={() => navigate("/agents?target=qoderwork")}
-        >
-          管理 Hooks 和 MCP
-        </Button>
-      </div>
-    </CatalogDetail>
-  );
-}
-
 function renderTargetPanel(
   target: ModelTarget,
   active: boolean,
@@ -1372,7 +1340,7 @@ function renderTargetPanel(
         />
       );
     case "qoderwork":
-      return <QoderGuidancePanel />;
+      return <QoderModelsPanel />;
     case "trae":
       return <TraeModelsPanel active={active} />;
     case "opencode":

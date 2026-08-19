@@ -1,6 +1,10 @@
+import { CaretDownIcon } from "@phosphor-icons/react/dist/csr/CaretDown";
+import { CaretRightIcon } from "@phosphor-icons/react/dist/csr/CaretRight";
 import { QuestionIcon } from "@phosphor-icons/react/dist/csr/Question";
 import type { ReactNode } from "react";
 
+import { classNames } from "../../shared/design-system/classNames";
+import { CatalogDetail } from "../../shared/ui/catalog";
 import { Badge, Checkbox, Tooltip } from "../../shared/ui/primitives";
 import { FieldFeedback, type Notice } from "./feedback";
 
@@ -35,6 +39,134 @@ export function ModelsPanelHeader({
         </div>
       ) : null}
     </header>
+  );
+}
+
+export function ModelsGuidancePanel({
+  ariaLabel,
+  title,
+  summary,
+  children,
+}: {
+  ariaLabel: string;
+  title: string;
+  summary: string;
+  children?: ReactNode;
+}) {
+  return (
+    <CatalogDetail className="fy-models-config-panel" ariaLabel={ariaLabel}>
+      <ModelsPanelHeader title={title} summary={summary} />
+      {children}
+    </CatalogDetail>
+  );
+}
+
+function ModelsSurfaceToggle({
+  title,
+  onClick,
+  expanded,
+  testId,
+  trailing,
+}: {
+  title: string;
+  onClick: () => void;
+  expanded?: boolean;
+  testId?: string;
+  trailing?: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      className="fy-models-existing-toggle"
+      data-testid={testId}
+      aria-expanded={expanded}
+      onClick={onClick}
+    >
+      <h3>{title}</h3>
+      {trailing ? (
+        <span className="fy-models-existing-meta">{trailing}</span>
+      ) : null}
+    </button>
+  );
+}
+
+export function ModelsExistingSection({
+  title,
+  countLabel,
+  count,
+  open,
+  onOpenChange,
+  testId,
+  toggleTestId,
+  ariaLabel,
+  invalid = false,
+  children,
+}: {
+  title: string;
+  countLabel: string;
+  count: number;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  testId?: string;
+  toggleTestId?: string;
+  ariaLabel?: string;
+  invalid?: boolean;
+  children?: ReactNode;
+}) {
+  return (
+    <section
+      className="fy-models-existing"
+      data-testid={testId}
+      data-invalid={invalid || undefined}
+      aria-label={ariaLabel}
+    >
+      <ModelsSurfaceToggle
+        title={title}
+        expanded={open}
+        testId={toggleTestId}
+        onClick={() => onOpenChange(!open)}
+        trailing={
+          <>
+            <span>{countLabel}</span>
+            <strong className="fy-models-existing-count">{count}</strong>
+            <CaretDownIcon
+              className={classNames(
+                "fy-models-caret",
+                open && "fy-models-caret-open",
+              )}
+              size={18}
+              aria-hidden
+            />
+          </>
+        }
+      />
+      {open ? children : null}
+    </section>
+  );
+}
+
+export function ModelsActionRow({
+  title,
+  onClick,
+  meta,
+}: {
+  title: string;
+  onClick: () => void;
+  meta?: ReactNode;
+}) {
+  return (
+    <section className="fy-models-existing">
+      <ModelsSurfaceToggle
+        title={title}
+        onClick={onClick}
+        trailing={
+          <>
+            {meta}
+            <CaretRightIcon className="fy-models-caret" size={18} aria-hidden />
+          </>
+        }
+      />
+    </section>
   );
 }
 
@@ -75,4 +207,3 @@ export function NoApiKeyOption({
     </div>
   );
 }
-
