@@ -98,6 +98,23 @@ function skillCardBody(skill: DiscoverableSkill, hideRepo: boolean): string {
   return hideRepo ? "" : `来自 ${skillRepoKey(skill)}`;
 }
 
+function skillDetailBody(skill: DiscoverableSkill): string {
+  return skillCardBody(skill, false) || "暂无说明";
+}
+
+function skillDetailMeta(
+  skill: DiscoverableSkill & { installs?: number },
+): string {
+  return [
+    skillRepoKey(skill),
+    typeof skill.installs === "number"
+      ? `${skill.installs.toLocaleString()} 次安装`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
 function skillDocsAction(
   readmeUrl?: string,
   repoUrl?: string | null,
@@ -767,6 +784,7 @@ function DiscoveryCard({
   isInstalled,
   skill,
   onInstall,
+  onOpenDetail,
 }: {
   busy: boolean;
   hideRepo: boolean;
@@ -774,6 +792,7 @@ function DiscoveryCard({
   isInstalled: boolean;
   skill: DiscoverableSkill & { installs?: number };
   onInstall: (skill: DiscoverableSkill) => Promise<void>;
+  onOpenDetail: (skill: DiscoverableSkill & { installs?: number }) => void;
 }) {
   const repo = skillRepoKey(skill);
   const repoUrl = githubRepoUrl(skill.repoOwner, skill.repoName);
@@ -804,6 +823,7 @@ function DiscoveryCard({
         >
           {isInstalled ? "已安装" : `安装到 ${installLabel}`}
         </Button>
+        <Button onClick={() => onOpenDetail(skill)}>详情</Button>
         {docs ? (
           <ExternalLinkButton url={docs.url}>{docs.label}</ExternalLinkButton>
         ) : null}
@@ -831,6 +851,9 @@ function Discovery({
   const [skillsShInput, setSkillsShInput] = useState("");
   const [skillsShQuery, setSkillsShQuery] = useState("");
   const [page, setPage] = useState(1);
+  const [detailSkill, setDetailSkill] = useState<
+    (DiscoverableSkill & { installs?: number }) | null
+  >(null);
   const resultsTop = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -1100,6 +1123,7 @@ function Discovery({
                       )}
                       skill={skill}
                       onInstall={onInstall}
+                      onOpenDetail={setDetailSkill}
                     />
                   ))}
                 </div>
@@ -1116,6 +1140,19 @@ function Discovery({
         }
         onPageChange={goToPage}
       />
+      {detailSkill ? (
+        <Dialog
+          open
+          title={detailSkill.name}
+          description={skillDetailMeta(detailSkill) || "Skill 详情"}
+          onOpenChange={(open) => {
+            if (!open) setDetailSkill(null);
+          }}
+          actions={<Button onClick={() => setDetailSkill(null)}>关闭</Button>}
+        >
+          <p className="fy-feature-intro">{skillDetailBody(detailSkill)}</p>
+        </Dialog>
+      ) : null}
     </section>
   );
 }

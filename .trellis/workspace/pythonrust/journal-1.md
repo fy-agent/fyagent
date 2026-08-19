@@ -1035,3 +1035,28 @@ Skills/MCP discovery cards show full descriptions instead of a 3-line clamp. `Fe
 ### Status
 
 [OK] **Completed**
+
+
+## Session 33: Discovery card preview clamp and details dialog
+
+**Date**: 2026-08-20
+**Task**: none (small UI correction, no Trellis task)
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Corrected discovery cards: preview is clamped to 3 lines for grid alignment; full copy opens from 详情 in the shared Dialog. Spec now matches that contract.
+
+### Main Changes
+
+- Restore `-webkit-line-clamp: 3` and a 3-line min-height on `.fy-feature-card-body`.
+- Add 详情 on each discovery card; Dialog shows the complete description and repo/install meta.
+- Reverse the previous “no clamp / full card copy” spec in reuse and v2-skills-mcp.
+
+### Testing
+
+- [OK] mise run format; typecheck:v2; lint:v2; test:v2 (35 files, 256 passed).
+
+### Status
+
+[OK] **Completed**

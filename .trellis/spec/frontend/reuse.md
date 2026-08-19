@@ -232,7 +232,7 @@ already share `modelsShared`, `modelChips`, and `feedback`. Do not add
 | New chrome is parked in `pages/` because "only one consumer today" while a sibling route is expected | Put it in `shared/` on the first commit; do not wait for a third copy    |
 | A page forks FeatureTabs / FeatureSearch / FeatureList "just for this screen"                        | Reject; pass options/copy into the shared owner                          |
 | A page adds a pagination npm package or a second pager for prev/next / ellipsis                      | Reject; extend `FeaturePagination`                                       |
-| Discovery `.fy-feature-card-body` uses `-webkit-line-clamp`                                          | CSS test fails; card copy wraps in full                                  |
+| Skills discovery dumps the full description onto `.fy-feature-card-body`                             | CSS/page test fails; clamp to 3 lines and open the 详情 dialog           |
 | Page invents a second Tauri invoke for an existing FeaturePort command                               | Use the port; leftover `src/lib/api` is the name reference only          |
 
 ## 5. Good / Base / Bad Cases
@@ -260,8 +260,8 @@ mise run test:v2
   `FeatureListItem` `aria-current`, `buildFeaturePaginationItems` windows
   (full set when `totalPages <= 7`; first/last plus ellipsis otherwise),
   `FeaturePagination` current-page `aria-current`, 上一页 / 下一页 disabled
-  at the ends, status copy `第 x / n 页`, discovery cards without
-  `-webkit-line-clamp`, and the discovery-scroll CSS contract.
+  at the ends, status copy `第 x / n 页`, discovery card preview clamp
+  (`-webkit-line-clamp: 3`), and the discovery-scroll CSS contract.
 - Architecture tests prove Skills/MCP/Memory/Prompts/Discovery/model search
   import `FeatureTabs` / `FeatureSearch` / `FeatureList` as required, that
   Skills/MCP/Memory do not contain `className="fy-feature-tab"` literals, and

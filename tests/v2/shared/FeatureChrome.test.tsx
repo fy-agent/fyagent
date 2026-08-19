@@ -241,7 +241,7 @@ describe("FeaturePagination", () => {
     expect(screen.queryByRole("navigation", { name: "演示分页" })).toBeNull();
   });
 
-  it("lets discovery card copy wrap and stretches cards in the grid", () => {
+  it("clamps discovery card copy to three lines so the grid stays aligned", () => {
     const featuresCss = readFileSync(
       path.resolve(process.cwd(), "src", "v2", "app", "styles", "features.css"),
       "utf8",
@@ -249,8 +249,9 @@ describe("FeaturePagination", () => {
     const bodyBlock =
       featuresCss.match(/\.fy-feature-card-body\s*\{[^}]*\}/s)?.[0] ?? "";
     expect(bodyBlock).toContain(".fy-feature-card-body");
-    expect(bodyBlock).not.toMatch(/-webkit-line-clamp/);
-    expect(bodyBlock).not.toMatch(/display:\s*-webkit-box/);
+    expect(bodyBlock).toMatch(/display:\s*-webkit-box/);
+    expect(bodyBlock).toMatch(/overflow:\s*hidden/);
+    expect(bodyBlock).toMatch(/-webkit-line-clamp:\s*3/);
     expect(featuresCss).toMatch(
       /\.fy-feature-card\s*\{[^}]*display:\s*flex;[^}]*flex-direction:\s*column;/s,
     );

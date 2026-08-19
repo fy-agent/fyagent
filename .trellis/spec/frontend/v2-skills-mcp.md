@@ -334,10 +334,13 @@ function ExternalLinkButton(props: {
   Repository chips appear only when more
   than one enabled repository is loaded from `getRepos()`. Skill Discover
   cards show the name and
-  install state in the header, the full description or directory/source
-  note (no `-webkit-line-clamp`), then a text meta line of repository and
-  optional install count. `.fy-feature-card` is a column flex so footer
-  actions align across a stretched grid row. Group
+  install state in the header, a 3-line clamped description or directory/source
+  note, then a text meta line of repository and optional install count.
+  `.fy-feature-card` is a column flex so footer actions align across a
+  stretched grid row. Full copy is not on the card: **详情** opens the shared
+  `Dialog` with the complete description (or directory/source fallback) and
+  repository / install-count meta. **说明** / **仓库** stay
+  `ExternalLinkButton` on the card. Group
   headings appear only when a repository has two or more skills on the
   current page; those
   cards omit the repeated repository. Skills discovery search/filter chrome
@@ -440,7 +443,8 @@ function ExternalLinkButton(props: {
 | Viewport changes between two- and three-column layouts           | Render exactly one panel: seven unique Skill or seven unique MCP switches |
 | `.fy-feature-discovery-scroll` loses `overflow: auto` on MCP     | MCP discovery cards cannot scroll independently                           |
 | Skills discovery only scrolls the inner card strip               | Page CSS test fails; `.fy-skills-page-discovery` must scroll the page     |
-| Discovery `.fy-feature-card-body` uses `-webkit-line-clamp`      | CSS test fails; description wraps in full                                 |
+| Discovery `.fy-feature-card-body` drops `-webkit-line-clamp`     | CSS test fails; preview stays 3 lines; full copy is the 详情 dialog       |
+| Discovery card has no 详情 control                               | Page test fails; full description must not live only on the card          |
 | FeaturePagination is a 5-number slice without prev/next          | Shared owner must include 上一页/下一页, ellipsis, and `第 x / n 页`      |
 | A page adds a pagination npm package or a second pager           | Reject; extend `FeaturePagination`; Radix has no Pagination primitive     |
 | WorkBuddy is converted to `AppType` or added as a Provider app   | Type/runtime test fails; WorkBuddy stays Skills/MCP-domain only         |
@@ -461,7 +465,8 @@ function ExternalLinkButton(props: {
   from `discover_available_skills_page`, paints only that page, and shares
   `FeaturePagination` with skills.sh. Filter changes return to page 1. MCP
   discovery still scrolls through `.fy-feature-discovery-scroll`. Skills
-  discovery scrolls the whole feature page.
+  discovery scrolls the whole feature page. Discovery cards clamp the preview
+  to three lines; **详情** opens the shared `Dialog` with the full copy.
 - **Good:** A user toggles Codex for one Skill. The UI invokes
   `toggle_skill_app` with `{ id, app: "codex", enabled }`, locks only
   conflicting writes, then rereads installed Skills before settling. The row
@@ -523,7 +528,7 @@ git diff --check
   header install-target tabs in that same order, flex list overlay, one
   shared in-flight lock, Skills discovery page-2 offset 20, search resetting
   to page 1, `FeaturePagination` selection plus prev/next and ellipsis,
-  discovery cards without `-webkit-line-clamp`, Skills page-level discovery
+  discovery card 3-line clamp plus 详情 dialog, Skills page-level discovery
   scroll, MCP `.fy-feature-discovery-scroll` overflow, and no overflow on
   `.fy-feature-detail-scroll`.
 - Browser tests cover `900x600`, `1152x640`, `1232x700`, and `1440x900`, with
@@ -688,14 +693,38 @@ discoverPage: (request) =>
 }
 ```
 
-Wrong: clamp Discover card copy and hand-roll a five-number page slice.
+Wrong: dump the full Skill description on the discovery card, or omit 详情.
+
+```css
+.fy-feature-card-body {
+  flex: 1 1 auto;
+}
+```
+
+```tsx
+<p className="fy-feature-card-body">{skill.description}</p>
+```
+
+Correct: clamp the card preview to three lines and open the shared `Dialog`
+from **详情**. Keep **说明** / **仓库** as `ExternalLinkButton`.
 
 ```css
 .fy-feature-card-body {
   display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
 }
 ```
+
+```tsx
+<Button onClick={() => setDetailSkill(skill)}>详情</Button>
+<Dialog open={Boolean(detailSkill)} title={detailSkill.name} onOpenChange={...}>
+  <p className="fy-feature-intro">{skillDetailBody(detailSkill)}</p>
+</Dialog>
+```
+
+Wrong: hand-roll a five-number page slice.
 
 ```tsx
 {pages.slice(page - 3, page + 2).map((n) => (
@@ -703,14 +732,7 @@ Wrong: clamp Discover card copy and hand-roll a five-number page slice.
 ))}
 ```
 
-Correct: let the description wrap, stretch cards in the grid, and reuse
-`FeaturePagination` (status, 上一页 / 下一页, ellipsis).
-
-```css
-.fy-feature-card-body {
-  flex: 1 1 auto;
-}
-```
+Correct: reuse `FeaturePagination` (status, 上一页 / 下一页, ellipsis).
 
 ```tsx
 <FeaturePagination

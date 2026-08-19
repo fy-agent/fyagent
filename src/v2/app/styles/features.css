@@ -411,7 +411,12 @@
   line-height: 1.5;
 }
 .fy-feature-card-body {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
   flex: 1 1 auto;
+  min-height: 4.5em;
 }
 .fy-feature-card footer {
   display: flex;

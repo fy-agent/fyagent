@@ -930,6 +930,42 @@ describe("V2 Skills management", () => {
     ).toBeVisible();
   });
 
+  it("opens the full discovery description in a details dialog", async () => {
+    const user = userEvent.setup();
+    const longDescription =
+      "Review changes across a long skill summary that must not stretch the discovery card. ".repeat(
+        8,
+      );
+    const ports = createBrowserFeaturePorts();
+    ports.skills.getRepos = async () => [
+      { owner: "acme", name: "skills", branch: "main", enabled: true },
+    ];
+    ports.skills.discoverPage = async () => ({
+      skills: [{ ...discoverableSkill(), description: longDescription }],
+      totalCount: 1,
+    });
+
+    renderFeature(<SkillsPage />, ports);
+    await screen.findByText("还没有安装 Skill");
+    await user.click(screen.getByRole("tab", { name: "发现" }));
+    const card = (
+      await screen.findByRole("heading", { name: "Review Skill" })
+    ).closest("article");
+    expect(card).not.toBeNull();
+    expect(
+      within(card as HTMLElement).getByRole("button", { name: "详情" }),
+    ).toBeVisible();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await user.click(
+      within(card as HTMLElement).getByRole("button", { name: "详情" }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: "Review Skill" });
+    expect(dialog).toHaveTextContent(longDescription.trim());
+    expect(within(dialog).getByText("acme/skills")).toBeVisible();
+    await user.click(within(dialog).getByRole("button", { name: "关闭" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
   it("renders skills.sh results with source note, install count, and repo link", async () => {
     const user = userEvent.setup();
     const ports = createBrowserFeaturePorts();
