@@ -1,0 +1,70 @@
+{
+  "plan": {
+    "planId": "plan-contract",
+    "operation": "codex_provider_switch",
+    "targetProviderId": "provider-target",
+    "targetProviderName": "Target Provider",
+    "planDigest": "plan-digest",
+    "baselineDigest": "baseline-digest",
+    "createdAt": 100,
+    "expiresAt": 1000,
+    "status": "ready",
+    "currentProviderCode": "current_configured",
+    "targetProviderCode": "existing_provider",
+    "restartExpectation": "recommended",
+    "risks": [{ "code": "local_configuration_write", "severity": "notice" }],
+    "evidenceNote": "usage_not_observed"
+  },
+  "applyOutcome": {
+    "kind": "admitted",
+    "job": {
+      "jobId": "job-contract",
+      "planId": "plan-contract",
+      "targetProviderId": "provider-target",
+      "revision": 4,
+      "eventSeq": 4,
+      "status": "succeeded",
+      "resultCode": "applied_restart_recommended",
+      "steps": [
+        {
+          "kind": "precheck",
+          "status": "succeeded",
+          "code": "baseline_matched"
+        },
+        { "kind": "apply", "status": "succeeded", "code": "writer_returned" },
+        { "kind": "readback", "status": "succeeded", "code": "target_matched" },
+        { "kind": "reconcile", "status": "pending", "code": "pending" }
+      ],
+      "resources": [
+        {
+          "kind": "provider_db_current",
+          "status": "matched",
+          "code": "target_current"
+        },
+        {
+          "kind": "device_current",
+          "status": "matched",
+          "code": "target_current"
+        },
+        {
+          "kind": "target_definition",
+          "status": "matched",
+          "code": "definition_matched"
+        },
+        {
+          "kind": "codex_live_projection",
+          "status": "matched",
+          "code": "live_matched"
+        }
+      ],
+      "restartRequirement": "recommended",
+      "usageEvidence": "not_observed",
+      "recoveryState": "not_needed",
+      "diagnosticCode": "target_readback_matched",
+      "liveConfigChanged": true,
+      "createdAt": 100,
+      "updatedAt": 101
+    }
+  },
+  "event": { "jobId": "job-contract", "eventSeq": 4 }
+}

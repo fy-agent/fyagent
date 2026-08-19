@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useProviderActions } from "@/hooks/useProviderActions";
 import type { Provider, UsageScript } from "@/types";
+import type { ChangeJobSnapshot } from "@/lib/api/change-plan";
 
 const toastSuccessMock = vi.fn();
 const toastErrorMock = vi.fn();
@@ -106,6 +107,30 @@ function createProvider(overrides: Partial<Provider> = {}): Provider {
   };
 }
 
+function createChangeJob(
+  overrides: Partial<ChangeJobSnapshot> = {},
+): ChangeJobSnapshot {
+  return {
+    jobId: "job-1",
+    planId: "plan-1",
+    targetProviderId: "provider-1",
+    revision: 3,
+    eventSeq: 3,
+    status: "succeeded",
+    resultCode: "applied",
+    steps: [],
+    resources: [],
+    restartRequirement: "not_required",
+    usageEvidence: "not_observed",
+    recoveryState: "not_needed",
+    diagnosticCode: "target_readback_matched",
+    liveConfigChanged: false,
+    createdAt: 100,
+    updatedAt: 101,
+    ...overrides,
+  };
+}
+
 beforeEach(() => {
   addProviderMutateAsync.mockReset();
   updateProviderMutateAsync.mockReset();
@@ -176,7 +201,7 @@ describe("useProviderActions", () => {
     expect(providersApiUpdateTrayMenuMock).toHaveBeenCalledTimes(1);
   });
 
-  it("should not request plugin sync when switching non-Claude provider", async () => {
+  it("routes Codex switching to Change Plan without direct mutation or success toast", async () => {
     switchProviderMutateAsync.mockResolvedValueOnce(undefined);
     const { wrapper } = createWrapper();
     const provider = createProvider({ category: "custom" });
@@ -189,12 +214,11 @@ describe("useProviderActions", () => {
       await result.current.switchProvider(provider);
     });
 
-    expect(switchProviderMutateAsync).toHaveBeenCalledWith(provider.id);
+    expect(switchProviderMutateAsync).not.toHaveBeenCalled();
+    expect(result.current.codexSwitchTarget).toEqual(provider);
     expect(settingsApiGetMock).not.toHaveBeenCalled();
     expect(settingsApiApplyMock).not.toHaveBeenCalled();
-    expect(toastSuccessMock).toHaveBeenCalledWith("切换成功！", {
-      closeButton: true,
-    });
+    expect(toastSuccessMock).not.toHaveBeenCalled();
   });
 
   it("does not inspect or prompt for restart when Codex reports no live change", async () => {
@@ -219,6 +243,7 @@ describe("useProviderActions", () => {
       await result.current.switchProvider(
         createProvider({ category: "custom" }),
       );
+      await result.current.completeCodexSwitchPlan(createChangeJob());
     });
 
     expect(onCodexLiveConfigChanged).not.toHaveBeenCalled();
@@ -246,6 +271,9 @@ describe("useProviderActions", () => {
       await result.current.switchProvider(
         createProvider({ category: "custom" }),
       );
+      await result.current.completeCodexSwitchPlan(
+        createChangeJob({ liveConfigChanged: true }),
+      );
     });
 
     expect(onCodexLiveConfigChanged).toHaveBeenCalledTimes(1);
@@ -271,6 +299,7 @@ describe("useProviderActions", () => {
 
     expect(toastWarningMock).toHaveBeenCalledTimes(1);
     expect(switchProviderMutateAsync).toHaveBeenCalledWith(provider.id);
+    expect(result.current.codexSwitchTarget).toBeNull();
   });
 
   it("warns but still switches Codex full URL providers when proxy is not running", async () => {
@@ -292,7 +321,8 @@ describe("useProviderActions", () => {
     });
 
     expect(toastWarningMock).toHaveBeenCalledTimes(1);
-    expect(switchProviderMutateAsync).toHaveBeenCalledWith(provider.id);
+    expect(switchProviderMutateAsync).not.toHaveBeenCalled();
+    expect(result.current.codexSwitchTarget).toEqual(provider);
   });
 
   it("warns when switching a Codex Anthropic-format provider without proxy", async () => {
@@ -314,7 +344,8 @@ describe("useProviderActions", () => {
     expect(toastWarningMock).toHaveBeenCalledWith(
       expect.stringContaining("Anthropic Messages"),
     );
-    expect(switchProviderMutateAsync).toHaveBeenCalledWith(provider.id);
+    expect(switchProviderMutateAsync).not.toHaveBeenCalled();
+    expect(result.current.codexSwitchTarget).toEqual(provider);
   });
 
   it("warns for Grok providers that require the Responses router", async () => {
@@ -376,7 +407,8 @@ describe("useProviderActions", () => {
     expect(toastWarningMock).toHaveBeenCalledWith(
       expect.stringContaining("托管 OAuth"),
     );
-    expect(switchProviderMutateAsync).toHaveBeenCalledWith(provider.id);
+    expect(switchProviderMutateAsync).not.toHaveBeenCalled();
+    expect(result.current.codexSwitchTarget).toEqual(provider);
   });
 
   it("does not warn for managed OAuth after the current Code app is taken over", async () => {
@@ -400,7 +432,8 @@ describe("useProviderActions", () => {
     });
 
     expect(toastWarningMock).not.toHaveBeenCalled();
-    expect(switchProviderMutateAsync).toHaveBeenCalledWith(provider.id);
+    expect(switchProviderMutateAsync).not.toHaveBeenCalled();
+    expect(result.current.codexSwitchTarget).toEqual(provider);
   });
 
   it("uses proxy process readiness for Claude Desktop routing", async () => {
@@ -450,7 +483,8 @@ describe("useProviderActions", () => {
       await result.current.switchProvider(provider);
     });
 
-    expect(switchProviderMutateAsync).toHaveBeenCalledWith("codex-official");
+    expect(switchProviderMutateAsync).not.toHaveBeenCalled();
+    expect(result.current.codexSwitchTarget).toEqual(provider);
     expect(toastErrorMock).not.toHaveBeenCalled();
   });
 
@@ -598,7 +632,7 @@ describe("useProviderActions", () => {
     const { wrapper } = createWrapper();
     const provider = createProvider();
 
-    const { result } = renderHook(() => useProviderActions("codex"), {
+    const { result } = renderHook(() => useProviderActions("gemini"), {
       wrapper,
     });
 

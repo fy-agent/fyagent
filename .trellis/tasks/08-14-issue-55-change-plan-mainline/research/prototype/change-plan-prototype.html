@@ -1,0 +1,2160 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="system">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>FyAgent Change Plan · High-fidelity prototype</title>
+    <style>
+      :root {
+        --background: 0 0% 100%;
+        --foreground: 240 10% 3.9%;
+        --card: 0 0% 100%;
+        --card-foreground: 240 10% 3.9%;
+        --primary: 210 100% 56%;
+        --primary-foreground: 0 0% 100%;
+        --secondary: 240 4.8% 95.9%;
+        --secondary-foreground: 240 5.9% 10%;
+        --muted: 240 4.8% 95.9%;
+        --muted-foreground: 240 3.8% 46.1%;
+        --border: 240 5.9% 90%;
+        --input: 240 5.9% 90%;
+        --ring: 210 100% 56%;
+        --destructive: 0 84.2% 60.2%;
+        --destructive-foreground: 0 0% 98%;
+        --success: 151 74% 32%;
+        --warning: 36 100% 34%;
+
+        --app-background: hsl(var(--muted) / 0.55);
+        --surface: hsl(var(--card));
+        --surface-subtle: hsl(var(--muted) / 0.62);
+        --surface-primary: hsl(var(--primary) / 0.07);
+        --text: hsl(var(--foreground));
+        --text-secondary: hsl(var(--foreground) / 0.72);
+        --text-muted: hsl(var(--muted-foreground));
+        --line: hsl(var(--border));
+        --line-strong: hsl(var(--muted-foreground) / 0.42);
+        --primary-color: hsl(var(--primary));
+        --primary-hover: hsl(210 100% 45%);
+        --primary-soft: hsl(var(--primary) / 0.1);
+        --success-color: hsl(var(--success));
+        --success-soft: hsl(var(--success) / 0.1);
+        --warning-color: hsl(var(--warning));
+        --warning-soft: hsl(var(--warning) / 0.11);
+        --danger-color: hsl(var(--destructive));
+        --danger-soft: hsl(var(--destructive) / 0.09);
+        --neutral-soft: hsl(var(--muted));
+        --focus: hsl(var(--ring) / 0.36);
+        --shadow: 0 1px 2px hsl(var(--foreground) / 0.05);
+        --radius: 8px;
+        --radius-lg: 10px;
+        --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, "Noto Sans SC", "PingFang SC",
+          "Microsoft YaHei", "Noto Sans JP", sans-serif;
+        --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+          "Liberation Mono", monospace;
+      }
+
+      html[data-theme="light"] {
+        color-scheme: light;
+      }
+
+      html[data-theme="dark"] {
+        color-scheme: dark;
+        --background: 240 5% 12%;
+        --foreground: 0 0% 98%;
+        --card: 240 5% 16%;
+        --card-foreground: 0 0% 98%;
+        --primary: 210 100% 54%;
+        --primary-foreground: 0 0% 100%;
+        --secondary: 240 5% 18%;
+        --secondary-foreground: 0 0% 98%;
+        --muted: 240 5% 18%;
+        --muted-foreground: 240 5% 64.9%;
+        --border: 240 5% 24%;
+        --input: 240 5% 24%;
+        --ring: 210 100% 54%;
+        --destructive: 0 62.8% 45%;
+        --destructive-foreground: 0 0% 98%;
+        --success: 151 58% 53%;
+        --warning: 40 92% 58%;
+        --app-background: hsl(240 5% 10%);
+        --primary-hover: hsl(210 100% 62%);
+      }
+
+      @media (prefers-color-scheme: dark) {
+        html[data-theme="system"] {
+          color-scheme: dark;
+          --background: 240 5% 12%;
+          --foreground: 0 0% 98%;
+          --card: 240 5% 16%;
+          --card-foreground: 0 0% 98%;
+          --primary: 210 100% 54%;
+          --primary-foreground: 0 0% 100%;
+          --secondary: 240 5% 18%;
+          --secondary-foreground: 0 0% 98%;
+          --muted: 240 5% 18%;
+          --muted-foreground: 240 5% 64.9%;
+          --border: 240 5% 24%;
+          --input: 240 5% 24%;
+          --ring: 210 100% 54%;
+          --destructive: 0 62.8% 45%;
+          --destructive-foreground: 0 0% 98%;
+          --success: 151 58% 53%;
+          --warning: 40 92% 58%;
+          --app-background: hsl(240 5% 10%);
+          --primary-hover: hsl(210 100% 62%);
+        }
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      [hidden] {
+        display: none !important;
+      }
+
+      html,
+      body {
+        margin: 0;
+        min-width: 320px;
+        min-height: 100%;
+        background: var(--app-background);
+        color: var(--text);
+        font-family: var(--sans);
+        font-size: 14px;
+        line-height: 1.5;
+      }
+
+      body {
+        min-height: 100vh;
+        min-height: 100dvh;
+      }
+
+      button,
+      select {
+        font: inherit;
+      }
+
+      button,
+      summary,
+      select {
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      button:focus-visible,
+      select:focus-visible,
+      summary:focus-visible,
+      h1:focus-visible {
+        outline: 3px solid var(--focus);
+        outline-offset: 2px;
+      }
+
+      .app-shell {
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr) auto;
+        width: 100%;
+        height: 100vh;
+        height: 100dvh;
+        min-height: 720px;
+        background: var(--app-background);
+      }
+
+      .app-header,
+      .app-footer {
+        position: relative;
+        z-index: 3;
+        background: var(--surface);
+      }
+
+      .app-header {
+        border-bottom: 1px solid var(--line);
+      }
+
+      .topbar {
+        min-height: 72px;
+        display: grid;
+        grid-template-columns: minmax(360px, 1fr) auto;
+        align-items: center;
+        gap: 22px;
+        padding: 11px 24px;
+      }
+
+      .title-cluster,
+      .header-status,
+      .prototype-controls,
+      .footer-actions,
+      .section-title,
+      .status-line,
+      .footer-truth {
+        display: flex;
+        align-items: center;
+      }
+
+      .title-cluster {
+        min-width: 0;
+        gap: 14px;
+      }
+
+      .back-button {
+        flex: 0 0 auto;
+        width: 36px;
+        height: 36px;
+        display: inline-grid;
+        place-items: center;
+        border: 1px solid var(--line-strong);
+        border-radius: var(--radius);
+        color: var(--text-secondary);
+        background: var(--surface);
+        cursor: pointer;
+      }
+
+      .back-button:hover,
+      .button-secondary:hover {
+        border-color: hsl(var(--primary) / 0.48);
+        background: var(--surface-subtle);
+      }
+
+      .back-button svg,
+      .icon svg {
+        width: 18px;
+        height: 18px;
+        display: block;
+        fill: none;
+        stroke: currentColor;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        stroke-width: 1.8;
+      }
+
+      .brand {
+        flex: 0 0 auto;
+        font-size: 18px;
+        font-weight: 760;
+        letter-spacing: -0.02em;
+      }
+
+      .title-divider {
+        width: 1px;
+        height: 30px;
+        background: var(--line);
+      }
+
+      .page-heading {
+        min-width: 0;
+      }
+
+      .breadcrumb,
+      .section-title p,
+      .prototype-note,
+      .microcopy,
+      .fact span {
+        color: var(--text-muted);
+      }
+
+      .breadcrumb {
+        margin: 0 0 1px;
+        font-size: 12px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 19px;
+        line-height: 1.3;
+        letter-spacing: -0.01em;
+      }
+
+      .header-status {
+        justify-content: flex-end;
+        gap: 9px;
+      }
+
+      .plan-meta {
+        min-width: 330px;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 3px 16px;
+        color: var(--text-muted);
+        font-family: var(--mono);
+        font-size: 12px;
+      }
+
+      .meta-item {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .meta-label {
+        color: var(--text-muted);
+        opacity: 0.78;
+      }
+
+      .status-badge,
+      .validity-pill,
+      .preview-chip,
+      .resource-op {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 680;
+        line-height: 1.3;
+        white-space: nowrap;
+      }
+
+      .status-badge,
+      .validity-pill {
+        min-height: 31px;
+        padding: 5px 10px;
+        border: 1px solid var(--line);
+      }
+
+      .state-symbol {
+        width: 18px;
+        height: 18px;
+        display: inline-grid;
+        place-items: center;
+        border: 1px solid currentColor;
+        border-radius: 50%;
+        font-family: var(--mono);
+        font-size: 12px;
+        font-weight: 800;
+        line-height: 1;
+      }
+
+      .tone-success {
+        color: var(--success-color);
+        border-color: hsl(var(--success) / 0.38);
+        background: var(--success-soft);
+      }
+
+      .tone-warning {
+        color: var(--warning-color);
+        border-color: hsl(var(--warning) / 0.42);
+        background: var(--warning-soft);
+      }
+
+      .tone-danger {
+        color: var(--danger-color);
+        border-color: hsl(var(--destructive) / 0.4);
+        background: var(--danger-soft);
+      }
+
+      .tone-neutral {
+        color: var(--text-secondary);
+        border-color: var(--line-strong);
+        background: var(--neutral-soft);
+      }
+
+      .validity-pill {
+        color: var(--text-secondary);
+        background: var(--surface);
+      }
+
+      .prototype-controls {
+        min-height: 50px;
+        flex-wrap: wrap;
+        gap: 10px;
+        padding: 7px 24px;
+        border-top: 1px solid var(--line);
+        background: var(--surface-subtle);
+      }
+
+      .prototype-label {
+        flex: 0 0 auto;
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        color: var(--text-secondary);
+        font-family: var(--mono);
+        font-size: 12px;
+        font-weight: 750;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+      }
+
+      .prototype-label::before {
+        content: "";
+        width: 8px;
+        height: 8px;
+        border: 2px solid var(--text-muted);
+        border-radius: 2px;
+      }
+
+      .control-field {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--text-secondary);
+        font-size: 12px;
+      }
+
+      .control-field select {
+        height: 33px;
+        max-width: 210px;
+        padding: 0 28px 0 9px;
+        border: 1px solid var(--line-strong);
+        border-radius: 7px;
+        color: var(--text);
+        background: var(--surface);
+        cursor: pointer;
+      }
+
+      .prototype-note {
+        flex: 1 1 240px;
+        margin-left: auto;
+        text-align: right;
+        font-size: 12px;
+      }
+
+      .app-main {
+        min-height: 0;
+        overflow: auto;
+        padding: 14px 18px 18px;
+      }
+
+      .content-frame {
+        width: min(1404px, 100%);
+        margin: 0 auto;
+      }
+
+      .intent-ribbon {
+        display: grid;
+        grid-template-columns: minmax(300px, 1fr) auto auto;
+        align-items: center;
+        gap: 18px;
+        min-height: 70px;
+        margin-bottom: 11px;
+        padding: 10px 14px;
+        border: 1px solid hsl(var(--primary) / 0.34);
+        border-radius: var(--radius-lg);
+        background: var(--surface-primary);
+        box-shadow: var(--shadow);
+      }
+
+      .intent-title {
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        gap: 11px;
+      }
+
+      .intent-icon {
+        flex: 0 0 auto;
+        width: 38px;
+        height: 38px;
+        display: grid;
+        place-items: center;
+        border: 1px solid hsl(var(--primary) / 0.5);
+        border-radius: 50%;
+        color: var(--primary-color);
+        background: var(--surface);
+      }
+
+      .eyebrow,
+      code,
+      .resource-key,
+      .resource-count,
+      .state-code,
+      .binding-box code,
+      .detail-value {
+        font-family: var(--mono);
+      }
+
+      .eyebrow {
+        display: block;
+        margin-bottom: 2px;
+        color: var(--text-muted);
+        font-size: 12px;
+      }
+
+      .intent-title strong {
+        display: block;
+        font-size: 15px;
+        overflow-wrap: anywhere;
+        white-space: normal;
+      }
+
+      .intent-route {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 28px minmax(0, 1fr);
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+      }
+
+      .route-node {
+        min-width: 0;
+        padding: 7px 10px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: var(--surface);
+      }
+
+      .route-node span {
+        display: block;
+        color: var(--text-muted);
+        font-size: 12px;
+      }
+
+      .route-node strong {
+        display: block;
+        margin-top: 1px;
+        font-size: 13px;
+        overflow-wrap: anywhere;
+        white-space: normal;
+      }
+
+      .route-arrow {
+        color: var(--text-muted);
+        font-size: 18px;
+        text-align: center;
+      }
+
+      .preview-chip {
+        min-height: 32px;
+        padding: 5px 10px;
+        border: 1px solid hsl(var(--primary) / 0.48);
+        color: var(--primary-color);
+        background: var(--surface);
+      }
+
+      .layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(330px, 365px);
+        align-items: start;
+        gap: 11px;
+      }
+
+      .stack {
+        display: grid;
+        gap: 9px;
+      }
+
+      .panel {
+        border: 1px solid var(--line);
+        border-radius: var(--radius-lg);
+        background: var(--surface);
+        box-shadow: var(--shadow);
+      }
+
+      .section-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 14px;
+        padding: 11px 13px 8px;
+      }
+
+      .section-title {
+        min-width: 0;
+        align-items: flex-start;
+        gap: 8px;
+      }
+
+      .icon {
+        flex: 0 0 auto;
+        width: 22px;
+        height: 22px;
+        display: inline-grid;
+        place-items: center;
+        color: var(--text-secondary);
+      }
+
+      .section-title h2,
+      .section-title h3,
+      .sidebar-heading {
+        margin: 0;
+        font-size: 14px;
+        line-height: 1.4;
+      }
+
+      .section-title p {
+        margin: 2px 0 0;
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      .section-body {
+        padding: 0 13px 12px 43px;
+      }
+
+      .change-summary {
+        margin: 0;
+        color: var(--text-secondary);
+        font-size: 14px;
+      }
+
+      .unchanged-note {
+        margin: 8px 0 0;
+        padding: 7px 9px;
+        border-left: 3px solid hsl(var(--primary) / 0.58);
+        color: var(--text-secondary);
+        background: var(--surface-subtle);
+        font-size: 12px;
+        line-height: 1.55;
+      }
+
+      .inline-contract {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px 12px;
+        margin-top: 8px;
+        color: var(--text-muted);
+        font-family: var(--mono);
+        font-size: 12px;
+      }
+
+      .resource-count {
+        color: var(--text-muted);
+        font-size: 12px;
+      }
+
+      .resource-list {
+        margin: 0 10px 10px;
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+      }
+
+      .resource-row + .resource-row {
+        border-top: 1px solid var(--line);
+      }
+
+      .resource-row summary {
+        display: grid;
+        grid-template-columns: 28px minmax(175px, 0.78fr) minmax(230px, 1.22fr) auto 18px;
+        align-items: center;
+        gap: 8px;
+        min-height: 45px;
+        padding: 7px 10px;
+        list-style: none;
+        cursor: pointer;
+      }
+
+      .resource-row summary::-webkit-details-marker {
+        display: none;
+      }
+
+      .resource-row summary:hover {
+        background: var(--surface-subtle);
+      }
+
+      .resource-symbol {
+        width: 27px;
+        height: 27px;
+        display: grid;
+        place-items: center;
+        border-radius: 6px;
+        color: var(--primary-color);
+        background: var(--primary-soft);
+        font-family: var(--mono);
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .resource-name {
+        min-width: 0;
+        font-size: 13px;
+        font-weight: 660;
+      }
+
+      .resource-key {
+        display: block;
+        overflow: hidden;
+        color: var(--text-muted);
+        font-size: 12px;
+        font-weight: 500;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .resource-change {
+        min-width: 0;
+        overflow: hidden;
+        color: var(--text-secondary);
+        font-size: 13px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .resource-op {
+        min-width: 48px;
+        padding: 3px 7px;
+        color: var(--primary-color);
+        background: var(--primary-soft);
+      }
+
+      .chevron {
+        width: 16px;
+        height: 16px;
+        color: var(--text-muted);
+        transition: transform 140ms ease;
+      }
+
+      details[open] .chevron {
+        transform: rotate(90deg);
+      }
+
+      .resource-detail {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+        margin: 0;
+        padding: 9px 12px 10px 46px;
+        border-top: 1px solid var(--line);
+        background: var(--surface-subtle);
+      }
+
+      .resource-detail dt {
+        margin-bottom: 2px;
+        color: var(--text-muted);
+        font-size: 12px;
+        font-weight: 650;
+      }
+
+      .resource-detail dd {
+        margin: 0;
+        overflow-wrap: anywhere;
+        color: var(--text-secondary);
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      .steps {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr));
+        gap: 8px;
+        margin: 0;
+        padding: 2px 12px 13px;
+        list-style: none;
+      }
+
+      .step {
+        min-width: 0;
+        padding: 8px 9px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        color: var(--text-secondary);
+        background: var(--surface-subtle);
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      .step-index {
+        width: 23px;
+        height: 23px;
+        display: inline-grid;
+        place-items: center;
+        margin-bottom: 5px;
+        border: 1px solid hsl(var(--primary) / 0.42);
+        border-radius: 50%;
+        color: var(--primary-color);
+        background: var(--primary-soft);
+        font-family: var(--mono);
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .step strong {
+        display: block;
+        margin-bottom: 2px;
+        color: var(--text);
+        font-size: 13px;
+      }
+
+      .step-children {
+        margin: 7px 0 0;
+        padding: 7px 0 0 18px;
+        border-top: 1px solid var(--line);
+        color: var(--text-secondary);
+        font-size: 12px;
+        line-height: 1.55;
+      }
+
+      .recovery-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+        padding: 0 12px 12px;
+      }
+
+      .recovery-cell {
+        min-width: 0;
+        padding: 9px 10px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: var(--surface-subtle);
+      }
+
+      .recovery-cell strong {
+        display: block;
+        margin-bottom: 3px;
+        font-size: 13px;
+      }
+
+      .recovery-cell p {
+        margin: 0;
+        color: var(--text-secondary);
+        font-size: 13px;
+        line-height: 1.55;
+      }
+
+      .sidebar-panel {
+        padding: 11px 12px;
+      }
+
+      .sidebar-heading {
+        margin-bottom: 8px;
+      }
+
+      .state-alert {
+        padding: 10px 11px;
+        border: 1px solid;
+        border-radius: var(--radius);
+      }
+
+      .status-line {
+        align-items: flex-start;
+        gap: 8px;
+      }
+
+      .state-alert h3 {
+        margin: 0;
+        font-size: 13px;
+        line-height: 1.45;
+      }
+
+      .state-code {
+        display: block;
+        margin-top: 2px;
+        font-size: 12px;
+        font-weight: 650;
+      }
+
+      .state-alert p,
+      .warning-detail {
+        margin: 7px 0 0 26px;
+        font-size: 13px;
+        line-height: 1.55;
+      }
+
+      .warning-detail {
+        display: none;
+        padding-top: 7px;
+        border-top: 1px solid currentColor;
+        font-size: 12px;
+      }
+
+      [data-state="warning"] .warning-detail {
+        display: block;
+      }
+
+      .fact-list {
+        display: grid;
+        gap: 7px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .fact {
+        display: grid;
+        grid-template-columns: 22px minmax(0, 1fr);
+        align-items: start;
+        gap: 7px;
+      }
+
+      .fact .icon {
+        width: 20px;
+        height: 20px;
+        color: var(--success-color);
+        font-family: var(--mono);
+        font-size: 14px;
+        font-weight: 800;
+      }
+
+      .fact strong,
+      .fact span {
+        display: block;
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      .secret-ref {
+        padding: 8px 9px;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        background: var(--surface-subtle);
+      }
+
+      .secret-ref code {
+        display: block;
+        overflow: hidden;
+        color: var(--text-secondary);
+        font-size: 12px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .secret-status {
+        display: block;
+        margin-top: 3px;
+        color: var(--text-muted);
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      .microcopy {
+        margin: 7px 0 0;
+        font-size: 12px;
+        line-height: 1.55;
+      }
+
+      .binding-box {
+        padding: 9px 10px;
+        border: 1px solid hsl(var(--primary) / 0.38);
+        border-radius: var(--radius);
+        background: var(--surface-primary);
+      }
+
+      .binding-box strong,
+      .binding-box code {
+        display: block;
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      .binding-box strong {
+        margin-bottom: 3px;
+        color: var(--primary-color);
+      }
+
+      .binding-box code {
+        overflow: hidden;
+        color: var(--text-secondary);
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .non-plan {
+        max-width: 920px;
+        margin: 34px auto;
+        padding: 22px;
+      }
+
+      .non-plan-head {
+        display: grid;
+        grid-template-columns: 42px minmax(0, 1fr);
+        align-items: start;
+        gap: 12px;
+      }
+
+      .non-plan .state-symbol {
+        width: 42px;
+        height: 42px;
+        font-size: 20px;
+      }
+
+      .non-plan h2 {
+        margin: 0;
+        font-size: 18px;
+      }
+
+      .non-plan-code {
+        display: block;
+        margin-top: 3px;
+        color: var(--text-muted);
+        font-family: var(--mono);
+        font-size: 12px;
+      }
+
+      .non-plan-reason {
+        margin: 10px 0 0 54px;
+        color: var(--text-secondary);
+        font-size: 14px;
+        line-height: 1.6;
+      }
+
+      .non-plan-facts {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 9px;
+        margin: 18px 0 0 54px;
+      }
+
+      .non-plan-fact {
+        padding: 10px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: var(--surface-subtle);
+      }
+
+      .non-plan-fact strong,
+      .non-plan-fact span {
+        display: block;
+        font-size: 12px;
+        line-height: 1.55;
+      }
+
+      .non-plan-fact span {
+        margin-top: 2px;
+        color: var(--text-muted);
+      }
+
+      .app-footer {
+        min-height: 68px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 18px;
+        padding: 10px 22px;
+        border-top: 1px solid var(--line);
+      }
+
+      .footer-truth {
+        min-width: 0;
+        gap: 8px;
+        color: var(--text-secondary);
+      }
+
+      .footer-truth .icon {
+        color: var(--primary-color);
+      }
+
+      .footer-truth strong,
+      .footer-truth span {
+        display: block;
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      .footer-truth strong {
+        color: var(--text);
+      }
+
+      .footer-actions {
+        flex: 0 0 auto;
+        gap: 9px;
+      }
+
+      .button {
+        min-height: 39px;
+        padding: 8px 15px;
+        border: 1px solid var(--line-strong);
+        border-radius: var(--radius);
+        font-weight: 660;
+        cursor: pointer;
+      }
+
+      .button-secondary {
+        color: var(--text-secondary);
+        background: var(--surface);
+      }
+
+      .button-primary {
+        min-width: 182px;
+        border-color: var(--primary-color);
+        color: hsl(var(--primary-foreground));
+        background: var(--primary-color);
+      }
+
+      .button-primary:hover:not(:disabled) {
+        border-color: var(--primary-hover);
+        background: var(--primary-hover);
+      }
+
+      .button:disabled {
+        border-color: var(--line);
+        color: var(--text-muted);
+        background: var(--surface-subtle);
+        cursor: not-allowed;
+        opacity: 0.72;
+      }
+
+      .toast {
+        position: fixed;
+        z-index: 20;
+        right: 20px;
+        bottom: 82px;
+        max-width: min(460px, calc(100vw - 40px));
+        padding: 10px 12px;
+        border: 1px solid hsl(var(--primary) / 0.46);
+        border-radius: var(--radius);
+        color: var(--text);
+        background: var(--surface);
+        box-shadow: 0 7px 24px hsl(var(--foreground) / 0.18);
+        font-size: 12px;
+        line-height: 1.5;
+        opacity: 0;
+        pointer-events: none;
+        transform: translateY(6px);
+        transition: opacity 150ms ease, transform 150ms ease;
+      }
+
+      .toast.visible {
+        opacity: 1;
+        transform: translateY(0);
+      }
+
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
+
+      @media (max-width: 1180px) {
+        .plan-meta {
+          min-width: 240px;
+          grid-template-columns: 1fr;
+        }
+
+        .meta-secondary {
+          display: none;
+        }
+
+        .prototype-note {
+          flex-basis: 100%;
+          margin-left: 0;
+          text-align: left;
+        }
+
+        .intent-ribbon {
+          grid-template-columns: minmax(250px, 0.9fr) minmax(390px, 1.1fr) auto;
+        }
+
+        .resource-row summary {
+          grid-template-columns: 28px minmax(150px, 0.7fr) minmax(190px, 1fr) auto 18px;
+        }
+
+      }
+
+      @media (max-width: 920px) {
+        .app-shell {
+          display: block;
+          height: auto;
+          min-height: 100dvh;
+        }
+
+        .topbar {
+          grid-template-columns: 1fr;
+          gap: 8px;
+        }
+
+        .header-status {
+          justify-content: flex-start;
+          padding-left: 50px;
+        }
+
+        .plan-meta {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .app-main {
+          overflow: visible;
+        }
+
+        .intent-ribbon {
+          grid-template-columns: minmax(0, 1fr);
+        }
+
+        .intent-route {
+          grid-column: 1;
+          grid-row: auto;
+          width: 100%;
+        }
+
+        .preview-chip {
+          justify-self: start;
+        }
+
+        .layout {
+          grid-template-columns: 1fr;
+        }
+
+        .safety-stack {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .app-footer {
+          position: sticky;
+          bottom: 0;
+        }
+      }
+
+      @media (max-width: 680px) {
+        .topbar,
+        .prototype-controls,
+        .app-main,
+        .app-footer {
+          padding-left: 12px;
+          padding-right: 12px;
+        }
+
+        .brand,
+        .title-divider {
+          display: none;
+        }
+
+        .header-status {
+          padding-left: 0;
+          flex-wrap: wrap;
+        }
+
+        .plan-meta {
+          flex: 1 1 100%;
+          grid-template-columns: 1fr;
+          order: 3;
+        }
+
+        .control-field {
+          flex: 1 1 145px;
+          align-items: stretch;
+          flex-direction: column;
+          gap: 3px;
+        }
+
+        .control-field select {
+          max-width: none;
+          width: 100%;
+        }
+
+        .prototype-label {
+          flex-basis: 100%;
+        }
+
+        .intent-ribbon {
+          grid-template-columns: 1fr;
+        }
+
+        .intent-route {
+          grid-row: auto;
+          grid-template-columns: minmax(0, 1fr);
+          gap: 6px;
+        }
+
+        .route-arrow {
+          transform: rotate(90deg);
+        }
+
+        .route-node {
+          width: 100%;
+          min-width: 0;
+        }
+
+        .preview-chip {
+          justify-self: start;
+        }
+
+        .resource-row summary {
+          grid-template-columns: 28px minmax(0, 1fr) auto 18px;
+        }
+
+        .resource-change {
+          grid-column: 2 / -1;
+          white-space: normal;
+        }
+
+        .resource-key {
+          overflow: visible;
+          overflow-wrap: anywhere;
+          text-overflow: clip;
+          white-space: normal;
+        }
+
+        .resource-detail,
+        .recovery-grid,
+        .steps,
+        .safety-stack,
+        .non-plan-facts {
+          grid-template-columns: 1fr;
+        }
+
+        .resource-detail {
+          padding-left: 46px;
+        }
+
+        .non-plan {
+          margin: 10px auto;
+          padding: 16px;
+        }
+
+        .non-plan-reason,
+        .non-plan-facts {
+          margin-left: 0;
+        }
+
+        .app-footer {
+          align-items: stretch;
+          flex-direction: column;
+        }
+
+        .footer-actions {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .repair-action:not([hidden]) {
+          grid-column: 1 / -1;
+          grid-row: 1;
+        }
+
+        .button-primary {
+          min-width: 0;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          scroll-behavior: auto !important;
+          transition-duration: 0.01ms !important;
+          animation-duration: 0.01ms !important;
+          animation-iteration-count: 1 !important;
+        }
+      }
+    </style>
+  </head>
+  <body data-state="clean">
+    <div class="app-shell">
+      <header class="app-header">
+        <div class="topbar">
+          <div class="title-cluster">
+            <button id="back-button" class="back-button" type="button" aria-label="返回 Provider 编辑">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg>
+            </button>
+            <div class="brand">FyAgent</div>
+            <div class="title-divider" aria-hidden="true"></div>
+            <div class="page-heading">
+              <p class="breadcrumb">Codex / Providers / Change Plan</p>
+              <h1 id="page-title" tabindex="-1">确认配置变更</h1>
+            </div>
+          </div>
+
+          <div class="header-status">
+            <div id="plan-meta" class="plan-meta" aria-label="Plan 快照元数据">
+              <div class="meta-item"><span class="meta-label">PLAN </span><span id="plan-id">cp_01J55Q7C8M…W6D2</span></div>
+              <div class="meta-item"><span class="meta-label">DIGEST </span><span id="plan-digest">sha256:68b4…c912</span></div>
+              <div class="meta-item meta-secondary"><span class="meta-label">CREATED </span><span>2026-08-15 09:42 CST</span></div>
+              <div class="meta-item meta-secondary"><span class="meta-label">EXPIRES </span><span id="expires-at">2026-08-15 10:12 CST</span></div>
+            </div>
+            <span id="status-badge" class="status-badge tone-success" aria-hidden="true">
+              <span class="state-symbol">✓</span><span id="status-badge-text">Clean · 可确认</span>
+            </span>
+            <span id="validity-pill" class="validity-pill">有效期 09:42</span>
+          </div>
+        </div>
+
+        <div id="prototype-controls" class="prototype-controls" role="group" aria-label="原型状态控制">
+          <span class="prototype-label">Prototype only</span>
+          <label class="control-field" for="operation-select">Operation<select id="operation-select"></select></label>
+          <label class="control-field" for="state-select">State<select id="state-select"></select></label>
+          <label class="control-field" for="theme-select">Theme
+            <select id="theme-select">
+              <option value="system">system</option>
+              <option value="light">light</option>
+              <option value="dark">dark</option>
+            </select>
+          </label>
+          <label class="control-field" for="locale-select">Locale
+            <select id="locale-select">
+              <option value="zh-CN">zh-CN</option>
+              <option value="zh-TW">zh-TW</option>
+              <option value="en">en</option>
+              <option value="ja">ja</option>
+            </select>
+          </label>
+          <span id="prototype-note" class="prototype-note">此控制条仅用于走查，不属于正式产品 UI，也不会触发任何写入。</span>
+        </div>
+      </header>
+
+      <main class="app-main">
+        <div class="content-frame">
+          <div id="plan-projection">
+            <section class="intent-ribbon" aria-labelledby="intent-heading">
+              <div class="intent-title">
+                <span class="intent-icon icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="M7 7h11l-3-3"></path><path d="m18 7-3 3"></path><path d="M17 17H6l3-3"></path><path d="m6 17 3 3"></path></svg>
+                </span>
+                <div>
+                  <span id="operation-code" class="eyebrow">switch · normal</span>
+                  <strong id="intent-heading">将当前 Codex Provider 切换为 Team Router</strong>
+                </div>
+              </div>
+              <div id="intent-route" class="intent-route" aria-label="变更前后">
+                <div class="route-node"><span id="route-before-label">当前</span><strong id="route-from">BetaHub</strong></div>
+                <div class="route-arrow" aria-hidden="true">→</div>
+                <div class="route-node"><span id="route-after-label">目标</span><strong id="route-to">Team Router</strong></div>
+              </div>
+              <span id="preview-chip" class="preview-chip">仅预览 · 尚未执行</span>
+            </section>
+
+            <div class="layout">
+              <div class="stack">
+                <section class="panel" aria-labelledby="summary-heading">
+                  <div class="section-head">
+                    <div class="section-title">
+                      <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 3h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"></path><path d="M9 8h6M9 12h6M9 16h4"></path></svg></span>
+                      <div><h2 id="summary-heading">将改什么</h2><p id="summary-caption">来自已保存、不可变的 Plan snapshot</p></div>
+                    </div>
+                  </div>
+                  <div class="section-body">
+                    <p id="change-summary" class="change-summary"></p>
+                    <p id="unchanged-note" class="unchanged-note"></p>
+                    <div class="inline-contract"><span>schemaVersion 2</span><span id="risk-token">risk info</span><span>mode normal</span><span id="confirm-token">one confirmation</span></div>
+                  </div>
+                </section>
+
+                <section class="panel" aria-labelledby="resources-heading">
+                  <div class="section-head">
+                    <div class="section-title">
+                      <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m12 3 8 4-8 4-8-4 8-4Z"></path><path d="m4 12 8 4 8-4M4 17l8 4 8-4"></path></svg></span>
+                      <div><h2 id="resources-heading">受影响的受管资源</h2><p id="resources-caption">展开核对基线、effect boundary 与 readback</p></div>
+                    </div>
+                    <span id="resource-count" class="resource-count"></span>
+                  </div>
+                  <div id="resource-list" class="resource-list"></div>
+                </section>
+
+                <section class="panel" aria-labelledby="actions-heading">
+                  <div class="section-head">
+                    <div class="section-title">
+                      <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13"></path><path d="M3.5 6h.01M3.5 12h.01M3.5 18h.01"></path></svg></span>
+                      <div><h2 id="actions-heading">应用顺序</h2><p id="actions-caption">Apply 只消费已审阅 actions，不现场重算含义</p></div>
+                    </div>
+                  </div>
+                  <ol id="action-list" class="steps"></ol>
+                </section>
+
+                <section class="panel" aria-labelledby="recovery-heading">
+                  <div class="section-head">
+                    <div class="section-title">
+                      <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 4.6 2.8 8 7 10 4.2-2 7-5.4 7-10V6l-7-3Z"></path><path d="M9 12h6M12 9v6"></path></svg></span>
+                      <div><h2 id="recovery-heading">备份与恢复边界</h2><p id="recovery-caption">不承诺静默回滚；结果来自独立 readback</p></div>
+                    </div>
+                  </div>
+                  <div class="recovery-grid">
+                    <div class="recovery-cell"><strong id="backup-label">备份时机与范围</strong><p id="backup-copy"></p></div>
+                    <div class="recovery-cell"><strong id="recovery-label">失败后的处理</strong><p id="recovery-copy"></p></div>
+                  </div>
+                </section>
+              </div>
+
+              <aside id="safety-aside" class="stack safety-stack" aria-label="确认前安全摘要">
+                <section class="panel sidebar-panel">
+                  <h2 id="status-heading" class="sidebar-heading">确认前状态</h2>
+                  <div id="state-alert" class="state-alert tone-success" role="status" aria-live="polite" aria-atomic="true">
+                    <div class="status-line">
+                      <span id="state-icon" class="state-symbol" aria-hidden="true">✓</span>
+                      <div><h3 id="state-title"></h3><span id="state-code" class="state-code"></span></div>
+                    </div>
+                    <p id="state-reason"></p>
+                    <div id="warning-detail" class="warning-detail"></div>
+                  </div>
+                </section>
+
+                <section class="panel sidebar-panel">
+                  <h2 id="side-effect-heading" class="sidebar-heading">预览的无副作用边界</h2>
+                  <ul class="fact-list">
+                    <li class="fact"><span class="icon" aria-hidden="true">✓</span><div><strong id="side-title-0"></strong><span id="side-copy-0"></span></div></li>
+                    <li class="fact"><span class="icon" aria-hidden="true">✓</span><div><strong id="side-title-1"></strong><span id="side-copy-1"></span></div></li>
+                    <li class="fact"><span class="icon" aria-hidden="true">✓</span><div><strong id="side-title-2"></strong><span id="side-copy-2"></span></div></li>
+                    <li class="fact"><span class="icon" aria-hidden="true">✓</span><div><strong id="side-title-3"></strong><span id="side-copy-3"></span></div></li>
+                  </ul>
+                </section>
+
+                <section class="panel sidebar-panel">
+                  <h2 id="secret-heading" class="sidebar-heading">凭据引用</h2>
+                  <div class="secret-ref"><code id="secret-ref"></code><span id="secret-status" class="secret-status"></span></div>
+                  <p id="secret-copy" class="microcopy"></p>
+                </section>
+
+                <section class="panel sidebar-panel">
+                  <h2 id="privacy-heading" class="sidebar-heading">隐私边界</h2>
+                  <p id="privacy-copy" class="microcopy" style="margin-top: 0"></p>
+                </section>
+
+                <section class="panel sidebar-panel">
+                  <h2 id="binding-heading" class="sidebar-heading">一次确认绑定</h2>
+                  <div class="binding-box"><strong id="binding-title"></strong><code>planId + planDigest</code><code id="binding-code">no form draft / intent</code></div>
+                  <p id="binding-copy" class="microcopy"></p>
+                </section>
+              </aside>
+            </div>
+          </div>
+
+          <section id="unsupported-projection" class="panel non-plan tone-neutral" role="alert" aria-live="assertive" aria-atomic="true" hidden>
+            <div class="non-plan-head">
+              <span class="state-symbol" aria-hidden="true">⊘</span>
+              <div><h2 id="unsupported-title"></h2><span class="non-plan-code">unsupported_mode · non-executable</span></div>
+            </div>
+            <p id="unsupported-reason" class="non-plan-reason"></p>
+            <div class="non-plan-facts">
+              <div class="non-plan-fact"><strong id="unsupported-fact-title-0"></strong><span id="unsupported-fact-copy-0"></span></div>
+              <div class="non-plan-fact"><strong id="unsupported-fact-title-1"></strong><span id="unsupported-fact-copy-1"></span></div>
+              <div class="non-plan-fact"><strong id="unsupported-fact-title-2"></strong><span id="unsupported-fact-copy-2"></span></div>
+            </div>
+          </section>
+        </div>
+      </main>
+
+      <footer class="app-footer">
+        <div class="footer-truth">
+          <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9"></path><path d="M12 7v5l3 2"></path></svg></span>
+          <div><strong id="footer-title"></strong><span id="footer-description"></span></div>
+        </div>
+        <div class="footer-actions">
+          <button id="close-button" class="button button-secondary" type="button"></button>
+          <button id="repair-action" class="button button-secondary repair-action" type="button" hidden></button>
+          <button id="confirm-button" class="button button-primary" type="button"></button>
+        </div>
+      </footer>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true"></div>
+
+    <script>
+      (() => {
+        "use strict";
+
+        const operationOrder = [
+          "create_only",
+          "create_and_select",
+          "edit_current",
+          "edit_non_current",
+          "switch",
+        ];
+        const stateOrder = [
+          "clean",
+          "warning",
+          "expired",
+          "drift",
+          "unsupported",
+          "secret-missing",
+        ];
+
+        const operationSpecs = {
+          create_only: {
+            code: "create_only · normal",
+            activatesLive: false,
+            secretRef: "secretRef: codex/team-router",
+            actionNumbers: [2],
+            resources: [
+              { type: "providerRow", symbol: "P", key: "codex.provider/team-router", op: "create", baseline: "expected: row absent · epoch e41", boundary: "provider_row.transaction", readback: "provider_row_digest == target" },
+              { type: "endpointSet", symbol: "E", key: "codex.provider_endpoints/team-router", op: "create", baseline: "expected: set absent · epoch e41", boundary: "provider_endpoint.transaction", readback: "endpoint_set_digest == target" },
+            ],
+          },
+          create_and_select: {
+            code: "create_and_select · normal",
+            activatesLive: true,
+            secretRef: "secretRef: codex/team-router",
+            actionNumbers: [1, 2, 3, 4, 5, 6, 7, 8, 9],
+            resources: [
+              { type: "providerRow", symbol: "P", key: "codex.provider/team-router", op: "create", baseline: "expected: row absent · epoch e41", boundary: "provider_row.transaction", readback: "provider_row_digest == target" },
+              { type: "endpointSet", symbol: "E", key: "codex.provider_endpoints/team-router", op: "create", baseline: "expected: set absent · epoch e41", boundary: "provider_endpoint.transaction", readback: "endpoint_set_digest == target" },
+              { type: "sourceBackfill", symbol: "S", key: "codex.provider/betahub", op: "conditional", baseline: "sha256:77e0…b4d8 · epoch e41", boundary: "provider_row.transaction", readback: "source_definition_digest == planned" },
+              { type: "dbCurrent", symbol: "DB", key: "codex.current.db", op: "update", baseline: "id:betahub · version 12 · epoch e41", boundary: "sqlite_current.transaction", readback: "db_current_id == target" },
+              { type: "deviceCurrent", symbol: "DV", key: "codex.current.device", op: "update", baseline: "sha256:9b4e…7b90 · version 8", boundary: "settings_current.replace", readback: "device_current_id == target" },
+              { type: "catalog", symbol: "5", key: "codex.catalog", op: "update", baseline: "sha256:3c9b…6c88 · source v6", boundary: "codex_catalog.rename", readback: "catalog_sha256 == target" },
+              { type: "auth", symbol: "6", key: "codex.auth", op: "update", baseline: "sha256:7e2d…6d11 · source v4", boundary: "codex_auth.rename", readback: "auth_sha256 == target" },
+              { type: "config", symbol: "7", key: "codex.config", op: "update", baseline: "sha256:5a8c…7a66 · source v9", boundary: "codex_config.rename", readback: "config_sha256 == target" },
+              { type: "common", symbol: "8", key: "codex.common", op: "update", baseline: "sha256:d4b1…d055 · version 5", boundary: "common_config.rename", readback: "common_sha256 == target" },
+              { type: "mcp", symbol: "9", key: "codex.mcp.managed", op: "update", baseline: "sha256:1f6e…be22 · version 7", boundary: "managed_mcp.replace", readback: "managed_block_digest == target" },
+            ],
+          },
+          edit_current: {
+            code: "edit · current_provider · normal",
+            activatesLive: true,
+            secretRef: "secretRef: codex/betahub",
+            actionNumbers: [2, 5, 6, 7, 8, 9],
+            resources: [
+              { type: "providerRow", symbol: "P", key: "codex.provider/betahub", op: "update", baseline: "sha256:77e0…b4d8 · row v6 · epoch e41", boundary: "provider_row.transaction", readback: "provider_row_digest == target" },
+              { type: "endpointSet", symbol: "E", key: "codex.provider_endpoints/betahub", op: "update", baseline: "sha256:18ac…908e · set v6 · epoch e41", boundary: "provider_endpoint.transaction", readback: "endpoint_set_digest == target" },
+              { type: "catalog", symbol: "5", key: "codex.catalog", op: "update", baseline: "sha256:3c9b…6c88 · source v6", boundary: "codex_catalog.rename", readback: "catalog_sha256 == target" },
+              { type: "auth", symbol: "6", key: "codex.auth", op: "update", baseline: "sha256:7e2d…6d11 · source v4", boundary: "codex_auth.rename", readback: "auth_sha256 == target" },
+              { type: "config", symbol: "7", key: "codex.config", op: "update", baseline: "sha256:5a8c…7a66 · source v9", boundary: "codex_config.rename", readback: "config_sha256 == target" },
+              { type: "common", symbol: "8", key: "codex.common", op: "update", baseline: "sha256:d4b1…d055 · version 5", boundary: "common_config.rename", readback: "common_sha256 == target" },
+              { type: "mcp", symbol: "9", key: "codex.mcp.managed", op: "update", baseline: "sha256:1f6e…be22 · version 7", boundary: "managed_mcp.replace", readback: "managed_block_digest == target" },
+            ],
+          },
+          edit_non_current: {
+            code: "edit · non_current_provider · normal",
+            activatesLive: false,
+            secretRef: "secretRef: codex/team-router",
+            actionNumbers: [2],
+            resources: [
+              { type: "providerRow", symbol: "P", key: "codex.provider/team-router", op: "update", baseline: "sha256:94b2…603a · row v3 · epoch e41", boundary: "provider_row.transaction", readback: "provider_row_digest == target" },
+              { type: "endpointSet", symbol: "E", key: "codex.provider_endpoints/team-router", op: "update", baseline: "sha256:2af8…194c · set v3 · epoch e41", boundary: "provider_endpoint.transaction", readback: "endpoint_set_digest == target" },
+            ],
+          },
+          switch: {
+            code: "switch · normal",
+            activatesLive: true,
+            secretRef: "secretRef: codex/team-router",
+            actionNumbers: [1, 3, 4, 5, 6, 7, 8, 9],
+            resources: [
+              { type: "sourceBackfill", symbol: "S", key: "codex.provider/betahub", op: "conditional", baseline: "sha256:77e0…b4d8 · epoch e41", boundary: "provider_row.transaction", readback: "source_definition_digest == planned" },
+              { type: "dbCurrent", symbol: "DB", key: "codex.current.db", op: "update", baseline: "id:betahub · version 12 · epoch e41", boundary: "sqlite_current.transaction", readback: "db_current_id == target" },
+              { type: "deviceCurrent", symbol: "DV", key: "codex.current.device", op: "update", baseline: "sha256:9b4e…7b90 · version 8", boundary: "settings_current.replace", readback: "device_current_id == target" },
+              { type: "catalog", symbol: "5", key: "codex.catalog", op: "update", baseline: "sha256:3c9b…6c88 · source v6", boundary: "codex_catalog.rename", readback: "catalog_sha256 == target" },
+              { type: "auth", symbol: "6", key: "codex.auth", op: "update", baseline: "sha256:7e2d…6d11 · source v4", boundary: "codex_auth.rename", readback: "auth_sha256 == target" },
+              { type: "config", symbol: "7", key: "codex.config", op: "update", baseline: "sha256:5a8c…7a66 · source v9", boundary: "codex_config.rename", readback: "config_sha256 == target" },
+              { type: "common", symbol: "8", key: "codex.common", op: "update", baseline: "sha256:d4b1…d055 · version 5", boundary: "common_config.rename", readback: "common_sha256 == target" },
+              { type: "mcp", symbol: "9", key: "codex.mcp.managed", op: "update", baseline: "sha256:1f6e…be22 · version 7", boundary: "managed_mcp.replace", readback: "managed_block_digest == target" },
+            ],
+          },
+        };
+
+        const localeFixtures = {
+          "zh-CN": {
+            ui: {
+              title: "确认配置变更",
+              backAria: "返回 Provider 编辑",
+              planMetaAria: "Plan 快照元数据",
+              prototypeControlsAria: "原型操作、状态、主题与语言控制",
+              intentRouteAria: "变更前与变更后的目标",
+              safetyAsideAria: "确认前安全摘要",
+              prototypeNote: "此控制条仅用于走查，不属于正式产品 UI，也不会触发任何写入。",
+              before: "变更前",
+              after: "变更后",
+              preview: "仅预览 · 尚未执行",
+              summary: "将改什么",
+              summaryCaption: "来自已保存、不可变的 Plan snapshot",
+              resources: "受影响的受管资源",
+              resourcesCaption: "展开核对基线、effect boundary 与 readback",
+              resourceCount: "项受管资源",
+              actions: "应用顺序",
+              actionsCaption: "Apply 只消费已审阅 actions，不现场重算含义",
+              recovery: "备份与恢复边界",
+              recoveryCaption: "不承诺静默回滚；结果来自独立 readback",
+              backupLabel: "备份时机与范围",
+              recoveryLabel: "失败后的处理",
+              status: "确认前状态",
+              sideEffect: "预览的无副作用边界",
+              secret: "凭据引用",
+              privacy: "隐私边界",
+              binding: "一次确认绑定",
+              bindingTitle: "确认后只提交 exact identity",
+              bindingCode: "不携带 form draft / intent",
+              bindingCopy: "同一 Plan 只确认一次；失效后不能 force apply，必须重新 preview。",
+              secretCopy: "只核对本地引用身份与版本状态；不会读取、展示或散列 secret 值。",
+              secretMissingStatus: "不可用：本地引用缺失或版本无法验证",
+              privacyCopy: "公共界面只含安全 ID、状态码、摘要指纹和脱敏标签。私有 execution envelope 不进入 IPC、DOM、日志或诊断导出；不显示 raw live config 或绝对路径。",
+              warningDetail: "运行中的会话可能继续读取旧配置；应用成功后请按结果页提示重启相关会话。",
+              confirmToken: "一次确认",
+              close: "返回修改",
+              confirm: "确认此 Plan（仅一次）",
+              confirmDisabled: "确认不可用",
+              footerReady: "这是预览，不是执行结果",
+              footerReadyCopy: "确认只绑定当前 planId + digest；原型本身永远不会应用变更。",
+              footerBlocked: "确认已禁用，未发生受管写入",
+              toastBack: "原型演示：返回编辑。Plan 未应用，受管状态保持不变。",
+              toastConfirm: "原型不会执行变更。真实实现只提交 exact planId + planDigest，并在后端重新验证。",
+              sideEffects: [
+                ["只保存 Plan snapshot", "本地不可变 payload 与 lifecycle metadata"],
+                ["不改配置或 DB current", "不创建 job、event 或 backup"],
+                ["不刷新 tray / cache", "不触发任何受管 Provider 写入"],
+                ["不出站 Provider", "不探测、不取模型、不发模型请求"],
+              ],
+              unsupportedFacts: [
+                ["没有 Plan snapshot", "未生成 planId、digest、actions 或 recovery envelope"],
+                ["零受管写入", "配置、DB current、tray、cache、job 与 backup 均不变"],
+                ["不回退旧路径", "unsupported 会 fail closed，不调用 legacy writer"],
+              ],
+              resourceNames: { providerRow: "Target Provider row", endpointSet: "Target endpoint set", sourceBackfill: "Source Provider 安全元数据（条件）", dbCurrent: "DB current", deviceCurrent: "Device current", catalog: "Codex catalog", auth: "Codex auth", config: "Codex config", common: "Common config", mcp: "Managed MCP" },
+              resourceOps: { create: "创建", update: "更新", conditional: "条件" },
+              detailLabels: ["基线指纹", "Effect boundary", "Readback predicate"],
+            },
+            operations: {
+              create_only: {
+                label: "create_only · 仅新建",
+                title: "新建 Team Router，但不设为当前 Provider",
+                from: "Provider 不存在",
+                to: "Team Router · 非当前",
+                summary: "只创建 Team Router 的 Provider row 与完整 endpoint set，不改变当前选择或任何 live 资源。",
+                unchanged: "明确不变：current selection、live projection、common projection、managed MCP projection。",
+                backup: "Pre-effect notice：目标 row/set 预期不存在，无旧内容可备份；step 2 transaction 是首个 durable effect。",
+                recovery: "分别 readback Provider row 与 endpoint set；第三态转 manual_required，不自动删除或重放创建。",
+                secretStatus: "opaque 引用元数据可用；不解析值",
+                warningReason: "Provider row 与 endpoint set 将变化；DB/device current、catalog/auth/config、common 和 MCP 明确不变。",
+                driftReason: "codex.provider/team-router · expected_absence_changed。目标 row/set 不再满足创建基线。",
+                changes: ["不存在 → 创建冻结 Provider row", "不存在 → 创建完整 endpoint set"],
+                actions: [["Target row + endpoint transaction", "同一窄事务内原子写入两个目标资源"]],
+              },
+              create_and_select: {
+                label: "create_and_select · 新建并选中",
+                title: "新建 Team Router 并明确设为当前 Provider",
+                from: "BetaHub · 当前",
+                to: "Team Router · 新建并选中",
+                summary: "创建 Team Router row/endpoints，并依 frozen steps 1–9 更新 source、双 current 与五项 catalog/auth/config/common/MCP 资源。",
+                unchanged: "不会隐式激活其他 Provider；未列出的资源保持不变。",
+                backup: "Pre-effect notice：在 step 1 前持久记录 DB snapshot、device old bytes 与每个声明文件/managed block 的旧内容。",
+                recovery: "10 项资源逐项独立 readback；部分完成转 manual_required，不自动重放 writer 或还原 backup。",
+                secretStatus: "opaque 引用元数据可用；不解析值",
+                warningReason: "DB/device current 与 catalog、auth、config、common、MCP 将变化；运行中会话可能仍读取旧 live 内容。",
+                driftReason: "codex.provider/team-router · expected_absence_changed。目标 row/set 的创建基线已变化。",
+                changes: ["不存在 → 创建冻结 Provider row", "不存在 → 创建完整 endpoint set", "仅在声明条件成立时补全 source row", "BetaHub → Team Router", "BetaHub → Team Router", "写入目标 catalog bytes", "写入目标 auth bytes", "写入目标 config bytes", "写入目标 common bytes", "替换 managed MCP block"],
+                actions: [["Conditional source backfill", "仅在 Plan 已声明条件成立时写 source row"], ["Target row + endpoint transaction", "同一窄事务内原子写入目标 row/set"], ["Update DB current", "写入 app-scoped current ID/version"], ["Update device current", "staged replacement 后写 device marker"], ["Write Codex catalog", "写入预备完成的 exact bytes"], ["Write Codex auth", "写入预备完成的 exact bytes"], ["Write Codex config", "写入预备完成的 exact bytes"], ["Write common config", "写入声明的 exact bytes"], ["Write managed MCP", "仅替换 normalized managed block"]],
+              },
+              edit_current: {
+                label: "edit_current · 编辑当前项",
+                title: "编辑当前 Provider：BetaHub",
+                from: "BetaHub · revision 6",
+                to: "BetaHub · revision 7",
+                summary: "更新当前 BetaHub 的 Provider row/endpoint set，并按 steps 5–9 写入 catalog、auth、config、common 与 managed MCP。",
+                unchanged: "明确不变：current selection 仍为 BetaHub；未列出的资源保持不变。",
+                backup: "Pre-effect notice：step 2 前保存 DB snapshot，并记录 catalog/auth/config/common/MCP 的旧 bytes 或 managed block。",
+                recovery: "7 项 mutation 逐项 readback；DB/device current 只做 required CAS predicate，绝不作为 mutation 或恢复动作。",
+                secretStatus: "保留 opaque 引用；版本元数据匹配",
+                warningReason: "Provider row/endpoints 与 catalog、auth、config、common、MCP 将变化；DB/device current 仍为 BetaHub。",
+                driftReason: "codex.provider/betahub · row_version_changed。目标 row/version 已不匹配 Plan 基线。",
+                changes: ["row revision 6 → 7", "endpoint set revision 6 → 7", "写入 revision 7 catalog bytes", "写入 revision 7 auth bytes", "写入 revision 7 config bytes", "写入 revision 7 common bytes", "替换 revision 7 managed MCP block"],
+                actions: [["Target row + endpoint transaction", "同一窄事务内原子更新 row/set"], ["Write Codex catalog", "写入预备完成的 exact bytes"], ["Write Codex auth", "写入预备完成的 exact bytes"], ["Write Codex config", "写入预备完成的 exact bytes"], ["Write common config", "写入声明的 exact bytes"], ["Write managed MCP", "仅替换 normalized managed block"]],
+              },
+              edit_non_current: {
+                label: "edit_non_current · 编辑非当前项",
+                title: "编辑非当前 Provider：Team Router",
+                from: "Team Router · revision 3",
+                to: "Team Router · revision 4",
+                summary: "只在 step 2 原子更新非当前 Team Router 的 Provider row 与 endpoint set，不触碰 current 或 live 资源。",
+                unchanged: "明确不变：current selection 仍为 BetaHub；live、common、managed MCP projection 全部不变。",
+                backup: "Pre-effect notice：只在 step 2 前保存 Team Router row/set 的 DB snapshot；不创建 current/live backup。",
+                recovery: "分别 readback row 与 endpoint set；原基线、完整目标或第三态归类，不触碰当前 Provider。",
+                secretStatus: "保留 opaque 引用；版本元数据匹配",
+                warningReason: "非当前 Provider row 与 endpoint set 将变化；DB/device current 与全部 live 资源明确不变。",
+                driftReason: "codex.provider/team-router · row_version_changed。目标 row/version 已不匹配 Plan 基线。",
+                changes: ["row revision 3 → 4（非当前）", "endpoint set revision 3 → 4（非当前）"],
+                actions: [["Target row + endpoint transaction", "同一窄事务内原子更新 row/set"]],
+              },
+              switch: {
+                label: "switch · 切换",
+                title: "将当前 Codex Provider 切换为 Team Router",
+                from: "BetaHub",
+                to: "Team Router",
+                summary: "按 frozen steps 1、3–9 切换 source/current，并分别写入 catalog、auth、config、common 与 managed MCP。",
+                unchanged: "未声明的 Provider 定义和非受管配置保持不变。",
+                backup: "Pre-effect notice：step 1 前持久记录 DB snapshot、device old bytes 与每个声明文件/managed block 的旧内容。",
+                recovery: "8 项 mutation 独立 readback；完整目标、原基线或第三态分别归类，第三态 manual_required 且不重放。",
+                secretStatus: "opaque 引用元数据可用；不解析值",
+                warningReason: "DB/device current 与 catalog、auth、config、common、MCP 将变化；运行中会话可能仍读取旧 live 内容。",
+                driftReason: "codex.current.db + codex.current.device · fingerprint_mismatch。双 current 基线已变化。",
+                changes: ["仅在声明条件成立时补全 source row", "BetaHub → Team Router", "BetaHub → Team Router", "写入 Team Router catalog bytes", "写入 Team Router auth bytes", "写入 Team Router config bytes", "写入 Team Router common bytes", "替换 Team Router managed MCP block"],
+                actions: [["Conditional source backfill", "仅在 Plan 已声明条件成立时写 source row"], ["Update DB current", "写入 app-scoped current ID/version"], ["Update device current", "staged replacement 后写 device marker"], ["Write Codex catalog", "写入预备完成的 exact bytes"], ["Write Codex auth", "写入预备完成的 exact bytes"], ["Write Codex config", "写入预备完成的 exact bytes"], ["Write common config", "写入声明的 exact bytes"], ["Write managed MCP", "仅替换 normalized managed block"]],
+              },
+            },
+            states: {
+              clean: { label: "Clean · 可确认", symbol: "✓", tone: "tone-success", validity: "有效期 09:42", title: "可确认：基线仍匹配", code: "ready / no_warnings", reason: "Plan 未过期，目标、基线与凭据引用元数据仍与预览一致。", action: "", executable: true },
+              warning: { label: "Warning · 可确认", symbol: "!", tone: "tone-warning", validity: "有效期 09:42", title: "可确认：请检查 1 项警告", code: "ready / warning", reason: "具体警告由当前 operation 的冻结资源矩阵派生。", action: "", executable: true },
+              expired: { label: "Expired · 已失效", symbol: "◷", tone: "tone-danger", validity: "已过期", title: "Plan 已过期，不能复用", code: "expired", reason: "有效期已经结束。旧 Plan 只保留生命周期记录，不会创建 job 或调用 writer。", action: "重新生成预览", executable: false },
+              drift: { label: "Drift · 已失效", symbol: "⇄", tone: "tone-danger", validity: "基线已变化", title: "基线指纹已变化", code: "resource_changed", reason: "具体失效资源由当前 operation 的冻结基线派生。", action: "按新基线重新预览", executable: false },
+              unsupported: { label: "Unsupported · 未生成", symbol: "⊘", tone: "tone-neutral", validity: "不可执行", title: "此操作模式不受支持", code: "unsupported_mode", reason: "Proxy takeover、official-target switch 或 critical risk 不在第一切片；没有生成 executable Plan。", action: "返回修改操作", executable: false },
+              "secret-missing": { label: "Secret ref · 已阻塞", symbol: "⚿", tone: "tone-warning", validity: "需要修复", title: "凭据引用无法验证", code: "secret_ref_missing", reason: "opaque secretRef 的本地存在性或版本状态不可用；没有读取 secret 值，也没有保存受管变更。", action: "修复引用后重新预览", executable: false },
+            },
+          },
+
+          "zh-TW": {
+            ui: {
+              title: "確認設定變更", backAria: "返回 Provider 編輯", prototypeNote: "此控制列僅用於原型走查，不屬於正式產品 UI，也不會觸發任何寫入。", before: "變更前", after: "變更後", preview: "僅預覽 · 尚未執行",
+              planMetaAria: "Plan 快照中繼資料", prototypeControlsAria: "原型操作、狀態、主題與語言控制", intentRouteAria: "變更前與變更後的目標", safetyAsideAria: "確認前安全摘要",
+              summary: "將改什麼", summaryCaption: "來自已儲存且不可變的 Plan snapshot", resources: "受影響的受管資源", resourcesCaption: "展開核對基線、effect boundary 與 readback", resourceCount: "項受管資源",
+              actions: "套用順序", actionsCaption: "Apply 只消費已審閱 actions，不現場重算語意", recovery: "備份與復原邊界", recoveryCaption: "不承諾靜默回滾；結果來自獨立 readback", backupLabel: "備份時機與範圍", recoveryLabel: "失敗後的處理",
+              status: "確認前狀態", sideEffect: "預覽的無副作用邊界", secret: "憑證參照", privacy: "隱私邊界", binding: "一次確認綁定", bindingTitle: "確認後只提交 exact identity", bindingCode: "不攜帶 form draft / intent", bindingCopy: "同一 Plan 只確認一次；失效後不能 force apply，必須重新 preview。",
+              secretCopy: "只核對本機參照身分與版本狀態；不會讀取、顯示或雜湊 secret 值。", secretMissingStatus: "不可用：本機參照缺失或版本無法驗證", privacyCopy: "公開介面只含安全 ID、狀態碼、摘要指紋與去識別標籤。私有 execution envelope 不進入 IPC、DOM、日誌或診斷匯出；不顯示 raw live config 或絕對路徑。", warningDetail: "執行中的工作階段可能繼續讀取舊設定；套用成功後請依結果頁提示重新啟動。",
+              confirmToken: "一次確認", close: "返回修改", confirm: "確認此 Plan（僅一次）", confirmDisabled: "無法確認", footerReady: "這是預覽，不是執行結果", footerReadyCopy: "確認只綁定目前 planId + digest；原型本身永遠不會套用變更。", footerBlocked: "確認已停用，未發生受管寫入", toastBack: "原型示範：返回編輯。Plan 未套用，受管狀態保持不變。", toastConfirm: "原型不會執行變更。正式實作只提交 exact planId + planDigest，並在後端重新驗證。",
+              sideEffects: [["只儲存 Plan snapshot", "本機不可變 payload 與 lifecycle metadata"], ["不改設定或 DB current", "不建立 job、event 或 backup"], ["不重新整理 tray / cache", "不觸發任何受管 Provider 寫入"], ["不連線 Provider", "不探測、不取模型、不送出模型請求"]],
+              unsupportedFacts: [["沒有 Plan snapshot", "未產生 planId、digest、actions 或 recovery envelope"], ["零受管寫入", "設定、DB current、tray、cache、job 與 backup 均不變"], ["不回退舊路徑", "unsupported 會 fail closed，不呼叫 legacy writer"]],
+              resourceNames: { providerRow: "Target Provider row", endpointSet: "Target endpoint set", sourceBackfill: "Source Provider 安全中繼資料（條件）", dbCurrent: "DB current", deviceCurrent: "Device current", catalog: "Codex catalog", auth: "Codex auth", config: "Codex config", common: "Common config", mcp: "Managed MCP" }, resourceOps: { create: "建立", update: "更新", conditional: "條件" }, detailLabels: ["基線指紋", "Effect boundary", "Readback predicate"],
+            },
+            operations: {
+              create_only: { label: "create_only · 僅建立", title: "建立 Team Router，但不設為目前 Provider", from: "Provider 不存在", to: "Team Router · 非目前", summary: "只建立 Team Router 的 Provider row 與完整 endpoint set，不改變目前選擇或任何 live 資源。", unchanged: "明確不變：current selection、live projection、common projection、managed MCP projection。", backup: "Pre-effect notice：目標 row/set 預期不存在，無舊內容可備份；step 2 transaction 是第一個 durable effect。", recovery: "分別 readback Provider row 與 endpoint set；第三態轉 manual_required，不自動刪除或重播建立。", secretStatus: "opaque 參照中繼資料可用；不解析值", warningReason: "Provider row 與 endpoint set 將變更；DB/device current 與所有 live 資源明確不變。", driftReason: "codex.provider/team-router · expected_absence_changed。目標 row/set 不再符合建立基線。", changes: ["不存在 → 建立凍結 Provider row", "不存在 → 建立完整 endpoint set"], actions: [["Target row + endpoint transaction", "在同一窄事務內原子寫入兩個目標資源"]] },
+              create_and_select: { label: "create_and_select · 建立並選取", title: "建立 Team Router 並明確設為目前 Provider", from: "BetaHub · 目前", to: "Team Router · 建立並選取", summary: "建立 Team Router row/endpoints，並依 frozen steps 1–9 更新 source、雙 current 與五項 catalog/auth/config/common/MCP 資源。", unchanged: "不會隱式啟用其他 Provider；未列出的資源保持不變。", backup: "Pre-effect notice：step 1 前記錄 DB snapshot、device old bytes 與每個宣告檔案/managed block 的舊內容。", recovery: "10 項資源逐項獨立 readback；部分完成轉 manual_required，不重播 writer 或還原 backup。", secretStatus: "opaque 參照中繼資料可用；不解析值", warningReason: "DB/device current 與 catalog、auth、config、common、MCP 將變更；執行中工作階段可能仍讀取舊 live 內容。", driftReason: "codex.provider/team-router · expected_absence_changed。目標 row/set 的建立基線已變更。", changes: ["不存在 → 建立凍結 Provider row", "不存在 → 建立完整 endpoint set", "僅在宣告條件成立時補全 source row", "BetaHub → Team Router", "BetaHub → Team Router", "寫入目標 catalog bytes", "寫入目標 auth bytes", "寫入目標 config bytes", "寫入目標 common bytes", "取代 managed MCP block"], actions: [["Conditional source backfill", "僅在 Plan 宣告條件成立時寫 source row"], ["Target row + endpoint transaction", "同一窄事務內原子寫入目標 row/set"], ["Update DB current", "寫入 app-scoped current ID/version"], ["Update device current", "staged replacement 後寫 device marker"], ["Write Codex catalog", "寫入預備完成的 exact bytes"], ["Write Codex auth", "寫入預備完成的 exact bytes"], ["Write Codex config", "寫入預備完成的 exact bytes"], ["Write common config", "寫入宣告的 exact bytes"], ["Write managed MCP", "僅取代 normalized managed block"]] },
+              edit_current: { label: "edit_current · 編輯目前項目", title: "編輯目前 Provider：BetaHub", from: "BetaHub · revision 6", to: "BetaHub · revision 7", summary: "更新目前 BetaHub 的 Provider row/endpoint set，並依 steps 5–9 寫入 catalog、auth、config、common 與 managed MCP。", unchanged: "明確不變：DB/device current 仍為 BetaHub，僅作 required CAS predicate。", backup: "Pre-effect notice：step 2 前保存 DB snapshot，並記錄 catalog/auth/config/common/MCP 的舊 bytes 或 managed block。", recovery: "7 項 mutation 逐項 readback；DB/device current 不作 mutation 或恢復動作。", secretStatus: "保留 opaque 參照；版本中繼資料相符", warningReason: "Provider row/endpoints 與 catalog、auth、config、common、MCP 將變更；DB/device current 不變。", driftReason: "codex.provider/betahub · row_version_changed。目標 row/version 已不符合 Plan 基線。", changes: ["row revision 6 → 7", "endpoint set revision 6 → 7", "寫入 revision 7 catalog bytes", "寫入 revision 7 auth bytes", "寫入 revision 7 config bytes", "寫入 revision 7 common bytes", "取代 revision 7 managed MCP block"], actions: [["Target row + endpoint transaction", "同一窄事務內原子更新 row/set"], ["Write Codex catalog", "寫入預備完成的 exact bytes"], ["Write Codex auth", "寫入預備完成的 exact bytes"], ["Write Codex config", "寫入預備完成的 exact bytes"], ["Write common config", "寫入宣告的 exact bytes"], ["Write managed MCP", "僅取代 normalized managed block"]] },
+              edit_non_current: { label: "edit_non_current · 編輯非目前項目", title: "編輯非目前 Provider：Team Router", from: "Team Router · revision 3", to: "Team Router · revision 4", summary: "只在 step 2 原子更新非目前 Team Router 的 Provider row 與 endpoint set，不觸碰 current 或 live。", unchanged: "明確不變：DB/device current 與 catalog、auth、config、common、MCP 全部不變。", backup: "Pre-effect notice：只在 step 2 前保存 Team Router row/set 的 DB snapshot；不建立 current/live backup。", recovery: "分別 readback row 與 endpoint set；原基線、完整目標或第三態歸類，不觸碰目前 Provider。", secretStatus: "保留 opaque 參照；版本中繼資料相符", warningReason: "非目前 Provider row 與 endpoint set 將變更；DB/device current 與所有 live 資源明確不變。", driftReason: "codex.provider/team-router · row_version_changed。目標 row/version 已不符合 Plan 基線。", changes: ["row revision 3 → 4（非目前）", "endpoint set revision 3 → 4（非目前）"], actions: [["Target row + endpoint transaction", "同一窄事務內原子更新 row/set"]] },
+              switch: { label: "switch · 切換", title: "將目前 Codex Provider 切換為 Team Router", from: "BetaHub", to: "Team Router", summary: "依 frozen steps 1、3–9 切換 source/current，並分別寫入 catalog、auth、config、common 與 managed MCP。", unchanged: "未宣告的 Provider row/endpoint set 與非受管設定保持不變。", backup: "Pre-effect notice：step 1 前記錄 DB snapshot、device old bytes 與每個宣告檔案/managed block 的舊內容。", recovery: "8 項 mutation 獨立 readback；完整目標、原基線或第三態分別歸類，第三態 manual_required 且不重播。", secretStatus: "opaque 參照中繼資料可用；不解析值", warningReason: "DB/device current 與 catalog、auth、config、common、MCP 將變更；執行中工作階段可能仍讀取舊 live 內容。", driftReason: "codex.current.db + codex.current.device · fingerprint_mismatch。雙 current 基線已變更。", changes: ["僅在宣告條件成立時補全 source row", "BetaHub → Team Router", "BetaHub → Team Router", "寫入 Team Router catalog bytes", "寫入 Team Router auth bytes", "寫入 Team Router config bytes", "寫入 Team Router common bytes", "取代 Team Router managed MCP block"], actions: [["Conditional source backfill", "僅在 Plan 宣告條件成立時寫 source row"], ["Update DB current", "寫入 app-scoped current ID/version"], ["Update device current", "staged replacement 後寫 device marker"], ["Write Codex catalog", "寫入預備完成的 exact bytes"], ["Write Codex auth", "寫入預備完成的 exact bytes"], ["Write Codex config", "寫入預備完成的 exact bytes"], ["Write common config", "寫入宣告的 exact bytes"], ["Write managed MCP", "僅取代 normalized managed block"]] },
+            },
+            states: {
+              clean: { label: "Clean · 可確認", symbol: "✓", tone: "tone-success", validity: "有效期 09:42", title: "可確認：基線仍相符", code: "ready / no_warnings", reason: "Plan 未過期，目標、基線與憑證參照中繼資料仍與預覽一致。", action: "", executable: true },
+              warning: { label: "Warning · 可確認", symbol: "!", tone: "tone-warning", validity: "有效期 09:42", title: "可確認：請檢查 1 項警告", code: "ready / warning", reason: "具體警告由目前 operation 的凍結資源矩陣派生。", action: "", executable: true },
+              expired: { label: "Expired · 已失效", symbol: "◷", tone: "tone-danger", validity: "已過期", title: "Plan 已過期，無法重用", code: "expired", reason: "有效期已結束。舊 Plan 只保留生命週期記錄，不會建立 job 或呼叫 writer。", action: "重新產生預覽", executable: false },
+              drift: { label: "Drift · 已失效", symbol: "⇄", tone: "tone-danger", validity: "基線已變更", title: "基線指紋已變更", code: "resource_changed", reason: "具體失效資源由目前 operation 的凍結基線派生。", action: "依新基線重新預覽", executable: false },
+              unsupported: { label: "Unsupported · 未產生", symbol: "⊘", tone: "tone-neutral", validity: "不可執行", title: "不支援此操作模式", code: "unsupported_mode", reason: "Proxy takeover、official-target switch 或 critical risk 不在第一切片；沒有產生 executable Plan。", action: "返回修改操作", executable: false },
+              "secret-missing": { label: "Secret ref · 已阻擋", symbol: "⚿", tone: "tone-warning", validity: "需要修復", title: "無法驗證憑證參照", code: "secret_ref_missing", reason: "opaque secretRef 的本機存在性或版本狀態不可用；未讀取 secret 值，也未儲存受管變更。", action: "修復參照後重新預覽", executable: false },
+            },
+          },
+
+          en: {
+            ui: {
+              title: "Confirm configuration change", backAria: "Return to Provider editor", prototypeNote: "Prototype controls only. They are not production UI and never trigger a write.", before: "Before", after: "After", preview: "Preview only · Not executed",
+              planMetaAria: "Plan snapshot metadata", prototypeControlsAria: "Prototype operation, state, theme, and locale controls", intentRouteAria: "Before and after targets", safetyAsideAria: "Pre-confirmation safety summary",
+              summary: "What will change", summaryCaption: "From a saved, immutable Plan snapshot", resources: "Affected managed resources", resourcesCaption: "Expand to inspect baseline, effect boundary, and readback", resourceCount: "managed resources",
+              actions: "Apply order", actionsCaption: "Apply consumes reviewed actions; it does not recompute meaning", recovery: "Backup and recovery boundary", recoveryCaption: "No silent rollback promise; truth comes from independent readback", backupLabel: "Backup timing and scope", recoveryLabel: "After a failure",
+              status: "Pre-confirmation status", sideEffect: "Side-effect-free preview boundary", secret: "Credential reference", privacy: "Privacy boundary", binding: "One-confirmation binding", bindingTitle: "Confirmation sends the exact identity only", bindingCode: "no form draft / intent", bindingCopy: "One confirmation per Plan. An invalid Plan cannot be force-applied; generate a fresh preview.",
+              secretCopy: "Only local reference identity and version status are checked. Secret values are never read, shown, or hashed.", secretMissingStatus: "Unavailable: local reference is missing or its version cannot be verified", privacyCopy: "The public UI contains only safe IDs, status codes, digest fingerprints, and redacted labels. The private execution envelope never enters IPC, DOM, logs, or diagnostics; raw live config and absolute paths are not shown.", warningDetail: "Running sessions may continue using the previous configuration. Follow the result screen's restart guidance after a successful apply.",
+              confirmToken: "one confirmation", close: "Back to edit", confirm: "Confirm this Plan once", confirmDisabled: "Confirmation unavailable", footerReady: "This is a preview, not an execution result", footerReadyCopy: "Confirmation binds this planId + digest only. The prototype never applies a change.", footerBlocked: "Confirmation is disabled; no managed write occurred", toastBack: "Prototype: return to editing. The Plan was not applied and managed state is unchanged.", toastConfirm: "The prototype never executes changes. Production submits only the exact planId + planDigest and revalidates them in the backend.",
+              sideEffects: [["Stores the Plan snapshot only", "Local immutable payload and lifecycle metadata"], ["Does not change config or DB current", "Creates no job, event, or backup"], ["Does not refresh tray or cache", "Triggers no managed Provider write"], ["No Provider outbound traffic", "No probing, model fetch, or model request"]],
+              unsupportedFacts: [["No Plan snapshot", "No planId, digest, actions, or recovery envelope was created"], ["Zero managed writes", "Config, DB current, tray, cache, jobs, and backups are unchanged"], ["No legacy fallback", "Unsupported requests fail closed and never call the legacy writer"]],
+              resourceNames: { providerRow: "Target Provider row", endpointSet: "Target endpoint set", sourceBackfill: "Source Provider safe metadata (conditional)", dbCurrent: "DB current", deviceCurrent: "Device current", catalog: "Codex catalog", auth: "Codex auth", config: "Codex config", common: "Common config", mcp: "Managed MCP" }, resourceOps: { create: "Create", update: "Update", conditional: "Conditional" }, detailLabels: ["Baseline fingerprint", "Effect boundary", "Readback predicate"],
+            },
+            operations: {
+              create_only: { label: "create_only · create without selecting", title: "Create Team Router without selecting it", from: "Provider absent", to: "Team Router · not current", summary: "Create only the Team Router Provider row and complete endpoint set. Current selection and every live resource remain unchanged.", unchanged: "Explicitly unchanged: current selection, live projection, common projection, and managed MCP projection.", backup: "Pre-effect notice: the target row/set must be absent, so there are no old bytes to back up; step 2 is the first durable effect.", recovery: "Read back the Provider row and endpoint set separately. A third state is manual_required; creation is never deleted or replayed automatically.", secretStatus: "Opaque reference metadata available; value unresolved", warningReason: "The Provider row and endpoint set will change; DB/device current and every live resource remain unchanged.", driftReason: "codex.provider/team-router · expected_absence_changed. The target row/set no longer matches the create baseline.", changes: ["Absent → frozen Provider row", "Absent → complete endpoint set"], actions: [["Target row + endpoint transaction", "Atomically write both target resources in one narrow transaction"]] },
+              create_and_select: { label: "create_and_select · create and select", title: "Create Team Router and explicitly select it", from: "BetaHub · current", to: "Team Router · created and selected", summary: "Create Team Router row/endpoints, then apply frozen steps 1–9 to source, both current markers, and five catalog/auth/config/common/MCP resources.", unchanged: "No other Provider is activated implicitly. Resources not listed here remain unchanged.", backup: "Pre-effect notice: before step 1, record the DB snapshot, device old bytes, and old content for every declared file/managed block.", recovery: "Read back all 10 resources independently. Partial completion is manual_required; neither writer replay nor automatic backup restore is allowed.", secretStatus: "Opaque reference metadata available; value unresolved", warningReason: "DB/device current plus catalog, auth, config, common, and MCP will change; running sessions may still read old live content.", driftReason: "codex.provider/team-router · expected_absence_changed. The create baseline for the target row/set changed.", changes: ["Absent → frozen Provider row", "Absent → complete endpoint set", "Backfill source row only when declared", "BetaHub → Team Router", "BetaHub → Team Router", "Write target catalog bytes", "Write target auth bytes", "Write target config bytes", "Write target common bytes", "Replace managed MCP block"], actions: [["Conditional source backfill", "Write the source row only when declared by the Plan"], ["Target row + endpoint transaction", "Atomically write target row/set"], ["Update DB current", "Write app-scoped current ID/version"], ["Update device current", "Replace the device marker from staging"], ["Write Codex catalog", "Publish prepared exact bytes"], ["Write Codex auth", "Publish prepared exact bytes"], ["Write Codex config", "Publish prepared exact bytes"], ["Write common config", "Publish declared exact bytes"], ["Write managed MCP", "Replace the normalized managed block only"]] },
+              edit_current: { label: "edit_current · edit current", title: "Edit current Provider: BetaHub", from: "BetaHub · revision 6", to: "BetaHub · revision 7", summary: "Update the BetaHub Provider row/endpoint set, then write catalog, auth, config, common, and managed MCP in frozen steps 5–9.", unchanged: "Explicitly unchanged: DB/device current remain BetaHub and are required CAS predicates only.", backup: "Pre-effect notice: before step 2, save the DB snapshot and old catalog/auth/config/common bytes or managed block.", recovery: "Read back all 7 mutation resources. DB/device current are predicates only and never appear as mutation or recovery actions.", secretStatus: "Opaque reference preserved; version metadata matches", warningReason: "Provider row/endpoints and catalog, auth, config, common, and MCP will change; DB/device current remain unchanged.", driftReason: "codex.provider/betahub · row_version_changed. The target row/version no longer matches the Plan baseline.", changes: ["Row revision 6 → 7", "Endpoint set revision 6 → 7", "Write revision 7 catalog bytes", "Write revision 7 auth bytes", "Write revision 7 config bytes", "Write revision 7 common bytes", "Replace revision 7 managed MCP block"], actions: [["Target row + endpoint transaction", "Atomically update row/set"], ["Write Codex catalog", "Publish prepared exact bytes"], ["Write Codex auth", "Publish prepared exact bytes"], ["Write Codex config", "Publish prepared exact bytes"], ["Write common config", "Publish declared exact bytes"], ["Write managed MCP", "Replace the normalized managed block only"]] },
+              edit_non_current: { label: "edit_non_current · edit non-current", title: "Edit non-current Provider: Team Router", from: "Team Router · revision 3", to: "Team Router · revision 4", summary: "At step 2, atomically update only the non-current Team Router Provider row and endpoint set; current and live resources are untouched.", unchanged: "Explicitly unchanged: DB/device current and catalog, auth, config, common, and MCP all remain unchanged.", backup: "Pre-effect notice: save only the Team Router row/set DB snapshot before step 2; create no current/live backup.", recovery: "Read back row and endpoint set separately. Classify baseline, full target, or third state without touching the current Provider.", secretStatus: "Opaque reference preserved; version metadata matches", warningReason: "The non-current Provider row and endpoint set will change; DB/device current and every live resource remain unchanged.", driftReason: "codex.provider/team-router · row_version_changed. The target row/version no longer matches the Plan baseline.", changes: ["Row revision 3 → 4 (non-current)", "Endpoint set revision 3 → 4 (non-current)"], actions: [["Target row + endpoint transaction", "Atomically update row/set in one narrow transaction"]] },
+              switch: { label: "switch · change current Provider", title: "Switch current Codex Provider to Team Router", from: "BetaHub", to: "Team Router", summary: "Apply frozen steps 1 and 3–9 to source/current, catalog, auth, config, common, and managed MCP.", unchanged: "Undeclared Provider rows/endpoint sets and unmanaged configuration remain unchanged.", backup: "Pre-effect notice: before step 1, record the DB snapshot, device old bytes, and old content for every declared file/managed block.", recovery: "Read back all 8 mutation resources independently. Classify full target, baseline, or third state; third state is manual_required and never replayed.", secretStatus: "Opaque reference metadata available; value unresolved", warningReason: "DB/device current plus catalog, auth, config, common, and MCP will change; running sessions may still read old live content.", driftReason: "codex.current.db + codex.current.device · fingerprint_mismatch. Both current baselines changed.", changes: ["Backfill source row only when declared", "BetaHub → Team Router", "BetaHub → Team Router", "Write Team Router catalog bytes", "Write Team Router auth bytes", "Write Team Router config bytes", "Write Team Router common bytes", "Replace Team Router managed MCP block"], actions: [["Conditional source backfill", "Write the source row only when declared by the Plan"], ["Update DB current", "Write app-scoped current ID/version"], ["Update device current", "Replace the device marker from staging"], ["Write Codex catalog", "Publish prepared exact bytes"], ["Write Codex auth", "Publish prepared exact bytes"], ["Write Codex config", "Publish prepared exact bytes"], ["Write common config", "Publish declared exact bytes"], ["Write managed MCP", "Replace the normalized managed block only"]] },
+            },
+            states: {
+              clean: { label: "Clean · Confirmable", symbol: "✓", tone: "tone-success", validity: "Valid for 09:42", title: "Confirmable: baseline still matches", code: "ready / no_warnings", reason: "The Plan is unexpired, and target, baseline, and credential-reference metadata still match the preview.", action: "", executable: true },
+              warning: { label: "Warning · Confirmable", symbol: "!", tone: "tone-warning", validity: "Valid for 09:42", title: "Confirmable: review 1 warning", code: "ready / warning", reason: "The concrete warning is derived from the selected operation's frozen resource matrix.", action: "", executable: true },
+              expired: { label: "Expired · Invalid", symbol: "◷", tone: "tone-danger", validity: "Expired", title: "This Plan expired and cannot be reused", code: "expired", reason: "The validity window ended. The old Plan remains lifecycle metadata only and creates no job or writer call.", action: "Generate a fresh preview", executable: false },
+              drift: { label: "Drift · Invalid", symbol: "⇄", tone: "tone-danger", validity: "Baseline changed", title: "The baseline fingerprint changed", code: "resource_changed", reason: "The invalidated resource is derived from the selected operation's frozen baseline.", action: "Preview against the new baseline", executable: false },
+              unsupported: { label: "Unsupported · No Plan", symbol: "⊘", tone: "tone-neutral", validity: "Non-executable", title: "This operation mode is unsupported", code: "unsupported_mode", reason: "Proxy takeover, an official-target switch, or critical risk is outside the first slice; no executable Plan was created.", action: "Return and modify operation", executable: false },
+              "secret-missing": { label: "Secret ref · Blocked", symbol: "⚿", tone: "tone-warning", validity: "Repair required", title: "Credential reference cannot be verified", code: "secret_ref_missing", reason: "Local presence or version status for the opaque secretRef is unavailable. No secret value was read and no managed change was saved.", action: "Repair reference, then preview again", executable: false },
+            },
+          },
+
+          ja: {
+            ui: {
+              title: "構成変更の確認", backAria: "Provider 編集に戻る", prototypeNote: "この操作バーはプロトタイプ確認専用です。本番 UI ではなく、書き込みも行いません。", before: "変更前", after: "変更後", preview: "プレビューのみ · 未実行",
+              planMetaAria: "Plan snapshot のメタデータ", prototypeControlsAria: "プロトタイプの操作、状態、テーマ、言語コントロール", intentRouteAria: "変更前と変更後のターゲット", safetyAsideAria: "確認前の安全性サマリー",
+              summary: "変更内容", summaryCaption: "保存済みの不変 Plan snapshot に基づく内容", resources: "影響を受ける管理対象リソース", resourcesCaption: "展開して baseline、effect boundary、readback を確認", resourceCount: "件の管理対象リソース",
+              actions: "適用順序", actionsCaption: "Apply は確認済み actions のみを使用し、意味を再計算しません", recovery: "バックアップと復旧の境界", recoveryCaption: "暗黙のロールバックは保証せず、独立 readback で判定", backupLabel: "バックアップの時点と範囲", recoveryLabel: "失敗後の処理",
+              status: "確認前の状態", sideEffect: "副作用のないプレビュー境界", secret: "認証情報の参照", privacy: "プライバシー境界", binding: "1 回の確認への結合", bindingTitle: "確認時は exact identity のみ送信", bindingCode: "form draft / intent は送信しない", bindingCopy: "同じ Plan の確認は 1 回だけです。無効化後の force apply はできず、新しい preview が必要です。",
+              secretCopy: "ローカルの参照 ID とバージョン状態だけを確認します。secret 値の読み取り、表示、ハッシュ化は行いません。", secretMissingStatus: "利用不可：ローカル参照がないか、バージョンを検証できません", privacyCopy: "公開 UI には安全な ID、状態コード、要約指紋、マスク済みラベルだけを表示します。private execution envelope は IPC、DOM、ログ、診断出力に渡さず、raw live config や絶対パスも表示しません。", warningDetail: "実行中のセッションは以前の構成を参照し続ける場合があります。適用成功後は結果画面の案内に従って再起動してください。",
+              confirmToken: "1 回のみ確認", close: "編集に戻る", confirm: "この Plan を 1 回だけ確認", confirmDisabled: "確認できません", footerReady: "これはプレビューであり、実行結果ではありません", footerReadyCopy: "確認は現在の planId + digest にだけ結合されます。プロトタイプは変更を適用しません。", footerBlocked: "確認は無効です。管理対象への書き込みはありません", toastBack: "プロトタイプ：編集に戻ります。Plan は適用されず、管理対象の状態は変わりません。", toastConfirm: "プロトタイプは変更を実行しません。本番では exact planId + planDigest だけを送信し、バックエンドで再検証します。",
+              sideEffects: [["Plan snapshot だけを保存", "ローカルの不変 payload と lifecycle metadata"], ["構成と DB current を変更しない", "job、event、backup を作成しない"], ["tray / cache を更新しない", "管理対象 Provider の書き込みを行わない"], ["Provider への外向き通信なし", "接続確認、モデル取得、モデル要求を行わない"]],
+              unsupportedFacts: [["Plan snapshot なし", "planId、digest、actions、recovery envelope は生成されていません"], ["管理対象への書き込みゼロ", "構成、DB current、tray、cache、job、backup はすべて不変です"], ["旧経路へフォールバックしない", "unsupported は fail closed となり legacy writer を呼びません"]],
+              resourceNames: { providerRow: "Target Provider row", endpointSet: "Target endpoint set", sourceBackfill: "Source Provider の安全メタデータ（条件付き）", dbCurrent: "DB current", deviceCurrent: "Device current", catalog: "Codex catalog", auth: "Codex auth", config: "Codex config", common: "Common config", mcp: "Managed MCP" }, resourceOps: { create: "作成", update: "更新", conditional: "条件付き" }, detailLabels: ["ベースライン指紋", "Effect boundary", "Readback predicate"],
+            },
+            operations: {
+              create_only: { label: "create_only · 作成のみ", title: "Team Router を作成し、現在には設定しない", from: "Provider なし", to: "Team Router · 非 current", summary: "Team Router の Provider row と完全な endpoint set だけを作成し、current selection と live リソースは変更しません。", unchanged: "明示的に不変：current selection、live projection、common projection、managed MCP projection。", backup: "Pre-effect notice：target row/set は absent が前提で旧内容はありません。step 2 transaction が最初の durable effect です。", recovery: "Provider row と endpoint set を個別に readback します。第三状態は manual_required で、自動削除や再実行はしません。", secretStatus: "opaque 参照メタデータは利用可能、値は解決しない", warningReason: "Provider row と endpoint set は変わりますが、DB/device current と全 live リソースは変わりません。", driftReason: "codex.provider/team-router · expected_absence_changed。target row/set は作成 baseline と一致しません。", changes: ["存在しない → 凍結 Provider row", "存在しない → 完全な endpoint set"], actions: [["Target row + endpoint transaction", "1 つの狭い transaction で両方を原子的に書き込む"]] },
+              create_and_select: { label: "create_and_select · 作成して選択", title: "Team Router を作成し、明示的に current に設定", from: "BetaHub · current", to: "Team Router · 作成して選択", summary: "Team Router row/endpoints を作成し、frozen steps 1–9 で source、2 つの current、5 つの catalog/auth/config/common/MCP リソースを更新します。", unchanged: "他の Provider を暗黙に有効化しません。未記載リソースは変わりません。", backup: "Pre-effect notice：step 1 前に DB snapshot、device old bytes、各 file/managed block の旧内容を記録します。", recovery: "10 リソースを個別に readback します。部分完了は manual_required で writer 再実行や自動復元はしません。", secretStatus: "opaque 参照メタデータは利用可能、値は解決しない", warningReason: "DB/device current と catalog、auth、config、common、MCP が変わり、実行中セッションは旧 live 内容を読む場合があります。", driftReason: "codex.provider/team-router · expected_absence_changed。target row/set の作成 baseline が変わりました。", changes: ["存在しない → 凍結 Provider row", "存在しない → 完全な endpoint set", "宣言条件成立時のみ source row を補完", "BetaHub → Team Router", "BetaHub → Team Router", "target catalog bytes を書く", "target auth bytes を書く", "target config bytes を書く", "target common bytes を書く", "managed MCP block を置換"], actions: [["Conditional source backfill", "Plan 宣言条件の成立時だけ source row を書く"], ["Target row + endpoint transaction", "target row/set を原子的に書く"], ["Update DB current", "app-scoped current ID/version を書く"], ["Update device current", "staging から device marker を置換"], ["Write Codex catalog", "準備済み exact bytes を publish"], ["Write Codex auth", "準備済み exact bytes を publish"], ["Write Codex config", "準備済み exact bytes を publish"], ["Write common config", "宣言済み exact bytes を publish"], ["Write managed MCP", "normalized managed block だけを置換"]] },
+              edit_current: { label: "edit_current · current を編集", title: "現在の Provider BetaHub を編集", from: "BetaHub · revision 6", to: "BetaHub · revision 7", summary: "BetaHub Provider row/endpoint set を更新し、frozen steps 5–9 で catalog、auth、config、common、managed MCP を書きます。", unchanged: "明示的に不変：DB/device current は BetaHub のままで required CAS predicate に限ります。", backup: "Pre-effect notice：step 2 前に DB snapshot と catalog/auth/config/common の old bytes、managed block を保存します。", recovery: "7 mutation リソースを readback します。DB/device current は predicate のみで mutation や recovery action ではありません。", secretStatus: "opaque 参照を保持、バージョンメタデータ一致", warningReason: "Provider row/endpoints と catalog、auth、config、common、MCP が変わりますが、DB/device current は変わりません。", driftReason: "codex.provider/betahub · row_version_changed。target row/version が Plan baseline と一致しません。", changes: ["Row revision 6 → 7", "Endpoint set revision 6 → 7", "revision 7 catalog bytes を書く", "revision 7 auth bytes を書く", "revision 7 config bytes を書く", "revision 7 common bytes を書く", "revision 7 managed MCP block を置換"], actions: [["Target row + endpoint transaction", "row/set を原子的に更新"], ["Write Codex catalog", "準備済み exact bytes を publish"], ["Write Codex auth", "準備済み exact bytes を publish"], ["Write Codex config", "準備済み exact bytes を publish"], ["Write common config", "宣言済み exact bytes を publish"], ["Write managed MCP", "normalized managed block だけを置換"]] },
+              edit_non_current: { label: "edit_non_current · 非 current を編集", title: "非 current Provider Team Router を編集", from: "Team Router · revision 3", to: "Team Router · revision 4", summary: "step 2 で非 current の Team Router Provider row と endpoint set だけを原子的に更新し、current/live には触れません。", unchanged: "明示的に不変：DB/device current と catalog、auth、config、common、MCP はすべて不変です。", backup: "Pre-effect notice：step 2 前に Team Router row/set の DB snapshot だけを保存し、current/live backup は作りません。", recovery: "row と endpoint set を個別に readback し、baseline、完全 target、第三状態を分類します。", secretStatus: "opaque 参照を保持、バージョンメタデータ一致", warningReason: "非 current Provider row と endpoint set は変わりますが、DB/device current と全 live リソースは変わりません。", driftReason: "codex.provider/team-router · row_version_changed。target row/version が Plan baseline と一致しません。", changes: ["Row revision 3 → 4（非 current）", "Endpoint set revision 3 → 4（非 current）"], actions: [["Target row + endpoint transaction", "1 つの狭い transaction で row/set を原子的に更新"]] },
+              switch: { label: "switch · current を切替", title: "現在の Codex Provider を Team Router に切替", from: "BetaHub", to: "Team Router", summary: "frozen steps 1、3–9 で source/current、catalog、auth、config、common、managed MCP を更新します。", unchanged: "未宣言の Provider row/endpoint set と非管理構成は変更されません。", backup: "Pre-effect notice：step 1 前に DB snapshot、device old bytes、各 file/managed block の旧内容を記録します。", recovery: "8 mutation リソースを独立 readback します。完全 target、baseline、第三状態を分類し、第三状態は再実行しません。", secretStatus: "opaque 参照メタデータは利用可能、値は解決しない", warningReason: "DB/device current と catalog、auth、config、common、MCP が変わり、実行中セッションは旧 live 内容を読む場合があります。", driftReason: "codex.current.db + codex.current.device · fingerprint_mismatch。2 つの current baseline が変わりました。", changes: ["宣言条件成立時のみ source row を補完", "BetaHub → Team Router", "BetaHub → Team Router", "Team Router catalog bytes を書く", "Team Router auth bytes を書く", "Team Router config bytes を書く", "Team Router common bytes を書く", "Team Router managed MCP block を置換"], actions: [["Conditional source backfill", "Plan 宣言条件の成立時だけ source row を書く"], ["Update DB current", "app-scoped current ID/version を書く"], ["Update device current", "staging から device marker を置換"], ["Write Codex catalog", "準備済み exact bytes を publish"], ["Write Codex auth", "準備済み exact bytes を publish"], ["Write Codex config", "準備済み exact bytes を publish"], ["Write common config", "宣言済み exact bytes を publish"], ["Write managed MCP", "normalized managed block だけを置換"]] },
+            },
+            states: {
+              clean: { label: "Clean · 確認可能", symbol: "✓", tone: "tone-success", validity: "残り 09:42", title: "確認可能：baseline は一致", code: "ready / no_warnings", reason: "Plan は有効期限内で、target、baseline、credential reference metadata は preview と一致しています。", action: "", executable: true },
+              warning: { label: "Warning · 確認可能", symbol: "!", tone: "tone-warning", validity: "残り 09:42", title: "確認可能：1 件の警告を確認", code: "ready / warning", reason: "具体的な警告は選択 operation の凍結 resource matrix から導出されます。", action: "", executable: true },
+              expired: { label: "Expired · 無効", symbol: "◷", tone: "tone-danger", validity: "期限切れ", title: "この Plan は期限切れで再利用できません", code: "expired", reason: "有効期間が終了しました。旧 Plan は lifecycle metadata として残るだけで、job 作成や writer 呼び出しはありません。", action: "新しい preview を生成", executable: false },
+              drift: { label: "Drift · 無効", symbol: "⇄", tone: "tone-danger", validity: "baseline 変更", title: "ベースライン指紋が変更されました", code: "resource_changed", reason: "無効化された resource は選択 operation の凍結 baseline から導出されます。", action: "新しい baseline で再 preview", executable: false },
+              unsupported: { label: "Unsupported · Plan なし", symbol: "⊘", tone: "tone-neutral", validity: "実行不可", title: "この操作モードは未対応です", code: "unsupported_mode", reason: "Proxy takeover、official-target switch、critical risk は最初の slice の対象外で、executable Plan は生成されていません。", action: "戻って操作を変更", executable: false },
+              "secret-missing": { label: "Secret ref · ブロック", symbol: "⚿", tone: "tone-warning", validity: "修復が必要", title: "認証情報の参照を検証できません", code: "secret_ref_missing", reason: "opaque secretRef のローカル存在またはバージョン状態を確認できません。secret 値は読まず、管理対象の変更も保存していません。", action: "参照を修復して再 preview", executable: false },
+            },
+          },
+        };
+
+        function deriveStateView(localeKey, operationKey, stateKey) {
+          const fixture = localeFixtures[localeKey];
+          const operation = fixture.operations[operationKey];
+          const state = fixture.states[stateKey];
+          const spec = operationSpecs[operationKey];
+          const unsupported = stateKey === "unsupported";
+          const blocked = !state.executable;
+          const reason = stateKey === "warning"
+            ? operation.warningReason
+            : stateKey === "drift"
+              ? operation.driftReason
+              : state.reason;
+          return {
+            label: state.label,
+            symbol: state.symbol,
+            tone: state.tone,
+            validity: state.validity,
+            title: state.title,
+            code: state.code,
+            reason,
+            warningDetail: stateKey === "warning"
+              ? (spec.activatesLive ? fixture.ui.warningDetail : operation.unchanged)
+              : "",
+            secretStatus: stateKey === "secret-missing"
+              ? fixture.ui.secretMissingStatus
+              : operation.secretStatus,
+            riskToken: stateKey === "warning"
+              ? "risk warning"
+              : stateKey === "clean"
+                ? "risk info"
+                : unsupported
+                  ? "risk unsupported"
+                  : "risk blocked",
+            confirmable: state.executable,
+            planVisible: !unsupported,
+            closeVisible: !unsupported,
+            confirmVisible: !unsupported,
+            repairVisible: blocked,
+            repairAction: blocked ? state.action : "",
+          };
+        }
+
+        const elements = Object.fromEntries(
+          [
+            "page-title", "back-button", "prototype-controls", "prototype-note", "operation-select", "state-select", "theme-select", "locale-select",
+            "plan-meta", "plan-id", "plan-digest", "expires-at", "status-badge", "status-badge-text", "validity-pill",
+            "plan-projection", "unsupported-projection", "operation-code", "intent-heading", "intent-route", "route-before-label", "route-after-label", "route-from", "route-to", "preview-chip", "safety-aside",
+            "summary-heading", "summary-caption", "change-summary", "unchanged-note", "risk-token", "confirm-token",
+            "resources-heading", "resources-caption", "resource-count", "resource-list", "actions-heading", "actions-caption", "action-list",
+            "recovery-heading", "recovery-caption", "backup-label", "recovery-label", "backup-copy", "recovery-copy",
+            "status-heading", "state-alert", "state-icon", "state-title", "state-code", "state-reason", "warning-detail",
+            "side-effect-heading", "secret-heading", "secret-ref", "secret-status", "secret-copy", "privacy-heading", "privacy-copy",
+            "binding-heading", "binding-title", "binding-code", "binding-copy", "unsupported-title", "unsupported-reason",
+            "footer-title", "footer-description", "close-button", "repair-action", "confirm-button", "toast",
+            "side-title-0", "side-copy-0", "side-title-1", "side-copy-1", "side-title-2", "side-copy-2", "side-title-3", "side-copy-3",
+            "unsupported-fact-title-0", "unsupported-fact-copy-0", "unsupported-fact-title-1", "unsupported-fact-copy-1", "unsupported-fact-title-2", "unsupported-fact-copy-2",
+          ].map((id) => [id, document.getElementById(id)]),
+        );
+
+        let currentLocale = "zh-CN";
+        let currentOperation = "switch";
+        let currentState = "clean";
+        let toastTimer = 0;
+
+        const escapeText = (value) =>
+          String(value)
+            .replaceAll("&", "&amp;")
+            .replaceAll("<", "&lt;")
+            .replaceAll(">", "&gt;")
+            .replaceAll('"', "&quot;")
+            .replaceAll("'", "&#039;");
+
+        function setText(id, value) {
+          elements[id].textContent = value;
+        }
+
+        function showToast(message) {
+          window.clearTimeout(toastTimer);
+          elements.toast.textContent = message;
+          elements.toast.classList.add("visible");
+          toastTimer = window.setTimeout(() => elements.toast.classList.remove("visible"), 3200);
+        }
+
+        function replaceOptions(select, values, selectedValue) {
+          const options = values.map(([value, label]) => {
+            const option = document.createElement("option");
+            option.value = value;
+            option.textContent = label;
+            return option;
+          });
+          select.replaceChildren(...options);
+          select.value = selectedValue;
+        }
+
+        function renderLocale() {
+          const fixture = localeFixtures[currentLocale];
+          const ui = fixture.ui;
+          document.documentElement.lang = currentLocale;
+          document.title = `FyAgent · ${ui.title} · Prototype`;
+          setText("page-title", ui.title);
+          elements["back-button"].setAttribute("aria-label", ui.backAria);
+          elements["plan-meta"].setAttribute("aria-label", ui.planMetaAria);
+          elements["prototype-controls"].setAttribute("aria-label", ui.prototypeControlsAria);
+          elements["intent-route"].setAttribute("aria-label", ui.intentRouteAria);
+          elements["safety-aside"].setAttribute("aria-label", ui.safetyAsideAria);
+          setText("prototype-note", ui.prototypeNote);
+          setText("route-before-label", ui.before);
+          setText("route-after-label", ui.after);
+          setText("summary-heading", ui.summary);
+          setText("summary-caption", ui.summaryCaption);
+          setText("resources-heading", ui.resources);
+          setText("resources-caption", ui.resourcesCaption);
+          setText("actions-heading", ui.actions);
+          setText("actions-caption", ui.actionsCaption);
+          setText("recovery-heading", ui.recovery);
+          setText("recovery-caption", ui.recoveryCaption);
+          setText("backup-label", ui.backupLabel);
+          setText("recovery-label", ui.recoveryLabel);
+          setText("status-heading", ui.status);
+          setText("side-effect-heading", ui.sideEffect);
+          setText("secret-heading", ui.secret);
+          setText("secret-copy", ui.secretCopy);
+          setText("privacy-heading", ui.privacy);
+          setText("privacy-copy", ui.privacyCopy);
+          setText("binding-heading", ui.binding);
+          setText("binding-title", ui.bindingTitle);
+          setText("binding-code", ui.bindingCode);
+          setText("binding-copy", ui.bindingCopy);
+          setText("warning-detail", ui.warningDetail);
+          setText("confirm-token", ui.confirmToken);
+          setText("close-button", ui.close);
+          ui.sideEffects.forEach(([title, copy], index) => {
+            setText(`side-title-${index}`, title);
+            setText(`side-copy-${index}`, copy);
+          });
+          ui.unsupportedFacts.forEach(([title, copy], index) => {
+            setText(`unsupported-fact-title-${index}`, title);
+            setText(`unsupported-fact-copy-${index}`, copy);
+          });
+
+          replaceOptions(
+            elements["operation-select"],
+            operationOrder.map((key) => [key, fixture.operations[key].label]),
+            currentOperation,
+          );
+          replaceOptions(
+            elements["state-select"],
+            stateOrder.map((key) => [key, fixture.states[key].label]),
+            currentState,
+          );
+          renderOperation();
+          renderState();
+        }
+
+        function renderOperation() {
+          const fixture = localeFixtures[currentLocale];
+          const ui = fixture.ui;
+          const copy = fixture.operations[currentOperation];
+          const spec = operationSpecs[currentOperation];
+
+          setText("operation-code", spec.code);
+          setText("intent-heading", copy.title);
+          setText("route-from", copy.from);
+          setText("route-to", copy.to);
+          setText("change-summary", copy.summary);
+          setText("unchanged-note", copy.unchanged);
+          setText("secret-ref", spec.secretRef);
+          setText("backup-copy", copy.backup);
+          setText("recovery-copy", copy.recovery);
+          setText("resource-count", `${spec.resources.length} ${ui.resourceCount}`);
+
+          elements["resource-list"].innerHTML = spec.resources
+            .map((resource, index) => `
+              <details class="resource-row">
+                <summary>
+                  <span class="resource-symbol" aria-hidden="true">${escapeText(resource.symbol)}</span>
+                  <span class="resource-name">${escapeText(ui.resourceNames[resource.type])}<span class="resource-key">${escapeText(resource.key)}</span></span>
+                  <span class="resource-change">${escapeText(copy.changes[index])}</span>
+                  <span class="resource-op">${escapeText(ui.resourceOps[resource.op])}</span>
+                  <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m9 18 6-6-6-6"></path></svg>
+                </summary>
+                <dl class="resource-detail">
+                  <div><dt>${escapeText(ui.detailLabels[0])}</dt><dd class="detail-value">${escapeText(resource.baseline)}</dd></div>
+                  <div><dt>${escapeText(ui.detailLabels[1])}</dt><dd class="detail-value">${escapeText(resource.boundary)}</dd></div>
+                  <div><dt>${escapeText(ui.detailLabels[2])}</dt><dd class="detail-value">${escapeText(resource.readback)}</dd></div>
+                </dl>
+              </details>`,)
+            .join("");
+
+          elements["action-list"].dataset.count = String(copy.actions.length);
+          elements["action-list"].innerHTML = copy.actions
+            .map(([title, description], index) => {
+              const actionNumber = spec.actionNumbers[index];
+              const children = actionNumber === 2
+                ? `<ul class="step-children"><li>${escapeText(ui.resourceNames.providerRow)}</li><li>${escapeText(ui.resourceNames.endpointSet)}</li></ul>`
+                : "";
+              return `<li class="step"><span class="step-index">${actionNumber}</span><strong>${escapeText(title)}</strong><span>${escapeText(description)}</span>${children}</li>`;
+            })
+            .join("");
+        }
+
+        function renderState() {
+          const fixture = localeFixtures[currentLocale];
+          const ui = fixture.ui;
+          const view = deriveStateView(currentLocale, currentOperation, currentState);
+          const unsupported = !view.planVisible;
+          const blocked = !view.confirmable;
+
+          document.body.dataset.state = currentState;
+          elements["status-badge"].className = `status-badge ${view.tone}`;
+          elements["status-badge"].querySelector(".state-symbol").textContent = view.symbol;
+          setText("status-badge-text", view.label);
+          setText("validity-pill", view.validity);
+          setText("secret-status", view.secretStatus);
+          setText("warning-detail", view.warningDetail);
+          setText("risk-token", view.riskToken);
+
+          elements["plan-meta"].hidden = unsupported;
+          elements["plan-projection"].hidden = unsupported;
+          elements["unsupported-projection"].hidden = !unsupported;
+          elements["back-button"].hidden = unsupported;
+          elements["close-button"].hidden = !view.closeVisible;
+          elements["confirm-button"].hidden = !view.confirmVisible;
+          elements["confirm-button"].disabled = !view.confirmable;
+          elements["repair-action"].hidden = !view.repairVisible;
+          setText("confirm-button", view.confirmable ? ui.confirm : ui.confirmDisabled);
+          setText("repair-action", view.repairAction);
+
+          if (unsupported) {
+            elements["state-alert"].setAttribute("aria-live", "off");
+            setText("unsupported-title", view.title);
+            setText("unsupported-reason", view.reason);
+          } else {
+            elements["state-alert"].className = `state-alert ${view.tone}`;
+            elements["state-alert"].setAttribute("role", blocked ? "alert" : "status");
+            elements["state-alert"].setAttribute("aria-live", blocked ? "assertive" : "polite");
+            elements["state-alert"].setAttribute("aria-atomic", "true");
+            setText("state-icon", view.symbol);
+            setText("state-title", view.title);
+            setText("state-code", view.code);
+            setText("state-reason", view.reason);
+            setText("preview-chip", blocked ? view.label : ui.preview);
+          }
+
+          setText("footer-title", blocked ? ui.footerBlocked : ui.footerReady);
+          setText("footer-description", blocked ? view.reason : ui.footerReadyCopy);
+
+          if (currentState === "expired") {
+            setText("expires-at", "2026-08-15 09:00 CST");
+          } else {
+            setText("expires-at", "2026-08-15 10:12 CST");
+          }
+          if (!unsupported) {
+            setText("plan-id", "cp_01J55Q7C8M…W6D2");
+            setText("plan-digest", "sha256:68b4…c912");
+          }
+        }
+
+        function focusRecoveryCTA() {
+          const state = localeFixtures[currentLocale].states[currentState];
+          if (!state.executable && !elements["repair-action"].hidden) {
+            elements["repair-action"].focus({ preventScroll: true });
+          }
+        }
+
+        elements["operation-select"].addEventListener("change", (event) => {
+          currentOperation = event.target.value;
+          renderOperation();
+          renderState();
+        });
+        elements["state-select"].addEventListener("change", (event) => {
+          currentState = event.target.value;
+          renderState();
+        });
+        elements["theme-select"].addEventListener("change", (event) => {
+          document.documentElement.dataset.theme = event.target.value;
+        });
+        elements["locale-select"].addEventListener("change", (event) => {
+          currentLocale = event.target.value;
+          renderLocale();
+        });
+        elements["confirm-button"].addEventListener("click", () => showToast(localeFixtures[currentLocale].ui.toastConfirm));
+        elements["close-button"].addEventListener("click", () => showToast(localeFixtures[currentLocale].ui.toastBack));
+        elements["back-button"].addEventListener("click", () => showToast(localeFixtures[currentLocale].ui.toastBack));
+        elements["repair-action"].addEventListener("click", () => showToast(deriveStateView(currentLocale, currentOperation, currentState).reason));
+
+        window.changePlanPrototype = Object.freeze({
+          focusRecoveryCTA,
+          navigationCreatedBlockedScreen(stateKey) {
+            if (stateOrder.includes(stateKey) && !localeFixtures[currentLocale].states[stateKey].executable) {
+              currentState = stateKey;
+              elements["state-select"].value = stateKey;
+              renderState();
+              focusRecoveryCTA();
+            }
+          },
+        });
+
+        renderLocale();
+        window.requestAnimationFrame(() => elements["page-title"].focus({ preventScroll: true }));
+      })();
+    </script>
+  </body>
+</html>

@@ -2,6 +2,7 @@
 
 mod auth;
 mod balance;
+mod change_plan;
 mod codex_desktop;
 mod codex_oauth;
 mod coding_plan;
@@ -41,6 +42,7 @@ mod workspace;
 
 pub use auth::*;
 pub use balance::*;
+pub use change_plan::*;
 pub use codex_desktop::*;
 pub use codex_oauth::*;
 pub use coding_plan::*;

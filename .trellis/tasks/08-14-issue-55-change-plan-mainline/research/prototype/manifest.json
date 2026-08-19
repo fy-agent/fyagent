@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "contract": "fyagent.change-plan.prototype-manifest.v1",
+  "evidenceClass": "prototype",
+  "generatedReference": {
+    "path": "generated-change-plan-reference.png",
+    "sha256": "a70a2845e017405aaea9a12449e2b58c9b0a1023d0748fd655063c9c732d81ea",
+    "size": 1311009,
+    "width": 1536,
+    "height": 1024
+  },
+  "prototype": {
+    "path": "change-plan-prototype.html",
+    "sha256": "fe8f8cc0ac389c7c3cca9b3fd5005ff13d51f4cad8a1cb7d3d4a0221a9122dc4",
+    "size": 124238,
+    "preferredViewport": {
+      "width": 1440,
+      "height": 960
+    }
+  },
+  "designFreezeCommit": "d158b27690d897e8e9f2ece7d8887da6423b899c",
+  "designFreezeManifestSha256": "2c1b753acf470699b428ae8a9eb401be82dbb0f1f19d9c13a6268350d4edfc5f",
+  "builtInImageGen": true,
+  "notes": "Revision 3 generated reference and HTML are design artifacts only. They are not runtime, runtime_screenshot, native_runtime, failure_path, UAT, or production evidence. The static prototype follows the frozen 2/10/7/2/8 mutation-resource matrix and action numbers 1-9, derives operation-aware warning/drift/credential state across 120 combinations, supports a 320px-safe route layout, and localizes accessibility names for zh-CN/zh-TW/en/ja. It uses synthetic safe identifiers and contains no secret value or absolute path."
+}

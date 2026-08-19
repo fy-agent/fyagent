@@ -4,4 +4,5 @@ export * from "./mutations";
 export * from "./proxy";
 export * from "./subscription";
 export * from "./codex-desktop";
+export * from "./change-plan";
 export * from "./workbuddy";

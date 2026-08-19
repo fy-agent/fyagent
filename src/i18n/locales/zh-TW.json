@@ -3280,5 +3280,58 @@
     "expiredHint": "請執行 {{tool}} 命令重新整理登入",
     "queryFailed": "查詢失敗",
     "refresh": "重新整理"
+  },
+  "changePlan": {
+    "previewTitle": "確認供應商切換",
+    "description": "FyAgent 會先核對目前本機基線，再執行任何變更。",
+    "loading": "正在產生唯讀預覽",
+    "unsupportedTitle": "無法產生預覽",
+    "unsupportedDescription": "目前版本無法產生安全的供應商切換預覽。",
+    "targetLabel": "將 Codex 切換到",
+    "previewBody": "確認一次即可套用這份綁定目前基線的計畫。若本機狀態已變更，計畫會拒絕執行且不寫入。",
+    "evidenceTitle": "證據邊界",
+    "evidenceNotObserved": "本機設定回讀與真實 Agent 使用是兩件事；目前尚無真實使用證據。",
+    "runningTitle": "正在切換供應商",
+    "staleTitle": "這份預覽已過期",
+    "staleDescription": "本機設定已變更或預覽已逾時，請產生新的預覽後再套用。",
+    "stepsLabel": "變更進度",
+    "restartTitle": "建議重新啟動 Codex",
+    "restartDescription": "Codex live 設定已變更，可在方便時重新啟動；這不代表已有真實使用證據。",
+    "recoveryTitle": "需要手動復原",
+    "recoveryDescription": "回讀發現本機狀態混合或未知，請先檢查各資源結果，再決定是否重試。",
+    "applyFailedTitle": "計畫未能套用",
+    "applyFailedDescription": "系統沒有假定成功。請檢查本機狀態並重新產生預覽。",
+    "replan": "重新產生預覽",
+    "close": "關閉",
+    "cancel": "取消",
+    "confirm": "確認並套用",
+    "applying": "正在套用…",
+    "result": {
+      "succeeded": "供應商切換已套用",
+      "warning": "已套用，但有提醒",
+      "failed": "供應商切換未通過驗證",
+      "unknown": "供應商切換結果"
+    },
+    "step": {
+      "precheck": "基線檢查",
+      "apply": "套用變更",
+      "readback": "本機回讀",
+      "reconcile": "復原檢查",
+      "unknown": "未知步驟"
+    },
+    "resource": {
+      "provider_db_current": "資料庫目前供應商",
+      "device_current": "本機目前供應商",
+      "target_definition": "目標供應商定義",
+      "codex_live_projection": "Codex live 設定",
+      "unknown": "未知資源"
+    },
+    "resourceStatus": {
+      "pending": "等待中",
+      "matched": "一致",
+      "mismatched": "不一致",
+      "unavailable": "無法讀取",
+      "unknown": "未知"
+    }
   }
 }

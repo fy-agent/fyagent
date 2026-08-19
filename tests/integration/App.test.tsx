@@ -45,7 +45,15 @@ vi.mock("@/components/providers/ProviderList", () => ({
     <div>
       <div data-testid="provider-list">{JSON.stringify(providers)}</div>
       <div data-testid="current-provider">{currentProviderId}</div>
-      <button onClick={() => onSwitch(providers[currentProviderId])}>
+      <button
+        onClick={() =>
+          onSwitch(
+            Object.values(providers).find(
+              (provider: any) => provider.id !== currentProviderId,
+            ) ?? providers[currentProviderId],
+          )
+        }
+      >
         switch
       </button>
       <button onClick={() => onEdit(providers[currentProviderId])}>edit</button>
@@ -246,6 +254,13 @@ describe("App integration with MSW", () => {
     );
 
     fireEvent.click(screen.getByText("switch"));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "changePlan.confirm" }),
+    );
+    await waitFor(() =>
+      expect(getTauriInvocations()).toContain("apply_change_plan"),
+    );
+    expect(getTauriInvocations()).not.toContain("switch_provider_with_result");
     fireEvent.click(screen.getByText("duplicate"));
     await waitFor(() =>
       expect(screen.getByTestId("provider-list").textContent).toMatch(/copy/),

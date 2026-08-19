@@ -31,19 +31,20 @@ Before changing renderer code:
 
 ## Guidelines
 
-| Guide                                                                      | Use it for                                                                                               |
-| -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| [Directory Structure](./directory-structure.md)                            | Selecting the existing frontend layer and test location.                                                 |
-| [Component Guidelines](./component-guidelines.md)                          | UI primitives, props, styling, translation, and form composition.                                        |
-| [Hook Guidelines](./hook-guidelines.md)                                    | Naming, placement, effects, cleanup, and stateful hook APIs.                                             |
-| [State Management](./state-management.md)                                  | React state, Context, TanStack Query keys, mutations, and persistence.                                   |
-| [Type Safety](./type-safety.md)                                            | Strict TypeScript, domain types, Zod schemas, and Tauri wire contracts.                                  |
-| [Quality Guidelines](./quality-guidelines.md)                              | Core and desktop-contract checks, Vitest/MSW setup, translations, and accessible primitives.             |
-| [Application Brand Assets](../backend/application-brand-assets.md)         | Cross-platform generated icons and renderer About reuse.                                                 |
-| [Application Identity](../backend/application-identity.md)                 | FyAgent-owned runtime identity and factual repository/provenance boundaries.                             |
-| [Codex Provider Configuration](../backend/codex-provider-configuration.md) | Codex native-capability controls, warnings, live-change result, and trusted restart handoff.             |
-| [Codex Desktop Installer](../backend/codex-desktop-installer.md)           | Installer/restart facade DTOs, job snapshots, progress presentation, and trusted launch outcomes.        |
-| [WorkBuddy Configuration](../backend/workbuddy-configuration.md)           | Top-level navigation, query isolation, model selection, overwrite confirmation, and credential lifetime. |
+| Guide                                                                      | Use it for                                                                                                       |
+| -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| [Directory Structure](./directory-structure.md)                            | Selecting the existing frontend layer and test location.                                                         |
+| [Component Guidelines](./component-guidelines.md)                          | UI primitives, props, styling, translation, and form composition.                                                |
+| [Hook Guidelines](./hook-guidelines.md)                                    | Naming, placement, effects, cleanup, and stateful hook APIs.                                                     |
+| [State Management](./state-management.md)                                  | React state, Context, TanStack Query keys, mutations, and persistence.                                           |
+| [Type Safety](./type-safety.md)                                            | Strict TypeScript, domain types, Zod schemas, and Tauri wire contracts.                                          |
+| [Quality Guidelines](./quality-guidelines.md)                              | Core and desktop-contract checks, Vitest/MSW setup, translations, and accessible primitives.                     |
+| [Application Brand Assets](../backend/application-brand-assets.md)         | Cross-platform generated icons and renderer About reuse.                                                         |
+| [Application Identity](../backend/application-identity.md)                 | FyAgent-owned runtime identity and factual repository/provenance boundaries.                                     |
+| [Codex Provider Configuration](../backend/codex-provider-configuration.md) | Codex native-capability controls, warnings, live-change result, and trusted restart handoff.                     |
+| [Unified Change Plan](../backend/unified-change-plan.md)                   | V2 create/edit/switch Plan projection, capability gating, one-confirmation UI, query-authoritative jobs, event invalidation, reload/discovery, and no-direct-fallback entries. |
+| [Codex Desktop Installer](../backend/codex-desktop-installer.md)           | Installer/restart facade DTOs, job snapshots, progress presentation, and trusted launch outcomes.                |
+| [WorkBuddy Configuration](../backend/workbuddy-configuration.md)           | Top-level navigation, query isolation, model selection, overwrite confirmation, and credential lifetime.         |
 
 ## Quality Check
 

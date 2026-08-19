@@ -72,6 +72,7 @@ import { EditProviderDialog } from "@/components/providers/EditProviderDialog";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { CodexDesktopInstallerCard } from "@/components/codex/CodexDesktopInstallerCard";
 import { CodexRestartDialog } from "@/components/codex/CodexRestartDialog";
+import { ChangePlanFlow } from "@/components/change-plan/ChangePlanFlow";
 import { SettingsPage } from "@/components/settings/SettingsPage";
 import { EnvWarningBanner } from "@/components/env/EnvWarningBanner";
 import { ProxyToggle } from "@/components/proxy/ProxyToggle";
@@ -398,6 +399,9 @@ function App() {
     deleteProvider,
     saveUsageScript,
     setAsDefaultModel,
+    codexSwitchTarget,
+    closeCodexSwitchPlan,
+    completeCodexSwitchPlan,
   } = useProviderActions(
     activeApp,
     isProxyRunning,
@@ -2007,6 +2011,15 @@ function App() {
         onOpenChange={setIsAddOpen}
         appId={activeApp}
         onSubmit={addProvider}
+      />
+
+      <ChangePlanFlow
+        open={Boolean(codexSwitchTarget)}
+        targetProviderId={codexSwitchTarget?.id ?? null}
+        onOpenChange={(open) => {
+          if (!open) closeCodexSwitchPlan();
+        }}
+        onTerminal={completeCodexSwitchPlan}
       />
 
       <EditProviderDialog

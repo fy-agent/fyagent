@@ -323,6 +323,70 @@ impl Database {
         )
         .map_err(|e| AppError::Database(e.to_string()))?;
 
+        // Additive Unified Change Plan persistence. This first vertical slice
+        // deliberately remains on schema v16 and does not claim v17.
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS change_plans (
+                plan_id TEXT PRIMARY KEY,
+                operation TEXT NOT NULL,
+                target_provider_id TEXT NOT NULL,
+                target_provider_name TEXT NOT NULL,
+                plan_digest TEXT NOT NULL,
+                baseline_digest TEXT NOT NULL,
+                current_provider_id TEXT,
+                current_provider_code TEXT NOT NULL,
+                target_provider_code TEXT NOT NULL,
+                current_definition_digest TEXT,
+                target_definition_digest TEXT NOT NULL,
+                live_projection_digest TEXT NOT NULL,
+                target_projection_digest TEXT NOT NULL,
+                contract_digest TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                expires_at INTEGER NOT NULL,
+                status TEXT NOT NULL CHECK (status IN ('ready', 'consumed')),
+                consumed_at INTEGER
+            );
+            CREATE TABLE IF NOT EXISTS change_jobs (
+                job_id TEXT PRIMARY KEY,
+                plan_id TEXT NOT NULL UNIQUE,
+                target_provider_id TEXT NOT NULL,
+                revision INTEGER NOT NULL,
+                event_seq INTEGER NOT NULL,
+                status TEXT NOT NULL,
+                result_code TEXT NOT NULL,
+                steps_json TEXT NOT NULL,
+                resources_json TEXT NOT NULL,
+                restart_requirement TEXT NOT NULL,
+                usage_evidence TEXT NOT NULL,
+                recovery_state TEXT NOT NULL,
+                diagnostic_code TEXT,
+                live_config_changed INTEGER NOT NULL DEFAULT 0,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                FOREIGN KEY (plan_id) REFERENCES change_plans(plan_id)
+            );
+            CREATE TABLE IF NOT EXISTS change_job_events (
+                job_id TEXT NOT NULL,
+                event_seq INTEGER NOT NULL,
+                kind TEXT NOT NULL,
+                code TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                PRIMARY KEY (job_id, event_seq),
+                FOREIGN KEY (job_id) REFERENCES change_jobs(job_id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_change_jobs_recoverable
+                ON change_jobs(status, updated_at);
+            CREATE INDEX IF NOT EXISTS idx_change_job_events_job
+                ON change_job_events(job_id, event_seq);",
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+        Self::add_column_if_missing(
+            conn,
+            "change_plans",
+            "target_projection_digest",
+            "TEXT NOT NULL DEFAULT ''",
+        )?;
+
         // 修复跑过未发布开发版的库：current 标记曾是全局 key，现按应用分组
         // （随 v12 定稿为 current_profile_id_<scope>，不单独 bump 版本）
         if conn

@@ -39,6 +39,50 @@ const withJson = async <T>(request: Request): Promise<T> => {
 
 const success = <T>(payload: T) => HttpResponse.json(payload as any);
 
+const changeJob = (targetProviderId: string) => {
+  const now = Math.floor(Date.now() / 1000);
+  return {
+    jobId: `job:${targetProviderId}`,
+    planId: `plan:${targetProviderId}`,
+    targetProviderId,
+    revision: 4,
+    eventSeq: 4,
+    status: "succeeded",
+    resultCode: "applied_restart_recommended",
+    steps: [
+      { kind: "precheck", status: "succeeded", code: "baseline_matched" },
+      { kind: "apply", status: "succeeded", code: "writer_returned" },
+      { kind: "readback", status: "succeeded", code: "target_matched" },
+      { kind: "reconcile", status: "skipped", code: "not_needed" },
+    ],
+    resources: [
+      {
+        kind: "provider_db_current",
+        status: "matched",
+        code: "target_current",
+      },
+      { kind: "device_current", status: "matched", code: "target_current" },
+      {
+        kind: "target_definition",
+        status: "matched",
+        code: "definition_matched",
+      },
+      {
+        kind: "codex_live_projection",
+        status: "matched",
+        code: "live_matched",
+      },
+    ],
+    restartRequirement: "recommended",
+    usageEvidence: "not_observed",
+    recoveryState: "not_needed",
+    diagnosticCode: "target_readback_matched",
+    liveConfigChanged: true,
+    createdAt: now,
+    updatedAt: now,
+  };
+};
+
 export const handlers = [
   http.post(`${TAURI_ENDPOINT}/get_migration_result`, () => success(false)),
   http.post(`${TAURI_ENDPOINT}/get_skills_migration_result`, () =>
@@ -82,6 +126,49 @@ export const handlers = [
   ),
 
   http.post(`${TAURI_ENDPOINT}/scan_openclaw_config_health`, () => success([])),
+
+  http.post(
+    `${TAURI_ENDPOINT}/create_codex_provider_switch_plan`,
+    async ({ request }) => {
+      const { targetProviderId } = await withJson<{
+        targetProviderId: string;
+      }>(request);
+      const provider = listProviders("codex")[targetProviderId];
+      const now = Math.floor(Date.now() / 1000);
+      return success({
+        planId: `plan:${targetProviderId}`,
+        operation: "codex_provider_switch",
+        targetProviderId,
+        targetProviderName: provider?.name ?? "Codex Provider",
+        planDigest: `digest:${targetProviderId}`,
+        baselineDigest: "baseline:test",
+        createdAt: now,
+        expiresAt: now + 900,
+        status: "ready",
+        currentProviderCode: "current_configured",
+        targetProviderCode: "existing_provider",
+        restartExpectation: "recommended",
+        risks: [{ code: "local_configuration_write", severity: "notice" }],
+        evidenceNote: "usage_not_observed",
+      });
+    },
+  ),
+
+  http.post(`${TAURI_ENDPOINT}/apply_change_plan`, async ({ request }) => {
+    const { planId } = await withJson<{ planId: string }>(request);
+    const targetProviderId = planId.replace(/^plan:/, "");
+    setCurrentProviderId("codex", targetProviderId);
+    return success({ kind: "admitted", job: changeJob(targetProviderId) });
+  }),
+
+  http.post(`${TAURI_ENDPOINT}/get_change_job`, async ({ request }) => {
+    const { jobId } = await withJson<{ jobId: string }>(request);
+    return success(changeJob(jobId.replace(/^job:/, "")));
+  }),
+
+  http.post(`${TAURI_ENDPOINT}/list_recoverable_change_jobs`, () =>
+    success([]),
+  ),
 
   http.post(`${TAURI_ENDPOINT}/switch_provider`, async ({ request }) => {
     const { id, app } = await withJson<{ id: string; app: AppId }>(request);

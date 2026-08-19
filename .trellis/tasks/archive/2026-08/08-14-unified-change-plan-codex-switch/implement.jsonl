@@ -1,0 +1,6 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend spec routing and pre-development checklist"}
+{"file": ".trellis/spec/backend/codex-provider-configuration.md", "reason": "Existing Codex Provider writer and live-config contract"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend spec routing and current component contract"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Cross-layer DTO, persistence, IPC, UI, and evidence consistency"}
+{"file": ".trellis/tasks/08-14-unified-change-plan-codex-switch/research/prior-feature-wave-practice.md", "reason": "Prior 18-commit ownership, gate, commit, and integration practice"}

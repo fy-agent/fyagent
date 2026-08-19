@@ -64,3 +64,43 @@ Aligned FyAgent brand positioning, repository entry copy, GitHub community routi
 ### Status
 
 [OK] **Completed**
+
+
+## Session 3: Codex Provider Change Plan switch vertical slice
+
+**Date**: 2026-08-14
+**Task**: Codex Provider Change Plan switch vertical slice
+**Branch**: `codex/unified-change-plan-codex-switch`
+
+### Summary
+
+Implemented and verified the frozen Codex Provider Unified Change Plan switch across v16 persistence, read-only planning, one-time apply/readback/reconcile, IPC/query/dialog, production entry, full gates, and a current-host macOS debug app smoke.
+
+### Main Changes
+
+- Added immutable Change Plan and durable job/event state while retaining ProviderService::switch as the only writer.
+- Migrated only the Codex Provider switch entry to the shared preview/apply/result dialog.
+- Archived the completed child task with exact artifact and evidence boundaries.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `445c8872` | (see git log) |
+| `63de4fec` | (see git log) |
+| `6169369a` | (see git log) |
+| `c3039383` | (see git log) |
+| `add29a92` | (see git log) |
+| `53ff5ea5` | (see git log) |
+| `dc288307` | (see git log) |
+| `ca552f4d` | (see git log) |
+| `4b2cf229` | (see git log) |
+
+### Testing
+
+- [OK] Focused Rust and frontend tests, cross-layer integration, docs contracts, and mise run check passed.
+- [OK] macOS arm64 v0.3.4 debug app passed direct-process and LaunchServices startup smoke; DMG is not claimed.
+
+### Status
+
+[OK] **Completed**

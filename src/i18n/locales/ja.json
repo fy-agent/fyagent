@@ -3280,5 +3280,58 @@
     "expiredHint": "{{tool}}コマンドを実行してログインを更新してください",
     "queryFailed": "クエリに失敗しました",
     "refresh": "更新"
+  },
+  "changePlan": {
+    "previewTitle": "プロバイダー切替を確認",
+    "description": "FyAgent は変更前に現在のローカル基準を確認します。",
+    "loading": "読み取り専用プレビューを準備中",
+    "unsupportedTitle": "プレビューを利用できません",
+    "unsupportedDescription": "このビルドでは安全な切替プレビューを作成できません。",
+    "targetLabel": "Codex の切替先",
+    "previewBody": "現在の基準に紐づく計画を一度の確認で適用します。状態が変わった場合は書き込まず拒否します。",
+    "evidenceTitle": "証拠の範囲",
+    "evidenceNotObserved": "ローカル設定の確認と実際の Agent 利用は別です。実利用はまだ観測されていません。",
+    "runningTitle": "プロバイダーを切替中",
+    "staleTitle": "プレビューは最新ではありません",
+    "staleDescription": "ローカル設定が変わったか期限切れです。新しいプレビューを作成してください。",
+    "stepsLabel": "変更の進行状況",
+    "restartTitle": "Codex の再起動を推奨",
+    "restartDescription": "Codex の live 設定が変わりました。都合のよい時に再起動してください。実利用の証拠ではありません。",
+    "recoveryTitle": "手動復旧が必要",
+    "recoveryDescription": "読み戻しで混在または不明な状態が見つかりました。再試行前に結果を確認してください。",
+    "applyFailedTitle": "計画を適用できませんでした",
+    "applyFailedDescription": "成功とは判定していません。状態を確認し、新しいプレビューを作成してください。",
+    "replan": "新しいプレビューを作成",
+    "close": "閉じる",
+    "cancel": "キャンセル",
+    "confirm": "確認して適用",
+    "applying": "適用中…",
+    "result": {
+      "succeeded": "切替を適用しました",
+      "warning": "警告付きで適用しました",
+      "failed": "切替を確認できませんでした",
+      "unknown": "切替結果"
+    },
+    "step": {
+      "precheck": "基準確認",
+      "apply": "適用",
+      "readback": "ローカル読み戻し",
+      "reconcile": "復旧確認",
+      "unknown": "不明な手順"
+    },
+    "resource": {
+      "provider_db_current": "DB の現在のプロバイダー",
+      "device_current": "端末の現在のプロバイダー",
+      "target_definition": "対象プロバイダー定義",
+      "codex_live_projection": "Codex live 設定",
+      "unknown": "不明なリソース"
+    },
+    "resourceStatus": {
+      "pending": "待機中",
+      "matched": "一致",
+      "mismatched": "不一致",
+      "unavailable": "利用不可",
+      "unknown": "不明"
+    }
   }
 }

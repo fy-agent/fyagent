@@ -1,0 +1,43 @@
+{
+  "id": "unified-change-plan-codex-switch",
+  "name": "unified-change-plan-codex-switch",
+  "title": "Codex Provider Change Plan Switch Vertical Slice",
+  "description": "Implement the first baseline-bound Unified Change Plan vertical slice for switching an existing Codex Provider, with one approval, durable job state, local readback, partial/recovery truth, and a shared result dialog.",
+  "status": "completed",
+  "dev_type": null,
+  "scope": "backend,frontend,database,tauri-ipc,codex-provider-switch,tests; excludes provider-create-edit,workbuddy,src-v2,native-integration,profile-v2,workspace-pack",
+  "package": null,
+  "priority": "P0",
+  "creator": "codex",
+  "assignee": "codex",
+  "createdAt": "2026-08-14",
+  "completedAt": "2026-08-14",
+  "branch": "codex/unified-change-plan-codex-switch",
+  "base_branch": "main",
+  "worktree_path": "/Users/serendipity/.codex/worktrees/d8328f41-5cd7-406e-9f01-95b42c640e2b/fyagent",
+  "commit": "ca552f4d918cacc734f81f7efdef70619da139b8",
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "08-13-unified-change-plan",
+  "relatedFiles": [
+    "prd.md",
+    "design.md",
+    "implement.md",
+    "evidence.md",
+    "research/prior-feature-wave-practice.md"
+  ],
+  "notes": "Implemented and verified the existing Codex Provider switch vertical slice through immutable plan, atomic admission, one writer call, durable readback/reconciliation, thin IPC/query, and shared dialog. Fresh focused tests, cross-layer integration, mise run check, cumulative scope/redaction audits, and a current-host macOS debug app LaunchServices smoke passed. The app bundle is for local trial only; it is not signed/notarized production, Windows, real-agent-use, or user-acceptance evidence.",
+  "meta": {
+    "phase": "evidence_frozen",
+    "implementationStatus": "complete",
+    "immutableBase": "4b4e17540ad8ddd564bb7ef7c5ca2a31b7c36287",
+    "sourcePracticeCommit": "e252dc5ed6ba28a397f88d94b969f24aa6ebf0b3",
+    "sourceIntegrationEvidence": "ac660b5eef6a0e3c807795b9216fbe659b4fe3ee",
+    "v2PullRequest": "104_closed_not_merged",
+    "schemaStrategy": "additive_tables_on_v16_no_v17_claim",
+    "verifiedAt": "2026-08-14T21:09:36+08:00",
+    "qualityGate": "mise_run_check_pass",
+    "buildEvidence": "macos_arm64_debug_app_launchservices_smoke_pass"
+  }
+}

@@ -3280,5 +3280,58 @@
       "copied": "错误详情已复制",
       "copyFailed": "无法复制错误详情"
     }
+  },
+  "changePlan": {
+    "previewTitle": "确认供应商切换",
+    "description": "FyAgent 会先核对当前本地基线，再执行任何变更。",
+    "loading": "正在生成只读预览",
+    "unsupportedTitle": "无法生成预览",
+    "unsupportedDescription": "当前构建无法生成安全的供应商切换预览。",
+    "targetLabel": "将 Codex 切换到",
+    "previewBody": "确认一次即可应用这份绑定当前基线的计划。若本地状态已变化，计划会拒绝执行且不写入。",
+    "evidenceTitle": "证据边界",
+    "evidenceNotObserved": "本地配置回读与真实 Agent 使用是两件事；目前尚无真实使用证据。",
+    "runningTitle": "正在切换供应商",
+    "staleTitle": "这份预览已过期",
+    "staleDescription": "本地配置已变化或预览已超时，请生成新的预览后再应用。",
+    "stepsLabel": "变更进度",
+    "restartTitle": "建议重启 Codex",
+    "restartDescription": "Codex live 配置发生了变化，可在方便时重启；这不代表已有真实使用证据。",
+    "recoveryTitle": "需要手动恢复",
+    "recoveryDescription": "回读发现本地状态混合或未知，请先检查各资源结果，再决定是否重试。",
+    "applyFailedTitle": "计划未能应用",
+    "applyFailedDescription": "系统没有假定成功。请检查本地状态并重新生成预览。",
+    "replan": "重新生成预览",
+    "close": "关闭",
+    "cancel": "取消",
+    "confirm": "确认并应用",
+    "applying": "正在应用…",
+    "result": {
+      "succeeded": "供应商切换已应用",
+      "warning": "已应用，但有提醒",
+      "failed": "供应商切换未通过验证",
+      "unknown": "供应商切换结果"
+    },
+    "step": {
+      "precheck": "基线检查",
+      "apply": "应用变更",
+      "readback": "本地回读",
+      "reconcile": "恢复检查",
+      "unknown": "未知步骤"
+    },
+    "resource": {
+      "provider_db_current": "数据库当前供应商",
+      "device_current": "本机当前供应商",
+      "target_definition": "目标供应商定义",
+      "codex_live_projection": "Codex live 配置",
+      "unknown": "未知资源"
+    },
+    "resourceStatus": {
+      "pending": "等待中",
+      "matched": "一致",
+      "mismatched": "不一致",
+      "unavailable": "不可读取",
+      "unknown": "未知"
+    }
   }
 }

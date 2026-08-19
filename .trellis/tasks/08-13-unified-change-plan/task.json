@@ -1,0 +1,35 @@
+{
+  "id": "unified-change-plan",
+  "name": "unified-change-plan",
+  "title": "统一配置变更体验规划",
+  "description": "Routing parent for the Unified Change Plan program. Current executable authority is the Issue #55 mainline child; older planning children are historical inputs until reconciled.",
+  "status": "planning",
+  "dev_type": null,
+  "scope": "routing,parent-acceptance,cross-child-dependencies; no direct product implementation",
+  "package": null,
+  "priority": "P0",
+  "creator": "codex",
+  "assignee": "codex",
+  "createdAt": "2026-08-13",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "08-13-unified-change-plan-prd",
+    "08-13-unified-change-plan-architecture",
+    "08-13-unified-change-plan-frontend",
+    "08-14-unified-change-plan-codex-switch",
+    "08-14-issue-55-change-plan-mainline"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "Do not use this parent as a competing product contract. Current authority is 08-14-issue-55-change-plan-mainline/prd.md; the completed switch child is immutable evidence input.",
+  "meta": {
+    "authorityTask": "08-14-issue-55-change-plan-mainline",
+    "immutableSwitchHandoff": "6859e9ce04970008f4cf8b3d4883b4f70316291a"
+  }
+}

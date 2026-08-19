@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
@@ -31,6 +31,7 @@ import {
   supportsOfficialProxyTakeover,
 } from "@/utils/providerCapabilities";
 import { isOAuthProviderType } from "@/config/constants";
+import type { ChangeJobSnapshot } from "@/lib/api/change-plan";
 
 type CodexLiveConfigChangedHandler = () => void | Promise<void>;
 
@@ -71,6 +72,9 @@ export function useProviderActions(
   const updateProviderMutation = useUpdateProviderMutation(activeApp);
   const deleteProviderMutation = useDeleteProviderMutation(activeApp);
   const switchProviderMutation = useSwitchProviderMutation(activeApp);
+  const [codexSwitchTarget, setCodexSwitchTarget] = useState<Provider | null>(
+    null,
+  );
 
   /**
    * Keep the successful provider write and a desktop restart as two distinct
@@ -341,6 +345,11 @@ export function useProviderActions(
         return;
       }
 
+      if (activeApp === "codex") {
+        setCodexSwitchTarget(provider);
+        return;
+      }
+
       try {
         const outcome = await switchProviderMutation.mutateAsync(provider.id);
         const result = mutationValue<{
@@ -398,6 +407,23 @@ export function useProviderActions(
       requestCodexRestartIfNeeded,
       t,
     ],
+  );
+
+  const closeCodexSwitchPlan = useCallback(() => {
+    setCodexSwitchTarget(null);
+  }, []);
+
+  const completeCodexSwitchPlan = useCallback(
+    async (job: ChangeJobSnapshot) => {
+      await queryClient.invalidateQueries({ queryKey: ["providers", "codex"] });
+      if (
+        (job.status === "succeeded" || job.status === "warning") &&
+        job.liveConfigChanged
+      ) {
+        await requestCodexRestartIfNeeded(true);
+      }
+    },
+    [queryClient, requestCodexRestartIfNeeded],
   );
 
   // 删除供应商
@@ -509,6 +535,9 @@ export function useProviderActions(
     deleteProvider,
     saveUsageScript,
     setAsDefaultModel,
+    codexSwitchTarget,
+    closeCodexSwitchPlan,
+    completeCodexSwitchPlan,
     isLoading:
       addProviderMutation.isPending ||
       updateProviderMutation.isPending ||

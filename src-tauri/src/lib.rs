@@ -1,6 +1,7 @@
 mod app_config;
 mod app_store;
 mod auto_launch;
+mod change_plan;
 mod claude_desktop_config;
 mod claude_mcp;
 mod claude_plugin;
@@ -50,6 +51,10 @@ use crate::codex_desktop::{
     types::JobStage,
 };
 pub use app_config::{AppType, InstalledSkill, McpApps, McpServer, MultiAppConfig, SkillApps};
+pub use change_plan::{
+    ApplyChangePlanOutcome, ChangeApplyOutcomeKind, ChangeJobSnapshot, ChangePlan,
+    ChangePlanErrorCode, ChangePlanService,
+};
 pub use codex_config::{
     get_codex_auth_path, get_codex_config_path, read_codex_live_settings, write_codex_live_atomic,
 };
@@ -1876,6 +1881,10 @@ pub fn run() {
             commands::remove_provider_from_live_config,
             commands::switch_provider,
             commands::switch_provider_with_result,
+            commands::create_codex_provider_switch_plan,
+            commands::apply_change_plan,
+            commands::get_change_job,
+            commands::list_recoverable_change_jobs,
             commands::import_default_config,
             commands::import_default_config_with_result,
             commands::analyze_codex_provider_features,

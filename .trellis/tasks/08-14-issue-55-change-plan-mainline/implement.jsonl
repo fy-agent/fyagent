@@ -1,0 +1,16 @@
+{"file":".trellis/spec/backend/unified-change-plan.md","reason":"Frozen v2 Plan, job, admission, persistence, recovery, evidence, and no-shadow-ledger contract."}
+{"file":".trellis/spec/backend/codex-provider-configuration.md","reason":"Codex create/edit/switch preparation, writer, readback, endpoint, tray, and cutover rules."}
+{"file":".trellis/spec/backend/deeplink-import-security.md","reason":"Closed safe Codex draft-to-Plan deep-link boundary and forbidden fields."}
+{"file":".trellis/spec/backend/task-runner-contract.md","reason":"Exact mise metadata, mutation policy, task docs, and evidence-task registration rules."}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Renderer component boundaries and interaction conventions for the Plan flow."}
+{"file":".trellis/spec/frontend/hook-guidelines.md","reason":"Query, mutation, event, and hook ownership conventions."}
+{"file":".trellis/spec/frontend/state-management.md","reason":"Backend-authoritative projection, reducer, reload, and invalidation state rules."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Strict DTO decoding and TypeScript boundary requirements."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Frontend verification, accessibility, localization, and regression expectations."}
+{"file":".trellis/spec/frontend/directory-structure.md","reason":"Required placement and ownership of new UI, API, query, and hook modules."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"End-to-end Rust IPC renderer persistence and failure-path integration checklist."}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Reuse existing Provider writer and infrastructure without parallel abstractions."}
+{"file":".trellis/tasks/08-14-issue-55-change-plan-mainline/research/ownership-and-handoff-audit.md","reason":"Immutable SHA, single-owner, duplicate-worktree, #35, and #41 coordination boundaries."}
+{"file":".trellis/tasks/08-14-issue-55-change-plan-mainline/research/ucp-contract-gap-audit.md","reason":"Exact gaps between the completed switch slice and the frozen Issue #55 contract."}
+{"file":".trellis/tasks/08-14-issue-55-change-plan-mainline/research/dependency-contract-audit.md","reason":"#35 narrow port and #41 source-handoff consumability predicates."}
+{"file":".trellis/tasks/08-14-issue-55-change-plan-mainline/research/provider-create-edit-code-map.md","reason":"Current create/edit/switch entrypoints, shared files, and bypass inventory."}

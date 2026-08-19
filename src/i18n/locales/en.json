@@ -3280,5 +3280,58 @@
       "copied": "Error details copied",
       "copyFailed": "Could not copy error details"
     }
+  },
+  "changePlan": {
+    "previewTitle": "Review provider switch",
+    "description": "FyAgent will verify the current local baseline before making any change.",
+    "loading": "Preparing a read-only preview",
+    "unsupportedTitle": "Preview unavailable",
+    "unsupportedDescription": "This build cannot prepare a safe provider switch preview.",
+    "targetLabel": "Switch Codex to",
+    "previewBody": "Confirm once to apply this baseline-bound plan. If local state changes first, the plan will be rejected without writing.",
+    "evidenceTitle": "Evidence boundary",
+    "evidenceNotObserved": "Local configuration is verified separately from real Agent usage. No real usage has been observed.",
+    "runningTitle": "Applying provider switch",
+    "staleTitle": "Preview is no longer current",
+    "staleDescription": "Local configuration changed or this preview expired. Create a fresh preview before applying.",
+    "stepsLabel": "Change progress",
+    "restartTitle": "Restart recommended",
+    "restartDescription": "Codex live configuration changed. Restart Codex when convenient; this is not proof of real usage.",
+    "recoveryTitle": "Manual recovery required",
+    "recoveryDescription": "Readback found a mixed or unknown local state. Review the resource results before retrying.",
+    "applyFailedTitle": "Could not apply the plan",
+    "applyFailedDescription": "No success was assumed. Create a fresh preview and retry after checking local state.",
+    "replan": "Create fresh preview",
+    "close": "Close",
+    "cancel": "Cancel",
+    "confirm": "Confirm and apply",
+    "applying": "Applying…",
+    "result": {
+      "succeeded": "Provider switch applied",
+      "warning": "Applied with a warning",
+      "failed": "Provider switch not verified",
+      "unknown": "Provider switch result"
+    },
+    "step": {
+      "precheck": "Baseline check",
+      "apply": "Apply",
+      "readback": "Local readback",
+      "reconcile": "Recovery check",
+      "unknown": "Unknown step"
+    },
+    "resource": {
+      "provider_db_current": "Database current provider",
+      "device_current": "Device current provider",
+      "target_definition": "Target provider definition",
+      "codex_live_projection": "Codex live configuration",
+      "unknown": "Unknown resource"
+    },
+    "resourceStatus": {
+      "pending": "Pending",
+      "matched": "Matched",
+      "mismatched": "Mismatch",
+      "unavailable": "Unavailable",
+      "unknown": "Unknown"
+    }
   }
 }

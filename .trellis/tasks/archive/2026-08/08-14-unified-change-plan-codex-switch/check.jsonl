@@ -1,0 +1,6 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/backend/development-environment.md", "reason": "Repository-managed Rust and full verification commands"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Rust-TypeScript DTO and exhaustive union verification"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Query snapshot authority and mutation invalidation checks"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Loading, failure, warning, accessibility, and evidence UI checks"}
+{"file": ".trellis/tasks/08-14-unified-change-plan-codex-switch/research/prior-feature-wave-practice.md", "reason": "Cumulative diff, protected path, fresh evidence, and commit-boundary audit"}
