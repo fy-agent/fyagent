@@ -814,15 +814,90 @@ impl SkillService {
 
     /// 获取所有已安装的 Skills。
     ///
-    /// 更新时间取 SSOT 中当前 Skill 文件（`SKILL.md`，否则技能目录）的修改时间。
-    /// 安装时间保持为空：不读文件创建时间，也不回退数据库安装时钟。
+    /// 已管理行来自 SQLite；各目标应用目录里已有 `SKILL.md`、但尚未入库的
+    /// 条目一并并入列表。GET 只观察、不写库、不复制到 SSOT。
+    ///
+    /// 已管理行的更新时间取 SSOT 中当前 Skill 文件（`SKILL.md`，否则技能目录）
+    /// 的修改时间。安装时间保持为空：不读文件创建时间，也不回退数据库安装时钟。
     pub fn get_all_installed(db: &Arc<Database>) -> Result<Vec<InstalledSkill>> {
         let skills = db.get_all_installed_skills()?;
         let ssot_dir = Self::get_ssot_dir().ok();
-        Ok(skills
+        let mut listed: Vec<InstalledSkill> = skills
             .into_values()
             .map(|skill| Self::with_skill_file_times(skill, ssot_dir.as_deref()))
-            .collect())
+            .collect();
+        let listed_ids: HashSet<String> = listed.iter().map(|skill| skill.id.clone()).collect();
+        let lock = parse_agents_lock();
+        for unmanaged in Self::scan_unmanaged(db)? {
+            if Self::require_valid_directory(&unmanaged.directory).is_err() {
+                continue;
+            }
+            let observed = Self::installed_from_unmanaged(unmanaged, &lock);
+            if listed_ids.contains(&observed.id) {
+                continue;
+            }
+            listed.push(observed);
+        }
+        Ok(listed)
+    }
+
+    fn installed_from_unmanaged(
+        item: UnmanagedSkill,
+        lock: &HashMap<String, LockRepoInfo>,
+    ) -> InstalledSkill {
+        let (id, repo_owner, repo_name, repo_branch, readme_url) =
+            build_repo_info_from_lock(lock, &item.directory);
+        let updated_at = Path::new(&item.path)
+            .join("SKILL.md")
+            .metadata()
+            .ok()
+            .and_then(|metadata| metadata.modified().ok())
+            .and_then(Self::unix_timestamp_from_system_time)
+            .unwrap_or(0);
+        InstalledSkill {
+            id,
+            name: item.name,
+            description: item.description,
+            directory: item.directory,
+            repo_owner,
+            repo_name,
+            repo_branch,
+            readme_url,
+            apps: SkillApps::from_labels(&item.found_in),
+            installed_at: 0,
+            content_hash: None,
+            updated_at,
+            path: Some(item.path),
+        }
+    }
+
+    fn observed_skill_id(directory: &str) -> String {
+        build_repo_info_from_lock(&parse_agents_lock(), directory).0
+    }
+
+    /// 列表观察项在首次写操作时才收养进 SSOT。读取路径不得静默接管用户原目录。
+    fn adopt_observed_if_needed(db: &Arc<Database>, id: &str) -> Result<InstalledSkill> {
+        if let Some(skill) = db.get_installed_skill(id)? {
+            return Ok(skill);
+        }
+        let Some(observed) = Self::scan_unmanaged(db)?
+            .into_iter()
+            .find(|item| Self::observed_skill_id(&item.directory) == id)
+        else {
+            return Err(anyhow!("Skill not found: {id}"));
+        };
+        let imported = Self::import_from_apps(
+            db,
+            vec![ImportSkillSelection {
+                directory: observed.directory.clone(),
+                apps: SkillApps::from_labels(&observed.found_in),
+            }],
+        )?;
+        imported
+            .into_iter()
+            .find(|skill| skill.id == id)
+            .or_else(|| db.get_installed_skill(id).ok().flatten())
+            .ok_or_else(|| anyhow!("Skill not found: {id}"))
     }
 
     fn with_skill_file_times(mut skill: InstalledSkill, ssot_dir: Option<&Path>) -> InstalledSkill {
@@ -1082,9 +1157,7 @@ impl SkillService {
     /// 3. 从数据库删除
     pub fn uninstall(db: &Arc<Database>, id: &str) -> Result<SkillUninstallResult> {
         // 获取 skill 信息
-        let skill = db
-            .get_installed_skill(id)?
-            .ok_or_else(|| anyhow!("Skill not found: {id}"))?;
+        let skill = Self::adopt_observed_if_needed(db, id)?;
 
         // DB 行可能被同步导入污染（远端快照 raw SQL 直接灌库，绕过安装期校验），
         // 也可能是 v3.11.0 引入 sanitize_install_name 之前留下的存量脏值
@@ -1749,10 +1822,7 @@ impl SkillService {
         app: &SkillTargetId,
         enabled: bool,
     ) -> Result<()> {
-        // 获取当前 skill
-        let mut skill = db
-            .get_installed_skill(id)?
-            .ok_or_else(|| anyhow!("Skill not found: {id}"))?;
+        let mut skill = Self::adopt_observed_if_needed(db, id)?;
 
         // 更新状态
         skill.apps.set_enabled_for_target(app, enabled);
@@ -1809,7 +1879,10 @@ impl SkillService {
                     continue;
                 }
                 let dir_name = entry.file_name().to_string_lossy().to_string();
-                if dir_name.starts_with('.') || managed_dirs.contains(&dir_name) {
+                if dir_name.starts_with('.')
+                    || managed_dirs.contains(&dir_name)
+                    || Self::require_valid_directory(&dir_name).is_err()
+                {
                     continue;
                 }
 
@@ -5307,6 +5380,124 @@ mod tests {
             got.path.as_deref(),
             Some(expected_path.to_string_lossy().as_ref())
         );
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn get_all_installed_observes_every_skill_target_directory_without_writing_db() {
+        let temp = tempdir().expect("tempdir");
+        let _guard = TestHomeGuard::set(temp.path());
+        let db = Arc::new(Database::memory().expect("memory db"));
+        let mut expected = Vec::new();
+        for target in SkillTargetId::all() {
+            let directory = format!("observed-{}", target.as_str().replace('-', "_"));
+            let skill_dir = SkillService::get_target_skills_dir(&target)
+                .expect("target dir")
+                .join(&directory);
+            write_skill(&skill_dir, &directory);
+            expected.push((directory, target, skill_dir));
+        }
+        write_skill(
+            &temp
+                .path()
+                .join(".codex")
+                .join("skills")
+                .join(".system")
+                .join("skill-installer"),
+            "Bundled",
+        );
+
+        let listed = SkillService::get_all_installed(&db).expect("list installed");
+        for (directory, target, skill_dir) in &expected {
+            let got = listed
+                .iter()
+                .find(|item| item.directory == *directory)
+                .unwrap_or_else(|| panic!("missing observed skill for {}", target.as_str()));
+            assert_eq!(got.id, format!("local:{directory}"));
+            assert!(
+                got.apps.is_enabled_for_target(target),
+                "{} must be assigned from {}",
+                directory,
+                target.as_str()
+            );
+            assert_eq!(
+                got.path.as_deref(),
+                Some(skill_dir.to_string_lossy().as_ref())
+            );
+        }
+        assert!(listed
+            .iter()
+            .all(|item| item.directory != "skill-installer" && !item.directory.starts_with('.')));
+        assert!(
+            db.get_all_installed_skills().expect("db skills").is_empty(),
+            "GET must not adopt observed skills into SQLite"
+        );
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn get_all_installed_merges_the_same_directory_across_skill_targets() {
+        let temp = tempdir().expect("tempdir");
+        let _guard = TestHomeGuard::set(temp.path());
+        let db = Arc::new(Database::memory().expect("memory db"));
+        for target in [
+            SkillTargetId::WorkBuddy,
+            SkillTargetId::Claude,
+            SkillTargetId::GrokBuild,
+        ] {
+            write_skill(
+                &SkillService::get_target_skills_dir(&target)
+                    .expect("target dir")
+                    .join("shared-skill"),
+                "Shared",
+            );
+        }
+
+        let listed = SkillService::get_all_installed(&db).expect("list installed");
+        let got = listed
+            .iter()
+            .find(|item| item.directory == "shared-skill")
+            .expect("merged observed skill");
+        assert_eq!(got.id, "local:shared-skill");
+        assert!(got.apps.workbuddy);
+        assert!(got.apps.claude);
+        assert!(got.apps.grokbuild);
+        assert!(!got.apps.codex);
+        assert_eq!(
+            listed
+                .iter()
+                .filter(|item| item.directory == "shared-skill")
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn toggle_adopts_observed_skill_before_mutating() {
+        let temp = tempdir().expect("tempdir");
+        let _guard = TestHomeGuard::set(temp.path());
+        let db = Arc::new(Database::memory().expect("memory db"));
+        write_skill(
+            &SkillService::get_target_skills_dir(&SkillTargetId::WorkBuddy)
+                .expect("workbuddy dir")
+                .join("qqmusic"),
+            "QQ Music",
+        );
+
+        SkillService::toggle_target(&db, "local:qqmusic", &SkillTargetId::Claude, true)
+            .expect("adopt then enable claude");
+        let stored = db
+            .get_installed_skill("local:qqmusic")
+            .expect("db")
+            .expect("adopted");
+        assert!(stored.apps.workbuddy);
+        assert!(stored.apps.claude);
+        assert!(SkillService::get_ssot_dir()
+            .expect("ssot")
+            .join("qqmusic")
+            .join("SKILL.md")
+            .is_file());
     }
 
     #[test]
