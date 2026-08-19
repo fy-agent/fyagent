@@ -933,3 +933,40 @@ Removed unused Models official-settings buttons, added QoderWork CN and TRAE Wor
 ### Next Steps
 
 - None - task complete
+
+
+## Session 30: V2 Skills discovery pagination and shared scroll
+
+**Date**: 2026-08-19
+**Task**: V2 Skills discovery pagination and shared scroll
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+V2 Skills 发现改为宿主分页，Skills/MCP 共用发现滚动条；V1 全量 discover 保留。规格写入 7 段契约后归档任务。
+
+### Main Changes
+
+- 新增 discover_available_skills_page，宿主先过滤再切片，进程内 5 分钟扫描缓存；V1 discover_available_skills 仍返回全量。
+- 抽出 FeaturePagination 与 .fy-feature-discovery-scroll；发现搜索/筛选在 onChange 里重置页码，避免 set-state-in-effect。
+- 更新 v2-skills-mcp、reuse、v2-shell、directory-structure 与 frontend index。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `52a6d883` | (see git log) |
+
+### Testing
+
+- [OK] mise run lint:v2 typecheck:v2 test:v2（252 passed）、test:v2:browser（116 passed）、build:renderer。
+- [OK] mise run rust:fmt:check rust:clippy；rust:test 除 ACL 计数外 2782 passed，随后将 handler freeze 调到 332 并复测通过。
+- [OK] 完整 mise run check / check:prearchive 未绿：HEAD 上 format:check（3 个 models 文件）与 leftover unit/supported-platform（traework cfg、qoderwork.png、.cursor/.codebuddy 分类）已失败，非本任务引入。
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
