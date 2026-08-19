@@ -215,26 +215,44 @@
 }
 
 .fy-apply-icon {
+  box-sizing: border-box;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  border: 1.5px solid currentColor;
+  border-radius: 999px;
   color: var(--fy-text-tertiary);
+  background: transparent;
 }
 
-.fy-apply-step[data-status="succeeded"] .fy-apply-icon {
+.fy-apply-step[data-status="succeeded"] .fy-apply-icon,
+.fy-apply-icon[data-status="succeeded"] {
   color: var(--fy-success);
+  background: currentColor;
 }
 
-.fy-apply-step[data-status="warning"] .fy-apply-icon {
+.fy-apply-step[data-status="warning"] .fy-apply-icon,
+.fy-apply-icon[data-status="warning"] {
   color: var(--fy-warning);
+  background: currentColor;
 }
 
-.fy-apply-step[data-status="failed"] .fy-apply-icon {
+.fy-apply-step[data-status="failed"] .fy-apply-icon,
+.fy-apply-icon[data-status="failed"] {
   color: var(--fy-danger-text);
+  background: currentColor;
 }
 
-.fy-apply-step[data-status="running"] .fy-apply-icon {
+.fy-apply-step[data-status="cancelled"] .fy-apply-icon,
+.fy-apply-icon[data-status="cancelled"] {
+  color: var(--fy-text-tertiary);
+  background: currentColor;
+}
+
+.fy-apply-step[data-status="running"] .fy-apply-icon,
+.fy-apply-icon[data-status="running"] {
   color: var(--fy-accent-text);
-}
-
-.fy-apply-spin {
+  border-top-color: transparent;
   animation: fy-apply-spin 900ms linear infinite;
 }
 

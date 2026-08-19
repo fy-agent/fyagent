@@ -171,7 +171,9 @@ function presentActions(
         ? [{ kind: "request_cancel", label: "请求取消", primary: false }]
         : [];
     case "succeeded":
-      return [{ kind: "complete_and_use", label: "完成并开始使用", primary: true }];
+      return [
+        { kind: "complete_and_use", label: "完成并开始使用", primary: true },
+      ];
     case "warning":
       return [
         { kind: "complete_and_use", label: "完成并开始使用", primary: true },

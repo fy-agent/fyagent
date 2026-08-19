@@ -154,7 +154,9 @@ const warning: ApplySnapshot = {
   cancelRequested: false,
   backupAvailable: true,
   observedUsage: "not_observed",
-  notices: [{ code: "local_index_refresh_failed", stepId: "refresh_local_state" }],
+  notices: [
+    { code: "local_index_refresh_failed", stepId: "refresh_local_state" },
+  ],
   failure: null,
   recoveryActions: ["retry_refresh"],
   plan: CODEX_PLAN,
