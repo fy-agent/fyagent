@@ -3,7 +3,9 @@
 Leftover renderer types live in `src/types.ts` and `src/lib/`. V2 feature
 wire types live in `src/v2/shared/features/types.ts` and must be parsed at
 the platform adapter before React Query sees them. Do not treat leftover
-facades as the V2 port contract.
+facades as the V2 port contract. Closed V2 catalog, assignment, model, and
+prompt ID unions are sourced from `src/v2/shared/features/directory.ts` and
+re-exported by `types.ts`; do not widen those unions in a page-local type.
 
 ## Compiler Contract
 

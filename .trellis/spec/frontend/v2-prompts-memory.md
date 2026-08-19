@@ -83,8 +83,11 @@ paths above.
 ### Prompt behavior
 
 - The page defaults to Claude. Application selection is page-local state and is
-  not written to preferences. The application rail shows each application's
-  authoritative enabled count, not a generic “提示词库” placeholder.
+  not written to preferences. The application rail follows
+  `PRODUCT_DIRECTORY` prompt members (Grok Build, Codex, Claude Code,
+  OpenCode) then `PROMPT_ONLY_DIRECTORY` (Gemini, OpenClaw, Hermes). Claude's
+  display name is Claude Code. The rail shows each application's authoritative
+  enabled count, not a generic “提示词库” placeholder.
 - Search filters the library list only. It must not replace the selected
   prompt with `filtered[0]`. A selected prompt stays in the editor even
   when the current query hides that row or matches nothing. Do not replace
@@ -218,7 +221,9 @@ The fixed resource mapping is:
 
 Focused Vitest coverage must prove:
 
-- every Prompt command name/payload and all seven app IDs;
+- every Prompt command name/payload and all seven app IDs in Agent-catalog
+  order (`grokbuild`, `codex`, `claude`, `opencode`, then Gemini / OpenClaw /
+  Hermes);
 - all four long-term resource mappings, Hermes limits/toggles, and daily
   CRUD/search/open-directory payloads;
 - rejection of invalid identifiers, filenames, and malformed IPC output;

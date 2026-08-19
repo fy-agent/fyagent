@@ -316,6 +316,10 @@ L3 interactive glass       selected lens, tools, tooltip, and popover
   classes onto Skills, MCP, Prompts, or Memory. Split-pane children fill the
   pane and scroll inside it (`overflow: auto`). `height: 100%` without
   overflow lets cards and assignment controls paint past the pane chrome.
+  Skills discovery is the exception: `.fy-skills-page-discovery` scrolls the
+  whole feature page (`overflow: auto`); its inner
+  `.fy-feature-discovery-scroll` stays in-flow (`overflow: visible`). MCP
+  discovery keeps the shared independent scroller.
 - HTTP(S) product/docs/repo jumps use `ExternalLinkButton`. The native
   command remains `settings.openExternal`; the Tauri adapter still admits
   only `http:` / `https:`. Do not add page-local open wrappers, custom

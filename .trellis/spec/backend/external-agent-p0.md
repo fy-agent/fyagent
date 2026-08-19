@@ -80,8 +80,11 @@ Native Skills `SkillTargetId` is the leftover six AppType values plus
 `qoderwork`, `trae-work`, and `workbuddy`. Native `McpTargetId` is the leftover
 six AppType values plus the same three Skills/MCP-domain IDs. Direct V2
 assignment uses catalog order
-`qoderwork | trae-work | workbuddy | codex | claude | opencode`.
-QoderWork, TRAE Work, and WorkBuddy never convert to `AppType`.
+`qoderwork | trae-work | workbuddy | grokbuild | codex | claude | opencode`.
+QoderWork, TRAE Work, and WorkBuddy never convert to `AppType`. Catalog
+contract version is 4 and includes Grok Build (`https://x.ai/grok`).
+`get_all_installed` may observe disk skills under every native
+`SkillTargetId` without writing SQLite or SSOT.
 
 ## 3. Contracts
 
@@ -348,9 +351,9 @@ without writing `state.vscdb`, and keeps GET DTO secret-free,
 OpenCode snapshot/save, WorkBuddy `.mcp.json` skip/write,
 QoderWork `~/.qoderworkcn/mcp.json` skip/write, TRAE `User/mcp.json`
 skip/write, and MCP union/no-execute/redaction. Renderer tests must assert
-exact command/payload wires, V2 six Skills and six MCP targets in catalog
-order, leftover backend flag
-round-trip, secret cleanup on every terminal or lifecycle path, catalog
+exact command/payload wires, V2 seven Skills and seven MCP targets in catalog
+order, leftover Gemini / Hermes backend flag round-trip, disk-observed
+installed Skills, secret cleanup on every terminal or lifecycle path, catalog
 geometry at the maintained viewports and 760/761px, keyboard/focus behavior,
 and browser non-authority. ACL union still equals every `generate_handler!`
 command.

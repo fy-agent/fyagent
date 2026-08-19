@@ -26,18 +26,19 @@ commit. See [Frontend Reuse](./reuse.md).
 
 ## 2. Signatures
 
-Skills and direct MCP assignment use the same closed six identities, in Agent
-catalog order. Leftover Gemini / Grok Build / Hermes flags remain on backend
-rows and must round-trip; they are not V2 assignment targets. Do not merge
-these collections or add Claude Desktop or OpenClaw to either list. WorkBuddy,
-QoderWork, and TRAE Work are Skills/MCP-domain targets only and are never
-`AppType`.
+Skills and direct MCP assignment use the same closed seven identities, in Agent
+catalog order. Leftover Gemini / Hermes flags remain on backend rows and must
+round-trip; they are not V2 assignment targets. Grok Build is a catalog-aligned
+V2 assignment target. Do not merge these collections or add Claude Desktop or
+OpenClaw to either list. WorkBuddy, QoderWork, and TRAE Work are Skills/MCP-domain
+targets only and are never `AppType`.
 
 ```ts
 type McpTargetId =
   | "qoderwork"
   | "trae-work"
   | "workbuddy"
+  | "grokbuild"
   | "codex"
   | "claude"
   | "opencode";
@@ -48,6 +49,7 @@ const MCP_TARGET_IDS: readonly McpTargetId[] = [
   "qoderwork",
   "trae-work",
   "workbuddy",
+  "grokbuild",
   "codex",
   "claude",
   "opencode",
@@ -59,6 +61,7 @@ const MCP_TARGETS: ReadonlyArray<{ id: McpTargetId; label: string }> = [
   { id: "qoderwork", label: "QoderWork CN" },
   { id: "trae-work", label: "TRAE Work CN" },
   { id: "workbuddy", label: "WorkBuddy" },
+  { id: "grokbuild", label: "Grok Build" },
   { id: "codex", label: "Codex" },
   { id: "claude", label: "Claude Code" },
   { id: "opencode", label: "OpenCode" },
@@ -204,13 +207,19 @@ function ExternalLinkButton(props: {
 - The Tauri adapter maps the port methods to the existing snake-case command
   names and camel-case payload keys. It must not call deprecated per-app APIs.
 - Skill ports accept all V2 `SkillTargetId` values. Native `SkillApps` still
-  stores leftover Gemini / Grok Build / Hermes columns. MCP CRUD/import/direct
-  assignment accepts the same six V2 `McpTargetId` values as Skills
-  (`qoderwork`, `trae-work`, `workbuddy`, `codex`, `claude`, `opencode`). Native
-  `McpTargetId` also keeps leftover Gemini / Grok / Hermes for round-trip;
-  those leftover IDs are not V2 assignment targets and never convert to
-  `AppType`. QoderWork and TRAE Work `validate_external_mcp_config` remains
-  for Agents preparation and does not replace live-file assignment.
+  stores leftover Gemini / Hermes columns. MCP CRUD/import/direct assignment
+  accepts the same seven V2 `McpTargetId` values as Skills (`qoderwork`,
+  `trae-work`, `workbuddy`, `grokbuild`, `codex`, `claude`, `opencode`). Native
+  `McpTargetId` also keeps leftover Gemini / Hermes for round-trip; those
+  leftover IDs are not V2 assignment targets and never convert to `AppType`.
+  QoderWork and TRAE Work `validate_external_mcp_config` remains a native
+  command and does not replace live-file assignment; the Agent directory does
+  not host that panel.
+- `get_installed_skills` / `SkillService::get_all_installed` unions SQLite
+  rows with `scan_unmanaged` across every native `SkillTargetId`. GET is
+  read-only: it does not insert rows or copy into SSOT. Dot directories such as
+  Codex `.system` are skipped. The first toggle or uninstall of an observed
+  skill adopts through existing `import_from_apps`.
 - Browser reads return empty authority snapshots. Browser writes reject with a
   clear native-only error and never report success.
 - MCP presets have one source under `shared/features`: Windows uses
@@ -247,9 +256,9 @@ function ExternalLinkButton(props: {
   preserves it, while a full application restart resets it. Assignment,
   bulk 全开/全关, discovery install-target tabs, and new-MCP `DEFAULT_NEW_APPS`
   must render in Agent catalog order, not alphabetical or Claude-first order.
-- Skill assignment authority on V2 pages contains six booleans. Native rows
-  still persist leftover Gemini / Grok / Hermes plus Qoder / TRAE / WorkBuddy
-  flags. Missing `qoderwork`, `trae-work`, or `workbuddy` values parse as
+- Skill assignment authority on V2 pages contains seven booleans. Native rows
+  still persist leftover Gemini / Hermes plus Qoder / TRAE / WorkBuddy flags.
+  Missing `qoderwork`, `trae-work`, `workbuddy`, or `grokbuild` values parse as
   false; leftover flags are preserved. QoderWork / TRAE Work / WorkBuddy Skill
   sync is copy-only (`~/.qoderwork/skills`, `~/.trae-cn/skills`,
   `~/.workbuddy/skills`) and successful UI copy claims directory
@@ -321,9 +330,10 @@ function ExternalLinkButton(props: {
   headings appear only when a repository has two or more skills on the
   current page; those
   cards omit the repeated repository. Skills discovery search/filter chrome
-  and `FeaturePagination` stay outside the card scroller; only the result
-  cards use `.fy-feature-discovery-scroll`. MCP discovery uses that same
-  shared class. Do not add overflow to `.fy-feature-detail-scroll`. Cards open a document URL as
+  and `FeaturePagination` stay with the page that scrolls as a whole; the
+  inner `.fy-feature-discovery-scroll` is in-flow. MCP discovery still uses
+  that shared class as an independent scroller. Do not add overflow to
+  `.fy-feature-detail-scroll`. Cards open a document URL as
   “说明”, otherwise the GitHub repository as “仓库”, through
   `ExternalLinkButton`. Do not group cards by wrapping a second
   card around `DiscoveryCard`. Skill uninstall and MCP edit/delete stay
@@ -340,7 +350,7 @@ function ExternalLinkButton(props: {
   credential/config form. Discover classification is only “直接安装” versus
   “配置安装”, plus an “全部” default. Prefer popular no-credential stdio/HTTP
   recipes for the remaining slots. It does not add a market API, persist catalog
-  metadata, or widen the V2 MCP assignment set beyond the six catalog-aligned
+  metadata, or widen the V2 MCP assignment set beyond the seven catalog-aligned
   targets. Entries that need OAuth,
   post-start login, SSE-only transport, or unverified high-privilege cloud
   control stay out of the catalog. New remote recipes use Streamable HTTP
@@ -365,13 +375,16 @@ function ExternalLinkButton(props: {
 - User-visible CSS is namespaced under `.fy-feature-*` or `.fy-control-*`.
   Skills and MCP own only the page wrappers `.fy-skills-page` and
   `.fy-mcp-page`; do not invent a parallel `.fy-skills-*` / `.fy-mcp-*` theme.
-  Consume only `--fy-*` tokens. Discovery card grids scroll with shared
-  `.fy-feature-discovery-scroll` (`overflow: auto`). `.fy-feature-detail-scroll`
-  remains the installed-detail column and must not gain overflow for this job.
+  Consume only `--fy-*` tokens. MCP discovery card grids scroll with shared
+  `.fy-feature-discovery-scroll` (`overflow: auto`). Skills discovery scrolls
+  the whole `.fy-skills-page-discovery` feature page; its inner
+  `.fy-feature-discovery-scroll` is in-flow (`overflow: visible`).
+  `.fy-feature-detail-scroll` remains the installed-detail column and must not
+  gain overflow for this job.
 - The shared assignment panel resolves all V2 Skill and MCP targets through
   `skillTargetIconById` / `getSkillTargetIcon`. MCP passes `MCP_TARGETS`
   explicitly and still goes through that map. `supportedAppIconById`
-  / `getSupportedAppIcon` cover the same six catalog identities. Runtime code must
+  / `getSupportedAppIcon` cover the same seven catalog identities. Runtime code must
   not import a legacy asset path or a remote URL. A reviewed byte-for-byte
   local asset copy is acceptable when V2 owns the resulting path and the asset
   inventory is updated. WorkBuddy uses `../agents/workbuddy.png`; QoderWork CN
@@ -413,7 +426,9 @@ function ExternalLinkButton(props: {
 | `.fy-feature-list` is restored to CSS Grid                       | List rows overlap because `SelectionLens` occupies a grid track         |
 | A supported app is missing from the local icon map               | Type/asset test fails; never render a remote fallback or broken image   |
 | An assignment icon contributes an accessible name                | Component accessibility test fails; switch text remains the sole name   |
-| Viewport changes between two- and three-column layouts           | Render exactly one panel: six unique Skill or six unique MCP switches   |
+| Viewport changes between two- and three-column layouts           | Render exactly one panel: seven unique Skill or seven unique MCP switches |
+| `.fy-feature-discovery-scroll` loses `overflow: auto` on MCP     | MCP discovery cards cannot scroll independently                           |
+| Skills discovery only scrolls the inner card strip               | Page CSS test fails; `.fy-skills-page-discovery` must scroll the page     |
 | WorkBuddy is converted to `AppType` or added as a Provider app   | Type/runtime test fails; WorkBuddy stays Skills/MCP-domain only         |
 | Discover/docs or Skill repo is opened without ExternalLinkButton | Component test fails; the click must hit `settings.openExternal`        |
 | A second HTTP(S) jump starts while one is in flight              | Ignored; only the in-flight control shows pending copy                  |
@@ -423,28 +438,28 @@ function ExternalLinkButton(props: {
 | Discovery `status` is not `all\|installed\|uninstalled`          | Command error; do not default to all                                    |
 | `offset` is past the filtered total                              | `skills: []` and unchanged filtered `totalCount`                        |
 | Search/repo/status change on Skills discovery                    | Host filters then slices; UI returns to page 1                          |
-| `.fy-feature-detail-scroll` is given overflow for discovery      | Skills toolbars scroll away; use `.fy-feature-discovery-scroll`         |
-| `.fy-feature-discovery-scroll` loses `overflow: auto`            | Discovery cards cannot scroll independently                             |
+| `.fy-feature-detail-scroll` is given overflow for discovery      | Skills toolbars scroll away; Skills discovery scrolls the page wrapper  |
 | Repo filter tabs are derived from the current Skill page         | Use enabled `getRepos()`; chips only if more than one enabled repo      |
 
 ## 5. Good / Base / Bad Cases
 
 - **Good:** Skills discovery requests `{ query, repo, status, limit: 20, offset }`
   from `discover_available_skills_page`, paints only that page, and shares
-  `FeaturePagination` with skills.sh. Filter changes return to page 1. MCP and
-  Skills discovery both scroll through `.fy-feature-discovery-scroll`.
+  `FeaturePagination` with skills.sh. Filter changes return to page 1. MCP
+  discovery still scrolls through `.fy-feature-discovery-scroll`. Skills
+  discovery scrolls the whole feature page.
 - **Good:** A user toggles Codex for one Skill. The UI invokes
   `toggle_skill_app` with `{ id, app: "codex", enabled }`, locks only
   conflicting writes, then rereads installed Skills before settling. The row
   shows the V2-owned Codex icon decoratively without changing the switch name.
-- **Good:** An old installed-Skill row has leftover Gemini / Grok / Hermes
-  flags. The adapter preserves those values, supplies false for missing
-  Qoder / TRAE / WorkBuddy flags, and a later WorkBuddy sync copies only to
-  `~/.workbuddy/skills`. MCP writes `~/.workbuddy/.mcp.json` as `mcpServers`
-  and skips when neither the home nor the file exists.
-- **Good:** V2 assignment shows six Skill targets and six MCP targets in Agent
-  catalog order: QoderWork CN, TRAE Work CN, WorkBuddy, Codex, Claude Code,
-  OpenCode. Gemini / Grok / Hermes do not appear as chips.
+- **Good:** An old installed-Skill row has leftover Gemini / Hermes flags.
+  The adapter preserves those values, supplies false for missing
+  Qoder / TRAE / WorkBuddy / Grok Build flags, and a later WorkBuddy sync copies
+  only to `~/.workbuddy/skills`. MCP writes `~/.workbuddy/.mcp.json` as
+  `mcpServers` and skips when neither the home nor the file exists.
+- **Good:** V2 assignment shows seven Skill targets and seven MCP targets in
+  Agent catalog order: QoderWork CN, TRAE Work CN, WorkBuddy, Grok Build,
+  Codex, Claude Code, OpenCode. Gemini / Hermes do not appear as chips.
 - **Good:** Enabling QoderWork MCP writes `~/.qoderworkcn/mcp.json`; enabling
   TRAE writes TRAE SOLO CN `User/mcp.json`. Missing home and file skips write.
 - **Base:** A browser preview has no fixture. Both pages show their native-safe
@@ -473,8 +488,8 @@ git diff --check
 
 - Adapter tests assert every command name, exact camel-case payload, return,
   and error propagation across Skills, MCP, Settings, and external links,
-  including V2 six-value Skill and six-value MCP identity plus leftover
-  backend Gemini / Grok / Hermes flag round-trip, and
+  including V2 seven-value Skill and seven-value MCP identity plus leftover
+  backend Gemini / Hermes flag round-trip, disk-observed installed Skills, and
   `discover_available_skills_page` rather than the leftover full-list command.
 - Pure tests cover public-field search, secret exclusion, URL/args redaction,
   selection convergence, repository parsing, installed-key matching,
@@ -487,14 +502,15 @@ git diff --check
   in `application_acl_covers_every_registered_command_without_remote_access`.
 - Component tests cover empty, loading, error, pending, write/refetch, dialogs,
   assignment, destructive confirmation, secret-safe presentation, an exhaustive
-  six-ID Skill/MCP icon map, decodable local assets, decorative
-  icon semantics, six unique Skill switches, six unique MCP switches in catalog
-  order, Discover/docs and
+  seven-ID Skill/MCP icon map, decodable local assets, decorative
+  icon semantics, seven unique Skill switches, seven unique MCP switches in
+  catalog order, Discover/docs and
   Skill repo clicks through `ExternalLinkButton` → `settings.openExternal`,
   header install-target tabs in that same order, flex list overlay, one
   shared in-flight lock, Skills discovery page-2 offset 20, search resetting
-  to page 1, `FeaturePagination` selection, `.fy-feature-discovery-scroll`
-  overflow, and no overflow on `.fy-feature-detail-scroll`.
+  to page 1, `FeaturePagination` selection, Skills page-level discovery
+  scroll, MCP `.fy-feature-discovery-scroll` overflow, and no overflow on
+  `.fy-feature-detail-scroll`.
 - Browser tests cover `900x600`, `1152x640`, `1232x700`, and `1440x900`, with
   populated two-/three-column layouts, a single correctly-sized assignment
   panel whose switch accessible names match catalog order, visible split

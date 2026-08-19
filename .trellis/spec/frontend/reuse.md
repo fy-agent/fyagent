@@ -19,8 +19,9 @@ cleanup pass after duplication already shipped.
 2. Existing shared chrome that already matches the job is mandatory. Do not
    fork a page-local copy of `FeatureTabs`, `FeatureSearch`, `FeatureList`,
    `FeaturePagination`, `AssignmentPanel`, `SelectionLens` / `SelectionLensGroup`, `SplitPanes`,
-   `CatalogMasterDetail`, `SecretInput`, `ExternalLinkButton`, FeaturePorts,
-   or the TRAE/OpenCode `modelsShared` / `modelChips` helpers.
+   `CatalogMasterDetail`, `CatalogOfficialLinks`, `SecretInput`, `ExternalLinkButton`, FeaturePorts,
+   or the TRAE/OpenCode `modelsShared` / `modelChips` helpers. Agent / Skills / MCP / Models / Prompts
+   product order and display names come from `src/v2/shared/features/directory.ts`.
 3. Before creating a **new** component, helper, hook, or CSS recipe, ask
    whether another current module, or a later sibling module, will use it.
    If yes or likely, put it in the shared layer on the **first commit**. Do
@@ -117,8 +118,9 @@ export function FeaturePagination({
 
 Related shared owners already in place: `SelectionLens` /
 `SelectionLensGroup` (nav, catalog, UI Lab), `AssignmentPanel` (Skills/MCP
-app toggles), `SplitPanes`, `CatalogMasterDetail`, `SecretInput`,
-`ExternalLinkButton`, `CopyablePath`, FeaturePorts.
+app toggles), `SplitPanes`, `CatalogMasterDetail`, `CatalogOfficialLinks`,
+`SecretInput`, `ExternalLinkButton`, `CopyablePath`, FeaturePorts, and
+`PRODUCT_DIRECTORY` in `shared/features/directory.ts`.
 
 Placement:
 
@@ -202,7 +204,8 @@ already share `modelsShared`, `modelChips`, and `feedback`.
 | A feature page hand-rolls `fy-feature-tab` instead of `FeatureTabs`                                  | Unit/architecture test fails; use `FeatureTabs`                          |
 | Management search is a raw `Input type="search"` on Skills/MCP/Memory/Prompts/Discovery              | Use `FeatureSearch`; leftover `ManagementListSearch` stays leftover-only |
 | V2 imports leftover `src/components` or `src/lib`                                                    | Architecture test fails                                                  |
-| A second copy of AssignmentPanel / SecretInput / ExternalLinkButton                                  | Reject; extend the existing shared owner                                 |
+| A second copy of AssignmentPanel / SecretInput / ExternalLinkButton / CatalogOfficialLinks           | Reject; extend the existing shared owner                                 |
+| A page-local Agent/Skills/MCP/Models/Prompts order table                                             | Reject; extend `PRODUCT_DIRECTORY`                                       |
 | New chrome used by two routes is added under `pages/<route>/`                                        | Move it to `shared/ui` before merge                                      |
 | New chrome is parked in `pages/` because "only one consumer today" while a sibling route is expected | Put it in `shared/` on the first commit; do not wait for a third copy    |
 | A page forks FeatureTabs / FeatureSearch / FeatureList "just for this screen"                        | Reject; pass options/copy into the shared owner                          |

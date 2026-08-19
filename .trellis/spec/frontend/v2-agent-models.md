@@ -3,9 +3,10 @@
 ## 1. Scope / Trigger
 
 Read this contract before changing the V2 Agent directory, Models quick setup,
-their local Agent assets, the versioned native catalog (including OpenCode),
-WorkBuddy model ports, Claude/Codex Provider quick setup, or the sanitized
-Provider summary boundary.
+their local Agent assets, the versioned native catalog (including OpenCode and
+Grok Build), the shared `PRODUCT_DIRECTORY`, WorkBuddy model ports,
+Claude/Codex/Grok Build Provider quick setup, or the sanitized Provider
+summary boundary.
 The common shell, native-chrome, router, and layer rules remain in
 [V2 Shell](./v2-shell.md). Skills/MCP and Prompt/Memory have separate feature
 contracts and must not be folded into the Agent capability catalog. Reuse is
@@ -18,26 +19,30 @@ The product boundary is deliberately asymmetric. Agents and Models share one
 `CatalogMasterDetail` geometry and local brand metadata, but each detail keeps
 its own capability workflow:
 
-- QoderWork CN, TRAE Work CN, and WorkBuddy each expose one catalog-owned
-  product link; Claude Code exposes separate CLI and Desktop links; OpenCode
-  exposes `product` then `cli`. QoderWork additionally exposes safe Hooks
-  preparation and MCP validation; TRAE Models is read-only observation plus
-  catalog guidance that custom models must be added in TRAE Work CN.
+- QoderWork CN, TRAE Work CN, WorkBuddy, and Grok Build each expose one
+  catalog-owned product link; Claude Code exposes separate CLI and Desktop
+  links; OpenCode exposes `product` then `cli`. Agent directory details render
+  only `mode === "direct"` capabilities and jumps to `/models`, `/skills`, or
+  `/mcp`. They do not mount application status, configuration overviews,
+  unsupported-capability lists, support counts, usage notes, Qoder Hooks
+  editors, or MCP validation panels.
 - WorkBuddy and OpenCode each use a dedicated revision-checked
   model-configuration domain. WorkBuddy additionally exposes direct Skills
-  copy and MCP `.mcp.json` assignment.
+  copy and MCP `.mcp.json` assignment. Grok Build Models uses the same Provider
+  quick-setup boundary as Claude/Codex (`fyagent-v2-quick-setup-grokbuild`,
+  live `~/.grok/config.toml`).
 - Codex exposes no catalog link. Its detail owns the FyAgent-managed desktop
-  installer while Codex and Claude Code retain bounded Provider quick setup.
+  installer while Codex, Claude Code, and Grok Build retain bounded Provider
+  quick setup.
 - OpenCode model write is `direct` + `dedicated_native_contract`. The Models
   page mounts the dedicated `opencodeModels` port, never Provider quick setup
   or the Codex installer.
 - QoderWork CN `models.write` is `unsupported`: the Models page must state
   不支持第三方模型配置 and must not mount a third-party model editor. It must
-  not render 「打开官方设置」. Keep 「管理 Hooks 和 MCP」, which navigates to
-  `/agents?target=qoderwork`. TRAE Models must not render
-  「打开 TRAE 官方模型设置」. TRAE `models.write` is `assisted` +
-  `vendor_ui_required`: the Models page states that custom models must be
-  added in TRAE Work CN and must not save into TRAE sqlite.
+  not render 「打开官方设置」. Keep 「管理 MCP」, which navigates to `/mcp`.
+  TRAE Models must not render 「打开 TRAE 官方模型设置」. TRAE `models.write`
+  is `assisted` + `vendor_ui_required`: the Models page states that custom
+  models must be added in TRAE Work CN and must not save into TRAE sqlite.
 - Browser preview never impersonates authoritative desktop state or installer
   success.
 
@@ -50,6 +55,7 @@ type AgentCatalogId =
   | "qoderwork"
   | "trae-work"
   | "workbuddy"
+  | "grokbuild"
   | "codex"
   | "claude-code"
   | "opencode";
@@ -63,7 +69,7 @@ type AgentOfficialLink = {
 };
 
 type AgentCatalogResult = {
-  contractVersion: 3;
+  contractVersion: 4;
   reviewedAt: string;
   agents: Array<{
     id: AgentCatalogId;
@@ -71,6 +77,7 @@ type AgentCatalogResult = {
       | "qoderwork-cn"
       | "trae-work-cn"
       | "workbuddy"
+      | "grokbuild"
       | "codex"
       | "claude-code"
       | "opencode";
@@ -119,7 +126,7 @@ launch_external_agent({
 V2 reads a non-secret Provider projection in one native snapshot:
 
 ```ts
-type ProviderAppId = "claude" | "codex";
+type ProviderAppId = "claude" | "codex" | "grokbuild";
 type ProviderSummary = { id: string; name: string };
 type ProviderSummaryQueryData = {
   providers: Record<string, ProviderSummary>;
@@ -200,17 +207,21 @@ and a revision, never `ak` / `sk` / `apiKey`.
 ### Catalog and local assets
 
 - `get_agent_catalog` is deterministic, non-networking, non-secret, and ordered
-  exactly: QoderWork CN, TRAE Work CN, WorkBuddy, Codex, Claude Code, OpenCode.
+  exactly: QoderWork CN, TRAE Work CN, WorkBuddy, Grok Build, Codex,
+  Claude Code, OpenCode. Grok Build's product URL is exactly `https://x.ai/grok`.
   TRAE `displayName` is `TRAE Work CN`; its product URL is exactly
   `https://www.trae.cn/sem-work`.   Catalog descriptions use 支持 / 不支持
   wording and must not contain `可在 FyAgent` or `可通过 FyAgent`.
   QoderWork CN and TRAE Work CN describe MCP as 直接分配; their `mcp.write`
   mode is `direct` with `dedicated_native_contract`.
-- The v3 link matrix is exact: QoderWork CN, TRAE Work CN, and WorkBuddy each
-  own one `product` link; Claude Code owns `cli` then `desktop`; OpenCode owns
-  `product` then `cli`; Codex owns an empty list and keeps its dedicated
-  managed installer outside generic launch. Link IDs are unique per entry,
-  labels are nonempty, and URLs are absolute HTTPS values owned by Rust.
+- The v4 link matrix is exact: QoderWork CN, TRAE Work CN, WorkBuddy, and
+  Grok Build each own one `product` link; Claude Code owns `cli` then
+  `desktop`; OpenCode owns `product` then `cli`; Codex owns an empty list and
+  keeps its dedicated managed installer outside generic launch. Link IDs are
+  unique per entry, labels are nonempty, and URLs are absolute HTTPS values
+  owned by Rust. Official buttons on the Agent directory use shared
+  `CatalogOfficialLinks` with `fy-control-button-primary`. Labels that already
+  contain `官方` stay as catalog text.
 - V1 `officialUrl`, catalog v2, future catalog versions, and unknown capability,
   mode, evidence, variant, or runtime values fail closed in the
   Tauri adapter. The renderer never guesses a legacy shape or carries a second
@@ -218,11 +229,13 @@ and a revision, never `ak` / `sk` / `apiKey`.
 - The UI renders catalog capability mode/reason/evidence and the separate
   runtime capability state; it does not derive
   capability from the display name, icon, URL, installed files, or a duplicate
-  frontend matrix. Mode badges are the short labels 支持 / 需在应用中完成 /
-  不支持 / 暂无法确认. The default Agent detail shows supported features plus
-  jumps (`/models?target=`, `/skills`, `/mcp` only when `mcp.write.mode` is
-  `direct`, Qoder Hooks, official
-  `ExternalLinkButton`) and folds `unsupported` capabilities.
+  frontend matrix. Agent details render only `mode === "direct"` capabilities
+  and the matching jumps (`/models?target=` when `models.write` is `direct`,
+  `/skills` when Skills read/write is `direct`, `/mcp` when `mcp.write` is
+  `direct`). They omit application status, configuration overviews,
+  unsupported lists, support counts, usage notes, Qoder Hooks editors, and
+  MCP validation panels. Official catalog links render through
+  `CatalogOfficialLinks`.
 - Every entry resolves through `src/v2/shared/assets/agents`. QoderWork CN uses
   the reviewed official 256x256 PNG extracted from QoderWork CN.app; TRAE uses
   the reviewed official 48x48 PNG without recoloring or runtime upscaling
@@ -259,18 +272,18 @@ and a revision, never `ak` / `sk` / `apiKey`.
   rail between 220px and min(420px, remaining width minus a 360px detail
   floor). Width is session-local component state and never enters the URL or
   storage. Double-click restores the default clamp.
-- QoderWork/TRAE/WorkBuddy/OpenCode and Claude link actions render
-  `ExternalLinkButton` with the catalog HTTPS URL. That control is the only
-  jump: `useOpenExternal` holds one FeatureProvider lock and calls
-  `settings.openExternal(link.url)`. Official product/cli/desktop links live
-  on the Agent directory, not the Models page. Models must not clone those
-  catalog links as 「打开官方设置」 or 「打开 TRAE 官方模型设置」.
+- QoderWork/TRAE/WorkBuddy/Grok Build/OpenCode and Claude link actions render
+  `CatalogOfficialLinks` → `ExternalLinkButton` with the catalog HTTPS URL.
+  That control is the only jump: `useOpenExternal` holds one FeatureProvider
+  lock and calls `settings.openExternal(link.url)`. Official product/cli/desktop
+  links live on the Agent directory, not the Models page. Models must not clone
+  those catalog links as 「打开官方设置」 or 「打开 TRAE 官方模型设置」.
   These actions do not inspect login state, download packages, read
   private config, persist notes, accept an API key, or emit configuration
   success.
 - Official catalog links render in the Agent detail identity, top-right, as
-  `ExternalLinkButton`. Display copy for labels that already contain `官方`
-  stays as catalog text; `cli`/`desktop` labels become
+  `CatalogOfficialLinks` primary buttons. Display copy for labels that already
+  contain `官方` stays as catalog text; `cli`/`desktop` labels become
   `打开 {catalog label} 官网`. The renderer does not rewrite Rust labels or
   URLs.
 - FeatureProvider keeps one external-open lock and one pending URL. Agent
@@ -278,28 +291,23 @@ and a revision, never `ak` / `sk` / `apiKey`.
   echoing the URL. Codex renders no official link region and mounts the
   managed installer panel only while Codex is selected, immediately below
   the identity heading; leaving Codex releases its event subscription.
-- WorkBuddy status and Provider summaries are lazy/bounded observations. A read
-  failure is `unknown/unavailable`, never `not installed`, `not configured`, or
-  verified absence.
-- External runtime status preserves `null` as unknown. A launch control is
-  positive only when the native runtime capability is explicitly `available`;
-  the renderer never submits a path, URL, or executable.
-- Qoder Hooks uses exact revisioned snapshots and an explicit preview. A
-  backend overwrite token may be replayed once with the frozen request; a
-  successful save states only that the file was saved and QoderWork must be
-  restarted. Qoder/TRAE MCP preparation displays and copies only the backend's
-  redacted template and never claims a server was started or vendor config was
-  saved.
+- Agent directory does not lazy-read WorkBuddy status or Provider summaries.
+  Those observations belong on the Models page. External runtime status still
+  preserves `null` as unknown when a future launch control is added.
+- Qoder Hooks and Qoder/TRAE MCP validation remain native commands. The Agent
+  directory is not their host; Qoder Models jumps to `/mcp` instead of an
+  in-directory panel.
 - Configuration actions navigate only with a known non-secret `target` query.
 
 ### Models target selection
 
-- The exact selector order is QoderWork CN, TRAE Work CN, WorkBuddy, Codex,
-  Claude Code, OpenCode. Missing, empty, or unknown `target` resolves to
-  QoderWork CN. Side-rail summaries: Qoder 不支持第三方模型配置; TRAE Work CN
-  需在 TRAE Work CN 中添加模型; OpenCode 管理模型设置. Never 测试模型连接 or
+- The exact selector order is QoderWork CN, TRAE Work CN, WorkBuddy, Grok
+  Build, Codex, Claude Code, OpenCode. Missing, empty, or unknown `target`
+  resolves to QoderWork CN. Side-rail summaries: Qoder 不支持第三方模型配置;
+  TRAE Work CN 需在 TRAE Work CN 中添加模型; Grok Build / Codex / Claude Code
+  快速配置模型; OpenCode 管理模型设置. Never 测试模型连接 or
   在 OpenCode 中完成模型设置.
-- All six selectors use the same reviewed local Agent asset map. No selector
+- All seven selectors use the same reviewed local Agent asset map. No selector
   image is loaded from a remote URL.
 - Target state is component-local. API keys and form content never enter the
   hash, URL query, local/session storage, or cross-target state. The Models
@@ -403,7 +411,7 @@ fetch/save controls.
   trailing section below the form. Unsaved draft IDs or connection input show
   a `待保存` badge.
 
-### Claude Code and Codex
+### Claude Code, Codex, and Grok Build
 
 - Validate trimmed nonempty name/key/model, an absolute HTTP(S) Base URL with a
   host and no userinfo/query/fragment, reserved-ID collision, public-field
@@ -411,8 +419,9 @@ fetch/save controls.
   Rust. Errors are generic and never echo the field values.
 - The V2 port is `applyQuickSetupWithResult(request, app)`. Codex may attach
   optional `codexFeatures.imageExtension` / `codexFeatures.websockets`; Claude
-  must omit `codexFeatures`. OpenCode is not a `ProviderAppId` and must not
-  call this port.
+  and Grok Build must omit `codexFeatures`. Grok Build uses reserved ID
+  `fyagent-v2-quick-setup-grokbuild` and live `~/.grok/config.toml`. OpenCode
+  is not a `ProviderAppId` and must not call this port.
 - Rust derives one stable reserved Provider ID per app. The renderer cannot
   submit a generic Provider, arbitrary ID, category, metadata, usage script,
   icon, sort order, or live-config fragment.
@@ -467,10 +476,10 @@ fetch/save controls.
 | A non-Codex entry is selected                                                              | Do not read or subscribe to the Codex installer                                                         |
 | Native external open fails                                                                 | Show fixed controlled failure text; do not install or configure                                         |
 | QoderWork/TRAE selected                                                                    | Only catalog-declared and native-port capabilities are available; vendor-private writes remain unavailable |
-| Models Qoder/TRAE shows 「打开官方设置」 or 「打开 TRAE 官方模型设置」                      | Component test fails; keep 「管理 Hooks 和 MCP」; TRAE stays guidance-only                               |
-| Native observation fails                                                                   | Show controlled unavailable/unknown; never infer absence                                                |
+| Models Qoder/TRAE shows 「打开官方设置」 or 「打开 TRAE 官方模型设置」                      | Component test fails; keep 「管理 MCP」 → `/mcp`; TRAE stays guidance-only                               |
+| Native observation fails on Models                                                         | Show controlled unavailable/unknown; never infer absence                                                |
 | Runtime value is unknown                                                                   | Preserve `null`/`unverified`; never display "not installed"                                            |
-| Qoder Hooks revision or overwrite request drifts                                           | Write nothing or require one exact token replay; never claim save                                       |
+| Agent directory mounts Hooks editor, MCP validation, observation, or unsupported lists     | Page test fails; those surfaces stay off the Agent directory                                            |
 | TRAE Models attempts sqlite save or fetch-and-apply                                        | Forbidden; GET observation and catalog guidance only, never 请回 TRAE 保存                              |
 | TRAE/OpenCode GET snapshot or Debug/log contains `ak`/`sk`/`apiKey`                        | Security regression test fails                                                                          |
 | External MCP result contains an original env/header value                                  | Reject the result and expose no copy action                                                             |
@@ -492,9 +501,11 @@ fetch/save controls.
 
 ## 5. Good / Base / Bad Cases
 
-- Good: `/models` opens on QoderWork CN at the top, all six local icons render,
-  Qoder states 不支持第三方模型配置, keeps 「管理 Hooks 和 MCP」, and does not
-  render 「打开官方设置」. TRAE Models has no 「打开 TRAE 官方模型设置」.
+- Good: `/models` opens on QoderWork CN at the top, all seven local icons
+  render, Qoder states 不支持第三方模型配置, keeps 「管理 MCP」 to `/mcp`,
+  and does not render 「打开官方设置」. TRAE Models has no
+  「打开 TRAE 官方模型设置」. Grok Build sits after WorkBuddy and uses
+  Provider quick setup.
 - Good: OpenCode's Models panel lists existing sanitized provider/model IDs,
   fetches, adds, deletes, and saves through `opencodeModels`; it never submits
   Provider quick setup.
@@ -536,13 +547,13 @@ mise run rust:test
 
 Required focused coverage includes:
 
-- exact catalog v3 version/order/variant/capability/mode/reason/evidence/link
-  ID/label/HTTPS matrix and v2/future/unknown/excess fail-closed cases,
-  Claude CLI/Desktop order, OpenCode product/CLI order, Codex zero-link
-  behavior, and command registration;
-- six local Agent assets, official Qoder PNG / TRAE PNG digests, Qoder default,
-  exact Models order, master/detail keyboard/ARIA, four maintained viewports;
-  displayed model IDs resolve only bundled vendor SVGs;
+- exact catalog v4 version/order/variant/capability/mode/reason/evidence/link
+  ID/label/HTTPS matrix and v2/v3/future/unknown/excess fail-closed cases,
+  Grok Build product URL, Claude CLI/Desktop order, OpenCode product/CLI order,
+  Codex zero-link behavior, and command registration;
+- seven local Agent assets, official Qoder PNG / TRAE PNG digests, Qoder default,
+  exact Models order including Grok Build, master/detail keyboard/ARIA, four
+  maintained viewports; displayed model IDs resolve only bundled vendor SVGs;
 - exact official-link IPC through `ExternalLinkButton` /
   `useOpenExternal`, renderer official-site display labels in the
   identity, one FeatureProvider lock/error behavior, Codex negative-link
@@ -576,10 +587,9 @@ Required focused coverage includes:
   Secrets stay in component memory only. Immediate WorkBuddy
   existing-model delete after an unrecoverable-delete confirmation.
 - Models Qoder/TRAE details must not render 「打开官方设置」 or
-  「打开 TRAE 官方模型设置」; Qoder keeps 「管理 Hooks 和 MCP」.
-- exact external status/launch, Qoder read/save/token, external MCP validation,
-  and TRAE validate/probe/cancel IPC payloads and result parsers. The Models
-  page does not collect a TRAE API key.
+  「打开 TRAE 官方模型设置」; Qoder keeps 「管理 MCP」 to `/mcp`.
+  Agent directory tests prove only `direct` capabilities, shared official
+  primary buttons, and the absence of observation/Hooks/MCP panels.
 
 Browser tests prove renderer/IPC wiring only. Rust tests prove service/command
 contracts. Real Windows Tauri HIL and an isolated/reversible native mutation are
@@ -641,9 +651,7 @@ Correct: official catalog links belong on the Agent directory. Models Qoder/TRAE
 panels must not clone those links as settings buttons.
 
 ```ts
-<Button onClick={() => navigate("/agents?target=qoderwork")}>
-  管理 Hooks 和 MCP
-</Button>
+<Button onClick={() => navigate("/mcp")}>管理 MCP</Button>
 ```
 
 Wrong: stack a Models page flex gap on top of the shared feature header
