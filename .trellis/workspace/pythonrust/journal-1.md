@@ -970,3 +970,43 @@ V2 Skills 发现改为宿主分页，Skills/MCP 共用发现滚动条；V1 全�
 ### Next Steps
 
 - None - task complete
+
+
+## Session 31: V2 catalog v4, Grok Build, and Skills disk observation
+
+**Date**: 2026-08-20
+**Task**: V2 catalog v4, Grok Build, and Skills disk observation
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Shipped catalog v4 with Grok Build, slim Agent details, disk-observed installed Skills, and Skills discovery page scroll.
+
+### Main Changes
+
+- Union get_all_installed with a read-only scan of every SkillTargetId directory; adopt on first toggle/uninstall.
+- Add PRODUCT_DIRECTORY and Grok Build catalog v4; slim Agent detail to direct capabilities and CatalogOfficialLinks.
+- Wire Grok Build through Skills/MCP/Models/Prompts and Provider quick setup; Qoder models jump to /mcp.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c97ddb7d` | (see git log) |
+| `bb7fba4c` | (see git log) |
+| `940ff066` | (see git log) |
+| `664dd96f` | (see git log) |
+| `81b68e12` | (see git log) |
+| `daf3d113` | (see git log) |
+
+### Testing
+
+- [OK] mise run typecheck; mise run format:check; mise run test:v2 (35 files); mise run rust:clippy; cargo tests for catalog v4, skill observation/merge/adopt, and grokbuild quick setup.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- No follow-up in this task. Browser Playwright agents-models spec was updated but not executed in this session.
