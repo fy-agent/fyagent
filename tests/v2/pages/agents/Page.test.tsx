@@ -1,5 +1,4 @@
 import {
-  fireEvent,
   render,
   screen,
   waitFor,
@@ -41,6 +40,7 @@ const variantById = {
   qoderwork: "qoderwork-cn",
   "trae-work": "trae-work-cn",
   workbuddy: "workbuddy",
+  grokbuild: "grokbuild",
   codex: "codex",
   "claude-code": "claude-code",
   opencode: "opencode",
@@ -72,7 +72,11 @@ function entry(id: AgentCatalogId, displayName: string): AgentCatalogEntry {
                   ? "https://qoder.com.cn/qoderwork"
                   : id === "trae-work"
                     ? "https://www.trae.cn/sem-work"
-                    : "https://www.workbuddy.cn/",
+                    : id === "grokbuild"
+                      ? "https://x.ai/grok"
+                      : id === "opencode"
+                        ? "https://opencode.ai"
+                        : "https://www.workbuddy.cn/",
             },
           ];
   return {
@@ -110,14 +114,16 @@ function entry(id: AgentCatalogId, displayName: string): AgentCatalogEntry {
 
 function catalog(): AgentCatalogResult {
   return {
-    contractVersion: 3,
-    reviewedAt: "2026-08-14",
+    contractVersion: 4,
+    reviewedAt: "2026-08-20",
     agents: [
       entry("qoderwork", "QoderWork CN"),
       entry("trae-work", "TRAE Work CN"),
       entry("workbuddy", "WorkBuddy"),
+      entry("grokbuild", "Grok Build"),
       entry("codex", "Codex"),
       entry("claude-code", "Claude Code"),
+      entry("opencode", "OpenCode"),
     ],
   };
 }
@@ -204,11 +210,13 @@ describe("V2 Agent directory", () => {
     });
     const buttons = within(selector).getAllByRole("button");
     expect(buttons.map((button) => button.textContent)).toEqual([
-      "QoderWork CN9 项支持 · 0 项需在应用中完成",
-      "TRAE Work CN7 项支持 · 2 项需在应用中完成",
-      "WorkBuddy9 项支持 · 0 项需在应用中完成",
-      "Codex8 项支持 · 0 项需在应用中完成",
-      "Claude Code9 项支持 · 0 项需在应用中完成",
+      "QoderWork CN",
+      "TRAE Work CN",
+      "WorkBuddy",
+      "Grok Build",
+      "Codex",
+      "Claude Code",
+      "OpenCode",
     ]);
     expect(buttons[0]).toHaveAttribute("aria-current", "true");
     expect(
@@ -250,6 +258,7 @@ describe("V2 Agent directory", () => {
     const qoderOfficial = within(qoderDetail).getByRole("button", {
       name: "打开 QoderWork CN 官方页面",
     });
+    expect(qoderOfficial).toHaveClass("fy-control-button-primary");
     expect(
       within(qoderDetail).getByRole("group", { name: "官方网站" }),
     ).toBeVisible();
@@ -263,8 +272,8 @@ describe("V2 Agent directory", () => {
       await screen.findByRole("button", { name: /TRAE Work CN/ }),
     );
     expect(
-      screen.getByRole("button", { name: "查看模型说明" }),
-    ).toBeInTheDocument();
+      screen.queryByRole("button", { name: "查看模型说明" }),
+    ).not.toBeInTheDocument();
     await user.click(
       screen.getByRole("button", { name: "打开 TRAE Work CN 官方页面" }),
     );
@@ -272,6 +281,11 @@ describe("V2 Agent directory", () => {
     await user.click(screen.getByRole("button", { name: /WorkBuddy/ }));
     await user.click(
       screen.getByRole("button", { name: "打开 WorkBuddy 官方页面" }),
+    );
+
+    await user.click(screen.getByRole("button", { name: /Grok Build/ }));
+    await user.click(
+      screen.getByRole("button", { name: "打开 Grok Build 官方页面" }),
     );
 
     await user.click(screen.getByRole("button", { name: /Claude Code/ }));
@@ -299,7 +313,7 @@ describe("V2 Agent directory", () => {
       ) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
 
-    expect(ports.settings.openExternal).toHaveBeenCalledTimes(5);
+    expect(ports.settings.openExternal).toHaveBeenCalledTimes(6);
     expect(ports.settings.openExternal).toHaveBeenNthCalledWith(
       1,
       "https://qoder.com.cn/qoderwork",
@@ -314,10 +328,14 @@ describe("V2 Agent directory", () => {
     );
     expect(ports.settings.openExternal).toHaveBeenNthCalledWith(
       4,
-      "https://docs.anthropic.com/en/docs/claude-code/getting-started",
+      "https://x.ai/grok",
     );
     expect(ports.settings.openExternal).toHaveBeenNthCalledWith(
       5,
+      "https://docs.anthropic.com/en/docs/claude-code/getting-started",
+    );
+    expect(ports.settings.openExternal).toHaveBeenNthCalledWith(
+      6,
       "https://claude.com/download",
     );
   });
@@ -357,56 +375,7 @@ describe("V2 Agent directory", () => {
     await waitFor(() => expect(workBuddyLink).toBeEnabled());
   });
 
-  it("lazily reads WorkBuddy status and navigates to its model target", async () => {
-    const user = userEvent.setup();
-    const ports = configuredPorts();
-    ports.workbuddy.getStatus = vi.fn(ports.workbuddy.getStatus);
-    renderPage(ports);
-
-    await screen.findByRole("region", { name: "QoderWork CN 详情" });
-    expect(ports.workbuddy.getStatus).not.toHaveBeenCalled();
-
-    await user.click(screen.getByRole("button", { name: /WorkBuddy/ }));
-    const observation = await screen.findByRole("region", {
-      name: "WorkBuddy 配置概览",
-    });
-    expect(within(observation).getByText("3")).toBeVisible();
-    expect(within(observation).getByText("数组格式")).toBeVisible();
-    expect(within(observation).getByText("存在")).toBeVisible();
-    expect(ports.workbuddy.getStatus).toHaveBeenCalledTimes(1);
-    expect(document.body).not.toHaveTextContent("C:/redacted/models.json");
-    expect(document.body).not.toHaveTextContent("opaque-revision");
-
-    await user.click(screen.getByRole("button", { name: "配置模型" }));
-    expect(screen.getByTestId("location")).toHaveTextContent(
-      "/models?target=workbuddy",
-    );
-  });
-
-  it("renders only sanitized Provider summaries and uses the Claude target", async () => {
-    const user = userEvent.setup();
-    const ports = configuredPorts();
-    ports.providers.getSummary = vi.fn(ports.providers.getSummary);
-    renderPage(ports);
-
-    await user.click(
-      await screen.findByRole("button", { name: /Claude Code/ }),
-    );
-    const observation = await screen.findByRole("region", {
-      name: "Claude Code 模型配置",
-    });
-    expect(within(observation).getByText("claude current")).toBeVisible();
-    expect(within(observation).getByText("1")).toBeVisible();
-    expect(observation).toHaveTextContent("不代表应用已经安装或登录");
-    expect(ports.providers.getSummary).toHaveBeenCalledWith("claude");
-
-    await user.click(screen.getByRole("button", { name: "配置模型" }));
-    expect(screen.getByTestId("location")).toHaveTextContent(
-      "/models?target=claude",
-    );
-  });
-
-  it("jumps to models, Skills, and MCP and collapses inapplicable capabilities", async () => {
+  it("navigates from Agent detail to models, Skills, and MCP for direct capabilities", async () => {
     const user = userEvent.setup();
     renderPage(configuredPorts());
 
@@ -416,30 +385,33 @@ describe("V2 Agent directory", () => {
     expect(
       within(qoderDetail).getByRole("heading", { name: "支持的功能" }),
     ).toBeVisible();
-    expect(within(qoderDetail).getAllByText("支持").length).toBeGreaterThan(0);
-    expect(qoderDetail).not.toHaveTextContent("可在 FyAgent");
-    expect(qoderDetail).not.toHaveTextContent("可通过 FyAgent");
-    expect(qoderDetail).not.toHaveTextContent("可同步 Skills");
-    await user.click(
-      within(qoderDetail).getByRole("button", { name: "管理 Hooks" }),
-    );
+    expect(qoderDetail).not.toHaveTextContent("应用状态");
+    expect(qoderDetail).not.toHaveTextContent("配置概览");
+    expect(qoderDetail).not.toHaveTextContent("不适用的功能");
+    expect(qoderDetail).not.toHaveTextContent("使用说明");
     expect(
-      within(qoderDetail).getByRole("region", { name: "QoderWork Hooks 配置" }),
-    ).toBeVisible();
+      within(qoderDetail).queryByRole("button", { name: "管理 Hooks" }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(qoderDetail).queryByRole("region", { name: "QoderWork Hooks 配置" }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(qoderDetail).queryByRole("region", { name: "MCP 配置检查" }),
+    ).not.toBeInTheDocument();
     await user.click(
       within(qoderDetail).getByRole("button", { name: "打开 Skills" }),
     );
     expect(screen.getByTestId("location")).toHaveTextContent("/skills");
 
-    await user.click(screen.getByRole("button", { name: /TRAE Work CN/ }));
-    const traeDetail = screen.getByRole("region", {
-      name: "TRAE Work CN 详情",
+    await user.click(screen.getByRole("button", { name: /WorkBuddy/ }));
+    const workBuddyDetail = screen.getByRole("region", {
+      name: "WorkBuddy 详情",
     });
     await user.click(
-      within(traeDetail).getByRole("button", { name: "查看模型说明" }),
+      within(workBuddyDetail).getByRole("button", { name: "配置模型" }),
     );
     expect(screen.getByTestId("location")).toHaveTextContent(
-      "/models?target=trae",
+      "/models?target=workbuddy",
     );
 
     await user.click(screen.getByRole("button", { name: /Claude Code/ }));
@@ -451,243 +423,23 @@ describe("V2 Agent directory", () => {
     );
     expect(screen.getByTestId("location")).toHaveTextContent("/mcp");
 
-    await user.click(screen.getByRole("button", { name: /WorkBuddy/ }));
-    const workBuddyDetail = screen.getByRole("region", {
-      name: "WorkBuddy 详情",
-    });
-    await user.click(
-      within(workBuddyDetail).getByRole("button", { name: "打开 Skills" }),
-    );
-    expect(screen.getByTestId("location")).toHaveTextContent("/skills");
-    await user.click(
-      within(workBuddyDetail).getByRole("button", { name: "打开 MCP" }),
-    );
-    expect(screen.getByTestId("location")).toHaveTextContent("/mcp");
-
     await user.click(screen.getByRole("button", { name: /^Codex/ }));
     const codexDetail = screen.getByRole("region", { name: "Codex 详情" });
-    expect(within(codexDetail).getByText("不适用的功能（1）")).toBeVisible();
-    expect(codexDetail).not.toHaveTextContent("可在 FyAgent");
+    expect(codexDetail).not.toHaveTextContent("不适用的功能");
+    expect(codexDetail).not.toHaveTextContent("项支持");
   });
 
-  it("keeps an unavailable observation unknown and redacts backend text", async () => {
+  it("does not read WorkBuddy or Provider observation on the Agent page", async () => {
     const user = userEvent.setup();
     const ports = configuredPorts();
-    ports.providers.getSummary = vi.fn(async () => {
-      throw new Error("sk-super-secret provider read failed");
-    });
+    ports.workbuddy.getStatus = vi.fn(ports.workbuddy.getStatus);
+    ports.providers.getSummary = vi.fn(ports.providers.getSummary);
     renderPage(ports);
 
-    await user.click(await screen.findByRole("button", { name: /Codex/ }));
-    const observation = await screen.findByRole("region", {
-      name: "Codex 模型配置",
-    });
-    expect(
-      await within(observation).findByText(/暂时无法读取当前状态/, undefined, {
-        timeout: 5_000,
-      }),
-    ).toBeVisible();
-    expect(document.body).not.toHaveTextContent("sk-super-secret");
-    expect(observation).not.toHaveTextContent("未安装");
-    expect(observation).not.toHaveTextContent("已验证");
-  });
-
-  it("previews Qoder Hooks, retries once with the overwrite token, and requires restart", async () => {
-    const user = userEvent.setup();
-    const ports = configuredPorts();
-    const initialSnapshot = {
-      revision: "revision-1",
-      exists: true,
-      groups: [
-        {
-          event: "PreToolUse" as const,
-          matcher: "Bash",
-          hooks: [
-            { type: "command" as const, command: "old-command", timeout: 30 },
-          ],
-        },
-      ],
-      restartRequired: true as const,
-      supportedStructure: true,
-    };
-    ports.qoderwork.getHooks = vi.fn(async () => initialSnapshot);
-    ports.qoderwork.saveHooks = vi
-      .fn()
-      .mockResolvedValueOnce({
-        state: "overwrite_confirmation_required",
-        token: "one-time-overwrite-token",
-      })
-      .mockResolvedValueOnce({
-        state: "saved",
-        snapshot: {
-          ...initialSnapshot,
-          revision: "revision-2",
-          groups: [
-            {
-              ...initialSnapshot.groups[0],
-              hooks: [
-                {
-                  type: "command" as const,
-                  command: "new-command",
-                  timeout: 30,
-                },
-              ],
-            },
-          ],
-        },
-      });
-    renderPage(ports);
-
-    const hooksRegion = await screen.findByRole("region", {
-      name: "QoderWork Hooks 配置",
-    });
-    const commandInput = within(hooksRegion).getByLabelText("命令");
-    await user.clear(commandInput);
-    await user.type(commandInput, "new-command");
-    await user.click(
-      within(hooksRegion).getByRole("button", { name: "预览保存" }),
-    );
-    expect(
-      screen.getByRole("heading", { name: "确认保存 Hooks 设置" }),
-    ).toBeVisible();
-    expect(screen.getByText("new-command")).toBeVisible();
-    await user.click(screen.getByRole("button", { name: "确认保存" }));
-
-    const firstRequest = {
-      expectedRevision: "revision-1",
-      groups: [
-        {
-          event: "PreToolUse",
-          matcher: "Bash",
-          hooks: [{ type: "command", command: "new-command", timeout: 30 }],
-        },
-      ],
-    };
-    await waitFor(() =>
-      expect(ports.qoderwork.saveHooks).toHaveBeenNthCalledWith(
-        1,
-        firstRequest,
-      ),
-    );
-    await user.click(
-      await screen.findByRole("button", {
-        name: "确认覆盖",
-      }),
-    );
-    await waitFor(() =>
-      expect(ports.qoderwork.saveHooks).toHaveBeenNthCalledWith(2, {
-        ...firstRequest,
-        overwriteToken: "one-time-overwrite-token",
-      }),
-    );
-    expect(
-      await screen.findByText(
-        "Hooks 设置已保存。请重启 QoderWork 以应用更改。",
-      ),
-    ).toBeVisible();
-    expect(
-      screen.queryByRole("button", { name: "确认覆盖" }),
-    ).not.toBeInTheDocument();
-  });
-
-  it("keeps MCP config local and removes secrets after success, error, target change, and unmount", async () => {
-    const user = userEvent.setup();
-    const ports = configuredPorts();
-    ports.qoderwork.getHooks = vi.fn(async () => ({
-      revision: null,
-      exists: false,
-      groups: [],
-      restartRequired: true as const,
-      supportedStructure: true,
-    }));
-    const firstSecret = "MCP-UI-SECRET-SENTINEL-814";
-    const secondSecret = "MCP-UI-ERROR-SENTINEL-814";
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
-    const errorSpy = vi
-      .spyOn(console, "error")
-      .mockImplementation(() => undefined);
-    ports.externalMcp.validate = vi
-      .fn()
-      .mockResolvedValueOnce({
-        agentId: "qoderwork",
-        valid: true,
-        findings: [
-          {
-            serverId: "demo",
-            transport: "stdio",
-            reasonCodes: ["TRAE_MCP_SERVER_VALID"],
-            executableAvailable: true,
-            hasSecrets: true,
-          },
-        ],
-        redactedTemplate: {
-          mcpServers: {
-            demo: { command: "demo", env: { TOKEN: "<redacted>" } },
-          },
-        },
-      })
-      .mockRejectedValueOnce(new Error(secondSecret));
-    localStorage.clear();
-    sessionStorage.clear();
-    const view = renderPage(ports);
-    const mcpRegion = await screen.findByRole("region", {
-      name: "MCP 配置检查",
-    });
-    const textarea = within(mcpRegion).getByLabelText("MCP 配置（JSON）");
-    const firstConfig = JSON.stringify({
-      mcpServers: {
-        demo: { command: "demo", env: { TOKEN: firstSecret } },
-      },
-    });
-    fireEvent.change(textarea, { target: { value: firstConfig } });
-    await user.click(
-      within(mcpRegion).getByRole("button", { name: "检查配置" }),
-    );
-
-    await waitFor(() =>
-      expect(ports.externalMcp.validate).toHaveBeenNthCalledWith(
-        1,
-        "qoderwork",
-        {
-          mcpServers: {
-            demo: { command: "demo", env: { TOKEN: firstSecret } },
-          },
-        },
-      ),
-    );
-    expect(textarea).toHaveValue("");
-    expect(document.body.innerHTML).not.toContain(firstSecret);
-    expect(window.location.hash).not.toContain(firstSecret);
-    expect(JSON.stringify(localStorage)).not.toContain(firstSecret);
-    expect(JSON.stringify(sessionStorage)).not.toContain(firstSecret);
-
-    const secondConfig = JSON.stringify({
-      mcpServers: {
-        demo: { command: "demo", env: { TOKEN: secondSecret } },
-      },
-    });
-    fireEvent.change(textarea, { target: { value: secondConfig } });
-    await user.click(
-      within(mcpRegion).getByRole("button", { name: "检查配置" }),
-    );
-    expect(
-      await within(mcpRegion).findByText("无法检查 MCP 配置，请重试。"),
-    ).toBeVisible();
-    expect(textarea).toHaveValue("");
-    expect(document.body.innerHTML).not.toContain(secondSecret);
-
-    await user.click(screen.getByRole("button", { name: /TRAE Work CN/ }));
-    expect(document.body.innerHTML).not.toContain(firstSecret);
-    expect(document.body.innerHTML).not.toContain(secondSecret);
-    view.unmount();
-    expect(document.body.innerHTML).not.toContain(firstSecret);
-    expect(window.location.hash).not.toContain(secondSecret);
-    expect(JSON.stringify(logSpy.mock.calls)).not.toMatch(/MCP-UI-.*SENTINEL/);
-    expect(JSON.stringify(errorSpy.mock.calls)).not.toMatch(
-      /MCP-UI-.*SENTINEL/,
-    );
-    logSpy.mockRestore();
-    errorSpy.mockRestore();
+    await user.click(await screen.findByRole("button", { name: /WorkBuddy/ }));
+    expect(ports.workbuddy.getStatus).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: /Claude Code/ }));
+    expect(ports.providers.getSummary).not.toHaveBeenCalled();
   });
 
   it("mounts the native installer only for Codex and cleans up on selection change", async () => {

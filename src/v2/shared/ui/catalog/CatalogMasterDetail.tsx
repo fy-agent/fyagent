@@ -135,7 +135,7 @@ export function BrandIconFrame({
 interface CatalogListItemProps {
   asset: AgentBrandAsset;
   label: string;
-  summary: ReactNode;
+  summary?: ReactNode;
   selected: boolean;
   onSelect: () => void;
   testId?: string;
@@ -165,7 +165,7 @@ export function CatalogListItem({
         <BrandIconFrame asset={asset} size="list" />
         <span className="fy-catalog-list-copy">
           <strong>{label}</strong>
-          <span>{summary}</span>
+          {summary ? <span>{summary}</span> : null}
         </span>
       </button>
     </div>

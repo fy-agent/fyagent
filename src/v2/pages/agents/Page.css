@@ -22,7 +22,7 @@
   flex: 0 0 auto;
 }
 
-.fy-agent-official-links {
+.fy-agent-identity > .fy-catalog-official-links {
   display: flex;
   flex: 1 1 auto;
   flex-wrap: wrap;

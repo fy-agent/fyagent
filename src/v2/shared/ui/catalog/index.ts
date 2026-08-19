@@ -6,3 +6,7 @@ export {
   CatalogMasterDetail,
   CatalogRail,
 } from "./CatalogMasterDetail";
+export {
+  CatalogOfficialLinks,
+  officialLinkActionLabel,
+} from "./CatalogOfficialLinks";
