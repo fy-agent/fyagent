@@ -6,8 +6,8 @@ use crate::services::external_agents::{
     ExternalAgentRuntimeService, ExternalAgentRuntimeStatus,
 };
 
-const AGENT_CATALOG_CONTRACT_VERSION: u16 = 3;
-const AGENT_CATALOG_REVIEWED_AT: &str = "2026-08-18";
+const AGENT_CATALOG_CONTRACT_VERSION: u16 = 4;
+const AGENT_CATALOG_REVIEWED_AT: &str = "2026-08-20";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -93,6 +93,12 @@ const WORKBUDDY_OFFICIAL_LINKS: [AgentOfficialLink; 1] = [official_link(
     "https://www.workbuddy.cn/",
 )];
 
+const GROKBUILD_OFFICIAL_LINKS: [AgentOfficialLink; 1] = [official_link(
+    AgentOfficialLinkId::Product,
+    "打开 Grok Build 官方页面",
+    "https://x.ai/grok",
+)];
+
 const CLAUDE_OFFICIAL_LINKS: [AgentOfficialLink; 2] = [
     official_link(
         AgentOfficialLinkId::Cli,
@@ -154,6 +160,7 @@ const MCP_SERVICE_EVIDENCE: &[AgentEvidenceId] = &[AgentEvidenceId::McpServiceCo
 const CLAUDE_LINK_EVIDENCE: &[AgentEvidenceId] = &[AgentEvidenceId::ClaudeOfficialLinks];
 const OPENCODE_PRODUCT_EVIDENCE: &[AgentEvidenceId] = &[AgentEvidenceId::OpencodeProduct];
 const OPENCODE_MODELS_EVIDENCE: &[AgentEvidenceId] = &[AgentEvidenceId::OpencodeModels];
+const GROKBUILD_PRODUCT_EVIDENCE: &[AgentEvidenceId] = &[AgentEvidenceId::GrokbuildProduct];
 const P0_SCOPE_EVIDENCE: &[AgentEvidenceId] = &[AgentEvidenceId::P0Scope];
 
 const QODERWORK_CAPABILITIES: [DeclaredAgentCapability; 11] = [
@@ -348,6 +355,75 @@ const WORKBUDDY_CAPABILITIES: [DeclaredAgentCapability; 11] = [
         AgentCapabilityMode::Direct,
         AgentCapabilityReasonCode::DedicatedNativeContract,
         WORKBUDDY_EVIDENCE,
+    ),
+    capability(
+        AgentCapabilityId::McpValidate,
+        AgentCapabilityMode::Direct,
+        AgentCapabilityReasonCode::FyagentMcpValidation,
+        MCP_SERVICE_EVIDENCE,
+    ),
+    capability(
+        AgentCapabilityId::McpWrite,
+        AgentCapabilityMode::Direct,
+        AgentCapabilityReasonCode::DedicatedNativeContract,
+        MCP_SERVICE_EVIDENCE,
+    ),
+];
+
+const GROKBUILD_CAPABILITIES: [DeclaredAgentCapability; 11] = [
+    capability(
+        AgentCapabilityId::ProductOpen,
+        AgentCapabilityMode::Direct,
+        AgentCapabilityReasonCode::OfficialLinkReviewed,
+        GROKBUILD_PRODUCT_EVIDENCE,
+    ),
+    capability(
+        AgentCapabilityId::AppDetect,
+        AgentCapabilityMode::Unverified,
+        AgentCapabilityReasonCode::TrustedRuntimeIdentityUnavailable,
+        GROKBUILD_PRODUCT_EVIDENCE,
+    ),
+    capability(
+        AgentCapabilityId::AppLaunch,
+        AgentCapabilityMode::Unverified,
+        AgentCapabilityReasonCode::TrustedRuntimeIdentityUnavailable,
+        GROKBUILD_PRODUCT_EVIDENCE,
+    ),
+    capability(
+        AgentCapabilityId::SkillsRead,
+        AgentCapabilityMode::Direct,
+        AgentCapabilityReasonCode::FyagentSkillSynchronization,
+        SKILL_SERVICE_EVIDENCE,
+    ),
+    capability(
+        AgentCapabilityId::SkillsWrite,
+        AgentCapabilityMode::Direct,
+        AgentCapabilityReasonCode::FyagentSkillSynchronization,
+        SKILL_SERVICE_EVIDENCE,
+    ),
+    capability(
+        AgentCapabilityId::HooksRead,
+        AgentCapabilityMode::Unsupported,
+        AgentCapabilityReasonCode::CapabilityNotApplicable,
+        P0_SCOPE_EVIDENCE,
+    ),
+    capability(
+        AgentCapabilityId::HooksWrite,
+        AgentCapabilityMode::Unsupported,
+        AgentCapabilityReasonCode::CapabilityNotApplicable,
+        P0_SCOPE_EVIDENCE,
+    ),
+    capability(
+        AgentCapabilityId::ModelsValidate,
+        AgentCapabilityMode::Direct,
+        AgentCapabilityReasonCode::FyagentModelValidation,
+        PROVIDER_EVIDENCE,
+    ),
+    capability(
+        AgentCapabilityId::ModelsWrite,
+        AgentCapabilityMode::Direct,
+        AgentCapabilityReasonCode::DedicatedNativeContract,
+        PROVIDER_EVIDENCE,
     ),
     capability(
         AgentCapabilityId::McpValidate,
@@ -570,7 +646,7 @@ const OPENCODE_CAPABILITIES: [DeclaredAgentCapability; 11] = [
     ),
 ];
 
-const AGENT_CATALOG: [AgentCatalogEntry; 6] = [
+const AGENT_CATALOG: [AgentCatalogEntry; 7] = [
     AgentCatalogEntry {
         id: AgentCatalogId::QoderWork,
         variant_id: AgentVariantId::QoderWorkCn,
@@ -597,6 +673,14 @@ const AGENT_CATALOG: [AgentCatalogEntry; 6] = [
             "支持 Skills 同步、模型配置与 MCP 直接分配；不支持 Hooks。本机识别和启动暂无法确认。",
         official_links: &WORKBUDDY_OFFICIAL_LINKS,
         capabilities: &WORKBUDDY_CAPABILITIES,
+    },
+    AgentCatalogEntry {
+        id: AgentCatalogId::GrokBuild,
+        variant_id: AgentVariantId::GrokBuild,
+        display_name: "Grok Build",
+        description: "支持 Skills 同步、模型配置与 MCP 直接分配。本机识别和启动暂无法确认。",
+        official_links: &GROKBUILD_OFFICIAL_LINKS,
+        capabilities: &GROKBUILD_CAPABILITIES,
     },
     AgentCatalogEntry {
         id: AgentCatalogId::Codex,
@@ -683,11 +767,11 @@ mod tests {
     }
 
     #[test]
-    fn agent_catalog_freezes_v3_order_variants_links_and_capability_matrix() {
+    fn agent_catalog_freezes_v4_order_variants_links_and_capability_matrix() {
         let catalog = get_agent_catalog();
 
-        assert_eq!(catalog.contract_version, 3);
-        assert_eq!(catalog.reviewed_at, "2026-08-18");
+        assert_eq!(catalog.contract_version, 4);
+        assert_eq!(catalog.reviewed_at, "2026-08-20");
         assert_eq!(
             catalog
                 .agents
@@ -709,6 +793,11 @@ mod tests {
                     AgentCatalogId::WorkBuddy,
                     AgentVariantId::WorkBuddy,
                     "WorkBuddy",
+                ),
+                (
+                    AgentCatalogId::GrokBuild,
+                    AgentVariantId::GrokBuild,
+                    "Grok Build",
                 ),
                 (AgentCatalogId::Codex, AgentVariantId::Codex, "Codex"),
                 (
@@ -737,7 +826,8 @@ mod tests {
 
         let qoder = &catalog.agents[0];
         let trae = &catalog.agents[1];
-        let codex = &catalog.agents[3];
+        let grok = &catalog.agents[3];
+        let codex = &catalog.agents[4];
         assert_eq!(
             qoder
                 .capabilities
@@ -909,6 +999,11 @@ mod tests {
         assert_eq!(workbuddy.capabilities[10].id, AgentCapabilityId::McpWrite);
         assert!(workbuddy.description.contains("支持 Skills 同步"));
         assert!(workbuddy.description.contains("MCP 直接分配"));
+        assert_eq!(grok.display_name, "Grok Build");
+        assert_eq!(grok.official_links[0].label, "打开 Grok Build 官方页面");
+        assert_eq!(grok.official_links[0].url, "https://x.ai/grok");
+        assert!(grok.description.contains("支持 Skills 同步"));
+        assert!(grok.description.contains("MCP 直接分配"));
         assert_eq!(trae.display_name, "TRAE Work CN");
         assert_eq!(trae.official_links[0].label, "打开 TRAE Work CN 官方页面");
         assert_eq!(trae.official_links[0].url, "https://www.trae.cn/sem-work");
@@ -931,7 +1026,7 @@ mod tests {
             );
         }
         assert_eq!(
-            catalog.agents[5].capabilities[8],
+            catalog.agents[6].capabilities[8],
             capability(
                 AgentCapabilityId::ModelsWrite,
                 AgentCapabilityMode::Direct,
@@ -984,11 +1079,11 @@ mod tests {
     }
 
     #[test]
-    fn agent_catalog_wire_is_exact_v3_and_contains_no_legacy_or_sensitive_fields() {
+    fn agent_catalog_wire_is_exact_v4_and_contains_no_legacy_or_sensitive_fields() {
         let value = serde_json::to_value(get_agent_catalog()).expect("catalog serializes");
 
-        assert_eq!(value["contractVersion"], 3);
-        assert_eq!(value["reviewedAt"], "2026-08-18");
+        assert_eq!(value["contractVersion"], 4);
+        assert_eq!(value["reviewedAt"], "2026-08-20");
         assert_eq!(
             sorted_object_keys(&value),
             ["agents", "contractVersion", "reviewedAt"]

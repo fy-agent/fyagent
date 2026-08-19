@@ -1,3 +1,4 @@
+import grokBuildIconUrl from "../apps/grokbuild.svg";
 import claudeCodeIconUrl from "./claude-code.svg";
 import codexIconUrl from "./codex.svg";
 import openCodeIconUrl from "./opencode.svg";
@@ -9,6 +10,7 @@ export const agentIconIds = [
   "qoderwork",
   "trae-work",
   "workbuddy",
+  "grokbuild",
   "codex",
   "claude-code",
   "opencode",
@@ -69,6 +71,19 @@ export const agentBrandById = {
       opticalScale: 0.94,
       background: "transparent",
       corner: "rounded",
+    },
+  },
+  grokbuild: {
+    iconUrl: grokBuildIconUrl,
+    list: {
+      opticalScale: 0.92,
+      background: "transparent",
+      corner: "none",
+    },
+    detail: {
+      opticalScale: 0.92,
+      background: "transparent",
+      corner: "none",
     },
   },
   codex: {

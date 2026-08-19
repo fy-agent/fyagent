@@ -53,6 +53,7 @@ export async function installRichTauriFeatureFixture(
           "qoderwork",
           "trae-work",
           "workbuddy",
+          "grokbuild",
           "codex",
           "claude",
           "opencode",
@@ -150,8 +151,8 @@ export async function installRichTauriFeatureFixture(
         evidenceIds: ["p0_scope"],
       }));
     const catalog = {
-      contractVersion: 3,
-      reviewedAt: "2026-08-14",
+      contractVersion: 4,
+      reviewedAt: "2026-08-20",
       agents: [
         {
           id: "qoderwork",
@@ -196,6 +197,21 @@ export async function installRichTauriFeatureFixture(
             },
           ],
           capabilities: catalogCapabilities("workbuddy"),
+        },
+        {
+          id: "grokbuild",
+          variantId: "grokbuild",
+          displayName: "Grok Build",
+          description:
+            "支持 Skills 同步、模型配置与 MCP 直接分配。本机识别和启动暂无法确认。",
+          officialLinks: [
+            {
+              id: "product",
+              label: "打开 Grok Build 官方页面",
+              url: "https://x.ai/grok",
+            },
+          ],
+          capabilities: catalogCapabilities("grokbuild"),
         },
         {
           id: "codex",
@@ -246,6 +262,7 @@ export async function installRichTauriFeatureFixture(
       ],
     };
     const quickSetupIds = {
+      grokbuild: "fyagent-v2-quick-setup-grokbuild",
       codex: "fyagent-v2-quick-setup-codex",
       claude: "fyagent-v2-quick-setup-claude",
     } as const;

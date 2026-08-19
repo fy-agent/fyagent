@@ -55,6 +55,7 @@ const expectedAssetPaths: Readonly<Record<SupportedAppId, string>> = {
   qoderwork: path.join(agentAssetRoot, "qoderwork.png"),
   "trae-work": path.join(agentAssetRoot, "trae-work.png"),
   workbuddy: path.join(agentAssetRoot, "workbuddy.png"),
+  grokbuild: path.join(appAssetRoot, "grokbuild.svg"),
   codex: path.join(agentAssetRoot, "codex.svg"),
   claude: path.join(agentAssetRoot, "claude-code.svg"),
   opencode: path.join(appAssetRoot, copiedAssetNames.opencode),
@@ -72,13 +73,14 @@ describe("V2 supported application assets", () => {
     }
   });
 
-  it("keeps Skills and MCP on the same six catalog-aligned targets", () => {
+  it("keeps Skills and MCP on the same seven catalog-aligned targets", () => {
     expect(Object.keys(skillTargetIconById)).toEqual(SKILL_TARGET_IDS);
     expect(Object.keys(supportedAppIconById)).toEqual(SUPPORTED_APP_IDS);
     expect(SKILL_TARGET_IDS).toEqual([
       "qoderwork",
       "trae-work",
       "workbuddy",
+      "grokbuild",
       "codex",
       "claude",
       "opencode",

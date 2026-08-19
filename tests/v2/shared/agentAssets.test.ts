@@ -63,6 +63,7 @@ describe("V2 Agent catalog assets", () => {
       "qoderwork",
       "trae-work",
       "workbuddy",
+      "grokbuild",
       "codex",
       "claude-code",
       "opencode",
@@ -72,7 +73,9 @@ describe("V2 Agent catalog assets", () => {
 
     for (const id of agentIconIds) {
       expect(getAgentIcon(id)).toBe(agentIconById[id]);
-      expect(getAgentIcon(id)).toMatch(/^\/src\/v2\/shared\/assets\/agents\//);
+      expect(getAgentIcon(id)).toMatch(
+        /^\/src\/v2\/shared\/assets\/(?:agents|apps)\//,
+      );
       expect(getAgentBrand(id)).toBe(agentBrandById[id]);
       expect(getAgentBrand(id).iconUrl).toBe(getAgentIcon(id));
       for (const size of ["list", "detail"] as const) {

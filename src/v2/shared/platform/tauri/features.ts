@@ -14,6 +14,7 @@ import {
   AGENT_CAPABILITY_IDS,
   AGENT_CAPABILITY_MODES,
   AGENT_CAPABILITY_REASON_CODES,
+  AGENT_CATALOG_CONTRACT_VERSION,
   AGENT_CATALOG_IDS,
   AGENT_EVIDENCE_IDS,
   AGENT_OFFICIAL_LINK_IDS,
@@ -93,6 +94,7 @@ const EXPECTED_AGENT_LINK_IDS = {
   qoderwork: ["product"],
   "trae-work": ["product"],
   workbuddy: ["product"],
+  grokbuild: ["product"],
   codex: [],
   "claude-code": ["cli", "desktop"],
   opencode: ["product", "cli"],
@@ -104,6 +106,7 @@ const EXPECTED_AGENT_VARIANT_IDS = {
   qoderwork: "qoderwork-cn",
   "trae-work": "trae-work-cn",
   workbuddy: "workbuddy",
+  grokbuild: "grokbuild",
   codex: "codex",
   "claude-code": "claude-code",
   opencode: "opencode",
@@ -252,7 +255,7 @@ function parseAgentCatalog(value: unknown): AgentCatalogResult {
   if (
     !isRecord(value) ||
     !hasExactKeys(value, ["contractVersion", "reviewedAt", "agents"]) ||
-    value.contractVersion !== 3 ||
+    value.contractVersion !== AGENT_CATALOG_CONTRACT_VERSION ||
     !isReviewedDate(value.reviewedAt) ||
     !Array.isArray(value.agents) ||
     value.agents.length !== AGENT_CATALOG_IDS.length
@@ -261,7 +264,7 @@ function parseAgentCatalog(value: unknown): AgentCatalogResult {
 
   const candidates = value.agents;
   return {
-    contractVersion: 3,
+    contractVersion: AGENT_CATALOG_CONTRACT_VERSION,
     reviewedAt: value.reviewedAt,
     agents: AGENT_CATALOG_IDS.map((expectedId, index) =>
       parseAgentCatalogEntry(candidates[index], expectedId),

@@ -1,40 +1,36 @@
-export const MCP_TARGET_IDS = [
-  "qoderwork",
-  "trae-work",
-  "workbuddy",
-  "codex",
-  "claude",
-  "opencode",
-] as const;
+import {
+  MCP_TARGET_IDS,
+  SKILL_TARGET_IDS,
+  type AgentCatalogId,
+  type AgentVariantId,
+  type McpTargetId,
+  type PromptAppId,
+  type SkillTargetId,
+} from "./directory";
 
-export type McpTargetId = (typeof MCP_TARGET_IDS)[number];
-
-export const SKILL_TARGET_IDS = MCP_TARGET_IDS;
-
-export type SkillTargetId = McpTargetId;
+export {
+  AGENT_CATALOG_IDS,
+  AGENT_VARIANT_IDS,
+  MCP_TARGET_IDS,
+  MCP_TARGETS,
+  PRODUCT_DIRECTORY,
+  PROMPT_APP_IDS,
+  PROMPT_ONLY_DIRECTORY,
+  SKILL_TARGET_IDS,
+  SKILL_TARGETS,
+  SUPPORTED_APP_IDS,
+  SUPPORTED_APPS,
+} from "./directory";
+export type {
+  AgentCatalogId,
+  AgentVariantId,
+  McpTargetId,
+  PromptAppId,
+  SkillTargetId,
+};
 
 /** @deprecated Use McpTargetId or SkillTargetId at the owning feature boundary. */
-export const SUPPORTED_APP_IDS = MCP_TARGET_IDS;
-
-/** @deprecated Use McpTargetId or SkillTargetId at the owning feature boundary. */
-export type SupportedAppId = McpTargetId;
-
-export const MCP_TARGETS: ReadonlyArray<{
-  id: McpTargetId;
-  label: string;
-}> = [
-  { id: "qoderwork", label: "QoderWork CN" },
-  { id: "trae-work", label: "TRAE Work CN" },
-  { id: "workbuddy", label: "WorkBuddy" },
-  { id: "codex", label: "Codex" },
-  { id: "claude", label: "Claude Code" },
-  { id: "opencode", label: "OpenCode" },
-];
-
-export const SKILL_TARGETS = MCP_TARGETS;
-
-/** @deprecated MCP_TARGETS is the catalog-aligned direct-sync collection. */
-export const SUPPORTED_APPS = MCP_TARGETS;
+export type SupportedAppId = import("./directory").McpTargetId;
 
 export type McpAssignments = Record<McpTargetId, boolean> &
   Record<string, boolean | undefined>;
@@ -176,17 +172,6 @@ export type FeatureSettings = Record<string, unknown> & {
   skillStorageLocation?: "fyagent" | "unified";
 };
 
-export const AGENT_CATALOG_IDS = [
-  "qoderwork",
-  "trae-work",
-  "workbuddy",
-  "codex",
-  "claude-code",
-  "opencode",
-] as const;
-
-export type AgentCatalogId = (typeof AGENT_CATALOG_IDS)[number];
-
 export const AGENT_OFFICIAL_LINK_IDS = ["product", "cli", "desktop"] as const;
 
 export type AgentOfficialLinkId = (typeof AGENT_OFFICIAL_LINK_IDS)[number];
@@ -196,17 +181,6 @@ export interface AgentOfficialLink {
   label: string;
   url: string;
 }
-
-export const AGENT_VARIANT_IDS = [
-  "qoderwork-cn",
-  "trae-work-cn",
-  "workbuddy",
-  "codex",
-  "claude-code",
-  "opencode",
-] as const;
-
-export type AgentVariantId = (typeof AGENT_VARIANT_IDS)[number];
 
 export const AGENT_CAPABILITY_IDS = [
   "product.open",
@@ -272,6 +246,7 @@ export const AGENT_EVIDENCE_IDS = [
   "claude_official_links",
   "opencode_product",
   "opencode_models",
+  "grokbuild_product",
   "p0_scope",
 ] as const;
 
@@ -293,8 +268,10 @@ export interface AgentCatalogEntry {
   capabilities: DeclaredAgentCapability[];
 }
 
+export const AGENT_CATALOG_CONTRACT_VERSION = 4;
+
 export interface AgentCatalogResult {
-  contractVersion: 3;
+  contractVersion: typeof AGENT_CATALOG_CONTRACT_VERSION;
   reviewedAt: string;
   agents: AgentCatalogEntry[];
 }
@@ -523,7 +500,7 @@ export interface CancelTraeModelProbeResult {
   cancelled: boolean;
 }
 
-export type ProviderAppId = "claude" | "codex";
+export type ProviderAppId = "claude" | "codex" | "grokbuild";
 
 export interface ProviderQuickSetupRequest {
   name: string;
@@ -704,18 +681,6 @@ export function createMcpAssignments(
 
 /** @deprecated Use createSkillAssignments or createMcpAssignments. */
 export const createAssignments = createSkillAssignments;
-
-export const PROMPT_APP_IDS = [
-  "claude",
-  "codex",
-  "gemini",
-  "grokbuild",
-  "opencode",
-  "openclaw",
-  "hermes",
-] as const;
-
-export type PromptAppId = (typeof PROMPT_APP_IDS)[number];
 
 export interface ManagedPrompt {
   id: string;

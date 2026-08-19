@@ -105,6 +105,7 @@ const agentVariantById = {
   qoderwork: "qoderwork-cn",
   "trae-work": "trae-work-cn",
   workbuddy: "workbuddy",
+  grokbuild: "grokbuild",
   codex: "codex",
   "claude-code": "claude-code",
   opencode: "opencode",
@@ -142,7 +143,7 @@ function catalogEntry(
 
 function catalogFixture(): AgentCatalogResult {
   return {
-    contractVersion: 3,
+    contractVersion: 4,
     reviewedAt: "2026-08-18",
     agents: [
       catalogEntry("qoderwork", "QoderWork CN", [
@@ -164,6 +165,13 @@ function catalogFixture(): AgentCatalogResult {
           id: "product",
           label: "打开 WorkBuddy 官方页面",
           url: "https://www.workbuddy.cn/",
+        },
+      ]),
+      catalogEntry("grokbuild", "Grok Build", [
+        {
+          id: "product",
+          label: "打开 Grok Build 官方页面",
+          url: "https://x.ai/grok",
         },
       ]),
       catalogEntry("codex", "Codex", []),
@@ -590,7 +598,7 @@ describe("V2 feature ports", () => {
     invalidPayloads.push(legacy);
 
     const future = structuredClone(expected);
-    Object.assign(future, { contractVersion: 4 });
+    Object.assign(future, { contractVersion: 5 });
     invalidPayloads.push(future);
 
     const invalidDate = structuredClone(expected);
@@ -666,7 +674,7 @@ describe("V2 feature ports", () => {
     invalidPayloads.push(duplicateProductLink);
 
     const codexExternalLink = structuredClone(expected);
-    codexExternalLink.agents[3].officialLinks.push({
+    codexExternalLink.agents[4].officialLinks.push({
       id: "product",
       label: "Codex product",
       url: "https://example.test/codex",
@@ -674,7 +682,7 @@ describe("V2 feature ports", () => {
     invalidPayloads.push(codexExternalLink);
 
     const reversedClaudeLinks = structuredClone(expected);
-    reversedClaudeLinks.agents[4].officialLinks.reverse();
+    reversedClaudeLinks.agents[5].officialLinks.reverse();
     invalidPayloads.push(reversedClaudeLinks);
 
     for (const payload of invalidPayloads) {
@@ -1022,6 +1030,7 @@ describe("V2 feature ports", () => {
         qoderwork: false,
         "trae-work": false,
         workbuddy: false,
+        grokbuild: false,
         codex: false,
         claude: true,
         opencode: false,

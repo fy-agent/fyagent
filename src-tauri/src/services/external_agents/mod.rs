@@ -16,6 +16,8 @@ pub enum AgentCatalogId {
     TraeWork,
     #[serde(rename = "workbuddy")]
     WorkBuddy,
+    #[serde(rename = "grokbuild")]
+    GrokBuild,
     #[serde(rename = "codex")]
     Codex,
     #[serde(rename = "claude-code")]
@@ -32,6 +34,8 @@ pub enum AgentVariantId {
     TraeWorkCn,
     #[serde(rename = "workbuddy")]
     WorkBuddy,
+    #[serde(rename = "grokbuild")]
+    GrokBuild,
     #[serde(rename = "codex")]
     Codex,
     #[serde(rename = "claude-code")]
@@ -115,6 +119,7 @@ pub enum AgentEvidenceId {
     ClaudeOfficialLinks,
     OpencodeProduct,
     OpencodeModels,
+    GrokbuildProduct,
     P0Scope,
 }
 
@@ -227,6 +232,7 @@ const fn runtime_boundary(
         AgentCatalogId::QoderWork
         | AgentCatalogId::TraeWork
         | AgentCatalogId::WorkBuddy
+        | AgentCatalogId::GrokBuild
         | AgentCatalogId::ClaudeCode
         | AgentCatalogId::OpenCode => (
             ExternalAgentRuntimeCapabilityState::Unverified,
@@ -249,6 +255,7 @@ mod tests {
             AgentCatalogId::QoderWork,
             AgentCatalogId::TraeWork,
             AgentCatalogId::WorkBuddy,
+            AgentCatalogId::GrokBuild,
             AgentCatalogId::ClaudeCode,
             AgentCatalogId::OpenCode,
         ] {

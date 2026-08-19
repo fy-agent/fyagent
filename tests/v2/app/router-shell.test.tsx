@@ -252,7 +252,7 @@ describe("FyAgent V2 primary page persistence", () => {
     const user = userEvent.setup();
     const ports = createBrowserFeaturePorts();
     ports.catalog.get = vi.fn(async () => ({
-      contractVersion: 3 as const,
+      contractVersion: 4 as const,
       reviewedAt: "2026-08-18",
       agents: [
         {
