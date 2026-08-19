@@ -857,7 +857,7 @@ pub(crate) fn canonical_json(value: &Value) -> Value {
     match value {
         Value::Object(map) => {
             let mut entries: Vec<_> = map.iter().collect();
-            entries.sort_by(|(a, _), (b, _)| a.cmp(b));
+            entries.sort_by_key(|(key, _)| *key);
             let mut result = serde_json::Map::new();
             for (key, value) in entries {
                 result.insert(key.clone(), canonical_json(value));
