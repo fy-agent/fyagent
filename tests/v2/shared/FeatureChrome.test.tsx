@@ -5,7 +5,10 @@ import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import { FeatureList, FeatureListItem } from "@/v2/shared/ui/FeatureList";
-import { FeaturePagination } from "@/v2/shared/ui/FeaturePagination";
+import {
+  buildFeaturePaginationItems,
+  FeaturePagination,
+} from "@/v2/shared/ui/FeaturePagination";
 import { FeatureSearch } from "@/v2/shared/ui/FeatureSearch";
 import { FeatureTabs } from "@/v2/shared/ui/FeatureTabs";
 
@@ -129,6 +132,44 @@ describe("FeatureList", () => {
   });
 });
 
+describe("buildFeaturePaginationItems", () => {
+  it("lists every page when the total fits in the window", () => {
+    expect(buildFeaturePaginationItems(2, 4)).toEqual([
+      { type: "page", page: 1 },
+      { type: "page", page: 2 },
+      { type: "page", page: 3 },
+      { type: "page", page: 4 },
+    ]);
+  });
+
+  it("keeps first and last pages and inserts ellipsis around the current window", () => {
+    expect(buildFeaturePaginationItems(5, 8)).toEqual([
+      { type: "page", page: 1 },
+      { type: "ellipsis", id: "start" },
+      { type: "page", page: 4 },
+      { type: "page", page: 5 },
+      { type: "page", page: 6 },
+      { type: "ellipsis", id: "end" },
+      { type: "page", page: 8 },
+    ]);
+  });
+
+  it("omits the near-edge ellipsis on the first and last pages", () => {
+    expect(buildFeaturePaginationItems(1, 8)).toEqual([
+      { type: "page", page: 1 },
+      { type: "page", page: 2 },
+      { type: "ellipsis", id: "end" },
+      { type: "page", page: 8 },
+    ]);
+    expect(buildFeaturePaginationItems(8, 8)).toEqual([
+      { type: "page", page: 1 },
+      { type: "ellipsis", id: "start" },
+      { type: "page", page: 7 },
+      { type: "page", page: 8 },
+    ]);
+  });
+});
+
 describe("FeaturePagination", () => {
   it("keeps the current page selected and reports the next page", () => {
     function Pager() {
@@ -146,14 +187,46 @@ describe("FeaturePagination", () => {
     render(<Pager />);
     const current = screen.getByRole("button", { name: "5" });
     expect(current).toHaveAttribute("aria-current", "page");
-    expect(screen.getByRole("button", { name: "3" })).toBeVisible();
-    expect(screen.getByRole("button", { name: "7" })).toBeVisible();
+    expect(screen.getByText("第 5 / 8 页")).toBeVisible();
+    expect(screen.getByRole("button", { name: "1" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "4" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "6" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "8" })).toBeVisible();
     expect(screen.queryByRole("button", { name: "2" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "3" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "7" })).not.toBeInTheDocument();
+    expect(screen.getAllByText("…")).toHaveLength(2);
     fireEvent.click(screen.getByRole("button", { name: "6" }));
     expect(screen.getByRole("button", { name: "6" })).toHaveAttribute(
       "aria-current",
       "page",
     );
+    expect(screen.getByText("第 6 / 8 页")).toBeVisible();
+  });
+
+  it("disables previous on the first page and next on the last page", () => {
+    function Pager() {
+      const [page, setPage] = useState(1);
+      return (
+        <FeaturePagination
+          page={page}
+          totalPages={4}
+          ariaLabel="演示分页"
+          onPageChange={setPage}
+        />
+      );
+    }
+
+    render(<Pager />);
+    expect(screen.getByRole("button", { name: "上一页" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "下一页" }));
+    expect(screen.getByRole("button", { name: "2" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "4" }));
+    expect(screen.getByRole("button", { name: "下一页" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "上一页" })).toBeEnabled();
   });
 
   it("hides when there is only one page", () => {
@@ -166,6 +239,24 @@ describe("FeaturePagination", () => {
       />,
     );
     expect(screen.queryByRole("navigation", { name: "演示分页" })).toBeNull();
+  });
+
+  it("lets discovery card copy wrap and stretches cards in the grid", () => {
+    const featuresCss = readFileSync(
+      path.resolve(process.cwd(), "src", "v2", "app", "styles", "features.css"),
+      "utf8",
+    );
+    const bodyBlock =
+      featuresCss.match(/\.fy-feature-card-body\s*\{[^}]*\}/s)?.[0] ?? "";
+    expect(bodyBlock).toContain(".fy-feature-card-body");
+    expect(bodyBlock).not.toMatch(/-webkit-line-clamp/);
+    expect(bodyBlock).not.toMatch(/display:\s*-webkit-box/);
+    expect(featuresCss).toMatch(
+      /\.fy-feature-card\s*\{[^}]*display:\s*flex;[^}]*flex-direction:\s*column;/s,
+    );
+    expect(featuresCss).toMatch(
+      /\.fy-feature-grid\s*\{[^}]*align-items:\s*stretch;/s,
+    );
   });
 
   it("gives discovery cards an independent scroller and leaves detail scroll without overflow", () => {

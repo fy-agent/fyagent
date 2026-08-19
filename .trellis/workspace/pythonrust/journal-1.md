@@ -1010,3 +1010,28 @@ Shipped catalog v4 with Grok Build, slim Agent details, disk-observed installed 
 ### Next Steps
 
 - No follow-up in this task. Browser Playwright agents-models spec was updated but not executed in this session.
+
+
+## Session 32: Discovery cards wrap; shared pagination
+
+**Date**: 2026-08-20
+**Task**: none (small UI polish, no Trellis task)
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Skills/MCP discovery cards show full descriptions instead of a 3-line clamp. `FeaturePagination` adds prev/next, ellipsis, and `第 x / n 页` without a new UI library (Radix has no Pagination primitive).
+
+### Main Changes
+
+- Remove `-webkit-line-clamp` from `.fy-feature-card-body`; cards are column flex in a stretched grid.
+- Extend `FeaturePagination` with `buildFeaturePaginationItems`, 上一页/下一页, and ellipsis when `totalPages > 7`.
+- Update reuse, v2-skills-mcp, and v2-shell contracts; expand FeatureChrome tests.
+
+### Testing
+
+- [OK] mise run typecheck:v2; lint:v2; format:check; test:v2 (35 files, 255 passed).
+
+### Status
+
+[OK] **Completed**

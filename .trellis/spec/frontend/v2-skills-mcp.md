@@ -143,6 +143,13 @@ function FeaturePagination(props: {
   ariaLabel: string;
 }): JSX.Element | null;
 
+function buildFeaturePaginationItems(
+  page: number,
+  totalPages: number,
+): Array<
+  | { type: "page"; page: number }
+  | { type: "ellipsis"; id: "start" | "end" }
+>;
 ```
 
 Host command and DTO (camelCase on the wire):
@@ -304,7 +311,9 @@ function ExternalLinkButton(props: {
   use `FeatureList` / `FeatureListItem`; installed/discovery and MCP editor
   tracks use `FeatureTabs`; management search uses `FeatureSearch`. Skills
   discovery (repos and skills.sh) and any later paged feature list use
-  `FeaturePagination`; do not clone the page-number window. Do not
+  `FeaturePagination`; do not clone the page-number window. The shared pager
+  shows `第 x / n 页`, 上一页 / 下一页, numbered pages, and ellipsis when
+  `totalPages > 7`. Do not add a pagination npm package. Do not
   add a page-local tabs, search, list, or pagination clone. `.fy-feature-list` is a
   column flex track so `SelectionLens` (absolute overlay) is not a grid item
   and list rows do not collapse onto one another. Do not restore
@@ -325,8 +334,10 @@ function ExternalLinkButton(props: {
   Repository chips appear only when more
   than one enabled repository is loaded from `getRepos()`. Skill Discover
   cards show the name and
-  install state in the header, a clamped description or directory/source
-  note, then a text meta line of repository and optional install count. Group
+  install state in the header, the full description or directory/source
+  note (no `-webkit-line-clamp`), then a text meta line of repository and
+  optional install count. `.fy-feature-card` is a column flex so footer
+  actions align across a stretched grid row. Group
   headings appear only when a repository has two or more skills on the
   current page; those
   cards omit the repeated repository. Skills discovery search/filter chrome
@@ -429,6 +440,9 @@ function ExternalLinkButton(props: {
 | Viewport changes between two- and three-column layouts           | Render exactly one panel: seven unique Skill or seven unique MCP switches |
 | `.fy-feature-discovery-scroll` loses `overflow: auto` on MCP     | MCP discovery cards cannot scroll independently                           |
 | Skills discovery only scrolls the inner card strip               | Page CSS test fails; `.fy-skills-page-discovery` must scroll the page     |
+| Discovery `.fy-feature-card-body` uses `-webkit-line-clamp`      | CSS test fails; description wraps in full                                 |
+| FeaturePagination is a 5-number slice without prev/next          | Shared owner must include 上一页/下一页, ellipsis, and `第 x / n 页`      |
+| A page adds a pagination npm package or a second pager           | Reject; extend `FeaturePagination`; Radix has no Pagination primitive     |
 | WorkBuddy is converted to `AppType` or added as a Provider app   | Type/runtime test fails; WorkBuddy stays Skills/MCP-domain only         |
 | Discover/docs or Skill repo is opened without ExternalLinkButton | Component test fails; the click must hit `settings.openExternal`        |
 | A second HTTP(S) jump starts while one is in flight              | Ignored; only the in-flight control shows pending copy                  |
@@ -508,7 +522,8 @@ git diff --check
   Skill repo clicks through `ExternalLinkButton` → `settings.openExternal`,
   header install-target tabs in that same order, flex list overlay, one
   shared in-flight lock, Skills discovery page-2 offset 20, search resetting
-  to page 1, `FeaturePagination` selection, Skills page-level discovery
+  to page 1, `FeaturePagination` selection plus prev/next and ellipsis,
+  discovery cards without `-webkit-line-clamp`, Skills page-level discovery
   scroll, MCP `.fy-feature-discovery-scroll` overflow, and no overflow on
   `.fy-feature-detail-scroll`.
 - Browser tests cover `900x600`, `1152x640`, `1232x700`, and `1440x900`, with
@@ -671,4 +686,37 @@ discoverPage: (request) =>
 .fy-feature-discovery-scroll {
   overflow: auto;
 }
+```
+
+Wrong: clamp Discover card copy and hand-roll a five-number page slice.
+
+```css
+.fy-feature-card-body {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+}
+```
+
+```tsx
+{pages.slice(page - 3, page + 2).map((n) => (
+  <button key={n}>{n}</button>
+))}
+```
+
+Correct: let the description wrap, stretch cards in the grid, and reuse
+`FeaturePagination` (status, 上一页 / 下一页, ellipsis).
+
+```css
+.fy-feature-card-body {
+  flex: 1 1 auto;
+}
+```
+
+```tsx
+<FeaturePagination
+  page={page}
+  totalPages={totalPages}
+  ariaLabel="仓库 Skills 分页"
+  onPageChange={setPage}
+/>
 ```

@@ -103,6 +103,15 @@ export function FeatureListItem({
   ariaLabel?: string;
 }): JSX.Element;
 
+export type FeaturePaginationItem =
+  | { type: "page"; page: number }
+  | { type: "ellipsis"; id: "start" | "end" };
+
+export function buildFeaturePaginationItems(
+  page: number,
+  totalPages: number,
+): FeaturePaginationItem[];
+
 export function FeaturePagination({
   page,
   totalPages,
@@ -115,6 +124,16 @@ export function FeaturePagination({
   ariaLabel: string;
 }): JSX.Element | null;
 ```
+
+`FeaturePagination` is the only numbered pager. It hides when
+`totalPages <= 1`. Visible chrome is a live status (`第 x / n 页`),
+上一页 / 下一页 (disabled at the ends), numbered page buttons with
+`aria-current="page"` on the current page, and `…` ellipsis when
+`totalPages > 7` (`1 … current±1 … last`). Do not add a pagination npm
+package: Radix primitives have no Pagination (closed `not_planned`);
+shadcn Pagination is a copy recipe, not a dependency; MUI / Ant Design
+conflict with `--fy-*` tokens. Extend this owner with `Button` and
+Phosphor CSR carets.
 
 Related shared owners already in place: `SelectionLens` /
 `SelectionLensGroup` (nav, catalog, UI Lab), `AssignmentPanel` (Skills/MCP
@@ -175,7 +194,8 @@ lists, Skills vs MCP, Prompts vs Memory, and TRAE vs OpenCode model panels.
   rails stay on `CatalogList` / `CatalogListItem`. Primary nav stays on
   `SelectionLensGroup` with `inset={1}`.
 - Skills discovery (repos and skills.sh) uses `FeaturePagination`. Do not
-  hand-roll a second page-number window.
+  hand-roll a second page-number window, and do not add a pagination UI
+  library for prev/next or ellipsis.
 - Skills/MCP assignment stays on `AssignmentPanel` (V2 switch rows), not a
   second AppToggleGroup clone.
 
@@ -195,7 +215,9 @@ lists, Skills vs MCP, Prompts vs Memory, and TRAE vs OpenCode model panels.
 
 Do not create a shared component for a one-off form, a single dialog, or a
 trivial `className` repeat. Do not merge TRAE and OpenCode model panels: they
-already share `modelsShared`, `modelChips`, and `feedback`.
+already share `modelsShared`, `modelChips`, and `feedback`. Do not add
+`react-paginate`, `react-headless-pagination`, MUI Pagination, Ant
+`rc-pagination`, or a shadcn Pagination copy for feature lists.
 
 ## 4. Validation & Error Matrix
 
@@ -209,6 +231,8 @@ already share `modelsShared`, `modelChips`, and `feedback`.
 | New chrome used by two routes is added under `pages/<route>/`                                        | Move it to `shared/ui` before merge                                      |
 | New chrome is parked in `pages/` because "only one consumer today" while a sibling route is expected | Put it in `shared/` on the first commit; do not wait for a third copy    |
 | A page forks FeatureTabs / FeatureSearch / FeatureList "just for this screen"                        | Reject; pass options/copy into the shared owner                          |
+| A page adds a pagination npm package or a second pager for prev/next / ellipsis                      | Reject; extend `FeaturePagination`                                       |
+| Discovery `.fy-feature-card-body` uses `-webkit-line-clamp`                                          | CSS test fails; card copy wraps in full                                  |
 | Page invents a second Tauri invoke for an existing FeaturePort command                               | Use the port; leftover `src/lib/api` is the name reference only          |
 
 ## 5. Good / Base / Bad Cases
@@ -233,8 +257,11 @@ mise run test:v2
 
 - Unit tests cover `FeatureTabs` selection, `FeatureSearch` change / clear /
   Escape (same assertions as leftover `ManagementListSearch`),
-  `FeatureListItem` `aria-current`, and `FeaturePagination` current-page
-  `aria-current` plus the discovery-scroll CSS contract.
+  `FeatureListItem` `aria-current`, `buildFeaturePaginationItems` windows
+  (full set when `totalPages <= 7`; first/last plus ellipsis otherwise),
+  `FeaturePagination` current-page `aria-current`, 上一页 / 下一页 disabled
+  at the ends, status copy `第 x / n 页`, discovery cards without
+  `-webkit-line-clamp`, and the discovery-scroll CSS contract.
 - Architecture tests prove Skills/MCP/Memory/Prompts/Discovery/model search
   import `FeatureTabs` / `FeatureSearch` / `FeatureList` as required, that
   Skills/MCP/Memory do not contain `className="fy-feature-tab"` literals, and
@@ -261,4 +288,21 @@ Correct: shared V2 chrome; leftover is a behavior reference.
 <FeatureSearch ariaLabel="搜索已安装 Skills" placeholder="..." value={search} onValueChange={setSearch} />
 <FeatureList id="skills-installed-list">{items}</FeatureList>
 <FeaturePagination page={page} totalPages={totalPages} ariaLabel="仓库 Skills 分页" onPageChange={setPage} />
+```
+
+Wrong: add a pagination library because Radix has no primitive.
+
+```ts
+import { Pagination } from "react-headless-pagination";
+```
+
+Correct: extend the shared owner; keep the existing props.
+
+```tsx
+<FeaturePagination
+  page={page}
+  totalPages={totalPages}
+  ariaLabel="仓库 Skills 分页"
+  onPageChange={setPage}
+/>
 ```

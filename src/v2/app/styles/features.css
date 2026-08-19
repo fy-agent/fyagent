@@ -373,12 +373,14 @@
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
+  align-items: stretch;
 }
 .fy-feature-card {
-  display: grid;
-  align-content: start;
+  display: flex;
+  flex-direction: column;
   gap: 10px;
   min-width: 0;
+  height: 100%;
   padding: 15px;
   border: 1px solid var(--fy-border);
   border-radius: 14px;
@@ -409,10 +411,7 @@
   line-height: 1.5;
 }
 .fy-feature-card-body {
-  display: -webkit-box;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
+  flex: 1 1 auto;
 }
 .fy-feature-card footer {
   display: flex;
@@ -423,9 +422,35 @@
 .fy-feature-pagination {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px 16px;
+  margin-top: 18px;
+}
+.fy-feature-pagination-status {
+  margin: 0;
+  color: var(--fy-text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.fy-feature-pagination-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   justify-content: center;
   gap: 6px;
-  margin-top: 18px;
+}
+.fy-feature-pagination-page {
+  min-width: 36px;
+  padding: 0 10px;
+}
+.fy-feature-pagination-ellipsis {
+  display: inline-flex;
+  min-width: 28px;
+  justify-content: center;
+  color: var(--fy-text-secondary);
+  font-size: 13px;
+  letter-spacing: 0.08em;
 }
 .fy-feature-pagination .fy-control-button[aria-current="page"] {
   color: var(--fy-accent-ink);
