@@ -18,7 +18,7 @@
   align-items: center;
 }
 
-.fy-skills-page .fy-feature-workspace > .fy-feature-detail-scroll {
+.fy-skills-page .fy-feature-workspace > .fy-feature-discovery-scroll {
   display: grid;
   gap: 18px;
   min-height: 0;
@@ -26,14 +26,14 @@
 
 .fy-skills-page
   .fy-feature-workspace
-  > .fy-feature-detail-scroll
+  > .fy-feature-discovery-scroll
   > .fy-feature-description {
   margin: 0;
 }
 
 .fy-skills-page
   .fy-feature-workspace
-  > .fy-feature-detail-scroll
+  > .fy-feature-discovery-scroll
   > section
   > h3 {
   margin: 0 0 10px;

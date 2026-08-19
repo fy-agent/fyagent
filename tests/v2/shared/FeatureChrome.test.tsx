@@ -5,6 +5,7 @@ import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import { FeatureList, FeatureListItem } from "@/v2/shared/ui/FeatureList";
+import { FeaturePagination } from "@/v2/shared/ui/FeaturePagination";
 import { FeatureSearch } from "@/v2/shared/ui/FeatureSearch";
 import { FeatureTabs } from "@/v2/shared/ui/FeatureTabs";
 
@@ -125,5 +126,59 @@ describe("FeatureList", () => {
     expect(featuresCss).not.toMatch(
       /\.fy-feature-list\s*\{[^}]*display:\s*grid;/s,
     );
+  });
+});
+
+describe("FeaturePagination", () => {
+  it("keeps the current page selected and reports the next page", () => {
+    function Pager() {
+      const [page, setPage] = useState(5);
+      return (
+        <FeaturePagination
+          page={page}
+          totalPages={8}
+          ariaLabel="演示分页"
+          onPageChange={setPage}
+        />
+      );
+    }
+
+    render(<Pager />);
+    const current = screen.getByRole("button", { name: "5" });
+    expect(current).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("button", { name: "3" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "7" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "2" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "6" }));
+    expect(screen.getByRole("button", { name: "6" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+  });
+
+  it("hides when there is only one page", () => {
+    render(
+      <FeaturePagination
+        page={1}
+        totalPages={1}
+        ariaLabel="演示分页"
+        onPageChange={() => undefined}
+      />,
+    );
+    expect(screen.queryByRole("navigation", { name: "演示分页" })).toBeNull();
+  });
+
+  it("gives discovery cards an independent scroller and leaves detail scroll without overflow", () => {
+    const featuresCss = readFileSync(
+      path.resolve(process.cwd(), "src", "v2", "app", "styles", "features.css"),
+      "utf8",
+    );
+    expect(featuresCss).toMatch(
+      /\.fy-feature-discovery-scroll\s*\{[^}]*overflow:\s*auto;/s,
+    );
+    const detailBlock =
+      featuresCss.match(/\.fy-feature-detail-scroll\s*\{[^}]*\}/s)?.[0] ?? "";
+    expect(detailBlock).toContain(".fy-feature-detail-scroll");
+    expect(detailBlock).not.toMatch(/overflow\s*:/);
   });
 });

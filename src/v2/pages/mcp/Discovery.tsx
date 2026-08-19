@@ -122,7 +122,7 @@ export function McpDiscovery({
   };
 
   return (
-    <div className="fy-mcp-discovery">
+    <div className="fy-feature-discovery-scroll">
       <div className="fy-feature-toolbar">
         <FeatureSearch
           ariaLabel="搜索精选 MCP"

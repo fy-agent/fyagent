@@ -8,6 +8,8 @@ import type {
   AgentCatalogResult,
   AgentCatalogId,
   DiscoverableSkill,
+  DiscoverableSkillsPage,
+  DiscoverSkillsPageRequest,
   FeatureSettings,
   ImportSkillSelection,
   InstalledSkill,
@@ -158,7 +160,9 @@ export interface SkillsPort {
   toggleApp(id: string, app: SkillTargetId, enabled: boolean): Promise<boolean>;
   scanUnmanaged(): Promise<UnmanagedSkill[]>;
   importFromApps(imports: ImportSkillSelection[]): Promise<InstalledSkill[]>;
-  discover(): Promise<DiscoverableSkill[]>;
+  discoverPage(
+    request: DiscoverSkillsPageRequest,
+  ): Promise<DiscoverableSkillsPage>;
   checkUpdates(): Promise<SkillUpdateInfo[]>;
   update(id: string): Promise<InstalledSkill>;
   migrateStorage(target: "fyagent" | "unified"): Promise<SkillMigrationResult>;

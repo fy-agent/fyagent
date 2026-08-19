@@ -90,7 +90,7 @@ export function createBrowserFeaturePorts(): FeaturePorts {
       toggleApp: rejectNativeOnly,
       scanUnmanaged: async () => [],
       importFromApps: rejectNativeOnly,
-      discover: async () => [],
+      discoverPage: async () => ({ skills: [], totalCount: 0 }),
       checkUpdates: async () => [],
       update: rejectNativeOnly,
       migrateStorage: rejectNativeOnly,

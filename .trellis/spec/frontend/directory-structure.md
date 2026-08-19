@@ -23,7 +23,7 @@ src/
    |- shared/
    |  |- config/              # navigation source
    |  |- assets/              # agent and app icons
-   |  |- ui/                  # primitives, catalog, split, SelectionLens, FeatureTabs/Search/List, ExternalLinkButton
+   |  |- ui/                  # primitives, catalog, split, SelectionLens, FeatureTabs/Search/List/Pagination, ExternalLinkButton
    |  |- features/            # ports, types, queries, FeatureProvider
    |  |- platform/            # tauri/browser adapters, runtime, lifecycle
    |  |- design-system/
@@ -38,8 +38,9 @@ src/
   `shared/platform` adapters.
 - Reuse is the default. Put chrome, helpers, and hooks that another route or
   later sibling module will use under `shared/ui` or `shared/features` on the
-  first commit. Exclusive tracks, management search, and feature lists use
-  `FeatureTabs` / `FeatureSearch` / `FeatureList`. See
+  first commit. Exclusive tracks, management search, feature lists, and
+  numbered feature pagination use `FeatureTabs` / `FeatureSearch` /
+  `FeatureList` / `FeaturePagination`. See
   [Frontend Reuse](./reuse.md).
 
 ## Leftover V1 Layout

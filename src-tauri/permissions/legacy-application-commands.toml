@@ -69,6 +69,7 @@ commands.allow = [
   "disable_current_omo",
   "disable_current_omo_slim",
   "discover_available_skills",
+  "discover_available_skills_page",
   "enable_prompt",
   "ensure_claude_desktop_official_provider",
   "ensure_codex_official_provider",

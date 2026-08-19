@@ -482,11 +482,17 @@ describe("V2 feature ports", () => {
     );
     invoke.mockImplementation(async (command: string) => {
       if (command === "get_traework_model_ids") {
-        return { modelIds: ["model-a"], revision: "trae-rev", truncated: false };
+        return {
+          modelIds: ["model-a"],
+          revision: "trae-rev",
+          truncated: false,
+        };
       }
       if (command === "get_opencode_model_snapshot") {
         return {
-          providers: [{ id: "gateway", name: "Gateway", modelIds: ["model-a"] }],
+          providers: [
+            { id: "gateway", name: "Gateway", modelIds: ["model-a"] },
+          ],
           revision: "oc-rev",
         };
       }
@@ -1037,7 +1043,12 @@ describe("V2 feature ports", () => {
     await ports.skills.importFromApps([
       { directory: "skill-a", apps: skillApps },
     ]);
-    await ports.skills.discover();
+    await ports.skills.discoverPage({
+      query: "",
+      status: "all",
+      limit: 20,
+      offset: 0,
+    });
     await ports.skills.checkUpdates();
     await ports.skills.update("skill-a");
     await ports.skills.migrateStorage("unified");
@@ -1060,14 +1071,26 @@ describe("V2 feature ports", () => {
       ["delete_skill_backup", { backupId: "backup-a" }],
       ["install_skill_unified", { skill, currentApp: "claude" }],
       ["uninstall_skill_unified", { id: "skill-a" }],
-      ["restore_skill_backup", { backupId: "backup-a", currentApp: "opencode" }],
+      [
+        "restore_skill_backup",
+        { backupId: "backup-a", currentApp: "opencode" },
+      ],
       ["toggle_skill_app", { id: "skill-a", app: "codex", enabled: true }],
       ["scan_unmanaged_skills"],
       [
         "import_skills_from_apps",
         { imports: [{ directory: "skill-a", apps: skillApps }] },
       ],
-      ["discover_available_skills"],
+      [
+        "discover_available_skills_page",
+        {
+          query: "",
+          repo: null,
+          status: "all",
+          limit: 20,
+          offset: 0,
+        },
+      ],
       ["check_skill_updates"],
       ["update_skill", { id: "skill-a" }],
       ["migrate_skill_storage", { target: "unified" }],

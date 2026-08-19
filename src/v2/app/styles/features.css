@@ -270,6 +270,10 @@
 .fy-feature-workspace > .fy-feature-toolbar {
   flex: 0 0 auto;
 }
+.fy-feature-workspace > .fy-feature-tabs,
+.fy-feature-workspace > .fy-feature-pagination {
+  flex: 0 0 auto;
+}
 .fy-feature-workspace > .fy-feature-master,
 .fy-feature-workspace > .fy-split-panes {
   flex: 1 1 auto;
@@ -289,6 +293,17 @@
   flex-direction: column;
   gap: 16px;
   min-height: 0;
+}
+.fy-feature-discovery-scroll {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
 }
 .fy-feature-detail-header {
   display: grid;

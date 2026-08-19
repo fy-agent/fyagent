@@ -72,6 +72,24 @@ export interface DiscoverableSkill {
   repoBranch: string;
 }
 
+export const SKILL_DISCOVERY_PAGE_SIZE = 20;
+export const SKILL_DISCOVERY_MAX_PAGE_SIZE = 50;
+
+export type SkillDiscoveryStatus = "all" | "installed" | "uninstalled";
+
+export interface DiscoverableSkillsPage {
+  skills: DiscoverableSkill[];
+  totalCount: number;
+}
+
+export interface DiscoverSkillsPageRequest {
+  query: string;
+  repo?: string;
+  status: SkillDiscoveryStatus;
+  limit: number;
+  offset: number;
+}
+
 export interface SkillsShSkill {
   key: string;
   name: string;

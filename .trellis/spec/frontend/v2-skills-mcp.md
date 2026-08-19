@@ -20,9 +20,9 @@ shared/platform/tauri  -> @tauri-apps/api/core.invoke
 Legacy renderer modules are not a compatibility layer for V2. Do not import
 from `src/components`, `src/hooks`, `src/lib`, or `src/i18n`. Reuse is the
 default: Skills and MCP must share `FeatureTabs`, `FeatureSearch`,
-`FeatureList`, `AssignmentPanel`, and `SplitPanes`. New chrome that the other
-page will need goes in `src/v2/shared/ui` on the first commit. See
-[Frontend Reuse](./reuse.md).
+`FeatureList`, `FeaturePagination`, `AssignmentPanel`, and `SplitPanes`. New
+chrome that the other page will need goes in `src/v2/shared/ui` on the first
+commit. See [Frontend Reuse](./reuse.md).
 
 ## 2. Signatures
 
@@ -94,7 +94,9 @@ interface SkillsPort {
   ): Promise<boolean>;
   scanUnmanaged(): Promise<UnmanagedSkill[]>;
   importFromApps(imports: ImportSkillSelection[]): Promise<InstalledSkill[]>;
-  discover(): Promise<DiscoverableSkill[]>;
+  discoverPage(
+    request: DiscoverSkillsPageRequest,
+  ): Promise<DiscoverableSkillsPage>;
   checkUpdates(): Promise<SkillUpdateInfo[]>;
   update(id: string): Promise<InstalledSkill>;
   migrateStorage(target: "fyagent" | "unified"): Promise<SkillMigrationResult>;
@@ -113,6 +115,53 @@ interface SkillsPort {
   ): Promise<InstalledSkill[]>;
 }
 
+const SKILL_DISCOVERY_PAGE_SIZE = 20;
+const SKILL_DISCOVERY_MAX_PAGE_SIZE = 50;
+
+type SkillDiscoveryStatus = "all" | "installed" | "uninstalled";
+
+interface DiscoverableSkillsPage {
+  skills: DiscoverableSkill[];
+  totalCount: number;
+}
+
+interface DiscoverSkillsPageRequest {
+  query: string;
+  repo?: string;
+  status: SkillDiscoveryStatus;
+  limit: number;
+  offset: number;
+}
+
+function FeaturePagination(props: {
+  page: number;
+  totalPages: number;
+  onPageChange: (page: number) => void;
+  ariaLabel: string;
+}): JSX.Element | null;
+
+```
+
+Host command and DTO (camelCase on the wire):
+
+```rust
+discover_available_skills_page(
+    query: String,
+    repo: Option<String>, // None / "" / "all" → no repo filter
+    status: String,       // "all" | "installed" | "uninstalled"
+    limit: usize,         // 0 → 20; >50 → 50
+    offset: usize,
+) -> Result<DiscoverableSkillsPage, String>
+
+struct DiscoverableSkillsPage {
+    skills: Vec<DiscoverableSkill>,
+    total_count: usize, // serde rename_all = camelCase → totalCount
+}
+
+discover_available_skills() -> Result<Vec<DiscoverableSkill>, String> // leftover V1 only
+```
+
+```ts
 interface McpPort {
   getAll(): Promise<Record<string, McpServer>>;
   upsert(server: McpServer): Promise<void>;
@@ -169,6 +218,27 @@ function ExternalLinkButton(props: {
   Fetch use `uvx`. The legacy renderer adapter only re-exports this source.
 - Feature tests inject ports or a page-load Tauri IPC fixture. Production code
   must not contain test routes, fixture switches, or synthetic data.
+- V2 Skills discovery calls `discover_available_skills_page` through
+  `SkillsPort.discoverPage`. It must not invoke leftover
+  `discover_available_skills`. That full-list command remains for V1 only and
+  keeps returning `Vec<DiscoverableSkill>`. Default page size is 20; the host
+  clamps `limit == 0` to 20 and `limit > 50` to 50. Invalid `status` is a
+  command error. `offset` past the filtered total returns `skills: []` with
+  the filtered `totalCount`. Search, enabled-repo filter, and install status
+  run on the host before the slice. The host trims `query` before matching.
+  Install matching is directory tail plus
+  case-insensitive `repoOwner`/`repoName` (missing installed owner/name as
+  `""`). Repository filter tabs come from enabled `getRepos()`, not from the
+  current page. Changing search, repo, status, or source resets to page 1.
+  Reset the page in those `onChange` / `onValueChange` handlers. Do not
+  `setPage(1)` inside a `useEffect` on the query string;
+  `react-hooks/set-state-in-effect` fails. Search is debounced (~300ms) for
+  the request, but the page index resets on the keystroke.
+
+- SkillService caches a successful enabled-repo scan in process for 5 minutes
+  under a fingerprint of sorted `owner/name/branch`. Cache misses still scan
+  via the existing zip path. `add_skill_repo` and `remove_skill_repo` must
+  invalidate that cache. IPC still returns only the requested page.
 
 ### State and writes
 
@@ -223,8 +293,10 @@ function ExternalLinkButton(props: {
   and assignment, laid out with the shared `SplitPanes` chassis (14px
   gutter, pointer/keyboard resize, independent pane scroll). Installed lists
   use `FeatureList` / `FeatureListItem`; installed/discovery and MCP editor
-  tracks use `FeatureTabs`; management search uses `FeatureSearch`. Do not
-  add a page-local tabs, search, or list clone. `.fy-feature-list` is a
+  tracks use `FeatureTabs`; management search uses `FeatureSearch`. Skills
+  discovery (repos and skills.sh) and any later paged feature list use
+  `FeaturePagination`; do not clone the page-number window. Do not
+  add a page-local tabs, search, list, or pagination clone. `.fy-feature-list` is a
   column flex track so `SelectionLens` (absolute overlay) is not a grid item
   and list rows do not collapse onto one another. Do not restore
   `display: grid` on that class. Each column
@@ -234,7 +306,7 @@ function ExternalLinkButton(props: {
   (`overflow: auto`), matching catalog rails. Do not leave `height: 100%`
   on a feature panel without overflow, or assignment rows and cards paint
   past the panel chrome. Assignment rows wrap (`flex-wrap: wrap`,
-  `min-width: 0`) so “全开 / 全关” stay inside the pane.   The Discover tab
+  `min-width: 0`) so “全开 / 全关” stay inside the pane. The Discover tab
   stays a card grid and must not use this master-detail chassis. Discovery
   chrome puts search first (`FeatureSearch`), then source/status
   `FeatureTabs`. The install-target `FeatureTabs` live in the page header
@@ -242,11 +314,16 @@ function ExternalLinkButton(props: {
   use a `<select>` or a page-local tab clone. Result copy names the current
   install target with the catalog label (`Claude Code`, not `Claude`).
   Repository chips appear only when more
-  than one repository is loaded. Skill Discover cards show the name and
+  than one enabled repository is loaded from `getRepos()`. Skill Discover
+  cards show the name and
   install state in the header, a clamped description or directory/source
   note, then a text meta line of repository and optional install count. Group
-  headings appear only when a repository has two or more skills; those
-  cards omit the repeated repository. Cards open a document URL as
+  headings appear only when a repository has two or more skills on the
+  current page; those
+  cards omit the repeated repository. Skills discovery search/filter chrome
+  and `FeaturePagination` stay outside the card scroller; only the result
+  cards use `.fy-feature-discovery-scroll`. MCP discovery uses that same
+  shared class. Do not add overflow to `.fy-feature-detail-scroll`. Cards open a document URL as
   “说明”, otherwise the GitHub repository as “仓库”, through
   `ExternalLinkButton`. Do not group cards by wrapping a second
   card around `DiscoveryCard`. Skill uninstall and MCP edit/delete stay
@@ -288,7 +365,9 @@ function ExternalLinkButton(props: {
 - User-visible CSS is namespaced under `.fy-feature-*` or `.fy-control-*`.
   Skills and MCP own only the page wrappers `.fy-skills-page` and
   `.fy-mcp-page`; do not invent a parallel `.fy-skills-*` / `.fy-mcp-*` theme.
-  Consume only `--fy-*` tokens.
+  Consume only `--fy-*` tokens. Discovery card grids scroll with shared
+  `.fy-feature-discovery-scroll` (`overflow: auto`). `.fy-feature-detail-scroll`
+  remains the installed-detail column and must not gain overflow for this job.
 - The shared assignment panel resolves all V2 Skill and MCP targets through
   `skillTargetIconById` / `getSkillTargetIcon`. MCP passes `MCP_TARGETS`
   explicitly and still goes through that map. `supportedAppIconById`
@@ -334,13 +413,26 @@ function ExternalLinkButton(props: {
 | `.fy-feature-list` is restored to CSS Grid                       | List rows overlap because `SelectionLens` occupies a grid track         |
 | A supported app is missing from the local icon map               | Type/asset test fails; never render a remote fallback or broken image   |
 | An assignment icon contributes an accessible name                | Component accessibility test fails; switch text remains the sole name   |
-| Viewport changes between two- and three-column layouts           | Render exactly one panel: six unique Skill or six unique MCP switches |
-| WorkBuddy is converted to `AppType` or added as a Provider app   | Type/runtime test fails; WorkBuddy stays Skills/MCP-domain only        |
+| Viewport changes between two- and three-column layouts           | Render exactly one panel: six unique Skill or six unique MCP switches   |
+| WorkBuddy is converted to `AppType` or added as a Provider app   | Type/runtime test fails; WorkBuddy stays Skills/MCP-domain only         |
 | Discover/docs or Skill repo is opened without ExternalLinkButton | Component test fails; the click must hit `settings.openExternal`        |
 | A second HTTP(S) jump starts while one is in flight              | Ignored; only the in-flight control shows pending copy                  |
+| V2 Skills discovery calls leftover `discover_available_skills`   | Adapter/page test fails; use `discoverPage` / `_page`                   |
+| Browser `discoverPage` read                                      | `{ skills: [], totalCount: 0 }` with no zip/scan side effect            |
+| `limit == 0` / `limit > 50`                                      | Host uses 20 / 50                                                       |
+| Discovery `status` is not `all\|installed\|uninstalled`          | Command error; do not default to all                                    |
+| `offset` is past the filtered total                              | `skills: []` and unchanged filtered `totalCount`                        |
+| Search/repo/status change on Skills discovery                    | Host filters then slices; UI returns to page 1                          |
+| `.fy-feature-detail-scroll` is given overflow for discovery      | Skills toolbars scroll away; use `.fy-feature-discovery-scroll`         |
+| `.fy-feature-discovery-scroll` loses `overflow: auto`            | Discovery cards cannot scroll independently                             |
+| Repo filter tabs are derived from the current Skill page         | Use enabled `getRepos()`; chips only if more than one enabled repo      |
 
 ## 5. Good / Base / Bad Cases
 
+- **Good:** Skills discovery requests `{ query, repo, status, limit: 20, offset }`
+  from `discover_available_skills_page`, paints only that page, and shares
+  `FeaturePagination` with skills.sh. Filter changes return to page 1. MCP and
+  Skills discovery both scroll through `.fy-feature-discovery-scroll`.
 - **Good:** A user toggles Codex for one Skill. The UI invokes
   `toggle_skill_app` with `{ id, app: "codex", enabled }`, locks only
   conflicting writes, then rereads installed Skills before settling. The row
@@ -356,12 +448,14 @@ function ExternalLinkButton(props: {
 - **Good:** Enabling QoderWork MCP writes `~/.qoderworkcn/mcp.json`; enabling
   TRAE writes TRAE SOLO CN `User/mcp.json`. Missing home and file skips write.
 - **Base:** A browser preview has no fixture. Both pages show their native-safe
-  empty states; attempts to mutate reject instead of simulating persistence.
+  empty states; `discoverPage` returns an empty page; attempts to mutate reject
+  instead of simulating persistence.
 - **Bad:** MCP search uses `JSON.stringify(server)`, assignment lists are
   sorted A–Z, a toast prints an invoke
   error containing headers, quick mode reconstructs the whole server object,
-  or both responsive assignment panels remain mounted. Each violates a
-  security, compatibility, or accessibility contract.
+  both responsive assignment panels remain mounted, or V2 discovery pulls the
+  full leftover `discover_available_skills` list into the renderer. Each
+  violates a security, compatibility, or accessibility contract.
 
 ## 6. Tests Required
 
@@ -380,20 +474,27 @@ git diff --check
 - Adapter tests assert every command name, exact camel-case payload, return,
   and error propagation across Skills, MCP, Settings, and external links,
   including V2 six-value Skill and six-value MCP identity plus leftover
-  backend Gemini / Grok / Hermes flag round-trip.
+  backend Gemini / Grok / Hermes flag round-trip, and
+  `discover_available_skills_page` rather than the leftover full-list command.
 - Pure tests cover public-field search, secret exclusion, URL/args redaction,
   selection convergence, repository parsing, installed-key matching,
   pagination, env/header/args parsing, advanced JSON validation, extension
   retention, and each MCP catalog builder. Catalog `apps` JSON key order and
-  `DEFAULT_NEW_APPS` must match Agent catalog order.
+  `DEFAULT_NEW_APPS` must match Agent catalog order. Rust unit tests cover
+  discovery limit clamp, query/repo/status filters, directory-tail install
+  match, and out-of-range offset without hitting the network. Adding
+  `discover_available_skills_page` increments the host invoke-handler freeze
+  in `application_acl_covers_every_registered_command_without_remote_access`.
 - Component tests cover empty, loading, error, pending, write/refetch, dialogs,
   assignment, destructive confirmation, secret-safe presentation, an exhaustive
   six-ID Skill/MCP icon map, decodable local assets, decorative
   icon semantics, six unique Skill switches, six unique MCP switches in catalog
   order, Discover/docs and
   Skill repo clicks through `ExternalLinkButton` → `settings.openExternal`,
-  header install-target tabs in that same order, flex list overlay, and one
-  shared in-flight lock.
+  header install-target tabs in that same order, flex list overlay, one
+  shared in-flight lock, Skills discovery page-2 offset 20, search resetting
+  to page 1, `FeaturePagination` selection, `.fy-feature-discovery-scroll`
+  overflow, and no overflow on `.fy-feature-detail-scroll`.
 - Browser tests cover `900x600`, `1152x640`, `1232x700`, and `1440x900`, with
   populated two-/three-column layouts, a single correctly-sized assignment
   panel whose switch accessible names match catalog order, visible split
@@ -521,4 +622,37 @@ Correct: the same `ExternalLinkButton` used by Skills, Agents, and Models.
 
 ```tsx
 <ExternalLinkButton url={item.docs}>文档</ExternalLinkButton>
+```
+
+Wrong: V2 discovery pulls the leftover full list, or discovery cards reuse the
+detail column scroller.
+
+```ts
+discover: () => invoke("discover_available_skills");
+```
+
+```css
+.fy-skills-page .fy-feature-workspace > .fy-feature-detail-scroll {
+  overflow: auto;
+}
+```
+
+Correct: page through `discoverPage`, keep leftover `discover_available_skills`
+for V1, and scroll discovery cards with the shared class.
+
+```ts
+discoverPage: (request) =>
+  invoke("discover_available_skills_page", {
+    query: request.query,
+    repo: request.repo ?? null,
+    status: request.status,
+    limit: request.limit,
+    offset: request.offset,
+  });
+```
+
+```css
+.fy-feature-discovery-scroll {
+  overflow: auto;
+}
 ```

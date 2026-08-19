@@ -325,7 +325,12 @@ describe("FyAgent V2 architecture boundary", () => {
     }> = [
       {
         relative: "pages/skills/Page.tsx",
-        owners: ["FeatureTabs", "FeatureSearch", "FeatureList"],
+        owners: [
+          "FeatureTabs",
+          "FeatureSearch",
+          "FeatureList",
+          "FeaturePagination",
+        ],
         forbidden: ['className="fy-feature-tab"'],
       },
       {
@@ -362,9 +367,7 @@ describe("FyAgent V2 architecture boundary", () => {
           : [`${relative} does not import ${owner}`],
       );
       const handRolled = forbidden.flatMap((token) =>
-        source.includes(token)
-          ? [`${relative} still hand-rolls ${token}`]
-          : [],
+        source.includes(token) ? [`${relative} still hand-rolls ${token}`] : [],
       );
       return [...missing, ...handRolled];
     });

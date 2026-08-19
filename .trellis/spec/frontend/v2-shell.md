@@ -275,8 +275,9 @@ L3 interactive glass       selected lens, tools, tooltip, and popover
   the navigation track, tools, popovers, content plane, or background.
 - Use `SelectionLens` for interruptible exclusive option tracks: primary nav,
   catalog lists, feature tabs, feature lists, and UI Lab tabs. Feature pages
-  must go through `FeatureTabs` / `FeatureList` rather than hand-rolling
-  `fy-feature-tab` or `fy-feature-list-item`. One
+  must go through `FeatureTabs` / `FeatureList` / `FeaturePagination` rather
+  than hand-rolling `fy-feature-tab`, `fy-feature-list-item`, or a page-local
+  page-number window. One
   `SelectionLensGroup` per track; at most one active pill per group. A page
   may host several groups. Do not use it for Switch, Checkbox, `<select>`,
   pagination, or independent tool buttons. Management-list search uses

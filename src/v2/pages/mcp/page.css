@@ -15,15 +15,3 @@
   font-size: 12px;
   line-height: 1.5;
 }
-
-.fy-mcp-discovery {
-  display: grid;
-  align-content: start;
-  gap: 14px;
-  min-width: 0;
-  min-height: 0;
-  flex: 1 1 auto;
-  overflow: auto;
-  overscroll-behavior: contain;
-  scrollbar-width: thin;
-}

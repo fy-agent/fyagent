@@ -18,7 +18,7 @@ cleanup pass after duplication already shipped.
    a new file.
 2. Existing shared chrome that already matches the job is mandatory. Do not
    fork a page-local copy of `FeatureTabs`, `FeatureSearch`, `FeatureList`,
-   `AssignmentPanel`, `SelectionLens` / `SelectionLensGroup`, `SplitPanes`,
+   `FeaturePagination`, `AssignmentPanel`, `SelectionLens` / `SelectionLensGroup`, `SplitPanes`,
    `CatalogMasterDetail`, `SecretInput`, `ExternalLinkButton`, FeaturePorts,
    or the TRAE/OpenCode `modelsShared` / `modelChips` helpers.
 3. Before creating a **new** component, helper, hook, or CSS recipe, ask
@@ -101,6 +101,18 @@ export function FeatureListItem({
   children?: ReactNode;
   ariaLabel?: string;
 }): JSX.Element;
+
+export function FeaturePagination({
+  page,
+  totalPages,
+  onPageChange,
+  ariaLabel,
+}: {
+  page: number;
+  totalPages: number;
+  onPageChange: (page: number) => void;
+  ariaLabel: string;
+}): JSX.Element | null;
 ```
 
 Related shared owners already in place: `SelectionLens` /
@@ -128,21 +140,22 @@ Before writing a new component, helper, hook, CSS class, or parser:
    behavior and command names.
 3. Reuse or extend the existing owner. Do not copy the JSX.
 
-If the job is an exclusive option track, management-list search, or a
-feature master list, the owner already exists: `FeatureTabs`,
-`FeatureSearch`, `FeatureList`. Use them. Do not add a second recipe.
+If the job is an exclusive option track, management-list search, a
+feature master list, or numbered feature pagination, the owner already exists:
+`FeatureTabs`, `FeatureSearch`, `FeatureList`, `FeaturePagination`. Use them.
+Do not add a second recipe.
 
 ### New component placement
 
 Ask, before the file is created. "Later" and "expected next" count as a
 second consumer:
 
-| Will this be used by...                                      | Put it in                                      |
-| ------------------------------------------------------------ | ---------------------------------------------- |
-| Two or more current V2 routes or shared widgets              | `src/v2/shared/ui` or `shared/features` now    |
-| One route today, but a sibling route/module is expected next | `shared/**` now; do not park it in `pages/`    |
-| Only this page, with no plausible second consumer            | `pages/<route>/`                               |
-| Leftover V1 surfaces only                                    | `src/components/` or `src/lib/`; never V2      |
+| Will this be used by...                                      | Put it in                                   |
+| ------------------------------------------------------------ | ------------------------------------------- |
+| Two or more current V2 routes or shared widgets              | `src/v2/shared/ui` or `shared/features` now |
+| One route today, but a sibling route/module is expected next | `shared/**` now; do not park it in `pages/` |
+| Only this page, with no plausible second consumer            | `pages/<route>/`                            |
+| Leftover V1 surfaces only                                    | `src/components/` or `src/lib/`; never V2   |
 
 "Expected next" includes the other five product routes, catalog vs feature
 lists, Skills vs MCP, Prompts vs Memory, and TRAE vs OpenCode model panels.
@@ -159,6 +172,8 @@ lists, Skills vs MCP, Prompts vs Memory, and TRAE vs OpenCode model panels.
 - Feature master lists use `FeatureList` / `FeatureListItem`. Catalog agent
   rails stay on `CatalogList` / `CatalogListItem`. Primary nav stays on
   `SelectionLensGroup` with `inset={1}`.
+- Skills discovery (repos and skills.sh) uses `FeaturePagination`. Do not
+  hand-roll a second page-number window.
 - Skills/MCP assignment stays on `AssignmentPanel` (V2 switch rows), not a
   second AppToggleGroup clone.
 
@@ -182,21 +197,22 @@ already share `modelsShared`, `modelChips`, and `feedback`.
 
 ## 4. Validation & Error Matrix
 
-| Condition                                                              | Required result                                                                                         |
-| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| A feature page hand-rolls `fy-feature-tab` instead of `FeatureTabs`    | Unit/architecture test fails; use `FeatureTabs`                                                         |
-| Management search is a raw `Input type="search"` on Skills/MCP/Memory/Prompts/Discovery | Use `FeatureSearch`; leftover `ManagementListSearch` stays leftover-only                                |
-| V2 imports leftover `src/components` or `src/lib`                      | Architecture test fails                                                                                 |
-| A second copy of AssignmentPanel / SecretInput / ExternalLinkButton    | Reject; extend the existing shared owner                                                                |
-| New chrome used by two routes is added under `pages/<route>/`          | Move it to `shared/ui` before merge                                                                     |
-| New chrome is parked in `pages/` because "only one consumer today" while a sibling route is expected | Put it in `shared/` on the first commit; do not wait for a third copy                                   |
-| A page forks FeatureTabs / FeatureSearch / FeatureList "just for this screen" | Reject; pass options/copy into the shared owner                                                         |
-| Page invents a second Tauri invoke for an existing FeaturePort command | Use the port; leftover `src/lib/api` is the name reference only                                         |
+| Condition                                                                                            | Required result                                                          |
+| ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| A feature page hand-rolls `fy-feature-tab` instead of `FeatureTabs`                                  | Unit/architecture test fails; use `FeatureTabs`                          |
+| Management search is a raw `Input type="search"` on Skills/MCP/Memory/Prompts/Discovery              | Use `FeatureSearch`; leftover `ManagementListSearch` stays leftover-only |
+| V2 imports leftover `src/components` or `src/lib`                                                    | Architecture test fails                                                  |
+| A second copy of AssignmentPanel / SecretInput / ExternalLinkButton                                  | Reject; extend the existing shared owner                                 |
+| New chrome used by two routes is added under `pages/<route>/`                                        | Move it to `shared/ui` before merge                                      |
+| New chrome is parked in `pages/` because "only one consumer today" while a sibling route is expected | Put it in `shared/` on the first commit; do not wait for a third copy    |
+| A page forks FeatureTabs / FeatureSearch / FeatureList "just for this screen"                        | Reject; pass options/copy into the shared owner                          |
+| Page invents a second Tauri invoke for an existing FeaturePort command                               | Use the port; leftover `src/lib/api` is the name reference only          |
 
 ## 5. Good / Base / Bad Cases
 
 - **Good:** Skills, MCP, Prompts, and Memory all import `FeatureSearch` /
-  `FeatureList`. Skills/MCP/Memory import `FeatureTabs`. A later filter track
+  `FeatureList`. Skills/MCP/Memory import `FeatureTabs`. Skills discovery
+  sources share `FeaturePagination`. A later filter track
   adds one `FeatureTabs` options array, not a new tab component.
 - **Base:** Primary nav and catalog rails keep `SelectionLensGroup` /
   `CatalogListItem` because their geometry differs (`inset={1}`, brand frames).
@@ -213,8 +229,9 @@ mise run test:v2
 ```
 
 - Unit tests cover `FeatureTabs` selection, `FeatureSearch` change / clear /
-  Escape (same assertions as leftover `ManagementListSearch`), and
-  `FeatureListItem` `aria-current`.
+  Escape (same assertions as leftover `ManagementListSearch`),
+  `FeatureListItem` `aria-current`, and `FeaturePagination` current-page
+  `aria-current` plus the discovery-scroll CSS contract.
 - Architecture tests prove Skills/MCP/Memory/Prompts/Discovery/model search
   import `FeatureTabs` / `FeatureSearch` / `FeatureList` as required, that
   Skills/MCP/Memory do not contain `className="fy-feature-tab"` literals, and
@@ -228,7 +245,9 @@ Wrong: park reusable chrome in a page, wait for a third copy, or import leftover
 // pages/skills/SearchField.tsx  — MCP will copy this next
 // import { ManagementListSearch } from "@/components/common/ManagementListSearch";
 <SelectionLensTrack className="fy-feature-tabs" role="tablist">
-  <button className="fy-feature-tab" role="tab">...</button>
+  <button className="fy-feature-tab" role="tab">
+    ...
+  </button>
 </SelectionLensTrack>
 ```
 
@@ -238,4 +257,5 @@ Correct: shared V2 chrome; leftover is a behavior reference.
 <FeatureTabs id="skills-view-tabs" label="Skills 视图" value={tab} onChange={setTab} options={...} />
 <FeatureSearch ariaLabel="搜索已安装 Skills" placeholder="..." value={search} onValueChange={setSearch} />
 <FeatureList id="skills-installed-list">{items}</FeatureList>
+<FeaturePagination page={page} totalPages={totalPages} ariaLabel="仓库 Skills 分页" onPageChange={setPage} />
 ```

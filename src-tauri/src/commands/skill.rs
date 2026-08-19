@@ -7,9 +7,9 @@
 use crate::app_config::{InstalledSkill, SkillTargetId, UnmanagedSkill};
 use crate::error::format_skill_error;
 use crate::services::skill::{
-    DiscoverableSkill, ImportSkillSelection, MigrationResult, Skill, SkillBackupEntry, SkillRepo,
-    SkillService, SkillStorageLocation, SkillUninstallResult, SkillUpdateInfo,
-    SkillsShSearchResult,
+    DiscoverAvailablePageRequest, DiscoverableSkill, DiscoverableSkillsPage, ImportSkillSelection,
+    MigrationResult, Skill, SkillBackupEntry, SkillDiscoveryStatus, SkillRepo, SkillService,
+    SkillStorageLocation, SkillUninstallResult, SkillUpdateInfo, SkillsShSearchResult,
 };
 use crate::store::AppState;
 use std::str::FromStr;
@@ -127,6 +127,41 @@ pub async fn discover_available_skills(
     service
         .0
         .discover_available(repos)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// 发现可安装的 Skills（仓库分页，供 V2 使用）
+#[tauri::command]
+pub async fn discover_available_skills_page(
+    query: String,
+    repo: Option<String>,
+    status: String,
+    limit: usize,
+    offset: usize,
+    service: State<'_, SkillServiceState>,
+    app_state: State<'_, AppState>,
+) -> Result<DiscoverableSkillsPage, String> {
+    let status = SkillDiscoveryStatus::parse(&status)?;
+    let repos = app_state.db.get_skill_repos().map_err(|e| e.to_string())?;
+    let installed = SkillService::get_all_installed(&app_state.db).map_err(|e| e.to_string())?;
+    let repo = repo
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty() && *value != "all");
+    service
+        .0
+        .discover_available_page(
+            repos,
+            &installed,
+            DiscoverAvailablePageRequest {
+                query: &query,
+                repo,
+                status,
+                limit,
+                offset,
+            },
+        )
         .await
         .map_err(|e| e.to_string())
 }
@@ -301,7 +336,11 @@ pub fn get_skill_repos(app_state: State<'_, AppState>) -> Result<Vec<SkillRepo>,
 
 /// 添加技能仓库
 #[tauri::command]
-pub fn add_skill_repo(repo: SkillRepo, app_state: State<'_, AppState>) -> Result<bool, String> {
+pub fn add_skill_repo(
+    repo: SkillRepo,
+    service: State<'_, SkillServiceState>,
+    app_state: State<'_, AppState>,
+) -> Result<bool, String> {
     // 整个结构体由前端反序列化而来，owner/name/branch 会被拼进归档下载 URL。
     // 主防线在 download_repo，这里让非法值当场报错而不是沉淀进表。
     SkillService::validate_repo_ref(&repo.owner, &repo.name, &repo.branch)
@@ -310,6 +349,7 @@ pub fn add_skill_repo(repo: SkillRepo, app_state: State<'_, AppState>) -> Result
         .db
         .save_skill_repo(&repo)
         .map_err(|e| e.to_string())?;
+    service.0.invalidate_discovery_cache();
     Ok(true)
 }
 
@@ -318,12 +358,14 @@ pub fn add_skill_repo(repo: SkillRepo, app_state: State<'_, AppState>) -> Result
 pub fn remove_skill_repo(
     owner: String,
     name: String,
+    service: State<'_, SkillServiceState>,
     app_state: State<'_, AppState>,
 ) -> Result<bool, String> {
     app_state
         .db
         .delete_skill_repo(&owner, &name)
         .map_err(|e| e.to_string())?;
+    service.0.invalidate_discovery_cache();
     Ok(true)
 }
 

@@ -12,8 +12,8 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::{self, Read, Write};
 use std::path::{Component, Path, PathBuf};
-use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::time::timeout;
 
 use crate::app_config::{AppType, InstalledSkill, SkillApps, SkillTargetId, UnmanagedSkill};
@@ -71,6 +71,135 @@ pub struct DiscoverableSkill {
     /// 分支名称
     #[serde(rename = "repoBranch")]
     pub repo_branch: String,
+}
+
+/// 仓库发现分页结果（V2）；leftover 全量命令仍返回 `Vec<DiscoverableSkill>`。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscoverableSkillsPage {
+    pub skills: Vec<DiscoverableSkill>,
+    pub total_count: usize,
+}
+
+/// 仓库发现的安装状态筛选。非法值由命令层拒绝，不默认为 all。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SkillDiscoveryStatus {
+    All,
+    Installed,
+    Uninstalled,
+}
+
+/// 服务层分页入参。IPC 命令仍使用扁平字段。
+pub struct DiscoverAvailablePageRequest<'a> {
+    pub query: &'a str,
+    pub repo: Option<&'a str>,
+    pub status: SkillDiscoveryStatus,
+    pub limit: usize,
+    pub offset: usize,
+}
+
+impl SkillDiscoveryStatus {
+    pub fn parse(value: &str) -> Result<Self, String> {
+        match value {
+            "all" => Ok(Self::All),
+            "installed" => Ok(Self::Installed),
+            "uninstalled" => Ok(Self::Uninstalled),
+            _ => Err("无效的安装状态筛选".to_string()),
+        }
+    }
+}
+
+const SKILL_DISCOVERY_DEFAULT_LIMIT: usize = 20;
+const SKILL_DISCOVERY_MAX_LIMIT: usize = 50;
+const DISCOVERY_CACHE_TTL: Duration = Duration::from_secs(5 * 60);
+
+struct DiscoveryCache {
+    fingerprint: String,
+    skills: Vec<DiscoverableSkill>,
+    fetched_at: Instant,
+}
+
+fn clamp_discovery_limit(limit: usize) -> usize {
+    if limit == 0 {
+        SKILL_DISCOVERY_DEFAULT_LIMIT
+    } else {
+        limit.min(SKILL_DISCOVERY_MAX_LIMIT)
+    }
+}
+
+fn discovery_fingerprint(repos: &[SkillRepo]) -> String {
+    let mut keys: Vec<String> = repos
+        .iter()
+        .map(|repo| format!("{}/{}/{}", repo.owner, repo.name, repo.branch))
+        .collect();
+    keys.sort();
+    keys.join("\n")
+}
+
+fn directory_tail(directory: &str) -> String {
+    directory
+        .split(['/', '\\'])
+        .rfind(|part| !part.is_empty())
+        .unwrap_or("")
+        .to_lowercase()
+}
+
+fn is_discoverable_installed(skill: &DiscoverableSkill, installed: &[InstalledSkill]) -> bool {
+    let tail = directory_tail(&skill.directory);
+    installed.iter().any(|item| {
+        directory_tail(&item.directory) == tail
+            && item.repo_owner.as_deref().unwrap_or("").to_lowercase()
+                == skill.repo_owner.to_lowercase()
+            && item.repo_name.as_deref().unwrap_or("").to_lowercase()
+                == skill.repo_name.to_lowercase()
+    })
+}
+
+fn filter_discoverable_skills(
+    skills: &[DiscoverableSkill],
+    installed: &[InstalledSkill],
+    query: &str,
+    repo: Option<&str>,
+    status: SkillDiscoveryStatus,
+) -> Vec<DiscoverableSkill> {
+    let query = query.trim().to_lowercase();
+    skills
+        .iter()
+        .filter(|skill| {
+            if !query.is_empty() {
+                let haystack = format!(
+                    "{} {} {}/{}",
+                    skill.name, skill.description, skill.repo_owner, skill.repo_name
+                )
+                .to_lowercase();
+                if !haystack.contains(&query) {
+                    return false;
+                }
+            }
+            if let Some(repo_key) = repo {
+                if format!("{}/{}", skill.repo_owner, skill.repo_name) != repo_key {
+                    return false;
+                }
+            }
+            match status {
+                SkillDiscoveryStatus::All => true,
+                SkillDiscoveryStatus::Installed => is_discoverable_installed(skill, installed),
+                SkillDiscoveryStatus::Uninstalled => !is_discoverable_installed(skill, installed),
+            }
+        })
+        .cloned()
+        .collect()
+}
+
+fn paginate_discoverable_skills(
+    skills: &[DiscoverableSkill],
+    limit: usize,
+    offset: usize,
+) -> DiscoverableSkillsPage {
+    DiscoverableSkillsPage {
+        skills: skills.iter().skip(offset).take(limit).cloned().collect(),
+        total_count: skills.len(),
+    }
 }
 
 /// 技能对象（兼容旧 API，内部使用 DiscoverableSkill）
@@ -504,7 +633,9 @@ fn parse_agents_lock() -> HashMap<String, LockRepoInfo> {
 
 // ========== SkillService ==========
 
-pub struct SkillService;
+pub struct SkillService {
+    discovery_cache: Mutex<Option<DiscoveryCache>>,
+}
 
 impl Default for SkillService {
     fn default() -> Self {
@@ -514,7 +645,39 @@ impl Default for SkillService {
 
 impl SkillService {
     pub fn new() -> Self {
-        Self
+        Self {
+            discovery_cache: Mutex::new(None),
+        }
+    }
+
+    pub fn invalidate_discovery_cache(&self) {
+        *self.lock_discovery_cache() = None;
+    }
+
+    fn lock_discovery_cache(&self) -> std::sync::MutexGuard<'_, Option<DiscoveryCache>> {
+        self.discovery_cache
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    fn cached_discovery(&self, fingerprint: &str) -> Option<Vec<DiscoverableSkill>> {
+        let cache = self.lock_discovery_cache();
+        let entry = cache.as_ref()?;
+        if entry.fingerprint != fingerprint {
+            return None;
+        }
+        if entry.fetched_at.elapsed() >= DISCOVERY_CACHE_TTL {
+            return None;
+        }
+        Some(entry.skills.clone())
+    }
+
+    fn store_discovery_cache(&self, fingerprint: String, skills: Vec<DiscoverableSkill>) {
+        *self.lock_discovery_cache() = Some(DiscoveryCache {
+            fingerprint,
+            skills,
+            fetched_at: Instant::now(),
+        });
     }
 
     /// 构建 Skill 文档 URL（指向仓库中的 SKILL.md 文件）
@@ -2432,11 +2595,22 @@ impl SkillService {
         &self,
         repos: Vec<SkillRepo>,
     ) -> Result<Vec<DiscoverableSkill>> {
-        let mut skills = Vec::new();
-
-        // 仅使用启用的仓库
         let enabled_repos: Vec<SkillRepo> = repos.into_iter().filter(|repo| repo.enabled).collect();
+        let fingerprint = discovery_fingerprint(&enabled_repos);
+        if let Some(skills) = self.cached_discovery(&fingerprint) {
+            return Ok(skills);
+        }
 
+        let skills = self.scan_enabled_repos(enabled_repos).await?;
+        self.store_discovery_cache(fingerprint, skills.clone());
+        Ok(skills)
+    }
+
+    async fn scan_enabled_repos(
+        &self,
+        enabled_repos: Vec<SkillRepo>,
+    ) -> Result<Vec<DiscoverableSkill>> {
+        let mut skills = Vec::new();
         let fetch_tasks = enabled_repos
             .iter()
             .map(|repo| self.fetch_repo_skills(repo));
@@ -2451,11 +2625,30 @@ impl SkillService {
             }
         }
 
-        // 去重并排序
         Self::deduplicate_discoverable_skills(&mut skills);
         skills.sort_by_key(|skill| skill.name.to_lowercase());
-
         Ok(skills)
+    }
+
+    pub async fn discover_available_page(
+        &self,
+        repos: Vec<SkillRepo>,
+        installed: &[InstalledSkill],
+        request: DiscoverAvailablePageRequest<'_>,
+    ) -> Result<DiscoverableSkillsPage> {
+        let skills = self.discover_available(repos).await?;
+        let filtered = filter_discoverable_skills(
+            &skills,
+            installed,
+            request.query,
+            request.repo,
+            request.status,
+        );
+        Ok(paginate_discoverable_skills(
+            &filtered,
+            clamp_discovery_limit(request.limit),
+            request.offset,
+        ))
     }
 
     /// 列出所有技能（兼容旧 API）
@@ -5620,5 +5813,208 @@ mod tests {
             SkillService::doc_path_for_source(temp.path(), std::path::Path::new("/elsewhere")),
             None
         );
+    }
+
+    fn sample_discoverable(
+        name: &str,
+        directory: &str,
+        owner: &str,
+        repo: &str,
+        description: &str,
+    ) -> DiscoverableSkill {
+        DiscoverableSkill {
+            key: format!("{owner}/{repo}:{directory}"),
+            name: name.to_string(),
+            description: description.to_string(),
+            directory: directory.to_string(),
+            readme_url: None,
+            repo_owner: owner.to_string(),
+            repo_name: repo.to_string(),
+            repo_branch: "main".to_string(),
+        }
+    }
+
+    fn sample_installed(
+        directory: &str,
+        owner: Option<&str>,
+        repo: Option<&str>,
+    ) -> InstalledSkill {
+        InstalledSkill {
+            id: format!("local:{directory}"),
+            name: directory.to_string(),
+            description: None,
+            directory: directory.to_string(),
+            repo_owner: owner.map(str::to_string),
+            repo_name: repo.map(str::to_string),
+            repo_branch: None,
+            readme_url: None,
+            apps: SkillApps::default(),
+            installed_at: 0,
+            content_hash: None,
+            updated_at: 0,
+            path: None,
+        }
+    }
+
+    #[test]
+    fn clamp_discovery_limit_uses_default_and_max() {
+        assert_eq!(clamp_discovery_limit(0), 20);
+        assert_eq!(clamp_discovery_limit(20), 20);
+        assert_eq!(clamp_discovery_limit(1), 1);
+        assert_eq!(clamp_discovery_limit(50), 50);
+        assert_eq!(clamp_discovery_limit(51), 50);
+        assert_eq!(clamp_discovery_limit(500), 50);
+    }
+
+    #[test]
+    fn directory_tail_matches_frontend_split() {
+        assert_eq!(directory_tail("review-skill"), "review-skill");
+        assert_eq!(directory_tail("skills/Review-Skill"), "review-skill");
+        assert_eq!(directory_tail(r"C:\skills\Foo"), "foo");
+        assert_eq!(directory_tail("foo/bar/"), "bar");
+        assert_eq!(directory_tail(""), "");
+    }
+
+    #[test]
+    fn is_discoverable_installed_matches_directory_tail_and_repo() {
+        let skill = sample_discoverable("Review", "skills/Review-Skill", "Acme", "Skills", "desc");
+        let installed = vec![sample_installed(
+            "Review-Skill",
+            Some("acme"),
+            Some("skills"),
+        )];
+        assert!(is_discoverable_installed(&skill, &installed));
+
+        let other_repo = vec![sample_installed(
+            "Review-Skill",
+            Some("other"),
+            Some("skills"),
+        )];
+        assert!(!is_discoverable_installed(&skill, &other_repo));
+
+        let local_only = vec![sample_installed("Review-Skill", None, None)];
+        assert!(!is_discoverable_installed(&skill, &local_only));
+    }
+
+    #[test]
+    fn filter_discoverable_skills_applies_query_repo_and_status() {
+        let skills = vec![
+            sample_discoverable("Alpha", "alpha", "acme", "one", "first tool"),
+            sample_discoverable("Beta", "beta", "acme", "two", "second"),
+            sample_discoverable("Gamma", "gamma", "other", "two", "alpha mention"),
+        ];
+        let installed = vec![sample_installed("alpha", Some("acme"), Some("one"))];
+
+        let by_name = filter_discoverable_skills(
+            &skills,
+            &installed,
+            "  Alpha  ",
+            None,
+            SkillDiscoveryStatus::All,
+        );
+        assert_eq!(
+            by_name
+                .iter()
+                .map(|skill| skill.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["Alpha", "Gamma"]
+        );
+
+        let by_repo = filter_discoverable_skills(
+            &skills,
+            &installed,
+            "",
+            Some("acme/two"),
+            SkillDiscoveryStatus::All,
+        );
+        assert_eq!(by_repo.len(), 1);
+        assert_eq!(by_repo[0].name, "Beta");
+
+        let installed_only = filter_discoverable_skills(
+            &skills,
+            &installed,
+            "",
+            None,
+            SkillDiscoveryStatus::Installed,
+        );
+        assert_eq!(installed_only.len(), 1);
+        assert_eq!(installed_only[0].name, "Alpha");
+
+        let uninstalled = filter_discoverable_skills(
+            &skills,
+            &installed,
+            "",
+            None,
+            SkillDiscoveryStatus::Uninstalled,
+        );
+        assert_eq!(uninstalled.len(), 2);
+    }
+
+    #[test]
+    fn paginate_discoverable_skills_keeps_total_when_offset_is_past_end() {
+        let skills: Vec<_> = (0..21)
+            .map(|index| {
+                sample_discoverable(
+                    &format!("Skill {index}"),
+                    &format!("skill-{index}"),
+                    "acme",
+                    "skills",
+                    "",
+                )
+            })
+            .collect();
+        let page = paginate_discoverable_skills(&skills, 20, 20);
+        assert_eq!(page.total_count, 21);
+        assert_eq!(page.skills.len(), 1);
+        assert_eq!(page.skills[0].directory, "skill-20");
+
+        let empty = paginate_discoverable_skills(&skills, 20, 40);
+        assert_eq!(empty.total_count, 21);
+        assert!(empty.skills.is_empty());
+    }
+
+    #[test]
+    fn discovery_cache_hit_and_invalidate_do_not_need_network() {
+        let service = SkillService::new();
+        let skills = vec![sample_discoverable("Alpha", "alpha", "acme", "one", "")];
+        service.store_discovery_cache("acme/one/main".into(), skills.clone());
+        assert_eq!(
+            service
+                .cached_discovery("acme/one/main")
+                .expect("cache hit")
+                .len(),
+            1
+        );
+        assert!(service.cached_discovery("other/two/main").is_none());
+        service.invalidate_discovery_cache();
+        assert!(service.cached_discovery("acme/one/main").is_none());
+    }
+
+    #[test]
+    fn discovery_fingerprint_sorts_enabled_repo_coordinates() {
+        let repos = vec![
+            SkillRepo {
+                owner: "zeta".into(),
+                name: "b".into(),
+                branch: "main".into(),
+                enabled: true,
+            },
+            SkillRepo {
+                owner: "acme".into(),
+                name: "a".into(),
+                branch: "dev".into(),
+                enabled: true,
+            },
+        ];
+        assert_eq!(discovery_fingerprint(&repos), "acme/a/dev\nzeta/b/main");
+    }
+
+    #[test]
+    fn skill_discovery_status_rejects_unknown_values() {
+        assert!(SkillDiscoveryStatus::parse("all").is_ok());
+        assert!(SkillDiscoveryStatus::parse("installed").is_ok());
+        assert!(SkillDiscoveryStatus::parse("uninstalled").is_ok());
+        assert!(SkillDiscoveryStatus::parse("ready").is_err());
+        assert!(SkillDiscoveryStatus::parse("").is_err());
     }
 }

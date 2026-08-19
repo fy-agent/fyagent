@@ -3,8 +3,10 @@ import { keepPreviousData, useQueries, useQuery } from "@tanstack/react-query";
 import { useFeatures } from "./provider";
 import {
   PROMPT_APP_IDS,
+  SKILL_DISCOVERY_PAGE_SIZE,
   type MemoryDocumentId,
   type PromptAppId,
+  type SkillDiscoveryStatus,
 } from "./types";
 import type { ProviderAppId } from "./types";
 
@@ -113,11 +115,34 @@ export function useSkillRepos() {
     queryFn: ports.skills.getRepos,
   });
 }
-export function useSkillDiscovery() {
+export function useSkillDiscoveryPage(
+  query: string,
+  repo: string | undefined,
+  status: SkillDiscoveryStatus,
+  page: number,
+  enabled = true,
+) {
   const { ports } = useFeatures();
+  const limit = SKILL_DISCOVERY_PAGE_SIZE;
+  const offset = Math.max(0, page - 1) * limit;
   return useQuery({
-    queryKey: featureKeys.skillDiscovery,
-    queryFn: ports.skills.discover,
+    queryKey: [
+      ...featureKeys.skillDiscovery,
+      query,
+      repo ?? "all",
+      status,
+      page,
+    ],
+    queryFn: () =>
+      ports.skills.discoverPage({
+        query,
+        repo,
+        status,
+        limit,
+        offset,
+      }),
+    enabled,
+    placeholderData: keepPreviousData,
   });
 }
 export function useUnmanagedSkills(enabled = false) {
@@ -140,7 +165,12 @@ export function useSkillsShSearch(query: string, page: number) {
   const { ports } = useFeatures();
   return useQuery({
     queryKey: ["v2", "skills", "skills-sh", query, page],
-    queryFn: () => ports.skills.searchSkillsSh(query, 20, (page - 1) * 20),
+    queryFn: () =>
+      ports.skills.searchSkillsSh(
+        query,
+        SKILL_DISCOVERY_PAGE_SIZE,
+        (page - 1) * SKILL_DISCOVERY_PAGE_SIZE,
+      ),
     enabled: query.length >= 2,
     placeholderData: keepPreviousData,
   });

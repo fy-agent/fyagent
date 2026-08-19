@@ -18,6 +18,7 @@ import {
   MCP_TARGETS,
   SKILL_TARGETS,
   type DiscoverableSkill,
+  type DiscoverSkillsPageRequest,
   type InstalledSkill,
   type McpServer,
   type UnmanagedSkill,
@@ -804,7 +805,10 @@ describe("V2 Skills management", () => {
     ports.skills.getRepos = async () => [
       { owner: "acme", name: "skills", branch: "main", enabled: true },
     ];
-    ports.skills.discover = async () => [discoverable];
+    ports.skills.discoverPage = async () => ({
+      skills: [discoverable],
+      totalCount: 1,
+    });
     ports.skills.install = vi.fn(async () => installed);
 
     renderFeature(<SkillsPage />, ports);
@@ -843,7 +847,10 @@ describe("V2 Skills management", () => {
     ports.skills.getRepos = async () => [
       { owner: "acme", name: "skills", branch: "main", enabled: true },
     ];
-    ports.skills.discover = async () => [discoverable];
+    ports.skills.discoverPage = async () => ({
+      skills: [discoverable],
+      totalCount: 1,
+    });
     ports.skills.install = vi.fn(async () => {
       backendInstalled = true;
       throw new Error("partial install");
@@ -877,7 +884,10 @@ describe("V2 Skills management", () => {
     ports.skills.getRepos = async () => [
       { owner: "acme", name: "skills", branch: "main", enabled: true },
     ];
-    ports.skills.discover = async () => [discoverable];
+    ports.skills.discoverPage = async () => ({
+      skills: [discoverable],
+      totalCount: 1,
+    });
 
     renderFeature(<SkillsPage />, ports);
     await screen.findByText("还没有安装 Skill");
@@ -909,7 +919,9 @@ describe("V2 Skills management", () => {
       within(card as HTMLElement).getByText("Review changes"),
     ).toBeVisible();
     expect(within(card as HTMLElement).getByText("acme/skills")).toBeVisible();
-    expect(screen.getByText("1 个 Skill · 将安装到 Claude Code")).toBeVisible();
+    expect(
+      screen.getByText("1 / 1 个 Skill · 将安装到 Claude Code"),
+    ).toBeVisible();
     await user.click(
       within(card as HTMLElement).getByRole("button", { name: "说明" }),
     );
@@ -927,7 +939,10 @@ describe("V2 Skills management", () => {
     ports.skills.getRepos = async () => [
       { owner: "acme", name: "skills", branch: "main", enabled: true },
     ];
-    ports.skills.discover = async () => [discoverableSkill()];
+    ports.skills.discoverPage = async () => ({
+      skills: [discoverableSkill()],
+      totalCount: 1,
+    });
     ports.skills.searchSkillsSh = async () => ({
       query: "find",
       totalCount: 48,
@@ -989,7 +1004,10 @@ describe("V2 Skills management", () => {
     ports.skills.getRepos = async () => [
       { owner: "acme", name: "skills", branch: "main", enabled: true },
     ];
-    ports.skills.discover = async () => [discoverableSkill()];
+    ports.skills.discoverPage = async () => ({
+      skills: [discoverableSkill()],
+      totalCount: 1,
+    });
 
     renderFeature(<SkillsPage />, ports);
     await user.click(screen.getByRole("tab", { name: "发现" }));
@@ -1010,7 +1028,10 @@ describe("V2 Skills management", () => {
     ports.skills.getRepos = vi.fn(async () => {
       throw new Error("repository authority unavailable");
     });
-    ports.skills.discover = async () => [discoverableSkill()];
+    ports.skills.discoverPage = async () => ({
+      skills: [discoverableSkill()],
+      totalCount: 1,
+    });
 
     renderFeature(<SkillsPage />, ports);
     await screen.findByText("还没有安装 Skill");
@@ -1022,6 +1043,99 @@ describe("V2 Skills management", () => {
       }),
     ).toBeVisible();
     expect(screen.queryByText("尚未配置仓库")).not.toBeInTheDocument();
+  });
+
+  it("paginates repository discovery and requests the next offset", async () => {
+    const user = userEvent.setup();
+    const all = Array.from({ length: 21 }, (_, index) => ({
+      ...discoverableSkill(),
+      key: `acme/skills:skill-${index}`,
+      name: `Paged Skill ${index + 1}`,
+      directory: `skill-${index}`,
+    }));
+    const discoverPage = vi.fn(async (request: DiscoverSkillsPageRequest) => ({
+      skills: all.slice(request.offset, request.offset + request.limit),
+      totalCount: all.length,
+    }));
+    const ports = createBrowserFeaturePorts();
+    ports.skills.getRepos = async () => [
+      { owner: "acme", name: "skills", branch: "main", enabled: true },
+    ];
+    ports.skills.discoverPage = discoverPage;
+
+    renderFeature(<SkillsPage />, ports);
+    await screen.findByText("还没有安装 Skill");
+    await user.click(screen.getByRole("tab", { name: "发现" }));
+    expect(
+      await screen.findByRole("heading", { name: "Paged Skill 1" }),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("heading", { name: "Paged Skill 21" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText("20 / 21 个 Skill · 将安装到 Claude Code"),
+    ).toBeVisible();
+
+    const pagination = screen.getByRole("navigation", {
+      name: "仓库 Skills 分页",
+    });
+    await user.click(within(pagination).getByRole("button", { name: "2" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "Paged Skill 21" }),
+    ).toBeVisible();
+    await waitFor(() =>
+      expect(discoverPage).toHaveBeenCalledWith(
+        expect.objectContaining({ limit: 20, offset: 20 }),
+      ),
+    );
+  });
+
+  it("resets repository discovery to page 1 when search changes", async () => {
+    const user = userEvent.setup();
+    const all = Array.from({ length: 21 }, (_, index) => ({
+      ...discoverableSkill(),
+      key: `acme/skills:skill-${index}`,
+      name: `Paged Skill ${index + 1}`,
+      directory: `skill-${index}`,
+    }));
+    const discoverPage = vi.fn(async (request: DiscoverSkillsPageRequest) => ({
+      skills: all.slice(request.offset, request.offset + request.limit),
+      totalCount: all.length,
+    }));
+    const ports = createBrowserFeaturePorts();
+    ports.skills.getRepos = async () => [
+      { owner: "acme", name: "skills", branch: "main", enabled: true },
+    ];
+    ports.skills.discoverPage = discoverPage;
+
+    renderFeature(<SkillsPage />, ports);
+    await screen.findByText("还没有安装 Skill");
+    await user.click(screen.getByRole("tab", { name: "发现" }));
+    await screen.findByRole("heading", { name: "Paged Skill 1" });
+    await user.click(
+      within(
+        screen.getByRole("navigation", { name: "仓库 Skills 分页" }),
+      ).getByRole("button", { name: "2" }),
+    );
+    await screen.findByRole("heading", { name: "Paged Skill 21" });
+
+    await user.type(
+      screen.getByRole("searchbox", { name: "搜索仓库 Skills" }),
+      "paged",
+    );
+
+    await waitFor(
+      () =>
+        expect(discoverPage).toHaveBeenCalledWith(
+          expect.objectContaining({
+            query: "paged",
+            offset: 0,
+            limit: 20,
+          }),
+        ),
+      { timeout: 2_000 },
+    );
   });
 
   it("treats a cancelled ZIP picker as a no-op", async () => {

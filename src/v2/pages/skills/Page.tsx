@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { getSkillTargetIcon } from "../../shared/assets/apps";
 import {
@@ -19,7 +19,7 @@ import {
   useFeatureSettings,
   useInstalledSkills,
   useSkillBackups,
-  useSkillDiscovery,
+  useSkillDiscoveryPage,
   useSkillRepos,
   useSkillsShSearch,
   useSkillUpdates,
@@ -27,10 +27,12 @@ import {
 } from "../../shared/features/queries";
 import {
   createSkillAssignments,
+  SKILL_DISCOVERY_PAGE_SIZE,
   SKILL_TARGETS,
   type DiscoverableSkill,
   type InstalledSkill,
   type SkillBackupEntry,
+  type SkillDiscoveryStatus,
   type SkillRepo,
   type SkillTargetId,
 } from "../../shared/features/types";
@@ -49,6 +51,7 @@ import { AssignmentPanel } from "../../shared/ui/AssignmentPanel";
 import { CopyablePath } from "../../shared/ui/CopyablePath";
 import { ExternalLinkButton } from "../../shared/ui/ExternalLinkButton";
 import { FeatureList, FeatureListItem } from "../../shared/ui/FeatureList";
+import { FeaturePagination } from "../../shared/ui/FeaturePagination";
 import { FeatureSearch } from "../../shared/ui/FeatureSearch";
 import { FeatureTabs } from "../../shared/ui/FeatureTabs";
 import { SplitPanes } from "../../shared/ui/split";
@@ -822,43 +825,54 @@ function Discovery({
 }) {
   const [source, setSource] = useState<"repos" | "skillssh">("repos");
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [repoFilter, setRepoFilter] = useState("all");
-  const [status, setStatus] = useState("all");
+  const [status, setStatus] = useState<SkillDiscoveryStatus>("all");
   const [skillsShInput, setSkillsShInput] = useState("");
   const [skillsShQuery, setSkillsShQuery] = useState("");
   const [page, setPage] = useState(1);
   const resultsTop = useRef<HTMLDivElement>(null);
-  const discovery = useSkillDiscovery();
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedSearch(search);
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [search]);
+  const discoveryQuery = debouncedSearch.trim();
   const repos = useSkillRepos();
   const installed = useInstalledSkills();
+  const enabledRepos = useMemo(
+    () => (repos.data ?? []).filter((repo) => repo.enabled),
+    [repos.data],
+  );
+  const repoOptions = useMemo(
+    () =>
+      enabledRepos.map((repo) => ({
+        id: `${repo.owner}/${repo.name}`,
+        label: `${repo.owner}/${repo.name}`,
+      })),
+    [enabledRepos],
+  );
+  const activeRepoFilter =
+    repoFilter !== "all" && repoOptions.some((repo) => repo.id === repoFilter)
+      ? repoFilter
+      : "all";
+  const discovery = useSkillDiscoveryPage(
+    discoveryQuery,
+    activeRepoFilter === "all" ? undefined : activeRepoFilter,
+    status,
+    page,
+    source === "repos",
+  );
   const skillsSh = useSkillsShSearch(skillsShQuery, page);
   const installedItems = useMemo(() => installed.data ?? [], [installed.data]);
-  const repoSkills = useMemo(
-    () =>
-      (discovery.data ?? []).filter((skill) => {
-        const queryMatch = [
-          skill.name,
-          skill.description,
-          `${skill.repoOwner}/${skill.repoName}`,
-        ]
-          .join(" ")
-          .toLowerCase()
-          .includes(search.toLowerCase());
-        const repoMatch =
-          repoFilter === "all" ||
-          `${skill.repoOwner}/${skill.repoName}` === repoFilter;
-        const isInstalled = isDiscoverableInstalled(skill, installedItems);
-        return (
-          queryMatch &&
-          repoMatch &&
-          (status === "all" || (status === "installed") === isInstalled)
-        );
-      }),
-    [discovery.data, installedItems, repoFilter, search, status],
-  );
+  const repoSkills = discovery.data?.skills ?? [];
+  const repoTotalCount = discovery.data?.totalCount ?? repoSkills.length;
+  const skillsShTotalCount = skillsSh.data?.totalCount ?? 0;
+  const totalCount = source === "repos" ? repoTotalCount : skillsShTotalCount;
   const totalPages = Math.max(
     1,
-    Math.ceil((skillsSh.data?.totalCount ?? 0) / 20),
+    Math.ceil(totalCount / SKILL_DISCOVERY_PAGE_SIZE),
   );
   const skills =
     source === "repos"
@@ -867,17 +881,18 @@ function Discovery({
           ...skill,
           description: "",
         }));
-  const repoKeys = Array.from(
-    new Set((discovery.data ?? []).map((skill) => skillRepoKey(skill))),
-  );
   const installLabel =
     SKILL_TARGETS.find((app) => app.id === installTarget)?.label ??
     "Claude Code";
   const groupedSkills = groupSkillsByRepo(skills);
   const resultSummary =
     source === "repos"
-      ? `${skills.length} 个 Skill · 将安装到 ${installLabel}`
+      ? `${skills.length} / ${repoTotalCount} 个 Skill · 将安装到 ${installLabel}`
       : `skills.sh · ${skills.length} / ${skillsSh.data?.totalCount ?? skills.length} · 将安装到 ${installLabel}`;
+  const goToPage = (next: number) => {
+    setPage(next);
+    resultsTop.current?.scrollIntoView?.({ block: "start" });
+  };
   return (
     <section className="fy-feature-workspace" ref={resultsTop}>
       {source === "repos" ? (
@@ -886,7 +901,10 @@ function Discovery({
             ariaLabel="搜索仓库 Skills"
             placeholder="搜索 Skill 或仓库"
             value={search}
-            onValueChange={setSearch}
+            onValueChange={(value) => {
+              setSearch(value);
+              setPage(1);
+            }}
           />
         </div>
       ) : (
@@ -917,7 +935,10 @@ function Discovery({
           id="skills-discovery-source-tabs"
           label="发现来源"
           value={source}
-          onChange={setSource}
+          onChange={(value) => {
+            setSource(value);
+            setPage(1);
+          }}
           options={[
             { id: "repos", label: "仓库" },
             { id: "skillssh", label: "skills.sh" },
@@ -928,7 +949,10 @@ function Discovery({
             id="skills-install-status"
             label="安装状态"
             value={status}
-            onChange={setStatus}
+            onChange={(value) => {
+              setStatus(value);
+              setPage(1);
+            }}
             options={[
               { id: "all", label: "全部状态" },
               { id: "uninstalled", label: "未安装" },
@@ -937,16 +961,16 @@ function Discovery({
           />
         )}
       </div>
-      {source === "repos" && repoKeys.length > 1 && (
+      {source === "repos" && repoOptions.length > 1 && (
         <FeatureTabs
           id="skills-repo-filter"
           label="仓库筛选"
-          value={repoFilter}
-          onChange={setRepoFilter}
-          options={[
-            { id: "all", label: "全部仓库" },
-            ...repoKeys.map((repo) => ({ id: repo, label: repo })),
-          ]}
+          value={activeRepoFilter}
+          onChange={(value) => {
+            setRepoFilter(value);
+            setPage(1);
+          }}
+          options={[{ id: "all", label: "全部仓库" }, ...repoOptions]}
         />
       )}
       {installed.error && installed.data !== undefined && (
@@ -1031,7 +1055,12 @@ function Discovery({
           actions={
             <>
               <Button onClick={() => setDialog("repos")}>添加仓库</Button>{" "}
-              <Button onClick={() => setSource("skillssh")}>
+              <Button
+                onClick={() => {
+                  setSource("skillssh");
+                  setPage(1);
+                }}
+              >
                 切换到 skills.sh
               </Button>
             </>
@@ -1047,7 +1076,7 @@ function Discovery({
           }
         />
       ) : (
-        <div className="fy-feature-detail-scroll" aria-label="可发现 Skills">
+        <div className="fy-feature-discovery-scroll" aria-label="可发现 Skills">
           <p className="fy-feature-description">{resultSummary}</p>
           {groupedSkills.map(([repo, items]) => {
             const showHeading = items.length > 1;
@@ -1079,24 +1108,14 @@ function Discovery({
           })}
         </div>
       )}
-      {source === "skillssh" && totalPages > 1 && (
-        <nav className="fy-feature-pagination" aria-label="skills.sh 分页">
-          {Array.from({ length: totalPages }, (_, index) => index + 1)
-            .slice(Math.max(0, page - 3), Math.min(totalPages, page + 2))
-            .map((number) => (
-              <Button
-                key={number}
-                aria-current={number === page ? "page" : undefined}
-                onClick={() => {
-                  setPage(number);
-                  resultsTop.current?.scrollIntoView({ block: "start" });
-                }}
-              >
-                {number}
-              </Button>
-            ))}
-        </nav>
-      )}
+      <FeaturePagination
+        page={page}
+        totalPages={totalPages}
+        ariaLabel={
+          source === "skillssh" ? "skills.sh 分页" : "仓库 Skills 分页"
+        }
+        onPageChange={goToPage}
+      />
     </section>
   );
 }

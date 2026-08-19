@@ -656,7 +656,9 @@ function assertTraeModelRequest(
 }
 
 function assertStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((item) => typeof item === "string");
+  return (
+    Array.isArray(value) && value.every((item) => typeof item === "string")
+  );
 }
 
 function assertOpenCodeFetchRequest(
@@ -949,7 +951,8 @@ function parseProviderSummary(value: unknown): ProviderSummaryQueryData {
       !hasRequiredAndOptionalKeys(candidate, ["id", "name"], ["modelId"]) ||
       typeof candidate.id !== "string" ||
       typeof candidate.name !== "string" ||
-      (candidate.modelId !== undefined && typeof candidate.modelId !== "string") ||
+      (candidate.modelId !== undefined &&
+        typeof candidate.modelId !== "string") ||
       candidate.id !== key
     )
       throw new Error("Provider public summary is unavailable");
@@ -1483,7 +1486,14 @@ export function createTauriFeaturePorts(): FeaturePorts {
       scanUnmanaged: () => invoke("scan_unmanaged_skills"),
       importFromApps: (imports) =>
         invoke("import_skills_from_apps", { imports }),
-      discover: () => invoke("discover_available_skills"),
+      discoverPage: (request) =>
+        invoke("discover_available_skills_page", {
+          query: request.query,
+          repo: request.repo ?? null,
+          status: request.status,
+          limit: request.limit,
+          offset: request.offset,
+        }),
       checkUpdates: () => invoke("check_skill_updates"),
       update: (id) => invoke("update_skill", { id }),
       migrateStorage: (target) => invoke("migrate_skill_storage", { target }),

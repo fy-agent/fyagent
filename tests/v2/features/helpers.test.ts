@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   buildMcpSearchText,
   convergeSelection,
+  isDiscoverableInstalled,
   mcpInstallDirectory,
   overlayKnownMcpFields,
   parseAdvancedServerJson,
@@ -11,7 +12,12 @@ import {
   sanitizeMcpConfigurationError,
   skillInstallPath,
 } from "@/v2/shared/features/helpers";
-import { createAssignments, type McpServer } from "@/v2/shared/features/types";
+import {
+  createAssignments,
+  type DiscoverableSkill,
+  type InstalledSkill,
+  type McpServer,
+} from "@/v2/shared/features/types";
 
 describe("V2 feature helpers", () => {
   it("converges selection to a visible item", () => {
@@ -154,5 +160,40 @@ describe("V2 feature helpers", () => {
         cwd: "D:\\workspace\\mcp-tools",
       }),
     ).toBe("D:\\workspace\\mcp-tools");
+  });
+
+  it("matches discoverable installs by directory tail and owner/name", () => {
+    const discoverable: DiscoverableSkill = {
+      key: "acme/skills:review-skill",
+      name: "Review",
+      description: "",
+      directory: "skills/Review-Skill",
+      repoOwner: "Acme",
+      repoName: "Skills",
+      repoBranch: "main",
+    };
+    const installed: InstalledSkill[] = [
+      {
+        id: "acme/skills:review-skill",
+        name: "Review",
+        directory: "Review-Skill",
+        repoOwner: "acme",
+        repoName: "skills",
+        apps: createAssignments(["claude"]),
+        installedAt: 1,
+        updatedAt: 1,
+      },
+    ];
+    expect(isDiscoverableInstalled(discoverable, installed)).toBe(true);
+    expect(
+      isDiscoverableInstalled(discoverable, [
+        { ...installed[0], repoOwner: "other" },
+      ]),
+    ).toBe(false);
+    expect(
+      isDiscoverableInstalled(discoverable, [
+        { ...installed[0], repoOwner: undefined, repoName: undefined },
+      ]),
+    ).toBe(false);
   });
 });

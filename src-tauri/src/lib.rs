@@ -2017,6 +2017,7 @@ pub fn run() {
             commands::scan_unmanaged_skills,
             commands::import_skills_from_apps,
             commands::discover_available_skills,
+            commands::discover_available_skills_page,
             commands::check_skill_updates,
             commands::update_skill,
             commands::migrate_skill_storage,

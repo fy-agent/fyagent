@@ -171,7 +171,8 @@ export async function installRichTauriFeatureFixture(
           id: "trae-work",
           variantId: "trae-work-cn",
           displayName: "TRAE Work CN",
-          description: "支持 Skills 同步、模型配置与 MCP 直接分配；不支持 Hooks。",
+          description:
+            "支持 Skills 同步、模型配置与 MCP 直接分配；不支持 Hooks。",
           officialLinks: [
             {
               id: "product",
@@ -185,7 +186,8 @@ export async function installRichTauriFeatureFixture(
           id: "workbuddy",
           variantId: "workbuddy",
           displayName: "WorkBuddy",
-          description: "支持 Skills 同步、模型配置与 MCP 直接分配；不支持 Hooks。",
+          description:
+            "支持 Skills 同步、模型配置与 MCP 直接分配；不支持 Hooks。",
           officialLinks: [
             {
               id: "product",
@@ -453,7 +455,11 @@ export async function installRichTauriFeatureFixture(
           case "cancel_traework_model_endpoint":
             return { requestId: payload.requestId, cancelled: true };
           case "get_traework_model_ids":
-            return { modelIds: ["fixture-model"], revision: "fixture-trae-revision", truncated: false };
+            return {
+              modelIds: ["fixture-model"],
+              revision: "fixture-trae-revision",
+              truncated: false,
+            };
           case "get_opencode_model_snapshot":
             return { providers: [], revision: null };
           case "fetch_opencode_provider_models":
@@ -634,6 +640,8 @@ export async function installRichTauriFeatureFixture(
           case "check_skill_updates":
           case "get_skill_repos":
             return [];
+          case "discover_available_skills_page":
+            return { skills: [], totalCount: 0 };
           case "search_skills_sh":
             return { skills: [], totalCount: 0, query: payload.query ?? "" };
           case "get_settings":
