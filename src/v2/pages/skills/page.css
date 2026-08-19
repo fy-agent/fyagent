@@ -18,6 +18,19 @@
   align-items: center;
 }
 
+.fy-skills-page.fy-skills-page-discovery.fy-feature-page:has(
+    .fy-feature-workspace
+  ) {
+  overflow: auto;
+  height: auto;
+  max-height: 100%;
+}
+
+.fy-skills-page.fy-skills-page-discovery .fy-feature-discovery-scroll {
+  flex: 0 0 auto;
+  overflow: visible;
+}
+
 .fy-skills-page .fy-feature-workspace > .fy-feature-discovery-scroll {
   display: grid;
   gap: 18px;

@@ -427,7 +427,7 @@ export function SkillsPage() {
 
   return (
     <div
-      className="fy-feature-page fy-split-page fy-skills-page"
+      className={`fy-feature-page fy-split-page fy-skills-page${tab === "discovery" ? " fy-skills-page-discovery" : ""}`}
       data-testid="skills-page"
     >
       <header className="fy-feature-header">
