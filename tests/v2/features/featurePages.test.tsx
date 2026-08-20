@@ -17,10 +17,9 @@ import {
   createMcpAssignments,
   MCP_TARGETS,
   SKILL_TARGETS,
-  type DiscoverableSkill,
-  type DiscoverSkillsPageRequest,
   type InstalledSkill,
   type McpServer,
+  type SkillHubSkill,
   type UnmanagedSkill,
 } from "@/v2/shared/features/types";
 import { createBrowserFeaturePorts } from "@/v2/shared/platform/browser/features";
@@ -35,11 +34,6 @@ function renderFeature(page: React.ReactNode, ports: FeaturePorts) {
   return render(<FeatureProvider ports={ports}>{page}</FeatureProvider>);
 }
 
-async function openRepoDiscovery(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole("tab", { name: "发现" }));
-  await user.click(screen.getByRole("tab", { name: "仓库" }));
-}
-
 function installedSkill(id: string, name: string): InstalledSkill {
   return {
     id,
@@ -51,15 +45,21 @@ function installedSkill(id: string, name: string): InstalledSkill {
   };
 }
 
-function discoverableSkill(): DiscoverableSkill {
+function marketSkill(overrides: Partial<SkillHubSkill> = {}): SkillHubSkill {
   return {
-    key: "acme/skills/review-skill",
+    key: "skillhub:review-skill",
+    slug: "review-skill",
     name: "Review Skill",
     description: "Review changes",
     directory: "review-skill",
-    repoOwner: "acme",
-    repoName: "skills",
-    repoBranch: "main",
+    repoOwner: "skillhub.cn",
+    repoName: "review-skill",
+    repoBranch: "skillhub",
+    version: "1.0.0",
+    ownerName: "acme",
+    homepageUrl: "https://skillhub.cn/skills/review-skill",
+    readmeUrl: "https://skillhub.cn/skills/review-skill",
+    ...overrides,
   };
 }
 
@@ -627,8 +627,9 @@ describe("V2 Skills management", () => {
       },
     ]);
     await waitFor(() => expect(getRepos).toHaveBeenCalledTimes(2));
-    await openRepoDiscovery(user);
+    await user.click(screen.getByRole("tab", { name: "发现" }));
     expect(screen.queryByText("尚未配置仓库")).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "仓库" })).not.toBeInTheDocument();
   });
 
   it("keeps cached Skills visible when a write-triggered refresh fails", async () => {
@@ -793,7 +794,7 @@ describe("V2 Skills management", () => {
 
   it("keeps discovery installation locked until authority refresh completes", async () => {
     const user = userEvent.setup();
-    const discoverable = discoverableSkill();
+    const discoverable = marketSkill();
     const installed = {
       ...installedSkill("review-skill", "Review Skill"),
       repoOwner: discoverable.repoOwner,
@@ -806,18 +807,16 @@ describe("V2 Skills management", () => {
       installedReads += 1;
       return installedReads === 1 ? Promise.resolve([]) : refreshed.promise;
     });
-    ports.skills.getRepos = async () => [
-      { owner: "acme", name: "skills", branch: "main", enabled: true },
-    ];
-    ports.skills.discoverPage = async () => ({
+    ports.skills.searchSkillHub = async () => ({
+      query: "",
       skills: [discoverable],
       totalCount: 1,
     });
-    ports.skills.install = vi.fn(async () => installed);
+    ports.skills.installSkillHub = vi.fn(async () => [installed]);
 
     renderFeature(<SkillsPage />, ports);
     await screen.findByText("还没有安装 Skill");
-    await openRepoDiscovery(user);
+    await user.click(screen.getByRole("tab", { name: "发现" }));
     const install = await screen.findByRole("button", {
       name: "安装到 Claude Code",
     });
@@ -825,7 +824,7 @@ describe("V2 Skills management", () => {
     await user.click(install);
     await waitFor(() => expect(install).toBeDisabled());
     fireEvent.click(install);
-    expect(ports.skills.install).toHaveBeenCalledTimes(1);
+    expect(ports.skills.installSkillHub).toHaveBeenCalledTimes(1);
 
     refreshed.resolve([installed]);
     expect(
@@ -836,7 +835,7 @@ describe("V2 Skills management", () => {
 
   it("refreshes authority after a partially failed discovery installation", async () => {
     const user = userEvent.setup();
-    const discoverable = discoverableSkill();
+    const discoverable = marketSkill();
     const installed = {
       ...installedSkill("review-skill", "Review Skill"),
       repoOwner: discoverable.repoOwner,
@@ -848,21 +847,19 @@ describe("V2 Skills management", () => {
     );
     const ports = createBrowserFeaturePorts();
     ports.skills.getInstalled = getInstalled;
-    ports.skills.getRepos = async () => [
-      { owner: "acme", name: "skills", branch: "main", enabled: true },
-    ];
-    ports.skills.discoverPage = async () => ({
+    ports.skills.searchSkillHub = async () => ({
+      query: "",
       skills: [discoverable],
       totalCount: 1,
     });
-    ports.skills.install = vi.fn(async () => {
+    ports.skills.installSkillHub = vi.fn(async () => {
       backendInstalled = true;
       throw new Error("partial install");
     });
 
     renderFeature(<SkillsPage />, ports);
     await screen.findByText("还没有安装 Skill");
-    await openRepoDiscovery(user);
+    await user.click(screen.getByRole("tab", { name: "发现" }));
     await user.click(
       await screen.findByRole("button", { name: "安装到 Claude Code" }),
     );
@@ -877,32 +874,33 @@ describe("V2 Skills management", () => {
 
   it("renders Skill discovery as a marketplace card grid without select switchers", async () => {
     const user = userEvent.setup();
-    const discoverable = {
-      ...discoverableSkill(),
-      readmeUrl:
-        "https://github.com/acme/skills/blob/main/review-skill/SKILL.md",
-    };
+    const discoverable = marketSkill();
     const ports = createBrowserFeaturePorts();
     const openExternal = vi.fn(async () => undefined);
     ports.settings.openExternal = openExternal;
-    ports.skills.getRepos = async () => [
-      { owner: "acme", name: "skills", branch: "main", enabled: true },
-    ];
-    ports.skills.discoverPage = async () => ({
+    ports.skills.searchSkillHub = async () => ({
+      query: "",
       skills: [discoverable],
       totalCount: 1,
     });
 
     renderFeature(<SkillsPage />, ports);
     await screen.findByText("还没有安装 Skill");
-    await openRepoDiscovery(user);
+    await user.click(screen.getByRole("tab", { name: "发现" }));
 
     expect(
       screen.queryByRole("combobox", { name: "安装目标" }),
     ).not.toBeInTheDocument();
     expect(
-      screen.getByRole("searchbox", { name: "搜索仓库 Skills" }),
+      screen.getByRole("searchbox", { name: "搜索 Skill 市场" }),
     ).toBeVisible();
+    expect(
+      screen.queryByRole("tab", { name: "Skill 市场" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "仓库" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/Skill 市场 · \d+ \/ \d+/),
+    ).not.toBeInTheDocument();
     expect(screen.getByRole("tablist", { name: "安装目标" })).toBeVisible();
     expect(
       within(screen.getByRole("tablist", { name: "安装目标" }))
@@ -915,23 +913,19 @@ describe("V2 Skills management", () => {
     expect(
       screen.queryByRole("tablist", { name: "仓库筛选" }),
     ).not.toBeInTheDocument();
-    const card = screen
-      .getByRole("heading", { name: "Review Skill" })
-      .closest("article");
-    expect(card).not.toBeNull();
+    const card = await screen.findByRole("heading", { name: "Review Skill" });
+    const article = card.closest("article");
+    expect(article).not.toBeNull();
     expect(
-      within(card as HTMLElement).getByText("Review changes"),
+      within(article as HTMLElement).getByText("Review changes"),
     ).toBeVisible();
     expect(
-      within(card as HTMLElement).queryByText("acme/skills"),
+      within(article as HTMLElement).queryByText("acme/skills"),
     ).not.toBeInTheDocument();
-    expect(
-      screen.getByText("1 / 1 个 Skill · 将安装到 Claude Code"),
-    ).toBeVisible();
     await user.click(
-      within(card as HTMLElement).getByRole("button", { name: "说明" }),
+      within(article as HTMLElement).getByRole("button", { name: "主页" }),
     );
-    expect(openExternal).toHaveBeenCalledWith(discoverable.readmeUrl);
+    expect(openExternal).toHaveBeenCalledWith(discoverable.homepageUrl);
     expect(
       await screen.findByRole("button", { name: "安装到 Claude Code" }),
     ).toBeVisible();
@@ -944,17 +938,15 @@ describe("V2 Skills management", () => {
         8,
       );
     const ports = createBrowserFeaturePorts();
-    ports.skills.getRepos = async () => [
-      { owner: "acme", name: "skills", branch: "main", enabled: true },
-    ];
-    ports.skills.discoverPage = async () => ({
-      skills: [{ ...discoverableSkill(), description: longDescription }],
+    ports.skills.searchSkillHub = async () => ({
+      query: "",
+      skills: [{ ...marketSkill(), description: longDescription }],
       totalCount: 1,
     });
 
     renderFeature(<SkillsPage />, ports);
     await screen.findByText("还没有安装 Skill");
-    await openRepoDiscovery(user);
+    await user.click(screen.getByRole("tab", { name: "发现" }));
     const card = (
       await screen.findByRole("heading", { name: "Review Skill" })
     ).closest("article");
@@ -968,7 +960,8 @@ describe("V2 Skills management", () => {
     );
     const dialog = await screen.findByRole("dialog", { name: "Review Skill" });
     expect(dialog).toHaveTextContent(longDescription.trim());
-    expect(within(dialog).getByText("acme/skills")).toBeVisible();
+    expect(dialog).toHaveTextContent("Skill 市场");
+    expect(dialog).toHaveTextContent("review-skill");
     await user.click(within(dialog).getByRole("button", { name: "关闭" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
@@ -1010,8 +1003,12 @@ describe("V2 Skills management", () => {
       screen.getByRole("searchbox", { name: "搜索 Skill 市场" }),
     ).toBeVisible();
     expect(
-      screen.getByRole("tab", { name: "Skill 市场", selected: true }),
-    ).toBeVisible();
+      screen.queryByRole("tab", { name: "Skill 市场" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "仓库" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/Skill 市场 · \d+ \/ \d+/),
+    ).not.toBeInTheDocument();
     const card = await screen.findByRole("heading", { name: "腾讯文档" });
     const article = card.closest("article");
     expect(article).not.toBeNull();
@@ -1024,9 +1021,7 @@ describe("V2 Skills management", () => {
     expect(
       within(article as HTMLElement).getByText("v1.0.41 · tencent-adm"),
     ).toBeVisible();
-    expect(
-      screen.getByText("Skill 市场 · 1 / 48 · 将安装到 Claude Code"),
-    ).toBeVisible();
+    expect(screen.getByText(/将安装到 Claude Code/)).toBeVisible();
     expect(
       screen.queryByRole("heading", { name: /skillhub\.cn/ }),
     ).not.toBeInTheDocument();
@@ -1060,11 +1055,9 @@ describe("V2 Skills management", () => {
     ports.skills.getInstalled = vi.fn(async () => {
       throw new Error("installed authority unavailable");
     });
-    ports.skills.getRepos = async () => [
-      { owner: "acme", name: "skills", branch: "main", enabled: true },
-    ];
-    ports.skills.discoverPage = async () => ({
-      skills: [discoverableSkill()],
+    ports.skills.searchSkillHub = async () => ({
+      query: "",
+      skills: [marketSkill()],
       totalCount: 1,
     });
 
@@ -1081,50 +1074,32 @@ describe("V2 Skills management", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("distinguishes an unavailable repository authority from an empty one", async () => {
+  it("paginates Skill 市场 discovery past the first 50 results", async () => {
     const user = userEvent.setup();
-    const ports = createBrowserFeaturePorts();
-    ports.skills.getRepos = vi.fn(async () => {
-      throw new Error("repository authority unavailable");
-    });
-    ports.skills.discoverPage = async () => ({
-      skills: [discoverableSkill()],
-      totalCount: 1,
-    });
-
-    renderFeature(<SkillsPage />, ports);
-    await screen.findByText("还没有安装 Skill");
-    await openRepoDiscovery(user);
-
-    expect(
-      await screen.findByText("无法加载仓库配置", undefined, {
-        timeout: 5_000,
+    const all = Array.from({ length: 60 }, (_, index) =>
+      marketSkill({
+        key: `skillhub:skill-${index}`,
+        slug: `skill-${index}`,
+        name: `Paged Skill ${index + 1}`,
+        directory: `skill-${index}`,
+        repoName: `skill-${index}`,
+        homepageUrl: `https://skillhub.cn/skills/skill-${index}`,
+        readmeUrl: `https://skillhub.cn/skills/skill-${index}`,
       }),
-    ).toBeVisible();
-    expect(screen.queryByText("尚未配置仓库")).not.toBeInTheDocument();
-  });
-
-  it("paginates repository discovery and requests the next offset", async () => {
-    const user = userEvent.setup();
-    const all = Array.from({ length: 21 }, (_, index) => ({
-      ...discoverableSkill(),
-      key: `acme/skills:skill-${index}`,
-      name: `Paged Skill ${index + 1}`,
-      directory: `skill-${index}`,
-    }));
-    const discoverPage = vi.fn(async (request: DiscoverSkillsPageRequest) => ({
-      skills: all.slice(request.offset, request.offset + request.limit),
-      totalCount: all.length,
-    }));
+    );
+    const searchSkillHub = vi.fn(
+      async (_query: string, limit: number, offset: number) => ({
+        query: _query,
+        skills: all.slice(offset, offset + limit),
+        totalCount: all.length,
+      }),
+    );
     const ports = createBrowserFeaturePorts();
-    ports.skills.getRepos = async () => [
-      { owner: "acme", name: "skills", branch: "main", enabled: true },
-    ];
-    ports.skills.discoverPage = discoverPage;
+    ports.skills.searchSkillHub = searchSkillHub;
 
     renderFeature(<SkillsPage />, ports);
     await screen.findByText("还没有安装 Skill");
-    await openRepoDiscovery(user);
+    await user.click(screen.getByRole("tab", { name: "发现" }));
     expect(
       await screen.findByRole("heading", { name: "Paged Skill 1" }),
     ).toBeVisible();
@@ -1132,67 +1107,64 @@ describe("V2 Skills management", () => {
       screen.queryByRole("heading", { name: "Paged Skill 21" }),
     ).not.toBeInTheDocument();
     expect(
-      screen.getByText("20 / 21 个 Skill · 将安装到 Claude Code"),
-    ).toBeVisible();
+      screen.queryByText(/Skill 市场 · \d+ \/ \d+/),
+    ).not.toBeInTheDocument();
 
     const pagination = screen.getByRole("navigation", {
-      name: "仓库 Skills 分页",
+      name: "Skill 市场分页",
     });
-    await user.click(within(pagination).getByRole("button", { name: "2" }));
+    await user.click(within(pagination).getByRole("button", { name: "3" }));
 
     expect(
-      await screen.findByRole("heading", { name: "Paged Skill 21" }),
+      await screen.findByRole("heading", { name: "Paged Skill 41" }),
+    ).toBeVisible();
+    expect(
+      await screen.findByRole("heading", { name: "Paged Skill 51" }),
     ).toBeVisible();
     await waitFor(() =>
-      expect(discoverPage).toHaveBeenCalledWith(
-        expect.objectContaining({ limit: 20, offset: 20 }),
-      ),
+      expect(searchSkillHub).toHaveBeenCalledWith("", 20, 40),
     );
   });
 
-  it("resets repository discovery to page 1 when search changes", async () => {
+  it("resets Skill 市场 discovery to page 1 when search changes", async () => {
     const user = userEvent.setup();
-    const all = Array.from({ length: 21 }, (_, index) => ({
-      ...discoverableSkill(),
-      key: `acme/skills:skill-${index}`,
-      name: `Paged Skill ${index + 1}`,
-      directory: `skill-${index}`,
-    }));
-    const discoverPage = vi.fn(async (request: DiscoverSkillsPageRequest) => ({
-      skills: all.slice(request.offset, request.offset + request.limit),
-      totalCount: all.length,
-    }));
+    const all = Array.from({ length: 21 }, (_, index) =>
+      marketSkill({
+        key: `skillhub:skill-${index}`,
+        slug: `skill-${index}`,
+        name: `Paged Skill ${index + 1}`,
+        directory: `skill-${index}`,
+        repoName: `skill-${index}`,
+      }),
+    );
+    const searchSkillHub = vi.fn(
+      async (query: string, limit: number, offset: number) => ({
+        query,
+        skills: all.slice(offset, offset + limit),
+        totalCount: all.length,
+      }),
+    );
     const ports = createBrowserFeaturePorts();
-    ports.skills.getRepos = async () => [
-      { owner: "acme", name: "skills", branch: "main", enabled: true },
-    ];
-    ports.skills.discoverPage = discoverPage;
+    ports.skills.searchSkillHub = searchSkillHub;
 
     renderFeature(<SkillsPage />, ports);
     await screen.findByText("还没有安装 Skill");
-    await openRepoDiscovery(user);
+    await user.click(screen.getByRole("tab", { name: "发现" }));
     await screen.findByRole("heading", { name: "Paged Skill 1" });
     await user.click(
       within(
-        screen.getByRole("navigation", { name: "仓库 Skills 分页" }),
+        screen.getByRole("navigation", { name: "Skill 市场分页" }),
       ).getByRole("button", { name: "2" }),
     );
     await screen.findByRole("heading", { name: "Paged Skill 21" });
 
     await user.type(
-      screen.getByRole("searchbox", { name: "搜索仓库 Skills" }),
+      screen.getByRole("searchbox", { name: "搜索 Skill 市场" }),
       "paged",
     );
 
     await waitFor(
-      () =>
-        expect(discoverPage).toHaveBeenCalledWith(
-          expect.objectContaining({
-            query: "paged",
-            offset: 0,
-            limit: 20,
-          }),
-        ),
+      () => expect(searchSkillHub).toHaveBeenCalledWith("paged", 20, 0),
       { timeout: 2_000 },
     );
   });

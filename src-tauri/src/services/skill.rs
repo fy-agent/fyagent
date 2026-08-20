@@ -387,6 +387,15 @@ const SKILLHUB_PUBLIC_SKILL_PREFIX: &str = "https://skillhub.cn/skills/";
 /// 写入已安装记录的仓库坐标，供发现页匹配；不是 GitHub owner。
 pub const SKILLHUB_MARKET_OWNER: &str = "skillhub.cn";
 const SKILLHUB_QUERY_MAX_CHARS: usize = 200;
+/// 单次上游拉取上限。SkillHub search 忽略 offset，按 offset+pageSize 增大请求；
+/// 这是防护而非把目录冻在 50 条。实测空查询大约最多返回 100 条。
+const SKILLHUB_FETCH_MAX: usize = 200;
+
+fn skillhub_requested_upstream(limit: usize, offset: usize) -> usize {
+    offset
+        .saturating_add(clamp_discovery_limit(limit))
+        .clamp(1, SKILLHUB_FETCH_MAX)
+}
 
 /// SkillHub 搜索原始响应
 #[derive(Debug, Clone, Deserialize)]
@@ -4384,17 +4393,36 @@ impl SkillService {
         query: String,
         limit: usize,
         offset: usize,
+        requested_upstream: usize,
     ) -> SkillHubSearchResult {
-        let total_count = skills.len();
-        let skills = skills.into_iter().skip(offset).take(limit).collect();
+        let fetched = skills.len();
+        let page: Vec<_> = skills.into_iter().skip(offset).take(limit).collect();
+        let hit_fetch_cap = requested_upstream >= SKILLHUB_FETCH_MAX
+            && offset.saturating_add(limit) >= SKILLHUB_FETCH_MAX;
+        let reached_end = fetched < requested_upstream || hit_fetch_cap;
+        let total_count = if reached_end {
+            fetched
+        } else {
+            offset.saturating_add(limit).saturating_add(1)
+        };
         SkillHubSearchResult {
-            skills,
+            skills: page,
             total_count,
             query,
         }
     }
 
-    /// 搜索 Skill 市场。上游 search 忽略 offset，因此先拉满窗口再本地切片。
+    fn dedupe_skillhub_by_slug(
+        skills: Vec<SkillHubDiscoverableSkill>,
+    ) -> Vec<SkillHubDiscoverableSkill> {
+        let mut seen = HashSet::new();
+        skills
+            .into_iter()
+            .filter(|skill| seen.insert(skill.slug.clone()))
+            .collect()
+    }
+
+    /// 搜索 Skill 市场。上游 search 忽略 offset，按「当前页末尾」增大 limit 增量拉取。
     pub async fn search_skillhub(
         query: &str,
         limit: usize,
@@ -4402,7 +4430,8 @@ impl SkillService {
     ) -> Result<SkillHubSearchResult> {
         let query = Self::clamp_skillhub_query(query);
         let page_limit = clamp_discovery_limit(limit);
-        let url = Self::skillhub_search_url(&query, SKILL_DISCOVERY_MAX_LIMIT)?;
+        let requested = skillhub_requested_upstream(limit, offset);
+        let url = Self::skillhub_search_url(&query, requested)?;
         let client = crate::proxy::http_client::get();
         let resp = client
             .get(url)
@@ -4412,13 +4441,14 @@ impl SkillService {
             .error_for_status()?
             .json::<SkillHubApiResponse>()
             .await?;
-        let skills = resp
-            .results
-            .into_iter()
-            .filter_map(Self::map_skillhub_item)
-            .collect();
+        let skills = Self::dedupe_skillhub_by_slug(
+            resp.results
+                .into_iter()
+                .filter_map(Self::map_skillhub_item)
+                .collect(),
+        );
         Ok(Self::paginate_skillhub_results(
-            skills, query, page_limit, offset,
+            skills, query, page_limit, offset, requested,
         ))
     }
 
@@ -5065,6 +5095,10 @@ mod tests {
         assert_eq!(search.scheme(), "https");
         assert_eq!(search.host_str(), Some("api.skillhub.cn"));
         assert_eq!(search.path(), "/api/v1/search");
+        let paged = SkillService::skillhub_search_url("", 60).expect("growing window");
+        assert!(paged
+            .query_pairs()
+            .any(|(key, value)| key == "limit" && value == "60"));
 
         let download = SkillService::skillhub_download_url("tencent-docs").expect("download url");
         assert_eq!(download.path(), "/api/v1/download");
@@ -5119,10 +5153,86 @@ mod tests {
         );
         assert_eq!(skills[1].description, "摘要");
 
-        let page = SkillService::paginate_skillhub_results(skills, String::new(), 1, 1);
+        let page = SkillService::paginate_skillhub_results(skills, String::new(), 1, 1, 3);
         assert_eq!(page.total_count, 2);
         assert_eq!(page.skills.len(), 1);
         assert_eq!(page.skills[0].slug, "summarize");
+    }
+
+    fn sample_skillhub(slug: &str) -> SkillHubDiscoverableSkill {
+        SkillHubDiscoverableSkill {
+            key: format!("skillhub:{slug}"),
+            slug: slug.to_string(),
+            name: slug.to_string(),
+            description: "介绍".to_string(),
+            directory: slug.to_string(),
+            repo_owner: SKILLHUB_MARKET_OWNER.to_string(),
+            repo_name: slug.to_string(),
+            repo_branch: "skillhub".to_string(),
+            version: None,
+            owner_name: None,
+            installs: None,
+            downloads: None,
+            homepage_url: format!("https://skillhub.cn/skills/{slug}"),
+            readme_url: None,
+        }
+    }
+
+    #[test]
+    fn skillhub_requested_upstream_grows_with_offset_instead_of_capping_at_50() {
+        assert_eq!(skillhub_requested_upstream(20, 0), 20);
+        assert_eq!(skillhub_requested_upstream(20, 20), 40);
+        assert_eq!(skillhub_requested_upstream(20, 40), 60);
+        assert_eq!(skillhub_requested_upstream(20, 80), 100);
+        assert_eq!(skillhub_requested_upstream(0, 0), 20);
+        assert_eq!(skillhub_requested_upstream(20, 180), 200);
+        assert_eq!(skillhub_requested_upstream(20, 400), 200);
+    }
+
+    #[test]
+    fn skillhub_pagination_grows_the_window_instead_of_freezing_at_50() {
+        let skills: Vec<_> = (0..60).map(|i| sample_skillhub(&format!("s{i}"))).collect();
+        let page1 =
+            SkillService::paginate_skillhub_results(skills.clone(), String::new(), 20, 0, 20);
+        assert_eq!(page1.skills.len(), 20);
+        assert_eq!(page1.skills[0].slug, "s0");
+        assert_eq!(
+            page1.total_count, 21,
+            "a full upstream window must unlock the next page"
+        );
+
+        let page2 =
+            SkillService::paginate_skillhub_results(skills.clone(), String::new(), 20, 20, 40);
+        assert_eq!(page2.skills.len(), 20);
+        assert_eq!(page2.skills[0].slug, "s20");
+        assert_eq!(page2.total_count, 41);
+
+        let page3 =
+            SkillService::paginate_skillhub_results(skills.clone(), String::new(), 20, 40, 60);
+        assert_eq!(page3.skills.len(), 20);
+        assert_eq!(page3.skills[0].slug, "s40");
+        assert_eq!(page3.total_count, 61);
+
+        let ended = SkillService::paginate_skillhub_results(skills, String::new(), 20, 20, 80);
+        assert_eq!(ended.skills.len(), 20);
+        assert_eq!(
+            ended.total_count, 60,
+            "a short upstream read is the catalog end"
+        );
+    }
+
+    #[test]
+    fn skillhub_pagination_stops_at_the_fetch_cap() {
+        let skills: Vec<_> = (0..200)
+            .map(|i| sample_skillhub(&format!("s{i}")))
+            .collect();
+        let last = SkillService::paginate_skillhub_results(skills, String::new(), 20, 180, 200);
+        assert_eq!(last.skills.len(), 20);
+        assert_eq!(last.skills[0].slug, "s180");
+        assert_eq!(
+            last.total_count, 200,
+            "must not invent a page beyond SKILLHUB_FETCH_MAX"
+        );
     }
 
     #[test]

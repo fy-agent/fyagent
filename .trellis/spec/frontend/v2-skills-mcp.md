@@ -175,6 +175,9 @@ struct DiscoverableSkillsPage {
 discover_available_skills() -> Result<Vec<DiscoverableSkill>, String> // leftover V1 only
 
 search_skillhub(query, limit, offset) -> Result<SkillHubSearchResult, String>
+// limit is page size (0 → 20, >50 → 50). Upstream ignores offset/page.
+// Host requests limit = offset + pageSize (cap SKILLHUB_FETCH_MAX = 200)
+// then skip/take. totalCount is a next-page heuristic, not a 50-item freeze.
 install_skillhub(slug, current_app) -> Result<Vec<InstalledSkill>, String>
 search_skills_sh(...) // leftover V1 only; V2 discovery must not call it
 
@@ -253,22 +256,25 @@ function ExternalLinkButton(props: {
   Fetch use `uvx`. The legacy renderer adapter only re-exports this source.
 - Feature tests inject ports or a page-load Tauri IPC fixture. Production code
   must not contain test routes, fixture switches, or synthetic data.
-- V2 Skills discovery calls `discover_available_skills_page` through
-  `SkillsPort.discoverPage`. It must not invoke leftover
-  `discover_available_skills`. That full-list command remains for V1 only and
-  keeps returning `Vec<DiscoverableSkill>`. Default page size is 20; the host
-  clamps `limit == 0` to 20 and `limit > 50` to 50. Invalid `status` is a
-  command error. `offset` past the filtered total returns `skills: []` with
-  the filtered `totalCount`. Search, enabled-repo filter, and install status
-  run on the host before the slice. The host trims `query` before matching.
-  Install matching is directory tail plus
-  case-insensitive `repoOwner`/`repoName` (missing installed owner/name as
-  `""`). Repository filter tabs come from enabled `getRepos()`, not from the
-  current page. Changing search, repo, status, or source resets to page 1.
-  Reset the page in those `onChange` / `onValueChange` handlers. Do not
-  `setPage(1)` inside a `useEffect` on the query string;
-  `react-hooks/set-state-in-effect` fails. Search is debounced (~300ms) for
-  the request, but the page index resets on the keystroke.
+- V2 Skills discovery calls `search_skillhub` through
+  `SkillsPort.searchSkillHub`. It must not invoke leftover
+  `discover_available_skills`, `search_skills_sh`, or the 仓库
+  `discover_available_skills_page` path. Those commands remain on the port for
+  leftover V1 and 管理仓库; the Discover tab is Skill 市场 only. Default page
+  size is 20; `SKILL_DISCOVERY_MAX_PAGE_SIZE` / host `limit > 50 → 50` clamps
+  **page size**, not the catalog. SkillHub search ignores `offset` / `page`
+  query params, so the host requests `limit = offset + pageSize` (capped at
+  `SKILLHUB_FETCH_MAX = 200`) and then `skip(offset).take(pageSize)`. When the
+  upstream window is full, `totalCount = offset + pageSize + 1` so
+  `FeaturePagination` can open the next page. A short read, or a window that
+  hits the fetch cap, sets `totalCount` to the fetched length. If the
+  requested page is past that, `useSkillHubSearch` retries the last page;
+  do not `setPage` in a `useEffect` (`react-hooks/set-state-in-effect`).
+  Changing search resets to page 1 in the `onValueChange` handler. Search is
+  debounced (~300ms) for the request, but the page index resets on the
+  keystroke. Install matching is directory tail plus case-insensitive
+  `repoOwner`/`repoName` (Skill 市场 uses owner `skillhub.cn` and slug as
+  `repoName`). Empty query still loads the ranked feed.
 
 - SkillService caches a successful enabled-repo scan in process for 5 minutes
   under a fingerprint of sorted `owner/name/branch`. Cache misses still scan
@@ -329,7 +335,7 @@ function ExternalLinkButton(props: {
   gutter, pointer/keyboard resize, independent pane scroll). Installed lists
   use `FeatureList` / `FeatureListItem`; installed/discovery and MCP editor
   tracks use `FeatureTabs`; management search uses `FeatureSearch`. Skills
-  discovery (Skill 市场 and configured repos) and any later paged feature list use
+  discovery (Skill 市场) and any later paged feature list use
   `FeaturePagination`; do not clone the page-number window. The shared pager
   shows `第 x / n 页`, 上一页 / 下一页, numbered pages, and ellipsis when
   `totalPages > 7`. Do not add a pagination npm package. Do not
@@ -345,27 +351,27 @@ function ExternalLinkButton(props: {
   past the panel chrome. Assignment rows wrap (`flex-wrap: wrap`,
   `min-width: 0`) so “全开 / 全关” stay inside the pane. The Discover tab
   stays a card grid and must not use this master-detail chassis. Discovery
-  chrome puts search first (`FeatureSearch`), then source/status
-  `FeatureTabs`. Source tabs are **Skill 市场** (default) then **仓库**.
-  Do not add skills.sh, SkillsMP, or ClawHub as a V2 discovery source.
+  chrome is search (`FeatureSearch`) then the card grid then
+  `FeaturePagination`. Do not add source tabs (**Skill 市场** / **仓库**),
+  install-status tabs, repo-filter chips, or a summary line such as
+  `Skill 市场 · 20 / 50 · 将安装到 Claude Code`. Do not add skills.sh,
+  SkillsMP, ClawHub, or configured GitHub repos as a V2 discovery source.
   The install-target `FeatureTabs` live in the page header
   with decorative app icons so they do not push the card grid down. Do not
-  use a `<select>` or a page-local tab clone. Result copy names the current
+  use a `<select>` or a page-local tab clone. Header copy names the current
   install target with the catalog label (`Claude Code`, not `Claude`).
-  Repository chips appear only when more
-  than one enabled repository is loaded from `getRepos()`. Skill Discover
+  Skill Discover
   cards show the name and
   install state in the header, a 3-line clamped description, then an optional
-  one-line note of version and author for Skill 市场 cards. Do not print a
+  one-line note of version and author. Do not print a
   GitHub `owner/repo` line or a “来自 …” fallback on the card. Do not group
   cards under repository headings. `.fy-feature-card` is a column flex so
   footer actions align across a
   stretched grid row. Full copy is not on the card: **详情** opens the shared
   `Dialog` with the complete description and source meta (Skill 市场 slug /
-  author / version / installs, or the GitHub repository for the 仓库 tab).
+  author / version / installs).
   Skill 市场 cards use **主页** (`https://skillhub.cn/skills/{slug}`) as
-  `ExternalLinkButton`. **说明** / **仓库** stay `ExternalLinkButton` on
-  repository cards. Skills discovery search/filter chrome
+  `ExternalLinkButton`. Skills discovery search chrome
   and `FeaturePagination` stay with the page that scrolls as a whole; the
   inner `.fy-feature-discovery-scroll` is in-flow. MCP discovery still uses
   that shared class as an independent scroller. Do not add overflow to
@@ -470,32 +476,35 @@ function ExternalLinkButton(props: {
 | WorkBuddy is converted to `AppType` or added as a Provider app   | Type/runtime test fails; WorkBuddy stays Skills/MCP-domain only         |
 | Discover/docs or Skill repo is opened without ExternalLinkButton | Component test fails; the click must hit `settings.openExternal`        |
 | A second HTTP(S) jump starts while one is in flight              | Ignored; only the in-flight control shows pending copy                  |
-| V2 Skills discovery calls leftover `discover_available_skills`   | Adapter/page test fails; use `discoverPage` / `_page`                   |
+| V2 Skills discovery calls leftover `discover_available_skills`   | Adapter/page test fails; use `searchSkillHub`                           |
 | Browser `discoverPage` read                                      | `{ skills: [], totalCount: 0 }` with no zip/scan side effect            |
-| `limit == 0` / `limit > 50`                                      | Host uses 20 / 50                                                       |
-| Discovery `status` is not `all\|installed\|uninstalled`          | Command error; do not default to all                                    |
-| `offset` is past the filtered total                              | `skills: []` and unchanged filtered `totalCount`                        |
-| Search/repo/status change on Skills discovery                    | Host filters then slices; UI returns to page 1                          |
-| V2 Skills discovery calls `search_skills_sh`                     | Adapter/page test fails; use `search_skillhub`                          |
-| SkillHub `offset` / `page` query params                          | Host ignores them; fetch `limit=50` then slice locally                  |
+| `limit == 0` / `limit > 50`                                      | Host page size uses 20 / 50; catalog is not frozen at 50                |
+| Discovery `status` is not `all\|installed\|uninstalled`          | Leftover `discoverPage` command error; V2 discovery does not send it    |
+| `offset` is past the filtered total                              | Leftover `discoverPage`: `skills: []` and unchanged filtered `totalCount` |
+| Search change on Skills discovery                                | Host grows the SkillHub window then slices; UI returns to page 1        |
+| V2 Skills discovery calls `search_skills_sh` or `discoverPage`   | Adapter/page test fails; Discover uses `search_skillhub` only           |
+| SkillHub `offset` / `page` query params                          | Host ignores them; request `limit = offset + pageSize` (cap 200)        |
+| SkillHub catalog frozen at 50                                    | Reject; `SKILL_DISCOVERY_MAX_PAGE_SIZE` clamps page size only           |
 | SkillHub card shows `owner/repo` or a grouping heading           | Page test fails; source meta lives in 详情 only                         |
 | Skill 市场 install spawns `skillhub` CLI                         | Host must download `api.skillhub.cn/api/v1/download?slug=` ZIP          |
 | SkillHub slug contains `/`, space, `@`, or `..`                  | Command error `INVALID_SKILLHUB_SLUG`; do not build the download URL    |
 | Skill 市场 homepage is `api.skillhub.cn/...`                     | Reject; construct `https://skillhub.cn/skills/{slug}` only              |
 | `.fy-feature-detail-scroll` is given overflow for discovery      | Skills toolbars scroll away; Skills discovery scrolls the page wrapper  |
-| Repo filter tabs are derived from the current Skill page         | Use enabled `getRepos()`; chips only if more than one enabled repo      |
+| Discover shows **Skill 市场** / **仓库** source tabs             | Page test fails; Discover is Skill 市场 only, no source tabs            |
+| Discover shows `Skill 市场 · n / m · 将安装到 …`                 | Page test fails; counts live on `FeaturePagination` only                |
 
 ## 5. Good / Base / Bad Cases
 
-- **Good:** Skills discovery defaults to Skill 市场 (`search_skillhub`).
+- **Good:** Skills discovery is Skill 市场 only (`search_skillhub`).
   Empty query still loads the ranked feed. Cards are a flat grid with a
   3-line Chinese `description_zh` preview; **详情** shows slug / author /
   version; **主页** opens `https://skillhub.cn/skills/{slug}`. Install calls
   `install_skillhub` (ZIP download + `install_from_zip`), never GitHub archive
-  and never the `skillhub` CLI. The 仓库 tab still uses
-  `discover_available_skills_page` and shares `FeaturePagination`. Filter
-  changes return to page 1. SkillHub search has no working `offset`; the host
-  fetches up to 50 results and slices. MCP
+  and never the `skillhub` CLI. There are no source tabs and no
+  `Skill 市场 · n / m` summary. `FeaturePagination` (`ariaLabel="Skill 市场分页"`)
+  pages through results. Search changes return to page 1. SkillHub search has
+  no working `offset`; the host grows `limit` to `offset + pageSize` (cap
+  200) and slices. MCP
   discovery still scrolls through `.fy-feature-discovery-scroll`. Skills
   discovery scrolls the whole feature page.
 - **Good:** A user toggles Codex for one Skill. The UI invokes
@@ -540,12 +549,14 @@ git diff --check
   and error propagation across Skills, MCP, Settings, and external links,
   including V2 seven-value Skill and seven-value MCP identity plus leftover
   backend Gemini / Hermes flag round-trip, disk-observed installed Skills, and
-  `discover_available_skills_page` rather than the leftover full-list command.
+  leftover `discover_available_skills_page` kept for V1 / 管理仓库 rather than
+  the leftover full-list command.
   Adding `search_skillhub` / `install_skillhub` increments the host
   invoke-handler freeze
   in `application_acl_covers_every_registered_command_without_remote_access`
   (currently 334). Rust unit tests cover SkillHub slug/URL pinning, Chinese
-  description mapping, and local pagination of the 50-item window.
+  description mapping, growing upstream `limit` (`offset + pageSize`, not a
+  frozen 50), and stopping at `SKILLHUB_FETCH_MAX`.
 - Pure tests cover public-field search, secret exclusion, URL/args redaction,
   selection convergence, repository parsing, installed-key matching,
   pagination, env/header/args parsing, advanced JSON validation, extension
@@ -562,10 +573,11 @@ git diff --check
   catalog order, Discover/docs and
   Skill repo clicks through `ExternalLinkButton` → `settings.openExternal`,
   header install-target tabs in that same order, flex list overlay, one
-  shared in-flight lock, Skills discovery page-2 offset 20, search resetting
-  to page 1, `FeaturePagination` selection plus prev/next and ellipsis,
-  discovery card 3-line clamp plus 详情 dialog, Skill 市场 default source
-  without grouping or skills.sh, Skills page-level discovery
+  shared in-flight lock, Skills discovery page-3 offset 40 (past 50), search
+  resetting to page 1, `FeaturePagination` selection plus prev/next and ellipsis,
+  discovery card 3-line clamp plus 详情 dialog, Skill 市场 as the only V2
+  discovery source without grouping, source tabs, skills.sh, or a `n / m`
+  summary line, Skills page-level discovery
   scroll, MCP `.fy-feature-discovery-scroll` overflow, and no overflow on
   `.fy-feature-detail-scroll`.
 - Browser tests cover `900x600`, `1152x640`, `1232x700`, and `1440x900`, with
@@ -710,18 +722,12 @@ discover: () => invoke("discover_available_skills");
 }
 ```
 
-Correct: page through `discoverPage`, keep leftover `discover_available_skills`
+Correct: page through `searchSkillHub`, keep leftover `discover_available_skills`
 for V1, and scroll discovery cards with the shared class.
 
 ```ts
-discoverPage: (request) =>
-  invoke("discover_available_skills_page", {
-    query: request.query,
-    repo: request.repo ?? null,
-    status: request.status,
-    limit: request.limit,
-    offset: request.offset,
-  });
+searchSkillHub: (query, limit, offset) =>
+  invoke("search_skillhub", { query, limit, offset });
 ```
 
 ```css
@@ -743,7 +749,7 @@ Wrong: dump the full Skill description on the discovery card, or omit 详情.
 ```
 
 Correct: clamp the card preview to three lines and open the shared `Dialog`
-from **详情**. Keep **说明** / **仓库** as `ExternalLinkButton`.
+from **详情**. Skill 市场 cards use **主页** as `ExternalLinkButton`.
 
 ```css
 .fy-feature-card-body {
@@ -780,27 +786,15 @@ Correct: reuse `FeaturePagination` (status, 上一页 / 下一页, ellipsis).
 />
 ```
 
-Wrong: V2 discovery still searches skills.sh, groups cards by GitHub repo, or
-labels the market “中国 Skill 市场”.
+Wrong: V2 discovery still searches skills.sh, groups cards by GitHub repo,
+shows **Skill 市场** / **仓库** source tabs, labels the market
+“中国 Skill 市场”, or freezes the catalog at 50.
 
 ```ts
 searchSkillsSh: (query, limit, offset) =>
   invoke("search_skills_sh", { query, limit, offset });
-```
-
-```tsx
-<FeatureTabs options={[{ id: "skillssh", label: "skills.sh" }]} />
-<h3>{repo} · {items.length}</h3>
-```
-
-Correct: Skill 市场 is the default V2 source. Copy is “Skill 市场”. Host
-commands are `search_skillhub` / `install_skillhub`. Cards stay a flat grid.
-
-```ts
-searchSkillHub: (query, limit, offset) =>
-  invoke("search_skillhub", { query, limit, offset });
-installSkillHub: (slug, currentApp) =>
-  invoke("install_skillhub", { slug, currentApp });
+searchSkillHub: (query, limit) =>
+  invoke("search_skillhub", { query, limit: 50, offset: 0 });
 ```
 
 ```tsx
@@ -810,16 +804,42 @@ installSkillHub: (slug, currentApp) =>
     { id: "repos", label: "仓库" },
   ]}
 />
+<p>Skill 市场 · 20 / 50 · 将安装到 Claude Code</p>
+<h3>{repo} · {items.length}</h3>
+```
+
+Correct: Discover is Skill 市场 only. Copy is “Skill 市场”. Host
+commands are `search_skillhub` / `install_skillhub`. Cards stay a flat grid.
+Pagination grows the upstream `limit` with `offset`.
+
+```ts
+searchSkillHub: (query, limit, offset) =>
+  invoke("search_skillhub", { query, limit, offset });
+installSkillHub: (slug, currentApp) =>
+  invoke("install_skillhub", { slug, currentApp });
+```
+
+```tsx
+<FeatureSearch ariaLabel="搜索 Skill 市场" />
+<FeaturePagination
+  page={page}
+  totalPages={totalPages}
+  ariaLabel="Skill 市场分页"
+  onPageChange={setPage}
+/>
 ```
 
 ## Design Decisions
 
 - V2 discovery uses Tencent SkillHub (`skillhub.cn`) as the Skill 市场 API
   because listings include `description_zh`. Do not wire skills.sh, SkillsMP,
-  or ClawHub into the V2 discovery tab.
-- SkillHub search ignores `offset` / `page`. The host always requests
-  `limit=50` (`SKILL_DISCOVERY_MAX_LIMIT`) and slices for `FeaturePagination`.
-  `totalCount` is the returned window size, not the global catalog size.
+  ClawHub, or configured GitHub repos into the V2 discovery tab.
+- SkillHub search ignores `offset` / `page`. The host requests
+  `limit = offset + pageSize` (`SKILLHUB_FETCH_MAX = 200` is a safety cap).
+  `SKILL_DISCOVERY_MAX_PAGE_SIZE = 50` clamps page size only. `totalCount` is
+  a next-page heuristic (`offset + pageSize + 1` while the window is full).
+  Empty-query SkillHub currently returns about 100 rows; do not freeze the
+  product catalog at 50.
 - Install downloads `GET https://api.skillhub.cn/api/v1/download?slug=`
   (HTTPS, pinned host/path, allowlisted slug) and reuses `install_from_zip`.
   Redirects to Tencent COS are expected. Do not spawn `npx skillhub` or the

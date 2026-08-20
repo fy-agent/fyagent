@@ -167,14 +167,21 @@ export function useSkillHubSearch(
   enabled: boolean,
 ) {
   const { ports } = useFeatures();
+  const limit = SKILL_DISCOVERY_PAGE_SIZE;
   return useQuery({
     queryKey: ["v2", "skills", "skillhub", query, page],
-    queryFn: () =>
-      ports.skills.searchSkillHub(
-        query,
-        SKILL_DISCOVERY_PAGE_SIZE,
-        (page - 1) * SKILL_DISCOVERY_PAGE_SIZE,
-      ),
+    queryFn: async () => {
+      const load = (nextPage: number) =>
+        ports.skills.searchSkillHub(
+          query,
+          limit,
+          Math.max(0, nextPage - 1) * limit,
+        );
+      const result = await load(page);
+      const totalPages = Math.max(1, Math.ceil(result.totalCount / limit));
+      if (page <= 1 || page <= totalPages) return result;
+      return load(totalPages);
+    },
     enabled,
     placeholderData: keepPreviousData,
   });

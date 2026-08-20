@@ -184,7 +184,7 @@ lists, Skills vs MCP, Prompts vs Memory, and TRAE vs OpenCode model panels.
 ### Feature chrome
 
 - Exclusive in-page option tracks (installed/discovery, memory types, MCP
-  editor mode, Skills discovery filters/targets) use `FeatureTabs`. Do not
+  editor mode, Skills install targets) use `FeatureTabs`. Do not
   hand-roll `SelectionLensTrack` + `fy-feature-tab` on those pages.
 - Management-list search uses `FeatureSearch` (`role="search"`, Escape and
   clear button, Phosphor icons). That is the V2 port of pre-V2
@@ -193,7 +193,7 @@ lists, Skills vs MCP, Prompts vs Memory, and TRAE vs OpenCode model panels.
 - Feature master lists use `FeatureList` / `FeatureListItem`. Catalog agent
   rails stay on `CatalogList` / `CatalogListItem`. Primary nav stays on
   `SelectionLensGroup` with `inset={1}`.
-- Skills discovery (Skill 市场 and configured repos) uses `FeaturePagination`. Do not
+- Skills discovery (Skill 市场) uses `FeaturePagination`. Do not
   hand-roll a second page-number window, and do not add a pagination UI
   library for prev/next or ellipsis.
 - Skills/MCP assignment stays on `AssignmentPanel` (V2 switch rows), not a
@@ -239,7 +239,7 @@ already share `modelsShared`, `modelChips`, and `feedback`. Do not add
 
 - **Good:** Skills, MCP, Prompts, and Memory all import `FeatureSearch` /
   `FeatureList`. Skills/MCP/Memory import `FeatureTabs`. Skills discovery
-  sources share `FeaturePagination`. A later filter track
+  uses `FeaturePagination` (`ariaLabel="Skill 市场分页"`). A later filter track
   adds one `FeatureTabs` options array, not a new tab component.
 - **Base:** Primary nav and catalog rails keep `SelectionLensGroup` /
   `CatalogListItem` because their geometry differs (`inset={1}`, brand frames).
@@ -287,7 +287,7 @@ Correct: shared V2 chrome; leftover is a behavior reference.
 <FeatureTabs id="skills-view-tabs" label="Skills 视图" value={tab} onChange={setTab} options={...} />
 <FeatureSearch ariaLabel="搜索已安装 Skills" placeholder="..." value={search} onValueChange={setSearch} />
 <FeatureList id="skills-installed-list">{items}</FeatureList>
-<FeaturePagination page={page} totalPages={totalPages} ariaLabel="仓库 Skills 分页" onPageChange={setPage} />
+<FeaturePagination page={page} totalPages={totalPages} ariaLabel="Skill 市场分页" onPageChange={setPage} />
 ```
 
 Wrong: add a pagination library because Radix has no primitive.
@@ -302,7 +302,7 @@ Correct: extend the shared owner; keep the existing props.
 <FeaturePagination
   page={page}
   totalPages={totalPages}
-  ariaLabel="仓库 Skills 分页"
+  ariaLabel="Skill 市场分页"
   onPageChange={setPage}
 />
 ```
