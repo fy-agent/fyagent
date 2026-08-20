@@ -37,18 +37,18 @@ The current desktop UI, captured in Simplified Chinese. The top bar switches amo
 <table>
   <tr>
     <td align="center" width="50%">
-      <img src="assets/screenshots/main-zh-1.png" alt="FyAgent Models page: manage third-party models for WorkBuddy">
-      <br><em>Models</em>
-    </td>
-    <td align="center" width="50%">
       <img src="assets/screenshots/main-zh-2.png" alt="FyAgent Skill marketplace">
       <br><em>Skills</em>
+    </td>
+    <td align="center" width="50%">
+      <img src="assets/screenshots/main-zh-3.png" alt="FyAgent MCP discovery page">
+      <br><em>MCP</em>
     </td>
   </tr>
   <tr>
     <td align="center" colspan="2">
-      <img src="assets/screenshots/main-zh-3.png" alt="FyAgent MCP discovery page">
-      <br><em>MCP</em>
+      <img src="assets/screenshots/main-zh-1.png" alt="FyAgent Models page: manage third-party models for WorkBuddy">
+      <br><em>Models</em>
     </td>
   </tr>
 </table>

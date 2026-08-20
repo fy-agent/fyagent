@@ -37,18 +37,18 @@ WorkBuddy 另有独立的顶层配置入口；它不属于上述目标工具或 
 <table>
   <tr>
     <td align="center" width="50%">
-      <img src="assets/screenshots/main-zh-1.png" alt="FyAgent 模型页：在 WorkBuddy 中管理第三方模型">
-      <br><em>模型</em>
-    </td>
-    <td align="center" width="50%">
       <img src="assets/screenshots/main-zh-2.png" alt="FyAgent Skill 市场">
       <br><em>Skills</em>
+    </td>
+    <td align="center" width="50%">
+      <img src="assets/screenshots/main-zh-3.png" alt="FyAgent MCP 发现页">
+      <br><em>MCP</em>
     </td>
   </tr>
   <tr>
     <td align="center" colspan="2">
-      <img src="assets/screenshots/main-zh-3.png" alt="FyAgent MCP 发现页">
-      <br><em>MCP</em>
+      <img src="assets/screenshots/main-zh-1.png" alt="FyAgent 模型页：在 WorkBuddy 中管理第三方模型">
+      <br><em>模型</em>
     </td>
   </tr>
 </table>

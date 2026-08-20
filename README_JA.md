@@ -37,18 +37,18 @@ WorkBuddy には独立したトップレベルの設定入口があります。�
 <table>
   <tr>
     <td align="center" width="50%">
-      <img src="assets/screenshots/main-zh-1.png" alt="FyAgent のモデル画面：WorkBuddy のサードパーティモデルを管理">
-      <br><em>モデル</em>
-    </td>
-    <td align="center" width="50%">
       <img src="assets/screenshots/main-zh-2.png" alt="FyAgent の Skill マーケット">
       <br><em>Skills</em>
+    </td>
+    <td align="center" width="50%">
+      <img src="assets/screenshots/main-zh-3.png" alt="FyAgent の MCP 発見画面">
+      <br><em>MCP</em>
     </td>
   </tr>
   <tr>
     <td align="center" colspan="2">
-      <img src="assets/screenshots/main-zh-3.png" alt="FyAgent の MCP 発見画面">
-      <br><em>MCP</em>
+      <img src="assets/screenshots/main-zh-1.png" alt="FyAgent のモデル画面：WorkBuddy のサードパーティモデルを管理">
+      <br><em>モデル</em>
     </td>
   </tr>
 </table>
