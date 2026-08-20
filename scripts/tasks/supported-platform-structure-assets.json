@@ -43,7 +43,7 @@
     ],
     [
       "src-tauri/Cargo.toml",
-      "454b5f139e0b34b61969308e49c70b9387cf3723f537e5b8175d475def7cf90f"
+      "23ec817dc18fd9333a44d7fb89714df9c263ed05a21b4bdf6f0e8d6720ee0705"
     ],
     [
       "src-tauri/src/app_store.rs",
@@ -319,7 +319,7 @@
     ],
     [
       "tests/releaseWorkflow.test.ts",
-      "81ef909846a602513511bd2d59a58c12048f4b299b8adf6bf6f9296b3dbff5a4"
+      "47fe460f8a2e850ce0686b6380fc3f20eeb34e12209922502d6b225ce2c4118e"
     ],
     [
       "tests/remainingPlatformSurface.test.ts",

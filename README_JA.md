@@ -99,7 +99,7 @@ AI が賢くなるほど、権限を誰に渡したのか、なぜ設定が壊�
 - macOS: `FyAgent-X.Y.Z-macOS.dmg`、`FyAgent-X.Y.Z-macOS.zip`
 - Windows: `FyAgent-X.Y.Z-Windows-x64-setup.exe`、`FyAgent-X.Y.Z-Windows-arm64-setup.exe`
 
-Windows 版は NSIS セットアップのみで、MSI とポータブル ZIP は現在の配布対象ではありません。macOS 版は ad-hoc 署名で、Apple Developer ID では署名されておらず、公証も受けていません。
+Windows 版は NSIS セットアップのみで、MSI とポータブル ZIP は現在の配布対象ではありません。macOS 版は Apple Developer ID で署名され、公証を受けています。
 
 インストール前にリリースノートを読み、公開されたチェックサム、`signing-status.json`、ビルド証明を確認してください。`NotSigned` は署名状態を示すだけで、安全性の証明ではありません。各 OS の手順は[インストールガイド](docs/user-manual/ja/1-getting-started/1.2-installation.md)、変更履歴は[リリースノート一覧](docs/release-notes/README.md)にあります。
 

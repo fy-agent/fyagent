@@ -30,10 +30,11 @@ evidence, or asset drift.
 
 Platform acceptance is successful build and packaging on each matching native
 runner. Windows additionally requires strict unsigned/signing proof and the
-fresh formal sealing boundary before exact-asset verification. The Release
-workflow does not launch the setup executables or run an install -> verify ->
-uninstall lifecycle; the retained lifecycle harness is a manual diagnostic,
-not a preflight or publication gate.
+fresh formal sealing boundary before exact-asset verification. macOS
+additionally requires Developer ID signing, Apple notarization, and stapled
+tickets on the app and DMG. The Release workflow does not launch the setup
+executables or run an install -> verify -> uninstall lifecycle; the retained
+lifecycle harness is a manual diagnostic, not a preflight or publication gate.
 
 Release metadata retains real schema identities for download manifests,
 platform builds, aggregate build metadata, and Windows signing status. The

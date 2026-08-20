@@ -281,15 +281,18 @@ unavailability blocks acceptance.
 
 - one universal app contains `arm64` and `x86_64`, the frozen version, and
   bundle identifier `com.fyagent.desktop`;
-- the workflow explicitly re-seals the complete app with an identity-free
-  ad-hoc signature, then requires strict deep signature verification. The
-  result must report an ad-hoc signature and no real TeamIdentifier
-  (`TeamIdentifier=not set`); a certificate authority, Developer ID identity,
-  notarization, or stapled ticket is rejected. Ad-hoc integrity is not
-  Developer ID or Apple trust;
-- the DMG container itself must remain truly unsigned. ZIP and DMG package the
-  same verified ad-hoc-sealed app and are re-opened to prove version and
-  executable digest identity;
+- Apple Developer ID secrets exist only in `build-macos`. That job imports a
+  temporary keychain, re-seals the complete app with
+  `Developer ID Application: William Wang (HY446996QX)` / team `HY446996QX`,
+  the hardened runtime, a secure timestamp, and the checked-in entitlements,
+  then notarizes and staples the app. Strict deep verification must report that
+  exact identity, `runtime` flags, a timestamp, sealed resources, and a stapled
+  ticket. An ad-hoc signature, missing team, missing timestamp, or missing
+  notarization ticket is rejected;
+- ZIP and DMG package the same verified Developer ID app and are re-opened to
+  prove version and executable digest identity. After DMG creation the workflow
+  signs, notarizes, and staples the DMG container with the same Developer ID
+  identity. An unsigned, ad-hoc, or unstapled DMG is rejected;
 - DMG creation removes its explicit output before the first attempt and after
   every failed attempt. DMG verification preserves the completed input across
   attempts. Both operations retry the same arguments only when the captured
@@ -351,7 +354,8 @@ Workflow default permission is `contents: read`.
 - the formal publish job alone receives `contents: write` after every build,
   Windows proof/seal, exact-asset, metadata, and attestation dependency
   succeeds;
-- provider secrets exist only in the formal transform job. They never reach
+- provider secrets exist only in the formal Windows transform job. Apple
+  Developer ID secrets exist only in `build-macos`. They never reach Windows
   builds, preflight, fresh sealing, aggregation, notes, or specs.
 
 The publish job has an explicit formal tag-push condition; dispatch evaluates
@@ -395,10 +399,10 @@ never called private or successful.
 | Repository name is a former owner or redirect alias, even when numeric ID is unchanged                                                  | Fail before native builds; require exact `fy-agent/fyagent`. |
 | Formal tag is lightweight, points elsewhere, or changes                                                                                 | Fail; never repair or move the tag.                          |
 | Exact-source authority-branch CI is absent/running/failed/cancelled/timed out, stale, wrong identity, or lacks unique Required evidence | Fail; never accept an older green commit/attempt.            |
-| Preflight reaches a publish path or provider secret                                                                                     | Static/remote gate fails.                                    |
+| Preflight reaches a publish path or Windows provider secret                                                                             | Static/remote gate fails.                                    |
 | Native runner, architecture, toolchain, or source drifts                                                                                | Fail that target; no fallback.                               |
 | Pinned build input ID/digest/manifest/file set drifts                                                                                   | Fail before provider or trusted consumption.                 |
-| Signer configuration is partial/invalid or fresh signature proof fails                                                                  | Fail; do not downgrade to unsigned.                          |
+| Signer configuration is partial/invalid, Apple notarization is denied, or fresh signature proof fails | Fail; do not downgrade to unsigned.                      |
 | Windows proof/sealed binding or macOS identity fails                                                                                    | Stop aggregation and publication.                            |
 | An intentional producer skip propagates past successful asset verification                                                              | Attestation still runs; abnormal direct needs fail visibly.  |
 | Four/seven/eight file allowlist or digest differs                                                                                       | Stop verification, attestation, or publication.              |
