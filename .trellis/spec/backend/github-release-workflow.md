@@ -36,14 +36,14 @@ component, or leading zero.
   prove and seal Windows bytes, create workflow artifacts, and attest candidate
   bytes, but it can never create or update a GitHub Release and is not a
   release-closure prerequisite.
-- a tag `push` is the only formal publication path. The remote tag must be an
-  annotated tag whose target commit equals the current remote `main` HEAD and
-  the exact successful full push CI source.
-- `main` is the release-authority branch. Runtime eligibility proves its live
-  remote HEAD and exact-source CI directly; it does not infer those facts from
-  branch protection, a ruleset, merge settings, or a separate provenance
-  workflow, and this project does not claim that those administrator controls
-  exist.
+- a tag `push` is the only formal publication path. The remote tag may be
+  annotated or lightweight. Formal `sourceSha` is that tag's target commit.
+  Live `main` HEAD may move during the run. Exact-source push CI is not a
+  publication gate; the Release compile is the proof.
+- `main` is the formal authority branch for the preflight/formal split.
+  Runtime eligibility does not infer publication from branch protection, a
+  ruleset, merge settings, or a separate provenance workflow, and this project
+  does not claim that those administrator controls exist.
 - no branch push, manual signed mode, manual tag dispatch, partial target mode,
   cross-architecture substitute, local publish path, or update-in-place path
   exists.
@@ -58,22 +58,21 @@ Eligibility is the sole producer of these values:
 ```text
 app_version   = canonical Cargo stable version
 release_tag   = "v" + app_version
-source_sha    = current remote dev/laiyongjie HEAD (preflight) | main HEAD (formal)
+source_sha    = current remote dev/laiyongjie HEAD (preflight) | tag target commit (formal)
 workflow_sha  = source_sha
 release_mode  = preflight | formal
-ci_run_id     = exact successful push CI run for the mode's authority branch
-ci_attempt    = exact successful attempt of that run
+ci_run_id     = null
+ci_run_attempt = null
 ```
 
 Every platform build, metadata writer, signer boundary, asset verifier,
 attestation, and publication step consumes these values unchanged. Downstream
-jobs must not strip a ref, reread a second version source, select a newer CI
-attempt, or substitute a different source/workflow SHA.
+jobs must not strip a ref, reread a second version source, or substitute a
+different source/workflow SHA.
 
-Preflight binds the exact current `dev/laiyongjie` HEAD and its successful push
-CI. Formal mode independently binds the exact current `main` HEAD, its
-successful push CI, and the remote annotated tag. Preflight is artifact-producing
-diagnostic evidence, not formal release authority or a closure gate.
+Preflight binds the exact current `dev/laiyongjie` HEAD. Formal mode binds the
+remote tag's target commit. Preflight is artifact-producing diagnostic
+evidence, not formal release authority or a closure gate.
 
 The frozen output has exact keys:
 
@@ -83,14 +82,15 @@ The frozen output has exact keys:
   "releaseTag": "vX.Y.Z",
   "sourceSha": "<40 lowercase hex>",
   "workflowSha": "<same SHA>",
-  "ciRunId": "<positive decimal>",
-  "ciRunAttempt": "<positive decimal>",
+  "ciRunId": null,
+  "ciRunAttempt": null,
   "mode": "preflight | formal"
 }
 ```
 
-Later remote checks compare every key to this frozen value. A newer successful
-rerun is not silently substituted after the initial decision.
+Later remote checks compare every key to this frozen value. A newer tag object
+that no longer points at the frozen commit fails the live recheck. A moved
+`main` HEAD does not.
 
 ## 3. Repository-owned eligibility and remote evidence
 
@@ -106,28 +106,23 @@ Eligibility fails closed unless all of these facts agree:
 2. the workflow is `Release` at `.github/workflows/release.yml` and its
    workflow SHA equals the candidate source;
 3. the canonical version is stable `X.Y.Z` and the tag is exactly `vX.Y.Z`;
-4. the live authority branch target (`dev/laiyongjie` for preflight, `main` for
-   formal) equals candidate, event, workflow, and checkout source SHA;
+4. the candidate, event, and workflow SHAs equal the frozen source;
 5. preflight event/ref/workflow ref are the `dev/laiyongjie` branch and its explicit
-   `source_sha` input equals the frozen source; remote tag evidence is absent;
-6. formal event/ref/workflow ref are the same version tag, the remote ref
-   points to a Git `tag` object rather than directly to a commit, the annotated
-   tag name is exact, and its target is the frozen commit;
-7. the CI workflow belongs to the same repository, is active, is named `CI`,
-   and has path `.github/workflows/ci.yml`;
-8. among exact-source `push` runs whose head repository is the same repository
-   and whose head branch is the mode's authority branch, the latest run number/attempt is
-   completed successfully; an older green run cannot mask a later failed,
-   cancelled, timed-out, or running attempt;
-9. the selected attempt contains exactly one completed/successful
-   `CI / Required` job and one matching check-run from the `github-actions`
-   app, bound to the same run, attempt, check suite, source SHA, API URL, and
-   job details URL.
+   `source_sha` input equals the frozen source; the live remote `dev/laiyongjie`
+   HEAD equals that source; remote tag evidence is absent;
+6. formal event/ref/workflow ref are the same version tag, and the remote ref
+   is either a Git `tag` object (annotated: exact name, target type `commit`,
+   target SHA equals the frozen commit) or a Git `commit` object (lightweight:
+   SHA equals the frozen commit and `tagObject` is null);
+7. live formal `main` HEAD is observed but is not required to equal the frozen
+   source.
 
-Unknown keys, malformed IDs/SHA/statuses, incomplete pagination, HTTP errors,
-wrong repository/workflow/event/branch, a moved branch, a lightweight tag,
-missing evidence, duplicate Required results, or evidence URL drift are
-failures. Tokens and API responses are not written to Release notes or logs.
+Unknown keys, malformed IDs/SHA/statuses, HTTP errors, wrong
+repository/workflow/event/branch, a preflight whose live HEAD moved, a tag
+whose target is not the frozen commit, missing tag evidence, or evidence URL
+drift are failures. Tokens and API responses are not written to Release notes
+or logs. Missing, empty, or failed exact-source push CI does not fail
+eligibility.
 
 ### Repository owner-transfer boundary
 
@@ -148,9 +143,12 @@ frozen value:
 - once after draft upload/re-download/digest verification and immediately
   before the one final publication PATCH.
 
-A branch move, tag replacement, CI attempt change, identity drift, or API
-failure at either point stops publication. The workflow never moves/deletes
-the tag to repair a failed run.
+A branch move of `dev/laiyongjie` during preflight, tag replacement away from
+the frozen commit, identity drift, or API failure at either point stops
+publication. A later `main` commit does not. Operators may force-update
+`vX.Y.Z` when no GitHub Release exists for that tag; the workflow itself never
+moves or deletes the tag. An existing draft or published Release for the tag
+still refuses in-place overwrite.
 
 The independent [Windows Installer](./windows-installer.md) contract
 additionally requires every version component to fit `0..65535` before Tauri
@@ -229,9 +227,13 @@ signer material remains isolated from the fresh sealing boundary.
 ## 5. Runner, architecture, and toolchain contract
 
 Direct third-party Actions use reviewed full commit SHAs. Required jobs do not
-use `*-latest`, restore candidate-controlled release caches, or execute mise.
-Node is established before pnpm. pnpm and Rust Action caches are explicitly
-disabled.
+use `*-latest` or execute mise. Node is established after pnpm on native
+build jobs. `setup-node` may restore the lockfile-keyed pnpm store. Rust Action
+caches stay `cache: false`. Native CI backend jobs and Release build jobs may
+restore `~/.cargo/registry` and `~/.cargo/git` through `actions/cache`, keyed
+on `src-tauri/Cargo.lock` plus runner OS/arch. They never cache
+`src-tauri/target`. Repository Cargo config must not set `RUSTC_WRAPPER` or
+sccache.
 
 | Target          | Runner/build environment         | Exact installer output             |
 | --------------- | -------------------------------- | ---------------------------------- |
@@ -334,10 +336,10 @@ redirecting pre-transfer URLs are not emitted as current metadata.
 
 Three `fyagent-platform-build/v2` records—`macos-universal.json`,
 `windows-x64.json`, and `windows-arm64.json`—bind target/runner, toolchain,
-repository/workflow/run, source, release mode, and the same Required CI
-run/attempt in both modes. `build-metadata.json` schema
-`fyagent-build-metadata/v2` reconstructs those records through exact key
-allowlists and emits non-null `requiredCi`.
+repository/workflow/run, source, and release mode. `build-metadata.json`
+schema `fyagent-build-metadata/v2` reconstructs those records through exact key
+allowlists and emits `requiredCi` as null when frozen eligibility has no CI
+run.
 
 The two private Windows fragments are normalized into public
 `signing-status.json`. Release notes generate their Windows table only from
@@ -388,8 +390,8 @@ The current-document contract permits versioned notes only for the version in
 `src-tauri/Cargo.toml`, with the exact `en`, `zh`, or `ja` suffixes. Every
 present note must be non-empty and linked from `docs/release-notes/README.md`.
 This keeps the required English formal-release note reachable on the same
-source SHA that owns the successful Required CI evidence, while rejecting
-stale or unrelated version files. After publication, the versioned files may
+source SHA as the tagged formal build, while rejecting stale or unrelated
+version files. After publication, the versioned files may
 be removed whole; published history remains in Git history and GitHub
 Releases.
 
@@ -403,10 +405,10 @@ never called private or successful.
 
 | Condition                                                                                                                               | Required result                                              |
 | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| Candidate/version/tag/event/workflow/authority-branch HEAD differs                                                                      | Fail before native builds.                                   |
+| Candidate/version/tag/event/workflow SHA differs                                                                                        | Fail before native builds.                                   |
 | Repository name is a former owner or redirect alias, even when numeric ID is unchanged                                                  | Fail before native builds; require exact `fy-agent/fyagent`. |
-| Formal tag is lightweight, points elsewhere, or changes during the run                                                                  | Fail the in-flight run; the workflow never repairs or moves the tag. Operators may force-update an unpublished `vX.Y.Z` before a new run. |
-| Exact-source authority-branch CI is absent/running/failed/cancelled/timed out, stale, wrong identity, or lacks unique Required evidence | Fail; never accept an older green commit/attempt.            |
+| Formal tag points elsewhere or changes after freeze                                                                                     | Fail; never repair or move the tag from the workflow.        |
+| Exact-source authority-branch CI is absent                                                                                              | Continue; Release compile is the proof.                      |
 | Preflight reaches a publish path or Windows provider secret                                                                             | Static/remote gate fails.                                    |
 | Native runner, architecture, toolchain, or source drifts                                                                                | Fail that target; no fallback.                               |
 | Pinned build input ID/digest/manifest/file set drifts                                                                                   | Fail before provider or trusted consumption.                 |
@@ -418,7 +420,7 @@ never called private or successful.
 | Windows proof/sealed binding or macOS identity fails                                                                                    | Stop aggregation and publication.                            |
 | An intentional producer skip propagates past successful asset verification                                                              | Attestation still runs; abnormal direct needs fail visibly.  |
 | Four/seven/eight file allowlist or digest differs                                                                                       | Stop verification, attestation, or publication.              |
-| Live main/tag/CI identity changes during the transaction                                                                                | Stop before creating the draft or before final PATCH.        |
+| Live main identity changes during the transaction                                                                                       | Continue; tag target SHA remains the frozen source.          |
 | A draft/published Release already exists                                                                                                | Refuse update, replacement, or deletion.                     |
 | Upload/re-download/pre-PATCH verification fails                                                                                         | Leave draft untouched and report it.                         |
 | Final PATCH is failed or ambiguous                                                                                                      | Observe once; do not retry/delete or claim completion.       |
@@ -429,13 +431,12 @@ Local gates cover the pure classifier/eligibility/required evaluators, remote
 collector fixtures, version/release metadata, workflow structure, exact asset
 sets, signing adapter policy, Windows NSIS contract, task docs, type checking,
 formatting, and action-pin audits. Hermetic tests must include wrong repository,
-workflow, event, branch, SHA, tag type, version, stale success, newer failed or
-timed-out attempt, moved branch, pagination, HTTP failure, frozen-output drift,
+workflow, event, branch, SHA, tag type, version, lightweight and annotated
+tags, a moved formal `main` HEAD, a moved preflight branch, HTTP failure,
+frozen-output drift,
 dispatch publication, both preflight/formal tail-job truth tables, mutation of
 explicit status conditions or direct-need assertions, asset loss/extra, signer
-policy, and transaction failure.
-
-Hermetic tests must also cover a single `notarytool submit`, `notarytool info`
+policy, transaction failure, a single `notarytool submit`, `notarytool info`
 polling, no `xcrun notarytool wait` invocation, `notarytool log` on a denied
 submission, `FYAGENT_NOTARY_WAIT_SECONDS`, and `build-macos`
 `timeout-minutes: 360`.
@@ -445,16 +446,18 @@ Authenticode, native build/package output, macOS bundle, GitHub attestation, or
 public Release evidence. The manual Windows install lifecycle is diagnostic
 evidence outside this Release closure. Closure requires, in order:
 
-1. the release change is merged to `main`, and that exact current remote HEAD
-   completes `CI / Required` successfully;
-2. an annotated stable tag targeting that SHA starts the formal build. If no
-   GitHub Release exists for `vX.Y.Z`, operators may force-update that tag onto
-   the new SHA instead of bumping the Cargo version. The workflow itself never
-   moves or deletes the tag;
-3. a public, non-prerelease, Latest Release has exact assets, disclosure,
-   digests, metadata, and attestation;
+1. a stable `vX.Y.Z` tag, annotated or lightweight, whose target is the
+   intended source SHA (Cargo version on that commit equals the tag);
+2. that tag's single formal build workflow succeeds, including matching native
+   compiles, signing/notarization, exact assets, disclosure, digests,
+   metadata, and attestation;
+3. a public, non-prerelease, Latest Release has those exact artifacts;
 4. any later optional bookkeeping push is a new `main` HEAD and must satisfy
    its own CI requirements; it is not part of the release transaction.
+
+If no GitHub Release exists for `vX.Y.Z`, operators may force-update the tag
+and start a new formal run. An existing draft or published Release still
+refuses overwrite.
 
 A successful `dev/laiyongjie` dispatch preflight may be run to produce and
 attest candidate installers, but formal closure neither requires nor infers
@@ -468,27 +471,28 @@ outside runtime eligibility and are not represented as release guarantees.
 
 ## 11. Wrong vs Correct
 
-Wrong: treat a `notarytool wait` timeout as Apple rejection, notarize an app
-zip then the DMG as two serial waits, or bump `X.Y.Z` solely because an
-unpublished formal run timed out.
+Wrong: freeze live `main` HEAD and a prior exact-source `CI / Required` as
+formal identity, refuse lightweight tags, cache `src-tauri/target`, or treat a
+`notarytool wait` timeout as Apple rejection.
 
 ```text
 sourceSha = live main HEAD
 require successful push CI on that SHA
 reject tag objects that are commits (lightweight)
+cache path: src-tauri/target
 notarize app zip, then notarize DMG
 xcrun notarytool wait "$id" --timeout 1800
 # exit 124 / empty stdout => fail the Release job
 bump X.Y.Z after every failed unpublished formal run
 ```
 
-Correct: keep formal identity as an annotated tag whose target equals live
-`main` HEAD and that SHA's successful `CI / Required`. Submit the signed DMG
-once without `--wait`, poll `notarytool info` on that submission id until
-`Accepted` / `Invalid` or the wait budget, then staple the app from that
-ticket. If no GitHub Release exists for `vX.Y.Z`, operators may force-update
-that unpublished tag onto a later exact-source SHA. The workflow itself never
-moves or deletes the tag.
+Correct: the remote tag's target commit is formal `sourceSha`. Annotated and
+lightweight tags are both valid. Missing exact-source push CI is not a gate.
+Operators may force-update `vX.Y.Z` only when no GitHub Release exists.
+Cache `~/.cargo/registry` and `~/.cargo/git` from `Cargo.lock`. Submit the
+signed DMG once without `--wait`, poll `notarytool info` on that submission
+id until `Accepted` / `Invalid` or the wait budget, then staple the app from
+that ticket.
 
 ## Scenario: Single DMG notarization poll
 
@@ -557,4 +561,67 @@ xcrun notarytool wait "$id" --timeout 1800 --output-format json >"$out"
 ```bash
 xcrun notarytool submit "$dmg" --output-format json   # capture id
 xcrun notarytool info "$id" --output-format json      # poll until Accepted
+```
+
+## Scenario: Formal tag-target identity
+
+### 1. Scope / Trigger
+- Trigger: Formal publication identity is an infra contract. Squash-merge
+  history on `main` and unpublished notarization timeouts must not require a
+  Cargo bump. The workflow must not freeze live `main` HEAD or a prior
+  `CI / Required` run as `sourceSha`.
+- Owner: `scripts/release/dev-release-eligibility.mjs` plus the `eligibility`
+  job in `.github/workflows/release.yml`.
+
+### 2. Signatures
+- `evaluateFormalEligibility({ tagName, tagTargetSha, remoteTag, ... })`
+- Frozen output keys: `appVersion`, `releaseTag`, `sourceSha`, `workflowSha`,
+  `mode`, `ciRunId`, `ciRunAttempt`
+
+### 3. Contracts
+- Request: stable `vX.Y.Z` tag whose target commit is the intended source.
+  Annotated and lightweight tags are both valid.
+- Response: `sourceSha = tag target commit`, `workflowSha = sourceSha`,
+  `ciRunId = null`, `ciRunAttempt = null`.
+- Operators may force-update unpublished `vX.Y.Z` onto a later SHA. The
+  workflow never moves or deletes the tag. An existing draft or published
+  GitHub Release still refuses overwrite.
+
+### 4. Validation & Error Matrix
+- Tag target != frozen `sourceSha` during the run -> fail; do not retarget.
+- Lightweight tag pointing at another commit -> fail.
+- Missing exact-source push CI -> continue; Release compile is the proof.
+- Draft or published GitHub Release already exists for the tag -> refuse.
+- Failed unpublished formal run -> operators may force-update the same tag;
+  do not bump `X.Y.Z` solely for that timeout.
+
+### 5. Good / Base / Bad Cases
+- Good: annotated `v0.4.2` at the intended SHA; no GitHub Release exists;
+  formal build uses that SHA.
+- Base: unpublished `v0.4.2` is force-updated onto a later SHA after a
+  notarization timeout; one new formal run starts.
+- Bad: require live `main` HEAD + successful `CI / Required`; refuse
+  lightweight tags; bump to 0.4.3 because Apple stayed In Progress.
+
+### 6. Tests Required
+- `tests/devReleaseEligibility.test.ts` accepts a lightweight formal tag whose
+  commit SHA is the frozen source and rejects a tag that points elsewhere.
+- `tests/releaseWorkflow.test.ts` and `tests/devReleaseRemote.test.ts` assert
+  frozen `ciRunId` / `ciRunAttempt` are null in formal mode.
+- Local tests do not create tags or GitHub Releases.
+
+### 7. Wrong vs Correct
+#### Wrong
+```text
+sourceSha = live main HEAD
+require successful push CI on that SHA
+reject lightweight tags
+bump X.Y.Z after every failed unpublished formal run
+```
+#### Correct
+```text
+sourceSha = remote tag target commit
+ciRunId = null
+operators may force-update unpublished vX.Y.Z
+the workflow never moves the tag
 ```

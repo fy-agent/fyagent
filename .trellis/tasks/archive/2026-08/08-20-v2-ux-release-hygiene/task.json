@@ -1,0 +1,31 @@
+{
+  "id": "v2-ux-release-hygiene",
+  "name": "v2-ux-release-hygiene",
+  "title": "V2 体验、发布与工程卫生",
+  "description": "",
+  "status": "completed",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "pythonrust",
+  "assignee": "pythonrust",
+  "createdAt": "2026-08-20",
+  "completedAt": "2026-08-21",
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "08-20-install-model-gates",
+    "08-20-skill-mcp-agent-ui",
+    "08-20-release-ci-speed",
+    "08-20-repo-hygiene"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

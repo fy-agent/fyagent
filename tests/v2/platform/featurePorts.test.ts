@@ -382,6 +382,15 @@ describe("V2 feature ports", () => {
       }),
     ).rejects.toThrow(NATIVE_ONLY_ERROR);
     await expect(ports.mcp.importFromApps()).rejects.toThrow(NATIVE_ONLY_ERROR);
+    await expect(
+      ports.providers.checkReachability("https://example.test"),
+    ).rejects.toThrow(NATIVE_ONLY_ERROR);
+    await expect(
+      ports.workbuddy.checkReachability("https://example.test"),
+    ).rejects.toThrow(NATIVE_ONLY_ERROR);
+    await expect(
+      ports.opencodeModels.checkReachability("https://example.test"),
+    ).rejects.toThrow(NATIVE_ONLY_ERROR);
   });
 
   it("uses exact Agent, Provider, and WorkBuddy commands and validates Provider summaries", async () => {
@@ -427,6 +436,18 @@ describe("V2 feature ports", () => {
           updatedEntries: 0,
         };
       }
+      if (command === "stream_check_url") {
+        return {
+          status: "operational",
+          success: true,
+          message: "Reachable",
+          responseTimeMs: 12,
+          httpStatus: 200,
+          modelUsed: "",
+          testedAt: 1,
+          retryCount: 0,
+        };
+      }
       return {
         value: { warnings: [] },
         liveConfigChanged: false,
@@ -462,6 +483,15 @@ describe("V2 feature ports", () => {
     await ports.workbuddy.getModelIds();
     await ports.workbuddy.fetchModels(fetchRequest);
     await ports.workbuddy.saveModels(saveRequest);
+    await expect(
+      ports.providers.checkReachability("https://example.test/v1"),
+    ).resolves.toEqual({
+      success: true,
+      status: "operational",
+      message: "Reachable",
+      responseTimeMs: 12,
+      httpStatus: 200,
+    });
 
     expect(summary.providers).toEqual({
       "provider-a": {
@@ -481,6 +511,7 @@ describe("V2 feature ports", () => {
       ["get_workbuddy_model_ids"],
       ["fetch_workbuddy_models", { request: fetchRequest }],
       ["save_workbuddy_models", { request: saveRequest }],
+      ["stream_check_url", { baseUrl: "https://example.test/v1" }],
     ]);
   });
 
@@ -516,6 +547,18 @@ describe("V2 feature ports", () => {
           updatedEntries: 0,
         };
       }
+      if (command === "stream_check_url") {
+        return {
+          status: "operational",
+          success: true,
+          message: "Reachable",
+          responseTimeMs: 12,
+          httpStatus: 200,
+          modelUsed: "",
+          testedAt: 1,
+          retryCount: 0,
+        };
+      }
       throw new Error(`unexpected command ${command}`);
     });
 
@@ -543,6 +586,15 @@ describe("V2 feature ports", () => {
       selectedModelIds: ["model-a"],
       expectedRevision: "oc-rev",
     });
+    await expect(
+      ports.opencodeModels.checkReachability("https://example.test/v1"),
+    ).resolves.toEqual({
+      success: true,
+      status: "operational",
+      message: "Reachable",
+      responseTimeMs: 12,
+      httpStatus: 200,
+    });
 
     expect(invoke.mock.calls).toEqual([
       ["get_traework_model_ids"],
@@ -560,6 +612,7 @@ describe("V2 feature ports", () => {
           },
         },
       ],
+      ["stream_check_url", { baseUrl: "https://example.test/v1" }],
     ]);
   });
 

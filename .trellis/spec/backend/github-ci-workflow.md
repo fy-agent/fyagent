@@ -35,17 +35,18 @@ merge_group:
 workflow_dispatch:
 ```
 
-- every `main` push remains a full CI run and can satisfy formal-release
-  eligibility for the exact current `main` HEAD;
-- every `dev/laiyongjie` push is a full CI run and can satisfy preflight
-  eligibility for the exact current dev HEAD;
+- every `main` push remains a full CI run for that SHA; it is not a formal
+  Release eligibility gate;
+- every `dev/laiyongjie` push is a full CI run for that SHA; preflight still
+  binds the live remote `dev/laiyongjie` HEAD;
 - PR and `merge_group` runs execute only affected domains;
 - `workflow_dispatch` is a full diagnostic run and is never release evidence
   because its event is not `push`.
 
 Repository branch protection, rulesets, merge methods, and Main Provenance are
-outside this workflow. The current release trust is the exact successful dev
-push chain, not an administrator-enforced main-branch claim.
+outside this workflow. Formal Release trust is the tagged source SHA plus the
+Release workflow's own native compile, not an administrator-enforced branch
+claim or a prior `CI / Required` run.
 
 ## 2. Explicit change classification
 
@@ -206,9 +207,9 @@ exceeds the bound must add complete pagination in the same change.
   `cancel-in-progress=false`; two manual diagnostics do not cancel each other.
 - a native GitHub rerun remains the same run identity with a later attempt and
   keeps the original `GITHUB_SHA`/`GITHUB_REF` semantics.
-- release eligibility accepts a successful rerun only while that original SHA
-  is still the current remote authority-branch HEAD (`dev/laiyongjie` for
-  preflight, `main` for formal publication).
+- formal Release eligibility does not require a successful exact-source CI
+  rerun. Preflight still requires the live remote `dev/laiyongjie` HEAD to
+  equal the dispatched source SHA.
 
 ## 7. Job and toolchain contracts
 
@@ -227,13 +228,20 @@ repository files through the repository-owned verifier:
 - `.python-version` for managed Python.
 
 The workflow does not duplicate literal Node, pnpm, Rust, uv, Python, or
-application versions. Rust setup disables its implicit cache. uv setup pins
+application versions. Rust setup disables its implicit cache. Backend and
+Windows-native jobs may restore a lockfile-keyed `~/.cargo/registry` and
+`~/.cargo/git` cache; they never cache `src-tauri/target` and must not set
+`RUSTC_WRAPPER` or sccache in repository Cargo config. uv setup pins
 the resolved reviewed version and disables cache. pnpm installation uses the
 frozen lockfile. The frontend full unit suite excludes only the four
 host-mise integration suites (`developmentEnvironment`, `miseTaskContract`,
 `systemCheck`, and `taskDocs`); the contracts job owns their
 pure/static contracts, and the local canonical check owns the real mise
-boundary.
+boundary. Generated task documentation is verified by `task-docs.mjs check`
+inside `release-check.mjs --ci`. Maintained-document `mise run` membership
+and standalone setup belong to `docs-contract-check.mjs` on the local
+`tasks:validate` path. Neither CI job freezes protocol names or toolchain
+versions by scanning README or spec Markdown.
 
 The always-running Changes job executes the durable supported-platform surface
 checker directly after checkout and Node setup, alongside the change plan and
@@ -364,11 +372,12 @@ Required automated fixtures cover:
   the x64/ARM64 explicit-SID smoke wiring.
 
 Local static and hermetic tests prove workflow structure and evaluator logic.
-They do not prove a hosted runner exists or that native code executed. Release
-closure requires the exact pushed dev HEAD's remote full run to finish with
-one successful `CI / Required`, including successful x64 and ARM64 native
-matrix children. `windows-11-arm` is public preview; unavailability blocks
-acceptance and is never converted into a reduced or cross-built run.
+They do not prove a hosted runner exists or that native code executed. A
+successful `CI / Required` on a pushed SHA remains the hosted proof that CI
+domains ran, including x64 and ARM64 native matrix children. It is not a
+formal Release eligibility gate. `windows-11-arm` is public preview;
+unavailability blocks that CI job and is never converted into a reduced or
+cross-built run.
 
 ## 11. Wrong and correct patterns
 
@@ -388,10 +397,25 @@ unknownPaths.length > 0 ? forceFull() : skipEverything();
 if: ${{ needs.frontend.result != 'failure' }}
 ```
 
+Wrong: restore a Rust build-artifact cache or sccache wrapper.
+
+```yaml
+- uses: actions-rust-lang/setup-rust-toolchain@...
+  with:
+    cache: true
+- uses: actions/cache@...
+  with:
+    path: src-tauri/target
+```
+
 Correct:
 
 ```text
 explicit base/head -> repository classifier -> requested domains
 requested success + authorized skip + REST conclusion -> CI / Required
-exact authority-branch push SHA + successful CI / Required -> mode-specific release eligibility
+tag target SHA + successful Release compile -> formal publication eligibility
+setup-rust-toolchain cache: false
+actions/cache path: ~/.cargo/registry + ~/.cargo/git
+key: Cargo.lock + runner OS/arch
+never src-tauri/target, never RUSTC_WRAPPER / sccache
 ```

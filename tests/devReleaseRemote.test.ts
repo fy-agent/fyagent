@@ -14,35 +14,21 @@ const REPOSITORY = {
   id: 1_313_497_021,
   full_name: "fy-agent/fyagent",
 };
-const WORKFLOW_ID = 314_159;
-const OLD_RUN_ID = 9_000;
-const RUN_ID = 9_001;
-const RUN_ATTEMPT = 2;
-const CHECK_SUITE_ID = 6_001;
-const CONTRACTS_JOB_ID = 7_000;
-const REQUIRED_JOB_ID = 7_001;
-const CONTRACTS_CHECK_ID = 8_000;
-const REQUIRED_CHECK_ID = 8_001;
 const TOKEN = "never-print-this-token";
 
 type Mode = "preflight" | "formal";
 type FixtureOptions = {
   branchSha?: string;
   failPath?: string;
-  headRepository?: typeof REPOSITORY;
-  incompleteRuns?: boolean;
   mode?: Mode;
   repository?: typeof REPOSITORY;
-  rerunDuringCollection?: boolean;
-  runSha?: string;
   tagType?: "commit" | "tag";
   tagTargetSha?: string;
 };
 
 function context(mode: Mode = "preflight"): DevReleaseRemoteContext {
   const releaseTag = "v0.3.1";
-  const authorityBranch =
-    mode === "preflight" ? "dev/laiyongjie" : "main";
+  const authorityBranch = mode === "preflight" ? "dev/laiyongjie" : "main";
   const ref =
     mode === "preflight"
       ? `refs/heads/${authorityBranch}`
@@ -67,92 +53,11 @@ function context(mode: Mode = "preflight"): DevReleaseRemoteContext {
   };
 }
 
-function rawRun({
-  id = RUN_ID,
-  runNumber = 42,
-  runAttempt = RUN_ATTEMPT,
-  checkSuiteId = CHECK_SUITE_ID,
-  headBranch = "dev/laiyongjie",
-  headSha = SOURCE_SHA,
-  repository = REPOSITORY,
-  headRepository = REPOSITORY,
-}: {
-  id?: number;
-  runNumber?: number;
-  runAttempt?: number;
-  checkSuiteId?: number;
-  headBranch?: string;
-  headSha?: string;
-  repository?: typeof REPOSITORY;
-  headRepository?: typeof REPOSITORY;
-} = {}) {
-  return {
-    id,
-    run_number: runNumber,
-    run_attempt: runAttempt,
-    check_suite_id: checkSuiteId,
-    repository,
-    head_repository: headRepository,
-    workflow_id: WORKFLOW_ID,
-    name: "CI",
-    path: ".github/workflows/ci.yml",
-    event: "push",
-    head_branch: headBranch,
-    head_sha: headSha,
-    status: "completed",
-    conclusion: "success",
-  };
-}
-
-function rawJob({
-  id,
-  name,
-  checkId,
-}: {
-  id: number;
-  name: string;
-  checkId: number;
-}) {
-  return {
-    id,
-    name,
-    run_id: RUN_ID,
-    run_attempt: RUN_ATTEMPT,
-    status: "completed",
-    conclusion: "success",
-    check_run_url: `https://api.github.com/repos/fy-agent/fyagent/check-runs/${checkId}`,
-    html_url: `https://github.com/fy-agent/fyagent/actions/runs/${RUN_ID}/job/${id}`,
-  };
-}
-
-function rawCheck({
-  id,
-  name,
-  jobId,
-}: {
-  id: number;
-  name: string;
-  jobId: number;
-}) {
-  return {
-    id,
-    name,
-    check_suite: { id: CHECK_SUITE_ID },
-    app: { slug: "github-actions" },
-    head_sha: SOURCE_SHA,
-    status: "completed",
-    conclusion: "success",
-    url: `https://api.github.com/repos/fy-agent/fyagent/check-runs/${id}`,
-    details_url: `https://github.com/fy-agent/fyagent/actions/runs/${RUN_ID}/job/${jobId}`,
-  };
-}
-
 function jsonResponse(
   body: unknown,
-  { link, status = 200 }: { link?: string; status?: number } = {},
+  { status = 200 }: { status?: number } = {},
 ) {
   const headers = new Headers({ "content-type": "application/json" });
-  if (link !== undefined) headers.set("link", link);
   return new Response(JSON.stringify(body), { headers, status });
 }
 
@@ -160,7 +65,6 @@ function fixtureFetch(options: FixtureOptions = {}) {
   const mode = options.mode ?? "preflight";
   const authorityBranch = mode === "preflight" ? "dev/laiyongjie" : "main";
   const requests: Array<{ authorization: string | null; url: URL }> = [];
-  let runListSnapshots = 0;
   const fetchImpl: typeof fetch = async (input, init) => {
     const url = new URL(String(input));
     requests.push({
@@ -175,10 +79,7 @@ function fixtureFetch(options: FixtureOptions = {}) {
     if (path === "/repos/fy-agent/fyagent") {
       return jsonResponse(options.repository ?? REPOSITORY);
     }
-    if (
-      path ===
-      `/repos/fy-agent/fyagent/git/ref/heads/${authorityBranch}`
-    ) {
+    if (path === `/repos/fy-agent/fyagent/git/ref/heads/${authorityBranch}`) {
       return jsonResponse({
         ref: `refs/heads/${authorityBranch}`,
         object: { type: "commit", sha: options.branchSha ?? SOURCE_SHA },
@@ -204,135 +105,13 @@ function fixtureFetch(options: FixtureOptions = {}) {
         },
       });
     }
-    if (path === "/repos/fy-agent/fyagent/actions/workflows/ci.yml") {
-      return jsonResponse({
-        id: WORKFLOW_ID,
-        name: "CI",
-        path: ".github/workflows/ci.yml",
-        state: "active",
-      });
-    }
-    if (
-      path === `/repos/fy-agent/fyagent/actions/workflows/${WORKFLOW_ID}/runs`
-    ) {
-      expect(url.searchParams.get("branch")).toBe(authorityBranch);
-      expect(url.searchParams.get("event")).toBe("push");
-      expect(url.searchParams.get("head_sha")).toBe(SOURCE_SHA);
-      if (url.searchParams.get("page") === "2") {
-        return jsonResponse({
-          total_count: 2,
-          workflow_runs: [
-            rawRun({
-              headBranch: authorityBranch,
-              headSha: options.runSha ?? SOURCE_SHA,
-              headRepository: options.headRepository ?? REPOSITORY,
-            }),
-          ],
-        });
-      }
-      runListSnapshots += 1;
-      if (options.rerunDuringCollection && runListSnapshots > 1) {
-        return jsonResponse({
-          total_count: 1,
-          workflow_runs: [
-            rawRun({
-              headBranch: authorityBranch,
-              runAttempt: RUN_ATTEMPT + 1,
-            }),
-          ],
-        });
-      }
-      const nextUrl = new URL(
-        "https://api.github.com/repos/fy-agent/fyagent/actions/workflows/314159/runs",
-      );
-      nextUrl.searchParams.set("branch", authorityBranch);
-      nextUrl.searchParams.set("event", "push");
-      nextUrl.searchParams.set("head_sha", SOURCE_SHA);
-      nextUrl.searchParams.set("per_page", "100");
-      nextUrl.searchParams.set("page", "2");
-      const next = `<${nextUrl.href}>; rel="next"`;
-      return jsonResponse(
-        {
-          total_count: 2,
-          workflow_runs: [
-            rawRun({
-              headBranch: authorityBranch,
-              id: OLD_RUN_ID,
-              runNumber: 41,
-              runAttempt: 1,
-              checkSuiteId: 6_000,
-              headSha: options.runSha ?? SOURCE_SHA,
-              repository: options.repository ?? REPOSITORY,
-              headRepository: options.headRepository ?? REPOSITORY,
-            }),
-          ],
-        },
-        options.incompleteRuns ? undefined : { link: next },
-      );
-    }
-    if (
-      path ===
-      `/repos/fy-agent/fyagent/actions/runs/${RUN_ID}/attempts/${RUN_ATTEMPT}/jobs`
-    ) {
-      if (url.searchParams.get("page") === "2") {
-        return jsonResponse({
-          total_count: 2,
-          jobs: [
-            rawJob({
-              id: REQUIRED_JOB_ID,
-              name: "CI / Required",
-              checkId: REQUIRED_CHECK_ID,
-            }),
-          ],
-        });
-      }
-      return jsonResponse(
-        {
-          total_count: 2,
-          jobs: [
-            rawJob({
-              id: CONTRACTS_JOB_ID,
-              name: "Contracts",
-              checkId: CONTRACTS_CHECK_ID,
-            }),
-          ],
-        },
-        {
-          link: `<https://api.github.com${url.pathname}?per_page=100&page=2>; rel="next"`,
-        },
-      );
-    }
-    if (
-      path ===
-      `/repos/fy-agent/fyagent/check-suites/${CHECK_SUITE_ID}/check-runs`
-    ) {
-      return jsonResponse({
-        total_count: 3,
-        check_runs: [
-          {
-            ...rawCheck({ id: 7_999, name: "Old attempt", jobId: 6_999 }),
-            url: "https://api.github.com/repos/fy-agent/fyagent/check-runs/7999",
-          },
-          rawCheck({
-            id: CONTRACTS_CHECK_ID,
-            name: "Contracts",
-            jobId: CONTRACTS_JOB_ID,
-          }),
-          rawCheck({
-            id: REQUIRED_CHECK_ID,
-            name: "CI / Required",
-            jobId: REQUIRED_JOB_ID,
-          }),
-        ],
-      });
-    }
     throw new Error(`Unexpected fixture request: ${url.toString()}`);
   };
   return { fetchImpl, requests };
 }
 
 describe("dev release remote evidence", () => {
-  it("follows complete pagination and binds the latest CI attempt", async () => {
+  it("collects repository and branch evidence without Required CI", async () => {
     const fixture = fixtureFetch();
     const { evidence, result } = await verifyDevReleaseRemote(context(), {
       fetchImpl: fixture.fetchImpl,
@@ -343,44 +122,22 @@ describe("dev release remote evidence", () => {
       releaseTag: "v0.3.1",
       sourceSha: SOURCE_SHA,
       workflowSha: SOURCE_SHA,
-      ciRunId: String(RUN_ID),
-      ciRunAttempt: String(RUN_ATTEMPT),
+      ciRunId: null,
+      ciRunAttempt: null,
       mode: "preflight",
     });
-    expect(evidence.ciRuns.map((run) => run.id)).toEqual([
-      String(OLD_RUN_ID),
-      String(RUN_ID),
-    ]);
-    expect(evidence.ciEvidence.jobs.map((job) => job.name)).toEqual([
-      "Contracts",
-      "CI / Required",
-    ]);
-    expect(evidence.ciEvidence.checkRuns.map((check) => check.name)).toEqual([
-      "Contracts",
-      "CI / Required",
-    ]);
+    expect(evidence).not.toHaveProperty("ciRuns");
+    expect(evidence).not.toHaveProperty("ciEvidence");
     expect(
       fixture.requests.every(
         ({ authorization }) => authorization === `Bearer ${TOKEN}`,
       ),
     ).toBe(true);
-    const secondPages = fixture.requests.filter(
-      ({ url }) => url.searchParams.get("page") === "2",
-    );
     expect(
-      secondPages.filter(({ url }) =>
-        decodeURIComponent(url.pathname).endsWith(
-          `/workflows/${WORKFLOW_ID}/runs`,
-        ),
+      fixture.requests.some(({ url }) =>
+        decodeURIComponent(url.pathname).includes("/actions/"),
       ),
-    ).toHaveLength(2);
-    expect(
-      secondPages.filter(({ url }) =>
-        decodeURIComponent(url.pathname).endsWith(
-          `/runs/${RUN_ID}/attempts/${RUN_ATTEMPT}/jobs`,
-        ),
-      ),
-    ).toHaveLength(1);
+    ).toBe(false);
     expect(JSON.stringify(evidence)).not.toContain(TOKEN);
   });
 
@@ -403,14 +160,19 @@ describe("dev release remote evidence", () => {
     });
   });
 
-  it("rejects a lightweight formal tag before collecting CI evidence", async () => {
+  it("accepts a lightweight formal tag without reading an annotated tag object", async () => {
     const fixture = fixtureFetch({ mode: "formal", tagType: "commit" });
+    const { evidence, result } = await verifyDevReleaseRemote(
+      context("formal"),
+      { fetchImpl: fixture.fetchImpl },
+    );
 
-    await expect(
-      verifyDevReleaseRemote(context("formal"), {
-        fetchImpl: fixture.fetchImpl,
-      }),
-    ).rejects.toThrow(/release tag ref object type must be "tag"/);
+    expect(result.mode).toBe("formal");
+    expect(evidence.remoteTag).toEqual({
+      ref: "refs/tags/v0.3.1",
+      refObject: { type: "commit", sha: SOURCE_SHA },
+      tagObject: null,
+    });
     expect(
       fixture.requests.some(({ url }) =>
         decodeURIComponent(url.pathname).includes("/git/tags/"),
@@ -435,7 +197,7 @@ describe("dev release remote evidence", () => {
       releaseTag: "v0.3.1",
       sourceSha: SOURCE_SHA,
       workflowSha: SOURCE_SHA,
-      ciRunId: String(RUN_ID),
+      ciRunId: null,
       ciRunAttempt: "1",
       mode: "preflight" as const,
     };
@@ -448,15 +210,7 @@ describe("dev release remote evidence", () => {
     ).rejects.toThrow(/expectedFrozen\.ciRunAttempt/);
   });
 
-  it("rejects a rerun that starts while attempt evidence is collected", async () => {
-    const fixture = fixtureFetch({ rerunDuringCollection: true });
-
-    await expect(
-      verifyDevReleaseRemote(context(), { fetchImpl: fixture.fetchImpl }),
-    ).rejects.toThrow(/ciEvidence\.runAttempt/);
-  });
-
-  it("rejects when the dev branch moves", async () => {
+  it("rejects when the preflight dev branch moves", async () => {
     const fixture = fixtureFetch({ branchSha: OTHER_SHA });
 
     await expect(
@@ -464,30 +218,25 @@ describe("dev release remote evidence", () => {
     ).rejects.toThrow(/remoteDev\.headSha/);
   });
 
-  it("rejects a CI response whose run SHA ignores the exact filter", async () => {
-    const fixture = fixtureFetch({ runSha: OTHER_SHA });
-
-    await expect(
-      verifyDevReleaseRemote(context(), { fetchImpl: fixture.fetchImpl }),
-    ).rejects.toThrow(/workflow runs\[0\]\.head_sha/);
+  it("accepts a formal tag after live main has moved", async () => {
+    const fixture = fixtureFetch({ mode: "formal", branchSha: OTHER_SHA });
+    const { result } = await verifyDevReleaseRemote(context("formal"), {
+      fetchImpl: fixture.fetchImpl,
+    });
+    expect(result).toMatchObject({
+      sourceSha: SOURCE_SHA,
+      mode: "formal",
+      ciRunId: null,
+    });
   });
 
-  it.each([
-    [
-      "repository",
-      {
-        repository: {
-          id: REPOSITORY.id,
-          full_name: PRE_TRANSFER_REPOSITORY,
-        },
+  it("rejects a wrong repository identity", async () => {
+    const fixture = fixtureFetch({
+      repository: {
+        id: REPOSITORY.id,
+        full_name: PRE_TRANSFER_REPOSITORY,
       },
-    ],
-    [
-      "head repository",
-      { headRepository: { id: 99, full_name: "fork/fyagent" } },
-    ],
-  ])("rejects a wrong %s identity", async (_label, options) => {
-    const fixture = fixtureFetch(options);
+    });
 
     await expect(
       collectDevReleaseRemoteEvidence(context(), {
@@ -496,18 +245,8 @@ describe("dev release remote evidence", () => {
     ).rejects.toThrow(/must be "fy-agent\/fyagent"/);
   });
 
-  it("hard fails an incomplete paginated response", async () => {
-    const fixture = fixtureFetch({ incompleteRuns: true });
-
-    await expect(
-      collectDevReleaseRemoteEvidence(context(), {
-        fetchImpl: fixture.fetchImpl,
-      }),
-    ).rejects.toThrow(/pagination is incomplete/);
-  });
-
   it("reports an HTTP failure without exposing the token or body", async () => {
-    const fixture = fixtureFetch({ failPath: "/actions/workflows/" });
+    const fixture = fixtureFetch({ failPath: "/repos/fy-agent/fyagent" });
     let message = "";
     try {
       await collectDevReleaseRemoteEvidence(context(), {
@@ -534,62 +273,6 @@ describe("dev release remote evidence", () => {
 
     expect(message).toContain("[REDACTED]");
     expect(message).not.toContain(TOKEN);
-  });
-
-  it("rejects a pagination link that changes repository", async () => {
-    const base = fixtureFetch();
-    const fetchImpl: typeof fetch = async (input, init) => {
-      const response = await base.fetchImpl(input, init);
-      const url = new URL(String(input));
-      if (
-        decodeURIComponent(url.pathname).endsWith(
-          `/workflows/${WORKFLOW_ID}/runs`,
-        )
-      ) {
-        const headers = new Headers(response.headers);
-        headers.set(
-          "link",
-          '<https://api.github.com/repos/other/project/actions/workflows/314159/runs?page=2>; rel="next"',
-        );
-        return new Response(await response.text(), {
-          headers,
-          status: response.status,
-        });
-      }
-      return response;
-    };
-
-    await expect(
-      collectDevReleaseRemoteEvidence(context(), { fetchImpl }),
-    ).rejects.toThrow(/pagination next link changed repository/);
-  });
-
-  it("rejects a pagination link that changes resource", async () => {
-    const base = fixtureFetch();
-    const fetchImpl: typeof fetch = async (input, init) => {
-      const response = await base.fetchImpl(input, init);
-      const url = new URL(String(input));
-      if (
-        decodeURIComponent(url.pathname).endsWith(
-          `/workflows/${WORKFLOW_ID}/runs`,
-        )
-      ) {
-        const headers = new Headers(response.headers);
-        headers.set(
-          "link",
-          '<https://api.github.com/repos/fy-agent/fyagent/actions/runs?page=2>; rel="next"',
-        );
-        return new Response(await response.text(), {
-          headers,
-          status: response.status,
-        });
-      }
-      return response;
-    };
-
-    await expect(
-      collectDevReleaseRemoteEvidence(context(), { fetchImpl }),
-    ).rejects.toThrow(/pagination next link changed resource/);
   });
 });
 

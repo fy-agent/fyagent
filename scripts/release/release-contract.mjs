@@ -501,14 +501,19 @@ export function buildBuildMetadata({
     identity.ciWorkflowPath === CI_WORKFLOW_PATH,
     "CI workflow path drifted",
   );
-  assert(
-    /^[1-9]\d*$/.test(String(identity.ciRunId)),
-    "ciRunId must be numeric",
-  );
-  assert(
-    /^[1-9]\d*$/.test(String(identity.ciRunAttempt)),
-    "ciRunAttempt must be numeric",
-  );
+  const ciRunId = identity.ciRunId;
+  const ciRunAttempt = identity.ciRunAttempt;
+  const ciAbsent = ciRunId === null && ciRunAttempt === null;
+  if (!ciAbsent) {
+    assert(
+      /^[1-9]\d*$/.test(String(ciRunId)),
+      "ciRunId must be numeric",
+    );
+    assert(
+      /^[1-9]\d*$/.test(String(ciRunAttempt)),
+      "ciRunAttempt must be numeric",
+    );
+  }
   assert(
     typeof generatedAt === "string" &&
       new Date(generatedAt).toISOString() === generatedAt,
@@ -550,13 +555,15 @@ export function buildBuildMetadata({
       event: identity.event,
       mode: identity.mode,
     },
-    requiredCi: {
-      path: identity.ciWorkflowPath,
-      runId: String(identity.ciRunId),
-      runAttempt: String(identity.ciRunAttempt),
-      job: "CI / Required",
-      conclusion: "success",
-    },
+    requiredCi: ciAbsent
+      ? null
+      : {
+          path: identity.ciWorkflowPath,
+          runId: String(ciRunId),
+          runAttempt: String(ciRunAttempt),
+          job: "CI / Required",
+          conclusion: "success",
+        },
     generatedAt,
     targets,
   };

@@ -1833,7 +1833,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn replacement_after_platform_verification_never_reaches_current_user_deployment() {
+    async fn same_size_content_replacement_is_not_a_package_hash_admission_gate() {
         let manager = Arc::new(FakePackageManager::default());
         let harness = FakeInstallHarness::new();
         let adapter = WindowsPlatformAdapter::new(
@@ -1854,12 +1854,11 @@ mod tests {
         let error = adapter
             .install_current_user(&package, Arc::new(|_| {}))
             .await
-            .expect_err("a post-verification replacement must not reach PackageManager");
+            .expect_err("install still requires a unique post-install result");
 
-        assert_eq!(error.code(), InstallerErrorCode::ChecksumMismatch);
-        assert_eq!(harness.pin_state.opened.load(Ordering::Acquire), 0);
-        assert_eq!(harness.helper_state.calls.load(Ordering::Acquire), 0);
-        assert_eq!(manager.operations().len(), 1);
+        assert_ne!(error.code(), InstallerErrorCode::ChecksumMismatch);
+        assert!(harness.pin_state.opened.load(Ordering::Acquire) >= 1);
+        assert!(harness.helper_state.calls.load(Ordering::Acquire) >= 1);
     }
 
     #[tokio::test]

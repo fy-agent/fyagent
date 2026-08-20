@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/backend/task-runner-contract.md", "reason": "Generated docs checker vs Vitest"}
+{"file": ".trellis/spec/backend/github-ci-workflow.md", "reason": "Which suites the contracts job runs"}
+{"file": ".trellis/tasks/08-20-repo-hygiene/research/redundant-contract-tests.md", "reason": "What to delete"}
+{"file": ".trellis/tasks/08-20-repo-hygiene/research/large-tracked-files.md", "reason": "Safe untrack limits"}
+{"file": ".trellis/tasks/08-20-repo-hygiene/research/test-hygiene-candidates.md", "reason": "Do not boil the ocean"}

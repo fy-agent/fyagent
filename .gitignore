@@ -28,6 +28,7 @@ GEMINI.md
 vitest-report.json
 nul
 
+.tmp/
 .worktrees/
 .workbuddy/
 .spec-workflow/

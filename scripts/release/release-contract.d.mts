@@ -37,8 +37,8 @@ export interface ReleaseIdentity {
   event: string;
   mode: string;
   ciWorkflowPath: string;
-  ciRunId: string;
-  ciRunAttempt: string;
+  ciRunId: string | null;
+  ciRunAttempt: string | null;
 }
 
 export interface DownloadManifestAsset {
@@ -110,7 +110,7 @@ export interface BuildMetadata {
     runAttempt: string;
     job: "CI / Required";
     conclusion: "success";
-  };
+  } | null;
   generatedAt: string;
   targets: PlatformBuildTargetMetadata[];
 }

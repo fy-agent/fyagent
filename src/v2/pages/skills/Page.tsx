@@ -484,62 +484,60 @@ export function SkillsPage() {
       data-testid="skills-page"
       aria-label="Skills"
     >
-      {tab === "installed" ? (
-        <header className="fy-feature-header">
-          <div className="fy-feature-actions">
+      <header className="fy-feature-header">
+        <FeatureTabs
+          id="skills-view-tabs"
+          label="Skills 视图"
+          value={tab}
+          onChange={setTab}
+          options={[
+            { id: "installed", label: "已安装" },
+            { id: "discovery", label: "发现" },
+          ]}
+        />
+        <div className="fy-feature-actions">
+          <Button
+            onClick={checkUpdates}
+            disabled={busy || updatesQuery.isFetching}
+          >
+            检查更新
+          </Button>
+          {updates.length > 0 && (
             <Button
-              onClick={checkUpdates}
-              disabled={busy || updatesQuery.isFetching}
+              className="fy-control-button-primary"
+              onClick={updateAll}
+              disabled={busy}
             >
-              检查更新
+              更新全部 · {updates.length}
             </Button>
-            {updates.length > 0 && (
-              <Button
-                className="fy-control-button-primary"
-                onClick={updateAll}
-                disabled={busy}
-              >
-                更新全部 · {updates.length}
-              </Button>
+          )}
+          <div className="fy-feature-menu">
+            <Button
+              aria-expanded={dialog === "more"}
+              onClick={() => setDialog(dialog === "more" ? null : "more")}
+            >
+              更多
+            </Button>
+            {dialog === "more" && (
+              <div className="fy-feature-menu-popover">
+                <Button onClick={() => setDialog("unmanaged")}>
+                  导入本地 Skill
+                </Button>
+                <Button
+                  disabled={busy}
+                  onClick={() => void pickAndInstallZip()}
+                >
+                  从 ZIP 安装
+                </Button>
+                <Button onClick={() => setDialog("backups")}>备份恢复</Button>
+                <Button onClick={() => setDialog("settings")}>
+                  Skill 设置
+                </Button>
+              </div>
             )}
-            <div className="fy-feature-menu">
-              <Button
-                aria-expanded={dialog === "more"}
-                onClick={() => setDialog(dialog === "more" ? null : "more")}
-              >
-                更多
-              </Button>
-              {dialog === "more" && (
-                <div className="fy-feature-menu-popover">
-                  <Button onClick={() => setDialog("unmanaged")}>
-                    导入本地 Skill
-                  </Button>
-                  <Button
-                    disabled={busy}
-                    onClick={() => void pickAndInstallZip()}
-                  >
-                    从 ZIP 安装
-                  </Button>
-                  <Button onClick={() => setDialog("backups")}>备份恢复</Button>
-                  <Button onClick={() => setDialog("settings")}>
-                    Skill 设置
-                  </Button>
-                </div>
-              )}
-            </div>
           </div>
-        </header>
-      ) : null}
-      <FeatureTabs
-        id="skills-view-tabs"
-        label="Skills 视图"
-        value={tab}
-        onChange={setTab}
-        options={[
-          { id: "installed", label: "已安装" },
-          { id: "discovery", label: "发现" },
-        ]}
-      />
+        </div>
+      </header>
       {progress && (
         <>
           <div

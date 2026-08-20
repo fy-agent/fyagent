@@ -286,6 +286,7 @@ commands.allow = [
   "stop_proxy_with_restore",
   "stream_check_all_providers",
   "stream_check_provider",
+  "stream_check_url",
   "switch_provider",
   "switch_provider_with_result",
   "switch_proxy_provider",

@@ -1060,3 +1060,40 @@ Corrected discovery cards: preview is clamped to 3 lines for grid alignment; ful
 ### Status
 
 [OK] **Completed**
+
+
+## Session 32: V2 setup UX, release eligibility, and repo hygiene
+
+**Date**: 2026-08-21
+**Task**: V2 setup UX, release eligibility, and repo hygiene
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Delivered the eight V2/setup/release/hygiene items: Skill/MCP header row, Agent intros, Claude /v1 warn, draft URL reachability, installer without package-hash reread, tag-SHA formal eligibility with registry-only Cargo cache, and removal of redundant docs-contract tests. Specs updated; tasks archived; local check:prearchive passed.
+
+### Main Changes
+
+- Skill/MCP Installed/Discover tabs share the header row with page actions; Agent details get page-local product intros.
+- Claude warns on an explicit /v1 path without blocking save; Models probe draft HTTP(S) URLs via stream_check_url except Qoder/TRAE.
+- Codex one-click install no longer re-reads the whole package for SHA-256 admission.
+- Formal release identity is the tag target SHA; Cargo registry/git cache only; DMG notarized once.
+- Deleted currentDocsContract substring tests; ignored .tmp/; refreshed structure-asset digests and Trellis specs.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `db151bad` | (see git log) |
+
+### Testing
+
+- [OK] mise run check:prearchive --exclude-active-task .trellis/tasks/08-20-repo-hygiene (passed before archive).
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- Push dev/laiyongjie and confirm hosted CI / Required is green.

@@ -1,5 +1,6 @@
 import {
   buildQuickSetupRequest,
+  claudeBaseUrlHasExplicitV1Path,
   MODEL_TARGETS,
   parseManualModelIds,
   parseModelTarget,
@@ -155,5 +156,18 @@ describe("models quick setup helpers", () => {
       "beta",
       "Gamma",
     ]);
+  });
+
+  it.each([
+    ["https://gateway.example/v1", true],
+    ["https://gateway.example/v1/", true],
+    ["https://gateway.example/api/v1/messages", true],
+    ["https://gateway.example/anthropic", false],
+    ["https://v1.example.com", false],
+    ["https://v1.example.com/anthropic", false],
+    ["https://gateway.example/v10", false],
+    ["not a url", false],
+  ])("detects an explicit Claude v1 path in %s", (baseUrl, expected) => {
+    expect(claudeBaseUrlHasExplicitV1Path(baseUrl)).toBe(expected);
   });
 });

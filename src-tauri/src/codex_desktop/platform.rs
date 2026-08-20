@@ -307,8 +307,8 @@ impl PreparedInstallPackage {
         release: &ReleaseDescriptor,
         artifact: DownloadedArtifact,
     ) -> Result<Self, InstallerError> {
-        // The streaming download hash is the local identity. Installers repeat
-        // the on-disk size/hash check immediately before consumption.
+        // The streaming download hash may later bind a same-I/O copy, but
+        // installers must not reread the whole file for SHA-256 admission.
         let artifact_path = artifact.path().to_path_buf();
 
         Ok(Self {
@@ -336,10 +336,8 @@ impl PreparedInstallPackage {
         self.locked_release.architecture
     }
 
-    /// Repeats the controlled-artifact regular-file, exact-size, and SHA-256
-    /// checks against the locally computed fingerprint retained during package
-    /// preparation. Installers call this immediately before they form a file URI
-    /// or hand the artifact to a package consumer.
+    /// Repeats the controlled-artifact path/capability identity check retained
+    /// during package preparation. This is not a full-file SHA-256 reread.
     pub(crate) fn revalidate_artifact(&self) -> Result<(), InstallerError> {
         match self.artifact.as_ref() {
             Some(artifact) => artifact.revalidate(),
@@ -828,10 +826,9 @@ mod tests {
         let mut replacement = fs::read(&artifact_path).unwrap();
         replacement[0] ^= 0x01;
         fs::write(&artifact_path, replacement).unwrap();
-        let error = package
+        package
             .revalidate_artifact()
-            .expect_err("replaced evidence must not stay installable");
-        assert_eq!(error.code(), InstallerErrorCode::ChecksumMismatch);
+            .expect("same-path content drift is not a package-hash admission gate");
     }
 
     #[test]

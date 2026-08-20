@@ -39,14 +39,19 @@ if (
   !mode ||
   !workflowRef ||
   !workflowSha ||
-  !ciRunId ||
-  !ciRunAttempt ||
+  ciRunId === undefined ||
+  ciRunAttempt === undefined ||
   !generatedAt
 ) {
   console.error(
     "Usage: node scripts/release/generate-build-metadata.mjs <metadata-dir> <version> <tag> <source-sha> <repository> <repository-id> <run-id> <run-attempt> <event> <mode> <workflow-ref> <workflow-sha> <ci-run-id> <ci-run-attempt> <generated-at> [output]",
   );
   process.exit(1);
+}
+
+function optionalCiId(value) {
+  if (value === "" || value === "null") return null;
+  return value;
 }
 
 try {
@@ -66,8 +71,8 @@ try {
       event,
       mode,
       ciWorkflowPath: CI_WORKFLOW_PATH,
-      ciRunId,
-      ciRunAttempt,
+      ciRunId: optionalCiId(ciRunId),
+      ciRunAttempt: optionalCiId(ciRunAttempt),
     },
     generatedAt,
   });

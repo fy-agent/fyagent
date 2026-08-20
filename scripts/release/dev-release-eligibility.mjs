@@ -21,26 +21,6 @@ const POSITIVE_DECIMAL_PATTERN = /^[1-9]\d*$/;
 const STABLE_VERSION_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const CARGO_VERSION_COMPONENT_MAX = 18_446_744_073_709_551_615n;
 
-const RUN_STATUSES = new Set([
-  "completed",
-  "in_progress",
-  "pending",
-  "queued",
-  "requested",
-  "waiting",
-]);
-const CONCLUSIONS = new Set([
-  "action_required",
-  "cancelled",
-  "failure",
-  "neutral",
-  "skipped",
-  "stale",
-  "startup_failure",
-  "success",
-  "timed_out",
-]);
-
 function fail(message) {
   throw new Error(`Dev release eligibility rejected: ${message}`);
 }
@@ -103,32 +83,6 @@ function expectDecimal(value, label, { positive = false } = {}) {
     );
   }
   return value;
-}
-
-function expectArray(value, label) {
-  if (!Array.isArray(value)) fail(`${label} must be an array`);
-  return value;
-}
-
-function expectStatus(status, conclusion, label) {
-  if (typeof status !== "string" || !RUN_STATUSES.has(status)) {
-    fail(`${label}.status is not a recognized GitHub Actions status`);
-  }
-  if (conclusion !== null && !CONCLUSIONS.has(conclusion)) {
-    fail(`${label}.conclusion is not a recognized GitHub Actions conclusion`);
-  }
-  if (status === "completed" && conclusion === null) {
-    fail(`${label}.conclusion cannot be null when status is completed`);
-  }
-  if (status !== "completed" && conclusion !== null) {
-    fail(`${label}.conclusion must be null before status is completed`);
-  }
-}
-
-function compareDecimal(left, right) {
-  const leftValue = BigInt(left);
-  const rightValue = BigInt(right);
-  return leftValue < rightValue ? -1 : leftValue > rightValue ? 1 : 0;
 }
 
 function validateRepository(value, label) {
@@ -255,12 +209,22 @@ function validateRemoteTag(value, releaseTag, sourceSha) {
     ["sha", "type"],
     "remoteTag.refObject",
   );
-  expectEqual(
-    expectString(refObject.type, "remoteTag.refObject.type"),
-    "tag",
-    "remoteTag.refObject.type",
-  );
-  const tagObjectSha = expectSha(refObject.sha, "remoteTag.refObject.sha");
+  const refType = expectString(refObject.type, "remoteTag.refObject.type");
+  const refObjectSha = expectSha(refObject.sha, "remoteTag.refObject.sha");
+
+  if (refType === "commit") {
+    if (remoteTag.tagObject !== null) {
+      fail("lightweight remoteTag.tagObject must be null");
+    }
+    expectEqual(
+      refObjectSha,
+      sourceSha,
+      "remoteTag.refObject.sha",
+    );
+    return;
+  }
+
+  expectEqual(refType, "tag", "remoteTag.refObject.type");
 
   const tagObject = expectExactKeys(
     remoteTag.tagObject,
@@ -269,7 +233,7 @@ function validateRemoteTag(value, releaseTag, sourceSha) {
   );
   expectEqual(
     expectSha(tagObject.sha, "remoteTag.tagObject.sha"),
-    tagObjectSha,
+    refObjectSha,
     "remoteTag.tagObject.sha",
   );
   expectEqual(
@@ -292,301 +256,6 @@ function validateRemoteTag(value, releaseTag, sourceSha) {
     sourceSha,
     "remoteTag.tagObject.target.sha",
   );
-}
-
-function validateCiWorkflow(value) {
-  const workflow = expectExactKeys(
-    value,
-    ["id", "name", "path", "repository", "state"],
-    "ciWorkflow",
-  );
-  validateRepository(workflow.repository, "ciWorkflow.repository");
-  expectEqual(
-    expectString(workflow.name, "ciWorkflow.name"),
-    CI_WORKFLOW_NAME,
-    "ciWorkflow.name",
-  );
-  expectEqual(
-    expectString(workflow.path, "ciWorkflow.path"),
-    CI_WORKFLOW_PATH,
-    "ciWorkflow.path",
-  );
-  expectEqual(
-    expectString(workflow.state, "ciWorkflow.state"),
-    "active",
-    "ciWorkflow.state",
-  );
-  return expectDecimal(workflow.id, "ciWorkflow.id", { positive: true });
-}
-
-function validateCiRun(value, index, ciWorkflowId, authorityBranch) {
-  const label = `ciRuns[${index}]`;
-  const run = expectExactKeys(
-    value,
-    [
-      "checkSuiteId",
-      "conclusion",
-      "event",
-      "headBranch",
-      "headRepository",
-      "headSha",
-      "id",
-      "repository",
-      "runAttempt",
-      "runNumber",
-      "status",
-      "workflow",
-    ],
-    label,
-  );
-  validateRepository(run.repository, `${label}.repository`);
-  validateRepository(run.headRepository, `${label}.headRepository`);
-  const workflow = expectExactKeys(
-    run.workflow,
-    ["id", "name", "path"],
-    `${label}.workflow`,
-  );
-  expectEqual(
-    expectDecimal(workflow.id, `${label}.workflow.id`, { positive: true }),
-    ciWorkflowId,
-    `${label}.workflow.id`,
-  );
-  expectEqual(
-    expectString(workflow.name, `${label}.workflow.name`),
-    CI_WORKFLOW_NAME,
-    `${label}.workflow.name`,
-  );
-  expectEqual(
-    expectString(workflow.path, `${label}.workflow.path`),
-    CI_WORKFLOW_PATH,
-    `${label}.workflow.path`,
-  );
-  expectEqual(
-    expectString(run.event, `${label}.event`),
-    "push",
-    `${label}.event`,
-  );
-  expectEqual(
-    expectString(run.headBranch, `${label}.headBranch`),
-    authorityBranch,
-    `${label}.headBranch`,
-  );
-  expectStatus(run.status, run.conclusion, label);
-  return {
-    checkSuiteId: expectDecimal(run.checkSuiteId, `${label}.checkSuiteId`, {
-      positive: true,
-    }),
-    conclusion: run.conclusion,
-    headSha: expectSha(run.headSha, `${label}.headSha`),
-    id: expectDecimal(run.id, `${label}.id`, { positive: true }),
-    runAttempt: expectDecimal(run.runAttempt, `${label}.runAttempt`, {
-      positive: true,
-    }),
-    runNumber: expectDecimal(run.runNumber, `${label}.runNumber`, {
-      positive: true,
-    }),
-    status: run.status,
-  };
-}
-
-function validateCiEvidence(value, selectedRun, sourceSha) {
-  const evidence = expectExactKeys(
-    value,
-    ["checkRuns", "checkSuiteId", "jobs", "runAttempt", "runId"],
-    "ciEvidence",
-  );
-  expectEqual(
-    expectDecimal(evidence.runId, "ciEvidence.runId", { positive: true }),
-    selectedRun.id,
-    "ciEvidence.runId",
-  );
-  expectEqual(
-    expectDecimal(evidence.runAttempt, "ciEvidence.runAttempt", {
-      positive: true,
-    }),
-    selectedRun.runAttempt,
-    "ciEvidence.runAttempt",
-  );
-  expectEqual(
-    expectDecimal(evidence.checkSuiteId, "ciEvidence.checkSuiteId", {
-      positive: true,
-    }),
-    selectedRun.checkSuiteId,
-    "ciEvidence.checkSuiteId",
-  );
-
-  const jobs = expectArray(evidence.jobs, "ciEvidence.jobs").map(
-    (jobValue, index) => {
-      const label = `ciEvidence.jobs[${index}]`;
-      const job = expectExactKeys(
-        jobValue,
-        [
-          "checkRunUrl",
-          "conclusion",
-          "htmlUrl",
-          "id",
-          "name",
-          "runAttempt",
-          "runId",
-          "status",
-        ],
-        label,
-      );
-      expectEqual(
-        expectDecimal(job.runId, `${label}.runId`, { positive: true }),
-        selectedRun.id,
-        `${label}.runId`,
-      );
-      expectEqual(
-        expectDecimal(job.runAttempt, `${label}.runAttempt`, {
-          positive: true,
-        }),
-        selectedRun.runAttempt,
-        `${label}.runAttempt`,
-      );
-      expectStatus(job.status, job.conclusion, label);
-      return {
-        checkRunUrl: expectString(job.checkRunUrl, `${label}.checkRunUrl`),
-        conclusion: job.conclusion,
-        htmlUrl: expectString(job.htmlUrl, `${label}.htmlUrl`),
-        id: expectDecimal(job.id, `${label}.id`, { positive: true }),
-        name: expectString(job.name, `${label}.name`),
-        status: job.status,
-      };
-    },
-  );
-
-  const checkRuns = expectArray(evidence.checkRuns, "ciEvidence.checkRuns").map(
-    (checkValue, index) => {
-      const label = `ciEvidence.checkRuns[${index}]`;
-      const check = expectExactKeys(
-        checkValue,
-        [
-          "appSlug",
-          "checkSuiteId",
-          "conclusion",
-          "detailsUrl",
-          "headSha",
-          "id",
-          "name",
-          "runAttempt",
-          "runId",
-          "status",
-          "url",
-        ],
-        label,
-      );
-      expectEqual(
-        expectDecimal(check.runId, `${label}.runId`, { positive: true }),
-        selectedRun.id,
-        `${label}.runId`,
-      );
-      expectEqual(
-        expectDecimal(check.runAttempt, `${label}.runAttempt`, {
-          positive: true,
-        }),
-        selectedRun.runAttempt,
-        `${label}.runAttempt`,
-      );
-      expectEqual(
-        expectDecimal(check.checkSuiteId, `${label}.checkSuiteId`, {
-          positive: true,
-        }),
-        selectedRun.checkSuiteId,
-        `${label}.checkSuiteId`,
-      );
-      expectStatus(check.status, check.conclusion, label);
-      return {
-        appSlug: expectString(check.appSlug, `${label}.appSlug`),
-        conclusion: check.conclusion,
-        detailsUrl: expectString(check.detailsUrl, `${label}.detailsUrl`),
-        headSha: expectSha(check.headSha, `${label}.headSha`),
-        id: expectDecimal(check.id, `${label}.id`, { positive: true }),
-        name: expectString(check.name, `${label}.name`),
-        status: check.status,
-        url: expectString(check.url, `${label}.url`),
-      };
-    },
-  );
-
-  const requiredJobs = jobs.filter(({ name }) => name === REQUIRED_JOB_NAME);
-  if (requiredJobs.length !== 1) {
-    fail(
-      `selected CI attempt must contain exactly one ${REQUIRED_JOB_NAME} job`,
-    );
-  }
-  const requiredChecks = checkRuns.filter(
-    ({ name }) => name === REQUIRED_JOB_NAME,
-  );
-  if (requiredChecks.length !== 1) {
-    fail(
-      `selected CI attempt must contain exactly one ${REQUIRED_JOB_NAME} check-run`,
-    );
-  }
-
-  const job = requiredJobs[0];
-  const check = requiredChecks[0];
-  if (job.status !== "completed" || job.conclusion !== "success") {
-    fail(`${REQUIRED_JOB_NAME} job must be completed successfully`);
-  }
-  if (check.status !== "completed" || check.conclusion !== "success") {
-    fail(`${REQUIRED_JOB_NAME} check-run must be completed successfully`);
-  }
-  expectEqual(check.appSlug, "github-actions", `${REQUIRED_JOB_NAME} app slug`);
-  expectEqual(check.headSha, sourceSha, `${REQUIRED_JOB_NAME} head SHA`);
-
-  const expectedCheckUrl = `https://api.github.com/repos/${EXPECTED_REPOSITORY}/check-runs/${check.id}`;
-  const expectedDetailsUrl = `https://github.com/${EXPECTED_REPOSITORY}/actions/runs/${selectedRun.id}/job/${job.id}`;
-  expectEqual(
-    job.checkRunUrl,
-    expectedCheckUrl,
-    `${REQUIRED_JOB_NAME} job check URL`,
-  );
-  expectEqual(check.url, expectedCheckUrl, `${REQUIRED_JOB_NAME} check URL`);
-  expectEqual(job.htmlUrl, expectedDetailsUrl, `${REQUIRED_JOB_NAME} job URL`);
-  expectEqual(
-    check.detailsUrl,
-    expectedDetailsUrl,
-    `${REQUIRED_JOB_NAME} details URL`,
-  );
-}
-
-function selectLatestSuccessfulCi(input, sourceSha, authorityBranch) {
-  const ciWorkflowId = validateCiWorkflow(input.ciWorkflow);
-  const runs = expectArray(input.ciRuns, "ciRuns").map((run, index) =>
-    validateCiRun(run, index, ciWorkflowId, authorityBranch),
-  );
-  const seenAttempts = new Set();
-  for (const run of runs) {
-    const key = `${run.id}:${run.runAttempt}`;
-    if (seenAttempts.has(key)) {
-      fail(`ciRuns contains duplicate run attempt ${key}`);
-    }
-    seenAttempts.add(key);
-  }
-
-  const matching = runs
-    .filter((run) => run.headSha === sourceSha)
-    .sort((left, right) => {
-      const runOrder = compareDecimal(left.runNumber, right.runNumber);
-      return runOrder === 0
-        ? compareDecimal(left.runAttempt, right.runAttempt)
-        : runOrder;
-    });
-  if (matching.length === 0) {
-    fail(`no ${authorityBranch} push CI run exists for source ${sourceSha}`);
-  }
-  const selectedRun = matching.at(-1);
-  if (
-    selectedRun.status !== "completed" ||
-    selectedRun.conclusion !== "success"
-  ) {
-    fail(
-      `latest exact-source ${authorityBranch} push CI run/attempt must be completed successfully`,
-    );
-  }
-  validateCiEvidence(input.ciEvidence, selectedRun, sourceSha);
-  return selectedRun;
 }
 
 function assertExpectedFrozenOutput(output, expectedValue) {
@@ -613,9 +282,6 @@ export function evaluateDevReleaseEligibility(inputValue, expectedFrozen) {
     inputValue,
     [
       "candidate",
-      "ciEvidence",
-      "ciRuns",
-      "ciWorkflow",
       "event",
       "remoteDev",
       "remoteTag",
@@ -673,7 +339,7 @@ export function evaluateDevReleaseEligibility(inputValue, expectedFrozen) {
       "workflow.ref",
     );
     if (input.remoteTag === null) {
-      fail("formal release requires annotated remoteTag evidence");
+      fail("formal release requires remoteTag evidence");
     }
     validateRemoteTag(
       input.remoteTag,
@@ -688,19 +354,16 @@ export function evaluateDevReleaseEligibility(inputValue, expectedFrozen) {
     input.remoteDev,
     authorityBranch,
   );
-  expectEqual(remoteDevHeadSha, candidate.sourceSha, "remoteDev.headSha");
-  const selectedRun = selectLatestSuccessfulCi(
-    input,
-    candidate.sourceSha,
-    authorityBranch,
-  );
+  if (mode === "preflight") {
+    expectEqual(remoteDevHeadSha, candidate.sourceSha, "remoteDev.headSha");
+  }
   const output = Object.freeze({
     appVersion: candidate.canonicalVersion,
     releaseTag: candidate.releaseTag,
     sourceSha: candidate.sourceSha,
     workflowSha: workflow.sha,
-    ciRunId: selectedRun.id,
-    ciRunAttempt: selectedRun.runAttempt,
+    ciRunId: null,
+    ciRunAttempt: null,
     mode,
   });
   if (expectedFrozen !== undefined) {

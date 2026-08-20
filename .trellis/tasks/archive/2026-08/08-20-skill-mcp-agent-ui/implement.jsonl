@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/frontend/v2-skills-mcp.md", "reason": "Skill/MCP chrome and FeatureTabs contract"}
+{"file": ".trellis/spec/frontend/v2-agent-models.md", "reason": "Agent directory presentation; intro must not revive catalog description"}
+{"file": ".trellis/spec/frontend/reuse.md", "reason": "Shared header chrome belongs in shared CSS"}
+{"file": ".trellis/tasks/08-20-skill-mcp-agent-ui/research/skill-mcp-toolbar.md", "reason": "Current header DOM and CSS"}
+{"file": ".trellis/tasks/08-20-skill-mcp-agent-ui/research/agent-directory-copy.md", "reason": "Which details are empty and copy rules"}

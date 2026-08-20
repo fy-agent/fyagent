@@ -42,6 +42,8 @@ import {
 } from "./feedback";
 import {
   buildQuickSetupRequest,
+  CLAUDE_EXPLICIT_V1_WARNING,
+  claudeBaseUrlHasExplicitV1Path,
   isHttpUrl,
   MODEL_TARGETS,
   parseManualModelIds,
@@ -56,7 +58,12 @@ import {
   ModelSearchField,
   ModelVendorIcon,
 } from "./modelChips";
-import { ModelsPanelHeader, NoApiKeyOption, NoticeView } from "./modelsShared";
+import {
+  ModelsPanelHeader,
+  NoApiKeyOption,
+  NoticeView,
+  noticeFromReachability,
+} from "./modelsShared";
 import { OpenCodeModelsPanel } from "./OpenCodeModelsPanel";
 import { QoderModelsPanel } from "./QoderModelsPanel";
 import { TraeModelsPanel } from "./TraeModelsPanel";
@@ -100,7 +107,8 @@ type WorkBuddyNoticeField =
   | "fetch"
   | "draft"
   | "save"
-  | "existing";
+  | "existing"
+  | "reachability";
 
 function WorkBuddyPanel({ active }: { active: boolean }) {
   const { ports } = useFeatures();
@@ -119,7 +127,9 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
   const [draftSearch, setDraftSearch] = useState("");
   const [existingOpen, setExistingOpen] = useState(false);
   const [truncated, setTruncated] = useState(false);
-  const [busy, setBusy] = useState<"fetch" | "save" | "delete" | null>(null);
+  const [busy, setBusy] = useState<
+    "fetch" | "save" | "delete" | "reachability" | null
+  >(null);
   const { notices, show, clear, dismiss } =
     useFieldNotices<WorkBuddyNoticeField>();
   const [pendingOverwrite, setPendingOverwrite] = useState<{
@@ -245,6 +255,37 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
           tone: "error",
           title: "模型读取失败",
           description: "请检查地址、凭据和服务状态后重试。",
+        });
+    } finally {
+      if (mountedRef.current) setBusy(null);
+      writeLock.current = false;
+    }
+  };
+
+  const checkReachability = async () => {
+    if (writeLock.current) return;
+    if (!isHttpUrl(baseUrl.trim())) {
+      show("baseUrl", {
+        tone: "error",
+        title: "请输入有效的服务地址",
+        description: "只接受不含账号信息的 HTTP(S) 地址。",
+      });
+      focusControl(baseUrlInputRef.current);
+      return;
+    }
+    writeLock.current = true;
+    setBusy("reachability");
+    dismiss("baseUrl");
+    try {
+      const result = await ports.workbuddy.checkReachability(baseUrl.trim());
+      if (mountedRef.current)
+        show("reachability", noticeFromReachability(result));
+    } catch {
+      if (mountedRef.current)
+        show("reachability", {
+          tone: "error",
+          title: "连通测试失败",
+          description: "请检查地址和网络后重试。",
         });
     } finally {
       if (mountedRef.current) setBusy(null);
@@ -739,6 +780,12 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
         />
         <div className="fy-models-action-block">
           <div className="fy-models-actions">
+            <Button
+              disabled={busy !== null}
+              onClick={() => void checkReachability()}
+            >
+              {busy === "reachability" ? "测试中…" : "测试连通"}
+            </Button>
             <Button disabled={busy !== null} onClick={() => void fetchModels()}>
               {busy === "fetch" ? "读取中…" : "拉取模型"}
             </Button>
@@ -751,6 +798,10 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
             </Button>
           </div>
           <FieldFeedback id="workbuddy-fetch-error" notice={notices.fetch} />
+          <FieldFeedback
+            id="workbuddy-reachability"
+            notice={notices.reachability}
+          />
         </div>
         <div className="fy-models-manual-row">
           <label className="fy-control-field fy-models-manual-field">
@@ -913,11 +964,15 @@ function ProviderPanel({
   const [fetchedModelIds, setFetchedModelIds] = useState<string[]>([]);
   const [ownedByById, setOwnedByById] = useState<Record<string, string>>({});
   const [fetchBusy, setFetchBusy] = useState(false);
+  const [reachabilityBusy, setReachabilityBusy] = useState(false);
   const [imageExtension, setImageExtension] = useState(false);
   const [websockets, setWebsockets] = useState(false);
   const [errors, setErrors] = useState<QuickSetupErrors>({});
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
+  const [reachabilityNotice, setReachabilityNotice] = useState<Notice | null>(
+    null,
+  );
   const [warningCodes, setWarningCodes] = useState<
     CodexProviderMutationWarning[]
   >([]);
@@ -993,6 +1048,36 @@ function ProviderPanel({
       }
     } finally {
       if (mountedRef.current) setFetchBusy(false);
+    }
+  };
+
+  const checkReachability = async () => {
+    if (fetchBusy || busy || reachabilityBusy) return;
+    if (!isHttpUrl(baseUrl.trim())) {
+      setErrors((current) => ({
+        ...current,
+        baseUrl: "请输入不含账号信息的 HTTP(S) 地址",
+      }));
+      baseUrlInputRef.current?.focus();
+      return;
+    }
+    setReachabilityBusy(true);
+    setErrors((current) => ({ ...current, baseUrl: undefined }));
+    setReachabilityNotice(null);
+    try {
+      const result = await ports.providers.checkReachability(baseUrl.trim());
+      if (mountedRef.current)
+        setReachabilityNotice(noticeFromReachability(result));
+    } catch {
+      if (mountedRef.current) {
+        setReachabilityNotice({
+          tone: "error",
+          title: "连通测试失败",
+          description: "请检查地址和网络后重试。",
+        });
+      }
+    } finally {
+      if (mountedRef.current) setReachabilityBusy(false);
     }
   };
 
@@ -1130,7 +1215,13 @@ function ProviderPanel({
       >
         <Button
           className="fy-control-button-primary fy-models-commit-button"
-          disabled={busy || writesBlocked || queryPending || queryUnavailable}
+          disabled={
+            busy ||
+            reachabilityBusy ||
+            writesBlocked ||
+            queryPending ||
+            queryUnavailable
+          }
           onClick={() => void submit()}
         >
           {busy
@@ -1196,12 +1287,23 @@ function ProviderPanel({
             type="url"
             value={baseUrl}
             onChange={(event) => setBaseUrl(event.target.value)}
-            placeholder="https://gateway.example/v1"
+            placeholder={
+              app === "claude"
+                ? "https://gateway.example"
+                : "https://gateway.example/v1"
+            }
             autoComplete="off"
             spellCheck={false}
             aria-invalid={Boolean(errors.baseUrl)}
             aria-describedby={
-              errors.baseUrl ? `${app}-quick-setup-base-url-error` : undefined
+              [
+                errors.baseUrl ? `${app}-quick-setup-base-url-error` : null,
+                app === "claude" && claudeBaseUrlHasExplicitV1Path(baseUrl)
+                  ? `${app}-quick-setup-base-url-v1-warning`
+                  : null,
+              ]
+                .filter(Boolean)
+                .join(" ") || undefined
             }
           />
           {errors.baseUrl && (
@@ -1213,6 +1315,15 @@ function ProviderPanel({
               {errors.baseUrl}
             </span>
           )}
+          {app === "claude" && claudeBaseUrlHasExplicitV1Path(baseUrl) ? (
+            <FieldFeedback
+              id={`${app}-quick-setup-base-url-v1-warning`}
+              notice={{
+                tone: "warning",
+                title: CLAUDE_EXPLICIT_V1_WARNING,
+              }}
+            />
+          ) : null}
         </div>
         <div className="fy-control-field">
           <label htmlFor={`${app}-quick-setup-api-key`}>API Key</label>
@@ -1269,16 +1380,32 @@ function ProviderPanel({
             </span>
           )}
         </div>
-        {app === "claude" ? (
-          <div className="fy-models-form-wide">
-            <div className="fy-models-actions">
+        <div className="fy-models-form-wide">
+          <div className="fy-models-actions">
+            <Button
+              disabled={busy || fetchBusy || reachabilityBusy}
+              onClick={() => void checkReachability()}
+            >
+              {reachabilityBusy ? "测试中…" : "测试连通"}
+            </Button>
+            {app === "claude" ? (
               <Button
-                disabled={busy || fetchBusy || writesBlocked}
+                disabled={
+                  busy || fetchBusy || reachabilityBusy || writesBlocked
+                }
                 onClick={() => void fetchClaudeModels()}
               >
                 {fetchBusy ? "读取中…" : "拉取模型"}
               </Button>
-            </div>
+            ) : null}
+          </div>
+          <FieldFeedback
+            id={`${app}-quick-setup-reachability`}
+            notice={reachabilityNotice}
+          />
+        </div>
+        {app === "claude" ? (
+          <div className="fy-models-form-wide">
             <GroupedModelChips
               ids={addUniqueModelIds(fetchedModelIds, modelId ? [modelId] : [])}
               selectedId={modelId}

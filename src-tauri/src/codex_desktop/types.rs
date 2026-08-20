@@ -332,6 +332,7 @@ fn platform_version_matches(platform: DesktopPlatform, version: &PlatformVersion
 /// Normalize the digest representation used for local same-file handoff
 /// evidence. Uppercase hex is accepted as an input compatibility detail but
 /// never retained in a handoff receipt.
+#[cfg(test)]
 pub(crate) fn normalize_sha256(value: &str) -> Result<String, InstallerError> {
     if value.len() != 64 || !value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
         return Err(invalid_metadata(

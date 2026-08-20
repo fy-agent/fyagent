@@ -23,7 +23,11 @@ import {
   type Notice,
 } from "./feedback";
 import { GroupedModelChips, ModelSearchField } from "./modelChips";
-import { ModelsPanelHeader, NoApiKeyOption } from "./modelsShared";
+import {
+  ModelsPanelHeader,
+  NoApiKeyOption,
+  noticeFromReachability,
+} from "./modelsShared";
 import { isHttpUrl, parseManualModelIds } from "./quickSetup";
 import {
   addUniqueModelIds,
@@ -39,7 +43,8 @@ type NoticeField =
   | "fetch"
   | "draft"
   | "save"
-  | "existing";
+  | "existing"
+  | "reachability";
 
 export function OpenCodeModelsPanel({ active }: { active: boolean }) {
   const { ports } = useFeatures();
@@ -58,7 +63,9 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
   const [draftSearch, setDraftSearch] = useState("");
   const [existingOpen, setExistingOpen] = useState(false);
   const [truncated, setTruncated] = useState(false);
-  const [busy, setBusy] = useState<"fetch" | "save" | "delete" | null>(null);
+  const [busy, setBusy] = useState<
+    "fetch" | "save" | "delete" | "reachability" | null
+  >(null);
   const { notices, show, clear, dismiss } = useFieldNotices<NoticeField>();
   const [pendingOverwrite, setPendingOverwrite] = useState<{
     request: OpenCodeSaveModelsRequest;
@@ -153,6 +160,39 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
           tone: "error",
           title: "模型读取失败",
           description: "请检查地址、凭据和服务状态后重试。",
+        });
+    } finally {
+      if (mountedRef.current) setBusy(null);
+      writeLock.current = false;
+    }
+  };
+
+  const checkReachability = async () => {
+    if (writeLock.current) return;
+    if (!isHttpUrl(baseUrl.trim())) {
+      show("baseUrl", {
+        tone: "error",
+        title: "请输入有效的服务地址",
+        description: "只接受不含账号信息的 HTTP(S) 地址。",
+      });
+      focusControl(baseUrlInputRef.current);
+      return;
+    }
+    writeLock.current = true;
+    setBusy("reachability");
+    dismiss("baseUrl");
+    try {
+      const result = await ports.opencodeModels.checkReachability(
+        baseUrl.trim(),
+      );
+      if (mountedRef.current)
+        show("reachability", noticeFromReachability(result));
+    } catch {
+      if (mountedRef.current)
+        show("reachability", {
+          tone: "error",
+          title: "连通测试失败",
+          description: "请检查地址和网络后重试。",
         });
     } finally {
       if (mountedRef.current) setBusy(null);
@@ -604,6 +644,12 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
         />
         <div className="fy-models-action-block">
           <div className="fy-models-actions">
+            <Button
+              disabled={busy !== null}
+              onClick={() => void checkReachability()}
+            >
+              {busy === "reachability" ? "测试中…" : "测试连通"}
+            </Button>
             <Button disabled={busy !== null} onClick={() => void fetchModels()}>
               {busy === "fetch" ? "读取中…" : "拉取模型"}
             </Button>
@@ -619,6 +665,10 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
             </Button>
           </div>
           <FieldFeedback id="opencode-fetch-error" notice={notices.fetch} />
+          <FieldFeedback
+            id="opencode-reachability"
+            notice={notices.reachability}
+          />
         </div>
         <div className="fy-models-manual-row">
           <label className="fy-control-field fy-models-manual-field">

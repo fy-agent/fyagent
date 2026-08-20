@@ -666,6 +666,16 @@ export interface FetchedModelList {
   truncated: boolean;
 }
 
+export type ReachabilityStatus = "operational" | "degraded" | "failed";
+
+export interface ReachabilityResult {
+  success: boolean;
+  status: ReachabilityStatus;
+  message: string;
+  responseTimeMs: number | null;
+  httpStatus: number | null;
+}
+
 export interface TraeWorkModelIdsResult {
   modelIds: string[];
   revision: string | null;

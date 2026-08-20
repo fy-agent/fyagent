@@ -433,6 +433,23 @@ describe("release asset and metadata contract", () => {
     }
   });
 
+  it("omits requiredCi when frozen eligibility has no CI run", () => {
+    const directory = temporaryDirectory();
+    const unbound: ReleaseIdentity = {
+      ...identity,
+      ciRunId: null,
+      ciRunAttempt: null,
+    };
+    writePlatformMetadata(directory, unbound);
+    expect(
+      buildBuildMetadata({
+        metadataDirectory: directory,
+        identity: unbound,
+        generatedAt: "2026-08-08T00:00:00.000Z",
+      }).requiredCi,
+    ).toBeNull();
+  });
+
   it("accepts another canonical stable version and binds its formal tag ref", () => {
     const generalizedIdentity: ReleaseIdentity = {
       ...identity,

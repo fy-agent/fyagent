@@ -663,7 +663,6 @@ describe("Codex current-user helper static contract", () => {
         "FlushFileBuffers",
         "rename_leaf_without_replacement",
         "open_final_package_leaf",
-        "hash_exact_file",
         "native_file_identity(source_file",
         "PackageBridgeControl::new",
         "bridge.recheck()",
@@ -906,9 +905,10 @@ describe("Codex current-user helper static contract", () => {
       "\nimpl WindowsVerifiedFilePin for VerifiedFilePin",
     );
     expect(pinOpen).toContain("package.open_artifact_for_pinning()?");
-    expect(pinOpen).toContain("verify_reader(");
+    expect(pinOpen).toContain("checked_file_identity(");
     expect(pinOpen).toContain("expected_size");
     expect(pinOpen).toContain("expected_sha256");
+    expect(pinOpen).not.toContain("verify_reader(");
     expect(pinOpen).not.toMatch(/artifact_path|File::open|CreateFileW/u);
   });
 

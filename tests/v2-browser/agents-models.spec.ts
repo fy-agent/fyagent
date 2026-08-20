@@ -637,6 +637,7 @@ test("Models keeps seven targets and saves TRAE models natively", async ({
   );
   await expect(page.getByRole("textbox", { name: "API Key" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "拉取模型" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "测试连通" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "保存并应用" })).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "打开 TRAE 官方模型设置" }),
