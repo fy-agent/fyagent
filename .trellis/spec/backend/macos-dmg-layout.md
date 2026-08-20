@@ -51,7 +51,10 @@ background file .background/background.png
   `hdiutil`, `osascript`, or Finder. Staging-directory aliases bind the runner
   disk CNID and are invalid.
 - AppleScript, `osascript`, `dmgbuild` CLI, `appdmg`, `pip3`, Homebrew
-  `create-dmg`, and `--skip-jenkins` are forbidden. Layout failure is
+  `create-dmg`, `--skip-jenkins`, and `bless --openfolder` are forbidden.
+  GitHub-hosted `macos-15` is Apple Silicon; `bless --openfolder` exits
+  with "not supported on Apple Silicon devices". Finder uses `.DS_Store`
+  `bwsp`/`icvp`/`Iloc` when the user opens the volume. Layout failure is
   non-zero; there is no unstyled fallback.
 - `retry-hdiutil.sh` allows `create`, `convert`, and `verify`. `create` and
   `convert` delete only their destination on failure. Convert must not delete
@@ -70,6 +73,7 @@ background file .background/background.png
 | Condition | Required result |
 | --- | --- |
 | Missing FyAgent.app, background PNG, or Applications symlink | Fail before `hdiutil create` |
+| `bless --openfolder` on Apple Silicon | Fail `build-macos`; do not call `bless` |
 | Layout writer not on Darwin, mount item missing, or alias failure | Non-zero; no osascript fallback |
 | `hdiutil create`/`convert` reports `Resource busy` / temporarily unavailable | Retry same argv, at most 5 attempts, 2/4/8/16s |
 | Other `hdiutil` diagnostic or retry budget exhausted | Return original status; delete only convert/create destination |
@@ -83,15 +87,16 @@ background file .background/background.png
 - Good: mounted-volume `.DS_Store` with picture `icvp` and left/right `Iloc`;
   double-click shows app on the left and Applications on the right.
 - Base: one `Resource busy` during convert, then UDZO verifies.
-- Bad: `create-dmg --skip-jenkins`; AppleScript `.DS_Store`; `pip3 install
-  dmgbuild`; a host-copied `.DS_Store` template; `uv add ds-store` into the
-  default group.
+- Bad: `create-dmg --skip-jenkins`; AppleScript `.DS_Store`; `bless --openfolder`;
+  `pip3 install dmgbuild`; a host-copied `.DS_Store` template; `uv add ds-store`
+  into the default group.
 
 ## 6. Tests Required
 
 - `tests/releaseWorkflow.test.ts`: script path, coordinates, `setup-uv`,
   `uv sync --locked --group dmg-layout`, Applications symlink, background and
-  `.DS_Store` attach checks, no `osascript` / `skip-jenkins` / `dmgbuild` / ZIP.
+  `.DS_Store` attach checks, no `osascript` / `skip-jenkins` / `dmgbuild` /
+  `bless` / ZIP.
 - `tests/hdiutilRetry.test.ts`: convert destination deletion on busy.
 - `tests/dmgBackground.test.ts`: 1320×800, `pHYs` 5669, byte-stable PNG, empty
   wells, `--check` matches the checked-in file.
