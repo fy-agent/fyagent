@@ -117,6 +117,12 @@ const LEGACY_DOCUMENTATION_ROOT_FILES = new Set([
 // standalone preview owned so untracking it is not an unknown path.
 const LEGACY_FRONTEND_ROOT_FILES = new Set(["FyAgent-前端交互预览.html"]);
 
+// These trees are gone from this branch but still exist on older main
+// history. Name-status diffs include the deleted side, so they must stay
+// owned or PR classification against main fails closed.
+const RETIRED_SESSION_MEMORY_PREFIXES = Object.freeze(["memory/", ".omo/"]);
+const RETIRED_SANDBOX_PACKAGE_PREFIX = ["flat", "pak/"].join("");
+
 const CODEX_WINDOWS_PREFIXES = Object.freeze([
   "src-tauri/src/codex_desktop/",
   "src-tauri/src/platform/windows/",
@@ -260,7 +266,11 @@ function classifyPath(path, domains) {
     return { matched: true, forceFull: false };
   }
 
-  if (path.startsWith("docs/") || path.startsWith("LICENSES/")) {
+  if (
+    path.startsWith("docs/") ||
+    path.startsWith("LICENSES/") ||
+    hasPrefix(path, RETIRED_SESSION_MEMORY_PREFIXES)
+  ) {
     addDomains(domains, ["contracts", "docsSpec"]);
     return { matched: true, forceFull: false };
   }
@@ -269,6 +279,11 @@ function classifyPath(path, domains) {
     DOCUMENTATION_ROOT_FILES.has(path) ||
     LEGACY_DOCUMENTATION_ROOT_FILES.has(path)
   ) {
+    addDomains(domains, ["contracts", "docsSpec"]);
+    return { matched: true, forceFull: false };
+  }
+
+  if (path.startsWith(RETIRED_SANDBOX_PACKAGE_PREFIX)) {
     addDomains(domains, ["contracts", "docsSpec"]);
     return { matched: true, forceFull: false };
   }

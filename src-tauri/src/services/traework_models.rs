@@ -4,11 +4,10 @@
 //! not write `state.vscdb` or the model-list backup: launch overwrites local
 //! rows that were never registered with `add_custom_model`.
 
-use std::{
-    collections::HashSet,
-    path::{Path, PathBuf},
-    sync::OnceLock,
-};
+use std::{collections::HashSet, path::PathBuf, sync::OnceLock};
+
+#[cfg(any(test, target_os = "macos"))]
+use std::path::Path;
 
 use hmac::{Hmac, Mac};
 use rusqlite::{params, types::ValueRef, Connection};
@@ -60,6 +59,7 @@ pub(crate) struct TraePaths {
 }
 
 impl TraePaths {
+    #[cfg(any(test, target_os = "macos"))]
     pub(crate) fn from_home(home: &Path) -> Self {
         #[cfg(target_os = "windows")]
         let directory = home

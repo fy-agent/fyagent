@@ -297,6 +297,9 @@ describe("automatic CI workflow", () => {
       expect(block).toContain(
         "cargo test --workspace --features fyagent/test-hooks --locked --manifest-path src-tauri/Cargo.toml --no-fail-fast",
       );
+      expect(namedStepBlock(id, "Run Rust tests")).toContain(
+        'RUST_TEST_THREADS: "1"',
+      );
       expect(namedStepBlock(id, "Check Rust workspace")).not.toContain(
         "test-hooks",
       );

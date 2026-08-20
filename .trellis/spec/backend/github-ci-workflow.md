@@ -95,6 +95,10 @@ Classification invariants:
 - the generated root `FyAgent-前端交互预览.html` is gitignored and not in the
   Git index; its retired path still classifies as contracts plus frontend so
   deletions and history diffs are not unknownPaths;
+- retired session-memory trees (`.omo/`, `memory/`) and the retired sandbox
+  packaging prefix still classify as contracts plus docsSpec so deletions
+  versus `main` are not unknownPaths; the classifier must not spell the
+  retired sandbox token as one contiguous source string;
 - a new path without an owner is returned in sorted `unknownPaths`, printed as
   JSON, and makes the CLI fail;
 - unknown paths are never silently treated as no-op or full CI;
@@ -280,7 +284,9 @@ Within Cargo, check and Clippy use `--keep-going` so all still-buildable
 dependency-graph branches are attempted before the command returns failure.
 This does not claim that a target whose dependency failed can run. Rust tests
 use `--no-fail-fast`, which continues across test executables after an
-executable fails. Backend test commands alone enable `fyagent/test-hooks` so
+executable fails. Backend `cargo test` steps set `RUST_TEST_THREADS=1` because
+`FYAGENT_TEST_HOME` is process-global and parallel unit tests otherwise race
+on the override. Backend test commands alone enable `fyagent/test-hooks` so
 integration-test fixtures can bind Windows user paths to their explicit
 `FYAGENT_TEST_HOME`; check, Clippy, native contract compilation, and production
 builds retain the frozen Explorer-user fail-closed boundary. The workflow

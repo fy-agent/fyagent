@@ -434,6 +434,8 @@ jobs:
       - name: Run Rust tests
         id: rust-tests
         if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
+        env:
+          RUST_TEST_THREADS: "1"
         run: cargo test --workspace --features fyagent/test-hooks --locked --manifest-path src-tauri/Cargo.toml --no-fail-fast
 
       - name: Evaluate collected diagnostics
@@ -637,6 +639,8 @@ jobs:
       - name: Run Rust tests
         id: rust-tests
         if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
+        env:
+          RUST_TEST_THREADS: "1"
         run: cargo test --workspace --features fyagent/test-hooks --locked --manifest-path src-tauri/Cargo.toml --no-fail-fast
 
       - name: Evaluate collected diagnostics

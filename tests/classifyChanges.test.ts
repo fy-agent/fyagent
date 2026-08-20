@@ -105,6 +105,16 @@ describe("repository change classifier", () => {
       domains("contracts", "frontend"),
     ],
     [
+      "retired session memory",
+      ["memory/2026-08-10.md", ".omo/plans/docs-restructure-v0.3.0.md"],
+      domains("contracts", "docsSpec"),
+    ],
+    [
+      "retired sandbox packaging",
+      [["flat", "pak/com.fyagent.desktop.yml"].join("")],
+      domains("contracts", "docsSpec"),
+    ],
+    [
       "backend",
       ["src-tauri/src/proxy/server.rs"],
       domains("contracts", "backend"),
@@ -214,16 +224,6 @@ describe("repository change classifier", () => {
         "another-unknown.txt",
         "unknown/new-file.txt",
       ],
-      forceFull: false,
-    });
-  });
-
-  it("does not retain ownership for a retired packaging path", () => {
-    const retiredPath = ["flat", "pak/com.fyagent.desktop.yml"].join("");
-
-    expect(classifyChangedPaths([retiredPath])).toEqual({
-      domains: domains(),
-      unknownPaths: [retiredPath],
       forceFull: false,
     });
   });
