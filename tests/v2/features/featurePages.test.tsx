@@ -16,6 +16,7 @@ import {
   createAssignments,
   createMcpAssignments,
   MCP_TARGETS,
+  SKILLHUB_MARKET_OWNER,
   SKILL_TARGETS,
   type InstalledSkill,
   type McpServer,
@@ -385,7 +386,7 @@ describe("V2 MCP management", () => {
     expect(
       await screen.findByRole("heading", { name: "node_repl" }),
     ).toBeVisible();
-    expect(screen.getByRole("region", { name: "安装来源" })).toHaveTextContent(
+    expect(screen.getByRole("region", { name: "安装来源" })).not.toHaveTextContent(
       directory,
     );
     expect(screen.queryByText("无本地安装目录")).not.toBeInTheDocument();
@@ -806,9 +807,15 @@ describe("V2 Skills management", () => {
       apps: createAssignments(),
       installedAt: 0,
     };
+    const market: InstalledSkill = {
+      ...installedSkill("market-review", "Market Review"),
+      repoOwner: SKILLHUB_MARKET_OWNER,
+      repoName: "review-skill",
+      repoBranch: "skillhub",
+    };
     const openExternal = vi.fn(async () => undefined);
     const ports = createBrowserFeaturePorts();
-    ports.skills.getInstalled = async () => [remote, local];
+    ports.skills.getInstalled = async () => [remote, local, market];
     ports.settings.openExternal = openExternal;
 
     renderFeature(<SkillsPage />, ports);
@@ -834,7 +841,7 @@ describe("V2 Skills management", () => {
 
     const installPath =
       "C:\\Users\\xk\\AppData\\Roaming\\fyagent\\skills\\review-skill";
-    expect(screen.getByRole("region", { name: "下载来源" })).toHaveTextContent(
+    expect(screen.getByRole("region", { name: "下载来源" })).not.toHaveTextContent(
       installPath,
     );
     const writeText = vi.fn().mockResolvedValue(undefined);
@@ -865,6 +872,20 @@ describe("V2 Skills management", () => {
       screen.getByRole("button", { name: "卸载" }),
       screen.getByRole("region", { name: "下载来源" }),
     );
+
+    await user.click(screen.getByRole("button", { name: /Market Review/ }));
+    expect(screen.getByRole("region", { name: "下载来源" })).toHaveTextContent(
+      "从 Skill 市场安装",
+    );
+    expect(screen.getByRole("region", { name: "下载来源" })).not.toHaveTextContent(
+      "GitHub 仓库",
+    );
+    expect(screen.getByRole("region", { name: "下载来源" })).not.toHaveTextContent(
+      `${SKILLHUB_MARKET_OWNER}/review-skill`,
+    );
+    expect(
+      screen.queryByRole("button", { name: "打开仓库" }),
+    ).not.toBeInTheDocument();
   });
 
   it("keeps discovery installation locked until authority refresh completes", async () => {

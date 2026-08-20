@@ -141,7 +141,7 @@ function ServerDetail({
             <dt>安装目录</dt>
             <dd>
               {installDirectory ? (
-                <CopyablePath value={installDirectory} />
+                <CopyablePath revealValue={false} value={installDirectory} />
               ) : (
                 "无本地安装目录"
               )}

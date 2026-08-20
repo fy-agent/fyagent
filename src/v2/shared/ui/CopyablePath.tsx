@@ -6,9 +6,11 @@ import { Button } from "./primitives";
 export function CopyablePath({
   value,
   label = "安装目录",
+  revealValue = true,
 }: {
   value: string;
   label?: string;
+  revealValue?: boolean;
 }) {
   const { notify } = useFeatures();
   const [copied, setCopied] = useState(false);
@@ -31,9 +33,11 @@ export function CopyablePath({
 
   return (
     <div className="fy-feature-path">
-      <code className="fy-feature-path-value" title={value}>
-        {value}
-      </code>
+      {revealValue ? (
+        <code className="fy-feature-path-value" title={value}>
+          {value}
+        </code>
+      ) : null}
       <Button aria-label={actionLabel} onClick={() => void copyPath()}>
         {copied ? "已复制" : "复制"}
       </Button>

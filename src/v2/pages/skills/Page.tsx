@@ -74,8 +74,8 @@ function githubRepoUrl(owner: string, name: string): string | null {
   return `https://github.com/${owner}/${name}`;
 }
 
-function isMarketSkill(skill: DiscoverableSkill): boolean {
-  return skill.repoOwner.toLowerCase() === SKILLHUB_MARKET_OWNER;
+function isMarketSkill(skill: { repoOwner?: string }): boolean {
+  return (skill.repoOwner ?? "").toLowerCase() === SKILLHUB_MARKET_OWNER;
 }
 
 function skillRepoKey(skill: { repoOwner: string; repoName: string }): string {
@@ -192,11 +192,21 @@ function Detail({
     skill.repoOwner && skill.repoName
       ? `${skill.repoOwner}/${skill.repoName}`
       : null;
+  const market = isMarketSkill(skill);
   const repoUrl =
     skill.repoOwner && skill.repoName
       ? githubRepoUrl(skill.repoOwner, skill.repoName)
       : null;
-  const sourceLabel = repo ? "GitHub 仓库" : "本地导入";
+  const sourceLabel = market
+    ? "从 Skill 市场安装"
+    : repo
+      ? "GitHub 仓库"
+      : "本地导入";
+  const sourceLead = market
+    ? "此 Skill 从 Skill 市场安装，安装后保存在本地目录。"
+    : repo
+      ? "此 Skill 来自 GitHub 仓库，安装后保存在本地目录，并可按仓库检查更新。"
+      : "此 Skill 来自本地导入或 ZIP 安装，当前没有绑定远程仓库。";
   const description = skill.description?.trim() || "暂无说明";
 
   return (
@@ -233,21 +243,17 @@ function Detail({
       <div className="fy-feature-info-grid">
         <section className="fy-feature-info-card" aria-label="下载来源">
           <h3>下载来源</h3>
-          <p className="fy-feature-info-lead">
-            {repo
-              ? "此 Skill 来自 GitHub 仓库，安装后保存在本地目录，并可按仓库检查更新。"
-              : "此 Skill 来自本地导入或 ZIP 安装，当前没有绑定远程仓库。"}
-          </p>
+          <p className="fy-feature-info-lead">{sourceLead}</p>
           <dl className="fy-feature-definition">
             <dt>来源类型</dt>
             <dd>{sourceLabel}</dd>
-            {repo && (
+            {repo && !market && (
               <>
                 <dt>仓库</dt>
                 <dd>{repo}</dd>
               </>
             )}
-            {skill.repoBranch && (
+            {skill.repoBranch && !market && (
               <>
                 <dt>分支</dt>
                 <dd>{skill.repoBranch}</dd>
@@ -255,7 +261,7 @@ function Detail({
             )}
             <dt>安装目录</dt>
             <dd>
-              <CopyablePath value={skillInstallPath(skill)} />
+              <CopyablePath revealValue={false} value={skillInstallPath(skill)} />
             </dd>
           </dl>
           {(repoUrl || skill.readmeUrl) && (

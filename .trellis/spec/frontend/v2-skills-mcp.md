@@ -488,11 +488,13 @@ function ExternalLinkButton(props: {
   in the detail header above source, assignment, and install cards so they
   remain reachable without scrolling the middle pane. MCP details must show
   install provenance and current assignment chips, matching Skills.
-- Installed Skill details show the resolved SSOT install path, not only the
-  directory name. The path stays on one truncated line with a copy action and
-  is computed at list time, not persisted. MCP details show a local install
-  directory when `cwd` or an absolute stdio command path is available; npx,
-  uvx, and remote transports show that no local directory exists.
+- Installed Skill details copy the resolved SSOT install path; the path is
+  not shown beside **安装目录**, only the copy action. MCP details copy a
+  local install directory when `cwd` or an absolute stdio command path is
+  available, also without displaying the path; npx, uvx, and remote
+  transports show that no local directory exists. Skill 市场 installs use
+  source **从 Skill 市场安装**, not GitHub. `.fy-feature-code` and
+  `.fy-feature-path-value` have no dark pill background.
 - MCP has permanent Installed and Discover tabs. Discover is a static curated
   catalog of about 20–30 installable items: each card is either one-click or a
   credential/config form. Discover classification is only “直接安装” versus
