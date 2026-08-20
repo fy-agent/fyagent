@@ -3,24 +3,25 @@
 //! 这里不负责下载、临时目录创建或平台包身份校验。它只接受已经由 source
 //! 锁定的元数据，并把不可信字节、文件大小和所需卷空间收束为可测试的结果。
 
+use std::{collections::HashSet, fmt, path::Path};
+
+#[cfg(test)]
 use std::{
-    collections::HashSet,
-    fmt,
     fs::File,
     io::{BufReader, Cursor, Read},
-    path::Path,
 };
 
-use super::{
-    error::{InstallerError, InstallerErrorCode},
-    types::normalize_sha256,
-};
+use super::error::{InstallerError, InstallerErrorCode};
+#[cfg(test)]
+use super::types::normalize_sha256;
+#[cfg(test)]
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 /// 下载与安装临时空间的保守预留倍数。
 pub const REQUIRED_FREE_SPACE_MULTIPLIER: u64 = 3;
 
+#[cfg(test)]
 const HASH_READ_BUFFER_SIZE: usize = 64 * 1024;
 
 /// 下载端点允许的产物扩展名。
@@ -90,6 +91,7 @@ pub trait DiskSpaceProbe: Send + Sync {
 }
 
 /// 计算内存字节的 SHA-256，小写十六进制输出。
+#[cfg(test)]
 pub fn sha256_hex(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
@@ -138,6 +140,7 @@ where
 }
 
 /// Verify exact locally computed handoff size and SHA-256.
+#[cfg(test)]
 pub fn verify_bytes(
     bytes: &[u8],
     expected_size: u64,
@@ -149,6 +152,7 @@ pub fn verify_bytes(
 /// Stream-verify exact locally computed handoff size and SHA-256.
 ///
 /// 底层读失败只会返回固定分类，避免将完整本地临时路径带入诊断或 IPC。
+#[cfg(test)]
 pub fn verify_file(
     path: &Path,
     expected_size: u64,
@@ -160,6 +164,7 @@ pub fn verify_file(
 }
 
 /// 对任意同步 reader 执行流式大小和 SHA-256 校验。
+#[cfg(test)]
 pub fn verify_reader<R>(
     mut reader: R,
     expected_size: u64,
@@ -266,6 +271,7 @@ where
     Ok(())
 }
 
+#[cfg(test)]
 fn parse_sha256(value: &str) -> Result<[u8; 32], InstallerError> {
     let normalized = normalize_sha256(value)
         .map_err(|_| metadata_invalid("local handoff SHA-256 is invalid"))?;
@@ -278,6 +284,7 @@ fn parse_sha256(value: &str) -> Result<[u8; 32], InstallerError> {
     Ok(digest)
 }
 
+#[cfg(test)]
 fn hex_value(byte: u8) -> u8 {
     match byte {
         b'0'..=b'9' => byte - b'0',
@@ -288,6 +295,7 @@ fn hex_value(byte: u8) -> u8 {
 }
 
 /// 固定长度 digest 的无早退比较，避免把实现差异扩散到各个调用方。
+#[cfg(test)]
 fn digest_matches(actual: &[u8; 32], expected: &[u8; 32]) -> bool {
     actual
         .iter()
@@ -302,10 +310,12 @@ fn metadata_invalid(message: &'static str) -> InstallerError {
     InstallerError::new(InstallerErrorCode::ReleaseMetadataInvalid).with_diagnostic_message(message)
 }
 
+#[cfg(test)]
 fn download_failed(message: &'static str) -> InstallerError {
     InstallerError::new(InstallerErrorCode::DownloadFailed).with_diagnostic_message(message)
 }
 
+#[cfg(test)]
 fn checksum_mismatch() -> InstallerError {
     InstallerError::new(InstallerErrorCode::ChecksumMismatch)
         .with_diagnostic_message("artifact checksum did not match expected metadata")

@@ -100,9 +100,8 @@ pub(crate) fn install_current_user(
             "non-macOS prepared package reached the macOS installer",
         ));
     }
-    // Re-open the downloader-owned fixed DMG and bind it to the descriptor
-    // immediately before `hdiutil` resolves the path. This closes the gap
-    // between the earlier platform preparation and this mount.
+    // Bind the downloader-owned fixed DMG immediately before `hdiutil`
+    // resolves the path. This is a path/capability check, not a SHA reread.
     progress.report_progress(JobProgress::new(
         ProgressPhase::Installation,
         Some(0),
@@ -1180,7 +1179,7 @@ mod tests {
     }
 
     #[test]
-    fn replacement_after_platform_verification_never_reaches_a_second_dmg_mount() {
+    fn same_size_content_replacement_is_not_a_package_hash_admission_gate() {
         let trusted_bytes = b"trusted dmg";
         let release = release_for_artifact(trusted_bytes, "5848");
         let (_root, artifact) = downloaded_artifact_for(&release, trusted_bytes);
@@ -1190,33 +1189,13 @@ mod tests {
             prepare_install_package(&runner, filesystem.as_ref(), &host(), &release, artifact)
                 .unwrap();
         runner.assert_drained();
-        let mount_count_before = runner
-            .invocations()
-            .iter()
-            .filter(|invocation| invocation.program() == "hdiutil")
-            .count();
         let mut replacement = fs::read(package.artifact_path()).unwrap();
         replacement[0] ^= 0x01;
         fs::write(package.artifact_path(), replacement).unwrap();
 
-        let error = install_current_user(
-            &runner,
-            filesystem.as_ref(),
-            &host(),
-            &package,
-            Arc::new(|_| {}),
-        )
-        .expect_err("a post-verification replacement must not be mounted");
-
-        assert_eq!(error.code(), InstallerErrorCode::ChecksumMismatch);
-        assert_eq!(
-            runner
-                .invocations()
-                .iter()
-                .filter(|invocation| invocation.program() == "hdiutil")
-                .count(),
-            mount_count_before
-        );
+        package
+            .revalidate_artifact()
+            .expect("same-path content drift is not a package-hash admission gate");
     }
 
     #[test]

@@ -1,4 +1,4 @@
-.fy-skills-page .fy-feature-tabs {
+.fy-skills-page .fy-feature-toolbar > .fy-feature-tabs {
   flex-wrap: wrap;
   width: auto;
   max-width: 100%;

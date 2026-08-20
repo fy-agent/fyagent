@@ -76,8 +76,8 @@ function writerEnvironment(
     GITHUB_RUN_ATTEMPT: identity.runAttempt,
     GITHUB_EVENT_NAME: identity.event,
     RELEASE_MODE: mode,
-    EXPECTED_CI_RUN_ID: identity.ciRunId,
-    EXPECTED_CI_RUN_ATTEMPT: identity.ciRunAttempt,
+    EXPECTED_CI_RUN_ID: identity.ciRunId ?? undefined,
+    EXPECTED_CI_RUN_ATTEMPT: identity.ciRunAttempt ?? undefined,
   };
 }
 
@@ -174,8 +174,6 @@ describe("write-platform-metadata CLI", () => {
     "ACTUAL_NODE_VERSION",
     "ACTUAL_PNPM_VERSION",
     "ACTUAL_RUST_VERSION",
-    "EXPECTED_CI_RUN_ID",
-    "EXPECTED_CI_RUN_ATTEMPT",
   ])("rejects a missing required %s input", (variable) => {
     expectWriterFailure(
       EXPECTED_TARGETS[0],
@@ -246,6 +244,21 @@ describe("write-platform-metadata CLI", () => {
     expect(JSON.parse(readFileSync(outputPath, "utf8"))).toEqual(
       expectedRecord(expected, "formal"),
     );
+  });
+
+  it("omits Required CI when the frozen eligibility has no CI run", () => {
+    const expected = EXPECTED_TARGETS[0];
+    const { outputPath, result } = invokeWriter(expected, {
+      mutateEnvironment: (environment) => {
+        environment.EXPECTED_CI_RUN_ID = "";
+        environment.EXPECTED_CI_RUN_ATTEMPT = "";
+      },
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(JSON.parse(readFileSync(outputPath, "utf8")).identity).toMatchObject({
+      ciRunId: null,
+      ciRunAttempt: null,
+    });
   });
 
   it.each([

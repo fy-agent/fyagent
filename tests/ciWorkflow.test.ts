@@ -43,6 +43,10 @@ const ACTION_PINS = new Map([
     "astral-sh/setup-uv",
     ["c771a70e6277c0a99b617c7a806ffedaca235ff9", "v9.0.0"],
   ],
+  [
+    "actions/cache",
+    ["55cc8345863c7cc4c66a329aec7e433d2d1c52a9", "v6.1.0"],
+  ],
 ]);
 
 function jobBlock(id: string): string {
@@ -215,6 +219,27 @@ describe("automatic CI workflow", () => {
       expect(step).not.toMatch(/^\s+(?:toolchain|components?|targets?):/m);
     }
 
+    const cargoCacheJobs = [
+      "backend-windows",
+      "windows-native-contracts",
+      "backend-macos",
+    ] as const;
+    expect(source.match(/uses: actions\/cache@/g)).toHaveLength(
+      cargoCacheJobs.length,
+    );
+    for (const jobId of cargoCacheJobs) {
+      const step = namedStepBlock(jobId, "Cache Cargo registry");
+      expect(step).toContain(
+        "uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9",
+      );
+      expect(step).toContain("~/.cargo/registry");
+      expect(step).toContain("~/.cargo/git");
+      expect(step).toContain("hashFiles('src-tauri/Cargo.lock')");
+      expect(step).not.toContain("src-tauri/target");
+    }
+    expect(source).not.toContain("RUSTC_WRAPPER");
+    expect(source).not.toContain("sccache");
+
     const uvSteps = actionSteps("astral-sh/setup-uv");
     expect(uvSteps).toHaveLength(3);
     for (const step of uvSteps) {
@@ -381,6 +406,7 @@ describe("automatic CI workflow", () => {
         "Setup pnpm",
         "Setup Node.js",
         "Setup Rust",
+        "Cache Cargo registry",
         "Verify active toolchains",
         "Create frontend dist placeholder",
         "Prepare Windows user helper sidecar",
@@ -391,6 +417,7 @@ describe("automatic CI workflow", () => {
       "windows-native-contracts": [
         "Setup Node.js",
         "Setup Rust",
+        "Cache Cargo registry",
         "Resolve locked toolchain facts",
         "Setup uv and managed Python",
         "Synchronize locked Python environment",
@@ -405,6 +432,7 @@ describe("automatic CI workflow", () => {
         "Setup pnpm",
         "Setup Node.js",
         "Setup Rust",
+        "Cache Cargo registry",
         "Verify active toolchains",
         "Create frontend dist placeholder",
         "Check Rust formatting",
@@ -549,8 +577,8 @@ describe("automatic CI workflow", () => {
       'if ($exitCode -ne 0 -or $joined -notmatch "test result: ok\\. 1 passed; 0 failed")',
     );
     expect(block).not.toContain("windowsInstallerQuery.integration.ps1");
-    expect(block.match(/^      - name:/gm)).toHaveLength(13);
-    expect(block.match(/^        uses:/gm)).toHaveLength(4);
+    expect(block.match(/^      - name:/gm)).toHaveLength(14);
+    expect(block.match(/^        uses:/gm)).toHaveLength(5);
     expect(block).not.toMatch(/\b(?:npm|npx|pnpm|yarn|bun)\b|bundle|signing/i);
   });
 

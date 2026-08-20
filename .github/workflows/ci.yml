@@ -402,6 +402,18 @@ jobs:
           cache: false
           rustflags: ""
 
+      - name: Cache Cargo registry
+        id: cache-cargo-registry
+        if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-registry-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: |
+            cargo-registry-${{ runner.os }}-${{ runner.arch }}-
+
       - name: Verify active toolchains
         id: toolchains
         if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
@@ -441,7 +453,7 @@ jobs:
       - name: Evaluate collected diagnostics
         if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
         env:
-          CI_REQUIRED_STEPS: setup-pnpm,setup-node,setup-rust,toolchains,frontend-placeholder,prepare-helper,rust-check,clippy,rust-tests
+          CI_REQUIRED_STEPS: setup-pnpm,setup-node,setup-rust,cache-cargo-registry,toolchains,frontend-placeholder,prepare-helper,rust-check,clippy,rust-tests
           CI_STEP_RESULTS: ${{ toJSON(steps) }}
         run: node scripts/ci/evaluate-step-outcomes.mjs
 
@@ -488,6 +500,18 @@ jobs:
         with:
           cache: false
           rustflags: ""
+
+      - name: Cache Cargo registry
+        id: cache-cargo-registry
+        if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-registry-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: |
+            cargo-registry-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Resolve locked toolchain facts
         id: toolchain-facts
@@ -573,7 +597,7 @@ jobs:
       - name: Evaluate collected diagnostics
         if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
         env:
-          CI_REQUIRED_STEPS: setup-node,setup-rust,toolchain-facts,setup-uv,sync-python,toolchains,frontend-placeholder,rust-architecture,prepare-helper,explicit-sid,python-architecture
+          CI_REQUIRED_STEPS: setup-node,setup-rust,cache-cargo-registry,toolchain-facts,setup-uv,sync-python,toolchains,frontend-placeholder,rust-architecture,prepare-helper,explicit-sid,python-architecture
           CI_STEP_RESULTS: ${{ toJSON(steps) }}
         run: node scripts/ci/evaluate-step-outcomes.mjs
 
@@ -611,6 +635,18 @@ jobs:
           cache: false
           rustflags: ""
 
+      - name: Cache Cargo registry
+        id: cache-cargo-registry
+        if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-registry-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: |
+            cargo-registry-${{ runner.os }}-${{ runner.arch }}-
+
       - name: Verify active toolchains
         id: toolchains
         if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
@@ -646,7 +682,7 @@ jobs:
       - name: Evaluate collected diagnostics
         if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
         env:
-          CI_REQUIRED_STEPS: setup-pnpm,setup-node,setup-rust,toolchains,frontend-placeholder,rust-format,rust-check,clippy,rust-tests
+          CI_REQUIRED_STEPS: setup-pnpm,setup-node,setup-rust,cache-cargo-registry,toolchains,frontend-placeholder,rust-format,rust-check,clippy,rust-tests
           CI_STEP_RESULTS: ${{ toJSON(steps) }}
         run: node scripts/ci/evaluate-step-outcomes.mjs
 

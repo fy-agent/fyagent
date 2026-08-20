@@ -63,6 +63,7 @@ import {
   type OpenCodeModelSnapshot,
   type OpenCodeSaveModelsRequest,
   type WorkBuddySaveModelsResult,
+  type ReachabilityResult,
   type DailyMemoryFileInfo,
   type DailyMemorySearchResult,
   HERMES_MEMORY_KINDS,
@@ -745,6 +746,52 @@ function parseFetchedModelList(value: unknown): FetchedModelList {
     models: value.models.map(parseFetchedModelRef),
     truncated: value.truncated,
   };
+}
+
+function parseReachabilityResult(value: unknown): ReachabilityResult {
+  if (
+    !isRecord(value) ||
+    !hasRequiredAndOptionalKeys(
+      value,
+      ["status", "success", "message"],
+      [
+        "responseTimeMs",
+        "httpStatus",
+        "modelUsed",
+        "testedAt",
+        "retryCount",
+        "errorCategory",
+      ],
+    ) ||
+    !isOneOf(value.status, ["operational", "degraded", "failed"]) ||
+    typeof value.success !== "boolean" ||
+    typeof value.message !== "string" ||
+    (value.responseTimeMs !== undefined &&
+      value.responseTimeMs !== null &&
+      (typeof value.responseTimeMs !== "number" ||
+        !Number.isFinite(value.responseTimeMs))) ||
+    (value.httpStatus !== undefined &&
+      value.httpStatus !== null &&
+      (typeof value.httpStatus !== "number" ||
+        !Number.isInteger(value.httpStatus)))
+  )
+    throw new Error("Reachability result is unavailable");
+  return {
+    success: value.success,
+    status: value.status,
+    message: value.message,
+    responseTimeMs:
+      typeof value.responseTimeMs === "number" ? value.responseTimeMs : null,
+    httpStatus: typeof value.httpStatus === "number" ? value.httpStatus : null,
+  };
+}
+
+async function invokeReachability(
+  baseUrl: string,
+): Promise<ReachabilityResult> {
+  return parseReachabilityResult(
+    await invoke<unknown>("stream_check_url", { baseUrl }),
+  );
 }
 
 function parseTraeWorkModelIdsResult(value: unknown): TraeWorkModelIdsResult {
@@ -1450,12 +1497,14 @@ export function createTauriFeaturePorts(): FeaturePorts {
             apiKey,
           }),
         ),
+      checkReachability: invokeReachability,
     },
     workbuddy: {
       getStatus: () => invoke("get_workbuddy_status"),
       getModelIds: () => invoke("get_workbuddy_model_ids"),
       fetchModels: (request) => invoke("fetch_workbuddy_models", { request }),
       saveModels: (request) => invoke("save_workbuddy_models", { request }),
+      checkReachability: invokeReachability,
     },
     opencodeModels: {
       getSnapshot: async () =>
@@ -1474,6 +1523,7 @@ export function createTauriFeaturePorts(): FeaturePorts {
             request: assertOpenCodeSaveRequest(request),
           }),
         ),
+      checkReachability: invokeReachability,
     },
     skills: {
       getInstalled: () => invoke("get_installed_skills"),

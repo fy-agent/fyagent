@@ -53,6 +53,7 @@ import type {
   OpenCodeModelSnapshot,
   OpenCodeSaveModelsRequest,
   OpenCodeSaveModelsResult,
+  ReachabilityResult,
   DailyMemoryFileInfo,
   DailyMemorySearchResult,
   HermesMemoryKind,
@@ -121,6 +122,7 @@ export interface ProvidersPort {
     app: ProviderAppId,
   ): Promise<ProviderMutationResult<ProviderSwitchResult>>;
   fetchModels(baseUrl: string, apiKey: string): Promise<FetchedModelRef[]>;
+  checkReachability(baseUrl: string): Promise<ReachabilityResult>;
 }
 
 export interface WorkBuddyPort {
@@ -132,6 +134,7 @@ export interface WorkBuddyPort {
   saveModels(
     request: WorkBuddySaveModelsRequest,
   ): Promise<WorkBuddySaveModelsResult>;
+  checkReachability(baseUrl: string): Promise<ReachabilityResult>;
 }
 
 export interface OpenCodeModelsPort {
@@ -142,6 +145,7 @@ export interface OpenCodeModelsPort {
   saveModels(
     request: OpenCodeSaveModelsRequest,
   ): Promise<OpenCodeSaveModelsResult>;
+  checkReachability(baseUrl: string): Promise<ReachabilityResult>;
 }
 
 export interface SkillsPort {

@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/backend/codex-desktop-installer.md", "reason": "Installer admission vs local hash"}
+{"file": ".trellis/spec/frontend/v2-agent-models.md", "reason": "Claude quick setup and models panels"}
+{"file": ".trellis/tasks/08-20-install-model-gates/research/codex-install-verify.md", "reason": "Remaining SHA rereads"}
+{"file": ".trellis/tasks/08-20-install-model-gates/research/claude-v1-url.md", "reason": "Where to warn"}
+{"file": ".trellis/tasks/08-20-install-model-gates/research/model-connectivity.md", "reason": "stream_check recovery"}

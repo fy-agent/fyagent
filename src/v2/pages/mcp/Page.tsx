@@ -360,6 +360,16 @@ export function McpPage() {
       aria-label="MCP"
     >
       <header className="fy-feature-header">
+        <FeatureTabs
+          id="mcp-view-tabs"
+          label="MCP 视图"
+          value={tab}
+          onChange={setTab}
+          options={[
+            { id: "installed", label: "已安装" },
+            { id: "discovery", label: "发现" },
+          ]}
+        />
         <div className="fy-feature-actions">
           <Button disabled={busy} onClick={() => void importExisting()}>
             导入现有
@@ -373,16 +383,6 @@ export function McpPage() {
           </Button>
         </div>
       </header>
-      <FeatureTabs
-        id="mcp-view-tabs"
-        label="MCP 视图"
-        value={tab}
-        onChange={setTab}
-        options={[
-          { id: "installed", label: "已安装" },
-          { id: "discovery", label: "发现" },
-        ]}
-      />
       {progress && (
         <>
           <div className="fy-feature-progress">

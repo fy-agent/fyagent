@@ -33,7 +33,7 @@ export interface RemoteDevIdentity {
   readonly headSha: string;
 }
 
-export interface AnnotatedRemoteTagIdentity {
+export interface RemoteTagIdentity {
   readonly ref: string;
   readonly refObject: {
     readonly type: string;
@@ -46,87 +46,7 @@ export interface AnnotatedRemoteTagIdentity {
       readonly type: string;
       readonly sha: string;
     };
-  };
-}
-
-export interface CiWorkflowIdentity {
-  readonly id: string;
-  readonly name: string;
-  readonly path: string;
-  readonly state: string;
-  readonly repository: RepositoryIdentity;
-}
-
-export type GitHubActionsStatus =
-  | "completed"
-  | "in_progress"
-  | "pending"
-  | "queued"
-  | "requested"
-  | "waiting";
-
-export type GitHubActionsConclusion =
-  | "action_required"
-  | "cancelled"
-  | "failure"
-  | "neutral"
-  | "skipped"
-  | "stale"
-  | "startup_failure"
-  | "success"
-  | "timed_out"
-  | null;
-
-export interface CiRunSummary {
-  readonly id: string;
-  readonly runNumber: string;
-  readonly runAttempt: string;
-  readonly checkSuiteId: string;
-  readonly repository: RepositoryIdentity;
-  readonly headRepository: RepositoryIdentity;
-  readonly workflow: {
-    readonly id: string;
-    readonly name: string;
-    readonly path: string;
-  };
-  readonly event: string;
-  readonly headBranch: string;
-  readonly headSha: string;
-  readonly status: GitHubActionsStatus;
-  readonly conclusion: GitHubActionsConclusion;
-}
-
-export interface CiJobEvidence {
-  readonly id: string;
-  readonly name: string;
-  readonly runId: string;
-  readonly runAttempt: string;
-  readonly status: GitHubActionsStatus;
-  readonly conclusion: GitHubActionsConclusion;
-  readonly checkRunUrl: string;
-  readonly htmlUrl: string;
-}
-
-export interface CiCheckRunEvidence {
-  readonly id: string;
-  readonly name: string;
-  readonly runId: string;
-  readonly runAttempt: string;
-  readonly checkSuiteId: string;
-  readonly appSlug: string;
-  readonly headSha: string;
-  readonly status: GitHubActionsStatus;
-  readonly conclusion: GitHubActionsConclusion;
-  readonly url: string;
-  readonly detailsUrl: string;
-}
-
-export interface CiAttemptEvidence {
-  readonly runId: string;
-  readonly runAttempt: string;
-  readonly checkSuiteId: string;
-  readonly jobs: readonly CiJobEvidence[];
-  readonly checkRuns: readonly CiCheckRunEvidence[];
+  } | null;
 }
 
 export interface DevReleaseEligibilityInput {
@@ -136,10 +56,7 @@ export interface DevReleaseEligibilityInput {
   readonly workflow: ReleaseWorkflowIdentity;
   readonly candidate: ReleaseCandidateIdentity;
   readonly remoteDev: RemoteDevIdentity;
-  readonly remoteTag: AnnotatedRemoteTagIdentity | null;
-  readonly ciWorkflow: CiWorkflowIdentity;
-  readonly ciRuns: readonly CiRunSummary[];
-  readonly ciEvidence: CiAttemptEvidence;
+  readonly remoteTag: RemoteTagIdentity | null;
 }
 
 export interface DevReleaseEligibilityOutput {
@@ -147,8 +64,8 @@ export interface DevReleaseEligibilityOutput {
   readonly releaseTag: string;
   readonly sourceSha: string;
   readonly workflowSha: string;
-  readonly ciRunId: string;
-  readonly ciRunAttempt: string;
+  readonly ciRunId: string | null;
+  readonly ciRunAttempt: string | null;
   readonly mode: DevReleaseMode;
 }
 

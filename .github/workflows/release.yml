@@ -232,7 +232,7 @@ jobs:
             printf 'generated_at=%s\n' "$(date -u +'%Y-%m-%dT%H:%M:%S.000Z')"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Bind remote authority branch, tag, and successful Required CI evidence
+      - name: Bind remote tag and authority-branch evidence
         id: remote
         shell: bash
         env:
@@ -259,11 +259,10 @@ jobs:
             '.appVersion == $version and .releaseTag == $tag and
              .sourceSha == $source and .workflowSha == $workflow and
              .mode == $mode and
-             (.ciRunId | test("^[1-9][0-9]*$")) and
-             (.ciRunAttempt | test("^[1-9][0-9]*$"))' \
+             .ciRunId == null and .ciRunAttempt == null' \
             "$frozen_eligibility" >/dev/null
-          printf 'ci_run_id=%s\n' "$(jq -r '.ciRunId' "$frozen_eligibility")" >> "$GITHUB_OUTPUT"
-          printf 'ci_run_attempt=%s\n' "$(jq -r '.ciRunAttempt' "$frozen_eligibility")" >> "$GITHUB_OUTPUT"
+          printf 'ci_run_id=\n' >> "$GITHUB_OUTPUT"
+          printf 'ci_run_attempt=\n' >> "$GITHUB_OUTPUT"
 
   build-windows:
     name: Windows ${{ matrix.architecture }} NSIS installer
@@ -295,16 +294,17 @@ jobs:
           persist-credentials: false
           ref: ${{ needs.eligibility.outputs.source_sha }}
 
-      - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version-file: .node-version
-
       - name: Setup pnpm
         uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
           run_install: false
-          cache: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
@@ -312,6 +312,16 @@ jobs:
           toolchain: 1.97.1
           target: ${{ matrix.rust_target }}
           cache: false
+
+      - name: Cache Cargo registry
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-registry-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: |
+            cargo-registry-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Verify native runner and frozen toolchain
         shell: pwsh
@@ -1079,6 +1089,7 @@ jobs:
     name: macOS Universal Developer ID app and notarized DMG
     needs: eligibility
     runs-on: macos-15
+    timeout-minutes: 360
     env:
       APP_VERSION: ${{ needs.eligibility.outputs.app_version }}
       RELEASE_TAG: ${{ needs.eligibility.outputs.release_tag }}
@@ -1093,16 +1104,17 @@ jobs:
           persist-credentials: false
           ref: ${{ needs.eligibility.outputs.source_sha }}
 
-      - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version-file: .node-version
-
       - name: Setup pnpm
         uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
           run_install: false
-          cache: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: Setup Rust with both universal targets
         uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
@@ -1110,6 +1122,16 @@ jobs:
           toolchain: 1.97.1
           target: aarch64-apple-darwin,x86_64-apple-darwin
           cache: false
+
+      - name: Cache Cargo registry
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-registry-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: |
+            cargo-registry-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Verify frozen source and toolchain
         shell: bash
@@ -1557,11 +1579,9 @@ jobs:
             --arg releaseTag "$RELEASE_TAG" \
             --arg sourceSha "$SOURCE_SHA" \
             --arg workflowSha "$TRUSTED_WORKFLOW_SHA" \
-            --arg ciRunId "$EXPECTED_CI_RUN_ID" \
-            --arg ciRunAttempt "$EXPECTED_CI_RUN_ATTEMPT" \
             '{appVersion:$appVersion,releaseTag:$releaseTag,sourceSha:$sourceSha,
-              workflowSha:$workflowSha,ciRunId:$ciRunId,
-              ciRunAttempt:$ciRunAttempt,mode:"formal"}' \
+              workflowSha:$workflowSha,ciRunId:null,
+              ciRunAttempt:null,mode:"formal"}' \
             > "$frozen_eligibility"
           node scripts/release/verify-dev-release-remote.mjs \
             --json \

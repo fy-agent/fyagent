@@ -87,6 +87,25 @@ function deferred<T>() {
 }
 
 describe("V2 MCP management", () => {
+  it("keeps import actions on the same header row as Installed/Discover", async () => {
+    const ports = createBrowserFeaturePorts();
+    renderFeature(<McpPage />, ports);
+
+    const header = document.querySelector("header.fy-feature-header");
+    expect(header).not.toBeNull();
+    if (!(header instanceof HTMLElement)) {
+      throw new Error("expected feature header");
+    }
+    const tabs = screen.getByRole("tablist", { name: "MCP 视图" });
+    expect(header).toContainElement(tabs);
+    expect(within(header).getByRole("button", { name: "导入现有" })).toBeVisible();
+    expect(within(header).getByRole("button", { name: "添加 MCP" })).toBeVisible();
+
+    await userEvent.setup().click(screen.getByRole("tab", { name: "发现" }));
+    expect(within(header).getByRole("button", { name: "导入现有" })).toBeVisible();
+    expect(within(header).getByRole("button", { name: "添加 MCP" })).toBeVisible();
+  });
+
   it("keeps secrets out of ordinary UI and preserves advanced extensions", async () => {
     const user = userEvent.setup();
     const secret = "ultra-private-token";
@@ -648,6 +667,27 @@ describe("V2 MCP management", () => {
 });
 
 describe("V2 Skills management", () => {
+  it("keeps check-update actions on the same header row after switching to Discover", async () => {
+    const user = userEvent.setup();
+    const ports = createBrowserFeaturePorts();
+    renderFeature(<SkillsPage />, ports);
+
+    const header = document.querySelector("header.fy-feature-header");
+    expect(header).not.toBeNull();
+    if (!(header instanceof HTMLElement)) {
+      throw new Error("expected feature header");
+    }
+    expect(header).toContainElement(
+      screen.getByRole("tablist", { name: "Skills 视图" }),
+    );
+    expect(within(header).getByRole("button", { name: "检查更新" })).toBeVisible();
+    expect(within(header).getByRole("button", { name: "更多" })).toBeVisible();
+
+    await user.click(screen.getByRole("tab", { name: "发现" }));
+    expect(within(header).getByRole("button", { name: "检查更新" })).toBeVisible();
+    expect(within(header).getByRole("button", { name: "更多" })).toBeVisible();
+  });
+
   it("submits the supported foundIn intersection when importing unmanaged Skills", async () => {
     const user = userEvent.setup();
     const unmanaged: UnmanagedSkill = {

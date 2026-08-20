@@ -1206,9 +1206,11 @@ describe("FyAgent release workflow", () => {
     );
     expect(source).not.toContain("windows-2022");
     expect(source).not.toMatch(/runs-on:\s*[^\n]*-latest/);
-    expect(source).not.toContain("actions/cache");
+    expect(source).toContain(
+      "uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9",
+    );
     expect(source).not.toContain("cache: true");
-    expect(source).not.toContain("cache: pnpm");
+    expect(source).toContain("cache: pnpm");
     expect(source.match(/uses: actions\/checkout@/g)).toHaveLength(
       source.match(/persist-credentials: false/g)?.length ?? 0,
     );
@@ -1277,21 +1279,32 @@ describe("FyAgent release workflow", () => {
     for (const { block, rustStep } of nativeJobs) {
       const nodeIndex = block.indexOf("- name: Setup Node.js");
       const pnpmIndex = block.indexOf("- name: Setup pnpm");
-      expect(nodeIndex).toBeGreaterThanOrEqual(0);
-      expect(pnpmIndex).toBeGreaterThan(nodeIndex);
+      expect(pnpmIndex).toBeGreaterThanOrEqual(0);
+      expect(nodeIndex).toBeGreaterThan(pnpmIndex);
       expect(namedStepBlock(block, "Setup Node.js")).toContain(
         "uses: actions/setup-node@",
       );
+      expect(namedStepBlock(block, "Setup Node.js")).toContain("cache: pnpm");
       const pnpmStep = namedStepBlock(block, "Setup pnpm");
       expectExactLine(pnpmStep, "          run_install: false");
-      expectExactLine(pnpmStep, "          cache: false");
+      expect(pnpmStep).not.toContain("cache: false");
       const rustSetupStep = namedStepBlock(block, rustStep);
       expect(rustSetupStep).toContain(
         "uses: actions-rust-lang/setup-rust-toolchain@",
       );
       expectExactLine(rustSetupStep, "          cache: false");
+      const cargoCacheStep = namedStepBlock(block, "Cache Cargo registry");
+      expect(cargoCacheStep).toContain(
+        "uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9",
+      );
+      expect(cargoCacheStep).toContain("~/.cargo/registry");
+      expect(cargoCacheStep).toContain("~/.cargo/git");
+      expect(cargoCacheStep).toContain("hashFiles('src-tauri/Cargo.lock')");
+      expect(cargoCacheStep).not.toContain("src-tauri/target");
     }
 
+    expect(source).not.toContain("RUSTC_WRAPPER");
+    expect(source).not.toContain("sccache");
     expect(source).not.toMatch(/safe\.directory\s+["']?\*["']?/);
   });
 
@@ -1308,7 +1321,7 @@ describe("FyAgent release workflow", () => {
     );
   });
 
-  it("binds the dev preflight, formal tag, and exact authority-branch Required CI through the repository-owned verifier", () => {
+  it("binds the formal tag and current-host preflight through the repository-owned verifier", () => {
     const eligibility = source.slice(
       source.indexOf("\n  eligibility:\n"),
       source.indexOf("\n  build-windows:\n"),
@@ -1367,7 +1380,7 @@ describe("FyAgent release workflow", () => {
     expect(
       namedStepBlock(
         eligibility,
-        "Bind remote authority branch, tag, and successful Required CI evidence",
+        "Bind remote tag and authority-branch evidence",
       ),
     ).not.toContain("\n        if:");
   });
@@ -2032,8 +2045,12 @@ jobs:
     expect(macJob.match(/\$\{\{ secrets\.FYAGENT_APPLE_/gu)).toHaveLength(4);
     expect(macDeveloperId).toContain("notarytool");
     expect(macDeveloperId).toContain("notarytool submit");
-    expect(macDeveloperId).toContain("notarytool wait");
+    expect(macDeveloperId).toContain("notarytool info");
+    expect(macDeveloperId).toContain("notarytool log");
+    expect(macDeveloperId).not.toMatch(/^\s*xcrun notarytool wait\b/m);
+    expect(macDeveloperId).toContain("FYAGENT_NOTARY_WAIT_SECONDS");
     expect(macDeveloperId.match(/notarytool submit/gu)).toHaveLength(1);
+    expectExactLine(macJob, "    timeout-minutes: 360");
     expect(macDeveloperId).not.toContain("notarize_app");
     expect(macDeveloperId).toContain("stapler staple");
     expect(macDeveloperId).toContain("--options runtime");

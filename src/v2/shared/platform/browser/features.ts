@@ -68,17 +68,20 @@ export function createBrowserFeaturePorts(): FeaturePorts {
       getSummary: rejectNativeOnly,
       applyQuickSetupWithResult: rejectNativeOnly,
       fetchModels: rejectNativeOnly,
+      checkReachability: rejectNativeOnly,
     },
     workbuddy: {
       getStatus: rejectNativeOnly,
       getModelIds: rejectNativeOnly,
       fetchModels: rejectNativeOnly,
       saveModels: rejectNativeOnly,
+      checkReachability: rejectNativeOnly,
     },
     opencodeModels: {
       getSnapshot: rejectNativeOnly,
       fetchProviderModels: rejectNativeOnly,
       saveModels: rejectNativeOnly,
+      checkReachability: rejectNativeOnly,
     },
     skills: {
       getInstalled: async () => [],

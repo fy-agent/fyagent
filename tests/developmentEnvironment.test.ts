@@ -199,6 +199,7 @@ describe("mise and uv development environment", () => {
     const ignored = read(".gitignore");
     for (const entry of [
       ".venv/",
+      ".tmp/",
       "mise.local.toml",
       "mise.local.lock",
       "mise.*.local.toml",

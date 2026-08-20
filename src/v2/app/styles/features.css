@@ -31,6 +31,9 @@
 .fy-feature-header > .fy-feature-actions {
   margin-left: auto;
 }
+.fy-feature-header > .fy-feature-tabs {
+  margin-bottom: 0;
+}
 .fy-feature-toolbar {
   display: flex;
   flex-wrap: wrap;

@@ -54,6 +54,20 @@ export const isHttpUrl = (value: string): boolean => {
   }
 };
 
+export const CLAUDE_EXPLICIT_V1_WARNING =
+  "最终 claude 需要访问的完整端点将会是：/v1/v1/XXXX，请确认是否需要添加 v1，通常路径一般为 /v1/XXXX.";
+
+export function claudeBaseUrlHasExplicitV1Path(value: string): boolean {
+  try {
+    const parsed = new URL(value.trim());
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:")
+      return false;
+    return parsed.pathname.split("/").some((segment) => segment === "v1");
+  } catch {
+    return false;
+  }
+}
+
 export function parseModelTarget(value: string | null): ModelTarget {
   return MODEL_TARGETS.includes(value as ModelTarget)
     ? (value as ModelTarget)

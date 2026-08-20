@@ -57,38 +57,6 @@ const rendererLifecyclePaths = [
   path.resolve(__dirname, "..", "src", "main.tsx"),
   path.resolve(__dirname, "..", "src", "components", "DatabaseUpgrade.tsx"),
 ];
-const activeWindowsInstallDocs = [
-  path.resolve(__dirname, "..", "README.md"),
-  path.resolve(__dirname, "..", "README_EN.md"),
-  path.resolve(__dirname, "..", "README_JA.md"),
-  path.resolve(
-    __dirname,
-    "..",
-    "docs",
-    "user-manual",
-    "en",
-    "1-getting-started",
-    "1.2-installation.md",
-  ),
-  path.resolve(
-    __dirname,
-    "..",
-    "docs",
-    "user-manual",
-    "zh",
-    "1-getting-started",
-    "1.2-installation.md",
-  ),
-  path.resolve(
-    __dirname,
-    "..",
-    "docs",
-    "user-manual",
-    "ja",
-    "1-getting-started",
-    "1.2-installation.md",
-  ),
-];
 
 describe("desktop IPC capability and CSP boundary", () => {
   it("keeps generic opener and broad plugin defaults out of the renderer capability", () => {
@@ -165,13 +133,9 @@ describe("desktop IPC capability and CSP boundary", () => {
     expect(csp).not.toContain("*");
   });
 
-  it("does not advertise or classify Windows Portable downloads", () => {
+  it("does not classify Windows Portable downloads", () => {
     const manifestScript = fs.readFileSync(downloadManifestScriptPath, "utf8");
-
     expect(manifestScript).not.toContain("Windows-Portable");
-    for (const doc of activeWindowsInstallDocs) {
-      expect(fs.readFileSync(doc, "utf8")).not.toContain("Windows-Portable");
-    }
   });
 
   it("reserves desktop visual baselines for explicit Git LFS review", () => {

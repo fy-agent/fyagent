@@ -6,9 +6,36 @@ import { classNames } from "../../shared/design-system/classNames";
 import { CatalogDetail } from "../../shared/ui/catalog";
 import { Badge, Checkbox, Tooltip } from "../../shared/ui/primitives";
 import { FieldFeedback, type Notice } from "./feedback";
+import type { ReachabilityResult } from "../../shared/features/types";
 
 export function NoticeView({ notice }: { notice: Notice | null }) {
   return <FieldFeedback notice={notice} />;
+}
+
+export function noticeFromReachability(result: ReachabilityResult): Notice {
+  if (!result.success) {
+    return {
+      tone: "error",
+      title: "服务不可达",
+      description: "请检查地址、网络或网关状态后重试。",
+    };
+  }
+  if (result.status === "degraded") {
+    return {
+      tone: "warning",
+      title: "服务可达，但响应较慢",
+      description:
+        result.responseTimeMs !== null
+          ? `耗时 ${result.responseTimeMs} ms。`
+          : undefined,
+    };
+  }
+  return {
+    tone: "info",
+    title: "服务可达",
+    description:
+      result.httpStatus !== null ? `HTTP ${result.httpStatus}` : undefined,
+  };
 }
 
 export function ModelsPanelHeader({

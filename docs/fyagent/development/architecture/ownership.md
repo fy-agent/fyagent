@@ -26,10 +26,8 @@ Pull request / merge group
   -> affected domain jobs
   -> CI / Required
 
-Development-branch release source
-  -> exact successful full push CI
-  -> release preflight
-  -> annotated formal tag at the same source
+Formal release source
+  -> stable vX.Y.Z tag at the intended commit
   -> native builds and evidence
   -> transactional public Release
 

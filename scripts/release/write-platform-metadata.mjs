@@ -23,8 +23,11 @@ function required(name) {
   return value.trim();
 }
 
-function requiredPositiveInteger(name) {
-  const value = required(name);
+function optionalPositiveInteger(name) {
+  const raw = process.env[name];
+  if (raw === undefined) return null;
+  const value = raw.trim();
+  if (value.length === 0 || value === "null") return null;
   if (!/^[1-9]\d*$/.test(value)) {
     throw new Error(`${name} must be a positive decimal integer`);
   }
@@ -88,8 +91,13 @@ try {
   if (!(mode === "preflight" || mode === "formal")) {
     throw new Error(`Unsupported release mode: ${mode}`);
   }
-  const ciRunId = requiredPositiveInteger("EXPECTED_CI_RUN_ID");
-  const ciRunAttempt = requiredPositiveInteger("EXPECTED_CI_RUN_ATTEMPT");
+  const ciRunId = optionalPositiveInteger("EXPECTED_CI_RUN_ID");
+  const ciRunAttempt = optionalPositiveInteger("EXPECTED_CI_RUN_ATTEMPT");
+  if ((ciRunId === null) !== (ciRunAttempt === null)) {
+    throw new Error(
+      "EXPECTED_CI_RUN_ID and EXPECTED_CI_RUN_ATTEMPT must both be absent or both be positive decimals",
+    );
+  }
   const metadata = {
     schema: "fyagent-platform-build/v2",
     targetGroup,

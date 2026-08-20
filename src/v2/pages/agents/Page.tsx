@@ -28,6 +28,7 @@ import {
   CatalogRail,
 } from "../../shared/ui/catalog";
 
+import { getAgentIntro } from "./intros";
 import "./Page.css";
 
 const MODEL_TARGET_BY_CATALOG_ID = Object.fromEntries(
@@ -53,6 +54,7 @@ function AgentDetail({ entry }: { entry: AgentCatalogEntry }) {
     skillsRead?.mode === "direct" || skillsWrite?.mode === "direct";
   const showMcpJump = mcpWrite?.mode === "direct";
   const showJumps = showModelsJump || showSkillsJump || showMcpJump;
+  const intro = getAgentIntro(entry.id);
 
   return (
     <CatalogDetail
@@ -74,6 +76,16 @@ function AgentDetail({ entry }: { entry: AgentCatalogEntry }) {
           }
         />
       </div>
+
+      {intro ? (
+        <section className="fy-agent-section" aria-label="产品介绍">
+          {intro.paragraphs.map((paragraph) => (
+            <p key={paragraph} className="fy-feature-intro">
+              {paragraph}
+            </p>
+          ))}
+        </section>
+      ) : null}
 
       {entry.id === "codex" && <CodexDesktopInstallerPanel />}
 

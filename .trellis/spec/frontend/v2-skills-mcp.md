@@ -550,6 +550,11 @@ function ExternalLinkButton(props: {
   `.fy-feature-discovery-scroll` is in-flow (`overflow: visible`).
   `.fy-feature-detail-scroll` remains the installed-detail column and must not
   gain overflow for this job.
+  Skills and MCP place the Installed/Discover `FeatureTabs` inside
+  `header.fy-feature-header` with the two page actions on the same row. The
+  Skill header stays mounted on Discover so 「检查更新」 and 「更多」 remain.
+  Do not let `.fy-skills-page .fy-feature-tabs { width: auto }` stretch the
+  view tabs across the page; that rule belongs only on toolbar category tabs.
 - The shared assignment panel resolves all V2 Skill and MCP targets through
   `skillTargetIconById` / `getSkillTargetIcon`. MCP passes `MCP_TARGETS`
   explicitly and still goes through that map. `supportedAppIconById`
@@ -632,6 +637,9 @@ function ExternalLinkButton(props: {
 | V2 Skills shows **管理仓库** / **仓库管理** / add-repo form      | Page test fails; GitHub skill-repo CRUD is leftover V1 only               |
 | V2 Skills page calls `getRepos` / `addRepo` / `removeRepo`       | Page/query test fails; leftover commands must not run in V2 UI            |
 | Discover shows header **将安装到 …** / 安装目标 tabs             | Page test fails; pick the target in the install Dialog                    |
+| Skill/MCP view tabs sit outside `header.fy-feature-header`       | Page test fails; Installed/Discover share the row with page actions       |
+| Skill Discover unmounts 「检查更新」 / 「更多」                    | Page test fails; the feature header stays mounted on Discover             |
+| `.fy-skills-page .fy-feature-tabs { width: auto }` hits view tabs | CSS/page test fails; `width: auto` belongs on toolbar category tabs only |
 | Skills install picker is not `AssignmentPanel mode="radio"`      | Reuse test fails; do not add `InstallTargetPicker` on the page            |
 | ZIP / restore / import uses a second target list                 | Page test fails; reuse `AssignmentPanel` radio or switch                  |
 | Assign/unassign/install uses a per-agent host command            | Reject; all seven V2 targets use `toggle_skill_app` / `sync_to_app_dir`   |
@@ -716,7 +724,7 @@ git diff --check
   Adding `search_skillhub` / `install_skillhub` increments the host
   invoke-handler freeze
   in `application_acl_covers_every_registered_command_without_remote_access`
-  (currently 334). Rust unit tests cover SkillHub slug/URL pinning, Chinese
+  (currently 335). Rust unit tests cover SkillHub slug/URL pinning, Chinese
   description mapping, official `/api/skills` query (`keyword` / `category` /
   `page` / `pageSize` / `sortBy`), dropping illegal category keys, mapping
   `data.total`, and page-size clamp `0 → 21` / `>50 → 50`.
@@ -733,7 +741,9 @@ git diff --check
   assignment, destructive confirmation, secret-safe presentation, an exhaustive
   seven-ID Skill/MCP icon map, decodable local assets, decorative
   icon semantics, seven unique Skill switches, seven unique MCP switches in
-  catalog order, Discover/docs and
+  catalog order, Installed/Discover tabs sharing the page header row with
+  Skill 「检查更新」「更多」 and MCP 「导入现有」「添加 MCP」 (Skill Discover
+  keeps those two buttons), Discover/docs and
   Skill repo clicks through `ExternalLinkButton` → `settings.openExternal`,
   discovery install Dialog targets in that same catalog order (icon + name)
   via shared `InstallTargetDialog` / `AssignmentPanel mode="radio"`, path
@@ -1007,6 +1017,35 @@ installSkillHub: (slug, currentApp) =>
   ariaLabel="Skill 市场分页"
   onPageChange={setPage}
 />
+```
+
+Wrong: let Skill view tabs own the full header row, or drop header actions on
+Discover.
+
+```css
+.fy-skills-page .fy-feature-tabs {
+  width: auto;
+}
+```
+
+```tsx
+{view === "installed" ? (
+  <header className="fy-feature-header">{actions}</header>
+) : null}
+```
+
+Correct: view `FeatureTabs` live inside `header.fy-feature-header` with the
+two page actions. `width: auto` / `flex: 1 1 100%` apply only to toolbar
+category tabs. Skill Discover keeps the same header.
+
+```css
+.fy-feature-header > .fy-feature-tabs {
+  margin-bottom: 0;
+}
+.fy-skills-page .fy-feature-toolbar > .fy-feature-tabs {
+  width: auto;
+  flex: 1 1 100%;
+}
 ```
 
 Wrong: a page-local Skill target picker, or a per-agent install/assign path.

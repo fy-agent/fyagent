@@ -277,7 +277,11 @@ project operations. `docs-contract-check.mjs` scans the public READMEs,
 `CONTRIBUTING.md`, `.github` Markdown, and
 `docs/fyagent/development/**`; every concrete mise task reference must resolve
 through the loaded task metadata. Retired local cross-build tasks have no alias
-or deprecation forwarder.
+or deprecation forwarder. Generated-document identity and maintained-doc
+`mise run` membership are owned by `task-docs.mjs check` and
+`docs-contract-check.mjs`. Vitest must not freeze README or spec prose by
+requiring protocol names, toolchain versions, or other documentation
+substrings.
 
 Every concrete `mise run <task>` reference must resolve through the live
 task-definition loader. The parser accepts the current documented boolean
@@ -372,7 +376,9 @@ does not turn them into contribution, build, CI, or release prerequisites.
   remain required and testable.
 - Clean preview tests proving canonical repository-only targets and zero writes.
 - Docs generation/check tests including a description containing `|` to prove
-  table escaping.
+  table escaping. Live committed-file identity belongs to `tasks:docs:check`
+  and `docs-contract-check.mjs`, not a second Vitest byte-compare of
+  `mise-tasks.md`.
 - Maintained-document fixtures covering mise options, continuations,
   own-property task lookup, the exact standalone checkout sequence, manual
   trust guidance, the full local `check` gate, and unknown task rejection.
@@ -384,9 +390,12 @@ does not turn them into contribution, build, CI, or release prerequisites.
 
 Wrong: put every command back into one `mise.toml`, rely on Bash, infer safety
 from a task name, concatenate usage input, let check install/update, bypass the
-wrapper with a low-level local target command, or hand-edit generated task
-rows.
+wrapper with a low-level local target command, hand-edit generated task rows,
+or add a Vitest that freezes README/spec prose by substring (the retired
+`currentDocsContract` pattern).
 
 Correct: domain TOMLs describe a stable API, Node wrappers validate boundaries,
 effects make composition auditable, guarded native wrappers verify and pin the
 current host, and executable tests prove both metadata and real argument flow.
+Generated `mise-tasks.md` identity is `tasks:docs:check` /
+`docs-contract-check.mjs` only.

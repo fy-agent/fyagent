@@ -201,7 +201,6 @@ pub(super) struct ProtectedPackageBridge {
     operation: HeldObject,
     final_file: Option<File>,
     final_identity: NativeFileIdentity,
-    expected_sha256: [u8; 32],
     control: PackageBridgeControl,
 }
 
@@ -330,11 +329,6 @@ impl ProtectedPackageBridge {
             DescriptorKind::PackageLeaf,
             shell_sid_binary.as_sid(),
         )?;
-        if hash_exact_file(&final_file, expected_size)? != expected_sha256 {
-            return Err(bridge_checksum_error(
-                "the sealed package bridge checksum did not match",
-            ));
-        }
 
         let source_after = native_file_identity(source_file, NativeObjectKind::RegularFile)?;
         if source_after != source_before {
@@ -358,7 +352,6 @@ impl ProtectedPackageBridge {
             operation,
             final_file: Some(final_file),
             final_identity,
-            expected_sha256,
             control,
         };
         bridge.recheck()?;
@@ -417,11 +410,6 @@ impl ProtectedPackageBridge {
             DescriptorKind::PackageLeaf,
             shell_sid_binary.as_sid(),
         )?;
-        if hash_exact_file(final_file, identity.size)? != self.expected_sha256 {
-            return Err(bridge_checksum_error(
-                "the sealed package bridge checksum changed",
-            ));
-        }
         if self.identity()
             != PinnedPackageIdentity::new(
                 identity.volume_serial,
@@ -1018,40 +1006,6 @@ fn write_all_at(file: &File, mut bytes: &[u8], mut offset: u64) -> Result<(), In
         bytes = &bytes[written..];
     }
     Ok(())
-}
-
-fn hash_exact_file(file: &File, expected_size: u64) -> Result<[u8; 32], InstallerError> {
-    let mut hasher = Sha256::new();
-    let mut buffer = vec![0_u8; COPY_BUFFER_BYTES];
-    let mut offset = 0_u64;
-    while offset < expected_size {
-        let remaining = expected_size - offset;
-        let requested = usize::try_from(remaining.min(buffer.len() as u64))
-            .expect("bounded by the hash buffer length");
-        let read = file
-            .seek_read(&mut buffer[..requested], offset)
-            .map_err(|_| bridge_error("the sealed package bridge could not be read"))?;
-        if read == 0 {
-            return Err(bridge_checksum_error(
-                "the sealed package bridge ended before its expected size",
-            ));
-        }
-        hasher.update(&buffer[..read]);
-        offset = offset
-            .checked_add(read as u64)
-            .ok_or_else(|| bridge_integrity_error("the package bridge hash length overflowed"))?;
-    }
-    let mut trailing = [0_u8; 1];
-    if file
-        .seek_read(&mut trailing, expected_size)
-        .map_err(|_| bridge_error("the sealed package bridge EOF could not be checked"))?
-        != 0
-    {
-        return Err(bridge_checksum_error(
-            "the sealed package bridge exceeded its expected size",
-        ));
-    }
-    Ok(hasher.finalize().into())
 }
 
 fn rename_leaf_without_replacement(file: &File, final_name: &str) -> Result<(), InstallerError> {

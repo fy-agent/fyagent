@@ -71,11 +71,11 @@
     ],
     [
       "src-tauri/src/codex_desktop/download.rs",
-      "9693ceb2a09cbcbe7cd9b23ab7b4299bcbcd40d3ec38e116795176d3dc460332"
+      "ff14d5b43ea6919580f0befd39fc2ae07e84105a65faf2cf14fa7269b5752054"
     ],
     [
       "src-tauri/src/codex_desktop/platform.rs",
-      "b670faa151a2e8b653fcc85d3796934f3ff84ea2ba8e2826ace6655835898fdb"
+      "cd186cbd8f045110c046d0fc50a950f381f289e36e257f84eeb5976d39cd4664"
     ],
     [
       "src-tauri/src/codex_desktop/platform/macos/mod.rs",
@@ -87,7 +87,7 @@
     ],
     [
       "src-tauri/src/codex_desktop/platform/windows/mod.rs",
-      "7d0e328ef1ba98627caa4f16a1fb1fa6de938049bf9bf739446f1e27639822ba"
+      "65450e333b65df2e3d3873d6569ab89f726622752f30b214437e4c9771de9e94"
     ],
     [
       "src-tauri/src/codex_desktop/temp.rs",
@@ -95,7 +95,7 @@
     ],
     [
       "src-tauri/src/codex_desktop/types.rs",
-      "28f34ed7751f6238267ffed6fbcb17e14b0b37236ca8dd4022f3e2629a9ede59"
+      "75f589adb66728784cab498ecd7aa3e177383171b249808e39002ad20d6ab662"
     ],
     [
       "src-tauri/src/codex_history_migration.rs",
@@ -123,7 +123,7 @@
     ],
     [
       "src-tauri/src/lib.rs",
-      "e0893443a18bf312ae5a81d80632cc269a5a8f7101221574406764be30c4d85b"
+      "f7414225e8ec1897e91ba76bd09be9a52ab6ef38f315d06544620dcc641b6934"
     ],
     [
       "src-tauri/src/lightweight.rs",
@@ -299,7 +299,7 @@
     ],
     [
       "tests/codexUserHelperContract.test.ts",
-      "6e50b539fc47aba77b267feff7e41f2706b10fba20b292aeb874d45f1ce8f37e"
+      "d08cf9723f26cb603a26cd2006bf8c02e71c88a613b4de982925a325d1d082be"
     ],
     [
       "tests/codexWindowsUserScopeContract.test.ts",
@@ -319,7 +319,7 @@
     ],
     [
       "tests/releaseWorkflow.test.ts",
-      "122bc5591b5b097d87dcdbccc6877623c36131e24d9c0f4e8ceefc37f29b8520"
+      "a31829d104127922600b4e35d4330cade01842d3e44d7a2e8e63bbc6f1f65d3a"
     ],
     [
       "tests/remainingPlatformSurface.test.ts",

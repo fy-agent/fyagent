@@ -130,6 +130,74 @@ impl StreamCheckService {
         }))
     }
 
+    /// GET a draft HTTP(S) base URL. Any HTTP response is reachable.
+    ///
+    /// This path never looks up a saved provider, never sends an API key, and
+    /// never issues a model request.
+    pub async fn check_url(
+        base_url: &str,
+        config: &StreamCheckConfig,
+    ) -> Result<StreamCheckResult, AppError> {
+        Self::validate_probe_url(base_url)?;
+        let mut last_result: Option<StreamCheckResult> = None;
+        for attempt in 0..=config.max_retries {
+            let start = Instant::now();
+            let client = crate::proxy::http_client::get();
+            let timeout = std::time::Duration::from_secs(config.timeout_secs);
+            let result = Self::probe_reachability(&client, base_url.trim(), timeout, None).await;
+            let wrapped = Self::build_result(
+                result,
+                start.elapsed().as_millis() as u64,
+                config.degraded_threshold_ms,
+            );
+            if wrapped.success {
+                return Ok(StreamCheckResult {
+                    retry_count: attempt,
+                    ..wrapped
+                });
+            }
+            if Self::should_retry(&wrapped.message) && attempt < config.max_retries {
+                last_result = Some(wrapped);
+                continue;
+            }
+            return Ok(StreamCheckResult {
+                retry_count: attempt,
+                ..wrapped
+            });
+        }
+
+        Ok(last_result.unwrap_or_else(|| StreamCheckResult {
+            status: HealthStatus::Failed,
+            success: false,
+            message: "Check failed".to_string(),
+            response_time_ms: None,
+            http_status: None,
+            model_used: String::new(),
+            tested_at: chrono::Utc::now().timestamp(),
+            retry_count: config.max_retries,
+            error_category: None,
+        }))
+    }
+
+    fn validate_probe_url(raw: &str) -> Result<(), AppError> {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return Err(AppError::Message("base_url 为空".to_string()));
+        }
+        let parsed =
+            url::Url::parse(trimmed).map_err(|_| AppError::Message("服务地址无效".to_string()))?;
+        if !matches!(parsed.scheme(), "http" | "https")
+            || parsed.host_str().is_none()
+            || !parsed.username().is_empty()
+            || parsed.password().is_some()
+            || parsed.query().is_some()
+            || parsed.fragment().is_some()
+        {
+            return Err(AppError::Message("服务地址无效".to_string()));
+        }
+        Ok(())
+    }
+
     /// 单次连通性探测。
     async fn check_once(
         app_type: &AppType,
@@ -195,7 +263,7 @@ impl StreamCheckService {
     /// - `send()` 在收到响应头时即返回，故计时天然是 TTFB；不读 body。
     /// - reqwest 对任何 HTTP 状态码都返回 `Ok`，只有网络级错误进 `Err`——
     ///   这正是"任何响应都算可达、只有连不上才算失败"的语义。
-    async fn probe_reachability(
+    pub async fn probe_reachability(
         client: &Client,
         base_url: &str,
         timeout: std::time::Duration,
@@ -521,5 +589,23 @@ mod tests {
         official.id = crate::database::CODEX_OFFICIAL_PROVIDER_ID.to_string();
         official.category = Some("official".to_string());
         assert!(StreamCheckService::resolve_base_url(&AppType::Codex, &official).is_err());
+    }
+
+    #[test]
+    fn draft_probe_url_accepts_http_s_hosts_and_rejects_userinfo_or_file() {
+        assert!(
+            StreamCheckService::validate_probe_url("https://gateway.example/anthropic").is_ok()
+        );
+        assert!(StreamCheckService::validate_probe_url(" http://127.0.0.1:8080/v1 ").is_ok());
+        assert!(StreamCheckService::validate_probe_url("").is_err());
+        assert!(StreamCheckService::validate_probe_url("file:///tmp/models").is_err());
+        assert!(
+            StreamCheckService::validate_probe_url("https://user:pass@gateway.example").is_err()
+        );
+        assert!(
+            StreamCheckService::validate_probe_url("https://gateway.example/v1?key=1").is_err()
+        );
+        assert!(StreamCheckService::validate_probe_url("https://gateway.example/v1#frag").is_err());
+        assert!(StreamCheckService::validate_probe_url("not a url").is_err());
     }
 }

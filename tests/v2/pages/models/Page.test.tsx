@@ -179,6 +179,9 @@ describe("V2 Models page", () => {
       screen.queryByRole("button", { name: "管理 MCP" }),
     ).not.toBeInTheDocument();
     expect(
+      screen.queryByRole("button", { name: "测试连通" }),
+    ).not.toBeInTheDocument();
+    expect(
       screen.queryByRole("button", { name: "打开官方设置" }),
     ).not.toBeInTheDocument();
     expect(
@@ -221,6 +224,9 @@ describe("V2 Models page", () => {
     expect(screen.queryByLabelText("API Key")).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "拉取模型" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "测试连通" }),
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "保存并应用" }),
@@ -1234,5 +1240,109 @@ describe("V2 Models page", () => {
     expect(screen.queryByLabelText("API Key")).not.toBeInTheDocument();
     expect(ports.traeWork.getModelIds).toHaveBeenCalled();
     view.unmount();
+  });
+
+  it("warns only when Claude pathname has an explicit v1 segment", async () => {
+    const user = userEvent.setup();
+    const ports = createBrowserFeaturePorts();
+    ports.providers.getSummary = vi.fn(async () => ({
+      providers: {},
+      currentId: "",
+    }));
+    renderPage(ports, "claude");
+
+    await screen.findByTestId("provider-status");
+    const url = screen.getByLabelText("服务地址");
+    expect(url).toHaveAttribute("placeholder", "https://gateway.example");
+    await user.type(url, "https://v1.example.com/anthropic");
+    expect(screen.queryByText(/\/v1\/v1\/XXXX/)).not.toBeInTheDocument();
+    await user.clear(url);
+    await user.type(url, "https://gateway.example/v1");
+    expect(
+      screen.getByText(
+        "最终 claude 需要访问的完整端点将会是：/v1/v1/XXXX，请确认是否需要添加 v1，通常路径一般为 /v1/XXXX.",
+      ),
+    ).toBeVisible();
+    expect(screen.getByRole("button", { name: "保存并设为当前配置" })).toBeEnabled();
+  });
+
+  it("tests draft-url reachability on WorkBuddy, Provider, and OpenCode", async () => {
+    const user = userEvent.setup();
+    const reachable = {
+      success: true,
+      status: "operational" as const,
+      message: "Reachable",
+      responseTimeMs: 18,
+      httpStatus: 200,
+    };
+    const ports = createBrowserFeaturePorts();
+    ports.workbuddy.getStatus = vi.fn<FeaturePorts["workbuddy"]["getStatus"]>(
+      async () => ({
+        path: "C:/redacted/models.json",
+        exists: true,
+        modelCount: 0,
+        revision: "revision-1",
+        backupExists: false,
+        format: "objectRoot",
+      }),
+    );
+    ports.workbuddy.getModelIds = vi.fn(async () => ({
+      ids: [],
+      revision: "revision-1",
+    }));
+    ports.workbuddy.checkReachability = vi.fn(async () => reachable);
+    ports.providers.getSummary = vi.fn(async () => ({
+      providers: {},
+      currentId: "",
+    }));
+    ports.providers.checkReachability = vi.fn(async () => reachable);
+    ports.opencodeModels.getSnapshot = vi.fn(async () => ({
+      providers: [],
+      revision: "revision-1",
+    }));
+    ports.opencodeModels.checkReachability = vi.fn(async () => reachable);
+
+    const workbuddyView = renderPage(ports, "workbuddy");
+    await screen.findByText("已有第三方模型数量");
+    await user.type(
+      screen.getByLabelText("服务地址"),
+      "https://draft.example/anthropic",
+    );
+    await user.click(screen.getByRole("button", { name: "测试连通" }));
+    expect(ports.workbuddy.checkReachability).toHaveBeenCalledWith(
+      "https://draft.example/anthropic",
+    );
+    expect(await screen.findByText("服务可达")).toBeVisible();
+    workbuddyView.unmount();
+
+    const codexView = renderPage(ports, "codex");
+    await screen.findByTestId("provider-status");
+    expect(screen.getByLabelText("服务地址")).toHaveAttribute(
+      "placeholder",
+      "https://gateway.example/v1",
+    );
+    await user.type(
+      screen.getByLabelText("服务地址"),
+      "https://codex.example/v1",
+    );
+    await user.click(screen.getByRole("button", { name: "测试连通" }));
+    expect(ports.providers.checkReachability).toHaveBeenCalledWith(
+      "https://codex.example/v1",
+    );
+    expect(await screen.findByText("服务可达")).toBeVisible();
+    expect(screen.queryByText(/\/v1\/v1\/XXXX/)).not.toBeInTheDocument();
+    codexView.unmount();
+
+    renderPage(ports, "opencode");
+    await screen.findByRole("region", { name: "OpenCode 模型设置" });
+    await user.type(
+      screen.getByLabelText("服务地址"),
+      "https://opencode.example/v1",
+    );
+    await user.click(screen.getByRole("button", { name: "测试连通" }));
+    expect(ports.opencodeModels.checkReachability).toHaveBeenCalledWith(
+      "https://opencode.example/v1",
+    );
+    expect(await screen.findByText("服务可达")).toBeVisible();
   });
 });

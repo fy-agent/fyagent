@@ -40,8 +40,10 @@ Removing publication/content admission MUST NOT remove:
 - disk error handling and optional conservative preflight when a size hint exists;
 - protected job directories, fixed local filenames, exclusive create, flush,
   sync, finalize, reopen, cleanup, and no-follow/reparse protections;
-- a locally computed size/hash used only to prove that the current job hands the
-  same local file across process/privilege boundaries;
+- a locally computed size used for progress, caps, and conservative disk
+  preflight;
+- Windows PackageBridge hash-while-copy on the same I/O as the copy, when a
+  local digest from the download stream is retained for that copy;
 - Windows frozen Shell SID, exact-SID/Main inventory, helper image pinning,
   authenticated pipe/control ordering, PackageBridge ACL/file-ID/no-follow
   protections, native `AddPackageByUriAsync`, quarantine, and known-only cleanup;
@@ -133,11 +135,13 @@ empty or over-cap bodies fail. HTTP status, redirect, timeout, cancellation,
 retry exhaustion, disk, write, flush, finalize, reopen, and cleanup failures keep
 their structured errors.
 
-During the current download, FyAgent computes the actual byte count and SHA-256.
-Those local values bind `DownloadedArtifact`/`PreparedInstallPackage` and may be
-rechecked before platform consumption and Windows bridge transfer. This check
-detects mutation or replacement of the same local file; it is not an assertion
-about what upstream intended to publish.
+During the current download, FyAgent may compute the actual byte count and a
+streaming SHA-256. Those local values may bind `DownloadedArtifact` /
+`PreparedInstallPackage` and may be consumed by a same-I/O PackageBridge copy.
+They MUST NOT be used as package-hash admission, and installers MUST NOT add a
+second full-file SHA-256 pass after download, before pin, before `hdiutil`, or
+after a PackageBridge copy. Future one-click installers inherit this rule: do
+not re-read the whole artifact to compare SHA-256.
 
 ### Windows current-user installation
 
@@ -150,8 +154,10 @@ Immediately before helper launch it:
 
 1. revalidates the frozen interactive-user context;
 2. captures the exact SID/Main `PackageManager` inventory;
-3. revalidates the downloader-owned artifact and opens a no-follow file pin;
-4. passes only locally computed actual size/hash into the protected bridge;
+3. opens a no-follow file pin through the downloader-owned capability without a
+   full-file SHA-256 reread;
+4. passes locally computed actual size and the download-stream digest into the
+   protected bridge for hash-while-copy only;
 5. launches the fixed sibling `fyagent-user-helper.exe` through Explorer.
 
 The parent-created helper pipe DACL remains Alice-only for
@@ -183,9 +189,10 @@ and a clean pipe close permit cleanup.
 
 PackageBridge continues to copy from the duplicated pinned source handle into a
 fixed ProgramData hierarchy. Protected ACLs, local-fixed-NTFS checks, exact
-frozen-SID access, file identity/link/reparse/placeholder checks, same-file
-actual size/hash checks, flush/finalize/reopen, stable ancestor handles, and
-known-only cleanup remain required. ProgramData-parent effective-access
+frozen-SID access, file identity/link/reparse/placeholder checks, hash-while-copy
+against the download-stream digest, flush/finalize/reopen, stable ancestor
+handles, and known-only cleanup remain required. PackageBridge MUST NOT add a
+second full-file SHA pass after copy. ProgramData-parent effective-access
 fail-closed applies to a non-administrator Shell token; an Administrators-enabled
 Explorer token is not rejected for OS-owned ancestor rights it already holds.
 
@@ -216,7 +223,8 @@ fields.
 
 Installation still:
 
-1. revalidates the fixed local DMG;
+1. reopens the fixed local DMG through the retained job capability without a
+   full-file SHA-256 reread;
 2. mounts it read-only through fixed `hdiutil` arguments and a bounded mount plist;
 3. requires exactly one direct top-level regular `.app` bundle;
 4. reads bounded `Info.plist` operational fields and verifies the executable is
@@ -255,7 +263,8 @@ The process-lifecycle claim and restart capability rules remain unchanged.
 
 Obsolete remote-content errors such as missing checksum, Team-ID mismatch, and
 FyAgent Gatekeeper admission are not part of the DTO. `CHECKSUM_MISMATCH` remains
-only for local same-file handoff mutation. `PACKAGE_IDENTITY_MISMATCH` remains for
+only for Windows PackageBridge hash-while-copy mismatch, not for a second
+full-file SHA reread before consume. `PACKAGE_IDENTITY_MISMATCH` remains for
 interactive-user/context/file/lifecycle drift, not upstream package admission.
 Native deployment may still return signature, dependency, OS compatibility, or
 deployment errors through its structured native-result mapping.
@@ -270,7 +279,8 @@ required or rejected.
 | Manifest body/schema/platform branch/status or fixed-endpoint selection is unusable | Fail with a bounded metadata/source error; never accept a remote URL or caller-provided locator. |
 | Download is empty, exceeds the absolute cap, is cancelled, or hits HTTP/redirect/timeout/disk/write/finalize/reopen failure | Fail with the existing structured transport/storage error and clean up only known task-owned artifacts. |
 | Metadata or `Content-Length` size hint differs from actual bytes | Keep the actual byte count; do not fail content admission or discard a valid progress snapshot. |
-| Locally finalized artifact changes size/hash/identity before platform or bridge handoff | Fail closed with the local same-file mutation error; do not invoke the native installer with a different object. |
+| Locally finalized artifact changes size, path, capability, or file identity before platform or bridge handoff | Fail closed with the local identity error; do not invoke the native installer with a different object. Same-size content drift is not a package-hash admission gate. |
+| PackageBridge hash-while-copy digest does not match the download-stream digest | Fail closed with `CHECKSUM_MISMATCH`; do not add a second full-file SHA pass after copy. |
 | Windows post-install inventory has exactly one changed record | Select that dynamic record after operational shape validation, without comparing it to maintained publication constants. |
 | Windows post-install inventory has multiple changed records or no unique usable result | Fail with structured ambiguity/installation verification error; never guess. |
 | macOS mount has no unique direct top-level `.app`, escapes containment, or staged/installed local identity changes | Fail with the corresponding local mount/path/transaction error and run the bounded detach/rollback path. |
@@ -281,9 +291,9 @@ required or rejected.
 
 - Good: the fixed Windows artifact endpoint returns a package whose publisher,
   identity, version, architecture metadata, hash, or byte length differs from
-  the mirror manifest. FyAgent safely downloads and locally fingerprints the
-  current file, the native installer accepts it, exactly one same-user package
-  record changes, and the actual result is used for post-install verification.
+  the mirror manifest. FyAgent safely downloads it, the native installer accepts
+  it, exactly one same-user package record changes, and the actual result is
+  used for post-install verification.
 - Good: a macOS DMG contains one safe direct top-level app with different
   bundle/team/version/signing publication fields. FyAgent uses the controlled
   read-only mount and local transaction, then reports the actual installed app.
@@ -305,7 +315,9 @@ Tests must prove:
   and signature field drift does not block executable installation;
 - empty/absolute-over-cap downloads still fail, while metadata/Content-Length
   mismatch does not;
-- local post-download mutation still fails same-file handoff;
+- installers do not full-file SHA-256 reread a downloaded artifact before pin,
+  helper, or `hdiutil`; PackageBridge may hash-while-copy and must not add a
+  second full-file pass after copy;
 - no URL/path/hash/identity/scope/bypass IPC or helper CLI exists;
 - exact frozen SID/Main inventory is captured before and after Windows install;
   one dynamic delta succeeds and multiple deltas fail;
@@ -341,13 +353,12 @@ if downloaded_sha256 != manifest.sha256 || package.publisher != EXPECTED_PUBLISH
 install_from_renderer_path(request.path)?;
 ```
 
-Correct: keep the endpoint and locator product-owned, use the local fingerprint
-only to prove same-file handoff, delegate package acceptance to the native
+Correct: keep the endpoint and locator product-owned, skip package-hash
+admission and multi-pass full-file SHA, delegate package acceptance to the native
 installer, and fail closed when the actual result cannot be selected uniquely.
 
 ```rust
 let artifact = download_from_fixed_endpoint(release.endpoint()).await?;
-artifact.revalidate_local_fingerprint()?;
 native_install(&artifact)?;
 let installed = select_unique_dynamic_install_result(before, after)?;
 verify_operational_shape(&installed)?;

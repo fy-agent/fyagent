@@ -44,6 +44,16 @@ pub async fn stream_check_provider(
     Ok(result)
 }
 
+/// 草稿 URL 连通性检查（不查找已保存供应商，不发送 API Key）。
+#[tauri::command(rename_all = "camelCase")]
+pub async fn stream_check_url(
+    state: State<'_, AppState>,
+    base_url: String,
+) -> Result<StreamCheckResult, AppError> {
+    let config = state.db.get_stream_check_config()?;
+    StreamCheckService::check_url(&base_url, &config).await
+}
+
 /// 批量连通性检查
 #[tauri::command]
 pub async fn stream_check_all_providers(

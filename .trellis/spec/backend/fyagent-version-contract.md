@@ -102,19 +102,16 @@ app_version = canonical Cargo version
 release_tag = "v" + app_version
 source_sha  = lowercase full Git commit SHA
 release_mode = preflight | formal
-ci_run_id / ci_run_attempt = exact successful push CI attempt
-                           for the mode's authority branch
+ci_run_id / ci_run_attempt = null
 ```
 
 Every platform, evidence, attestation, and publication step consumes those
 outputs unchanged. A downstream step must not trim `GITHUB_REF_NAME`, reread a
-different version field, substitute another source SHA, or select another CI
-attempt. Preflight requires the source to equal the live remote
-`dev/laiyongjie` HEAD and binds that branch's successful
-`.github/workflows/ci.yml` push attempt; it cannot publish. Formal mode
-requires the source to equal the live remote `main` HEAD, binds that branch's
-successful push CI, and additionally requires an annotated `vX.Y.Z` tag whose
-target is that exact commit. The eligibility engine and
+different version field, or substitute another source SHA. Preflight requires
+the source to equal the live remote `dev/laiyongjie` HEAD; it cannot publish.
+Formal mode binds `source_sha` to the remote tag's target commit, annotated or
+lightweight, and does not require live `main` HEAD equality or a successful
+push CI. The eligibility engine and
 [GitHub Release Workflow](./github-release-workflow.md) own the branch split;
 do not treat `main` as the preflight authority.
 

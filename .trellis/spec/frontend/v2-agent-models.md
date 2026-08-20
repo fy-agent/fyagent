@@ -26,7 +26,10 @@ its own capability workflow:
   `/mcp`. They do not render the capability-item grid, catalog `description`,
   or a page-level title. They do not mount application status, configuration overviews,
   unsupported-capability lists, support counts, usage notes, Qoder Hooks
-  editors, or MCP validation panels.
+  editors, or MCP validation panels. Non-Codex details mount a page-local
+  「产品介绍」 section from `src/v2/pages/agents/intros.ts` (hardcoded Chinese,
+  not the catalog `description` and not 「使用说明」). Codex keeps the desktop
+  installer as its substantial body and does not require that intro.
 - WorkBuddy and OpenCode each use a dedicated revision-checked
   model-configuration domain. WorkBuddy additionally exposes direct Skills
   copy and MCP `mcp.json` assignment. Grok Build Models uses the same Provider
@@ -197,7 +200,22 @@ fetch_opencode_provider_models({ request: OpenCodeFetchModelsRequest })
 
 save_opencode_models({ request: OpenCodeSaveModelsRequest })
   -> WorkBuddySaveModelsResult
+
+stream_check_url({ baseUrl: string })
+  -> {
+       success: boolean;
+       status: "operational" | "degraded" | "failed";
+       message: string;
+       responseTimeMs: number | null;
+       httpStatus: number | null;
+     }
 ```
+
+`checkReachability(baseUrl)` is available on `providers`, `workbuddy`, and
+`opencodeModels`. It invokes `stream_check_url` with an HTTP(S) URL that has a
+host and no userinfo, query, or fragment. Any HTTP response is reachable; the
+command never sends an API key or a model request. Browser adapters reject it as
+native-only. Qoder and TRAE Models ports must not expose this method.
 
 `OpenCodeSaveModelsRequest` may carry `apiKey`
 only as a mutation field. GET snapshots contain sanitized model/provider IDs
@@ -376,8 +394,9 @@ fetch/save controls.
   `src/v2/shared/assets/models` via `resolveModelVendorIcon(modelId, ownedBy?)`.
   Unknown IDs use the bundled `unknown.svg`. Remote icon URLs are forbidden.
 - OpenCode uses `opencodeModels.getSnapshot` / `fetchProviderModels` /
-  `saveModels` with the same chip/fetch/save UX as WorkBuddy. Snapshot IDs are
-  sanitized; `get_opencode_models` (CLI runtime list) is not the write path.
+  `saveModels` / `checkReachability` with the same chip/fetch/save UX as
+  WorkBuddy. Snapshot IDs are sanitized; `get_opencode_models` (CLI runtime
+  list) is not the write path.
 
 ### WorkBuddy
 
@@ -411,6 +430,10 @@ fetch/save controls.
   control lives in the sticky detail heading with the panel title, not in a
   trailing section below the form. Unsaved draft IDs or connection input show
   a `待保存` badge.
+- WorkBuddy, Claude, Codex, Grok Build, and OpenCode expose 「测试连通」 on the
+  draft service address before save. The control calls `checkReachability` and
+  does not require an API key. Qoder and TRAE Models must not render that
+  button.
 
 ### Claude Code, Codex, and Grok Build
 
@@ -418,6 +441,11 @@ fetch/save controls.
   host and no userinfo/query/fragment, reserved-ID collision, public-field
   credential collision, and credential-in-URL collision in both renderer and
   Rust. Errors are generic and never echo the field values.
+- Claude Code only: if the typed Base URL pathname contains an explicit `v1`
+  segment, show a warn-only FieldFeedback that the Claude client will call
+  `/v1/v1/XXXX` and that the usual path is `/v1/XXXX`. Hostname `v1.example.com`
+  is not a v1 path. The warning must not block save. Codex and Grok Build must
+  not show this warning. The Claude placeholder must not include `/v1`.
 - The V2 port is `applyQuickSetupWithResult(request, app)`. Codex may attach
   optional `codexFeatures.imageExtension` / `codexFeatures.websockets`; Claude
   and Grok Build must omit `codexFeatures`. Grok Build uses reserved ID
@@ -478,9 +506,14 @@ fetch/save controls.
 | Native external open fails                                                                 | Show fixed controlled failure text; do not install or configure                                         |
 | QoderWork/TRAE selected                                                                    | Only catalog-declared and native-port capabilities are available; vendor-private writes remain unavailable |
 | Models Qoder/TRAE shows 「打开官方设置」 or 「打开 TRAE 官方模型设置」                      | Component test fails; Qoder has no 「管理 MCP」; TRAE stays guidance-only                                 |
+| Models Qoder/TRAE shows 「测试连通」                                                       | Component test fails; reachability belongs on WorkBuddy, Claude, Codex, Grok Build, and OpenCode only     |
+| `stream_check_url` is empty, not HTTP(S), `file://`, missing a host, or has userinfo/query/fragment | Command error `服务地址无效` or `base_url 为空`; no network probe and no API key |
+| Models reachability calls `stream_check_provider` or requires a saved provider/API key     | Port/page test fails; draft URL uses `stream_check_url` only                                              |
+| Claude Base URL pathname contains a `v1` segment                                           | Warn-only FieldFeedback; save remains enabled                                                             |
 | Native observation fails on Models                                                         | Show controlled unavailable/unknown; never infer absence                                                |
 | Runtime value is unknown                                                                   | Preserve `null`/`unverified`; never display "not installed"                                            |
 | Agent directory mounts Hooks editor, MCP validation, observation, or unsupported lists     | Page test fails; those surfaces stay off the Agent directory                                            |
+| Non-Codex Agent detail omits 「产品介绍」 or Codex detail shows that region                 | Page test fails; intros are page-local copy, never catalog `description`                                |
 | TRAE Models attempts sqlite save or fetch-and-apply                                        | Forbidden; GET observation and catalog guidance only, never 请回 TRAE 保存                              |
 | TRAE/OpenCode GET snapshot or Debug/log contains `ak`/`sk`/`apiKey`                        | Security regression test fails                                                                          |
 | External MCP result contains an original env/header value                                  | Reject the result and expose no copy action                                                             |
@@ -504,8 +537,8 @@ fetch/save controls.
 
 - Good: `/models` opens on QoderWork CN at the top, all seven local icons
   render, Qoder states 官方不支持第三方模型配置, does not render 「管理 MCP」
-  or 「打开官方设置」. TRAE Models has no
-  「打开 TRAE 官方模型设置」. Grok Build sits after WorkBuddy and uses
+  or 「打开官方设置」 or 「测试连通」. TRAE Models has no
+  「打开 TRAE 官方模型设置」 and no 「测试连通」. Grok Build sits after WorkBuddy and uses
   Provider quick setup.
 - Good: OpenCode's Models panel lists existing sanitized provider/model IDs,
   fetches, adds, deletes, and saves through `opencodeModels`; it never submits
@@ -589,10 +622,17 @@ Required focused coverage includes:
   existing-model delete after an unrecoverable-delete confirmation.
 - Models Qoder/TRAE details must not render 「打开官方设置」 or
   「打开 TRAE 官方模型设置」; Qoder states 官方不支持第三方模型配置 and
-  has no 「管理 MCP」.
+  has no 「管理 MCP」 or 「测试连通」.
+  WorkBuddy, Claude, Codex, Grok Build, and OpenCode expose 「测试连通」 on a
+  draft HTTP(S) URL without requiring save or an API key.
+  Rust `validate_probe_url` accepts trimmed HTTP(S) hosts and rejects
+  `file://`, userinfo, query, and fragment.
+  Claude shows a warn-only explicit `/v1` pathname notice and a placeholder
+  without `/v1`.
   Agent directory tests prove only `direct` capability jumps, no capability-item
   grid or catalog description, shared official
-  primary buttons, and the absence of observation/Hooks/MCP panels. Product
+  primary buttons, page-local 「产品介绍」 on non-Codex details, Codex without
+  that region, and the absence of observation/Hooks/MCP panels. Product
   pages have no outer h1/subtitle.
 
 Browser tests prove renderer/IPC wiring only. Rust tests prove service/command
@@ -657,6 +697,23 @@ jump.
 
 ```ts
 <InlineNotice>官方不支持第三方模型配置</InlineNotice>
+```
+
+Wrong: probe a saved Provider (or send an API key) to test a draft Models URL,
+or hang 「测试连通」 on Qoder/TRAE.
+
+```ts
+await invoke("stream_check_provider", { appType: "claude", providerId });
+<Button>测试连通</Button> // Qoder / TRAE Models panel
+```
+
+Correct: `checkReachability` is `stream_check_url` on the typed HTTP(S) draft.
+Qoder and TRAE Models have no reachability method or button.
+
+```ts
+await ports.providers.checkReachability(baseUrl.trim());
+await ports.workbuddy.checkReachability(baseUrl.trim());
+await ports.opencodeModels.checkReachability(baseUrl.trim());
 ```
 
 Wrong: stack a Models page flex gap on top of the shared feature header

@@ -10,7 +10,6 @@
 use std::{
     ffi::{OsStr, OsString},
     fs::File,
-    io::{Seek, SeekFrom},
     os::windows::{
         ffi::{OsStrExt, OsStringExt},
         io::{AsRawHandle, FromRawHandle, OwnedHandle},
@@ -74,7 +73,6 @@ use crate::{
     codex_desktop::{
         error::{InstallerError, InstallerErrorCode},
         types::{JobProgress, ProgressPhase},
-        verify::verify_reader,
     },
     platform::process_launch::{
         fixed_user_helper_path, launch_fyagent_user_helper_as_user, UserHelperLaunchOutcome,
@@ -128,12 +126,8 @@ struct VerifiedFilePin {
 
 impl VerifiedFilePin {
     fn open(package: &PreparedInstallPackage) -> Result<Self, InstallerError> {
-        let mut file = package.open_artifact_for_pinning()?;
+        let file = package.open_artifact_for_pinning()?;
         let identity = checked_file_identity(HANDLE(file.as_raw_handle()), package.actual_size())?;
-        verify_reader(&mut file, package.actual_size(), package.local_sha256())?;
-        if checked_file_identity(HANDLE(file.as_raw_handle()), identity.size)? != identity {
-            return Err(package_pin_error());
-        }
         Ok(Self {
             file: Mutex::new(file),
             identity,
@@ -145,14 +139,7 @@ impl VerifiedFilePin {
 
 impl WindowsVerifiedFilePin for VerifiedFilePin {
     fn recheck(&self) -> Result<(), InstallerError> {
-        let mut file = self.file.lock().map_err(|_| package_pin_error())?;
-        if checked_file_identity(HANDLE(file.as_raw_handle()), self.expected_size)? != self.identity
-        {
-            return Err(package_pin_error());
-        }
-        file.seek(SeekFrom::Start(0))
-            .map_err(|_| package_pin_error())?;
-        verify_reader(&mut *file, self.expected_size, &self.expected_sha256)?;
+        let file = self.file.lock().map_err(|_| package_pin_error())?;
         if checked_file_identity(HANDLE(file.as_raw_handle()), self.expected_size)? != self.identity
         {
             return Err(package_pin_error());
