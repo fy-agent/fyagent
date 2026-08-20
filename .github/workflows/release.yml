@@ -1135,7 +1135,7 @@ jobs:
       - name: Build universal macOS app
         run: pnpm tauri build --target universal-apple-darwin --bundles app
 
-      - name: Seal, notarize, and verify the Developer ID app
+      - name: Seal and verify the Developer ID app
         id: app
         shell: bash
         env:
@@ -1170,12 +1170,11 @@ jobs:
 
           scripts/release/macos-developer-id.sh prepare
           scripts/release/macos-developer-id.sh sign-app "$app_path"
-          scripts/release/macos-developer-id.sh notarize-app "$app_path"
-          scripts/release/verify-macos-signed-app.sh "$app_path"
+          scripts/release/verify-macos-signed-app.sh --signature-only "$app_path"
           printf 'app_path=%s\n' "$app_path" >> "$GITHUB_OUTPUT"
           printf 'executable=%s\n' "$executable" >> "$GITHUB_OUTPUT"
 
-      - name: Create and verify ZIP and notarized DMG from the same Developer ID app
+      - name: Create ZIP and notarized DMG from the same Developer ID app
         shell: bash
         env:
           APP_PATH: ${{ steps.app.outputs.app_path }}
@@ -1202,13 +1201,6 @@ jobs:
           trap cleanup EXIT
 
           source_digest="$(shasum -a 256 "$APP_PATH/Contents/MacOS/$APP_EXECUTABLE" | awk '{print $1}')"
-          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$zip_path"
-          ditto -x -k "$zip_path" "$unzip_root"
-          [ -d "$unzip_root/FyAgent.app" ]
-          [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$unzip_root/FyAgent.app/Contents/Info.plist")" = "$APP_VERSION" ]
-          [ "$(shasum -a 256 "$unzip_root/FyAgent.app/Contents/MacOS/$APP_EXECUTABLE" | awk '{print $1}')" = "$source_digest" ]
-          scripts/release/verify-macos-signed-app.sh "$unzip_root/FyAgent.app"
-
           ditto "$APP_PATH" "$stage/FyAgent.app"
           scripts/release/retry-hdiutil.sh \
             "$dmg_path" \
@@ -1220,13 +1212,22 @@ jobs:
             verify "$dmg_path"
           scripts/release/macos-developer-id.sh sign-dmg "$dmg_path"
           scripts/release/macos-developer-id.sh notarize-dmg "$dmg_path"
+          scripts/release/macos-developer-id.sh staple-app "$APP_PATH"
           scripts/release/verify-macos-signed-dmg.sh "$dmg_path"
+
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$zip_path"
+          ditto -x -k "$zip_path" "$unzip_root"
+          [ -d "$unzip_root/FyAgent.app" ]
+          [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$unzip_root/FyAgent.app/Contents/Info.plist")" = "$APP_VERSION" ]
+          [ "$(shasum -a 256 "$unzip_root/FyAgent.app/Contents/MacOS/$APP_EXECUTABLE" | awk '{print $1}')" = "$source_digest" ]
+          scripts/release/verify-macos-signed-app.sh "$unzip_root/FyAgent.app"
+
           mounted=true
           hdiutil attach "$dmg_path" -readonly -nobrowse -noautoopen -mountpoint "$mount_point"
           [ -d "$mount_point/FyAgent.app" ]
           [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$mount_point/FyAgent.app/Contents/Info.plist")" = "$APP_VERSION" ]
           [ "$(shasum -a 256 "$mount_point/FyAgent.app/Contents/MacOS/$APP_EXECUTABLE" | awk '{print $1}')" = "$source_digest" ]
-          scripts/release/verify-macos-signed-app.sh "$mount_point/FyAgent.app"
+          scripts/release/verify-macos-signed-app.sh --signature-only "$mount_point/FyAgent.app"
           hdiutil detach "$mount_point"
           mounted=false
           node scripts/release/prepare-release-publication.mjs verify-target \

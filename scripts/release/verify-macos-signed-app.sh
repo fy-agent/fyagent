@@ -8,8 +8,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=macos-signing-policy.sh
 source "$SCRIPT_DIR/macos-signing-policy.sh"
 
+if [ "${1:-}" = "--signature-only" ]; then
+  require_ticket=0
+  shift
+else
+  require_ticket=1
+fi
+
 if [ "$#" -ne 1 ]; then
-  echo "Usage: verify-macos-signed-app.sh <FyAgent.app>" >&2
+  echo "Usage: verify-macos-signed-app.sh [--signature-only] <FyAgent.app>" >&2
   exit 2
 fi
 
@@ -73,7 +80,7 @@ for architecture in arm64 x86_64; do
 done
 
 codesign --verify --deep --strict --verbose=4 "$app_path"
-if ! xcrun stapler validate "$app_path" >/dev/null; then
+if [ "$require_ticket" -eq 1 ] && ! xcrun stapler validate "$app_path" >/dev/null; then
   echo "Developer ID application is missing a notarization ticket: $app_path" >&2
   exit 1
 fi
