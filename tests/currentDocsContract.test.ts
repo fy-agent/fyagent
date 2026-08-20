@@ -658,8 +658,31 @@ describe("current FyAgent documentation authority", () => {
 
   it("keeps the six-chapter manual and visual evidence plan closed", () => {
     expect(fs.existsSync(path.join(ROOT, "README_DE.md"))).toBe(false);
+    const readmeScreenshots = [
+      "assets/screenshots/main-zh-1.png",
+      "assets/screenshots/main-zh-2.png",
+      "assets/screenshots/main-zh-3.png",
+    ] as const;
+    const retiredReadmeScreenshots = [
+      "assets/screenshots/add-en.png",
+      "assets/screenshots/add-ja.png",
+      "assets/screenshots/add-zh.png",
+      "assets/screenshots/main-en.png",
+      "assets/screenshots/main-ja.png",
+      "assets/screenshots/main-zh.png",
+      "assets/screenshots/main-zh-4.png",
+    ] as const;
+    for (const image of readmeScreenshots) {
+      expect(fs.statSync(path.join(ROOT, image)).isFile(), image).toBe(true);
+    }
     for (const file of PUBLIC_READMES) {
-      expect(read(file), file).not.toContain("assets/screenshots/");
+      const source = read(file);
+      for (const image of readmeScreenshots) {
+        expect(source, `${file} -> ${image}`).toContain(image);
+      }
+      for (const image of retiredReadmeScreenshots) {
+        expect(source, `${file} -> ${image}`).not.toContain(image);
+      }
     }
 
     for (const language of MANUAL_LANGUAGES) {

@@ -296,7 +296,7 @@ and a revision, never `ak` / `sk` / `apiKey`.
 - Agent directory does not lazy-read WorkBuddy status or Provider summaries.
   Those observations belong on the Models page. External runtime status still
   preserves `null` as unknown when a future launch control is added.
--   Qoder Hooks and Qoder/TRAE MCP validation remain native commands. The Agent
+- Qoder Hooks and Qoder/TRAE MCP validation remain native commands. The Agent
   directory is not their host; Qoder Models states 官方不支持第三方模型配置
   and does not jump to `/mcp`.
 - Configuration actions navigate only with a known non-secret `target` query.

@@ -43,7 +43,7 @@
     ],
     [
       "src-tauri/Cargo.toml",
-      "ced83ab65bb6815e25498fccf10f6ee36cade452214f54fb44e88958c86a733c"
+      "454b5f139e0b34b61969308e49c70b9387cf3723f537e5b8175d475def7cf90f"
     ],
     [
       "src-tauri/src/app_store.rs",
@@ -123,7 +123,7 @@
     ],
     [
       "src-tauri/src/lib.rs",
-      "5ad51149fd46b1b2e4f64f574075ec38d4a828da6d99a3038e41b21aedfd11df"
+      "e0893443a18bf312ae5a81d80632cc269a5a8f7101221574406764be30c4d85b"
     ],
     [
       "src-tauri/src/lightweight.rs",
@@ -175,7 +175,7 @@
     ],
     [
       "src-tauri/src/services/provider/mod.rs",
-      "5dc1c38e80f977e39a7fdd4d2b63cde9f4c581808a053f874da3d405cf6872c1"
+      "ddbfee9176e02c2150d22b68407b3da06ccfd3b675d3a259bc81e93b99d87637"
     ],
     [
       "src-tauri/src/services/qoderwork.rs",
@@ -191,7 +191,7 @@
     ],
     [
       "src-tauri/src/services/skill.rs",
-      "60510b6d703098091e4c446a18e7bb0c8546ea1c28e0bf9aa039cf4617cec1d3"
+      "b85c42c8ff3ed851685cdcef1af68e4f519cd17e54fdda3b2299ae784ac4ee13"
     ],
     [
       "src-tauri/src/services/subscription.rs",
@@ -247,7 +247,7 @@
     ],
     [
       "src-tauri/tests/skill_sync.rs",
-      "cc4e2eed7f092801eab35fcbfdb45e0eb2074efe5b5dad24350942e78baf90f5"
+      "d2a9139faa6b676e6827f3fcd19a25630f0a06f67d97d6650fa033abca8f566a"
     ],
     [
       "src-tauri/tests/support.rs",
@@ -323,7 +323,7 @@
     ],
     [
       "tests/remainingPlatformSurface.test.ts",
-      "bfb10500a2be1874207c5ee6c01d978347a245f881a2bf652a6f2afcf0a31799"
+      "aaf0d3b49990daead2b72c87d0a8ad4f998aa7f21610c0997cdfa458058b50fb"
     ],
     [
       "tests/singleInstanceActivationContract.test.ts",

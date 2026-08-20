@@ -30,6 +30,29 @@ WorkBuddy には独立したトップレベルの設定入口があります。�
 
 > **リリース状況:** FyAgent は現在も継続的に開発されています。更新前に大切な設定をバックアップし、インストール前に各リリースの信頼情報を確認してください。
 
+## 画面
+
+現在のデスクトップ画面です（簡体字中国語のキャプチャ）。上部バーで Agent ディレクトリ、モデル、Skills、MCP、プロンプト、記憶を切り替えます。
+
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <img src="assets/screenshots/main-zh-1.png" alt="FyAgent のモデル画面：WorkBuddy のサードパーティモデルを管理">
+      <br><em>モデル</em>
+    </td>
+    <td align="center" width="50%">
+      <img src="assets/screenshots/main-zh-2.png" alt="FyAgent の Skill マーケット">
+      <br><em>Skills</em>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" colspan="2">
+      <img src="assets/screenshots/main-zh-3.png" alt="FyAgent の MCP 発見画面">
+      <br><em>MCP</em>
+    </td>
+  </tr>
+</table>
+
 ## ビジョン：AI 時代に持ち歩けるデジタル人格
 
 ここでいう「デジタル人格」は、話し方をまねるアバターではありません。どのモデルを使い、何と接続し、どんなスキルを持ち、どう働き、何を覚えておくのか。人が AI を選び、育て、管理する方法を長く保つための器です。
@@ -44,15 +67,15 @@ AI が賢くなるほど、権限を誰に渡したのか、なぜ設定が壊�
 
 ## 現在できること
 
-| 利用者から見た能力 | 現在の機能 |
-| --- | --- |
-| AI の頭脳 | プロバイダーとモデルを管理し、プリセットまたは互換エンドポイントから切り替える |
-| ツール接続 | MCP サーバーを一元管理し、対応する AI ツールへ同期する |
-| AI スキル | Skills を管理し、ツールごとの重複設定を減らす |
-| 仕事の指示 | Prompts を再利用し、使い慣れた仕事の進め方をツール間で持ち運ぶ |
-| ルーティングと復旧 | ローカルプロキシ、フェイルオーバールール、モデル疎通確認を利用する |
-| 利用記録 | token 使用量と推定コストをひとつの画面で確認する |
-| 作業の継続 | セッションやワークスペースを再開し、設定をバックアップ・同期する |
+| 利用者から見た能力 | 現在の機能                                                                     |
+| ------------------ | ------------------------------------------------------------------------------ |
+| AI の頭脳          | プロバイダーとモデルを管理し、プリセットまたは互換エンドポイントから切り替える |
+| ツール接続         | MCP サーバーを一元管理し、対応する AI ツールへ同期する                         |
+| AI スキル          | Skills を管理し、ツールごとの重複設定を減らす                                  |
+| 仕事の指示         | Prompts を再利用し、使い慣れた仕事の進め方をツール間で持ち運ぶ                 |
+| ルーティングと復旧 | ローカルプロキシ、フェイルオーバールール、モデル疎通確認を利用する             |
+| 利用記録           | token 使用量と推定コストをひとつの画面で確認する                               |
+| 作業の継続         | セッションやワークスペースを再開し、設定をバックアップ・同期する               |
 
 作業データは既定でローカルの `~/.fyagent` に保存されます。設定更新には SQLite とアトミック書き込みを使い、`fyagent://` からのインポートも書き込み前に変更内容を表示します。
 
@@ -86,24 +109,28 @@ Windows 版は NSIS セットアップのみで、MSI とポータブル ZIP は
 <summary><strong>FyAgent のデータはどこに保存されますか？</strong></summary>
 
 既定ではローカル端末の `~/.fyagent` に保存されます。正確な場所とバックアップ方法は[設定ファイル](docs/user-manual/ja/6-faq/6.1-config-files.md)をご覧ください。
+
 </details>
 
 <details>
 <summary><strong>インストールや設定について、どこで質問できますか？</strong></summary>
 
 [FAQ マニュアル](docs/user-manual/ja/6-faq/6.2-questions.md)を確認したうえで、FyAgent のバージョン、OS、関連ツール、試した内容を [Q&A](https://github.com/fy-agent/fyagent/discussions/categories/q-a) に投稿してください。再現可能なソフトウェア不具合は [Bug Report](https://github.com/fy-agent/fyagent/issues/new?template=bug_report.yml) を利用してください。
+
 </details>
 
 <details>
 <summary><strong>長期記憶や完全なデジタル人格は、すでに利用できますか？</strong></summary>
 
 まだ利用できません。現在のバージョンは、モデル、ツール接続、Skills、仕事の指示、設定、利用記録の一元管理に取り組んでいます。長期記憶とツールをまたいで続く人格は、対応機能が実装・検証されるまでは製品方向として扱います。
+
 </details>
 
 <details>
 <summary><strong>FyAgent はオープンソースですか？</strong></summary>
 
 FyAgent はソースを利用可能なソフトウェアであり、OSI が定義するオープンソースではありません。FyAgent 独自のコンポーネントと変更部分には PolyForm Noncommercial License 1.0.0、CC Switch 由来の部分には MIT ライセンスが適用されます。詳しくは[ライセンス説明](LICENSING.md)をご覧ください。
+
 </details>
 
 ## コミュニティに参加する
