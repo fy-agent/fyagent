@@ -70,6 +70,7 @@ export interface DiscoverableSkill {
 
 export const SKILL_DISCOVERY_PAGE_SIZE = 20;
 export const SKILL_DISCOVERY_MAX_PAGE_SIZE = 50;
+export const SKILLHUB_MARKET_OWNER = "skillhub.cn";
 
 export type SkillDiscoveryStatus = "all" | "installed" | "uninstalled";
 
@@ -86,19 +87,25 @@ export interface DiscoverSkillsPageRequest {
   offset: number;
 }
 
-export interface SkillsShSkill {
+export interface SkillHubSkill {
   key: string;
+  slug: string;
   name: string;
+  description: string;
   directory: string;
   repoOwner: string;
   repoName: string;
   repoBranch: string;
-  installs: number;
+  version?: string;
+  ownerName?: string;
+  installs?: number;
+  downloads?: number;
+  homepageUrl: string;
   readmeUrl?: string;
 }
 
-export interface SkillsShSearchResult {
-  skills: SkillsShSkill[];
+export interface SkillHubSearchResult {
+  skills: SkillHubSkill[];
   totalCount: number;
   query: string;
 }

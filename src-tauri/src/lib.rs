@@ -2022,6 +2022,8 @@ pub fn run() {
             commands::update_skill,
             commands::migrate_skill_storage,
             commands::search_skills_sh,
+            commands::search_skillhub,
+            commands::install_skillhub,
             // Skill management (legacy API compatibility)
             commands::get_skills,
             commands::get_skills_for_app,

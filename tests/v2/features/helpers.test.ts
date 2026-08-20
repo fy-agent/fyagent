@@ -196,4 +196,34 @@ describe("V2 feature helpers", () => {
       ]),
     ).toBe(false);
   });
+
+  it("matches Skill 市场 installs by market owner and slug", () => {
+    const discoverable: DiscoverableSkill = {
+      key: "skillhub:tencent-docs",
+      name: "腾讯文档",
+      description: "中文介绍",
+      directory: "tencent-docs",
+      repoOwner: "skillhub.cn",
+      repoName: "tencent-docs",
+      repoBranch: "skillhub",
+    };
+    const installed: InstalledSkill[] = [
+      {
+        id: "skillhub:tencent-docs",
+        name: "腾讯文档 TENCENT DOCS",
+        directory: "腾讯文档-TENCENT-DOCS",
+        repoOwner: "skillhub.cn",
+        repoName: "tencent-docs",
+        apps: createAssignments(["claude"]),
+        installedAt: 1,
+        updatedAt: 1,
+      },
+    ];
+    expect(isDiscoverableInstalled(discoverable, installed)).toBe(true);
+    expect(
+      isDiscoverableInstalled(discoverable, [
+        { ...installed[0], id: "skillhub:other", repoName: "other" },
+      ]),
+    ).toBe(false);
+  });
 });

@@ -193,7 +193,7 @@ lists, Skills vs MCP, Prompts vs Memory, and TRAE vs OpenCode model panels.
 - Feature master lists use `FeatureList` / `FeatureListItem`. Catalog agent
   rails stay on `CatalogList` / `CatalogListItem`. Primary nav stays on
   `SelectionLensGroup` with `inset={1}`.
-- Skills discovery (repos and skills.sh) uses `FeaturePagination`. Do not
+- Skills discovery (Skill 市场 and configured repos) uses `FeaturePagination`. Do not
   hand-roll a second page-number window, and do not add a pagination UI
   library for prev/next or ellipsis.
 - Skills/MCP assignment stays on `AssignmentPanel` (V2 switch rows), not a

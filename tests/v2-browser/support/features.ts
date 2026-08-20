@@ -659,8 +659,10 @@ export async function installRichTauriFeatureFixture(
             return [];
           case "discover_available_skills_page":
             return { skills: [], totalCount: 0 };
-          case "search_skills_sh":
+          case "search_skillhub":
             return { skills: [], totalCount: 0, query: payload.query ?? "" };
+          case "install_skillhub":
+            return [];
           case "get_settings":
             return { skillSyncMethod: "auto", skillStorageLocation: "fyagent" };
           case "plugin:event|listen":

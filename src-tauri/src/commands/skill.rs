@@ -8,8 +8,9 @@ use crate::app_config::{InstalledSkill, SkillTargetId, UnmanagedSkill};
 use crate::error::format_skill_error;
 use crate::services::skill::{
     DiscoverAvailablePageRequest, DiscoverableSkill, DiscoverableSkillsPage, ImportSkillSelection,
-    MigrationResult, Skill, SkillBackupEntry, SkillDiscoveryStatus, SkillRepo, SkillService,
-    SkillStorageLocation, SkillUninstallResult, SkillUpdateInfo, SkillsShSearchResult,
+    MigrationResult, Skill, SkillBackupEntry, SkillDiscoveryStatus, SkillHubSearchResult,
+    SkillRepo, SkillService, SkillStorageLocation, SkillUninstallResult, SkillUpdateInfo,
+    SkillsShSearchResult,
 };
 use crate::store::AppState;
 use std::str::FromStr;
@@ -202,7 +203,7 @@ pub async fn migrate_skill_storage(
     SkillService::migrate_storage(&app_state.db, target).map_err(|e| e.to_string())
 }
 
-/// 搜索 skills.sh 公共目录
+/// 搜索 skills.sh 公共目录（leftover V1）
 #[tauri::command]
 pub async fn search_skills_sh(
     query: String,
@@ -210,6 +211,31 @@ pub async fn search_skills_sh(
     offset: usize,
 ) -> Result<SkillsShSearchResult, String> {
     SkillService::search_skills_sh(&query, limit, offset)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// 搜索 Skill 市场
+#[tauri::command]
+pub async fn search_skillhub(
+    query: String,
+    limit: usize,
+    offset: usize,
+) -> Result<SkillHubSearchResult, String> {
+    SkillService::search_skillhub(&query, limit, offset)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// 从 Skill 市场安装（下载 ZIP，不调用 skillhub CLI）
+#[tauri::command]
+pub async fn install_skillhub(
+    slug: String,
+    current_app: String,
+    app_state: State<'_, AppState>,
+) -> Result<Vec<InstalledSkill>, String> {
+    let app_type = parse_skill_target(&current_app)?;
+    SkillService::install_skillhub(&app_state.db, &slug, &app_type)
         .await
         .map_err(|e| e.to_string())
 }

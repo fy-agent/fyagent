@@ -378,6 +378,84 @@ pub struct SkillsShDiscoverableSkill {
     pub readme_url: Option<String>,
 }
 
+// ========== SkillHub（Skill 市场）==========
+
+const SKILLHUB_API_ORIGIN: &str = "https://api.skillhub.cn";
+const SKILLHUB_SEARCH_PATH: &str = "/api/v1/search";
+const SKILLHUB_DOWNLOAD_PATH: &str = "/api/v1/download";
+const SKILLHUB_PUBLIC_SKILL_PREFIX: &str = "https://skillhub.cn/skills/";
+/// 写入已安装记录的仓库坐标，供发现页匹配；不是 GitHub owner。
+pub const SKILLHUB_MARKET_OWNER: &str = "skillhub.cn";
+const SKILLHUB_QUERY_MAX_CHARS: usize = 200;
+
+/// SkillHub 搜索原始响应
+#[derive(Debug, Clone, Deserialize)]
+struct SkillHubApiResponse {
+    #[serde(default)]
+    results: Vec<SkillHubApiSkill>,
+}
+
+/// SkillHub 搜索条目。字段名在 camelCase / snake_case 之间混用。
+#[derive(Debug, Clone, Deserialize)]
+struct SkillHubApiSkill {
+    slug: String,
+    #[serde(default, alias = "displayName")]
+    display_name: Option<String>,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default, alias = "descriptionZh")]
+    description_zh: Option<String>,
+    #[serde(default)]
+    description: Option<String>,
+    #[serde(default)]
+    summary: Option<String>,
+    #[serde(default)]
+    version: Option<String>,
+    #[serde(default, alias = "ownerName")]
+    owner_name: Option<String>,
+    #[serde(default)]
+    downloads: Option<u64>,
+    #[serde(default)]
+    installs: Option<u64>,
+}
+
+/// SkillHub 搜索结果（返回给前端）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SkillHubSearchResult {
+    pub skills: Vec<SkillHubDiscoverableSkill>,
+    pub total_count: usize,
+    pub query: String,
+}
+
+/// SkillHub 可安装技能（返回给前端）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SkillHubDiscoverableSkill {
+    pub key: String,
+    pub slug: String,
+    pub name: String,
+    pub description: String,
+    pub directory: String,
+    pub repo_owner: String,
+    pub repo_name: String,
+    pub repo_branch: String,
+    pub version: Option<String>,
+    pub owner_name: Option<String>,
+    pub installs: Option<u64>,
+    pub downloads: Option<u64>,
+    pub homepage_url: String,
+    pub readme_url: Option<String>,
+}
+
+struct ZipInstallProvenance {
+    id: String,
+    repo_owner: String,
+    repo_name: String,
+    repo_branch: String,
+    readme_url: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SkillBackupEntry {
@@ -3298,8 +3376,17 @@ impl SkillService {
 
     /// 下载并解压 ZIP
     async fn download_and_extract(&self, url: &str, dest: &Path) -> Result<()> {
+        let parsed = url::Url::parse(url).map_err(|e| anyhow!("Invalid archive URL: {e}"))?;
+        let body = Self::download_bounded_bytes(parsed, Duration::from_secs(60)).await?;
+        let cursor = std::io::Cursor::new(body);
+        let archive = zip::ZipArchive::new(cursor)?;
+        Self::extract_repo_archive(archive, dest)
+    }
+
+    /// 按实际上传字节卡住压缩体大小，不信 Content-Length。
+    async fn download_bounded_bytes(url: url::Url, timeout: Duration) -> Result<Vec<u8>> {
         let client = crate::proxy::http_client::get();
-        let response = client.get(url).send().await?;
+        let response = client.get(url).timeout(timeout).send().await?;
         if !response.status().is_success() {
             let status = response.status().as_u16().to_string();
             return Err(anyhow::anyhow!(format_skill_error(
@@ -3314,9 +3401,6 @@ impl SkillService {
             )));
         }
 
-        // 逐块读并卡住压缩体大小：`response.bytes()` 会先把攻击者控制的整个归档
-        // 收进内存，之后才轮到 ZipArchive 和解压预算——那时候堆已经被吃光了。
-        // 不能只信 Content-Length（可以撒谎或缺失），必须按实际收到的字节数算。
         let mut response = response;
         let mut body: Vec<u8> = Vec::new();
         while let Some(chunk) = response.chunk().await? {
@@ -3330,10 +3414,7 @@ impl SkillService {
             }
             body.extend_from_slice(&chunk);
         }
-
-        let cursor = std::io::Cursor::new(body);
-        let archive = zip::ZipArchive::new(cursor)?;
-        Self::extract_repo_archive(archive, dest)
+        Ok(body)
     }
 
     /// 按预算把单个归档条目写出，累计超限即中止。
@@ -3803,6 +3884,15 @@ impl SkillService {
         zip_path: &Path,
         current_app: &SkillTargetId,
     ) -> Result<Vec<InstalledSkill>> {
+        Self::install_from_zip_with_provenance(db, zip_path, current_app, None)
+    }
+
+    fn install_from_zip_with_provenance(
+        db: &Arc<Database>,
+        zip_path: &Path,
+        current_app: &SkillTargetId,
+        provenance: Option<&ZipInstallProvenance>,
+    ) -> Result<Vec<InstalledSkill>> {
         // 解压到临时目录
         let temp_guard = Self::extract_local_zip(zip_path)?;
         let temp_dir = temp_guard.path();
@@ -3908,14 +3998,16 @@ impl SkillService {
 
             // 创建 InstalledSkill 记录
             let skill = InstalledSkill {
-                id: format!("local:{install_name}"),
+                id: provenance
+                    .map(|source| source.id.clone())
+                    .unwrap_or_else(|| format!("local:{install_name}")),
                 name,
                 description,
                 directory: install_name.clone(),
-                repo_owner: None,
-                repo_name: None,
-                repo_branch: None,
-                readme_url: None,
+                repo_owner: provenance.map(|source| source.repo_owner.clone()),
+                repo_name: provenance.map(|source| source.repo_name.clone()),
+                repo_branch: provenance.map(|source| source.repo_branch.clone()),
+                readme_url: provenance.and_then(|source| source.readme_url.clone()),
                 apps: SkillApps::only_target(current_app),
                 installed_at: chrono::Utc::now().timestamp(),
                 content_hash,
@@ -4165,6 +4257,196 @@ impl SkillService {
             total_count: resp.count,
             query: resp.query,
         })
+    }
+
+    // ========== Skill 市场（SkillHub）==========
+
+    pub(crate) fn is_valid_skillhub_slug(slug: &str) -> bool {
+        if slug.is_empty() || slug.len() > 128 || slug == "." || slug == ".." {
+            return false;
+        }
+        let mut chars = slug.chars();
+        let Some(first) = chars.next() else {
+            return false;
+        };
+        first.is_ascii_alphanumeric()
+            && chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
+    }
+
+    fn clamp_skillhub_query(query: &str) -> String {
+        query.chars().take(SKILLHUB_QUERY_MAX_CHARS).collect()
+    }
+
+    fn first_nonempty(values: &[Option<String>]) -> Option<String> {
+        values.iter().find_map(|value| {
+            value
+                .as_deref()
+                .map(str::trim)
+                .filter(|text| !text.is_empty())
+                .map(ToOwned::to_owned)
+        })
+    }
+
+    pub(crate) fn skillhub_homepage_url(slug: &str) -> Option<String> {
+        if !Self::is_valid_skillhub_slug(slug) {
+            return None;
+        }
+        Some(format!("{SKILLHUB_PUBLIC_SKILL_PREFIX}{slug}"))
+    }
+
+    fn assert_skillhub_api_url(url: &url::Url, expected_path: &str) -> Result<()> {
+        if url.scheme() != "https"
+            || url.host_str() != Some("api.skillhub.cn")
+            || url.path() != expected_path
+        {
+            return Err(anyhow!(format_skill_error(
+                "INVALID_SKILLHUB_URL",
+                &[("url", url.as_str())],
+                Some("checkNetwork"),
+            )));
+        }
+        Ok(())
+    }
+
+    pub(crate) fn skillhub_search_url(query: &str, limit: usize) -> Result<url::Url> {
+        let url = url::Url::parse_with_params(
+            &format!("{SKILLHUB_API_ORIGIN}{SKILLHUB_SEARCH_PATH}"),
+            &[("q", query), ("limit", &limit.to_string())],
+        )?;
+        Self::assert_skillhub_api_url(&url, SKILLHUB_SEARCH_PATH)?;
+        Ok(url)
+    }
+
+    pub(crate) fn skillhub_download_url(slug: &str) -> Result<url::Url> {
+        if !Self::is_valid_skillhub_slug(slug) {
+            return Err(anyhow!(format_skill_error(
+                "INVALID_SKILLHUB_SLUG",
+                &[("slug", slug)],
+                Some("checkNetwork"),
+            )));
+        }
+        let url = url::Url::parse_with_params(
+            &format!("{SKILLHUB_API_ORIGIN}{SKILLHUB_DOWNLOAD_PATH}"),
+            &[("slug", slug)],
+        )?;
+        Self::assert_skillhub_api_url(&url, SKILLHUB_DOWNLOAD_PATH)?;
+        let slug_param = url
+            .query_pairs()
+            .find(|(key, _)| key == "slug")
+            .map(|(_, value)| value.into_owned());
+        if slug_param.as_deref() != Some(slug) {
+            return Err(anyhow!(format_skill_error(
+                "INVALID_SKILLHUB_SLUG",
+                &[("slug", slug)],
+                Some("checkNetwork"),
+            )));
+        }
+        Ok(url)
+    }
+
+    fn map_skillhub_item(item: SkillHubApiSkill) -> Option<SkillHubDiscoverableSkill> {
+        if !Self::is_valid_skillhub_slug(&item.slug) {
+            return None;
+        }
+        let homepage = Self::skillhub_homepage_url(&item.slug)?;
+        let name = Self::first_nonempty(&[item.display_name.clone(), item.name.clone()])
+            .unwrap_or_else(|| item.slug.clone());
+        let description = Self::first_nonempty(&[
+            item.description_zh.clone(),
+            item.description.clone(),
+            item.summary.clone(),
+        ])
+        .unwrap_or_default();
+        Some(SkillHubDiscoverableSkill {
+            key: format!("skillhub:{}", item.slug),
+            slug: item.slug.clone(),
+            name,
+            description,
+            directory: item.slug.clone(),
+            repo_owner: SKILLHUB_MARKET_OWNER.to_string(),
+            repo_name: item.slug.clone(),
+            repo_branch: item
+                .version
+                .clone()
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or_else(|| "skillhub".to_string()),
+            version: Self::first_nonempty(&[item.version]),
+            owner_name: Self::first_nonempty(&[item.owner_name]),
+            installs: item.installs,
+            downloads: item.downloads,
+            homepage_url: homepage.clone(),
+            readme_url: Some(homepage),
+        })
+    }
+
+    fn paginate_skillhub_results(
+        skills: Vec<SkillHubDiscoverableSkill>,
+        query: String,
+        limit: usize,
+        offset: usize,
+    ) -> SkillHubSearchResult {
+        let total_count = skills.len();
+        let skills = skills.into_iter().skip(offset).take(limit).collect();
+        SkillHubSearchResult {
+            skills,
+            total_count,
+            query,
+        }
+    }
+
+    /// 搜索 Skill 市场。上游 search 忽略 offset，因此先拉满窗口再本地切片。
+    pub async fn search_skillhub(
+        query: &str,
+        limit: usize,
+        offset: usize,
+    ) -> Result<SkillHubSearchResult> {
+        let query = Self::clamp_skillhub_query(query);
+        let page_limit = clamp_discovery_limit(limit);
+        let url = Self::skillhub_search_url(&query, SKILL_DISCOVERY_MAX_LIMIT)?;
+        let client = crate::proxy::http_client::get();
+        let resp = client
+            .get(url)
+            .timeout(Duration::from_secs(10))
+            .send()
+            .await?
+            .error_for_status()?
+            .json::<SkillHubApiResponse>()
+            .await?;
+        let skills = resp
+            .results
+            .into_iter()
+            .filter_map(Self::map_skillhub_item)
+            .collect();
+        Ok(Self::paginate_skillhub_results(
+            skills, query, page_limit, offset,
+        ))
+    }
+
+    /// 从 Skill 市场下载 ZIP 并走现有解压安装，不调用 skillhub CLI。
+    pub async fn install_skillhub(
+        db: &Arc<Database>,
+        slug: &str,
+        current_app: &SkillTargetId,
+    ) -> Result<Vec<InstalledSkill>> {
+        let url = Self::skillhub_download_url(slug)?;
+        let bytes = Self::download_bounded_bytes(url, Duration::from_secs(60)).await?;
+        let temp_root = crate::config::get_user_temp_dir();
+        fs::create_dir_all(&temp_root)?;
+        let mut tmp = tempfile::Builder::new()
+            .prefix("skillhub-")
+            .suffix(".zip")
+            .tempfile_in(&temp_root)?;
+        tmp.write_all(&bytes)?;
+        tmp.flush()?;
+        let homepage = Self::skillhub_homepage_url(slug);
+        let provenance = ZipInstallProvenance {
+            id: format!("skillhub:{slug}"),
+            repo_owner: SKILLHUB_MARKET_OWNER.to_string(),
+            repo_name: slug.to_string(),
+            repo_branch: "skillhub".to_string(),
+            readme_url: homepage,
+        };
+        Self::install_from_zip_with_provenance(db, tmp.path(), current_app, Some(&provenance))
     }
 }
 
@@ -4755,6 +5037,92 @@ mod tests {
                 "must reject url: {bad}"
             );
         }
+    }
+
+    #[test]
+    fn skillhub_slug_and_urls_reject_injection() {
+        assert!(SkillService::is_valid_skillhub_slug("tencent-docs"));
+        assert!(SkillService::is_valid_skillhub_slug(
+            "self-improving.agent_1"
+        ));
+        for slug in [
+            "",
+            "..",
+            ".",
+            "has/slash",
+            "has space",
+            "pct%2e",
+            "@tencent-adm/tencent-docs",
+            "https://evil.example/x",
+        ] {
+            assert!(
+                !SkillService::is_valid_skillhub_slug(slug),
+                "must reject slug: {slug:?}"
+            );
+        }
+
+        let search = SkillService::skillhub_search_url("飞书", 50).expect("search url");
+        assert_eq!(search.scheme(), "https");
+        assert_eq!(search.host_str(), Some("api.skillhub.cn"));
+        assert_eq!(search.path(), "/api/v1/search");
+
+        let download = SkillService::skillhub_download_url("tencent-docs").expect("download url");
+        assert_eq!(download.path(), "/api/v1/download");
+        assert!(download
+            .query_pairs()
+            .any(|(key, value)| key == "slug" && value == "tencent-docs"));
+        assert!(SkillService::skillhub_download_url("has/slash").is_err());
+        assert_eq!(
+            SkillService::skillhub_homepage_url("tencent-docs").as_deref(),
+            Some("https://skillhub.cn/skills/tencent-docs")
+        );
+        assert!(SkillService::skillhub_homepage_url("../x").is_none());
+    }
+
+    #[test]
+    fn skillhub_maps_zh_description_and_paginates_locally() {
+        let raw = serde_json::json!({
+            "results": [
+                {
+                    "slug": "tencent-docs",
+                    "displayName": "腾讯文档",
+                    "description_zh": "中文介绍",
+                    "description": "English intro",
+                    "version": "1.0.41",
+                    "owner_name": "tencent-adm",
+                    "installs": 8107
+                },
+                {
+                    "slug": "../evil",
+                    "name": "skip me"
+                },
+                {
+                    "slug": "summarize",
+                    "name": "Summarize",
+                    "summary": "摘要"
+                }
+            ]
+        });
+        let parsed: SkillHubApiResponse = serde_json::from_value(raw).expect("parse");
+        let skills: Vec<_> = parsed
+            .results
+            .into_iter()
+            .filter_map(SkillService::map_skillhub_item)
+            .collect();
+        assert_eq!(skills.len(), 2);
+        assert_eq!(skills[0].name, "腾讯文档");
+        assert_eq!(skills[0].description, "中文介绍");
+        assert_eq!(skills[0].repo_owner, SKILLHUB_MARKET_OWNER);
+        assert_eq!(
+            skills[0].homepage_url,
+            "https://skillhub.cn/skills/tencent-docs"
+        );
+        assert_eq!(skills[1].description, "摘要");
+
+        let page = SkillService::paginate_skillhub_results(skills, String::new(), 1, 1);
+        assert_eq!(page.total_count, 2);
+        assert_eq!(page.skills.len(), 1);
+        assert_eq!(page.skills[0].slug, "summarize");
     }
 
     #[test]

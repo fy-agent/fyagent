@@ -161,17 +161,21 @@ export function useSkillUpdates(enabled = false) {
     enabled,
   });
 }
-export function useSkillsShSearch(query: string, page: number) {
+export function useSkillHubSearch(
+  query: string,
+  page: number,
+  enabled: boolean,
+) {
   const { ports } = useFeatures();
   return useQuery({
-    queryKey: ["v2", "skills", "skills-sh", query, page],
+    queryKey: ["v2", "skills", "skillhub", query, page],
     queryFn: () =>
-      ports.skills.searchSkillsSh(
+      ports.skills.searchSkillHub(
         query,
         SKILL_DISCOVERY_PAGE_SIZE,
         (page - 1) * SKILL_DISCOVERY_PAGE_SIZE,
       ),
-    enabled: query.length >= 2,
+    enabled,
     placeholderData: keepPreviousData,
   });
 }

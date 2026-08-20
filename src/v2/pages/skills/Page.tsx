@@ -20,19 +20,21 @@ import {
   useInstalledSkills,
   useSkillBackups,
   useSkillDiscoveryPage,
+  useSkillHubSearch,
   useSkillRepos,
-  useSkillsShSearch,
   useSkillUpdates,
   useUnmanagedSkills,
 } from "../../shared/features/queries";
 import {
   createSkillAssignments,
   SKILL_DISCOVERY_PAGE_SIZE,
+  SKILLHUB_MARKET_OWNER,
   SKILL_TARGETS,
   type DiscoverableSkill,
   type InstalledSkill,
   type SkillBackupEntry,
   type SkillDiscoveryStatus,
+  type SkillHubSkill,
   type SkillRepo,
   type SkillTargetId,
 } from "../../shared/features/types";
@@ -73,8 +75,13 @@ function formatSkillTimestamp(value: number): string {
 }
 
 function githubRepoUrl(owner: string, name: string): string | null {
+  if (owner.toLowerCase() === SKILLHUB_MARKET_OWNER) return null;
   if (!/^[\w.-]+$/.test(owner) || !/^[\w.-]+$/.test(name)) return null;
   return `https://github.com/${owner}/${name}`;
+}
+
+function isMarketSkill(skill: DiscoverableSkill): boolean {
+  return skill.repoOwner.toLowerCase() === SKILLHUB_MARKET_OWNER;
 }
 
 function skillRepoKey(skill: { repoOwner: string; repoName: string }): string {
@@ -90,39 +97,58 @@ function skillDirectoryNote(skill: {
     : "";
 }
 
-function skillCardBody(skill: DiscoverableSkill, hideRepo: boolean): string {
+function skillCardBody(skill: DiscoverableSkill): string {
   const description = skill.description.trim();
   if (description) return description;
-  const directoryNote = skillDirectoryNote(skill);
-  if (directoryNote) return directoryNote;
-  return hideRepo ? "" : `来自 ${skillRepoKey(skill)}`;
+  return skillDirectoryNote(skill);
 }
 
 function skillDetailBody(skill: DiscoverableSkill): string {
-  return skillCardBody(skill, false) || "暂无说明";
+  return skillCardBody(skill) || "暂无说明";
 }
 
-function skillDetailMeta(
-  skill: DiscoverableSkill & { installs?: number },
-): string {
-  return [
-    skillRepoKey(skill),
-    typeof skill.installs === "number"
-      ? `${skill.installs.toLocaleString()} 次安装`
-      : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
+type DiscoverySkill = DiscoverableSkill &
+  Partial<
+    Pick<
+      SkillHubSkill,
+      | "slug"
+      | "version"
+      | "ownerName"
+      | "installs"
+      | "downloads"
+      | "homepageUrl"
+    >
+  >;
+
+function skillDetailMeta(skill: DiscoverySkill): string {
+  if (isMarketSkill(skill)) {
+    return [
+      "Skill 市场",
+      skill.slug ?? skill.repoName,
+      skill.ownerName,
+      skill.version ? `v${skill.version}` : null,
+      typeof skill.installs === "number"
+        ? `${skill.installs.toLocaleString()} 次安装`
+        : null,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  }
+  return skillRepoKey(skill);
 }
 
 function skillDocsAction(
-  readmeUrl?: string,
-  repoUrl?: string | null,
-): { url: string; label: "说明" | "仓库" } | null {
-  if (readmeUrl) {
+  skill: DiscoverySkill,
+): { url: string; label: "说明" | "仓库" | "主页" } | null {
+  if (isMarketSkill(skill)) {
+    const url = skill.homepageUrl ?? skill.readmeUrl;
+    return url ? { url, label: "主页" } : null;
+  }
+  const repoUrl = githubRepoUrl(skill.repoOwner, skill.repoName);
+  if (skill.readmeUrl) {
     return {
-      url: readmeUrl,
-      label: /SKILL\.md|\/blob\//i.test(readmeUrl) ? "说明" : "仓库",
+      url: skill.readmeUrl,
+      label: /SKILL\.md|\/blob\//i.test(skill.readmeUrl) ? "说明" : "仓库",
     };
   }
   return repoUrl ? { url: repoUrl, label: "仓库" } : null;
@@ -452,7 +478,7 @@ export function SkillsPage() {
           <h1>Skills</h1>
           <p>
             {tab === "discovery"
-              ? "从仓库或 skills.sh 浏览可安装的 Skills。"
+              ? "从 Skill 市场或已配置仓库浏览可安装的 Skills。"
               : "安装、更新并分配 Skills 到所选应用。"}
           </p>
         </div>
@@ -702,6 +728,10 @@ export function SkillsPage() {
           setDialog={setDialog}
           onInstall={(skill) =>
             write(`${skill.name} 已安装`, async () => {
+              if (isMarketSkill(skill) && "slug" in skill && skill.slug) {
+                await ports.skills.installSkillHub(skill.slug, installTarget);
+                return;
+              }
               await ports.skills.install(skill, installTarget);
             })
           }
@@ -764,22 +794,8 @@ export function SkillsPage() {
   );
 }
 
-function groupSkillsByRepo<T extends { repoOwner: string; repoName: string }>(
-  skills: readonly T[],
-): Array<[string, T[]]> {
-  const groups = new Map<string, T[]>();
-  for (const skill of skills) {
-    const key = skillRepoKey(skill);
-    const current = groups.get(key) ?? [];
-    current.push(skill);
-    groups.set(key, current);
-  }
-  return [...groups.entries()];
-}
-
 function DiscoveryCard({
   busy,
-  hideRepo,
   installLabel,
   isInstalled,
   skill,
@@ -787,25 +803,19 @@ function DiscoveryCard({
   onOpenDetail,
 }: {
   busy: boolean;
-  hideRepo: boolean;
   installLabel: string;
   isInstalled: boolean;
-  skill: DiscoverableSkill & { installs?: number };
-  onInstall: (skill: DiscoverableSkill) => Promise<void>;
-  onOpenDetail: (skill: DiscoverableSkill & { installs?: number }) => void;
+  skill: DiscoverySkill;
+  onInstall: (skill: DiscoverySkill) => Promise<void>;
+  onOpenDetail: (skill: DiscoverySkill) => void;
 }) {
-  const repo = skillRepoKey(skill);
-  const repoUrl = githubRepoUrl(skill.repoOwner, skill.repoName);
-  const body = skillCardBody(skill, hideRepo);
-  const docs = skillDocsAction(skill.readmeUrl, repoUrl);
-  const meta = [
-    hideRepo ? null : repo,
-    typeof skill.installs === "number"
-      ? `${skill.installs.toLocaleString()} 次安装`
-      : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  const body = skillCardBody(skill);
+  const docs = skillDocsAction(skill);
+  const meta = isMarketSkill(skill)
+    ? [skill.version ? `v${skill.version}` : null, skill.ownerName]
+        .filter(Boolean)
+        .join(" · ")
+    : "";
 
   return (
     <article className="fy-feature-card">
@@ -841,19 +851,15 @@ function Discovery({
   installTarget: SkillTargetId;
   busy: boolean;
   setDialog: (name: DialogName) => void;
-  onInstall: (skill: DiscoverableSkill) => Promise<void>;
+  onInstall: (skill: DiscoverySkill) => Promise<void>;
 }) {
-  const [source, setSource] = useState<"repos" | "skillssh">("repos");
+  const [source, setSource] = useState<"market" | "repos">("market");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [repoFilter, setRepoFilter] = useState("all");
   const [status, setStatus] = useState<SkillDiscoveryStatus>("all");
-  const [skillsShInput, setSkillsShInput] = useState("");
-  const [skillsShQuery, setSkillsShQuery] = useState("");
   const [page, setPage] = useState(1);
-  const [detailSkill, setDetailSkill] = useState<
-    (DiscoverableSkill & { installs?: number }) | null
-  >(null);
+  const [detailSkill, setDetailSkill] = useState<DiscoverySkill | null>(null);
   const resultsTop = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -887,72 +893,47 @@ function Discovery({
     page,
     source === "repos",
   );
-  const skillsSh = useSkillsShSearch(skillsShQuery, page);
+  const market = useSkillHubSearch(discoveryQuery, page, source === "market");
   const installedItems = useMemo(() => installed.data ?? [], [installed.data]);
   const repoSkills = discovery.data?.skills ?? [];
   const repoTotalCount = discovery.data?.totalCount ?? repoSkills.length;
-  const skillsShTotalCount = skillsSh.data?.totalCount ?? 0;
-  const totalCount = source === "repos" ? repoTotalCount : skillsShTotalCount;
+  const marketSkills = market.data?.skills ?? [];
+  const marketTotalCount = market.data?.totalCount ?? marketSkills.length;
+  const totalCount = source === "repos" ? repoTotalCount : marketTotalCount;
   const totalPages = Math.max(
     1,
     Math.ceil(totalCount / SKILL_DISCOVERY_PAGE_SIZE),
   );
-  const skills =
-    source === "repos"
-      ? repoSkills
-      : (skillsSh.data?.skills ?? []).map((skill) => ({
-          ...skill,
-          description: "",
-        }));
+  const skills: DiscoverySkill[] =
+    source === "repos" ? repoSkills : marketSkills;
   const installLabel =
     SKILL_TARGETS.find((app) => app.id === installTarget)?.label ??
     "Claude Code";
-  const groupedSkills = groupSkillsByRepo(skills);
   const resultSummary =
     source === "repos"
       ? `${skills.length} / ${repoTotalCount} 个 Skill · 将安装到 ${installLabel}`
-      : `skills.sh · ${skills.length} / ${skillsSh.data?.totalCount ?? skills.length} · 将安装到 ${installLabel}`;
+      : `Skill 市场 · ${skills.length} / ${marketTotalCount} · 将安装到 ${installLabel}`;
   const goToPage = (next: number) => {
     setPage(next);
     resultsTop.current?.scrollIntoView?.({ block: "start" });
   };
   return (
     <section className="fy-feature-workspace" ref={resultsTop}>
-      {source === "repos" ? (
-        <div className="fy-feature-toolbar">
-          <FeatureSearch
-            ariaLabel="搜索仓库 Skills"
-            placeholder="搜索 Skill 或仓库"
-            value={search}
-            onValueChange={(value) => {
-              setSearch(value);
-              setPage(1);
-            }}
-          />
-        </div>
-      ) : (
-        <form
-          className="fy-feature-toolbar"
-          onSubmit={(event) => {
-            event.preventDefault();
-            const query = skillsShInput.trim();
-            if (query.length >= 2) {
-              setSkillsShQuery(query);
-              setPage(1);
-            }
+      <div className="fy-feature-toolbar">
+        <FeatureSearch
+          ariaLabel={
+            source === "market" ? "搜索 Skill 市场" : "搜索仓库 Skills"
+          }
+          placeholder={
+            source === "market" ? "搜索 Skill 名称或用途" : "搜索 Skill 或仓库"
+          }
+          value={search}
+          onValueChange={(value) => {
+            setSearch(value);
+            setPage(1);
           }}
-        >
-          <FeatureSearch
-            ariaLabel="搜索 skills.sh"
-            placeholder="至少输入 2 个字符"
-            value={skillsShInput}
-            onValueChange={setSkillsShInput}
-          />
-          <Button type="submit" disabled={skillsShInput.trim().length < 2}>
-            搜索
-          </Button>
-        </form>
-      )}
+        />
+      </div>
       <div className="fy-feature-toolbar">
         <FeatureTabs
           id="skills-discovery-source-tabs"
@@ -963,8 +944,8 @@ function Discovery({
             setPage(1);
           }}
           options={[
+            { id: "market", label: "Skill 市场" },
             { id: "repos", label: "仓库" },
-            { id: "skillssh", label: "skills.sh" },
           ]}
         />
         {source === "repos" && (
@@ -1016,14 +997,12 @@ function Discovery({
           {errorMessage(repos.error)}
         </InlineNotice>
       )}
-      {source === "skillssh" &&
-        skillsSh.error &&
-        skillsSh.data !== undefined && (
-          <InlineNotice tone="error">
-            skills.sh 刷新失败，正在显示上一次成功数据：
-            {errorMessage(skillsSh.error)}
-          </InlineNotice>
-        )}
+      {source === "market" && market.error && market.data !== undefined && (
+        <InlineNotice tone="error">
+          Skill 市场刷新失败，正在显示上一次成功数据：
+          {errorMessage(market.error)}
+        </InlineNotice>
+      )}
       {installed.error && installed.data === undefined ? (
         <EmptyState
           title="无法加载已安装 Skills"
@@ -1048,24 +1027,19 @@ function Discovery({
             <Button onClick={() => void discovery.refetch()}>重试</Button>
           }
         />
-      ) : source === "skillssh" &&
-        skillsSh.error &&
-        skillsSh.data === undefined ? (
+      ) : source === "market" && market.error && market.data === undefined ? (
         <EmptyState
-          title="skills.sh 搜索失败"
-          description={errorMessage(skillsSh.error)}
-          actions={
-            <Button onClick={() => void skillsSh.refetch()}>重试</Button>
-          }
+          title="Skill 市场搜索失败"
+          description={errorMessage(market.error)}
+          actions={<Button onClick={() => void market.refetch()}>重试</Button>}
         />
       ) : (installed.data === undefined && installed.isPending) ||
         (source === "repos" &&
           ((discovery.data === undefined && discovery.isPending) ||
             (repos.data === undefined && repos.isPending))) ||
-        (source === "skillssh" &&
-          skillsShQuery.length >= 2 &&
-          skillsSh.data === undefined &&
-          skillsSh.isPending) ? (
+        (source === "market" &&
+          market.data === undefined &&
+          market.isPending) ? (
         <EmptyState title="正在加载发现内容" description="请稍候">
           <Spinner />
         </EmptyState>
@@ -1074,17 +1048,17 @@ function Discovery({
         repos.data.length === 0 ? (
         <EmptyState
           title="尚未配置仓库"
-          description="留在仓库来源，可添加仓库或明确切换到 skills.sh"
+          description="留在仓库来源，可添加仓库或明确切换到 Skill 市场"
           actions={
             <>
               <Button onClick={() => setDialog("repos")}>添加仓库</Button>{" "}
               <Button
                 onClick={() => {
-                  setSource("skillssh");
+                  setSource("market");
                   setPage(1);
                 }}
               >
-                切换到 skills.sh
+                切换到 Skill 市场
               </Button>
             </>
           }
@@ -1092,52 +1066,30 @@ function Discovery({
       ) : skills.length === 0 ? (
         <EmptyState
           title="没有发现结果"
-          description={
-            source === "skillssh" && skillsShQuery.length < 2
-              ? "输入至少两个字符开始搜索"
-              : "当前来源或筛选条件下没有结果"
-          }
+          description="当前来源或筛选条件下没有结果"
         />
       ) : (
         <div className="fy-feature-discovery-scroll" aria-label="可发现 Skills">
           <p className="fy-feature-description">{resultSummary}</p>
-          {groupedSkills.map(([repo, items]) => {
-            const showHeading = items.length > 1;
-            return (
-              <section key={repo} aria-label={repo}>
-                {showHeading ? (
-                  <h3>
-                    {repo} · {items.length}
-                  </h3>
-                ) : null}
-                <div className="fy-feature-grid">
-                  {items.map((skill) => (
-                    <DiscoveryCard
-                      key={skill.key}
-                      busy={busy}
-                      hideRepo={showHeading}
-                      installLabel={installLabel}
-                      isInstalled={isDiscoverableInstalled(
-                        skill,
-                        installedItems,
-                      )}
-                      skill={skill}
-                      onInstall={onInstall}
-                      onOpenDetail={setDetailSkill}
-                    />
-                  ))}
-                </div>
-              </section>
-            );
-          })}
+          <div className="fy-feature-grid">
+            {skills.map((skill) => (
+              <DiscoveryCard
+                key={skill.key}
+                busy={busy}
+                installLabel={installLabel}
+                isInstalled={isDiscoverableInstalled(skill, installedItems)}
+                skill={skill}
+                onInstall={onInstall}
+                onOpenDetail={setDetailSkill}
+              />
+            ))}
+          </div>
         </div>
       )}
       <FeaturePagination
         page={page}
         totalPages={totalPages}
-        ariaLabel={
-          source === "skillssh" ? "skills.sh 分页" : "仓库 Skills 分页"
-        }
+        ariaLabel={source === "market" ? "Skill 市场分页" : "仓库 Skills 分页"}
         onPageChange={goToPage}
       />
       {detailSkill ? (

@@ -1,5 +1,6 @@
 import { mcpUrlSearchToken, redactMcpArgs } from "./mcpSecurity";
 import {
+  SKILLHUB_MARKET_OWNER,
   SKILL_TARGET_IDS,
   type DiscoverableSkill,
   type InstalledSkill,
@@ -159,14 +160,22 @@ export function isDiscoverableInstalled(
   discoverable: DiscoverableSkill,
   installed: readonly InstalledSkill[],
 ): boolean {
+  const owner = discoverable.repoOwner.toLowerCase();
+  const name = discoverable.repoName.toLowerCase();
+  if (owner === SKILLHUB_MARKET_OWNER) {
+    return installed.some(
+      (skill) =>
+        skill.id.toLowerCase() === `skillhub:${name}` ||
+        ((skill.repoOwner ?? "").toLowerCase() === SKILLHUB_MARKET_OWNER &&
+          (skill.repoName ?? "").toLowerCase() === name),
+    );
+  }
   const tail = directoryTail(discoverable.directory);
   return installed.some(
     (skill) =>
       directoryTail(skill.directory) === tail &&
-      (skill.repoOwner ?? "").toLowerCase() ===
-        discoverable.repoOwner.toLowerCase() &&
-      (skill.repoName ?? "").toLowerCase() ===
-        discoverable.repoName.toLowerCase(),
+      (skill.repoOwner ?? "").toLowerCase() === owner &&
+      (skill.repoName ?? "").toLowerCase() === name,
   );
 }
 

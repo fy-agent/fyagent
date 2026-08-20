@@ -18,7 +18,7 @@ import type {
   SkillBackupEntry,
   SkillMigrationResult,
   SkillRepo,
-  SkillsShSearchResult,
+  SkillHubSearchResult,
   SkillUpdateInfo,
   McpTargetId,
   SkillTargetId,
@@ -166,11 +166,15 @@ export interface SkillsPort {
   checkUpdates(): Promise<SkillUpdateInfo[]>;
   update(id: string): Promise<InstalledSkill>;
   migrateStorage(target: "fyagent" | "unified"): Promise<SkillMigrationResult>;
-  searchSkillsSh(
+  searchSkillHub(
     query: string,
     limit: number,
     offset: number,
-  ): Promise<SkillsShSearchResult>;
+  ): Promise<SkillHubSearchResult>;
+  installSkillHub(
+    slug: string,
+    currentApp: SkillTargetId,
+  ): Promise<InstalledSkill[]>;
   getRepos(): Promise<SkillRepo[]>;
   addRepo(repo: SkillRepo): Promise<boolean>;
   removeRepo(owner: string, name: string): Promise<boolean>;
