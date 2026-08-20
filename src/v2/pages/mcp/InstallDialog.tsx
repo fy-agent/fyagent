@@ -5,6 +5,14 @@ import type {
   McpInstallField,
   McpInstallValues,
 } from "./catalog";
+import { mcpInstallDestination } from "../../shared/features/helpers";
+import { currentMcpLaunchPlatform } from "../../shared/features/mcpLaunch";
+import { MCP_TARGETS, type McpTargetId } from "../../shared/features/types";
+import { AssignmentPanel } from "../../shared/ui/AssignmentPanel";
+import {
+  InstallPathPreview,
+  skillTargetLabel,
+} from "../../shared/ui/InstallTargetDialog";
 import {
   Button,
   Checkbox,
@@ -12,9 +20,6 @@ import {
   InlineNotice,
   Input,
 } from "../../shared/ui/primitives";
-import { AssignmentPanel } from "../../shared/ui/AssignmentPanel";
-import { skillTargetLabel } from "../../shared/ui/InstallTargetDialog";
-import { MCP_TARGETS, type McpTargetId } from "../../shared/features/types";
 
 function emptyValues(fields: readonly McpInstallField[]): McpInstallValues {
   return Object.fromEntries(
@@ -53,10 +58,25 @@ export function InstallDialog({
   const [values, setValues] = useState(() => emptyValues(item.fields));
   const [chosenTarget, setChosenTarget] = useState(defaultTarget);
   const [error, setError] = useState<string | null>(null);
+  const [step, setStep] = useState<"form" | "path">("form");
+  const picking = step === "form";
+  const platform = currentMcpLaunchPlatform();
 
   const setField = (key: string, value: string | string[]) => {
     setValues((current) => ({ ...current, [key]: value }));
     setError(null);
+  };
+
+  const goToPath = () => {
+    const missing = item.fields.find(
+      (field) => field.required && fieldValueEmpty(values[field.key]),
+    );
+    if (missing) {
+      setError(`请填写 ${missing.label}`);
+      return;
+    }
+    setError(null);
+    setStep("path");
   };
 
   const submit = () => {
@@ -74,51 +94,81 @@ export function InstallDialog({
         if (!next && !busy) onClose();
       }}
       title={overwrite ? `重新配置 ${item.name}` : `安装 ${item.name}`}
-      description="只需填写业务参数。底层启动命令不会显示在此窗口。"
+      description={
+        picking
+          ? "只需填写业务参数。底层启动命令不会显示在此窗口。"
+          : `将安装到 ${skillTargetLabel(chosenTarget)}。确认路径后再写入。`
+      }
       actions={
-        <>
-          <Button onClick={onClose} disabled={busy}>
-            取消
-          </Button>
-          <Button
-            className="fy-control-button-primary"
-            onClick={submit}
-            disabled={busy}
-          >
-            {busy
-              ? "安装中…"
-              : `${overwrite ? "覆盖并安装到" : "安装到"} ${skillTargetLabel(chosenTarget)}`}
-          </Button>
-        </>
+        picking ? (
+          <>
+            <Button onClick={onClose} disabled={busy}>
+              取消
+            </Button>
+            <Button
+              className="fy-control-button-primary"
+              onClick={goToPath}
+              disabled={busy}
+            >
+              下一步
+            </Button>
+          </>
+        ) : (
+          <>
+            <Button disabled={busy} onClick={() => setStep("form")}>
+              返回
+            </Button>
+            <Button
+              className="fy-control-button-primary"
+              onClick={submit}
+              disabled={busy}
+            >
+              {busy ? "安装中…" : overwrite ? "确认覆盖安装" : "确认安装"}
+            </Button>
+          </>
+        )
       }
     >
       {error && <InlineNotice tone="error">{error}</InlineNotice>}
-      <p className="fy-feature-description">
-        {requirementLabel(item)} · 认证：{item.authLabel}
-      </p>
-      {item.risk && <InlineNotice tone="warning">{item.risk}</InlineNotice>}
-      <div className="fy-feature-form-grid">
-        {item.fields.map((field) => (
-          <InstallFieldInput
-            key={field.key}
-            field={field}
-            value={values[field.key]}
-            onChange={(value) => setField(field.key, value)}
-          />
-        ))}
-        <div className="fy-feature-form-span">
-          <AssignmentPanel
-            mode="radio"
-            ariaLabel="安装目标"
-            disabled={busy}
-            onChange={setChosenTarget}
-            targets={MCP_TARGETS}
-            value={chosenTarget}
-          />
-        </div>
-      </div>
+      {picking ? (
+        <>
+          <p className="fy-feature-description">
+            {requirementLabel(item)} · 认证：{item.authLabel}
+          </p>
+          {item.risk && <InlineNotice tone="warning">{item.risk}</InlineNotice>}
+          <div className="fy-feature-form-grid">
+            {item.fields.map((field) => (
+              <InstallFieldInput
+                key={field.key}
+                field={field}
+                value={values[field.key]}
+                onChange={(value) => setField(field.key, value)}
+              />
+            ))}
+            <div className="fy-feature-form-span">
+              <AssignmentPanel
+                mode="radio"
+                ariaLabel="安装目标"
+                disabled={busy}
+                onChange={setChosenTarget}
+                targets={MCP_TARGETS}
+                value={chosenTarget}
+              />
+            </div>
+          </div>
+        </>
+      ) : (
+        <InstallPathPreview
+          path={mcpInstallDestination(chosenTarget, platform)}
+        />
+      )}
     </Dialog>
   );
+}
+
+function fieldValueEmpty(value: string | string[] | undefined): boolean {
+  if (Array.isArray(value)) return value.length === 0;
+  return !value?.trim();
 }
 
 function InstallFieldInput({

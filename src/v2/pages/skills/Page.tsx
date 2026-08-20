@@ -8,6 +8,7 @@ import {
   errorMessage,
   isDiscoverableInstalled,
   runSequentialBulk,
+  skillInstallDestination,
   skillInstallPath,
   supportedFoundIn,
   UserFacingError,
@@ -261,7 +262,10 @@ function Detail({
             )}
             <dt>安装目录</dt>
             <dd>
-              <CopyablePath revealValue={false} value={skillInstallPath(skill)} />
+              <CopyablePath
+                revealValue={false}
+                value={skillInstallPath(skill)}
+              />
             </dd>
           </dl>
           {(repoUrl || skill.readmeUrl) && (
@@ -714,6 +718,8 @@ export function SkillsPage() {
           title="从 ZIP 安装"
           busy={busy}
           defaultTarget={installTarget}
+          pathForTarget={(target) => skillInstallDestination(target)}
+          pathNote="具体文件夹名由 ZIP 内的 Skill 决定。"
           onCancel={() => setPendingZipPath(null)}
           onConfirm={(target) => {
             const path = pendingZipPath;
@@ -956,6 +962,14 @@ function Discovery({
           title={`安装 ${pendingSkill.name}`}
           busy={busy}
           defaultTarget={defaultTarget}
+          pathForTarget={(target) =>
+            skillInstallDestination(
+              target,
+              pendingSkill.directory ||
+                pendingSkill.slug ||
+                pendingSkill.repoName,
+            )
+          }
           onCancel={() => setPendingSkill(null)}
           onConfirm={(target) => {
             const skill = pendingSkill;

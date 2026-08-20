@@ -5,7 +5,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import userEvent, { type UserEvent } from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { McpPage } from "@/v2/pages/mcp/Page";
@@ -33,6 +33,20 @@ function appearsBefore(first: HTMLElement, second: HTMLElement) {
 
 function renderFeature(page: React.ReactNode, ports: FeaturePorts) {
   return render(<FeatureProvider ports={ports}>{page}</FeatureProvider>);
+}
+
+async function confirmInstallPath(
+  user: UserEvent,
+  dialog: HTMLElement,
+  path: string,
+  confirmName = "确认安装",
+) {
+  await user.click(within(dialog).getByRole("button", { name: "下一步" }));
+  expect(dialog).toHaveTextContent(path);
+  expect(
+    within(dialog).queryByRole("radiogroup", { name: "安装目标" }),
+  ).not.toBeInTheDocument();
+  await user.click(within(dialog).getByRole("button", { name: confirmName }));
 }
 
 function installedSkill(id: string, name: string): InstalledSkill {
@@ -425,9 +439,10 @@ describe("V2 MCP management", () => {
         .map((option) => option.textContent?.replace(/\s+/g, " ").trim()),
     ).toEqual(MCP_TARGETS.map((app) => app.label));
     await user.click(within(picker).getByRole("radio", { name: "WorkBuddy" }));
-    await user.click(
-      within(picker).getByRole("button", { name: "安装到 WorkBuddy" }),
-    );
+    await user.click(within(picker).getByRole("button", { name: "下一步" }));
+    expect(upsert).not.toHaveBeenCalled();
+    expect(picker).toHaveTextContent("~/.workbuddy/mcp.json");
+    await user.click(within(picker).getByRole("button", { name: "确认安装" }));
 
     await waitFor(() => expect(upsert).toHaveBeenCalledTimes(1));
     expect(upsert.mock.calls[0]?.[0]).toMatchObject({
@@ -500,8 +515,11 @@ describe("V2 MCP management", () => {
     const picker = await screen.findByRole("dialog", {
       name: "重新配置 Time",
     });
-    await user.click(
-      within(picker).getByRole("button", { name: "覆盖并安装到 Claude Code" }),
+    await confirmInstallPath(
+      user,
+      picker,
+      "~/.claude.json",
+      "确认覆盖安装",
     );
     await waitFor(() =>
       expect(upsert).toHaveBeenCalledWith(
@@ -547,9 +565,7 @@ describe("V2 MCP management", () => {
       within(dialog).getByLabelText(/API Key/),
       "amap-query-secret",
     );
-    await user.click(
-      within(dialog).getByRole("button", { name: "安装到 Claude Code" }),
-    );
+    await confirmInstallPath(user, dialog, "~/.claude.json");
     await waitFor(() =>
       expect(upsert).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -593,9 +609,7 @@ describe("V2 MCP management", () => {
     const picker = await screen.findByRole("dialog", {
       name: "安装 AntV 图表 MCP",
     });
-    await user.click(
-      within(picker).getByRole("button", { name: "安装到 Claude Code" }),
-    );
+    await confirmInstallPath(user, picker, "~/.claude.json");
 
     await waitFor(() => expect(upsert).toHaveBeenCalledTimes(1));
     const installed = upsert.mock.calls[0]?.[0];
@@ -921,8 +935,10 @@ describe("V2 Skills management", () => {
     const picker = await screen.findByRole("dialog", {
       name: "安装 Review Skill",
     });
-    await user.click(
-      within(picker).getByRole("button", { name: "安装到 Claude Code" }),
+    await confirmInstallPath(
+      user,
+      picker,
+      "~/.claude/skills/review-skill",
     );
     await waitFor(() => expect(install).toBeDisabled());
     fireEvent.click(install);
@@ -963,10 +979,10 @@ describe("V2 Skills management", () => {
     await screen.findByText("还没有安装 Skill");
     await user.click(screen.getByRole("tab", { name: "发现" }));
     await user.click(await screen.findByRole("button", { name: "安装" }));
-    await user.click(
-      within(
-        await screen.findByRole("dialog", { name: "安装 Review Skill" }),
-      ).getByRole("button", { name: "安装到 Claude Code" }),
+    await confirmInstallPath(
+      user,
+      await screen.findByRole("dialog", { name: "安装 Review Skill" }),
+      "~/.claude/skills/review-skill",
     );
 
     expect(await screen.findByText("请稍后重试。")).toBeVisible();
@@ -1057,8 +1073,17 @@ describe("V2 Skills management", () => {
       picker.querySelectorAll("img.fy-feature-assignment-icon"),
     ).toHaveLength(SKILL_TARGETS.length);
     await user.click(within(picker).getByRole("radio", { name: "WorkBuddy" }));
-    await user.click(
-      within(picker).getByRole("button", { name: "安装到 WorkBuddy" }),
+    await user.click(within(picker).getByRole("button", { name: "下一步" }));
+    expect(installSkillHub).not.toHaveBeenCalled();
+    expect(picker).toHaveTextContent("~/.workbuddy/skills/review-skill");
+    await user.click(within(picker).getByRole("button", { name: "返回" }));
+    expect(
+      within(picker).getByRole("radiogroup", { name: "安装目标" }),
+    ).toBeVisible();
+    await confirmInstallPath(
+      user,
+      picker,
+      "~/.workbuddy/skills/review-skill",
     );
     await waitFor(() =>
       expect(installSkillHub).toHaveBeenCalledWith("review-skill", "workbuddy"),
@@ -1180,10 +1205,10 @@ describe("V2 Skills management", () => {
     await user.click(
       within(article as HTMLElement).getByRole("button", { name: "安装" }),
     );
-    await user.click(
-      within(
-        await screen.findByRole("dialog", { name: "安装 腾讯文档" }),
-      ).getByRole("button", { name: "安装到 Claude Code" }),
+    await confirmInstallPath(
+      user,
+      await screen.findByRole("dialog", { name: "安装 腾讯文档" }),
+      "~/.claude/skills/tencent-docs",
     );
     await waitFor(() =>
       expect(installSkillHub).toHaveBeenCalledWith("tencent-docs", "claude"),
@@ -1402,9 +1427,11 @@ describe("V2 Skills management", () => {
         .map((option) => option.textContent?.replace(/\s+/g, " ").trim()),
     ).toEqual(SKILL_TARGETS.map((app) => app.label));
     await user.click(within(picker).getByRole("radio", { name: "WorkBuddy" }));
-    await user.click(
-      within(picker).getByRole("button", { name: "安装到 WorkBuddy" }),
-    );
+    await user.click(within(picker).getByRole("button", { name: "下一步" }));
+    expect(installFromZip).not.toHaveBeenCalled();
+    expect(picker).toHaveTextContent("~/.workbuddy/skills");
+    expect(picker).toHaveTextContent("具体文件夹名由 ZIP 内的 Skill 决定。");
+    await user.click(within(picker).getByRole("button", { name: "确认安装" }));
     await waitFor(() =>
       expect(installFromZip).toHaveBeenCalledWith(
         "C:/skills/review.zip",

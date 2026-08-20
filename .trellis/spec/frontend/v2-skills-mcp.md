@@ -78,6 +78,15 @@ const skillTargetIconById: Record<SkillTargetId, string>;
 function getSupportedAppIcon(id: McpTargetId): string;
 function getSkillTargetIcon(id: SkillTargetId): string;
 
+function skillInstallDestination(
+  target: SkillTargetId,
+  directory?: string,
+): string;
+function mcpInstallDestination(
+  target: SkillTargetId,
+  platform?: McpLaunchPlatform,
+): string;
+
 interface SkillsPort {
   getInstalled(): Promise<InstalledSkill[]>;
   getBackups(): Promise<SkillBackupEntry[]>;
@@ -346,11 +355,18 @@ function ExternalLinkButton(props: {
   the target before `installSkillHub`. That picker is the shared
   `InstallTargetDialog`, which wraps `AssignmentPanel`
   `mode="radio"` (`aria-label="安装目标"`), not a page-local
-  `InstallTargetPicker`. MCP discovery **安装** and **重新配置** (zero-config)
+  `InstallTargetPicker`. After the user picks a target, **下一步** shows the
+  official destination from `skillInstallDestination` /
+  `mcpInstallDestination` (`InstallPathPreview`); **确认安装** (overwrite:
+  **确认覆盖安装**) is the only control that writes. **返回** goes back to
+  the radio without calling the host. Do not use `ConfirmDialog` for this
+  path step. MCP discovery **安装** and **重新配置** (zero-config)
   reuse that same dialog and write a single chosen `McpTargetId`; they do not
   install onto `DEFAULT_NEW_APPS`. MCP **配置并安装** keeps credential fields
   in `InstallDialog` and uses the same `AssignmentPanel mode="radio"` for the
-  Agent target. ZIP install and backup restore reuse the same radio
+  Agent target, then the same path preview before `upsert`. ZIP install
+  shows the target skills root plus a note that the folder name comes from
+  the archive. Backup restore reuses the same radio
   panel (`aria-label="恢复目标"` on restore). Unmanaged import uses the same
   component in switch mode, not `fy-feature-check-grid`. Installed assignment
   (narrow and wide panes) is the same component in switch mode. New-MCP editor
@@ -457,12 +473,15 @@ function ExternalLinkButton(props: {
   reuses shared `InstallTargetDialog` → `AssignmentPanel`
   `mode="radio"` (`aria-label="安装目标"`) for the
   seven catalog targets with decorative icons (`alt=""`, `aria-hidden="true"`)
-  and labels. Confirm with **安装到 {label}**. MCP discovery one-click
-  **安装** and overwrite **重新配置** use that same dialog (`覆盖并安装到
-  {label}` on overwrite) and persist only the chosen target. MCP
+  and labels. **下一步** then shows the destination path; confirm with
+  **确认安装**. MCP discovery one-click
+  **安装** and overwrite **重新配置** use that same dialog (**确认覆盖安装**
+  on overwrite) and persist only the chosen target. MCP
   **配置并安装** keeps field checkboxes for recipe options, but Agent target
-  selection is the same radio panel, not `fy-feature-check-grid`. ZIP install
-  opens the same Dialog chrome (`从 ZIP 安装`) after a file is chosen. Backup
+  selection is the same radio panel, not `fy-feature-check-grid`, and must
+  show `mcpInstallDestination` before `upsert`. ZIP install
+  opens the same Dialog chrome (`从 ZIP 安装`) after a file is chosen and
+  previews the skills root. Backup
   restore keeps
   `AssignmentPanel mode="radio"` (`aria-label="恢复目标"`) in the backups
   Dialog. Unmanaged import uses switch mode on each selected Skill. Do not add
@@ -579,6 +598,7 @@ function ExternalLinkButton(props: {
 | WorkBuddy MCP writes `.mcp.json` as canonical                    | Host test fails; official live file is `mcp.json`                         |
 | QoderWork CN Skill dest is `.qoderwork/skills`                   | Host test fails; CN product dest is `.qoderworkcn/skills`                 |
 | MCP discovery one-click installs `DEFAULT_NEW_APPS` with no dialog | Page test fails; reuse shared `InstallTargetDialog` for one target      |
+| Skill/MCP install writes after picking a target, before path confirm | Page test fails; **下一步** must show the destination; host waits for **确认安装** |
 | MCP/Skills assignment order is alphabetical or Claude-first      | Page/component test fails; order must match Agent catalog                 |
 | `.fy-feature-list` is restored to CSS Grid                       | List rows overlap because `SelectionLens` occupies a grid track           |
 | A supported app is missing from the local icon map               | Type/asset test fails; never render a remote fallback or broken image     |
@@ -631,9 +651,11 @@ function ExternalLinkButton(props: {
   download + `install_from_zip`), never GitHub archive and never the
   `skillhub` CLI. There are no source tabs, no **管理仓库**, and no
   `Skill 市场 · n / m` summary. Clicking **安装** opens a Dialog that reuses
-  `AssignmentPanel mode="radio"` (icon + name) before `installSkillHub`.
+  `AssignmentPanel mode="radio"` (icon + name), then a path preview, before
+  `installSkillHub`.
   MCP discovery one-click **安装** uses the same shared `InstallTargetDialog`
-  and writes only the chosen target. ZIP install and backup restore reuse that
+  and writes only the chosen target after **确认安装**. ZIP install and backup
+  restore reuse that
   radio panel. Unmanaged import
   uses switch mode. Installed assignment uses the same component in switch
   mode. New-MCP editor assignment uses switch mode, not a checkbox grid. All
@@ -714,7 +736,9 @@ git diff --check
   catalog order, Discover/docs and
   Skill repo clicks through `ExternalLinkButton` → `settings.openExternal`,
   discovery install Dialog targets in that same catalog order (icon + name)
-  via shared `InstallTargetDialog` / `AssignmentPanel mode="radio"`, MCP
+  via shared `InstallTargetDialog` / `AssignmentPanel mode="radio"`, path
+  preview from `skillInstallDestination` / `mcpInstallDestination` before the
+  host write, MCP
   discovery one-click persisting only the chosen target, WorkBuddy install or
   new assignment showing the connector-trust `Dialog`, MCP config-install
   Agent radio (not `fy-feature-check-grid`), ZIP and restore radio pickers, unmanaged
@@ -1008,6 +1032,7 @@ target. MCP discovery one-click uses the same dialog.
   title={`安装 ${name}`}
   busy={busy}
   defaultTarget={installTarget}
+  pathForTarget={(target) => skillInstallDestination(target, directory)}
   onCancel={onCancel}
   onConfirm={onConfirm}
 />

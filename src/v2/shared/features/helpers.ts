@@ -1,3 +1,4 @@
+import { currentMcpLaunchPlatform, type McpLaunchPlatform } from "./mcpLaunch";
 import { mcpUrlSearchToken, redactMcpArgs } from "./mcpSecurity";
 import {
   SKILLHUB_MARKET_OWNER,
@@ -83,6 +84,49 @@ export function skillInstallPath(
 ): string {
   const path = skill.path?.trim();
   return path ? path : skill.directory;
+}
+
+const SKILL_DESTINATION_ROOT = {
+  qoderwork: "~/.qoderworkcn/skills",
+  "trae-work": "~/.trae-cn/skills",
+  workbuddy: "~/.workbuddy/skills",
+  grokbuild: "~/.grok/skills",
+  codex: "~/.codex/skills",
+  claude: "~/.claude/skills",
+  opencode: "~/.config/opencode/skills",
+} as const satisfies Record<SkillTargetId, string>;
+
+export function skillInstallDestination(
+  target: SkillTargetId,
+  directory?: string,
+): string {
+  const root = SKILL_DESTINATION_ROOT[target];
+  const name = directory?.trim().replace(/^[/\\]+|[/\\]+$/g, "");
+  return name ? `${root}/${name}` : root;
+}
+
+export function mcpInstallDestination(
+  target: SkillTargetId,
+  platform: McpLaunchPlatform = currentMcpLaunchPlatform(),
+): string {
+  switch (target) {
+    case "qoderwork":
+      return "~/.qoderworkcn/mcp.json";
+    case "trae-work":
+      return platform === "windows"
+        ? "%APPDATA%\\TRAE SOLO CN\\User\\mcp.json"
+        : "~/Library/Application Support/TRAE SOLO CN/User/mcp.json";
+    case "workbuddy":
+      return "~/.workbuddy/mcp.json";
+    case "grokbuild":
+      return "~/.grok/config.toml";
+    case "codex":
+      return "~/.codex/config.toml";
+    case "claude":
+      return "~/.claude.json";
+    case "opencode":
+      return "~/.config/opencode/opencode.json";
+  }
 }
 
 export function mcpInstallDirectory(

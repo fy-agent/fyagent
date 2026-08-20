@@ -4,16 +4,19 @@ import {
   buildMcpSearchText,
   convergeSelection,
   isDiscoverableInstalled,
+  mcpInstallDestination,
   mcpInstallDirectory,
   overlayKnownMcpFields,
   parseAdvancedServerJson,
   parseKeyValueLines,
   runSequentialBulk,
   sanitizeMcpConfigurationError,
+  skillInstallDestination,
   skillInstallPath,
 } from "@/v2/shared/features/helpers";
 import {
   createAssignments,
+  SKILL_TARGET_IDS,
   type DiscoverableSkill,
   type InstalledSkill,
   type McpServer,
@@ -123,6 +126,37 @@ describe("V2 feature helpers", () => {
     expect(order).toEqual(["a", "b", "c"]);
     expect(result.successes).toEqual(["a", "c"]);
     expect(result.failures).toEqual([{ id: "b", error: "请稍后重试。" }]);
+  });
+
+  it("names official Skill and MCP destinations before install", () => {
+    expect(
+      SKILL_TARGET_IDS.map((target) => skillInstallDestination(target)),
+    ).toEqual([
+      "~/.qoderworkcn/skills",
+      "~/.trae-cn/skills",
+      "~/.workbuddy/skills",
+      "~/.grok/skills",
+      "~/.codex/skills",
+      "~/.claude/skills",
+      "~/.config/opencode/skills",
+    ]);
+    expect(skillInstallDestination("claude", "review-skill")).toBe(
+      "~/.claude/skills/review-skill",
+    );
+    expect(
+      SKILL_TARGET_IDS.map((target) => mcpInstallDestination(target, "macos")),
+    ).toEqual([
+      "~/.qoderworkcn/mcp.json",
+      "~/Library/Application Support/TRAE SOLO CN/User/mcp.json",
+      "~/.workbuddy/mcp.json",
+      "~/.grok/config.toml",
+      "~/.codex/config.toml",
+      "~/.claude.json",
+      "~/.config/opencode/opencode.json",
+    ]);
+    expect(mcpInstallDestination("trae-work", "windows")).toBe(
+      "%APPDATA%\\TRAE SOLO CN\\User\\mcp.json",
+    );
   });
 
   it("prefers the resolved Skill install path over the directory name", () => {

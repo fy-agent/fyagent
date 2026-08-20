@@ -188,7 +188,8 @@ lists, Skills vs MCP, Prompts vs Memory, and TRAE vs OpenCode model panels.
   editor mode, Skills discovery first-level categories, MCP discover
   install-kind) use `FeatureTabs`. Skills install, restore, and ZIP targets
   are `AssignmentPanel mode="radio"` in a Dialog, not header tabs. MCP
-  discovery one-click install uses the same shared `InstallTargetDialog`.
+  discovery one-click install uses the same shared `InstallTargetDialog`
+  (`pathForTarget` + **下一步** / **确认安装**).
   Do not
   hand-roll `SelectionLensTrack` + `fy-feature-tab` on those pages.
 - Management-list search uses `FeatureSearch` (`role="search"`, Escape and
@@ -240,6 +241,7 @@ already share `modelsShared`, `modelChips`, and `feedback`. Do not add
 | V2 imports leftover `src/components` or `src/lib`                                                    | Architecture test fails                                                  |
 | Skills install picker is not `AssignmentPanel mode="radio"`                                          | Reuse test / page test fails; extend `AssignmentPanel`                   |
 | MCP discovery Agent picker is a checkbox grid or defaults to `DEFAULT_NEW_APPS`                      | Page test fails; reuse shared `InstallTargetDialog`                      |
+| Skill/MCP install writes on **安装到 {label}** without showing the destination                       | Page test fails; **下一步** then **确认安装** after `InstallPathPreview` |
 | Skills import assignment is a page-local checkbox grid                                               | Reuse test fails; use `AssignmentPanel` switch rows                      |
 | A page-local Agent/Skills/MCP/Models/Prompts order table                                             | Reject; extend `PRODUCT_DIRECTORY`                                       |
 | New chrome used by two routes is added under `pages/<route>/`                                        | Move it to `shared/ui` before merge                                      |
@@ -257,7 +259,8 @@ already share `modelsShared`, `modelChips`, and `feedback`. Do not add
   `FeatureTabs` (`label="分类筛选"`, 全部 plus the 12 official SkillHub names).
   Skills install, ZIP, restore, and assignment all use `AssignmentPanel`
   (radio vs switch). MCP discovery one-click uses shared
-  `InstallTargetDialog`. Unmanaged Skill import and new-MCP editor use the
+  `InstallTargetDialog` and confirms the destination path before writing.
+  Unmanaged Skill import and new-MCP editor use the
   same switch panel, not a
   checkbox grid.
   A later filter track adds one `FeatureTabs` options array, not a new tab
@@ -314,7 +317,7 @@ Correct: shared V2 chrome; leftover is a behavior reference.
 <FeatureList id="skills-installed-list">{items}</FeatureList>
 <FeaturePagination page={page} totalPages={totalPages} ariaLabel="Skill 市场分页" onPageChange={setPage} />
 <AssignmentPanel mode="radio" ariaLabel="安装目标" targets={SKILL_TARGETS} value={target} onChange={setTarget} />
-<InstallTargetDialog title={`安装 ${name}`} busy={busy} defaultTarget={target} onCancel={onCancel} onConfirm={onConfirm} />
+<InstallTargetDialog title={`安装 ${name}`} busy={busy} defaultTarget={target} pathForTarget={pathForTarget} onCancel={onCancel} onConfirm={onConfirm} />
 ```
 
 Wrong: a Skills-page checkbox grid or `InstallTargetPicker` for catalog targets.

@@ -362,7 +362,7 @@ describe("FyAgent V2 architecture boundary", () => {
       },
       {
         relative: "pages/mcp/InstallDialog.tsx",
-        owners: ["AssignmentPanel"],
+        owners: ["AssignmentPanel", "InstallTargetDialog"],
         forbidden: ["function InstallTargetPicker"],
       },
       {

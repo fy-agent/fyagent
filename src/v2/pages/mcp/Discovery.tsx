@@ -16,6 +16,7 @@ import {
   type McpInstallValues,
 } from "./catalog";
 import { InstallDialog } from "./InstallDialog";
+import { mcpInstallDestination } from "../../shared/features/helpers";
 import { currentMcpLaunchPlatform } from "../../shared/features/mcpLaunch";
 import { ExternalLinkButton } from "../../shared/ui/ExternalLinkButton";
 import { FeatureSearch } from "../../shared/ui/FeatureSearch";
@@ -282,9 +283,8 @@ export function McpDiscovery({
           }
           busy={busy || installingId === pendingTarget.item.id}
           defaultTarget={defaultTarget}
-          confirmVerb={
-            pendingTarget.overwrite ? "覆盖并安装到" : "安装到"
-          }
+          confirmVerb={pendingTarget.overwrite ? "确认覆盖安装" : "确认安装"}
+          pathForTarget={(target) => mcpInstallDestination(target, platform)}
           onCancel={() => setPendingTarget(null)}
           onConfirm={(target) => {
             const { item } = pendingTarget;
