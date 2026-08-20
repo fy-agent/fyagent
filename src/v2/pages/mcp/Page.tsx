@@ -29,7 +29,6 @@ import {
 import {
   Badge,
   Button,
-  Checkbox,
   ConfirmDialog,
   Dialog,
   EmptyState,
@@ -258,7 +257,7 @@ function ServerDetail({
 
 export function McpPage() {
   const queryClient = useQueryClient();
-  const { ports, notify } = useFeatures();
+  const { ports, notify, installTarget, setInstallTarget } = useFeatures();
   const wideLayout = useWideFeatureLayout();
   const query = useMcpServers();
   const servers = useMemo(() => Object.values(query.data ?? {}), [query.data]);
@@ -394,6 +393,8 @@ export function McpPage() {
             <McpDiscovery
               servers={servers}
               busy={busy}
+              defaultTarget={installTarget}
+              onPickTarget={setInstallTarget}
               onInstall={async (server) =>
                 write("MCP 已安装", async () => {
                   await ports.mcp.upsert(server);
@@ -928,23 +929,17 @@ function McpEditor({
             />
           </label>
         )}
-        <fieldset className="fy-feature-form-span">
-          <legend>初始应用分配</legend>
-          <div className="fy-feature-check-grid">
-            {MCP_TARGETS.map((app) => (
-              <label key={app.id} className="fy-feature-check">
-                <Checkbox
-                  checked={Boolean(apps[app.id])}
-                  onCheckedChange={(checked) =>
-                    setApps((current) => ({ ...current, [app.id]: checked }))
-                  }
-                  label={`分配到 ${app.label}`}
-                />
-                {app.label}
-              </label>
-            ))}
-          </div>
-        </fieldset>
+        <div className="fy-feature-form-span">
+          <AssignmentPanel
+            apps={apps}
+            disabled={busy}
+            labelSuffix="MCP 分配"
+            onToggle={(app, enabled) =>
+              setApps((current) => ({ ...current, [app]: enabled }))
+            }
+            targets={MCP_TARGETS}
+          />
+        </div>
       </div>
     </Dialog>
   );

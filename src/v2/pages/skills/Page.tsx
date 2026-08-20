@@ -49,6 +49,7 @@ import {
   Spinner,
 } from "../../shared/ui/primitives";
 import { AssignmentPanel } from "../../shared/ui/AssignmentPanel";
+import { InstallTargetDialog } from "../../shared/ui/InstallTargetDialog";
 import { CopyablePath } from "../../shared/ui/CopyablePath";
 import { ExternalLinkButton } from "../../shared/ui/ExternalLinkButton";
 import { FeatureList, FeatureListItem } from "../../shared/ui/FeatureList";
@@ -65,59 +66,6 @@ type DialogName = "more" | "unmanaged" | "backups" | "settings" | null;
 function formatSkillTimestamp(value: number): string {
   if (!Number.isFinite(value) || value <= 0) return "未知";
   return new Date(value * 1000).toLocaleString();
-}
-
-function skillTargetLabel(id: SkillTargetId): string {
-  return SKILL_TARGETS.find((app) => app.id === id)?.label ?? "Claude Code";
-}
-
-function SkillInstallTargetDialog({
-  title,
-  busy,
-  defaultTarget,
-  onCancel,
-  onConfirm,
-}: {
-  title: string;
-  busy: boolean;
-  defaultTarget: SkillTargetId;
-  onCancel: () => void;
-  onConfirm: (target: SkillTargetId) => void;
-}) {
-  const [chosenTarget, setChosenTarget] = useState(defaultTarget);
-  return (
-    <Dialog
-      open
-      title={title}
-      description="选择要安装到的应用。"
-      onOpenChange={(open) => {
-        if (!open && !busy) onCancel();
-      }}
-      actions={
-        <>
-          <Button disabled={busy} onClick={onCancel}>
-            取消
-          </Button>
-          <Button
-            className="fy-control-button-primary"
-            disabled={busy}
-            onClick={() => onConfirm(chosenTarget)}
-          >
-            安装到 {skillTargetLabel(chosenTarget)}
-          </Button>
-        </>
-      }
-    >
-      <AssignmentPanel
-        mode="radio"
-        ariaLabel="安装目标"
-        disabled={busy}
-        onChange={setChosenTarget}
-        targets={SKILL_TARGETS}
-        value={chosenTarget}
-      />
-    </Dialog>
-  );
 }
 
 function githubRepoUrl(owner: string, name: string): string | null {
@@ -756,7 +704,7 @@ export function SkillsPage() {
         />
       )}
       {pendingZipPath ? (
-        <SkillInstallTargetDialog
+        <InstallTargetDialog
           title="从 ZIP 安装"
           busy={busy}
           defaultTarget={installTarget}
@@ -997,7 +945,7 @@ function Discovery({
         </Dialog>
       ) : null}
       {pendingSkill ? (
-        <SkillInstallTargetDialog
+        <InstallTargetDialog
           key={pendingSkill.key}
           title={`安装 ${pendingSkill.name}`}
           busy={busy}

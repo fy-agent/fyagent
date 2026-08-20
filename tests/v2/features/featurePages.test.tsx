@@ -362,7 +362,7 @@ describe("V2 MCP management", () => {
     expect(writeText).toHaveBeenCalledWith(directory);
   });
 
-  it("installs a zero-config catalog item onto the default MCP targets", async () => {
+  it("installs a zero-config catalog item onto the chosen MCP target", async () => {
     const user = userEvent.setup();
     const store: Record<string, McpServer> = {};
     const upsert = vi.fn(async (server: McpServer) => {
@@ -383,15 +383,24 @@ describe("V2 MCP management", () => {
       within(card as HTMLElement).getByRole("button", { name: "安装" }),
     );
 
+    const picker = await screen.findByRole("dialog", { name: "安装 Time" });
+    expect(
+      within(picker).getByRole("radiogroup", { name: "安装目标" }),
+    ).toBeVisible();
+    expect(
+      within(picker)
+        .getAllByRole("radio")
+        .map((option) => option.textContent?.replace(/\s+/g, " ").trim()),
+    ).toEqual(MCP_TARGETS.map((app) => app.label));
+    await user.click(within(picker).getByRole("radio", { name: "WorkBuddy" }));
+    await user.click(
+      within(picker).getByRole("button", { name: "安装到 WorkBuddy" }),
+    );
+
     await waitFor(() => expect(upsert).toHaveBeenCalledTimes(1));
     expect(upsert.mock.calls[0]?.[0]).toMatchObject({
       id: "time",
-      apps: {
-        claude: true,
-        codex: true,
-        opencode: true,
-        workbuddy: true,
-      },
+      apps: createMcpAssignments(["workbuddy"]),
       server: { type: "stdio", command: "uvx", args: ["mcp-server-time"] },
     });
   });
@@ -445,6 +454,12 @@ describe("V2 MCP management", () => {
       within(card as HTMLElement).getByRole("button", { name: "重新配置" }),
     );
     await user.click(screen.getByRole("button", { name: "确认" }));
+    const picker = await screen.findByRole("dialog", {
+      name: "重新配置 Time",
+    });
+    await user.click(
+      within(picker).getByRole("button", { name: "覆盖并安装到 Claude Code" }),
+    );
     await waitFor(() =>
       expect(upsert).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -482,11 +497,16 @@ describe("V2 MCP management", () => {
     expect(dialog).not.toHaveTextContent("npx");
     expect(dialog).not.toHaveTextContent("cmd");
     expect(dialog).not.toHaveTextContent("mcp.amap.com");
+    expect(
+      within(dialog).getByRole("radiogroup", { name: "安装目标" }),
+    ).toBeVisible();
     await user.type(
       within(dialog).getByLabelText(/API Key/),
       "amap-query-secret",
     );
-    await user.click(within(dialog).getByRole("button", { name: "安装" }));
+    await user.click(
+      within(dialog).getByRole("button", { name: "安装到 Claude Code" }),
+    );
     await waitFor(() =>
       expect(upsert).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -506,7 +526,7 @@ describe("V2 MCP management", () => {
     expect(document.body).not.toHaveTextContent("amap-query-secret");
   });
 
-  it("installs a zero-config China catalog item onto the default MCP targets", async () => {
+  it("installs a zero-config China catalog item onto the chosen MCP target", async () => {
     const user = userEvent.setup();
     const store: Record<string, McpServer> = {};
     const upsert = vi.fn(async (server: McpServer) => {
@@ -527,9 +547,17 @@ describe("V2 MCP management", () => {
       within(card as HTMLElement).getByRole("button", { name: "安装" }),
     );
 
+    const picker = await screen.findByRole("dialog", {
+      name: "安装 AntV 图表 MCP",
+    });
+    await user.click(
+      within(picker).getByRole("button", { name: "安装到 Claude Code" }),
+    );
+
     await waitFor(() => expect(upsert).toHaveBeenCalledTimes(1));
     const installed = upsert.mock.calls[0]?.[0];
     expect(installed?.id).toBe("antv-chart");
+    expect(installed?.apps).toEqual(createMcpAssignments(["claude"]));
     expect(installed?.server.type).toBe("stdio");
     expect(installed?.server.args).toEqual(
       expect.arrayContaining(["-y", "@antv/mcp-server-chart"]),

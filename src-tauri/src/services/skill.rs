@@ -948,7 +948,8 @@ impl SkillService {
     pub fn get_target_skills_dir(target: &SkillTargetId) -> Result<PathBuf> {
         let home = crate::config::get_home_dir();
         match target {
-            SkillTargetId::QoderWork => Ok(home.join(".qoderwork").join("skills")),
+            // QoderWork CN product home is ~/.qoderworkcn (not international ~/.qoderwork).
+            SkillTargetId::QoderWork => Ok(home.join(".qoderworkcn").join("skills")),
             SkillTargetId::TraeWork => Ok(home.join(".trae-cn").join("skills")),
             SkillTargetId::WorkBuddy => Ok(home.join(".workbuddy").join("skills")),
             _ => Self::get_app_skills_dir(&AppType::try_from(target)?),
@@ -2509,7 +2510,7 @@ impl SkillService {
         let parent = dest
             .parent()
             .ok_or_else(|| anyhow!("Invalid Vendor Skill destination"))?;
-        let qoder = trusted_home.join(".qoderwork").join("skills");
+        let qoder = trusted_home.join(".qoderworkcn").join("skills");
         let trae = trusted_home.join(".trae-cn").join("skills");
         let workbuddy = trusted_home.join(".workbuddy").join("skills");
         if parent != qoder && parent != trae && parent != workbuddy {
@@ -5771,7 +5772,7 @@ mod tests {
 
         let dest = trusted_home
             .path()
-            .join(".qoderwork")
+            .join(".qoderworkcn")
             .join("skills")
             .join("skill");
         write_skill(&dest, "existing");
@@ -6495,7 +6496,7 @@ mod tests {
         assert_eq!(
             SkillService::get_target_skills_dir(&SkillTargetId::QoderWork)
                 .expect("resolve QoderWork skills dir"),
-            temp.path().join(".qoderwork").join("skills")
+            temp.path().join(".qoderworkcn").join("skills")
         );
         assert_eq!(
             SkillService::get_target_skills_dir(&SkillTargetId::TraeWork)

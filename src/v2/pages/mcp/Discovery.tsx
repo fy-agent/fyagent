@@ -15,11 +15,11 @@ import {
   type McpCatalogItem,
   type McpInstallValues,
 } from "./catalog";
-import { DEFAULT_NEW_APPS } from "./constants";
 import { InstallDialog } from "./InstallDialog";
 import { currentMcpLaunchPlatform } from "../../shared/features/mcpLaunch";
 import { ExternalLinkButton } from "../../shared/ui/ExternalLinkButton";
 import { FeatureSearch } from "../../shared/ui/FeatureSearch";
+import { InstallTargetDialog } from "../../shared/ui/InstallTargetDialog";
 import {
   Badge,
   Button,
@@ -46,12 +46,16 @@ function requirementText(item: McpCatalogItem): string {
 export function McpDiscovery({
   servers,
   busy,
+  defaultTarget,
   onInstall,
+  onPickTarget,
   onViewInstalled,
 }: {
   servers: readonly McpServer[];
   busy: boolean;
+  defaultTarget: McpTargetId;
   onInstall: (server: McpServer) => Promise<boolean>;
+  onPickTarget: (target: McpTargetId) => void;
   onViewInstalled: (id: string) => void;
 }) {
   const platform = currentMcpLaunchPlatform();
@@ -59,6 +63,10 @@ export function McpDiscovery({
   const [category, setCategory] = useState<McpCatalogFilterId>("all");
   const [dialogItem, setDialogItem] = useState<McpCatalogItem | null>(null);
   const [overwrite, setOverwrite] = useState(false);
+  const [pendingTarget, setPendingTarget] = useState<{
+    item: McpCatalogItem;
+    overwrite: boolean;
+  } | null>(null);
   const [confirmItem, setConfirmItem] = useState<McpCatalogItem | null>(null);
   const [installingId, setInstallingId] = useState<string | null>(null);
   const installedById = useMemo(
@@ -83,9 +91,10 @@ export function McpDiscovery({
     setOverwrite(false);
   };
 
-  const installBuilt = async (server: McpServer) => {
+  const installBuilt = async (server: McpServer, target: McpTargetId) => {
     setInstallingId(server.id);
     try {
+      onPickTarget(target);
       const installed = await onInstall(server);
       if (installed) closeDialog();
     } finally {
@@ -106,7 +115,11 @@ export function McpDiscovery({
     if (existing && !replaceExisting) {
       throw new Error("该 MCP 已存在");
     }
-    void installBuilt(item.build(values, apps, platform));
+    const target = apps[0];
+    if (!target) {
+      throw new Error("请选择至少一个 Agent");
+    }
+    void installBuilt(item.build(values, [target], platform), target);
   };
 
   const startInstall = (item: McpCatalogItem, replaceExisting: boolean) => {
@@ -118,7 +131,7 @@ export function McpDiscovery({
       setDialogItem(item);
       return;
     }
-    void installBuilt(item.build({}, DEFAULT_NEW_APPS, platform));
+    setPendingTarget({ item, overwrite: replaceExisting });
   };
 
   return (
@@ -252,10 +265,32 @@ export function McpDiscovery({
           item={dialogItem}
           busy={busy || installingId === dialogItem.id}
           overwrite={overwrite}
+          defaultTarget={defaultTarget}
           onClose={closeDialog}
           onInstall={(values, apps) =>
             installWithValues(dialogItem, values, apps, overwrite)
           }
+        />
+      )}
+      {pendingTarget && (
+        <InstallTargetDialog
+          key={`${pendingTarget.item.id}:${pendingTarget.overwrite ? "overwrite" : "new"}`}
+          title={
+            pendingTarget.overwrite
+              ? `重新配置 ${pendingTarget.item.name}`
+              : `安装 ${pendingTarget.item.name}`
+          }
+          busy={busy || installingId === pendingTarget.item.id}
+          defaultTarget={defaultTarget}
+          confirmVerb={
+            pendingTarget.overwrite ? "覆盖并安装到" : "安装到"
+          }
+          onCancel={() => setPendingTarget(null)}
+          onConfirm={(target) => {
+            const { item } = pendingTarget;
+            setPendingTarget(null);
+            void installBuilt(item.build({}, [target], platform), target);
+          }}
         />
       )}
       <ConfirmDialog

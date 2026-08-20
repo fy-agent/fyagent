@@ -1,6 +1,5 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 
-import { DEFAULT_NEW_APPS } from "./constants";
 import type {
   McpCatalogItem,
   McpInstallField,
@@ -13,6 +12,8 @@ import {
   InlineNotice,
   Input,
 } from "../../shared/ui/primitives";
+import { AssignmentPanel } from "../../shared/ui/AssignmentPanel";
+import { skillTargetLabel } from "../../shared/ui/InstallTargetDialog";
 import { MCP_TARGETS, type McpTargetId } from "../../shared/features/types";
 
 function emptyValues(fields: readonly McpInstallField[]): McpInstallValues {
@@ -38,34 +39,20 @@ export function InstallDialog({
   item,
   busy,
   overwrite,
+  defaultTarget,
   onClose,
   onInstall,
 }: {
   item: McpCatalogItem;
   busy: boolean;
   overwrite: boolean;
+  defaultTarget: McpTargetId;
   onClose: () => void;
   onInstall: (values: McpInstallValues, apps: readonly McpTargetId[]) => void;
 }) {
   const [values, setValues] = useState(() => emptyValues(item.fields));
-  const [apps, setApps] = useState<Record<McpTargetId, boolean>>(
-    () =>
-      Object.fromEntries(
-        MCP_TARGETS.map((target) => [
-          target.id,
-          DEFAULT_NEW_APPS.includes(target.id),
-        ]),
-      ) as Record<McpTargetId, boolean>,
-  );
+  const [chosenTarget, setChosenTarget] = useState(defaultTarget);
   const [error, setError] = useState<string | null>(null);
-
-  const selectedApps = useMemo(
-    () =>
-      MCP_TARGETS.filter((target) => apps[target.id]).map(
-        (target) => target.id,
-      ),
-    [apps],
-  );
 
   const setField = (key: string, value: string | string[]) => {
     setValues((current) => ({ ...current, [key]: value }));
@@ -74,7 +61,7 @@ export function InstallDialog({
 
   const submit = () => {
     try {
-      onInstall(values, selectedApps);
+      onInstall(values, [chosenTarget]);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "安装失败");
     }
@@ -98,7 +85,9 @@ export function InstallDialog({
             onClick={submit}
             disabled={busy}
           >
-            {busy ? "安装中…" : overwrite ? "覆盖并安装" : "安装"}
+            {busy
+              ? "安装中…"
+              : `${overwrite ? "覆盖并安装到" : "安装到"} ${skillTargetLabel(chosenTarget)}`}
           </Button>
         </>
       }
@@ -117,23 +106,16 @@ export function InstallDialog({
             onChange={(value) => setField(field.key, value)}
           />
         ))}
-        <fieldset className="fy-feature-form-span">
-          <legend>安装到 Agent</legend>
-          <div className="fy-feature-check-grid">
-            {MCP_TARGETS.map((target) => (
-              <label key={target.id} className="fy-feature-check">
-                <Checkbox
-                  checked={Boolean(apps[target.id])}
-                  onCheckedChange={(checked) =>
-                    setApps((current) => ({ ...current, [target.id]: checked }))
-                  }
-                  label={`安装到 ${target.label}`}
-                />
-                {target.label}
-              </label>
-            ))}
-          </div>
-        </fieldset>
+        <div className="fy-feature-form-span">
+          <AssignmentPanel
+            mode="radio"
+            ariaLabel="安装目标"
+            disabled={busy}
+            onChange={setChosenTarget}
+            targets={MCP_TARGETS}
+            value={chosenTarget}
+          />
+        </div>
       </div>
     </Dialog>
   );

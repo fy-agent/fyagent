@@ -1,7 +1,7 @@
 //! WorkBuddy MCP sync and import.
 //!
-//! Canonical live file: `~/.workbuddy/.mcp.json` (`mcpServers` map, Claude-like).
-//! Import may read legacy `~/.workbuddy/mcp.json` when the canonical file is absent.
+//! Canonical live file: `~/.workbuddy/mcp.json` (`mcpServers` map, Claude-like).
+//! Import may read hidden `~/.workbuddy/.mcp.json` when the official file is absent.
 //! WorkBuddy is not an [`AppType`](crate::app_config::AppType).
 
 use serde_json::{Map, Value};
@@ -20,15 +20,15 @@ fn workbuddy_home() -> PathBuf {
 }
 
 fn canonical_mcp_path() -> PathBuf {
-    workbuddy_home().join(".mcp.json")
-}
-
-fn legacy_mcp_path() -> PathBuf {
     workbuddy_home().join("mcp.json")
 }
 
+fn hidden_mcp_path() -> PathBuf {
+    workbuddy_home().join(".mcp.json")
+}
+
 fn backup_mcp_path() -> PathBuf {
-    workbuddy_home().join(".mcp.json.backup")
+    workbuddy_home().join("mcp.json.backup")
 }
 
 fn should_sync_workbuddy_mcp() -> bool {
@@ -81,7 +81,11 @@ fn read_mcp_servers_map_from(path: &Path) -> Result<HashMap<String, Value>, AppE
 }
 
 fn read_live_mcp_servers_map() -> Result<HashMap<String, Value>, AppError> {
-    read_mcp_servers_map_from(&canonical_mcp_path())
+    let official = canonical_mcp_path();
+    if official.exists() {
+        return read_mcp_servers_map_from(&official);
+    }
+    read_mcp_servers_map_from(&hidden_mcp_path())
 }
 
 fn set_live_mcp_servers_map(servers: &HashMap<String, Value>) -> Result<(), AppError> {
@@ -93,7 +97,7 @@ fn set_live_mcp_servers_map(servers: &HashMap<String, Value>) -> Result<(), AppE
     };
     let obj = root
         .as_object_mut()
-        .ok_or_else(|| AppError::Config("~/.workbuddy/.mcp.json 根必须是对象".into()))?;
+        .ok_or_else(|| AppError::Config("~/.workbuddy/mcp.json 根必须是对象".into()))?;
     let mut out = Map::new();
     for (id, spec) in servers {
         let mut object = spec
@@ -119,8 +123,8 @@ fn import_path() -> Option<PathBuf> {
     if canonical.exists() {
         return Some(canonical);
     }
-    let legacy = legacy_mcp_path();
-    legacy.exists().then_some(legacy)
+    let hidden = hidden_mcp_path();
+    hidden.exists().then_some(hidden)
 }
 
 /// 从 WorkBuddy live 配置导入 mcpServers。
@@ -241,6 +245,7 @@ mod tests {
             assert!(written.contains("\"demo\""));
             assert!(written.contains("echo"));
             assert!(!written.contains("ak"));
+            assert!(!hidden_mcp_path().exists());
             remove_server_from_workbuddy("demo").expect("remove");
             let after = fs::read_to_string(canonical_mcp_path()).expect("read after remove");
             assert!(!after.contains("\"demo\""));
@@ -250,15 +255,15 @@ mod tests {
 
     #[test]
     #[serial]
-    fn imports_legacy_mcp_json_when_canonical_is_absent() {
+    fn imports_hidden_mcp_json_when_official_is_absent() {
         with_test_home(|home| {
             let dir = home.join(".workbuddy");
             fs::create_dir_all(&dir).expect("create workbuddy home");
             fs::write(
-                dir.join("mcp.json"),
+                dir.join(".mcp.json"),
                 r#"{"mcpServers":{"legacy":{"command":"uvx","args":["demo"]}}}"#,
             )
-            .expect("write legacy");
+            .expect("write hidden");
             let mut config = MultiAppConfig::default();
             let changed = import_from_workbuddy(&mut config).expect("import");
             assert_eq!(changed, 1);
@@ -271,6 +276,29 @@ mod tests {
                 .expect("imported");
             assert!(server.apps.workbuddy);
             assert!(!server.apps.claude);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn seeds_official_mcp_json_from_hidden_file() {
+        with_test_home(|home| {
+            let dir = home.join(".workbuddy");
+            fs::create_dir_all(&dir).expect("create workbuddy home");
+            fs::write(
+                dir.join(".mcp.json"),
+                r#"{"mcpServers":{"existing":{"command":"uvx"}}}"#,
+            )
+            .expect("write hidden");
+            sync_single_server_to_workbuddy(
+                &Default::default(),
+                "demo",
+                &json!({ "command": "echo" }),
+            )
+            .expect("write mcp");
+            let written = fs::read_to_string(canonical_mcp_path()).expect("read official");
+            assert!(written.contains("\"existing\""));
+            assert!(written.contains("\"demo\""));
         });
     }
 }

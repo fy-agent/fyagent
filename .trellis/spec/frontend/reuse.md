@@ -18,7 +18,7 @@ cleanup pass after duplication already shipped.
    a new file.
 2. Existing shared chrome that already matches the job is mandatory. Do not
    fork a page-local copy of `FeatureTabs`, `FeatureSearch`, `FeatureList`,
-   `FeaturePagination`, `AssignmentPanel`, `SelectionLens` / `SelectionLensGroup`, `SplitPanes`,
+   `FeaturePagination`, `AssignmentPanel`, `InstallTargetDialog`, `SelectionLens` / `SelectionLensGroup`, `SplitPanes`,
    `CatalogMasterDetail`, `CatalogOfficialLinks`, `SecretInput`, `ExternalLinkButton`, FeaturePorts,
    or the TRAE/OpenCode `modelsShared` / `modelChips` helpers. Agent / Skills / MCP / Models / Prompts
    product order and display names come from `src/v2/shared/features/directory.ts`.
@@ -137,7 +137,8 @@ Phosphor CSR carets.
 
 Related shared owners already in place: `SelectionLens` /
 `SelectionLensGroup` (nav, catalog, UI Lab), `AssignmentPanel` (Skills/MCP
-switches plus Skills install/ZIP/restore radio), `SplitPanes`, `CatalogMasterDetail`, `CatalogOfficialLinks`,
+switches plus Skills/MCP install/ZIP/restore radio), `InstallTargetDialog`
+(Skills and MCP discovery install), `SplitPanes`, `CatalogMasterDetail`, `CatalogOfficialLinks`,
 `SecretInput`, `ExternalLinkButton`, `CopyablePath`, FeaturePorts, and
 `PRODUCT_DIRECTORY` in `shared/features/directory.ts`.
 
@@ -186,7 +187,9 @@ lists, Skills vs MCP, Prompts vs Memory, and TRAE vs OpenCode model panels.
 - Exclusive in-page option tracks (installed/discovery, memory types, MCP
   editor mode, Skills discovery first-level categories, MCP discover
   install-kind) use `FeatureTabs`. Skills install, restore, and ZIP targets
-  are `AssignmentPanel mode="radio"` in a Dialog, not header tabs. Do not
+  are `AssignmentPanel mode="radio"` in a Dialog, not header tabs. MCP
+  discovery one-click install uses the same shared `InstallTargetDialog`.
+  Do not
   hand-roll `SelectionLensTrack` + `fy-feature-tab` on those pages.
 - Management-list search uses `FeatureSearch` (`role="search"`, Escape and
   clear button, Phosphor icons). That is the V2 port of pre-V2
@@ -199,11 +202,14 @@ lists, Skills vs MCP, Prompts vs Memory, and TRAE vs OpenCode model panels.
   hand-roll a second page-number window, and do not add a pagination UI
   library for prev/next or ellipsis.
 - Skills/MCP assignment stays on `AssignmentPanel` (V2 switch rows), not a
-  second AppToggleGroup clone. Skills discovery install, ZIP install, and
+  second AppToggleGroup clone. Skills discovery install, ZIP install, MCP
+  discovery install, and
   backup restore use the same `AssignmentPanel` with `mode="radio"`. Skills
-  unmanaged import uses the same component in switch mode. Do not add
+  unmanaged import and new-MCP editor assignment use the same component in
+  switch mode. Do not add
   `InstallTargetPicker`, a page-local checkbox grid, or another catalog-target
-  list on the Skills page.
+  list on the Skills or MCP pages. MCP recipe field checkboxes may keep
+  `fy-feature-check-grid`; Agent targets may not.
 
 ### Pre-V2 and leftover business
 
@@ -233,6 +239,7 @@ already share `modelsShared`, `modelChips`, and `feedback`. Do not add
 | Management search is a raw `Input type="search"` on Skills/MCP/Memory/Prompts/Discovery              | Use `FeatureSearch`; leftover `ManagementListSearch` stays leftover-only |
 | V2 imports leftover `src/components` or `src/lib`                                                    | Architecture test fails                                                  |
 | Skills install picker is not `AssignmentPanel mode="radio"`                                          | Reuse test / page test fails; extend `AssignmentPanel`                   |
+| MCP discovery Agent picker is a checkbox grid or defaults to `DEFAULT_NEW_APPS`                      | Page test fails; reuse shared `InstallTargetDialog`                      |
 | Skills import assignment is a page-local checkbox grid                                               | Reuse test fails; use `AssignmentPanel` switch rows                      |
 | A page-local Agent/Skills/MCP/Models/Prompts order table                                             | Reject; extend `PRODUCT_DIRECTORY`                                       |
 | New chrome used by two routes is added under `pages/<route>/`                                        | Move it to `shared/ui` before merge                                      |
@@ -249,7 +256,9 @@ already share `modelsShared`, `modelChips`, and `feedback`. Do not add
   uses `FeaturePagination` (`ariaLabel="Skill 市场分页"`) and one category
   `FeatureTabs` (`label="分类筛选"`, 全部 plus the 12 official SkillHub names).
   Skills install, ZIP, restore, and assignment all use `AssignmentPanel`
-  (radio vs switch). Unmanaged Skill import uses the same switch panel, not a
+  (radio vs switch). MCP discovery one-click uses shared
+  `InstallTargetDialog`. Unmanaged Skill import and new-MCP editor use the
+  same switch panel, not a
   checkbox grid.
   A later filter track adds one `FeatureTabs` options array, not a new tab
   component.
@@ -277,7 +286,9 @@ mise run test:v2
 - Architecture tests prove Skills/MCP/Memory/Prompts/Discovery/model search
   import `FeatureTabs` / `FeatureSearch` / `FeatureList` as required, that
   Skills/MCP import `AssignmentPanel`, that Skills does not contain
-  `InstallTargetPicker` or `fy-feature-check-grid`, that Skills/MCP/Memory do
+  `InstallTargetPicker` or `fy-feature-check-grid`, that MCP discovery
+  imports `InstallTargetDialog` and does not contain `fy-feature-check-grid`,
+  that Skills/MCP/Memory do
   not contain `className="fy-feature-tab"` literals, and
   that V2 still cannot import leftover UI.
 
@@ -303,6 +314,7 @@ Correct: shared V2 chrome; leftover is a behavior reference.
 <FeatureList id="skills-installed-list">{items}</FeatureList>
 <FeaturePagination page={page} totalPages={totalPages} ariaLabel="Skill 市场分页" onPageChange={setPage} />
 <AssignmentPanel mode="radio" ariaLabel="安装目标" targets={SKILL_TARGETS} value={target} onChange={setTarget} />
+<InstallTargetDialog title={`安装 ${name}`} busy={busy} defaultTarget={target} onCancel={onCancel} onConfirm={onConfirm} />
 ```
 
 Wrong: a Skills-page checkbox grid or `InstallTargetPicker` for catalog targets.

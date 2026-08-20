@@ -20,7 +20,8 @@ shared/platform/tauri  -> @tauri-apps/api/core.invoke
 Legacy renderer modules are not a compatibility layer for V2. Do not import
 from `src/components`, `src/hooks`, `src/lib`, or `src/i18n`. Reuse is the
 default: Skills and MCP must share `FeatureTabs`, `FeatureSearch`,
-`FeatureList`, `FeaturePagination`, `AssignmentPanel`, and `SplitPanes`. New
+`FeatureList`, `FeaturePagination`, `AssignmentPanel`, `InstallTargetDialog`,
+and `SplitPanes`. New
 chrome that the other page will need goes in `src/v2/shared/ui` on the first
 commit. See [Frontend Reuse](./reuse.md).
 
@@ -342,12 +343,18 @@ function ExternalLinkButton(props: {
   target. The default target remains `claude` (label Claude Code); navigation
   preserves it, while a full application restart resets it. Discovery does not
   show header install-target tabs. Clicking **安装** opens a Dialog to pick
-  the target before `installSkillHub`. That picker is `AssignmentPanel`
+  the target before `installSkillHub`. That picker is the shared
+  `InstallTargetDialog`, which wraps `AssignmentPanel`
   `mode="radio"` (`aria-label="安装目标"`), not a page-local
-  `InstallTargetPicker`. ZIP install and backup restore reuse the same radio
+  `InstallTargetPicker`. MCP discovery **安装** and **重新配置** (zero-config)
+  reuse that same dialog and write a single chosen `McpTargetId`; they do not
+  install onto `DEFAULT_NEW_APPS`. MCP **配置并安装** keeps credential fields
+  in `InstallDialog` and uses the same `AssignmentPanel mode="radio"` for the
+  Agent target. ZIP install and backup restore reuse the same radio
   panel (`aria-label="恢复目标"` on restore). Unmanaged import uses the same
   component in switch mode, not `fy-feature-check-grid`. Installed assignment
-  (narrow and wide panes) is the same component in switch mode. Confirming
+  (narrow and wide panes) is the same component in switch mode. New-MCP editor
+  initial assignment is also `AssignmentPanel` switch rows. Confirming
   install, ZIP, or restore updates the session target. Assignment, bulk
   全开/全关, that radio picker,
   and new-MCP `DEFAULT_NEW_APPS` must render in Agent catalog order, not
@@ -363,7 +370,7 @@ function ExternalLinkButton(props: {
   dests for those flags (do not rewrite a live vendor copy that already
   exists). Do not add per-agent commands or page branches.
   QoderWork / TRAE Work / WorkBuddy remain copy-only destinations
-  (`~/.qoderwork/skills`, `~/.trae-cn/skills`, `~/.workbuddy/skills`) inside
+  (`~/.qoderworkcn/skills`, `~/.trae-cn/skills`, `~/.workbuddy/skills`) inside
   that shared path. Successful UI copy claims directory synchronization, not
   vendor recognition or loading. Claude / Codex / Grok Build / OpenCode keep
   the configured symlink-or-copy method. Directory-swap checks compare volume
@@ -378,7 +385,10 @@ function ExternalLinkButton(props: {
 - Direct MCP live files: QoderWork CN writes `{trusted-home}/.qoderworkcn/mcp.json`
   (`mcpServers` map); TRAE Work CN writes TRAE SOLO CN `User/mcp.json`
   (macOS `Library/Application Support/TRAE SOLO CN/User`, Windows roaming same
-  product folder); WorkBuddy writes `{trusted-home}/.workbuddy/.mcp.json`.
+  product folder); WorkBuddy writes `{trusted-home}/.workbuddy/mcp.json`.
+  Import may read hidden `{trusted-home}/.workbuddy/.mcp.json` when the
+  official file is absent. First official write may seed `mcpServers` from
+  that hidden file. Do not treat `.mcp.json` as the live write target.
   All three skip when neither the home/User directory nor the file exists.
   Do not write Qoder `userData/mcp.json` (builtin table) or TRAE `state.vscdb`
   for MCP. Import may normalize Qoder `type: "streamable-http"` to `http`
@@ -436,10 +446,16 @@ function ExternalLinkButton(props: {
   Do not render **管理仓库** anywhere on the V2 Skills page (header, Discover,
   Installed **更多**, or a 仓库管理 dialog). Leftover GitHub repo CRUD stays
   in leftover V1 only. Discovery **安装** opens a Dialog (`安装 {name}`) that
-  reuses `AssignmentPanel` `mode="radio"` (`aria-label="安装目标"`) for the
+  reuses shared `InstallTargetDialog` → `AssignmentPanel`
+  `mode="radio"` (`aria-label="安装目标"`) for the
   seven catalog targets with decorative icons (`alt=""`, `aria-hidden="true"`)
-  and labels. Confirm with **安装到 {label}**. ZIP install opens the same
-  Dialog chrome (`从 ZIP 安装`) after a file is chosen. Backup restore keeps
+  and labels. Confirm with **安装到 {label}**. MCP discovery one-click
+  **安装** and overwrite **重新配置** use that same dialog (`覆盖并安装到
+  {label}` on overwrite) and persist only the chosen target. MCP
+  **配置并安装** keeps field checkboxes for recipe options, but Agent target
+  selection is the same radio panel, not `fy-feature-check-grid`. ZIP install
+  opens the same Dialog chrome (`从 ZIP 安装`) after a file is chosen. Backup
+  restore keeps
   `AssignmentPanel mode="radio"` (`aria-label="恢复目标"`) in the backups
   Dialog. Unmanaged import uses switch mode on each selected Skill. Do not add
   a page-local picker, a `<select>`, a checkbox grid, or a page-local tab clone.
@@ -548,6 +564,10 @@ function ExternalLinkButton(props: {
 | MCP live cleanup fails while disabling or deleting               | Retain the failed assignment and retryable authoritative record           |
 | A Skill response omits either new external target                | Default that target to false without changing any legacy assignment       |
 | QoderWork or TRAE Work MCP assignment is enabled                 | Write the vendor live `mcp.json`; skip if home/User and file are absent   |
+| WorkBuddy MCP assignment is enabled                              | Write `{trusted-home}/.workbuddy/mcp.json`; skip if home and file absent  |
+| WorkBuddy MCP writes `.mcp.json` as canonical                    | Host test fails; official live file is `mcp.json`                         |
+| QoderWork CN Skill dest is `.qoderwork/skills`                   | Host test fails; CN product dest is `.qoderworkcn/skills`                 |
+| MCP discovery one-click installs `DEFAULT_NEW_APPS` with no dialog | Page test fails; reuse shared `InstallTargetDialog` for one target      |
 | MCP/Skills assignment order is alphabetical or Claude-first      | Page/component test fails; order must match Agent catalog                 |
 | `.fy-feature-list` is restored to CSS Grid                       | List rows overlap because `SelectionLens` occupies a grid track           |
 | A supported app is missing from the local icon map               | Type/asset test fails; never render a remote fallback or broken image     |
@@ -601,9 +621,12 @@ function ExternalLinkButton(props: {
   `skillhub` CLI. There are no source tabs, no **管理仓库**, and no
   `Skill 市场 · n / m` summary. Clicking **安装** opens a Dialog that reuses
   `AssignmentPanel mode="radio"` (icon + name) before `installSkillHub`.
-  ZIP install and backup restore reuse that radio panel. Unmanaged import
+  MCP discovery one-click **安装** uses the same shared `InstallTargetDialog`
+  and writes only the chosen target. ZIP install and backup restore reuse that
+  radio panel. Unmanaged import
   uses switch mode. Installed assignment uses the same component in switch
-  mode. All seven V2
+  mode. New-MCP editor assignment uses switch mode, not a checkbox grid. All
+  seven V2
   targets assign and unassign through `toggle_skill_app` → `sync_to_app_dir`
   / `remove_from_target`. Import syncs missing dests only. `FeaturePagination` (`ariaLabel="Skill 市场分页"`)
   pages through `data.total` at 21 items per page. Search or category changes
@@ -617,8 +640,11 @@ function ExternalLinkButton(props: {
 - **Good:** An old installed-Skill row has leftover Gemini / Hermes flags.
   The adapter preserves those values, supplies false for missing
   Qoder / TRAE / WorkBuddy / Grok Build flags, and a later WorkBuddy sync copies
-  only to `~/.workbuddy/skills`. MCP writes `~/.workbuddy/.mcp.json` as
+  only to `~/.workbuddy/skills`. MCP writes `~/.workbuddy/mcp.json` as
   `mcpServers` and skips when neither the home nor the file exists.
+  Hidden `~/.workbuddy/.mcp.json` is import/seed fallback only.
+- **Good:** A QoderWork CN Skill assign copies only to `~/.qoderworkcn/skills`.
+  Qoder Hooks remain `~/.qoderwork/settings.json` and are not this dest.
 - **Good:** V2 assignment shows seven Skill targets and seven MCP targets in
   Agent catalog order: QoderWork CN, TRAE Work CN, WorkBuddy, Grok Build,
   Codex, Claude Code, OpenCode. Gemini / Hermes do not appear as chips.
@@ -677,7 +703,9 @@ git diff --check
   catalog order, Discover/docs and
   Skill repo clicks through `ExternalLinkButton` → `settings.openExternal`,
   discovery install Dialog targets in that same catalog order (icon + name)
-  via `AssignmentPanel mode="radio"`, ZIP and restore radio pickers, unmanaged
+  via shared `InstallTargetDialog` / `AssignmentPanel mode="radio"`, MCP
+  discovery one-click persisting only the chosen target, MCP config-install
+  Agent radio (not `fy-feature-check-grid`), ZIP and restore radio pickers, unmanaged
   import switch rows, host round-trip assign then unassign
   for every V2 Skill target, import sync of missing selected dests, no **管理仓库** in Discover or Installed **更多**, flex list overlay, one
   shared in-flight lock, Skills discovery page-3 offset 42 (21×2), search
@@ -957,18 +985,19 @@ function InstallTargetPicker({ value, onChange }) {
 }
 ```
 
-Correct: one `AssignmentPanel` for install / ZIP / restore (radio) and
-assignment / import (switch). Host mutations stay `toggle_skill_app` /
+Correct: shared `InstallTargetDialog` wrapping one `AssignmentPanel` for
+install / ZIP (radio). Restore and assignment / import stay on
+`AssignmentPanel` radio or switch. Host mutations stay `toggle_skill_app` /
 `install_skillhub` / `install_from_zip` / `import_from_apps` for every V2
-target.
+target. MCP discovery one-click uses the same dialog.
 
 ```tsx
-<AssignmentPanel
-  mode="radio"
-  ariaLabel="安装目标"
-  targets={SKILL_TARGETS}
-  value={chosenTarget}
-  onChange={setChosenTarget}
+<InstallTargetDialog
+  title={`安装 ${name}`}
+  busy={busy}
+  defaultTarget={installTarget}
+  onCancel={onCancel}
+  onConfirm={onConfirm}
 />
 <AssignmentPanel
   apps={skill.apps}

@@ -161,7 +161,7 @@ fn import_from_apps_syncs_missing_selected_destinations() {
         "import must not rewrite an existing Claude dest"
     );
     for relative in [
-        ".qoderwork/skills/shared-skill",
+        ".qoderworkcn/skills/shared-skill",
         ".trae-cn/skills/shared-skill",
         ".workbuddy/skills/shared-skill",
         ".grok/skills/shared-skill",

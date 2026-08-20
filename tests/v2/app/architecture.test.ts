@@ -331,6 +331,7 @@ describe("FyAgent V2 architecture boundary", () => {
           "FeatureList",
           "FeaturePagination",
           "AssignmentPanel",
+          "InstallTargetDialog",
         ],
         forbidden: [
           'className="fy-feature-tab"',
@@ -346,12 +347,23 @@ describe("FyAgent V2 architecture boundary", () => {
           "FeatureList",
           "AssignmentPanel",
         ],
-        forbidden: ['className="fy-feature-tab"'],
+        forbidden: [
+          'className="fy-feature-tab"',
+          'className="fy-feature-check-grid"',
+        ],
       },
       {
         relative: "pages/mcp/Discovery.tsx",
-        owners: ["FeatureSearch"],
-        forbidden: [],
+        owners: ["FeatureSearch", "InstallTargetDialog"],
+        forbidden: [
+          "function InstallTargetPicker",
+          'className="fy-feature-check-grid"',
+        ],
+      },
+      {
+        relative: "pages/mcp/InstallDialog.tsx",
+        owners: ["AssignmentPanel"],
+        forbidden: ["function InstallTargetPicker"],
       },
       {
         relative: "pages/memory/Page.tsx",

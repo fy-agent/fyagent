@@ -28,7 +28,7 @@ its own capability workflow:
   editors, or MCP validation panels.
 - WorkBuddy and OpenCode each use a dedicated revision-checked
   model-configuration domain. WorkBuddy additionally exposes direct Skills
-  copy and MCP `.mcp.json` assignment. Grok Build Models uses the same Provider
+  copy and MCP `mcp.json` assignment. Grok Build Models uses the same Provider
   quick-setup boundary as Claude/Codex (`fyagent-v2-quick-setup-grokbuild`,
   live `~/.grok/config.toml`).
 - Codex exposes no catalog link. Its detail owns the FyAgent-managed desktop

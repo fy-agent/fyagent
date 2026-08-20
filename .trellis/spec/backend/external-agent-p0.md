@@ -113,7 +113,7 @@ contract version is 4 and includes Grok Build (`https://x.ai/grok`).
   preserves every legacy row and leftover Gemini / Grok / Hermes flags; DAO
   reads and writes all stored flags.
 - QoderWork, TRAE Work, and WorkBuddy Skill destinations are derived only from
-  trusted home as `.qoderwork/skills`, `.trae-cn/skills`, and
+  trusted home as `.qoderworkcn/skills`, `.trae-cn/skills`, and
   `.workbuddy/skills`. All three are copy-only destinations inside the shared
   `SkillService::sync_to_app_dir` / `remove_from_target` path. V2 Skills
   install, assign, unassign, ZIP, restore, and import for every catalog target
@@ -122,13 +122,15 @@ contract version is 4 and includes Grok Build (`https://x.ai/grok`).
   `restore_from_backup_for_target` / `toggle_skill_app` / `import_from_apps`;
   do not add per-agent Skill commands. `import_from_apps` syncs only dests
   that are not already present. Vendor directory-swap checks compare volume +
-  inode, not mtime.
-- Direct MCP live files: WorkBuddy writes trusted-home `.workbuddy/.mcp.json`;
+  inode, not mtime. Qoder Hooks remain trusted-home `.qoderwork/settings.json`
+  and must not be retargeted to `.qoderworkcn`.
+- Direct MCP live files: WorkBuddy writes trusted-home `.workbuddy/mcp.json`;
   QoderWork CN writes `{trusted-home}/.qoderworkcn/mcp.json`; TRAE Work CN
   writes TRAE SOLO CN `User/mcp.json`. Each is a Claude-style `mcpServers` map,
   backs up first, and skips when neither the home/User directory nor the file
   exists. Do not write Qoder `userData/mcp.json` or TRAE `state.vscdb` for MCP.
-  WorkBuddy may import a legacy `mcp.json` when specs are equivalent. Qoder
+  WorkBuddy may import hidden `.mcp.json` when the official `mcp.json` is
+  absent, and a first official write may seed from that hidden file. Qoder
   import may normalize `type: "streamable-http"` to `http` before validation.
 - Catalog `mcp.write` for QoderWork CN and TRAE Work CN is `direct` +
   `dedicated_native_contract`. Agents “打开 MCP” appears only when
@@ -365,7 +367,8 @@ path/TOCTOU /hash handling including WorkBuddy copy dest, Qoder
 projection/revision/token, TRAE URL/DNS/pin plus fixture-sqlite GET
 observation that prefers the colon Work CN key, projects present Work lists
 without writing `state.vscdb`, and keeps GET DTO secret-free,
-OpenCode snapshot/save, WorkBuddy `.mcp.json` skip/write,
+OpenCode snapshot/save, WorkBuddy `mcp.json` skip/write (hidden `.mcp.json`
+import/seed only),
 QoderWork `~/.qoderworkcn/mcp.json` skip/write, TRAE `User/mcp.json`
 skip/write, and MCP union/no-execute/redaction. Renderer tests must assert
 exact command/payload wires, V2 seven Skills and seven MCP targets in catalog
@@ -454,4 +457,20 @@ let path = home.join(".qoderworkcn").join("mcp.json");
 if !home.exists() && !path.exists() {
     return Ok(());
 }
+```
+
+Wrong: write WorkBuddy MCP to hidden `.mcp.json`, or copy QoderWork CN Skills
+to international `.qoderwork/skills`.
+
+```rust
+home.join(".workbuddy").join(".mcp.json");
+home.join(".qoderwork").join("skills");
+```
+
+Correct: official WorkBuddy MCP is `mcp.json`; QoderWork CN Skills are
+`.qoderworkcn/skills`. Hooks stay `.qoderwork/settings.json`.
+
+```rust
+home.join(".workbuddy").join("mcp.json");
+home.join(".qoderworkcn").join("skills");
 ```
