@@ -13,6 +13,7 @@ merge into main
   -> current remote main HEAD
   -> successful full push CI for that exact SHA
   -> annotated stable tag targeting that exact SHA
+     (operators may force-update unpublished vX.Y.Z onto that SHA)
   -> one formal native build and evidence workflow
   -> private draft upload and re-download verification
   -> one final publication transition
@@ -24,15 +25,20 @@ current remote `dev/laiyongjie` HEAD after its exact push CI succeeds, but it is
 an artifact-producing diagnostic rather than a release-closure prerequisite,
 and its publication condition is always false. The shortest authoritative path is
 therefore `main` merge -> exact-SHA `CI / Required` success -> annotated tag ->
-one formal build. A formal run refuses a lightweight tag, a moved `main`, stale
-green CI, identity mismatch, partial signer configuration, incomplete native
-evidence, or asset drift.
+one formal build. If no GitHub Release exists for `vX.Y.Z`, operators may
+force-update that unpublished tag onto the new SHA instead of bumping the Cargo
+version; the workflow itself never moves or deletes the tag. A formal run
+refuses a lightweight tag, a moved `main`, stale green CI, identity mismatch,
+partial signer configuration, incomplete native evidence, or asset drift.
 
 Platform acceptance is successful build and packaging on each matching native
 runner. Windows additionally requires strict unsigned/signing proof and the
 fresh formal sealing boundary before exact-asset verification. macOS
 additionally requires Developer ID signing, one Apple notarization of the
-signed DMG, a stapled DMG ticket, and a stapled ticket on the ZIP's app. The
+signed DMG (`notarytool submit` without `--wait`, then `notarytool info`
+polling until `Accepted` / `Invalid` or the wait budget; not
+`notarytool wait --timeout`), a stapled DMG ticket, and a stapled ticket on
+the ZIP's app. The
 Release workflow does not launch the setup
 executables or run an install -> verify -> uninstall lifecycle; the retained
 lifecycle harness is a manual diagnostic, not a preflight or publication gate.

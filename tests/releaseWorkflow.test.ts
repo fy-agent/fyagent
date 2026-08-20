@@ -2032,8 +2032,12 @@ jobs:
     expect(macJob.match(/\$\{\{ secrets\.FYAGENT_APPLE_/gu)).toHaveLength(4);
     expect(macDeveloperId).toContain("notarytool");
     expect(macDeveloperId).toContain("notarytool submit");
-    expect(macDeveloperId).toContain("notarytool wait");
+    expect(macDeveloperId).toContain("notarytool info");
+    expect(macDeveloperId).toContain("notarytool log");
+    expect(macDeveloperId).not.toMatch(/^\s*xcrun notarytool wait\b/m);
+    expect(macDeveloperId).toContain("FYAGENT_NOTARY_WAIT_SECONDS");
     expect(macDeveloperId.match(/notarytool submit/gu)).toHaveLength(1);
+    expectExactLine(macJob, "    timeout-minutes: 360");
     expect(macDeveloperId).not.toContain("notarize_app");
     expect(macDeveloperId).toContain("stapler staple");
     expect(macDeveloperId).toContain("--options runtime");

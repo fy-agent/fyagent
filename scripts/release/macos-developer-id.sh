@@ -17,6 +17,15 @@ STATE_FILE="$STATE_DIR/state.env"
 CERT_PATH="$STATE_DIR/developer-id.p12"
 ORIGINAL_KEYCHAINS_FILE="$STATE_DIR/original-keychains"
 ORIGINAL_DEFAULT_FILE="$STATE_DIR/original-default"
+# Apple's published typical bound is under an hour, but this team's first
+# Developer ID submissions stayed In Progress past 30 and 60 minutes and later
+# reached Accepted. Poll `notarytool info` instead of `notarytool wait`:
+# wait --timeout writes JSON to stderr and exits 124, which `set -e` treats as
+# failure even while Apple is still processing. GitHub-hosted jobs allow 6
+# hours; leave about one hour for build and packaging.
+NOTARY_WAIT_SECONDS="${FYAGENT_NOTARY_WAIT_SECONDS:-18000}"
+NOTARY_POLL_SECONDS="${FYAGENT_NOTARY_POLL_SECONDS:-20}"
+NOTARY_HEARTBEAT_SECONDS="${FYAGENT_NOTARY_HEARTBEAT_SECONDS:-120}"
 
 usage() {
   echo "Usage: macos-developer-id.sh prepare|sign-app|sign-dmg|notarize-dmg|staple-app|teardown [path]" >&2
@@ -87,6 +96,28 @@ require_secret() {
   fi
 }
 
+read_notary_status() {
+  python3 - "$1" <<'PY'
+import json
+import pathlib
+import sys
+
+raw = pathlib.Path(sys.argv[1]).read_text() if pathlib.Path(sys.argv[1]).is_file() else ""
+start = raw.find("{")
+end = raw.rfind("}")
+if start < 0 or end < start:
+    print("UNKNOWN")
+    raise SystemExit(0)
+try:
+    payload = json.loads(raw[start : end + 1])
+except json.JSONDecodeError:
+    print("UNKNOWN")
+    raise SystemExit(0)
+status = payload.get("status")
+print(status.strip() if isinstance(status, str) and status.strip() else "UNKNOWN")
+PY
+}
+
 require_notary_accepted() {
   python3 - "$1" "$2" <<'PY'
 import json
@@ -104,13 +135,77 @@ if status != "Accepted":
 PY
 }
 
+wait_for_notarization() {
+  local submission_id="$1"
+  local artifact="$2"
+  local info_json="$STATE_DIR/notary-info-$(basename "$artifact").json"
+  local info_err="$STATE_DIR/notary-info-$(basename "$artifact").err"
+  local log_json="$STATE_DIR/notary-log-$(basename "$artifact").json"
+  local started_at elapsed last_heartbeat last_status status info_rc
+  started_at="$(date +%s)"
+  last_heartbeat=-"$NOTARY_HEARTBEAT_SECONDS"
+  last_status=""
+
+  while :; do
+    elapsed=$(($(date +%s) - started_at))
+    set +e
+    xcrun notarytool info "$submission_id" \
+      --keychain-profile "$NOTARY_PROFILE" \
+      --keychain "$KEYCHAIN_PATH" \
+      --output-format json \
+      >"$info_json" 2>"$info_err"
+    info_rc=$?
+    set -e
+    if [ ! -s "$info_json" ] && [ -s "$info_err" ]; then
+      cp "$info_err" "$info_json"
+    fi
+    status="$(read_notary_status "$info_json")"
+    if [ "$status" != "$last_status" ] ||
+      [ $((elapsed - last_heartbeat)) -ge "$NOTARY_HEARTBEAT_SECONDS" ]; then
+      echo "Apple notarization $submission_id status=$status elapsed=${elapsed}s"
+      last_heartbeat="$elapsed"
+      last_status="$status"
+    fi
+
+    case "$status" in
+      Accepted)
+        require_notary_accepted "$info_json" "$artifact"
+        return 0
+        ;;
+      Invalid|Rejected)
+        set +e
+        xcrun notarytool log "$submission_id" \
+          --keychain-profile "$NOTARY_PROFILE" \
+          --keychain "$KEYCHAIN_PATH" \
+          "$log_json"
+        set -e
+        if [ -s "$log_json" ]; then
+          cat "$log_json" >&2
+        elif [ -s "$info_err" ]; then
+          cat "$info_err" >&2
+        fi
+        echo "Apple notarization did not accept $artifact: status=$status" >&2
+        exit 1
+        ;;
+    esac
+
+    if [ "$elapsed" -ge "$NOTARY_WAIT_SECONDS" ]; then
+      echo "Apple notarization $submission_id still ${status} after ${NOTARY_WAIT_SECONDS}s for $artifact (info_rc=$info_rc)" >&2
+      if [ -s "$info_err" ]; then
+        cat "$info_err" >&2
+      fi
+      exit 1
+    fi
+    sleep "$NOTARY_POLL_SECONDS"
+  done
+}
+
 submit_for_notarization() {
   local artifact="$1"
   require_regular_file "$artifact" "Notarization input"
   local submission_json="$STATE_DIR/notary-$(basename "$artifact").json"
-  # Submit without --wait so Apple starts one job immediately. The Release
-  # workflow notarizes only the signed DMG; waiting here once replaces the
-  # previous serial app-zip then DMG notarization.
+  # Submit without --wait so Apple starts one job immediately. Poll info on
+  # that same id until Accepted, Invalid, or the wait budget expires.
   xcrun notarytool submit "$artifact" \
     --keychain-profile "$NOTARY_PROFILE" \
     --keychain "$KEYCHAIN_PATH" \
@@ -131,34 +226,7 @@ print(submission_id)
 PY
   )"
   echo "Apple notarization submission $submission_id for $artifact"
-  local wait_json="$STATE_DIR/notary-wait-$(basename "$artifact").json"
-  set +e
-  xcrun notarytool wait "$submission_id" \
-    --keychain-profile "$NOTARY_PROFILE" \
-    --keychain "$KEYCHAIN_PATH" \
-    --output-format json \
-    --timeout 1800 \
-    >"$wait_json"
-  set -e
-  if python3 - "$wait_json" <<'PY'
-import json
-import pathlib
-import sys
-
-payload = json.loads(pathlib.Path(sys.argv[1]).read_text())
-sys.exit(0 if payload.get("status") == "Accepted" else 1)
-PY
-  then
-    return 0
-  fi
-  echo "Apple notarization $submission_id is still processing; continuing the same submission"
-  xcrun notarytool wait "$submission_id" \
-    --keychain-profile "$NOTARY_PROFILE" \
-    --keychain "$KEYCHAIN_PATH" \
-    --output-format json \
-    --timeout 1800 \
-    >"$wait_json"
-  require_notary_accepted "$wait_json" "$artifact"
+  wait_for_notarization "$submission_id" "$artifact"
 }
 
 prepare() {

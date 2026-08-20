@@ -287,9 +287,14 @@ unavailability blocks acceptance.
   the hardened runtime, a secure timestamp, and the checked-in entitlements,
   then verifies that identity without requiring a stapler ticket yet. The job
   packages a signed DMG from that app and submits only the DMG to Apple
-  notarization. After Apple accepts that one submission, it staples the DMG and
-  the original app from the same ticket, then zips the stapled app. It does not
-  notarize an app zip as a second serial wait. Strict deep verification must
+  notarization. The helper submits without `--wait`, then polls
+  `notarytool info` until `Accepted` / `Invalid` or a multi-hour budget;
+  `notarytool wait --timeout` is not used because it exits 124 with JSON on
+  stderr while Apple may still be In Progress. After Apple accepts that one
+  submission, it staples the DMG and the original app from the same ticket,
+  then zips the stapled app. It does not notarize an app zip as a second serial
+  wait. The `build-macos` job sets `timeout-minutes: 360` so the poll can use
+  the GitHub-hosted maximum. Strict deep verification must
   report the exact identity, `runtime` flags, a timestamp, and sealed
   resources. The ZIP app and the DMG container must carry stapled tickets. The
   app copy inside the already-built DMG is the pre-staple Developer ID binary
@@ -400,12 +405,16 @@ never called private or successful.
 | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
 | Candidate/version/tag/event/workflow/authority-branch HEAD differs                                                                      | Fail before native builds.                                   |
 | Repository name is a former owner or redirect alias, even when numeric ID is unchanged                                                  | Fail before native builds; require exact `fy-agent/fyagent`. |
-| Formal tag is lightweight, points elsewhere, or changes                                                                                 | Fail; never repair or move the tag.                          |
+| Formal tag is lightweight, points elsewhere, or changes during the run                                                                  | Fail the in-flight run; the workflow never repairs or moves the tag. Operators may force-update an unpublished `vX.Y.Z` before a new run. |
 | Exact-source authority-branch CI is absent/running/failed/cancelled/timed out, stale, wrong identity, or lacks unique Required evidence | Fail; never accept an older green commit/attempt.            |
 | Preflight reaches a publish path or Windows provider secret                                                                             | Static/remote gate fails.                                    |
 | Native runner, architecture, toolchain, or source drifts                                                                                | Fail that target; no fallback.                               |
 | Pinned build input ID/digest/manifest/file set drifts                                                                                   | Fail before provider or trusted consumption.                 |
 | Signer configuration is partial/invalid, Apple notarization is denied, or fresh signature proof fails | Fail; do not downgrade to unsigned.                      |
+| `notarytool wait --timeout` exits 124 or writes JSON only to stderr                                    | Must not fail the job; poll `notarytool info` on the same submission id. |
+| Apple status remains `In Progress` / `UNKNOWN` inside `FYAGENT_NOTARY_WAIT_SECONDS`                    | Continue polling; log at least every `FYAGENT_NOTARY_HEARTBEAT_SECONDS`. |
+| Apple status is `Invalid` or `Rejected`                                                                | Fetch `notarytool log` and fail; do not staple.          |
+| Apple status is still non-terminal after `FYAGENT_NOTARY_WAIT_SECONDS` (default 18000)                 | Fail with the submission id and last status; do not start a second Apple upload. |
 | Windows proof/sealed binding or macOS identity fails                                                                                    | Stop aggregation and publication.                            |
 | An intentional producer skip propagates past successful asset verification                                                              | Attestation still runs; abnormal direct needs fail visibly.  |
 | Four/seven/eight file allowlist or digest differs                                                                                       | Stop verification, attestation, or publication.              |
@@ -426,6 +435,11 @@ dispatch publication, both preflight/formal tail-job truth tables, mutation of
 explicit status conditions or direct-need assertions, asset loss/extra, signer
 policy, and transaction failure.
 
+Hermetic tests must also cover a single `notarytool submit`, `notarytool info`
+polling, no `xcrun notarytool wait` invocation, `notarytool log` on a denied
+submission, `FYAGENT_NOTARY_WAIT_SECONDS`, and `build-macos`
+`timeout-minutes: 360`.
+
 Local execution cannot establish another platform's PowerShell/NSIS/
 Authenticode, native build/package output, macOS bundle, GitHub attestation, or
 public Release evidence. The manual Windows install lifecycle is diagnostic
@@ -433,8 +447,10 @@ evidence outside this Release closure. Closure requires, in order:
 
 1. the release change is merged to `main`, and that exact current remote HEAD
    completes `CI / Required` successfully;
-2. an annotated stable tag is created directly at that SHA and its single
-   formal build workflow succeeds;
+2. an annotated stable tag targeting that SHA starts the formal build. If no
+   GitHub Release exists for `vX.Y.Z`, operators may force-update that tag onto
+   the new SHA instead of bumping the Cargo version. The workflow itself never
+   moves or deletes the tag;
 3. a public, non-prerelease, Latest Release has exact assets, disclosure,
    digests, metadata, and attestation;
 4. any later optional bookkeeping push is a new `main` HEAD and must satisfy
@@ -449,3 +465,96 @@ installers may trigger trust prompts; disclosure, SHA-256, and attestation make
 the origin auditable but are not equivalent to Authenticode. The repository's
 administrative branch-protection and provenance-workflow settings remain
 outside runtime eligibility and are not represented as release guarantees.
+
+## 11. Wrong vs Correct
+
+Wrong: treat a `notarytool wait` timeout as Apple rejection, notarize an app
+zip then the DMG as two serial waits, or bump `X.Y.Z` solely because an
+unpublished formal run timed out.
+
+```text
+sourceSha = live main HEAD
+require successful push CI on that SHA
+reject tag objects that are commits (lightweight)
+notarize app zip, then notarize DMG
+xcrun notarytool wait "$id" --timeout 1800
+# exit 124 / empty stdout => fail the Release job
+bump X.Y.Z after every failed unpublished formal run
+```
+
+Correct: keep formal identity as an annotated tag whose target equals live
+`main` HEAD and that SHA's successful `CI / Required`. Submit the signed DMG
+once without `--wait`, poll `notarytool info` on that submission id until
+`Accepted` / `Invalid` or the wait budget, then staple the app from that
+ticket. If no GitHub Release exists for `vX.Y.Z`, operators may force-update
+that unpublished tag onto a later exact-source SHA. The workflow itself never
+moves or deletes the tag.
+
+## Scenario: Single DMG notarization poll
+
+### 1. Scope / Trigger
+- Trigger: Apple Developer ID notarization is an infra integration. First
+  submissions for this team stayed `In Progress` past 30 and 60 minutes and
+  later reached `Accepted`. `notarytool wait --timeout` writes JSON to stderr
+  and exits 124, which `set -e` treats as failure even while Apple is still
+  processing.
+- Owner: `scripts/release/macos-developer-id.sh` plus the `build-macos` job in
+  `.github/workflows/release.yml`.
+
+### 2. Signatures
+- `macos-developer-id.sh notarize-dmg <dmg>`
+- `xcrun notarytool submit <dmg> --output-format json` (no `--wait`)
+- `xcrun notarytool info <submission-id> --output-format json`
+- `xcrun notarytool log <submission-id> <log-json>` on `Invalid` / `Rejected`
+- `xcrun stapler staple <dmg>` then `macos-developer-id.sh staple-app <app>`
+
+### 3. Contracts
+- Request: one regular signed UDZO DMG; one Apple submission id.
+- Response status values: `Accepted` (success), `In Progress` / `UNKNOWN`
+  (keep polling), `Invalid` / `Rejected` (fail).
+- Environment: required `FYAGENT_APPLE_CERTIFICATE_P12_BASE64`,
+  `FYAGENT_APPLE_CERTIFICATE_PASSWORD`, `FYAGENT_APPLE_ID`,
+  `FYAGENT_APPLE_APP_SPECIFIC_PASSWORD`. Optional
+  `FYAGENT_NOTARY_WAIT_SECONDS` (default `18000`),
+  `FYAGENT_NOTARY_POLL_SECONDS` (default `20`),
+  `FYAGENT_NOTARY_HEARTBEAT_SECONDS` (default `120`).
+- Job: `build-macos` `timeout-minutes: 360`.
+
+### 4. Validation & Error Matrix
+- Missing secrets or unsigned/non-regular DMG -> fail before submit.
+- Submit JSON without a string `id` -> fail; do not poll.
+- `notarytool wait` timeout / exit 124 -> must not be the wait path.
+- `Invalid` / `Rejected` -> print `notarytool log`, fail, do not staple.
+- Non-terminal after wait budget -> fail with id and last status; do not
+  upload a second Apple job.
+- `Accepted` -> staple DMG and app; ZIP is built from the stapled app.
+
+### 5. Good / Base / Bad Cases
+- Good: `info` returns `Accepted` inside the budget; DMG and ZIP app have
+  stapled tickets.
+- Base: `info` stays `In Progress` for more than 60 minutes, then `Accepted`;
+  the same submission id is reused.
+- Bad: two serial Apple uploads; `wait --timeout 1800` twice; treating 124 as
+  rejection; bumping the Cargo version solely because an unpublished tag's
+  formal run timed out.
+
+### 6. Tests Required
+- `tests/releaseWorkflow.test.ts` asserts exactly one `notarytool submit`,
+  presence of `notarytool info` and `notarytool log`, no `xcrun notarytool wait`
+  invocation, `FYAGENT_NOTARY_WAIT_SECONDS`,
+  `scripts/release/macos-developer-id.sh notarize-dmg`,
+  `staple-app`, and `timeout-minutes: 360` on `build-macos`.
+- Local tests do not call Apple; a successful unit run is not notarization
+  evidence.
+
+### 7. Wrong vs Correct
+#### Wrong
+```bash
+xcrun notarytool wait "$id" --timeout 1800 --output-format json >"$out"
+# timeout JSON on stderr, empty $out, exit 124, set -e kills the job
+```
+#### Correct
+```bash
+xcrun notarytool submit "$dmg" --output-format json   # capture id
+xcrun notarytool info "$id" --output-format json      # poll until Accepted
+```
