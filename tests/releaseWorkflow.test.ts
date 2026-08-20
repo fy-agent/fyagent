@@ -814,7 +814,7 @@ exit 2
   return binRoot;
 }
 
-function runMacSignedAppVerifier(mode: string) {
+function runMacSignedAppVerifier(mode: string, extraArgs: string[] = []) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "fyagent-macos-signed-"));
   temporaryRoots.push(root);
   const appPath = path.join(root, "FyAgent.app");
@@ -823,7 +823,7 @@ function runMacSignedAppVerifier(mode: string) {
   fs.mkdirSync(appPath);
   const result = spawnSync(
     resolveBashExecutable(),
-    [MACOS_SIGNED_APP_VERIFIER, appPath],
+    [MACOS_SIGNED_APP_VERIFIER, ...extraArgs, appPath],
     {
       encoding: "utf8",
       env: {
@@ -2016,13 +2016,14 @@ jobs:
     expect(source).toContain("com.fyagent.desktop");
     expect(macJob).toContain("scripts/release/macos-developer-id.sh prepare");
     expect(macJob).toContain("scripts/release/macos-developer-id.sh sign-app");
-    expect(macJob).toContain(
+    expect(macJob).not.toContain(
       "scripts/release/macos-developer-id.sh notarize-app",
     );
     expect(macJob).toContain("scripts/release/macos-developer-id.sh sign-dmg");
     expect(macJob).toContain(
       "scripts/release/macos-developer-id.sh notarize-dmg",
     );
+    expect(macJob).toContain("scripts/release/macos-developer-id.sh staple-app");
     expect(macJob).toContain("scripts/release/macos-developer-id.sh teardown");
     expect(macJob).toContain("secrets.FYAGENT_APPLE_CERTIFICATE_P12_BASE64");
     expect(macJob).toContain("secrets.FYAGENT_APPLE_CERTIFICATE_PASSWORD");
@@ -2030,6 +2031,10 @@ jobs:
     expect(macJob).toContain("secrets.FYAGENT_APPLE_APP_SPECIFIC_PASSWORD");
     expect(macJob.match(/\$\{\{ secrets\.FYAGENT_APPLE_/gu)).toHaveLength(4);
     expect(macDeveloperId).toContain("notarytool");
+    expect(macDeveloperId).toContain("notarytool submit");
+    expect(macDeveloperId).toContain("notarytool wait");
+    expect(macDeveloperId.match(/notarytool submit/gu)).toHaveLength(1);
+    expect(macDeveloperId).not.toContain("notarize_app");
     expect(macDeveloperId).toContain("stapler staple");
     expect(macDeveloperId).toContain("--options runtime");
     expect(macDeveloperId).toContain("--timestamp");
@@ -2075,9 +2080,12 @@ jobs:
     );
     expect(macJob).not.toContain("APPLE_SIGNING_IDENTITY");
     expect(macJob).not.toContain("codesign --force --sign -");
-    expect(
-      macJob.match(/scripts\/release\/verify-macos-signed-app\.sh/gu),
-    ).toHaveLength(3);
+    expect(macJob.match(/scripts\/release\/verify-macos-signed-app\.sh/gu)).toHaveLength(
+      3,
+    );
+    expect(macJob).toContain(
+      "scripts/release/verify-macos-signed-app.sh --signature-only",
+    );
     expect(
       macJob.match(/scripts\/release\/verify-macos-signed-dmg\.sh/gu),
     ).toHaveLength(1);
@@ -2126,6 +2134,13 @@ jobs:
       const result = runMacSignedAppVerifier(rejected);
       expect(result.status, `${rejected}: ${result.stderr}`).not.toBe(0);
     }
+
+    const signatureOnlyUnstapled = runMacSignedAppVerifier("not-stapled", [
+      "--signature-only",
+    ]);
+    expect(signatureOnlyUnstapled.status, signatureOnlyUnstapled.stderr).toBe(
+      0,
+    );
 
     const acceptedDmg = runMacSignedDmgVerifier("accepted");
     expect(acceptedDmg.status, acceptedDmg.stderr).toBe(0);

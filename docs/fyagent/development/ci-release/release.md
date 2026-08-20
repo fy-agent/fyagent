@@ -31,8 +31,9 @@ evidence, or asset drift.
 Platform acceptance is successful build and packaging on each matching native
 runner. Windows additionally requires strict unsigned/signing proof and the
 fresh formal sealing boundary before exact-asset verification. macOS
-additionally requires Developer ID signing, Apple notarization, and stapled
-tickets on the app and DMG. The Release workflow does not launch the setup
+additionally requires Developer ID signing, one Apple notarization of the
+signed DMG, a stapled DMG ticket, and a stapled ticket on the ZIP's app. The
+Release workflow does not launch the setup
 executables or run an install -> verify -> uninstall lifecycle; the retained
 lifecycle harness is a manual diagnostic, not a preflight or publication gate.
 

@@ -19,7 +19,7 @@ ORIGINAL_KEYCHAINS_FILE="$STATE_DIR/original-keychains"
 ORIGINAL_DEFAULT_FILE="$STATE_DIR/original-default"
 
 usage() {
-  echo "Usage: macos-developer-id.sh prepare|sign-app|notarize-app|sign-dmg|notarize-dmg|teardown [path]" >&2
+  echo "Usage: macos-developer-id.sh prepare|sign-app|sign-dmg|notarize-dmg|staple-app|teardown [path]" >&2
   exit 2
 }
 
@@ -87,18 +87,8 @@ require_secret() {
   fi
 }
 
-submit_for_notarization() {
-  local artifact="$1"
-  require_regular_file "$artifact" "Notarization input"
-  local submission_json="$STATE_DIR/notary-$(basename "$artifact").json"
-  xcrun notarytool submit "$artifact" \
-    --keychain-profile "$NOTARY_PROFILE" \
-    --keychain "$KEYCHAIN_PATH" \
-    --output-format json \
-    --wait \
-    --timeout 1800 \
-    >"$submission_json"
-  python3 - "$submission_json" "$artifact" <<'PY'
+require_notary_accepted() {
+  python3 - "$1" "$2" <<'PY'
 import json
 import pathlib
 import sys
@@ -112,6 +102,63 @@ if status != "Accepted":
         f"Apple notarization did not accept {artifact}: status={status!r}"
     )
 PY
+}
+
+submit_for_notarization() {
+  local artifact="$1"
+  require_regular_file "$artifact" "Notarization input"
+  local submission_json="$STATE_DIR/notary-$(basename "$artifact").json"
+  # Submit without --wait so Apple starts one job immediately. The Release
+  # workflow notarizes only the signed DMG; waiting here once replaces the
+  # previous serial app-zip then DMG notarization.
+  xcrun notarytool submit "$artifact" \
+    --keychain-profile "$NOTARY_PROFILE" \
+    --keychain "$KEYCHAIN_PATH" \
+    --output-format json \
+    >"$submission_json"
+  local submission_id
+  submission_id="$(
+    python3 - "$submission_json" <<'PY'
+import json
+import pathlib
+import sys
+
+payload = json.loads(pathlib.Path(sys.argv[1]).read_text())
+submission_id = payload.get("id")
+if not isinstance(submission_id, str) or not submission_id:
+    raise SystemExit("Apple notarization did not return a submission id")
+print(submission_id)
+PY
+  )"
+  echo "Apple notarization submission $submission_id for $artifact"
+  local wait_json="$STATE_DIR/notary-wait-$(basename "$artifact").json"
+  set +e
+  xcrun notarytool wait "$submission_id" \
+    --keychain-profile "$NOTARY_PROFILE" \
+    --keychain "$KEYCHAIN_PATH" \
+    --output-format json \
+    --timeout 1800 \
+    >"$wait_json"
+  set -e
+  if python3 - "$wait_json" <<'PY'
+import json
+import pathlib
+import sys
+
+payload = json.loads(pathlib.Path(sys.argv[1]).read_text())
+sys.exit(0 if payload.get("status") == "Accepted" else 1)
+PY
+  then
+    return 0
+  fi
+  echo "Apple notarization $submission_id is still processing; continuing the same submission"
+  xcrun notarytool wait "$submission_id" \
+    --keychain-profile "$NOTARY_PROFILE" \
+    --keychain "$KEYCHAIN_PATH" \
+    --output-format json \
+    --timeout 1800 \
+    >"$wait_json"
+  require_notary_accepted "$wait_json" "$artifact"
 }
 
 prepare() {
@@ -188,18 +235,6 @@ sign_app() {
     "$app_path"
 }
 
-notarize_app() {
-  local app_path="$1"
-  require_app_bundle "$app_path"
-  load_state
-  local notarize_zip="$STATE_DIR/$EXPECTED_BUNDLE_NAME.zip"
-  rm -f "$notarize_zip"
-  ditto -c -k --sequesterRsrc --keepParent "$app_path" "$notarize_zip"
-  submit_for_notarization "$notarize_zip"
-  xcrun stapler staple "$app_path"
-  rm -f "$notarize_zip"
-}
-
 sign_dmg() {
   local dmg_path="$1"
   require_regular_file "$dmg_path" "macOS DMG"
@@ -216,6 +251,13 @@ notarize_dmg() {
   load_state
   submit_for_notarization "$dmg_path"
   xcrun stapler staple "$dmg_path"
+}
+
+staple_app() {
+  local app_path="$1"
+  require_app_bundle "$app_path"
+  load_state
+  xcrun stapler staple "$app_path"
 }
 
 teardown() {
@@ -248,10 +290,6 @@ case "$command" in
     [ "$#" -eq 1 ] || usage
     sign_app "$1"
     ;;
-  notarize-app)
-    [ "$#" -eq 1 ] || usage
-    notarize_app "$1"
-    ;;
   sign-dmg)
     [ "$#" -eq 1 ] || usage
     sign_dmg "$1"
@@ -259,6 +297,10 @@ case "$command" in
   notarize-dmg)
     [ "$#" -eq 1 ] || usage
     notarize_dmg "$1"
+    ;;
+  staple-app)
+    [ "$#" -eq 1 ] || usage
+    staple_app "$1"
     ;;
   teardown)
     [ "$#" -eq 0 ] || usage

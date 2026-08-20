@@ -285,14 +285,17 @@ unavailability blocks acceptance.
   temporary keychain, re-seals the complete app with
   `Developer ID Application: William Wang (HY446996QX)` / team `HY446996QX`,
   the hardened runtime, a secure timestamp, and the checked-in entitlements,
-  then notarizes and staples the app. Strict deep verification must report that
-  exact identity, `runtime` flags, a timestamp, sealed resources, and a stapled
-  ticket. An ad-hoc signature, missing team, missing timestamp, or missing
-  notarization ticket is rejected;
-- ZIP and DMG package the same verified Developer ID app and are re-opened to
-  prove version and executable digest identity. After DMG creation the workflow
-  signs, notarizes, and staples the DMG container with the same Developer ID
-  identity. An unsigned, ad-hoc, or unstapled DMG is rejected;
+  then verifies that identity without requiring a stapler ticket yet. The job
+  packages a signed DMG from that app and submits only the DMG to Apple
+  notarization. After Apple accepts that one submission, it staples the DMG and
+  the original app from the same ticket, then zips the stapled app. It does not
+  notarize an app zip as a second serial wait. Strict deep verification must
+  report the exact identity, `runtime` flags, a timestamp, and sealed
+  resources. The ZIP app and the DMG container must carry stapled tickets. The
+  app copy inside the already-built DMG is the pre-staple Developer ID binary
+  and is checked for signature identity, not a nested ticket. An ad-hoc
+  signature, missing team, missing timestamp, or missing required ticket is
+  rejected;
 - DMG creation removes its explicit output before the first attempt and after
   every failed attempt. DMG verification preserves the completed input across
   attempts. Both operations retry the same arguments only when the captured
