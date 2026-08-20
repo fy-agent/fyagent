@@ -30,7 +30,7 @@ export const appRoutes: RouteObject[] = [
       {
         errorElement: <RootError />,
         children: [
-          { index: true, element: <Navigate to="/models" replace /> },
+          { index: true, element: <Navigate to="/agents" replace /> },
           {
             element: <PersistentPrimaryOutlet />,
             children: [
@@ -41,7 +41,7 @@ export const appRoutes: RouteObject[] = [
               { path: "prompts", element: null },
               { path: "memory", element: null },
               ...developmentRoutes,
-              { path: "*", element: <Navigate to="/models" replace /> },
+              { path: "*", element: <Navigate to="/agents" replace /> },
             ],
           },
         ],

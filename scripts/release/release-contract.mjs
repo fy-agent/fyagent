@@ -39,12 +39,6 @@ export const INSTALLER_RULES = Object.freeze([
     architecture: "universal",
   },
   {
-    suffix: "-macOS.zip",
-    platform: "macos",
-    kind: "zip",
-    architecture: "universal",
-  },
-  {
     suffix: "-Windows-x64-setup.exe",
     platform: "windows",
     kind: "exe",
@@ -86,9 +80,9 @@ export const EXPECTED_TARGETS = Object.freeze([
 ]);
 
 export const EXPECTED_INSTALLERS_BY_TARGET = Object.freeze({
-  "macos-universal": Object.freeze([0, 1]),
-  "windows-x64": Object.freeze([2]),
-  "windows-arm64": Object.freeze([3]),
+  "macos-universal": Object.freeze([0]),
+  "windows-x64": Object.freeze([1]),
+  "windows-arm64": Object.freeze([2]),
 });
 
 export const WINDOWS_SIGNING_FRAGMENTS_BY_TARGET = Object.freeze({

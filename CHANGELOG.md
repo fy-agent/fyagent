@@ -17,13 +17,17 @@ V2 desktop shell as the shipped product.
 ### Changed
 
 - Notarized exactly one submission per release: the workflow submits only the
-  signed DMG, polls `notarytool info` until Apple accepts or rejects it,
-  staples the DMG and the app from the same ticket, and zips the stapled app.
-  This replaces the serial app-then-DMG waits and stops treating
+  signed DMG, polls `notarytool info` until Apple accepts or rejects it, and
+  staples the DMG and the original app from the same ticket. The published
+  macOS installer is a UDZO DMG that contains `FyAgent.app` and an
+  `Applications` symlink for drag-install. This replaces the serial
+  app-then-DMG waits, the macOS ZIP attachment, and treating
   `notarytool wait --timeout` exit 124 as a rejection.
 - Refined the V2 setup experience: Skill and MCP actions stay on the header
-  row, Agent details show product intros, Models warn on explicit Claude
-  `/v1` paths, and draft service URLs are probed before save.
+  row, opening the app lands on the Agent directory, Agent details show
+  product intros without naming FyAgent, Qoder copy no longer mentions
+  Hooks, Models warn on explicit Claude `/v1` paths, and draft service URLs
+  are probed before save.
 - Codex Desktop skips redundant package-hash rereads during installation.
 
 ### CI and release contract
@@ -31,8 +35,8 @@ V2 desktop shell as the shipped product.
 - Formal `sourceSha` is now the annotated tag's target commit instead of the
   live `main` HEAD, and CI/Release cache `~/.cargo/registry` and
   `~/.cargo/git` keyed by `Cargo.lock`.
-- The publication contract requires exactly eight non-empty attachments: four
-  installers (Windows x64/ARM64 NSIS, macOS Universal DMG/ZIP), three
+- The publication contract requires exactly seven non-empty attachments: three
+  installers (Windows x64/ARM64 NSIS, macOS Universal DMG), three
   release-evidence JSON files, and one Sigstore bundle. The v0.4.1 run that
   failed during serial notarization was never published; earlier v0.3.x tags
   remain unmoved.

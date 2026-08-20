@@ -136,7 +136,7 @@ export function CodexDesktopInstallerPanel() {
       <div className="fy-codex-installer-heading">
         <div>
           <h3>Codex Desktop</h3>
-          <p>在 FyAgent 中安装、更新或启动桌面应用。</p>
+          <p>安装、更新或启动 Codex Desktop。</p>
         </div>
         {(installer.state === "checking" || installer.isRefreshing) && (
           <Spinner label="正在读取 Codex Desktop 状态" />

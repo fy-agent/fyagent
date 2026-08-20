@@ -96,7 +96,7 @@ AI が賢くなるほど、権限を誰に渡したのか、なぜ設定が壊�
 
 ファイル名は次の形式です。
 
-- macOS: `FyAgent-X.Y.Z-macOS.dmg`、`FyAgent-X.Y.Z-macOS.zip`
+- macOS: `FyAgent-X.Y.Z-macOS.dmg`
 - Windows: `FyAgent-X.Y.Z-Windows-x64-setup.exe`、`FyAgent-X.Y.Z-Windows-arm64-setup.exe`
 
 Windows 版は NSIS セットアップのみで、MSI とポータブル ZIP は現在の配布対象ではありません。macOS 版は Apple Developer ID で署名され、公証を受けています。

@@ -28,8 +28,11 @@ its own capability workflow:
   unsupported-capability lists, support counts, usage notes, Qoder Hooks
   editors, or MCP validation panels. Non-Codex details mount a page-local
   「产品介绍」 section from `src/v2/pages/agents/intros.ts` (hardcoded Chinese,
-  not the catalog `description` and not 「使用说明」). Codex keeps the desktop
-  installer as its substantial body and does not require that intro.
+  not the catalog `description` and not 「使用说明」). That copy describes the
+  third-party product only and must not mention FyAgent. Codex keeps the desktop
+  installer as its substantial body and does not require that intro. The
+  installer heading explains install/update/launch of Codex Desktop and must
+  not mention FyAgent.
 - WorkBuddy and OpenCode each use a dedicated revision-checked
   model-configuration domain. WorkBuddy additionally exposes direct Skills
   copy and MCP `mcp.json` assignment. Grok Build Models uses the same Provider
@@ -231,6 +234,8 @@ and a revision, never `ak` / `sk` / `apiKey`.
   TRAE `displayName` is `TRAE Work CN`; its product URL is exactly
   `https://www.trae.cn/sem-work`.   Catalog descriptions use 支持 / 不支持
   wording and must not contain `可在 FyAgent` or `可通过 FyAgent`.
+  QoderWork CN catalog `description` and Agent intro copy must not mention
+  Hooks.
   QoderWork CN and TRAE Work CN describe MCP as 直接分配; their `mcp.write`
   mode is `direct` with `dedicated_native_contract`.
 - The v4 link matrix is exact: QoderWork CN, TRAE Work CN, WorkBuddy, and
@@ -514,6 +519,8 @@ fetch/save controls.
 | Runtime value is unknown                                                                   | Preserve `null`/`unverified`; never display "not installed"                                            |
 | Agent directory mounts Hooks editor, MCP validation, observation, or unsupported lists     | Page test fails; those surfaces stay off the Agent directory                                            |
 | Non-Codex Agent detail omits 「产品介绍」 or Codex detail shows that region                 | Page test fails; intros are page-local copy, never catalog `description`                                |
+| Agent directory intro or Codex installer copy names FyAgent                                | Intro/page/installer test fails; Agent directory copy describes the third-party product only            |
+| QoderWork CN catalog description or Agent intro mentions Hooks                             | Catalog/intro test fails; Qoder user-facing copy must not name Hooks                                    |
 | TRAE Models attempts sqlite save or fetch-and-apply                                        | Forbidden; GET observation and catalog guidance only, never 请回 TRAE 保存                              |
 | TRAE/OpenCode GET snapshot or Debug/log contains `ak`/`sk`/`apiKey`                        | Security regression test fails                                                                          |
 | External MCP result contains an original env/header value                                  | Reject the result and expose no copy action                                                             |
@@ -632,7 +639,7 @@ Required focused coverage includes:
   Agent directory tests prove only `direct` capability jumps, no capability-item
   grid or catalog description, shared official
   primary buttons, page-local 「产品介绍」 on non-Codex details, Codex without
-  that region, and the absence of observation/Hooks/MCP panels. Product
+  that region, no FyAgent host copy on Agent directory surfaces, and the absence of observation/Hooks/MCP panels. Product
   pages have no outer h1/subtitle.
 
 Browser tests prove renderer/IPC wiring only. Rust tests prove service/command

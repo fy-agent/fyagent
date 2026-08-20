@@ -115,17 +115,17 @@ push CI. The eligibility engine and
 [GitHub Release Workflow](./github-release-workflow.md) own the branch split;
 do not treat `main` as the preflight authority.
 
-The installer allowlist contains exactly four versioned files:
+The installer allowlist contains exactly three versioned files:
 
 ```text
 FyAgent-X.Y.Z-macOS.dmg
-FyAgent-X.Y.Z-macOS.zip
 FyAgent-X.Y.Z-Windows-x64-setup.exe
 FyAgent-X.Y.Z-Windows-arm64-setup.exe
 ```
 
 Only the two versioned NSIS setup executables are accepted for Windows.
-Non-allowlisted Windows package formats, portable archives, v-prefixed names,
+The only accepted macOS installer is the versioned DMG. Non-allowlisted
+Windows package formats, portable archives, macOS ZIP archives, v-prefixed names,
 architecture aliases, and unversioned installer names are rejected.
 
 `download-manifest.json` schema `fyagent-download-manifest/v3` binds product,
@@ -148,9 +148,9 @@ Authenticode state. It is a release attachment and attestation subject; native
 per-architecture signing fragments are private workflow inputs and are never
 published.
 
-The attestation subject set contains exactly seven files: the four installers,
+The attestation subject set contains exactly six files: the three installers,
 download manifest, build metadata, and signing status. The Sigstore bundle is
-the eighth and final Release attachment and does not attest itself.
+the seventh and final Release attachment and does not attest itself.
 
 ## 5. Change and Failure Rules
 
@@ -177,9 +177,10 @@ the eighth and final Release attachment and does not attest itself.
   byte-identical.
 - `tests/versionConsistency.test.ts` delegates to the canonical script rather
   than implementing another version parser.
-- Download/release asset tests assert all four exact names, the two Windows NSIS
-  setup executables and architecture mapping, URL shape, and
-  missing/extra/non-allowlisted/symlink rejection.
+- Download/release asset tests assert all three exact names, the two Windows NSIS
+  setup executables and architecture mapping, URL shape,
+  missing/extra/non-allowlisted/symlink rejection, six attestation subjects,
+  and seven Release attachments.
 - Release tests assert frozen output consumption and that the download,
   build, signing, attestation, and publication stages use the same version,
   source SHA, CI run, and attempt. They cover `dev/laiyongjie` preflight and

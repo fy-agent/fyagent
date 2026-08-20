@@ -82,15 +82,15 @@ function expectSystemOwnedChrome(): void {
 
 describe("FyAgent V2 routing", () => {
   it.each(["/", "/route-that-does-not-exist"])(
-    "redirects %s to the models route",
+    "redirects %s to the agents route",
     async (initialEntry) => {
       const router = renderRoute(initialEntry);
 
-      await expectPath(router, "/models");
+      await expectPath(router, "/agents");
       const navigation = screen.getByRole("navigation", { name: "主导航" });
       expect(
-        screen.getByRole("link", { name: "模型", current: "page" }),
-      ).toHaveAttribute("href", "/models");
+        screen.getByRole("link", { name: "Agent 目录", current: "page" }),
+      ).toHaveAttribute("href", "/agents");
       expect(screen.getAllByTestId("liquid-glass-lens")).toHaveLength(1);
       expect(within(navigation).getAllByTestId("selection-lens")).toHaveLength(
         1,

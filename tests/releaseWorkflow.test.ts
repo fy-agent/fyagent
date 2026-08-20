@@ -467,7 +467,7 @@ function assertWindowsSetupIconGates(workflow: string) {
   const verify = workflowJobBlock(workflow, "verify-assets", "attest");
   const aggregate = namedStepBlock(
     verify,
-    "Verify exact four and generate three machine-readable subjects",
+    "Verify exact three installers and generate three machine-readable subjects",
   );
   const aggregateLines = aggregate.split("\n");
   if (
@@ -920,7 +920,7 @@ describe("FyAgent release workflow", () => {
     const rawPath = path.join(
       outputRoot,
       "raw-windows-x64",
-      expectedInstallerNames(version)[2],
+      expectedInstallerNames(version)[1],
     );
     const rawBytes = fs.readFileSync(rawPath);
     fs.appendFileSync(rawPath, "tampered");
@@ -1952,7 +1952,7 @@ jobs:
     expect(formal).toContain("pin-release-build-inputs");
   });
 
-  it("aggregates signing evidence and attests seven subjects into eight attachments", () => {
+  it("aggregates signing evidence and attests six subjects into seven attachments", () => {
     const verify = workflowJobBlock(source, "verify-assets", "attest");
     expect(verify).toContain(
       "artifact-ids: ${{ needs['pin-release-build-inputs'].outputs.artifact_id }}",
@@ -1972,7 +1972,7 @@ jobs:
       "--arm64-status signing-fragments/windows-signing-arm64.json",
     );
     expect(verify).toContain("--output verified-subjects/signing-status.json");
-    expect(verify).toContain("Upload the exact seven attestation subjects");
+    expect(verify).toContain("Upload the exact six attestation subjects");
 
     const attest = workflowJobBlock(source, "attest", "publish");
     expectExactLine(attest, "    needs: [eligibility, verify-assets]");
@@ -1981,8 +1981,8 @@ jobs:
       "actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6",
     );
     expect(attest).toContain("subject-path: verified-subjects/*");
-    expect(attest).toContain("Recheck the exact seven subjects");
-    expect(attest).toContain("exact eight Release attachments");
+    expect(attest).toContain("Recheck the exact six subjects");
+    expect(attest).toContain("exact seven Release attachments");
     expect(attest).toContain("prepare-release-publication.mjs assemble");
 
     const publish = source.slice(source.indexOf("\n  publish:\n"));
@@ -1997,8 +1997,8 @@ jobs:
     expect(publish).toContain(".attestation.subjectName");
     expect(publish).toContain(".attestation.subjectDigest");
     expect(publish).toContain("signing-status.json");
-    expect(publish).toContain("length == 8");
-    expect(publish).toContain("(.assets | length) == 8");
+    expect(publish).toContain("length == 7");
+    expect(publish).toContain("(.assets | length) == 7");
   });
 
   it("seals the universal macOS app with Developer ID and notarizes the DMG", () => {
@@ -2037,6 +2037,17 @@ jobs:
       "scripts/release/macos-developer-id.sh notarize-dmg",
     );
     expect(macJob).toContain("scripts/release/macos-developer-id.sh staple-app");
+    expect(macJob).toContain('ln -s /Applications "$stage/Applications"');
+    expect(macJob).toContain('[ -L "$mount_point/Applications" ]');
+    expect(macJob).toContain(
+      '[ "$(readlink "$mount_point/Applications")" = "/Applications" ]',
+    );
+    expect(macJob).toContain(
+      'scripts/release/verify-macos-signed-app.sh "$APP_PATH"',
+    );
+    expect(macJob).not.toContain("macOS.zip");
+    expect(macJob).not.toContain("ditto -c -k");
+    expect(macJob).not.toContain("unzip_root");
     expect(macJob).toContain("scripts/release/macos-developer-id.sh teardown");
     expect(macJob).toContain("secrets.FYAGENT_APPLE_CERTIFICATE_P12_BASE64");
     expect(macJob).toContain("secrets.FYAGENT_APPLE_CERTIFICATE_PASSWORD");
@@ -2123,6 +2134,7 @@ jobs:
     expect(macJob).not.toContain("unexpectedly has a code signature");
     expect(macJob).not.toContain("code object is not signed at all");
     expect(source).toContain("FyAgent-${APP_VERSION}-macOS.dmg");
+    expect(source).not.toContain("FyAgent-${APP_VERSION}-macOS.zip");
   });
 
   it("executes the Developer ID verifiers for both slices and fails closed on trust drift", () => {

@@ -96,7 +96,7 @@ See the full [English manual](docs/user-manual/en/README.md), or switch to [ç®€ä
 
 Release files follow these names:
 
-- macOS: `FyAgent-X.Y.Z-macOS.dmg`, `FyAgent-X.Y.Z-macOS.zip`
+- macOS: `FyAgent-X.Y.Z-macOS.dmg`
 - Windows: `FyAgent-X.Y.Z-Windows-x64-setup.exe`, `FyAgent-X.Y.Z-Windows-arm64-setup.exe`
 
 Windows releases use an NSIS setup program; MSI and portable ZIP packages are not part of the current release surface. macOS builds are signed with an Apple Developer ID and notarized.

@@ -118,6 +118,11 @@ describe("V2 Codex Desktop installer panel", () => {
     });
     renderPanel(port);
 
+    expect(
+      await screen.findByText("安装、更新或启动 Codex Desktop。"),
+    ).toBeVisible();
+    expect(screen.queryByText(/FyAgent/iu)).not.toBeInTheDocument();
+
     const install = await screen.findByRole("button", {
       name: "安装 Codex Desktop",
     });
