@@ -99,7 +99,7 @@ Release files follow these names:
 - macOS: `FyAgent-X.Y.Z-macOS.dmg`, `FyAgent-X.Y.Z-macOS.zip`
 - Windows: `FyAgent-X.Y.Z-Windows-x64-setup.exe`, `FyAgent-X.Y.Z-Windows-arm64-setup.exe`
 
-Windows releases use an NSIS setup program; MSI and portable ZIP packages are not part of the current release surface. macOS builds are ad-hoc signed, not signed with an Apple Developer ID, and not notarized.
+Windows releases use an NSIS setup program; MSI and portable ZIP packages are not part of the current release surface. macOS builds are signed with an Apple Developer ID and notarized.
 
 Before installing, read the release notes and verify the published checksums, `signing-status.json`, and build attestation. `NotSigned` is a status, not proof that a file is safe. See the [installation guide](docs/user-manual/en/1-getting-started/1.2-installation.md) for platform-specific steps and the [release notes index](docs/release-notes/README.md) for version history.
 

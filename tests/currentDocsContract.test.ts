@@ -43,8 +43,8 @@ const LOCALIZED_INSTALLATION_GUIDES = [
   {
     file: "docs/user-manual/en/1-getting-started/1.2-installation.md",
     trustPatterns: [
-      /not signed with an Apple Developer ID/,
-      /not\s+notarized by Apple/,
+      /signed with an Apple Developer ID/,
+      /notarized by Apple/,
       /Open Anyway/,
       /Do not disable Gatekeeper/,
       /remove the file's quarantine attribute/,
@@ -53,8 +53,8 @@ const LOCALIZED_INSTALLATION_GUIDES = [
   {
     file: "docs/user-manual/ja/1-getting-started/1.2-installation.md",
     trustPatterns: [
-      /Apple Developer ID では署名されておらず/,
-      /公証も受けていません/,
+      /Apple Developer ID で署名され/,
+      /Apple の公証を受けています/,
       /このまま開く[\s\S]{0,40}Open Anyway/,
       /Gatekeeper を無効にしたり/,
       /quarantine[\s\S]{0,40}削除したりしないで/,
@@ -63,8 +63,8 @@ const LOCALIZED_INSTALLATION_GUIDES = [
   {
     file: "docs/user-manual/zh/1-getting-started/1.2-installation.md",
     trustPatterns: [
-      /未使用 Apple\s+Developer ID\s+签名/,
-      /未经 Apple 公证/,
+      /Apple\s+Developer ID\s+签名/,
+      /Apple 公证/,
       /仍要打开[\s\S]{0,40}Open\s+Anyway/,
       /不要关闭 Gatekeeper/,
       /不要移除[\s\S]{0,40}quarantine/,
@@ -648,7 +648,7 @@ describe("current FyAgent documentation authority", () => {
         expect(source, `${file} -> ${installer}`).toContain(installer);
       }
       expect(source, file).toContain("NSIS");
-      expect(source, file).toMatch(/\bad-hoc\b/iu);
+      expect(source, file).toMatch(/Developer ID/u);
       expect(source, file).not.toMatch(
         /FyAgent-X\.Y\.Z-Windows(?:-(?:x64|arm64))?\.msi/i,
       );

@@ -65,11 +65,29 @@ const WINDOWS_SIGNING_EVIDENCE = path.join(
   "release",
   "windows-signing-evidence.ps1",
 );
-const MACOS_ADHOC_VERIFIER = path.join(
+const MACOS_SIGNED_APP_VERIFIER = path.join(
   ROOT,
   "scripts",
   "release",
-  "verify-macos-adhoc-app.sh",
+  "verify-macos-signed-app.sh",
+);
+const MACOS_SIGNED_DMG_VERIFIER = path.join(
+  ROOT,
+  "scripts",
+  "release",
+  "verify-macos-signed-dmg.sh",
+);
+const MACOS_DEVELOPER_ID = path.join(
+  ROOT,
+  "scripts",
+  "release",
+  "macos-developer-id.sh",
+);
+const MACOS_SIGNING_POLICY = path.join(
+  ROOT,
+  "scripts",
+  "release",
+  "macos-signing-policy.sh",
 );
 const MACOS_HDIUTIL_RETRY = path.join(
   ROOT,
@@ -694,31 +712,88 @@ function createBuildInputFixture(version: string) {
   return root;
 }
 
-function runMacAdhocVerifier(mode: string) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "fyagent-macos-adhoc-"));
-  temporaryRoots.push(root);
+function writeFakeCodesignTools(root: string) {
   const binRoot = path.join(root, "bin");
-  const appPath = path.join(root, "FyAgent.app");
-  const callLog = path.join(root, "codesign.log");
   fs.mkdirSync(binRoot);
-  fs.mkdirSync(appPath);
   fs.writeFileSync(
     path.join(binRoot, "codesign"),
     `#!/usr/bin/env bash
 set -euo pipefail
 printf '%s\\n' "$*" >> "$FYAGENT_FAKE_CODESIGN_LOG"
 if [ "$1" = '--display' ]; then
-  printf '%s\\n' \\
-    'Executable=FyAgent' \\
-    'Identifier=com.fyagent.desktop' \\
-    "CodeDirectory v=20400 size=1 flags=$([ "$FYAGENT_FAKE_MODE" = linker ] && printf '0x20002(adhoc,linker-signed)' || printf '0x2(adhoc)') hashes=1+0 location=embedded" \\
-    'CMSDigest=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef' \\
-    'CMSDigestType=2' \\
-    'Signature=adhoc' \\
-    "$([ "$FYAGENT_FAKE_MODE" = team ] && printf 'TeamIdentifier=ABCDE12345' || printf 'TeamIdentifier=not set')" \\
-    "$([ "$FYAGENT_FAKE_MODE" = unsealed ] && printf 'Sealed Resources=none' || printf 'Sealed Resources version=2 rules=13 files=4')"
-  [ "$FYAGENT_FAKE_MODE" = authority ] && printf '%s\\n' 'Authority=Developer ID Application: Example'
-  [ "$FYAGENT_FAKE_MODE" = timestamp ] && printf '%s\\n' 'Timestamp=10 Aug 2026 at 00:00:00'
+  case "$FYAGENT_FAKE_MODE" in
+    adhoc)
+      printf '%s\\n' \\
+        'Executable=FyAgent' \\
+        'Identifier=com.fyagent.desktop' \\
+        'CodeDirectory v=20400 size=1 flags=0x2(adhoc) hashes=1+0 location=embedded' \\
+        'Signature=adhoc' \\
+        'TeamIdentifier=not set' \\
+        'Sealed Resources version=2 rules=13 files=4'
+      ;;
+    linker)
+      printf '%s\\n' \\
+        'Executable=FyAgent' \\
+        'Identifier=com.fyagent.desktop' \\
+        'CodeDirectory v=20500 size=1 flags=0x12000(runtime,linker-signed) hashes=1+0 location=embedded' \\
+        'Authority=Developer ID Application: William Wang (HY446996QX)' \\
+        'TeamIdentifier=HY446996QX' \\
+        'Timestamp=20 Aug 2026 at 00:00:00' \\
+        'Sealed Resources version=2 rules=13 files=4'
+      ;;
+    team)
+      printf '%s\\n' \\
+        'Executable=FyAgent' \\
+        'Identifier=com.fyagent.desktop' \\
+        'CodeDirectory v=20500 size=1 flags=0x10000(runtime) hashes=1+0 location=embedded' \\
+        'Authority=Developer ID Application: William Wang (HY446996QX)' \\
+        'TeamIdentifier=ABCDE12345' \\
+        'Timestamp=20 Aug 2026 at 00:00:00' \\
+        'Sealed Resources version=2 rules=13 files=4'
+      ;;
+    timestamp)
+      printf '%s\\n' \\
+        'Executable=FyAgent' \\
+        'Identifier=com.fyagent.desktop' \\
+        'CodeDirectory v=20500 size=1 flags=0x10000(runtime) hashes=1+0 location=embedded' \\
+        'Authority=Developer ID Application: William Wang (HY446996QX)' \\
+        'TeamIdentifier=HY446996QX' \\
+        'Timestamp=none' \\
+        'Sealed Resources version=2 rules=13 files=4'
+      ;;
+    unsealed)
+      printf '%s\\n' \\
+        'Executable=FyAgent' \\
+        'Identifier=com.fyagent.desktop' \\
+        'CodeDirectory v=20500 size=1 flags=0x10000(runtime) hashes=1+0 location=embedded' \\
+        'Authority=Developer ID Application: William Wang (HY446996QX)' \\
+        'TeamIdentifier=HY446996QX' \\
+        'Timestamp=20 Aug 2026 at 00:00:00' \\
+        'Sealed Resources=none'
+      ;;
+    authority)
+      printf '%s\\n' \\
+        'Executable=FyAgent' \\
+        'Identifier=com.fyagent.desktop' \\
+        'CodeDirectory v=20500 size=1 flags=0x10000(runtime) hashes=1+0 location=embedded' \\
+        'Authority=Apple Development: Example' \\
+        'TeamIdentifier=HY446996QX' \\
+        'Timestamp=20 Aug 2026 at 00:00:00' \\
+        'Sealed Resources version=2 rules=13 files=4'
+      ;;
+    *)
+      printf '%s\\n' \\
+        'Executable=FyAgent' \\
+        'Identifier=com.fyagent.desktop' \\
+        'CodeDirectory v=20500 size=1 flags=0x10000(runtime) hashes=1+0 location=embedded' \\
+        'Authority=Developer ID Application: William Wang (HY446996QX)' \\
+        'Authority=Developer ID Certification Authority' \\
+        'Authority=Apple Root CA' \\
+        'TeamIdentifier=HY446996QX' \\
+        'Timestamp=20 Aug 2026 at 00:00:00' \\
+        'Sealed Resources version=2 rules=13 files=4'
+      ;;
+  esac
   exit 0
 fi
 if [ "$1" = '--verify' ]; then
@@ -732,13 +807,49 @@ exit 2
   fs.writeFileSync(
     path.join(binRoot, "xcrun"),
     `#!/usr/bin/env bash
-[ "$FYAGENT_FAKE_MODE" = stapled ]
+[ "$FYAGENT_FAKE_MODE" != not-stapled ]
 `,
     { mode: 0o755 },
   );
+  return binRoot;
+}
+
+function runMacSignedAppVerifier(mode: string) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "fyagent-macos-signed-"));
+  temporaryRoots.push(root);
+  const appPath = path.join(root, "FyAgent.app");
+  const callLog = path.join(root, "codesign.log");
+  const binRoot = writeFakeCodesignTools(root);
+  fs.mkdirSync(appPath);
   const result = spawnSync(
     resolveBashExecutable(),
-    [MACOS_ADHOC_VERIFIER, appPath],
+    [MACOS_SIGNED_APP_VERIFIER, appPath],
+    {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        FYAGENT_FAKE_CODESIGN_LOG: callLog,
+        FYAGENT_FAKE_MODE: mode,
+        PATH: `${binRoot}:${process.env.PATH ?? ""}`,
+      },
+    },
+  );
+  return {
+    ...result,
+    calls: fs.existsSync(callLog) ? read(callLog).trim().split("\n") : [],
+  };
+}
+
+function runMacSignedDmgVerifier(mode: string) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "fyagent-macos-dmg-"));
+  temporaryRoots.push(root);
+  const dmgPath = path.join(root, "FyAgent-0.4.1-macOS.dmg");
+  const callLog = path.join(root, "codesign.log");
+  const binRoot = writeFakeCodesignTools(root);
+  fs.writeFileSync(dmgPath, "fake-dmg");
+  const result = spawnSync(
+    resolveBashExecutable(),
+    [MACOS_SIGNED_DMG_VERIFIER, dmgPath],
     {
       encoding: "utf8",
       env: {
@@ -1877,24 +1988,58 @@ jobs:
     expect(publish).toContain("(.assets | length) == 8");
   });
 
-  it("seals the universal macOS app ad-hoc while keeping the DMG unsigned", () => {
+  it("seals the universal macOS app with Developer ID and notarizes the DMG", () => {
     const macJob = source.slice(
       source.indexOf("\n  build-macos:\n"),
       source.indexOf("\n  pin-release-build-inputs:\n"),
     );
-    const macAdhocVerifier = read(MACOS_ADHOC_VERIFIER);
+    const macSignedAppVerifier = read(MACOS_SIGNED_APP_VERIFIER);
+    const macSignedDmgVerifier = read(MACOS_SIGNED_DMG_VERIFIER);
+    const macDeveloperId = read(MACOS_DEVELOPER_ID);
+    const macSigningPolicy = read(MACOS_SIGNING_POLICY);
     const hdiutilRetry = read(MACOS_HDIUTIL_RETRY);
-    expect(trackedMode(MACOS_ADHOC_VERIFIER)).toBe("100755");
+    expect(trackedMode(MACOS_SIGNED_APP_VERIFIER)).toBe("100755");
+    expect(trackedMode(MACOS_SIGNED_DMG_VERIFIER)).toBe("100755");
+    expect(trackedMode(MACOS_DEVELOPER_ID)).toBe("100755");
     const tauriConfig = JSON.parse(read(TAURI_CONFIG)) as {
-      bundle?: { macOS?: { signingIdentity?: string } };
+      bundle?: {
+        macOS?: {
+          signingIdentity?: string;
+          hardenedRuntime?: boolean;
+          entitlements?: string;
+        };
+      };
     };
     expect(source).toContain("--target universal-apple-darwin --bundles app");
     expect(source).toContain("lipo -archs");
     expect(source).toContain("CFBundleShortVersionString");
     expect(source).toContain("com.fyagent.desktop");
-    expect(source).toContain("xcrun stapler validate");
-    expect(source).not.toContain("stapler staple");
-    expect(source).not.toContain("notarytool");
+    expect(macJob).toContain("scripts/release/macos-developer-id.sh prepare");
+    expect(macJob).toContain("scripts/release/macos-developer-id.sh sign-app");
+    expect(macJob).toContain(
+      "scripts/release/macos-developer-id.sh notarize-app",
+    );
+    expect(macJob).toContain("scripts/release/macos-developer-id.sh sign-dmg");
+    expect(macJob).toContain(
+      "scripts/release/macos-developer-id.sh notarize-dmg",
+    );
+    expect(macJob).toContain("scripts/release/macos-developer-id.sh teardown");
+    expect(macJob).toContain("secrets.FYAGENT_APPLE_CERTIFICATE_P12_BASE64");
+    expect(macJob).toContain("secrets.FYAGENT_APPLE_CERTIFICATE_PASSWORD");
+    expect(macJob).toContain("secrets.FYAGENT_APPLE_ID");
+    expect(macJob).toContain("secrets.FYAGENT_APPLE_APP_SPECIFIC_PASSWORD");
+    expect(macJob.match(/\$\{\{ secrets\.FYAGENT_APPLE_/gu)).toHaveLength(4);
+    expect(macDeveloperId).toContain("notarytool");
+    expect(macDeveloperId).toContain("stapler staple");
+    expect(macDeveloperId).toContain("--options runtime");
+    expect(macDeveloperId).toContain("--timestamp");
+    expect(macDeveloperId).toContain("apple-root-ca.cer");
+    expect(macDeveloperId).toContain("apple-developer-id-g2-ca.cer");
+    expect(macDeveloperId).not.toContain("codesign --force --sign -");
+    expect(macSigningPolicy).toContain(
+      "Developer ID Application: William Wang (HY446996QX)",
+    );
+    expect(macSigningPolicy).toContain("HY446996QX");
     expect(source).toContain("hdiutil attach");
     expect(source).toContain("-readonly");
     for (const repeatedLine of [
@@ -1924,40 +2069,39 @@ jobs:
     expect(macJob).not.toContain("hdiutil detach -force");
     expect(macJob).not.toMatch(/kill[^\n]*diskimages/iu);
     expect(tauriConfig.bundle?.macOS).not.toHaveProperty("signingIdentity");
-    expect(macJob).not.toContain("APPLE_SIGNING_IDENTITY");
-    expect(macJob).toContain(
-      'codesign --force --sign - --timestamp=none "$app_path"',
+    expect(tauriConfig.bundle?.macOS?.hardenedRuntime).toBe(true);
+    expect(tauriConfig.bundle?.macOS?.entitlements).toBe(
+      "entitlements.macos.plist",
     );
+    expect(macJob).not.toContain("APPLE_SIGNING_IDENTITY");
+    expect(macJob).not.toContain("codesign --force --sign -");
     expect(
-      macJob.match(/scripts\/release\/verify-macos-adhoc-app\.sh/gu),
+      macJob.match(/scripts\/release\/verify-macos-signed-app\.sh/gu),
     ).toHaveLength(3);
-    expect(macAdhocVerifier).toContain("for architecture in arm64 x86_64; do");
-    expect(macAdhocVerifier).toContain("Signature=adhoc");
-    expect(macAdhocVerifier).toContain("flags=.*adhoc");
-    expect(macAdhocVerifier).toContain("TeamIdentifier=not set");
-    expect(macAdhocVerifier).toContain("^Sealed Resources version=");
-    expect(macAdhocVerifier).toContain(
+    expect(
+      macJob.match(/scripts\/release\/verify-macos-signed-dmg\.sh/gu),
+    ).toHaveLength(1);
+    expect(macSignedAppVerifier).toContain(
+      "for architecture in arm64 x86_64; do",
+    );
+    expect(macSignedAppVerifier).toContain("Signature=adhoc");
+    expect(macSignedAppVerifier).toContain("flags=.*runtime");
+    expect(macSignedAppVerifier).toContain("TeamIdentifier=$EXPECTED_TEAM_ID");
+    expect(macSignedAppVerifier).toContain("^Sealed Resources version=");
+    expect(macSignedAppVerifier).toContain(
       "codesign --verify --deep --strict --verbose=4",
     );
-    expect(macAdhocVerifier).toContain("xcrun stapler validate");
-    expect(macAdhocVerifier).not.toMatch(/codesign\s+--force[^\n]*--deep/gu);
-    expect(macAdhocVerifier).toMatch(
-      /linker-signed\|\^Authority=\|Developer ID/u,
-    );
-    expect(macJob).toContain(
-      'if dmg_signature="$(codesign -dvvv "$dmg_path" 2>&1)"; then',
-    );
-    expect(macJob.match(/unexpectedly has a code signature/gu)).toHaveLength(1);
-    expect(macJob.match(/code object is not signed at all/gu)).toHaveLength(1);
-    expect(macJob).toContain(
-      "^Signature=|^Authority=|Developer ID|^TeamIdentifier=|^Timestamp=|^CMSDigest",
-    );
-    expect(macJob).not.toContain('codesign -dvvv "$dmg_path" 2>&1 || true');
+    expect(macSignedAppVerifier).toContain("xcrun stapler validate");
+    expect(macSignedAppVerifier).not.toMatch(/codesign\s+--force[^\n]*--deep/gu);
+    expect(macSignedDmgVerifier).toContain("Authority=$EXPECTED_AUTHORITY");
+    expect(macSignedDmgVerifier).toContain("xcrun stapler validate");
+    expect(macJob).not.toContain("unexpectedly has a code signature");
+    expect(macJob).not.toContain("code object is not signed at all");
     expect(source).toContain("FyAgent-${APP_VERSION}-macOS.dmg");
   });
 
-  it("executes the ad-hoc verifier for both slices and fails closed on trust drift", () => {
-    const accepted = runMacAdhocVerifier("accepted");
+  it("executes the Developer ID verifiers for both slices and fails closed on trust drift", () => {
+    const accepted = runMacSignedAppVerifier("accepted");
     expect(accepted.status, accepted.stderr).toBe(0);
     expect(
       accepted.calls.filter((call) => call.startsWith("--display ")),
@@ -1970,16 +2114,24 @@ jobs:
     );
 
     for (const rejected of [
+      "adhoc",
       "authority",
       "linker",
-      "stapled",
+      "not-stapled",
       "team",
       "timestamp",
       "unsealed",
       "verify-fail",
     ]) {
-      const result = runMacAdhocVerifier(rejected);
+      const result = runMacSignedAppVerifier(rejected);
       expect(result.status, `${rejected}: ${result.stderr}`).not.toBe(0);
+    }
+
+    const acceptedDmg = runMacSignedDmgVerifier("accepted");
+    expect(acceptedDmg.status, acceptedDmg.stderr).toBe(0);
+    for (const rejected of ["adhoc", "authority", "not-stapled", "team"]) {
+      const result = runMacSignedDmgVerifier(rejected);
+      expect(result.status, `dmg ${rejected}: ${result.stderr}`).not.toBe(0);
     }
   });
 
