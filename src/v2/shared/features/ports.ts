@@ -170,6 +170,7 @@ export interface SkillsPort {
     query: string,
     limit: number,
     offset: number,
+    category?: string,
   ): Promise<SkillHubSearchResult>;
   installSkillHub(
     slug: string,

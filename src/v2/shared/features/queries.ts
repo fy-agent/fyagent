@@ -4,9 +4,11 @@ import { useFeatures } from "./provider";
 import {
   PROMPT_APP_IDS,
   SKILL_DISCOVERY_PAGE_SIZE,
+  SKILLHUB_CATEGORY_ALL,
   type MemoryDocumentId,
   type PromptAppId,
   type SkillDiscoveryStatus,
+  type SkillHubCategoryFilter,
 } from "./types";
 import type { ProviderAppId } from "./types";
 
@@ -164,18 +166,27 @@ export function useSkillUpdates(enabled = false) {
 export function useSkillHubSearch(
   query: string,
   page: number,
+  category: SkillHubCategoryFilter,
   enabled: boolean,
 ) {
   const { ports } = useFeatures();
   const limit = SKILL_DISCOVERY_PAGE_SIZE;
+  const categoryKey = category === SKILLHUB_CATEGORY_ALL ? "" : category;
   return useQuery({
-    queryKey: ["v2", "skills", "skillhub", query, page],
+    queryKey: [
+      ...featureKeys.skillDiscovery,
+      "skillhub",
+      query,
+      category,
+      page,
+    ],
     queryFn: async () => {
       const load = (nextPage: number) =>
         ports.skills.searchSkillHub(
           query,
           limit,
           Math.max(0, nextPage - 1) * limit,
+          categoryKey,
         );
       const result = await load(page);
       const totalPages = Math.max(1, Math.ceil(result.totalCount / limit));

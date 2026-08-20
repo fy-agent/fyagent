@@ -913,6 +913,16 @@ describe("V2 Skills management", () => {
     expect(
       screen.queryByRole("tablist", { name: "仓库筛选" }),
     ).not.toBeInTheDocument();
+    expect(screen.getByRole("tablist", { name: "分类筛选" })).toBeVisible();
+    expect(
+      within(screen.getByRole("tablist", { name: "分类筛选" })).getByRole(
+        "tab",
+        { name: "全部", selected: true },
+      ),
+    ).toBeVisible();
+    expect(screen.getByRole("tab", { name: "办公效率" })).toBeVisible();
+    expect(screen.getByRole("tab", { name: "开发编程" })).toBeVisible();
+    expect(screen.getByRole("tab", { name: "IT 运维与安全" })).toBeVisible();
     const card = await screen.findByRole("heading", { name: "Review Skill" });
     const article = card.closest("article");
     expect(article).not.toBeNull();
@@ -991,6 +1001,7 @@ describe("V2 Skills management", () => {
           installs: 8107,
           homepageUrl: "https://skillhub.cn/skills/tencent-docs",
           readmeUrl: "https://skillhub.cn/skills/tencent-docs",
+          category: "office-efficiency",
         },
       ],
     });
@@ -1019,7 +1030,9 @@ describe("V2 Skills management", () => {
       within(article as HTMLElement).queryByText(/来自 /),
     ).not.toBeInTheDocument();
     expect(
-      within(article as HTMLElement).getByText("v1.0.41 · tencent-adm"),
+      within(article as HTMLElement).getByText(
+        "办公效率 · v1.0.41 · tencent-adm",
+      ),
     ).toBeVisible();
     expect(screen.getByText(/将安装到 Claude Code/)).toBeVisible();
     expect(
@@ -1036,6 +1049,7 @@ describe("V2 Skills management", () => {
     );
     const dialog = await screen.findByRole("dialog", { name: "腾讯文档" });
     expect(dialog).toHaveTextContent("Skill 市场");
+    expect(dialog).toHaveTextContent("办公效率");
     expect(dialog).toHaveTextContent("tencent-docs");
     expect(dialog).toHaveTextContent("tencent-adm");
     await user.click(within(dialog).getByRole("button", { name: "关闭" }));
@@ -1074,7 +1088,7 @@ describe("V2 Skills management", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("paginates Skill 市场 discovery past the first 50 results", async () => {
+  it("paginates Skill 市场 discovery with page size 21", async () => {
     const user = userEvent.setup();
     const all = Array.from({ length: 60 }, (_, index) =>
       marketSkill({
@@ -1104,7 +1118,7 @@ describe("V2 Skills management", () => {
       await screen.findByRole("heading", { name: "Paged Skill 1" }),
     ).toBeVisible();
     expect(
-      screen.queryByRole("heading", { name: "Paged Skill 21" }),
+      screen.queryByRole("heading", { name: "Paged Skill 22" }),
     ).not.toBeInTheDocument();
     expect(
       screen.queryByText(/Skill 市场 · \d+ \/ \d+/),
@@ -1116,19 +1130,69 @@ describe("V2 Skills management", () => {
     await user.click(within(pagination).getByRole("button", { name: "3" }));
 
     expect(
-      await screen.findByRole("heading", { name: "Paged Skill 41" }),
+      await screen.findByRole("heading", { name: "Paged Skill 43" }),
     ).toBeVisible();
     expect(
       await screen.findByRole("heading", { name: "Paged Skill 51" }),
     ).toBeVisible();
     await waitFor(() =>
-      expect(searchSkillHub).toHaveBeenCalledWith("", 20, 40),
+      expect(searchSkillHub).toHaveBeenCalledWith("", 21, 42, ""),
     );
+  });
+
+  it("filters Skill 市场 discovery by official category", async () => {
+    const user = userEvent.setup();
+    const searchSkillHub = vi.fn(
+      async (
+        _query: string,
+        _limit: number,
+        _offset: number,
+        category = "",
+      ) => ({
+        query: _query,
+        skills: [
+          marketSkill({
+            name: category === "office-efficiency" ? "办公 Skill" : "全部 Skill",
+            category: category || undefined,
+          }),
+        ],
+        totalCount: 1,
+      }),
+    );
+    const ports = createBrowserFeaturePorts();
+    ports.skills.searchSkillHub = searchSkillHub;
+
+    renderFeature(<SkillsPage />, ports);
+    await screen.findByText("还没有安装 Skill");
+    await user.click(screen.getByRole("tab", { name: "发现" }));
+    expect(
+      await screen.findByRole("heading", { name: "全部 Skill" }),
+    ).toBeVisible();
+    await waitFor(() =>
+      expect(searchSkillHub).toHaveBeenCalledWith("", 21, 0, ""),
+    );
+
+    await user.click(screen.getByRole("tab", { name: "办公效率" }));
+    expect(
+      await screen.findByRole("heading", { name: "办公 Skill" }),
+    ).toBeVisible();
+    await waitFor(() =>
+      expect(searchSkillHub).toHaveBeenCalledWith(
+        "",
+        21,
+        0,
+        "office-efficiency",
+      ),
+    );
+    expect(
+      screen.queryByRole("tab", { name: "Skill 市场" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "仓库" })).not.toBeInTheDocument();
   });
 
   it("resets Skill 市场 discovery to page 1 when search changes", async () => {
     const user = userEvent.setup();
-    const all = Array.from({ length: 21 }, (_, index) =>
+    const all = Array.from({ length: 22 }, (_, index) =>
       marketSkill({
         key: `skillhub:skill-${index}`,
         slug: `skill-${index}`,
@@ -1156,7 +1220,7 @@ describe("V2 Skills management", () => {
         screen.getByRole("navigation", { name: "Skill 市场分页" }),
       ).getByRole("button", { name: "2" }),
     );
-    await screen.findByRole("heading", { name: "Paged Skill 21" });
+    await screen.findByRole("heading", { name: "Paged Skill 22" });
 
     await user.type(
       screen.getByRole("searchbox", { name: "搜索 Skill 市场" }),
@@ -1164,7 +1228,7 @@ describe("V2 Skills management", () => {
     );
 
     await waitFor(
-      () => expect(searchSkillHub).toHaveBeenCalledWith("paged", 20, 0),
+      () => expect(searchSkillHub).toHaveBeenCalledWith("paged", 21, 0, ""),
       { timeout: 2_000 },
     );
   });

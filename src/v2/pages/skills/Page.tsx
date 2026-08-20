@@ -27,11 +27,15 @@ import {
 import {
   createSkillAssignments,
   SKILL_DISCOVERY_PAGE_SIZE,
+  SKILLHUB_CATEGORY_ALL,
+  SKILLHUB_CATEGORY_TABS,
   SKILLHUB_MARKET_OWNER,
+  SKILLHUB_OFFICIAL_CATEGORIES,
   SKILL_TARGETS,
   type DiscoverableSkill,
   type InstalledSkill,
   type SkillBackupEntry,
+  type SkillHubCategoryFilter,
   type SkillHubSkill,
   type SkillRepo,
   type SkillTargetId,
@@ -115,13 +119,22 @@ type DiscoverySkill = DiscoverableSkill &
       | "installs"
       | "downloads"
       | "homepageUrl"
+      | "category"
     >
   >;
+
+function skillHubCategoryLabel(key: string | undefined): string {
+  if (!key) return "";
+  return (
+    SKILLHUB_OFFICIAL_CATEGORIES.find((item) => item.key === key)?.name ?? ""
+  );
+}
 
 function skillDetailMeta(skill: DiscoverySkill): string {
   if (isMarketSkill(skill)) {
     return [
       "Skill 市场",
+      skillHubCategoryLabel(skill.category),
       skill.slug ?? skill.repoName,
       skill.ownerName,
       skill.version ? `v${skill.version}` : null,
@@ -806,7 +819,11 @@ function DiscoveryCard({
   const body = skillCardBody(skill);
   const docs = skillDocsAction(skill);
   const meta = isMarketSkill(skill)
-    ? [skill.version ? `v${skill.version}` : null, skill.ownerName]
+    ? [
+        skillHubCategoryLabel(skill.category),
+        skill.version ? `v${skill.version}` : null,
+        skill.ownerName,
+      ]
         .filter(Boolean)
         .join(" · ")
     : "";
@@ -847,6 +864,9 @@ function Discovery({
 }) {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [category, setCategory] = useState<SkillHubCategoryFilter>(
+    SKILLHUB_CATEGORY_ALL,
+  );
   const [page, setPage] = useState(1);
   const [detailSkill, setDetailSkill] = useState<DiscoverySkill | null>(null);
   const resultsTop = useRef<HTMLDivElement>(null);
@@ -858,7 +878,7 @@ function Discovery({
   }, [search]);
   const discoveryQuery = debouncedSearch.trim();
   const installed = useInstalledSkills();
-  const market = useSkillHubSearch(discoveryQuery, page, true);
+  const market = useSkillHubSearch(discoveryQuery, page, category, true);
   const installedItems = useMemo(() => installed.data ?? [], [installed.data]);
   const skills: DiscoverySkill[] = market.data?.skills ?? [];
   const totalCount = market.data?.totalCount ?? skills.length;
@@ -885,6 +905,16 @@ function Discovery({
             setSearch(value);
             setPage(1);
           }}
+        />
+        <FeatureTabs
+          id="skills-discovery-categories"
+          label="分类筛选"
+          value={category}
+          onChange={(value) => {
+            setCategory(value);
+            setPage(1);
+          }}
+          options={SKILLHUB_CATEGORY_TABS}
         />
       </div>
       {installed.error && installed.data !== undefined && (

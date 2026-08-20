@@ -184,7 +184,8 @@ lists, Skills vs MCP, Prompts vs Memory, and TRAE vs OpenCode model panels.
 ### Feature chrome
 
 - Exclusive in-page option tracks (installed/discovery, memory types, MCP
-  editor mode, Skills install targets) use `FeatureTabs`. Do not
+  editor mode, Skills install targets, Skills discovery first-level
+  categories, MCP discover install-kind) use `FeatureTabs`. Do not
   hand-roll `SelectionLensTrack` + `fy-feature-tab` on those pages.
 - Management-list search uses `FeatureSearch` (`role="search"`, Escape and
   clear button, Phosphor icons). That is the V2 port of pre-V2
@@ -239,8 +240,10 @@ already share `modelsShared`, `modelChips`, and `feedback`. Do not add
 
 - **Good:** Skills, MCP, Prompts, and Memory all import `FeatureSearch` /
   `FeatureList`. Skills/MCP/Memory import `FeatureTabs`. Skills discovery
-  uses `FeaturePagination` (`ariaLabel="Skill 市场分页"`). A later filter track
-  adds one `FeatureTabs` options array, not a new tab component.
+  uses `FeaturePagination` (`ariaLabel="Skill 市场分页"`) and one category
+  `FeatureTabs` (`label="分类筛选"`, 全部 plus the 12 official SkillHub names).
+  A later filter track adds one `FeatureTabs` options array, not a new tab
+  component.
 - **Base:** Primary nav and catalog rails keep `SelectionLensGroup` /
   `CatalogListItem` because their geometry differs (`inset={1}`, brand frames).
 - **Bad:** A page copies 20 lines of `SelectionLensTrack` + tab buttons, adds

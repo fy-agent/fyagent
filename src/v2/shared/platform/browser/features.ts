@@ -94,7 +94,12 @@ export function createBrowserFeaturePorts(): FeaturePorts {
       checkUpdates: async () => [],
       update: rejectNativeOnly,
       migrateStorage: rejectNativeOnly,
-      searchSkillHub: async (query) => ({ skills: [], totalCount: 0, query }),
+      searchSkillHub: async (query) => ({
+        skills: [],
+        totalCount: 0,
+        query,
+        categories: [],
+      }),
       installSkillHub: rejectNativeOnly,
       getRepos: async () => [],
       addRepo: rejectNativeOnly,

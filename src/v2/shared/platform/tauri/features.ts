@@ -1500,8 +1500,8 @@ export function createTauriFeaturePorts(): FeaturePorts {
       checkUpdates: () => invoke("check_skill_updates"),
       update: (id) => invoke("update_skill", { id }),
       migrateStorage: (target) => invoke("migrate_skill_storage", { target }),
-      searchSkillHub: (query, limit, offset) =>
-        invoke("search_skillhub", { query, limit, offset }),
+      searchSkillHub: (query, limit, offset, category = "") =>
+        invoke("search_skillhub", { query, limit, offset, category }),
       installSkillHub: (slug, currentApp) =>
         invoke("install_skillhub", { slug, currentApp }),
       getRepos: () => invoke("get_skill_repos"),

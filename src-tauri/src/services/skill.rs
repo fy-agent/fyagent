@@ -127,6 +127,24 @@ fn clamp_discovery_limit(limit: usize) -> usize {
     }
 }
 
+fn clamp_skillhub_page_size(limit: usize) -> usize {
+    if limit == 0 {
+        SKILLHUB_DEFAULT_PAGE_SIZE
+    } else {
+        limit.min(SKILL_DISCOVERY_MAX_LIMIT)
+    }
+}
+
+fn official_skillhub_categories() -> Vec<SkillHubCategory> {
+    SKILLHUB_OFFICIAL_CATEGORIES
+        .iter()
+        .map(|(key, name)| SkillHubCategory {
+            key: (*key).to_string(),
+            name: (*name).to_string(),
+        })
+        .collect()
+}
+
 fn discovery_fingerprint(repos: &[SkillRepo]) -> String {
     let mut keys: Vec<String> = repos
         .iter()
@@ -381,27 +399,47 @@ pub struct SkillsShDiscoverableSkill {
 // ========== SkillHub（Skill 市场）==========
 
 const SKILLHUB_API_ORIGIN: &str = "https://api.skillhub.cn";
-const SKILLHUB_SEARCH_PATH: &str = "/api/v1/search";
+/// 官方 find-skill 文档：列表/分类浏览走 `/api/skills`，不要用 `/api/v1/search`。
+const SKILLHUB_LIST_PATH: &str = "/api/skills";
 const SKILLHUB_DOWNLOAD_PATH: &str = "/api/v1/download";
 const SKILLHUB_PUBLIC_SKILL_PREFIX: &str = "https://skillhub.cn/skills/";
 /// 写入已安装记录的仓库坐标，供发现页匹配；不是 GitHub owner。
 pub const SKILLHUB_MARKET_OWNER: &str = "skillhub.cn";
 const SKILLHUB_QUERY_MAX_CHARS: usize = 200;
-/// 单次上游拉取上限。SkillHub search 忽略 offset，按 offset+pageSize 增大请求；
-/// 这是防护而非把目录冻在 50 条。实测空查询大约最多返回 100 条。
-const SKILLHUB_FETCH_MAX: usize = 200;
+const SKILLHUB_DEFAULT_PAGE_SIZE: usize = 21;
+/// 官方 12 个一级分类，口径见 SkillHub `find-skill-skillhub` 的 categories.md。
+const SKILLHUB_OFFICIAL_CATEGORIES: &[(&str, &str)] = &[
+    ("office-efficiency", "办公效率"),
+    ("content-creation", "内容创作"),
+    ("dev-programming", "开发编程"),
+    ("data-analysis", "数据分析"),
+    ("design-media", "设计多媒体"),
+    ("ai-agent", "AI Agent"),
+    ("knowledge-management", "知识管理"),
+    ("business-ops", "商业运营"),
+    ("education", "教育学习"),
+    ("professional", "行业专业"),
+    ("it-ops-security", "IT 运维与安全"),
+    ("life-service", "生活服务"),
+];
 
-fn skillhub_requested_upstream(limit: usize, offset: usize) -> usize {
-    offset
-        .saturating_add(clamp_discovery_limit(limit))
-        .clamp(1, SKILLHUB_FETCH_MAX)
+/// SkillHub 列表接口原始响应
+#[derive(Debug, Clone, Deserialize)]
+struct SkillHubListApiResponse {
+    #[serde(default)]
+    code: i32,
+    #[serde(default)]
+    message: String,
+    #[serde(default)]
+    data: SkillHubListApiData,
 }
 
-/// SkillHub 搜索原始响应
-#[derive(Debug, Clone, Deserialize)]
-struct SkillHubApiResponse {
+#[derive(Debug, Clone, Deserialize, Default)]
+struct SkillHubListApiData {
     #[serde(default)]
-    results: Vec<SkillHubApiSkill>,
+    total: usize,
+    #[serde(default)]
+    skills: Vec<SkillHubApiSkill>,
 }
 
 /// SkillHub 搜索条目。字段名在 camelCase / snake_case 之间混用。
@@ -426,6 +464,8 @@ struct SkillHubApiSkill {
     downloads: Option<u64>,
     #[serde(default)]
     installs: Option<u64>,
+    #[serde(default)]
+    category: Option<String>,
 }
 
 /// SkillHub 搜索结果（返回给前端）
@@ -435,6 +475,15 @@ pub struct SkillHubSearchResult {
     pub skills: Vec<SkillHubDiscoverableSkill>,
     pub total_count: usize,
     pub query: String,
+    #[serde(default)]
+    pub categories: Vec<SkillHubCategory>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SkillHubCategory {
+    pub key: String,
+    pub name: String,
 }
 
 /// SkillHub 可安装技能（返回给前端）
@@ -455,6 +504,7 @@ pub struct SkillHubDiscoverableSkill {
     pub downloads: Option<u64>,
     pub homepage_url: String,
     pub readme_url: Option<String>,
+    pub category: Option<String>,
 }
 
 struct ZipInstallProvenance {
@@ -4317,12 +4367,47 @@ impl SkillService {
         Ok(())
     }
 
-    pub(crate) fn skillhub_search_url(query: &str, limit: usize) -> Result<url::Url> {
+    pub(crate) fn normalize_skillhub_category(raw: Option<&str>) -> Option<&'static str> {
+        let value = raw.map(str::trim).filter(|text| !text.is_empty())?;
+        let compact = value.to_ascii_lowercase().replace('_', "-");
+        SKILLHUB_OFFICIAL_CATEGORIES
+            .iter()
+            .find(|(key, name)| compact == *key || value == *name)
+            .map(|(key, _)| *key)
+    }
+
+    pub(crate) fn skillhub_list_url(
+        query: &str,
+        category: Option<&str>,
+        page: usize,
+        page_size: usize,
+    ) -> Result<url::Url> {
+        let page = page.max(1);
+        let page_size = clamp_skillhub_page_size(page_size);
+        let category_key = Self::normalize_skillhub_category(category);
+        let sort_by = if query.is_empty() && category_key.is_some() {
+            "downloads"
+        } else {
+            "score"
+        };
+        let page_s = page.to_string();
+        let page_size_s = page_size.to_string();
+        let mut params: Vec<(&str, &str)> = vec![
+            ("page", page_s.as_str()),
+            ("pageSize", page_size_s.as_str()),
+            ("sortBy", sort_by),
+        ];
+        if !query.is_empty() {
+            params.push(("keyword", query));
+        }
+        if let Some(key) = category_key {
+            params.push(("category", key));
+        }
         let url = url::Url::parse_with_params(
-            &format!("{SKILLHUB_API_ORIGIN}{SKILLHUB_SEARCH_PATH}"),
-            &[("q", query), ("limit", &limit.to_string())],
+            &format!("{SKILLHUB_API_ORIGIN}{SKILLHUB_LIST_PATH}"),
+            &params,
         )?;
-        Self::assert_skillhub_api_url(&url, SKILLHUB_SEARCH_PATH)?;
+        Self::assert_skillhub_api_url(&url, SKILLHUB_LIST_PATH)?;
         Ok(url)
     }
 
@@ -4385,31 +4470,9 @@ impl SkillService {
             downloads: item.downloads,
             homepage_url: homepage.clone(),
             readme_url: Some(homepage),
+            category: Self::normalize_skillhub_category(item.category.as_deref())
+                .map(str::to_string),
         })
-    }
-
-    fn paginate_skillhub_results(
-        skills: Vec<SkillHubDiscoverableSkill>,
-        query: String,
-        limit: usize,
-        offset: usize,
-        requested_upstream: usize,
-    ) -> SkillHubSearchResult {
-        let fetched = skills.len();
-        let page: Vec<_> = skills.into_iter().skip(offset).take(limit).collect();
-        let hit_fetch_cap = requested_upstream >= SKILLHUB_FETCH_MAX
-            && offset.saturating_add(limit) >= SKILLHUB_FETCH_MAX;
-        let reached_end = fetched < requested_upstream || hit_fetch_cap;
-        let total_count = if reached_end {
-            fetched
-        } else {
-            offset.saturating_add(limit).saturating_add(1)
-        };
-        SkillHubSearchResult {
-            skills: page,
-            total_count,
-            query,
-        }
     }
 
     fn dedupe_skillhub_by_slug(
@@ -4422,16 +4485,17 @@ impl SkillService {
             .collect()
     }
 
-    /// 搜索 Skill 市场。上游 search 忽略 offset，按「当前页末尾」增大 limit 增量拉取。
+    /// 搜索 Skill 市场。列表走官方 `GET /api/skills` 的 page / pageSize / category。
     pub async fn search_skillhub(
         query: &str,
         limit: usize,
         offset: usize,
+        category: Option<&str>,
     ) -> Result<SkillHubSearchResult> {
         let query = Self::clamp_skillhub_query(query);
-        let page_limit = clamp_discovery_limit(limit);
-        let requested = skillhub_requested_upstream(limit, offset);
-        let url = Self::skillhub_search_url(&query, requested)?;
+        let page_size = clamp_skillhub_page_size(limit);
+        let page = offset / page_size.max(1) + 1;
+        let url = Self::skillhub_list_url(&query, category, page, page_size)?;
         let client = crate::proxy::http_client::get();
         let resp = client
             .get(url)
@@ -4439,17 +4503,28 @@ impl SkillService {
             .send()
             .await?
             .error_for_status()?
-            .json::<SkillHubApiResponse>()
+            .json::<SkillHubListApiResponse>()
             .await?;
+        if resp.code != 0 {
+            return Err(anyhow!(format_skill_error(
+                "SKILLHUB_LIST_FAILED",
+                &[("code", &resp.code.to_string()), ("message", &resp.message)],
+                Some("checkNetwork"),
+            )));
+        }
         let skills = Self::dedupe_skillhub_by_slug(
-            resp.results
+            resp.data
+                .skills
                 .into_iter()
                 .filter_map(Self::map_skillhub_item)
                 .collect(),
         );
-        Ok(Self::paginate_skillhub_results(
-            skills, query, page_limit, offset, requested,
-        ))
+        Ok(SkillHubSearchResult {
+            skills,
+            total_count: resp.data.total,
+            query,
+            categories: official_skillhub_categories(),
+        })
     }
 
     /// 从 Skill 市场下载 ZIP 并走现有解压安装，不调用 skillhub CLI。
@@ -5091,14 +5166,43 @@ mod tests {
             );
         }
 
-        let search = SkillService::skillhub_search_url("飞书", 50).expect("search url");
+        let search = SkillService::skillhub_list_url("飞书", None, 1, 21).expect("list url");
         assert_eq!(search.scheme(), "https");
         assert_eq!(search.host_str(), Some("api.skillhub.cn"));
-        assert_eq!(search.path(), "/api/v1/search");
-        let paged = SkillService::skillhub_search_url("", 60).expect("growing window");
-        assert!(paged
+        assert_eq!(search.path(), "/api/skills");
+        let pairs: Vec<(String, String)> = search
             .query_pairs()
-            .any(|(key, value)| key == "limit" && value == "60"));
+            .map(|(key, value)| (key.into_owned(), value.into_owned()))
+            .collect();
+        assert!(pairs.contains(&("keyword".into(), "飞书".into())));
+        assert!(pairs.contains(&("page".into(), "1".into())));
+        assert!(pairs.contains(&("pageSize".into(), "21".into())));
+        assert!(pairs.contains(&("sortBy".into(), "score".into())));
+        assert!(!pairs.iter().any(|(key, _)| key == "category"));
+
+        let paged = SkillService::skillhub_list_url("", Some("office-efficiency"), 2, 21)
+            .expect("category page");
+        let paged_pairs: Vec<(String, String)> = paged
+            .query_pairs()
+            .map(|(key, value)| (key.into_owned(), value.into_owned()))
+            .collect();
+        assert!(paged_pairs.contains(&("category".into(), "office-efficiency".into())));
+        assert!(paged_pairs.contains(&("page".into(), "2".into())));
+        assert!(paged_pairs.contains(&("pageSize".into(), "21".into())));
+        assert!(paged_pairs.contains(&("sortBy".into(), "downloads".into())));
+        assert!(!paged_pairs.iter().any(|(key, _)| key == "keyword"));
+
+        let ignored = SkillService::skillhub_list_url("", Some("not-a-real-cat"), 1, 21)
+            .expect("invalid category dropped");
+        assert!(!ignored.query_pairs().any(|(key, _)| key == "category"));
+        assert_eq!(
+            SkillService::normalize_skillhub_category(Some("Office_Efficiency")),
+            Some("office-efficiency")
+        );
+        assert_eq!(
+            SkillService::normalize_skillhub_category(Some("办公效率")),
+            Some("office-efficiency")
+        );
 
         let download = SkillService::skillhub_download_url("tencent-docs").expect("download url");
         assert_eq!(download.path(), "/api/v1/download");
@@ -5114,32 +5218,40 @@ mod tests {
     }
 
     #[test]
-    fn skillhub_maps_zh_description_and_paginates_locally() {
+    fn skillhub_maps_zh_description_and_official_list_envelope() {
         let raw = serde_json::json!({
-            "results": [
-                {
-                    "slug": "tencent-docs",
-                    "displayName": "腾讯文档",
-                    "description_zh": "中文介绍",
-                    "description": "English intro",
-                    "version": "1.0.41",
-                    "owner_name": "tencent-adm",
-                    "installs": 8107
-                },
-                {
-                    "slug": "../evil",
-                    "name": "skip me"
-                },
-                {
-                    "slug": "summarize",
-                    "name": "Summarize",
-                    "summary": "摘要"
-                }
-            ]
+            "code": 0,
+            "data": {
+                "total": 2,
+                "skills": [
+                    {
+                        "slug": "tencent-docs",
+                        "displayName": "腾讯文档",
+                        "description_zh": "中文介绍",
+                        "description": "English intro",
+                        "version": "1.0.41",
+                        "owner_name": "tencent-adm",
+                        "installs": 8107,
+                        "category": "office-efficiency"
+                    },
+                    {
+                        "slug": "../evil",
+                        "name": "skip me"
+                    },
+                    {
+                        "slug": "summarize",
+                        "name": "Summarize",
+                        "summary": "摘要",
+                        "category": "开发编程"
+                    }
+                ]
+            }
         });
-        let parsed: SkillHubApiResponse = serde_json::from_value(raw).expect("parse");
+        let parsed: SkillHubListApiResponse = serde_json::from_value(raw).expect("parse");
+        assert_eq!(parsed.data.total, 2);
         let skills: Vec<_> = parsed
-            .results
+            .data
+            .skills
             .into_iter()
             .filter_map(SkillService::map_skillhub_item)
             .collect();
@@ -5147,92 +5259,29 @@ mod tests {
         assert_eq!(skills[0].name, "腾讯文档");
         assert_eq!(skills[0].description, "中文介绍");
         assert_eq!(skills[0].repo_owner, SKILLHUB_MARKET_OWNER);
+        assert_eq!(skills[0].category.as_deref(), Some("office-efficiency"));
         assert_eq!(
             skills[0].homepage_url,
             "https://skillhub.cn/skills/tencent-docs"
         );
         assert_eq!(skills[1].description, "摘要");
-
-        let page = SkillService::paginate_skillhub_results(skills, String::new(), 1, 1, 3);
-        assert_eq!(page.total_count, 2);
-        assert_eq!(page.skills.len(), 1);
-        assert_eq!(page.skills[0].slug, "summarize");
-    }
-
-    fn sample_skillhub(slug: &str) -> SkillHubDiscoverableSkill {
-        SkillHubDiscoverableSkill {
-            key: format!("skillhub:{slug}"),
-            slug: slug.to_string(),
-            name: slug.to_string(),
-            description: "介绍".to_string(),
-            directory: slug.to_string(),
-            repo_owner: SKILLHUB_MARKET_OWNER.to_string(),
-            repo_name: slug.to_string(),
-            repo_branch: "skillhub".to_string(),
-            version: None,
-            owner_name: None,
-            installs: None,
-            downloads: None,
-            homepage_url: format!("https://skillhub.cn/skills/{slug}"),
-            readme_url: None,
-        }
+        assert_eq!(skills[1].category.as_deref(), Some("dev-programming"));
     }
 
     #[test]
-    fn skillhub_requested_upstream_grows_with_offset_instead_of_capping_at_50() {
-        assert_eq!(skillhub_requested_upstream(20, 0), 20);
-        assert_eq!(skillhub_requested_upstream(20, 20), 40);
-        assert_eq!(skillhub_requested_upstream(20, 40), 60);
-        assert_eq!(skillhub_requested_upstream(20, 80), 100);
-        assert_eq!(skillhub_requested_upstream(0, 0), 20);
-        assert_eq!(skillhub_requested_upstream(20, 180), 200);
-        assert_eq!(skillhub_requested_upstream(20, 400), 200);
-    }
-
-    #[test]
-    fn skillhub_pagination_grows_the_window_instead_of_freezing_at_50() {
-        let skills: Vec<_> = (0..60).map(|i| sample_skillhub(&format!("s{i}"))).collect();
-        let page1 =
-            SkillService::paginate_skillhub_results(skills.clone(), String::new(), 20, 0, 20);
-        assert_eq!(page1.skills.len(), 20);
-        assert_eq!(page1.skills[0].slug, "s0");
-        assert_eq!(
-            page1.total_count, 21,
-            "a full upstream window must unlock the next page"
-        );
-
-        let page2 =
-            SkillService::paginate_skillhub_results(skills.clone(), String::new(), 20, 20, 40);
-        assert_eq!(page2.skills.len(), 20);
-        assert_eq!(page2.skills[0].slug, "s20");
-        assert_eq!(page2.total_count, 41);
-
-        let page3 =
-            SkillService::paginate_skillhub_results(skills.clone(), String::new(), 20, 40, 60);
-        assert_eq!(page3.skills.len(), 20);
-        assert_eq!(page3.skills[0].slug, "s40");
-        assert_eq!(page3.total_count, 61);
-
-        let ended = SkillService::paginate_skillhub_results(skills, String::new(), 20, 20, 80);
-        assert_eq!(ended.skills.len(), 20);
-        assert_eq!(
-            ended.total_count, 60,
-            "a short upstream read is the catalog end"
-        );
-    }
-
-    #[test]
-    fn skillhub_pagination_stops_at_the_fetch_cap() {
-        let skills: Vec<_> = (0..200)
-            .map(|i| sample_skillhub(&format!("s{i}")))
-            .collect();
-        let last = SkillService::paginate_skillhub_results(skills, String::new(), 20, 180, 200);
-        assert_eq!(last.skills.len(), 20);
-        assert_eq!(last.skills[0].slug, "s180");
-        assert_eq!(
-            last.total_count, 200,
-            "must not invent a page beyond SKILLHUB_FETCH_MAX"
-        );
+    fn skillhub_page_size_defaults_to_21_and_clamps_page_size_only() {
+        assert_eq!(clamp_skillhub_page_size(0), 21);
+        assert_eq!(clamp_skillhub_page_size(21), 21);
+        assert_eq!(clamp_skillhub_page_size(50), 50);
+        assert_eq!(clamp_skillhub_page_size(100), 50);
+        let page_two = SkillService::skillhub_list_url("", None, 2, 0).expect("default size");
+        assert!(page_two
+            .query_pairs()
+            .any(|(key, value)| key == "pageSize" && value == "21"));
+        assert!(page_two
+            .query_pairs()
+            .any(|(key, value)| key == "page" && value == "2"));
+        assert_eq!(official_skillhub_categories().len(), 12);
     }
 
     #[test]

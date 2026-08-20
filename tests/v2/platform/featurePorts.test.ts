@@ -1061,7 +1061,7 @@ describe("V2 feature ports", () => {
     await ports.skills.checkUpdates();
     await ports.skills.update("skill-a");
     await ports.skills.migrateStorage("unified");
-    await ports.skills.searchSkillHub("飞书", 20, 40);
+    await ports.skills.searchSkillHub("飞书", 21, 42, "office-efficiency");
     await ports.skills.installSkillHub("tencent-docs", "claude");
     await ports.skills.getRepos();
     await ports.skills.addRepo(repo);
@@ -1104,7 +1104,15 @@ describe("V2 feature ports", () => {
       ["check_skill_updates"],
       ["update_skill", { id: "skill-a" }],
       ["migrate_skill_storage", { target: "unified" }],
-      ["search_skillhub", { query: "飞书", limit: 20, offset: 40 }],
+      [
+        "search_skillhub",
+        {
+          query: "飞书",
+          limit: 21,
+          offset: 42,
+          category: "office-efficiency",
+        },
+      ],
       ["install_skillhub", { slug: "tencent-docs", currentApp: "claude" }],
       ["get_skill_repos"],
       ["add_skill_repo", { repo }],

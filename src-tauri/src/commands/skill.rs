@@ -221,8 +221,9 @@ pub async fn search_skillhub(
     query: String,
     limit: usize,
     offset: usize,
+    category: Option<String>,
 ) -> Result<SkillHubSearchResult, String> {
-    SkillService::search_skillhub(&query, limit, offset)
+    SkillService::search_skillhub(&query, limit, offset, category.as_deref())
         .await
         .map_err(|e| e.to_string())
 }
