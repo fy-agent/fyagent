@@ -60,6 +60,9 @@ function assignedMcpTargets(server: McpServer) {
 }
 
 const INSTALLED_SPLIT_LABELS = ["调整列表与详情的宽度", "调整详情与分配的宽度"];
+const WORKBUDDY_TRUST_TITLE = "需要在 WorkBuddy 中信任 MCP";
+const WORKBUDDY_TRUST_DESCRIPTION =
+  "请到「连接器 → 自定义连接器」中信任该 MCP 后才能使用。";
 
 function ServerDetail({
   server,
@@ -267,6 +270,7 @@ export function McpPage() {
   const [editing, setEditing] = useState<McpServer | "new" | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<McpServer | null>(null);
   const [busy, setBusy] = useState(false);
+  const [workbuddyTrustOpen, setWorkbuddyTrustOpen] = useState(false);
   const [progress, setProgress] = useState<{
     done: number;
     total: number;
@@ -282,13 +286,18 @@ export function McpPage() {
   const selected = filtered.find((server) => server.id === convergedId) ?? null;
   const refresh = () =>
     queryClient.invalidateQueries({ queryKey: featureKeys.mcp });
-  const write = async (title: string, operation: () => Promise<void>) => {
+  const write = async (
+    title: string,
+    operation: () => Promise<void>,
+    onSuccess?: () => void,
+  ) => {
     if (writeLock.current) return false;
     writeLock.current = true;
     setBusy(true);
     try {
       await operation();
       notify({ tone: "success", title });
+      onSuccess?.();
       return true;
     } catch (error) {
       notify({
@@ -304,25 +313,38 @@ export function McpPage() {
       writeLock.current = false;
     }
   };
+  const noteWorkBuddyTrust = () => setWorkbuddyTrustOpen(true);
   const toggle = (server: McpServer, app: McpTargetId, enabled: boolean) =>
-    write("分配已更新", async () => {
-      await ports.mcp.toggleApp(server.id, app, enabled);
-    });
+    write(
+      "分配已更新",
+      async () => {
+        await ports.mcp.toggleApp(server.id, app, enabled);
+      },
+      () => {
+        if (app === "workbuddy" && enabled) noteWorkBuddyTrust();
+      },
+    );
   const bulkAssign = (app: McpTargetId, enabled: boolean) =>
-    write("批量分配完成", async () => {
-      const ids = servers
-        .filter((server) => Boolean(server.apps[app]) !== enabled)
-        .map((server) => server.id);
-      const result = await runSequentialBulk(
-        ids,
-        (id) => ports.mcp.toggleApp(id, app, enabled),
-        (done, total) => setProgress({ done, total }),
-      );
-      if (result.failures.length)
-        throw new UserFacingError(
-          `${result.failures.length} 项失败，${result.successes.length} 项成功`,
+    write(
+      "批量分配完成",
+      async () => {
+        const ids = servers
+          .filter((server) => Boolean(server.apps[app]) !== enabled)
+          .map((server) => server.id);
+        const result = await runSequentialBulk(
+          ids,
+          (id) => ports.mcp.toggleApp(id, app, enabled),
+          (done, total) => setProgress({ done, total }),
         );
-    });
+        if (result.failures.length)
+          throw new UserFacingError(
+            `${result.failures.length} 项失败，${result.successes.length} 项成功`,
+          );
+      },
+      () => {
+        if (app === "workbuddy" && enabled) noteWorkBuddyTrust();
+      },
+    );
   const importExisting = () =>
     write("MCP 导入", async () => {
       const count = await ports.mcp.importFromApps();
@@ -396,10 +418,16 @@ export function McpPage() {
               defaultTarget={installTarget}
               onPickTarget={setInstallTarget}
               onInstall={async (server) =>
-                write("MCP 已安装", async () => {
-                  await ports.mcp.upsert(server);
-                  setSelectedId(server.id);
-                })
+                write(
+                  "MCP 已安装",
+                  async () => {
+                    await ports.mcp.upsert(server);
+                    setSelectedId(server.id);
+                  },
+                  () => {
+                    if (server.apps.workbuddy) noteWorkBuddyTrust();
+                  },
+                )
               }
               onViewInstalled={(id) => {
                 setSelectedId(id);
@@ -533,17 +561,42 @@ export function McpPage() {
           existingIds={new Set(servers.map((server) => server.id))}
           busy={busy}
           onClose={() => setEditing(null)}
-          onSave={(server) =>
+          onSave={(server) => {
+            const wasAssigned =
+              editing !== "new" && Boolean(editing.apps.workbuddy);
             void write(
               editing === "new" ? "MCP 已添加" : "MCP 已更新",
               async () => {
                 await ports.mcp.upsert(server);
                 setEditing(null);
               },
-            )
-          }
+              () => {
+                if (server.apps.workbuddy && !wasAssigned) noteWorkBuddyTrust();
+              },
+            );
+          }}
         />
       )}
+      <Dialog
+        open={workbuddyTrustOpen}
+        title={WORKBUDDY_TRUST_TITLE}
+        description={WORKBUDDY_TRUST_DESCRIPTION}
+        onOpenChange={(open) => {
+          if (!open) setWorkbuddyTrustOpen(false);
+        }}
+        actions={
+          <Button
+            className="fy-control-button-primary"
+            onClick={() => setWorkbuddyTrustOpen(false)}
+          >
+            知道了
+          </Button>
+        }
+      >
+        <p>
+          WorkBuddy 官方限制第三方 MCP 必须在安装后手动信任授权才能正常使用。
+        </p>
+      </Dialog>
       <ConfirmDialog
         open={deleteTarget !== null}
         title={`删除 ${deleteTarget?.name ?? "MCP"}`}

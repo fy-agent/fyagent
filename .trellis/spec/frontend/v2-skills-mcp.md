@@ -393,6 +393,14 @@ function ExternalLinkButton(props: {
   Do not write Qoder `userData/mcp.json` (builtin table) or TRAE `state.vscdb`
   for MCP. Import may normalize Qoder `type: "streamable-http"` to `http`
   before `validate_server_spec`.
+- After a successful WorkBuddy install or newly enabled assignment, the MCP
+  page opens the shared `Dialog` (`需要在 WorkBuddy 中信任 MCP`) telling the
+  user to trust it under **连接器 → 自定义连接器**, with **知道了** to
+  dismiss. Body copy states that WorkBuddy officially requires a manual trust
+  step for third-party MCP after install. Do not use `ConfirmDialog` for this
+  notice. Other targets and
+  failed writes do not show it. Re-saving an already-assigned WorkBuddy MCP
+  does not repeat the notice.
 - Cross-application MCP imports merge assignments only when normalized server
   specifications are equivalent. A conflicting shared ID is preflighted before
   any server from that source application is persisted.
@@ -565,6 +573,7 @@ function ExternalLinkButton(props: {
 | A Skill response omits either new external target                | Default that target to false without changing any legacy assignment       |
 | QoderWork or TRAE Work MCP assignment is enabled                 | Write the vendor live `mcp.json`; skip if home/User and file are absent   |
 | WorkBuddy MCP assignment is enabled                              | Write `{trusted-home}/.workbuddy/mcp.json`; skip if home and file absent  |
+| WorkBuddy MCP install/assignment succeeds                        | Shared `Dialog` tells the user to trust it under 连接器 → 自定义连接器   |
 | WorkBuddy MCP writes `.mcp.json` as canonical                    | Host test fails; official live file is `mcp.json`                         |
 | QoderWork CN Skill dest is `.qoderwork/skills`                   | Host test fails; CN product dest is `.qoderworkcn/skills`                 |
 | MCP discovery one-click installs `DEFAULT_NEW_APPS` with no dialog | Page test fails; reuse shared `InstallTargetDialog` for one target      |
@@ -704,7 +713,8 @@ git diff --check
   Skill repo clicks through `ExternalLinkButton` → `settings.openExternal`,
   discovery install Dialog targets in that same catalog order (icon + name)
   via shared `InstallTargetDialog` / `AssignmentPanel mode="radio"`, MCP
-  discovery one-click persisting only the chosen target, MCP config-install
+  discovery one-click persisting only the chosen target, WorkBuddy install or
+  new assignment showing the connector-trust `Dialog`, MCP config-install
   Agent radio (not `fy-feature-check-grid`), ZIP and restore radio pickers, unmanaged
   import switch rows, host round-trip assign then unassign
   for every V2 Skill target, import sync of missing selected dests, no **管理仓库** in Discover or Installed **更多**, flex list overlay, one

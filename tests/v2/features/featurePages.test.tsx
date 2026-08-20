@@ -270,6 +270,37 @@ describe("V2 MCP management", () => {
     expect(document.body).not.toHaveTextContent(secret);
   });
 
+  it("explains WorkBuddy connector trust after a successful assignment", async () => {
+    const user = userEvent.setup();
+    const server: McpServer = {
+      id: "docs",
+      name: "Docs server",
+      apps: createMcpAssignments(["claude"]),
+      server: { type: "stdio", command: "npx" },
+    };
+    const ports = createBrowserFeaturePorts();
+    ports.mcp.getAll = async () => ({ docs: server });
+    ports.mcp.toggleApp = vi.fn(async () => undefined);
+
+    renderFeature(<McpPage />, ports);
+    await screen.findByRole("heading", { name: "Docs server" });
+    await user.click(screen.getByRole("switch", { name: "WorkBuddy MCP 分配" }));
+
+    const trust = await screen.findByRole("dialog", {
+      name: "需要在 WorkBuddy 中信任 MCP",
+    });
+    expect(trust).toHaveTextContent("连接器 → 自定义连接器");
+    expect(trust).toHaveTextContent(
+      "WorkBuddy 官方限制第三方 MCP 必须在安装后手动信任授权才能正常使用。",
+    );
+    await user.click(within(trust).getByRole("button", { name: "知道了" }));
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", { name: "需要在 WorkBuddy 中信任 MCP" }),
+      ).not.toBeInTheDocument(),
+    );
+  });
+
   it("keeps cross-app import conflicts actionable without echoing the server ID", async () => {
     const user = userEvent.setup();
     const ports = createBrowserFeaturePorts();
@@ -403,6 +434,17 @@ describe("V2 MCP management", () => {
       apps: createMcpAssignments(["workbuddy"]),
       server: { type: "stdio", command: "uvx", args: ["mcp-server-time"] },
     });
+    const trust = await screen.findByRole("dialog", {
+      name: "需要在 WorkBuddy 中信任 MCP",
+    });
+    expect(trust).toHaveTextContent("连接器");
+    expect(trust).toHaveTextContent("自定义连接器");
+    await user.click(within(trust).getByRole("button", { name: "知道了" }));
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", { name: "需要在 WorkBuddy 中信任 MCP" }),
+      ).not.toBeInTheDocument(),
+    );
   });
 
   it("opens discover docs through the shared external-link outlet", async () => {
@@ -562,6 +604,9 @@ describe("V2 MCP management", () => {
     expect(installed?.server.args).toEqual(
       expect.arrayContaining(["-y", "@antv/mcp-server-chart"]),
     );
+    expect(
+      screen.queryByRole("dialog", { name: "需要在 WorkBuddy 中信任 MCP" }),
+    ).not.toBeInTheDocument();
   });
 
   it("filters the discovery catalog by install mode", async () => {
