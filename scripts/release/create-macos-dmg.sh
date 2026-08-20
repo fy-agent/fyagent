@@ -132,7 +132,6 @@ uv run --locked --group dmg-layout python "$LAYOUT_WRITER" \
   --apps-xy 480,188
 
 [ -f "$mount_point/.DS_Store" ]
-bless --folder "$mount_point" --openfolder "$mount_point"
 sync
 detach_mount
 

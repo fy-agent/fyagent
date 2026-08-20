@@ -2082,6 +2082,7 @@ jobs:
       'convert "$udrw_path" -format UDZO -imagekey zlib-level=9 -ov -o "$output_path"',
     );
     expect(createDmg).not.toContain("osascript");
+    expect(createDmg).not.toContain("bless");
     expect(createDmg).not.toContain("skip-jenkins");
     expect(createDmg).not.toContain("dmgbuild");
     expect(createDmg).not.toContain("hdiutil detach -force");
