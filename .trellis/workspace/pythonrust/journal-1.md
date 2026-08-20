@@ -1097,3 +1097,37 @@ Delivered the eight V2/setup/release/hygiene items: Skill/MCP header row, Agent 
 ### Next Steps
 
 - Push dev/laiyongjie and confirm hosted CI / Required is green.
+
+
+## Session 33: Style macOS DMG and changelog gate
+
+**Date**: 2026-08-21
+**Task**: Style macOS DMG and changelog gate
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Shipped Finder-free V2 DMG layout, changelog release-check, specs, and archived the task.
+
+### Main Changes
+
+- Wrote create-macos-dmg.sh / write-dmg-layout.py and a deterministic V2 background PNG.
+- Added changelog heading gate to release-check; dmg-layout uv group stays off default sync.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `da050634` | (see git log) |
+
+### Testing
+
+- [OK] mise run typecheck and mise run release:check passed.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- Republish unpublished v0.4.2 so main and dev/laiyongjie share one HEAD.
