@@ -80,8 +80,9 @@ pub fn import_from_grokbuild(config: &mut MultiAppConfig) -> Result<usize, AppEr
     if text.trim().is_empty() {
         return Ok(0);
     }
-    let root: toml::Table = toml::from_str(&text)
-        .map_err(|e| AppError::McpValidation(format!("解析 ~/.grok/config.toml 失败: {e}")))?;
+    let root: toml::Table = toml::from_str(&text).map_err(|_| {
+        AppError::McpValidation("Grok Build MCP 配置无法解析，请修复 TOML 语法".to_string())
+    })?;
     let Some(entries) = root.get("mcp_servers").and_then(toml::Value::as_table) else {
         return Ok(0);
     };
@@ -144,8 +145,8 @@ pub fn sync_single_server_to_grokbuild(
     let mut doc = if text.trim().is_empty() {
         toml_edit::DocumentMut::new()
     } else {
-        text.parse::<toml_edit::DocumentMut>().map_err(|e| {
-            AppError::McpValidation(format!("解析 Grok Build config.toml 失败: {e}"))
+        text.parse::<toml_edit::DocumentMut>().map_err(|_| {
+            AppError::McpValidation("Grok Build MCP 配置无法解析，请修复 TOML 语法".to_string())
         })?
     };
     // 若 mcp_servers 缺失或存在但不是 table（如 `mcp_servers = "x"` / `[]`），
@@ -186,9 +187,10 @@ pub fn remove_server_from_grokbuild(id: &str) -> Result<(), AppError> {
     let text = read_config_text()?;
     let mut doc = match text.parse::<toml_edit::DocumentMut>() {
         Ok(doc) => doc,
-        Err(error) => {
-            log::warn!("解析 Grok Build config.toml 失败: {error}，跳过删除操作");
-            return Ok(());
+        Err(_) => {
+            return Err(AppError::McpValidation(
+                "Grok Build MCP 配置无法解析，未执行删除".to_string(),
+            ))
         }
     };
     // 与写入侧对称使用 as_table_like_mut：inline table 形态下 as_table_mut 返回

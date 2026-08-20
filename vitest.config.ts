@@ -16,7 +16,18 @@ export default defineConfig({
     // The version contract uses Node's native test runner. Keep those tests
     // out of Vitest discovery so both runners can coexist in the project-level
     // test command.
-    exclude: [...configDefaults.exclude, "**/*.test.mjs"],
+    // V2 owns dedicated Vitest and Playwright projects. Keep both suites out of
+    // the legacy aggregate so their environment setup and runner globals cannot
+    // leak into one another.
+    exclude: [
+      ...configDefaults.exclude,
+      // Git-ignored local worktrees contain complete dependency graphs and
+      // test suites. Discovering them duplicates tests and React runtimes.
+      "**/.worktrees/**",
+      "**/*.test.mjs",
+      "tests/v2/**",
+      "tests/v2-browser/**",
+    ],
     coverage: {
       reporter: ["text", "lcov"],
     },

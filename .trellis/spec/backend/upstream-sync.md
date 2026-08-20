@@ -91,7 +91,11 @@ state; it must not resolve conflicts, create a commit, tag, or push.
 
 - Preserve `FyAgent`, `fyagent`, `com.fyagent.desktop`, `fyagent://`,
   `~/.fyagent`, `fyagent.db`, `FYAGENT_*`, the FyAgent SQL export header, and
-  schema version `16`.
+  schema version `17` (`SCHEMA_VERSION` in `src-tauri/src/database/mod.rs`).
+  The reviewed v3.19.2 merge left schema at `16`; the later approved P0
+  Skills migration added default-false `enabled_qoderwork` and
+  `enabled_trae_work` columns. A future upstream merge must not silently
+  revert, skip, or bump that version.
 - Preserve the mixed licensing model. CC Switch-derived code and attribution
   remain MIT provenance; FyAgent-owned code remains under the repository's
   stated licensing boundary.
@@ -118,9 +122,16 @@ The delta remains valid only while the Native Fetch → MSW → Tauri mock
 behavior suite covers JSON success, non-2xx text errors, empty responses, and
 cross-realm jsdom Headers, and while the dependency report proves that
 `cross-fetch → node-fetch@2 → whatwg-url@5 → tr46@0.0.3 → built-in punycode`
-is absent. Modern jsdom dependencies on `whatwg-url@14`, `tr46@5`, and the
-userland `punycode@2` package are not the DEP0040 root cause and remain allowed
-when both the pnpm lock and `pnpm why --json` explain their reverse paths.
+is absent. Userland `punycode@2.3.1` is not the DEP0040 root cause only on two
+reviewed reverse origins: the existing jsdom chain through `whatwg-url@14` and
+`tr46@5`, or the exact contiguous suffix
+`eslint@10.8.1 → ajv@6.15.0 → uri-js@4.4.1`. Wrappers may precede ESLint,
+but version drift, an intermediate package, missing ancestors, and unknown
+origins remain fail-closed. Both the pnpm lock and `pnpm why --json` must
+explain the same watched URL and punycode package versions; the exact ESLint,
+Ajv, and URI-JS ancestor suffix is proved by the why graph. Adding or upgrading
+either origin requires a new reverse-path review; this is not a general
+allowance for every `punycode@2` path.
 
 Node 24.19.0's pending-deprecation probe does not reliably surface every warning
 originating under dependencies, so it supplements rather than replaces the
@@ -141,7 +152,7 @@ unless its real behavior and deprecation evidence justify a new decision.
 | Upstream introduces a real security/correctness fix behind an identity conflict      | Port the shared behavior under FyAgent names and add or retain its regression tests.  |
 | Conflict markers or unmerged index entries remain                                    | Do not commit.                                                                        |
 | Merge commit is not two-parent or the verified tag is not its ancestor               | Reject the integration; do not proceed to modernization.                              |
-| Schema exceeds `16` or user data paths change without an approved migration          | NO-GO; require a separate data decision and migration plan.                           |
+| Schema leaves `17`, skips the 16-to-17 Skills flags, or user data paths change without an approved migration | NO-GO; require a separate data decision and migration plan.                           |
 | Partner, sponsorship, affiliate, or tracking metadata enters active product surfaces | Remove it and rerun promotion-boundary tests.                                         |
 | Only local/static tests exist for platform artifacts                                 | Report platform release evidence as pending; do not infer native acceptance.          |
 
@@ -149,7 +160,7 @@ unless its real behavior and deprecation evidence justify a new decision.
 
 - Good: the reviewed tag is verified by full object identities, merged in a
   two-parent commit, shared fixes work under FyAgent identity, schema remains
-  `16`, the canonical FyAgent origin is used, and later modernization remains
+  `17`, the canonical FyAgent origin is used, and later modernization remains
   independently reviewable.
 - Base: an upstream file contains historical `CC Switch` issue URLs or license
   attribution. Preserve those factual references while keeping current-product
@@ -172,10 +183,11 @@ unless its real behavior and deprecation evidence justify a new decision.
 - Run the DEP0040 JSON report and focused pending-deprecation Native
   Fetch/MSW/Tauri behavior probe while the maintained downstream Fetch delta
   exists.
-- Assert schema `16`, FyAgent test-home isolation, database/export-header
+- Assert schema `17`, FyAgent test-home isolation, database/export-header
   behavior, proxy error mapping, package identity, and Tauri identity.
-- Record native/platform/Release evidence separately; a successful Linux host
-  merge check does not prove Windows, macOS, ARM, or formal release artifacts.
+- Record native/platform/Release evidence separately; a successful local-host
+  merge check does not prove another supported platform, architecture, or
+  formal release artifact.
 
 ## 7. Wrong vs Correct
 

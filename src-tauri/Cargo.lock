@@ -1777,7 +1777,7 @@ dependencies = [
 
 [[package]]
 name = "fyagent"
-version = "0.3.4"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "arboard",
@@ -1842,7 +1842,6 @@ dependencies = [
  "tower-http 0.5.2",
  "url",
  "uuid",
- "webkit2gtk",
  "webpki-roots 0.26.11",
  "windows",
  "windows-future",
@@ -1855,7 +1854,7 @@ dependencies = [
 
 [[package]]
 name = "fyagent-user-helper"
-version = "0.3.4"
+version = "0.4.0"
 dependencies = [
  "embed-resource",
  "windows",

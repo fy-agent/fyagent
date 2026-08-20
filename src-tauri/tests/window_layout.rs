@@ -2,9 +2,9 @@
 mod window_layout;
 
 use window_layout::{
-    clamp_window_geometry, default_size, effective_minimum_size, layout_mode, LayoutMode,
-    LogicalWorkArea, WindowGeometry, DEFAULT_HEIGHT, DEFAULT_WIDTH, LAYOUT_VERSION,
-    TARGET_MIN_HEIGHT, TARGET_MIN_WIDTH,
+    clamp_window_geometry, default_size, effective_minimum_size, layout_mode,
+    should_apply_runtime_geometry_constraints, LayoutMode, LogicalWorkArea, WindowGeometry,
+    DEFAULT_HEIGHT, DEFAULT_WIDTH, LAYOUT_VERSION, TARGET_MIN_HEIGHT, TARGET_MIN_WIDTH,
 };
 
 fn work_area(width: f64, height: f64) -> LogicalWorkArea {
@@ -62,4 +62,12 @@ fn clamps_invalid_and_off_screen_saved_geometry_without_dropping_maximized() {
     assert_eq!(restored.width, 1440.0);
     assert_eq!(restored.height, DEFAULT_HEIGHT);
     assert!(restored.maximized);
+}
+
+#[test]
+fn runtime_geometry_constraints_skip_maximized_and_fullscreen() {
+    assert!(should_apply_runtime_geometry_constraints(false, false));
+    assert!(!should_apply_runtime_geometry_constraints(true, false));
+    assert!(!should_apply_runtime_geometry_constraints(false, true));
+    assert!(!should_apply_runtime_geometry_constraints(true, true));
 }

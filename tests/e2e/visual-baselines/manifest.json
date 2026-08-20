@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "captureMode": "candidate-only",
   "stabilitySamples": 2,
-  "platforms": ["windows", "macos", "linux"],
+  "platforms": ["windows", "macos"],
   "scales": [100, 125, 150],
   "locales": ["en", "ja", "zh", "zh-TW"],
   "regions": [

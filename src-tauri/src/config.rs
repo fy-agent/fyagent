@@ -18,10 +18,10 @@ use crate::error::AppError;
 ///
 /// ## 测试隔离
 ///
-/// 非 Windows 保留既有的 `FYAGENT_TEST_HOME` 覆盖兼容性。Windows 正式构建
+/// macOS 保留既有的 `FYAGENT_TEST_HOME` 覆盖兼容性。Windows 正式构建
 /// 禁止环境变量覆盖冻结的 Shell 用户；仅测试或 `test-hooks` 构建允许覆盖。
 pub fn get_home_dir() -> PathBuf {
-    #[cfg(any(not(target_os = "windows"), test, feature = "test-hooks"))]
+    #[cfg(any(target_os = "macos", test, feature = "test-hooks"))]
     if let Ok(home) = std::env::var("FYAGENT_TEST_HOME") {
         let trimmed = home.trim();
         if !trimmed.is_empty() {
@@ -34,7 +34,7 @@ pub fn get_home_dir() -> PathBuf {
         crate::windows_runtime::user_home_dir()
     }
 
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
     dirs::home_dir().unwrap_or_else(|| {
         log::warn!("无法获取用户主目录，回退到当前目录");
         PathBuf::from(".")
@@ -71,8 +71,8 @@ pub(crate) fn get_user_roaming_app_data_dir() -> PathBuf {
 /// Explorer user. The ambient process temp directory would then be Bob-owned
 /// and unreadable to Alice-launched terminal hand-offs, while also placing
 /// temporary database/provider data in the wrong profile. Keep these files
-/// under the frozen Shell user's LocalAppData instead. Other platforms retain
-/// their existing process temp behavior.
+/// under the frozen Shell user's LocalAppData instead. macOS retains its
+/// existing process temp behavior.
 pub(crate) fn get_user_temp_dir() -> PathBuf {
     #[cfg(target_os = "windows")]
     {
@@ -81,7 +81,7 @@ pub(crate) fn get_user_temp_dir() -> PathBuf {
             .join("temp")
     }
 
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
     std::env::temp_dir()
 }
 
@@ -162,59 +162,10 @@ pub(crate) fn path_is_within(base: &Path, path: &Path) -> bool {
     path_key.starts_with(&prefix)
 }
 
-#[cfg(windows)]
-fn derive_wsl_default_mcp_path(dir: &Path) -> Option<PathBuf> {
-    use std::path::Prefix;
-
-    let normalized = normalize_path_lexically(dir);
-    let mut components = normalized.components();
-    let prefix = match components.next()? {
-        Component::Prefix(prefix) => prefix,
-        _ => return None,
-    };
-
-    let server = match prefix.kind() {
-        Prefix::UNC(server, _) | Prefix::VerbatimUNC(server, _) => server.to_string_lossy(),
-        _ => return None,
-    };
-
-    if !server.eq_ignore_ascii_case("wsl$") && !server.eq_ignore_ascii_case("wsl.localhost") {
-        return None;
-    }
-
-    let mut parts = Vec::new();
-    for component in components {
-        match component {
-            Component::RootDir | Component::CurDir => {}
-            Component::Normal(part) => parts.push(part.to_string_lossy().to_string()),
-            Component::ParentDir | Component::Prefix(_) => return None,
-        }
-    }
-
-    let is_wsl_home_default =
-        parts.len() == 3 && parts[0] == "home" && !parts[1].is_empty() && parts[2] == ".claude";
-    let is_wsl_root_default = parts.len() == 2 && parts[0] == "root" && parts[1] == ".claude";
-
-    if is_wsl_home_default || is_wsl_root_default {
-        return normalized
-            .parent()
-            .map(|parent| parent.join(".claude.json"));
-    }
-
-    None
-}
-
 fn default_mcp_path_for_config_dir(dir: &Path) -> Option<PathBuf> {
     let default_config_dir = get_home_dir().join(".claude");
     if path_eq_lexical(dir, &default_config_dir) {
         return Some(get_default_claude_mcp_path());
-    }
-
-    #[cfg(windows)]
-    {
-        if let Some(path) = derive_wsl_default_mcp_path(dir) {
-            return Some(path);
-        }
     }
 
     None
@@ -426,7 +377,7 @@ pub fn atomic_write(path: &Path, data: &[u8]) -> Result<(), AppError> {
     }
     drop(file);
 
-    #[cfg(unix)]
+    #[cfg(target_os = "macos")]
     {
         use std::os::unix::fs::PermissionsExt;
         if let Ok(meta) = fs::metadata(path) {
@@ -507,7 +458,7 @@ pub fn atomic_write(path: &Path, data: &[u8]) -> Result<(), AppError> {
         }
     }
 
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
     {
         if let Err(source) = fs::rename(&tmp, path) {
             let _ = fs::remove_file(&tmp);
@@ -596,36 +547,12 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
-    fn wsl_unc_home_default_uses_split_mcp_path() {
-        let override_dir = PathBuf::from(r"\\wsl$\Ubuntu\home\travis\.claude");
-        let derived = default_mcp_path_for_config_dir(&override_dir)
-            .expect("WSL home default should use split MCP path");
-        assert_eq!(
-            derived,
-            PathBuf::from(r"\\wsl$\Ubuntu\home\travis\.claude.json")
-        );
-    }
-
-    #[cfg(windows)]
-    #[test]
-    fn wsl_unc_root_default_uses_split_mcp_path() {
-        let override_dir = PathBuf::from(r"\\wsl.localhost\Ubuntu\root\.claude");
-        let derived = default_mcp_path_for_config_dir(&override_dir)
-            .expect("WSL root default should use split MCP path");
-        assert_eq!(
-            derived,
-            PathBuf::from(r"\\wsl.localhost\Ubuntu\root\.claude.json")
-        );
-    }
-
-    #[cfg(windows)]
-    #[test]
-    fn wsl_unc_custom_dir_uses_nested_mcp_path() {
-        let override_dir = PathBuf::from(r"\\wsl$\Ubuntu\opt\claude\.claude");
+    fn smb_unc_override_uses_nested_mcp_path() {
+        let override_dir = PathBuf::from(r"\\server\profiles\claude\.claude");
         assert!(default_mcp_path_for_config_dir(&override_dir).is_none());
         assert_eq!(
             derive_mcp_path_from_override(&override_dir),
-            PathBuf::from(r"\\wsl$\Ubuntu\opt\claude\.claude\.claude.json")
+            PathBuf::from(r"\\server\profiles\claude\.claude\.claude.json")
         );
     }
 

@@ -5,6 +5,8 @@ import {
   CI_WORKFLOW_PATH,
   DEV_BRANCH,
   DEV_REF,
+  FORMAL_BRANCH,
+  FORMAL_REF,
   DEV_RELEASE_ELIGIBILITY_INPUT_SCHEMA,
   EXPECTED_REPOSITORY,
   EXPECTED_REPOSITORY_ID,
@@ -274,19 +276,33 @@ function normalizeRef(value, expectedRef, label) {
   };
 }
 
-async function collectRemoteDev(client, repoPath) {
+function authorityBranchForEvent(eventName) {
+  if (eventName === "workflow_dispatch") {
+    return { branch: DEV_BRANCH, ref: DEV_REF };
+  }
+  if (eventName === "push") {
+    return { branch: FORMAL_BRANCH, ref: FORMAL_REF };
+  }
+  fail(`unsupported release event ${JSON.stringify(eventName)}`);
+}
+
+async function collectRemoteDev(client, repoPath, authority) {
   const branchResponse = await client.get(
-    `/repos/${repoPath}/git/ref/heads/${encodeURIComponent(DEV_BRANCH)}`,
+    `/repos/${repoPath}/git/ref/heads/${encodeURIComponent(authority.branch)}`,
   );
   const branchObject = normalizeRef(
     branchResponse.body,
-    DEV_REF,
-    "main branch ref",
+    authority.ref,
+    `${authority.branch} branch ref`,
   );
-  expectEqual(branchObject.type, "commit", "main branch ref object type");
+  expectEqual(
+    branchObject.type,
+    "commit",
+    `${authority.branch} branch ref object type`,
+  );
   return {
-    name: DEV_BRANCH,
-    ref: DEV_REF,
+    name: authority.branch,
+    ref: authority.ref,
     headSha: branchObject.sha,
   };
 }
@@ -351,7 +367,14 @@ function requireUnique(items, keyFor, label) {
   }
 }
 
-function normalizeRun(value, index, repository, workflow, sourceSha) {
+function normalizeRun(
+  value,
+  index,
+  repository,
+  workflow,
+  sourceSha,
+  authorityBranch,
+) {
   const label = `workflow runs[${index}]`;
   const run = expectRecord(value, label);
   const runRepository = normalizeRepository(
@@ -386,7 +409,7 @@ function normalizeRun(value, index, repository, workflow, sourceSha) {
   );
   expectEqual(
     expectString(run.head_branch, `${label}.head_branch`),
-    DEV_BRANCH,
+    authorityBranch,
     `${label}.head_branch`,
   );
   expectEqual(
@@ -421,12 +444,13 @@ async function collectCiRuns(
   repository,
   workflow,
   sourceSha,
+  authorityBranch,
 ) {
   const rawRuns = await collectAllPages(
     client,
     `/repos/${repoPath}/actions/workflows/${workflow.id}/runs`,
     {
-      branch: DEV_BRANCH,
+      branch: authorityBranch,
       event: "push",
       head_sha: sourceSha,
       per_page: "100",
@@ -435,10 +459,17 @@ async function collectCiRuns(
     "CI workflow runs",
   );
   const runs = rawRuns.map((run, index) =>
-    normalizeRun(run, index, repository, workflow, sourceSha),
+    normalizeRun(
+      run,
+      index,
+      repository,
+      workflow,
+      sourceSha,
+      authorityBranch,
+    ),
   );
   if (runs.length === 0) {
-    fail(`no exact ${DEV_BRANCH} push CI run was returned`);
+    fail(`no exact ${authorityBranch} push CI run was returned`);
   }
   requireUnique(
     runs,
@@ -587,6 +618,7 @@ export async function collectDevReleaseRemoteEvidence(
   if (typeof fetchImpl !== "function")
     fail("fetch implementation is unavailable");
   const identity = createEventAndCandidate(context);
+  const authority = authorityBranchForEvent(identity.event.name);
   const repoPath = repositoryPath(identity.repository.nameWithOwner);
   const client = createApiClient({
     apiBase: expectString(context.apiBase, "context.apiBase"),
@@ -623,6 +655,7 @@ export async function collectDevReleaseRemoteEvidence(
     repository,
     ciWorkflow,
     identity.candidate.sourceSha,
+    authority.branch,
   );
   const selectedRun = [...initialCiRuns].sort(compareRuns).at(-1);
 
@@ -658,6 +691,7 @@ export async function collectDevReleaseRemoteEvidence(
     repository,
     ciWorkflow,
     identity.candidate.sourceSha,
+    authority.branch,
   );
   const remoteTag = await collectRemoteTag(
     client,
@@ -665,7 +699,7 @@ export async function collectDevReleaseRemoteEvidence(
     identity.event.name,
     identity.candidate,
   );
-  const remoteDev = await collectRemoteDev(client, repoPath);
+  const remoteDev = await collectRemoteDev(client, repoPath, authority);
 
   return {
     schema: DEV_RELEASE_ELIGIBILITY_INPUT_SCHEMA,

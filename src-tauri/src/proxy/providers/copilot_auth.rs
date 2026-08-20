@@ -377,7 +377,7 @@ struct GitHubAccountData {
     /// GitHub OAuth Token
     ///
     /// 安全说明：为了复用登录状态，本地会持久化该令牌。
-    /// 当前实现未接入系统钥匙串，依赖私有文件权限（Unix 下 0600）保护。
+    /// 当前实现未接入系统钥匙串，macOS 依赖 0600 私有文件权限保护。
     pub github_token: String,
     /// 用户信息
     pub user: GitHubUser,
@@ -1263,7 +1263,7 @@ impl CopilotAuthManager {
             .as_nanos();
         let tmp_path = parent.join(format!("{file_name}.tmp.{ts}"));
 
-        #[cfg(unix)]
+        #[cfg(target_os = "macos")]
         {
             use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 

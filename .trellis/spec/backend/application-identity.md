@@ -30,7 +30,7 @@ The active application identity is:
 | Product display name and autostart entry                | `FyAgent`                                |
 | npm package, Cargo package, executable, portable binary | `fyagent` / `fyagent.exe`                |
 | Rust library target and call site                       | `fyagent_lib` / `fyagent_lib::run()`     |
-| Tauri, macOS, and Flatpak identifier                    | `com.fyagent.desktop`                    |
+| Tauri and macOS identifier                              | `com.fyagent.desktop`                    |
 | Deep-link scheme                                        | `fyagent://`                             |
 | Application state root                                  | `~/.fyagent`                             |
 | Database and application log                            | `fyagent.db` / `logs/fyagent.log`        |
@@ -40,7 +40,6 @@ The active application identity is:
 | Renderer-owned storage namespaces                       | `fyagent-*`, `fyagent.*`, or `fyagent:*` |
 | Codex official-proxy marker                             | `fyagent-official`                       |
 | Codex generated catalog                                 | `fyagent-model-catalog.json`             |
-| Flatpak manifest, desktop, and metainfo stem            | `com.fyagent.desktop`                    |
 
 The source repository and public source/release links are:
 
@@ -55,8 +54,8 @@ releases:   https://github.com/fy-agent/fyagent/releases
 ### Runtime and persistence
 
 - `package.json`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock`, Tauri
-  configuration, platform metadata, Flatpak metadata, release workflows, and
-  runtime call sites use the identity table above.
+  configuration, platform metadata, release workflows, and runtime call sites
+  use the identity table above.
 - `get_app_config_dir()` resolves the active application root directly to
   `~/.fyagent` (or its explicit test override). It must not probe the former
   application directory or use it as a fallback.
@@ -85,16 +84,19 @@ releases:   https://github.com/fy-agent/fyagent/releases
 - User-facing current-product text says FyAgent, and current links to source,
   issues, releases, and contribution history use the canonical repository
   location.
-- Historical changelogs, release notes, design baselines, copyright notices,
-  licenses, and upstream issue references remain historically accurate, except
-  that commercial campaign material is removed under the repository's current
-  product-content policy.
+- Historical changelogs, design baselines, copyright notices, licenses, and
+  upstream issue references remain historically accurate. Removed versioned
+  release-note files remain available through Git history and published
+  Release pages instead of being rewritten in the current snapshot. Commercial
+  campaign material is removed under the repository's current product-content
+  policy.
 - Commercially attributed URLs and attached tracking query data are not
   provenance or compatibility requirements. Remove them rather than carrying
   them into runtime configuration, public documentation, or release history.
 - Installation documentation may advertise only distribution channels that
   actually exist. Do not infer `fyagent.io`, another GitHub repository,
-  Homebrew cask, AUR package, Pages deployment, signing, or notarization.
+  Homebrew cask, another package-manager listing, Pages deployment, signing, or
+  notarization.
 
 ## 4. Validation & Error Matrix
 
@@ -133,8 +135,8 @@ releases:   https://github.com/fy-agent/fyagent/releases
 - TypeScript tests assert current local-storage keys, displayed product name,
   current serialized values, and FyAgent API examples.
 - Packaging/release tests assert `fyagent` / `fyagent.exe`,
-  `com.fyagent.desktop`, `FyAgent.app`, current Flatpak filenames, and the
-  expected artifact names on every platform.
+  `com.fyagent.desktop`, `FyAgent.app`, and the expected artifact names on
+  every supported platform.
 - Static identity audits classify every former-name hit. Active code and
   current instructions must have none unless the token is an external fact;
   negative assertions, dated pre-transfer evidence, history, legal

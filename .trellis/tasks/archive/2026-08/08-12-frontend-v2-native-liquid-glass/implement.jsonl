@@ -1,0 +1,9 @@
+{"file":".trellis/spec/frontend/index.md","reason":"Apply the V2 renderer pre-development checklist and package boundary."}
+{"file":".trellis/spec/frontend/v2-shell.md","reason":"Replace the obsolete custom-frame contract with the approved system-owned chrome and bounded-lens behavior."}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Preserve typed React composition, native semantics, Radix behavior, and focus-visible conventions."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Keep strict TypeScript and prevent the third-party lens API from leaking outside an internal adapter."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Use the project Vitest, browser, desktop-mock, accessibility, and evidence boundaries correctly."}
+{"file":".trellis/spec/backend/development-environment.md","reason":"Install and validate the exact dependency and all checks through the canonical Mise environment."}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Search for and reuse current V2 primitives before adding the one justified adapter."}
+{"file":".trellis/tasks/08-12-frontend-v2-native-liquid-glass/research.md","reason":"Apply verified current-code facts and the exact library API, license, compatibility, and performance constraints."}
+{"file":".trellis/spec/backend/upstream-sync.md","reason":"Keep the long-lived Native Fetch and DEP0040 reverse-origin contract synchronized with the checker."}

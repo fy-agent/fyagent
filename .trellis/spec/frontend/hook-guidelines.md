@@ -1,5 +1,13 @@
 # Hook Guidelines
 
+These conventions apply to leftover `src/hooks/` and feature-local hooks
+outside `src/v2`. V2 feature data crosses `FeaturePorts` and V2 query hooks
+under `src/v2/shared/features/`; pages must not import leftover hooks. See
+[V2 Shell](./v2-shell.md) and [Frontend Reuse](./reuse.md). Reuse is the
+default: if a new hook will be used by another module, put it in
+`src/v2/shared/features/` (or leftover `src/hooks/` for leftover-only
+surfaces) on the first commit.
+
 ## Location and Naming
 
 Custom hooks are exported functions whose names start with `use`. Cross-feature
@@ -7,7 +15,9 @@ generic hooks normally live in `src/hooks/`; a hook that belongs to a cohesive
 policy/module may remain beside that module, such as
 `src/lib/layout/useWindowLayoutMode.ts`. Hooks private to a feature may be
 co-located beneath that feature and re-exported from a local barrel. Do not move
-a feature-private hook to `src/hooks/` unless a second feature needs it.
+a feature-private hook to `src/hooks/` unless a second feature needs it, or a
+sibling leftover feature is expected to need it next. In that second case, place
+it in `src/hooks/` on the first commit rather than copying it later.
 
 ```tsx
 // src/hooks/useDebouncedValue.ts

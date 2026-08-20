@@ -224,20 +224,20 @@ mod tests {
         )));
         let fetcher = InstallerMetadataFetcher::new(transport.clone());
 
-        let metadata = fetcher.fetch(MetadataEndpoint::Checksums).await.unwrap();
+        let metadata = fetcher.fetch(MetadataEndpoint::Manifest).await.unwrap();
         let body = metadata.body.collect::<Vec<_>>().await;
 
         assert_eq!(metadata.content_length, Some(3));
         assert_eq!(body, vec![Ok(Bytes::from_static(b"abc"))]);
         assert_eq!(
             transport.requests.lock().unwrap().as_slice(),
-            &[Url::parse(MetadataEndpoint::Checksums.url()).unwrap()]
+            &[Url::parse(MetadataEndpoint::Manifest.url()).unwrap()]
         );
     }
 
     #[tokio::test]
     async fn metadata_fetcher_follows_the_bounded_https_redirect_policy() {
-        let redirected = Url::parse("https://codexapp-r2.agentsmirror.com/latest/checksums")
+        let redirected = Url::parse("https://codexapp-r2.agentsmirror.com/latest/manifest")
             .expect("redirect fixture URL must parse");
         let transport = Arc::new(FakeTransport::with_responses([
             response(302, Some(redirected.as_str()), None, b""),
@@ -245,7 +245,7 @@ mod tests {
         ]));
         let fetcher = InstallerMetadataFetcher::new(transport.clone());
 
-        let metadata = fetcher.fetch(MetadataEndpoint::Checksums).await.unwrap();
+        let metadata = fetcher.fetch(MetadataEndpoint::Manifest).await.unwrap();
         let body = metadata.body.collect::<Vec<_>>().await;
 
         assert_eq!(metadata.content_length, Some(3));
@@ -253,7 +253,7 @@ mod tests {
         assert_eq!(
             transport.requests.lock().unwrap().as_slice(),
             &[
-                Url::parse(MetadataEndpoint::Checksums.url()).unwrap(),
+                Url::parse(MetadataEndpoint::Manifest.url()).unwrap(),
                 redirected
             ]
         );

@@ -12,6 +12,7 @@ import {
   readToml,
   run,
   usageBoolean,
+  isPosixTaskHost,
 } from "./lib.mjs";
 import { validateLockfile } from "./lockfile-check.mjs";
 
@@ -53,7 +54,7 @@ function isPathInside(candidate, directory) {
 
 export function normalizeComparablePath(
   value,
-  caseInsensitive = process.platform === "win32",
+  caseInsensitive = hostUsesCaseInsensitivePaths(),
 ) {
   const normalized = path
     .resolve(value)
@@ -62,11 +63,21 @@ export function normalizeComparablePath(
   return caseInsensitive ? normalized.toLowerCase() : normalized;
 }
 
+function hostUsesCaseInsensitivePaths(platform = process.platform) {
+  if (platform === "win32") return true;
+  if (isPosixTaskHost(platform)) return false;
+  throw new Error(`Unsupported toolchain-check host: ${platform}`);
+}
+
 function findOnPath(command) {
-  const extensions =
-    process.platform === "win32"
-      ? (process.env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD").split(";")
-      : [""];
+  let extensions;
+  if (process.platform === "win32") {
+    extensions = (process.env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD").split(";");
+  } else if (isPosixTaskHost(process.platform)) {
+    extensions = [""];
+  } else {
+    throw new Error(`Unsupported toolchain-check host: ${process.platform}`);
+  }
   for (const directory of (process.env.PATH ?? "").split(path.delimiter)) {
     if (!directory) continue;
     for (const extension of extensions) {
@@ -103,10 +114,14 @@ function verifyPython() {
   ]);
   if (!path.isAbsolute(managed))
     throw new Error(`uv returned a non-absolute Python path: ${managed}`);
-  const venvPython =
-    process.platform === "win32"
-      ? path.join(process.cwd(), ".venv", "Scripts", "python.exe")
-      : path.join(process.cwd(), ".venv", "bin", "python");
+  let venvPython;
+  if (process.platform === "win32") {
+    venvPython = path.join(process.cwd(), ".venv", "Scripts", "python.exe");
+  } else if (isPosixTaskHost(process.platform)) {
+    venvPython = path.join(process.cwd(), ".venv", "bin", "python");
+  } else {
+    throw new Error(`Unsupported toolchain-check host: ${process.platform}`);
+  }
   if (!fs.existsSync(venvPython)) {
     throw new Error(".venv is missing; run mise run python:sync");
   }
@@ -145,18 +160,6 @@ function verifyTool(name, expected, versionArgs, normalize = (value) => value) {
   ) {
     throw new Error(
       `${name} PATH executable differs from mise ownership: ${activePath} != ${resolved}`,
-    );
-  }
-  const procVersion =
-    process.platform === "linux" && fs.existsSync("/proc/version")
-      ? fs.readFileSync("/proc/version", "utf8")
-      : "";
-  if (
-    (process.env.WSL_DISTRO_NAME || /microsoft/i.test(procVersion)) &&
-    /^\/mnt\/[a-z]\//i.test(resolved)
-  ) {
-    throw new Error(
-      `${name} resolved through a Windows /mnt shim: ${resolved}`,
     );
   }
   return { version: actual, path: resolved };

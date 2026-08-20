@@ -104,9 +104,9 @@ Kimi、DeepSeek、MiniMax、SiliconFlow など一般的な Chat 形式プロバ�
 
 ## 参考リンク
 
-- [FyAgent ユーザーマニュアル: プロバイダーの追加](../user-manual/ja/2-providers/2.1-add.md)
-- [FyAgent ユーザーマニュアル: プロキシサービス](../user-manual/ja/4-proxy/4.1-service.md)
-- [FyAgent ユーザーマニュアル: アプリケーションルーティング](../user-manual/ja/4-proxy/4.2-routing.md)
+- [FyAgent ユーザーマニュアル: プロバイダーの追加](../user-manual/ja/3-providers/3.1-add.md)
+- [FyAgent ユーザーマニュアル: プロキシサービス](../user-manual/ja/5-proxy/5.1-service.md)
+- [FyAgent ユーザーマニュアル: アプリケーションルーティング](../user-manual/ja/5-proxy/5.2-routing.md)
 - [Kimi オープンプラットフォーム: コーディングツールで Kimi K2.7 Code を使う](https://platform.kimi.com/docs/guide/agent-support)
 - [Kimi Code ドキュメント: 概要](https://www.kimi.com/code/docs/)
 - [Kimi Code ドキュメント: サードパーティ Coding Agent での利用](https://www.kimi.com/code/docs/third-party-tools/other-coding-agents.html)

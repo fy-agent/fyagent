@@ -1,0 +1,7 @@
+{"file":".trellis/spec/frontend/index.md","reason":"V2 pre-development checklist and Prompt/Memory contract pointer."}
+{"file":".trellis/spec/frontend/v2-shell.md","reason":"Keep-alive, SelectionLens, SplitPanes scrollport, ExternalLinkButton, catalog geometry."}
+{"file":".trellis/spec/frontend/v2-prompts-memory.md","reason":"Native port, seven apps, four memory resources, write-lock and refresh rules."}
+{"file":".trellis/spec/frontend/v2-agent-models.md","reason":"CatalogMasterDetail geometry to reuse for the app/source rail."}
+{"file":".trellis/spec/frontend/v2-skills-mcp.md","reason":"Workspace search, installed/inspect split, copyable paths from Xu Kun MCP work."}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Reuse catalog/split/lens instead of a third page-private layout."}
+{"file":".trellis/tasks/08-18-prompt-memory-frontend-replan/research/baseline-and-teammate-commits.md","reason":"Read-only evaluation of laiyongjie chassis and already-merged xk MCP commits."}

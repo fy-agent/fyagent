@@ -235,6 +235,67 @@ fn ends_with_version_segment(url: &str) -> bool {
         .is_some_and(|digits| !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit()))
 }
 
+pub async fn fetch_models_optional_auth(
+    base_url: &str,
+    api_key: &str,
+    is_full_url: bool,
+    allow_no_api_key: bool,
+) -> Result<Vec<FetchedModel>, String> {
+    let api_key = api_key.trim();
+    if api_key.is_empty() && !allow_no_api_key {
+        return Err("API Key is required to fetch models".to_string());
+    }
+    if !api_key.is_empty() {
+        return fetch_models(base_url, api_key, is_full_url, None, None).await;
+    }
+
+    let candidates = build_models_url_candidates(base_url, is_full_url, None)?;
+    let client = crate::proxy::http_client::get();
+    let mut last_err: Option<String> = None;
+    for url in &candidates {
+        let request = client
+            .get(url)
+            .timeout(Duration::from_secs(FETCH_TIMEOUT_SECS));
+        let response = match request.send().await {
+            Ok(response) => response,
+            Err(error) => return Err(format!("Request failed: {error}")),
+        };
+        let status = response.status();
+        if status.is_success() {
+            let resp: ModelsResponse = response
+                .json()
+                .await
+                .map_err(|error| format!("Failed to parse response: {error}"))?;
+            let mut models: Vec<FetchedModel> = resp
+                .data
+                .unwrap_or_default()
+                .into_iter()
+                .map(|entry| FetchedModel {
+                    id: entry.id,
+                    owned_by: entry.owned_by,
+                })
+                .collect();
+            models.sort_by(|left, right| left.id.cmp(&right.id));
+            return Ok(models);
+        }
+        if status == StatusCode::NOT_FOUND || status == StatusCode::METHOD_NOT_ALLOWED {
+            last_err = Some(format!(
+                "HTTP {status}: {}",
+                truncate_body(response.text().await.unwrap_or_default())
+            ));
+            continue;
+        }
+        return Err(format!(
+            "HTTP {status}: {}",
+            truncate_body(response.text().await.unwrap_or_default())
+        ));
+    }
+    Err(format!(
+        "All candidates failed: {}",
+        last_err.unwrap_or_else(|| "no candidates".to_string())
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -34,7 +34,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["app", "dmg"],
     "createUpdaterArtifacts": false,
     "licenseFile": "../LICENSE",
     "resources": [

@@ -1,0 +1,34 @@
+<!--
+  FyAgent For You Gate application-icon source.
+
+  The geometry was promoted from the reviewed high-resolution concept in
+  commit fd54598ff16cbf4628495e0d7fadad53d4c168cc. Code adoption does not
+  establish trademark clearance or macOS native visual approval.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">FyAgent For You Gate application icon</title>
+  <desc id="desc">A dark graphite application tile containing the blue and cyan FyAgent Y gate.</desc>
+  <defs>
+    <linearGradient id="tile" x1="120" y1="90" x2="900" y2="940" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#191D24"/>
+      <stop offset="1" stop-color="#080A0D"/>
+    </linearGradient>
+    <linearGradient id="icon-signal" x1="7" y1="6" x2="57" y2="58" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0B66FF"/>
+      <stop offset="1" stop-color="#18D3C5"/>
+    </linearGradient>
+    <mask id="gate-cut" maskUnits="userSpaceOnUse" x="0" y="0" width="64" height="64">
+      <rect width="64" height="64" fill="#fff"/>
+      <rect x="24" y="24" width="16" height="16" rx="3.5" fill="#000"/>
+    </mask>
+    <filter id="lift" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="20" stdDeviation="26" flood-color="#000" flood-opacity=".38"/>
+    </filter>
+  </defs>
+  <rect x="64" y="64" width="896" height="896" rx="220" fill="url(#tile)"/>
+  <rect x="66" y="66" width="892" height="892" rx="218" fill="none" stroke="#FFFFFF" stroke-opacity=".10" stroke-width="4"/>
+  <g id="fyagent-y-gate" filter="url(#lift)" transform="translate(160 150) scale(11)">
+    <path id="fyagent-y-silhouette" d="M7 13 16 6l16 15L48 6l9 7-19 18v27H26V31L7 13Z" fill="url(#icon-signal)" mask="url(#gate-cut)"/>
+    <rect id="fyagent-gate-outline" x="25" y="25" width="14" height="14" rx="3" fill="none" stroke="url(#icon-signal)" stroke-width="3"/>
+  </g>
+</svg>

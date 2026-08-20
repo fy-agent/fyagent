@@ -1,6 +1,11 @@
 # Code Reuse Thinking Guide
 
-> **Purpose**: Stop and think before creating new code - does it already exist?
+> **Purpose**: Stop and think before creating new code — does it already exist,
+> and if it is new, will another module need it?
+>
+> Frontend default: reuse existing owners; if a new component will be used by
+> another module, put it in `shared/` on the first commit. See
+> [Frontend Reuse](../frontend/reuse.md).
 
 ---
 
@@ -30,12 +35,14 @@ rg -n "keyword" <relevant-paths>
 
 ### Step 2: Ask These Questions
 
-| Question                             | If Yes...                    |
-| ------------------------------------ | ---------------------------- |
-| Does a similar function exist?       | Use or extend it             |
-| Is this pattern used elsewhere?      | Follow the existing pattern  |
-| Could this be a shared utility?      | Create it in the right place |
-| Am I copying code from another file? | **STOP** - extract to shared |
+| Question                                       | If Yes...                                                         |
+| ---------------------------------------------- | ----------------------------------------------------------------- |
+| Does a similar function exist?                 | Use or extend it                                                  |
+| Is this pattern used elsewhere?                | Follow the existing pattern                                       |
+| Could this be a shared utility?                | Create it in the right place                                      |
+| Am I copying leftover `src/` UI into `src/v2`? | **STOP** — reuse V2 shared/widgets; read [V2 Shell](../frontend/v2-shell.md) and [Frontend Reuse](../frontend/reuse.md) |
+| Will another route or module use this new component? | Put it in `src/v2/shared/ui` or `shared/features` on the first commit |
+| Am I copying code from another file?           | **STOP** - extract to shared                                      |
 
 ---
 
@@ -62,25 +69,35 @@ rg -n "keyword" <relevant-paths>
 ### Pattern 4: Repeated Payload Field Extraction
 
 When two or more consumers read the same Tauri, event, or configuration payload
-field, first locate the owning API facade, domain type, or schema. Put the
-shared decoding/normalization there instead of creating another local cast; for
-the concrete wire contract, read [Frontend Type Safety](../frontend/type-safety.md).
+field, first locate the existing owner: a V2 feature port, a legacy API facade,
+a domain type, or a schema. Put shared decoding there instead of another local
+cast. For the wire-contract rules, read
+[Frontend Type Safety](../frontend/type-safety.md); for V2 placement, read
+[V2 Shell](../frontend/v2-shell.md).
 
 ---
 
-## When to Abstract
+## When to Share
 
-**Abstract when**:
+Frontend default (see [Frontend Reuse](../frontend/reuse.md)): reuse existing
+owners; if a new component will be used by another module, put it in
+`shared/` on the first commit. Do not wait for a third copy of page chrome.
 
-- Same code appears 3+ times
-- Logic is complex enough to have bugs
-- Multiple people might need this
+**Share on the first commit when**:
 
-**Don't abstract when**:
+- An existing shared owner already does this job
+- Another current route, widget, or leftover feature will use it
+- A sibling module is expected next (the other five product routes, Skills vs
+  MCP, Prompts vs Memory, TRAE vs OpenCode, catalog vs feature lists)
 
-- Only used once
-- Trivial one-liner
-- Abstraction would be more complex than duplication
+**Keep it local when**:
+
+- Only this page, with no plausible second consumer
+- One-off form or single dialog
+- Trivial one-liner where a shared wrapper would be heavier than the copy
+
+**Don't**: treat "appears 3+ times" as the frontend trigger for tabs, search,
+lists, assignment rows, or other chrome sibling routes already have.
 
 ---
 
@@ -95,27 +112,10 @@ When you've made similar changes to multiple files:
 ### Reducers Should Use Exhaustive Structure
 
 When state is derived from action-like values (`action`, `kind`, `status`,
-`phase`), prefer a reducer with one `switch` over scattered `if/else` updates.
-
-```typescript
-// BAD - action-specific state transitions are hard to audit
-if (action === "opened") { ... }
-else if (action === "comment") { ... }
-else if (action === "status") { ... }
-
-// GOOD - one reducer owns the transition table
-switch (event.action) {
-  case "opened":
-    ...
-    return;
-  case "comment":
-    ...
-    return;
-}
-```
-
-This makes the transition table discoverable; display code and commands should
-not duplicate pieces of the same state transition.
+`phase`), prefer one reducer over scattered `if/else` updates so the transition
+table stays in one place. Display code should not re-implement pieces of that
+table. For renderer state ownership, read
+[State Management](../frontend/state-management.md).
 
 ---
 
@@ -123,6 +123,9 @@ not duplicate pieces of the same state transition.
 
 - [ ] Searched for existing similar code
 - [ ] No copy-pasted logic that should be shared
+- [ ] New multi-module UI landed in `shared/`, not `pages/<route>/`
+- [ ] Feature tabs / search / lists use `FeatureTabs` / `FeatureSearch` /
+      `FeatureList` instead of a page-local fork
 - [ ] No repeated untyped payload field extraction outside a shared decoder
 - [ ] Constants defined in one place
 - [ ] Similar patterns follow same structure

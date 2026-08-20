@@ -2,7 +2,7 @@
 //!
 //! This module deliberately contains no Windows, macOS, or command-runner
 //! implementation.  Platform adapters receive a release descriptor while
-//! preparing/verifying and receive only a validated package when installing.
+//! preparing local handoff evidence and receive only a prepared package when installing.
 //! That prevents a raw downloaded path from reaching an installer entry point.
 
 use std::{
@@ -35,12 +35,14 @@ pub mod windows;
 ///
 /// This is a product allowlist, not metadata: the release source must never
 /// be able to select a different local package identity.
+#[cfg_attr(target_os = "macos", allow(dead_code))]
 pub(crate) const WINDOWS_CODEX_STABLE_IDENTITY: &str = "OpenAI.Codex";
 
 /// Exact stable bundle identifier for the macOS Codex application.
 ///
 /// See [`WINDOWS_CODEX_STABLE_IDENTITY`] for why this remains a local
 /// allowlist rather than release metadata.
+#[cfg(any(target_os = "macos", test))]
 pub(crate) const MACOS_CODEX_STABLE_IDENTITY: &str = "com.openai.codex";
 
 /// Reports one normalized platform progress update.  The caller owns mapping
@@ -72,7 +74,7 @@ pub(crate) enum TrustedRuntimeInstance {
     /// more than one top-level window is reported as ambiguous instead of
     /// being collapsed into a process-name-style group.
     #[cfg_attr(
-        not(any(target_os = "windows", test)),
+        all(target_os = "macos", not(test)),
         expect(
             dead_code,
             reason = "the Windows adapter constructs this evidence only on Windows"
@@ -89,7 +91,7 @@ pub(crate) enum TrustedRuntimeInstance {
     /// macOS represents an app instance by an NSRunningApplication PID plus
     /// the canonical bundle path verified against the installed bundle.
     #[cfg_attr(
-        not(any(target_os = "macos", test)),
+        all(target_os = "windows", not(test)),
         expect(
             dead_code,
             reason = "the macOS adapter constructs this evidence only on macOS"
@@ -147,13 +149,6 @@ impl TrustedRuntimeInstance {
 /// may report ambiguity instead of trying to disambiguate with an executable
 /// or display-name heuristic.
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(
-    not(any(target_os = "windows", target_os = "macos", test)),
-    expect(
-        dead_code,
-        reason = "runtime inspection states are constructed only by supported platform adapters"
-    )
-)]
 pub(crate) enum RuntimeInspection {
     NotRunning,
     Running(Vec<TrustedRuntimeInstance>),
@@ -222,7 +217,7 @@ pub(crate) enum RestartCandidateInspection {
     // Only macOS currently constructs this cross-platform outcome. The common
     // service still matches it on every target so the public state remains
     // stable when another adapter gains equivalent fail-closed discovery.
-    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    #[cfg_attr(target_os = "windows", allow(dead_code))]
     UntrustedTarget,
     Unsupported(UnsupportedReason),
 }
@@ -264,7 +259,6 @@ impl PlatformInstallPlan {
     /// Creates a plan containing target-volume paths in addition to the
     /// downloader's temporary directory.  Platform implementations should add
     /// only stable target roots required for free-space preflight.
-    #[cfg_attr(not(any(target_os = "windows", target_os = "macos")), allow(dead_code))]
     pub(crate) fn new(additional_disk_paths: Vec<PathBuf>) -> Self {
         Self {
             additional_disk_paths,
@@ -288,16 +282,15 @@ impl fmt::Debug for PlatformInstallPlan {
     }
 }
 
-/// Evidence that a platform adapter has completed its package validation.
+/// Evidence that a platform adapter has prepared one downloader-owned package.
 ///
 /// The package path is deliberately private and this value is neither
-/// serializable nor publicly constructible. Only platform validation code in
+/// serializable nor publicly constructible. Only platform preparation code in
 /// this module or one of its child adapters may create it through
-/// `from_completed_validation`; installers then receive a reference without
+/// `from_prepared_artifact`; installers then receive a reference without
 /// accepting a caller-controlled path.
-#[cfg_attr(not(any(target_os = "windows", target_os = "macos")), allow(dead_code))]
 #[derive(Clone)]
-pub struct VerifiedPackage {
+pub struct PreparedInstallPackage {
     // Windows production consumes the downloader-retained file capability.
     // The raw path remains necessary for macOS production and regression tests.
     #[cfg_attr(all(target_os = "windows", not(test)), allow(dead_code))]
@@ -309,16 +302,13 @@ pub struct VerifiedPackage {
     artifact: Option<DownloadedArtifact>,
 }
 
-#[cfg_attr(not(any(target_os = "windows", target_os = "macos")), allow(dead_code))]
-impl VerifiedPackage {
-    fn from_completed_validation(
+impl PreparedInstallPackage {
+    fn from_prepared_artifact(
         release: &ReleaseDescriptor,
         artifact: DownloadedArtifact,
     ) -> Result<Self, InstallerError> {
-        // A platform parser may take time to complete. Repeat the descriptor
-        // binding while converting its successful result into opaque evidence,
-        // so a replacement just before this boundary cannot become installable.
-        artifact.revalidate_against(release)?;
+        // The streaming download hash is the local identity. Installers repeat
+        // the on-disk size/hash check immediately before consumption.
         let artifact_path = artifact.path().to_path_buf();
 
         Ok(Self {
@@ -333,7 +323,7 @@ impl VerifiedPackage {
         &self.artifact_path
     }
 
-    #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+    #[cfg_attr(target_os = "macos", allow(dead_code))]
     fn job_id(&self) -> Option<&str> {
         self.artifact.as_ref().map(DownloadedArtifact::job_id)
     }
@@ -347,18 +337,18 @@ impl VerifiedPackage {
     }
 
     /// Repeats the controlled-artifact regular-file, exact-size, and SHA-256
-    /// checks against the descriptor that was locked when platform validation
-    /// succeeded. Installers call this immediately before they form a file URI
+    /// checks against the locally computed fingerprint retained during package
+    /// preparation. Installers call this immediately before they form a file URI
     /// or hand the artifact to a package consumer.
     pub(crate) fn revalidate_artifact(&self) -> Result<(), InstallerError> {
         match self.artifact.as_ref() {
-            Some(artifact) => artifact.revalidate_against(&self.locked_release),
+            Some(artifact) => artifact.revalidate(),
             #[cfg(test)]
             None => Ok(()),
             #[cfg(not(test))]
             None => Err(InstallerError::new(InstallerErrorCode::InternalError)
                 .with_diagnostic_message(
-                    "validated package is missing artifact integrity evidence",
+                    "prepared package is missing local artifact handoff evidence",
                 )),
         }
     }
@@ -372,28 +362,35 @@ impl VerifiedPackage {
             .as_ref()
             .ok_or_else(|| {
                 InstallerError::new(InstallerErrorCode::InternalError).with_diagnostic_message(
-                    "validated package is missing its retained artifact capability",
+                    "prepared package is missing its retained artifact capability",
                 )
             })?
             .open_for_read()
     }
 
+    #[cfg_attr(target_os = "macos", allow(dead_code))]
     pub(crate) fn locked_release(&self) -> &ReleaseDescriptor {
         &self.locked_release
     }
 
-    pub(crate) fn belongs_to(&self, release: &ReleaseDescriptor) -> bool {
-        let locked_release = self.locked_release();
-        locked_release.release_id == release.release_id
-            && locked_release.platform == release.platform
-            && locked_release.architecture == release.architecture
-            && locked_release.platform_version == release.platform_version
-            && locked_release.expected_size == release.expected_size
-            && locked_release.expected_sha256 == release.expected_sha256
+    #[cfg_attr(target_os = "macos", allow(dead_code))]
+    pub(crate) fn actual_size(&self) -> u64 {
+        self.artifact
+            .as_ref()
+            .map(DownloadedArtifact::actual_size)
+            .unwrap_or(0)
     }
 
-    /// Creates opaque validation evidence for service unit tests. Production
-    /// callers cannot construct a package: platform validation remains the
+    #[cfg_attr(target_os = "macos", allow(dead_code))]
+    pub(crate) fn local_sha256(&self) -> &str {
+        self.artifact
+            .as_ref()
+            .map(DownloadedArtifact::local_sha256)
+            .unwrap_or("")
+    }
+
+    /// Creates opaque prepared-package evidence for service unit tests. Production
+    /// callers cannot construct a package: platform preparation remains the
     /// only non-test path that can bind a downloaded artifact to a release.
     #[cfg(test)]
     pub(crate) fn for_test(release: &ReleaseDescriptor) -> Self {
@@ -410,43 +407,26 @@ impl VerifiedPackage {
     }
 }
 
-impl fmt::Debug for VerifiedPackage {
+impl fmt::Debug for PreparedInstallPackage {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
-            .debug_struct("VerifiedPackage")
+            .debug_struct("PreparedInstallPackage")
             .field("release_id", &self.locked_release.release_id)
             .field("platform", &self.locked_release.platform)
             .field("architecture", &self.locked_release.architecture)
-            .field("artifact_path", &"<validated-package>")
+            .field("artifact_path", &"<prepared-install-package>")
             .finish()
     }
 }
 
-/// Confirms that a re-detected installation satisfies the release which was
-/// actually installed. Identity is selected only from the trusted platform,
-/// never from remote metadata or a caller-provided field.
-pub(crate) fn installed_application_matches_release(
+/// Confirms that a re-detected installation exposes the minimum operational
+/// identity and platform shape required by the current installer flow.
+pub(crate) fn installed_application_has_operational_shape(
     application: &InstalledApplication,
     release: &ReleaseDescriptor,
 ) -> Result<bool, InstallerError> {
-    let expected_identity = stable_identity_for(release.platform);
-    if application.stable_identity != expected_identity
-        || application.architecture != release.architecture
-        || installed_platform(&application.platform_version) != release.platform
-    {
-        return Ok(false);
-    }
-
-    application
-        .platform_version
-        .is_at_least(&release.platform_version)
-}
-
-const fn stable_identity_for(platform: DesktopPlatform) -> &'static str {
-    match platform {
-        DesktopPlatform::Windows => WINDOWS_CODEX_STABLE_IDENTITY,
-        DesktopPlatform::Macos => MACOS_CODEX_STABLE_IDENTITY,
-    }
+    Ok(!application.stable_identity.is_empty()
+        && installed_platform(&application.platform_version) == release.platform)
 }
 
 const fn installed_platform(version: &super::types::PlatformVersion) -> DesktopPlatform {
@@ -459,8 +439,8 @@ const fn installed_platform(version: &super::types::PlatformVersion) -> DesktopP
 /// Platform interface used by the common service.
 ///
 /// `BoxFuture` keeps this trait object-safe without adding `async-trait`.
-/// `platform` is optional because Linux and other unsupported hosts cannot be
-/// misrepresented by the V1 Windows/macOS enum.
+/// `platform` is optional because unsupported hosts cannot be misrepresented
+/// by the Windows/macOS enum.
 pub(crate) trait CodexDesktopPlatform: Send + Sync {
     fn platform(&self) -> Option<DesktopPlatform>;
 
@@ -503,22 +483,21 @@ pub(crate) trait CodexDesktopPlatform: Send + Sync {
         temp_root: &'a Path,
     ) -> BoxFuture<'a, Result<PlatformInstallPlan, InstallerError>>;
 
-    /// Performs platform-specific identity, architecture, and signature
-    /// validation over a core-owned artifact whose hash and size have already
-    /// been verified. No platform trait operation accepts a raw path.
-    fn verify_package<'a>(
+    /// Prepares a core-owned artifact while preserving its locally computed
+    /// same-file hash and size evidence. No platform trait operation accepts a raw path.
+    fn prepare_install_package<'a>(
         &'a self,
         release: &'a ReleaseDescriptor,
         artifact: &'a DownloadedArtifact,
-    ) -> BoxFuture<'a, Result<VerifiedPackage, InstallerError>>;
+    ) -> BoxFuture<'a, Result<PreparedInstallPackage, InstallerError>>;
 
-    /// Installs only a package whose validation evidence is represented by
-    /// `VerifiedPackage`; a raw path is intentionally absent from this API.
+    /// Installs only a package whose local handoff evidence is represented by
+    /// `PreparedInstallPackage`; a raw path is intentionally absent from this API.
     fn install_current_user<'a>(
         &'a self,
-        package: &'a VerifiedPackage,
+        package: &'a PreparedInstallPackage,
         progress: PlatformProgressSink,
-    ) -> BoxFuture<'a, Result<(), InstallerError>>;
+    ) -> BoxFuture<'a, Result<Option<InstalledApplication>, InstallerError>>;
 
     fn launch<'a>(
         &'a self,
@@ -571,10 +550,12 @@ pub(crate) trait CodexDesktopPlatform: Send + Sync {
     }
 }
 
-/// A fail-closed adapter for hosts V1 cannot install on.
+/// A fail-closed adapter for operating systems the shipped desktop product
+/// does not support.
 ///
-/// Supported-host production construction never needs this type. Unit tests
-/// still compile it so the unsupported result remains covered on every host.
+/// Windows and macOS production construction never uses this type. Other
+/// development hosts compile it so `cargo check` and tests can run without
+/// claiming product support.
 #[cfg(any(not(any(target_os = "windows", target_os = "macos")), test))]
 #[derive(Debug, Clone)]
 pub(crate) struct UnsupportedPlatformAdapter {
@@ -638,19 +619,19 @@ impl CodexDesktopPlatform for UnsupportedPlatformAdapter {
         Box::pin(async move { Err(self.unsupported_error()) })
     }
 
-    fn verify_package<'a>(
+    fn prepare_install_package<'a>(
         &'a self,
         _release: &'a ReleaseDescriptor,
         _artifact: &'a DownloadedArtifact,
-    ) -> BoxFuture<'a, Result<VerifiedPackage, InstallerError>> {
+    ) -> BoxFuture<'a, Result<PreparedInstallPackage, InstallerError>> {
         Box::pin(async move { Err(self.unsupported_error()) })
     }
 
     fn install_current_user<'a>(
         &'a self,
-        _package: &'a VerifiedPackage,
+        _package: &'a PreparedInstallPackage,
         _progress: PlatformProgressSink,
-    ) -> BoxFuture<'a, Result<(), InstallerError>> {
+    ) -> BoxFuture<'a, Result<Option<InstalledApplication>, InstallerError>> {
         Box::pin(async move { Err(self.unsupported_error()) })
     }
 
@@ -669,7 +650,6 @@ impl CodexDesktopPlatform for UnsupportedPlatformAdapter {
 /// open the existing log directory, while every local inspection, download
 /// preflight, install, and launch operation still fails with that same stable
 /// error. It must never be used as a successful fallback for a supported host.
-#[cfg_attr(not(any(target_os = "windows", target_os = "macos")), allow(dead_code))]
 #[derive(Debug, Clone)]
 pub(crate) struct UnavailablePlatformAdapter {
     platform: DesktopPlatform,
@@ -677,7 +657,6 @@ pub(crate) struct UnavailablePlatformAdapter {
     error: InstallerError,
 }
 
-#[cfg_attr(not(any(target_os = "windows", target_os = "macos")), allow(dead_code))]
 impl UnavailablePlatformAdapter {
     pub(crate) fn new(
         platform: DesktopPlatform,
@@ -719,20 +698,20 @@ impl CodexDesktopPlatform for UnavailablePlatformAdapter {
         Box::pin(async move { Err(error) })
     }
 
-    fn verify_package<'a>(
+    fn prepare_install_package<'a>(
         &'a self,
         _release: &'a ReleaseDescriptor,
         _artifact: &'a DownloadedArtifact,
-    ) -> BoxFuture<'a, Result<VerifiedPackage, InstallerError>> {
+    ) -> BoxFuture<'a, Result<PreparedInstallPackage, InstallerError>> {
         let error = self.unavailable_error();
         Box::pin(async move { Err(error) })
     }
 
     fn install_current_user<'a>(
         &'a self,
-        _package: &'a VerifiedPackage,
+        _package: &'a PreparedInstallPackage,
         _progress: PlatformProgressSink,
-    ) -> BoxFuture<'a, Result<(), InstallerError>> {
+    ) -> BoxFuture<'a, Result<Option<InstalledApplication>, InstallerError>> {
         let error = self.unavailable_error();
         Box::pin(async move { Err(error) })
     }
@@ -756,7 +735,7 @@ mod tests {
         error::InstallerErrorCode,
         temp::JobTempDir,
         types::{PlatformVersion, TrustedDownloadEndpoint},
-        verify::{sha256_hex, ArtifactKind},
+        verify::ArtifactKind,
     };
     use uuid::Uuid;
 
@@ -766,11 +745,8 @@ mod tests {
             CpuArchitecture::X86_64,
             "1.2.3.4",
             PlatformVersion::parse_windows_msix("1.2.3.4").unwrap(),
-            "OpenAI.Codex_1.2.3.4_x64__fixture.Msix",
-            "a".repeat(64),
-            1024,
+            Some(1024),
             TrustedDownloadEndpoint::WinX64,
-            None,
         )
         .unwrap()
     }
@@ -781,11 +757,8 @@ mod tests {
             CpuArchitecture::Aarch64,
             "26.721.41059",
             PlatformVersion::parse_mac_bundle("5848").unwrap(),
-            "Codex-mac-arm64.dmg",
-            "b".repeat(64),
-            1024,
+            Some(1024),
             TrustedDownloadEndpoint::MacArm64,
-            None,
         )
         .unwrap()
     }
@@ -796,11 +769,8 @@ mod tests {
             CpuArchitecture::X86_64,
             "1.2.3.4",
             PlatformVersion::parse_windows_msix("1.2.3.4").unwrap(),
-            "OpenAI.Codex_1.2.3.4_x64__fixture.Msix",
-            sha256_hex(bytes),
-            bytes.len() as u64,
+            Some(bytes.len() as u64),
             TrustedDownloadEndpoint::WinX64,
-            None,
         )
         .unwrap()
     }
@@ -843,20 +813,21 @@ mod tests {
     }
 
     #[test]
-    fn verified_package_is_private_path_evidence_tied_to_one_release() {
-        let trusted_bytes = b"trusted package bytes";
-        let release = release_for_artifact(trusted_bytes);
-        let (_root, artifact) = downloaded_artifact_for(&release, trusted_bytes);
+    fn prepared_package_is_private_path_evidence_tied_to_one_release() {
+        let downloaded_bytes = b"downloaded package bytes";
+        let release = release_for_artifact(downloaded_bytes);
+        let (_root, artifact) = downloaded_artifact_for(&release, downloaded_bytes);
         let artifact_path = artifact.path().to_path_buf();
-        let package = VerifiedPackage::from_completed_validation(&release, artifact).unwrap();
+        let package = PreparedInstallPackage::from_prepared_artifact(&release, artifact).unwrap();
 
-        assert!(package.belongs_to(&release));
         assert_eq!(package.artifact_path(), artifact_path);
         let debug = format!("{package:?}");
-        assert!(debug.contains("<validated-package>"));
+        assert!(debug.contains("<prepared-install-package>"));
         assert!(!debug.contains(artifact_path.to_string_lossy().as_ref()));
 
-        fs::write(&artifact_path, b"mutated package bytes").unwrap();
+        let mut replacement = fs::read(&artifact_path).unwrap();
+        replacement[0] ^= 0x01;
+        fs::write(&artifact_path, replacement).unwrap();
         let error = package
             .revalidate_artifact()
             .expect_err("replaced evidence must not stay installable");
@@ -873,28 +844,30 @@ mod tests {
     }
 
     #[test]
-    fn installed_application_matcher_uses_platform_specific_identity_and_version_floor() {
+    fn installed_application_shape_check_allows_identity_version_and_architecture_drift() {
         let windows = release();
         let matching_windows = installed_application(
             WINDOWS_CODEX_STABLE_IDENTITY,
             PlatformVersion::parse_windows_msix("1.2.3.5").unwrap(),
             CpuArchitecture::X86_64,
         );
-        assert!(installed_application_matches_release(&matching_windows, &windows).unwrap());
+        assert!(installed_application_has_operational_shape(&matching_windows, &windows).unwrap());
 
         let wrong_windows_identity = installed_application(
             "OpenAI.CodexBeta",
             PlatformVersion::parse_windows_msix("1.2.3.5").unwrap(),
             CpuArchitecture::X86_64,
         );
-        assert!(!installed_application_matches_release(&wrong_windows_identity, &windows).unwrap());
+        assert!(
+            installed_application_has_operational_shape(&wrong_windows_identity, &windows).unwrap()
+        );
 
         let older_windows = installed_application(
             WINDOWS_CODEX_STABLE_IDENTITY,
             PlatformVersion::parse_windows_msix("1.2.3.3").unwrap(),
             CpuArchitecture::X86_64,
         );
-        assert!(!installed_application_matches_release(&older_windows, &windows).unwrap());
+        assert!(installed_application_has_operational_shape(&older_windows, &windows).unwrap());
 
         let wrong_windows_architecture = installed_application(
             WINDOWS_CODEX_STABLE_IDENTITY,
@@ -902,7 +875,8 @@ mod tests {
             CpuArchitecture::Aarch64,
         );
         assert!(
-            !installed_application_matches_release(&wrong_windows_architecture, &windows).unwrap()
+            installed_application_has_operational_shape(&wrong_windows_architecture, &windows)
+                .unwrap()
         );
 
         let macos = macos_release();
@@ -911,7 +885,7 @@ mod tests {
             PlatformVersion::parse_mac_bundle("5848").unwrap(),
             CpuArchitecture::Aarch64,
         );
-        assert!(installed_application_matches_release(&matching_macos, &macos).unwrap());
+        assert!(installed_application_has_operational_shape(&matching_macos, &macos).unwrap());
 
         let windows_identity_on_macos = installed_application(
             WINDOWS_CODEX_STABLE_IDENTITY,
@@ -919,19 +893,20 @@ mod tests {
             CpuArchitecture::Aarch64,
         );
         assert!(
-            !installed_application_matches_release(&windows_identity_on_macos, &macos).unwrap()
+            installed_application_has_operational_shape(&windows_identity_on_macos, &macos)
+                .unwrap()
         );
     }
 
     #[test]
-    fn installed_application_matcher_rejects_platform_shape_and_reports_bad_installed_version() {
+    fn installed_application_shape_check_rejects_empty_identity_or_wrong_platform_shape() {
         let windows = release();
         let macos_shape = installed_application(
             WINDOWS_CODEX_STABLE_IDENTITY,
             PlatformVersion::parse_mac_bundle("5848").unwrap(),
             CpuArchitecture::X86_64,
         );
-        assert!(!installed_application_matches_release(&macos_shape, &windows).unwrap());
+        assert!(!installed_application_has_operational_shape(&macos_shape, &windows).unwrap());
 
         let macos = macos_release();
         let invalid_macos_version = installed_application(
@@ -941,24 +916,31 @@ mod tests {
             },
             CpuArchitecture::Aarch64,
         );
-        let error = installed_application_matches_release(&invalid_macos_version, &macos)
-            .expect_err("an uncomparable installed version must not be accepted");
-        assert_eq!(error.code(), InstallerErrorCode::InstallationVerifyFailed);
+        assert!(
+            installed_application_has_operational_shape(&invalid_macos_version, &macos).unwrap()
+        );
+        let empty_identity = installed_application(
+            "",
+            PlatformVersion::parse_mac_bundle("5848").unwrap(),
+            CpuArchitecture::Aarch64,
+        );
+        assert!(!installed_application_has_operational_shape(&empty_identity, &macos).unwrap());
     }
 
     #[test]
     fn unsupported_adapter_returns_structured_platform_and_architecture_failures() {
-        let linux = UnsupportedPlatformAdapter::platform_unsupported(CpuArchitecture::X86_64);
-        assert_eq!(linux.platform(), None);
-        assert_eq!(linux.architecture(), CpuArchitecture::X86_64);
+        let unsupported = UnsupportedPlatformAdapter::platform_unsupported(CpuArchitecture::X86_64);
+        assert_eq!(unsupported.platform(), None);
+        assert_eq!(unsupported.architecture(), CpuArchitecture::X86_64);
         assert!(matches!(
-            futures::executor::block_on(linux.inspect_local()).unwrap(),
+            futures::executor::block_on(unsupported.inspect_local()).unwrap(),
             LocalInstallStatus::Unsupported {
                 reason: UnsupportedReason::Platform
             }
         ));
-        let error = futures::executor::block_on(linux.preflight(&release(), Path::new("temp")))
-            .expect_err("unsupported hosts never preflight successfully");
+        let error =
+            futures::executor::block_on(unsupported.preflight(&release(), Path::new("temp")))
+                .expect_err("unsupported hosts never preflight successfully");
         assert_eq!(error.code(), InstallerErrorCode::PlatformUnsupported);
 
         let intel_macos = UnsupportedPlatformAdapter::architecture_unsupported(
@@ -1006,19 +988,19 @@ mod tests {
             Box::pin(async { Ok(PlatformInstallPlan::default()) })
         }
 
-        fn verify_package<'a>(
+        fn prepare_install_package<'a>(
             &'a self,
             release: &'a ReleaseDescriptor,
             _artifact: &'a DownloadedArtifact,
-        ) -> BoxFuture<'a, Result<VerifiedPackage, InstallerError>> {
-            Box::pin(async move { Ok(VerifiedPackage::for_test(release)) })
+        ) -> BoxFuture<'a, Result<PreparedInstallPackage, InstallerError>> {
+            Box::pin(async move { Ok(PreparedInstallPackage::for_test(release)) })
         }
 
         fn install_current_user<'a>(
             &'a self,
-            package: &'a VerifiedPackage,
+            package: &'a PreparedInstallPackage,
             progress: PlatformProgressSink,
-        ) -> BoxFuture<'a, Result<(), InstallerError>> {
+        ) -> BoxFuture<'a, Result<Option<InstalledApplication>, InstallerError>> {
             Box::pin(async move {
                 assert_eq!(package.platform(), DesktopPlatform::Windows);
                 progress.report_progress(JobProgress::new(
@@ -1026,7 +1008,7 @@ mod tests {
                     Some(1),
                     Some(1),
                 ));
-                Ok(())
+                Ok(None)
             })
         }
 
@@ -1042,7 +1024,7 @@ mod tests {
     fn fake_adapter_confirms_the_trait_is_object_safe_and_package_only_at_install() {
         let adapter: Arc<dyn CodexDesktopPlatform> = Arc::new(FakePlatform);
         let release = release();
-        let package = VerifiedPackage::for_test(&release);
+        let package = PreparedInstallPackage::for_test(&release);
         let reports = Arc::new(std::sync::Mutex::new(Vec::new()));
         let sink_reports = reports.clone();
         let sink: PlatformProgressSink = Arc::new(move |progress| {

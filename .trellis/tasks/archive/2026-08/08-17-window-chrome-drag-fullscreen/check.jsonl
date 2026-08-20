@@ -1,0 +1,3 @@
+{"file": ".trellis/spec/frontend/v2-shell.md", "reason": "检查原生 macOS 拖拽条例外是否过宽，caption 按钮是否回流。"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "检查是否用了规定的 V2/桌面验证命令，有没有把 mock 报成 Windows 证据。"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "检查 V2 改动是否越出壳层契约去改业务页或 legacy 入口。"}

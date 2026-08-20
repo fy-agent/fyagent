@@ -35,15 +35,15 @@ use windows::{
         Security::{
             AccessCheck, AclSizeInformation,
             Authorization::{GetSecurityInfo, SE_FILE_OBJECT, SE_KERNEL_OBJECT},
-            CopySid, DuplicateToken, EqualSid, GetAce, GetAclInformation, GetLengthSid,
-            GetSecurityDescriptorControl, GetTokenInformation, IsValidSid, IsWellKnownSid,
-            SecurityImpersonation, TokenUser, WinAuthenticatedUserSid, WinBuiltinAdministratorsSid,
-            WinLocalSystemSid, ACCESS_ALLOWED_ACE, ACL_REVISION, ACL_SIZE_INFORMATION,
-            DACL_SECURITY_INFORMATION, GENERIC_MAPPING, GROUP_SECURITY_INFORMATION,
-            OWNER_SECURITY_INFORMATION, PRIVILEGE_SET, PSECURITY_DESCRIPTOR, PSID,
-            SE_DACL_AUTO_INHERITED, SE_DACL_AUTO_INHERIT_REQ, SE_DACL_DEFAULTED, SE_DACL_PRESENT,
-            SE_DACL_PROTECTED, SE_GROUP_DEFAULTED, SE_OWNER_DEFAULTED, TOKEN_DUPLICATE,
-            TOKEN_QUERY, TOKEN_USER,
+            CheckTokenMembership, CopySid, CreateWellKnownSid, DuplicateToken, EqualSid, GetAce,
+            GetAclInformation, GetLengthSid, GetSecurityDescriptorControl, GetTokenInformation,
+            IsValidSid, IsWellKnownSid, SecurityImpersonation, TokenUser, WinAuthenticatedUserSid,
+            WinBuiltinAdministratorsSid, WinLocalSystemSid, ACCESS_ALLOWED_ACE, ACL_REVISION,
+            ACL_SIZE_INFORMATION, DACL_SECURITY_INFORMATION, GENERIC_MAPPING,
+            GROUP_SECURITY_INFORMATION, OWNER_SECURITY_INFORMATION, PRIVILEGE_SET,
+            PSECURITY_DESCRIPTOR, PSID, SECURITY_MAX_SID_SIZE, SE_DACL_AUTO_INHERITED,
+            SE_DACL_AUTO_INHERIT_REQ, SE_DACL_DEFAULTED, SE_DACL_PRESENT, SE_DACL_PROTECTED,
+            SE_GROUP_DEFAULTED, SE_OWNER_DEFAULTED, TOKEN_DUPLICATE, TOKEN_QUERY, TOKEN_USER,
         },
         Storage::FileSystem::{
             CreateFileW, FileAttributeTagInfo, FileStandardInfo, GetDriveTypeW,
@@ -1075,6 +1075,25 @@ impl FrozenUser {
     fn sid(&self) -> PSID {
         PSID(self.sid_storage.as_ptr().cast_mut().cast())
     }
+
+    fn is_local_administrator(&self) -> Result<bool, HelperRunError> {
+        let mut administrators = aligned_words(SECURITY_MAX_SID_SIZE as usize);
+        let mut administrators_len = SECURITY_MAX_SID_SIZE;
+        let administrators_sid = PSID(administrators.as_mut_ptr().cast());
+        unsafe {
+            CreateWellKnownSid(
+                WinBuiltinAdministratorsSid,
+                None,
+                Some(administrators_sid),
+                &mut administrators_len,
+            )
+        }
+        .map_err(|_| package_pin_error())?;
+        let mut member = BOOL::default();
+        unsafe { CheckTokenMembership(Some(self.token.raw()), administrators_sid, &mut member) }
+            .map_err(|_| package_pin_error())?;
+        Ok(member.as_bool())
+    }
 }
 
 fn aligned_words(byte_length: usize) -> Vec<usize> {
@@ -1289,10 +1308,17 @@ fn verify_effective_access(
         )
     }
     .map_err(|_| package_pin_error())?;
-    if !access_status.as_bool() || granted & forbidden != 0 {
+    if !access_status.as_bool() {
+        return Err(package_pin_error());
+    }
+    if forbidden_access_rejected(granted, forbidden, user.is_local_administrator()?) {
         return Err(package_pin_error());
     }
     Ok(())
+}
+
+fn forbidden_access_rejected(granted: u32, forbidden: u32, token_is_administrator: bool) -> bool {
+    granted & forbidden != 0 && !token_is_administrator
 }
 
 struct LocalSecurityDescriptor(PSECURITY_DESCRIPTOR);
@@ -1380,7 +1406,9 @@ fn open_sync_event(name: &str) -> Result<OwnedKernelHandle, HelperRunError> {
     let handle = unsafe { OpenEventW(access, false, PCWSTR(name.as_ptr())) }
         .map_err(|_| HelperRunError::PipeUnavailable)?;
     let handle = OwnedKernelHandle::new(handle).map_err(|_| HelperRunError::PipeUnavailable)?;
-    verify_builtin_administrators_owner(handle.raw())?;
+    if let Err(error) = verify_builtin_administrators_owner(handle.raw()) {
+        return Err(error);
+    }
     Ok(handle)
 }
 
@@ -1507,7 +1535,9 @@ impl PipeChannel {
         .map_err(|_| HelperRunError::PipeUnavailable)?;
 
         let owned = unsafe { OwnedHandle::from_raw_handle(handle.0) };
-        verify_builtin_administrators_owner(HANDLE(owned.as_raw_handle()))?;
+        if let Err(error) = verify_builtin_administrators_owner(HANDLE(owned.as_raw_handle())) {
+            return Err(error);
+        }
         Ok(Self {
             state: Mutex::new(PipeState {
                 handle: owned,
@@ -1816,6 +1846,25 @@ mod tests {
         );
         assert_ne!(BRIDGE_FILE_DANGEROUS_ACCESS & FILE_WRITE_DATA.0, 0);
         assert_ne!(BRIDGE_FILE_DANGEROUS_ACCESS & FILE_APPEND_DATA.0, 0);
+    }
+
+    #[test]
+    fn privileged_helper_token_may_hold_os_owned_ancestors() {
+        assert!(forbidden_access_rejected(
+            ANCESTOR_DANGEROUS_ACCESS,
+            ANCESTOR_DANGEROUS_ACCESS,
+            false
+        ));
+        assert!(!forbidden_access_rejected(
+            ANCESTOR_DANGEROUS_ACCESS,
+            ANCESTOR_DANGEROUS_ACCESS,
+            true
+        ));
+        assert!(!forbidden_access_rejected(
+            0,
+            ANCESTOR_DANGEROUS_ACCESS,
+            false
+        ));
     }
 
     fn wide(value: &str) -> Vec<u16> {

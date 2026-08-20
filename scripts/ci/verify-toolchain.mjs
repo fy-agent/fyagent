@@ -99,8 +99,14 @@ export function resolveToolInvocation(
   platform = process.platform,
   env = process.env,
 ) {
-  if (platform !== "win32" || command !== "pnpm") {
-    return { command, args };
+  switch (platform) {
+    case "darwin":
+      return { command, args };
+    case "win32":
+      if (command !== "pnpm") return { command, args };
+      break;
+    default:
+      throw new Error(`Unsupported CI runner platform: ${platform}`);
   }
 
   const tokens = ["pnpm.cmd", ...args];

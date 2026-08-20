@@ -65,6 +65,11 @@ export function releaseCheckPlan(ciMode) {
       ["scripts/release/verify-windows-nsis-contract.mjs"],
     ],
     [
+      "supported-platform",
+      "node",
+      ["scripts/tasks/supported-platform-check.mjs"],
+    ],
+    [
       "contract-tests",
       "pnpm",
       [

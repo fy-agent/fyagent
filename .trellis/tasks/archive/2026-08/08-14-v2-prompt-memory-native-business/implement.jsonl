@@ -1,0 +1,10 @@
+{"file":".trellis/spec/backend/index.md","reason":"Backend cross-layer command, filesystem, and verification guidance."}
+{"file":".trellis/spec/backend/development-environment.md","reason":"Canonical mise-first build, test, and native-run contract."}
+{"file":".trellis/spec/frontend/index.md","reason":"V2 renderer routing and pre-development checklist."}
+{"file":".trellis/spec/frontend/v2-shell.md","reason":"V2 isolation, shared visual system, feature-port, browser-preview, and responsive contracts."}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Existing component composition and interaction patterns."}
+{"file":".trellis/spec/frontend/state-management.md","reason":"TanStack Query keys, mutation, refresh, and local dirty-state guidance."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Strict TypeScript and runtime Tauri payload validation requirements."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Renderer, accessibility, desktop, and locale verification expectations."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Trace Prompt and Memory data through ports, adapters, React, and existing native commands."}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Reuse existing V2 features and legacy native contracts without duplicating stacks."}

@@ -155,7 +155,7 @@ describe("SettingsPage integration", () => {
     const appInput = await screen.findByPlaceholderText(
       "settings.browsePlaceholderApp",
     );
-    expect((appInput as HTMLInputElement).value).toBe("/home/mock/.fyagent");
+    expect((appInput as HTMLInputElement).value).toBe("/Users/mock/.fyagent");
   });
 
   it("imports configuration and triggers success callback", async () => {
@@ -226,15 +226,15 @@ describe("SettingsPage integration", () => {
     const appInput = (await screen.findByPlaceholderText(
       "settings.browsePlaceholderApp",
     )) as HTMLInputElement;
-    expect(appInput.value).toBe("/home/mock/.fyagent");
+    expect(appInput.value).toBe("/Users/mock/.fyagent");
 
     fireEvent.click(browseButtons[0]);
     await waitFor(() =>
-      expect(appInput.value).toBe("/home/mock/.fyagent/picked"),
+      expect(appInput.value).toBe("/Users/mock/.fyagent/picked"),
     );
 
     fireEvent.click(resetButtons[0]);
-    await waitFor(() => expect(appInput.value).toBe("/home/mock/.fyagent"));
+    await waitFor(() => expect(appInput.value).toBe("/Users/mock/.fyagent"));
 
     const claudeInput = (await screen.findByPlaceholderText(
       "settings.browsePlaceholderClaude",
@@ -248,7 +248,7 @@ describe("SettingsPage integration", () => {
     );
 
     fireEvent.click(resetButtons[1]);
-    await waitFor(() => expect(claudeInput.value).toBe("/home/mock/.claude"));
+    await waitFor(() => expect(claudeInput.value).toBe("/Users/mock/.claude"));
   });
 
   it("notifies when export fails", async () => {

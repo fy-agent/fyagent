@@ -1,0 +1,6 @@
+{"file":".trellis/spec/frontend/v2-shell.md","reason":"V2 route, styling, layer, platform, accessibility, and geometry contract"}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Reusable component, ref, form, and accessibility conventions"}
+{"file":".trellis/spec/frontend/state-management.md","reason":"Query cache, mutation invalidation, Context, and persistence boundaries"}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Typed Tauri DTO and dynamic extension preservation rules"}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Keep shared primitives and MCP preset data single-sourced without premature layers"}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Maintain frontend and existing backend command contract alignment"}

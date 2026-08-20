@@ -6,16 +6,17 @@ import path from "node:path";
 import process from "node:process";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { ROOT, capture, fail, isMain, run } from "./lib.mjs";
+import { ROOT, capture, fail, isMain, isPosixTaskHost, run } from "./lib.mjs";
 import { parse as parseToml } from "smol-toml";
+import { resolveMsvcEnvironment as loadMsvcEnvironment } from "./windows-msvc-env.mjs";
 
 export const HOST_RUST_TARGETS = Object.freeze({
-  "linux-x64": "x86_64-unknown-linux-gnu",
-  "linux-arm64": "aarch64-unknown-linux-gnu",
   "darwin-x64": "x86_64-apple-darwin",
   "darwin-arm64": "aarch64-apple-darwin",
   "win32-x64": "x86_64-pc-windows-msvc",
   "win32-arm64": "aarch64-pc-windows-msvc",
+  "linux-x64": "x86_64-unknown-linux-gnu",
+  "linux-arm64": "aarch64-unknown-linux-gnu",
 });
 
 const TAURI_OPERATIONS = Object.freeze({
@@ -56,8 +57,6 @@ const TARGET_LINKER_ENVIRONMENT = /^CARGO_TARGET_.+_LINKER$/;
 const TARGET_RUST_FLAG_ENVIRONMENT = /^CARGO_TARGET_.+_RUSTFLAGS$/;
 const TARGET_RUSTDOC_FLAG_ENVIRONMENT = /^CARGO_TARGET_.+_RUSTDOCFLAGS$/;
 const PROCESS_INJECTION_ENVIRONMENT = Object.freeze([
-  "LD_PRELOAD",
-  "LD_LIBRARY_PATH",
   "DYLD_INSERT_LIBRARIES",
   "DYLD_FORCE_FLAT_NAMESPACE",
   "DYLD_LIBRARY_PATH",
@@ -235,16 +234,30 @@ export function resolveToolExecutable({
   if (typeof searchPath !== "string" || searchPath === "") {
     throw new Error(`PATH is required to resolve the canonical ${tool}`);
   }
-  const pathApi = platform === "win32" ? path.win32 : path.posix;
-  const delimiter = platform === "win32" ? ";" : ":";
-  const executable = platform === "win32" ? `${tool}.exe` : tool;
+  let pathApi;
+  let delimiter;
+  let executable;
+  let requireExecutePermission;
+  if (platform === "win32") {
+    pathApi = path.win32;
+    delimiter = ";";
+    executable = `${tool}.exe`;
+    requireExecutePermission = false;
+  } else if (isPosixTaskHost(platform)) {
+    pathApi = path.posix;
+    delimiter = ":";
+    executable = tool;
+    requireExecutePermission = true;
+  } else {
+    throw new Error(`Unsupported host platform: ${platform}`);
+  }
   for (const rawDirectory of searchPath.split(delimiter)) {
     const unquoted = rawDirectory.replace(/^"(.*)"$/, "$1");
     const directory = unquoted === "" ? cwd : unquoted;
     const candidate = pathApi.resolve(directory, executable);
     try {
       if (!fs.statSync(candidate).isFile()) continue;
-      if (platform !== "win32") {
+      if (requireExecutePermission) {
         fs.accessSync(candidate, fs.constants.X_OK);
       }
       return candidate;
@@ -255,13 +268,25 @@ export function resolveToolExecutable({
   throw new Error(`Unable to resolve ${tool} to an executable in PATH`);
 }
 
+function supportedHostPathApi(platform) {
+  if (platform === "win32") return path.win32;
+  if (isPosixTaskHost(platform)) return path.posix;
+  throw new Error(`Unsupported host platform: ${platform}`);
+}
+
+function normalizeSupportedHostPath(value, platform) {
+  if (platform === "win32") return value.toLowerCase();
+  if (isPosixTaskHost(platform)) return value;
+  throw new Error(`Unsupported host platform: ${platform}`);
+}
+
 export function buildNativeRunnerConfig({
   target,
   platform,
   nodeExecutable = process.execPath,
   runnerScript = fileURLToPath(import.meta.url),
 }) {
-  const pathApi = platform === "win32" ? path.win32 : path.posix;
+  const pathApi = supportedHostPathApi(platform);
   for (const [label, executable] of [
     ["Node", nodeExecutable],
     ["host-native runner", runnerScript],
@@ -471,7 +496,7 @@ export function ownedCargoEnvironment({
   rustdocExecutable,
   platform,
 }) {
-  const pathApi = platform === "win32" ? path.win32 : path.posix;
+  const pathApi = supportedHostPathApi(platform);
   for (const [tool, executable] of [
     ["rustc", rustcExecutable],
     ["rustdoc", rustdocExecutable],
@@ -502,24 +527,23 @@ export function ownedCargoEnvironment({
 }
 
 function samePath(left, right, platform) {
-  const normalize = (value) =>
-    platform === "win32" ? value.toLowerCase() : value;
+  const normalize = (value) => normalizeSupportedHostPath(value, platform);
   return normalize(path.normalize(left)) === normalize(path.normalize(right));
 }
 
 function isPathWithin(parent, candidate, platform) {
   const relative = path.relative(parent, candidate);
   if (relative === "" || relative === ".") return false;
-  const normalized = platform === "win32" ? relative.toLowerCase() : relative;
+  const normalized = normalizeSupportedHostPath(relative, platform);
   return !normalized.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
 }
 
 function expectedNativeMachine(target) {
   if (target.startsWith("x86_64-")) {
-    return { elf: 62, pe: 0x8664, macho: 0x01000007 };
+    return { pe: 0x8664, macho: 0x01000007, elf: 62 };
   }
   if (target.startsWith("aarch64-")) {
-    return { elf: 183, pe: 0xaa64, macho: 0x0100000c };
+    return { pe: 0xaa64, macho: 0x0100000c, elf: 183 };
   }
   throw new Error(`Unsupported native executable target: ${target}`);
 }
@@ -530,26 +554,6 @@ function verifyNativeBinarySignature(file, platform, target) {
   try {
     const header = Buffer.alloc(64);
     const length = fs.readSync(handle, header, 0, header.length, 0);
-    if (platform === "linux") {
-      if (
-        length < 20 ||
-        !header.subarray(0, 4).equals(Buffer.from([0x7f, 0x45, 0x4c, 0x46]))
-      ) {
-        throw new Error("Native Linux test executable must have an ELF header");
-      }
-      if (header[4] !== 2 || header[5] !== 1) {
-        throw new Error(
-          "Native Linux test executable must be a little-endian 64-bit ELF",
-        );
-      }
-      const machine = header.readUInt16LE(18);
-      if (machine !== expectedMachine.elf) {
-        throw new Error(
-          `Native Linux test executable architecture ${machine} does not match ${target}`,
-        );
-      }
-      return;
-    }
     if (platform === "darwin") {
       if (length < 8) {
         throw new Error(
@@ -590,6 +594,31 @@ function verifyNativeBinarySignature(file, platform, target) {
       if (machine !== expectedMachine.pe) {
         throw new Error(
           `Native Windows test executable architecture ${machine} does not match ${target}`,
+        );
+      }
+      return;
+    }
+    if (platform === "linux") {
+      if (
+        length < 20 ||
+        header[0] !== 0x7f ||
+        header[1] !== 0x45 ||
+        header[2] !== 0x4c ||
+        header[3] !== 0x46
+      ) {
+        throw new Error(
+          "Native test executable must have a 64-bit object header",
+        );
+      }
+      if (header[4] !== 2 || header[5] !== 1) {
+        throw new Error(
+          "Native test executable must be a little-endian 64-bit object",
+        );
+      }
+      const machine = header.readUInt16LE(18);
+      if (machine !== expectedMachine.elf) {
+        throw new Error(
+          `Native test executable architecture ${machine} does not match ${target}`,
         );
       }
       return;
@@ -857,6 +886,7 @@ export function executeTauriTask({
   captureCommand = capture,
   runCommand = run,
   resolveToolCommand = resolveToolExecutable,
+  resolveMsvcEnvironment = loadMsvcEnvironment,
 }) {
   assertTauriRequest({ operation, forwardedArguments, environment });
   assertNoCargoToolchainConfig({ environment });
@@ -883,7 +913,18 @@ export function executeTauriTask({
     rustcExecutable,
     rustdocExecutable,
   });
-  runCommand(plan.command, plan.args, { env: plan.environment });
+  let commandEnvironment;
+  if (platform === "win32") {
+    commandEnvironment = {
+      ...plan.environment,
+      ...(resolveMsvcEnvironment({ platform, architecture }) ?? {}),
+    };
+  } else if (isPosixTaskHost(platform)) {
+    commandEnvironment = plan.environment;
+  } else {
+    throw new Error(`Unsupported host platform: ${platform}`);
+  }
+  runCommand(plan.command, plan.args, { env: commandEnvironment });
   return plan;
 }
 
@@ -900,6 +941,7 @@ export function executeCargoTask({
   resolveRunner = resolveNativeRunner,
   validateCargoConfig = assertNoCargoToolchainConfig,
   nodeExecutable = process.execPath,
+  resolveMsvcEnvironment = loadMsvcEnvironment,
 }) {
   assertCargoRequest({
     operation,
@@ -938,6 +980,7 @@ export function executeCargoTask({
     rustdocExecutable,
     nativeRunnerConfig,
   });
+  let commandEnvironment;
   if (platform === "win32") {
     if (
       typeof nodeExecutable !== "string" ||
@@ -954,8 +997,16 @@ export function executeCargoTask({
         TAURI_ENV_DEBUG: "true",
       },
     });
+    commandEnvironment = {
+      ...plan.environment,
+      ...(resolveMsvcEnvironment({ platform, architecture }) ?? {}),
+    };
+  } else if (isPosixTaskHost(platform)) {
+    commandEnvironment = plan.environment;
+  } else {
+    throw new Error(`Unsupported host platform: ${platform}`);
   }
-  runCommand(plan.command, plan.args, { env: plan.environment });
+  runCommand(plan.command, plan.args, { env: commandEnvironment });
   return plan;
 }
 

@@ -1,18 +1,16 @@
-export type ReleasePlatform = "macos" | "windows" | "linux";
+export type ReleasePlatform = "macos" | "windows";
 export type ReleaseArchitecture = "universal" | "x64" | "arm64";
 export type ReleaseTargetGroup =
   | "macos-universal"
   | "windows-x64"
-  | "windows-arm64"
-  | "linux-x64"
-  | "linux-arm64";
-export type GitHubRunnerOS = "Linux" | "Windows" | "macOS";
+  | "windows-arm64";
+export type GitHubRunnerOS = "Windows" | "macOS";
 export type GitHubRunnerArch = "X86" | "X64" | "ARM" | "ARM64";
 
 export interface InstallerRule {
   readonly suffix: string;
   readonly platform: ReleasePlatform;
-  readonly kind: "dmg" | "zip" | "exe" | "appimage" | "deb" | "rpm";
+  readonly kind: "dmg" | "zip" | "exe";
   readonly architecture: ReleaseArchitecture;
 }
 
@@ -23,13 +21,6 @@ export interface ExpectedTarget {
   readonly requestedRunnerLabel: string;
   readonly expectedRunnerOs: GitHubRunnerOS;
   readonly expectedRunnerArch: GitHubRunnerArch;
-  readonly expectedContainer: {
-    readonly imageReference: string;
-    readonly manifestDigest: string;
-    readonly osReleaseId: "ubuntu";
-    readonly osReleaseVersionId: "22.04";
-    readonly unameMachine: "x86_64" | "aarch64";
-  } | null;
 }
 
 export interface ReleaseIdentity {
@@ -61,7 +52,7 @@ export interface DownloadManifestAsset {
 }
 
 export interface DownloadManifest {
-  schema: "fyagent-download-manifest/v2";
+  schema: "fyagent-download-manifest/v3";
   product: "FyAgent";
   version: string;
   tag: string;
@@ -71,7 +62,7 @@ export interface DownloadManifest {
 }
 
 export interface PlatformBuildTargetMetadata {
-  schema: "fyagent-platform-build/v1";
+  schema: "fyagent-platform-build/v2";
   targetGroup: ReleaseTargetGroup;
   platform: ReleasePlatform;
   architecture: ReleaseArchitecture;
@@ -82,19 +73,6 @@ export interface PlatformBuildTargetMetadata {
       arch: GitHubRunnerArch;
     };
   };
-  container: {
-    configuredImage: {
-      reference: string;
-      manifestDigest: string;
-    };
-    observed: {
-      osRelease: {
-        id: string;
-        versionId: string;
-      };
-      unameMachine: string;
-    };
-  } | null;
   toolchain: {
     node: string;
     pnpm: string;
@@ -108,7 +86,7 @@ export interface PlatformBuildMetadataRecord
 }
 
 export interface BuildMetadata {
-  schema: "fyagent-build-metadata/v1";
+  schema: "fyagent-build-metadata/v2";
   product: "FyAgent";
   version: string;
   tag: string;
@@ -140,6 +118,7 @@ export interface BuildMetadata {
 export const PRODUCT_NAME: "FyAgent";
 export const EXPECTED_REPOSITORY: "fy-agent/fyagent";
 export const EXPECTED_REPOSITORY_ID: "1313497021";
+export const PREFLIGHT_BRANCH: "dev/laiyongjie";
 export const RELEASE_BRANCH: "main";
 export const RELEASE_WORKFLOW_PATH: ".github/workflows/release.yml";
 export const CI_WORKFLOW_PATH: ".github/workflows/ci.yml";

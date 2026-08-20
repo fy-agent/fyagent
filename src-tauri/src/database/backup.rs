@@ -25,7 +25,8 @@ const INSERT_BATCH_MAX_BYTES: usize = 1024 * 1024;
 /// 能把临时文件重定向到任意目录，`writable_schema` 能绕过 schema 完整性检查。
 const IMPORT_ALLOWED_PRAGMAS: &[&str] = &["foreign_keys", "user_version"];
 
-/// 执行外部 SQL 期间的 authorizer：拒绝一切能**离开临时数据库文件**的动作。
+/// 执行外部 SQL 期间的 authorizer：拒绝一切能**离开临时数据库文件**的动作，
+/// 以及会作为可执行 schema 持久化到主库的 trigger。
 ///
 /// 头部校验（`validate_fyagent_sql_export`）只比较一个注释前缀，任何人都能在
 /// 合法前缀后面接着写别的语句。`ATTACH DATABASE '/path/x.db'` 的副作用发生在
@@ -37,11 +38,10 @@ const IMPORT_ALLOWED_PRAGMAS: &[&str] = &["foreign_keys", "user_version"];
 /// 大小写、换行绕过，还漏掉 `VACUUM INTO`。authorizer 在 prepare 阶段按**解析结果**
 /// 回调，绕不过语法层。
 ///
-/// 为什么是「拒绝越界动作」而不是「只放行 dump_sql 的语句」：这段 SQL 跑在
-/// `NamedTempFile` 建的一次性库上，而那个库的全部内容本来就由这份 SQL 决定。
-/// 因此 `DELETE` / `DROP` / `UPDATE` 给不了攻击者任何新东西——**唯一有意义的边界
-/// 是那个临时文件本身**。按 dump_sql 的产物做严格白名单只会带来误伤风险（用户
-/// 库里出现一种没预料到的对象就恢复不了备份），却不多挡任何攻击。
+/// 普通表、索引和视图只是导入数据本身；持久 trigger 不同，它会在导入完成后继续
+/// 运行，并能在 Provider quick setup 等后续写入时复制凭据。因此 trigger 属于越过
+/// 本次导入生命周期的可执行输入，必须 fail closed。FyAgent 正式 schema 不依赖
+/// trigger，拒绝它不会破坏受支持备份；也避免维护一份容易漂移的 trigger allowlist。
 ///
 /// 越界动作是实测出来的，不是推断的：
 /// - `ATTACH DATABASE 'x'`、`VACUUM INTO 'x'`、裸 `VACUUM` **三者都**报
@@ -52,9 +52,10 @@ const IMPORT_ALLOWED_PRAGMAS: &[&str] = &["foreign_keys", "user_version"];
 fn import_authorizer(context: rusqlite::hooks::AuthContext<'_>) -> rusqlite::hooks::Authorization {
     use rusqlite::hooks::{AuthAction, Authorization};
 
-    let escapes_temp_db = match context.action {
+    let unsafe_import_action = match context.action {
         AuthAction::Attach { .. } | AuthAction::Detach { .. } => true,
         AuthAction::CreateVtable { .. } | AuthAction::DropVtable { .. } => true,
+        AuthAction::CreateTrigger { .. } | AuthAction::CreateTempTrigger { .. } => true,
         AuthAction::Unknown { .. } => true,
         AuthAction::Pragma { pragma_name, .. } => !IMPORT_ALLOWED_PRAGMAS
             .iter()
@@ -62,7 +63,7 @@ fn import_authorizer(context: rusqlite::hooks::AuthContext<'_>) -> rusqlite::hoo
         _ => false,
     };
 
-    if escapes_temp_db {
+    if unsafe_import_action {
         // SQLite 只会回一句 "not authorized"，不记日志就无从知道是哪条语句被拦。
         log::warn!("SQL 导入拒绝了越界语句: {:?}", context.action);
         Authorization::Deny
@@ -188,6 +189,10 @@ impl Database {
         );
         batch_result.map_err(|e| AppError::Database(format!("执行 SQL 导入失败: {e}")))?;
 
+        // Authorizer 是外部 SQL 的第一道守卫；schema 检查同时覆盖未来改动中可能
+        // 绕开 execute_batch 的导入路径，并与二进制快照恢复共享同一安全边界。
+        Self::reject_persistent_triggers(&temp_conn)?;
+
         // 补齐缺失表/索引并进行基础校验
         Self::create_tables_on_conn(&temp_conn)?;
         Self::apply_schema_migrations_on_conn(&temp_conn)?;
@@ -241,6 +246,26 @@ impl Database {
             "仅支持导入由 FyAgent 导出的 SQL 备份文件。",
             "Only SQL backups exported by FyAgent are supported.",
         ))
+    }
+
+    fn reject_persistent_triggers(conn: &Connection) -> Result<(), AppError> {
+        let has_persistent_trigger: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type = 'trigger')",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(|e| AppError::Database(format!("校验备份 schema 失败: {e}")))?;
+
+        if has_persistent_trigger {
+            return Err(AppError::localized(
+                "backup.sql.unsupported_trigger",
+                "导入的数据库备份包含不受支持的持久触发器。",
+                "The imported database backup contains unsupported persistent triggers.",
+            ));
+        }
+
+        Ok(())
     }
 
     fn restore_tables(
@@ -704,6 +729,11 @@ impl Database {
             )));
         }
 
+        // Validate executable schema before creating a safety backup or touching the main DB.
+        let source_conn =
+            Connection::open(&backup_path).map_err(|e| AppError::Database(e.to_string()))?;
+        Self::reject_persistent_triggers(&source_conn)?;
+
         // Step 1: Create safety backup of current database
         let safety_backup = self.backup_database_file()?;
         let safety_id = safety_backup
@@ -711,9 +741,6 @@ impl Database {
             .unwrap_or_default();
 
         // Step 2: Open the backup file and restore it to the main database
-        let source_conn =
-            Connection::open(&backup_path).map_err(|e| AppError::Database(e.to_string()))?;
-
         {
             let mut main_conn = lock_conn!(self.conn);
             let backup = Backup::new(&source_conn, &mut main_conn)
@@ -1305,37 +1332,145 @@ mod tests {
     }
 
     #[test]
-    fn dump_sql_loads_rows_before_creating_triggers() -> Result<(), AppError> {
-        let source = Connection::open_in_memory()?;
-        source.execute_batch(
-            "CREATE TABLE triggered_rows (seq INTEGER PRIMARY KEY);
-             INSERT INTO triggered_rows VALUES (1), (2), (3);
-             CREATE TRIGGER ignore_second_row
-             BEFORE INSERT ON triggered_rows
-             WHEN NEW.seq = 2
-             BEGIN
-                 SELECT RAISE(IGNORE);
-             END;",
-        )?;
+    #[serial]
+    fn sql_import_rejects_persistent_side_effect_triggers_and_keeps_main_unchanged(
+    ) -> Result<(), AppError> {
+        let _test_home = TestHomeGuard::new();
+        let secret = "sk-ant-must-not-appear-in-import-errors";
+        let source = Database::memory()?;
+        {
+            let conn = crate::database::lock_conn!(source.conn);
+            conn.execute(
+                "INSERT INTO providers (id, app_type, name, settings_config, meta)
+                 VALUES ('remote-provider', 'claude', 'Remote', ?1, '{}')",
+                [format!("{{\"apiKey\":\"{secret}\"}}")],
+            )?;
+            conn.execute_batch(
+                "CREATE TABLE stolen_credentials (value TEXT NOT NULL);
+                 CREATE TRIGGER persist_provider_credentials
+                 AFTER INSERT ON providers
+                 BEGIN
+                     INSERT INTO stolen_credentials(value) VALUES (NEW.settings_config);
+                 END;",
+            )?;
+        }
+        let malicious_export = source.export_sql_string()?;
+        assert!(
+            malicious_export.contains("CREATE TRIGGER persist_provider_credentials"),
+            "回归输入必须真实携带能在后续 Provider 写入时复制凭据的 trigger"
+        );
 
-        let sql = Database::dump_sql(&source, &[])?;
-        let data_pos = sql.find("INSERT INTO \"triggered_rows\"").unwrap();
-        let trigger_pos = sql.find("CREATE TRIGGER ignore_second_row").unwrap();
-        assert!(data_pos < trigger_pos, "触发器必须在数据恢复完成后创建");
+        let target = Database::memory()?;
+        {
+            let conn = crate::database::lock_conn!(target.conn);
+            conn.execute(
+                "INSERT INTO providers (id, app_type, name, settings_config, meta)
+                 VALUES ('sentinel', 'claude', 'Existing Provider', '{}', '{}')",
+                [],
+            )?;
+        }
 
-        let target = Connection::open_in_memory()?;
-        target.execute_batch(&sql)?;
-        let rows = target
-            .prepare("SELECT seq FROM triggered_rows ORDER BY seq")?
-            .query_map([], |row| row.get::<_, i64>(0))?
+        let error = target
+            .import_sql_string(&malicious_export)
+            .expect_err("持久 trigger 必须让整个 SQL 导入失败");
+        let rendered_error = error.to_string();
+        assert!(
+            rendered_error.to_ascii_lowercase().contains("authoriz"),
+            "trigger 必须在执行阶段被 authorizer 拒绝，实际错误: {rendered_error}"
+        );
+        assert!(
+            !rendered_error.contains(secret),
+            "导入错误不得回显备份中的 Provider 凭据"
+        );
+
+        let conn = crate::database::lock_conn!(target.conn);
+        let providers = conn
+            .prepare("SELECT id FROM providers ORDER BY id")?
+            .query_map([], |row| row.get::<_, String>(0))?
             .collect::<Result<Vec<_>, _>>()?;
-        assert_eq!(rows, vec![1, 2, 3]);
-        let trigger_exists: bool = target.query_row(
-            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'trigger' AND name = 'ignore_second_row')",
+        assert_eq!(providers, vec!["sentinel"], "失败导入不得替换主库");
+        for object_name in ["stolen_credentials", "persist_provider_credentials"] {
+            let exists: bool = conn.query_row(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE name = ?1)",
+                [object_name],
+                |row| row.get(0),
+            )?;
+            assert!(!exists, "失败导入的对象不得进入主库: {object_name}");
+        }
+        Ok(())
+    }
+
+    #[test]
+    #[serial]
+    fn binary_backup_restore_rejects_persistent_side_effect_triggers_before_main_mutation(
+    ) -> Result<(), AppError> {
+        let test_home = TestHomeGuard::new();
+        let backup_dir = crate::config::get_app_config_dir().join("backups");
+        std::fs::create_dir_all(&backup_dir).expect("create backup directory");
+        let backup_path = backup_dir.join("malicious-trigger.db");
+        let secret = "sk-ant-binary-backup-secret";
+        {
+            let source = Connection::open(&backup_path)?;
+            source.execute(
+                "CREATE TABLE providers (
+                    id TEXT PRIMARY KEY,
+                    settings_config TEXT NOT NULL
+                 )",
+                [],
+            )?;
+            source.execute(
+                "INSERT INTO providers (id, settings_config) VALUES ('remote', ?1)",
+                [format!("{{\"apiKey\":\"{secret}\"}}")],
+            )?;
+            source.execute_batch(
+                "CREATE TABLE stolen_credentials (value TEXT NOT NULL);
+                 CREATE TRIGGER persist_binary_provider_credentials
+                 AFTER INSERT ON providers
+                 BEGIN
+                     INSERT INTO stolen_credentials(value) VALUES (NEW.settings_config);
+                 END;",
+            )?;
+        }
+
+        let target = Database::memory()?;
+        {
+            let conn = crate::database::lock_conn!(target.conn);
+            conn.execute(
+                "INSERT INTO providers (id, app_type, name, settings_config, meta)
+                 VALUES ('sentinel', 'claude', 'Existing Provider', '{}', '{}')",
+                [],
+            )?;
+        }
+
+        let error = target
+            .restore_from_backup("malicious-trigger.db")
+            .expect_err("带持久 trigger 的二进制备份必须在替换主库前被拒绝");
+        let rendered_error = error.to_string();
+        assert!(
+            rendered_error.contains("持久触发器"),
+            "二进制备份必须由共享 schema 守卫拒绝，实际错误: {rendered_error}"
+        );
+        assert!(
+            !rendered_error.contains(secret),
+            "二进制备份校验错误不得回显 Provider 凭据"
+        );
+
+        let conn = crate::database::lock_conn!(target.conn);
+        let providers = conn
+            .prepare("SELECT id FROM providers ORDER BY id")?
+            .query_map([], |row| row.get::<_, String>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        assert_eq!(providers, vec!["sentinel"], "失败恢复不得替换主库");
+        let trigger_exists: bool = conn.query_row(
+            "SELECT EXISTS(
+                SELECT 1 FROM sqlite_schema
+                WHERE type = 'trigger' AND name = 'persist_binary_provider_credentials'
+            )",
             [],
             |row| row.get(0),
         )?;
-        assert!(trigger_exists, "触发器本身仍必须随备份恢复");
+        assert!(!trigger_exists, "恶意 trigger 不得进入主库");
+        assert!(backup_path.starts_with(test_home.path()));
         Ok(())
     }
 
@@ -1347,11 +1482,6 @@ mod tests {
              CREATE UNIQUE INDEX indexed_rows_value_idx ON indexed_rows(value);
              CREATE VIEW indexed_rows_view AS
                  SELECT id, value FROM indexed_rows WHERE value LIKE 'kept%';
-             CREATE TRIGGER a_insert_indexed_rows_view
-             INSTEAD OF INSERT ON indexed_rows_view
-             BEGIN
-                 INSERT INTO indexed_rows (id, value) VALUES (NEW.id, NEW.value);
-             END;
              INSERT INTO indexed_rows VALUES (1, 'kept-value'), (2, 'hidden-value');",
         )?;
 
@@ -1362,7 +1492,6 @@ mod tests {
         for (object_type, object_name) in [
             ("index", "indexed_rows_value_idx"),
             ("view", "indexed_rows_view"),
-            ("trigger", "a_insert_indexed_rows_view"),
         ] {
             let exists: bool = target.query_row(
                 "SELECT EXISTS(
@@ -1374,23 +1503,13 @@ mod tests {
             assert!(exists, "{object_type} {object_name} 必须随 SQL dump 恢复");
         }
 
-        target.execute(
-            "INSERT INTO indexed_rows_view (id, value) VALUES (3, 'kept-via-trigger')",
-            [],
-        )?;
         let view_rows = target
             .prepare("SELECT id, value FROM indexed_rows_view ORDER BY id")?
             .query_map([], |row| {
                 Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
             })?
             .collect::<Result<Vec<_>, _>>()?;
-        assert_eq!(
-            view_rows,
-            vec![
-                (1, "kept-value".to_string()),
-                (3, "kept-via-trigger".to_string()),
-            ]
-        );
+        assert_eq!(view_rows, vec![(1, "kept-value".to_string())]);
         Ok(())
     }
 

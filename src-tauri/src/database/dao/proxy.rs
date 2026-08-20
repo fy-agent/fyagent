@@ -795,6 +795,21 @@ impl Database {
         Ok(())
     }
 
+    /// Restore an already captured Live backup record byte-for-byte, including
+    /// its original timestamp. Compensation paths use this instead of
+    /// `save_live_backup`, whose fresh timestamp would make rollback only a
+    /// partial restoration of the database preimage.
+    pub(crate) async fn restore_live_backup(&self, backup: &LiveBackup) -> Result<(), AppError> {
+        let conn = lock_conn!(self.conn);
+        conn.execute(
+            "INSERT OR REPLACE INTO proxy_live_backup (app_type, original_config, backed_up_at)
+             VALUES (?1, ?2, ?3)",
+            rusqlite::params![backup.app_type, backup.original_config, backup.backed_up_at],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+        Ok(())
+    }
+
     /// 检查是否存在任意 Live 配置备份
     pub async fn has_any_live_backup(&self) -> Result<bool, AppError> {
         let conn = lock_conn!(self.conn);

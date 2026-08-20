@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/frontend/v2-shell.md", "reason": "V2 壳层契约：系统 chrome、禁止 caption 按钮、本次要收窄的拖拽区禁令。"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "前端层入口与 V2 例外边界，改 TopBar 前先读。"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Renderer 拖拽条与 Rust 窗口几何同时改，避免层间各写一套。"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "V2 与桌面壳层验证命令，区分 mock/Playwright 与真实窗口证据。"}

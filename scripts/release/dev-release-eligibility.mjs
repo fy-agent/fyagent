@@ -9,9 +9,10 @@ export const RELEASE_WORKFLOW_NAME = "Release";
 export const RELEASE_WORKFLOW_PATH = ".github/workflows/release.yml";
 export const CI_WORKFLOW_NAME = "CI";
 export const CI_WORKFLOW_PATH = ".github/workflows/ci.yml";
-// Kept as a compatibility export for repository-owned release tooling.
-export const DEV_BRANCH = "main";
+export const DEV_BRANCH = "dev/laiyongjie";
 export const DEV_REF = `refs/heads/${DEV_BRANCH}`;
+export const FORMAL_BRANCH = "main";
+export const FORMAL_REF = `refs/heads/${FORMAL_BRANCH}`;
 export const REQUIRED_JOB_NAME = "CI / Required";
 
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
@@ -218,7 +219,7 @@ function validateWorkflow(value) {
   };
 }
 
-function validateRemoteDev(value) {
+function validateRemoteDev(value, authorityBranch) {
   const remoteDev = expectExactKeys(
     value,
     ["headSha", "name", "ref"],
@@ -226,12 +227,12 @@ function validateRemoteDev(value) {
   );
   expectEqual(
     expectString(remoteDev.name, "remoteDev.name"),
-    DEV_BRANCH,
+    authorityBranch,
     "remoteDev.name",
   );
   expectEqual(
     expectString(remoteDev.ref, "remoteDev.ref"),
-    DEV_REF,
+    `refs/heads/${authorityBranch}`,
     "remoteDev.ref",
   );
   return expectSha(remoteDev.headSha, "remoteDev.headSha");
@@ -318,7 +319,7 @@ function validateCiWorkflow(value) {
   return expectDecimal(workflow.id, "ciWorkflow.id", { positive: true });
 }
 
-function validateCiRun(value, index, ciWorkflowId) {
+function validateCiRun(value, index, ciWorkflowId, authorityBranch) {
   const label = `ciRuns[${index}]`;
   const run = expectExactKeys(
     value,
@@ -367,7 +368,7 @@ function validateCiRun(value, index, ciWorkflowId) {
   );
   expectEqual(
     expectString(run.headBranch, `${label}.headBranch`),
-    DEV_BRANCH,
+    authorityBranch,
     `${label}.headBranch`,
   );
   expectStatus(run.status, run.conclusion, label);
@@ -550,10 +551,10 @@ function validateCiEvidence(value, selectedRun, sourceSha) {
   );
 }
 
-function selectLatestSuccessfulCi(input, sourceSha) {
+function selectLatestSuccessfulCi(input, sourceSha, authorityBranch) {
   const ciWorkflowId = validateCiWorkflow(input.ciWorkflow);
   const runs = expectArray(input.ciRuns, "ciRuns").map((run, index) =>
-    validateCiRun(run, index, ciWorkflowId),
+    validateCiRun(run, index, ciWorkflowId, authorityBranch),
   );
   const seenAttempts = new Set();
   for (const run of runs) {
@@ -573,7 +574,7 @@ function selectLatestSuccessfulCi(input, sourceSha) {
         : runOrder;
     });
   if (matching.length === 0) {
-    fail(`no ${DEV_BRANCH} push CI run exists for source ${sourceSha}`);
+    fail(`no ${authorityBranch} push CI run exists for source ${sourceSha}`);
   }
   const selectedRun = matching.at(-1);
   if (
@@ -581,7 +582,7 @@ function selectLatestSuccessfulCi(input, sourceSha) {
     selectedRun.conclusion !== "success"
   ) {
     fail(
-      `latest exact-source ${DEV_BRANCH} push CI run/attempt must be completed successfully`,
+      `latest exact-source ${authorityBranch} push CI run/attempt must be completed successfully`,
     );
   }
   validateCiEvidence(input.ciEvidence, selectedRun, sourceSha);
@@ -633,16 +634,15 @@ export function evaluateDevReleaseEligibility(inputValue, expectedFrozen) {
   const candidate = validateCandidate(input.candidate);
   const event = validateEvent(input.event);
   const workflow = validateWorkflow(input.workflow);
-  const remoteDevHeadSha = validateRemoteDev(input.remoteDev);
-
-  expectEqual(remoteDevHeadSha, candidate.sourceSha, "remoteDev.headSha");
   expectEqual(event.sha, candidate.sourceSha, "event.sha");
   expectEqual(workflow.sha, candidate.sourceSha, "workflow.sha");
 
   const expectedWorkflowRefPrefix = `${EXPECTED_REPOSITORY}/${RELEASE_WORKFLOW_PATH}@`;
   let mode;
+  let authorityBranch;
   if (event.name === "workflow_dispatch") {
     mode = "preflight";
+    authorityBranch = DEV_BRANCH;
     expectEqual(
       expectSha(event.dispatchSourceSha, "event.dispatchSourceSha"),
       candidate.sourceSha,
@@ -661,6 +661,7 @@ export function evaluateDevReleaseEligibility(inputValue, expectedFrozen) {
     }
   } else if (event.name === "push") {
     mode = "formal";
+    authorityBranch = FORMAL_BRANCH;
     expectEqual(event.dispatchSourceSha, null, "event.dispatchSourceSha");
     const tagRef = `refs/tags/${candidate.releaseTag}`;
     expectEqual(event.ref, tagRef, "event.ref");
@@ -683,7 +684,16 @@ export function evaluateDevReleaseEligibility(inputValue, expectedFrozen) {
     fail(`unsupported event.name ${JSON.stringify(event.name)}`);
   }
 
-  const selectedRun = selectLatestSuccessfulCi(input, candidate.sourceSha);
+  const remoteDevHeadSha = validateRemoteDev(
+    input.remoteDev,
+    authorityBranch,
+  );
+  expectEqual(remoteDevHeadSha, candidate.sourceSha, "remoteDev.headSha");
+  const selectedRun = selectLatestSuccessfulCi(
+    input,
+    candidate.sourceSha,
+    authorityBranch,
+  );
   const output = Object.freeze({
     appVersion: candidate.canonicalVersion,
     releaseTag: candidate.releaseTag,

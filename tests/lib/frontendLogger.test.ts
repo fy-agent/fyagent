@@ -241,7 +241,7 @@ describe("frontendLogger", () => {
   });
 
   it("preserves native WebKit-style stack frames for JSON-wrapped errors", () => {
-    // macOS/Linux 的 WKWebView 用 `fn@file:line:col` 格式，且 stack 不含 message。
+    // WebKit 的 WKWebView 用 `fn@file:line:col` 格式，且 stack 不含 message。
     // 旧的 `/^\s+at\s/` 过滤会把整段栈丢掉；新实现须补脱敏头并保留原生栈。
     const err = new Error('{"tokens":["k-9f3a7c2b1e"]}');
     Object.defineProperty(err, "stack", {

@@ -1,0 +1,7 @@
+{"file": ".trellis/spec/frontend/v2-skills-mcp.md", "reason": "Six MCP targets, secret-safe search/details, assignment panel, V2 feature gates"}
+{"file": ".trellis/spec/frontend/v2-shell.md", "reason": "Frozen shell, V2 import boundaries, CSS tokens, responsive geometry"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Dialog, form, checkbox, and accessible control conventions"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Query invalidation after upsert and write-lock rules"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Preserve unknown MCP fields; do not persist catalog metadata"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Reuse feature tabs/cards and single-source npx/preset commands"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Catalog stays frontend-only; upsert uses existing MCP port"}

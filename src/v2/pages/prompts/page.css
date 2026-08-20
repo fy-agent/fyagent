@@ -1,0 +1,139 @@
+.fy-prompts-page .fy-feature-header {
+  margin-bottom: 12px;
+}
+
+.fy-prompts-page .fy-feature-workspace {
+  min-height: 0;
+}
+
+.fy-prompts-page .fy-catalog-detail {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.fy-prompts-page .fy-feature-toolbar {
+  flex: 0 0 auto;
+  margin-bottom: 12px;
+}
+
+.fy-prompts-page .fy-catalog-detail > .fy-split-panes {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.fy-prompts-library {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.fy-prompts-library h2 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 7px;
+}
+
+.fy-prompts-heading-meta {
+  color: var(--fy-text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.fy-prompts-library .fy-feature-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.fy-prompts-editor-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+}
+
+.fy-prompts-editor-form {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+}
+
+.fy-prompts-editor-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  flex: 0 0 auto;
+}
+
+.fy-prompts-editor-head .fy-feature-actions {
+  margin-left: auto;
+}
+
+.fy-prompts-editor-meta,
+.fy-prompts-editor-form > .fy-feature-description {
+  flex: 0 0 auto;
+  margin: 0;
+  color: var(--fy-text-secondary);
+  font-size: 12px;
+}
+
+.fy-prompts-editor-identity {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: 10px;
+  flex: 0 0 auto;
+}
+
+.fy-prompts-editor-content-field {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+}
+
+.fy-prompts-editor-content,
+.fy-prompts-live-content {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  resize: none;
+  font-family: ui-monospace, Consolas, monospace;
+  white-space: pre-wrap;
+}
+
+.fy-prompts-live {
+  flex: 0 0 auto;
+  padding-top: 8px;
+  border-top: 1px solid var(--fy-border);
+}
+
+.fy-prompts-live summary {
+  cursor: pointer;
+  color: var(--fy-text-secondary);
+  font-size: 13px;
+}
+
+.fy-prompts-live[open] .fy-prompts-live-content {
+  margin-top: 10px;
+  min-height: 96px;
+  max-height: 28vh;
+}
+
+@media (max-width: 760px) {
+  .fy-prompts-editor-identity {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .fy-prompts-editor-content,
+  .fy-prompts-live[open] .fy-prompts-live-content {
+    min-height: 160px;
+  }
+}

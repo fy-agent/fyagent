@@ -663,7 +663,6 @@ fn stage_accepts_progress(stage: JobStage, phase: super::types::ProgressPhase) -
     matches!(
         (stage, phase),
         (JobStage::Downloading, ProgressPhase::Download)
-            | (JobStage::VerifyingDownload, ProgressPhase::Verification)
             | (JobStage::Installing, ProgressPhase::Installation)
             | (JobStage::VerifyingInstallation, ProgressPhase::Verification)
     )
@@ -743,12 +742,12 @@ mod tests {
                 build: 3,
                 revision: 4,
             },
-            expected_size: 1024,
+            download_size_hint: Some(1024),
             checked_at: "2026-07-29T00:00:00Z".to_owned(),
         }
     }
 
-    fn advance_to_verifying_download(store: &JobStore, job_id: &str) {
+    fn advance_to_installing(store: &JobStore, job_id: &str) {
         store
             .update_stage(job_id, JobStage::Preflight, "t1")
             .unwrap();
@@ -756,16 +755,12 @@ mod tests {
             .update_stage(job_id, JobStage::Downloading, "t2")
             .unwrap();
         store
-            .update_stage(job_id, JobStage::VerifyingDownload, "t3")
+            .update_stage(job_id, JobStage::Installing, "t3")
             .unwrap();
     }
 
     fn advance_to_verifying_installation(store: &JobStore, job_id: &str) {
-        advance_to_verifying_download(store, job_id);
-        let installing = store
-            .update_stage(job_id, JobStage::Installing, "t4")
-            .unwrap();
-        assert_eq!(installing.stage, JobStage::Installing);
+        advance_to_installing(store, job_id);
         store
             .update_stage(job_id, JobStage::VerifyingInstallation, "t5")
             .unwrap();
@@ -806,7 +801,6 @@ mod tests {
             JobStage::Checking,
             JobStage::Preflight,
             JobStage::Downloading,
-            JobStage::VerifyingDownload,
             JobStage::Installing,
             JobStage::VerifyingInstallation,
         ] {
@@ -841,10 +835,8 @@ mod tests {
 
         let installing_store = JobStore::new();
         let installing_job = installing_store.try_start(release(), "t2").unwrap();
-        advance_to_verifying_download(&installing_store, &installing_job.job_id);
-        let installing = installing_store
-            .update_stage(&installing_job.job_id, JobStage::Installing, "t6")
-            .unwrap();
+        advance_to_installing(&installing_store, &installing_job.job_id);
+        let installing = installing_store.get().unwrap().unwrap();
 
         let installing_error = installing_store
             .claim_process_lifecycle_transition(ProcessLifecycleTransition::Restart)
@@ -1112,7 +1104,12 @@ mod tests {
     fn cancellation_and_entering_installing_are_decided_by_one_boundary() {
         let store = Arc::new(JobStore::new());
         let job = store.try_start(release(), "t0").unwrap();
-        advance_to_verifying_download(&store, &job.job_id);
+        store
+            .update_stage(&job.job_id, JobStage::Preflight, "t1")
+            .unwrap();
+        store
+            .update_stage(&job.job_id, JobStage::Downloading, "t2")
+            .unwrap();
         let cancellation = store.cancellation_handle(&job.job_id).unwrap();
 
         let barrier = Arc::new(Barrier::new(3));
@@ -1138,16 +1135,16 @@ mod tests {
 
         assert!(matches!(
             final_snapshot.stage,
-            JobStage::Installing | JobStage::VerifyingDownload
+            JobStage::Installing | JobStage::Downloading
         ));
         assert_eq!(install_snapshot.stage, final_snapshot.stage);
         assert_eq!(cancel_snapshot.stage, final_snapshot.stage);
         assert_eq!(
             cancellation.is_requested(),
-            final_snapshot.stage == JobStage::VerifyingDownload
+            final_snapshot.stage == JobStage::Downloading
         );
 
-        if final_snapshot.stage == JobStage::VerifyingDownload {
+        if final_snapshot.stage == JobStage::Downloading {
             let cancelled = store.complete_cancellation(&job.job_id, "cleanup").unwrap();
             assert_eq!(cancelled.stage, JobStage::Cancelled);
         }

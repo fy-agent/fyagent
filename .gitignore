@@ -1,4 +1,6 @@
+/FyAgent-前端交互预览.html
 node_modules/
+.pnpm-store/
 dist/
 .venv/
 /dist-macos/
@@ -26,11 +28,8 @@ GEMINI.md
 vitest-report.json
 nul
 
-# Flatpak build artifacts
-flatpak/fyagent.deb
-flatpak-build/
-flatpak-repo/
 .worktrees/
+.workbuddy/
 .spec-workflow/
 copilot-api
 .history

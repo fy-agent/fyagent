@@ -39,14 +39,6 @@ function requireExpected(name, actual, expected, targetGroup) {
   }
 }
 
-const CONTAINER_INPUT_NAMES = Object.freeze([
-  "CONTAINER_IMAGE_REFERENCE",
-  "CONTAINER_MANIFEST_DIGEST",
-  "ACTUAL_CONTAINER_OS_ID",
-  "ACTUAL_CONTAINER_OS_VERSION_ID",
-  "ACTUAL_CONTAINER_UNAME_MACHINE",
-]);
-
 try {
   const targetGroup = required("TARGET_GROUP");
   const expected = EXPECTED_TARGETS.find(
@@ -92,78 +84,6 @@ try {
     targetGroup,
   );
 
-  let container;
-  if (expected.expectedContainer === null) {
-    const suppliedContainerInputs = CONTAINER_INPUT_NAMES.filter((name) =>
-      process.env[name]?.trim(),
-    );
-    if (suppliedContainerInputs.length > 0) {
-      throw new Error(
-        `${targetGroup} must not supply container metadata inputs: ${suppliedContainerInputs.join(", ")}`,
-      );
-    }
-    container = null;
-  } else {
-    const imageReference = required("CONTAINER_IMAGE_REFERENCE");
-    const manifestDigest = required("CONTAINER_MANIFEST_DIGEST");
-    const osReleaseId = required("ACTUAL_CONTAINER_OS_ID");
-    const osReleaseVersionId = required("ACTUAL_CONTAINER_OS_VERSION_ID");
-    const unameMachine = required("ACTUAL_CONTAINER_UNAME_MACHINE");
-    if (!/^sha256:[0-9a-f]{64}$/.test(manifestDigest)) {
-      throw new Error(
-        "CONTAINER_MANIFEST_DIGEST must be a lowercase SHA-256 digest",
-      );
-    }
-    if (!imageReference.endsWith(`@${manifestDigest}`)) {
-      throw new Error(
-        "CONTAINER_IMAGE_REFERENCE must end with CONTAINER_MANIFEST_DIGEST",
-      );
-    }
-    requireExpected(
-      "CONTAINER_IMAGE_REFERENCE",
-      imageReference,
-      expected.expectedContainer.imageReference,
-      targetGroup,
-    );
-    requireExpected(
-      "CONTAINER_MANIFEST_DIGEST",
-      manifestDigest,
-      expected.expectedContainer.manifestDigest,
-      targetGroup,
-    );
-    requireExpected(
-      "ACTUAL_CONTAINER_OS_ID",
-      osReleaseId,
-      expected.expectedContainer.osReleaseId,
-      targetGroup,
-    );
-    requireExpected(
-      "ACTUAL_CONTAINER_OS_VERSION_ID",
-      osReleaseVersionId,
-      expected.expectedContainer.osReleaseVersionId,
-      targetGroup,
-    );
-    requireExpected(
-      "ACTUAL_CONTAINER_UNAME_MACHINE",
-      unameMachine,
-      expected.expectedContainer.unameMachine,
-      targetGroup,
-    );
-    container = {
-      configuredImage: {
-        reference: imageReference,
-        manifestDigest,
-      },
-      observed: {
-        osRelease: {
-          id: osReleaseId,
-          versionId: osReleaseVersionId,
-        },
-        unameMachine,
-      },
-    };
-  }
-
   const mode = required("RELEASE_MODE");
   if (!(mode === "preflight" || mode === "formal")) {
     throw new Error(`Unsupported release mode: ${mode}`);
@@ -171,7 +91,7 @@ try {
   const ciRunId = requiredPositiveInteger("EXPECTED_CI_RUN_ID");
   const ciRunAttempt = requiredPositiveInteger("EXPECTED_CI_RUN_ATTEMPT");
   const metadata = {
-    schema: "fyagent-platform-build/v1",
+    schema: "fyagent-platform-build/v2",
     targetGroup,
     platform,
     architecture,
@@ -182,7 +102,6 @@ try {
         arch: runnerArch,
       },
     },
-    container,
     toolchain: {
       node: required("ACTUAL_NODE_VERSION"),
       pnpm: required("ACTUAL_PNPM_VERSION"),

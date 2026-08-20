@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/frontend/index.md", "reason": "V2 例外与前端 Pre-Development Checklist。"}
+{"file": ".trellis/spec/frontend/v2-shell.md", "reason": "LiquidGlassLens 单实例、禁止 SVG 跨布局动画、选中态契约。"}
+{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "可复用 UI 放在现有 shared/ui 层。"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "保持原生语义、ARIA、不引入无关抽象。"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "一套 SelectionLens 覆盖所有切换点，避免复制弹簧和材质。"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "V2 typecheck / unit 验证边界。"}

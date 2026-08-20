@@ -7,7 +7,7 @@
   <p>
     <a href="https://github.com/fy-agent/fyagent/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/fy-agent/fyagent?style=flat-square&label=release&color=0B66FF"></a>
     <a href="https://github.com/fy-agent/fyagent/actions/workflows/ci.yml"><img alt="CI status" src="https://img.shields.io/github/actions/workflow/status/fy-agent/fyagent/ci.yml?branch=main&style=flat-square&label=CI"></a>
-    <img alt="Windows, macOS and Linux" src="https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux-18D3C5?style=flat-square">
+    <img alt="Windows and macOS" src="https://img.shields.io/badge/platforms-Windows%20%7C%20macOS-18D3C5?style=flat-square">
     <a href="LICENSING.md"><img alt="Source-available license" src="https://img.shields.io/badge/license-source--available-555B66?style=flat-square"></a>
   </p>
   <p>
@@ -30,6 +30,29 @@ WorkBuddy 另有独立的顶层配置入口；它不属于上述目标工具或 
 
 > **发布状态：** FyAgent 仍在持续开发。升级前请备份重要配置，并在安装前阅读当次发布的可信度说明。
 
+## 界面预览
+
+当前桌面应用的主界面（简体中文）。顶栏可以在 Agent 目录、模型、Skills、MCP、提示词和记忆之间切换。
+
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <img src="assets/screenshots/main-zh-1.png" alt="FyAgent 模型页：在 WorkBuddy 中管理第三方模型">
+      <br><em>模型</em>
+    </td>
+    <td align="center" width="50%">
+      <img src="assets/screenshots/main-zh-2.png" alt="FyAgent Skill 市场">
+      <br><em>Skills</em>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" colspan="2">
+      <img src="assets/screenshots/main-zh-3.png" alt="FyAgent MCP 发现页">
+      <br><em>MCP</em>
+    </td>
+  </tr>
+</table>
+
 ## 愿景：成为 AI 时代的随身数字人格
 
 这里的“数字人格”不是一个模仿你说话的虚拟头像，而是你怎样选择、塑造和管理 AI 的长期载体：它用什么模型、能调用什么工具、会哪些技能、按照什么方式工作，又应该记住什么。
@@ -44,15 +67,15 @@ AI 越强，人越容易担心权限交给了谁、配置为什么失效、换�
 
 ## 今天已经能做什么
 
-| 用户看到的能力 | 当前功能 |
-| --- | --- |
-| AI 大脑 | 管理模型供应商与模型选择，使用预设或自定义兼容接口，一键切换 |
-| 工具连接 | 集中管理 MCP 服务，并同步到支持的 AI 工具 |
-| AI 技能 | 维护 Skills，让常用能力不必在每个工具里重复安装和配置 |
-| 行为指令 | 管理可复用的 Prompts，把常用工作方法带到不同工具中 |
-| 调度与恢复 | 通过本地代理转发请求，设置故障转移，并检查模型是否可用 |
-| 使用账本 | 汇总 token 用量和预估费用，方便核对日常开销 |
-| 工作延续 | 从会话和工作区继续此前工作，并备份、同步配置 |
+| 用户看到的能力 | 当前功能                                                     |
+| -------------- | ------------------------------------------------------------ |
+| AI 大脑        | 管理模型供应商与模型选择，使用预设或自定义兼容接口，一键切换 |
+| 工具连接       | 集中管理 MCP 服务，并同步到支持的 AI 工具                    |
+| AI 技能        | 维护 Skills，让常用能力不必在每个工具里重复安装和配置        |
+| 行为指令       | 管理可复用的 Prompts，把常用工作方法带到不同工具中           |
+| 调度与恢复     | 通过本地代理转发请求，设置故障转移，并检查模型是否可用       |
+| 使用账本       | 汇总 token 用量和预估费用，方便核对日常开销                  |
+| 工作延续       | 从会话和工作区继续此前工作，并备份、同步配置                 |
 
 FyAgent 的工作数据默认保存在本机 `~/.fyagent`。配置更新使用 SQLite 和原子写入；通过 `fyagent://` 导入配置时，应用会先展示变更内容，再决定是否写入。
 
@@ -75,10 +98,8 @@ FyAgent 的工作数据默认保存在本机 `~/.fyagent`。配置更新使用 S
 
 - macOS：`FyAgent-X.Y.Z-macOS.dmg`、`FyAgent-X.Y.Z-macOS.zip`
 - Windows：`FyAgent-X.Y.Z-Windows-x64-setup.exe`、`FyAgent-X.Y.Z-Windows-arm64-setup.exe`
-- Linux x64：`FyAgent-X.Y.Z-Linux-x86_64.AppImage`、`FyAgent-X.Y.Z-Linux-x86_64.deb`、`FyAgent-X.Y.Z-Linux-x86_64.rpm`
-- Linux arm64：`FyAgent-X.Y.Z-Linux-arm64.AppImage`、`FyAgent-X.Y.Z-Linux-arm64.deb`、`FyAgent-X.Y.Z-Linux-arm64.rpm`
 
-Windows 当前只提供 NSIS 安装程序，不提供 MSI 或便携 ZIP。macOS 构建使用 ad-hoc 签名，未使用 Apple Developer ID 签名，也未经 Apple 公证。Flatpak 仅供自行构建，不属于官方发布产物。
+Windows 当前只提供 NSIS 安装程序，不提供 MSI 或便携 ZIP。macOS 构建使用 ad-hoc 签名，未使用 Apple Developer ID 签名，也未经 Apple 公证。
 
 安装前请阅读发布说明，并核对校验和、`signing-status.json` 和构建证明。`NotSigned` 只是签名状态，不能单独证明文件安全。各系统的具体步骤见[安装说明](docs/user-manual/zh/1-getting-started/1.2-installation.md)，版本记录见[发布说明索引](docs/release-notes/README.md)。
 
@@ -88,24 +109,28 @@ Windows 当前只提供 NSIS 安装程序，不提供 MSI 或便携 ZIP。macOS 
 <summary><strong>FyAgent 会把数据保存在哪里？</strong></summary>
 
 默认保存在本机 `~/.fyagent`。具体配置位置和备份方法见[配置文件说明](docs/user-manual/zh/6-faq/6.1-config-files.md)。
+
 </details>
 
 <details>
 <summary><strong>遇到安装或配置问题，应该去哪里提问？</strong></summary>
 
 先查看[常见问题手册](docs/user-manual/zh/6-faq/6.2-questions.md)，再到 [Q&A 讨论区](https://github.com/fy-agent/fyagent/discussions/categories/q-a)描述版本、系统、相关工具和已经尝试过的步骤。可稳定复现的软件缺陷请提交 [Bug Report](https://github.com/fy-agent/fyagent/issues/new?template=bug_report.yml)。
+
 </details>
 
 <details>
 <summary><strong>FyAgent 已经具备长期记忆和完整数字人格了吗？</strong></summary>
 
 还没有。当前版本先解决模型、工具连接、Skills、行为指令、配置与使用记录的统一管理。长期记忆和跨工具延续的数字人格属于产品愿景，只有在真实功能完成并经过验证后，才会列为现有能力。
+
 </details>
 
 <details>
 <summary><strong>FyAgent 是开源软件吗？</strong></summary>
 
 FyAgent 是源码可用软件，不是 OSI 定义的开源软件。FyAgent 自有组件和修改采用 PolyForm Noncommercial License 1.0.0；继承自 CC Switch 的部分继续使用 MIT 许可证。详见[授权说明](LICENSING.md)。
+
 </details>
 
 ## 参与社区
@@ -119,7 +144,7 @@ FyAgent 是源码可用软件，不是 OSI 定义的开源软件。FyAgent 自�
 
 ## 参与开发
 
-首次 checkout 需要全局安装 `mise >= 2026.8.0`。检查仓库配置后，按以下顺序进入交互开发：
+首次 checkout 需要全局安装 `mise >= 2026.8.6`。检查仓库配置后，按以下顺序进入交互开发：
 
 ```bash
 mise trust

@@ -20,13 +20,6 @@ const writerPath = path.join(
 );
 const sourceSha = "b".repeat(40);
 const temporaryRoots: string[] = [];
-const containerInputNames = [
-  "CONTAINER_IMAGE_REFERENCE",
-  "CONTAINER_MANIFEST_DIGEST",
-  "ACTUAL_CONTAINER_OS_ID",
-  "ACTUAL_CONTAINER_OS_VERSION_ID",
-  "ACTUAL_CONTAINER_UNAME_MACHINE",
-] as const;
 
 function temporaryDirectory(): string {
   const root = mkdtempSync(path.join(tmpdir(), "fyagent-platform-metadata-"));
@@ -45,7 +38,7 @@ function releaseIdentity(mode: "preflight" | "formal"): ReleaseIdentity {
     workflowRef:
       mode === "formal"
         ? "fy-agent/fyagent/.github/workflows/release.yml@refs/tags/v0.3.0"
-        : "fy-agent/fyagent/.github/workflows/release.yml@refs/heads/main",
+        : "fy-agent/fyagent/.github/workflows/release.yml@refs/heads/dev/laiyongjie",
     workflowSha: sourceSha,
     runId: "123456",
     runAttempt: "2",
@@ -62,7 +55,7 @@ function writerEnvironment(
   mode: "preflight" | "formal" = "preflight",
 ): NodeJS.ProcessEnv {
   const identity = releaseIdentity(mode);
-  const environment: NodeJS.ProcessEnv = {
+  return {
     TARGET_GROUP: expected.targetGroup,
     TARGET_PLATFORM: expected.platform,
     TARGET_ARCHITECTURE: expected.architecture,
@@ -83,21 +76,9 @@ function writerEnvironment(
     GITHUB_RUN_ATTEMPT: identity.runAttempt,
     GITHUB_EVENT_NAME: identity.event,
     RELEASE_MODE: mode,
+    EXPECTED_CI_RUN_ID: identity.ciRunId,
+    EXPECTED_CI_RUN_ATTEMPT: identity.ciRunAttempt,
   };
-  environment.EXPECTED_CI_RUN_ID = identity.ciRunId;
-  environment.EXPECTED_CI_RUN_ATTEMPT = identity.ciRunAttempt;
-  if (expected.expectedContainer !== null) {
-    environment.CONTAINER_IMAGE_REFERENCE =
-      expected.expectedContainer.imageReference;
-    environment.CONTAINER_MANIFEST_DIGEST =
-      expected.expectedContainer.manifestDigest;
-    environment.ACTUAL_CONTAINER_OS_ID = expected.expectedContainer.osReleaseId;
-    environment.ACTUAL_CONTAINER_OS_VERSION_ID =
-      expected.expectedContainer.osReleaseVersionId;
-    environment.ACTUAL_CONTAINER_UNAME_MACHINE =
-      expected.expectedContainer.unameMachine;
-  }
-  return environment;
 }
 
 function expectedRecord(
@@ -105,7 +86,7 @@ function expectedRecord(
   mode: "preflight" | "formal" = "preflight",
 ): PlatformBuildMetadataRecord {
   return {
-    schema: "fyagent-platform-build/v1",
+    schema: "fyagent-platform-build/v2",
     targetGroup: expected.targetGroup,
     platform: expected.platform,
     architecture: expected.architecture,
@@ -116,22 +97,6 @@ function expectedRecord(
         arch: expected.expectedRunnerArch,
       },
     },
-    container:
-      expected.expectedContainer === null
-        ? null
-        : {
-            configuredImage: {
-              reference: expected.expectedContainer.imageReference,
-              manifestDigest: expected.expectedContainer.manifestDigest,
-            },
-            observed: {
-              osRelease: {
-                id: expected.expectedContainer.osReleaseId,
-                versionId: expected.expectedContainer.osReleaseVersionId,
-              },
-              unameMachine: expected.expectedContainer.unameMachine,
-            },
-          },
     toolchain: {
       node: "v24.19.0",
       pnpm: "10.12.3",
@@ -159,7 +124,7 @@ function invokeWriter(
     encoding: "utf8",
     env: environment,
   });
-  return { environment, outputPath, result };
+  return { outputPath, result };
 }
 
 function expectWriterFailure(
@@ -182,15 +147,6 @@ function setEnvironmentVariable(
   };
 }
 
-function allObjectKeys(value: unknown): string[] {
-  if (Array.isArray(value)) return value.flatMap(allObjectKeys);
-  if (value === null || typeof value !== "object") return [];
-  return Object.entries(value).flatMap(([key, nested]) => [
-    key,
-    ...allObjectKeys(nested),
-  ]);
-}
-
 afterEach(() => {
   while (temporaryRoots.length > 0) {
     rmSync(temporaryRoots.pop()!, { force: true, recursive: true });
@@ -208,57 +164,30 @@ describe("write-platform-metadata CLI", () => {
     });
   }
 
-  for (const variable of ["ACTUAL_RUNNER_OS", "ACTUAL_RUNNER_ARCH"] as const) {
-    it(`rejects missing ${variable}`, () => {
-      expectWriterFailure(
-        EXPECTED_TARGETS[3],
-        (environment) => delete environment[variable],
-        new RegExp(variable),
-      );
-    });
-
-    it(`rejects blank ${variable}`, () => {
-      expectWriterFailure(
-        EXPECTED_TARGETS[3],
-        (environment) => (environment[variable] = "   "),
-        new RegExp(variable),
-      );
-    });
-  }
-
-  for (const variable of containerInputNames) {
-    it(`rejects missing Linux ${variable}`, () => {
-      expectWriterFailure(
-        EXPECTED_TARGETS[3],
-        (environment) => delete environment[variable],
-        new RegExp(variable),
-      );
-    });
-
-    it(`rejects blank Linux ${variable}`, () => {
-      expectWriterFailure(
-        EXPECTED_TARGETS[3],
-        (environment) => (environment[variable] = " \t "),
-        new RegExp(variable),
-      );
-    });
-  }
-
-  for (const expected of [EXPECTED_TARGETS[0], EXPECTED_TARGETS[1]]) {
-    it(`rejects partial container evidence for ${expected.targetGroup}`, () => {
-      expectWriterFailure(
-        expected,
-        (environment) =>
-          (environment.CONTAINER_MANIFEST_DIGEST = `sha256:${"0".repeat(64)}`),
-        /must not supply container metadata inputs.*CONTAINER_MANIFEST_DIGEST/,
-      );
-    });
-  }
+  it.each([
+    "TARGET_GROUP",
+    "TARGET_PLATFORM",
+    "TARGET_ARCHITECTURE",
+    "REQUESTED_RUNNER_LABEL",
+    "ACTUAL_RUNNER_OS",
+    "ACTUAL_RUNNER_ARCH",
+    "ACTUAL_NODE_VERSION",
+    "ACTUAL_PNPM_VERSION",
+    "ACTUAL_RUST_VERSION",
+    "EXPECTED_CI_RUN_ID",
+    "EXPECTED_CI_RUN_ATTEMPT",
+  ])("rejects a missing required %s input", (variable) => {
+    expectWriterFailure(
+      EXPECTED_TARGETS[0],
+      (environment) => delete environment[variable],
+      new RegExp(variable),
+    );
+  });
 
   it.each([
     [
       "unknown target",
-      setEnvironmentVariable("TARGET_GROUP", "linux-unknown"),
+      setEnvironmentVariable("TARGET_GROUP", "freebsd-x64"),
       /Unsupported target group/,
     ],
     [
@@ -273,7 +202,7 @@ describe("write-platform-metadata CLI", () => {
     ],
     [
       "requested-label contradiction",
-      setEnvironmentVariable("REQUESTED_RUNNER_LABEL", "ubuntu-24.04-arm"),
+      setEnvironmentVariable("REQUESTED_RUNNER_LABEL", "windows-11-arm"),
       /REQUESTED_RUNNER_LABEL/,
     ],
     [
@@ -283,7 +212,7 @@ describe("write-platform-metadata CLI", () => {
     ],
     [
       "runner architecture contradiction",
-      setEnvironmentVariable("ACTUAL_RUNNER_ARCH", "ARM64"),
+      setEnvironmentVariable("ACTUAL_RUNNER_ARCH", "X64"),
       /ACTUAL_RUNNER_ARCH/,
     ],
     [
@@ -291,101 +220,21 @@ describe("write-platform-metadata CLI", () => {
       setEnvironmentVariable("ACTUAL_RUNNER_ARCH", "UNIVERSAL"),
       /documented GitHub runner architecture/,
     ],
-    [
-      "OS ID contradiction",
-      setEnvironmentVariable("ACTUAL_CONTAINER_OS_ID", "debian"),
-      /ACTUAL_CONTAINER_OS_ID/,
-    ],
-    [
-      "OS version contradiction",
-      setEnvironmentVariable("ACTUAL_CONTAINER_OS_VERSION_ID", "24.04"),
-      /ACTUAL_CONTAINER_OS_VERSION_ID/,
-    ],
-    [
-      "uname contradiction",
-      setEnvironmentVariable("ACTUAL_CONTAINER_UNAME_MACHINE", "aarch64"),
-      /ACTUAL_CONTAINER_UNAME_MACHINE/,
-    ],
   ] as const)("rejects %s", (_label, mutateEnvironment, error) => {
-    expectWriterFailure(EXPECTED_TARGETS[3], mutateEnvironment, error);
+    expectWriterFailure(EXPECTED_TARGETS[0], mutateEnvironment, error);
   });
 
   it.each([
-    ["macos-universal", EXPECTED_TARGETS[0], "X64", /ACTUAL_RUNNER_ARCH/],
-    ["linux-x64", EXPECTED_TARGETS[3], "ARM64", /ACTUAL_RUNNER_ARCH/],
-    ["linux-arm64", EXPECTED_TARGETS[4], "X64", /ACTUAL_RUNNER_ARCH/],
+    ["macos-universal", EXPECTED_TARGETS[0], "X64"],
+    ["windows-x64", EXPECTED_TARGETS[1], "ARM64"],
+    ["windows-arm64", EXPECTED_TARGETS[2], "X64"],
   ])(
-    "rejects %s paired with the opposite runner context",
-    (_label, expected, runnerArch, error) => {
+    "rejects %s paired with the wrong runner architecture",
+    (_label, expected, runnerArch) => {
       expectWriterFailure(
         expected,
         (environment) => (environment.ACTUAL_RUNNER_ARCH = runnerArch),
-        error,
-      );
-    },
-  );
-
-  it.each([
-    [
-      "linux-x64",
-      EXPECTED_TARGETS[3],
-      "aarch64",
-      /ACTUAL_CONTAINER_UNAME_MACHINE/,
-    ],
-    [
-      "linux-arm64",
-      EXPECTED_TARGETS[4],
-      "x86_64",
-      /ACTUAL_CONTAINER_UNAME_MACHINE/,
-    ],
-  ])(
-    "rejects %s paired with the opposite uname observation",
-    (_label, expected, unameMachine, error) => {
-      expectWriterFailure(
-        expected,
-        (environment) =>
-          (environment.ACTUAL_CONTAINER_UNAME_MACHINE = unameMachine),
-        error,
-      );
-    },
-  );
-
-  it.each([
-    ["short digest", "sha256:abc"],
-    ["uppercase digest", `sha256:${"A".repeat(64)}`],
-    ["wrong algorithm", `sha512:${"0".repeat(64)}`],
-  ])("rejects malformed %s", (_label, digest) => {
-    expectWriterFailure(
-      EXPECTED_TARGETS[3],
-      (environment) => (environment.CONTAINER_MANIFEST_DIGEST = digest),
-      /CONTAINER_MANIFEST_DIGEST must be a lowercase SHA-256 digest/,
-    );
-  });
-
-  it("rejects an image-reference suffix inconsistent with its digest", () => {
-    expectWriterFailure(
-      EXPECTED_TARGETS[3],
-      (environment) =>
-        (environment.CONTAINER_IMAGE_REFERENCE = `docker.io/library/ubuntu:22.04@sha256:${"0".repeat(64)}`),
-      /CONTAINER_IMAGE_REFERENCE must end with CONTAINER_MANIFEST_DIGEST/,
-    );
-  });
-
-  it.each([
-    ["linux-x64", EXPECTED_TARGETS[3], EXPECTED_TARGETS[4]],
-    ["linux-arm64", EXPECTED_TARGETS[4], EXPECTED_TARGETS[3]],
-  ])(
-    "rejects %s paired with the opposite Linux container mapping",
-    (_label, expected, opposite) => {
-      expectWriterFailure(
-        expected,
-        (environment) => {
-          environment.CONTAINER_IMAGE_REFERENCE =
-            opposite.expectedContainer!.imageReference;
-          environment.CONTAINER_MANIFEST_DIGEST =
-            opposite.expectedContainer!.manifestDigest;
-        },
-        /CONTAINER_IMAGE_REFERENCE|CONTAINER_MANIFEST_DIGEST/,
+        /ACTUAL_RUNNER_ARCH/,
       );
     },
   );
@@ -396,20 +245,6 @@ describe("write-platform-metadata CLI", () => {
     expect(result.status, result.stderr).toBe(0);
     expect(JSON.parse(readFileSync(outputPath, "utf8"))).toEqual(
       expectedRecord(expected, "formal"),
-    );
-  });
-
-  it.each([
-    ["preflight", "EXPECTED_CI_RUN_ID"],
-    ["preflight", "EXPECTED_CI_RUN_ATTEMPT"],
-    ["formal", "EXPECTED_CI_RUN_ID"],
-    ["formal", "EXPECTED_CI_RUN_ATTEMPT"],
-  ] as const)("rejects %s metadata missing %s", (mode, variable) => {
-    expectWriterFailure(
-      EXPECTED_TARGETS[1],
-      (environment) => delete environment[variable],
-      new RegExp(variable),
-      mode,
     );
   });
 
@@ -441,30 +276,23 @@ describe("write-platform-metadata CLI", () => {
   });
 
   it("ignores hostile ambient hosted-runner variables", () => {
-    const expected = EXPECTED_TARGETS[3];
+    const expected = EXPECTED_TARGETS[2];
     const { outputPath, result } = invokeWriter(expected, {
       mutateEnvironment: (environment) => {
-        environment.RUNNER_OS = "Windows";
-        environment.RUNNER_ARCH = "ARM64";
+        environment.RUNNER_OS = "macOS";
+        environment.RUNNER_ARCH = "X64";
         environment.ImageOS = "host-poison";
         environment.ImageVersion = "host-version-poison";
       },
     });
     expect(result.status, result.stderr).toBe(0);
-    const record = JSON.parse(readFileSync(outputPath, "utf8")) as unknown;
-    expect(record).toEqual(expectedRecord(expected));
-    expect(allObjectKeys(record)).not.toEqual(
-      expect.arrayContaining([
-        "imageOs",
-        "imageVersion",
-        "ImageOS",
-        "ImageVersion",
-      ]),
+    expect(JSON.parse(readFileSync(outputPath, "utf8"))).toEqual(
+      expectedRecord(expected),
     );
-    expect(JSON.stringify(record)).not.toContain("poison");
+    expect(readFileSync(outputPath, "utf8")).not.toContain("poison");
   });
 
-  it("feeds all five writer records into the canonical aggregate", () => {
+  it("feeds all three writer records into the canonical aggregate", () => {
     const metadataDirectory = temporaryDirectory();
     for (const expected of EXPECTED_TARGETS) {
       const outputPath = path.join(
@@ -480,8 +308,8 @@ describe("write-platform-metadata CLI", () => {
       identity: releaseIdentity("preflight"),
       generatedAt: "2026-08-08T00:00:00.000Z",
     });
-    expect(metadata.schema).toBe("fyagent-build-metadata/v1");
-    expect(metadata.targets).toHaveLength(5);
+    expect(metadata.schema).toBe("fyagent-build-metadata/v2");
+    expect(metadata.targets).toHaveLength(3);
     expect(metadata.targets).toEqual(
       EXPECTED_TARGETS.map((expected) => {
         const { identity: _identity, ...target } = expectedRecord(expected);

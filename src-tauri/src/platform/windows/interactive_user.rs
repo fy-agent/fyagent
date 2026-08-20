@@ -20,13 +20,18 @@ use windows::{
     Win32::{
         System::{
             Com::{
-                CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_LOCAL_SERVER,
-                COINIT_APARTMENTTHREADED,
+                CoCreateInstance, CoInitializeEx, CoUninitialize, IDispatch, CLSCTX_LOCAL_SERVER,
+                COINIT_APARTMENTTHREADED, COINIT_DISABLE_OLE1DDE,
             },
             Variant::VARIANT,
         },
-        UI::Shell::{
-            IShellDispatch2, IShellWindows, ShellWindows, SWC_EXPLORER, SWFO_NEEDDISPATCH,
+        UI::{
+            Shell::{
+                IShellBrowser, IShellDispatch2, IShellFolderViewDual, IShellWindows,
+                IUnknown_QueryService, SID_STopLevelBrowser, ShellWindows, SVGIO_BACKGROUND,
+                SWC_DESKTOP, SWFO_NEEDDISPATCH,
+            },
+            WindowsAndMessaging::SW_SHOWNORMAL,
         },
     },
 };
@@ -179,31 +184,13 @@ fn launch_user_helper_from_explorer_sta_bstr(
     target: BSTR,
     arguments: &str,
 ) -> UserHelperStaOutcome {
-    let initialized = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
+    let initialized =
+        unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE) };
     if initialized.is_err() {
         return UserHelperStaOutcome::NotInvoked(ProcessLaunchError::InteractiveUserUnavailable);
     }
 
-    let dispatch = (|| {
-        let shell_windows: IShellWindows =
-            unsafe { CoCreateInstance(&ShellWindows, None, CLSCTX_LOCAL_SERVER) }
-                .map_err(|_| ProcessLaunchError::InteractiveUserUnavailable)?;
-        let empty = VARIANT::default();
-        let mut explorer_window = 0;
-        let explorer_dispatch = unsafe {
-            shell_windows.FindWindowSW(
-                &empty,
-                &empty,
-                SWC_EXPLORER,
-                &mut explorer_window,
-                SWFO_NEEDDISPATCH,
-            )
-        }
-        .map_err(|_| ProcessLaunchError::InteractiveUserUnavailable)?;
-        explorer_dispatch
-            .cast::<IShellDispatch2>()
-            .map_err(|_| ProcessLaunchError::InteractiveUserUnavailable)
-    })();
+    let dispatch = explorer_shell_dispatch();
 
     let outcome = match dispatch {
         Err(error) => UserHelperStaOutcome::NotInvoked(error),
@@ -227,37 +214,60 @@ fn launch_from_explorer_sta_bstr(
     target: BSTR,
     arguments: Option<&str>,
 ) -> Result<(), ProcessLaunchError> {
-    let initialized = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
+    let initialized =
+        unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE) };
     if initialized.is_err() {
         return Err(ProcessLaunchError::InteractiveUserUnavailable);
     }
 
     let result = (|| {
-        let shell_windows: IShellWindows =
-            unsafe { CoCreateInstance(&ShellWindows, None, CLSCTX_LOCAL_SERVER) }
-                .map_err(|_| ProcessLaunchError::InteractiveUserUnavailable)?;
-
+        let shell_dispatch = explorer_shell_dispatch()?;
         let empty = VARIANT::default();
-        let mut explorer_window = 0;
-        let explorer_dispatch = unsafe {
-            shell_windows.FindWindowSW(
-                &empty,
-                &empty,
-                SWC_EXPLORER,
-                &mut explorer_window,
-                SWFO_NEEDDISPATCH,
-            )
-        }
-        .map_err(|_| ProcessLaunchError::InteractiveUserUnavailable)?;
-        let shell_dispatch: IShellDispatch2 = explorer_dispatch
-            .cast()
-            .map_err(|_| ProcessLaunchError::InteractiveUserUnavailable)?;
-
         let arguments = arguments.map(VARIANT::from).unwrap_or_default();
-        unsafe { shell_dispatch.ShellExecute(&target, &arguments, &empty, &empty, &empty) }
+        let show = VARIANT::from(SW_SHOWNORMAL.0);
+        unsafe { shell_dispatch.ShellExecute(&target, &arguments, &empty, &empty, &show) }
             .map_err(|_| ProcessLaunchError::InteractiveUserUnavailable)
     })();
 
     unsafe { CoUninitialize() };
     result
+}
+
+/// Obtains Explorer's `IShellDispatch2` through the desktop shell view.
+///
+/// Enumerating only open folder windows makes link opening fail whenever the
+/// user has no File Explorer window open. The desktop view is the stable
+/// Explorer-owned object in Microsoft's ExecInExplorer sample and preserves
+/// the unelevated launch boundary.
+fn explorer_shell_dispatch() -> Result<IShellDispatch2, ProcessLaunchError> {
+    let shell_windows: IShellWindows =
+        unsafe { CoCreateInstance(&ShellWindows, None, CLSCTX_LOCAL_SERVER) }
+            .map_err(|_| ProcessLaunchError::InteractiveUserUnavailable)?;
+    let empty = VARIANT::default();
+    let mut desktop_window = 0;
+    let desktop_dispatch = unsafe {
+        shell_windows.FindWindowSW(
+            &empty,
+            &empty,
+            SWC_DESKTOP,
+            &mut desktop_window,
+            SWFO_NEEDDISPATCH,
+        )
+    }
+    .map_err(|_| ProcessLaunchError::InteractiveUserUnavailable)?;
+    let shell_browser: IShellBrowser =
+        unsafe { IUnknown_QueryService(&desktop_dispatch, &SID_STopLevelBrowser) }
+            .map_err(|_| ProcessLaunchError::InteractiveUserUnavailable)?;
+    let shell_view = unsafe { shell_browser.QueryActiveShellView() }
+        .map_err(|_| ProcessLaunchError::InteractiveUserUnavailable)?;
+    let background_dispatch: IDispatch = unsafe { shell_view.GetItemObject(SVGIO_BACKGROUND) }
+        .map_err(|_| ProcessLaunchError::InteractiveUserUnavailable)?;
+    let folder_view: IShellFolderViewDual = background_dispatch
+        .cast()
+        .map_err(|_| ProcessLaunchError::InteractiveUserUnavailable)?;
+    let application = unsafe { folder_view.Application() }
+        .map_err(|_| ProcessLaunchError::InteractiveUserUnavailable)?;
+    application
+        .cast()
+        .map_err(|_| ProcessLaunchError::InteractiveUserUnavailable)
 }

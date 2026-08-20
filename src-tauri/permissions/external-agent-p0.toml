@@ -1,0 +1,28 @@
+[[permission]]
+identifier = "allow-external-agent-observe"
+description = "Allows the main local webview to read the static external-agent catalog and privacy-safe observations."
+commands.allow = [
+  "get_agent_catalog",
+  "get_external_agent_status",
+  "get_qoderwork_hooks",
+]
+
+[[permission]]
+identifier = "allow-external-agent-launch"
+description = "Allows the main local webview to request a closed external-agent launch destination."
+commands.allow = ["launch_external_agent"]
+
+[[permission]]
+identifier = "allow-qoderwork-hooks-write"
+description = "Allows the main local webview to save the bounded QoderWork Hooks projection."
+commands.allow = ["save_qoderwork_hooks"]
+
+[[permission]]
+identifier = "allow-external-agent-endpoint-probe"
+description = "Allows the main local webview to validate TRAE model and external MCP inputs and run or cancel a bounded endpoint probe."
+commands.allow = [
+  "validate_traework_model_config",
+  "test_traework_model_endpoint",
+  "cancel_traework_model_endpoint",
+  "validate_external_mcp_config",
+]

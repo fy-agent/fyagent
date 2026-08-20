@@ -80,8 +80,6 @@ function taskEnvironment(overrides: Record<string, string>) {
       "RUSTDOCFLAGS",
       "CARGO_BUILD_RUSTDOCFLAGS",
       "CARGO_ENCODED_RUSTDOCFLAGS",
-      "LD_PRELOAD",
-      "LD_LIBRARY_PATH",
       "DYLD_INSERT_LIBRARIES",
       "DYLD_FORCE_FLAT_NAMESPACE",
       "DYLD_LIBRARY_PATH",
@@ -130,8 +128,8 @@ function digest(relativePath: string): string {
 describe("canonical mise task API", () => {
   it("uses mise's native Windows pnpm executable without changing other commands", () => {
     expect(resolveTaskExecutable("pnpm", "win32")).toBe("pnpm.exe");
-    expect(resolveTaskExecutable("pnpm", "linux")).toBe("pnpm");
     expect(resolveTaskExecutable("pnpm", "darwin")).toBe("pnpm");
+    expect(resolveTaskExecutable("pnpm", "linux")).toBe("pnpm");
 
     for (const command of ["npm", "npx", "pnpx", "node", "cargo"]) {
       expect(resolveTaskExecutable(command, "win32"), command).toBe(command);
@@ -179,7 +177,7 @@ describe("canonical mise task API", () => {
         ).toThrow();
       }
 
-      if (process.platform !== "win32") {
+      if (process.platform === "darwin") {
         const outside = path.join(os.tmpdir(), `fyagent-format-${process.pid}`);
         const link = path.join(fixture, "escape.json");
         fs.writeFileSync(outside, "{}\n");
@@ -319,6 +317,21 @@ describe("canonical mise task API", () => {
     }
   });
 
+  it("rebuilds the full mise lock from an empty state with rollback protection", () => {
+    const maintenance = fs.readFileSync(
+      path.join(ROOT, "scripts", "tasks", "maintenance.mjs"),
+      "utf8",
+    );
+    expect(maintenance).toContain(
+      [
+        'withFileRollback(["mise.lock"], () => {',
+        '          writeFilesAtomically([["mise.lock", ""]]);',
+        '          run("mise", ["lock", "--platform", platformArgument]);',
+        '          run("node", ["scripts/tasks/lockfile-check.mjs"]);',
+      ].join("\n"),
+    );
+  });
+
   it("loads a complete and extensible catalog with valid metadata", () => {
     const validation = spawnSync(
       "mise",
@@ -384,6 +397,74 @@ describe("canonical mise task API", () => {
     expect(output(result)).not.toContain("miseTaskContract.test.ts");
   }, 60_000);
 
+  it("routes the exact prearchive task only to the selected composite gate", async () => {
+    const prearchive = (await import(
+      /* @vite-ignore */ pathToFileURL(
+        path.join(ROOT, "scripts", "tasks", "prearchive-check.mjs"),
+      ).href
+    )) as {
+      resolvePrearchiveTarget: (mode: string) => string;
+      runPrearchiveCheck: (
+        mode: string,
+        options: {
+          activeTask: string;
+          environment: NodeJS.ProcessEnv;
+          validator: (value: string) => string;
+          runner: (
+            command: string,
+            args: string[],
+            options: { env: NodeJS.ProcessEnv },
+          ) => unknown;
+        },
+      ) => unknown;
+    };
+    const activeTask = `.trellis/tasks/${[
+      "08-12-remove",
+      "lin",
+      "ux-support",
+    ].join("-")}`;
+    const calls: Array<{
+      command: string;
+      args: string[];
+      environment: NodeJS.ProcessEnv;
+    }> = [];
+
+    prearchive.runPrearchiveCheck("contracts", {
+      activeTask,
+      environment: { SAFE_PARENT: "1" },
+      validator: (value) => {
+        expect(value).toBe(activeTask);
+        return value;
+      },
+      runner: (command, args, options) => {
+        calls.push({ command, args, environment: options.env });
+        return { status: 0 };
+      },
+    });
+
+    expect(calls).toEqual([
+      {
+        command: "mise",
+        args: ["run", "check:contracts"],
+        environment: {
+          SAFE_PARENT: "1",
+          usage_exclude_active_task: "",
+          FYAGENT_SUPPORTED_PLATFORM_ACTIVE_TASK: activeTask,
+        },
+      },
+    ]);
+    expect(prearchive.resolvePrearchiveTarget("full")).toBe("check");
+    expect(() => prearchive.resolvePrearchiveTarget("other")).toThrow();
+    expect(() =>
+      prearchive.runPrearchiveCheck("full", {
+        activeTask,
+        environment: { FYAGENT_SUPPORTED_PLATFORM_ACTIVE_TASK: activeTask },
+        validator: (value) => value,
+        runner: () => ({ status: 0 }),
+      }),
+    ).toThrow(/must not be set by the caller/u);
+  });
+
   it("forwards version and Python parameters while preview mode preserves files", () => {
     const guardedFiles = [
       "src-tauri/Cargo.toml",
@@ -446,8 +527,8 @@ describe("canonical mise task API", () => {
   });
 
   it.each([
-    ["split target", ["--", "--target", "aarch64-unknown-linux-gnu"]],
-    ["equals target", ["--", "--target=aarch64-unknown-linux-gnu"]],
+    ["split target", ["--", "--target", foreignRustTarget()]],
+    ["equals target", ["--", `--target=${foreignRustTarget()}`]],
   ])("rejects %s injection before Cargo runs", (_label, args) => {
     const result = mise("rust:test", ...args);
     expect(result.status).not.toBe(0);
@@ -495,6 +576,7 @@ describe("canonical mise task API", () => {
       captureCommand,
       runCommand,
       resolveToolCommand,
+      resolveMsvcEnvironment: () => ({}),
     }) as { command: string; args: string[]; target: string };
     expect(tauri).toMatchObject({
       command: "pnpm",
@@ -530,6 +612,7 @@ describe("canonical mise task API", () => {
       runCommand,
       resolveToolCommand,
       resolveRunner,
+      resolveMsvcEnvironment: () => ({}),
     }) as { command: string; args: string[]; target: string };
     expect(cargo.command).toBe("cargo");
     expect(cargo.args).toEqual([
@@ -548,12 +631,27 @@ describe("canonical mise task API", () => {
       "--",
       "settings",
     ]);
-    expect(calls.map(({ command, args }) => ({ command, args }))).toEqual([
+    const expectedCalls = [
       { command: rustcExecutable, args: ["-vV"] },
       { command: rustdocExecutable, args: ["-vV"] },
-      { command: "cargo", args: cargo.args },
-    ]);
-    expect(calls[2].environment).toMatchObject({
+    ];
+    switch (process.platform) {
+      case "win32":
+        expectedCalls.push({
+          command: process.execPath,
+          args: ["scripts/prepare-windows-user-helper.mjs"],
+        });
+        break;
+      case "darwin":
+        break;
+      default:
+        throw new Error(`Unsupported test host: ${process.platform}`);
+    }
+    expectedCalls.push({ command: "cargo", args: cargo.args });
+    expect(calls.map(({ command, args }) => ({ command, args }))).toEqual(
+      expectedCalls,
+    );
+    expect(calls.at(-1)?.environment).toMatchObject({
       RUSTC: rustcExecutable,
       RUSTDOC: rustdocExecutable,
     });
@@ -618,6 +716,10 @@ describe("canonical mise task API", () => {
         validateCargoConfig: () => {
           sequence.push("validate:cargo-config");
         },
+        resolveMsvcEnvironment: () => {
+          sequence.push("resolve:msvc");
+          return { INCLUDE: "C:\\vs\\include", LIB: "C:\\vs\\lib" };
+        },
       }) as {
         command: string;
         args: string[];
@@ -634,6 +736,7 @@ describe("canonical mise task API", () => {
         "probe:rustc",
         "probe:rustdoc",
         "run:helper",
+        "resolve:msvc",
         "run:cargo",
       ]);
       expect(calls.slice(0, 2)).toEqual([
@@ -653,7 +756,11 @@ describe("canonical mise task API", () => {
       expect(calls[3]).toEqual({
         command: "cargo",
         args: plan.args,
-        environment: plan.environment,
+        environment: {
+          ...plan.environment,
+          INCLUDE: "C:\\vs\\include",
+          LIB: "C:\\vs\\lib",
+        },
       });
       expect(
         calls.filter(
@@ -666,8 +773,10 @@ describe("canonical mise task API", () => {
   );
 
   it.each([
-    ["linux", "x64"],
+    ["darwin", "x64"],
     ["darwin", "arm64"],
+    ["linux", "x64"],
+    ["linux", "arm64"],
   ] as const)(
     "does not prepare the Windows helper for %s/%s Rust tasks",
     (platform, architecture) => {
@@ -801,7 +910,7 @@ describe("canonical mise task API", () => {
     expect(runCalls).toBe(0);
   });
 
-  it.runIf(process.platform !== "win32")(
+  it.runIf(process.platform === "darwin")(
     "rejects effective Cargo toolchain config includes, cycles, and symlinks before tools start",
     () => {
       const fixture = fs.mkdtempSync(
@@ -828,36 +937,36 @@ describe("canonical mise task API", () => {
 
         fs.writeFileSync(
           includedFile,
-          '[target.x86_64-unknown-linux-gnu]\nrunner = "/tmp/emulator"\n',
+          '[target.aarch64-apple-darwin]\nrunner = "/tmp/emulator"\n',
         );
         expect(() =>
           hostNativeModule.assertNoCargoToolchainConfig({
             root: fixture,
             environment: { CARGO_HOME: cargoHome },
           }),
-        ).toThrow(/target\.x86_64-unknown-linux-gnu\.runner is forbidden/);
+        ).toThrow(/target\.aarch64-apple-darwin\.runner is forbidden/);
 
         fs.writeFileSync(
           includedFile,
-          '[target.x86_64-unknown-linux-gnu]\nlinker = "/tmp/linker"\n',
+          '[target.aarch64-apple-darwin]\nlinker = "/tmp/linker"\n',
         );
         expect(() =>
           hostNativeModule.assertNoCargoToolchainConfig({
             root: fixture,
             environment: { CARGO_HOME: cargoHome },
           }),
-        ).toThrow(/target\.x86_64-unknown-linux-gnu\.linker is forbidden/);
+        ).toThrow(/target\.aarch64-apple-darwin\.linker is forbidden/);
 
         fs.writeFileSync(
           includedFile,
-          '[target.x86_64-unknown-linux-gnu]\nrustflags = ["-C", "linker=/tmp/linker"]\n',
+          '[target.aarch64-apple-darwin]\nrustflags = ["-C", "linker=/tmp/linker"]\n',
         );
         expect(() =>
           hostNativeModule.assertNoCargoToolchainConfig({
             root: fixture,
             environment: { CARGO_HOME: cargoHome },
           }),
-        ).toThrow(/target\.x86_64-unknown-linux-gnu\.rustflags is forbidden/);
+        ).toThrow(/target\.aarch64-apple-darwin\.rustflags is forbidden/);
 
         fs.writeFileSync(
           includedFile,
@@ -900,157 +1009,161 @@ describe("canonical mise task API", () => {
     },
   );
 
-  it.runIf(process.platform === "linux")(
-    "passes verified host argv through real wrappers to fake native executables",
-    () => {
-      const fakeBin = fs.mkdtempSync(
-        path.join(os.tmpdir(), "fyagent-host-native-smoke-"),
+  it("validates Windows PE and macOS Mach-O test executables inside the current target directory", () => {
+    const cases = [
+      {
+        platform: "win32",
+        architecture: "x64",
+        target: "x86_64-pc-windows-msvc",
+        machineOffset: 68,
+        validMachine: 0x8664,
+        wrongMachine: 0xaa64,
+        bytes() {
+          const bytes = Buffer.alloc(128);
+          bytes.write("MZ", 0, "ascii");
+          bytes.writeUInt32LE(64, 0x3c);
+          bytes.write("PE\0\0", 64, "binary");
+          bytes.writeUInt16LE(this.validMachine, this.machineOffset);
+          return bytes;
+        },
+      },
+      {
+        platform: "darwin",
+        architecture: "arm64",
+        target: "aarch64-apple-darwin",
+        machineOffset: 4,
+        validMachine: 0x0100000c,
+        wrongMachine: 0x01000007,
+        bytes() {
+          const bytes = Buffer.alloc(64);
+          bytes.writeUInt32BE(0xfeedfacf, 0);
+          bytes.writeUInt32BE(this.validMachine, this.machineOffset);
+          return bytes;
+        },
+      },
+      {
+        platform: "linux",
+        architecture: "x64",
+        target: "x86_64-unknown-linux-gnu",
+        machineOffset: 18,
+        validMachine: 62,
+        wrongMachine: 183,
+        bytes() {
+          const bytes = Buffer.alloc(64);
+          bytes[0] = 0x7f;
+          bytes[1] = 0x45;
+          bytes[2] = 0x4c;
+          bytes[3] = 0x46;
+          bytes[4] = 2;
+          bytes[5] = 1;
+          bytes.writeUInt16LE(this.validMachine, this.machineOffset);
+          return bytes;
+        },
+      },
+    ] as const;
+
+    for (const fixtureCase of cases) {
+      const targetDirectory = path.join(
+        ROOT,
+        "src-tauri",
+        "target",
+        fixtureCase.target,
       );
-      const marker = path.join(fakeBin, "calls.jsonl");
+      const targetDirectoryExisted = fs.existsSync(targetDirectory);
+      fs.mkdirSync(targetDirectory, { recursive: true });
+      const fixtureDirectory = fs.mkdtempSync(
+        path.join(targetDirectory, "fyagent-native-runner-contract-"),
+      );
+
+      try {
+        const valid = path.join(fixtureDirectory, "valid-native-binary");
+        fs.writeFileSync(valid, fixtureCase.bytes());
+        expect(
+          hostNativeModule.verifyNativeTestExecutable({
+            target: fixtureCase.target,
+            executable: valid,
+            platform: fixtureCase.platform,
+            architecture: fixtureCase.architecture,
+            cwd: ROOT,
+            root: ROOT,
+          }),
+        ).toBe(fs.realpathSync(valid));
+
+        const malformed = path.join(fixtureDirectory, "malformed");
+        fs.writeFileSync(malformed, "not a native executable");
+        expect(() =>
+          hostNativeModule.verifyNativeTestExecutable({
+            target: fixtureCase.target,
+            executable: malformed,
+            platform: fixtureCase.platform,
+            architecture: fixtureCase.architecture,
+            cwd: ROOT,
+            root: ROOT,
+          }),
+        ).toThrow(/must have|must be/);
+
+        const wrongArchitecture = path.join(
+          fixtureDirectory,
+          "wrong-architecture",
+        );
+        const wrongBytes = fixtureCase.bytes();
+        switch (fixtureCase.platform) {
+          case "win32":
+            wrongBytes.writeUInt16LE(
+              fixtureCase.wrongMachine,
+              fixtureCase.machineOffset,
+            );
+            break;
+          case "darwin":
+            wrongBytes.writeUInt32BE(
+              fixtureCase.wrongMachine,
+              fixtureCase.machineOffset,
+            );
+            break;
+          case "linux":
+            wrongBytes.writeUInt16LE(
+              fixtureCase.wrongMachine,
+              fixtureCase.machineOffset,
+            );
+            break;
+          default:
+            throw new Error("Unsupported fixture host");
+        }
+        fs.writeFileSync(wrongArchitecture, wrongBytes);
+        expect(() =>
+          hostNativeModule.verifyNativeTestExecutable({
+            target: fixtureCase.target,
+            executable: wrongArchitecture,
+            platform: fixtureCase.platform,
+            architecture: fixtureCase.architecture,
+            cwd: ROOT,
+            root: ROOT,
+          }),
+        ).toThrow(/does not match/);
+      } finally {
+        fs.rmSync(fixtureDirectory, { recursive: true, force: true });
+        if (!targetDirectoryExisted) fs.rmdirSync(targetDirectory);
+      }
+    }
+  });
+
+  it.runIf(process.platform === "win32")(
+    "passes metacharacter argv directly to a verified current-host executable",
+    () => {
       const target = hostNativeModule.expectedRustTarget(
         process.platform,
         process.arch,
       ) as string;
-      const nativeRunnerConfig = hostNativeModule.buildNativeRunnerConfig({
-        target,
-        platform: process.platform,
-        nodeExecutable: process.execPath,
-        runnerScript: path.join(ROOT, "scripts", "tasks", "host-native.mjs"),
-      }) as string;
-      const ownedEnvironment = [
-        "RUSTC",
-        "CARGO_BUILD_RUSTC",
-        "RUSTC_WRAPPER",
-        "CARGO_BUILD_RUSTC_WRAPPER",
-        "RUSTC_WORKSPACE_WRAPPER",
-        "CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER",
-        "RUSTDOC",
-        "CARGO_BUILD_RUSTDOC",
-        "RUSTFLAGS",
-        "CARGO_BUILD_RUSTFLAGS",
-        "CARGO_ENCODED_RUSTFLAGS",
-        "RUSTDOCFLAGS",
-        "CARGO_BUILD_RUSTDOCFLAGS",
-        "CARGO_ENCODED_RUSTDOCFLAGS",
-        "LD_PRELOAD",
-        "LD_LIBRARY_PATH",
-        "DYLD_INSERT_LIBRARIES",
-        "DYLD_FORCE_FLAT_NAMESPACE",
-        "DYLD_LIBRARY_PATH",
-        "DYLD_FRAMEWORK_PATH",
-        "DYLD_FALLBACK_LIBRARY_PATH",
-        "NODE_OPTIONS",
-        "NODE_PATH",
-      ];
-      const executable = (name: string, body: string) => {
-        const file = path.join(fakeBin, name);
-        fs.writeFileSync(file, `#!${process.execPath}\n${body}`, {
-          mode: 0o755,
-        });
-      };
-      const record = (command: string) =>
-        `require("node:fs").appendFileSync(${JSON.stringify(marker)}, JSON.stringify({ command: ${JSON.stringify(command)}, args: process.argv.slice(2), environment: Object.fromEntries(${JSON.stringify(ownedEnvironment)}.map((name) => [name, process.env[name]])) }) + "\\n");\n`;
-      executable(
-        "rustc",
-        `${record("rustc")}process.stdout.write(${JSON.stringify(
-          `rustc 1.97.1\ncommit-hash: verified-toolchain\nhost: ${target}\nrelease: 1.97.1\n`,
-        )});\n`,
-      );
-      executable(
-        "rustdoc",
-        `${record("rustdoc")}process.stdout.write(${JSON.stringify(
-          `rustdoc 1.97.1\ncommit-hash: verified-toolchain\nhost: ${target}\nrelease: 1.97.1\n`,
-        )});\n`,
-      );
-      executable("pnpm", record("pnpm"));
-      executable("cargo", record("cargo"));
       const targetDirectory = path.join(ROOT, "src-tauri", "target", target);
       const targetDirectoryExisted = fs.existsSync(targetDirectory);
-      let nativeFixtureDirectory: string | undefined;
+      fs.mkdirSync(targetDirectory, { recursive: true });
+      const fixtureDirectory = fs.mkdtempSync(
+        path.join(targetDirectory, "fyagent-native-runner-smoke-"),
+      );
+      const nativeNode = path.join(fixtureDirectory, "node.exe");
 
       try {
-        const environment = taskEnvironment({ PATH: fakeBin });
-        const tauri = spawnSync(
-          process.execPath,
-          ["scripts/tasks/host-native.mjs", "build:binary"],
-          { cwd: ROOT, encoding: "utf8", env: environment },
-        );
-        expect(tauri.status, output(tauri)).toBe(0);
-        const cargo = spawnSync(
-          process.execPath,
-          ["scripts/tasks/rust.mjs", "clippy"],
-          { cwd: ROOT, encoding: "utf8", env: environment },
-        );
-        expect(cargo.status, output(cargo)).toBe(0);
-
-        const calls = fs
-          .readFileSync(marker, "utf8")
-          .trim()
-          .split("\n")
-          .map(
-            (line) =>
-              JSON.parse(line) as {
-                command: string;
-                args: string[];
-                environment: Record<string, string>;
-              },
-          );
-        expect(calls.map(({ command, args }) => ({ command, args }))).toEqual([
-          { command: "rustc", args: ["-vV"] },
-          { command: "rustdoc", args: ["-vV"] },
-          {
-            command: "pnpm",
-            args: ["tauri", "build", "--target", target, "--no-bundle"],
-          },
-          { command: "rustc", args: ["-vV"] },
-          { command: "rustdoc", args: ["-vV"] },
-          {
-            command: "cargo",
-            args: [
-              "--config",
-              nativeRunnerConfig,
-              "clippy",
-              "--target",
-              target,
-              "--workspace",
-              "--locked",
-              "--manifest-path",
-              "src-tauri/Cargo.toml",
-              "--all-targets",
-              "--",
-              "-D",
-              "warnings",
-            ],
-          },
-        ]);
-        for (const index of [2, 5]) {
-          expect(calls[index].environment).toMatchObject({
-            RUSTC: path.join(fakeBin, "rustc"),
-            CARGO_BUILD_RUSTC: path.join(fakeBin, "rustc"),
-            RUSTDOC: path.join(fakeBin, "rustdoc"),
-            CARGO_BUILD_RUSTDOC: path.join(fakeBin, "rustdoc"),
-            RUSTC_WRAPPER: "",
-            CARGO_BUILD_RUSTC_WRAPPER: "",
-            RUSTC_WORKSPACE_WRAPPER: "",
-            CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER: "",
-            RUSTFLAGS: "",
-            CARGO_BUILD_RUSTFLAGS: "",
-            CARGO_ENCODED_RUSTFLAGS: "",
-            RUSTDOCFLAGS: "",
-            CARGO_BUILD_RUSTDOCFLAGS: "",
-            CARGO_ENCODED_RUSTDOCFLAGS: "",
-            LD_PRELOAD: "",
-            NODE_OPTIONS: "",
-          });
-        }
-
-        fs.mkdirSync(targetDirectory, { recursive: true });
-        nativeFixtureDirectory = fs.mkdtempSync(
-          path.join(targetDirectory, "fyagent-native-runner-smoke-"),
-        );
-        const nativeFixture = path.join(nativeFixtureDirectory, "printf");
-        fs.copyFileSync("/usr/bin/printf", nativeFixture);
-        fs.chmodSync(nativeFixture, 0o755);
+        fs.copyFileSync(process.execPath, nativeNode);
         const metacharacterFilter = "filter&whoami|ignored";
         const direct = spawnSync(
           process.execPath,
@@ -1058,8 +1171,9 @@ describe("canonical mise task API", () => {
             "scripts/tasks/host-native.mjs",
             "native-runner",
             target,
-            nativeFixture,
-            "%s",
+            nativeNode,
+            "-e",
+            "process.stdout.write(process.argv[1])",
             metacharacterFilter,
           ],
           { cwd: ROOT, encoding: "utf8", env: taskEnvironment({}) },
@@ -1073,7 +1187,7 @@ describe("canonical mise task API", () => {
             "scripts/tasks/host-native.mjs",
             "native-runner",
             target,
-            "/usr/bin/printf",
+            process.execPath,
           ],
           { cwd: ROOT, encoding: "utf8", env: taskEnvironment({}) },
         );
@@ -1081,59 +1195,9 @@ describe("canonical mise task API", () => {
         expect(output(outside)).toContain(
           "verified current-host target directory",
         );
-
-        const symlink = path.join(nativeFixtureDirectory, "symlink");
-        fs.symlinkSync("/usr/bin/printf", symlink);
-        const linked = spawnSync(
-          process.execPath,
-          ["scripts/tasks/host-native.mjs", "native-runner", target, symlink],
-          { cwd: ROOT, encoding: "utf8", env: taskEnvironment({}) },
-        );
-        expect(linked.status).not.toBe(0);
-        expect(output(linked)).toContain("regular non-symlink file");
-
-        const invalid = path.join(nativeFixtureDirectory, "not-elf");
-        fs.writeFileSync(invalid, "not a native executable", { mode: 0o755 });
-        const wrongSignature = spawnSync(
-          process.execPath,
-          ["scripts/tasks/host-native.mjs", "native-runner", target, invalid],
-          { cwd: ROOT, encoding: "utf8", env: taskEnvironment({}) },
-        );
-        expect(wrongSignature.status).not.toBe(0);
-        expect(output(wrongSignature)).toContain("ELF header");
-
-        const wrongArchitecture = path.join(
-          nativeFixtureDirectory,
-          "wrong-architecture",
-        );
-        const wrongArchitectureBytes = fs.readFileSync(nativeFixture);
-        wrongArchitectureBytes.writeUInt16LE(
-          process.arch === "x64" ? 183 : 62,
-          18,
-        );
-        fs.writeFileSync(wrongArchitecture, wrongArchitectureBytes, {
-          mode: 0o755,
-        });
-        const wrongMachine = spawnSync(
-          process.execPath,
-          [
-            "scripts/tasks/host-native.mjs",
-            "native-runner",
-            target,
-            wrongArchitecture,
-          ],
-          { cwd: ROOT, encoding: "utf8", env: taskEnvironment({}) },
-        );
-        expect(wrongMachine.status).not.toBe(0);
-        expect(output(wrongMachine)).toContain("does not match");
       } finally {
-        fs.rmSync(fakeBin, { recursive: true, force: true });
-        if (nativeFixtureDirectory) {
-          fs.rmSync(nativeFixtureDirectory, { recursive: true, force: true });
-        }
-        if (!targetDirectoryExisted && fs.existsSync(targetDirectory)) {
-          fs.rmdirSync(targetDirectory);
-        }
+        fs.rmSync(fixtureDirectory, { recursive: true, force: true });
+        if (!targetDirectoryExisted) fs.rmdirSync(targetDirectory);
       }
     },
   );
@@ -1153,22 +1217,21 @@ describe("canonical mise task API", () => {
       { cargo_build_rustc_workspace_wrapper: "/tmp/not-a-wrapper" },
       { RUSTDOC: "/tmp/not-the-canonical-rustdoc" },
       { cargo_build_rustdoc: "/tmp/not-the-canonical-rustdoc" },
-      { Cargo_Target_X86_64_Unknown_Linux_Gnu_Runner: "/tmp/emulator" },
-      { cargo_target_x86_64_unknown_linux_gnu_linker: "/tmp/linker" },
-      { LD_PRELOAD: "/tmp/inject.so" },
+      { Cargo_Target_Aarch64_Apple_Darwin_Runner: "/tmp/emulator" },
+      { cargo_target_aarch64_apple_darwin_linker: "/tmp/linker" },
+      { DYLD_INSERT_LIBRARIES: "/tmp/inject.dylib" },
       { dyld_library_path: "/tmp/inject" },
       { NODE_OPTIONS: "--require=/tmp/inject.js" },
       { RUSTFLAGS: `--target ${foreignRustTarget()}` },
       { CARGO_BUILD_RUSTFLAGS: `--target=${foreignRustTarget()}` },
       {
-        cargo_target_x86_64_unknown_linux_gnu_rustflags: `-Dwarnings --target ${foreignRustTarget()}`,
+        cargo_target_aarch64_apple_darwin_rustflags: `-Dwarnings --target ${foreignRustTarget()}`,
       },
       {
-        CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS:
-          "-C linker=/tmp/linker",
+        CARGO_TARGET_AARCH64_APPLE_DARWIN_RUSTFLAGS: "-C linker=/tmp/linker",
       },
       {
-        CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTDOCFLAGS:
+        CARGO_TARGET_AARCH64_APPLE_DARWIN_RUSTDOCFLAGS:
           "-C link-arg=/tmp/inject",
       },
       {
@@ -1176,7 +1239,7 @@ describe("canonical mise task API", () => {
       },
       { RUSTDOCFLAGS: `--target=${foreignRustTarget()}` },
       {
-        CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTDOCFLAGS: `--target ${foreignRustTarget()}`,
+        CARGO_TARGET_AARCH64_APPLE_DARWIN_RUSTDOCFLAGS: `--target ${foreignRustTarget()}`,
       },
     ]) {
       expect(() =>
@@ -1257,7 +1320,7 @@ describe("canonical mise task API", () => {
   it("fails aggregate check closed on compiler and runner overrides before env:check", () => {
     const overrideCases: Array<Record<string, string>> = [
       { Rustc: "/tmp/not-the-canonical-rustc" },
-      { Cargo_Target_X86_64_Unknown_Linux_Gnu_Runner: "/tmp/emulator" },
+      { Cargo_Target_Aarch64_Apple_Darwin_Runner: "/tmp/emulator" },
     ];
     for (const overrides of overrideCases) {
       const result = spawnSync("mise", ["run", "check"], {

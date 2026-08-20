@@ -19,6 +19,18 @@ fn should_sync_codex_mcp() -> bool {
     crate::codex_config::get_codex_config_dir().exists()
 }
 
+fn read_validated_config_text_for_mcp() -> Result<String, AppError> {
+    crate::codex_config::read_and_validate_codex_config_text().map_err(|error| match error {
+        // toml::de::Error renders the offending source line. MCP errors cross
+        // the IPC boundary and may be persisted in logs, so expose only the
+        // actionable category here.
+        AppError::Toml { .. } => AppError::McpValidation(
+            "Codex MCP 配置无法解析，请修复 config.toml 的 TOML 语法".to_string(),
+        ),
+        error => error,
+    })
+}
+
 /// 返回已启用的 MCP 服务器（过滤 enabled==true）
 fn collect_enabled_servers(cfg: &McpConfig) -> HashMap<String, Value> {
     let mut out = HashMap::new();
@@ -50,13 +62,16 @@ fn collect_enabled_servers(cfg: &McpConfig) -> HashMap<String, Value> {
 ///
 /// 已存在的服务器将启用 Codex 应用，不覆盖其他字段和应用状态
 pub fn import_from_codex(config: &mut MultiAppConfig) -> Result<usize, AppError> {
-    let text = crate::codex_config::read_and_validate_codex_config_text()?;
+    let text = read_validated_config_text_for_mcp()?;
     if text.trim().is_empty() {
         return Ok(0);
     }
 
-    let root: toml::Table = toml::from_str(&text)
-        .map_err(|e| AppError::McpValidation(format!("解析 ~/.codex/config.toml 失败: {e}")))?;
+    let root: toml::Table = toml::from_str(&text).map_err(|_| {
+        AppError::McpValidation(
+            "Codex MCP 配置无法解析，请修复 config.toml 的 TOML 语法".to_string(),
+        )
+    })?;
 
     // 确保新结构存在
     let servers = config.mcp.servers.get_or_insert_with(HashMap::new);
@@ -234,12 +249,8 @@ pub fn import_from_codex(config: &mut MultiAppConfig) -> Result<usize, AppError>
                         name: id.clone(),
                         server: spec_v,
                         apps: McpApps {
-                            claude: false,
                             codex: true,
-                            gemini: false,
-                            grokbuild: false,
-                            opencode: false,
-                            hermes: false,
+                            ..McpApps::default()
                         },
                         description: None,
                         homepage: None,
@@ -293,15 +304,17 @@ pub fn sync_enabled_to_codex(config: &MultiAppConfig) -> Result<(), AppError> {
     let enabled = collect_enabled_servers(&config.mcp.codex);
 
     // 2) 读取现有 config.toml 文本；保持无效 TOML 的错误返回（不覆盖文件）
-    let base_text = crate::codex_config::read_and_validate_codex_config_text()?;
+    let base_text = read_validated_config_text_for_mcp()?;
 
     // 3) 使用 toml_edit 解析（允许空文件）
     let mut doc = if base_text.trim().is_empty() {
         toml_edit::DocumentMut::default()
     } else {
-        base_text
-            .parse::<toml_edit::DocumentMut>()
-            .map_err(|e| AppError::McpValidation(format!("解析 config.toml 失败: {e}")))?
+        base_text.parse::<toml_edit::DocumentMut>().map_err(|_| {
+            AppError::McpValidation(
+                "Codex MCP 配置无法解析，请修复 config.toml 的 TOML 语法".to_string(),
+            )
+        })?
     };
 
     // 4) 清理可能存在的错误格式 [mcp.servers]
@@ -433,9 +446,11 @@ pub fn sync_single_server_to_codex(
             std::fs::read_to_string(&config_path).map_err(|e| AppError::io(&config_path, e))?;
         // 解析失败必须报错而不是用空文档顶替：写回空文档会把用户
         // config.toml 里的其它段落（model/model_providers/注释等）整体清空
-        content
-            .parse::<toml_edit::DocumentMut>()
-            .map_err(|e| AppError::McpValidation(format!("解析 config.toml 失败: {e}")))?
+        content.parse::<toml_edit::DocumentMut>().map_err(|_| {
+            AppError::McpValidation(
+                "Codex MCP 配置无法解析，请修复 config.toml 的 TOML 语法".to_string(),
+            )
+        })?
     } else {
         toml_edit::DocumentMut::new()
     };
@@ -476,12 +491,14 @@ pub fn remove_server_from_codex(id: &str) -> Result<(), AppError> {
     let content =
         std::fs::read_to_string(&config_path).map_err(|e| AppError::io(&config_path, e))?;
 
-    // 尝试解析现有配置，如果失败则直接返回（无法删除不存在的内容）
+    // 解析失败时拒绝删除；不能把 live 清理失败报告成成功，也不能把
+    // toml_edit 带源码行的 Display 写入持久日志。
     let mut doc = match content.parse::<toml_edit::DocumentMut>() {
         Ok(doc) => doc,
-        Err(e) => {
-            log::warn!("解析 Codex config.toml 失败: {e}，跳过删除操作");
-            return Ok(());
+        Err(_) => {
+            return Err(AppError::McpValidation(
+                "Codex MCP 配置无法解析，未执行删除；请修复 config.toml".to_string(),
+            ))
         }
     };
 

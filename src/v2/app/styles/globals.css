@@ -1,0 +1,65 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+}
+
+html {
+  background: var(--fy-bg);
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI Variable", "Segoe UI",
+    "PingFang SC", "Microsoft YaHei UI", sans-serif;
+  color: var(--fy-text);
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  overflow: hidden;
+  background:
+    radial-gradient(
+      circle at 18% -12%,
+      rgba(190, 228, 255, 0.3),
+      transparent 42%
+    ),
+    radial-gradient(
+      circle at 86% 9%,
+      rgba(112, 204, 231, 0.22),
+      transparent 35%
+    ),
+    linear-gradient(
+      145deg,
+      var(--fy-bg) 0%,
+      var(--fy-bg-mid) 52%,
+      var(--fy-bg-air) 100%
+    );
+}
+
+button,
+a {
+  font: inherit;
+}
+
+button {
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--fy-focus);
+  outline-offset: 2px;
+}
+
+::selection {
+  color: var(--fy-text);
+  background: rgba(185, 234, 255, 0.28);
+}

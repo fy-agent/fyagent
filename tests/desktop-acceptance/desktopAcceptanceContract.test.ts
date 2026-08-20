@@ -64,7 +64,7 @@ describe("mock-only desktop acceptance contract", () => {
       viewport: { width: 900, height: 600 },
     });
     expect(DESKTOP_ACCEPTANCE_LOCALES).toEqual(["en", "ja", "zh", "zh-TW"]);
-    expect(DESKTOP_ACCEPTANCE_PLATFORMS).toEqual(["windows", "macos", "linux"]);
+    expect(DESKTOP_ACCEPTANCE_PLATFORMS).toEqual(["windows", "macos"]);
     expect(DESKTOP_ACCEPTANCE_SCALES).toEqual([100, 125, 150]);
   });
 

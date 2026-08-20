@@ -26,9 +26,9 @@ use crate::codex_desktop::{
         JobCancellation, JobEventSink, JobStore, ProcessLifecycleClaim, ProcessLifecycleTransition,
     },
     platform::{
-        installed_application_matches_release, CodexDesktopPlatform, PlatformProgressReporter,
-        PlatformProgressSink, RestartCandidateInspection, RuntimeInspection,
-        TrustedInstallationCandidate,
+        installed_application_has_operational_shape, CodexDesktopPlatform,
+        PlatformProgressReporter, PlatformProgressSink, RestartCandidateInspection,
+        RuntimeInspection, TrustedInstallationCandidate,
     },
     source::{CacheMode, ReleaseSource},
     temp::{JobTempDir, JobTempRoot},
@@ -958,13 +958,6 @@ impl CodexDesktopService {
             .await?;
         self.ensure_not_cancelled(cancellation)?;
 
-        let disk_paths = std::iter::once(
-            temporary_directory
-                .as_ref()
-                .expect("job temporary directory is assigned before disk preflight")
-                .path(),
-        )
-        .chain(plan.additional_disk_paths().iter().map(PathBuf::as_path));
         // The platform probe is path-shaped because it resolves capacity by
         // volume only. Revalidate the held directory identities on both sides;
         // all later artifact access remains relative to those held handles.
@@ -972,11 +965,20 @@ impl CodexDesktopService {
             .as_ref()
             .expect("job temporary directory is assigned before disk preflight")
             .revalidate()?;
-        ensure_required_disk_space(
-            self.disk_space_probe.as_ref(),
-            disk_paths,
-            release.expected_size,
-        )?;
+        if let Some(download_size_hint) = release.download_size_hint {
+            let disk_paths = std::iter::once(
+                temporary_directory
+                    .as_ref()
+                    .expect("job temporary directory is assigned before disk preflight")
+                    .path(),
+            )
+            .chain(plan.additional_disk_paths().iter().map(PathBuf::as_path));
+            ensure_required_disk_space(
+                self.disk_space_probe.as_ref(),
+                disk_paths,
+                download_size_hint,
+            )?;
+        }
         temporary_directory
             .as_ref()
             .expect("job temporary directory is assigned after disk preflight")
@@ -989,7 +991,7 @@ impl CodexDesktopService {
             self.clock.clone(),
             job_id.to_owned(),
         );
-        let artifact = match download_release(
+        let artifact = download_release(
             self.transport.as_ref(),
             &release,
             temporary_directory
@@ -998,45 +1000,14 @@ impl CodexDesktopService {
             cancellation,
             &download_progress,
         )
-        .await
-        {
-            Ok(artifact) => artifact,
-            Err(download_error)
-                if download_error.code() == InstallerErrorCode::ChecksumMismatch =>
-            {
-                // The artifact is already removed by `download_release` before
-                // this branch runs. A short-lived CDN redirect may have moved
-                // after metadata was locked, so refresh only to classify that
-                // fail-closed mismatch; never retry the artifact blindly.
-                let refreshed_release = self
-                    .resolve_latest(CacheMode::ForceRefresh, cancellation)
-                    .await?;
-                if refreshed_release.release_id() != release.release_id() {
-                    return Err(InstallerError::new(InstallerErrorCode::MetadataChanged)
-                        .with_diagnostic_message(
-                            "the release metadata changed after the downloaded artifact failed checksum validation",
-                        ));
-                }
-                return Err(download_error);
-            }
-            Err(download_error) => return Err(download_error),
-        };
+        .await?;
         download_progress.take_error()?;
         self.ensure_not_cancelled(cancellation)?;
 
-        // The downloader normally enters this stage through its verification
-        // progress callback. Keep the explicit transition as a fail-closed
-        // fallback should a future downloader omit that callback.
-        self.transition_to(job_id, JobStage::VerifyingDownload, cancellation)?;
-        let package = self.platform.verify_package(&release, &artifact).await?;
-        if !package.belongs_to(&release) {
-            return Err(
-                InstallerError::new(InstallerErrorCode::PackageIdentityMismatch)
-                    .with_diagnostic_message(
-                        "platform validation returned package evidence for a different release",
-                    ),
-            );
-        }
+        let package = self
+            .platform
+            .prepare_install_package(&release, &artifact)
+            .await?;
         self.ensure_not_cancelled(cancellation)?;
 
         // `JobStore::update_stage` arbitrates cancellation and Installing under
@@ -1049,31 +1020,36 @@ impl CodexDesktopService {
             job_id.to_owned(),
         ));
         let sink: PlatformProgressSink = installation_progress.clone();
-        self.platform.install_current_user(&package, sink).await?;
+        let installed_result = self.platform.install_current_user(&package, sink).await?;
         installation_progress.take_error()?;
 
         self.transition_to(job_id, JobStage::VerifyingInstallation, cancellation)?;
         self.publish_verification_progress(job_id)?;
-        let status = self.platform.inspect_local().await?;
-        let application = match status {
-            LocalInstallStatus::Installed { application } => application,
-            LocalInstallStatus::Ambiguous { error, .. } => {
-                return Err(ambiguous_local_status_error(error.code));
-            }
-            LocalInstallStatus::NotInstalled { .. } | LocalInstallStatus::Unsupported { .. } => {
-                return Err(
-                    InstallerError::new(InstallerErrorCode::InstallationVerifyFailed)
-                        .with_diagnostic_message(
+        let application = match installed_result {
+            Some(application) => application,
+            None => match self.platform.inspect_local().await? {
+                LocalInstallStatus::Installed { application } => application,
+                LocalInstallStatus::Ambiguous { error, .. } => {
+                    return Err(ambiguous_local_status_error(error.code));
+                }
+                LocalInstallStatus::NotInstalled { .. }
+                | LocalInstallStatus::Unsupported { .. } => {
+                    return Err(
+                        InstallerError::new(InstallerErrorCode::InstallationVerifyFailed)
+                            .with_diagnostic_message(
                             "post-install inspection did not find one matching Codex application",
                         ),
-                );
-            }
+                    );
+                }
+            },
         };
-        if !installed_application_matches_release(&application, &release)? {
-            return Err(InstallerError::new(InstallerErrorCode::InstallationVerifyFailed)
-                .with_diagnostic_message(
-                    "post-install application identity, platform, architecture, or version did not match",
-                ));
+        if !installed_application_has_operational_shape(&application, &release)? {
+            return Err(
+                InstallerError::new(InstallerErrorCode::InstallationVerifyFailed)
+                    .with_diagnostic_message(
+                        "post-install application has no operational identity or platform shape",
+                    ),
+            );
         }
 
         Ok(InstallFlowOutcome::Installed(application))
@@ -1281,23 +1257,7 @@ impl DownloadJobProgressBridge {
                     return Err(progress_stage_error());
                 }
             }
-            ProgressPhase::Verification => {
-                if snapshot.stage == JobStage::Downloading {
-                    let transitioned = self.job_store.update_stage(
-                        &self.job_id,
-                        JobStage::VerifyingDownload,
-                        self.clock.now_rfc3339(),
-                    )?;
-                    if transitioned.stage == JobStage::Cancelled {
-                        return Ok(());
-                    }
-                    if transitioned.stage != JobStage::VerifyingDownload {
-                        return Err(progress_stage_error());
-                    }
-                } else if snapshot.stage != JobStage::VerifyingDownload {
-                    return Err(progress_stage_error());
-                }
-            }
+            ProgressPhase::Verification => return Err(progress_stage_error()),
             ProgressPhase::Installation => return Err(progress_stage_error()),
         }
 
@@ -1484,8 +1444,8 @@ mod tests {
         download::{TransportError, TransportFuture, TransportResponse},
         error::SuggestedAction,
         platform::{
-            PlatformInstallPlan, RestartCandidateInspection, TrustedInstallationCandidate,
-            VerifiedPackage, WINDOWS_CODEX_STABLE_IDENTITY,
+            PlatformInstallPlan, PreparedInstallPackage, RestartCandidateInspection,
+            TrustedInstallationCandidate, WINDOWS_CODEX_STABLE_IDENTITY,
         },
         types::{LaunchTarget, PlatformVersion, TrustedDownloadEndpoint},
         verify::{DiskSpaceProbeError, VolumeKey},
@@ -1787,19 +1747,19 @@ mod tests {
             })
         }
 
-        fn verify_package<'a>(
+        fn prepare_install_package<'a>(
             &'a self,
             release: &'a ReleaseDescriptor,
             _artifact: &'a crate::codex_desktop::download::DownloadedArtifact,
-        ) -> BoxFuture<'a, Result<VerifiedPackage, InstallerError>> {
-            Box::pin(async move { Ok(VerifiedPackage::for_test(release)) })
+        ) -> BoxFuture<'a, Result<PreparedInstallPackage, InstallerError>> {
+            Box::pin(async move { Ok(PreparedInstallPackage::for_test(release)) })
         }
 
         fn install_current_user<'a>(
             &'a self,
-            _package: &'a VerifiedPackage,
+            _package: &'a PreparedInstallPackage,
             progress: PlatformProgressSink,
-        ) -> BoxFuture<'a, Result<(), InstallerError>> {
+        ) -> BoxFuture<'a, Result<Option<InstalledApplication>, InstallerError>> {
             self.install_calls.fetch_add(1, Ordering::SeqCst);
             Box::pin(async move {
                 progress.report_progress(JobProgress::new(
@@ -1812,7 +1772,7 @@ mod tests {
                     Some(1),
                     Some(1),
                 ));
-                Ok(())
+                Ok(None)
             })
         }
 
@@ -1974,20 +1934,20 @@ mod tests {
             Box::pin(async { Ok(PlatformInstallPlan::default()) })
         }
 
-        fn verify_package<'a>(
+        fn prepare_install_package<'a>(
             &'a self,
             release: &'a ReleaseDescriptor,
             _artifact: &'a crate::codex_desktop::download::DownloadedArtifact,
-        ) -> BoxFuture<'a, Result<VerifiedPackage, InstallerError>> {
-            Box::pin(async move { Ok(VerifiedPackage::for_test(release)) })
+        ) -> BoxFuture<'a, Result<PreparedInstallPackage, InstallerError>> {
+            Box::pin(async move { Ok(PreparedInstallPackage::for_test(release)) })
         }
 
         fn install_current_user<'a>(
             &'a self,
-            _package: &'a VerifiedPackage,
+            _package: &'a PreparedInstallPackage,
             _progress: PlatformProgressSink,
-        ) -> BoxFuture<'a, Result<(), InstallerError>> {
-            Box::pin(async { Ok(()) })
+        ) -> BoxFuture<'a, Result<Option<InstalledApplication>, InstallerError>> {
+            Box::pin(async { Ok(None) })
         }
 
         fn launch<'a>(
@@ -2148,11 +2108,8 @@ mod tests {
             CpuArchitecture::X86_64,
             version,
             PlatformVersion::parse_windows_msix(version).unwrap(),
-            "OpenAI.Codex_fixture.msix",
-            crate::codex_desktop::verify::sha256_hex(artifact),
-            artifact.len() as u64,
+            Some(artifact.len() as u64),
             TrustedDownloadEndpoint::WinX64,
-            None,
         )
         .unwrap()
     }
@@ -2267,7 +2224,6 @@ mod tests {
             JobStage::Checking,
             JobStage::Preflight,
             JobStage::Downloading,
-            JobStage::VerifyingDownload,
             JobStage::Installing,
             JobStage::VerifyingInstallation,
             JobStage::Succeeded,
@@ -2543,13 +2499,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn checksum_mismatch_refreshes_metadata_and_reports_changed_release() {
+    async fn remote_checksum_drift_does_not_trigger_a_metadata_reanchor() {
         let expected_artifact = b"expected".to_vec();
         let served_artifact = b"tampered".to_vec();
         let original = release_for(&expected_artifact, "1.2.3.4");
-        let changed = release_for(&served_artifact, "1.2.3.5");
         let harness = harness(original.clone(), served_artifact, None);
-        harness.source.queue_forced_releases([original, changed]);
+        harness
+            .source
+            .queue_forced_releases([original.clone(), original]);
 
         let checked = harness.service.check_latest(false).await.unwrap();
         let started = harness
@@ -2560,29 +2517,22 @@ mod tests {
             .unwrap();
         let terminal = wait_for_terminal(&harness.service, &started.job_id).await;
 
-        assert_eq!(terminal.stage, JobStage::Failed);
-        assert_eq!(
-            terminal.error.as_ref().map(|error| error.code),
-            Some(InstallerErrorCode::MetadataChanged)
-        );
+        assert_eq!(terminal.stage, JobStage::Succeeded);
+        assert!(terminal.error.is_none());
         assert_eq!(
             recover_lock(&harness.source.calls).as_slice(),
-            [
-                CacheMode::UseCache,
-                CacheMode::ForceRefresh,
-                CacheMode::ForceRefresh
-            ]
+            [CacheMode::UseCache, CacheMode::ForceRefresh]
         );
         assert_eq!(harness.platform.preflight_calls.load(Ordering::SeqCst), 1);
-        assert_eq!(harness.platform.install_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(harness.platform.install_calls.load(Ordering::SeqCst), 1);
         let temporary_root = harness.temporary_parent.path().join("installer-temp");
         assert_eq!(std::fs::read_dir(temporary_root).unwrap().count(), 0);
     }
 
     #[tokio::test]
-    async fn checksum_mismatch_with_unchanged_metadata_remains_terminal() {
-        let expected_artifact = b"expected".to_vec();
-        let served_artifact = b"tampered".to_vec();
+    async fn remote_size_hint_drift_does_not_block_installation() {
+        let expected_artifact = b"short".to_vec();
+        let served_artifact = b"a substantially larger installer body".to_vec();
         let release = release_for(&expected_artifact, "1.2.3.4");
         let harness = harness(release.clone(), served_artifact, None);
         harness
@@ -2598,21 +2548,14 @@ mod tests {
             .unwrap();
         let terminal = wait_for_terminal(&harness.service, &started.job_id).await;
 
-        assert_eq!(terminal.stage, JobStage::Failed);
-        assert_eq!(
-            terminal.error.as_ref().map(|error| error.code),
-            Some(InstallerErrorCode::ChecksumMismatch)
-        );
+        assert_eq!(terminal.stage, JobStage::Succeeded);
+        assert!(terminal.error.is_none());
         assert_eq!(
             recover_lock(&harness.source.calls).as_slice(),
-            [
-                CacheMode::UseCache,
-                CacheMode::ForceRefresh,
-                CacheMode::ForceRefresh
-            ]
+            [CacheMode::UseCache, CacheMode::ForceRefresh]
         );
         assert_eq!(harness.platform.preflight_calls.load(Ordering::SeqCst), 1);
-        assert_eq!(harness.platform.install_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(harness.platform.install_calls.load(Ordering::SeqCst), 1);
     }
 
     #[tokio::test]

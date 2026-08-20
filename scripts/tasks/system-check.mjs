@@ -2,49 +2,37 @@
 
 import process from "node:process";
 import { run, usageBoolean } from "./lib.mjs";
+import {
+  VCTOOLS_COMPONENT,
+  findVsInstallation,
+  msvcRequirementHint,
+} from "./windows-msvc-env.mjs";
 
 export const REQUIREMENTS = Object.freeze({
-  linux: {
-    commands: [
-      ["git", ["--version"], "Install Git with the host package manager."],
-      [
-        "cc",
-        ["--version"],
-        "Install the distribution's C/C++ build toolchain.",
-      ],
-      ["make", ["--version"], "Install the distribution's build toolchain."],
-      ["pkg-config", ["--version"], "Install pkg-config."],
-    ],
-    pkgConfig: [
-      ["webkit2gtk-4.1", "Install the WebKitGTK 4.1 development package."],
-      [
-        "javascriptcoregtk-4.1",
-        "Install the JavaScriptCoreGTK 4.1 development package.",
-      ],
-      ["gtk+-3.0", "Install the GTK 3 development package."],
-      ["librsvg-2.0", "Install the librsvg development package."],
-      ["openssl", "Install the OpenSSL development package."],
-      [
-        "ayatana-appindicator3-0.1",
-        "Install the Ayatana AppIndicator 3 development package.",
-      ],
-    ],
-  },
   darwin: {
     commands: [
       ["git", ["--version"], "Install the Xcode command-line tools."],
       ["xcode-select", ["-p"], "Run xcode-select --install interactively."],
       ["xcrun", ["--find", "clang"], "Install the Xcode command-line tools."],
     ],
-    pkgConfig: [],
   },
   win32: {
     commands: [
       ["git", ["--version"], "Install Git for Windows."],
       [
-        "where.exe",
-        ["cl.exe"],
-        "Open a Visual Studio 2022 Developer shell with the Desktop C++ workload.",
+        "vswhere.exe",
+        [
+          "-latest",
+          "-version",
+          "[17.0,18.0)",
+          "-products",
+          "*",
+          "-requires",
+          VCTOOLS_COMPONENT,
+          "-property",
+          "installationPath",
+        ],
+        msvcRequirementHint(),
       ],
       [
         "reg.exe",
@@ -58,7 +46,21 @@ export const REQUIREMENTS = Object.freeze({
         "Install the Microsoft Edge WebView2 Evergreen Runtime.",
       ],
     ],
-    pkgConfig: [],
+  },
+  linux: {
+    commands: [
+      ["git", ["--version"], "Install Git."],
+      [
+        "pkg-config",
+        ["--version"],
+        "Install pkg-config and the current Tauri 2 desktop prerequisites for this host.",
+      ],
+      [
+        "cc",
+        ["--version"],
+        "Install a C/C++ compiler and the current Tauri 2 desktop prerequisites for this host.",
+      ],
+    ],
   },
 });
 
@@ -86,18 +88,22 @@ function inspect(platform) {
       hint: result.status === 0 ? undefined : hint,
     });
   }
-  for (const [module, hint] of requirements.pkgConfig) {
-    const result = probe("pkg-config", ["--exists", module]);
-    checks.push({
-      name: `pkg-config ${module}`,
-      ok: result.status === 0,
-      hint: result.status === 0 ? undefined : hint,
-    });
-  }
   return { ok: checks.every((check) => check.ok), platform, checks };
 }
 
 function probe(command, args) {
+  if (command === "vswhere.exe") {
+    try {
+      findVsInstallation();
+      return { status: 0, stdout: "", stderr: "" };
+    } catch (error) {
+      return {
+        status: 1,
+        stdout: "",
+        stderr: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
   try {
     return run(command, args, { capture: true, allowFailure: true });
   } catch (error) {

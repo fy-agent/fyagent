@@ -819,7 +819,7 @@ impl XaiOAuthManager {
             .as_nanos();
         let temporary_path = parent.join(format!("{file_name}.tmp.{nonce}"));
 
-        #[cfg(unix)]
+        #[cfg(target_os = "macos")]
         {
             use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
             let result = (|| -> Result<(), std::io::Error> {
@@ -1174,7 +1174,7 @@ mod tests {
             .find(|account| account.id == "account-one")
             .is_some_and(|account| account.requires_reauth));
 
-        #[cfg(unix)]
+        #[cfg(target_os = "macos")]
         {
             use std::os::unix::fs::PermissionsExt;
             let mode = fs::metadata(data_dir.path().join("xai_oauth_auth.json"))

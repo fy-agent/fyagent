@@ -229,6 +229,23 @@ pub(crate) fn installer_proxy_configuration() -> Result<InstallerProxyConfigurat
     )
 }
 
+/// Apply the current installer/global proxy choice to a caller-owned client.
+///
+/// Scoped clients (WorkBuddy fetch, TRAE probes) must not reuse `GLOBAL_CLIENT`
+/// because that client has a different redirect and timeout policy.
+pub(crate) fn apply_installer_proxy(
+    builder: reqwest::ClientBuilder,
+) -> Result<reqwest::ClientBuilder, ()> {
+    match installer_proxy_configuration()? {
+        InstallerProxyConfiguration::Explicit(proxy_url) => {
+            let proxy = reqwest::Proxy::all(proxy_url.as_str()).map_err(|_| ())?;
+            Ok(builder.proxy(proxy))
+        }
+        InstallerProxyConfiguration::System => Ok(builder),
+        InstallerProxyConfiguration::Direct => Ok(builder.no_proxy()),
+    }
+}
+
 fn installer_proxy_configuration_from(
     explicit_proxy_url: Option<&str>,
     system_proxy_points_to_self: bool,

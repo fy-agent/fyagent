@@ -242,7 +242,7 @@ function redactStructuredString(text: string): string | null {
 
 // 把 Error 渲染成“脱敏 message + 原生调用栈”，与浏览器引擎的 stack 格式无关：
 //  - V8/Chromium(Windows WebView2)：stack 首行内嵌 message → 全局字面量替换成脱敏版；
-//  - WebKit/JSC(macOS/Linux WKWebView)、SpiderMonkey：stack 是纯栈帧、不含 message → 补脱敏头。
+//  - WebKit/JSC 与 SpiderMonkey：stack 是纯栈帧、不含 message → 补脱敏头。
 // 不识别 `    at ` / `@` 等引擎特有格式(枚举不完，正是它把 WebKit 栈整段丢了)，只按
 // “message 是否出现在 stack 里”分流，从而各平台都保留原生调用栈，且绝不残留未脱敏 message。
 function renderRedactedError(error: Error, structuredMessage: string): string {

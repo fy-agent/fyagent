@@ -198,6 +198,7 @@ try {
         run("node", ["scripts/tasks/lockfile-check.mjs"]);
       } else {
         withFileRollback(["mise.lock"], () => {
+          writeFilesAtomically([["mise.lock", ""]]);
           run("mise", ["lock", "--platform", platformArgument]);
           run("node", ["scripts/tasks/lockfile-check.mjs"]);
         });

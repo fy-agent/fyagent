@@ -42,6 +42,17 @@ fn merge_settings_for_save(
     // 开关）后、前端 query 缓存刷新前的一次全量保存会把旧 marker 重放回来，
     // 重新开启时被"复活"的标记挡住而漏迁。
     incoming.local_migrations = existing.local_migrations.clone();
+    // 当前供应商同样是后端维护的设备级状态。Renderer 保存的是旧快照；
+    // Provider 切换可能发生在读取快照之后，不能让一次普通设置保存把新的
+    // current_provider_* 覆盖回旧值。
+    incoming.current_provider_claude = existing.current_provider_claude.clone();
+    incoming.current_provider_claude_desktop = existing.current_provider_claude_desktop.clone();
+    incoming.current_provider_codex = existing.current_provider_codex.clone();
+    incoming.current_provider_gemini = existing.current_provider_gemini.clone();
+    incoming.current_provider_grokbuild = existing.current_provider_grokbuild.clone();
+    incoming.current_provider_opencode = existing.current_provider_opencode.clone();
+    incoming.current_provider_openclaw = existing.current_provider_openclaw.clone();
+    incoming.current_provider_hermes = existing.current_provider_hermes.clone();
     incoming
 }
 
@@ -64,12 +75,23 @@ pub async fn save_settings(
     state: tauri::State<'_, crate::store::AppState>,
     settings: crate::settings::AppSettings,
 ) -> Result<bool, String> {
-    let existing = crate::settings::get_settings();
-    let merged = merge_settings_for_save(settings, &existing);
+    // Configuration directory changes must not split a Provider mutation
+    // across old/new live paths. Lock both affected apps in stable order,
+    // persist the latest-merged settings, then release before any helper that
+    // acquires the Codex lock itself.
+    let provider_path_guards =
+        crate::services::provider::ProviderService::lock_settings_provider_paths(state.inner())
+            .await;
+    // Merge backend-owned fields against the value observed after acquiring
+    // the settings write lock. A separate read followed by update would allow
+    // a Provider switch in between to be overwritten by this stale payload.
+    let (existing, merged) =
+        crate::settings::update_settings_with_latest(settings, merge_settings_for_save)
+            .map_err(|e| e.to_string())?;
     let unify_codex_changed =
         merged.unify_codex_session_history != existing.unify_codex_session_history;
     let unify_codex_enabled = merged.unify_codex_session_history;
-    crate::settings::update_settings(merged).map_err(|e| e.to_string())?;
+    drop(provider_path_guards);
 
     // 统一会话开关变更时立即重写当前官方 Codex 供应商的 live 配置，
     // 不必等下一次切换才生效。
@@ -83,7 +105,9 @@ pub async fn save_settings(
             crate::services::provider::reapply_current_codex_official_live(state.inner())
         {
             log::warn!("统一 Codex 会话历史开关变更后重写 live 配置失败，回滚设置: {err}");
-            if let Err(rollback_err) = crate::settings::update_settings(existing) {
+            if let Err(rollback_err) =
+                crate::settings::update_settings_with_latest(existing, merge_settings_for_save)
+            {
                 log::error!("回滚统一会话开关设置失败: {rollback_err}");
             }
             return Err(format!(
@@ -552,6 +576,71 @@ mod tests {
         let merged = merge_settings_for_save(incoming, &existing);
 
         assert!(merged.local_migrations.is_none());
+    }
+
+    #[test]
+    fn save_settings_stale_snapshot_preserves_all_latest_backend_provider_selections() {
+        // Deterministic interleaving contract:
+        // 1. the renderer read `incoming`,
+        // 2. backend Provider switches produced `existing`,
+        // 3. the stale full payload is merged for persistence.
+        let incoming = AppSettings {
+            current_provider_claude: Some("stale-claude".to_string()),
+            current_provider_claude_desktop: Some("stale-claude-desktop".to_string()),
+            current_provider_codex: Some("stale-codex".to_string()),
+            current_provider_gemini: Some("stale-gemini".to_string()),
+            current_provider_grokbuild: Some("stale-grokbuild".to_string()),
+            current_provider_opencode: Some("stale-opencode".to_string()),
+            current_provider_openclaw: Some("stale-openclaw".to_string()),
+            current_provider_hermes: Some("stale-hermes".to_string()),
+            ..AppSettings::default()
+        };
+        let existing = AppSettings {
+            current_provider_claude: Some("latest-claude".to_string()),
+            current_provider_claude_desktop: Some("latest-claude-desktop".to_string()),
+            current_provider_codex: Some("latest-codex".to_string()),
+            current_provider_gemini: Some("latest-gemini".to_string()),
+            current_provider_grokbuild: Some("latest-grokbuild".to_string()),
+            current_provider_opencode: Some("latest-opencode".to_string()),
+            current_provider_openclaw: Some("latest-openclaw".to_string()),
+            current_provider_hermes: Some("latest-hermes".to_string()),
+            ..AppSettings::default()
+        };
+
+        let merged = merge_settings_for_save(incoming, &existing);
+
+        assert_eq!(
+            merged.current_provider_claude.as_deref(),
+            Some("latest-claude")
+        );
+        assert_eq!(
+            merged.current_provider_claude_desktop.as_deref(),
+            Some("latest-claude-desktop")
+        );
+        assert_eq!(
+            merged.current_provider_codex.as_deref(),
+            Some("latest-codex")
+        );
+        assert_eq!(
+            merged.current_provider_gemini.as_deref(),
+            Some("latest-gemini")
+        );
+        assert_eq!(
+            merged.current_provider_grokbuild.as_deref(),
+            Some("latest-grokbuild")
+        );
+        assert_eq!(
+            merged.current_provider_opencode.as_deref(),
+            Some("latest-opencode")
+        );
+        assert_eq!(
+            merged.current_provider_openclaw.as_deref(),
+            Some("latest-openclaw")
+        );
+        assert_eq!(
+            merged.current_provider_hermes.as_deref(),
+            Some("latest-hermes")
+        );
     }
 
     #[test]

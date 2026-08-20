@@ -59,7 +59,7 @@ describe("useDirectorySettings", () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
-    getUserHomeDirMock.mockResolvedValue("/home/mock");
+    getUserHomeDirMock.mockResolvedValue("/Users/mock");
     joinMock.mockImplementation(async (...segments: string[]) =>
       segments.join("/"),
     );
@@ -185,7 +185,7 @@ describe("useDirectorySettings", () => {
 
     expect(result.current.appConfigDir).toBe("/new/app");
     expect(selectConfigDirectoryMock).toHaveBeenCalledWith(
-      "/home/mock/.fyagent",
+      "/Users/mock/.fyagent",
     );
   });
 
@@ -213,9 +213,9 @@ describe("useDirectorySettings", () => {
     expect(onUpdateSettings).toHaveBeenCalledWith({
       codexConfigDir: undefined,
     });
-    expect(result.current.resolvedDirs.claude).toBe("/home/mock/.claude");
-    expect(result.current.resolvedDirs.codex).toBe("/home/mock/.codex");
-    expect(result.current.resolvedDirs.appConfig).toBe("/home/mock/.fyagent");
+    expect(result.current.resolvedDirs.claude).toBe("/Users/mock/.claude");
+    expect(result.current.resolvedDirs.codex).toBe("/Users/mock/.codex");
+    expect(result.current.resolvedDirs.appConfig).toBe("/Users/mock/.fyagent");
   });
 
   it("updates openclaw directory when browsing succeeds", async () => {

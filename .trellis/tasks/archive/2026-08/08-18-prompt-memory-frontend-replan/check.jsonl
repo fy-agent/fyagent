@@ -1,0 +1,6 @@
+{"file":".trellis/spec/frontend/v2-prompts-memory.md","reason":"IA changes must not widen commands, identifiers, or seeded browser data."}
+{"file":".trellis/spec/frontend/v2-shell.md","reason":"Scrollport, keep-alive blocker, SelectionLens, ExternalLinkButton contracts."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"V2 lint, typecheck, unit, browser, and viewport gates."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Pages stay behind FeaturePorts; no Tauri imports in pages."}
+{"file":".trellis/tasks/08-18-prompt-memory-frontend-replan/prd.md","reason":"Acceptance: catalog rail, inline edit, collapsed inspector, accurate memory copy."}
+{"file":".trellis/tasks/08-18-prompt-memory-frontend-replan/research/baseline-and-teammate-commits.md","reason":"Diff must not re-merge xk or push onto dev/laiyongjie."}

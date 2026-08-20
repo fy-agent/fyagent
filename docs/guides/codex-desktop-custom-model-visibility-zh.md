@@ -43,4 +43,4 @@ Codex 桌面应用的模型选择器会按你**当前的登录身份**来决定�
 
 - [使用第三方 API 时保留 Codex 远程操作和官方插件](./codex-official-auth-preservation-guide-zh.md)
 - [Codex DeepSeek 本地路由实战攻略](./codex-deepseek-routing-guide-zh.md)
-- [本地路由](../user-manual/zh/4-proxy/4.2-routing.md)
+- [本地路由](../user-manual/zh/5-proxy/5.2-routing.md)

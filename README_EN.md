@@ -7,7 +7,7 @@
   <p>
     <a href="https://github.com/fy-agent/fyagent/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/fy-agent/fyagent?style=flat-square&label=release&color=0B66FF"></a>
     <a href="https://github.com/fy-agent/fyagent/actions/workflows/ci.yml"><img alt="CI status" src="https://img.shields.io/github/actions/workflow/status/fy-agent/fyagent/ci.yml?branch=main&style=flat-square&label=CI"></a>
-    <img alt="Windows, macOS and Linux" src="https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux-18D3C5?style=flat-square">
+    <img alt="Windows and macOS" src="https://img.shields.io/badge/platforms-Windows%20%7C%20macOS-18D3C5?style=flat-square">
     <a href="LICENSING.md"><img alt="Source-available license" src="https://img.shields.io/badge/license-source--available-555B66?style=flat-square"></a>
   </p>
   <p>
@@ -30,6 +30,29 @@ WorkBuddy has a separate top-level configuration entry. It is not part of the ta
 
 > **Release status:** FyAgent is under active development. Back up important configuration before upgrading, and review the trust information for each release before installing it.
 
+## Interface
+
+The current desktop UI, captured in Simplified Chinese. The top bar switches among Agent directory, Models, Skills, MCP, Prompts, and Memory.
+
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <img src="assets/screenshots/main-zh-1.png" alt="FyAgent Models page: manage third-party models for WorkBuddy">
+      <br><em>Models</em>
+    </td>
+    <td align="center" width="50%">
+      <img src="assets/screenshots/main-zh-2.png" alt="FyAgent Skill marketplace">
+      <br><em>Skills</em>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" colspan="2">
+      <img src="assets/screenshots/main-zh-3.png" alt="FyAgent MCP discovery page">
+      <br><em>MCP</em>
+    </td>
+  </tr>
+</table>
+
 ## Vision: a portable digital persona for the AI era
 
 A “digital persona” is not an avatar that imitates how you speak. It is the durable expression of how you choose, shape, and manage AI: which models it uses, what it can connect to, which skills it has, how it should work, and what it should remember.
@@ -44,15 +67,15 @@ Long-term memory and a durable cross-tool persona are part of the product direct
 
 ## What FyAgent can do today
 
-| Human-facing capability | Current feature |
-| --- | --- |
-| AI brain | Manage providers and model choices, using built-in presets or compatible custom endpoints |
-| Tool connections | Maintain MCP servers centrally and sync them to supported AI tools |
-| AI skills | Manage Skills without repeating the same setup in every tool |
-| Working instructions | Reuse Prompts that carry familiar ways of working between tools |
-| Routing and recovery | Forward requests through the local proxy, define failover rules, and test model availability |
-| Usage record | Review token usage and estimated cost in one view |
-| Work continuity | Resume sessions and workspaces, then back up and sync configuration |
+| Human-facing capability | Current feature                                                                              |
+| ----------------------- | -------------------------------------------------------------------------------------------- |
+| AI brain                | Manage providers and model choices, using built-in presets or compatible custom endpoints    |
+| Tool connections        | Maintain MCP servers centrally and sync them to supported AI tools                           |
+| AI skills               | Manage Skills without repeating the same setup in every tool                                 |
+| Working instructions    | Reuse Prompts that carry familiar ways of working between tools                              |
+| Routing and recovery    | Forward requests through the local proxy, define failover rules, and test model availability |
+| Usage record            | Review token usage and estimated cost in one view                                            |
+| Work continuity         | Resume sessions and workspaces, then back up and sync configuration                          |
 
 Working data is stored locally in `~/.fyagent` by default. FyAgent uses SQLite and atomic file writes for configuration updates; `fyagent://` imports show the proposed changes before anything is written.
 
@@ -75,10 +98,8 @@ Release files follow these names:
 
 - macOS: `FyAgent-X.Y.Z-macOS.dmg`, `FyAgent-X.Y.Z-macOS.zip`
 - Windows: `FyAgent-X.Y.Z-Windows-x64-setup.exe`, `FyAgent-X.Y.Z-Windows-arm64-setup.exe`
-- Linux x64: `FyAgent-X.Y.Z-Linux-x86_64.AppImage`, `FyAgent-X.Y.Z-Linux-x86_64.deb`, `FyAgent-X.Y.Z-Linux-x86_64.rpm`
-- Linux arm64: `FyAgent-X.Y.Z-Linux-arm64.AppImage`, `FyAgent-X.Y.Z-Linux-arm64.deb`, `FyAgent-X.Y.Z-Linux-arm64.rpm`
 
-Windows releases use an NSIS setup program; MSI and portable ZIP packages are not part of the current release surface. macOS builds are ad-hoc signed, not signed with an Apple Developer ID, and not notarized. Linux Flatpak files are for self-builds and are not official release artifacts.
+Windows releases use an NSIS setup program; MSI and portable ZIP packages are not part of the current release surface. macOS builds are ad-hoc signed, not signed with an Apple Developer ID, and not notarized.
 
 Before installing, read the release notes and verify the published checksums, `signing-status.json`, and build attestation. `NotSigned` is a status, not proof that a file is safe. See the [installation guide](docs/user-manual/en/1-getting-started/1.2-installation.md) for platform-specific steps and the [release notes index](docs/release-notes/README.md) for version history.
 
@@ -88,24 +109,28 @@ Before installing, read the release notes and verify the published checksums, `s
 <summary><strong>Where does FyAgent store its data?</strong></summary>
 
 FyAgent uses `~/.fyagent` on the local device by default. See [Configuration files](docs/user-manual/en/6-faq/6.1-config-files.md) for exact locations and backup guidance.
+
 </details>
 
 <details>
 <summary><strong>Where should I ask for installation or configuration help?</strong></summary>
 
 Check the [FAQ manual](docs/user-manual/en/6-faq/6.2-questions.md), then open a [Q&A discussion](https://github.com/fy-agent/fyagent/discussions/categories/q-a) with your FyAgent version, operating system, related tool, and what you have already tried. Use the [Bug Report](https://github.com/fy-agent/fyagent/issues/new?template=bug_report.yml) form for a reproducible software defect.
+
 </details>
 
 <details>
 <summary><strong>Does FyAgent already provide long-term memory and a complete digital persona?</strong></summary>
 
 Not yet. The current release focuses on unified management of models, tool connections, Skills, working instructions, configuration, and usage records. Long-term memory and a persona that persists across tools remain a product direction until the corresponding features are implemented and verified.
+
 </details>
 
 <details>
 <summary><strong>Is FyAgent open source?</strong></summary>
 
 FyAgent is source-available, not open source as defined by the OSI. FyAgent-owned components and modifications use PolyForm Noncommercial License 1.0.0; CC Switch-derived portions remain under the MIT License. See [Licensing](LICENSING.md).
+
 </details>
 
 ## Join the community
@@ -119,7 +144,7 @@ See [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md), [SUPPORT.md](SUPPORT.md), and [CON
 
 ## Development
 
-A first checkout requires a global `mise >= 2026.8.0`. After reviewing the repository configuration, use this sequence for interactive development:
+A first checkout requires a global `mise >= 2026.8.6`. After reviewing the repository configuration, use this sequence for interactive development:
 
 ```bash
 mise trust

@@ -5,7 +5,7 @@ use serde_json::Value;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::{OnceLock, RwLock};
-#[cfg(not(target_os = "windows"))]
+#[cfg(target_os = "macos")]
 use tauri_plugin_store::StoreExt;
 
 use crate::error::AppError;
@@ -33,7 +33,7 @@ pub fn get_app_config_dir_override() -> Option<PathBuf> {
     override_cache().read().ok()?.clone()
 }
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(target_os = "macos")]
 fn read_override_from_store(app: &tauri::AppHandle) -> Option<PathBuf> {
     let store = match app.store_builder("app_paths.json").build() {
         Ok(store) => store,
@@ -219,7 +219,7 @@ pub fn set_app_config_dir_to_store(
         Ok(())
     }
 
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
     {
         let store = app
             .store_builder("app_paths.json")

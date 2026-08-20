@@ -10,8 +10,8 @@
 
 Common cross-layer bugs:
 
-- API returns format A, frontend expects format B
-- Database stores X, service transforms to Y, but loses data
+- Host returns format A, renderer expects format B
+- Host stores X, renderer transforms to Y, but loses data
 - Multiple layers implement the same logic differently
 
 ---
@@ -34,12 +34,12 @@ For each arrow, ask:
 
 ### Step 2: Identify Boundaries
 
-| Boundary               | Common Issues                     |
-| ---------------------- | --------------------------------- |
-| API ↔ Service         | Type mismatches, missing fields   |
-| Service ↔ Database    | Format conversions, null handling |
-| Backend ↔ Frontend    | Serialization, date formats       |
-| Component ↔ Component | Props shape changes               |
+| Boundary                              | Common Issues                                      |
+| ------------------------------------- | -------------------------------------------------- |
+| Rust host ↔ Tauri IPC                | Command/DTO mismatch, missing registration         |
+| IPC ↔ renderer port or API facade    | Each consumer re-parses the same payload           |
+| Renderer ↔ React                     | Props/state ownership, event-listener lifetime     |
+| Native window geometry ↔ renderer chrome | Treating host overflow and Overlay drag as one layer |
 
 ### Step 3: Define Contracts
 
@@ -67,7 +67,7 @@ For each boundary:
 
 ### Mistake 3: Leaky Abstractions
 
-**Bad**: Component knows about database schema
+**Bad**: Renderer knows about host storage schema
 
 **Good**: Each layer only knows its neighbors
 
@@ -83,7 +83,7 @@ another.
 **Good**: Decode/normalize once at the owner boundary, then export typed
 projections to every consumer.
 
-**Rule**: For append-only logs, JSON streams, RPC payloads, or config files,
+**Rule**: For Tauri commands, events, serialized DTOs, or config files,
 create one owner for:
 
 - event / payload type definitions
@@ -120,38 +120,58 @@ For a Tauri command, event, or serialized payload, read
 [Frontend Type Safety](../frontend/type-safety.md) and the owning backend
 contract before changing either side.
 
+When the change is native window geometry plus renderer chrome:
+
+- [ ] Ask which layer owns host geometry versus Overlay/drag before editing either.
+- [ ] Do not derive Overlay drag from `userAgent`, and do not shrink V2 layout
+      to hide Windows maximize overflow.
+- [ ] Put signatures and tests in
+      [Main Window Layout](../backend/main-window-layout.md) and
+      [V2 Shell](../frontend/v2-shell.md), not this guide.
+
 ---
 
-## Versioned FyAgent Documentation Boundary
+## Version, Release Notes, and Archived Docs
 
-For versioned FyAgent documentation, locate the owning backend code-spec and
-its `Tests Required` section first. Keep version-specific paths, compatibility
-boundaries, and validation requirements there; this guide is only a routing
-prompt, not a parallel product document.
+Archived tasks and old versioned docs are historical evidence, not current
+authority. Locate the owning backend code-spec and its `Tests Required`
+section first:
 
-## Remote-Probe Boundary
+- Application version and installer asset names:
+  [Application Version and Installer Assets](../backend/fyagent-version-contract.md)
+- Formal release notes and publication identity:
+  [GitHub Release Workflow](../backend/github-release-workflow.md)
+- Product identity and provenance exceptions:
+  [Application Identity](../backend/application-identity.md)
 
-When a provider, installer, or configuration flow changes behavior after a
-remote probe:
+Do not keep a parallel version/path matrix in this guide.
 
-- [ ] Make every call path distinguish a definitive absence from a transient or
-      malformed response.
-- [ ] Ensure a retry/shortcut path retains the same validation and credential
-      boundary as the interactive path.
+## Remote Status, Prefetch, and Endpoint Probe
+
+When an installer, catalog, or configuration flow changes after a remote
+status check or endpoint probe:
+
+- [ ] Distinguish a definitive absence from a transient or malformed response.
+- [ ] Keep retry/shortcut paths on the same validation and credential boundary
+      as the interactive path.
 - [ ] Reset stale cached/prefetched state when the selected source changes.
-- [ ] Consume complete bounded input before parsing metadata; do not parse an
-      arbitrary prefix as a complete response.
-- [ ] Put exact URLs, request/response fields, error codes, and test cases in
-      the owning code-spec.
+- [ ] Parse only complete bounded input; do not treat an arbitrary prefix as a
+      finished response.
 
-## When to Create Flow Documentation
+Exact URLs, DTO fields, error codes, and tests belong in the owning spec:
 
-Create detailed flow docs when:
+- [Codex Desktop Installer](../backend/codex-desktop-installer.md)
+- [External Agent P0 Safety](../backend/external-agent-p0.md)
+- [WorkBuddy Configuration](../backend/workbuddy-configuration.md)
 
-- Feature spans 3+ layers
-- Multiple teams are involved
-- Data format is complex
-- Feature has caused bugs before
+## When a Cross-Layer Change Needs a Code-Spec
+
+Update the owning `backend/` or `frontend/` code-spec (do not add a second
+flow document here) when:
+
+- The change spans host, IPC, and renderer
+- The serialized shape or error matrix is changing
+- The same boundary has already caused a bug
 
 ---
 
@@ -159,7 +179,7 @@ Create detailed flow docs when:
 
 For a new or changed host-to-renderer payload:
 
-- [ ] Map the Rust service/type, command registration, TypeScript facade, hook
+- [ ] Map the Rust type, command registration, V2 port or legacy facade, hook
       or state owner, and rendering consumer before editing.
 - [ ] Keep serialization/normalization at the owner boundary; consumers render
       typed projections instead of locally re-parsing raw payload fields.

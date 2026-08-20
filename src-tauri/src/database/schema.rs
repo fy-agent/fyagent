@@ -67,7 +67,10 @@ impl Database {
             enabled_claude BOOLEAN NOT NULL DEFAULT 0, enabled_codex BOOLEAN NOT NULL DEFAULT 0,
             enabled_gemini BOOLEAN NOT NULL DEFAULT 0, enabled_grokbuild BOOLEAN NOT NULL DEFAULT 0,
             enabled_opencode BOOLEAN NOT NULL DEFAULT 0,
-            enabled_hermes BOOLEAN NOT NULL DEFAULT 0
+            enabled_hermes BOOLEAN NOT NULL DEFAULT 0,
+            enabled_workbuddy BOOLEAN NOT NULL DEFAULT 0,
+            enabled_qoderwork BOOLEAN NOT NULL DEFAULT 0,
+            enabled_trae_work BOOLEAN NOT NULL DEFAULT 0
         )",
             [],
         )
@@ -97,6 +100,9 @@ impl Database {
             enabled_grokbuild BOOLEAN NOT NULL DEFAULT 0,
             enabled_opencode BOOLEAN NOT NULL DEFAULT 0,
             enabled_hermes BOOLEAN NOT NULL DEFAULT 0,
+            enabled_qoderwork BOOLEAN NOT NULL DEFAULT 0,
+            enabled_trae_work BOOLEAN NOT NULL DEFAULT 0,
+            enabled_workbuddy BOOLEAN NOT NULL DEFAULT 0,
             installed_at INTEGER NOT NULL DEFAULT 0,
             content_hash TEXT,
             updated_at INTEGER NOT NULL DEFAULT 0
@@ -510,6 +516,23 @@ impl Database {
                         log::info!("迁移数据库从 v15 到 v16（重建 Codex 会话用量）");
                         Self::migrate_v15_to_v16(conn)?;
                         Self::set_user_version(conn, 16)?;
+                    }
+                    16 => {
+                        log::info!(
+                            "迁移数据库从 v16 到 v17（Skills 添加 QoderWork/TRAE Work 目标）"
+                        );
+                        Self::migrate_v16_to_v17(conn)?;
+                        Self::set_user_version(conn, 17)?;
+                    }
+                    17 => {
+                        log::info!("迁移数据库从 v17 到 v18（Skills/MCP 添加 WorkBuddy 目标）");
+                        Self::migrate_v17_to_v18(conn)?;
+                        Self::set_user_version(conn, 18)?;
+                    }
+                    18 => {
+                        log::info!("迁移数据库从 v18 到 v19（MCP 添加 QoderWork/TRAE Work 目标）");
+                        Self::migrate_v18_to_v19(conn)?;
+                        Self::set_user_version(conn, 19)?;
                     }
                     _ => {
                         return Err(AppError::Database(format!(
@@ -1520,7 +1543,87 @@ impl Database {
     /// schema migration already owns the Database connection mutex.
     fn migrate_v15_to_v16(conn: &Connection) -> Result<(), AppError> {
         let codex_dir = crate::codex_config::get_codex_config_dir();
-        crate::services::session_usage_codex::reset_codex_usage_on_conn(conn, &codex_dir)
+        Self::migrate_v15_to_v16_for_codex_dir(conn, &codex_dir)
+    }
+
+    fn migrate_v15_to_v16_for_codex_dir(
+        conn: &Connection,
+        codex_dir: &std::path::Path,
+    ) -> Result<(), AppError> {
+        crate::services::session_usage_codex::reset_codex_usage_on_conn(conn, codex_dir)
+    }
+
+    /// v16 -> v17：Skills 增加 QoderWork 与 TRAE Work 分配标志。
+    ///
+    /// 两列均为 additive/default-false；旧行和原六个 enabled_* 值原样保留。
+    fn migrate_v16_to_v17(conn: &Connection) -> Result<(), AppError> {
+        if Self::table_exists(conn, "skills")? {
+            Self::add_column_if_missing(
+                conn,
+                "skills",
+                "enabled_qoderwork",
+                "BOOLEAN NOT NULL DEFAULT 0",
+            )?;
+            Self::add_column_if_missing(
+                conn,
+                "skills",
+                "enabled_trae_work",
+                "BOOLEAN NOT NULL DEFAULT 0",
+            )?;
+        }
+
+        log::info!("v16 -> v17 迁移完成：Skills 已添加 QoderWork/TRAE Work 目标");
+        Ok(())
+    }
+
+    /// v17 -> v18：Skills 与 MCP 增加 WorkBuddy 分配标志。
+    ///
+    /// 两列均为 additive/default-false；旧行和原有 enabled_* 值原样保留。
+    /// WorkBuddy 不是 AppType，MCP 列只服务直接分配。
+    fn migrate_v17_to_v18(conn: &Connection) -> Result<(), AppError> {
+        if Self::table_exists(conn, "skills")? {
+            Self::add_column_if_missing(
+                conn,
+                "skills",
+                "enabled_workbuddy",
+                "BOOLEAN NOT NULL DEFAULT 0",
+            )?;
+        }
+        if Self::table_exists(conn, "mcp_servers")? {
+            Self::add_column_if_missing(
+                conn,
+                "mcp_servers",
+                "enabled_workbuddy",
+                "BOOLEAN NOT NULL DEFAULT 0",
+            )?;
+        }
+
+        log::info!("v17 -> v18 迁移完成：Skills/MCP 已添加 WorkBuddy 目标");
+        Ok(())
+    }
+
+    /// v18 -> v19：MCP 增加 QoderWork / TRAE Work 直接分配标志。
+    ///
+    /// 两列均为 additive/default-false；旧行和原有 enabled_* 值原样保留。
+    /// QoderWork / TRAE Work 不是 AppType，MCP 列只服务直接分配。
+    fn migrate_v18_to_v19(conn: &Connection) -> Result<(), AppError> {
+        if Self::table_exists(conn, "mcp_servers")? {
+            Self::add_column_if_missing(
+                conn,
+                "mcp_servers",
+                "enabled_qoderwork",
+                "BOOLEAN NOT NULL DEFAULT 0",
+            )?;
+            Self::add_column_if_missing(
+                conn,
+                "mcp_servers",
+                "enabled_trae_work",
+                "BOOLEAN NOT NULL DEFAULT 0",
+            )?;
+        }
+
+        log::info!("v18 -> v19 迁移完成：MCP 已添加 QoderWork/TRAE Work 目标");
+        Ok(())
     }
 
     /// 插入默认模型定价数据
@@ -3171,10 +3274,10 @@ mod tests {
             [],
         )?;
         Database::set_user_version(&conn, 14)?;
+        Database::migrate_v14_to_v15(&conn)?;
+        Database::set_user_version(&conn, 15)?;
 
-        Database::apply_schema_migrations_on_conn(&conn)?;
-
-        assert_eq!(Database::get_user_version(&conn)?, SCHEMA_VERSION);
+        assert_eq!(Database::get_user_version(&conn)?, 15);
         assert!(Database::has_column(
             &conn,
             "mcp_servers",
@@ -3194,6 +3297,145 @@ mod tests {
         assert_eq!(mcp_values, (1, 0));
         assert_eq!(skill_values, (1, 0));
 
+        Ok(())
+    }
+
+    #[test]
+    fn migrate_v16_to_v17_adds_skill_targets_without_changing_existing_flags(
+    ) -> Result<(), AppError> {
+        let conn = Connection::open_in_memory()?;
+        conn.execute_batch(
+            "CREATE TABLE skills (
+                id TEXT PRIMARY KEY,
+                enabled_claude BOOLEAN NOT NULL DEFAULT 0,
+                enabled_codex BOOLEAN NOT NULL DEFAULT 0,
+                enabled_gemini BOOLEAN NOT NULL DEFAULT 0,
+                enabled_grokbuild BOOLEAN NOT NULL DEFAULT 0,
+                enabled_opencode BOOLEAN NOT NULL DEFAULT 0,
+                enabled_hermes BOOLEAN NOT NULL DEFAULT 0
+            );
+            INSERT INTO skills (
+                id, enabled_claude, enabled_codex, enabled_gemini,
+                enabled_grokbuild, enabled_opencode, enabled_hermes
+            ) VALUES ('skill-1', 1, 0, 1, 0, 1, 0);",
+        )?;
+        Database::set_user_version(&conn, 16)?;
+
+        Database::apply_schema_migrations_on_conn(&conn)?;
+
+        assert_eq!(Database::get_user_version(&conn)?, SCHEMA_VERSION);
+        let values: (i64, i64, i64, i64, i64, i64, i64, i64, i64) = conn.query_row(
+            "SELECT enabled_claude, enabled_codex, enabled_gemini,
+                    enabled_grokbuild, enabled_opencode, enabled_hermes,
+                    enabled_qoderwork, enabled_trae_work, enabled_workbuddy
+             FROM skills WHERE id = 'skill-1'",
+            [],
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                    row.get(6)?,
+                    row.get(7)?,
+                    row.get(8)?,
+                ))
+            },
+        )?;
+        assert_eq!(values, (1, 0, 1, 0, 1, 0, 0, 0, 0));
+        Ok(())
+    }
+
+    #[test]
+    fn migrate_v17_to_v18_adds_workbuddy_flags_without_changing_existing() -> Result<(), AppError> {
+        let conn = Connection::open_in_memory()?;
+        conn.execute_batch(
+            "CREATE TABLE skills (
+                id TEXT PRIMARY KEY,
+                enabled_claude BOOLEAN NOT NULL DEFAULT 0,
+                enabled_codex BOOLEAN NOT NULL DEFAULT 0,
+                enabled_gemini BOOLEAN NOT NULL DEFAULT 0,
+                enabled_grokbuild BOOLEAN NOT NULL DEFAULT 0,
+                enabled_opencode BOOLEAN NOT NULL DEFAULT 0,
+                enabled_hermes BOOLEAN NOT NULL DEFAULT 0,
+                enabled_qoderwork BOOLEAN NOT NULL DEFAULT 0,
+                enabled_trae_work BOOLEAN NOT NULL DEFAULT 0
+            );
+            CREATE TABLE mcp_servers (
+                id TEXT PRIMARY KEY,
+                enabled_claude BOOLEAN NOT NULL DEFAULT 0,
+                enabled_codex BOOLEAN NOT NULL DEFAULT 0,
+                enabled_gemini BOOLEAN NOT NULL DEFAULT 0,
+                enabled_grokbuild BOOLEAN NOT NULL DEFAULT 0,
+                enabled_opencode BOOLEAN NOT NULL DEFAULT 0,
+                enabled_hermes BOOLEAN NOT NULL DEFAULT 0
+            );
+            INSERT INTO skills (
+                id, enabled_claude, enabled_codex, enabled_gemini,
+                enabled_grokbuild, enabled_opencode, enabled_hermes,
+                enabled_qoderwork, enabled_trae_work
+            ) VALUES ('skill-1', 1, 0, 1, 0, 1, 0, 1, 0);
+            INSERT INTO mcp_servers (
+                id, enabled_claude, enabled_codex, enabled_gemini,
+                enabled_grokbuild, enabled_opencode, enabled_hermes
+            ) VALUES ('mcp-1', 1, 0, 0, 0, 1, 0);",
+        )?;
+        Database::set_user_version(&conn, 17)?;
+
+        Database::apply_schema_migrations_on_conn(&conn)?;
+
+        assert_eq!(Database::get_user_version(&conn)?, SCHEMA_VERSION);
+        let skill_values: (i64, i64, i64, i64) = conn.query_row(
+            "SELECT enabled_claude, enabled_qoderwork, enabled_trae_work, enabled_workbuddy
+             FROM skills WHERE id = 'skill-1'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )?;
+        assert_eq!(skill_values, (1, 1, 0, 0));
+        let mcp_values: (i64, i64, i64) = conn.query_row(
+            "SELECT enabled_claude, enabled_opencode, enabled_workbuddy
+             FROM mcp_servers WHERE id = 'mcp-1'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )?;
+        assert_eq!(mcp_values, (1, 1, 0));
+        Ok(())
+    }
+
+    #[test]
+    fn migrate_v18_to_v19_adds_qoder_trae_mcp_flags_without_changing_existing(
+    ) -> Result<(), AppError> {
+        let conn = Connection::open_in_memory()?;
+        conn.execute_batch(
+            "CREATE TABLE mcp_servers (
+                id TEXT PRIMARY KEY,
+                enabled_claude BOOLEAN NOT NULL DEFAULT 0,
+                enabled_codex BOOLEAN NOT NULL DEFAULT 0,
+                enabled_gemini BOOLEAN NOT NULL DEFAULT 0,
+                enabled_grokbuild BOOLEAN NOT NULL DEFAULT 0,
+                enabled_opencode BOOLEAN NOT NULL DEFAULT 0,
+                enabled_hermes BOOLEAN NOT NULL DEFAULT 0,
+                enabled_workbuddy BOOLEAN NOT NULL DEFAULT 0
+            );
+            INSERT INTO mcp_servers (
+                id, enabled_claude, enabled_codex, enabled_gemini,
+                enabled_grokbuild, enabled_opencode, enabled_hermes, enabled_workbuddy
+            ) VALUES ('mcp-1', 1, 0, 0, 0, 1, 0, 1);",
+        )?;
+        Database::set_user_version(&conn, 18)?;
+
+        Database::apply_schema_migrations_on_conn(&conn)?;
+
+        assert_eq!(Database::get_user_version(&conn)?, SCHEMA_VERSION);
+        let mcp_values: (i64, i64, i64, i64, i64) = conn.query_row(
+            "SELECT enabled_claude, enabled_opencode, enabled_workbuddy, enabled_qoderwork, enabled_trae_work
+             FROM mcp_servers WHERE id = 'mcp-1'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+        )?;
+        assert_eq!(mcp_values, (1, 1, 1, 0, 0));
         Ok(())
     }
 
@@ -3221,7 +3463,11 @@ mod tests {
         )?;
         Database::set_user_version(&conn, 15)?;
 
-        Database::apply_schema_migrations_on_conn(&conn)?;
+        Database::migrate_v15_to_v16_for_codex_dir(
+            &conn,
+            std::path::Path::new(r"C:\FyAgentTest\.codex"),
+        )?;
+        Database::set_user_version(&conn, 16)?;
 
         assert_eq!(Database::get_user_version(&conn)?, 16);
         let counts: (i64, i64, i64, i64) = conn.query_row(

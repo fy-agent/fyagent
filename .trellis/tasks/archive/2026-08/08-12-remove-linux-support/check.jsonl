@@ -1,0 +1,16 @@
+{"file":".trellis/tasks/08-12-remove-linux-support/research.md","reason":"Audit every inventoried explicit and implicit support surface, approved exclusion, exact count, and residual-search rule."}
+{"file":".trellis/spec/backend/index.md","reason":"Verify all affected backend contracts and canonical checks were included in the final review."}
+{"file":".trellis/spec/frontend/index.md","reason":"Verify platform UI, settings, IPC, locale, V2, and desktop acceptance surfaces remain internally consistent."}
+{"file":".trellis/spec/backend/development-environment.md","reason":"Check the four-platform mise lock, host guards, task metadata, generated docs, and frozen toolchain installation."}
+{"file":".trellis/spec/backend/github-ci-workflow.md","reason":"Check runner migration, every remaining conditional job, formatting responsibility, exact Required dependencies, triggers, and permissions."}
+{"file":".trellis/spec/backend/github-release-workflow.md","reason":"Check three metadata targets, four installers, seven subjects, eight attachments, runner portability, and fail-closed transaction topology."}
+{"file":".trellis/spec/backend/fyagent-version-contract.md","reason":"Verify versions, filenames, manifests, evidence schemas, exact sets, and remaining-platform package contracts agree."}
+{"file":".trellis/spec/backend/application-brand-assets.md","reason":"Confirm retired distribution assets and references are gone while shared Windows/macOS brand consumers still validate."}
+{"file":".trellis/spec/backend/application-identity.md","reason":"Confirm current identifiers and public paths no longer expose retired distribution identities."}
+{"file":".trellis/spec/backend/windows-runtime-security.md","reason":"Verify removing WSL did not weaken ordinary UNC, containment, environment sanitization, user-scope, or redaction protections."}
+{"file":".trellis/spec/backend/upstream-sync.md","reason":"Review native and release claims for evidence that matches only the remaining executed platforms."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Check Rust/TypeScript wire unions, DTO fields, invoke arguments, mocks, and fixtures are contracted together."}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Check platform settings removal, translation parity, accessibility, and Windows/macOS fallback behavior."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Run and interpret full renderer, locale, V2, desktop-mock, visual, and build gates without overstating native evidence."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Review producer-to-consumer data flow for orphan fields, stale counts, workflow dependencies, and documentation drift."}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Review every narrowed cfg/non-Windows branch for missed consumers, duplicated logic, or accidental macOS regression."}

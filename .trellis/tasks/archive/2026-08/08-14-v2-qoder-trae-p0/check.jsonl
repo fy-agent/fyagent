@@ -1,0 +1,14 @@
+{"file":".trellis/spec/backend/index.md","reason":"Backend full-scope quality checklist and test gate."}
+{"file":".trellis/spec/backend/development-environment.md","reason":"Verify checks use the supported locked toolchain and Developer Shell."}
+{"file":".trellis/spec/backend/workbuddy-configuration.md","reason":"Review secret, revision, network and filesystem safety invariants."}
+{"file":".trellis/spec/backend/windows-runtime-security.md","reason":"Review process, identity and path boundaries on Windows."}
+{"file":".trellis/spec/backend/external-agent-p0.md","reason":"Review the completed cross-layer P0 safety contract and its automated-evidence limits."}
+{"file":".trellis/spec/frontend/index.md","reason":"Frontend full-scope quality checklist."}
+{"file":".trellis/spec/frontend/v2-shell.md","reason":"Review V2 isolation, ports, UI state and responsive behavior."}
+{"file":".trellis/spec/frontend/v2-agent-models.md","reason":"Detect regressions to catalog order, links, installer and existing model flows."}
+{"file":".trellis/spec/frontend/v2-skills-mcp.md","reason":"Verify target separation, authoritative state and secret lifecycle."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Verify exact DTO runtime validation and closed unions."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Focused and full renderer/browser/desktop acceptance requirements."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Review end-to-end DTO and state consistency."}
+{"file":".trellis/tasks/08-14-v2-qoder-trae-p0/research/current-contract-audit.md","reason":"Compare implementation against the confirmed baseline."}
+{"file":".trellis/tasks/08-14-v2-qoder-trae-p0/research/vendor-official-evidence.md","reason":"Ensure capability wording does not exceed official or HIL evidence."}

@@ -273,7 +273,7 @@ Merged upstream v3.19.1 while preserving FyAgent boundaries, resolved conflicts 
 
 ### Summary
 
-Fixed explicit release-manifest selection, test-only manifest linker scope, windows 0.61 API compatibility, and strict cross-target Rust lint failures. Verified fmt, host and Windows Clippy with warnings denied, the full Rust suite, Windows test-harness linking, release workflow regressions, and complete x64 plus ARM64 MSI cross-builds with Linux structural checks.
+Fixed explicit release-manifest selection, test-only manifest linker scope, windows 0.61 API compatibility, and strict cross-target Rust lint failures. Verified fmt, host and Windows Clippy with warnings denied, the full Rust suite, Windows test-harness linking, release workflow regressions, and complete x64 plus ARM64 MSI cross-builds with structural checks.
 
 ### Git Commits
 
@@ -406,3 +406,657 @@ Archived the five FyAgent modernization children and parent after the user defer
 ### Next Steps
 
 - If formal publication resumes, create a new Trellis task and re-establish live exact-SHA CI, preflight, tag/version, Release, asset, signing, and attestation acceptance.
+
+
+## Session 13: FyAgent frontend V2 Phase 1 shell
+
+**Date**: 2026-08-12
+**Task**: FyAgent frontend V2 Phase 1 shell
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Added the isolated light V2 renderer shell, hash routing, platform adapters, V2-specific quality gates, and durable frontend contracts.
+
+### Main Changes
+
+- Switched the renderer entry to src/v2 while preserving legacy and Rust sources.
+- Added the responsive light shell, six empty routes, transparent Y brand, UI Lab, and browser/Tauri window ports.
+- Added V2 lint, strict typecheck, unit/architecture tests, four-viewport Playwright coverage, and fixed review findings.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `82ea583a` | (see git log) |
+
+### Testing
+
+- [OK] env:check, lint:v2, typecheck:v2, test:v2 (27), renderer build, task/docs contracts, and diff checks passed.
+- [OK] Chromium suite passed 16/16 before final code-only polish; further interactive testing was stopped at user request.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- Human acceptance remains for the complete native window checklist, 150% DPI, full legacy startup semantics, and Release preflight.
+
+
+## Session 14: Archive unarchived pythonrust Trellis task
+
+**Date**: 2026-08-12
+**Task**: Archive unarchived pythonrust Trellis task
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Archived the remaining unarchived Trellis task assigned to pythonrust at the user's request; no source files were changed.
+
+### Main Changes
+
+- Archived 08-10-windows-user-runtime-trellis-decoupling under the 2026-08 archive.
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] Verified no active tasks remain and the Git working tree is clean.
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 15: FyAgent V2 native liquid glass shell
+
+**Date**: 2026-08-12
+**Task**: FyAgent V2 native liquid glass shell
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Restored system-owned native chrome and delivered the Blue Ambient clear-glass V2 shell with one bounded selected-navigation lens; closed only directly blocking pre-existing full-gate contract gaps and archived the task after all local gates passed.
+
+### Main Changes
+
+- Removed V2 custom window controls, drag regions, WindowFrame ports, factories, implementations, and obsolete platform tests while preserving the lifecycle-ready bridge.
+- Added @samasante/liquid-glass 0.1.1 behind an internal active-navigation adapter, Blue Ambient four-tier glass tokens, responsive shell styling, and DEV-only UI Lab coverage.
+- Updated V2 and quality specs plus narrow fail-closed baseline gate regressions required by the full local acceptance gate.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f4d3dca5` | (see git log) |
+| `80b7ed9a38e1fbd1924f75e37ec6e15e2cf9c411` | (see git log) |
+
+### Testing
+
+- [OK] Passed env:check, lint:v2, typecheck:v2, test:v2 (24/24), test:v2:browser (16/16 across four viewports), build:renderer (143 modules), format:check, git diff --check, and full mise run check.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- Native/manual evidence remains intentionally deferred: Windows title bar, WebView2 SVG/backdrop performance and fallback, 125%/150% DPI, and subjective visual similarity.
+
+
+## Session 16: Contract desktop support to Windows and macOS
+
+**Date**: 2026-08-13
+**Task**: Contract desktop support to Windows and macOS
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Restricted current FyAgent product, runtime, CI, release, documentation, and validation surfaces to Windows and macOS, then completed the reviewed Trellis lifecycle.
+
+### Main Changes
+
+- Removed unsupported desktop host and nested runtime paths across native, renderer, settings, IPC, and tool lifecycle flows.
+- Aligned CI and release topology to Windows and macOS with three metadata records, four installers, seven attestation subjects, and eight attachments.
+- Added fail-closed current-tree structural and raster identity seals with mutation coverage.
+- Updated public documentation and current specifications; removed 84 obsolete versioned release-note files as whole historical documents.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e968538ad3cd38d39bb3450606f63ea4f3b3a223` | (see git log) |
+| `041fdeb7186066650d4abe3961f437a115552354` | (see git log) |
+| `586ec185a9e8eedee8054771fa9dcdb8912c35f4` | (see git log) |
+| `e3e79721f4ac20be1b125217595dbd040e9cfaff` | (see git log) |
+| `425f34f067c283f57b5332ed8d7a4f285b8c4469` | (see git log) |
+| `bc3ec9b8f9ffa73d8546ea37ae75b2c7774f0fe4` | (see git log) |
+| `c584863b3bd6737cd82512e8729202919c1df460` | (see git log) |
+| `140655a754eb86f9eb163af41925b24b8f7179cc` | (see git log) |
+| `7a483a417266f63216ea69f4047c0c371f7f6a96` | (see git log) |
+| `40cb2b513272866d1cab0923a6bd02fcc4d230f9` | (see git log) |
+| `7affe962d9fb39c90fc703efdebeeacb9cb39920` | (see git log) |
+| `054de2dab4df1ee2d428ff47a1fe9098cea1dca0` | (see git log) |
+| `9b9e7a9eb3ed2ee1e99c32d2bcd1fcaf2cf2971e` | (see git log) |
+| `fbec2a37e1863941a13ab40056d72223466757af` | (see git log) |
+| `9aaea37050ce3eb462f8bc3e7a05c335365fad30` | (see git log) |
+| `f8503a6b53e54fe8de358d7bc5a0be61e155f96f` | (see git log) |
+| `041a1513c69244accdfee4f59373cc82816cad60` | (see git log) |
+| `67a0bbe5dd9b9af78cb7770033a76eb0fc9e8619` | (see git log) |
+| `33d2c62c7d1a3059cc3a7c1fad8d4c64de7de416` | (see git log) |
+| `54484b3f0f32ef43ac62f3717d637a5c102f6840` | (see git log) |
+| `5c5348a49116b6e805676ad4a573f774e441a7cc` | (see git log) |
+| `a95350fb514264f2a5f9f46c9c8e982c2ee96c19` | (see git log) |
+| `2fa6a5d47c1d8b4c6f6a1a968a51f8eb6aa4f846` | (see git log) |
+| `43cd17c30834502a559f458ac80f393bc5a6c20e` | (see git log) |
+| `cb3b16734ecd8d1dbc65b07888cf9cb1dfcb0bf7` | (see git log) |
+| `d534bd68d66977f1c38e5e894c1b44bc5974929e` | (see git log) |
+| `c0e940895fdd940c941189d0a00c5cc903fbb1df` | (see git log) |
+| `f674f2ee0a24aab3c1c763daef4442bdd56e047c` | (see git log) |
+| `5f9948f447a5461451fd6e1cf2822bd9f1a05893` | (see git log) |
+| `5a414c00b39cdc08e9ea727228a39d3c0fc7d9eb` | (see git log) |
+| `a3c3189aeacf893b680fb82e6ce432c92a8ae77a` | (see git log) |
+| `68ff6ab4aca3902d089ac1dbe9b59f1094bc3a49` | (see git log) |
+| `e2090435e0e1b097b64f5b179661062c9f78a9ff` | (see git log) |
+| `b7dc74f261db570eebe768455e4bb01219ccab51` | (see git log) |
+
+### Testing
+
+- [OK] Full session-bound prearchive gate passed in Visual Studio x64 Developer PowerShell in 250.7 seconds.
+- [OK] Durable current-tree surface gate passed across 1698 files; focused mutation contract passed 21 tests.
+- [OK] V2 lint and typecheck passed; 24 unit tests, 16 Chromium browser tests, and 7 icon consumers passed.
+- [OK] Windows x64 Tauri and NSIS bundle completed; installer size 8093837 bytes.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- Run hosted Windows Arm64 and macOS CI plus exact-source formal release preflight before any external publication.
+
+
+## Session 17: Close the postarchive surface audit lifecycle
+
+**Date**: 2026-08-13
+**Task**: Close the postarchive surface audit lifecycle
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Made the canonical current-repository audit independent of the temporary prearchive task exclusion and revalidated the completed lifecycle.
+
+### Main Changes
+
+- Updated the production snapshot contract to run without an active-task input and to reject unexpected session-authority lookup.
+- Removed development-time Git mode substitution and refreshed the reviewed structure identity digest for the changed test.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `38077353` | (see git log) |
+
+### Testing
+
+- [OK] Focused current-tree surface contract passed all 21 tests.
+- [OK] Full no-exclusion postarchive check passed in Visual Studio x64 Developer PowerShell in 131.3 seconds.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- Run hosted Windows Arm64 and macOS CI plus exact-source formal release preflight before any external publication.
+
+
+## Session 18: V2 Agent catalog and model setup
+
+**Date**: 2026-08-13
+**Task**: V2 Agent catalog and model setup
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Completed the V2 Agent catalog and Models quick-setup flow, integrated all current origin/codex branches, synchronized the Y application and installer identity, passed the full local validation matrix, produced and verified the Windows NSIS package, and archived the task.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `94048e2b` | (see git log) |
+| `f749581f` | (see git log) |
+| `a2473c91` | (see git log) |
+| `e82369d3` | (see git log) |
+| `39ef24fb` | (see git log) |
+| `b780b9ae` | (see git log) |
+| `8edabe17` | (see git log) |
+| `5ddd49b0` | (see git log) |
+| `e4d00991` | (see git log) |
+| `179cf481` | (see git log) |
+| `0ba62c4f` | (see git log) |
+| `e1286cf0` | (see git log) |
+| `33216297` | (see git log) |
+| `d7291ce5` | (see git log) |
+| `54d914b8` | (see git log) |
+| `87071076` | (see git log) |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 19: Agent catalog interactions and managed Codex install
+
+**Date**: 2026-08-14
+**Task**: Agent catalog interactions and managed Codex install
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Upgraded the V2 Agent catalog to structured official links, embedded the existing Codex Desktop installer contract, corrected Agent and assignment presentation, fixed Windows Explorer browser foreground handoff, synchronized executable specs, and passed the full prearchive gate; real Codex install and non-current-platform HIL remain unexecuted.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `2324f4f9` | (see git log) |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 20: FyAgent v2 QoderWork / TRAE Work P0
+
+**Date**: 2026-08-14
+**Task**: FyAgent v2 QoderWork / TRAE Work P0
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+完成 QoderWork/TRAE Work P0 自动化实现：catalog v3、runtime fail-closed、SkillTargetId 八目标、Qoder Hooks、TRAE endpoint/MCP 预检、共享 Agent/Models UI、窄权限、安全复制与 Trellis 归档。typecheck/lint/test/browser/format/rust gates passed; HIL 未执行。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `47c2dab` | (see git log) |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 21: V2 Prompt and Memory native business integration
+
+**Date**: 2026-08-15
+**Task**: V2 Prompt and Memory native business integration
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Replaced the V2 Prompt and Memory prototypes with validated native business ports, shared-theme pages, authoritative refresh and dirty-state protections; added focused contracts, deterministic standalone preview evidence, full gates, and read-only Windows Tauri smoke coverage without writing user Prompt or Memory data.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8ddef12db1e5cda508cde643fcc6e53518ff5a05` | (see git log) |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 22: Executable installer upstream-admission removal
+
+**Date**: 2026-08-15
+**Task**: Executable installer upstream-admission removal
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Removed upstream content and publication-field admission checks from FyAgent executable one-click installs while preserving fixed endpoints, local same-file handoff, Windows helper/ACL/file-ID/inventory protections, macOS transaction safety, post-install verification, DTO/UI contracts, tests, and long-term specs. Native HIL remains unverified; prearchive only reports three pre-existing supported-platform findings outside this task.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c54bb799` | (see git log) |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 23: macOS Overlay 拖拽条与 Windows 最大化几何
+
+**Date**: 2026-08-17
+**Task**: macOS Overlay 拖拽条与 Windows 最大化几何
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+恢复原生 macOS Overlay 顶部 28px 拖拽条；Windows 最大化期间不再 set_min_size，避免取消最大化后仍保持最大化客户区并跳出工作区。契约已写入 V2 shell 与 Main Window Layout spec。
+
+### Main Changes
+
+- 原生 macOS 用 shouldShowMacOverlayDragStrip()（detectRuntime，不用 UA）在 Brand/Nav/Tools 上方加 28px 惰性拖拽条，左侧 78px 让出红黄绿。
+- Windows 日志证实 Moved 后 refresh 的 set_min_size 会取消最大化并留下 2560×1521 客户区；最大化/独占全屏时跳过几何写入。
+- 新增 .trellis/spec/backend/main-window-layout.md，并收紧 v2-shell 拖拽条开关与跨层路由。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a781f102` | (see git log) |
+| `833b9407` | (see git log) |
+| `1ac564ab` | (see git log) |
+| `6619bcb6` | (see git log) |
+| `9615733a` | (see git log) |
+
+### Testing
+
+- [OK] mise run rust:test -- runtime_geometry_constraints_skip_maximized_and_fullscreen 通过。
+- [OK] macOS 本机确认拖拽/双击缩放；Windows 本机确认最大化不再飞出屏幕后已去掉调试埋点。
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 无。任务已归档。
+
+
+## Session 24: SelectionLens 可打断滑块移植
+
+**Date**: 2026-08-17
+**Task**: SelectionLens 可打断滑块移植
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+把 myself-todolist 智能视图的 layoutId 滑块做成 V2 SelectionLens，接到顶栏、侧栏目录和 feature tabs/列表；规格记录双透镜分工与每轨一组弹簧合同。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `606c35bd` | (see git log) |
+| `b74d63d3` | (see git log) |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 25: SelectionLens 去掉 layoutId 缩放变形
+
+**Date**: 2026-08-17
+**Task**: SelectionLens 去掉 layoutId 缩放变形
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+layoutId 非等比 scale 叠加 backdrop-filter 会压扁滑块并拉糊顶栏文字。改为轨道 overlay 弹簧驱动 left/width；规格禁止再对玻璃滑块做 scale 投影。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `9bb391d0` | (see git log) |
+| `85e5ebed` | (see git log) |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 26: V2 catalog models Skills/MCP parity
+
+**Date**: 2026-08-18
+**Task**: V2 catalog models Skills/MCP parity
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Aligned V2 agent catalog, models, and Skills/MCP: TRAE Work CN URL and native persist, OpenCode model CRUD, Qoder unsupported third-party models, catalog-aligned Skills/MCP targets including WorkBuddy, then updated specs and archived the task.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `bbeb0921` | (see git log) |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 27: SelectionLens 从选中项左上角展开
+
+**Date**: 2026-08-18
+**Task**: SelectionLens 从选中项左上角展开
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+首次出现不再从轨道父框左上角飞入，而是从当前选中宿主左上角扩散；轨内切换仍打断同一 overlay。
+
+### Main Changes
+
+- SelectionLensGroup 出现/reveal 改为 selectionLensCollapsedOrigin(host box)，调用方不改。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7ef30844` | (see git log) |
+
+### Testing
+
+- [OK] mise run lint:v2 typecheck:v2 test:v2（237 passed）。
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 28: V2 功能页签/搜索/列表共享与复用规格
+
+**Date**: 2026-08-19
+**Task**: V2 功能页签/搜索/列表共享与复用规格
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+抽出 FeatureTabs/FeatureSearch/FeatureList，Skills/MCP/Prompts/Memory 接入；规格把复用写成前端默认偏好，新组件若会被其他模块使用则第一次提交就放 shared/。
+
+### Main Changes
+
+- 新增 reuse.md；思考指南去掉「出现三次再抽象」；architecture 测试锁定共享 chrome 进口。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `66e979da` | (see git log) |
+
+### Testing
+
+- [OK] mise run lint:v2 typecheck:v2 test:v2（242 passed）。
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 29: Qoder/TRAE MCP assignment and catalog-order Skills/MCP
+
+**Date**: 2026-08-19
+**Task**: Qoder/TRAE MCP assignment and catalog-order Skills/MCP
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Removed unused Models official-settings buttons, added QoderWork CN and TRAE Work CN direct MCP live-file adapters, aligned Skills/MCP assignment order with the Agent directory, merged and closed PR 111, and updated the 7-section code-specs.
+
+### Main Changes
+
+- Drop Models 「打开官方设置」 / 「打开 TRAE 官方模型设置」; keep Qoder 「管理 Hooks 和 MCP」.
+- Add schema v19 MCP flags and native adapters for ~/.qoderworkcn/mcp.json and TRAE SOLO CN User/mcp.json.
+- Share six catalog-ordered Skills/MCP targets; FeatureList is a column flex track; FeatureListItem accepts ariaLabel.
+- Merge PR 111 onto shared FeatureTabs/FeatureSearch/FeatureList; close GitHub PR 111; archive 08-18-prompt-memory-frontend-replan.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d52a7ef9` | (see git log) |
+
+### Testing
+
+- [OK] mise run lint:v2, typecheck:v2, test:v2 (245 tests).
+- [OK] mise run rust:fmt:check, rust:clippy, rust:test.
+- [OK] mise run test:v2:browser: 116 passed (user-run).
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 30: V2 Skills discovery pagination and shared scroll
+
+**Date**: 2026-08-19
+**Task**: V2 Skills discovery pagination and shared scroll
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+V2 Skills 发现改为宿主分页，Skills/MCP 共用发现滚动条；V1 全量 discover 保留。规格写入 7 段契约后归档任务。
+
+### Main Changes
+
+- 新增 discover_available_skills_page，宿主先过滤再切片，进程内 5 分钟扫描缓存；V1 discover_available_skills 仍返回全量。
+- 抽出 FeaturePagination 与 .fy-feature-discovery-scroll；发现搜索/筛选在 onChange 里重置页码，避免 set-state-in-effect。
+- 更新 v2-skills-mcp、reuse、v2-shell、directory-structure 与 frontend index。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `52a6d883` | (see git log) |
+
+### Testing
+
+- [OK] mise run lint:v2 typecheck:v2 test:v2（252 passed）、test:v2:browser（116 passed）、build:renderer。
+- [OK] mise run rust:fmt:check rust:clippy；rust:test 除 ACL 计数外 2782 passed，随后将 handler freeze 调到 332 并复测通过。
+- [OK] 完整 mise run check / check:prearchive 未绿：HEAD 上 format:check（3 个 models 文件）与 leftover unit/supported-platform（traework cfg、qoderwork.png、.cursor/.codebuddy 分类）已失败，非本任务引入。
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 31: V2 catalog v4, Grok Build, and Skills disk observation
+
+**Date**: 2026-08-20
+**Task**: V2 catalog v4, Grok Build, and Skills disk observation
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Shipped catalog v4 with Grok Build, slim Agent details, disk-observed installed Skills, and Skills discovery page scroll.
+
+### Main Changes
+
+- Union get_all_installed with a read-only scan of every SkillTargetId directory; adopt on first toggle/uninstall.
+- Add PRODUCT_DIRECTORY and Grok Build catalog v4; slim Agent detail to direct capabilities and CatalogOfficialLinks.
+- Wire Grok Build through Skills/MCP/Models/Prompts and Provider quick setup; Qoder models jump to /mcp.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c97ddb7d` | (see git log) |
+| `bb7fba4c` | (see git log) |
+| `940ff066` | (see git log) |
+| `664dd96f` | (see git log) |
+| `81b68e12` | (see git log) |
+| `daf3d113` | (see git log) |
+
+### Testing
+
+- [OK] mise run typecheck; mise run format:check; mise run test:v2 (35 files); mise run rust:clippy; cargo tests for catalog v4, skill observation/merge/adopt, and grokbuild quick setup.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- No follow-up in this task. Browser Playwright agents-models spec was updated but not executed in this session.
+
+
+## Session 32: Discovery cards wrap; shared pagination
+
+**Date**: 2026-08-20
+**Task**: none (small UI polish, no Trellis task)
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Skills/MCP discovery cards show full descriptions instead of a 3-line clamp. `FeaturePagination` adds prev/next, ellipsis, and `第 x / n 页` without a new UI library (Radix has no Pagination primitive).
+
+### Main Changes
+
+- Remove `-webkit-line-clamp` from `.fy-feature-card-body`; cards are column flex in a stretched grid.
+- Extend `FeaturePagination` with `buildFeaturePaginationItems`, 上一页/下一页, and ellipsis when `totalPages > 7`.
+- Update reuse, v2-skills-mcp, and v2-shell contracts; expand FeatureChrome tests.
+
+### Testing
+
+- [OK] mise run typecheck:v2; lint:v2; format:check; test:v2 (35 files, 255 passed).
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 33: Discovery card preview clamp and details dialog
+
+**Date**: 2026-08-20
+**Task**: none (small UI correction, no Trellis task)
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Corrected discovery cards: preview is clamped to 3 lines for grid alignment; full copy opens from 详情 in the shared Dialog. Spec now matches that contract.
+
+### Main Changes
+
+- Restore `-webkit-line-clamp: 3` and a 3-line min-height on `.fy-feature-card-body`.
+- Add 详情 on each discovery card; Dialog shows the complete description and repo/install meta.
+- Reverse the previous “no clamp / full card copy” spec in reuse and v2-skills-mcp.
+
+### Testing
+
+- [OK] mise run format; typecheck:v2; lint:v2; test:v2 (35 files, 256 passed).
+
+### Status
+
+[OK] **Completed**

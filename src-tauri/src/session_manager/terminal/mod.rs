@@ -1,5 +1,20 @@
 use std::process::Command;
 
+pub(crate) fn is_supported_terminal_target(target: &str) -> bool {
+    matches!(
+        target,
+        "terminal"
+            | "iterm2"
+            | "ghostty"
+            | "kitty"
+            | "wezterm"
+            | "kaku"
+            | "alacritty"
+            | "warp"
+            | "custom"
+    )
+}
+
 pub fn launch_terminal(
     target: &str,
     command: &str,
@@ -14,18 +29,22 @@ pub fn launch_terminal(
         return Err("Terminal resume is only supported on macOS".to_string());
     }
 
+    if !is_supported_terminal_target(target) {
+        return Err(format!("Unsupported terminal target: {target}"));
+    }
+
     match target {
         "terminal" => launch_macos_terminal(command, cwd),
-        "iTerm" | "iterm" => launch_iterm(command, cwd),
+        "iterm2" => launch_iterm(command, cwd),
         "ghostty" => launch_ghostty(command, cwd),
         "kitty" => launch_kitty(command, cwd),
         "wezterm" => launch_wezterm(command, cwd),
         "kaku" => launch_kaku(command, cwd),
         "alacritty" => launch_alacritty(command, cwd),
-        #[cfg(unix)]
+        #[cfg(target_os = "macos")]
         "warp" => launch_warp(command, cwd),
         "custom" => launch_custom(command, cwd, custom_config),
-        _ => Err(format!("Unsupported terminal target: {target}")),
+        _ => unreachable!("terminal target was validated before dispatch"),
     }
 }
 
@@ -203,7 +222,7 @@ fn build_wezterm_compatible_args_with_shell(
     args
 }
 
-#[cfg(unix)]
+#[cfg(target_os = "macos")]
 fn launch_warp(command: &str, cwd: Option<&str>) -> Result<(), String> {
     use std::io::Write;
     use std::os::unix::fs::PermissionsExt;
@@ -363,6 +382,26 @@ fn escape_osascript(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn session_launcher_accepts_canonical_terminal_setting_ids() {
+        for target in [
+            "terminal",
+            "iterm2",
+            "alacritty",
+            "kitty",
+            "ghostty",
+            "wezterm",
+            "kaku",
+            "warp",
+        ] {
+            assert!(is_supported_terminal_target(target));
+        }
+
+        assert!(is_supported_terminal_target("custom"));
+        assert!(!is_supported_terminal_target("iterm"));
+        assert!(!is_supported_terminal_target("retired-terminal"));
+    }
 
     #[test]
     fn build_shell_command_keeps_command_without_cwd_prefix_when_not_provided() {

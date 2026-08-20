@@ -31,13 +31,6 @@ pub enum ArtifactKind {
 }
 
 impl ArtifactKind {
-    const fn extension(self) -> &'static str {
-        match self {
-            Self::Msix => "msix",
-            Self::Dmg => "dmg",
-        }
-    }
-
     /// 下载器在临时 job 目录中使用的固定完成文件名。
     pub const fn fixed_local_file_name(self) -> &'static str {
         match self {
@@ -103,16 +96,48 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
     format!("{:x}", hasher.finalize())
 }
 
-/// Compares an in-memory SHA-256 against trusted metadata without applying
-/// artifact-size rules. Metadata sources use this for their own raw bytes;
-/// package artifacts must still go through the exact-size verifier below.
-pub(crate) fn sha256_matches(bytes: &[u8], expected_sha256: &str) -> Result<bool, InstallerError> {
-    let expected_digest = parse_sha256(expected_sha256)?;
-    let actual_digest: [u8; 32] = Sha256::digest(bytes).into();
-    Ok(digest_matches(&actual_digest, &expected_digest))
+#[cfg(test)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct LocalArtifactFingerprint {
+    pub size: u64,
+    pub sha256: String,
 }
 
-/// 校验内存字节的精确大小和 SHA-256。
+/// Computes a local, dynamic fingerprint without comparing it to publisher
+/// metadata. Installer handoff code uses this only to prove that the same
+/// downloaded file is still being consumed.
+#[cfg(test)]
+pub(crate) fn fingerprint_reader<R>(
+    mut reader: R,
+) -> Result<LocalArtifactFingerprint, InstallerError>
+where
+    R: Read,
+{
+    let mut size = 0_u64;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0_u8; HASH_READ_BUFFER_SIZE];
+    loop {
+        let read = reader
+            .read(&mut buffer)
+            .map_err(|_| download_failed("artifact stream could not be read"))?;
+        if read == 0 {
+            break;
+        }
+        size = size
+            .checked_add(read as u64)
+            .ok_or_else(|| download_failed("artifact size exceeded supported range"))?;
+        hasher.update(&buffer[..read]);
+    }
+    if size == 0 {
+        return Err(download_failed("artifact stream is empty"));
+    }
+    Ok(LocalArtifactFingerprint {
+        size,
+        sha256: format!("{:x}", hasher.finalize()),
+    })
+}
+
+/// Verify exact locally computed handoff size and SHA-256.
 pub fn verify_bytes(
     bytes: &[u8],
     expected_size: u64,
@@ -121,7 +146,7 @@ pub fn verify_bytes(
     verify_reader(Cursor::new(bytes), expected_size, expected_sha256)
 }
 
-/// 流式校验文件的精确大小和 SHA-256。
+/// Stream-verify exact locally computed handoff size and SHA-256.
 ///
 /// 底层读失败只会返回固定分类，避免将完整本地临时路径带入诊断或 IPC。
 pub fn verify_file(
@@ -241,41 +266,9 @@ where
     Ok(())
 }
 
-/// 仅接受不能形成路径、且符合目标端点类型的 artifact 文件名。
-///
-/// 调用方仍必须把下载写到固定本地文件名；此函数只验证镜像元数据中的精确名称，
-/// 从不把该名称拼接进本地路径。
-pub fn validate_artifact_file_name(
-    artifact_file_name: &str,
-    kind: ArtifactKind,
-) -> Result<(), InstallerError> {
-    if is_safe_artifact_file_name(artifact_file_name, kind) {
-        Ok(())
-    } else {
-        Err(metadata_invalid("artifact filename metadata is invalid"))
-    }
-}
-
-/// `validate_artifact_file_name` 的布尔形式，便于严格 parser 的字段过滤。
-pub fn is_safe_artifact_file_name(artifact_file_name: &str, kind: ArtifactKind) -> bool {
-    if artifact_file_name.is_empty()
-        || artifact_file_name.trim() != artifact_file_name
-        || artifact_file_name.contains(['/', '\\', '\0'])
-        || artifact_file_name.contains("..")
-        || artifact_file_name.chars().any(char::is_control)
-    {
-        return false;
-    }
-
-    let Some((stem, extension)) = artifact_file_name.rsplit_once('.') else {
-        return false;
-    };
-    !stem.is_empty() && extension.eq_ignore_ascii_case(kind.extension())
-}
-
 fn parse_sha256(value: &str) -> Result<[u8; 32], InstallerError> {
     let normalized = normalize_sha256(value)
-        .map_err(|_| metadata_invalid("expected SHA-256 metadata is invalid"))?;
+        .map_err(|_| metadata_invalid("local handoff SHA-256 is invalid"))?;
     let mut digest = [0_u8; 32];
 
     for (index, chunk) in normalized.as_bytes().chunks_exact(2).enumerate() {
@@ -388,8 +381,6 @@ mod tests {
     #[test]
     fn verifies_small_bytes_and_rejects_checksum_or_size_mismatch() {
         assert_eq!(sha256_hex(b"hello"), HELLO_SHA256);
-        assert!(sha256_matches(b"hello", HELLO_SHA256).unwrap());
-        assert!(!sha256_matches(b"goodbye", HELLO_SHA256).unwrap());
         assert!(verify_bytes(b"hello", 5, HELLO_SHA256).is_ok());
         assert_error_code(
             verify_bytes(b"hello", 5, &"0".repeat(64)),
@@ -470,30 +461,12 @@ mod tests {
     }
 
     #[test]
-    fn rejects_unsafe_or_wrong_extension_artifact_names() {
+    fn artifact_kinds_expose_only_fixed_local_names() {
         assert_eq!(ArtifactKind::Msix.fixed_local_file_name(), "installer.msix");
         assert_eq!(
             ArtifactKind::Dmg.fixed_part_file_name(),
             "installer.dmg.part"
         );
-        assert!(validate_artifact_file_name("Codex-Setup.MSIX", ArtifactKind::Msix).is_ok());
-        assert!(validate_artifact_file_name("ChatGPT.dmg", ArtifactKind::Dmg).is_ok());
-
-        for artifact_file_name in [
-            "",
-            "../evil.msix",
-            "folder/evil.msix",
-            "folder\\evil.msix",
-            "evil\0.msix",
-            "double..dot.msix",
-            " padded.msix",
-            "artifact.dmg",
-        ] {
-            assert_error_code(
-                validate_artifact_file_name(artifact_file_name, ArtifactKind::Msix),
-                InstallerErrorCode::ReleaseMetadataInvalid,
-            );
-        }
     }
 
     struct FakeDiskSpaceProbe {

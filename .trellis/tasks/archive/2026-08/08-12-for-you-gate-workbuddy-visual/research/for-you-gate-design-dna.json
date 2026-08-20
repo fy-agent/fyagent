@@ -1,0 +1,229 @@
+{
+  "meta": {
+    "name": "FyAgent For You Gate WorkBuddy Prototype",
+    "description": "R4-reviewed For You Gate visual language applied to the current WorkBuddy information architecture for prototype review only.",
+    "source_references": [
+      "workbuddy-baseline-1440.png",
+      "fyagent-brand-board.png",
+      "fyagent-app-icon-concept.png",
+      "05-agent-constellation-hero.png"
+    ],
+    "created_at": "2026-08-12"
+  },
+  "design_system": {
+    "color": {
+      "palette_type": "cool analogous with restrained warm semantic accent",
+      "primary": { "hex": "#0B66FF", "role": "primary action and selected state" },
+      "secondary": { "hex": "#18D3C5", "role": "gate continuity and connection signal" },
+      "accent": { "hex": "#FFAA2A", "role": "safety warning only" },
+      "neutral": {
+        "scale": ["#080A0D", "#10141A", "#151A21", "#252C35", "#687384", "#F3F0E9"],
+        "usage": "Graphite surfaces occupy most area; warm white carries primary text; cool grays carry borders and secondary copy."
+      },
+      "semantic": {
+        "success": "#24B47E",
+        "warning": "#FFAA2A",
+        "error": "#E15B64",
+        "info": "#0B66FF"
+      },
+      "surface": {
+        "background": "#080A0D",
+        "card": "#10141A",
+        "elevated": "#151A21"
+      },
+      "contrast_strategy": "High-contrast warm-white text on layered graphite; blue/cyan limited to interactive focus and identity."
+    },
+    "typography": {
+      "type_scale": {
+        "display": { "size": "52px", "weight": 700, "line_height": 1.08, "tracking": "-0.025em" },
+        "heading_1": { "size": "32px", "weight": 700, "line_height": 1.15, "tracking": "-0.02em" },
+        "heading_2": { "size": "24px", "weight": 600, "line_height": 1.25, "tracking": "-0.01em" },
+        "heading_3": { "size": "18px", "weight": 600, "line_height": 1.3, "tracking": "0" },
+        "body": { "size": "16px", "weight": 400, "line_height": 1.6, "tracking": "0" },
+        "body_small": { "size": "14px", "weight": 400, "line_height": 1.5, "tracking": "0" },
+        "caption": { "size": "12px", "weight": 400, "line_height": 1.4, "tracking": "0.01em" },
+        "overline": { "size": "12px", "weight": 600, "line_height": 1.2, "tracking": "0.16em" }
+      },
+      "font_families": {
+        "heading": "condensed grotesk Chinese display sans, fallback Noto Sans SC",
+        "body": "humanist Chinese UI sans, fallback Noto Sans SC",
+        "mono": "JetBrains Mono, IBM Plex Mono, monospace"
+      },
+      "font_style_notes": "Technical, direct, two-to-three weights; no decorative serif or generic startup display styling."
+    },
+    "spacing": {
+      "base_unit": "8px",
+      "scale": ["4px", "8px", "12px", "16px", "24px", "32px", "48px", "64px"],
+      "content_density": "comfortable operational",
+      "section_rhythm": "Compact navigation, 24–32px panel padding, 16–24px internal grouping, 24px grid gaps."
+    },
+    "layout": {
+      "grid_system": "12-column desktop grid",
+      "max_content_width": "1440px viewport with 16px outer inset",
+      "columns": "3 / 5 / 4 for progress, connection, model selection",
+      "gutter": "16px",
+      "breakpoints": ["1024px", "1280px", "1440px"],
+      "alignment_tendency": "strict left-aligned grid with a two-column hero"
+    },
+    "shape": {
+      "border_radius": { "small": "6px", "medium": "8px", "large": "12px", "pill": "9999px" },
+      "border_usage": "subtle 1px cool-gray borders on panels, inputs, and selected navigation",
+      "divider_style": "thin low-contrast graphite dividers"
+    },
+    "elevation": {
+      "shadow_style": "near-none",
+      "levels": {
+        "low": "0 1px 2px rgba(0,0,0,0.16)",
+        "medium": "0 8px 24px rgba(0,0,0,0.18)",
+        "high": "0 16px 40px rgba(0,0,0,0.22)"
+      },
+      "depth_cues": "surface tone, thin borders, and sparse blue/cyan luminous points"
+    },
+    "iconography": {
+      "style": "simple outlined functional icons plus the filled Y gate identity mark",
+      "stroke_weight": "1.5–2px",
+      "size_scale": ["16px", "20px", "24px", "40px"],
+      "preferred_set": "existing FyAgent application marks and Lucide-style controls"
+    },
+    "motion": {
+      "easing": "cubic-bezier(0.2, 0.8, 0.2, 1)",
+      "duration_scale": { "micro": "120ms", "normal": "180ms", "macro": "280ms" },
+      "entrance_pattern": "none in the static prototype",
+      "exit_pattern": "none in the static prototype",
+      "philosophy": "minimal functional"
+    },
+    "components": {
+      "button_style": "8px radius, high-contrast blue primary, graphite secondary, 40px desktop target",
+      "input_style": "dark elevated field, 1px border, mono for URL/model values, clear focus ring",
+      "card_style": "flat graphite panel with 1px border and 12px radius",
+      "navigation_pattern": "compact horizontal app switcher with selected WorkBuddy pill",
+      "modal_style": "not used",
+      "list_style": "searchable operational list with neutral empty state",
+      "component_notes": "Progress, connection, and model selection form one continuous task path rather than equal generic cards."
+    }
+  },
+  "design_style": {
+    "aesthetic": {
+      "mood": ["precise", "trusted", "calm", "technical"],
+      "visual_metaphor": "A gate that verifies entry into a connected Agent ecosystem",
+      "era_influence": "contemporary developer tooling",
+      "genre": "developer tool / AI product",
+      "personality_traits": ["disciplined", "legible", "reassuring", "direct"],
+      "adjectives": ["graphite", "signal-driven", "restrained", "operational"]
+    },
+    "visual_language": {
+      "complexity": "moderate",
+      "ornamentation": "subtle signal accents",
+      "whitespace_usage": "controlled breathing room around the task path",
+      "visual_weight_distribution": "hero identity at top, operational weight below",
+      "focal_strategy": "single Y gate identity followed by progressive task flow",
+      "contrast_level": "high for text and actions, low for decorative constellation",
+      "texture_usage": "none beyond soft graphite tonal variation"
+    },
+    "composition": {
+      "hierarchy_method": "scale, spatial isolation, and signal-color focus",
+      "balance_type": "asymmetric hero, structured operational grid",
+      "flow_direction": "top-to-bottom, then left-to-right across progress, connection, selection",
+      "grouping_strategy": "task-stage grouping rather than generic card repetition",
+      "negative_space_role": "separates identity, form work, and empty model state"
+    },
+    "imagery": {
+      "photo_treatment": "none",
+      "illustration_style": "abstract radial hub-and-spoke line visualization",
+      "graphic_elements": "Y gate symbol, sparse nodes, thin orbital connections",
+      "pattern_usage": "none",
+      "image_shape": "wide low-contrast hero field"
+    },
+    "interaction_feel": {
+      "feedback_style": "clear border and color state changes",
+      "hover_behavior": "subtle signal-color emphasis without scale effects",
+      "transition_personality": "snappy and restrained",
+      "loading_style": "small inline spinner only where data loads",
+      "microinteraction_density": "low"
+    },
+    "brand_voice_in_ui": {
+      "tone": "direct, specific, non-promotional",
+      "formality": "professional and approachable",
+      "cta_style": "plain imperative",
+      "empty_state_approach": "state what is missing and the next action",
+      "error_tone": "local, factual, and recoverable"
+    }
+  },
+  "visual_effects": {
+    "overview": {
+      "effect_intensity": "subtle-accent",
+      "performance_tier": "lightweight",
+      "fallback_strategy": "static Y mark and static constellation image",
+      "primary_technology": "CSS and static raster/SVG"
+    },
+    "background_effects": {
+      "type": "none",
+      "description": "Layered graphite surfaces only.",
+      "technology": "CSS",
+      "params": { "color_palette": ["#080A0D", "#10141A"], "speed": "0", "density": "0", "opacity": "1", "blend_mode": "normal" }
+    },
+    "particle_systems": {
+      "enabled": false,
+      "type": "none",
+      "description": "No live particles; constellation nodes are static.",
+      "technology": "none",
+      "params": { "count": 0, "shape": "none", "size_range": "0", "movement_pattern": "none", "color_behavior": "none", "interaction": "none", "spawn_area": "none" }
+    },
+    "3d_elements": {
+      "enabled": false,
+      "type": "none",
+      "description": "The prototype intentionally avoids the reviewed Three.js model because the page needs a lightweight operational focus.",
+      "technology": "none",
+      "params": { "renderer": "none", "lighting": "none", "camera": "none", "materials": "none", "geometry": "none", "post_processing": [], "interaction_model": "none" }
+    },
+    "shader_effects": {
+      "enabled": false,
+      "type": "none",
+      "description": "No shaders.",
+      "technology": "none",
+      "params": { "uniforms": {}, "vertex_manipulation": "none", "fragment_output": "none", "noise_type": "none", "distortion": "none" }
+    },
+    "scroll_effects": {
+      "parallax": { "enabled": false, "layers": 0, "depth_range": "0", "speed_curve": "none" },
+      "scroll_triggered_animations": { "enabled": false, "trigger_points": [], "animation_type": "none", "scrub_behavior": "none" },
+      "scroll_morphing": { "enabled": false, "description": "none" }
+    },
+    "text_effects": {
+      "type": "none",
+      "description": "Static typography.",
+      "technology": "CSS",
+      "params": { "split_strategy": "none", "animation_per_unit": "none", "stagger": "0", "effect_style": "none" }
+    },
+    "cursor_effects": {
+      "enabled": false,
+      "type": "none",
+      "description": "Native cursor.",
+      "params": { "shape": "native", "size": "native", "blend_mode": "normal", "trail": false, "interaction_zone": "none" }
+    },
+    "image_effects": {
+      "type": "none",
+      "description": "Static low-contrast constellation visualization.",
+      "technology": "raster or SVG",
+      "params": { "filter_pipeline": "low opacity", "hover_transform": "none", "reveal_animation": "none", "distortion_type": "none" }
+    },
+    "glassmorphism_neumorphism": {
+      "enabled": false,
+      "style": "none",
+      "params": { "blur_radius": "0", "transparency": "0", "border_treatment": "1px solid", "shadow_type": "minimal", "light_source_angle": "none" }
+    },
+    "canvas_drawings": {
+      "enabled": false,
+      "type": "none",
+      "description": "No canvas implementation in the prototype.",
+      "technology": "none",
+      "params": { "draw_method": "none", "animation_loop": false, "color_scheme": "blue/cyan", "responsiveness": "static", "interaction": "none" }
+    },
+    "svg_animations": {
+      "enabled": false,
+      "type": "none",
+      "description": "Y mark is static.",
+      "params": { "animation_method": "none", "path_morphing": false, "stroke_animation": false, "filter_effects": "none" }
+    },
+    "composite_notes": "The prototype translates the approved 05 ecosystem idea into a quiet static radial diagram; it does not embed the heavy Three.js package or imply real hardware."
+  }
+}

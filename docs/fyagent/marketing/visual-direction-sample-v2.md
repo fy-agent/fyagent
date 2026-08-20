@@ -4,7 +4,7 @@ status: superseded
 updated: 2026-08-11
 review_on: 2026-09-10
 authority: working_sample
-source: ChatGPT built-in image generation with local historical VibeKey concept reference
+source: repository visual concept workflow with private evidence reference VK-CONCEPT
 superseded_by: visual-direction-sample-v3.md
 ---
 
@@ -48,16 +48,16 @@ Constraints: preserve the exact 16:9 composition, deep graphite background, empt
 
 ## 生成记录
 
-| 字段             | 值                                                                 |
-| ---------------- | ------------------------------------------------------------------ |
-| 模式             | ChatGPT built-in image generation                                  |
-| 历史参考         | 本地 VibeKey 概念图，仅参考材质、控制层级和状态反馈                |
-| 历史参考 SHA-256 | `BD5DB121CEE6ACAEB0F3D706E2054ED7B54B492878E4BBAB85AD260F82B8FB86` |
-| 输出             | `assets/samples/fyagent-tactile-orchestration-hero-v2.png`         |
-| 尺寸             | 1672×941                                                           |
-| 文件大小         | 1,553,252 bytes；concept 阶段未做发布压缩                          |
-| SHA-256          | `4B3328E85352A61C579B403CF61703634213BB9C7E647C3D956DC45FBDBC5F40` |
-| 内嵌文字 / Logo  | 无 / 无；中心徽章位为空                                            |
+| 字段            | 值                                                                  |
+| --------------- | ------------------------------------------------------------------- |
+| 模式            | 仓库视觉概念生成流程                                                |
+| 历史参考        | 私有概念图（证据编号 `VK-CONCEPT`），仅参考材质、控制层级和状态反馈 |
+| 历史参考记录    | 具体路径、文件名和校验值仅保存在非公开证据记录中                    |
+| 输出            | `assets/samples/fyagent-tactile-orchestration-hero-v2.png`          |
+| 尺寸            | 1672×941                                                            |
+| 文件大小        | 1,553,252 bytes；concept 阶段未做发布压缩                           |
+| SHA-256         | `4B3328E85352A61C579B403CF61703634213BB9C7E647C3D956DC45FBDBC5F40`  |
+| 内嵌文字 / Logo | 无 / 无；中心徽章位为空                                             |
 
 ## 视觉评审
 

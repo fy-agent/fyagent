@@ -51,10 +51,9 @@ boundary.
   files, and the Sigstore bundle: 13 attestation subjects and 14 attachments.
   Publication requires matching native build/package success, exact asset,
   metadata, attestation, transactional draft/re-download, and live eligibility
-  checks in the
-  [v0.3.1 Release Notes](docs/release-notes/v0.3.1-en.md). The optional Windows
-  install/uninstall lifecycle script is a manual diagnostic, not an Actions
-  gate. This changelog does not itself claim those remote gates have completed.
+  checks. The optional Windows install/uninstall lifecycle script is a manual
+  diagnostic, not an Actions gate. This changelog does not itself claim those
+  remote gates have completed.
 
 ## [0.3.0]
 
@@ -67,8 +66,6 @@ is exactly `v0.3.0`, not the upstream version.
 
 - Merged the complete CC Switch v3.19.2 ancestry in an isolated two-parent
   commit and replaced its copied Release Notes with a concise provenance ledger.
-- Retired Linux/WSL-to-Windows and macOS local cross-build paths. Local tasks
-  now build only the current host; formal assets use native GitHub runners.
 - Rebuilt the development environment around the canonical `mise run` task API,
   exact Node/pnpm/Rust/Python sources, locked uv assets, and an uv-owned Python
   environment.
@@ -89,10 +86,8 @@ is exactly `v0.3.0`, not the upstream version.
   ruleset, or branch protection in the v0.3.0 contract. Workflow-only source
   validation is an explicitly accepted residual supply-chain risk.
 - Publication requires the native runs, formal Release transaction, and exact
-  asset checks defined in the
-  [v0.3.0 Release Notes](docs/release-notes/v0.3.0-en.md). Independent
-  download/signature/digest verification is recorded separately in closeout
-  evidence after it is performed.
+  asset checks. Independent download/signature/digest verification is recorded
+  separately in closeout evidence after it is performed.
 
 ## Upstream source import: CC Switch v3.19.2 (2026-08-06)
 
@@ -126,7 +121,6 @@ Development since v3.19.0 is a maintenance pass rather than a feature wave — a
 
 - **Claude Desktop Usage Was Counted Twice**: Claude Desktop traffic through the local gateway landed in the usage dashboard once as a proxy row and once more as an imported transcript row, so its tokens, cost and request counts read roughly double. The regression shipped in v3.18.0: proxy dedup ids were scoped as `session:{app_type}:{provider_id}:{message_id}` for every app except `claude`, which put `claude-desktop` in its own namespace while the transcript importer kept writing the same Claude message under the bare `session:{message_id}` shape with `app_type = 'claude'`. All three dedup defenses failed at once — the primary-key convergence that lets a proxy row absorb an existing session row, the write-side fingerprint probe, and the read-side filter, the latter two both comparing `app_type` with strict equality. The two apps now share the bare namespace again, and the two comparisons are widened by a one-way rule where a `claude` session row can be absorbed by a `claude-desktop` proxy row but never the reverse. Because the read-side filter is also what daily rollups aggregate through, already-stored duplicates stop being counted without any row being rewritten or deleted — see Upgrade notes for the retention limit on that. For Codex, Gemini and OpenCode the widened comparison collapses to the previous exact match, and quota checks keep strict app matching. (#5938, #5951)
 - **Switching Back to the Official Codex Provider Stranded You on a 401 With No Login Screen**: With Codex API-key preservation off (the default), switching to a third-party provider writes that vendor's key into `~/.codex/auth.json`. Switching afterwards to a built-in official provider — whose stored credentials are empty — took the config-only write path, so `config.toml` was replaced while the third-party `OPENAI_API_KEY` stayed on disk. Codex then authenticated to the official endpoint with a foreign key and got 401, and because `auth.json` existed it never fell through to its own login screen, leaving no way out from inside the app. After a successful switch to an official Codex provider, CC Switch now deletes an `auth.json` that contains only an `OPENAI_API_KEY` with no first-class credential beside it — OAuth tokens, a personal access token, an agent identity or a Bedrock key all mark the file as real and leave it untouched, while metadata such as `auth_mode`, `last_refresh` or an account id can no longer shield a stale key. Deleting rather than writing `{}` is deliberate: an empty object resolves to ChatGPT mode without tokens and errors at bootstrap, whereas a missing file yields the login screen. The cleanup runs only after the outgoing provider has been backfilled into the database, so the removed key is preserved and comes back when that provider is selected again. Live-config reads were relaxed in the same change so the post-cleanup state — no `auth.json`, an existing `config.toml` — is no longer reported as "Codex is not installed".
-- **Grok Build Upgrades From Settings Failed With a Bare `os error 2`**: Upgrading Grok Build from Settings → About failed with `Error: No such file or directory (os error 2)` and nothing else. The cause is an asymmetry between how CC Switch probes tools and how it runs them: probing goes through a login shell, which sources the user's rc files and therefore sees nvm, Homebrew and Volta, while lifecycle scripts ran under a non-login shell inheriting the narrow PATH a GUI app is launched with. That normally does not matter, because anchored commands invoke binaries by absolute path — but grok 0.2.112 moved self-update onto npm distribution, so `grok update` now spawns `npm view` and `npm i -g` internally, and npm resolves node through its own shebang. The inner spawn returned ENOENT, which grok surfaced as the bare error. Lifecycle commands on macOS and Linux now run with the login shell's real PATH merged ahead of the inherited one, read through `/usr/bin/env` rather than by echoing the variable, because fish stores PATH as a list and would emit space-separated segments. Native Grok's update additionally chains the official xAI installer as a fallback — deliberately not `npm i -g`, which shares both of the primary's failure modes; the installer is the only node-free path, lands in the same location, and rewrites the CLI's own `installer` setting back to `internal`, healing users whom an earlier npm fallback had moved onto npm distribution.
 - **Grok Build Proxy Takeover Returned 404, and Every Request Looked Like a New Session**: Enabling takeover on a Grok Build provider whose API format was OpenAI Chat or Anthropic produced an immediate 404 with no failover and no usage record — takeover rewrote the base URL and key but left the backend field alone, so the CLI posted to a route the proxy does not register. Takeover now also pins the backend to Responses; the per-provider downgrade to Chat Completions still happens inside the forwarder, and the forced value reverts with the whole live config when the proxy stops. Separately, proxy session extraction recognised only Codex and OpenAI clients, so every Grok Build turn minted a fresh session id marked as not client-provided, which suppressed prompt-cache key injection and per-session grouping in the usage dashboard. Grok's own headers are now read — the conversation id first, then the session id, ignoring the per-request id — under a distinct `grokbuild_` prefix so its rows cannot collide with Codex's. (#5677)
 - **Nine Interface Strings Rendered as Simplified Chinese in Every Language**: Nine strings appeared in Simplified Chinese regardless of the selected language, English and Japanese included. Each call site used the inline-default form with a Chinese literal, but the key existed in none of the four locale files — and i18next resolves a key through the language chain before it considers an inline default, so the English fallback never engaged and the Chinese literal won everywhere. The affected strings cover the Grok Build provider form's validation toast, the failover tooltip shown when an app is not yet taken over, the warning raised when stopping Claude Desktop routing while another app holds takeover and the reason line that explains why routing must start, the duplicate-provider id read failure, the empty Codex common-config error, the routing service's stop and stop-failed toasts, and the "unpriced" cost label the usage tables show for a request that carries tokens but computes to zero. All nine now exist in Chinese, English, Japanese and Traditional Chinese. (#5960)
 - **The Traditional Chinese About Page Fell Back to English in the Tool Manager**: With the interface set to Traditional Chinese, the tool management section of the About page rendered in English — version rows, install and update buttons, result toasts, the install-conflict diagnosis and the entire upgrade-confirmation dialog. The panel was built out across three earlier changes that added labels to Chinese, English and Japanese only, and because i18next falls back to English rather than failing, thirty missing keys were invisible in testing. This gap shipped in every release from v3.16.0 through v3.19.0. All thirty strings are now translated, the install hint was brought in line with the other locales, and a new locale test asserts that every tool-management label exists in all four languages with matching interpolation variables, so this class of drift fails the suite instead of shipping. (#5943)
@@ -151,7 +145,6 @@ Development since v3.19.0 is a maintenance pass rather than a feature wave — a
 - Because DeepSeek, Volcengine Ark Coding Plan and Tencent Hunyuan no longer require takeover, their traffic can bypass the local proxy entirely, and per-request proxy usage accounting does not see it. The usage itself is neither lost nor indistinguishable — Codex session-log import still records it — but that path carries no provider identity: all Codex usage that did not go through the local proxy is grouped under a single `Codex (Session)` entry, official-subscription consumption included. So a provider moving from routed to direct also moves its usage out from under its own name. Model attribution is unaffected: every row keeps its model id, and the usage panel's per-model table still separates `deepseek-v4-flash`, `hy3`, `ark-code-latest` and the official GPT models into their own rows with their own token and cost figures. Keep local routing takeover enabled only if you need the provider dimension specifically — for instance to compare the same model across several aggregators.
 - The stale Codex `auth.json` cleanup is gated on the incoming provider carrying the explicit official category and on the outgoing provider being backfilled successfully. An official entry created by hand without that category, or a switch whose backfill failed, still leaves the residue behind.
 - Enabling proxy takeover on a Grok Build provider now rewrites its backend to Responses in the live configuration. The stored provider row is untouched and the live file is restored from its backup when the proxy stops.
-- On macOS and Linux, every tool install and update triggered from Settings → About now runs with the login shell's PATH merged ahead of the inherited one, so a binary a lifecycle script resolves by name may resolve differently than before; each action also spawns one extra shell to read that PATH, which executes the user's interactive startup files. Windows is unchanged. Users on grok 0.2.112 or later may see two enumerated installations — the native one plus a global npm package that `grok update` created itself; they are kept in sync upstream and report the same version.
 - Environment-conflict detection for Claude Code, Codex and Gemini moved from substring to prefix matching, so variables that merely contain an app's name — `MY_ANTHROPIC_API_KEY`, `OLD_GEMINI_API_KEY` — are no longer reported as conflicts.
 - Deep-link import confirmations now reveal less of each secret than before: four leading characters instead of eight, and values of eight characters or fewer are masked entirely.
 
@@ -207,7 +200,6 @@ Development since v3.18.0 is headlined by a security-hardening wave and a proxy 
 ### Internal
 
 - **Release Assets Mirrored to Cloudflare R2 for ccswitch.io Downloads**: Release automation mirrors every installer to an R2 bucket behind `dl.ccswitch.io` and generates the manifest the ccswitch.io download page consumes — per-file SHA-256 checksums, sizes, and the release's real publish date — with immutable caching for versioned assets, a five-minute TTL on the root manifest, and pruning beyond the five most recent versions. Forks without the R2 credentials skip the sync entirely.
-- **Skill ZIP Extraction Tests No Longer Hijack TMPDIR**: Two cleanup-guard tests pointed the process-global `TMPDIR` at a scratch directory and asserted it ended up empty, so any concurrently running test that created a temp directory randomly failed the assertion on Ubuntu and macOS CI. The extraction now takes its temp base explicitly through a test seam and the tests use a private directory; the shipped code path is unchanged.
 
 ### Upgrade notes
 
@@ -267,7 +259,6 @@ Development since v3.18.0 is headlined by a security-hardening wave and a proxy 
 
 ### Internal
 
-- **Backend CI Now Covers Linux, Windows, and macOS**: Backend checks previously ran only on Ubuntu, so Windows/macOS-gated code paths were never compiled or tested in CI — the matrix now spans all three platforms, with the platform-gated tests repaired to pass everywhere (TOML literal-string path escapes, stale anchored-update expectations, and skill tests honoring the test home-directory override). No shipped behavior changes. (#5138)
 
 ### Upgrade notes
 
@@ -344,7 +335,6 @@ Development since v3.18.0 is headlined by a security-hardening wave and a proxy 
 
 - **Harden Release Supply Chain**: Added a `.github/CODEOWNERS` that, together with branch protection's Code Owners rule, requires owner review before any PR merges to `main` (with `/.github/` and `/src-tauri/` pinned explicitly alongside the global `*` fallback, all to `@farion1231`), gated the release job behind a `release` environment in `release.yml` so signing secrets unlock only after manual approval, and removed `.github` from `.gitignore` so the previously untracked `labeler.yml` and `workflows/labeler.yml` are now versioned.
 - **Settle pnpm Build-Script Approvals**: Approved `esbuild` (via `onlyBuiltDependencies`) and ignored `msw` (via `ignoredBuiltDependencies`) in `pnpm-workspace.yaml` so pnpm 10.13+ stops appending `allowBuilds` placeholders to the file on every install.
-- **Platform-Gate the Desktop-Scope Assertion in the Profile Roundtrip Test**: The `profile_roundtrip` integration test's Claude Desktop assertion is now `cfg`-gated to macOS/Windows to match the already cfg-gated desktop switch, so on Linux CI (where desktop live writes error) it expects the seeded `d1` instead of `d2` and no longer panics, poisons the shared test mutex, and cascades into two more failures.
 
 ## [3.16.5] - 2026-07-01
 
@@ -370,16 +360,12 @@ Development since v3.18.0 is headlined by a security-hardening wave and a proxy 
 - **Disable web_search for Native Codex Gateways That Reject It**: Some native `/responses` gateways whose first-party models lack OpenAI's hosted `web_search` tool reject it with "tool type 'web_search' is not supported by this gateway phase" (`responses_feature_not_supported`), and Codex sends the tool by default (config-driven, not gated by the catalog's `supports_search_tool`), producing hard 400s. cc-switch now writes the top-level TOML line `web_search = "disabled"` for those vendors via `set_codex_native_web_search_field`, injected alongside `model_catalog_json` at switch time. Scope is a blacklist (default-on): only providers matched by `base_url` host — `CODEX_WEB_SEARCH_REJECT_HOSTS = xiaomimimo.com, longcat.chat, minimax.io, minimaxi.com` — or by model brand prefix — `CODEX_WEB_SEARCH_REJECT_MODEL_PREFIXES = mimo, longcat, minimax, qwen3-coder` — are disabled, so relays serving real GPT, DouBao, general Qwen, and any unknown provider keep Codex's default. The `qwen3-coder` prefix suppresses the tool for the native `qwen3-coder-plus` direct-connect preset (百炼/DashScope marks built-in tools unsupported for the coder series) while general Qwen models sharing the DashScope host stay enabled — matching is on the model axis (after stripping any aggregator `vendor/` path segment like `MiniMaxAI/MiniMax-M3` or `qwen/qwen3-coder-plus`), so it also catches aggregators such as SiliconFlow fronting a reject vendor's model. A blacklist was chosen over a fuzzy "is this GPT?" whitelist because wrongly keeping `web_search` ON fails with a hard 400, and an ownership sentinel means cc-switch only ever removes a `web_search` key whose value equals its own `disabled`, so existing providers need no re-save and switching back re-enables web search. Also corrects the LongCat-2.0-Preview preset context window from 131072 (128K) to its real 1048576 (1M), aligning with the MiMo/Qwen 2^20 convention, and tightens the native Responses preset tests to assert exact model→contextWindow catalogs instead of only checking catalog presence.
 - **Strip All Credential-Like Keys From the Shared Claude Common-Config Snippet**: `extract_claude_common_config` previously only redacted `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN`, but Claude providers legitimately carry other credentials (`OPENROUTER_API_KEY`, `GOOGLE_API_KEY`, and possibly OpenAI/Gemini/AWS Bedrock/Vertex secrets), which could leak into the shared snippet and then be injected into other providers. Extraction now pattern-matches and strips any credential-shaped env key (`*_API_KEY` / `*_AUTH_TOKEN` / `*secret*` / `*token*`, etc.), while preserving plural `*_TOKENS` values like `MAX_OUTPUT_TOKENS` as legitimately shareable. This also closes the same pre-existing leak in the manual Extract and one-time auto-extract paths, and is covered by a dedicated credential-stripping unit test.
 - **Usage-Script Credentials Persisted Only as Explicit Overrides**: Provider usage scripts store optional `api_key`/`base_url` fields that override the provider's live credentials when querying quota, but these were silently mirroring the provider's own credentials — so copying a provider or editing its main API key/base URL left the usage script pinned to the old endpoint and key, and quota queries kept hitting the stale target. `ProviderService::add`/`update` now run `normalize_usage_script_credential_overrides` before persisting: if the script's trimmed `api_key` or slash-normalized `base_url` matches the provider's resolved usage credentials (or is blank) it is cleared to `None` so the query falls back to `resolve_usage_credentials` from the live config, while genuinely distinct overrides are kept and `template_type == "token_plan"` scripts are left untouched. The deeplink import path gained matching `normalize_deeplink_api_key`/`base_url` helpers, and the frontend now invalidates `usageKeys.script(id, appId)` (including the `originalId` when a provider is renamed) on update so the homepage re-queries with the corrected config instead of the test-time cache. (#4654)
-- **Hermes Config Dir Now Resolves Correctly on Windows**: CC Switch hardcoded `~/.hermes` as the Hermes config directory, but Hermes itself resolves it via `get_hermes_home()` — the `HERMES_HOME` env var, then a platform default of `%LOCALAPPDATA%\hermes` on Windows (`~/.hermes` on mac/Linux). On Windows this meant CC Switch wrote provider configs to a path Hermes never reads, so provider switches had no effect. `get_hermes_dir()` now mirrors Hermes' own resolution order — `settings.hermes_config_dir` explicit override, then `HERMES_HOME` taken verbatim (trimmed, non-empty, no `~` expansion, matching Hermes' `Path(val)`), then the platform default reading the actual `LOCALAPPDATA` env var (falling back to `~\AppData\Local\hermes`) on Windows and `~/.hermes` elsewhere. This deliberately re-honors the `HERMES_HOME` that #3470 had dropped, since unlike Codex/Claude the Hermes Windows installer sets `HERMES_HOME` as a first-class mechanism for relocated installs. Config-dir tests were also isolated from ambient `HERMES_HOME`/`LOCALAPPDATA`. (#4680, refs #3178, #3470)
-- **Linux Wayland: Override the AppImage's Forced `GDK_BACKEND=x11`**: The AppImage's GTK launch hook (`linuxdeploy-plugin-gtk.sh`) unconditionally exports `GDK_BACKEND=x11` to dodge a historical native-Wayland crash (tauri-apps/tauri#8541). On newer Wayland + NVIDIA setups this forced XWayland leaves the WebKitGTK web content unable to receive pointer events — the GTK title bar stays clickable but the page is dead — and black-screens on resize; the existing `WEBKIT_DISABLE_*` mitigations don't help because the root cause is the forced window backend, not rendering. Since the hook also overrides any user-set `GDK_BACKEND`, there was no way to switch back without unpacking the AppImage. `main.rs` now reads an opt-in `CC_SWITCH_GDK_BACKEND` escape hatch (which the hook never touches) before GTK init: leaving it unset keeps the current x11 behavior unchanged (zero regression), while `CC_SWITCH_GDK_BACKEND=wayland` forces native Wayland. The override is generic, so users on tiling Wayland compositors hitting the inverse input bug can set `CC_SWITCH_GDK_BACKEND=x11`. (#4351, fixes #4350)
 - **Deduplicated Windows Codex npm Shims in Tool Detection**: On Windows, npm installs a tool as three sibling files — `codex.cmd`, `codex.exe`, and an extensionless Unix shim named `codex` — and CC Switch's `tool_executable_candidates` listed all three, so the extensionless shim (which Windows cannot execute directly) was probed as a redundant/failing candidate. `tool_executable_candidates` now appends the extensionless path only when `windows_runnable_sibling_for_extensionless_tool` finds no adjacent `.cmd`/`.exe` sibling, and `resolve_path_default` likewise prefers a runnable `.cmd`/`.exe` sibling before canonicalizing a bare extensionless PATH hit. This keeps version detection and launching anchored to the actually-runnable Windows shim instead of the shadowed Unix one. (#4782)
 - **Scroll Bounds for Long Select Dropdowns**: The `SelectContent` popover used `overflow-hidden` with no height cap, so dropdowns with many options (e.g. long model or provider lists) rendered taller than the viewport and clipped their overflowing items with no way to reach them. It now sets `max-h-[min(24rem,var(--radix-select-content-available-height))]` and `overflow-y-auto overflow-x-hidden`, bounding the content to 24rem or the Radix-computed available height and letting the list scroll vertically while still clipping horizontally. (#4798)
 - **Date-Range Picker Calendar Stays On-Screen in Narrow Popovers**: The custom date-range picker switched to its two-column layout (date fields | calendar) based on the viewport width via Tailwind's `sm:` (640px) breakpoint, but the popover is clamped to `100vw - 2rem` and anchored to its trigger with `align="end"`, so its real available width is narrower than the viewport. On narrow windows the two-column layout could activate while the popover only had room for one column, pushing the calendar column off the right edge where it was clipped — the month header and 4 of 7 weekday columns cut off and unreachable. The layout now keys off the popover's own inline size via a CSS container query (`w-[620px] max-w-[calc(100vw-2rem)]`) instead of the viewport, so it collapses to one column exactly when the popover itself is narrow, keeping the calendar fully visible at any window width. (#4860)
 
 ### Docs
 
-- **Documented the `CC_SWITCH_GDK_BACKEND` Escape Hatch in README and User Manual**: Added an FAQ entry for the opt-in `CC_SWITCH_GDK_BACKEND` environment variable (see the corresponding Fixed entry) across all four README locales (`README.md`, `README_ZH.md`, `README_JA.md`, `README_DE.md`) and the zh/en/ja user-manual troubleshooting pages (`docs/user-manual/{zh,en,ja}/5-faq/5.2-questions.md`), explaining how Wayland + NVIDIA users can switch back to native Wayland when the webview goes click-dead and black-screens on resize, and how tiling-Wayland users can set it to `x11` for the inverse input bug.
-- **GitHub Global Top-100 Milestone Banner in v3.16.4 Release Notes**: Prepended a celebratory callout blockquote to all three localized v3.16.4 release notes (`docs/release-notes/v3.16.4-en.md`, `-ja.md`, `-zh.md`) announcing that CC Switch has entered the global top 100 GitHub projects by star count, thanking users, contributors, and stargazers. This is a docs-only addition to the release-notes header and does not change any product behavior.
 
 ## [3.16.4] - 2026-06-27
 
@@ -419,7 +405,6 @@ Development since v3.18.0 is headlined by a security-hardening wave and a proxy 
 - **Restored Cached Codex Tool Call Fields**: When Codex sends a follow-up Chat request referencing `previous_response_id`, its `function_call` items can arrive carrying only `call_id`. The history enrichment previously refilled only `reasoning`/`reasoning_content`, leaving the function `name`, `arguments`, `status`, and related fields empty; it now restores all cached tool-call fields from history so the call is reconstructed correctly for the Chat upstream. (#4160)
 - **Duplicate Codex base_url Entries in config.toml**: Writing the Codex `base_url` into `config.toml` only replaced or removed a single matching assignment per section, so a section that already contained multiple `base_url` lines kept the extras and accumulated duplicates. `setCodexBaseUrl` now collapses all matches in the target section or top level (replacing the first and removing the rest), and the TOML `base_url` regex handles escaped quotes. (#4316)
 - **CODEX_SQLITE_HOME State DB Probing for History Migration**: The Codex session-history migration only scanned `~/.codex/state_5.sqlite` and the `config.toml` `sqlite_home` location, so when Codex's SQLite state was relocated via the `CODEX_SQLITE_HOME` env var the state DB was never scanned and its threads kept their old provider bucket. The shared `codex_state_db_paths` helper used by both the third-party and unified-session migrations now falls back to `CODEX_SQLITE_HOME` (config `sqlite_home` still takes precedence).
-- **Provider Terminals Respect the User's Shell**: Launching a provider terminal on macOS/Linux hardcoded `bash`, so zsh/fish users' rc files never loaded. The launchers now detect the user's default shell from `$SHELL` (falling back to `/bin/zsh` on macOS, `/bin/bash` on Linux) and exec into it with clean-start flags, while the launch scripts themselves run through POSIX `sh` for portability (e.g. fish, NixOS where `/bin/sh` may not exist). (#4140, fixes #1546)
 - **Claude MCP Path Honors Custom Config Dir**: When a custom Claude config directory is configured, MCP server reads and writes now resolve to that directory's MCP file instead of the default location, keeping MCP state isolated per profile. The previous copy-on-access migration of the legacy file was removed in favor of resolving the override path directly. (#3431)
 - **Preset Search Results Clickable After Searching**: After searching in the Add Provider preset selector, results could no longer be clicked or selected. The `requestAnimationFrame` `select()` that raced with typing (and ate the first character, e.g. "gateway" -> "ateway") is removed, input autofocus is restored for the open-by-click path, and refocus is wired up for the Ctrl/Cmd+F shortcut while the box is open. The provider-list typing guard is also scoped to the Ctrl/Cmd+F branch so Escape still closes the search panel. (#4315)
 - **Skills Browser and Provider Card Display Fixes**: Fixed several display and interaction issues: the repo-manager action stays available while browsing skills.sh and Refresh stays available even when a repo returns no results; long provider names and website URLs on the provider card now truncate instead of overflowing; the OMO model-variant dropdown truncates its selected label with a full-text tooltip; and Select menu items show a checkmark on the active option. (#4323)
@@ -427,7 +412,6 @@ Development since v3.18.0 is headlined by a security-hardening wave and a proxy 
 
 ### Docs
 
-- **Codex Unified Session-History Guide**: New trilingual (zh/en/ja) guide for the unified Codex session-history toggle, explaining what opt-in migration (on enable) and ledger-based restore (on disable) actually do, why session data is never truly deleted (tag-only rewrite plus automatic backups), and how to verify files on disk versus merely being filed under another provider drawer. It includes a symptom reference table for the common "my sessions are gone" misunderstanding plus on-disk verification commands for macOS/Linux/Windows, and is linked as the lead item in the v3.16.3 "Usage Guides" release notes.
 - **Simplified Homebrew Install Instructions**: The installation guide no longer instructs users to run `brew tap farion1231/ccswitch` before `brew install --cask cc-switch`; the deprecated tap step was removed from the en/ja/zh user manuals so the cask installs directly. (#4319)
 - **Star-History Global Rank Badge**: Added a star-history global rank badge next to the existing Trendshift badge in all four README locales, with light/dark theme variants.
 
@@ -493,7 +477,6 @@ Development since v3.16.1 focuses on broadening data portability and usage obser
 ### Added
 
 - **S3-Compatible Cloud Sync**: Cloud Sync now supports S3-compatible object storage as a second backend alongside WebDAV, using hand-rolled AWS Signature V4 signing for broad compatibility. The settings panel offers one-click presets for AWS S3, MinIO, Cloudflare R2, Alibaba Cloud OSS, Tencent Cloud COS, and Huawei OBS plus a custom endpoint, with connection testing, manual upload/download, and auto-sync on configuration changes (provider, endpoint, MCP, prompt, skill, settings, and proxy tables — not high-frequency data like usage logs); enabling S3 sync disables active WebDAV sync and vice versa (#1351).
-- **OpenCode Session Usage Sync**: Added OpenCode as a usage-statistics source that imports per-message token, cost, and model data from OpenCode's local SQLite database, with a new "OpenCode" app filter tab and an "OpenCode Session" data-source label. The database path respects `OPENCODE_DB` and `XDG_DATA_HOME` (defaulting to `~/.local/share/opencode` on all platforms), only finalized messages are imported, and the freshness check accounts for the WAL file so newly written sessions are not skipped (#3215).
 - **Official Subscription Quota Template**: Added an explicit, opt-in "official subscription" usage template for Claude, Codex, and Gemini official providers that queries plan quota via CLI/OAuth credentials, replacing the previous implicit auto-query. It is disabled by default and enabled from the usage-script modal with a configurable refresh interval.
 - **Unsupported Image Fallback Rectifier**: Added a proxy rectifier that replaces Anthropic image blocks with an `[Unsupported Image]` marker when the routed model is text-only (declared, or detected via a built-in model-name heuristic) or when the upstream rejects image input, so conversations are not interrupted. A new Settings toggle controls the fallback, with a separate toggle for the heuristic detection.
 - **ZenMux Token Plan Provider**: Added ZenMux as a Token Plan coding-plan provider that accepts a manually entered API key and base URL in the usage-script modal and renders its quota with USD-denominated used / limit values (#2709).
@@ -527,7 +510,6 @@ Development since v3.16.1 focuses on broadening data portability and usage obser
 - **Zhipu Quota Query Endpoint Routing**: The Zhipu coding-plan quota lookup was hard-coded to `api.z.ai`, so users on the mainland China preset (`open.bigmodel.cn`) could not retrieve usage when the international endpoint was unreachable. The quota request now routes to the host matching the user's configured base URL (#3702).
 - **MiniMax Balance API and Pricing**: Adapted MiniMax coding-plan quota to its new balance API (which returns remaining-percent fields instead of usage counts that broke the old parser and left the tray blank), filtered out non-coding models (e.g. video), handled plans without a weekly limit, and seeded default pricing for MiniMax M3 (#3518).
 - **GLM Coding Plan Endpoints and Model Fetch**: Corrected the ZhiPu / Z.AI GLM Coding Plan presets to the `/api/coding/paas/v4` endpoints across Codex, OpenCode, OpenClaw, and Hermes, and taught the model-list probe to query `{base}/models` for base URLs that already end in a `/v{N}` segment (keeping `/v1/models` as a fallback), so the Fetch Models button no longer 404s on versioned endpoints (#3524).
-- **Codex Model Catalog Path Portability**: Codex now writes only the relative filename `cc-switch-model-catalog.json` to `config.toml` instead of an absolute path (Codex CLI resolves it from the config directory), fixing the model catalog breaking on WSL and symlinked setups where the absolute path could not be translated (#3614).
 - **APINebula OpenCode SDK**: The APINebula OpenCode preset now loads `@ai-sdk/openai-compatible` instead of `@ai-sdk/openai`, so requests use the OpenAI Chat Completions format the relay expects rather than the Responses API.
 - **Windows Tray Icon Residue on Exit**: Quitting CC Switch on Windows could leave a dead tray icon until hovered; the app now removes the tray icon before exiting so it disappears cleanly (#3797).
 - **Windows Taskbar Icon**: Set an explicit Windows AppUserModelID at runtime and stamped the installer's desktop and start-menu shortcuts with the same ID and product icon, so CC Switch shows the correct icon and groups properly in the taskbar (#3457).
@@ -581,7 +563,6 @@ Development since v3.16.0 focuses on hardening Codex provider switching and Loca
 
 - **Codex Chat Completions routing**: Codex providers can now be served by OpenAI-compatible Chat Completions upstreams. CC Switch converts Codex Responses requests into Chat Completions, rebuilds JSON and SSE responses back into Responses shape, preserves reasoning / `<think>` / tool-call state, normalizes error envelopes, and probes Chat-format providers correctly in Stream Check.
 - **Codex third-party provider state is unified and safer**: third-party Codex providers now share the stable `custom` model-provider bucket, with a one-shot migration for historical JSONL sessions and `state_5.sqlite` threads, plus fixes that preserve OAuth login state, user-selected catalog models, and user-authored provider ids during live reads / switches.
-- **Managed CLI tool management**: the About page is now a tool management panel for Claude, Codex, Gemini, OpenCode, OpenClaw, and Hermes, with install / update actions, update-all, conflict diagnostics, source-aware anchored upgrades, WSL handling, and visible "installed but not runnable" states.
 - **Usage and docs polish**: Usage Dashboard updates now react immediately when logs are written, custom usage-script summaries and subagent session-log accounting were fixed, Traditional Chinese UI localization landed, and a German README plus expanded Claude Desktop / Codex Chat / tool-management manuals were added.
 - **Proxy and conversion hardening**: fixed Codex Chat reasoning / cache / usage edge cases, DeepSeek Anthropic tool-thinking history, Claude-compatible empty `tool_calls` streams, managed-account takeover auth, MiMo reasoning output, Gemini Native tool-call replay, and several panic-prone proxy paths.
 
@@ -595,7 +576,6 @@ Development since v3.16.0 focuses on hardening Codex provider switching and Loca
 - **Codex Goal Mode and Remote Compaction Controls**: Codex config editing now exposes a Goal Mode toggle and a Remote Compaction toggle for third-party providers; new Codex templates default to `disable_response_storage = true` while still allowing explicit goal support.
 - **Xiaomi MiMo Token Plan Presets**: Added Xiaomi MiMo Token Plan presets with specs aligned to the official documentation (#2803).
 - **Claude Desktop Official Preset**: Added a Claude Desktop Official preset that restores the native Claude Desktop login, plus a localized Claude Desktop user guide (en / zh / ja).
-- **Managed CLI Tool Lifecycle**: Added silent install / update commands for managed CLI tools, latest-version checks, per-tool and batch actions, update-all, and diagnostics for multiple installations across PATH, Homebrew, npm, pnpm, bun, volta, fnm, nvm, scoop, WinGet, Windows native paths, and WSL.
 - **Source-Aware Tool Diagnostics**: The Settings / About surface can now diagnose conflicting tool installations, show the concrete install source and version for each path, and generate backend-planned upgrade commands anchored to the actual installation source.
 - **Real-Time Usage Refresh**: The backend now emits `usage-log-recorded` when proxy logs, session-log syncs, or rollups write usage data; Usage Dashboard listens for that event and invalidates its queries immediately instead of waiting for the next polling interval (#3027).
 - **Traditional Chinese Localization**: Added `zh-TW` UI localization and a settings language option (#3093).
@@ -608,7 +588,6 @@ Development since v3.16.0 focuses on hardening Codex provider switching and Loca
 - **Codex Local Routing Toggle Hints Rewritten**: Reframed the OFF / ON hints as action guidance (when to enable) rather than scenario descriptions, synced across zh / en / ja.
 - **Codex Live Config Preservation**: Live Codex config reads no longer force-rewrite a user's `model_provider` field, and provider-scoped `experimental_bearer_token` handling now preserves OAuth login state when switching between third-party providers.
 - **Tool Install / Upgrade Strategy**: Managed tool installation now prefers official native installers where available, falls back to package managers when appropriate, runs self-update first for compatible tools, anchors upgrades to the detected install source, and locks duplicate batch actions while work is in flight.
-- **About Page Becomes Tool Management**: The About settings page now presents installed / latest versions, install and update actions, conflict diagnostics, WSL shell preferences, and clearer status for broken or unrunnable tools.
 - **Default Models and Pricing Refreshed**: Upgraded the default Claude Opus model to 4.8, moved GPT-based presets and templates to GPT-5.5 where applicable, refreshed pricing seeds, aligned Claude Desktop model mapping with Claude Code's three-role tiers, and renamed the OpenCode Go preset to drop a stale model suffix.
 - **Homebrew Official Cask Installation**: Installation simplified to `brew install --cask cc-switch` now that CC Switch is in the official Homebrew repository; the personal-tap requirement was removed from all READMEs.
 - **Shared Frontend Utilities**: Replaced JSON stringify / parse deep-copy patterns with a shared `deepClone` helper and extracted a shared `useTauriEvent` hook (#3140).
@@ -636,7 +615,6 @@ Development since v3.16.0 focuses on hardening Codex provider switching and Loca
 - **Skills Install by Key**: Installing from skills.sh search results now uses the unique key instead of the directory name, so skills that share a directory name install the correct one (#2784); also fixed a skill sync copy fallback (#2791).
 - **Usage Price Input Precision**: Reduced the price input step to 0.0001 so sub-cent costs like DeepSeek cache reads can be entered (#2793, closes #2503).
 - **Ghostty Clean Window Launch**: Ghostty now opens a single clean window instead of cloning existing tabs, and other terminals open a new window via `open -na` (#2801, closes #2798).
-- **Tool Version and Update Reliability**: Version probing no longer masks unrunnable installs, prerelease tools are handled correctly in version checks, batch updates run per tool, install / update buttons stay locked during preflight, anchored upgrade branches enforce absolute paths, and WSL installer paths use native Unix installers when needed.
 - **Codex mise Detection**: Fixed Codex mise environment detection (#2822).
 - **Codex Archived Sessions**: Codex archived sessions are now included in session discovery (#2861).
 - **Codex Chat Empty Tool Arguments**: Empty tool-call argument payloads are coerced to `{}` during Codex Chat conversion so upstreams and clients receive valid JSON.
@@ -749,7 +727,6 @@ Development since v3.14.1 focuses on a dedicated Claude Desktop surface with thi
 - **Claude Desktop: Spurious Proxy-Stopped Status Alert**: Removed an alert that fired spuriously when the proxy was intentionally stopped.
 - **Claude Desktop: Empty Toolbar Capsule Hidden**: Hides the empty toolbar capsule when Claude Desktop is the active app.
 - **UI: Monitor Badge Icon Centering**: Centered the Monitor badge icon in the app switcher.
-- **Linux: Theme Selection Segfault**: Prevented selecting a theme from causing a segfault on Linux (#2502).
 - **Terminal: iTerm Fallback on Cold Launch**: Prevented iTerm from being selected as a fallback on cold launch when not actually present (#2448).
 - **Config: Sort JSON Keys Alphabetically**: Config writes now sort JSON keys alphabetically for deterministic output (#2469).
 - **Import Existing Side-Effect Free**: Made "import existing" side-effect free (#2429).
@@ -757,7 +734,6 @@ Development since v3.14.1 focuses on a dedicated Claude Desktop surface with thi
 - **DashScope: Usage Parsing Robustness**: Hardened DashScope usage parsing so a malformed payload no longer crashes the VSCode Claude Code extension (#2425).
 - **Usage: Prevent Double-Counting Between Proxy and Session-Log Sources**: Deduplicated usage records sourced from both the proxy and session logs.
 - **Usage: Cache Cost Semantics + Pricing Warn Storm**: Corrected cache-cost semantics and silenced a noisy pricing warning storm that fired on every request.
-- **CI: Frontend Formatting and Linux Clippy Restored**: Restored frontend formatting and Linux clippy checks in CI.
 - **Proxy Test Helper Clippy Warning**: Fixed a clippy warning in the proxy test helper.
 
 ### Removed
@@ -824,13 +800,11 @@ Development since v3.13.0 focuses on onboarding Hermes Agent as a first-class ma
 - **Stream Check Error Classification**: Classified Stream Check errors and surfaced them as color-coded toasts; refreshed default probe models and added explicit detection for "model not found" responses.
 - **Block Official Provider Switching During Local Routing**: Blocks switching to official providers while Local Routing is active, since routing official API traffic through the local proxy carries account-suspension risk. A warning toast surfaces the block.
 - **Pricing Database Refresh (v8 → v9)**: Added ~50 new model pricing entries and corrected stale prices via a reseed-on-migration step, including Claude 4.7, Opus 4.7 Adaptive Thinking, Grok 4, Qwen 3.5/3.6, MiniMax M2.5/M2.7, Doubao Seed 2.0 series, and GLM-5/5.1. DeepSeek and Kimi K2.5 prices updated.
-- **Application-Level Window Controls**: Added an opt-in setting to render CC Switch's own minimize / toggle-maximize / close buttons instead of the system decorations, materially improving the experience on Linux Wayland where compositor-drawn buttons can become inert.
 - **Hermes in Unified Skills Management**: Added Hermes to the unified Skills surface; skill install, enable, and filter now cover the Hermes app alongside Claude / Codex / Gemini / OpenCode / OpenClaw.
 - **OpenClaw Config Directory Override**: Added a settings option to point CC Switch at a custom `openclaw.json` location.
 - **Hermes Config Directory Override**: Added a settings option to point CC Switch at a custom `~/.hermes/config.yaml` location, backed by data-driven dispatch.
 - **StepFun Step Plan Preset**: Added StepFun Step Plan (EN/ZH) provider presets.
 - **New API Usage Script Template**: Added a User-Agent header to the New API usage script template for better upstream compatibility.
-- **Launch Hermes Dashboard from Toolbar**: When the Hermes Web UI probe fails, the toolbar entry now offers to run `hermes dashboard` in the user's preferred terminal via a temp bash/batch script. `hermes dashboard` opens the browser itself once ready, so no polling is required. Also corrects the stale `hermes web` hint in the offline toast (the real command is `hermes dashboard`) and reorders Linux terminal detection to try `which` before stat'ing `/usr/bin`, `/bin`, `/usr/local/bin`.
 - **DDSHub Codex Preset**: Added a Codex-compatible endpoint for DDSHub at the same host as its Claude service; base URL omits the `/v1` suffix because the gateway auto-routes OpenAI SDK paths.
 
 ### Changed
@@ -935,7 +909,6 @@ Development since v3.12.3 focuses on quota visibility, provider workflow upgrade
 
 ### Fixed
 
-- **Copilot Authentication & Proxy Compatibility**: Fixed GitHub Copilot authentication regressions, corrected enterprise / dynamic endpoint handling, repaired clipboard verification-code copying on macOS and Linux, and fixed Responses routing when Copilot-backed Claude providers target OpenAI models.
 - **Streaming Parser Compatibility**: Fixed SSE parsing to accept fields with optional spaces, improving compatibility with non-strict streaming implementations.
 - **UTF-8 Stream Chunk Boundaries**: Fixed intermittent garbled output (U+FFFD replacement characters) in Claude Code when multi-byte UTF-8 sequences such as Chinese characters or emoji were split across TCP stream chunks via the Copilot reverse proxy, by preserving incomplete trailing bytes across chunks in all four SSE streaming paths instead of lossy decoding.
 - **Fragmented System Prompt Normalization**: Fixed strict OpenAI-compatible chat backends (Nvidia, Qwen-style) rejecting requests when converted Claude payloads contained multiple system messages, by merging system content into a single leading system message during the Anthropic → OpenAI chat transformation.
@@ -947,8 +920,6 @@ Development since v3.12.3 focuses on quota visibility, provider workflow upgrade
 - **Usage Editor & Skills UI Regressions**: Fixed usage query fields being reset while editing extractor code, corrected broken `skills.sh` links and empty descriptions, and fixed auto-query defaults plus number-input clearing in usage configuration.
 - **Chinese Skills Terminology**: Unified Skills-related labels across settings panels in the `zh` locale so storage and sync options use consistent wording.
 - **Environment & Preset Compatibility**: Added Bun global bin detection in CLI scan, adapted to the oh-my-openagent rename with backward compatibility, corrected the OpenCode `kimi-for-coding` preset, gated Gemini keychain parsing to macOS, and fixed an OpenClaw serializer panic on empty collections.
-- **Linux UI Unresponsive on Startup**: Fixed a bug where the window UI (including native title bar buttons) couldn't receive clicks on Linux until the user manually maximized and restored the window. Root causes: (1) Tauri webview did not acquire keyboard focus after `show()` on Linux, so the first click was consumed by X11/Wayland click-to-activate (Tauri #10746, wry #637); (2) GTK surface's input region failed to renegotiate on the `visible:false → show()` path under some WebKitGTK/compositor combinations, leaving the entire window unresponsive. Mitigations: set `WEBKIT_DISABLE_COMPOSITING_MODE=1` at startup, and added a new `linux_fix::nudge_main_window` helper that performs `set_focus` + a ±1px no-op resize ~200ms after show, equivalent to a visually invisible "maximize-and-restore". Wired into all window-re-show paths (normal startup, deeplink, single_instance, tray `show_main`, lightweight exit).
-- **Linux Drag Region on Header**: Removed `data-tauri-drag-region` from the top header bar on Linux to avoid triggering `gtk_window_begin_move_drag` paths affected by Tauri #13440 under Wayland. macOS drag behavior is preserved.
 - **OpenCode / OpenClaw Stream Check Edge Cases**: Fixed custom-header passthrough, OpenClaw custom auth-header detection, Bedrock error messaging, and OpenCode default `baseURL` fallback handling in Stream Check.
 - **Duplicate Toast on Provider Switch**: Fixed double toast notifications (proxy-required warning followed by switch-success) when switching to Copilot, ChatGPT, or OpenAI-format providers with the proxy not running.
 - **Session Search Accuracy & Chinese Support**: Fixed session search result truncation across providers and switched FlexSearch tokenizer to full mode for proper Chinese substring matching.
@@ -1338,7 +1309,6 @@ This release introduces **OpenClaw** as the fifth supported application, a full 
 #### Critical
 
 - **Windows Home Dir Regression**: Restored default home directory resolution on Windows to prevent providers/settings “disappearing” when `HOME` env var differs from the real user profile directory (Git/MSYS environments); auto-detects v3.10.3 legacy database location
-- **Linux White Screen**: Disabled WebKitGTK hardware acceleration on AMD GPUs (Cezanne/Radeon Vega) to prevent EGL initialization failure causing blank screen on startup
 - **OpenAI Beta Parameter**: Stopped appending `?beta=true` to OpenAI Chat Completions endpoints, fixing request failures for Nvidia and other `apiFormat=”openai_chat”` providers
 - **Health Check Auth Mode**: Health check now respects provider's auth_mode setting instead of always using x-api-key header
 
@@ -1369,7 +1339,6 @@ This release introduces **OpenClaw** as the fifth supported application, a full 
 - **Window Flash**: Prevented window flicker on silent startup (Windows)
 - **Title Bar Theme**: Title bar now follows dark/light mode theme changes
 - **Skills Path Separator**: Fixed path separator matching for skill installation status on Windows (supports both `/` and `\`)
-- **WSL Conditional Compilation**: Added `#[cfg(target_os = “windows”)]` to WSL helper functions to eliminate dead_code warnings on non-Windows platforms
 
 #### UI
 
@@ -1390,7 +1359,6 @@ This release introduces **OpenClaw** as the fifth supported application, a full 
 #### Other
 
 - **Skill Doc URL**: Use actual branch from download_repo for documentation URL; switched from /tree/ to /blob/ pointing to SKILL.md
-- **OpenCode Install Detection**: Added install.sh priority paths (OPENCODE_INSTALL_DIR > XDG_BIN_DIR > ~/bin > ~/.opencode/bin) with path dedup and cross-platform executable candidates
 - **Provider Auto-Import**: Removed auto-import side effect from useProvidersQuery queryFn; users now trigger import manually via empty state button
 - **Manual Backup Validation**: Treat missing database file as error during manual backup to prevent false success toast
 
@@ -1424,14 +1392,12 @@ This release introduces a generic API format selector, pricing configuration enh
 - **Proxy Hint**: Display info toast when switching to OpenAI Chat format provider, reminding users to enable proxy
 - **Pricing Config Enhancement**: Per-provider cost multiplier, pricing model source (request/response), request model logging, and enriched usage UI (#781)
 - **Skills ZIP Install**: Install skills directly from local ZIP files with recursive scanning support
-- **Preferred Terminal**: Choose preferred terminal app per platform (macOS: Terminal.app/iTerm2/Alacritty/Kitty/Ghostty; Windows: cmd/PowerShell/Windows Terminal; Linux: GNOME Terminal/Konsole/Xfce4/Alacritty/Kitty/Ghostty)
 - **Silent Startup**: Option to prevent window popup on launch (#713)
 - **OpenCode Environment Check**: Version detection with Go path scanning and one-click install from GitHub Releases
 - **OpenCode Directory Sync**: Auto-sync all providers to live config on directory change with additive mode support
 - **NVIDIA NIM Preset**: New provider preset for Claude and OpenCode with nvidia.svg icon
 - **n1n.ai Preset**: New provider preset (#667)
 - **Update Badge Icon**: Replace update badge dot with ArrowUpCircle icon
-- **Linux ARM64**: CI build support for Linux ARM64 architecture
 
 ### Changed
 
@@ -1522,7 +1488,6 @@ This release introduces OpenCode support and brings improvements across proxy, u
 - **Takeover Compact Mode** - Use a compact AppSwitcher layout when showing 3+ visible apps
 - **Keyboard Shortcut** - Press `ESC` to quickly go back/close panels (#670)
 - **Terminal Improvements** - Provider-specific terminal button, `fnm` path support, and safer cross-platform launching (#564)
-- **WSL Tool Detection** - Detect tool versions in WSL with additional security hardening (#627)
 - **Skills Presets** - Add `baoyu-skills` preset repo and auto-supplement missing default repos
 
 ### Changed
@@ -1537,7 +1502,6 @@ This release introduces OpenCode support and brings improvements across proxy, u
 - **Auto Failover** - Switch to P1 immediately when enabling auto failover
 - **Provider Edit Dialog** - Fix stale data when reopening provider editor after save (#654)
 - **Deeplink** - Support multiple endpoints and prioritize `GOOGLE_GEMINI_BASE_URL` over `GEMINI_BASE_URL` (#597)
-- **MCP (WSL)** - Skip `cmd /c` wrapper for WSL target paths (#592)
 - **Usage Templates** - Add variable hints and validation fixes; prevent config leaking between providers (#628)
 - **Gemini Timeout Format** - Convert timeout params to Gemini CLI format (#580)
 - **UI** - Fix Select dropdown rendering in `FullScreenPanel`; auto-apply default icon color when unset
@@ -1565,8 +1529,6 @@ This release focuses on stability improvements and crash prevention.
 - **UTF-8 Safety** - Fix potential panic when masking API keys or truncating logs containing multi-byte characters (Chinese, emoji, etc.) (#560)
 - **Default Proxy Port** - Change default port from 5000 to 15721 to avoid conflict with macOS AirPlay Receiver (#560)
 - **Windows Title** - Display "CC Switch" instead of default "Tauri app" in window title
-- **Windows/Linux Spacing** - Remove extra 28px blank space below native titlebar introduced in v3.9.0
-- **Flatpak Tray Icon** - Bundle libayatana-appindicator for tray icon support on Flatpak (#556)
 - **Provider Preset** - Correct casing from "AiGoCode" to "AIGoCode" to match official branding
 
 ---
@@ -1594,7 +1556,6 @@ This stable release includes all changes from `3.9.0-1`, `3.9.0-2`, and `3.9.0-3
 - **Common Config Snippet Extraction** - Extract reusable common config snippets from the current provider or editor content (Claude/Codex/Gemini)
 - **Usage Enhancements** - Model extraction, request logging improvements, cache hit/creation metrics, and auto-refresh (#455, #508)
 - **Error Request Logging** - Detailed logging for proxy requests (#401)
-- **Linux Packaging** - Added RPM and Flatpak packaging targets
 
 ### Changed
 
@@ -1817,7 +1778,6 @@ This beta release introduces the **Local API Proxy** feature, along with Skills 
 
 - **Skills recursive scanning** - Discovers nested `SKILL.md` files across multi-level directories; same-name skills allowed by full-path dedup.
 - **Provider icons** - Presets ship with default icons; custom icon colors; icons retained when duplicating providers.
-- **Auto launch on startup** - One-click enable/disable using Registry/LaunchAgent/XDG autostart.
 - **Form validation** - Required fields get real-time validation and unified toast messaging.
 
 ### Fixed
@@ -1825,7 +1785,6 @@ This beta release introduces the **Local API Proxy** feature, along with Skills 
 - **Custom endpoints loss** - Switched provider updates to `UPDATE` to avoid cascade deletes from `INSERT OR REPLACE`.
 - **Gemini config writing** - Correctly writes custom env vars to `.env` and keeps auth configs isolated.
 - **Provider validation** - Handles missing current provider IDs and preserves icon fields on duplicate.
-- **Linux rendering** - Fixed WebKitGTK DMA-BUF rendering and preserved user `.desktop` customizations.
 - **Misc** - Removed redundant usage queries; corrected DMXAPI auth token field; restored missing deeplink translations; fixed usage script template init.
 
 ### Technical
@@ -1840,7 +1799,6 @@ This beta release introduces the **Local API Proxy** feature, along with Skills 
 
 ### Stats
 
-- 51 commits since v3.7.1; 207 files changed; +17,297 / -6,870 lines. See [release-note-v3.8.0](docs/release-notes/v3.8.0-en.md) for details.
 
 ---
 
@@ -1855,7 +1813,6 @@ This beta release introduces the **Local API Proxy** feature, along with Skills 
 ### Added
 
 - **Gemini configuration directory support** (#255) - Added custom configuration directory option for Gemini in settings
-- **ArchLinux installation support** (#259) - Added AUR installation via `paru -S cc-switch-bin`
 
 ### Improved
 
@@ -1948,7 +1905,6 @@ This beta release introduces the **Local API Proxy** feature, along with Skills 
 - **Protocol registration** - `ccswitch://` URL scheme for one-click imports
 - **Provider import** - Import provider configurations from URLs or shared links
 - **Lifecycle integration** - Deep link handling integrated into app startup
-- **Cross-platform support** - Works on Windows, macOS, and Linux
 
 #### Environment Variable Conflict Detection
 
@@ -2098,7 +2054,6 @@ v3.7.0 represents a major evolution from "Provider Switcher" to **"All-in-One AI
 - **Configuration Editor Improvements**
   - Add JSON format button
   - Real-time TOML syntax validation for Codex configuration
-- **Auto-sync on Directory Change** - When switching Claude/Codex config directories (e.g., WSL environment), automatically sync current provider to new directory without manual operation
 - **Load Live Config When Editing Active Provider** - When editing the currently active provider, prioritize displaying the actual effective configuration to protect user manual modifications
 - **New Provider Presets** - DMXAPI, Azure Codex, AnyRouter, AiHubMix, MiniMax
 
@@ -2107,7 +2062,6 @@ v3.7.0 represents a major evolution from "Provider Switcher" to **"All-in-One AI
 - **Configuration Directory Switching**
   - Introduced unified post-change sync utility (`postChangeSync.ts`)
   - Auto-sync current providers to new directory when changing Claude/Codex config directories
-  - Perfect support for WSL environment switching
   - Auto-sync after config import to ensure immediate effectiveness
   - Use Result pattern for graceful error handling without blocking main flow
   - Distinguish "fully successful" and "partially successful" states for precise user feedback
@@ -2233,7 +2187,6 @@ v3.7.0 represents a major evolution from "Provider Switcher" to **"All-in-One AI
 - **Standardized release artifact naming** - All platform releases now use consistent version-tagged filenames:
   - macOS: `CC-Switch-v{version}-macOS.tar.gz` / `.zip`
   - Windows: `CC-Switch-v{version}-Windows.msi` / `-Portable.zip`
-  - Linux: `CC-Switch-v{version}-Linux.AppImage` / `.deb`
 
 ### 🐛 Bug Fixes
 
@@ -2283,8 +2236,6 @@ v3.7.0 represents a major evolution from "Provider Switcher" to **"All-in-One AI
 ### 🔧 Improvements
 
 - Keep the tray menu responsive when the window is hidden and standardize button styling and copy
-- Disable modal backdrop blur on Linux (WebKitGTK/Wayland) to avoid freezes; restore the window when clicking the macOS Dock icon
-- Support overriding config directories on WSL, refine placeholders/descriptions, and fix VS Code button wrapping on Windows
 - Add a `created_at` timestamp to provider records for future sorting and analytics
 
 ### 🐛 Fixes

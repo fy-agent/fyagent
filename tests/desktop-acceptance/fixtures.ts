@@ -1,9 +1,5 @@
 export const DESKTOP_ACCEPTANCE_LOCALES = ["en", "ja", "zh", "zh-TW"] as const;
-export const DESKTOP_ACCEPTANCE_PLATFORMS = [
-  "windows",
-  "macos",
-  "linux",
-] as const;
+export const DESKTOP_ACCEPTANCE_PLATFORMS = ["windows", "macos"] as const;
 export const DESKTOP_ACCEPTANCE_SCALES = [100, 125, 150] as const;
 
 export type DesktopAcceptanceLocale =

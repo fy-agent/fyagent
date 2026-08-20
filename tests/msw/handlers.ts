@@ -223,7 +223,7 @@ export const handlers = [
         build: 0,
         revision: 1,
       },
-      expectedSize: 0,
+      downloadSizeHint: null,
       checkedAt: "2026-01-01T00:00:00.000Z",
     }),
   ),
@@ -365,14 +365,14 @@ export const handlers = [
   }),
 
   http.post(`${TAURI_ENDPOINT}/get_user_home_dir`, () =>
-    success("/home/mock"),
+    success("/Users/mock"),
   ),
 
   http.post(`${TAURI_ENDPOINT}/is_portable_mode`, () => success(false)),
 
   http.post(`${TAURI_ENDPOINT}/get_runtime_privilege_status`, () =>
     success({
-      platform: "other",
+      platform: "macos",
       supported: false,
       elevated: false,
       localAdministrator: false,

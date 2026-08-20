@@ -330,7 +330,7 @@ describe("CodexDesktopInstallerCard", () => {
     },
   );
 
-  it("renders no UI when Linux is reported as an unsupported platform", () => {
+  it("renders no UI when an unsupported platform is reported", () => {
     mocks.useInstaller.mockReturnValue(
       createViewModel({
         state: "hidden",

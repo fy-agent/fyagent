@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       source_sha:
-        description: Immutable 40-character main HEAD SHA to preflight
+        description: Immutable 40-character dev/laiyongjie HEAD SHA to preflight
         required: true
         type: string
 
@@ -25,7 +25,7 @@ concurrency:
 jobs:
   eligibility:
     name: Freeze source and release eligibility
-    runs-on: ubuntu-24.04
+    runs-on: macos-15
     env:
       GITHUB_WORKFLOW_SHA: ${{ github.workflow_sha }}
     permissions:
@@ -65,13 +65,13 @@ jobs:
               }
               if [ "$DISPATCH_SOURCE_SHA" != "$GITHUB_SHA" ] ||
                 [ "$DISPATCH_SOURCE_SHA" != "$GITHUB_WORKFLOW_SHA" ]; then
-                echo 'Preflight must attest the exact trusted main workflow commit' >&2
+                echo 'Preflight must attest the exact trusted dev/laiyongjie workflow commit' >&2
                 exit 1
               fi
-              [ "$GITHUB_REF" = 'refs/heads/main' ]
+              [ "$GITHUB_REF" = 'refs/heads/dev/laiyongjie' ]
               [ "$GITHUB_REF_TYPE" = 'branch' ]
-              [ "$GITHUB_REF_NAME" = 'main' ]
-              [ "$GITHUB_WORKFLOW_REF" = "${expected_workflow_ref_prefix}refs/heads/main" ]
+              [ "$GITHUB_REF_NAME" = 'dev/laiyongjie' ]
+              [ "$GITHUB_WORKFLOW_REF" = "${expected_workflow_ref_prefix}refs/heads/dev/laiyongjie" ]
               requested_source_sha="$DISPATCH_SOURCE_SHA"
               requested_mode='preflight'
               ;;
@@ -156,20 +156,20 @@ jobs:
                 echo 'workflow_dispatch source_sha must be a lowercase full 40-character commit SHA' >&2
                 exit 1
               }
-              [ "$GITHUB_REF" = 'refs/heads/main' ] || {
-                echo "Preflight must run from trusted refs/heads/main; received $GITHUB_REF" >&2
+              [ "$GITHUB_REF" = 'refs/heads/dev/laiyongjie' ] || {
+                echo "Preflight must run from trusted refs/heads/dev/laiyongjie; received $GITHUB_REF" >&2
                 exit 1
               }
-              [ "$GITHUB_WORKFLOW_REF" = "${expected_workflow_ref_prefix}refs/heads/main" ] || {
-                echo "Preflight workflow ref is not trusted main: $GITHUB_WORKFLOW_REF" >&2
+              [ "$GITHUB_WORKFLOW_REF" = "${expected_workflow_ref_prefix}refs/heads/dev/laiyongjie" ] || {
+                echo "Preflight workflow ref is not trusted dev/laiyongjie: $GITHUB_WORKFLOW_REF" >&2
                 exit 1
               }
               [ "$source_sha" = "$DISPATCH_SOURCE_SHA" ] || {
                 echo "Dispatch input does not resolve to the exact candidate commit: $DISPATCH_SOURCE_SHA" >&2
                 exit 1
               }
-              if [ "$GITHUB_REF_TYPE" != 'branch' ] || [ "$GITHUB_REF_NAME" != 'main' ]; then
-                echo 'Preflight event is not the exact main branch' >&2
+              if [ "$GITHUB_REF_TYPE" != 'branch' ] || [ "$GITHUB_REF_NAME" != 'dev/laiyongjie' ]; then
+                echo 'Preflight event is not the exact dev/laiyongjie branch' >&2
                 exit 1
               fi
               release_mode='preflight'
@@ -232,7 +232,7 @@ jobs:
             printf 'generated_at=%s\n' "$(date -u +'%Y-%m-%dT%H:%M:%S.000Z')"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Bind remote main, tag, and successful Required CI evidence
+      - name: Bind remote authority branch, tag, and successful Required CI evidence
         id: remote
         shell: bash
         env:
@@ -1075,230 +1075,6 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  build-linux:
-    name: Linux ${{ matrix.architecture }} unsigned installers
-    needs: eligibility
-    runs-on: ${{ matrix.runner }}
-    container:
-      image: ${{ matrix.container_image }}@${{ matrix.container_digest }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: ubuntu-24.04
-            target_group: linux-x64
-            architecture: x64
-            expected_runner_arch: X64
-            asset_arch: x86_64
-            uname_arch: x86_64
-            deb_arch: amd64
-            rpm_arch: x86_64
-            container_image: docker.io/library/ubuntu:22.04
-            container_digest: sha256:0199853f6d6b20b0424f3c5694a72a62764f01e6a771b1eb48a4197848986c7e
-          - runner: ubuntu-24.04-arm
-            target_group: linux-arm64
-            architecture: arm64
-            expected_runner_arch: ARM64
-            asset_arch: arm64
-            uname_arch: aarch64
-            deb_arch: arm64
-            rpm_arch: aarch64
-            container_image: docker.io/library/ubuntu:22.04
-            container_digest: sha256:a8cdd2158a73d7e5c02aa351fe269f48f57cf710a241db86e9ede371fc150149
-    env:
-      APP_VERSION: ${{ needs.eligibility.outputs.app_version }}
-      RELEASE_TAG: ${{ needs.eligibility.outputs.release_tag }}
-      SOURCE_SHA: ${{ needs.eligibility.outputs.source_sha }}
-      RELEASE_MODE: ${{ needs.eligibility.outputs.release_mode }}
-      EXPECTED_CI_RUN_ID: ${{ needs.eligibility.outputs.ci_run_id }}
-      EXPECTED_CI_RUN_ATTEMPT: ${{ needs.eligibility.outputs.ci_run_attempt }}
-    steps:
-      - name: Install Ubuntu 22.04 native build dependencies
-        shell: bash
-        run: |
-          set -euo pipefail
-          . /etc/os-release
-          [ "$RUNNER_ARCH" = '${{ matrix.expected_runner_arch }}' ] || {
-            echo "Linux runner architecture $RUNNER_ARCH is not native ${{ matrix.expected_runner_arch }}" >&2
-            exit 1
-          }
-          if [ "$ID" != ubuntu ] || [ "$VERSION_ID" != '22.04' ]; then
-            echo "Release container is not Ubuntu 22.04: ${ID:-unknown} ${VERSION_ID:-unknown}" >&2
-            exit 1
-          fi
-          [ "$(uname -m)" = '${{ matrix.uname_arch }}' ] || {
-            echo "Container architecture $(uname -m) is not native ${{ matrix.uname_arch }}" >&2
-            exit 1
-          }
-          apt-get update
-          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            build-essential ca-certificates curl file git libayatana-appindicator3-dev \
-            libfuse2 librsvg2-dev libssl-dev patchelf pkg-config rpm wget xdg-utils
-          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            libgtk-3-dev libwebkit2gtk-4.1-dev libsoup-3.0-dev \
-            || DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-              libgtk-3-dev libwebkit2gtk-4.0-dev libsoup2.4-dev
-
-      - name: Checkout immutable source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          ref: ${{ needs.eligibility.outputs.source_sha }}
-
-      - name: Trust exact checked-out workspace for container Git
-        shell: bash
-        run: |
-          set -euo pipefail
-          [ "$PWD" = "$GITHUB_WORKSPACE" ] || {
-            echo "Linux container workspace drift: $PWD != $GITHUB_WORKSPACE" >&2
-            exit 1
-          }
-          git config --global --unset-all safe.directory 2>/dev/null || true
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          [ "$(git config --get-all safe.directory)" = "$GITHUB_WORKSPACE" ] || {
-            echo 'Linux container Git trust is not limited to the exact workspace' >&2
-            exit 1
-          }
-          [ "$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)" = "$SOURCE_SHA" ]
-
-      - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version-file: .node-version
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
-        with:
-          run_install: false
-          cache: false
-
-      - name: Setup Rust
-        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
-        with:
-          toolchain: 1.97.1
-          cache: false
-
-      - name: Verify native source and frozen toolchain
-        shell: bash
-        run: |
-          set -euo pipefail
-          [ "$(uname -m)" = '${{ matrix.uname_arch }}' ]
-          [ "$(git rev-parse HEAD)" = "$SOURCE_SHA" ]
-          pnpm run version:check -- --tag "$RELEASE_TAG"
-          node_version="$(node --version)"
-          pnpm_version="$(pnpm --version)"
-          rust_version="$(rustc --version)"
-          [ "$node_version" = 'v24.19.0' ]
-          [ "$pnpm_version" = '10.12.3' ]
-          case "$rust_version" in 'rustc 1.97.1 '*) ;; *) echo "Rust drift: $rust_version" >&2; exit 1;; esac
-          {
-            printf 'ACTUAL_NODE_VERSION=%s\n' "$node_version"
-            printf 'ACTUAL_PNPM_VERSION=%s\n' "$pnpm_version"
-            printf 'ACTUAL_RUST_VERSION=%s\n' "$rust_version"
-          } >> "$GITHUB_ENV"
-
-      - name: Install locked frontend dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Build native Linux packages
-        env:
-          # tauri-cli 2.8.1 embeds tauri-bundler 2.6.1, whose nested
-          # linuxdeploy AppImage invocation needs extraction mode on runners
-          # without FUSE or mount privileges.
-          APPIMAGE_EXTRACT_AND_RUN: "1"
-        run: pnpm tauri build --bundles appimage,deb,rpm --verbose
-
-      - name: Verify and normalize exact Linux package set
-        shell: bash
-        run: |
-          set -euo pipefail
-          bundle_root='src-tauri/target/release/bundle'
-          mapfile -t appimages < <(find "$bundle_root" -type f -name '*.AppImage' -print)
-          mapfile -t debs < <(find "$bundle_root" -type f -name '*.deb' -print)
-          mapfile -t rpms < <(find "$bundle_root" -type f -name '*.rpm' -print)
-          if [ "${#appimages[@]}" -ne 1 ] || [ "${#debs[@]}" -ne 1 ] || [ "${#rpms[@]}" -ne 1 ]; then
-            echo "Expected exactly one raw AppImage, DEB, and RPM; found ${#appimages[@]}/${#debs[@]}/${#rpms[@]}" >&2
-            exit 1
-          fi
-          case "$(basename "${appimages[0]}")" in *"$APP_VERSION"*) ;; *) echo 'AppImage version drifted' >&2; exit 1;; esac
-          file "${appimages[0]}" | grep -Eq '${{ matrix.architecture == 'arm64' && 'ARM aarch64' || 'x86-64' }}' || {
-            echo 'AppImage ELF architecture drifted' >&2
-            exit 1
-          }
-          deb_version="$(dpkg-deb -f "${debs[0]}" Version)"
-          case "$deb_version" in "$APP_VERSION"|"$APP_VERSION"-*|"$APP_VERSION"+*) ;; *) echo "DEB version drifted: $deb_version" >&2; exit 1;; esac
-          [ "$(dpkg-deb -f "${debs[0]}" Architecture)" = '${{ matrix.deb_arch }}' ] || {
-            echo 'DEB architecture drifted' >&2
-            exit 1
-          }
-          [ "$(rpm -qp --qf '%{VERSION}' "${rpms[0]}")" = "$APP_VERSION" ] || {
-            echo 'RPM version drifted' >&2
-            exit 1
-          }
-          [ "$(rpm -qp --qf '%{ARCH}' "${rpms[0]}")" = '${{ matrix.rpm_arch }}' ] || {
-            echo 'RPM architecture drifted' >&2
-            exit 1
-          }
-
-          mkdir -p release-assets
-          cp "${appimages[0]}" "release-assets/FyAgent-${APP_VERSION}-Linux-${{ matrix.asset_arch }}.AppImage"
-          cp "${debs[0]}" "release-assets/FyAgent-${APP_VERSION}-Linux-${{ matrix.asset_arch }}.deb"
-          cp "${rpms[0]}" "release-assets/FyAgent-${APP_VERSION}-Linux-${{ matrix.asset_arch }}.rpm"
-          [ "$(find release-assets -maxdepth 1 -type f | wc -l)" -eq 3 ]
-
-      - name: Record Linux build metadata
-        shell: bash
-        env:
-          TARGET_GROUP: ${{ matrix.target_group }}
-          TARGET_PLATFORM: linux
-          TARGET_ARCHITECTURE: ${{ matrix.architecture }}
-          REQUESTED_RUNNER_LABEL: ${{ matrix.runner }}
-          ACTUAL_RUNNER_OS: ${{ runner.os }}
-          ACTUAL_RUNNER_ARCH: ${{ runner.arch }}
-          CONTAINER_IMAGE_REFERENCE: ${{ matrix.container_image }}@${{ matrix.container_digest }}
-          CONTAINER_MANIFEST_DIGEST: ${{ matrix.container_digest }}
-        run: |
-          set -euo pipefail
-          source /etc/os-release
-          [ "${ACTUAL_RUNNER_OS}" = Linux ] || {
-            echo "Runner context OS ${ACTUAL_RUNNER_OS} is not Linux" >&2
-            exit 1
-          }
-          [ "${ACTUAL_RUNNER_ARCH}" = '${{ matrix.expected_runner_arch }}' ] || {
-            echo "Runner context architecture ${ACTUAL_RUNNER_ARCH} is not ${{ matrix.expected_runner_arch }}" >&2
-            exit 1
-          }
-          if [ "${ID:-}" != ubuntu ] || [ "${VERSION_ID:-}" != '22.04' ]; then
-            echo "Release container is not Ubuntu 22.04 at metadata emission: ${ID:-unknown} ${VERSION_ID:-unknown}" >&2
-            exit 1
-          fi
-          actual_uname_machine="$(uname -m)"
-          [ "$actual_uname_machine" = '${{ matrix.uname_arch }}' ] || {
-            echo "Container architecture $actual_uname_machine is not native ${{ matrix.uname_arch }} at metadata emission" >&2
-            exit 1
-          }
-          mkdir -p platform-metadata
-          ACTUAL_CONTAINER_OS_ID="$ID" \
-          ACTUAL_CONTAINER_OS_VERSION_ID="$VERSION_ID" \
-          ACTUAL_CONTAINER_UNAME_MACHINE="$actual_uname_machine" \
-            node scripts/release/write-platform-metadata.mjs "platform-metadata/${{ matrix.target_group }}.json"
-
-      - name: Upload Linux installers
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: installers-${{ matrix.target_group }}
-          path: release-assets/*
-          if-no-files-found: error
-          retention-days: 7
-
-      - name: Upload Linux build metadata
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: metadata-${{ matrix.target_group }}
-          path: platform-metadata/*
-          if-no-files-found: error
-          retention-days: 7
-
   build-macos:
     name: macOS Universal ad-hoc app and unsigned DMG
     needs: eligibility
@@ -1365,12 +1141,13 @@ jobs:
         run: |
           set -euo pipefail
           bundle_root='src-tauri/target/universal-apple-darwin/release/bundle/macos'
-          app_count="$(find "$bundle_root" -maxdepth 1 -type d -name 'FyAgent.app' -print | wc -l | tr -d ' ')"
-          [ "$app_count" -eq 1 ] || {
-            echo "Expected exactly one raw universal FyAgent.app, found $app_count" >&2
+          shopt -s nullglob
+          app_paths=("$bundle_root"/*.app)
+          [ "${#app_paths[@]}" -eq 1 ] && [ -d "${app_paths[0]}" ] && [ "$(basename "${app_paths[0]}")" = 'FyAgent.app' ] || {
+            echo "Expected exactly one raw universal FyAgent.app" >&2
             exit 1
           }
-          app_path="$(find "$bundle_root" -maxdepth 1 -type d -name 'FyAgent.app' -print | head -1)"
+          app_path="${app_paths[0]}"
           plist="$app_path/Contents/Info.plist"
           bundle_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$plist")"
           bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$plist")"
@@ -1430,7 +1207,10 @@ jobs:
             "$dmg_path" \
             -- \
             create -volname 'FyAgent' -srcfolder "$stage" -ov -format UDZO "$dmg_path"
-          hdiutil verify "$dmg_path"
+          scripts/release/retry-hdiutil.sh \
+            "$dmg_path" \
+            -- \
+            verify "$dmg_path"
           mounted=true
           hdiutil attach "$dmg_path" -readonly -nobrowse -noautoopen -mountpoint "$mount_point"
           [ -d "$mount_point/FyAgent.app" ]
@@ -1455,7 +1235,8 @@ jobs:
             echo "Unsigned $RELEASE_TAG DMG produced contradictory signature evidence" >&2
             exit 1
           fi
-          [ "$(find release-assets -maxdepth 1 -type f | wc -l)" -eq 2 ]
+          node scripts/release/prepare-release-publication.mjs verify-target \
+            release-assets "$APP_VERSION" macos-universal
 
       - name: Record macOS build metadata
         env:
@@ -1487,8 +1268,8 @@ jobs:
 
   pin-release-build-inputs:
     name: Pin immutable pre-signer build inputs
-    needs: [eligibility, build-windows, build-linux, build-macos]
-    runs-on: ubuntu-24.04
+    needs: [eligibility, build-windows, build-macos]
+    runs-on: macos-15
     permissions:
       contents: read
     outputs:
@@ -1522,11 +1303,11 @@ jobs:
           pattern: raw-windows-*
           path: release-build-inputs
 
-      - name: Download exact non-Windows installer build artifacts
+      - name: Download exact macOS installer build artifacts
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          pattern: installers-*
-          path: release-build-inputs
+          name: installers-macos-universal
+          path: release-build-inputs/installers-macos-universal
 
       - name: Download exact platform metadata build artifacts
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -1552,19 +1333,18 @@ jobs:
 
   verify-assets:
     name: Verify exact installers and generate evidence
-    if: ${{ always() && needs.eligibility.result == 'success' && needs['build-windows'].result == 'success' && needs['build-linux'].result == 'success' && needs['build-macos'].result == 'success' && needs['pin-release-build-inputs'].result == 'success' && ((github.event_name == 'workflow_dispatch' && needs.eligibility.outputs.release_mode == 'preflight' && needs['prove-windows-preflight'].result == 'success' && needs['sign-windows-formal'].result == 'skipped' && needs['seal-windows-formal'].result == 'skipped') || (github.event_name == 'push' && needs.eligibility.outputs.release_mode == 'formal' && needs['prove-windows-preflight'].result == 'skipped' && needs['sign-windows-formal'].result == 'success' && needs['seal-windows-formal'].result == 'success')) }}
+    if: ${{ always() && needs.eligibility.result == 'success' && needs['build-windows'].result == 'success' && needs['build-macos'].result == 'success' && needs['pin-release-build-inputs'].result == 'success' && ((github.event_name == 'workflow_dispatch' && needs.eligibility.outputs.release_mode == 'preflight' && needs['prove-windows-preflight'].result == 'success' && needs['sign-windows-formal'].result == 'skipped' && needs['seal-windows-formal'].result == 'skipped') || (github.event_name == 'push' && needs.eligibility.outputs.release_mode == 'formal' && needs['prove-windows-preflight'].result == 'skipped' && needs['sign-windows-formal'].result == 'success' && needs['seal-windows-formal'].result == 'success')) }}
     needs:
       [
         eligibility,
         build-windows,
-        build-linux,
         build-macos,
         pin-release-build-inputs,
         prove-windows-preflight,
         sign-windows-formal,
         seal-windows-formal,
       ]
-    runs-on: ubuntu-24.04
+    runs-on: macos-15
     env:
       APP_VERSION: ${{ needs.eligibility.outputs.app_version }}
       RELEASE_TAG: ${{ needs.eligibility.outputs.release_tag }}
@@ -1614,7 +1394,7 @@ jobs:
           pattern: signing-*
           path: downloaded-signing
 
-      - name: Verify exact ten and generate three machine-readable subjects
+      - name: Verify exact four and generate three machine-readable subjects
         shell: bash
         run: |
           set -euo pipefail
@@ -1649,7 +1429,7 @@ jobs:
             verified-subjects/build-metadata.json
           node scripts/release/verify-release-files.mjs subjects verified-subjects "$APP_VERSION"
 
-      - name: Upload the exact thirteen attestation subjects
+      - name: Upload the exact seven attestation subjects
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: verified-attestation-subjects
@@ -1658,10 +1438,10 @@ jobs:
           retention-days: 7
 
   attest:
-    name: Attest ten installers and three evidence files
+    name: Attest four installers and three evidence files
     if: ${{ !cancelled() }}
     needs: [eligibility, verify-assets]
-    runs-on: ubuntu-24.04
+    runs-on: macos-15
     permissions:
       artifact-metadata: write
       attestations: write
@@ -1699,7 +1479,7 @@ jobs:
           name: verified-attestation-subjects
           path: verified-subjects
 
-      - name: Recheck the exact thirteen subjects
+      - name: Recheck the exact seven subjects
         run: node scripts/release/verify-release-files.mjs subjects verified-subjects "$APP_VERSION"
 
       - name: Generate mandatory GitHub artifact attestation
@@ -1708,7 +1488,7 @@ jobs:
         with:
           subject-path: verified-subjects/*
 
-      - name: Assemble and verify exact fourteen Release attachments
+      - name: Assemble and verify exact eight Release attachments
         shell: bash
         env:
           BUNDLE_PATH: ${{ steps.attest.outputs.bundle-path }}
@@ -1718,10 +1498,8 @@ jobs:
             echo 'actions/attest did not return a non-empty Sigstore bundle' >&2
             exit 1
           }
-          mkdir release-attachments
-          cp verified-subjects/* release-attachments/
-          cp "$BUNDLE_PATH" release-attachments/artifact-attestation.sigstore.json
-          node scripts/release/verify-release-files.mjs attachments release-attachments "$APP_VERSION"
+          node scripts/release/prepare-release-publication.mjs assemble \
+            verified-subjects "$BUNDLE_PATH" release-attachments "$APP_VERSION"
 
       - name: Upload exact Release transaction payload
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -1735,7 +1513,7 @@ jobs:
     name: Publish stable GitHub Release
     if: ${{ !cancelled() && github.event_name == 'push' && needs.eligibility.result == 'success' && needs.eligibility.outputs.release_mode == 'formal' && needs.attest.result == 'success' }}
     needs: [eligibility, attest]
-    runs-on: ubuntu-24.04
+    runs-on: macos-15
     permissions:
       actions: read
       checks: read
@@ -1968,9 +1746,10 @@ jobs:
             "$create_json" >/dev/null
 
           upload_base="$uploads_root/repos/$repository/releases/$draft_id/assets"
-          while IFS= read -r asset_path; do
-            asset_name="$(basename "$asset_path")"
-            [[ "$asset_name" =~ ^[A-Za-z0-9._-]+$ ]]
+          local_attachments="$transaction_root/local-attachments.json"
+          node scripts/release/prepare-release-publication.mjs list \
+            release-attachments "$APP_VERSION" > "$local_attachments"
+          while IFS=$'\t' read -r asset_path asset_name asset_size; do
             upload_json="$transaction_root/upload-$asset_name.json"
             upload_status="$(curl --silent --show-error \
               --request POST --output "$upload_json" --write-out '%{http_code}' \
@@ -1983,10 +1762,10 @@ jobs:
             }
             jq -e \
               --arg name "$asset_name" \
-              --argjson size "$(stat -c '%s' "$asset_path")" \
+              --argjson size "$asset_size" \
               '.name == $name and .state == "uploaded" and .size == $size and (.id | type) == "number"' \
               "$upload_json" >/dev/null
-          done < <(find release-attachments -maxdepth 1 -type f -print | LC_ALL=C sort)
+          done < <(jq -r '.[] | [.path, .name, .size] | @tsv' "$local_attachments")
 
           assets_json="$transaction_root/assets.json"
           assets_status="$(curl --silent --show-error \
@@ -1995,9 +1774,9 @@ jobs:
             "$api_root/repos/$repository/releases/$draft_id/assets?per_page=100")"
           [ "$assets_status" = 200 ]
           jq -e '
-            length == 14 and
-            (map(.id) | unique | length) == 14 and
-            (map(.name) | unique | length) == 14 and
+            length == 8 and
+            (map(.id) | unique | length) == 8 and
+            (map(.name) | unique | length) == 8 and
             all(.state == "uploaded" and .size > 0)
           ' "$assets_json" >/dev/null
 
@@ -2014,14 +1793,10 @@ jobs:
               echo "Re-download failed for $asset_name with HTTP $download_status" >&2
               exit 1
             }
-            local_digest="$(sha256sum "release-attachments/$asset_name" | cut -d' ' -f1)"
-            remote_digest="$(sha256sum "$remote_root/$asset_name" | cut -d' ' -f1)"
-            [ "$local_digest" = "$remote_digest" ] || {
-              echo "Re-downloaded bytes differ for $asset_name" >&2
-              exit 1
-            }
+
           done < <(jq -r '.[] | [.id, .name] | @tsv' "$assets_json")
-          node scripts/release/verify-release-files.mjs attachments "$remote_root" "$APP_VERSION"
+          node scripts/release/prepare-release-publication.mjs verify-downloads \
+            release-attachments "$remote_root" "$APP_VERSION"
 
           prepublish_json="$transaction_root/prepublish.json"
           prepublish_status="$(curl --silent --show-error \
@@ -2070,7 +1845,7 @@ jobs:
             '.id == $id and .draft == false and .prerelease == false and
              .tag_name == $tag and
              .name == ("FyAgent " + $tag) and .body == $body and
-             (.published_at | type) == "string" and (.assets | length) == 14' \
+             (.published_at | type) == "string" and (.assets | length) == 8' \
             "$published_json" >/dev/null
 
           published_confirm_json="$transaction_root/published-confirmed.json"

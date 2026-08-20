@@ -204,7 +204,6 @@ Codex アプリ拡張やルーティング管理は、必要ないユーザー�
 
 - [Codex デスクトップアプリでカスタムモデルが見えない？（よくある質問）](./codex-desktop-custom-model-visibility-ja.md)
 - [Codex DeepSeek ローカルルーティング実践ガイド](./codex-deepseek-routing-guide-ja.md)
-- [Codex プロバイダーの追加: Chat Completions ルーティングとモデルマッピング](../user-manual/ja/2-providers/2.1-add.md)
-- [ローカルプロキシサービス](../user-manual/ja/4-proxy/4.1-service.md)
-- [ローカルルーティング](../user-manual/ja/4-proxy/4.2-routing.md)
-- [FyAgent v3.16.1 Release Note](../release-notes/v3.16.1-ja.md)
+- [Codex プロバイダーの追加: Chat Completions ルーティングとモデルマッピング](../user-manual/ja/3-providers/3.1-add.md)
+- [ローカルプロキシサービス](../user-manual/ja/5-proxy/5.1-service.md)
+- [ローカルルーティング](../user-manual/ja/5-proxy/5.2-routing.md)

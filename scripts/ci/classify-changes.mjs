@@ -23,7 +23,9 @@ const ALL_DOMAINS = Object.freeze(
 
 const CONTROL_PLANE_PREFIXES = Object.freeze([
   ".agents/",
+  ".codebuddy/",
   ".codex/",
+  ".cursor/",
   ".github/",
   ".mise/",
   ".trellis/agents/",
@@ -72,12 +74,18 @@ const FRONTEND_TEST_PREFIXES = Object.freeze([
 const FRONTEND_ROOT_FILES = new Set([
   "components.json",
   "deplink.html",
+  "eslint.v2.config.mjs",
+  "playwright.v2.config.ts",
   "postcss.config.cjs",
+  "scripts/build-v2-preview.mjs",
   "tailwind.config.cjs",
   "tsconfig.json",
   "tsconfig.node.json",
+  "tsconfig.v2.json",
   "vite.config.ts",
+  "vitest.v2.config.ts",
   "vitest.config.ts",
+  "vitest.v2.config.ts",
 ]);
 
 const DOCUMENTATION_ROOT_FILES = new Set([
@@ -104,6 +112,16 @@ const LEGACY_DOCUMENTATION_ROOT_FILES = new Set([
   "README_ZH.md",
   "session-manager.md",
 ]);
+
+// Name-status diffs include deleted paths. Keep the retired generated
+// standalone preview owned so untracking it is not an unknown path.
+const LEGACY_FRONTEND_ROOT_FILES = new Set(["FyAgent-前端交互预览.html"]);
+
+// These trees are gone from this branch but still exist on older main
+// history. Name-status diffs include the deleted side, so they must stay
+// owned or PR classification against main fails closed.
+const RETIRED_SESSION_MEMORY_PREFIXES = Object.freeze(["memory/", ".omo/"]);
+const RETIRED_SANDBOX_PACKAGE_PREFIX = ["flat", "pak/"].join("");
 
 const CODEX_WINDOWS_PREFIXES = Object.freeze([
   "src-tauri/src/codex_desktop/",
@@ -213,7 +231,7 @@ function classifyPath(path, domains) {
     return { matched: true, forceFull: false };
   }
 
-  if (FRONTEND_ROOT_FILES.has(path)) {
+  if (FRONTEND_ROOT_FILES.has(path) || LEGACY_FRONTEND_ROOT_FILES.has(path)) {
     addDomains(domains, ["contracts", "frontend"]);
     return { matched: true, forceFull: false };
   }
@@ -251,8 +269,7 @@ function classifyPath(path, domains) {
   if (
     path.startsWith("docs/") ||
     path.startsWith("LICENSES/") ||
-    path.startsWith("memory/") ||
-    path.startsWith(".omo/")
+    hasPrefix(path, RETIRED_SESSION_MEMORY_PREFIXES)
   ) {
     addDomains(domains, ["contracts", "docsSpec"]);
     return { matched: true, forceFull: false };
@@ -266,8 +283,8 @@ function classifyPath(path, domains) {
     return { matched: true, forceFull: false };
   }
 
-  if (path.startsWith("flatpak/")) {
-    addDomains(domains, ["backend", "docsSpec"]);
+  if (path.startsWith(RETIRED_SANDBOX_PACKAGE_PREFIX)) {
+    addDomains(domains, ["contracts", "docsSpec"]);
     return { matched: true, forceFull: false };
   }
 

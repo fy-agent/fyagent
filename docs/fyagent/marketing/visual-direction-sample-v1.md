@@ -4,7 +4,7 @@ status: superseded
 updated: 2026-08-10
 review_on: 2026-09-10
 authority: working_sample
-source: ChatGPT built-in image generation with project-owned FyAgent icon reference
+source: project-owned concept workflow with FyAgent icon reference
 superseded_by: visual-direction-sample-v2.md
 ---
 
@@ -49,16 +49,16 @@ Avoid: generic purple SaaS gradients, glassmorphism overload, neon cyberpunk, ex
 
 ## 生成记录
 
-| 字段 | 值 |
-|---|---|
-| 模式 | ChatGPT built-in image generation |
-| 参考图 | `assets/fyagent.png`，角色为项目自有品牌参考 |
-| 输出 | `assets/samples/fyagent-unified-control-hero-v1.png` |
-| 尺寸 | 1672×941 |
-| 文件大小 | 1,710,317 bytes；concept 阶段未做发布压缩 |
-| SHA-256 | `2D5767DEA12F6B0456D887B6E21D786B1DEE47C2CBC8B69FDBB5951A0C2926A2` |
-| 文字 | 无 |
-| 第三方 Logo | 无；外围节点为通用几何图形 |
+| 字段        | 值                                                                 |
+| ----------- | ------------------------------------------------------------------ |
+| 模式        | 项目概念图生成流程                                                 |
+| 参考图      | `assets/fyagent.png`，角色为项目自有品牌参考                       |
+| 输出        | `assets/samples/fyagent-unified-control-hero-v1.png`               |
+| 尺寸        | 1672×941                                                           |
+| 文件大小    | 1,710,317 bytes；concept 阶段未做发布压缩                          |
+| SHA-256     | `2D5767DEA12F6B0456D887B6E21D786B1DEE47C2CBC8B69FDBB5951A0C2926A2` |
+| 文字        | 无                                                                 |
+| 第三方 Logo | 无；外围节点为通用几何图形                                         |
 
 ## 评审结论
 

@@ -29,7 +29,7 @@ use rust_decimal::Decimal;
 use std::collections::HashMap;
 use std::fs;
 use std::io::{BufRead, BufReader};
-#[cfg(unix)]
+#[cfg(target_os = "macos")]
 use std::os::unix::fs::MetadataExt;
 #[cfg(windows)]
 use std::os::windows::io::AsRawHandle;
@@ -90,9 +90,9 @@ struct TimestampedTokenSignature {
 struct ParentFileStamp {
     modified_nanos: i64,
     size: u64,
-    #[cfg(unix)]
+    #[cfg(target_os = "macos")]
     device: u64,
-    #[cfg(unix)]
+    #[cfg(target_os = "macos")]
     inode: u64,
     #[cfg(windows)]
     volume_serial: u64,
@@ -108,9 +108,9 @@ impl ParentFileStamp {
         Some(Self {
             modified_nanos: metadata_modified_nanos(&metadata),
             size: metadata.len(),
-            #[cfg(unix)]
+            #[cfg(target_os = "macos")]
             device: metadata.dev(),
-            #[cfg(unix)]
+            #[cfg(target_os = "macos")]
             inode: metadata.ino(),
             #[cfg(windows)]
             volume_serial,
@@ -2419,7 +2419,7 @@ mod tests {
         assert_eq!(replay_caches().lock().unwrap().parent_timelines.len(), 1);
     }
 
-    #[cfg(any(unix, windows))]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     #[test]
     fn test_parent_file_stamp_distinguishes_same_size_same_mtime_files() {
         let temp = tempdir().unwrap();
@@ -3019,7 +3019,7 @@ mod tests {
         // 触碰真实 ~/.fyagent / ~/.codex 下的任何其他内容。
         let temp = tempfile::tempdir().expect("create temp home");
         fs::create_dir_all(temp.path().join(".codex")).expect("mkdir .codex");
-        #[cfg(unix)]
+        #[cfg(target_os = "macos")]
         std::os::unix::fs::symlink(&real_sessions, temp.path().join(".codex").join("sessions"))
             .expect("symlink sessions");
         let _test_home_guard = TestHomeGuard::set(temp.path());

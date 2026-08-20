@@ -224,7 +224,7 @@ pub fn write_gemini_env_text_atomic(content: &str) -> Result<(), AppError> {
         fs::create_dir_all(parent).map_err(|e| AppError::io(parent, e))?;
 
         // 设置目录权限为 700（仅所有者可读写执行）
-        #[cfg(unix)]
+        #[cfg(target_os = "macos")]
         {
             use std::os::unix::fs::PermissionsExt;
             let mut perms = fs::metadata(parent)
@@ -238,7 +238,7 @@ pub fn write_gemini_env_text_atomic(content: &str) -> Result<(), AppError> {
     write_text_file(&path, content)?;
 
     // 设置文件权限为 600（仅所有者可读写）
-    #[cfg(unix)]
+    #[cfg(target_os = "macos")]
     {
         use std::os::unix::fs::PermissionsExt;
         let mut perms = fs::metadata(&path)

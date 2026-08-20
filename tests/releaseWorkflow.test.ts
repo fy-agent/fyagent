@@ -16,7 +16,6 @@ const RELEASE_WORKFLOW = path.join(ROOT, ".github", "workflows", "release.yml");
 const CI_WORKFLOW = path.join(ROOT, ".github", "workflows", "ci.yml");
 const CARGO_TOML = path.join(ROOT, "src-tauri", "Cargo.toml");
 const TAURI_CONFIG = path.join(ROOT, "src-tauri", "tauri.conf.json");
-const RELEASE_NOTES_DIR = path.join(ROOT, "docs", "release-notes");
 const BUILD_RS = path.join(ROOT, "src-tauri", "build.rs");
 const TEST_MANIFEST = path.join(
   ROOT,
@@ -106,7 +105,7 @@ const createTrustedBuildInputs =
     outputRoot: string;
     version: string;
     sourceSha: string;
-  }) => Promise<unknown>;
+  }) => Promise<{ artifacts: Array<{ name: string }> }>;
 const verifyTrustedBuildInputs =
   pinnedInputsModule.verifyTrustedBuildInputs as (options: {
     root: string;
@@ -119,7 +118,14 @@ function read(file: string): string {
 }
 
 function resolveBashExecutable(): string {
-  if (process.platform !== "win32") return "bash";
+  switch (process.platform) {
+    case "darwin":
+      return "bash";
+    case "win32":
+      break;
+    default:
+      throw new Error(`Unsupported test host: ${process.platform}`);
+  }
 
   const gitExecPath = spawnSync("git", ["--exec-path"], {
     encoding: "utf8",
@@ -174,13 +180,159 @@ function expectExactLine(source: string, line: string) {
   ).toEqual([line]);
 }
 
+type WindowsReleaseMatrixRow = {
+  runner: string;
+  target_group: string;
+  architecture: string;
+  rust_target?: string;
+};
+
+type WindowsReleaseMatrixContract = {
+  job: string;
+  nextJob: string;
+  rows: readonly WindowsReleaseMatrixRow[];
+};
+
+const WINDOWS_RELEASE_MATRIX_CONTRACTS = [
+  {
+    job: "build-windows",
+    nextJob: "prove-windows-preflight",
+    rows: [
+      {
+        runner: "windows-2025",
+        target_group: "windows-x64",
+        architecture: "x64",
+        rust_target: "x86_64-pc-windows-msvc",
+      },
+      {
+        runner: "windows-11-arm",
+        target_group: "windows-arm64",
+        architecture: "arm64",
+        rust_target: "aarch64-pc-windows-msvc",
+      },
+    ],
+  },
+  {
+    job: "prove-windows-preflight",
+    nextJob: "sign-windows-formal",
+    rows: [
+      {
+        runner: "windows-2025",
+        target_group: "windows-x64",
+        architecture: "x64",
+      },
+      {
+        runner: "windows-11-arm",
+        target_group: "windows-arm64",
+        architecture: "arm64",
+      },
+    ],
+  },
+  {
+    job: "sign-windows-formal",
+    nextJob: "seal-windows-formal",
+    rows: [
+      {
+        runner: "windows-2025",
+        target_group: "windows-x64",
+        architecture: "x64",
+      },
+      {
+        runner: "windows-11-arm",
+        target_group: "windows-arm64",
+        architecture: "arm64",
+      },
+    ],
+  },
+  {
+    job: "seal-windows-formal",
+    nextJob: "build-macos",
+    rows: [
+      {
+        runner: "windows-2025",
+        target_group: "windows-x64",
+        architecture: "x64",
+      },
+      {
+        runner: "windows-11-arm",
+        target_group: "windows-arm64",
+        architecture: "arm64",
+      },
+    ],
+  },
+] as const satisfies readonly WindowsReleaseMatrixContract[];
+
+function windowsReleaseMatrixRows(
+  source: string,
+  contract: WindowsReleaseMatrixContract,
+): Array<Record<string, string>> {
+  const job = workflowJobBlock(source, contract.job, contract.nextJob);
+  const marker = "\n      matrix:\n        include:\n";
+  const matrixStart = job.indexOf(marker);
+  expect(matrixStart, `${contract.job} matrix`).toBeGreaterThanOrEqual(0);
+
+  const remainder = job.slice(matrixStart + marker.length);
+  const matrixEnd = remainder.search(/^    [a-z][a-z0-9_-]*:\s*$/mu);
+  expect(matrixEnd, `${contract.job} matrix boundary`).toBeGreaterThan(0);
+  const lines = remainder.slice(0, matrixEnd).trimEnd().split("\n");
+  const rows: Array<Record<string, string>> = [];
+  let current: Record<string, string> | undefined;
+
+  for (const line of lines) {
+    const rowStart = /^          - ([a-z][a-z0-9_]*): (\S.*)$/u.exec(line);
+    const field = /^            ([a-z][a-z0-9_]*): (\S.*)$/u.exec(line);
+    const match = rowStart ?? field;
+    if (!match || (!rowStart && !current)) {
+      throw new Error(
+        `${contract.job} matrix contains an unsupported row: ${line}`,
+      );
+    }
+    if (rowStart) {
+      current = {};
+      rows.push(current);
+    }
+    if (Object.prototype.hasOwnProperty.call(current, match[1])) {
+      throw new Error(`${contract.job} matrix row repeats field ${match[1]}`);
+    }
+    current![match[1]] = match[2];
+  }
+
+  return rows;
+}
+
+function assertExactWindowsReleaseMatrices(source: string): void {
+  for (const contract of WINDOWS_RELEASE_MATRIX_CONTRACTS) {
+    expect(windowsReleaseMatrixRows(source, contract), contract.job).toEqual(
+      contract.rows,
+    );
+  }
+}
+
+function mutateReleaseJob(
+  source: string,
+  contract: WindowsReleaseMatrixContract,
+  mutate: (job: string) => string,
+): string {
+  const job = workflowJobBlock(source, contract.job, contract.nextJob);
+  const mutated = mutate(job);
+  expect(mutated, `${contract.job} mutation`).not.toBe(job);
+  return source.replace(job, () => mutated);
+}
+
+function swapFirstPair(source: string, left: string, right: string): string {
+  const placeholder = "__fyagent_matrix_swap__";
+  return source
+    .replace(left, placeholder)
+    .replace(right, left)
+    .replace(placeholder, right);
+}
+
 const EXPECTED_RELEASE_JOB_IDS = [
   "eligibility",
   "build-windows",
   "prove-windows-preflight",
   "sign-windows-formal",
   "seal-windows-formal",
-  "build-linux",
   "build-macos",
   "pin-release-build-inputs",
   "verify-assets",
@@ -297,7 +449,7 @@ function assertWindowsSetupIconGates(workflow: string) {
   const verify = workflowJobBlock(workflow, "verify-assets", "attest");
   const aggregate = namedStepBlock(
     verify,
-    "Verify exact ten and generate three machine-readable subjects",
+    "Verify exact four and generate three machine-readable subjects",
   );
   const aggregateLines = aggregate.split("\n");
   if (
@@ -364,7 +516,6 @@ function releaseWorkflowRunScripts(workflow: string): string[] {
   const allowedInlineScripts = new Set([
     "pnpm install --frozen-lockfile",
     "node scripts/release/verify-windows-nsis-contract.mjs",
-    "pnpm tauri build --bundles appimage,deb,rpm --verbose",
     "pnpm tauri build --target universal-apple-darwin --bundles app",
     'node scripts/release/verify-release-files.mjs subjects verified-subjects "$APP_VERSION"',
   ]);
@@ -513,12 +664,10 @@ function createBuildInputFixture(version: string) {
       name: `raw-${target}`,
       files: EXPECTED_INSTALLERS_BY_TARGET[target],
     })),
-    ...(["macos-universal", "linux-x64", "linux-arm64"] as const).map(
-      (target) => ({
-        name: `installers-${target}`,
-        files: EXPECTED_INSTALLERS_BY_TARGET[target],
-      }),
-    ),
+    {
+      name: "installers-macos-universal",
+      files: EXPECTED_INSTALLERS_BY_TARGET["macos-universal"],
+    },
     ...EXPECTED_TARGETS.map(({ targetGroup }) => ({
       name: `metadata-${targetGroup}`,
       metadata: `${targetGroup}.json`,
@@ -619,44 +768,6 @@ describe("FyAgent release workflow", () => {
   const releaseContractTypes = read(RELEASE_CONTRACT_TYPES);
   const windowsManifestVerifier = read(WINDOWS_MANIFEST_VERIFIER);
 
-  it("ships non-empty English notes for the canonical release version", () => {
-    const canonicalVersion = read(CARGO_TOML).match(
-      /\[workspace\.package\]\s+version = "([0-9]+\.[0-9]+\.[0-9]+)"/u,
-    )?.[1];
-    expect(canonicalVersion).toBeTruthy();
-    const notes = read(
-      path.join(RELEASE_NOTES_DIR, `v${canonicalVersion}-en.md`),
-    );
-
-    expect(notes).toContain(`# FyAgent v${canonicalVersion}`);
-    for (const installer of expectedInstallerNames(canonicalVersion!)) {
-      expect(notes, installer).toContain(installer);
-    }
-    for (const evidence of [
-      "download-manifest.json",
-      "build-metadata.json",
-      "signing-status.json",
-      "artifact-attestation.sigstore.json",
-    ]) {
-      expect(notes, evidence).toContain(evidence);
-    }
-    expect(notes).toContain("14 attachments total");
-    expect(notes).toContain("13 subjects");
-    expect(notes).toContain("main");
-    expect(notes).toContain("NotSigned");
-    expect(notes).toMatch(/Developer\s+ID/u);
-    expect(notes).toContain("not notarized");
-    expect(notes).toMatch(/universal app is ad-hoc signed/iu);
-    expect(notes).toContain("DMG container is unsigned");
-    for (const retiredInstaller of [
-      `FyAgent-${canonicalVersion}-Windows.msi`,
-      `FyAgent-${canonicalVersion}-Windows-arm64.msi`,
-    ]) {
-      expect(notes, retiredInstaller).not.toContain(retiredInstaller);
-    }
-    expect(notes).not.toMatch(/FyAgent-[^\s`]*Windows[^\s`]*\.msi/iu);
-  });
-
   it("pins every pre-signer build input by exact file identity", async () => {
     const version = "12.34.56";
     const sourceSha = "0123456789abcdef0123456789abcdef01234567";
@@ -668,12 +779,21 @@ describe("FyAgent release workflow", () => {
     );
     temporaryRoots.push(outputRoot);
 
-    await createTrustedBuildInputs({
+    const manifest = await createTrustedBuildInputs({
       inputRoot,
       outputRoot,
       version,
       sourceSha,
     });
+    expect(manifest.artifacts.map(({ name }) => name)).toEqual([
+      "raw-windows-x64",
+      "raw-windows-arm64",
+      "installers-macos-universal",
+      "metadata-macos-universal",
+      "metadata-windows-x64",
+      "metadata-windows-arm64",
+    ]);
+    expect(manifest.artifacts).toHaveLength(6);
     await expect(
       verifyTrustedBuildInputs({ root: outputRoot, version, sourceSha }),
     ).resolves.toBeTruthy();
@@ -700,8 +820,8 @@ describe("FyAgent release workflow", () => {
 
     const metadataPath = path.join(
       outputRoot,
-      "metadata-linux-x64",
-      "linux-x64.json",
+      "metadata-macos-universal",
+      "macos-universal.json",
     );
     const metadataBytes = fs.readFileSync(metadataPath);
     fs.rmSync(metadataPath);
@@ -717,14 +837,14 @@ describe("FyAgent release workflow", () => {
     ).rejects.toThrow(/Unexpected trusted build input entry/u);
   });
 
-  it("supports an immutable main preflight and stable tag candidates without publishing dispatches", () => {
+  it("supports an immutable dev preflight and stable tag candidates without publishing dispatches", () => {
     const trigger = source.slice(0, source.indexOf("\npermissions:"));
     expect(trigger).toContain('      - "v*.*.*"');
     expect(trigger).not.toContain('      - "v*"');
     expect(trigger).not.toMatch(/^\s+- ["']v\d+\.\d+\.\d+["']\s*$/mu);
     expect(trigger).toContain("workflow_dispatch:");
     expect(trigger).toContain("source_sha:");
-    expect(trigger).toContain("main HEAD SHA");
+    expect(trigger).toContain("dev/laiyongjie HEAD SHA");
     expect(trigger).toContain("required: true");
     expect(source).toContain("release_mode='preflight'");
     expect(source).toContain("release_mode='formal'");
@@ -955,15 +1075,24 @@ describe("FyAgent release workflow", () => {
     for (const reference of actionRefs) {
       expect(reference).toMatch(/^[\w.-]+\/[\w.-]+@[0-9a-f]{40}$/);
     }
-    for (const runner of [
-      "ubuntu-24.04",
-      "ubuntu-24.04-arm",
-      "windows-2025",
-      "windows-11-arm",
-      "macos-15",
-    ]) {
+    for (const runner of ["windows-2025", "windows-11-arm", "macos-15"]) {
       expect(source).toContain(runner);
     }
+    for (const [job, nextJob] of [
+      ["eligibility", "build-windows"],
+      ["pin-release-build-inputs", "verify-assets"],
+      ["verify-assets", "attest"],
+      ["attest", "publish"],
+    ] as const) {
+      expectExactLine(
+        workflowJobBlock(source, job, nextJob),
+        "    runs-on: macos-15",
+      );
+    }
+    expectExactLine(
+      source.slice(source.indexOf("\n  publish:\n")),
+      "    runs-on: macos-15",
+    );
     expect(source).not.toContain("windows-2022");
     expect(source).not.toMatch(/runs-on:\s*[^\n]*-latest/);
     expect(source).not.toContain("actions/cache");
@@ -972,6 +1101,46 @@ describe("FyAgent release workflow", () => {
     expect(source.match(/uses: actions\/checkout@/g)).toHaveLength(
       source.match(/persist-credentials: false/g)?.length ?? 0,
     );
+  });
+
+  it("freezes every Windows release matrix as an exact native target mapping", () => {
+    expect(() => assertExactWindowsReleaseMatrices(source)).not.toThrow();
+
+    const mutations = WINDOWS_RELEASE_MATRIX_CONTRACTS.flatMap((contract) => [
+      {
+        name: `${contract.job} runner swap`,
+        workflow: mutateReleaseJob(source, contract, (job) =>
+          swapFirstPair(job, "windows-2025", "windows-11-arm"),
+        ),
+      },
+      {
+        name: `${contract.job} extra matrix row`,
+        workflow: mutateReleaseJob(source, contract, (job) => {
+          const row = contract.rows[0];
+          const rustTarget =
+            "rust_target" in row
+              ? `\n            rust_target: ${row.rust_target}`
+              : "";
+          return job.replace(
+            "    env:\n",
+            `          - runner: ${row.runner}\n            target_group: ${row.target_group}\n            architecture: ${row.architecture}${rustTarget}\n    env:\n`,
+          );
+        }),
+      },
+      {
+        name: `${contract.job} target group swap`,
+        workflow: mutateReleaseJob(source, contract, (job) =>
+          swapFirstPair(job, "windows-x64", "windows-arm64"),
+        ),
+      },
+    ]);
+
+    for (const mutation of mutations) {
+      expect(
+        () => assertExactWindowsReleaseMatrices(mutation.workflow),
+        mutation.name,
+      ).toThrow();
+    }
   });
 
   it("bootstraps native jobs without implicit tools, broad Git trust, or release caches", () => {
@@ -985,11 +1154,11 @@ describe("FyAgent release workflow", () => {
         rustStep: "Setup Rust",
       },
       {
-        block: workflowJobBlock(source, "build-linux", "build-macos"),
-        rustStep: "Setup Rust",
-      },
-      {
-        block: workflowJobBlock(source, "build-macos", "verify-assets"),
+        block: workflowJobBlock(
+          source,
+          "build-macos",
+          "pin-release-build-inputs",
+        ),
         rustStep: "Setup Rust with both universal targets",
       },
     ];
@@ -1012,19 +1181,6 @@ describe("FyAgent release workflow", () => {
       expectExactLine(rustSetupStep, "          cache: false");
     }
 
-    const linux = nativeJobs[1].block;
-    const trustStep = namedStepBlock(
-      linux,
-      "Trust exact checked-out workspace for container Git",
-    );
-    expectExactLine(
-      trustStep,
-      "          git config --global --unset-all safe.directory 2>/dev/null || true",
-    );
-    expectExactLine(
-      trustStep,
-      '          git config --global --add safe.directory "$GITHUB_WORKSPACE"',
-    );
     expect(source).not.toMatch(/safe\.directory\s+["']?\*["']?/);
   });
 
@@ -1041,7 +1197,7 @@ describe("FyAgent release workflow", () => {
     );
   });
 
-  it("binds repository, main HEAD, annotated formal tag, and exact Required CI through the repository-owned verifier", () => {
+  it("binds the dev preflight, formal tag, and exact authority-branch Required CI through the repository-owned verifier", () => {
     const eligibility = source.slice(
       source.indexOf("\n  eligibility:\n"),
       source.indexOf("\n  build-windows:\n"),
@@ -1053,8 +1209,7 @@ describe("FyAgent release workflow", () => {
     expect(eligibility).toContain("path: candidate-source");
     expect(eligibility).not.toContain("installer-actions");
     expect(eligibility).not.toContain("pnpm install");
-    expect(eligibility).toContain("refs/heads/main");
-    expect(eligibility).not.toContain("refs/heads/dev/laiyongjie");
+    expect(eligibility).toContain("refs/heads/dev/laiyongjie");
     expect(eligibility).toContain('"refs/tags/$GITHUB_REF_NAME"');
     expect(eligibility).toContain('release_tag="v$app_version"');
     expect(eligibility).toContain('check --tag "$release_tag"');
@@ -1097,55 +1252,25 @@ describe("FyAgent release workflow", () => {
     expect(eligibility).toContain("checks: read");
     expect(eligibility).not.toContain("merge-base --is-ancestor");
     expect(eligibility).not.toContain("refs/remotes/origin/main");
-    expect(eligibility).not.toContain("branch=dev/laiyongjie");
+    expect(eligibility).not.toContain("branch=main");
     expect(
       namedStepBlock(
         eligibility,
-        "Bind remote main, tag, and successful Required CI evidence",
+        "Bind remote authority branch, tag, and successful Required CI evidence",
       ),
     ).not.toContain("\n        if:");
   });
 
-  it("uses native Linux hosts with reviewed Ubuntu child digests", () => {
-    expect(source).toContain(
-      "image: ${{ matrix.container_image }}@${{ matrix.container_digest }}",
-    );
-    expect(source).toContain(
-      "sha256:0199853f6d6b20b0424f3c5694a72a62764f01e6a771b1eb48a4197848986c7e",
-    );
-    expect(source).toContain(
-      "sha256:a8cdd2158a73d7e5c02aa351fe269f48f57cf710a241db86e9ede371fc150149",
-    );
-    expect(source.toLowerCase()).not.toContain("qemu");
-    expect(source).toContain("Expected exactly one raw AppImage, DEB, and RPM");
-    const packageStep = namedStepBlock(
-      workflowJobBlock(source, "build-linux", "build-macos"),
-      "Build native Linux packages",
-    );
-    expectExactLine(packageStep, '          APPIMAGE_EXTRACT_AND_RUN: "1"');
-    expect(source.match(/APPIMAGE_EXTRACT_AND_RUN:/g)).toHaveLength(1);
-    expect(source).not.toContain("SYS_ADMIN");
-    expect(source).not.toContain("/dev/fuse");
-  });
-
-  it("records source-explicit runner and container metadata", () => {
+  it("records source-explicit runner metadata for all three targets", () => {
     const windowsMetadataStep = namedStepBlock(
       workflowJobBlock(source, "build-windows", "prove-windows-preflight"),
       "Record Windows build metadata",
     );
-    const linuxMetadataStep = namedStepBlock(
-      workflowJobBlock(source, "build-linux", "build-macos"),
-      "Record Linux build metadata",
-    );
     const macosMetadataStep = namedStepBlock(
-      workflowJobBlock(source, "build-macos", "verify-assets"),
+      workflowJobBlock(source, "build-macos", "pin-release-build-inputs"),
       "Record macOS build metadata",
     );
-    for (const step of [
-      windowsMetadataStep,
-      linuxMetadataStep,
-      macosMetadataStep,
-    ]) {
+    for (const step of [windowsMetadataStep, macosMetadataStep]) {
       expectExactLine(step, "          ACTUAL_RUNNER_OS: ${{ runner.os }}");
       expectExactLine(step, "          ACTUAL_RUNNER_ARCH: ${{ runner.arch }}");
       expect(step).toContain("write-platform-metadata.mjs");
@@ -1154,17 +1279,6 @@ describe("FyAgent release workflow", () => {
       windowsMetadataStep,
       "          REQUESTED_RUNNER_LABEL: ${{ matrix.runner }}",
     );
-    for (const variable of [
-      "CONTAINER_IMAGE_REFERENCE",
-      "CONTAINER_MANIFEST_DIGEST",
-      "ACTUAL_CONTAINER_OS_ID",
-      "ACTUAL_CONTAINER_OS_VERSION_ID",
-      "ACTUAL_CONTAINER_UNAME_MACHINE",
-    ]) {
-      expect(linuxMetadataStep).toContain(variable);
-      expect(windowsMetadataStep).not.toContain(variable);
-      expect(macosMetadataStep).not.toContain(variable);
-    }
     for (const ambientVariable of [
       '"RUNNER_OS"',
       '"RUNNER_ARCH"',
@@ -1178,6 +1292,9 @@ describe("FyAgent release workflow", () => {
       expect(releaseContract).not.toContain(retiredField);
       expect(releaseContractTypes).not.toContain(retiredField);
     }
+    expect(releaseContract).toContain('schema: "fyagent-platform-build/v2"');
+    expect(releaseContract).toContain('schema: "fyagent-build-metadata/v2"');
+    expect(releaseContract).toContain('schema: "fyagent-download-manifest/v3"');
   });
 
   it("isolates raw NSIS builds from signing credentials and lifecycle execution", () => {
@@ -1441,7 +1558,7 @@ describe("FyAgent release workflow", () => {
     const sealer = workflowJobBlock(
       source,
       "seal-windows-formal",
-      "build-linux",
+      "build-macos",
     );
     expectExactLine(
       sealer,
@@ -1498,10 +1615,10 @@ describe("FyAgent release workflow", () => {
     const verify = workflowJobBlock(source, "verify-assets", "attest");
     expectExactLine(
       verify,
-      "    if: ${{ always() && needs.eligibility.result == 'success' && needs['build-windows'].result == 'success' && needs['build-linux'].result == 'success' && needs['build-macos'].result == 'success' && needs['pin-release-build-inputs'].result == 'success' && ((github.event_name == 'workflow_dispatch' && needs.eligibility.outputs.release_mode == 'preflight' && needs['prove-windows-preflight'].result == 'success' && needs['sign-windows-formal'].result == 'skipped' && needs['seal-windows-formal'].result == 'skipped') || (github.event_name == 'push' && needs.eligibility.outputs.release_mode == 'formal' && needs['prove-windows-preflight'].result == 'skipped' && needs['sign-windows-formal'].result == 'success' && needs['seal-windows-formal'].result == 'success')) }}",
+      "    if: ${{ always() && needs.eligibility.result == 'success' && needs['build-windows'].result == 'success' && needs['build-macos'].result == 'success' && needs['pin-release-build-inputs'].result == 'success' && ((github.event_name == 'workflow_dispatch' && needs.eligibility.outputs.release_mode == 'preflight' && needs['prove-windows-preflight'].result == 'success' && needs['sign-windows-formal'].result == 'skipped' && needs['seal-windows-formal'].result == 'skipped') || (github.event_name == 'push' && needs.eligibility.outputs.release_mode == 'formal' && needs['prove-windows-preflight'].result == 'skipped' && needs['sign-windows-formal'].result == 'success' && needs['seal-windows-formal'].result == 'success')) }}",
     );
     expect(verify).toContain(
-      "    needs:\n      [\n        eligibility,\n        build-windows,\n        build-linux,\n        build-macos,\n        pin-release-build-inputs,\n        prove-windows-preflight,\n        sign-windows-formal,\n        seal-windows-formal,\n      ]",
+      "    needs:\n      [\n        eligibility,\n        build-windows,\n        build-macos,\n        pin-release-build-inputs,\n        prove-windows-preflight,\n        sign-windows-formal,\n        seal-windows-formal,\n      ]",
     );
     expect(verify).toContain(
       "artifact-ids: ${{ needs['pin-release-build-inputs'].outputs.artifact_id }}",
@@ -1509,7 +1626,7 @@ describe("FyAgent release workflow", () => {
     expect(verify).toContain("pattern: installers-windows-*");
     expect(verify).toContain("pattern: signing-*");
     expect(verify).toContain("windows-signing.mjs aggregate");
-    expect(verify).not.toContain("runs-on: windows");
+    expectExactLine(verify, "    runs-on: macos-15");
   });
 
   it("parses every legal GitHub Actions job ID shape used by the topology guard", () => {
@@ -1517,11 +1634,11 @@ describe("FyAgent release workflow", () => {
       releaseWorkflowJobIds(`
 jobs:
   _Leading_ID:
-    runs-on: ubuntu-24.04
+    runs-on: macos-15
   'UpperCase':
-    runs-on: ubuntu-24.04
+    runs-on: macos-15
   "lower-hyphen_2":
-    runs-on: ubuntu-24.04
+    runs-on: macos-15
 `),
     ).toEqual(["_Leading_ID", "UpperCase", "lower-hyphen_2"]);
   });
@@ -1533,7 +1650,7 @@ jobs:
         "\n  verify-assets:\n",
         `
   ${jobKey}:
-    runs-on: ubuntu-24.04
+    runs-on: macos-15
     steps:
       - name: Harmless topology mutation
         run: echo unexpected extra job
@@ -1553,7 +1670,7 @@ jobs:
       "\n  verify-assets:\n",
       `
   "\\x5fWindows_SMOKE":
-    runs-on: ubuntu-24.04
+    runs-on: macos-15
     steps:
       - run: echo unexpected escaped job key
 
@@ -1678,8 +1795,9 @@ jobs:
     );
     expectExactLine(
       pin,
-      "    needs: [eligibility, build-windows, build-linux, build-macos]",
+      "    needs: [eligibility, build-windows, build-macos]",
     );
+    expectExactLine(pin, "    runs-on: macos-15");
     expect(pin).toContain(
       "artifact_id: ${{ steps.upload.outputs.artifact-id }}",
     );
@@ -1687,7 +1805,11 @@ jobs:
       "artifact_digest: ${{ steps.upload.outputs.artifact-digest }}",
     );
     expect(pin).toContain("pattern: raw-windows-*");
-    expect(pin).toContain("pattern: installers-*");
+    expect(pin).toContain("name: installers-macos-universal");
+    expect(pin).toContain(
+      "path: release-build-inputs/installers-macos-universal",
+    );
+    expect(pin).not.toContain("pattern: installers-macos-*");
     expect(pin).toContain("pattern: metadata-*");
     expect(pin).toContain("pin-release-build-inputs.mjs create");
     expect(pin).toContain("name: trusted-build-inputs");
@@ -1706,7 +1828,7 @@ jobs:
     expect(formal).toContain("pin-release-build-inputs");
   });
 
-  it("aggregates signing evidence and attests thirteen subjects into fourteen attachments", () => {
+  it("aggregates signing evidence and attests seven subjects into eight attachments", () => {
     const verify = workflowJobBlock(source, "verify-assets", "attest");
     expect(verify).toContain(
       "artifact-ids: ${{ needs['pin-release-build-inputs'].outputs.artifact_id }}",
@@ -1726,20 +1848,22 @@ jobs:
       "--arm64-status signing-fragments/windows-signing-arm64.json",
     );
     expect(verify).toContain("--output verified-subjects/signing-status.json");
-    expect(verify).toContain("Upload the exact thirteen attestation subjects");
+    expect(verify).toContain("Upload the exact seven attestation subjects");
 
     const attest = workflowJobBlock(source, "attest", "publish");
     expectExactLine(attest, "    needs: [eligibility, verify-assets]");
+    expectExactLine(attest, "    runs-on: macos-15");
     expect(attest).toContain(
       "actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6",
     );
     expect(attest).toContain("subject-path: verified-subjects/*");
-    expect(attest).toContain("Recheck the exact thirteen subjects");
-    expect(attest).toContain("exact fourteen Release attachments");
-    expect(attest).toContain("artifact-attestation.sigstore.json");
+    expect(attest).toContain("Recheck the exact seven subjects");
+    expect(attest).toContain("exact eight Release attachments");
+    expect(attest).toContain("prepare-release-publication.mjs assemble");
 
     const publish = source.slice(source.indexOf("\n  publish:\n"));
     expectExactLine(publish, "    needs: [eligibility, attest]");
+    expectExactLine(publish, "    runs-on: macos-15");
     expect(publish).toContain("fyagent-windows-signing-status/v1");
     expect(publish).toContain("## Windows installer signing status");
     expect(publish).toContain(".signature.status");
@@ -1749,8 +1873,8 @@ jobs:
     expect(publish).toContain(".attestation.subjectName");
     expect(publish).toContain(".attestation.subjectDigest");
     expect(publish).toContain("signing-status.json");
-    expect(publish).toContain("length == 14");
-    expect(publish).toContain("(.assets | length) == 14");
+    expect(publish).toContain("length == 8");
+    expect(publish).toContain("(.assets | length) == 8");
   });
 
   it("seals the universal macOS app ad-hoc while keeping the DMG unsigned", () => {
@@ -1773,15 +1897,25 @@ jobs:
     expect(source).not.toContain("notarytool");
     expect(source).toContain("hdiutil attach");
     expect(source).toContain("-readonly");
-    expectExactLine(macJob, "          scripts/release/retry-hdiutil.sh \\");
-    expectExactLine(macJob, '            "$dmg_path" \\');
-    expectExactLine(macJob, "            -- \\");
+    for (const repeatedLine of [
+      "          scripts/release/retry-hdiutil.sh \\",
+      '            "$dmg_path" \\',
+      "            -- \\",
+    ]) {
+      expect(
+        macJob.split(/\r?\n/u).filter((line) => line === repeatedLine),
+      ).toHaveLength(2);
+    }
     expectExactLine(
       macJob,
       '            create -volname \'FyAgent\' -srcfolder "$stage" -ov -format UDZO "$dmg_path"',
     );
+    expectExactLine(macJob, '            verify "$dmg_path"');
     expect(hdiutilRetry).toContain("max_attempts=5");
     expect(hdiutilRetry).toContain("grep -Fq -- 'Resource busy'");
+    expect(hdiutilRetry).toContain(
+      "grep -Fq -- 'Resource temporarily unavailable'",
+    );
     expect(hdiutilRetry).toContain("delay=$((1 << attempt))");
     expect(hdiutilRetry).toContain('hdiutil "$@" >"$log_file" 2>&1');
     expect(hdiutilRetry).not.toContain(" | ");
@@ -1819,9 +1953,6 @@ jobs:
       "^Signature=|^Authority=|Developer ID|^TeamIdentifier=|^Timestamp=|^CMSDigest",
     );
     expect(macJob).not.toContain('codesign -dvvv "$dmg_path" 2>&1 || true');
-    expect(source).toContain(
-      "FyAgent-${APP_VERSION}-Linux-${{ matrix.asset_arch }}.AppImage",
-    );
     expect(source).toContain("FyAgent-${APP_VERSION}-macOS.dmg");
   });
 
@@ -1857,7 +1988,9 @@ jobs:
     expect(publish).toContain("releases?per_page=100");
     expect(publish).toContain("draft:true,prerelease:false");
     expect(publish).toContain('all(.state == "uploaded" and .size > 0)');
-    expect(publish).toContain("Re-downloaded bytes differ");
+    expect(publish).toContain(
+      "prepare-release-publication.mjs verify-downloads",
+    );
     expect(publish).toContain("draft:false,prerelease:false");
     expect(publish).toContain('make_latest:"true"');
     expect(publish).toContain("releases/latest");

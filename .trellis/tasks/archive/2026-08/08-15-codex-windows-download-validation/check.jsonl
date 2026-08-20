@@ -1,0 +1,10 @@
+{"file":".trellis/spec/backend/index.md","reason":"Backend quality gate and evidence boundary."}
+{"file":".trellis/spec/backend/codex-desktop-installer.md","reason":"Full installer contract and required Rust/helper/platform/integration test matrix."}
+{"file":".trellis/spec/backend/development-environment.md","reason":"Use canonical guarded checks and do not overclaim cross-platform evidence."}
+{"file":".trellis/spec/backend/windows-runtime-security.md","reason":"Verify no regression in SID, ACL, helper, process, or launch security boundaries."}
+{"file":".trellis/spec/frontend/index.md","reason":"Frontend quality routing and affected-layer checklist."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Verify strict DTO/parser/fixture exhaustiveness after wire changes."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Canonical renderer unit, contract, accessibility, and visual validation expectations."}
+{"file":".trellis/spec/frontend/v2-agent-models.md","reason":"Check V2 installer port/state behavior remains aligned with shared core."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Trace every changed field/state/error across backend, facade, parser, controller, and UI."}
+{"file":".trellis/tasks/08-15-codex-windows-download-validation/research/current-installer-validation-map.md","reason":"Check the diff removes only upstream-coupled gates while preserving every mapped operational safety boundary."}

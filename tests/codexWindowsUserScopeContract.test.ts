@@ -35,6 +35,10 @@ const desktopRuntime = read("src-tauri/src/codex_desktop_runtime.rs");
 const hostConfig = read("src-tauri/src/config.rs");
 const hermesConfig = read("src-tauri/src/hermes_config.rs");
 const opencodeConfig = read("src-tauri/src/opencode_config.rs");
+const opencodeSessions = read(
+  "src-tauri/src/session_manager/providers/opencode.rs",
+);
+const opencodeUsage = read("src-tauri/src/services/session_usage_opencode.rs");
 const codexConfig = read("src-tauri/src/codex_config.rs");
 const codexStateDb = read("src-tauri/src/codex_state_db.rs");
 const commandHost = read("src-tauri/src/commands/misc.rs");
@@ -198,10 +202,10 @@ describe("Codex Windows interactive-user contract", () => {
       /#\[cfg\(target_os = "windows"\)\]\s+\{\s+Self::CurrentExecutableInstallRoot\s+\}/u,
     );
     expect(tempRoot).toMatch(
-      /#\[cfg\(not\(target_os = "windows"\)\)\]\s+\{\s+Self::Explicit\(JobTempDir::system_root\(\)\)\s+\}/u,
+      /#\[cfg\(target_os = "macos"\)\]\s+\{\s+Self::Explicit\(JobTempDir::system_root\(\)\)\s+\}/u,
     );
     expect(tempRoot).toMatch(
-      /#\[cfg\(not\(target_os = "windows"\)\)\]\s+pub\(crate\) fn system_root\(\)[\s\S]+?std::env::temp_dir\(\)/u,
+      /#\[cfg\(target_os = "macos"\)\]\s+pub\(crate\) fn system_root\(\)[\s\S]+?std::env::temp_dir\(\)/u,
     );
 
     const windowsJob = tempRoot.slice(
@@ -273,19 +277,35 @@ describe("Codex Windows interactive-user contract", () => {
 
   it("does not consume elevated-process user path environment on Windows", () => {
     expect(hostConfig).toContain(
-      '#[cfg(any(not(target_os = "windows"), test, feature = "test-hooks"))]',
+      '#[cfg(any(target_os = "macos", test, feature = "test-hooks"))]',
     );
     expect(hostConfig).toMatch(
       /#\[cfg\(target_os = "windows"\)\]\s+\{\s+crate::windows_runtime::user_home_dir\(\)\s+\}/,
     );
     expect(hermesConfig).toMatch(
-      /#\[cfg\(not\(target_os = "windows"\)\)\]\s+if let Some\(raw\) = std::env::var_os\("HERMES_HOME"\)/,
+      /#\[cfg\(target_os = "macos"\)\]\s+if let Some\(raw\) = std::env::var_os\("HERMES_HOME"\)/,
     );
     expect(opencodeConfig).toMatch(
-      /#\[cfg\(not\(target_os = "windows"\)\)\]\s+if let Ok\(custom_path\) = std::env::var\("OPENCODE_DB"\)/,
+      /#\[cfg\(target_os = "macos"\)\]\s+if let Ok\(custom_path\) = std::env::var\("OPENCODE_DB"\)/,
+    );
+    const macosDataHomeVariable = ["X", "DG_DATA_HOME"].join("");
+    expect(opencodeConfig).toContain(
+      `const OPENCODE_DATA_HOME_ENV: &str = "${macosDataHomeVariable}";`,
     );
     expect(opencodeConfig).toMatch(
-      /#\[cfg\(not\(target_os = "windows"\)\)\]\s+if let Ok\(xdg_data\) = std::env::var\("XDG_DATA_HOME"\)/,
+      /#\[cfg\(target_os = "macos"\)\]\s+pub\(crate\) fn get_opencode_data_dir\(\) -> PathBuf \{[\s\S]*?std::env::var_os\(OPENCODE_DATA_HOME_ENV\)/,
+    );
+    expect(opencodeConfig).toMatch(
+      /#\[cfg\(target_os = "windows"\)\]\s+pub\(crate\) fn get_opencode_data_dir\(\) -> PathBuf \{\s+resolve_opencode_data_dir\(&crate::config::get_home_dir\(\), None\)/,
+    );
+    expect(opencodeSessions).toContain(
+      "crate::opencode_config::get_opencode_data_dir()",
+    );
+    expect(opencodeSessions).toContain(
+      "crate::opencode_config::get_opencode_db_path()",
+    );
+    expect(opencodeUsage).toContain(
+      "use crate::opencode_config::get_opencode_db_path;",
     );
     expect(codexStateDb).toMatch(
       /#\[cfg\(target_os = "windows"\)\]\s+fn sqlite_home_from_env\(\) -> Option<PathBuf> \{[\s\S]*?None\s+\}/,
@@ -326,7 +346,7 @@ describe("Codex Windows interactive-user contract", () => {
     expect(windowsManagerPaths).toContain("safe_command_search_paths");
     expect(windowsManagerPaths).not.toContain("std::env");
     expect(commandHost).toContain(
-      '#[cfg(not(target_os = "windows"))]\n    extend_from_cli_path_env',
+      '#[cfg(target_os = "macos")]\n    extend_from_cli_path_env',
     );
     expect(commandHost).toContain("configure_shell_user_command");
     expect(
@@ -350,7 +370,6 @@ describe("Codex Windows interactive-user contract", () => {
       "detected_tool_execution_boundary_for",
     );
     expect(commandHost).toContain("detected_tool_execution_boundary_for(true)");
-    expect(commandHost).not.toContain('Command::new("wsl.exe")');
     expect(commandHost).not.toContain('Command::new("taskkill")');
     const productionCommandHost = commandHost.slice(
       0,
@@ -359,8 +378,10 @@ describe("Codex Windows interactive-user contract", () => {
     expect(productionCommandHost).not.toContain(
       "C:\\\\Program Files\\\\nodejs",
     );
-    expect(commandHost).toContain('system_executable_path("wsl.exe")');
     expect(commandHost).toContain('system_executable_path("taskkill.exe")');
+    expect(commandHost).toMatch(
+      /system_executable_path\("taskkill\.exe"\)[\s\S]*configure_shell_user_command/,
+    );
     expect(commandHost).toContain(".raw_arg(&command_line)");
 
     expect(claudeMcp).toMatch(

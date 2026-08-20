@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/frontend/v2-skills-mcp.md", "reason": "MCP assignment contract"}
+{"file": ".trellis/spec/frontend/v2-agent-models.md", "reason": "Models official-link and catalog mcp.write"}
+{"file": ".trellis/spec/backend/external-agent-p0.md", "reason": "Qoder/TRAE MCP write safety"}
+{"file": ".trellis/spec/frontend/reuse.md", "reason": "Shared FeatureList/SelectionLens"}
+{"file": ".trellis/tasks/08-19-models-mcp-prompt-merge/research/vendor-mcp-paths.md", "reason": "Vendor live file evidence"}

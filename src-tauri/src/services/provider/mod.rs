@@ -11,6 +11,7 @@ use indexmap::IndexMap;
 use regex::Regex;
 use serde::Deserialize;
 use serde_json::Value;
+use std::fmt;
 use std::fs;
 use std::io::ErrorKind;
 use std::path::PathBuf;
@@ -25,7 +26,7 @@ use crate::store::AppState;
 
 // Re-export sub-module functions for external access
 pub use live::{
-    import_default_config, import_hermes_providers_from_live, import_openclaw_providers_from_live,
+    import_hermes_providers_from_live, import_openclaw_providers_from_live,
     import_opencode_providers_from_live, read_live_settings,
     should_import_default_config_on_startup, sync_current_to_live,
     update_toml_common_config_snippet,
@@ -46,6 +47,14 @@ use live::{
 };
 use usage::validate_usage_script;
 
+/// Import the live default Provider under the same per-app mutation guard used
+/// by switches and quick setup. Startup calls this module-level entrypoint;
+/// interactive import uses the corresponding already-locked service helper so
+/// its command-specific checks participate in the same critical section.
+pub fn import_default_config(state: &AppState, app_type: AppType) -> Result<bool, AppError> {
+    ProviderService::import_default_config(state, app_type)
+}
+
 /// The built-in Codex official provider is safe to select during takeover:
 /// Codex keeps ownership of its ChatGPT login and the proxy only forwards the
 /// authenticated request. Other official providers retain the existing block.
@@ -59,6 +68,11 @@ pub fn official_provider_supports_proxy_takeover(app_type: &AppType, provider: &
 /// 当前供应商非官方（或不存在）时为 no-op：注入只作用于官方配置，
 /// 第三方 live 配置不受开关影响。
 pub fn reapply_current_codex_official_live(state: &AppState) -> Result<bool, AppError> {
+    let _guard = futures::executor::block_on(
+        state
+            .proxy_service
+            .lock_switch_for_app(AppType::Codex.as_str()),
+    );
     let current_id = ProviderService::current(state, AppType::Codex)?;
     if current_id.is_empty() {
         return Ok(false);
@@ -86,7 +100,7 @@ pub fn reapply_current_codex_official_live(state: &AppState) -> Result<bool, App
         futures::executor::block_on(
             state
                 .proxy_service
-                .update_live_backup_from_provider(AppType::Codex.as_str(), provider),
+                .update_live_backup_from_provider_inner(AppType::Codex.as_str(), provider),
         )
         .map_err(|e| AppError::Message(format!("更新 Live 备份失败: {e}")))?;
         return Ok(true);
@@ -102,7 +116,7 @@ pub fn reapply_current_codex_official_live(state: &AppState) -> Result<bool, App
     // 已生效；若把错误上抛，save_settings 会回滚开关设置，制造"设置=旧值、
     // live=新桶"的会话分裂——正是该回滚要防止的状态。MCP 投影可自愈
     // （下次切换 / 任一 MCP 启停操作都会重新投影）。
-    if let Err(err) = McpService::sync_enabled_for_app(state, &AppType::Codex) {
+    if let Err(err) = McpService::sync_enabled_for_app_inner(state, &AppType::Codex) {
         log::warn!("统一会话开关重写 live 后重投影 Codex MCP 失败（将在下次同步时自愈）: {err}");
     }
     Ok(true)
@@ -110,6 +124,75 @@ pub fn reapply_current_codex_official_live(state: &AppState) -> Result<bool, App
 
 /// Provider business logic service
 pub struct ProviderService;
+
+const QUICK_SETUP_CLAUDE_PROVIDER_ID: &str = "fyagent-v2-quick-setup-claude";
+const QUICK_SETUP_CODEX_PROVIDER_ID: &str = "fyagent-v2-quick-setup-codex";
+const QUICK_SETUP_GROKBUILD_PROVIDER_ID: &str = "fyagent-v2-quick-setup-grokbuild";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum QuickSetupApplyFailureCode {
+    ApplyFailedRolledBack,
+    RollbackPartialStateUnknown,
+}
+
+#[derive(Debug)]
+pub struct QuickSetupApplyError {
+    pub code: QuickSetupApplyFailureCode,
+    detail: String,
+}
+
+impl QuickSetupApplyError {
+    fn rolled_back(error: impl fmt::Display) -> Self {
+        Self {
+            code: QuickSetupApplyFailureCode::ApplyFailedRolledBack,
+            detail: error.to_string(),
+        }
+    }
+
+    fn state_unknown(primary: impl fmt::Display, rollback_errors: &[String]) -> Self {
+        Self {
+            code: QuickSetupApplyFailureCode::RollbackPartialStateUnknown,
+            detail: format!(
+                "quick setup apply failed: {primary}; rollback partially failed: {}",
+                rollback_errors.join("; ")
+            ),
+        }
+    }
+}
+
+impl fmt::Display for QuickSetupApplyError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&self.detail)
+    }
+}
+
+fn percent_decode_url_segment(segment: &str) -> Option<String> {
+    fn hex(value: u8) -> Option<u8> {
+        match value {
+            b'0'..=b'9' => Some(value - b'0'),
+            b'a'..=b'f' => Some(value - b'a' + 10),
+            b'A'..=b'F' => Some(value - b'A' + 10),
+            _ => None,
+        }
+    }
+
+    let input = segment.as_bytes();
+    let mut output = Vec::with_capacity(input.len());
+    let mut index = 0;
+    while index < input.len() {
+        if input[index] == b'%' {
+            let high = hex(*input.get(index + 1)?)?;
+            let low = hex(*input.get(index + 2)?)?;
+            output.push((high << 4) | low);
+            index += 3;
+        } else {
+            output.push(input[index]);
+            index += 1;
+        }
+    }
+    String::from_utf8(output).ok()
+}
 
 /// Result of a provider switch operation, including any non-fatal warnings
 #[derive(Debug, serde::Serialize, Default)]
@@ -127,12 +210,84 @@ fn read_codex_live_config_bytes() -> Result<Vec<u8>, AppError> {
     }
 }
 
+fn read_quick_setup_live_after(app_type: &AppType) -> Result<Option<Vec<u8>>, AppError> {
+    #[cfg(test)]
+    if QUICK_SETUP_POST_WRITE_READ_FAILURE.swap(false, std::sync::atomic::Ordering::SeqCst) {
+        return Err(AppError::Message(
+            "injected quick setup post-write observation failure".to_string(),
+        ));
+    }
+    matches!(app_type, AppType::Codex)
+        .then(read_codex_live_config_bytes)
+        .transpose()
+}
+
+#[cfg(test)]
+static QUICK_SETUP_POST_WRITE_READ_FAILURE: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
 #[derive(Debug)]
 struct CodexLiveConfigSnapshot {
     path: PathBuf,
     /// `None` distinguishes a missing file from an existing empty file so a
     /// failed deletion can restore the exact pre-mutation filesystem state.
     bytes: Option<Vec<u8>>,
+}
+
+#[derive(Debug, Clone)]
+struct QuickSetupFileSnapshot {
+    path: PathBuf,
+    bytes: Option<Vec<u8>>,
+}
+
+impl QuickSetupFileSnapshot {
+    fn capture(path: PathBuf) -> Result<Self, AppError> {
+        let bytes = match fs::read(&path) {
+            Ok(bytes) => Some(bytes),
+            Err(error) if error.kind() == ErrorKind::NotFound => None,
+            Err(error) => return Err(AppError::io(&path, error)),
+        };
+        Ok(Self { path, bytes })
+    }
+
+    fn restore(&self) -> Result<(), AppError> {
+        match &self.bytes {
+            Some(bytes) => crate::config::atomic_write(&self.path, bytes),
+            None => crate::config::delete_file(&self.path),
+        }
+    }
+
+    fn matches_current(&self) -> Result<bool, AppError> {
+        Ok(Self::capture(self.path.clone())?.bytes == self.bytes)
+    }
+}
+
+fn snapshot_quick_setup_live(app_type: &AppType) -> Result<Vec<QuickSetupFileSnapshot>, AppError> {
+    let paths = match app_type {
+        AppType::Claude => vec![crate::config::get_claude_settings_path()],
+        AppType::Codex => vec![
+            crate::codex_config::get_codex_auth_path(),
+            crate::codex_config::get_codex_config_path(),
+            crate::codex_config::get_codex_model_catalog_path(),
+        ],
+        AppType::GrokBuild => vec![crate::grok_config::get_grok_config_path()],
+        _ => {
+            return Err(AppError::Message(
+                "Provider quick setup supports only claude, codex, or grokbuild".to_string(),
+            ))
+        }
+    };
+    paths
+        .into_iter()
+        .map(QuickSetupFileSnapshot::capture)
+        .collect()
+}
+
+fn restore_quick_setup_live(snapshots: &[QuickSetupFileSnapshot]) -> Vec<String> {
+    snapshots
+        .iter()
+        .filter_map(|snapshot| snapshot.restore().err().map(|error| error.to_string()))
+        .collect()
 }
 
 fn snapshot_codex_live_config() -> Result<CodexLiveConfigSnapshot, AppError> {
@@ -211,7 +366,9 @@ mod tests {
     use super::*;
     #[cfg(any(target_os = "macos", windows))]
     use crate::claude_desktop_config::PROFILE_ID;
-    use crate::codex_config::get_codex_config_path;
+    use crate::codex_config::{
+        get_codex_auth_path, get_codex_config_path, get_codex_model_catalog_path,
+    };
     use crate::config::{get_claude_settings_path, read_json_file, write_json_file};
     use crate::database::Database;
     #[cfg(any(target_os = "macos", windows))]
@@ -338,6 +495,26 @@ mod tests {
         }
 
         result
+    }
+
+    struct CodexCurrentProviderRestore {
+        previous: Option<String>,
+    }
+
+    impl CodexCurrentProviderRestore {
+        fn replace_with(id: &str) -> Self {
+            let previous = crate::settings::get_current_provider(&AppType::Codex);
+            crate::settings::set_current_provider(&AppType::Codex, Some(id))
+                .expect("seed Codex local current provider");
+            Self { previous }
+        }
+    }
+
+    impl Drop for CodexCurrentProviderRestore {
+        fn drop(&mut self) {
+            let _ =
+                crate::settings::set_current_provider(&AppType::Codex, self.previous.as_deref());
+        }
     }
 
     #[test]
@@ -937,6 +1114,619 @@ mod tests {
                     .is_some(),
                 "the draft must still be available for a later explicit switch",
             );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn quick_setup_rejects_reserved_id_and_public_field_secret_collisions_without_mutation() {
+        with_test_home(|state, _| {
+            let original_live = b"model = \"original\"\n";
+            write_test_codex_live_config(original_live);
+            for (credential, name, model) in [
+                (QUICK_SETUP_CODEX_PROVIDER_ID, "Gateway", "safe-model"),
+                (
+                    "TEST-SECRET-PUBLIC-FIELD",
+                    "prefix-TEST-SECRET-PUBLIC-FIELD-suffix",
+                    "safe-model",
+                ),
+                (
+                    "TEST-SECRET-PUBLIC-FIELD",
+                    "Gateway",
+                    "prefix-TEST-SECRET-PUBLIC-FIELD-suffix",
+                ),
+            ] {
+                let mut provider = codex_provider_with_usage(
+                    QUICK_SETUP_CODEX_PROVIDER_ID,
+                    "https://quick.example.test/v1",
+                    credential,
+                    None,
+                    None,
+                    None,
+                );
+                provider.name = name.to_string();
+                provider.settings_config["config"] = Value::String(format!(
+                    "model = {model:?}\nmodel_provider = \"custom\"\n[model_providers.custom]\nname = \"safe\"\nbase_url = \"https://quick.example.test/v1\"\nwire_api = \"responses\"\n"
+                ));
+
+                let error = ProviderService::apply_quick_setup(state, AppType::Codex, provider)
+                    .expect_err("public fields containing the API key must be rejected");
+                assert!(!error.to_string().contains(credential));
+                assert!(state
+                    .db
+                    .get_provider_by_id(QUICK_SETUP_CODEX_PROVIDER_ID, "codex")
+                    .unwrap()
+                    .is_none());
+                assert_eq!(state.db.get_current_provider("codex").unwrap(), None);
+                assert_eq!(fs::read(get_codex_config_path()).unwrap(), original_live);
+            }
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn quick_setup_reports_unknown_when_a_trigger_tampers_with_apply_and_rollback() {
+        with_test_home(|state, _| {
+            const PREVIOUS_LOCAL_CURRENT: &str = "preexisting-local-codex";
+
+            let previous_local_provider = codex_provider_with_usage(
+                PREVIOUS_LOCAL_CURRENT,
+                "https://preexisting.example.test/v1",
+                "preexisting-test-key",
+                None,
+                None,
+                None,
+            );
+            state
+                .db
+                .save_provider("codex", &previous_local_provider)
+                .unwrap();
+            let _local_current_restore =
+                CodexCurrentProviderRestore::replace_with(PREVIOUS_LOCAL_CURRENT);
+            let original_live = b"model = \"original\"\n";
+            write_test_codex_live_config(original_live);
+            let mut original = codex_provider_with_usage(
+                QUICK_SETUP_CODEX_PROVIDER_ID,
+                "https://original.example.test/v1",
+                "original-test-key",
+                None,
+                None,
+                None,
+            );
+            original.name = "Original quick setup provider".to_string();
+            state.db.save_provider("codex", &original).unwrap();
+            state
+                .db
+                .conn
+                .lock()
+                .expect("lock database")
+                .execute_batch(
+                    "CREATE TRIGGER tamper_quick_setup_provider\n\
+                     AFTER UPDATE ON providers\n\
+                     WHEN NEW.id = 'fyagent-v2-quick-setup-codex'\n\
+                       AND NEW.app_type = 'codex'\n\
+                     BEGIN\n\
+                       UPDATE providers\n\
+                       SET name = 'trigger-tampered-provider'\n\
+                       WHERE id = NEW.id AND app_type = NEW.app_type;\n\
+                     END;",
+                )
+                .expect("install provider tampering trigger");
+            let provider = codex_provider_with_usage(
+                QUICK_SETUP_CODEX_PROVIDER_ID,
+                "https://quick.example.test/v1",
+                "safe-test-key",
+                None,
+                None,
+                None,
+            );
+            let mut provider = provider;
+            provider.name = "Requested quick setup provider".to_string();
+
+            let error = ProviderService::apply_quick_setup(state, AppType::Codex, provider)
+                .expect_err("tampered provider row must never report success");
+
+            assert_eq!(
+                error.code,
+                QuickSetupApplyFailureCode::RollbackPartialStateUnknown
+            );
+            assert!(error
+                .to_string()
+                .contains("persistence verification failed"));
+            let restored = state
+                .db
+                .get_provider_by_id(QUICK_SETUP_CODEX_PROVIDER_ID, "codex")
+                .unwrap()
+                .expect("previous provider must be restored");
+            assert_ne!(restored.name, original.name);
+            assert_eq!(state.db.get_current_provider("codex").unwrap(), None);
+            assert_eq!(
+                crate::settings::get_current_provider(&AppType::Codex).as_deref(),
+                Some(PREVIOUS_LOCAL_CURRENT),
+                "rollback must restore the local current provider captured before mutation",
+            );
+            assert_eq!(fs::read(get_codex_config_path()).unwrap(), original_live);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn quick_setup_rereads_provider_after_current_trigger_and_rolls_back() {
+        with_test_home(|state, _| {
+            let original_live = b"model = \"original\"\n";
+            write_test_codex_live_config(original_live);
+            let mut original = codex_provider_with_usage(
+                QUICK_SETUP_CODEX_PROVIDER_ID,
+                "https://original.example.test/v1",
+                "original-test-key",
+                None,
+                None,
+                None,
+            );
+            original.name = "Original quick setup provider".to_string();
+            state.db.save_provider("codex", &original).unwrap();
+            state
+                .db
+                .conn
+                .lock()
+                .expect("lock database")
+                .execute_batch(
+                    "CREATE TRIGGER tamper_quick_setup_after_current\n\
+                     AFTER UPDATE OF is_current ON providers\n\
+                     WHEN NEW.id = 'fyagent-v2-quick-setup-codex'\n\
+                       AND NEW.app_type = 'codex'\n\
+                       AND NEW.is_current = 1\n\
+                       AND NEW.name = 'Requested quick setup provider'\n\
+                     BEGIN\n\
+                       UPDATE providers\n\
+                       SET name = 'tampered-after-current'\n\
+                       WHERE id = NEW.id AND app_type = NEW.app_type;\n\
+                     END;",
+                )
+                .expect("install current-trigger tampering");
+            let mut requested = codex_provider_with_usage(
+                QUICK_SETUP_CODEX_PROVIDER_ID,
+                "https://quick.example.test/v1",
+                "safe-test-key",
+                None,
+                None,
+                None,
+            );
+            requested.name = "Requested quick setup provider".to_string();
+
+            let error = ProviderService::apply_quick_setup(state, AppType::Codex, requested)
+                .expect_err("post-current trigger tampering must not report success");
+
+            assert_eq!(
+                error.code,
+                QuickSetupApplyFailureCode::ApplyFailedRolledBack
+            );
+            let restored = state
+                .db
+                .get_provider_by_id(QUICK_SETUP_CODEX_PROVIDER_ID, "codex")
+                .unwrap()
+                .expect("previous provider restored");
+            assert_eq!(restored.name, original.name);
+            assert_eq!(restored.settings_config, original.settings_config);
+            assert_eq!(state.db.get_current_provider("codex").unwrap(), None);
+            assert_eq!(fs::read(get_codex_config_path()).unwrap(), original_live);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn quick_setup_post_write_observation_failure_rolls_back_before_logical_commit() {
+        with_test_home(|state, _| {
+            let original_live = b"model = \"original\"\n";
+            let original_auth = br#"{"OPENAI_API_KEY":"original-key"}"#;
+            let original_catalog = br#"{"models":[{"id":"original-model"}]}"#;
+            write_test_codex_live_config(original_live);
+            fs::write(get_codex_auth_path(), original_auth).unwrap();
+            fs::write(get_codex_model_catalog_path(), original_catalog).unwrap();
+            let original = codex_provider_with_usage(
+                QUICK_SETUP_CODEX_PROVIDER_ID,
+                "https://old.example.test/v1",
+                "old-key",
+                None,
+                None,
+                None,
+            );
+            state.db.save_provider("codex", &original).unwrap();
+            let original_backup = crate::proxy::types::LiveBackup {
+                app_type: "codex".to_string(),
+                original_config: "{\"preimage\":true}".to_string(),
+                backed_up_at: "2026-08-13T08:09:10+00:00".to_string(),
+            };
+            futures::executor::block_on(state.db.restore_live_backup(&original_backup)).unwrap();
+            state
+                .db
+                .set_current_provider("codex", QUICK_SETUP_CODEX_PROVIDER_ID)
+                .unwrap();
+            crate::settings::set_current_provider(
+                &AppType::Codex,
+                Some(QUICK_SETUP_CODEX_PROVIDER_ID),
+            )
+            .unwrap();
+
+            let updated = codex_provider_with_usage(
+                QUICK_SETUP_CODEX_PROVIDER_ID,
+                "https://new.example.test/v1",
+                "new-key",
+                None,
+                None,
+                None,
+            );
+            QUICK_SETUP_POST_WRITE_READ_FAILURE.store(true, std::sync::atomic::Ordering::SeqCst);
+            ProviderService::apply_quick_setup(state, AppType::Codex, updated)
+                .expect_err("injected post-write observation must fail atomically");
+
+            assert_eq!(
+                state
+                    .db
+                    .get_provider_by_id(QUICK_SETUP_CODEX_PROVIDER_ID, "codex")
+                    .unwrap()
+                    .unwrap()
+                    .settings_config,
+                original.settings_config
+            );
+            assert_eq!(
+                state.db.get_current_provider("codex").unwrap().as_deref(),
+                Some(QUICK_SETUP_CODEX_PROVIDER_ID)
+            );
+            assert_eq!(fs::read(get_codex_config_path()).unwrap(), original_live);
+            assert_eq!(fs::read(get_codex_auth_path()).unwrap(), original_auth);
+            assert_eq!(
+                fs::read(get_codex_model_catalog_path()).unwrap(),
+                original_catalog
+            );
+            let restored_backup = futures::executor::block_on(state.db.get_live_backup("codex"))
+                .unwrap()
+                .expect("backup restored");
+            assert_eq!(restored_backup.app_type, original_backup.app_type);
+            assert_eq!(
+                restored_backup.original_config,
+                original_backup.original_config
+            );
+            assert_eq!(restored_backup.backed_up_at, original_backup.backed_up_at);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn quick_setup_rejects_query_and_fragment_urls_before_any_mutation() {
+        with_test_home(|state, _| {
+            let original_live = b"model = \"original\"\n";
+            write_test_codex_live_config(original_live);
+            for base_url in [
+                "https://quick.example.test/v1?api_key=TEST-SECRET-URL",
+                "https://quick.example.test/v1#TEST-SECRET-URL",
+                "https://quick.example.test/prefix-TEST-SECRET-URL-suffix/v1",
+                "https://quick.example.test/prefix-TEST%2DSECRET%2DURL-suffix/v1",
+            ] {
+                let provider = codex_provider_with_usage(
+                    QUICK_SETUP_CODEX_PROVIDER_ID,
+                    base_url,
+                    if base_url.contains("prefix-") {
+                        "TEST-SECRET-URL"
+                    } else {
+                        "safe-key"
+                    },
+                    None,
+                    None,
+                    None,
+                );
+                let error = ProviderService::apply_quick_setup(state, AppType::Codex, provider)
+                    .expect_err("query and fragment material must be rejected");
+                assert!(!error.to_string().contains("TEST-SECRET-URL"));
+                assert!(state
+                    .db
+                    .get_provider_by_id(QUICK_SETUP_CODEX_PROVIDER_ID, "codex")
+                    .unwrap()
+                    .is_none());
+                assert_eq!(state.db.get_current_provider("codex").unwrap(), None);
+                assert_eq!(fs::read(get_codex_config_path()).unwrap(), original_live);
+            }
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn live_reprojection_and_update_paths_wait_for_the_shared_provider_guard() {
+        with_test_home(|state, _| {
+            let mut provider = codex_provider_with_usage(
+                "official-codex",
+                "https://official.example.test/v1",
+                "official-key",
+                None,
+                None,
+                None,
+            );
+            provider.category = Some("official".to_string());
+            state.db.save_provider("codex", &provider).unwrap();
+            state
+                .db
+                .set_current_provider("codex", &provider.id)
+                .unwrap();
+            crate::settings::set_current_provider(&AppType::Codex, Some(&provider.id)).unwrap();
+
+            std::thread::scope(|scope| {
+                let guard =
+                    futures::executor::block_on(state.proxy_service.lock_switch_for_app("codex"));
+                let (send, receive) = std::sync::mpsc::channel();
+                scope.spawn(move || {
+                    send.send(reapply_current_codex_official_live(state))
+                        .unwrap();
+                });
+                assert!(receive
+                    .recv_timeout(std::time::Duration::from_millis(75))
+                    .is_err());
+                drop(guard);
+                assert!(receive
+                    .recv_timeout(std::time::Duration::from_secs(2))
+                    .unwrap()
+                    .unwrap());
+            });
+
+            std::thread::scope(|scope| {
+                let guard =
+                    futures::executor::block_on(state.proxy_service.lock_switch_for_app("codex"));
+                let (send, receive) = std::sync::mpsc::channel();
+                let mut updated = provider.clone();
+                updated.name = "Updated official".to_string();
+                scope.spawn(move || {
+                    send.send(ProviderService::update(
+                        state,
+                        AppType::Codex,
+                        None,
+                        updated,
+                    ))
+                    .unwrap();
+                });
+                assert!(receive
+                    .recv_timeout(std::time::Duration::from_millis(75))
+                    .is_err());
+                drop(guard);
+                receive
+                    .recv_timeout(std::time::Duration::from_secs(2))
+                    .expect("guarded current-provider update must not deadlock")
+                    .unwrap();
+            });
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn startup_import_rechecks_eligibility_after_waiting_for_provider_guard() {
+        with_test_home(|state, _| {
+            std::thread::scope(|scope| {
+                let guard = ProviderService::lock_provider_mutation(state, &AppType::Codex);
+                let (send, receive) = std::sync::mpsc::channel();
+                scope.spawn(move || {
+                    send.send(super::import_default_config(state, AppType::Codex))
+                        .unwrap();
+                });
+                assert!(receive
+                    .recv_timeout(std::time::Duration::from_millis(75))
+                    .is_err());
+                state
+                    .db
+                    .ensure_official_seed_by_id(
+                        crate::database::CODEX_OFFICIAL_PROVIDER_ID,
+                        AppType::Codex,
+                    )
+                    .unwrap();
+                drop(guard);
+                assert!(!receive
+                    .recv_timeout(std::time::Duration::from_secs(2))
+                    .expect("startup import must finish after guard release")
+                    .unwrap());
+                assert!(state
+                    .db
+                    .get_provider_by_id("default", AppType::Codex.as_str())
+                    .unwrap()
+                    .is_none());
+            });
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn settings_path_guards_block_quick_setup_until_both_paths_are_frozen() {
+        with_test_home(|state, _| {
+            let guards =
+                futures::executor::block_on(ProviderService::lock_settings_provider_paths(state));
+            let provider = codex_provider_with_usage(
+                QUICK_SETUP_CODEX_PROVIDER_ID,
+                "https://path-lock.example.test/v1",
+                "path-lock-test-key",
+                None,
+                None,
+                None,
+            );
+            std::thread::scope(|scope| {
+                let (send, receive) = std::sync::mpsc::channel();
+                scope.spawn(move || {
+                    send.send(ProviderService::apply_quick_setup(
+                        state,
+                        AppType::Codex,
+                        provider,
+                    ))
+                    .unwrap();
+                });
+                assert!(receive
+                    .recv_timeout(std::time::Duration::from_millis(75))
+                    .is_err());
+                drop(guards);
+                receive
+                    .recv_timeout(std::time::Duration::from_secs(2))
+                    .expect("quick setup must finish after settings releases path guards")
+                    .unwrap();
+            });
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn concurrent_quick_setups_leave_one_complete_request_in_db_current_and_live() {
+        with_test_home(|state, _| {
+            let mut first = codex_provider_with_usage(
+                QUICK_SETUP_CODEX_PROVIDER_ID,
+                "https://first.example.test/v1",
+                "first-secret-key",
+                None,
+                None,
+                None,
+            );
+            first.settings_config["config"] = Value::String(
+                "model = \"grok-4.5\"\nmodel_provider = \"custom\"\n[model_providers.custom]\nname = \"custom\"\nbase_url = \"https://first.example.test/v1\"\nwire_api = \"responses\"\nsupports_websockets = true\n"
+                    .to_string(),
+            );
+            let mut second = codex_provider_with_usage(
+                QUICK_SETUP_CODEX_PROVIDER_ID,
+                "https://second.example.test/v1",
+                "second-secret-key",
+                None,
+                None,
+                None,
+            );
+            second.settings_config["config"] = Value::String(
+                "model = \"gpt-5.6-sol\"\nmodel_provider = \"custom\"\n[model_providers.custom]\nname = \"custom\"\nbase_url = \"https://second.example.test/v1\"\nwire_api = \"responses\"\nsupports_websockets = true\n"
+                    .to_string(),
+            );
+
+            let (first_result, second_result) = std::thread::scope(|scope| {
+                let first = scope
+                    .spawn(|| ProviderService::apply_quick_setup(state, AppType::Codex, first));
+                let second = scope
+                    .spawn(|| ProviderService::apply_quick_setup(state, AppType::Codex, second));
+                (
+                    first.join().unwrap().unwrap(),
+                    second.join().unwrap().unwrap(),
+                )
+            });
+            assert_eq!(
+                first_result.warning_codes,
+                vec![crate::codex_config::CODEX_WEBSOCKET_NON_GPT_MODEL_WARNING],
+                "the first response must retain warnings for the first guarded request"
+            );
+            assert!(
+                second_result.warning_codes.is_empty(),
+                "the second response must retain warnings for the second guarded request"
+            );
+
+            let stored = state
+                .db
+                .get_provider_by_id(QUICK_SETUP_CODEX_PROVIDER_ID, "codex")
+                .unwrap()
+                .unwrap();
+            assert_eq!(
+                state.db.get_current_provider("codex").unwrap().as_deref(),
+                Some(QUICK_SETUP_CODEX_PROVIDER_ID)
+            );
+            assert_eq!(
+                crate::settings::get_current_provider(&AppType::Codex).as_deref(),
+                Some(QUICK_SETUP_CODEX_PROVIDER_ID)
+            );
+            let stored_config = stored.settings_config["config"].as_str().unwrap();
+            let live_config = fs::read_to_string(get_codex_config_path()).unwrap();
+            let stored_key = stored.settings_config["auth"]["OPENAI_API_KEY"]
+                .as_str()
+                .unwrap();
+            let live_auth: Value =
+                serde_json::from_slice(&fs::read(get_codex_auth_path()).unwrap()).unwrap();
+            for candidate in ["first.example.test", "second.example.test"] {
+                assert_eq!(
+                    stored_config.contains(candidate),
+                    live_config.contains(candidate),
+                    "DB and live must describe the same winning request"
+                );
+            }
+            assert_eq!(live_auth["OPENAI_API_KEY"], stored_key);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn repeated_quick_setup_reports_unchanged_after_identical_mcp_reprojection() {
+        with_test_home(|state, _| {
+            state
+                .db
+                .save_mcp_server(&crate::app_config::McpServer {
+                    id: "quick-final-same".to_string(),
+                    name: "Quick final same".to_string(),
+                    server: json!({ "command": "echo", "args": ["same"] }),
+                    apps: crate::app_config::McpApps {
+                        codex: true,
+                        ..Default::default()
+                    },
+                    description: None,
+                    homepage: None,
+                    docs: None,
+                    tags: Vec::new(),
+                })
+                .unwrap();
+            let provider = codex_provider_with_usage(
+                QUICK_SETUP_CODEX_PROVIDER_ID,
+                "https://same.example.test/v1",
+                "same-secret-key",
+                None,
+                None,
+                None,
+            );
+            ProviderService::apply_quick_setup(state, AppType::Codex, provider.clone())
+                .expect("seed quick setup with MCP projection");
+            let before = fs::read(get_codex_config_path()).unwrap();
+
+            let repeated = ProviderService::apply_quick_setup(state, AppType::Codex, provider)
+                .expect("repeat identical quick setup");
+
+            assert!(
+                !repeated.live_config_changed,
+                "intermediate Provider rewrite must not hide an identical final MCP projection"
+            );
+            assert_eq!(fs::read(get_codex_config_path()).unwrap(), before);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn quick_setup_reports_change_created_only_by_final_mcp_reprojection() {
+        with_test_home(|state, _| {
+            let provider = codex_provider_with_usage(
+                QUICK_SETUP_CODEX_PROVIDER_ID,
+                "https://mcp-final.example.test/v1",
+                "mcp-final-secret-key",
+                None,
+                None,
+                None,
+            );
+            ProviderService::apply_quick_setup(state, AppType::Codex, provider.clone())
+                .expect("seed Provider-only live config");
+            let before = fs::read_to_string(get_codex_config_path()).unwrap();
+            assert!(!before.contains("quick_final_added"));
+            state
+                .db
+                .save_mcp_server(&crate::app_config::McpServer {
+                    id: "quick_final_added".to_string(),
+                    name: "Quick final added".to_string(),
+                    server: json!({ "command": "echo", "args": ["added"] }),
+                    apps: crate::app_config::McpApps {
+                        codex: true,
+                        ..Default::default()
+                    },
+                    description: None,
+                    homepage: None,
+                    docs: None,
+                    tags: Vec::new(),
+                })
+                .unwrap();
+
+            let result = ProviderService::apply_quick_setup(state, AppType::Codex, provider)
+                .expect("quick setup with newly authoritative MCP projection");
+            let after = fs::read_to_string(get_codex_config_path()).unwrap();
+
+            assert!(result.live_config_changed);
+            assert!(after.contains("quick_final_added"));
         });
     }
 
@@ -2932,6 +3722,212 @@ impl ProviderService {
         }
     }
 
+    fn quick_setup_persisted_provider_matches(
+        expected: &Provider,
+        persisted: &Provider,
+    ) -> Result<bool, AppError> {
+        // Compare every persisted provider field, including custom endpoints
+        // stored in the companion table, so an imported SQLite trigger cannot
+        // alter a credential, endpoint, model, or other provider field while
+        // still letting quick setup report success.
+        let expected_meta = serde_json::to_value(expected.meta.clone().unwrap_or_default())
+            .map_err(|error| AppError::Database(error.to_string()))?;
+        let persisted_meta = serde_json::to_value(persisted.meta.clone().unwrap_or_default())
+            .map_err(|error| AppError::Database(error.to_string()))?;
+
+        Ok(expected.id == persisted.id
+            && expected.name == persisted.name
+            && expected.settings_config == persisted.settings_config
+            && expected.website_url == persisted.website_url
+            && expected.category == persisted.category
+            && expected.created_at == persisted.created_at
+            && expected.sort_index == persisted.sort_index
+            && expected.notes == persisted.notes
+            && expected_meta == persisted_meta
+            && expected.icon == persisted.icon
+            && expected.icon_color == persisted.icon_color
+            && expected.in_failover_queue == persisted.in_failover_queue)
+    }
+
+    fn reject_quick_setup_secret_collisions(
+        app_type: &AppType,
+        provider: &Provider,
+    ) -> Result<(), AppError> {
+        let grok_api_key = match app_type {
+            AppType::GrokBuild => provider
+                .settings_config
+                .get("config")
+                .and_then(Value::as_str)
+                .and_then(crate::grok_config::extract_inline_api_key),
+            _ => None,
+        };
+        let api_key = match app_type {
+            AppType::Claude => provider
+                .settings_config
+                .pointer("/env/ANTHROPIC_AUTH_TOKEN")
+                .and_then(Value::as_str),
+            AppType::Codex => provider
+                .settings_config
+                .pointer("/auth/OPENAI_API_KEY")
+                .and_then(Value::as_str),
+            AppType::GrokBuild => grok_api_key.as_deref(),
+            _ => None,
+        }
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+        let model_id = match app_type {
+            AppType::Claude => provider
+                .settings_config
+                .pointer("/env/ANTHROPIC_MODEL")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .map(str::to_string),
+            AppType::Codex => provider
+                .settings_config
+                .get("config")
+                .and_then(Value::as_str)
+                .and_then(crate::codex_config::codex_top_level_model)
+                .map(|value| value.trim().to_string()),
+            AppType::GrokBuild => provider
+                .settings_config
+                .get("config")
+                .and_then(Value::as_str)
+                .and_then(|config| {
+                    config
+                        .parse::<toml_edit::DocumentMut>()
+                        .ok()?
+                        .get("models")?
+                        .get("default")?
+                        .as_str()
+                        .map(str::to_string)
+                }),
+            _ => None,
+        };
+
+        if api_key.is_some_and(|api_key| {
+            provider.id.trim().contains(api_key)
+                || provider.name.trim().contains(api_key)
+                || model_id
+                    .as_deref()
+                    .is_some_and(|model_id| model_id.contains(api_key))
+        }) {
+            return Err(AppError::Message(
+                "Provider quick setup contains a sensitive-field collision".to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn validate_quick_setup_base_url(
+        app_type: &AppType,
+        provider: &Provider,
+    ) -> Result<(), AppError> {
+        let raw = match app_type {
+            AppType::Claude => provider
+                .settings_config
+                .pointer("/env/ANTHROPIC_BASE_URL")
+                .and_then(Value::as_str)
+                .map(str::to_string),
+            AppType::Codex => provider
+                .settings_config
+                .get("config")
+                .and_then(Value::as_str)
+                .and_then(|config| config.parse::<toml_edit::DocumentMut>().ok())
+                .and_then(|document| {
+                    document
+                        .get("model_providers")?
+                        .get("custom")?
+                        .get("base_url")?
+                        .as_str()
+                        .map(str::to_string)
+                }),
+            AppType::GrokBuild => provider
+                .settings_config
+                .get("config")
+                .and_then(Value::as_str)
+                .and_then(crate::grok_config::extract_base_url),
+            _ => None,
+        }
+        .ok_or_else(|| AppError::Message("Provider quick setup URL is invalid".to_string()))?;
+        let parsed = url::Url::parse(raw.trim())
+            .map_err(|_| AppError::Message("Provider quick setup URL is invalid".to_string()))?;
+        if !matches!(parsed.scheme(), "http" | "https")
+            || parsed.host_str().is_none()
+            || !parsed.username().is_empty()
+            || parsed.password().is_some()
+            || parsed.query().is_some()
+            || parsed.fragment().is_some()
+        {
+            return Err(AppError::Message(
+                "Provider quick setup URL is invalid".to_string(),
+            ));
+        }
+        let grok_api_key = match app_type {
+            AppType::GrokBuild => provider
+                .settings_config
+                .get("config")
+                .and_then(Value::as_str)
+                .and_then(crate::grok_config::extract_inline_api_key),
+            _ => None,
+        };
+        let api_key = match app_type {
+            AppType::Claude => provider
+                .settings_config
+                .pointer("/env/ANTHROPIC_AUTH_TOKEN")
+                .and_then(Value::as_str),
+            AppType::Codex => provider
+                .settings_config
+                .pointer("/auth/OPENAI_API_KEY")
+                .and_then(Value::as_str),
+            AppType::GrokBuild => grok_api_key.as_deref(),
+            _ => None,
+        }
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+        if let Some(api_key) = api_key {
+            let credential_host = api_key.to_ascii_lowercase();
+            let host_collision = parsed
+                .host_str()
+                .is_some_and(|host| host.contains(&credential_host));
+            let path_collision = parsed.path_segments().is_some_and(|segments| {
+                segments.into_iter().any(|segment| {
+                    percent_decode_url_segment(segment)
+                        .is_some_and(|decoded| decoded.contains(api_key))
+                        || segment.contains(api_key)
+                })
+            });
+            if host_collision || path_collision {
+                return Err(AppError::Message(
+                    "Provider quick setup URL is invalid".to_string(),
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// Derive non-sensitive warning codes for the exact normalized quick-setup
+    /// request while its per-app guard is still held. The reserved Provider ID
+    /// is intentionally reused across requests, so a command-layer reread after
+    /// releasing the guard could otherwise attribute a later writer's warnings
+    /// to this response.
+    fn quick_setup_warning_codes(
+        state: &AppState,
+        app_type: &AppType,
+        provider: &Provider,
+    ) -> Vec<String> {
+        if !matches!(app_type, AppType::Codex) {
+            return Vec::new();
+        }
+        let takeover_enabled =
+            futures::executor::block_on(state.db.get_proxy_config_for_app(AppType::Codex.as_str()))
+                .map(|config| config.enabled)
+                .unwrap_or(false)
+                || state
+                    .proxy_service
+                    .detect_takeover_in_live_config_for_app(&AppType::Codex);
+        crate::codex_config::codex_provider_save_warning_codes(provider, takeover_enabled)
+    }
+
     /// Check whether a provider exists in live config, tolerating parse errors
     /// only for providers that are explicitly marked as DB-only.
     fn check_live_config_exists(
@@ -3057,6 +4053,8 @@ impl ProviderService {
         provider: Provider,
         add_to_live: bool,
     ) -> Result<bool, AppError> {
+        let _guard =
+            futures::executor::block_on(state.proxy_service.lock_switch_for_app(app_type.as_str()));
         Self::add_with_initial_activation(state, app_type, provider, add_to_live, true)
     }
 
@@ -3068,7 +4066,314 @@ impl ProviderService {
         app_type: AppType,
         provider: Provider,
     ) -> Result<bool, AppError> {
+        let _guard =
+            futures::executor::block_on(state.proxy_service.lock_switch_for_app(app_type.as_str()));
         Self::add_with_initial_activation(state, app_type, provider, false, false)
+    }
+
+    /// Atomically store and activate a Claude/Codex quick-setup provider while
+    /// holding the same per-app guard used by provider switches and takeover.
+    /// All fallible live preparation happens before the provider row/current
+    /// selection commit; any later failure compensates DB, settings, backup,
+    /// and credential-file state from exact pre-mutation snapshots.
+    pub fn apply_quick_setup(
+        state: &AppState,
+        app_type: AppType,
+        provider: Provider,
+    ) -> Result<ProviderMutationResult<SwitchResult>, QuickSetupApplyError> {
+        if !matches!(
+            app_type,
+            AppType::Claude | AppType::Codex | AppType::GrokBuild
+        ) {
+            return Err(QuickSetupApplyError::rolled_back(
+                "Provider quick setup supports only claude, codex, or grokbuild",
+            ));
+        }
+        let reserved_id = match app_type {
+            AppType::Claude => QUICK_SETUP_CLAUDE_PROVIDER_ID,
+            AppType::Codex => QUICK_SETUP_CODEX_PROVIDER_ID,
+            AppType::GrokBuild => QUICK_SETUP_GROKBUILD_PROVIDER_ID,
+            _ => unreachable!("quick setup app allowlist was checked above"),
+        };
+        if provider.id != reserved_id {
+            return Err(QuickSetupApplyError::rolled_back(
+                "Provider quick setup uses an invalid reserved ID",
+            ));
+        }
+        Self::reject_quick_setup_secret_collisions(&app_type, &provider)
+            .map_err(QuickSetupApplyError::rolled_back)?;
+        Self::validate_quick_setup_base_url(&app_type, &provider)
+            .map_err(QuickSetupApplyError::rolled_back)?;
+
+        let _guard =
+            futures::executor::block_on(state.proxy_service.lock_switch_for_app(app_type.as_str()));
+        Self::apply_quick_setup_locked(state, app_type, provider)
+    }
+
+    fn apply_quick_setup_locked(
+        state: &AppState,
+        app_type: AppType,
+        mut provider: Provider,
+    ) -> Result<ProviderMutationResult<SwitchResult>, QuickSetupApplyError> {
+        let existing_provider = state
+            .db
+            .get_provider_by_id(&provider.id, app_type.as_str())
+            .map_err(QuickSetupApplyError::rolled_back)?;
+        let local_current = crate::settings::get_current_provider(&app_type);
+        let db_current = state
+            .db
+            .get_current_provider(app_type.as_str())
+            .map_err(QuickSetupApplyError::rolled_back)?;
+        let live_snapshots =
+            snapshot_quick_setup_live(&app_type).map_err(QuickSetupApplyError::rolled_back)?;
+        let live_before = matches!(app_type, AppType::Codex)
+            .then(read_codex_live_config_bytes)
+            .transpose()
+            .map_err(QuickSetupApplyError::rolled_back)?;
+        let backup_before =
+            futures::executor::block_on(state.db.get_live_backup(app_type.as_str()))
+                .map_err(QuickSetupApplyError::rolled_back)?;
+
+        Self::normalize_provider_if_claude(&app_type, &mut provider);
+        Self::validate_provider_settings(&app_type, &provider)
+            .map_err(QuickSetupApplyError::rolled_back)?;
+        if matches!(app_type, AppType::Codex) {
+            crate::codex_config::prepare_codex_provider_features_for_save(
+                &mut provider,
+                existing_provider.is_none(),
+            )
+            .map_err(QuickSetupApplyError::rolled_back)?;
+        }
+        normalize_provider_common_config_for_storage(state.db.as_ref(), &app_type, &mut provider)
+            .map_err(QuickSetupApplyError::rolled_back)?;
+        Self::normalize_usage_script_credential_overrides(&app_type, &mut provider);
+        if let Some(existing) = &existing_provider {
+            // The provider DAO intentionally preserves this queue bit on an
+            // update. Make that persistence rule part of the normalized value
+            // verified below instead of treating it as trigger interference.
+            provider.in_failover_queue = existing.in_failover_queue;
+        }
+
+        let has_live_backup = backup_before.is_some();
+        let live_taken_over = state
+            .proxy_service
+            .detect_takeover_in_live_config_for_app(&app_type);
+        let should_prepare_takeover = has_live_backup || live_taken_over;
+
+        let mutation = (|| -> Result<(SwitchResult, Option<Vec<u8>>), AppError> {
+            if should_prepare_takeover {
+                futures::executor::block_on(
+                    state
+                        .proxy_service
+                        .update_live_backup_from_provider_inner(app_type.as_str(), &provider),
+                )
+                .map_err(|error| AppError::Message(format!("更新 Live 备份失败: {error}")))?;
+
+                if matches!(app_type, AppType::Claude) {
+                    futures::executor::block_on(
+                        state
+                            .proxy_service
+                            .sync_claude_live_from_provider_while_proxy_active(&provider),
+                    )
+                    .map_err(|error| {
+                        AppError::Message(format!("同步 Claude Live 配置失败: {error}"))
+                    })?;
+                } else if live_taken_over {
+                    futures::executor::block_on(
+                        state
+                            .proxy_service
+                            .sync_codex_live_from_provider_while_proxy_active(&provider),
+                    )
+                    .map_err(|error| {
+                        AppError::Message(format!("同步 Codex Live 配置失败: {error}"))
+                    })?;
+                } else {
+                    write_live_with_common_config(state.db.as_ref(), &app_type, &provider)?;
+                }
+            } else {
+                write_live_with_common_config(state.db.as_ref(), &app_type, &provider)?;
+            }
+
+            // Observe final Codex bytes before logical commit or any runtime
+            // projection. A failed observation therefore enters the same
+            // compensation path without changing current/provider/router/MCP.
+            let _precommit_live_observation = read_quick_setup_live_after(&app_type)?;
+
+            // Commit the exact normalized request provider only after every
+            // fallible live/backup preparation and observation has succeeded.
+            state.db.save_provider(app_type.as_str(), &provider)?;
+            crate::settings::set_current_provider(&app_type, Some(&provider.id))?;
+            state
+                .db
+                .set_current_provider(app_type.as_str(), &provider.id)?;
+
+            let mut result = SwitchResult::default();
+            if !should_prepare_takeover {
+                if let Err(error) = McpService::sync_enabled_for_app_inner(state, &app_type) {
+                    log::warn!(
+                        "quick setup 后重投影 {app_type:?} MCP 失败（将在下次同步时自愈）: {error}"
+                    );
+                    result.warnings.push("mcp_sync_failed".to_string());
+                }
+            }
+            // `set_current_provider` and later database work can execute
+            // imported SQLite triggers. Success is authoritative only after
+            // rereading both the complete Provider row and DB current marker
+            // after those trigger-sensitive statements have finished.
+            let persisted = state
+                .db
+                .get_provider_by_id(&provider.id, app_type.as_str())?
+                .ok_or_else(|| {
+                    AppError::Message(
+                        "Provider quick setup persistence verification failed".to_string(),
+                    )
+                })?;
+            if !Self::quick_setup_persisted_provider_matches(&provider, &persisted)?
+                || state.db.get_current_provider(app_type.as_str())?.as_deref()
+                    != Some(provider.id.as_str())
+                || crate::settings::get_current_provider(&app_type).as_deref()
+                    != Some(provider.id.as_str())
+            {
+                return Err(AppError::Message(
+                    "Provider quick setup persistence verification failed".to_string(),
+                ));
+            }
+            // MCP shares Codex config.toml and the Provider write deliberately
+            // replaces that file before reprojecting enabled MCP servers. The
+            // mutation result must compare the caller's preimage with the
+            // final bytes after that projection, not the intermediate file.
+            let live_after = read_quick_setup_live_after(&app_type)?;
+            // Runtime target update is intentionally the final, non-fallible
+            // projection; no rollback-capable operation follows it.
+            futures::executor::block_on(
+                state
+                    .proxy_service
+                    .set_active_target_for_provider_inner(&app_type, &provider),
+            );
+            Ok((result, live_after))
+        })();
+
+        let (value, live_after) = match mutation {
+            Ok(value) => value,
+            Err(primary) => {
+                let mut rollback_errors = Vec::new();
+                let restore_provider = match &existing_provider {
+                    Some(previous) => state.db.save_provider(app_type.as_str(), previous),
+                    None => state.db.delete_provider(app_type.as_str(), &provider.id),
+                };
+                if let Err(error) = restore_provider {
+                    rollback_errors.push(format!("restore provider: {error}"));
+                }
+                let restore_current = match db_current.as_deref() {
+                    Some(id) => state.db.set_current_provider(app_type.as_str(), id),
+                    None => state.db.clear_current_provider(app_type.as_str()),
+                };
+                if let Err(error) = restore_current {
+                    rollback_errors.push(format!("restore database current: {error}"));
+                }
+                if let Err(error) =
+                    crate::settings::set_current_provider(&app_type, local_current.as_deref())
+                {
+                    rollback_errors.push(format!("restore local current: {error}"));
+                }
+                match &backup_before {
+                    Some(backup) => {
+                        if let Err(error) =
+                            futures::executor::block_on(state.db.restore_live_backup(backup))
+                        {
+                            rollback_errors.push(format!("restore live backup: {error}"));
+                        }
+                    }
+                    None => {
+                        if let Err(error) = futures::executor::block_on(
+                            state.db.delete_live_backup(app_type.as_str()),
+                        ) {
+                            rollback_errors.push(format!("remove live backup: {error}"));
+                        }
+                    }
+                }
+                rollback_errors.extend(restore_quick_setup_live(&live_snapshots));
+
+                match state.db.get_provider_by_id(&provider.id, app_type.as_str()) {
+                    Ok(restored) => {
+                        let matches = match (&existing_provider, restored.as_ref()) {
+                            (None, None) => Ok(true),
+                            (Some(expected), Some(actual)) => {
+                                Self::quick_setup_persisted_provider_matches(expected, actual)
+                            }
+                            _ => Ok(false),
+                        };
+                        match matches {
+                            Ok(true) => {}
+                            Ok(false) => rollback_errors
+                                .push("provider rollback verification failed".to_string()),
+                            Err(error) => rollback_errors
+                                .push(format!("provider rollback verification failed: {error}")),
+                        }
+                    }
+                    Err(error) => rollback_errors
+                        .push(format!("provider rollback verification failed: {error}")),
+                }
+                match state.db.get_current_provider(app_type.as_str()) {
+                    Ok(restored) if restored == db_current => {}
+                    Ok(_) => rollback_errors
+                        .push("database current rollback verification failed".to_string()),
+                    Err(error) => rollback_errors.push(format!(
+                        "database current rollback verification failed: {error}"
+                    )),
+                }
+                if crate::settings::get_current_provider(&app_type) != local_current {
+                    rollback_errors.push("local current rollback verification failed".to_string());
+                }
+                match futures::executor::block_on(state.db.get_live_backup(app_type.as_str())) {
+                    Ok(restored)
+                        if restored.as_ref().map(|backup| {
+                            (
+                                &backup.app_type,
+                                &backup.original_config,
+                                &backup.backed_up_at,
+                            )
+                        }) == backup_before.as_ref().map(|backup| {
+                            (
+                                &backup.app_type,
+                                &backup.original_config,
+                                &backup.backed_up_at,
+                            )
+                        }) => {}
+                    Ok(_) => {
+                        rollback_errors.push("live backup rollback verification failed".to_string())
+                    }
+                    Err(error) => rollback_errors
+                        .push(format!("live backup rollback verification failed: {error}")),
+                }
+                for snapshot in &live_snapshots {
+                    match snapshot.matches_current() {
+                        Ok(true) => {}
+                        Ok(false) => rollback_errors
+                            .push("live file rollback verification failed".to_string()),
+                        Err(error) => rollback_errors
+                            .push(format!("live file rollback verification failed: {error}")),
+                    }
+                }
+                return if rollback_errors.is_empty() {
+                    Err(QuickSetupApplyError::rolled_back(primary))
+                } else {
+                    Err(QuickSetupApplyError::state_unknown(
+                        primary,
+                        &rollback_errors,
+                    ))
+                };
+            }
+        };
+
+        Ok(ProviderMutationResult {
+            value,
+            live_config_changed: live_before
+                .zip(live_after)
+                .is_some_and(|(before, after)| before != after),
+            app: app_type.as_str().to_string(),
+            warning_codes: Self::quick_setup_warning_codes(state, &app_type, &provider),
+        })
     }
 
     fn add_with_initial_activation(
@@ -3131,6 +4436,13 @@ impl ProviderService {
         original_id: Option<&str>,
         provider: Provider,
     ) -> Result<bool, AppError> {
+        let _guard = if matches!(app_type, AppType::Claude | AppType::Codex) {
+            Some(futures::executor::block_on(
+                state.proxy_service.lock_switch_for_app(app_type.as_str()),
+            ))
+        } else {
+            None
+        };
         let mut provider = provider;
         let original_id = original_id.unwrap_or(provider.id.as_str()).to_string();
         let provider_id_changed = original_id != provider.id;
@@ -3308,7 +4620,7 @@ impl ProviderService {
                     futures::executor::block_on(
                         state
                             .proxy_service
-                            .update_live_backup_from_provider(app_type.as_str(), &provider),
+                            .update_live_backup_from_provider_inner(app_type.as_str(), &provider),
                     )
                     .map_err(|e| AppError::Message(format!("更新 Live 备份失败: {e}")))?;
                 }
@@ -3343,7 +4655,7 @@ impl ProviderService {
                 // 流程。走到这里 DB 与 live 都已按新配置落盘，保存事实上已
                 // 成功；投影失败降级为警告，避免制造"保存失败"假象（MCP
                 // 投影可自愈：下次切换 / 任一 MCP 启停都会重新投影）。
-                if let Err(err) = McpService::sync_enabled_for_app(state, &app_type) {
+                if let Err(err) = McpService::sync_enabled_for_app_inner(state, &app_type) {
                     log::warn!(
                         "保存供应商后重投影 {app_type:?} MCP 失败（将在下次同步时自愈）: {err}"
                     );
@@ -3436,6 +4748,13 @@ impl ProviderService {
     /// current-provider sources before the row is removed, with compensation
     /// for every failure after the live write.
     pub fn delete(state: &AppState, app_type: AppType, id: &str) -> Result<(), AppError> {
+        let _mutation_guard = if matches!(app_type, AppType::Claude | AppType::Codex) {
+            Some(futures::executor::block_on(
+                state.proxy_service.lock_switch_for_app(app_type.as_str()),
+            ))
+        } else {
+            None
+        };
         // Additive mode apps - no current provider concept
         if app_type.is_additive_mode() {
             // Single DB read shared across all additive-mode sub-paths below.
@@ -3485,11 +4804,6 @@ impl ProviderService {
         }
 
         if matches!(app_type, AppType::Codex) {
-            // Serialize with provider switching and proxy-takeover transitions
-            // before observing ownership/current state.
-            let _switch_guard = futures::executor::block_on(
-                state.proxy_service.lock_switch_for_app(app_type.as_str()),
-            );
             let local_current = crate::settings::get_current_provider(&app_type);
             let db_current = state.db.get_current_provider(app_type.as_str())?;
             if local_current.as_deref() == Some(id) || db_current.as_deref() == Some(id) {
@@ -3586,6 +4900,18 @@ impl ProviderService {
     ///    d. Write target provider config to live files
     ///    e. Sync MCP configuration
     pub fn switch(state: &AppState, app_type: AppType, id: &str) -> Result<SwitchResult, AppError> {
+        // Acquire before reading providers: a queued switch must never retain a
+        // stale pre-quick-setup row and project it after the atomic apply exits.
+        let _switch_guard = if matches!(
+            app_type,
+            AppType::Claude | AppType::Codex | AppType::Gemini | AppType::GrokBuild
+        ) {
+            Some(futures::executor::block_on(
+                state.proxy_service.lock_switch_for_app(app_type.as_str()),
+            ))
+        } else {
+            None
+        };
         // Check if provider exists
         let providers = state.db.get_all_providers(app_type.as_str())?;
         let _provider = providers
@@ -3607,21 +4933,6 @@ impl ProviderService {
         if matches!(app_type, AppType::ClaudeDesktop) {
             return Self::switch_normal(state, app_type, id, &providers);
         }
-
-        // Provider switches and takeover toggles both mutate live config and the
-        // restore backup. Serialize them per app, then decide from the locked
-        // current state so a just-started takeover cannot be overwritten by a
-        // normal live write.
-        let _switch_guard = if matches!(
-            app_type,
-            AppType::Claude | AppType::Codex | AppType::Gemini | AppType::GrokBuild
-        ) {
-            Some(futures::executor::block_on(
-                state.proxy_service.lock_switch_for_app(app_type.as_str()),
-            ))
-        } else {
-            None
-        };
 
         // Backup or live placeholders mean the live file is owned by proxy
         // takeover, even if the proxy server is temporarily stopped or is in the
@@ -3852,7 +5163,7 @@ impl ProviderService {
         // 走到这里 DB is_current 与 live 都已落盘，切换事实上已成功；
         // 投影失败上抛会让前端报"切换失败"制造分裂假象，故降级为警告
         // （MCP 投影可自愈：下次切换 / 任一 MCP 启停都会重新投影）。
-        if let Err(err) = McpService::sync_enabled_for_app(state, &app_type) {
+        if let Err(err) = McpService::sync_enabled_for_app_inner(state, &app_type) {
             log::warn!("切换供应商后重投影 {app_type:?} MCP 失败（将在下次同步时自愈）: {err}");
         }
 
@@ -3861,6 +5172,11 @@ impl ProviderService {
 
     /// Sync current provider to live configuration (re-export)
     pub fn sync_current_to_live(state: &AppState) -> Result<(), AppError> {
+        let _guards = AppType::all()
+            .map(|app| {
+                futures::executor::block_on(state.proxy_service.lock_switch_for_app(app.as_str()))
+            })
+            .collect::<Vec<_>>();
         sync_current_to_live(state)
     }
 
@@ -3868,6 +5184,8 @@ impl ProviderService {
         state: &AppState,
         app_type: AppType,
     ) -> Result<(), AppError> {
+        let _guard =
+            futures::executor::block_on(state.proxy_service.lock_switch_for_app(app_type.as_str()));
         if app_type.is_additive_mode() {
             return sync_current_provider_for_app_to_live(state, &app_type);
         }
@@ -3904,7 +5222,7 @@ impl ProviderService {
             futures::executor::block_on(
                 state
                     .proxy_service
-                    .update_live_backup_from_provider(app_type.as_str(), provider),
+                    .update_live_backup_from_provider_inner(app_type.as_str(), provider),
             )
             .map_err(|e| AppError::Message(format!("更新 Live 备份失败: {e}")))?;
             return Ok(());
@@ -4659,11 +5977,52 @@ impl ProviderService {
             .map_err(|e| AppError::Message(format!("Serialization failed: {e}")))
     }
 
-    /// Import default configuration from live files (re-export)
+    /// Import default configuration during startup.
     ///
-    /// Returns `Ok(true)` if imported, `Ok(false)` if skipped.
+    /// The startup-only eligibility check is repeated after acquiring the
+    /// mutation guard. The caller may perform an unlocked fast-path check, but
+    /// an official seed created while it waited must still prevent automatic
+    /// recreation of the `default` Provider.
     pub fn import_default_config(state: &AppState, app_type: AppType) -> Result<bool, AppError> {
-        import_default_config(state, app_type)
+        let _guard = Self::lock_provider_mutation(state, &app_type);
+        if !live::should_import_default_config_on_startup(state, &app_type)? {
+            return Ok(false);
+        }
+        Self::import_default_config_with_lock_held(state, app_type)
+    }
+
+    pub(crate) fn import_default_config_with_lock_held(
+        state: &AppState,
+        app_type: AppType,
+    ) -> Result<bool, AppError> {
+        live::import_default_config(state, app_type)
+    }
+
+    pub(crate) fn lock_provider_mutation(
+        state: &AppState,
+        app_type: &AppType,
+    ) -> tokio::sync::OwnedMutexGuard<()> {
+        futures::executor::block_on(state.proxy_service.lock_switch_for_app(app_type.as_str()))
+    }
+
+    /// Serialize settings directory changes against Claude/Codex mutations.
+    /// The stable acquisition order prevents two concurrent full-settings
+    /// saves from taking the pair in opposite order.
+    pub(crate) async fn lock_settings_provider_paths(
+        state: &AppState,
+    ) -> (
+        tokio::sync::OwnedMutexGuard<()>,
+        tokio::sync::OwnedMutexGuard<()>,
+    ) {
+        let claude = state
+            .proxy_service
+            .lock_switch_for_app(AppType::Claude.as_str())
+            .await;
+        let codex = state
+            .proxy_service
+            .lock_switch_for_app(AppType::Codex.as_str())
+            .await;
+        (claude, codex)
     }
 
     pub fn should_import_default_config_on_startup(

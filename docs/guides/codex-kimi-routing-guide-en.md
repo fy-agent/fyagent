@@ -104,9 +104,9 @@ Not recommended. FyAgent blocks switching to official providers while local rout
 
 ## References
 
-- [FyAgent User Manual: Add Provider](../user-manual/en/2-providers/2.1-add.md)
-- [FyAgent User Manual: Proxy Service](../user-manual/en/4-proxy/4.1-service.md)
-- [FyAgent User Manual: App Routing](../user-manual/en/4-proxy/4.2-routing.md)
+- [FyAgent User Manual: Add Provider](../user-manual/en/3-providers/3.1-add.md)
+- [FyAgent User Manual: Proxy Service](../user-manual/en/5-proxy/5.1-service.md)
+- [FyAgent User Manual: App Routing](../user-manual/en/5-proxy/5.2-routing.md)
 - [Kimi Open Platform: Using Kimi K2.7 Code in coding tools](https://platform.kimi.com/docs/guide/agent-support)
 - [Kimi Code Docs: Overview](https://www.kimi.com/code/docs/)
 - [Kimi Code Docs: Using with third-party coding agents](https://www.kimi.com/code/docs/third-party-tools/other-coding-agents.html)

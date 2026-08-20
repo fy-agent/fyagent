@@ -68,15 +68,8 @@ pub async fn launch_session_terminal(
     let cwd = cwd.clone();
     let custom_config = custom_config.clone();
 
-    // Read preferred terminal from global settings
-    let preferred = crate::settings::get_preferred_terminal();
-    // Map global setting terminal names to session terminal names
-    // Global uses "iterm2", session terminal uses "iterm"
-    let target = match preferred.as_deref() {
-        Some("iterm2") => "iterm".to_string(),
-        Some(t) => t.to_string(),
-        None => "terminal".to_string(), // Default to Terminal.app on macOS
-    };
+    let target = crate::settings::get_preferred_terminal()
+        .ok_or_else(|| "Terminal resume is not supported on this platform".to_string())?;
 
     tauri::async_runtime::spawn_blocking(move || {
         session_manager::terminal::launch_terminal(

@@ -1214,7 +1214,7 @@ mod tests {
         std::fs::create_dir_all(&sub).expect("create dirs");
 
         // 构造循环：sub/cycle -> enc 父目录
-        #[cfg(unix)]
+        #[cfg(target_os = "macos")]
         std::os::unix::fs::symlink(&enc, sub.join("cycle")).expect("symlink");
         #[cfg(windows)]
         std::os::windows::fs::symlink_dir(&enc, sub.join("cycle")).expect("symlink");

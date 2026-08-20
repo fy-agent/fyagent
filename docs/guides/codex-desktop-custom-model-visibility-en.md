@@ -43,4 +43,4 @@ Once enabled, FyAgent preserves the official login state in `~/.codex/auth.json`
 
 - [Keep Codex Remote Control and Official Plugins While Using Third-Party APIs](./codex-official-auth-preservation-guide-en.md)
 - [Codex DeepSeek local routing hands-on guide](./codex-deepseek-routing-guide-en.md)
-- [Local Routing](../user-manual/en/4-proxy/4.2-routing.md)
+- [Local Routing](../user-manual/en/5-proxy/5.2-routing.md)

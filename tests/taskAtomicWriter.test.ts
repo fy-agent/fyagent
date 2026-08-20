@@ -34,7 +34,7 @@ afterEach(() => {
 });
 
 describe("shared atomic task writer", () => {
-  it.runIf(process.platform !== "win32")(
+  it.runIf(process.platform === "darwin")(
     "uses unique same-directory temporary files and preserves target modes",
     () => {
       withFixture((fixture) => {

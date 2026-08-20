@@ -130,9 +130,9 @@ DeepSeek はこのモデルの Codex 連携をまだ開放していません。�
 
 ## 参考リンク
 
-- [FyAgent ユーザーマニュアル: プロバイダーの追加](../user-manual/ja/2-providers/2.1-add.md)
-- [FyAgent ユーザーマニュアル: プロキシサービス](../user-manual/ja/4-proxy/4.1-service.md)
-- [FyAgent ユーザーマニュアル: アプリケーションルーティング](../user-manual/ja/4-proxy/4.2-routing.md)
+- [FyAgent ユーザーマニュアル: プロバイダーの追加](../user-manual/ja/3-providers/3.1-add.md)
+- [FyAgent ユーザーマニュアル: プロキシサービス](../user-manual/ja/5-proxy/5.1-service.md)
+- [FyAgent ユーザーマニュアル: アプリケーションルーティング](../user-manual/ja/5-proxy/5.2-routing.md)
 - [DeepSeek API Docs: Integrate with Codex](https://api-docs.deepseek.com/quick_start/agent_integrations/codex/)（公式 Codex 連携の説明。`wire_api = "responses"` と対応モデルの範囲を含む）
 - [DeepSeek API Docs: Using the Responses API](https://api-docs.deepseek.com/guides/responses_api/)
 - [DeepSeek API Docs: Your First API Call](https://api-docs.deepseek.com/)

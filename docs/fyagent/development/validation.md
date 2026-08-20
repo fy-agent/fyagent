@@ -29,7 +29,7 @@ Local structure or policy tests cannot prove:
   manual Windows diagnostic;
 - an Authenticode state or certificate/timestamp policy;
 - a macOS bundle's native identity and packaging;
-- another architecture's Linux packages;
+- another supported architecture's native packages;
 - a GitHub required check, attestation, or published Release.
 
 Those claims require the matching native CI/release job and exact remote

@@ -70,6 +70,39 @@ pub(crate) fn normalize_workbuddy_base_url(
     })
 }
 
+pub(crate) fn reject_url_credential_collision(
+    normalized: &NormalizedWorkBuddyUrl,
+    credential: &str,
+) -> Result<(), WorkBuddyError> {
+    reject_parsed_url_credential_collision(&normalized.base_url, credential)
+}
+
+pub(crate) fn reject_parsed_url_credential_collision(
+    url: &Url,
+    credential: &str,
+) -> Result<(), WorkBuddyError> {
+    let credential = credential.trim();
+    if credential.is_empty() {
+        return Ok(());
+    }
+    let credential_host = credential.to_ascii_lowercase();
+    let host_collision = url
+        .host_str()
+        .is_some_and(|host| host.contains(&credential_host));
+    let path_collision = url.path_segments().is_some_and(|segments| {
+        segments.into_iter().any(|segment| {
+            segment.contains(credential)
+                || percent_decode_segment(segment)
+                    .is_some_and(|decoded| decoded.contains(credential))
+        })
+    });
+    if host_collision || path_collision {
+        Err(invalid_url())
+    } else {
+        Ok(())
+    }
+}
+
 fn normalize_path(url: &mut Url) {
     let mut path = url.path().trim_end_matches('/').to_string();
     if path.is_empty() {
@@ -111,6 +144,10 @@ fn normalize_path(url: &mut Url) {
 }
 
 fn decoded_segment_is_v1(segment: &str) -> bool {
+    percent_decode_segment(segment).as_deref() == Some("v1")
+}
+
+fn percent_decode_segment(segment: &str) -> Option<String> {
     let bytes = segment.as_bytes();
     let mut decoded = Vec::with_capacity(bytes.len());
     let mut index = 0;
@@ -130,7 +167,7 @@ fn decoded_segment_is_v1(segment: &str) -> bool {
         index += 1;
     }
 
-    decoded == b"v1"
+    String::from_utf8(decoded).ok()
 }
 
 fn hex_value(byte: u8) -> Option<u8> {
@@ -235,6 +272,24 @@ mod tests {
                 normalize_workbuddy_base_url(input).unwrap_err().code(),
                 WorkBuddyErrorCode::InvalidUrl,
                 "input {input:?} should fail closed"
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_credentials_embedded_in_hosts_or_decoded_path_segments() {
+        let credential = "TEST-SECRET-URL-KEY";
+        for raw in [
+            "https://prefix-TEST-SECRET-URL-KEY-suffix.example/v1",
+            "https://example.test/prefix-TEST-SECRET-URL-KEY-suffix/v1",
+            "https://example.test/prefix-TEST%2DSECRET%2DURL%2DKEY-suffix/v1",
+        ] {
+            let normalized = normalize_workbuddy_base_url(raw).unwrap();
+            assert_eq!(
+                reject_url_credential_collision(&normalized, credential)
+                    .unwrap_err()
+                    .code(),
+                WorkBuddyErrorCode::InvalidUrl
             );
         }
     }

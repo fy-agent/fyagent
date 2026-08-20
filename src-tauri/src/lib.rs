@@ -20,8 +20,6 @@ mod grok_config;
 pub mod hermes_config;
 mod init_status;
 mod lightweight;
-#[cfg(target_os = "linux")]
-mod linux_fix;
 mod mcp;
 mod model_capabilities;
 mod openclaw_config;
@@ -96,7 +94,7 @@ use tauri::image::Image;
 use tauri::tray::{TrayIconBuilder, TrayIconEvent};
 use tauri::RunEvent;
 use tauri::{Emitter, Listener, Manager};
-#[cfg(not(target_os = "windows"))]
+#[cfg(target_os = "macos")]
 use tauri_plugin_window_state::{AppHandleExt, StateFlags, WindowExt};
 
 #[cfg(target_os = "windows")]
@@ -353,12 +351,20 @@ fn emit_main_window_layout_mode(
 /// Re-evaluates only the current monitor constraint. It intentionally does not
 /// reset size or position: after returning to a large work area a legal user
 /// size stays untouched, while the product minimum becomes available again.
+/// Maximized and exclusive-fullscreen windows skip `set_min_size`: on Windows
+/// that call unmaximizes the window but keeps the maximized client size.
 fn refresh_main_window_layout(window: &tauri::WebviewWindow) -> tauri::Result<()> {
     let Some((work_area, scale_factor)) = current_logical_work_area(window) else {
         return Ok(());
     };
     let minimum = window_layout::effective_minimum_size(work_area);
-    window.set_min_size(Some(tauri::LogicalSize::new(minimum.width, minimum.height)))?;
+    let maximized = window.is_maximized().unwrap_or(false);
+    let fullscreen = window.is_fullscreen().unwrap_or(false);
+    let apply_geometry =
+        window_layout::should_apply_runtime_geometry_constraints(maximized, fullscreen);
+    if apply_geometry {
+        window.set_min_size(Some(tauri::LogicalSize::new(minimum.width, minimum.height)))?;
+    }
     emit_main_window_layout_mode(window, work_area, scale_factor)
 }
 
@@ -374,7 +380,7 @@ fn restore_hidden_main_window_layout(window: &tauri::WebviewWindow) -> tauri::Re
         log::warn!("Unable to restore Shell-user main-window state: {error}");
     }
 
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
     if let Err(error) = window.restore_state(window_state_flags()) {
         // A corrupt or unavailable persisted state must not block startup.
         log::warn!("Unable to restore saved main-window state; using current geometry: {error}");
@@ -576,10 +582,6 @@ fn show_and_focus_main_window(app: &tauri::AppHandle) {
         let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();
-        #[cfg(target_os = "linux")]
-        {
-            linux_fix::nudge_main_window(window.clone());
-        }
     }
 }
 
@@ -800,7 +802,7 @@ pub fn run() {
     // The plugin transport is only instance coordination, not authentication.
     // Validate its complete argv envelope before the existing lightweight,
     // deep-link, and focus-only behavior sees any local WM_COPYDATA content.
-    #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     let builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             log::info!("=== Single Instance Callback Triggered ===");
             log::debug!("Args count: {}", args.len());
@@ -824,10 +826,9 @@ pub fn run() {
                         submit_activation(
                             app,
                             PendingActivation::InvalidDeepLink {
-                                // Preserve the historical macOS/Linux focus
-                                // behavior. Windows rejects protocol-looking
+                                // Preserve the macOS focus behavior. Windows rejects protocol-looking
                                 // local input without giving it focus effects.
-                                focus_main_window: !cfg!(target_os = "windows"),
+                                focus_main_window: cfg!(target_os = "macos"),
                             },
                         );
                         return;
@@ -858,7 +859,7 @@ pub fn run() {
                 mark_activation_renderer_unready();
             }
         })
-        // 注册 deep-link 插件（处理 macOS AppleEvent 和其他平台的深链接）
+        // 注册 deep-link 插件（处理 macOS AppleEvent 和 Windows URI 激活）
         .plugin(tauri_plugin_deep_link::init())
         // 拦截窗口关闭：根据设置决定是否最小化到托盘
         .on_window_event(|window, event| {
@@ -896,7 +897,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init());
 
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
     let builder = builder
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(
@@ -1148,19 +1149,17 @@ pub fn run() {
             app_state
                 .codex_desktop_service
                 .attach_log_directory_opener(Arc::new(move |directory: &std::path::Path| {
-                    tauri::async_runtime::block_on(
-                        crate::platform::process_launch::open_directory_as_user(
-                            log_opener_handle.clone(),
-                            directory.to_path_buf(),
-                        ),
+                    crate::platform::process_launch::open_directory_as_user_blocking(
+                        log_opener_handle.clone(),
+                        directory.to_path_buf(),
                     )
                     .map_err(|_| {
-                            crate::codex_desktop::error::InstallerError::new(
-                                crate::codex_desktop::error::InstallerErrorCode::InternalError,
-                            )
-                            .with_diagnostic_message(
-                                "the application log directory could not be opened",
-                            )
+                        crate::codex_desktop::error::InstallerError::new(
+                            crate::codex_desktop::error::InstallerErrorCode::InternalError,
+                        )
+                        .with_diagnostic_message(
+                            "the application log directory could not be opened",
+                        )
                     })
                 }));
 
@@ -1477,6 +1476,30 @@ pub fn run() {
                     Ok(_) => log::debug!("○ No Hermes MCP servers found to import"),
                     Err(e) => log::warn!("✗ Failed to import Hermes MCP: {e}"),
                 }
+
+                match crate::services::mcp::McpService::import_from_workbuddy(&app_state) {
+                    Ok(count) if count > 0 => {
+                        log::info!("✓ Imported {count} MCP server(s) from WorkBuddy");
+                    }
+                    Ok(_) => log::debug!("○ No WorkBuddy MCP servers found to import"),
+                    Err(e) => log::warn!("✗ Failed to import WorkBuddy MCP: {e}"),
+                }
+
+                match crate::services::mcp::McpService::import_from_qoderwork(&app_state) {
+                    Ok(count) if count > 0 => {
+                        log::info!("✓ Imported {count} MCP server(s) from QoderWork");
+                    }
+                    Ok(_) => log::debug!("○ No QoderWork MCP servers found to import"),
+                    Err(e) => log::warn!("✗ Failed to import QoderWork MCP: {e}"),
+                }
+
+                match crate::services::mcp::McpService::import_from_traework(&app_state) {
+                    Ok(count) if count > 0 => {
+                        log::info!("✓ Imported {count} MCP server(s) from TRAE Work");
+                    }
+                    Ok(_) => log::debug!("○ No TRAE Work MCP servers found to import"),
+                    Err(e) => log::warn!("✗ Failed to import TRAE Work MCP: {e}"),
+                }
             }
 
             // 4. 导入提示词文件（表空时触发）
@@ -1515,38 +1538,13 @@ pub fn run() {
             // 注册 deep-link URL 处理器（使用正确的 DeepLinkExt API）
             log::info!("=== Registering deep-link URL handler ===");
 
-            // Linux 和 Windows 调试模式需要显式注册
-            #[cfg(any(target_os = "linux", all(debug_assertions, windows)))]
+            // Windows 调试模式需要显式注册。
+            #[cfg(all(debug_assertions, windows))]
             {
-                #[cfg(target_os = "linux")]
-                {
-                    // Use Tauri's path API to get correct path (includes app identifier)
-                    // tauri-plugin-deep-link writes to: ~/.local/share/com.fyagent.desktop/applications/fyagent-handler.desktop
-                    // Only register if .desktop file doesn't exist to avoid overwriting user customizations
-                    let should_register = app
-                        .path()
-                        .data_dir()
-                        .map(|d| !d.join("applications/fyagent-handler.desktop").exists())
-                        .unwrap_or(true);
-
-                    if should_register {
-                        if let Err(e) = app.deep_link().register_all() {
-                            log::error!("✗ Failed to register deep link schemes: {}", e);
-                        } else {
-                            log::info!("✓ Deep link schemes registered (Linux)");
-                        }
-                    } else {
-                        log::info!("⊘ Deep link handler already exists, skipping registration");
-                    }
-                }
-
-                #[cfg(all(debug_assertions, windows))]
-                {
-                    if let Err(e) = app.deep_link().register_all() {
-                        log::error!("✗ Failed to register deep link schemes: {}", e);
-                    } else {
-                        log::info!("✓ Deep link schemes registered (Windows debug)");
-                    }
+                if let Err(e) = app.deep_link().register_all() {
+                    log::error!("✗ Failed to register deep link schemes: {}", e);
+                } else {
+                    log::info!("✓ Deep link schemes registered (Windows debug)");
                 }
             }
 
@@ -1612,7 +1610,7 @@ pub fn run() {
                 }
             }
 
-            #[cfg(not(target_os = "macos"))]
+            #[cfg(target_os = "windows")]
             {
                 if let Some(icon) = app.default_window_icon() {
                     tray_builder = tray_builder.icon(icon.clone());
@@ -1636,6 +1634,8 @@ pub fn run() {
             // 初始化 SkillService
             let skill_service = SkillService::new();
             app.manage(commands::skill::SkillServiceState(Arc::new(skill_service)));
+            app.manage(services::qoderwork::QoderHooksState::new());
+            app.manage(services::traework::TraeEndpointProbeState::default());
 
             // 初始化 CopilotAuthManager
             {
@@ -1811,21 +1811,6 @@ pub fn run() {
                 });
             });
 
-            // Linux: 禁用 WebKitGTK 硬件加速，防止 EGL 初始化失败导致白屏
-            #[cfg(target_os = "linux")]
-            {
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.with_webview(|webview| {
-                        use webkit2gtk::{WebViewExt, SettingsExt, HardwareAccelerationPolicy};
-                        let wk_webview = webview.inner();
-                        if let Some(settings) = WebViewExt::settings(&wk_webview) {
-                            SettingsExt::set_hardware_acceleration_policy(&settings, HardwareAccelerationPolicy::Never);
-                            log::info!("已禁用 WebKitGTK 硬件加速");
-                        }
-                    });
-                }
-            }
-
             // 静默启动：根据设置决定是否显示主窗口
             let settings = crate::settings::get_settings();
             if let Some(window) = app.get_webview_window("main") {
@@ -1834,10 +1819,6 @@ pub fn run() {
                 // decides its visibility, avoiding off-screen/legacy flashes.
                 prepare_main_webview(&window);
 
-                // 在窗口首次显示前同步装饰状态，避免前端加载后再切换导致标题栏闪烁
-                // 仅 Linux 生效：解决 Wayland 下系统窗口按钮不可用的问题
-                #[cfg(target_os = "linux")]
-                let _ = window.set_decorations(!settings.use_app_window_controls);
                 if settings.silent_startup {
                     // 静默启动模式：保持窗口隐藏
                     let _ = window.hide();
@@ -1851,13 +1832,6 @@ pub fn run() {
                     let _ = window.show();
                     log::info!("正常启动模式：主窗口已显示");
 
-                    // Linux: 解决首次启动 UI 无响应问题（Tauri #10746 + wry #637）。
-                    // 启动时 webview 未获取焦点 + surface 尺寸协商失败，导致点击无效。
-                    // 这里做 set_focus + 伪 resize，等价于无视觉版本的"最大化-还原"。
-                    #[cfg(target_os = "linux")]
-                    {
-                        linux_fix::nudge_main_window(window.clone());
-                    }
                 }
             }
 
@@ -1865,10 +1839,22 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::get_agent_catalog,
+            commands::get_external_agent_status,
+            commands::launch_external_agent,
+            commands::get_qoderwork_hooks,
+            commands::save_qoderwork_hooks,
+            commands::validate_traework_model_config,
+            commands::test_traework_model_endpoint,
+            commands::cancel_traework_model_endpoint,
+            commands::get_traework_model_ids,
+            commands::validate_external_mcp_config,
             commands::get_providers,
             commands::get_current_provider,
+            commands::get_provider_summary,
             commands::add_provider,
             commands::add_provider_with_result,
+            commands::apply_provider_quick_setup_with_result,
             commands::update_provider,
             commands::update_provider_with_result,
             commands::delete_provider,
@@ -1974,6 +1960,9 @@ pub fn run() {
             // model list fetch (OpenAI-compatible /v1/models)
             commands::fetch_models_for_config,
             commands::get_opencode_models,
+            commands::get_opencode_model_snapshot,
+            commands::fetch_opencode_provider_models,
+            commands::save_opencode_models,
             // ours: endpoint speed test + custom endpoint management
             commands::test_api_endpoints,
             commands::get_custom_endpoints,
@@ -2028,10 +2017,13 @@ pub fn run() {
             commands::scan_unmanaged_skills,
             commands::import_skills_from_apps,
             commands::discover_available_skills,
+            commands::discover_available_skills_page,
             commands::check_skill_updates,
             commands::update_skill,
             commands::migrate_skill_storage,
             commands::search_skills_sh,
+            commands::search_skillhub,
+            commands::install_skillhub,
             // Skill management (legacy API compatibility)
             commands::get_skills,
             commands::get_skills_for_app,
@@ -2408,7 +2400,7 @@ pub fn run() {
             }
         }
 
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(target_os = "windows")]
         {
             let _ = (app_handle, event);
         }
@@ -3138,7 +3130,7 @@ fn classify_codex_desktop_exit_protection(
 // 在应用主动退出前显式持久化窗口状态
 // ============================================================
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(target_os = "macos")]
 fn window_state_flags() -> StateFlags {
     StateFlags::POSITION | StateFlags::SIZE | StateFlags::MAXIMIZED
 }
@@ -3148,7 +3140,7 @@ fn window_state_flags() -> StateFlags {
 pub fn save_window_state_before_exit(app_handle: &tauri::AppHandle) {
     #[cfg(target_os = "windows")]
     let result = crate::windows_window_state::save(app_handle);
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
     let result = app_handle
         .save_window_state(window_state_flags())
         .map_err(|error| error.to_string());
@@ -3165,12 +3157,9 @@ pub fn save_window_state_before_exit(app_handle: &tauri::AppHandle) {
 /// 所有桌面平台使用 single-instance 插件。我们有若干路径会直接
 /// `std::process::exit(0)`，不会触发插件挂在 `RunEvent::Exit` 上的清理钩子。
 /// 重启前主动释放可以避免新进程误连旧 listener 后自行退出。
-pub fn destroy_single_instance_lock(app_handle: &tauri::AppHandle) {
-    #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
-    tauri_plugin_single_instance::destroy(app_handle);
-
-    #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
-    let _ = app_handle;
+pub fn destroy_single_instance_lock(_app_handle: &tauri::AppHandle) {
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    tauri_plugin_single_instance::destroy(_app_handle);
 }
 
 #[cfg(test)]
@@ -3525,7 +3514,7 @@ mod tests {
             CodexDesktopExitProtection::ConfirmCancellation
         );
         assert_eq!(
-            classify_codex_desktop_exit_protection(Some((JobStage::VerifyingDownload, false,))),
+            classify_codex_desktop_exit_protection(Some((JobStage::Downloading, false,))),
             CodexDesktopExitProtection::WaitForCancellation
         );
         assert_eq!(

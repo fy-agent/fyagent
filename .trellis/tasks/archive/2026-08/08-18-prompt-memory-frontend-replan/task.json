@@ -1,0 +1,30 @@
+{
+  "id": "prompt-memory-frontend-replan",
+  "name": "prompt-memory-frontend-replan",
+  "title": "提示词与记忆前端重规划",
+  "description": "以 origin/dev/laiyongjie@59acaceb 为合并基线，在独立功能分支上把提示词/记忆 IA 对齐到 Agent/MCP 同一代；dev/xk 已在基线内。不在赖永杰分支上直接开发。",
+  "status": "completed",
+  "dev_type": "frontend",
+  "scope": "src/v2/pages/prompts, src/v2/pages/memory, v2-prompts-memory spec",
+  "package": null,
+  "priority": "P1",
+  "creator": "william",
+  "assignee": "william",
+  "createdAt": "2026-08-18",
+  "completedAt": "2026-08-19",
+  "branch": "cursor/prompt-memory-frontend-align-06e7",
+  "base_branch": "dev/laiyongjie",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": "https://github.com/fy-agent/fyagent/pull/111",
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "src/v2/pages/prompts/Page.tsx",
+    "src/v2/pages/memory/Page.tsx",
+    ".trellis/spec/frontend/v2-prompts-memory.md"
+  ],
+  "notes": "Feature branch cursor/prompt-memory-frontend-align-06e7 is cut from origin/dev/laiyongjie and must not track or push to it. PR base is dev/laiyongjie. origin/dev/xk@a8348ff9 is already an ancestor.",
+  "meta": {}
+}

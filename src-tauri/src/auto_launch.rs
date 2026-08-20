@@ -1,5 +1,5 @@
 use crate::error::AppError;
-#[cfg(not(target_os = "windows"))]
+#[cfg(target_os = "macos")]
 use auto_launch::{AutoLaunch, AutoLaunchBuilder};
 
 /// 获取 macOS 上的 .app bundle 路径
@@ -16,28 +16,21 @@ fn get_macos_app_bundle_path(exe_path: &std::path::Path) -> Option<std::path::Pa
     }
 }
 
-/// 初始化非 Windows 平台的 AutoLaunch 实例。
+/// 初始化 macOS 的 AutoLaunch 实例。
 ///
 /// Windows 正式版始终以管理员权限运行，不能安全地注册为登录自启：
 /// 该平台仅清理 FyAgent 自己的旧值，绝不触碰历史产品的 OS 注册。
-#[cfg(not(target_os = "windows"))]
+#[cfg(target_os = "macos")]
 fn get_auto_launch() -> Result<AutoLaunch, AppError> {
-    // macOS derives its login-item name from the bundle; Linux uses this
-    // product name for its XDG autostart entry.
+    // macOS derives its login-item name from the bundle.
     let app_name = "FyAgent";
     let exe_path =
         std::env::current_exe().map_err(|e| AppError::Message(format!("无法获取应用路径: {e}")))?;
 
     // macOS 需要使用 .app bundle 路径，否则 AppleScript login item 会打开终端
-    #[cfg(target_os = "macos")]
     let app_path = get_macos_app_bundle_path(&exe_path).unwrap_or(exe_path);
 
-    #[cfg(not(target_os = "macos"))]
-    let app_path = exe_path;
-
-    // 使用 AutoLaunchBuilder 消除平台差异
-    // macOS: 使用 AppleScript 方式（默认），需要 .app bundle 路径
-    // Linux: 使用 XDG autostart
+    // macOS 使用 AppleScript 方式（默认），需要 .app bundle 路径。
     let auto_launch = AutoLaunchBuilder::new()
         .set_app_name(app_name)
         .set_app_path(&app_path.to_string_lossy())
@@ -93,7 +86,7 @@ pub fn enable_auto_launch() -> Result<(), AppError> {
         ))
     }
 
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
     {
         let auto_launch = get_auto_launch()?;
         auto_launch
@@ -113,7 +106,7 @@ pub fn disable_auto_launch() -> Result<(), AppError> {
         Ok(())
     }
 
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
     {
         let auto_launch = get_auto_launch()?;
         auto_launch
@@ -132,7 +125,7 @@ pub fn is_auto_launch_enabled() -> Result<bool, AppError> {
         Ok(false)
     }
 
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
     {
         let auto_launch = get_auto_launch()?;
         auto_launch

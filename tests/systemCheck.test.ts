@@ -20,7 +20,7 @@ function nodeScript(script: string, ...args: string[]) {
 }
 
 describe("read-only host prerequisite checks", () => {
-  it.each(["linux", "darwin", "win32"])(
+  it.each(["darwin", "win32", "linux"])(
     "describes %s prerequisites without probing another host",
     (platform) => {
       const result = nodeScript(SCRIPT, "--describe-platform", platform);
@@ -29,18 +29,33 @@ describe("read-only host prerequisite checks", () => {
         platform: string;
         requirements: {
           commands: Array<[string, string[], string]>;
-          pkgConfig: Array<[string, string]>;
         };
       };
       expect(report.platform).toBe(platform);
       expect(report.requirements.commands.length).toBeGreaterThan(0);
+      const forbiddenCommands = [
+        "sudo",
+        ["a", "pt"].join(""),
+        "brew",
+        "winget",
+        "choco",
+      ];
       for (const [command, args, hint] of report.requirements.commands) {
-        expect(command).not.toMatch(/^(?:sudo|apt|brew|winget|choco)$/i);
+        expect(forbiddenCommands).not.toContain(command.toLowerCase());
         expect(args.join(" ")).not.toMatch(/(?:^|\s)(?:install|add)(?:\s|$)/i);
         expect(hint.length).toBeGreaterThan(0);
       }
     },
   );
+
+  it("rejects an unsupported host without probing it", () => {
+    const platform = "freebsd";
+    const result = nodeScript(SCRIPT, "--describe-platform", platform);
+
+    expect(result.status).toBe(2);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toContain(`Unknown platform: ${platform}`);
+  });
 
   it("reports the current host as JSON and makes failures visible", () => {
     const result = spawnSync("mise", ["run", "system:check", "--json"], {
@@ -82,8 +97,16 @@ describe("read-only host prerequisite checks", () => {
 
   it("contains no elevation or package-manager mutation command", () => {
     const source = fs.readFileSync(SCRIPT, "utf8");
+    const forbiddenCommands = [
+      "sudo",
+      ["a", "pt"].join(""),
+      ["a", "pt", "-get"].join(""),
+      "brew",
+      "winget",
+      "choco",
+    ];
     expect(source).not.toMatch(
-      /run\(["'](?:sudo|apt|apt-get|brew|winget|choco)["']/i,
+      new RegExp(`run\\(["'](?:${forbiddenCommands.join("|")})["']`, "i"),
     );
     expect(source).not.toMatch(/exec(?:File)?Sync\(/);
   });

@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-#[cfg(not(target_os = "windows"))]
+#[cfg(target_os = "macos")]
 use std::fs;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -22,8 +22,8 @@ pub fn check_env_conflicts(app: &str) -> Result<Vec<EnvConflict>, String> {
     // Check system environment variables
     conflicts.extend(check_system_env(&keywords)?);
 
-    // Check shell configuration files (Unix only)
-    #[cfg(not(target_os = "windows"))]
+    // Check shell configuration files on macOS.
+    #[cfg(target_os = "macos")]
     conflicts.extend(check_shell_configs(&keywords)?);
 
     Ok(conflicts)
@@ -60,7 +60,7 @@ fn matches_env_keyword(name: &str, keywords: &[EnvKeyword]) -> bool {
     })
 }
 
-/// Check system environment variables (Windows Registry or Unix env)
+/// Check system environment variables (Windows Registry or macOS process env).
 #[cfg(target_os = "windows")]
 fn check_system_env(keywords: &[EnvKeyword]) -> Result<Vec<EnvConflict>, String> {
     let mut conflicts = Vec::new();
@@ -103,7 +103,7 @@ fn check_system_env(keywords: &[EnvKeyword]) -> Result<Vec<EnvConflict>, String>
     Ok(conflicts)
 }
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(target_os = "macos")]
 fn check_system_env(keywords: &[EnvKeyword]) -> Result<Vec<EnvConflict>, String> {
     let mut conflicts = Vec::new();
 
@@ -122,8 +122,8 @@ fn check_system_env(keywords: &[EnvKeyword]) -> Result<Vec<EnvConflict>, String>
     Ok(conflicts)
 }
 
-/// Check shell configuration files for environment variable exports (Unix only)
-#[cfg(not(target_os = "windows"))]
+/// Check macOS shell configuration files for environment variable exports.
+#[cfg(target_os = "macos")]
 fn check_shell_configs(keywords: &[EnvKeyword]) -> Result<Vec<EnvConflict>, String> {
     let mut conflicts = Vec::new();
 

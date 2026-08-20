@@ -102,46 +102,48 @@ app_version = canonical Cargo version
 release_tag = "v" + app_version
 source_sha  = lowercase full Git commit SHA
 release_mode = preflight | formal
-ci_run_id / ci_run_attempt = exact successful main push CI attempt
+ci_run_id / ci_run_attempt = exact successful push CI attempt
+                           for the mode's authority branch
 ```
 
 Every platform, evidence, attestation, and publication step consumes those
 outputs unchanged. A downstream step must not trim `GITHUB_REF_NAME`, reread a
 different version field, substitute another source SHA, or select another CI
-attempt. Both modes require the source to equal the live remote `main` HEAD and
-bind the same successful `.github/workflows/ci.yml` push attempt. Formal mode
-additionally requires an annotated `vX.Y.Z` tag whose target is that exact
-commit; preflight is the `main` workflow at the same commit and cannot publish.
+attempt. Preflight requires the source to equal the live remote
+`dev/laiyongjie` HEAD and binds that branch's successful
+`.github/workflows/ci.yml` push attempt; it cannot publish. Formal mode
+requires the source to equal the live remote `main` HEAD, binds that branch's
+successful push CI, and additionally requires an annotated `vX.Y.Z` tag whose
+target is that exact commit. The eligibility engine and
+[GitHub Release Workflow](./github-release-workflow.md) own the branch split;
+do not treat `main` as the preflight authority.
 
-The installer allowlist contains exactly ten versioned files:
+The installer allowlist contains exactly four versioned files:
 
 ```text
 FyAgent-X.Y.Z-macOS.dmg
 FyAgent-X.Y.Z-macOS.zip
 FyAgent-X.Y.Z-Windows-x64-setup.exe
 FyAgent-X.Y.Z-Windows-arm64-setup.exe
-FyAgent-X.Y.Z-Linux-x86_64.AppImage
-FyAgent-X.Y.Z-Linux-x86_64.deb
-FyAgent-X.Y.Z-Linux-x86_64.rpm
-FyAgent-X.Y.Z-Linux-arm64.AppImage
-FyAgent-X.Y.Z-Linux-arm64.deb
-FyAgent-X.Y.Z-Linux-arm64.rpm
 ```
 
 Only the two versioned NSIS setup executables are accepted for Windows.
 Non-allowlisted Windows package formats, portable archives, v-prefixed names,
 architecture aliases, and unversioned installer names are rejected.
 
-`download-manifest.json` schema `fyagent-download-manifest/v2` binds product,
+`download-manifest.json` schema `fyagent-download-manifest/v3` binds product,
 version, tag, source SHA, publication time, and each installer's exact name,
 platform, architecture, format, size, SHA-256, and URL. It rejects missing,
 extra, nested, empty, symlinked, wrong-version, or malformed files.
 
-`build-metadata.json` independently binds the five target groups, actual
-toolchains, repository/workflow identity, source SHA, release mode, and
-requested versus observed native environments. Windows and macOS record
-`container: null`; Linux additionally binds its configured container digest
-and observed OS/architecture.
+Exactly three platform metadata records use schema
+`fyagent-platform-build/v2`: `macos-universal.json`,
+`windows-x64.json`, and `windows-arm64.json`. Each binds its requested and
+observed native environment, actual toolchain, source SHA, and output inventory.
+
+`build-metadata.json` uses schema `fyagent-build-metadata/v2` and independently
+binds those three platform records, repository/workflow identity, source SHA,
+release mode, and requested versus observed native environments.
 
 `signing-status.json` binds both final Windows setup executables to the same
 version/source SHA and to their post-sign SHA-256/size plus verified
@@ -149,9 +151,9 @@ Authenticode state. It is a release attachment and attestation subject; native
 per-architecture signing fragments are private workflow inputs and are never
 published.
 
-The attestation subject set is the ten installers plus the download manifest,
-build metadata, and signing status. The Sigstore bundle is the final Release
-attachment and does not attest itself.
+The attestation subject set contains exactly seven files: the four installers,
+download manifest, build metadata, and signing status. The Sigstore bundle is
+the eighth and final Release attachment and does not attest itself.
 
 ## 5. Change and Failure Rules
 
@@ -178,13 +180,14 @@ attachment and does not attest itself.
   byte-identical.
 - `tests/versionConsistency.test.ts` delegates to the canonical script rather
   than implementing another version parser.
-- Download/release asset tests assert all ten exact names, the two Windows NSIS
+- Download/release asset tests assert all four exact names, the two Windows NSIS
   setup executables and architecture mapping, URL shape, and
   missing/extra/non-allowlisted/symlink rejection.
 - Release tests assert frozen output consumption and that the download,
   build, signing, attestation, and publication stages use the same version,
-  source SHA, CI run, and attempt. They cover `main` movement, annotated
-  versus lightweight tags, and exact frozen rechecks before publication.
+  source SHA, CI run, and attempt. They cover `dev/laiyongjie` preflight and
+  `main` formal authority-branch movement, annotated versus lightweight tags,
+  and exact frozen rechecks before publication.
 - Windows release tests accept `65535`, reject `65536`, and use an integer path
   that also rejects values beyond JavaScript's safe-number range without
   truncation.

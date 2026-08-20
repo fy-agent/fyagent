@@ -41,8 +41,12 @@ type FixtureOptions = {
 
 function context(mode: Mode = "preflight"): DevReleaseRemoteContext {
   const releaseTag = "v0.3.1";
+  const authorityBranch =
+    mode === "preflight" ? "dev/laiyongjie" : "main";
   const ref =
-    mode === "preflight" ? "refs/heads/main" : `refs/tags/${releaseTag}`;
+    mode === "preflight"
+      ? `refs/heads/${authorityBranch}`
+      : `refs/tags/${releaseTag}`;
   return {
     token: TOKEN,
     apiBase: "https://api.github.com",
@@ -50,7 +54,7 @@ function context(mode: Mode = "preflight"): DevReleaseRemoteContext {
     repositoryId: "1313497021",
     eventName: mode === "preflight" ? "workflow_dispatch" : "push",
     ref,
-    refName: mode === "preflight" ? "main" : releaseTag,
+    refName: mode === "preflight" ? authorityBranch : releaseTag,
     refType: mode === "preflight" ? "branch" : "tag",
     eventSha: SOURCE_SHA,
     workflowName: "Release",
@@ -68,6 +72,7 @@ function rawRun({
   runNumber = 42,
   runAttempt = RUN_ATTEMPT,
   checkSuiteId = CHECK_SUITE_ID,
+  headBranch = "dev/laiyongjie",
   headSha = SOURCE_SHA,
   repository = REPOSITORY,
   headRepository = REPOSITORY,
@@ -76,6 +81,7 @@ function rawRun({
   runNumber?: number;
   runAttempt?: number;
   checkSuiteId?: number;
+  headBranch?: string;
   headSha?: string;
   repository?: typeof REPOSITORY;
   headRepository?: typeof REPOSITORY;
@@ -91,7 +97,7 @@ function rawRun({
     name: "CI",
     path: ".github/workflows/ci.yml",
     event: "push",
-    head_branch: "main",
+    head_branch: headBranch,
     head_sha: headSha,
     status: "completed",
     conclusion: "success",
@@ -152,6 +158,7 @@ function jsonResponse(
 
 function fixtureFetch(options: FixtureOptions = {}) {
   const mode = options.mode ?? "preflight";
+  const authorityBranch = mode === "preflight" ? "dev/laiyongjie" : "main";
   const requests: Array<{ authorization: string | null; url: URL }> = [];
   let runListSnapshots = 0;
   const fetchImpl: typeof fetch = async (input, init) => {
@@ -168,9 +175,12 @@ function fixtureFetch(options: FixtureOptions = {}) {
     if (path === "/repos/fy-agent/fyagent") {
       return jsonResponse(options.repository ?? REPOSITORY);
     }
-    if (path === "/repos/fy-agent/fyagent/git/ref/heads/main") {
+    if (
+      path ===
+      `/repos/fy-agent/fyagent/git/ref/heads/${authorityBranch}`
+    ) {
       return jsonResponse({
-        ref: "refs/heads/main",
+        ref: `refs/heads/${authorityBranch}`,
         object: { type: "commit", sha: options.branchSha ?? SOURCE_SHA },
       });
     }
@@ -205,7 +215,7 @@ function fixtureFetch(options: FixtureOptions = {}) {
     if (
       path === `/repos/fy-agent/fyagent/actions/workflows/${WORKFLOW_ID}/runs`
     ) {
-      expect(url.searchParams.get("branch")).toBe("main");
+      expect(url.searchParams.get("branch")).toBe(authorityBranch);
       expect(url.searchParams.get("event")).toBe("push");
       expect(url.searchParams.get("head_sha")).toBe(SOURCE_SHA);
       if (url.searchParams.get("page") === "2") {
@@ -213,6 +223,7 @@ function fixtureFetch(options: FixtureOptions = {}) {
           total_count: 2,
           workflow_runs: [
             rawRun({
+              headBranch: authorityBranch,
               headSha: options.runSha ?? SOURCE_SHA,
               headRepository: options.headRepository ?? REPOSITORY,
             }),
@@ -223,17 +234,29 @@ function fixtureFetch(options: FixtureOptions = {}) {
       if (options.rerunDuringCollection && runListSnapshots > 1) {
         return jsonResponse({
           total_count: 1,
-          workflow_runs: [rawRun({ runAttempt: RUN_ATTEMPT + 1 })],
+          workflow_runs: [
+            rawRun({
+              headBranch: authorityBranch,
+              runAttempt: RUN_ATTEMPT + 1,
+            }),
+          ],
         });
       }
-      const next =
-        "<https://api.github.com/repos/fy-agent/fyagent/actions/workflows/314159/runs?branch=main&event=push&head_sha=" +
-        `${SOURCE_SHA}&per_page=100&page=2>; rel="next"`;
+      const nextUrl = new URL(
+        "https://api.github.com/repos/fy-agent/fyagent/actions/workflows/314159/runs",
+      );
+      nextUrl.searchParams.set("branch", authorityBranch);
+      nextUrl.searchParams.set("event", "push");
+      nextUrl.searchParams.set("head_sha", SOURCE_SHA);
+      nextUrl.searchParams.set("per_page", "100");
+      nextUrl.searchParams.set("page", "2");
+      const next = `<${nextUrl.href}>; rel="next"`;
       return jsonResponse(
         {
           total_count: 2,
           workflow_runs: [
             rawRun({
+              headBranch: authorityBranch,
               id: OLD_RUN_ID,
               runNumber: 41,
               runAttempt: 1,
@@ -433,7 +456,7 @@ describe("dev release remote evidence", () => {
     ).rejects.toThrow(/ciEvidence\.runAttempt/);
   });
 
-  it("rejects when the main branch moves", async () => {
+  it("rejects when the dev branch moves", async () => {
     const fixture = fixtureFetch({ branchSha: OTHER_SHA });
 
     await expect(
@@ -578,13 +601,13 @@ describe("remote verifier environment", () => {
       GITHUB_REPOSITORY: "fy-agent/fyagent",
       GITHUB_REPOSITORY_ID: "1313497021",
       GITHUB_EVENT_NAME: "workflow_dispatch",
-      GITHUB_REF: "refs/heads/main",
-      GITHUB_REF_NAME: "main",
+      GITHUB_REF: "refs/heads/dev/laiyongjie",
+      GITHUB_REF_NAME: "dev/laiyongjie",
       GITHUB_REF_TYPE: "branch",
       GITHUB_SHA: SOURCE_SHA,
       GITHUB_WORKFLOW: "Release",
       GITHUB_WORKFLOW_REF:
-        "fy-agent/fyagent/.github/workflows/release.yml@refs/heads/main",
+        "fy-agent/fyagent/.github/workflows/release.yml@refs/heads/dev/laiyongjie",
       GITHUB_WORKFLOW_SHA: SOURCE_SHA,
       RELEASE_APP_VERSION: "0.3.1",
       RELEASE_TAG: "v0.3.1",

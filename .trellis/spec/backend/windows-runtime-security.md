@@ -42,6 +42,11 @@ pub(crate) fn revalidate_interactive_user_context(
 pub(crate) fn normalize_single_instance_args(
     args: Vec<String>,
 ) -> Option<Vec<String>>;
+
+pub(crate) async fn open_http_url_as_user(
+    app: tauri::AppHandle,
+    raw_url: String,
+) -> Result<(), String>;
 ```
 
 The frozen internal value is deliberately not serializable:
@@ -101,8 +106,8 @@ expose the Shell SID or paths and does not decide which user owns state.
   override may retain its existing product meaning, but the override itself is
   loaded from Alice's store and an ambient Bob path is never a fallback.
 - Windows must not use `dirs::home_dir`, Tauri's ambient user path resolver,
-  `%HOME%`, `%USERPROFILE%`, `%APPDATA%`, `%LOCALAPPDATA%`, XDG path variables,
-  or elevated-process user-tool variables to select per-user paths. User tool
+  `%HOME%`, `%USERPROFILE%`, `%APPDATA%`, `%LOCALAPPDATA%`, alternate-platform
+  path variables, or elevated-process user-tool variables to select per-user paths. User tool
   discovery derives candidates from Alice's frozen directories plus
   OS-resolved system locations; it does not inherit Bob's `PATH`, NVM, pnpm,
   Volta, Scoop, Hermes, OpenCode, or Codex path variables.
@@ -182,13 +187,38 @@ environment and rebuilding a narrow environment from the frozen Alice paths
 and OS-resolved constants. The shared child-environment builder clears inherited
 variables and supplies Alice Profile/Local/Roaming/TEMP, frozen PATH (with only
 the selected entry directory optionally prepended), PATHEXT, and OS-resolved
-ComSpec/SystemRoot. Windows CLI, version, cmd-shim, and WSL execution all use
-that builder. Shared detected-tool execution helpers enforce the
+ComSpec/SystemRoot. Windows CLI, version, and cmd-shim execution all use that
+builder. Shared detected-tool execution helpers enforce the
 same formal-build gate themselves so internal callers cannot bypass a public
 command-level check.
 It no longer selects a machine runtime or requires the process SID to equal the
 Shell SID. Legacy Run-value cleanup is known-name-only, runs after primary
 instance admission, and is best-effort; its failure must not block startup.
+
+### Open validated links through the interactive Explorer shell
+
+- `open_http_url_as_user` accepts only the shared normalized HTTP(S) launch
+  request. An invalid scheme, missing authority, command, executable, path, or
+  arbitrary argument never reaches a platform launcher; user-facing failures
+  are stable public error codes rather than the raw URL or HRESULT.
+- Windows performs the launch on an STA initialized with
+  `COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE`. It obtains the Explorer-
+  owned `IShellDispatch2` through the desktop shell view, following the exact
+  chain `SWC_DESKTOP -> IUnknown_QueryService(SID_STopLevelBrowser) ->
+QueryActiveShellView -> GetItemObject(SVGIO_BACKGROUND as IDispatch) ->
+IShellFolderViewDual.Application -> IShellDispatch2`.
+- `GetItemObject` must first request `IDispatch` and then cast to
+  `IShellFolderViewDual`; directly requesting the dual interface is not the
+  supported automation boundary. `SWC_EXPLORER` is forbidden because it depends
+  on an open File Explorer folder window and makes an otherwise valid link fail.
+- Ordinary external-link launch passes `SW_SHOWNORMAL` to
+  `IShellDispatch2::ShellExecute`, so the system browser receives a foreground-
+  eligible normal-show request. The fixed Codex user-helper launch retains its
+  separate empty show argument and fixed target/arguments contract.
+- There is no `ShellExecuteW`, `Command::new`, `cmd`, PowerShell, arbitrary
+  executable, current-process browser launch, or `window.open` fallback. If the
+  Explorer COM chain is unavailable, fail closed instead of launching as the
+  elevated process account or broadening the renderer input.
 
 ## 4. Validation & Error Matrix
 
@@ -205,6 +235,10 @@ instance admission, and is best-effort; its failure must not block startup.
 | A protected Codex PackageBridge orphan exists                                                    | Do not use it for startup, activation, identity, or user-path selection; only the Codex application bridge module may inspect it during the next elevated bridge creation. |
 | Single-instance envelope is oversized, contains controls, or has an invalid deep link            | Reject before lightweight/focus/event behavior; never log the raw payload.                                                                                                 |
 | Valid envelope has no actionable deep link                                                       | Restore/focus the existing window only.                                                                                                                                    |
+| No File Explorer folder window is open                                                           | Desktop-view Explorer chain still launches the validated URL; never enumerate only `SWC_EXPLORER`.                                                                         |
+| Desktop background object is requested directly as `IShellFolderViewDual`                        | Treat as a contract regression; request `IDispatch` first and cast explicitly.                                                                                             |
+| External link is accepted but browser would remain backgrounded                                  | Pass fixed `SW_SHOWNORMAL` for ordinary external links; helper show semantics remain unchanged.                                                                            |
+| Explorer COM acquisition or `ShellExecute` fails                                                 | Return controlled `INTERACTIVE_USER_UNAVAILABLE`; do not try a command, direct shell, renderer, or elevated-user fallback.                                                 |
 | Non-Windows platform                                                                             | Preserve its existing path resolver, Store/window-state plugin, and single-instance behavior.                                                                              |
 
 ## 5. Good / Base / Bad Cases
@@ -217,6 +251,9 @@ instance admission, and is best-effort; its failure must not block startup.
 - Good: a valid second launch contains one allowlisted deep link. The callback
   validates the complete envelope and DTO, emits the parsed confirmation
   request, then focuses the existing window.
+- Good: elevated FyAgent opens an HTTPS catalog link through Explorer's desktop
+  automation object. The interactive user's default browser receives a normal-
+  show request even when no File Explorer folder window is open.
 - Bad: read `%APPDATA%`, `dirs::home_dir`, Tauri `app_data_dir`, `HKCU`, process
   `PATH`, or a user-tool home variable on Windows and call it Alice's state.
 - Bad: restore `%ProgramData%\FyAgent\runtime`, treat PackageBridge as runtime
@@ -231,7 +268,7 @@ instance admission, and is best-effort; its failure must not block startup.
 - Contract tests assert initialization precedes panic/CLI/Tauri, the formal
   process/Shell equality gate and machine-runtime implementation are absent,
   the fixed PackageBridge is referenced only from the Codex installer boundary,
-  and Windows production paths do not consult ambient home/app-data/XDG or
+  and Windows production paths do not consult ambient home/app-data or
   user-tool path environment variables.
 - Renderer tests prove directory defaults and resets use the backend Shell home
   rather than the frontend Tauri path API.
@@ -241,20 +278,28 @@ instance admission, and is best-effort; its failure must not block startup.
   and both initial/lightweight WebViews use Alice's explicit data path.
 - Registry tests cover regular/missing/link components, an intermediate link,
   a final link, newly created keys, and the required no-follow reopen after an
-  existing create result. This delivery runs no Windows HIL. Any future,
-  separately authorized runtime validation must use only disposable HKCU test
-  keys when checking intermediate and final link rejection.
+  existing create result. Native registry-link HIL remains unexecuted. Any
+  future, separately authorized runtime validation must use only disposable
+  HKCU test keys when checking intermediate and final link rejection.
 - Single-instance tests cover count, item, aggregate, control-character,
   malformed/unsupported deep-link, valid deep-link, no-link focus,
   renderer-readiness queuing/drain, and no privileged callback action. Never
   construct a test that treats callback validation as pre-decode peer
   authentication.
-- Present evidence is limited to static contracts, scoped Windows-target
-  compilation checks, and review. No real Windows 10/11, x64/ARM64, elevated
-  Bob/Alice, startup, WebView, Shell-token, HKU, UAC, or plugin-transport HIL is
-  run locally or in Actions for this delivery. Those behaviors remain explicit
-  unverified residual risks and must not be described as native-compatible or
-  native-runtime-verified.
+- Process-launch tests cover HTTP(S) normalization/rejection, stable public
+  errors, the complete desktop-view COM source chain, the `IDispatch`
+  intermediate cast, exact OLE/DDE initialization, `SW_SHOWNORMAL` only on the
+  ordinary link path, and negative scans for `SWC_EXPLORER`, command
+  interpreters, direct `ShellExecuteW`, and arbitrary executable fallback.
+  Native acceptance must click a real Tauri catalog action and observe the
+  target in the interactive user's foreground browser; process creation or a
+  successful HRESULT alone is insufficient.
+- A real current-host Tauri click may prove only the external-link path it
+  exercises. It does not establish Windows 10/11 coverage, ARM64, elevated
+  Bob/Alice, startup admission, WebView path ownership, Shell-token freezing,
+  HKU/UAC behavior, or plugin-transport compatibility. Those behaviors remain
+  explicit unverified residual risks and must not be described as broadly
+  native-compatible or native-runtime-verified.
 
 ## 7. Wrong vs Correct
 
@@ -273,4 +318,19 @@ Explorer token -> freeze Alice SID/Profile/Local/Roaming before Tauri
 frozen context -> explicit user paths + HKEY_USERS\Alice
 bounded untrusted argv -> validated deep-link confirmation or focus only
 missing/drifted Shell authority -> explicit failure before side effect
+```
+
+Wrong:
+
+```text
+SWC_EXPLORER -> first open folder -> ShellExecute with default show
+failure -> cmd /c start <renderer URL>
+```
+
+Correct:
+
+```text
+validated HTTP(S) -> SWC_DESKTOP automation chain -> IDispatch cast
+                  -> interactive Explorer ShellExecute(SW_SHOWNORMAL)
+COM failure -> controlled error with no fallback
 ```

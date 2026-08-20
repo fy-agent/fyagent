@@ -43,7 +43,6 @@ body:
       options:
         - Windows
         - macOS
-        - Linux
         - Other / 其他
     validations:
       required: true

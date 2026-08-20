@@ -134,8 +134,7 @@ Two practical reminders are still worth noting: first, this traffic is counted a
 
 ## References
 
-- [FyAgent User Manual: Add a Provider (incl. Codex OAuth reverse proxy and API formats)](../user-manual/en/2-providers/2.1-add.md)
-- [FyAgent User Manual: Proxy Service](../user-manual/en/4-proxy/4.1-service.md)
-- [FyAgent User Manual: App Routing](../user-manual/en/4-proxy/4.2-routing.md)
-- [FyAgent v3.17.0 Release Notes](../release-notes/v3.17.0-en.md)
+- [FyAgent User Manual: Add a Provider (incl. Codex OAuth reverse proxy and API formats)](../user-manual/en/3-providers/3.1-add.md)
+- [FyAgent User Manual: Proxy Service](../user-manual/en/5-proxy/5.1-service.md)
+- [FyAgent User Manual: App Routing](../user-manual/en/5-proxy/5.2-routing.md)
 - Reverse guide: [Using Claude Models in Codex](./codex-claude-routing-guide-en.md)

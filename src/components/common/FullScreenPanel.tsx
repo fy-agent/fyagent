@@ -3,12 +3,7 @@ import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  isWindows,
-  isLinux,
-  DRAG_REGION_ATTR,
-  DRAG_REGION_STYLE,
-} from "@/lib/platform";
+import { isMac, DRAG_REGION_ATTR, DRAG_REGION_STYLE } from "@/lib/platform";
 import { isTextEditableTarget } from "@/utils/domUtils";
 import { cn } from "@/lib/utils";
 
@@ -25,7 +20,7 @@ interface FullScreenPanelProps {
   contentClassName?: string;
 }
 
-const DRAG_BAR_HEIGHT = isWindows() || isLinux() ? 0 : 28; // px - match App.tsx
+const DRAG_BAR_HEIGHT = isMac() ? 28 : 0; // px - match App.tsx
 const HEADER_HEIGHT = 64; // px - match App.tsx
 
 /**
@@ -94,8 +89,8 @@ export const FullScreenPanel: React.FC<FullScreenPanelProps> = ({
           className="fixed inset-0 z-[60] flex flex-col"
           style={{ backgroundColor: "hsl(var(--background))" }}
         >
-          {/* Drag region - match App.tsx. Linux 上 DRAG_BAR_HEIGHT=0，
-              直接跳过整个元素；macOS 保留 28px 拖拽占位。 */}
+          {/* Drag region - match App.tsx. macOS 保留 28px 系统标题栏占位；
+              Windows 通过下方 header 保留拖拽区。 */}
           {DRAG_BAR_HEIGHT > 0 && (
             <div
               data-tauri-drag-region

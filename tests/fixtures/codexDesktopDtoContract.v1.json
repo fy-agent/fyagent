@@ -111,7 +111,6 @@
     "checking",
     "preflight",
     "downloading",
-    "verifying_download",
     "installing",
     "verifying_installation",
     "succeeded",
@@ -132,7 +131,6 @@
     "DOWNLOAD_TIMEOUT",
     "DOWNLOAD_CANCELLED",
     "INSUFFICIENT_DISK_SPACE",
-    "CHECKSUM_MISSING",
     "CHECKSUM_MISMATCH",
     "PACKAGE_PARSE_FAILED",
     "PACKAGE_IDENTITY_MISMATCH",
@@ -146,8 +144,6 @@
     "MAC_DMG_MOUNT_FAILED",
     "MAC_APP_NOT_FOUND",
     "MAC_BUNDLE_ID_MISMATCH",
-    "MAC_TEAM_ID_MISMATCH",
-    "MAC_GATEKEEPER_REJECTED",
     "MAC_APP_RUNNING",
     "MAC_MULTIPLE_INSTALLATIONS",
     "MAC_TARGET_PATH_CONFLICT",
@@ -204,7 +200,7 @@
         "build": 4979,
         "revision": 0
       },
-      "expectedSize": 1048576,
+      "downloadSizeHint": 1048576,
       "checkedAt": "2026-07-29T00:00:00Z"
     },
     "startedAt": "2026-07-29T00:00:00Z",

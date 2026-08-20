@@ -1,9 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=FyAgent
-Comment=FyAgent - Personal control center for AI Workers and Agents
-Exec=fyagent
-Icon=com.fyagent.desktop
-Terminal=false
-Categories=Utility;Development;
-StartupNotify=true

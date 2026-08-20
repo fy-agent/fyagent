@@ -3,7 +3,7 @@ type: audit
 status: complete
 updated: 2026-08-11
 review_on: 2026-09-11
-authority: .omo/plans/docs-restructure-v0.3.0.md
+authority: git:b6f60dfe0b4e815fdb9eb3ba446c827dc41e0527
 source: git:b6f60dfe0b4e815fdb9eb3ba446c827dc41e0527
 evidence: code_audit + local_artifact_audit
 ---
@@ -35,7 +35,7 @@ VibeKey 对照审计和一张当前候选样例，但候选样例仍是概念图
 | 运行环境       | portable `mise 2026.8.2`；仓库已信任；`bootstrap` 与 Windows `system:check` 通过 |
 
 首次合同检查还暴露了两个原有 Windows 可移植性缺口：`.mjs` 没有固定 LF，Vitest 会在
-CRLF shebang 上解析失败；macOS shell 合同测试在 Windows 上错误调用 WSL 启动器，并
+CRLF shebang 上解析失败；macOS shell 合同测试在 Windows 上错误调用兼容启动器，并
 直接读取 NTFS 的 Unix 执行位。修正只落在 `.gitattributes`、任务脚本分类和测试层，没有
 改变产品功能。完整性测试的 CRLF fixture 也改为先归一化再转换，避免生成 `CRCRLF`。
 
@@ -59,7 +59,7 @@ CRLF shebang 上解析失败；macOS shell 合同测试在 Windows 上错误调�
 - 新增 [Release Notes 索引](../../release-notes/README.md)，解释 FyAgent v0.3.x 与
   CC Switch v3.6–v3.19.1 历史记录的关系。
 - `docs/guides/` 中保留 6 处有证据的旧名称：3 处上游 PR #5071，3 处 CC Switch
-  v3.19.1 来源说明。`deplink.html` 与 `flatpak/README.md` 没有旧身份命中。
+  v3.19.1 来源说明。`deplink.html` 没有旧身份命中。
 
 ## 三语用户手册
 
@@ -124,8 +124,7 @@ SHA-256 前缀、引用章节、当前语言和重拍结论。汇总结果为：
 - [VibeKey 宣发与产品设计审计](../marketing/vibekey-reference-audit.md)：继承“一个动作、
   一个状态、一个结果”，改造成软件控制面，放弃硬件、语音、Claude-only、众筹、定价
   和未经验证的市场数字；
-- [能力差距审计](vibekey-to-fyagent-capability-gap.md)与
-  [v0.3.1 后路线图](../../../.omo/plans/fyagent-capability-roadmap-post-v0.3.1.md)。
+- [能力差距审计](vibekey-to-fyagent-capability-gap.md)。
 
 概念样例状态保持清楚：
 

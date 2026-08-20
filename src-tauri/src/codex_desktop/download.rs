@@ -15,6 +15,7 @@ use std::{
 
 use bytes::Bytes;
 use futures::{Stream, StreamExt};
+use sha2::{Digest, Sha256};
 use thiserror::Error;
 use url::Url;
 
@@ -28,6 +29,7 @@ use super::{
 
 pub const MAX_REDIRECTS: usize = 5;
 pub const MAX_DOWNLOAD_ATTEMPTS: u8 = 3;
+const MAX_ARTIFACT_BYTES: u64 = 8 * 1024 * 1024 * 1024;
 const MAX_RETRY_AFTER_SECS: u64 = 30;
 const INSTALLER_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 const INSTALLER_READ_IDLE_TIMEOUT: Duration = Duration::from_secs(60);
@@ -296,6 +298,7 @@ where
 pub struct DownloadedArtifact {
     path: PathBuf,
     size: u64,
+    sha256: String,
     job_directory: JobTempDir,
     job_id: String,
     artifact_kind: ArtifactKind,
@@ -305,6 +308,7 @@ impl PartialEq for DownloadedArtifact {
     fn eq(&self, other: &Self) -> bool {
         self.path == other.path
             && self.size == other.size
+            && self.sha256 == other.sha256
             && self.job_id == other.job_id
             && self.artifact_kind == other.artifact_kind
     }
@@ -323,33 +327,28 @@ impl fmt::Debug for DownloadedArtifact {
 }
 
 impl DownloadedArtifact {
-    #[cfg_attr(not(any(target_os = "windows", target_os = "macos")), allow(dead_code))]
     pub(crate) fn path(&self) -> &Path {
         &self.path
     }
 
-    #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+    #[cfg_attr(target_os = "macos", allow(dead_code))]
+    pub(crate) fn actual_size(&self) -> u64 {
+        self.size
+    }
+
+    #[cfg_attr(target_os = "macos", allow(dead_code))]
+    pub(crate) fn local_sha256(&self) -> &str {
+        &self.sha256
+    }
+
+    #[cfg_attr(target_os = "macos", allow(dead_code))]
     pub(crate) fn job_id(&self) -> &str {
         &self.job_id
     }
 
     /// Reopens the fixed file through the retained directory capability and
     /// repeats the descriptor integrity gates immediately before consumption.
-    #[cfg_attr(not(any(target_os = "windows", target_os = "macos")), allow(dead_code))]
-    pub(crate) fn revalidate_against(
-        &self,
-        release: &ReleaseDescriptor,
-    ) -> Result<(), InstallerError> {
-        let expected_kind = artifact_kind_for_endpoint(release.download_endpoint)?;
-        if self.artifact_kind != expected_kind || self.size != release.expected_size {
-            return Err(
-                InstallerError::new(InstallerErrorCode::PackageIdentityMismatch)
-                    .with_diagnostic_message(
-                        "downloaded artifact evidence does not match the locked release descriptor",
-                    ),
-            );
-        }
-
+    pub(crate) fn revalidate(&self) -> Result<(), InstallerError> {
         if self.job_directory.final_path(self.artifact_kind) != self.path {
             return Err(
                 InstallerError::new(InstallerErrorCode::PackageIdentityMismatch)
@@ -359,10 +358,10 @@ impl DownloadedArtifact {
             );
         }
         let file = self.open_for_read()?;
-        verify::verify_reader(file, release.expected_size, &release.expected_sha256)
+        verify::verify_reader(file, self.size, &self.sha256)
     }
 
-    #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+    #[cfg_attr(target_os = "macos", allow(dead_code))]
     pub(crate) fn open_for_read(&self) -> Result<std::fs::File, InstallerError> {
         if self.job_directory.final_path(self.artifact_kind) != self.path {
             return Err(
@@ -380,6 +379,7 @@ impl DownloadedArtifact {
         job_directory: &JobTempDir,
         release: &ReleaseDescriptor,
         size: u64,
+        sha256: String,
     ) -> Result<Self, InstallerError> {
         let artifact_kind = artifact_kind_for_endpoint(release.download_endpoint)?;
         let path = job_directory.final_path(artifact_kind);
@@ -396,6 +396,7 @@ impl DownloadedArtifact {
         Ok(Self {
             path,
             size,
+            sha256,
             job_directory: job_directory.clone(),
             job_id: job_id.to_owned(),
             artifact_kind,
@@ -415,8 +416,10 @@ impl DownloadedArtifact {
                     .with_diagnostic_message("test installer artifact could not be inspected")
             })?
             .len();
-        let artifact = Self::from_completed_download(job_directory, release, size)?;
-        artifact.revalidate_against(release)?;
+        let file = job_directory.open_final_artifact_for_read(artifact_kind)?;
+        let sha256 = verify::fingerprint_reader(file)?.sha256;
+        let artifact = Self::from_completed_download(job_directory, release, size, sha256)?;
+        artifact.revalidate()?;
         Ok(artifact)
     }
 }
@@ -486,7 +489,7 @@ pub(crate) async fn download_release(
             attempt,
             max_attempts: MAX_DOWNLOAD_ATTEMPTS,
             completed_bytes: 0,
-            total_bytes: release.expected_size,
+            total_bytes: release.download_size_hint.unwrap_or(0),
         });
 
         match download_attempt(
@@ -587,18 +590,13 @@ async fn download_attempt(
         };
     }
 
-    if response
-        .content_length
-        .is_some_and(|size| size != release.expected_size)
-    {
-        return Err(DownloadAttemptError::terminal(
-            InstallerError::new(InstallerErrorCode::DownloadFailed)
-                .with_diagnostic_message("download content length did not match release metadata"),
-        ));
-    }
-
     let mut body = response.body;
     let mut completed_bytes = 0_u64;
+    let mut hasher = Sha256::new();
+    let progress_total = response
+        .content_length
+        .or(release.download_size_hint)
+        .unwrap_or(0);
     let mut last_progress_emit = Instant::now();
     let mut last_progress_bytes = 0_u64;
 
@@ -617,10 +615,10 @@ async fn download_attempt(
                         .with_diagnostic_message("download exceeded supported size range"),
                 )
             })?;
-        if completed_bytes > release.expected_size {
+        if completed_bytes > MAX_ARTIFACT_BYTES {
             return Err(DownloadAttemptError::terminal(
                 InstallerError::new(InstallerErrorCode::DownloadFailed)
-                    .with_diagnostic_message("downloaded bytes exceeded release metadata"),
+                    .with_diagnostic_message("download exceeded the installer safety limit"),
             ));
         }
 
@@ -630,9 +628,10 @@ async fn download_attempt(
                     .with_diagnostic_message("installer partial file could not be written"),
             )
         })?;
+        hasher.update(&chunk);
 
         let now = Instant::now();
-        if completed_bytes == release.expected_size
+        if progress_total > 0 && completed_bytes == progress_total
             || completed_bytes.saturating_sub(last_progress_bytes) >= 1024 * 1024
             || now.duration_since(last_progress_emit) >= Duration::from_millis(100)
         {
@@ -641,7 +640,7 @@ async fn download_attempt(
                 attempt,
                 max_attempts: MAX_DOWNLOAD_ATTEMPTS,
                 completed_bytes,
-                total_bytes: release.expected_size,
+                total_bytes: progress_total,
             });
             last_progress_emit = now;
             last_progress_bytes = completed_bytes;
@@ -651,10 +650,10 @@ async fn download_attempt(
     if cancellation.is_cancelled() {
         return Err(DownloadAttemptError::terminal(cancelled_error()));
     }
-    if completed_bytes != release.expected_size {
+    if completed_bytes == 0 {
         return Err(DownloadAttemptError::terminal(
             InstallerError::new(InstallerErrorCode::DownloadFailed)
-                .with_diagnostic_message("downloaded byte count did not match release metadata"),
+                .with_diagnostic_message("download endpoint returned an empty artifact"),
         ));
     }
 
@@ -678,29 +677,14 @@ async fn download_attempt(
         .finalize_part_file(artifact_kind, output)
         .map_err(finalize_download_error)?;
 
-    progress.emit(DownloadProgressUpdate {
-        phase: ProgressPhase::Verification,
-        attempt,
-        max_attempts: MAX_DOWNLOAD_ATTEMPTS,
-        completed_bytes,
-        total_bytes: release.expected_size,
-    });
     if cancellation.is_cancelled() {
         return Err(DownloadAttemptError::terminal(cancelled_error()));
     }
-    let final_file = job_directory
-        .open_final_artifact_for_read(artifact_kind)
-        .map_err(DownloadAttemptError::terminal)?;
-    verify::verify_reader(final_file, release.expected_size, &release.expected_sha256)
-        .map_err(DownloadAttemptError::terminal)?;
-    progress.emit(DownloadProgressUpdate {
-        phase: ProgressPhase::Verification,
-        attempt,
-        max_attempts: MAX_DOWNLOAD_ATTEMPTS,
-        completed_bytes,
-        total_bytes: release.expected_size,
-    });
-    DownloadedArtifact::from_completed_download(job_directory, release, completed_bytes)
+    // Streaming SHA-256 is the local identity. Installers revalidate the
+    // on-disk file immediately before consumption instead of hashing it again
+    // while the job is still downloading.
+    let sha256 = format!("{:x}", hasher.finalize());
+    DownloadedArtifact::from_completed_download(job_directory, release, completed_bytes, sha256)
         .map_err(DownloadAttemptError::terminal)
 }
 
@@ -722,7 +706,7 @@ fn artifact_kind_for_endpoint(
             Ok(ArtifactKind::Msix)
         }
         TrustedDownloadEndpoint::MacArm64 => Ok(ArtifactKind::Dmg),
-        TrustedDownloadEndpoint::Manifest | TrustedDownloadEndpoint::Checksums => {
+        TrustedDownloadEndpoint::Manifest => {
             Err(InstallerError::new(InstallerErrorCode::InternalError)
                 .with_diagnostic_message("metadata endpoint cannot download an installer artifact"))
         }
@@ -969,11 +953,8 @@ mod tests {
             super::super::types::CpuArchitecture::X86_64,
             "1.2.3.4",
             super::super::types::PlatformVersion::parse_windows_msix("1.2.3.4").unwrap(),
-            "OpenAI.Codex_1.2.3.4_x64__fixture.Msix",
-            verify::sha256_hex(expected_bytes),
-            expected_bytes.len() as u64,
+            Some(expected_bytes.len() as u64),
             TrustedDownloadEndpoint::WinX64,
-            None,
         )
         .unwrap()
     }
@@ -1246,7 +1227,7 @@ mod tests {
         }));
         assert!(updates
             .iter()
-            .any(|update| update.phase == ProgressPhase::Verification));
+            .all(|update| update.phase == ProgressPhase::Download));
     }
 
     #[tokio::test]
@@ -1268,7 +1249,7 @@ mod tests {
 
         std::fs::write(artifact.path(), b"mutated").unwrap();
         let error = artifact
-            .revalidate_against(&release)
+            .revalidate()
             .expect_err("a post-download replacement must fail before platform consumption");
 
         assert_eq!(error.code(), InstallerErrorCode::ChecksumMismatch);
@@ -1330,7 +1311,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn rejects_content_length_mismatch_without_retrying() {
+    async fn content_length_is_only_a_progress_hint() {
         let release = fixture_release(b"expected");
         let transport = FakeTransport::new([body_response(
             200,
@@ -1342,7 +1323,7 @@ mod tests {
         let cancellation = AtomicBool::new(false);
         let progress = |_| {};
 
-        let error = download_release(
+        let artifact = download_release(
             &transport,
             &release,
             &job_directory,
@@ -1350,20 +1331,15 @@ mod tests {
             &progress,
         )
         .await
-        .unwrap_err();
+        .unwrap();
 
-        assert_eq!(error.code(), InstallerErrorCode::DownloadFailed);
-        assert_eq!(
-            error.to_dto().details.endpoint_kind.as_deref(),
-            Some("win-x64")
-        );
-        assert_eq!(error.to_dto().details.attempt, Some(1));
+        assert_eq!(artifact.actual_size(), b"expected".len() as u64);
         assert_eq!(transport.request_count(), 1);
-        assert_no_artifact_files(job_directory.path());
+        assert_eq!(std::fs::read(artifact.path()).unwrap(), b"expected");
     }
 
     #[tokio::test]
-    async fn detects_checksum_mismatch_without_retrying_and_cleans_final_file() {
+    async fn remote_checksum_drift_does_not_block_the_download() {
         let release = fixture_release(b"good");
         let transport = FakeTransport::new([body_response(
             200,
@@ -1375,7 +1351,7 @@ mod tests {
         let cancellation = AtomicBool::new(false);
         let progress = |_| {};
 
-        let error = download_release(
+        let artifact = download_release(
             &transport,
             &release,
             &job_directory,
@@ -1383,15 +1359,14 @@ mod tests {
             &progress,
         )
         .await
-        .unwrap_err();
+        .unwrap();
 
-        assert_eq!(error.code(), InstallerErrorCode::ChecksumMismatch);
+        assert_eq!(std::fs::read(artifact.path()).unwrap(), b"evil");
         assert_eq!(transport.request_count(), 1);
-        assert_no_artifact_files(job_directory.path());
     }
 
     #[tokio::test]
-    async fn rejects_truncated_or_oversized_bodies_and_cleans_partial_files() {
+    async fn metadata_size_drift_does_not_block_nonempty_bounded_bodies() {
         for body in [Bytes::from_static(b"abc"), Bytes::from_static(b"abcdefg")] {
             let release = fixture_release(b"abcdef");
             let transport = FakeTransport::new([body_response(200, None, [Ok(body)])]);
@@ -1400,7 +1375,7 @@ mod tests {
             let cancellation = AtomicBool::new(false);
             let progress = |_| {};
 
-            let error = download_release(
+            let artifact = download_release(
                 &transport,
                 &release,
                 &job_directory,
@@ -1408,10 +1383,34 @@ mod tests {
                 &progress,
             )
             .await
+            .unwrap();
+
+            assert!(artifact.actual_size() > 0);
+            assert_eq!(transport.request_count(), 1);
+        }
+    }
+
+    #[tokio::test]
+    async fn empty_and_absolutely_oversized_artifacts_remain_rejected() {
+        for response in [
+            body_response(200, Some(0), std::iter::empty()),
+            body_response(200, Some(MAX_ARTIFACT_BYTES + 1), std::iter::empty()),
+        ] {
+            let release = fixture_release(b"hint only");
+            let transport = FakeTransport::new([response]);
+            let directory = tempfile::tempdir().unwrap();
+            let job_directory = test_job_directory(&directory);
+            let error = download_release(
+                &transport,
+                &release,
+                &job_directory,
+                &AtomicBool::new(false),
+                &|_| {},
+            )
+            .await
             .unwrap_err();
 
             assert_eq!(error.code(), InstallerErrorCode::DownloadFailed);
-            assert_eq!(transport.request_count(), 1);
             assert_no_artifact_files(job_directory.path());
         }
     }

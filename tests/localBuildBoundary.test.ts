@@ -84,7 +84,6 @@ const LOCAL_CROSS_EXECUTION_MARKERS = [
   "osxcross",
   "qemu",
   "wine",
-  "wsl.exe",
   "scripts/macos-cross",
   "scripts/windows-cross",
   "src-tauri/target/app",
@@ -214,14 +213,14 @@ describe("local build boundary", () => {
     }
   });
 
-  it("maps only the six supported process hosts and verifies rustc identity", () => {
+  it("maps every development-host process pair and verifies rustc identity", () => {
     const cases = [
-      ["linux", "x64", "x86_64-unknown-linux-gnu"],
-      ["linux", "arm64", "aarch64-unknown-linux-gnu"],
       ["darwin", "x64", "x86_64-apple-darwin"],
       ["darwin", "arm64", "aarch64-apple-darwin"],
       ["win32", "x64", "x86_64-pc-windows-msvc"],
       ["win32", "arm64", "aarch64-pc-windows-msvc"],
+      ["linux", "x64", "x86_64-unknown-linux-gnu"],
+      ["linux", "arm64", "aarch64-unknown-linux-gnu"],
     ] as const;
     expect(Object.keys(hostNative.HOST_RUST_TARGETS)).toHaveLength(6);
     for (const [platform, architecture, target] of cases) {
@@ -241,9 +240,9 @@ describe("local build boundary", () => {
     );
     expect(() =>
       hostNative.assertCurrentRustHost({
-        platform: "linux",
+        platform: "darwin",
         architecture: "x64",
-        rustcVerboseVersion: "host: aarch64-unknown-linux-gnu",
+        rustcVerboseVersion: "host: aarch64-apple-darwin",
       }),
     ).toThrow("does not match current host");
     expect(() => hostNative.parseRustcHost("rustc 1.97.1")).toThrow(
@@ -254,37 +253,36 @@ describe("local build boundary", () => {
   it("rejects caller-owned target environment and Rust flag tokens", () => {
     const targetOverrideEnvironments: Array<Record<string, string>> = [
       { CARGO_BUILD_TARGET: "" },
-      { TAURI_ENV_TARGET_TRIPLE: "x86_64-unknown-linux-gnu" },
+      { TAURI_ENV_TARGET_TRIPLE: "aarch64-apple-darwin" },
       { Rustc: "/tmp/not-the-canonical-rustc" },
       { cargo_build_rustc: "/tmp/not-the-canonical-rustc" },
       { RUSTC_WRAPPER: "/tmp/not-a-wrapper" },
       { cargo_build_rustc_workspace_wrapper: "/tmp/not-a-wrapper" },
       { RUSTDOC: "/tmp/not-the-canonical-rustdoc" },
       { cargo_build_rustdoc: "/tmp/not-the-canonical-rustdoc" },
-      { Cargo_Target_X86_64_Unknown_Linux_Gnu_Runner: "/tmp/emulator" },
-      { cargo_target_x86_64_unknown_linux_gnu_linker: "/tmp/linker" },
-      { LD_PRELOAD: "/tmp/inject.so" },
+      { Cargo_Target_Aarch64_Apple_Darwin_Runner: "/tmp/emulator" },
+      { cargo_target_aarch64_apple_darwin_linker: "/tmp/linker" },
+      { DYLD_INSERT_LIBRARIES: "/tmp/inject.dylib" },
       { node_options: "--require=/tmp/inject.js" },
-      { RUSTFLAGS: "-Dwarnings --target aarch64-unknown-linux-gnu" },
+      { RUSTFLAGS: "-Dwarnings --target aarch64-apple-darwin" },
       {
-        cargo_target_x86_64_unknown_linux_gnu_rustflags:
-          "-Dwarnings --target aarch64-unknown-linux-gnu",
+        cargo_target_aarch64_apple_darwin_rustflags:
+          "-Dwarnings --target aarch64-apple-darwin",
       },
       {
-        CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS:
-          "-C linker=/tmp/linker",
+        CARGO_TARGET_AARCH64_APPLE_DARWIN_RUSTFLAGS: "-C linker=/tmp/linker",
       },
       {
-        CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTDOCFLAGS:
+        CARGO_TARGET_AARCH64_APPLE_DARWIN_RUSTDOCFLAGS:
           "-C link-arg=/tmp/inject",
       },
       {
         CARGO_ENCODED_RUSTFLAGS:
-          "-Dwarnings\u001f--target=aarch64-unknown-linux-gnu",
+          "-Dwarnings\u001f--target=aarch64-apple-darwin",
       },
       {
-        CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTDOCFLAGS:
-          "--target=aarch64-unknown-linux-gnu",
+        CARGO_TARGET_AARCH64_APPLE_DARWIN_RUSTDOCFLAGS:
+          "--target=aarch64-apple-darwin",
       },
     ];
     for (const environment of targetOverrideEnvironments) {
@@ -305,22 +303,22 @@ describe("local build boundary", () => {
   it("plans fixed Tauri and Cargo argv with the verified current host target", () => {
     const base = {
       environment: {},
-      platform: "linux",
+      platform: "darwin",
       architecture: "x64",
       rustcVerboseVersion:
-        "rustc 1.97.1\ncommit-hash: verified-toolchain\nhost: x86_64-unknown-linux-gnu\nrelease: 1.97.1",
+        "rustc 1.97.1\ncommit-hash: verified-toolchain\nhost: x86_64-apple-darwin\nrelease: 1.97.1",
       rustdocVerboseVersion:
-        "rustdoc 1.97.1\ncommit-hash: verified-toolchain\nhost: x86_64-unknown-linux-gnu\nrelease: 1.97.1",
+        "rustdoc 1.97.1\ncommit-hash: verified-toolchain\nhost: x86_64-apple-darwin\nrelease: 1.97.1",
       rustcExecutable: "/toolchain/bin/rustc",
       rustdocExecutable: "/toolchain/bin/rustdoc",
       nativeRunnerConfig:
-        'target.x86_64-unknown-linux-gnu.runner=["/usr/bin/node","/repo/scripts/tasks/host-native.mjs","native-runner","x86_64-unknown-linux-gnu"]',
+        'target.x86_64-apple-darwin.runner=["/usr/bin/node","/repo/scripts/tasks/host-native.mjs","native-runner","x86_64-apple-darwin"]',
     };
     const dev = hostNative.planTauriTask({ ...base, operation: "dev" });
     expect(dev).toMatchObject({
       command: "pnpm",
-      args: ["tauri", "dev", "--target", "x86_64-unknown-linux-gnu"],
-      target: "x86_64-unknown-linux-gnu",
+      args: ["tauri", "dev", "--target", "x86_64-apple-darwin"],
+      target: "x86_64-apple-darwin",
     });
     expect(dev.environment).toMatchObject({
       RUSTC: "/toolchain/bin/rustc",
@@ -340,18 +338,12 @@ describe("local build boundary", () => {
       "tauri",
       "build",
       "--target",
-      "x86_64-unknown-linux-gnu",
+      "x86_64-apple-darwin",
       "--no-bundle",
     ]);
     expect(
       hostNative.planTauriTask({ ...base, operation: "build:debug" }).args,
-    ).toEqual([
-      "tauri",
-      "build",
-      "--target",
-      "x86_64-unknown-linux-gnu",
-      "--debug",
-    ]);
+    ).toEqual(["tauri", "build", "--target", "x86_64-apple-darwin", "--debug"]);
     expect(
       hostNative.planCargoTask({ ...base, operation: "check" }).args,
     ).toEqual([
@@ -359,7 +351,7 @@ describe("local build boundary", () => {
       base.nativeRunnerConfig,
       "check",
       "--target",
-      "x86_64-unknown-linux-gnu",
+      "x86_64-apple-darwin",
       "--workspace",
       "--locked",
       "--manifest-path",
@@ -377,7 +369,7 @@ describe("local build boundary", () => {
       base.nativeRunnerConfig,
       "test",
       "--target",
-      "x86_64-unknown-linux-gnu",
+      "x86_64-apple-darwin",
       "--workspace",
       "--locked",
       "--manifest-path",
@@ -401,7 +393,7 @@ describe("local build boundary", () => {
       hostNative.planTauriTask({
         ...base,
         operation: "build",
-        forwardedArguments: ["--target", "aarch64-unknown-linux-gnu"],
+        forwardedArguments: ["--target", "aarch64-pc-windows-msvc"],
       }),
     ).toThrow("does not accept forwarded arguments");
   });
@@ -448,42 +440,24 @@ describe("local build boundary", () => {
       for (const retiredPath of RETIRED_PATHS) {
         expect(content, document).not.toContain(retiredPath);
       }
-      expect(content, document).not.toContain("wsl-macos-cross-build.md");
     }
   });
 
-  it("retains native release targets for all five platform groups", () => {
+  it("retains native release targets for all three platform groups", () => {
     const release = read(".github/workflows/release.yml");
     for (const contract of [
       "runner: windows-2025",
       "target_group: windows-x64",
       "runner: windows-11-arm",
       "target_group: windows-arm64",
-      "runner: ubuntu-24.04",
-      "target_group: linux-x64",
-      "runner: ubuntu-24.04-arm",
-      "target_group: linux-arm64",
       "runs-on: macos-15",
       "TARGET_GROUP: macos-universal",
     ]) {
       expect(release).toContain(contract);
     }
 
-    expect(release).toContain(
-      "image: ${{ matrix.container_image }}@${{ matrix.container_digest }}",
-    );
-    expect(
-      release.match(/container_image: docker\.io\/library\/ubuntu:22\.04/g),
-    ).toHaveLength(2);
-    expect(release).toContain(
-      "sha256:0199853f6d6b20b0424f3c5694a72a62764f01e6a771b1eb48a4197848986c7e",
-    );
-    expect(release).toContain(
-      "sha256:a8cdd2158a73d7e5c02aa351fe269f48f57cf710a241db86e9ede371fc150149",
-    );
     expect(release).toContain("aarch64-pc-windows-msvc");
     expect(release).toContain("pnpm tauri build --no-bundle");
-    expect(release).toContain("pnpm tauri build --bundles appimage,deb,rpm");
     expect(release).toContain(
       "pnpm tauri build --target universal-apple-darwin",
     );

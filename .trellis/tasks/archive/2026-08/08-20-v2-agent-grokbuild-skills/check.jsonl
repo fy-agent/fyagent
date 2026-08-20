@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/frontend/v2-agent-models.md", "reason": "Catalog v4, Grok Build, Agent detail, Models quick setup"}
+{"file": ".trellis/spec/frontend/v2-skills-mcp.md", "reason": "Seven targets, disk-observed Skills, discovery scroll"}
+{"file": ".trellis/spec/frontend/v2-prompts-memory.md", "reason": "Prompt rail alignment; memory unchanged"}
+{"file": ".trellis/spec/frontend/reuse.md", "reason": "Shared directory and official-link chrome"}
+{"file": ".trellis/spec/backend/external-agent-p0.md", "reason": "P0 identity and Skills/MCP live-file boundary"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Closed ID unions and catalog wire"}

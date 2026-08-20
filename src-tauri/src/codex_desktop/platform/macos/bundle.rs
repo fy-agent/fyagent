@@ -1,8 +1,9 @@
-//! Stable macOS bundle inspection and verification.
+//! Stable macOS bundle discovery and lifecycle inspection.
 //!
 //! Bundle names are intentionally not an identity signal. A current Stable
 //! package may be named `ChatGPT.app`, while an older valid installation may
-//! still be named `Codex.app`; only the exact bundle ID and Team ID are trusted.
+//! still be named `Codex.app`; the fixed bundle ID is used only to find an
+//! already installed Stable application, not to admit downloaded content.
 
 use std::{
     ffi::{OsStr, OsString},
@@ -13,7 +14,7 @@ use serde::Deserialize;
 
 use super::{
     command, error, is_not_found, stable_bundle_id, CommandRunner, MacosFileKind, MacosFilesystem,
-    MacosHost, MacosVersion,
+    MacosHost,
 };
 use crate::codex_desktop::{
     error::{InstallerError, InstallerErrorCode},
@@ -21,19 +22,17 @@ use crate::codex_desktop::{
     types::{
         CpuArchitecture, DesktopPlatform, InstalledApplication, InstalledApplicationSummary,
         LaunchTarget, LocalInstallStatus, PlatformVersion, ReleaseDescriptor,
-        TrustedDownloadEndpoint,
     },
 };
 
-/// Exact Stable Team allowlist. The downloaded-artifact fixture keeps this
-/// value auditable, while production verification still obtains it from
-/// `codesign` on the mounted bundle rather than trusting release metadata.
-const OPENAI_TEAM_IDENTIFIER: &str = "2DC432GLL2";
 const PLUTIL_OUTPUT_FORMAT: &str = "json";
 
 /// This script is a fixed program constant. It receives no paths or metadata
 /// as interpolation input, and its JSON output is parsed before it influences
-/// the install decision.
+/// the install decision. It emits only the Stable Codex identity because the
+/// macOS command runner truncates stdout at 16 KiB; a full NSWorkspace dump
+/// exceeds that bound on a typical workstation and was previously parsed as
+/// `MAC_APP_RUNNING`.
 const RUNNING_APPLICATIONS_JXA: &str = r#"
 ObjC.import('AppKit');
 const workspace = $.NSWorkspace.sharedWorkspace;
@@ -41,9 +40,13 @@ const applications = workspace.runningApplications;
 const result = [];
 for (let index = 0; index < applications.count; index += 1) {
   const application = applications.objectAtIndex(index);
+  const bundleIdentifier = application.bundleIdentifier ? ObjC.unwrap(application.bundleIdentifier) : null;
+  if (bundleIdentifier !== "com.openai.codex") {
+    continue;
+  }
   const url = application.bundleURL;
   result.push({
-    bundleIdentifier: application.bundleIdentifier ? ObjC.unwrap(application.bundleIdentifier) : null,
+    bundleIdentifier: bundleIdentifier,
     bundlePath: url ? ObjC.unwrap(url.path) : null,
     processIdentifier: application.processIdentifier,
     launchTimestampMs: application.launchDate
@@ -103,8 +106,6 @@ pub(crate) struct BundleInfo {
     platform_version: PlatformVersion,
     display_version: Option<String>,
     display_name: Option<String>,
-    minimum_os_version: Option<MacosVersion>,
-    executable_path: PathBuf,
 }
 
 impl BundleInfo {
@@ -136,8 +137,6 @@ struct RawInfoPlist {
     short_version: Option<String>,
     #[serde(rename = "CFBundleExecutable")]
     executable: Option<String>,
-    #[serde(rename = "LSMinimumSystemVersion")]
-    minimum_system_version: Option<String>,
     #[serde(rename = "CFBundleDisplayName")]
     display_name: Option<String>,
     #[serde(rename = "CFBundleName")]
@@ -354,18 +353,6 @@ pub(crate) fn read_bundle_info(
     let executable = required_plist_string(raw.executable, "bundle executable")?;
     validate_executable_name(&executable)?;
     let display_name = optional_plist_string(raw.display_name.or(raw.bundle_name), "display name")?;
-    let minimum_os_version = match raw.minimum_system_version {
-        Some(version) => {
-            let version = required_plist_string(Some(version), "minimum system version")?;
-            Some(MacosVersion::parse(&version).map_err(|_| {
-                error(
-                    InstallerErrorCode::PackageParseFailed,
-                    "application minimum macOS version is invalid",
-                )
-            })?)
-        }
-        None => None,
-    };
     let platform_version = PlatformVersion::parse_mac_bundle(bundle_version).map_err(|_| {
         error(
             InstallerErrorCode::PackageParseFailed,
@@ -402,8 +389,6 @@ pub(crate) fn read_bundle_info(
         platform_version,
         display_version: short_version,
         display_name,
-        minimum_os_version,
-        executable_path: canonical_executable,
     })
 }
 
@@ -501,156 +486,21 @@ fn read_raw_info_plist(
     })
 }
 
-/// Validates all immutable Stable identity properties. `expected_release` is
-/// supplied for the downloaded DMG and omitted when re-checking an existing
-/// local Stable app, whose version may legitimately be newer than latest.
+/// Confirms that an already discovered local Stable bundle is still the same
+/// operational identity. Publisher, signature, Team ID, architecture and
+/// minimum-OS policy remain the responsibility of macOS and are not FyAgent
+/// installer admission checks.
 pub(crate) fn validate_stable_bundle(
-    runner: &dyn CommandRunner,
+    _runner: &dyn CommandRunner,
     _filesystem: &dyn MacosFilesystem,
-    host: &MacosHost,
+    _host: &MacosHost,
     bundle: &BundleInfo,
-    expected_release: Option<&ReleaseDescriptor>,
+    _expected_release: Option<&ReleaseDescriptor>,
 ) -> Result<(), InstallerError> {
     if bundle.bundle_identifier() != stable_bundle_id() {
         return Err(error(
             InstallerErrorCode::MacBundleIdMismatch,
             "application bundle identifier is not the Stable Codex identifier",
-        ));
-    }
-    if let Some(minimum_os_version) = bundle.minimum_os_version {
-        if host.os_version() < minimum_os_version {
-            return Err(error(
-                InstallerErrorCode::OsVersionUnsupported,
-                "current macOS version is below the application bundle requirement",
-            ));
-        }
-    }
-    if let Some(release) = expected_release {
-        validate_release_shape(release)?;
-        if bundle.platform_version != release.platform_version {
-            return Err(error(
-                InstallerErrorCode::PackageParseFailed,
-                "application bundle version does not match the verified release",
-            ));
-        }
-        if let Some(minimum_os_version) = release.minimum_os_version.as_deref() {
-            let minimum_os_version = MacosVersion::parse(minimum_os_version).map_err(|_| {
-                error(
-                    InstallerErrorCode::ReleaseMetadataInvalid,
-                    "release minimum macOS version is invalid",
-                )
-            })?;
-            if host.os_version() < minimum_os_version {
-                return Err(error(
-                    InstallerErrorCode::OsVersionUnsupported,
-                    "current macOS version is below the release requirement",
-                ));
-            }
-        }
-    }
-
-    let architecture_output = runner
-        .run(&command(
-            "lipo",
-            vec![
-                OsString::from("-archs"),
-                bundle.executable_path.clone().into_os_string(),
-            ],
-        ))
-        .map_err(|_| {
-            error(
-                InstallerErrorCode::PackageParseFailed,
-                "application architecture could not be inspected",
-            )
-        })?;
-    if !architecture_output.is_success()
-        || !output_contains_architecture(&architecture_output, "arm64")
-    {
-        return Err(error(
-            InstallerErrorCode::PackageArchitectureMismatch,
-            "application executable does not contain arm64",
-        ));
-    }
-
-    let signature = runner
-        .run(&command(
-            "codesign",
-            vec![
-                OsString::from("--verify"),
-                OsString::from("--deep"),
-                OsString::from("--strict"),
-                OsString::from("--verbose=2"),
-                bundle.bundle_path.clone().into_os_string(),
-            ],
-        ))
-        .map_err(|_| {
-            error(
-                InstallerErrorCode::PackageSignatureInvalid,
-                "application code signature could not be verified",
-            )
-        })?;
-    if !signature.is_success() {
-        return Err(error(
-            InstallerErrorCode::PackageSignatureInvalid,
-            "application code signature verification failed",
-        ));
-    }
-
-    let display = runner
-        .run(&command(
-            "codesign",
-            vec![
-                OsString::from("--display"),
-                OsString::from("--verbose=4"),
-                bundle.bundle_path.clone().into_os_string(),
-            ],
-        ))
-        .map_err(|_| {
-            error(
-                InstallerErrorCode::PackageSignatureInvalid,
-                "application signing identity could not be inspected",
-            )
-        })?;
-    if !display.is_success() {
-        return Err(error(
-            InstallerErrorCode::PackageSignatureInvalid,
-            "application signing identity inspection failed",
-        ));
-    }
-    let team_identifier = parse_team_identifier(&display).ok_or_else(|| {
-        error(
-            InstallerErrorCode::PackageSignatureInvalid,
-            "application signing identity did not include a TeamIdentifier",
-        )
-    })?;
-    if team_identifier != OPENAI_TEAM_IDENTIFIER {
-        return Err(error(
-            InstallerErrorCode::MacTeamIdMismatch,
-            "application signing TeamIdentifier is not the Stable Codex team",
-        ));
-    }
-
-    let gatekeeper = runner
-        .run(&command(
-            "spctl",
-            vec![
-                OsString::from("--assess"),
-                OsString::from("--type"),
-                OsString::from("execute"),
-                OsString::from("--verbose=4"),
-                bundle.bundle_path.clone().into_os_string(),
-            ],
-        ))
-        .map_err(|_| {
-            error(
-                InstallerErrorCode::MacGatekeeperRejected,
-                "macOS security assessment could not be completed",
-            )
-        })?;
-    if !gatekeeper.is_success() {
-        return Err(error(
-            InstallerErrorCode::MacGatekeeperRejected,
-            "macOS security assessment rejected the application bundle",
         ));
     }
     Ok(())
@@ -667,35 +517,7 @@ pub(crate) fn ensure_not_running(
             "running Stable application state could not be determined",
         )
     })?;
-    let output = runner
-        .run(&command(
-            "osascript",
-            vec![
-                OsString::from("-l"),
-                OsString::from("JavaScript"),
-                OsString::from("-e"),
-                OsString::from(RUNNING_APPLICATIONS_JXA),
-            ],
-        ))
-        .map_err(|_| {
-            error(
-                InstallerErrorCode::MacAppRunning,
-                "running Stable application state could not be determined",
-            )
-        })?;
-    if !output.is_success() {
-        return Err(error(
-            InstallerErrorCode::MacAppRunning,
-            "running Stable application state could not be determined",
-        ));
-    }
-    let applications =
-        serde_json::from_slice::<Vec<RunningApplication>>(output.stdout()).map_err(|_| {
-            error(
-                InstallerErrorCode::MacAppRunning,
-                "running Stable application state could not be determined",
-            )
-        })?;
+    let applications = running_applications(runner)?;
     for application in applications {
         if application.bundle_identifier.as_deref() != Some(stable_bundle_id()) {
             continue;
@@ -1053,9 +875,9 @@ pub(crate) fn launch_verified(
     Ok(())
 }
 
-fn installed_application(bundle: &BundleInfo) -> InstalledApplication {
+pub(crate) fn installed_application(bundle: &BundleInfo) -> InstalledApplication {
     InstalledApplication {
-        stable_identity: stable_bundle_id().to_owned(),
+        stable_identity: bundle.bundle_identifier.clone(),
         display_name: bundle.display_name.clone(),
         display_version: bundle.display_version.clone(),
         platform_version: bundle.platform_version.clone(),
@@ -1140,41 +962,6 @@ fn validate_executable_name(value: &str) -> Result<(), InstallerError> {
     Ok(())
 }
 
-fn validate_release_shape(release: &ReleaseDescriptor) -> Result<(), InstallerError> {
-    if release.platform != DesktopPlatform::Macos
-        || release.architecture != CpuArchitecture::Aarch64
-        || release.download_endpoint != TrustedDownloadEndpoint::MacArm64
-    {
-        return Err(error(
-            InstallerErrorCode::ArchitectureUnsupported,
-            "the release descriptor is not an Apple-Silicon macOS package",
-        ));
-    }
-    Ok(())
-}
-
-fn output_contains_architecture(output: &super::CommandOutput, architecture: &str) -> bool {
-    std::str::from_utf8(output.stdout())
-        .ok()
-        .into_iter()
-        .flat_map(str::split_whitespace)
-        .any(|value| value == architecture)
-}
-
-fn parse_team_identifier(output: &super::CommandOutput) -> Option<&str> {
-    std::str::from_utf8(output.stdout())
-        .ok()
-        .into_iter()
-        .flat_map(str::lines)
-        .chain(
-            std::str::from_utf8(output.stderr())
-                .ok()
-                .into_iter()
-                .flat_map(str::lines),
-        )
-        .find_map(|line| line.trim().strip_prefix("TeamIdentifier="))
-}
-
 #[cfg(test)]
 mod tests {
     use std::{path::Path, sync::Arc};
@@ -1221,18 +1008,10 @@ mod tests {
         runner.queue_success("plutil", plist);
     }
 
-    fn queue_bundle_validation(runner: &FakeRunner) {
-        runner.queue_success("lipo", b"arm64 x86_64".to_vec());
-        runner.queue_success("codesign", Vec::<u8>::new());
-        runner.queue_success("codesign", b"TeamIdentifier=2DC432GLL2\n".to_vec());
-        runner.queue_success("spctl", Vec::<u8>::new());
-    }
-
     fn queue_stable_bundle_scan(runner: &FakeRunner, bundle_version: &str) {
         let bundle_plist = plist(stable_bundle_id(), bundle_version, None);
         queue_bundle_read(runner, bundle_plist.clone());
         queue_bundle_read(runner, bundle_plist);
-        queue_bundle_validation(runner);
     }
 
     fn read_stable_bundle(
@@ -1252,7 +1031,6 @@ mod tests {
         let runner = FakeRunner::new();
 
         let bundle = read_stable_bundle(&runner, &filesystem, &bundle_path);
-        queue_bundle_validation(&runner);
         validate_stable_bundle(&runner, &filesystem, &host(), &bundle, None).unwrap();
         runner.assert_drained();
 
@@ -1260,8 +1038,7 @@ mod tests {
         assert_eq!(invocations[0].program(), "plutil");
         assert_eq!(invocations[0].arguments()[0], "-convert");
         assert_eq!(invocations[0].arguments()[1], "json");
-        assert_eq!(invocations[1].program(), "lipo");
-        assert_eq!(invocations[1].arguments()[0], "-archs");
+        assert_eq!(invocations.len(), 1);
         assert!(invocations.iter().all(|invocation| {
             invocation.program() != "xattr"
                 && !invocation
@@ -1324,7 +1101,7 @@ mod tests {
                 .iter()
                 .filter(|invocation| invocation.program() == "lipo")
                 .count(),
-            1
+            0
         );
         runner.assert_drained();
     }
@@ -1439,59 +1216,20 @@ mod tests {
     }
 
     #[test]
-    fn verification_rejects_wrong_team_architecture_gatekeeper_and_minimum_os() {
+    fn stable_discovery_does_not_admit_on_team_architecture_gatekeeper_or_minimum_os() {
         let filesystem = FakeFilesystem::new();
         let bundle_path = Path::new(SYSTEM_APPLICATIONS).join("ChatGPT.app");
         add_bundle(&filesystem, &bundle_path);
 
-        let wrong_team_runner = FakeRunner::new();
-        let bundle = read_stable_bundle(&wrong_team_runner, &filesystem, &bundle_path);
-        wrong_team_runner.queue_success("lipo", b"arm64".to_vec());
-        wrong_team_runner.queue_success("codesign", Vec::<u8>::new());
-        wrong_team_runner.queue_success("codesign", b"TeamIdentifier=OTHERTEAM\n".to_vec());
-        assert_eq!(
-            validate_stable_bundle(&wrong_team_runner, &filesystem, &host(), &bundle, None)
-                .unwrap_err()
-                .code(),
-            InstallerErrorCode::MacTeamIdMismatch
-        );
-
-        let wrong_arch_runner = FakeRunner::new();
-        let bundle = read_stable_bundle(&wrong_arch_runner, &filesystem, &bundle_path);
-        wrong_arch_runner.queue_success("lipo", b"x86_64".to_vec());
-        assert_eq!(
-            validate_stable_bundle(&wrong_arch_runner, &filesystem, &host(), &bundle, None)
-                .unwrap_err()
-                .code(),
-            InstallerErrorCode::PackageArchitectureMismatch
-        );
-
-        let gatekeeper_runner = FakeRunner::new();
-        let bundle = read_stable_bundle(&gatekeeper_runner, &filesystem, &bundle_path);
-        gatekeeper_runner.queue_success("lipo", b"arm64".to_vec());
-        gatekeeper_runner.queue_success("codesign", Vec::<u8>::new());
-        gatekeeper_runner.queue_success("codesign", b"TeamIdentifier=2DC432GLL2\n".to_vec());
-        gatekeeper_runner.queue_failure("spctl", Some(3), b"rejected".to_vec());
-        assert_eq!(
-            validate_stable_bundle(&gatekeeper_runner, &filesystem, &host(), &bundle, None)
-                .unwrap_err()
-                .code(),
-            InstallerErrorCode::MacGatekeeperRejected
-        );
-
-        let min_os_runner = FakeRunner::new();
-        queue_bundle_read(
-            &min_os_runner,
-            plist(stable_bundle_id(), "5848", Some("15.0")),
-        );
-        let bundle = read_bundle_info(&min_os_runner, &filesystem, &bundle_path).unwrap();
-        assert_eq!(
-            validate_stable_bundle(&min_os_runner, &filesystem, &host(), &bundle, None)
-                .unwrap_err()
-                .code(),
-            InstallerErrorCode::OsVersionUnsupported
-        );
-        min_os_runner.assert_drained();
+        let runner = FakeRunner::new();
+        queue_bundle_read(&runner, plist(stable_bundle_id(), "5848", Some("15.0")));
+        let bundle = read_bundle_info(&runner, &filesystem, &bundle_path).unwrap();
+        validate_stable_bundle(&runner, &filesystem, &host(), &bundle, None).unwrap();
+        assert!(runner
+            .invocations()
+            .iter()
+            .all(|invocation| invocation.program() == "plutil"));
+        runner.assert_drained();
     }
 
     #[test]
@@ -1509,6 +1247,14 @@ mod tests {
             InstallerErrorCode::PackageParseFailed
         );
         runner.assert_drained();
+    }
+
+    #[test]
+    fn running_applications_script_emits_only_the_stable_bundle_id() {
+        assert!(RUNNING_APPLICATIONS_JXA.contains(stable_bundle_id()));
+        assert!(
+            RUNNING_APPLICATIONS_JXA.contains(r#"if (bundleIdentifier !== "com.openai.codex")"#)
+        );
     }
 
     #[test]
@@ -1617,41 +1363,5 @@ mod tests {
         assert_eq!(invocation.program(), "open");
         assert_eq!(invocation.arguments(), [bundle_path.as_os_str()]);
         runner.assert_drained();
-    }
-
-    #[test]
-    fn recorded_macos_identity_fixture_matches_the_exact_stable_allowlists() {
-        let fixture: serde_json::Value = serde_json::from_str(include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/tests/fixtures/codex_desktop/Codex-mac-arm64-26.721.41059.identity.json"
-        )))
-        .expect("recorded macOS identity fixture must remain valid JSON");
-
-        assert_eq!(
-            fixture["source"]["artifactSha256"].as_str(),
-            Some("ae864e2def7db56d0bb77a876a5cbe4e4c2f554ccc654cec921b946892583c0a")
-        );
-        assert_eq!(
-            fixture["bundle"]["bundleIdentifier"].as_str(),
-            Some(stable_bundle_id())
-        );
-        assert_eq!(
-            fixture["bundle"]["bundleShortVersion"].as_str(),
-            Some("26.721.41059")
-        );
-        assert_eq!(fixture["bundle"]["bundleVersion"].as_str(), Some("5848"));
-        assert_eq!(
-            fixture["bundle"]["launcherMachO"]["architecture"].as_str(),
-            Some("arm64")
-        );
-        assert_eq!(
-            fixture["signature"]["expectedTeamIdentifier"].as_str(),
-            Some(OPENAI_TEAM_IDENTIFIER)
-        );
-        assert_eq!(
-            fixture["signature"]["nativeVerification"]["status"].as_str(),
-            Some("pending_macos_hil"),
-            "a Windows-host fixture must not be mistaken for native codesign/spctl evidence"
-        );
     }
 }

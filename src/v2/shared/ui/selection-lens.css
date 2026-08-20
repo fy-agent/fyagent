@@ -1,0 +1,73 @@
+.fy-selection-lens-scope {
+  position: relative;
+}
+
+.fy-selection-lens-target {
+  display: none;
+}
+
+.fy-selection-lens {
+  pointer-events: none;
+  position: absolute;
+  z-index: 0;
+  box-sizing: border-box;
+  border: 1px solid var(--fy-border-strong);
+  background-color: var(--fy-glass-interactive);
+  background-image: linear-gradient(
+    155deg,
+    rgba(255, 255, 255, 0.2),
+    rgba(180, 226, 251, 0.05) 58%,
+    rgba(255, 255, 255, 0.12)
+  );
+  box-shadow:
+    inset 0 1px 0 var(--fy-highlight),
+    inset 0 -1px 0 rgba(159, 208, 238, 0.16),
+    var(--fy-shadow-control);
+  backdrop-filter: blur(16px) saturate(1.3);
+  -webkit-backdrop-filter: blur(16px) saturate(1.3);
+}
+
+.fy-selection-lens-scope > :not(.fy-selection-lens) {
+  position: relative;
+  z-index: 1;
+}
+
+.fy-primary-nav-track {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  min-width: max-content;
+}
+
+.fy-lab-tabs .fy-selection-lens-scope {
+  display: inline-flex;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--fy-border);
+  border-radius: 11px;
+  background: var(--fy-glass-ambient);
+  backdrop-filter: blur(14px) saturate(1.12);
+  -webkit-backdrop-filter: blur(14px) saturate(1.12);
+}
+
+.fy-lab-tabs .fy-selection-lens-scope [role="tablist"] {
+  display: contents;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.fy-catalog-list-item,
+.fy-feature-list-item,
+.fy-feature-tab,
+.fy-lab-tabs [role="tab"] {
+  position: relative;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fy-selection-lens {
+    transition: none;
+  }
+}

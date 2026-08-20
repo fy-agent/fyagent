@@ -1,0 +1,141 @@
+.fy-memory-page {
+  gap: 0;
+}
+
+.fy-memory-page > .fy-control-notice {
+  margin-bottom: 14px;
+}
+
+.fy-memory-page .fy-feature-workspace,
+.fy-memory-workspace {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.fy-memory-workspace > .fy-control-notice,
+.fy-memory-workspace > .fy-feature-toolbar {
+  flex: 0 0 auto;
+}
+
+.fy-memory-master {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.fy-memory-source-group {
+  display: grid;
+  gap: 7px;
+}
+
+.fy-memory-source-group h3 {
+  margin: 8px 0 0;
+  color: var(--fy-text-secondary);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.fy-memory-editor-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+}
+
+.fy-memory-editor-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  flex: 0 0 auto;
+}
+
+.fy-memory-editor-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px 10px;
+  margin-left: auto;
+}
+
+.fy-memory-editor-tools > p {
+  margin: 0;
+  color: var(--fy-text-secondary);
+  font-size: 12px;
+}
+
+.fy-memory-editor-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+.fy-memory-editor-meta > p {
+  margin: 0;
+  color: var(--fy-text-secondary);
+  font-size: 12px;
+}
+
+.fy-memory-editor-meta .fy-feature-path {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.fy-memory-editor-field {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+  color: var(--fy-text-secondary);
+  font-size: 12px;
+}
+
+.fy-memory-editor-field-label {
+  flex: 0 0 auto;
+}
+
+.fy-memory-editor-textarea {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  padding: 13px;
+  overflow: auto;
+  resize: none;
+  border: 1px solid var(--fy-border);
+  border-radius: 10px;
+  outline: 0;
+  color: var(--fy-text);
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  background: var(--fy-surface-soft);
+}
+
+.fy-memory-editor-textarea:focus-visible {
+  border-color: var(--fy-focus);
+  outline: 2px solid var(--fy-focus);
+  outline-offset: 1px;
+}
+
+.fy-memory-editor-textarea:disabled {
+  color: var(--fy-text-disabled);
+  cursor: not-allowed;
+}
+
+.fy-memory-daily-list {
+  scrollbar-width: thin;
+}
+
+@media (max-width: 760px) {
+  .fy-memory-editor-textarea {
+    min-height: 160px;
+  }
+}

@@ -130,9 +130,9 @@ DeepSeek 官方尚未为该模型开通 Codex 集成。把这个供应商的 `�
 
 ## 参考链接
 
-- [FyAgent 用户手册：添加供应商](../user-manual/zh/2-providers/2.1-add.md)
-- [FyAgent 用户手册：代理服务](../user-manual/zh/4-proxy/4.1-service.md)
-- [FyAgent 用户手册：应用路由](../user-manual/zh/4-proxy/4.2-routing.md)
+- [FyAgent 用户手册：添加供应商](../user-manual/zh/3-providers/3.1-add.md)
+- [FyAgent 用户手册：代理服务](../user-manual/zh/5-proxy/5.1-service.md)
+- [FyAgent 用户手册：应用路由](../user-manual/zh/5-proxy/5.2-routing.md)
 - [DeepSeek API 文档：Integrate with Codex](https://api-docs.deepseek.com/quick_start/agent_integrations/codex/)（官方 Codex 集成说明，含 `wire_api = "responses"` 与模型支持范围）
 - [DeepSeek API 文档：Using the Responses API](https://api-docs.deepseek.com/guides/responses_api/)
 - [DeepSeek API 文档：Your First API Call](https://api-docs.deepseek.com/)

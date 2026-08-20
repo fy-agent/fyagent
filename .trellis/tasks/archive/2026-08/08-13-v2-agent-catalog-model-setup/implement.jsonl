@@ -1,0 +1,10 @@
+{"file":".trellis/spec/frontend/index.md","reason":"Renderer pre-development checklist and V2/spec routing."}
+{"file":".trellis/spec/frontend/v2-shell.md","reason":"Authoritative V2 route, dependency, styling, platform-port, and executable test boundary that this task intentionally expands."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Typed Tauri wire DTO and strict TypeScript rules for new catalog/model ports."}
+{"file":".trellis/spec/backend/index.md","reason":"Native command/service and validation routing for the cross-layer implementation."}
+{"file":".trellis/spec/backend/workbuddy-configuration.md","reason":"Credential, revision, overwrite-token, bounded fetch, persistence, and query-isolation contract."}
+{"file":".trellis/spec/backend/codex-provider-configuration.md","reason":"Codex Provider mutation result, warnings, lossless config, and live-change evidence boundary."}
+{"file":".trellis/spec/backend/application-brand-assets.md","reason":"Canonical application/installer/About/tray asset generation and validation contract."}
+{"file":".trellis/spec/backend/development-environment.md","reason":"Required mise-first current-host build, test, and package execution boundary."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Checklist for the new Rust DTO through Tauri port, query, and page data flow."}
+{"file":".trellis/tasks/08-13-v2-agent-catalog-model-setup/research/brand-assets-and-issues.md","reason":"Official QoderWork/TRAE asset provenance, licensing caveats, remote product decisions, and current implementation evidence."}

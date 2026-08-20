@@ -11,7 +11,6 @@ const REQUIRED_JOBS = [
   "contracts",
   "frontend",
   "desktop-acceptance-contract",
-  "backend-linux",
   "backend-windows",
   "windows-native-contracts",
   "backend-macos",
@@ -78,7 +77,7 @@ function actionSteps(action: string): string[] {
 }
 
 describe("automatic CI workflow", () => {
-  it("routes seven conditional domain jobs through one always-present gate", () => {
+  it("routes six conditional domain jobs through one always-present gate", () => {
     const jobsSection = source.slice(source.indexOf("\njobs:\n"));
     const jobIds = [...jobsSection.matchAll(/^  ([a-z][a-z0-9-]*):\s*$/gm)].map(
       (match) => match[1],
@@ -106,9 +105,6 @@ describe("automatic CI workflow", () => {
     expect(jobBlock("desktop-acceptance-contract")).toContain(
       "if: ${{ !cancelled() && (needs.changes.result == 'failure' || (needs.changes.result == 'success' && needs.changes.outputs.desktop == 'true')) }}",
     );
-    expect(jobBlock("backend-linux")).toContain(
-      "if: ${{ !cancelled() && (needs.changes.result == 'failure' || (needs.changes.result == 'success' && needs.changes.outputs.backend == 'true')) }}",
-    );
     expect(jobBlock("backend-windows")).toContain(
       "if: ${{ !cancelled() && (needs.changes.result == 'failure' || (needs.changes.result == 'success' && (needs.changes.outputs.backend == 'true' || needs.changes.outputs.windows_native == 'true'))) }}",
     );
@@ -122,7 +118,7 @@ describe("automatic CI workflow", () => {
     const required = jobBlock("required");
     expect(required).toContain("name: CI / Required");
     expect(required).toContain("if: always()");
-    expect(required).toContain("runs-on: ubuntu-24.04");
+    expect(required).toContain("runs-on: macos-15");
     expect(required).toContain("REQUIRED_RESULTS: ${{ toJSON(needs) }}");
     expect(required).toContain("node scripts/ci/required-gate.mjs");
     expect(required).toContain("actions: read");
@@ -145,18 +141,19 @@ describe("automatic CI workflow", () => {
     expect(source).not.toMatch(/runs-on:\s*[^\n]*-latest/);
     expect(source).not.toMatch(/(?:^|\s)paths(?:-ignore)?:/m);
 
-    expect(jobBlock("contracts")).toContain("runs-on: ubuntu-24.04");
-    expect(jobBlock("frontend")).toContain("runs-on: ubuntu-24.04");
+    expect(jobBlock("contracts")).toContain("runs-on: macos-15");
+    expect(jobBlock("frontend")).toContain("runs-on: macos-15");
     expect(jobBlock("desktop-acceptance-contract")).toContain(
-      "runs-on: ubuntu-24.04",
+      "runs-on: macos-15",
     );
-    expect(jobBlock("backend-linux")).toContain("runs-on: ubuntu-24.04");
-    expect(jobBlock("changes")).toContain("runs-on: ubuntu-24.04");
+    expect(jobBlock("changes")).toContain("runs-on: macos-15");
     expect(jobBlock("backend-windows")).toContain("runs-on: windows-2025");
     expect(jobBlock("windows-native-contracts")).toContain(
       "runs-on: ${{ matrix.runner }}",
     );
     expect(jobBlock("backend-macos")).toContain("runs-on: macos-15");
+    expect(jobBlock("required")).toContain("runs-on: macos-15");
+    expect(source).not.toContain(["ubu", "ntu-"].join(""));
   });
 
   it("pins every third-party Action to an reviewed full commit", () => {
@@ -182,7 +179,7 @@ describe("automatic CI workflow", () => {
     }
 
     const checkoutSteps = actionSteps("actions/checkout");
-    expect(checkoutSteps).toHaveLength(9);
+    expect(checkoutSteps).toHaveLength(8);
     for (const step of checkoutSteps) {
       expect(step).toContain("persist-credentials: false");
     }
@@ -197,21 +194,21 @@ describe("automatic CI workflow", () => {
     expect(source).not.toContain("3.14.7");
 
     const nodeSteps = actionSteps("actions/setup-node");
-    expect(nodeSteps).toHaveLength(8);
+    expect(nodeSteps).toHaveLength(7);
     for (const step of nodeSteps) {
       expect(step).toContain("node-version-file: .node-version");
       expect(step).not.toMatch(/^\s+node-version:/m);
     }
 
     const pnpmSteps = actionSteps("pnpm/action-setup");
-    expect(pnpmSteps).toHaveLength(6);
+    expect(pnpmSteps).toHaveLength(5);
     for (const step of pnpmSteps) {
       expect(step).toContain("run_install: false");
       expect(step).not.toMatch(/^\s+version:/m);
     }
 
     const rustSteps = actionSteps("actions-rust-lang/setup-rust-toolchain");
-    expect(rustSteps).toHaveLength(5);
+    expect(rustSteps).toHaveLength(4);
     for (const step of rustSteps) {
       expect(step).toContain("cache: false");
       expect(step).toContain('rustflags: ""');
@@ -285,8 +282,8 @@ describe("automatic CI workflow", () => {
     expect(releaseCheck).toContain("throw new AggregateError(");
   });
 
-  it("runs locked Rust checks on Linux, Windows, and macOS", () => {
-    for (const id of ["backend-linux", "backend-windows", "backend-macos"]) {
+  it("runs locked Rust checks on Windows and macOS", () => {
+    for (const id of ["backend-windows", "backend-macos"]) {
       const block = jobBlock(id);
       expect(block).toContain(
         "node scripts/ci/verify-toolchain.mjs --tools node,pnpm,rust",
@@ -299,6 +296,9 @@ describe("automatic CI workflow", () => {
       );
       expect(block).toContain(
         "cargo test --workspace --features fyagent/test-hooks --locked --manifest-path src-tauri/Cargo.toml --no-fail-fast",
+      );
+      expect(namedStepBlock(id, "Run Rust tests")).toContain(
+        'RUST_TEST_THREADS: "1"',
       );
       expect(namedStepBlock(id, "Check Rust workspace")).not.toContain(
         "test-hooks",
@@ -330,14 +330,18 @@ describe("automatic CI workflow", () => {
         /^        run: node scripts\/prepare-windows-user-helper\.mjs$/gm,
       ),
     ).toHaveLength(2);
-    expect(jobBlock("backend-linux")).toContain(
+    expect(jobBlock("backend-macos")).toContain(
       "cargo fmt --all --check --manifest-path src-tauri/Cargo.toml",
     );
   });
 
   it("collects every CI diagnostic before each job restores its failure", () => {
     const collectedSteps = {
-      changes: ["Setup Node.js", "Classify explicit base and head commits"],
+      changes: [
+        "Setup Node.js",
+        "Classify explicit base and head commits",
+        "Verify supported platform surface",
+      ],
       contracts: [
         "Setup pnpm",
         "Setup Node.js",
@@ -373,18 +377,6 @@ describe("automatic CI workflow", () => {
         "Verify native Fetch through MSW and Tauri mock",
         "Verify visual baseline capture policy",
       ],
-      "backend-linux": [
-        "Setup pnpm",
-        "Setup Node.js",
-        "Setup Rust",
-        "Verify active toolchains",
-        "Install Linux system dependencies",
-        "Create frontend dist placeholder",
-        "Check Rust formatting",
-        "Check Rust workspace",
-        "Run Clippy",
-        "Run Rust tests",
-      ],
       "backend-windows": [
         "Setup pnpm",
         "Setup Node.js",
@@ -415,6 +407,7 @@ describe("automatic CI workflow", () => {
         "Setup Rust",
         "Verify active toolchains",
         "Create frontend dist placeholder",
+        "Check Rust formatting",
         "Check Rust workspace",
         "Run Clippy",
         "Run Rust tests",
@@ -460,6 +453,22 @@ describe("automatic CI workflow", () => {
         "run: node scripts/ci/evaluate-step-outcomes.mjs",
       );
     }
+  });
+
+  it("runs the current-tree platform surface gate in every CI plan", () => {
+    const changes = jobBlock("changes");
+    const platformStep = namedStepBlock(
+      "changes",
+      "Verify supported platform surface",
+    );
+
+    expect(platformStep).toContain(
+      "run: node scripts/tasks/supported-platform-check.mjs",
+    );
+    expect(platformStep).not.toContain("exclude-active-task");
+    expect(changes.indexOf("Verify supported platform surface")).toBeLessThan(
+      changes.indexOf("Evaluate collected diagnostics"),
+    );
   });
 
   it("runs managed Python and the explicit-SID package smoke on native Windows x64 and ARM64", () => {

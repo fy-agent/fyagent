@@ -503,9 +503,9 @@ mod tests {
 
     #[test]
     fn parse_sqlite_source_valid() {
-        let (path, id) = parse_sqlite_source("sqlite:/home/user/.hermes/state.db#session-123")
+        let (path, id) = parse_sqlite_source("sqlite:/Users/tester/.hermes/state.db#session-123")
             .expect("should parse");
-        assert_eq!(path, PathBuf::from("/home/user/.hermes/state.db"));
+        assert_eq!(path, PathBuf::from("/Users/tester/.hermes/state.db"));
         assert_eq!(id, "session-123");
     }
 
@@ -523,7 +523,7 @@ mod tests {
         let mut f = File::create(&path).expect("create");
         writeln!(
             f,
-            r#"{{"type":"session","id":"s1","title":"My Session","cwd":"/home/user/project"}}"#
+            r#"{{"type":"session","id":"s1","title":"My Session","cwd":"/Users/tester/project"}}"#
         )
         .unwrap();
         writeln!(f, r#"{{"type":"message","message":{{"role":"user","content":"Hello world"}},"timestamp":"2026-01-01T00:00:00Z"}}"#).unwrap();
@@ -533,7 +533,7 @@ mod tests {
         let meta = parse_jsonl_session(&path).expect("should parse");
         assert_eq!(meta.session_id, "s1");
         assert_eq!(meta.title.as_deref(), Some("My Session"));
-        assert_eq!(meta.project_dir.as_deref(), Some("/home/user/project"));
+        assert_eq!(meta.project_dir.as_deref(), Some("/Users/tester/project"));
         assert!(meta.created_at.is_some());
         assert!(meta.last_active_at.is_some());
     }

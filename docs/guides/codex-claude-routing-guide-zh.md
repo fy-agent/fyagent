@@ -123,7 +123,6 @@ Codex 页签目前没有 Anthropic 内置预设，下面走「自定义配置」
 
 ## 参考链接
 
-- [FyAgent 用户手册：代理服务](../user-manual/zh/4-proxy/4.1-service.md)
-- [FyAgent 用户手册：应用路由](../user-manual/zh/4-proxy/4.2-routing.md)
-- [FyAgent v3.17.0 发布说明](../release-notes/v3.17.0-zh.md)
+- [FyAgent 用户手册：代理服务](../user-manual/zh/5-proxy/5.1-service.md)
+- [FyAgent 用户手册：应用路由](../user-manual/zh/5-proxy/5.2-routing.md)
 - 功能来自社区贡献 [#5071](https://github.com/farion1231/cc-switch/pull/5071)，感谢 @yeeyzy

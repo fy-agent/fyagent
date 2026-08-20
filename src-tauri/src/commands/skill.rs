@@ -1,14 +1,15 @@
 //! Skills 命令层
 //!
 //! v3.10.0+ 统一管理架构：
-//! - 支持三应用开关（Claude/Codex/Gemini）
+//! - 使用 Skills 专用的九目标开关；QoderWork/TRAE Work/WorkBuddy 不进入通用 AppType 域
 //! - SSOT 存储在 ~/.fyagent/skills/
 
-use crate::app_config::{AppType, InstalledSkill, UnmanagedSkill};
+use crate::app_config::{InstalledSkill, SkillTargetId, UnmanagedSkill};
 use crate::error::format_skill_error;
 use crate::services::skill::{
-    DiscoverableSkill, ImportSkillSelection, MigrationResult, Skill, SkillBackupEntry, SkillRepo,
-    SkillService, SkillStorageLocation, SkillUninstallResult, SkillUpdateInfo,
+    DiscoverAvailablePageRequest, DiscoverableSkill, DiscoverableSkillsPage, ImportSkillSelection,
+    MigrationResult, Skill, SkillBackupEntry, SkillDiscoveryStatus, SkillHubSearchResult,
+    SkillRepo, SkillService, SkillStorageLocation, SkillUninstallResult, SkillUpdateInfo,
     SkillsShSearchResult,
 };
 use crate::store::AppState;
@@ -19,9 +20,9 @@ use tauri::State;
 /// SkillService 状态包装
 pub struct SkillServiceState(pub Arc<SkillService>);
 
-/// 解析 app 参数为 AppType
-fn parse_app_type(app: &str) -> Result<AppType, String> {
-    AppType::from_str(app).map_err(|e| e.to_string())
+/// 解析 Skills 专用目标；QoderWork/TRAE Work/WorkBuddy 不进入广义 AppType 域。
+fn parse_skill_target(app: &str) -> Result<SkillTargetId, String> {
+    SkillTargetId::from_str(app).map_err(|e| e.to_string())
 }
 
 // ========== 统一管理命令 ==========
@@ -55,7 +56,7 @@ pub async fn install_skill_unified(
     service: State<'_, SkillServiceState>,
     app_state: State<'_, AppState>,
 ) -> Result<InstalledSkill, String> {
-    let app_type = parse_app_type(&current_app)?;
+    let app_type = parse_skill_target(&current_app)?;
 
     service
         .0
@@ -79,8 +80,8 @@ pub fn restore_skill_backup(
     current_app: String,
     app_state: State<'_, AppState>,
 ) -> Result<InstalledSkill, String> {
-    let app_type = parse_app_type(&current_app)?;
-    SkillService::restore_from_backup(&app_state.db, &backup_id, &app_type)
+    let app_type = parse_skill_target(&current_app)?;
+    SkillService::restore_from_backup_for_target(&app_state.db, &backup_id, &app_type)
         .map_err(|e| e.to_string())
 }
 
@@ -92,8 +93,9 @@ pub fn toggle_skill_app(
     enabled: bool,
     app_state: State<'_, AppState>,
 ) -> Result<bool, String> {
-    let app_type = parse_app_type(&app)?;
-    SkillService::toggle_app(&app_state.db, &id, &app_type, enabled).map_err(|e| e.to_string())?;
+    let app_type = parse_skill_target(&app)?;
+    SkillService::toggle_target(&app_state.db, &id, &app_type, enabled)
+        .map_err(|e| e.to_string())?;
     Ok(true)
 }
 
@@ -126,6 +128,41 @@ pub async fn discover_available_skills(
     service
         .0
         .discover_available(repos)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// 发现可安装的 Skills（仓库分页，供 V2 使用）
+#[tauri::command]
+pub async fn discover_available_skills_page(
+    query: String,
+    repo: Option<String>,
+    status: String,
+    limit: usize,
+    offset: usize,
+    service: State<'_, SkillServiceState>,
+    app_state: State<'_, AppState>,
+) -> Result<DiscoverableSkillsPage, String> {
+    let status = SkillDiscoveryStatus::parse(&status)?;
+    let repos = app_state.db.get_skill_repos().map_err(|e| e.to_string())?;
+    let installed = SkillService::get_all_installed(&app_state.db).map_err(|e| e.to_string())?;
+    let repo = repo
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty() && *value != "all");
+    service
+        .0
+        .discover_available_page(
+            repos,
+            &installed,
+            DiscoverAvailablePageRequest {
+                query: &query,
+                repo,
+                status,
+                limit,
+                offset,
+            },
+        )
         .await
         .map_err(|e| e.to_string())
 }
@@ -166,7 +203,7 @@ pub async fn migrate_skill_storage(
     SkillService::migrate_storage(&app_state.db, target).map_err(|e| e.to_string())
 }
 
-/// 搜索 skills.sh 公共目录
+/// 搜索 skills.sh 公共目录（leftover V1）
 #[tauri::command]
 pub async fn search_skills_sh(
     query: String,
@@ -174,6 +211,32 @@ pub async fn search_skills_sh(
     offset: usize,
 ) -> Result<SkillsShSearchResult, String> {
     SkillService::search_skills_sh(&query, limit, offset)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// 搜索 Skill 市场
+#[tauri::command]
+pub async fn search_skillhub(
+    query: String,
+    limit: usize,
+    offset: usize,
+    category: Option<String>,
+) -> Result<SkillHubSearchResult, String> {
+    SkillService::search_skillhub(&query, limit, offset, category.as_deref())
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// 从 Skill 市场安装（下载 ZIP，不调用 skillhub CLI）
+#[tauri::command]
+pub async fn install_skillhub(
+    slug: String,
+    current_app: String,
+    app_state: State<'_, AppState>,
+) -> Result<Vec<InstalledSkill>, String> {
+    let app_type = parse_skill_target(&current_app)?;
+    SkillService::install_skillhub(&app_state.db, &slug, &app_type)
         .await
         .map_err(|e| e.to_string())
 }
@@ -202,7 +265,7 @@ pub async fn get_skills_for_app(
     app_state: State<'_, AppState>,
 ) -> Result<Vec<Skill>, String> {
     // 新版本不再区分应用，统一返回所有技能
-    let _ = parse_app_type(&app)?; // 验证 app 参数有效
+    let _ = parse_skill_target(&app)?; // 验证 app 参数有效
     get_skills(service, app_state).await
 }
 
@@ -224,7 +287,7 @@ pub async fn install_skill_for_app(
     service: State<'_, SkillServiceState>,
     app_state: State<'_, AppState>,
 ) -> Result<bool, String> {
-    let app_type = parse_app_type(&app)?;
+    let app_type = parse_skill_target(&app)?;
 
     // 先获取技能信息
     let repos = app_state.db.get_skill_repos().map_err(|e| e.to_string())?;
@@ -277,7 +340,7 @@ pub fn uninstall_skill_for_app(
     directory: String,
     app_state: State<'_, AppState>,
 ) -> Result<SkillUninstallResult, String> {
-    let _ = parse_app_type(&app)?; // 验证参数
+    let _ = parse_skill_target(&app)?; // 验证参数
 
     // 通过 directory 找到对应的 skill id
     let skills = SkillService::get_all_installed(&app_state.db).map_err(|e| e.to_string())?;
@@ -300,7 +363,11 @@ pub fn get_skill_repos(app_state: State<'_, AppState>) -> Result<Vec<SkillRepo>,
 
 /// 添加技能仓库
 #[tauri::command]
-pub fn add_skill_repo(repo: SkillRepo, app_state: State<'_, AppState>) -> Result<bool, String> {
+pub fn add_skill_repo(
+    repo: SkillRepo,
+    service: State<'_, SkillServiceState>,
+    app_state: State<'_, AppState>,
+) -> Result<bool, String> {
     // 整个结构体由前端反序列化而来，owner/name/branch 会被拼进归档下载 URL。
     // 主防线在 download_repo，这里让非法值当场报错而不是沉淀进表。
     SkillService::validate_repo_ref(&repo.owner, &repo.name, &repo.branch)
@@ -309,6 +376,7 @@ pub fn add_skill_repo(repo: SkillRepo, app_state: State<'_, AppState>) -> Result
         .db
         .save_skill_repo(&repo)
         .map_err(|e| e.to_string())?;
+    service.0.invalidate_discovery_cache();
     Ok(true)
 }
 
@@ -317,12 +385,14 @@ pub fn add_skill_repo(repo: SkillRepo, app_state: State<'_, AppState>) -> Result
 pub fn remove_skill_repo(
     owner: String,
     name: String,
+    service: State<'_, SkillServiceState>,
     app_state: State<'_, AppState>,
 ) -> Result<bool, String> {
     app_state
         .db
         .delete_skill_repo(&owner, &name)
         .map_err(|e| e.to_string())?;
+    service.0.invalidate_discovery_cache();
     Ok(true)
 }
 
@@ -333,7 +403,7 @@ pub fn install_skills_from_zip(
     current_app: String,
     app_state: State<'_, AppState>,
 ) -> Result<Vec<InstalledSkill>, String> {
-    let app_type = parse_app_type(&current_app)?;
+    let app_type = parse_skill_target(&current_app)?;
     let path = std::path::Path::new(&file_path);
 
     SkillService::install_from_zip(&app_state.db, path, &app_type).map_err(|e| e.to_string())

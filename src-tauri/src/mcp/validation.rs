@@ -67,3 +67,72 @@ pub fn extract_server_spec(entry: &Value) -> Result<Value, AppError> {
 
     Ok(server.clone())
 }
+
+/// Compare unified MCP specs after removing only representation-level
+/// differences produced by supported adapters. Executable values and unknown
+/// fields remain exact so a real cross-application conflict still fails closed.
+pub(crate) fn server_specs_are_equivalent(left: &Value, right: &Value) -> bool {
+    fn comparable(spec: &Value) -> Option<Value> {
+        let mut object = spec.as_object()?.clone();
+
+        object
+            .entry("type".to_string())
+            .or_insert_with(|| Value::String("stdio".to_string()));
+
+        if let Some(http_headers) = object.remove("http_headers") {
+            match object.get("headers") {
+                None => {
+                    object.insert("headers".to_string(), http_headers);
+                }
+                Some(headers) if headers == &http_headers => {}
+                Some(_) => {
+                    object.insert("http_headers".to_string(), http_headers);
+                }
+            }
+        }
+
+        for key in ["args", "env", "headers"] {
+            let is_empty = object.get(key).is_some_and(|value| match value {
+                Value::Array(values) => values.is_empty(),
+                Value::Object(values) => values.is_empty(),
+                _ => false,
+            });
+            if is_empty {
+                object.remove(key);
+            }
+        }
+        if object
+            .get("cwd")
+            .and_then(Value::as_str)
+            .is_some_and(|cwd| cwd.trim().is_empty())
+        {
+            object.remove("cwd");
+        }
+
+        Some(Value::Object(object))
+    }
+
+    comparable(left)
+        .zip(comparable(right))
+        .is_some_and(|(left, right)| left == right)
+}
+
+/// Source clients treat a missing enable flag as active. Only an explicit
+/// boolean false is authority to keep an imported assignment disabled.
+pub(crate) fn source_server_is_enabled(spec: &Value) -> bool {
+    spec.get("enabled").and_then(Value::as_bool) != Some(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn source_enablement_requires_an_explicit_boolean_false_to_disable() {
+        assert!(!source_server_is_enabled(&json!({ "enabled": false })));
+        assert!(source_server_is_enabled(&json!({ "enabled": true })));
+        assert!(source_server_is_enabled(&json!({})));
+        assert!(source_server_is_enabled(&json!({ "enabled": "false" })));
+    }
+}

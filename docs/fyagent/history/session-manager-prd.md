@@ -30,7 +30,7 @@
    - 复制恢复命令（按钮）
    - 复制会话目录（按钮，若能获取/推断）
    - 可选：直接在终端执行恢复（macOS Terminal、kitty；可扩展）
-3. 仅 macOS 支持，但代码结构需支持未来扩展 Windows/Linux
+3. 仅 macOS 支持，但代码结构需支持未来扩展 Windows
 
 ### 2.2 Non-Goals（v1 不做）
 - 不新增/依赖云端 API；默认不上传任何内容
@@ -158,7 +158,7 @@
 ### 6.2 Terminal Launcher 抽象（必须）
 - `launch(command: string, cwd?: string, targetTerminal: TerminalKind): Result`
 - macOS v1 实现：TerminalLauncherMac
-- Future：TerminalLauncherWindows / TerminalLauncherLinux
+- Future：TerminalLauncherWindows
 
 ### 6.3 Path Resolver（必须）
 - `resolveProviderDataPaths(providerId): string[]`

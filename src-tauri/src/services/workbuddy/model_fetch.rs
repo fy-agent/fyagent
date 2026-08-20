@@ -12,9 +12,13 @@ use serde_json::Value;
 use url::Url;
 
 use super::{
+    credential_matches_model_id,
     error::{redact_response_summary, WorkBuddyError, WorkBuddyErrorCode},
     types::{FetchWorkBuddyModelsRequest, FetchWorkBuddyModelsResult},
-    url::{normalize_workbuddy_base_url, NormalizedWorkBuddyUrl},
+    url::{
+        normalize_workbuddy_base_url, reject_parsed_url_credential_collision,
+        reject_url_credential_collision, NormalizedWorkBuddyUrl,
+    },
 };
 
 const FETCH_TIMEOUT: Duration = Duration::from_secs(15);
@@ -28,6 +32,7 @@ pub(crate) async fn fetch_workbuddy_models(
     request: FetchWorkBuddyModelsRequest,
 ) -> Result<FetchWorkBuddyModelsResult, WorkBuddyError> {
     let normalized = normalize_workbuddy_base_url(&request.base_url)?;
+    reject_url_credential_collision(&normalized, &request.api_key)?;
     if request.api_key.trim().is_empty() && !request.allow_no_api_key {
         return Err(WorkBuddyError::new(WorkBuddyErrorCode::ApiKeyRequired));
     }
@@ -73,7 +78,12 @@ async fn fetch_with_client(
                 ));
             }
             let redirect_url = redirect_target(&current_url, &response)?;
-            if !normalized.origin.matches_url(&redirect_url)
+            if !redirect_url.username().is_empty()
+                || redirect_url.password().is_some()
+                || redirect_url.query().is_some()
+                || redirect_url.fragment().is_some()
+                || reject_parsed_url_credential_collision(&redirect_url, api_key).is_err()
+                || !normalized.origin.matches_url(&redirect_url)
                 || (current_url.scheme() == "https" && redirect_url.scheme() != "https")
             {
                 return Err(WorkBuddyError::new(
@@ -102,37 +112,22 @@ async fn fetch_with_client(
         }
 
         let body = read_success_body(response).await?;
-        return parse_models_response(&body);
+        return parse_models_response(&body, api_key.trim());
     }
 }
 
 fn build_workbuddy_client() -> Result<Client, WorkBuddyError> {
-    let mut builder = Client::builder()
+    let builder = Client::builder()
         .redirect(Policy::none())
         .no_gzip()
         .no_brotli()
         .no_deflate()
         .no_zstd();
 
-    match crate::proxy::http_client::installer_proxy_configuration() {
-        Ok(crate::proxy::http_client::InstallerProxyConfiguration::Explicit(proxy_url)) => {
-            let proxy = reqwest::Proxy::all(proxy_url.as_str()).map_err(|_| {
-                WorkBuddyError::new(WorkBuddyErrorCode::FetchHttpError)
-                    .with_redacted_summary("The configured proxy could not be used.")
-            })?;
-            builder = builder.proxy(proxy);
-        }
-        Ok(crate::proxy::http_client::InstallerProxyConfiguration::System) => {
-            // Preserve the application's normal system-proxy behavior.
-        }
-        Ok(crate::proxy::http_client::InstallerProxyConfiguration::Direct) => {
-            builder = builder.no_proxy();
-        }
-        Err(()) => {
-            return Err(WorkBuddyError::new(WorkBuddyErrorCode::FetchHttpError)
-                .with_redacted_summary("The configured proxy is invalid."));
-        }
-    }
+    let builder = crate::proxy::http_client::apply_installer_proxy(builder).map_err(|_| {
+        WorkBuddyError::new(WorkBuddyErrorCode::FetchHttpError)
+            .with_redacted_summary("The configured proxy could not be used.")
+    })?;
 
     builder.build().map_err(|_| {
         WorkBuddyError::new(WorkBuddyErrorCode::FetchHttpError)
@@ -224,7 +219,10 @@ async fn read_error_summary(response: Response) -> String {
     }
 }
 
-fn parse_models_response(bytes: &[u8]) -> Result<FetchWorkBuddyModelsResult, WorkBuddyError> {
+fn parse_models_response(
+    bytes: &[u8],
+    credential_model_id: &str,
+) -> Result<FetchWorkBuddyModelsResult, WorkBuddyError> {
     let value: Value = serde_json::from_slice(bytes)
         .map_err(|_| WorkBuddyError::new(WorkBuddyErrorCode::FetchInvalidSchema))?;
     let data = value
@@ -245,6 +243,13 @@ fn parse_models_response(bytes: &[u8]) -> Result<FetchWorkBuddyModelsResult, Wor
             .map(str::trim)
             .filter(|id| !id.is_empty())
             .ok_or_else(|| WorkBuddyError::new(WorkBuddyErrorCode::FetchInvalidSchema))?;
+
+        // A hostile upstream can return the bearer credential as a model ID in
+        // an otherwise valid 200 response. Reject the complete response before
+        // constructing the renderer DTO; never retain or report that value.
+        if credential_matches_model_id(credential_model_id, id) {
+            return Err(WorkBuddyError::new(WorkBuddyErrorCode::FetchInvalidSchema));
+        }
 
         if !seen.insert(id.to_string()) {
             continue;
@@ -539,6 +544,7 @@ mod tests {
                   {"id":"a-model"}
                 ]
               }"#,
+            "",
         )
         .unwrap();
 
@@ -557,7 +563,7 @@ mod tests {
             .collect::<Vec<_>>();
         let bytes = serde_json::to_vec(&serde_json::json!({ "data": data })).unwrap();
 
-        let result = parse_models_response(&bytes).unwrap();
+        let result = parse_models_response(&bytes, "").unwrap();
         assert_eq!(result.models.len(), MAX_MODELS);
         assert_eq!(result.models.first(), Some(&"model-0".to_string()));
         assert_eq!(result.models.last(), Some(&"model-999".to_string()));
@@ -573,7 +579,7 @@ mod tests {
         let bytes = serde_json::to_vec(&serde_json::json!({ "data": data })).unwrap();
 
         assert_eq!(
-            parse_models_response(&bytes).unwrap_err().code(),
+            parse_models_response(&bytes, "").unwrap_err().code(),
             WorkBuddyErrorCode::FetchInvalidSchema
         );
     }
@@ -581,7 +587,7 @@ mod tests {
     #[test]
     fn parser_accepts_an_empty_standard_list_but_rejects_invalid_entries() {
         assert_eq!(
-            parse_models_response(br#"{"data":[]}"#).unwrap(),
+            parse_models_response(br#"{"data":[]}"#, "").unwrap(),
             FetchWorkBuddyModelsResult {
                 models: Vec::new(),
                 truncated: false,
@@ -596,10 +602,27 @@ mod tests {
             br#"{"data":[{"id":"model-a"},{"name":"missing-id"}]}"#.as_slice(),
         ] {
             assert_eq!(
-                parse_models_response(invalid).unwrap_err().code(),
+                parse_models_response(invalid, "").unwrap_err().code(),
                 WorkBuddyErrorCode::FetchInvalidSchema
             );
         }
+    }
+
+    #[test]
+    fn parser_rejects_a_success_body_that_echoes_the_trimmed_bearer_credential() {
+        let credential = "TEST-SECRET-MODEL-ID";
+        let bytes = serde_json::to_vec(&serde_json::json!({
+            "data": [
+                { "id": "safe-model" },
+                { "id": format!("  {credential}  ") }
+            ]
+        }))
+        .unwrap();
+
+        let error = parse_models_response(&bytes, credential).unwrap_err();
+        let serialized = serde_json::to_string(&error.to_dto()).unwrap();
+        assert_eq!(error.code(), WorkBuddyErrorCode::FetchInvalidSchema);
+        assert!(!serialized.contains(credential));
     }
 
     #[test]
@@ -693,6 +716,33 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn keyed_success_response_cannot_echo_the_credential_as_a_model_id() {
+        let credential = "TEST-SECRET-MODEL-ID";
+        let body = serde_json::to_vec(&serde_json::json!({
+            "data": [
+                { "id": "safe-model" },
+                { "id": format!("prefix-{credential}-suffix") }
+            ]
+        }))
+        .unwrap();
+        let server = spawn_scripted_server(
+            vec![http_response("200 OK", &[], &body)],
+            TEST_SERVER_REQUEST_TIMEOUT,
+        );
+
+        let error = fetch_from_loopback(&server, credential)
+            .await
+            .expect_err("a credential echo must fail before a model DTO is returned");
+        let serialized = serde_json::to_string(&error.to_dto()).unwrap();
+        assert_eq!(error.code(), WorkBuddyErrorCode::FetchInvalidSchema);
+        assert!(!serialized.contains(credential));
+
+        let requests = server.finish();
+        assert_eq!(requests.len(), 1);
+        assert!(has_bearer_authorization(&requests[0], credential));
+    }
+
+    #[tokio::test]
     async fn no_key_http_errors_keep_only_a_bounded_redacted_summary() {
         let server = spawn_scripted_server(
             vec![http_response(
@@ -764,6 +814,39 @@ mod tests {
         assert!(requests
             .iter()
             .all(|request| has_bearer_authorization(request, "fake-model-key")));
+    }
+
+    #[tokio::test]
+    async fn redirect_echoing_the_credential_in_its_url_is_rejected_before_following() {
+        let credential = "TEST-SECRET-REDIRECT-KEY";
+        let location = format!("/prefix-{credential}-suffix");
+        let server = spawn_scripted_server(
+            vec![http_response("302 Found", &[("location", &location)], b"")],
+            TEST_SERVER_REQUEST_TIMEOUT,
+        );
+
+        let error = fetch_from_loopback(&server, credential)
+            .await
+            .expect_err("credential-bearing redirect URL must be rejected");
+        assert_eq!(error.code(), WorkBuddyErrorCode::FetchRedirectRejected);
+        assert!(!format!("{error:?}").contains(credential));
+        assert_eq!(server.finish().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn redirect_query_is_rejected_before_following() {
+        let credential = "TEST-SECRET-REDIRECT-QUERY";
+        let location = format!("/next?token={credential}");
+        let server = spawn_scripted_server(
+            vec![http_response("302 Found", &[("location", &location)], b"")],
+            TEST_SERVER_REQUEST_TIMEOUT,
+        );
+        let error = fetch_from_loopback(&server, credential).await.unwrap_err();
+        assert_eq!(error.code(), WorkBuddyErrorCode::FetchRedirectRejected);
+        assert!(!serde_json::to_string(&error.to_dto())
+            .unwrap()
+            .contains(credential));
+        assert_eq!(server.finish().len(), 1);
     }
 
     #[tokio::test]

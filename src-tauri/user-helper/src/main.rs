@@ -33,7 +33,7 @@ fn main() -> ExitCode {
         }
     }
 
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
     {
         let _ = request;
         eprintln!("fyagent-user-helper: this helper is available only on Windows");

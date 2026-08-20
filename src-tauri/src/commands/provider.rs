@@ -2,15 +2,325 @@ use indexmap::IndexMap;
 use tauri::{Emitter, Manager, State};
 
 use crate::app_config::AppType;
+use crate::codex_config::CodexProviderFeatureIntent;
 use crate::commands::copilot::CopilotAuthState;
 use crate::commands::xai_oauth::XaiOAuthState;
 use crate::error::AppError;
-use crate::provider::{ClaudeDesktopMode, Provider, ProviderMutationResult};
+use crate::provider::{ClaudeDesktopMode, Provider, ProviderMeta, ProviderMutationResult};
+use crate::services::provider::QuickSetupApplyFailureCode;
 use crate::services::{
     EndpointLatency, ProviderService, ProviderSortUpdate, SpeedtestService, SwitchResult,
 };
 use crate::store::AppState;
 use std::str::FromStr;
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderPublicSummary {
+    id: String,
+    name: String,
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderPublicSummaryResult {
+    providers: IndexMap<String, ProviderPublicSummary>,
+    current_id: String,
+}
+
+const PROVIDER_PUBLIC_SUMMARY_UNAVAILABLE: &str = "Provider public summary is unavailable";
+
+fn push_nonempty_credential(value: &str, output: &mut Vec<String>) {
+    let value = value.trim();
+    if !value.is_empty() {
+        output.push(value.to_string());
+    }
+}
+
+fn push_header_value_credentials(value: &str, output: &mut Vec<String>) {
+    let value = value.trim();
+    push_nonempty_credential(value, output);
+
+    if let Some((scheme, credential)) = value.split_once(char::is_whitespace) {
+        if ["bearer", "basic", "token", "apikey"]
+            .iter()
+            .any(|candidate| scheme.eq_ignore_ascii_case(candidate))
+        {
+            push_nonempty_credential(credential, output);
+        }
+    }
+
+    for cookie in value.split(';') {
+        if let Some((_, cookie_value)) = cookie.split_once('=') {
+            push_nonempty_credential(cookie, output);
+            push_nonempty_credential(cookie_value, output);
+        }
+    }
+}
+
+fn is_header_container_key(key: &str) -> bool {
+    ["headers", "http_headers", "env_http_headers"]
+        .iter()
+        .any(|candidate| key.eq_ignore_ascii_case(candidate))
+}
+
+fn is_custom_header_string_key(key: &str) -> bool {
+    let key = key.to_ascii_uppercase();
+    key == "CUSTOM_HEADERS" || key.ends_with("_CUSTOM_HEADERS")
+}
+
+fn collect_header_literal_credentials(
+    value: &serde_json::Value,
+    output: &mut Vec<String>,
+) -> Result<(), ()> {
+    match value {
+        serde_json::Value::String(value) => {
+            push_header_value_credentials(value, output);
+            Ok(())
+        }
+        serde_json::Value::Object(values) => values
+            .values()
+            .try_for_each(|value| collect_header_literal_credentials(value, output)),
+        serde_json::Value::Array(values) => values
+            .iter()
+            .try_for_each(|value| collect_header_literal_credentials(value, output)),
+        _ => Err(()),
+    }
+}
+
+fn collect_custom_header_string_credentials(value: &str, output: &mut Vec<String>) {
+    push_nonempty_credential(value, output);
+    for line in value.lines().map(str::trim).filter(|line| !line.is_empty()) {
+        if let Some((_, header_value)) = line.split_once(':') {
+            push_header_value_credentials(header_value, output);
+        }
+    }
+}
+
+fn collect_provider_credentials(
+    value: &serde_json::Value,
+    output: &mut Vec<String>,
+) -> Result<(), ()> {
+    match value {
+        serde_json::Value::Object(object) => {
+            for (key, value) in object {
+                if is_header_container_key(key) {
+                    collect_header_literal_credentials(value, output)?;
+                } else if is_custom_header_string_key(key) {
+                    match value {
+                        serde_json::Value::String(value) => {
+                            collect_custom_header_string_credentials(value, output);
+                        }
+                        _ => collect_header_literal_credentials(value, output)?,
+                    }
+                } else if ProviderService::is_sensitive_config_key(key) {
+                    if let Some(value) = value.as_str().map(str::trim).filter(|v| !v.is_empty()) {
+                        output.push(value.to_string());
+                    }
+                } else {
+                    collect_provider_credentials(value, output)?;
+                }
+            }
+            Ok(())
+        }
+        serde_json::Value::Array(values) => values
+            .iter()
+            .try_for_each(|value| collect_provider_credentials(value, output)),
+        _ => Ok(()),
+    }
+}
+
+fn provider_public_summary(provider: &Provider) -> Result<ProviderPublicSummary, String> {
+    let mut credentials = Vec::new();
+    collect_provider_credentials(&provider.settings_config, &mut credentials)
+        .map_err(|_| PROVIDER_PUBLIC_SUMMARY_UNAVAILABLE.to_string())?;
+    if let Some(meta) = &provider.meta {
+        if let Some(script) = &meta.usage_script {
+            for credential in [
+                script.api_key.as_deref(),
+                script.access_token.as_deref(),
+                script.access_key_id.as_deref(),
+                script.secret_access_key.as_deref(),
+            ]
+            .into_iter()
+            .flatten()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            {
+                credentials.push(credential.to_string());
+            }
+        }
+        if let Some(overrides) = &meta.local_proxy_request_overrides {
+            credentials.extend(
+                overrides
+                    .headers
+                    .values()
+                    .map(|value| value.trim())
+                    .filter(|value| !value.is_empty())
+                    .map(str::to_string),
+            );
+        }
+        if let Ok(meta) = serde_json::to_value(meta) {
+            collect_provider_credentials(&meta, &mut credentials)
+                .map_err(|_| PROVIDER_PUBLIC_SUMMARY_UNAVAILABLE.to_string())?;
+        }
+    }
+    if let Some(config) = provider
+        .settings_config
+        .get("config")
+        .and_then(|v| v.as_str())
+    {
+        let config = config
+            .parse::<toml::Value>()
+            .map_err(|_| PROVIDER_PUBLIC_SUMMARY_UNAVAILABLE.to_string())?;
+        let config = serde_json::to_value(config)
+            .map_err(|_| PROVIDER_PUBLIC_SUMMARY_UNAVAILABLE.to_string())?;
+        collect_provider_credentials(&config, &mut credentials)
+            .map_err(|_| PROVIDER_PUBLIC_SUMMARY_UNAVAILABLE.to_string())?;
+    }
+    if [provider.id.as_str(), provider.name.as_str()]
+        .into_iter()
+        .any(|public| {
+            let public = public.trim();
+            !public.is_empty()
+                && credentials
+                    .iter()
+                    .any(|credential| public.contains(credential))
+        })
+    {
+        return Err(PROVIDER_PUBLIC_SUMMARY_UNAVAILABLE.to_string());
+    }
+    Ok(ProviderPublicSummary {
+        id: provider.id.clone(),
+        name: provider.name.clone(),
+    })
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProviderQuickSetupRequest {
+    name: String,
+    base_url: String,
+    api_key: String,
+    model_id: String,
+    /// Codex 原生能力意图（生图扩展 / WebSocket），仅 codex 目标生效。
+    #[serde(default)]
+    codex_features: Option<CodexProviderFeatureIntent>,
+}
+
+impl ProviderQuickSetupRequest {
+    fn into_provider(self, app_type: &AppType) -> Result<Provider, ProviderQuickSetupCommandError> {
+        let codex_features = self.codex_features.unwrap_or_default();
+        let name = self.name.trim().to_string();
+        let base_url = self.base_url.trim().to_string();
+        let api_key = self.api_key.trim().to_string();
+        let model_id = self.model_id.trim().to_string();
+        if name.is_empty() || api_key.is_empty() || model_id.is_empty() {
+            return Err(ProviderQuickSetupCommandError::new(
+                QuickSetupApplyFailureCode::ApplyFailedRolledBack,
+            ));
+        }
+        let reserved_id = match app_type {
+            AppType::Claude => "fyagent-v2-quick-setup-claude",
+            AppType::Codex => "fyagent-v2-quick-setup-codex",
+            AppType::GrokBuild => "fyagent-v2-quick-setup-grokbuild",
+            _ => "",
+        };
+        if name.contains(&api_key) || model_id.contains(&api_key) || reserved_id.contains(&api_key)
+        {
+            return Err(ProviderQuickSetupCommandError::new(
+                QuickSetupApplyFailureCode::ApplyFailedRolledBack,
+            ));
+        }
+        let (id, settings_config) = match app_type {
+            AppType::Claude => (
+                "fyagent-v2-quick-setup-claude",
+                serde_json::json!({
+                    "env": {
+                        "ANTHROPIC_BASE_URL": base_url,
+                        "ANTHROPIC_AUTH_TOKEN": api_key,
+                        "ANTHROPIC_MODEL": model_id,
+                    }
+                }),
+            ),
+            AppType::Codex => {
+                let quote = |value: &str| {
+                    serde_json::to_string(value).expect("serializing a Rust string cannot fail")
+                };
+                // 开启内置生图扩展后，请求走本地 `x-openai-actor-authorization`
+                // header，不再依赖 OpenAI 官方登录，故 requires_openai_auth=false。
+                let image_extension = codex_features.image_extension.unwrap_or(false);
+                let websockets = codex_features.websockets.unwrap_or(false);
+                let requires_openai_auth = !image_extension;
+                let mut config = format!(
+                    "model_provider = \"custom\"\nmodel = {}\ndisable_response_storage = true\n\n[model_providers.custom]\nname = {}\nbase_url = {}\nwire_api = \"responses\"\nrequires_openai_auth = {}",
+                    quote(&model_id),
+                    quote(&name),
+                    quote(&base_url),
+                    requires_openai_auth,
+                );
+                if image_extension {
+                    config.push_str(&format!(
+                        "\nhttp_headers = {{ \"{}\" = \"{}\" }}",
+                        crate::codex_config::CODEX_IMAGE_EXTENSION_HEADER,
+                        crate::codex_config::CODEX_IMAGE_EXTENSION_VALUE,
+                    ));
+                }
+                if websockets {
+                    config.push_str("\nsupports_websockets = true");
+                }
+                (
+                    "fyagent-v2-quick-setup-codex",
+                    serde_json::json!({
+                        "auth": { "OPENAI_API_KEY": api_key },
+                        "config": config,
+                    }),
+                )
+            }
+            AppType::GrokBuild => {
+                let model_value = toml_edit::Value::from(model_id.as_str()).to_string();
+                let name_value = toml_edit::Value::from(name.as_str()).to_string();
+                let endpoint_value = toml_edit::Value::from(base_url.as_str()).to_string();
+                let api_key_value = toml_edit::Value::from(api_key.as_str()).to_string();
+                (
+                    "fyagent-v2-quick-setup-grokbuild",
+                    serde_json::json!({
+                        "config": format!(
+                            "[models]\ndefault = {model_value}\n\n[model.{model_value}]\nmodel = {model_value}\nbase_url = {endpoint_value}\nname = {name_value}\napi_key = {api_key_value}\napi_backend = \"{}\"\ncontext_window = {}\n",
+                            crate::grok_config::DEFAULT_API_BACKEND,
+                            crate::grok_config::DEFAULT_CONTEXT_WINDOW,
+                        )
+                    }),
+                )
+            }
+            _ => unreachable!("quick setup app allowlist was checked before derivation"),
+        };
+        let mut provider = Provider::with_id(id.to_string(), name, settings_config, None);
+        provider.category = Some("custom".to_string());
+        provider.notes = Some("Created by FyAgent V2 quick setup".to_string());
+        // 显式生图选择视为已完成迁移，避免 prepare_codex_provider_features_for_save
+        // 的默认迁移覆盖用户的一键配置选择。
+        if codex_features.image_extension.is_some() {
+            provider
+                .meta
+                .get_or_insert_with(ProviderMeta::default)
+                .image_extension_configured = Some(true);
+        }
+        Ok(provider)
+    }
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderQuickSetupCommandError {
+    code: QuickSetupApplyFailureCode,
+}
+
+impl ProviderQuickSetupCommandError {
+    fn new(code: QuickSetupApplyFailureCode) -> Self {
+        Self { code }
+    }
+}
 
 // 常量定义
 const TEMPLATE_TYPE_GITHUB_COPILOT: &str = "github_copilot";
@@ -51,6 +361,44 @@ pub fn get_providers(
 pub fn get_current_provider(state: State<'_, AppState>, app: String) -> Result<String, String> {
     let app_type = AppType::from_str(&app).map_err(|e| e.to_string())?;
     ProviderService::current(state.inner(), app_type).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_provider_summary(
+    app_handle: tauri::AppHandle,
+    app: String,
+) -> Result<ProviderPublicSummaryResult, String> {
+    let app_type = parse_provider_draft_app(&app)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app_handle
+            .try_state::<AppState>()
+            .ok_or_else(|| "Provider public summary is unavailable".to_string())?;
+        let _guard =
+            futures::executor::block_on(state.proxy_service.lock_switch_for_app(app_type.as_str()));
+        let all = state
+            .db
+            .get_all_providers(app_type.as_str())
+            .map_err(|_| "Provider public summary is unavailable".to_string())?;
+        let mut providers = IndexMap::new();
+        for (key, provider) in all {
+            let summary = provider_public_summary(&provider)?;
+            if key != summary.id {
+                return Err("Provider public summary is unavailable".to_string());
+            }
+            providers.insert(key, summary);
+        }
+        let current_id = ProviderService::current(state.inner(), app_type)
+            .map_err(|_| "Provider public summary is unavailable".to_string())?;
+        if !current_id.is_empty() && !providers.contains_key(&current_id) {
+            return Err("Provider public summary is unavailable".to_string());
+        }
+        Ok(ProviderPublicSummaryResult {
+            providers,
+            current_id,
+        })
+    })
+    .await
+    .map_err(|_| "Provider public summary is unavailable".to_string())?
 }
 
 #[tauri::command]
@@ -98,6 +446,44 @@ pub fn add_provider_with_result(
     result.warning_codes =
         provider_mutation_warning_codes(state.inner(), &warning_app_type, &saved_provider);
     Ok(result)
+}
+
+fn parse_provider_draft_app(app: &str) -> Result<AppType, String> {
+    let app_type = AppType::from_str(app).map_err(|e| e.to_string())?;
+    if !matches!(
+        app_type,
+        AppType::Claude | AppType::Codex | AppType::GrokBuild
+    ) {
+        return Err("Provider quick setup supports only claude, codex, or grokbuild".to_string());
+    }
+    Ok(app_type)
+}
+
+/// Atomically store and activate a bounded Claude/Codex quick-setup Provider.
+#[tauri::command]
+pub async fn apply_provider_quick_setup_with_result(
+    app_handle: tauri::AppHandle,
+    app: String,
+    request: ProviderQuickSetupRequest,
+) -> Result<ProviderMutationResult<SwitchResult>, ProviderQuickSetupCommandError> {
+    let app_type = parse_provider_draft_app(&app).map_err(|_| {
+        ProviderQuickSetupCommandError::new(QuickSetupApplyFailureCode::ApplyFailedRolledBack)
+    })?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app_handle.try_state::<AppState>().ok_or_else(|| {
+            ProviderQuickSetupCommandError::new(QuickSetupApplyFailureCode::ApplyFailedRolledBack)
+        })?;
+        let provider = request.into_provider(&app_type)?;
+        ProviderService::apply_quick_setup(state.inner(), app_type, provider).map_err(|error| {
+            log::error!("Provider quick setup failed: {error}");
+            ProviderQuickSetupCommandError::new(error.code)
+        })
+    })
+    .await
+    .map_err(|error| {
+        log::error!("Provider quick setup worker failed: {error}");
+        ProviderQuickSetupCommandError::new(QuickSetupApplyFailureCode::RollbackPartialStateUnknown)
+    })?
 }
 
 #[tauri::command]
@@ -277,6 +663,10 @@ pub async fn switch_provider_with_result(
 }
 
 fn import_default_config_internal(state: &AppState, app_type: AppType) -> Result<bool, AppError> {
+    // Keep the eligibility checks, live read, Provider/current writes, and
+    // command-only post-processing in one per-app critical section. Calling
+    // the public service wrapper below would acquire this same lock again.
+    let _guard = ProviderService::lock_provider_mutation(state, &app_type);
     if matches!(app_type, AppType::GrokBuild) {
         // 官方登录态（live 语法合法且无自定义模型表）+ 用户手动导入：
         // 导入的正确结果是让 Grok Official 成为当前供应商，而非报错。
@@ -317,7 +707,7 @@ fn import_default_config_internal(state: &AppState, app_type: AppType) -> Result
         }
     }
 
-    let imported = ProviderService::import_default_config(state, app_type.clone())?;
+    let imported = ProviderService::import_default_config_with_lock_held(state, app_type.clone())?;
 
     if imported {
         // Extract common config snippet (mirrors old startup logic in lib.rs)
@@ -1119,6 +1509,278 @@ pub fn get_opencode_live_provider_ids() -> Result<Vec<String>, String> {
 // ============================================================================
 // OpenClaw 专属命令 → 已迁移至 commands/openclaw.rs
 // ============================================================================
+
+#[cfg(test)]
+mod provider_draft_command_tests {
+    use super::{parse_provider_draft_app, provider_public_summary, ProviderQuickSetupRequest};
+    use crate::app_config::AppType;
+    use crate::provider::Provider;
+
+    #[test]
+    fn quick_setup_drafts_allow_claude_codex_and_grokbuild() {
+        assert!(matches!(
+            parse_provider_draft_app("claude"),
+            Ok(AppType::Claude)
+        ));
+        assert!(matches!(
+            parse_provider_draft_app("codex"),
+            Ok(AppType::Codex)
+        ));
+        assert!(matches!(
+            parse_provider_draft_app("grokbuild"),
+            Ok(AppType::GrokBuild)
+        ));
+        for unsupported in ["gemini", "opencode", "hermes"] {
+            assert!(
+                parse_provider_draft_app(unsupported).is_err(),
+                "{unsupported} must not enter the bounded quick-setup command"
+            );
+        }
+    }
+
+    #[test]
+    fn atomic_quick_setup_command_is_registered_once() {
+        let library_source = include_str!("../lib.rs");
+        assert_eq!(
+            library_source
+                .matches("commands::apply_provider_quick_setup_with_result")
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn public_summary_rejects_id_or_name_containing_any_credential_source() {
+        let credential = "TEST-SECRET-PUBLIC-SUMMARY";
+        for source in ["settings", "meta", "toml"] {
+            let mut provider = Provider::with_id(
+                "safe-id".to_string(),
+                format!("prefix-{credential}-suffix"),
+                if source == "settings" {
+                    serde_json::json!({ "env": { "ANTHROPIC_AUTH_TOKEN": credential } })
+                } else if source == "toml" {
+                    serde_json::json!({ "config": format!("bearer_token = {credential:?}") })
+                } else {
+                    serde_json::json!({})
+                },
+                None,
+            );
+            if source == "meta" {
+                provider.meta = Some(
+                    serde_json::from_value(serde_json::json!({
+                        "usage_script": {
+                            "enabled": true, "language": "javascript", "code": "",
+                            "apiKey": credential
+                        }
+                    }))
+                    .unwrap(),
+                );
+            }
+            let error = provider_public_summary(&provider).unwrap_err();
+            assert!(!error.contains(credential));
+        }
+    }
+
+    #[test]
+    fn public_summary_serializes_only_id_and_name() {
+        let mut provider = Provider::with_id(
+            "safe-id".to_string(),
+            "Safe name".to_string(),
+            serde_json::json!({}),
+            Some("https://example.test/?token=secret".to_string()),
+        );
+        provider.category = Some("custom".to_string());
+        let serialized = serde_json::to_value(provider_public_summary(&provider).unwrap()).unwrap();
+        assert_eq!(
+            serialized,
+            serde_json::json!({ "id": "safe-id", "name": "Safe name" })
+        );
+    }
+
+    #[test]
+    fn public_summary_fails_closed_for_meta_credentials_headers_and_invalid_toml() {
+        let credential = "TEST-SECRET-META-SUMMARY";
+        for meta in [
+            serde_json::json!({
+                "usage_script": {
+                    "enabled": true, "language": "javascript", "code": "",
+                    "accessToken": credential, "accessKeyId": "another-secret",
+                    "secretAccessKey": "third-secret"
+                }
+            }),
+            serde_json::json!({
+                "localProxyRequestOverrides": {
+                    "headers": { "Cookie": credential, "Authorization": "other-secret" }
+                }
+            }),
+        ] {
+            let mut provider = Provider::with_id(
+                "safe-id".to_string(),
+                format!("prefix-{credential}-suffix"),
+                serde_json::json!({}),
+                None,
+            );
+            provider.meta = Some(serde_json::from_value(meta).unwrap());
+            let error = provider_public_summary(&provider).unwrap_err();
+            assert!(!error.contains(credential));
+        }
+
+        let provider = Provider::with_id(
+            "safe-id".to_string(),
+            "Safe name".to_string(),
+            serde_json::json!({ "config": "invalid = [ toml" }),
+            None,
+        );
+        assert_eq!(
+            provider_public_summary(&provider).unwrap_err(),
+            "Provider public summary is unavailable"
+        );
+    }
+
+    #[test]
+    fn public_summary_rejects_codex_and_claude_custom_header_credentials() {
+        let credential = "TEST-HEADER-CREDENTIAL";
+        for settings_config in [
+            serde_json::json!({
+                "config": format!(
+                    "[model_providers.custom]\nhttp_headers = {{ Authorization = {:?}, Cookie = {:?} }}\nenv_http_headers = {{ \"X-API-Key\" = {:?} }}",
+                    format!("Bearer {credential}"),
+                    format!("session={credential}"),
+                    credential,
+                )
+            }),
+            serde_json::json!({
+                "env": {
+                    "ANTHROPIC_CUSTOM_HEADERS": format!(
+                        "Cookie: session={credential}\nX-API-Key: {credential}"
+                    )
+                }
+            }),
+        ] {
+            let provider = Provider::with_id(
+                "safe-id".to_string(),
+                format!("prefix-{credential}-suffix"),
+                settings_config,
+                None,
+            );
+            let error = provider_public_summary(&provider).unwrap_err();
+            assert_eq!(error, "Provider public summary is unavailable");
+            assert!(!error.contains(credential));
+        }
+    }
+
+    #[test]
+    fn quick_setup_request_rejects_unknown_fields_and_empty_required_values() {
+        assert!(
+            serde_json::from_value::<ProviderQuickSetupRequest>(serde_json::json!({
+                "name": "Gateway", "baseUrl": "https://example.test/v1",
+                "apiKey": "key", "modelId": "model", "category": "official"
+            }))
+            .is_err()
+        );
+        let request: ProviderQuickSetupRequest = serde_json::from_value(serde_json::json!({
+            "name": " ", "baseUrl": "https://example.test/v1",
+            "apiKey": "key", "modelId": "model"
+        }))
+        .unwrap();
+        assert!(request.into_provider(&AppType::Codex).is_err());
+
+        for (name, model_id) in [
+            ("prefix-secret-key-suffix", "model-a"),
+            ("Gateway", "prefix-secret-key-suffix"),
+        ] {
+            let request: ProviderQuickSetupRequest = serde_json::from_value(serde_json::json!({
+                "name": name,
+                "baseUrl": "https://example.test/v1",
+                "apiKey": "secret-key",
+                "modelId": model_id
+            }))
+            .unwrap();
+            let error = request.into_provider(&AppType::Codex).unwrap_err();
+            assert!(!format!("{error:?}").contains("secret-key"));
+        }
+    }
+
+    #[test]
+    fn quick_setup_request_derives_the_fixed_provider_shape() {
+        let request: ProviderQuickSetupRequest = serde_json::from_value(serde_json::json!({
+            "name": " Gateway ", "baseUrl": " https://example.test/v1 ",
+            "apiKey": " secret-key ", "modelId": " model-a "
+        }))
+        .unwrap();
+        let provider = request.into_provider(&AppType::Codex).unwrap();
+        assert_eq!(provider.id, "fyagent-v2-quick-setup-codex");
+        assert_eq!(provider.name, "Gateway");
+        assert_eq!(provider.category.as_deref(), Some("custom"));
+        assert!(provider.meta.is_none());
+        assert!(!provider.in_failover_queue);
+        assert_eq!(
+            provider.settings_config["auth"]["OPENAI_API_KEY"],
+            "secret-key"
+        );
+    }
+
+    #[test]
+    fn quick_setup_request_writes_image_extension_and_websocket_features() {
+        let request: ProviderQuickSetupRequest = serde_json::from_value(serde_json::json!({
+            "name": "Gateway", "baseUrl": "https://example.test/v1",
+            "apiKey": "secret-key", "modelId": "model-a",
+            "codexFeatures": { "imageExtension": true, "websockets": true }
+        }))
+        .unwrap();
+        let provider = request.into_provider(&AppType::Codex).unwrap();
+        let config = provider.settings_config["config"].as_str().unwrap();
+        assert!(
+            config.contains("requires_openai_auth = false"),
+            "开启生图后 requires_openai_auth 应为 false，实际 config:\n{config}"
+        );
+        assert!(
+            config.contains(
+                "http_headers = { \"x-openai-actor-authorization\" = \"local-image-extension\" }"
+            ),
+            "开启生图后应写入生图 header，实际 config:\n{config}"
+        );
+        assert!(
+            config.contains("supports_websockets = true"),
+            "开启 WebSocket 后应写入 supports_websockets，实际 config:\n{config}"
+        );
+        assert_eq!(
+            provider
+                .meta
+                .as_ref()
+                .and_then(|meta| meta.image_extension_configured),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn quick_setup_request_disabling_image_keeps_requires_openai_auth_true() {
+        let request: ProviderQuickSetupRequest = serde_json::from_value(serde_json::json!({
+            "name": "Gateway", "baseUrl": "https://example.test/v1",
+            "apiKey": "secret-key", "modelId": "model-a",
+            "codexFeatures": { "imageExtension": false }
+        }))
+        .unwrap();
+        let provider = request.into_provider(&AppType::Codex).unwrap();
+        let config = provider.settings_config["config"].as_str().unwrap();
+        assert!(
+            config.contains("requires_openai_auth = true"),
+            "关闭生图后 requires_openai_auth 应保持 true，实际 config:\n{config}"
+        );
+        assert!(
+            !config.contains("http_headers"),
+            "关闭生图后不应写入生图 header，实际 config:\n{config}"
+        );
+        // 显式关闭也视为已完成迁移，阻止默认迁移重新开启生图
+        assert_eq!(
+            provider
+                .meta
+                .as_ref()
+                .and_then(|meta| meta.image_extension_configured),
+            Some(true)
+        );
+    }
+}
 
 #[cfg(test)]
 mod import_claude_desktop_tests {

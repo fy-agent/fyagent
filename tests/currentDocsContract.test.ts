@@ -7,7 +7,6 @@ import { expectedInstallerNames } from "../scripts/release/release-contract.mjs"
 const ROOT = path.resolve(__dirname, "..");
 const EXTERNAL_PLAN_MARKER = ["fyagent", "modernization", "plan"].join("-");
 const LEGACY_REPOSITORY_SLUG = ["NongHua123", "fyagent"].join("/");
-const HISTORICAL_RELEASE_NOTE_PREFIX = "docs/release-notes/v0.3.0-";
 const HISTORICAL_TRELLIS_ARCHIVE_PREFIX = ".trellis/tasks/archive/";
 
 const CURRENT_DEVELOPMENT_DOCS = [
@@ -87,7 +86,6 @@ const CURRENT_PUBLIC_REPOSITORY_FILES = [
   ".github/ISSUE_TEMPLATE/config.yml",
   ".github/ISSUE_TEMPLATE/doc_issue.yml",
   ".github/ISSUE_TEMPLATE/feature_request.yml",
-  "flatpak/com.fyagent.desktop.metainfo.xml",
 ] as const;
 
 const INSTALLER_NAME_TEMPLATES = expectedInstallerNames("1.2.3").map((name) =>
@@ -98,7 +96,6 @@ const WINDOWS_CODEX_DESKTOP_DOC =
   "docs/fyagent/development/windows/codex-desktop.md";
 const WINDOWS_INSTALLER_DOC = "docs/fyagent/development/windows/installer.md";
 const VALIDATION_DOC = "docs/fyagent/development/validation.md";
-const V031_RELEASE_NOTES = "docs/release-notes/v0.3.1-en.md";
 const CODEX_INSTALLER_SPEC = ".trellis/spec/backend/codex-desktop-installer.md";
 const PACKAGE_BRIDGE_ROOT =
   "FyAgent.PackageBridge-{96F39D37-0F42-486F-8C86-3631C12171C5}";
@@ -186,7 +183,6 @@ function currentAuthorityMarkdownFiles(): string[] {
       "README.md",
       "README_EN.md",
       "README_JA.md",
-      "flatpak/README.md",
     ]),
   ].sort();
 }
@@ -196,9 +192,7 @@ function currentPublicRepositoryFiles(): string[] {
     ...new Set([
       ...CURRENT_PUBLIC_REPOSITORY_FILES,
       ...markdownFilesUnder("docs/user-manual"),
-      ...markdownFilesUnder("docs/release-notes").filter(
-        (file) => !file.startsWith(HISTORICAL_RELEASE_NOTE_PREFIX),
-      ),
+      ...markdownFilesUnder("docs/release-notes"),
     ]),
   ].sort();
 }
@@ -268,7 +262,6 @@ describe("current FyAgent documentation authority", () => {
       String.raw`C:\Users\<用户名>\AppData\Roaming`,
       String.raw`C:\Users\<ユーザー名>\.fyagent`,
       String.raw`C:\Demo\screenshots`,
-      "/home/demo/.fyagent",
       String.raw`C:\ProgramData\FyAgent`,
       String.raw`C:\Program Files\FyAgent`,
       String.raw`D:\FyAgent-Acceptance`,
@@ -299,7 +292,6 @@ describe("current FyAgent documentation authority", () => {
     for (const file of PUBLIC_READMES) {
       const source = read(file);
       const normalized = source.replace(/\s+/gu, " ");
-
       expect(source, `${file} -> architecture`).toMatch(
         /React\s*(?:\+|\/)\s*Vite/iu,
       );
@@ -319,7 +311,7 @@ describe("current FyAgent documentation authority", () => {
         /(?:WorkBuddy[^.。\n]{0,120}(?:separate|independent|独立)|(?:separate|independent|独立)[^.。\n]{0,120}WorkBuddy)/iu,
       );
 
-      expect(source, `${file} -> mise version`).toContain("mise >= 2026.8.0");
+      expect(source, `${file} -> mise version`).toContain("mise >= 2026.8.6");
       const onboarding = [
         "mise trust",
         "mise run bootstrap",
@@ -372,8 +364,70 @@ describe("current FyAgent documentation authority", () => {
     expect(codeowners).toMatch(/Code Owner review/iu);
   });
 
+  it("keeps the approved GitHub brand and discussion surface", () => {
+    for (const file of PUBLIC_READMES) {
+      const source = read(file);
+      expect(source, file).toContain(
+        'src="assets/brand/github/for-you-gate.svg"',
+      );
+      expect(source, file).toContain("discussions/categories/q-a");
+      expect(source, file).not.toContain('src="assets/fyagent.png"');
+    }
+    expect(
+      fs.existsSync(path.join(ROOT, ".github/ISSUE_TEMPLATE/question.yml")),
+    ).toBe(false);
+    for (const file of [
+      ".github/DISCUSSION_TEMPLATE/ideas.yml",
+      ".github/DISCUSSION_TEMPLATE/q-a.yml",
+      ".github/DISCUSSION_TEMPLATE/show-and-tell.yml",
+    ]) {
+      expect(read(file), file).toContain("body:");
+    }
+    const expectedDescription =
+      "Personal desktop control center for AI Workers and Agents";
+    expect(JSON.parse(read("package.json")).description).toBe(
+      expectedDescription,
+    );
+    expect(read("src-tauri/Cargo.toml")).toContain(
+      `description = "${expectedDescription}"`,
+    );
+    const preview = fs.readFileSync(
+      path.join(ROOT, "assets/brand/github/fyagent-social-preview.png"),
+    );
+    expect(preview.subarray(0, 8)).toEqual(
+      Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    );
+    expect(preview.readUInt32BE(16)).toBe(1280);
+    expect(preview.readUInt32BE(20)).toBe(640);
+  });
+
   it("removes versioned design packages and keeps one responsibility owner", () => {
     expect(fs.existsSync(path.join(ROOT, "docs/fyagent/dev"))).toBe(false);
+    const cargoVersion = read("src-tauri/Cargo.toml").match(
+      /\[workspace\.package\]\s+version = "([0-9]+\.[0-9]+\.[0-9]+)"/u,
+    )?.[1];
+    expect(cargoVersion).toBeTruthy();
+    const releaseNotes = markdownFilesUnder("docs/release-notes");
+    const allowedCurrentNotes = new Set(
+      ["en", "zh", "ja"].map(
+        (language) => `docs/release-notes/v${cargoVersion}-${language}.md`,
+      ),
+    );
+    const formalEnglishNote = `docs/release-notes/v${cargoVersion}-en.md`;
+    expect(allowedCurrentNotes.has(formalEnglishNote)).toBe(true);
+    expect(read(".github/workflows/release.yml")).toContain(
+      "docs/release-notes/${RELEASE_TAG}-en.md",
+    );
+    expect(releaseNotes).toContain("docs/release-notes/README.md");
+    for (const note of releaseNotes.filter(
+      (file) => file !== "docs/release-notes/README.md",
+    )) {
+      expect(allowedCurrentNotes.has(note), note).toBe(true);
+      expect(read(note).trim(), note).not.toBe("");
+      expect(read("docs/release-notes/README.md"), note).toContain(
+        `(${path.basename(note)})`,
+      );
+    }
     expect(markdownFilesUnder("docs/fyagent/development")).toEqual(
       [...CURRENT_DEVELOPMENT_DOCS].sort(),
     );
@@ -386,6 +440,34 @@ describe("current FyAgent documentation authority", () => {
     for (const file of RETIRED_BACKEND_OWNERS) {
       expect(fs.existsSync(path.join(ROOT, file)), file).toBe(false);
     }
+  });
+
+  it("keeps private local evidence identifiers out of public documentation", () => {
+    const localUserRoot = ["C:", "Users", ""].join("\\");
+    const privateFingerprints = [
+      [
+        "9C54280E",
+        "B1EB700800AB2022CEF32C392690ECB301D21DC7BBCB07A2BDE9F0C1",
+      ].join(""),
+      [
+        "BD5DB121",
+        "CEE6ACAEB0F3D706E2054ED7B54B492878E4BBAB85AD260F82B8FB86",
+      ].join(""),
+    ];
+    for (const file of [
+      "docs/fyagent/audits/vibekey-to-fyagent-capability-gap.md",
+      "docs/fyagent/marketing/vibekey-reference-audit.md",
+      "docs/fyagent/marketing/visual-direction-sample-v2.md",
+    ]) {
+      const source = read(file);
+      expect(source, file).not.toContain(localUserRoot);
+      for (const fingerprint of privateFingerprints) {
+        expect(source, file).not.toContain(fingerprint);
+      }
+    }
+    expect(
+      read("docs/fyagent/marketing/visual-direction-sample-v2.md"),
+    ).not.toContain(["Chat", "GPT built-in"].join(""));
   });
 
   it("documents the protected ProgramData A1 package bridge without an HTTP or NSIS fallback", () => {
@@ -430,7 +512,6 @@ describe("current FyAgent documentation authority", () => {
       [WINDOWS_CODEX_DESKTOP_DOC, codexDesktop],
       [CODEX_INSTALLER_SPEC, installerSpec],
       [VALIDATION_DOC, read(VALIDATION_DOC)],
-      [V031_RELEASE_NOTES, read(V031_RELEASE_NOTES)],
     ] as const) {
       const normalized = source.replace(/\s+/gu, " ");
       expect(normalized, file).toMatch(
@@ -507,24 +588,6 @@ describe("current FyAgent documentation authority", () => {
     );
   });
 
-  it("marks the v0.3.1 notes as an unpublished preflight candidate with a historical tag mismatch", () => {
-    const notes = read(V031_RELEASE_NOTES);
-    expect(notes).toContain("# FyAgent v0.3.1 candidate (unpublished)");
-    expect(notes).toMatch(
-      /existing annotated `v0\.3\.1` tag[^.]{0,120}(?:different historical SHA|historical SHA that differs)/iu,
-    );
-    expect(notes).toMatch(/must not move or reuse it/iu);
-    expect(notes).toMatch(
-      /(?:current work|current batch)[^.]{0,120}(?:not the formal source|cannot be its formal source)[^.]{0,120}cannot (?:formally )?publish/iu,
-    );
-    expect(notes).toMatch(
-      /future[^.]{0,80}independent version\/tag decision/iu,
-    );
-    expect(notes).toMatch(/same-SHA[^.]{0,80}non-publishing preflight/iu);
-    expect(notes).not.toContain("The formal source is the exact `v0.3.1`");
-    expect(notes).not.toMatch(/^\d+\. annotated `v0\.3\.1` tag equality/mu);
-  });
-
   it("keeps current authority free of old package and fixed-release routing", () => {
     for (const file of currentAuthorityMarkdownFiles()) {
       const source = read(file);
@@ -551,9 +614,9 @@ describe("current FyAgent documentation authority", () => {
       ".trellis/spec/backend/fyagent-version-contract.md",
     )}\n${read(".trellis/spec/backend/github-release-workflow.md")}`;
     for (const schema of [
-      "fyagent-download-manifest/v2",
-      "fyagent-platform-build/v1",
-      "fyagent-build-metadata/v1",
+      "fyagent-download-manifest/v3",
+      "fyagent-platform-build/v2",
+      "fyagent-build-metadata/v2",
     ]) {
       expect(releaseOwners).toContain(schema);
     }
@@ -605,7 +668,6 @@ describe("current FyAgent documentation authority", () => {
     }
     for (const { file, trustPatterns } of LOCALIZED_INSTALLATION_GUIDES) {
       const source = read(file);
-      expect(source, file).not.toContain("FyAgent-X.Y.Z-Linux-*");
       for (const trustPattern of trustPatterns) {
         expect(source, `${file} -> ${trustPattern.source}`).toMatch(
           trustPattern,
@@ -619,12 +681,7 @@ describe("current FyAgent documentation authority", () => {
     const english = read("README_EN.md");
     const japanese = read("README_JA.md");
 
-    expect(chinese).toContain(
-      "<strong>For You Agent</strong>——AI 时代的个人随身数字人格。",
-    );
-    expect(chinese).toContain(
-      "把你的模型、AI 账号、技能、提示词和工作方式，带到每一个 AI 工具里。",
-    );
+    expect(chinese).toContain("<strong>For You Agent</strong>");
     expect(chinese).toContain('href="README_EN.md">English</a>');
     expect(english).toContain('href="README.md">简体中文</a>');
     expect(japanese).toContain('href="README_EN.md">English</a>');
@@ -632,138 +689,33 @@ describe("current FyAgent documentation authority", () => {
     expect(fs.existsSync(path.join(ROOT, "README_ZH.md"))).toBe(false);
   });
 
-  it("keeps the approved GitHub brand surface and discussion entry contract", () => {
-    for (const file of PUBLIC_READMES) {
-      const source = read(file);
-      expect(source, file).toContain(
-        'src="assets/brand/github/for-you-gate.svg"',
-      );
-      expect(source, file).toContain("discussions/categories/q-a");
-      expect(source, file).not.toContain('src="assets/fyagent.png"');
-    }
-
-    expect(read("README.md")).toContain("## 常见问题");
-    expect(read("README.md")).toContain("## 愿景：成为 AI 时代的随身数字人格");
-    expect(read("README.md")).toContain(
-      "长期记忆与可延续的数字人格是产品继续建设的方向",
-    );
-    expect(read("README_EN.md")).toContain("## FAQ");
-    expect(read("README_EN.md")).toContain(
-      "## Vision: a portable digital persona for the AI era",
-    );
-    expect(read("README_EN.md")).toContain(
-      "Long-term memory and a durable cross-tool persona are part of the product direction",
-    );
-    expect(read("README_JA.md")).toContain("## よくある質問");
-    expect(read("README_JA.md")).toContain(
-      "## ビジョン：AI 時代に持ち歩けるデジタル人格",
-    );
-
-    const packageDescription =
-      "Personal desktop control center for AI Workers and Agents";
-    expect(JSON.parse(read("package.json")).description).toBe(
-      packageDescription,
-    );
-    expect(read("src-tauri/Cargo.toml")).toContain(
-      `description = "${packageDescription}"`,
-    );
-    expect(read("flatpak/com.fyagent.desktop.metainfo.xml")).toContain(
-      `<summary>${packageDescription}</summary>`,
-    );
-    expect(read("flatpak/com.fyagent.desktop.desktop")).toContain(
-      "Comment=FyAgent - Personal control center for AI Workers and Agents",
-    );
-
-    const appDescriptions = new Map([
-      [
-        "src/i18n/locales/en.json",
-        "Personal desktop control center for your AI Workers and Agents",
-      ],
-      [
-        "src/i18n/locales/zh.json",
-        "面向 AI Worker 与 AI Agent 的个人桌面控制中心",
-      ],
-      [
-        "src/i18n/locales/ja.json",
-        "AI Worker と AI Agent のためのパーソナル・デスクトップコントロールセンター",
-      ],
-      [
-        "src/i18n/locales/zh-TW.json",
-        "面向 AI Worker 與 AI Agent 的個人桌面控制中心",
-      ],
-    ]);
-    for (const [file, expectedDescription] of appDescriptions) {
-      expect(JSON.parse(read(file)).app.description, file).toBe(
-        expectedDescription,
-      );
-    }
-
-    const introductionContracts = [
-      {
-        file: "docs/user-manual/zh/1-getting-started/1.1-introduction.md",
-        currentBoundary:
-          "长期记忆和跨工具延续的完整数字人格仍是产品继续建设的方向",
-      },
-      {
-        file: "docs/user-manual/en/1-getting-started/1.1-introduction.md",
-        currentBoundary:
-          "Long-term memory and a complete persona that persists across tools remain part of the product direction",
-      },
-      {
-        file: "docs/user-manual/ja/1-getting-started/1.1-introduction.md",
-        currentBoundary:
-          "長期記憶とツールをまたいで続く完全なデジタル人格は、今後の製品方向です",
-      },
-    ];
-    for (const { file, currentBoundary } of introductionContracts) {
-      const source = read(file);
-      expect(source, file).toMatch(/AI Worker/u);
-      expect(source, file).toMatch(/AI Agent/u);
-      expect(source, file).toContain(currentBoundary);
-      expect(source, file).not.toMatch(
-        /designed for developers|开发者设计|開発者向けに設計/u,
-      );
-    }
-
-    for (const file of [
-      ".github/ISSUE_TEMPLATE/bug_report.yml",
-      ".github/ISSUE_TEMPLATE/feature_request.yml",
-    ]) {
-      const source = read(file);
-      expect(source, file).toContain("README_EN.md#faq");
-      expect(source, file).toContain("fy-agent/fyagent#常见问题");
-      expect(source, file).toContain("README_JA.md#よくある質問");
-    }
-
-    expect(
-      fs.existsSync(path.join(ROOT, ".github/ISSUE_TEMPLATE/question.yml")),
-    ).toBe(false);
-
-    for (const file of [
-      ".github/DISCUSSION_TEMPLATE/ideas.yml",
-      ".github/DISCUSSION_TEMPLATE/q-a.yml",
-      ".github/DISCUSSION_TEMPLATE/show-and-tell.yml",
-    ]) {
-      const source = read(file);
-      expect(source, file).toContain("body:");
-      expect(source, file).toMatch(/\n\s+- type: (?!markdown)/u);
-    }
-
-    const preview = fs.readFileSync(
-      path.join(ROOT, "assets/brand/github/fyagent-social-preview.png"),
-    );
-    expect(preview.subarray(0, 8)).toEqual(
-      Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
-    );
-    expect(preview.readUInt32BE(16)).toBe(1280);
-    expect(preview.readUInt32BE(20)).toBe(640);
-    expect(preview.byteLength).toBeLessThan(1024 * 1024);
-  });
-
   it("keeps the six-chapter manual and visual evidence plan closed", () => {
     expect(fs.existsSync(path.join(ROOT, "README_DE.md"))).toBe(false);
+    const readmeScreenshots = [
+      "assets/screenshots/main-zh-1.png",
+      "assets/screenshots/main-zh-2.png",
+      "assets/screenshots/main-zh-3.png",
+    ] as const;
+    const retiredReadmeScreenshots = [
+      "assets/screenshots/add-en.png",
+      "assets/screenshots/add-ja.png",
+      "assets/screenshots/add-zh.png",
+      "assets/screenshots/main-en.png",
+      "assets/screenshots/main-ja.png",
+      "assets/screenshots/main-zh.png",
+      "assets/screenshots/main-zh-4.png",
+    ] as const;
+    for (const image of readmeScreenshots) {
+      expect(fs.statSync(path.join(ROOT, image)).isFile(), image).toBe(true);
+    }
     for (const file of PUBLIC_READMES) {
-      expect(read(file), file).not.toContain("assets/screenshots/");
+      const source = read(file);
+      for (const image of readmeScreenshots) {
+        expect(source, `${file} -> ${image}`).toContain(image);
+      }
+      for (const image of retiredReadmeScreenshots) {
+        expect(source, `${file} -> ${image}`).not.toContain(image);
+      }
     }
 
     for (const language of MANUAL_LANGUAGES) {

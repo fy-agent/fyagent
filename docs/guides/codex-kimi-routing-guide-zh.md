@@ -104,9 +104,9 @@ Kimi、DeepSeek、MiniMax、SiliconFlow 等常见 Chat 格式供应商在 FyAgen
 
 ## 参考链接
 
-- [FyAgent 用户手册：添加供应商](../user-manual/zh/2-providers/2.1-add.md)
-- [FyAgent 用户手册：代理服务](../user-manual/zh/4-proxy/4.1-service.md)
-- [FyAgent 用户手册：应用路由](../user-manual/zh/4-proxy/4.2-routing.md)
+- [FyAgent 用户手册：添加供应商](../user-manual/zh/3-providers/3.1-add.md)
+- [FyAgent 用户手册：代理服务](../user-manual/zh/5-proxy/5.1-service.md)
+- [FyAgent 用户手册：应用路由](../user-manual/zh/5-proxy/5.2-routing.md)
 - [Kimi 开放平台：在编程工具中使用 Kimi K2.7 Code 模型](https://platform.kimi.com/docs/guide/agent-support)
 - [Kimi Code 文档：概览](https://www.kimi.com/code/docs/)
 - [Kimi Code 文档：在第三方 Coding Agent 中使用](https://www.kimi.com/code/docs/third-party-tools/other-coding-agents.html)

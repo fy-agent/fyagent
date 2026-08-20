@@ -20,6 +20,54 @@ const ROOT = path.resolve(__dirname, "..");
 const read = (relative: string) =>
   fs.readFileSync(path.join(ROOT, relative), "utf8").replace(/\r\n/g, "\n");
 
+const eslintPunycodeGraph = ({
+  eslintVersion = "10.8.1",
+  ajvVersion = "6.15.0",
+  uriJsVersion = "4.4.1",
+  punycodeVersion = "2.3.1",
+  insertIntermediate = false,
+} = {}) => {
+  const uriJs = {
+    from: "uri-js",
+    version: uriJsVersion,
+    dependencies: {
+      punycode: { from: "punycode", version: punycodeVersion },
+    },
+  };
+  return [
+    {
+      name: "fyagent",
+      devDependencies: {
+        "lint-wrapper": {
+          from: "lint-wrapper",
+          version: "1.0.0",
+          dependencies: {
+            eslint: {
+              from: "eslint",
+              version: eslintVersion,
+              dependencies: {
+                ajv: {
+                  from: "ajv",
+                  version: ajvVersion,
+                  dependencies: insertIntermediate
+                    ? {
+                        bridge: {
+                          from: "bridge",
+                          version: "1.0.0",
+                          dependencies: { "uri-js": uriJs },
+                        },
+                      }
+                    : { "uri-js": uriJs },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  ];
+};
+
 describe("DEP0040 dependency and deprecation contract", () => {
   it("requires the pinned Node runtime and its unmarked native Web APIs", () => {
     expect(validateRuntime(ROOT)).toMatchObject({
@@ -134,7 +182,7 @@ describe("DEP0040 dependency and deprecation contract", () => {
   });
 
   it("constructs reverse paths and rejects the historical dependency chain", () => {
-    const allowed = analyzeWhyGraph([
+    const jsdomGraph = [
       {
         name: "fyagent",
         devDependencies: {
@@ -159,9 +207,25 @@ describe("DEP0040 dependency and deprecation contract", () => {
           },
         },
       },
-    ]);
+    ];
+    const allowed = analyzeWhyGraph(jsdomGraph);
     expect(allowed.map((entry: { path: string }) => entry.path)).toContain(
       "fyagent -> jsdom@25.0.1 -> whatwg-url@14.2.0 -> tr46@5.1.1 -> punycode@2.3.1",
+    );
+
+    const allowedEslint = analyzeWhyGraph(eslintPunycodeGraph());
+    expect(
+      allowedEslint.map((entry: { path: string }) => entry.path),
+    ).toContain(
+      "fyagent -> lint-wrapper@1.0.0 -> eslint@10.8.1 -> ajv@6.15.0 -> uri-js@4.4.1 -> punycode@2.3.1",
+    );
+
+    const wrongJsdomPunycode = structuredClone(jsdomGraph);
+    wrongJsdomPunycode[0].devDependencies.jsdom.dependencies[
+      "whatwg-url"
+    ].dependencies.tr46.dependencies.punycode.version = "2.3.2";
+    expect(() => analyzeWhyGraph(wrongJsdomPunycode)).toThrow(
+      "Unexpected watched dependency paths remain",
     );
     expect(
       reconcileLockAndWhy(
@@ -191,6 +255,41 @@ describe("DEP0040 dependency and deprecation contract", () => {
     expect(() => analyzeWhyGraph(obsolete)).toThrow(
       "Obsolete DEP0040 reverse paths remain",
     );
+
+    for (const graph of [
+      eslintPunycodeGraph({ eslintVersion: "10.8.2" }),
+      eslintPunycodeGraph({ ajvVersion: "6.15.1" }),
+      eslintPunycodeGraph({ uriJsVersion: "4.4.2" }),
+      eslintPunycodeGraph({ punycodeVersion: "2.3.2" }),
+      eslintPunycodeGraph({ insertIntermediate: true }),
+    ]) {
+      expect(() => analyzeWhyGraph(graph)).toThrow(
+        "Unexpected watched dependency paths remain",
+      );
+    }
+
+    expect(() =>
+      analyzeWhyGraph([
+        {
+          name: "fyagent",
+          devDependencies: {
+            eslint: {
+              from: "eslint",
+              version: "10.8.1",
+              dependencies: {
+                "uri-js": {
+                  from: "uri-js",
+                  version: "4.4.1",
+                  dependencies: {
+                    punycode: { from: "punycode", version: "2.3.1" },
+                  },
+                },
+              },
+            },
+          },
+        },
+      ]),
+    ).toThrow("Unexpected watched dependency paths remain");
 
     expect(() =>
       analyzeWhyGraph([

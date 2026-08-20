@@ -282,7 +282,7 @@ mod tests {
         assert!(!debug.contains(NONCE));
     }
 
-    #[cfg(unix)]
+    #[cfg(target_os = "macos")]
     #[test]
     fn rejects_non_unicode_arguments() {
         use std::os::unix::ffi::OsStringExt;

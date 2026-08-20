@@ -65,7 +65,7 @@ def cmd_add_context(args: argparse.Namespace) -> int:
     path = args.path
     reason = args.reason or "Added manually"
 
-    if not target_dir.is_dir():
+    if not target_dir or not target_dir.is_dir():
         print(colored(f"Error: Directory not found: {target_dir}", Colors.RED))
         return 1
 
@@ -115,7 +115,7 @@ def cmd_validate(args: argparse.Namespace) -> int:
     repo_root = get_repo_root()
     target_dir = resolve_task_dir(args.dir, repo_root)
 
-    if not target_dir.is_dir():
+    if not target_dir or not target_dir.is_dir():
         print(colored("Error: task directory required", Colors.RED))
         return 1
 
@@ -323,7 +323,7 @@ def cmd_list_context(args: argparse.Namespace) -> int:
     repo_root = get_repo_root()
     target_dir = resolve_task_dir(args.dir, repo_root)
 
-    if not target_dir.is_dir():
+    if not target_dir or not target_dir.is_dir():
         print(colored("Error: task directory required", Colors.RED))
         return 1
 

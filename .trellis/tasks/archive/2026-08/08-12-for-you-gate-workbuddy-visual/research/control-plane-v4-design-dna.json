@@ -1,0 +1,178 @@
+{
+  "meta": {
+    "name": "FyAgent Deep Blue-Gray Frosted Control Plane v4",
+    "description": "Reference-faithful dark blue-gray frosted-glass desktop control plane grounded in current FyAgent frontend data contracts.",
+    "source_references": [
+      "codex-clipboard-52e78e56-52ae-4024-af11-8438601c15f9.png",
+      "02-models-v3.png",
+      "v4-calibration-model-a.png"
+    ],
+    "created_at": "2026-08-12"
+  },
+  "design_system": {
+    "color": {
+      "palette_type": "cool blue-gray monochromatic with restrained cyan and amber semantics",
+      "primary": { "hex": "#1763AE", "role": "the single primary action and first-level selected state" },
+      "secondary": { "hex": "#59C9D1", "role": "active connection or current-state signal only" },
+      "accent": { "hex": "#D89A32", "role": "warning and unchecked state only" },
+      "neutral": {
+        "scale": ["#111F2E", "#172D43", "#1D374D", "#213F56", "#27465E", "#7189A0", "#A9BDCF", "#D1DDE8", "#F5F8FC"],
+        "usage": "deep blue-gray canvas and panes with warm off-white text; no pure black or pure white"
+      },
+      "semantic": { "success": "#59C9D1", "warning": "#D89A32", "error": "#D96B72", "info": "#70BEFF" },
+      "surface": {
+        "background": "#172D43",
+        "shell": "rgba(29,55,77,.74)",
+        "pane": "rgba(39,70,94,.74)",
+        "paneStrong": "rgba(33,63,86,.86)",
+        "control": "rgba(72,103,130,.30)"
+      },
+      "text": { "primary": "#F5F8FC", "secondary": "#D1DDE8", "tertiary": "#A9BDCF", "disabled": "#7189A0" },
+      "contrast_strategy": "primary, secondary, and tertiary text remain WCAG AA over their opaque surface fallbacks; borders stay dimmer than text"
+    },
+    "typography": {
+      "type_scale": {
+        "heading_1": { "size": "30px", "weight": 650, "line_height": "38px", "tracking": "-0.015em" },
+        "heading_2": { "size": "20px", "weight": 600, "line_height": "28px", "tracking": "-0.01em" },
+        "heading_3": { "size": "16px", "weight": 600, "line_height": "22px", "tracking": "0" },
+        "list_row": { "size": "15px", "weight": 600, "line_height": "20px", "tracking": "0" },
+        "body": { "size": "14px", "weight": 400, "line_height": "21px", "tracking": "0" },
+        "button": { "size": "14px", "weight": 600, "line_height": "20px", "tracking": "0" },
+        "label": { "size": "12px", "weight": 600, "line_height": "16px", "tracking": "0.01em" }
+      },
+      "font_families": {
+        "heading": "SF Pro Display, PingFang SC, Segoe UI Variable, Microsoft YaHei UI, sans-serif",
+        "body": "SF Pro Text, PingFang SC, Segoe UI Variable, Microsoft YaHei UI, sans-serif",
+        "mono": "SFMono-Regular, Cascadia Code, JetBrains Mono, monospace"
+      },
+      "font_style_notes": "native cross-platform desktop rhythm; only 400, 600, and 650 weights; no body text below 14px"
+    },
+    "spacing": {
+      "base_unit": "4px",
+      "scale": ["4px", "8px", "12px", "16px", "20px", "24px", "32px", "40px", "48px", "64px"],
+      "content_density": "comfortable operational",
+      "section_rhythm": "20px shell inset, 16px pane gap, 20px pane padding, 56–64px list rows"
+    },
+    "layout": {
+      "grid_system": "shared desktop shell with a 240px object list, fluid workspace, and 280px inspector",
+      "max_content_width": "16:10 desktop viewport",
+      "columns": "240 / minmax(0,1fr) / 280",
+      "gutter": "16px",
+      "breakpoints": ["1024px", "1280px", "1440px"],
+      "alignment_tendency": "strict left alignment, centered first-level navigation, inspector fixed to the right"
+    },
+    "shape": {
+      "border_radius": { "small": "6px", "control": "10px", "row": "12px", "pane": "16px", "shell": "22px", "pill": "9999px" },
+      "border_usage": "rgba(206,224,240,.18) for normal panes; #70BEFF only on the current row/focus",
+      "divider_style": "rgba(216,232,244,.18) hairlines inside continuous lists and tables"
+    },
+    "elevation": {
+      "shadow_style": "soft deep-blue shadow plus one top inner highlight",
+      "levels": {
+        "low": "0 4px 16px rgba(4,16,30,.18)",
+        "medium": "0 10px 32px rgba(4,16,30,.24)",
+        "high": "0 20px 64px rgba(4,16,30,.36)"
+      },
+      "depth_cues": "canvas, shell, pane, and strong field surfaces; never nested blur on every row"
+    },
+    "iconography": {
+      "style": "functional rounded outline icons plus the filled cyan Y mark",
+      "stroke_weight": "1.75px",
+      "size_scale": ["16px", "18px", "20px", "40px", "56px"],
+      "preferred_set": "existing FyAgent provider/application icons and Lucide-style controls"
+    },
+    "motion": {
+      "easing": "cubic-bezier(.2,.8,.2,1)",
+      "duration_scale": { "micro": "120ms", "normal": "180ms", "macro": "260ms" },
+      "entrance_pattern": "none in static prototype",
+      "exit_pattern": "none in static prototype",
+      "philosophy": "quiet, functional, and reduced-motion compatible"
+    },
+    "components": {
+      "button_style": "40px solid signal-blue primary pill; 36–40px translucent outlined secondary controls",
+      "input_style": "deep paneStrong field, one subtle border, off-white value and visible placeholder hierarchy",
+      "card_style": "one pane per functional region; list rows remain continuous rather than floating cards",
+      "navigation_pattern": "six-item 40px capsule; active item uses #1967B5",
+      "modal_style": "deeper #172F43 surface with the same field hierarchy",
+      "list_style": "56–64px contiguous rows with divider; selected row #245A88 and #70BEFF edge",
+      "inspector_style": "single darker right pane with status at top, context in the middle, actions near the bottom",
+      "window_controls": "Windows 46x40 controls at upper-right; macOS native transparent/vibrancy titlebar outside shared content"
+    }
+  },
+  "design_style": {
+    "aesthetic": {
+      "mood": ["calm", "trusted", "technical", "deep"],
+      "visual_metaphor": "a controlled glass instrument panel suspended over deep blue atmosphere",
+      "era_influence": "contemporary native desktop productivity software",
+      "genre": "AI developer tool / operations console",
+      "personality_traits": ["precise", "restrained", "capable", "honest"],
+      "adjectives": ["graphite", "blue-gray", "frosted", "signal-driven"]
+    },
+    "visual_language": {
+      "complexity": "moderate operational",
+      "ornamentation": "very low; ambient fog and inner highlights only",
+      "whitespace_usage": "compact continuous lists and generous central working surfaces",
+      "visual_weight_distribution": "navigation and left selection lead into one central task, with a quieter right inspector",
+      "focal_strategy": "one selected navigation item, one selected row, and one primary action",
+      "contrast_level": "high text contrast over medium-low surface contrast",
+      "texture_usage": "frosted blur without grain, particles, or decorative noise"
+    },
+    "composition": {
+      "hierarchy_method": "surface depth, type scale, dividers, and restrained signal color",
+      "balance_type": "stable three-pane operational balance",
+      "flow_direction": "top navigation, left selection, center edit/inspect, right state/actions",
+      "grouping_strategy": "real object fields and states, not generic capability cards",
+      "negative_space_role": "protects the main work area and separates state from edit controls"
+    },
+    "imagery": {
+      "photo_treatment": "none",
+      "illustration_style": "none; only real application/provider marks",
+      "graphic_elements": "Y gate identity, hairline dividers, subtle ambient fog",
+      "pattern_usage": "none",
+      "image_shape": "not applicable"
+    },
+    "interaction_feel": {
+      "feedback_style": "selection tint, focus edge, switch state, and concise status pill",
+      "hover_behavior": "small surface-brightness increase without scale",
+      "transition_personality": "soft and quick",
+      "loading_style": "small inline spinner where existing operations load",
+      "microinteraction_density": "low"
+    },
+    "brand_voice_in_ui": {
+      "tone": "short, factual Chinese",
+      "formality": "professional and familiar",
+      "cta_style": "plain imperative",
+      "empty_state_approach": "state the missing object and the next real action",
+      "error_tone": "local, factual, and recoverable"
+    }
+  },
+  "visual_effects": {
+    "overview": {
+      "effect_intensity": "subtle",
+      "performance_tier": "lightweight",
+      "fallback_strategy": "opaque #1D374D shell, #27465E panes, and #213F56 fields with unchanged hierarchy",
+      "primary_technology": "CSS backdrop-filter, alpha surfaces, and restrained gradients"
+    },
+    "background_effects": {
+      "type": "low-frequency blue-gray ambient fog",
+      "description": "one faint top-left blue field and a darker bottom-right field; never a saturated marketing gradient",
+      "technology": "CSS radial gradients",
+      "params": { "color_palette": ["#365878", "#223C55", "#172D43"], "speed": "0", "density": "low", "opacity": ".28", "blend_mode": "normal" }
+    },
+    "particle_systems": { "enabled": false, "type": "none", "description": "No particles.", "technology": "none", "params": {} },
+    "3d_elements": { "enabled": false, "type": "none", "description": "No 3D decoration in operational pages.", "technology": "none", "params": {} },
+    "shader_effects": { "enabled": false, "type": "none", "description": "No shaders.", "technology": "none", "params": {} },
+    "scroll_effects": { "parallax": { "enabled": false, "layers": 0, "depth_range": "0", "speed_curve": "none" }, "scroll_triggered_animations": { "enabled": false, "trigger_points": [], "animation_type": "none", "scrub_behavior": "none" }, "scroll_morphing": { "enabled": false, "description": "none" } },
+    "text_effects": { "type": "none", "description": "Static high-contrast typography.", "technology": "CSS", "params": {} },
+    "cursor_effects": { "enabled": false, "type": "native", "description": "Native pointer and text cursor.", "params": {} },
+    "image_effects": { "type": "none", "description": "No decorative image treatment.", "technology": "none", "params": {} },
+    "glassmorphism_neumorphism": {
+      "enabled": true,
+      "style": "dark blue-gray frosted glass",
+      "params": { "blur_radius": "shell 28px, pane 18px, popover 32px", "transparency": ".14–.30 against opaque fallbacks", "border_treatment": "one low-alpha blue-white hairline and a top inner highlight", "shadow_type": "soft deep-blue", "light_source_angle": "top-left" }
+    },
+    "canvas_drawings": { "enabled": false, "type": "none", "description": "No canvas drawing.", "technology": "none", "params": {} },
+    "svg_animations": { "enabled": false, "type": "none", "description": "No SVG animation.", "params": {} },
+    "composite_notes": "The reference's darker blue glass is combined with v3's three-pane information architecture. Material depth supports the data hierarchy; it is not applied to every row as decoration."
+  }
+}

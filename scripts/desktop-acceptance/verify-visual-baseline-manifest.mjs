@@ -13,7 +13,7 @@ const manifestPath = path.join(
 );
 const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
 const expectedLocales = ["en", "ja", "zh", "zh-TW"];
-const expectedPlatforms = ["windows", "macos", "linux"];
+const expectedPlatforms = ["windows", "macos"];
 const expectedScales = [100, 125, 150];
 
 function requireCondition(condition, message) {

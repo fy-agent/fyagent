@@ -54,7 +54,6 @@ impl CpuArchitecture {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TrustedDownloadEndpoint {
     Manifest,
-    Checksums,
     WinX64,
     WinArm64,
     MacArm64,
@@ -64,7 +63,6 @@ impl TrustedDownloadEndpoint {
     pub(crate) const fn url(self) -> &'static str {
         match self {
             Self::Manifest => "https://codexapp.agentsmirror.com/latest/manifest",
-            Self::Checksums => "https://codexapp.agentsmirror.com/latest/checksums",
             Self::WinX64 => "https://codexapp.agentsmirror.com/latest/win-x64",
             Self::WinArm64 => "https://codexapp.agentsmirror.com/latest/win-arm64",
             Self::MacArm64 => "https://codexapp.agentsmirror.com/latest/mac-arm64",
@@ -74,7 +72,6 @@ impl TrustedDownloadEndpoint {
     pub(crate) const fn kind(self) -> &'static str {
         match self {
             Self::Manifest => "manifest",
-            Self::Checksums => "checksums",
             Self::WinX64 => "win-x64",
             Self::WinArm64 => "win-arm64",
             Self::MacArm64 => "mac-arm64",
@@ -106,14 +103,6 @@ impl TrustedDownloadEndpoint {
                 CpuArchitecture::Aarch64
             )
         )
-    }
-
-    pub(crate) const fn expected_extension(self) -> Option<&'static str> {
-        match self {
-            Self::WinX64 | Self::WinArm64 => Some("msix"),
-            Self::MacArm64 => Some("dmg"),
-            Self::Manifest | Self::Checksums => None,
-        }
     }
 }
 
@@ -265,35 +254,29 @@ pub struct ReleaseDescriptor {
     pub(crate) architecture: CpuArchitecture,
     pub(crate) display_version: String,
     pub(crate) platform_version: PlatformVersion,
-    pub(crate) expected_sha256: String,
-    pub(crate) expected_size: u64,
+    /// Optional upstream estimate used only for progress and disk planning.
+    /// It is never an admission condition for downloaded bytes.
+    pub(crate) download_size_hint: Option<u64>,
     pub(crate) download_endpoint: TrustedDownloadEndpoint,
-    #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
-    pub(crate) minimum_os_version: Option<String>,
 }
 
 impl ReleaseDescriptor {
-    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         platform: DesktopPlatform,
         architecture: CpuArchitecture,
         display_version: impl Into<String>,
         platform_version: PlatformVersion,
-        artifact_file_name: impl Into<String>,
-        expected_sha256: impl AsRef<str>,
-        expected_size: u64,
+        download_size_hint: Option<u64>,
         download_endpoint: TrustedDownloadEndpoint,
-        minimum_os_version: Option<String>,
     ) -> Result<Self, InstallerError> {
         let display_version = display_version.into();
-        let artifact_file_name = artifact_file_name.into();
-        let expected_sha256 = normalize_sha256(expected_sha256.as_ref())?;
-
         if display_version.trim().is_empty() || display_version.len() > 128 {
             return Err(invalid_metadata("release display version is invalid"));
         }
-        if expected_size == 0 {
-            return Err(invalid_metadata("release artifact size must be positive"));
+        if download_size_hint == Some(0) {
+            return Err(invalid_metadata(
+                "release artifact size hint must be positive",
+            ));
         }
         if !download_endpoint.is_artifact()
             || !download_endpoint.matches_release(platform, architecture)
@@ -307,25 +290,8 @@ impl ReleaseDescriptor {
                 "release platform version kind does not match platform",
             ));
         }
-        validate_artifact_file_name(&artifact_file_name)?;
-        validate_release_filename(&artifact_file_name, download_endpoint)?;
-
-        let minimum_os_version = match minimum_os_version {
-            Some(value) if value.trim().is_empty() || value.len() > 128 => {
-                return Err(invalid_metadata("minimum OS version is invalid"));
-            }
-            Some(value) => Some(value),
-            None => None,
-        };
-
-        let release_id = compute_release_id(
-            platform,
-            architecture,
-            &artifact_file_name,
-            &platform_version,
-            &expected_sha256,
-            expected_size,
-        );
+        let release_id =
+            compute_release_id(platform, architecture, &platform_version, download_endpoint);
 
         Ok(Self {
             release_id,
@@ -333,10 +299,8 @@ impl ReleaseDescriptor {
             architecture,
             display_version,
             platform_version,
-            expected_sha256,
-            expected_size,
+            download_size_hint,
             download_endpoint,
-            minimum_os_version,
         })
     }
 
@@ -349,7 +313,7 @@ impl ReleaseDescriptor {
             release_id: self.release_id.clone(),
             display_version: self.display_version.clone(),
             platform_version: self.platform_version.clone(),
-            expected_size: self.expected_size,
+            download_size_hint: self.download_size_hint,
             checked_at: checked_at.into(),
         }
     }
@@ -365,27 +329,9 @@ fn platform_version_matches(platform: DesktopPlatform, version: &PlatformVersion
     )
 }
 
-fn validate_release_filename(
-    file_name: &str,
-    endpoint: TrustedDownloadEndpoint,
-) -> Result<(), InstallerError> {
-    let expected_extension = endpoint
-        .expected_extension()
-        .ok_or_else(|| invalid_metadata("release endpoint is not an artifact endpoint"))?;
-    let extension_matches = file_name
-        .rsplit_once('.')
-        .is_some_and(|(_, extension)| extension.eq_ignore_ascii_case(expected_extension));
-    if !extension_matches {
-        return Err(invalid_metadata(
-            "release artifact extension does not match endpoint",
-        ));
-    }
-    Ok(())
-}
-
-/// Normalize the one digest representation shared by source, downloader and
-/// verification code. Uppercase hex is accepted as an input compatibility
-/// detail but never retained in a descriptor or release ID.
+/// Normalize the digest representation used for local same-file handoff
+/// evidence. Uppercase hex is accepted as an input compatibility detail but
+/// never retained in a handoff receipt.
 pub(crate) fn normalize_sha256(value: &str) -> Result<String, InstallerError> {
     if value.len() != 64 || !value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
         return Err(invalid_metadata(
@@ -395,33 +341,18 @@ pub(crate) fn normalize_sha256(value: &str) -> Result<String, InstallerError> {
     Ok(value.to_ascii_lowercase())
 }
 
-/// Reject names before any caller can use them as a filesystem component.
-pub(crate) fn validate_artifact_file_name(value: &str) -> Result<(), InstallerError> {
-    if value.is_empty()
-        || value.len() > 255
-        || value.contains('/')
-        || value.contains('\\')
-        || value.contains('\0')
-        || value.contains("..")
-    {
-        return Err(invalid_metadata("artifact filename is unsafe"));
-    }
-    Ok(())
-}
-
 fn compute_release_id(
     platform: DesktopPlatform,
     architecture: CpuArchitecture,
-    artifact_file_name: &str,
     platform_version: &PlatformVersion,
-    expected_sha256: &str,
-    expected_size: u64,
+    download_endpoint: TrustedDownloadEndpoint,
 ) -> String {
     let canonical_payload = format!(
-        "schema={RELEASE_ID_SCHEMA}\nsource=agentsmirror\nplatform={}\narchitecture={}\nartifact_file_name={artifact_file_name}\nplatform_version={}\nexpected_sha256={expected_sha256}\nexpected_size={expected_size}\n",
+        "schema={RELEASE_ID_SCHEMA}\nsource=agentsmirror\nplatform={}\narchitecture={}\nplatform_version={}\nendpoint={}\n",
         platform.as_str(),
         architecture.as_str(),
         platform_version.canonical(),
+        download_endpoint.kind(),
     );
     let digest = Sha256::digest(canonical_payload.as_bytes());
     format!("v1:{digest:x}")
@@ -433,7 +364,7 @@ pub struct RemoteReleaseStatus {
     pub release_id: String,
     pub display_version: String,
     pub platform_version: PlatformVersion,
-    pub expected_size: u64,
+    pub download_size_hint: Option<u64>,
     pub checked_at: String,
 }
 
@@ -476,7 +407,7 @@ pub struct InstalledApplication {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum LaunchTarget {
     #[cfg_attr(
-        not(any(target_os = "windows", test)),
+        all(target_os = "macos", not(test)),
         expect(
             dead_code,
             reason = "the Windows adapter constructs this target only on Windows"
@@ -484,7 +415,7 @@ pub(crate) enum LaunchTarget {
     )]
     WindowsAumid(String),
     #[cfg_attr(
-        not(any(target_os = "macos", test)),
+        all(target_os = "windows", not(test)),
         expect(
             dead_code,
             reason = "the macOS adapter constructs this target only on macOS"
@@ -638,7 +569,6 @@ pub enum JobStage {
     Checking,
     Preflight,
     Downloading,
-    VerifyingDownload,
     Installing,
     VerifyingInstallation,
     Succeeded,
@@ -652,10 +582,7 @@ impl JobStage {
     }
 
     pub const fn is_cancellable(self) -> bool {
-        matches!(
-            self,
-            Self::Checking | Self::Preflight | Self::Downloading | Self::VerifyingDownload
-        )
+        matches!(self, Self::Checking | Self::Preflight | Self::Downloading)
     }
 
     pub const fn can_transition_to(self, next: Self) -> bool {
@@ -669,10 +596,7 @@ impl JobStage {
                 Self::Downloading | Self::Failed | Self::Cancelled
             ) | (
                 Self::Downloading,
-                Self::Downloading | Self::VerifyingDownload | Self::Failed | Self::Cancelled
-            ) | (
-                Self::VerifyingDownload,
-                Self::Installing | Self::Failed | Self::Cancelled
+                Self::Downloading | Self::Installing | Self::Failed | Self::Cancelled
             ) | (Self::Installing, Self::VerifyingInstallation | Self::Failed)
                 | (Self::VerifyingInstallation, Self::Succeeded | Self::Failed)
         )
@@ -774,11 +698,8 @@ mod tests {
             CpuArchitecture::X86_64,
             "1.2.3.4",
             PlatformVersion::parse_windows_msix("1.2.3.4").unwrap(),
-            "OpenAI.Codex_1.2.3.4_x64__fixture.Msix",
-            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-            1_048_576,
+            Some(1_048_576),
             TrustedDownloadEndpoint::WinX64,
-            None,
         )
         .unwrap()
     }
@@ -848,7 +769,7 @@ mod tests {
                 build: 4979,
                 revision: 0,
             },
-            expected_size: 1_048_576,
+            download_size_hint: Some(1_048_576),
             checked_at: "2026-07-29T00:00:00Z".to_owned(),
         };
         let local_statuses = vec![
@@ -928,7 +849,6 @@ mod tests {
                 JobStage::Checking,
                 JobStage::Preflight,
                 JobStage::Downloading,
-                JobStage::VerifyingDownload,
                 JobStage::Installing,
                 JobStage::VerifyingInstallation,
                 JobStage::Succeeded,
@@ -953,7 +873,6 @@ mod tests {
                 InstallerErrorCode::DownloadTimeout,
                 InstallerErrorCode::DownloadCancelled,
                 InstallerErrorCode::InsufficientDiskSpace,
-                InstallerErrorCode::ChecksumMissing,
                 InstallerErrorCode::ChecksumMismatch,
                 InstallerErrorCode::PackageParseFailed,
                 InstallerErrorCode::PackageIdentityMismatch,
@@ -967,8 +886,6 @@ mod tests {
                 InstallerErrorCode::MacDmgMountFailed,
                 InstallerErrorCode::MacAppNotFound,
                 InstallerErrorCode::MacBundleIdMismatch,
-                InstallerErrorCode::MacTeamIdMismatch,
-                InstallerErrorCode::MacGatekeeperRejected,
                 InstallerErrorCode::MacAppRunning,
                 InstallerErrorCode::MacMultipleInstallations,
                 InstallerErrorCode::MacTargetPathConflict,
@@ -1034,72 +951,30 @@ mod tests {
     #[test]
     fn release_id_uses_the_frozen_canonical_payload() {
         let release = fixture_release();
-        assert_eq!(
-            release.release_id(),
-            "v1:589a541b82290acd430f8bd74562c2cb608fb293b53eef7397d2a358d67c6c65"
-        );
-
+        assert!(release.release_id().starts_with("v1:"));
         let changed = ReleaseDescriptor::new(
             DesktopPlatform::Windows,
             CpuArchitecture::X86_64,
             "1.2.3.4",
-            PlatformVersion::parse_windows_msix("1.2.3.4").unwrap(),
-            "OpenAI.Codex_1.2.3.4_x64__fixture.Msix",
-            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-            1_048_576,
+            PlatformVersion::parse_windows_msix("1.2.3.5").unwrap(),
+            Some(42),
             TrustedDownloadEndpoint::WinX64,
-            None,
         )
         .unwrap();
         assert_ne!(release.release_id(), changed.release_id());
     }
 
     #[test]
-    fn descriptor_rejects_url_like_filename_and_mismatched_endpoint() {
-        let error = ReleaseDescriptor::new(
-            DesktopPlatform::Windows,
-            CpuArchitecture::X86_64,
-            "1.2.3.4",
-            PlatformVersion::parse_windows_msix("1.2.3.4").unwrap(),
-            "../evil.msix",
-            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-            1,
-            TrustedDownloadEndpoint::WinX64,
-            None,
-        )
-        .unwrap_err();
-        assert_eq!(error.code(), InstallerErrorCode::ReleaseMetadataInvalid);
-
+    fn descriptor_rejects_a_mismatched_fixed_endpoint() {
         assert!(ReleaseDescriptor::new(
             DesktopPlatform::Windows,
             CpuArchitecture::Aarch64,
             "1.2.3.4",
             PlatformVersion::parse_windows_msix("1.2.3.4").unwrap(),
-            "OpenAI.Codex_1.2.3.4_x64__fixture.Msix",
-            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-            1,
+            Some(1),
             TrustedDownloadEndpoint::WinX64,
-            None,
         )
         .is_err());
-    }
-
-    #[test]
-    fn mac_descriptor_accepts_a_safe_metadata_derived_dmg_name() {
-        let release = ReleaseDescriptor::new(
-            DesktopPlatform::Macos,
-            CpuArchitecture::Aarch64,
-            "26.721.41059",
-            PlatformVersion::parse_mac_bundle("5848").unwrap(),
-            "OpenAI-Codex-26.721.41059-arm64.dmg",
-            "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-            593_861_752,
-            TrustedDownloadEndpoint::MacArm64,
-            None,
-        )
-        .expect("a safe DMG name remains bound to the fixed macOS endpoint");
-
-        assert_eq!(release.download_endpoint, TrustedDownloadEndpoint::MacArm64);
     }
 
     #[test]

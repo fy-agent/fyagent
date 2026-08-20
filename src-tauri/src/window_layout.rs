@@ -108,6 +108,13 @@ pub fn default_size(work_area: LogicalWorkArea) -> LogicalSize {
     }
 }
 
+/// Runtime `set_min_size` / `set_size` / `set_position` must not run while the
+/// window is maximized or exclusive-fullscreen. On Windows, `set_min_size`
+/// during maximize unmaximizes the window but keeps the maximized client size.
+pub fn should_apply_runtime_geometry_constraints(maximized: bool, fullscreen: bool) -> bool {
+    !maximized && !fullscreen
+}
+
 pub fn clamp_window_geometry(saved: WindowGeometry, work_area: LogicalWorkArea) -> WindowGeometry {
     let work_area = normalize_work_area(work_area);
     let minimum = effective_minimum_size(work_area);

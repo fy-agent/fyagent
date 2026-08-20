@@ -83,6 +83,7 @@ fn installed_skill(id: &str, directory: &str, claude_enabled: bool) -> Installed
         installed_at: 1_000,
         content_hash: None,
         updated_at: 0,
+        path: None,
     }
 }
 
@@ -219,16 +220,12 @@ fn profile_snapshot_apply_roundtrip_restores_configuration() {
     assert_eq!(current.as_deref(), Some("p1"), "provider restored to p1");
 
     // Claude 分组不再管理 Desktop：apply 后 Desktop 保持切换前的状态不变。
-    // macOS/Windows 上上面已切到 d2；Linux（CI）不支持 Desktop 切换、那行被 cfg 门控
-    // 编译剔除，Desktop 仍是种子值 d1。两种情况都验证 claude-scope apply 不会动 Desktop。
+    // 测试预先把 Desktop 切到 d2，因此这里应继续保持 d2。
     let current_desktop = state
         .db
         .get_current_provider(AppType::ClaudeDesktop.as_str())
         .expect("get current desktop provider");
-    #[cfg(any(target_os = "macos", windows))]
     let expected_desktop = "d2";
-    #[cfg(not(any(target_os = "macos", windows)))]
-    let expected_desktop = "d1";
     assert_eq!(
         current_desktop.as_deref(),
         Some(expected_desktop),

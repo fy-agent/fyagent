@@ -63,7 +63,7 @@ afterEach(() => {
 });
 
 describe("release download manifest", () => {
-  it("records the exact ten installers with frozen identity and streaming digests", () => {
+  it("records the exact four installers with frozen identity and streaming digests", () => {
     const assetsDirectory = createAssetsDirectory();
     populateExactInstallers(assetsDirectory);
     const manifestPath = runGenerator(assetsDirectory);
@@ -85,7 +85,7 @@ describe("release download manifest", () => {
     };
 
     expect(manifest).toMatchObject({
-      schema: "fyagent-download-manifest/v2",
+      schema: "fyagent-download-manifest/v3",
       product: "FyAgent",
       version,
       tag,
@@ -95,7 +95,7 @@ describe("release download manifest", () => {
     expect(manifest.assets.map(({ name }) => name)).toEqual(
       expectedInstallerNames(version),
     );
-    expect(manifest.assets).toHaveLength(10);
+    expect(manifest.assets).toHaveLength(4);
     const windowsArm64 = manifest.assets.find(
       ({ name }) => name === "FyAgent-0.3.0-Windows-arm64-setup.exe",
     );
@@ -125,7 +125,7 @@ describe("release download manifest", () => {
     populateExactInstallers(assetsDirectory);
     mutate(assetsDirectory);
     expect(() => runGenerator(assetsDirectory)).toThrow(
-      /installer directory must contain exactly 10 files/,
+      /installer directory must contain exactly 4 files/,
     );
   });
 

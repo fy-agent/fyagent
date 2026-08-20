@@ -2074,7 +2074,7 @@ base_url = "https://proxy.example/v1"
     }
 
     #[test]
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
     #[serial]
     fn state_db_paths_include_codex_sqlite_home_env() {
         let dir = tempdir().expect("tempdir");

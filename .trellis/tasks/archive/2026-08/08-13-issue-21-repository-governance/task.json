@@ -1,0 +1,29 @@
+{
+  "id": "issue-21-repository-governance",
+  "name": "issue-21-repository-governance",
+  "title": "Issue 21 repository governance",
+  "description": "Close Issue #21 with evidence-backed documentation privacy, repository provenance, contributor workflow, repository scans, PR/CI/merge verification, and final task archival.",
+  "status": "completed",
+  "dev_type": null,
+  "scope": "repository-governance",
+  "package": null,
+  "priority": "P2",
+  "creator": "codex",
+  "assignee": "codex",
+  "createdAt": "2026-08-13",
+  "completedAt": "2026-08-15",
+  "branch": "codex/issue-21-repository-governance",
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "2026-08-15 用户重新授权本地归档。任务中尚未勾选的远端保护规则、PR 合并和 exact-main CI 验收不因归档而视为完成；本次只收纳任务工件，不执行远端推送或 GitHub 状态变更。",
+  "meta": {
+    "source_issue": "https://github.com/fy-agent/fyagent/issues/21",
+    "planned_merge_method": "squash"
+  }
+}

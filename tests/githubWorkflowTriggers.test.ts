@@ -90,7 +90,7 @@ describe("GitHub workflow trigger policy", () => {
   it("does not execute pull-request code or broaden Labeler permissions", () => {
     const source = readWorkflow("labeler.yml");
 
-    expect(source).toContain("runs-on: ubuntu-24.04");
+    expect(source).toContain("runs-on: macos-15");
     expect(source).toContain(
       "permissions:\n  contents: read\n  pull-requests: write",
     );
@@ -108,5 +108,26 @@ describe("GitHub workflow trigger policy", () => {
     expect(uses).toEqual([
       "actions/labeler@bf12e9b00b37c5c0ca2b87b79b2daf7891dbda13 # v7.0.0",
     ]);
+  });
+
+  it("offers bug reports only for supported desktop operating systems", () => {
+    const source = fs
+      .readFileSync(
+        path.resolve(WORKFLOWS_DIR, "..", "ISSUE_TEMPLATE", "bug_report.yml"),
+        "utf8",
+      )
+      .replace(/\r\n/g, "\n");
+
+    expect(source).toContain(
+      [
+        "      label: Operating System / 操作系统",
+        "      multiple: false",
+        "      options:",
+        "        - Windows",
+        "        - macOS",
+        "    validations:",
+        "      required: true",
+      ].join("\n"),
+    );
   });
 });

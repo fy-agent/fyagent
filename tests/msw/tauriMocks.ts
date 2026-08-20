@@ -80,17 +80,14 @@ vi.mock("@tauri-apps/api/event", () => ({
 void server;
 
 vi.mock("@tauri-apps/api/path", () => ({
-  homeDir: async () => "/home/mock",
+  homeDir: async () => "/Users/mock",
   join: async (...segments: string[]) => segments.join("/"),
 }));
 
 const mockCurrentWindow = {
-  close: async () => undefined,
-  isMaximized: async () => false,
-  minimize: async () => undefined,
-  onResized: async (_handler: () => void) => () => undefined,
-  setDecorations: async (_decorations: boolean) => undefined,
-  toggleMaximize: async () => undefined,
+  onFocusChanged:
+    async (_handler: (event: { payload: boolean }) => void) => () =>
+      undefined,
 };
 
 vi.mock("@tauri-apps/api/window", () => ({

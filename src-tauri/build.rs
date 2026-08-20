@@ -21,9 +21,16 @@ fn main() {
 
     let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
 
-    if target_os != "windows" {
-        tauri_build::build();
-        return;
+    match target_os.as_str() {
+        "macos" => {
+            tauri_build::build();
+            return;
+        }
+        "windows" => {}
+        _ => {
+            tauri_build::build();
+            return;
+        }
     }
 
     println!("cargo:rerun-if-env-changed=FYAGENT_WINDOWS_MANIFEST");

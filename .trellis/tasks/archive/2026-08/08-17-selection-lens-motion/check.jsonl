@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/frontend/index.md", "reason": "按前端 Quality Check 跑 V2 命令。"}
+{"file": ".trellis/spec/frontend/v2-shell.md", "reason": "核对六菜单透镜、单实例 LiquidGlassLens、reduced-motion。"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "确认没有第二套滑块实现。"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "核对测试放置与证据范围。"}

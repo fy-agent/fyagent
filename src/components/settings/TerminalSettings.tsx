@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Select,
@@ -6,7 +7,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { isMac, isWindows, isLinux } from "@/lib/platform";
+import { isMac, isWindows } from "@/lib/platform";
 
 // Terminal options per platform
 const MACOS_TERMINALS = [
@@ -29,48 +30,14 @@ const WINDOWS_TERMINALS = [
   { value: "wt", labelKey: "settings.terminal.options.windows.wt" },
 ] as const;
 
-const LINUX_TERMINALS = [
-  {
-    value: "gnome-terminal",
-    labelKey: "settings.terminal.options.linux.gnomeTerminal",
-  },
-  { value: "konsole", labelKey: "settings.terminal.options.linux.konsole" },
-  {
-    value: "xfce4-terminal",
-    labelKey: "settings.terminal.options.linux.xfce4Terminal",
-  },
-  { value: "alacritty", labelKey: "settings.terminal.options.linux.alacritty" },
-  { value: "kitty", labelKey: "settings.terminal.options.linux.kitty" },
-  { value: "ghostty", labelKey: "settings.terminal.options.linux.ghostty" },
-] as const;
-
-// Get terminals for the current platform
-function getTerminalOptions() {
+function getTerminalConfiguration() {
   if (isMac()) {
-    return MACOS_TERMINALS;
+    return { options: MACOS_TERMINALS, defaultTerminal: "terminal" } as const;
   }
   if (isWindows()) {
-    return WINDOWS_TERMINALS;
+    return { options: WINDOWS_TERMINALS, defaultTerminal: "cmd" } as const;
   }
-  if (isLinux()) {
-    return LINUX_TERMINALS;
-  }
-  // Fallback to macOS options
-  return MACOS_TERMINALS;
-}
-
-// Get default terminal for the current platform
-function getDefaultTerminal(): string {
-  if (isMac()) {
-    return "terminal";
-  }
-  if (isWindows()) {
-    return "cmd";
-  }
-  if (isLinux()) {
-    return "gnome-terminal";
-  }
-  return "terminal";
+  return null;
 }
 
 export interface TerminalSettingsProps {
@@ -80,11 +47,45 @@ export interface TerminalSettingsProps {
 
 export function TerminalSettings({ value, onChange }: TerminalSettingsProps) {
   const { t } = useTranslation();
-  const terminals = getTerminalOptions();
-  const defaultTerminal = getDefaultTerminal();
+  const configuration = getTerminalConfiguration();
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
 
-  // Use value or default
-  const currentValue = value || defaultTerminal;
+  const isSupportedValue =
+    configuration?.options.some((terminal) => terminal.value === value) ??
+    false;
+  const currentValue = isSupportedValue
+    ? value
+    : configuration?.defaultTerminal;
+  const defaultTerminal = configuration?.defaultTerminal;
+
+  useEffect(() => {
+    if (
+      value !== undefined &&
+      defaultTerminal !== undefined &&
+      !isSupportedValue
+    ) {
+      onChangeRef.current(defaultTerminal);
+    }
+  }, [defaultTerminal, isSupportedValue, value]);
+
+  if (!configuration) {
+    return (
+      <section className="space-y-2">
+        <header className="space-y-1">
+          <h3 className="text-sm font-medium">
+            {t("settings.terminal.title")}
+          </h3>
+          <p className="text-xs text-muted-foreground">
+            {t("settings.terminal.description")}
+          </p>
+        </header>
+        <p className="text-xs text-muted-foreground">
+          {t("settings.terminal.unsupportedPlatform")}
+        </p>
+      </section>
+    );
+  }
 
   return (
     <section className="space-y-2">
@@ -99,7 +100,7 @@ export function TerminalSettings({ value, onChange }: TerminalSettingsProps) {
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          {terminals.map((terminal) => (
+          {configuration.options.map((terminal) => (
             <SelectItem key={terminal.value} value={terminal.value}>
               {t(terminal.labelKey)}
             </SelectItem>

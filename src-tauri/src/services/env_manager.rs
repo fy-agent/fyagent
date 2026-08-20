@@ -100,7 +100,7 @@ fn delete_single_env(conflict: &EnvConflict) -> Result<(), String> {
     }
 }
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(target_os = "macos")]
 fn delete_single_env(conflict: &EnvConflict) -> Result<(), String> {
     match conflict.source_type.as_str() {
         "file" => {
@@ -141,7 +141,7 @@ fn delete_single_env(conflict: &EnvConflict) -> Result<(), String> {
             Ok(())
         }
         "system" => {
-            // On Unix, we can't directly delete process environment variables
+            // On macOS, we can't directly delete process environment variables.
             Ok(())
         }
         _ => Err(format!("未知的环境变量来源类型: {}", conflict.source_type)),
@@ -194,7 +194,7 @@ fn restore_single_env(conflict: &EnvConflict) -> Result<(), String> {
     }
 }
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(target_os = "macos")]
 fn restore_single_env(conflict: &EnvConflict) -> Result<(), String> {
     match conflict.source_type.as_str() {
         "file" => {

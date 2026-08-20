@@ -1,0 +1,8 @@
+{"file":".trellis/spec/frontend/v2-shell.md","reason":"Review route content, architecture isolation, accessibility, responsive behavior, and V2-specific gates."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Review test patterns, UI semantics, renderer evidence, and mock/native claim boundaries."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Review TypeScript/Rust DTO parity and unsafe dynamic payload handling."}
+{"file":".trellis/spec/backend/workbuddy-configuration.md","reason":"Audit API-key lifetime, query isolation, revision/token concurrency, safe errors, and atomic persistence reuse."}
+{"file":".trellis/spec/backend/codex-provider-configuration.md","reason":"Audit Codex mutation warnings/live evidence and prevent false restart or success claims."}
+{"file":".trellis/spec/backend/application-brand-assets.md","reason":"Audit every icon consumer, generator/check behavior, raster inventory, and package evidence limits."}
+{"file":".trellis/spec/backend/development-environment.md","reason":"Ensure all verification uses the canonical current-host task boundary and evidence claims remain scoped."}
+{"file":".trellis/tasks/08-13-v2-agent-catalog-model-setup/research/brand-assets-and-issues.md","reason":"Verify vendor asset identities, official-link-only behavior, capability tiers, and unresolved license/brand risks."}

@@ -29,7 +29,6 @@ pub enum InstallerErrorCode {
     DownloadTimeout,
     DownloadCancelled,
     InsufficientDiskSpace,
-    ChecksumMissing,
     ChecksumMismatch,
     PackageParseFailed,
     PackageIdentityMismatch,
@@ -43,8 +42,6 @@ pub enum InstallerErrorCode {
     MacDmgMountFailed,
     MacAppNotFound,
     MacBundleIdMismatch,
-    MacTeamIdMismatch,
-    MacGatekeeperRejected,
     MacAppRunning,
     MacMultipleInstallations,
     MacTargetPathConflict,
@@ -72,7 +69,6 @@ impl InstallerErrorCode {
             Self::DownloadTimeout => "codexDesktop.error.downloadTimeout",
             Self::DownloadCancelled => "codexDesktop.error.downloadCancelled",
             Self::InsufficientDiskSpace => "codexDesktop.error.insufficientDiskSpace",
-            Self::ChecksumMissing => "codexDesktop.error.checksumMissing",
             Self::ChecksumMismatch => "codexDesktop.error.checksumMismatch",
             Self::PackageParseFailed => "codexDesktop.error.packageParseFailed",
             Self::PackageIdentityMismatch => "codexDesktop.error.packageIdentityMismatch",
@@ -86,8 +82,6 @@ impl InstallerErrorCode {
             Self::MacDmgMountFailed => "codexDesktop.error.macDmgMountFailed",
             Self::MacAppNotFound => "codexDesktop.error.macAppNotFound",
             Self::MacBundleIdMismatch => "codexDesktop.error.macBundleIdMismatch",
-            Self::MacTeamIdMismatch => "codexDesktop.error.macTeamIdMismatch",
-            Self::MacGatekeeperRejected => "codexDesktop.error.macGatekeeperRejected",
             Self::MacAppRunning => "codexDesktop.error.macAppRunning",
             Self::MacMultipleInstallations => "codexDesktop.error.macMultipleInstallations",
             Self::MacTargetPathConflict => "codexDesktop.error.macTargetPathConflict",
@@ -306,9 +300,6 @@ static WINDOWS_USER_PATH_RE: Lazy<Regex> = Lazy::new(|| {
 static MACOS_USER_PATH_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"/Users/[^/\s]+").expect("installer macOS path redaction regex is valid")
 });
-static LINUX_USER_PATH_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"/home/[^/\s]+").expect("installer Linux path redaction regex is valid")
-});
 static SECRET_VALUE_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(
         r"(?i)\b((?:proxy-)?authorization|cookie|(?:access[_-]?)?token|api[_-]?key|password)\s*[:=]\s*(?:(?:bearer|basic)\s+)?[^\s,;]+",
@@ -357,9 +348,6 @@ pub(crate) fn redact_diagnostic_text(value: &str) -> String {
         .replace_all(&normalized, "%USERPROFILE%")
         .into_owned();
     normalized = MACOS_USER_PATH_RE
-        .replace_all(&normalized, "~")
-        .into_owned();
-    normalized = LINUX_USER_PATH_RE
         .replace_all(&normalized, "~")
         .into_owned();
     SECRET_VALUE_RE

@@ -1,0 +1,16 @@
+{"file":".trellis/tasks/08-12-remove-linux-support/research.md","reason":"Apply the verified cross-layer inventory, exclusions, exact release-set contraction, implicit platform predicates, and audit design."}
+{"file":".trellis/spec/backend/index.md","reason":"Follow the backend pre-development checklist and synchronize its current Windows/macOS-only routing summary."}
+{"file":".trellis/spec/frontend/index.md","reason":"Follow the renderer checklist for platform types, persisted settings, IPC, locale, and acceptance-fixture changes."}
+{"file":".trellis/spec/backend/development-environment.md","reason":"Narrow the supported host/toolchain matrix and generated mise lock contract without weakening host-native validation."}
+{"file":".trellis/spec/backend/github-ci-workflow.md","reason":"Preserve the stable Required check, change classification, and fail-closed job evidence while removing and migrating jobs."}
+{"file":".trellis/spec/backend/github-release-workflow.md","reason":"Contract the release transaction to the remaining targets and preserve eligibility, signing, attestation, and publication authority."}
+{"file":".trellis/spec/backend/fyagent-version-contract.md","reason":"Update the authoritative installer names, target metadata, manifests, subjects, and attachment counts."}
+{"file":".trellis/spec/backend/application-brand-assets.md","reason":"Remove retired distribution consumers while preserving shared renderer, Tauri, Windows, and macOS assets."}
+{"file":".trellis/spec/backend/application-identity.md","reason":"Remove desktop-distribution identities without deleting the bundle identifier still used by Tauri and macOS."}
+{"file":".trellis/spec/backend/windows-runtime-security.md","reason":"Remove WSL execution support while retaining Windows path, child-environment, and credential safety boundaries."}
+{"file":".trellis/spec/backend/upstream-sync.md","reason":"Keep native evidence claims platform-specific after removing obsolete host evidence wording."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Change Rust and TypeScript platform/WSL DTOs and invoke payloads as one typed cross-layer contract."}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Remove platform-only settings and controls while preserving translated, accessible Windows/macOS UI composition."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Apply renderer, locale, desktop-mock, visual-manifest, and remaining-platform evidence requirements."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Trace native DTOs, renderer facades, workflow producers, consumers, manifests, and documentation together."}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Search every shared non-Windows fallback before narrowing it so macOS behavior is preserved rather than duplicated."}

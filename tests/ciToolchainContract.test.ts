@@ -140,7 +140,7 @@ describe("CI toolchain contract", () => {
   });
 
   it("leaves non-Windows tool invocation unchanged", () => {
-    expect(resolveToolInvocation("pnpm", ["--version"], "linux", {})).toEqual({
+    expect(resolveToolInvocation("pnpm", ["--version"], "darwin", {})).toEqual({
       command: "pnpm",
       args: ["--version"],
     });

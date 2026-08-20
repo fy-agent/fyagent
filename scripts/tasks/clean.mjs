@@ -9,7 +9,7 @@ const TARGETS = Object.freeze({
   frontend: ["node_modules", "dist"],
   rust: ["src-tauri/target"],
   python: [".venv"],
-  artifacts: ["release", "artifacts", "flatpak-build", "flatpak-repo"],
+  artifacts: ["release", "artifacts"],
 });
 
 function selectedTargets(domain) {

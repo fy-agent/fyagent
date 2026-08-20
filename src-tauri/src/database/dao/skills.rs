@@ -23,7 +23,9 @@ impl Database {
             .prepare(
                 "SELECT id, name, description, directory, repo_owner, repo_name, repo_branch,
                         readme_url, enabled_claude, enabled_codex, enabled_gemini, enabled_grokbuild,
-                        enabled_opencode, enabled_hermes, installed_at, content_hash, updated_at
+                        enabled_opencode, enabled_hermes, enabled_qoderwork, enabled_trae_work,
+                        enabled_workbuddy,
+                        installed_at, content_hash, updated_at
                  FROM skills ORDER BY name ASC",
             )
             .map_err(|e| AppError::Database(e.to_string()))?;
@@ -46,10 +48,14 @@ impl Database {
                         grokbuild: row.get(11)?,
                         opencode: row.get(12)?,
                         hermes: row.get(13)?,
+                        qoderwork: row.get(14)?,
+                        trae_work: row.get(15)?,
+                        workbuddy: row.get(16)?,
                     },
-                    installed_at: row.get(14)?,
-                    content_hash: row.get(15)?,
-                    updated_at: row.get::<_, i64>(16).unwrap_or(0),
+                    installed_at: row.get(17)?,
+                    content_hash: row.get(18)?,
+                    updated_at: row.get::<_, i64>(19).unwrap_or(0),
+                    path: None,
                 })
             })
             .map_err(|e| AppError::Database(e.to_string()))?;
@@ -69,7 +75,9 @@ impl Database {
             .prepare(
                 "SELECT id, name, description, directory, repo_owner, repo_name, repo_branch,
                         readme_url, enabled_claude, enabled_codex, enabled_gemini, enabled_grokbuild,
-                        enabled_opencode, enabled_hermes, installed_at, content_hash, updated_at
+                        enabled_opencode, enabled_hermes, enabled_qoderwork, enabled_trae_work,
+                        enabled_workbuddy,
+                        installed_at, content_hash, updated_at
                  FROM skills WHERE id = ?1",
             )
             .map_err(|e| AppError::Database(e.to_string()))?;
@@ -91,10 +99,14 @@ impl Database {
                     grokbuild: row.get(11)?,
                     opencode: row.get(12)?,
                     hermes: row.get(13)?,
+                    qoderwork: row.get(14)?,
+                    trae_work: row.get(15)?,
+                    workbuddy: row.get(16)?,
                 },
-                installed_at: row.get(14)?,
-                content_hash: row.get(15)?,
-                updated_at: row.get::<_, i64>(16).unwrap_or(0),
+                installed_at: row.get(17)?,
+                content_hash: row.get(18)?,
+                updated_at: row.get::<_, i64>(19).unwrap_or(0),
+                path: None,
             })
         });
 
@@ -112,8 +124,9 @@ impl Database {
             "INSERT OR REPLACE INTO skills
              (id, name, description, directory, repo_owner, repo_name, repo_branch,
               readme_url, enabled_claude, enabled_codex, enabled_gemini, enabled_grokbuild, enabled_opencode, enabled_hermes,
+              enabled_qoderwork, enabled_trae_work, enabled_workbuddy,
               installed_at, content_hash, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
             params![
                 skill.id,
                 skill.name,
@@ -129,6 +142,9 @@ impl Database {
                 skill.apps.grokbuild,
                 skill.apps.opencode,
                 skill.apps.hermes,
+                skill.apps.qoderwork,
+                skill.apps.trae_work,
+                skill.apps.workbuddy,
                 skill.installed_at,
                 skill.content_hash,
                 skill.updated_at,
@@ -200,8 +216,8 @@ impl Database {
         let conn = lock_conn!(self.conn);
         let affected = conn
             .execute(
-                "UPDATE skills SET enabled_claude = ?1, enabled_codex = ?2, enabled_gemini = ?3, enabled_grokbuild = ?4, enabled_opencode = ?5, enabled_hermes = ?6 WHERE id = ?7",
-                params![apps.claude, apps.codex, apps.gemini, apps.grokbuild, apps.opencode, apps.hermes, id],
+                "UPDATE skills SET enabled_claude = ?1, enabled_codex = ?2, enabled_gemini = ?3, enabled_grokbuild = ?4, enabled_opencode = ?5, enabled_hermes = ?6, enabled_qoderwork = ?7, enabled_trae_work = ?8, enabled_workbuddy = ?9 WHERE id = ?10",
+                params![apps.claude, apps.codex, apps.gemini, apps.grokbuild, apps.opencode, apps.hermes, apps.qoderwork, apps.trae_work, apps.workbuddy, id],
             )
             .map_err(|e| AppError::Database(e.to_string()))?;
         Ok(affected > 0)
@@ -322,6 +338,7 @@ mod tests {
             installed_at: 1,
             content_hash: Some(format!("{name}-hash")),
             updated_at: 2,
+            path: None,
         }
     }
 
@@ -352,6 +369,26 @@ mod tests {
         assert_eq!(stored.content_hash, candidate.content_hash);
         assert_eq!(stored.updated_at, candidate.updated_at);
         assert_eq!(stored.apps, installed_apps);
+    }
+
+    #[test]
+    fn qoderwork_trae_work_and_workbuddy_skill_flags_round_trip() {
+        let db = Database::memory().expect("memory db");
+        let apps = SkillApps {
+            qoderwork: true,
+            trae_work: true,
+            workbuddy: true,
+            ..SkillApps::default()
+        };
+        let original = skill("local:vendor-targets", "vendor-targets", apps.clone());
+
+        db.save_skill(&original).expect("save skill");
+        let stored = db
+            .get_installed_skill(&original.id)
+            .expect("query skill")
+            .expect("stored skill");
+
+        assert_eq!(stored.apps, apps);
     }
 
     #[test]

@@ -21,6 +21,7 @@
 *.html text eol=lf
 *.css text eol=lf
 *.scss text eol=lf
+*.svg text eol=lf
 
 # Shell scripts
 *.sh text eol=lf

@@ -35,11 +35,19 @@ export interface WebDavSyncResult {
  * SID, token, process, and path data from this renderer-facing DTO.
  */
 export interface RuntimePrivilegeStatus {
-  platform: "windows" | "other";
+  platform: "windows" | "macos" | "unknown";
   supported: boolean;
   elevated: boolean;
   localAdministrator: boolean;
   interactiveUserMatch: "match" | "mismatch" | "unavailable";
+}
+
+export interface ToolVersion {
+  name: string;
+  version: string | null;
+  latest_version: string | null;
+  error: string | null;
+  installed_but_broken: boolean;
 }
 
 export const settingsApi = {
@@ -245,39 +253,15 @@ export const settingsApi = {
     return await invoke("get_auto_launch_status");
   },
 
-  async getToolVersions(
-    tools?: string[],
-    wslShellByTool?: Record<
-      string,
-      { wslShell?: string | null; wslShellFlag?: string | null }
-    >,
-  ): Promise<
-    Array<{
-      name: string;
-      version: string | null;
-      latest_version: string | null;
-      error: string | null;
-      installed_but_broken: boolean;
-      env_type: "windows" | "wsl" | "macos" | "linux" | "unknown";
-      wsl_distro: string | null;
-    }>
-  > {
-    return await invoke("get_tool_versions", { tools, wslShellByTool });
+  async getToolVersions(tools?: string[]): Promise<ToolVersion[]> {
+    return await invoke("get_tool_versions", { tools });
   },
 
   async runToolLifecycleAction(
     tools: string[],
     action: "install" | "update",
-    wslShellByTool?: Record<
-      string,
-      { wslShell?: string | null; wslShellFlag?: string | null }
-    >,
   ): Promise<void> {
-    await invoke("run_tool_lifecycle_action", {
-      tools,
-      action,
-      wslShellByTool,
-    });
+    await invoke("run_tool_lifecycle_action", { tools, action });
   },
 
   /** 探测各工具安装分布：枚举所有安装、标记冲突、生成锚定升级命令。

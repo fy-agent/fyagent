@@ -95,7 +95,16 @@ function assertPowerShell51LoaderContract(loader, loaderPath, chunkCount) {
       loader.includes("&([ScriptBlock]::Create("),
     "WebView2 loader must not use module-resolved or unconstrained indirect commands",
   );
-  if (process.platform !== "win32") return;
+  switch (process.platform) {
+    case "darwin":
+      return;
+    case "win32":
+      break;
+    default:
+      throw new Error(
+        `Unsupported release verification host: ${process.platform}`,
+      );
+  }
 
   const loaderDigest = createHash("sha256").update(loader).digest("hex");
   if (nativePowerShellValidatedLoaders.has(loaderDigest)) return;

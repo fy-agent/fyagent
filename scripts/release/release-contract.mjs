@@ -11,6 +11,7 @@ import { basename, join } from "node:path";
 export const PRODUCT_NAME = "FyAgent";
 export const EXPECTED_REPOSITORY = "fy-agent/fyagent";
 export const EXPECTED_REPOSITORY_ID = "1313497021";
+export const PREFLIGHT_BRANCH = "dev/laiyongjie";
 export const RELEASE_BRANCH = "main";
 export const RELEASE_WORKFLOW_PATH = ".github/workflows/release.yml";
 export const CI_WORKFLOW_PATH = ".github/workflows/ci.yml";
@@ -20,7 +21,6 @@ export const WINDOWS_SIGNING_STATUS_NAME = "signing-status.json";
 export const ATTESTATION_BUNDLE_NAME = "artifact-attestation.sigstore.json";
 
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
-const SHA256_DIGEST_PATTERN = /^sha256:[0-9a-f]{64}$/;
 const STABLE_VERSION_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const WINDOWS_VERSION_COMPONENT_MAX = 65535n;
 
@@ -56,42 +56,6 @@ export const INSTALLER_RULES = Object.freeze([
     kind: "exe",
     architecture: "arm64",
   },
-  {
-    suffix: "-Linux-x86_64.AppImage",
-    platform: "linux",
-    kind: "appimage",
-    architecture: "x64",
-  },
-  {
-    suffix: "-Linux-x86_64.deb",
-    platform: "linux",
-    kind: "deb",
-    architecture: "x64",
-  },
-  {
-    suffix: "-Linux-x86_64.rpm",
-    platform: "linux",
-    kind: "rpm",
-    architecture: "x64",
-  },
-  {
-    suffix: "-Linux-arm64.AppImage",
-    platform: "linux",
-    kind: "appimage",
-    architecture: "arm64",
-  },
-  {
-    suffix: "-Linux-arm64.deb",
-    platform: "linux",
-    kind: "deb",
-    architecture: "arm64",
-  },
-  {
-    suffix: "-Linux-arm64.rpm",
-    platform: "linux",
-    kind: "rpm",
-    architecture: "arm64",
-  },
 ]);
 
 export const EXPECTED_TARGETS = Object.freeze([
@@ -102,7 +66,6 @@ export const EXPECTED_TARGETS = Object.freeze([
     requestedRunnerLabel: "macos-15",
     expectedRunnerOs: "macOS",
     expectedRunnerArch: "ARM64",
-    expectedContainer: null,
   },
   {
     targetGroup: "windows-x64",
@@ -111,7 +74,6 @@ export const EXPECTED_TARGETS = Object.freeze([
     requestedRunnerLabel: "windows-2025",
     expectedRunnerOs: "Windows",
     expectedRunnerArch: "X64",
-    expectedContainer: null,
   },
   {
     targetGroup: "windows-arm64",
@@ -120,41 +82,6 @@ export const EXPECTED_TARGETS = Object.freeze([
     requestedRunnerLabel: "windows-11-arm",
     expectedRunnerOs: "Windows",
     expectedRunnerArch: "ARM64",
-    expectedContainer: null,
-  },
-  {
-    targetGroup: "linux-x64",
-    platform: "linux",
-    architecture: "x64",
-    requestedRunnerLabel: "ubuntu-24.04",
-    expectedRunnerOs: "Linux",
-    expectedRunnerArch: "X64",
-    expectedContainer: {
-      imageReference:
-        "docker.io/library/ubuntu:22.04@sha256:0199853f6d6b20b0424f3c5694a72a62764f01e6a771b1eb48a4197848986c7e",
-      manifestDigest:
-        "sha256:0199853f6d6b20b0424f3c5694a72a62764f01e6a771b1eb48a4197848986c7e",
-      osReleaseId: "ubuntu",
-      osReleaseVersionId: "22.04",
-      unameMachine: "x86_64",
-    },
-  },
-  {
-    targetGroup: "linux-arm64",
-    platform: "linux",
-    architecture: "arm64",
-    requestedRunnerLabel: "ubuntu-24.04-arm",
-    expectedRunnerOs: "Linux",
-    expectedRunnerArch: "ARM64",
-    expectedContainer: {
-      imageReference:
-        "docker.io/library/ubuntu:22.04@sha256:a8cdd2158a73d7e5c02aa351fe269f48f57cf710a241db86e9ede371fc150149",
-      manifestDigest:
-        "sha256:a8cdd2158a73d7e5c02aa351fe269f48f57cf710a241db86e9ede371fc150149",
-      osReleaseId: "ubuntu",
-      osReleaseVersionId: "22.04",
-      unameMachine: "aarch64",
-    },
   },
 ]);
 
@@ -162,8 +89,6 @@ export const EXPECTED_INSTALLERS_BY_TARGET = Object.freeze({
   "macos-universal": Object.freeze([0, 1]),
   "windows-x64": Object.freeze([2]),
   "windows-arm64": Object.freeze([3]),
-  "linux-x64": Object.freeze([4, 5, 6]),
-  "linux-arm64": Object.freeze([7, 8, 9]),
 });
 
 export const WINDOWS_SIGNING_FRAGMENTS_BY_TARGET = Object.freeze({
@@ -334,7 +259,7 @@ export async function buildDownloadManifest({
   }
 
   return {
-    schema: "fyagent-download-manifest/v2",
+    schema: "fyagent-download-manifest/v3",
     product: PRODUCT_NAME,
     version,
     tag,
@@ -365,16 +290,11 @@ const PLATFORM_METADATA_KEYS = Object.freeze([
   "platform",
   "architecture",
   "runner",
-  "container",
   "toolchain",
   "identity",
 ]);
 const RUNNER_KEYS = Object.freeze(["requestedLabel", "context"]);
 const RUNNER_CONTEXT_KEYS = Object.freeze(["os", "arch"]);
-const CONTAINER_KEYS = Object.freeze(["configuredImage", "observed"]);
-const CONFIGURED_IMAGE_KEYS = Object.freeze(["reference", "manifestDigest"]);
-const CONTAINER_OBSERVED_KEYS = Object.freeze(["osRelease", "unameMachine"]);
-const OS_RELEASE_KEYS = Object.freeze(["id", "versionId"]);
 const TOOLCHAIN_KEYS = Object.freeze(["node", "pnpm", "rustc"]);
 const IDENTITY_KEYS = Object.freeze([
   "productVersion",
@@ -415,7 +335,7 @@ function validatePlatformMetadata(metadata, expected, identity) {
     `${expected.targetGroup} platform metadata`,
   );
   assert(
-    metadata.schema === "fyagent-platform-build/v1",
+    metadata.schema === "fyagent-platform-build/v2",
     `Invalid platform metadata schema for ${expected.targetGroup}`,
   );
   for (const key of ["targetGroup", "platform", "architecture"]) {
@@ -460,86 +380,6 @@ function validatePlatformMetadata(metadata, expected, identity) {
     `${expected.targetGroup} runner context architecture drifted`,
   );
 
-  if (expected.expectedContainer === null) {
-    assert(
-      metadata.container === null,
-      `${expected.targetGroup} must record container as null`,
-    );
-  } else {
-    assertExactKeys(
-      metadata.container,
-      CONTAINER_KEYS,
-      `${expected.targetGroup} container`,
-    );
-    assertExactKeys(
-      metadata.container.configuredImage,
-      CONFIGURED_IMAGE_KEYS,
-      `${expected.targetGroup} container.configuredImage`,
-    );
-    const { reference, manifestDigest } = metadata.container.configuredImage;
-    requireNonEmptyString(
-      reference,
-      `${expected.targetGroup} container.configuredImage.reference`,
-    );
-    requireNonEmptyString(
-      manifestDigest,
-      `${expected.targetGroup} container.configuredImage.manifestDigest`,
-    );
-    assert(
-      SHA256_DIGEST_PATTERN.test(manifestDigest),
-      `${expected.targetGroup} container manifest digest must be lowercase SHA-256`,
-    );
-    assert(
-      reference.endsWith(`@${manifestDigest}`),
-      `${expected.targetGroup} container image reference must end with its manifest digest`,
-    );
-    assert(
-      reference === expected.expectedContainer.imageReference,
-      `${expected.targetGroup} configured container image reference drifted`,
-    );
-    assert(
-      manifestDigest === expected.expectedContainer.manifestDigest,
-      `${expected.targetGroup} container manifest digest drifted`,
-    );
-
-    assertExactKeys(
-      metadata.container.observed,
-      CONTAINER_OBSERVED_KEYS,
-      `${expected.targetGroup} container.observed`,
-    );
-    assertExactKeys(
-      metadata.container.observed.osRelease,
-      OS_RELEASE_KEYS,
-      `${expected.targetGroup} container.observed.osRelease`,
-    );
-    const { id, versionId } = metadata.container.observed.osRelease;
-    const { unameMachine } = metadata.container.observed;
-    requireNonEmptyString(
-      id,
-      `${expected.targetGroup} container.observed.osRelease.id`,
-    );
-    requireNonEmptyString(
-      versionId,
-      `${expected.targetGroup} container.observed.osRelease.versionId`,
-    );
-    requireNonEmptyString(
-      unameMachine,
-      `${expected.targetGroup} container.observed.unameMachine`,
-    );
-    assert(
-      id === expected.expectedContainer.osReleaseId,
-      `${expected.targetGroup} observed container OS ID drifted`,
-    );
-    assert(
-      versionId === expected.expectedContainer.osReleaseVersionId,
-      `${expected.targetGroup} observed container OS version drifted`,
-    );
-    assert(
-      unameMachine === expected.expectedContainer.unameMachine,
-      `${expected.targetGroup} observed container machine drifted`,
-    );
-  }
-
   assertExactKeys(
     metadata.identity,
     IDENTITY_KEYS,
@@ -577,7 +417,7 @@ function validatePlatformMetadata(metadata, expected, identity) {
   );
 
   return {
-    schema: "fyagent-platform-build/v1",
+    schema: "fyagent-platform-build/v2",
     targetGroup: expected.targetGroup,
     platform: expected.platform,
     architecture: expected.architecture,
@@ -588,22 +428,6 @@ function validatePlatformMetadata(metadata, expected, identity) {
         arch: metadata.runner.context.arch,
       },
     },
-    container:
-      expected.expectedContainer === null
-        ? null
-        : {
-            configuredImage: {
-              reference: metadata.container.configuredImage.reference,
-              manifestDigest: metadata.container.configuredImage.manifestDigest,
-            },
-            observed: {
-              osRelease: {
-                id: metadata.container.observed.osRelease.id,
-                versionId: metadata.container.observed.osRelease.versionId,
-              },
-              unameMachine: metadata.container.observed.unameMachine,
-            },
-          },
     toolchain: {
       node: metadata.toolchain.node,
       pnpm: metadata.toolchain.pnpm,
@@ -664,8 +488,8 @@ export function buildBuildMetadata({
   } else {
     assert(
       identity.workflowRef ===
-        `${workflowRefPrefix}refs/heads/${RELEASE_BRANCH}`,
-      `Preflight must use the trusted ${RELEASE_BRANCH} workflow ref`,
+        `${workflowRefPrefix}refs/heads/${PREFLIGHT_BRANCH}`,
+      `Preflight must use the trusted ${PREFLIGHT_BRANCH} workflow ref`,
     );
   }
   assert(/^[1-9]\d*$/.test(String(identity.runId)), "runId must be numeric");
@@ -708,7 +532,7 @@ export function buildBuildMetadata({
   );
 
   return {
-    schema: "fyagent-build-metadata/v1",
+    schema: "fyagent-build-metadata/v2",
     product: PRODUCT_NAME,
     version: identity.productVersion,
     tag: identity.tag,

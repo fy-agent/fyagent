@@ -134,8 +134,7 @@ FyAgent 的做法是让 Claude Code 始终连本机路由，仍以 Anthropic Mes
 
 ## 参考链接
 
-- [FyAgent 用户手册：添加供应商（含 Codex OAuth 反向代理与 API 格式）](../user-manual/zh/2-providers/2.1-add.md)
-- [FyAgent 用户手册：代理服务](../user-manual/zh/4-proxy/4.1-service.md)
-- [FyAgent 用户手册：应用路由](../user-manual/zh/4-proxy/4.2-routing.md)
-- [FyAgent v3.17.0 发布说明](../release-notes/v3.17.0-zh.md)
+- [FyAgent 用户手册：添加供应商（含 Codex OAuth 反向代理与 API 格式）](../user-manual/zh/3-providers/3.1-add.md)
+- [FyAgent 用户手册：代理服务](../user-manual/zh/5-proxy/5.1-service.md)
+- [FyAgent 用户手册：应用路由](../user-manual/zh/5-proxy/5.2-routing.md)
 - 反方向攻略：[在 Codex 中使用 Claude 模型](./codex-claude-routing-guide-zh.md)

@@ -54,7 +54,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { extractErrorMessage } from "@/utils/errorUtils";
-import { isMac } from "@/lib/platform";
+import { isMac, isWindows } from "@/lib/platform";
 import { ProviderIcon } from "@/components/ProviderIcon";
 import { SessionItem } from "./SessionItem";
 import { SessionMessageItem } from "./SessionMessageItem";
@@ -418,7 +418,7 @@ export function SessionManagerPage({ appId }: { appId: string }) {
   const handleResume = async () => {
     if (!selectedSession?.resumeCommand) return;
 
-    if (!isMac()) {
+    if (isWindows()) {
       await handleCopy(
         selectedSession.resumeCommand,
         t("sessionManager.resumeCommandCopied"),
@@ -426,16 +426,20 @@ export function SessionManagerPage({ appId }: { appId: string }) {
       return;
     }
 
-    try {
-      await sessionsApi.launchTerminal({
-        command: selectedSession.resumeCommand,
-        cwd: selectedSession.projectDir ?? undefined,
-      });
-      toast.success(t("sessionManager.terminalLaunched"));
-    } catch (error) {
-      const fallback = selectedSession.resumeCommand;
-      await handleCopy(fallback, t("sessionManager.resumeFallbackCopied"));
-      toast.error(extractErrorMessage(error) || t("sessionManager.openFailed"));
+    if (isMac()) {
+      try {
+        await sessionsApi.launchTerminal({
+          command: selectedSession.resumeCommand,
+          cwd: selectedSession.projectDir ?? undefined,
+        });
+        toast.success(t("sessionManager.terminalLaunched"));
+      } catch (error) {
+        const fallback = selectedSession.resumeCommand;
+        await handleCopy(fallback, t("sessionManager.resumeFallbackCopied"));
+        toast.error(
+          extractErrorMessage(error) || t("sessionManager.openFailed"),
+        );
+      }
     }
   };
 

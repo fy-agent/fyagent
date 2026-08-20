@@ -130,9 +130,9 @@ Not recommended. FyAgent blocks switching to official providers while local rout
 
 ## References
 
-- [FyAgent User Manual: Add Provider](../user-manual/en/2-providers/2.1-add.md)
-- [FyAgent User Manual: Proxy Service](../user-manual/en/4-proxy/4.1-service.md)
-- [FyAgent User Manual: App Routing](../user-manual/en/4-proxy/4.2-routing.md)
+- [FyAgent User Manual: Add Provider](../user-manual/en/3-providers/3.1-add.md)
+- [FyAgent User Manual: Proxy Service](../user-manual/en/5-proxy/5.1-service.md)
+- [FyAgent User Manual: App Routing](../user-manual/en/5-proxy/5.2-routing.md)
 - [DeepSeek API Docs: Integrate with Codex](https://api-docs.deepseek.com/quick_start/agent_integrations/codex/) (official Codex integration notes, including `wire_api = "responses"` and model coverage)
 - [DeepSeek API Docs: Using the Responses API](https://api-docs.deepseek.com/guides/responses_api/)
 - [DeepSeek API Docs: Your First API Call](https://api-docs.deepseek.com/)

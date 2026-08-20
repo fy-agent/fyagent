@@ -22,8 +22,9 @@ use std::{
 use futures::future::BoxFuture;
 
 use super::{
-    CodexDesktopPlatform, PlatformInstallPlan, PlatformProgressSink, RestartCandidateInspection,
-    RuntimeInspection, TrustedRuntimeInstance, VerifiedPackage, MACOS_CODEX_STABLE_IDENTITY,
+    CodexDesktopPlatform, PlatformInstallPlan, PlatformProgressSink, PreparedInstallPackage,
+    RestartCandidateInspection, RuntimeInspection, TrustedRuntimeInstance,
+    MACOS_CODEX_STABLE_IDENTITY,
 };
 use crate::codex_desktop::{
     download::DownloadedArtifact,
@@ -618,11 +619,11 @@ impl CodexDesktopPlatform for MacosPlatformAdapter {
         })
     }
 
-    fn verify_package<'a>(
+    fn prepare_install_package<'a>(
         &'a self,
         release: &'a ReleaseDescriptor,
         artifact: &'a DownloadedArtifact,
-    ) -> BoxFuture<'a, Result<VerifiedPackage, InstallerError>> {
+    ) -> BoxFuture<'a, Result<PreparedInstallPackage, InstallerError>> {
         let runner = self.runner.clone();
         let filesystem = self.filesystem.clone();
         let host = self.host.clone();
@@ -634,7 +635,7 @@ impl CodexDesktopPlatform for MacosPlatformAdapter {
                 return Err(error);
             }
             run_blocking(move || {
-                dmg::verify_package(
+                dmg::prepare_install_package(
                     runner.as_ref(),
                     filesystem.as_ref(),
                     &host,
@@ -648,9 +649,9 @@ impl CodexDesktopPlatform for MacosPlatformAdapter {
 
     fn install_current_user<'a>(
         &'a self,
-        package: &'a VerifiedPackage,
+        package: &'a PreparedInstallPackage,
         progress: PlatformProgressSink,
-    ) -> BoxFuture<'a, Result<(), InstallerError>> {
+    ) -> BoxFuture<'a, Result<Option<InstalledApplication>, InstallerError>> {
         let runner = self.runner.clone();
         let filesystem = self.filesystem.clone();
         let host = self.host.clone();
@@ -661,13 +662,14 @@ impl CodexDesktopPlatform for MacosPlatformAdapter {
                 return Err(error);
             }
             run_blocking(move || {
-                dmg::install_current_user(
+                let installed = dmg::install_current_user(
                     runner.as_ref(),
                     filesystem.as_ref(),
                     &host,
                     &package,
                     progress,
-                )
+                )?;
+                Ok(Some(installed))
             })
             .await
         })

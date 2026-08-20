@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   label:
-    runs-on: ubuntu-24.04
+    runs-on: macos-15
     steps:
       # With no checkout, Labeler fetches this configuration through the API at
       # github.context.sha, which is the trusted base SHA for pull_request_target.

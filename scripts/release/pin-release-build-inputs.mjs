@@ -26,11 +26,7 @@ export const TRUSTED_BUILD_INPUTS_SCHEMA = "fyagent-release-build-inputs/v1";
 export const TRUSTED_BUILD_INPUTS_MANIFEST = "trusted-build-inputs.json";
 
 const RAW_TARGETS = Object.freeze(["windows-x64", "windows-arm64"]);
-const INSTALLER_TARGETS = Object.freeze([
-  "macos-universal",
-  "linux-x64",
-  "linux-arm64",
-]);
+const INSTALLER_TARGETS = Object.freeze(["macos-universal"]);
 const METADATA_TARGETS = Object.freeze(
   EXPECTED_TARGETS.map(({ targetGroup }) => targetGroup),
 );

@@ -1,0 +1,3 @@
+{"file": ".trellis/spec/backend/development-environment.md", "reason": "host-native 编译器/链接器/runner 边界与 MSVC 环境接入的权威契约"}
+{"file": ".trellis/spec/backend/task-runner-contract.md", "reason": "任务运行器契约：cmd.exe / shell:true 受控例外、参数传输与纯 Node built-ins 约束"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "新模块与 system-check/host-native 共享 vswhere 定位逻辑，避免重复实现"}

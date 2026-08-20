@@ -1,0 +1,32 @@
+{
+  "id": "codex-windows-download-validation",
+  "name": "codex-windows-download-validation",
+  "title": "统一 FyAgent 软件一键安装免内容校验策略",
+  "description": "移除当前 Codex Desktop 自建下载器的 FyAgent 下载内容校验，并建立适用于所有平台、当前及未来软件一键安装入口的低维护策略。",
+  "status": "completed",
+  "dev_type": null,
+  "scope": "installer",
+  "package": null,
+  "priority": "P2",
+  "creator": "pythonrust",
+  "assignee": "pythonrust",
+  "createdAt": "2026-08-15",
+  "completedAt": "2026-08-15",
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": "c54bb799",
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "src-tauri/src/codex_desktop/",
+    "src-tauri/user-helper/",
+    "src-tauri/src/commands/misc.rs",
+    "src/components/settings/AboutSection.tsx",
+    ".trellis/spec/backend/codex-desktop-installer.md"
+  ],
+  "notes": "Task-scoped implementation and review gates passed. Native Windows/macOS installer HIL was not run. Full prearchive is blocked only by three pre-existing supported-platform findings outside this task; the unrelated proxy temp-file Rust flake passed an exact rerun.",
+  "meta": {}
+}

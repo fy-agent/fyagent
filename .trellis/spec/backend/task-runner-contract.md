@@ -79,7 +79,7 @@ Cargo config `[env]` keys regardless of case or string/table value. Cargo test
 receives its native direct runner through a
 CLI TOML argv array built from the current Node process and same wrapper; no
 shell quoting is involved. The runner validates target/path/file/native format
-and exact ELF/PE/Mach-O machine identity, then directly spawns the test binary
+and exact PE/Mach-O machine identity, then directly spawns the test binary
 with `shell: false`; filters remain argv and never enter a shell.
 `rust:check`, `rust:clippy`, and `rust:test` use the same guard; rustfmt does not need a target. `rust:test` accepts at most one test-name
 filter, passes it after Cargo's `--`, and rejects every option-like value; in
@@ -95,6 +95,9 @@ Portable policy tests can run on the current host, but their result remains a
 portable contract result. Windows, macOS, ARM64, and any other non-host native
 gate runs only on its matching GitHub Actions runner. Repository tasks never
 install or activate a non-host Rust target as part of local execution.
+Linux x64/arm64 is a development host for `check` and other current-host
+tasks; it is not a shipped product platform and does not add a local
+cross-compile or Actions job.
 
 ## 4. Parameter Transport
 
@@ -102,6 +105,84 @@ mise parses each `usage` spec and exports `usage_<name>` values. Node wrappers
 read those values, parse variadic shell-escaped lists into argv arrays, validate
 SemVer/package/tag/enum/path inputs, and spawn a command without a shell.
 Arguments must never be concatenated into a command string.
+
+### Prearchive active-task verification
+
+**Scope / trigger.** This lifecycle bridge allows one directly active,
+in-progress Trellis task to be excluded while its own tracked planning markers
+are still present before archival. It is reusable across task names only
+because identity is derived and re-proved on every invocation; it never means
+"skip active tasks" generally. Ordinary local checks, CI, and post-archive
+verification use canonical tasks without an exclusion.
+
+**Signatures.** `check:prearchive` and `check:contracts:prearchive` each require
+`--exclude-active-task <path>`. They delegate to
+`scripts/tasks/prearchive-check.mjs`, which selects only `check` or
+`check:contracts` and never forwards the usage argument to unrelated leaves.
+
+**Contracts.** The accepted path is exactly one repository-relative direct
+child matching `.trellis/tasks/MM-DD-<id>`. The checker resolves it below the
+canonical tasks root, rejects traversal, backslashes, nesting, archive paths,
+wildcards, symlinks, non-direct realpaths, a non-directory task, and a missing,
+symlinked, or non-regular `task.json`. It derives `<id>` from the path and
+requires `task.json.id` and `task.json.name` to equal it, with
+`status === "in_progress"`.
+
+The same canonical task path must be Trellis's current pointer with
+`stale === false` and a direct `source: "session:<id>"`; `session-fallback`, a
+different task, or any stale pointer fails closed. Validation transports the
+path through the private `FYAGENT_SUPPORTED_PLATFORM_ACTIVE_TASK` entry only
+after proving that identity. The leaf accepts exactly one input channel: direct
+CLI, mise usage, or private environment. Caller-preseeded, conflicting, or
+duplicate channels fail. Default `check`, `check:contracts`, and
+`supported-platform:check` never infer or apply an exclusion.
+
+**Error matrix.** Missing usage, unknown wrapper mode, malformed/noncanonical
+path, path/realpath/file-type escape, metadata ID/name/status mismatch,
+missing/stale/fallback/wrong session pointer, caller-preseeded internal state,
+multiple input channels, or nested nonzero status stops the wrapper. No failure
+may retry with a broader path or omit the platform check.
+
+**Good/base/bad cases.** Good: two differently named canonical fixture tasks
+both validate when each is the direct current in-progress task. Base: canonical
+`check` runs with no internal entry. Bad: accepting a hard-coded historical ID,
+`session-fallback`, an archived/nested/symlinked task, or a second input source.
+
+**Tests required.** Pure and integration tests cover two valid task identities;
+path/date/ID/traversal/backslash/archive/nesting failures; task-directory and
+metadata-file symlinks; ID/name/status mismatch; stale, fallback, and mismatched
+current pointers; and CLI/usage/private-environment duplication. Acceptance
+records a real prearchive composite from the directly bound session and a
+post-archive canonical run without an exclusion. The private environment entry
+is lifecycle evidence and is never provided to CI.
+
+**Wrong vs correct.** Wrong: freeze a historical task constant, broadcast the
+raw flag through every task, add a task glob, or teach canonical checks to skip
+`.trellis/tasks/**`. Correct: derive one canonical path/ID, prove exact direct
+session ownership and metadata, transport it privately to one leaf, archive,
+then rerun canonical checks with no exclusion.
+
+### Supported-platform identity seals
+
+The durable surface checker keeps two reviewed identity inventories in
+`scripts/tasks/`: one for platform-sensitive first-party source and one for
+tracked raster assets. These inventories are fail-closed review authorities,
+not content exclusions. Every listed file still passes the normal path, text,
+and structure scanners.
+
+The source inventory is recomputed bidirectionally from all tracked Cargo
+manifests and build scripts plus executable/configuration files containing
+platform selectors. The candidate set, canonical paths, Git index mode
+`100644`, regular non-symlink file type, and SHA-256 digest must match exactly.
+Adding, removing, renaming, moving, changing, or changing the mode of a
+candidate fails until the source diff is reviewed and the identity inventory
+is deliberately updated. A digest-only update is not evidence that a platform
+dispatch remains safe.
+
+The checker and both inventories must remain runnable from a clean checkout
+using only Node built-ins. The always-running CI Changes job invokes this path
+before dependency installation, so importing a package or a helper with a
+package dependency is a contract violation.
 
 `format:files` accepts one or more reviewed files and first validates every
 operand. It routes validated `.jsonl` names
@@ -134,6 +215,26 @@ or pnpx and does not introduce `cmd.exe`, `shell: true`, or command-string
 quoting. Non-Windows commands remain direct. This local mise boundary is
 distinct from GitHub Actions, which does not install mise and uses its own
 reviewed `pnpm.cmd` batch-shim bridge in the CI toolchain verifier.
+
+On Windows only, the guarded native wrapper resolves the Visual Studio 2022
+MSVC/SDK environment for the child process immediately before the final
+`cargo`/`pnpm tauri` compile. This is the single controlled exception to the
+"no `cmd.exe`" rule: Visual Studio's only supported loading mechanism is
+`cmd.exe` + `VsDevCmd.bat`. `scripts/tasks/windows-msvc-env.mjs` locates VS 2022
+(including Build Tools) through the official `vswhere.exe` and verifies the
+`Microsoft.VisualStudio.Component.VC.Tools.x86.x64` component, then spawns
+`cmd.exe` directly (not `shell: true`) with the argv array
+`["/d", "/s", "/c", "<command>"]` and `windowsVerbatimArguments: true`, where
+`<command>` is manually built as
+`call "<VsDevCmd>" -no_logo -arch=<arch> -host_arch=<hostArch> >nul && "<node>" -e "process.stdout.write(JSON.stringify(process.env))"`.
+The child dumps `process.env` as JSON to avoid `set` text encoding/quoting
+ambiguity; the result is parsed and validated for `INCLUDE`/`LIB`. The loaded
+environment merges only into the child env and never mutates `process.env`,
+writes the system/user environment, or touches the registry.
+`-arch`/`-host_arch` derive from `process.arch` (x64/x64 or arm64/arm64) and are
+never hard-coded. The merge is additive: it only adds MSVC/SDK variables and
+never overrides the owned RUSTC/RUSTDOC/target/linker/runner controls from
+`ownedCargoEnvironment`. macOS never invokes the loader.
 
 Contract tests execute real `mise run` calls for a positional value, a flag,
 and a filtered test. Metadata inspection alone is not sufficient proof that
@@ -204,6 +305,9 @@ does not turn them into contribution, build, CI, or release prerequisites.
 | `check` reaches a non-read-only effect                                | Fail closed                                        |
 | A parameter is interpolated into a shell command                      | Reject; spawn validated argv instead               |
 | A Windows task forces a pnpm batch shim instead of locked `pnpm.exe`  | Task-runner and DEP0040 contracts fail             |
+| Windows VS 2022 / VC tools component is missing                       | Fail with a `vswhere` hint naming "Desktop development with C++"; never elevate |
+| MSVC env load mutates `process.env` or the user/system environment    | Reject; the loader is child-env-only and additive only |
+| `-arch`/`-host_arch` is hard-coded or an unsupported architecture     | Reject; derive from `process.arch` (x64/arm64 only) |
 | A Rust filter begins with `-` or contains `--target`                  | Reject before rustc or Cargo starts                |
 | A fixed native operation receives forwarded argv                      | Reject before rustc or Tauri starts                |
 | Caller compiler/wrapper/runner/linker/target env redirects a task     | Reject before rustc/rustdoc starts                 |
@@ -245,7 +349,7 @@ does not turn them into contribution, build, CI, or release prerequisites.
   preserve direct non-Windows commands, bind both native Windows pnpm lock
   assets and checksums, and prove the DEP0040 checker uses the shared resolver
   without a `pnpm.cmd` fallback.
-- Pure tests for all six supported process-host mappings, strict absolute
+- Pure tests for all six development-host process mappings, strict absolute
   rustc/rustdoc identity, case-insensitive caller compiler/wrapper/runner/linker/
   target and target-bearing flag rejection, plus fixed current-host
   Tauri/Cargo argv and owned child environment.
@@ -273,7 +377,7 @@ does not turn them into contribution, build, CI, or release prerequisites.
   own-property task lookup, the exact standalone checkout sequence, manual
   trust guidance, the full local `check` gate, and unknown task rejection.
 - `developmentEnvironment.test.ts`, `miseTaskContract.test.ts`,
-  `taskDocs.test.ts`, `systemCheck.test.ts`, and
+  `taskDocs.test.ts`, `systemCheck.test.ts`, `windowsMsvcEnv.test.ts`, and
   `localBuildBoundary.test.ts`.
 
 ## 9. Wrong vs Correct

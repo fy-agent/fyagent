@@ -14,9 +14,9 @@ use crate::provider::{ClaudeDesktopMode, Provider};
 pub const PROFILE_ID: &str = "00000000-0000-4000-8000-000000157210";
 pub const PROFILE_NAME: &str = "FyAgent";
 
-#[cfg(any(target_os = "macos", windows, test))]
+#[cfg(any(target_os = "macos", target_os = "windows", test))]
 const CONFIG_FILE: &str = "claude_desktop_config.json";
-#[cfg(any(target_os = "macos", windows, test))]
+#[cfg(any(target_os = "macos", target_os = "windows", test))]
 const CONFIG_LIBRARY_DIR: &str = "configLibrary";
 const GATEWAY_TOKEN_SETTING_KEY: &str = "claude_desktop_gateway_token";
 const CLAUDE_DESKTOP_PROXY_PREFIX: &str = "/claude-desktop";
@@ -131,23 +131,6 @@ pub fn apply_provider(db: &Database, provider: &Provider) -> Result<(), AppError
 }
 
 pub fn get_status(db: &Database, proxy_running: bool) -> Result<ClaudeDesktopStatus, AppError> {
-    if !is_supported_platform() {
-        return Ok(ClaudeDesktopStatus {
-            supported: false,
-            configured: false,
-            applied_id: None,
-            profile_path: None,
-            config_library_path: None,
-            mode: None,
-            expected_base_url: None,
-            actual_base_url: None,
-            proxy_running,
-            stale_raw_models: false,
-            missing_route_mappings: false,
-            gateway_token_configured: false,
-        });
-    }
-
     let paths = current_platform_paths()?;
     let applied_id = read_applied_id(&paths.meta_path);
     let configured = paths.profile_path.exists() || meta_has_profile_entry(&paths.meta_path);
@@ -1210,27 +1193,15 @@ fn meta_has_profile_entry(path: &Path) -> bool {
         })
 }
 
-fn is_supported_platform() -> bool {
-    cfg!(any(target_os = "macos", windows))
+#[cfg(target_os = "macos")]
+fn current_platform_paths() -> Result<ClaudeDesktopPaths, AppError> {
+    Ok(macos_paths_from_home(&get_home_dir()))
 }
 
-#[allow(clippy::needless_return)]
+#[cfg(target_os = "windows")]
 fn current_platform_paths() -> Result<ClaudeDesktopPaths, AppError> {
-    #[cfg(target_os = "macos")]
-    {
-        return Ok(macos_paths_from_home(&get_home_dir()));
-    }
-
-    #[cfg(windows)]
-    {
-        let local_app_data = windows_local_app_data_dir();
-        return Ok(windows_paths_from_local_app_data(&local_app_data));
-    }
-
-    #[cfg(not(any(target_os = "macos", windows)))]
-    {
-        Err(unsupported_platform_error())
-    }
+    let local_app_data = windows_local_app_data_dir();
+    Ok(windows_paths_from_local_app_data(&local_app_data))
 }
 
 #[cfg(target_os = "macos")]
@@ -1239,12 +1210,12 @@ fn macos_paths_from_home(home: &Path) -> ClaudeDesktopPaths {
     paths_from_dirs(app_support.join("Claude"), app_support.join("Claude-3p"))
 }
 
-#[cfg(windows)]
+#[cfg(target_os = "windows")]
 fn windows_local_app_data_dir() -> PathBuf {
     crate::config::get_user_local_app_data_dir()
 }
 
-#[cfg(windows)]
+#[cfg(target_os = "windows")]
 fn windows_paths_from_local_app_data(local_app_data: &Path) -> ClaudeDesktopPaths {
     let normal_dir = pick_windows_claude_dir(local_app_data, false)
         .unwrap_or_else(|| local_app_data.join("Claude"));
@@ -1253,7 +1224,7 @@ fn windows_paths_from_local_app_data(local_app_data: &Path) -> ClaudeDesktopPath
     paths_from_dirs(normal_dir, threep_dir)
 }
 
-#[cfg(windows)]
+#[cfg(target_os = "windows")]
 fn pick_windows_claude_dir(local_app_data: &Path, threep: bool) -> Option<PathBuf> {
     let exact_name = if threep { "Claude-3p" } else { "Claude" };
     let exact = local_app_data.join(exact_name);
@@ -1279,7 +1250,7 @@ fn pick_windows_claude_dir(local_app_data: &Path, threep: bool) -> Option<PathBu
     candidates.into_iter().next()
 }
 
-#[cfg(any(target_os = "macos", windows, test))]
+#[cfg(any(target_os = "macos", target_os = "windows", test))]
 fn paths_from_dirs(normal_dir: PathBuf, threep_dir: PathBuf) -> ClaudeDesktopPaths {
     let config_library_path = threep_dir.join(CONFIG_LIBRARY_DIR);
     let profile_path = config_library_path.join(format!("{PROFILE_ID}.json"));
@@ -1307,15 +1278,6 @@ fn proxy_origin_from_parts(listen_address: &str, listen_port: u16) -> String {
     };
 
     format!("http://{}:{}", connect_host_for_url, listen_port)
-}
-
-#[cfg(not(any(target_os = "macos", windows)))]
-fn unsupported_platform_error() -> AppError {
-    AppError::localized(
-        "claude_desktop.unsupported_platform",
-        "当前平台暂不支持 Claude Desktop 3P 配置。第一阶段仅支持 macOS 和 Windows。",
-        "Claude Desktop 3P configuration is not supported on this platform yet. Phase 1 only supports macOS and Windows.",
-    )
 }
 
 #[cfg(test)]

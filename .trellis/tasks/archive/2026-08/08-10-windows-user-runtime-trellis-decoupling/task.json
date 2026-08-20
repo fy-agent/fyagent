@@ -1,0 +1,30 @@
+{
+  "id": "windows-user-runtime-trellis-decoupling",
+  "name": "windows-user-runtime-trellis-decoupling",
+  "title": "Rebuild Windows user-scoped runtime and decouple Trellis",
+  "description": "",
+  "status": "completed",
+  "dev_type": null,
+  "scope": "cross-cutting",
+  "package": null,
+  "priority": "P2",
+  "creator": "pythonrust",
+  "assignee": "pythonrust",
+  "createdAt": "2026-08-10",
+  "completedAt": "2026-08-12",
+  "branch": "dev/laiyongjie",
+  "base_branch": "dev/laiyongjie",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {
+    "dev_type": "feature",
+    "priority": "P1",
+    "description": "Replace the Windows machine-runtime/all-users model with a Shell-user helper and remove FyAgent-specific Trellis enforcement while preserving exact-SHA release trust."
+  }
+}

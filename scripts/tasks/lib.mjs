@@ -11,18 +11,32 @@ import { parse as parseToml } from "smol-toml";
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 
 export const ROOT = path.resolve(scriptDirectory, "..", "..");
-export const SUPPORTED_PLATFORMS = Object.freeze([
-  "linux-x64",
-  "linux-arm64",
+export const PRODUCT_PLATFORMS = Object.freeze([
   "macos-x64",
   "macos-arm64",
   "windows-x64",
   "windows-arm64",
 ]);
+export const DEVELOPMENT_HOSTS = Object.freeze([
+  ...PRODUCT_PLATFORMS,
+  "linux-x64",
+  "linux-arm64",
+]);
+export const SUPPORTED_PLATFORMS = DEVELOPMENT_HOSTS;
 export const STABLE_SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 
+export function isPosixTaskHost(platform) {
+  return platform === "darwin" || platform === "linux";
+}
+
 export function resolveTaskExecutable(command, platform = process.platform) {
-  return platform === "win32" && command === "pnpm" ? "pnpm.exe" : command;
+  if (platform === "win32") {
+    return command === "pnpm" ? "pnpm.exe" : command;
+  }
+  if (isPosixTaskHost(platform)) {
+    return command;
+  }
+  throw new Error(`Unsupported task host: ${platform}`);
 }
 
 export function run(command, args = [], options = {}) {

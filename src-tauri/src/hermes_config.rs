@@ -48,14 +48,14 @@ use std::sync::{Mutex, OnceLock};
 ///
 /// 解析顺序对齐 Hermes 自身的 `get_hermes_home()`:
 ///   1. CCS 设置 `hermes_config_dir`(显式覆盖)
-///   2. 非 Windows: `HERMES_HOME` 环境变量(trim 后非空)
-///   3. 平台默认(Windows: Shell 用户 LocalAppData 下的 `hermes`,Mac/Linux: `~/.hermes`)
+///   2. macOS: `HERMES_HOME` 环境变量(trim 后非空)
+///   3. 平台默认(Windows: Shell 用户 LocalAppData 下的 `hermes`, macOS: `~/.hermes`)
 pub fn get_hermes_dir() -> PathBuf {
     if let Some(override_dir) = get_hermes_override_dir() {
         return override_dir;
     }
 
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
     if let Some(raw) = std::env::var_os("HERMES_HOME") {
         let value = raw.to_string_lossy();
         let trimmed = value.trim();
@@ -73,8 +73,8 @@ fn default_hermes_dir() -> PathBuf {
     crate::config::get_user_local_app_data_dir().join("hermes")
 }
 
-/// 平台默认 Hermes 目录(Mac/Linux):`~/.hermes`。
-#[cfg(not(target_os = "windows"))]
+/// 平台默认 Hermes 目录(macOS):`~/.hermes`。
+#[cfg(target_os = "macos")]
 fn default_hermes_dir() -> PathBuf {
     crate::config::get_home_dir().join(".hermes")
 }
@@ -2247,7 +2247,7 @@ user_profile_enabled: false
 
     // ---- get_hermes_dir resolution (platform default + HERMES_HOME) ----
 
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
     #[test]
     #[serial]
     fn hermes_home_env_takes_precedence_over_platform_default() {
@@ -2368,10 +2368,10 @@ user_profile_enabled: false
                 dir.ends_with("hermes") && dir.to_string_lossy().to_lowercase().contains("local"),
                 "Windows default should be %LOCALAPPDATA%\\hermes, got {dir:?}"
             );
-            #[cfg(not(target_os = "windows"))]
+            #[cfg(target_os = "macos")]
             assert!(
                 dir.ends_with(".hermes"),
-                "Unix default should be ~/.hermes, got {dir:?}"
+                "macOS default should be ~/.hermes, got {dir:?}"
             );
         });
     }

@@ -19,59 +19,171 @@ pub struct McpApps {
     pub opencode: bool,
     #[serde(default)]
     pub hermes: bool,
+    #[serde(default)]
+    pub workbuddy: bool,
+    #[serde(default)]
+    pub qoderwork: bool,
+    #[serde(default, rename = "trae-work")]
+    pub trae_work: bool,
+}
+
+/// MCP 直接分配目标。WorkBuddy / QoderWork / TRAE Work 只存在于 MCP/Skills 域，不是 [`AppType`]。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum McpTargetId {
+    Claude,
+    Codex,
+    Gemini,
+    GrokBuild,
+    OpenCode,
+    Hermes,
+    WorkBuddy,
+    QoderWork,
+    #[serde(rename = "trae-work")]
+    TraeWork,
+}
+
+impl McpTargetId {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Claude => "claude",
+            Self::Codex => "codex",
+            Self::Gemini => "gemini",
+            Self::GrokBuild => "grokbuild",
+            Self::OpenCode => "opencode",
+            Self::Hermes => "hermes",
+            Self::WorkBuddy => "workbuddy",
+            Self::QoderWork => "qoderwork",
+            Self::TraeWork => "trae-work",
+        }
+    }
+
+    pub fn all() -> impl Iterator<Item = Self> {
+        [
+            Self::Claude,
+            Self::Codex,
+            Self::Gemini,
+            Self::GrokBuild,
+            Self::OpenCode,
+            Self::Hermes,
+            Self::WorkBuddy,
+            Self::QoderWork,
+            Self::TraeWork,
+        ]
+        .into_iter()
+    }
+
+    pub fn as_app_type(self) -> Option<AppType> {
+        match self {
+            Self::Claude => Some(AppType::Claude),
+            Self::Codex => Some(AppType::Codex),
+            Self::Gemini => Some(AppType::Gemini),
+            Self::GrokBuild => Some(AppType::GrokBuild),
+            Self::OpenCode => Some(AppType::OpenCode),
+            Self::Hermes => Some(AppType::Hermes),
+            Self::WorkBuddy | Self::QoderWork | Self::TraeWork => None,
+        }
+    }
+}
+
+impl FromStr for McpTargetId {
+    type Err = AppError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.trim().to_lowercase().as_str() {
+            "claude" => Ok(Self::Claude),
+            "codex" => Ok(Self::Codex),
+            "gemini" => Ok(Self::Gemini),
+            "grokbuild" => Ok(Self::GrokBuild),
+            "opencode" => Ok(Self::OpenCode),
+            "hermes" => Ok(Self::Hermes),
+            "workbuddy" => Ok(Self::WorkBuddy),
+            "qoderwork" => Ok(Self::QoderWork),
+            "trae-work" => Ok(Self::TraeWork),
+            other => Err(AppError::localized(
+                "unsupported_mcp_target",
+                format!("不支持的 MCP 目标标识: '{other}'。"),
+                format!("Unsupported MCP target id: '{other}'."),
+            )),
+        }
+    }
+}
+
+impl TryFrom<&AppType> for McpTargetId {
+    type Error = AppError;
+
+    fn try_from(app: &AppType) -> Result<Self, Self::Error> {
+        match app {
+            AppType::Claude => Ok(Self::Claude),
+            AppType::Codex => Ok(Self::Codex),
+            AppType::Gemini => Ok(Self::Gemini),
+            AppType::GrokBuild => Ok(Self::GrokBuild),
+            AppType::OpenCode => Ok(Self::OpenCode),
+            AppType::Hermes => Ok(Self::Hermes),
+            AppType::ClaudeDesktop | AppType::OpenClaw => Err(AppError::localized(
+                "unsupported_mcp_target",
+                format!("{} 不支持 MCP 直接分配。", app.as_str()),
+                format!("{} is not a direct MCP assignment target.", app.as_str()),
+            )),
+        }
+    }
 }
 
 impl McpApps {
     /// 检查指定应用是否启用
     pub fn is_enabled_for(&self, app: &AppType) -> bool {
-        match app {
-            AppType::Claude => self.claude,
-            AppType::Codex => self.codex,
-            AppType::Gemini => self.gemini,
-            AppType::GrokBuild => self.grokbuild,
-            AppType::OpenCode => self.opencode,
-            AppType::OpenClaw => false, // OpenClaw doesn't support MCP
-            AppType::Hermes => self.hermes,
-            AppType::ClaudeDesktop => false,
+        McpTargetId::try_from(app)
+            .map(|target| self.is_enabled_for_target(&target))
+            .unwrap_or(false)
+    }
+
+    pub fn is_enabled_for_target(&self, target: &McpTargetId) -> bool {
+        match target {
+            McpTargetId::Claude => self.claude,
+            McpTargetId::Codex => self.codex,
+            McpTargetId::Gemini => self.gemini,
+            McpTargetId::GrokBuild => self.grokbuild,
+            McpTargetId::OpenCode => self.opencode,
+            McpTargetId::Hermes => self.hermes,
+            McpTargetId::WorkBuddy => self.workbuddy,
+            McpTargetId::QoderWork => self.qoderwork,
+            McpTargetId::TraeWork => self.trae_work,
         }
     }
 
     /// 设置指定应用的启用状态
     pub fn set_enabled_for(&mut self, app: &AppType, enabled: bool) {
-        match app {
-            AppType::Claude => self.claude = enabled,
-            AppType::Codex => self.codex = enabled,
-            AppType::Gemini => self.gemini = enabled,
-            AppType::GrokBuild => self.grokbuild = enabled,
-            AppType::OpenCode => self.opencode = enabled,
-            AppType::OpenClaw => {} // OpenClaw doesn't support MCP, ignore
-            AppType::Hermes => self.hermes = enabled,
-            AppType::ClaudeDesktop => {} // Claude Desktop 3P provider config doesn't support MCP here
+        if let Ok(target) = McpTargetId::try_from(app) {
+            self.set_enabled_for_target(&target, enabled);
+        }
+    }
+
+    pub fn set_enabled_for_target(&mut self, target: &McpTargetId, enabled: bool) {
+        match target {
+            McpTargetId::Claude => self.claude = enabled,
+            McpTargetId::Codex => self.codex = enabled,
+            McpTargetId::Gemini => self.gemini = enabled,
+            McpTargetId::GrokBuild => self.grokbuild = enabled,
+            McpTargetId::OpenCode => self.opencode = enabled,
+            McpTargetId::Hermes => self.hermes = enabled,
+            McpTargetId::WorkBuddy => self.workbuddy = enabled,
+            McpTargetId::QoderWork => self.qoderwork = enabled,
+            McpTargetId::TraeWork => self.trae_work = enabled,
         }
     }
 
     /// 获取所有启用的应用列表
     pub fn enabled_apps(&self) -> Vec<AppType> {
-        let mut apps = Vec::new();
-        if self.claude {
-            apps.push(AppType::Claude);
-        }
-        if self.codex {
-            apps.push(AppType::Codex);
-        }
-        if self.gemini {
-            apps.push(AppType::Gemini);
-        }
-        if self.grokbuild {
-            apps.push(AppType::GrokBuild);
-        }
-        if self.opencode {
-            apps.push(AppType::OpenCode);
-        }
-        if self.hermes {
-            apps.push(AppType::Hermes);
-        }
-        apps
+        self.enabled_targets()
+            .into_iter()
+            .filter_map(McpTargetId::as_app_type)
+            .collect()
+    }
+
+    pub fn enabled_targets(&self) -> Vec<McpTargetId> {
+        McpTargetId::all()
+            .filter(|target| self.is_enabled_for_target(target))
+            .collect()
     }
 
     /// 检查是否所有应用都未启用
@@ -82,6 +194,129 @@ impl McpApps {
             && !self.grokbuild
             && !self.opencode
             && !self.hermes
+            && !self.workbuddy
+            && !self.qoderwork
+            && !self.trae_work
+    }
+}
+
+/// Skills 专用目标标识。
+///
+/// 该类型刻意独立于 Provider/MCP/session 共用的 [`AppType`]。前六个目标可显式
+/// 适配现有 AppType；QoderWork、TRAE Work 和 WorkBuddy 只存在于 Skills 域。
+/// 后端九个目标全部 round-trip；V2 页面只展示目录对齐的七个。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SkillTargetId {
+    Claude,
+    Codex,
+    Gemini,
+    GrokBuild,
+    OpenCode,
+    Hermes,
+    QoderWork,
+    #[serde(rename = "trae-work")]
+    TraeWork,
+    WorkBuddy,
+}
+
+impl SkillTargetId {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Claude => "claude",
+            Self::Codex => "codex",
+            Self::Gemini => "gemini",
+            Self::GrokBuild => "grokbuild",
+            Self::OpenCode => "opencode",
+            Self::Hermes => "hermes",
+            Self::QoderWork => "qoderwork",
+            Self::TraeWork => "trae-work",
+            Self::WorkBuddy => "workbuddy",
+        }
+    }
+
+    pub fn all() -> impl Iterator<Item = Self> {
+        [
+            Self::Claude,
+            Self::Codex,
+            Self::Gemini,
+            Self::GrokBuild,
+            Self::OpenCode,
+            Self::Hermes,
+            Self::QoderWork,
+            Self::TraeWork,
+            Self::WorkBuddy,
+        ]
+        .into_iter()
+    }
+
+    pub const fn requires_copy(self) -> bool {
+        matches!(self, Self::QoderWork | Self::TraeWork | Self::WorkBuddy)
+    }
+}
+
+impl FromStr for SkillTargetId {
+    type Err = AppError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.trim().to_lowercase().as_str() {
+            "claude" => Ok(Self::Claude),
+            "codex" => Ok(Self::Codex),
+            "gemini" => Ok(Self::Gemini),
+            "grokbuild" => Ok(Self::GrokBuild),
+            "opencode" => Ok(Self::OpenCode),
+            "hermes" => Ok(Self::Hermes),
+            "qoderwork" => Ok(Self::QoderWork),
+            "trae-work" => Ok(Self::TraeWork),
+            "workbuddy" => Ok(Self::WorkBuddy),
+            other => Err(AppError::localized(
+                "unsupported_skill_target",
+                format!("不支持的 Skill 目标标识: '{other}'。"),
+                format!("Unsupported Skill target id: '{other}'."),
+            )),
+        }
+    }
+}
+
+impl TryFrom<&AppType> for SkillTargetId {
+    type Error = AppError;
+
+    fn try_from(app: &AppType) -> Result<Self, Self::Error> {
+        match app {
+            AppType::Claude => Ok(Self::Claude),
+            AppType::Codex => Ok(Self::Codex),
+            AppType::Gemini => Ok(Self::Gemini),
+            AppType::GrokBuild => Ok(Self::GrokBuild),
+            AppType::OpenCode => Ok(Self::OpenCode),
+            AppType::Hermes => Ok(Self::Hermes),
+            AppType::ClaudeDesktop | AppType::OpenClaw => Err(AppError::localized(
+                "unsupported_skill_target",
+                format!("{} 不是受支持的 Skill 目标。", app.as_str()),
+                format!("{} is not a supported Skill target.", app.as_str()),
+            )),
+        }
+    }
+}
+
+impl TryFrom<&SkillTargetId> for AppType {
+    type Error = AppError;
+
+    fn try_from(target: &SkillTargetId) -> Result<Self, Self::Error> {
+        match target {
+            SkillTargetId::Claude => Ok(Self::Claude),
+            SkillTargetId::Codex => Ok(Self::Codex),
+            SkillTargetId::Gemini => Ok(Self::Gemini),
+            SkillTargetId::GrokBuild => Ok(Self::GrokBuild),
+            SkillTargetId::OpenCode => Ok(Self::OpenCode),
+            SkillTargetId::Hermes => Ok(Self::Hermes),
+            SkillTargetId::QoderWork | SkillTargetId::TraeWork | SkillTargetId::WorkBuddy => {
+                Err(AppError::localized(
+                    "unsupported_app",
+                    format!("{} 不是通用应用类型。", target.as_str()),
+                    format!("{} is not a general application type.", target.as_str()),
+                ))
+            }
+        }
     }
 }
 
@@ -100,59 +335,69 @@ pub struct SkillApps {
     pub opencode: bool,
     #[serde(default)]
     pub hermes: bool,
+    #[serde(default)]
+    pub qoderwork: bool,
+    #[serde(default, rename = "trae-work")]
+    pub trae_work: bool,
+    #[serde(default)]
+    pub workbuddy: bool,
 }
 
 impl SkillApps {
+    pub fn is_enabled_for_target(&self, target: &SkillTargetId) -> bool {
+        match target {
+            SkillTargetId::Claude => self.claude,
+            SkillTargetId::Codex => self.codex,
+            SkillTargetId::Gemini => self.gemini,
+            SkillTargetId::GrokBuild => self.grokbuild,
+            SkillTargetId::OpenCode => self.opencode,
+            SkillTargetId::Hermes => self.hermes,
+            SkillTargetId::QoderWork => self.qoderwork,
+            SkillTargetId::TraeWork => self.trae_work,
+            SkillTargetId::WorkBuddy => self.workbuddy,
+        }
+    }
+
+    pub fn set_enabled_for_target(&mut self, target: &SkillTargetId, enabled: bool) {
+        match target {
+            SkillTargetId::Claude => self.claude = enabled,
+            SkillTargetId::Codex => self.codex = enabled,
+            SkillTargetId::Gemini => self.gemini = enabled,
+            SkillTargetId::GrokBuild => self.grokbuild = enabled,
+            SkillTargetId::OpenCode => self.opencode = enabled,
+            SkillTargetId::Hermes => self.hermes = enabled,
+            SkillTargetId::QoderWork => self.qoderwork = enabled,
+            SkillTargetId::TraeWork => self.trae_work = enabled,
+            SkillTargetId::WorkBuddy => self.workbuddy = enabled,
+        }
+    }
+
     /// 检查指定应用是否启用
     pub fn is_enabled_for(&self, app: &AppType) -> bool {
-        match app {
-            AppType::Claude => self.claude,
-            AppType::Codex => self.codex,
-            AppType::Gemini => self.gemini,
-            AppType::GrokBuild => self.grokbuild,
-            AppType::OpenCode => self.opencode,
-            AppType::Hermes => self.hermes,
-            AppType::OpenClaw => false, // OpenClaw doesn't support Skills
-            AppType::ClaudeDesktop => false,
-        }
+        SkillTargetId::try_from(app)
+            .map(|target| self.is_enabled_for_target(&target))
+            .unwrap_or(false)
     }
 
     /// 设置指定应用的启用状态
     pub fn set_enabled_for(&mut self, app: &AppType, enabled: bool) {
-        match app {
-            AppType::Claude => self.claude = enabled,
-            AppType::Codex => self.codex = enabled,
-            AppType::Gemini => self.gemini = enabled,
-            AppType::GrokBuild => self.grokbuild = enabled,
-            AppType::OpenCode => self.opencode = enabled,
-            AppType::Hermes => self.hermes = enabled,
-            AppType::OpenClaw => {} // OpenClaw doesn't support Skills, ignore
-            AppType::ClaudeDesktop => {} // Claude Desktop 3P profiles don't use FyAgent skill sync
+        if let Ok(target) = SkillTargetId::try_from(app) {
+            self.set_enabled_for_target(&target, enabled);
         }
+    }
+
+    pub fn enabled_targets(&self) -> Vec<SkillTargetId> {
+        SkillTargetId::all()
+            .filter(|target| self.is_enabled_for_target(target))
+            .collect()
     }
 
     /// 获取所有启用的应用列表
     pub fn enabled_apps(&self) -> Vec<AppType> {
-        let mut apps = Vec::new();
-        if self.claude {
-            apps.push(AppType::Claude);
-        }
-        if self.codex {
-            apps.push(AppType::Codex);
-        }
-        if self.gemini {
-            apps.push(AppType::Gemini);
-        }
-        if self.grokbuild {
-            apps.push(AppType::GrokBuild);
-        }
-        if self.opencode {
-            apps.push(AppType::OpenCode);
-        }
-        if self.hermes {
-            apps.push(AppType::Hermes);
-        }
-        apps
+        self.enabled_targets()
+            .iter()
+            .filter_map(|target| AppType::try_from(target).ok())
+            .collect()
     }
 
     /// 检查是否所有应用都未启用
@@ -163,6 +408,9 @@ impl SkillApps {
             && !self.grokbuild
             && !self.opencode
             && !self.hermes
+            && !self.qoderwork
+            && !self.trae_work
+            && !self.workbuddy
     }
 
     /// 仅启用指定应用（其他应用设为禁用）
@@ -172,15 +420,21 @@ impl SkillApps {
         apps
     }
 
+    pub fn only_target(target: &SkillTargetId) -> Self {
+        let mut apps = Self::default();
+        apps.set_enabled_for_target(target, true);
+        apps
+    }
+
     /// 从来源标签列表构建启用状态
     ///
-    /// 标签与 AppType::as_str() 一致时启用对应应用，
+    /// 标签与 SkillTargetId::as_str() 一致时启用对应目标，
     /// 其他标签（如 "agents", "fyagent"）忽略。
     pub fn from_labels(labels: &[String]) -> Self {
         let mut apps = Self::default();
         for label in labels {
-            if let Ok(app) = label.parse::<AppType>() {
-                apps.set_enabled_for(&app, true);
+            if let Ok(target) = label.parse::<SkillTargetId>() {
+                apps.set_enabled_for_target(&target, true);
             }
         }
         apps
@@ -222,6 +476,9 @@ pub struct InstalledSkill {
     /// 最近更新时间（Unix 时间戳，0 = 从未更新）
     #[serde(default)]
     pub updated_at: i64,
+    /// 当前 SSOT 下的完整安装路径（列表/详情展示，不入库）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
 }
 
 /// 未管理的 Skill（在应用目录中发现但未被 FyAgent 管理）
@@ -1019,6 +1276,103 @@ mod tests {
             AppType::ClaudeDesktop
         );
         assert_eq!(AppType::ClaudeDesktop.as_str(), "claude-desktop");
+    }
+
+    #[test]
+    fn skill_targets_are_nine_values_and_only_original_six_adapt_to_app_type() {
+        let targets: Vec<_> = SkillTargetId::all().collect();
+        assert_eq!(targets.len(), 9);
+        assert_eq!(targets[6].as_str(), "qoderwork");
+        assert_eq!(targets[7].as_str(), "trae-work");
+        assert_eq!(targets[8].as_str(), "workbuddy");
+
+        for target in &targets[..6] {
+            let app = AppType::try_from(target).expect("original target adapts to AppType");
+            assert_eq!(SkillTargetId::try_from(&app).unwrap(), *target);
+        }
+        assert!(AppType::try_from(&SkillTargetId::QoderWork).is_err());
+        assert!(AppType::try_from(&SkillTargetId::TraeWork).is_err());
+        assert!(AppType::try_from(&SkillTargetId::WorkBuddy).is_err());
+        assert!(SkillTargetId::try_from(&AppType::ClaudeDesktop).is_err());
+        assert!(SkillTargetId::try_from(&AppType::OpenClaw).is_err());
+    }
+
+    #[test]
+    fn mcp_targets_include_workbuddy_qoder_and_trae_without_app_type() {
+        let targets: Vec<_> = McpTargetId::all().collect();
+        assert_eq!(targets.len(), 9);
+        assert_eq!(targets[6].as_str(), "workbuddy");
+        assert_eq!(targets[7].as_str(), "qoderwork");
+        assert_eq!(targets[8].as_str(), "trae-work");
+        assert!(McpTargetId::WorkBuddy.as_app_type().is_none());
+        assert!(McpTargetId::QoderWork.as_app_type().is_none());
+        assert!(McpTargetId::TraeWork.as_app_type().is_none());
+        assert_eq!(
+            "qoderwork".parse::<McpTargetId>().unwrap(),
+            McpTargetId::QoderWork
+        );
+        assert_eq!(
+            "trae-work".parse::<McpTargetId>().unwrap(),
+            McpTargetId::TraeWork
+        );
+        assert_eq!(
+            "workbuddy".parse::<McpTargetId>().unwrap(),
+            McpTargetId::WorkBuddy
+        );
+        assert!(AppType::try_from(&SkillTargetId::WorkBuddy).is_err());
+        assert!(AppType::try_from(&SkillTargetId::QoderWork).is_err());
+        assert!(AppType::try_from(&SkillTargetId::TraeWork).is_err());
+        assert!("workbuddy".parse::<AppType>().is_err());
+        assert!("qoderwork".parse::<AppType>().is_err());
+        assert!("trae-work".parse::<AppType>().is_err());
+    }
+
+    #[test]
+    fn skill_apps_old_payload_defaults_new_targets_without_changing_old_values() {
+        let apps: SkillApps = serde_json::from_value(serde_json::json!({
+            "claude": true,
+            "codex": false,
+            "gemini": true,
+            "grokbuild": false,
+            "opencode": true,
+            "hermes": false
+        }))
+        .expect("deserialize old SkillApps payload");
+
+        assert!(apps.claude);
+        assert!(apps.gemini);
+        assert!(apps.opencode);
+        assert!(!apps.qoderwork);
+        assert!(!apps.trae_work);
+        assert!(!apps.workbuddy);
+
+        let serialized = serde_json::to_value(&apps).expect("serialize SkillApps");
+        assert_eq!(serialized["qoderwork"], false);
+        assert_eq!(serialized["trae-work"], false);
+        assert_eq!(serialized["workbuddy"], false);
+    }
+
+    #[test]
+    fn mcp_apps_missing_workbuddy_defaults_false() {
+        let apps: McpApps = serde_json::from_value(serde_json::json!({
+            "claude": true,
+            "codex": false,
+            "gemini": false,
+            "grokbuild": false,
+            "opencode": true,
+            "hermes": false
+        }))
+        .expect("deserialize old McpApps payload");
+
+        assert!(apps.claude);
+        assert!(apps.opencode);
+        assert!(!apps.workbuddy);
+        assert!(!apps.qoderwork);
+        assert!(!apps.trae_work);
+        assert_eq!(
+            apps.enabled_targets(),
+            vec![McpTargetId::Claude, McpTargetId::OpenCode]
+        );
     }
 
     struct TempHome {

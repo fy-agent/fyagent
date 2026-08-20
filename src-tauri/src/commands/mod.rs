@@ -1,5 +1,6 @@
 #![allow(non_snake_case)]
 
+mod agent_catalog;
 mod auth;
 mod balance;
 mod codex_desktop;
@@ -18,11 +19,13 @@ mod misc;
 mod model_fetch;
 mod omo;
 mod openclaw;
+mod opencode_models;
 mod plugin;
 mod profile;
 mod prompt;
 mod provider;
 mod proxy;
+mod qoderwork;
 mod runtime_privilege;
 mod session_manager;
 mod settings;
@@ -30,6 +33,7 @@ pub mod skill;
 mod stream_check;
 mod subscription;
 mod sync_support;
+mod traework;
 mod xai_oauth;
 
 mod lightweight;
@@ -39,6 +43,7 @@ mod webdav_sync;
 mod workbuddy;
 mod workspace;
 
+pub use agent_catalog::*;
 pub use auth::*;
 pub use balance::*;
 pub use codex_desktop::*;
@@ -57,17 +62,20 @@ pub use misc::*;
 pub use model_fetch::*;
 pub use omo::*;
 pub use openclaw::*;
+pub use opencode_models::*;
 pub use plugin::*;
 pub use profile::*;
 pub use prompt::*;
 pub use provider::*;
 pub use proxy::*;
+pub use qoderwork::*;
 pub use runtime_privilege::*;
 pub use session_manager::*;
 pub use settings::*;
 pub use skill::*;
 pub use stream_check::*;
 pub use subscription::*;
+pub use traework::*;
 pub use xai_oauth::*;
 
 pub use lightweight::*;

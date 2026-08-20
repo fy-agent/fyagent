@@ -17,7 +17,7 @@ fn write_skill(dir: &std::path::Path, name: &str) {
     .expect("write SKILL.md");
 }
 
-#[cfg(unix)]
+#[cfg(target_os = "macos")]
 fn symlink_dir(src: &std::path::Path, dest: &std::path::Path) {
     std::os::unix::fs::symlink(src, dest).expect("create symlink");
 }
@@ -120,6 +120,60 @@ fn import_from_apps_does_not_rewrite_selected_app_directory() {
 }
 
 #[test]
+fn import_from_apps_syncs_missing_selected_destinations() {
+    let _guard = test_mutex().lock().expect("acquire test mutex");
+    reset_test_fs();
+    let home = ensure_test_home();
+
+    write_skill(
+        &home.join(".claude").join("skills").join("shared-skill"),
+        "Shared",
+    );
+
+    let state = create_test_state().expect("create test state");
+    let imported = SkillService::import_from_apps(
+        &state.db,
+        vec![ImportSkillSelection {
+            directory: "shared-skill".to_string(),
+            apps: SkillApps {
+                claude: true,
+                qoderwork: true,
+                trae_work: true,
+                workbuddy: true,
+                grokbuild: true,
+                ..Default::default()
+            },
+        }],
+    )
+    .expect("import skills");
+
+    assert_eq!(imported.len(), 1, "expected exactly one imported skill");
+    let claude_dest = home.join(".claude").join("skills").join("shared-skill");
+    assert!(
+        claude_dest.join("SKILL.md").is_file(),
+        "existing Claude dest must stay"
+    );
+    assert!(
+        !fs::symlink_metadata(&claude_dest)
+            .expect("read claude skill metadata")
+            .file_type()
+            .is_symlink(),
+        "import must not rewrite an existing Claude dest"
+    );
+    for relative in [
+        ".qoderworkcn/skills/shared-skill",
+        ".trae-cn/skills/shared-skill",
+        ".workbuddy/skills/shared-skill",
+        ".grok/skills/shared-skill",
+    ] {
+        assert!(
+            home.join(relative).join("SKILL.md").is_file(),
+            "missing dest must be synced: {relative}"
+        );
+    }
+}
+
+#[test]
 fn sync_to_app_removes_disabled_and_orphaned_ssot_symlinks() {
     let _guard = test_mutex().lock().expect("acquire test mutex");
     reset_test_fs();
@@ -152,6 +206,7 @@ fn sync_to_app_removes_disabled_and_orphaned_ssot_symlinks() {
             installed_at: 0,
             content_hash: None,
             updated_at: 0,
+            path: None,
         })
         .expect("save disabled skill");
 
@@ -196,6 +251,7 @@ fn uninstall_skill_creates_backup_before_removing_ssot() {
             installed_at: 123,
             content_hash: None,
             updated_at: 0,
+            path: None,
         })
         .expect("save skill");
 
@@ -264,6 +320,7 @@ fn restore_skill_backup_restores_files_to_ssot_and_current_app() {
             installed_at: 456,
             content_hash: None,
             updated_at: 0,
+            path: None,
         })
         .expect("save skill");
 
@@ -345,6 +402,7 @@ fn delete_skill_backup_removes_backup_directory() {
             installed_at: 789,
             content_hash: None,
             updated_at: 0,
+            path: None,
         })
         .expect("save skill");
 

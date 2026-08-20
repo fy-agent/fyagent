@@ -1,0 +1,50 @@
+.fy-skills-page .fy-feature-tabs {
+  flex-wrap: wrap;
+  width: auto;
+  max-width: 100%;
+}
+
+.fy-skills-page .fy-feature-toolbar {
+  align-items: flex-start;
+}
+
+.fy-skills-page .fy-feature-toolbar > .fy-feature-tabs {
+  flex: 1 1 100%;
+}
+
+.fy-skills-page.fy-skills-page-discovery.fy-feature-page:has(
+    .fy-feature-workspace
+  ) {
+  overflow: auto;
+  height: auto;
+  max-height: 100%;
+}
+
+.fy-skills-page.fy-skills-page-discovery .fy-feature-discovery-scroll {
+  flex: 0 0 auto;
+  overflow: visible;
+}
+
+.fy-skills-page .fy-feature-workspace > .fy-feature-discovery-scroll {
+  display: grid;
+  gap: 18px;
+  min-height: 0;
+}
+
+.fy-skills-page
+  .fy-feature-workspace
+  > .fy-feature-discovery-scroll
+  > .fy-feature-description {
+  margin: 0;
+}
+
+.fy-skills-page
+  .fy-feature-workspace
+  > .fy-feature-discovery-scroll
+  > section
+  > h3 {
+  margin: 0 0 10px;
+  color: var(--fy-text-secondary);
+  font-size: 13px;
+  font-weight: 650;
+}

@@ -212,4 +212,19 @@ describe("desktop IPC capability and CSP boundary", () => {
       "Do not let a release build reach build_tool_lifecycle_command",
     );
   });
+
+  it("keeps generic CLI install and update flows independent of package validation", () => {
+    const source = fs.readFileSync(miscCommandsPath, "utf8");
+    const start = source.indexOf("pub async fn run_tool_lifecycle_action");
+    const end = source.indexOf("\n///", start);
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+
+    const lifecycleCommand = source.slice(start, end);
+    expect(lifecycleCommand).toContain("build_tool_lifecycle_command");
+    expect(lifecycleCommand).toContain("run_elevated_cli_lifecycle_whitelist");
+    expect(lifecycleCommand).not.toMatch(
+      /codex_desktop|checksum|sha256|package_identity|verify_reader/iu,
+    );
+  });
 });

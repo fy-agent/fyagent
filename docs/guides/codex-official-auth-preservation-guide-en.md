@@ -204,7 +204,6 @@ Because Codex App Enhancements and routing takeover can create unnecessary troub
 
 - [Can't see custom models in the Codex desktop app? (FAQ)](./codex-desktop-custom-model-visibility-en.md)
 - [Codex DeepSeek local routing hands-on guide](./codex-deepseek-routing-guide-en.md)
-- [Add a Codex provider: Chat Completions routing and model mapping](../user-manual/en/2-providers/2.1-add.md)
-- [Local Proxy Service](../user-manual/en/4-proxy/4.1-service.md)
-- [Local Routing](../user-manual/en/4-proxy/4.2-routing.md)
-- [FyAgent v3.16.1 Release Note](../release-notes/v3.16.1-en.md)
+- [Add a Codex provider: Chat Completions routing and model mapping](../user-manual/en/3-providers/3.1-add.md)
+- [Local Proxy Service](../user-manual/en/5-proxy/5.1-service.md)
+- [Local Routing](../user-manual/en/5-proxy/5.2-routing.md)

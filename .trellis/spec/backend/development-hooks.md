@@ -2,8 +2,9 @@
 
 ## Scope
 
-FyAgent retains the upstream Trellis `0.6.14` Codex hook registration and
-Python scripts as optional prompt assistance:
+FyAgent retains the upstream Trellis Codex hook registration and Python
+scripts as optional prompt assistance. The managed Trellis version is the
+exact value in `.trellis/.version` (currently `0.6.15`). The Codex files are:
 
 - `.codex/hooks.json`
 - `.codex/hooks/inject-workflow-state.py`

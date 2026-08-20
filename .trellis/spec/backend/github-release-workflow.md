@@ -31,8 +31,8 @@ The YAML tag filter is only routing. The repository-owned eligibility engine
 accepts exactly stable `vX.Y.Z` with no prerelease, build metadata, missing
 component, or leading zero.
 
-- `workflow_dispatch` is an optional full five-target diagnostic preflight for
-  the current trusted `main` HEAD. It may build and package native targets,
+- `workflow_dispatch` is an optional full three-target diagnostic preflight for
+  the current trusted `dev/laiyongjie` HEAD. It may build and package native targets,
   prove and seal Windows bytes, create workflow artifacts, and attest candidate
   bytes, but it can never create or update a GitHub Release and is not a
   release-closure prerequisite.
@@ -58,10 +58,10 @@ Eligibility is the sole producer of these values:
 ```text
 app_version   = canonical Cargo stable version
 release_tag   = "v" + app_version
-source_sha    = current remote main HEAD
+source_sha    = current remote dev/laiyongjie HEAD (preflight) | main HEAD (formal)
 workflow_sha  = source_sha
 release_mode  = preflight | formal
-ci_run_id     = exact successful main push CI run
+ci_run_id     = exact successful push CI run for the mode's authority branch
 ci_attempt    = exact successful attempt of that run
 ```
 
@@ -70,10 +70,10 @@ attestation, and publication step consumes these values unchanged. Downstream
 jobs must not strip a ref, reread a second version source, select a newer CI
 attempt, or substitute a different source/workflow SHA.
 
-Both modes bind the same exact successful `main` push CI. Preflight is an
-optional diagnostic for the same source that may later be tagged, not release
-authority or a closure gate. Formal mode additionally binds the remote
-annotated tag.
+Preflight binds the exact current `dev/laiyongjie` HEAD and its successful push
+CI. Formal mode independently binds the exact current `main` HEAD, its
+successful push CI, and the remote annotated tag. Preflight is artifact-producing
+diagnostic evidence, not formal release authority or a closure gate.
 
 The frozen output has exact keys:
 
@@ -106,9 +106,9 @@ Eligibility fails closed unless all of these facts agree:
 2. the workflow is `Release` at `.github/workflows/release.yml` and its
    workflow SHA equals the candidate source;
 3. the canonical version is stable `X.Y.Z` and the tag is exactly `vX.Y.Z`;
-4. the live `refs/heads/main` target equals candidate, event, workflow, and
-   checkout source SHA;
-5. preflight event/ref/workflow ref are the `main` branch and its explicit
+4. the live authority branch target (`dev/laiyongjie` for preflight, `main` for
+   formal) equals candidate, event, workflow, and checkout source SHA;
+5. preflight event/ref/workflow ref are the `dev/laiyongjie` branch and its explicit
    `source_sha` input equals the frozen source; remote tag evidence is absent;
 6. formal event/ref/workflow ref are the same version tag, the remote ref
    points to a Git `tag` object rather than directly to a commit, the annotated
@@ -116,7 +116,7 @@ Eligibility fails closed unless all of these facts agree:
 7. the CI workflow belongs to the same repository, is active, is named `CI`,
    and has path `.github/workflows/ci.yml`;
 8. among exact-source `push` runs whose head repository is the same repository
-   and whose head branch is `main`, the latest run number/attempt is
+   and whose head branch is the mode's authority branch, the latest run number/attempt is
    completed successfully; an older green run cannot mask a later failed,
    cancelled, timed-out, or running attempt;
 9. the selected attempt contains exactly one completed/successful
@@ -162,8 +162,7 @@ second application version.
 ```text
 eligibility
   ├─ build-windows (x64, ARM64) ─┐
-  ├─ build-linux   (x64, ARM64)  ├─ pin-release-build-inputs
-  └─ build-macos   (universal) ──┘              │
+  └─ build-macos   (universal) ──┴─ pin-release-build-inputs
                                                  ├─ preflight proof ──────┐
                                                  └─ formal transform      │
                                                      └─ fresh formal seal ┤
@@ -179,7 +178,9 @@ file's version/source/size/SHA-256 in `trusted-build-inputs.json`, and uploads
 one `trusted-build-inputs` artifact. Its original artifact ID/digest are job
 outputs. All trusted consumers download that original ID. Deleting it causes a
 failure; uploading a same-name replacement yields another ID and cannot
-replace the pinned bytes.
+replace the pinned bytes. Because `download-artifact` extracts a single match
+directly into the requested path, the one macOS artifact is downloaded by
+exact name into its own explicit `installers-macos-universal` directory.
 
 The preflight and formal Windows paths are mutually exclusive:
 
@@ -232,32 +233,17 @@ use `*-latest`, restore candidate-controlled release caches, or execute mise.
 Node is established before pnpm. pnpm and Rust Action caches are explicitly
 disabled.
 
-| Target          | Runner/build environment                                | Exact installer output             |
-| --------------- | ------------------------------------------------------- | ---------------------------------- |
-| Windows x64     | `windows-2025`, native `X64`                            | x64 NSIS setup EXE                 |
-| Windows ARM64   | `windows-11-arm`, native `ARM64`                        | ARM64 NSIS setup EXE               |
-| Linux x64       | `ubuntu-24.04`, pinned Ubuntu 22.04 amd64 container     | AppImage, DEB, RPM                 |
-| Linux ARM64     | `ubuntu-24.04-arm`, pinned Ubuntu 22.04 arm64 container | AppImage, DEB, RPM                 |
-| macOS universal | `macos-15`, both Apple targets                          | DMG and ZIP from one universal app |
-
-Linux uses the reviewed multi-architecture Ubuntu image children:
-
-```text
-amd64 docker.io/library/ubuntu:22.04@sha256:0199853f6d6b20b0424f3c5694a72a62764f01e6a771b1eb48a4197848986c7e
-arm64 docker.io/library/ubuntu:22.04@sha256:a8cdd2158a73d7e5c02aa351fe269f48f57cf710a241db86e9ede371fc150149
-```
+| Target          | Runner/build environment         | Exact installer output             |
+| --------------- | -------------------------------- | ---------------------------------- |
+| Windows x64     | `windows-2025`, native `X64`     | x64 NSIS setup EXE                 |
+| Windows ARM64   | `windows-11-arm`, native `ARM64` | ARM64 NSIS setup EXE               |
+| macOS universal | `macos-15`, both Apple targets   | DMG and ZIP from one universal app |
 
 Each target verifies documented `runner.os`/`runner.arch`, the requested
-runner label, source HEAD, Node 24.19.0, pnpm 10.12.3, and Rust 1.97.1. Linux
-also verifies configured digest, `/etc/os-release`, `uname -m`, and a single
-exact workspace `safe.directory`. There is no QEMU, binfmt impersonation,
+runner label, source HEAD, Node 24.19.0, pnpm 10.12.3, and Rust 1.97.1. There is
+no emulator, architecture impersonation,
 opposite-architecture toolchain, or reduced-target fallback. ARM runner
 unavailability blocks acceptance.
-
-The locked Tauri bundler requires Linux AppImage extraction mode for nested
-tool execution. That variable is limited to the package step; it does not
-grant mount, FUSE, privileged-container, or `SYS_ADMIN` capability and must be
-re-evaluated when the locked Tauri CLI/bundler changes.
 
 ## 6. Platform build, package, and security gates
 
@@ -305,52 +291,41 @@ re-evaluated when the locked Tauri CLI/bundler changes.
   same verified ad-hoc-sealed app and are re-opened to prove version and
   executable digest identity;
 - DMG creation removes its explicit output before the first attempt and after
-  every failed attempt. It retries the same `hdiutil create` arguments only
-  when the captured diagnostic contains `Resource busy`, with at most five
-  attempts and `2`, `4`, `8`, and `16` second delays. Any other diagnostic, an
-  exhausted retry budget, or inability to remove partial output returns the
-  original `hdiutil` status immediately. The workflow does not pipe `hdiutil`,
-  force-detach images, or kill disk-image helpers.
-
-### Linux
-
-- each native container produces exactly one AppImage, DEB, and RPM;
-- ELF/package architecture and package version match the frozen target before
-  normalization;
-- AppImage extraction compatibility is step-scoped and package stderr remains
-  visible; no format is optional in preflight or formal mode.
+  every failed attempt. DMG verification preserves the completed input across
+  attempts. Both operations retry the same arguments only when the captured
+  diagnostic contains `Resource busy` or `Resource temporarily unavailable`,
+  with at most five attempts and `2`, `4`, `8`, and `16` second delays. Any
+  other diagnostic, an exhausted retry budget, or inability to remove a
+  partial creation output returns the original `hdiutil` status immediately.
+  The workflow does not pipe `hdiutil`, force-detach images, or kill disk-image
+  helpers.
 
 ## 7. Assets, metadata, signing disclosure, and attestation
 
-The installer allowlist contains exactly ten versioned files:
+The installer allowlist contains exactly four versioned files:
 
 ```text
 FyAgent-X.Y.Z-macOS.dmg
 FyAgent-X.Y.Z-macOS.zip
 FyAgent-X.Y.Z-Windows-x64-setup.exe
 FyAgent-X.Y.Z-Windows-arm64-setup.exe
-FyAgent-X.Y.Z-Linux-x86_64.AppImage
-FyAgent-X.Y.Z-Linux-x86_64.deb
-FyAgent-X.Y.Z-Linux-x86_64.rpm
-FyAgent-X.Y.Z-Linux-arm64.AppImage
-FyAgent-X.Y.Z-Linux-arm64.deb
-FyAgent-X.Y.Z-Linux-arm64.rpm
 ```
 
 Any Windows format other than the two NSIS setup executables, plus v-prefixed
 filenames, unversioned names, architecture aliases, missing files, extras,
 directories, symlinks, empty files, or overwrites is forbidden.
 
-`download-manifest.json` schema `fyagent-download-manifest/v2` binds each
+`download-manifest.json` schema `fyagent-download-manifest/v3` binds each
 installer's exact name, platform, architecture, format, size, SHA-256, URL,
 version, tag, source SHA, and publication instant. Its download URL uses the
 canonical `https://github.com/fy-agent/fyagent/releases/download/` prefix;
 redirecting pre-transfer URLs are not emitted as current metadata.
 
-Five `fyagent-platform-build/v1` records bind target/runner/container,
-toolchain, repository/workflow/run, source, release mode, and the same Required
-CI run/attempt in both modes. `build-metadata.json` schema
-`fyagent-build-metadata/v1` reconstructs those records through exact key
+Three `fyagent-platform-build/v2` records—`macos-universal.json`,
+`windows-x64.json`, and `windows-arm64.json`—bind target/runner, toolchain,
+repository/workflow/run, source, release mode, and the same Required CI
+run/attempt in both modes. `build-metadata.json` schema
+`fyagent-build-metadata/v2` reconstructs those records through exact key
 allowlists and emits non-null `requiredCi`.
 
 The two private Windows fragments are normalized into public
@@ -360,10 +335,10 @@ are not Authenticode signed and still list SHA-256, source SHA, and
 attestation. Signed mode reports the verified public certificate policy; no
 credential or adapter secret is included.
 
-Attestation subjects are the ten installers plus `download-manifest.json`,
-`build-metadata.json`, and `signing-status.json` (13 subjects). The Sigstore
-bundle is copied to `artifact-attestation.sigstore.json`; it is the fourteenth
-Release attachment and does not attest itself.
+Attestation subjects are the four installers plus `download-manifest.json`,
+`build-metadata.json`, and `signing-status.json` (seven subjects). The
+Sigstore bundle is copied to `artifact-attestation.sigstore.json`; it is the
+eighth Release attachment and does not attest itself.
 
 ## 8. Permissions and publication transaction
 
@@ -383,7 +358,7 @@ The publish job has an explicit formal tag-push condition; dispatch evaluates
 to false. It performs this transaction:
 
 1. re-evaluate live remote eligibility against the frozen identity;
-2. require the exact 14 attachments and dynamic English notes file
+2. require the exact eight attachments and dynamic English notes file
    `docs/release-notes/${RELEASE_TAG}-en.md`;
 3. generate the signing disclosure from verified metadata;
 4. list all Releases, including drafts, and refuse any existing release with
@@ -397,6 +372,15 @@ to false. It performs this transaction:
 9. re-read by Release ID, verify exact published identity/asset IDs, and
    independently confirm it is Latest.
 
+The current-document contract permits versioned notes only for the version in
+`src-tauri/Cargo.toml`, with the exact `en`, `zh`, or `ja` suffixes. Every
+present note must be non-empty and linked from `docs/release-notes/README.md`.
+This keeps the required English formal-release note reachable on the same
+source SHA that owns the successful Required CI evidence, while rejecting
+stale or unrelated version files. After publication, the versioned files may
+be removed whole; published history remains in Git history and GitHub
+Releases.
+
 No failure handler deletes a draft, retries the final PATCH, updates an
 existing Release, or moves/deletes the tag. Before PATCH, failures leave and
 report the draft for a separate human decision. After PATCH is attempted, one
@@ -405,23 +389,23 @@ never called private or successful.
 
 ## 9. Failure matrix
 
-| Condition                                                                                                                   | Required result                                              |
-| --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| Candidate/version/tag/event/workflow/main HEAD differs                                                                      | Fail before native builds.                                   |
-| Repository name is a former owner or redirect alias, even when numeric ID is unchanged                                      | Fail before native builds; require exact `fy-agent/fyagent`. |
-| Formal tag is lightweight, points elsewhere, or changes                                                                     | Fail; never repair or move the tag.                          |
-| Exact-source main CI is absent/running/failed/cancelled/timed out, stale, wrong identity, or lacks unique Required evidence | Fail; never accept an older green commit/attempt.            |
-| Preflight reaches a publish path or provider secret                                                                         | Static/remote gate fails.                                    |
-| Native runner, architecture, toolchain, Linux digest/OS, or source drifts                                                   | Fail that target; no fallback.                               |
-| Pinned build input ID/digest/manifest/file set drifts                                                                       | Fail before provider or trusted consumption.                 |
-| Signer configuration is partial/invalid or fresh signature proof fails                                                      | Fail; do not downgrade to unsigned.                          |
-| Windows proof/sealed binding, macOS identity, or Linux package set fails                                                    | Stop aggregation and publication.                            |
-| An intentional producer skip propagates past successful asset verification                                                  | Attestation still runs; abnormal direct needs fail visibly.  |
-| Ten/thirteen/fourteen file allowlist or digest differs                                                                      | Stop verification, attestation, or publication.              |
-| Live main/tag/CI identity changes during the transaction                                                                    | Stop before creating the draft or before final PATCH.        |
-| A draft/published Release already exists                                                                                    | Refuse update, replacement, or deletion.                     |
-| Upload/re-download/pre-PATCH verification fails                                                                             | Leave draft untouched and report it.                         |
-| Final PATCH is failed or ambiguous                                                                                          | Observe once; do not retry/delete or claim completion.       |
+| Condition                                                                                                                               | Required result                                              |
+| --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| Candidate/version/tag/event/workflow/authority-branch HEAD differs                                                                      | Fail before native builds.                                   |
+| Repository name is a former owner or redirect alias, even when numeric ID is unchanged                                                  | Fail before native builds; require exact `fy-agent/fyagent`. |
+| Formal tag is lightweight, points elsewhere, or changes                                                                                 | Fail; never repair or move the tag.                          |
+| Exact-source authority-branch CI is absent/running/failed/cancelled/timed out, stale, wrong identity, or lacks unique Required evidence | Fail; never accept an older green commit/attempt.            |
+| Preflight reaches a publish path or provider secret                                                                                     | Static/remote gate fails.                                    |
+| Native runner, architecture, toolchain, or source drifts                                                                                | Fail that target; no fallback.                               |
+| Pinned build input ID/digest/manifest/file set drifts                                                                                   | Fail before provider or trusted consumption.                 |
+| Signer configuration is partial/invalid or fresh signature proof fails                                                                  | Fail; do not downgrade to unsigned.                          |
+| Windows proof/sealed binding or macOS identity fails                                                                                    | Stop aggregation and publication.                            |
+| An intentional producer skip propagates past successful asset verification                                                              | Attestation still runs; abnormal direct needs fail visibly.  |
+| Four/seven/eight file allowlist or digest differs                                                                                       | Stop verification, attestation, or publication.              |
+| Live main/tag/CI identity changes during the transaction                                                                                | Stop before creating the draft or before final PATCH.        |
+| A draft/published Release already exists                                                                                                | Refuse update, replacement, or deletion.                     |
+| Upload/re-download/pre-PATCH verification fails                                                                                         | Leave draft untouched and report it.                         |
+| Final PATCH is failed or ambiguous                                                                                                      | Observe once; do not retry/delete or claim completion.       |
 
 ## 10. Validation and evidence boundary
 
@@ -435,11 +419,10 @@ dispatch publication, both preflight/formal tail-job truth tables, mutation of
 explicit status conditions or direct-need assertions, asset loss/extra, signer
 policy, and transaction failure.
 
-Local Linux execution cannot establish Windows PowerShell/NSIS/Authenticode,
-native x64/ARM64 build/package output, macOS bundle, Linux non-host
-architecture, GitHub attestation, or public Release evidence. The manual
-Windows install lifecycle is diagnostic evidence outside this Release
-closure. Closure requires, in order:
+Local execution cannot establish another platform's PowerShell/NSIS/
+Authenticode, native build/package output, macOS bundle, GitHub attestation, or
+public Release evidence. The manual Windows install lifecycle is diagnostic
+evidence outside this Release closure. Closure requires, in order:
 
 1. the release change is merged to `main`, and that exact current remote HEAD
    completes `CI / Required` successfully;
@@ -450,8 +433,9 @@ closure. Closure requires, in order:
 4. any later optional bookkeeping push is a new `main` HEAD and must satisfy
    its own CI requirements; it is not part of the release transaction.
 
-A same-SHA dispatch preflight may be run for diagnosis, but closure neither
-requires nor infers success from it.
+A successful `dev/laiyongjie` dispatch preflight may be run to produce and
+attest candidate installers, but formal closure neither requires nor infers
+success from it.
 
 `windows-11-arm` remains public preview and may block the run. Unsigned Windows
 installers may trigger trust prompts; disclosure, SHA-256, and attestation make

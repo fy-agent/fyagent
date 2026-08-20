@@ -13,6 +13,11 @@
     "core:window:allow-is-maximized",
     "core:window:allow-close",
     "core:window:allow-set-decorations",
-    "dialog:allow-message"
+    "dialog:allow-message",
+    "allow-legacy-application-commands",
+    "allow-external-agent-observe",
+    "allow-external-agent-launch",
+    "allow-qoderwork-hooks-write",
+    "allow-external-agent-endpoint-probe"
   ]
 }

@@ -12,16 +12,19 @@ the approved `uv = latest` resolution is pinned in `mise.lock`.
 
 ## Setup and Checks
 
-| Task              | Description                                                                          | Usage  | Effect                 |
-| ----------------- | ------------------------------------------------------------------------------------ | ------ | ---------------------- |
-| `bootstrap`       | Install locked repository tools and dependencies, then run strict environment checks | —      | dependency-environment |
-| `check`           | Run the complete current-host environment, frontend, backend, and contract gate      | —      | read-only              |
-| `check:backend`   | Run Rust formatting, check, Clippy, and tests in fail-fast order                     | —      | read-only              |
-| `check:contracts` | Run task, docs, Python lock, version, and release contract checks                    | —      | read-only              |
-| `check:frontend`  | Run frontend type, formatting, unit, i18n, desktop mock, and visual preflight checks | —      | read-only              |
-| `deps:install`    | Install frozen pnpm dependencies and synchronize the locked uv environment           | —      | dependency-environment |
-| `env:check`       | Verify exact tools, ownership, lockfiles, Python environment, and task metadata      | --json | read-only              |
-| `system:check`    | Check current-host Tauri prerequisites without installing or elevating anything      | --json | read-only              |
+| Task                         | Description                                                                                  | Usage                        | Effect                 |
+| ---------------------------- | -------------------------------------------------------------------------------------------- | ---------------------------- | ---------------------- |
+| `bootstrap`                  | Install locked repository tools and dependencies, then run strict environment checks         | —                            | dependency-environment |
+| `check`                      | Run the complete current-host environment, frontend, backend, and contract gate              | —                            | read-only              |
+| `check:backend`              | Run Rust formatting, check, Clippy, and tests in fail-fast order                             | —                            | read-only              |
+| `check:contracts`            | Run task, docs, Python lock, version, and release contract checks                            | —                            | read-only              |
+| `check:contracts:prearchive` | Run contract checks with this change task's exact Trellis record excluded before archival    | --exclude-active-task <path> | read-only              |
+| `check:frontend`             | Run frontend type, formatting, unit, i18n, desktop mock, and visual preflight checks         | —                            | read-only              |
+| `check:prearchive`           | Run the complete check with this change task's exact Trellis record excluded before archival | --exclude-active-task <path> | read-only              |
+| `deps:install`               | Install frozen pnpm dependencies and synchronize the locked uv environment                   | —                            | dependency-environment |
+| `env:check`                  | Verify exact tools, ownership, lockfiles, Python environment, and task metadata              | --json                       | read-only              |
+| `supported-platform:check`   | Reject unsupported first-party platform surfaces and implicit native target admission        | --exclude-active-task <path> | read-only              |
+| `system:check`               | Check current-host Tauri prerequisites without installing or elevating anything              | --json                       | read-only              |
 
 ## Development and Native Build
 
@@ -47,6 +50,9 @@ the approved `uv = latest` resolution is pinned in `mise.lock`.
 | `test:i18n`                     | Verify locale key and schema parity                                            | —          | read-only        |
 | `test:unit`                     | Run Vitest unit and integration tests with optional controlled filters         | [filters]  | read-only        |
 | `test:unit:watch`               | Run Vitest in interactive watch mode with optional controlled filters          | [filters]  | interactive      |
+| `test:v2`                       | Run the isolated V2 renderer unit and architecture tests                       | —          | read-only        |
+| `test:v2:browser`               | Run the V2 Chromium geometry and interaction smoke suite                       | —          | read-only        |
+| `test:v2:watch`                 | Run isolated V2 renderer tests in interactive watch mode                       | —          | interactive      |
 | `typecheck`                     | Run strict TypeScript type checking without emitting files                     | —          | read-only        |
 
 ## Rust
@@ -76,19 +82,19 @@ the approved `uv = latest` resolution is pinned in `mise.lock`.
 
 ## Version, Assets, and Cleanup
 
-| Task                 | Description                                                                       | Usage                   | Effect             |
-| -------------------- | --------------------------------------------------------------------------------- | ----------------------- | ------------------ |
-| `assets:icons`       | Preview or generate the application icon set from a validated source image        | --source <file> --apply | preview-by-default |
-| `assets:icons:check` | Verify required application icon consumers and basic file signatures              | —                       | read-only          |
-| `clean:all`          | Preview or remove every approved repository-local generated directory             | --apply                 | preview-by-default |
-| `clean:artifacts`    | Preview or remove repository-local package and release artifacts                  | --apply                 | preview-by-default |
-| `clean:frontend`     | Preview or remove repository-local frontend generated state                       | --apply                 | preview-by-default |
-| `clean:python`       | Preview or remove the repository-local uv .venv                                   | --apply                 | preview-by-default |
-| `clean:rust`         | Preview or remove repository-local Cargo target output                            | --apply                 | preview-by-default |
-| `version:bump`       | Preview or atomically bump the product version through the canonical version tool | <level> --apply         | preview-by-default |
-| `version:check`      | Verify every product-version consumer and an optional release tag                 | --tag <tag>             | read-only          |
-| `version:get`        | Print the Cargo-workspace product version                                         | —                       | read-only          |
-| `version:set`        | Preview or atomically set the product version through the canonical version tool  | <version> --apply       | preview-by-default |
+| Task                 | Description                                                                            | Usage                   | Effect             |
+| -------------------- | -------------------------------------------------------------------------------------- | ----------------------- | ------------------ |
+| `assets:icons`       | Preview or regenerate every application-brand icon consumer from the reviewed Y source | --source <file> --apply | preview-by-default |
+| `assets:icons:check` | Regenerate in temporary storage and verify every application-brand icon consumer       | —                       | read-only          |
+| `clean:all`          | Preview or remove every approved repository-local generated directory                  | --apply                 | preview-by-default |
+| `clean:artifacts`    | Preview or remove repository-local package and release artifacts                       | --apply                 | preview-by-default |
+| `clean:frontend`     | Preview or remove repository-local frontend generated state                            | --apply                 | preview-by-default |
+| `clean:python`       | Preview or remove the repository-local uv .venv                                        | --apply                 | preview-by-default |
+| `clean:rust`         | Preview or remove repository-local Cargo target output                                 | --apply                 | preview-by-default |
+| `version:bump`       | Preview or atomically bump the product version through the canonical version tool      | <level> --apply         | preview-by-default |
+| `version:check`      | Verify every product-version consumer and an optional release tag                      | --tag <tag>             | read-only          |
+| `version:get`        | Print the Cargo-workspace product version                                              | —                       | read-only          |
+| `version:set`        | Preview or atomically set the product version through the canonical version tool       | <version> --apply       | preview-by-default |
 
 ## Dependency and Toolchain Maintenance
 
@@ -136,6 +142,8 @@ the approved `uv = latest` resolution is pinned in `mise.lock`.
 | Task           | Description                                                                 | Usage   | Effect           |
 | -------------- | --------------------------------------------------------------------------- | ------- | ---------------- |
 | `format:files` | Format reviewed files with locked Prettier and lossless JSONL normalization | <files> | source-modifying |
+| `lint:v2`      | Lint only the isolated V2 renderer and its focused tests                    | —       | read-only        |
+| `typecheck:v2` | Type-check only the isolated V2 renderer and focused tests                  | —       | read-only        |
 
 ## Safety Boundaries
 

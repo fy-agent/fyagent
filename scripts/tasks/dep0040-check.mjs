@@ -438,6 +438,16 @@ function hasOrderedAncestors(entry, requirements) {
   return true;
 }
 
+function hasExactAncestorSuffix(entry, requirements) {
+  const offset = entry.ancestors.length - requirements.length;
+  if (offset < 0) return false;
+  return requirements.every(
+    ([name, version], index) =>
+      entry.ancestors[offset + index].name === name &&
+      entry.ancestors[offset + index].version === version,
+  );
+}
+
 function unexpectedWatchedReason(entry) {
   if (
     entry.name === "whatwg-url" &&
@@ -458,7 +468,7 @@ function unexpectedWatchedReason(entry) {
   }
   if (
     entry.name === "punycode" &&
-    /^2(?:\.|$)/.test(entry.version) &&
+    entry.version === "2.3.1" &&
     hasOrderedAncestors(entry, [
       ["jsdom", undefined],
       ["whatwg-url", /^14(?:\.|$)/],
@@ -467,7 +477,18 @@ function unexpectedWatchedReason(entry) {
   ) {
     return undefined;
   }
-  return "watched dependency is outside the reviewed jsdom native-Fetch path";
+  if (
+    entry.name === "punycode" &&
+    entry.version === "2.3.1" &&
+    hasExactAncestorSuffix(entry, [
+      ["eslint", "10.8.1"],
+      ["ajv", "6.15.0"],
+      ["uri-js", "4.4.1"],
+    ])
+  ) {
+    return undefined;
+  }
+  return "watched dependency is outside the reviewed DEP0040 dependency paths";
 }
 
 export function analyzeWhyGraph(document) {

@@ -14,6 +14,16 @@ description = "Run strict TypeScript type checking without emitting files"
 env = { FYAGENT_TASK_EFFECT = "read-only" }
 run = "pnpm typecheck"
 
+["lint:v2"]
+description = "Lint only the isolated V2 renderer and its focused tests"
+env = { FYAGENT_TASK_EFFECT = "read-only" }
+run = "pnpm lint:v2"
+
+["typecheck:v2"]
+description = "Type-check only the isolated V2 renderer and focused tests"
+env = { FYAGENT_TASK_EFFECT = "read-only" }
+run = "pnpm typecheck:v2"
+
 [format]
 description = "Apply the repository Prettier configuration to frontend sources"
 env = { FYAGENT_TASK_EFFECT = "source-modifying" }
@@ -59,6 +69,22 @@ env = { FYAGENT_TASK_EFFECT = "interactive" }
 interactive = true
 run = "node scripts/tasks/frontend.mjs test-watch"
 
+["test:v2"]
+description = "Run the isolated V2 renderer unit and architecture tests"
+env = { FYAGENT_TASK_EFFECT = "read-only" }
+run = "pnpm test:v2"
+
+["test:v2:watch"]
+description = "Run isolated V2 renderer tests in interactive watch mode"
+env = { FYAGENT_TASK_EFFECT = "interactive" }
+interactive = true
+run = "pnpm test:v2:watch"
+
+["test:v2:browser"]
+description = "Run the V2 Chromium geometry and interaction smoke suite"
+env = { FYAGENT_TASK_EFFECT = "read-only" }
+run = "pnpm test:v2:browser"
+
 ["test:i18n"]
 description = "Verify locale key and schema parity"
 env = { FYAGENT_TASK_EFFECT = "read-only" }
@@ -84,15 +110,15 @@ confirm = { message = "Validate reviewed visual-baseline evidence?", default = "
 run = "node scripts/tasks/frontend.mjs visual-update"
 
 ["assets:icons"]
-description = "Preview or generate the application icon set from a validated source image"
+description = "Preview or regenerate every application-brand icon consumer from the reviewed Y source"
 usage = '''
-flag "--source <file>" help="Square source PNG or SVG" default="assets/fyagent.png"
-flag "--apply" help="Generate files in src-tauri/icons; otherwise print the plan"
+flag "--source <file>" help="Canonical 1024 RGBA package source path" default="assets/fyagent.png"
+flag "--apply" help="Regenerate canonical PNG, Tauri, About, and macOS tray assets; otherwise print the plan"
 '''
 env = { FYAGENT_TASK_EFFECT = "preview-by-default" }
 run = "node scripts/tasks/frontend.mjs assets-icons"
 
 ["assets:icons:check"]
-description = "Verify required application icon consumers and basic file signatures"
+description = "Regenerate in temporary storage and verify every application-brand icon consumer"
 env = { FYAGENT_TASK_EFFECT = "read-only" }
 run = "node scripts/tasks/frontend.mjs assets-icons-check"

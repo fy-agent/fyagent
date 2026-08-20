@@ -1,0 +1,128 @@
+{
+  "meta": {
+    "name": "FyAgent Cross-platform Glass Control Plane v3",
+    "description": "A calm Apple-inspired but platform-neutral desktop control plane for Windows and macOS, with six stable first-level capability pages.",
+    "source_references": [
+      "fyagent-control-plane-prototype-v2.png",
+      "fyagent-brand-board.png",
+      "fyagent-app-icon-concept.png"
+    ],
+    "created_at": "2026-08-12"
+  },
+  "design_system": {
+    "color": {
+      "palette_type": "cool monochromatic with restrained cyan signal",
+      "primary": { "hex": "#1677FF", "role": "selected navigation and the single primary action" },
+      "secondary": { "hex": "#65D8D0", "role": "connection and active capability signal" },
+      "accent": { "hex": "#E7A23B", "role": "warning only" },
+      "neutral": { "scale": ["#F4F9FF", "#E8F2FC", "#D7E6F4", "#9AAFC2", "#526678", "#263746", "#142431"], "usage": "pale blue backgrounds, white-blue glass surfaces, navy text" },
+      "semantic": { "success": "#39A978", "warning": "#E7A23B", "error": "#D95C63", "info": "#1677FF" },
+      "surface": { "background": "#EAF4FC", "card": "rgba(255,255,255,0.56)", "elevated": "rgba(255,255,255,0.76)" },
+      "contrast_strategy": "dark navy content over light translucent surfaces; blue is reserved for selection and primary action"
+    },
+    "typography": {
+      "type_scale": {
+        "heading_1": { "size": "28px", "weight": 650, "line_height": 1.2, "tracking": "-0.02em" },
+        "heading_2": { "size": "20px", "weight": 600, "line_height": 1.3, "tracking": "-0.01em" },
+        "heading_3": { "size": "16px", "weight": 600, "line_height": 1.35, "tracking": "0" },
+        "body": { "size": "14px", "weight": 400, "line_height": 1.5, "tracking": "0" },
+        "caption": { "size": "12px", "weight": 500, "line_height": 1.35, "tracking": "0.01em" }
+      },
+      "font_families": { "heading": "SF Pro Display, PingFang SC, Segoe UI Variable, sans-serif", "body": "SF Pro Text, PingFang SC, Segoe UI, sans-serif", "mono": "SFMono-Regular, Cascadia Code, monospace" },
+      "font_style_notes": "native desktop cadence, no marketing display type, no text smaller than 12px"
+    },
+    "spacing": {
+      "base_unit": "4px",
+      "scale": ["4px", "8px", "12px", "16px", "20px", "24px", "32px", "40px"],
+      "content_density": "comfortable operational",
+      "section_rhythm": "20px outer inset, 16px panel gap, 16–20px panel padding"
+    },
+    "layout": {
+      "grid_system": "platform-neutral desktop shell with 240px list, fluid workspace, 280px inspector",
+      "max_content_width": "1440px viewport",
+      "columns": "240 / minmax(0, 1fr) / 280",
+      "gutter": "16px",
+      "breakpoints": ["1024px", "1280px", "1440px"],
+      "alignment_tendency": "strict left alignment with centered first-level navigation"
+    },
+    "shape": {
+      "border_radius": { "small": "10px", "medium": "16px", "large": "22px", "pill": "9999px" },
+      "border_usage": "1px white highlight plus a low-alpha blue-gray outer border",
+      "divider_style": "single hairline dividers, never nested card borders"
+    },
+    "elevation": {
+      "shadow_style": "diffuse cool shadow with soft inner highlight",
+      "levels": { "low": "0 8px 24px rgba(62,98,128,.10)", "medium": "0 18px 48px rgba(62,98,128,.14)", "high": "0 28px 70px rgba(43,77,106,.18)" },
+      "depth_cues": "translucency, blur, inner highlight and one restrained shadow level per surface"
+    },
+    "iconography": {
+      "style": "rounded 1.75px outline icons with the filled Y gate mark",
+      "stroke_weight": "1.75px",
+      "size_scale": ["16px", "18px", "22px", "36px"],
+      "preferred_set": "FyAgent marks and Lucide-style controls"
+    },
+    "motion": {
+      "easing": "cubic-bezier(.2,.8,.2,1)",
+      "duration_scale": { "micro": "120ms", "normal": "180ms", "macro": "260ms" },
+      "philosophy": "functional, quiet, reduced-motion compatible"
+    },
+    "components": {
+      "button_style": "40px primary pill, 36–40px secondary glass pill, one primary button per screen",
+      "input_style": "36–40px translucent field with clear navy text and blue focus ring",
+      "card_style": "large glass panes for real grouping; list rows are not individual floating cards",
+      "navigation_pattern": "six-item centered capsule; active item is solid blue",
+      "list_style": "quiet contiguous rows with selected blue-tint state",
+      "inspector_style": "single right glass pane for status, scope and contextual actions",
+      "window_controls": "Windows controls at top-right in Windows shell; macOS native titlebar outside shared content"
+    }
+  },
+  "design_style": {
+    "aesthetic": {
+      "mood": ["calm", "precise", "light", "trusted"],
+      "visual_metaphor": "a clear glass control surface over a soft sky field",
+      "genre": "AI developer tool / desktop productivity",
+      "personality_traits": ["quiet", "capable", "cross-platform", "direct"]
+    },
+    "visual_language": {
+      "complexity": "moderate",
+      "ornamentation": "subtle ambient gradients only",
+      "whitespace_usage": "generous around page title, compact within operational rows",
+      "focal_strategy": "active first-level capsule then the central workspace",
+      "contrast_level": "medium-high content contrast over low-contrast glass"
+    },
+    "composition": {
+      "hierarchy_method": "scale, selection tint and panel position",
+      "balance_type": "stable three-pane operational layout",
+      "flow_direction": "top navigation, left selection, center work, right scope/status",
+      "grouping_strategy": "lists and inspectors, not card grids"
+    },
+    "interaction_feel": {
+      "feedback_style": "tint, border and concise status changes",
+      "hover_behavior": "slight surface brightening without scale",
+      "transition_personality": "soft and quick",
+      "microinteraction_density": "low"
+    },
+    "brand_voice_in_ui": {
+      "tone": "short, factual Chinese",
+      "formality": "professional and familiar",
+      "cta_style": "two-to-four character imperative",
+      "empty_state_approach": "one missing state plus one next action",
+      "error_tone": "local and recoverable"
+    }
+  },
+  "visual_effects": {
+    "overview": { "effect_intensity": "subtle", "performance_tier": "lightweight", "fallback_strategy": "opaque pale-blue surfaces with the same hierarchy", "primary_technology": "CSS backdrop-filter and gradients" },
+    "background_effects": { "type": "ambient radial gradients", "description": "very pale blue/cyan light fields behind the shell", "technology": "CSS", "params": { "color_palette": ["#EAF4FC", "#DDEFFF", "#E7FAF7"], "opacity": ".55", "blend_mode": "normal" } },
+    "glassmorphism_neumorphism": { "enabled": true, "style": "frosted glass", "params": { "blur_radius": "24px", "transparency": ".44–.76", "border_treatment": "white inner highlight plus blue-gray hairline", "shadow_type": "diffuse cool", "light_source_angle": "top-left" } },
+    "particle_systems": { "enabled": false },
+    "3d_elements": { "enabled": false },
+    "shader_effects": { "enabled": false },
+    "scroll_effects": { "parallax": { "enabled": false }, "scroll_triggered_animations": { "enabled": false } },
+    "text_effects": { "type": "none" },
+    "cursor_effects": { "enabled": false },
+    "image_effects": { "type": "none" },
+    "canvas_drawings": { "enabled": false },
+    "svg_animations": { "enabled": false },
+    "composite_notes": "The Apple influence is limited to material, spacing and calmness; window chrome remains platform-aware and the information architecture stays shared."
+  }
+}

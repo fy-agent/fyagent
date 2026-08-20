@@ -1,0 +1,387 @@
+.fy-agent-detail {
+  display: grid;
+  align-content: start;
+  gap: 17px;
+}
+
+.fy-agent-identity {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.fy-agent-identity-copy {
+  display: grid;
+  flex: 1 1 160px;
+  gap: 7px;
+  min-width: 0;
+}
+
+.fy-agent-identity > .fy-catalog-brand-frame {
+  flex: 0 0 auto;
+}
+
+.fy-agent-identity > .fy-catalog-official-links {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.fy-agent-identity-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.fy-agent-identity-title h2 {
+  margin: 0;
+  font-size: 21px;
+  letter-spacing: -0.02em;
+}
+
+.fy-agent-section {
+  display: grid;
+  gap: 11px;
+  min-width: 0;
+}
+
+.fy-agent-section h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.fy-agent-section-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 9px;
+}
+
+.fy-agent-section-heading > div {
+  display: grid;
+  gap: 5px;
+}
+
+.fy-agent-section-heading p {
+  margin: 0;
+  color: var(--fy-text-secondary);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.fy-agent-observation {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--fy-border);
+  border-radius: 12px;
+  background: rgba(226, 243, 255, 0.06);
+}
+
+.fy-agent-observation-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.fy-agent-observation-grid div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 9px 10px;
+  border-radius: 9px;
+  background: rgba(9, 29, 48, 0.16);
+}
+
+.fy-agent-observation-grid dt {
+  color: var(--fy-text-secondary);
+  font-size: 11px;
+}
+
+.fy-agent-observation-grid dd {
+  min-width: 0;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.fy-agent-observation-loading {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 42px;
+  color: var(--fy-text-secondary);
+  font-size: 12px;
+}
+
+.fy-agent-observation-error {
+  display: grid;
+  gap: 9px;
+}
+
+.fy-agent-observation-error p {
+  margin: 0;
+  color: var(--fy-text-secondary);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.fy-codex-installer-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.fy-codex-installer-heading > div {
+  display: grid;
+  gap: 5px;
+}
+
+.fy-codex-installer-heading p,
+.fy-codex-installer-status,
+.fy-codex-installer-download {
+  margin: 0;
+  color: var(--fy-text-secondary);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.fy-codex-installer-status-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.fy-codex-installer-status-row .fy-control-spinner {
+  width: 14px;
+  height: 14px;
+  margin-top: 3px;
+  flex: 0 0 auto;
+}
+
+.fy-codex-installer-status.is-working {
+  color: var(--fy-text-primary);
+}
+
+.fy-codex-installer-body {
+  display: grid;
+  gap: 11px;
+  padding: 12px;
+  border: 1px solid var(--fy-border);
+  border-radius: 12px;
+  background: rgba(226, 243, 255, 0.06);
+}
+
+.fy-codex-installer-versions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.fy-codex-installer-versions div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 9px 10px;
+  border-radius: 9px;
+  background: rgba(9, 29, 48, 0.16);
+}
+
+.fy-codex-installer-versions dt {
+  color: var(--fy-text-secondary);
+  font-size: 11px;
+}
+
+.fy-codex-installer-versions dd {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.fy-codex-installer-progress {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  color: var(--fy-text-secondary);
+  font-size: 11px;
+}
+
+.fy-codex-installer-progress-track {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(226, 243, 255, 0.12);
+}
+
+.fy-codex-installer-progress-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--fy-accent);
+  transition: width 130ms ease-out;
+}
+
+.fy-codex-installer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.fy-agent-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.fy-agent-evidence {
+  margin: 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--fy-border);
+  color: var(--fy-text-secondary);
+  font-size: 11px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.fy-agent-unsupported {
+  min-width: 0;
+  border: 1px solid var(--fy-border);
+  border-radius: 11px;
+  background: rgba(226, 243, 255, 0.04);
+}
+
+.fy-agent-unsupported > summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 10px 12px;
+  color: var(--fy-text-secondary);
+  font-size: 12px;
+}
+
+.fy-agent-unsupported > summary::-webkit-details-marker {
+  display: none;
+}
+
+.fy-agent-unsupported[open] > summary {
+  border-bottom: 1px solid var(--fy-border);
+}
+
+.fy-agent-hooks-editor,
+.fy-agent-hook-group,
+.fy-agent-hooks-preview,
+.fy-agent-mcp-result {
+  display: grid;
+  gap: 10px;
+}
+
+.fy-agent-hook-group {
+  padding: 12px;
+  border: 1px solid var(--fy-border);
+  border-radius: 12px;
+  background: rgba(226, 243, 255, 0.05);
+}
+
+.fy-agent-hook-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.fy-agent-hook-command-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(110px, 0.28fr) auto;
+  align-items: end;
+  gap: 8px;
+}
+
+.fy-agent-hook-timeout {
+  min-width: 0;
+}
+
+.fy-agent-hooks-preview > div {
+  padding: 10px;
+  border-radius: 10px;
+  background: rgba(9, 29, 48, 0.16);
+}
+
+.fy-agent-hooks-preview span {
+  color: var(--fy-text-secondary);
+  font-size: 12px;
+}
+
+.fy-agent-hooks-preview ul,
+.fy-agent-mcp-result ul {
+  margin: 7px 0 0;
+  padding-left: 19px;
+}
+
+.fy-agent-mcp-textarea {
+  min-height: 150px;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  line-height: 1.5;
+}
+
+.fy-agent-mcp-result {
+  padding: 12px;
+  border: 1px solid var(--fy-border);
+  border-radius: 12px;
+  background: rgba(226, 243, 255, 0.05);
+}
+
+.fy-agent-mcp-result > ul {
+  display: grid;
+  gap: 9px;
+  margin: 0;
+}
+
+.fy-agent-mcp-result li > span {
+  display: block;
+  margin-top: 3px;
+  color: var(--fy-text-secondary);
+  font-size: 11px;
+}
+
+.fy-agent-mcp-result pre {
+  max-height: 220px;
+  margin: 0;
+  padding: 10px;
+  overflow: auto;
+  border-radius: 9px;
+  background: rgba(9, 29, 48, 0.2);
+  color: var(--fy-text-secondary);
+  font-size: 11px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 520px) {
+  .fy-agent-observation-grid,
+  .fy-codex-installer-versions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .fy-agent-hook-grid,
+  .fy-agent-hook-command-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fy-codex-installer-progress-track span {
+    transition: none;
+  }
+}

@@ -27,31 +27,40 @@ When using these notes before changing Rust/Tauri host code:
 4. Run local commands through the shared
    [Development Environment Contract](./development-environment.md); do not
    substitute a machine-global Node, Rust, or pnpm toolchain, and never select
-   a non-host OS/architecture locally. Native compile/test entrypoints must use
+   a non-host OS/architecture locally. Linux is a development host for
+   `mise run check` and current-host compile/test; it is not a shipped product
+   platform. Native compile/test entrypoints must use
    their guarded mise task (or the guarded `pnpm dev`/`pnpm build` alias), not
    the low-level `pnpm tauri` maintenance/Actions leaf.
 5. Preserve protocol and schema versions as protocol facts, but never infer the
    application version or current behavior from an archived design label.
+6. For main-window restore, maximize, min-size, or `layout-mode-changed`, read
+   the [Main Window Layout Contract](./main-window-layout.md). Host owns
+   geometry: do not mutate it while maximized. V2 Overlay is renderer
+   app-shell chrome only; do not treat that React chrome or CSS as the
+   Windows overflow fix.
 
 ## Guidelines
 
-| Guide                                                                     | Use it for                                                                                                                                                                                                                         |
-| ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [Codex Desktop Installer](./codex-desktop-installer.md)                   | Fixed-source installer service, IPC DTOs/job events, frozen Shell-user package ownership, protected ProgramData PackageBridge, current-user helper admission, A1's unverified native-runtime boundary, and trusted restart/launch. |
-| [Codex Provider Configuration](./codex-provider-configuration.md)         | Lossless Codex Provider TOML, native capabilities, vendor/session projection, warnings, and live-config change evidence.                                                                                                           |
-| [WorkBuddy Configuration](./workbuddy-configuration.md)                   | WorkBuddy model discovery, restricted third-party `/v1` access, credential-safe persistence, and renderer-domain isolation.                                                                                                        |
-| [Application Version and Installer Assets](./fyagent-version-contract.md) | Cargo version single source, version commands, frozen release values, exact cross-platform asset names, and evidence sets.                                                                                                         |
-| [GitHub CI Workflow](./github-ci-workflow.md)                             | Repository-owned change classification, domain-aware PR/merge-group jobs, full dev/main pushes, and the stable `CI / Required` aggregate.                                                                                          |
-| [GitHub Release Workflow](./github-release-workflow.md)                   | Exact dev-HEAD/tag/successful-push-CI identity, full preflight/formal topology, asset transaction, attestation, and public Release.                                                                                                |
-| [Windows Installer](./windows-installer.md)                               | NSIS bundle, install-path behavior, bounded legacy/staging cleanup, explicit PackageBridge non-ownership, per-asset signing policy, x64/ARM64 native build/package, and lifecycle diagnostics.                                     |
-| [Windows Runtime Security](./windows-runtime-security.md)                 | Frozen Explorer-user identity and paths, Alice-owned Tauri state, untrusted single-instance input, elevated CLI boundary, and separation from the retired ProgramData runtime.                                                     |
-| [Development Environment](./development-environment.md)                   | Locked mise-first local tool versions, host-native compiler/runner/linker boundary, and WSL PATH isolation.                                                                                                                        |
-| [Repository Task Runner](./task-runner-contract.md)                       | Canonical mise task metadata, argv transport, DAG effects, maintenance safety, and generated task documentation.                                                                                                                   |
-| [Optional Codex Development Hooks](./development-hooks.md)                | Upstream prompt-assistance registration, behavior limits, and explicitly accepted hardening regressions.                                                                                                                           |
-| [Application Brand Assets](./application-brand-assets.md)                 | Cross-platform app icons, About reuse, macOS tray templates, and validation.                                                                                                                                                       |
-| [Application Identity](./application-identity.md)                         | Cross-layer FyAgent identity, clean-break behavior, and provenance exceptions.                                                                                                                                                     |
-| [CC Switch Upstream Synchronization](./upstream-sync.md)                  | Immutable upstream tag verification, two-parent merge ancestry, conflict precedence, and provenance boundaries.                                                                                                                    |
-| [Deep-Link Import Security](./deeplink-import-security.md)                | Untrusted `fyagent://v1/import` request validation, explicit provider activation approval, and credential-safe confirmation.                                                                                                       |
+| Guide                                                                     | Use it for                                                                                                                                                                                     |
+| ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [Codex Desktop Installer](./codex-desktop-installer.md)                   | Fixed-source installer service, shared renderer DTO/state core, V2 port/events, Shell-user package ownership, protected PackageBridge, and trusted restart/launch.                             |
+| [Codex Provider Configuration](./codex-provider-configuration.md)         | Lossless Codex Provider TOML, native capabilities, vendor/session projection, warnings, and live-config change evidence.                                                                       |
+| [WorkBuddy Configuration](./workbuddy-configuration.md)                   | WorkBuddy model discovery, restricted third-party `/v1` access, credential-safe persistence, and renderer-domain isolation.                                                                    |
+| [External Agent P0 Safety](./external-agent-p0.md)                        | Catalog v4 (Grok Build + TRAE Work CN URL), runtime/launch authority, Skills including disk observation, Qoder Hooks, TRAE GET observation/`state.vscdb`, OpenCode `opencode.json` persist, narrow permissions, and secret boundaries.                    |
+| [Application Version and Installer Assets](./fyagent-version-contract.md) | Cargo version single source, version commands, frozen release values, exact cross-platform asset names, and evidence sets.                                                                     |
+| [GitHub CI Workflow](./github-ci-workflow.md)                             | Repository-owned change classification, domain-aware PR/merge-group jobs, full dev/main pushes, and the stable `CI / Required` aggregate.                                                      |
+| [GitHub Release Workflow](./github-release-workflow.md)                   | Exact dev-HEAD/tag/successful-push-CI identity, full preflight/formal topology, asset transaction, attestation, and public Release.                                                            |
+| [Windows Installer](./windows-installer.md)                               | NSIS bundle, install-path behavior, bounded legacy/staging cleanup, explicit PackageBridge non-ownership, per-asset signing policy, x64/ARM64 native build/package, and lifecycle diagnostics. |
+| [Windows Runtime Security](./windows-runtime-security.md)                 | Frozen Explorer-user identity/paths, Alice-owned Tauri state, validated foreground external links through Explorer, untrusted single-instance input, and elevated CLI boundary.                |
+| [Development Environment](./development-environment.md)                   | Locked mise-first local tool versions and the supported host-native compiler/runner/linker boundary.                                                                                           |
+| [Repository Task Runner](./task-runner-contract.md)                       | Canonical mise metadata, argv transport, DAG effects, generic direct-session prearchive verification, maintenance safety, and generated task documentation.                                    |
+| [Optional Codex Development Hooks](./development-hooks.md)                | Upstream prompt-assistance registration, behavior limits, and explicitly accepted hardening regressions.                                                                                       |
+| [Application Brand Assets](./application-brand-assets.md)                 | Cross-platform app icons, About reuse, macOS tray templates, and validation.                                                                                                                   |
+| [Application Identity](./application-identity.md)                         | Cross-layer FyAgent identity, clean-break behavior, and provenance exceptions.                                                                                                                 |
+| [CC Switch Upstream Synchronization](./upstream-sync.md)                  | Immutable upstream tag verification, two-parent merge ancestry, conflict precedence, and provenance boundaries.                                                                                |
+| [Deep-Link Import Security](./deeplink-import-security.md)                | Untrusted `fyagent://v1/import` request validation, explicit provider activation approval, and credential-safe confirmation.                                                                   |
+| [Main Window Layout](./main-window-layout.md)                             | Work-area clamp, `layout-mode-changed`, and the Windows invariant that maximized windows must not receive `set_min_size` / `set_size` / `set_position`. V2 Overlay is renderer chrome; host owns geometry. |
 
 ## Quality Check
 

@@ -1,0 +1,9 @@
+{"file": ".trellis/spec/frontend/index.md", "reason": "V2 pre-dev checklist, leftover vs V2 boundary, and required local gates."}
+{"file": ".trellis/spec/frontend/v2-shell.md", "reason": "V2 layering, no leftover imports, hardcoded Chinese copy."}
+{"file": ".trellis/spec/frontend/v2-agent-models.md", "reason": "Catalog v3, Models geometry, WorkBuddy/Provider/OpenCode/TRAE contracts being updated."}
+{"file": ".trellis/spec/frontend/v2-skills-mcp.md", "reason": "Skill vs MCP target split, assignment UI, secret-safe MCP."}
+{"file": ".trellis/spec/backend/external-agent-p0.md", "reason": "Catalog, TRAE preflight, Skill eight-target, MCP assignment limits."}
+{"file": ".trellis/spec/backend/workbuddy-configuration.md", "reason": "WorkBuddy model persistence and secret/revision rules to clone for TRAE/OpenCode."}
+{"file": ".trellis/tasks/08-18-v2-models-agent-catalog-parity/research/catalog-identity.md", "reason": "TRAE rename/URL and QoderWork CN icon/model unsupported evidence."}
+{"file": ".trellis/tasks/08-18-v2-models-agent-catalog-parity/research/models-workbuddy-parity.md", "reason": "TRAE vscdb, OpenCode leftover, Claude fetch, vendor icon plan."}
+{"file": ".trellis/tasks/08-18-v2-models-agent-catalog-parity/research/skills-mcp-catalog-sync.md", "reason": "WorkBuddy skills/MCP paths and V2 target set."}

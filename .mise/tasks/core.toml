@@ -2,7 +2,7 @@
 description = "Install locked repository tools and dependencies, then run strict environment checks"
 env = { FYAGENT_TASK_EFFECT = "dependency-environment" }
 run = [
-  "mise install --locked",
+  "mise install",
   { task = "deps:install" },
   { task = "env:check" },
   { task = "tasks:validate" },
@@ -66,6 +66,14 @@ run = [
   { task = "check:contracts" },
 ]
 
+["check:prearchive"]
+description = "Run the complete check with this change task's exact Trellis record excluded before archival"
+usage = '''
+flag "--exclude-active-task <path>" help="Exclude the exact current in-progress task; required before archival"
+'''
+env = { FYAGENT_TASK_EFFECT = "read-only" }
+run = "node scripts/tasks/prearchive-check.mjs full"
+
 ["check:frontend"]
 description = "Run frontend type, formatting, unit, i18n, desktop mock, and visual preflight checks"
 env = { FYAGENT_TASK_EFFECT = "read-only" }
@@ -91,10 +99,19 @@ env = { FYAGENT_TASK_EFFECT = "read-only" }
 run = [
   { task = "tasks:validate" },
   { task = "tasks:docs:check" },
+  { task = "supported-platform:check" },
   { task = "python:lock:check" },
   { task = "version:check" },
   { task = "release:check" },
 ]
+
+["check:contracts:prearchive"]
+description = "Run contract checks with this change task's exact Trellis record excluded before archival"
+usage = '''
+flag "--exclude-active-task <path>" help="Exclude the exact current in-progress task; required before archival"
+'''
+env = { FYAGENT_TASK_EFFECT = "read-only" }
+run = "node scripts/tasks/prearchive-check.mjs contracts"
 
 ["clean:frontend"]
 description = "Preview or remove repository-local frontend generated state"

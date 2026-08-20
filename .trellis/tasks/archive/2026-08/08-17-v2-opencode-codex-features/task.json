@@ -1,0 +1,29 @@
+{
+  "id": "v2-opencode-codex-features",
+  "name": "v2-opencode-codex-features",
+  "title": "v2 支持 OpenCode 与 Codex 一键生图/WebSocket 配置",
+  "description": "",
+  "status": "completed",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "pythonrust",
+  "assignee": "pythonrust",
+  "createdAt": "2026-08-17",
+  "completedAt": "2026-08-17",
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "08-17-v2-opencode-support",
+    "08-17-v2-codex-image-websocket"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

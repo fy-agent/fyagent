@@ -4,7 +4,7 @@ status: concept_candidate
 updated: 2026-08-11
 review_on: 2026-09-11
 authority: working_sample
-source: ChatGPT built-in image edit from FyAgent tactile orchestration hero v2
+source: project-owned concept revision from FyAgent tactile orchestration hero v2
 supersedes: visual-direction-sample-v2.md
 ---
 
@@ -39,7 +39,7 @@ Avoid: hardware keyboard appearance, USB cables, messy circuitry, decorative dis
 
 | 字段            | 值                                                                 |
 | --------------- | ------------------------------------------------------------------ |
-| 模式            | ChatGPT built-in image generation，`precise-object-edit`           |
+| 模式            | 项目概念图定向修订流程                                             |
 | 编辑目标        | `assets/samples/fyagent-tactile-orchestration-hero-v2.png`         |
 | 输出            | `assets/samples/fyagent-tactile-orchestration-hero-v3.png`         |
 | 尺寸            | 1672×941                                                           |

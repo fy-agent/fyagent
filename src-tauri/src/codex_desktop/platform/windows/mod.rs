@@ -1,27 +1,23 @@
 //! Windows x64 and ARM64 current-user MSIX adapter.
 //!
 //! The normal adapter has no install scope, no arbitrary URL/path input, and
-//! no elevation capability. It accepts only core-owned `VerifiedPackage`
+//! no elevation capability. It accepts only core-owned `PreparedInstallPackage`
 //! evidence, delegates current-user deployment to the installed unelevated
 //! helper, then relies on the common service to re-query the registered package.
 
 mod deployment;
 #[cfg(target_os = "windows")]
 mod helper;
-mod manifest;
 #[cfg(target_os = "windows")]
 mod package_bridge;
 
-use std::{fmt, path::Path, sync::Arc, time::Duration};
+use std::{path::Path, sync::Arc, time::Duration};
 
 use futures::future::BoxFuture;
 
-use self::{
-    deployment::{
-        deployment_error, launch_error, verify_context_evidence, WindowsPackageManager,
-        WindowsPackageRecord,
-    },
-    manifest::{parse_msix_manifest, WindowsPackageManifest},
+use self::deployment::{
+    deployment_error, launch_error, verify_context_evidence, WindowsPackageManager,
+    WindowsPackageRecord,
 };
 
 #[cfg(test)]
@@ -34,10 +30,10 @@ use self::deployment::WindowsNativeError;
 #[cfg(target_os = "windows")]
 mod runtime;
 use super::{
-    installed_application_matches_release, CodexDesktopPlatform, PlatformInstallPlan,
-    PlatformProgressSink, RestartCandidateInspection, RestartInstallationScope, RuntimeInspection,
-    TrustedInstallationCandidate, TrustedRuntimeInstance, VerifiedPackage,
-    WINDOWS_CODEX_STABLE_IDENTITY,
+    installed_application_has_operational_shape, CodexDesktopPlatform, PlatformInstallPlan,
+    PlatformProgressSink, PreparedInstallPackage, RestartCandidateInspection,
+    RestartInstallationScope, RuntimeInspection, TrustedInstallationCandidate,
+    TrustedRuntimeInstance, WINDOWS_CODEX_STABLE_IDENTITY,
 };
 use crate::codex_desktop::{
     download::DownloadedArtifact,
@@ -73,7 +69,7 @@ struct WindowsPackageFileIdentity {
 trait WindowsFilePinFactory: Send + Sync {
     fn open(
         &self,
-        package: &VerifiedPackage,
+        package: &PreparedInstallPackage,
     ) -> Result<Box<dyn WindowsVerifiedFilePin>, InstallerError>;
 }
 
@@ -115,85 +111,17 @@ struct WindowsInstallDependencies {
     deadlines: WindowsHelperDeadlines,
 }
 
-/// Exact Publisher allowlist from read-only local Windows evidence collected on
-/// 2026-07-29. The current-user Microsoft Store package was
-/// `OpenAI.Codex_26.721.4979.0_x64__2p2nqsd0c76g0` with
-/// `Name=OpenAI.Codex`, version `26.721.4979.0`,
-/// `PublisherId=2p2nqsd0c76g0`, `SignatureKind=Store`, `Status=Ok`, and
-/// `IsDevelopmentMode=False`. The same-day AgentsMirror x64 package moniker,
-/// version, and Package Family Name suffix matched.
-///
-/// This is deliberately an exact Publisher DN, not a PFN suffix, prefix, or
-/// mirror field. A Publisher change must fail closed until a human reviews
-/// equivalent signed-package and system-trust evidence before updating it.
-const OFFICIAL_WINDOWS_CODEX_PUBLISHER: &str = "CN=50BDFD77-8903-4850-9FFE-6E8522F64D5B";
-
-/// Opaque evidence that a Publisher string has passed the production evidence
-/// gate. The production constructor remains confined to this module, so
-/// release metadata cannot select a different trusted Publisher.
-#[derive(Clone, PartialEq, Eq)]
-pub(crate) struct VerifiedPublisherEvidence {
-    publisher: String,
-}
-
-impl VerifiedPublisherEvidence {
-    pub(crate) fn publisher(&self) -> &str {
-        &self.publisher
-    }
-
-    #[cfg(test)]
-    pub(crate) fn for_test(publisher: &str) -> Self {
-        assert!(
-            !publisher.is_empty(),
-            "test Publisher evidence must be non-empty"
-        );
-        assert!(
-            !publisher.bytes().any(|byte| byte.is_ascii_control()),
-            "test Publisher evidence must not contain control characters"
-        );
-        Self {
-            publisher: publisher.to_owned(),
-        }
-    }
-}
-
-impl fmt::Debug for VerifiedPublisherEvidence {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("VerifiedPublisherEvidence(<redacted>)")
-    }
-}
-
-/// Builds production evidence from the reviewed exact Publisher allowlist.
-///
-/// PackageManager still validates the MSIX signature and trust chain at
-/// deployment. This gate keeps pre-deployment identity validation exact rather
-/// than accepting a PFN suffix, a mirror field, or a prefix comparison.
-pub(crate) fn current_official_publisher_evidence(
-) -> Result<VerifiedPublisherEvidence, InstallerError> {
-    Ok(VerifiedPublisherEvidence {
-        publisher: OFFICIAL_WINDOWS_CODEX_PUBLISHER.to_owned(),
-    })
-}
-
 /// Host facts are injected for fake-based tests. Free-space admission covers
 /// both the job staging volume and the ProgramData bridge volume discovered
 /// from the Windows known-folder API; no system-drive letter is guessed.
 #[derive(Debug, Clone)]
 pub struct WindowsHost {
     architecture: CpuArchitecture,
-    os_version: PlatformVersion,
 }
 
 impl WindowsHost {
-    pub fn new(architecture: CpuArchitecture, os_version: &str) -> Result<Self, InstallerError> {
-        let os_version = PlatformVersion::parse_windows_msix(os_version).map_err(|_| {
-            InstallerError::new(InstallerErrorCode::OsVersionUnsupported)
-                .with_diagnostic_message("Windows version could not be parsed")
-        })?;
-        Ok(Self {
-            architecture,
-            os_version,
-        })
+    pub fn new(architecture: CpuArchitecture, _os_version: &str) -> Result<Self, InstallerError> {
+        Ok(Self { architecture })
     }
 
     #[cfg(target_os = "windows")]
@@ -210,10 +138,6 @@ impl WindowsHost {
     pub(crate) fn architecture(&self) -> CpuArchitecture {
         self.architecture
     }
-
-    pub(crate) fn os_version(&self) -> &PlatformVersion {
-        &self.os_version
-    }
 }
 
 /// Windows installer adapter with injectable PackageManager facts. The public
@@ -225,7 +149,6 @@ pub(crate) struct WindowsPlatformAdapter {
     package_manager: Arc<dyn WindowsPackageManager>,
     user_context: Arc<InteractiveUserContext>,
     host: WindowsHost,
-    publisher_evidence: VerifiedPublisherEvidence,
     install_dependencies: WindowsInstallDependencies,
 }
 
@@ -234,30 +157,24 @@ impl WindowsPlatformAdapter {
         package_manager: Arc<dyn WindowsPackageManager>,
         user_context: Arc<InteractiveUserContext>,
         host: WindowsHost,
-        publisher_evidence: VerifiedPublisherEvidence,
         install_dependencies: WindowsInstallDependencies,
     ) -> Self {
         Self {
             package_manager,
             user_context,
             host,
-            publisher_evidence,
             install_dependencies,
         }
     }
 
-    /// Production factory. Callers must first pass the evidence gate above;
-    /// this module deliberately cannot construct one from unverified metadata.
     #[cfg(target_os = "windows")]
     pub(crate) fn for_current_host(
-        publisher_evidence: VerifiedPublisherEvidence,
         user_context: Arc<InteractiveUserContext>,
     ) -> Result<Self, InstallerError> {
         Ok(Self::new(
             Arc::new(SystemWindowsPackageManager),
             user_context,
             WindowsHost::for_current_host()?,
-            publisher_evidence,
             WindowsInstallDependencies {
                 context_revalidator: Arc::new(helper::SystemWindowsContextRevalidator),
                 pin_factory: Arc::new(helper::SystemWindowsFilePinFactory),
@@ -292,7 +209,6 @@ impl CodexDesktopPlatform for WindowsPlatformAdapter {
         let package_manager = self.package_manager.clone();
         let user_context = self.user_context.clone();
         let host = self.host.clone();
-        let publisher_evidence = self.publisher_evidence.clone();
         let host_error = self.host_support_error();
         Box::pin(async move {
             if host.architecture() != CpuArchitecture::X86_64
@@ -305,15 +221,8 @@ impl CodexDesktopPlatform for WindowsPlatformAdapter {
             if let Some(error) = host_error {
                 return Err(error);
             }
-            run_blocking(move || {
-                inspect_local(
-                    package_manager.as_ref(),
-                    &user_context,
-                    &host,
-                    &publisher_evidence,
-                )
-            })
-            .await
+            run_blocking(move || inspect_local(package_manager.as_ref(), &user_context, &host))
+                .await
         })
     }
 
@@ -323,7 +232,6 @@ impl CodexDesktopPlatform for WindowsPlatformAdapter {
         let package_manager = self.package_manager.clone();
         let user_context = self.user_context.clone();
         let host = self.host.clone();
-        let publisher_evidence = self.publisher_evidence.clone();
         let host_error = self.host_support_error();
         Box::pin(async move {
             if host.architecture() != CpuArchitecture::X86_64
@@ -337,12 +245,7 @@ impl CodexDesktopPlatform for WindowsPlatformAdapter {
                 return Err(error);
             }
             run_blocking(move || {
-                inspect_restart_candidates(
-                    package_manager.as_ref(),
-                    &user_context,
-                    &host,
-                    &publisher_evidence,
-                )
+                inspect_restart_candidates(package_manager.as_ref(), &user_context, &host)
             })
             .await
         })
@@ -365,13 +268,12 @@ impl CodexDesktopPlatform for WindowsPlatformAdapter {
         })
     }
 
-    fn verify_package<'a>(
+    fn prepare_install_package<'a>(
         &'a self,
         release: &'a ReleaseDescriptor,
         artifact: &'a DownloadedArtifact,
-    ) -> BoxFuture<'a, Result<VerifiedPackage, InstallerError>> {
+    ) -> BoxFuture<'a, Result<PreparedInstallPackage, InstallerError>> {
         let host = self.host.clone();
-        let publisher_evidence = self.publisher_evidence.clone();
         let release = release.clone();
         let artifact = artifact.clone();
         let host_error = self.host_support_error();
@@ -380,9 +282,8 @@ impl CodexDesktopPlatform for WindowsPlatformAdapter {
                 return Err(error);
             }
             run_blocking(move || {
-                artifact.revalidate_against(&release)?;
-                validate_package(&host, &publisher_evidence, &release, &artifact)?;
-                VerifiedPackage::from_completed_validation(&release, artifact)
+                validate_release_for_host(&host, &release)?;
+                PreparedInstallPackage::from_prepared_artifact(&release, artifact)
             })
             .await
         })
@@ -390,14 +291,13 @@ impl CodexDesktopPlatform for WindowsPlatformAdapter {
 
     fn install_current_user<'a>(
         &'a self,
-        package: &'a VerifiedPackage,
+        package: &'a PreparedInstallPackage,
         progress: PlatformProgressSink,
-    ) -> BoxFuture<'a, Result<(), InstallerError>> {
+    ) -> BoxFuture<'a, Result<Option<InstalledApplication>, InstallerError>> {
         let package_manager = self.package_manager.clone();
         let install_dependencies = self.install_dependencies.clone();
         let user_context = self.user_context.clone();
         let host = self.host.clone();
-        let publisher_evidence = self.publisher_evidence.clone();
         let package = package.clone();
         let host_error = self.host_support_error();
         Box::pin(async move {
@@ -410,7 +310,6 @@ impl CodexDesktopPlatform for WindowsPlatformAdapter {
                     &install_dependencies,
                     &user_context,
                     &host,
-                    &publisher_evidence,
                     &package,
                     progress,
                 )
@@ -426,23 +325,14 @@ impl CodexDesktopPlatform for WindowsPlatformAdapter {
         let package_manager = self.package_manager.clone();
         let user_context = self.user_context.clone();
         let host = self.host.clone();
-        let publisher_evidence = self.publisher_evidence.clone();
         let installed = installed.clone();
         let host_error = self.host_support_error();
         Box::pin(async move {
             if let Some(error) = host_error {
                 return Err(error);
             }
-            run_blocking(move || {
-                launch(
-                    package_manager.as_ref(),
-                    &user_context,
-                    &host,
-                    &publisher_evidence,
-                    &installed,
-                )
-            })
-            .await
+            run_blocking(move || launch(package_manager.as_ref(), &user_context, &host, &installed))
+                .await
         })
     }
 
@@ -504,7 +394,6 @@ fn inspect_local(
     package_manager: &dyn WindowsPackageManager,
     user_context: &InteractiveUserContext,
     host: &WindowsHost,
-    publisher_evidence: &VerifiedPublisherEvidence,
 ) -> Result<LocalInstallStatus, InstallerError> {
     let records = inventory_records(package_manager, user_context)?;
     let stable_records = records
@@ -520,7 +409,7 @@ fn inspect_local(
 
     let applications = stable_records
         .into_iter()
-        .map(|record| installed_application_from_record(record, host, publisher_evidence))
+        .map(|record| installed_application_from_record(record, host))
         .collect::<Result<Vec<_>, _>>()?;
     match applications.as_slice() {
         [application] => Ok(LocalInstallStatus::Installed {
@@ -549,7 +438,6 @@ fn inspect_restart_candidates(
     package_manager: &dyn WindowsPackageManager,
     user_context: &InteractiveUserContext,
     host: &WindowsHost,
-    publisher_evidence: &VerifiedPublisherEvidence,
 ) -> Result<RestartCandidateInspection, InstallerError> {
     let records = inventory_records(package_manager, user_context)?;
     let stable_records = records
@@ -563,7 +451,7 @@ fn inspect_restart_candidates(
     let candidates = stable_records
         .into_iter()
         .map(|record| {
-            let application = installed_application_from_record(record, host, publisher_evidence)?;
+            let application = installed_application_from_record(record, host)?;
             Ok(TrustedInstallationCandidate {
                 // The Package Family Name is the exact Windows lifecycle
                 // identity. It stays private to the planner/token record and
@@ -594,20 +482,11 @@ fn inventory_records(
 fn installed_application_from_record(
     record: &WindowsPackageRecord,
     host: &WindowsHost,
-    publisher_evidence: &VerifiedPublisherEvidence,
 ) -> Result<InstalledApplication, InstallerError> {
     if record.identity_name != WINDOWS_CODEX_STABLE_IDENTITY {
         return Err(
             InstallerError::new(InstallerErrorCode::PackageIdentityMismatch)
                 .with_diagnostic_message("PackageManager record does not have the Stable identity"),
-        );
-    }
-    if record.publisher != publisher_evidence.publisher() {
-        return Err(
-            InstallerError::new(InstallerErrorCode::PackageIdentityMismatch)
-                .with_diagnostic_message(
-                    "PackageManager Publisher does not match verified evidence",
-                ),
         );
     }
     if record.architecture != host.architecture() {
@@ -636,6 +515,34 @@ fn installed_application_from_record(
     })
 }
 
+fn installed_application_from_dynamic_record(
+    record: &WindowsPackageRecord,
+) -> Result<InstalledApplication, InstallerError> {
+    if record.identity_name.is_empty() || record.publisher.is_empty() {
+        return Err(
+            InstallerError::new(InstallerErrorCode::InstallationVerifyFailed)
+                .with_diagnostic_message("installed package result has no operational identity"),
+        );
+    }
+    if !matches!(&record.version, PlatformVersion::WindowsMsix { .. }) {
+        return Err(
+            InstallerError::new(InstallerErrorCode::InstallationVerifyFailed)
+                .with_diagnostic_message("installed package result has no Windows version"),
+        );
+    }
+    let application_id = single_application_id(record)?;
+    let aumid = verified_aumid(&record.family_name, application_id)?;
+    Ok(InstalledApplication {
+        stable_identity: record.identity_name.clone(),
+        display_name: record.display_name.clone(),
+        display_version: Some(windows_version_text(&record.version)?),
+        platform_version: record.version.clone(),
+        architecture: record.architecture,
+        location: None,
+        launch_target: LaunchTarget::WindowsAumid(aumid),
+    })
+}
+
 fn preflight(
     host: &WindowsHost,
     release: &ReleaseDescriptor,
@@ -653,23 +560,8 @@ fn preflight(
         ]))
     }
 
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
     Ok(PlatformInstallPlan::default())
-}
-
-fn validate_package(
-    host: &WindowsHost,
-    publisher_evidence: &VerifiedPublisherEvidence,
-    release: &ReleaseDescriptor,
-    artifact: &DownloadedArtifact,
-) -> Result<(), InstallerError> {
-    validate_release_for_host(host, release)?;
-    let manifest = parse_msix_manifest(artifact.open_for_read()?)?;
-    validate_manifest_for_release(&manifest, host, publisher_evidence, release)?;
-    // Structural ZIP/manifest checks and the exact Publisher evidence gate are
-    // complete here. The unelevated helper performs Windows' signature and
-    // chain validation; a deployment failure cannot become a success result.
-    Ok(())
 }
 
 fn install_current_user(
@@ -677,35 +569,33 @@ fn install_current_user(
     install_dependencies: &WindowsInstallDependencies,
     user_context: &InteractiveUserContext,
     host: &WindowsHost,
-    publisher_evidence: &VerifiedPublisherEvidence,
-    package: &VerifiedPackage,
+    package: &PreparedInstallPackage,
     progress: PlatformProgressSink,
-) -> Result<(), InstallerError> {
+) -> Result<Option<InstalledApplication>, InstallerError> {
     if package.platform() != DesktopPlatform::Windows
         || package.architecture() != host.architecture()
     {
         return Err(InstallerError::new(InstallerErrorCode::InternalError)
             .with_diagnostic_message(
-                "non-Windows validation evidence reached the Windows installer",
+                "non-Windows prepared package reached the Windows installer",
             ));
     }
     let job_id = package.job_id().ok_or_else(|| {
-        InstallerError::new(InstallerErrorCode::PackageIdentityMismatch)
-            .with_diagnostic_message("validated Windows package has no canonical job identity")
+        InstallerError::new(InstallerErrorCode::InternalError)
+            .with_diagnostic_message("prepared Windows package has no canonical job identity")
     })?;
     let parsed_job_id = uuid::Uuid::parse_str(job_id).map_err(|_| {
-        InstallerError::new(InstallerErrorCode::PackageIdentityMismatch)
-            .with_diagnostic_message("validated Windows package job identity is invalid")
+        InstallerError::new(InstallerErrorCode::InternalError)
+            .with_diagnostic_message("prepared Windows package job identity is invalid")
     })?;
     if parsed_job_id.hyphenated().to_string() != job_id {
-        return Err(
-            InstallerError::new(InstallerErrorCode::PackageIdentityMismatch)
-                .with_diagnostic_message("validated Windows package job identity is not canonical"),
-        );
+        return Err(InstallerError::new(InstallerErrorCode::InternalError)
+            .with_diagnostic_message("prepared Windows package job identity is not canonical"));
     }
 
     let context_revalidator = install_dependencies.context_revalidator.as_ref();
     require_current_context(context_revalidator, user_context)?;
+    let before_records = inventory_records(package_manager, user_context)?;
     package.revalidate_artifact()?;
     let pin = install_dependencies.pin_factory.open(package)?;
     pin.recheck()?;
@@ -723,17 +613,22 @@ fn install_current_user(
 
     let records = inventory_records(package_manager, user_context)?;
     require_current_context(context_revalidator, user_context)?;
-    let stable_records = records
+    let changed_records = records
+        .iter()
+        .filter(|record| !before_records.contains(record))
+        .collect::<Vec<_>>();
+    let compatible_stable = records
         .iter()
         .filter(|record| record.identity_name == WINDOWS_CODEX_STABLE_IDENTITY)
         .collect::<Vec<_>>();
-    let record = match stable_records.as_slice() {
+    let record = match changed_records.as_slice() {
         [record] => *record,
+        [] if compatible_stable.len() == 1 => compatible_stable[0],
         [] => {
             return Err(
                 InstallerError::new(InstallerErrorCode::InstallationVerifyFailed)
                     .with_diagnostic_message(
-                        "the helper completed without one Stable package for the interactive user",
+                        "the helper completed without one uniquely discoverable package result for the interactive user",
                     ),
             );
         }
@@ -741,21 +636,21 @@ fn install_current_user(
             return Err(
                 InstallerError::new(InstallerErrorCode::MultipleInstallations)
                     .with_diagnostic_message(
-                        "multiple Stable Windows packages prevent post-install verification",
+                        "multiple changed Windows packages prevent post-install result selection",
                     ),
             );
         }
     };
-    let installed = installed_application_from_record(record, host, publisher_evidence)?;
-    if !installed_application_matches_release(&installed, package.locked_release())? {
+    let installed = installed_application_from_dynamic_record(record)?;
+    if !installed_application_has_operational_shape(&installed, package.locked_release())? {
         return Err(
             InstallerError::new(InstallerErrorCode::InstallationVerifyFailed)
                 .with_diagnostic_message(
-                "the current-user package does not match the verified release after installation",
-            ),
+                    "the current-user package does not have a usable post-install platform shape",
+                ),
         );
     }
-    Ok(())
+    Ok(Some(installed))
 }
 
 fn require_current_context(
@@ -772,7 +667,6 @@ fn launch(
     package_manager: &dyn WindowsPackageManager,
     user_context: &InteractiveUserContext,
     host: &WindowsHost,
-    publisher_evidence: &VerifiedPublisherEvidence,
     installed: &InstalledApplication,
 ) -> Result<(), InstallerError> {
     if installed.stable_identity != WINDOWS_CODEX_STABLE_IDENTITY
@@ -823,7 +717,7 @@ fn launch(
             );
         }
     };
-    let current = installed_application_from_record(record, host, publisher_evidence)?;
+    let current = installed_application_from_record(record, host)?;
     if &current != installed {
         return Err(
             InstallerError::new(InstallerErrorCode::LaunchFailed).with_diagnostic_message(
@@ -860,83 +754,6 @@ fn validate_release_for_host(
             InstallerError::new(InstallerErrorCode::ArchitectureUnsupported)
                 .with_context("architecture", release.architecture.as_str())
                 .with_diagnostic_message("Windows release architecture does not match this host"),
-        );
-    }
-    if let Some(minimum_os_version) = release.minimum_os_version.as_deref() {
-        let minimum_os_version =
-            PlatformVersion::parse_windows_msix(minimum_os_version).map_err(|_| {
-                InstallerError::new(InstallerErrorCode::ReleaseMetadataInvalid)
-                    .with_diagnostic_message("Windows release minimum OS version is invalid")
-            })?;
-        ensure_host_meets_minimum_os(host, &minimum_os_version)?;
-    }
-    Ok(())
-}
-
-fn validate_manifest_for_release(
-    manifest: &WindowsPackageManifest,
-    host: &WindowsHost,
-    publisher_evidence: &VerifiedPublisherEvidence,
-    release: &ReleaseDescriptor,
-) -> Result<(), InstallerError> {
-    if manifest.identity_name() != WINDOWS_CODEX_STABLE_IDENTITY {
-        return Err(
-            InstallerError::new(InstallerErrorCode::PackageIdentityMismatch)
-                .with_diagnostic_message(
-                    "MSIX Identity Name is not the exact Stable allowlist value",
-                ),
-        );
-    }
-    if manifest.publisher() != publisher_evidence.publisher() {
-        return Err(
-            InstallerError::new(InstallerErrorCode::PackageIdentityMismatch)
-                .with_diagnostic_message(
-                    "MSIX Publisher does not match verified official evidence",
-                ),
-        );
-    }
-    if manifest.architecture() != release.architecture {
-        return Err(
-            InstallerError::new(InstallerErrorCode::PackageArchitectureMismatch)
-                .with_context("architecture", manifest.architecture().as_str())
-                .with_diagnostic_message("MSIX architecture does not match the resolved release"),
-        );
-    }
-    if manifest.version() != &release.platform_version {
-        return Err(
-            InstallerError::new(InstallerErrorCode::PackageIdentityMismatch)
-                .with_diagnostic_message(
-                    "MSIX Identity Version does not match the resolved release",
-                ),
-        );
-    }
-    if let Some(release_minimum) = release.minimum_os_version.as_deref() {
-        let release_minimum =
-            PlatformVersion::parse_windows_msix(release_minimum).map_err(|_| {
-                InstallerError::new(InstallerErrorCode::ReleaseMetadataInvalid)
-                    .with_diagnostic_message("Windows release minimum OS version is invalid")
-            })?;
-        if manifest.minimum_os_version() != &release_minimum {
-            return Err(
-                InstallerError::new(InstallerErrorCode::PackageIdentityMismatch)
-                    .with_diagnostic_message(
-                        "MSIX TargetDeviceFamily MinVersion does not match release metadata",
-                    ),
-            );
-        }
-    }
-    ensure_host_meets_minimum_os(host, manifest.minimum_os_version())
-}
-
-fn ensure_host_meets_minimum_os(
-    host: &WindowsHost,
-    minimum_os_version: &PlatformVersion,
-) -> Result<(), InstallerError> {
-    if !host.os_version().is_at_least(minimum_os_version)? {
-        return Err(
-            InstallerError::new(InstallerErrorCode::OsVersionUnsupported).with_diagnostic_message(
-                "Windows version does not meet the MSIX minimum requirement",
-            ),
         );
     }
     Ok(())
@@ -1036,8 +853,7 @@ mod native_host {
 mod tests {
     use std::{
         collections::HashMap,
-        fs::{self, File},
-        io::Write,
+        fs,
         sync::{
             atomic::{AtomicBool, AtomicUsize, Ordering},
             Arc, Mutex,
@@ -1050,10 +866,9 @@ mod tests {
         error::{InstallerErrorCode, SuggestedAction},
         temp::JobTempDir,
         types::{JobProgress, PlatformVersion, ProgressPhase, TrustedDownloadEndpoint},
-        verify::{sha256_hex, ArtifactKind},
+        verify::ArtifactKind,
     };
     use uuid::Uuid;
-    use zip::{write::SimpleFileOptions, ZipWriter};
 
     const PUBLISHER: &str = "CN=fixture publisher";
     const FAMILY_NAME: &str = "OpenAI.Codex_fixture";
@@ -1170,7 +985,7 @@ mod tests {
     impl WindowsFilePinFactory for FakePinFactory {
         fn open(
             &self,
-            _package: &VerifiedPackage,
+            _package: &PreparedInstallPackage,
         ) -> Result<Box<dyn WindowsVerifiedFilePin>, InstallerError> {
             self.state.opened.fetch_add(1, Ordering::AcqRel);
             Ok(Box::new(FakePin {
@@ -1194,6 +1009,7 @@ mod tests {
         pin_state: Arc<FakePinState>,
         context: Arc<FakeContextRevalidator>,
         drift_after_run: AtomicBool,
+        after_run: Mutex<Option<Arc<dyn Fn() + Send + Sync>>>,
     }
 
     impl FakeHelperRunner {
@@ -1211,6 +1027,13 @@ mod tests {
 
         fn drift_after_run(&self, drift: bool) {
             self.drift_after_run.store(drift, Ordering::Release);
+        }
+
+        fn after_run(&self, callback: Arc<dyn Fn() + Send + Sync>) {
+            *self
+                .after_run
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(callback);
         }
     }
 
@@ -1261,6 +1084,14 @@ mod tests {
             if self.drift_after_run.load(Ordering::Acquire) {
                 self.context.set_current(false);
             }
+            if let Some(callback) = self
+                .after_run
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .as_ref()
+            {
+                callback();
+            }
             match *self
                 .state
                 .error
@@ -1291,6 +1122,7 @@ mod tests {
                 pin_state: pin_state.clone(),
                 context: context.clone(),
                 drift_after_run: AtomicBool::new(false),
+                after_run: Mutex::new(None),
             });
             Self {
                 context,
@@ -1463,22 +1295,19 @@ mod tests {
 
     fn release(
         architecture: CpuArchitecture,
-        minimum_os_version: Option<&str>,
+        _minimum_os_version: Option<&str>,
     ) -> ReleaseDescriptor {
         ReleaseDescriptor::new(
             DesktopPlatform::Windows,
             architecture,
             "1.2.3.4",
             PlatformVersion::parse_windows_msix("1.2.3.4").unwrap(),
-            "OpenAI.Codex_1.2.3.4_fixture.msix",
-            "a".repeat(64),
-            1024,
+            Some(1024),
             match architecture {
                 CpuArchitecture::X86_64 => TrustedDownloadEndpoint::WinX64,
                 CpuArchitecture::Aarch64 => TrustedDownloadEndpoint::WinArm64,
                 _ => panic!("fixture release architecture must be supported"),
             },
-            minimum_os_version.map(str::to_owned),
         )
         .unwrap()
     }
@@ -1513,7 +1342,6 @@ mod tests {
             manager,
             user_context(USER_SID),
             host(CpuArchitecture::X86_64, "10.0.22631.0"),
-            VerifiedPublisherEvidence::for_test(PUBLISHER),
             harness.dependencies(),
         )
     }
@@ -1524,11 +1352,8 @@ mod tests {
             CpuArchitecture::X86_64,
             "1.2.3.4",
             PlatformVersion::parse_windows_msix("1.2.3.4").unwrap(),
-            "OpenAI.Codex_1.2.3.4_fixture.msix",
-            sha256_hex(bytes),
-            bytes.len() as u64,
+            Some(bytes.len() as u64),
             TrustedDownloadEndpoint::WinX64,
-            None,
         )
         .unwrap()
     }
@@ -1550,21 +1375,7 @@ mod tests {
         let directory =
             JobTempDir::create(root.path(), &Uuid::new_v4().hyphenated().to_string()).unwrap();
         let path = directory.final_path(ArtifactKind::Msix);
-        let file = File::create(&path).unwrap();
-        let mut archive = ZipWriter::new(file);
-        let options = SimpleFileOptions::default();
-        archive.start_file("AppxManifest.xml", options).unwrap();
-        archive
-            .write_all(include_bytes!(concat!(
-                env!("CARGO_MANIFEST_DIR"),
-                "/tests/fixtures/codex_desktop/OpenAI.Codex_26.721.4979.0_x64__2p2nqsd0c76g0.AppxManifest.xml"
-            )))
-            .unwrap();
-        archive.start_file("AppxBlockMap.xml", options).unwrap();
-        archive.write_all(b"fixture block map").unwrap();
-        archive.start_file("AppxSignature.p7x", options).unwrap();
-        archive.write_all(b"fixture signature").unwrap();
-        archive.finish().unwrap();
+        fs::write(&path, b"opaque msix bytes for local handoff").unwrap();
 
         let bytes = fs::read(&path).unwrap();
         let release = ReleaseDescriptor::new(
@@ -1572,11 +1383,8 @@ mod tests {
             CpuArchitecture::X86_64,
             "26.721.4979",
             PlatformVersion::parse_windows_msix("26.721.4979.0").unwrap(),
-            "OpenAI.Codex_26.721.4979.0_fixture.msix",
-            sha256_hex(&bytes),
-            bytes.len() as u64,
+            Some(bytes.len() as u64),
             TrustedDownloadEndpoint::WinX64,
-            None,
         )
         .unwrap();
         let artifact = DownloadedArtifact::from_test_file(&directory, &release).unwrap();
@@ -1757,14 +1565,22 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn inventory_fails_closed_for_wrong_publisher_architecture_and_multiple_apps() {
+    async fn local_inventory_ignores_publisher_but_keeps_operational_shape_checks() {
+        let publisher_drift = adapter(Arc::new(FakePackageManager::with_records(vec![record(
+            WINDOWS_CODEX_STABLE_IDENTITY,
+            "CN=changed-upstream",
+            CpuArchitecture::X86_64,
+            vec!["CodexApp"],
+        )])))
+        .inspect_local()
+        .await
+        .unwrap();
+        assert!(matches!(
+            publisher_drift,
+            LocalInstallStatus::Installed { .. }
+        ));
+
         for record in [
-            record(
-                WINDOWS_CODEX_STABLE_IDENTITY,
-                "CN=untrusted",
-                CpuArchitecture::X86_64,
-                vec!["CodexApp"],
-            ),
             record(
                 WINDOWS_CODEX_STABLE_IDENTITY,
                 PUBLISHER,
@@ -1792,7 +1608,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn preflight_rejects_architecture_and_minimum_os_without_a_native_call() {
+    async fn preflight_rejects_architecture_but_ignores_upstream_minimum_os() {
         let adapter = adapter(Arc::new(FakePackageManager::default()));
         let temporary = tempfile::tempdir().unwrap();
         let plan = adapter
@@ -1807,7 +1623,7 @@ mod tests {
                 std::slice::from_ref(&bridge_probe)
             );
         }
-        #[cfg(not(target_os = "windows"))]
+        #[cfg(target_os = "macos")]
         assert!(plan.additional_disk_paths().is_empty());
 
         let architecture_error = adapter
@@ -1819,115 +1635,13 @@ mod tests {
             InstallerErrorCode::ArchitectureUnsupported
         );
 
-        let minimum_os_error = adapter
+        adapter
             .preflight(
                 &release(CpuArchitecture::X86_64, Some("10.0.65535.0")),
                 temporary.path(),
             )
             .await
-            .unwrap_err();
-        assert_eq!(
-            minimum_os_error.code(),
-            InstallerErrorCode::OsVersionUnsupported
-        );
-    }
-
-    #[test]
-    fn manifest_release_gate_requires_exact_stable_identity_publisher_architecture_and_versions() {
-        let host = host(CpuArchitecture::X86_64, "10.0.22631.0");
-        let publisher_evidence = VerifiedPublisherEvidence::for_test(PUBLISHER);
-        let descriptor = release(CpuArchitecture::X86_64, Some("10.0.19041.0"));
-        let valid = manifest::manifest_for_test(
-            WINDOWS_CODEX_STABLE_IDENTITY,
-            PUBLISHER,
-            CpuArchitecture::X86_64,
-            "1.2.3.4",
-            "10.0.19041.0",
-            "CodexApp",
-        );
-        validate_manifest_for_release(&valid, &host, &publisher_evidence, &descriptor).unwrap();
-
-        for (manifest, expected) in [
-            (
-                manifest::manifest_for_test(
-                    "OpenAI.CodexBeta",
-                    PUBLISHER,
-                    CpuArchitecture::X86_64,
-                    "1.2.3.4",
-                    "10.0.19041.0",
-                    "CodexApp",
-                ),
-                InstallerErrorCode::PackageIdentityMismatch,
-            ),
-            (
-                manifest::manifest_for_test(
-                    WINDOWS_CODEX_STABLE_IDENTITY,
-                    "CN=untrusted",
-                    CpuArchitecture::X86_64,
-                    "1.2.3.4",
-                    "10.0.19041.0",
-                    "CodexApp",
-                ),
-                InstallerErrorCode::PackageIdentityMismatch,
-            ),
-            (
-                manifest::manifest_for_test(
-                    WINDOWS_CODEX_STABLE_IDENTITY,
-                    PUBLISHER,
-                    CpuArchitecture::Aarch64,
-                    "1.2.3.4",
-                    "10.0.19041.0",
-                    "CodexApp",
-                ),
-                InstallerErrorCode::PackageArchitectureMismatch,
-            ),
-            (
-                manifest::manifest_for_test(
-                    WINDOWS_CODEX_STABLE_IDENTITY,
-                    PUBLISHER,
-                    CpuArchitecture::X86_64,
-                    "1.2.3.5",
-                    "10.0.19041.0",
-                    "CodexApp",
-                ),
-                InstallerErrorCode::PackageIdentityMismatch,
-            ),
-            (
-                manifest::manifest_for_test(
-                    WINDOWS_CODEX_STABLE_IDENTITY,
-                    PUBLISHER,
-                    CpuArchitecture::X86_64,
-                    "1.2.3.4",
-                    "10.0.19042.0",
-                    "CodexApp",
-                ),
-                InstallerErrorCode::PackageIdentityMismatch,
-            ),
-        ] {
-            let error =
-                validate_manifest_for_release(&manifest, &host, &publisher_evidence, &descriptor)
-                    .unwrap_err();
-            assert_eq!(error.code(), expected);
-        }
-
-        let host_os_error = validate_manifest_for_release(
-            &manifest::manifest_for_test(
-                WINDOWS_CODEX_STABLE_IDENTITY,
-                PUBLISHER,
-                CpuArchitecture::X86_64,
-                "1.2.3.4",
-                "10.0.65535.0",
-                "CodexApp",
-            ),
-            &host,
-            &publisher_evidence,
-            &release(CpuArchitecture::X86_64, None),
-        )
-        .unwrap_err();
-        assert_eq!(
-            host_os_error.code(),
-            InstallerErrorCode::OsVersionUnsupported
-        );
+            .unwrap();
     }
 
     #[tokio::test]
@@ -1943,7 +1657,7 @@ mod tests {
         let trusted_bytes = b"fixture";
         let release = release_for_artifact(trusted_bytes);
         let (_root, artifact) = downloaded_artifact_for(&release, trusted_bytes);
-        let package = VerifiedPackage::from_completed_validation(&release, artifact).unwrap();
+        let package = PreparedInstallPackage::from_prepared_artifact(&release, artifact).unwrap();
         let expected_job_id = package.job_id().unwrap().to_owned();
         let reported = Arc::new(Mutex::new(Vec::<u64>::new()));
         let reported_for_sink = reported.clone();
@@ -1986,10 +1700,73 @@ mod tests {
         );
         assert_eq!(
             manager.operations(),
-            vec![FakePackageOperation::InventoryMain {
-                canonical_sid: USER_SID.to_owned(),
-            }]
+            vec![
+                FakePackageOperation::InventoryMain {
+                    canonical_sid: USER_SID.to_owned(),
+                },
+                FakePackageOperation::InventoryMain {
+                    canonical_sid: USER_SID.to_owned(),
+                },
+            ]
         );
+    }
+
+    #[tokio::test]
+    async fn install_uses_the_unique_inventory_delta_and_rejects_an_ambiguous_delta() {
+        let release = release_for_artifact(b"fixture");
+
+        let unique_manager = Arc::new(FakePackageManager::default());
+        let unique_harness = FakeInstallHarness::new();
+        let manager_for_callback = unique_manager.clone();
+        unique_harness.helper.after_run(Arc::new(move || {
+            manager_for_callback.set_user_records(
+                USER_SID,
+                vec![record(
+                    "OpenAI.FutureProduct",
+                    "CN=changed-upstream",
+                    CpuArchitecture::X86_64,
+                    vec!["FutureApp"],
+                )],
+            );
+        }));
+        let (_root, artifact) = downloaded_artifact_for(&release, b"fixture");
+        let package = PreparedInstallPackage::from_prepared_artifact(&release, artifact).unwrap();
+        let installed = adapter_with_harness(unique_manager, &unique_harness)
+            .install_current_user(&package, Arc::new(|_| {}))
+            .await
+            .unwrap()
+            .expect("Windows install returns the current-job inventory result");
+        assert_eq!(installed.stable_identity, "OpenAI.FutureProduct");
+
+        let ambiguous_manager = Arc::new(FakePackageManager::default());
+        let ambiguous_harness = FakeInstallHarness::new();
+        let manager_for_callback = ambiguous_manager.clone();
+        ambiguous_harness.helper.after_run(Arc::new(move || {
+            manager_for_callback.set_user_records(
+                USER_SID,
+                vec![
+                    record(
+                        "OpenAI.FutureProduct",
+                        "CN=one",
+                        CpuArchitecture::X86_64,
+                        vec!["FutureApp"],
+                    ),
+                    record(
+                        "OpenAI.OtherProduct",
+                        "CN=two",
+                        CpuArchitecture::X86_64,
+                        vec!["OtherApp"],
+                    ),
+                ],
+            );
+        }));
+        let (_root, artifact) = downloaded_artifact_for(&release, b"fixture");
+        let package = PreparedInstallPackage::from_prepared_artifact(&release, artifact).unwrap();
+        let error = adapter_with_harness(ambiguous_manager, &ambiguous_harness)
+            .install_current_user(&package, Arc::new(|_| {}))
+            .await
+            .unwrap_err();
+        assert_eq!(error.code(), InstallerErrorCode::MultipleInstallations);
     }
 
     #[tokio::test]
@@ -2009,7 +1786,7 @@ mod tests {
         let trusted_bytes = b"fixture";
         let release = release_for_artifact(trusted_bytes);
         let (_root, artifact) = downloaded_artifact_for(&release, trusted_bytes);
-        let package = VerifiedPackage::from_completed_validation(&release, artifact).unwrap();
+        let package = PreparedInstallPackage::from_prepared_artifact(&release, artifact).unwrap();
 
         let error = adapter
             .install_current_user(&package, Arc::new(|_| {}))
@@ -2023,7 +1800,7 @@ mod tests {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .is_some());
-        assert!(manager.operations().is_empty());
+        assert_eq!(manager.operations().len(), 1);
     }
 
     #[tokio::test]
@@ -2031,7 +1808,7 @@ mod tests {
         let trusted_bytes = b"fixture";
         let release = release_for_artifact(trusted_bytes);
         let (_root, artifact) = downloaded_artifact_for(&release, trusted_bytes);
-        let package = VerifiedPackage::from_completed_validation(&release, artifact).unwrap();
+        let package = PreparedInstallPackage::from_prepared_artifact(&release, artifact).unwrap();
 
         let manager = Arc::new(FakePackageManager::default());
         let before = FakeInstallHarness::new();
@@ -2052,7 +1829,7 @@ mod tests {
             .unwrap_err();
         assert_eq!(error.code(), InstallerErrorCode::PackageIdentityMismatch);
         assert_eq!(after.helper_state.calls.load(Ordering::Acquire), 1);
-        assert!(manager.operations().is_empty());
+        assert_eq!(manager.operations().len(), 1);
     }
 
     #[tokio::test]
@@ -2063,11 +1840,13 @@ mod tests {
             manager.clone(),
             user_context(USER_SID),
             host(CpuArchitecture::X86_64, "10.0.22631.0"),
-            VerifiedPublisherEvidence::for_test(OFFICIAL_WINDOWS_CODEX_PUBLISHER),
             harness.dependencies(),
         );
         let (_root, release, artifact) = verified_msix_artifact();
-        let package = adapter.verify_package(&release, &artifact).await.unwrap();
+        let package = adapter
+            .prepare_install_package(&release, &artifact)
+            .await
+            .unwrap();
         let mut replacement = fs::read(package.artifact_path()).unwrap();
         replacement[0] ^= 0x01;
         fs::write(package.artifact_path(), replacement).unwrap();
@@ -2080,7 +1859,7 @@ mod tests {
         assert_eq!(error.code(), InstallerErrorCode::ChecksumMismatch);
         assert_eq!(harness.pin_state.opened.load(Ordering::Acquire), 0);
         assert_eq!(harness.helper_state.calls.load(Ordering::Acquire), 0);
-        assert!(manager.operations().is_empty());
+        assert_eq!(manager.operations().len(), 1);
     }
 
     #[tokio::test]
@@ -2211,7 +1990,6 @@ mod tests {
         let installed = installed_application_from_record(
             &installed_record,
             &host(CpuArchitecture::X86_64, "10.0.22631.0"),
-            &VerifiedPublisherEvidence::for_test(PUBLISHER),
         )
         .unwrap();
 
@@ -2248,32 +2026,5 @@ mod tests {
                 .len(),
             1
         );
-    }
-
-    #[test]
-    fn production_publisher_evidence_returns_the_audited_exact_publisher() {
-        let evidence = current_official_publisher_evidence()
-            .expect("audited production Publisher evidence should be available");
-        assert_eq!(
-            evidence.publisher(),
-            "CN=50BDFD77-8903-4850-9FFE-6E8522F64D5B"
-        );
-    }
-
-    #[test]
-    fn production_publisher_evidence_matches_the_reviewed_identity_fixture() {
-        let fixture = include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/tests/fixtures/codex_desktop/OpenAI.Codex_26.721.4979.0_x64__2p2nqsd0c76g0.AppxManifest.xml"
-        ));
-        let evidence = current_official_publisher_evidence()
-            .expect("audited production Publisher evidence should be available");
-
-        assert!(fixture.contains(r#"Name="OpenAI.Codex""#));
-        assert!(fixture.contains(r#"Version="26.721.4979.0""#));
-        assert!(fixture.contains(r#"ProcessorArchitecture="x64""#));
-        assert!(fixture.contains(r#"MinVersion="10.0.19041.0""#));
-        assert!(fixture.contains(r#"Id="App""#));
-        assert!(fixture.contains(&format!(r#"Publisher="{}""#, evidence.publisher())));
     }
 }

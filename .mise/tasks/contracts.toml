@@ -21,6 +21,14 @@ description = "Regenerate task documentation in memory and byte-compare it with 
 env = { FYAGENT_TASK_EFFECT = "read-only" }
 run = "node scripts/tasks/task-docs.mjs check"
 
+["supported-platform:check"]
+description = "Reject unsupported first-party platform surfaces and implicit native target admission"
+usage = '''
+flag "--exclude-active-task <path>" help="Temporarily exclude the exact reviewed active task directory"
+'''
+env = { FYAGENT_TASK_EFFECT = "read-only" }
+run = "node scripts/tasks/supported-platform-check.mjs"
+
 ["version:get"]
 description = "Print the Cargo-workspace product version"
 env = { FYAGENT_TASK_EFFECT = "read-only" }

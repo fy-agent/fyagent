@@ -72,9 +72,9 @@ contracts above.
 
 At the isolated merge boundary, format, type, frontend unit, Rust format/check/
 Clippy/test, JSON, conflict-marker, unmerged-index, identity/promotion, schema
-16, and Git whitespace checks passed. Those Linux-host checks did not claim
-Windows, macOS, ARM, installer, CI, or public Release evidence; each belongs to
-its later native/remote gate.
+16, and Git whitespace checks passed. Those local-host checks did not claim
+other native platforms, architectures, installers, CI, or public Release
+evidence; each belongs to its later native/remote gate.
 
 The long-term engineering contract is
 [CC Switch Upstream Synchronization](../../.trellis/spec/backend/upstream-sync.md).

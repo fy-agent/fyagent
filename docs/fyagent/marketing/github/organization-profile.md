@@ -32,7 +32,7 @@ FyAgent helps people own, shape, and manage their AI. Today, the desktop app bri
 
 ### Start here
 
-- [FyAgent desktop app](https://github.com/fy-agent/fyagent) — manage models, tool connections, Skills, and working instructions from Windows, macOS, and Linux
+- [FyAgent desktop app](https://github.com/fy-agent/fyagent) — manage models, tool connections, Skills, and working instructions from Windows and macOS
 - [Download the latest release](https://github.com/fy-agent/fyagent/releases/latest)
 - [Read the manual](https://github.com/fy-agent/fyagent/tree/main/docs/user-manual/en)
 - [Ask and share in Discussions](https://github.com/fy-agent/fyagent/discussions)

@@ -4,9 +4,10 @@ use std::fs;
 use serde_json::json;
 
 use fyagent_lib::{
-    get_claude_mcp_path, get_claude_mcp_status, get_claude_settings_path, get_grok_config_path,
-    import_default_config_test_hook, read_claude_mcp_config, update_settings, AppError,
-    AppSettings, AppType, McpApps, McpServer, McpService, MultiAppConfig, ProviderService,
+    get_claude_mcp_path, get_claude_mcp_status, get_claude_settings_path, get_codex_config_path,
+    get_grok_config_path, import_default_config_test_hook, read_claude_mcp_config, update_settings,
+    AppError, AppSettings, AppType, McpApps, McpServer, McpService, MultiAppConfig,
+    ProviderService,
 };
 
 #[path = "support.rs"]
@@ -381,8 +382,10 @@ command = "echo"
     let claude_json = json!({
         "mcpServers": {
             "shared": {
-                "type": "stdio",
-                "command": "echo"
+                "command": "echo",
+                "args": [],
+                "env": {},
+                "cwd": ""
             }
         }
     });
@@ -409,6 +412,9 @@ command = "echo"
                 grokbuild: false,
                 opencode: false,
                 hermes: false,
+                workbuddy: false,
+                qoderwork: false,
+                trae_work: false,
             },
             description: None,
             homepage: None,
@@ -518,6 +524,163 @@ fn import_from_all_apps_reports_broken_app_but_imports_the_rest() {
 }
 
 #[test]
+fn mcp_toml_parse_errors_do_not_expose_source_lines() {
+    let _guard = test_mutex().lock().expect("acquire test mutex");
+    reset_test_fs();
+    let _home = ensure_test_home();
+    let sentinel = "sk-sentinel-secret";
+
+    let codex_path = get_codex_config_path();
+    fs::create_dir_all(codex_path.parent().expect("codex parent")).expect("create codex dir");
+    fs::write(&codex_path, format!("OPENAI_API_KEY = \"{sentinel}\n"))
+        .expect("seed invalid codex config");
+
+    let state = create_test_state().expect("create test state");
+    let codex_error = McpService::import_from_codex(&state)
+        .expect_err("invalid Codex TOML must fail")
+        .to_string();
+    assert!(codex_error.contains("Codex MCP 配置无法解析"));
+    assert!(!codex_error.contains(sentinel));
+    assert!(!codex_error.contains("OPENAI_API_KEY"));
+
+    let grok_path = get_grok_config_path();
+    fs::create_dir_all(grok_path.parent().expect("grok parent")).expect("create grok dir");
+    fs::write(&grok_path, format!("API_KEY = \"{sentinel}\n")).expect("seed invalid grok config");
+    let grok_error = McpService::import_from_grokbuild(&state)
+        .expect_err("invalid Grok Build TOML must fail")
+        .to_string();
+    assert!(grok_error.contains("Grok Build MCP 配置无法解析"));
+    assert!(!grok_error.contains(sentinel));
+    assert!(!grok_error.contains("API_KEY"));
+}
+
+#[test]
+fn cross_app_import_rejects_same_id_with_different_executable_spec() {
+    let _guard = test_mutex().lock().expect("acquire test mutex");
+    reset_test_fs();
+    let _home = ensure_test_home();
+
+    fs::write(
+        get_claude_mcp_path(),
+        serde_json::to_string_pretty(&json!({
+            "mcpServers": {
+                "shared": {
+                    "type": "stdio",
+                    "command": "claude-owned-command",
+                    "args": ["--from", "claude"]
+                }
+            }
+        }))
+        .expect("serialize Claude MCP"),
+    )
+    .expect("seed Claude MCP");
+
+    let codex_path = get_codex_config_path();
+    fs::create_dir_all(codex_path.parent().expect("codex parent")).expect("create codex dir");
+    let codex_original = r#"[mcp_servers.shared]
+type = "stdio"
+command = "codex-owned-command"
+args = ["--from", "codex"]
+
+[mcp_servers.codex-only]
+type = "stdio"
+command = "codex-only-command"
+"#;
+    fs::write(&codex_path, codex_original).expect("seed Codex MCP");
+
+    let state = create_test_state().expect("create test state");
+    assert_eq!(McpService::import_from_claude(&state).unwrap(), 1);
+    let error = McpService::import_from_codex(&state)
+        .expect_err("different specs under one ID must conflict")
+        .to_string();
+    assert!(error.contains("配置冲突"));
+
+    let servers = state.db.get_all_mcp_servers().expect("read MCP servers");
+    let shared = servers.get("shared").expect("Claude entry remains");
+    assert!(shared.apps.claude);
+    assert!(!shared.apps.codex, "conflict must not cross-enable Codex");
+    assert_eq!(shared.server["command"], "claude-owned-command");
+    assert!(
+        !servers.contains_key("codex-only"),
+        "preflight conflict must prevent partial persistence from the same app"
+    );
+    assert_eq!(
+        fs::read_to_string(&codex_path).expect("read Codex MCP"),
+        codex_original,
+        "import conflict must not rewrite the target live config"
+    );
+}
+
+#[test]
+fn failed_live_cleanup_keeps_database_toggle_and_delete_retryable() {
+    let _guard = test_mutex().lock().expect("acquire test mutex");
+    reset_test_fs();
+    let _home = ensure_test_home();
+
+    fs::write(
+        get_claude_mcp_path(),
+        serde_json::to_string_pretty(&json!({
+            "mcpServers": {
+                "retry": { "type": "stdio", "command": "echo" }
+            }
+        }))
+        .expect("serialize Claude MCP"),
+    )
+    .expect("seed Claude MCP");
+
+    let codex_path = get_codex_config_path();
+    fs::create_dir_all(codex_path.parent().expect("codex parent")).expect("create codex dir");
+    fs::write(&codex_path, "[mcp_servers.retry\ncommand = \"echo\"")
+        .expect("seed malformed Codex MCP");
+
+    let state = create_test_state().expect("create test state");
+    state
+        .db
+        .save_mcp_server(&McpServer {
+            id: "retry".to_string(),
+            name: "Retryable Server".to_string(),
+            server: json!({ "type": "stdio", "command": "echo" }),
+            apps: McpApps {
+                claude: true,
+                codex: true,
+                ..McpApps::default()
+            },
+            description: None,
+            homepage: None,
+            docs: None,
+            tags: Vec::new(),
+        })
+        .expect("seed MCP database row");
+
+    McpService::toggle_app(&state, "retry", AppType::Codex, false)
+        .expect_err("failed live cleanup must reject toggle");
+    let after_toggle = state.db.get_all_mcp_servers().expect("read after toggle");
+    assert!(
+        after_toggle.get("retry").expect("row remains").apps.codex,
+        "failed cleanup must preserve the enabled database flag"
+    );
+
+    McpService::delete_server(&state, "retry").expect_err("failed live cleanup must reject delete");
+    let after_delete = state.db.get_all_mcp_servers().expect("read after delete");
+    let retry = after_delete
+        .get("retry")
+        .expect("failed cleanup must preserve a row the user can retry");
+    assert!(
+        retry.apps.codex,
+        "failed Codex cleanup must remain retryable"
+    );
+    assert!(
+        !retry.apps.claude,
+        "successful Claude cleanup must be committed before returning the later failure"
+    );
+    let claude_live: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(get_claude_mcp_path()).expect("read Claude MCP after partial delete"),
+    )
+    .expect("parse Claude MCP after partial delete");
+    assert!(claude_live.pointer("/mcpServers/retry").is_none());
+}
+
+#[test]
 fn set_mcp_enabled_for_codex_writes_live_config() {
     let _guard = test_mutex().lock().expect("acquire test mutex");
     reset_test_fs();
@@ -554,6 +717,9 @@ fn set_mcp_enabled_for_codex_writes_live_config() {
                 grokbuild: false,
                 opencode: false,
                 hermes: false,
+                workbuddy: false,
+                qoderwork: false,
+                trae_work: false,
             },
             description: None,
             homepage: None,
@@ -620,6 +786,9 @@ fn enabling_codex_mcp_skips_when_codex_dir_missing() {
                 grokbuild: false,
                 opencode: false,
                 hermes: false,
+                workbuddy: false,
+                qoderwork: false,
+                trae_work: false,
             },
             description: None,
             homepage: None,
@@ -666,6 +835,9 @@ fn upsert_mcp_server_disabling_app_removes_from_claude_live_config() {
                 grokbuild: false,
                 opencode: false,
                 hermes: false,
+                workbuddy: false,
+                qoderwork: false,
+                trae_work: false,
             },
             description: None,
             homepage: None,
@@ -701,6 +873,9 @@ fn upsert_mcp_server_disabling_app_removes_from_claude_live_config() {
                 grokbuild: false,
                 opencode: false,
                 hermes: false,
+                workbuddy: false,
+                qoderwork: false,
+                trae_work: false,
             },
             description: None,
             homepage: None,
@@ -835,6 +1010,9 @@ fn enabling_gemini_mcp_skips_when_gemini_dir_missing() {
                 grokbuild: false,
                 opencode: false,
                 hermes: false,
+                workbuddy: false,
+                qoderwork: false,
+                trae_work: false,
             },
             description: None,
             homepage: None,
@@ -891,6 +1069,9 @@ fn enabling_claude_mcp_skips_when_claude_config_absent() {
                 grokbuild: false,
                 opencode: false,
                 hermes: false,
+                workbuddy: false,
+                qoderwork: false,
+                trae_work: false,
             },
             description: None,
             homepage: None,
@@ -947,6 +1128,9 @@ fn explicit_default_claude_dir_keeps_default_split_mcp_path() {
                 grokbuild: false,
                 opencode: false,
                 hermes: false,
+                workbuddy: false,
+                qoderwork: false,
+                trae_work: false,
             },
             description: None,
             homepage: None,
@@ -1004,6 +1188,9 @@ fn custom_claude_dir_writes_mcp_inside_config_dir() {
                 grokbuild: false,
                 opencode: false,
                 hermes: false,
+                workbuddy: false,
+                qoderwork: false,
+                trae_work: false,
             },
             description: None,
             homepage: None,
@@ -1084,6 +1271,9 @@ fn custom_claude_dir_sync_does_not_copy_default_profile() {
                 grokbuild: false,
                 opencode: false,
                 hermes: false,
+                workbuddy: false,
+                qoderwork: false,
+                trae_work: false,
             },
             description: None,
             homepage: None,
@@ -1224,6 +1414,9 @@ fn sync_all_enabled_removes_known_disabled_but_preserves_unknown_live_entries() 
                 grokbuild: false,
                 opencode: false,
                 hermes: false,
+                workbuddy: false,
+                qoderwork: false,
+                trae_work: false,
             },
             description: None,
             homepage: None,
@@ -1247,6 +1440,9 @@ fn sync_all_enabled_removes_known_disabled_but_preserves_unknown_live_entries() 
                 grokbuild: false,
                 opencode: false,
                 hermes: false,
+                workbuddy: false,
+                qoderwork: false,
+                trae_work: false,
             },
             description: None,
             homepage: None,

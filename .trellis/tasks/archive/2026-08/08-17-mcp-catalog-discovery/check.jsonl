@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/frontend/v2-skills-mcp.md", "reason": "Verify six-target MCP assignment, secret-safe search/details, and V2 gates"}
+{"file": ".trellis/spec/frontend/v2-shell.md", "reason": "Verify frozen shell and V2 layer/platform boundaries"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Verify applicable unit, browser, build, and format checks"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Verify authoritative refresh after catalog upsert"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Verify secrets stay out of search/toasts and unknown fields are preserved"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Check catalog metadata is not persisted through the MCP backend"}

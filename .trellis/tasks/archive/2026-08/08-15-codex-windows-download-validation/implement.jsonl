@@ -1,0 +1,9 @@
+{"file":".trellis/spec/backend/index.md","reason":"Backend pre-development and validation routing for Rust/Tauri installer changes."}
+{"file":".trellis/spec/backend/codex-desktop-installer.md","reason":"Owning contract for release source, downloads, Windows/macOS platform installation, helper boundary, DTOs, jobs, restart, and tests."}
+{"file":".trellis/spec/backend/development-environment.md","reason":"Canonical mise-first commands and host-native build/test constraints."}
+{"file":".trellis/spec/backend/windows-runtime-security.md","reason":"Explorer/Shell SID, elevated boundary, process launch, and Windows runtime protections that must remain while content gates are removed."}
+{"file":".trellis/spec/frontend/index.md","reason":"Frontend layer routing and cross-layer change checklist."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Strict Rust-to-TypeScript DTO/parser/fixture synchronization requirements."}
+{"file":".trellis/spec/frontend/v2-agent-models.md","reason":"V2 Codex installer port, controller, state, and native-only boundary."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Required cross-layer review for release DTO, job state, error, and UI changes."}
+{"file":".trellis/tasks/08-15-codex-windows-download-validation/research/current-installer-validation-map.md","reason":"Concise current-code map of upstream-coupled validators, preserved operational protections, affected tests, and stop conditions."}

@@ -801,7 +801,7 @@ impl CodexOAuthManager {
             .as_nanos();
         let tmp_path = parent.join(format!("{file_name}.tmp.{ts}"));
 
-        #[cfg(unix)]
+        #[cfg(target_os = "macos")]
         {
             use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 

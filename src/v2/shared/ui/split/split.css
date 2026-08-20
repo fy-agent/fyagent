@@ -1,0 +1,186 @@
+.fy-split-panes {
+  --fy-split-pane-0: clamp(220px, 24vw, 268px);
+  --fy-split-pane-1: clamp(330px, 36vw, 520px);
+  --fy-split-gap: 14px;
+
+  display: grid;
+  flex: 1 1 auto;
+  align-items: stretch;
+  gap: 0;
+  min-width: 0;
+  min-height: 0;
+}
+
+.fy-split-panes[data-panes="1"] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.fy-split-panes[data-panes="2"] {
+  grid-template-columns:
+    var(--fy-split-pane-0) var(--fy-split-gap)
+    minmax(0, 1fr);
+}
+
+.fy-split-panes[data-panes="3"] {
+  grid-template-columns:
+    var(--fy-split-pane-0) var(--fy-split-gap)
+    var(--fy-split-pane-1) var(--fy-split-gap)
+    minmax(0, 1fr);
+}
+
+.fy-content-viewport:has(> :not([hidden]) .fy-split-page) {
+  overflow: hidden;
+  scrollbar-gutter: stable;
+}
+
+.fy-content-viewport > :has(> .fy-split-page):not([hidden]) {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.fy-feature-page.fy-split-page {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  gap: 0;
+}
+
+.fy-split-pane {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.fy-split-pane > * {
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 100%;
+  height: 100%;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.fy-split-resize-handle {
+  position: relative;
+  width: var(--fy-split-gap);
+  min-width: var(--fy-split-gap);
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  align-self: stretch;
+  background: transparent;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.fy-split-resize-handle::before {
+  content: "";
+  position: absolute;
+  top: 12px;
+  bottom: 12px;
+  left: 50%;
+  width: 1px;
+  border-radius: 1px;
+  background: var(--fy-border);
+  transform: translateX(-50%);
+}
+
+.fy-split-resize-handle:hover::before,
+.fy-split-resize-handle:focus-visible::before,
+.fy-split-panes[data-resizing="true"] .fy-split-resize-handle::before {
+  width: 2px;
+  background: var(--fy-accent);
+}
+
+.fy-split-resize-handle:focus-visible {
+  outline: 2px solid var(--fy-focus);
+  outline-offset: -2px;
+}
+
+.fy-split-panes[data-resizing="true"] {
+  cursor: col-resize;
+  user-select: none;
+}
+
+@media (max-width: 1180px) {
+  .fy-split-panes[data-panes="3"] {
+    grid-template-columns:
+      var(--fy-split-pane-0) var(--fy-split-gap)
+      minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .fy-split-panes[data-panes="3"] > .fy-split-pane[data-index="0"] {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .fy-split-panes[data-panes="3"] > .fy-split-resize-handle[data-index="0"] {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .fy-split-panes[data-panes="3"] > .fy-split-pane[data-index="1"] {
+    grid-column: 3;
+    grid-row: 1;
+  }
+
+  .fy-split-panes[data-panes="3"] > .fy-split-resize-handle[data-index="1"] {
+    display: none;
+  }
+
+  .fy-split-panes[data-panes="3"] > .fy-split-pane[data-index="2"] {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+}
+
+@media (max-width: 760px) {
+  .fy-split-panes[data-panes="1"],
+  .fy-split-panes[data-panes="2"],
+  .fy-split-panes[data-panes="3"] {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
+    align-items: start;
+    gap: var(--fy-split-gap);
+    overflow: auto;
+  }
+
+  .fy-split-resize-handle,
+  .fy-split-panes[data-panes="2"] > .fy-split-resize-handle,
+  .fy-split-panes[data-panes="3"] > .fy-split-resize-handle {
+    display: none;
+  }
+
+  .fy-split-pane,
+  .fy-split-panes[data-panes="3"] > .fy-split-pane[data-index="0"],
+  .fy-split-panes[data-panes="3"] > .fy-split-pane[data-index="1"],
+  .fy-split-panes[data-panes="3"] > .fy-split-pane[data-index="2"] {
+    grid-column: auto;
+    grid-row: auto;
+    overflow: visible;
+    height: auto;
+  }
+
+  .fy-split-pane > * {
+    height: auto;
+    min-height: 0;
+    overflow: visible;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fy-split-panes,
+  .fy-split-pane,
+  .fy-split-resize-handle {
+    animation: none;
+    scroll-behavior: auto;
+    transition: none;
+  }
+}

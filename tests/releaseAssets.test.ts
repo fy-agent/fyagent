@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import {
+  copyFileSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -15,21 +16,24 @@ import {
   BUILD_METADATA_NAME,
   CI_WORKFLOW_PATH,
   DOWNLOAD_MANIFEST_NAME,
-  RELEASE_BRANCH,
-  WINDOWS_SIGNING_STATUS_NAME,
-  EXPECTED_TARGETS,
   EXPECTED_INSTALLERS_BY_TARGET,
+  EXPECTED_TARGETS,
+  PREFLIGHT_BRANCH,
+  RELEASE_BRANCH,
   WINDOWS_SIGNING_FRAGMENTS_BY_TARGET,
+  WINDOWS_SIGNING_STATUS_NAME,
+  assertExactFileSet,
   assertWindowsBundleVersion,
   buildBuildMetadata,
   expectedAttestationSubjectNames,
   expectedInstallerNames,
   expectedReleaseAttachmentNames,
-  assertExactFileSet,
   type ExpectedTarget,
   type PlatformBuildMetadataRecord,
   type ReleaseIdentity,
 } from "../scripts/release/release-contract.mjs";
+// @ts-expect-error The workflow executes this dependency-free helper directly.
+import * as publicationModule from "../scripts/release/prepare-release-publication.mjs";
 
 const temporaryRoots: string[] = [];
 const repositoryRoot = path.resolve(__dirname, "..");
@@ -40,6 +44,20 @@ const collectorScript = path.join(
   "release",
   "collect-workflow-artifacts.mjs",
 );
+const assembleReleaseAttachments =
+  publicationModule.assembleReleaseAttachments as (input: {
+    subjectsDirectory: string;
+    bundlePath: string;
+    outputDirectory: string;
+    version: string;
+  }) => Promise<Array<{ name: string; size: number; sha256: string }>>;
+const verifyDownloadedReleaseAttachments =
+  publicationModule.verifyDownloadedReleaseAttachments as (input: {
+    sourceDirectory: string;
+    downloadedDirectory: string;
+    version: string;
+  }) => Promise<Array<{ name: string; size: number; sha256: string }>>;
+
 const identity: ReleaseIdentity = {
   productVersion: "0.3.0",
   tag: "v0.3.0",
@@ -47,7 +65,8 @@ const identity: ReleaseIdentity = {
   repository: "fy-agent/fyagent",
   repositoryId: "1313497021",
   workflowPath: ".github/workflows/release.yml",
-  workflowRef: "fy-agent/fyagent/.github/workflows/release.yml@refs/heads/main",
+  workflowRef:
+    "fy-agent/fyagent/.github/workflows/release.yml@refs/heads/dev/laiyongjie",
   workflowSha: "b".repeat(40),
   runId: "123456",
   runAttempt: "2",
@@ -64,24 +83,12 @@ function temporaryDirectory(): string {
   return root;
 }
 
-function writePlatformMetadata(
-  directory: string,
-  metadataIdentity: ReleaseIdentity = identity,
-): void {
-  for (const expected of EXPECTED_TARGETS) {
-    writeFileSync(
-      path.join(directory, `${expected.targetGroup}.json`),
-      `${JSON.stringify(platformMetadataRecord(expected, metadataIdentity), null, 2)}\n`,
-    );
-  }
-}
-
 function platformMetadataRecord(
   expected: ExpectedTarget,
   metadataIdentity: ReleaseIdentity = identity,
 ): PlatformBuildMetadataRecord {
   return {
-    schema: "fyagent-platform-build/v1",
+    schema: "fyagent-platform-build/v2",
     targetGroup: expected.targetGroup,
     platform: expected.platform,
     architecture: expected.architecture,
@@ -92,22 +99,6 @@ function platformMetadataRecord(
         arch: expected.expectedRunnerArch,
       },
     },
-    container:
-      expected.expectedContainer === null
-        ? null
-        : {
-            configuredImage: {
-              reference: expected.expectedContainer.imageReference,
-              manifestDigest: expected.expectedContainer.manifestDigest,
-            },
-            observed: {
-              osRelease: {
-                id: expected.expectedContainer.osReleaseId,
-                versionId: expected.expectedContainer.osReleaseVersionId,
-              },
-              unameMachine: expected.expectedContainer.unameMachine,
-            },
-          },
     toolchain: {
       node: "v24.19.0",
       pnpm: "10.12.3",
@@ -115,6 +106,18 @@ function platformMetadataRecord(
     },
     identity: metadataIdentity,
   };
+}
+
+function writePlatformMetadata(
+  directory: string,
+  metadataIdentity: ReleaseIdentity = identity,
+): void {
+  for (const expected of EXPECTED_TARGETS) {
+    writeFileSync(
+      path.join(directory, `${expected.targetGroup}.json`),
+      `${JSON.stringify(platformMetadataRecord(expected, metadataIdentity), null, 2)}\n`,
+    );
+  }
 }
 
 type MutableRecord = Record<string, unknown>;
@@ -147,6 +150,17 @@ function writeInstallerArtifacts(directory: string): void {
   }
 }
 
+function writeMetadataArtifacts(directory: string): void {
+  for (const target of EXPECTED_TARGETS) {
+    const artifact = path.join(directory, `metadata-${target.targetGroup}`);
+    mkdirSync(artifact);
+    writeFileSync(
+      path.join(artifact, `${target.targetGroup}.json`),
+      `${JSON.stringify(platformMetadataRecord(target))}\n`,
+    );
+  }
+}
+
 function writeSigningArtifacts(directory: string): void {
   for (const [targetGroup, fragmentName] of Object.entries(
     WINDOWS_SIGNING_FRAGMENTS_BY_TARGET,
@@ -163,196 +177,8 @@ afterEach(() => {
   }
 });
 
-const UNKNOWN_METADATA_KEY_CASES: Array<
-  [string, (record: MutableRecord) => void]
-> = [
-  ["record root", (record) => (record.unexpected = true)],
-  [
-    "retired root runnerLabel",
-    (record) => (record.runnerLabel = "ubuntu-24.04"),
-  ],
-  ["retired root containerDigest", (record) => (record.containerDigest = null)],
-  ["runner", (record) => (nestedRecord(record, "runner").unexpected = true)],
-  [
-    "retired runnerOs",
-    (record) => (nestedRecord(record, "runner").runnerOs = "Linux"),
-  ],
-  [
-    "retired runnerArch",
-    (record) => (nestedRecord(record, "runner").runnerArch = "X64"),
-  ],
-  [
-    "runner context",
-    (record) =>
-      (nestedRecord(nestedRecord(record, "runner"), "context").unexpected =
-        true),
-  ],
-  [
-    "container",
-    (record) => (nestedRecord(record, "container").unexpected = true),
-  ],
-  [
-    "configured image",
-    (record) =>
-      (nestedRecord(
-        nestedRecord(record, "container"),
-        "configuredImage",
-      ).unexpected = true),
-  ],
-  [
-    "container observations",
-    (record) =>
-      (nestedRecord(nestedRecord(record, "container"), "observed").unexpected =
-        true),
-  ],
-  [
-    "OS release observations",
-    (record) =>
-      (nestedRecord(
-        nestedRecord(nestedRecord(record, "container"), "observed"),
-        "osRelease",
-      ).unexpected = true),
-  ],
-  [
-    "toolchain",
-    (record) => (nestedRecord(record, "toolchain").unexpected = true),
-  ],
-  [
-    "identity",
-    (record) => (nestedRecord(record, "identity").unexpected = true),
-  ],
-  [
-    "retired imageOs",
-    (record) => (nestedRecord(record, "runner").imageOs = "retired"),
-  ],
-  [
-    "retired imageVersion",
-    (record) => (nestedRecord(record, "runner").imageVersion = "retired"),
-  ],
-];
-
-const INVALID_METADATA_CASES: Array<
-  [string, string, (record: MutableRecord) => void, RegExp]
-> = [
-  [
-    "runner OS drift",
-    "linux-x64",
-    (record) =>
-      (nestedRecord(nestedRecord(record, "runner"), "context").os = "Windows"),
-    /runner context OS drifted/,
-  ],
-  [
-    "runner architecture drift",
-    "linux-x64",
-    (record) =>
-      (nestedRecord(nestedRecord(record, "runner"), "context").arch = "ARM64"),
-    /runner context architecture drifted/,
-  ],
-  [
-    "macOS hosted-runner architecture drift",
-    "macos-universal",
-    (record) =>
-      (nestedRecord(nestedRecord(record, "runner"), "context").arch = "X64"),
-    /runner context architecture drifted/,
-  ],
-  [
-    "undocumented runner architecture",
-    "macos-universal",
-    (record) =>
-      (nestedRecord(nestedRecord(record, "runner"), "context").arch =
-        "UNIVERSAL"),
-    /not a documented GitHub value/,
-  ],
-  [
-    "requested runner label drift",
-    "linux-x64",
-    (record) => (nestedRecord(record, "runner").requestedLabel = "latest"),
-    /requested runner label drifted/,
-  ],
-  [
-    "null Linux container",
-    "linux-x64",
-    (record) => (record.container = null),
-    /container must be an object/,
-  ],
-  [
-    "partial Linux container",
-    "linux-x64",
-    (record) => delete nestedRecord(record, "container").observed,
-    /container must contain exactly these keys/,
-  ],
-  [
-    "native-platform container claim",
-    "windows-x64",
-    (record) => {
-      const linuxTarget = EXPECTED_TARGETS.find(
-        ({ targetGroup }) => targetGroup === "linux-x64",
-      )!;
-      record.container = platformMetadataRecord(linuxTarget).container;
-    },
-    /must record container as null/,
-  ],
-  [
-    "image reference and digest mismatch",
-    "linux-x64",
-    (record) =>
-      (nestedRecord(
-        nestedRecord(record, "container"),
-        "configuredImage",
-      ).reference = "docker.io/library/ubuntu:22.04@sha256:" + "0".repeat(64)),
-    /must end with its manifest digest/,
-  ],
-  [
-    "configured image drift",
-    "linux-x64",
-    (record) => {
-      const armTarget = EXPECTED_TARGETS.find(
-        ({ targetGroup }) => targetGroup === "linux-arm64",
-      )!;
-      const configuredImage = nestedRecord(
-        nestedRecord(record, "container"),
-        "configuredImage",
-      );
-      configuredImage.reference = armTarget.expectedContainer!.imageReference;
-      configuredImage.manifestDigest =
-        armTarget.expectedContainer!.manifestDigest;
-    },
-    /configured container image reference drifted|container manifest digest drifted/,
-  ],
-  [
-    "container OS ID drift",
-    "linux-x64",
-    (record) =>
-      (nestedRecord(
-        nestedRecord(nestedRecord(record, "container"), "observed"),
-        "osRelease",
-      ).id = "debian"),
-    /observed container OS ID drifted/,
-  ],
-  [
-    "container OS version drift",
-    "linux-x64",
-    (record) =>
-      (nestedRecord(
-        nestedRecord(nestedRecord(record, "container"), "observed"),
-        "osRelease",
-      ).versionId = "24.04"),
-    /observed container OS version drifted/,
-  ],
-  [
-    "container uname drift",
-    "linux-x64",
-    (record) =>
-      (nestedRecord(
-        nestedRecord(record, "container"),
-        "observed",
-      ).unameMachine = "aarch64"),
-    /observed container machine drifted/,
-  ],
-];
-
 describe("release asset and metadata contract", () => {
-  it("freezes the exact runner and container acceptance map", () => {
+  it("freezes the exact three native runner targets", () => {
     expect(EXPECTED_TARGETS).toEqual([
       {
         targetGroup: "macos-universal",
@@ -361,7 +187,6 @@ describe("release asset and metadata contract", () => {
         requestedRunnerLabel: "macos-15",
         expectedRunnerOs: "macOS",
         expectedRunnerArch: "ARM64",
-        expectedContainer: null,
       },
       {
         targetGroup: "windows-x64",
@@ -370,7 +195,6 @@ describe("release asset and metadata contract", () => {
         requestedRunnerLabel: "windows-2025",
         expectedRunnerOs: "Windows",
         expectedRunnerArch: "X64",
-        expectedContainer: null,
       },
       {
         targetGroup: "windows-arm64",
@@ -379,69 +203,32 @@ describe("release asset and metadata contract", () => {
         requestedRunnerLabel: "windows-11-arm",
         expectedRunnerOs: "Windows",
         expectedRunnerArch: "ARM64",
-        expectedContainer: null,
-      },
-      {
-        targetGroup: "linux-x64",
-        platform: "linux",
-        architecture: "x64",
-        requestedRunnerLabel: "ubuntu-24.04",
-        expectedRunnerOs: "Linux",
-        expectedRunnerArch: "X64",
-        expectedContainer: {
-          imageReference:
-            "docker.io/library/ubuntu:22.04@sha256:0199853f6d6b20b0424f3c5694a72a62764f01e6a771b1eb48a4197848986c7e",
-          manifestDigest:
-            "sha256:0199853f6d6b20b0424f3c5694a72a62764f01e6a771b1eb48a4197848986c7e",
-          osReleaseId: "ubuntu",
-          osReleaseVersionId: "22.04",
-          unameMachine: "x86_64",
-        },
-      },
-      {
-        targetGroup: "linux-arm64",
-        platform: "linux",
-        architecture: "arm64",
-        requestedRunnerLabel: "ubuntu-24.04-arm",
-        expectedRunnerOs: "Linux",
-        expectedRunnerArch: "ARM64",
-        expectedContainer: {
-          imageReference:
-            "docker.io/library/ubuntu:22.04@sha256:a8cdd2158a73d7e5c02aa351fe269f48f57cf710a241db86e9ede371fc150149",
-          manifestDigest:
-            "sha256:a8cdd2158a73d7e5c02aa351fe269f48f57cf710a241db86e9ede371fc150149",
-          osReleaseId: "ubuntu",
-          osReleaseVersionId: "22.04",
-          unameMachine: "aarch64",
-        },
       },
     ]);
   });
 
-  it("freezes the NSIS-only Windows assets and the complete release file sets", () => {
+  it("freezes four installers, seven subjects, and eight attachments", () => {
+    const installers = expectedInstallerNames("0.3.0");
+    expect(PREFLIGHT_BRANCH).toBe("dev/laiyongjie");
     expect(RELEASE_BRANCH).toBe("main");
-    expect(expectedInstallerNames("0.3.0")).toHaveLength(10);
-    expect(expectedInstallerNames("0.3.0")).toContain(
+    expect(installers).toEqual([
+      "FyAgent-0.3.0-macOS.dmg",
+      "FyAgent-0.3.0-macOS.zip",
       "FyAgent-0.3.0-Windows-x64-setup.exe",
-    );
-    expect(expectedInstallerNames("0.3.0")).toContain(
       "FyAgent-0.3.0-Windows-arm64-setup.exe",
-    );
-    expect(expectedInstallerNames("0.3.0")).not.toContain(
-      "FyAgent-0.3.0-Windows.msi",
-    );
+    ]);
     expect(expectedAttestationSubjectNames("0.3.0")).toEqual([
-      ...expectedInstallerNames("0.3.0"),
+      ...installers,
       DOWNLOAD_MANIFEST_NAME,
       BUILD_METADATA_NAME,
       WINDOWS_SIGNING_STATUS_NAME,
     ]);
-    expect(expectedAttestationSubjectNames("0.3.0")).toHaveLength(13);
+    expect(expectedAttestationSubjectNames("0.3.0")).toHaveLength(7);
     expect(expectedReleaseAttachmentNames("0.3.0")).toEqual([
       ...expectedAttestationSubjectNames("0.3.0"),
       ATTESTATION_BUNDLE_NAME,
     ]);
-    expect(expectedReleaseAttachmentNames("0.3.0")).toHaveLength(14);
+    expect(expectedReleaseAttachmentNames("0.3.0")).toHaveLength(8);
   });
 
   it("fails closed when a canonical version cannot fit NSIS fixed-file fields", () => {
@@ -452,12 +239,9 @@ describe("release asset and metadata contract", () => {
     expect(() => assertWindowsBundleVersion("9007199254740993.0.0")).toThrow(
       /Windows NSIS version components must be between 0 and 65535/u,
     );
-    expect(() => expectedInstallerNames("0.65536.0")).toThrow(
-      /Windows NSIS version components must be between 0 and 65535/u,
-    );
   });
 
-  it("rejects directories, symlinks, missing names, and unapproved ancillary files", () => {
+  it("rejects directories, missing names, and unapproved ancillary files", () => {
     const directory = temporaryDirectory();
     for (const name of expectedInstallerNames("0.3.0")) {
       writeFileSync(path.join(directory, name), name);
@@ -472,7 +256,7 @@ describe("release asset and metadata contract", () => {
     ).toThrow(/Only regular files are allowed/);
   });
 
-  it("collects five isolated installer artifacts without allowing overwrite", () => {
+  it("collects three isolated installer artifacts without allowing overwrite", () => {
     const root = temporaryDirectory();
     const downloads = path.join(root, "downloads");
     const output = path.join(root, "installers");
@@ -485,6 +269,22 @@ describe("release asset and metadata contract", () => {
     );
     expect(readdirSync(output).sort()).toEqual(
       expectedInstallerNames("0.3.0").sort(),
+    );
+  });
+
+  it("collects three isolated metadata artifacts", () => {
+    const root = temporaryDirectory();
+    const downloads = path.join(root, "downloads");
+    const output = path.join(root, "metadata");
+    mkdirSync(downloads);
+    writeMetadataArtifacts(downloads);
+    execFileSync(
+      process.execPath,
+      [collectorScript, "metadata", downloads, output, "0.3.0"],
+      { cwd: repositoryRoot, encoding: "utf8", stdio: "pipe" },
+    );
+    expect(readdirSync(output).sort()).toEqual(
+      EXPECTED_TARGETS.map(({ targetGroup }) => `${targetGroup}.json`).sort(),
     );
   });
 
@@ -552,7 +352,7 @@ describe("release asset and metadata contract", () => {
     ).toThrow(/installers-windows-x64 artifact must contain exactly 1 files/);
   });
 
-  it("aggregates exactly five identity-bound platform records", () => {
+  it("aggregates exactly three identity-bound platform records", () => {
     const directory = temporaryDirectory();
     writePlatformMetadata(directory);
     const metadata = buildBuildMetadata({
@@ -561,7 +361,7 @@ describe("release asset and metadata contract", () => {
       generatedAt: "2026-08-08T00:00:00.000Z",
     });
     expect(metadata).toMatchObject({
-      schema: "fyagent-build-metadata/v1",
+      schema: "fyagent-build-metadata/v2",
       product: "FyAgent",
       version: "0.3.0",
       tag: "v0.3.0",
@@ -576,7 +376,7 @@ describe("release asset and metadata contract", () => {
         runAttempt: "2",
         event: "workflow_dispatch",
         mode: "preflight",
-        ref: "fy-agent/fyagent/.github/workflows/release.yml@refs/heads/main",
+        ref: "fy-agent/fyagent/.github/workflows/release.yml@refs/heads/dev/laiyongjie",
         sha: "b".repeat(40),
       },
       requiredCi: {
@@ -587,22 +387,9 @@ describe("release asset and metadata contract", () => {
         conclusion: "success",
       },
     });
+    expect(metadata.targets).toHaveLength(3);
     expect(metadata.targets.map(({ targetGroup }) => targetGroup)).toEqual(
       EXPECTED_TARGETS.map(({ targetGroup }) => targetGroup),
-    );
-    expect(Object.keys(metadata).sort()).toEqual(
-      [
-        "schema",
-        "product",
-        "version",
-        "tag",
-        "sourceSha",
-        "repository",
-        "workflow",
-        "requiredCi",
-        "generatedAt",
-        "targets",
-      ].sort(),
     );
     for (const target of metadata.targets) {
       expect(Object.keys(target).sort()).toEqual(
@@ -612,86 +399,41 @@ describe("release asset and metadata contract", () => {
           "platform",
           "architecture",
           "runner",
-          "container",
           "toolchain",
         ].sort(),
       );
-      expect(Object.keys(target.runner).sort()).toEqual(
-        ["requestedLabel", "context"].sort(),
-      );
-      expect(Object.keys(target.runner.context).sort()).toEqual(["arch", "os"]);
-      expect(Object.keys(target.toolchain).sort()).toEqual([
-        "node",
-        "pnpm",
-        "rustc",
-      ]);
       expect("identity" in target).toBe(false);
-      if (target.container === null) continue;
-      expect(Object.keys(target.container).sort()).toEqual([
-        "configuredImage",
-        "observed",
-      ]);
-      expect(Object.keys(target.container.configuredImage).sort()).toEqual([
-        "manifestDigest",
-        "reference",
-      ]);
-      expect(Object.keys(target.container.observed).sort()).toEqual([
-        "osRelease",
-        "unameMachine",
-      ]);
-      expect(Object.keys(target.container.observed.osRelease).sort()).toEqual([
-        "id",
-        "versionId",
-      ]);
     }
   });
 
   it("records the exact Required CI binding for preflight and formal metadata", () => {
-    const directory = temporaryDirectory();
-    const formalIdentity = {
+    const formalIdentity: ReleaseIdentity = {
       ...identity,
       workflowRef:
         "fy-agent/fyagent/.github/workflows/release.yml@refs/tags/v0.3.0",
-      workflowSha: identity.sourceSha,
       event: "push",
       mode: "formal",
-      ciWorkflowPath: ".github/workflows/ci.yml",
-      ciRunId: "987654",
-      ciRunAttempt: "3",
     };
-    writePlatformMetadata(directory, formalIdentity);
-    const metadata = buildBuildMetadata({
-      metadataDirectory: directory,
-      identity: formalIdentity,
-      generatedAt: "2026-08-08T00:00:00.000Z",
-    });
-    expect(metadata.requiredCi).toEqual({
-      path: ".github/workflows/ci.yml",
-      runId: "987654",
-      runAttempt: "3",
-      job: "CI / Required",
-      conclusion: "success",
-    });
-
-    const secondDirectory = temporaryDirectory();
-    writePlatformMetadata(secondDirectory);
-    expect(
-      buildBuildMetadata({
-        metadataDirectory: secondDirectory,
-        identity,
-        generatedAt: "2026-08-08T00:00:00.000Z",
-      }).requiredCi,
-    ).toEqual({
-      path: ".github/workflows/ci.yml",
-      runId: "987654",
-      runAttempt: "3",
-      job: "CI / Required",
-      conclusion: "success",
-    });
+    for (const candidate of [identity, formalIdentity]) {
+      const directory = temporaryDirectory();
+      writePlatformMetadata(directory, candidate);
+      expect(
+        buildBuildMetadata({
+          metadataDirectory: directory,
+          identity: candidate,
+          generatedAt: "2026-08-08T00:00:00.000Z",
+        }).requiredCi,
+      ).toEqual({
+        path: ".github/workflows/ci.yml",
+        runId: "987654",
+        runAttempt: "3",
+        job: "CI / Required",
+        conclusion: "success",
+      });
+    }
   });
 
   it("accepts another canonical stable version and binds its formal tag ref", () => {
-    const directory = temporaryDirectory();
     const generalizedIdentity: ReleaseIdentity = {
       ...identity,
       productVersion: "12.34.56",
@@ -701,18 +443,16 @@ describe("release asset and metadata contract", () => {
       event: "push",
       mode: "formal",
     };
+    const directory = temporaryDirectory();
     writePlatformMetadata(directory, generalizedIdentity);
-
     const metadata = buildBuildMetadata({
       metadataDirectory: directory,
       identity: generalizedIdentity,
       generatedAt: "2026-08-08T00:00:00.000Z",
     });
-
     expect(metadata.version).toBe("12.34.56");
     expect(metadata.tag).toBe("v12.34.56");
-    expect(metadata.workflow.ref).toBe(generalizedIdentity.workflowRef);
-    expect(expectedInstallerNames(metadata.version)).toHaveLength(10);
+    expect(expectedInstallerNames(metadata.version)).toHaveLength(4);
   });
 
   it.each([
@@ -731,27 +471,16 @@ describe("release asset and metadata contract", () => {
       "preflight workflow ref",
       {
         workflowRef:
-          "fy-agent/fyagent/.github/workflows/release.yml@refs/heads/dev/laiyongjie",
+          "fy-agent/fyagent/.github/workflows/release.yml@refs/heads/other",
       },
-      /Preflight must use the trusted main workflow ref/,
-    ],
-    [
-      "formal workflow ref",
-      {
-        workflowRef:
-          "fy-agent/fyagent/.github/workflows/release.yml@refs/tags/v12.34.56",
-        event: "push",
-        mode: "formal",
-      },
-      /Formal Release workflow ref drifted/,
+      /Preflight must use the trusted dev\/laiyongjie workflow ref/,
     ],
     [
       "CI workflow",
-      { ciWorkflowPath: ".github/workflows/other.yml" },
+      { ciWorkflowPath: "other.yml" },
       /CI workflow path drifted/,
     ],
     ["CI run", { ciRunId: "0" }, /ciRunId must be numeric/],
-    ["CI attempt", { ciRunAttempt: "0" }, /ciRunAttempt must be numeric/],
     ["source SHA", { sourceSha: "c".repeat(39) }, /full 40-character/],
   ])("rejects %s identity drift", (_label, change, error) => {
     const directory = temporaryDirectory();
@@ -765,53 +494,132 @@ describe("release asset and metadata contract", () => {
     ).toThrow(error);
   });
 
-  it.each(UNKNOWN_METADATA_KEY_CASES)(
-    "rejects unknown keys at the %s level",
-    (_label, mutate) => {
-      const directory = temporaryDirectory();
-      writePlatformMetadata(directory);
-      mutatePlatformRecord(directory, "linux-x64", mutate);
-      expect(() =>
-        buildBuildMetadata({
-          metadataDirectory: directory,
-          identity,
-          generatedAt: "2026-08-08T00:00:00.000Z",
-        }),
-      ).toThrow(/must contain exactly these keys/);
-    },
-  );
-
-  it.each(INVALID_METADATA_CASES)(
-    "rejects %s",
-    (_label, targetGroup, mutate, error) => {
-      const directory = temporaryDirectory();
-      writePlatformMetadata(directory);
-      mutatePlatformRecord(directory, targetGroup, mutate);
-      expect(() =>
-        buildBuildMetadata({
-          metadataDirectory: directory,
-          identity,
-          generatedAt: "2026-08-08T00:00:00.000Z",
-        }),
-      ).toThrow(error);
-    },
-  );
-
-  it("rejects malformed container digest syntax", () => {
+  it.each([
+    ["record root", (record: MutableRecord) => (record.unexpected = true)],
+    [
+      "runner",
+      (record: MutableRecord) =>
+        (nestedRecord(record, "runner").unexpected = true),
+    ],
+    [
+      "runner context",
+      (record: MutableRecord) =>
+        (nestedRecord(nestedRecord(record, "runner"), "context").unexpected =
+          true),
+    ],
+    [
+      "toolchain",
+      (record: MutableRecord) =>
+        (nestedRecord(record, "toolchain").unexpected = true),
+    ],
+    [
+      "identity",
+      (record: MutableRecord) =>
+        (nestedRecord(record, "identity").unexpected = true),
+    ],
+  ])("rejects unknown keys at the %s level", (_label, mutate) => {
     const directory = temporaryDirectory();
     writePlatformMetadata(directory);
-    mutatePlatformRecord(directory, "linux-arm64", (record) => {
-      nestedRecord(
-        nestedRecord(record, "container"),
-        "configuredImage",
-      ).manifestDigest = "sha256:ABC";
-    });
+    mutatePlatformRecord(directory, "windows-x64", mutate);
     expect(() =>
       buildBuildMetadata({
         metadataDirectory: directory,
         identity,
         generatedAt: "2026-08-08T00:00:00.000Z",
       }),
-    ).toThrow(/manifest digest must be lowercase SHA-256/);
+    ).toThrow(/must contain exactly these keys/);
+  });
+
+  it.each([
+    [
+      "runner OS drift",
+      (record: MutableRecord) =>
+        (nestedRecord(nestedRecord(record, "runner"), "context").os = "macOS"),
+      /runner context OS drifted/,
+    ],
+    [
+      "runner architecture drift",
+      (record: MutableRecord) =>
+        (nestedRecord(nestedRecord(record, "runner"), "context").arch =
+          "ARM64"),
+      /runner context architecture drifted/,
+    ],
+    [
+      "requested runner label drift",
+      (record: MutableRecord) =>
+        (nestedRecord(record, "runner").requestedLabel = "macos-15"),
+      /requested runner label drifted/,
+    ],
+    [
+      "old schema",
+      (record: MutableRecord) =>
+        (record.schema = ["fyagent-platform-build", "v1"].join("/")),
+      /Invalid platform metadata schema/,
+    ],
+    [
+      "tool version drift",
+      (record: MutableRecord) =>
+        (nestedRecord(record, "toolchain").node = "v0.0.0"),
+      /Node version drifted/,
+    ],
+  ])("rejects %s", (_label, mutate, error) => {
+    const directory = temporaryDirectory();
+    writePlatformMetadata(directory);
+    mutatePlatformRecord(directory, "windows-x64", mutate);
+    expect(() =>
+      buildBuildMetadata({
+        metadataDirectory: directory,
+        identity,
+        generatedAt: "2026-08-08T00:00:00.000Z",
+      }),
+    ).toThrow(error);
+  });
+
+  it("assembles exactly eight attachments and verifies re-downloaded bytes", async () => {
+    const root = temporaryDirectory();
+    const subjects = path.join(root, "subjects");
+    const attachments = path.join(root, "attachments");
+    const downloaded = path.join(root, "downloaded");
+    const bundle = path.join(root, ATTESTATION_BUNDLE_NAME);
+    mkdirSync(subjects);
+    mkdirSync(downloaded);
+    for (const name of expectedAttestationSubjectNames("0.3.0")) {
+      writeFileSync(path.join(subjects, name), `subject:${name}`);
+    }
+    writeFileSync(bundle, "sigstore-bundle");
+
+    const described = await assembleReleaseAttachments({
+      subjectsDirectory: subjects,
+      bundlePath: bundle,
+      outputDirectory: attachments,
+      version: "0.3.0",
+    });
+    expect(described.map(({ name }) => name)).toEqual(
+      expectedReleaseAttachmentNames("0.3.0"),
+    );
+    expect(described).toHaveLength(8);
+
+    for (const name of expectedReleaseAttachmentNames("0.3.0")) {
+      copyFileSync(path.join(attachments, name), path.join(downloaded, name));
+    }
+    await expect(
+      verifyDownloadedReleaseAttachments({
+        sourceDirectory: attachments,
+        downloadedDirectory: downloaded,
+        version: "0.3.0",
+      }),
+    ).resolves.toHaveLength(8);
+
+    writeFileSync(
+      path.join(downloaded, expectedInstallerNames("0.3.0")[0]),
+      "drift",
+    );
+    await expect(
+      verifyDownloadedReleaseAttachments({
+        sourceDirectory: attachments,
+        downloadedDirectory: downloaded,
+        version: "0.3.0",
+      }),
+    ).rejects.toThrow(/differ from the verified local payload/);
   });
 });

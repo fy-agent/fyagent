@@ -1,5 +1,15 @@
 # Component Guidelines
 
+These conventions apply to leftover `src/components/**` outside `src/v2`.
+V2 primitives, tokens, and copy live under `src/v2/shared/ui` and must not
+import these leftover wrappers, `src/index.css`, `lucide-react`, or
+`src/i18n/**`. See [V2 Shell](./v2-shell.md) and
+[Frontend Reuse](./reuse.md). Reuse is the default frontend preference.
+Prefer an existing shared primitive. If a new control will be used by
+another current or later module, add it under `src/v2/shared/ui` (or
+leftover `src/components/ui/` / `src/components/common/` for leftover-only
+surfaces) on the first commit. Do not wait for a third copy.
+
 ## Component Families
 
 Business components are generally function components with a local props

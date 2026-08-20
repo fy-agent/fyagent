@@ -3,10 +3,10 @@
 //! `tauri-plugin-window-state` always resolves and creates the process user's
 //! app-config directory before joining its filename. That is incorrect for an
 //! elevated Bob-process/Alice-Shell launch, so Windows owns this narrow state
-//! file while other platforms retain the plugin. The JSON shape intentionally
+//! file while macOS retains the plugin. The JSON shape intentionally
 //! remains compatible with the plugin's existing state file.
 
-#![cfg_attr(not(target_os = "windows"), allow(dead_code))]
+#![cfg_attr(target_os = "macos", allow(dead_code))]
 
 use serde::{Deserialize, Serialize};
 use std::{

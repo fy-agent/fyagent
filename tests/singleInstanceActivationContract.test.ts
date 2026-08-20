@@ -11,7 +11,7 @@ const cargo = read("src-tauri/Cargo.toml");
 const dialog = read("src/components/DeepLinkImportDialog.tsx");
 
 const desktopTargetCfg =
-  'any(target_os = "macos", target_os = "windows", target_os = "linux")';
+  'any(target_os = "macos", target_os = "windows")';
 
 describe("single-instance semantic activation contract", () => {
   it("applies the argv envelope bound only to Windows", () => {
@@ -31,10 +31,10 @@ describe("single-instance semantic activation contract", () => {
       `#[cfg(${desktopTargetCfg})]\n    let builder = builder.plugin(tauri_plugin_single_instance::init`,
     );
     expect(host).toContain(
-      `#[cfg(${desktopTargetCfg})]\n    tauri_plugin_single_instance::destroy(app_handle);`,
+      `#[cfg(${desktopTargetCfg})]\n    tauri_plugin_single_instance::destroy(_app_handle);`,
     );
-    expect(host).toContain(
-      `#[cfg(not(${desktopTargetCfg}))]\n    let _ = app_handle;`,
+    expect(host).not.toContain(
+      `#[cfg(not(${desktopTargetCfg}))]`,
     );
     expect(host).toContain(
       "let builder = tauri::Builder::default().plugin(activation_ready_plugin());",
@@ -82,7 +82,7 @@ describe("single-instance semantic activation contract", () => {
       submission.indexOf("if should_exit_lightweight"),
     );
     expect(capacityRejection).not.toContain("return;");
-    expect(host).toContain('focus_main_window: !cfg!(target_os = "windows")');
+    expect(host).toContain('focus_main_window: cfg!(target_os = "macos")');
   });
 
   it("reserves full-queue priority for waking semantics without coupling wake to admission", () => {

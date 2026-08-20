@@ -35,9 +35,10 @@ merge_group:
 workflow_dispatch:
 ```
 
-- every `main` push remains a full CI run;
-- every `dev/laiyongjie` push is a full CI run and is the only CI event that
-  can satisfy the dev-release eligibility contract;
+- every `main` push remains a full CI run and can satisfy formal-release
+  eligibility for the exact current `main` HEAD;
+- every `dev/laiyongjie` push is a full CI run and can satisfy preflight
+  eligibility for the exact current dev HEAD;
 - PR and `merge_group` runs execute only affected domains;
 - `workflow_dispatch` is a full diagnostic run and is never release evidence
   because its event is not `push`.
@@ -79,7 +80,8 @@ domain booleans to jobs, but it must not duplicate repository path globs.
 
 Classification invariants:
 
-- workflow, classifier, release, repository task, mise, optional agent/hook,
+- workflow, classifier, release, repository task, mise, optional agent/hook
+  (including tracked `.cursor/` and `.codebuddy/` Trellis trees),
   and toolchain control-plane paths set `forceFull=true` and every domain true;
 - `package.json` and pnpm dependency roots widen contracts/frontend/desktop;
 - every `src-tauri/**` change reaches contracts plus its backend/native owner,
@@ -90,6 +92,13 @@ Classification invariants:
   contracts plus `windowsNative`;
 - docs and optional Trellis specs/tasks/journals reach docsSpec plus the
   lightweight contracts owner;
+- the generated root `FyAgent-前端交互预览.html` is gitignored and not in the
+  Git index; its retired path still classifies as contracts plus frontend so
+  deletions and history diffs are not unknownPaths;
+- retired session-memory trees (`.omo/`, `memory/`) and the retired sandbox
+  packaging prefix still classify as contracts plus docsSpec so deletions
+  versus `main` are not unknownPaths; the classifier must not spell the
+  retired sandbox token as one contiguous source string;
 - a new path without an owner is returned in sorted `unknownPaths`, printed as
   JSON, and makes the CLI fail;
 - unknown paths are never silently treated as no-op or full CI;
@@ -133,7 +142,6 @@ changes
   ├─ contracts
   ├─ frontend
   ├─ desktop-acceptance-contract
-  ├─ backend-linux
   ├─ backend-windows
   ├─ windows-native-contracts (X64, ARM64)
   └─ backend-macos
@@ -148,7 +156,6 @@ The requested job mapping is exact:
 | `contracts`                   | `contracts \|\| docsSpec`    |
 | `frontend`                    | `frontend`                   |
 | `desktop-acceptance-contract` | `desktop`                    |
-| `backend-linux`               | `backend`                    |
 | `backend-windows`             | `backend \|\| windowsNative` |
 | `windows-native-contracts`    | `windowsNative`              |
 | `backend-macos`               | `backend`                    |
@@ -164,7 +171,7 @@ require Trellis task state, overlay reconciliation, or hook execution.
 `scripts/ci/required-gate.mjs` is the pure evaluator for the stable aggregate.
 It receives:
 
-1. exact `toJSON(needs)` results for `changes` plus the seven domain job IDs;
+1. exact `toJSON(needs)` results for `changes` plus the six domain job IDs;
 2. the exact classifier/event plan emitted by `changes`;
 3. the current workflow run-attempt Jobs REST response.
 
@@ -200,7 +207,8 @@ exceeds the bound must add complete pagination in the same change.
 - a native GitHub rerun remains the same run identity with a later attempt and
   keeps the original `GITHUB_SHA`/`GITHUB_REF` semantics.
 - release eligibility accepts a successful rerun only while that original SHA
-  is still the current remote `dev/laiyongjie` HEAD.
+  is still the current remote authority-branch HEAD (`dev/laiyongjie` for
+  preflight, `main` for formal publication).
 
 ## 7. Job and toolchain contracts
 
@@ -221,13 +229,25 @@ repository files through the repository-owned verifier:
 The workflow does not duplicate literal Node, pnpm, Rust, uv, Python, or
 application versions. Rust setup disables its implicit cache. uv setup pins
 the resolved reviewed version and disables cache. pnpm installation uses the
-frozen lockfile. The frontend full unit suite excludes only the five
-host-mise integration suites; the contracts job owns their pure/static
-contracts, and the local canonical check owns the real mise boundary.
+frozen lockfile. The frontend full unit suite excludes only the four
+host-mise integration suites (`developmentEnvironment`, `miseTaskContract`,
+`systemCheck`, and `taskDocs`); the contracts job owns their
+pure/static contracts, and the local canonical check owns the real mise
+boundary.
 
-Backend jobs run locked Cargo check, clippy with warnings denied, and tests on
-Linux, Windows, and macOS. Linux additionally owns `cargo fmt --check` and the
-reviewed system dependency set. The Windows backend uses the test manifest and
+The always-running Changes job executes the durable supported-platform surface
+checker directly after checkout and Node setup, alongside the change plan and
+before diagnostic aggregation. This makes every Required CI plan scan the complete checked-out current
+tree rather than relying on conditional domain jobs or checker unit tests. CI
+never receives the task-specific prearchive exclusion; after the lifecycle
+task is archived, the canonical archive boundary applies and any new
+first-party support surface fails Required CI. The Repository Contracts plan
+also runs the same checker through `release-check.mjs --ci` as defense in
+depth when that domain is selected.
+
+Backend jobs run locked Cargo check, Clippy with warnings denied, and tests on
+Windows and macOS. macOS additionally owns `cargo fmt --check`. The Windows
+backend uses the test manifest and
 the native x64 `windows-2025` runner. Before any Windows backend Cargo command
 can compile the desktop crate, the job invokes the repository-owned
 `scripts/prepare-windows-user-helper.mjs` with the exact x64 target and debug
@@ -264,7 +284,9 @@ Within Cargo, check and Clippy use `--keep-going` so all still-buildable
 dependency-graph branches are attempted before the command returns failure.
 This does not claim that a target whose dependency failed can run. Rust tests
 use `--no-fail-fast`, which continues across test executables after an
-executable fails. Backend test commands alone enable `fyagent/test-hooks` so
+executable fails. Backend `cargo test` steps set `RUST_TEST_THREADS=1` because
+`FYAGENT_TEST_HOME` is process-global and parallel unit tests otherwise race
+on the override. Backend test commands alone enable `fyagent/test-hooks` so
 integration-test fixtures can bind Windows user paths to their explicit
 `FYAGENT_TEST_HOME`; check, Clippy, native contract compilation, and production
 builds retain the frozen Explorer-user fail-closed boundary. The workflow
@@ -328,7 +350,8 @@ Labeler is not a CI dependency and cannot satisfy `CI / Required`.
 Required automated fixtures cover:
 
 - docs/spec, frontend, desktop, backend, Windows native, dependency-root,
-  control-plane, multi-path union, rename/delete, and unknown paths;
+  control-plane, multi-path union, rename/delete, unknown paths, and the
+  retired generated standalone preview path;
 - malformed/missing/non-commit base/head revisions and option injection;
 - PR, merge-group, push, and manual event wiring;
 - event-forced full CI for both dev/main pushes and diagnostics;
@@ -370,5 +393,5 @@ Correct:
 ```text
 explicit base/head -> repository classifier -> requested domains
 requested success + authorized skip + REST conclusion -> CI / Required
-exact dev push SHA + successful CI / Required -> release eligibility
+exact authority-branch push SHA + successful CI / Required -> mode-specific release eligibility
 ```

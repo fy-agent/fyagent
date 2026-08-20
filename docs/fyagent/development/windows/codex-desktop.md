@@ -19,7 +19,7 @@ process start
   -> freeze Shell session, canonical SID, Profile, LocalAppData, RoamingAppData
   -> initialize WebView/config/log/database/state on those paths
   -> explicit-SID Codex package discovery
-  -> verify the fixed install-root MSIX and hold its file identity open
+  -> bind the fixed downloaded MSIX to a local hash/size and hold its file identity open
   -> parent seals one protected ProgramData PackageBridge copy from that handle
   -> launch the fixed current-user helper through Explorer
   -> `Hello`, authenticate helper, send bridge control, verify `Started`, admit
@@ -79,9 +79,10 @@ replacement in the shipped path.
 The elevated parent creates one local first-instance duplex pipe before asking
 Explorer to launch the fixed sibling helper as Alice. Its session-local
 `LOCAL\` name combines a fixed versioned prefix with a random 256-bit nonce.
-The BA-owned descriptor gives Alice exactly read-data, write-data,
-`READ_CONTROL`, and synchronize rights; SYSTEM and Administrators retain only
-`READ_CONTROL`. No generic-write alias grants pipe-instance creation.
+The BA-owned descriptor gives Alice `FILE_GENERIC_READ` plus `FILE_WRITE_DATA`
+(`FILE_READ_ATTRIBUTES` is required to connect to a named pipe);
+SYSTEM and Administrators retain only `READ_CONTROL`. No generic-write alias
+grants pipe-instance creation.
 
 The parent also first-creates BA-owned admission and cancellation events. Alice
 can synchronize and inspect their owner but cannot signal them. The helper
@@ -123,7 +124,7 @@ and a clean pipe close permit cleanup.
 ## Protected package bridge and process lifetime
 
 The production path stages only under the install-root cache and opens the
-validated MSIX with `GENERIC_READ + FILE_SHARE_READ`. After rechecking SHA-256,
+current job's fixed MSIX with `GENERIC_READ + FILE_SHARE_READ`. After rechecking SHA-256,
 volume serial, file index, and size, the elevated application bridge module
 copies only from that handle into:
 
@@ -138,15 +139,20 @@ read attributes, `READ_CONTROL`, and synchronize—never list/create/write/delet
 delete-child. Every create-new operation directory and `.part`/final file has a
 separate protected ACL granting only BA management, minimum SYSTEM read/traverse,
 and minimum read/traverse for the exact frozen Alice SID. ProgramData-parent
-effective access is checked so Alice cannot invalidate the root through
-`DELETE_CHILD`. Incompatible existing objects are rejected, not repaired.
+effective access is checked so a non-administrator Alice cannot invalidate the
+root through `DELETE_CHILD`. A privileged Explorer token (Administrators group
+enabled, including the built-in Administrator account) already has those rights
+on OS-owned ancestors and on BA-owned bridge objects; that case does not fail
+closed. Exact protected ACLs, held ancestor handles, and identity rechecks
+remain required. Incompatible existing objects are rejected, not repaired.
 
 The ProgramData volume must be local fixed NTFS and have enough space for the
 accepted extra full copy. The parent handles short reads/writes while hashing,
 flushes `.part`, renames without replacement, reopens the final leaf no-follow,
 and proves exact SHA/size/source-object, file-ID, link/reparse/placeholder,
-owner/group, and DACL continuity. Parent preflight already owns release
-SHA/size and bounded ZIP/manifest publisher/name/version/architecture/OS checks;
+owner/group, and DACL continuity. These SHA/size values are computed from the
+file downloaded by the current job and exist only to prove same-file handoff;
+they are never compared with mirror or upstream publication fields.
 PackageManager remains the native MSIX signature-chain authority.
 
 The helper converts only the protected ordinary DOS path with
@@ -186,16 +192,18 @@ rather than an atomic launch interlock.
 
 This delivery intentionally does not run HIL, locally or in GitHub Actions. Its
 present A1 evidence is limited to static contract tests, scoped Windows-target
-compilation checks, and code/security review. Real Windows 10/11, x64/ARM64,
+compilation checks, and code/security review. Real Windows 10 and Windows 11,
+x64/ARM64,
 Bob-elevated/Alice-standard-Explorer-Shell, protected DOS file-URI/
 PackageManager, effective ACL/mutation-denial, and terminal/orphan/cleanup
 behaviors therefore remain explicit, unverified residual risks. The present
 evidence must not be described as proof of native compatibility or native
 runtime verification.
-The minimum supported Windows version does not change, and existing OS/package
-`MinVersion` preflight still rejects unsupported cases before helper launch. A2
-requires future independent native validation plus an explicit, separately
-authorized design decision; it is never a runtime fallback.
+Native deployment and post-install checks still surface unsupported operating
+systems or packages. FyAgent does not maintain a duplicate package `MinVersion`
+allowlist before helper launch. A2 requires future independent native validation
+plus an explicit, separately authorized design decision; it is never a runtime fallback.
+The minimum supported Windows version does not change under this policy.
 
 ## Testing boundary
 
@@ -211,6 +219,23 @@ lifecycle claim. Static
 contracts ensure Windows production paths do not derive user state from ambient
 profile/app-data/tool-home variables or `HKCU`.
 
+## One-click executable software policy
+
+All FyAgent one-click executable software install and upgrade flows, including
+future products and platforms, use fixed product-owned source endpoints but do
+not admit or reject a download by comparing upstream hash, byte size, package
+identity, version, minimum-OS, publisher/team, architecture, or signature
+publication fields. Metadata size may be used only as a nullable progress and
+disk-space hint. URL, path, scope, identity, hash, or validation-bypass inputs
+must not be added to renderer IPC, CLI, or helpers.
+
+This policy does not apply to Skills, plugins, MCP packages, configuration
+packs, or other extension/configuration data. Their existing validation rules
+remain independently owned. Transport bounds, protected temporary files,
+same-file handoff checks, native installer behavior, atomic replacement and
+rollback, and post-install existence/version/runnable verification remain in
+force.
+
 This delivery runs no Windows runtime HIL in Actions or on a local machine.
 Static contracts, portable fixtures, scoped Windows-target compilation checks,
 and review are the available evidence; they do not verify Explorer tokens, UAC,
@@ -218,9 +243,3 @@ WebView2 paths, Windows registry behavior, the protected bridge/ACL/file URI,
 PackageManager terminal behavior, cleanup, or setup/uninstall lifecycle on real
 Windows 10/11, x64/ARM64, or Bob/Alice systems. Those are explicit residual
 risks and prohibit a native-compatibility or native-runtime-verified claim.
-
-The repository also intentionally accepts the official Trellis `0.6.14`
-Codex hooks without FyAgent's former path-containment, exact-import,
-session/input, and markup-escaping overlay checks. That separate prompt-hook
-regression remains a documented residual risk; the helper security boundary
-must not be presented as restoring equivalent hook hardening.

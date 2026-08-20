@@ -12,7 +12,9 @@
 //! Key differences from Claude format:
 //! - Hermes has NO explicit `type` field -- it infers stdio (has `command`) vs HTTP (has `url`)
 //! - Hermes has extra fields: `enabled`, `timeout`, `connect_timeout`, `tools`, `sampling`
-//! - These Hermes-specific fields are preserved on merge-on-write and stripped on import
+//! - These Hermes-specific fields are preserved on merge-on-write and stripped
+//!   from the unified executable spec on import; explicit `enabled: false` is
+//!   still preserved as the Hermes assignment state
 
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -113,7 +115,8 @@ fn convert_to_hermes_format(spec: &Value) -> Result<Value, AppError> {
 /// Conversion rules:
 /// - If `command` exists: set `type: "stdio"`, extract `command`, `args`, `env`
 /// - If `url` exists: set `type: "sse"`, extract `url`, `headers`
-/// - Strip Hermes-specific fields: `enabled`, `timeout`, `connect_timeout`, `tools`, `sampling`
+/// - Strip Hermes-specific fields from the executable spec; the import caller
+///   captures `enabled` separately as the source assignment state
 fn convert_from_hermes_format(id: &str, spec: &Value) -> Result<Value, AppError> {
     let obj = spec
         .as_object()
@@ -247,7 +250,9 @@ pub fn remove_server_from_hermes(id: &str) -> Result<(), AppError> {
 
 /// Import MCP servers from Hermes config to unified structure
 ///
-/// Existing servers will have Hermes app enabled without overwriting other fields.
+/// Existing servers preserve the source Hermes enable flag without overwriting
+/// other fields. Explicitly disabled source entries are carried to the
+/// persistence boundary only to clear an existing assignment.
 pub fn import_from_hermes(config: &mut MultiAppConfig) -> Result<usize, AppError> {
     let yaml_map = hermes_config::get_mcp_servers_yaml()?;
     if yaml_map.is_empty() {
@@ -278,6 +283,7 @@ pub fn import_from_hermes(config: &mut MultiAppConfig) -> Result<usize, AppError
                 continue;
             }
         };
+        let source_enabled = super::source_server_is_enabled(&spec_json);
 
         // Convert from Hermes format to unified format
         let unified_spec = match convert_from_hermes_format(&id, &spec_json) {
@@ -297,14 +303,12 @@ pub fn import_from_hermes(config: &mut MultiAppConfig) -> Result<usize, AppError
         }
 
         if let Some(existing) = servers.get_mut(&id) {
-            // Existing server: just enable Hermes app
-            if !existing.apps.hermes {
-                existing.apps.hermes = true;
+            if existing.apps.hermes != source_enabled {
+                existing.apps.hermes = source_enabled;
                 changed += 1;
-                log::info!("MCP server '{id}' enabled for Hermes");
+                log::info!("MCP server '{id}' imported with its Hermes enablement");
             }
         } else {
-            // New server: default to only Hermes enabled
             servers.insert(
                 id.clone(),
                 McpServer {
@@ -312,12 +316,8 @@ pub fn import_from_hermes(config: &mut MultiAppConfig) -> Result<usize, AppError
                     name: id.clone(),
                     server: unified_spec,
                     apps: McpApps {
-                        claude: false,
-                        codex: false,
-                        gemini: false,
-                        grokbuild: false,
-                        opencode: false,
-                        hermes: true,
+                        hermes: source_enabled,
+                        ..McpApps::default()
                     },
                     description: None,
                     homepage: None,
@@ -325,8 +325,10 @@ pub fn import_from_hermes(config: &mut MultiAppConfig) -> Result<usize, AppError
                     tags: Vec::new(),
                 },
             );
-            changed += 1;
-            log::info!("Imported new MCP server '{id}' from Hermes");
+            if source_enabled {
+                changed += 1;
+            }
+            log::info!("Imported MCP server '{id}' from Hermes with source enablement");
         }
     }
 

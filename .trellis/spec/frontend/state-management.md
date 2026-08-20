@@ -1,14 +1,20 @@
 # State Management
 
-The current renderer uses React local state and Context for UI state, plus
+This page describes the leftover V1 renderer (`src/App.tsx`, `src/hooks/`,
+`src/lib/query/`). Production V2 owns selection in the hash router, keeps
+session-only feature state in `FeatureProvider`, and uses a V2-owned
+QueryClient; see [V2 Shell](./v2-shell.md) and the feature contracts.
+
+The leftover renderer uses React local state and Context for UI state, plus
 TanStack React Query for data read from or written to the Tauri backend. There
 is no Zustand or Jotai dependency in `package.json`.
 
 ## State Categories
 
-- **Local UI state:** components and feature hooks use `useState`, `useEffect`,
-  and refs. `App.tsx` keeps the selected application and view locally, then
-  persists those UI preferences in `localStorage`.
+- **Local UI state:** leftover components and feature hooks use `useState`,
+  `useEffect`, and refs. `App.tsx` keeps the selected application and view
+  locally, then persists those UI preferences in `localStorage`. V2 must not
+  add a parallel `currentView` store.
 - **Small cross-tree UI state:** Context providers own values used by unrelated
   descendants. `ThemeProvider` owns the selected theme and its persistence and
   is composed in `main.tsx`. The host updater is intentionally not renderer
@@ -72,8 +78,10 @@ not mutate the database.
 
 ## Evidence
 
-- [src/main.tsx](../../../src/main.tsx) composes `QueryClientProvider` and
-  `ThemeProvider` at the renderer root and renders the database-too-new
+- [src/v2/shared/features/provider.tsx](../../../src/v2/shared/features/provider.tsx)
+  owns the production QueryClient and session install target.
+- [src/main.tsx](../../../src/main.tsx) still composes leftover
+  `QueryClientProvider` and `ThemeProvider` and renders the database-too-new
   recovery branch without an updater provider.
 - [src/lib/query/queryClient.ts](../../../src/lib/query/queryClient.ts)
   defines the shared TanStack Query defaults.

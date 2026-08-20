@@ -21,8 +21,8 @@ Release workflow 不在本次写集。
 
 当前候选内容已把六处真实 Windows 用户目录引用替换为稳定的语义占位符，并保留相邻
 SHA-256、来源角色、证据等级和审计结论。受控回归检查遍历所有 tracked Markdown，未再
-发现具体用户目录，同时继续允许 `C:\Users\<...>\...`、`C:\Demo\...` 和
-`/home/demo/...` 等明确示例。本次不重写 Git 历史，因此已经发布的旧提交仍可能保留原始
+发现具体用户目录，同时继续允许本地化占位符和 `example/profile/...`
+这类中性示例。本次不重写 Git 历史，因此已经发布的旧提交仍可能保留原始
 路径；这是明确保留的公开历史边界。
 
 依赖为零的审计 helper 对固定基线树及全部可达历史完成了内存内 blob 扫描，过程没有把
@@ -107,11 +107,11 @@ Secret Scanning alerts 因功能未启用而不可作为证据，因此本审计
 
 - 聚焦合同：`tests/currentDocsContract.test.ts` 14/14、
   `tests/repositoryGovernanceScan.test.ts` 6/6，共 20/20 通过。
-- 当前 Windows checkout 的 `mise run system:check` 已确认 Git 和 WebView2，但因缺少
-  `cl.exe` / Visual Studio C++ toolchain 无法完成；没有通过安装系统组件来掩盖该限制。
-- 本机 `mise run release:check` 仍有 5 个既有 Windows-host 合同失败；它们不由本次
-  文档与扫描器差异引入。远程 `CI / Required` 必须在精确 PR head 上成功，才能替代本机
-  环境限制成为合并证据。
+- 当前 Windows checkout 已在 Visual Studio Developer PowerShell 环境完成
+  `mise run system:check`，确认 Git、WebView2 与 `cl.exe` 工具链可用。
+- 当前候选于 2026-08-13 完成 `mise run release:check` 与完整 `mise run check`；
+  本地发布合同和项目门禁均通过。该结果只约束本地候选，远程 `CI / Required`
+  仍必须在精确远端提交上独立成功，不能由本地结果替代。
 - 本审计不证明原生窗口 HIL、安装器生命周期、签名、公证或正式 Release。最终 PR head、
   squash merge SHA、Issue 关闭状态和合并后精确 `main` push CI 由 GitHub PR/Actions
   记录承担，不在文档中预写尚未发生的结果。

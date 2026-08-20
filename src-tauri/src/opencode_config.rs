@@ -4,14 +4,31 @@ use crate::provider::OpenCodeProviderConfig;
 use crate::settings::get_opencode_override_dir;
 use indexmap::IndexMap;
 use serde_json::{json, Map, Value};
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
 const STANDARD_OMO_PLUGIN_PREFIXES: [&str; 2] = ["oh-my-openagent", "oh-my-opencode"];
 const SLIM_OMO_PLUGIN_PREFIXES: [&str; 1] = ["oh-my-opencode-slim"];
+#[cfg(any(target_os = "macos", test))]
+pub(crate) const OPENCODE_DATA_HOME_ENV: &str = "XDG_DATA_HOME";
 fn opencode_config_lock() -> &'static Mutex<()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
     LOCK.get_or_init(|| Mutex::new(()))
+}
+
+pub(crate) fn lock_opencode_config() -> std::sync::MutexGuard<'static, ()> {
+    opencode_config_lock()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+pub(crate) fn read_opencode_config_bytes() -> Result<Option<Vec<u8>>, AppError> {
+    read_config_contents(&get_opencode_config_path())
+}
+
+pub(crate) fn write_opencode_config_value(config: &Value) -> Result<Vec<u8>, AppError> {
+    write_opencode_config_to_path_with_contents(&get_opencode_config_path(), config)
 }
 
 fn read_config_contents(path: &Path) -> Result<Option<Vec<u8>>, AppError> {
@@ -60,11 +77,11 @@ pub fn get_opencode_config_path() -> PathBuf {
 }
 
 /// 获取 OpenCode SQLite 数据库路径
-/// 非 Windows 优先级: OPENCODE_DB 环境变量 > XDG_DATA_HOME > ~/.local/share/opencode。
+/// macOS 优先级: OPENCODE_DB 环境变量 > XDG_DATA_HOME > ~/.local/share/opencode/opencode.db。
 /// Windows 不读取提升进程环境，默认始终基于冻结的 Shell 用户目录。
 pub fn get_opencode_db_path() -> PathBuf {
     // 支持 OPENCODE_DB 环境变量覆盖（忽略空字符串）
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
     if let Ok(custom_path) = std::env::var("OPENCODE_DB") {
         if !custom_path.is_empty() {
             let path = PathBuf::from(&custom_path);
@@ -79,21 +96,25 @@ pub fn get_opencode_db_path() -> PathBuf {
     get_opencode_data_dir().join("opencode.db")
 }
 
-fn get_opencode_data_dir() -> PathBuf {
-    // 尊重 XDG_DATA_HOME（按 XDG 规范，空字符串视为未设置）
-    #[cfg(not(target_os = "windows"))]
-    if let Ok(xdg_data) = std::env::var("XDG_DATA_HOME") {
-        if !xdg_data.is_empty() {
-            return PathBuf::from(xdg_data).join("opencode");
-        }
+fn resolve_opencode_data_dir(home: &Path, data_home: Option<&OsStr>) -> PathBuf {
+    if let Some(data_home) = data_home.filter(|value| !value.is_empty()) {
+        return PathBuf::from(data_home).join("opencode");
     }
 
-    // OpenCode 使用 xdg-basedir，不遵守 macOS/Windows 平台约定，
-    // 所有平台默认都落在 ~/.local/share/opencode
-    crate::config::get_home_dir()
-        .join(".local")
-        .join("share")
-        .join("opencode")
+    home.join(".local").join("share").join("opencode")
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) fn get_opencode_data_dir() -> PathBuf {
+    resolve_opencode_data_dir(
+        &crate::config::get_home_dir(),
+        std::env::var_os(OPENCODE_DATA_HOME_ENV).as_deref(),
+    )
+}
+
+#[cfg(target_os = "windows")]
+pub(crate) fn get_opencode_data_dir() -> PathBuf {
+    resolve_opencode_data_dir(&crate::config::get_home_dir(), None)
 }
 
 #[allow(dead_code)]
@@ -373,10 +394,108 @@ mod tests {
         }
     }
 
+    struct EnvVarGuard {
+        key: &'static str,
+        previous: Option<std::ffi::OsString>,
+    }
+    impl EnvVarGuard {
+        fn set(key: &'static str, value: &std::ffi::OsStr) -> Self {
+            let guard = Self {
+                key,
+                previous: std::env::var_os(key),
+            };
+            std::env::set_var(key, value);
+            guard
+        }
+
+        fn remove(key: &'static str) -> Self {
+            let guard = Self {
+                key,
+                previous: std::env::var_os(key),
+            };
+            std::env::remove_var(key);
+            guard
+        }
+    }
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            match self.previous.take() {
+                Some(value) => std::env::set_var(self.key, value),
+                None => std::env::remove_var(self.key),
+            }
+        }
+    }
+
     fn write_config(home: &std::path::Path, content: &str) {
         let dir = home.join(".config").join("opencode");
         std::fs::create_dir_all(&dir).expect("create config dir");
         std::fs::write(dir.join("opencode.json"), content).expect("write config");
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn database_default_uses_the_explicit_home_data_directory() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let _guard = TestHomeGuard::set(temp.path());
+        let _data_home_guard = EnvVarGuard::remove(OPENCODE_DATA_HOME_ENV);
+        let _database_guard = EnvVarGuard::remove("OPENCODE_DB");
+
+        assert_eq!(
+            get_opencode_db_path(),
+            temp.path()
+                .join(".local")
+                .join("share")
+                .join("opencode")
+                .join("opencode.db")
+        );
+    }
+
+    #[test]
+    fn data_directory_resolver_honors_a_non_empty_macos_override() {
+        let home = Path::new("/Users/tester");
+
+        assert_eq!(
+            resolve_opencode_data_dir(home, Some(OsStr::new("/Volumes/opencode-data"))),
+            PathBuf::from("/Volumes/opencode-data").join("opencode")
+        );
+        assert_eq!(
+            resolve_opencode_data_dir(home, Some(OsStr::new(""))),
+            home.join(".local").join("share").join("opencode")
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    #[serial_test::serial]
+    fn public_database_path_reads_the_macos_data_home_override() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let override_root = temp.path().join("data-root");
+        let _guard = EnvVarGuard::set(OPENCODE_DATA_HOME_ENV, override_root.as_os_str());
+        let _database_guard = EnvVarGuard::remove("OPENCODE_DB");
+
+        assert_eq!(
+            get_opencode_db_path(),
+            override_root.join("opencode").join("opencode.db")
+        );
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    #[serial_test::serial]
+    fn public_database_path_ignores_the_elevated_windows_environment() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let ambient_root = temp.path().join("ambient-data-root");
+        let _home_guard = TestHomeGuard::set(temp.path());
+        let _ambient_guard = EnvVarGuard::set(OPENCODE_DATA_HOME_ENV, ambient_root.as_os_str());
+
+        assert_eq!(
+            get_opencode_db_path(),
+            temp.path()
+                .join(".local")
+                .join("share")
+                .join("opencode")
+                .join("opencode.db")
+        );
     }
 
     #[test]

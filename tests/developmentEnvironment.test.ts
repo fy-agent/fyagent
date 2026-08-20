@@ -6,12 +6,12 @@ import { describe, expect, it } from "vitest";
 
 const ROOT = path.resolve(__dirname, "..");
 const SUPPORTED_PLATFORMS = [
-  "linux-x64",
-  "linux-arm64",
   "macos-x64",
   "macos-arm64",
   "windows-x64",
   "windows-arm64",
+  "linux-x64",
+  "linux-arm64",
 ] as const;
 
 type Artifact = { checksum?: string; url?: string };
@@ -106,7 +106,7 @@ describe("mise and uv development environment", () => {
     ]);
   });
 
-  it("locks native Node, pnpm, and uv artifacts for all six platforms", () => {
+  it("locks native Node, pnpm, and uv artifacts for every development host", () => {
     const lock = toml("mise.lock");
     const node = lockEntry(lock, "node");
     const pnpm = lockEntry(lock, "pnpm");
@@ -120,6 +120,13 @@ describe("mise and uv development environment", () => {
     expect(uv.version).toMatch(/^\d+\.\d+\.\d+$/);
 
     for (const [name, entry] of Object.entries({ node, pnpm, uv })) {
+      expect(
+        Object.keys(entry)
+          .filter((key) => key.startsWith("platforms."))
+          .map((key) => key.slice("platforms.".length))
+          .sort(),
+        `${name} exact platform set`,
+      ).toEqual([...SUPPORTED_PLATFORMS].sort());
       for (const platform of SUPPORTED_PLATFORMS) {
         const artifact = entry[`platforms.${platform}`] as Artifact;
         expect(artifact, `${name} ${platform}`).toBeDefined();
@@ -199,6 +206,12 @@ describe("mise and uv development environment", () => {
     ]) {
       expect(ignored).toContain(entry);
     }
+  });
+
+  it("keeps the optional session hook limited to native Windows shell path forms", () => {
+    const hook = read(".codex/hooks/session-start.py");
+    expect(hook).toContain('re.match(r"^/([A-Za-z])/(.*)", p)');
+    expect(hook).toContain('re.match(r"^/cygdrive/([A-Za-z])/(.*)", p)');
   });
 
   it("passes the executable lockfile architecture and source contract", () => {

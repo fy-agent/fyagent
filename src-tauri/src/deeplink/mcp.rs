@@ -153,14 +153,7 @@ pub fn import_mcp_from_deeplink(
 
 /// Parse apps string into McpApps struct
 pub(crate) fn parse_mcp_apps(apps_str: &str) -> Result<McpApps, AppError> {
-    let mut apps = McpApps {
-        claude: false,
-        codex: false,
-        gemini: false,
-        grokbuild: false,
-        opencode: false,
-        hermes: false,
-    };
+    let mut apps = McpApps::default();
 
     for app in apps_str.split(',') {
         match app.trim() {
@@ -174,6 +167,9 @@ pub(crate) fn parse_mcp_apps(apps_str: &str) -> Result<McpApps, AppError> {
                 log::debug!("OpenClaw doesn't support MCP, ignoring in apps parameter");
             }
             "hermes" => apps.hermes = true,
+            "workbuddy" => apps.workbuddy = true,
+            "qoderwork" => apps.qoderwork = true,
+            "trae-work" => apps.trae_work = true,
             other => {
                 return Err(AppError::InvalidInput(format!(
                     "Invalid app in 'apps': {other}"
@@ -193,8 +189,8 @@ pub(crate) fn parse_mcp_apps(apps_str: &str) -> Result<McpApps, AppError> {
 
 fn merge_mcp_apps(existing: &McpApps, target: &McpApps) -> McpApps {
     let mut merged = existing.clone();
-    for app in target.enabled_apps() {
-        merged.set_enabled_for(&app, true);
+    for mcp_target in target.enabled_targets() {
+        merged.set_enabled_for_target(&mcp_target, true);
     }
     merged
 }
@@ -215,6 +211,7 @@ mod tests {
             grokbuild: true,
             opencode: true,
             hermes: true,
+            workbuddy: true,
             ..McpApps::default()
         };
         let merged = merge_mcp_apps(&existing, &target);
@@ -225,5 +222,8 @@ mod tests {
         assert!(merged.grokbuild);
         assert!(merged.opencode);
         assert!(merged.hermes);
+        assert!(merged.workbuddy);
+        assert!(!merged.qoderwork);
+        assert!(!merged.trae_work);
     }
 }

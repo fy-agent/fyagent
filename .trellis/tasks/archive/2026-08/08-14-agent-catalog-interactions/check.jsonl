@@ -1,0 +1,11 @@
+{"file":".trellis/spec/frontend/v2-shell.md","reason":"Check V2 dependency direction, platform-only Tauri imports, responsive geometry and non-authoritative browser behavior."}
+{"file":".trellis/spec/frontend/v2-agent-models.md","reason":"Check exact catalog contract, official actions, local assets, five-candidate order and Models integration."}
+{"file":".trellis/spec/frontend/v2-skills-mcp.md","reason":"Check six-app assignment IDs, exactly one panel, icons, switches and responsive behavior."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Check Rust/TypeScript wire agreement and runtime parsing at the owner boundary."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Check accessibility, focused/full tests, desktop mock claims and visual evidence boundaries."}
+{"file":".trellis/spec/backend/codex-desktop-installer.md","reason":"Check fixed installer command surface, snapshot ordering, progress units, redaction and security invariants."}
+{"file":".trellis/spec/backend/application-identity.md","reason":"Check public official URLs remain verified facts without invented product claims."}
+{"file":".trellis/spec/backend/development-environment.md","reason":"Check validation uses repository-owned mise tasks and reports host-native limitations."}
+{"file":".trellis/tasks/08-14-agent-catalog-interactions/research/catalog-ui.md","reason":"Verify fixes match observed CSS/layout/icon roots and preserve the five-versus-six product boundary."}
+{"file":".trellis/tasks/08-14-agent-catalog-interactions/research/official-links-codex-install.md","reason":"Verify external links and V2 installer integration preserve the researched call and security boundaries."}
+{"file":".trellis/tasks/08-14-agent-catalog-interactions/research/official-page-verification.md","reason":"Verify every shipped external destination matches the official-source research."}

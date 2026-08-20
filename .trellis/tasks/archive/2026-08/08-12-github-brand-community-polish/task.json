@@ -14,7 +14,7 @@
   "completedAt": "2026-08-12",
   "branch": "codex/github-brand-community-polish",
   "base_branch": "main",
-  "worktree_path": "/Users/serendipity/fyagent/.worktrees/github-brand-community-polish",
+  "worktree_path": null,
   "commit": "3b7f755a5c1c306f417d67edabe4274805859673",
   "pr_url": "https://github.com/fy-agent/fyagent/pull/98",
   "subtasks": [],

@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/frontend/v2-skills-mcp.md", "reason": "Skills/MCP port, discovery chrome, pagination, and test contract"}
+{"file": ".trellis/spec/frontend/reuse.md", "reason": "Shared FeaturePagination and discovery scroll must land in shared CSS/UI on first commit"}
+{"file": ".trellis/spec/frontend/v2-shell.md", "reason": "V2 layer boundary and feature chrome reuse"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "New Tauri command and DTO must stay aligned across host and renderer"}
+{"file": ".trellis/spec/backend/external-agent-p0.md", "reason": "Do not widen Skill download/URL admission while adding pagination"}

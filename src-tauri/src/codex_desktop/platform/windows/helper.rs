@@ -66,7 +66,7 @@ use windows::{
 };
 
 use super::{
-    package_bridge::ProtectedPackageBridge, PlatformProgressSink, VerifiedPackage,
+    package_bridge::ProtectedPackageBridge, PlatformProgressSink, PreparedInstallPackage,
     WindowsContextRevalidator, WindowsFilePinFactory, WindowsHelperDeadlines,
     WindowsPackageFileIdentity, WindowsUserHelperRunner, WindowsVerifiedFilePin,
 };
@@ -97,7 +97,7 @@ pub(super) struct SystemWindowsFilePinFactory;
 impl WindowsFilePinFactory for SystemWindowsFilePinFactory {
     fn open(
         &self,
-        package: &VerifiedPackage,
+        package: &PreparedInstallPackage,
     ) -> Result<Box<dyn WindowsVerifiedFilePin>, InstallerError> {
         VerifiedFilePin::open(package).map(|pin| Box::new(pin) as Box<dyn WindowsVerifiedFilePin>)
     }
@@ -127,25 +127,18 @@ struct VerifiedFilePin {
 }
 
 impl VerifiedFilePin {
-    fn open(package: &VerifiedPackage) -> Result<Self, InstallerError> {
+    fn open(package: &PreparedInstallPackage) -> Result<Self, InstallerError> {
         let mut file = package.open_artifact_for_pinning()?;
-        let identity = checked_file_identity(
-            HANDLE(file.as_raw_handle()),
-            package.locked_release().expected_size,
-        )?;
-        verify_reader(
-            &mut file,
-            package.locked_release().expected_size,
-            &package.locked_release().expected_sha256,
-        )?;
+        let identity = checked_file_identity(HANDLE(file.as_raw_handle()), package.actual_size())?;
+        verify_reader(&mut file, package.actual_size(), package.local_sha256())?;
         if checked_file_identity(HANDLE(file.as_raw_handle()), identity.size)? != identity {
             return Err(package_pin_error());
         }
         Ok(Self {
             file: Mutex::new(file),
             identity,
-            expected_size: package.locked_release().expected_size,
-            expected_sha256: package.locked_release().expected_sha256.clone(),
+            expected_size: package.actual_size(),
+            expected_sha256: package.local_sha256().to_owned(),
         })
     }
 }
@@ -222,8 +215,9 @@ fn run_pinned_user_helper(
         &mut source_file,
         expected_size,
         pin.expected_sha256(),
-    )?;
+    );
     drop(source_file);
+    let bridge = bridge?;
 
     let setup = (|| {
         let nonce = generate_nonce()?;
@@ -231,7 +225,7 @@ fn run_pinned_user_helper(
         let server = OneShotPipeServer::create(context.canonical_sid(), &nonce)?;
         let helper_path = fixed_user_helper_path().map_err(|_| helper_launch_error())?;
         let helper_image = PinnedHelperImage::open(&helper_path)?;
-        Ok((nonce, controls, server, helper_image))
+        Ok::<_, InstallerError>((nonce, controls, server, helper_image))
     })();
     let (nonce, controls, server, helper_image) = match setup {
         Ok(setup) => setup,
@@ -1156,7 +1150,11 @@ struct PipeSecurityDescriptor(PSECURITY_DESCRIPTOR);
 
 impl PipeSecurityDescriptor {
     fn new(shell_sid: &str) -> Result<Self, InstallerError> {
-        let sddl = format!("O:BAG:BAD:P(A;;0x00120003;;;{shell_sid})(A;;RC;;;SY)(A;;RC;;;BA)");
+        // FILE_GENERIC_READ includes FILE_READ_ATTRIBUTES, which named-pipe
+        // connect checks even when the client requests only data rights.
+        // FILE_WRITE_DATA is granted separately so FILE_CREATE_PIPE_INSTANCE
+        // (FILE_GENERIC_WRITE / FILE_APPEND_DATA) stays withheld.
+        let sddl = format!("O:BAG:BAD:P(A;;0x0012008b;;;{shell_sid})(A;;RC;;;SY)(A;;RC;;;BA)");
         let sddl = wide_null(&sddl);
         let mut descriptor = PSECURITY_DESCRIPTOR::default();
         unsafe {
@@ -1568,7 +1566,7 @@ mod tests {
     }
 
     #[test]
-    fn package_downgrade_requires_metadata_refresh() {
+    fn native_package_downgrade_result_remains_structured() {
         let error = map_helper_error(HelperErrorCode::PackageDowngrade);
         let dto = error.to_dto();
         assert_eq!(dto.code, InstallerErrorCode::MetadataChanged);
@@ -1617,7 +1615,7 @@ mod tests {
         assert!(source.contains("PIPE_REJECT_REMOTE_CLIENTS"));
         assert!(source.contains("PIPE_ACCESS_DUPLEX"));
         assert!(source.contains("BRIDGE_CONTROL_BYTES as u32"));
-        assert!(source.contains("O:BAG:BAD:P(A;;0x00120003;;;{shell_sid})(A;;RC;;;SY)(A;;RC;;;BA)"));
+        assert!(source.contains("O:BAG:BAD:P(A;;0x0012008b;;;{shell_sid})(A;;RC;;;SY)(A;;RC;;;BA)"));
         assert!(source.contains("GetNamedPipeClientProcessId"));
         assert!(source.contains("ImpersonateNamedPipeClient"));
         assert!(source.contains("OpenThreadToken"));

@@ -30,6 +30,7 @@ describe("release check diagnostic aggregation", () => {
       "dep0040",
       "task-docs",
       "windows-nsis-contract",
+      "supported-platform",
       "contract-tests",
     ]);
     expect(releaseCheckPlan(false).map(([id]) => id)).toEqual([
@@ -39,6 +40,7 @@ describe("release check diagnostic aggregation", () => {
       "task-contract",
       "task-docs",
       "windows-nsis-contract",
+      "supported-platform",
       "contract-tests",
       "native-fetch",
     ]);
@@ -49,6 +51,11 @@ describe("release check diagnostic aggregation", () => {
     expect(contractTests?.[2]).toContain(
       "tests/releaseCheckAggregation.test.ts",
     );
+    expect(releaseCheckPlan(true)).toContainEqual([
+      "supported-platform",
+      "node",
+      ["scripts/tasks/supported-platform-check.mjs"],
+    ]);
   });
 
   it("runs every independent diagnostic before returning an aggregate failure", () => {

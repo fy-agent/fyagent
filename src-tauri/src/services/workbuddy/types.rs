@@ -74,6 +74,8 @@ pub struct SaveWorkBuddyModelsRequest {
     #[serde(default)]
     pub manual_model_ids: Vec<String>,
     #[serde(default)]
+    pub removed_model_ids: Vec<String>,
+    #[serde(default)]
     pub clear_existing_api_keys: bool,
     pub expected_revision: Option<String>,
     #[serde(default)]
@@ -100,6 +102,7 @@ impl fmt::Debug for SaveWorkBuddyModelsRequest {
             .field("allow_no_api_key", &self.allow_no_api_key)
             .field("selected_model_id_count", &self.selected_model_ids.len())
             .field("manual_model_id_count", &self.manual_model_ids.len())
+            .field("removed_model_id_count", &self.removed_model_ids.len())
             .field("clear_existing_api_keys", &self.clear_existing_api_keys)
             .field("expected_revision", &"[REDACTED]")
             .field("overwrite_token", &"[REDACTED]")
@@ -165,6 +168,7 @@ mod tests {
             allow_no_api_key: false,
             selected_model_ids: vec!["model-a".to_string()],
             manual_model_ids: Vec::new(),
+            removed_model_ids: Vec::new(),
             clear_existing_api_keys: false,
             expected_revision: Some("opaque-revision".to_string()),
             overwrite_token: Some("opaque-token".to_string()),

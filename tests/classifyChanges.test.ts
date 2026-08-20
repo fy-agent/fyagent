@@ -89,6 +89,32 @@ describe("repository change classifier", () => {
     ],
     ["frontend", ["src/components/App.tsx"], domains("frontend")],
     [
+      "V2 renderer tooling",
+      [
+        "eslint.v2.config.mjs",
+        "playwright.v2.config.ts",
+        "scripts/build-v2-preview.mjs",
+        "tsconfig.v2.json",
+        "vitest.v2.config.ts",
+      ],
+      domains("contracts", "frontend"),
+    ],
+    [
+      "retired generated standalone preview",
+      ["FyAgent-前端交互预览.html"],
+      domains("contracts", "frontend"),
+    ],
+    [
+      "retired session memory",
+      ["memory/2026-08-10.md", ".omo/plans/docs-restructure-v0.3.0.md"],
+      domains("contracts", "docsSpec"),
+    ],
+    [
+      "retired sandbox packaging",
+      [["flat", "pak/com.fyagent.desktop.yml"].join("")],
+      domains("contracts", "docsSpec"),
+    ],
+    [
       "backend",
       ["src-tauri/src/proxy/server.rs"],
       domains("contracts", "backend"),
@@ -132,6 +158,16 @@ describe("repository change classifier", () => {
       ["pnpm-lock.yaml"],
       domains("contracts", "frontend", "desktop"),
     ],
+    [
+      "V2 frontend toolchain roots",
+      [
+        "eslint.v2.config.mjs",
+        "playwright.v2.config.ts",
+        "tsconfig.v2.json",
+        "vitest.v2.config.ts",
+      ],
+      domains("contracts", "frontend"),
+    ],
   ])("classifies the %s fixture", (_name, paths, expectedDomains) => {
     expect(classifyChangedPaths(paths as string[])).toEqual({
       domains: expectedDomains,
@@ -147,6 +183,8 @@ describe("repository change classifier", () => {
     "scripts/release/release-contract.mjs",
     "scripts/prepare-windows-user-helper.mjs",
     ".codex/hooks.json",
+    ".cursor/skills/trellis-check/SKILL.md",
+    ".codebuddy/settings.json",
     "rust-toolchain.toml",
   ])("forces every domain for control-plane path %s", (changedPath) => {
     expect(classifyChangedPaths([changedPath])).toEqual({

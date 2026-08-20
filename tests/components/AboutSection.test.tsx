@@ -28,6 +28,7 @@ vi.mock("@/lib/api", () => ({
 
 vi.mock("@/lib/platform", () => ({
   isWindows: () => false,
+  isMac: () => true,
 }));
 
 vi.mock("react-i18next", () => ({
@@ -53,8 +54,6 @@ const toolVersion = (name: string) => ({
   latest_version: name === "claude" || name === "codex" ? "2.0.0" : "2.0.0",
   error: null,
   installed_but_broken: false,
-  env_type: "linux" as const,
-  wsl_distro: null,
 });
 
 describe("AboutSection", () => {
@@ -90,6 +89,9 @@ describe("AboutSection", () => {
         mocks.getToolVersions.mock.calls.some(
           ([tools]) => Array.isArray(tools) && tools.includes("codex"),
         ),
+      ).toBe(true);
+      expect(
+        mocks.getToolVersions.mock.calls.every((call) => call.length === 1),
       ).toBe(true);
     });
 
@@ -143,7 +145,6 @@ describe("AboutSection", () => {
       expect(mocks.runToolLifecycleAction).toHaveBeenCalledWith(
         ["claude"],
         "update",
-        {},
       );
     });
   });

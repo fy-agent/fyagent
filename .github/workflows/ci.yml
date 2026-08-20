@@ -19,7 +19,7 @@ concurrency:
 jobs:
   changes:
     name: Classify Changes
-    runs-on: ubuntu-24.04
+    runs-on: macos-15
     outputs:
       plan: ${{ steps.plan.outputs.plan }}
       contracts: ${{ steps.plan.outputs.contracts }}
@@ -115,10 +115,15 @@ jobs:
             printf 'docs_spec=%s\n' "$(jq -r '.domains.docsSpec' ci-plan.json)"
           } >> "$GITHUB_OUTPUT"
 
+      - name: Verify supported platform surface
+        id: supported-platform
+        if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
+        run: node scripts/tasks/supported-platform-check.mjs
+
       - name: Evaluate collected diagnostics
         if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
         env:
-          CI_REQUIRED_STEPS: setup-node,plan
+          CI_REQUIRED_STEPS: setup-node,plan,supported-platform
           CI_STEP_RESULTS: ${{ toJSON(steps) }}
         run: node scripts/ci/evaluate-step-outcomes.mjs
 
@@ -126,7 +131,7 @@ jobs:
     name: Repository Contracts
     needs: changes
     if: ${{ !cancelled() && (needs.changes.result == 'failure' || (needs.changes.result == 'success' && (needs.changes.outputs.contracts == 'true' || needs.changes.outputs.docs_spec == 'true'))) }}
-    runs-on: ubuntu-24.04
+    runs-on: macos-15
     steps:
       - name: Checkout
         id: checkout
@@ -203,7 +208,7 @@ jobs:
     name: Frontend Checks
     needs: changes
     if: ${{ !cancelled() && (needs.changes.result == 'failure' || (needs.changes.result == 'success' && needs.changes.outputs.frontend == 'true')) }}
-    runs-on: ubuntu-24.04
+    runs-on: macos-15
     steps:
       - name: Checkout
         id: checkout
@@ -300,7 +305,7 @@ jobs:
     name: Desktop Acceptance Contract
     needs: changes
     if: ${{ !cancelled() && (needs.changes.result == 'failure' || (needs.changes.result == 'success' && needs.changes.outputs.desktop == 'true')) }}
-    runs-on: ubuntu-24.04
+    runs-on: macos-15
     steps:
       - name: Checkout
         id: checkout
@@ -358,87 +363,6 @@ jobs:
         if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
         env:
           CI_REQUIRED_STEPS: setup-pnpm,setup-node,install-frontend,toolchains,mock-tests,mock-contract,native-fetch,visual-policy
-          CI_STEP_RESULTS: ${{ toJSON(steps) }}
-        run: node scripts/ci/evaluate-step-outcomes.mjs
-
-  backend-linux:
-    name: Backend Checks (Linux)
-    needs: changes
-    if: ${{ !cancelled() && (needs.changes.result == 'failure' || (needs.changes.result == 'success' && needs.changes.outputs.backend == 'true')) }}
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Checkout
-        id: checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Setup pnpm
-        id: setup-pnpm
-        if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
-        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
-        with:
-          run_install: false
-
-      - name: Setup Node.js
-        id: setup-node
-        if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version-file: .node-version
-
-      - name: Setup Rust
-        id: setup-rust
-        if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
-        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
-        with:
-          cache: false
-          rustflags: ""
-
-      - name: Verify active toolchains
-        id: toolchains
-        if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
-        run: node scripts/ci/verify-toolchain.mjs --tools node,pnpm,rust
-
-      - name: Install Linux system dependencies
-        id: system-dependencies
-        if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            build-essential pkg-config libssl-dev \
-            libgtk-3-dev libwebkit2gtk-4.1-dev \
-            libayatana-appindicator3-dev librsvg2-dev
-
-      - name: Create frontend dist placeholder
-        id: frontend-placeholder
-        if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
-        run: mkdir -p dist
-
-      - name: Check Rust formatting
-        id: rust-format
-        if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
-        run: cargo fmt --all --check --manifest-path src-tauri/Cargo.toml
-
-      - name: Check Rust workspace
-        id: rust-check
-        if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
-        run: cargo check --workspace --all-targets --keep-going --locked --manifest-path src-tauri/Cargo.toml
-
-      - name: Run Clippy
-        id: clippy
-        if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
-        run: cargo clippy --workspace --all-targets --keep-going --locked --manifest-path src-tauri/Cargo.toml -- -D warnings
-
-      - name: Run Rust tests
-        id: rust-tests
-        if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
-        run: cargo test --workspace --features fyagent/test-hooks --locked --manifest-path src-tauri/Cargo.toml --no-fail-fast
-
-      - name: Evaluate collected diagnostics
-        if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
-        env:
-          CI_REQUIRED_STEPS: setup-pnpm,setup-node,setup-rust,toolchains,system-dependencies,frontend-placeholder,rust-format,rust-check,clippy,rust-tests
           CI_STEP_RESULTS: ${{ toJSON(steps) }}
         run: node scripts/ci/evaluate-step-outcomes.mjs
 
@@ -510,6 +434,8 @@ jobs:
       - name: Run Rust tests
         id: rust-tests
         if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
+        env:
+          RUST_TEST_THREADS: "1"
         run: cargo test --workspace --features fyagent/test-hooks --locked --manifest-path src-tauri/Cargo.toml --no-fail-fast
 
       - name: Evaluate collected diagnostics
@@ -695,6 +621,11 @@ jobs:
         if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
         run: mkdir -p dist
 
+      - name: Check Rust formatting
+        id: rust-format
+        if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
+        run: cargo fmt --all --check --manifest-path src-tauri/Cargo.toml
+
       - name: Check Rust workspace
         id: rust-check
         if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
@@ -708,12 +639,14 @@ jobs:
       - name: Run Rust tests
         id: rust-tests
         if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
+        env:
+          RUST_TEST_THREADS: "1"
         run: cargo test --workspace --features fyagent/test-hooks --locked --manifest-path src-tauri/Cargo.toml --no-fail-fast
 
       - name: Evaluate collected diagnostics
         if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
         env:
-          CI_REQUIRED_STEPS: setup-pnpm,setup-node,setup-rust,toolchains,frontend-placeholder,rust-check,clippy,rust-tests
+          CI_REQUIRED_STEPS: setup-pnpm,setup-node,setup-rust,toolchains,frontend-placeholder,rust-format,rust-check,clippy,rust-tests
           CI_STEP_RESULTS: ${{ toJSON(steps) }}
         run: node scripts/ci/evaluate-step-outcomes.mjs
 
@@ -725,11 +658,10 @@ jobs:
       - contracts
       - frontend
       - desktop-acceptance-contract
-      - backend-linux
       - backend-windows
       - windows-native-contracts
       - backend-macos
-    runs-on: ubuntu-24.04
+    runs-on: macos-15
     permissions:
       actions: read
       contents: read

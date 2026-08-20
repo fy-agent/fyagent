@@ -41,7 +41,6 @@ const jobStages = [
   "checking",
   "preflight",
   "downloading",
-  "verifying_download",
   "installing",
   "verifying_installation",
   "succeeded",
@@ -66,7 +65,6 @@ const installerErrorCodes = [
   "DOWNLOAD_TIMEOUT",
   "DOWNLOAD_CANCELLED",
   "INSUFFICIENT_DISK_SPACE",
-  "CHECKSUM_MISSING",
   "CHECKSUM_MISMATCH",
   "PACKAGE_PARSE_FAILED",
   "PACKAGE_IDENTITY_MISMATCH",
@@ -80,8 +78,6 @@ const installerErrorCodes = [
   "MAC_DMG_MOUNT_FAILED",
   "MAC_APP_NOT_FOUND",
   "MAC_BUNDLE_ID_MISMATCH",
-  "MAC_TEAM_ID_MISMATCH",
-  "MAC_GATEKEEPER_REJECTED",
   "MAC_APP_RUNNING",
   "MAC_MULTIPLE_INSTALLATIONS",
   "MAC_TARGET_PATH_CONFLICT",
@@ -317,7 +313,9 @@ function assertJobSnapshot(value: unknown, field: string): void {
     release.platformVersion,
     field + ".release.platformVersion",
   );
-  asNumber(release.expectedSize, field + ".release.expectedSize");
+  if (release.downloadSizeHint !== null) {
+    asNumber(release.downloadSizeHint, field + ".release.downloadSizeHint");
+  }
   asString(release.checkedAt, field + ".release.checkedAt");
   asString(record.startedAt, field + ".startedAt");
   asString(record.updatedAt, field + ".updatedAt");

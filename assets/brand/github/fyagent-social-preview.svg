@@ -40,8 +40,6 @@
       <text x="62" y="23" fill="#AFCBFF" font-size="15" font-weight="650" text-anchor="middle">WINDOWS</text>
       <rect x="138" width="102" height="34" rx="17" fill="#18D3C5" fill-opacity="0.1" stroke="#18D3C5" stroke-opacity="0.36"/>
       <text x="189" y="23" fill="#A9EDE7" font-size="15" font-weight="650" text-anchor="middle">macOS</text>
-      <rect x="254" width="94" height="34" rx="17" fill="#F5F2EC" fill-opacity="0.06" stroke="#F5F2EC" stroke-opacity="0.18"/>
-      <text x="301" y="23" fill="#DCD9D3" font-size="15" font-weight="650" text-anchor="middle">LINUX</text>
     </g>
   </g>
 

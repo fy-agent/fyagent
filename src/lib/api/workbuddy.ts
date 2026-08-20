@@ -38,6 +38,7 @@ export interface WorkBuddySaveModelsRequest
   extends WorkBuddyFetchModelsRequest {
   selectedModelIds: string[];
   manualModelIds: string[];
+  removedModelIds?: string[];
   clearExistingApiKeys: boolean;
   expectedRevision: string | null;
   /** Opaque, short-lived confirmation capability issued by the backend. */

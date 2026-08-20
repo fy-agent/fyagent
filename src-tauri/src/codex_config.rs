@@ -160,7 +160,7 @@ const CODEX_WEB_SEARCH_REJECT_MODEL_PREFIXES: &[&str] =
     &["mimo", "longcat", "minimax", "qwen3-coder"];
 
 /// Top-level `model` id from a Codex `config.toml`.
-fn codex_top_level_model(config_text: &str) -> Option<String> {
+pub(crate) fn codex_top_level_model(config_text: &str) -> Option<String> {
     let doc = config_text.parse::<toml::Value>().ok()?;
     doc.get("model")
         .and_then(|value| value.as_str())
@@ -1492,12 +1492,11 @@ fn load_codex_model_template_from_cache() -> Result<Option<Value>, AppError> {
 
 /// Fixed candidates for locating the `codex` CLI when it is not on the process
 /// PATH (common in GUI apps launched outside a terminal).
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
 const CODEX_CLI_FIXED_CANDIDATES: &[&str] = &[
-    "codex",                                // PATH (all platforms)
-    "/opt/homebrew/bin/codex",              // macOS Apple Silicon Homebrew
-    "/usr/local/bin/codex",                 // macOS Intel Homebrew / Linux
-    "/home/linuxbrew/.linuxbrew/bin/codex", // Linux Homebrew
+    "codex",                   // macOS PATH
+    "/opt/homebrew/bin/codex", // macOS Apple Silicon Homebrew
+    "/usr/local/bin/codex",    // macOS Intel Homebrew
 ];
 
 #[cfg(windows)]
@@ -1593,7 +1592,7 @@ fn push_home_codex_cli_candidates(
     );
 }
 
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
 fn push_env_codex_cli_candidates(candidates: &mut Vec<PathBuf>, seen: &mut HashSet<String>) {
     for (env_key, suffix) in [
         ("NPM_CONFIG_PREFIX", &["bin", "codex"][..]),
@@ -1657,7 +1656,7 @@ fn codex_cli_candidates() -> Vec<PathBuf> {
     if crate::windows_runtime::is_local_command_path(&home) {
         push_home_codex_cli_candidates(&mut candidates, &mut seen, &home);
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
     push_home_codex_cli_candidates(&mut candidates, &mut seen, &home);
 
     candidates
@@ -2218,11 +2217,9 @@ pub(crate) fn resolve_fyagent_catalog_path(config_text: &str, base_dir: &Path) -
         return None;
     }
 
-    // 注意（有意的行为变更）：Windows 上 `/…` 形式的旧 WSL 风格 Linux 路径也会
-    // 被视为绝对路径，从而在下方的包含性校验中失败——此前这类路径会因无法匹配
-    // 生成文件名而回退为按文件名解析、碰巧能工作。可接受：下一次切换供应商时
-    // 写入侧会重新落一个裸文件名，配置自愈（见
-    // `set_catalog_json_none_removes_fyagent_owned_by_filename` 的场景注释）。
+    // Windows 的 `Path` 不会把前导 `/` 识别成绝对路径。这里仍显式按绝对路径
+    // 处理这类跨平台配置值，让下方包含性校验 fail closed，而不是把目录外路径
+    // 误拼到配置目录下。下一次切换供应商时，写入侧会重新落一个裸文件名。
     let is_unix_absolute = catalog_path_str.starts_with('/');
     let resolved = if referenced_path.is_absolute() || is_unix_absolute {
         referenced_path.to_path_buf()
@@ -5753,9 +5750,9 @@ web_search = "disabled"
         );
     }
 
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
     #[test]
-    fn codex_cli_candidates_are_non_empty() {
+    fn codex_cli_candidates_are_non_empty_on_macos() {
         let candidates = codex_cli_candidates();
         assert!(
             candidates
@@ -5765,7 +5762,7 @@ web_search = "disabled"
         );
     }
 
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
     #[test]
     fn codex_bundled_models_command_uses_expected_program_and_args() {
         let command = codex_bundled_models_command(Path::new("codex")).unwrap();
@@ -5912,14 +5909,11 @@ web_search = "disabled"
 
     #[test]
     #[cfg(target_os = "windows")]
-    fn set_catalog_json_field_writes_filename_ignoring_unc_path() {
+    fn set_catalog_json_field_writes_filename_ignoring_smb_unc_path() {
         let input = r#"model_provider = "custom"
 model = "glm-5"
 "#;
-        // Simulate a WSL UNC path as fyagent would see it on Windows;
-        // the function now writes just the relative filename.
-        let unc_path =
-            Path::new(r"\\wsl.localhost\Ubuntu\home\user\.codex\fyagent-model-catalog.json");
+        let unc_path = Path::new(r"\\server\profiles\user\.codex\fyagent-model-catalog.json");
 
         let result = set_codex_model_catalog_json_field(input, Some(unc_path)).unwrap();
         let parsed: toml::Value = toml::from_str(&result).unwrap();
@@ -5939,7 +5933,7 @@ model = "glm-5"
         let input = r#"model_provider = "custom"
 model = "glm-5"
 "#;
-        let regular_path = Path::new("/home/user/.codex/fyagent-model-catalog.json");
+        let regular_path = Path::new("/Users/user/.codex/fyagent-model-catalog.json");
 
         let result = set_codex_model_catalog_json_field(input, Some(regular_path)).unwrap();
         let parsed: toml::Value = toml::from_str(&result).unwrap();
@@ -5953,9 +5947,9 @@ model = "glm-5"
 
     #[test]
     fn set_catalog_json_none_removes_fyagent_owned_by_filename() {
-        // After the WSL fix, TOML may contain a Linux-style path.
-        // The None arm must still remove it (file_name match catches any format).
-        let input = r#"model_catalog_json = "/home/user/.codex/fyagent-model-catalog.json"
+        // A config copied from another supported host may contain an absolute
+        // path. The None arm still removes the FyAgent-owned file by name.
+        let input = r#"model_catalog_json = "/Users/me/.codex/fyagent-model-catalog.json"
 "#;
         let result = set_codex_model_catalog_json_field(input, None).unwrap();
         let parsed: toml::Value = toml::from_str(&result).unwrap();
@@ -5983,7 +5977,7 @@ model = "glm-5"
         let config_text = r#"model_provider = "custom"
 model_catalog_json = "fyagent-model-catalog.json"
 "#;
-        let base_dir = PathBuf::from("/home/user/.codex");
+        let base_dir = PathBuf::from("/Users/user/.codex");
         let result = resolve_fyagent_catalog_path(config_text, &base_dir);
         assert_eq!(
             result,
@@ -5996,7 +5990,7 @@ model_catalog_json = "fyagent-model-catalog.json"
     fn resolve_catalog_ignores_user_owned_relative() {
         let config_text = r#"model_catalog_json = "my-custom-catalog.json"
 "#;
-        let base_dir = PathBuf::from("/home/user/.codex");
+        let base_dir = PathBuf::from("/Users/user/.codex");
         let result = resolve_fyagent_catalog_path(config_text, &base_dir);
         assert_eq!(
             result, None,
@@ -6008,7 +6002,7 @@ model_catalog_json = "fyagent-model-catalog.json"
     fn resolve_catalog_rejects_absolute_path_outside_config_dir() {
         let config_text = r#"model_catalog_json = "/tmp/secret/fyagent-model-catalog.json"
 "#;
-        let base_dir = PathBuf::from("/home/user/.codex");
+        let base_dir = PathBuf::from("/Users/user/.codex");
         let result = resolve_fyagent_catalog_path(config_text, &base_dir);
         assert_eq!(
             result, None,
@@ -6018,9 +6012,9 @@ model_catalog_json = "fyagent-model-catalog.json"
 
     #[test]
     fn resolve_catalog_accepts_absolute_path_inside_config_dir() {
-        let config_text = r#"model_catalog_json = "/home/user/.codex/fyagent-model-catalog.json"
+        let config_text = r#"model_catalog_json = "/Users/user/.codex/fyagent-model-catalog.json"
 "#;
-        let base_dir = PathBuf::from("/home/user/.codex");
+        let base_dir = PathBuf::from("/Users/user/.codex");
         let result = resolve_fyagent_catalog_path(config_text, &base_dir);
         assert_eq!(
             result,
@@ -6033,7 +6027,7 @@ model_catalog_json = "fyagent-model-catalog.json"
     fn resolve_catalog_rejects_traversal_to_parent_directory() {
         let config_text = r#"model_catalog_json = "../fyagent-model-catalog.json"
 "#;
-        let base_dir = PathBuf::from("/home/user/.codex");
+        let base_dir = PathBuf::from("/Users/user/.codex");
         let result = resolve_fyagent_catalog_path(config_text, &base_dir);
         assert_eq!(
             result, None,
@@ -6054,7 +6048,7 @@ model_catalog_json = "fyagent-model-catalog.json"
         let escaped_file = outside_dir.join(FYAGENT_CODEX_MODEL_CATALOG_FILENAME);
         fs::write(&escaped_file, r#"{"models":[]}"#).expect("write escaped catalog");
 
-        #[cfg(unix)]
+        #[cfg(target_os = "macos")]
         std::os::unix::fs::symlink(&outside_dir, base_dir.join("link")).expect("symlink");
         #[cfg(windows)]
         std::os::windows::fs::symlink_dir(&outside_dir, base_dir.join("link")).expect("symlink");

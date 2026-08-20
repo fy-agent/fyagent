@@ -21,7 +21,7 @@ There are many ways to contribute:
 ### Prerequisites
 
 - Git and Git LFS where visual assets require it
-- [mise](https://mise.jdx.dev/getting-started.html) 2026.8.0 or newer,
+- [mise](https://mise.jdx.dev/getting-started.html) 2026.8.6 or newer,
   installed globally
 - [Tauri 2.0 prerequisites](https://v2.tauri.app/start/prerequisites/)
 
@@ -86,8 +86,27 @@ mise run build:debug
 ```
 
 These tasks build only the current host OS and architecture. Formal Windows
-x64/ARM64, Linux x64/ARM64, and macOS Universal Release assets are produced by
-GitHub Actions. Local Linux/WSL-to-Windows or macOS cross-builds are unsupported.
+x64/ARM64 and macOS Universal Release assets are produced by GitHub Actions.
+Local builds do not cross the supported host boundary.
+
+## Repository and remote roles
+
+The canonical source of truth is [`fy-agent/fyagent`](https://github.com/fy-agent/fyagent).
+Remote names are local conventions, so verify the repository role instead of
+assuming that every checkout has the same configuration:
+
+- A maintainer checkout may use the canonical repository as its writable
+  `origin`.
+- An external contributor normally uses a personal fork as `origin` and adds
+  the canonical FyAgent repository as another fetch source. That source is
+  commonly named `upstream`, or `fyagent` when CC Switch maintenance reserves
+  `upstream` for its separate contract.
+- CC Switch synchronization uses a distinct fetch-only maintenance remote. It
+  is neither the canonical FyAgent repository nor a contributor's fork, and it
+  must never become a normal push target.
+
+Documentation and project tasks do not create, rename, or rewrite a
+contributor's remotes.
 
 ## Repository and remote roles
 
@@ -267,7 +286,7 @@ FyAgent maintains four locale resources. When modifying user-facing text:
 ### 前提条件
 
 - Git；视觉资产需要时安装 Git LFS
-- 全局安装 [mise](https://mise.jdx.dev/getting-started.html) 2026.8.0 或更高版本
+- 全局安装 [mise](https://mise.jdx.dev/getting-started.html) 2026.8.6 或更高版本
 - [Tauri 2.0 开发环境](https://v2.tauri.app/start/prerequisites/)
 
 仓库通过各自的版本与 lock 文件固定 Node.js、pnpm、Rust、uv 和由 uv 管理的 Python；
@@ -324,9 +343,22 @@ mise run build
 mise run build:debug
 ```
 
-这些任务只构建当前宿主系统和架构。正式 Windows x64/ARM64、Linux x64/ARM64 和
-macOS Universal Release 资产由 GitHub Actions 生成。不支持 Linux/WSL 到 Windows
-或 macOS 的本地交叉构建。
+这些任务只构建当前宿主系统和架构。正式 Windows x64/ARM64 和 macOS Universal
+Release 资产由 GitHub Actions 生成。本地构建不会跨越受支持的宿主边界。
+
+## 仓库与 remote 角色
+
+唯一规范来源是 [`fy-agent/fyagent`](https://github.com/fy-agent/fyagent)。remote 名称是
+本地约定，操作前应核对仓库角色，不能假设每个 checkout 都采用相同配置：
+
+- 维护者 checkout 可以把规范仓库作为可写的 `origin`。
+- 外部贡献者通常把个人 fork 作为 `origin`，并把 FyAgent 规范仓库添加为额外 fetch
+  来源。该来源通常可命名为 `upstream`；需要执行 CC Switch 维护合同时，则用 `fyagent`
+  等名称，把 `upstream` 留给独立的上游合同。
+- CC Switch 同步使用单独的只读 fetch 维护 remote。它既不是 FyAgent 规范仓库，也不是
+  贡献者 fork，且不得成为常规 push 目标。
+
+文档和项目任务不会创建、重命名或改写贡献者的 remote。
 
 ## 仓库与 remote 角色
 

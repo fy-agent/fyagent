@@ -13,13 +13,13 @@ use uuid::Uuid;
 
 use super::{
     bundle::{self, BundleInfo},
-    command, error, is_not_found, is_permission_denied, stable_bundle_id, CommandRunner,
-    MacosFileKind, MacosFilesystem, MacosHost,
+    command, error, is_not_found, is_permission_denied, CommandRunner, MacosFileKind,
+    MacosFilesystem, MacosHost,
 };
 use crate::codex_desktop::{
     download::DownloadedArtifact,
     error::{InstallerError, InstallerErrorCode},
-    platform::{PlatformInstallPlan, PlatformProgressSink, VerifiedPackage},
+    platform::{PlatformInstallPlan, PlatformProgressSink, PreparedInstallPackage},
     types::{CpuArchitecture, DesktopPlatform, JobProgress, ProgressPhase, ReleaseDescriptor},
 };
 
@@ -37,7 +37,6 @@ pub(crate) fn preflight(
     temp_root: &Path,
 ) -> Result<PlatformInstallPlan, InstallerError> {
     validate_release(release)?;
-    ensure_release_os_compatible(host, release)?;
     if filesystem.file_kind(temp_root) != Ok(MacosFileKind::Directory) {
         return Err(error(
             InstallerErrorCode::InternalError,
@@ -68,78 +67,53 @@ pub(crate) fn preflight(
     }
 }
 
-/// Validate a fixed downloader-owned DMG by mounting it read-only, finding one
-/// direct app bundle, and validating that bundle before producing opaque
-/// `VerifiedPackage` evidence. The guard detaches even if any inner check
-/// fails; a detach failure after success is surfaced rather than hidden.
-pub(crate) fn verify_package(
+/// Bind a downloader-owned fixed DMG to its locally computed handoff evidence.
+pub(crate) fn prepare_install_package(
     runner: &dyn CommandRunner,
     filesystem: &dyn MacosFilesystem,
     host: &MacosHost,
     release: &ReleaseDescriptor,
     artifact: DownloadedArtifact,
-) -> Result<VerifiedPackage, InstallerError> {
+) -> Result<PreparedInstallPackage, InstallerError> {
     validate_release(release)?;
-    ensure_release_os_compatible(host, release)?;
-    artifact.revalidate_against(release)?;
     let artifact_path = artifact.path().to_path_buf();
     validate_downloaded_dmg(filesystem, &artifact_path)?;
-    let mut mounted = mount_dmg(runner, filesystem, &artifact_path)?;
-    let result = (|| {
-        let source_bundle = discover_single_bundle(runner, filesystem, mounted.mount_point())?;
-        bundle::validate_stable_bundle(runner, filesystem, host, &source_bundle, Some(release))?;
-        Ok(())
-    })();
-    let detach_result = mounted.detach();
-    match (result, detach_result) {
-        (Ok(()), Ok(())) => VerifiedPackage::from_completed_validation(release, artifact),
-        (Ok(_), Err(detach_error)) => Err(detach_error),
-        (Err(primary_error), _) => Err(primary_error),
-    }
+    let _ = (runner, host);
+    PreparedInstallPackage::from_prepared_artifact(release, artifact)
 }
 
-/// Copy a previously validated DMG's Stable bundle into a generated staging
+/// Copy a prepared DMG's single app bundle into a generated staging
 /// directory on the destination volume, then perform a compensating swap.
 /// Existing Stable installations retain their actual location and basename.
 pub(crate) fn install_current_user(
     runner: &dyn CommandRunner,
     filesystem: &dyn MacosFilesystem,
     host: &MacosHost,
-    package: &VerifiedPackage,
+    package: &PreparedInstallPackage,
     progress: PlatformProgressSink,
-) -> Result<(), InstallerError> {
+) -> Result<crate::codex_desktop::types::InstalledApplication, InstallerError> {
     if package.platform() != DesktopPlatform::Macos
         || package.architecture() != CpuArchitecture::Aarch64
     {
         return Err(error(
             InstallerErrorCode::InternalError,
-            "non-macOS validation evidence reached the macOS installer",
+            "non-macOS prepared package reached the macOS installer",
         ));
     }
     // Re-open the downloader-owned fixed DMG and bind it to the descriptor
     // immediately before `hdiutil` resolves the path. This closes the gap
-    // between the earlier platform verification and this second mount.
-    package.revalidate_artifact()?;
-    validate_downloaded_dmg(filesystem, package.artifact_path())?;
+    // between the earlier platform preparation and this mount.
     progress.report_progress(JobProgress::new(
         ProgressPhase::Installation,
         Some(0),
         Some(3),
     ));
+    package.revalidate_artifact()?;
+    validate_downloaded_dmg(filesystem, package.artifact_path())?;
 
     let mut mounted = mount_dmg(runner, filesystem, package.artifact_path())?;
     let result = (|| {
         let source_bundle = discover_single_bundle(runner, filesystem, mounted.mount_point())?;
-        // The revalidated DMG must still expose the exact descriptor version,
-        // in addition to Stable identity/signature/Gatekeeper. A different
-        // valid OpenAI bundle is not a substitute for the locked release.
-        bundle::validate_stable_bundle(
-            runner,
-            filesystem,
-            host,
-            &source_bundle,
-            Some(package.locked_release()),
-        )?;
         let targets = plan_targets(runner, filesystem, host, &source_bundle)?;
         let mut last_permission_error = None;
 
@@ -152,7 +126,7 @@ pub(crate) fn install_current_user(
                 &target,
                 progress.clone(),
             ) {
-                Ok(()) => return Ok(()),
+                Ok(installed) => return Ok(installed),
                 Err(attempt) if attempt.permission_denied && target.allows_permission_fallback => {
                     last_permission_error = Some(attempt.error);
                 }
@@ -168,15 +142,15 @@ pub(crate) fn install_current_user(
     })();
     let detach_result = mounted.detach();
     match (result, detach_result) {
-        (Ok(()), Ok(())) => {
+        (Ok(installed), Ok(())) => {
             progress.report_progress(JobProgress::new(
                 ProgressPhase::Installation,
                 Some(3),
                 Some(3),
             ));
-            Ok(())
+            Ok(bundle::installed_application(&installed))
         }
-        (Ok(()), Err(detach_error)) => Err(detach_error),
+        (Ok(_), Err(detach_error)) => Err(detach_error),
         (Err(primary_error), _) => Err(primary_error),
     }
 }
@@ -316,14 +290,7 @@ fn discover_single_bundle(
             ))
         }
     };
-    let bundle = bundle::read_bundle_info(runner, filesystem, bundle_path)?;
-    if bundle.bundle_identifier() != stable_bundle_id() {
-        return Err(error(
-            InstallerErrorCode::MacBundleIdMismatch,
-            "disk image application bundle is not the Stable Codex identity",
-        ));
-    }
-    Ok(bundle)
+    bundle::read_bundle_info(runner, filesystem, bundle_path)
 }
 
 #[derive(Debug, Clone)]
@@ -438,7 +405,7 @@ fn install_at_target(
     source_bundle: &BundleInfo,
     target: &TargetPlan,
     progress: PlatformProgressSink,
-) -> Result<(), InstallAttemptError> {
+) -> Result<BundleInfo, InstallAttemptError> {
     filesystem
         .create_dir_all(&target.parent)
         .map_err(|filesystem_error| {
@@ -478,19 +445,6 @@ fn install_at_target(
         }
     } else {
         target_is_available(filesystem, &target_path).map_err(InstallAttemptError::terminal)?;
-    }
-
-    if let Some(existing) = &target.existing_stable {
-        let source_is_not_older = source_bundle
-            .platform_version()
-            .is_at_least(existing.platform_version())
-            .map_err(InstallAttemptError::terminal)?;
-        if !source_is_not_older {
-            return Err(InstallAttemptError::terminal(error(
-                InstallerErrorCode::InstallationVerifyFailed,
-                "a managed Stable installation cannot be replaced by an older bundle",
-            )));
-        }
     }
 
     let transaction_id = Uuid::new_v4().hyphenated().to_string();
@@ -614,7 +568,14 @@ fn install_at_target(
             ))
         })?;
         if filesystem.rename(&staging, &target_path).is_err() {
-            let _ = restore_backup(runner, filesystem, host, &parent, &target_path, &backup);
+            let _ = restore_backup(
+                runner,
+                filesystem,
+                &parent,
+                &target_path,
+                &backup,
+                &staging_bundle,
+            );
             let _ = remove_generated_path(
                 filesystem,
                 &parent,
@@ -632,24 +593,34 @@ fn install_at_target(
             Some(2),
             Some(3),
         ));
-        if verify_installed_replacement(runner, filesystem, host, &target_path, &staging_bundle)
-            .is_err()
-        {
-            let restored = restore_backup(runner, filesystem, host, &parent, &target_path, &backup);
-            return Err(InstallAttemptError::terminal(if restored.is_ok() {
-                error(
-                    InstallerErrorCode::InstallationVerifyFailed,
-                    "replacement Stable application could not be verified and was restored",
-                )
-            } else {
-                error(
+        let installed_bundle =
+            match verify_installed_replacement(runner, filesystem, &target_path, &staging_bundle) {
+                Ok(installed) => installed,
+                Err(_) => {
+                    let restored = restore_backup(
+                        runner,
+                        filesystem,
+                        &parent,
+                        &target_path,
+                        &backup,
+                        &staging_bundle,
+                    );
+                    return Err(InstallAttemptError::terminal(if restored.is_ok() {
+                        error(
+                            InstallerErrorCode::InstallationVerifyFailed,
+                            "replacement Stable application could not be verified and was restored",
+                        )
+                    } else {
+                        error(
                     InstallerErrorCode::InstallationVerifyFailed,
                     "replacement Stable application could not be verified or safely restored",
                 )
-            }));
-        }
+                    }));
+                }
+            };
         remove_generated_path(filesystem, &parent, &backup, BACKUP_PREFIX, BACKUP_SUFFIX)
             .map_err(InstallAttemptError::terminal)?;
+        Ok(installed_bundle)
     } else {
         if filesystem.rename(&staging, &target_path).is_err() {
             let _ = remove_generated_path(
@@ -669,17 +640,23 @@ fn install_at_target(
             Some(2),
             Some(3),
         ));
-        if verify_installed_replacement(runner, filesystem, host, &target_path, &staging_bundle)
-            .is_err()
-        {
-            let _ = remove_verified_stable_target(runner, filesystem, host, &parent, &target_path);
-            return Err(InstallAttemptError::terminal(error(
-                InstallerErrorCode::InstallationVerifyFailed,
-                "new Stable application could not be verified after installation",
-            )));
-        }
+        let installed_bundle =
+            verify_installed_replacement(runner, filesystem, &target_path, &staging_bundle)
+                .map_err(|_| {
+                    let _ = remove_expected_replacement(
+                        runner,
+                        filesystem,
+                        &parent,
+                        &target_path,
+                        &staging_bundle,
+                    );
+                    InstallAttemptError::terminal(error(
+                        InstallerErrorCode::InstallationVerifyFailed,
+                        "new application could not be verified after installation",
+                    ))
+                })?;
+        Ok(installed_bundle)
     }
-    Ok(())
 }
 
 fn verify_staged_bundle(
@@ -702,51 +679,40 @@ fn verify_staged_bundle(
             "staging application bundle escaped its target volume",
         ));
     }
-    let bundle = bundle::read_bundle_info(runner, filesystem, &canonical_staging)?;
-    bundle::validate_stable_bundle(runner, filesystem, host, &bundle, None)?;
-    Ok(bundle)
+    let _ = host;
+    bundle::read_bundle_info(runner, filesystem, &canonical_staging)
 }
 
 fn verify_installed_replacement(
     runner: &dyn CommandRunner,
     filesystem: &dyn MacosFilesystem,
-    host: &MacosHost,
     target: &Path,
     expected_source: &BundleInfo,
-) -> Result<(), InstallerError> {
+) -> Result<BundleInfo, InstallerError> {
     let installed = bundle::read_bundle_info(runner, filesystem, target)?;
-    bundle::validate_stable_bundle(runner, filesystem, host, &installed, None)?;
-    if installed.platform_version() != expected_source.platform_version() {
+    if installed.bundle_identifier() != expected_source.bundle_identifier()
+        || installed.platform_version() != expected_source.platform_version()
+    {
         return Err(error(
             InstallerErrorCode::InstallationVerifyFailed,
-            "installed Stable application version differs from staged bundle",
+            "installed application differs from the staged bundle",
         ));
     }
-    let stable = bundle::scan_stable_bundles(runner, filesystem, host)?;
-    if stable.len() != 1 || stable[0].bundle_path() != target {
-        return Err(error(
-            InstallerErrorCode::InstallationVerifyFailed,
-            "post-install scan did not find exactly one expected Stable bundle",
-        ));
-    }
-    Ok(())
+    Ok(installed)
 }
 
 fn restore_backup(
     runner: &dyn CommandRunner,
     filesystem: &dyn MacosFilesystem,
-    host: &MacosHost,
     parent: &Path,
     target: &Path,
     backup: &Path,
+    expected_replacement: &BundleInfo,
 ) -> Result<(), InstallerError> {
     match filesystem.file_kind(target) {
         Err(filesystem_error) if is_not_found(filesystem_error) => {}
         Ok(MacosFileKind::Directory) => {
-            // The target currently contains the just-copied replacement. It
-            // must still prove Stable identity before cleanup makes room for
-            // the old application backup.
-            remove_verified_stable_target(runner, filesystem, host, parent, target)?;
+            remove_expected_replacement(runner, filesystem, parent, target, expected_replacement)?;
         }
         _ => {
             return Err(error(
@@ -764,15 +730,22 @@ fn restore_backup(
     })
 }
 
-fn remove_verified_stable_target(
+fn remove_expected_replacement(
     runner: &dyn CommandRunner,
     filesystem: &dyn MacosFilesystem,
-    host: &MacosHost,
     parent: &Path,
     target: &Path,
+    expected: &BundleInfo,
 ) -> Result<(), InstallerError> {
-    let bundle = bundle::read_bundle_info(runner, filesystem, target)?;
-    bundle::validate_stable_bundle(runner, filesystem, host, &bundle, None)?;
+    let current = bundle::read_bundle_info(runner, filesystem, target)?;
+    if current.bundle_identifier() != expected.bundle_identifier()
+        || current.platform_version() != expected.platform_version()
+    {
+        return Err(error(
+            InstallerErrorCode::InstallationVerifyFailed,
+            "cleanup refused an application that differs from the staged replacement",
+        ));
+    }
     remove_known_child(filesystem, parent, target)
 }
 
@@ -886,7 +859,7 @@ fn validate_downloaded_dmg(
     {
         return Err(error(
             InstallerErrorCode::PackageParseFailed,
-            "validated macOS package is not the fixed installer DMG artifact",
+            "prepared macOS package is not the fixed installer DMG artifact",
         ));
     }
     Ok(())
@@ -901,38 +874,6 @@ fn validate_release(release: &ReleaseDescriptor) -> Result<(), InstallerError> {
         return Err(error(
             InstallerErrorCode::ArchitectureUnsupported,
             "release descriptor is not an Apple-Silicon macOS artifact",
-        ));
-    }
-    if let Some(minimum_os_version) = release.minimum_os_version.as_deref() {
-        // Parsing at the descriptor boundary prevents an arbitrary release
-        // string from changing target selection or reaching later commands.
-        let _ = super::MacosVersion::parse(minimum_os_version).map_err(|_| {
-            error(
-                InstallerErrorCode::ReleaseMetadataInvalid,
-                "release minimum macOS version is invalid",
-            )
-        })?;
-    }
-    Ok(())
-}
-
-fn ensure_release_os_compatible(
-    host: &MacosHost,
-    release: &ReleaseDescriptor,
-) -> Result<(), InstallerError> {
-    let Some(minimum_os_version) = release.minimum_os_version.as_deref() else {
-        return Ok(());
-    };
-    let minimum_os_version = super::MacosVersion::parse(minimum_os_version).map_err(|_| {
-        error(
-            InstallerErrorCode::ReleaseMetadataInvalid,
-            "release minimum macOS version is invalid",
-        )
-    })?;
-    if host.os_version() < minimum_os_version {
-        return Err(error(
-            InstallerErrorCode::OsVersionUnsupported,
-            "current macOS version is below the release requirement",
         ));
     }
     Ok(())
@@ -1042,12 +983,13 @@ mod tests {
     use crate::codex_desktop::{
         download::DownloadedArtifact,
         platform::macos::{
+            stable_bundle_id,
             test_support::{FakeFilesystem, FakeRunner},
             MacosFilesystemErrorKind,
         },
         temp::JobTempDir,
         types::{PlatformVersion, TrustedDownloadEndpoint},
-        verify::{sha256_hex, ArtifactKind},
+        verify::ArtifactKind,
     };
     use uuid::Uuid;
 
@@ -1072,11 +1014,8 @@ mod tests {
             CpuArchitecture::Aarch64,
             "1.0",
             PlatformVersion::parse_mac_bundle(version).unwrap(),
-            "Codex-mac-arm64.dmg",
-            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-            1024,
+            Some(1024),
             TrustedDownloadEndpoint::MacArm64,
-            Some("14.0".to_owned()),
         )
         .unwrap()
     }
@@ -1087,11 +1026,8 @@ mod tests {
             CpuArchitecture::Aarch64,
             "1.0",
             PlatformVersion::parse_mac_bundle(version).unwrap(),
-            "Codex-mac-arm64.dmg",
-            sha256_hex(bytes),
-            bytes.len() as u64,
+            Some(bytes.len() as u64),
             TrustedDownloadEndpoint::MacArm64,
-            Some("14.0".to_owned()),
         )
         .unwrap()
     }
@@ -1129,16 +1065,11 @@ mod tests {
     }
 
     fn queue_read_and_validate(runner: &FakeRunner, version: &str) {
-        runner.queue_success("plutil", plist(stable_bundle_id(), version));
-        runner.queue_success("lipo", b"arm64 x86_64".to_vec());
-        runner.queue_success("codesign", Vec::<u8>::new());
-        runner.queue_success("codesign", b"TeamIdentifier=2DC432GLL2\n".to_vec());
-        runner.queue_success("spctl", Vec::<u8>::new());
+        queue_read_with_identity(runner, stable_bundle_id(), version);
     }
 
-    fn queue_stable_bundle_scan(runner: &FakeRunner, version: &str) {
-        runner.queue_success("plutil", plist(stable_bundle_id(), version));
-        queue_read_and_validate(runner, version);
+    fn queue_read_with_identity(runner: &FakeRunner, bundle_id: &str, version: &str) {
+        runner.queue_success("plutil", plist(bundle_id, version));
     }
 
     fn fixture_filesystem_at(artifact_path: &Path) -> (Arc<FakeFilesystem>, PathBuf) {
@@ -1156,17 +1087,20 @@ mod tests {
         fixture_filesystem_at(Path::new(ARTIFACT))
     }
 
-    fn package(release: &ReleaseDescriptor) -> VerifiedPackage {
-        VerifiedPackage::for_test_at(release, PathBuf::from(ARTIFACT))
+    fn package(release: &ReleaseDescriptor) -> PreparedInstallPackage {
+        PreparedInstallPackage::for_test_at(release, PathBuf::from(ARTIFACT))
     }
 
     fn queue_fresh_install(runner: &FakeRunner, version: &str) {
+        queue_fresh_install_with_identity(runner, stable_bundle_id(), version);
+    }
+
+    fn queue_fresh_install_with_identity(runner: &FakeRunner, bundle_id: &str, version: &str) {
         runner.queue_success("hdiutil", mount_plist(MOUNT_POINT));
-        queue_read_and_validate(runner, version); // mounted source
+        queue_read_with_identity(runner, bundle_id, version); // mounted source
         runner.queue_success("ditto", Vec::<u8>::new());
-        queue_read_and_validate(runner, version); // staging
-        queue_read_and_validate(runner, version); // target
-        queue_stable_bundle_scan(runner, version); // post-install local scan
+        queue_read_with_identity(runner, bundle_id, version); // staging
+        queue_read_with_identity(runner, bundle_id, version); // target
         runner.queue_success("hdiutil", Vec::<u8>::new());
     }
 
@@ -1218,20 +1152,17 @@ mod tests {
     }
 
     #[test]
-    fn verification_requires_exactly_one_direct_stable_bundle_and_detaches() {
+    fn preparation_only_binds_the_fixed_download_and_mount_discovery_stays_bounded() {
         let trusted_bytes = b"trusted dmg";
         let release = release_for_artifact(trusted_bytes, "5848");
         let (_root, artifact) = downloaded_artifact_for(&release, trusted_bytes);
         let (filesystem, _) = fixture_filesystem_at(artifact.path());
         let runner = FakeRunner::new();
-        runner.queue_success("hdiutil", mount_plist(MOUNT_POINT));
-        queue_read_and_validate(&runner, "5848");
-        runner.queue_success("hdiutil", Vec::<u8>::new());
-
-        let verified =
-            verify_package(&runner, filesystem.as_ref(), &host(), &release, artifact).unwrap();
-        assert_eq!(verified.platform(), DesktopPlatform::Macos);
-        assert_eq!(verified.architecture(), CpuArchitecture::Aarch64);
+        let prepared =
+            prepare_install_package(&runner, filesystem.as_ref(), &host(), &release, artifact)
+                .unwrap();
+        assert_eq!(prepared.platform(), DesktopPlatform::Macos);
+        assert_eq!(prepared.architecture(), CpuArchitecture::Aarch64);
         runner.assert_drained();
 
         let filesystem = FakeFilesystem::new();
@@ -1255,11 +1186,9 @@ mod tests {
         let (_root, artifact) = downloaded_artifact_for(&release, trusted_bytes);
         let (filesystem, _) = fixture_filesystem_at(artifact.path());
         let runner = FakeRunner::new();
-        runner.queue_success("hdiutil", mount_plist(MOUNT_POINT));
-        queue_read_and_validate(&runner, "5848");
-        runner.queue_success("hdiutil", Vec::<u8>::new());
         let package =
-            verify_package(&runner, filesystem.as_ref(), &host(), &release, artifact).unwrap();
+            prepare_install_package(&runner, filesystem.as_ref(), &host(), &release, artifact)
+                .unwrap();
         runner.assert_drained();
         let mount_count_before = runner
             .invocations()
@@ -1368,6 +1297,41 @@ mod tests {
             .file_name()
             .and_then(|name| name.to_str())
             .is_some_and(|name| name.starts_with(STAGING_PREFIX) && name.ends_with(".app")));
+        runner.assert_drained();
+    }
+
+    #[test]
+    fn downloaded_bundle_identity_and_version_drift_do_not_block_fresh_install() {
+        let (filesystem, _) = fixture_filesystem();
+        let runner = Arc::new(FakeRunner::new());
+        let filesystem_for_ditto = filesystem.clone();
+        runner.set_hook(Arc::new(move |invocation| {
+            if invocation.program() == "ditto" {
+                filesystem_for_ditto
+                    .copy_tree(
+                        PathBuf::from(invocation.arguments()[0].clone()),
+                        PathBuf::from(invocation.arguments()[1].clone()),
+                    )
+                    .unwrap();
+            }
+        }));
+        queue_fresh_install_with_identity(runner.as_ref(), "com.example.future", "1");
+        let release = release("9999");
+
+        let installed = install_current_user(
+            runner.as_ref(),
+            filesystem.as_ref(),
+            &host(),
+            &package(&release),
+            Arc::new(|_| {}),
+        )
+        .unwrap();
+
+        assert_eq!(installed.stable_identity, "com.example.future");
+        assert_eq!(
+            installed.platform_version,
+            PlatformVersion::parse_mac_bundle("1").unwrap()
+        );
         runner.assert_drained();
     }
 
@@ -1500,55 +1464,24 @@ mod tests {
     }
 
     #[test]
-    fn older_download_cannot_replace_a_newer_managed_stable_bundle() {
-        let (filesystem, _) = fixture_filesystem();
-        let existing = Path::new(SYSTEM_APPLICATIONS).join("Codex.app");
-        add_bundle(filesystem.as_ref(), &existing);
-        let runner = FakeRunner::new();
-        runner.queue_success("hdiutil", mount_plist(MOUNT_POINT));
-        queue_read_and_validate(&runner, "5848"); // source
-        queue_stable_bundle_scan(&runner, "5849"); // existing scan
-        runner.queue_success("osascript", b"[]".to_vec());
-        runner.queue_success("hdiutil", Vec::<u8>::new());
-        let release = release("5848");
-        let progress: PlatformProgressSink = Arc::new(|_| {});
-
-        assert_eq!(
-            install_current_user(
-                &runner,
-                filesystem.as_ref(),
-                &host(),
-                &package(&release),
-                progress,
-            )
-            .unwrap_err()
-            .code(),
-            InstallerErrorCode::InstallationVerifyFailed
-        );
-        assert!(filesystem.contains(&existing));
-        assert!(runner
-            .invocations()
-            .iter()
-            .all(|invocation| invocation.program() != "ditto"));
-        runner.assert_drained();
-    }
-
-    #[test]
-    fn restore_refuses_to_delete_an_unverified_replacement_path() {
+    fn restore_refuses_to_delete_a_replacement_with_changed_identity() {
         let filesystem = FakeFilesystem::new();
         let parent = Path::new(SYSTEM_APPLICATIONS);
         let target = parent.join("ChatGPT.app");
         let backup = parent.join(format!("{BACKUP_PREFIX}test{BACKUP_SUFFIX}"));
         filesystem.add_dir(parent);
-        filesystem.add_dir(&target);
+        add_bundle(&filesystem, &target);
         filesystem.add_dir(&backup);
         let runner = FakeRunner::new();
+        runner.queue_success("plutil", plist(stable_bundle_id(), "5848"));
+        let expected = bundle::read_bundle_info(&runner, &filesystem, &target).unwrap();
+        runner.queue_success("plutil", plist("com.example.changed", "5848"));
 
         assert_eq!(
-            restore_backup(&runner, &filesystem, &host(), parent, &target, &backup)
+            restore_backup(&runner, &filesystem, parent, &target, &backup, &expected)
                 .unwrap_err()
                 .code(),
-            InstallerErrorCode::PackageParseFailed
+            InstallerErrorCode::InstallationVerifyFailed
         );
         assert!(filesystem.contains(&target));
         assert!(filesystem.contains(&backup));

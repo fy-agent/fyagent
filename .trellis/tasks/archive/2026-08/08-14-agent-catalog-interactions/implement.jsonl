@@ -1,0 +1,14 @@
+{"file":".trellis/spec/frontend/index.md","reason":"Renderer pre-development routing and current V2 feature/spec ownership."}
+{"file":".trellis/spec/frontend/v2-shell.md","reason":"V2 isolation, platform boundary, responsive shell, architecture and browser-preview contracts."}
+{"file":".trellis/spec/frontend/v2-agent-models.md","reason":"Versioned Agent catalog, official-link, five-candidate, asset and Models behavior contract."}
+{"file":".trellis/spec/frontend/v2-skills-mcp.md","reason":"Six-app assignment identity, single-panel, responsive and authoritative-state contract."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Cross-layer Tauri DTO typing and runtime boundary guidance."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Frontend test, accessibility, desktop mock and visual evidence requirements."}
+{"file":".trellis/spec/backend/codex-desktop-installer.md","reason":"Installer commands, DTOs, job events, progress, redaction, platform authority and HIL limits."}
+{"file":".trellis/spec/backend/application-identity.md","reason":"Verified public URL and product identity/provenance boundary."}
+{"file":".trellis/spec/backend/development-environment.md","reason":"Canonical mise-first local validation commands and host-native evidence limits."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Catalog and installer data-flow mapping across Rust, Tauri ports, queries and UI."}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Prevent a second Codex installer state machine and duplicate app/icon/link constants."}
+{"file":".trellis/tasks/08-14-agent-catalog-interactions/research/catalog-ui.md","reason":"Current CSS root causes, five-versus-six domain evidence and icon asset findings."}
+{"file":".trellis/tasks/08-14-agent-catalog-interactions/research/official-links-codex-install.md","reason":"Current external-open call chain and safe Codex installer reuse boundary."}
+{"file":".trellis/tasks/08-14-agent-catalog-interactions/research/official-page-verification.md","reason":"Official Qoder, TRAE Work, WorkBuddy and Claude destination verification."}

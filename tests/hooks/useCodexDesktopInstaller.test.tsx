@@ -76,7 +76,7 @@ const remote: RemoteReleaseStatus = {
     build: 0,
     revision: 0,
   },
-  expectedSize: 1024,
+  downloadSizeHint: 1024,
   checkedAt: "2026-07-29T00:00:00.000Z",
 };
 
@@ -290,7 +290,7 @@ describe("deriveInstallerViewState", () => {
     );
   });
 
-  it("keeps Linux hidden and Intel Mac visibly unsupported", () => {
+  it("keeps unsupported platforms hidden and Intel Mac visibly unsupported", () => {
     expect(
       deriveInstallerViewState(
         { state: "unsupported", reason: "platform" },
@@ -600,24 +600,12 @@ describe("useCodexDesktopInstaller", () => {
     );
   });
 
-  it("resets a zero-byte interval without exposing stale speed and recovers from that sample", async () => {
+  it("keeps the average speed when a download sample stalls and then resumes", async () => {
     const mebibyte = 1024 * 1024;
-    const observedProgress: Array<{
-      current: number | null | undefined;
-      bytesPerSecond: number | null | undefined;
-    }> = [];
     const { wrapper } = createWrapper();
-    const { result } = renderHook(
-      () => {
-        const installer = useCodexDesktopInstaller();
-        observedProgress.push({
-          current: installer.progress?.current,
-          bytesPerSecond: installer.progress?.bytesPerSecond,
-        });
-        return installer;
-      },
-      { wrapper },
-    );
+    const { result } = renderHook(() => useCodexDesktopInstaller(), {
+      wrapper,
+    });
 
     await waitFor(() => expect(mocks.listeners.size).toBe(1));
     await act(async () => {
@@ -630,23 +618,18 @@ describe("useCodexDesktopInstaller", () => {
       expect(result.current.progress?.bytesPerSecond).toBe(2 * mebibyte),
     );
 
-    const resetRenderStart = observedProgress.length;
     await act(async () => {
       emitJob(makeDownloadJob(3, 3 * mebibyte, "2026-07-29T00:00:03.000Z"));
     });
     await waitFor(() =>
-      expect(result.current.progress?.bytesPerSecond).toBeNull(),
+      expect(result.current.progress?.bytesPerSecond).toBe(2 * mebibyte),
     );
-    expect(observedProgress.slice(resetRenderStart)).not.toContainEqual({
-      current: 3 * mebibyte,
-      bytesPerSecond: 2 * mebibyte,
-    });
 
     await act(async () => {
       emitJob(makeDownloadJob(4, 5 * mebibyte, "2026-07-29T00:00:04.000Z"));
     });
     await waitFor(() =>
-      expect(result.current.progress?.bytesPerSecond).toBe(2 * mebibyte),
+      expect(result.current.progress?.bytesPerSecond).toBe((4 * mebibyte) / 3),
     );
   });
 

@@ -24,14 +24,14 @@ VibeKey 最值得 FyAgent 继承的不是硬件外形，而是它把复杂操作
 
 | 来源                                                                                                               | 发现                                                                  | 证据等级                         | 处理                                    |
 | ------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------- | -------------------------------- | --------------------------------------- |
-| `<local-vibekey-project-archive>`                                                                                  | 市场调研、PRD、硬件设计、商业计划、UI/UX 规范、驱动源码和 1 张概念图  | `local_artifact_audit`           | 作为历史设计参考，不复制生产代码        |
-| `<local-vibekey-driver>`                                                                                           | React/Tauri 驱动脚手架；目录不是 Git 仓库                             | `code_audit`                     | 只用于核对实际落地范围                  |
+| 私有设计归档（证据编号 `VK-ARCHIVE`）                                                                                | 市场调研、PRD、硬件设计、商业计划、UI/UX 规范、驱动源码和 1 张概念图  | `private_artifact_audit`         | 作为历史设计参考，不复制生产代码        |
+| 原型代码检出（证据编号 `VK-PROTOTYPE`）                                                                              | React/Tauri 驱动脚手架；目录不是 Git 仓库                             | `private_code_audit`             | 只用于核对实际落地范围                  |
 | `docs/fyagent/dev/v1-0.0/**`                                                                                       | D04 / ADR-006 明确“参考行为、按 CC Switch 架构重写、不复制旧生产代码” | `git_history_audit`              | 继续遵守既有边界                        |
 | `assets/screenshots/main-zh.png`、`add-zh.png`                                                                     | 旧静态截图显示 `CC Switch`；当前 README 已停止引用                    | `static_asset_visual_inspection` | 仅作待重拍上下文；不宣称 runtime 通过   |
 | `assets/fyagent.png` 与品牌合同                                                                                    | FyAgent Logo 已有唯一批准母版                                         | `code_audit`                     | 生图不得重画；正式资产后期确定性合成    |
 | GitHub [PR #9](https://github.com/fy-agent/fyagent/pull/9) / [PR #10](https://github.com/fy-agent/fyagent/pull/10) | 视觉计划曾合并后被显式 revert                                         | `remote_git_audit`               | 新成果保持分支内，重新评审后再进入 main |
 
-本地归档 SHA-256：`9C54280EB1EB700800AB2022CEF32C392690ECB301D21DC7BBCB07A2BDE9F0C1`。归档内概念图 SHA-256：`BD5DB121CEE6ACAEB0F3D706E2054ED7B54B492878E4BBAB85AD260F82B8FB86`。公开 GitHub 检索未找到可验证的独立 VibeKey 仓库，因此不把驱动中 `github.com/vibekey`、Discord 等占位链接视为真实渠道。
+私有归档的具体路径、文件名和校验值只保存在非公开证据记录中。公开仓库来源核验未找到可验证的独立 VibeKey 仓库，因此不把原型中的 GitHub、Discord 等占位链接视为真实渠道。
 
 ## 2. VibeKey 当时的产品与宣发设计
 
@@ -54,7 +54,7 @@ VibeKey 最值得 FyAgent 继承的不是硬件外形，而是它把复杂操作
 
 归档中的硬件文档明确写着“MVP 不搭载屏幕，使用 LED 指示灯替代”，产品概念图却展示了带长条屏幕的设备。README 同时把“完成工业设计渲染图”列为待办，因此该图片只能视为方向概念，不能证明实际产品形态。
 
-本地 `vibekey-driver` 也只能证明 React/Tauri 组件和 Rust 模块的脚手架：目录没有 `.git`，当前文件清单缺少可独立启动前端所需的 `index.html`、TypeScript/Vite/Tailwind 配置和锁文件。本轮没有运行时截图或可复现构建证据，不能把 README 中的功能表当成已交付产品。
+私有原型代码检出也只能证明 React/Tauri 组件和 Rust 模块的脚手架：目录没有 `.git`，当前文件清单缺少可独立启动前端所需的 `index.html`、TypeScript/Vite/Tailwind 配置和锁文件。本轮没有运行时截图或可复现构建证据，不能把 README 中的功能表当成已交付产品。
 
 商业计划中的价格、试用额度、合作可能性、众筹目标和市场数据没有交付证据。本轮不将这些内容迁移为 FyAgent 的商业结论。
 

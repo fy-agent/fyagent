@@ -6,7 +6,9 @@ use std::collections::HashMap;
 use serde::Serialize;
 use tauri::State;
 
-use crate::app_config::AppType;
+use std::str::FromStr;
+
+use crate::app_config::{AppType, McpTargetId};
 use crate::claude_mcp;
 use crate::services::McpService;
 use crate::store::AppState;
@@ -48,8 +50,6 @@ pub struct McpConfigResponse {
 }
 
 /// 获取 MCP 配置（来自 ~/.fyagent/config.json）
-use std::str::FromStr;
-
 #[tauri::command]
 #[allow(deprecated)] // 兼容层命令，内部调用已废弃的 Service 方法
 pub async fn get_mcp_config(
@@ -190,8 +190,8 @@ pub async fn toggle_mcp_app(
     app: String,
     enabled: bool,
 ) -> Result<(), String> {
-    let app_ty = AppType::from_str(&app).map_err(|e| e.to_string())?;
-    McpService::toggle_app(&state, &server_id, app_ty, enabled).map_err(|e| e.to_string())
+    let target = McpTargetId::from_str(&app).map_err(|e| e.to_string())?;
+    McpService::toggle_target(&state, &server_id, target, enabled).map_err(|e| e.to_string())
 }
 
 /// 从所有应用导入 MCP 服务器（复用已有的导入逻辑）

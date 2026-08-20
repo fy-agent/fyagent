@@ -322,7 +322,7 @@ No amount of text beats seeing it for yourself. Below are the **real paths** (ta
 
 > **Note**: if you've changed the Codex directory in FyAgent, or set `sqlite_home` in `config.toml`, replace `~/.codex` above with your actual directory. Below, `~` = your user home directory.
 
-### macOS / Linux commands
+### macOS commands
 
 **1. Count the total number of session files (this is the hard evidence of "nothing lost")**
 

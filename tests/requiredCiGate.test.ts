@@ -33,7 +33,6 @@ const DISPLAY_NAMES: Record<string, string[]> = {
   contracts: ["Repository Contracts"],
   frontend: ["Frontend Checks"],
   "desktop-acceptance-contract": ["Desktop Acceptance Contract"],
-  "backend-linux": ["Backend Checks (Linux)"],
   "backend-windows": ["Backend Checks (Windows)"],
   "windows-native-contracts": [
     "Windows Native Contracts (X64)",
@@ -140,7 +139,6 @@ describe("CI / Required gate", () => {
       contracts: true,
       frontend: false,
       "desktop-acceptance-contract": false,
-      "backend-linux": false,
       "backend-windows": false,
       "windows-native-contracts": false,
       "backend-macos": false,
@@ -268,10 +266,10 @@ describe("CI / Required gate", () => {
     ).toContain("needs keys must be exactly");
 
     const unknown = needs(plan);
-    unknown["backend-linux"].result = "neutral";
+    unknown["backend-macos"].result = "neutral";
     expect(
       evaluateRequiredCiResults(unknown, plan, attemptJobs(plan)).errors,
-    ).toContain("unknown result for backend-linux: neutral");
+    ).toContain("unknown result for backend-macos: neutral");
 
     const extraPlan = { ...plan, event: "pull_request" };
     expect(

@@ -1,0 +1,5 @@
+{"file":".trellis/spec/frontend/v2-shell.md","reason":"Verify frozen shell, V2 import boundaries, accessibility, and responsive geometry"}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Verify applicable unit, browser, build, formatting, and evidence gates"}
+{"file":".trellis/spec/frontend/state-management.md","reason":"Verify authoritative refresh, write locking, bulk scope, and session-only state"}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Verify command payloads, secret handling, and unknown-field preservation"}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Check public contracts and end-to-end data flow without backend drift"}

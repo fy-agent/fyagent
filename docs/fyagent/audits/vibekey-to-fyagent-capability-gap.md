@@ -33,13 +33,13 @@ VibeKey 当年最值得保留的不是硬件键盘，而是三项产品要求：
 
 | 证据 | 发现 | 证据等级 |
 |---|---|---|
-| `VibeKey-路演PPT-25页 (完整版)(1).pdf` | 实际为 23 页，创建于 2026-01-28；SHA-256 `07D7D573F49BD99BA26AEA021BEA7C58398143B8631E030FF72FA8A6E034CEF6` | `local_artifact_audit + visual_inspection` |
-| `<local-submission-draft>` | 记录产品、商业和路线图假设；正文最终明确“软件开发、用户验证、众筹上线”为待完成项 | `local_artifact_audit` |
-| `<local-vibekey-project-archive>` | 包含早期市场、产品、硬件、软件、UI/UX 文档和驱动脚手架；SHA-256 `9C54280EB1EB700800AB2022CEF32C392690ECB301D21DC7BBCB07A2BDE9F0C1` | `local_artifact_audit` |
-| `<local-vibekey-driver>` | 无 `.git`；缺少 `index.html`、TypeScript/Vite/Tailwind 配置和锁文件；存在试用激活、密钥持久化等 TODO | `code_audit` |
-| 本机 Git / GitHub 账户搜索 | FyAgent 历史只在后来的设计边界中提到 VibeKey；未找到独立 VibeKey 仓库或代码结果 | `git_history_audit + remote_git_audit` |
+| 私有路演材料（证据编号 `VK-PITCH`） | 实际为 23 页，创建于 2026-01-28 | `private_artifact_audit + visual_inspection` |
+| 私有产品计划（证据编号 `VK-PLAN`） | 记录产品、商业和路线图假设；正文最终明确“软件开发、用户验证、众筹上线”为待完成项 | `private_artifact_audit` |
+| 私有设计归档（证据编号 `VK-ARCHIVE`） | 包含早期市场、产品、硬件、软件、UI/UX 文档和驱动脚手架 | `private_artifact_audit` |
+| 原型代码检出（证据编号 `VK-PROTOTYPE`） | 无 `.git`；缺少 `index.html`、TypeScript/Vite/Tailwind 配置和锁文件；存在试用激活、密钥持久化等 TODO | `private_code_audit` |
+| 仓库来源核验 | FyAgent 历史只在后来的设计边界中提到 VibeKey；未找到可验证的独立 VibeKey 仓库或代码结果 | `git_history_audit + repository_provenance_review` |
 
-PPT 和商业计划中的“Mac mini 购买证明控制焦虑”“高置信度”“数千 Stars”、成本、毛利、合作、试用额度和付费意愿，没有原始样本、访谈记录、订单或第三方来源。它们只能作为待验证假设，不能成为 FyAgent 的功能优先级证据。
+这些私有材料中的“Mac mini 购买证明控制焦虑”“高置信度”“数千 Stars”、成本、毛利、合作、试用额度和付费意愿，没有原始样本、访谈记录、订单或第三方来源。它们只能作为待验证假设，不能成为 FyAgent 的功能优先级证据。具体路径、文件名和校验值只保存在非公开证据记录中。
 
 ### 1.2 FyAgent 当前基线
 
@@ -77,7 +77,7 @@ PPT 和商业计划中的“Mac mini 购买证明控制焦虑”“高置信度�
 | ID | 用户目标 | 当前状态 | 关键证据 / 限制 | 缺口等级 | 建议 |
 |---|---|---|---|---:|---|
 | G1 | 安装 FyAgent 后完成第一次成功调用 | **部分具备** | 首启仅是通知弹窗；安装、Provider、检查分散在不同页面；没有可恢复向导状态 | P0 | 建立首次成功向导和统一 Health Center |
-| G2 | Windows 正式版检测、安装、升级 CLI | **受阻** | 正式 Windows 构建因提权安全边界，在进入 PATH/WSL/用户目录前 fail closed；Codex 生命周期始终只读 | P0 | 设计普通用户 worker 或调整宿主安装边界；禁止用放宽安全检查解决 |
+| G2 | Windows 正式版检测、安装、升级 CLI | **受阻** | 正式 Windows 构建因提权安全边界，在进入用户 PATH 和用户目录前 fail closed；Codex 生命周期始终只读 | P0 | 设计普通用户 worker 或调整宿主安装边界；禁止用放宽安全检查解决 |
 | G3 | 密钥在本机、备份和同步中都可证明安全 | **缺失统一合同** | Provider `settings_config` 以 JSON 写入 SQLite；同步导出包含 Provider 表；未发现 OS keyring/SQLCipher/应用层密文依赖 | P0 | 密钥引用化 + OS 密钥链；默认导出/同步不带密钥；另设加密便携 Vault |
 | G4 | 每次配置变更可预览、确认、撤销 | **局部具备** | Deep Link 有预览；Provider/Profile/接管/批量扩展没有一个统一变更计划和撤销账本 | P0 | 建立 Change Plan、影响说明、备份 ID、Undo 与活动记录 |
 | G5 | 换电脑恢复完整工作状态 | **部分具备** | WebDAV/S3 可同步整库；Profile 只覆盖 Claude、Claude Desktop、Codex，且 payload 主要保存现有实体 ID | P1 | 建立版本化 Workspace Manifest/Pack，分离定义、引用与秘密 |
@@ -107,13 +107,13 @@ Provider 表单
 
 ### 4.2 G2 的安全判断说明
 
-正式 Windows 发行版当前以受保护的提权宿主运行。代码明确拒绝在该边界内探测或执行用户可控的 PATH、WSL 和工具管理器 shim。这是有意的 fail-closed，不是普通 UI bug。
+正式 Windows 发行版当前以受保护的提权宿主运行。代码明确拒绝在该边界内探测或执行用户可控的 PATH 和工具管理器 shim。这是有意的 fail-closed，不是普通 UI bug。
 
 后续设计必须把以下两类责任分开：
 
 ```text
 机器级安装 / 受保护操作  → 受限高权限边界
-用户 CLI / PATH / WSL     → 已认证的普通用户 worker
+用户 CLI / PATH           → 已认证的普通用户 worker
 ```
 
 删除 guard 或直接让高权限进程运行用户 PATH 都不属于可接受修复。
@@ -161,6 +161,6 @@ Provider 表单
 
 ## 7. 路线图输入
 
-详细的阶段、任务依赖和验收证据见 [FyAgent v0.3.1 后能力路线图](../../../.omo/plans/fyagent-capability-roadmap-post-v0.3.1.md)。
+详细的阶段、任务依赖和验收证据见 FyAgent v0.3.1 后能力路线图（原计划文档已从仓库移除，历史版本见 Git 历史）。
 
 相关历史宣发和视觉边界见 [VibeKey 宣发与产品设计对照审计](../marketing/vibekey-reference-audit.md)。

@@ -123,7 +123,6 @@ API エンドポイントを確認してください。ゲートウェイのル�
 
 ## 参考リンク
 
-- [FyAgent ユーザーマニュアル: プロキシサービス](../user-manual/ja/4-proxy/4.1-service.md)
-- [FyAgent ユーザーマニュアル: アプリケーションルーティング](../user-manual/ja/4-proxy/4.2-routing.md)
-- [FyAgent v3.17.0 リリースノート](../release-notes/v3.17.0-ja.md)
+- [FyAgent ユーザーマニュアル: プロキシサービス](../user-manual/ja/5-proxy/5.1-service.md)
+- [FyAgent ユーザーマニュアル: アプリケーションルーティング](../user-manual/ja/5-proxy/5.2-routing.md)
 - この機能はコミュニティからの貢献 [#5071](https://github.com/farion1231/cc-switch/pull/5071) によるものです。@yeeyzy に感謝します。

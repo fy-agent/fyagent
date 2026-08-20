@@ -16,7 +16,6 @@ export const REQUIRED_CI_JOBS = Object.freeze([
   "contracts",
   "frontend",
   "desktop-acceptance-contract",
-  "backend-linux",
   "backend-windows",
   "windows-native-contracts",
   "backend-macos",
@@ -51,7 +50,6 @@ const DISPLAY_NAME_MATCHERS = Object.freeze({
   frontend: (name) => name === "Frontend Checks",
   "desktop-acceptance-contract": (name) =>
     name === "Desktop Acceptance Contract",
-  "backend-linux": (name) => name === "Backend Checks (Linux)",
   "backend-windows": (name) => name === "Backend Checks (Windows)",
   "windows-native-contracts": (name) =>
     /^Windows Native Contracts(?: \((?:X64|ARM64)\))?$/.test(name),
@@ -90,7 +88,6 @@ export function requestedJobsForPlan(plan) {
     contracts: domains.contracts || domains.docsSpec,
     frontend: domains.frontend,
     "desktop-acceptance-contract": domains.desktop,
-    "backend-linux": domains.backend,
     "backend-windows": domains.backend || domains.windowsNative,
     "windows-native-contracts": domains.windowsNative,
     "backend-macos": domains.backend,

@@ -1,0 +1,8 @@
+{"file":".trellis/spec/frontend/index.md","reason":"Run the full frontend quality checklist across every V2 and package change."}
+{"file":".trellis/spec/frontend/v2-shell.md","reason":"Verify native chrome ownership, route semantics, material fallback, accessibility, and responsive gates."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Check strict compilation, import direction, and internal type ownership after deleting WindowFramePort."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Verify unit/browser/full-project commands and keep native evidence claims correctly scoped."}
+{"file":".trellis/spec/backend/development-environment.md","reason":"Confirm the lock and all reported checks use the canonical current-host Mise toolchain."}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Review the new adapter and CSS changes for duplicate or leaking abstractions."}
+{"file":".trellis/tasks/08-12-frontend-v2-native-liquid-glass/research.md","reason":"Validate the exact package version, license, React peer boundary, single-lens rule, and unverified WebView2 risk."}
+{"file":".trellis/spec/backend/upstream-sync.md","reason":"Check that the executable DEP0040 ancestry rules and long-lived upstream-sync contract remain identical."}

@@ -43,5 +43,5 @@ Codex デスクトップアプリのモデルセレクタは、あなたの**現
 
 - [サードパーティ API 利用時に Codex のリモート操作と公式プラグインを保持する](./codex-official-auth-preservation-guide-ja.md)
 - [Codex DeepSeek ローカルルーティング実践ガイド](./codex-deepseek-routing-guide-ja.md)
-- [ローカルルーティング](../user-manual/ja/4-proxy/4.2-routing.md)
+- [ローカルルーティング](../user-manual/ja/5-proxy/5.2-routing.md)
 </content>

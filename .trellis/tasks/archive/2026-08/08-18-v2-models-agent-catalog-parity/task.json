@@ -1,0 +1,28 @@
+{
+  "id": "v2-models-agent-catalog-parity",
+  "name": "v2-models-agent-catalog-parity",
+  "title": "V2 模型目录与 Agent 能力对齐",
+  "description": "",
+  "status": "completed",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "pythonrust",
+  "assignee": "pythonrust",
+  "createdAt": "2026-08-18",
+  "completedAt": "2026-08-18",
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {
+    "description": "Align V2 agent catalog, models, skills, and MCP: TRAE Work CN, Qoder unsupported models, WorkBuddy-parity model CRUD, catalog copy/jumps, and vendor icons."
+  }
+}

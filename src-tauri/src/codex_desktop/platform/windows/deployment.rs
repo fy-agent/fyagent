@@ -440,10 +440,7 @@ mod native {
         WindowsNativeError, WindowsPackageInventory, WindowsPackageRecord,
         WindowsUserOperationReceipt,
     };
-    use crate::codex_desktop::{
-        platform::WINDOWS_CODEX_STABLE_IDENTITY,
-        types::{CpuArchitecture, PlatformVersion},
-    };
+    use crate::codex_desktop::types::{CpuArchitecture, PlatformVersion};
     use crate::windows_runtime::{revalidate_interactive_user_context, InteractiveUserContext};
 
     pub(super) fn packages_for_user_main(
@@ -481,13 +478,6 @@ mod native {
                 .Name()
                 .map_err(WindowsNativeError::from_windows)?
                 .to_string();
-            if identity_name != WINDOWS_CODEX_STABLE_IDENTITY {
-                iterator
-                    .MoveNext()
-                    .map_err(WindowsNativeError::from_windows)?;
-                continue;
-            }
-
             let version = package_id
                 .Version()
                 .map_err(WindowsNativeError::from_windows)?;
@@ -746,9 +736,9 @@ mod tests {
         // and propagated the native error from an invalid explicit SID.
         let records = native::packages_for_user_sid_main(&sid)
             .expect("the explicit-SID/Main PackageManager binding must be callable");
-        assert!(records.iter().all(|record| {
-            record.identity_name == crate::codex_desktop::platform::WINDOWS_CODEX_STABLE_IDENTITY
-        }));
+        assert!(records
+            .iter()
+            .all(|record| !record.identity_name.is_empty()));
         let error = native::packages_for_user_sid_main("not-a-windows-sid")
             .expect_err("PackageManager must reject a malformed explicit SID");
         assert!(error.hresult().is_some());

@@ -1,0 +1,9 @@
+{"file":".trellis/spec/backend/index.md","reason":"Review native command, filesystem, and evidence boundaries."}
+{"file":".trellis/spec/backend/development-environment.md","reason":"Verify every check uses the supported locked task runner."}
+{"file":".trellis/spec/frontend/index.md","reason":"Frontend full-scope review checklist."}
+{"file":".trellis/spec/frontend/v2-shell.md","reason":"Review V2 isolation, shared styles, browser/native behavior, and route guarantees."}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Review shared primitive reuse and accessible composition."}
+{"file":".trellis/spec/frontend/state-management.md","reason":"Review query isolation, authoritative refresh, and dirty-state handling."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Review closed unions and runtime IPC parsing."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Run focused, browser, desktop, and full project gates."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Review end-to-end command and state consistency."}

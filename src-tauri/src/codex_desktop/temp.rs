@@ -1,6 +1,6 @@
 //! Capability for a single, job-owned installer staging directory.
 //!
-//! Non-Windows hosts retain the existing system-temporary root. Production
+//! macOS retains the existing system-temporary root. Production
 //! Windows builds instead freeze the running FyAgent executable and stage only
 //! below its sibling `cache/codex-installer` hierarchy. Callers receive this
 //! capability instead of a caller-provided path, so downloads can use only
@@ -12,7 +12,7 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-#[cfg(any(not(target_os = "windows"), test))]
+#[cfg(any(target_os = "macos", test))]
 use std::io::ErrorKind;
 #[cfg(target_os = "windows")]
 use std::path::Component;
@@ -32,7 +32,7 @@ use super::{
     verify::ArtifactKind,
 };
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(target_os = "macos")]
 const TEMP_ROOT_DIRECTORY_NAME: &str = "fyagent-codex-installer";
 const STALE_JOB_DIRECTORY_AGE: Duration = Duration::from_secs(24 * 60 * 60);
 
@@ -45,7 +45,7 @@ static CURRENT_EXECUTABLE_INSTALL_ROOT: OnceLock<Result<FrozenInstallRoot, Insta
 /// frozen Windows executable/install-root identity above.
 #[derive(Clone)]
 pub(crate) enum JobTempRoot {
-    #[cfg(any(not(target_os = "windows"), test))]
+    #[cfg(any(target_os = "macos", test))]
     Explicit(PathBuf),
     #[cfg(target_os = "windows")]
     CurrentExecutableInstallRoot,
@@ -57,7 +57,7 @@ impl fmt::Debug for JobTempRoot {
     }
 }
 
-#[cfg(any(not(target_os = "windows"), test))]
+#[cfg(any(target_os = "macos", test))]
 impl From<PathBuf> for JobTempRoot {
     fn from(root: PathBuf) -> Self {
         Self::Explicit(root)
@@ -72,7 +72,7 @@ impl JobTempRoot {
         {
             Self::CurrentExecutableInstallRoot
         }
-        #[cfg(not(target_os = "windows"))]
+        #[cfg(target_os = "macos")]
         {
             Self::Explicit(JobTempDir::system_root())
         }
@@ -80,7 +80,7 @@ impl JobTempRoot {
 
     pub(crate) fn create_job(&self, job_id: &str) -> Result<JobTempDir, InstallerError> {
         match self {
-            #[cfg(any(not(target_os = "windows"), test))]
+            #[cfg(any(target_os = "macos", test))]
             Self::Explicit(root) => JobTempDir::create(root, job_id),
             #[cfg(target_os = "windows")]
             Self::CurrentExecutableInstallRoot => create_current_executable_job(job_id),
@@ -111,21 +111,21 @@ impl TrustedDirectory {
             let handle = open_windows_directory_path(path)?;
             Self::capture_windows_handle(path, handle, false)
         }
-        #[cfg(not(target_os = "windows"))]
+        #[cfg(target_os = "macos")]
         {
             let identity = filesystem_identity(path, FilesystemObjectKind::Directory)?;
             Self::capture_with_identity(path, identity)
         }
     }
 
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
     fn capture_with_modified(path: &Path) -> Result<(Self, SystemTime), InstallerError> {
         let (identity, modified) = directory_identity_and_modified(path)?;
         let directory = Self::capture_with_identity(path, identity)?;
         Ok((directory, modified))
     }
 
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
     fn capture_with_identity(
         path: &Path,
         identity: FilesystemIdentity,
@@ -189,7 +189,7 @@ impl TrustedDirectory {
             }
             Ok(())
         }
-        #[cfg(not(target_os = "windows"))]
+        #[cfg(target_os = "macos")]
         {
             let current = Self::capture(&self.path)?;
             if current.path != self.path || current.identity != self.identity {
@@ -297,7 +297,7 @@ impl FrozenInstallRoot {
 #[derive(Clone)]
 pub(crate) struct JobTempDir {
     /// Direct directory chain ending at the installer staging root. Production
-    /// Windows stores install-root/cache/codex-installer; other hosts store
+    /// Windows stores install-root/cache/codex-installer; macOS stores
     /// only their explicit staging root.
     ancestors: Vec<TrustedDirectory>,
     path: TrustedDirectory,
@@ -306,7 +306,7 @@ pub(crate) struct JobTempDir {
 
 #[derive(Clone, Copy)]
 enum ArtifactPolicy {
-    #[cfg(any(not(target_os = "windows"), test))]
+    #[cfg(any(target_os = "macos", test))]
     CrossPlatform,
     #[cfg(any(target_os = "windows", test))]
     WindowsMsixOnly,
@@ -315,7 +315,7 @@ enum ArtifactPolicy {
 impl ArtifactPolicy {
     fn permits_file_name(self, file_name: &str) -> bool {
         match self {
-            #[cfg(any(not(target_os = "windows"), test))]
+            #[cfg(any(target_os = "macos", test))]
             Self::CrossPlatform => matches!(
                 file_name,
                 "installer.msix" | "installer.msix.part" | "installer.dmg" | "installer.dmg.part"
@@ -327,7 +327,7 @@ impl ArtifactPolicy {
 
     fn cleanup_kinds(self) -> &'static [ArtifactKind] {
         match self {
-            #[cfg(any(not(target_os = "windows"), test))]
+            #[cfg(any(target_os = "macos", test))]
             Self::CrossPlatform => &[ArtifactKind::Msix, ArtifactKind::Dmg],
             #[cfg(any(target_os = "windows", test))]
             Self::WindowsMsixOnly => &[ArtifactKind::Msix],
@@ -342,7 +342,7 @@ impl fmt::Debug for JobTempDir {
 }
 
 impl JobTempDir {
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
     pub(crate) fn system_root() -> PathBuf {
         std::env::temp_dir().join(TEMP_ROOT_DIRECTORY_NAME)
     }
@@ -362,7 +362,7 @@ impl JobTempDir {
                 SystemTime::now(),
             )
         }
-        #[cfg(not(target_os = "windows"))]
+        #[cfg(target_os = "macos")]
         {
             Self::cleanup_stale_under(
                 &Self::system_root(),
@@ -372,7 +372,7 @@ impl JobTempDir {
         }
     }
 
-    #[cfg(any(not(target_os = "windows"), test))]
+    #[cfg(any(target_os = "macos", test))]
     fn cleanup_stale_under(
         root: &Path,
         minimum_age: Duration,
@@ -459,7 +459,7 @@ impl JobTempDir {
                 }
                 Err(_) => continue,
             };
-            #[cfg(not(target_os = "windows"))]
+            #[cfg(target_os = "macos")]
             let (job_directory, modified) =
                 match TrustedDirectory::capture_with_modified(&candidate) {
                     Ok((directory, modified))
@@ -493,7 +493,7 @@ impl JobTempDir {
     /// Create exactly one canonical UUID direct child. Existing children are
     /// rejected instead of being opened or reused, which prevents a prepared
     /// symlink/reparse point from becoming a download destination.
-    #[cfg(any(not(target_os = "windows"), test))]
+    #[cfg(any(target_os = "macos", test))]
     pub(crate) fn create(root: &Path, job_id: &str) -> Result<Self, InstallerError> {
         let canonical_job_id = canonical_job_id(job_id)?;
         let root = ensure_root_directory(root)?;
@@ -526,7 +526,7 @@ impl JobTempDir {
                 ));
             }
         };
-        #[cfg(not(target_os = "windows"))]
+        #[cfg(target_os = "macos")]
         let path = {
             let candidate = root.path.join(canonical_job_id);
             match fs::create_dir(&candidate) {
@@ -583,7 +583,7 @@ impl JobTempDir {
             )
             .map_err(|_| temp_error("installer partial file could not be created safely"))
         }
-        #[cfg(not(target_os = "windows"))]
+        #[cfg(target_os = "macos")]
         {
             fs::OpenOptions::new()
                 .write(true)
@@ -612,7 +612,7 @@ impl JobTempDir {
                 )),
             }
         }
-        #[cfg(not(target_os = "windows"))]
+        #[cfg(target_os = "macos")]
         {
             ensure_path_absent_for_temp(&path)
         }
@@ -646,7 +646,7 @@ impl JobTempDir {
             }
             self.validate_job_directory()
         }
-        #[cfg(not(target_os = "windows"))]
+        #[cfg(target_os = "macos")]
         {
             drop(file);
             ensure_path_absent_for_temp(&final_path)?;
@@ -670,7 +670,7 @@ impl JobTempDir {
             )
             .map_err(|_| temp_error("installer final file could not be opened safely"))
         }
-        #[cfg(not(target_os = "windows"))]
+        #[cfg(target_os = "macos")]
         {
             self.validate_existing_artifact(&path)?;
             fs::File::open(path).map_err(|_| temp_error("installer final file could not be opened"))
@@ -726,7 +726,7 @@ impl JobTempDir {
             .map(|_| ())
             .map_err(|_| temp_error("installer artifact could not be opened safely"))
         }
-        #[cfg(not(target_os = "windows"))]
+        #[cfg(target_os = "macos")]
         {
             if is_link_or_reparse_point(path)? {
                 return Err(temp_error(
@@ -763,7 +763,7 @@ impl JobTempDir {
             }
             windows_mark_handle_for_deletion(self.path.handle())
         }
-        #[cfg(not(target_os = "windows"))]
+        #[cfg(target_os = "macos")]
         {
             fs::remove_dir(&self.path.path)
                 .map_err(|_| temp_error("installer job staging directory could not be removed"))
@@ -812,7 +812,7 @@ impl JobTempDir {
             self.validate_job_directory()
         }
 
-        #[cfg(not(target_os = "windows"))]
+        #[cfg(target_os = "macos")]
         {
             let metadata = match fs::symlink_metadata(path) {
                 Ok(metadata) => metadata,
@@ -836,7 +836,7 @@ impl JobTempDir {
     }
 }
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(target_os = "macos")]
 fn ensure_path_absent_for_temp(path: &Path) -> Result<(), InstallerError> {
     match fs::symlink_metadata(path) {
         Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
@@ -847,7 +847,7 @@ fn ensure_path_absent_for_temp(path: &Path) -> Result<(), InstallerError> {
     }
 }
 
-#[cfg(any(not(target_os = "windows"), test))]
+#[cfg(any(target_os = "macos", test))]
 fn canonical_job_id(value: &str) -> Result<String, InstallerError> {
     if !is_canonical_job_id(value) {
         return Err(temp_error("installer job ID is not a canonical UUID"));
@@ -867,7 +867,7 @@ fn is_stale(modified: SystemTime, now: SystemTime, minimum_age: Duration) -> boo
         .unwrap_or(false)
 }
 
-#[cfg(any(not(target_os = "windows"), test))]
+#[cfg(any(target_os = "macos", test))]
 fn ensure_root_directory(root: &Path) -> Result<TrustedDirectory, InstallerError> {
     match fs::symlink_metadata(root) {
         Ok(_) => {}
@@ -897,7 +897,7 @@ fn validate_directory_chain(ancestors: &[TrustedDirectory]) -> Result<(), Instal
     Ok(())
 }
 
-#[cfg(all(not(target_os = "windows"), test))]
+#[cfg(all(target_os = "macos", test))]
 fn open_direct_child_directory(
     parent: &TrustedDirectory,
     name: &str,
@@ -1528,7 +1528,7 @@ fn filesystem_identity(
     windows_filesystem_identity(&file, expected_kind)
 }
 
-#[cfg(all(not(target_os = "windows"), unix))]
+#[cfg(target_os = "macos")]
 fn filesystem_identity(
     path: &Path,
     expected_kind: FilesystemObjectKind,
@@ -1554,7 +1554,7 @@ fn filesystem_identity(
     })
 }
 
-#[cfg(all(not(target_os = "windows"), unix))]
+#[cfg(target_os = "macos")]
 fn directory_identity_and_modified(
     path: &Path,
 ) -> Result<(FilesystemIdentity, SystemTime), InstallerError> {
@@ -1579,65 +1579,7 @@ fn directory_identity_and_modified(
     ))
 }
 
-#[cfg(all(not(target_os = "windows"), not(unix)))]
-fn filesystem_identity(
-    path: &Path,
-    expected_kind: FilesystemObjectKind,
-) -> Result<FilesystemIdentity, InstallerError> {
-    let metadata = fs::symlink_metadata(path)
-        .map_err(|_| temp_error("installer staging object could not be inspected"))?;
-    if metadata.file_type().is_symlink()
-        || match expected_kind {
-            FilesystemObjectKind::Directory => !metadata.is_dir(),
-            #[cfg(target_os = "windows")]
-            FilesystemObjectKind::RegularFile => !metadata.is_file(),
-        }
-    {
-        return Err(temp_error(
-            "installer staging object has an unexpected type or link",
-        ));
-    }
-    let modified = metadata
-        .modified()
-        .ok()
-        .and_then(|value| value.duration_since(SystemTime::UNIX_EPOCH).ok())
-        .map(|value| value.as_nanos() as u64)
-        .unwrap_or(0);
-    Ok(FilesystemIdentity {
-        volume_or_device: metadata.len(),
-        file_index: modified,
-    })
-}
-
-#[cfg(all(not(target_os = "windows"), not(unix)))]
-fn directory_identity_and_modified(
-    path: &Path,
-) -> Result<(FilesystemIdentity, SystemTime), InstallerError> {
-    let metadata = fs::symlink_metadata(path)
-        .map_err(|_| temp_error("installer job staging directory could not be inspected"))?;
-    if metadata.file_type().is_symlink() || !metadata.is_dir() {
-        return Err(temp_error(
-            "installer job staging directory has an unexpected type or link",
-        ));
-    }
-    let modified = metadata
-        .modified()
-        .map_err(|_| temp_error("installer job staging age could not be queried"))?;
-    let modified_identity = modified
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .ok()
-        .map(|value| value.as_nanos() as u64)
-        .unwrap_or(0);
-    Ok((
-        FilesystemIdentity {
-            volume_or_device: metadata.len(),
-            file_index: modified_identity,
-        },
-        modified,
-    ))
-}
-
-#[cfg(not(target_os = "windows"))]
+#[cfg(target_os = "macos")]
 fn is_link_or_reparse_point(path: &Path) -> Result<bool, InstallerError> {
     let metadata = fs::symlink_metadata(path)
         .map_err(|_| temp_error("installer staging path could not be inspected"))?;
@@ -1698,7 +1640,7 @@ mod tests {
         assert!(JobTempDir::create(root.path(), &job_id.to_ascii_uppercase()).is_err());
     }
 
-    #[cfg(unix)]
+    #[cfg(target_os = "macos")]
     #[test]
     fn rejects_a_symlink_root_before_creating_a_job_child() {
         use std::os::unix::fs::symlink;
@@ -1715,7 +1657,7 @@ mod tests {
         assert_eq!(fs::read_dir(&real_root).unwrap().count(), 0);
     }
 
-    #[cfg(unix)]
+    #[cfg(target_os = "macos")]
     #[test]
     fn rejects_identity_replacement_at_the_same_root_path() {
         let container = tempfile::tempdir().unwrap();
@@ -1735,7 +1677,7 @@ mod tests {
         assert!(moved.exists());
     }
 
-    #[cfg(unix)]
+    #[cfg(target_os = "macos")]
     #[test]
     fn rejects_a_reparse_like_direct_child_instead_of_following_it() {
         use std::os::unix::fs::symlink;
@@ -1838,7 +1780,7 @@ mod tests {
         assert!(unknown.exists());
     }
 
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
     #[test]
     fn stale_cleanup_refuses_a_same_name_replacement_after_age_capture() {
         let root = tempfile::tempdir().unwrap();

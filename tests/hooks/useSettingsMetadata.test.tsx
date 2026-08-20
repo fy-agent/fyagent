@@ -17,7 +17,7 @@ describe("useSettingsMetadata", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     getRuntimePrivilegeStatusMock.mockResolvedValue({
-      platform: "other",
+      platform: "macos",
       supported: false,
       elevated: false,
       localAdministrator: false,
@@ -39,7 +39,7 @@ describe("useSettingsMetadata", () => {
 
     expect(result.current.isPortable).toBe(true);
     expect(result.current.runtimePrivilege).toEqual({
-      platform: "other",
+      platform: "macos",
       supported: false,
       elevated: false,
       localAdministrator: false,
@@ -59,7 +59,7 @@ describe("useSettingsMetadata", () => {
 
     expect(result.current.isPortable).toBe(false);
     expect(result.current.runtimePrivilege).toEqual({
-      platform: "other",
+      platform: "macos",
       supported: false,
       elevated: false,
       localAdministrator: false,

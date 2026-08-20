@@ -322,7 +322,7 @@ Codex 自己按"供应商标签"（一个叫 `model_provider` 的字段）给会
 
 > **注意**：如果你在 FyAgent 里改过 Codex 目录，或在 `config.toml` 里设了 `sqlite_home`，请把上面的 `~/.codex` 换成你的实际目录。下文 `~` = 你的用户主目录。
 
-### macOS / Linux 命令
+### macOS 命令
 
 **1. 数会话文件总数（这才是"没丢"的硬证据）**
 

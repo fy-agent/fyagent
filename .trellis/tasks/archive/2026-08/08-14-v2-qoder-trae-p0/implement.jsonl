@@ -1,0 +1,14 @@
+{"file":".trellis/spec/backend/index.md","reason":"Backend pre-development and cross-layer command guidance."}
+{"file":".trellis/spec/backend/development-environment.md","reason":"Locked mise and Windows Developer Shell execution contract."}
+{"file":".trellis/spec/backend/workbuddy-configuration.md","reason":"Reusable revision, secret, bounded-network and Windows identity safety patterns."}
+{"file":".trellis/spec/backend/windows-runtime-security.md","reason":"Trusted interactive-user paths, process launch and Windows runtime boundaries."}
+{"file":".trellis/spec/backend/external-agent-p0.md","reason":"Durable catalog, Skills, Qoder, TRAE, MCP, permission and automated-evidence contract captured by this task."}
+{"file":".trellis/spec/frontend/index.md","reason":"V2 renderer pre-development routing and quality expectations."}
+{"file":".trellis/spec/frontend/v2-shell.md","reason":"V2 isolation, feature ports, styles, responsive and browser-preview boundaries."}
+{"file":".trellis/spec/frontend/v2-agent-models.md","reason":"Existing catalog v2, Agent/Models, WorkBuddy, Provider and Codex installer contracts to preserve."}
+{"file":".trellis/spec/frontend/v2-skills-mcp.md","reason":"Existing Skills/MCP target, secret and responsive UI contracts."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Strict TypeScript and Tauri runtime wire validation rules."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Catalog, runtime, Skills and IPC changes span Rust, adapters and React."}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Reuse SkillService, proxy and safe-document patterns instead of duplicating stacks."}
+{"file":".trellis/tasks/08-14-v2-qoder-trae-p0/research/current-contract-audit.md","reason":"Current baseline behavior, reusable modules and environment evidence."}
+{"file":".trellis/tasks/08-14-v2-qoder-trae-p0/research/vendor-official-evidence.md","reason":"Dated official QoderWork/TRAE Work feature and evidence boundaries."}

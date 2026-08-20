@@ -17,12 +17,12 @@ const EXPECTED = Object.freeze({
 });
 
 const ARCH_MARKERS = Object.freeze({
-  "linux-x64": /(?:x64|x86_64)/i,
-  "linux-arm64": /(?:arm64|aarch64)/i,
   "macos-x64": /(?:x64|x86_64)/i,
   "macos-arm64": /(?:arm64|aarch64)/i,
   "windows-x64": /(?:x64|x86_64)/i,
   "windows-arm64": /(?:arm64|aarch64)/i,
+  "linux-x64": /(?:x64|x86_64)/i,
+  "linux-arm64": /(?:arm64|aarch64)/i,
 });
 
 function entriesFor(lock, name) {
@@ -34,6 +34,16 @@ function entriesFor(lock, name) {
 }
 
 function validateArtifactPlatforms(name, entry) {
+  const actualPlatforms = Object.keys(entry)
+    .filter((key) => key.startsWith("platforms."))
+    .map((key) => key.slice("platforms.".length))
+    .sort();
+  const expectedPlatforms = [...SUPPORTED_PLATFORMS].sort();
+  if (JSON.stringify(actualPlatforms) !== JSON.stringify(expectedPlatforms)) {
+    throw new Error(
+      `${name} lock platform set drifted: ${actualPlatforms.join(", ")}`,
+    );
+  }
   for (const platform of SUPPORTED_PLATFORMS) {
     const artifact = entry[`platforms.${platform}`];
     if (!artifact) throw new Error(`${name} is not locked for ${platform}`);

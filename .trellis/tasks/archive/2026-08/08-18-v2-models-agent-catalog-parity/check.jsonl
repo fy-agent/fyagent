@@ -1,0 +1,9 @@
+{"file": ".trellis/spec/frontend/index.md", "reason": "Quality Check commands for renderer changes."}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "V2 vs leftover test gates and secret-negative expectations."}
+{"file": ".trellis/spec/frontend/v2-agent-models.md", "reason": "Catalog/Models validation matrix and required tests."}
+{"file": ".trellis/spec/frontend/v2-skills-mcp.md", "reason": "Skills/MCP assignment, icon, and secret checks."}
+{"file": ".trellis/spec/backend/external-agent-p0.md", "reason": "Catalog fail-closed and Skill/MCP target safety."}
+{"file": ".trellis/spec/backend/workbuddy-configuration.md", "reason": "Revision/overwrite/secret collision checks to apply to new writers."}
+{"file": ".trellis/tasks/08-18-v2-models-agent-catalog-parity/prd.md", "reason": "Acceptance criteria for the check pass."}
+{"file": ".trellis/tasks/08-18-v2-models-agent-catalog-parity/design.md", "reason": "Contracts the check must not regress."}
+{"file": ".trellis/tasks/08-18-v2-models-agent-catalog-parity/research/models-workbuddy-parity.md", "reason": "TRAE secret-free DTO and fixture-sqlite write rules."}
