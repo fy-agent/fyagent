@@ -1,5 +1,4 @@
 import { CaretDownIcon } from "@phosphor-icons/react/dist/csr/CaretDown";
-import { CaretRightIcon } from "@phosphor-icons/react/dist/csr/CaretRight";
 import { QuestionIcon } from "@phosphor-icons/react/dist/csr/Question";
 import type { ReactNode } from "react";
 
@@ -141,31 +140,6 @@ export function ModelsExistingSection({
         }
       />
       {open ? children : null}
-    </section>
-  );
-}
-
-export function ModelsActionRow({
-  title,
-  onClick,
-  meta,
-}: {
-  title: string;
-  onClick: () => void;
-  meta?: ReactNode;
-}) {
-  return (
-    <section className="fy-models-existing">
-      <ModelsSurfaceToggle
-        title={title}
-        onClick={onClick}
-        trailing={
-          <>
-            {meta}
-            <CaretRightIcon className="fy-models-caret" size={18} aria-hidden />
-          </>
-        }
-      />
     </section>
   );
 }

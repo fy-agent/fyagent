@@ -7,7 +7,7 @@ import {
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { StrictMode } from "react";
-import { MemoryRouter, useLocation } from "react-router-dom";
+import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
 import { ModelsPage } from "@/v2/pages/models/Page";
@@ -126,13 +126,13 @@ describe("V2 Models page", () => {
     });
     const buttons = within(selector).getAllByRole("button");
     expect(buttons.map((button) => button.textContent)).toEqual([
-      "QoderWork CN不支持第三方模型配置",
-      "TRAE Work CN需在 TRAE Work CN 中添加模型",
-      "WorkBuddy管理模型设置",
-      "Grok Build快速配置模型",
-      "Codex快速配置模型",
-      "Claude Code快速配置模型",
-      "OpenCode管理模型设置",
+      "QoderWork CN",
+      "TRAE Work CN",
+      "WorkBuddy",
+      "Grok Build",
+      "Codex",
+      "Claude Code",
+      "OpenCode",
     ]);
 
     const expectedIcons = [
@@ -161,10 +161,9 @@ describe("V2 Models page", () => {
     expect(qoderRegion).toBeVisible();
     expect(qoderRegion.querySelector(".fy-control-badge")).toBeNull();
     expect(qoderRegion.querySelector(".fy-control-button-primary")).toBeNull();
-    expect(
-      qoderRegion.querySelector(".fy-models-commit-heading"),
-    ).not.toBeNull();
-    expect(qoderRegion.querySelector(".fy-models-existing")).not.toBeNull();
+    expect(qoderRegion.querySelector(".fy-models-commit-heading")).not.toBeNull();
+    expect(qoderRegion.querySelector(".fy-models-existing")).toBeNull();
+    expect(qoderRegion).toHaveTextContent("官方不支持第三方模型配置");
   });
 
   it("does not expose official settings buttons on QoderWork or TRAE model details", async () => {
@@ -172,9 +171,13 @@ describe("V2 Models page", () => {
     ports.catalog.get = vi.fn(async () => catalog());
     renderPage(ports, "qoderwork");
 
+    const qoderRegion = await screen.findByRole("region", {
+      name: "QoderWork CN 模型设置",
+    });
+    expect(qoderRegion).toHaveTextContent("官方不支持第三方模型配置");
     expect(
-      await screen.findByRole("button", { name: "管理 MCP" }),
-    ).toBeVisible();
+      screen.queryByRole("button", { name: "管理 MCP" }),
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "打开官方设置" }),
     ).not.toBeInTheDocument();
@@ -192,35 +195,6 @@ describe("V2 Models page", () => {
       screen.queryByRole("button", { name: "打开 TRAE 官方模型设置" }),
     ).not.toBeInTheDocument();
     view.unmount();
-  });
-
-  it("opens the Agent directory from the QoderWork guidance row", async () => {
-    const user = userEvent.setup();
-    const ports = createBrowserFeaturePorts();
-    function LocationProbe() {
-      const location = useLocation();
-      return (
-        <div data-testid="location-probe">{`${location.pathname}${location.search}`}</div>
-      );
-    }
-
-    render(
-      <StrictMode>
-        <MemoryRouter initialEntries={["/models?target=qoderwork"]}>
-          <TooltipProvider delayDuration={0} skipDelayDuration={0}>
-            <FeatureProvider ports={ports}>
-              <ModelsPage />
-              <LocationProbe />
-            </FeatureProvider>
-          </TooltipProvider>
-        </MemoryRouter>
-      </StrictMode>,
-    );
-
-    await user.click(
-      await screen.findByRole("button", { name: "管理 MCP" }),
-    );
-    expect(screen.getByTestId("location-probe")).toHaveTextContent("/mcp");
   });
 
   it("shows TRAE guidance and observed IDs without fetch or save controls", async () => {

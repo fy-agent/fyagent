@@ -80,9 +80,6 @@ async function expectPromptNativeOnly(page: Page): Promise<void> {
   await expect(promptPage).toHaveClass(/\bfy-feature-page\b/);
   await expect(promptPage).toHaveClass(/\bfy-prompts-page\b/);
   await expect(promptPage).toHaveAttribute("data-data-source", "native");
-  await expect(
-    page.getByRole("heading", { name: "提示词", level: 1 }),
-  ).toBeVisible();
   await expect(page.getByText("桌面能力不可用", { exact: true })).toBeVisible();
   await expect(
     page.getByText("提示词管理仅在 FyAgent 桌面应用中可用。", {
@@ -113,9 +110,6 @@ async function expectMemoryNativeOnly(
   await expect(memoryPage).toBeVisible();
   await expect(memoryPage).toHaveClass(/\bfy-feature-page\b/);
   await expect(memoryPage).toHaveClass(/\bfy-memory-page\b/);
-  await expect(
-    page.getByRole("heading", { name: "记忆", level: 1 }),
-  ).toBeVisible();
   await expect(
     page.getByText("需要 FyAgent 桌面应用", { exact: true }),
   ).toBeVisible();

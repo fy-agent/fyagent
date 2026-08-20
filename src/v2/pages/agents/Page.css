@@ -76,43 +76,6 @@
   line-height: 1.55;
 }
 
-.fy-agent-capabilities {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 9px;
-}
-
-.fy-agent-capability {
-  display: grid;
-  align-content: start;
-  gap: 7px;
-  min-width: 0;
-  padding: 11px 12px;
-  border: 1px solid var(--fy-border);
-  border-radius: 11px;
-  background: rgba(226, 243, 255, 0.05);
-}
-
-.fy-agent-capability-header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 7px;
-}
-
-.fy-agent-capability-header strong {
-  font-size: 12px;
-}
-
-.fy-agent-capability p {
-  margin: 0;
-  color: var(--fy-text-secondary);
-  font-size: 11px;
-  line-height: 1.55;
-  overflow-wrap: anywhere;
-}
-
 .fy-agent-observation {
   display: grid;
   gap: 10px;
@@ -316,10 +279,6 @@
   border-bottom: 1px solid var(--fy-border);
 }
 
-.fy-agent-unsupported .fy-agent-capabilities {
-  padding: 9px;
-}
-
 .fy-agent-hooks-editor,
 .fy-agent-hook-group,
 .fy-agent-hooks-preview,
@@ -410,7 +369,6 @@
 }
 
 @media (max-width: 520px) {
-  .fy-agent-capabilities,
   .fy-agent-observation-grid,
   .fy-codex-installer-versions {
     grid-template-columns: minmax(0, 1fr);

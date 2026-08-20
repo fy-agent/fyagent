@@ -357,12 +357,9 @@ export function McpPage() {
     <div
       className="fy-feature-page fy-split-page fy-mcp-page"
       data-testid="mcp-page"
+      aria-label="MCP"
     >
       <header className="fy-feature-header">
-        <div className="fy-feature-heading">
-          <h1>MCP</h1>
-          <p>管理 MCP 服务及其应用分配。</p>
-        </div>
         <div className="fy-feature-actions">
           <Button disabled={busy} onClick={() => void importExisting()}>
             导入现有

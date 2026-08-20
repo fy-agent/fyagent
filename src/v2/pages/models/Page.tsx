@@ -74,17 +74,14 @@ type WorkBuddySaveRequest = Parameters<
 
 const EMPTY_MODEL_IDS: readonly string[] = [];
 
-const TARGET_PRESENTATION: Record<
-  ModelTarget,
-  { label: string; summary: string }
-> = {
-  qoderwork: { label: "QoderWork CN", summary: "不支持第三方模型配置" },
-  trae: { label: "TRAE Work CN", summary: "需在 TRAE Work CN 中添加模型" },
-  workbuddy: { label: "WorkBuddy", summary: "管理模型设置" },
-  grokbuild: { label: "Grok Build", summary: "快速配置模型" },
-  codex: { label: "Codex", summary: "快速配置模型" },
-  claude: { label: "Claude Code", summary: "快速配置模型" },
-  opencode: { label: "OpenCode", summary: "管理模型设置" },
+const TARGET_LABELS: Record<ModelTarget, string> = {
+  qoderwork: "QoderWork CN",
+  trae: "TRAE Work CN",
+  workbuddy: "WorkBuddy",
+  grokbuild: "Grok Build",
+  codex: "Codex",
+  claude: "Claude Code",
+  opencode: "OpenCode",
 };
 
 const TARGET_ICON_IDS: Readonly<Record<ModelTarget, AgentIconId>> = {
@@ -1416,34 +1413,23 @@ export function ModelsPage() {
     <div
       className="fy-feature-page fy-split-page fy-catalog-page fy-models-page"
       data-testid="models-page"
-      aria-labelledby="fy-models-title"
+      aria-label="模型"
     >
-      <header className="fy-feature-header">
-        <div className="fy-feature-heading">
-          <h1 id="fy-models-title">模型快速配置</h1>
-          <p>选择一个应用，配置模型并保存设置。</p>
-        </div>
-      </header>
-
       <CatalogMasterDetail>
         <CatalogRail as="aside" ariaLabel="模型配置目标" title="选择应用">
           <CatalogList>
-            {targets.map((candidate) => {
-              const presentation = TARGET_PRESENTATION[candidate];
-              return (
-                <CatalogListItem
-                  key={candidate}
-                  asset={getAgentBrand(TARGET_ICON_IDS[candidate])}
-                  label={presentation.label}
-                  summary={presentation.summary}
-                  selected={candidate === target}
-                  testId={`model-target-${candidate}`}
-                  onSelect={() =>
-                    setSearchParams({ target: candidate }, { replace: true })
-                  }
-                />
-              );
-            })}
+            {targets.map((candidate) => (
+              <CatalogListItem
+                key={candidate}
+                asset={getAgentBrand(TARGET_ICON_IDS[candidate])}
+                label={TARGET_LABELS[candidate]}
+                selected={candidate === target}
+                testId={`model-target-${candidate}`}
+                onSelect={() =>
+                  setSearchParams({ target: candidate }, { replace: true })
+                }
+              />
+            ))}
           </CatalogList>
         </CatalogRail>
         <div className="fy-models-target-stack">

@@ -360,6 +360,5 @@ describe("FyAgent V2 primary page persistence", () => {
     );
     await user.click(screen.getByRole("link", { name: "MCP" }));
     expect(screen.getByTestId("mcp-page")).toBeVisible();
-    expect(screen.getByRole("heading", { name: "MCP" })).toBeVisible();
   });
 });

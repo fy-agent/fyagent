@@ -13,7 +13,6 @@ import type {
 } from "../../shared/features/types";
 import { AGENT_CATALOG_IDS } from "../../shared/features/types";
 import {
-  Badge,
   Button,
   EmptyState,
   InlineNotice,
@@ -31,20 +30,6 @@ import {
 
 import "./Page.css";
 
-const capabilityLabels: Readonly<Record<AgentCapabilityId, string>> = {
-  "product.open": "官方入口",
-  "app.detect": "应用识别",
-  "app.launch": "应用启动",
-  "skills.read": "查看 Skills",
-  "skills.write": "管理 Skills",
-  "hooks.read": "查看 Hooks",
-  "hooks.write": "管理 Hooks",
-  "models.validate": "检查模型连接",
-  "models.write": "管理模型设置",
-  "mcp.validate": "检查 MCP 配置",
-  "mcp.write": "管理 MCP 配置",
-};
-
 const MODEL_TARGET_BY_CATALOG_ID = Object.fromEntries(
   PRODUCT_DIRECTORY.map((entry) => [entry.agentId, entry.modelTarget]),
 ) as Readonly<
@@ -55,25 +40,6 @@ function capability(entry: AgentCatalogEntry, id: AgentCapabilityId) {
   return entry.capabilities.find((candidate) => candidate.id === id);
 }
 
-function CapabilityGrid({
-  capabilities,
-}: {
-  capabilities: AgentCatalogEntry["capabilities"];
-}) {
-  return (
-    <div className="fy-agent-capabilities">
-      {capabilities.map((item) => (
-        <article key={item.id} className="fy-agent-capability">
-          <div className="fy-agent-capability-header">
-            <strong>{capabilityLabels[item.id]}</strong>
-            <Badge tone="accent">支持</Badge>
-          </div>
-        </article>
-      ))}
-    </div>
-  );
-}
-
 function AgentDetail({ entry }: { entry: AgentCatalogEntry }) {
   const navigate = useNavigate();
   const modelTarget = MODEL_TARGET_BY_CATALOG_ID[entry.id];
@@ -82,11 +48,11 @@ function AgentDetail({ entry }: { entry: AgentCatalogEntry }) {
   const skillsRead = capability(entry, "skills.read");
   const skillsWrite = capability(entry, "skills.write");
   const mcpWrite = capability(entry, "mcp.write");
-  const supported = entry.capabilities.filter((item) => item.mode === "direct");
   const showModelsJump = modelWrite?.mode === "direct";
   const showSkillsJump =
     skillsRead?.mode === "direct" || skillsWrite?.mode === "direct";
   const showMcpJump = mcpWrite?.mode === "direct";
+  const showJumps = showModelsJump || showSkillsJump || showMcpJump;
 
   return (
     <CatalogDetail
@@ -99,7 +65,6 @@ function AgentDetail({ entry }: { entry: AgentCatalogEntry }) {
           <div className="fy-agent-identity-title">
             <h2>{entry.displayName}</h2>
           </div>
-          <p className="fy-feature-description">{entry.description}</p>
         </div>
         <CatalogOfficialLinks
           links={entry.officialLinks}
@@ -112,9 +77,9 @@ function AgentDetail({ entry }: { entry: AgentCatalogEntry }) {
 
       {entry.id === "codex" && <CodexDesktopInstallerPanel />}
 
-      <section className="fy-agent-section" aria-label="支持的功能">
-        <h3>支持的功能</h3>
-        {(showModelsJump || showSkillsJump || showMcpJump) && (
+      {showJumps ? (
+        <section className="fy-agent-section" aria-label="支持的功能">
+          <h3>支持的功能</h3>
           <div className="fy-agent-action-row">
             {showModelsJump && (
               <Button
@@ -131,9 +96,8 @@ function AgentDetail({ entry }: { entry: AgentCatalogEntry }) {
               <Button onClick={() => navigate("/mcp")}>打开 MCP</Button>
             )}
           </div>
-        )}
-        <CapabilityGrid capabilities={supported} />
-      </section>
+        </section>
+      ) : null}
     </CatalogDetail>
   );
 }
@@ -165,14 +129,8 @@ export function AgentsPage() {
     <div
       className="fy-feature-page fy-split-page fy-catalog-page fy-agents-page"
       data-testid="agents-page"
+      aria-label="Agent 目录"
     >
-      <header className="fy-feature-header">
-        <div className="fy-feature-heading">
-          <h1>Agent 目录</h1>
-          <p>查看各应用支持的功能和下一步操作。</p>
-        </div>
-      </header>
-
       {catalogQuery.error && catalogQuery.data !== undefined && (
         <InlineNotice tone="warning">
           暂时无法刷新应用信息，正在显示已加载内容。

@@ -62,9 +62,7 @@ test("Agent catalog keeps exact native order and accessible master-detail select
   const health = monitorPageHealth(page);
   await openV2Page(page, "/agents");
 
-  await expect(
-    page.getByRole("heading", { level: 1, name: "Agent 目录" }),
-  ).toBeVisible();
+  await expect(page.getByTestId("agents-page")).toBeVisible();
   const items = agentSelector(page).locator(".fy-catalog-list-item");
   await expect(items).toHaveCount(7);
   expect(
@@ -625,7 +623,8 @@ test("Models keeps seven targets and saves TRAE models natively", async ({
   ).toBeVisible();
 
   await page.getByTestId("model-target-qoderwork").click();
-  await expect(modelPage).toContainText("不支持第三方模型配置");
+  await expect(modelPage).toContainText("官方不支持第三方模型配置");
+  await expect(page.getByRole("button", { name: "管理 MCP" })).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "打开官方设置" }),
   ).toHaveCount(0);

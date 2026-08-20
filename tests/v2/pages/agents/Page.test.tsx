@@ -385,6 +385,9 @@ describe("V2 Agent directory", () => {
     expect(
       within(qoderDetail).getByRole("heading", { name: "支持的功能" }),
     ).toBeVisible();
+    expect(qoderDetail).not.toHaveTextContent("应用识别");
+    expect(qoderDetail).not.toHaveTextContent("查看 Skills");
+    expect(qoderDetail).not.toHaveTextContent("的目录说明");
     expect(qoderDetail).not.toHaveTextContent("应用状态");
     expect(qoderDetail).not.toHaveTextContent("配置概览");
     expect(qoderDetail).not.toHaveTextContent("不适用的功能");

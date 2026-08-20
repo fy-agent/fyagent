@@ -194,16 +194,8 @@ export function MemoryPage() {
     <div
       className="fy-feature-page fy-split-page fy-memory-page"
       data-testid="memory-page"
+      aria-label="记忆"
     >
-      <header className="fy-feature-header">
-        <div className="fy-feature-heading">
-          <h1>记忆</h1>
-          <p>
-            管理 OpenClaw 与 Hermes 的长期文件，以及 OpenClaw
-            的每日记录。点开后直接阅读正文。
-          </p>
-        </div>
-      </header>
       <FeatureTabs
         id="memory-type-tabs"
         label="记忆类型"

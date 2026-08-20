@@ -18,7 +18,7 @@ for (const route of ["/skills", "/mcp"] as const) {
     const health = monitorPageHealth(page);
     await openV2Page(page, route);
     await expectNoHorizontalOverflow(page);
-    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    await expect(page.getByTestId(`${route.slice(1)}-page`)).toBeVisible();
     await page.keyboard.press("Tab");
     await expect(page.locator(":focus")).toBeVisible();
     const viewportFits = await page
@@ -48,7 +48,7 @@ test("MCP editor stays inside the viewport", async ({ page }) => {
 for (const feature of [
   {
     route: "/skills",
-    heading: "Skills",
+    pageTestId: "skills-page",
     list: "已安装 Skills 列表",
     detail: "Skill 详情",
     switchSuffix: "Skill 分配",
@@ -56,7 +56,7 @@ for (const feature of [
   },
   {
     route: "/mcp",
-    heading: "MCP",
+    pageTestId: "mcp-page",
     list: "MCP 列表",
     detail: "MCP 详情",
     switchSuffix: "MCP 分配",
@@ -70,9 +70,7 @@ for (const feature of [
     const health = monitorPageHealth(page);
     await openV2Page(page, feature.route);
 
-    await expect(
-      page.getByRole("heading", { level: 1, name: feature.heading }),
-    ).toBeVisible();
+    await expect(page.getByTestId(feature.pageTestId)).toBeVisible();
     await expect(
       page.getByRole("region", { name: feature.list }),
     ).toBeVisible();

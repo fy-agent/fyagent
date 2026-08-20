@@ -547,12 +547,9 @@ export function PromptsPage() {
       className="fy-feature-page fy-split-page fy-catalog-page fy-prompts-page"
       data-testid="prompts-page"
       data-data-source="native"
+      aria-label="提示词"
     >
       <header className="fy-feature-header">
-        <div className="fy-feature-heading">
-          <h1>提示词</h1>
-          <p>按应用管理可启用的提示词。点开后直接阅读和编辑正文。</p>
-        </div>
         <div className="fy-feature-actions">
           <Button
             disabled={busy || nativeUnavailable}

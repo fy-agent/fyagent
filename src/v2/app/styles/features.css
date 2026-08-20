@@ -23,20 +23,13 @@
   gap: 12px;
   margin-bottom: 16px;
 }
-.fy-feature-heading h1 {
-  margin: 0;
-  font-size: 22px;
-  letter-spacing: -0.02em;
-}
-.fy-feature-heading p {
-  margin: 4px 0 0;
-  color: var(--fy-text-secondary);
-  font-size: 13px;
-}
 .fy-feature-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+.fy-feature-header > .fy-feature-actions {
+  margin-left: auto;
 }
 .fy-feature-toolbar {
   display: flex;

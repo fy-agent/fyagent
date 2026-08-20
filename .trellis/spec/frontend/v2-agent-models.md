@@ -22,8 +22,9 @@ its own capability workflow:
 - QoderWork CN, TRAE Work CN, WorkBuddy, and Grok Build each expose one
   catalog-owned product link; Claude Code exposes separate CLI and Desktop
   links; OpenCode exposes `product` then `cli`. Agent directory details render
-  only `mode === "direct"` capabilities and jumps to `/models`, `/skills`, or
-  `/mcp`. They do not mount application status, configuration overviews,
+  only `mode === "direct"` capability jumps to `/models`, `/skills`, or
+  `/mcp`. They do not render the capability-item grid, catalog `description`,
+  or a page-level title. They do not mount application status, configuration overviews,
   unsupported-capability lists, support counts, usage notes, Qoder Hooks
   editors, or MCP validation panels.
 - WorkBuddy and OpenCode each use a dedicated revision-checked
@@ -38,8 +39,8 @@ its own capability workflow:
   page mounts the dedicated `opencodeModels` port, never Provider quick setup
   or the Codex installer.
 - QoderWork CN `models.write` is `unsupported`: the Models page must state
-  不支持第三方模型配置 and must not mount a third-party model editor. It must
-  not render 「打开官方设置」. Keep 「管理 MCP」, which navigates to `/mcp`.
+  官方不支持第三方模型配置 and must not mount a third-party model editor. It must
+  not render 「打开官方设置」 or 「管理 MCP」.
   TRAE Models must not render 「打开 TRAE 官方模型设置」. TRAE `models.write`
   is `assisted` + `vendor_ui_required`: the Models page states that custom
   models must be added in TRAE Work CN and must not save into TRAE sqlite.
@@ -232,7 +233,8 @@ and a revision, never `ak` / `sk` / `apiKey`.
   frontend matrix. Agent details render only `mode === "direct"` capabilities
   and the matching jumps (`/models?target=` when `models.write` is `direct`,
   `/skills` when Skills read/write is `direct`, `/mcp` when `mcp.write` is
-  `direct`). They omit application status, configuration overviews,
+  `direct`). They omit the capability-item grid, catalog `description`,
+  application status, configuration overviews,
   unsupported lists, support counts, usage notes, Qoder Hooks editors, and
   MCP validation panels. Official catalog links render through
   `CatalogOfficialLinks`.
@@ -264,8 +266,8 @@ and a revision, never `ak` / `sk` / `apiKey`.
   `overflow: auto`), matching the catalog rail. The detail panel is at least
   the pane height and
   grows with its content so its chrome does not clip overflowing cards.
-  Both catalog pages share the feature-page inset: 20px page padding and
-  the 16px header-to-pane gap from `.fy-feature-header`. `.fy-catalog-page`
+  Both catalog pages share the feature-page inset: 20px page padding. Agent
+  and Models have no page-level `.fy-feature-header`. `.fy-catalog-page`
   sets `gap: 0`. Page CSS must not add another `gap` or `padding-top` on
   `.fy-agents-page` / `.fy-models-page`.
   A keyboard-accessible vertical separator resizes the
@@ -294,18 +296,17 @@ and a revision, never `ak` / `sk` / `apiKey`.
 - Agent directory does not lazy-read WorkBuddy status or Provider summaries.
   Those observations belong on the Models page. External runtime status still
   preserves `null` as unknown when a future launch control is added.
-- Qoder Hooks and Qoder/TRAE MCP validation remain native commands. The Agent
-  directory is not their host; Qoder Models jumps to `/mcp` instead of an
-  in-directory panel.
+-   Qoder Hooks and Qoder/TRAE MCP validation remain native commands. The Agent
+  directory is not their host; Qoder Models states 官方不支持第三方模型配置
+  and does not jump to `/mcp`.
 - Configuration actions navigate only with a known non-secret `target` query.
 
 ### Models target selection
 
 - The exact selector order is QoderWork CN, TRAE Work CN, WorkBuddy, Grok
   Build, Codex, Claude Code, OpenCode. Missing, empty, or unknown `target`
-  resolves to QoderWork CN. Side-rail summaries: Qoder 不支持第三方模型配置;
-  TRAE Work CN 需在 TRAE Work CN 中添加模型; Grok Build / Codex / Claude Code
-  快速配置模型; OpenCode 管理模型设置. Never 测试模型连接 or
+  resolves to QoderWork CN. Side-rail items show the catalog label only; do
+  not add a subtitle under the name. Never 测试模型连接 or
   在 OpenCode 中完成模型设置.
 - All seven selectors use the same reviewed local Agent asset map. No selector
   image is loaded from a remote URL.
@@ -476,7 +477,7 @@ fetch/save controls.
 | A non-Codex entry is selected                                                              | Do not read or subscribe to the Codex installer                                                         |
 | Native external open fails                                                                 | Show fixed controlled failure text; do not install or configure                                         |
 | QoderWork/TRAE selected                                                                    | Only catalog-declared and native-port capabilities are available; vendor-private writes remain unavailable |
-| Models Qoder/TRAE shows 「打开官方设置」 or 「打开 TRAE 官方模型设置」                      | Component test fails; keep 「管理 MCP」 → `/mcp`; TRAE stays guidance-only                               |
+| Models Qoder/TRAE shows 「打开官方设置」 or 「打开 TRAE 官方模型设置」                      | Component test fails; Qoder has no 「管理 MCP」; TRAE stays guidance-only                                 |
 | Native observation fails on Models                                                         | Show controlled unavailable/unknown; never infer absence                                                |
 | Runtime value is unknown                                                                   | Preserve `null`/`unverified`; never display "not installed"                                            |
 | Agent directory mounts Hooks editor, MCP validation, observation, or unsupported lists     | Page test fails; those surfaces stay off the Agent directory                                            |
@@ -502,8 +503,8 @@ fetch/save controls.
 ## 5. Good / Base / Bad Cases
 
 - Good: `/models` opens on QoderWork CN at the top, all seven local icons
-  render, Qoder states 不支持第三方模型配置, keeps 「管理 MCP」 to `/mcp`,
-  and does not render 「打开官方设置」. TRAE Models has no
+  render, Qoder states 官方不支持第三方模型配置, does not render 「管理 MCP」
+  or 「打开官方设置」. TRAE Models has no
   「打开 TRAE 官方模型设置」. Grok Build sits after WorkBuddy and uses
   Provider quick setup.
 - Good: OpenCode's Models panel lists existing sanitized provider/model IDs,
@@ -587,9 +588,12 @@ Required focused coverage includes:
   Secrets stay in component memory only. Immediate WorkBuddy
   existing-model delete after an unrecoverable-delete confirmation.
 - Models Qoder/TRAE details must not render 「打开官方设置」 or
-  「打开 TRAE 官方模型设置」; Qoder keeps 「管理 MCP」 to `/mcp`.
-  Agent directory tests prove only `direct` capabilities, shared official
-  primary buttons, and the absence of observation/Hooks/MCP panels.
+  「打开 TRAE 官方模型设置」; Qoder states 官方不支持第三方模型配置 and
+  has no 「管理 MCP」.
+  Agent directory tests prove only `direct` capability jumps, no capability-item
+  grid or catalog description, shared official
+  primary buttons, and the absence of observation/Hooks/MCP panels. Product
+  pages have no outer h1/subtitle.
 
 Browser tests prove renderer/IPC wiring only. Rust tests prove service/command
 contracts. Real Windows Tauri HIL and an isolated/reversible native mutation are
@@ -648,10 +652,11 @@ await ports.settings.openExternal(entry.officialLinks[0].url);
 ```
 
 Correct: official catalog links belong on the Agent directory. Models Qoder/TRAE
-panels must not clone those links as settings buttons.
+panels must not clone those links as settings buttons. Qoder Models has no MCP
+jump.
 
 ```ts
-<Button onClick={() => navigate("/mcp")}>管理 MCP</Button>
+<InlineNotice>官方不支持第三方模型配置</InlineNotice>
 ```
 
 Wrong: stack a Models page flex gap on top of the shared feature header
@@ -663,5 +668,6 @@ margin, so the catalog columns sit lower than Agent directory.
 }
 ```
 
-Correct: both catalog pages use only `.fy-feature-page` padding (20px) and
-`.fy-feature-header` margin-bottom (16px). `.fy-catalog-page` keeps `gap: 0`.
+Correct: both catalog pages use only `.fy-feature-page` padding (20px).
+Agent and Models omit the page-level `.fy-feature-header`. `.fy-catalog-page`
+keeps `gap: 0`.
