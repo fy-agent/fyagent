@@ -31,8 +31,10 @@ Platform acceptance is successful build and packaging on each matching native
 runner. Windows additionally requires strict unsigned/signing proof and the
 fresh formal sealing boundary before exact-asset verification. macOS
 additionally requires Developer ID signing, one Apple notarization of the
-signed DMG, a stapled DMG ticket, and a stapled ticket on the ZIP's app.
-The notarization helper submits the DMG once, then polls `notarytool info`
+signed DMG, a stapled DMG ticket, and a stapled ticket on the original app.
+The published macOS installer is that DMG, with `FyAgent.app` and an
+`Applications` symlink so Finder can drag-install. The notarization helper
+submits the DMG once, then polls `notarytool info`
 until Apple returns a terminal status, instead of treating a
 `notarytool wait` timeout as rejection. The
 Release workflow does not launch the setup

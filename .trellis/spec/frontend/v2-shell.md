@@ -199,7 +199,7 @@ The navigation source contains exactly these entries in this order:
 | `memory`  | `/memory`  | `记忆`       |
 
 - Use a hash data router. The index route and every unknown route redirect to
-  `/models`; the stable default URL is `#/models`.
+  `/agents`; the stable default URL is `#/agents`.
 - Derive selected state only from router location. The active link has
   `aria-current="page"`; do not maintain a second `currentView` state.
 - After a primary route is first visited, keep that page mounted for the rest of
@@ -370,7 +370,7 @@ Agent/Models, Skills, and MCP ports do not by themselves make it Release-ready.
 
 | Condition                                                              | Required result                                                                    |
 | ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| Empty hash, root route, or unknown route                               | Redirect to `#/models`; Models alone has `aria-current="page"`                     |
+| Empty hash, root route, or unknown route                               | Redirect to `#/agents`; Agent directory alone has `aria-current="page"`            |
 | A `layoutId` pill uses non-uniform scale with `backdrop-filter`            | Architecture test fails; overlay must spring `left`/`top`/`width`/`height` and must not animate `transform: scale` |
 | Changing the active option remounts the overlay or restarts from `{width:0}` | Unit test fails; the same overlay node must keep identity and retarget from current geometry |
 | First show or show-after-`hidden` collapses to the track origin (`inset`, `inset`) | Unit and architecture tests fail; appear must use `selectionLensCollapsedOrigin` of the active host |
@@ -378,7 +378,7 @@ Agent/Models, Skills, and MCP ports do not by themselves make it Release-ready.
 | UI Lab development route                                               | No primary link active; the lab may render one isolated lens specimen              |
 | SVG/backdrop filter unavailable                                        | CSS tint, edge, shadow, focus, and selected state remain readable                  |
 | React StrictMode or repeated ready calls                               | One native `frontend-deeplink-ready` emission per renderer lifetime                |
-| Production requests the UI Lab path                                    | Route is absent and wildcard fallback selects `#/models`                           |
+| Production requests the UI Lab path                                    | Route is absent and wildcard fallback selects `#/agents`                           |
 | Custom caption buttons or `setDecorations(false)` appear                | Unit, architecture, or browser negative assertion fails                            |
 | A drag region appears outside the V2 `TopBar` Overlay chrome            | Architecture test fails; browser preview still has no drag strip                   |
 | Drag strip is gated on userAgent instead of `detectRuntime()`           | Mac-host Playwright/jsdom can show a false strip; runtime tests must fail          |
@@ -407,7 +407,7 @@ Agent/Models, Skills, and MCP ports do not by themselves make it Release-ready.
   Agent directory renders its approved master/detail UI with its own catalog
   pill. Models, Skills, MCP, Prompts, and Memory render only their approved
   bounded feature surfaces.
-- **Base:** Opening without a route lands on `#/models`, with six links and
+- **Base:** Opening without a route lands on `#/agents`, with six links and
   three tools visible. Browser preview has no system or simulated controls.
 - **Fallback:** If refraction cannot render, the selected item remains visibly
   distinct through its CSS material, text, border, shadow, and focus ring.

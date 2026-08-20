@@ -239,7 +239,7 @@ sccache.
 | --------------- | -------------------------------- | ---------------------------------- |
 | Windows x64     | `windows-2025`, native `X64`     | x64 NSIS setup EXE                 |
 | Windows ARM64   | `windows-11-arm`, native `ARM64` | ARM64 NSIS setup EXE               |
-| macOS universal | `macos-15`, both Apple targets   | DMG and ZIP from one universal app |
+| macOS universal | `macos-15`, both Apple targets   | one UDZO DMG from the universal app |
 
 Each target verifies documented `runner.os`/`runner.arch`, the requested
 runner label, source HEAD, Node 24.19.0, pnpm 10.12.3, and Rust 1.97.1. There is
@@ -293,16 +293,23 @@ unavailability blocks acceptance.
   `notarytool info` until `Accepted` / `Invalid` or a multi-hour budget;
   `notarytool wait --timeout` is not used because it exits 124 with JSON on
   stderr while Apple may still be In Progress. After Apple accepts that one
-  submission, it staples the DMG and the original app from the same ticket,
-  then zips the stapled app. It does not notarize an app zip as a second serial
+  submission, it staples the DMG and the original app from the same ticket.
+  It does not emit a ZIP or notarize an app zip as a second serial
   wait. The `build-macos` job sets `timeout-minutes: 360` so the poll can use
   the GitHub-hosted maximum. Strict deep verification must
   report the exact identity, `runtime` flags, a timestamp, and sealed
-  resources. The ZIP app and the DMG container must carry stapled tickets. The
+  resources. The published DMG container must carry a stapled ticket. The
+  workflow also staples the original app for ticket proof. The
   app copy inside the already-built DMG is the pre-staple Developer ID binary
   and is checked for signature identity, not a nested ticket. An ad-hoc
   signature, missing team, missing timestamp, or missing required ticket is
   rejected;
+- the DMG source folder contains `FyAgent.app` and a symlink named
+  `Applications` whose target is `/Applications`. After `hdiutil attach`, the
+  workflow requires that symlink (`-L` and `readlink` equals `/Applications`)
+  plus the signed app. The volume stays UDZO/read-only; Finder drag-install
+  uses the in-image Applications alias. No `FyAgent-X.Y.Z-macOS.zip` is
+  produced;
 - DMG creation removes its explicit output before the first attempt and after
   every failed attempt. DMG verification preserves the completed input across
   attempts. Both operations retry the same arguments only when the captured
@@ -315,16 +322,16 @@ unavailability blocks acceptance.
 
 ## 7. Assets, metadata, signing disclosure, and attestation
 
-The installer allowlist contains exactly four versioned files:
+The installer allowlist contains exactly three versioned files:
 
 ```text
 FyAgent-X.Y.Z-macOS.dmg
-FyAgent-X.Y.Z-macOS.zip
 FyAgent-X.Y.Z-Windows-x64-setup.exe
 FyAgent-X.Y.Z-Windows-arm64-setup.exe
 ```
 
-Any Windows format other than the two NSIS setup executables, plus v-prefixed
+Any Windows format other than the two NSIS setup executables, any macOS
+format other than the versioned DMG, plus v-prefixed
 filenames, unversioned names, architecture aliases, missing files, extras,
 directories, symlinks, empty files, or overwrites is forbidden.
 
@@ -348,10 +355,10 @@ are not Authenticode signed and still list SHA-256, source SHA, and
 attestation. Signed mode reports the verified public certificate policy; no
 credential or adapter secret is included.
 
-Attestation subjects are the four installers plus `download-manifest.json`,
-`build-metadata.json`, and `signing-status.json` (seven subjects). The
+Attestation subjects are the three installers plus `download-manifest.json`,
+`build-metadata.json`, and `signing-status.json` (six subjects). The
 Sigstore bundle is copied to `artifact-attestation.sigstore.json`; it is the
-eighth Release attachment and does not attest itself.
+seventh Release attachment and does not attest itself.
 
 ## 8. Permissions and publication transaction
 
@@ -372,7 +379,7 @@ The publish job has an explicit formal tag-push condition; dispatch evaluates
 to false. It performs this transaction:
 
 1. re-evaluate live remote eligibility against the frozen identity;
-2. require the exact eight attachments and dynamic English notes file
+2. require the exact seven attachments and dynamic English notes file
    `docs/release-notes/${RELEASE_TAG}-en.md`;
 3. generate the signing disclosure from verified metadata;
 4. list all Releases, including drafts, and refuse any existing release with
@@ -419,7 +426,7 @@ never called private or successful.
 | Apple status is still non-terminal after `FYAGENT_NOTARY_WAIT_SECONDS` (default 18000)                 | Fail with the submission id and last status; do not start a second Apple upload. |
 | Windows proof/sealed binding or macOS identity fails                                                                                    | Stop aggregation and publication.                            |
 | An intentional producer skip propagates past successful asset verification                                                              | Attestation still runs; abnormal direct needs fail visibly.  |
-| Four/seven/eight file allowlist or digest differs                                                                                       | Stop verification, attestation, or publication.              |
+| Three/six/seven file allowlist or digest differs                                                                                      | Stop verification, attestation, or publication.              |
 | Live main identity changes during the transaction                                                                                       | Continue; tag target SHA remains the frozen source.          |
 | A draft/published Release already exists                                                                                                | Refuse update, replacement, or deletion.                     |
 | Upload/re-download/pre-PATCH verification fails                                                                                         | Leave draft untouched and report it.                         |
@@ -438,8 +445,9 @@ dispatch publication, both preflight/formal tail-job truth tables, mutation of
 explicit status conditions or direct-need assertions, asset loss/extra, signer
 policy, transaction failure, a single `notarytool submit`, `notarytool info`
 polling, no `xcrun notarytool wait` invocation, `notarytool log` on a denied
-submission, `FYAGENT_NOTARY_WAIT_SECONDS`, and `build-macos`
-`timeout-minutes: 360`.
+submission, `FYAGENT_NOTARY_WAIT_SECONDS`, `build-macos`
+`timeout-minutes: 360`, the Applications symlink inside the DMG, and the
+absence of a macOS ZIP installer.
 
 Local execution cannot establish another platform's PowerShell/NSIS/
 Authenticode, native build/package output, macOS bundle, GitHub attestation, or
@@ -491,8 +499,8 @@ lightweight tags are both valid. Missing exact-source push CI is not a gate.
 Operators may force-update `vX.Y.Z` only when no GitHub Release exists.
 Cache `~/.cargo/registry` and `~/.cargo/git` from `Cargo.lock`. Submit the
 signed DMG once without `--wait`, poll `notarytool info` on that submission
-id until `Accepted` / `Invalid` or the wait budget, then staple the app from
-that ticket.
+id until `Accepted` / `Invalid` or the wait budget, then staple the DMG and
+the original app from that ticket. Do not emit a ZIP.
 
 ## Scenario: Single DMG notarization poll
 
@@ -531,11 +539,11 @@ that ticket.
 - `Invalid` / `Rejected` -> print `notarytool log`, fail, do not staple.
 - Non-terminal after wait budget -> fail with id and last status; do not
   upload a second Apple job.
-- `Accepted` -> staple DMG and app; ZIP is built from the stapled app.
+- `Accepted` -> staple DMG and the original app; do not emit a ZIP.
 
 ### 5. Good / Base / Bad Cases
-- Good: `info` returns `Accepted` inside the budget; DMG and ZIP app have
-  stapled tickets.
+- Good: `info` returns `Accepted` inside the budget; the DMG has a stapled
+  ticket and the original app is stapled from the same ticket.
 - Base: `info` stays `In Progress` for more than 60 minutes, then `Accepted`;
   the same submission id is reused.
 - Bad: two serial Apple uploads; `wait --timeout 1800` twice; treating 124 as
@@ -547,7 +555,8 @@ that ticket.
   presence of `notarytool info` and `notarytool log`, no `xcrun notarytool wait`
   invocation, `FYAGENT_NOTARY_WAIT_SECONDS`,
   `scripts/release/macos-developer-id.sh notarize-dmg`,
-  `staple-app`, and `timeout-minutes: 360` on `build-macos`.
+  `staple-app`, `timeout-minutes: 360` on `build-macos`, the DMG Applications
+  symlink, and the absence of `macOS.zip`.
 - Local tests do not call Apple; a successful unit run is not notarization
   evidence.
 

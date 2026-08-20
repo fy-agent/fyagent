@@ -96,7 +96,7 @@ FyAgent 的工作数据默认保存在本机 `~/.fyagent`。配置更新使用 S
 
 发布文件名如下：
 
-- macOS：`FyAgent-X.Y.Z-macOS.dmg`、`FyAgent-X.Y.Z-macOS.zip`
+- macOS：`FyAgent-X.Y.Z-macOS.dmg`
 - Windows：`FyAgent-X.Y.Z-Windows-x64-setup.exe`、`FyAgent-X.Y.Z-Windows-arm64-setup.exe`
 
 Windows 当前只提供 NSIS 安装程序，不提供 MSI 或便携 ZIP。macOS 构建使用 Apple Developer ID 签名，并经过 Apple 公证。

@@ -1204,26 +1204,25 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p release-assets
-          zip_path="release-assets/FyAgent-${APP_VERSION}-macOS.zip"
           dmg_path="release-assets/FyAgent-${APP_VERSION}-macOS.dmg"
           stage="$RUNNER_TEMP/fyagent-dmg-stage"
           mount_point="$RUNNER_TEMP/fyagent-dmg-mount"
-          unzip_root="$RUNNER_TEMP/fyagent-zip-verify"
-          rm -rf "$stage" "$mount_point" "$unzip_root"
-          mkdir -p "$stage" "$mount_point" "$unzip_root"
+          rm -rf "$stage" "$mount_point"
+          mkdir -p "$stage" "$mount_point"
           mounted=false
           cleanup() {
             status=$?
             trap - EXIT
             set +e
             if [ "$mounted" = true ]; then hdiutil detach "$mount_point"; fi
-            rm -rf "$stage" "$mount_point" "$unzip_root"
+            rm -rf "$stage" "$mount_point"
             exit "$status"
           }
           trap cleanup EXIT
 
           source_digest="$(shasum -a 256 "$APP_PATH/Contents/MacOS/$APP_EXECUTABLE" | awk '{print $1}')"
           ditto "$APP_PATH" "$stage/FyAgent.app"
+          ln -s /Applications "$stage/Applications"
           scripts/release/retry-hdiutil.sh \
             "$dmg_path" \
             -- \
@@ -1235,18 +1234,14 @@ jobs:
           scripts/release/macos-developer-id.sh sign-dmg "$dmg_path"
           scripts/release/macos-developer-id.sh notarize-dmg "$dmg_path"
           scripts/release/macos-developer-id.sh staple-app "$APP_PATH"
+          scripts/release/verify-macos-signed-app.sh "$APP_PATH"
           scripts/release/verify-macos-signed-dmg.sh "$dmg_path"
-
-          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$zip_path"
-          ditto -x -k "$zip_path" "$unzip_root"
-          [ -d "$unzip_root/FyAgent.app" ]
-          [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$unzip_root/FyAgent.app/Contents/Info.plist")" = "$APP_VERSION" ]
-          [ "$(shasum -a 256 "$unzip_root/FyAgent.app/Contents/MacOS/$APP_EXECUTABLE" | awk '{print $1}')" = "$source_digest" ]
-          scripts/release/verify-macos-signed-app.sh "$unzip_root/FyAgent.app"
 
           mounted=true
           hdiutil attach "$dmg_path" -readonly -nobrowse -noautoopen -mountpoint "$mount_point"
           [ -d "$mount_point/FyAgent.app" ]
+          [ -L "$mount_point/Applications" ]
+          [ "$(readlink "$mount_point/Applications")" = "/Applications" ]
           [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$mount_point/FyAgent.app/Contents/Info.plist")" = "$APP_VERSION" ]
           [ "$(shasum -a 256 "$mount_point/FyAgent.app/Contents/MacOS/$APP_EXECUTABLE" | awk '{print $1}')" = "$source_digest" ]
           scripts/release/verify-macos-signed-app.sh --signature-only "$mount_point/FyAgent.app"
@@ -1417,7 +1412,7 @@ jobs:
           pattern: signing-*
           path: downloaded-signing
 
-      - name: Verify exact four and generate three machine-readable subjects
+      - name: Verify exact three installers and generate three machine-readable subjects
         shell: bash
         run: |
           set -euo pipefail
@@ -1452,7 +1447,7 @@ jobs:
             verified-subjects/build-metadata.json
           node scripts/release/verify-release-files.mjs subjects verified-subjects "$APP_VERSION"
 
-      - name: Upload the exact seven attestation subjects
+      - name: Upload the exact six attestation subjects
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: verified-attestation-subjects
@@ -1461,7 +1456,7 @@ jobs:
           retention-days: 7
 
   attest:
-    name: Attest four installers and three evidence files
+    name: Attest three installers and three evidence files
     if: ${{ !cancelled() }}
     needs: [eligibility, verify-assets]
     runs-on: macos-15
@@ -1502,7 +1497,7 @@ jobs:
           name: verified-attestation-subjects
           path: verified-subjects
 
-      - name: Recheck the exact seven subjects
+      - name: Recheck the exact six subjects
         run: node scripts/release/verify-release-files.mjs subjects verified-subjects "$APP_VERSION"
 
       - name: Generate mandatory GitHub artifact attestation
@@ -1511,7 +1506,7 @@ jobs:
         with:
           subject-path: verified-subjects/*
 
-      - name: Assemble and verify exact eight Release attachments
+      - name: Assemble and verify exact seven Release attachments
         shell: bash
         env:
           BUNDLE_PATH: ${{ steps.attest.outputs.bundle-path }}
@@ -1795,9 +1790,9 @@ jobs:
             "$api_root/repos/$repository/releases/$draft_id/assets?per_page=100")"
           [ "$assets_status" = 200 ]
           jq -e '
-            length == 8 and
-            (map(.id) | unique | length) == 8 and
-            (map(.name) | unique | length) == 8 and
+            length == 7 and
+            (map(.id) | unique | length) == 7 and
+            (map(.name) | unique | length) == 7 and
             all(.state == "uploaded" and .size > 0)
           ' "$assets_json" >/dev/null
 
@@ -1866,7 +1861,7 @@ jobs:
             '.id == $id and .draft == false and .prerelease == false and
              .tag_name == $tag and
              .name == ("FyAgent " + $tag) and .body == $body and
-             (.published_at | type) == "string" and (.assets | length) == 8' \
+             (.published_at | type) == "string" and (.assets | length) == 7' \
             "$published_json" >/dev/null
 
           published_confirm_json="$transaction_root/published-confirmed.json"

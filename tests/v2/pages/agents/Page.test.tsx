@@ -388,6 +388,8 @@ describe("V2 Agent directory", () => {
     expect(
       within(qoderDetail).getByRole("region", { name: "产品介绍" }),
     ).toHaveTextContent("QoderWork CN 是阿里云");
+    expect(qoderDetail).not.toHaveTextContent("FyAgent");
+    expect(qoderDetail).not.toHaveTextContent("Hooks");
     expect(qoderDetail).not.toHaveTextContent("应用识别");
     expect(qoderDetail).not.toHaveTextContent("查看 Skills");
     expect(qoderDetail).not.toHaveTextContent("的目录说明");
@@ -434,6 +436,7 @@ describe("V2 Agent directory", () => {
     expect(
       within(codexDetail).queryByRole("region", { name: "产品介绍" }),
     ).not.toBeInTheDocument();
+    expect(codexDetail).not.toHaveTextContent("FyAgent");
     expect(codexDetail).not.toHaveTextContent("不适用的功能");
     expect(codexDetail).not.toHaveTextContent("项支持");
   });

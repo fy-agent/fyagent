@@ -207,13 +207,12 @@ describe("release asset and metadata contract", () => {
     ]);
   });
 
-  it("freezes four installers, seven subjects, and eight attachments", () => {
+  it("freezes three installers, six subjects, and seven attachments", () => {
     const installers = expectedInstallerNames("0.3.0");
     expect(PREFLIGHT_BRANCH).toBe("dev/laiyongjie");
     expect(RELEASE_BRANCH).toBe("main");
     expect(installers).toEqual([
       "FyAgent-0.3.0-macOS.dmg",
-      "FyAgent-0.3.0-macOS.zip",
       "FyAgent-0.3.0-Windows-x64-setup.exe",
       "FyAgent-0.3.0-Windows-arm64-setup.exe",
     ]);
@@ -223,12 +222,12 @@ describe("release asset and metadata contract", () => {
       BUILD_METADATA_NAME,
       WINDOWS_SIGNING_STATUS_NAME,
     ]);
-    expect(expectedAttestationSubjectNames("0.3.0")).toHaveLength(7);
+    expect(expectedAttestationSubjectNames("0.3.0")).toHaveLength(6);
     expect(expectedReleaseAttachmentNames("0.3.0")).toEqual([
       ...expectedAttestationSubjectNames("0.3.0"),
       ATTESTATION_BUNDLE_NAME,
     ]);
-    expect(expectedReleaseAttachmentNames("0.3.0")).toHaveLength(8);
+    expect(expectedReleaseAttachmentNames("0.3.0")).toHaveLength(7);
   });
 
   it("fails closed when a canonical version cannot fit NSIS fixed-file fields", () => {
@@ -469,7 +468,7 @@ describe("release asset and metadata contract", () => {
     });
     expect(metadata.version).toBe("12.34.56");
     expect(metadata.tag).toBe("v12.34.56");
-    expect(expectedInstallerNames(metadata.version)).toHaveLength(4);
+    expect(expectedInstallerNames(metadata.version)).toHaveLength(3);
   });
 
   it.each([
@@ -592,7 +591,7 @@ describe("release asset and metadata contract", () => {
     ).toThrow(error);
   });
 
-  it("assembles exactly eight attachments and verifies re-downloaded bytes", async () => {
+  it("assembles exactly seven attachments and verifies re-downloaded bytes", async () => {
     const root = temporaryDirectory();
     const subjects = path.join(root, "subjects");
     const attachments = path.join(root, "attachments");
@@ -614,7 +613,7 @@ describe("release asset and metadata contract", () => {
     expect(described.map(({ name }) => name)).toEqual(
       expectedReleaseAttachmentNames("0.3.0"),
     );
-    expect(described).toHaveLength(8);
+    expect(described).toHaveLength(7);
 
     for (const name of expectedReleaseAttachmentNames("0.3.0")) {
       copyFileSync(path.join(attachments, name), path.join(downloaded, name));
@@ -625,7 +624,7 @@ describe("release asset and metadata contract", () => {
         downloadedDirectory: downloaded,
         version: "0.3.0",
       }),
-    ).resolves.toHaveLength(8);
+    ).resolves.toHaveLength(7);
 
     writeFileSync(
       path.join(downloaded, expectedInstallerNames("0.3.0")[0]),

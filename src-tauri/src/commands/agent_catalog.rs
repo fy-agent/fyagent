@@ -7,7 +7,7 @@ use crate::services::external_agents::{
 };
 
 const AGENT_CATALOG_CONTRACT_VERSION: u16 = 4;
-const AGENT_CATALOG_REVIEWED_AT: &str = "2026-08-20";
+const AGENT_CATALOG_REVIEWED_AT: &str = "2026-08-21";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -652,7 +652,7 @@ const AGENT_CATALOG: [AgentCatalogEntry; 7] = [
         variant_id: AgentVariantId::QoderWorkCn,
         display_name: "QoderWork CN",
         description:
-            "支持 Skills 同步、Hooks 配置与 MCP 直接分配；不支持第三方模型配置。本机识别和启动暂无法确认。",
+            "支持 Skills 同步与 MCP 直接分配；不支持第三方模型配置。本机识别和启动暂无法确认。",
         official_links: &QODERWORK_OFFICIAL_LINKS,
         capabilities: &QODERWORK_CAPABILITIES,
     },
@@ -771,7 +771,7 @@ mod tests {
         let catalog = get_agent_catalog();
 
         assert_eq!(catalog.contract_version, 4);
-        assert_eq!(catalog.reviewed_at, "2026-08-20");
+        assert_eq!(catalog.reviewed_at, "2026-08-21");
         assert_eq!(
             catalog
                 .agents
@@ -1009,6 +1009,10 @@ mod tests {
         assert_eq!(trae.official_links[0].url, "https://www.trae.cn/sem-work");
         assert!(qoder.description.contains("不支持第三方模型配置"));
         assert!(qoder.description.contains("MCP 直接分配"));
+        assert!(
+            !qoder.description.contains("Hooks") && !qoder.description.contains("hooks"),
+            "QoderWork CN description must not mention Hooks"
+        );
         assert!(trae.description.contains("MCP 直接分配"));
         assert!(trae
             .description
@@ -1083,7 +1087,7 @@ mod tests {
         let value = serde_json::to_value(get_agent_catalog()).expect("catalog serializes");
 
         assert_eq!(value["contractVersion"], 4);
-        assert_eq!(value["reviewedAt"], "2026-08-20");
+        assert_eq!(value["reviewedAt"], "2026-08-21");
         assert_eq!(
             sorted_object_keys(&value),
             ["agents", "contractVersion", "reviewedAt"]

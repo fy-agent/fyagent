@@ -50,7 +50,7 @@ test("keeps the complete shell visible, separate, and overflow-free", async ({
   page,
 }) => {
   const health = monitorPageHealth(page);
-  await openV2Page(page, "/models");
+  await openV2Page(page, "/agents");
 
   await expectNoHorizontalOverflow(page);
 
@@ -152,7 +152,7 @@ test("keeps hash, selected link, and aria-current aligned for every route", asyn
   page,
 }) => {
   const health = monitorPageHealth(page);
-  await openV2Page(page, "/models");
+  await openV2Page(page, "/agents");
 
   const navigation = page.getByRole("navigation", { name: "主导航" });
   for (const { path, label } of navigationContract) {
@@ -212,7 +212,7 @@ test("reaches every primary control with the keyboard in document order", async 
   page,
 }) => {
   const health = monitorPageHealth(page);
-  await openV2Page(page, "/models");
+  await openV2Page(page, "/agents");
 
   expect(
     await page

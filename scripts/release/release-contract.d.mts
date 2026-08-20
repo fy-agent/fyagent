@@ -10,7 +10,7 @@ export type GitHubRunnerArch = "X86" | "X64" | "ARM" | "ARM64";
 export interface InstallerRule {
   readonly suffix: string;
   readonly platform: ReleasePlatform;
-  readonly kind: "dmg" | "zip" | "exe";
+  readonly kind: "dmg" | "exe";
   readonly architecture: ReleaseArchitecture;
 }
 
