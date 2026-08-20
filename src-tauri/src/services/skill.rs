@@ -572,6 +572,14 @@ struct VendorObjectIdentity {
     changed_at: u64,
 }
 
+impl VendorObjectIdentity {
+    /// Volume + inode only. Adding children updates directory mtime; that is
+    /// not a directory swap and must not fail vendor copy/remove.
+    fn same_object(self, other: Self) -> bool {
+        self.volume == other.volume && self.file_id == other.file_id
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct VendorTreeEntry {
     relative: PathBuf,
@@ -1275,7 +1283,11 @@ impl SkillService {
         db.save_skill(&installed_skill)?;
 
         // 同步到当前应用目录
-        Self::sync_to_app_dir(&install_name, current_app)?;
+        if let Err(err) = Self::sync_to_app_dir(&install_name, current_app) {
+            let _ = db.delete_skill(&installed_skill.id);
+            let _ = fs::remove_dir_all(&dest);
+            return Err(err);
+        }
 
         log::info!(
             "Skill {} 安装成功，已启用 {:?}",
@@ -2416,7 +2428,7 @@ impl SkillService {
             if !before.has_same_content(&copied) {
                 return Err(anyhow!("Vendor Skill 临时副本校验失败"));
             }
-            if vendor_open_directory(&parent)?.1 != parent_before {
+            if !vendor_open_directory(&parent)?.1.same_object(parent_before) {
                 return Err(anyhow!("Vendor Skill 目标目录在复制期间发生变化"));
             }
 
@@ -2429,7 +2441,7 @@ impl SkillService {
                 Err(error) => return Err(error.into()),
             };
             if let Some(identity) = existing {
-                if vendor_open_directory(dest)?.1 != identity {
+                if !vendor_open_directory(dest)?.1.same_object(identity) {
                     return Err(anyhow!("Vendor Skill 目标目录 identity 漂移"));
                 }
                 fs::rename(dest, &backup)
@@ -2513,7 +2525,7 @@ impl SkillService {
             held.push((current.clone(), handle, identity));
         }
         for (path, _handle, identity) in held {
-            if vendor_open_directory(&path)?.1 != identity {
+            if !vendor_open_directory(&path)?.1.same_object(identity) {
                 return Err(anyhow!("Vendor Skill 目标祖先 identity 漂移"));
             }
         }
@@ -2567,7 +2579,7 @@ impl SkillService {
             for entry in entries {
                 Self::scan_vendor_tree_recursive(root, &entry.path(), depth + 1, snapshot)?;
             }
-            if vendor_open_directory(current)?.1 != identity {
+            if !vendor_open_directory(current)?.1.same_object(identity) {
                 return Err(anyhow!("Vendor Skill 目录 identity 漂移"));
             }
             return Ok(());
@@ -2613,7 +2625,7 @@ impl SkillService {
             match entry.kind {
                 VendorTreeEntryKind::Directory => {
                     let (_, identity) = vendor_open_directory(&source_path)?;
-                    if identity != entry.identity {
+                    if !identity.same_object(entry.identity) {
                         return Err(anyhow!("Vendor Skill 源目录在复制前发生变化"));
                     }
                     fs::create_dir(&dest_path).with_context(|| {
@@ -2642,7 +2654,7 @@ impl SkillService {
         };
         vendor_validate_directory_metadata(&metadata)?;
         let (_, identity) = vendor_open_directory(path)?;
-        if vendor_open_directory(path)?.1 != identity {
+        if !vendor_open_directory(path)?.1.same_object(identity) {
             return Err(anyhow!("Vendor Skill 删除目标 identity 漂移"));
         }
         fs::remove_dir_all(path)
@@ -2657,7 +2669,7 @@ impl SkillService {
             Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
             Err(error) => return Err(error.into()),
         }
-        if vendor_open_directory(&parent)?.1 != parent_identity {
+        if !vendor_open_directory(&parent)?.1.same_object(parent_identity) {
             return Err(anyhow!("Vendor Skill 目标祖先 identity 漂移"));
         }
         Self::remove_vendor_tree(dest)
@@ -4078,7 +4090,11 @@ impl SkillService {
             db.save_skill(&skill)?;
 
             // 同步到当前应用目录
-            Self::sync_to_app_dir(&install_name, current_app)?;
+            if let Err(err) = Self::sync_to_app_dir(&install_name, current_app) {
+                let _ = db.delete_skill(&skill.id);
+                let _ = fs::remove_dir_all(&dest);
+                return Err(err);
+            }
 
             log::info!(
                 "Skill {} installed from ZIP, enabled for {:?}",
@@ -5786,6 +5802,30 @@ mod tests {
 
     #[test]
     #[serial_test::serial]
+    fn vendor_copy_succeeds_when_parent_mtime_changes_from_temp_dir() {
+        let source_root = tempdir().expect("source temp");
+        let trusted_home = tempdir().expect("home temp");
+        let source = source_root.path().join("humanizer");
+        write_skill(&source, "humanizer");
+        let dest = trusted_home
+            .path()
+            .join(".workbuddy")
+            .join("skills")
+            .join("humanizer");
+
+        SkillService::replace_vendor_dest_with_copy_inner(
+            &source,
+            &dest,
+            "humanizer",
+            trusted_home.path(),
+            || Ok(()),
+        )
+        .expect("creating vendor tmp must not treat parent mtime as directory swap");
+        assert!(dest.join("SKILL.md").is_file());
+    }
+
+    #[test]
+    #[serial_test::serial]
     fn vendor_scanner_rejects_symlink_entries() {
         let temp = tempdir().expect("vendor temp");
         let source = temp.path().join("skill");
@@ -6025,6 +6065,55 @@ mod tests {
             .join("qqmusic")
             .join("SKILL.md")
             .is_file());
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn toggle_copy_only_workbuddy_then_unassign_removes_dest() {
+        let temp = tempdir().expect("tempdir");
+        let _guard = TestHomeGuard::set(temp.path());
+        let db = Arc::new(Database::memory().expect("memory db"));
+        write_skill(
+            &SkillService::get_ssot_dir().expect("ssot").join("humanizer"),
+            "humanizer",
+        );
+        db.save_skill(&poisoned_skill(
+            "skillhub:unclecheng-reduce-ai-perception-v2",
+            "humanizer",
+        ))
+        .expect("seed skill");
+
+        SkillService::toggle_target(
+            &db,
+            "skillhub:unclecheng-reduce-ai-perception-v2",
+            &SkillTargetId::WorkBuddy,
+            true,
+        )
+        .expect("assign workbuddy");
+        let dest = SkillService::get_target_skills_dir(&SkillTargetId::WorkBuddy)
+            .expect("workbuddy dir")
+            .join("humanizer");
+        assert!(
+            dest.join("SKILL.md").is_file(),
+            "WorkBuddy copy-only dest must exist after assign"
+        );
+
+        SkillService::toggle_target(
+            &db,
+            "skillhub:unclecheng-reduce-ai-perception-v2",
+            &SkillTargetId::WorkBuddy,
+            false,
+        )
+        .expect("unassign workbuddy");
+        assert!(
+            !dest.exists(),
+            "WorkBuddy dest must be removed after unassign"
+        );
+        let stored = db
+            .get_installed_skill("skillhub:unclecheng-reduce-ai-perception-v2")
+            .expect("db")
+            .expect("row");
+        assert!(!stored.apps.workbuddy);
     }
 
     #[test]
