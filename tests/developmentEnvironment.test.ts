@@ -172,12 +172,16 @@ describe("mise and uv development environment", () => {
         "requires-python": string;
         dependencies: unknown[];
       };
-      "dependency-groups": { dev: unknown[] };
+      "dependency-groups": {
+        dev: unknown[];
+        "dmg-layout": unknown[];
+      };
       tool: {
         uv: {
           package: boolean;
           "python-preference": string;
           "python-downloads": string;
+          "default-groups": string[];
         };
       };
     };
@@ -188,11 +192,15 @@ describe("mise and uv development environment", () => {
       "requires-python": ">=3.14,<3.15",
       dependencies: [],
     });
-    expect(project["dependency-groups"].dev).toEqual([]);
+    expect(project["dependency-groups"]).toEqual({
+      dev: [],
+      "dmg-layout": ["ds-store==1.3.3"],
+    });
     expect(project.tool.uv).toEqual({
       package: false,
       "python-preference": "only-managed",
       "python-downloads": "automatic",
+      "default-groups": ["dev"],
     });
     expect(read("uv.lock")).toContain('requires-python = "==3.14.*"');
 

@@ -241,6 +241,36 @@ describe("hdiutil Resource busy retry", () => {
     expect(fs.existsSync(fixture.outputPath)).toBe(false);
   });
 
+  it("removes a partial convert destination after Resource busy", () => {
+    const fixture = createFixture();
+    const args = [
+      "convert",
+      "/tmp/source.dmg",
+      "-format",
+      "UDZO",
+      "-ov",
+      fixture.outputPath,
+    ];
+
+    const result = fixture.run(1, "succeed", args);
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(fixture.calls()).toEqual([args, args]);
+    expect(fixture.sleeps()).toEqual(["2"]);
+    expect(fs.existsSync(fixture.outputPath)).toBe(true);
+  });
+
+  it("rejects operations other than create, convert, or verify", () => {
+    const fixture = createFixture();
+    const result = fixture.run(0, "succeed", ["attach", fixture.outputPath]);
+
+    expect(result.status, result.stderr).toBe(2);
+    expect(result.stderr).toContain(
+      "retry-hdiutil.sh supports only hdiutil create, convert, or verify",
+    );
+    expect(fixture.calls()).toEqual([]);
+  });
+
   it("preserves every hdiutil argument without shell re-parsing", () => {
     const fixture = createFixture();
     const args = [

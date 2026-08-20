@@ -72,7 +72,12 @@ src-tauri/icons/tray/macos/statusbar_template_3x.png 3x template
   artwork, screenshots, the established FyAgent `identifier`, deep-link
   schemes, data directories, internal package names, or `LICENSE` as part of a
   future icon-only update. The 2026 clean-break rename is an application
-  identity change, not an icon-generation rule.
+  identity change, not an icon-generation rule. The DMG background is owned by
+  the macOS installer packaging path: generate it with
+  `node scripts/release/render-dmg-background.mjs --apply`, keep it
+  byte-stable at 1320×800 RGB with `pHYs` 144 DPI, and update
+  `scripts/tasks/supported-platform-raster-assets.json` in the same change.
+  `assets:icons` must still leave that path untouched.
 
 ## 4. Validation & Error Matrix
 
@@ -99,7 +104,8 @@ src-tauri/icons/tray/macos/statusbar_template_3x.png 3x template
 - Base: a future approved vector revision updates the audited digest and
   regenerates `assets/fyagent.png`; consumer paths stay unchanged.
 - Bad: only `icon.ico` is replaced, the color bitmap is embedded as a macOS
-  template, or a broad image-directory rewrite modifies provider artwork.
+  template, or a broad image-directory rewrite modifies provider artwork or
+  `src-tauri/icons/dmg-background.png`.
 
 ## 6. Tests Required
 

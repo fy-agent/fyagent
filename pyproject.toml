@@ -6,8 +6,12 @@ dependencies = []
 
 [dependency-groups]
 dev = []
+dmg-layout = [
+    "ds-store==1.3.3",
+]
 
 [tool.uv]
 package = false
 python-preference = "only-managed"
 python-downloads = "automatic"
+default-groups = ["dev"]

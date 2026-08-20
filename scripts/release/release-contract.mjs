@@ -106,6 +106,64 @@ export function assertWindowsBundleVersion(version) {
   );
 }
 
+export function readCargoWorkspaceVersion(source) {
+  const lines = source.split(/\r?\n/u);
+  let inWorkspacePackage = false;
+  const versions = [];
+  for (const line of lines) {
+    const table = /^\[([^\]]+)\]\s*(?:#.*)?$/u.exec(line);
+    if (table) {
+      inWorkspacePackage = table[1].trim() === "workspace.package";
+      continue;
+    }
+    if (!inWorkspacePackage) continue;
+    const assignment = /^version\s*=\s*"((?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))"\s*(?:#.*)?$/u.exec(
+      line,
+    );
+    if (assignment) versions.push(assignment[1]);
+  }
+  assert(
+    versions.length === 1,
+    "src-tauri/Cargo.toml [workspace.package] must contain exactly one stable version",
+  );
+  return versions[0];
+}
+
+export function assertChangelogMatchesVersion(changelog, version) {
+  assert(
+    STABLE_VERSION_PATTERN.test(version),
+    `Invalid stable application version: ${version}`,
+  );
+  const escaped = version.replaceAll(".", "\\.");
+  const expectedHeading = new RegExp(
+    `^## \\[${escaped}\\] - 20\\d{2}-\\d{2}-\\d{2}$`,
+    "u",
+  );
+  const lines = changelog.split(/\r?\n/u);
+  const firstHeading = lines.findIndex((line) => line.startsWith("## ["));
+  assert(
+    firstHeading >= 0,
+    `CHANGELOG.md is missing a version heading for ${version}`,
+  );
+  assert(
+    expectedHeading.test(lines[firstHeading]),
+    `CHANGELOG.md must start its version history with ## [${version}] - YYYY-MM-DD`,
+  );
+  let nextHeading = lines.length;
+  for (let index = firstHeading + 1; index < lines.length; index += 1) {
+    if (lines[index].startsWith("## [")) {
+      nextHeading = index;
+      break;
+    }
+  }
+  const body = lines.slice(firstHeading + 1, nextHeading).join("\n");
+  const withoutComments = body.replace(/<!--[\s\S]*?-->/gu, "");
+  assert(
+    withoutComments.trim().length > 0,
+    `CHANGELOG.md heading for ${version} must be followed by non-empty notes`,
+  );
+}
+
 export function assertReleaseIdentity({ version, tag, sourceSha }) {
   assertWindowsBundleVersion(version);
   assert(

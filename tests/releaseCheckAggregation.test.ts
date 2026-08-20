@@ -26,6 +26,7 @@ describe("release check diagnostic aggregation", () => {
     const ciIds = releaseCheckPlan(true).map(([id]) => id);
     expect(ciIds).toEqual([
       "version",
+      "changelog",
       "lockfile",
       "dep0040",
       "task-docs",
@@ -35,6 +36,7 @@ describe("release check diagnostic aggregation", () => {
     ]);
     expect(releaseCheckPlan(false).map(([id]) => id)).toEqual([
       "version",
+      "changelog",
       "lockfile",
       "dep0040",
       "task-contract",
@@ -69,7 +71,7 @@ describe("release check diagnostic aggregation", () => {
       runReleaseChecks(true, (command, args) => {
         const id = `${command} ${args.join(" ")}`;
         calls.push(id);
-        if (calls.length === 1 || calls.length === 5) {
+        if (calls.length === 1 || calls.length === 6) {
           throw new Error(`fixture failure ${calls.length}`);
         }
       }),
@@ -78,7 +80,7 @@ describe("release check diagnostic aggregation", () => {
     expect(calls).toHaveLength(releaseCheckPlan(true).length);
     expect(error.mock.calls.map(([line]) => line)).toEqual([
       "[release-check] version failed: fixture failure 1",
-      "[release-check] windows-nsis-contract failed: fixture failure 5",
+      "[release-check] windows-nsis-contract failed: fixture failure 6",
     ]);
 
     log.mockRestore();

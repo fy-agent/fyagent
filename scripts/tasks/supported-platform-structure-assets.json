@@ -307,7 +307,7 @@
     ],
     [
       "tests/hdiutilRetry.test.ts",
-      "4d4037a7254b293553afd4b3c7f7022da0cdc37e60aa49534bcf33448124376d"
+      "ea4752854960a989248dd1f4487dcad14ad20dcc61521bea0cf6085debd99ea5"
     ],
     [
       "tests/lib/platform.test.ts",
@@ -319,7 +319,7 @@
     ],
     [
       "tests/releaseWorkflow.test.ts",
-      "da0edb65c0712b7bc32849e7a3a233bd6c6cf8ab776d316e0c4cbc9caa741e09"
+      "4ae184691a20a1bda6427e766fdc7a8ae2e1d5def9578a7b49b983d177e916d3"
     ],
     [
       "tests/remainingPlatformSurface.test.ts",

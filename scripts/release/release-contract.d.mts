@@ -138,6 +138,11 @@ export const WINDOWS_SIGNING_FRAGMENTS_BY_TARGET: Readonly<
 >;
 
 export function assertWindowsBundleVersion(version: string): void;
+export function readCargoWorkspaceVersion(source: string): string;
+export function assertChangelogMatchesVersion(
+  changelog: string,
+  version: string,
+): void;
 export function assertReleaseIdentity(identity: {
   version: string;
   tag: string;

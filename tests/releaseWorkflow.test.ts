@@ -95,6 +95,24 @@ const MACOS_HDIUTIL_RETRY = path.join(
   "release",
   "retry-hdiutil.sh",
 );
+const MACOS_CREATE_DMG = path.join(
+  ROOT,
+  "scripts",
+  "release",
+  "create-macos-dmg.sh",
+);
+const MACOS_DMG_LAYOUT = path.join(
+  ROOT,
+  "scripts",
+  "release",
+  "write-dmg-layout.py",
+);
+const MACOS_DMG_BACKGROUND_RENDERER = path.join(
+  ROOT,
+  "scripts",
+  "release",
+  "render-dmg-background.mjs",
+);
 const PLATFORM_METADATA_WRITER = path.join(
   ROOT,
   "scripts",
@@ -536,6 +554,8 @@ function releaseWorkflowRunScripts(workflow: string): string[] {
     "node scripts/release/verify-windows-nsis-contract.mjs",
     "pnpm tauri build --target universal-apple-darwin --bundles app",
     'node scripts/release/verify-release-files.mjs subjects verified-subjects "$APP_VERSION"',
+    "node scripts/ci/verify-toolchain.mjs --emit-github-output",
+    "uv sync --locked --group dmg-layout",
   ]);
 
   for (let index = 0; index < lines.length; index += 1) {
@@ -2011,6 +2031,9 @@ jobs:
     const macDeveloperId = read(MACOS_DEVELOPER_ID);
     const macSigningPolicy = read(MACOS_SIGNING_POLICY);
     const hdiutilRetry = read(MACOS_HDIUTIL_RETRY);
+    const createDmg = read(MACOS_CREATE_DMG);
+    const dmgLayout = read(MACOS_DMG_LAYOUT);
+    const dmgBackground = read(MACOS_DMG_BACKGROUND_RENDERER);
     expect(trackedMode(MACOS_SIGNED_APP_VERIFIER)).toBe("100755");
     expect(trackedMode(MACOS_SIGNED_DMG_VERIFIER)).toBe("100755");
     expect(trackedMode(MACOS_DEVELOPER_ID)).toBe("100755");
@@ -2037,7 +2060,39 @@ jobs:
       "scripts/release/macos-developer-id.sh notarize-dmg",
     );
     expect(macJob).toContain("scripts/release/macos-developer-id.sh staple-app");
-    expect(macJob).toContain('ln -s /Applications "$stage/Applications"');
+    expect(macJob).toContain("scripts/release/create-macos-dmg.sh");
+    expect(macJob).toContain("src-tauri/icons/dmg-background.png");
+    expect(macJob).toContain("[ -f \"$mount_point/.background/background.png\" ]");
+    expect(macJob).toContain('[ -f "$mount_point/.DS_Store" ]');
+    expect(macJob).toContain(
+      "astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9",
+    );
+    expect(macJob).toContain(
+      "run: node scripts/ci/verify-toolchain.mjs --emit-github-output",
+    );
+    expect(macJob).toContain("run: uv sync --locked --group dmg-layout");
+    expect(createDmg).toContain('ln -s /Applications "$stage/Applications"');
+    expect(createDmg).toContain("--app-xy 180,188");
+    expect(createDmg).toContain("--apps-xy 480,188");
+    expect(createDmg).toContain("--window 660x400");
+    expect(createDmg).toContain("--icon-size 128");
+    expect(createDmg).toContain("uv run --locked --group dmg-layout python");
+    expect(createDmg).toContain('create -volname \'FyAgent\' -srcfolder "$stage" -ov -fs HFS+ -format UDRW "$udrw_path"');
+    expect(createDmg).toContain(
+      'convert "$udrw_path" -format UDZO -imagekey zlib-level=9 -ov -o "$output_path"',
+    );
+    expect(createDmg).not.toContain("osascript");
+    expect(createDmg).not.toContain("skip-jenkins");
+    expect(createDmg).not.toContain("dmgbuild");
+    expect(createDmg).not.toContain("hdiutil detach -force");
+    expect(dmgLayout).toContain('store[app_name]["Iloc"] = app_xy');
+    expect(dmgLayout).toContain('store[applications_name]["Iloc"] = applications_xy');
+    expect(dmgLayout).toContain('backgroundImageAlias');
+    expect(dmgLayout).not.toContain("osascript");
+    expect(dmgLayout).not.toContain("hdiutil");
+    expect(dmgBackground).toContain("DMG_WINDOW_WIDTH_PT = 660");
+    expect(dmgBackground).toContain("DMG_BACKGROUND_SCALE = 2");
+    expect(dmgBackground).toContain("DMG_BACKGROUND_PIXELS_PER_METER = 5669");
     expect(macJob).toContain('[ -L "$mount_point/Applications" ]');
     expect(macJob).toContain(
       '[ "$(readlink "$mount_point/Applications")" = "/Applications" ]',
@@ -2075,20 +2130,9 @@ jobs:
     expect(macSigningPolicy).toContain("HY446996QX");
     expect(source).toContain("hdiutil attach");
     expect(source).toContain("-readonly");
-    for (const repeatedLine of [
-      "          scripts/release/retry-hdiutil.sh \\",
-      '            "$dmg_path" \\',
-      "            -- \\",
-    ]) {
-      expect(
-        macJob.split(/\r?\n/u).filter((line) => line === repeatedLine),
-      ).toHaveLength(2);
-    }
-    expectExactLine(
-      macJob,
-      '            create -volname \'FyAgent\' -srcfolder "$stage" -ov -format UDZO "$dmg_path"',
-    );
-    expectExactLine(macJob, '            verify "$dmg_path"');
+    expect(createDmg).toContain('RETRY_HDIUTIL="$SCRIPT_DIR/retry-hdiutil.sh"');
+    expect(createDmg.match(/"\$RETRY_HDIUTIL"/gu)?.length).toBe(3);
+    expect(hdiutilRetry).toContain("create|convert");
     expect(hdiutilRetry).toContain("max_attempts=5");
     expect(hdiutilRetry).toContain("grep -Fq -- 'Resource busy'");
     expect(hdiutilRetry).toContain(
@@ -2098,7 +2142,10 @@ jobs:
     expect(hdiutilRetry).toContain('hdiutil "$@" >"$log_file" 2>&1');
     expect(hdiutilRetry).not.toContain(" | ");
     expect(hdiutilRetry).not.toContain("|| true");
-    expect(macJob).not.toContain("hdiutil create -volname");
+    expect(macJob).not.toContain("osascript");
+    expect(macJob).not.toContain("skip-jenkins");
+    expect(macJob).not.toContain("dmgbuild");
+    expect(macJob).not.toContain("pip3 install");
     expect(macJob).not.toContain("hdiutil detach -force");
     expect(macJob).not.toMatch(/kill[^\n]*diskimages/iu);
     expect(tauriConfig.bundle?.macOS).not.toHaveProperty("signingIdentity");

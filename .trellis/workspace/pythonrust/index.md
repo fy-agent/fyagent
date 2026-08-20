@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 32
+- **Total Sessions**: 33
 - **Last Active**: 2026-08-21
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1099 | Active |
+| `journal-1.md` | ~1133 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 33 | 2026-08-21 | Style macOS DMG and changelog gate | `da050634` | `dev/laiyongjie` |
 | 32 | 2026-08-21 | V2 setup UX, release eligibility, and repo hygiene | `db151bad` | `dev/laiyongjie` |
 | 31 | 2026-08-20 | V2 catalog v4, Grok Build, and Skills disk observation | `c97ddb7d`, `bb7fba4c`, `940ff066`, `664dd96f`, `81b68e12`, `daf3d113` | `dev/laiyongjie` |
 | 30 | 2026-08-19 | V2 Skills discovery pagination and shared scroll | `52a6d883` | `dev/laiyongjie` |
