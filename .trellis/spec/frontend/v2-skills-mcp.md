@@ -90,11 +90,7 @@ interface SkillsPort {
     backupId: string,
     currentApp: SkillTargetId,
   ): Promise<InstalledSkill>;
-  toggleApp(
-    id: string,
-    app: SkillTargetId,
-    enabled: boolean,
-  ): Promise<boolean>;
+  toggleApp(id: string, app: SkillTargetId, enabled: boolean): Promise<boolean>;
   scanUnmanaged(): Promise<UnmanagedSkill[]>;
   importFromApps(imports: ImportSkillSelection[]): Promise<InstalledSkill[]>;
   discoverPage(
@@ -126,7 +122,10 @@ interface SkillsPort {
 const SKILL_DISCOVERY_PAGE_SIZE = 21; // V2 Skill 市场 pageSize；3 列网格 7×3
 const SKILL_DISCOVERY_MAX_PAGE_SIZE = 50; // leftover discoverPage and SkillHub page size clamp
 
-const SKILLHUB_OFFICIAL_CATEGORIES: ReadonlyArray<{ key: string; name: string }> = [
+const SKILLHUB_OFFICIAL_CATEGORIES: ReadonlyArray<{
+  key: string;
+  name: string;
+}> = [
   { key: "office-efficiency", name: "办公效率" },
   { key: "content-creation", name: "内容创作" },
   { key: "dev-programming", name: "开发编程" },
@@ -143,7 +142,9 @@ const SKILLHUB_OFFICIAL_CATEGORIES: ReadonlyArray<{ key: string; name: string }>
 // Keys come from SkillHub find-skill-skillhub categories.md. Secondary
 // tags must not be sent as `?category=`.
 
-type SkillHubCategoryFilter = "all" | (typeof SKILLHUB_OFFICIAL_CATEGORIES)[number]["key"];
+type SkillHubCategoryFilter =
+  | "all"
+  | (typeof SKILLHUB_OFFICIAL_CATEGORIES)[number]["key"];
 
 type SkillDiscoveryStatus = "all" | "installed" | "uninstalled";
 
@@ -171,9 +172,28 @@ function buildFeaturePaginationItems(
   page: number,
   totalPages: number,
 ): Array<
-  | { type: "page"; page: number }
-  | { type: "ellipsis"; id: "start" | "end" }
+  { type: "page"; page: number } | { type: "ellipsis"; id: "start" | "end" }
 >;
+
+function AssignmentPanel<T extends SkillTargetId>(
+  props:
+    | {
+        mode?: "switch";
+        apps: Record<string, boolean | undefined>;
+        onToggle: (app: T, enabled: boolean) => void;
+        labelSuffix: string;
+        targets: ReadonlyArray<{ id: T; label: string }>;
+        disabled?: boolean;
+      }
+    | {
+        mode: "radio";
+        value: T;
+        onChange: (value: T) => void;
+        ariaLabel: string;
+        targets: ReadonlyArray<{ id: T; label: string }>;
+        disabled?: boolean;
+      },
+): JSX.Element;
 ```
 
 Host command and DTO (camelCase on the wire):
@@ -322,18 +342,33 @@ function ExternalLinkButton(props: {
   target. The default target remains `claude` (label Claude Code); navigation
   preserves it, while a full application restart resets it. Discovery does not
   show header install-target tabs. Clicking **安装** opens a Dialog to pick
-  the target (icon + catalog label, Agent catalog order) before
-  `installSkillHub`. Confirming updates the session target used by ZIP /
-  restore. Assignment, bulk 全开/全关, that install picker, and new-MCP
-  `DEFAULT_NEW_APPS` must render in Agent catalog order, not alphabetical or
-  Claude-first order.
+  the target before `installSkillHub`. That picker is `AssignmentPanel`
+  `mode="radio"` (`aria-label="安装目标"`), not a page-local
+  `InstallTargetPicker`. ZIP install and backup restore reuse the same radio
+  panel (`aria-label="恢复目标"` on restore). Unmanaged import uses the same
+  component in switch mode, not `fy-feature-check-grid`. Installed assignment
+  (narrow and wide panes) is the same component in switch mode. Confirming
+  install, ZIP, or restore updates the session target. Assignment, bulk
+  全开/全关, that radio picker,
+  and new-MCP `DEFAULT_NEW_APPS` must render in Agent catalog order, not
+  alphabetical or Claude-first order.
 - Skill assignment authority on V2 pages contains seven booleans. Native rows
   still persist leftover Gemini / Hermes plus Qoder / TRAE / WorkBuddy flags.
   Missing `qoderwork`, `trae-work`, `workbuddy`, or `grokbuild` values parse as
-  false; leftover flags are preserved. QoderWork / TRAE Work / WorkBuddy Skill
-  sync is copy-only (`~/.qoderwork/skills`, `~/.trae-cn/skills`,
-  `~/.workbuddy/skills`) and successful UI copy claims directory
-  synchronization, not vendor recognition or loading.
+  false; leftover flags are preserved. All seven V2 Skill targets install,
+  assign, and unassign through one host path: `install_skillhub` /
+  `install_from_zip` / `restore_from_backup_for_target` / `toggle_skill_app`
+  → `SkillService::sync_to_app_dir` or `remove_from_target`.
+  `import_from_apps` writes the selected flags, then syncs only **missing**
+  dests for those flags (do not rewrite a live vendor copy that already
+  exists). Do not add per-agent commands or page branches.
+  QoderWork / TRAE Work / WorkBuddy remain copy-only destinations
+  (`~/.qoderwork/skills`, `~/.trae-cn/skills`, `~/.workbuddy/skills`) inside
+  that shared path. Successful UI copy claims directory synchronization, not
+  vendor recognition or loading. Claude / Codex / Grok Build / OpenCode keep
+  the configured symlink-or-copy method. Directory-swap checks compare volume
+  - inode only; parent mtime changes from creating a tempdir must not fail
+    copy or remove.
 - Server data is authoritative. Successful writes and partial failures both
   invalidate and reread the affected resources before the UI settles.
 - Disabling or deleting an MCP assignment removes it from that application's
@@ -400,10 +435,14 @@ function ExternalLinkButton(props: {
   install-target `FeatureTabs` or **将安装到 …** in the discovery header.
   Do not render **管理仓库** anywhere on the V2 Skills page (header, Discover,
   Installed **更多**, or a 仓库管理 dialog). Leftover GitHub repo CRUD stays
-  in leftover V1 only. Discovery **安装** opens a Dialog (`安装 {name}`) whose
-  radiogroup (`aria-label="安装目标"`) lists the seven catalog targets with
-  decorative icons (`alt=""`, `aria-hidden="true"`) and labels. Confirm with
-  **安装到 {label}**. Do not use a `<select>` or a page-local tab clone.
+  in leftover V1 only. Discovery **安装** opens a Dialog (`安装 {name}`) that
+  reuses `AssignmentPanel` `mode="radio"` (`aria-label="安装目标"`) for the
+  seven catalog targets with decorative icons (`alt=""`, `aria-hidden="true"`)
+  and labels. Confirm with **安装到 {label}**. ZIP install opens the same
+  Dialog chrome (`从 ZIP 安装`) after a file is chosen. Backup restore keeps
+  `AssignmentPanel mode="radio"` (`aria-label="恢复目标"`) in the backups
+  Dialog. Unmanaged import uses switch mode on each selected Skill. Do not add
+  a page-local picker, a `<select>`, a checkbox grid, or a page-local tab clone.
   Confirm copy uses the catalog label (`Claude Code`, not `Claude`).
   Skill Discover
   cards show the name and
@@ -477,9 +516,11 @@ function ExternalLinkButton(props: {
 - Assignment icons are decorative beside the existing text:
   `alt=""` and `aria-hidden="true"`. The switch keeps the sole accessible name
   `${app.label} ${labelSuffix}`; an icon must not create a duplicate label.
-- At most one assignment panel exists in the DOM and
-  accessibility tree. Responsive layout changes whether it is the third
-  column or a details section; CSS must not hide a duplicate semantic panel.
+- The installed Skills/MCP workspace renders exactly one switch
+  `AssignmentPanel` in the DOM and accessibility tree. Responsive layout
+  changes whether it is the third column or a details section; CSS must not
+  hide a duplicate semantic panel. Modal dialogs may mount another
+  `AssignmentPanel` for install, ZIP, restore, or import.
 - Changes must not alter the TopBar, brand, primary navigation, window chrome
   ownership, ContentViewport shell, route order, existing shell-owned Blue
   Ambient token values or appearance, or the Agents, Models, Prompts, and
@@ -489,28 +530,28 @@ function ExternalLinkButton(props: {
 
 ## 4. Validation & Error Matrix
 
-| Condition                                                        | Required result                                                         |
-| ---------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| Browser performs a feature read                                  | Return an empty collection or settings snapshot without a side effect   |
-| Browser performs a feature write                                 | Reject with the native-only error; never show a success toast           |
-| Initial authority read fails                                     | Show an error/retry state, not an empty-state success                   |
-| Refresh fails after old data exists                              | Keep old data and show an inline error                                  |
-| Batch write partially fails                                      | Report counts, keep no stale optimistic claim, and reread authority     |
-| MCP search term matches only an env/header value                 | Return no match                                                         |
-| MCP search term matches only a URL query secret or sensitive arg | Return no match                                                         |
-| env/header line has no delimiter or an empty key                 | Show a line error and block save                                        |
-| Advanced JSON is invalid, an array, or an `mcpServers` container | Stay in advanced mode and block save                                    |
-| New MCP ID is blank or duplicates an authoritative ID            | Block save before invoking Tauri                                        |
-| A backend error may contain MCP configuration                    | Show a fixed secret-safe message                                        |
-| Imported shared ID has a different executable specification      | Reject that application's import without partial persistence            |
-| OpenCode/Hermes source entry has `enabled: false`                | Keep it disabled; do not create or activate a managed assignment        |
-| MCP live cleanup fails while disabling or deleting               | Retain the failed assignment and retryable authoritative record         |
-| A Skill response omits either new external target                | Default that target to false without changing any legacy assignment     |
-| QoderWork or TRAE Work MCP assignment is enabled                 | Write the vendor live `mcp.json`; skip if home/User and file are absent |
-| MCP/Skills assignment order is alphabetical or Claude-first      | Page/component test fails; order must match Agent catalog               |
-| `.fy-feature-list` is restored to CSS Grid                       | List rows overlap because `SelectionLens` occupies a grid track         |
-| A supported app is missing from the local icon map               | Type/asset test fails; never render a remote fallback or broken image   |
-| An assignment icon contributes an accessible name                | Component accessibility test fails; switch text remains the sole name   |
+| Condition                                                        | Required result                                                           |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| Browser performs a feature read                                  | Return an empty collection or settings snapshot without a side effect     |
+| Browser performs a feature write                                 | Reject with the native-only error; never show a success toast             |
+| Initial authority read fails                                     | Show an error/retry state, not an empty-state success                     |
+| Refresh fails after old data exists                              | Keep old data and show an inline error                                    |
+| Batch write partially fails                                      | Report counts, keep no stale optimistic claim, and reread authority       |
+| MCP search term matches only an env/header value                 | Return no match                                                           |
+| MCP search term matches only a URL query secret or sensitive arg | Return no match                                                           |
+| env/header line has no delimiter or an empty key                 | Show a line error and block save                                          |
+| Advanced JSON is invalid, an array, or an `mcpServers` container | Stay in advanced mode and block save                                      |
+| New MCP ID is blank or duplicates an authoritative ID            | Block save before invoking Tauri                                          |
+| A backend error may contain MCP configuration                    | Show a fixed secret-safe message                                          |
+| Imported shared ID has a different executable specification      | Reject that application's import without partial persistence              |
+| OpenCode/Hermes source entry has `enabled: false`                | Keep it disabled; do not create or activate a managed assignment          |
+| MCP live cleanup fails while disabling or deleting               | Retain the failed assignment and retryable authoritative record           |
+| A Skill response omits either new external target                | Default that target to false without changing any legacy assignment       |
+| QoderWork or TRAE Work MCP assignment is enabled                 | Write the vendor live `mcp.json`; skip if home/User and file are absent   |
+| MCP/Skills assignment order is alphabetical or Claude-first      | Page/component test fails; order must match Agent catalog                 |
+| `.fy-feature-list` is restored to CSS Grid                       | List rows overlap because `SelectionLens` occupies a grid track           |
+| A supported app is missing from the local icon map               | Type/asset test fails; never render a remote fallback or broken image     |
+| An assignment icon contributes an accessible name                | Component accessibility test fails; switch text remains the sole name     |
 | Viewport changes between two- and three-column layouts           | Render exactly one panel: seven unique Skill or seven unique MCP switches |
 | `.fy-feature-discovery-scroll` loses `overflow: auto` on MCP     | MCP discovery cards cannot scroll independently                           |
 | Skills discovery only scrolls the inner card strip               | Page CSS test fails; `.fy-skills-page-discovery` must scroll the page     |
@@ -518,30 +559,34 @@ function ExternalLinkButton(props: {
 | Discovery card has no 详情 control                               | Page test fails; full description must not live only on the card          |
 | FeaturePagination is a 5-number slice without prev/next          | Shared owner must include 上一页/下一页, ellipsis, and `第 x / n 页`      |
 | A page adds a pagination npm package or a second pager           | Reject; extend `FeaturePagination`; Radix has no Pagination primitive     |
-| WorkBuddy is converted to `AppType` or added as a Provider app   | Type/runtime test fails; WorkBuddy stays Skills/MCP-domain only         |
-| Discover/docs or Skill repo is opened without ExternalLinkButton | Component test fails; the click must hit `settings.openExternal`        |
-| A second HTTP(S) jump starts while one is in flight              | Ignored; only the in-flight control shows pending copy                  |
-| V2 Skills discovery calls leftover `discover_available_skills`   | Adapter/page test fails; use `searchSkillHub`                           |
-| Browser `discoverPage` read                                      | `{ skills: [], totalCount: 0 }` with no zip/scan side effect            |
-| `limit == 0` / `limit > 50`                                      | SkillHub page size 21 / 50; leftover `discoverPage` still 20 / 50       |
-| Discovery `status` is not `all\|installed\|uninstalled`          | Leftover `discoverPage` command error; V2 discovery does not send it    |
+| WorkBuddy is converted to `AppType` or added as a Provider app   | Type/runtime test fails; WorkBuddy stays Skills/MCP-domain only           |
+| Discover/docs or Skill repo is opened without ExternalLinkButton | Component test fails; the click must hit `settings.openExternal`          |
+| A second HTTP(S) jump starts while one is in flight              | Ignored; only the in-flight control shows pending copy                    |
+| V2 Skills discovery calls leftover `discover_available_skills`   | Adapter/page test fails; use `searchSkillHub`                             |
+| Browser `discoverPage` read                                      | `{ skills: [], totalCount: 0 }` with no zip/scan side effect              |
+| `limit == 0` / `limit > 50`                                      | SkillHub page size 21 / 50; leftover `discoverPage` still 20 / 50         |
+| Discovery `status` is not `all\|installed\|uninstalled`          | Leftover `discoverPage` command error; V2 discovery does not send it      |
 | `offset` is past the filtered total                              | Leftover `discoverPage`: `skills: []` and unchanged filtered `totalCount` |
-| Search or category change on Skills discovery                    | `search_skillhub` uses official page/pageSize; UI returns to page 1     |
-| V2 Skills discovery calls `search_skills_sh` or `discoverPage`   | Adapter/page test fails; Discover uses `search_skillhub` only           |
-| SkillHub list called as `/api/v1/search`                         | Reject; list is `GET /api/skills` with `page` / `pageSize` / `category` |
-| SkillHub catalog frozen at 50                                    | Reject; `SKILL_DISCOVERY_MAX_PAGE_SIZE` clamps page size only           |
-| SkillHub `category` is not an official first-level key           | Host omits `category` (treat as 全部); do not send secondary tags       |
-| SkillHub card shows `owner/repo` or a grouping heading           | Page test fails; source meta lives in 详情 only                         |
-| Skill 市场 install spawns `skillhub` CLI                         | Host must download `api.skillhub.cn/api/v1/download?slug=` ZIP          |
-| SkillHub slug contains `/`, space, `@`, or `..`                  | Command error `INVALID_SKILLHUB_SLUG`; do not build the download URL    |
-| Skill 市场 homepage is `api.skillhub.cn/...`                     | Reject; construct `https://skillhub.cn/skills/{slug}` only              |
-| `.fy-feature-detail-scroll` is given overflow for discovery      | Skills toolbars scroll away; Skills discovery scrolls the page wrapper  |
-| Discover shows **Skill 市场** / **仓库** source tabs             | Page test fails; Discover is Skill 市场 only, no source tabs            |
-| V2 Skills shows **管理仓库** / **仓库管理** / add-repo form      | Page test fails; GitHub skill-repo CRUD is leftover V1 only             |
-| V2 Skills page calls `getRepos` / `addRepo` / `removeRepo`       | Page/query test fails; leftover commands must not run in V2 UI          |
-| Discover shows header **将安装到 …** / 安装目标 tabs             | Page test fails; pick the target in the install Dialog                  |
-| Discover omits 办公效率 / 开发编程 / IT 运维与安全               | Page test fails; official 12 first-level names plus 全部                |
-| Discover shows `Skill 市场 · n / m · 将安装到 …`                 | Page test fails; counts live on `FeaturePagination` only                |
+| Search or category change on Skills discovery                    | `search_skillhub` uses official page/pageSize; UI returns to page 1       |
+| V2 Skills discovery calls `search_skills_sh` or `discoverPage`   | Adapter/page test fails; Discover uses `search_skillhub` only             |
+| SkillHub list called as `/api/v1/search`                         | Reject; list is `GET /api/skills` with `page` / `pageSize` / `category`   |
+| SkillHub catalog frozen at 50                                    | Reject; `SKILL_DISCOVERY_MAX_PAGE_SIZE` clamps page size only             |
+| SkillHub `category` is not an official first-level key           | Host omits `category` (treat as 全部); do not send secondary tags         |
+| SkillHub card shows `owner/repo` or a grouping heading           | Page test fails; source meta lives in 详情 only                           |
+| Skill 市场 install spawns `skillhub` CLI                         | Host must download `api.skillhub.cn/api/v1/download?slug=` ZIP            |
+| SkillHub slug contains `/`, space, `@`, or `..`                  | Command error `INVALID_SKILLHUB_SLUG`; do not build the download URL      |
+| Skill 市场 homepage is `api.skillhub.cn/...`                     | Reject; construct `https://skillhub.cn/skills/{slug}` only                |
+| `.fy-feature-detail-scroll` is given overflow for discovery      | Skills toolbars scroll away; Skills discovery scrolls the page wrapper    |
+| Discover shows **Skill 市场** / **仓库** source tabs             | Page test fails; Discover is Skill 市场 only, no source tabs              |
+| V2 Skills shows **管理仓库** / **仓库管理** / add-repo form      | Page test fails; GitHub skill-repo CRUD is leftover V1 only               |
+| V2 Skills page calls `getRepos` / `addRepo` / `removeRepo`       | Page/query test fails; leftover commands must not run in V2 UI            |
+| Discover shows header **将安装到 …** / 安装目标 tabs             | Page test fails; pick the target in the install Dialog                    |
+| Skills install picker is not `AssignmentPanel mode="radio"`      | Reuse test fails; do not add `InstallTargetPicker` on the page            |
+| ZIP / restore / import uses a second target list                 | Page test fails; reuse `AssignmentPanel` radio or switch                  |
+| Assign/unassign/install uses a per-agent host command            | Reject; all seven V2 targets use `toggle_skill_app` / `sync_to_app_dir`   |
+| Vendor parent mtime change fails WorkBuddy/Qoder/TRAE copy       | Host test fails; directory identity is volume + inode only                |
+| Discover omits 办公效率 / 开发编程 / IT 运维与安全               | Page test fails; official 12 first-level names plus 全部                  |
+| Discover shows `Skill 市场 · n / m · 将安装到 …`                 | Page test fails; counts live on `FeaturePagination` only                  |
 
 ## 5. Good / Base / Bad Cases
 
@@ -554,13 +599,17 @@ function ExternalLinkButton(props: {
   `https://skillhub.cn/skills/{slug}`. Install calls `install_skillhub` (ZIP
   download + `install_from_zip`), never GitHub archive and never the
   `skillhub` CLI. There are no source tabs, no **管理仓库**, and no
-  `Skill 市场 · n / m` summary. Clicking **安装** opens a Dialog to pick the
-  catalog target (icon + name) before `installSkillHub`.
-  `FeaturePagination` (`ariaLabel="Skill 市场分页"`) pages through
-  `data.total` at 21 items per page. Search or category changes return to
-  page 1. MCP
-  discovery still scrolls through `.fy-feature-discovery-scroll`. Skills
-  discovery scrolls the whole feature page.
+  `Skill 市场 · n / m` summary. Clicking **安装** opens a Dialog that reuses
+  `AssignmentPanel mode="radio"` (icon + name) before `installSkillHub`.
+  ZIP install and backup restore reuse that radio panel. Unmanaged import
+  uses switch mode. Installed assignment uses the same component in switch
+  mode. All seven V2
+  targets assign and unassign through `toggle_skill_app` → `sync_to_app_dir`
+  / `remove_from_target`. Import syncs missing dests only. `FeaturePagination` (`ariaLabel="Skill 市场分页"`)
+  pages through `data.total` at 21 items per page. Search or category changes
+  return to page 1. MCP discovery still scrolls through
+  `.fy-feature-discovery-scroll`. Skills discovery scrolls the whole feature
+  page.
 - **Good:** A user toggles Codex for one Skill. The UI invokes
   `toggle_skill_app` with `{ id, app: "codex", enabled }`, locks only
   conflicting writes, then rereads installed Skills before settling. The row
@@ -627,8 +676,10 @@ git diff --check
   icon semantics, seven unique Skill switches, seven unique MCP switches in
   catalog order, Discover/docs and
   Skill repo clicks through `ExternalLinkButton` → `settings.openExternal`,
-  discovery install Dialog targets in that same catalog order (icon + name),
-  no **管理仓库** in Discover or Installed **更多**, flex list overlay, one
+  discovery install Dialog targets in that same catalog order (icon + name)
+  via `AssignmentPanel mode="radio"`, ZIP and restore radio pickers, unmanaged
+  import switch rows, host round-trip assign then unassign
+  for every V2 Skill target, import sync of missing selected dests, no **管理仓库** in Discover or Installed **更多**, flex list overlay, one
   shared in-flight lock, Skills discovery page-3 offset 42 (21×2), search
   resetting to page 1, clicking **办公效率** sending `office-efficiency`,
   `FeaturePagination` selection plus prev/next and ellipsis,
@@ -827,9 +878,9 @@ from **详情**. Skill 市场 cards use **主页** as `ExternalLinkButton`.
 Wrong: hand-roll a five-number page slice.
 
 ```tsx
-{pages.slice(page - 3, page + 2).map((n) => (
-  <button key={n}>{n}</button>
-))}
+{
+  pages.slice(page - 3, page + 2).map((n) => <button key={n}>{n}</button>);
+}
 ```
 
 Correct: reuse `FeaturePagination` (status, 上一页 / 下一页, ellipsis).
@@ -891,6 +942,39 @@ installSkillHub: (slug, currentApp) =>
   totalPages={totalPages}
   ariaLabel="Skill 市场分页"
   onPageChange={setPage}
+/>
+```
+
+Wrong: a page-local Skill target picker, or a per-agent install/assign path.
+
+```tsx
+function InstallTargetPicker({ value, onChange }) {
+  return SKILL_TARGETS.map((app) => (
+    <button key={app.id} onClick={() => onChange(app.id)}>
+      {app.label}
+    </button>
+  ));
+}
+```
+
+Correct: one `AssignmentPanel` for install / ZIP / restore (radio) and
+assignment / import (switch). Host mutations stay `toggle_skill_app` /
+`install_skillhub` / `install_from_zip` / `import_from_apps` for every V2
+target.
+
+```tsx
+<AssignmentPanel
+  mode="radio"
+  ariaLabel="安装目标"
+  targets={SKILL_TARGETS}
+  value={chosenTarget}
+  onChange={setChosenTarget}
+/>
+<AssignmentPanel
+  apps={skill.apps}
+  onToggle={onToggle}
+  labelSuffix="Skill 分配"
+  targets={SKILL_TARGETS}
 />
 ```
 

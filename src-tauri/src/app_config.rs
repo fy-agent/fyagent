@@ -204,7 +204,7 @@ impl McpApps {
 ///
 /// 该类型刻意独立于 Provider/MCP/session 共用的 [`AppType`]。前六个目标可显式
 /// 适配现有 AppType；QoderWork、TRAE Work 和 WorkBuddy 只存在于 Skills 域。
-/// 后端九个目标全部 round-trip；V2 页面只展示目录对齐的六个。
+/// 后端九个目标全部 round-trip；V2 页面只展示目录对齐的七个。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SkillTargetId {

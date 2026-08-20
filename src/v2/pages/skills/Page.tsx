@@ -67,6 +67,59 @@ function formatSkillTimestamp(value: number): string {
   return new Date(value * 1000).toLocaleString();
 }
 
+function skillTargetLabel(id: SkillTargetId): string {
+  return SKILL_TARGETS.find((app) => app.id === id)?.label ?? "Claude Code";
+}
+
+function SkillInstallTargetDialog({
+  title,
+  busy,
+  defaultTarget,
+  onCancel,
+  onConfirm,
+}: {
+  title: string;
+  busy: boolean;
+  defaultTarget: SkillTargetId;
+  onCancel: () => void;
+  onConfirm: (target: SkillTargetId) => void;
+}) {
+  const [chosenTarget, setChosenTarget] = useState(defaultTarget);
+  return (
+    <Dialog
+      open
+      title={title}
+      description="选择要安装到的应用。"
+      onOpenChange={(open) => {
+        if (!open && !busy) onCancel();
+      }}
+      actions={
+        <>
+          <Button disabled={busy} onClick={onCancel}>
+            取消
+          </Button>
+          <Button
+            className="fy-control-button-primary"
+            disabled={busy}
+            onClick={() => onConfirm(chosenTarget)}
+          >
+            安装到 {skillTargetLabel(chosenTarget)}
+          </Button>
+        </>
+      }
+    >
+      <AssignmentPanel
+        mode="radio"
+        ariaLabel="安装目标"
+        disabled={busy}
+        onChange={setChosenTarget}
+        targets={SKILL_TARGETS}
+        value={chosenTarget}
+      />
+    </Dialog>
+  );
+}
+
 function githubRepoUrl(owner: string, name: string): string | null {
   if (owner.toLowerCase() === SKILLHUB_MARKET_OWNER) return null;
   if (!/^[\w.-]+$/.test(owner) || !/^[\w.-]+$/.test(name)) return null;
@@ -339,6 +392,7 @@ export function SkillsPage() {
     | null
   >(null);
   const [busy, setBusy] = useState(false);
+  const [pendingZipPath, setPendingZipPath] = useState<string | null>(null);
   const [progress, setProgress] = useState<{
     done: number;
     total: number;
@@ -463,9 +517,7 @@ export function SkillsPage() {
       writeLock.current = false;
     }
     if (!path) return;
-    await write("ZIP 安装完成", async () => {
-      await ports.skills.installFromZip(path, installTarget);
-    });
+    setPendingZipPath(path);
   };
 
   return (
@@ -703,6 +755,22 @@ export function SkillsPage() {
           }}
         />
       )}
+      {pendingZipPath ? (
+        <SkillInstallTargetDialog
+          title="从 ZIP 安装"
+          busy={busy}
+          defaultTarget={installTarget}
+          onCancel={() => setPendingZipPath(null)}
+          onConfirm={(target) => {
+            const path = pendingZipPath;
+            setPendingZipPath(null);
+            setInstallTarget(target);
+            void write("ZIP 安装完成", async () => {
+              await ports.skills.installFromZip(path, target);
+            });
+          }}
+        />
+      ) : null}
       <AuxiliaryDialogs
         key={dialog ?? "closed"}
         name={dialog}
@@ -796,44 +864,6 @@ function DiscoveryCard({
   );
 }
 
-function InstallTargetPicker({
-  value,
-  onChange,
-}: {
-  value: SkillTargetId;
-  onChange: (value: SkillTargetId) => void;
-}) {
-  return (
-    <div
-      className="fy-feature-target-picker"
-      role="radiogroup"
-      aria-label="安装目标"
-    >
-      {SKILL_TARGETS.map((app) => {
-        const selected = app.id === value;
-        return (
-          <button
-            key={app.id}
-            type="button"
-            role="radio"
-            aria-checked={selected}
-            className="fy-feature-target-option"
-            onClick={() => onChange(app.id)}
-          >
-            <img
-              className="fy-feature-assignment-icon"
-              src={getSkillTargetIcon(app.id)}
-              alt=""
-              aria-hidden="true"
-            />
-            <span>{app.label}</span>
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
 function Discovery({
   busy,
   defaultTarget,
@@ -851,8 +881,6 @@ function Discovery({
   const [page, setPage] = useState(1);
   const [detailSkill, setDetailSkill] = useState<DiscoverySkill | null>(null);
   const [pendingSkill, setPendingSkill] = useState<DiscoverySkill | null>(null);
-  const [chosenTarget, setChosenTarget] =
-    useState<SkillTargetId>(defaultTarget);
   const resultsTop = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -871,9 +899,6 @@ function Discovery({
     Math.ceil(totalCount / SKILL_DISCOVERY_PAGE_SIZE),
   );
   const currentPage = Math.min(page, totalPages);
-  const chosenLabel =
-    SKILL_TARGETS.find((app) => app.id === chosenTarget)?.label ??
-    "Claude Code";
   const goToPage = (next: number) => {
     setPage(next);
     resultsTop.current?.scrollIntoView?.({ block: "start" });
@@ -944,7 +969,6 @@ function Discovery({
                 isInstalled={isDiscoverableInstalled(skill, installedItems)}
                 skill={skill}
                 onInstall={(next) => {
-                  setChosenTarget(defaultTarget);
                   setPendingSkill(next);
                 }}
                 onOpenDetail={setDetailSkill}
@@ -973,38 +997,18 @@ function Discovery({
         </Dialog>
       ) : null}
       {pendingSkill ? (
-        <Dialog
-          open
+        <SkillInstallTargetDialog
+          key={pendingSkill.key}
           title={`安装 ${pendingSkill.name}`}
-          description="选择要安装到的应用。"
-          onOpenChange={(open) => {
-            if (!open && !busy) setPendingSkill(null);
+          busy={busy}
+          defaultTarget={defaultTarget}
+          onCancel={() => setPendingSkill(null)}
+          onConfirm={(target) => {
+            const skill = pendingSkill;
+            setPendingSkill(null);
+            void onInstall(skill, target);
           }}
-          actions={
-            <>
-              <Button disabled={busy} onClick={() => setPendingSkill(null)}>
-                取消
-              </Button>
-              <Button
-                className="fy-control-button-primary"
-                disabled={busy}
-                onClick={() => {
-                  const skill = pendingSkill;
-                  const target = chosenTarget;
-                  setPendingSkill(null);
-                  void onInstall(skill, target);
-                }}
-              >
-                安装到 {chosenLabel}
-              </Button>
-            </>
-          }
-        >
-          <InstallTargetPicker
-            value={chosenTarget}
-            onChange={setChosenTarget}
-          />
-        </Dialog>
+        />
       ) : null}
     </section>
   );
@@ -1028,7 +1032,7 @@ function AuxiliaryDialogs({
   ) => void;
 }) {
   const queryClient = useQueryClient();
-  const { ports } = useFeatures();
+  const { ports, setInstallTarget } = useFeatures();
   const unmanaged = useUnmanagedSkills(name === "unmanaged");
   const backups = useSkillBackups(name === "backups");
   const settings = useFeatureSettings(name === "settings");
@@ -1047,6 +1051,8 @@ function AuxiliaryDialogs({
     skippedCount: number;
     errors: string[];
   } | null>(null);
+  const [restoreTarget, setRestoreTarget] =
+    useState<SkillTargetId>(installTarget);
   const installed = useInstalledSkills();
   const selectedDirectories =
     selected ?? new Set((unmanaged.data ?? []).map((skill) => skill.directory));
@@ -1126,35 +1132,27 @@ function AuxiliaryDialogs({
                   />
                   <strong>{skill.name}</strong>
                 </label>
-                <div className="fy-feature-check-grid">
-                  {SKILL_TARGETS.map((app) => (
-                    <label key={app.id} className="fy-feature-check">
-                      <Checkbox
-                        label={`${skill.name} 分配到 ${app.label}`}
-                        checked={Boolean(
-                          (importApps[skill.directory] ??
-                            createSkillAssignments(
-                              supportedFoundIn(skill.foundIn),
-                            ))[app.id],
-                        )}
-                        onCheckedChange={(checked) =>
-                          setImportApps((current) => ({
-                            ...current,
-                            [skill.directory]: {
-                              ...(current[skill.directory] ??
-                                createSkillAssignments(
-                                  supportedFoundIn(skill.foundIn),
-                                )),
-                              [app.id]: checked,
-                            },
-                          }))
-                        }
-                        disabled={!selectedDirectories.has(skill.directory)}
-                      />
-                      {app.label}
-                    </label>
-                  ))}
-                </div>
+                <AssignmentPanel
+                  apps={
+                    importApps[skill.directory] ??
+                    createSkillAssignments(supportedFoundIn(skill.foundIn))
+                  }
+                  disabled={busy || !selectedDirectories.has(skill.directory)}
+                  labelSuffix="Skill 分配"
+                  onToggle={(app, enabled) =>
+                    setImportApps((current) => ({
+                      ...current,
+                      [skill.directory]: {
+                        ...(current[skill.directory] ??
+                          createSkillAssignments(
+                            supportedFoundIn(skill.foundIn),
+                          )),
+                        [app]: enabled,
+                      },
+                    }))
+                  }
+                  targets={SKILL_TARGETS}
+                />
               </article>
             ))
           )}
@@ -1166,7 +1164,7 @@ function AuxiliaryDialogs({
       <Dialog
         open
         title="备份恢复"
-        description={`恢复时安装到 ${SKILL_TARGETS.find((app) => app.id === installTarget)?.label}`}
+        description="选择要恢复到的应用。"
         onOpenChange={(open) => !open && !busy && close()}
         actions={
           <Button onClick={close} disabled={busy}>
@@ -1174,6 +1172,14 @@ function AuxiliaryDialogs({
           </Button>
         }
       >
+        <AssignmentPanel
+          mode="radio"
+          ariaLabel="恢复目标"
+          disabled={busy}
+          onChange={setRestoreTarget}
+          targets={SKILL_TARGETS}
+          value={restoreTarget}
+        />
         <div className="fy-feature-list">
           {backups.error && backups.data !== undefined && (
             <InlineNotice tone="error">
@@ -1199,9 +1205,10 @@ function AuxiliaryDialogs({
                     disabled={busy}
                     onClick={() =>
                       void write("备份已恢复", async () => {
+                        setInstallTarget(restoreTarget);
                         await ports.skills.restoreBackup(
                           backup.backupId,
-                          installTarget,
+                          restoreTarget,
                         );
                         close();
                       })

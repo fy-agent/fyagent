@@ -330,12 +330,22 @@ describe("FyAgent V2 architecture boundary", () => {
           "FeatureSearch",
           "FeatureList",
           "FeaturePagination",
+          "AssignmentPanel",
         ],
-        forbidden: ['className="fy-feature-tab"'],
+        forbidden: [
+          'className="fy-feature-tab"',
+          "function InstallTargetPicker",
+          'className="fy-feature-check-grid"',
+        ],
       },
       {
         relative: "pages/mcp/Page.tsx",
-        owners: ["FeatureTabs", "FeatureSearch", "FeatureList"],
+        owners: [
+          "FeatureTabs",
+          "FeatureSearch",
+          "FeatureList",
+          "AssignmentPanel",
+        ],
         forbidden: ['className="fy-feature-tab"'],
       },
       {

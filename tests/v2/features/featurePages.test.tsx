@@ -595,14 +595,19 @@ describe("V2 Skills management", () => {
       name: "导入本地 Skills",
     });
     expect(
-      within(dialog).getByRole("checkbox", { name: /Claude/ }),
+      within(dialog).getByRole("switch", { name: "Claude Code Skill 分配" }),
     ).toBeChecked();
     expect(
-      within(dialog).getByRole("checkbox", { name: /Codex/ }),
+      within(dialog).getByRole("switch", { name: "Codex Skill 分配" }),
     ).toBeChecked();
     expect(
-      within(dialog).getByRole("checkbox", { name: /OpenCode/ }),
+      within(dialog).getByRole("switch", { name: "OpenCode Skill 分配" }),
     ).not.toBeChecked();
+    expect(
+      within(dialog)
+        .getAllByRole("switch")
+        .map((node) => node.getAttribute("aria-label")),
+    ).toEqual(SKILL_TARGETS.map((app) => `${app.label} Skill 分配`));
 
     await user.click(
       within(dialog).getByRole("button", { name: "导入所选 · 1" }),
@@ -1279,5 +1284,77 @@ describe("V2 Skills management", () => {
     expect(ports.skills.installFromZip).not.toHaveBeenCalled();
     expect(getInstalled).toHaveBeenCalledTimes(1);
     expect(screen.queryByText("ZIP 安装完成")).not.toBeInTheDocument();
+  });
+
+  it("picks a ZIP install target with AssignmentPanel before installing", async () => {
+    const user = userEvent.setup();
+    const ports = createBrowserFeaturePorts();
+    ports.skills.pickZip = vi.fn(async () => "C:/skills/review.zip");
+    const installFromZip = vi.fn(async () => []);
+    ports.skills.installFromZip = installFromZip;
+
+    renderFeature(<SkillsPage />, ports);
+    await screen.findByText("还没有安装 Skill");
+    await user.click(screen.getByRole("button", { name: "更多" }));
+    await user.click(screen.getByRole("button", { name: "从 ZIP 安装" }));
+
+    const picker = await screen.findByRole("dialog", { name: "从 ZIP 安装" });
+    expect(
+      within(picker).getByRole("radiogroup", { name: "安装目标" }),
+    ).toBeVisible();
+    expect(
+      within(picker)
+        .getAllByRole("radio")
+        .map((option) => option.textContent?.replace(/\s+/g, " ").trim()),
+    ).toEqual(SKILL_TARGETS.map((app) => app.label));
+    await user.click(within(picker).getByRole("radio", { name: "WorkBuddy" }));
+    await user.click(
+      within(picker).getByRole("button", { name: "安装到 WorkBuddy" }),
+    );
+    await waitFor(() =>
+      expect(installFromZip).toHaveBeenCalledWith(
+        "C:/skills/review.zip",
+        "workbuddy",
+      ),
+    );
+  });
+
+  it("picks a backup restore target with AssignmentPanel", async () => {
+    const user = userEvent.setup();
+    const ports = createBrowserFeaturePorts();
+    ports.skills.getBackups = async () => [
+      {
+        backupId: "backup-a",
+        backupPath: "C:/backups/backup-a",
+        createdAt: 1,
+        skill: installedSkill("review-skill", "Review Skill"),
+      },
+    ];
+    const restoreBackup = vi.fn(async () =>
+      installedSkill("review-skill", "Review Skill"),
+    );
+    ports.skills.restoreBackup = restoreBackup;
+
+    renderFeature(<SkillsPage />, ports);
+    await screen.findByText("还没有安装 Skill");
+    await user.click(screen.getByRole("button", { name: "更多" }));
+    await user.click(screen.getByRole("button", { name: "备份恢复" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "备份恢复" });
+    expect(
+      within(dialog).getByRole("radiogroup", { name: "恢复目标" }),
+    ).toBeVisible();
+    expect(
+      within(dialog)
+        .getAllByRole("radio")
+        .map((option) => option.textContent?.replace(/\s+/g, " ").trim()),
+    ).toEqual(SKILL_TARGETS.map((app) => app.label));
+    await user.click(
+      within(dialog).getByRole("radio", { name: "QoderWork CN" }),
+    );
+    await user.click(within(dialog).getByRole("button", { name: "恢复" }));
+    await waitFor(() =>
+      expect(restoreBackup).toHaveBeenCalledWith("backup-a", "qoderwork"),
+    );
   });
 });

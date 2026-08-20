@@ -2126,7 +2126,8 @@ impl SkillService {
 
             // 复制到 SSOT
             let dest = ssot_dir.join(&dir_name);
-            if !dest.exists() {
+            let created_ssot = !dest.exists();
+            if created_ssot {
                 Self::copy_dir_recursive(&source, &dest)?;
             }
 
@@ -2165,12 +2166,35 @@ impl SkillService {
             // 保存到数据库
             db.save_skill(&skill)?;
 
+            if let Err(err) = Self::sync_imported_skill_targets(&skill) {
+                let _ = db.delete_skill(&skill.id);
+                if created_ssot {
+                    let _ = fs::remove_dir_all(&dest);
+                }
+                return Err(err);
+            }
+
             imported.push(skill);
         }
 
         log::info!("成功导入 {} 个 Skills", imported.len());
 
         Ok(imported)
+    }
+
+    /// 已存在的目标目录不改写；缺失的选中目标走统一 `sync_to_app_dir`。
+    fn sync_imported_skill_targets(skill: &InstalledSkill) -> Result<()> {
+        for app in SkillTargetId::all() {
+            if !skill.apps.is_enabled_for_target(&app) {
+                continue;
+            }
+            let dest = Self::get_target_skills_dir(&app)?.join(&skill.directory);
+            if dest.exists() || Self::is_symlink(&dest) {
+                continue;
+            }
+            Self::sync_to_app_dir(&skill.directory, &app)?;
+        }
+        Ok(())
     }
 
     // ========== 文件同步方法 ==========
@@ -2230,11 +2254,7 @@ impl SkillService {
 
         fs::create_dir_all(&app_dir)?;
 
-        let sync_method = if app.requires_copy() {
-            SyncMethod::Copy
-        } else {
-            Self::get_sync_method()
-        };
+        let sync_method = Self::get_sync_method();
 
         match sync_method {
             SyncMethod::Auto => {
@@ -2669,7 +2689,10 @@ impl SkillService {
             Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
             Err(error) => return Err(error.into()),
         }
-        if !vendor_open_directory(&parent)?.1.same_object(parent_identity) {
+        if !vendor_open_directory(&parent)?
+            .1
+            .same_object(parent_identity)
+        {
             return Err(anyhow!("Vendor Skill 目标祖先 identity 漂移"));
         }
         Self::remove_vendor_tree(dest)
@@ -6074,7 +6097,9 @@ mod tests {
         let _guard = TestHomeGuard::set(temp.path());
         let db = Arc::new(Database::memory().expect("memory db"));
         write_skill(
-            &SkillService::get_ssot_dir().expect("ssot").join("humanizer"),
+            &SkillService::get_ssot_dir()
+                .expect("ssot")
+                .join("humanizer"),
             "humanizer",
         );
         db.save_skill(&poisoned_skill(
@@ -6114,6 +6139,62 @@ mod tests {
             .expect("db")
             .expect("row");
         assert!(!stored.apps.workbuddy);
+    }
+
+    const V2_SKILL_TARGETS: [SkillTargetId; 7] = [
+        SkillTargetId::QoderWork,
+        SkillTargetId::TraeWork,
+        SkillTargetId::WorkBuddy,
+        SkillTargetId::GrokBuild,
+        SkillTargetId::Codex,
+        SkillTargetId::Claude,
+        SkillTargetId::OpenCode,
+    ];
+
+    #[test]
+    #[serial_test::serial]
+    fn toggle_every_v2_skill_target_assigns_then_removes() {
+        let temp = tempdir().expect("tempdir");
+        let _guard = TestHomeGuard::set(temp.path());
+        let db = Arc::new(Database::memory().expect("memory db"));
+
+        for target in V2_SKILL_TARGETS {
+            let directory = format!("roundtrip-{}", target.as_str().replace('-', "_"));
+            write_skill(
+                &SkillService::get_ssot_dir().expect("ssot").join(&directory),
+                &directory,
+            );
+            let id = format!("local:{directory}");
+            db.save_skill(&poisoned_skill(&id, &directory))
+                .expect("seed skill");
+
+            SkillService::toggle_target(&db, &id, &target, true)
+                .unwrap_or_else(|err| panic!("assign {} failed: {err}", target.as_str()));
+            let dest = SkillService::get_target_skills_dir(&target)
+                .expect("target dir")
+                .join(&directory);
+            assert!(
+                dest.join("SKILL.md").is_file(),
+                "{} dest missing after assign: {}",
+                target.as_str(),
+                dest.display()
+            );
+
+            SkillService::toggle_target(&db, &id, &target, false)
+                .unwrap_or_else(|err| panic!("unassign {} failed: {err}", target.as_str()));
+            assert!(
+                fs::symlink_metadata(&dest).is_err(),
+                "{} dest still present after unassign: {}",
+                target.as_str(),
+                dest.display()
+            );
+            let stored = db.get_installed_skill(&id).expect("db").expect("row");
+            assert!(
+                !stored.apps.is_enabled_for_target(&target),
+                "{} flag still enabled after unassign",
+                target.as_str()
+            );
+        }
     }
 
     #[test]

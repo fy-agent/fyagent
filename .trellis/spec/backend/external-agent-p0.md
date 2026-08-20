@@ -114,7 +114,15 @@ contract version is 4 and includes Grok Build (`https://x.ai/grok`).
   reads and writes all stored flags.
 - QoderWork, TRAE Work, and WorkBuddy Skill destinations are derived only from
   trusted home as `.qoderwork/skills`, `.trae-cn/skills`, and
-  `.workbuddy/skills`. All three are copy-only.
+  `.workbuddy/skills`. All three are copy-only destinations inside the shared
+  `SkillService::sync_to_app_dir` / `remove_from_target` path. V2 Skills
+  install, assign, unassign, ZIP, restore, and import for every catalog target
+  (`qoderwork`, `trae-work`, `workbuddy`, `grokbuild`, `codex`, `claude`,
+  `opencode`) use `install_skillhub` / `install_from_zip` /
+  `restore_from_backup_for_target` / `toggle_skill_app` / `import_from_apps`;
+  do not add per-agent Skill commands. `import_from_apps` syncs only dests
+  that are not already present. Vendor directory-swap checks compare volume +
+  inode, not mtime.
 - Direct MCP live files: WorkBuddy writes trusted-home `.workbuddy/.mcp.json`;
   QoderWork CN writes `{trusted-home}/.qoderworkcn/mcp.json`; TRAE Work CN
   writes TRAE SOLO CN `User/mcp.json`. Each is a Claude-style `mcpServers` map,
@@ -178,6 +186,7 @@ are `assisted` + `vendor_ui_required`.
 #### Scenario: TRAE Work CN custom-model observation
 
 ##### 1. Scope / Trigger
+
 - Trigger: `get_traework_model_ids` reads the local TRAE SOLO CN model-list
   cache so FyAgent can display currently cached custom IDs. This is not
   Work CN persist. The TRAE Work CN UI refreshes from TRAE cloud `model` /
@@ -186,6 +195,7 @@ are `assisted` + `vendor_ui_required`.
   cloud list. FyAgent must not write this sqlite document.
 
 ##### 2. Signatures
+
 - SQLite `ItemTable` in TRAE SOLO CN `state.vscdb`; `value` is TEXT
 - `ItemTable.key` suffix `AI.agent.model.model_list_map`
 - Work CN live key: `{userId}:AI.agent.model.model_list_map` (colon)
@@ -194,6 +204,7 @@ are `assisted` + `vendor_ui_required`.
 - There is no `save_traework_models` or `fetch_traework_models` command.
 
 ##### 3. Contracts
+
 - GET opens the colon Work CN key when both keys exist. Underscore is the
   IDE map. `ORDER BY key LIMIT 1` is still forbidden; collect matching keys
   and prefer `:{suffix}` when present, else `_{suffix}`.
@@ -206,12 +217,14 @@ are `assisted` + `vendor_ui_required`.
   are dropped when TRAE launches.
 
 ##### 4. Validation & Error Matrix
+
 - Both colon and underscore keys exist -> read colon Work CN map
 - Missing/unparseable document -> fail closed
 - Custom id collides with a stored secret -> fail closed
 - Any write/upsert into `state.vscdb` model-list map -> forbidden
 
 ##### 5. Good/Base/Bad Cases
+
 - Good: GET on the live colon map returns cached custom IDs without `ak`/`sk`.
 - Base: fixture sqlite under `FYAGENT_TEST_HOME` may still be colon-only
   with legacy `solo_work_lite`/`solo_work_remote` snake rows.
@@ -219,6 +232,7 @@ are `assisted` + `vendor_ui_required`.
   write sqlite to make Work CN list a model, or expose `save_traework_models`.
 
 ##### 6. Tests Required
+
 - Fixture with both keys: GET uses the colon Work CN map and leaves the
   underscore IDE map unchanged.
 - Legacy colon-only fixture: GET never serializes `ak`/`sk`.
@@ -226,6 +240,7 @@ are `assisted` + `vendor_ui_required`.
   registered.
 
 ##### 7. Wrong vs Correct
+
 - Wrong: write `{userId}:AI.agent.model.model_list_map` or treat sqlite as
   Work CN UI persist.
 - Correct: prefer the colon key for GET observation only. Work CN listing
@@ -238,6 +253,7 @@ do not make Work CN list a model. Work CN refreshes from cloud `model` /
 `model_list` and drops local-only customs.
 
 **Options Considered**:
+
 1. Continue SAVE into `state.vscdb` and tell users to reopen TRAE
 2. Implement cloud `add_custom_model`
 3. Remove fetch/save commands; GET observation only
@@ -246,6 +262,7 @@ do not make Work CN list a model. Work CN refreshes from cloud `model` /
 `fetch_traework_models` and `save_traework_models` must not exist.
 
 **Example**:
+
 ```text
 get_traework_model_ids() -> { modelIds, revision, truncated }
 ```
@@ -290,25 +307,25 @@ underscore IDE key.
 
 ## 4. Validation & Error Matrix
 
-| Condition | Required result |
-| --- | --- |
-| Catalog version/order/enum/link drifts | Reject the whole catalog; do not render a legacy fallback |
-| Runtime detection is unavailable | Return `null`/`unverified`; never report not installed |
-| Launch lacks trusted runtime identity | Return controlled unverified/unavailable; start nothing |
-| Schema 16 data migrates | Preserve all old rows/flags and default both new flags to false |
-| Schema 17 data migrates to 18 | Preserve leftover flags and default `enabled_workbuddy` to false |
-| Schema 18 data migrates to 19 | Preserve leftover flags and default MCP `enabled_qoderwork` / `enabled_trae_work` to false |
-| Qoder/TRAE/WorkBuddy MCP home and file are both absent | Skip live write; do not create the vendor directory |
-| TRAE sqlite model-list write is requested | Forbidden; GET observation only; Work CN listing requires `add_custom_model` |
-| TRAE/OpenCode GET JSON contains `ak`/`sk`/`apiKey` | Security regression gate fails |
-| WorkBuddy is added as `AppType` | Type test fails |
-| Skill destination is linked, escaped, raced, or hash-drifted | Fail closed; do not claim sync |
-| Qoder JSON/hooks projection is unsafe | Return controlled unsupported/invalid result; write nothing |
-| Qoder revision drifts | Require one-use overwrite confirmation or return concurrent modification |
-| TRAE URL/DNS/proxy cannot preserve policy | Return a closed rejection code before an unsafe connection |
-| TRAE request is cancelled/times out/fails | Remove active state and return only a sanitized terminal result |
-| MCP server mixes transports or exceeds limits | Reject; execute and persist nothing |
-| A secret reaches DTO, error, log, DOM, query, storage, URL, snapshot, or default clipboard | Security regression gate fails |
+| Condition                                                                                  | Required result                                                                            |
+| ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
+| Catalog version/order/enum/link drifts                                                     | Reject the whole catalog; do not render a legacy fallback                                  |
+| Runtime detection is unavailable                                                           | Return `null`/`unverified`; never report not installed                                     |
+| Launch lacks trusted runtime identity                                                      | Return controlled unverified/unavailable; start nothing                                    |
+| Schema 16 data migrates                                                                    | Preserve all old rows/flags and default both new flags to false                            |
+| Schema 17 data migrates to 18                                                              | Preserve leftover flags and default `enabled_workbuddy` to false                           |
+| Schema 18 data migrates to 19                                                              | Preserve leftover flags and default MCP `enabled_qoderwork` / `enabled_trae_work` to false |
+| Qoder/TRAE/WorkBuddy MCP home and file are both absent                                     | Skip live write; do not create the vendor directory                                        |
+| TRAE sqlite model-list write is requested                                                  | Forbidden; GET observation only; Work CN listing requires `add_custom_model`               |
+| TRAE/OpenCode GET JSON contains `ak`/`sk`/`apiKey`                                         | Security regression gate fails                                                             |
+| WorkBuddy is added as `AppType`                                                            | Type test fails                                                                            |
+| Skill destination is linked, escaped, raced, or hash-drifted                               | Fail closed; do not claim sync                                                             |
+| Qoder JSON/hooks projection is unsafe                                                      | Return controlled unsupported/invalid result; write nothing                                |
+| Qoder revision drifts                                                                      | Require one-use overwrite confirmation or return concurrent modification                   |
+| TRAE URL/DNS/proxy cannot preserve policy                                                  | Return a closed rejection code before an unsafe connection                                 |
+| TRAE request is cancelled/times out/fails                                                  | Remove active state and return only a sanitized terminal result                            |
+| MCP server mixes transports or exceeds limits                                              | Reject; execute and persist nothing                                                        |
+| A secret reaches DTO, error, log, DOM, query, storage, URL, snapshot, or default clipboard | Security regression gate fails                                                             |
 
 ## 5. Good / Base / Bad Cases
 

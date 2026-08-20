@@ -34,10 +34,10 @@ describe("AssignmentPanel", () => {
       ).toBeVisible();
     }
     expect(
-      screen.getAllByRole("switch").map((node) => node.getAttribute("aria-label")),
-    ).toEqual(
-      SKILL_TARGETS.map((app) => `${app.label} Skill 分配`),
-    );
+      screen
+        .getAllByRole("switch")
+        .map((node) => node.getAttribute("aria-label")),
+    ).toEqual(SKILL_TARGETS.map((app) => `${app.label} Skill 分配`));
 
     const icons = Array.from(
       container.querySelectorAll<HTMLImageElement>(
@@ -71,7 +71,38 @@ describe("AssignmentPanel", () => {
     expect(onToggle).toHaveBeenCalledTimes(1);
     expect(onToggle).toHaveBeenCalledWith("opencode", true);
     expect(
-      screen.getAllByRole("switch").map((node) => node.getAttribute("aria-label")),
+      screen
+        .getAllByRole("switch")
+        .map((node) => node.getAttribute("aria-label")),
     ).toEqual(MCP_TARGETS.map((app) => `${app.label} MCP 分配`));
+  });
+
+  it("renders one seven-option install picker in catalog order", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    const { container } = render(
+      <AssignmentPanel
+        mode="radio"
+        ariaLabel="安装目标"
+        onChange={onChange}
+        targets={SKILL_TARGETS}
+        value="claude"
+      />,
+    );
+
+    expect(screen.getByRole("radiogroup", { name: "安装目标" })).toBeVisible();
+    expect(
+      screen.getAllByRole("radio").map((node) => node.textContent?.trim()),
+    ).toEqual(SKILL_TARGETS.map((app) => app.label));
+    expect(
+      screen.getByRole("radio", { name: "Claude Code", checked: true }),
+    ).toBeVisible();
+    expect(
+      container.querySelectorAll("img.fy-feature-assignment-icon"),
+    ).toHaveLength(7);
+
+    await user.click(screen.getByRole("radio", { name: "WorkBuddy" }));
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenCalledWith("workbuddy");
   });
 });

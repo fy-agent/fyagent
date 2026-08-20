@@ -137,7 +137,7 @@ Phosphor CSR carets.
 
 Related shared owners already in place: `SelectionLens` /
 `SelectionLensGroup` (nav, catalog, UI Lab), `AssignmentPanel` (Skills/MCP
-app toggles), `SplitPanes`, `CatalogMasterDetail`, `CatalogOfficialLinks`,
+switches plus Skills install/ZIP/restore radio), `SplitPanes`, `CatalogMasterDetail`, `CatalogOfficialLinks`,
 `SecretInput`, `ExternalLinkButton`, `CopyablePath`, FeaturePorts, and
 `PRODUCT_DIRECTORY` in `shared/features/directory.ts`.
 
@@ -185,8 +185,8 @@ lists, Skills vs MCP, Prompts vs Memory, and TRAE vs OpenCode model panels.
 
 - Exclusive in-page option tracks (installed/discovery, memory types, MCP
   editor mode, Skills discovery first-level categories, MCP discover
-  install-kind) use `FeatureTabs`. Skills discovery install targets are a
-  Dialog radiogroup, not header tabs. Do not
+  install-kind) use `FeatureTabs`. Skills install, restore, and ZIP targets
+  are `AssignmentPanel mode="radio"` in a Dialog, not header tabs. Do not
   hand-roll `SelectionLensTrack` + `fy-feature-tab` on those pages.
 - Management-list search uses `FeatureSearch` (`role="search"`, Escape and
   clear button, Phosphor icons). That is the V2 port of pre-V2
@@ -199,7 +199,11 @@ lists, Skills vs MCP, Prompts vs Memory, and TRAE vs OpenCode model panels.
   hand-roll a second page-number window, and do not add a pagination UI
   library for prev/next or ellipsis.
 - Skills/MCP assignment stays on `AssignmentPanel` (V2 switch rows), not a
-  second AppToggleGroup clone.
+  second AppToggleGroup clone. Skills discovery install, ZIP install, and
+  backup restore use the same `AssignmentPanel` with `mode="radio"`. Skills
+  unmanaged import uses the same component in switch mode. Do not add
+  `InstallTargetPicker`, a page-local checkbox grid, or another catalog-target
+  list on the Skills page.
 
 ### Pre-V2 and leftover business
 
@@ -228,7 +232,8 @@ already share `modelsShared`, `modelChips`, and `feedback`. Do not add
 | A feature page hand-rolls `fy-feature-tab` instead of `FeatureTabs`                                  | Unit/architecture test fails; use `FeatureTabs`                          |
 | Management search is a raw `Input type="search"` on Skills/MCP/Memory/Prompts/Discovery              | Use `FeatureSearch`; leftover `ManagementListSearch` stays leftover-only |
 | V2 imports leftover `src/components` or `src/lib`                                                    | Architecture test fails                                                  |
-| A second copy of AssignmentPanel / SecretInput / ExternalLinkButton / CatalogOfficialLinks           | Reject; extend the existing shared owner                                 |
+| Skills install picker is not `AssignmentPanel mode="radio"`                                          | Reuse test / page test fails; extend `AssignmentPanel`                   |
+| Skills import assignment is a page-local checkbox grid                                               | Reuse test fails; use `AssignmentPanel` switch rows                      |
 | A page-local Agent/Skills/MCP/Models/Prompts order table                                             | Reject; extend `PRODUCT_DIRECTORY`                                       |
 | New chrome used by two routes is added under `pages/<route>/`                                        | Move it to `shared/ui` before merge                                      |
 | New chrome is parked in `pages/` because "only one consumer today" while a sibling route is expected | Put it in `shared/` on the first commit; do not wait for a third copy    |
@@ -243,6 +248,9 @@ already share `modelsShared`, `modelChips`, and `feedback`. Do not add
   `FeatureList`. Skills/MCP/Memory import `FeatureTabs`. Skills discovery
   uses `FeaturePagination` (`ariaLabel="Skill 市场分页"`) and one category
   `FeatureTabs` (`label="分类筛选"`, 全部 plus the 12 official SkillHub names).
+  Skills install, ZIP, restore, and assignment all use `AssignmentPanel`
+  (radio vs switch). Unmanaged Skill import uses the same switch panel, not a
+  checkbox grid.
   A later filter track adds one `FeatureTabs` options array, not a new tab
   component.
 - **Base:** Primary nav and catalog rails keep `SelectionLensGroup` /
@@ -268,7 +276,9 @@ mise run test:v2
   (`-webkit-line-clamp: 3`), and the discovery-scroll CSS contract.
 - Architecture tests prove Skills/MCP/Memory/Prompts/Discovery/model search
   import `FeatureTabs` / `FeatureSearch` / `FeatureList` as required, that
-  Skills/MCP/Memory do not contain `className="fy-feature-tab"` literals, and
+  Skills/MCP import `AssignmentPanel`, that Skills does not contain
+  `InstallTargetPicker` or `fy-feature-check-grid`, that Skills/MCP/Memory do
+  not contain `className="fy-feature-tab"` literals, and
   that V2 still cannot import leftover UI.
 
 ## 7. Wrong vs Correct
@@ -292,6 +302,30 @@ Correct: shared V2 chrome; leftover is a behavior reference.
 <FeatureSearch ariaLabel="搜索已安装 Skills" placeholder="..." value={search} onValueChange={setSearch} />
 <FeatureList id="skills-installed-list">{items}</FeatureList>
 <FeaturePagination page={page} totalPages={totalPages} ariaLabel="Skill 市场分页" onPageChange={setPage} />
+<AssignmentPanel mode="radio" ariaLabel="安装目标" targets={SKILL_TARGETS} value={target} onChange={setTarget} />
+```
+
+Wrong: a Skills-page checkbox grid or `InstallTargetPicker` for catalog targets.
+
+```tsx
+<div className="fy-feature-check-grid">
+  {SKILL_TARGETS.map((app) => (
+    <label key={app.id}>
+      <Checkbox label={app.label} />
+    </label>
+  ))}
+</div>
+```
+
+Correct: the same `AssignmentPanel` switch rows used by installed assignment.
+
+```tsx
+<AssignmentPanel
+  apps={apps}
+  onToggle={onToggle}
+  labelSuffix="Skill 分配"
+  targets={SKILL_TARGETS}
+/>
 ```
 
 Wrong: add a pagination library because Radix has no primitive.
