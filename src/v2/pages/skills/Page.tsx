@@ -20,7 +20,6 @@ import {
   useInstalledSkills,
   useSkillBackups,
   useSkillHubSearch,
-  useSkillRepos,
   useSkillUpdates,
   useUnmanagedSkills,
 } from "../../shared/features/queries";
@@ -37,7 +36,6 @@ import {
   type SkillBackupEntry,
   type SkillHubCategoryFilter,
   type SkillHubSkill,
-  type SkillRepo,
   type SkillTargetId,
 } from "../../shared/features/types";
 import {
@@ -48,7 +46,6 @@ import {
   Dialog,
   EmptyState,
   InlineNotice,
-  Input,
   Spinner,
 } from "../../shared/ui/primitives";
 import { AssignmentPanel } from "../../shared/ui/AssignmentPanel";
@@ -63,13 +60,7 @@ import { SplitPanes } from "../../shared/ui/split";
 import "./page.css";
 
 type SkillsTab = "installed" | "discovery";
-type DialogName =
-  | "more"
-  | "unmanaged"
-  | "backups"
-  | "repos"
-  | "settings"
-  | null;
+type DialogName = "more" | "unmanaged" | "backups" | "settings" | null;
 
 function formatSkillTimestamp(value: number): string {
   if (!Number.isFinite(value) || value <= 0) return "未知";
@@ -175,7 +166,6 @@ const invalidations = [
   featureKeys.skills,
   featureKeys.skillBackups,
   featureKeys.skillDiscovery,
-  featureKeys.skillRepos,
   featureKeys.skillUnmanaged,
 ];
 
@@ -345,7 +335,6 @@ export function SkillsPage() {
   const [dialog, setDialog] = useState<DialogName>(null);
   const [confirm, setConfirm] = useState<
     | { kind: "uninstall"; skill: InstalledSkill }
-    | { kind: "repo"; repo: SkillRepo }
     | { kind: "backup"; backup: SkillBackupEntry }
     | null
   >(null);
@@ -494,37 +483,6 @@ export function SkillsPage() {
           </p>
         </div>
         <div className="fy-feature-actions">
-          {tab === "discovery" && (
-            <>
-              <p className="fy-feature-description">
-                将安装到{" "}
-                {SKILL_TARGETS.find((app) => app.id === installTarget)?.label ??
-                  "Claude Code"}
-              </p>
-              <FeatureTabs
-                id="skills-install-target"
-                className="fy-feature-target-tabs"
-                label="安装目标"
-                value={installTarget}
-                onChange={setInstallTarget}
-                options={SKILL_TARGETS.map((app) => ({
-                  id: app.id,
-                  label: (
-                    <>
-                      <img
-                        className="fy-feature-assignment-icon"
-                        src={getSkillTargetIcon(app.id)}
-                        alt=""
-                        aria-hidden="true"
-                      />
-                      <span>{app.label}</span>
-                    </>
-                  ),
-                }))}
-              />
-              <Button onClick={() => setDialog("repos")}>管理仓库</Button>
-            </>
-          )}
           {tab === "installed" && (
             <>
               <Button
@@ -734,14 +692,15 @@ export function SkillsPage() {
         </>
       ) : (
         <Discovery
-          installTarget={installTarget}
           busy={busy}
-          onInstall={(skill) =>
-            write(`${skill.name} 已安装`, async () => {
+          defaultTarget={installTarget}
+          onInstall={(skill, target) => {
+            setInstallTarget(target);
+            return write(`${skill.name} 已安装`, async () => {
               const slug = skill.slug ?? skill.repoName;
-              await ports.skills.installSkillHub(slug, installTarget);
-            })
-          }
+              await ports.skills.installSkillHub(slug, target);
+            });
+          }}
         />
       )}
       <AuxiliaryDialogs
@@ -758,18 +717,14 @@ export function SkillsPage() {
         title={
           confirm?.kind === "uninstall"
             ? `卸载 ${confirm.skill.name}`
-            : confirm?.kind === "repo"
-              ? `移除仓库 ${confirm.repo.owner}/${confirm.repo.name}`
-              : confirm
-                ? `删除 ${confirm.backup.skill.name} 的备份`
-                : "确认操作"
+            : confirm
+              ? `删除 ${confirm.backup.skill.name} 的备份`
+              : "确认操作"
         }
         description={
           confirm?.kind === "uninstall"
             ? "将从管理列表及已启用的应用中移除，并创建可恢复备份。"
-            : confirm?.kind === "repo"
-              ? "仅移除仓库来源，不会卸载已安装 Skills。"
-              : "删除后无法从该备份恢复。"
+            : "删除后无法从该备份恢复。"
         }
         pending={busy}
         onCancel={() => setConfirm(null)}
@@ -779,16 +734,6 @@ export function SkillsPage() {
           if (action.kind === "uninstall")
             await write("Skill 已卸载", async () => {
               await ports.skills.uninstall(action.skill.id);
-            });
-          else if (action.kind === "repo")
-            await write("仓库已移除", async () => {
-              await ports.skills.removeRepo(
-                action.repo.owner,
-                action.repo.name,
-              );
-              await queryClient.invalidateQueries({
-                queryKey: featureKeys.skillRepos,
-              });
             });
           else
             await write("备份已删除", async () => {
@@ -803,17 +748,15 @@ export function SkillsPage() {
 
 function DiscoveryCard({
   busy,
-  installLabel,
   isInstalled,
   skill,
   onInstall,
   onOpenDetail,
 }: {
   busy: boolean;
-  installLabel: string;
   isInstalled: boolean;
   skill: DiscoverySkill;
-  onInstall: (skill: DiscoverySkill) => Promise<void>;
+  onInstall: (skill: DiscoverySkill) => void;
   onOpenDetail: (skill: DiscoverySkill) => void;
 }) {
   const body = skillCardBody(skill);
@@ -840,9 +783,9 @@ function DiscoveryCard({
         <Button
           className="fy-control-button-primary"
           disabled={busy || isInstalled}
-          onClick={() => void onInstall(skill)}
+          onClick={() => onInstall(skill)}
         >
-          {isInstalled ? "已安装" : `安装到 ${installLabel}`}
+          {isInstalled ? "已安装" : "安装"}
         </Button>
         <Button onClick={() => onOpenDetail(skill)}>详情</Button>
         {docs ? (
@@ -853,14 +796,52 @@ function DiscoveryCard({
   );
 }
 
+function InstallTargetPicker({
+  value,
+  onChange,
+}: {
+  value: SkillTargetId;
+  onChange: (value: SkillTargetId) => void;
+}) {
+  return (
+    <div
+      className="fy-feature-target-picker"
+      role="radiogroup"
+      aria-label="安装目标"
+    >
+      {SKILL_TARGETS.map((app) => {
+        const selected = app.id === value;
+        return (
+          <button
+            key={app.id}
+            type="button"
+            role="radio"
+            aria-checked={selected}
+            className="fy-feature-target-option"
+            onClick={() => onChange(app.id)}
+          >
+            <img
+              className="fy-feature-assignment-icon"
+              src={getSkillTargetIcon(app.id)}
+              alt=""
+              aria-hidden="true"
+            />
+            <span>{app.label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function Discovery({
-  installTarget,
   busy,
+  defaultTarget,
   onInstall,
 }: {
-  installTarget: SkillTargetId;
   busy: boolean;
-  onInstall: (skill: DiscoverySkill) => Promise<void>;
+  defaultTarget: SkillTargetId;
+  onInstall: (skill: DiscoverySkill, target: SkillTargetId) => Promise<void>;
 }) {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -869,6 +850,9 @@ function Discovery({
   );
   const [page, setPage] = useState(1);
   const [detailSkill, setDetailSkill] = useState<DiscoverySkill | null>(null);
+  const [pendingSkill, setPendingSkill] = useState<DiscoverySkill | null>(null);
+  const [chosenTarget, setChosenTarget] =
+    useState<SkillTargetId>(defaultTarget);
   const resultsTop = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -887,8 +871,8 @@ function Discovery({
     Math.ceil(totalCount / SKILL_DISCOVERY_PAGE_SIZE),
   );
   const currentPage = Math.min(page, totalPages);
-  const installLabel =
-    SKILL_TARGETS.find((app) => app.id === installTarget)?.label ??
+  const chosenLabel =
+    SKILL_TARGETS.find((app) => app.id === chosenTarget)?.label ??
     "Claude Code";
   const goToPage = (next: number) => {
     setPage(next);
@@ -957,10 +941,12 @@ function Discovery({
               <DiscoveryCard
                 key={skill.key}
                 busy={busy}
-                installLabel={installLabel}
                 isInstalled={isDiscoverableInstalled(skill, installedItems)}
                 skill={skill}
-                onInstall={onInstall}
+                onInstall={(next) => {
+                  setChosenTarget(defaultTarget);
+                  setPendingSkill(next);
+                }}
                 onOpenDetail={setDetailSkill}
               />
             ))}
@@ -986,6 +972,40 @@ function Discovery({
           <p className="fy-feature-intro">{skillDetailBody(detailSkill)}</p>
         </Dialog>
       ) : null}
+      {pendingSkill ? (
+        <Dialog
+          open
+          title={`安装 ${pendingSkill.name}`}
+          description="选择要安装到的应用。"
+          onOpenChange={(open) => {
+            if (!open && !busy) setPendingSkill(null);
+          }}
+          actions={
+            <>
+              <Button disabled={busy} onClick={() => setPendingSkill(null)}>
+                取消
+              </Button>
+              <Button
+                className="fy-control-button-primary"
+                disabled={busy}
+                onClick={() => {
+                  const skill = pendingSkill;
+                  const target = chosenTarget;
+                  setPendingSkill(null);
+                  void onInstall(skill, target);
+                }}
+              >
+                安装到 {chosenLabel}
+              </Button>
+            </>
+          }
+        >
+          <InstallTargetPicker
+            value={chosenTarget}
+            onChange={setChosenTarget}
+          />
+        </Dialog>
+      ) : null}
     </section>
   );
 }
@@ -1004,21 +1024,15 @@ function AuxiliaryDialogs({
   busy: boolean;
   write: (title: string, operation: () => Promise<void>) => Promise<void>;
   setConfirm: (
-    value:
-      | { kind: "repo"; repo: SkillRepo }
-      | { kind: "backup"; backup: SkillBackupEntry }
-      | null,
+    value: { kind: "backup"; backup: SkillBackupEntry } | null,
   ) => void;
 }) {
   const queryClient = useQueryClient();
   const { ports } = useFeatures();
   const unmanaged = useUnmanagedSkills(name === "unmanaged");
   const backups = useSkillBackups(name === "backups");
-  const repos = useSkillRepos();
   const settings = useFeatureSettings(name === "settings");
   const [selected, setSelected] = useState<Set<string> | null>(null);
-  const [repoValue, setRepoValue] = useState("");
-  const [branch, setBranch] = useState("main");
   const [syncMethod, setSyncMethod] = useState<
     "auto" | "symlink" | "copy" | null
   >(null);
@@ -1038,17 +1052,6 @@ function AuxiliaryDialogs({
     selected ?? new Set((unmanaged.data ?? []).map((skill) => skill.directory));
   const selectedSyncMethod =
     syncMethod ?? settings.data?.skillSyncMethod ?? "auto";
-  const parseRepo = (): SkillRepo | null => {
-    const normalized = repoValue
-      .trim()
-      .replace(/^https:\/\/github\.com\//i, "")
-      .replace(/\.git$/i, "")
-      .replace(/\/$/, "");
-    const [owner, repo, ...rest] = normalized.split("/");
-    return owner && repo && rest.length === 0
-      ? { owner, name: repo, branch: branch.trim() || "main", enabled: true }
-      : null;
-  };
   if (!name || name === "more") return null;
   if (name === "unmanaged")
     return (
@@ -1217,79 +1220,6 @@ function AuxiliaryDialogs({
               </article>
             ))
           )}
-        </div>
-      </Dialog>
-    );
-  if (name === "repos")
-    return (
-      <Dialog
-        open
-        title="仓库管理"
-        description="填写 GitHub 仓库地址，支持简写或完整链接；移除仓库不会卸载已安装的 Skills。"
-        onOpenChange={(open) => !open && !busy && close()}
-        actions={
-          <Button onClick={close} disabled={busy}>
-            关闭
-          </Button>
-        }
-      >
-        <div className="fy-feature-form-grid">
-          <label className="fy-control-field">
-            GitHub 仓库
-            <Input
-              value={repoValue}
-              onChange={(event) => setRepoValue(event.target.value)}
-              placeholder="owner/repo"
-            />
-          </label>
-          <label className="fy-control-field">
-            分支
-            <Input
-              value={branch}
-              onChange={(event) => setBranch(event.target.value)}
-            />
-          </label>
-          <Button
-            className="fy-control-button-primary fy-feature-form-span"
-            disabled={busy || !parseRepo()}
-            onClick={() => {
-              const repo = parseRepo();
-              if (repo)
-                void write("仓库已添加", async () => {
-                  await ports.skills.addRepo(repo);
-                  await queryClient.invalidateQueries({
-                    queryKey: featureKeys.skillRepos,
-                  });
-                  setRepoValue("");
-                });
-            }}
-          >
-            添加仓库
-          </Button>
-        </div>
-        <div className="fy-feature-list">
-          {repos.error && (
-            <InlineNotice tone="error">
-              仓库加载失败：{errorMessage(repos.error)}
-            </InlineNotice>
-          )}
-          {(repos.data ?? []).map((repo) => (
-            <div
-              className="fy-feature-assignment"
-              key={`${repo.owner}/${repo.name}`}
-            >
-              <span>
-                {repo.owner}/{repo.name} · {repo.branch}
-              </span>
-              <Button
-                className="fy-control-button-danger"
-                disabled={busy}
-                onClick={() => setConfirm({ kind: "repo", repo })}
-              >
-                移除
-              </Button>
-            </div>
-          ))}
         </div>
       </Dialog>
     );

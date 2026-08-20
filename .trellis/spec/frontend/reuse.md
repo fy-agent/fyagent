@@ -184,8 +184,9 @@ lists, Skills vs MCP, Prompts vs Memory, and TRAE vs OpenCode model panels.
 ### Feature chrome
 
 - Exclusive in-page option tracks (installed/discovery, memory types, MCP
-  editor mode, Skills install targets, Skills discovery first-level
-  categories, MCP discover install-kind) use `FeatureTabs`. Do not
+  editor mode, Skills discovery first-level categories, MCP discover
+  install-kind) use `FeatureTabs`. Skills discovery install targets are a
+  Dialog radiogroup, not header tabs. Do not
   hand-roll `SelectionLensTrack` + `fy-feature-tab` on those pages.
 - Management-list search uses `FeatureSearch` (`role="search"`, Escape and
   clear button, Phosphor icons). That is the V2 port of pre-V2

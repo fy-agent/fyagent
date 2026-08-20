@@ -22,7 +22,6 @@ export const featureKeys = {
   openCodeModelSnapshot: ["v2", "opencode", "model-snapshot"] as const,
   skills: ["v2", "skills", "installed"] as const,
   skillBackups: ["v2", "skills", "backups"] as const,
-  skillRepos: ["v2", "skills", "repos"] as const,
   skillDiscovery: ["v2", "skills", "discovery"] as const,
   skillUnmanaged: ["v2", "skills", "unmanaged"] as const,
   skillUpdates: ["v2", "skills", "updates"] as const,
@@ -108,13 +107,6 @@ export function useSkillBackups(enabled = true) {
     queryKey: featureKeys.skillBackups,
     queryFn: ports.skills.getBackups,
     enabled,
-  });
-}
-export function useSkillRepos() {
-  const { ports } = useFeatures();
-  return useQuery({
-    queryKey: featureKeys.skillRepos,
-    queryFn: ports.skills.getRepos,
   });
 }
 export function useSkillDiscoveryPage(

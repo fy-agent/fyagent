@@ -576,17 +576,9 @@ describe("V2 Skills management", () => {
         return [];
       },
     );
-    let imported = false;
-    const getRepos = vi.fn(async () =>
-      imported
-        ? [{ owner: "acme", name: "skills", branch: "main", enabled: true }]
-        : [],
-    );
     const ports = createBrowserFeaturePorts();
     ports.skills.scanUnmanaged = async () => [unmanaged];
-    ports.skills.getRepos = getRepos;
     ports.skills.importFromApps = vi.fn(async (imports) => {
-      imported = true;
       await importFromApps(imports);
       return [];
     });
@@ -594,6 +586,9 @@ describe("V2 Skills management", () => {
     renderFeature(<SkillsPage />, ports);
     await screen.findByText("还没有安装 Skill");
     await user.click(screen.getByRole("button", { name: "更多" }));
+    expect(
+      screen.queryByRole("button", { name: "管理仓库" }),
+    ).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "导入本地 Skill" }));
 
     const dialog = await screen.findByRole("dialog", {
@@ -626,10 +621,12 @@ describe("V2 Skills management", () => {
         }),
       },
     ]);
-    await waitFor(() => expect(getRepos).toHaveBeenCalledTimes(2));
     await user.click(screen.getByRole("tab", { name: "发现" }));
     expect(screen.queryByText("尚未配置仓库")).not.toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: "仓库" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "管理仓库" }),
+    ).not.toBeInTheDocument();
   });
 
   it("keeps cached Skills visible when a write-triggered refresh fails", async () => {
@@ -818,10 +815,16 @@ describe("V2 Skills management", () => {
     await screen.findByText("还没有安装 Skill");
     await user.click(screen.getByRole("tab", { name: "发现" }));
     const install = await screen.findByRole("button", {
-      name: "安装到 Claude Code",
+      name: "安装",
     });
 
     await user.click(install);
+    const picker = await screen.findByRole("dialog", {
+      name: "安装 Review Skill",
+    });
+    await user.click(
+      within(picker).getByRole("button", { name: "安装到 Claude Code" }),
+    );
     await waitFor(() => expect(install).toBeDisabled());
     fireEvent.click(install);
     expect(ports.skills.installSkillHub).toHaveBeenCalledTimes(1);
@@ -860,8 +863,11 @@ describe("V2 Skills management", () => {
     renderFeature(<SkillsPage />, ports);
     await screen.findByText("还没有安装 Skill");
     await user.click(screen.getByRole("tab", { name: "发现" }));
+    await user.click(await screen.findByRole("button", { name: "安装" }));
     await user.click(
-      await screen.findByRole("button", { name: "安装到 Claude Code" }),
+      within(
+        await screen.findByRole("dialog", { name: "安装 Review Skill" }),
+      ).getByRole("button", { name: "安装到 Claude Code" }),
     );
 
     expect(await screen.findByText("请稍后重试。")).toBeVisible();
@@ -877,7 +883,9 @@ describe("V2 Skills management", () => {
     const discoverable = marketSkill();
     const ports = createBrowserFeaturePorts();
     const openExternal = vi.fn(async () => undefined);
+    const installSkillHub = vi.fn(async () => []);
     ports.settings.openExternal = openExternal;
+    ports.skills.installSkillHub = installSkillHub;
     ports.skills.searchSkillHub = async () => ({
       query: "",
       skills: [discoverable],
@@ -892,6 +900,13 @@ describe("V2 Skills management", () => {
       screen.queryByRole("combobox", { name: "安装目标" }),
     ).not.toBeInTheDocument();
     expect(
+      screen.queryByRole("tablist", { name: "安装目标" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "管理仓库" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/将安装到 /)).not.toBeInTheDocument();
+    expect(
       screen.getByRole("searchbox", { name: "搜索 Skill 市场" }),
     ).toBeVisible();
     expect(
@@ -900,18 +915,6 @@ describe("V2 Skills management", () => {
     expect(screen.queryByRole("tab", { name: "仓库" })).not.toBeInTheDocument();
     expect(
       screen.queryByText(/Skill 市场 · \d+ \/ \d+/),
-    ).not.toBeInTheDocument();
-    expect(screen.getByRole("tablist", { name: "安装目标" })).toBeVisible();
-    expect(
-      within(screen.getByRole("tablist", { name: "安装目标" }))
-        .getAllByRole("tab")
-        .map((tab) => tab.textContent?.replace(/\s+/g, " ").trim()),
-    ).toEqual(SKILL_TARGETS.map((app) => app.label));
-    expect(
-      screen.getByRole("tab", { name: "Claude Code", selected: true }),
-    ).toBeVisible();
-    expect(
-      screen.queryByRole("tablist", { name: "仓库筛选" }),
     ).not.toBeInTheDocument();
     expect(screen.getByRole("tablist", { name: "分类筛选" })).toBeVisible();
     expect(
@@ -936,9 +939,31 @@ describe("V2 Skills management", () => {
       within(article as HTMLElement).getByRole("button", { name: "主页" }),
     );
     expect(openExternal).toHaveBeenCalledWith(discoverable.homepageUrl);
+    await user.click(await screen.findByRole("button", { name: "安装" }));
+    const picker = await screen.findByRole("dialog", {
+      name: "安装 Review Skill",
+    });
     expect(
-      await screen.findByRole("button", { name: "安装到 Claude Code" }),
+      within(picker)
+        .getAllByRole("radio")
+        .map((option) => option.textContent?.replace(/\s+/g, " ").trim()),
+    ).toEqual(SKILL_TARGETS.map((app) => app.label));
+    expect(
+      within(picker).getByRole("radio", {
+        name: "Claude Code",
+        checked: true,
+      }),
     ).toBeVisible();
+    expect(
+      picker.querySelectorAll("img.fy-feature-assignment-icon"),
+    ).toHaveLength(SKILL_TARGETS.length);
+    await user.click(within(picker).getByRole("radio", { name: "WorkBuddy" }));
+    await user.click(
+      within(picker).getByRole("button", { name: "安装到 WorkBuddy" }),
+    );
+    await waitFor(() =>
+      expect(installSkillHub).toHaveBeenCalledWith("review-skill", "workbuddy"),
+    );
   });
 
   it("opens the full discovery description in a details dialog", async () => {
@@ -1034,7 +1059,7 @@ describe("V2 Skills management", () => {
         "办公效率 · v1.0.41 · tencent-adm",
       ),
     ).toBeVisible();
-    expect(screen.getByText(/将安装到 Claude Code/)).toBeVisible();
+    expect(screen.queryByText(/将安装到 /)).not.toBeInTheDocument();
     expect(
       screen.queryByRole("heading", { name: /skillhub\.cn/ }),
     ).not.toBeInTheDocument();
@@ -1054,9 +1079,12 @@ describe("V2 Skills management", () => {
     expect(dialog).toHaveTextContent("tencent-adm");
     await user.click(within(dialog).getByRole("button", { name: "关闭" }));
     await user.click(
-      within(article as HTMLElement).getByRole("button", {
-        name: "安装到 Claude Code",
-      }),
+      within(article as HTMLElement).getByRole("button", { name: "安装" }),
+    );
+    await user.click(
+      within(
+        await screen.findByRole("dialog", { name: "安装 腾讯文档" }),
+      ).getByRole("button", { name: "安装到 Claude Code" }),
     );
     await waitFor(() =>
       expect(installSkillHub).toHaveBeenCalledWith("tencent-docs", "claude"),
@@ -1084,7 +1112,7 @@ describe("V2 Skills management", () => {
       }),
     ).toBeVisible();
     expect(
-      screen.queryByRole("button", { name: "安装到 Claude Code" }),
+      screen.queryByRole("button", { name: "安装" }),
     ).not.toBeInTheDocument();
   });
 
@@ -1152,7 +1180,8 @@ describe("V2 Skills management", () => {
         query: _query,
         skills: [
           marketSkill({
-            name: category === "office-efficiency" ? "办公 Skill" : "全部 Skill",
+            name:
+              category === "office-efficiency" ? "办公 Skill" : "全部 Skill",
             category: category || undefined,
           }),
         ],

@@ -113,9 +113,9 @@ interface SkillsPort {
     slug: string,
     currentApp: SkillTargetId,
   ): Promise<InstalledSkill[]>;
-  getRepos(): Promise<SkillRepo[]>;
-  addRepo(repo: SkillRepo): Promise<boolean>;
-  removeRepo(owner: string, name: string): Promise<boolean>;
+  getRepos(): Promise<SkillRepo[]>; // leftover V1 only; V2 pages must not call
+  addRepo(repo: SkillRepo): Promise<boolean>; // leftover V1 only
+  removeRepo(owner: string, name: string): Promise<boolean>; // leftover V1 only
   pickZip(): Promise<string | null>;
   installFromZip(
     filePath: string,
@@ -288,9 +288,12 @@ function ExternalLinkButton(props: {
   must not contain test routes, fixture switches, or synthetic data.
 - V2 Skills discovery calls `search_skillhub` through
   `SkillsPort.searchSkillHub`. It must not invoke leftover
-  `discover_available_skills`, `search_skills_sh`, or the 仓库
-  `discover_available_skills_page` path. Those commands remain on the port for
-  leftover V1 and 管理仓库; the Discover tab is Skill 市场 only. Default Skill
+  `discover_available_skills`, `search_skills_sh`, `discover_available_skills_page`,
+  `get_skill_repos`, `add_skill_repo`, or `remove_skill_repo`. Those host
+  commands remain on the port for leftover V1 only. V2 must not render
+  **管理仓库** / **仓库管理**, must not add GitHub skill-repo sources, and
+  must not treat configured GitHub repos as a discovery or management
+  surface. The Discover tab is Skill 市场 only. Default Skill
   市场 page size is 21 (`SKILL_DISCOVERY_PAGE_SIZE`) so the 3-column grid fills
   7 rows; leftover `discoverPage` still defaults to 20. Host SkillHub
   `limit == 0 → 21` and `limit > 50 → 50`; leftover `discoverPage` still uses
@@ -317,9 +320,13 @@ function ExternalLinkButton(props: {
 
 - A FeatureProvider owns one stable QueryClient and a session-only install
   target. The default target remains `claude` (label Claude Code); navigation
-  preserves it, while a full application restart resets it. Assignment,
-  bulk 全开/全关, discovery install-target tabs, and new-MCP `DEFAULT_NEW_APPS`
-  must render in Agent catalog order, not alphabetical or Claude-first order.
+  preserves it, while a full application restart resets it. Discovery does not
+  show header install-target tabs. Clicking **安装** opens a Dialog to pick
+  the target (icon + catalog label, Agent catalog order) before
+  `installSkillHub`. Confirming updates the session target used by ZIP /
+  restore. Assignment, bulk 全开/全关, that install picker, and new-MCP
+  `DEFAULT_NEW_APPS` must render in Agent catalog order, not alphabetical or
+  Claude-first order.
 - Skill assignment authority on V2 pages contains seven booleans. Native rows
   still persist leftover Gemini / Hermes plus Qoder / TRAE / WorkBuddy flags.
   Missing `qoderwork`, `trae-work`, `workbuddy`, or `grokbuild` values parse as
@@ -389,11 +396,15 @@ function ExternalLinkButton(props: {
   (**Skill 市场** / **仓库**), install-status tabs, repo-filter chips, or a
   summary line such as `Skill 市场 · 21 / n · 将安装到 Claude Code`. Do not add
   skills.sh, SkillsMP, ClawHub, or configured GitHub repos as a V2 discovery
-  source. Do not add second-level SkillHub tags as tabs. The install-target
-  `FeatureTabs` live in the page header
-  with decorative app icons so they do not push the card grid down. Do not
-  use a `<select>` or a page-local tab clone. Header copy names the current
-  install target with the catalog label (`Claude Code`, not `Claude`).
+  source. Do not add second-level SkillHub tags as tabs. Do not keep
+  install-target `FeatureTabs` or **将安装到 …** in the discovery header.
+  Do not render **管理仓库** anywhere on the V2 Skills page (header, Discover,
+  Installed **更多**, or a 仓库管理 dialog). Leftover GitHub repo CRUD stays
+  in leftover V1 only. Discovery **安装** opens a Dialog (`安装 {name}`) whose
+  radiogroup (`aria-label="安装目标"`) lists the seven catalog targets with
+  decorative icons (`alt=""`, `aria-hidden="true"`) and labels. Confirm with
+  **安装到 {label}**. Do not use a `<select>` or a page-local tab clone.
+  Confirm copy uses the catalog label (`Claude Code`, not `Claude`).
   Skill Discover
   cards show the name and
   install state in the header, a 3-line clamped description, then an optional
@@ -526,6 +537,9 @@ function ExternalLinkButton(props: {
 | Skill 市场 homepage is `api.skillhub.cn/...`                     | Reject; construct `https://skillhub.cn/skills/{slug}` only              |
 | `.fy-feature-detail-scroll` is given overflow for discovery      | Skills toolbars scroll away; Skills discovery scrolls the page wrapper  |
 | Discover shows **Skill 市场** / **仓库** source tabs             | Page test fails; Discover is Skill 市场 only, no source tabs            |
+| V2 Skills shows **管理仓库** / **仓库管理** / add-repo form      | Page test fails; GitHub skill-repo CRUD is leftover V1 only             |
+| V2 Skills page calls `getRepos` / `addRepo` / `removeRepo`       | Page/query test fails; leftover commands must not run in V2 UI          |
+| Discover shows header **将安装到 …** / 安装目标 tabs             | Page test fails; pick the target in the install Dialog                  |
 | Discover omits 办公效率 / 开发编程 / IT 运维与安全               | Page test fails; official 12 first-level names plus 全部                |
 | Discover shows `Skill 市场 · n / m · 将安装到 …`                 | Page test fails; counts live on `FeaturePagination` only                |
 
@@ -539,8 +553,10 @@ function ExternalLinkButton(props: {
   note; **详情** shows category / slug / author / version; **主页** opens
   `https://skillhub.cn/skills/{slug}`. Install calls `install_skillhub` (ZIP
   download + `install_from_zip`), never GitHub archive and never the
-  `skillhub` CLI. There are no source tabs and no `Skill 市场 · n / m`
-  summary. `FeaturePagination` (`ariaLabel="Skill 市场分页"`) pages through
+  `skillhub` CLI. There are no source tabs, no **管理仓库**, and no
+  `Skill 市场 · n / m` summary. Clicking **安装** opens a Dialog to pick the
+  catalog target (icon + name) before `installSkillHub`.
+  `FeaturePagination` (`ariaLabel="Skill 市场分页"`) pages through
   `data.total` at 21 items per page. Search or category changes return to
   page 1. MCP
   discovery still scrolls through `.fy-feature-discovery-scroll`. Skills
@@ -587,7 +603,7 @@ git diff --check
   and error propagation across Skills, MCP, Settings, and external links,
   including V2 seven-value Skill and seven-value MCP identity plus leftover
   backend Gemini / Hermes flag round-trip, disk-observed installed Skills, and
-  leftover `discover_available_skills_page` kept for V1 / 管理仓库 rather than
+  leftover `discover_available_skills_page` kept for leftover V1 rather than
   the leftover full-list command.
   Adding `search_skillhub` / `install_skillhub` increments the host
   invoke-handler freeze
@@ -611,7 +627,8 @@ git diff --check
   icon semantics, seven unique Skill switches, seven unique MCP switches in
   catalog order, Discover/docs and
   Skill repo clicks through `ExternalLinkButton` → `settings.openExternal`,
-  header install-target tabs in that same order, flex list overlay, one
+  discovery install Dialog targets in that same catalog order (icon + name),
+  no **管理仓库** in Discover or Installed **更多**, flex list overlay, one
   shared in-flight lock, Skills discovery page-3 offset 42 (21×2), search
   resetting to page 1, clicking **办公效率** sending `office-efficiency`,
   `FeaturePagination` selection plus prev/next and ellipsis,
@@ -827,8 +844,9 @@ Correct: reuse `FeaturePagination` (status, 上一页 / 下一页, ellipsis).
 ```
 
 Wrong: V2 discovery still searches skills.sh, groups cards by GitHub repo,
-shows **Skill 市场** / **仓库** source tabs, labels the market
-“中国 Skill 市场”, freezes the catalog at 50, or lists via `/api/v1/search`.
+shows **Skill 市场** / **仓库** source tabs, keeps **管理仓库**, labels the
+market “中国 Skill 市场”, freezes the catalog at 50, or lists via
+`/api/v1/search`.
 
 ```ts
 searchSkillsSh: (query, limit, offset) =>
@@ -844,6 +862,7 @@ searchSkillHub: (query, limit) =>
     { id: "repos", label: "仓库" },
   ]}
 />
+<Button>管理仓库</Button>
 <p>Skill 市场 · 21 / 50 · 将安装到 Claude Code</p>
 <h3>{repo} · {items.length}</h3>
 ```
@@ -879,7 +898,9 @@ installSkillHub: (slug, currentApp) =>
 
 - V2 discovery uses Tencent SkillHub (`skillhub.cn`) as the Skill 市场 API
   because listings include `description_zh`. Do not wire skills.sh, SkillsMP,
-  ClawHub, or configured GitHub repos into the V2 discovery tab.
+  ClawHub, or configured GitHub repos into the V2 discovery tab. Do not keep
+  a V2 **管理仓库** surface: GitHub skill-repo CRUD is leftover V1 only and
+  is not suitable as the China-facing catalog.
 - List and category browse use the official SkillHub find-skill contract
   `GET https://api.skillhub.cn/api/skills`. Do not use `/api/v1/search` and do
   not grow `limit` to fake pagination. `page` / `pageSize` / `data.total` are

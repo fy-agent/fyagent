@@ -67,28 +67,6 @@
   background: var(--fy-surface-soft);
   width: max-content;
 }
-.fy-feature-target-tabs .fy-feature-tab {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding-inline: 10px;
-}
-.fy-feature-target-tabs .fy-feature-assignment-icon {
-  flex-basis: 14px;
-  width: 14px;
-  height: 14px;
-}
-@media (max-width: 1180px) {
-  .fy-feature-target-tabs .fy-feature-tab > span {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip: rect(0 0 0 0);
-    clip-path: inset(50%);
-    white-space: nowrap;
-  }
-}
 .fy-feature-tab {
   min-height: 34px;
   padding: 0 15px;

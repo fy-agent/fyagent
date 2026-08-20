@@ -4,22 +4,38 @@
   max-width: 100%;
 }
 
-.fy-skills-page .fy-feature-header .fy-feature-tabs {
-  margin-bottom: 0;
-}
-
-.fy-skills-page .fy-feature-actions > .fy-feature-description {
-  flex: 0 0 auto;
-  margin: 0;
-  align-self: center;
-}
-
 .fy-skills-page .fy-feature-toolbar {
   align-items: flex-start;
 }
 
 .fy-skills-page .fy-feature-toolbar > .fy-feature-tabs {
   flex: 1 1 100%;
+}
+
+.fy-feature-target-picker {
+  display: grid;
+  gap: 4px;
+}
+
+.fy-feature-target-option {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.fy-feature-target-option[aria-checked="true"] {
+  border-color: var(--fy-border);
+  background: var(--fy-surface-soft);
 }
 
 .fy-skills-page.fy-skills-page-discovery.fy-feature-page:has(
