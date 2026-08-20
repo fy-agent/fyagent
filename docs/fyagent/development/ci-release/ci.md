@@ -23,10 +23,10 @@ full domain set.
 
 ## Branch-push flow
 
-Pushes to the development release branch run the complete CI surface. This is
-intentional: only the current remote development-branch HEAD can become a
-release source, so it needs exact full-push evidence. The existing main-branch
-full-CI behavior remains independent of release authority.
+Pushes to the development release branch and to `main` run the complete CI
+surface. A force-update whose previous tip is no longer in the clone still
+runs that full surface: the workflow substitutes `head` as an empty classifier
+base instead of failing `Classify Changes`.
 
 Use `mise run check` for the complete current-host local gate. Local success
 does not produce a GitHub required check or matching-architecture native
