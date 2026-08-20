@@ -8,6 +8,165 @@ records.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.2] - 2026-08-21
+
+FyAgent 0.4.2 completes the macOS Developer ID publication path opened in
+0.4.1, lands the remaining V2 setup and release fixes, and keeps the 0.4.0
+V2 desktop shell as the shipped product.
+
+### Changed
+
+- Notarized exactly one submission per release: the workflow submits only the
+  signed DMG, polls `notarytool info` until Apple accepts or rejects it,
+  staples the DMG and the app from the same ticket, and zips the stapled app.
+  This replaces the serial app-then-DMG waits and stops treating
+  `notarytool wait --timeout` exit 124 as a rejection.
+- Refined the V2 setup experience: Skill and MCP actions stay on the header
+  row, Agent details show product intros, Models warn on explicit Claude
+  `/v1` paths, and draft service URLs are probed before save.
+- Codex Desktop skips redundant package-hash rereads during installation.
+
+### CI and release contract
+
+- Formal `sourceSha` is now the annotated tag's target commit instead of the
+  live `main` HEAD, and CI/Release cache `~/.cargo/registry` and
+  `~/.cargo/git` keyed by `Cargo.lock`.
+- The publication contract requires exactly eight non-empty attachments: four
+  installers (Windows x64/ARM64 NSIS, macOS Universal DMG/ZIP), three
+  release-evidence JSON files, and one Sigstore bundle. The v0.4.1 run that
+  failed during serial notarization was never published; earlier v0.3.x tags
+  remain unmoved.
+
+## [0.4.1] - 2026-08-20
+
+FyAgent 0.4.1 replaced ad-hoc macOS packaging with Developer ID signing,
+Apple notarization, and stapled DMG/ZIP so Gatekeeper can accept the
+published installers. Its Release run failed during a serial app-then-DMG
+notarization wait and was never published; the fix landed in 0.4.2. The
+`v0.4.1` tag remains at its original commit.
+
+## [0.4.0] - 2026-08-20
+
+FyAgent 0.4.0 ships the V2 desktop shell: the production UI becomes a local
+desktop control center with six primary pages — Agent directory, Models,
+Skills, MCP, Prompts, and Memory. The database schema moves to version 19;
+existing databases migrate forward on first launch.
+
+### Added
+
+- Agent catalog v4: QoderWork CN, TRAE Work CN, WorkBuddy, Grok Build, Codex,
+  Claude Code, and OpenCode share one product directory; Agent detail keeps
+  official links and direct capability jumps without impersonating each
+  product's native settings UI.
+- Skill 市场: Skills discovery pages the official Skill Hub catalog by
+  category, shows full card copy from the detail view, and asks which target
+  app should receive the install.
+- MCP discovery: a curated catalog, including China-region connectors, splits
+  discover / configure / install; after a WorkBuddy connector is written, the
+  UI tells the user to trust it inside WorkBuddy.
+- Prompts and Memory pages: Prompts cover the existing native prompt
+  applications; Memory manages the current OpenClaw and Hermes long-term
+  resources.
+
+### Changed
+
+- Models follow per-product contracts: WorkBuddy and OpenCode use dedicated
+  model configuration; Claude Code, Codex, and Grok Build keep bounded
+  Provider quick setup; QoderWork CN states that third-party model
+  configuration is unsupported; TRAE Work CN observes vendor state without
+  writing custom models into TRAE sqlite.
+- Completed the Issue 21 repository governance documentation, used clearer AI
+  account language across public docs, restored the For You Agent identity,
+  and polished the GitHub brand and community assets.
+
+### CI and release contract
+
+- The publication contract now requires exactly eight non-empty attachments:
+  four installers (Windows x64/ARM64 NSIS, macOS Universal DMG/ZIP), three
+  release-evidence JSON files, and one Sigstore bundle. Installers for other
+  operating systems are no longer part of the formal matrix.
+- The macOS application remains identity-free ad-hoc signed and unnotarized at
+  this version; Windows installers remain unsigned with evidence-backed
+  signing status published per Release.
+
+## [0.3.4] - 2026-08-12
+
+FyAgent 0.3.4 is the recovery publication of the Windows current-user
+runtime, NSIS installer, CI, release, tooling, and documentation changes
+prepared in 0.3.2 and 0.3.3, whose workflows failed to create a stable
+Release. The database schema remains at version 16 with no data migration.
+
+### Changed
+
+- Windows state now follows the signed-in Explorer user: FyAgent freezes the
+  active Explorer Shell identity and its Profile, LocalAppData, and
+  RoamingAppData paths before user-owned application state is initialized.
+  Approving UAC with a different administrator account no longer redirects
+  configuration, database, logs, WebView data, Codex Desktop installation,
+  restart, or launch into the elevation account.
+- Protected current-user Codex Desktop installation: the elevated application
+  verifies and pins the accepted MSIX, copies it into an immutable operation
+  below a fixed Windows CommonApplicationData bridge, authenticates the exact
+  asInvoker helper, and admits current-user PackageManager only after both
+  sides agree on package identity. The retired all-users deployment surface,
+  headless/runas helper path, and arbitrary path/URI inputs are not part of
+  the shipped path.
+- Architecture-specific Windows NSIS installers deliver x64 and ARM64 payloads
+  in per-machine setup executables built on matching native Windows runners;
+  MSI, WiX, and portable ZIP are not release formats. Setup and uninstall
+  check both FyAgent processes and never force-terminate them.
+- Installation, exit, and restart share one single-flight process-lifetime
+  claim; unknown post-admission state is quarantined, and normal cleanup
+  requires a valid terminal result, its matching authenticated terminal
+  frame, and a clean pipe close.
+
+### Fixed
+
+- The macOS DMG creator retries only the exact transient `hdiutil`
+  Resource busy condition with a short, fixed bound; unrelated errors still
+  fail immediately, and all existing DMG verification gates remain mandatory.
+
+### CI and release contract
+
+- Formal publication binds the annotated tag, canonical version, current
+  remote main HEAD, and that exact SHA's successful `CI / Required` push
+  result; a manual preflight remains optional and cannot publish.
+- The release kept the fourteen-attachment contract: ten installers, three
+  release-evidence JSON files, and one Sigstore bundle.
+
+## [0.3.3] - 2026-08-11
+
+FyAgent 0.3.3 made the Chinese README the default repository landing page.
+Its release workflow failed and never produced a stable Release; the changes
+were published with the 0.3.4 recovery publication.
+
+### Changed
+
+- Made the Chinese README the default and pointed the previous default at the
+  English edition.
+
+## [0.3.2] - 2026-08-11
+
+FyAgent 0.3.2 modernized the Windows runtime around the signed-in Shell user,
+stabilized native Windows CI, and restructured public documentation. Its
+release workflow failed and never produced a stable Release; the changes were
+published with the 0.3.4 recovery publication. The database schema remains at
+version 16.
+
+### Changed
+
+- Replaced the machine-wide Windows runtime with the signed-in Explorer Shell
+  user context, and introduced a current-user helper that installs Codex
+  Desktop packages through the shell user instead of elevated paths.
+- Fixed NSIS process-gate ordering, native staging renames, the helper
+  version manifest, and strict Clippy contracts; stabilized native Windows CI
+  tests and completed CI diagnostics collection.
+- Restructured the public documentation: completed the docs restructure,
+  moved user-manual chapters into the current structure, and established the
+  standalone developer workflow.
+- Decoupled Trellis tooling from project contracts and accepted managed
+  Trellis 0.6.14 hooks.
+
 ## [0.3.1]
 
 FyAgent 0.3.1 modernizes the repository's Windows distribution, Codex Desktop
