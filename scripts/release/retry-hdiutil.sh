@@ -19,7 +19,7 @@ fi
 
 operation="$1"
 case "$operation" in
-  create)
+  create|convert)
     remove_output_on_failure=true
     ;;
   verify)
@@ -30,7 +30,7 @@ case "$operation" in
     fi
     ;;
   *)
-    echo "retry-hdiutil.sh supports only hdiutil create or verify" >&2
+    echo "retry-hdiutil.sh supports only hdiutil create, convert, or verify" >&2
     exit 2
     ;;
 esac

@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/backend/macos-dmg-layout.md", "reason": "Finder-free DMG layout, background renderer, dmg-layout uv group"}
+{"file": ".trellis/spec/backend/application-brand-assets.md", "reason": "DMG background is excluded from app-icon generation"}
+{"file": ".trellis/spec/backend/fyagent-version-contract.md", "reason": "version:set write set must stay Cargo-only; changelog is a release check"}
+{"file": ".trellis/spec/backend/development-environment.md", "reason": "Optional dmg-layout uv group must stay off default sync"}
+{"file": ".trellis/tasks/08-21-macos-dmg-v2-style/research.md", "reason": "Styled DMG research: create-dmg vs dmgbuild vs repo-owned script"}

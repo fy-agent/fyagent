@@ -8,6 +8,8 @@ const CI_SAFE_TESTS = Object.freeze([
   "tests/devReleaseRemote.test.ts",
   "tests/releaseWorkflow.test.ts",
   "tests/hdiutilRetry.test.ts",
+  "tests/changelogReleaseContract.test.ts",
+  "tests/dmgBackground.test.ts",
   "tests/downloadManifest.test.ts",
   "tests/releaseAssets.test.ts",
   "tests/windowsNsisContract.test.ts",
@@ -46,6 +48,7 @@ export function parseReleaseCheckMode(args) {
 export function releaseCheckPlan(ciMode) {
   const plan = [
     ["version", "pnpm", ["run", "version:check"]],
+    ["changelog", "node", ["scripts/release/verify-changelog-release.mjs"]],
     ["lockfile", "node", ["scripts/tasks/lockfile-check.mjs"]],
     ["dep0040", "node", ["scripts/tasks/dep0040-check.mjs"]],
   ];

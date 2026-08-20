@@ -304,21 +304,38 @@ unavailability blocks acceptance.
   and is checked for signature identity, not a nested ticket. An ad-hoc
   signature, missing team, missing timestamp, or missing required ticket is
   rejected;
-- the DMG source folder contains `FyAgent.app` and a symlink named
-  `Applications` whose target is `/Applications`. After `hdiutil attach`, the
-  workflow requires that symlink (`-L` and `readlink` equals `/Applications`)
-  plus the signed app. The volume stays UDZO/read-only; Finder drag-install
-  uses the in-image Applications alias. No `FyAgent-X.Y.Z-macOS.zip` is
-  produced;
-- DMG creation removes its explicit output before the first attempt and after
-  every failed attempt. DMG verification preserves the completed input across
-  attempts. Both operations retry the same arguments only when the captured
-  diagnostic contains `Resource busy` or `Resource temporarily unavailable`,
-  with at most five attempts and `2`, `4`, `8`, and `16` second delays. Any
-  other diagnostic, an exhausted retry budget, or inability to remove a
-  partial creation output returns the original `hdiutil` status immediately.
-  The workflow does not pipe `hdiutil`, force-detach images, or kill disk-image
-  helpers.
+- the DMG source folder contains `FyAgent.app`, a symlink named
+  `Applications` whose target is `/Applications`, and
+  `.background/background.png` copied from
+  `src-tauri/icons/dmg-background.png`. `build-macos` calls
+  `scripts/release/create-macos-dmg.sh` as the only styled-DMG entry. That
+  script creates a UDRW HFS+ image, attaches it, writes Finder layout with
+  `scripts/release/write-dmg-layout.py` (`ds_store` + `mac_alias` via the
+  uv group `dmg-layout`), converts to UDZO, and verifies. AppleScript,
+  Finder, `osascript`, `dmgbuild` CLI, `appdmg`, and `--skip-jenkins` are
+  forbidden. Layout constants: window `660x400` pt, icon size `128` pt,
+  `FyAgent.app` at `(180, 188)`, `Applications` at `(480, 188)`, volume
+  name `FyAgent`. Alias records must be created against the mounted volume
+  file, not the staging directory. After `hdiutil attach` of the final DMG,
+  the workflow requires the app, the Applications symlink (`-L` and
+  `readlink` equals `/Applications`), `.background/background.png`,
+  `.DS_Store`, and the signed app. The volume stays UDZO/read-only; Finder
+  drag-install is left-to-right. Layout details are in
+  [macOS Styled DMG Layout](./macos-dmg-layout.md). No
+  `FyAgent-X.Y.Z-macOS.zip` is produced;
+- DMG `create` and `convert` remove their explicit destination before the
+  first attempt and after every failed attempt. They must not delete the
+  UDRW convert source. DMG verification preserves the completed input
+  across attempts. `create`, `convert`, and `verify` retry the same
+  arguments only when the captured diagnostic contains `Resource busy` or
+  `Resource temporarily unavailable`, with at most five attempts and `2`,
+  `4`, `8`, and `16` second delays. Any other diagnostic, an exhausted
+  retry budget, or inability to remove a partial destination returns the
+  original `hdiutil` status immediately. The workflow does not pipe
+  `hdiutil`, force-detach images, or kill disk-image helpers.
+- `build-macos` installs the same pinned `astral-sh/setup-uv` and managed
+  Python 3.14.7 as CI, then `uv sync --locked --group dmg-layout`. Default
+  `uv sync --locked` on Linux/Windows must not install that group.
 
 ## 7. Assets, metadata, signing disclosure, and attestation
 
@@ -402,6 +419,16 @@ version files. After publication, the versioned files may
 be removed whole; published history remains in Git history and GitHub
 Releases.
 
+`CHANGELOG.md` is a separate release-check gate, not part of `version:set`.
+When Cargo `workspace.package.version` is `X.Y.Z`, the first version heading
+in `CHANGELOG.md` must match `^## \[X.Y.Z\] - 20\d{2}-\d{2}-\d{2}$`. The
+text until the next `## [` heading must contain non-empty notes after
+stripping HTML comments. Keep a Changelog preamble above that heading is
+allowed. `scripts/release/verify-changelog-release.mjs` is invoked by
+`mise run release-check`. The write set of `version:set` / `version:bump`
+remains `src-tauri/Cargo.toml` plus the two local Cargo.lock package
+blocks.
+
 No failure handler deletes a draft, retries the final PATCH, updates an
 existing Release, or moves/deletes the tag. Before PATCH, failures leave and
 report the draft for a separate human decision. After PATCH is attempted, one
@@ -427,6 +454,8 @@ never called private or successful.
 | Windows proof/sealed binding or macOS identity fails                                                                                    | Stop aggregation and publication.                            |
 | An intentional producer skip propagates past successful asset verification                                                              | Attestation still runs; abnormal direct needs fail visibly.  |
 | Three/six/seven file allowlist or digest differs                                                                                      | Stop verification, attestation, or publication.              |
+| `CHANGELOG.md` first version heading is missing, empty, or not Cargo `X.Y.Z`                                                          | `release-check` fails before tag/publication.                |
+| Styled DMG layout write fails, or final attach lacks `.DS_Store` / background / Applications symlink                                  | Fail `build-macos`; do not publish an unstyled DMG.          |
 | Live main identity changes during the transaction                                                                                       | Continue; tag target SHA remains the frozen source.          |
 | A draft/published Release already exists                                                                                                | Refuse update, replacement, or deletion.                     |
 | Upload/re-download/pre-PATCH verification fails                                                                                         | Leave draft untouched and report it.                         |
@@ -446,7 +475,9 @@ explicit status conditions or direct-need assertions, asset loss/extra, signer
 policy, transaction failure, a single `notarytool submit`, `notarytool info`
 polling, no `xcrun notarytool wait` invocation, `notarytool log` on a denied
 submission, `FYAGENT_NOTARY_WAIT_SECONDS`, `build-macos`
-`timeout-minutes: 360`, the Applications symlink inside the DMG, and the
+`timeout-minutes: 360`, the Applications symlink inside the DMG, `.background/background.png`,
+root `.DS_Store`, `create-macos-dmg.sh`, `write-dmg-layout.py`, `dmg-layout`
+uv group, changelog heading contract, and the
 absence of a macOS ZIP installer.
 
 Local execution cannot establish another platform's PowerShell/NSIS/
@@ -556,7 +587,7 @@ the original app from that ticket. Do not emit a ZIP.
   invocation, `FYAGENT_NOTARY_WAIT_SECONDS`,
   `scripts/release/macos-developer-id.sh notarize-dmg`,
   `staple-app`, `timeout-minutes: 360` on `build-macos`, the DMG Applications
-  symlink, and the absence of `macOS.zip`.
+  symlink, styled layout scripts, and the absence of `macOS.zip`.
 - Local tests do not call Apple; a successful unit run is not notarization
   evidence.
 

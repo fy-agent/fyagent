@@ -1116,6 +1116,18 @@ jobs:
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 
+      - name: Resolve locked toolchain facts
+        id: toolchain-facts
+        run: node scripts/ci/verify-toolchain.mjs --emit-github-output
+
+      - name: Setup uv and managed Python
+        id: setup-uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: ${{ steps.toolchain-facts.outputs.uv-version }}
+          python-version: ${{ steps.toolchain-facts.outputs.python-version }}
+          enable-cache: false
+
       - name: Setup Rust with both universal targets
         uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
         with:
@@ -1150,6 +1162,9 @@ jobs:
             printf 'ACTUAL_PNPM_VERSION=%s\n' "$pnpm_version"
             printf 'ACTUAL_RUST_VERSION=%s\n' "$rust_version"
           } >> "$GITHUB_ENV"
+
+      - name: Synchronize locked DMG layout Python environment
+        run: uv sync --locked --group dmg-layout
 
       - name: Install locked frontend dependencies
         run: pnpm install --frozen-lockfile
@@ -1196,7 +1211,7 @@ jobs:
           printf 'app_path=%s\n' "$app_path" >> "$GITHUB_OUTPUT"
           printf 'executable=%s\n' "$executable" >> "$GITHUB_OUTPUT"
 
-      - name: Create ZIP and notarized DMG from the same Developer ID app
+      - name: Create and notarize the styled Developer ID DMG
         shell: bash
         env:
           APP_PATH: ${{ steps.app.outputs.app_path }}
@@ -1205,32 +1220,25 @@ jobs:
           set -euo pipefail
           mkdir -p release-assets
           dmg_path="release-assets/FyAgent-${APP_VERSION}-macOS.dmg"
-          stage="$RUNNER_TEMP/fyagent-dmg-stage"
           mount_point="$RUNNER_TEMP/fyagent-dmg-mount"
-          rm -rf "$stage" "$mount_point"
-          mkdir -p "$stage" "$mount_point"
+          rm -rf "$mount_point"
+          mkdir -p "$mount_point"
           mounted=false
           cleanup() {
             status=$?
             trap - EXIT
             set +e
             if [ "$mounted" = true ]; then hdiutil detach "$mount_point"; fi
-            rm -rf "$stage" "$mount_point"
+            rm -rf "$mount_point"
             exit "$status"
           }
           trap cleanup EXIT
 
           source_digest="$(shasum -a 256 "$APP_PATH/Contents/MacOS/$APP_EXECUTABLE" | awk '{print $1}')"
-          ditto "$APP_PATH" "$stage/FyAgent.app"
-          ln -s /Applications "$stage/Applications"
-          scripts/release/retry-hdiutil.sh \
-            "$dmg_path" \
-            -- \
-            create -volname 'FyAgent' -srcfolder "$stage" -ov -format UDZO "$dmg_path"
-          scripts/release/retry-hdiutil.sh \
-            "$dmg_path" \
-            -- \
-            verify "$dmg_path"
+          scripts/release/create-macos-dmg.sh \
+            --app "$APP_PATH" \
+            --output "$dmg_path" \
+            --background src-tauri/icons/dmg-background.png
           scripts/release/macos-developer-id.sh sign-dmg "$dmg_path"
           scripts/release/macos-developer-id.sh notarize-dmg "$dmg_path"
           scripts/release/macos-developer-id.sh staple-app "$APP_PATH"
@@ -1242,6 +1250,8 @@ jobs:
           [ -d "$mount_point/FyAgent.app" ]
           [ -L "$mount_point/Applications" ]
           [ "$(readlink "$mount_point/Applications")" = "/Applications" ]
+          [ -f "$mount_point/.background/background.png" ]
+          [ -f "$mount_point/.DS_Store" ]
           [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$mount_point/FyAgent.app/Contents/Info.plist")" = "$APP_VERSION" ]
           [ "$(shasum -a 256 "$mount_point/FyAgent.app/Contents/MacOS/$APP_EXECUTABLE" | awk '{print $1}')" = "$source_digest" ]
           scripts/release/verify-macos-signed-app.sh --signature-only "$mount_point/FyAgent.app"

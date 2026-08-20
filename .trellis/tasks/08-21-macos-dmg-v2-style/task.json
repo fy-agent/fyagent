@@ -1,0 +1,28 @@
+{
+  "id": "macos-dmg-v2-style",
+  "name": "macos-dmg-v2-style",
+  "title": "Beautify macOS DMG and require changelog on release",
+  "description": "",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "pythonrust",
+  "assignee": "pythonrust",
+  "createdAt": "2026-08-21",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {
+    "description": "V2-styled macOS DMG window (app left, Applications right) and CHANGELOG.md heading required at release"
+  }
+}

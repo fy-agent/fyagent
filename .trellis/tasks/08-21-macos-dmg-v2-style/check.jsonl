@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/backend/macos-dmg-layout.md", "reason": "Verify Finder-free layout constants and fail-closed packaging"}
+{"file": ".trellis/spec/backend/application-brand-assets.md", "reason": "Verify assets:icons still must not rewrite the DMG background"}
+{"file": ".trellis/spec/backend/fyagent-version-contract.md", "reason": "Verify changelog gate is not added to version:set"}
+{"file": ".trellis/spec/backend/development-environment.md", "reason": "Verify default uv sync does not install dmg-layout"}
+{"file": ".trellis/tasks/08-21-macos-dmg-v2-style/design.md", "reason": "Layout constants, fail-closed Finder styling, raster digest"}

@@ -19,8 +19,10 @@ V2 desktop shell as the shipped product.
 - Notarized exactly one submission per release: the workflow submits only the
   signed DMG, polls `notarytool info` until Apple accepts or rejects it, and
   staples the DMG and the original app from the same ticket. The published
-  macOS installer is a UDZO DMG that contains `FyAgent.app` and an
-  `Applications` symlink for drag-install. This replaces the serial
+  macOS installer is a UDZO DMG that contains `FyAgent.app` on the left and an
+  `Applications` symlink on the right, over a V2 dusk-blue window, so install
+  is a left-to-right drag. Layout is written with `ds_store` on the mounted
+  volume; Finder/AppleScript is not used. This replaces the serial
   app-then-DMG waits, the macOS ZIP attachment, and treating
   `notarytool wait --timeout` exit 124 as a rejection.
 - Refined the V2 setup experience: Skill and MCP actions stay on the header
@@ -35,6 +37,9 @@ V2 desktop shell as the shipped product.
 - Formal `sourceSha` is now the annotated tag's target commit instead of the
   live `main` HEAD, and CI/Release cache `~/.cargo/registry` and
   `~/.cargo/git` keyed by `Cargo.lock`.
+- `mise run release-check` requires `CHANGELOG.md` to start its version
+  history with `## [X.Y.Z] - YYYY-MM-DD` matching Cargo, followed by
+  non-empty notes. `version:set` still writes only Cargo metadata.
 - The publication contract requires exactly seven non-empty attachments: three
   installers (Windows x64/ARM64 NSIS, macOS Universal DMG), three
   release-evidence JSON files, and one Sigstore bundle. The v0.4.1 run that

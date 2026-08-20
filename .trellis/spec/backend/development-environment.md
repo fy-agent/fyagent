@@ -60,14 +60,20 @@ the platform list alone as artifact evidence.
 
 The repository is not a Python package. `pyproject.toml` defines an empty
 development environment with `requires-python = ">=3.14,<3.15"`, an empty
-`dev` dependency group, and:
+`dev` dependency group, optional `dmg-layout` (`ds-store==1.3.3`) used only
+by macOS Release DMG layout writing, and:
 
 ```toml
 [tool.uv]
 package = false
 python-preference = "only-managed"
 python-downloads = "automatic"
+default-groups = ["dev"]
 ```
+
+`uv sync --locked` must not install `dmg-layout`. Release `build-macos`
+uses `uv sync --locked --group dmg-layout`. Do not add `ds-store` to
+`dev` or project `dependencies`.
 
 uv exclusively owns Python selection, downloads, `.venv`, project dependencies,
 and `uv.lock`. There is no system-Python fallback and mise does not inject
