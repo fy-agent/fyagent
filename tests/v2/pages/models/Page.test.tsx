@@ -1266,14 +1266,16 @@ describe("V2 Models page", () => {
     expect(screen.getByRole("button", { name: "保存并设为当前配置" })).toBeEnabled();
   });
 
-  it("tests draft-url reachability on WorkBuddy, Provider, and OpenCode", async () => {
+  it("probes a selected model after IDs exist on WorkBuddy, Provider, and OpenCode", async () => {
     const user = userEvent.setup();
-    const reachable = {
-      success: true,
-      status: "operational" as const,
-      message: "Reachable",
-      responseTimeMs: 18,
-      httpStatus: 200,
+    const probed = {
+      success: false,
+      status: "failed" as const,
+      message: 'HTTP 401: {"error":{"message":"invalid api key"}}',
+      responseTimeMs: 22,
+      httpStatus: 401,
+      modelUsed: "gpt-test",
+      errorCategory: null,
     };
     const ports = createBrowserFeaturePorts();
     ports.workbuddy.getStatus = vi.fn<FeaturePorts["workbuddy"]["getStatus"]>(
@@ -1290,59 +1292,102 @@ describe("V2 Models page", () => {
       ids: [],
       revision: "revision-1",
     }));
-    ports.workbuddy.checkReachability = vi.fn(async () => reachable);
+    ports.workbuddy.checkModel = vi.fn(async () => probed);
     ports.providers.getSummary = vi.fn(async () => ({
       providers: {},
       currentId: "",
     }));
-    ports.providers.checkReachability = vi.fn(async () => reachable);
+    ports.providers.checkModel = vi.fn(async () => probed);
     ports.opencodeModels.getSnapshot = vi.fn(async () => ({
       providers: [],
       revision: "revision-1",
     }));
-    ports.opencodeModels.checkReachability = vi.fn(async () => reachable);
+    ports.opencodeModels.checkModel = vi.fn(async () => probed);
 
     const workbuddyView = renderPage(ports, "workbuddy");
     await screen.findByText("已有第三方模型数量");
+    expect(
+      screen.queryByRole("button", { name: "测试连通" }),
+    ).not.toBeInTheDocument();
     await user.type(
       screen.getByLabelText("服务地址"),
       "https://draft.example/anthropic",
     );
+    await user.type(screen.getByLabelText("API Key"), "wb-key");
+    await user.type(screen.getByLabelText("自定义模型 ID"), "gpt-test");
+    await user.click(screen.getByRole("button", { name: "填入" }));
     await user.click(screen.getByRole("button", { name: "测试连通" }));
-    expect(ports.workbuddy.checkReachability).toHaveBeenCalledWith(
-      "https://draft.example/anthropic",
+    const workbuddyDialog = await screen.findByRole("dialog");
+    await user.click(
+      within(workbuddyDialog).getByRole("button", { name: "gpt-test" }),
     );
-    expect(await screen.findByText("服务可达")).toBeVisible();
+    await user.click(
+      within(workbuddyDialog).getByRole("button", { name: "开始测试" }),
+    );
+    expect(ports.workbuddy.checkModel).toHaveBeenCalledWith({
+      app: "workbuddy",
+      baseUrl: "https://draft.example/anthropic",
+      apiKey: "wb-key",
+      modelId: "gpt-test",
+    });
+    expect(await screen.findByText("连通测试失败")).toBeVisible();
+    expect(screen.getByText(/invalid api key/)).toBeVisible();
     workbuddyView.unmount();
 
     const codexView = renderPage(ports, "codex");
     await screen.findByTestId("provider-status");
-    expect(screen.getByLabelText("服务地址")).toHaveAttribute(
-      "placeholder",
-      "https://gateway.example/v1",
-    );
+    expect(screen.getByRole("button", { name: "拉取模型" })).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "测试连通" }),
+    ).not.toBeInTheDocument();
     await user.type(
       screen.getByLabelText("服务地址"),
       "https://codex.example/v1",
     );
+    await user.type(screen.getByLabelText("API Key"), "codex-key");
+    await user.type(screen.getByLabelText("模型 ID"), "gpt-test");
     await user.click(screen.getByRole("button", { name: "测试连通" }));
-    expect(ports.providers.checkReachability).toHaveBeenCalledWith(
-      "https://codex.example/v1",
+    const codexDialog = await screen.findByRole("dialog");
+    await user.click(
+      within(codexDialog).getByRole("button", { name: "gpt-test" }),
     );
-    expect(await screen.findByText("服务可达")).toBeVisible();
+    await user.click(
+      within(codexDialog).getByRole("button", { name: "开始测试" }),
+    );
+    expect(ports.providers.checkModel).toHaveBeenCalledWith({
+      app: "codex",
+      baseUrl: "https://codex.example/v1",
+      apiKey: "codex-key",
+      modelId: "gpt-test",
+    });
     expect(screen.queryByText(/\/v1\/v1\/XXXX/)).not.toBeInTheDocument();
     codexView.unmount();
 
     renderPage(ports, "opencode");
     await screen.findByRole("region", { name: "OpenCode 模型设置" });
+    expect(
+      screen.queryByRole("button", { name: "测试连通" }),
+    ).not.toBeInTheDocument();
     await user.type(
       screen.getByLabelText("服务地址"),
       "https://opencode.example/v1",
     );
+    await user.type(screen.getByLabelText("API Key"), "oc-key");
+    await user.type(screen.getByLabelText("自定义模型 ID"), "gpt-test");
+    await user.click(screen.getByRole("button", { name: "填入" }));
     await user.click(screen.getByRole("button", { name: "测试连通" }));
-    expect(ports.opencodeModels.checkReachability).toHaveBeenCalledWith(
-      "https://opencode.example/v1",
+    const opencodeDialog = await screen.findByRole("dialog");
+    await user.click(
+      within(opencodeDialog).getByRole("button", { name: "gpt-test" }),
     );
-    expect(await screen.findByText("服务可达")).toBeVisible();
+    await user.click(
+      within(opencodeDialog).getByRole("button", { name: "开始测试" }),
+    );
+    expect(ports.opencodeModels.checkModel).toHaveBeenCalledWith({
+      app: "opencode",
+      baseUrl: "https://opencode.example/v1",
+      apiKey: "oc-key",
+      modelId: "gpt-test",
+    });
   });
 });

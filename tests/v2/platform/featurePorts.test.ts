@@ -391,6 +391,14 @@ describe("V2 feature ports", () => {
     await expect(
       ports.opencodeModels.checkReachability("https://example.test"),
     ).rejects.toThrow(NATIVE_ONLY_ERROR);
+    await expect(
+      ports.providers.checkModel({
+        app: "claude",
+        baseUrl: "https://example.test",
+        apiKey: "key",
+        modelId: "model",
+      }),
+    ).rejects.toThrow(NATIVE_ONLY_ERROR);
   });
 
   it("uses exact Agent, Provider, and WorkBuddy commands and validates Provider summaries", async () => {
@@ -448,6 +456,18 @@ describe("V2 feature ports", () => {
           retryCount: 0,
         };
       }
+      if (command === "stream_check_model") {
+        return {
+          status: "failed",
+          success: false,
+          message: "HTTP 401: invalid api key",
+          responseTimeMs: 18,
+          httpStatus: 401,
+          modelUsed: "model-a",
+          testedAt: 1,
+          retryCount: 0,
+        };
+      }
       return {
         value: { warnings: [] },
         liveConfigChanged: false,
@@ -492,6 +512,22 @@ describe("V2 feature ports", () => {
       responseTimeMs: 12,
       httpStatus: 200,
     });
+    await expect(
+      ports.providers.checkModel({
+        app: "codex",
+        baseUrl: "https://example.test/v1",
+        apiKey: "mutation-only-key",
+        modelId: "model-a",
+      }),
+    ).resolves.toEqual({
+      success: false,
+      status: "failed",
+      message: "HTTP 401: invalid api key",
+      responseTimeMs: 18,
+      httpStatus: 401,
+      modelUsed: "model-a",
+      errorCategory: null,
+    });
 
     expect(summary.providers).toEqual({
       "provider-a": {
@@ -512,6 +548,15 @@ describe("V2 feature ports", () => {
       ["fetch_workbuddy_models", { request: fetchRequest }],
       ["save_workbuddy_models", { request: saveRequest }],
       ["stream_check_url", { baseUrl: "https://example.test/v1" }],
+      [
+        "stream_check_model",
+        {
+          app: "codex",
+          baseUrl: "https://example.test/v1",
+          apiKey: "mutation-only-key",
+          modelId: "model-a",
+        },
+      ],
     ]);
   });
 
@@ -559,6 +604,18 @@ describe("V2 feature ports", () => {
           retryCount: 0,
         };
       }
+      if (command === "stream_check_model") {
+        return {
+          status: "failed",
+          success: false,
+          message: "HTTP 401: invalid api key",
+          responseTimeMs: 18,
+          httpStatus: 401,
+          modelUsed: "model-a",
+          testedAt: 1,
+          retryCount: 0,
+        };
+      }
       throw new Error(`unexpected command ${command}`);
     });
 
@@ -595,6 +652,22 @@ describe("V2 feature ports", () => {
       responseTimeMs: 12,
       httpStatus: 200,
     });
+    await expect(
+      ports.opencodeModels.checkModel({
+        app: "opencode",
+        baseUrl: "https://example.test/v1",
+        apiKey: "oc-key",
+        modelId: "model-a",
+      }),
+    ).resolves.toEqual({
+      success: false,
+      status: "failed",
+      message: "HTTP 401: invalid api key",
+      responseTimeMs: 18,
+      httpStatus: 401,
+      modelUsed: "model-a",
+      errorCategory: null,
+    });
 
     expect(invoke.mock.calls).toEqual([
       ["get_traework_model_ids"],
@@ -613,6 +686,15 @@ describe("V2 feature ports", () => {
         },
       ],
       ["stream_check_url", { baseUrl: "https://example.test/v1" }],
+      [
+        "stream_check_model",
+        {
+          app: "opencode",
+          baseUrl: "https://example.test/v1",
+          apiKey: "oc-key",
+          modelId: "model-a",
+        },
+      ],
     ]);
   });
 

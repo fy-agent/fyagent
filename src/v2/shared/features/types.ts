@@ -676,6 +676,30 @@ export interface ReachabilityResult {
   httpStatus: number | null;
 }
 
+export type ModelProbeAppId =
+  | "claude"
+  | "codex"
+  | "grokbuild"
+  | "workbuddy"
+  | "opencode";
+
+export interface ModelProbeRequest {
+  app: ModelProbeAppId;
+  baseUrl: string;
+  apiKey: string;
+  modelId: string;
+}
+
+export interface ModelProbeResult {
+  success: boolean;
+  status: ReachabilityStatus;
+  message: string;
+  responseTimeMs: number | null;
+  httpStatus: number | null;
+  modelUsed: string;
+  errorCategory: string | null;
+}
+
 export interface TraeWorkModelIdsResult {
   modelIds: string[];
   revision: string | null;

@@ -6,6 +6,7 @@
 use crate::app_config::AppType;
 use crate::commands::copilot::CopilotAuthState;
 use crate::error::AppError;
+use crate::services::model_probe::{self, ModelProbeApp, ModelProbeResult};
 use crate::services::stream_check::{
     HealthStatus, StreamCheckConfig, StreamCheckResult, StreamCheckService,
 };
@@ -52,6 +53,19 @@ pub async fn stream_check_url(
 ) -> Result<StreamCheckResult, AppError> {
     let config = state.db.get_stream_check_config()?;
     StreamCheckService::check_url(&base_url, &config).await
+}
+
+/// 草稿模型连通性检查：对选定模型发一次真实流式请求。
+///
+/// 不查找已保存供应商，不触碰故障转移熔断器。失败时 `message` 含上游错误原文。
+#[tauri::command(rename_all = "camelCase")]
+pub async fn stream_check_model(
+    app: ModelProbeApp,
+    base_url: String,
+    api_key: String,
+    model_id: String,
+) -> Result<ModelProbeResult, AppError> {
+    model_probe::probe(app, &base_url, &api_key, &model_id).await
 }
 
 /// 批量连通性检查

@@ -724,7 +724,7 @@ git diff --check
   Adding `search_skillhub` / `install_skillhub` increments the host
   invoke-handler freeze
   in `application_acl_covers_every_registered_command_without_remote_access`
-  (currently 335). Rust unit tests cover SkillHub slug/URL pinning, Chinese
+  (currently 336). Rust unit tests cover SkillHub slug/URL pinning, Chinese
   description mapping, official `/api/skills` query (`keyword` / `category` /
   `page` / `pageSize` / `sortBy`), dropping illegal category keys, mapping
   `data.total`, and page-size clamp `0 → 21` / `>50 → 50`.

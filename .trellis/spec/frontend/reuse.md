@@ -228,7 +228,7 @@ lists, Skills vs MCP, Prompts vs Memory, and TRAE vs OpenCode model panels.
 
 Do not create a shared component for a one-off form, a single dialog, or a
 trivial `className` repeat. Do not merge TRAE and OpenCode model panels: they
-already share `modelsShared`, `modelChips`, and `feedback`. Do not add
+already share `modelsShared`, `modelChips`, `ModelConnectivityTest`, and `feedback`. Do not add
 `react-paginate`, `react-headless-pagination`, MUI Pagination, Ant
 `rc-pagination`, or a shadcn Pagination copy for feature lists.
 

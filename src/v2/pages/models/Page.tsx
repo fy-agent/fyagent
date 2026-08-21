@@ -58,12 +58,8 @@ import {
   ModelSearchField,
   ModelVendorIcon,
 } from "./modelChips";
-import {
-  ModelsPanelHeader,
-  NoApiKeyOption,
-  NoticeView,
-  noticeFromReachability,
-} from "./modelsShared";
+import { ModelConnectivityTest } from "./ModelConnectivityTest";
+import { ModelsPanelHeader, NoApiKeyOption, NoticeView } from "./modelsShared";
 import { OpenCodeModelsPanel } from "./OpenCodeModelsPanel";
 import { QoderModelsPanel } from "./QoderModelsPanel";
 import { TraeModelsPanel } from "./TraeModelsPanel";
@@ -107,8 +103,7 @@ type WorkBuddyNoticeField =
   | "fetch"
   | "draft"
   | "save"
-  | "existing"
-  | "reachability";
+  | "existing";
 
 function WorkBuddyPanel({ active }: { active: boolean }) {
   const { ports } = useFeatures();
@@ -255,37 +250,6 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
           tone: "error",
           title: "模型读取失败",
           description: "请检查地址、凭据和服务状态后重试。",
-        });
-    } finally {
-      if (mountedRef.current) setBusy(null);
-      writeLock.current = false;
-    }
-  };
-
-  const checkReachability = async () => {
-    if (writeLock.current) return;
-    if (!isHttpUrl(baseUrl.trim())) {
-      show("baseUrl", {
-        tone: "error",
-        title: "请输入有效的服务地址",
-        description: "只接受不含账号信息的 HTTP(S) 地址。",
-      });
-      focusControl(baseUrlInputRef.current);
-      return;
-    }
-    writeLock.current = true;
-    setBusy("reachability");
-    dismiss("baseUrl");
-    try {
-      const result = await ports.workbuddy.checkReachability(baseUrl.trim());
-      if (mountedRef.current)
-        show("reachability", noticeFromReachability(result));
-    } catch {
-      if (mountedRef.current)
-        show("reachability", {
-          tone: "error",
-          title: "连通测试失败",
-          description: "请检查地址和网络后重试。",
         });
     } finally {
       if (mountedRef.current) setBusy(null);
@@ -780,12 +744,23 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
         />
         <div className="fy-models-action-block">
           <div className="fy-models-actions">
-            <Button
-              disabled={busy !== null}
-              onClick={() => void checkReachability()}
-            >
-              {busy === "reachability" ? "测试中…" : "测试连通"}
-            </Button>
+            <ModelConnectivityTest
+              searchId="workbuddy-probe-search"
+              modelIds={draftModelIds}
+              disabled={busy !== null && busy !== "reachability"}
+              onPrepare={validateConnection}
+              onBusyChange={(probing) =>
+                setBusy(probing ? "reachability" : null)
+              }
+              onProbe={(modelId) =>
+                ports.workbuddy.checkModel({
+                  app: "workbuddy",
+                  baseUrl: baseUrl.trim(),
+                  apiKey: apiKeyRef.current.trim(),
+                  modelId,
+                })
+              }
+            />
             <Button disabled={busy !== null} onClick={() => void fetchModels()}>
               {busy === "fetch" ? "读取中…" : "拉取模型"}
             </Button>
@@ -798,10 +773,6 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
             </Button>
           </div>
           <FieldFeedback id="workbuddy-fetch-error" notice={notices.fetch} />
-          <FieldFeedback
-            id="workbuddy-reachability"
-            notice={notices.reachability}
-          />
         </div>
         <div className="fy-models-manual-row">
           <label className="fy-control-field fy-models-manual-field">
@@ -964,15 +935,12 @@ function ProviderPanel({
   const [fetchedModelIds, setFetchedModelIds] = useState<string[]>([]);
   const [ownedByById, setOwnedByById] = useState<Record<string, string>>({});
   const [fetchBusy, setFetchBusy] = useState(false);
-  const [reachabilityBusy, setReachabilityBusy] = useState(false);
+  const [probeBusy, setProbeBusy] = useState(false);
   const [imageExtension, setImageExtension] = useState(false);
   const [websockets, setWebsockets] = useState(false);
   const [errors, setErrors] = useState<QuickSetupErrors>({});
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
-  const [reachabilityNotice, setReachabilityNotice] = useState<Notice | null>(
-    null,
-  );
   const [warningCodes, setWarningCodes] = useState<
     CodexProviderMutationWarning[]
   >([]);
@@ -1004,8 +972,8 @@ function ProviderPanel({
   const providerExists = Boolean(summaryQuery.data?.providers[providerId]);
   const currentId = summaryQuery.data?.currentId ?? "";
 
-  const fetchClaudeModels = async () => {
-    if (app !== "claude" || fetchBusy || busy || writesBlocked) return;
+  const fetchProviderModels = async () => {
+    if (fetchBusy || busy || writesBlocked) return;
     if (!isHttpUrl(baseUrl.trim())) {
       setErrors((current) => ({
         ...current,
@@ -1051,34 +1019,31 @@ function ProviderPanel({
     }
   };
 
-  const checkReachability = async () => {
-    if (fetchBusy || busy || reachabilityBusy) return;
+  const selectableModelIds = addUniqueModelIds(
+    fetchedModelIds,
+    modelId ? [modelId] : [],
+  );
+
+  const prepareModelProbe = () => {
     if (!isHttpUrl(baseUrl.trim())) {
       setErrors((current) => ({
         ...current,
         baseUrl: "请输入不含账号信息的 HTTP(S) 地址",
       }));
       baseUrlInputRef.current?.focus();
-      return;
+      return false;
     }
-    setReachabilityBusy(true);
-    setErrors((current) => ({ ...current, baseUrl: undefined }));
-    setReachabilityNotice(null);
-    try {
-      const result = await ports.providers.checkReachability(baseUrl.trim());
-      if (mountedRef.current)
-        setReachabilityNotice(noticeFromReachability(result));
-    } catch {
-      if (mountedRef.current) {
-        setReachabilityNotice({
-          tone: "error",
-          title: "连通测试失败",
-          description: "请检查地址和网络后重试。",
-        });
-      }
-    } finally {
-      if (mountedRef.current) setReachabilityBusy(false);
+    if (!apiKeyRef.current.trim()) {
+      setErrors((current) => ({ ...current, apiKey: "请输入 API Key" }));
+      apiKeyInputRef.current?.focus();
+      return false;
     }
+    setErrors((current) => ({
+      ...current,
+      baseUrl: undefined,
+      apiKey: undefined,
+    }));
+    return true;
   };
 
   const submit = async () => {
@@ -1217,7 +1182,7 @@ function ProviderPanel({
           className="fy-control-button-primary fy-models-commit-button"
           disabled={
             busy ||
-            reachabilityBusy ||
+            probeBusy ||
             writesBlocked ||
             queryPending ||
             queryUnavailable
@@ -1382,47 +1347,47 @@ function ProviderPanel({
         </div>
         <div className="fy-models-form-wide">
           <div className="fy-models-actions">
+            <ModelConnectivityTest
+              searchId={`${app}-probe-search`}
+              modelIds={selectableModelIds}
+              ownedByById={ownedByById}
+              disabled={busy || fetchBusy || writesBlocked}
+              onPrepare={prepareModelProbe}
+              onBusyChange={setProbeBusy}
+              onProbe={(selectedModelId) =>
+                ports.providers.checkModel({
+                  app,
+                  baseUrl: baseUrl.trim(),
+                  apiKey: apiKeyRef.current.trim(),
+                  modelId: selectedModelId,
+                })
+              }
+            />
             <Button
-              disabled={busy || fetchBusy || reachabilityBusy}
-              onClick={() => void checkReachability()}
+              disabled={busy || fetchBusy || probeBusy || writesBlocked}
+              onClick={() => void fetchProviderModels()}
             >
-              {reachabilityBusy ? "测试中…" : "测试连通"}
+              {fetchBusy ? "读取中…" : "拉取模型"}
             </Button>
-            {app === "claude" ? (
-              <Button
-                disabled={
-                  busy || fetchBusy || reachabilityBusy || writesBlocked
-                }
-                onClick={() => void fetchClaudeModels()}
-              >
-                {fetchBusy ? "读取中…" : "拉取模型"}
-              </Button>
-            ) : null}
           </div>
-          <FieldFeedback
-            id={`${app}-quick-setup-reachability`}
-            notice={reachabilityNotice}
+        </div>
+        <div className="fy-models-form-wide">
+          <GroupedModelChips
+            ids={selectableModelIds}
+            selectedId={modelId}
+            onSelect={setModelId}
+            removable
+            removeDisabled={busy || fetchBusy || probeBusy}
+            ownedByById={ownedByById}
+            onRemove={(id) => {
+              setFetchedModelIds((current) =>
+                current.filter((item) => item !== id),
+              );
+              if (modelId === id) setModelId("");
+            }}
+            emptyLabel="尚未拉取模型。可点击拉取，或手动填入模型 ID。"
           />
         </div>
-        {app === "claude" ? (
-          <div className="fy-models-form-wide">
-            <GroupedModelChips
-              ids={addUniqueModelIds(fetchedModelIds, modelId ? [modelId] : [])}
-              selectedId={modelId}
-              onSelect={setModelId}
-              removable
-              removeDisabled={busy || fetchBusy}
-              ownedByById={ownedByById}
-              onRemove={(id) => {
-                setFetchedModelIds((current) =>
-                  current.filter((item) => item !== id),
-                );
-                if (modelId === id) setModelId("");
-              }}
-              emptyLabel="尚未拉取模型。可点击拉取，或手动填入模型 ID。"
-            />
-          </div>
-        ) : null}
         {app === "codex" && (
           <div
             className="fy-models-codex-features"
