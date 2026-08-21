@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import { CaretDownIcon } from "@phosphor-icons/react/dist/csr/CaretDown";
 import { QuestionIcon } from "@phosphor-icons/react/dist/csr/Question";
 import type { ReactNode } from "react";
@@ -6,7 +7,7 @@ import { classNames } from "../../shared/design-system/classNames";
 import { CatalogDetail } from "../../shared/ui/catalog";
 import { Badge, Checkbox, Tooltip } from "../../shared/ui/primitives";
 import { FieldFeedback, type Notice } from "./feedback";
-import type { ReachabilityResult } from "../../shared/features/types";
+import type { ModelProbeResult, ReachabilityResult } from "../../shared/features/types";
 
 export function NoticeView({ notice }: { notice: Notice | null }) {
   return <FieldFeedback notice={notice} />;
@@ -35,6 +36,28 @@ export function noticeFromReachability(result: ReachabilityResult): Notice {
     title: "服务可达",
     description:
       result.httpStatus !== null ? `HTTP ${result.httpStatus}` : undefined,
+  };
+}
+
+export function noticeFromModelProbe(result: ModelProbeResult): Notice {
+  if (!result.success) {
+    return {
+      tone: "error",
+      title: "连通测试失败",
+      description: result.message.trim() || "请检查地址、凭据、模型和服务状态后重试。",
+    };
+  }
+  if (result.status === "degraded") {
+    return {
+      tone: "warning",
+      title: "连通测试成功，但响应较慢",
+      description: result.message,
+    };
+  }
+  return {
+    tone: "info",
+    title: "连通测试成功",
+    description: result.message,
   };
 }
 

@@ -9,6 +9,7 @@ pub mod external_agents;
 pub mod mcp;
 pub mod model_fetch;
 pub mod model_pricing;
+pub mod model_probe;
 pub mod omo;
 pub mod opencode_models;
 pub mod profile;

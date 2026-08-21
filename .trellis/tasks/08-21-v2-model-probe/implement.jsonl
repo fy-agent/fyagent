@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/frontend/v2-agent-models.md", "reason": "Models-page product matrix, 测试连通 contract, Qoder/TRAE exclusions"}
+{"file": ".trellis/spec/frontend/reuse.md", "reason": "Shared Models chrome must be extracted on first commit"}
+{"file": ".trellis/spec/frontend/v2-shell.md", "reason": "V2 port/adapter/page placement"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Tauri wire types parsed at the adapter"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Host IPC renderer probe contract"}

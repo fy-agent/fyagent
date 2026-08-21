@@ -69,6 +69,7 @@ export function createBrowserFeaturePorts(): FeaturePorts {
       applyQuickSetupWithResult: rejectNativeOnly,
       fetchModels: rejectNativeOnly,
       checkReachability: rejectNativeOnly,
+      checkModel: rejectNativeOnly,
     },
     workbuddy: {
       getStatus: rejectNativeOnly,
@@ -76,12 +77,14 @@ export function createBrowserFeaturePorts(): FeaturePorts {
       fetchModels: rejectNativeOnly,
       saveModels: rejectNativeOnly,
       checkReachability: rejectNativeOnly,
+      checkModel: rejectNativeOnly,
     },
     opencodeModels: {
       getSnapshot: rejectNativeOnly,
       fetchProviderModels: rejectNativeOnly,
       saveModels: rejectNativeOnly,
       checkReachability: rejectNativeOnly,
+      checkModel: rejectNativeOnly,
     },
     skills: {
       getInstalled: async () => [],

@@ -63,6 +63,8 @@ import {
   type OpenCodeModelSnapshot,
   type OpenCodeSaveModelsRequest,
   type WorkBuddySaveModelsResult,
+  type ModelProbeRequest,
+  type ModelProbeResult,
   type ReachabilityResult,
   type DailyMemoryFileInfo,
   type DailyMemorySearchResult,
@@ -786,11 +788,87 @@ function parseReachabilityResult(value: unknown): ReachabilityResult {
   };
 }
 
+function parseModelProbeResult(value: unknown): ModelProbeResult {
+  if (
+    !isRecord(value) ||
+    !hasRequiredAndOptionalKeys(
+      value,
+      ["status", "success", "message", "modelUsed"],
+      [
+        "responseTimeMs",
+        "httpStatus",
+        "testedAt",
+        "retryCount",
+        "errorCategory",
+      ],
+    ) ||
+    !isOneOf(value.status, ["operational", "degraded", "failed"]) ||
+    typeof value.success !== "boolean" ||
+    typeof value.message !== "string" ||
+    typeof value.modelUsed !== "string" ||
+    (value.responseTimeMs !== undefined &&
+      value.responseTimeMs !== null &&
+      (typeof value.responseTimeMs !== "number" ||
+        !Number.isFinite(value.responseTimeMs))) ||
+    (value.httpStatus !== undefined &&
+      value.httpStatus !== null &&
+      (typeof value.httpStatus !== "number" ||
+        !Number.isInteger(value.httpStatus))) ||
+    (value.errorCategory !== undefined &&
+      value.errorCategory !== null &&
+      typeof value.errorCategory !== "string")
+  )
+    throw new Error("Model probe result is unavailable");
+  return {
+    success: value.success,
+    status: value.status,
+    message: value.message,
+    responseTimeMs:
+      typeof value.responseTimeMs === "number" ? value.responseTimeMs : null,
+    httpStatus: typeof value.httpStatus === "number" ? value.httpStatus : null,
+    modelUsed: value.modelUsed,
+    errorCategory:
+      typeof value.errorCategory === "string" ? value.errorCategory : null,
+  };
+}
+
+function assertModelProbeRequest(request: ModelProbeRequest): ModelProbeRequest {
+  if (
+    !isOneOf(request.app, [
+      "claude",
+      "codex",
+      "grokbuild",
+      "workbuddy",
+      "opencode",
+    ]) ||
+    typeof request.baseUrl !== "string" ||
+    typeof request.apiKey !== "string" ||
+    typeof request.modelId !== "string" ||
+    request.modelId.trim().length === 0
+  )
+    throw new Error("Model probe request is invalid");
+  return request;
+}
+
 async function invokeReachability(
   baseUrl: string,
 ): Promise<ReachabilityResult> {
   return parseReachabilityResult(
     await invoke<unknown>("stream_check_url", { baseUrl }),
+  );
+}
+
+async function invokeModelProbe(
+  request: ModelProbeRequest,
+): Promise<ModelProbeResult> {
+  const payload = assertModelProbeRequest(request);
+  return parseModelProbeResult(
+    await invoke<unknown>("stream_check_model", {
+      app: payload.app,
+      baseUrl: payload.baseUrl,
+      apiKey: payload.apiKey,
+      modelId: payload.modelId,
+    }),
   );
 }
 
@@ -1498,6 +1576,7 @@ export function createTauriFeaturePorts(): FeaturePorts {
           }),
         ),
       checkReachability: invokeReachability,
+      checkModel: invokeModelProbe,
     },
     workbuddy: {
       getStatus: () => invoke("get_workbuddy_status"),
@@ -1505,6 +1584,7 @@ export function createTauriFeaturePorts(): FeaturePorts {
       fetchModels: (request) => invoke("fetch_workbuddy_models", { request }),
       saveModels: (request) => invoke("save_workbuddy_models", { request }),
       checkReachability: invokeReachability,
+      checkModel: invokeModelProbe,
     },
     opencodeModels: {
       getSnapshot: async () =>
@@ -1524,6 +1604,7 @@ export function createTauriFeaturePorts(): FeaturePorts {
           }),
         ),
       checkReachability: invokeReachability,
+      checkModel: invokeModelProbe,
     },
     skills: {
       getInstalled: () => invoke("get_installed_skills"),

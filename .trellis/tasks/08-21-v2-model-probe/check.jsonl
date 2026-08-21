@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/frontend/v2-agent-models.md", "reason": "Acceptance: button visibility, Qoder/TRAE exclusion, real model probe"}
+{"file": ".trellis/spec/frontend/reuse.md", "reason": "ModelConnectivityTest must be the single owner"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Adapter must parse checkModel results"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Do not send URL-only probes as model tests"}

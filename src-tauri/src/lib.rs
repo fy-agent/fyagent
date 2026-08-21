@@ -2096,6 +2096,7 @@ pub fn run() {
             commands::stream_check_provider,
             commands::stream_check_all_providers,
             commands::stream_check_url,
+            commands::stream_check_model,
             commands::get_stream_check_config,
             commands::save_stream_check_config,
             // Session manager

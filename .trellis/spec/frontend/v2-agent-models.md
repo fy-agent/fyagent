@@ -11,8 +11,9 @@ The common shell, native-chrome, router, and layer rules remain in
 [V2 Shell](./v2-shell.md). Skills/MCP and Prompt/Memory have separate feature
 contracts and must not be folded into the Agent capability catalog. Reuse is
 the default: Agents and Models share `CatalogMasterDetail` / `SplitPanes`;
-TRAE and OpenCode share `modelsShared` / `modelChips` rather than forking
-panel chrome. New chrome both panels will need goes in that shared module
+TRAE and OpenCode share `modelsShared` / `modelChips` / `ModelConnectivityTest`
+rather than forking panel chrome. New chrome both panels will need goes in
+that shared module
 on the first commit. See [Frontend Reuse](./reuse.md).
 
 The product boundary is deliberately asymmetric. Agents and Models share one
@@ -212,13 +213,38 @@ stream_check_url({ baseUrl: string })
        responseTimeMs: number | null;
        httpStatus: number | null;
      }
+
+stream_check_model({
+  app: "claude" | "codex" | "grokbuild" | "workbuddy" | "opencode",
+  baseUrl: string,
+  apiKey: string,
+  modelId: string,
+})
+  -> {
+       success: boolean;
+       status: "operational" | "degraded" | "failed";
+       message: string;
+       responseTimeMs: number | null;
+       httpStatus: number | null;
+       modelUsed: string;
+       errorCategory: string | null;
+     }
 ```
 
-`checkReachability(baseUrl)` is available on `providers`, `workbuddy`, and
-`opencodeModels`. It invokes `stream_check_url` with an HTTP(S) URL that has a
-host and no userinfo, query, or fragment. Any HTTP response is reachable; the
-command never sends an API key or a model request. Browser adapters reject it as
-native-only. Qoder and TRAE Models ports must not expose this method.
+`checkReachability(baseUrl)` remains on `providers`, `workbuddy`, and
+`opencodeModels` as the URL-only GET probe (`stream_check_url`). Models UI
+must not use it for 「测试连通」.
+
+`checkModel({ app, baseUrl, apiKey, modelId })` is available on the same three
+ports and invokes `stream_check_model`. It sends one authenticated streaming
+request for the selected model (first SSE chunk = success) and never looks up
+a saved Provider or touches the failover circuit breaker. Protocol is
+Anthropic Messages for Claude, OpenAI Responses for Codex, and OpenAI Chat
+Completions for Grok Build / WorkBuddy / OpenCode. Empty `apiKey` omits the
+auth header. Failure `message` is `HTTP {status}: {truncated body}` or the
+transport error, with the API key redacted. Browser adapters reject both
+methods as native-only. Qoder and TRAE Models ports must not expose
+`checkModel`.
 
 `OpenCodeSaveModelsRequest` may carry `apiKey`
 only as a mutation field. GET snapshots contain sanitized model/provider IDs
@@ -399,7 +425,7 @@ fetch/save controls.
   `src/v2/shared/assets/models` via `resolveModelVendorIcon(modelId, ownedBy?)`.
   Unknown IDs use the bundled `unknown.svg`. Remote icon URLs are forbidden.
 - OpenCode uses `opencodeModels.getSnapshot` / `fetchProviderModels` /
-  `saveModels` / `checkReachability` with the same chip/fetch/save UX as
+  `saveModels` / `checkModel` with the same chip/fetch/save UX as
   WorkBuddy. Snapshot IDs are sanitized; `get_opencode_models` (CLI runtime
   list) is not the write path.
 
@@ -435,10 +461,12 @@ fetch/save controls.
   control lives in the sticky detail heading with the panel title, not in a
   trailing section below the form. Unsaved draft IDs or connection input show
   a `待保存` badge.
-- WorkBuddy, Claude, Codex, Grok Build, and OpenCode expose 「测试连通」 on the
-  draft service address before save. The control calls `checkReachability` and
-  does not require an API key. Qoder and TRAE Models must not render that
-  button.
+- WorkBuddy, Claude, Codex, Grok Build, and OpenCode expose 「测试连通」 only
+  after the panel has at least one selectable model ID (pulled or typed).
+  The control is `ModelConnectivityTest`: it opens a picker with model-ID
+  search and group filters, then calls `checkModel`. Failure copy must show
+  the backend `message` (upstream HTTP body), not a generic network hint.
+  Qoder and TRAE Models must not render that button.
 
 ### Claude Code, Codex, and Grok Build
 
@@ -446,6 +474,8 @@ fetch/save controls.
   host and no userinfo/query/fragment, reserved-ID collision, public-field
   credential collision, and credential-in-URL collision in both renderer and
   Rust. Errors are generic and never echo the field values.
+- Claude, Codex, and Grok Build all expose 「拉取模型」 through
+  `providers.fetchModels` and render grouped chips for fetched plus typed IDs.
 - Claude Code only: if the typed Base URL pathname contains an explicit `v1`
   segment, show a warn-only FieldFeedback that the Claude client will call
   `/v1/v1/XXXX` and that the usual path is `/v1/XXXX`. Hostname `v1.example.com`
@@ -511,9 +541,12 @@ fetch/save controls.
 | Native external open fails                                                                 | Show fixed controlled failure text; do not install or configure                                         |
 | QoderWork/TRAE selected                                                                    | Only catalog-declared and native-port capabilities are available; vendor-private writes remain unavailable |
 | Models Qoder/TRAE shows 「打开官方设置」 or 「打开 TRAE 官方模型设置」                      | Component test fails; Qoder has no 「管理 MCP」; TRAE stays guidance-only                                 |
-| Models Qoder/TRAE shows 「测试连通」                                                       | Component test fails; reachability belongs on WorkBuddy, Claude, Codex, Grok Build, and OpenCode only     |
+| Models Qoder/TRAE shows 「测试连通」                                                       | Component test fails; model probe belongs on WorkBuddy, Claude, Codex, Grok Build, and OpenCode only      |
+| Models 「测试连通」 renders before any selectable model ID                                 | Component test fails; the button is owned by `ModelConnectivityTest` and hidden when `modelIds` is empty |
 | `stream_check_url` is empty, not HTTP(S), `file://`, missing a host, or has userinfo/query/fragment | Command error `服务地址无效` or `base_url 为空`; no network probe and no API key |
-| Models reachability calls `stream_check_provider` or requires a saved provider/API key     | Port/page test fails; draft URL uses `stream_check_url` only                                              |
+| Models 「测试连通」 calls `checkReachability` / `stream_check_url` or `stream_check_provider` | Port/page test fails; model probe is `checkModel` → `stream_check_model` only |
+| `stream_check_model` is empty, not HTTP(S), `file://`, missing a host, has userinfo/query/fragment, or has an empty model ID | Command error `服务地址无效` / `base_url 为空` / `模型 ID 为空`; no model request |
+| Model probe failure hides the upstream body behind generic network copy                    | Component test fails; `message` from `checkModel` is shown to the user |
 | Claude Base URL pathname contains a `v1` segment                                           | Warn-only FieldFeedback; save remains enabled                                                             |
 | Native observation fails on Models                                                         | Show controlled unavailable/unknown; never infer absence                                                |
 | Runtime value is unknown                                                                   | Preserve `null`/`unverified`; never display "not installed"                                            |
@@ -546,7 +579,9 @@ fetch/save controls.
   render, Qoder states 官方不支持第三方模型配置, does not render 「管理 MCP」
   or 「打开官方设置」 or 「测试连通」. TRAE Models has no
   「打开 TRAE 官方模型设置」 and no 「测试连通」. Grok Build sits after WorkBuddy and uses
-  Provider quick setup.
+  Provider quick setup. After a model ID exists, WorkBuddy/Claude/Codex/Grok
+  Build/OpenCode 「测试连通」 opens a searchable grouped picker and
+  `checkModel` shows the upstream error body on failure.
 - Good: OpenCode's Models panel lists existing sanitized provider/model IDs,
   fetches, adds, deletes, and saves through `opencodeModels`; it never submits
   Provider quick setup.
@@ -630,10 +665,12 @@ Required focused coverage includes:
 - Models Qoder/TRAE details must not render 「打开官方设置」 or
   「打开 TRAE 官方模型设置」; Qoder states 官方不支持第三方模型配置 and
   has no 「管理 MCP」 or 「测试连通」.
-  WorkBuddy, Claude, Codex, Grok Build, and OpenCode expose 「测试连通」 on a
-  draft HTTP(S) URL without requiring save or an API key.
-  Rust `validate_probe_url` accepts trimmed HTTP(S) hosts and rejects
-  `file://`, userinfo, query, and fragment.
+  WorkBuddy, Claude, Codex, Grok Build, and OpenCode expose 「测试连通」 only
+  after selectable model IDs exist. The picker searches and filters by group,
+  then `checkModel` sends a real streaming request. Failure shows the
+  backend `message`. `stream_check_model` validates the draft HTTP(S) URL the
+  same way as `validate_probe_url` and never resets the circuit breaker.
+  Claude, Codex, and Grok Build all expose 「拉取模型」.
   Claude shows a warn-only explicit `/v1` pathname notice and a placeholder
   without `/v1`.
   Agent directory tests prove only `direct` capability jumps, no capability-item
@@ -706,21 +743,32 @@ jump.
 <InlineNotice>官方不支持第三方模型配置</InlineNotice>
 ```
 
-Wrong: probe a saved Provider (or send an API key) to test a draft Models URL,
-or hang 「测试连通」 on Qoder/TRAE.
+Wrong: probe a saved Provider, or use URL-only reachability as 「测试连通」,
+or hang that button on Qoder/TRAE, or show it before any model ID exists.
 
 ```ts
 await invoke("stream_check_provider", { appType: "claude", providerId });
-<Button>测试连通</Button> // Qoder / TRAE Models panel
+await ports.providers.checkReachability(baseUrl.trim());
+<Button>测试连通</Button> // Qoder / TRAE, or before models are pulled
 ```
 
-Correct: `checkReachability` is `stream_check_url` on the typed HTTP(S) draft.
-Qoder and TRAE Models have no reachability method or button.
+Correct: `ModelConnectivityTest` is the only Models owner. It stays hidden
+until `modelIds.length > 0`, then `checkModel` → `stream_check_model`.
+Qoder and TRAE Models have no probe method or button. Failure copy uses
+`result.message`.
 
 ```ts
-await ports.providers.checkReachability(baseUrl.trim());
-await ports.workbuddy.checkReachability(baseUrl.trim());
-await ports.opencodeModels.checkReachability(baseUrl.trim());
+<ModelConnectivityTest
+  modelIds={draftModelIds}
+  onProbe={(modelId) =>
+    ports.workbuddy.checkModel({
+      app: "workbuddy",
+      baseUrl: baseUrl.trim(),
+      apiKey: apiKeyRef.current.trim(),
+      modelId,
+    })
+  }
+/>
 ```
 
 Wrong: stack a Models page flex gap on top of the shared feature header

@@ -157,9 +157,10 @@ status check or endpoint probe:
 - [ ] Reset stale cached/prefetched state when the selected source changes.
 - [ ] Parse only complete bounded input; do not treat an arbitrary prefix as a
       finished response.
-- [ ] A Models draft URL uses `stream_check_url` / `checkReachability`. Do not
-      look up a saved Provider, send an API key, or hang 「测试连通」 on
-      Qoder/TRAE. Contract:
+- [ ] A Models 「测试连通」 control uses `checkModel` / `stream_check_model`
+      after selectable model IDs exist. Do not use URL-only
+      `checkReachability`, look up a saved Provider, or hang that button on
+      Qoder/TRAE. Show the probe `message` on failure. Contract:
       [V2 Agent and Models](../frontend/v2-agent-models.md).
 
 Exact URLs, DTO fields, error codes, and tests belong in the owning spec:
