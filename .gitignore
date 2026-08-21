@@ -21,6 +21,9 @@ mise.*.local.lock
 CLAUDE.md
 GEMINI.md
 /.claude
+/.codebuddy
+/.codex
+/.cursor
 /.gemini
 /.fyagent
 /.idea
