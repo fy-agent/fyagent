@@ -2,9 +2,7 @@ name: CI
 
 on:
   pull_request:
-    branches: [main]
   push:
-    branches: [main, dev/laiyongjie]
   merge_group:
     types: [checks_requested]
   workflow_dispatch:
@@ -17,8 +15,85 @@ concurrency:
   cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 jobs:
+  commit-convention:
+    name: Commit Convention
+    runs-on: macos-15
+    timeout-minutes: 5
+    steps:
+      - name: Checkout complete comparison history
+        id: checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Node.js
+        id: setup-node
+        if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+
+      - name: Verify commit messages
+        id: verify
+        if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          MERGE_GROUP_BASE_SHA: ${{ github.event.merge_group.base_sha }}
+          MERGE_GROUP_HEAD_SHA: ${{ github.event.merge_group.head_sha }}
+          PUSH_BASE_SHA: ${{ github.event.before }}
+          PUSH_HEAD_SHA: ${{ github.sha }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          set -euo pipefail
+          case "$EVENT_NAME" in
+            pull_request)
+              base_sha="$PR_BASE_SHA"
+              head_sha="$PR_HEAD_SHA"
+              ;;
+            merge_group)
+              base_sha="$MERGE_GROUP_BASE_SHA"
+              head_sha="$MERGE_GROUP_HEAD_SHA"
+              ;;
+            push|workflow_dispatch)
+              base_sha="$PUSH_BASE_SHA"
+              head_sha="$PUSH_HEAD_SHA"
+              ;;
+            *)
+              echo "Unsupported CI event: $EVENT_NAME" >&2
+              exit 1
+              ;;
+          esac
+          if [[ "$base_sha" =~ ^0{40}$ ]]; then
+            base_sha="$head_sha"
+          fi
+          if [ "$EVENT_NAME" = push ] &&
+            ! git cat-file -e "${base_sha}^{commit}" 2>/dev/null; then
+            echo "Push before SHA is not a commit in this clone; using head as an empty comparison" >&2
+            base_sha="$head_sha"
+          fi
+          args=(
+            --base "$base_sha"
+            --head "$head_sha"
+          )
+          if [ "$EVENT_NAME" = pull_request ] && [ -n "${PR_TITLE:-}" ]; then
+            args+=(--pr-title "$PR_TITLE")
+          fi
+          node scripts/ci/verify-commit-messages.mjs "${args[@]}"
+
+      - name: Evaluate collected diagnostics
+        if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
+        env:
+          CI_REQUIRED_STEPS: setup-node,verify
+          CI_STEP_RESULTS: ${{ toJSON(steps) }}
+        run: node scripts/ci/evaluate-step-outcomes.mjs
+
   changes:
     name: Classify Changes
+    needs: commit-convention
     runs-on: macos-15
     outputs:
       plan: ${{ steps.plan.outputs.plan }}
@@ -700,6 +775,7 @@ jobs:
     name: CI / Required
     if: always()
     needs:
+      - commit-convention
       - changes
       - contracts
       - frontend

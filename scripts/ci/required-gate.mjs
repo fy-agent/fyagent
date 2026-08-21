@@ -22,6 +22,7 @@ export const REQUIRED_CI_JOBS = Object.freeze([
 ]);
 
 export const REQUIRED_CI_DEPENDENCIES = Object.freeze([
+  "commit-convention",
   "changes",
   ...REQUIRED_CI_JOBS,
 ]);
@@ -45,6 +46,7 @@ const KNOWN_JOB_CONCLUSIONS = new Set([
 ]);
 
 const DISPLAY_NAME_MATCHERS = Object.freeze({
+  "commit-convention": (name) => name === "Commit Convention",
   changes: (name) => name === "Classify Changes",
   contracts: (name) => name === "Repository Contracts",
   frontend: (name) => name === "Frontend Checks",
@@ -254,6 +256,19 @@ export function evaluateRequiredCiResults(
   const attemptConclusions = normalizeAttemptJobs(attemptJobsValue, errors);
   for (const job of REQUIRED_CI_DEPENDENCIES) {
     conclusions[job] = aggregateConclusions(attemptConclusions[job] ?? []);
+  }
+
+  if (results["commit-convention"] && results["commit-convention"] !== "success") {
+    const observed =
+      conclusions["commit-convention"] ?? results["commit-convention"];
+    errors.push(`commit convention finished with ${observed}`);
+  } else if (
+    results["commit-convention"] === "success" &&
+    conclusions["commit-convention"] === null
+  ) {
+    errors.push(
+      "commit convention is missing from current run-attempt jobs",
+    );
   }
 
   if (results.changes && results.changes !== "success") {

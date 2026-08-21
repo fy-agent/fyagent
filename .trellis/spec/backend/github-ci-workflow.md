@@ -3,9 +3,10 @@
 ## 1. Scope and stable public result
 
 This contract owns `.github/workflows/ci.yml`,
-`scripts/ci/classify-changes.mjs`, `scripts/ci/required-gate.mjs`, and their
-fixture suites. It applies to pull requests, merge queue candidates, pushes to
-`main` and `dev/laiyongjie`, and manual diagnostics.
+`scripts/ci/classify-changes.mjs`, `scripts/ci/required-gate.mjs`,
+`scripts/ci/verify-commit-messages.mjs`, and their fixture suites. It applies to
+pull requests, merge queue candidates, pushes on every branch, and manual
+diagnostics.
 
 This workflow owns scheduling and aggregation, not the underlying product
 behavior. Windows installer/runtime review guidance is recorded in
@@ -27,17 +28,16 @@ The workflow triggers are:
 
 ```yaml
 pull_request:
-  branches: [main]
 push:
-  branches: [main, dev/laiyongjie]
 merge_group:
   types: [checks_requested]
 workflow_dispatch:
 ```
 
-- every `main` push remains a full CI run for that SHA; it is not a formal
-  Release eligibility gate;
-- every `dev/laiyongjie` push is a full CI run for that SHA; preflight still
+- every branch push remains subject to commit-convention and event policy;
+- every `main` push remains a full CI run for that SHA when event policy forces
+  full domains; it is not a formal Release eligibility gate;
+- every `dev/laiyongjie` push remains a full CI run for that SHA; preflight still
   binds the live remote `dev/laiyongjie` HEAD;
 - PR and `merge_group` runs execute only affected domains;
 - `workflow_dispatch` is a full diagnostic run and is never release evidence
@@ -142,6 +142,8 @@ must not pass an unresolvable push `before` SHA into the classifier.
 ## 4. Domain-to-job topology
 
 ```text
+commit-convention
+  ↓
 changes
   ├─ contracts
   ├─ frontend
@@ -152,6 +154,11 @@ changes
          ↓
     CI / Required
 ```
+
+`commit-convention` is the fast-fail gate. It runs with checkout plus Node.js
+only, validates every commit subject in the explicit base/head comparison, and
+validates the pull request title on `pull_request` events. When it fails, every
+downstream job is skipped so the workflow stops before expensive domain work.
 
 The requested job mapping is exact:
 
@@ -165,22 +172,25 @@ The requested job mapping is exact:
 | `backend-macos`               | `backend`                    |
 
 Every domain job needs `changes` and may run only after classifier success.
-Docs/spec-only changes therefore execute the repository contracts gate but do
-not start frontend, Rust, macOS, or Windows-heavy jobs. The contracts job runs
-the task, docs, Python lock, version, and release contract suite; it does not
-require Trellis task state, overlay reconciliation, or hook execution.
+`changes` needs `commit-convention` and may run only after commit validation
+success. Docs/spec-only changes therefore execute the repository contracts gate
+but do not start frontend, Rust, macOS, or Windows-heavy jobs. The contracts
+job runs the task, docs, Python lock, version, and release contract suite; it
+does not require Trellis task state, overlay reconciliation, or hook execution.
 
 ## 5. Required aggregation and timeout evidence
 
 `scripts/ci/required-gate.mjs` is the pure evaluator for the stable aggregate.
 It receives:
 
-1. exact `toJSON(needs)` results for `changes` plus the six domain job IDs;
+1. exact `toJSON(needs)` results for `commit-convention`, `changes`, plus the
+   six domain job IDs;
 2. the exact classifier/event plan emitted by `changes`;
 3. the current workflow run-attempt Jobs REST response.
 
 The evaluator requires exact keys and booleans. Its result rules are:
 
+- `commit-convention` must be successful;
 - `changes` must be successful;
 - a requested job must be successful;
 - a non-requested job must be skipped;

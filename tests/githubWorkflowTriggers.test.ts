@@ -17,7 +17,7 @@ function readHeaderBefore(source: string, marker: string): string {
 }
 
 describe("GitHub workflow trigger policy", () => {
-  it("keeps one required CI surface for PRs, merge queue, dev/main pushes, and diagnostics", () => {
+  it("keeps one required CI surface for every branch, merge queue, push, and diagnostics", () => {
     const source = readWorkflow("ci.yml");
     const triggerSection = readHeaderBefore(source, "\npermissions:");
 
@@ -27,9 +27,7 @@ describe("GitHub workflow trigger policy", () => {
         "",
         "on:",
         "  pull_request:",
-        "    branches: [main]",
         "  push:",
-        "    branches: [main, dev/laiyongjie]",
         "  merge_group:",
         "    types: [checks_requested]",
         "  workflow_dispatch:",
@@ -49,6 +47,10 @@ describe("GitHub workflow trigger policy", () => {
   it("keeps desktop acceptance in the automatic CI path and mock-only boundary", () => {
     const source = readWorkflow("ci.yml");
 
+    expect(source).toContain("commit-convention:");
+    expect(source).toContain("name: Commit Convention");
+    expect(source).toContain("node scripts/ci/verify-commit-messages.mjs");
+    expect(source).toContain("needs: commit-convention");
     expect(source).toContain("desktop-acceptance-contract:");
     expect(source).toContain(
       "run: node --throw-deprecation ./node_modules/vitest/vitest.mjs run tests/desktop-acceptance",

@@ -16,7 +16,7 @@ const REQUIRED_JOBS = [
   "backend-macos",
 ] as const;
 
-const DEPENDENCY_JOBS = ["changes", ...REQUIRED_JOBS] as const;
+const DEPENDENCY_JOBS = ["commit-convention", "changes", ...REQUIRED_JOBS] as const;
 
 const LOCAL_MISE_TESTS = [
   "tests/developmentEnvironment.test.ts",
@@ -86,9 +86,25 @@ describe("automatic CI workflow", () => {
     const jobIds = [...jobsSection.matchAll(/^  ([a-z][a-z0-9-]*):\s*$/gm)].map(
       (match) => match[1],
     );
-    expect(jobIds).toEqual(["changes", ...REQUIRED_JOBS, "required"]);
+    expect(jobIds).toEqual([
+      "commit-convention",
+      "changes",
+      ...REQUIRED_JOBS,
+      "required",
+    ]);
+
+    const commitConvention = jobBlock("commit-convention");
+    expect(commitConvention).toContain("name: Commit Convention");
+    expect(commitConvention).toContain("timeout-minutes: 5");
+    expect(commitConvention).toContain("fetch-depth: 0");
+    expect(commitConvention).toContain(
+      "node scripts/ci/verify-commit-messages.mjs",
+    );
+    expect(commitConvention).toContain("PR_TITLE:");
+    expect(commitConvention).not.toContain("pnpm install");
 
     const changes = jobBlock("changes");
+    expect(changes).toContain("needs: commit-convention");
     expect(changes).toContain("name: Classify Changes");
     expect(changes).toContain("fetch-depth: 0");
     expect(changes).toContain(
@@ -158,6 +174,7 @@ describe("automatic CI workflow", () => {
       "runs-on: macos-15",
     );
     expect(jobBlock("changes")).toContain("runs-on: macos-15");
+    expect(jobBlock("commit-convention")).toContain("runs-on: macos-15");
     expect(jobBlock("backend-windows")).toContain("runs-on: windows-2025");
     expect(jobBlock("windows-native-contracts")).toContain(
       "runs-on: ${{ matrix.runner }}",
@@ -190,7 +207,7 @@ describe("automatic CI workflow", () => {
     }
 
     const checkoutSteps = actionSteps("actions/checkout");
-    expect(checkoutSteps).toHaveLength(8);
+    expect(checkoutSteps).toHaveLength(9);
     for (const step of checkoutSteps) {
       expect(step).toContain("persist-credentials: false");
     }
@@ -205,7 +222,7 @@ describe("automatic CI workflow", () => {
     expect(source).not.toContain("3.14.7");
 
     const nodeSteps = actionSteps("actions/setup-node");
-    expect(nodeSteps).toHaveLength(7);
+    expect(nodeSteps).toHaveLength(8);
     for (const step of nodeSteps) {
       expect(step).toContain("node-version-file: .node-version");
       expect(step).not.toMatch(/^\s+node-version:/m);
@@ -369,6 +386,7 @@ describe("automatic CI workflow", () => {
 
   it("collects every CI diagnostic before each job restores its failure", () => {
     const collectedSteps = {
+      "commit-convention": ["Setup Node.js", "Verify commit messages"],
       changes: [
         "Setup Node.js",
         "Classify explicit base and head commits",
