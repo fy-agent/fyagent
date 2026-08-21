@@ -7,7 +7,10 @@ import { classNames } from "../../shared/design-system/classNames";
 import { CatalogDetail } from "../../shared/ui/catalog";
 import { Badge, Checkbox, Tooltip } from "../../shared/ui/primitives";
 import { FieldFeedback, type Notice } from "./feedback";
-import type { ModelProbeResult, ReachabilityResult } from "../../shared/features/types";
+import type {
+  ModelProbeResult,
+  ReachabilityResult,
+} from "../../shared/features/types";
 
 export function NoticeView({ notice }: { notice: Notice | null }) {
   return <FieldFeedback notice={notice} />;
@@ -44,7 +47,8 @@ export function noticeFromModelProbe(result: ModelProbeResult): Notice {
     return {
       tone: "error",
       title: "连通测试失败",
-      description: result.message.trim() || "请检查地址、凭据、模型和服务状态后重试。",
+      description:
+        result.message.trim() || "请检查地址、凭据、模型和服务状态后重试。",
     };
   }
   if (result.status === "degraded") {

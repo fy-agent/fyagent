@@ -59,11 +59,7 @@ import {
   ModelVendorIcon,
 } from "./modelChips";
 import { ModelConnectivityTest } from "./ModelConnectivityTest";
-import {
-  ModelsPanelHeader,
-  NoApiKeyOption,
-  NoticeView,
-} from "./modelsShared";
+import { ModelsPanelHeader, NoApiKeyOption, NoticeView } from "./modelsShared";
 import { OpenCodeModelsPanel } from "./OpenCodeModelsPanel";
 import { QoderModelsPanel } from "./QoderModelsPanel";
 import { TraeModelsPanel } from "./TraeModelsPanel";

@@ -832,7 +832,9 @@ function parseModelProbeResult(value: unknown): ModelProbeResult {
   };
 }
 
-function assertModelProbeRequest(request: ModelProbeRequest): ModelProbeRequest {
+function assertModelProbeRequest(
+  request: ModelProbeRequest,
+): ModelProbeRequest {
   if (
     !isOneOf(request.app, [
       "claude",
