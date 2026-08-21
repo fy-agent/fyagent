@@ -2917,11 +2917,42 @@ pub fn write_codex_live_for_provider(
             && !crate::settings::preserve_codex_official_auth_on_switch());
 
     if should_write_auth {
-        write_codex_live_atomic(auth, config_text)
+        let projected_config = match config_text {
+            Some(text) => Some(project_codex_live_config_when_openai_auth_disabled(
+                auth, text,
+            )?),
+            None => None,
+        };
+        write_codex_live_atomic(auth, projected_config.as_deref())
     } else {
         let live_config = prepare_codex_provider_live_config(auth, config_text.unwrap_or(""))?;
         write_codex_live_config_atomic(Some(&live_config))
     }
+}
+
+/// Current Codex ignores `auth.json` when the active provider sets
+/// `requires_openai_auth = false`. Project the stored `OPENAI_API_KEY` into
+/// provider-scoped `experimental_bearer_token` so live requests still authenticate.
+/// `requires_openai_auth = true` or a missing field keeps the stored TOML as-is
+/// so the API key continues to live only in `auth.json`.
+fn project_codex_live_config_when_openai_auth_disabled(
+    auth: &Value,
+    config_text: &str,
+) -> Result<String, AppError> {
+    if active_codex_provider_disables_openai_auth(config_text) {
+        prepare_codex_provider_live_config(auth, config_text)
+    } else {
+        Ok(config_text.to_string())
+    }
+}
+
+fn active_codex_provider_disables_openai_auth(config_text: &str) -> bool {
+    let Ok(doc) = config_text.parse::<DocumentMut>() else {
+        return false;
+    };
+    active_codex_provider_table(&doc)
+        .and_then(|(_, table)| table.get("requires_openai_auth").and_then(Item::as_bool))
+        == Some(false)
 }
 
 /// Build the live Codex config for provider switching.
@@ -4290,6 +4321,67 @@ model = "gpt-5"
         assert!(
             parsed.get("model_providers").is_none(),
             "reserved provider tables should not be synthesized"
+        );
+    }
+
+    #[test]
+    fn active_provider_disables_openai_auth_only_for_explicit_false() {
+        let disabled = r#"model_provider = "custom"
+
+[model_providers.custom]
+requires_openai_auth = false
+"#;
+        let enabled = r#"model_provider = "custom"
+
+[model_providers.custom]
+requires_openai_auth = true
+"#;
+        let missing = r#"model_provider = "custom"
+
+[model_providers.custom]
+name = "Gateway"
+"#;
+        assert!(active_codex_provider_disables_openai_auth(disabled));
+        assert!(!active_codex_provider_disables_openai_auth(enabled));
+        assert!(!active_codex_provider_disables_openai_auth(missing));
+        assert!(!active_codex_provider_disables_openai_auth("not toml {"));
+    }
+
+    #[test]
+    fn project_live_config_injects_bearer_token_only_when_openai_auth_is_disabled() {
+        let disabled = r#"model_provider = "custom"
+model = "gpt-5.4"
+
+[model_providers.custom]
+name = "Gateway"
+base_url = "https://gateway.example/v1"
+wire_api = "responses"
+requires_openai_auth = false
+"#;
+        let enabled = disabled.replace(
+            "requires_openai_auth = false",
+            "requires_openai_auth = true",
+        );
+        let auth = json!({ "OPENAI_API_KEY": "sk-image" });
+
+        let projected =
+            project_codex_live_config_when_openai_auth_disabled(&auth, disabled).expect("project");
+        let parsed: toml::Value = toml::from_str(&projected).expect("parse projected");
+        assert_eq!(
+            parsed
+                .get("model_providers")
+                .and_then(|v| v.get("custom"))
+                .and_then(|v| v.get("experimental_bearer_token"))
+                .and_then(|v| v.as_str()),
+            Some("sk-image")
+        );
+
+        let unchanged =
+            project_codex_live_config_when_openai_auth_disabled(&auth, &enabled).expect("keep");
+        assert_eq!(unchanged, enabled);
+        assert!(
+            !unchanged.contains("experimental_bearer_token"),
+            "requires_openai_auth=true must keep the API key in auth.json only"
         );
     }
 

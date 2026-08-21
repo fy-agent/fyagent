@@ -797,6 +797,68 @@ requires_openai_auth = true
 }
 
 #[test]
+fn provider_service_switch_codex_projects_bearer_token_when_openai_auth_disabled() {
+    let _guard = test_mutex().lock().expect("acquire test mutex");
+    reset_test_fs();
+    let _home = ensure_test_home();
+
+    let image_config = r#"model_provider = "custom"
+model = "gpt-5.4"
+
+[model_providers.custom]
+name = "Gateway"
+base_url = "https://gateway.example/v1"
+wire_api = "responses"
+requires_openai_auth = false
+http_headers = { "x-openai-actor-authorization" = "local-image-extension" }
+"#;
+    write_codex_live_atomic(
+        &json!({ "OPENAI_API_KEY": "stale-key" }),
+        Some("model = \"stale\"\n"),
+    )
+    .expect("seed live config");
+
+    let mut initial_config = MultiAppConfig::default();
+    {
+        let manager = initial_config
+            .get_manager_mut(&AppType::Codex)
+            .expect("codex manager");
+        manager.providers.insert(
+            "image-provider".to_string(),
+            Provider::with_id(
+                "image-provider".to_string(),
+                "Gateway".to_string(),
+                json!({
+                    "auth": {"OPENAI_API_KEY": "image-mode-key"},
+                    "config": image_config
+                }),
+                None,
+            ),
+        );
+    }
+
+    let state = create_test_state_with_config(&initial_config).expect("create test state");
+
+    ProviderService::switch(&state, AppType::Codex, "image-provider")
+        .expect("switch to image-mode provider should succeed");
+
+    let auth_value: serde_json::Value =
+        read_json_file(&fyagent_lib::get_codex_auth_path()).expect("read auth.json");
+    assert_eq!(
+        auth_value.get("OPENAI_API_KEY").and_then(|v| v.as_str()),
+        Some("image-mode-key"),
+        "image mode still writes OPENAI_API_KEY to live auth.json"
+    );
+
+    let live_config =
+        std::fs::read_to_string(fyagent_lib::get_codex_config_path()).expect("read config.toml");
+    assert!(
+        live_config.contains("experimental_bearer_token = \"image-mode-key\""),
+        "requires_openai_auth=false must project the API key onto experimental_bearer_token, got:\n{live_config}"
+    );
+}
+
+#[test]
 fn provider_service_switch_codex_supports_official_login_provider_without_auth_write() {
     let _guard = test_mutex().lock().expect("acquire test mutex");
     reset_test_fs();

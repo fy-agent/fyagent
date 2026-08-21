@@ -73,6 +73,17 @@ CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED
   `supports_websockets = true`; disabling removes the field rather than writing
   `false`. Responses, Chat, Anthropic, managed OAuth, official, and proxy
   Providers remain saveable with the field present.
+- Codex image-extension mode on a third-party Provider writes
+  `requires_openai_auth = false`. Current Codex then ignores
+  `auth.json`'s `OPENAI_API_KEY`, so the same key must also be written to the
+  active `[model_providers.<id>]` table as `experimental_bearer_token`.
+  Disabling image-extension restores `requires_openai_auth = true` and keeps
+  the key only in stored/live `auth.json`; do not add a bearer token in that
+  case. Live writes with an explicit `requires_openai_auth = false` project
+  `auth.OPENAI_API_KEY` onto the token even when the stored TOML omitted it.
+  A missing or `true` `requires_openai_auth` field is not this trigger.
+  Official ChatGPT-login preservation still uses its own config-only write
+  path and is not this image-mode contract.
 
 ### Migration metadata and official-provider ownership
 
@@ -145,6 +156,9 @@ CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED
 | A DeepSeek-looking URL has HTTP, user information, a suffix-confusion hostname, or only a path match | Use the neutral template; grant no vendor behavior.                                                                     |
 | A mutation succeeds but final live Codex bytes do not change                                         | Return `liveConfigChanged: false`; do not offer an automatic restart.                                                   |
 | A mutation fails                                                                                     | Preserve prior live bytes and omit risk/restart success signals.                                                        |
+| Codex image-extension is enabled (`requires_openai_auth = false`) and the Provider has an API key    | Stored and live `[model_providers.<id>]` contain `experimental_bearer_token` equal to `auth.OPENAI_API_KEY`.            |
+| Codex image-extension is disabled (`requires_openai_auth = true`)                                    | Write `OPENAI_API_KEY` to `auth.json`; do not add `experimental_bearer_token` for this reason.                          |
+| `requires_openai_auth` is missing or `true` during a default (preservation-off) live write           | Leave stored TOML bearer fields unchanged; authenticate via `auth.json`.                                                |
 
 ## 5. Good / Base / Bad Cases
 
@@ -158,6 +172,14 @@ CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED
 - Bad: derive official-provider identity from display name, rewrite invalid TOML
   from form state, use proxy preservation as proof of WebSocket transport, or
   quote an unsafe persisted session ID into a command string.
+- Good: V2 Codex quick setup with `codexFeatures.imageExtension = true` writes
+  `requires_openai_auth = false`, the managed image header, and
+  `experimental_bearer_token` equal to the request `apiKey`, while still
+  storing `auth.OPENAI_API_KEY`.
+- Good: the same request with `imageExtension = false` writes
+  `requires_openai_auth = true` and `auth.OPENAI_API_KEY` only.
+- Bad: enable image-extension, set `requires_openai_auth = false`, and leave
+  the API key only in `auth.json`. Current Codex will not send that key.
 
 ## 6. Tests Required
 
@@ -175,6 +197,11 @@ CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED
   warning ordering/deduplication, GPT/non-GPT catalogs, proxy warnings, switches,
   and failed saves. Renderer tests prove only successful changed Codex saves can
   offer the separate trusted restart flow.
+- Auth-projection tests cover image-on quick setup writing both
+  `experimental_bearer_token` and `auth.OPENAI_API_KEY`, image-off keeping the
+  key in `auth.json` only, live switch injecting the token when
+  `requires_openai_auth = false`, and no injection when the field is `true` or
+  missing.
 
 ## 7. Wrong vs Correct
 
@@ -192,4 +219,76 @@ Correct:
 parsed HTTPS hostname matches reviewed host rule -> vendor behavior
 persisted ID passes conservative ASCII grammar -> construct established command
 successful final live bytes differ -> liveConfigChanged = true
+imageExtension true -> requires_openai_auth = false
+  + experimental_bearer_token = apiKey
+  + auth.OPENAI_API_KEY = apiKey
+imageExtension false -> requires_openai_auth = true
+  + auth.OPENAI_API_KEY = apiKey
+  + no experimental_bearer_token
+```
+
+## Scenario: Codex image-mode API key projection
+
+### 1. Scope / Trigger
+- Trigger: current Codex does not attach `auth.json`'s `OPENAI_API_KEY` when
+  the active provider sets `requires_openai_auth = false`. FyAgent image
+  extension writes that field to `false`, so the API key must also live on
+  the provider table as `experimental_bearer_token`.
+
+### 2. Signatures
+```text
+ProviderQuickSetupRequest.codexFeatures.imageExtension: Option<bool>
+into_provider(AppType::Codex) -> Provider.settings_config { auth, config }
+write_codex_live_for_provider(category, auth, config_text)
+project_codex_live_config_when_openai_auth_disabled(auth, config_text) -> config_text
+```
+
+### 3. Contracts
+- Request: V2 `apiKey` plus optional `codexFeatures.imageExtension`.
+- Stored Codex shape always keeps `auth.OPENAI_API_KEY`.
+- Image on: `[model_providers.custom].requires_openai_auth = false` and
+  `experimental_bearer_token` equals the same `apiKey`.
+- Image off: `requires_openai_auth = true`; no image-mode bearer token.
+- Live default write (preservation off): if the active table's
+  `requires_openai_auth` is explicitly `false`, project `auth.OPENAI_API_KEY`
+  onto `experimental_bearer_token` before writing `config.toml`, and still
+  write `auth.json`. Missing or `true` leaves TOML unchanged.
+- Environment: live files remain `~/.codex/auth.json` and
+  `~/.codex/config.toml`. No new env key.
+
+### 4. Validation & Error Matrix
+- Empty `apiKey` -> quick setup rejects before TOML derivation.
+- Invalid TOML at live write -> existing parse error; do not synthesize a
+  bearer token onto a document that cannot be parsed.
+- No API key and `requires_openai_auth = false` -> do not invent a token;
+  `prepare_codex_provider_live_config` leaves the text unchanged.
+
+### 5. Good/Base/Bad Cases
+- Good: image-on quick setup stores and lives the same key in auth and the
+  provider bearer token.
+- Base: image-off quick setup writes only `auth.json`.
+- Bad: treat preservation-mode config-only writes as this image-mode path, or
+  inject a bearer token merely because the image header is present while
+  `requires_openai_auth` remains `true`.
+
+### 6. Tests Required
+- `quick_setup_request_writes_image_extension_and_websocket_features`
+- `quick_setup_request_disabling_image_keeps_requires_openai_auth_true`
+- `quick_setup_request_derives_the_fixed_provider_shape` (no bearer token)
+- `active_provider_disables_openai_auth_only_for_explicit_false`
+- `project_live_config_injects_bearer_token_only_when_openai_auth_is_disabled`
+- `provider_service_switch_codex_projects_bearer_token_when_openai_auth_disabled`
+
+### 7. Wrong vs Correct
+#### Wrong
+```text
+imageExtension true -> requires_openai_auth = false
+live auth.json OPENAI_API_KEY = apiKey
+live config.toml has no experimental_bearer_token
+```
+#### Correct
+```text
+imageExtension true -> requires_openai_auth = false
+live auth.json OPENAI_API_KEY = apiKey
+[model_providers.<id>].experimental_bearer_token = apiKey
 ```

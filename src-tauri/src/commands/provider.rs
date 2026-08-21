@@ -249,6 +249,9 @@ impl ProviderQuickSetupRequest {
                 };
                 // 开启内置生图扩展后，请求走本地 `x-openai-actor-authorization`
                 // header，不再依赖 OpenAI 官方登录，故 requires_openai_auth=false。
+                // 新版 Codex 在 requires_openai_auth=false 时不会读取 auth.json
+                // 的 OPENAI_API_KEY，必须把同一把 key 同步到 provider 表的
+                // experimental_bearer_token。关闭生图时仍只写 auth.json。
                 let image_extension = codex_features.image_extension.unwrap_or(false);
                 let websockets = codex_features.websockets.unwrap_or(false);
                 let requires_openai_auth = !image_extension;
@@ -260,8 +263,9 @@ impl ProviderQuickSetupRequest {
                     requires_openai_auth,
                 );
                 if image_extension {
+                    let bearer_token = toml_edit::Value::from(api_key.as_str()).to_string();
                     config.push_str(&format!(
-                        "\nhttp_headers = {{ \"{}\" = \"{}\" }}",
+                        "\nhttp_headers = {{ \"{}\" = \"{}\" }}\nexperimental_bearer_token = {bearer_token}",
                         crate::codex_config::CODEX_IMAGE_EXTENSION_HEADER,
                         crate::codex_config::CODEX_IMAGE_EXTENSION_VALUE,
                     ));
@@ -1718,6 +1722,15 @@ mod provider_draft_command_tests {
             provider.settings_config["auth"]["OPENAI_API_KEY"],
             "secret-key"
         );
+        let config = provider.settings_config["config"].as_str().unwrap();
+        assert!(
+            config.contains("requires_openai_auth = true"),
+            "未开启生图时 requires_openai_auth 应为 true，实际 config:\n{config}"
+        );
+        assert!(
+            !config.contains("experimental_bearer_token"),
+            "未开启生图时不应写入 experimental_bearer_token，实际 config:\n{config}"
+        );
     }
 
     #[test]
@@ -1743,6 +1756,14 @@ mod provider_draft_command_tests {
         assert!(
             config.contains("supports_websockets = true"),
             "开启 WebSocket 后应写入 supports_websockets，实际 config:\n{config}"
+        );
+        assert!(
+            config.contains("experimental_bearer_token = \"secret-key\""),
+            "开启生图后应把 API Key 同步到 experimental_bearer_token，实际 config:\n{config}"
+        );
+        assert_eq!(
+            provider.settings_config["auth"]["OPENAI_API_KEY"], "secret-key",
+            "开启生图时 auth.json 形状仍应保留 OPENAI_API_KEY"
         );
         assert_eq!(
             provider
@@ -1770,6 +1791,14 @@ mod provider_draft_command_tests {
         assert!(
             !config.contains("http_headers"),
             "关闭生图后不应写入生图 header，实际 config:\n{config}"
+        );
+        assert!(
+            !config.contains("experimental_bearer_token"),
+            "关闭生图后不应写入 experimental_bearer_token，实际 config:\n{config}"
+        );
+        assert_eq!(
+            provider.settings_config["auth"]["OPENAI_API_KEY"], "secret-key",
+            "关闭生图时应把 API Key 写到 auth.json"
         );
         // 显式关闭也视为已完成迁移，阻止默认迁移重新开启生图
         assert_eq!(
