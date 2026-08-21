@@ -29,6 +29,7 @@ const evaluateRequiredCiResults =
   };
 
 const DISPLAY_NAMES: Record<string, string[]> = {
+  "commit-convention": ["Commit Convention"],
   changes: ["Classify Changes"],
   contracts: ["Repository Contracts"],
   frontend: ["Frontend Checks"],
@@ -83,7 +84,12 @@ function needs(plan: Plan): Record<string, { result: string }> {
   return Object.fromEntries(
     DEPENDENCY_JOB_IDS.map((job) => [
       job,
-      { result: job === "changes" || requested[job] ? "success" : "skipped" },
+      {
+        result:
+          job === "commit-convention" || job === "changes" || requested[job]
+            ? "success"
+            : "skipped",
+      },
     ]),
   );
 }
@@ -183,6 +189,19 @@ describe("CI / Required gate", () => {
     expect(
       evaluateRequiredCiResults(docsNeeds, docs, docsJobs).errors,
     ).toContain("non-requested job frontend finished with success");
+  });
+
+  it("fails closed when commit convention does not succeed", () => {
+    const plan = fullPlan();
+    const input = needs(plan);
+    input["commit-convention"].result = "failure";
+    const jobs = attemptJobs(plan);
+    setConclusion(jobs, "Commit Convention", "failure");
+    const report = evaluateRequiredCiResults(input, plan, jobs);
+    expect(report.ok).toBe(false);
+    expect(report.errors).toContain(
+      "commit convention finished with failure",
+    );
   });
 
   it("fails closed for unknown paths, malformed force-full plans, and classifier failure", () => {
