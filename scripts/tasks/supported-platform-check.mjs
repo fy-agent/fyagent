@@ -380,6 +380,22 @@ const RUST_CFG_MACRO_CONTRACT = Object.freeze(
         'if !codex_bundled_cli_allowed( cfg!(target_os = "windows"), crate::windows_runtime::formal_windows_build(), ) { return Ok(None); }',
       ],
     ],
+    [
+      "src-tauri/src/services/model_probe.rs",
+      'cfg!(target_os="macos")',
+      1,
+      [
+        'if cfg!(target_os = "macos") { "MacOS" } else if cfg!(target_os = "windows") { "Windows" } else { "unknown" }',
+      ],
+    ],
+    [
+      "src-tauri/src/services/model_probe.rs",
+      'cfg!(target_os="windows")',
+      1,
+      [
+        'if cfg!(target_os = "macos") { "MacOS" } else if cfg!(target_os = "windows") { "Windows" } else { "unknown" }',
+      ],
+    ],
   ].map(([file, expression, count, anchors]) =>
     Object.freeze({ file, expression, count, anchors: Object.freeze(anchors) }),
   ),

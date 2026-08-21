@@ -319,11 +319,12 @@ fn first_chunk_is_error(chunk: &str) -> bool {
 }
 
 fn os_name() -> &'static str {
-    match std::env::consts::OS {
-        "macos" => "MacOS",
-        "linux" => "Linux",
-        "windows" => "Windows",
-        other => other,
+    if cfg!(target_os = "macos") {
+        "MacOS"
+    } else if cfg!(target_os = "windows") {
+        "Windows"
+    } else {
+        "unknown"
     }
 }
 

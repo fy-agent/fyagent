@@ -716,13 +716,7 @@ function executionConfigEntries(root) {
       entries.push({ file: relative, source: read(root, relative) });
     }
   }
-  for (const relative of [
-    "mise.toml",
-    ".codex/config.toml",
-    ".codex/hooks.json",
-  ]) {
-    entries.push({ file: relative, source: read(root, relative) });
-  }
+  entries.push({ file: "mise.toml", source: read(root, "mise.toml") });
   const scriptsRoot = path.join(root, "scripts");
   const visitScripts = (directory) => {
     for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {

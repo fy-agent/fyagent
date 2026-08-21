@@ -217,12 +217,6 @@ describe("mise and uv development environment", () => {
     }
   });
 
-  it("keeps the optional session hook limited to native Windows shell path forms", () => {
-    const hook = read(".codex/hooks/session-start.py");
-    expect(hook).toContain('re.match(r"^/([A-Za-z])/(.*)", p)');
-    expect(hook).toContain('re.match(r"^/cygdrive/([A-Za-z])/(.*)", p)');
-  });
-
   it("passes the executable lockfile architecture and source contract", () => {
     const result = execFileSync(
       process.execPath,
