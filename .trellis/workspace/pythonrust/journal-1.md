@@ -1152,3 +1152,41 @@ V2 模型页「测试连通」改为对选定模型发真实流式请求，失�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 35: Codex image-mode bearer token
+
+**Date**: 2026-08-21
+**Task**: Codex image-mode bearer token
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+适配新版 Codex：生图模式 requires_openai_auth=false 时把 API Key 同步到 experimental_bearer_token，关闭生图仍只写 auth.json。
+
+### Main Changes
+
+- V2 Codex quick setup 开启生图时写入 provider experimental_bearer_token，并保留 auth.OPENAI_API_KEY
+- Live 写入在 requires_openai_auth=false 时投影 API Key，true/缺省仍只走 auth.json
+- 更新 Codex provider 与 V2 Models spec 契约
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a34a7552` | (see git log) |
+
+### Testing
+
+- [OK] mise run rust:fmt:check / rust:clippy
+- [OK] mise run rust:test -- quick_setup_request
+- [OK] mise run rust:test -- project_live_config_injects_bearer_token
+- [OK] mise run rust:test -- provider_service_switch_codex_projects_bearer_token
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 无需推送，除非用户明确要求

@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 34
+- **Total Sessions**: 35
 - **Last Active**: 2026-08-21
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1154 | Active |
+| `journal-1.md` | ~1192 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 35 | 2026-08-21 | Codex image-mode bearer token | `a34a7552` | `dev/laiyongjie` |
 | 34 | 2026-08-21 | V2 模型真实连通测试 | `54c230dc` | `dev/laiyongjie` |
 | 33 | 2026-08-21 | Style macOS DMG and changelog gate | `da050634` | `dev/laiyongjie` |
 | 32 | 2026-08-21 | V2 setup UX, release eligibility, and repo hygiene | `db151bad` | `dev/laiyongjie` |
