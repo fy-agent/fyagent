@@ -159,6 +159,9 @@ changes
 only, validates every commit subject in the explicit base/head comparison, and
 validates the pull request title on `pull_request` events. When it fails, every
 downstream job is skipped so the workflow stops before expensive domain work.
+Empty-comparison coverage must use an isolated git fixture, not the Actions
+checkout HEAD: `pull_request` checkouts are merge commits whose subject is
+`Merge <sha> into <sha>`, while this job compares `PR_BASE_SHA`..`PR_HEAD_SHA`.
 
 The requested job mapping is exact:
 
@@ -436,6 +439,7 @@ never src-tauri/target, never RUSTC_WRAPPER / sccache
 ## Scenario: Push before SHA missing after history rewrite
 
 ### 1. Scope / Trigger
+
 - Trigger: CI classification is an infra contract. Force-updating
   `dev/laiyongjie` onto a squash `main` SHA sets `github.event.before` to a
   commit that `actions/checkout` `fetch-depth: 0` does not clone once no ref
@@ -444,10 +448,12 @@ never src-tauri/target, never RUSTC_WRAPPER / sccache
   `scripts/ci/classify-changes.mjs`.
 
 ### 2. Signatures
+
 - Workflow resolves `base_sha` / `head_sha`, then
   `node scripts/ci/classify-changes.mjs --base <sha> --head <sha> --json`
 
 ### 3. Contracts
+
 - `push` event `before` that is forty zeroes -> `base_sha = head_sha`.
 - `push` event `before` that is not `${base_sha}^{commit}` in the clone ->
   `base_sha = head_sha` (empty comparison). Event policy still sets every
@@ -456,6 +462,7 @@ never src-tauri/target, never RUSTC_WRAPPER / sccache
   classifier still fail-closes.
 
 ### 4. Validation & Error Matrix
+
 - Forty-zero or unreachable push `before` -> empty comparison, full push CI.
 - Missing PR/merge-group SHA -> classifier job failure -> failed
   `CI / Required`.
@@ -463,6 +470,7 @@ never src-tauri/target, never RUSTC_WRAPPER / sccache
   event forcing does not convert that error to success.
 
 ### 5. Good / Base / Bad Cases
+
 - Good: ordinary push; `before` is an ancestor still fetched by complete
   history; classifier runs, then event policy forces every domain.
 - Base: force-update drops the previous tip; workflow logs that `before` is
@@ -471,17 +479,22 @@ never src-tauri/target, never RUSTC_WRAPPER / sccache
   `Classify Changes` while domain jobs already ran as fail-closed full CI.
 
 ### 6. Tests Required
+
 - `tests/ciWorkflow.test.ts` asserts the push-only `git cat-file -e` fallback
   and the empty-comparison diagnostic string.
 - Local tests do not clone GitHub's unreachable `before` objects.
 
 ### 7. Wrong vs Correct
+
 #### Wrong
+
 ```bash
 node scripts/ci/classify-changes.mjs --base "$PUSH_BASE_SHA" --head "$head_sha" --json
 # git cat-file: before SHA does not identify a commit object
 ```
+
 #### Correct
+
 ```bash
 if [ "$EVENT_NAME" = push ] &&
   ! git cat-file -e "${base_sha}^{commit}" 2>/dev/null; then

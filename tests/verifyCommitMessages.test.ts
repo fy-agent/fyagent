@@ -1,16 +1,33 @@
 import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 // @ts-expect-error The workflow executes this dependency-free JavaScript helper directly.
 import * as commitMessages from "../scripts/ci/verify-commit-messages.mjs";
 
 const ROOT = path.resolve(__dirname, "..");
+const VERIFY_COMMIT_MESSAGES = path.join(
+  ROOT,
+  "scripts",
+  "ci",
+  "verify-commit-messages.mjs",
+);
+const temporaryRoots: string[] = [];
+
+function git(cwd: string, ...args: string[]): string {
+  const result = spawnSync("git", args, { cwd, encoding: "utf8" });
+  if (result.status !== 0) {
+    throw new Error(result.stderr || `git ${args.join(" ")} failed`);
+  }
+  return result.stdout.trim();
+}
+
 const {
   CONVENTIONAL_COMMIT_TYPES,
   isConventionalCommitSubject,
   stripGithubSquashSuffix,
   validateCommitSubject,
-  verifyCommitMessages,
 } = commitMessages;
 
 describe("commit message convention", () => {
@@ -32,15 +49,15 @@ describe("commit message convention", () => {
   it("accepts merge, revert, and GitHub squash suffix subjects", () => {
     expect(
       isConventionalCommitSubject(
-        'Merge pull request #19 from fy-agent/codex/fix-v0.3.4-release',
+        "Merge pull request #19 from fy-agent/codex/fix-v0.3.4-release",
       ),
     ).toBe(true);
-    expect(isConventionalCommitSubject('Revert "fix(ci): align contracts"')).toBe(
+    expect(
+      isConventionalCommitSubject('Revert "fix(ci): align contracts"'),
+    ).toBe(true);
+    expect(isConventionalCommitSubject("fix(ci): align contracts (#120)")).toBe(
       true,
     );
-    expect(
-      isConventionalCommitSubject("fix(ci): align contracts (#120)"),
-    ).toBe(true);
     expect(stripGithubSquashSuffix("fix(ci): align contracts (#120)")).toBe(
       "fix(ci): align contracts",
     );
@@ -52,9 +69,9 @@ describe("commit message convention", () => {
       "Conventional Commits",
     );
     expect(validateCommitSubject("feat: ")).toContain("Conventional Commits");
-    expect(
-      validateCommitSubject(`fix(ci): ${"x".repeat(80)}`),
-    ).toContain("exceeds 72");
+    expect(validateCommitSubject(`fix(ci): ${"x".repeat(80)}`)).toContain(
+      "exceeds 72",
+    );
   });
 
   it("documents the allowed Conventional Commit types", () => {
@@ -82,12 +99,34 @@ describe("commit message convention", () => {
 });
 
 describe("commit message range verification", () => {
-  it("validates the current HEAD subject in an empty comparison", () => {
-    const head = spawnSync("git", ["rev-parse", "HEAD"], {
-      cwd: ROOT,
-      encoding: "utf8",
-    }).stdout.trim();
-    const report = verifyCommitMessages({ baseSha: head, headSha: head });
+  afterAll(() => {
+    for (const root of temporaryRoots) {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("validates a conventional HEAD subject in an empty comparison", () => {
+    const root = fs.mkdtempSync(
+      path.join(os.tmpdir(), "fyagent-commit-messages-"),
+    );
+    temporaryRoots.push(root);
+    git(root, "init", "--quiet");
+    git(root, "config", "user.name", "FyAgent Tests");
+    git(root, "config", "user.email", "tests@fyagent.invalid");
+    fs.writeFileSync(path.join(root, "README"), "fixture\n");
+    git(root, "add", "README");
+    git(root, "commit", "-m", "ci: empty comparison fixture");
+    const head = git(root, "rev-parse", "HEAD");
+    const result = spawnSync(
+      process.execPath,
+      [VERIFY_COMMIT_MESSAGES, "--base", head, "--head", head],
+      { cwd: root, encoding: "utf8" },
+    );
+    expect(result.status).toBe(0);
+    const report = JSON.parse(result.stdout) as {
+      ok: boolean;
+      commitCount: number;
+    };
     expect(report.ok).toBe(true);
     expect(report.commitCount).toBe(1);
   });
