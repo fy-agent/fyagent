@@ -1131,3 +1131,24 @@ Shipped Finder-free V2 DMG layout, changelog release-check, specs, and archived 
 ### Next Steps
 
 - Republish unpublished v0.4.2 so main and dev/laiyongjie share one HEAD.
+
+
+## Session 34: V2 模型真实连通测试
+
+**Date**: 2026-08-21
+**Task**: V2 模型真实连通测试
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+V2 模型页「测试连通」改为对选定模型发真实流式请求，失败展示上游错误原文；抽取 ModelConnectivityTest，并保留 URL 可达性服务给非模型页用途。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `54c230dc` | (see git log) |
+
+### Status
+
+[OK] **Completed**
