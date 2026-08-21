@@ -16,6 +16,7 @@ DEFAULT_ICON_SIZE = 128
 DEFAULT_APP_XY = (180, 188)
 DEFAULT_APPLICATIONS_XY = (480, 188)
 HIDDEN_ILOC = (10000, 10000)
+JUNK_NAMES = (".background", ".fseventsd", ".Trashes", ".Spotlight-V100")
 
 
 def parse_pair(raw: str, label: str) -> tuple[int, int]:
@@ -70,11 +71,10 @@ def write_layout(
     background = require_mount_item(mount, background_relative, "file")
     alias = Alias.for_file(os.fspath(background))
     left, top = WINDOW_ORIGIN
-    right = left + window[0]
-    bottom = top + window[1]
     ds_store_path = mount / ".DS_Store"
+    visible = {app_name, applications_name}
     with DSStore.open(os.fspath(ds_store_path), "w+") as store:
-        store["."]["vSrn"] = ("long", 1)
+        store["."]["vstl"] = ("type", "icnv")
         store["."]["bwsp"] = {
             "ShowTabView": False,
             "ShowToolbar": False,
@@ -82,7 +82,11 @@ def write_layout(
             "ShowPathbar": False,
             "ShowStatusBar": False,
             "SidebarWidth": 0,
-            "WindowBounds": "{{%d, %d}, {%d, %d}}" % (left, top, right, bottom),
+            "ContainerShowSidebar": False,
+            "PreviewPaneVisibility": False,
+            # AppKit frame is {{x, y}, {width, height}}, not opposite-corner.
+            "WindowBounds": "{{%d, %d}, {%d, %d}}"
+            % (left, top, window[0], window[1]),
         }
         store["."]["icvp"] = {
             "viewOptionsVersion": 1,
@@ -105,7 +109,12 @@ def write_layout(
         }
         store[app_name]["Iloc"] = app_xy
         store[applications_name]["Iloc"] = applications_xy
-        store[".background"]["Iloc"] = HIDDEN_ILOC
+        for name in JUNK_NAMES:
+            store[name]["Iloc"] = HIDDEN_ILOC
+        for entry in mount.iterdir():
+            if entry.name in visible or entry.name == ".DS_Store":
+                continue
+            store[entry.name]["Iloc"] = HIDDEN_ILOC
 
 
 def build_parser() -> argparse.ArgumentParser:

@@ -132,6 +132,16 @@ uv run --locked --group dmg-layout python "$LAYOUT_WRITER" \
   --apps-xy 480,188
 
 [ -f "$mount_point/.DS_Store" ]
+rm -rf \
+  "$mount_point/.fseventsd" \
+  "$mount_point/.Trashes" \
+  "$mount_point/.Spotlight-V100"
+if [ -e "$mount_point/.background" ]; then
+  chflags hidden "$mount_point/.background"
+fi
+if [ -e "$mount_point/.fseventsd" ]; then
+  chflags hidden "$mount_point/.fseventsd"
+fi
 sync
 detach_mount
 

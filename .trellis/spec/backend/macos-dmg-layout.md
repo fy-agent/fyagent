@@ -49,7 +49,14 @@ background file .background/background.png
 - `write-dmg-layout.py` uses `mac_alias.Alias.for_file` on the **mounted**
   background and `ds_store` for `bwsp` / `icvp` / `Iloc`. It must not call
   `hdiutil`, `osascript`, or Finder. Staging-directory aliases bind the runner
-  disk CNID and are invalid.
+  disk CNID and are invalid. `bwsp.WindowBounds` is an AppKit frame
+  `{{x, y}, {width, height}}` (660×400), not opposite-corner coordinates.
+  Do not write `vSrn`; that record means “opened in a new tab” and makes
+  Finder inherit another window’s size and chrome.
+- After writing `.DS_Store`, `create-macos-dmg.sh` deletes `.fseventsd`,
+  `.Trashes`, and `.Spotlight-V100` from the writable UDRW, `chflags hidden`
+  on `.background`, and parks those names at `Iloc` (10000, 10000) so they
+  stay outside the 660×400 window even if Finder shows hidden files.
 - AppleScript, `osascript`, `dmgbuild` CLI, `appdmg`, `pip3`, Homebrew
   `create-dmg`, `--skip-jenkins`, and `bless --openfolder` are forbidden.
   GitHub-hosted `macos-15` is Apple Silicon; `bless --openfolder` exits
@@ -73,6 +80,8 @@ background file .background/background.png
 | Condition | Required result |
 | --- | --- |
 | Missing FyAgent.app, background PNG, or Applications symlink | Fail before `hdiutil create` |
+| Opposite-corner `WindowBounds` or `vSrn = 1` | Oversized window, white gutter, or a Finder tab; write AppKit origin+size and omit `vSrn` |
+| `.fseventsd` visible in the Finder window | Delete it from the UDRW before convert; park leftover junk at `Iloc` (10000, 10000) |
 | `bless --openfolder` on Apple Silicon | Fail `build-macos`; do not call `bless` |
 | Layout writer not on Darwin, mount item missing, or alias failure | Non-zero; no osascript fallback |
 | `hdiutil create`/`convert` reports `Resource busy` / temporarily unavailable | Retry same argv, at most 5 attempts, 2/4/8/16s |
@@ -85,18 +94,21 @@ background file .background/background.png
 ## 5. Good / Base / Bad Cases
 
 - Good: mounted-volume `.DS_Store` with picture `icvp` and left/right `Iloc`;
-  double-click shows app on the left and Applications on the right.
+  double-click opens a 660×400 window, app on the left and Applications on the
+  right, with no `.fseventsd` icon in the content area.
 - Base: one `Resource busy` during convert, then UDZO verifies.
 - Bad: `create-dmg --skip-jenkins`; AppleScript `.DS_Store`; `bless --openfolder`;
-  `pip3 install dmgbuild`; a host-copied `.DS_Store` template; `uv add ds-store`
-  into the default group.
+  `WindowBounds` as opposite-corner `{860, 520}`; `vSrn = 1`; leaving
+  `.fseventsd` in the visible icon layout; `pip3 install dmgbuild`; a
+  host-copied `.DS_Store` template; `uv add ds-store` into the default group.
 
 ## 6. Tests Required
 
 - `tests/releaseWorkflow.test.ts`: script path, coordinates, `setup-uv`,
   `uv sync --locked --group dmg-layout`, Applications symlink, background and
-  `.DS_Store` attach checks, no `osascript` / `skip-jenkins` / `dmgbuild` /
-  `bless` / ZIP.
+  `.DS_Store` attach checks, AppKit `WindowBounds` origin+size, no `vSrn`,
+  `.fseventsd` removal / hidden `Iloc`, no `osascript` / `skip-jenkins` /
+  `dmgbuild` / `bless` / ZIP.
 - `tests/hdiutilRetry.test.ts`: convert destination deletion on busy.
 - `tests/dmgBackground.test.ts`: 1320×800, `pHYs` 5669, byte-stable PNG, empty
   wells, `--check` matches the checked-in file.

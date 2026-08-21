@@ -2088,7 +2088,17 @@ jobs:
     expect(createDmg).not.toContain("hdiutil detach -force");
     expect(dmgLayout).toContain('store[app_name]["Iloc"] = app_xy');
     expect(dmgLayout).toContain('store[applications_name]["Iloc"] = applications_xy');
-    expect(dmgLayout).toContain('backgroundImageAlias');
+    expect(dmgLayout).toContain("backgroundImageAlias");
+    expect(dmgLayout).toContain(
+      '"{{%d, %d}, {%d, %d}}"\n            % (left, top, window[0], window[1])',
+    );
+    expect(dmgLayout).not.toContain("right = left + window[0]");
+    expect(dmgLayout).not.toContain('["vSrn"]');
+    expect(dmgLayout).toContain("ContainerShowSidebar");
+    expect(dmgLayout).toContain('".fseventsd"');
+    expect(dmgLayout).toContain("HIDDEN_ILOC");
+    expect(createDmg).toContain("$mount_point/.fseventsd");
+    expect(createDmg).toContain("chflags hidden");
     expect(dmgLayout).not.toContain("osascript");
     expect(dmgLayout).not.toContain("hdiutil");
     expect(dmgBackground).toContain("DMG_WINDOW_WIDTH_PT = 660");
