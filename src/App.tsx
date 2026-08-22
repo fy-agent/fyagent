@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState, useRef, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
-import { invoke } from "@tauri-apps/api/core";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Plus,
@@ -30,6 +29,7 @@ import { proxyKeys, useProvidersQuery, useSettingsQuery } from "@/lib/query";
 import {
   providersApi,
   settingsApi,
+  systemApi,
   type AppId,
   type ProviderSwitchEvent,
 } from "@/lib/api";
@@ -569,7 +569,7 @@ function App() {
 
     const checkMigration = async () => {
       try {
-        const migrated = await invoke<boolean>("get_migration_result");
+        const migrated = await systemApi.getMigrationResult();
         if (migrated) {
           toast.success(
             t("migration.success", { defaultValue: "配置迁移成功" }),
@@ -589,9 +589,7 @@ function App() {
 
     const checkSkillsMigration = async () => {
       try {
-        const result = await invoke<{ count: number; error?: string } | null>(
-          "get_skills_migration_result",
-        );
+        const result = await systemApi.getSkillsMigrationResult();
         if (result?.error) {
           toast.error(t("migration.skillsFailed"), {
             description: t("migration.skillsFailedDescription"),

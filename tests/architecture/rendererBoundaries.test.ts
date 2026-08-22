@@ -132,12 +132,7 @@ describe("renderer architecture boundaries", () => {
   });
 
   it("keeps raw Tauri core access out of leftover feature code", () => {
-    const allowedCoreImporters = new Set([
-      "src/App.tsx",
-      "src/components/DatabaseUpgrade.tsx",
-      "src/components/theme-provider.tsx",
-      "src/main.tsx",
-    ]);
+    const allowedCoreImporters = new Set(["src/main.tsx"]);
     const violations = listSourceFiles(srcRoot).flatMap((file) => {
       const relative = repositoryRelative(file);
       if (relative.startsWith("src/v2/") || relative.startsWith("src/lib/")) {
@@ -155,6 +150,22 @@ describe("renderer architecture boundaries", () => {
     expect(
       violations,
       `Raw Tauri core access escaped the reviewed leftover adapters/bootstrap boundaries:\n${violations.join("\n")}`,
+    ).toEqual([]);
+  });
+
+  it("keeps Tauri packages out of leftover components", () => {
+    const componentsRoot = path.join(srcRoot, "components");
+    const violations = listSourceFiles(componentsRoot).flatMap((file) =>
+      parseReferences(file).flatMap(({ line, specifier }) =>
+        specifier.startsWith("@tauri-apps/")
+          ? [`${repositoryRelative(file)}:${line} imports ${specifier}`]
+          : [],
+      ),
+    );
+
+    expect(
+      violations,
+      `Leftover components bypassed their API/hook platform boundary:\n${violations.join("\n")}`,
     ).toEqual([]);
   });
 });

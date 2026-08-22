@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { emit, listen } from "@tauri-apps/api/event";
 
 export type ResourceType = "provider" | "prompt" | "mcp" | "skill";
 
@@ -80,6 +81,22 @@ export type ImportResult =
   | { type: "skill"; key: string };
 
 export const deeplinkApi = {
+  async onImport(
+    handler: (request: DeepLinkImportRequest) => void | Promise<void>,
+  ): Promise<() => void> {
+    return await listen<DeepLinkImportRequest>("deeplink-import", (event) => {
+      void handler(event.payload);
+    });
+  },
+
+  async onError(handler: () => void): Promise<() => void> {
+    return await listen("deeplink-error", handler);
+  },
+
+  async notifyFrontendReady(): Promise<void> {
+    await emit("frontend-deeplink-ready");
+  },
+
   /**
    * Parse a deep link URL
    * @param url The fyagent:// URL to parse

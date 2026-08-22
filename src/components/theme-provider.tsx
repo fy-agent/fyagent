@@ -5,7 +5,7 @@ import React, {
   useMemo,
   useState,
 } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { systemApi } from "@/lib/api";
 
 type Theme = "light" | "dark" | "system";
 
@@ -103,10 +103,12 @@ export function ThemeProvider({
 
     let isCancelled = false;
 
-    const updateNativeTheme = async (nativeTheme: string) => {
+    const updateNativeTheme = async (
+      nativeTheme: "light" | "dark" | "system",
+    ) => {
       if (isCancelled) return;
       try {
-        await invoke("set_window_theme", { theme: nativeTheme });
+        await systemApi.setWindowTheme(nativeTheme);
       } catch (e) {
         // Ignore errors (e.g., when not running in Tauri)
         console.debug("Failed to set native window theme:", e);

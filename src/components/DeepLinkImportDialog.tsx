@@ -1,5 +1,4 @@
 import { useState, useEffect, useMemo, useRef } from "react";
-import { emit, listen } from "@tauri-apps/api/event";
 import { DeepLinkImportRequest, deeplinkApi } from "@/lib/api/deeplink";
 import { parseDeepLinkConfigPreview } from "@/utils/deepLinkConfigPreview";
 import {
@@ -62,47 +61,41 @@ export function DeepLinkImportDialog() {
     let disposed = false;
 
     // Listen for deep link import events
-    const unlistenImport = listen<DeepLinkImportRequest>(
-      "deeplink-import",
-      async (event) => {
-        const importSequence = ++latestImportSequenceRef.current;
-        // This confirmation belongs to the visible dialog, never to a value
-        // supplied by the protocol payload. Every newly received link starts
-        // with activation unchecked even if it requested `enabled=true`.
-        setProviderActivationApproved(false);
-        let nextRequest = event.payload;
+    const unlistenImport = deeplinkApi.onImport(async (incomingRequest) => {
+      const importSequence = ++latestImportSequenceRef.current;
+      // This confirmation belongs to the visible dialog, never to a value
+      // supplied by the protocol payload. Every newly received link starts
+      // with activation unchecked even if it requested `enabled=true`.
+      setProviderActivationApproved(false);
+      let nextRequest = incomingRequest;
 
-        // If config is present, merge it to get the complete configuration
-        if (event.payload.config || event.payload.configUrl) {
-          try {
-            nextRequest = await deeplinkApi.mergeDeeplinkConfig(event.payload);
-          } catch {
-            if (
-              disposed ||
-              importSequence !== latestImportSequenceRef.current
-            ) {
-              return;
-            }
-            // Config payloads can contain credentials, so show only a
-            // translated, credential-free failure state in the renderer.
-            toast.error(translationRef.current("deeplink.configMergeError"));
-            // Fall back to the original request below.
+      // If config is present, merge it to get the complete configuration
+      if (incomingRequest.config || incomingRequest.configUrl) {
+        try {
+          nextRequest = await deeplinkApi.mergeDeeplinkConfig(incomingRequest);
+        } catch {
+          if (disposed || importSequence !== latestImportSequenceRef.current) {
+            return;
           }
+          // Config payloads can contain credentials, so show only a
+          // translated, credential-free failure state in the renderer.
+          toast.error(translationRef.current("deeplink.configMergeError"));
+          // Fall back to the original request below.
         }
+      }
 
-        // A config merge is asynchronous. Do not let an older link replace a
-        // newer confirmation or inherit its activation approval.
-        if (disposed || importSequence !== latestImportSequenceRef.current) {
-          return;
-        }
+      // A config merge is asynchronous. Do not let an older link replace a
+      // newer confirmation or inherit its activation approval.
+      if (disposed || importSequence !== latestImportSequenceRef.current) {
+        return;
+      }
 
-        setRequest(nextRequest);
-        setIsOpen(true);
-      },
-    );
+      setRequest(nextRequest);
+      setIsOpen(true);
+    });
 
     // Listen for deep link error events
-    const unlistenError = listen("deeplink-error", () => {
+    const unlistenError = deeplinkApi.onError(() => {
       // Never inspect this payload: older hosts included the original custom
       // protocol URL here, and such a URL may carry an API key.
       toast.error(translationRef.current("deeplink.parseError"));
@@ -114,7 +107,7 @@ export function DeepLinkImportDialog() {
     void Promise.all([unlistenImport, unlistenError])
       .then(async () => {
         if (!disposed) {
-          await emit("frontend-deeplink-ready");
+          await deeplinkApi.notifyFrontendReady();
         }
       })
       .catch(() => {

@@ -14,15 +14,14 @@ const mocks = vi.hoisted(() => ({
   toastWarning: vi.fn(),
 }));
 
-vi.mock("@tauri-apps/api/app", () => ({
-  getVersion: mocks.getVersion,
-}));
-
 vi.mock("@/lib/api", () => ({
   settingsApi: {
     getToolVersions: mocks.getToolVersions,
     probeToolInstallations: mocks.probeToolInstallations,
     runToolLifecycleAction: mocks.runToolLifecycleAction,
+  },
+  systemApi: {
+    getVersion: mocks.getVersion,
   },
 }));
 

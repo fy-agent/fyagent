@@ -9,9 +9,9 @@ const read = (relativePath: string) =>
 const host = read("src-tauri/src/lib.rs");
 const cargo = read("src-tauri/Cargo.toml");
 const dialog = read("src/components/DeepLinkImportDialog.tsx");
+const deeplinkApi = read("src/lib/api/deeplink.ts");
 
-const desktopTargetCfg =
-  'any(target_os = "macos", target_os = "windows")';
+const desktopTargetCfg = 'any(target_os = "macos", target_os = "windows")';
 
 describe("single-instance semantic activation contract", () => {
   it("applies the argv envelope bound only to Windows", () => {
@@ -33,9 +33,7 @@ describe("single-instance semantic activation contract", () => {
     expect(host).toContain(
       `#[cfg(${desktopTargetCfg})]\n    tauri_plugin_single_instance::destroy(_app_handle);`,
     );
-    expect(host).not.toContain(
-      `#[cfg(not(${desktopTargetCfg}))]`,
-    );
+    expect(host).not.toContain(`#[cfg(not(${desktopTargetCfg}))]`);
     expect(host).toContain(
       "let builder = tauri::Builder::default().plugin(activation_ready_plugin());",
     );
@@ -58,7 +56,8 @@ describe("single-instance semantic activation contract", () => {
     );
     expect(host).toContain("mark_activation_renderer_ready(&activation_app)");
     expect(dialog).toContain("Promise.all([unlistenImport, unlistenError])");
-    expect(dialog).toContain('await emit("frontend-deeplink-ready")');
+    expect(dialog).toContain("await deeplinkApi.notifyFrontendReady()");
+    expect(deeplinkApi).toContain('await emit("frontend-deeplink-ready")');
   });
 
   it("does not rebuild lightweight mode for a non-focusing Windows rejection", () => {
