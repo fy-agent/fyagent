@@ -23,6 +23,8 @@ use crate::error::format_skill_error;
 
 mod discovery;
 mod marketplace;
+mod migration;
+mod repository;
 
 use discovery::{
     clamp_discovery_limit, discovery_fingerprint, filter_discoverable_skills,
@@ -32,6 +34,10 @@ use discovery::{
 use discovery::{directory_tail, is_discoverable_installed};
 pub use discovery::{DiscoverAvailablePageRequest, SkillDiscoveryStatus};
 pub use marketplace::{SkillHubSearchResult, SkillsShSearchResult};
+use repository::{
+    build_repo_info_from_lock, get_agents_skills_dir, parse_agents_lock, save_repos_from_lock,
+    LockRepoInfo,
+};
 
 // ========== 数据结构 ==========
 
@@ -335,155 +341,6 @@ pub struct ImportSkillSelection {
     pub directory: String,
     #[serde(default)]
     pub apps: SkillApps,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct LegacySkillMigrationRow {
-    directory: String,
-    app_type: String,
-}
-
-// ========== ~/.agents/ lock 文件解析 ==========
-
-/// `~/.agents/.skill-lock.json` 文件结构
-#[derive(Deserialize)]
-struct AgentsLockFile {
-    skills: HashMap<String, AgentsLockSkill>,
-}
-
-/// lock 文件中单个 skill 的信息
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct AgentsLockSkill {
-    source: Option<String>,
-    source_type: Option<String>,
-    source_url: Option<String>,
-    skill_path: Option<String>,
-    branch: Option<String>,
-    source_branch: Option<String>,
-}
-
-#[derive(Debug, Clone)]
-struct LockRepoInfo {
-    owner: String,
-    repo: String,
-    skill_path: Option<String>,
-    branch: Option<String>,
-}
-
-fn normalize_optional_branch(branch: Option<String>) -> Option<String> {
-    branch.and_then(|b| {
-        let trimmed = b.trim();
-        if trimmed.is_empty() {
-            None
-        } else {
-            Some(trimmed.to_string())
-        }
-    })
-}
-
-fn parse_branch_from_source_url(source_url: Option<&str>) -> Option<String> {
-    let source_url = source_url?;
-    let source_url = source_url.trim();
-    if source_url.is_empty() {
-        return None;
-    }
-
-    // 支持 https://github.com/owner/repo/tree/<branch>/...
-    if let Some((_, after_tree)) = source_url.split_once("/tree/") {
-        let branch = after_tree
-            .split('/')
-            .next()
-            .map(str::trim)
-            .filter(|s| !s.is_empty())?;
-        return Some(branch.to_string());
-    }
-
-    // 支持 URL fragment: ...git#branch
-    if let Some((_, fragment)) = source_url.split_once('#') {
-        let branch = fragment
-            .split('&')
-            .next()
-            .map(str::trim)
-            .filter(|s| !s.is_empty())?;
-        return Some(branch.to_string());
-    }
-
-    // 支持 query: ...?branch=xxx / ?ref=xxx
-    if let Some((_, query)) = source_url.split_once('?') {
-        for pair in query.split('&') {
-            let Some((key, value)) = pair.split_once('=') else {
-                continue;
-            };
-            if matches!(key, "branch" | "ref") {
-                let branch = value.trim();
-                if !branch.is_empty() {
-                    return Some(branch.to_string());
-                }
-            }
-        }
-    }
-
-    None
-}
-
-/// 获取 `~/.agents/skills/` 目录（存在时返回）
-fn get_agents_skills_dir() -> Option<PathBuf> {
-    let dir = crate::config::get_home_dir().join(".agents").join("skills");
-    dir.exists().then_some(dir)
-}
-
-/// 解析 `~/.agents/.skill-lock.json`，返回 skill_name -> 仓库信息
-fn parse_agents_lock() -> HashMap<String, LockRepoInfo> {
-    let path = crate::config::get_home_dir()
-        .join(".agents")
-        .join(".skill-lock.json");
-    let content = match fs::read_to_string(&path) {
-        Ok(c) => c,
-        Err(e) => {
-            if e.kind() == std::io::ErrorKind::NotFound {
-                log::debug!("未找到 agents lock 文件: {}", path.display());
-            } else {
-                log::warn!("读取 agents lock 文件失败 ({}): {}", path.display(), e);
-            }
-            return HashMap::new();
-        }
-    };
-    let lock: AgentsLockFile = match serde_json::from_str(&content) {
-        Ok(l) => l,
-        Err(e) => {
-            log::warn!("解析 agents lock 文件失败 ({}): {}", path.display(), e);
-            return HashMap::new();
-        }
-    };
-    let parsed: HashMap<String, LockRepoInfo> = lock
-        .skills
-        .into_iter()
-        .filter_map(|(name, skill)| {
-            let source = skill.source?;
-            if skill.source_type.as_deref() != Some("github") {
-                return None;
-            }
-            let (owner, repo) = source.split_once('/')?;
-            let branch = normalize_optional_branch(skill.branch)
-                .or_else(|| normalize_optional_branch(skill.source_branch))
-                .or_else(|| parse_branch_from_source_url(skill.source_url.as_deref()));
-            Some((
-                name,
-                LockRepoInfo {
-                    owner: owner.to_string(),
-                    repo: repo.to_string(),
-                    skill_path: skill.skill_path,
-                    branch,
-                },
-            ))
-        })
-        .collect();
-    log::info!(
-        "agents lock 文件解析完成，共识别 {} 个 github skill",
-        parsed.len()
-    );
-    parsed
 }
 
 // ========== SkillService ==========
@@ -3957,30 +3814,18 @@ impl SkillService {
 
     /// 列出仓库
     pub fn list_repos(&self, store: &SkillStore) -> Vec<SkillRepo> {
-        store.repos.clone()
+        repository::list_repos(store)
     }
 
     /// 添加仓库
     pub fn add_repo(&self, store: &mut SkillStore, repo: SkillRepo) -> Result<()> {
-        if let Some(pos) = store
-            .repos
-            .iter()
-            .position(|r| r.owner == repo.owner && r.name == repo.name)
-        {
-            store.repos[pos] = repo;
-        } else {
-            store.repos.push(repo);
-        }
-
+        repository::add_repo(store, repo);
         Ok(())
     }
 
     /// 删除仓库
     pub fn remove_repo(&self, store: &mut SkillStore, owner: String, name: String) -> Result<()> {
-        store
-            .repos
-            .retain(|r| !(r.owner == owner && r.name == name));
-
+        repository::remove_repo(store, &owner, &name);
         Ok(())
     }
 
@@ -4274,223 +4119,9 @@ fn vendor_copy_regular_file(
     Ok(())
 }
 
-// ========== 迁移支持 ==========
-
-/// 从 lock 文件信息构建 skill 的 ID、仓库字段和 readme URL
-///
-/// 返回 (id, repo_owner, repo_name, repo_branch, readme_url)
-fn build_repo_info_from_lock(
-    lock: &HashMap<String, LockRepoInfo>,
-    dir_name: &str,
-) -> (
-    String,
-    Option<String>,
-    Option<String>,
-    Option<String>,
-    Option<String>,
-) {
-    match lock.get(dir_name) {
-        Some(info) => {
-            let branch = info.branch.clone();
-            let url_branch = branch.clone().unwrap_or_else(|| "HEAD".to_string());
-            // 优先使用 lock 文件中的 skillPath，否则回退到 dir_name/SKILL.md
-            let fallback = format!("{dir_name}/SKILL.md");
-            let doc_path = info.skill_path.as_deref().unwrap_or(&fallback);
-            let url =
-                SkillService::build_skill_doc_url(&info.owner, &info.repo, &url_branch, doc_path);
-            (
-                format!("{}/{}:{dir_name}", info.owner, info.repo),
-                Some(info.owner.clone()),
-                Some(info.repo.clone()),
-                branch,
-                url,
-            )
-        }
-        None => (format!("local:{dir_name}"), None, None, None, None),
-    }
-}
-
-/// 将 lock 文件中发现的仓库保存到 skill_repos（去重）
-fn save_repos_from_lock(
-    db: &Arc<Database>,
-    lock: &HashMap<String, LockRepoInfo>,
-    directories: impl Iterator<Item = impl AsRef<str>>,
-) {
-    let existing_repos: HashSet<(String, String)> = db
-        .get_skill_repos()
-        .unwrap_or_default()
-        .into_iter()
-        .map(|r| (r.owner, r.name))
-        .collect();
-    let mut added = HashSet::new();
-
-    for dir_name in directories {
-        if let Some(info) = lock.get(dir_name.as_ref()) {
-            let key = (info.owner.clone(), info.repo.clone());
-            if !existing_repos.contains(&key) && added.insert(key) {
-                let skill_repo = SkillRepo {
-                    owner: info.owner.clone(),
-                    name: info.repo.clone(),
-                    // 未知分支时使用 HEAD 语义，后续下载会回退到 main/master。
-                    branch: info.branch.clone().unwrap_or_else(|| "HEAD".to_string()),
-                    enabled: true,
-                };
-                // lock 文件由外部 agents CLI 写入，owner/repo/branch 均未经校验，
-                // 且 branch 是从 `/tree/`、fragment、`?ref=` 里抠出来的裸串。
-                if SkillService::validate_repo_ref(
-                    &skill_repo.owner,
-                    &skill_repo.name,
-                    &skill_repo.branch,
-                )
-                .is_err()
-                {
-                    log::warn!(
-                        "跳过 agents lock 中坐标非法的仓库: {}/{}@{}",
-                        skill_repo.owner,
-                        skill_repo.name,
-                        skill_repo.branch
-                    );
-                    continue;
-                }
-                if let Err(e) = db.save_skill_repo(&skill_repo) {
-                    log::warn!("保存 skill 仓库 {}/{} 失败: {}", info.owner, info.repo, e);
-                } else {
-                    log::info!(
-                        "从 agents lock 文件发现并添加仓库: {}/{} ({})",
-                        info.owner,
-                        info.repo,
-                        skill_repo.branch
-                    );
-                }
-            }
-        }
-    }
-}
-
 /// 首次启动迁移：扫描应用目录，重建数据库
 pub fn migrate_skills_to_ssot(db: &Arc<Database>) -> Result<usize> {
-    let ssot_dir = SkillService::get_ssot_dir()?;
-    let agents_lock = parse_agents_lock();
-    let snapshot: Vec<LegacySkillMigrationRow> =
-        match db.get_setting("skills_ssot_migration_snapshot")? {
-            Some(value) if !value.trim().is_empty() => match serde_json::from_str(&value) {
-                Ok(rows) => rows,
-                Err(err) => {
-                    log::warn!("解析 skills 迁移快照失败，将回退到文件系统扫描: {err}");
-                    Vec::new()
-                }
-            },
-            _ => Vec::new(),
-        };
-
-    let has_snapshot = !snapshot.is_empty();
-    let mut discovered: HashMap<String, SkillApps> = HashMap::new();
-
-    if has_snapshot {
-        for row in &snapshot {
-            // snapshot 存在 settings 表里，而 settings 在同步范围内、可被远端快照
-            // 覆盖。下面 discovered 的每个 key 都会被 join 成路径并写回 skills 表，
-            // 所以脏值必须在进入 discovered 之前就滤掉。
-            if SkillService::require_valid_directory(&row.directory).is_err() {
-                log::warn!("跳过 SSOT 迁移快照中非法的 directory: {:?}", row.directory);
-                continue;
-            }
-            if let Ok(app) = row.app_type.parse::<SkillTargetId>() {
-                discovered
-                    .entry(row.directory.clone())
-                    .or_default()
-                    .set_enabled_for_target(&app, true);
-            }
-        }
-    }
-
-    // 扫描各应用目录
-    for app in SkillTargetId::all() {
-        let app_dir = match SkillService::get_target_skills_dir(&app) {
-            Ok(d) => d,
-            Err(_) => continue,
-        };
-
-        let entries = match fs::read_dir(&app_dir) {
-            Ok(e) => e,
-            Err(_) => continue,
-        };
-
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if !path.is_dir() {
-                continue;
-            }
-
-            let dir_name = entry.file_name().to_string_lossy().to_string();
-            if dir_name.starts_with('.') {
-                continue;
-            }
-            if !path.join("SKILL.md").exists() {
-                continue;
-            }
-            if has_snapshot && !discovered.contains_key(&dir_name) {
-                continue;
-            }
-
-            // 复制到 SSOT（如果不存在）
-            let ssot_path = ssot_dir.join(&dir_name);
-            if !ssot_path.exists() {
-                SkillService::copy_dir_recursive(&path, &ssot_path)?;
-            }
-
-            if !has_snapshot {
-                discovered
-                    .entry(dir_name)
-                    .or_default()
-                    .set_enabled_for_target(&app, true);
-            }
-        }
-    }
-
-    // 重建数据库
-    db.clear_skills()?;
-
-    // 将 lock 文件中发现的仓库保存到 skill_repos
-    save_repos_from_lock(db, &agents_lock, discovered.keys());
-
-    let mut count = 0;
-    for (directory, apps) in discovered {
-        let ssot_path = ssot_dir.join(&directory);
-        let skill_md = ssot_path.join("SKILL.md");
-
-        let (name, description) = SkillService::read_skill_name_desc(&skill_md, &directory);
-
-        let (id, repo_owner, repo_name, repo_branch, readme_url) =
-            build_repo_info_from_lock(&agents_lock, &directory);
-
-        let content_hash = SkillService::compute_dir_hash(&ssot_path).ok();
-
-        let skill = InstalledSkill {
-            id,
-            name,
-            description,
-            directory,
-            repo_owner,
-            repo_name,
-            repo_branch,
-            readme_url,
-            apps,
-            installed_at: chrono::Utc::now().timestamp(),
-            content_hash,
-            updated_at: 0,
-            path: None,
-        };
-
-        db.save_skill(&skill)?;
-        count += 1;
-    }
-
-    let _ = db.set_setting("skills_ssot_migration_snapshot", "");
-
-    log::info!("Skills 迁移完成，共 {count} 个");
-
-    Ok(count)
+    migration::migrate_skills_to_ssot(db)
 }
 
 #[cfg(test)]
