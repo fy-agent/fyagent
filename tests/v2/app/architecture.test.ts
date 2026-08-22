@@ -523,4 +523,33 @@ describe("FyAgent V2 architecture boundary", () => {
       `HTTP(S) jumps must use ExternalLinkButton / useOpenExternal:\n${violations.join("\n")}`,
     ).toEqual([]);
   });
+
+  it("keeps feature contracts domain-owned behind a named compatibility facade", () => {
+    const featuresRoot = path.join(v2Root, "shared", "features");
+    const facade = fs.readFileSync(path.join(featuresRoot, "types.ts"), "utf8");
+    const domainOwners = [
+      "assignments",
+      "skills",
+      "mcp",
+      "settings",
+      "agents",
+      "models",
+      "prompts",
+      "memory",
+    ] as const;
+
+    expect(facade).not.toMatch(/\bexport\s+\*/u);
+    expect(facade).not.toMatch(
+      /\bexport\s+(?:interface|const|function|class|enum)\b/u,
+    );
+
+    for (const owner of domainOwners) {
+      const ownerPath = path.join(featuresRoot, `${owner}.ts`);
+      expect(fs.existsSync(ownerPath), `${owner}.ts must remain a domain owner`).toBe(
+        true,
+      );
+      expect(facade).toContain(`from "./${owner}"`);
+      expect(fs.readFileSync(ownerPath, "utf8")).not.toContain('from "./types"');
+    }
+  });
 });
