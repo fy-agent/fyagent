@@ -373,7 +373,7 @@ const RUST_CFG_MACRO_CONTRACT = Object.freeze(
       ],
     ],
     [
-      "src-tauri/src/codex_config.rs",
+      "src-tauri/src/codex_config/catalog.rs",
       'cfg!(target_os="windows")',
       1,
       [

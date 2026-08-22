@@ -30,6 +30,15 @@ const toolingServicePath = path.resolve(
   "services",
   "tooling.rs",
 );
+const toolingDiscoveryPath = path.resolve(
+  __dirname,
+  "..",
+  "src-tauri",
+  "src",
+  "services",
+  "tooling",
+  "discovery.rs",
+);
 const lifecycleJobsPath = path.resolve(
   __dirname,
   "..",
@@ -167,12 +176,16 @@ describe("desktop IPC capability and CSP boundary", () => {
 
   it("fails closed before an elevated Windows release can probe or run user CLIs", () => {
     const source = fs.readFileSync(toolingServicePath, "utf8");
+    const discovery = fs.readFileSync(toolingDiscoveryPath, "utf8");
     const versionCommand = source.indexOf("pub async fn get_tool_versions");
     const lifecycleCommand = source.indexOf(
       "pub async fn run_tool_lifecycle_action",
     );
-    const installationProbe = source.indexOf(
+    const installationProbe = discovery.indexOf(
       "pub async fn probe_tool_installations",
+    );
+    const detectedCommand = discovery.indexOf(
+      "pub(crate) fn run_detected_tool_command_with_timeout",
     );
 
     expect(source).toContain("ELEVATED_WINDOWS_CLI_BOUNDARY_MESSAGE");
@@ -180,17 +193,21 @@ describe("desktop IPC capability and CSP boundary", () => {
     expect(source).toContain(
       "elevated_windows_cli_boundary_active_for(crate::windows_runtime::formal_windows_build())",
     );
-    for (const commandStart of [
-      versionCommand,
-      lifecycleCommand,
-      installationProbe,
-    ]) {
+    for (const commandStart of [versionCommand, lifecycleCommand]) {
       expect(commandStart).toBeGreaterThan(-1);
       const commandSource = source.slice(commandStart, commandStart + 1200);
       expect(commandSource).toContain(
         "if elevated_windows_cli_boundary_active()",
       );
     }
+    expect(installationProbe).toBeGreaterThan(-1);
+    expect(
+      discovery.slice(installationProbe, installationProbe + 1200),
+    ).toContain("if elevated_windows_cli_boundary_active()");
+    expect(detectedCommand).toBeGreaterThan(-1);
+    expect(discovery.slice(detectedCommand, detectedCommand + 1200)).toContain(
+      "detected_tool_execution_boundary_for(crate::windows_runtime::formal_windows_build())",
+    );
     expect(source).toContain(
       "Do not let a release build reach build_tool_lifecycle_command",
     );

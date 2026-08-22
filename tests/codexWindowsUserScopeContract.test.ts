@@ -40,8 +40,10 @@ const opencodeSessions = read(
 );
 const opencodeUsage = read("src-tauri/src/services/session_usage_opencode.rs");
 const codexConfig = read("src-tauri/src/codex_config.rs");
+const codexCatalog = read("src-tauri/src/codex_config/catalog.rs");
 const codexStateDb = read("src-tauri/src/codex_state_db.rs");
 const commandHost = read("src-tauri/src/services/tooling.rs");
+const commandDiscovery = read("src-tauri/src/services/tooling/discovery.rs");
 const claudeMcp = read("src-tauri/src/claude_mcp.rs");
 const databaseBackup = read("src-tauri/src/database/backup.rs");
 const syncProtocol = read("src-tauri/src/services/sync_protocol.rs");
@@ -311,16 +313,18 @@ describe("Codex Windows interactive-user contract", () => {
       /#\[cfg\(target_os = "windows"\)\]\s+fn sqlite_home_from_env\(\) -> Option<PathBuf> \{[\s\S]*?None\s+\}/,
     );
 
-    const windowsCodexCandidates = codexConfig.slice(
-      codexConfig.indexOf("#[cfg(windows)]\nfn push_env_codex_cli_candidates"),
-      codexConfig.indexOf("\nfn codex_cli_candidates"),
+    const windowsCodexCandidates = codexCatalog.slice(
+      codexCatalog.indexOf(
+        "#[cfg(windows)]\npub(super) fn push_env_codex_cli_candidates",
+      ),
+      codexCatalog.indexOf("\npub(super) fn codex_cli_candidates"),
     );
     expect(windowsCodexCandidates).toContain("safe_command_search_paths");
     expect(windowsCodexCandidates).not.toContain("std::env");
-    expect(codexConfig).toMatch(
+    expect(codexCatalog).toMatch(
       /#\[cfg\(windows\)\]\s+const CODEX_CLI_FIXED_CANDIDATES: &\[&str\] = &\[\];/,
     );
-    expect(codexConfig).toContain("codex_bundled_cli_allowed");
+    expect(codexCatalog).toContain("codex_bundled_cli_allowed");
     expect(codexConfig).toContain(
       "formal_windows_build_never_runs_user_codex_cli_fallback",
     );
@@ -335,7 +339,7 @@ describe("Codex Windows interactive-user contract", () => {
     expect(windowsCommandEnvironment).toContain('.env("USERPROFILE"');
     expect(windowsCommandEnvironment).toContain('.env("ComSpec"');
     expect(windowsCommandEnvironment).not.toContain("var_os");
-    expect(codexConfig).toContain("configure_shell_user_command");
+    expect(codexCatalog).toContain("configure_shell_user_command");
     expect(startup).toContain("GetDriveTypeW");
     expect(startup).toContain("DRIVE_FIXED");
 
@@ -360,11 +364,12 @@ describe("Codex Windows interactive-user contract", () => {
     );
     expect(windowsPathDefault).toContain("shell_command_search_paths");
     expect(windowsPathDefault).not.toContain("build_tool_search_paths");
-    const sharedToolExecution = commandHost.slice(
-      commandHost.indexOf(
-        "pub(crate) fn run_detected_tool_command_with_timeout",
-      ),
-      commandHost.indexOf("fn run_windows_tool_command_capture"),
+    const sharedToolExecutionStart = commandDiscovery.indexOf(
+      "pub(crate) fn run_detected_tool_command_with_timeout",
+    );
+    const sharedToolExecution = commandDiscovery.slice(
+      sharedToolExecutionStart,
+      sharedToolExecutionStart + 1800,
     );
     expect(sharedToolExecution).toContain(
       "detected_tool_execution_boundary_for",

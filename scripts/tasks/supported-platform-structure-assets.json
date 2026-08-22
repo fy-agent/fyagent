@@ -23,7 +23,7 @@
     ],
     [
       "scripts/tasks/supported-platform-check.mjs",
-      "674ab3eefe6de37f402402b664c79fddba78d33965ebabc38d18397decfa8d0d"
+      "187676679574af70b6cd4b2e301bdfb76dfe1dcd2d44b22b343991f71c5aaf7e"
     ],
     [
       "scripts/tasks/system-check.mjs",
@@ -63,7 +63,11 @@
     ],
     [
       "src-tauri/src/codex_config.rs",
-      "99823315c83f821d6bf386288ed11e786bdb23b6be5bc1610e643330a0d726a9"
+      "f0d6f635b895e13ef272fdd65b2098543588090dd272dd229fe9296ad27424e7"
+    ],
+    [
+      "src-tauri/src/codex_config/catalog.rs",
+      "2390f1b6e6edd64f0c704b162f71eefa523c837b34645fb5fb1b24aee1ad9d31"
     ],
     [
       "src-tauri/src/codex_desktop_runtime.rs",
@@ -191,7 +195,7 @@
     ],
     [
       "src-tauri/src/services/skill.rs",
-      "a0150076465d0cd730e79b9f43737252c57766fe5442918b84aaa85e930206a8"
+      "12752e1d8d3feb080b4e0eebe670097bc3302bf2cd8161fb99fe68cf0f4cc056"
     ],
     [
       "src-tauri/src/services/subscription.rs",
@@ -199,11 +203,19 @@
     ],
     [
       "src-tauri/src/services/tooling.rs",
-      "1b19f62e433ec70d1c528f89c8a968dcdd1edf0c9fa22be538a68fe2cc8455e0"
+      "9033fbc1b8d75b9e258d81582eca4e8ab56d631def465520e743291914e58b64"
+    ],
+    [
+      "src-tauri/src/services/tooling/discovery.rs",
+      "d8a921d13aee20a634a748e58e4a80db52e9ee3acf7454e9b234bfec08901279"
     ],
     [
       "src-tauri/src/services/tooling/lifecycle.rs",
       "49d490eab01abc93c204023b46aad56b48615522ced4459ef5a9826f816246d1"
+    ],
+    [
+      "src-tauri/src/services/tooling/terminal.rs",
+      "8eb98717460ee2744921902c0660becc23aa19da3a60c8455dde81cf0b9605ac"
     ],
     [
       "src-tauri/src/services/tooling/versions.rs",
@@ -315,7 +327,7 @@
     ],
     [
       "tests/codexWindowsUserScopeContract.test.ts",
-      "d884b2be2999026afd1f06e8750d85a31a34eee55394d893c515c02fe5946c0f"
+      "ad322cbfcbc0fc4b90f86594fbbcbc980b97a19645a3fed07f74ca221638da1c"
     ],
     [
       "tests/hdiutilRetry.test.ts",
