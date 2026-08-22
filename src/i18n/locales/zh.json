@@ -1177,6 +1177,7 @@
     "customApiKeyHint": "💡 自定义配置需手动填写所有必要字段",
     "omoHint": "💡 OMO 配置管理 Agent 模型分配，兼容 oh-my-openagent.jsonc / oh-my-opencode.jsonc",
     "officialHint": "💡 官方供应商使用浏览器登录，无需配置 API Key",
+    "grokOfficialHint": "💡 Grok Official 使用空配置。保存后请在终端运行 `grok login`。FyAgent 不会代为登录，也不会写入 ~/.grok/auth.json。",
     "providerKeyStatusLoading": "正在加载供应商标识状态，请稍后再试",
     "getApiKey": "获取 API Key",
     "presets": {
@@ -3158,6 +3159,8 @@
     "extraUsage": "超额用量",
     "expired": "会话已过期",
     "expiredHint": "请运行 {{tool}} 命令刷新登录",
+    "grokOfficialExpiredHint": "请在终端运行 `grok login` 以刷新此登录。",
+    "xaiOauthExpiredHint": "请到认证中心重新登录此 xAI 账号。",
     "queryFailed": "查询失败",
     "refresh": "刷新"
   },

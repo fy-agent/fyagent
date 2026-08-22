@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { TFunction } from "i18next";
 import { useForm } from "react-hook-form";
+import type { ReactNode } from "react";
 import { Form } from "@/components/ui/form";
 import type { ProviderCategory } from "@/types";
 import {
@@ -111,9 +112,13 @@ function getIds(entries: ReadonlyArray<{ id: string }>) {
 function renderSelector({
   entries = presetEntries,
   onPresetChange = vi.fn(),
+  category,
+  categoryHint,
 }: {
   entries?: TestPresetEntry[];
   onPresetChange?: (value: string) => void;
+  category?: ProviderCategory;
+  categoryHint?: ReactNode;
 } = {}) {
   const Wrapper = () => {
     const form = useForm();
@@ -125,6 +130,8 @@ function renderSelector({
           presetEntries={entries}
           presetCategoryLabels={presetCategoryLabels}
           onPresetChange={onPresetChange}
+          category={category}
+          categoryHint={categoryHint}
         />
       </Form>
     );
@@ -577,5 +584,22 @@ describe("ProviderPresetSelector", () => {
     expect(
       screen.getByRole("button", { name: "preset.gamma" }),
     ).toBeInTheDocument();
+  });
+
+  it("keeps the generic officialHint for non-Grok official providers", () => {
+    renderSelector({ category: "official" });
+
+    expect(screen.getByText(/浏览器登录/)).toBeInTheDocument();
+    expect(screen.queryByText(/grok login/)).not.toBeInTheDocument();
+  });
+
+  it("renders a categoryHint override instead of the generic official hint", () => {
+    renderSelector({
+      category: "official",
+      categoryHint: "After save, run grok login in a terminal.",
+    });
+
+    expect(screen.getByText(/grok login/)).toBeInTheDocument();
+    expect(screen.queryByText(/浏览器登录/)).not.toBeInTheDocument();
   });
 });
