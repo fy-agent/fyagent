@@ -1,0 +1,30 @@
+{
+  "id": "modular-architecture-refactor",
+  "name": "modular-architecture-refactor",
+  "title": "Modular architecture refactor",
+  "description": "",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": "full-stack-architecture",
+  "package": null,
+  "priority": "P2",
+  "creator": "pythonrust",
+  "assignee": "pythonrust",
+  "createdAt": "2026-08-22",
+  "completedAt": null,
+  "branch": "dev/laiyongjie",
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {
+    "delivery": "staged-commits",
+    "final_branch": "dev/laiyongjie",
+    "ci_required": "true"
+  }
+}
