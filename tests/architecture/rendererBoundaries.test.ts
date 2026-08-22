@@ -168,4 +168,22 @@ describe("renderer architecture boundaries", () => {
       `Leftover components bypassed their API/hook platform boundary:\n${violations.join("\n")}`,
     ).toEqual([]);
   });
+
+  it("keeps specialized provider forms independent from the ProviderForm composition root", () => {
+    const formsRoot = path.join(srcRoot, "components", "providers", "forms");
+    const violations = listSourceFiles(formsRoot).flatMap((file) => {
+      if (path.basename(file) === "ProviderForm.tsx") return [];
+
+      return parseReferences(file).flatMap(({ line, specifier }) =>
+        specifier === "./ProviderForm"
+          ? [`${repositoryRelative(file)}:${line} imports ${specifier}`]
+          : [],
+      );
+    });
+
+    expect(
+      violations,
+      `A specialized provider form depends on its composition root:\n${violations.join("\n")}`,
+    ).toEqual([]);
+  });
 });

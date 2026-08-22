@@ -12,7 +12,7 @@ import {
   buildLocalProxyRequestOverrides,
   formatRequestOverrideObject,
 } from "@/lib/requestOverrides";
-import { providersApi, settingsApi, type AppId } from "@/lib/api";
+import { providersApi, settingsApi } from "@/lib/api";
 import { useDarkMode } from "@/hooks/useDarkMode";
 import type {
   ProviderCategory,
@@ -54,7 +54,6 @@ import {
 import { OpenCodeFormFields } from "./OpenCodeFormFields";
 import { OpenClawFormFields } from "./OpenClawFormFields";
 import { HermesFormFields } from "./HermesFormFields";
-import type { UniversalProviderPreset } from "@/config/universalProviderPresets";
 import {
   applyTemplateValues,
   hasApiKeyField,
@@ -126,6 +125,21 @@ import { resolveManagedAccountId } from "@/lib/authBinding";
 import { useOpenClawLiveProviderIds } from "@/hooks/useOpenClaw";
 import { useHermesLiveProviderIds } from "@/hooks/useHermes";
 import { useCodexProviderFeatures } from "@/hooks/useCodexProviderFeatures";
+import type {
+  ProviderFormProps,
+  ProviderFormValues,
+} from "./ProviderForm.types";
+import {
+  normalizeCodexCatalogModelsForSave,
+  normalizeCodexChatReasoningForSave,
+  parseCodexFeatureAuth,
+} from "./providerFormModel";
+
+export type {
+  ProviderFormProps,
+  ProviderFormValues,
+} from "./ProviderForm.types";
+export { normalizeCodexCatalogModelsForSave } from "./providerFormModel";
 
 type PresetEntry = {
   id: string;
@@ -138,124 +152,9 @@ type PresetEntry = {
     | HermesProviderPreset;
 };
 
-export const normalizeCodexCatalogModelsForSave = (
-  models: CodexCatalogModel[],
-): CodexCatalogModel[] => {
-  const seen = new Set<string>();
-  const normalized: CodexCatalogModel[] = [];
-
-  for (const item of models) {
-    const model = item.model.trim();
-    if (!model || seen.has(model)) continue;
-    seen.add(model);
-
-    const displayName = item.displayName?.trim();
-    const rawContextWindow = String(item.contextWindow ?? "").replace(
-      /[^\d]/g,
-      "",
-    );
-    const contextWindow = rawContextWindow
-      ? Number.parseInt(rawContextWindow, 10)
-      : undefined;
-
-    const inputModalities = item.inputModalities?.filter(
-      (m) => typeof m === "string" && m.trim(),
-    );
-
-    const baseInstructions = item.baseInstructions?.trim();
-
-    normalized.push({
-      model,
-      ...(displayName ? { displayName } : {}),
-      ...(contextWindow && contextWindow > 0 ? { contextWindow } : {}),
-      // Native Responses profile overrides (ignored by the chat/proxy profile).
-      ...(typeof item.supportsParallelToolCalls === "boolean"
-        ? { supportsParallelToolCalls: item.supportsParallelToolCalls }
-        : {}),
-      ...(inputModalities && inputModalities.length > 0
-        ? { inputModalities }
-        : {}),
-      ...(baseInstructions ? { baseInstructions } : {}),
-    });
-  }
-
-  return normalized;
-};
-
-const normalizeCodexChatReasoningForSave = (
-  value?: CodexChatReasoning,
-): CodexChatReasoning | undefined => {
-  const supportsEffort = value?.supportsEffort === true;
-  const supportsThinking = value?.supportsThinking === true || supportsEffort;
-  const hasExplicitConfig = value && Object.keys(value).length > 0;
-
-  if (!supportsThinking && !supportsEffort) {
-    return hasExplicitConfig
-      ? {
-          supportsThinking: false,
-          supportsEffort: false,
-          thinkingParam: "none",
-          effortParam: "none",
-          outputFormat: value?.outputFormat ?? "auto",
-        }
-      : undefined;
-  }
-
-  return {
-    supportsThinking,
-    supportsEffort,
-    thinkingParam: supportsThinking
-      ? (value?.thinkingParam ?? "thinking")
-      : "none",
-    effortParam: supportsEffort
-      ? (value?.effortParam ?? "reasoning_effort")
-      : "none",
-    effortValueMode: supportsEffort
-      ? (value?.effortValueMode ?? "passthrough")
-      : undefined,
-    outputFormat: value?.outputFormat ?? "auto",
-  };
-};
-
-const parseCodexFeatureAuth = (value: string): Record<string, unknown> => {
-  try {
-    const parsed: unknown = JSON.parse(value);
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : {};
-  } catch {
-    // Do not project a temporary malformed auth editor value into capability
-    // analysis; the user can still correct the form without losing the draft.
-    return {};
-  }
-};
-
 type LocalProxyRequestOverridesBuildResult = ReturnType<
   typeof buildLocalProxyRequestOverrides
 >;
-
-export interface ProviderFormProps {
-  appId: AppId;
-  providerId?: string;
-  submitLabel: string;
-  onSubmit: (values: ProviderFormValues) => Promise<void> | void;
-  onCancel: () => void;
-  onUniversalPresetSelect?: (preset: UniversalProviderPreset) => void;
-  onManageUniversalProviders?: () => void;
-  onSubmittingChange?: (isSubmitting: boolean) => void;
-  initialData?: {
-    name?: string;
-    websiteUrl?: string;
-    notes?: string;
-    settingsConfig?: Record<string, unknown>;
-    category?: ProviderCategory;
-    meta?: ProviderMeta;
-    icon?: string;
-    iconColor?: string;
-  };
-  showButtons?: boolean;
-  isProxyTakeover?: boolean;
-}
 
 export function ProviderForm(props: ProviderFormProps) {
   if (props.appId === "claude-desktop") {
@@ -2798,11 +2697,3 @@ function ProviderFormFull({
     </>
   );
 }
-
-export type ProviderFormValues = ProviderFormData & {
-  presetId?: string;
-  presetCategory?: ProviderCategory;
-  meta?: ProviderMeta;
-  providerKey?: string; // OpenCode/OpenClaw: user-defined provider key
-  suggestedDefaults?: OpenClawSuggestedDefaults; // OpenClaw: suggested default model configuration
-};

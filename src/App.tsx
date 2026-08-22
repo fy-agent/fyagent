@@ -24,24 +24,16 @@ import {
   RefreshCw,
 } from "lucide-react";
 import type { Provider, VisibleApps } from "@/types";
-import type { EnvConflict } from "@/types/env";
-import { proxyKeys, useProvidersQuery, useSettingsQuery } from "@/lib/query";
-import {
-  providersApi,
-  settingsApi,
-  systemApi,
-  type AppId,
-  type ProviderSwitchEvent,
-} from "@/lib/api";
-import { checkAllEnvConflicts, checkEnvConflicts } from "@/lib/api/env";
+import { useProvidersQuery, useSettingsQuery } from "@/lib/query";
+import { providersApi, settingsApi, type AppId } from "@/lib/api";
 import { useProviderActions } from "@/hooks/useProviderActions";
+import { useAppRuntimeEffects } from "@/hooks/useAppRuntimeEffects";
 import { useCodexRestartCoordinator } from "@/hooks/useCodexRestartCoordinator";
 import { openclawKeys, useOpenClawHealth } from "@/hooks/useOpenClaw";
 import { hermesKeys, useOpenHermesWebUI } from "@/hooks/useHermes";
 import { hermesApi } from "@/lib/api/hermes";
 import { useProxyStatus } from "@/hooks/useProxyStatus";
 import { useUsageCacheBridge } from "@/hooks/useUsageCacheBridge";
-import { useTauriEvent } from "@/hooks/useTauriEvent";
 import { useLastValidValue } from "@/hooks/useLastValidValue";
 import { useScanUnmanagedSkills } from "@/hooks/useSkills";
 import { extractErrorMessage } from "@/utils/errorUtils";
@@ -114,12 +106,6 @@ type View =
   | "openclawTools"
   | "openclawAgents"
   | "hermesMemory";
-
-interface SyncStatusUpdatedPayload {
-  source?: string;
-  status?: string;
-  error?: string;
-}
 
 const DEFAULT_DRAG_BAR_HEIGHT = isMac() ? 28 : 0; // px
 const HEADER_HEIGHT = 64; // px
@@ -318,8 +304,11 @@ function App() {
     provider: Provider;
     action: "remove" | "delete";
   } | null>(null);
-  const [envConflicts, setEnvConflicts] = useState<EnvConflict[]>([]);
-  const [showEnvBanner, setShowEnvBanner] = useState(false);
+  const { dismissEnvBanner, envConflicts, refreshEnvConflicts, showEnvBanner } =
+    useAppRuntimeEffects({
+      activeApp,
+      enabled: !isWorkBuddyActive,
+    });
 
   const effectiveEditingProvider = useLastValidValue(editingProvider);
   const effectiveUsageProvider = useLastValidValue(usageProvider);
@@ -425,225 +414,6 @@ function App() {
       },
     });
   };
-
-  useEffect(() => {
-    if (isWorkBuddyActive) return;
-
-    let unsubscribe: (() => void) | undefined;
-    let active = true;
-
-    const setupListener = async () => {
-      try {
-        const off = await providersApi.onSwitched(
-          async (event: ProviderSwitchEvent) => {
-            if (!isWorkBuddyActive && event.appType === activeApp) {
-              await queryClient.invalidateQueries({
-                queryKey: ["providers", activeApp],
-              });
-            }
-          },
-        );
-        if (!active) {
-          off();
-          return;
-        }
-        unsubscribe = off;
-      } catch (error) {
-        console.error("[App] Failed to subscribe provider switch event", error);
-      }
-    };
-
-    void setupListener();
-    return () => {
-      active = false;
-      unsubscribe?.();
-    };
-  }, [activeApp, isWorkBuddyActive, queryClient]);
-
-  useTauriEvent(
-    "universal-provider-synced",
-    async () => {
-      await queryClient.invalidateQueries({ queryKey: ["providers"] });
-      try {
-        await providersApi.updateTrayMenu();
-      } catch (error) {
-        console.error("[App] Failed to update tray menu", error);
-      }
-    },
-    !isWorkBuddyActive,
-  );
-
-  // 应用项目后刷新相关缓存（providers 由既有 provider-switched 监听承接；
-  // proxy 状态由后端直接改 DB，不走 mutation，必须显式刷新）
-  useTauriEvent(
-    "profile-applied",
-    async () => {
-      await queryClient.invalidateQueries({ queryKey: ["profiles"] });
-      await queryClient.invalidateQueries({ queryKey: ["mcp", "all"] });
-      await queryClient.invalidateQueries({ queryKey: ["skills"] });
-      await queryClient.invalidateQueries({
-        queryKey: proxyKeys.takeoverStatus,
-      });
-      await queryClient.invalidateQueries({ queryKey: proxyKeys.status });
-      await queryClient.invalidateQueries({
-        queryKey: ["providers", "claude-desktop"],
-      });
-    },
-    !isWorkBuddyActive,
-  );
-
-  useTauriEvent<SyncStatusUpdatedPayload | null | undefined>(
-    "webdav-sync-status-updated",
-    async (payload) => {
-      const statusPayload = payload ?? {};
-      await queryClient.invalidateQueries({ queryKey: ["settings"] });
-      if (statusPayload.source !== "auto" || statusPayload.status !== "error") {
-        return;
-      }
-      toast.error(
-        t("settings.webdavSync.autoSyncFailedToast", {
-          error: statusPayload.error || t("common.unknown"),
-        }),
-      );
-    },
-  );
-
-  useTauriEvent<SyncStatusUpdatedPayload | null | undefined>(
-    "s3-sync-status-updated",
-    async (payload) => {
-      const statusPayload = payload ?? {};
-      await queryClient.invalidateQueries({ queryKey: ["settings"] });
-      if (statusPayload.source !== "auto" || statusPayload.status !== "error") {
-        return;
-      }
-      toast.error(
-        t("settings.s3Sync.autoSyncFailedToast", {
-          error: statusPayload.error || t("common.unknown"),
-        }),
-      );
-    },
-  );
-
-  useTauriEvent<{ appType: string; providerName: string }>(
-    "proxy-official-warning",
-    (payload) => {
-      toast.warning(
-        t("notifications.proxyOfficialWarning", {
-          name: payload.providerName,
-          defaultValue: `当前供应商 ${payload.providerName} 是官方供应商，建议切换到第三方供应商后再使用代理接管`,
-        }),
-        { duration: 8000 },
-      );
-    },
-    !isWorkBuddyActive,
-  );
-
-  useEffect(() => {
-    if (isWorkBuddyActive) return;
-
-    const checkEnvOnStartup = async () => {
-      try {
-        const allConflicts = await checkAllEnvConflicts();
-        const flatConflicts = Object.values(allConflicts).flat();
-
-        if (flatConflicts.length > 0) {
-          setEnvConflicts(flatConflicts);
-          const dismissed = sessionStorage.getItem("env_banner_dismissed");
-          if (!dismissed) {
-            setShowEnvBanner(true);
-          }
-        }
-      } catch (error) {
-        console.error(
-          "[App] Failed to check environment conflicts on startup:",
-          error,
-        );
-      }
-    };
-
-    checkEnvOnStartup();
-  }, [isWorkBuddyActive]);
-
-  useEffect(() => {
-    if (isWorkBuddyActive) return;
-
-    const checkMigration = async () => {
-      try {
-        const migrated = await systemApi.getMigrationResult();
-        if (migrated) {
-          toast.success(
-            t("migration.success", { defaultValue: "配置迁移成功" }),
-            { closeButton: true },
-          );
-        }
-      } catch (error) {
-        console.error("[App] Failed to check migration result:", error);
-      }
-    };
-
-    checkMigration();
-  }, [isWorkBuddyActive, t]);
-
-  useEffect(() => {
-    if (isWorkBuddyActive) return;
-
-    const checkSkillsMigration = async () => {
-      try {
-        const result = await systemApi.getSkillsMigrationResult();
-        if (result?.error) {
-          toast.error(t("migration.skillsFailed"), {
-            description: t("migration.skillsFailedDescription"),
-            closeButton: true,
-          });
-          console.error("[App] Skills SSOT migration failed:", result.error);
-          return;
-        }
-        if (result && result.count > 0) {
-          toast.success(t("migration.skillsSuccess", { count: result.count }), {
-            closeButton: true,
-          });
-          await queryClient.invalidateQueries({ queryKey: ["skills"] });
-        }
-      } catch (error) {
-        console.error("[App] Failed to check skills migration result:", error);
-      }
-    };
-
-    checkSkillsMigration();
-  }, [isWorkBuddyActive, t, queryClient]);
-
-  useEffect(() => {
-    if (isWorkBuddyActive) return;
-
-    const checkEnvOnSwitch = async () => {
-      try {
-        const conflicts = await checkEnvConflicts(activeApp);
-
-        if (conflicts.length > 0) {
-          setEnvConflicts((prev) => {
-            const existingKeys = new Set(
-              prev.map((c) => `${c.varName}:${c.sourcePath}`),
-            );
-            const newConflicts = conflicts.filter(
-              (c) => !existingKeys.has(`${c.varName}:${c.sourcePath}`),
-            );
-            return [...prev, ...newConflicts];
-          });
-          const dismissed = sessionStorage.getItem("env_banner_dismissed");
-          if (!dismissed) {
-            setShowEnvBanner(true);
-          }
-        }
-      } catch (error) {
-        console.error(
-          "[App] Failed to check environment conflicts on app switch:",
-          error,
-        );
-      }
-    };
-
-    checkEnvOnSwitch();
-  }, [activeApp, isWorkBuddyActive]);
 
   const currentViewRef = useRef(currentView);
   const managementBusy =
@@ -1240,25 +1010,8 @@ function App() {
       {showEnvBanner && envConflicts.length > 0 && (
         <EnvWarningBanner
           conflicts={envConflicts}
-          onDismiss={() => {
-            setShowEnvBanner(false);
-            sessionStorage.setItem("env_banner_dismissed", "true");
-          }}
-          onDeleted={async () => {
-            try {
-              const allConflicts = await checkAllEnvConflicts();
-              const flatConflicts = Object.values(allConflicts).flat();
-              setEnvConflicts(flatConflicts);
-              if (flatConflicts.length === 0) {
-                setShowEnvBanner(false);
-              }
-            } catch (error) {
-              console.error(
-                "[App] Failed to re-check conflicts after deletion:",
-                error,
-              );
-            }
-          }}
+          onDismiss={dismissEnvBanner}
+          onDeleted={refreshEnvConflicts}
         />
       )}
 
