@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use crate::config::{
-    delete_file, get_home_dir, path_is_within, read_json_file, write_json_file, write_text_file,
+    get_home_dir, path_is_within, read_json_file, write_json_file, write_text_file,
 };
 use crate::error::AppError;
 use crate::model_capabilities::{image_input_capability_from_modalities, ImageInputCapability};
@@ -14,7 +14,18 @@ use std::fs;
 use std::process::{Command, Stdio};
 use toml_edit::{DocumentMut, Item, TableLike};
 
+mod auth;
 mod storage;
+
+pub use auth::{
+    clear_stale_codex_live_auth_after_official_switch, codex_auth_has_login_material,
+    codex_auth_has_oauth_login_material, extract_codex_auth_api_key,
+    should_restore_codex_provider_token_for_backfill,
+};
+#[cfg(test)]
+use auth::{
+    codex_auth_has_credential_login_material, codex_live_auth_is_stale_third_party_residue,
+};
 
 pub use storage::{
     get_codex_auth_path, get_codex_config_dir, get_codex_config_path, get_codex_model_catalog_path,
@@ -950,14 +961,6 @@ pub fn write_codex_live_config_atomic(config_text_opt: Option<&str>) -> Result<(
     write_text_file(&config_path, &cfg_text)
 }
 
-pub fn extract_codex_auth_api_key(auth: &Value) -> Option<String> {
-    auth.get("OPENAI_API_KEY")
-        .and_then(|value| value.as_str())
-        .map(str::trim)
-        .filter(|key| !key.is_empty())
-        .map(str::to_string)
-}
-
 pub fn extract_codex_api_key(auth: Option<&Value>, config_text: Option<&str>) -> Option<String> {
     auth.and_then(extract_codex_auth_api_key)
         .or_else(|| config_text.and_then(extract_codex_experimental_bearer_token))
@@ -987,157 +990,6 @@ pub fn extract_codex_base_url(config_text: &str) -> Option<String> {
     doc.get("base_url")
         .and_then(|v| v.as_str())
         .map(ToString::to_string)
-}
-
-pub fn codex_auth_has_login_material(auth: &Value) -> bool {
-    let Some(obj) = auth.as_object() else {
-        return false;
-    };
-
-    obj.iter().any(|(key, value)| {
-        if key == "auth_mode" {
-            return false;
-        }
-
-        if key == "OPENAI_API_KEY" {
-            return value
-                .as_str()
-                .map(str::trim)
-                .is_some_and(|token| !token.is_empty());
-        }
-
-        match value {
-            Value::Null => false,
-            Value::String(text) => !text.trim().is_empty(),
-            Value::Array(items) => !items.is_empty(),
-            Value::Object(map) => !map.is_empty(),
-            _ => true,
-        }
-    })
-}
-
-pub fn codex_auth_has_oauth_login_material(auth: &Value) -> bool {
-    let Some(obj) = auth.as_object() else {
-        return false;
-    };
-
-    obj.iter().any(|(key, value)| {
-        if key == "auth_mode" || key == "OPENAI_API_KEY" {
-            return false;
-        }
-
-        match value {
-            Value::Null => false,
-            Value::String(text) => !text.trim().is_empty(),
-            Value::Array(items) => !items.is_empty(),
-            Value::Object(map) => !map.is_empty(),
-            _ => true,
-        }
-    })
-}
-
-/// True only when the auth carries material Codex itself authenticates with
-/// ahead of the API-key fallback: OAuth tokens or another first-class login
-/// carrier. Unlike `codex_auth_has_oauth_login_material`, pure metadata such
-/// as `last_refresh` or `tokens.account_id` does NOT count — metadata must not
-/// shield a stale third-party `OPENAI_API_KEY` from post-switch cleanup.
-pub fn codex_auth_has_credential_login_material(auth: &Value) -> bool {
-    let Some(obj) = auth.as_object() else {
-        return false;
-    };
-
-    let value_present = |value: &Value| match value {
-        Value::Null => false,
-        Value::String(text) => !text.trim().is_empty(),
-        Value::Array(items) => !items.is_empty(),
-        Value::Object(map) => !map.is_empty(),
-        _ => true,
-    };
-
-    if ["personal_access_token", "agent_identity", "bedrock_api_key"]
-        .iter()
-        .any(|key| obj.get(*key).is_some_and(value_present))
-    {
-        return true;
-    }
-
-    obj.get("tokens")
-        .and_then(Value::as_object)
-        .is_some_and(|tokens| {
-            ["id_token", "access_token", "refresh_token"]
-                .iter()
-                .any(|key| tokens.get(*key).is_some_and(value_present))
-        })
-}
-
-/// True when live `auth.json` is the shape a preserve-off third-party switch
-/// leaves behind: an `OPENAI_API_KEY` (possibly alongside metadata like
-/// `auth_mode` / `last_refresh`) with no real login credential next to it.
-pub fn codex_live_auth_is_stale_third_party_residue(live_auth: &Value) -> bool {
-    if codex_auth_has_credential_login_material(live_auth) {
-        return false;
-    }
-    live_auth
-        .get("OPENAI_API_KEY")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .is_some_and(|key| !key.is_empty())
-}
-
-/// After a normal switch to an official provider that carries no login
-/// material of its own, delete a live `auth.json` that only holds a stale
-/// third-party API key, so Codex shows its login screen instead of sending
-/// the wrong key to the official endpoint (401 with no way to re-login).
-///
-/// Deleting the file — not writing `{}` — is deliberate: Codex resolves an
-/// empty object to ChatGPT mode without tokens and errors at bootstrap,
-/// while a missing file yields NotAuthenticated and the login screen,
-/// matching Codex's own logout.
-///
-/// Callers must only invoke this after the outgoing provider was
-/// successfully backfilled into the DB — that backfill holds the only other
-/// copy of the third-party key. The switch backfill intentionally lacks the
-/// proxy-side "no credentials in the builtin official row" guard
-/// (`services/proxy.rs` `sync_live_config_to_provider`): that asymmetry is
-/// what heals official API-key logins into the DB row, and this cleanup's
-/// safety depends on it — do not align the two guards.
-///
-/// Returns Ok(true) when the file was deleted.
-pub fn clear_stale_codex_live_auth_after_official_switch(
-    db_auth: &Value,
-) -> Result<bool, AppError> {
-    if codex_auth_has_login_material(db_auth) {
-        // A material-carrying official provider gets a full auth write;
-        // nothing stale can remain.
-        return Ok(false);
-    }
-    let auth_path = get_codex_auth_path();
-    if !auth_path.exists() {
-        return Ok(false);
-    }
-    let live_auth: Value = read_json_file(&auth_path)?;
-    if !codex_live_auth_is_stale_third_party_residue(&live_auth) {
-        return Ok(false);
-    }
-    delete_file(&auth_path)?;
-    Ok(true)
-}
-
-pub fn should_restore_codex_provider_token_for_backfill(
-    category: Option<&str>,
-    template_settings: &Value,
-) -> bool {
-    if category == Some("official") {
-        return false;
-    }
-
-    let Some(auth) = template_settings.get("auth") else {
-        return true;
-    };
-
-    let has_provider_api_key = extract_codex_auth_api_key(auth).is_some();
-    let has_oauth_login = codex_auth_has_oauth_login_material(auth);
-    !has_oauth_login || has_provider_api_key
 }
 
 fn parse_codex_positive_u64(value: Option<&Value>) -> Option<u64> {

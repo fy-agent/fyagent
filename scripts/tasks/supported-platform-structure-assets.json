@@ -63,7 +63,7 @@
     ],
     [
       "src-tauri/src/codex_config.rs",
-      "7fa354d621924a224fc1beee75f3cc22ca78b36c182c3931c026d94ed33dbb31"
+      "c9a1d3171f38b121626231549578c85494051b723eac74cf3eb9d7687c020654"
     ],
     [
       "src-tauri/src/codex_desktop_runtime.rs",
@@ -191,7 +191,7 @@
     ],
     [
       "src-tauri/src/services/skill.rs",
-      "38d22a4ed94483302e11947cdc0b542d5ad1e31678bbf7280734045128b73825"
+      "6a01eebd8a62927aaee46f8059e880dad2da5ee625352c0d16439a7f025fc81f"
     ],
     [
       "src-tauri/src/services/subscription.rs",

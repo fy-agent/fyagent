@@ -88,11 +88,12 @@ describe("Rust modular architecture boundaries", () => {
     expect(skill).toContain("mod discovery;");
     expect(skill).toContain("mod marketplace;");
     expect(proxy).toContain("mod takeover;");
+    expect(codex).toContain("mod auth;");
     expect(codex).toContain("mod storage;");
 
     for (const source of [provider, skill, proxy, codex]) {
       expect(source).not.toMatch(
-        /pub(?:\(crate\))? mod (?:universal|discovery|marketplace|takeover|storage);/u,
+        /pub(?:\(crate\))? mod (?:universal|discovery|marketplace|takeover|auth|storage);/u,
       );
     }
   });
