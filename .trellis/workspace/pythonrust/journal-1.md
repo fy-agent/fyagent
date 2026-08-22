@@ -1299,3 +1299,34 @@ Exact-SHA CI exposed Windows-only Tooling lifecycle tests still referencing priv
 ### Status
 
 [OK] **Completed**
+
+
+## Session 39: Fix Windows Tooling Clippy import
+
+**Date**: 2026-08-22
+**Task**: Fix Windows Tooling Clippy import
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Exact-SHA Windows CI exposed one platform-only unused lifecycle import under -D warnings; scoped npm_install_command_for to macOS production usage, sealed the new architecture guard, and kept the archived P0 task unchanged.
+
+### Main Changes
+
+- Scoped the lifecycle import to its actual macOS production owner instead of suppressing the Windows lint.
+- Sealed a source-level architecture assertion so non-Windows CI verifies the conditional import.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `bf727670` | (see git log) |
+
+### Testing
+
+- [OK] mise run check passed locally after the corrective change.
+- [OK] supported-platform and Rust modular boundary contracts passed.
+
+### Status
+
+[OK] **Completed**
