@@ -50,6 +50,22 @@ describe("Rust modular architecture boundaries", () => {
     }
   });
 
+  it("keeps Tooling transport limited to the reviewed Tauri command surface", () => {
+    const toolingCommands = read("src-tauri/src/commands/tooling.rs");
+    const commandNames = [
+      ...toolingCommands.matchAll(
+        /#\[tauri::command\]\s+pub async fn ([a-z0-9_]+)\b/gmu,
+      ),
+    ].map((match) => match[1]);
+
+    expect(commandNames).toEqual([
+      "get_tool_versions",
+      "run_tool_lifecycle_action",
+      "probe_tool_installations",
+      "open_provider_terminal",
+    ]);
+  });
+
   it("keeps extracted backend subdomains private behind their owning facades", () => {
     const provider = read("src-tauri/src/services/provider/mod.rs");
     const skill = read("src-tauri/src/services/skill.rs");
