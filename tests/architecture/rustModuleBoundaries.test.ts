@@ -84,6 +84,7 @@ describe("Rust modular architecture boundaries", () => {
     const proxy = read("src-tauri/src/services/proxy.rs");
     const codex = read("src-tauri/src/codex_config.rs");
 
+    expect(provider).toContain("mod common_config;");
     expect(provider).toContain("mod universal;");
     expect(skill).toContain("mod discovery;");
     expect(skill).toContain("mod marketplace;");
@@ -93,7 +94,7 @@ describe("Rust modular architecture boundaries", () => {
 
     for (const source of [provider, skill, proxy, codex]) {
       expect(source).not.toMatch(
-        /pub(?:\(crate\))? mod (?:universal|discovery|marketplace|takeover|auth|storage);/u,
+        /pub(?:\(crate\))? mod (?:common_config|universal|discovery|marketplace|takeover|auth|storage);/u,
       );
     }
   });
