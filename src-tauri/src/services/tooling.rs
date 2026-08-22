@@ -1,11 +1,11 @@
 #![allow(non_snake_case)]
 
-use crate::app_config::AppType;
-use crate::services::ProviderService;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
+mod discovery;
 mod lifecycle;
+mod terminal;
 mod versions;
 
 #[cfg(test)]
@@ -25,6 +25,14 @@ use lifecycle::{
 use versions::{
     elevated_windows_tool_version_unavailable, extract_version, get_single_tool_version_impl,
 };
+
+pub(crate) use discovery::run_detected_tool_command_with_timeout;
+#[cfg(test)]
+use discovery::{is_conflicting, plan_command_for};
+pub use discovery::{probe_tool_installations, ToolInstallationReport};
+pub(crate) use terminal::launch_terminal_running;
+#[cfg(test)]
+use terminal::resolve_launch_cwd;
 
 #[cfg(test)]
 use versions::{compare_semver, pick_latest_version};
@@ -2021,66 +2029,6 @@ fn apply_extra_env(
     Ok(())
 }
 
-pub(crate) fn run_detected_tool_command_with_timeout(
-    tool: &str,
-    args: &[&str],
-    timeout: Option<std::time::Duration>,
-    extra_env: &[(&str, String)],
-    working_dir: &Path,
-) -> Result<std::process::Output, String> {
-    #[cfg(target_os = "windows")]
-    detected_tool_execution_boundary_for(crate::windows_runtime::formal_windows_build())
-        .map_err(str::to_owned)?;
-
-    if !VALID_TOOLS.contains(&tool) {
-        return Err(format!("Unsupported tool: {tool}"));
-    }
-    if args.iter().any(|arg| {
-        arg.is_empty()
-            || !arg
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
-    }) {
-        return Err("Invalid tool command arguments".to_string());
-    }
-
-    let deadline = CommandDeadline::from_timeout(timeout);
-
-    // Runtime execution only needs the default entry point. Full installation
-    // enumeration runs `--version` for every candidate and belongs to diagnostics.
-    let tool_path = locate_default_tool(tool, deadline)?;
-    let dir = tool_path
-        .parent()
-        .ok_or_else(|| format!("Invalid {tool} executable path"))?;
-    #[cfg(target_os = "macos")]
-    let current_path = std::env::var_os("PATH")
-        .map(|value| value.to_string_lossy().into_owned())
-        .unwrap_or_default();
-
-    #[cfg(target_os = "windows")]
-    {
-        run_windows_tool_command_capture(&tool_path, dir, args, deadline, extra_env, working_dir)
-    }
-
-    #[cfg(target_os = "macos")]
-    {
-        use std::process::{Command, Stdio};
-
-        let mut cmd = Command::new(&tool_path);
-        cmd.args(args)
-            .env("PATH", format!("{}:{current_path}", dir.display()))
-            .current_dir(working_dir)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-        apply_extra_env(&mut cmd, extra_env)?;
-        isolate_child_process_group(&mut cmd);
-        let child = cmd
-            .spawn()
-            .map_err(|e| format!("Failed to run {tool}: {e}"))?;
-        wait_child_output(child, deadline)
-    }
-}
-
 #[cfg(target_os = "windows")]
 fn run_windows_tool_command_capture(
     tool_path: &Path,
@@ -2217,250 +2165,13 @@ fn install_command_for(tool: &str) -> String {
     posix_install_command_for(tool)
 }
 
-/// 计算某工具的升级命令与"是否需确认"。Windows 与 macOS 都走
-/// `installs_anchored_command`:命中 → 锚定;
-///   None(无默认 / sibling 不存在等)→ 静态兜底、`anchored=false`,
-///   前端据此给"默认入口无法确定"诚实文案。
-fn plan_command_for(tool: &str, installs: &[ToolInstallation]) -> (String, bool, bool) {
-    if !is_lifecycle_writable(tool) {
-        return (String::new(), false, false);
-    }
-
-    match installs_anchored_command(tool, installs) {
-        Some(command) => (command, installs.len() >= 2, true),
-        None => (static_fallback_command(tool), installs.len() >= 2, false),
-    }
-}
-
-/// 多处安装是否构成"真冲突"：≥2 处，且(版本分歧 或 有的能跑有的跑不起来)。
-/// 同版本装两份且都能跑不算冲突（不打扰用户）。诊断展示据此判定。
-fn is_conflicting(installs: &[ToolInstallation]) -> bool {
-    if installs.len() < 2 {
-        return false;
-    }
-    let distinct_versions: std::collections::HashSet<&Option<String>> =
-        installs.iter().map(|i| &i.version).collect();
-    let runnable_mixed =
-        installs.iter().any(|i| i.runnable) && installs.iter().any(|i| !i.runnable);
-    distinct_versions.len() > 1 || runnable_mixed
-}
-
-/// 一次"探测工具安装分布"的结果：枚举到的所有安装 + 各项衍生判定。同时服务两条
-/// 路径——诊断展示（`is_conflict`）与升级确认（`needs_confirmation`/`command`/`anchored`）。
-/// 字段保持 snake_case（与 `ToolInstallation` 一致），前端按同名读取。
-#[derive(Debug, serde::Serialize)]
-pub struct ToolInstallationReport {
-    tool: String,
-    /// 该工具枚举到的所有安装。
-    installs: Vec<ToolInstallation>,
-    /// 严阈值：≥2 且(版本分歧或运行态混合)。诊断按钮/自动补诊据此展示冲突。
-    is_conflict: bool,
-    /// 宽阈值：≥2 处。升级确认据此弹窗（升级只动一处，任何多处都该让用户知情）。
-    needs_confirmation: bool,
-    /// 锚定后将执行的升级命令（仅展示；真正执行时后端会重新生成，不信任前端回传）。
-    command: String,
-    /// 是否成功锚定到某处具体安装。false = 退到裸 fallback 命令（无法确定命令行实际
-    /// 命中哪处，或该处无同级 npm）；前端据此给出"默认入口无法确定"的诚实文案。
-    anchored: bool,
-}
-
-/// 探测各工具的安装分布：枚举所有安装、标记冲突、生成锚定升级命令。只读、无副作用。
-/// 诊断按钮、升级前确认、升级后补诊共用此命令，各取所需字段——避免对同一份枚举结果
-/// 散落多套下游判定。
-pub async fn probe_tool_installations(
-    tools: Vec<String>,
-) -> Result<Vec<ToolInstallationReport>, String> {
-    // This command performs the same path/PATH scan and `--version` execution
-    // as lifecycle planning, so it shares the exact elevated-release boundary.
-    if elevated_windows_cli_boundary_active() {
-        return Err(ELEVATED_WINDOWS_CLI_BOUNDARY_MESSAGE.to_string());
-    }
-
-    let requested = normalize_requested_tools(&tools);
-    if requested.is_empty() {
-        return Err("No supported tools selected".to_string());
-    }
-    tokio::task::spawn_blocking(move || {
-        requested
-            .into_iter()
-            .map(|tool| {
-                let installs = enumerate_tool_installations(tool);
-                let (command, needs_confirmation, anchored) = plan_command_for(tool, &installs);
-                let is_conflict = is_conflicting(&installs);
-                ToolInstallationReport {
-                    tool: tool.to_string(),
-                    installs,
-                    is_conflict,
-                    needs_confirmation,
-                    command,
-                    anchored,
-                }
-            })
-            .collect()
-    })
-    .await
-    .map_err(|e| format!("probe task join error: {e}"))
-}
-
-/// 打开指定提供商的终端
-///
-/// 根据提供商配置的环境变量启动一个带有该提供商特定设置的终端
-/// 无需检查是否为当前激活的提供商，任何提供商都可以打开终端
-#[allow(non_snake_case)]
 pub async fn open_provider_terminal(
     state: &crate::store::AppState,
     app: String,
     #[allow(non_snake_case)] providerId: String,
     cwd: Option<String>,
 ) -> Result<bool, String> {
-    let app_type = AppType::from_str(&app).map_err(|e| e.to_string())?;
-    let launch_cwd = resolve_launch_cwd(cwd)?;
-
-    // 获取提供商配置
-    let providers = ProviderService::list(state, app_type.clone())
-        .map_err(|e| format!("获取提供商列表失败: {e}"))?;
-
-    let provider = providers
-        .get(&providerId)
-        .ok_or_else(|| format!("提供商 {providerId} 不存在"))?;
-
-    // 从提供商配置中提取环境变量
-    let config = &provider.settings_config;
-    let env_vars = extract_env_vars_from_config(config, &app_type);
-
-    // 根据平台启动终端；配置文件名由安全的随机临时文件创建器生成。
-    launch_terminal_with_env(env_vars, launch_cwd.as_deref())
-        .map_err(|e| format!("启动终端失败: {e}"))?;
-
-    Ok(true)
-}
-
-/// 从提供商配置中提取环境变量
-fn extract_env_vars_from_config(
-    config: &serde_json::Value,
-    app_type: &AppType,
-) -> Vec<(String, String)> {
-    let mut env_vars = Vec::new();
-
-    let Some(obj) = config.as_object() else {
-        return env_vars;
-    };
-
-    // 处理 env 字段（Claude/Gemini 通用）
-    if let Some(env) = obj.get("env").and_then(|v| v.as_object()) {
-        for (key, value) in env {
-            if let Some(str_val) = value.as_str() {
-                env_vars.push((key.clone(), str_val.to_string()));
-            }
-        }
-
-        // 处理 base_url: 根据应用类型添加对应的环境变量
-        let base_url_key = match app_type {
-            AppType::Claude | AppType::ClaudeDesktop => Some("ANTHROPIC_BASE_URL"),
-            AppType::Gemini => Some("GOOGLE_GEMINI_BASE_URL"),
-            _ => None,
-        };
-
-        if let Some(key) = base_url_key {
-            if let Some(url_str) = env.get(key).and_then(|v| v.as_str()) {
-                env_vars.push((key.to_string(), url_str.to_string()));
-            }
-        }
-    }
-
-    // Codex 使用 auth 字段转换为 OPENAI_API_KEY
-    if *app_type == AppType::Codex {
-        if let Some(auth) = obj.get("auth").and_then(|v| v.as_str()) {
-            env_vars.push(("OPENAI_API_KEY".to_string(), auth.to_string()));
-        }
-    }
-
-    // Gemini 使用 api_key 字段转换为 GEMINI_API_KEY
-    if *app_type == AppType::Gemini {
-        if let Some(api_key) = obj.get("api_key").and_then(|v| v.as_str()) {
-            env_vars.push(("GEMINI_API_KEY".to_string(), api_key.to_string()));
-        }
-    }
-
-    env_vars
-}
-
-fn resolve_launch_cwd(cwd: Option<String>) -> Result<Option<PathBuf>, String> {
-    let Some(raw_path) = cwd.filter(|value| !value.trim().is_empty()) else {
-        return Ok(None);
-    };
-
-    if raw_path.contains('\n') || raw_path.contains('\r') {
-        return Err("目录路径包含非法换行符".to_string());
-    }
-
-    let path = Path::new(&raw_path);
-    if !path.exists() {
-        return Err(format!("目录不存在: {raw_path}"));
-    }
-
-    let resolved = std::fs::canonicalize(path).map_err(|e| format!("解析目录失败: {e}"))?;
-    if !resolved.is_dir() {
-        return Err(format!("选择的路径不是文件夹: {}", resolved.display()));
-    }
-
-    // Strip Windows extended-length prefix that canonicalize produces,
-    // as it can break batch scripts and other shell commands.
-    // Special-case \\?\UNC\server\share -> \\server\share for network paths.
-    #[cfg(target_os = "windows")]
-    let resolved = {
-        let s = resolved.to_string_lossy();
-        if let Some(unc) = s.strip_prefix(r"\\?\UNC\") {
-            PathBuf::from(format!(r"\\{unc}"))
-        } else if let Some(stripped) = s.strip_prefix(r"\\?\") {
-            PathBuf::from(stripped)
-        } else {
-            resolved
-        }
-    };
-
-    Ok(Some(resolved))
-}
-
-/// 创建临时配置文件并启动 claude 终端
-/// 使用 --settings 参数传入提供商特定的 API 配置
-fn launch_terminal_with_env(
-    env_vars: Vec<(String, String)>,
-    cwd: Option<&Path>,
-) -> Result<(), String> {
-    let config_file = create_claude_config(&env_vars)?;
-
-    #[cfg(target_os = "macos")]
-    {
-        launch_macos_terminal(&config_file, cwd)?;
-        Ok(())
-    }
-
-    #[cfg(target_os = "windows")]
-    {
-        launch_windows_terminal(&config_file, cwd)?;
-        Ok(())
-    }
-}
-
-/// 创建包含 Claude provider 设置的随机、原子临时配置文件。
-///
-/// 这类配置可能含凭据，因此不能使用只含 PID 的可预测文件名。文件会在启动
-/// 失败时立即删除，或由已启动的用户会话脚本在 Claude 退出后删除。
-fn create_claude_config(env_vars: &[(String, String)]) -> Result<PathBuf, String> {
-    let mut config_obj = serde_json::Map::new();
-    let mut env_obj = serde_json::Map::new();
-
-    for (key, value) in env_vars {
-        env_obj.insert(key.clone(), serde_json::Value::String(value.clone()));
-    }
-
-    config_obj.insert("env".to_string(), serde_json::Value::Object(env_obj));
-
-    let config_json =
-        serde_json::to_string_pretty(&config_obj).map_err(|e| format!("序列化配置失败: {e}"))?;
-
-    write_persisted_temp_file("fyagent_claude_", ".json", config_json.as_bytes())
+    terminal::open_provider_terminal(state, app, providerId, cwd).await
 }
 
 /// Atomically creates a random named temporary file that must outlive the
@@ -2893,92 +2604,6 @@ fn escape_windows_batch_value(value: &str) -> String {
         .replace('(', "^(")
         .replace(')', "^)")
 }
-/// 打开用户首选终端并在其中执行一段可信命令脚本。脚本尾部 `read -r` / `pause`
-/// 是刻意设计的——让命令退出后窗口不要瞬间关闭，用户才看得到 `command
-/// not found` / `ModuleNotFoundError` 这类诊断信息。
-///
-/// **Security**：`command_line` 会被原样拼进 shell/batch 脚本，调用方必须
-/// 保证它是可信字符串（当前只由后端硬编码调用）。
-pub(crate) fn launch_terminal_running(command_line: &str, label: &str) -> Result<(), String> {
-    #[cfg(target_os = "macos")]
-    let temp_dir = std::env::temp_dir();
-    #[cfg(target_os = "macos")]
-    let pid = std::process::id();
-
-    #[cfg(target_os = "macos")]
-    let (script_file, script_content) = {
-        let file = temp_dir.join(format!("fyagent_{}_{}.sh", label, pid));
-        let content = format!(
-            r#"#!/usr/bin/env sh
-trap 'rm -f "{script_path}"' EXIT
-echo "[fyagent] Starting: {label}"
-echo ""
-{cmd}
-echo ""
-echo "[fyagent] Command exited. Press Enter to close."
-read -r _
-"#,
-            script_path = file.display(),
-            label = label,
-            cmd = command_line,
-        );
-        (file, content)
-    };
-
-    #[cfg(target_os = "macos")]
-    {
-        use std::os::unix::fs::PermissionsExt;
-
-        std::fs::write(&script_file, &script_content)
-            .map_err(|e| format!("写入启动脚本失败: {e}"))?;
-        std::fs::set_permissions(&script_file, std::fs::Permissions::from_mode(0o755))
-            .map_err(|e| format!("设置脚本权限失败: {e}"))?;
-
-        let preferred = crate::settings::get_preferred_terminal();
-        let terminal = preferred.as_deref().unwrap_or("terminal");
-
-        let result = match terminal {
-            "iterm2" => launch_macos_iterm2(&script_file),
-            "warp" => launch_macos_warp(&script_file),
-            "alacritty" => launch_macos_open_app("Alacritty", &script_file, true),
-            "kitty" => launch_macos_open_app("kitty", &script_file, false),
-            "ghostty" => launch_macos_ghostty(&script_file),
-            "wezterm" => launch_macos_open_app("WezTerm", &script_file, true),
-            "kaku" => launch_macos_open_app("Kaku", &script_file, true),
-            _ => launch_macos_terminal_app(&script_file),
-        };
-
-        if result.is_err() && terminal != "terminal" {
-            log::warn!(
-                "首选终端 {} 启动失败，回退到 Terminal.app: {:?}",
-                terminal,
-                result.as_ref().err()
-            );
-            return launch_macos_terminal_app(&script_file);
-        }
-        result
-    }
-
-    #[cfg(target_os = "windows")]
-    {
-        let content = format!(
-            "@echo off\r\necho [fyagent] Starting: {label}\r\necho.\r\n{cmd}\r\necho.\r\necho [fyagent] Command exited. Press any key to close.\r\npause >nul\r\ndel \"%~f0\" >nul 2>&1\r\n",
-            label = label,
-            cmd = command_line,
-        );
-        let bat_file = write_persisted_temp_file("fyagent_terminal_", ".bat", content.as_bytes())?;
-
-        let result = crate::platform::process_launch::launch_terminal_script_as_user(&bat_file);
-        if result.is_err() {
-            // The .bat self-deletes only after Explorer successfully hands it
-            // to the interactive user. Never fall back to an elevated terminal
-            // when that hand-off is unavailable.
-            let _ = std::fs::remove_file(&bat_file);
-        }
-        result.map_err(|error| format!("普通用户终端启动失败: {error}"))
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

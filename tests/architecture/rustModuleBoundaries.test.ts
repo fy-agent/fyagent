@@ -56,6 +56,10 @@ describe("Rust modular architecture boundaries", () => {
     const toolingLifecycle = read(
       "src-tauri/src/services/tooling/lifecycle.rs",
     );
+    const toolingDiscovery = read(
+      "src-tauri/src/services/tooling/discovery.rs",
+    );
+    const toolingTerminal = read("src-tauri/src/services/tooling/terminal.rs");
     const toolingVersions = read("src-tauri/src/services/tooling/versions.rs");
     const services = read("src-tauri/src/services/mod.rs");
     const commandNames = [
@@ -71,7 +75,7 @@ describe("Rust modular architecture boundaries", () => {
       "open_provider_terminal",
     ]);
     expect(services).toContain("pub(crate) mod tooling;");
-    for (const implementationMarker of ["ELEVATED_WINDOWS_CLI_BOUNDARY_MESSAGE", "launch_terminal_running"]) {
+    for (const implementationMarker of ["ELEVATED_WINDOWS_CLI_BOUNDARY_MESSAGE"]) {
       expect(toolingCommands).not.toContain(implementationMarker);
       expect(toolingService).toContain(implementationMarker);
     }
@@ -93,9 +97,33 @@ describe("Rust modular architecture boundaries", () => {
     }
     expect(toolingService).not.toMatch(/\bfn fetch_npm_latest_for_tool\b/u);
     expect(toolingService).not.toMatch(/\bfn pick_latest_version\b/u);
+    for (const implementationMarker of [
+      "struct ToolInstallationReport",
+      "run_detected_tool_command_with_timeout",
+    ]) {
+      expect(toolingCommands).not.toContain(implementationMarker);
+      expect(toolingDiscovery).toContain(implementationMarker);
+    }
+    expect(toolingService).not.toMatch(/\bstruct ToolInstallationReport\b/u);
+    expect(toolingService).not.toMatch(
+      /\bfn run_detected_tool_command_with_timeout\b/u,
+    );
+    for (const implementationMarker of [
+      "extract_env_vars_from_config",
+      "launch_terminal_running",
+    ]) {
+      expect(toolingCommands).not.toContain(implementationMarker);
+      expect(toolingTerminal).toContain(implementationMarker);
+    }
+    expect(toolingService).not.toMatch(/\bfn extract_env_vars_from_config\b/u);
+    expect(toolingService).not.toMatch(/\bfn launch_terminal_running\b/u);
+    expect(toolingService).toContain("mod discovery;");
     expect(toolingService).toContain("mod lifecycle;");
+    expect(toolingService).toContain("mod terminal;");
     expect(toolingService).toContain("mod versions;");
-    expect(toolingService).not.toMatch(/pub(?:\(crate\))? mod (?:lifecycle|versions);/u);
+    expect(toolingService).not.toMatch(
+      /pub(?:\(crate\))? mod (?:discovery|lifecycle|terminal|versions);/u,
+    );
   });
 
   it("keeps extracted backend subdomains private behind their owning facades", () => {
@@ -103,9 +131,11 @@ describe("Rust modular architecture boundaries", () => {
     const skill = read("src-tauri/src/services/skill.rs");
     const proxy = read("src-tauri/src/services/proxy.rs");
     const codex = read("src-tauri/src/codex_config.rs");
+    const codexCatalog = read("src-tauri/src/codex_config/catalog.rs");
 
     expect(provider).toContain("mod common_config;");
     expect(provider).toContain("mod universal;");
+    expect(skill).toContain("mod assignment;");
     expect(skill).toContain("mod discovery;");
     expect(skill).toContain("mod marketplace;");
     expect(skill).toContain("mod migration;");
@@ -115,10 +145,17 @@ describe("Rust modular architecture boundaries", () => {
     expect(codex).toContain("mod catalog;");
     expect(codex).toContain("mod features;");
     expect(codex).toContain("mod storage;");
+    expect(codexCatalog).toContain("CODEX_MODEL_CATALOG_TEMPLATE_CACHE");
+    expect(codexCatalog).toContain("fn codex_model_catalog_from_settings");
+    expect(codexCatalog).toContain("fn prepare_codex_config_text_with_model_catalog");
+    expect(codex).not.toMatch(/\bfn codex_model_catalog_from_settings\b/u);
+    expect(codex).not.toMatch(
+      /\bfn prepare_codex_config_text_with_model_catalog\b/u,
+    );
 
     for (const source of [provider, skill, proxy, codex]) {
       expect(source).not.toMatch(
-        /pub(?:\(crate\))? mod (?:common_config|universal|discovery|marketplace|migration|repository|takeover|auth|catalog|features|storage);/u,
+        /pub(?:\(crate\))? mod (?:common_config|universal|assignment|discovery|marketplace|migration|repository|takeover|auth|catalog|features|storage);/u,
       );
     }
   });
