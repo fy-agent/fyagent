@@ -24,6 +24,7 @@ Perform a second, repository-wide architecture audit of the FyAgent renderer and
 10. Complete all local repository quality gates applicable to the final diff, archive the Trellis task, and only then push once. The final archived HEAD on `dev/laiyongjie` must be the pushed HEAD.
 11. Monitor the GitHub `CI / Required` workflow for that exact final archived HEAD. If it fails, classify the failure and fix it (including adjacent unrelated CI blockers when necessary), then re-run the required Trellis finish/archive sequence as needed so the final delivered HEAD is green and archived.
 12. Leave the checkout on `dev/laiyongjie` with a clean working tree and local/remote heads synchronized.
+13. After the task is fully archived, the final archived HEAD is pushed, `CI / Required` is green for that exact SHA, and the checkout is clean/synchronized, invoke `/Users/pythonrust/notify.py` once as the final user notification step.
 
 ## Acceptance Criteria
 
@@ -40,6 +41,7 @@ Perform a second, repository-wide architecture audit of the FyAgent renderer and
 - [ ] Exactly the final archived branch state is pushed to `origin/dev/laiyongjie`; no deliberate pre-archive push is performed.
 - [ ] GitHub CI for the final pushed SHA completes with `CI / Required = success`.
 - [ ] Final working tree is clean and `dev/laiyongjie` matches `origin/dev/laiyongjie`.
+- [ ] `/Users/pythonrust/notify.py` is invoked once only after all delivery/CI acceptance conditions are satisfied.
 
 ## Out of Scope
 

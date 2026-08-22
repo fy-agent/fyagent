@@ -247,3 +247,4 @@ Do not archive while product/SPEC code is dirty or any applicable local gate is 
 - branch remains `dev/laiyongjie`;
 - local/remote heads match;
 - working tree clean.
+- after all preceding conditions are true, invoke `/Users/pythonrust/notify.py` once as the final completion notification; do not run it during intermediate stages or while CI is pending/failing.
