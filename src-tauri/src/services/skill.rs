@@ -12,14 +12,24 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::{self, Read, Write};
 use std::path::{Component, Path, PathBuf};
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::sync::Arc;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::time::timeout;
 
 use crate::app_config::{AppType, InstalledSkill, SkillApps, SkillTargetId, UnmanagedSkill};
 use crate::config::get_app_config_dir;
 use crate::database::Database;
 use crate::error::format_skill_error;
+
+mod discovery;
+
+use discovery::{
+    clamp_discovery_limit, discovery_fingerprint, filter_discoverable_skills,
+    paginate_discoverable_skills, DiscoveryCache, MAX_LIMIT as SKILL_DISCOVERY_MAX_LIMIT,
+};
+#[cfg(test)]
+use discovery::{directory_tail, is_discoverable_installed};
+pub use discovery::{DiscoverAvailablePageRequest, SkillDiscoveryStatus};
 
 // ========== 数据结构 ==========
 
@@ -81,52 +91,6 @@ pub struct DiscoverableSkillsPage {
     pub total_count: usize,
 }
 
-/// 仓库发现的安装状态筛选。非法值由命令层拒绝，不默认为 all。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SkillDiscoveryStatus {
-    All,
-    Installed,
-    Uninstalled,
-}
-
-/// 服务层分页入参。IPC 命令仍使用扁平字段。
-pub struct DiscoverAvailablePageRequest<'a> {
-    pub query: &'a str,
-    pub repo: Option<&'a str>,
-    pub status: SkillDiscoveryStatus,
-    pub limit: usize,
-    pub offset: usize,
-}
-
-impl SkillDiscoveryStatus {
-    pub fn parse(value: &str) -> Result<Self, String> {
-        match value {
-            "all" => Ok(Self::All),
-            "installed" => Ok(Self::Installed),
-            "uninstalled" => Ok(Self::Uninstalled),
-            _ => Err("无效的安装状态筛选".to_string()),
-        }
-    }
-}
-
-const SKILL_DISCOVERY_DEFAULT_LIMIT: usize = 20;
-const SKILL_DISCOVERY_MAX_LIMIT: usize = 50;
-const DISCOVERY_CACHE_TTL: Duration = Duration::from_secs(5 * 60);
-
-struct DiscoveryCache {
-    fingerprint: String,
-    skills: Vec<DiscoverableSkill>,
-    fetched_at: Instant,
-}
-
-fn clamp_discovery_limit(limit: usize) -> usize {
-    if limit == 0 {
-        SKILL_DISCOVERY_DEFAULT_LIMIT
-    } else {
-        limit.min(SKILL_DISCOVERY_MAX_LIMIT)
-    }
-}
-
 fn clamp_skillhub_page_size(limit: usize) -> usize {
     if limit == 0 {
         SKILLHUB_DEFAULT_PAGE_SIZE
@@ -143,81 +107,6 @@ fn official_skillhub_categories() -> Vec<SkillHubCategory> {
             name: (*name).to_string(),
         })
         .collect()
-}
-
-fn discovery_fingerprint(repos: &[SkillRepo]) -> String {
-    let mut keys: Vec<String> = repos
-        .iter()
-        .map(|repo| format!("{}/{}/{}", repo.owner, repo.name, repo.branch))
-        .collect();
-    keys.sort();
-    keys.join("\n")
-}
-
-fn directory_tail(directory: &str) -> String {
-    directory
-        .split(['/', '\\'])
-        .rfind(|part| !part.is_empty())
-        .unwrap_or("")
-        .to_lowercase()
-}
-
-fn is_discoverable_installed(skill: &DiscoverableSkill, installed: &[InstalledSkill]) -> bool {
-    let tail = directory_tail(&skill.directory);
-    installed.iter().any(|item| {
-        directory_tail(&item.directory) == tail
-            && item.repo_owner.as_deref().unwrap_or("").to_lowercase()
-                == skill.repo_owner.to_lowercase()
-            && item.repo_name.as_deref().unwrap_or("").to_lowercase()
-                == skill.repo_name.to_lowercase()
-    })
-}
-
-fn filter_discoverable_skills(
-    skills: &[DiscoverableSkill],
-    installed: &[InstalledSkill],
-    query: &str,
-    repo: Option<&str>,
-    status: SkillDiscoveryStatus,
-) -> Vec<DiscoverableSkill> {
-    let query = query.trim().to_lowercase();
-    skills
-        .iter()
-        .filter(|skill| {
-            if !query.is_empty() {
-                let haystack = format!(
-                    "{} {} {}/{}",
-                    skill.name, skill.description, skill.repo_owner, skill.repo_name
-                )
-                .to_lowercase();
-                if !haystack.contains(&query) {
-                    return false;
-                }
-            }
-            if let Some(repo_key) = repo {
-                if format!("{}/{}", skill.repo_owner, skill.repo_name) != repo_key {
-                    return false;
-                }
-            }
-            match status {
-                SkillDiscoveryStatus::All => true,
-                SkillDiscoveryStatus::Installed => is_discoverable_installed(skill, installed),
-                SkillDiscoveryStatus::Uninstalled => !is_discoverable_installed(skill, installed),
-            }
-        })
-        .cloned()
-        .collect()
-}
-
-fn paginate_discoverable_skills(
-    skills: &[DiscoverableSkill],
-    limit: usize,
-    offset: usize,
-) -> DiscoverableSkillsPage {
-    DiscoverableSkillsPage {
-        skills: skills.iter().skip(offset).take(limit).cloned().collect(),
-        total_count: skills.len(),
-    }
 }
 
 /// 技能对象（兼容旧 API，内部使用 DiscoverableSkill）
@@ -779,7 +668,7 @@ fn parse_agents_lock() -> HashMap<String, LockRepoInfo> {
 // ========== SkillService ==========
 
 pub struct SkillService {
-    discovery_cache: Mutex<Option<DiscoveryCache>>,
+    discovery_cache: DiscoveryCache,
 }
 
 impl Default for SkillService {
@@ -791,38 +680,20 @@ impl Default for SkillService {
 impl SkillService {
     pub fn new() -> Self {
         Self {
-            discovery_cache: Mutex::new(None),
+            discovery_cache: DiscoveryCache::new(),
         }
     }
 
     pub fn invalidate_discovery_cache(&self) {
-        *self.lock_discovery_cache() = None;
-    }
-
-    fn lock_discovery_cache(&self) -> std::sync::MutexGuard<'_, Option<DiscoveryCache>> {
-        self.discovery_cache
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+        self.discovery_cache.invalidate();
     }
 
     fn cached_discovery(&self, fingerprint: &str) -> Option<Vec<DiscoverableSkill>> {
-        let cache = self.lock_discovery_cache();
-        let entry = cache.as_ref()?;
-        if entry.fingerprint != fingerprint {
-            return None;
-        }
-        if entry.fetched_at.elapsed() >= DISCOVERY_CACHE_TTL {
-            return None;
-        }
-        Some(entry.skills.clone())
+        self.discovery_cache.get(fingerprint)
     }
 
     fn store_discovery_cache(&self, fingerprint: String, skills: Vec<DiscoverableSkill>) {
-        *self.lock_discovery_cache() = Some(DiscoveryCache {
-            fingerprint,
-            skills,
-            fetched_at: Instant::now(),
-        });
+        self.discovery_cache.store(fingerprint, skills);
     }
 
     /// 构建 Skill 文档 URL（指向仓库中的 SKILL.md 文件）
