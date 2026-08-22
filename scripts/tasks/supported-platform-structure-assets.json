@@ -203,7 +203,7 @@
     ],
     [
       "src-tauri/src/services/tooling.rs",
-      "be746ee1380dbaa9e67157caadd0e1c52df36d774c5af80a57677d63210734e5"
+      "8827a0b8b6cd65ad10530a5267ca93b316dbf9b9310becae3e095543284c6020"
     ],
     [
       "src-tauri/src/services/tooling/discovery.rs",
@@ -320,6 +320,10 @@
     [
       "src/lib/platform.ts",
       "220bae4f18ccd08a041f5ad2c1982722a35b268934cf9a025b4af7148184139e"
+    ],
+    [
+      "tests/architecture/rustModuleBoundaries.test.ts",
+      "ed0cafcbda2daf9bad8fff1bb9f609a4520f3cf7596e2fbb67c8406cae23ea8b"
     ],
     [
       "tests/codexUserHelperContract.test.ts",

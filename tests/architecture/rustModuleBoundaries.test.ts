@@ -97,6 +97,9 @@ describe("Rust modular architecture boundaries", () => {
       expect(toolingLifecycle).toContain(lifecyclePrivateMarker);
       expect(toolingService).not.toContain(lifecyclePrivateMarker);
     }
+    expect(toolingService).toMatch(
+      /#\[cfg\(target_os = "macos"\)\]\s+use lifecycle::\{[\s\S]*?npm_install_command_for,[\s\S]*?\};/u,
+    );
     for (const implementationMarker of [
       "fetch_npm_latest_for_tool",
       "pick_latest_version",

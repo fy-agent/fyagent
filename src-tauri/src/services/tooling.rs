@@ -12,14 +12,15 @@ mod versions;
 use lifecycle::*;
 use lifecycle::{
     build_tool_lifecycle_command, chain_update_commands, is_lifecycle_writable,
-    normalize_requested_tools, npm_install_command_for, official_update_args,
-    tool_action_shell_command, LifecycleCommandShell, ToolLifecycleAction,
+    normalize_requested_tools, official_update_args, tool_action_shell_command,
+    LifecycleCommandShell, ToolLifecycleAction,
 };
 #[cfg(target_os = "windows")]
 use lifecycle::{grok_install_windows_command, win_double_quote, windows_cmd_double_quote_arg};
 #[cfg(target_os = "macos")]
 use lifecycle::{
-    CLAUDE_INSTALL_UNIX, GROK_INSTALL_UNIX, HERMES_INSTALL_UNIX, OPENCODE_INSTALL_UNIX,
+    npm_install_command_for, CLAUDE_INSTALL_UNIX, GROK_INSTALL_UNIX, HERMES_INSTALL_UNIX,
+    OPENCODE_INSTALL_UNIX,
 };
 
 use versions::{
