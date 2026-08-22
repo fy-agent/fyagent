@@ -2,15 +2,18 @@
 //!
 //! Handles provider CRUD operations, switching, and configuration management.
 
+mod common_config;
 mod endpoints;
 mod gemini_auth;
 mod live;
+mod universal;
 mod usage;
 
 use indexmap::IndexMap;
 use regex::Regex;
 use serde::Deserialize;
 use serde_json::Value;
+use std::collections::HashMap;
 use std::fmt;
 use std::fs;
 use std::io::ErrorKind;
@@ -1982,8 +1985,11 @@ mod tests {
             }
         });
 
-        let snippet =
-            ProviderService::extract_gemini_common_config(&settings).expect("extract should work");
+        let snippet = ProviderService::extract_common_config_snippet_from_settings(
+            AppType::Gemini,
+            &settings,
+        )
+        .expect("extract should work");
         let value: Value = serde_json::from_str(&snippet).expect("snippet is valid JSON");
 
         for leaked in [
@@ -2459,8 +2465,11 @@ GEMINI_TIMEOUT_MS=30000
             "includeCoAuthoredBy": false
         });
 
-        let snippet = ProviderService::extract_claude_common_config(&settings)
-            .expect("extract should succeed");
+        let snippet = ProviderService::extract_common_config_snippet_from_settings(
+            AppType::Claude,
+            &settings,
+        )
+        .expect("extract should succeed");
         let value: Value = serde_json::from_str(&snippet).expect("snippet is valid JSON");
 
         // 所有凭据都不得出现在共享片段里
@@ -2536,8 +2545,11 @@ GEMINI_TIMEOUT_MS=30000
             "theme": "dark"
         });
 
-        let snippet = ProviderService::extract_claude_common_config(&settings)
-            .expect("extract should succeed");
+        let snippet = ProviderService::extract_common_config_snippet_from_settings(
+            AppType::Claude,
+            &settings,
+        )
+        .expect("extract should succeed");
         let value: Value = serde_json::from_str(&snippet).expect("snippet is valid JSON");
         let env = value.get("env");
 
@@ -2641,8 +2653,9 @@ command = "legacy-cmd"
 "#;
 
         let settings = json!({ "config": config_toml });
-        let extracted = ProviderService::extract_codex_common_config(&settings)
-            .expect("extract_codex_common_config should succeed");
+        let extracted =
+            ProviderService::extract_common_config_snippet_from_settings(AppType::Codex, &settings)
+                .expect("extract_codex_common_config should succeed");
 
         assert!(
             !extracted
@@ -2700,8 +2713,9 @@ command = "legacy-cmd"
     fn extract_codex_common_config_keeps_user_set_web_search() {
         let config_toml = "web_search = \"enabled\"\ndisable_response_storage = true\n";
         let settings = json!({ "config": config_toml });
-        let extracted = ProviderService::extract_codex_common_config(&settings)
-            .expect("extract should succeed");
+        let extracted =
+            ProviderService::extract_common_config_snippet_from_settings(AppType::Codex, &settings)
+                .expect("extract should succeed");
         assert!(
             extracted.contains("web_search = \"enabled\""),
             "a user-set web_search value is a shareable preference, got: {extracted}"
@@ -5420,16 +5434,10 @@ impl ProviderService {
             .get(&current_id)
             .ok_or_else(|| AppError::Message(format!("Provider {current_id} not found")))?;
 
-        match app_type {
-            AppType::Claude => Self::extract_claude_common_config(&provider.settings_config),
-            AppType::ClaudeDesktop => Ok(String::new()),
-            AppType::Codex => Self::extract_codex_common_config(&provider.settings_config),
-            AppType::Gemini => Self::extract_gemini_common_config(&provider.settings_config),
-            AppType::GrokBuild => Ok(String::new()),
-            AppType::OpenCode => Self::extract_opencode_common_config(&provider.settings_config),
-            AppType::OpenClaw => Self::extract_openclaw_common_config(&provider.settings_config),
-            AppType::Hermes => Ok(String::new()), // Hermes doesn't use common config snippets
-        }
+        common_config::extract_common_config_snippet_from_settings(
+            app_type,
+            &provider.settings_config,
+        )
     }
 
     /// Extract common config snippet from a config value (e.g. editor content).
@@ -5437,16 +5445,7 @@ impl ProviderService {
         app_type: AppType,
         settings_config: &Value,
     ) -> Result<String, AppError> {
-        match app_type {
-            AppType::Claude => Self::extract_claude_common_config(settings_config),
-            AppType::ClaudeDesktop => Ok(String::new()),
-            AppType::Codex => Self::extract_codex_common_config(settings_config),
-            AppType::Gemini => Self::extract_gemini_common_config(settings_config),
-            AppType::GrokBuild => Ok(String::new()),
-            AppType::OpenCode => Self::extract_opencode_common_config(settings_config),
-            AppType::OpenClaw => Self::extract_openclaw_common_config(settings_config),
-            AppType::Hermes => Ok(String::new()), // Hermes doesn't use common config snippets
-        }
+        common_config::extract_common_config_snippet_from_settings(app_type, settings_config)
     }
 
     /// 判断一个 env / 顶层配置键名是否为凭据/机密：凡命中一律不得写入共享的
@@ -5460,262 +5459,7 @@ impl ProviderService {
     /// 单数 `*_TOKEN`、AWS Bedrock / Vertex 凭据、以及通用 secret / password /
     /// 私钥命名。
     pub(crate) fn is_sensitive_config_key(name: &str) -> bool {
-        let upper = name.to_ascii_uppercase();
-
-        // 单数 `_TOKEN` 命中 AWS_SESSION_TOKEN 等，但**不**误伤复数 `_TOKENS`
-        // （CLAUDE_CODE_MAX_OUTPUT_TOKENS / MAX_THINKING_TOKENS 是正常可共享配置）。
-        const SENSITIVE_SUFFIXES: &[&str] = &[
-            // 裸 `_KEY` 是最常见的凭据写法（OPENAI_KEY / GROQ_KEY / XAI_KEY…），
-            // 必须单列：只枚举 `_API_KEY` / `_ACCESS_KEY` 这些子类，等于把最普通
-            // 的那一种漏在外面。下面几条 `_*_KEY` 被它蕴含，保留是为了说明覆盖面。
-            "_KEY",
-            "_API_KEY",
-            "_ACCESS_KEY",
-            "_ACCESS_KEY_ID",
-            "_KEY_ID",
-            "_PRIVATE_KEY",
-            // 不带分隔符的复合写法各走各的后缀：`_KEY` 够不着 `..._APIKEY`
-            // （倒数第四个字符是 I 不是下划线）。VOLC_ACCESSKEY 是火山引擎文档
-            // 里的正式变量名，本仓库就实现了火山 AK/SK 用量查询。
-            "_APIKEY",
-            "_ACCESSKEY",
-            "_SECRETKEY",
-            "_APITOKEN",
-            "_AUTH_TOKEN",
-            "_TOKEN",
-            // GITHUB_PAT / GITLAB_PAT 等 personal access token 的惯用写法，
-            // 既不含 TOKEN 也不含 KEY，前面每一条规则都够不着。
-            "_PAT",
-            // 口令类的常见缩写。`_PASS` 不会误伤 `*_BYPASS`（那个以 `_BYPASS`
-            // 结尾），`_PWD` 也不会误伤 shell 的 PWD / OLDPWD。
-            "_PWD",
-            "_PASS",
-            "_PASSPHRASE",
-            "_CREDS",
-        ];
-        const SENSITIVE_EXACT: &[&str] = &[
-            "APIKEY",
-            "API_KEY",
-            "TOKEN",
-            "SECRET",
-            "PASSWORD",
-            "CREDENTIALS",
-        ];
-        // contains：覆盖 AWS_SECRET_ACCESS_KEY / *_CLIENT_SECRET /
-        // GOOGLE_APPLICATION_CREDENTIALS / AWS_BEARER_TOKEN_BEDROCK 等变体。
-        const SENSITIVE_CONTAINS: &[&str] = &[
-            "SECRET",
-            "PASSWORD",
-            "PASSWD",
-            "CREDENTIAL",
-            "PRIVATE_KEY",
-            "BEARER_TOKEN",
-        ];
-
-        SENSITIVE_EXACT.contains(&upper.as_str())
-            || SENSITIVE_SUFFIXES.iter().any(|s| upper.ends_with(s))
-            || SENSITIVE_CONTAINS.iter().any(|c| upper.contains(c))
-    }
-
-    /// Extract common config for Claude (JSON format)
-    fn extract_claude_common_config(settings: &Value) -> Result<String, AppError> {
-        let mut config = settings.clone();
-
-        // 供应商专属的**非机密**字段（模型 + 端点），不应共享。凭据/机密不在此列举，
-        // 改由 `is_sensitive_config_key`（模式匹配）统一剥离，新供应商的 `*_API_KEY`
-        // 等无需再手工补名单即可被覆盖。
-        const ENV_PROVIDER_SPECIFIC_EXCLUDES: &[&str] = &[
-            "ANTHROPIC_MODEL",
-            "ANTHROPIC_REASONING_MODEL", // legacy: 已废弃，但旧配置可能残留
-            "ANTHROPIC_DEFAULT_HAIKU_MODEL",
-            "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME",
-            "ANTHROPIC_DEFAULT_OPUS_MODEL",
-            "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME",
-            "ANTHROPIC_DEFAULT_SONNET_MODEL",
-            "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME",
-            // Fable 是 v3.16.3 新增的第四档模型映射，与 haiku/sonnet/opus 同属供应商专属，
-            // 不得进入通用配置片段，否则会污染其它供应商（issue #4272）。
-            "ANTHROPIC_DEFAULT_FABLE_MODEL",
-            "ANTHROPIC_DEFAULT_FABLE_MODEL_NAME",
-            "CLAUDE_CODE_SUBAGENT_MODEL",
-            // Context limits follow the actual upstream model. Sharing these
-            // across providers can cap GPT/Kimi to the wrong window and make
-            // Claude Code compact too early or miss the upstream limit.
-            "CLAUDE_CODE_MAX_CONTEXT_TOKENS",
-            "CLAUDE_CODE_AUTO_COMPACT_WINDOW",
-            "ANTHROPIC_BASE_URL",
-        ];
-
-        const TOP_LEVEL_EXCLUDES: &[&str] = &[
-            "apiBaseUrl",
-            // Legacy model fields
-            "primaryModel",
-            "smallFastModel",
-        ];
-
-        // Remove env fields: provider-specific (models/endpoint) + 任何凭据键。
-        if let Some(env) = config.get_mut("env").and_then(|v| v.as_object_mut()) {
-            let sensitive: Vec<String> = env
-                .keys()
-                .filter(|k| Self::is_sensitive_config_key(k))
-                .cloned()
-                .collect();
-            for key in ENV_PROVIDER_SPECIFIC_EXCLUDES {
-                env.remove(*key);
-            }
-            for key in &sensitive {
-                env.remove(key);
-            }
-            // If env is empty after removal, remove the env object itself
-            if env.is_empty() {
-                config.as_object_mut().map(|obj| obj.remove("env"));
-            }
-        }
-
-        // Remove top-level fields: legacy model fields + 任何凭据键
-        // （例如非标准的顶层 apiKey / api_key / *_TOKEN）。
-        if let Some(obj) = config.as_object_mut() {
-            let sensitive: Vec<String> = obj
-                .keys()
-                .filter(|k| Self::is_sensitive_config_key(k))
-                .cloned()
-                .collect();
-            for key in TOP_LEVEL_EXCLUDES {
-                obj.remove(*key);
-            }
-            for key in &sensitive {
-                obj.remove(key);
-            }
-        }
-
-        // Check if result is empty
-        if config.as_object().is_none_or(|obj| obj.is_empty()) {
-            return Ok("{}".to_string());
-        }
-
-        serde_json::to_string_pretty(&config)
-            .map_err(|e| AppError::Message(format!("Serialization failed: {e}")))
-    }
-
-    /// Extract common config for Codex (TOML format)
-    fn extract_codex_common_config(settings: &Value) -> Result<String, AppError> {
-        // Codex config is stored as { "auth": {...}, "config": "toml string" }
-        let config_toml = settings
-            .get("config")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
-
-        if config_toml.is_empty() {
-            return Ok(String::new());
-        }
-
-        let mut doc = config_toml
-            .parse::<toml_edit::DocumentMut>()
-            .map_err(|e| AppError::Message(format!("TOML parse error: {e}")))?;
-
-        // Remove provider-specific fields.
-        let root = doc.as_table_mut();
-        root.remove("model");
-        root.remove("model_provider");
-        // Legacy/alt formats might use a top-level base_url.
-        root.remove("base_url");
-        // wire_api 与 base_url 同属供应商路由语义：无 model_provider 时
-        // update_codex_toml_field / 前端 setCodexWireApi 都会把它落在顶层，
-        // 进了片段会改写其它供应商的协议选择（chat vs responses）。
-        root.remove("wire_api");
-
-        // Remove entire model_providers table (provider-specific configuration)
-        root.remove("model_providers");
-
-        // MCP 服务器归 DB mcp_servers 表所有：进了共享片段会绕过按应用的
-        // 启用状态被合并进所有勾选通用配置的供应商，且在通用配置编辑框里
-        // 显示为一份"重复"的 MCP 配置。
-        root.remove("mcp_servers");
-        // 历史错误格式 [mcp.servers] 一并剥离（与 strip_codex_mcp_servers_from_settings
-        // 一致）：sync_all_enabled 只管理 [mcp_servers.*]，legacy 形态一旦进了
-        // 片段就会被合并进所有供应商，且没有任何同步路径能清掉这个孤儿。
-        if let Some(mcp_tbl) = root
-            .get_mut("mcp")
-            .and_then(|item| item.as_table_like_mut())
-        {
-            mcp_tbl.remove("servers");
-            if mcp_tbl.is_empty() {
-                root.remove("mcp");
-            }
-        }
-
-        // fyagent 写 live 时注入的产物一律不进共享片段：
-        // - experimental_bearer_token 正常写在 [model_providers.<id>] 内（上面
-        //   整表已剥），但无活跃路由 / 内建保留 id / 路由表缺失三种 fallback
-        //   会落在顶层——不剥等于把 API 密钥写进共享片段。
-        root.remove("experimental_bearer_token");
-        // - model_catalog_json 指向按供应商生成的 catalog 投影文件（DB 为 SSOT）。
-        root.remove("model_catalog_json");
-        // - web_search 只剥 fyagent 注入的 "disabled" 哨兵；用户手设的其它值
-        //   属于可共享偏好，保留。
-        if root
-            .get(crate::codex_config::CODEX_WEB_SEARCH_FIELD)
-            .and_then(|item| item.as_str())
-            == Some(crate::codex_config::CODEX_WEB_SEARCH_DISABLED)
-        {
-            root.remove(crate::codex_config::CODEX_WEB_SEARCH_FIELD);
-        }
-
-        // Clean up multiple empty lines (keep at most one blank line).
-        let mut cleaned = String::new();
-        let mut blank_run = 0usize;
-        for line in doc.to_string().lines() {
-            if line.trim().is_empty() {
-                blank_run += 1;
-                if blank_run <= 1 {
-                    cleaned.push('\n');
-                }
-                continue;
-            }
-            blank_run = 0;
-            cleaned.push_str(line);
-            cleaned.push('\n');
-        }
-
-        Ok(cleaned.trim().to_string())
-    }
-
-    /// Extract common config for Gemini (JSON format)
-    ///
-    /// Extracts `.env` values while excluding provider-specific credentials:
-    /// - GOOGLE_GEMINI_BASE_URL
-    /// - GEMINI_API_KEY
-    fn extract_gemini_common_config(settings: &Value) -> Result<String, AppError> {
-        let env = settings.get("env").and_then(|v| v.as_object());
-
-        let mut snippet = serde_json::Map::new();
-        if let Some(env) = env {
-            for (key, value) in env {
-                // 端点按名剥离（它不是凭据，模式匹配够不着）；凭据全部交给
-                // `is_sensitive_config_key` 统一模式匹配（与 Claude 提取器一致）。
-                // 只列固定名单会漏掉下一个 `*_API_KEY` —— 例如 `GOOGLE_API_KEY`
-                // （provider.rs 认可的一等 Gemini 凭据），而共享片段会被 deep-merge
-                // 回其它 Gemini 供应商，漏剥即等于把 A 账号的密钥写进 B 供应商并
-                // 发往 B 的 base_url。`GEMINI_API_KEY` 不必单列：`_KEY` 后缀已覆盖。
-                if key == "GOOGLE_GEMINI_BASE_URL" || Self::is_sensitive_config_key(key) {
-                    continue;
-                }
-                let Value::String(v) = value else {
-                    continue;
-                };
-                let trimmed = v.trim();
-                if !trimmed.is_empty() {
-                    snippet.insert(key.to_string(), Value::String(trimmed.to_string()));
-                }
-            }
-        }
-
-        if snippet.is_empty() {
-            return Ok("{}".to_string());
-        }
-
-        serde_json::to_string_pretty(&Value::Object(snippet))
-            .map_err(|e| AppError::Message(format!("Serialization failed: {e}")))
+        common_config::is_sensitive_config_key(name)
     }
 
     /// 一次性清理：把历史泄漏进 Gemini 共享片段的凭据从所有存储位置抹掉。
@@ -5931,50 +5675,6 @@ impl ProviderService {
         state.db.set_setting(FLAG, "true")?;
         log::info!("Gemini 通用配置凭据清理完成");
         Ok(())
-    }
-
-    /// Extract common config for OpenCode (JSON format)
-    fn extract_opencode_common_config(settings: &Value) -> Result<String, AppError> {
-        // OpenCode uses a different config structure with npm, options, models
-        // For common config, we exclude provider-specific fields like apiKey
-        let mut config = settings.clone();
-
-        // Remove provider-specific fields
-        if let Some(obj) = config.as_object_mut() {
-            if let Some(options) = obj.get_mut("options").and_then(|v| v.as_object_mut()) {
-                options.remove("apiKey");
-                options.remove("baseURL");
-            }
-            // Keep npm and models as they might be common
-        }
-
-        if config.is_null() || (config.is_object() && config.as_object().unwrap().is_empty()) {
-            return Ok("{}".to_string());
-        }
-
-        serde_json::to_string_pretty(&config)
-            .map_err(|e| AppError::Message(format!("Serialization failed: {e}")))
-    }
-
-    /// Extract common config for OpenClaw (JSON format)
-    fn extract_openclaw_common_config(settings: &Value) -> Result<String, AppError> {
-        // OpenClaw uses a different config structure with baseUrl, apiKey, api, models
-        // For common config, we exclude provider-specific fields like apiKey
-        let mut config = settings.clone();
-
-        // Remove provider-specific fields
-        if let Some(obj) = config.as_object_mut() {
-            obj.remove("apiKey");
-            obj.remove("baseUrl");
-            // Keep api and models as they might be common
-        }
-
-        if config.is_null() || (config.is_object() && config.as_object().unwrap().is_empty()) {
-            return Ok("{}".to_string());
-        }
-
-        serde_json::to_string_pretty(&config)
-            .map_err(|e| AppError::Message(format!("Serialization failed: {e}")))
     }
 
     /// Import default configuration during startup.
@@ -6564,141 +6264,4 @@ pub struct ProviderSortUpdate {
     pub id: String,
     #[serde(rename = "sortIndex")]
     pub sort_index: usize,
-}
-
-// ============================================================================
-// 统一供应商（Universal Provider）服务方法
-// ============================================================================
-
-use crate::provider::UniversalProvider;
-use std::collections::HashMap;
-
-impl ProviderService {
-    /// 获取所有统一供应商
-    pub fn list_universal(
-        state: &AppState,
-    ) -> Result<HashMap<String, UniversalProvider>, AppError> {
-        state.db.get_all_universal_providers()
-    }
-
-    /// 获取单个统一供应商
-    pub fn get_universal(
-        state: &AppState,
-        id: &str,
-    ) -> Result<Option<UniversalProvider>, AppError> {
-        state.db.get_universal_provider(id)
-    }
-
-    /// 添加或更新统一供应商（不自动同步，需手动调用 sync_universal_to_apps）
-    pub fn upsert_universal(
-        state: &AppState,
-        provider: UniversalProvider,
-    ) -> Result<bool, AppError> {
-        // 保存统一供应商
-        state.db.save_universal_provider(&provider)?;
-
-        Ok(true)
-    }
-
-    /// 删除统一供应商
-    pub fn delete_universal(state: &AppState, id: &str) -> Result<bool, AppError> {
-        // 获取统一供应商（用于删除生成的子供应商）
-        let provider = state.db.get_universal_provider(id)?;
-
-        // 删除统一供应商
-        state.db.delete_universal_provider(id)?;
-
-        // 删除生成的子供应商
-        if let Some(p) = provider {
-            if p.apps.claude {
-                let claude_id = format!("universal-claude-{id}");
-                let _ = state.db.delete_provider("claude", &claude_id);
-            }
-            if p.apps.codex {
-                let codex_id = format!("universal-codex-{id}");
-                let _ = state.db.delete_provider("codex", &codex_id);
-            }
-            if p.apps.gemini {
-                let gemini_id = format!("universal-gemini-{id}");
-                let _ = state.db.delete_provider("gemini", &gemini_id);
-            }
-        }
-
-        Ok(true)
-    }
-
-    /// 同步统一供应商到各应用
-    pub fn sync_universal_to_apps(state: &AppState, id: &str) -> Result<bool, AppError> {
-        let provider = state
-            .db
-            .get_universal_provider(id)?
-            .ok_or_else(|| AppError::Message(format!("统一供应商 {id} 不存在")))?;
-
-        // 同步到 Claude
-        if let Some(mut claude_provider) = provider.to_claude_provider() {
-            // 合并已有配置
-            if let Some(existing) = state.db.get_provider_by_id(&claude_provider.id, "claude")? {
-                let mut merged = existing.settings_config.clone();
-                Self::merge_json(&mut merged, &claude_provider.settings_config);
-                claude_provider.settings_config = merged;
-            }
-            state.db.save_provider("claude", &claude_provider)?;
-        } else {
-            // 如果禁用了 Claude，删除对应的子供应商
-            let claude_id = format!("universal-claude-{id}");
-            let _ = state.db.delete_provider("claude", &claude_id);
-        }
-
-        // 同步到 Codex
-        if let Some(mut codex_provider) = provider.to_codex_provider() {
-            // 合并已有配置
-            if let Some(existing) = state.db.get_provider_by_id(&codex_provider.id, "codex")? {
-                let mut merged = existing.settings_config.clone();
-                Self::merge_json(&mut merged, &codex_provider.settings_config);
-                codex_provider.settings_config = merged;
-            }
-            state.db.save_provider("codex", &codex_provider)?;
-        } else {
-            let codex_id = format!("universal-codex-{id}");
-            let _ = state.db.delete_provider("codex", &codex_id);
-        }
-
-        // 同步到 Gemini
-        if let Some(mut gemini_provider) = provider.to_gemini_provider() {
-            // 合并已有配置
-            if let Some(existing) = state.db.get_provider_by_id(&gemini_provider.id, "gemini")? {
-                let mut merged = existing.settings_config.clone();
-                Self::merge_json(&mut merged, &gemini_provider.settings_config);
-                gemini_provider.settings_config = merged;
-            }
-            state.db.save_provider("gemini", &gemini_provider)?;
-        } else {
-            let gemini_id = format!("universal-gemini-{id}");
-            let _ = state.db.delete_provider("gemini", &gemini_id);
-        }
-
-        Ok(true)
-    }
-
-    /// 递归合并 JSON：base 为底，patch 覆盖同名字段
-    fn merge_json(base: &mut serde_json::Value, patch: &serde_json::Value) {
-        use serde_json::Value;
-
-        match (base, patch) {
-            (Value::Object(base_map), Value::Object(patch_map)) => {
-                for (k, v_patch) in patch_map {
-                    match base_map.get_mut(k) {
-                        Some(v_base) => Self::merge_json(v_base, v_patch),
-                        None => {
-                            base_map.insert(k.clone(), v_patch.clone());
-                        }
-                    }
-                }
-            }
-            // 其它类型：直接覆盖
-            (base_val, patch_val) => {
-                *base_val = patch_val.clone();
-            }
-        }
-    }
 }

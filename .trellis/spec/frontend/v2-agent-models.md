@@ -489,6 +489,12 @@ fetch/save controls.
 - Rust derives one stable reserved Provider ID per app. The renderer cannot
   submit a generic Provider, arbitrary ID, category, metadata, usage script,
   icon, sort order, or live-config fragment.
+- Codex `imageExtension: true` derives `requires_openai_auth = false` plus
+  provider-scoped `experimental_bearer_token` equal to `apiKey`, because
+  current Codex ignores `auth.json` in that mode. `imageExtension: false`
+  keeps `requires_openai_auth = true` and writes `apiKey` only to
+  `auth.OPENAI_API_KEY`. The host owns this projection; the renderer still
+  sends only the minimum request.
 - One per-app/config critical section serializes quick setup with every writer
   of the same Provider/current/live files. Guarded internals never reacquire the
   non-reentrant public lock.
@@ -565,6 +571,7 @@ fetch/save controls.
 | WorkBuddy revision or overwrite token drifts                                               | Write nothing; reread before claiming state                                                             |
 | Provider Base URL has userinfo/query/fragment or a credential component                    | Reject before DB/current/live mutation                                                                  |
 | Provider request is empty, generic, wrong-ID, or has public/secret collision               | Reject in Rust; no state mutation                                                                       |
+| Codex `imageExtension: true` omits `experimental_bearer_token` while `requires_openai_auth` is false | Host derivation/test fails; current Codex would not send `auth.json`'s key |
 | Concurrent Provider/live writer                                                            | Serialize or detect conflict; never return a split DB/current/live state                                |
 | Required atomic step fails and compensation succeeds                                       | Return `APPLY_FAILED_ROLLED_BACK`; UI may say rollback confirmed                                        |
 | Compensation is incomplete                                                                 | Return `ROLLBACK_PARTIAL_STATE_UNKNOWN`; stop writes and state that authority is unknown                |
@@ -648,6 +655,9 @@ Required focused coverage includes:
 - minimum Provider request/unknown-field rejection, fixed derived IDs/shapes,
   empty/URL/credential collisions, success warnings, current reread mismatch,
   full rollback, rollback-partial structured outcome, and secret-free errors;
+  Codex image-extension derivation must write `experimental_bearer_token`
+  when `requires_openai_auth` is false and must keep the key in `auth.json`
+  only when image-extension is off;
 - barrier/timeout tests across quick setup and generic add/update/delete/switch,
   current/live reapply, MCP config writers, post-write observation failure, and
   all Codex live/catalog files; no deadlock and no split state;

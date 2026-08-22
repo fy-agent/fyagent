@@ -1,0 +1,7 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/tasks/08-22-modular-maintainability-phase2/research.md", "reason": "Use the measured second-pass audit and adopted/rejected architecture evidence when choosing extraction boundaries."}
+{"file": ".trellis/spec/backend/modular-boundaries.md", "reason": "Preserve modular-monolith facades, privacy and transaction-owner rules while decomposing Rust hotspots."}
+{"file": ".trellis/spec/frontend/modular-boundaries.md", "reason": "Preserve V2/leftover/neutral ownership and renderer platform boundaries during frontend decomposition."}
+{"file": ".trellis/spec/frontend/v2-shell.md", "reason": "Keep the production V2 layer direction, FeaturePorts boundary and shared UI ownership intact."}
+{"file": ".trellis/spec/frontend/reuse.md", "reason": "Reuse existing shared V2 owners and avoid page-local duplication or speculative layers."}
+{"file": ".trellis/spec/backend/development-environment.md", "reason": "Run all build/test operations through the guarded mise/current-host toolchain."}

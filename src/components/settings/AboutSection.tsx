@@ -15,8 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { getVersion } from "@tauri-apps/api/app";
-import { settingsApi } from "@/lib/api";
+import { settingsApi, systemApi } from "@/lib/api";
 import type {
   RuntimePrivilegeStatus,
   ToolInstallation,
@@ -309,7 +308,7 @@ export function AboutSection({
     // 拆成两条独立链路：应用版本一拿到就立刻显示，工具探测各自渐进刷新，互不阻塞。
     const loadAppVersion = async () => {
       try {
-        const appVersion = await getVersion();
+        const appVersion = await systemApi.getVersion();
         appVersionCache = appVersion;
         if (active) {
           setVersion(appVersion);

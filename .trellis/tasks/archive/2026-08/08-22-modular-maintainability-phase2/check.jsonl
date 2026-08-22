@@ -1,0 +1,7 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/tasks/08-22-modular-maintainability-phase2/prd.md", "reason": "Verify final implementation against the user-approved requirements and archive-before-push acceptance."}
+{"file": ".trellis/tasks/08-22-modular-maintainability-phase2/design.md", "reason": "Check that final module ownership matches the evidence-backed design and intentional retention decisions."}
+{"file": ".trellis/spec/backend/modular-boundaries.md", "reason": "Audit Rust facade/privacy/transport and security invariants after refactor."}
+{"file": ".trellis/spec/frontend/modular-boundaries.md", "reason": "Audit V2/leftover/shared import direction and platform adapter boundaries."}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Use the repository frontend, desktop mock and visual-preflight validation requirements."}
+{"file": ".trellis/spec/backend/github-ci-workflow.md", "reason": "Final remote evidence must be CI / Required success for the exact archived pushed SHA."}

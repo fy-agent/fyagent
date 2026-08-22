@@ -18,6 +18,10 @@ use std::sync::Arc;
 use tauri::Emitter;
 use tokio::sync::RwLock;
 
+mod takeover;
+
+use takeover::{codex_config_has_base_url_matching, is_local_proxy_url, proxy_urls_match};
+
 /// 用于接管 Live 配置时的占位符（避免客户端提示缺少 key，同时不泄露真实 Token）
 const PROXY_TOKEN_PLACEHOLDER: &str = "PROXY_MANAGED";
 
@@ -1971,56 +1975,6 @@ impl ProxyService {
         }
     }
 
-    fn is_local_proxy_url(url: &str) -> bool {
-        let url = url.trim();
-        if !url.starts_with("http://") {
-            return false;
-        }
-        let rest = &url["http://".len()..];
-        rest.starts_with("127.0.0.1")
-            || rest.starts_with("localhost")
-            || rest.starts_with("0.0.0.0")
-            || rest.starts_with("[::1]")
-            || rest.starts_with("[::]")
-            || rest.starts_with("::1")
-            || rest.starts_with("::")
-    }
-
-    fn proxy_urls_match(actual: &str, expected: &str) -> bool {
-        actual.trim().trim_end_matches('/') == expected.trim().trim_end_matches('/')
-    }
-
-    fn codex_config_has_base_url_matching(
-        config_text: &str,
-        predicate: impl Fn(&str) -> bool,
-    ) -> bool {
-        let Ok(doc) = toml::from_str::<toml::Value>(config_text) else {
-            return false;
-        };
-
-        let active_provider = doc
-            .get("model_provider")
-            .and_then(|value| value.as_str())
-            .map(str::trim)
-            .filter(|id| !id.is_empty());
-
-        if let Some(provider_id) = active_provider {
-            if doc
-                .get("model_providers")
-                .and_then(|value| value.get(provider_id))
-                .and_then(|value| value.get("base_url"))
-                .and_then(|value| value.as_str())
-                .is_some_and(&predicate)
-            {
-                return true;
-            }
-        }
-
-        doc.get("base_url")
-            .and_then(|value| value.as_str())
-            .is_some_and(predicate)
-    }
-
     async fn live_takeover_matches_current_proxy(
         &self,
         app_type: &AppType,
@@ -2035,7 +1989,7 @@ impl ProxyService {
                     .get("env")
                     .and_then(|value| value.get("ANTHROPIC_BASE_URL"))
                     .and_then(|value| value.as_str())
-                    .is_some_and(|url| Self::proxy_urls_match(url, &proxy_url));
+                    .is_some_and(|url| proxy_urls_match(url, &proxy_url));
                 Ok(Self::is_claude_live_taken_over(&config) && base_url_matches)
             }
             AppType::Codex => {
@@ -2044,8 +1998,8 @@ impl ProxyService {
                     .get("config")
                     .and_then(|value| value.as_str())
                     .is_some_and(|config_text| {
-                        Self::codex_config_has_base_url_matching(config_text, |url| {
-                            Self::proxy_urls_match(url, &proxy_codex_base_url)
+                        codex_config_has_base_url_matching(config_text, |url| {
+                            proxy_urls_match(url, &proxy_codex_base_url)
                         })
                     });
                 Ok(Self::is_codex_live_taken_over(&config) && base_url_matches)
@@ -2056,7 +2010,7 @@ impl ProxyService {
                     .get("env")
                     .and_then(|value| value.get("GOOGLE_GEMINI_BASE_URL"))
                     .and_then(|value| value.as_str())
-                    .is_some_and(|url| Self::proxy_urls_match(url, &proxy_url));
+                    .is_some_and(|url| proxy_urls_match(url, &proxy_url));
                 Ok(Self::is_gemini_live_taken_over(&config) && base_url_matches)
             }
             AppType::GrokBuild => {
@@ -2067,7 +2021,7 @@ impl ProxyService {
                         .and_then(Value::as_str)
                         .is_some_and(|config_toml| {
                             crate::grok_config::base_url_matches(config_toml, |url| {
-                                Self::proxy_urls_match(url, &proxy_grok_base_url)
+                                proxy_urls_match(url, &proxy_grok_base_url)
                             })
                         });
                 Ok(Self::is_grok_live_taken_over(&config) && base_url_matches)
@@ -2097,7 +2051,7 @@ impl ProxyService {
         if env
             .get("ANTHROPIC_BASE_URL")
             .and_then(|v| v.as_str())
-            .map(Self::is_local_proxy_url)
+            .map(is_local_proxy_url)
             .unwrap_or(false)
         {
             env.remove("ANTHROPIC_BASE_URL");
@@ -2135,7 +2089,7 @@ impl ProxyService {
 
     /// Remove local proxy base_url from TOML（委托给 codex_config 共享实现）
     fn remove_local_toml_base_url(toml_str: &str) -> String {
-        crate::codex_config::remove_codex_toml_base_url_if(toml_str, Self::is_local_proxy_url)
+        crate::codex_config::remove_codex_toml_base_url_if(toml_str, is_local_proxy_url)
     }
 
     fn cleanup_gemini_takeover_placeholders_in_live(&self) -> Result<(), String> {
@@ -2152,7 +2106,7 @@ impl ProxyService {
         if env
             .get("GOOGLE_GEMINI_BASE_URL")
             .and_then(|v| v.as_str())
-            .map(Self::is_local_proxy_url)
+            .map(is_local_proxy_url)
             .unwrap_or(false)
         {
             env.remove("GOOGLE_GEMINI_BASE_URL");

@@ -1,0 +1,31 @@
+{
+  "id": "modular-maintainability-phase2",
+  "name": "modular-maintainability-phase2",
+  "title": "Full-stack modular maintainability refactor",
+  "description": "",
+  "status": "completed",
+  "dev_type": null,
+  "scope": "full-stack-architecture",
+  "package": null,
+  "priority": "P2",
+  "creator": "pythonrust",
+  "assignee": "pythonrust",
+  "createdAt": "2026-08-22",
+  "completedAt": "2026-08-22",
+  "branch": "dev/laiyongjie",
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {
+    "delivery": "staged-commits",
+    "final_branch": "dev/laiyongjie",
+    "ci_required": "true",
+    "push_policy": "archive-then-single-push"
+  }
+}

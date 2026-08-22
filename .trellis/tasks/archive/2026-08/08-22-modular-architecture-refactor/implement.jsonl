@@ -1,0 +1,6 @@
+{"file":".trellis/tasks/08-22-modular-architecture-refactor/research.md","reason":"Repository hotspot evidence, baseline failures, and external architecture research that constrain the refactor."}
+{"file":".trellis/spec/frontend/index.md","reason":"Authoritative renderer entry, V2/leftover coexistence, pre-development checks, and frontend quality requirements."}
+{"file":".trellis/spec/frontend/v2-shell.md","reason":"Production V2 layer/platform/import boundary that must remain intact during refactoring."}
+{"file":".trellis/spec/frontend/reuse.md","reason":"V2 reuse and leftover compatibility rules, including the neutral shared-code boundary."}
+{"file":".trellis/spec/backend/index.md","reason":"Rust/Tauri host pre-development rules and baseline quality commands."}
+{"file":".trellis/spec/guides/index.md","reason":"Cross-layer and code-reuse thinking triggers for changes spanning Rust, IPC, adapters, and React."}

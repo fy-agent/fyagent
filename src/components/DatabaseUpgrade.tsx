@@ -1,7 +1,7 @@
 import { useTranslation } from "react-i18next";
-import { invoke } from "@tauri-apps/api/core";
 import { AlertTriangle, FolderOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { settingsApi, systemApi } from "@/lib/api";
 
 interface DatabaseUpgradeProps {
   payload: {
@@ -83,7 +83,7 @@ export function DatabaseUpgrade({ payload }: DatabaseUpgradeProps) {
           <Button
             variant="outline"
             className="gap-2"
-            onClick={() => void invoke("open_app_config_folder")}
+            onClick={() => void settingsApi.openAppConfigFolder()}
           >
             <FolderOpen className="h-4 w-4" />
             {t("dbUpgrade.openConfigDir", "打开配置目录")}
@@ -92,7 +92,7 @@ export function DatabaseUpgrade({ payload }: DatabaseUpgradeProps) {
           <Button
             variant="ghost"
             className="ml-auto text-muted-foreground"
-            onClick={() => void invoke("exit_app")}
+            onClick={() => void systemApi.exit()}
           >
             {t("dbUpgrade.quit", "退出")}
           </Button>

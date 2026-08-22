@@ -12,14 +12,33 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::{self, Read, Write};
 use std::path::{Component, Path, PathBuf};
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::sync::Arc;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::time::timeout;
 
 use crate::app_config::{AppType, InstalledSkill, SkillApps, SkillTargetId, UnmanagedSkill};
 use crate::config::get_app_config_dir;
 use crate::database::Database;
 use crate::error::format_skill_error;
+
+mod assignment;
+mod discovery;
+mod marketplace;
+mod migration;
+mod repository;
+
+use discovery::{
+    clamp_discovery_limit, discovery_fingerprint, filter_discoverable_skills,
+    paginate_discoverable_skills, DiscoveryCache, MAX_LIMIT as SKILL_DISCOVERY_MAX_LIMIT,
+};
+#[cfg(test)]
+use discovery::{directory_tail, is_discoverable_installed};
+pub use discovery::{DiscoverAvailablePageRequest, SkillDiscoveryStatus};
+pub use marketplace::{SkillHubSearchResult, SkillsShSearchResult};
+use repository::{
+    build_repo_info_from_lock, get_agents_skills_dir, parse_agents_lock, save_repos_from_lock,
+    LockRepoInfo,
+};
 
 // ========== 数据结构 ==========
 
@@ -79,145 +98,6 @@ pub struct DiscoverableSkill {
 pub struct DiscoverableSkillsPage {
     pub skills: Vec<DiscoverableSkill>,
     pub total_count: usize,
-}
-
-/// 仓库发现的安装状态筛选。非法值由命令层拒绝，不默认为 all。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SkillDiscoveryStatus {
-    All,
-    Installed,
-    Uninstalled,
-}
-
-/// 服务层分页入参。IPC 命令仍使用扁平字段。
-pub struct DiscoverAvailablePageRequest<'a> {
-    pub query: &'a str,
-    pub repo: Option<&'a str>,
-    pub status: SkillDiscoveryStatus,
-    pub limit: usize,
-    pub offset: usize,
-}
-
-impl SkillDiscoveryStatus {
-    pub fn parse(value: &str) -> Result<Self, String> {
-        match value {
-            "all" => Ok(Self::All),
-            "installed" => Ok(Self::Installed),
-            "uninstalled" => Ok(Self::Uninstalled),
-            _ => Err("无效的安装状态筛选".to_string()),
-        }
-    }
-}
-
-const SKILL_DISCOVERY_DEFAULT_LIMIT: usize = 20;
-const SKILL_DISCOVERY_MAX_LIMIT: usize = 50;
-const DISCOVERY_CACHE_TTL: Duration = Duration::from_secs(5 * 60);
-
-struct DiscoveryCache {
-    fingerprint: String,
-    skills: Vec<DiscoverableSkill>,
-    fetched_at: Instant,
-}
-
-fn clamp_discovery_limit(limit: usize) -> usize {
-    if limit == 0 {
-        SKILL_DISCOVERY_DEFAULT_LIMIT
-    } else {
-        limit.min(SKILL_DISCOVERY_MAX_LIMIT)
-    }
-}
-
-fn clamp_skillhub_page_size(limit: usize) -> usize {
-    if limit == 0 {
-        SKILLHUB_DEFAULT_PAGE_SIZE
-    } else {
-        limit.min(SKILL_DISCOVERY_MAX_LIMIT)
-    }
-}
-
-fn official_skillhub_categories() -> Vec<SkillHubCategory> {
-    SKILLHUB_OFFICIAL_CATEGORIES
-        .iter()
-        .map(|(key, name)| SkillHubCategory {
-            key: (*key).to_string(),
-            name: (*name).to_string(),
-        })
-        .collect()
-}
-
-fn discovery_fingerprint(repos: &[SkillRepo]) -> String {
-    let mut keys: Vec<String> = repos
-        .iter()
-        .map(|repo| format!("{}/{}/{}", repo.owner, repo.name, repo.branch))
-        .collect();
-    keys.sort();
-    keys.join("\n")
-}
-
-fn directory_tail(directory: &str) -> String {
-    directory
-        .split(['/', '\\'])
-        .rfind(|part| !part.is_empty())
-        .unwrap_or("")
-        .to_lowercase()
-}
-
-fn is_discoverable_installed(skill: &DiscoverableSkill, installed: &[InstalledSkill]) -> bool {
-    let tail = directory_tail(&skill.directory);
-    installed.iter().any(|item| {
-        directory_tail(&item.directory) == tail
-            && item.repo_owner.as_deref().unwrap_or("").to_lowercase()
-                == skill.repo_owner.to_lowercase()
-            && item.repo_name.as_deref().unwrap_or("").to_lowercase()
-                == skill.repo_name.to_lowercase()
-    })
-}
-
-fn filter_discoverable_skills(
-    skills: &[DiscoverableSkill],
-    installed: &[InstalledSkill],
-    query: &str,
-    repo: Option<&str>,
-    status: SkillDiscoveryStatus,
-) -> Vec<DiscoverableSkill> {
-    let query = query.trim().to_lowercase();
-    skills
-        .iter()
-        .filter(|skill| {
-            if !query.is_empty() {
-                let haystack = format!(
-                    "{} {} {}/{}",
-                    skill.name, skill.description, skill.repo_owner, skill.repo_name
-                )
-                .to_lowercase();
-                if !haystack.contains(&query) {
-                    return false;
-                }
-            }
-            if let Some(repo_key) = repo {
-                if format!("{}/{}", skill.repo_owner, skill.repo_name) != repo_key {
-                    return false;
-                }
-            }
-            match status {
-                SkillDiscoveryStatus::All => true,
-                SkillDiscoveryStatus::Installed => is_discoverable_installed(skill, installed),
-                SkillDiscoveryStatus::Uninstalled => !is_discoverable_installed(skill, installed),
-            }
-        })
-        .cloned()
-        .collect()
-}
-
-fn paginate_discoverable_skills(
-    skills: &[DiscoverableSkill],
-    limit: usize,
-    offset: usize,
-) -> DiscoverableSkillsPage {
-    DiscoverableSkillsPage {
-        skills: skills.iter().skip(offset).take(limit).cloned().collect(),
-        total_count: skills.len(),
-    }
 }
 
 /// 技能对象（兼容旧 API，内部使用 DiscoverableSkill）
@@ -344,169 +224,6 @@ pub struct MigrationResult {
     pub errors: Vec<String>,
 }
 
-// ========== skills.sh API 类型 ==========
-
-/// skills.sh API 原始响应
-///
-/// 注意：API 命名不一致（searchType 是 camelCase，duration_ms 是 snake_case），
-/// 因此不能用 rename_all，需要逐字段指定。
-#[derive(Debug, Clone, Deserialize)]
-struct SkillsShApiResponse {
-    pub query: String,
-    #[serde(rename = "searchType")]
-    #[allow(dead_code)]
-    pub search_type: String,
-    pub skills: Vec<SkillsShApiSkill>,
-    pub count: usize,
-    #[allow(dead_code)]
-    pub duration_ms: u64,
-}
-
-/// skills.sh API 原始技能条目
-#[derive(Debug, Clone, Deserialize)]
-struct SkillsShApiSkill {
-    pub id: String,
-    #[serde(rename = "skillId")]
-    pub skill_id: String,
-    pub name: String,
-    pub installs: u64,
-    pub source: String,
-}
-
-/// skills.sh 搜索结果（返回给前端）
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SkillsShSearchResult {
-    pub skills: Vec<SkillsShDiscoverableSkill>,
-    pub total_count: usize,
-    pub query: String,
-}
-
-/// skills.sh 可安装技能（返回给前端）
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SkillsShDiscoverableSkill {
-    pub key: String,
-    pub name: String,
-    pub directory: String,
-    pub repo_owner: String,
-    pub repo_name: String,
-    pub repo_branch: String,
-    pub installs: u64,
-    pub readme_url: Option<String>,
-}
-
-// ========== SkillHub（Skill 市场）==========
-
-const SKILLHUB_API_ORIGIN: &str = "https://api.skillhub.cn";
-/// 官方 find-skill 文档：列表/分类浏览走 `/api/skills`，不要用 `/api/v1/search`。
-const SKILLHUB_LIST_PATH: &str = "/api/skills";
-const SKILLHUB_DOWNLOAD_PATH: &str = "/api/v1/download";
-const SKILLHUB_PUBLIC_SKILL_PREFIX: &str = "https://skillhub.cn/skills/";
-/// 写入已安装记录的仓库坐标，供发现页匹配；不是 GitHub owner。
-pub const SKILLHUB_MARKET_OWNER: &str = "skillhub.cn";
-const SKILLHUB_QUERY_MAX_CHARS: usize = 200;
-const SKILLHUB_DEFAULT_PAGE_SIZE: usize = 21;
-/// 官方 12 个一级分类，口径见 SkillHub `find-skill-skillhub` 的 categories.md。
-const SKILLHUB_OFFICIAL_CATEGORIES: &[(&str, &str)] = &[
-    ("office-efficiency", "办公效率"),
-    ("content-creation", "内容创作"),
-    ("dev-programming", "开发编程"),
-    ("data-analysis", "数据分析"),
-    ("design-media", "设计多媒体"),
-    ("ai-agent", "AI Agent"),
-    ("knowledge-management", "知识管理"),
-    ("business-ops", "商业运营"),
-    ("education", "教育学习"),
-    ("professional", "行业专业"),
-    ("it-ops-security", "IT 运维与安全"),
-    ("life-service", "生活服务"),
-];
-
-/// SkillHub 列表接口原始响应
-#[derive(Debug, Clone, Deserialize)]
-struct SkillHubListApiResponse {
-    #[serde(default)]
-    code: i32,
-    #[serde(default)]
-    message: String,
-    #[serde(default)]
-    data: SkillHubListApiData,
-}
-
-#[derive(Debug, Clone, Deserialize, Default)]
-struct SkillHubListApiData {
-    #[serde(default)]
-    total: usize,
-    #[serde(default)]
-    skills: Vec<SkillHubApiSkill>,
-}
-
-/// SkillHub 搜索条目。字段名在 camelCase / snake_case 之间混用。
-#[derive(Debug, Clone, Deserialize)]
-struct SkillHubApiSkill {
-    slug: String,
-    #[serde(default, alias = "displayName")]
-    display_name: Option<String>,
-    #[serde(default)]
-    name: Option<String>,
-    #[serde(default, alias = "descriptionZh")]
-    description_zh: Option<String>,
-    #[serde(default)]
-    description: Option<String>,
-    #[serde(default)]
-    summary: Option<String>,
-    #[serde(default)]
-    version: Option<String>,
-    #[serde(default, alias = "ownerName")]
-    owner_name: Option<String>,
-    #[serde(default)]
-    downloads: Option<u64>,
-    #[serde(default)]
-    installs: Option<u64>,
-    #[serde(default)]
-    category: Option<String>,
-}
-
-/// SkillHub 搜索结果（返回给前端）
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SkillHubSearchResult {
-    pub skills: Vec<SkillHubDiscoverableSkill>,
-    pub total_count: usize,
-    pub query: String,
-    #[serde(default)]
-    pub categories: Vec<SkillHubCategory>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SkillHubCategory {
-    pub key: String,
-    pub name: String,
-}
-
-/// SkillHub 可安装技能（返回给前端）
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SkillHubDiscoverableSkill {
-    pub key: String,
-    pub slug: String,
-    pub name: String,
-    pub description: String,
-    pub directory: String,
-    pub repo_owner: String,
-    pub repo_name: String,
-    pub repo_branch: String,
-    pub version: Option<String>,
-    pub owner_name: Option<String>,
-    pub installs: Option<u64>,
-    pub downloads: Option<u64>,
-    pub homepage_url: String,
-    pub readme_url: Option<String>,
-    pub category: Option<String>,
-}
-
 struct ZipInstallProvenance {
     id: String,
     repo_owner: String,
@@ -627,159 +344,10 @@ pub struct ImportSkillSelection {
     pub apps: SkillApps,
 }
 
-#[derive(Debug, Clone, Deserialize)]
-struct LegacySkillMigrationRow {
-    directory: String,
-    app_type: String,
-}
-
-// ========== ~/.agents/ lock 文件解析 ==========
-
-/// `~/.agents/.skill-lock.json` 文件结构
-#[derive(Deserialize)]
-struct AgentsLockFile {
-    skills: HashMap<String, AgentsLockSkill>,
-}
-
-/// lock 文件中单个 skill 的信息
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct AgentsLockSkill {
-    source: Option<String>,
-    source_type: Option<String>,
-    source_url: Option<String>,
-    skill_path: Option<String>,
-    branch: Option<String>,
-    source_branch: Option<String>,
-}
-
-#[derive(Debug, Clone)]
-struct LockRepoInfo {
-    owner: String,
-    repo: String,
-    skill_path: Option<String>,
-    branch: Option<String>,
-}
-
-fn normalize_optional_branch(branch: Option<String>) -> Option<String> {
-    branch.and_then(|b| {
-        let trimmed = b.trim();
-        if trimmed.is_empty() {
-            None
-        } else {
-            Some(trimmed.to_string())
-        }
-    })
-}
-
-fn parse_branch_from_source_url(source_url: Option<&str>) -> Option<String> {
-    let source_url = source_url?;
-    let source_url = source_url.trim();
-    if source_url.is_empty() {
-        return None;
-    }
-
-    // 支持 https://github.com/owner/repo/tree/<branch>/...
-    if let Some((_, after_tree)) = source_url.split_once("/tree/") {
-        let branch = after_tree
-            .split('/')
-            .next()
-            .map(str::trim)
-            .filter(|s| !s.is_empty())?;
-        return Some(branch.to_string());
-    }
-
-    // 支持 URL fragment: ...git#branch
-    if let Some((_, fragment)) = source_url.split_once('#') {
-        let branch = fragment
-            .split('&')
-            .next()
-            .map(str::trim)
-            .filter(|s| !s.is_empty())?;
-        return Some(branch.to_string());
-    }
-
-    // 支持 query: ...?branch=xxx / ?ref=xxx
-    if let Some((_, query)) = source_url.split_once('?') {
-        for pair in query.split('&') {
-            let Some((key, value)) = pair.split_once('=') else {
-                continue;
-            };
-            if matches!(key, "branch" | "ref") {
-                let branch = value.trim();
-                if !branch.is_empty() {
-                    return Some(branch.to_string());
-                }
-            }
-        }
-    }
-
-    None
-}
-
-/// 获取 `~/.agents/skills/` 目录（存在时返回）
-fn get_agents_skills_dir() -> Option<PathBuf> {
-    let dir = crate::config::get_home_dir().join(".agents").join("skills");
-    dir.exists().then_some(dir)
-}
-
-/// 解析 `~/.agents/.skill-lock.json`，返回 skill_name -> 仓库信息
-fn parse_agents_lock() -> HashMap<String, LockRepoInfo> {
-    let path = crate::config::get_home_dir()
-        .join(".agents")
-        .join(".skill-lock.json");
-    let content = match fs::read_to_string(&path) {
-        Ok(c) => c,
-        Err(e) => {
-            if e.kind() == std::io::ErrorKind::NotFound {
-                log::debug!("未找到 agents lock 文件: {}", path.display());
-            } else {
-                log::warn!("读取 agents lock 文件失败 ({}): {}", path.display(), e);
-            }
-            return HashMap::new();
-        }
-    };
-    let lock: AgentsLockFile = match serde_json::from_str(&content) {
-        Ok(l) => l,
-        Err(e) => {
-            log::warn!("解析 agents lock 文件失败 ({}): {}", path.display(), e);
-            return HashMap::new();
-        }
-    };
-    let parsed: HashMap<String, LockRepoInfo> = lock
-        .skills
-        .into_iter()
-        .filter_map(|(name, skill)| {
-            let source = skill.source?;
-            if skill.source_type.as_deref() != Some("github") {
-                return None;
-            }
-            let (owner, repo) = source.split_once('/')?;
-            let branch = normalize_optional_branch(skill.branch)
-                .or_else(|| normalize_optional_branch(skill.source_branch))
-                .or_else(|| parse_branch_from_source_url(skill.source_url.as_deref()));
-            Some((
-                name,
-                LockRepoInfo {
-                    owner: owner.to_string(),
-                    repo: repo.to_string(),
-                    skill_path: skill.skill_path,
-                    branch,
-                },
-            ))
-        })
-        .collect();
-    log::info!(
-        "agents lock 文件解析完成，共识别 {} 个 github skill",
-        parsed.len()
-    );
-    parsed
-}
-
 // ========== SkillService ==========
 
 pub struct SkillService {
-    discovery_cache: Mutex<Option<DiscoveryCache>>,
+    discovery_cache: DiscoveryCache,
 }
 
 impl Default for SkillService {
@@ -791,38 +359,20 @@ impl Default for SkillService {
 impl SkillService {
     pub fn new() -> Self {
         Self {
-            discovery_cache: Mutex::new(None),
+            discovery_cache: DiscoveryCache::new(),
         }
     }
 
     pub fn invalidate_discovery_cache(&self) {
-        *self.lock_discovery_cache() = None;
-    }
-
-    fn lock_discovery_cache(&self) -> std::sync::MutexGuard<'_, Option<DiscoveryCache>> {
-        self.discovery_cache
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+        self.discovery_cache.invalidate();
     }
 
     fn cached_discovery(&self, fingerprint: &str) -> Option<Vec<DiscoverableSkill>> {
-        let cache = self.lock_discovery_cache();
-        let entry = cache.as_ref()?;
-        if entry.fingerprint != fingerprint {
-            return None;
-        }
-        if entry.fetched_at.elapsed() >= DISCOVERY_CACHE_TTL {
-            return None;
-        }
-        Some(entry.skills.clone())
+        self.discovery_cache.get(fingerprint)
     }
 
     fn store_discovery_cache(&self, fingerprint: String, skills: Vec<DiscoverableSkill>) {
-        *self.lock_discovery_cache() = Some(DiscoveryCache {
-            fingerprint,
-            skills,
-            fetched_at: Instant::now(),
-        });
+        self.discovery_cache.store(fingerprint, skills);
     }
 
     /// 构建 Skill 文档 URL（指向仓库中的 SKILL.md 文件）
@@ -1962,8 +1512,7 @@ impl SkillService {
     /// 启用：复制到应用目录
     /// 禁用：从应用目录删除
     pub fn toggle_app(db: &Arc<Database>, id: &str, app: &AppType, enabled: bool) -> Result<()> {
-        let target = SkillTargetId::try_from(app)?;
-        Self::toggle_target(db, id, &target, enabled)
+        assignment::toggle_app(db, id, app, enabled)
     }
 
     pub fn toggle_target(
@@ -1972,24 +1521,7 @@ impl SkillService {
         app: &SkillTargetId,
         enabled: bool,
     ) -> Result<()> {
-        let mut skill = Self::adopt_observed_if_needed(db, id)?;
-
-        // 更新状态
-        skill.apps.set_enabled_for_target(app, enabled);
-
-        // 同步文件
-        if enabled {
-            Self::sync_to_app_dir(&skill.directory, app)?;
-        } else {
-            Self::remove_from_target(&skill.directory, app)?;
-        }
-
-        // 更新数据库
-        db.update_skill_apps(id, &skill.apps)?;
-
-        log::info!("Skill {} 的 {:?} 状态已更新为 {}", skill.name, app, enabled);
-
-        Ok(())
+        assignment::toggle_target(db, id, app, enabled)
     }
 
     /// 扫描未管理的 Skills
@@ -2756,82 +2288,11 @@ impl SkillService {
 
     /// 同步所有已启用的 Skills 到指定应用
     pub fn sync_to_target(db: &Arc<Database>, app: &SkillTargetId) -> Result<()> {
-        let skills = db.get_all_installed_skills()?;
-        let ssot_dir = Self::get_ssot_dir()?;
-        let app_dir = Self::get_target_skills_dir(app)?;
-
-        let indexed_skills: HashMap<String, &InstalledSkill> = skills
-            .values()
-            .map(|skill| (skill.directory.to_lowercase(), skill))
-            .collect();
-
-        if app.requires_copy() {
-            // Vendor targets are copy-only. Do not enumerate/delete arbitrary
-            // entries through the legacy path walker; only explicitly managed
-            // single-segment leaves may pass the frozen-parent delete path.
-            for skill in skills.values() {
-                if skill.apps.is_enabled_for_target(app) {
-                    if let Err(err) = Self::sync_to_app_dir(&skill.directory, app) {
-                        log::warn!(
-                            "同步 skill {} 到 {app:?} 失败，跳过该条: {err}",
-                            skill.directory
-                        );
-                    }
-                } else if let Err(err) = Self::remove_from_target(&skill.directory, app) {
-                    log::warn!(
-                        "从 {app:?} 安全移除 skill {} 失败，跳过该条: {err}",
-                        skill.directory
-                    );
-                }
-            }
-            return Ok(());
-        }
-
-        if app_dir.exists() {
-            for entry in fs::read_dir(&app_dir)? {
-                let entry = entry?;
-                let path = entry.path();
-                let dir_name = entry.file_name().to_string_lossy().to_string();
-
-                if dir_name.starts_with('.') {
-                    continue;
-                }
-
-                if let Some(skill) = indexed_skills.get(&dir_name.to_lowercase()) {
-                    if !skill.apps.is_enabled_for_target(app) {
-                        Self::remove_path(&path)?;
-                    }
-                    continue;
-                }
-
-                if Self::is_symlink_to_ssot(&path, &ssot_dir) {
-                    Self::remove_path(&path)?;
-                }
-            }
-        }
-
-        for skill in skills.values() {
-            if skill.apps.is_enabled_for_target(app) {
-                // 逐条容错而非 `?` 传播：本函数在切换供应商时被调用，一条脏
-                // directory（存量点开头目录、或同步导入灌进来的行）不得让整个
-                // 应用的 skill 同步全部失效。
-                if let Err(err) = Self::sync_to_app_dir(&skill.directory, app) {
-                    log::warn!(
-                        "同步 skill {} 到 {app:?} 失败，跳过该条: {err}",
-                        skill.directory
-                    );
-                }
-            }
-        }
-
-        Ok(())
+        assignment::sync_to_target(db, app)
     }
 
     pub fn sync_to_app(db: &Arc<Database>, app: &AppType) -> Result<()> {
-        let Ok(target) = SkillTargetId::try_from(app) else {
-            return Ok(());
-        };
-        Self::sync_to_target(db, &target)
+        assignment::sync_to_app(db, app)
     }
 
     // ========== 发现功能（保留原有逻辑）==========
@@ -4265,30 +3726,18 @@ impl SkillService {
 
     /// 列出仓库
     pub fn list_repos(&self, store: &SkillStore) -> Vec<SkillRepo> {
-        store.repos.clone()
+        repository::list_repos(store)
     }
 
     /// 添加仓库
     pub fn add_repo(&self, store: &mut SkillStore, repo: SkillRepo) -> Result<()> {
-        if let Some(pos) = store
-            .repos
-            .iter()
-            .position(|r| r.owner == repo.owner && r.name == repo.name)
-        {
-            store.repos[pos] = repo;
-        } else {
-            store.repos.push(repo);
-        }
-
+        repository::add_repo(store, repo);
         Ok(())
     }
 
     /// 删除仓库
     pub fn remove_repo(&self, store: &mut SkillStore, owner: String, name: String) -> Result<()> {
-        store
-            .repos
-            .retain(|r| !(r.owner == owner && r.name == name));
-
+        repository::remove_repo(store, &owner, &name);
         Ok(())
     }
 
@@ -4300,229 +3749,39 @@ impl SkillService {
         limit: usize,
         offset: usize,
     ) -> Result<SkillsShSearchResult> {
-        let client = crate::proxy::http_client::get();
-
-        let url = url::Url::parse_with_params(
-            "https://skills.sh/api/search",
-            &[
-                ("q", query),
-                ("limit", &limit.to_string()),
-                ("offset", &offset.to_string()),
-            ],
-        )?;
-
-        let resp = client
-            .get(url)
-            .timeout(std::time::Duration::from_secs(10))
-            .send()
-            .await?
-            .error_for_status()?
-            .json::<SkillsShApiResponse>()
-            .await?;
-
-        let skills = resp
-            .skills
-            .into_iter()
-            .filter_map(|s| {
-                let parts: Vec<&str> = s.source.splitn(2, '/').collect();
-                if parts.len() != 2 {
-                    return None;
-                }
-                let (owner, repo) = (parts[0].to_string(), parts[1].to_string());
-                // 用与 download_repo 同一套坐标校验，而不是就地写启发式：下面这个
-                // readme_url 最终交给 openExternal 打开，是和 build_skill_doc_url
-                // 同一个 sink。原来的 `contains('.')` 既漏（`splitn(2, '/')` 允许
-                // repo 里带 `/`，`owner/a/b` 能拼出三段路径），又误伤（GitHub 仓库
-                // 名合法含点）。校验 owner 同时也保留了"过滤非 GitHub 来源"的效果
-                // ——`skills.volces.com` 这类带点的 owner 本来就不是合法用户名。
-                if Self::validate_repo_ref(&owner, &repo, "main").is_err() {
-                    return None;
-                }
-                Some(SkillsShDiscoverableSkill {
-                    key: s.id,
-                    name: s.name,
-                    directory: s.skill_id.clone(),
-                    repo_owner: owner.clone(),
-                    repo_name: repo.clone(),
-                    repo_branch: "main".to_string(),
-                    installs: s.installs,
-                    readme_url: Some(format!("https://github.com/{}/{}", owner, repo)),
-                })
-            })
-            .collect();
-
-        Ok(SkillsShSearchResult {
-            skills,
-            total_count: resp.count,
-            query: resp.query,
-        })
+        marketplace::search_skills_sh(query, limit, offset).await
     }
 
     // ========== Skill 市场（SkillHub）==========
 
+    #[cfg(test)]
     pub(crate) fn is_valid_skillhub_slug(slug: &str) -> bool {
-        if slug.is_empty() || slug.len() > 128 || slug == "." || slug == ".." {
-            return false;
-        }
-        let mut chars = slug.chars();
-        let Some(first) = chars.next() else {
-            return false;
-        };
-        first.is_ascii_alphanumeric()
-            && chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
+        marketplace::is_valid_skillhub_slug(slug)
     }
 
-    fn clamp_skillhub_query(query: &str) -> String {
-        query.chars().take(SKILLHUB_QUERY_MAX_CHARS).collect()
-    }
-
-    fn first_nonempty(values: &[Option<String>]) -> Option<String> {
-        values.iter().find_map(|value| {
-            value
-                .as_deref()
-                .map(str::trim)
-                .filter(|text| !text.is_empty())
-                .map(ToOwned::to_owned)
-        })
-    }
-
+    #[cfg(test)]
     pub(crate) fn skillhub_homepage_url(slug: &str) -> Option<String> {
-        if !Self::is_valid_skillhub_slug(slug) {
-            return None;
-        }
-        Some(format!("{SKILLHUB_PUBLIC_SKILL_PREFIX}{slug}"))
+        marketplace::skillhub_homepage_url(slug)
     }
 
-    fn assert_skillhub_api_url(url: &url::Url, expected_path: &str) -> Result<()> {
-        if url.scheme() != "https"
-            || url.host_str() != Some("api.skillhub.cn")
-            || url.path() != expected_path
-        {
-            return Err(anyhow!(format_skill_error(
-                "INVALID_SKILLHUB_URL",
-                &[("url", url.as_str())],
-                Some("checkNetwork"),
-            )));
-        }
-        Ok(())
-    }
-
+    #[cfg(test)]
     pub(crate) fn normalize_skillhub_category(raw: Option<&str>) -> Option<&'static str> {
-        let value = raw.map(str::trim).filter(|text| !text.is_empty())?;
-        let compact = value.to_ascii_lowercase().replace('_', "-");
-        SKILLHUB_OFFICIAL_CATEGORIES
-            .iter()
-            .find(|(key, name)| compact == *key || value == *name)
-            .map(|(key, _)| *key)
+        marketplace::normalize_skillhub_category(raw)
     }
 
+    #[cfg(test)]
     pub(crate) fn skillhub_list_url(
         query: &str,
         category: Option<&str>,
         page: usize,
         page_size: usize,
     ) -> Result<url::Url> {
-        let page = page.max(1);
-        let page_size = clamp_skillhub_page_size(page_size);
-        let category_key = Self::normalize_skillhub_category(category);
-        let sort_by = if query.is_empty() && category_key.is_some() {
-            "downloads"
-        } else {
-            "score"
-        };
-        let page_s = page.to_string();
-        let page_size_s = page_size.to_string();
-        let mut params: Vec<(&str, &str)> = vec![
-            ("page", page_s.as_str()),
-            ("pageSize", page_size_s.as_str()),
-            ("sortBy", sort_by),
-        ];
-        if !query.is_empty() {
-            params.push(("keyword", query));
-        }
-        if let Some(key) = category_key {
-            params.push(("category", key));
-        }
-        let url = url::Url::parse_with_params(
-            &format!("{SKILLHUB_API_ORIGIN}{SKILLHUB_LIST_PATH}"),
-            &params,
-        )?;
-        Self::assert_skillhub_api_url(&url, SKILLHUB_LIST_PATH)?;
-        Ok(url)
+        marketplace::skillhub_list_url(query, category, page, page_size)
     }
 
+    #[cfg(test)]
     pub(crate) fn skillhub_download_url(slug: &str) -> Result<url::Url> {
-        if !Self::is_valid_skillhub_slug(slug) {
-            return Err(anyhow!(format_skill_error(
-                "INVALID_SKILLHUB_SLUG",
-                &[("slug", slug)],
-                Some("checkNetwork"),
-            )));
-        }
-        let url = url::Url::parse_with_params(
-            &format!("{SKILLHUB_API_ORIGIN}{SKILLHUB_DOWNLOAD_PATH}"),
-            &[("slug", slug)],
-        )?;
-        Self::assert_skillhub_api_url(&url, SKILLHUB_DOWNLOAD_PATH)?;
-        let slug_param = url
-            .query_pairs()
-            .find(|(key, _)| key == "slug")
-            .map(|(_, value)| value.into_owned());
-        if slug_param.as_deref() != Some(slug) {
-            return Err(anyhow!(format_skill_error(
-                "INVALID_SKILLHUB_SLUG",
-                &[("slug", slug)],
-                Some("checkNetwork"),
-            )));
-        }
-        Ok(url)
-    }
-
-    fn map_skillhub_item(item: SkillHubApiSkill) -> Option<SkillHubDiscoverableSkill> {
-        if !Self::is_valid_skillhub_slug(&item.slug) {
-            return None;
-        }
-        let homepage = Self::skillhub_homepage_url(&item.slug)?;
-        let name = Self::first_nonempty(&[item.display_name.clone(), item.name.clone()])
-            .unwrap_or_else(|| item.slug.clone());
-        let description = Self::first_nonempty(&[
-            item.description_zh.clone(),
-            item.description.clone(),
-            item.summary.clone(),
-        ])
-        .unwrap_or_default();
-        Some(SkillHubDiscoverableSkill {
-            key: format!("skillhub:{}", item.slug),
-            slug: item.slug.clone(),
-            name,
-            description,
-            directory: item.slug.clone(),
-            repo_owner: SKILLHUB_MARKET_OWNER.to_string(),
-            repo_name: item.slug.clone(),
-            repo_branch: item
-                .version
-                .clone()
-                .filter(|value| !value.trim().is_empty())
-                .unwrap_or_else(|| "skillhub".to_string()),
-            version: Self::first_nonempty(&[item.version]),
-            owner_name: Self::first_nonempty(&[item.owner_name]),
-            installs: item.installs,
-            downloads: item.downloads,
-            homepage_url: homepage.clone(),
-            readme_url: Some(homepage),
-            category: Self::normalize_skillhub_category(item.category.as_deref())
-                .map(str::to_string),
-        })
-    }
-
-    fn dedupe_skillhub_by_slug(
-        skills: Vec<SkillHubDiscoverableSkill>,
-    ) -> Vec<SkillHubDiscoverableSkill> {
-        let mut seen = HashSet::new();
-        skills
-            .into_iter()
-            .filter(|skill| seen.insert(skill.slug.clone()))
-            .collect()
+        marketplace::skillhub_download_url(slug)
     }
 
     /// 搜索 Skill 市场。列表走官方 `GET /api/skills` 的 page / pageSize / category。
@@ -4532,39 +3791,7 @@ impl SkillService {
         offset: usize,
         category: Option<&str>,
     ) -> Result<SkillHubSearchResult> {
-        let query = Self::clamp_skillhub_query(query);
-        let page_size = clamp_skillhub_page_size(limit);
-        let page = offset / page_size.max(1) + 1;
-        let url = Self::skillhub_list_url(&query, category, page, page_size)?;
-        let client = crate::proxy::http_client::get();
-        let resp = client
-            .get(url)
-            .timeout(Duration::from_secs(10))
-            .send()
-            .await?
-            .error_for_status()?
-            .json::<SkillHubListApiResponse>()
-            .await?;
-        if resp.code != 0 {
-            return Err(anyhow!(format_skill_error(
-                "SKILLHUB_LIST_FAILED",
-                &[("code", &resp.code.to_string()), ("message", &resp.message)],
-                Some("checkNetwork"),
-            )));
-        }
-        let skills = Self::dedupe_skillhub_by_slug(
-            resp.data
-                .skills
-                .into_iter()
-                .filter_map(Self::map_skillhub_item)
-                .collect(),
-        );
-        Ok(SkillHubSearchResult {
-            skills,
-            total_count: resp.data.total,
-            query,
-            categories: official_skillhub_categories(),
-        })
+        marketplace::search_skillhub(query, limit, offset, category).await
     }
 
     /// 从 Skill 市场下载 ZIP 并走现有解压安装，不调用 skillhub CLI。
@@ -4573,25 +3800,7 @@ impl SkillService {
         slug: &str,
         current_app: &SkillTargetId,
     ) -> Result<Vec<InstalledSkill>> {
-        let url = Self::skillhub_download_url(slug)?;
-        let bytes = Self::download_bounded_bytes(url, Duration::from_secs(60)).await?;
-        let temp_root = crate::config::get_user_temp_dir();
-        fs::create_dir_all(&temp_root)?;
-        let mut tmp = tempfile::Builder::new()
-            .prefix("skillhub-")
-            .suffix(".zip")
-            .tempfile_in(&temp_root)?;
-        tmp.write_all(&bytes)?;
-        tmp.flush()?;
-        let homepage = Self::skillhub_homepage_url(slug);
-        let provenance = ZipInstallProvenance {
-            id: format!("skillhub:{slug}"),
-            repo_owner: SKILLHUB_MARKET_OWNER.to_string(),
-            repo_name: slug.to_string(),
-            repo_branch: "skillhub".to_string(),
-            readme_url: homepage,
-        };
-        Self::install_from_zip_with_provenance(db, tmp.path(), current_app, Some(&provenance))
+        marketplace::install_skillhub(db, slug, current_app).await
     }
 }
 
@@ -4822,223 +4031,9 @@ fn vendor_copy_regular_file(
     Ok(())
 }
 
-// ========== 迁移支持 ==========
-
-/// 从 lock 文件信息构建 skill 的 ID、仓库字段和 readme URL
-///
-/// 返回 (id, repo_owner, repo_name, repo_branch, readme_url)
-fn build_repo_info_from_lock(
-    lock: &HashMap<String, LockRepoInfo>,
-    dir_name: &str,
-) -> (
-    String,
-    Option<String>,
-    Option<String>,
-    Option<String>,
-    Option<String>,
-) {
-    match lock.get(dir_name) {
-        Some(info) => {
-            let branch = info.branch.clone();
-            let url_branch = branch.clone().unwrap_or_else(|| "HEAD".to_string());
-            // 优先使用 lock 文件中的 skillPath，否则回退到 dir_name/SKILL.md
-            let fallback = format!("{dir_name}/SKILL.md");
-            let doc_path = info.skill_path.as_deref().unwrap_or(&fallback);
-            let url =
-                SkillService::build_skill_doc_url(&info.owner, &info.repo, &url_branch, doc_path);
-            (
-                format!("{}/{}:{dir_name}", info.owner, info.repo),
-                Some(info.owner.clone()),
-                Some(info.repo.clone()),
-                branch,
-                url,
-            )
-        }
-        None => (format!("local:{dir_name}"), None, None, None, None),
-    }
-}
-
-/// 将 lock 文件中发现的仓库保存到 skill_repos（去重）
-fn save_repos_from_lock(
-    db: &Arc<Database>,
-    lock: &HashMap<String, LockRepoInfo>,
-    directories: impl Iterator<Item = impl AsRef<str>>,
-) {
-    let existing_repos: HashSet<(String, String)> = db
-        .get_skill_repos()
-        .unwrap_or_default()
-        .into_iter()
-        .map(|r| (r.owner, r.name))
-        .collect();
-    let mut added = HashSet::new();
-
-    for dir_name in directories {
-        if let Some(info) = lock.get(dir_name.as_ref()) {
-            let key = (info.owner.clone(), info.repo.clone());
-            if !existing_repos.contains(&key) && added.insert(key) {
-                let skill_repo = SkillRepo {
-                    owner: info.owner.clone(),
-                    name: info.repo.clone(),
-                    // 未知分支时使用 HEAD 语义，后续下载会回退到 main/master。
-                    branch: info.branch.clone().unwrap_or_else(|| "HEAD".to_string()),
-                    enabled: true,
-                };
-                // lock 文件由外部 agents CLI 写入，owner/repo/branch 均未经校验，
-                // 且 branch 是从 `/tree/`、fragment、`?ref=` 里抠出来的裸串。
-                if SkillService::validate_repo_ref(
-                    &skill_repo.owner,
-                    &skill_repo.name,
-                    &skill_repo.branch,
-                )
-                .is_err()
-                {
-                    log::warn!(
-                        "跳过 agents lock 中坐标非法的仓库: {}/{}@{}",
-                        skill_repo.owner,
-                        skill_repo.name,
-                        skill_repo.branch
-                    );
-                    continue;
-                }
-                if let Err(e) = db.save_skill_repo(&skill_repo) {
-                    log::warn!("保存 skill 仓库 {}/{} 失败: {}", info.owner, info.repo, e);
-                } else {
-                    log::info!(
-                        "从 agents lock 文件发现并添加仓库: {}/{} ({})",
-                        info.owner,
-                        info.repo,
-                        skill_repo.branch
-                    );
-                }
-            }
-        }
-    }
-}
-
 /// 首次启动迁移：扫描应用目录，重建数据库
 pub fn migrate_skills_to_ssot(db: &Arc<Database>) -> Result<usize> {
-    let ssot_dir = SkillService::get_ssot_dir()?;
-    let agents_lock = parse_agents_lock();
-    let snapshot: Vec<LegacySkillMigrationRow> =
-        match db.get_setting("skills_ssot_migration_snapshot")? {
-            Some(value) if !value.trim().is_empty() => match serde_json::from_str(&value) {
-                Ok(rows) => rows,
-                Err(err) => {
-                    log::warn!("解析 skills 迁移快照失败，将回退到文件系统扫描: {err}");
-                    Vec::new()
-                }
-            },
-            _ => Vec::new(),
-        };
-
-    let has_snapshot = !snapshot.is_empty();
-    let mut discovered: HashMap<String, SkillApps> = HashMap::new();
-
-    if has_snapshot {
-        for row in &snapshot {
-            // snapshot 存在 settings 表里，而 settings 在同步范围内、可被远端快照
-            // 覆盖。下面 discovered 的每个 key 都会被 join 成路径并写回 skills 表，
-            // 所以脏值必须在进入 discovered 之前就滤掉。
-            if SkillService::require_valid_directory(&row.directory).is_err() {
-                log::warn!("跳过 SSOT 迁移快照中非法的 directory: {:?}", row.directory);
-                continue;
-            }
-            if let Ok(app) = row.app_type.parse::<SkillTargetId>() {
-                discovered
-                    .entry(row.directory.clone())
-                    .or_default()
-                    .set_enabled_for_target(&app, true);
-            }
-        }
-    }
-
-    // 扫描各应用目录
-    for app in SkillTargetId::all() {
-        let app_dir = match SkillService::get_target_skills_dir(&app) {
-            Ok(d) => d,
-            Err(_) => continue,
-        };
-
-        let entries = match fs::read_dir(&app_dir) {
-            Ok(e) => e,
-            Err(_) => continue,
-        };
-
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if !path.is_dir() {
-                continue;
-            }
-
-            let dir_name = entry.file_name().to_string_lossy().to_string();
-            if dir_name.starts_with('.') {
-                continue;
-            }
-            if !path.join("SKILL.md").exists() {
-                continue;
-            }
-            if has_snapshot && !discovered.contains_key(&dir_name) {
-                continue;
-            }
-
-            // 复制到 SSOT（如果不存在）
-            let ssot_path = ssot_dir.join(&dir_name);
-            if !ssot_path.exists() {
-                SkillService::copy_dir_recursive(&path, &ssot_path)?;
-            }
-
-            if !has_snapshot {
-                discovered
-                    .entry(dir_name)
-                    .or_default()
-                    .set_enabled_for_target(&app, true);
-            }
-        }
-    }
-
-    // 重建数据库
-    db.clear_skills()?;
-
-    // 将 lock 文件中发现的仓库保存到 skill_repos
-    save_repos_from_lock(db, &agents_lock, discovered.keys());
-
-    let mut count = 0;
-    for (directory, apps) in discovered {
-        let ssot_path = ssot_dir.join(&directory);
-        let skill_md = ssot_path.join("SKILL.md");
-
-        let (name, description) = SkillService::read_skill_name_desc(&skill_md, &directory);
-
-        let (id, repo_owner, repo_name, repo_branch, readme_url) =
-            build_repo_info_from_lock(&agents_lock, &directory);
-
-        let content_hash = SkillService::compute_dir_hash(&ssot_path).ok();
-
-        let skill = InstalledSkill {
-            id,
-            name,
-            description,
-            directory,
-            repo_owner,
-            repo_name,
-            repo_branch,
-            readme_url,
-            apps,
-            installed_at: chrono::Utc::now().timestamp(),
-            content_hash,
-            updated_at: 0,
-            path: None,
-        };
-
-        db.save_skill(&skill)?;
-        count += 1;
-    }
-
-    let _ = db.set_setting("skills_ssot_migration_snapshot", "");
-
-    log::info!("Skills 迁移完成，共 {count} 个");
-
-    Ok(count)
+    migration::migrate_skills_to_ssot(db)
 }
 
 #[cfg(test)]
@@ -5255,73 +4250,6 @@ mod tests {
             Some("https://skillhub.cn/skills/tencent-docs")
         );
         assert!(SkillService::skillhub_homepage_url("../x").is_none());
-    }
-
-    #[test]
-    fn skillhub_maps_zh_description_and_official_list_envelope() {
-        let raw = serde_json::json!({
-            "code": 0,
-            "data": {
-                "total": 2,
-                "skills": [
-                    {
-                        "slug": "tencent-docs",
-                        "displayName": "腾讯文档",
-                        "description_zh": "中文介绍",
-                        "description": "English intro",
-                        "version": "1.0.41",
-                        "owner_name": "tencent-adm",
-                        "installs": 8107,
-                        "category": "office-efficiency"
-                    },
-                    {
-                        "slug": "../evil",
-                        "name": "skip me"
-                    },
-                    {
-                        "slug": "summarize",
-                        "name": "Summarize",
-                        "summary": "摘要",
-                        "category": "开发编程"
-                    }
-                ]
-            }
-        });
-        let parsed: SkillHubListApiResponse = serde_json::from_value(raw).expect("parse");
-        assert_eq!(parsed.data.total, 2);
-        let skills: Vec<_> = parsed
-            .data
-            .skills
-            .into_iter()
-            .filter_map(SkillService::map_skillhub_item)
-            .collect();
-        assert_eq!(skills.len(), 2);
-        assert_eq!(skills[0].name, "腾讯文档");
-        assert_eq!(skills[0].description, "中文介绍");
-        assert_eq!(skills[0].repo_owner, SKILLHUB_MARKET_OWNER);
-        assert_eq!(skills[0].category.as_deref(), Some("office-efficiency"));
-        assert_eq!(
-            skills[0].homepage_url,
-            "https://skillhub.cn/skills/tencent-docs"
-        );
-        assert_eq!(skills[1].description, "摘要");
-        assert_eq!(skills[1].category.as_deref(), Some("dev-programming"));
-    }
-
-    #[test]
-    fn skillhub_page_size_defaults_to_21_and_clamps_page_size_only() {
-        assert_eq!(clamp_skillhub_page_size(0), 21);
-        assert_eq!(clamp_skillhub_page_size(21), 21);
-        assert_eq!(clamp_skillhub_page_size(50), 50);
-        assert_eq!(clamp_skillhub_page_size(100), 50);
-        let page_two = SkillService::skillhub_list_url("", None, 2, 0).expect("default size");
-        assert!(page_two
-            .query_pairs()
-            .any(|(key, value)| key == "pageSize" && value == "21"));
-        assert!(page_two
-            .query_pairs()
-            .any(|(key, value)| key == "page" && value == "2"));
-        assert_eq!(official_skillhub_categories().len(), 12);
     }
 
     #[test]

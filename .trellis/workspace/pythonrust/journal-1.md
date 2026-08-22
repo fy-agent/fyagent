@@ -1152,3 +1152,181 @@ V2 模型页「测试连通」改为对选定模型发真实流式请求，失�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 35: Codex image-mode bearer token
+
+**Date**: 2026-08-21
+**Task**: Codex image-mode bearer token
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+适配新版 Codex：生图模式 requires_openai_auth=false 时把 API Key 同步到 experimental_bearer_token，关闭生图仍只写 auth.json。
+
+### Main Changes
+
+- V2 Codex quick setup 开启生图时写入 provider experimental_bearer_token，并保留 auth.OPENAI_API_KEY
+- Live 写入在 requires_openai_auth=false 时投影 API Key，true/缺省仍只走 auth.json
+- 更新 Codex provider 与 V2 Models spec 契约
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a34a7552` | (see git log) |
+
+### Testing
+
+- [OK] mise run rust:fmt:check / rust:clippy
+- [OK] mise run rust:test -- quick_setup_request
+- [OK] mise run rust:test -- project_live_config_injects_bearer_token
+- [OK] mise run rust:test -- provider_service_switch_codex_projects_bearer_token
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 无需推送，除非用户明确要求
+
+
+## Session 36: Modular maintainability phase 2
+
+**Date**: 2026-08-22
+**Task**: Modular maintainability phase 2
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Completed repository-wide modular maintainability audit and staged refactor: split V2 Tauri adapters, Tooling service ownership, Skill marketplace, Codex auth, Provider common-config policy, and leftover provider config JSON/TOML utilities behind stable facades; added architecture guards, updated backend/frontend modular-boundary SPECs, documented deliberate stop-rules for protocol/transaction coordinators, and passed full prearchive plus V2 quality gates.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `be2df0be` | (see git log) |
+| `2ddb5227` | (see git log) |
+| `55bbc161` | (see git log) |
+| `428e64d8` | (see git log) |
+| `40d5b52d` | (see git log) |
+| `5083d00b` | (see git log) |
+| `1be33c96` | (see git log) |
+| `3c1d3e4f` | (see git log) |
+| `fd63e549` | (see git log) |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 37: Complete P0 modular architecture
+
+**Date**: 2026-08-22
+**Task**: Complete P0 modular architecture
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Completed the four P0 modular architecture improvements across Tooling, Skill, Codex configuration, and V2 feature contracts; updated durable specs and platform/security ownership contracts.
+
+### Main Changes
+
+- Split Tooling into private versions, lifecycle, discovery, and terminal responsibility owners behind the stable service/command surface.
+- Added Skill repository, migration, and assignment owners while preserving the cohesive filesystem-safety transaction boundary.
+- Completed Codex native feature and model-catalog domain ownership behind the stable codex_config facade.
+- Split V2 feature contracts into product-domain owners and kept types.ts as an explicit compatibility facade.
+- Added a repository contract preventing concrete workstation user-home paths in tracked docs and Trellis artifacts.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `69879a24` | (see git log) |
+| `870cb6ae` | (see git log) |
+| `10c68883` | (see git log) |
+| `7bb49e2b` | (see git log) |
+| `f404ac32` | (see git log) |
+| `506ea8c1` | (see git log) |
+| `44531db0` | (see git log) |
+| `b730c694` | (see git log) |
+| `1a327388` | (see git log) |
+| `abdd9a48` | (see git log) |
+| `7cb2289c` | (see git log) |
+| `ceb19a0e` | (see git log) |
+| `bc39f885` | (see git log) |
+| `00358063` | (see git log) |
+| `ea1cd1eb` | (see git log) |
+
+### Testing
+
+- [OK] mise run check passed, including 1478 frontend tests, Rust 2807/0 with 5 ignored, all integrations, supported-platform, and release checks.
+- [OK] V2 lint/typecheck/test passed with 278/278 tests.
+- [OK] check:prearchive passed for the exact active task exclusion.
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 38: Fix Windows Tooling CI ownership
+
+**Date**: 2026-08-22
+**Task**: Fix Windows Tooling CI ownership
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Exact-SHA CI exposed Windows-only Tooling lifecycle tests still referencing private symbols after the owner move; relocated those tests to lifecycle.rs, tightened test-only imports, added a cross-platform ownership guard, and refreshed sealed platform digests.
+
+### Main Changes
+
+- Moved Windows lifecycle encoding/fallback tests to their private lifecycle owner without widening production visibility.
+- Added a source-level architecture guard so macOS CI catches future private lifecycle symbol leakage.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `86e4cf58` | (see git log) |
+
+### Testing
+
+- [OK] mise run check passed locally after the corrective change.
+- [OK] supported-platform and Rust modular boundary focused contracts passed.
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 39: Fix Windows Tooling Clippy import
+
+**Date**: 2026-08-22
+**Task**: Fix Windows Tooling Clippy import
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Exact-SHA Windows CI exposed one platform-only unused lifecycle import under -D warnings; scoped npm_install_command_for to macOS production usage, sealed the new architecture guard, and kept the archived P0 task unchanged.
+
+### Main Changes
+
+- Scoped the lifecycle import to its actual macOS production owner instead of suppressing the Windows lint.
+- Sealed a source-level architecture assertion so non-Windows CI verifies the conditional import.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `bf727670` | (see git log) |
+
+### Testing
+
+- [OK] mise run check passed locally after the corrective change.
+- [OK] supported-platform and Rust modular boundary contracts passed.
+
+### Status
+
+[OK] **Completed**

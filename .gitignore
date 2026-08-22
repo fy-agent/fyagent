@@ -20,11 +20,6 @@ mise.*.local.lock
 .npmrc
 CLAUDE.md
 GEMINI.md
-/.claude
-/.codebuddy
-/.codex
-/.cursor
-/.gemini
 /.fyagent
 /.idea
 /.vscode

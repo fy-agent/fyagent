@@ -1,5 +1,5 @@
 import { readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { extname, join } from "node:path";
 
 import { parse as parseToml } from "smol-toml";
 import ts from "typescript";
@@ -12,33 +12,49 @@ type PermissionEntry = {
   commands: { allow: string[]; deny?: string[] };
 };
 
+function listTypeScriptFiles(directory: string): string[] {
+  return readdirSync(directory, { withFileTypes: true })
+    .flatMap((entry) => {
+      const entryPath = join(directory, entry.name);
+      if (entry.isDirectory()) return listTypeScriptFiles(entryPath);
+      return [".ts", ".tsx"].includes(extname(entry.name)) ? [entryPath] : [];
+    })
+    .sort();
+}
+
 function rendererInvokeCommands(): {
   commands: Set<string>;
   dynamicInvokes: string[];
 } {
-  const path = join(root, "src/v2/shared/platform/tauri/features.ts");
-  const source = readFileSync(path, "utf8");
-  const file = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true);
   const commands = new Set<string>();
   const dynamicInvokes: string[] = [];
 
-  const visit = (node: ts.Node): void => {
-    if (
-      ts.isCallExpression(node) &&
-      ts.isIdentifier(node.expression) &&
-      node.expression.text === "invoke"
-    ) {
-      const command = node.arguments[0];
-      if (command && ts.isStringLiteral(command)) {
-        commands.add(command.text);
-      } else {
-        const position = file.getLineAndCharacterOfPosition(node.getStart());
-        dynamicInvokes.push(`${position.line + 1}:${position.character + 1}`);
+  for (const path of listTypeScriptFiles(
+    join(root, "src/v2/shared/platform/tauri"),
+  )) {
+    const source = readFileSync(path, "utf8");
+    const file = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true);
+
+    const visit = (node: ts.Node): void => {
+      if (
+        ts.isCallExpression(node) &&
+        ts.isIdentifier(node.expression) &&
+        node.expression.text === "invoke"
+      ) {
+        const command = node.arguments[0];
+        if (command && ts.isStringLiteral(command)) {
+          commands.add(command.text);
+        } else {
+          const position = file.getLineAndCharacterOfPosition(node.getStart());
+          dynamicInvokes.push(
+            `${path}:${position.line + 1}:${position.character + 1}`,
+          );
+        }
       }
-    }
-    ts.forEachChild(node, visit);
-  };
-  visit(file);
+      ts.forEachChild(node, visit);
+    };
+    visit(file);
+  }
   return { commands, dynamicInvokes };
 }
 
@@ -103,7 +119,7 @@ describe("V2 native ACL contract", () => {
     const allowed = activeAclCommands();
 
     expect(renderer.dynamicInvokes).toEqual([]);
-    expect(renderer.commands.size).toBe(74);
+    expect(renderer.commands.size).toBe(75);
     expect(
       [...renderer.commands].filter((command) => !registered.has(command)),
     ).toEqual([]);

@@ -22,13 +22,22 @@ const downloadManifestScriptPath = path.resolve(
   "generate-download-manifest.mjs",
 );
 const gitAttributesPath = path.resolve(__dirname, "..", ".gitattributes");
-const miscCommandsPath = path.resolve(
+const toolingServicePath = path.resolve(
   __dirname,
   "..",
   "src-tauri",
   "src",
-  "commands",
-  "misc.rs",
+  "services",
+  "tooling.rs",
+);
+const toolingDiscoveryPath = path.resolve(
+  __dirname,
+  "..",
+  "src-tauri",
+  "src",
+  "services",
+  "tooling",
+  "discovery.rs",
 );
 const lifecycleJobsPath = path.resolve(
   __dirname,
@@ -53,10 +62,22 @@ const appLibraryPath = path.resolve(
   "src",
   "lib.rs",
 );
-const rendererLifecyclePaths = [
-  path.resolve(__dirname, "..", "src", "main.tsx"),
-  path.resolve(__dirname, "..", "src", "components", "DatabaseUpgrade.tsx"),
-];
+const rendererBootstrapPath = path.resolve(__dirname, "..", "src", "main.tsx");
+const databaseUpgradePath = path.resolve(
+  __dirname,
+  "..",
+  "src",
+  "components",
+  "DatabaseUpgrade.tsx",
+);
+const systemApiPath = path.resolve(
+  __dirname,
+  "..",
+  "src",
+  "lib",
+  "api",
+  "system.ts",
+);
 
 describe("desktop IPC capability and CSP boundary", () => {
   it("keeps generic opener and broad plugin defaults out of the renderer capability", () => {
@@ -77,12 +98,19 @@ describe("desktop IPC capability and CSP boundary", () => {
   });
 
   it("routes renderer exits through the fixed-code lifecycle command", () => {
-    for (const sourcePath of rendererLifecyclePaths) {
-      const source = fs.readFileSync(sourcePath, "utf8");
-      expect(source).not.toContain("@tauri-apps/plugin-process");
-      expect(source).not.toMatch(/\bexit\s*\(/u);
-      expect(source).toContain('invoke("exit_app")');
-    }
+    const bootstrap = fs.readFileSync(rendererBootstrapPath, "utf8");
+    const databaseUpgrade = fs.readFileSync(databaseUpgradePath, "utf8");
+    const systemApi = fs.readFileSync(systemApiPath, "utf8");
+
+    expect(bootstrap).not.toContain("@tauri-apps/plugin-process");
+    expect(bootstrap).toContain('invoke("exit_app")');
+
+    expect(databaseUpgrade).not.toContain("@tauri-apps/");
+    expect(databaseUpgrade).not.toContain('invoke("exit_app")');
+    expect(databaseUpgrade).toContain("systemApi.exit()");
+
+    expect(systemApi).not.toContain("@tauri-apps/plugin-process");
+    expect(systemApi).toContain('invoke("exit_app")');
   });
 
   it("keeps exit and restart cleanup on one first-wins lifecycle owner", () => {
@@ -147,13 +175,17 @@ describe("desktop IPC capability and CSP boundary", () => {
   });
 
   it("fails closed before an elevated Windows release can probe or run user CLIs", () => {
-    const source = fs.readFileSync(miscCommandsPath, "utf8");
+    const source = fs.readFileSync(toolingServicePath, "utf8");
+    const discovery = fs.readFileSync(toolingDiscoveryPath, "utf8");
     const versionCommand = source.indexOf("pub async fn get_tool_versions");
     const lifecycleCommand = source.indexOf(
       "pub async fn run_tool_lifecycle_action",
     );
-    const installationProbe = source.indexOf(
+    const installationProbe = discovery.indexOf(
       "pub async fn probe_tool_installations",
+    );
+    const detectedCommand = discovery.indexOf(
+      "pub(crate) fn run_detected_tool_command_with_timeout",
     );
 
     expect(source).toContain("ELEVATED_WINDOWS_CLI_BOUNDARY_MESSAGE");
@@ -161,24 +193,28 @@ describe("desktop IPC capability and CSP boundary", () => {
     expect(source).toContain(
       "elevated_windows_cli_boundary_active_for(crate::windows_runtime::formal_windows_build())",
     );
-    for (const commandStart of [
-      versionCommand,
-      lifecycleCommand,
-      installationProbe,
-    ]) {
+    for (const commandStart of [versionCommand, lifecycleCommand]) {
       expect(commandStart).toBeGreaterThan(-1);
       const commandSource = source.slice(commandStart, commandStart + 1200);
       expect(commandSource).toContain(
         "if elevated_windows_cli_boundary_active()",
       );
     }
+    expect(installationProbe).toBeGreaterThan(-1);
+    expect(
+      discovery.slice(installationProbe, installationProbe + 1200),
+    ).toContain("if elevated_windows_cli_boundary_active()");
+    expect(detectedCommand).toBeGreaterThan(-1);
+    expect(discovery.slice(detectedCommand, detectedCommand + 1200)).toContain(
+      "detected_tool_execution_boundary_for(crate::windows_runtime::formal_windows_build())",
+    );
     expect(source).toContain(
       "Do not let a release build reach build_tool_lifecycle_command",
     );
   });
 
   it("keeps generic CLI install and update flows independent of package validation", () => {
-    const source = fs.readFileSync(miscCommandsPath, "utf8");
+    const source = fs.readFileSync(toolingServicePath, "utf8");
     const start = source.indexOf("pub async fn run_tool_lifecycle_action");
     const end = source.indexOf("\n///", start);
     expect(start).toBeGreaterThan(-1);

@@ -23,7 +23,7 @@
     ],
     [
       "scripts/tasks/supported-platform-check.mjs",
-      "46e874084e228bc08d5cd496706504e55a879341dbcaf2201193fbf6857ebd7f"
+      "187676679574af70b6cd4b2e301bdfb76dfe1dcd2d44b22b343991f71c5aaf7e"
     ],
     [
       "scripts/tasks/system-check.mjs",
@@ -63,7 +63,11 @@
     ],
     [
       "src-tauri/src/codex_config.rs",
-      "205a123e061688262e5fd00fdbf32e361c4bf89977a9c6bc10eb3faf374ed25f"
+      "f0d6f635b895e13ef272fdd65b2098543588090dd272dd229fe9296ad27424e7"
+    ],
+    [
+      "src-tauri/src/codex_config/catalog.rs",
+      "2390f1b6e6edd64f0c704b162f71eefa523c837b34645fb5fb1b24aee1ad9d31"
     ],
     [
       "src-tauri/src/codex_desktop_runtime.rs",
@@ -104,10 +108,6 @@
     [
       "src-tauri/src/codex_state_db.rs",
       "89c83e22b05547a28afe368a7e02c04b769e48d265e60bb12f3b98b80887b6fc"
-    ],
-    [
-      "src-tauri/src/commands/misc.rs",
-      "02b0d200ee13c5f0c3145ac747b0edece51e0f927ad6bbe4383e898a65c62e08"
     ],
     [
       "src-tauri/src/config.rs",
@@ -151,7 +151,7 @@
     ],
     [
       "src-tauri/src/platform/process_launch.rs",
-      "0603781fa3cbffbbdd642527d3519c5a8da07bc0bdc1e0e5c848822aac4b91c6"
+      "f1155a84f6214b2e5da17db09abf93e32a5644fdf34bb1bd4d213c6d5acef39d"
     ],
     [
       "src-tauri/src/proxy/providers/codex_oauth_auth.rs",
@@ -179,7 +179,7 @@
     ],
     [
       "src-tauri/src/services/provider/mod.rs",
-      "ddbfee9176e02c2150d22b68407b3da06ccfd3b675d3a259bc81e93b99d87637"
+      "0a8dc2e9d43b60df18488212b74e8309a7fc51daf0eaaba79f09461f6f579297"
     ],
     [
       "src-tauri/src/services/qoderwork.rs",
@@ -195,11 +195,31 @@
     ],
     [
       "src-tauri/src/services/skill.rs",
-      "b85c42c8ff3ed851685cdcef1af68e4f519cd17e54fdda3b2299ae784ac4ee13"
+      "12752e1d8d3feb080b4e0eebe670097bc3302bf2cd8161fb99fe68cf0f4cc056"
     ],
     [
       "src-tauri/src/services/subscription.rs",
       "c67063e2b7fb49f65635d70b01a6afd21fa7cc0f722ea3fe404b7e164c983a4e"
+    ],
+    [
+      "src-tauri/src/services/tooling.rs",
+      "8827a0b8b6cd65ad10530a5267ca93b316dbf9b9310becae3e095543284c6020"
+    ],
+    [
+      "src-tauri/src/services/tooling/discovery.rs",
+      "d8a921d13aee20a634a748e58e4a80db52e9ee3acf7454e9b234bfec08901279"
+    ],
+    [
+      "src-tauri/src/services/tooling/lifecycle.rs",
+      "091db75def671c9d39cb8738619ae5129aa825cab43c30447ff9f959142e9c3c"
+    ],
+    [
+      "src-tauri/src/services/tooling/terminal.rs",
+      "8eb98717460ee2744921902c0660becc23aa19da3a60c8455dde81cf0b9605ac"
+    ],
+    [
+      "src-tauri/src/services/tooling/versions.rs",
+      "52e88a23ec796504504c8516c5429bb6dffb697efc592625967cb51a6e97e763"
     ],
     [
       "src-tauri/src/services/traework_models.rs",
@@ -279,7 +299,7 @@
     ],
     [
       "src/App.tsx",
-      "10e41fe665ef3817c7f794a0b6485592eee4841cbd7dfd95a92363fba2da0cdd"
+      "26366da5a63ad2a52189517e15200bb7dd4096b2195176638cccf32d277dd928"
     ],
     [
       "src/components/common/FullScreenPanel.tsx",
@@ -291,7 +311,7 @@
     ],
     [
       "src/components/settings/AboutSection.tsx",
-      "5c49dc60379dc609e296182487eea76c00e091d98d8511e1ccf09160bca58917"
+      "708d3b5417c8a62a905306ffcd4157cdfa7532fd984732ae37f6a76d54eaaadc"
     ],
     [
       "src/components/settings/TerminalSettings.tsx",
@@ -302,12 +322,16 @@
       "220bae4f18ccd08a041f5ad2c1982722a35b268934cf9a025b4af7148184139e"
     ],
     [
+      "tests/architecture/rustModuleBoundaries.test.ts",
+      "ed0cafcbda2daf9bad8fff1bb9f609a4520f3cf7596e2fbb67c8406cae23ea8b"
+    ],
+    [
       "tests/codexUserHelperContract.test.ts",
       "d08cf9723f26cb603a26cd2006bf8c02e71c88a613b4de982925a325d1d082be"
     ],
     [
       "tests/codexWindowsUserScopeContract.test.ts",
-      "006089dc18f502f3307905f181de5029be8633ed0eec00738c0ee384a36733c8"
+      "ad322cbfcbc0fc4b90f86594fbbcbc980b97a19645a3fed07f74ca221638da1c"
     ],
     [
       "tests/hdiutilRetry.test.ts",
@@ -327,11 +351,11 @@
     ],
     [
       "tests/remainingPlatformSurface.test.ts",
-      "aaf0d3b49990daead2b72c87d0a8ad4f998aa7f21610c0997cdfa458058b50fb"
+      "993901e619c8a055aa98ec90be862ebd20cf6ba772e6a5f57fdfd90ce4f637cf"
     ],
     [
       "tests/singleInstanceActivationContract.test.ts",
-      "8b362cda54417a4f68774123278de056c7eaeb9415ead1841068bc38bf0eda9e"
+      "c6cc20a529d30a9ba171175d26ff6ffb09a81b526b6ddfcdd2f9d294b819f358"
     ],
     [
       "tests/systemCheck.test.ts",

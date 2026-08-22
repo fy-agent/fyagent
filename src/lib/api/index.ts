@@ -1,6 +1,7 @@
 export type { AppId } from "./types";
 export { providersApi, universalProvidersApi } from "./providers";
 export { settingsApi } from "./settings";
+export { systemApi } from "./system";
 export { backupsApi } from "./settings";
 export { mcpApi } from "./mcp";
 export { profilesApi } from "./profiles";
@@ -28,6 +29,7 @@ export type {
   ProviderSwitchEvent,
 } from "./providers";
 export type { Prompt } from "./prompts";
+export type { SkillsMigrationResult } from "./system";
 export type {
   WorkBuddyDuplicateId,
   WorkBuddyError,

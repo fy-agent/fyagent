@@ -1,0 +1,7 @@
+{"file":".trellis/tasks/08-22-modular-architecture-refactor/research.md","reason":"Compare final architecture and quality evidence against the measured starting state and research-backed decisions."}
+{"file":".trellis/spec/frontend/index.md","reason":"Verify renderer checks, production entry assumptions, and V2/leftover compatibility remain correct."}
+{"file":".trellis/spec/frontend/v2-shell.md","reason":"Verify no V2 layer, platform, shell, or legacy-import boundary regression."}
+{"file":".trellis/spec/frontend/reuse.md","reason":"Verify shared owners and neutral compatibility boundaries are reused rather than duplicated."}
+{"file":".trellis/spec/backend/index.md","reason":"Verify Rust/Tauri host quality gates and cross-layer contracts."}
+{"file":".trellis/spec/backend/github-ci-workflow.md","reason":"Final delivery requires pushing dev/laiyongjie and converging the repository-required CI gate."}
+{"file":".trellis/spec/guides/index.md","reason":"Cross-check module reuse and Rust-to-IPC-to-renderer data flow after the refactor."}

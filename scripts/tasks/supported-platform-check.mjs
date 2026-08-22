@@ -324,7 +324,7 @@ const RUST_CFG_MACRO_CONTRACT = Object.freeze(
       ['focus_main_window: cfg!(target_os = "macos"),'],
     ],
     [
-      "src-tauri/src/commands/misc.rs",
+      "src-tauri/src/services/tooling/lifecycle.rs",
       'cfg!(target_os="windows")',
       1,
       [
@@ -332,7 +332,7 @@ const RUST_CFG_MACRO_CONTRACT = Object.freeze(
       ],
     ],
     [
-      "src-tauri/src/commands/misc.rs",
+      "src-tauri/src/services/tooling.rs",
       'cfg!(target_os="macos")',
       1,
       [
@@ -373,7 +373,7 @@ const RUST_CFG_MACRO_CONTRACT = Object.freeze(
       ],
     ],
     [
-      "src-tauri/src/codex_config.rs",
+      "src-tauri/src/codex_config/catalog.rs",
       'cfg!(target_os="windows")',
       1,
       [
@@ -520,12 +520,12 @@ export const MACOS_POSIX_CONTRACT = Object.freeze([
   }),
   Object.freeze({
     id: "cli-bin-macos-read",
-    file: "src-tauri/src/commands/misc.rs",
+    file: "src-tauri/src/services/tooling.rs",
     snippet: `#[cfg(target_os = "macos")]\n        let ambient_paths = (\n            std::env::var_os("OPENCODE_INSTALL_DIR"),\n            std::env::var_os("${BIN_DIRECTORY_VARIABLE}"),\n            std::env::var_os("GOPATH"),\n        );`,
   }),
   Object.freeze({
     id: "cli-bin-windows-ignore",
-    file: "src-tauri/src/commands/misc.rs",
+    file: "src-tauri/src/services/tooling.rs",
     snippet:
       '#[cfg(target_os = "windows")]\n        let ambient_paths = (None, None, None);',
   }),
@@ -545,33 +545,33 @@ const DIRECTORY_OCCURRENCE_CONTRACT = Object.freeze(
       `/// macOS 优先级: OPENCODE_DB 环境变量 > ${DATA_HOME_VARIABLE} > ~/.local/share/opencode/opencode.db。`,
     ],
     [
-      "src-tauri/src/commands/misc.rs",
+      "src-tauri/src/services/tooling.rs",
       `///   $OPENCODE_INSTALL_DIR > $${BIN_DIRECTORY_VARIABLE} > $HOME/bin > $HOME/.opencode/bin`,
     ],
     [
-      "src-tauri/src/commands/misc.rs",
+      "src-tauri/src/services/tooling.rs",
       `${DIRECTORY_IDENTIFIER}_bin_dir: Option<std::ffi::OsString>,`,
     ],
     [
-      "src-tauri/src/commands/misc.rs",
+      "src-tauri/src/services/tooling.rs",
       `push_env_single_dir(&mut paths, ${DIRECTORY_IDENTIFIER}_bin_dir);`,
       `fn opencode_extra_search_paths( home: &Path, opencode_install_dir: Option<std::ffi::OsString>, ${DIRECTORY_IDENTIFIER}_bin_dir: Option<std::ffi::OsString>, gopath: Option<std::ffi::OsString>, ) -> Vec<std::path::PathBuf> { let mut paths = Vec::new(); push_env_single_dir(&mut paths, opencode_install_dir); push_env_single_dir(&mut paths, ${DIRECTORY_IDENTIFIER}_bin_dir);`,
     ],
     [
-      "src-tauri/src/commands/misc.rs",
+      "src-tauri/src/services/tooling.rs",
       `std::env::var_os("${BIN_DIRECTORY_VARIABLE}"),`,
       `#[cfg(target_os = "macos")] let ambient_paths = ( std::env::var_os("OPENCODE_INSTALL_DIR"), std::env::var_os("${BIN_DIRECTORY_VARIABLE}"), std::env::var_os("GOPATH"), );`,
     ],
     [
-      "src-tauri/src/commands/misc.rs",
+      "src-tauri/src/services/tooling.rs",
       `let ${DIRECTORY_IDENTIFIER}_bin_dir = Some(std::ffi::OsString::from("/custom/${DIRECTORY_IDENTIFIER}/bin"));`,
     ],
     [
-      "src-tauri/src/commands/misc.rs",
+      "src-tauri/src/services/tooling.rs",
       `let paths = opencode_extra_search_paths(&home, install_dir, ${DIRECTORY_IDENTIFIER}_bin_dir, gopath);`,
     ],
     [
-      "src-tauri/src/commands/misc.rs",
+      "src-tauri/src/services/tooling.rs",
       `assert_eq!(paths[1], PathBuf::from("/custom/${DIRECTORY_IDENTIFIER}/bin"));`,
     ],
   ].map(([file, snippet, anchor]) =>
