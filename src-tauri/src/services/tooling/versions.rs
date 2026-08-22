@@ -1,0 +1,219 @@
+use super::*;
+use once_cell::sync::Lazy;
+use regex::Regex;
+
+/// 获取单个工具的版本信息（内部实现）
+pub(super) async fn get_single_tool_version_impl(tool: &str) -> ToolVersion {
+    debug_assert!(
+        VALID_TOOLS.contains(&tool),
+        "unexpected tool name in get_single_tool_version_impl: {tool}"
+    );
+
+    let client = crate::proxy::http_client::get();
+
+    #[cfg(target_os = "windows")]
+    let probe = scan_cli_version(tool);
+
+    #[cfg(target_os = "macos")]
+    let probe = match try_get_version(tool) {
+        ShellProbe::NotFound(_) => scan_cli_version(tool),
+        found => found,
+    };
+
+    let (local_version, local_error, installed_but_broken) = match probe {
+        ShellProbe::Found(v) => (Some(v), None, false),
+        ShellProbe::FoundButFailed(e) => (None, Some(e), true),
+        ShellProbe::NotFound(e) => (None, Some(e), false),
+    };
+
+    let local = local_version.as_deref();
+    let latest_version = match tool {
+        "claude" => {
+            fetch_npm_latest_for_tool(&client, "@anthropic-ai/claude-code", tool, local).await
+        }
+        "codex" => fetch_npm_latest_for_tool(&client, "@openai/codex", tool, local).await,
+        "gemini" => fetch_npm_latest_for_tool(&client, "@google/gemini-cli", tool, local).await,
+        "grok" => fetch_npm_latest_for_tool(&client, "@xai-official/grok", tool, local).await,
+        "opencode" => {
+            if let Some(version) =
+                fetch_npm_latest_for_tool(&client, "opencode-ai", tool, local).await
+            {
+                Some(version)
+            } else {
+                fetch_github_latest_version(&client, "anomalyco/opencode").await
+            }
+        }
+        "openclaw" => fetch_npm_latest_for_tool(&client, "openclaw", tool, local).await,
+        "hermes" => fetch_pypi_latest_version(&client, "hermes-agent").await,
+        _ => None,
+    };
+
+    ToolVersion {
+        name: tool.to_string(),
+        version: local_version,
+        latest_version,
+        error: local_error,
+        installed_but_broken,
+    }
+}
+
+pub(super) fn elevated_windows_tool_version_unavailable(tool: &str) -> ToolVersion {
+    ToolVersion {
+        name: tool.to_string(),
+        version: None,
+        latest_version: None,
+        error: Some(ELEVATED_WINDOWS_CLI_BOUNDARY_MESSAGE.to_string()),
+        installed_but_broken: false,
+    }
+}
+
+fn npm_prerelease_tags(tool: &str) -> &'static [&'static str] {
+    match tool {
+        "claude" => &["next"],
+        _ => &[],
+    }
+}
+
+fn parse_semver(v: &str) -> Option<([u64; 3], Vec<String>)> {
+    let core_and_pre = v.trim().split('+').next().unwrap_or("");
+    let (core, pre) = match core_and_pre.split_once('-') {
+        Some((c, p)) => (c, Some(p)),
+        None => (core_and_pre, None),
+    };
+    let mut parts = core.split('.');
+    let major = parts.next()?.parse::<u64>().ok()?;
+    let minor = parts.next()?.parse::<u64>().ok()?;
+    let patch = parts.next()?.parse::<u64>().ok()?;
+    if parts.next().is_some() {
+        return None;
+    }
+    let pre_segments = pre
+        .map(|p| p.split('.').map(|s| s.to_string()).collect())
+        .unwrap_or_default();
+    Some(([major, minor, patch], pre_segments))
+}
+
+pub(super) fn compare_semver(a: &str, b: &str) -> Option<std::cmp::Ordering> {
+    use std::cmp::Ordering;
+    let (ac, ap) = parse_semver(a)?;
+    let (bc, bp) = parse_semver(b)?;
+    for i in 0..3 {
+        match ac[i].cmp(&bc[i]) {
+            Ordering::Equal => continue,
+            other => return Some(other),
+        }
+    }
+    match (ap.is_empty(), bp.is_empty()) {
+        (true, true) => return Some(Ordering::Equal),
+        (true, false) => return Some(Ordering::Greater),
+        (false, true) => return Some(Ordering::Less),
+        (false, false) => {}
+    }
+    for (x, y) in ap.iter().zip(bp.iter()) {
+        let ord = match (x.parse::<u64>(), y.parse::<u64>()) {
+            (Ok(xv), Ok(yv)) => xv.cmp(&yv),
+            (Ok(_), Err(_)) => Ordering::Less,
+            (Err(_), Ok(_)) => Ordering::Greater,
+            (Err(_), Err(_)) => x.as_str().cmp(y.as_str()),
+        };
+        if ord != Ordering::Equal {
+            return Some(ord);
+        }
+    }
+    Some(ap.len().cmp(&bp.len()))
+}
+
+pub(super) fn pick_latest_version(
+    dist_tags: &serde_json::Map<String, serde_json::Value>,
+    prerelease_tags: &[&str],
+    local_version: Option<&str>,
+) -> Option<String> {
+    use std::cmp::Ordering;
+    let latest = dist_tags.get("latest").and_then(|v| v.as_str())?;
+    let local_ahead = local_version
+        .and_then(|local| compare_semver(local, latest))
+        .map(|ord| ord == Ordering::Greater)
+        .unwrap_or(false);
+    if prerelease_tags.is_empty() || !local_ahead {
+        return Some(latest.to_string());
+    }
+
+    let mut best = latest.to_string();
+    for tag in prerelease_tags {
+        if let Some(candidate) = dist_tags.get(*tag).and_then(|v| v.as_str()) {
+            if compare_semver(candidate, &best) == Some(Ordering::Greater) {
+                best = candidate.to_string();
+            }
+        }
+    }
+    Some(best)
+}
+
+async fn fetch_npm_dist_tags(
+    client: &reqwest::Client,
+    package: &str,
+) -> Option<serde_json::Map<String, serde_json::Value>> {
+    let url = format!("https://registry.npmjs.org/{package}");
+    let resp = client.get(&url).send().await.ok()?;
+    let json = resp.json::<serde_json::Value>().await.ok()?;
+    json.get("dist-tags")?.as_object().cloned()
+}
+
+async fn fetch_npm_latest_for_tool(
+    client: &reqwest::Client,
+    package: &str,
+    tool: &str,
+    local_version: Option<&str>,
+) -> Option<String> {
+    let dist_tags = fetch_npm_dist_tags(client, package).await?;
+    pick_latest_version(&dist_tags, npm_prerelease_tags(tool), local_version)
+}
+
+async fn fetch_github_latest_version(client: &reqwest::Client, repo: &str) -> Option<String> {
+    let url = format!("https://api.github.com/repos/{repo}/releases/latest");
+    match client
+        .get(&url)
+        .header("User-Agent", "fyagent")
+        .header("Accept", "application/vnd.github+json")
+        .send()
+        .await
+    {
+        Ok(resp) => {
+            if let Ok(json) = resp.json::<serde_json::Value>().await {
+                json.get("tag_name")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.strip_prefix('v').unwrap_or(s).to_string())
+            } else {
+                None
+            }
+        }
+        Err(_) => None,
+    }
+}
+
+async fn fetch_pypi_latest_version(client: &reqwest::Client, package: &str) -> Option<String> {
+    let url = format!("https://pypi.org/pypi/{package}/json");
+    match client.get(&url).send().await {
+        Ok(resp) => {
+            if let Ok(json) = resp.json::<serde_json::Value>().await {
+                json.get("info")
+                    .and_then(|info| info.get("version"))
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+            } else {
+                None
+            }
+        }
+        Err(_) => None,
+    }
+}
+
+static VERSION_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"\d+\.\d+\.\d+(-[\w.]+)?").expect("Invalid version regex"));
+
+pub(super) fn extract_version(raw: &str) -> String {
+    VERSION_RE
+        .find(raw)
+        .map(|m| m.as_str().to_string())
+        .unwrap_or_else(|| raw.to_string())
+}
