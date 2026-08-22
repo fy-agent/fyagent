@@ -60,3 +60,25 @@
 - Confirm `origin/dev/laiyongjie` equals exact local SHA.
 - Monitor the exact SHA CI run until `CI / Required` succeeds; fix only if a real failure requires a corrective cycle.
 - Reconfirm clean/synchronized checkout.
+
+## Implementation outcome
+
+- [x] Tooling has private `versions`, `lifecycle`, `discovery`, and `terminal`
+  owners behind the unchanged four-command/facade surface.
+- [x] Skill added repository, migration, and assignment owners without splitting
+  the archive/filesystem safety transaction.
+- [x] Codex feature and full catalog domains are private behind the existing
+  facade; live/proxy/session ordering remains in the parent coordinator.
+- [x] V2 feature contracts are product-domain owned and `types.ts` is an
+  explicit compatibility facade protected by architecture tests.
+- [x] Platform scanners/sealed assets and Windows security contracts follow the
+  new sensitive owners without weakening fail-closed behavior.
+- [x] `mise run check` passed on the final product state.
+- [x] V2 lint/typecheck/test passed; 278/278 tests passed.
+- [x] Concrete workstation user-home paths are rejected from tracked docs /
+  Trellis artifacts by an executable repository contract while semantic
+  placeholders remain allowed.
+- [x] Mandatory SPEC/outcome commit completed.
+- [ ] Prearchive gate completed.
+- [ ] Task archived and session journal recorded.
+- [ ] Final archived/journal HEAD pushed and exact-SHA `CI / Required` green.

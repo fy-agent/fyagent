@@ -31,10 +31,14 @@ pub use skill::SkillService;
 ```
 
 Private implementation subdomains include `provider/universal.rs`,
-`provider/common_config.rs`, `skill/discovery.rs`, `skill/marketplace.rs`,
-`proxy/takeover.rs`, `codex_config/auth.rs`, and `codex_config/storage.rs`.
-Tooling business policy lives in crate-scoped `services/tooling.rs`; the Tauri
-command module is only its transport facade.
+`provider/common_config.rs`, `skill/assignment.rs`, `skill/discovery.rs`,
+`skill/marketplace.rs`, `skill/migration.rs`, `skill/repository.rs`,
+`proxy/takeover.rs`, `codex_config/auth.rs`, `codex_config/catalog.rs`,
+`codex_config/features.rs`, and `codex_config/storage.rs`.
+Tooling business policy lives behind crate-scoped `services/tooling.rs`; its
+private `versions`, `lifecycle`, `discovery`, and `terminal` modules own the
+corresponding application/domain responsibilities while the Tauri command
+module remains only the transport facade.
 
 ## 3. Contracts
 
@@ -46,9 +50,20 @@ command module is only its transport facade.
   (`get_tool_versions`, `run_tool_lifecycle_action`,
   `probe_tool_installations`, `open_provider_terminal`). Version probing,
   installation discovery, lifecycle command planning/execution, Windows
-  fail-closed policy and terminal launch behavior belong to
-  `services/tooling.rs`. Backend siblings call the service owner, never command
-  internals.
+  fail-closed policy and terminal launch behavior belong to the Tooling service
+  owner. Within that owner:
+  - `tooling/versions.rs` owns local/remote version projection, npm/GitHub/PyPI
+    latest-version policy and semver/pre-release selection;
+  - `tooling/lifecycle.rs` owns install/update allowlists and command policy;
+  - `tooling/discovery.rs` owns installation-distribution reports, conflict/
+    confirmation projection and the constrained detected-tool execution entry;
+  - `tooling/terminal.rs` owns provider-terminal orchestration, environment
+    projection, launch-directory validation and interactive terminal command
+    launch.
+  Cross-capability shell/path/platform primitives may remain in the parent
+  service when they are genuinely shared. Do not duplicate them only to make
+  every child module self-contained. Backend siblings call the service owner,
+  never command internals.
 - `services/mod.rs` modules are `pub(crate)`; stable caller APIs are explicit
   re-exports.
 - Provider/Skill/Proxy/Codex implementation subdomains are private `mod` and
@@ -69,6 +84,16 @@ command module is only its transport facade.
   validation and response mapping. Marketplace install delegates back to the
   existing bounded download/archive installation primitives; do not create a
   second ZIP extraction or archive-budget implementation in marketplace code.
+- `skill/repository.rs` owns `.agents` lock parsing, repository coordinate /
+  branch derivation, repository metadata persistence and repo-list CRUD.
+- `skill/migration.rs` owns the first-start SSOT migration application flow;
+  it reuses the parent service's validated copy/hash/path primitives rather
+  than creating a second filesystem-safety implementation.
+- `skill/assignment.rs` owns target enable/disable and database-to-target
+  synchronization orchestration. It delegates materialization/removal to the
+  existing safety primitives. Archive extraction, symlink/traversal/resource
+  budgets, vendor copy, backup-before-delete and materialization ordering stay
+  under one cohesive Skill filesystem/transaction owner.
 - `proxy/takeover.rs` owns pure takeover URL/config matching; state transitions
   and live I/O stay in `ProxyService` unless separately justified.
 - `codex_config/auth.rs` owns Codex login-material classification, OAuth/API-key
@@ -76,6 +101,15 @@ command module is only its transport facade.
   policy. `codex_config` remains the stable facade and re-exports only the
   functions current callers actually require; test-only/private predicates do
   not become public merely because they moved files.
+- `codex_config/features.rs` owns native capability state, diagnostics, draft
+  patching, save validation/defaulting and non-sensitive warning projection.
+- `codex_config/catalog.rs` owns the model-catalog domain end-to-end: tool
+  profile selection, provider model-spec projection, template/cache/CLI
+  fallback, vendor-official catalog projection, parser-required backfill,
+  `model_catalog_json` / owned `web_search` projection, bounded catalog
+  readback and path/symlink confinement. The parent `codex_config` module stays
+  the stable facade and owns live/provider/proxy/session/MCP transaction
+  coordination; do not move those ordered mutations into the catalog module.
 - `proxy/handlers.rs`, `RequestForwarder`, Provider mutation/rollback
   coordination, and Skill archive/materialization safety may intentionally
   remain physically large. Their streaming/failover/rollback/filesystem order
@@ -91,9 +125,12 @@ command module is only its transport facade.
 | Bare `pub mod` under `services/mod.rs` | Architecture test fails; use `pub(crate)` and explicit re-export |
 | `commands/misc.rs` reintroduced | Architecture test fails; choose an owning command module |
 | Tooling implementation markers return to `commands/tooling.rs` | Architecture test fails; keep four thin wrappers and move policy to `services/tooling.rs` |
+| Tooling version/lifecycle/discovery/terminal orchestration regrows in the parent service | Architecture test fails for reviewed markers; move the responsibility back to its private owner while keeping genuinely shared primitives centralized |
 | Provider/Skill/Proxy/Codex subdomain made public | Architecture test fails unless a reviewed external contract requires it |
 | Marketplace code starts implementing its own ZIP/archive safety path | Reject; delegate to the existing Skill archive/install owner |
+| Skill assignment/migration module starts duplicating archive/vendor/symlink safety primitives | Reject; those modules orchestrate through the single filesystem-safety owner |
 | Pure Provider common-config module starts owning DB/locks/scrub sequencing | Reject; transaction/rollback order remains in `ProviderService` |
+| Codex catalog module starts owning provider/live/proxy/session transaction ordering | Reject; catalog owns catalog policy/I/O only and delegates live coordination through the parent facade |
 | Codex config write fails after auth write | Restore previous auth bytes or delete newly created auth; return error |
 | Universal projection sees unknown nested settings | Preserve them while applying overrides |
 | Discovery cache mutex is poisoned | Recover inner value; do not panic |
@@ -107,7 +144,8 @@ command module is only its transport facade.
 - **Good:** keep Windows user-scope/fail-closed contracts intact while moving
   command ownership.
 - **Good:** keep a stable facade while private modules own Tooling policy,
-  marketplace transport, Codex auth policy, or Provider common-config rules.
+  Skill assignment/repository/migration, marketplace transport, Codex auth /
+  features / catalog policy, or Provider common-config rules.
 - **Base:** a large file may remain large if the remaining code is a tightly
   coupled state machine whose sequence is itself a safety property.
 - **Base:** `proxy/handlers.rs`, `RequestForwarder`, Skill archive safety or a

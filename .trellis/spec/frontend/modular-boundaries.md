@@ -45,6 +45,17 @@ createTauriFeaturePorts(): FeaturePorts;
 validation/parsing/invoke implementations live under its `feature-ports/**`
 owner tree.
 
+V2 feature contracts are product-domain owned under
+`src/v2/shared/features/**`. The compatibility path remains available:
+
+```ts
+import type { InstalledSkill, ProviderSummary } from "./types";
+```
+
+but `types.ts` is only an explicit named-export facade. New contract logic
+belongs in the owning files such as `assignments.ts`, `skills.ts`, `mcp.ts`,
+`agents.ts`, `models.ts`, `prompts.ts`, `memory.ts`, and `settings.ts`.
+
 Leftover provider-config imports also keep one compatibility path:
 
 ```ts
@@ -69,6 +80,13 @@ That file is a re-export facade, not the implementation owner.
   capability-owned `feature-ports/**` modules. ACL/adapter tests must scan the
   whole adapter tree rather than assuming every command string lives in the
   root facade.
+- `src/v2/shared/features/types.ts` is a compatibility facade only. It may use
+  explicit named re-exports and compatibility aliases, but it must not own new
+  feature DTOs/constants/functions and must not use `export *`. Domain contract
+  files must not import back through `types.ts`, which would invert ownership
+  and risk cycles. Existing consumers may keep the facade path during gradual
+  migration; new code should prefer the narrow owning domain contract when it
+  does not create unnecessary churn.
 - `src/main.tsx` is the reviewed bootstrap exception for process lifecycle.
 - `App.tsx` is a composition root. Cross-feature startup/event/cache
   coordination belongs in an owning hook such as `useAppRuntimeEffects`.
@@ -103,6 +121,8 @@ That file is a re-export facade, not the implementation owner.
 | Specialized provider form imports `./ProviderForm` | Architecture test fails; depend on types/model modules |
 | `providerConfigUtils.ts` regrows JSON/TOML implementation logic | `frontendModuleBoundaries` fails; keep it a compatibility re-export facade |
 | V2 Tauri root facade regrows capability parsing/validation | Reject; move logic to the owning `feature-ports/**` module and keep root composition-only |
+| V2 feature `types.ts` adds a DTO/constant/function or wildcard export | V2 architecture test fails; put the contract in its product-domain owner and explicitly re-export only compatibility surface |
+| A product-domain feature contract imports `./types` | Reject; domain owners may depend on neutral directory/assignment primitives, never on their compatibility facade |
 | Event facade does not return unlisten | Reject; cleanup semantics must remain intact |
 
 ## 5. Good / Base / Bad Cases
@@ -115,6 +135,9 @@ That file is a re-export facade, not the implementation owner.
   JSON, Codex TOML and structural-safety implementations have separate owners.
 - **Good:** one V2 Tauri composition facade returns `FeaturePorts` while each
   capability adapter owns its wire validation/parser.
+- **Good:** Skills, Agents, Models, MCP, Prompts, Memory and Settings contracts
+  live in their own files while `types.ts` remains a small explicit
+  compatibility facade.
 - **Base:** leftover `src/lib/api/**` may import Tauri because it is the
   leftover platform facade.
 - **Base:** a large route page may remain one file when moving its panels would
@@ -136,9 +159,9 @@ mise run test:v2
 ```
 
 The architecture test asserts neutral shared imports, leftover Tauri access,
-provider-form dependency direction, and the provider-config compatibility
-facade. Run nearest feature/integration tests too; dependency tests do not
-prove behavior.
+provider-form dependency direction, the provider-config compatibility facade,
+and V2 feature-contract facade ownership. Run nearest feature/integration tests
+too; dependency tests do not prove behavior.
 
 ## 7. Wrong vs Correct
 
