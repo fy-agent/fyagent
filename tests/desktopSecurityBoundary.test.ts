@@ -22,13 +22,13 @@ const downloadManifestScriptPath = path.resolve(
   "generate-download-manifest.mjs",
 );
 const gitAttributesPath = path.resolve(__dirname, "..", ".gitattributes");
-const miscCommandsPath = path.resolve(
+const toolingCommandsPath = path.resolve(
   __dirname,
   "..",
   "src-tauri",
   "src",
   "commands",
-  "misc.rs",
+  "tooling.rs",
 );
 const lifecycleJobsPath = path.resolve(
   __dirname,
@@ -53,10 +53,22 @@ const appLibraryPath = path.resolve(
   "src",
   "lib.rs",
 );
-const rendererLifecyclePaths = [
-  path.resolve(__dirname, "..", "src", "main.tsx"),
-  path.resolve(__dirname, "..", "src", "components", "DatabaseUpgrade.tsx"),
-];
+const rendererBootstrapPath = path.resolve(__dirname, "..", "src", "main.tsx");
+const databaseUpgradePath = path.resolve(
+  __dirname,
+  "..",
+  "src",
+  "components",
+  "DatabaseUpgrade.tsx",
+);
+const systemApiPath = path.resolve(
+  __dirname,
+  "..",
+  "src",
+  "lib",
+  "api",
+  "system.ts",
+);
 
 describe("desktop IPC capability and CSP boundary", () => {
   it("keeps generic opener and broad plugin defaults out of the renderer capability", () => {
@@ -77,12 +89,19 @@ describe("desktop IPC capability and CSP boundary", () => {
   });
 
   it("routes renderer exits through the fixed-code lifecycle command", () => {
-    for (const sourcePath of rendererLifecyclePaths) {
-      const source = fs.readFileSync(sourcePath, "utf8");
-      expect(source).not.toContain("@tauri-apps/plugin-process");
-      expect(source).not.toMatch(/\bexit\s*\(/u);
-      expect(source).toContain('invoke("exit_app")');
-    }
+    const bootstrap = fs.readFileSync(rendererBootstrapPath, "utf8");
+    const databaseUpgrade = fs.readFileSync(databaseUpgradePath, "utf8");
+    const systemApi = fs.readFileSync(systemApiPath, "utf8");
+
+    expect(bootstrap).not.toContain("@tauri-apps/plugin-process");
+    expect(bootstrap).toContain('invoke("exit_app")');
+
+    expect(databaseUpgrade).not.toContain("@tauri-apps/");
+    expect(databaseUpgrade).not.toContain('invoke("exit_app")');
+    expect(databaseUpgrade).toContain("systemApi.exit()");
+
+    expect(systemApi).not.toContain("@tauri-apps/plugin-process");
+    expect(systemApi).toContain('invoke("exit_app")');
   });
 
   it("keeps exit and restart cleanup on one first-wins lifecycle owner", () => {
@@ -147,7 +166,7 @@ describe("desktop IPC capability and CSP boundary", () => {
   });
 
   it("fails closed before an elevated Windows release can probe or run user CLIs", () => {
-    const source = fs.readFileSync(miscCommandsPath, "utf8");
+    const source = fs.readFileSync(toolingCommandsPath, "utf8");
     const versionCommand = source.indexOf("pub async fn get_tool_versions");
     const lifecycleCommand = source.indexOf(
       "pub async fn run_tool_lifecycle_action",
@@ -178,7 +197,7 @@ describe("desktop IPC capability and CSP boundary", () => {
   });
 
   it("keeps generic CLI install and update flows independent of package validation", () => {
-    const source = fs.readFileSync(miscCommandsPath, "utf8");
+    const source = fs.readFileSync(toolingCommandsPath, "utf8");
     const start = source.indexOf("pub async fn run_tool_lifecycle_action");
     const end = source.indexOf("\n///", start);
     expect(start).toBeGreaterThan(-1);

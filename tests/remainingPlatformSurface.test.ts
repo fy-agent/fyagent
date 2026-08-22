@@ -1352,7 +1352,7 @@ describe("durable supported-platform surface contract", () => {
         ),
       ],
       [
-        "src-tauri/src/commands/misc.rs",
+        "src-tauri/src/commands/tooling.rs",
         (source) =>
           source.replace(
             '#[cfg(target_os = "macos")]\n        let ambient_paths',

@@ -30,7 +30,7 @@ pub async fn get_opencode_models() -> Result<Vec<OpenCodeModelRef>, String> {
             ("OPENCODE_CONFIG_DIR", config_dir_env),
             ("OPENCODE_DISABLE_PROJECT_CONFIG", "true".to_string()),
         ];
-        let output = super::misc::run_detected_tool_command_with_timeout(
+        let output = super::tooling::run_detected_tool_command_with_timeout(
             "opencode",
             &["models"],
             Some(OPENCODE_MODELS_TIMEOUT),
@@ -38,8 +38,8 @@ pub async fn get_opencode_models() -> Result<Vec<OpenCodeModelRef>, String> {
             &config_dir,
         )?;
         if !output.status.success() {
-            let stderr = super::misc::decode_command_output(&output.stderr);
-            let stdout = super::misc::decode_command_output(&output.stdout);
+            let stderr = super::tooling::decode_command_output(&output.stderr);
+            let stdout = super::tooling::decode_command_output(&output.stdout);
             let detail = if stderr.trim().is_empty() {
                 stdout.trim()
             } else {
@@ -52,9 +52,9 @@ pub async fn get_opencode_models() -> Result<Vec<OpenCodeModelRef>, String> {
             });
         }
 
-        Ok(parse_opencode_models(&super::misc::decode_command_output(
-            &output.stdout,
-        )))
+        Ok(parse_opencode_models(
+            &super::tooling::decode_command_output(&output.stdout),
+        ))
     })
     .await
     .map_err(|e| format!("OpenCode model discovery task failed: {e}"))?
