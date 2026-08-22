@@ -21,6 +21,7 @@ use crate::config::get_app_config_dir;
 use crate::database::Database;
 use crate::error::format_skill_error;
 
+mod assignment;
 mod discovery;
 mod marketplace;
 mod migration;
@@ -1511,8 +1512,7 @@ impl SkillService {
     /// 启用：复制到应用目录
     /// 禁用：从应用目录删除
     pub fn toggle_app(db: &Arc<Database>, id: &str, app: &AppType, enabled: bool) -> Result<()> {
-        let target = SkillTargetId::try_from(app)?;
-        Self::toggle_target(db, id, &target, enabled)
+        assignment::toggle_app(db, id, app, enabled)
     }
 
     pub fn toggle_target(
@@ -1521,24 +1521,7 @@ impl SkillService {
         app: &SkillTargetId,
         enabled: bool,
     ) -> Result<()> {
-        let mut skill = Self::adopt_observed_if_needed(db, id)?;
-
-        // 更新状态
-        skill.apps.set_enabled_for_target(app, enabled);
-
-        // 同步文件
-        if enabled {
-            Self::sync_to_app_dir(&skill.directory, app)?;
-        } else {
-            Self::remove_from_target(&skill.directory, app)?;
-        }
-
-        // 更新数据库
-        db.update_skill_apps(id, &skill.apps)?;
-
-        log::info!("Skill {} 的 {:?} 状态已更新为 {}", skill.name, app, enabled);
-
-        Ok(())
+        assignment::toggle_target(db, id, app, enabled)
     }
 
     /// 扫描未管理的 Skills
@@ -2305,82 +2288,11 @@ impl SkillService {
 
     /// 同步所有已启用的 Skills 到指定应用
     pub fn sync_to_target(db: &Arc<Database>, app: &SkillTargetId) -> Result<()> {
-        let skills = db.get_all_installed_skills()?;
-        let ssot_dir = Self::get_ssot_dir()?;
-        let app_dir = Self::get_target_skills_dir(app)?;
-
-        let indexed_skills: HashMap<String, &InstalledSkill> = skills
-            .values()
-            .map(|skill| (skill.directory.to_lowercase(), skill))
-            .collect();
-
-        if app.requires_copy() {
-            // Vendor targets are copy-only. Do not enumerate/delete arbitrary
-            // entries through the legacy path walker; only explicitly managed
-            // single-segment leaves may pass the frozen-parent delete path.
-            for skill in skills.values() {
-                if skill.apps.is_enabled_for_target(app) {
-                    if let Err(err) = Self::sync_to_app_dir(&skill.directory, app) {
-                        log::warn!(
-                            "同步 skill {} 到 {app:?} 失败，跳过该条: {err}",
-                            skill.directory
-                        );
-                    }
-                } else if let Err(err) = Self::remove_from_target(&skill.directory, app) {
-                    log::warn!(
-                        "从 {app:?} 安全移除 skill {} 失败，跳过该条: {err}",
-                        skill.directory
-                    );
-                }
-            }
-            return Ok(());
-        }
-
-        if app_dir.exists() {
-            for entry in fs::read_dir(&app_dir)? {
-                let entry = entry?;
-                let path = entry.path();
-                let dir_name = entry.file_name().to_string_lossy().to_string();
-
-                if dir_name.starts_with('.') {
-                    continue;
-                }
-
-                if let Some(skill) = indexed_skills.get(&dir_name.to_lowercase()) {
-                    if !skill.apps.is_enabled_for_target(app) {
-                        Self::remove_path(&path)?;
-                    }
-                    continue;
-                }
-
-                if Self::is_symlink_to_ssot(&path, &ssot_dir) {
-                    Self::remove_path(&path)?;
-                }
-            }
-        }
-
-        for skill in skills.values() {
-            if skill.apps.is_enabled_for_target(app) {
-                // 逐条容错而非 `?` 传播：本函数在切换供应商时被调用，一条脏
-                // directory（存量点开头目录、或同步导入灌进来的行）不得让整个
-                // 应用的 skill 同步全部失效。
-                if let Err(err) = Self::sync_to_app_dir(&skill.directory, app) {
-                    log::warn!(
-                        "同步 skill {} 到 {app:?} 失败，跳过该条: {err}",
-                        skill.directory
-                    );
-                }
-            }
-        }
-
-        Ok(())
+        assignment::sync_to_target(db, app)
     }
 
     pub fn sync_to_app(db: &Arc<Database>, app: &AppType) -> Result<()> {
-        let Ok(target) = SkillTargetId::try_from(app) else {
-            return Ok(());
-        };
-        Self::sync_to_target(db, &target)
+        assignment::sync_to_app(db, app)
     }
 
     // ========== 发现功能（保留原有逻辑）==========
