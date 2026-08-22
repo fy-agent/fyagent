@@ -1190,3 +1190,32 @@ V2 模型页「测试连通」改为对选定模型发真实流式请求，失�
 ### Next Steps
 
 - 无需推送，除非用户明确要求
+
+
+## Session 36: Modular maintainability phase 2
+
+**Date**: 2026-08-22
+**Task**: Modular maintainability phase 2
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Completed repository-wide modular maintainability audit and staged refactor: split V2 Tauri adapters, Tooling service ownership, Skill marketplace, Codex auth, Provider common-config policy, and leftover provider config JSON/TOML utilities behind stable facades; added architecture guards, updated backend/frontend modular-boundary SPECs, documented deliberate stop-rules for protocol/transaction coordinators, and passed full prearchive plus V2 quality gates.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `be2df0be` | (see git log) |
+| `2ddb5227` | (see git log) |
+| `55bbc161` | (see git log) |
+| `428e64d8` | (see git log) |
+| `40d5b52d` | (see git log) |
+| `5083d00b` | (see git log) |
+| `1be33c96` | (see git log) |
+| `3c1d3e4f` | (see git log) |
+| `fd63e549` | (see git log) |
+
+### Status
+
+[OK] **Completed**
