@@ -53,6 +53,10 @@ describe("Rust modular architecture boundaries", () => {
   it("keeps Tooling transport limited to the reviewed Tauri command surface", () => {
     const toolingCommands = read("src-tauri/src/commands/tooling.rs");
     const toolingService = read("src-tauri/src/services/tooling.rs");
+    const toolingLifecycle = read(
+      "src-tauri/src/services/tooling/lifecycle.rs",
+    );
+    const toolingVersions = read("src-tauri/src/services/tooling/versions.rs");
     const services = read("src-tauri/src/services/mod.rs");
     const commandNames = [
       ...toolingCommands.matchAll(
@@ -67,15 +71,31 @@ describe("Rust modular architecture boundaries", () => {
       "open_provider_terminal",
     ]);
     expect(services).toContain("pub(crate) mod tooling;");
-    for (const implementationMarker of [
-      "ELEVATED_WINDOWS_CLI_BOUNDARY_MESSAGE",
-      "build_tool_lifecycle_command",
-      "launch_terminal_running",
-      "enum ToolLifecycleAction",
-    ]) {
+    for (const implementationMarker of ["ELEVATED_WINDOWS_CLI_BOUNDARY_MESSAGE", "launch_terminal_running"]) {
       expect(toolingCommands).not.toContain(implementationMarker);
       expect(toolingService).toContain(implementationMarker);
     }
+    for (const implementationMarker of [
+      "build_tool_lifecycle_command",
+      "enum ToolLifecycleAction",
+    ]) {
+      expect(toolingCommands).not.toContain(implementationMarker);
+      expect(toolingLifecycle).toContain(implementationMarker);
+    }
+    expect(toolingService).not.toMatch(/\bfn build_tool_lifecycle_command\b/u);
+    expect(toolingService).not.toMatch(/\benum ToolLifecycleAction\b/u);
+    for (const implementationMarker of [
+      "fetch_npm_latest_for_tool",
+      "pick_latest_version",
+    ]) {
+      expect(toolingCommands).not.toContain(implementationMarker);
+      expect(toolingVersions).toContain(implementationMarker);
+    }
+    expect(toolingService).not.toMatch(/\bfn fetch_npm_latest_for_tool\b/u);
+    expect(toolingService).not.toMatch(/\bfn pick_latest_version\b/u);
+    expect(toolingService).toContain("mod lifecycle;");
+    expect(toolingService).toContain("mod versions;");
+    expect(toolingService).not.toMatch(/pub(?:\(crate\))? mod (?:lifecycle|versions);/u);
   });
 
   it("keeps extracted backend subdomains private behind their owning facades", () => {
@@ -88,13 +108,17 @@ describe("Rust modular architecture boundaries", () => {
     expect(provider).toContain("mod universal;");
     expect(skill).toContain("mod discovery;");
     expect(skill).toContain("mod marketplace;");
+    expect(skill).toContain("mod migration;");
+    expect(skill).toContain("mod repository;");
     expect(proxy).toContain("mod takeover;");
     expect(codex).toContain("mod auth;");
+    expect(codex).toContain("mod catalog;");
+    expect(codex).toContain("mod features;");
     expect(codex).toContain("mod storage;");
 
     for (const source of [provider, skill, proxy, codex]) {
       expect(source).not.toMatch(
-        /pub(?:\(crate\))? mod (?:common_config|universal|discovery|marketplace|takeover|auth|storage);/u,
+        /pub(?:\(crate\))? mod (?:common_config|universal|discovery|marketplace|migration|repository|takeover|auth|catalog|features|storage);/u,
       );
     }
   });
