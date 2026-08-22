@@ -22,6 +22,7 @@ use crate::database::Database;
 use crate::error::format_skill_error;
 
 mod discovery;
+mod marketplace;
 
 use discovery::{
     clamp_discovery_limit, discovery_fingerprint, filter_discoverable_skills,
@@ -30,6 +31,7 @@ use discovery::{
 #[cfg(test)]
 use discovery::{directory_tail, is_discoverable_installed};
 pub use discovery::{DiscoverAvailablePageRequest, SkillDiscoveryStatus};
+pub use marketplace::{SkillHubSearchResult, SkillsShSearchResult};
 
 // ========== 数据结构 ==========
 
@@ -89,24 +91,6 @@ pub struct DiscoverableSkill {
 pub struct DiscoverableSkillsPage {
     pub skills: Vec<DiscoverableSkill>,
     pub total_count: usize,
-}
-
-fn clamp_skillhub_page_size(limit: usize) -> usize {
-    if limit == 0 {
-        SKILLHUB_DEFAULT_PAGE_SIZE
-    } else {
-        limit.min(SKILL_DISCOVERY_MAX_LIMIT)
-    }
-}
-
-fn official_skillhub_categories() -> Vec<SkillHubCategory> {
-    SKILLHUB_OFFICIAL_CATEGORIES
-        .iter()
-        .map(|(key, name)| SkillHubCategory {
-            key: (*key).to_string(),
-            name: (*name).to_string(),
-        })
-        .collect()
 }
 
 /// 技能对象（兼容旧 API，内部使用 DiscoverableSkill）
@@ -231,169 +215,6 @@ pub struct MigrationResult {
     pub migrated_count: usize,
     pub skipped_count: usize,
     pub errors: Vec<String>,
-}
-
-// ========== skills.sh API 类型 ==========
-
-/// skills.sh API 原始响应
-///
-/// 注意：API 命名不一致（searchType 是 camelCase，duration_ms 是 snake_case），
-/// 因此不能用 rename_all，需要逐字段指定。
-#[derive(Debug, Clone, Deserialize)]
-struct SkillsShApiResponse {
-    pub query: String,
-    #[serde(rename = "searchType")]
-    #[allow(dead_code)]
-    pub search_type: String,
-    pub skills: Vec<SkillsShApiSkill>,
-    pub count: usize,
-    #[allow(dead_code)]
-    pub duration_ms: u64,
-}
-
-/// skills.sh API 原始技能条目
-#[derive(Debug, Clone, Deserialize)]
-struct SkillsShApiSkill {
-    pub id: String,
-    #[serde(rename = "skillId")]
-    pub skill_id: String,
-    pub name: String,
-    pub installs: u64,
-    pub source: String,
-}
-
-/// skills.sh 搜索结果（返回给前端）
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SkillsShSearchResult {
-    pub skills: Vec<SkillsShDiscoverableSkill>,
-    pub total_count: usize,
-    pub query: String,
-}
-
-/// skills.sh 可安装技能（返回给前端）
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SkillsShDiscoverableSkill {
-    pub key: String,
-    pub name: String,
-    pub directory: String,
-    pub repo_owner: String,
-    pub repo_name: String,
-    pub repo_branch: String,
-    pub installs: u64,
-    pub readme_url: Option<String>,
-}
-
-// ========== SkillHub（Skill 市场）==========
-
-const SKILLHUB_API_ORIGIN: &str = "https://api.skillhub.cn";
-/// 官方 find-skill 文档：列表/分类浏览走 `/api/skills`，不要用 `/api/v1/search`。
-const SKILLHUB_LIST_PATH: &str = "/api/skills";
-const SKILLHUB_DOWNLOAD_PATH: &str = "/api/v1/download";
-const SKILLHUB_PUBLIC_SKILL_PREFIX: &str = "https://skillhub.cn/skills/";
-/// 写入已安装记录的仓库坐标，供发现页匹配；不是 GitHub owner。
-pub const SKILLHUB_MARKET_OWNER: &str = "skillhub.cn";
-const SKILLHUB_QUERY_MAX_CHARS: usize = 200;
-const SKILLHUB_DEFAULT_PAGE_SIZE: usize = 21;
-/// 官方 12 个一级分类，口径见 SkillHub `find-skill-skillhub` 的 categories.md。
-const SKILLHUB_OFFICIAL_CATEGORIES: &[(&str, &str)] = &[
-    ("office-efficiency", "办公效率"),
-    ("content-creation", "内容创作"),
-    ("dev-programming", "开发编程"),
-    ("data-analysis", "数据分析"),
-    ("design-media", "设计多媒体"),
-    ("ai-agent", "AI Agent"),
-    ("knowledge-management", "知识管理"),
-    ("business-ops", "商业运营"),
-    ("education", "教育学习"),
-    ("professional", "行业专业"),
-    ("it-ops-security", "IT 运维与安全"),
-    ("life-service", "生活服务"),
-];
-
-/// SkillHub 列表接口原始响应
-#[derive(Debug, Clone, Deserialize)]
-struct SkillHubListApiResponse {
-    #[serde(default)]
-    code: i32,
-    #[serde(default)]
-    message: String,
-    #[serde(default)]
-    data: SkillHubListApiData,
-}
-
-#[derive(Debug, Clone, Deserialize, Default)]
-struct SkillHubListApiData {
-    #[serde(default)]
-    total: usize,
-    #[serde(default)]
-    skills: Vec<SkillHubApiSkill>,
-}
-
-/// SkillHub 搜索条目。字段名在 camelCase / snake_case 之间混用。
-#[derive(Debug, Clone, Deserialize)]
-struct SkillHubApiSkill {
-    slug: String,
-    #[serde(default, alias = "displayName")]
-    display_name: Option<String>,
-    #[serde(default)]
-    name: Option<String>,
-    #[serde(default, alias = "descriptionZh")]
-    description_zh: Option<String>,
-    #[serde(default)]
-    description: Option<String>,
-    #[serde(default)]
-    summary: Option<String>,
-    #[serde(default)]
-    version: Option<String>,
-    #[serde(default, alias = "ownerName")]
-    owner_name: Option<String>,
-    #[serde(default)]
-    downloads: Option<u64>,
-    #[serde(default)]
-    installs: Option<u64>,
-    #[serde(default)]
-    category: Option<String>,
-}
-
-/// SkillHub 搜索结果（返回给前端）
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SkillHubSearchResult {
-    pub skills: Vec<SkillHubDiscoverableSkill>,
-    pub total_count: usize,
-    pub query: String,
-    #[serde(default)]
-    pub categories: Vec<SkillHubCategory>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SkillHubCategory {
-    pub key: String,
-    pub name: String,
-}
-
-/// SkillHub 可安装技能（返回给前端）
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SkillHubDiscoverableSkill {
-    pub key: String,
-    pub slug: String,
-    pub name: String,
-    pub description: String,
-    pub directory: String,
-    pub repo_owner: String,
-    pub repo_name: String,
-    pub repo_branch: String,
-    pub version: Option<String>,
-    pub owner_name: Option<String>,
-    pub installs: Option<u64>,
-    pub downloads: Option<u64>,
-    pub homepage_url: String,
-    pub readme_url: Option<String>,
-    pub category: Option<String>,
 }
 
 struct ZipInstallProvenance {
@@ -4171,229 +3992,39 @@ impl SkillService {
         limit: usize,
         offset: usize,
     ) -> Result<SkillsShSearchResult> {
-        let client = crate::proxy::http_client::get();
-
-        let url = url::Url::parse_with_params(
-            "https://skills.sh/api/search",
-            &[
-                ("q", query),
-                ("limit", &limit.to_string()),
-                ("offset", &offset.to_string()),
-            ],
-        )?;
-
-        let resp = client
-            .get(url)
-            .timeout(std::time::Duration::from_secs(10))
-            .send()
-            .await?
-            .error_for_status()?
-            .json::<SkillsShApiResponse>()
-            .await?;
-
-        let skills = resp
-            .skills
-            .into_iter()
-            .filter_map(|s| {
-                let parts: Vec<&str> = s.source.splitn(2, '/').collect();
-                if parts.len() != 2 {
-                    return None;
-                }
-                let (owner, repo) = (parts[0].to_string(), parts[1].to_string());
-                // 用与 download_repo 同一套坐标校验，而不是就地写启发式：下面这个
-                // readme_url 最终交给 openExternal 打开，是和 build_skill_doc_url
-                // 同一个 sink。原来的 `contains('.')` 既漏（`splitn(2, '/')` 允许
-                // repo 里带 `/`，`owner/a/b` 能拼出三段路径），又误伤（GitHub 仓库
-                // 名合法含点）。校验 owner 同时也保留了"过滤非 GitHub 来源"的效果
-                // ——`skills.volces.com` 这类带点的 owner 本来就不是合法用户名。
-                if Self::validate_repo_ref(&owner, &repo, "main").is_err() {
-                    return None;
-                }
-                Some(SkillsShDiscoverableSkill {
-                    key: s.id,
-                    name: s.name,
-                    directory: s.skill_id.clone(),
-                    repo_owner: owner.clone(),
-                    repo_name: repo.clone(),
-                    repo_branch: "main".to_string(),
-                    installs: s.installs,
-                    readme_url: Some(format!("https://github.com/{}/{}", owner, repo)),
-                })
-            })
-            .collect();
-
-        Ok(SkillsShSearchResult {
-            skills,
-            total_count: resp.count,
-            query: resp.query,
-        })
+        marketplace::search_skills_sh(query, limit, offset).await
     }
 
     // ========== Skill 市场（SkillHub）==========
 
+    #[cfg(test)]
     pub(crate) fn is_valid_skillhub_slug(slug: &str) -> bool {
-        if slug.is_empty() || slug.len() > 128 || slug == "." || slug == ".." {
-            return false;
-        }
-        let mut chars = slug.chars();
-        let Some(first) = chars.next() else {
-            return false;
-        };
-        first.is_ascii_alphanumeric()
-            && chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
+        marketplace::is_valid_skillhub_slug(slug)
     }
 
-    fn clamp_skillhub_query(query: &str) -> String {
-        query.chars().take(SKILLHUB_QUERY_MAX_CHARS).collect()
-    }
-
-    fn first_nonempty(values: &[Option<String>]) -> Option<String> {
-        values.iter().find_map(|value| {
-            value
-                .as_deref()
-                .map(str::trim)
-                .filter(|text| !text.is_empty())
-                .map(ToOwned::to_owned)
-        })
-    }
-
+    #[cfg(test)]
     pub(crate) fn skillhub_homepage_url(slug: &str) -> Option<String> {
-        if !Self::is_valid_skillhub_slug(slug) {
-            return None;
-        }
-        Some(format!("{SKILLHUB_PUBLIC_SKILL_PREFIX}{slug}"))
+        marketplace::skillhub_homepage_url(slug)
     }
 
-    fn assert_skillhub_api_url(url: &url::Url, expected_path: &str) -> Result<()> {
-        if url.scheme() != "https"
-            || url.host_str() != Some("api.skillhub.cn")
-            || url.path() != expected_path
-        {
-            return Err(anyhow!(format_skill_error(
-                "INVALID_SKILLHUB_URL",
-                &[("url", url.as_str())],
-                Some("checkNetwork"),
-            )));
-        }
-        Ok(())
-    }
-
+    #[cfg(test)]
     pub(crate) fn normalize_skillhub_category(raw: Option<&str>) -> Option<&'static str> {
-        let value = raw.map(str::trim).filter(|text| !text.is_empty())?;
-        let compact = value.to_ascii_lowercase().replace('_', "-");
-        SKILLHUB_OFFICIAL_CATEGORIES
-            .iter()
-            .find(|(key, name)| compact == *key || value == *name)
-            .map(|(key, _)| *key)
+        marketplace::normalize_skillhub_category(raw)
     }
 
+    #[cfg(test)]
     pub(crate) fn skillhub_list_url(
         query: &str,
         category: Option<&str>,
         page: usize,
         page_size: usize,
     ) -> Result<url::Url> {
-        let page = page.max(1);
-        let page_size = clamp_skillhub_page_size(page_size);
-        let category_key = Self::normalize_skillhub_category(category);
-        let sort_by = if query.is_empty() && category_key.is_some() {
-            "downloads"
-        } else {
-            "score"
-        };
-        let page_s = page.to_string();
-        let page_size_s = page_size.to_string();
-        let mut params: Vec<(&str, &str)> = vec![
-            ("page", page_s.as_str()),
-            ("pageSize", page_size_s.as_str()),
-            ("sortBy", sort_by),
-        ];
-        if !query.is_empty() {
-            params.push(("keyword", query));
-        }
-        if let Some(key) = category_key {
-            params.push(("category", key));
-        }
-        let url = url::Url::parse_with_params(
-            &format!("{SKILLHUB_API_ORIGIN}{SKILLHUB_LIST_PATH}"),
-            &params,
-        )?;
-        Self::assert_skillhub_api_url(&url, SKILLHUB_LIST_PATH)?;
-        Ok(url)
+        marketplace::skillhub_list_url(query, category, page, page_size)
     }
 
+    #[cfg(test)]
     pub(crate) fn skillhub_download_url(slug: &str) -> Result<url::Url> {
-        if !Self::is_valid_skillhub_slug(slug) {
-            return Err(anyhow!(format_skill_error(
-                "INVALID_SKILLHUB_SLUG",
-                &[("slug", slug)],
-                Some("checkNetwork"),
-            )));
-        }
-        let url = url::Url::parse_with_params(
-            &format!("{SKILLHUB_API_ORIGIN}{SKILLHUB_DOWNLOAD_PATH}"),
-            &[("slug", slug)],
-        )?;
-        Self::assert_skillhub_api_url(&url, SKILLHUB_DOWNLOAD_PATH)?;
-        let slug_param = url
-            .query_pairs()
-            .find(|(key, _)| key == "slug")
-            .map(|(_, value)| value.into_owned());
-        if slug_param.as_deref() != Some(slug) {
-            return Err(anyhow!(format_skill_error(
-                "INVALID_SKILLHUB_SLUG",
-                &[("slug", slug)],
-                Some("checkNetwork"),
-            )));
-        }
-        Ok(url)
-    }
-
-    fn map_skillhub_item(item: SkillHubApiSkill) -> Option<SkillHubDiscoverableSkill> {
-        if !Self::is_valid_skillhub_slug(&item.slug) {
-            return None;
-        }
-        let homepage = Self::skillhub_homepage_url(&item.slug)?;
-        let name = Self::first_nonempty(&[item.display_name.clone(), item.name.clone()])
-            .unwrap_or_else(|| item.slug.clone());
-        let description = Self::first_nonempty(&[
-            item.description_zh.clone(),
-            item.description.clone(),
-            item.summary.clone(),
-        ])
-        .unwrap_or_default();
-        Some(SkillHubDiscoverableSkill {
-            key: format!("skillhub:{}", item.slug),
-            slug: item.slug.clone(),
-            name,
-            description,
-            directory: item.slug.clone(),
-            repo_owner: SKILLHUB_MARKET_OWNER.to_string(),
-            repo_name: item.slug.clone(),
-            repo_branch: item
-                .version
-                .clone()
-                .filter(|value| !value.trim().is_empty())
-                .unwrap_or_else(|| "skillhub".to_string()),
-            version: Self::first_nonempty(&[item.version]),
-            owner_name: Self::first_nonempty(&[item.owner_name]),
-            installs: item.installs,
-            downloads: item.downloads,
-            homepage_url: homepage.clone(),
-            readme_url: Some(homepage),
-            category: Self::normalize_skillhub_category(item.category.as_deref())
-                .map(str::to_string),
-        })
-    }
-
-    fn dedupe_skillhub_by_slug(
-        skills: Vec<SkillHubDiscoverableSkill>,
-    ) -> Vec<SkillHubDiscoverableSkill> {
-        let mut seen = HashSet::new();
-        skills
-            .into_iter()
-            .filter(|skill| seen.insert(skill.slug.clone()))
-            .collect()
+        marketplace::skillhub_download_url(slug)
     }
 
     /// 搜索 Skill 市场。列表走官方 `GET /api/skills` 的 page / pageSize / category。
@@ -4403,39 +4034,7 @@ impl SkillService {
         offset: usize,
         category: Option<&str>,
     ) -> Result<SkillHubSearchResult> {
-        let query = Self::clamp_skillhub_query(query);
-        let page_size = clamp_skillhub_page_size(limit);
-        let page = offset / page_size.max(1) + 1;
-        let url = Self::skillhub_list_url(&query, category, page, page_size)?;
-        let client = crate::proxy::http_client::get();
-        let resp = client
-            .get(url)
-            .timeout(Duration::from_secs(10))
-            .send()
-            .await?
-            .error_for_status()?
-            .json::<SkillHubListApiResponse>()
-            .await?;
-        if resp.code != 0 {
-            return Err(anyhow!(format_skill_error(
-                "SKILLHUB_LIST_FAILED",
-                &[("code", &resp.code.to_string()), ("message", &resp.message)],
-                Some("checkNetwork"),
-            )));
-        }
-        let skills = Self::dedupe_skillhub_by_slug(
-            resp.data
-                .skills
-                .into_iter()
-                .filter_map(Self::map_skillhub_item)
-                .collect(),
-        );
-        Ok(SkillHubSearchResult {
-            skills,
-            total_count: resp.data.total,
-            query,
-            categories: official_skillhub_categories(),
-        })
+        marketplace::search_skillhub(query, limit, offset, category).await
     }
 
     /// 从 Skill 市场下载 ZIP 并走现有解压安装，不调用 skillhub CLI。
@@ -4444,25 +4043,7 @@ impl SkillService {
         slug: &str,
         current_app: &SkillTargetId,
     ) -> Result<Vec<InstalledSkill>> {
-        let url = Self::skillhub_download_url(slug)?;
-        let bytes = Self::download_bounded_bytes(url, Duration::from_secs(60)).await?;
-        let temp_root = crate::config::get_user_temp_dir();
-        fs::create_dir_all(&temp_root)?;
-        let mut tmp = tempfile::Builder::new()
-            .prefix("skillhub-")
-            .suffix(".zip")
-            .tempfile_in(&temp_root)?;
-        tmp.write_all(&bytes)?;
-        tmp.flush()?;
-        let homepage = Self::skillhub_homepage_url(slug);
-        let provenance = ZipInstallProvenance {
-            id: format!("skillhub:{slug}"),
-            repo_owner: SKILLHUB_MARKET_OWNER.to_string(),
-            repo_name: slug.to_string(),
-            repo_branch: "skillhub".to_string(),
-            readme_url: homepage,
-        };
-        Self::install_from_zip_with_provenance(db, tmp.path(), current_app, Some(&provenance))
+        marketplace::install_skillhub(db, slug, current_app).await
     }
 }
 
@@ -5126,73 +4707,6 @@ mod tests {
             Some("https://skillhub.cn/skills/tencent-docs")
         );
         assert!(SkillService::skillhub_homepage_url("../x").is_none());
-    }
-
-    #[test]
-    fn skillhub_maps_zh_description_and_official_list_envelope() {
-        let raw = serde_json::json!({
-            "code": 0,
-            "data": {
-                "total": 2,
-                "skills": [
-                    {
-                        "slug": "tencent-docs",
-                        "displayName": "腾讯文档",
-                        "description_zh": "中文介绍",
-                        "description": "English intro",
-                        "version": "1.0.41",
-                        "owner_name": "tencent-adm",
-                        "installs": 8107,
-                        "category": "office-efficiency"
-                    },
-                    {
-                        "slug": "../evil",
-                        "name": "skip me"
-                    },
-                    {
-                        "slug": "summarize",
-                        "name": "Summarize",
-                        "summary": "摘要",
-                        "category": "开发编程"
-                    }
-                ]
-            }
-        });
-        let parsed: SkillHubListApiResponse = serde_json::from_value(raw).expect("parse");
-        assert_eq!(parsed.data.total, 2);
-        let skills: Vec<_> = parsed
-            .data
-            .skills
-            .into_iter()
-            .filter_map(SkillService::map_skillhub_item)
-            .collect();
-        assert_eq!(skills.len(), 2);
-        assert_eq!(skills[0].name, "腾讯文档");
-        assert_eq!(skills[0].description, "中文介绍");
-        assert_eq!(skills[0].repo_owner, SKILLHUB_MARKET_OWNER);
-        assert_eq!(skills[0].category.as_deref(), Some("office-efficiency"));
-        assert_eq!(
-            skills[0].homepage_url,
-            "https://skillhub.cn/skills/tencent-docs"
-        );
-        assert_eq!(skills[1].description, "摘要");
-        assert_eq!(skills[1].category.as_deref(), Some("dev-programming"));
-    }
-
-    #[test]
-    fn skillhub_page_size_defaults_to_21_and_clamps_page_size_only() {
-        assert_eq!(clamp_skillhub_page_size(0), 21);
-        assert_eq!(clamp_skillhub_page_size(21), 21);
-        assert_eq!(clamp_skillhub_page_size(50), 50);
-        assert_eq!(clamp_skillhub_page_size(100), 50);
-        let page_two = SkillService::skillhub_list_url("", None, 2, 0).expect("default size");
-        assert!(page_two
-            .query_pairs()
-            .any(|(key, value)| key == "pageSize" && value == "21"));
-        assert!(page_two
-            .query_pairs()
-            .any(|(key, value)| key == "page" && value == "2"));
-        assert_eq!(official_skillhub_categories().len(), 12);
     }
 
     #[test]
