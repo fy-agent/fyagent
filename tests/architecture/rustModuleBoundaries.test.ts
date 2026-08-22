@@ -88,6 +88,15 @@ describe("Rust modular architecture boundaries", () => {
     }
     expect(toolingService).not.toMatch(/\bfn build_tool_lifecycle_command\b/u);
     expect(toolingService).not.toMatch(/\benum ToolLifecycleAction\b/u);
+    for (const lifecyclePrivateMarker of [
+      "powershell_encoded_command",
+      "GROK_INSTALL_WINDOWS_SCRIPT",
+      "HERMES_INSTALL_WINDOWS_SCRIPT",
+    ]) {
+      expect(toolingCommands).not.toContain(lifecyclePrivateMarker);
+      expect(toolingLifecycle).toContain(lifecyclePrivateMarker);
+      expect(toolingService).not.toContain(lifecyclePrivateMarker);
+    }
     for (const implementationMarker of [
       "fetch_npm_latest_for_tool",
       "pick_latest_version",

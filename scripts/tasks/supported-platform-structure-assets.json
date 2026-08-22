@@ -203,7 +203,7 @@
     ],
     [
       "src-tauri/src/services/tooling.rs",
-      "9033fbc1b8d75b9e258d81582eca4e8ab56d631def465520e743291914e58b64"
+      "be746ee1380dbaa9e67157caadd0e1c52df36d774c5af80a57677d63210734e5"
     ],
     [
       "src-tauri/src/services/tooling/discovery.rs",
@@ -211,7 +211,7 @@
     ],
     [
       "src-tauri/src/services/tooling/lifecycle.rs",
-      "49d490eab01abc93c204023b46aad56b48615522ced4459ef5a9826f816246d1"
+      "091db75def671c9d39cb8738619ae5129aa825cab43c30447ff9f959142e9c3c"
     ],
     [
       "src-tauri/src/services/tooling/terminal.rs",

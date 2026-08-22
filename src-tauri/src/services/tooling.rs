@@ -26,9 +26,11 @@ use versions::{
     elevated_windows_tool_version_unavailable, extract_version, get_single_tool_version_impl,
 };
 
-pub(crate) use discovery::run_detected_tool_command_with_timeout;
+#[cfg(all(test, target_os = "macos"))]
+use discovery::is_conflicting;
 #[cfg(test)]
-use discovery::{is_conflicting, plan_command_for};
+use discovery::plan_command_for;
+pub(crate) use discovery::run_detected_tool_command_with_timeout;
 pub use discovery::{probe_tool_installations, ToolInstallationReport};
 pub(crate) use terminal::launch_terminal_running;
 #[cfg(test)]
@@ -3104,27 +3106,6 @@ mod tests {
         }
 
         #[test]
-        fn grok_windows_install_prefers_powershell_with_npm_fallback() {
-            let install = static_fallback_command_for("grok", ToolLifecycleAction::Install);
-            let native = grok_install_windows_command();
-            assert!(
-                install.starts_with(&native),
-                "native installer first: {install}"
-            );
-            assert!(
-                install.ends_with("|| call npm i -g @xai-official/grok@latest"),
-                "npm fallback should remain available: {install}"
-            );
-            let expected_encoded = powershell_encoded_command(GROK_INSTALL_WINDOWS_SCRIPT);
-            assert_eq!(
-                native
-                    .split_once("-EncodedCommand ")
-                    .map(|(_, encoded)| encoded),
-                Some(expected_encoded.as_str())
-            );
-        }
-
-        #[test]
         fn windows_no_sibling_uses_cli_update_without_package_fallback() {
             // sibling 包管理器不存在(纯独立二进制)时,仍可锚定到 CLI 自身跑官方 update。
             // 只是没有包管理器 fallback。用 claude —— codex 自 5092fe51 起一律走 npm 锚定,
@@ -3143,59 +3124,6 @@ mod tests {
             let cmd = anchored_command_from_paths("hermes", &bin_path, &bin_path);
             let expected = format!("{} update", expect_quoted_path(&bin_path));
             assert_eq!(cmd.as_deref(), Some(expected.as_str()));
-        }
-
-        #[test]
-        fn hermes_windows_static_fallback_uses_powershell_installer_without_pip() {
-            let install = static_fallback_command_for("hermes", ToolLifecycleAction::Install);
-            assert!(
-                install
-                    .starts_with("powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand "),
-                "should use PowerShell EncodedCommand installer: {install}"
-            );
-            let encoded = install
-                .split_once("-EncodedCommand ")
-                .map(|(_, encoded)| encoded)
-                .expect("installer should include encoded command");
-            assert_eq!(
-                encoded,
-                powershell_encoded_command(HERMES_INSTALL_WINDOWS_SCRIPT)
-            );
-            let install_prefix = install
-                .split_once("-EncodedCommand ")
-                .map(|(prefix, _)| prefix)
-                .expect("installer should include encoded command");
-            assert!(
-                !install_prefix.contains("|")
-                    && !install_prefix.contains("-Command")
-                    && !install_prefix.contains("python")
-                    && !install_prefix.contains("pip"),
-                "should hide PowerShell pipe from cmd.exe and avoid system Python/pip: {install}"
-            );
-
-            let update = static_fallback_command("hermes");
-            assert!(
-                update.starts_with(
-                    "hermes update || powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand "
-                ),
-                "should try CLI update before PowerShell installer: {update}"
-            );
-            let fallback = update
-                .split_once("||")
-                .map(|(_, fallback)| fallback)
-                .expect("update should include a fallback command");
-            let fallback_prefix = fallback
-                .split_once("-EncodedCommand ")
-                .map(|(prefix, _)| prefix)
-                .expect("fallback should include encoded command");
-            assert!(
-                !fallback_prefix.contains('|')
-                    && !fallback_prefix.contains("-Command")
-                    && !update.contains("call powershell")
-                    && !fallback_prefix.contains("python")
-                    && !fallback_prefix.contains("pip"),
-                "PowerShell fallback should be encoded, not called like a batch file or use pip: {update}"
-            );
         }
 
         #[test]

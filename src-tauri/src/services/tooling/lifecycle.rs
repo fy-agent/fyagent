@@ -293,3 +293,82 @@ pub(super) fn win_double_quote(value: &str) -> String {
 pub(super) fn windows_cmd_double_quote_arg(value: &str) -> String {
     win_double_quote(value)
 }
+
+#[cfg(all(test, target_os = "windows"))]
+mod tests {
+    use super::super::{static_fallback_command, static_fallback_command_for};
+    use super::*;
+
+    #[test]
+    fn grok_windows_install_prefers_powershell_with_npm_fallback() {
+        let install = static_fallback_command_for("grok", ToolLifecycleAction::Install);
+        let native = grok_install_windows_command();
+        assert!(
+            install.starts_with(&native),
+            "native installer first: {install}"
+        );
+        assert!(
+            install.ends_with("|| call npm i -g @xai-official/grok@latest"),
+            "npm fallback should remain available: {install}"
+        );
+        let expected_encoded = powershell_encoded_command(GROK_INSTALL_WINDOWS_SCRIPT);
+        assert_eq!(
+            native
+                .split_once("-EncodedCommand ")
+                .map(|(_, encoded)| encoded),
+            Some(expected_encoded.as_str())
+        );
+    }
+
+    #[test]
+    fn hermes_windows_static_fallback_uses_powershell_installer_without_pip() {
+        let install = static_fallback_command_for("hermes", ToolLifecycleAction::Install);
+        assert!(
+            install.starts_with("powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand "),
+            "should use PowerShell EncodedCommand installer: {install}"
+        );
+        let encoded = install
+            .split_once("-EncodedCommand ")
+            .map(|(_, encoded)| encoded)
+            .expect("installer should include encoded command");
+        assert_eq!(
+            encoded,
+            powershell_encoded_command(HERMES_INSTALL_WINDOWS_SCRIPT)
+        );
+        let install_prefix = install
+            .split_once("-EncodedCommand ")
+            .map(|(prefix, _)| prefix)
+            .expect("installer should include encoded command");
+        assert!(
+            !install_prefix.contains("|")
+                && !install_prefix.contains("-Command")
+                && !install_prefix.contains("python")
+                && !install_prefix.contains("pip"),
+            "should hide PowerShell pipe from cmd.exe and avoid system Python/pip: {install}"
+        );
+
+        let update = static_fallback_command("hermes");
+        assert!(
+            update.starts_with(
+                "hermes update || powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand "
+            ),
+            "should try CLI update before PowerShell installer: {update}"
+        );
+        let fallback = update
+            .split_once("||")
+            .map(|(_, fallback)| fallback)
+            .expect("update should include a fallback command");
+        let fallback_prefix = fallback
+            .split_once("-EncodedCommand ")
+            .map(|(prefix, _)| prefix)
+            .expect("fallback should include encoded command");
+        assert!(
+            !fallback_prefix.contains('|')
+                && !fallback_prefix.contains("-Command")
+                && !update.contains("call powershell")
+                && !fallback_prefix.contains("python")
+                && !fallback_prefix.contains("pip"),
+            "PowerShell fallback should be encoded, not called like a batch file or use pip: {update}"
+        );
+    }
+}
