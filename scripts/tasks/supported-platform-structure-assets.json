@@ -23,7 +23,7 @@
     ],
     [
       "scripts/tasks/supported-platform-check.mjs",
-      "1a53ae2cc1baabe0486fc6fc69827592bb1eb066104c835146663bf957aa149a"
+      "674ab3eefe6de37f402402b664c79fddba78d33965ebabc38d18397decfa8d0d"
     ],
     [
       "scripts/tasks/system-check.mjs",
@@ -63,7 +63,7 @@
     ],
     [
       "src-tauri/src/codex_config.rs",
-      "c9a1d3171f38b121626231549578c85494051b723eac74cf3eb9d7687c020654"
+      "99823315c83f821d6bf386288ed11e786bdb23b6be5bc1610e643330a0d726a9"
     ],
     [
       "src-tauri/src/codex_desktop_runtime.rs",
@@ -191,7 +191,7 @@
     ],
     [
       "src-tauri/src/services/skill.rs",
-      "6a01eebd8a62927aaee46f8059e880dad2da5ee625352c0d16439a7f025fc81f"
+      "a0150076465d0cd730e79b9f43737252c57766fe5442918b84aaa85e930206a8"
     ],
     [
       "src-tauri/src/services/subscription.rs",
@@ -199,7 +199,15 @@
     ],
     [
       "src-tauri/src/services/tooling.rs",
-      "8460d0913c251226e019de4da15d1b5ed7493fd148189f67e53f88c430c6996e"
+      "1b19f62e433ec70d1c528f89c8a968dcdd1edf0c9fa22be538a68fe2cc8455e0"
+    ],
+    [
+      "src-tauri/src/services/tooling/lifecycle.rs",
+      "49d490eab01abc93c204023b46aad56b48615522ced4459ef5a9826f816246d1"
+    ],
+    [
+      "src-tauri/src/services/tooling/versions.rs",
+      "52e88a23ec796504504c8516c5429bb6dffb697efc592625967cb51a6e97e763"
     ],
     [
       "src-tauri/src/services/traework_models.rs",

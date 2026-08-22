@@ -324,7 +324,7 @@ const RUST_CFG_MACRO_CONTRACT = Object.freeze(
       ['focus_main_window: cfg!(target_os = "macos"),'],
     ],
     [
-      "src-tauri/src/services/tooling.rs",
+      "src-tauri/src/services/tooling/lifecycle.rs",
       'cfg!(target_os="windows")',
       1,
       [
