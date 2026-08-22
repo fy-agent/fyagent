@@ -1268,3 +1268,34 @@ Completed the four P0 modular architecture improvements across Tooling, Skill, C
 ### Status
 
 [OK] **Completed**
+
+
+## Session 38: Fix Windows Tooling CI ownership
+
+**Date**: 2026-08-22
+**Task**: Fix Windows Tooling CI ownership
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Exact-SHA CI exposed Windows-only Tooling lifecycle tests still referencing private symbols after the owner move; relocated those tests to lifecycle.rs, tightened test-only imports, added a cross-platform ownership guard, and refreshed sealed platform digests.
+
+### Main Changes
+
+- Moved Windows lifecycle encoding/fallback tests to their private lifecycle owner without widening production visibility.
+- Added a source-level architecture guard so macOS CI catches future private lifecycle symbol leakage.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `86e4cf58` | (see git log) |
+
+### Testing
+
+- [OK] mise run check passed locally after the corrective change.
+- [OK] supported-platform and Rust modular boundary focused contracts passed.
+
+### Status
+
+[OK] **Completed**
