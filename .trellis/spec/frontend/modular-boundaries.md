@@ -35,6 +35,28 @@ V2 keeps its stricter FeaturePorts / `shared/platform/tauri` signatures from
 the V2 Shell Contract. `src/shared/codex-desktop/**` remains its deliberate
 renderer-neutral tree-external exception.
 
+The V2 Tauri facade stays stable:
+
+```ts
+createTauriFeaturePorts(): FeaturePorts;
+```
+
+`src/v2/shared/platform/tauri/features.ts` is the composition point; capability
+validation/parsing/invoke implementations live under its `feature-ports/**`
+owner tree.
+
+Leftover provider-config imports also keep one compatibility path:
+
+```ts
+import {
+  updateCommonConfigSnippet,
+  extractCodexBaseUrl,
+  setCodexModelName,
+} from "@/utils/providerConfigUtils";
+```
+
+That file is a re-export facade, not the implementation owner.
+
 ## 3. Contracts
 
 - V2 must not import leftover `components`, `hooks`, `lib`, or `i18n` code.
@@ -42,11 +64,32 @@ renderer-neutral tree-external exception.
   `@tauri-apps/*`.
 - Leftover `src/components/**` must not import `@tauri-apps/*`; use
   `src/lib/api/**` or an owning hook.
+- `src/v2/shared/platform/tauri/features.ts` composes `FeaturePorts` only.
+  Command literals, request validation and native-response parsing live in
+  capability-owned `feature-ports/**` modules. ACL/adapter tests must scan the
+  whole adapter tree rather than assuming every command string lives in the
+  root facade.
 - `src/main.tsx` is the reviewed bootstrap exception for process lifecycle.
 - `App.tsx` is a composition root. Cross-feature startup/event/cache
   coordination belongs in an owning hook such as `useAppRuntimeEffects`.
 - Specialized provider forms depend on `ProviderForm.types.ts` and pure model
   helpers, not on the `ProviderForm.tsx` composition root.
+- Leftover provider configuration keeps `src/utils/providerConfigUtils.ts` as
+  the stable compatibility facade. Implementation ownership is split by
+  configuration language:
+  - `providerConfigJsonUtils.ts`: JSON common-config merge/remove, API-key
+    fields and template substitution;
+  - `codexConfigUtils.ts`: Codex TOML inspection/editing and wire/model/base URL
+    helpers;
+  - `providerConfigStructural.ts`: prototype-pollution-safe structural
+    sanitize/merge/remove/subset primitives shared by JSON and TOML readers.
+  Do not migrate dozens of consumers merely to change import paths; change the
+  facade only when its external API intentionally changes.
+- A long V2 route root may remain long when it is the single owner of route
+  selection/query/dirty-blocker state and its internal panels are already
+  cohesive. Extract a route-local module only when an explicit props boundary
+  and independent test seam improve change locality; do not split JSX by line
+  count alone.
 - Refactors preserve command names, payloads, event cleanup, cache
   invalidation, one-shot migration semantics and user-visible errors.
 
@@ -58,6 +101,8 @@ renderer-neutral tree-external exception.
 | `src/shared/**` imports React/Tauri/V2/leftover code | Architecture test fails; move runtime code back to its generation |
 | Leftover component imports Tauri | Architecture test fails; use an API/hook facade |
 | Specialized provider form imports `./ProviderForm` | Architecture test fails; depend on types/model modules |
+| `providerConfigUtils.ts` regrows JSON/TOML implementation logic | `frontendModuleBoundaries` fails; keep it a compatibility re-export facade |
+| V2 Tauri root facade regrows capability parsing/validation | Reject; move logic to the owning `feature-ports/**` module and keep root composition-only |
 | Event facade does not return unlisten | Reject; cleanup semantics must remain intact |
 
 ## 5. Good / Base / Bad Cases
@@ -66,24 +111,34 @@ renderer-neutral tree-external exception.
   facade owns Tauri events and returns unlisten.
 - **Good:** `src/shared/codex-desktop/**` contains neutral DTO/state parsing;
   V2 UI remains inside V2.
+- **Good:** existing callers keep importing `@/utils/providerConfigUtils`, while
+  JSON, Codex TOML and structural-safety implementations have separate owners.
+- **Good:** one V2 Tauri composition facade returns `FeaturePorts` while each
+  capability adapter owns its wire validation/parser.
 - **Base:** leftover `src/lib/api/**` may import Tauri because it is the
   leftover platform facade.
+- **Base:** a large route page may remain one file when moving its panels would
+  only relocate JSX while making route-state ownership less obvious.
 - **Bad:** a V2 page imports `@/hooks/useSettings`.
 - **Bad:** React hooks are moved into `src/shared/**` only so both generations
   can import them.
+- **Bad:** split a file solely to satisfy a line-count target, then add a barrel
+  or cross-module state plumbing that increases dependency surface.
 
 ## 6. Tests Required
 
 ```bash
 mise run typecheck
-mise run test:unit -- tests/architecture/rendererBoundaries.test.ts
+mise run test:unit -- tests/architecture/rendererBoundaries.test.ts tests/architecture/frontendModuleBoundaries.test.ts
 mise run lint:v2
+mise run typecheck:v2
 mise run test:v2
 ```
 
 The architecture test asserts neutral shared imports, leftover Tauri access,
-and provider-form dependency direction. Run nearest feature/integration tests
-too; dependency tests do not prove behavior.
+provider-form dependency direction, and the provider-config compatibility
+facade. Run nearest feature/integration tests too; dependency tests do not
+prove behavior.
 
 ## 7. Wrong vs Correct
 

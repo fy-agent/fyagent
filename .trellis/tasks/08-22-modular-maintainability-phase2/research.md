@@ -245,3 +245,69 @@ The second pass should optimize **change locality and ownership**, not source-fi
 6. only then touch Proxy/Forwarder/usage/lib if a clean seam remains after the safer refactors;
 7. update SPEC with the resulting executable ownership rules before archive;
 8. archive, make the archive/session commits, then perform one final push and require green CI for that exact archived HEAD.
+
+## Final implementation outcome
+
+The implementation followed the audit's **change-locality over line-count**
+rule, but deliberately stopped several originally plausible moves after a
+second call-graph/test-seam review showed that the physical split would add
+state or protocol coupling without creating a stronger owner.
+
+### Extracted boundaries
+
+| Baseline hotspot | Final ownership | Result |
+| --- | --- | --- |
+| `src/v2/shared/platform/tauri/features.ts` (1787 lines) | 18-line composition facade + capability-owned `feature-ports/**` adapters | validators, parsers and invoke calls now move with the owning FeaturePort while the `FeaturePorts` API stays stable |
+| `commands/tooling.rs` (~5481 lines) | 32-line command facade + `services/tooling.rs` (5476) | Tauri transport no longer owns CLI discovery/lifecycle/version/terminal policy; platform fail-closed contracts moved with the service implementation |
+| `services/skill.rs` (6780) | parent facade/transaction owner + `skill/marketplace.rs` (539) | skills.sh / SkillHub transport and mapping are isolated without duplicating archive extraction or filesystem safety |
+| `codex_config.rs` (6078) | parent facade + `codex_config/auth.rs` (145) | auth/login/stale-residue/backfill policy has one owner; catalog/live/features remain together because their test/TOML coupling did not justify a navigation-only move |
+| `services/provider/mod.rs` (6569) | parent transaction facade + `provider/common_config.rs` (238) | pure sensitive-key/common-config extraction is isolated; mutation guards and ordered Gemini scrub remain singular |
+| `providerConfigUtils.ts` (~1600) | 37-line compatibility facade + JSON (241), Codex TOML (1207), structural-safety (74) owners | all 28 previous exports are preserved while JSON and TOML configuration languages no longer share one implementation file |
+
+Executable architecture checks now protect the Tooling transport boundary,
+private Rust subdomains, the V2/leftover/shared renderer direction, the V2
+Tauri adapter tree, and the leftover provider-config compatibility facade.
+
+### Intentionally retained large coordinators
+
+- **V2 route roots** (`Models` 1547, `Skills` 1273, `MCP` 996, `Memory` 965,
+  `Prompts` 843) were not physically split. AST/call-site review showed the
+  remaining length is predominantly route-local panels bound to common
+  selection/query/dirty-blocker state. Moving those named functions would
+  mostly relocate JSX and expand props/state plumbing without reducing a
+  cross-domain dependency.
+- **`proxy/handlers.rs` (3351)** remains one protocol data-plane owner. Its
+  Claude/Codex/Gemini sections share streaming/error/usage helpers; no clean
+  one-way module boundary was proven that justified changing this hot path.
+- **`proxy/forwarder.rs` (5023)** remains the single retry/failover/streaming
+  request-pipeline coordinator. Splitting phases into peer modules would make
+  mutable request body, failover state and error normalization cross module
+  boundaries.
+- **Skill archive/materialization/backup** remains under the existing parent
+  safety owner because traversal, symlink, byte/entry budgets and
+  backup-before-delete ordering are coupled invariants.
+- **Provider mutation/Gemini scrub** remains in the parent service because its
+  lock/rollback/write order is a correctness and credential-safety property.
+
+These are stop-rule decisions, not unfinished implementation: the task rejects
+mechanical line-count targets when the proposed extraction worsens ownership.
+
+### Final dependency and quality evidence
+
+- Current renderer scan: **440 TS/TSX files**, **0 multi-file static-import SCC
+  cycles**. The highest fan-out remains expected composition/leftover hotspots
+  (`App.tsx` 54, `ProviderForm.tsx` 48); the modularization did not introduce a
+  new cycle.
+- `mise run check` passed on the final product-code state, including TypeScript
+  type/format checks, **168 frontend test files / 1476 passed / 1 skipped**,
+  Rust fmt/check/clippy, **2807 Rust library tests passed / 5 ignored**, Codex
+  Desktop 109/109, Provider/Skill integrations, supported-platform sealing and
+  release/contracts.
+- V2-specific `lint:v2`, `typecheck:v2`, and `test:v2` passed; V2 tests are
+  **277/277**.
+- Modular-boundary/platform focused tests passed **32/32** after the SPEC
+  update.
+
+No Tauri command name/serialized contract, persisted format, Provider rollback
+order, Skill archive budget, proxy streaming/failover path, or intended
+renderer behavior was deliberately changed by this task.

@@ -31,14 +31,24 @@ pub use skill::SkillService;
 ```
 
 Private implementation subdomains include `provider/universal.rs`,
-`skill/discovery.rs`, `proxy/takeover.rs`, and `codex_config/storage.rs`.
+`provider/common_config.rs`, `skill/discovery.rs`, `skill/marketplace.rs`,
+`proxy/takeover.rs`, `codex_config/auth.rs`, and `codex_config/storage.rs`.
+Tooling business policy lives in crate-scoped `services/tooling.rs`; the Tauri
+command module is only its transport facade.
 
 ## 3. Contracts
 
 - `commands/**` owns Tauri transport; domain behavior belongs in its service or
   config owner. Do not recreate `commands/misc.rs`.
 - Lifecycle/system utility commands belong in `commands/system.rs`; CLI/tool
-  install/probe/terminal commands belong in `commands/tooling.rs`.
+  install/probe/terminal command **wrappers** belong in `commands/tooling.rs`.
+  `commands/tooling.rs` must stay limited to the four reviewed wire commands
+  (`get_tool_versions`, `run_tool_lifecycle_action`,
+  `probe_tool_installations`, `open_provider_terminal`). Version probing,
+  installation discovery, lifecycle command planning/execution, Windows
+  fail-closed policy and terminal launch behavior belong to
+  `services/tooling.rs`. Backend siblings call the service owner, never command
+  internals.
 - `services/mod.rs` modules are `pub(crate)`; stable caller APIs are explicit
   re-exports.
 - Provider/Skill/Proxy/Codex implementation subdomains are private `mod` and
@@ -48,10 +58,29 @@ Private implementation subdomains include `provider/universal.rs`,
   `auth.json` bytes if the config write fails.
 - `provider/universal.rs` preserves unknown nested settings unless projection
   overrides the same field.
+- `provider/common_config.rs` owns the **pure** common-config policy: sensitive
+  credential-key classification and per-application extraction for Claude,
+  Codex, Gemini, OpenCode and OpenClaw. Database writes, mutation guards and
+  the ordered Gemini credential-scrub transaction remain in `ProviderService`;
+  that order is a safety property and must not be fragmented for file size.
 - `skill/discovery.rs` owns discovery filtering/pagination/cache; ZIP, symlink,
   copy, backup, and vendor safety stay outside it.
+- `skill/marketplace.rs` owns skills.sh / SkillHub HTTP DTOs, slug/category/URL
+  validation and response mapping. Marketplace install delegates back to the
+  existing bounded download/archive installation primitives; do not create a
+  second ZIP extraction or archive-budget implementation in marketplace code.
 - `proxy/takeover.rs` owns pure takeover URL/config matching; state transitions
   and live I/O stay in `ProxyService` unless separately justified.
+- `codex_config/auth.rs` owns Codex login-material classification, OAuth/API-key
+  policy, stale third-party auth residue detection/cleanup and token-backfill
+  policy. `codex_config` remains the stable facade and re-exports only the
+  functions current callers actually require; test-only/private predicates do
+  not become public merely because they moved files.
+- `proxy/handlers.rs`, `RequestForwarder`, Provider mutation/rollback
+  coordination, and Skill archive/materialization safety may intentionally
+  remain physically large. Their streaming/failover/rollback/filesystem order
+  is stronger evidence than line count; split them only when a one-way pure or
+  independently testable seam is proven.
 - Module moves preserve serialized DTOs, registration, persistent paths,
   validation order, security checks, and error semantics.
 
@@ -61,7 +90,10 @@ Private implementation subdomains include `provider/universal.rs`,
 | --- | --- |
 | Bare `pub mod` under `services/mod.rs` | Architecture test fails; use `pub(crate)` and explicit re-export |
 | `commands/misc.rs` reintroduced | Architecture test fails; choose an owning command module |
+| Tooling implementation markers return to `commands/tooling.rs` | Architecture test fails; keep four thin wrappers and move policy to `services/tooling.rs` |
 | Provider/Skill/Proxy/Codex subdomain made public | Architecture test fails unless a reviewed external contract requires it |
+| Marketplace code starts implementing its own ZIP/archive safety path | Reject; delegate to the existing Skill archive/install owner |
+| Pure Provider common-config module starts owning DB/locks/scrub sequencing | Reject; transaction/rollback order remains in `ProviderService` |
 | Codex config write fails after auth write | Restore previous auth bytes or delete newly created auth; return error |
 | Universal projection sees unknown nested settings | Preserve them while applying overrides |
 | Discovery cache mutex is poisoned | Recover inner value; do not panic |
@@ -74,8 +106,13 @@ Private implementation subdomains include `provider/universal.rs`,
   retain the parent service facade, then tighten visibility.
 - **Good:** keep Windows user-scope/fail-closed contracts intact while moving
   command ownership.
+- **Good:** keep a stable facade while private modules own Tooling policy,
+  marketplace transport, Codex auth policy, or Provider common-config rules.
 - **Base:** a large file may remain large if the remaining code is a tightly
   coupled state machine whose sequence is itself a safety property.
+- **Base:** `proxy/handlers.rs`, `RequestForwarder`, Skill archive safety or a
+  Provider mutation coordinator may remain large after audit when extracting
+  them would create peer owners for one protocol/transaction.
 - **Bad:** create many crates without reducing coupling or public surface.
 - **Bad:** weaken a platform scanner or sealed-structure test merely to make a
   sensitive file move pass.
@@ -91,8 +128,9 @@ mise run test:unit -- tests/remainingPlatformSurface.test.ts
 ```
 
 Focused iteration should also cover Codex atomic write/rollback, Provider
-live/takeover, all `services::skill::tests`, Proxy takeover/OAuth restore,
-Windows user-scope, and desktop security contracts.
+live/takeover/common-config, all `services::skill::tests`, Proxy
+takeover/OAuth restore, Tooling lifecycle/platform boundaries, Windows
+user-scope, and desktop security contracts.
 
 ## 7. Wrong vs Correct
 
