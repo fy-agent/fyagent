@@ -22,12 +22,12 @@ const downloadManifestScriptPath = path.resolve(
   "generate-download-manifest.mjs",
 );
 const gitAttributesPath = path.resolve(__dirname, "..", ".gitattributes");
-const toolingCommandsPath = path.resolve(
+const toolingServicePath = path.resolve(
   __dirname,
   "..",
   "src-tauri",
   "src",
-  "commands",
+  "services",
   "tooling.rs",
 );
 const lifecycleJobsPath = path.resolve(
@@ -166,7 +166,7 @@ describe("desktop IPC capability and CSP boundary", () => {
   });
 
   it("fails closed before an elevated Windows release can probe or run user CLIs", () => {
-    const source = fs.readFileSync(toolingCommandsPath, "utf8");
+    const source = fs.readFileSync(toolingServicePath, "utf8");
     const versionCommand = source.indexOf("pub async fn get_tool_versions");
     const lifecycleCommand = source.indexOf(
       "pub async fn run_tool_lifecycle_action",
@@ -197,7 +197,7 @@ describe("desktop IPC capability and CSP boundary", () => {
   });
 
   it("keeps generic CLI install and update flows independent of package validation", () => {
-    const source = fs.readFileSync(toolingCommandsPath, "utf8");
+    const source = fs.readFileSync(toolingServicePath, "utf8");
     const start = source.indexOf("pub async fn run_tool_lifecycle_action");
     const end = source.indexOf("\n///", start);
     expect(start).toBeGreaterThan(-1);

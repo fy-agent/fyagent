@@ -52,6 +52,8 @@ describe("Rust modular architecture boundaries", () => {
 
   it("keeps Tooling transport limited to the reviewed Tauri command surface", () => {
     const toolingCommands = read("src-tauri/src/commands/tooling.rs");
+    const toolingService = read("src-tauri/src/services/tooling.rs");
+    const services = read("src-tauri/src/services/mod.rs");
     const commandNames = [
       ...toolingCommands.matchAll(
         /#\[tauri::command\]\s+pub async fn ([a-z0-9_]+)\b/gmu,
@@ -64,6 +66,16 @@ describe("Rust modular architecture boundaries", () => {
       "probe_tool_installations",
       "open_provider_terminal",
     ]);
+    expect(services).toContain("pub(crate) mod tooling;");
+    for (const implementationMarker of [
+      "ELEVATED_WINDOWS_CLI_BOUNDARY_MESSAGE",
+      "build_tool_lifecycle_command",
+      "launch_terminal_running",
+      "enum ToolLifecycleAction",
+    ]) {
+      expect(toolingCommands).not.toContain(implementationMarker);
+      expect(toolingService).toContain(implementationMarker);
+    }
   });
 
   it("keeps extracted backend subdomains private behind their owning facades", () => {

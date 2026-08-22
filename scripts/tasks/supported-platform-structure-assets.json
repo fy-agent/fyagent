@@ -23,7 +23,7 @@
     ],
     [
       "scripts/tasks/supported-platform-check.mjs",
-      "b24ec7be3af15ab6ab6aaef6e941be261d78f7d4d2f13eaed7f4c9b27a305208"
+      "1a53ae2cc1baabe0486fc6fc69827592bb1eb066104c835146663bf957aa149a"
     ],
     [
       "scripts/tasks/system-check.mjs",
@@ -106,10 +106,6 @@
       "89c83e22b05547a28afe368a7e02c04b769e48d265e60bb12f3b98b80887b6fc"
     ],
     [
-      "src-tauri/src/commands/tooling.rs",
-      "ae7b475c707cb5bd01afa013f6021d4928c13dd7a45decc882263775da0e7803"
-    ],
-    [
       "src-tauri/src/config.rs",
       "cae46a749b128f5187be11080edb65e9b9de3e0335fe1f2cbdda4788bd3f3ba0"
     ],
@@ -151,7 +147,7 @@
     ],
     [
       "src-tauri/src/platform/process_launch.rs",
-      "a7518dae03f6bfa11884111694e8df11e1c98a6db1b00da16df5bc2408f92b45"
+      "61cdae2529d663d930792c268cb5fa8dbd164185513dedcebb42417f1f4b0f83"
     ],
     [
       "src-tauri/src/proxy/providers/codex_oauth_auth.rs",
@@ -200,6 +196,10 @@
     [
       "src-tauri/src/services/subscription.rs",
       "c67063e2b7fb49f65635d70b01a6afd21fa7cc0f722ea3fe404b7e164c983a4e"
+    ],
+    [
+      "src-tauri/src/services/tooling.rs",
+      "8460d0913c251226e019de4da15d1b5ed7493fd148189f67e53f88c430c6996e"
     ],
     [
       "src-tauri/src/services/traework_models.rs",
@@ -307,7 +307,7 @@
     ],
     [
       "tests/codexWindowsUserScopeContract.test.ts",
-      "06616a1d06ef6dd23e4da4360b6487496c9a10fe116af4ca526712567be54eb2"
+      "d884b2be2999026afd1f06e8750d85a31a34eee55394d893c515c02fe5946c0f"
     ],
     [
       "tests/hdiutilRetry.test.ts",
@@ -327,7 +327,7 @@
     ],
     [
       "tests/remainingPlatformSurface.test.ts",
-      "ec45982bb81b6b98cec49c2c0df5b7382cf5fe9ecaf3f190e520a71cb651e044"
+      "993901e619c8a055aa98ec90be862ebd20cf6ba772e6a5f57fdfd90ce4f637cf"
     ],
     [
       "tests/singleInstanceActivationContract.test.ts",

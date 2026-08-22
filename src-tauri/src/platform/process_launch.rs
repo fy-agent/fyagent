@@ -769,7 +769,7 @@ mod tests {
 
     #[test]
     fn windows_terminal_and_codex_launchers_stay_on_the_explorer_boundary() {
-        let terminal_source = include_str!("../commands/tooling.rs");
+        let terminal_source = include_str!("../services/tooling.rs");
         let codex_source = include_str!("../codex_desktop/platform/windows/deployment.rs");
 
         assert_eq!(

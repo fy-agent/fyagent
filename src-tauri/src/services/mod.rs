@@ -32,6 +32,7 @@ pub(crate) mod stream_check;
 pub(crate) mod subscription;
 pub(crate) mod subscription_grok;
 pub(crate) mod sync_protocol;
+pub(crate) mod tooling;
 pub(crate) mod traework;
 pub(crate) mod traework_models;
 pub(crate) mod usage_cache;
