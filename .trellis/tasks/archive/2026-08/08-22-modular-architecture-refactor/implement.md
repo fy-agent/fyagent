@@ -224,6 +224,14 @@ Run browser/Playwright checks if V2 shell/page behavior changed rather than only
 - Keep the final checkout on `dev/laiyongjie`.
 - Run Trellis finish/spec-update flow and archive only after CI evidence is green.
 
+### Execution outcome
+
+- Final local repository gate passed with `mise run check`: 167 frontend test files / 1474 passing tests (1 skipped), Rust main library 2807 passing / 5 ignored, plus desktop mock, visual preflight, release/repository contracts, Clippy, rustfmt, and supported-platform checks.
+- V2-specific gates passed separately: `mise run lint:v2`, `mise run typecheck:v2`, and `mise run test:v2` (37 files / 277 tests).
+- `dev/laiyongjie` was pushed at `f341099854bcec2f25cf1de5b4e141402d48cf09`.
+- GitHub Actions run `32552587094` completed successfully for that exact SHA. Frontend, Desktop Acceptance, Repository Contracts, macOS Backend, Windows Backend, Windows Native Contracts X64/ARM64, and the aggregate `CI / Required` job all concluded `success`.
+- CI evidence: `https://github.com/fy-agent/fyagent/actions/runs/32552587094`.
+
 ## Final acceptance checklist
 
 - [x] V2 production architecture remains isolated and functional.
@@ -234,5 +242,5 @@ Run browser/Playwright checks if V2 shell/page behavior changed rather than only
 - [x] Important dependency rules are compiler- or test-enforced.
 - [x] Relevant frontend, Rust, desktop, release-contract, supported-platform, and architecture checks pass locally (`mise run check`; V2 lint/typecheck/test; 37 V2 files / 277 tests).
 - [x] Stage commits are reviewable and behavior-preserving.
-- [ ] `dev/laiyongjie` is pushed and required CI is green.
-- [ ] Trellis task is archived with final evidence.
+- [x] `dev/laiyongjie` is pushed and required CI is green.
+- [x] Trellis task is archived with final evidence (this checklist is committed only together with the archive move).
