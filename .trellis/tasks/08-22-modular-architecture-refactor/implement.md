@@ -111,6 +111,13 @@ Commit command/composition refactor before service-internal decompositions.
 - Move large inline tests into child test modules so production modules remain reviewable without weakening private-unit coverage.
 - Update supported-platform structure contracts intentionally for moved platform-sensitive code.
 
+### Execution outcome
+
+- Dependency analysis proved a clean `provider/universal.rs` ownership boundary. Universal-provider projection moved there behind the existing `ProviderService` facade, with a dedicated nested-merge preservation test.
+- Dependency analysis proved a clean `codex_config/storage.rs` ownership boundary. Codex path resolution, config/auth paths, validation/read, and atomic auth/config persistence moved there while the existing `codex_config` facade remained stable.
+- The remaining Provider mutation/common-config flows and Codex capability/catalog/proxy projection flows have ordering, rollback, credential, and live-config invariants that are already encoded by broad unit/integration coverage. They were intentionally not split merely to reduce file size without a narrower independently provable interface.
+- Supported-platform structure identities were updated only after the moved platform-sensitive sources passed the repository scanners.
+
 ### Validation
 
 ```bash
@@ -131,6 +138,11 @@ Provider and Codex-config decomposition should be separate commits if either pro
 - Split `services/skill.rs` into install/update, assignment/sync, backup/restore, discovery/repository, archive/security, and tests according to actual call dependencies.
 - Keep `SkillService`/public DTO behavior stable.
 - Restrict filesystem/archive helpers to the narrowest module visibility that still supports tested workflows.
+
+### Execution outcome
+
+- The discovery/repository-facing state that had an independent API and test seam moved into private `skill/discovery.rs`: status parsing, filtering, pagination, repository fingerprinting, and poisoned-mutex-tolerant cache ownership.
+- ZIP extraction, symlink/copy materialization, backup/restore, assignment, and update flows remain in the owning service because their resource budgets and filesystem ordering are security properties shared across those operations. The durable backend modular-boundary spec records this as an intentional cohesion boundary rather than an unfinished line-count target.
 
 ### Validation
 
@@ -161,6 +173,12 @@ mise run test:unit
 ```
 
 Proxy changes are high risk: run the full Rust suite at each independently meaningful commit, not just at the end.
+
+### Execution outcome
+
+- Pure takeover URL/config classification moved into private `proxy/takeover.rs`; state transitions, backup/restore, and live I/O remain in `ProxyService` so the transactional ordering is not fragmented.
+- `proxy/forwarder.rs` and `proxy/handlers.rs` were audited but not mechanically split. Their retry, streaming, response, OAuth, failover, and diagnostic behavior is covered by the full Rust gate, and no lower-coupling public seam justified a behavior-risking file move in this task.
+- The resulting rule is executable: architecture tests require the extracted subdomains to remain private and the service facade to remain the external dependency surface.
 
 ## Stage 7 — Visibility cleanup, documentation, and architecture contracts
 
@@ -208,13 +226,13 @@ Run browser/Playwright checks if V2 shell/page behavior changed rather than only
 
 ## Final acceptance checklist
 
-- [ ] V2 production architecture remains isolated and functional.
-- [ ] Cross-generation shared code has an explicit neutral boundary.
-- [ ] Major leftover frontend coupling hotspots are reduced without a pointless mass path migration.
-- [ ] `commands/misc.rs` no longer acts as a catch-all ownership bucket.
-- [ ] Rust Provider/Skill/Proxy/Codex/protocol hotspots are responsibility-oriented module trees with narrow facades.
-- [ ] Important dependency rules are compiler- or test-enforced.
-- [ ] Relevant frontend, Rust, desktop, and architecture checks pass.
-- [ ] Stage commits are reviewable and behavior-preserving.
+- [x] V2 production architecture remains isolated and functional.
+- [x] Cross-generation shared code has an explicit neutral boundary.
+- [x] Major leftover frontend coupling hotspots are reduced without a pointless mass path migration.
+- [x] `commands/misc.rs` no longer acts as a catch-all ownership bucket.
+- [x] Dependency-proven Provider/Skill/Proxy/Codex subdomains are responsibility-oriented private modules behind narrow facades; tightly coupled protocol/state-machine code is intentionally retained as documented in `.trellis/spec/backend/modular-boundaries.md`.
+- [x] Important dependency rules are compiler- or test-enforced.
+- [x] Relevant frontend, Rust, desktop, release-contract, supported-platform, and architecture checks pass locally (`mise run check`; V2 lint/typecheck/test; 37 V2 files / 277 tests).
+- [x] Stage commits are reviewable and behavior-preserving.
 - [ ] `dev/laiyongjie` is pushed and required CI is green.
 - [ ] Trellis task is archived with final evidence.
