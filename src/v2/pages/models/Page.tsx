@@ -69,6 +69,7 @@ import {
   nativeErrorCode,
   splitWorkBuddyDraft,
 } from "./workBuddyModels";
+import { ChangePlanSwitch } from "./change-plan/ChangePlanSwitch";
 import "./Page.css";
 
 type WorkBuddySaveRequest = Parameters<
@@ -1218,6 +1219,18 @@ function ProviderPanel({
           </div>
         </div>
       )}
+
+      {app === "codex" && summaryQuery.data ? (
+        <ChangePlanSwitch
+          active={active}
+          currentProviderId={summaryQuery.data.currentId}
+          providers={summaryQuery.data.providers}
+          port={ports.changePlan}
+          onTerminal={async () => {
+            await summaryQuery.refetch();
+          }}
+        />
+      ) : null}
 
       <div className="fy-models-form">
         <div className="fy-control-field">

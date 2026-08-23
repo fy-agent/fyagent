@@ -64,6 +64,14 @@ export function createBrowserFeaturePorts(): FeaturePorts {
       openLogDirectory: rejectNativeOnly,
       subscribeJobUpdates: rejectNativeOnly,
     },
+    changePlan: {
+      createCodexProviderSwitchPlan: rejectNativeOnly,
+      apply: rejectNativeOnly,
+      getJob: rejectNativeOnly,
+      listRecoverableJobs: rejectNativeOnly,
+      cancelJob: rejectNativeOnly,
+      subscribeJobUpdates: rejectNativeOnly,
+    },
     providers: {
       getSummary: rejectNativeOnly,
       applyQuickSetupWithResult: rejectNativeOnly,

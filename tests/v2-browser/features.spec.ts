@@ -52,7 +52,7 @@ for (const feature of [
     list: "已安装 Skills 列表",
     detail: "Skill 详情",
     switchSuffix: "Skill 分配",
-    targetCount: 6,
+    targetCount: 7,
   },
   {
     route: "/mcp",
@@ -60,7 +60,7 @@ for (const feature of [
     list: "MCP 列表",
     detail: "MCP 详情",
     switchSuffix: "MCP 分配",
-    targetCount: 6,
+    targetCount: 7,
   },
 ] as const) {
   test(`${feature.route} renders populated responsive master-detail-assignment data`, async ({
@@ -90,6 +90,7 @@ for (const feature of [
         "QoderWork CN",
         "TRAE Work CN",
         "WorkBuddy",
+        "Grok Build",
         "Codex",
         "Claude Code",
         "OpenCode",

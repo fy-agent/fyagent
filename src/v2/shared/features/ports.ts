@@ -65,6 +65,13 @@ import type {
   OpenClawDirectory,
   PromptAppId,
 } from "./types";
+import type {
+  ApplyChangePlanOutcome,
+  CancelChangeJobOutcome,
+  ChangeJobSnapshot,
+  ChangeJobUpdatedEvent,
+  ChangePlan,
+} from "./change-plan";
 
 export interface AgentCatalogPort {
   get(): Promise<AgentCatalogResult>;
@@ -126,6 +133,17 @@ export interface ProvidersPort {
   fetchModels(baseUrl: string, apiKey: string): Promise<FetchedModelRef[]>;
   checkReachability(baseUrl: string): Promise<ReachabilityResult>;
   checkModel(request: ModelProbeRequest): Promise<ModelProbeResult>;
+}
+
+export interface ChangePlanPort {
+  createCodexProviderSwitchPlan(targetProviderId: string): Promise<ChangePlan>;
+  apply(planId: string, planDigest: string): Promise<ApplyChangePlanOutcome>;
+  getJob(jobId: string): Promise<ChangeJobSnapshot>;
+  listRecoverableJobs(): Promise<ChangeJobSnapshot[]>;
+  cancelJob(jobId: string): Promise<CancelChangeJobOutcome>;
+  subscribeJobUpdates(
+    onEvent: (event: ChangeJobUpdatedEvent) => void,
+  ): Promise<() => void>;
 }
 
 export interface WorkBuddyPort {
@@ -242,6 +260,7 @@ export interface FeaturePorts {
   externalMcp: ExternalMcpPort;
   traeWork: TraeWorkPort;
   codexDesktop: CodexDesktopPort;
+  changePlan: ChangePlanPort;
   providers: ProvidersPort;
   workbuddy: WorkBuddyPort;
   opencodeModels: OpenCodeModelsPort;

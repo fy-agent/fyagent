@@ -6,7 +6,7 @@ Read this contract before changing the V2 Agent directory, Models quick setup,
 their local Agent assets, the versioned native catalog (including OpenCode and
 Grok Build), the shared `PRODUCT_DIRECTORY`, WorkBuddy model ports,
 Claude/Codex/Grok Build Provider quick setup, or the sanitized Provider
-summary boundary.
+summary boundary, including the Codex existing-Provider Change Plan UI.
 The common shell, native-chrome, router, and layer rules remain in
 [V2 Shell](./v2-shell.md). Skills/MCP and Prompt/Memory have separate feature
 contracts and must not be folded into the Agent capability catalog. Reuse is
@@ -536,6 +536,37 @@ fetch/save controls.
 - The normal browser adapter returns native-only unavailability. Rich fixtures
   live only in focused tests and are always labelled/non-authoritative.
 
+### Codex existing-Provider Change Plan
+
+- Codex switching to an existing Provider uses the bounded `changePlan` port,
+  not quick setup and not a page-owned coordinator. The Tauri adapter strictly
+  parses the complete plan/apply/job/cancel/event envelopes, rejects excess
+  fields and unknown enum values, and invokes only
+  `create_codex_provider_switch_plan`, `apply_change_plan`, `get_change_job`,
+  `list_recoverable_change_jobs`, and `cancel_change_job`.
+- The current Provider is labelled and cannot create a plan. A non-current
+  Provider may create a side-effect-free preview. The preview shows only the
+  safe semantic change, risk/restart, precondition/read-write scope, and
+  recovery fields from the immutable plan DTO. It never renders plan/baseline
+  digests, raw configuration, paths, secrets, or free-form backend errors.
+- Apply requires exactly one explicit confirmation for the concrete plan ID and
+  digest. The renderer subscribes to `change-job://updated` before apply,
+  treats `{jobId,eventSeq}` as a hint, then obtains the authoritative snapshot
+  with `get_change_job`. Known nonterminal jobs use polling only as a fallback;
+  stale event sequences cannot regress the view.
+- Progress is the backend's exact five phases: `precheck`, `snapshot`,
+  `managed_write`, `readback`, and `finalize`. The UI does not synthesize
+  timers, backup work, or refresh evidence. Cancellation is offered only before
+  `managed_write` starts and the backend result remains authoritative if the
+  commit point already passed.
+- Terminal presentation preserves success, warning, failure, cancelled,
+  partial/recovery, restart, and `usageEvidence=not_observed` truth. A successful
+  write is not described as real model usage. Browser adapters always reject
+  this surface as native-only and never return a production-looking fixture.
+- This slice is switch-only. Provider create/edit remains outside the module
+  until the SecretRef/version contract is integrated; the apply path performs
+  no model/connectivity request and imports no leftover V1 coordinator or hook.
+
 ## 4. Validation & Error Matrix
 
 | Condition                                                                                  | Required result                                                                                         |
@@ -578,6 +609,12 @@ fetch/save controls.
 | Mutation succeeds but sanitized reread fails/mismatches                                    | Show the atomic apply result as unconfirmed; never claim fixed-ID activation                            |
 | Mutation succeeds and another serialized request replaces the reserved row                 | Keep this request's guard-time warnings; reread may confirm only fixed-ID activation, never exact bytes |
 | Browser preview calls authoritative read/write                                             | Return native-only unavailable; never return production-looking fake state                              |
+| Current Codex Provider attempts to create a switch plan                                    | Control remains disabled; no UCP command is invoked                                                      |
+| Change-plan wire has unknown/excess fields, enum values, phases, or mismatched IDs          | Strict adapter rejects it before React sees the value                                                    |
+| Apply occurs before the one explicit confirmation                                           | Component contract fails; writer-facing command remains uncalled                                        |
+| Event snapshot is stale or an event is lost                                                 | Ignore the stale sequence; authoritative `get_change_job` plus polling may advance state                 |
+| `managed_write` has started                                                                 | Hide safe-cancel action; preserve backend `commit_point_passed` outcome                                  |
+| Terminal execution has no usage observation                                                 | Render `not_observed`; never claim the new Provider was used successfully                               |
 | API key appears in URL/storage/query/log/error/DOM/snapshot                                | Security regression test fails                                                                          |
 
 ## 5. Good / Base / Bad Cases

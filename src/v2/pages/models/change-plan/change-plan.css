@@ -1,0 +1,249 @@
+.fy-change-plan-switch {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--fy-border);
+  border-radius: 14px;
+  background: linear-gradient(
+    145deg,
+    rgba(21, 57, 88, 0.34),
+    rgba(13, 33, 55, 0.2)
+  );
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.fy-change-plan-switch-heading,
+.fy-change-job-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.fy-change-plan-switch-heading h3,
+.fy-change-job-heading h3,
+.fy-change-plan-preview-section h4 {
+  margin: 0;
+}
+
+.fy-change-plan-switch-heading p,
+.fy-change-plan-preview-section p {
+  margin: 5px 0 0;
+  color: var(--fy-text-secondary);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.fy-change-plan-switch-heading > span {
+  max-width: 42%;
+  color: var(--fy-text-secondary);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.fy-change-plan-provider-list {
+  display: grid;
+  gap: 7px;
+}
+
+.fy-change-plan-provider-list > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--fy-border);
+  border-radius: 10px;
+  background: rgba(8, 28, 48, 0.28);
+}
+
+.fy-change-plan-provider-list > div[data-current="true"] {
+  border-color: color-mix(in srgb, var(--fy-accent) 48%, var(--fy-border));
+}
+
+.fy-change-plan-provider-list span {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fy-change-plan-provider-list strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fy-change-plan-provider-list small,
+.fy-change-job-kicker {
+  color: var(--fy-text-secondary);
+  font-size: 11px;
+}
+
+.fy-change-plan-preview {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.fy-change-plan-preview-section {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--fy-border);
+  border-radius: 12px;
+  background: rgba(12, 35, 57, 0.34);
+}
+
+.fy-change-plan-preview-section h4 {
+  font-size: 13px;
+}
+
+.fy-change-job-workspace {
+  display: grid;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--fy-border);
+}
+
+.fy-change-job-status {
+  padding: 5px 9px;
+  border: 1px solid var(--fy-border);
+  border-radius: 999px;
+  color: var(--fy-text-secondary);
+  font-size: 11px;
+}
+
+.fy-change-job-status[data-status="succeeded"] {
+  color: var(--fy-success);
+  border-color: var(--fy-border-strong);
+}
+
+.fy-change-job-status[data-status="warning"] {
+  color: var(--fy-warning);
+  border-color: var(--fy-warning-border);
+}
+
+.fy-change-job-status[data-status="failed"] {
+  color: var(--fy-danger-text);
+  border-color: var(--fy-danger-border);
+}
+
+.fy-change-job-steps {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fy-change-job-steps li {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  padding: 9px 10px;
+  border-radius: 9px;
+  color: var(--fy-text-secondary);
+  background: rgba(8, 28, 48, 0.24);
+}
+
+.fy-change-job-steps li[aria-current="step"] {
+  color: var(--fy-text);
+  background: rgba(61, 142, 209, 0.17);
+}
+
+.fy-change-job-step-mark {
+  width: 9px;
+  height: 9px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+}
+
+.fy-change-job-steps li[data-status="running"] .fy-change-job-step-mark {
+  border-color: var(--fy-accent);
+  box-shadow: 0 0 0 3px rgba(87, 175, 247, 0.12);
+}
+
+.fy-change-job-steps li[data-status="succeeded"] .fy-change-job-step-mark,
+.fy-change-job-steps li[data-status="compensated"] .fy-change-job-step-mark {
+  border-color: var(--fy-border-strong);
+  background: var(--fy-success);
+}
+
+.fy-change-job-steps li[data-status="failed"] .fy-change-job-step-mark {
+  border-color: var(--fy-danger-border);
+  background: var(--fy-danger-text);
+}
+
+.fy-change-job-steps strong,
+.fy-change-job-steps span:last-child {
+  font-size: 12px;
+}
+
+.fy-change-job-outcome {
+  display: grid;
+  gap: 5px;
+  padding: 11px;
+  border-left: 3px solid var(--fy-accent);
+  color: var(--fy-text-secondary);
+  font-size: 12px;
+  background: rgba(14, 43, 69, 0.28);
+}
+
+.fy-change-job-outcome strong {
+  color: var(--fy-text);
+}
+
+.fy-change-job-resources {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.fy-change-job-resources > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 9px;
+  border: 1px solid var(--fy-border);
+  border-radius: 9px;
+  color: var(--fy-text-secondary);
+  font-size: 11px;
+}
+
+.fy-change-job-resources strong {
+  color: var(--fy-text);
+}
+
+.fy-change-job-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.fy-change-plan-switch .fy-control-notice {
+  display: grid;
+  gap: 4px;
+}
+
+@media (max-width: 760px) {
+  .fy-change-plan-preview,
+  .fy-change-job-resources {
+    grid-template-columns: 1fr;
+  }
+
+  .fy-change-plan-switch-heading > span {
+    max-width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fy-change-job-step-mark {
+    box-shadow: none;
+  }
+}

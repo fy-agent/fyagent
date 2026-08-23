@@ -1,0 +1,40 @@
+{
+  "id": "issue-41-56-v2-change-plan-recovery",
+  "name": "issue-41-56-v2-change-plan-recovery",
+  "title": "Implement Issues 41 and 56 V2 change plan UI recovery",
+  "description": "Stack a real Codex Provider switch plan preview, one confirmation, backend-driven phase snapshots, cancellation, polling, and honest outcome UI on PR #134 without restoring the old fake coordinator.",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P0",
+  "creator": "codex",
+  "assignee": "codex",
+  "createdAt": "2026-08-24",
+  "completedAt": null,
+  "branch": "codex/issue-41-v2-change-plan-recovery",
+  "base_branch": "codex/issue-58-60-executor-recovery",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "src/v2/shared/features/change-plan.ts",
+    "src/v2/shared/features/ports.ts",
+    "src/v2/shared/platform/browser/features.ts",
+    "src/v2/shared/platform/tauri/feature-ports/changePlan.ts",
+    "src/v2/shared/platform/tauri/features.ts",
+    "src/v2/pages/models/change-plan/ChangePlanSwitch.tsx",
+    "src/v2/pages/models/change-plan/change-plan.css",
+    "src/v2/pages/models/Page.tsx",
+    "tests/v2/platform/changePlanPort.test.ts",
+    "tests/v2/pages/models/changePlanSwitch.test.tsx"
+  ],
+  "notes": "",
+  "meta": {
+    "issues": [41, 56],
+    "stackedOnPr": 134
+  }
+}
