@@ -318,7 +318,7 @@ pub(crate) fn get_workbuddy_model_ids_at(
 fn load_current_config_at(paths: &WorkBuddyPaths) -> Result<(LoadedConfig, bool), WorkBuddyError> {
     #[cfg(target_os = "windows")]
     {
-        return match open_windows_storage(paths, false) {
+        match open_windows_storage(paths, false) {
             Ok(storage) => {
                 let bytes = storage
                     .read_models()
@@ -332,7 +332,7 @@ fn load_current_config_at(paths: &WorkBuddyPaths) -> Result<(LoadedConfig, bool)
                 Ok((load_config_bytes(None)?, false))
             }
             Err(_) => Err(WorkBuddyError::new(WorkBuddyErrorCode::ConfigReadFailed)),
-        };
+        }
     }
 
     #[cfg(target_os = "macos")]
