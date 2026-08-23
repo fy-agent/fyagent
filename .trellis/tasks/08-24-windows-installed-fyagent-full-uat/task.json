@@ -48,6 +48,12 @@
       "by": "aimaster-windows-codex",
       "status": "in_progress",
       "message": "Fresh gates passed except targeted tests blocked before collection by Node 24.19.0 vs 24.18.0. Deliverables committed/pushed at 1c8399005188ff475c5beff7b5eab770040f398c; opened PR #138 to main and requested python-rust (赖永杰) review. Task remains in_progress because verdict is NO-GO and review/remediation are pending."
+    },
+    {
+      "at": "2026-08-24T06:52:38.4488205+08:00",
+      "by": "aimaster-windows-codex",
+      "status": "in_progress",
+      "message": "Corrected the private screenshot evidence format metadata after a content/type audit: all 50 files are JPEG/JFIF, filenames are normalized to .jpg, and pre/post bytes, SHA-256 values, decoded dimensions, and timestamps are unchanged."
     }
   ],
   "meta": {
@@ -58,6 +64,7 @@
     "macos_uat_inheritance": "prohibited",
     "verdict": "NO-GO",
     "reviewer_request": "python-rust (赖永杰)",
-    "ci_status_at_pr_creation": "in_progress"
+    "ci_status_at_pr_creation": "in_progress",
+    "evidence_image_format": "JPEG/JFIF"
   }
 }

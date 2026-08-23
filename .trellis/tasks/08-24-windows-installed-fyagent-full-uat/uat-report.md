@@ -29,8 +29,8 @@ represented as PASS.
 - Source baseline accepted for explanatory audit:
   d080a873850d0e073fac91add8c88df2a9f0a257.
 - Execution branch: codex/windows-installed-fyagent-full-uat-20260824.
-- GUI method: Computer Use via a persistent node_repl and @oai/sky; Windows
-  Graphics Capture PNGs stayed private/untracked.
+- GUI method: Computer Use via a persistent node_repl and @oai/sky; the
+  resulting JPEG/JFIF captures stayed private/untracked.
 - Evidence grades: runtime_screenshot, interaction_readback, UAT, and
   code_audit. No pixel_diff claim.
 - C/R/P/A discipline: clicks are C; renderer changes remain
@@ -230,7 +230,8 @@ verdict remains NO-GO even if lower-severity visual issues are deferred.
 | V2 TypeScript type-check | PASS via the local TypeScript compiler. |
 | V2 ESLint scope | PASS for src/v2, tests/v2, and tests/v2-browser. |
 | Targeted Agent/Models/Prompts/Memory/Skills tests | BLOCKED before collection: repository requires exact Node 24.19.0, while both available Windows Node paths are 24.18.0. Five suites correctly aborted with zero tests; no pass is claimed. Existing mise is also below the repository-required mise version and was not self-updated. |
-| Evidence ledger integrity | PASS; 50/50 private PNG filenames, dimensions, and SHA-256 values match the sanitized index. |
+| Evidence ledger integrity | PASS; 50/50 private JPEG/JFIF filenames, decoded dimensions, and SHA-256 values match the sanitized index. |
+| Image content/type correction | PASS; all 50 files have JPEG/JFIF magic and decoder format, use the .jpg extension, and preserve their pre-correction bytes, hashes, dimensions, and timestamps. |
 | Artifact JSON and Markdown links | PASS; task.json parses and all relative Markdown links resolve. |
 | Secret/private-path scan | PASS; no username, raw private-evidence path, token, bearer, or private-key pattern found in task artifacts. |
 | Git whitespace check | PASS. |
