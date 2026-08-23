@@ -135,7 +135,7 @@ impl WindowsSecretBackend {
     ) -> Result<(), SecretServiceError> {
         let mut target_name = target(secret_ref);
         let mut username = wide(USERNAME);
-        let mut credential = CREDENTIALW {
+        let credential = CREDENTIALW {
             Type: CRED_TYPE_GENERIC,
             TargetName: target_name.as_mut_ptr(),
             CredentialBlobSize: material.as_bytes().len() as u32,
@@ -144,7 +144,7 @@ impl WindowsSecretBackend {
             UserName: username.as_mut_ptr(),
             ..CREDENTIALW::default()
         };
-        let written = unsafe { CredWriteW(&mut credential, 0) };
+        let written = unsafe { CredWriteW(&credential, 0) };
         if written == 0 {
             return Err(map_last_error(unsafe { GetLastError() }, operation));
         }

@@ -33,17 +33,25 @@ dependencies (`aws-lc-sys` and `zstd-sys`) because this macOS host has no MSVC
 C SDK headers (`stdlib.h` / `string.h`). This is an environment blocker, not
 Windows compile evidence for this slice; Windows Required CI remains mandatory.
 
-The first PR Windows Backend run then supplied authoritative compiler evidence:
-it found a Windows-only local binding named `target` shadowing the target-name
-helper in create-failure cleanup (`E0618`). The binding is renamed to
-`target_name`; a new Required CI run is required at the fix SHA.
+The first PR Windows Backend run supplied authoritative compiler evidence: it
+found a Windows-only local binding named `target` shadowing the target-name
+helper in create-failure cleanup (`E0618`). Commit
+`ea7af1f1367e37a7279629940af8a060cee05de5` renamed the binding to
+`target_name`.
+
+The second Windows Backend run compiled the Windows path and completed the test
+suite, then Clippy rejected `CredWriteW(&mut credential, 0)` as
+`unnecessary_mut_passed`. The follow-up uses an immutable `CREDENTIALW` value
+and passes `&credential`; a final Required CI run at that fix SHA is still
+required.
 
 Current canonical toolchain is Rust 1.97.1 as frozen by `rust-toolchain.toml` and `mise.lock`.
 
 ## Not yet established
 
 - Windows Credential Manager matching-host CRUD/readback/cleanup HIL has not run on this Mac.
-- Windows Backend Required CI has not run until the branch is pushed and a replacement PR exists.
-- PR CI evidence is recorded only after the replacement PR checks finish.
+- The final Windows Backend and aggregate Required CI run for the immutable
+  `CredWriteW` fix is pending; earlier runs are failure evidence, not acceptance.
+- PR CI evidence is recorded only after the final replacement-PR head finishes.
 - Provider create/edit, device-local binding authority, lifecycle/journals, commands, V2 UI, and #63 integration are outside this narrow core slice.
 - This evidence does not close Issue #35.
