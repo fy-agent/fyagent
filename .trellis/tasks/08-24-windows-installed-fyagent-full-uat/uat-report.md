@@ -200,8 +200,8 @@ explicit catalog relationship in the inspected runtime.
 | AC6 | PASS | Fresh Windows-only inventory covers FyAgent, Grok Bot/Grok CLI, Codex, and every additional discovered Agent-adjacent tool, including absences and version/provenance drift. |
 | AC7 | NOT MET | Both mandatory installed-runtime isolated retests are separately NOT TESTED because no safe supported profile redirect or pre-existing disposable Windows session exists. |
 | AC8 | PASS | Findings are reproducible, evidence-linked, severity-ranked, owner-routed, and tied to release/retest decisions in the issue register. |
-| AC9 | PENDING FINAL GATE | Sanitized artifacts exist; final validation, commit, and remote push are recorded after the fresh gate. |
-| AC10 | PENDING PR | Dedicated unmerged PR and 赖永杰 review request are recorded after creation. |
+| AC9 | PASS | Sanitized artifacts passed the fresh gate and were committed/pushed at 1c8399005188ff475c5beff7b5eab770040f398c. |
+| AC10 | PASS | Dedicated PR [#138](https://github.com/fy-agent/fyagent/pull/138) targets main, is open/unmerged, and has an active review request for python-rust (赖永杰). |
 
 ## Prioritized fixes and retest order
 
@@ -242,6 +242,17 @@ build-script approval was performed.
 
 ## Delivery and privacy
 
+- Pull request: [#138](https://github.com/fy-agent/fyagent/pull/138), open
+  against main, not draft, not merged.
+- Review request: python-rust (赖永杰), resolved from the repository's
+  dev/laiyongjie branch and confirmed as a repository administrator.
+- Deliverables commit:
+  1c8399005188ff475c5beff7b5eab770040f398c, pushed to origin.
+- CI snapshot after PR creation: Commit Convention, label, Classify Changes,
+  and Desktop Acceptance Contract passed; Repository Contracts, Frontend
+  Checks, Backend Checks (Windows/macOS), and Windows Native Contracts
+  (X64/ARM64) were still in progress. The PR merge state was BLOCKED while
+  required checks/review were pending.
 - Report: [uat-report.md](./uat-report.md)
 - Coverage and scores: [coverage-matrix.md](./coverage-matrix.md)
 - Evidence ledger: [evidence-index.md](./evidence-index.md)
