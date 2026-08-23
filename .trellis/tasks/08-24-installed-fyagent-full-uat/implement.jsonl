@@ -1,0 +1,5 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/frontend/v2-shell.md", "reason": "runtime shell, page composition, responsive and window-state contract"}
+{"file": ".trellis/spec/frontend/v2-agent-models.md", "reason": "Agent and Models runtime behavior and safety contract"}
+{"file": ".trellis/spec/frontend/v2-skills-mcp.md", "reason": "Skills and MCP runtime behavior and state contract"}
+{"file": ".trellis/spec/frontend/v2-prompts-memory.md", "reason": "Prompts and Memory native behavior and privacy contract"}

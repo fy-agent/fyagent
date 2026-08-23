@@ -1,0 +1,29 @@
+{
+  "id": "installed-fyagent-full-uat",
+  "name": "installed-fyagent-full-uat",
+  "title": "Installed FyAgent 0.4.2 full-page UAT (macOS)",
+  "description": "",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": "installed macOS app full-page UAT and evidence only; no product code changes",
+  "package": null,
+  "priority": "P2",
+  "creator": "codex-uat",
+  "assignee": "codex-uat",
+  "createdAt": "2026-08-24",
+  "completedAt": null,
+  "branch": "codex/installed-fyagent-uat-20260824",
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "Mac-only independent UAT. Windows AIMaster reuse is a handoff boundary, not part of this task's evidence or verdict.",
+  "meta": {
+    "platform": "macOS",
+    "windows_uat": "not_tested"
+  }
+}
