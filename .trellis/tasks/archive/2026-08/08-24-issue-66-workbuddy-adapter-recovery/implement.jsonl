@@ -1,0 +1,4 @@
+{"file":".trellis/spec/backend/unified-change-plan.md","reason":"shared ledger, typed adapter, no-replay and proof boundaries"}
+{"file":".trellis/spec/backend/workbuddy-configuration.md","reason":"fixed-path revision, backup, atomic writer and credential boundary"}
+{"file":".trellis/spec/frontend/v2-agent-models.md","reason":"WorkBuddy Models interaction and native evidence contract"}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"closed IPC discriminants and strict parser requirements"}
