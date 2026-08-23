@@ -33,6 +33,11 @@ dependencies (`aws-lc-sys` and `zstd-sys`) because this macOS host has no MSVC
 C SDK headers (`stdlib.h` / `string.h`). This is an environment blocker, not
 Windows compile evidence for this slice; Windows Required CI remains mandatory.
 
+The first PR Windows Backend run then supplied authoritative compiler evidence:
+it found a Windows-only local binding named `target` shadowing the target-name
+helper in create-failure cleanup (`E0618`). The binding is renamed to
+`target_name`; a new Required CI run is required at the fix SHA.
+
 Current canonical toolchain is Rust 1.97.1 as frozen by `rust-toolchain.toml` and `mise.lock`.
 
 ## Not yet established
