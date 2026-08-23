@@ -1330,3 +1330,24 @@ Exact-SHA Windows CI exposed one platform-only unused lifecycle import under -D 
 ### Status
 
 [OK] **Completed**
+
+
+## Session 40: Document Tooling target-gated module boundaries
+
+**Date**: 2026-08-23
+**Task**: Document Tooling target-gated module boundaries
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Captured the Windows CI lessons in the backend modular code-spec: parent imports follow their production target cfg, target-only private-helper tests remain in the owning child module, and matching architecture/Windows CI evidence is required. Focused architecture/platform checks and the full contracts aggregate passed.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `9c28c518` | (see git log) |
+
+### Status
+
+[OK] **Completed**
