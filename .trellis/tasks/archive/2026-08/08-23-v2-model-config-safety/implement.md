@@ -73,7 +73,7 @@
 - [x] Update `.trellis/spec/backend/codex-provider-configuration.md` and the owning Grok/Provider boundary spec as required by the implementation, including the 7-section cross-layer/infra contract format.
 - [x] Update any WorkBuddy/OpenCode spec only if behavior actually changed beyond disclosure/state wiring.
 - [x] Run spec-owned focused checks.
-- [ ] Commit implementation/spec in scoped commits, run the Trellis prearchive gate, archive the task, record the journal, push and verify exact-SHA `CI / Required` if this session reaches the normal final delivery boundary.
+- [x] Commit implementation/spec in scoped local commits and pass the Trellis prearchive gate. Archive and journal are completed by the final Trellis wrap-up; remote push / exact-SHA CI are not part of this user-requested local archive flow.
 
 ## Rollback points
 
