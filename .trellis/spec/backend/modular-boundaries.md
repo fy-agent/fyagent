@@ -40,6 +40,20 @@ private `versions`, `lifecycle`, `discovery`, and `terminal` modules own the
 corresponding application/domain responsibilities while the Tauri command
 module remains only the transport facade.
 
+Target-exclusive parent imports and private-owner tests must carry the same
+target boundary as their production consumer:
+
+```rust
+#[cfg(target_os = "macos")]
+use lifecycle::npm_install_command_for;
+
+// services/tooling/lifecycle.rs
+#[cfg(all(test, target_os = "windows"))]
+mod tests {
+    use super::*;
+}
+```
+
 ## 3. Contracts
 
 - `commands/**` owns Tauri transport; domain behavior belongs in its service or
@@ -60,10 +74,17 @@ module remains only the transport facade.
   - `tooling/terminal.rs` owns provider-terminal orchestration, environment
     projection, launch-directory validation and interactive terminal command
     launch.
-  Cross-capability shell/path/platform primitives may remain in the parent
-  service when they are genuinely shared. Do not duplicate them only to make
-  every child module self-contained. Backend siblings call the service owner,
-  never command internals.
+    Parent `use` declarations must be gated by the targets where parent
+    production code actually consumes the symbol. A test-only child consumer or
+    a broad `#[cfg(test)] use lifecycle::*` does not justify an unconditional
+    parent import. Windows-only lifecycle policy tests stay in
+    `tooling/lifecycle.rs` under `#[cfg(all(test, target_os = "windows"))]` so
+    private helpers remain private; do not hoist those tests into `tooling.rs` or
+    widen helper visibility merely to make another target compile.
+    Cross-capability shell/path/platform primitives may remain in the parent
+    service when they are genuinely shared. Do not duplicate them only to make
+    every child module self-contained. Backend siblings call the service owner,
+    never command internals.
 - `services/mod.rs` modules are `pub(crate)`; stable caller APIs are explicit
   re-exports.
 - Provider/Skill/Proxy/Codex implementation subdomains are private `mod` and
@@ -120,22 +141,24 @@ module remains only the transport facade.
 
 ## 4. Validation & Error Matrix
 
-| Condition | Required result |
-| --- | --- |
-| Bare `pub mod` under `services/mod.rs` | Architecture test fails; use `pub(crate)` and explicit re-export |
-| `commands/misc.rs` reintroduced | Architecture test fails; choose an owning command module |
-| Tooling implementation markers return to `commands/tooling.rs` | Architecture test fails; keep four thin wrappers and move policy to `services/tooling.rs` |
-| Tooling version/lifecycle/discovery/terminal orchestration regrows in the parent service | Architecture test fails for reviewed markers; move the responsibility back to its private owner while keeping genuinely shared primitives centralized |
-| Provider/Skill/Proxy/Codex subdomain made public | Architecture test fails unless a reviewed external contract requires it |
-| Marketplace code starts implementing its own ZIP/archive safety path | Reject; delegate to the existing Skill archive/install owner |
-| Skill assignment/migration module starts duplicating archive/vendor/symlink safety primitives | Reject; those modules orchestrate through the single filesystem-safety owner |
-| Pure Provider common-config module starts owning DB/locks/scrub sequencing | Reject; transaction/rollback order remains in `ProviderService` |
-| Codex catalog module starts owning provider/live/proxy/session transaction ordering | Reject; catalog owns catalog policy/I/O only and delegates live coordination through the parent facade |
-| Codex config write fails after auth write | Restore previous auth bytes or delete newly created auth; return error |
-| Universal projection sees unknown nested settings | Preserve them while applying overrides |
-| Discovery cache mutex is poisoned | Recover inner value; do not panic |
-| Invalid discovery status is parsed | Return error; never silently widen to `all` |
-| Placeholder cleanup sees HTTPS/non-loopback URL | Do not classify it as local proxy URL |
+| Condition                                                                                          | Required result                                                                                                                                                                        |
+| -------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Bare `pub mod` under `services/mod.rs`                                                             | Architecture test fails; use `pub(crate)` and explicit re-export                                                                                                                       |
+| `commands/misc.rs` reintroduced                                                                    | Architecture test fails; choose an owning command module                                                                                                                               |
+| Tooling implementation markers return to `commands/tooling.rs`                                     | Architecture test fails; keep four thin wrappers and move policy to `services/tooling.rs`                                                                                              |
+| Tooling version/lifecycle/discovery/terminal orchestration regrows in the parent service           | Architecture test fails for reviewed markers; move the responsibility back to its private owner while keeping genuinely shared primitives centralized                                  |
+| Parent imports a target-exclusive Tooling child API without the matching `cfg`                     | Matching-target `cargo clippy --all-targets -- -D warnings` fails on an unused import or a target-only symbol leaks into the wrong build; gate the import with the production consumer |
+| Platform-only lifecycle tests are hoisted to `tooling.rs` or a private helper is widened for tests | Reject; colocate the tests in `tooling/lifecycle.rs` with `#[cfg(all(test, target_os = "<target>"))]`                                                                                  |
+| Provider/Skill/Proxy/Codex subdomain made public                                                   | Architecture test fails unless a reviewed external contract requires it                                                                                                                |
+| Marketplace code starts implementing its own ZIP/archive safety path                               | Reject; delegate to the existing Skill archive/install owner                                                                                                                           |
+| Skill assignment/migration module starts duplicating archive/vendor/symlink safety primitives      | Reject; those modules orchestrate through the single filesystem-safety owner                                                                                                           |
+| Pure Provider common-config module starts owning DB/locks/scrub sequencing                         | Reject; transaction/rollback order remains in `ProviderService`                                                                                                                        |
+| Codex catalog module starts owning provider/live/proxy/session transaction ordering                | Reject; catalog owns catalog policy/I/O only and delegates live coordination through the parent facade                                                                                 |
+| Codex config write fails after auth write                                                          | Restore previous auth bytes or delete newly created auth; return error                                                                                                                 |
+| Universal projection sees unknown nested settings                                                  | Preserve them while applying overrides                                                                                                                                                 |
+| Discovery cache mutex is poisoned                                                                  | Recover inner value; do not panic                                                                                                                                                      |
+| Invalid discovery status is parsed                                                                 | Return error; never silently widen to `all`                                                                                                                                            |
+| Placeholder cleanup sees HTTPS/non-loopback URL                                                    | Do not classify it as local proxy URL                                                                                                                                                  |
 
 ## 5. Good / Base / Bad Cases
 
@@ -146,14 +169,21 @@ module remains only the transport facade.
 - **Good:** keep a stable facade while private modules own Tooling policy,
   Skill assignment/repository/migration, marketplace transport, Codex auth /
   features / catalog policy, or Provider common-config rules.
+- **Good:** keep Windows-only lifecycle helper tests beside the private helper
+  and gate a macOS-only parent import with `#[cfg(target_os = "macos")]`.
 - **Base:** a large file may remain large if the remaining code is a tightly
   coupled state machine whose sequence is itself a safety property.
+- **Base:** a child function may compile on both platforms while only one
+  platform's parent production path imports it; the parent import still follows
+  the narrower consumer boundary.
 - **Base:** `proxy/handlers.rs`, `RequestForwarder`, Skill archive safety or a
   Provider mutation coordinator may remain large after audit when extracting
   them would create peer owners for one protocol/transaction.
 - **Bad:** create many crates without reducing coupling or public surface.
 - **Bad:** weaken a platform scanner or sealed-structure test merely to make a
   sensitive file move pass.
+- **Bad:** leave a child API imported unconditionally because tests use a glob,
+  or move target-only tests to the parent to avoid a private-module test block.
 
 ## 6. Tests Required
 
@@ -169,6 +199,14 @@ Focused iteration should also cover Codex atomic write/rollback, Provider
 live/takeover/common-config, all `services::skill::tests`, Proxy
 takeover/OAuth restore, Tooling lifecycle/platform boundaries, Windows
 user-scope, and desktop security contracts.
+
+For Tooling target-gating changes, the architecture test must assert that
+platform-private policy remains in `tooling/lifecycle.rs` and that the parent
+imports `npm_install_command_for` only inside its macOS-gated import. Local
+host-native checks do not prove the opposite target. The pushed SHA therefore
+also requires the matching `Backend Checks (Windows)` job, whose all-target
+check, Clippy with warnings denied, and Rust tests catch target-only import and
+test-compilation regressions.
 
 ## 7. Wrong vs Correct
 
@@ -192,3 +230,27 @@ mod internal;
 Do not create a crate because a file crossed an arbitrary line-count limit.
 First prove a private module/API boundary; promote it only when package-level
 isolation has a concrete build, dependency, or reuse benefit.
+
+For a target-exclusive child API, this is also wrong:
+
+```rust
+// Imported in every production build even though only macOS parent code uses it.
+use lifecycle::npm_install_command_for;
+
+// Hoisted only to reach lifecycle-private Windows helpers.
+#[cfg(all(test, target_os = "windows"))]
+mod windows_lifecycle_tests;
+```
+
+Keep the import and tests at their actual ownership boundaries:
+
+```rust
+#[cfg(target_os = "macos")]
+use lifecycle::npm_install_command_for;
+
+// services/tooling/lifecycle.rs
+#[cfg(all(test, target_os = "windows"))]
+mod tests {
+    use super::*;
+}
+```
