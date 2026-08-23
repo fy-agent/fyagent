@@ -43,7 +43,7 @@
     ],
     [
       "src-tauri/Cargo.toml",
-      "a00ac0903dadfcbc4146058043fd1718ec0e047972f56ab59e089e73b491bd03"
+      "4fdb1639f2e92e5d8c0d97b82cf56e88cd6dcd0ebf23fd121f8fda92ac2d1fb6"
     ],
     [
       "src-tauri/src/app_store.rs",
@@ -186,6 +186,10 @@
       "6c587d547b7fae6adac402781a50776886572faa65ad17ab4c16cc153309b882"
     ],
     [
+      "src-tauri/src/services/secret/platform/mod.rs",
+      "8bb551cb9d50e8b6e4f85aad1de66031e66ae966d3c10b394f3a7e6209bf72ff"
+    ],
+    [
       "src-tauri/src/services/session_usage_codex.rs",
       "57a37f57356d47f7bcdcbf39a178c23ee670c7810e49d9a20a575531a377d27e"
     ],
@@ -268,6 +272,10 @@
     [
       "src-tauri/tests/profile_roundtrip.rs",
       "e8ae4c7726f6e0f2ffc60b678f82bbe8d385024c8a1f9555316a0e6846526125"
+    ],
+    [
+      "src-tauri/tests/secret_service_contract.rs",
+      "fe6817fc80a47b80255f0bd5d1dacb9eaa5a55a288cd65346a5d2e2f596afed7"
     ],
     [
       "src-tauri/tests/skill_sync.rs",
