@@ -70,9 +70,9 @@
 
 | ID | Grade | Evidence |
 |---|---|---|
-| CDA-001 | code_audit | Prompts UI creates a new item disabled and promises it will not auto-enable: [`Page.tsx`](../../../src/v2/pages/prompts/Page.tsx#L367). Backend disabled upsert clears the live prompt file when no prompt is enabled, and import calls that same path: [`prompt.rs`](../../../src-tauri/src/services/prompt.rs#L28), [`prompt.rs`](../../../src-tauri/src/services/prompt.rs#L146). The installed v0.4.2 source and `origin/main` have the same affected implementation. |
-| CDA-002 | code_audit | Daily Memory backend returns every Markdown file: [`workspace.rs`](../../../src-tauri/src/commands/workspace.rs#L59). The frontend strictly maps the whole result through a date-only filename parser, so one non-date Markdown rejects the page: [`content.ts`](../../../src/v2/shared/platform/tauri/feature-ports/content.ts#L173). Runtime inventory found both date-form and non-date Markdown files without reading or publishing their private bodies/names. |
-| CDA-003 | code_audit | Search, Settings, and Account shell buttons are wired to `noop`: [`ToolCluster.tsx`](../../../src/v2/widgets/app-shell/ToolCluster.tsx#L7). Installed v0.4.2 source and `origin/main` match for this component. |
+| CDA-001 | code_audit | Prompts UI creates a new item disabled and promises it will not auto-enable: [`Page.tsx`](../../../../../src/v2/pages/prompts/Page.tsx#L367). Backend disabled upsert clears the live prompt file when no prompt is enabled, and import calls that same path: [`prompt.rs`](../../../../../src-tauri/src/services/prompt.rs#L28), [`prompt.rs`](../../../../../src-tauri/src/services/prompt.rs#L146). The installed v0.4.2 source and `origin/main` have the same affected implementation. |
+| CDA-002 | code_audit | Daily Memory backend returns every Markdown file: [`workspace.rs`](../../../../../src-tauri/src/commands/workspace.rs#L59). The frontend strictly maps the whole result through a date-only filename parser, so one non-date Markdown rejects the page: [`content.ts`](../../../../../src/v2/shared/platform/tauri/feature-ports/content.ts#L173). Runtime inventory found both date-form and non-date Markdown files without reading or publishing their private bodies/names. |
+| CDA-003 | code_audit | Search, Settings, and Account shell buttons are wired to `noop`: [`ToolCluster.tsx`](../../../../../src/v2/widgets/app-shell/ToolCluster.tsx#L7). Installed v0.4.2 source and `origin/main` match for this component. |
 
 ## Repository validation evidence
 

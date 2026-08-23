@@ -163,7 +163,7 @@ No positive `R` or `P` is claimed: transport calls were not independently instru
 - **Expected:** Creating/importing a disabled library item changes the prompt library only. The live file must remain unchanged until an explicit enable/disable action.
 - **Actual:** The UI creates new prompts with `enabled=false`. Backend upsert saves the record, sees no enabled prompt, and writes an empty live file. Import constructs a disabled prompt and invokes the same upsert path.
 - **Runtime safety decision:** Not executed against the user's real profile because current state satisfies a destructive precondition. This is a `code_audit` finding, not a claimed live destructive UAT.
-- **Evidence:** CDA-001; [`Page.tsx`](../../../src/v2/pages/prompts/Page.tsx#L367), [`prompt.rs`](../../../src-tauri/src/services/prompt.rs#L28), [`prompt.rs`](../../../src-tauri/src/services/prompt.rs#L146). The installed v0.4.2 source and current baseline share this implementation.
+- **Evidence:** CDA-001; [`Page.tsx`](../../../../../src/v2/pages/prompts/Page.tsx#L367), [`prompt.rs`](../../../../../src-tauri/src/services/prompt.rs#L28), [`prompt.rs`](../../../../../src-tauri/src/services/prompt.rs#L146). The installed v0.4.2 source and current baseline share this implementation.
 - **Impact:** Silent loss of real Agent instructions/configuration on an operation whose UI explicitly says it will not auto-enable.
 - **Suggested owner:** Backend / Prompts domain, with frontend contract review.
 - **Release blocking:** **Yes**.
@@ -174,7 +174,7 @@ No positive `R` or `P` is claimed: transport calls were not independently instru
 - **Reproduction:** In a safe test directory, place at least one valid `YYYY-MM-DD.md` file and one other `.md` file; open Daily Memory; click Retry.
 - **Expected:** The backend filters non-daily Markdown, or the frontend tolerates/skips invalid entries while presenting valid daily items and a bounded warning.
 - **Actual:** The installed app shows “无法加载每日记忆”; Retry returns the same failure. The live directory contained 94 Markdown files: 79 date-shaped and 15 non-date-shaped; no private filename/body was recorded. Backend returns all Markdown, while frontend rejects the complete array when any filename fails its date-only parser.
-- **Evidence:** MEM-001/002, RDB-007, CDA-002; [`workspace.rs`](../../../src-tauri/src/commands/workspace.rs#L59), [`content.ts`](../../../src/v2/shared/platform/tauri/feature-ports/content.ts#L173).
+- **Evidence:** MEM-001/002, RDB-007, CDA-002; [`workspace.rs`](../../../../../src-tauri/src/commands/workspace.rs#L59), [`content.ts`](../../../../../src/v2/shared/platform/tauri/feature-ports/content.ts#L173).
 - **Impact:** Complete loss of Daily Memory browsing/search utility for a realistic directory shape.
 - **Suggested owner:** Backend / Workspace plus frontend Tauri adapter.
 - **Release blocking:** **Yes**.
@@ -185,7 +185,7 @@ No positive `R` or `P` is claimed: transport calls were not independently instru
 - **Reproduction:** Click Search, Settings, and Account on any page; reread the window.
 - **Expected:** Open the named surface, or expose an explicit disabled/coming-soon state that does not imply a working action.
 - **Actual:** Each button accepts the click and produces no visible state. Source binds all three to `noop`.
-- **Evidence:** SHL-001/002, CDA-003; [`ToolCluster.tsx`](../../../src/v2/widgets/app-shell/ToolCluster.tsx#L7).
+- **Evidence:** SHL-001/002, CDA-003; [`ToolCluster.tsx`](../../../../../src/v2/widgets/app-shell/ToolCluster.tsx#L7).
 - **Impact:** Users cannot distinguish broken controls from unavailable features; Settings is especially trust-sensitive.
 - **Suggested owner:** Frontend / App shell + Product.
 - **Release blocking:** No for this report, but should be resolved or visibly disabled before broad release.
