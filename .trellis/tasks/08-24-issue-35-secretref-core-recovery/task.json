@@ -1,0 +1,34 @@
+{
+  "id": "issue-35-secretref-core-recovery",
+  "name": "issue-35-secretref-core-recovery",
+  "title": "Recover Issue 35 SecretRef core",
+  "description": "Rebuild the minimal SecretRef and pluggable local SecretBackend contract from current main without importing PR 112 history or touching UCP v20 ownership.",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": "backend",
+  "package": null,
+  "priority": "P0",
+  "creator": "codex",
+  "assignee": "codex",
+  "createdAt": "2026-08-24",
+  "completedAt": null,
+  "branch": "codex/issue-35-secretref-core-recovery",
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "src-tauri/src/services/secret/**",
+    "src-tauri/tests/secret_service_contract.rs",
+    "src-tauri/Cargo.toml",
+    "src-tauri/Cargo.lock"
+  ],
+  "notes": "",
+  "meta": {
+    "issue": "35",
+    "replaces_pr": "112"
+  }
+}
