@@ -14,7 +14,7 @@
   "completedAt": null,
   "branch": "codex/issue-41-v2-change-plan-recovery",
   "base_branch": "codex/issue-58-60-executor-recovery",
-  "worktree_path": "/Users/serendipity/.codex/worktrees/ucp-v2-41/fyagent",
+  "worktree_path": null,
   "commit": "281e87590f42b23aeb89211b933f55935aded870",
   "pr_url": "https://github.com/fy-agent/fyagent/pull/136",
   "subtasks": [],
