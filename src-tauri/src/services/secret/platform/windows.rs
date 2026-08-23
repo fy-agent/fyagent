@@ -133,11 +133,11 @@ impl WindowsSecretBackend {
         material: &SecretMaterial,
         operation: CredentialOperation,
     ) -> Result<(), SecretServiceError> {
-        let mut target = target(secret_ref);
+        let mut target_name = target(secret_ref);
         let mut username = wide(USERNAME);
         let mut credential = CREDENTIALW {
             Type: CRED_TYPE_GENERIC,
-            TargetName: target.as_mut_ptr(),
+            TargetName: target_name.as_mut_ptr(),
             CredentialBlobSize: material.as_bytes().len() as u32,
             CredentialBlob: material.as_bytes().as_ptr() as *mut u8,
             Persist: CRED_PERSIST_LOCAL_MACHINE,
@@ -153,8 +153,8 @@ impl WindowsSecretBackend {
             return Ok(());
         }
         if matches!(operation, CredentialOperation::Create) {
-            let target = target(secret_ref);
-            unsafe { CredDeleteW(target.as_ptr(), CRED_TYPE_GENERIC, 0) };
+            let target_name = target(secret_ref);
+            unsafe { CredDeleteW(target_name.as_ptr(), CRED_TYPE_GENERIC, 0) };
         }
         Err(SecretServiceError::verify_failed())
     }
