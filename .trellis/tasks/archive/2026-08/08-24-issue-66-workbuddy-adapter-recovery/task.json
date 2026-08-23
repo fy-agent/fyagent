@@ -14,7 +14,7 @@
   "completedAt": "2026-08-24",
   "branch": "codex/issue-66-workbuddy-adapter-recovery",
   "base_branch": "codex/issue-63-codex-provider-vertical",
-  "worktree_path": "/Users/serendipity/.codex/worktrees/ucp-66/fyagent",
+  "worktree_path": null,
   "commit": "29ff57e2be0a66b1d4362347563ae27c32ecd825",
   "pr_url": "https://github.com/fy-agent/fyagent/pull/139",
   "subtasks": [],
