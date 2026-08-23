@@ -15,8 +15,8 @@
   "branch": "codex/issue-63-codex-provider-vertical",
   "base_branch": "codex/ucp-integration-35-41",
   "worktree_path": "<WORKTREE>/ucp-63/fyagent",
-  "commit": null,
-  "pr_url": null,
+  "commit": "1de56ed6f9e6f4784014b13c654449b793dabe99",
+  "pr_url": "https://github.com/fy-agent/fyagent/pull/137",
   "subtasks": [],
   "children": [],
   "parent": null,
@@ -32,7 +32,7 @@
     "src/v2/pages/models/change-plan",
     "src/v2/shared/features/change-plan.ts"
   ],
-  "notes": "Draft remains blocked from merge by Issue 35 Windows matching-host HIL.",
+  "notes": "Draft PR #137 is locally verified and remains blocked from merge by final-head Required CI plus Issue 35 Windows matching-host HIL.",
   "meta": {
     "issues": [63],
     "stackedOnPr": 136,

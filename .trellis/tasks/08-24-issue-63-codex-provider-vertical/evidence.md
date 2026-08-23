@@ -5,6 +5,8 @@ Evidence date: 2026-08-24 (Asia/Shanghai)
 ## Source baseline and boundary
 
 - Branch: `codex/issue-63-codex-provider-vertical`.
+- Implementation commit: `1de56ed6f9e6f4784014b13c654449b793dabe99`.
+- Stacked Draft PR: <https://github.com/fy-agent/fyagent/pull/137>.
 - Stacked base: `codex/ucp-integration-35-41@a44ed49ce82f9e805d21045ef7a647f09d040085`.
 - Dependencies: Draft PRs #130, #132, #134 and #136.
 - Scope is one Codex create/edit plus set-current vertical. It does not add a
@@ -50,7 +52,7 @@ pre-archive contract gate before the implementation commit is created.
 ## Not yet established
 
 - Final-head GitHub Required CI, especially Windows Backend, is pending until
-  the stacked Draft PR is pushed.
+  the stacked Draft PR finishes.
 - Issue #35 still lacks matching-host Windows Credential Manager HIL; that is a
   dependency blocker for merge/closure, not evidence supplied by this macOS
   slice.
