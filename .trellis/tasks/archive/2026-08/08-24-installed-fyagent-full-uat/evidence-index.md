@@ -80,5 +80,6 @@
 |---|---|---|
 | TST-001 | PASS — 8 files, 133 tests | Focused V2 shell/Agent/Models/Skills/MCP/Prompts/Memory tests under the repository-locked toolchain. |
 | TST-002 | PASS — command exit 0 | Rust substring-filtered `prompt` run: 29 library tests and one additional name match passed; no selected test failed. The selected set does not contain a regression for CDA-001. |
+| TST-003 | PASS — command exit 0 | Trellis prearchive validation and the canonical post-archive `check:contracts` task both completed successfully. |
 
 These test results support contract/code interpretation only. They do not upgrade an installed-app interaction to persistence, Windows acceptance, or production readiness.

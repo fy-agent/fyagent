@@ -315,6 +315,7 @@ The macOS verdict can move from **NO-GO** only after steps 1–3 pass on an inst
 
 - Focused V2 suite: **PASS**, 8 files / 133 tests under the repository-locked toolchain.
 - Rust substring-filtered `prompt` run: **PASS**, exit 0; 29 library tests and one additional name match passed, with no selected failure. The selected set does not contain the missing FYG-UAT-001 regression.
+- Trellis lifecycle: **PASS** for task validation, prearchive contracts, and canonical post-archive `check:contracts`.
 - These checks support source interpretation and artifact consistency. They do not erase installed-app failures or prove Windows behavior.
 
 ## Delivery
