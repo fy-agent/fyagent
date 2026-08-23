@@ -9,7 +9,8 @@ use crate::error::AppError;
 use crate::provider::{ClaudeDesktopMode, Provider, ProviderMeta, ProviderMutationResult};
 use crate::services::provider::QuickSetupApplyFailureCode;
 use crate::services::{
-    EndpointLatency, ProviderService, ProviderSortUpdate, SpeedtestService, SwitchResult,
+    EndpointLatency, ProviderService, ProviderSortUpdate, QuickSetupWriteTarget, SpeedtestService,
+    SwitchResult,
 };
 use crate::store::AppState;
 use std::str::FromStr;
@@ -26,6 +27,7 @@ pub struct ProviderPublicSummary {
 pub struct ProviderPublicSummaryResult {
     providers: IndexMap<String, ProviderPublicSummary>,
     current_id: String,
+    write_targets: Vec<QuickSetupWriteTarget>,
 }
 
 const PROVIDER_PUBLIC_SUMMARY_UNAVAILABLE: &str = "Provider public summary is unavailable";
@@ -391,6 +393,8 @@ pub async fn get_provider_summary(
             }
             providers.insert(key, summary);
         }
+        let write_targets = ProviderService::quick_setup_write_targets(&app_type)
+            .map_err(|_| "Provider public summary is unavailable".to_string())?;
         let current_id = ProviderService::current(state.inner(), app_type)
             .map_err(|_| "Provider public summary is unavailable".to_string())?;
         if !current_id.is_empty() && !providers.contains_key(&current_id) {
@@ -399,6 +403,7 @@ pub async fn get_provider_summary(
         Ok(ProviderPublicSummaryResult {
             providers,
             current_id,
+            write_targets,
         })
     })
     .await

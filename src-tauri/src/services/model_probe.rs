@@ -59,6 +59,7 @@ pub async fn probe(
     base_url: &str,
     api_key: &str,
     model_id: &str,
+    codex_image_extension: bool,
 ) -> Result<ModelProbeResult, AppError> {
     probe_with_client(
         &crate::proxy::http_client::get(),
@@ -66,6 +67,7 @@ pub async fn probe(
         base_url,
         api_key,
         model_id,
+        codex_image_extension,
     )
     .await
 }
@@ -76,6 +78,7 @@ pub async fn probe_with_client(
     base_url: &str,
     api_key: &str,
     model_id: &str,
+    codex_image_extension: bool,
 ) -> Result<ModelProbeResult, AppError> {
     StreamCheckService::validate_probe_url(base_url)?;
     let model_id = model_id.trim();
@@ -89,7 +92,15 @@ pub async fn probe_with_client(
     let mut last_result: Option<ModelProbeResult> = None;
     for attempt in 0..=MAX_RETRIES {
         let start = Instant::now();
-        let result = probe_once(client, app, base_url.trim(), api_key, model_id).await;
+        let result = probe_once(
+            client,
+            app,
+            base_url.trim(),
+            api_key,
+            model_id,
+            codex_image_extension,
+        )
+        .await;
         let wrapped = build_result(
             result,
             start.elapsed().as_millis() as u64,
@@ -118,6 +129,7 @@ async fn probe_once(
     base_url: &str,
     api_key: &str,
     model_id: &str,
+    codex_image_extension: bool,
 ) -> Result<(u16, String), AppError> {
     let protocol = protocol_for_app(app);
     let (actual_model, reasoning_effort) = parse_model_with_effort(model_id);
@@ -125,7 +137,9 @@ async fn probe_once(
     let body = request_body(protocol, &actual_model, reasoning_effort.as_deref());
 
     for (index, url) in urls.iter().enumerate() {
-        match send_stream_request(client, protocol, url, api_key, &body).await {
+        match send_stream_request(client, protocol, url, api_key, &body, codex_image_extension)
+            .await
+        {
             Ok(status) => return Ok((status, actual_model)),
             Err(error) => {
                 if index == 0
@@ -144,10 +158,8 @@ async fn probe_once(
 fn protocol_for_app(app: ModelProbeApp) -> ProbeProtocol {
     match app {
         ModelProbeApp::Claude => ProbeProtocol::AnthropicMessages,
-        ModelProbeApp::Codex => ProbeProtocol::OpenAiResponses,
-        ModelProbeApp::GrokBuild | ModelProbeApp::WorkBuddy | ModelProbeApp::OpenCode => {
-            ProbeProtocol::OpenAiChat
-        }
+        ModelProbeApp::Codex | ModelProbeApp::GrokBuild => ProbeProtocol::OpenAiResponses,
+        ModelProbeApp::WorkBuddy | ModelProbeApp::OpenCode => ProbeProtocol::OpenAiChat,
     }
 }
 
@@ -238,7 +250,6 @@ fn request_body(protocol: ProbeProtocol, model: &str, reasoning_effort: Option<&
             let mut body = json!({
                 "model": model,
                 "input": [{ "role": "user", "content": TEST_PROMPT }],
-                "max_output_tokens": 16,
                 "stream": true
             });
             if let Some(effort) = reasoning_effort {
@@ -255,6 +266,7 @@ async fn send_stream_request(
     url: &str,
     api_key: &str,
     body: &Value,
+    codex_image_extension: bool,
 ) -> Result<u16, AppError> {
     let mut request = client.post(url).timeout(TIMEOUT).json(body);
     request = match protocol {
@@ -288,6 +300,12 @@ async fn send_stream_request(
                 .header("originator", "codex_cli_rs");
             if !api_key.is_empty() {
                 builder = builder.header("authorization", format!("Bearer {api_key}"));
+            }
+            if protocol == ProbeProtocol::OpenAiResponses && codex_image_extension {
+                builder = builder.header(
+                    crate::codex_config::CODEX_IMAGE_EXTENSION_HEADER,
+                    crate::codex_config::CODEX_IMAGE_EXTENSION_VALUE,
+                );
             }
             builder
         }
@@ -573,7 +591,7 @@ mod tests {
         );
         assert_eq!(
             protocol_for_app(ModelProbeApp::GrokBuild),
-            ProbeProtocol::OpenAiChat
+            ProbeProtocol::OpenAiResponses
         );
         assert_eq!(
             protocol_for_app(ModelProbeApp::OpenCode),
@@ -617,6 +635,7 @@ mod tests {
             &format!("{base}/v1"),
             "sk-test",
             "gpt-test",
+            false,
         )
         .await
         .expect("probe");
@@ -640,6 +659,7 @@ mod tests {
             &format!("{base}/v1"),
             "sk-test",
             "claude-test",
+            false,
         )
         .await
         .expect("probe result");
@@ -657,9 +677,32 @@ mod tests {
             "https://gateway.example/v1",
             "sk-test",
             "  ",
+            false,
         )
         .await
         .expect_err("empty model");
         assert!(error.to_string().contains("模型 ID 为空"));
+    }
+
+    #[tokio::test]
+    async fn codex_responses_probe_omits_output_limit_and_bounds_actor_header() {
+        let body = "event: response.created\ndata: {\"type\":\"response.created\"}\n\n";
+        let (base, requests) = spawn_server(vec![http_response("200 OK", body)]);
+        let result = probe_with_client(
+            &loopback_client(),
+            ModelProbeApp::Codex,
+            &format!("{base}/v1"),
+            "sk-test",
+            "gpt-test",
+            true,
+        )
+        .await
+        .expect("probe");
+        assert!(result.success);
+        let captured = requests.lock().expect("requests").join("\n");
+        assert!(captured.contains("POST /v1/responses"));
+        assert!(!captured.contains("max_output_tokens"));
+        assert!(captured.contains(crate::codex_config::CODEX_IMAGE_EXTENSION_HEADER));
+        assert!(captured.contains(crate::codex_config::CODEX_IMAGE_EXTENSION_VALUE));
     }
 }

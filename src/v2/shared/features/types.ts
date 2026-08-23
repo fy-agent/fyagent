@@ -129,6 +129,7 @@ export type {
   ModelProbeAppId,
   ModelProbeRequest,
   ModelProbeResult,
+  ModelWriteTarget,
   OpenCodeFetchModelsRequest,
   OpenCodeModelSnapshot,
   OpenCodeProviderSnapshot,

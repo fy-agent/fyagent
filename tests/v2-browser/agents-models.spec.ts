@@ -625,9 +625,9 @@ test("Models keeps seven targets and saves TRAE models natively", async ({
   await page.getByTestId("model-target-qoderwork").click();
   await expect(modelPage).toContainText("官方不支持第三方模型配置");
   await expect(page.getByRole("button", { name: "管理 MCP" })).toHaveCount(0);
-  await expect(
-    page.getByRole("button", { name: "打开官方设置" }),
-  ).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "打开官方设置" })).toHaveCount(
+    0,
+  );
   await page.getByTestId("model-target-trae").click();
   await expect(
     page.getByRole("region", { name: "TRAE Work CN 模型设置" }),
@@ -896,6 +896,63 @@ test("Codex quick setup locks duplicate submission and sends exact provider payl
   expect(
     await page.evaluate(() => Object.values(sessionStorage)),
   ).not.toContain(apiKey);
+  await expectHealthyPage(page, health);
+});
+
+test("Models shared API key reveal toggle stays anchored inside the input", async ({
+  page,
+}) => {
+  await installRichTauriFeatureFixture(page);
+  const health = monitorPageHealth(page);
+  await openV2Page(page, "/models?target=codex");
+
+  const input = page.getByLabel("API Key", { exact: true });
+  await input.fill("fixture-secret-".repeat(24));
+  const hiddenToggle = page.getByRole("button", { name: "显示 API Key" });
+  const inputBox = await requiredBox(input, "Codex API key input");
+  const hiddenBox = await requiredBox(hiddenToggle, "hidden secret toggle");
+  expect(hiddenBox.x).toBeGreaterThanOrEqual(inputBox.x);
+  expect(hiddenBox.x + hiddenBox.width).toBeLessThanOrEqual(
+    inputBox.x + inputBox.width + 1,
+  );
+
+  await hiddenToggle.click();
+  const visibleToggle = page.getByRole("button", { name: "隐藏 API Key" });
+  const visibleInputBox = await requiredBox(
+    input,
+    "visible Codex API key input",
+  );
+  const visibleBox = await requiredBox(visibleToggle, "visible secret toggle");
+  expect(
+    Math.abs(visibleBox.x - visibleInputBox.x - (hiddenBox.x - inputBox.x)),
+  ).toBeLessThanOrEqual(1);
+  expect(
+    Math.abs(visibleBox.y - visibleInputBox.y - (hiddenBox.y - inputBox.y)),
+  ).toBeLessThanOrEqual(1);
+  expect(visibleBox.x + visibleBox.width).toBeLessThanOrEqual(
+    visibleInputBox.x + visibleInputBox.width + 1,
+  );
+
+  await visibleToggle.click();
+  const hiddenAgain = await requiredBox(
+    page.getByRole("button", { name: "显示 API Key" }),
+    "hidden secret toggle after round trip",
+  );
+  const hiddenAgainInputBox = await requiredBox(
+    input,
+    "hidden Codex API key input after round trip",
+  );
+  expect(
+    Math.abs(
+      hiddenAgain.x - hiddenAgainInputBox.x - (hiddenBox.x - inputBox.x),
+    ),
+  ).toBeLessThanOrEqual(1);
+  expect(
+    Math.abs(
+      hiddenAgain.y - hiddenAgainInputBox.y - (hiddenBox.y - inputBox.y),
+    ),
+  ).toBeLessThanOrEqual(1);
+  await expectNoHorizontalOverflow(page);
   await expectHealthyPage(page, health);
 });
 

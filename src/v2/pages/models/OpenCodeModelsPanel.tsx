@@ -24,7 +24,12 @@ import {
 } from "./feedback";
 import { GroupedModelChips, ModelSearchField } from "./modelChips";
 import { ModelConnectivityTest } from "./ModelConnectivityTest";
-import { ModelsPanelHeader, NoApiKeyOption } from "./modelsShared";
+import {
+  ModelsPanelHeader,
+  ModelsWriteDisclosure,
+  NoApiKeyOption,
+  useModelsDraftCommit,
+} from "./modelsShared";
 import { isHttpUrl, parseManualModelIds } from "./quickSetup";
 import {
   addUniqueModelIds,
@@ -67,6 +72,7 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
     request: OpenCodeSaveModelsRequest;
     token: string;
     existingIds: string[];
+    revision: number;
   } | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const writeLock = useRef(false);
@@ -74,6 +80,7 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
   const baseUrlInputRef = useRef<HTMLInputElement>(null);
   const apiKeyInputRef = useRef<HTMLInputElement>(null);
   const manualModelsInputRef = useRef<HTMLInputElement>(null);
+  const draftCommit = useModelsDraftCommit();
 
   const currentProvider = snapshotQuery.data?.providers[0];
   const modelIds = currentProvider?.modelIds ?? EMPTY_MODEL_IDS;
@@ -82,6 +89,7 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
   const setApiKey = (value: string) => {
     apiKeyRef.current = value;
     setApiKeyState(value);
+    draftCommit.markDirty();
   };
   const clearApiKey = () => {
     apiKeyRef.current = "";
@@ -142,6 +150,7 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
       }
       setOwnedByById((current) => ({ ...current, ...nextOwned }));
       setDraftModelIds((current) => addUniqueModelIds(current, ids));
+      draftCommit.markDirty();
       setTruncated(result.truncated);
       show("fetch", {
         tone: result.truncated ? "warning" : "info",
@@ -188,6 +197,7 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
     }
     setDraftModelIds((current) => addUniqueModelIds(current, pending));
     setManualDraft("");
+    draftCommit.markDirty();
     dismiss("draft");
   };
 
@@ -208,7 +218,10 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
     return Object.freeze(request);
   };
 
-  const saveRequest = async (request: OpenCodeSaveModelsRequest) => {
+  const saveRequest = async (
+    request: OpenCodeSaveModelsRequest,
+    submittedRevision: number,
+  ) => {
     if (writeLock.current) return;
     writeLock.current = true;
     setBusy("save");
@@ -221,8 +234,11 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
       switch (result.state) {
         case "saved":
           setPendingOverwrite(null);
-          setDraftModelIds([]);
-          setManualDraft("");
+          draftCommit.commitRevision(submittedRevision);
+          if (draftCommit.isCurrentRevision(submittedRevision)) {
+            setDraftModelIds([]);
+            setManualDraft("");
+          }
           show("save", {
             tone: "info",
             title: "OpenCode 模型配置已保存",
@@ -265,6 +281,7 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
               request,
               token: result.token,
               existingIds: [...result.existingIds],
+              revision: submittedRevision,
             });
           }
           break;
@@ -299,7 +316,7 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
         }
       }
     } finally {
-      clearApiKey();
+      if (draftCommit.isCurrentRevision(submittedRevision)) clearApiKey();
       const rereadConfirmed = shouldRefresh
         ? await refreshAuthoritativeState()
         : false;
@@ -323,21 +340,25 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
       return;
     }
     if (!validateConnection()) return;
+    const submittedRevision = draftCommit.captureRevision();
     if (parseManualModelIds(manualDraft).length > 0) {
       setDraftModelIds(draftIds);
       setManualDraft("");
     }
-    void saveRequest(buildSaveRequest(draftIds));
+    void saveRequest(buildSaveRequest(draftIds), submittedRevision);
   };
 
   const confirmOverwrite = () => {
     if (!pendingOverwrite || writeLock.current) return;
     const frozen = pendingOverwrite;
     setPendingOverwrite(null);
-    void saveRequest({
-      ...frozen.request,
-      overwriteToken: frozen.token,
-    });
+    void saveRequest(
+      {
+        ...frozen.request,
+        overwriteToken: frozen.token,
+      },
+      frozen.revision,
+    );
   };
 
   const deleteExistingModel = async (modelId: string) => {
@@ -411,12 +432,7 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
       <ModelsPanelHeader
         title="OpenCode"
         summary="查看并管理 OpenCode 的模型设置。添加或修改后请保存并应用。"
-        pending={
-          draftModelIds.length > 0 ||
-          Boolean(manualDraft.trim()) ||
-          Boolean(baseUrl.trim()) ||
-          Boolean(apiKey.trim())
-        }
+        pending={draftCommit.pending}
       >
         <Button
           className="fy-control-button-primary fy-models-commit-button"
@@ -434,6 +450,17 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
           暂时无法读取 OpenCode 配置，请重试。
         </InlineNotice>
       )}
+      {!loading && !readFailed && snapshotQuery.data ? (
+        <ModelsWriteDisclosure
+          targets={[
+            {
+              path: snapshotQuery.data.path,
+              backupPath: snapshotQuery.data.backupPath,
+              exists: snapshotQuery.data.exists,
+            },
+          ]}
+        />
+      ) : null}
 
       <section
         className="fy-models-existing"
@@ -506,7 +533,10 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
             <Input
               id="opencode-provider-name"
               value={providerName}
-              onChange={(event) => setProviderNameDraft(event.target.value)}
+              onChange={(event) => {
+                setProviderNameDraft(event.target.value);
+                draftCommit.markDirty();
+              }}
               placeholder="FyAgent"
               autoComplete="off"
               spellCheck={false}
@@ -521,6 +551,7 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
               value={baseUrl}
               onChange={(event) => {
                 setBaseUrl(event.target.value);
+                draftCommit.markDirty();
                 dismiss("baseUrl");
               }}
               placeholder="https://gateway.example/v1"
@@ -564,6 +595,7 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
             checked={allowNoApiKey}
             onCheckedChange={(checked) => {
               setAllowNoApiKey(checked);
+              draftCommit.markDirty();
               if (checked) dismiss("apiKey");
             }}
             disabled={busy !== null}
@@ -594,11 +626,12 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
           removable
           removeDisabled={busy !== null}
           ownedByById={ownedByById}
-          onRemove={(modelId) =>
+          onRemove={(modelId) => {
             setDraftModelIds((current) =>
               current.filter((id) => id !== modelId),
-            )
-          }
+            );
+            draftCommit.markDirty();
+          }}
           emptyLabel={
             draftSearch.trim()
               ? "没有匹配的模型 ID"
@@ -612,6 +645,7 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
               modelIds={draftModelIds}
               ownedByById={ownedByById}
               disabled={busy !== null && busy !== "reachability"}
+              resetVersion={draftCommit.resetVersion}
               onPrepare={validateConnection}
               onBusyChange={(probing) =>
                 setBusy(probing ? "reachability" : null)
@@ -634,6 +668,7 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
               onClick={() => {
                 setDraftModelIds([]);
                 setTruncated(false);
+                draftCommit.markDirty();
               }}
             >
               清除所有模型
@@ -650,6 +685,7 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
               value={manualDraft}
               onChange={(event) => {
                 setManualDraft(event.target.value);
+                draftCommit.markDirty();
                 dismiss("draft");
               }}
               onKeyDown={(event) => {
