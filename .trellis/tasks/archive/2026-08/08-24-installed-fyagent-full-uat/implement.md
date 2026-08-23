@@ -8,7 +8,7 @@
 - [x] Execute full-page visual and functional UAT, including safe negative paths and resize checks.
 - [x] Produce sanitized evidence index, coverage matrix, scores, functional matrix, findings, gaps, verdict, and retest plan.
 - [x] Add the `platform=macOS` declaration and Windows/AIMaster reuse handoff without performing remote Windows operations.
-- [ ] Validate task/artifacts, check for leaked sensitive strings or raw evidence, commit, push, and create PR.
+- [x] Validate task/artifacts, check for leaked sensitive strings or raw evidence, commit, push, and create PR.
 
 ## Ordered Execution
 

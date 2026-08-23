@@ -317,6 +317,13 @@ The macOS verdict can move from **NO-GO** only after steps 1–3 pass on an inst
 - Rust substring-filtered `prompt` run: **PASS**, exit 0; 29 library tests and one additional name match passed, with no selected failure. The selected set does not contain the missing FYG-UAT-001 regression.
 - These checks support source interpretation and artifact consistency. They do not erase installed-app failures or prove Windows behavior.
 
+## Delivery
+
+- UAT branch: `codex/installed-fyagent-uat-20260824`.
+- Report commit: `e68aaf67`.
+- Pull request: [#131](https://github.com/fy-agent/fyagent/pull/131), opened against `main` and left unmerged.
+- Required governance: **赖永杰 must review and merge**. This UAT task must not merge, release, or modify `main` directly.
+
 ## Final release condition
 
 Current macOS 0.4.2 status remains **NO-GO**. A new installed macOS candidate must close both P1s with isolated write/readback evidence and full-page regression. The Windows AIMaster run is a separate acceptance stream and cannot inherit this task's result.

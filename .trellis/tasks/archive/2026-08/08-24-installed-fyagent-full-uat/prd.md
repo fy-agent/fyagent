@@ -75,5 +75,5 @@ This task is explicitly `platform=macOS`. A later Windows UAT on the AIMaster no
 - [x] AC5: Prompts/Memory tests either use verified isolation and rollback/readback or document an exact safety blocker; no private body is exposed.
 - [x] AC6: Findings are reproducible and evidence-linked with severity, impact, owner, and release decision.
 - [x] AC7: Final report includes all required matrices, untested boundaries, verdict, prioritized fixes, and retest conditions.
-- [ ] AC8: Task metadata and committed artifacts validate; branch is pushed and a new unmerged PR is created for 赖永杰 review.
+- [x] AC8: Task metadata and committed artifacts validate; branch is pushed and a new unmerged PR is created for 赖永杰 review.
 - [x] AC9: Report declares `platform=macOS` and includes a Windows reuse handoff with explicit independent-verification boundaries.

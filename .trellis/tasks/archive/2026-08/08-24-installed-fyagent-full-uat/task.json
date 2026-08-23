@@ -1,0 +1,34 @@
+{
+  "id": "installed-fyagent-full-uat",
+  "name": "installed-fyagent-full-uat",
+  "title": "Installed FyAgent 0.4.2 full-page UAT (macOS)",
+  "description": "Independent full-page UAT of the installed FyAgent 0.4.2 macOS app, with privacy-safe evidence and a Windows reuse boundary.",
+  "status": "completed",
+  "dev_type": null,
+  "scope": "installed macOS app full-page UAT and evidence only; no product code changes",
+  "package": null,
+  "priority": "P1",
+  "creator": "codex-uat",
+  "assignee": "codex-uat",
+  "createdAt": "2026-08-24",
+  "completedAt": "2026-08-24",
+  "branch": "codex/installed-fyagent-uat-20260824",
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": "e68aaf67",
+  "pr_url": "https://github.com/fy-agent/fyagent/pull/131",
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "uat-report.md",
+    "evidence-index.md"
+  ],
+  "notes": "NO-GO with two release-blocking P1 findings. Mac-only independent UAT. Windows AIMaster reuse is a handoff boundary, not part of this task's evidence or verdict. PR requires 赖永杰 review and merge.",
+  "meta": {
+    "platform": "macOS",
+    "windows_uat": "not_tested",
+    "verdict": "NO-GO",
+    "release_blockers": 2
+  }
+}
