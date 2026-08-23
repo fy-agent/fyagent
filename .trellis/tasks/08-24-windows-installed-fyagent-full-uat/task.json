@@ -1,0 +1,41 @@
+{
+  "id": "windows-installed-fyagent-full-uat",
+  "name": "windows-installed-fyagent-full-uat",
+  "title": "Installed FyAgent full-page UAT (Windows AIMASTER)",
+  "description": "Independent Windows-native UAT of the FyAgent build actually installed and running on AIMASTER, with DPI, failure-path, agent-tool inventory, privacy-safe evidence, and Git/PR handoff.",
+  "status": "planning",
+  "dev_type": null,
+  "scope": "AIMASTER installed Windows app full-page UAT and evidence only; no product code fixes",
+  "package": null,
+  "priority": "P1",
+  "creator": "codex-mac-supervisor",
+  "assignee": "aimaster-windows-codex",
+  "createdAt": "2026-08-24",
+  "completedAt": null,
+  "branch": "codex/windows-installed-fyagent-full-uat-20260824",
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "uat-report.md",
+    "evidence-index.md",
+    "issue-register.md"
+  ],
+  "notes": "Seeded on Mac for Git handoff only. AIMASTER Windows Codex owns claim, execution, evidence, commits, push, and PR. Do not inherit any macOS result.",
+  "ExecutorLock": "AIMASTER-Windows-Codex",
+  "ClaimedBy": null,
+  "ClaimedAt": null,
+  "progress_log": [],
+  "meta": {
+    "platform": "Windows",
+    "execution_host": "AIMASTER",
+    "execution_mode": "local_windows_codex",
+    "handoff": "git",
+    "macos_uat_inheritance": "prohibited",
+    "verdict": "pending"
+  }
+}

@@ -1,0 +1,3 @@
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"visual and functional quality review guidance"}
+{"file":".trellis/spec/frontend/v2-shell.md","reason":"runtime shell, responsive, DPI, and cross-page verification contract"}
+{"file":".trellis/spec/frontend/v2-prompts-memory.md","reason":"privacy-sensitive native behavior and isolated-profile verification contract"}
