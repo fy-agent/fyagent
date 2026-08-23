@@ -5,6 +5,8 @@ Evidence date: 2026-08-24 (Asia/Shanghai)
 ## Source baseline and boundary
 
 - Branch: `codex/issue-58-60-executor-recovery`
+- Implementation commit: `52b61e894efdd55393f418f31218c105a13cf05c`.
+- Replacement Draft PR: <https://github.com/fy-agent/fyagent/pull/134>.
 - Stacked base: PR #130 head
   `a725b121642b82ad2eb19ae728f5772ced5b4a96`.
 - Schema remains v20; no migration or second Provider writer was added.
