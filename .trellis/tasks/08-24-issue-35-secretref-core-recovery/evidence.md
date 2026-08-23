@@ -6,6 +6,8 @@ Evidence date: 2026-08-24 (Asia/Shanghai)
 
 - Branch: `codex/issue-35-secretref-core-recovery`
 - Base: `origin/main@e94307cd810d7c5157b3791da2a8d7ef6a01b8a7`
+- Implementation commit: `6d1636f76abc392dcaeef87bcaa0b4330a8ad75b`
+- Replacement Draft PR: <https://github.com/fy-agent/fyagent/pull/132>
 - Old PR #112 was not rebased or cherry-picked.
 - No ChangePlan, database/schema, Provider writer, V2, command registration, or `lib.rs` file is modified by this branch.
 - `services/mod.rs` registration remains a serial integration handoff while the UCP owner holds the shared file.
@@ -37,6 +39,6 @@ Current canonical toolchain is Rust 1.97.1 as frozen by `rust-toolchain.toml` an
 
 - Windows Credential Manager matching-host CRUD/readback/cleanup HIL has not run on this Mac.
 - Windows Backend Required CI has not run until the branch is pushed and a replacement PR exists.
-- PR CI evidence is recorded only after the replacement PR exists and the checks finish.
+- PR CI evidence is recorded only after the replacement PR checks finish.
 - Provider create/edit, device-local binding authority, lifecycle/journals, commands, V2 UI, and #63 integration are outside this narrow core slice.
 - This evidence does not close Issue #35.

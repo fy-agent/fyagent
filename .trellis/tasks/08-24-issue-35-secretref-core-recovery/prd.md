@@ -25,7 +25,7 @@ Rebuild the minimal SecretRef and pluggable local SecretBackend contract from cu
 - [ ] Windows native CRUD/readback test passes when explicitly enabled on a matching host and leaves no Credential Manager record behind.
 - [x] `cargo check --locked --all-targets` and focused Rust tests pass on the local host; Windows Backend Required CI must pass before merge.
 - [x] A secret canary scan finds zero occurrences in serialized DTOs, Debug/Display output, errors, logs produced by focused tests, and repository fixtures added by this PR.
-- [ ] PR description records a salvage map from #112 behavior/test intent to the new narrow files and explicitly lists deferred lifecycle/integration/HIL evidence.
+- [x] PR description records a salvage map from #112 behavior/test intent to the new narrow files and explicitly lists deferred lifecycle/integration/HIL evidence.
 - [ ] Issue #35 remains OPEN until create/edit Provider integration, full lifecycle AC, both native-host HIL records, exact merged SHA, and Required CI are complete.
 
 ## Notes
