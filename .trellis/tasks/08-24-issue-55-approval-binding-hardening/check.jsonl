@@ -1,0 +1,2 @@
+{"file":".trellis/spec/backend/unified-change-plan.md","reason":"Approval binding and zero-writer acceptance gates"}
+{"file":".trellis/spec/backend/modular-boundaries.md","reason":"Rust module and registration boundaries"}

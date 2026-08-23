@@ -36,7 +36,11 @@
         },
         { "kind": "apply", "status": "succeeded", "code": "writer_returned" },
         { "kind": "readback", "status": "succeeded", "code": "target_matched" },
-        { "kind": "reconcile", "status": "pending", "code": "pending" }
+        {
+          "kind": "reconcile",
+          "status": "not_started",
+          "code": "not_started"
+        }
       ],
       "resources": [
         {
@@ -69,5 +73,9 @@
       "updatedAt": 101
     }
   },
-  "event": { "jobId": "job-contract", "eventSeq": 4 }
+  "event": { "jobId": "job-contract", "eventSeq": 4 },
+  "reservedStatuses": {
+    "job": ["cancelled", "warning"],
+    "step": ["not_started"]
+  }
 }

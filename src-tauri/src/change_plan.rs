@@ -35,7 +35,8 @@ string_enum!(ChangeJobStatus {
     Running,
     Succeeded,
     Warning,
-    Failed
+    Failed,
+    Cancelled
 });
 string_enum!(ChangeStepKind {
     Precheck,
@@ -44,7 +45,7 @@ string_enum!(ChangeStepKind {
     Reconcile
 });
 string_enum!(ChangeStepStatus {
-    Pending,
+    NotStarted,
     Running,
     Succeeded,
     Failed,
@@ -79,6 +80,7 @@ string_enum!(ChangeResultCode {
     Applied,
     AppliedRestartRecommended,
     AppliedWithWarning,
+    CancelledBeforeWrite,
     WriterFailedBaselineRestored,
     WriterErrorTargetReached,
     PostWriteMismatch,
@@ -89,6 +91,7 @@ string_enum!(ChangePlanErrorCode {
     UnsupportedOperation,
     TargetNotFound,
     TargetAlreadyCurrent,
+    BaselineUnavailable,
     InvalidDigest,
     Expired,
     Consumed,
@@ -101,7 +104,10 @@ string_enum!(ChangeApplyOutcomeKind { Admitted, Rejected });
 
 impl ChangeJobStatus {
     pub(crate) fn is_terminal(self) -> bool {
-        matches!(self, Self::Succeeded | Self::Warning | Self::Failed)
+        matches!(
+            self,
+            Self::Succeeded | Self::Warning | Self::Failed | Self::Cancelled
+        )
     }
 }
 
@@ -197,8 +203,8 @@ impl ChangeJobSnapshot {
             .into_iter()
             .map(|kind| ChangeJobStep {
                 kind,
-                status: ChangeStepStatus::Pending,
-                code: "pending".to_string(),
+                status: ChangeStepStatus::NotStarted,
+                code: "not_started".to_string(),
             })
             .collect(),
             resources: [
@@ -253,7 +259,38 @@ struct BaselineDigestInput<'a> {
     device_current_provider_id: &'a Option<String>,
     effective_current_provider_id: &'a Option<String>,
     target_provider_id: &'a str,
-    live_projection_available: bool,
+    live_projection_state: CodexLiveBaselineState,
+    proxy_takeover_active: bool,
+}
+
+#[derive(Serialize)]
+struct PlanApprovalBindingInput<'a> {
+    contract: &'a str,
+    proof_id: &'a str,
+    process_epoch_id: &'a str,
+    plan_id: &'a str,
+    operation: ChangeOperation,
+    target_provider_id: &'a str,
+    target_provider_name: &'a str,
+    baseline_digest: &'a str,
+    actor: &'a ChangeActor,
+    source_version: &'a str,
+    revision: i64,
+    created_at: i64,
+    expires_at: i64,
+    current_provider_code: &'a str,
+    target_provider_code: &'a str,
+    restart_expectation: RestartRequirement,
+    risks: &'a [ChangePlanRisk],
+    evidence_note: &'a str,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+enum CodexLiveBaselineState {
+    Available,
+    Missing,
+    Unavailable,
 }
 
 #[derive(Clone)]
@@ -276,7 +313,8 @@ pub(crate) struct CodexSwitchInspection {
     pub device_current_provider_id: Option<String>,
     pub effective_current_provider_id: Option<String>,
     pub target: Provider,
-    pub live_projection_available: bool,
+    live_projection_state: CodexLiveBaselineState,
+    proxy_takeover_active: bool,
     private_proof: PrivateProjectionProof,
 }
 
@@ -414,19 +452,61 @@ fn codex_projection_for_digest(mut value: Value) -> Value {
     value
 }
 
-fn live_projection_proof(result: Result<Value, AppError>, proof_id: &str) -> [u8; 32] {
-    match result {
-        Ok(value) => private_revision_json(
-            "fyagent.change-plan.codex-live.v1",
-            proof_id,
-            &codex_projection_for_digest(value),
-        ),
-        Err(_) => private_revision_bytes(
-            "fyagent.change-plan.codex-live.v1",
-            proof_id,
-            b"projection_unavailable",
-        ),
+fn path_entry_is_missing(path: &std::path::Path) -> Option<bool> {
+    match std::fs::symlink_metadata(path) {
+        Ok(_) => Some(false),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Some(true),
+        Err(_) => None,
     }
+}
+
+fn live_projection_proof(
+    result: Result<Value, AppError>,
+    proof_id: &str,
+) -> (CodexLiveBaselineState, [u8; 32]) {
+    match result {
+        Ok(value) => (
+            CodexLiveBaselineState::Available,
+            private_revision_json(
+                "fyagent.change-plan.codex-live.v1",
+                proof_id,
+                &codex_projection_for_digest(value),
+            ),
+        ),
+        Err(_) => {
+            let definitely_missing = matches!(
+                (
+                    path_entry_is_missing(&crate::codex_config::get_codex_auth_path()),
+                    path_entry_is_missing(&crate::codex_config::get_codex_config_path()),
+                ),
+                (Some(true), Some(true))
+            );
+            let state = if definitely_missing {
+                CodexLiveBaselineState::Missing
+            } else {
+                CodexLiveBaselineState::Unavailable
+            };
+            let sentinel = match state {
+                CodexLiveBaselineState::Missing => b"projection_missing".as_slice(),
+                CodexLiveBaselineState::Unavailable => b"projection_unavailable".as_slice(),
+                CodexLiveBaselineState::Available => unreachable!(),
+            };
+            (
+                state,
+                private_revision_bytes("fyagent.change-plan.codex-live.v1", proof_id, sentinel),
+            )
+        }
+    }
+}
+
+fn codex_proxy_takeover_active(state: &AppState) -> Result<bool, ChangePlanErrorCode> {
+    let has_backup = futures::executor::block_on(state.db.get_live_backup(AppType::Codex.as_str()))
+        .map_err(|_| ChangePlanErrorCode::Internal)?
+        .is_some();
+    Ok(has_backup
+        || state
+            .proxy_service
+            .detect_takeover_in_live_config_for_app(&AppType::Codex))
 }
 
 pub(crate) fn inspect_codex_switch(
@@ -467,9 +547,9 @@ pub(crate) fn inspect_codex_switch(
         })
         .map(|provider| provider_definition_proof(&provider, proof_id));
     let target_definition = provider_definition_proof(&target, proof_id);
-    let live_projection = read_live_settings(AppType::Codex);
-    let live_projection_available = live_projection.is_ok();
-    let live_projection = live_projection_proof(live_projection, proof_id);
+    let (live_projection_state, live_projection) =
+        live_projection_proof(read_live_settings(AppType::Codex), proof_id);
+    let proxy_takeover_active = codex_proxy_takeover_active(state)?;
     let effective_target =
         build_effective_settings_with_common_config(state.db.as_ref(), &AppType::Codex, &target)
             .map_err(|_| ChangePlanErrorCode::Internal)?;
@@ -483,7 +563,8 @@ pub(crate) fn inspect_codex_switch(
         device_current_provider_id,
         effective_current_provider_id,
         target,
-        live_projection_available,
+        live_projection_state,
+        proxy_takeover_active,
         private_proof: PrivateProjectionProof {
             current_definition,
             target_definition,
@@ -507,13 +588,48 @@ fn baseline_binding_digest(
         device_current_provider_id: &inspection.device_current_provider_id,
         effective_current_provider_id: &inspection.effective_current_provider_id,
         target_provider_id: &inspection.target.id,
-        live_projection_available: inspection.live_projection_available,
+        live_projection_state: inspection.live_projection_state,
+        proxy_takeover_active: inspection.proxy_takeover_active,
     })
     .map_err(|_| ChangePlanErrorCode::Internal)?;
     Ok(opaque_revision_json(
         "fyagent.change-plan.baseline-binding.v1",
         plan_id,
         &baseline_value,
+    ))
+}
+
+fn plan_approval_binding_digest(
+    plan: &ChangePlan,
+    proof_id: &str,
+    epoch_id: &str,
+    contract: &str,
+) -> Result<String, ChangePlanErrorCode> {
+    let value = serde_json::to_value(PlanApprovalBindingInput {
+        contract,
+        proof_id,
+        process_epoch_id: epoch_id,
+        plan_id: &plan.plan_id,
+        operation: plan.operation,
+        target_provider_id: &plan.target_provider_id,
+        target_provider_name: &plan.target_provider_name,
+        baseline_digest: &plan.baseline_digest,
+        actor: &plan.actor,
+        source_version: &plan.source_version,
+        revision: plan.revision,
+        created_at: plan.created_at,
+        expires_at: plan.expires_at,
+        current_provider_code: &plan.current_provider_code,
+        target_provider_code: &plan.target_provider_code,
+        restart_expectation: plan.restart_expectation,
+        risks: &plan.risks,
+        evidence_note: &plan.evidence_note,
+    })
+    .map_err(|_| ChangePlanErrorCode::Internal)?;
+    Ok(opaque_revision_json(
+        "fyagent.change-plan.plan-approval.v1",
+        &plan.plan_id,
+        &value,
     ))
 }
 
@@ -539,6 +655,15 @@ fn constant_time_revision_matches(left: &[u8; 32], right: &[u8; 32]) -> bool {
         .zip(right)
         .fold(0u8, |difference, (left, right)| difference | (left ^ right))
         == 0
+}
+
+fn constant_time_text_matches(left: &str, right: &str) -> bool {
+    left.len() == right.len()
+        && left
+            .bytes()
+            .zip(right.bytes())
+            .fold(0u8, |difference, (left, right)| difference | (left ^ right))
+            == 0
 }
 
 pub struct ChangePlanService;
@@ -568,28 +693,19 @@ impl ChangePlanService {
         if inspection.effective_current_provider_id.as_deref() == Some(target_provider_id) {
             return Err(ChangePlanErrorCode::TargetAlreadyCurrent);
         }
+        if inspection.proxy_takeover_active {
+            return Err(ChangePlanErrorCode::UnsupportedOperation);
+        }
+        if inspection.live_projection_state == CodexLiveBaselineState::Unavailable {
+            return Err(ChangePlanErrorCode::BaselineUnavailable);
+        }
         let baseline_digest = baseline_binding_digest(&plan_id, &proof_id, &epoch_id, &inspection)?;
-        let semantic = serde_json::json!({
-            "operation": "codex_provider_switch",
-            "targetProviderId": target_provider_id,
-            "proofId": proof_id,
-            "processEpochId": epoch_id,
-            "baselineDigest": baseline_digest,
-            "contract": CHANGE_PLAN_CONTRACT_VERSION,
-            "actor": "direct_user",
-            "sourceVersion": env!("CARGO_PKG_VERSION"),
-            "revision": 1,
-            "createdAt": now,
-            "expiresAt": now + CHANGE_PLAN_TTL_SECONDS,
-            "risks": ["local_configuration_write"],
-        });
-        let plan_digest = opaque_revision_json("fyagent.change-plan.plan.v1", &plan_id, &semantic);
-        let public = ChangePlan {
+        let mut public = ChangePlan {
             plan_id,
             operation: ChangeOperation::CodexProviderSwitch,
             target_provider_id: target_provider_id.to_string(),
             target_provider_name: safe_provider_display_name(&inspection.target),
-            plan_digest,
+            plan_digest: String::new(),
             baseline_digest,
             actor: ChangeActor {
                 actor_type: ChangeActorType::DirectUser,
@@ -612,6 +728,12 @@ impl ChangePlanService {
             }],
             evidence_note: "usage_not_observed".to_string(),
         };
+        public.plan_digest = plan_approval_binding_digest(
+            &public,
+            &proof_id,
+            &epoch_id,
+            CHANGE_PLAN_CONTRACT_VERSION,
+        )?;
         state
             .db
             .insert_change_plan(&StoredChangePlan {
@@ -680,7 +802,7 @@ impl ChangePlanService {
         let Some(stored) = stored else {
             return Ok(rejected(ChangePlanErrorCode::PlanNotFound));
         };
-        if stored.public.plan_digest != plan_digest {
+        if !constant_time_text_matches(&stored.public.plan_digest, plan_digest) {
             return Ok(rejected(ChangePlanErrorCode::InvalidDigest));
         }
         if stored.public.status == ChangePlanStatus::Consumed {
@@ -692,11 +814,28 @@ impl ChangePlanService {
         if stored.process_epoch_id != process_epoch_id() {
             return Ok(rejected(ChangePlanErrorCode::Stale));
         }
+        if stored.contract_digest != CHANGE_PLAN_CONTRACT_VERSION {
+            return Ok(rejected(ChangePlanErrorCode::Stale));
+        }
+        let rebound_digest = plan_approval_binding_digest(
+            &stored.public,
+            &stored.proof_id,
+            &stored.process_epoch_id,
+            &stored.contract_digest,
+        )?;
+        if !constant_time_text_matches(&stored.public.plan_digest, &rebound_digest) {
+            return Ok(rejected(ChangePlanErrorCode::Stale));
+        }
         let Some(expected_private) = get_private_proof(&stored.proof_id) else {
             return Ok(rejected(ChangePlanErrorCode::Stale));
         };
         let observed =
             inspect_codex_switch(state, &stored.public.target_provider_id, &stored.proof_id)?;
+        if observed.proxy_takeover_active
+            || observed.live_projection_state == CodexLiveBaselineState::Unavailable
+        {
+            return Ok(rejected(ChangePlanErrorCode::Stale));
+        }
         let observed_baseline = baseline_binding_digest(
             &stored.public.plan_id,
             &stored.proof_id,
@@ -1001,7 +1140,9 @@ fn classify_job(
         &readback.private_proof.target_definition,
         &expected_private.target_definition,
     );
-    let live_target = readback.live_projection_available
+    let live_available = readback.live_projection_state == CodexLiveBaselineState::Available;
+    let live_unavailable = readback.live_projection_state == CodexLiveBaselineState::Unavailable;
+    let live_target = live_available
         && constant_time_revision_matches(
             &readback.private_proof.live_projection,
             &expected_private.target_projection,
@@ -1032,17 +1173,19 @@ fn classify_job(
     set_resource(
         job,
         ChangeResourceKind::CodexLiveProjection,
-        if !readback.live_projection_available {
+        if live_unavailable {
             ChangeResourceStatus::Unavailable
         } else if live_target {
             ChangeResourceStatus::Matched
         } else {
             ChangeResourceStatus::Mismatched
         },
-        if !readback.live_projection_available {
+        if live_unavailable {
             "live_unavailable"
         } else if live_target {
             "live_matched"
+        } else if readback.live_projection_state == CodexLiveBaselineState::Missing {
+            "live_missing"
         } else {
             "live_mismatched"
         },
@@ -1094,10 +1237,10 @@ fn classify_job(
         );
     } else {
         job.status = ChangeJobStatus::Failed;
-        job.result_code = if readback.live_projection_available {
-            ChangeResultCode::PostWriteMismatch
-        } else {
+        job.result_code = if live_unavailable {
             ChangeResultCode::ReadbackUnavailable
+        } else {
+            ChangeResultCode::PostWriteMismatch
         };
         job.restart_requirement = RestartRequirement::Unknown;
         job.recovery_state = RecoveryState::RecoveryRequired;
@@ -1279,8 +1422,8 @@ mod tests {
                 },
                 ChangeJobStep {
                     kind: ChangeStepKind::Reconcile,
-                    status: ChangeStepStatus::Pending,
-                    code: "pending".into(),
+                    status: ChangeStepStatus::NotStarted,
+                    code: "not_started".into(),
                 },
             ],
             resources: vec![
@@ -1322,6 +1465,18 @@ mod tests {
         assert_eq!(
             serde_json::to_value(outcome).unwrap(),
             fixture["applyOutcome"]
+        );
+        assert_eq!(
+            serde_json::to_value(ChangeJobStatus::Cancelled).unwrap(),
+            fixture["reservedStatuses"]["job"][0]
+        );
+        assert_eq!(
+            serde_json::to_value(ChangeJobStatus::Warning).unwrap(),
+            fixture["reservedStatuses"]["job"][1]
+        );
+        assert_eq!(
+            serde_json::to_value(ChangeStepStatus::NotStarted).unwrap(),
+            fixture["reservedStatuses"]["step"][0]
         );
     }
 
@@ -1533,6 +1688,23 @@ mod tests {
         let (_home, _guard, _db, state, _current, target) = setup_switch_state();
         let plan = ChangePlanService::plan_codex_switch_at(&state, &target.id, 100).unwrap();
         let calls = AtomicUsize::new(0);
+        let wrong_digest = ChangePlanService::apply_codex_switch_at_with_writer(
+            &state,
+            &plan.plan_id,
+            "mac1:wrong",
+            101,
+            || {
+                calls.fetch_add(1, Ordering::SeqCst);
+                Ok(false)
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            wrong_digest.error_code,
+            Some(ChangePlanErrorCode::InvalidDigest)
+        );
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+
         let outcome = ChangePlanService::apply_codex_switch_at_with_writer(
             &state,
             &plan.plan_id,
@@ -1582,6 +1754,175 @@ mod tests {
             1,
             "replay must not call writer"
         );
+    }
+
+    #[test]
+    #[serial]
+    fn stored_plan_immutable_field_tampering_is_stale_and_zero_writer() {
+        use rusqlite::params;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        for mutation in [
+            "source_version",
+            "target_name",
+            "contract",
+            "extended_expiry",
+        ] {
+            let (_home, _guard, db, state, _current, target) = setup_switch_state();
+            let plan = ChangePlanService::plan_codex_switch_at(&state, &target.id, 100).unwrap();
+            let now = if mutation == "extended_expiry" {
+                db.conn
+                    .lock()
+                    .unwrap()
+                    .execute(
+                        "UPDATE change_plans SET expires_at = 2000 WHERE plan_id = ?1",
+                        params![plan.plan_id],
+                    )
+                    .unwrap();
+                1000
+            } else {
+                let statement = match mutation {
+                    "source_version" => {
+                        "UPDATE change_plans SET source_version = 'tampered' WHERE plan_id = ?1"
+                    }
+                    "target_name" => {
+                        "UPDATE change_plans SET target_provider_name = 'Tampered' WHERE plan_id = ?1"
+                    }
+                    "contract" => {
+                        "UPDATE change_plans SET contract_digest = 'tampered' WHERE plan_id = ?1"
+                    }
+                    _ => unreachable!(),
+                };
+                db.conn
+                    .lock()
+                    .unwrap()
+                    .execute(statement, params![plan.plan_id])
+                    .unwrap();
+                101
+            };
+            let calls = AtomicUsize::new(0);
+
+            let outcome = ChangePlanService::apply_codex_switch_at_with_writer(
+                &state,
+                &plan.plan_id,
+                &plan.plan_digest,
+                now,
+                || {
+                    calls.fetch_add(1, Ordering::SeqCst);
+                    Ok(false)
+                },
+            )
+            .unwrap();
+
+            assert_eq!(
+                outcome.error_code,
+                Some(ChangePlanErrorCode::Stale),
+                "mutation {mutation}"
+            );
+            assert_eq!(calls.load(Ordering::SeqCst), 0, "mutation {mutation}");
+            assert!(db.list_recoverable_change_jobs().unwrap().is_empty());
+        }
+    }
+
+    fn remove_codex_live_entries() {
+        for path in [
+            crate::codex_config::get_codex_auth_path(),
+            crate::codex_config::get_codex_config_path(),
+        ] {
+            match std::fs::remove_file(&path) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => panic!("remove {}: {error}", path.display()),
+            }
+        }
+    }
+
+    #[test]
+    #[serial]
+    fn known_missing_live_baseline_is_distinct_and_can_apply() {
+        let (_home, _guard, _db, state, _current, target) = setup_switch_state();
+        remove_codex_live_entries();
+        let plan = ChangePlanService::plan_codex_switch_at(&state, &target.id, 100).unwrap();
+
+        let outcome = ChangePlanService::apply_codex_switch_at_with_writer(
+            &state,
+            &plan.plan_id,
+            &plan.plan_digest,
+            101,
+            || {
+                crate::services::ProviderService::with_live_config_result(AppType::Codex, || {
+                    crate::services::ProviderService::switch_with_lock_held(
+                        &state,
+                        AppType::Codex,
+                        &target.id,
+                    )
+                })
+                .map(|result| result.live_config_changed)
+                .map_err(|_| ())
+            },
+        )
+        .unwrap();
+
+        assert_eq!(outcome.kind, ChangeApplyOutcomeKind::Admitted);
+        assert_eq!(outcome.job.unwrap().status, ChangeJobStatus::Succeeded);
+    }
+
+    #[test]
+    #[serial]
+    fn malformed_live_baseline_cannot_create_or_apply_a_plan() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let (_home, _guard, db, state, _current, target) = setup_switch_state();
+        std::fs::write(crate::codex_config::get_codex_config_path(), "[broken").unwrap();
+        assert_eq!(
+            ChangePlanService::plan_codex_switch_at(&state, &target.id, 100),
+            Err(ChangePlanErrorCode::BaselineUnavailable)
+        );
+        let count: i64 = db
+            .conn
+            .lock()
+            .unwrap()
+            .query_row("SELECT COUNT(*) FROM change_plans", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 0);
+
+        remove_codex_live_entries();
+        let plan = ChangePlanService::plan_codex_switch_at(&state, &target.id, 101).unwrap();
+        std::fs::write(crate::codex_config::get_codex_config_path(), "[broken").unwrap();
+        let calls = AtomicUsize::new(0);
+        let outcome = ChangePlanService::apply_codex_switch_at_with_writer(
+            &state,
+            &plan.plan_id,
+            &plan.plan_digest,
+            102,
+            || {
+                calls.fetch_add(1, Ordering::SeqCst);
+                Ok(false)
+            },
+        )
+        .unwrap();
+        assert_eq!(outcome.error_code, Some(ChangePlanErrorCode::Stale));
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    #[serial]
+    fn proxy_takeover_is_rejected_before_plan_persistence() {
+        let (_home, _guard, db, state, _current, target) = setup_switch_state();
+        futures::executor::block_on(state.db.save_live_backup(AppType::Codex.as_str(), "{}"))
+            .unwrap();
+
+        assert_eq!(
+            ChangePlanService::plan_codex_switch_at(&state, &target.id, 100),
+            Err(ChangePlanErrorCode::UnsupportedOperation)
+        );
+        let count: i64 = db
+            .conn
+            .lock()
+            .unwrap()
+            .query_row("SELECT COUNT(*) FROM change_plans", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 0);
     }
 
     #[test]

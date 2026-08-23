@@ -57,6 +57,11 @@ change_job_events(PRIMARY KEY(job_id, event_seq), ...)
   status/codes, restart expectation, risks, and evidence note.
 - `planDigest` and `baselineDigest` are per-plan opaque approval bindings over
   non-secret fields. They start with `mac1:` and are not stable content hashes.
+- The apply gate recomputes `planDigest` from every immutable public plan field,
+  the random proof/epoch IDs, the baseline binding, and the contract identity.
+  Mutating a stored expiry, source version, target display field, risk, or
+  contract must produce `stale` before admission; comparing only the caller
+  digest to the stored digest is insufficient.
 - Full current/target Provider definitions and Codex live/target projections
   are bound only by process-private HMAC proofs keyed by random `proofId`.
   Private proof bytes never enter SQLite, IPC, logs, exports, events, or Debug.
@@ -68,6 +73,10 @@ change_job_events(PRIMARY KEY(job_id, event_seq), ...)
   atomically consumes the plan and creates one job before invoking the writer.
 - Writer return is not success evidence. DB current, device current, target
   definition, and Codex live projection must pass fresh readback.
+- A known-missing Codex live file is a bindable baseline distinct from an
+  unreadable/malformed file. Unreadable/malformed state cannot create a plan
+  or reach the writer. The first switch slice also rejects proxy-takeover mode
+  before persistence until a proxy-aware target projection is implemented.
 - Reconciliation reads and classifies only. It never calls the writer. If the
   private proof is unavailable after restart, the job is
   `recovery_required`; current IDs may still be displayed, but secret equality
@@ -80,11 +89,14 @@ change_job_events(PRIMARY KEY(job_id, event_seq), ...)
 | --- | --- |
 | Target missing | `target_not_found`; no plan row |
 | Target already effective current | `target_already_current`; no plan row |
+| Malformed/unreadable live baseline | `baseline_unavailable`; no plan row |
+| Proxy takeover active | `unsupported_operation`; no plan row |
 | Unknown plan | rejected `plan_not_found`; writer zero |
 | Wrong plan digest | rejected `invalid_digest`; writer zero |
 | `now >= expiresAt` | rejected `expired`; writer zero |
 | Consumed/replayed plan | rejected `consumed`; no second job; writer zero |
 | IDs, target definition, common config, live projection, or API key drift | rejected `stale`; writer zero |
+| Stored immutable plan field or contract identity mutated | rejected `stale`; writer zero |
 | Process epoch/private proof missing | unapplied plan `stale`; nonterminal job `recovery_required`; no replay |
 | Writer error and baseline restored | failed `writer_failed_baseline_restored`, recovery succeeded |
 | Writer error but complete target readback | warning `writer_error_target_reached` |
@@ -111,12 +123,15 @@ change_job_events(PRIMARY KEY(job_id, event_seq), ...)
 Focused Rust assertions must cover:
 
 - closed camelCase DTOs and the shared fixture;
+- frozen `cancelled`, `warning`, and `not_started` wire spellings;
 - v19-to-v20 migration plus identical fresh-database shape;
 - exactly one plan-ledger insert and zero Provider/live/job/event changes on
   preview;
 - no raw secret or private HMAC in persisted UCP fields;
 - digest mismatch, expiry, stale ID/config/live/API-key state, proof loss, and
   replay all calling the writer zero times;
+- stored-plan mutation, missing-to-malformed live drift, unreadable baseline,
+  and proxy takeover rejection before the writer;
 - existing writer exactly once, independent four-authority readback, writer
   failure classifications, terminal-race reload, and no-replay reconcile;
 - process-proof loss yielding `stale` or `recovery_required` as appropriate;

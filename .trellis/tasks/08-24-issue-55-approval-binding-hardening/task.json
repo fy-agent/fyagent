@@ -1,0 +1,33 @@
+{
+  "id": "issue-55-approval-binding-hardening",
+  "name": "issue-55-approval-binding-hardening",
+  "title": "Harden Issue 55 approval binding",
+  "description": "Close PR #130 review gaps: immutable approval rebinding, safe live baseline classification, and frozen V2 status enums.",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P0",
+  "creator": "codex",
+  "assignee": "codex",
+  "createdAt": "2026-08-24",
+  "completedAt": null,
+  "branch": "codex/issue-55-review-fixes",
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "src-tauri/src/change_plan.rs",
+    "tests/fixtures/changePlanDtoContract.v1.json",
+    ".trellis/spec/backend/unified-change-plan.md"
+  ],
+  "notes": "",
+  "meta": {
+    "issue": "55",
+    "pr": "130"
+  }
+}
