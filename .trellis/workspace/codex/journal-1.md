@@ -64,3 +64,43 @@ Aligned FyAgent brand positioning, repository entry copy, GitHub community routi
 ### Status
 
 [OK] **Completed**
+
+
+## Session 3: Recover Issue 55 Codex switch backend
+
+**Date**: 2026-08-24
+**Task**: Recover Issue 55 Codex switch backend
+**Branch**: `codex/issue-55-codex-switch-recovery`
+
+### Summary
+
+Rebuilt the current-main Codex Provider switch Change Plan backend, opened review-ready PR #130, and retired superseded PR #114 while leaving Issue #55 open for follow-ups.
+
+### Main Changes
+
+- Implemented schema v20, target-side-effect-free planning, memory-only private proofs, one locked Provider writer, authoritative readback, and restart-safe reconciliation.
+- Coordinated scope with the parallel planning thread and kept V2 UI, SecretRef, installer provenance, and broader adapter work out of this PR.
+- Process note: init_developer.py treats positional tokens as developer names and does not implement --help; inspect its usage/source before probing it to avoid creating a mistaken identity directory.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7bed1436` | (see git log) |
+| `047101cf` | (see git log) |
+| `c343ad2d` | (see git log) |
+| `69cde38f` | (see git log) |
+| `6c01e32f` | (see git log) |
+
+### Testing
+
+- [OK] Local check:prearchive completed with exit code 0; focused Change Plan tests, full Rust tests, architecture checks, platform-surface checks, and task validation passed.
+- [OK] GitHub PR #130 completed 21 CI checks successfully with zero failures or pending checks before being marked ready.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- Review and merge PR #130 only with separate main-merge authorization; keep Issue #55 open for V2 UI and broader follow-up slices.
