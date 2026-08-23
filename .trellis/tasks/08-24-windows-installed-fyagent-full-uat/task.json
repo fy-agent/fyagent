@@ -15,7 +15,7 @@
   "branch": "codex/windows-installed-fyagent-full-uat-20260824",
   "base_branch": "main",
   "worktree_path": "E:\\fyagent-windows-installed-fyagent-full-uat-20260824",
-  "commit": "1c8399005188ff475c5beff7b5eab770040f398c",
+  "commit": "623e13a8ca3ae387ad709a295a5bef3187b5ebd2",
   "pr_url": "https://github.com/fy-agent/fyagent/pull/138",
   "subtasks": [],
   "children": [],
@@ -54,6 +54,12 @@
       "by": "aimaster-windows-codex",
       "status": "in_progress",
       "message": "Corrected the private screenshot evidence format metadata after a content/type audit: all 50 files are JPEG/JFIF, filenames are normalized to .jpg, and pre/post bytes, SHA-256 values, decoded dimensions, and timestamps are unchanged."
+    },
+    {
+      "at": "2026-08-24T06:54:05.5636018+08:00",
+      "by": "aimaster-windows-codex",
+      "status": "in_progress",
+      "message": "Evidence format correction committed and pushed at 623e13a8ca3ae387ad709a295a5bef3187b5ebd2 to the existing PR #138; reviewer request remains active."
     }
   ],
   "meta": {
@@ -65,6 +71,7 @@
     "verdict": "NO-GO",
     "reviewer_request": "python-rust (赖永杰)",
     "ci_status_at_pr_creation": "in_progress",
-    "evidence_image_format": "JPEG/JFIF"
+    "evidence_image_format": "JPEG/JFIF",
+    "evidence_correction_commit": "623e13a8ca3ae387ad709a295a5bef3187b5ebd2"
   }
 }

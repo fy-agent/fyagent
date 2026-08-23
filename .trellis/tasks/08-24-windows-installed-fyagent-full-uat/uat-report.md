@@ -247,8 +247,8 @@ build-script approval was performed.
   against main, not draft, not merged.
 - Review request: python-rust (赖永杰), resolved from the repository's
   dev/laiyongjie branch and confirmed as a repository administrator.
-- Deliverables commit:
-  1c8399005188ff475c5beff7b5eab770040f398c, pushed to origin.
+- Current corrected deliverables commit:
+  623e13a8ca3ae387ad709a295a5bef3187b5ebd2, pushed to origin.
 - CI snapshot after PR creation: Commit Convention, label, Classify Changes,
   and Desktop Acceptance Contract passed; Repository Contracts, Frontend
   Checks, Backend Checks (Windows/macOS), and Windows Native Contracts
