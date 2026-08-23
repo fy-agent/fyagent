@@ -20,6 +20,7 @@ commands.allow = [
   "auth_remove_account",
   "auth_set_default_account",
   "auth_start_login",
+  "cancel_change_job",
   "cancel_codex_desktop_restart_with_force",
   "check_env_conflicts",
   "check_provider_limits",

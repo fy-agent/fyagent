@@ -4,10 +4,10 @@
 
 Read this contract before changing the first Unified Change Plan vertical
 slice: switching Codex to an existing Provider. It covers plan identity,
-schema-v20 persistence, one-time admission, Provider mutation ownership,
-readback/reconciliation, and the Rust/Tauri wire DTOs. It does not make the
-generic adapter engine, V2 Apply UI, SecretBackend, or create/edit Provider
-flows complete.
+schema-v20 persistence, registered adapter identity, idempotent admission, the
+five-phase executor, Provider mutation ownership, readback/reconciliation, and
+the Rust/Tauri wire DTOs. It does not make multi-adapter execution, generic
+Undo, V2 Apply UI, SecretBackend, or create/edit Provider flows complete.
 
 Plan creation may insert one immutable UCP control-plane row. It must perform
 zero Provider/business-state writes, zero live/external-target writes, zero
@@ -27,6 +27,9 @@ get_change_job(jobId: String)
 
 list_recoverable_change_jobs()
   -> Result<Vec<ChangeJobSnapshot>, ChangePlanErrorCode>
+
+cancel_change_job(jobId: String)
+  -> Result<CancelChangeJobOutcome, ChangePlanErrorCode>
 
 event change-job://updated
   -> { jobId: String, eventSeq: i64 }
@@ -55,6 +58,11 @@ change_job_events(PRIMARY KEY(job_id, event_seq), ...)
   bounded display name, `planDigest`, `baselineDigest`,
   `actor.type=direct_user`, `sourceVersion`, `revision=1`, timestamps, closed
   status/codes, restart expectation, risks, and evidence note.
+- Each plan embeds one closed adapter descriptor: adapter/version/operation,
+  five fixed phases, read/write sets, plan-scoped idempotency, pre-write-only
+  cancellation, writer-owned rollback, and the two test-only fault boundaries.
+  The registry is an exhaustive `ChangeOperation` match and accepts no shell,
+  script, argv, dynamic command, or undeclared write target.
 - `planDigest` and `baselineDigest` are per-plan opaque approval bindings over
   non-secret fields. They start with `mac1:` and are not stable content hashes.
 - The apply gate recomputes `planDigest` from every immutable public plan field,
@@ -71,6 +79,30 @@ change_job_events(PRIMARY KEY(job_id, event_seq), ...)
 - `apply` accepts only the exact stored `planId + planDigest`, rechecks the
   non-secret binding and private proof under the Provider mutation lock, then
   atomically consumes the plan and creates one job before invoking the writer.
+- `jobId` is the execution ID and the random `planId` is its idempotency key.
+  The unique job-per-plan row is the durable authority. Repeating the exact
+  apply returns the existing full job snapshot as `idempotent_replay`; it does
+  not precheck or call the writer again. Reusing the plan with another digest
+  remains `invalid_digest`.
+- Public execution phases are exactly `precheck -> snapshot -> managed_write
+  -> readback -> finalize`. Every transition is committed with an increasing
+  `eventSeq` before the host emits `change-job://updated {jobId,eventSeq}`.
+  Events are hints; `get_change_job` is the full safe snapshot and returns an
+  active execution without blocking behind its writer.
+- An in-memory atomic gate chooses exactly one transition from `cancel_safe` to
+  either `cancelled` or `write_claimed`. Cancellation that wins persists
+  `cancelled_before_write` and writer zero. After `write_claimed`, cancellation
+  is rejected as `commit_point_passed` and cannot hide existing effects.
+- The durable phase/resource journal projects a non-sensitive partial result:
+  succeeded/compensated/unverified phases, remaining effect codes, and bounded
+  manual action codes. It never projects raw errors, paths, definitions, or
+  secret material.
+- `managed_write=running` is committed before invoking the Provider writer. A
+  process loss after that boundary is an unknown outcome, so recovery performs
+  readback only. Complete target state becomes `recovered_target_reached`;
+  complete baseline becomes compensated; mixed/unavailable state requires
+  recovery. A journal proving managed write never started becomes
+  `interrupted_before_write` without readback or replay.
 - Writer return is not success evidence. DB current, device current, target
   definition, and Codex live projection must pass fresh readback.
 - A known-missing Codex live file is a bindable baseline distinct from an
@@ -94,7 +126,11 @@ change_job_events(PRIMARY KEY(job_id, event_seq), ...)
 | Unknown plan | rejected `plan_not_found`; writer zero |
 | Wrong plan digest | rejected `invalid_digest`; writer zero |
 | `now >= expiresAt` | rejected `expired`; writer zero |
-| Consumed/replayed plan | rejected `consumed`; no second job; writer zero |
+| Exact duplicate apply after admission | existing job + `idempotent_replay`; writer zero |
+| Consumed plan whose unique job is missing | fail closed as internal corruption; writer zero |
+| Same plan with changed digest | `invalid_digest`; writer zero |
+| Cancel wins before managed write | terminal `cancelled_before_write`; writer zero |
+| Cancel after managed-write claim | `commit_point_passed`; execution continues |
 | IDs, target definition, common config, live projection, or API key drift | rejected `stale`; writer zero |
 | Stored immutable plan field or contract identity mutated | rejected `stale`; writer zero |
 | Process epoch/private proof missing | unapplied plan `stale`; nonterminal job `recovery_required`; no replay |
@@ -102,6 +138,8 @@ change_job_events(PRIMARY KEY(job_id, event_seq), ...)
 | Writer error but complete target readback | warning `writer_error_target_reached` |
 | Mixed state or definition drift after write | failed `post_write_mismatch`, recovery required |
 | Readback unavailable | failed `readback_unavailable`, recovery required |
+| Crash before `managed_write` journal | failed `interrupted_before_write`; writer zero |
+| Crash after writer side effect, before receipt journal | readback target -> `recovered_target_reached`; never replay |
 
 ## 5. Good / Base / Bad Cases
 
@@ -112,6 +150,8 @@ change_job_events(PRIMARY KEY(job_id, event_seq), ...)
   memory-only proof before admission, so writer calls remain zero.
 - Base: a valid apply calls the existing Provider writer once, reports
   `not_observed`, and uses readback to decide success/restart truth.
+- Good: concurrent exact duplicate applies all return one execution ID and the
+  Provider writer count remains exactly one.
 - Bad: hash or HMAC full Provider/live projections and persist the result.
   Even keyed output is secret-derived durable state and conflicts with #35.
 - Bad: release the Provider mutation guard between baseline validation and
@@ -136,6 +176,13 @@ Focused Rust assertions must cover:
   failure classifications, terminal-race reload, and no-replay reconcile;
 - process-proof loss yielding `stale` or `recovery_required` as appropriate;
 - both Unix and Windows path separators in display-name sanitization.
+- closed registered adapter metadata with no dynamic command surface;
+- the exact five phase order and committed-snapshot event sequencing;
+- concurrent/sequential idempotent replay with one execution and one writer;
+- cancellation winning before write and rejection after the atomic claim;
+- structured partial projection and compensated rollback classification;
+- before-write and after-write-before-record fault injection, followed by
+  read-only reconciliation that never replays the writer.
 
 Final gates:
 
@@ -167,6 +214,8 @@ Correct:
 full secret-bearing projections -> memory-only per-plan HMAC proof
 non-secret metadata + random proofId -> persisted approval binding
 hold existing Provider mutation lock:
-  baseline + private proof -> atomic admission -> existing writer once -> readback
+  baseline + private proof -> atomic admission
+  -> precheck -> snapshot -> managed_write journal
+  -> existing writer once -> readback -> finalize
 restart + missing private proof -> stale/recovery_required, never replay
 ```

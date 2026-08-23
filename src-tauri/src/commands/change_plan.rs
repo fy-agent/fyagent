@@ -2,7 +2,8 @@ use serde::Serialize;
 use tauri::{Emitter, Manager, State};
 
 use crate::change_plan::{
-    ApplyChangePlanOutcome, ChangeJobSnapshot, ChangePlan, ChangePlanErrorCode, ChangePlanService,
+    ApplyChangePlanOutcome, CancelChangeJobOutcome, ChangeJobSnapshot, ChangePlan,
+    ChangePlanErrorCode, ChangePlanService,
 };
 use crate::store::AppState;
 
@@ -21,6 +22,16 @@ struct ChangeJobUpdatedEvent {
     event_seq: i64,
 }
 
+fn emit_job_update(app_handle: &tauri::AppHandle, job: &ChangeJobSnapshot) {
+    let _ = app_handle.emit(
+        "change-job://updated",
+        ChangeJobUpdatedEvent {
+            job_id: job.job_id.clone(),
+            event_seq: job.event_seq,
+        },
+    );
+}
+
 #[tauri::command]
 pub async fn apply_change_plan(
     app_handle: tauri::AppHandle,
@@ -32,33 +43,44 @@ pub async fn apply_change_plan(
         let state = app_for_work
             .try_state::<AppState>()
             .ok_or(ChangePlanErrorCode::Internal)?;
-        ChangePlanService::apply_codex_switch(state.inner(), &planId, &planDigest)
+        let app_for_events = app_for_work.clone();
+        ChangePlanService::apply_codex_switch_with_observer(
+            state.inner(),
+            &planId,
+            &planDigest,
+            move |job| emit_job_update(&app_for_events, job),
+        )
     })
     .await
     .map_err(|_| ChangePlanErrorCode::Internal)??;
-    if let Some(job) = &outcome.job {
-        let _ = app_handle.emit(
-            "change-job://updated",
-            ChangeJobUpdatedEvent {
-                job_id: job.job_id.clone(),
-                event_seq: job.event_seq,
-            },
-        );
-    }
     Ok(outcome)
 }
 
 #[tauri::command]
 pub fn get_change_job(
+    app_handle: tauri::AppHandle,
     state: State<'_, AppState>,
     #[allow(non_snake_case)] jobId: String,
 ) -> Result<ChangeJobSnapshot, ChangePlanErrorCode> {
-    ChangePlanService::get_job(state.inner(), &jobId)
+    ChangePlanService::get_job_with_observer(state.inner(), &jobId, |job| {
+        emit_job_update(&app_handle, job)
+    })
 }
 
 #[tauri::command]
 pub fn list_recoverable_change_jobs(
+    app_handle: tauri::AppHandle,
     state: State<'_, AppState>,
 ) -> Result<Vec<ChangeJobSnapshot>, ChangePlanErrorCode> {
-    ChangePlanService::list_recoverable_jobs(state.inner())
+    ChangePlanService::list_recoverable_jobs_with_observer(state.inner(), |job| {
+        emit_job_update(&app_handle, job)
+    })
+}
+
+#[tauri::command]
+pub fn cancel_change_job(
+    state: State<'_, AppState>,
+    #[allow(non_snake_case)] jobId: String,
+) -> Result<CancelChangeJobOutcome, ChangePlanErrorCode> {
+    ChangePlanService::cancel_job(state.inner(), &jobId)
 }

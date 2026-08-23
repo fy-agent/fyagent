@@ -1,0 +1,44 @@
+{
+  "id": "issue-58-60-executor-recovery",
+  "name": "issue-58-60-executor-recovery",
+  "title": "Implement Issues 58 59 60 executor recovery",
+  "description": "Stack a minimal registered typed adapter and durable five-phase executor on PR #130 without a new schema version or a second Provider writer.",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P0",
+  "creator": "codex",
+  "assignee": "codex",
+  "createdAt": "2026-08-24",
+  "completedAt": null,
+  "branch": "codex/issue-58-60-executor-recovery",
+  "base_branch": "codex/issue-55-codex-switch-recovery",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "src-tauri/src/change_plan.rs",
+    "src-tauri/src/change_plan/adapter.rs",
+    "src-tauri/src/commands/change_plan.rs",
+    "src-tauri/src/commands/agent_catalog.rs",
+    "src-tauri/src/database/dao/change_plan.rs",
+    "src-tauri/src/lib.rs",
+    "src-tauri/permissions/legacy-application-commands.toml",
+    "scripts/tasks/supported-platform-structure-assets.json",
+    "tests/fixtures/changePlanDtoContract.v1.json",
+    ".trellis/spec/backend/unified-change-plan.md"
+  ],
+  "notes": "",
+  "meta": {
+    "issues": [
+      58,
+      59,
+      60
+    ],
+    "stackedOnPr": 130
+  }
+}

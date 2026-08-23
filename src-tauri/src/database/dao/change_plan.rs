@@ -1,6 +1,7 @@
 use crate::change_plan::{
-    enum_json, ApplyChangePlanOutcome, ChangeActor, ChangeApplyOutcomeKind, ChangeJobSnapshot,
-    ChangePlan, ChangePlanErrorCode, RestartRequirement, StoredChangePlan,
+    enum_json, registered_adapter_descriptor, ApplyChangePlanOutcome, ChangeActor,
+    ChangeApplyOutcomeKind, ChangeJobSnapshot, ChangeOperation, ChangePlan, ChangePlanErrorCode,
+    RestartRequirement, StoredChangePlan,
 };
 use crate::database::{lock_conn, Database};
 use crate::error::AppError;
@@ -56,14 +57,15 @@ impl Database {
              FROM change_plans WHERE plan_id = ?1",
             params![plan_id],
             |row| {
-                let operation = serde_json::Value::String(row.get(0)?);
+                let operation: ChangeOperation =
+                    serde_json::from_value(serde_json::Value::String(row.get(0)?))
+                        .map_err(|_| rusqlite::Error::InvalidQuery)?;
                 let actor_type = serde_json::Value::String(row.get(5)?);
                 let status = serde_json::Value::String(row.get(16)?);
                 Ok(StoredChangePlan {
                     public: ChangePlan {
                         plan_id: plan_id.to_string(),
-                        operation: serde_json::from_value(operation)
-                            .map_err(|_| rusqlite::Error::InvalidQuery)?,
+                        operation,
                         target_provider_id: row.get(1)?,
                         target_provider_name: row.get(2)?,
                         plan_digest: row.get(3)?,
@@ -78,6 +80,7 @@ impl Database {
                         expires_at: row.get(15)?,
                         status: serde_json::from_value(status)
                             .map_err(|_| rusqlite::Error::InvalidQuery)?,
+                        adapter: registered_adapter_descriptor(operation),
                         current_provider_code: row.get(11)?,
                         target_provider_code: row.get(12)?,
                         restart_expectation: RestartRequirement::Recommended,
@@ -242,6 +245,8 @@ impl Database {
                 let string_value = |text: String| serde_json::Value::String(text);
                 Ok(ChangeJobSnapshot {
                     job_id: job_id.to_string(),
+                    execution_id: job_id.to_string(),
+                    idempotency_key: row.get(0)?,
                     plan_id: row.get(0)?,
                     target_provider_id: row.get(1)?,
                     revision: row.get(2)?,
@@ -260,6 +265,8 @@ impl Database {
                         .map_err(|_| rusqlite::Error::InvalidQuery)?,
                     recovery_state: serde_json::from_value(string_value(row.get(10)?))
                         .map_err(|_| rusqlite::Error::InvalidQuery)?,
+                    adapter_error_code: None,
+                    partial_result: None,
                     diagnostic_code: row.get(11)?,
                     live_config_changed: row.get(12)?,
                     created_at: row.get(13)?,
@@ -269,6 +276,27 @@ impl Database {
         )
         .optional()
         .map_err(|error| AppError::Database(format!("read change job failed: {error}")))
+    }
+
+    pub(crate) fn get_change_job_by_plan_id(
+        &self,
+        plan_id: &str,
+    ) -> Result<Option<ChangeJobSnapshot>, AppError> {
+        let conn = lock_conn!(self.conn);
+        let job_id = conn
+            .query_row(
+                "SELECT job_id FROM change_jobs WHERE plan_id = ?1",
+                params![plan_id],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(|error| {
+                AppError::Database(format!("read change job by plan failed: {error}"))
+            })?;
+        job_id
+            .map(|job_id| Self::get_change_job_on_conn(&conn, &job_id))
+            .transpose()
+            .map(Option::flatten)
     }
 
     pub(crate) fn save_change_job(
@@ -360,6 +388,7 @@ mod tests {
                 created_at: now,
                 expires_at: now + 900,
                 status: ChangePlanStatus::Ready,
+                adapter: registered_adapter_descriptor(ChangeOperation::CodexProviderSwitch),
                 current_provider_code: "current_configured".into(),
                 target_provider_code: "existing_provider".into(),
                 restart_expectation: RestartRequirement::Recommended,

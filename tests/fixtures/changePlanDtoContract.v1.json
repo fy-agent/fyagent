@@ -12,6 +12,36 @@
     "createdAt": 100,
     "expiresAt": 1000,
     "status": "ready",
+    "adapter": {
+      "adapterId": "codex_provider_switch",
+      "adapterVersion": "1",
+      "operationType": "codex_provider_switch",
+      "phases": [
+        "precheck",
+        "snapshot",
+        "managed_write",
+        "readback",
+        "finalize"
+      ],
+      "readSet": [
+        "provider_db_current",
+        "device_current",
+        "target_definition",
+        "codex_live_projection"
+      ],
+      "writeSet": [
+        "provider_db_current",
+        "device_current",
+        "codex_live_projection"
+      ],
+      "idempotencyScope": "plan",
+      "cancelMode": "before_managed_write",
+      "compensationMode": "writer_owned_rollback",
+      "faultPoints": [
+        "before_managed_write",
+        "after_managed_write_before_record"
+      ]
+    },
     "currentProviderCode": "current_configured",
     "targetProviderCode": "existing_provider",
     "restartExpectation": "recommended",
@@ -22,10 +52,12 @@
     "kind": "admitted",
     "job": {
       "jobId": "job-contract",
+      "executionId": "job-contract",
+      "idempotencyKey": "plan-contract",
       "planId": "plan-contract",
       "targetProviderId": "provider-target",
-      "revision": 4,
-      "eventSeq": 4,
+      "revision": 7,
+      "eventSeq": 7,
       "status": "succeeded",
       "resultCode": "applied_restart_recommended",
       "steps": [
@@ -34,12 +66,21 @@
           "status": "succeeded",
           "code": "baseline_matched"
         },
-        { "kind": "apply", "status": "succeeded", "code": "writer_returned" },
+        {
+          "kind": "snapshot",
+          "status": "succeeded",
+          "code": "snapshot_bound"
+        },
+        {
+          "kind": "managed_write",
+          "status": "succeeded",
+          "code": "writer_returned"
+        },
         { "kind": "readback", "status": "succeeded", "code": "target_matched" },
         {
-          "kind": "reconcile",
-          "status": "not_started",
-          "code": "not_started"
+          "kind": "finalize",
+          "status": "succeeded",
+          "code": "finalized"
         }
       ],
       "resources": [
@@ -73,9 +114,30 @@
       "updatedAt": 101
     }
   },
-  "event": { "jobId": "job-contract", "eventSeq": 4 },
+  "event": { "jobId": "job-contract", "eventSeq": 7 },
+  "cancelOutcome": {
+    "accepted": true,
+    "code": "accepted",
+    "jobId": "job-contract"
+  },
+  "partialResult": {
+    "succeededSteps": ["precheck", "snapshot"],
+    "compensatedSteps": ["managed_write"],
+    "unverifiedSteps": [],
+    "remainingEffects": [],
+    "manualActions": []
+  },
   "reservedStatuses": {
     "job": ["cancelled", "warning"],
-    "step": ["not_started"]
+    "step": ["not_started", "compensating", "compensated"],
+    "adapterError": [
+      "precondition_failed",
+      "transient",
+      "permanent",
+      "unknown_outcome",
+      "verify_failed",
+      "compensation_failed",
+      "unsupported"
+    ]
   }
 }
