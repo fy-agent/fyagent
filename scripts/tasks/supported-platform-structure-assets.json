@@ -54,6 +54,10 @@
       "ea39499ab6960ed7d80f43968f1952bbc2fd7a0f32707b61ee5983c5c219ee0a"
     ],
     [
+      "src-tauri/src/change_plan.rs",
+      "57c47fae23363651fbd970b040ddaf3c174644e2722b228a8943faf00911003e"
+    ],
+    [
       "src-tauri/src/claude_desktop_config.rs",
       "2152c22d8ed8c49f963053e710778b26c7b536138c0d6aa92508feee8c51bda6"
     ],
@@ -63,7 +67,7 @@
     ],
     [
       "src-tauri/src/codex_config.rs",
-      "f0d6f635b895e13ef272fdd65b2098543588090dd272dd229fe9296ad27424e7"
+      "9bde9277b58e56759198f453bed9763c9faa884b37636cb50c301a29a9b95bf8"
     ],
     [
       "src-tauri/src/codex_config/catalog.rs",
@@ -123,7 +127,7 @@
     ],
     [
       "src-tauri/src/lib.rs",
-      "3be695031ccc6323a2cb21bca66bc34da48e19d7ff5adc3f88d0be7dae0054ed"
+      "57ecc19a2856ae13b05579181e17d7886e677ed1b5235eaacf9721e781d7dedd"
     ],
     [
       "src-tauri/src/lightweight.rs",
@@ -179,11 +183,15 @@
     ],
     [
       "src-tauri/src/services/provider/mod.rs",
-      "471f0dc76028e1bb12b7f4395792d046bbee4794f67ebed8bc76499cb7c2abf0"
+      "2895af949253e48fe27417998e58976bde1f26dd8392566c5a779f50b1005262"
     ],
     [
       "src-tauri/src/services/qoderwork.rs",
       "6c587d547b7fae6adac402781a50776886572faa65ad17ab4c16cc153309b882"
+    ],
+    [
+      "src-tauri/src/services/secret/mod.rs",
+      "7eec4df0a50d8b8afd4d8d1c1868c64ef4fb114480b16a604ae1b7678d624335"
     ],
     [
       "src-tauri/src/services/secret/platform/mod.rs",

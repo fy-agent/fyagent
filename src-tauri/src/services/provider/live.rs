@@ -700,9 +700,15 @@ pub(crate) fn write_live_with_common_config(
     app_type: &AppType,
     provider: &Provider,
 ) -> Result<(), AppError> {
-    let mut effective_provider = provider.clone();
+    let resolved = if matches!(app_type, AppType::Codex) {
+        super::materialize_codex_secret_ref_provider_from_keyring(provider)?
+    } else {
+        None
+    };
+    let source_provider = resolved.as_deref().unwrap_or(provider);
+    let mut effective_provider = source_provider.clone();
     effective_provider.settings_config =
-        build_effective_settings_with_common_config(db, app_type, provider)?;
+        build_effective_settings_with_common_config(db, app_type, source_provider)?;
 
     if matches!(app_type, AppType::ClaudeDesktop) {
         crate::claude_desktop_config::apply_provider(db, &effective_provider)?;

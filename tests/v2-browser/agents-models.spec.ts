@@ -625,9 +625,9 @@ test("Models keeps seven targets and saves TRAE models natively", async ({
   await page.getByTestId("model-target-qoderwork").click();
   await expect(modelPage).toContainText("官方不支持第三方模型配置");
   await expect(page.getByRole("button", { name: "管理 MCP" })).toHaveCount(0);
-  await expect(
-    page.getByRole("button", { name: "打开官方设置" }),
-  ).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "打开官方设置" })).toHaveCount(
+    0,
+  );
   await page.getByTestId("model-target-trae").click();
   await expect(
     page.getByRole("region", { name: "TRAE Work CN 模型设置" }),
@@ -687,13 +687,15 @@ test("Provider read failure disables writes and remains an unknown observation",
     { timeout: 10_000 },
   );
   await expect(
-    page.getByRole("button", { name: "保存并设为当前配置" }),
+    page.getByRole("button", { name: "预览保存并设为当前" }),
   ).toBeDisabled();
   await expect(page.locator("body")).not.toContainText("未安装");
   const calls = await featureFixtureCalls(page);
   expect(
     calls.filter((call) =>
       [
+        "create_codex_provider_upsert_plan",
+        "apply_change_plan",
         "apply_provider_quick_setup_with_result",
         "switch_provider_with_result",
       ].includes(call.command),
@@ -833,7 +835,7 @@ test("WorkBuddy concurrent modification rereads authority instead of claiming su
   await expectHealthyPage(page, health);
 });
 
-test("Codex quick setup locks duplicate submission and sends exact provider payload", async ({
+test("Codex quick setup locks duplicate planning and applies one exact UCP plan", async ({
   page,
 }) => {
   await installRichTauriFeatureFixture(page, {
@@ -859,17 +861,25 @@ test("Codex quick setup locks duplicate submission and sends exact provider payl
     .poll(
       async () =>
         (await featureFixtureCalls(page)).filter(
-          (call) => call.command === "apply_provider_quick_setup_with_result",
+          (call) => call.command === "create_codex_provider_upsert_plan",
         ).length,
     )
     .toBe(1);
-  const calls = await featureFixtureCalls(page);
-  const applyCalls = calls.filter(
-    (call) => call.command === "apply_provider_quick_setup_with_result",
+  const dialog = page.getByRole("dialog", {
+    name: "确认保存 Codex 配置",
+  });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText("保存 Provider");
+  await expect(dialog).toContainText("设为当前 Provider");
+  await expect(dialog).toContainText("sec_…0001");
+  await expect(dialog).not.toContainText(apiKey);
+
+  const callsBeforeApply = await featureFixtureCalls(page);
+  const planCalls = callsBeforeApply.filter(
+    (call) => call.command === "create_codex_provider_upsert_plan",
   );
-  expect(applyCalls).toHaveLength(1);
-  expect(applyCalls[0].payload).toMatchObject({
-    app: "codex",
+  expect(planCalls).toHaveLength(1);
+  expect(planCalls[0].payload).toMatchObject({
     request: {
       name: "Browser Codex",
       baseUrl: "https://codex.example.test/v1",
@@ -877,6 +887,21 @@ test("Codex quick setup locks duplicate submission and sends exact provider payl
       modelId: "gpt-browser",
     },
   });
+
+  await dialog.getByRole("button", { name: "确认并应用一次" }).click();
+  await expect(page.getByTestId("change-job-workspace")).toHaveAttribute(
+    "data-status",
+    "succeeded",
+  );
+  const calls = await featureFixtureCalls(page);
+  expect(
+    calls.filter((call) => call.command === "apply_change_plan"),
+  ).toHaveLength(1);
+  expect(
+    calls.filter(
+      (call) => call.command === "apply_provider_quick_setup_with_result",
+    ),
+  ).toEqual([]);
   expect(
     calls.filter((call) => call.command === "switch_provider_with_result"),
   ).toEqual([]);
@@ -944,7 +969,7 @@ test("Claude quick setup updates its reserved row with exact settings and switch
   await expectHealthyPage(page, health);
 });
 
-test("Provider atomic failure reports rollback instead of a partial result", async ({
+test("Codex UCP failure reports verified rollback instead of a partial claim", async ({
   page,
 }) => {
   await installRichTauriFeatureFixture(page, {
@@ -957,21 +982,31 @@ test("Provider atomic failure reports rollback instead of a partial result", asy
   await page.getByLabel("服务地址").fill("https://partial.example.test/v1");
   await page.getByLabel("API Key", { exact: true }).fill("partial-secret");
   await page.getByLabel("模型 ID").fill("partial-model");
-  await page.getByRole("button", { name: "保存并设为当前配置" }).click();
+  await page.getByRole("button", { name: "预览保存并设为当前" }).click();
+  const dialog = page.getByRole("dialog", {
+    name: "确认保存 Codex 配置",
+  });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "确认并应用一次" }).click();
 
   await expect(page.locator("body")).toContainText(
-    "未能保存设置，已还原之前的状态",
+    "写入未完成，已通过回读确认此前状态得到恢复。",
   );
   await expect(page.locator("body")).not.toContainText("partial-secret");
   const calls = await featureFixtureCalls(page);
   expect(
     calls.filter(
-      (call) => call.command === "apply_provider_quick_setup_with_result",
+      (call) => call.command === "create_codex_provider_upsert_plan",
     ),
   ).toHaveLength(1);
   expect(
-    calls.filter((call) => call.command === "switch_provider_with_result"),
-  ).toHaveLength(0);
+    calls.filter((call) => call.command === "apply_change_plan"),
+  ).toHaveLength(1);
+  expect(
+    calls.filter(
+      (call) => call.command === "apply_provider_quick_setup_with_result",
+    ),
+  ).toEqual([]);
   await expect(page.getByLabel("API Key", { exact: true })).toHaveValue("");
   await expectHealthyPage(page, health);
 });

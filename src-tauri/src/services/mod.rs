@@ -20,6 +20,7 @@ pub(crate) mod qoderwork;
 pub(crate) mod s3;
 pub(crate) mod s3_auto_sync;
 pub(crate) mod s3_sync;
+pub(crate) mod secret;
 pub(crate) mod session_usage;
 pub(crate) mod session_usage_codex;
 pub(crate) mod session_usage_gemini;

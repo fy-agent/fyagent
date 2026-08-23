@@ -9,12 +9,19 @@ mod types;
 #[cfg(test)]
 pub(crate) use backend::MaterialMatches;
 pub(crate) use backend::{SecretBackend, SecretService};
-pub(crate) use error::{SecretErrorCode, SecretServiceError};
+#[cfg(any(test, target_os = "windows"))]
+#[allow(unused_imports)]
+pub(crate) use error::SecretErrorCode;
+pub(crate) use error::SecretServiceError;
 pub(crate) use material::SecretMaterial;
 #[cfg(test)]
+#[allow(unused_imports)]
 pub(crate) use memory::{MemoryFailureMode, MemorySecretBackend};
 pub(crate) use platform::NativeSecretBackend;
 pub(crate) use types::{
-    BackendProbe, SecretAvailability, SecretBackendKind, SecretDeleteReceiptDto, SecretHandle,
-    SecretPresence, SecretPurpose, SecretRef, SecretSummaryDto, SecretVersion,
+    BackendProbe, SecretBackendKind, SecretDeleteReceiptDto, SecretHandle, SecretPurpose,
+    SecretRef, SecretSummaryDto, SecretVersion,
 };
+#[cfg(any(test, target_os = "windows"))]
+#[allow(unused_imports)]
+pub(crate) use types::{SecretAvailability, SecretPresence};

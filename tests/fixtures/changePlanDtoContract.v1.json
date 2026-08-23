@@ -12,6 +12,7 @@
     "createdAt": 100,
     "expiresAt": 1000,
     "status": "ready",
+    "businessSteps": ["set_current_provider"],
     "adapter": {
       "adapterId": "codex_provider_switch",
       "adapterVersion": "1",

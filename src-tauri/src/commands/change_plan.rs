@@ -3,7 +3,7 @@ use tauri::{Emitter, Manager, State};
 
 use crate::change_plan::{
     ApplyChangePlanOutcome, CancelChangeJobOutcome, ChangeJobSnapshot, ChangePlan,
-    ChangePlanErrorCode, ChangePlanService,
+    ChangePlanErrorCode, ChangePlanService, CodexProviderUpsertPlanRequest,
 };
 use crate::store::AppState;
 
@@ -13,6 +13,14 @@ pub fn create_codex_provider_switch_plan(
     #[allow(non_snake_case)] targetProviderId: String,
 ) -> Result<ChangePlan, ChangePlanErrorCode> {
     ChangePlanService::plan_codex_switch(state.inner(), &targetProviderId)
+}
+
+#[tauri::command]
+pub fn create_codex_provider_upsert_plan(
+    state: State<'_, AppState>,
+    request: CodexProviderUpsertPlanRequest,
+) -> Result<ChangePlan, ChangePlanErrorCode> {
+    ChangePlanService::plan_codex_provider_upsert(state.inner(), request)
 }
 
 #[derive(Clone, Serialize)]
@@ -44,7 +52,7 @@ pub async fn apply_change_plan(
             .try_state::<AppState>()
             .ok_or(ChangePlanErrorCode::Internal)?;
         let app_for_events = app_for_work.clone();
-        ChangePlanService::apply_codex_switch_with_observer(
+        ChangePlanService::apply_change_plan_with_observer(
             state.inner(),
             &planId,
             &planDigest,

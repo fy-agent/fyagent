@@ -11,14 +11,24 @@ use std::{
 };
 
 use crate::app_config::AppType;
-use crate::provider::Provider;
-use crate::services::provider::{build_effective_settings_with_common_config, read_live_settings};
+use crate::provider::{Provider, ProviderMeta};
+use crate::services::provider::{
+    build_effective_settings_with_common_config, codex_secret_ref_handle,
+    materialize_codex_secret_ref_provider, materialize_codex_secret_ref_provider_from_keyring,
+    read_live_settings,
+};
+use crate::services::secret::{
+    NativeSecretBackend, SecretBackendKind, SecretHandle, SecretMaterial, SecretPurpose,
+    SecretService,
+};
 use crate::store::AppState;
 use crate::AppError;
 
 mod adapter;
 
-use adapter::{ChangeAdapter, CodexProviderSwitchAdapter};
+use adapter::{
+    ChangeAdapter, CodexProviderSwitchAdapter, CodexProviderUpsertAdapter, RegisteredCodexAdapter,
+};
 
 pub(crate) const CHANGE_PLAN_CONTRACT_VERSION: &str = "fyagent-change-plan-v2-schema20";
 pub(crate) const CHANGE_PLAN_TTL_SECONDS: i64 = 15 * 60;
@@ -33,8 +43,14 @@ macro_rules! string_enum {
 }
 
 string_enum!(ChangeOperation {
-    CodexProviderSwitch
+    CodexProviderSwitch,
+    CodexProviderUpsertAndSwitch
 });
+string_enum!(ChangeBusinessStepKind {
+    SaveProvider,
+    SetCurrentProvider
+});
+string_enum!(ChangeSecretBackend { OsKeyring });
 string_enum!(ChangeActorType { DirectUser });
 string_enum!(ChangePlanStatus { Ready, Consumed });
 string_enum!(ChangeJobStatus {
@@ -119,6 +135,7 @@ string_enum!(ChangeResultCode {
 });
 string_enum!(ChangePlanErrorCode {
     UnsupportedOperation,
+    InvalidRequest,
     TargetNotFound,
     TargetAlreadyCurrent,
     BaselineUnavailable,
@@ -209,6 +226,13 @@ pub struct ChangeActor {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct ChangeCredentialProjection {
+    pub secret_ref_display: String,
+    pub backend: ChangeSecretBackend,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct ChangePlan {
     pub plan_id: String,
     pub operation: ChangeOperation,
@@ -222,6 +246,9 @@ pub struct ChangePlan {
     pub created_at: i64,
     pub expires_at: i64,
     pub status: ChangePlanStatus,
+    pub business_steps: Vec<ChangeBusinessStepKind>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub credential: Option<ChangeCredentialProjection>,
     pub adapter: ChangeAdapterDescriptor,
     pub current_provider_code: String,
     pub target_provider_code: String,
@@ -364,6 +391,8 @@ struct PlanApprovalBindingInput<'a> {
     revision: i64,
     created_at: i64,
     expires_at: i64,
+    business_steps: &'a [ChangeBusinessStepKind],
+    credential: &'a Option<ChangeCredentialProjection>,
     current_provider_code: &'a str,
     target_provider_code: &'a str,
     restart_expectation: RestartRequirement,
@@ -383,6 +412,7 @@ enum CodexLiveBaselineState {
 #[derive(Clone)]
 struct PrivateProjectionProof {
     current_definition: Option<[u8; 32]>,
+    baseline_target_definition: [u8; 32],
     target_definition: [u8; 32],
     live_projection: [u8; 32],
     target_projection: [u8; 32],
@@ -392,6 +422,33 @@ struct PrivateProjectionProof {
 struct PrivatePlanProof {
     projection: PrivateProjectionProof,
     expires_at: i64,
+    credential: Option<Arc<PrivateCodexCredentialPlan>>,
+}
+
+struct PrivateCodexCredentialPlan {
+    handle: SecretHandle,
+    material: SecretMaterial,
+    persisted_provider: Provider,
+    previous_handle: Option<SecretHandle>,
+    cleanup_state: AtomicU8,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CodexProviderUpsertPlanRequest {
+    name: String,
+    base_url: String,
+    api_key: String,
+    model_id: String,
+    #[serde(default)]
+    codex_features: Option<crate::codex_config::CodexProviderFeatureIntent>,
+}
+
+impl Drop for CodexProviderUpsertPlanRequest {
+    fn drop(&mut self) {
+        use zeroize::Zeroize;
+        self.api_key.zeroize();
+    }
 }
 
 #[derive(Clone)]
@@ -428,6 +485,320 @@ fn safe_provider_display_name(provider: &Provider) -> String {
     trimmed.chars().take(80).collect()
 }
 
+const UCP_CODEX_PROVIDER_ID: &str = "fyagent-v2-quick-setup-codex";
+
+fn missing_target_definition_proof(proof_id: &str) -> [u8; 32] {
+    private_revision_bytes(
+        "fyagent.change-plan.provider-definition.v1",
+        proof_id,
+        b"provider_missing",
+    )
+}
+
+fn provider_secret_handle(
+    provider: &Provider,
+) -> Result<Option<SecretHandle>, ChangePlanErrorCode> {
+    codex_secret_ref_handle(provider).map_err(|_| ChangePlanErrorCode::InvalidRequest)
+}
+
+fn build_codex_credential_plan(
+    state: &AppState,
+    mut request: CodexProviderUpsertPlanRequest,
+) -> Result<PrivateCodexCredentialPlan, ChangePlanErrorCode> {
+    use zeroize::Zeroize;
+
+    let name = request.name.trim().to_string();
+    let base_url = request.base_url.trim().to_string();
+    let model_id = request.model_id.trim().to_string();
+    let mut raw_input = std::mem::take(&mut request.api_key);
+    let api_key = raw_input.trim();
+    let valid_public_fields = !name.is_empty()
+        && !model_id.is_empty()
+        && !api_key.is_empty()
+        && !name.contains(api_key)
+        && !model_id.contains(api_key)
+        && !base_url.contains(api_key);
+    let parsed_url = url::Url::parse(&base_url).ok();
+    let valid_url = parsed_url.as_ref().is_some_and(|url| {
+        matches!(url.scheme(), "http" | "https")
+            && url.host_str().is_some()
+            && url.username().is_empty()
+            && url.password().is_none()
+            && url.query().is_none()
+            && url.fragment().is_none()
+    });
+    if !valid_public_fields || !valid_url {
+        raw_input.zeroize();
+        return Err(ChangePlanErrorCode::InvalidRequest);
+    }
+    let material = match SecretMaterial::from_native_input(
+        api_key.as_bytes().to_vec(),
+        SecretPurpose::CodexApiKey,
+    ) {
+        Ok(material) => material,
+        Err(_) => {
+            raw_input.zeroize();
+            return Err(ChangePlanErrorCode::InvalidRequest);
+        }
+    };
+    raw_input.zeroize();
+
+    let features = request.codex_features.take().unwrap_or_default();
+    let image_extension = features.image_extension.unwrap_or(false);
+    let websockets = features.websockets.unwrap_or(false);
+    let quote =
+        |value: &str| serde_json::to_string(value).expect("serializing a Rust string cannot fail");
+    let mut config = format!(
+        "model_provider = \"custom\"\nmodel = {}\ndisable_response_storage = true\n\n[model_providers.custom]\nname = {}\nbase_url = {}\nwire_api = \"responses\"\nrequires_openai_auth = {}",
+        quote(&model_id),
+        quote(&name),
+        quote(&base_url),
+        !image_extension,
+    );
+    if image_extension {
+        config.push_str(&format!(
+            "\nhttp_headers = {{ \"{}\" = \"{}\" }}",
+            crate::codex_config::CODEX_IMAGE_EXTENSION_HEADER,
+            crate::codex_config::CODEX_IMAGE_EXTENSION_VALUE,
+        ));
+    }
+    if websockets {
+        config.push_str("\nsupports_websockets = true");
+    }
+
+    let handle = SecretHandle::generate();
+    let mut persisted_provider = Provider::with_id(
+        UCP_CODEX_PROVIDER_ID.to_string(),
+        name,
+        serde_json::json!({
+            "auth": {
+                "secretRef": handle.secret_ref().as_str(),
+                "secretVersion": handle.version().as_str(),
+                "backend": "osKeyring",
+            },
+            "config": config,
+        }),
+        None,
+    );
+    persisted_provider.category = Some("custom".to_string());
+    persisted_provider.notes = Some("Created by FyAgent V2 quick setup".to_string());
+    persisted_provider.meta = Some(ProviderMeta {
+        image_extension_configured: features.image_extension.map(|_| true),
+        ..ProviderMeta::default()
+    });
+    let previous_handle = state
+        .db
+        .get_provider_by_id(UCP_CODEX_PROVIDER_ID, AppType::Codex.as_str())
+        .map_err(|_| ChangePlanErrorCode::Internal)?
+        .as_ref()
+        .map(provider_secret_handle)
+        .transpose()?
+        .flatten();
+
+    Ok(PrivateCodexCredentialPlan {
+        handle,
+        material,
+        persisted_provider,
+        previous_handle,
+        cleanup_state: AtomicU8::new(0),
+    })
+}
+
+type CurrentCodexProviderIds = (Option<String>, Option<String>, Option<String>);
+
+fn current_codex_provider_ids(
+    state: &AppState,
+) -> Result<CurrentCodexProviderIds, ChangePlanErrorCode> {
+    let db_current = state
+        .db
+        .get_current_provider(AppType::Codex.as_str())
+        .map_err(|_| ChangePlanErrorCode::Internal)?;
+    let device_current = crate::settings::get_current_provider(&AppType::Codex);
+    let effective = device_current
+        .as_ref()
+        .filter(|id| {
+            state
+                .db
+                .get_provider_by_id(id, AppType::Codex.as_str())
+                .ok()
+                .flatten()
+                .is_some()
+        })
+        .cloned()
+        .or_else(|| db_current.clone());
+    Ok((db_current, device_current, effective))
+}
+
+fn intended_codex_projection_proof_for_live_provider(
+    state: &AppState,
+    live: &crate::services::provider::EphemeralProvider,
+    proof_id: &str,
+) -> Result<[u8; 32], ChangePlanErrorCode> {
+    let mut effective =
+        build_effective_settings_with_common_config(state.db.as_ref(), &AppType::Codex, live)
+            .map_err(|_| ChangePlanErrorCode::InvalidRequest)?;
+    let auth = effective
+        .get("auth")
+        .cloned()
+        .ok_or(ChangePlanErrorCode::InvalidRequest)?;
+    let config = effective
+        .get("config")
+        .and_then(Value::as_str)
+        .ok_or(ChangePlanErrorCode::InvalidRequest)?;
+    // The upsert contract never carries a model catalog. This makes catalog
+    // preparation a pure normalization step here while still matching the
+    // established Codex writer's final config.toml projection exactly.
+    if effective.get("modelCatalog").is_some() {
+        return Err(ChangePlanErrorCode::InvalidRequest);
+    }
+    let profile = crate::proxy::providers::resolve_codex_catalog_tool_profile(live);
+    let catalog_prepared = crate::codex_config::prepare_codex_config_text_with_model_catalog(
+        &effective, config, profile,
+    )
+    .map_err(|_| ChangePlanErrorCode::InvalidRequest)?;
+    let preserve_official_auth = crate::settings::preserve_codex_official_auth_on_switch();
+    let projected_config = if preserve_official_auth {
+        crate::codex_config::prepare_codex_provider_live_config(&auth, &catalog_prepared)
+    } else {
+        crate::codex_config::project_codex_live_config_when_openai_auth_disabled(
+            &auth,
+            &catalog_prepared,
+        )
+    }
+    .map_err(|_| ChangePlanErrorCode::InvalidRequest)?;
+    let projected_auth = if preserve_official_auth {
+        read_live_settings(AppType::Codex)
+            .map_err(|_| ChangePlanErrorCode::BaselineUnavailable)?
+            .get("auth")
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!({}))
+    } else {
+        auth
+    };
+    let object = effective
+        .as_object_mut()
+        .ok_or(ChangePlanErrorCode::InvalidRequest)?;
+    object.insert("auth".to_string(), projected_auth);
+    object.insert("config".to_string(), Value::String(projected_config));
+    Ok(private_revision_json(
+        "fyagent.change-plan.codex-live.v1",
+        proof_id,
+        &codex_projection_for_digest(effective),
+    ))
+}
+
+fn intended_codex_projection_proof(
+    state: &AppState,
+    credential: &PrivateCodexCredentialPlan,
+    proof_id: &str,
+) -> Result<[u8; 32], ChangePlanErrorCode> {
+    let live =
+        materialize_codex_secret_ref_provider(&credential.persisted_provider, &credential.material)
+            .map_err(|_| ChangePlanErrorCode::InvalidRequest)?;
+    intended_codex_projection_proof_for_live_provider(state, &live, proof_id)
+}
+
+fn inspect_codex_upsert_precheck(
+    state: &AppState,
+    credential: &PrivateCodexCredentialPlan,
+    proof_id: &str,
+) -> Result<CodexSwitchInspection, ChangePlanErrorCode> {
+    let (db_current_provider_id, device_current_provider_id, effective_current_provider_id) =
+        current_codex_provider_ids(state)?;
+    let current_definition = effective_current_provider_id
+        .as_ref()
+        .and_then(|id| {
+            state
+                .db
+                .get_provider_by_id(id, AppType::Codex.as_str())
+                .ok()
+                .flatten()
+        })
+        .map(|provider| provider_definition_proof(&provider, proof_id));
+    let stored_target = state
+        .db
+        .get_provider_by_id(UCP_CODEX_PROVIDER_ID, AppType::Codex.as_str())
+        .map_err(|_| ChangePlanErrorCode::Internal)?;
+    let baseline_target_definition = stored_target
+        .as_ref()
+        .map(|provider| provider_definition_proof(provider, proof_id))
+        .unwrap_or_else(|| missing_target_definition_proof(proof_id));
+    let target_definition = provider_definition_proof(&credential.persisted_provider, proof_id);
+    let (live_projection_state, live_projection) =
+        live_projection_proof(read_live_settings(AppType::Codex), proof_id);
+    let target_projection = intended_codex_projection_proof(state, credential, proof_id)?;
+    Ok(CodexSwitchInspection {
+        db_current_provider_id,
+        device_current_provider_id,
+        effective_current_provider_id,
+        target: credential.persisted_provider.clone(),
+        live_projection_state,
+        proxy_takeover_active: codex_proxy_takeover_active(state)?,
+        private_proof: PrivateProjectionProof {
+            current_definition,
+            baseline_target_definition,
+            target_definition,
+            live_projection,
+            target_projection,
+        },
+    })
+}
+
+fn inspect_codex_upsert_readback(
+    state: &AppState,
+    credential: &PrivateCodexCredentialPlan,
+    proof_id: &str,
+) -> Result<CodexSwitchInspection, ChangePlanErrorCode> {
+    let mut inspection = inspect_codex_upsert_precheck(state, credential, proof_id)?;
+    let actual = state
+        .db
+        .get_provider_by_id(UCP_CODEX_PROVIDER_ID, AppType::Codex.as_str())
+        .map_err(|_| ChangePlanErrorCode::Internal)?;
+    inspection.target = actual
+        .clone()
+        .unwrap_or_else(|| credential.persisted_provider.clone());
+    inspection.private_proof.target_definition = actual
+        .as_ref()
+        .map(|provider| provider_definition_proof(provider, proof_id))
+        .unwrap_or_else(|| missing_target_definition_proof(proof_id));
+    Ok(inspection)
+}
+
+fn inspect_without_private_proof(
+    state: &AppState,
+    target_provider_id: &str,
+) -> Result<CodexSwitchInspection, ChangePlanErrorCode> {
+    let (db_current_provider_id, device_current_provider_id, effective_current_provider_id) =
+        current_codex_provider_ids(state)?;
+    let target = state
+        .db
+        .get_provider_by_id(target_provider_id, AppType::Codex.as_str())
+        .map_err(|_| ChangePlanErrorCode::Internal)?
+        .unwrap_or_else(|| {
+            Provider::with_id(
+                target_provider_id.to_string(),
+                "Provider".to_string(),
+                Value::Null,
+                None,
+            )
+        });
+    Ok(CodexSwitchInspection {
+        db_current_provider_id,
+        device_current_provider_id,
+        effective_current_provider_id,
+        target,
+        live_projection_state: CodexLiveBaselineState::Unavailable,
+        proxy_takeover_active: false,
+        private_proof: PrivateProjectionProof {
+            current_definition: None,
+            baseline_target_definition: [0; 32],
+            target_definition: [0; 32],
+            live_projection: [0; 32],
+            target_projection: [0; 32],
+        },
+    })
+}
+
 pub(crate) fn registered_adapter_descriptor(operation: ChangeOperation) -> ChangeAdapterDescriptor {
     adapter::descriptor_for_operation(operation)
 }
@@ -458,6 +829,9 @@ const EXECUTION_CANCEL_SAFE: u8 = 0;
 const EXECUTION_WRITE_CLAIMED: u8 = 1;
 const EXECUTION_CANCELLED: u8 = 2;
 const EXECUTION_TERMINAL: u8 = 3;
+const SECRET_CLEANUP_OK: u8 = 0;
+const OLD_SECRET_CLEANUP_WARNING: u8 = 1;
+const NEW_SECRET_CLEANUP_FAILED: u8 = 2;
 
 struct ExecutionGate {
     state: AtomicU8,
@@ -728,14 +1102,24 @@ pub(crate) fn inspect_codex_switch(
     let (live_projection_state, live_projection) =
         live_projection_proof(read_live_settings(AppType::Codex), proof_id);
     let proxy_takeover_active = codex_proxy_takeover_active(state)?;
-    let effective_target =
-        build_effective_settings_with_common_config(state.db.as_ref(), &AppType::Codex, &target)
+    let target_projection = match materialize_codex_secret_ref_provider_from_keyring(&target)
+        .map_err(|_| ChangePlanErrorCode::BaselineUnavailable)?
+    {
+        Some(live) => intended_codex_projection_proof_for_live_provider(state, &live, proof_id)?,
+        None => {
+            let effective_target = build_effective_settings_with_common_config(
+                state.db.as_ref(),
+                &AppType::Codex,
+                &target,
+            )
             .map_err(|_| ChangePlanErrorCode::Internal)?;
-    let target_projection = private_revision_json(
-        "fyagent.change-plan.codex-live.v1",
-        proof_id,
-        &codex_projection_for_digest(effective_target),
-    );
+            private_revision_json(
+                "fyagent.change-plan.codex-live.v1",
+                proof_id,
+                &codex_projection_for_digest(effective_target),
+            )
+        }
+    };
     Ok(CodexSwitchInspection {
         db_current_provider_id,
         device_current_provider_id,
@@ -745,6 +1129,7 @@ pub(crate) fn inspect_codex_switch(
         proxy_takeover_active,
         private_proof: PrivateProjectionProof {
             current_definition,
+            baseline_target_definition: target_definition,
             target_definition,
             live_projection,
             target_projection,
@@ -797,6 +1182,8 @@ fn plan_approval_binding_digest(
         revision: plan.revision,
         created_at: plan.created_at,
         expires_at: plan.expires_at,
+        business_steps: &plan.business_steps,
+        credential: &plan.credential,
         current_provider_code: &plan.current_provider_code,
         target_provider_code: &plan.target_provider_code,
         restart_expectation: plan.restart_expectation,
@@ -816,6 +1203,9 @@ fn private_proof_matches(left: &PrivateProjectionProof, right: &PrivateProjectio
     optional_revision_matches(
         left.current_definition.as_ref(),
         right.current_definition.as_ref(),
+    ) && constant_time_revision_matches(
+        &left.baseline_target_definition,
+        &right.baseline_target_definition,
     ) && constant_time_revision_matches(&left.target_definition, &right.target_definition)
         && constant_time_revision_matches(&left.live_projection, &right.live_projection)
         && constant_time_revision_matches(&left.target_projection, &right.target_projection)
@@ -843,6 +1233,73 @@ fn constant_time_text_matches(left: &str, right: &str) -> bool {
             .zip(right.bytes())
             .fold(0u8, |difference, (left, right)| difference | (left ^ right))
             == 0
+}
+
+fn apply_codex_provider_upsert_writer(
+    state: &AppState,
+    credential: &Arc<PrivateCodexCredentialPlan>,
+) -> Result<bool, ()> {
+    credential
+        .cleanup_state
+        .store(SECRET_CLEANUP_OK, Ordering::SeqCst);
+    let secrets = SecretService::new(NativeSecretBackend::new());
+    let created = secrets
+        .create_reserved(
+            &credential.handle,
+            &credential.material,
+            SecretPurpose::CodexApiKey,
+        )
+        .map_err(|error| {
+            log::error!("Codex SecretRef create failed: {:?}", error.code());
+        })?;
+    if created.backend_kind() != SecretBackendKind::OsKeyring {
+        let _ = secrets.delete(&credential.handle);
+        return Err(());
+    }
+
+    let live_provider = match materialize_codex_secret_ref_provider(
+        &credential.persisted_provider,
+        &credential.material,
+    ) {
+        Ok(provider) => provider,
+        Err(_) => {
+            if secrets.delete(&credential.handle).is_err() {
+                credential
+                    .cleanup_state
+                    .store(NEW_SECRET_CLEANUP_FAILED, Ordering::SeqCst);
+            }
+            return Err(());
+        }
+    };
+    let result = crate::services::ProviderService::apply_quick_setup_with_secret_ref_lock_held(
+        state,
+        credential.persisted_provider.clone(),
+        live_provider,
+    );
+    let result = match result {
+        Ok(result) => result,
+        Err(error) => {
+            log::error!("Codex UCP Provider writer failed: {error}");
+            if secrets.delete(&credential.handle).is_err() {
+                credential
+                    .cleanup_state
+                    .store(NEW_SECRET_CLEANUP_FAILED, Ordering::SeqCst);
+            }
+            return Err(());
+        }
+    };
+
+    if let Some(previous) = credential.previous_handle.as_ref() {
+        if previous.secret_ref() != credential.handle.secret_ref()
+            && secrets.delete(previous).is_err()
+        {
+            credential
+                .cleanup_state
+                .store(OLD_SECRET_CLEANUP_WARNING, Ordering::SeqCst);
+            log::warn!("Codex previous SecretRef cleanup failed after verified Provider commit");
+        }
+    }
+    Ok(result.live_config_changed)
 }
 
 pub struct ChangePlanService;
@@ -896,6 +1353,8 @@ impl ChangePlanService {
             created_at: now,
             expires_at: now + CHANGE_PLAN_TTL_SECONDS,
             status: ChangePlanStatus::Ready,
+            business_steps: vec![ChangeBusinessStepKind::SetCurrentProvider],
+            credential: None,
             adapter: adapter.descriptor(),
             current_provider_code: plan_fields.current_provider_code,
             target_provider_code: plan_fields.target_provider_code,
@@ -925,6 +1384,97 @@ impl ChangePlanService {
             PrivatePlanProof {
                 projection: inspection.private_proof,
                 expires_at: public.expires_at,
+                credential: None,
+            },
+            now,
+        );
+        Ok(public)
+    }
+
+    pub fn plan_codex_provider_upsert(
+        state: &AppState,
+        request: CodexProviderUpsertPlanRequest,
+    ) -> Result<ChangePlan, ChangePlanErrorCode> {
+        Self::plan_codex_provider_upsert_at(state, request, chrono::Utc::now().timestamp())
+    }
+
+    fn plan_codex_provider_upsert_at(
+        state: &AppState,
+        request: CodexProviderUpsertPlanRequest,
+        now: i64,
+    ) -> Result<ChangePlan, ChangePlanErrorCode> {
+        let _provider_guard =
+            crate::services::ProviderService::lock_provider_mutation(state, &AppType::Codex);
+        let _guard = change_plan_lock()
+            .lock()
+            .map_err(|_| ChangePlanErrorCode::Internal)?;
+        let plan_id = uuid::Uuid::new_v4().to_string();
+        let proof_id = uuid::Uuid::new_v4().to_string();
+        let epoch_id = process_epoch_id().to_string();
+        let credential = Arc::new(build_codex_credential_plan(state, request)?);
+        let adapter = CodexProviderUpsertAdapter::for_plan(state, &proof_id, credential.clone());
+        let inspection = adapter.inspect()?;
+        if inspection.proxy_takeover_active {
+            return Err(ChangePlanErrorCode::UnsupportedOperation);
+        }
+        if inspection.live_projection_state == CodexLiveBaselineState::Unavailable {
+            return Err(ChangePlanErrorCode::BaselineUnavailable);
+        }
+        let baseline_digest = baseline_binding_digest(&plan_id, &proof_id, &epoch_id, &inspection)?;
+        let plan_fields = adapter.plan(&inspection);
+        let mut public = ChangePlan {
+            plan_id,
+            operation: ChangeOperation::CodexProviderUpsertAndSwitch,
+            target_provider_id: UCP_CODEX_PROVIDER_ID.to_string(),
+            target_provider_name: plan_fields.target_provider_name,
+            plan_digest: String::new(),
+            baseline_digest,
+            actor: ChangeActor {
+                actor_type: ChangeActorType::DirectUser,
+            },
+            source_version: env!("CARGO_PKG_VERSION").to_string(),
+            revision: 1,
+            created_at: now,
+            expires_at: now + CHANGE_PLAN_TTL_SECONDS,
+            status: ChangePlanStatus::Ready,
+            business_steps: vec![
+                ChangeBusinessStepKind::SaveProvider,
+                ChangeBusinessStepKind::SetCurrentProvider,
+            ],
+            credential: Some(ChangeCredentialProjection {
+                secret_ref_display: credential.handle.secret_ref().display_ref(),
+                backend: ChangeSecretBackend::OsKeyring,
+            }),
+            adapter: adapter.descriptor(),
+            current_provider_code: plan_fields.current_provider_code,
+            target_provider_code: plan_fields.target_provider_code,
+            restart_expectation: plan_fields.restart_expectation,
+            risks: plan_fields.risks,
+            evidence_note: plan_fields.evidence_note,
+        };
+        public.plan_digest = plan_approval_binding_digest(
+            &public,
+            &proof_id,
+            &epoch_id,
+            CHANGE_PLAN_CONTRACT_VERSION,
+        )?;
+        drop(adapter);
+        state
+            .db
+            .insert_change_plan(&StoredChangePlan {
+                public: public.clone(),
+                proof_id: proof_id.clone(),
+                process_epoch_id: epoch_id,
+                current_provider_id: inspection.effective_current_provider_id,
+                contract_digest: CHANGE_PLAN_CONTRACT_VERSION.to_string(),
+            })
+            .map_err(|_| ChangePlanErrorCode::Internal)?;
+        register_private_proof(
+            proof_id,
+            PrivatePlanProof {
+                projection: inspection.private_proof,
+                expires_at: public.expires_at,
+                credential: Some(credential),
             },
             now,
         );
@@ -937,6 +1487,49 @@ impl ChangePlanService {
         plan_digest: &str,
     ) -> Result<ApplyChangePlanOutcome, ChangePlanErrorCode> {
         Self::apply_codex_switch_with_observer(state, plan_id, plan_digest, |_| {})
+    }
+
+    pub fn apply_change_plan_with_observer<O>(
+        state: &AppState,
+        plan_id: &str,
+        plan_digest: &str,
+        observer: O,
+    ) -> Result<ApplyChangePlanOutcome, ChangePlanErrorCode>
+    where
+        O: Fn(&ChangeJobSnapshot),
+    {
+        if let Some(existing) = Self::idempotent_replay_if_consumed(state, plan_id, plan_digest)? {
+            return Ok(existing);
+        }
+        let Some(stored) = state
+            .db
+            .get_stored_change_plan(plan_id)
+            .map_err(|_| ChangePlanErrorCode::Internal)?
+        else {
+            return Ok(rejected(ChangePlanErrorCode::PlanNotFound));
+        };
+        match stored.public.operation {
+            ChangeOperation::CodexProviderSwitch => {
+                Self::apply_codex_switch_with_observer(state, plan_id, plan_digest, observer)
+            }
+            ChangeOperation::CodexProviderUpsertAndSwitch => {
+                let Some(credential) =
+                    get_private_proof(&stored.proof_id).and_then(|proof| proof.credential)
+                else {
+                    return Ok(rejected(ChangePlanErrorCode::Stale));
+                };
+                let writer_credential = credential.clone();
+                Self::apply_codex_switch_at_with_writer_observer_and_fault(
+                    state,
+                    plan_id,
+                    plan_digest,
+                    chrono::Utc::now().timestamp(),
+                    move || apply_codex_provider_upsert_writer(state, &writer_credential),
+                    observer,
+                    None,
+                )
+            }
+        }
     }
 
     pub fn apply_codex_switch_with_observer<O>(
@@ -1103,12 +1696,14 @@ impl ChangePlanService {
         let Some(expected_private) = get_private_proof(&stored.proof_id) else {
             return Ok(rejected(ChangePlanErrorCode::Stale));
         };
-        let mut adapter = CodexProviderSwitchAdapter::for_execution(
+        let mut adapter = RegisteredCodexAdapter::for_execution(
             state,
+            stored.public.operation,
             &stored.public.target_provider_id,
             &stored.proof_id,
+            expected_private.credential.clone(),
             writer,
-        );
+        )?;
         if adapter.descriptor() != stored.public.adapter
             || adapter.compensation_capability() != stored.public.adapter.compensation_mode
         {
@@ -1246,6 +1841,11 @@ impl ChangePlanService {
             state,
             &stored,
             Some(&expected_private.projection),
+            expected_private
+                .credential
+                .as_ref()
+                .map(|credential| credential.cleanup_state.load(Ordering::SeqCst))
+                .unwrap_or(SECRET_CLEANUP_OK),
             &mut job,
             WriterObservation::Returned(writer_result),
             readback,
@@ -1357,16 +1957,26 @@ impl ChangePlanService {
         let private_proof = (stored.process_epoch_id == process_epoch_id())
             .then(|| get_private_proof(&stored.proof_id))
             .flatten();
-        let adapter = CodexProviderSwitchAdapter::for_plan(
-            state,
-            &stored.public.target_provider_id,
-            &stored.proof_id,
-        );
-        let readback = adapter.readback();
+        let readback = match private_proof.as_ref() {
+            Some(proof) => RegisteredCodexAdapter::for_readback(
+                state,
+                stored.public.operation,
+                &stored.public.target_provider_id,
+                &stored.proof_id,
+                proof.credential.clone(),
+            )?
+            .readback(),
+            None => inspect_without_private_proof(state, &stored.public.target_provider_id),
+        };
         finalize_readback(
             state,
             &stored,
             private_proof.as_ref().map(|proof| &proof.projection),
+            private_proof
+                .as_ref()
+                .and_then(|proof| proof.credential.as_ref())
+                .map(|credential| credential.cleanup_state.load(Ordering::SeqCst))
+                .unwrap_or(SECRET_CLEANUP_OK),
             &mut job,
             WriterObservation::Unknown,
             readback,
@@ -1483,6 +2093,7 @@ fn finalize_readback<O>(
     state: &AppState,
     stored: &StoredChangePlan,
     expected_private: Option<&PrivateProjectionProof>,
+    secret_cleanup_state: u8,
     job: &mut ChangeJobSnapshot,
     writer_observation: WriterObservation,
     readback: Result<CodexSwitchInspection, ChangePlanErrorCode>,
@@ -1492,7 +2103,14 @@ fn finalize_readback<O>(
 where
     O: Fn(&ChangeJobSnapshot),
 {
-    classify_job(stored, expected_private, job, writer_observation, readback);
+    classify_job(
+        stored,
+        expected_private,
+        secret_cleanup_state,
+        job,
+        writer_observation,
+        readback,
+    );
     let final_status = job.status;
     let final_result = job.result_code;
     let final_restart = job.restart_requirement;
@@ -1636,6 +2254,12 @@ fn normalize_job_projection(job: &mut ChangeJobSnapshot) {
     if job.result_code == ChangeResultCode::ReadbackUnavailable {
         manual_actions.push("restore_readback_authority".to_string());
     }
+    if job.diagnostic_code.as_deref() == Some("old_secret_cleanup_failed") {
+        manual_actions.push("delete_previous_secret_ref".to_string());
+    }
+    if job.diagnostic_code.as_deref() == Some("new_secret_cleanup_failed") {
+        manual_actions.push("inspect_secret_store".to_string());
+    }
     job.partial_result = Some(ChangePartialResult {
         succeeded_steps,
         compensated_steps,
@@ -1657,6 +2281,7 @@ fn advance_job(job: &mut ChangeJobSnapshot, now: i64, code: &str) {
 fn classify_job(
     stored: &StoredChangePlan,
     expected_private: Option<&PrivateProjectionProof>,
+    secret_cleanup_state: u8,
     job: &mut ChangeJobSnapshot,
     writer_observation: WriterObservation,
     readback: Result<CodexSwitchInspection, ChangePlanErrorCode>,
@@ -1752,6 +2377,10 @@ fn classify_job(
         readback.private_proof.current_definition.as_ref(),
         expected_private.current_definition.as_ref(),
     );
+    let baseline_target_definition = optional_revision_matches(
+        Some(&readback.private_proof.target_definition),
+        Some(&expected_private.baseline_target_definition),
+    );
     let baseline_live = constant_time_revision_matches(
         &readback.private_proof.live_projection,
         &expected_private.live_projection,
@@ -1835,11 +2464,16 @@ fn classify_job(
             ChangeStepStatus::Succeeded,
             "target_matched",
         );
+        if secret_cleanup_state == OLD_SECRET_CLEANUP_WARNING {
+            job.status = ChangeJobStatus::Warning;
+            job.result_code = ChangeResultCode::AppliedWithWarning;
+            job.diagnostic_code = Some("old_secret_cleanup_failed".to_string());
+        }
     } else if baseline_db
         && baseline_device
         && baseline_current_definition
         && baseline_live
-        && definition_target
+        && baseline_target_definition
     {
         set_step(
             job,
@@ -1858,6 +2492,11 @@ fn classify_job(
             ChangeStepStatus::Succeeded,
             "baseline_restored",
         );
+        if secret_cleanup_state == NEW_SECRET_CLEANUP_FAILED {
+            job.recovery_state = RecoveryState::RecoveryRequired;
+            job.result_code = ChangeResultCode::RecoveryRequired;
+            job.diagnostic_code = Some("new_secret_cleanup_failed".to_string());
+        }
     } else {
         job.status = ChangeJobStatus::Failed;
         job.result_code = if live_unavailable {
@@ -1929,6 +2568,18 @@ mod tests {
         }
     }
 
+    #[cfg(any(target_os = "macos", windows))]
+    struct NativeSecretCleanup(Option<SecretHandle>);
+
+    #[cfg(any(target_os = "macos", windows))]
+    impl Drop for NativeSecretCleanup {
+        fn drop(&mut self) {
+            if let Some(handle) = self.0.take() {
+                let _ = SecretService::new(NativeSecretBackend::new()).delete(&handle);
+            }
+        }
+    }
+
     fn provider(id: &str, name: &str, model: &str) -> Provider {
         Provider::with_id(
             id.to_string(),
@@ -1958,6 +2609,8 @@ mod tests {
             created_at: 1,
             expires_at: 2,
             status: ChangePlanStatus::Ready,
+            business_steps: vec![ChangeBusinessStepKind::SetCurrentProvider],
+            credential: None,
             adapter: registered_adapter_descriptor(ChangeOperation::CodexProviderSwitch),
             current_provider_code: "current_configured".into(),
             target_provider_code: "existing_provider".into(),
@@ -2011,6 +2664,8 @@ mod tests {
             created_at: 100,
             expires_at: 1000,
             status: ChangePlanStatus::Ready,
+            business_steps: vec![ChangeBusinessStepKind::SetCurrentProvider],
+            credential: None,
             adapter: registered_adapter_descriptor(ChangeOperation::CodexProviderSwitch),
             current_provider_code: "current_configured".into(),
             target_provider_code: "existing_provider".into(),
@@ -2301,6 +2956,540 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM change_plans", [], |row| row.get(0))
             .unwrap();
         assert_eq!(count, 0);
+    }
+
+    fn codex_upsert_request(api_key: &str) -> CodexProviderUpsertPlanRequest {
+        CodexProviderUpsertPlanRequest {
+            name: "Planned Codex".to_string(),
+            base_url: "https://gateway.example.test/v1".to_string(),
+            api_key: api_key.to_string(),
+            model_id: "gpt-planned".to_string(),
+            codex_features: Some(crate::codex_config::CodexProviderFeatureIntent {
+                image_extension: Some(true),
+                websockets: Some(true),
+            }),
+        }
+    }
+
+    #[test]
+    #[serial]
+    fn codex_provider_upsert_preview_writes_only_one_safe_ledger_row() {
+        let (_home, _guard, db, state, current, _target) = setup_switch_state();
+        let before_live = read_live_settings(AppType::Codex).unwrap();
+        let before_provider_count = db.get_all_providers(AppType::Codex.as_str()).unwrap().len();
+        let canary = "ucp-preview-secret-canary";
+
+        let plan = ChangePlanService::plan_codex_provider_upsert_at(
+            &state,
+            codex_upsert_request(canary),
+            100,
+        )
+        .unwrap();
+        assert_eq!(
+            plan.operation,
+            ChangeOperation::CodexProviderUpsertAndSwitch
+        );
+        assert_eq!(
+            plan.business_steps,
+            vec![
+                ChangeBusinessStepKind::SaveProvider,
+                ChangeBusinessStepKind::SetCurrentProvider,
+            ]
+        );
+        let credential = plan.credential.as_ref().expect("credential projection");
+        assert!(credential.secret_ref_display.starts_with("sec_…"));
+        assert_eq!(credential.backend, ChangeSecretBackend::OsKeyring);
+        let public_json = serde_json::to_string(&plan).unwrap();
+        assert!(!public_json.contains(canary));
+        assert!(!public_json.contains("OPENAI_API_KEY"));
+        assert!(!public_json.contains("secretVersion"));
+
+        assert_eq!(
+            db.get_all_providers(AppType::Codex.as_str()).unwrap().len(),
+            before_provider_count,
+            "preview must not save a Provider"
+        );
+        assert!(db
+            .get_provider_by_id(UCP_CODEX_PROVIDER_ID, AppType::Codex.as_str())
+            .unwrap()
+            .is_none());
+        assert_eq!(
+            db.get_current_provider(AppType::Codex.as_str()).unwrap(),
+            Some(current.id.clone())
+        );
+        assert_eq!(read_live_settings(AppType::Codex).unwrap(), before_live);
+        assert!(db.list_recoverable_change_jobs().unwrap().is_empty());
+
+        let stored = db.get_stored_change_plan(&plan.plan_id).unwrap().unwrap();
+        let private = get_private_proof(&stored.proof_id).unwrap();
+        let private_credential = private.credential.expect("private credential");
+        assert!(private_credential.material.ct_eq_slice(canary.as_bytes()));
+        let conn = db.conn.lock().unwrap();
+        let rows: i64 = conn
+            .query_row("SELECT COUNT(*) FROM change_plans", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(rows, 1, "preview may insert exactly one UCP ledger row");
+        let persisted_public: String = conn
+            .query_row(
+                "SELECT operation || target_provider_name || plan_digest || baseline_digest || business_steps_json || COALESCE(credential_json, '') || risks_json FROM change_plans WHERE plan_id=?1",
+                [plan.plan_id.as_str()],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(!persisted_public.contains(canary));
+        assert!(!persisted_public.contains(private_credential.handle.secret_ref().as_str()));
+    }
+
+    #[test]
+    #[serial]
+    fn codex_provider_upsert_executes_one_existing_writer_and_rereads_safe_target() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let (_home, _guard, db, state, _current, _target) = setup_switch_state();
+        let canary = "ucp-upsert-execution-secret-canary";
+        let plan = ChangePlanService::plan_codex_provider_upsert_at(
+            &state,
+            codex_upsert_request(canary),
+            100,
+        )
+        .unwrap();
+        let stored = db.get_stored_change_plan(&plan.plan_id).unwrap().unwrap();
+        let credential = get_private_proof(&stored.proof_id)
+            .and_then(|proof| proof.credential)
+            .expect("private credential");
+        let calls = AtomicUsize::new(0);
+        let observed_event_seq = Mutex::new(Vec::new());
+
+        let outcome = ChangePlanService::apply_codex_switch_at_with_writer_observer_and_fault(
+            &state,
+            &plan.plan_id,
+            &plan.plan_digest,
+            101,
+            || {
+                calls.fetch_add(1, Ordering::SeqCst);
+                let live = materialize_codex_secret_ref_provider(
+                    &credential.persisted_provider,
+                    &credential.material,
+                )
+                .map_err(|_| ())?;
+                crate::services::ProviderService::apply_quick_setup_with_secret_ref_lock_held(
+                    &state,
+                    credential.persisted_provider.clone(),
+                    live,
+                )
+                .map(|result| result.live_config_changed)
+                .map_err(|_| ())
+            },
+            |snapshot| observed_event_seq.lock().unwrap().push(snapshot.event_seq),
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        let job = outcome.job.expect("admitted job");
+        assert_eq!(job.status, ChangeJobStatus::Succeeded, "{job:#?}");
+        assert!(matches!(
+            job.result_code,
+            ChangeResultCode::Applied | ChangeResultCode::AppliedRestartRecommended
+        ));
+        assert_eq!(job.usage_evidence, UsageEvidence::NotObserved);
+        assert_eq!(
+            *observed_event_seq.lock().unwrap(),
+            vec![1, 2, 3, 4, 5, 6, 7]
+        );
+        assert!(job
+            .steps
+            .iter()
+            .all(|step| step.status == ChangeStepStatus::Succeeded));
+        assert!(job
+            .resources
+            .iter()
+            .all(|resource| resource.status == ChangeResourceStatus::Matched));
+
+        let persisted = db
+            .get_provider_by_id(UCP_CODEX_PROVIDER_ID, AppType::Codex.as_str())
+            .unwrap()
+            .expect("safe Provider");
+        let persisted_json = serde_json::to_string(&persisted).unwrap();
+        assert!(!persisted_json.contains(canary));
+        assert!(!persisted_json.contains("OPENAI_API_KEY"));
+        assert!(persisted_json.contains("secretRef"));
+        assert_eq!(
+            db.get_current_provider(AppType::Codex.as_str())
+                .unwrap()
+                .as_deref(),
+            Some(UCP_CODEX_PROVIDER_ID)
+        );
+        let live_json =
+            serde_json::to_string(&read_live_settings(AppType::Codex).unwrap()).unwrap();
+        assert!(live_json.contains(canary));
+
+        clear_private_proofs_for_test();
+        let replay = ChangePlanService::apply_change_plan_with_observer(
+            &state,
+            &plan.plan_id,
+            &plan.plan_digest,
+            |_| {},
+        )
+        .unwrap();
+        assert_eq!(replay.kind, ChangeApplyOutcomeKind::IdempotentReplay);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    #[serial]
+    fn interrupted_upsert_without_private_proof_requires_recovery_without_replay() {
+        let (_home, _guard, db, state, _current, _target) = setup_switch_state();
+        let plan = ChangePlanService::plan_codex_provider_upsert_at(
+            &state,
+            codex_upsert_request("ucp-interrupted-secret-canary"),
+            100,
+        )
+        .unwrap();
+        let stored = db.get_stored_change_plan(&plan.plan_id).unwrap().unwrap();
+        let credential = get_private_proof(&stored.proof_id)
+            .and_then(|proof| proof.credential)
+            .expect("private credential before simulated restart");
+        let inspected = inspect_codex_upsert_precheck(&state, &credential, &stored.proof_id)
+            .expect("upsert baseline");
+        let observed_baseline = baseline_binding_digest(
+            &plan.plan_id,
+            &stored.proof_id,
+            &stored.process_epoch_id,
+            &inspected,
+        )
+        .unwrap();
+        let admitted = db
+            .admit_change_plan(
+                &plan.plan_id,
+                &plan.plan_digest,
+                &observed_baseline,
+                "interrupted-upsert-job",
+                101,
+            )
+            .unwrap();
+        let mut interrupted = admitted.job.expect("admitted job");
+        set_step(
+            &mut interrupted,
+            ChangeStepKind::ManagedWrite,
+            ChangeStepStatus::Running,
+            "managed_write_started",
+        );
+        advance_job(&mut interrupted, 101, "managed_write_started");
+        db.save_change_job(&interrupted, "managed_write_started")
+            .unwrap();
+        let before_provider_count = db.get_all_providers(AppType::Codex.as_str()).unwrap().len();
+
+        clear_private_proofs_for_test();
+        let reconciled = ChangePlanService::get_job(&state, "interrupted-upsert-job").unwrap();
+
+        assert_eq!(reconciled.status, ChangeJobStatus::Failed);
+        assert_eq!(reconciled.result_code, ChangeResultCode::RecoveryRequired);
+        assert_eq!(reconciled.recovery_state, RecoveryState::RecoveryRequired);
+        assert_eq!(
+            reconciled.diagnostic_code.as_deref(),
+            Some("private_proof_unavailable")
+        );
+        assert_eq!(
+            db.get_all_providers(AppType::Codex.as_str()).unwrap().len(),
+            before_provider_count,
+            "reconcile must never replay the Provider writer"
+        );
+        assert!(reconciled.resources.iter().any(|resource| {
+            resource.kind == ChangeResourceKind::TargetDefinition
+                && resource.status == ChangeResourceStatus::Unavailable
+        }));
+    }
+
+    #[test]
+    #[serial]
+    fn codex_provider_upsert_dispatcher_returns_safe_rejections_before_any_writer() {
+        let (_home, _guard, db, state, _current, _target) = setup_switch_state();
+        let missing = ChangePlanService::apply_change_plan_with_observer(
+            &state,
+            "missing-plan",
+            "missing-digest",
+            |_| {},
+        )
+        .unwrap();
+        assert_eq!(missing.error_code, Some(ChangePlanErrorCode::PlanNotFound));
+
+        let plan = ChangePlanService::plan_codex_provider_upsert_at(
+            &state,
+            codex_upsert_request("ucp-dispatcher-secret-canary"),
+            100,
+        )
+        .unwrap();
+        let before_provider_count = db.get_all_providers(AppType::Codex.as_str()).unwrap().len();
+        clear_private_proofs_for_test();
+        let stale = ChangePlanService::apply_change_plan_with_observer(
+            &state,
+            &plan.plan_id,
+            &plan.plan_digest,
+            |_| {},
+        )
+        .unwrap();
+        assert_eq!(stale.error_code, Some(ChangePlanErrorCode::Stale));
+        assert_eq!(
+            db.get_all_providers(AppType::Codex.as_str()).unwrap().len(),
+            before_provider_count
+        );
+        assert!(db.list_recoverable_change_jobs().unwrap().is_empty());
+    }
+
+    #[cfg(any(target_os = "macos", windows))]
+    #[test]
+    #[ignore = "native OS keyring HIL; run explicitly on a real macOS or Windows host"]
+    #[serial]
+    fn codex_provider_upsert_native_keyring_hil() {
+        use crate::services::secret::{MaterialMatches, SecretAvailability, SecretPresence};
+
+        let (_home, _guard, db, state, _current, _target) = setup_switch_state();
+        let canary = format!("fyagent-issue63-hil-{}", uuid::Uuid::new_v4().simple());
+        let plan = ChangePlanService::plan_codex_provider_upsert_at(
+            &state,
+            codex_upsert_request(&canary),
+            chrono::Utc::now().timestamp(),
+        )
+        .expect("native upsert plan");
+        let stored = db.get_stored_change_plan(&plan.plan_id).unwrap().unwrap();
+        let handle = get_private_proof(&stored.proof_id)
+            .and_then(|proof| proof.credential)
+            .map(|credential| credential.handle.clone())
+            .expect("private keyring handle");
+        let mut cleanup = NativeSecretCleanup(Some(handle.clone()));
+        let observed_event_seq = Mutex::new(Vec::new());
+
+        let outcome = ChangePlanService::apply_change_plan_with_observer(
+            &state,
+            &plan.plan_id,
+            &plan.plan_digest,
+            |snapshot| observed_event_seq.lock().unwrap().push(snapshot.event_seq),
+        )
+        .expect("native upsert apply");
+        let job = outcome.job.expect("admitted native job");
+        assert_eq!(job.status, ChangeJobStatus::Succeeded, "{job:#?}");
+        assert_eq!(
+            *observed_event_seq.lock().unwrap(),
+            vec![1, 2, 3, 4, 5, 6, 7]
+        );
+        assert_eq!(job.usage_evidence, UsageEvidence::NotObserved);
+        assert!(job
+            .steps
+            .iter()
+            .all(|step| step.status == ChangeStepStatus::Succeeded));
+        assert!(job
+            .resources
+            .iter()
+            .all(|resource| resource.status == ChangeResourceStatus::Matched));
+
+        let secrets = SecretService::new(NativeSecretBackend::new());
+        let probe = secrets
+            .probe(&handle, SecretPurpose::CodexApiKey)
+            .expect("probe native secret");
+        assert_eq!(probe.presence(), SecretPresence::Present);
+        assert_eq!(probe.availability(), SecretAvailability::Ready);
+        assert!(secrets
+            .with_material(&handle, MaterialMatches::new(canary.as_bytes()))
+            .expect("read native secret through sealed callback"));
+
+        let persisted = db
+            .get_provider_by_id(UCP_CODEX_PROVIDER_ID, AppType::Codex.as_str())
+            .unwrap()
+            .expect("safe persisted Provider");
+        let persisted_json = serde_json::to_string(&persisted).unwrap();
+        assert!(!persisted_json.contains(&canary));
+        assert!(!persisted_json.contains("OPENAI_API_KEY"));
+        assert_eq!(
+            db.get_current_provider(AppType::Codex.as_str())
+                .unwrap()
+                .as_deref(),
+            Some(UCP_CODEX_PROVIDER_ID)
+        );
+        assert!(
+            serde_json::to_string(&read_live_settings(AppType::Codex).unwrap())
+                .unwrap()
+                .contains(&canary)
+        );
+
+        let failed_canary = format!(
+            "fyagent-issue63-failed-edit-hil-{}",
+            uuid::Uuid::new_v4().simple()
+        );
+        let failed_plan = ChangePlanService::plan_codex_provider_upsert_at(
+            &state,
+            codex_upsert_request(&failed_canary),
+            chrono::Utc::now().timestamp(),
+        )
+        .expect("native failed-edit plan");
+        let failed_stored = db
+            .get_stored_change_plan(&failed_plan.plan_id)
+            .unwrap()
+            .unwrap();
+        let failed_handle = get_private_proof(&failed_stored.proof_id)
+            .and_then(|proof| proof.credential)
+            .map(|credential| credential.handle.clone())
+            .expect("failed-edit private keyring handle");
+        let mut failed_cleanup = NativeSecretCleanup(Some(failed_handle.clone()));
+        db.conn
+            .lock()
+            .expect("lock database")
+            .execute_batch(&format!(
+                "CREATE TRIGGER fail_ucp_codex_provider_update\n\
+                 BEFORE UPDATE ON providers\n\
+                 WHEN NEW.id = '{UCP_CODEX_PROVIDER_ID}'\n\
+                   AND NEW.app_type = 'codex'\n\
+                   AND NEW.settings_config LIKE '%{}%'\n\
+                 BEGIN\n\
+                   SELECT RAISE(ABORT, 'injected UCP Codex Provider update failure');\n\
+                 END;",
+                failed_handle.secret_ref().as_str()
+            ))
+            .expect("install failed-edit trigger");
+
+        let failed_edit = ChangePlanService::apply_change_plan_with_observer(
+            &state,
+            &failed_plan.plan_id,
+            &failed_plan.plan_digest,
+            |_| {},
+        )
+        .expect("failed native edit must still return a terminal snapshot")
+        .job
+        .expect("admitted failed native edit job");
+        assert_eq!(
+            failed_edit.status,
+            ChangeJobStatus::Failed,
+            "{failed_edit:#?}"
+        );
+        assert_eq!(
+            failed_edit.result_code,
+            ChangeResultCode::WriterFailedBaselineRestored
+        );
+        assert_eq!(failed_edit.recovery_state, RecoveryState::Succeeded);
+        assert_eq!(
+            failed_edit.diagnostic_code.as_deref(),
+            Some("baseline_restored")
+        );
+        assert!(secrets
+            .with_material(&handle, MaterialMatches::new(canary.as_bytes()))
+            .expect("original secret must survive a failed edit"));
+        let failed_probe = secrets
+            .probe(&failed_handle, SecretPurpose::CodexApiKey)
+            .expect("probe failed-edit native secret");
+        assert_eq!(failed_probe.presence(), SecretPresence::Missing);
+        assert_eq!(failed_probe.availability(), SecretAvailability::Missing);
+        failed_cleanup.0 = None;
+        let after_failed_persisted = db
+            .get_provider_by_id(UCP_CODEX_PROVIDER_ID, AppType::Codex.as_str())
+            .unwrap()
+            .expect("baseline Provider after failed edit");
+        assert_eq!(
+            after_failed_persisted.settings_config["auth"]["secretRef"].as_str(),
+            Some(handle.secret_ref().as_str())
+        );
+        let after_failed_live =
+            serde_json::to_string(&read_live_settings(AppType::Codex).unwrap()).unwrap();
+        assert!(after_failed_live.contains(&canary));
+        assert!(!after_failed_live.contains(&failed_canary));
+        db.conn
+            .lock()
+            .expect("lock database")
+            .execute_batch("DROP TRIGGER fail_ucp_codex_provider_update;")
+            .expect("remove failed-edit trigger");
+
+        let rotated_canary = format!("fyagent-issue63-edit-hil-{}", uuid::Uuid::new_v4().simple());
+        let edit_plan = ChangePlanService::plan_codex_provider_upsert_at(
+            &state,
+            codex_upsert_request(&rotated_canary),
+            chrono::Utc::now().timestamp(),
+        )
+        .expect("native edit plan");
+        let edit_stored = db
+            .get_stored_change_plan(&edit_plan.plan_id)
+            .unwrap()
+            .unwrap();
+        let rotated_handle = get_private_proof(&edit_stored.proof_id)
+            .and_then(|proof| proof.credential)
+            .map(|credential| credential.handle.clone())
+            .expect("rotated private keyring handle");
+        let mut rotated_cleanup = NativeSecretCleanup(Some(rotated_handle.clone()));
+        let edit = ChangePlanService::apply_change_plan_with_observer(
+            &state,
+            &edit_plan.plan_id,
+            &edit_plan.plan_digest,
+            |_| {},
+        )
+        .expect("native edit apply")
+        .job
+        .expect("admitted native edit job");
+        assert_eq!(edit.status, ChangeJobStatus::Succeeded, "{edit:#?}");
+
+        let deleted = secrets
+            .probe(&handle, SecretPurpose::CodexApiKey)
+            .expect("probe rotated old native secret");
+        assert_eq!(deleted.presence(), SecretPresence::Missing);
+        assert_eq!(deleted.availability(), SecretAvailability::Missing);
+        cleanup.0 = None;
+        assert!(secrets
+            .with_material(
+                &rotated_handle,
+                MaterialMatches::new(rotated_canary.as_bytes()),
+            )
+            .expect("read rotated native secret through sealed callback"));
+        let rotated_persisted = db
+            .get_provider_by_id(UCP_CODEX_PROVIDER_ID, AppType::Codex.as_str())
+            .unwrap()
+            .expect("rotated safe Provider");
+        assert_eq!(
+            rotated_persisted.settings_config["auth"]["secretRef"].as_str(),
+            Some(rotated_handle.secret_ref().as_str())
+        );
+        let rotated_live =
+            serde_json::to_string(&read_live_settings(AppType::Codex).unwrap()).unwrap();
+        assert!(rotated_live.contains(&rotated_canary));
+        assert!(!rotated_live.contains(&canary));
+
+        crate::services::ProviderService::switch(&state, AppType::Codex, "target")
+            .expect("switch away from SecretRef Provider");
+        let backfilled_safe = db
+            .get_provider_by_id(UCP_CODEX_PROVIDER_ID, AppType::Codex.as_str())
+            .unwrap()
+            .expect("backfilled safe Provider");
+        let backfilled_json = serde_json::to_string(&backfilled_safe).unwrap();
+        assert!(!backfilled_json.contains(&rotated_canary));
+        assert!(!backfilled_json.contains("OPENAI_API_KEY"));
+        assert_eq!(
+            backfilled_safe.settings_config["auth"]["secretRef"].as_str(),
+            Some(rotated_handle.secret_ref().as_str())
+        );
+        let switch_back = ChangePlanService::plan_codex_switch_at(
+            &state,
+            UCP_CODEX_PROVIDER_ID,
+            chrono::Utc::now().timestamp(),
+        )
+        .expect("plan switch back to SecretRef Provider");
+        let switched = ChangePlanService::apply_codex_switch(
+            &state,
+            &switch_back.plan_id,
+            &switch_back.plan_digest,
+        )
+        .expect("apply existing Provider switch")
+        .job
+        .expect("admitted existing Provider switch");
+        assert_eq!(switched.status, ChangeJobStatus::Succeeded, "{switched:#?}");
+        let switched_live =
+            serde_json::to_string(&read_live_settings(AppType::Codex).unwrap()).unwrap();
+        assert!(switched_live.contains(&rotated_canary));
+        assert!(!switched_live.contains(&canary));
+
+        let receipt = secrets
+            .delete(&rotated_handle)
+            .expect("delete rotated native HIL secret");
+        assert_eq!(
+            serde_json::to_value(receipt).unwrap()["deleted"].as_bool(),
+            Some(true)
+        );
+        rotated_cleanup.0 = None;
     }
 
     #[test]

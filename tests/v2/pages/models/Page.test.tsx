@@ -10,10 +10,15 @@ import { StrictMode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
+import fixtureJson from "../../../fixtures/changePlanDtoContract.v1.json";
 import { ModelsPage } from "@/v2/pages/models/Page";
 import { QUICK_SETUP_PROVIDER_IDS } from "@/v2/pages/models/quickSetup";
 import { getAgentIcon } from "@/v2/shared/assets/agents";
 import type { FeaturePorts } from "@/v2/shared/features/ports";
+import type {
+  ChangeJobSnapshot,
+  ChangePlan,
+} from "@/v2/shared/features/change-plan";
 import { FeatureProvider } from "@/v2/shared/features/provider";
 import type { AgentCatalogResult } from "@/v2/shared/features/types";
 import { createBrowserFeaturePorts } from "@/v2/shared/platform/browser/features";
@@ -116,6 +121,48 @@ function workBuddyPorts(): FeaturePorts {
   return ports;
 }
 
+function upsertPlanFixture(): ChangePlan {
+  const plan = structuredClone(fixtureJson.plan) as unknown as ChangePlan;
+  plan.operation = "codex_provider_upsert_and_switch";
+  plan.targetProviderId = QUICK_SETUP_PROVIDER_IDS.codex;
+  plan.targetProviderName = "Codex Gateway";
+  plan.businessSteps = ["save_provider", "set_current_provider"];
+  plan.credential = { secretRefDisplay: "sec_…1a2b", backend: "os_keyring" };
+  plan.adapter = {
+    ...plan.adapter,
+    adapterId: "codex_provider_upsert_switch",
+    operationType: "codex_provider_upsert_and_switch",
+    writeSet: [
+      "target_definition",
+      "provider_db_current",
+      "device_current",
+      "codex_live_projection",
+    ],
+  };
+  return plan;
+}
+
+function terminalUpsertFixture(): ChangeJobSnapshot {
+  const job = structuredClone(
+    fixtureJson.applyOutcome.job,
+  ) as unknown as ChangeJobSnapshot;
+  job.targetProviderId = QUICK_SETUP_PROVIDER_IDS.codex;
+  return job;
+}
+
+function configureUpsertPlanPorts(ports: FeaturePorts) {
+  ports.changePlan.createCodexProviderUpsertPlan = vi.fn(async () =>
+    upsertPlanFixture(),
+  );
+  ports.changePlan.apply = vi.fn(async () => ({
+    kind: "admitted" as const,
+    job: terminalUpsertFixture(),
+  }));
+  ports.changePlan.getJob = vi.fn(async () => terminalUpsertFixture());
+  ports.changePlan.listRecoverableJobs = vi.fn(async () => []);
+  ports.changePlan.subscribeJobUpdates = vi.fn(async () => vi.fn());
+}
+
 describe("V2 Models page", () => {
   it("renders the exact selector order, local decorative icons, and QoderWork default", () => {
     const ports = createBrowserFeaturePorts();
@@ -161,7 +208,9 @@ describe("V2 Models page", () => {
     expect(qoderRegion).toBeVisible();
     expect(qoderRegion.querySelector(".fy-control-badge")).toBeNull();
     expect(qoderRegion.querySelector(".fy-control-button-primary")).toBeNull();
-    expect(qoderRegion.querySelector(".fy-models-commit-heading")).not.toBeNull();
+    expect(
+      qoderRegion.querySelector(".fy-models-commit-heading"),
+    ).not.toBeNull();
     expect(qoderRegion.querySelector(".fy-models-existing")).toBeNull();
     expect(qoderRegion).toHaveTextContent("官方不支持第三方模型配置");
   });
@@ -889,24 +938,20 @@ describe("V2 Models page", () => {
     expect(screen.getByLabelText("API Key")).toHaveValue("");
   });
 
-  it("atomically applies Codex once with the exact provider payload", async () => {
+  it("creates one Codex two-step plan and applies only after one confirmation", async () => {
     const user = userEvent.setup();
     const ports = createBrowserFeaturePorts();
-    let currentProviderId = "current-codex";
     ports.providers.getSummary = vi.fn(async () => ({
       providers: {},
-      currentId: currentProviderId,
+      currentId: "current-codex",
     }));
-    type ApplyResult = Awaited<
-      ReturnType<FeaturePorts["providers"]["applyQuickSetupWithResult"]>
-    >;
-    let resolveApply!: (result: ApplyResult) => void;
-    const pendingApply = new Promise<ApplyResult>((resolve) => {
-      resolveApply = resolve;
+    configureUpsertPlanPorts(ports);
+    let resolvePlan!: (plan: ChangePlan) => void;
+    const pendingPlan = new Promise<ChangePlan>((resolve) => {
+      resolvePlan = resolve;
     });
-    ports.providers.applyQuickSetupWithResult = vi.fn<
-      FeaturePorts["providers"]["applyQuickSetupWithResult"]
-    >(() => pendingApply);
+    ports.changePlan.createCodexProviderUpsertPlan = vi.fn(() => pendingPlan);
+    ports.providers.applyQuickSetupWithResult = vi.fn();
     renderPage(ports, "codex");
 
     await screen.findByTestId("provider-status");
@@ -916,7 +961,7 @@ describe("V2 Models page", () => {
     expect(codexHeader).not.toBeNull();
     expect(
       within(codexHeader as HTMLElement).getByRole("button", {
-        name: "保存并设为当前配置",
+        name: "预览保存并设为当前",
       }),
     ).toBeVisible();
     await user.clear(screen.getByLabelText("配置名称"));
@@ -927,22 +972,14 @@ describe("V2 Models page", () => {
     );
     await user.type(screen.getByLabelText("API Key"), "codex-secret");
     await user.type(screen.getByLabelText("模型 ID"), "gpt-5");
-    const submit = screen.getByRole("button", { name: "保存并设为当前配置" });
+    const submit = screen.getByRole("button", { name: "预览保存并设为当前" });
     await user.click(submit);
     expect(submit).toBeDisabled();
     fireEvent.click(submit);
-    expect(ports.providers.applyQuickSetupWithResult).toHaveBeenCalledTimes(1);
-    currentProviderId = QUICK_SETUP_PROVIDER_IDS.codex;
-    resolveApply({
-      value: { warnings: [] },
-      liveConfigChanged: true,
-      app: "codex" as const,
-      warningCodes: ["CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED"],
-    });
-
-    await screen.findByText("模型设置已保存并设为当前配置");
-    expect(ports.providers.applyQuickSetupWithResult).toHaveBeenCalledTimes(1);
-    expect(ports.providers.applyQuickSetupWithResult).toHaveBeenCalledWith(
+    expect(
+      ports.changePlan.createCodexProviderUpsertPlan,
+    ).toHaveBeenCalledTimes(1);
+    expect(ports.changePlan.createCodexProviderUpsertPlan).toHaveBeenCalledWith(
       {
         name: "Codex Gateway",
         baseUrl: "https://codex.example/v1",
@@ -950,17 +987,27 @@ describe("V2 Models page", () => {
         modelId: "gpt-5",
         codexFeatures: { imageExtension: false, websockets: false },
       },
-      "codex",
     );
-    expect(
-      screen.getByText("当前网络代理可能影响连接，请确认后使用。"),
-    ).toBeVisible();
-    expect(
-      screen.getByText("重启或新建会话后即可使用新的设置。"),
-    ).toBeVisible();
-    expect(document.body).not.toHaveTextContent("Quick Setup Provider ID");
+    expect(ports.providers.applyQuickSetupWithResult).not.toHaveBeenCalled();
+    resolvePlan(upsertPlanFixture());
+
+    expect(await screen.findByText("确认保存 Codex 配置")).toBeVisible();
+    expect(screen.getByText("保存 Provider")).toBeVisible();
+    expect(screen.getByText("设为当前 Provider")).toBeVisible();
+    expect(screen.getByText(/sec_…1a2b/)).toBeVisible();
+    expect(screen.getByText(/Codex 自己的 auth\/config 文件/)).toBeVisible();
     expect(screen.getByLabelText("API Key")).toHaveValue("");
-    expect(ports.providers.getSummary).toHaveBeenCalledTimes(2);
+    await user.click(screen.getByRole("button", { name: "确认并应用一次" }));
+    expect(ports.changePlan.apply).toHaveBeenCalledTimes(1);
+    expect(ports.changePlan.apply).toHaveBeenCalledWith(
+      "plan-contract",
+      "plan-digest",
+    );
+    expect(await screen.findByTestId("change-job-workspace")).toHaveAttribute(
+      "data-status",
+      "succeeded",
+    );
+    expect(ports.providers.applyQuickSetupWithResult).not.toHaveBeenCalled();
   });
 
   it("sends Codex image-extension and websocket toggles in the quick setup payload", async () => {
@@ -970,12 +1017,8 @@ describe("V2 Models page", () => {
       providers: {},
       currentId: "",
     }));
-    ports.providers.applyQuickSetupWithResult = vi.fn(async () => ({
-      value: { warnings: [] },
-      liveConfigChanged: true,
-      app: "codex" as const,
-      warningCodes: [],
-    }));
+    configureUpsertPlanPorts(ports);
+    ports.providers.applyQuickSetupWithResult = vi.fn();
     renderPage(ports, "codex");
 
     await screen.findByTestId("provider-status");
@@ -996,15 +1039,15 @@ describe("V2 Models page", () => {
     );
 
     await user.click(
-      screen.getByRole("button", { name: "保存并设为当前配置" }),
+      screen.getByRole("button", { name: "预览保存并设为当前" }),
     );
 
     await waitFor(() =>
-      expect(ports.providers.applyQuickSetupWithResult).toHaveBeenCalledTimes(
-        1,
-      ),
+      expect(
+        ports.changePlan.createCodexProviderUpsertPlan,
+      ).toHaveBeenCalledTimes(1),
     );
-    expect(ports.providers.applyQuickSetupWithResult).toHaveBeenCalledWith(
+    expect(ports.changePlan.createCodexProviderUpsertPlan).toHaveBeenCalledWith(
       {
         name: "Codex Gateway",
         baseUrl: "https://codex.example/v1",
@@ -1012,8 +1055,8 @@ describe("V2 Models page", () => {
         modelId: "gpt-5",
         codexFeatures: { imageExtension: true, websockets: true },
       },
-      "codex",
     );
+    expect(ports.providers.applyQuickSetupWithResult).not.toHaveBeenCalled();
   });
 
   it("treats an unclassified apply failure as unknown and stops writes", async () => {
@@ -1063,19 +1106,18 @@ describe("V2 Models page", () => {
     ).toBeDisabled();
   });
 
-  it("stops further writes when the backend reports partial rollback", async () => {
+  it("keeps writes enabled when side-effect-free plan creation fails", async () => {
     const user = userEvent.setup();
     const ports = createBrowserFeaturePorts();
     ports.providers.getSummary = vi.fn(async () => ({
       providers: {},
       currentId: "",
     }));
-    ports.providers.applyQuickSetupWithResult = vi.fn(async () => {
-      throw {
-        code: "ROLLBACK_PARTIAL_STATE_UNKNOWN",
-        hidden: "partial-secret",
-      };
+    configureUpsertPlanPorts(ports);
+    ports.changePlan.createCodexProviderUpsertPlan = vi.fn(async () => {
+      throw new Error("plan error contains partial-secret");
     });
+    ports.providers.applyQuickSetupWithResult = vi.fn();
     renderPage(ports, "codex");
 
     await screen.findByTestId("provider-status");
@@ -1086,44 +1128,54 @@ describe("V2 Models page", () => {
     await user.type(screen.getByLabelText("API Key"), "partial-secret");
     await user.type(screen.getByLabelText("模型 ID"), "gpt-partial");
     await user.click(
-      screen.getByRole("button", { name: "保存并设为当前配置" }),
+      screen.getByRole("button", { name: "预览保存并设为当前" }),
     );
 
-    await screen.findByText("无法确认当前设置");
+    await screen.findByText("未能生成变更计划");
     expect(document.body).not.toHaveTextContent("partial-secret");
     expect(screen.getByLabelText("API Key")).toHaveValue("");
-    expect(ports.providers.applyQuickSetupWithResult).toHaveBeenCalledTimes(1);
-    const blockedButton = screen.getByRole("button", {
-      name: "暂时无法确认当前设置",
+    expect(ports.providers.applyQuickSetupWithResult).not.toHaveBeenCalled();
+    const retryButton = screen.getByRole("button", {
+      name: "预览保存并设为当前",
     });
-    expect(blockedButton).toBeDisabled();
-    await user.click(blockedButton);
-    expect(ports.providers.applyQuickSetupWithResult).toHaveBeenCalledTimes(1);
-
-    await user.click(screen.getByTestId("model-target-claude"));
-    await screen.findByRole("heading", { name: "Claude Code" });
-    await user.click(screen.getByTestId("model-target-codex"));
+    expect(retryButton).toBeEnabled();
+    await user.type(screen.getByLabelText("API Key"), "retry-secret");
+    await user.click(retryButton);
     expect(
-      await screen.findByRole("button", {
-        name: "暂时无法确认当前设置",
-      }),
-    ).toBeDisabled();
-    expect(ports.providers.applyQuickSetupWithResult).toHaveBeenCalledTimes(1);
+      ports.changePlan.createCodexProviderUpsertPlan,
+    ).toHaveBeenCalledTimes(2);
   });
 
-  it("surfaces only a generic partial warning from an atomic apply", async () => {
+  it("surfaces a generic old-secret cleanup warning from the UCP job", async () => {
     const user = userEvent.setup();
     const ports = createBrowserFeaturePorts();
     ports.providers.getSummary = vi.fn(async () => ({
       providers: {},
       currentId: QUICK_SETUP_PROVIDER_IDS.codex,
     }));
-    ports.providers.applyQuickSetupWithResult = vi.fn(async () => ({
-      value: { warnings: ["mcp_sync_failed"] },
-      liveConfigChanged: true,
-      app: "codex" as const,
-      warningCodes: ["CODEX_WEBSOCKET_NON_GPT_MODEL" as const],
+    configureUpsertPlanPorts(ports);
+    const warningJob = terminalUpsertFixture();
+    warningJob.status = "warning";
+    warningJob.resultCode = "applied_with_warning";
+    warningJob.diagnosticCode = "old_secret_cleanup_failed";
+    warningJob.partialResult = {
+      succeededSteps: [
+        "precheck",
+        "snapshot",
+        "managed_write",
+        "readback",
+        "finalize",
+      ],
+      compensatedSteps: [],
+      unverifiedSteps: [],
+      remainingEffects: [],
+      manualActions: ["delete_previous_secret_ref"],
+    };
+    ports.changePlan.apply = vi.fn(async () => ({
+      kind: "admitted" as const,
+      job: warningJob,
     }));
+    ports.providers.applyQuickSetupWithResult = vi.fn();
     renderPage(ports, "codex");
 
     await screen.findByTestId("provider-status");
@@ -1134,32 +1186,29 @@ describe("V2 Models page", () => {
     await user.type(screen.getByLabelText("API Key"), "partial-secret");
     await user.type(screen.getByLabelText("模型 ID"), "gpt-partial");
     await user.click(
-      screen.getByRole("button", { name: "保存并设为当前配置" }),
+      screen.getByRole("button", { name: "预览保存并设为当前" }),
     );
-
-    await screen.findByText("模型设置已保存并设为当前配置");
+    await user.click(
+      await screen.findByRole("button", { name: "确认并应用一次" }),
+    );
     expect(
-      screen.getByText("当前模型可能与此连接方式不兼容，请确认后使用。"),
+      await screen.findByText("配置已应用，但有需要留意的本机状态。"),
     ).toBeVisible();
-    expect(screen.getByText(/部分设置仍需确认/)).toBeVisible();
+    expect(screen.getByText(/旧凭据仍保留在系统钥匙串/)).toBeVisible();
     expect(screen.getByLabelText("API Key")).toHaveValue("");
     expect(document.body).not.toHaveTextContent("partial-secret");
-    expect(ports.providers.applyQuickSetupWithResult).toHaveBeenCalledTimes(1);
-    expect(ports.providers.getSummary).toHaveBeenCalledTimes(2);
+    expect(ports.providers.applyQuickSetupWithResult).not.toHaveBeenCalled();
   });
 
-  it("does not claim current Provider when the authoritative reread disagrees", async () => {
+  it("does not claim or apply the Provider before the plan is confirmed", async () => {
     const user = userEvent.setup();
     const ports = createBrowserFeaturePorts();
     ports.providers.getSummary = vi.fn(async () => ({
       providers: {},
       currentId: "another-provider",
     }));
-    ports.providers.applyQuickSetupWithResult = vi.fn(async () => ({
-      value: { warnings: [] },
-      liveConfigChanged: true,
-      app: "codex" as const,
-    }));
+    configureUpsertPlanPorts(ports);
+    ports.providers.applyQuickSetupWithResult = vi.fn();
     renderPage(ports, "codex");
 
     await screen.findByTestId("provider-status");
@@ -1170,12 +1219,14 @@ describe("V2 Models page", () => {
     await user.type(screen.getByLabelText("API Key"), "unconfirmed-secret");
     await user.type(screen.getByLabelText("模型 ID"), "gpt-unconfirmed");
     await user.click(
-      screen.getByRole("button", { name: "保存并设为当前配置" }),
+      screen.getByRole("button", { name: "预览保存并设为当前" }),
     );
 
-    expect(await screen.findByText("模型设置已保存，待确认")).toBeVisible();
+    expect(await screen.findByText("确认保存 Codex 配置")).toBeVisible();
+    expect(ports.changePlan.apply).not.toHaveBeenCalled();
+    expect(ports.providers.applyQuickSetupWithResult).not.toHaveBeenCalled();
     expect(
-      screen.queryByText("模型设置已保存并设为当前配置"),
+      screen.queryByTestId("change-job-workspace"),
     ).not.toBeInTheDocument();
     expect(screen.getByLabelText("API Key")).toHaveValue("");
   });
@@ -1263,7 +1314,9 @@ describe("V2 Models page", () => {
         "最终 claude 需要访问的完整端点将会是：/v1/v1/XXXX，请确认是否需要添加 v1，通常路径一般为 /v1/XXXX.",
       ),
     ).toBeVisible();
-    expect(screen.getByRole("button", { name: "保存并设为当前配置" })).toBeEnabled();
+    expect(
+      screen.getByRole("button", { name: "保存并设为当前配置" }),
+    ).toBeEnabled();
   });
 
   it("probes a selected model after IDs exist on WorkBuddy, Provider, and OpenCode", async () => {

@@ -1,7 +1,7 @@
 use crate::change_plan::{
     enum_json, registered_adapter_descriptor, ApplyChangePlanOutcome, ChangeActor,
     ChangeApplyOutcomeKind, ChangeJobSnapshot, ChangeOperation, ChangePlan, ChangePlanErrorCode,
-    RestartRequirement, StoredChangePlan,
+    StoredChangePlan,
 };
 use crate::database::{lock_conn, Database};
 use crate::error::AppError;
@@ -15,9 +15,10 @@ impl Database {
                 plan_id, operation, target_provider_id, target_provider_name, plan_digest,
                 baseline_digest, actor_code, source_version, plan_revision, proof_id,
                 process_epoch_id, current_provider_id, current_provider_code,
-                target_provider_code, contract_digest,
+                target_provider_code, business_steps_json, credential_json,
+                risks_json, restart_requirement, contract_digest,
                 created_at, expires_at, status
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22)",
             params![
                 plan.public.plan_id,
                 enum_json(plan.public.operation)?,
@@ -33,6 +34,17 @@ impl Database {
                 plan.current_provider_id,
                 plan.public.current_provider_code,
                 plan.public.target_provider_code,
+                serde_json::to_string(&plan.public.business_steps)
+                    .map_err(|error| AppError::Database(error.to_string()))?,
+                plan.public
+                    .credential
+                    .as_ref()
+                    .map(serde_json::to_string)
+                    .transpose()
+                    .map_err(|error| AppError::Database(error.to_string()))?,
+                serde_json::to_string(&plan.public.risks)
+                    .map_err(|error| AppError::Database(error.to_string()))?,
+                enum_json(plan.public.restart_expectation)?,
                 plan.contract_digest,
                 plan.public.created_at,
                 plan.public.expires_at,
@@ -52,7 +64,8 @@ impl Database {
             "SELECT operation, target_provider_id, target_provider_name, plan_digest,
                     baseline_digest, actor_code, source_version, plan_revision, proof_id,
                     process_epoch_id, current_provider_id, current_provider_code,
-                    target_provider_code, contract_digest,
+                    target_provider_code, business_steps_json, credential_json,
+                    risks_json, restart_requirement, contract_digest,
                     created_at, expires_at, status
              FROM change_plans WHERE plan_id = ?1",
             params![plan_id],
@@ -61,7 +74,8 @@ impl Database {
                     serde_json::from_value(serde_json::Value::String(row.get(0)?))
                         .map_err(|_| rusqlite::Error::InvalidQuery)?;
                 let actor_type = serde_json::Value::String(row.get(5)?);
-                let status = serde_json::Value::String(row.get(16)?);
+                let status = serde_json::Value::String(row.get(20)?);
+                let credential_json: Option<String> = row.get(14)?;
                 Ok(StoredChangePlan {
                     public: ChangePlan {
                         plan_id: plan_id.to_string(),
@@ -76,24 +90,31 @@ impl Database {
                         },
                         source_version: row.get(6)?,
                         revision: row.get(7)?,
-                        created_at: row.get(14)?,
-                        expires_at: row.get(15)?,
+                        created_at: row.get(18)?,
+                        expires_at: row.get(19)?,
                         status: serde_json::from_value(status)
+                            .map_err(|_| rusqlite::Error::InvalidQuery)?,
+                        business_steps: serde_json::from_str(&row.get::<_, String>(13)?)
+                            .map_err(|_| rusqlite::Error::InvalidQuery)?,
+                        credential: credential_json
+                            .map(|value| serde_json::from_str(&value))
+                            .transpose()
                             .map_err(|_| rusqlite::Error::InvalidQuery)?,
                         adapter: registered_adapter_descriptor(operation),
                         current_provider_code: row.get(11)?,
                         target_provider_code: row.get(12)?,
-                        restart_expectation: RestartRequirement::Recommended,
-                        risks: vec![crate::change_plan::ChangePlanRisk {
-                            code: "local_configuration_write".to_string(),
-                            severity: "notice".to_string(),
-                        }],
+                        restart_expectation: serde_json::from_value(serde_json::Value::String(
+                            row.get(16)?,
+                        ))
+                        .map_err(|_| rusqlite::Error::InvalidQuery)?,
+                        risks: serde_json::from_str(&row.get::<_, String>(15)?)
+                            .map_err(|_| rusqlite::Error::InvalidQuery)?,
                         evidence_note: "usage_not_observed".to_string(),
                     },
                     proof_id: row.get(8)?,
                     process_epoch_id: row.get(9)?,
                     current_provider_id: row.get(10)?,
-                    contract_digest: row.get(13)?,
+                    contract_digest: row.get(17)?,
                 })
             },
         )
@@ -388,10 +409,14 @@ mod tests {
                 created_at: now,
                 expires_at: now + 900,
                 status: ChangePlanStatus::Ready,
+                business_steps: vec![
+                    crate::change_plan::ChangeBusinessStepKind::SetCurrentProvider,
+                ],
+                credential: None,
                 adapter: registered_adapter_descriptor(ChangeOperation::CodexProviderSwitch),
                 current_provider_code: "current_configured".into(),
                 target_provider_code: "existing_provider".into(),
-                restart_expectation: RestartRequirement::Recommended,
+                restart_expectation: crate::change_plan::RestartRequirement::Recommended,
                 risks: vec![ChangePlanRisk {
                     code: "local_configuration_write".into(),
                     severity: "notice".into(),

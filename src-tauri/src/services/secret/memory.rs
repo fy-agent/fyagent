@@ -1,3 +1,7 @@
+// This backend is an integration-test fixture imported as a separate module;
+// the library test target itself does not instantiate it.
+#![allow(dead_code)]
+
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},

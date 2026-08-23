@@ -5,6 +5,7 @@ import { useLocation, useSearchParams } from "react-router-dom";
 import { getAgentBrand, type AgentIconId } from "../../shared/assets/agents";
 import { classNames } from "../../shared/design-system/classNames";
 import type { FeaturePorts } from "../../shared/features/ports";
+import type { ChangePlan } from "../../shared/features/change-plan";
 import { useFeatures } from "../../shared/features/provider";
 import {
   useProviderSummary,
@@ -945,6 +946,7 @@ function ProviderPanel({
   const [warningCodes, setWarningCodes] = useState<
     CodexProviderMutationWarning[]
   >([]);
+  const [queuedPlan, setQueuedPlan] = useState<ChangePlan | null>(null);
   const writeLock = useRef(false);
   const mountedRef = useRef(true);
   const nameInputRef = useRef<HTMLInputElement>(null);
@@ -1086,6 +1088,19 @@ function ProviderPanel({
         validated.value,
         app === "codex" ? { imageExtension, websockets } : undefined,
       );
+      if (app === "codex") {
+        authorityRereadAttempted = true;
+        const nextPlan =
+          await ports.changePlan.createCodexProviderUpsertPlan(request);
+        if (!mountedRef.current) return;
+        setQueuedPlan(nextPlan);
+        setNotice({
+          tone: "info",
+          title: "变更计划已生成",
+          description: "请核对两步操作和凭据边界，再确认应用一次。",
+        });
+        return;
+      }
       const applyResult = await ports.providers.applyQuickSetupWithResult(
         request,
         app,
@@ -1109,34 +1124,31 @@ function ProviderPanel({
         refreshed !== null &&
         !refreshed.isError &&
         refreshed.data?.currentId === providerId;
-      const liveDescription = applyResult.liveConfigChanged
-        ? "重启或新建会话后即可使用新的设置。"
-        : "请在应用中刷新或新建会话后查看更改。";
       if (!activeIdConfirmed) {
         setNotice({
           tone: "warning",
           title: "模型设置已保存，待确认",
-          description:
-            app === "codex"
-              ? `${liveDescription} 请刷新状态后确认当前配置。`
-              : "请刷新状态后确认当前配置。",
+          description: "请刷新状态后确认当前配置。",
         });
       } else {
         setNotice({
           tone: warnings.length || hasPartialWarning ? "warning" : "info",
           title: "模型设置已保存并设为当前配置",
-          description:
-            app === "codex"
-              ? hasPartialWarning
-                ? `${liveDescription} 部分设置仍需确认。`
-                : liveDescription
-              : hasPartialWarning
-                ? "保存完成，但部分设置仍需确认。"
-                : "请在应用中刷新或新建会话后查看更改。",
+          description: hasPartialWarning
+            ? "保存完成，但部分设置仍需确认。"
+            : "请在应用中刷新或新建会话后查看更改。",
         });
       }
     } catch (error) {
       if (mountedRef.current) {
+        if (app === "codex") {
+          setNotice({
+            tone: "error",
+            title: "未能生成变更计划",
+            description: "配置尚未写入，请检查输入后重试。",
+          });
+          return;
+        }
         const rollbackConfirmed =
           typeof error === "object" &&
           error !== null &&
@@ -1191,10 +1203,14 @@ function ProviderPanel({
           onClick={() => void submit()}
         >
           {busy
-            ? "配置中…"
+            ? app === "codex"
+              ? "生成计划中…"
+              : "配置中…"
             : writesBlocked
               ? "暂时无法确认当前设置"
-              : "保存并设为当前配置"}
+              : app === "codex"
+                ? "预览保存并设为当前"
+                : "保存并设为当前配置"}
         </Button>
       </ModelsPanelHeader>
 
@@ -1226,7 +1242,10 @@ function ProviderPanel({
           currentProviderId={summaryQuery.data.currentId}
           providers={summaryQuery.data.providers}
           port={ports.changePlan}
+          externalPlan={queuedPlan}
+          onExternalPlanConsumed={() => setQueuedPlan(null)}
           onTerminal={async () => {
+            setQueuedPlan(null);
             await summaryQuery.refetch();
           }}
         />

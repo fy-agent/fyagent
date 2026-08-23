@@ -137,6 +137,9 @@ export interface ProvidersPort {
 
 export interface ChangePlanPort {
   createCodexProviderSwitchPlan(targetProviderId: string): Promise<ChangePlan>;
+  createCodexProviderUpsertPlan(
+    request: ProviderQuickSetupRequest,
+  ): Promise<ChangePlan>;
   apply(planId: string, planDigest: string): Promise<ApplyChangePlanOutcome>;
   getJob(jobId: string): Promise<ChangeJobSnapshot>;
   listRecoverableJobs(): Promise<ChangeJobSnapshot[]>;

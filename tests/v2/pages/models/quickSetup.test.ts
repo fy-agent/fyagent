@@ -120,6 +120,21 @@ describe("models quick setup helpers", () => {
     }
   });
 
+  it("keeps the required-field error when a target API key is empty", () => {
+    const result = validateQuickSetup(
+      {
+        name: "Gateway",
+        baseUrl: "https://gateway.example/v1",
+        apiKey: " ",
+        modelId: "model-a",
+      },
+      "codex",
+    );
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.apiKey).toBe("请输入 API Key");
+  });
+
   it("keeps Codex request data in the dedicated DTO", () => {
     const request = buildQuickSetupRequest("codex", {
       name: 'Codex "Gateway"',

@@ -95,7 +95,7 @@ export function validateQuickSetup(
     errors.name = "配置名称不能包含 API Key";
   if (value.apiKey && value.modelId.includes(value.apiKey))
     errors.modelId = "模型 ID 不能包含 API Key";
-  if (target && QUICK_SETUP_PROVIDER_IDS[target].includes(value.apiKey))
+  if (target && value.apiKey === QUICK_SETUP_PROVIDER_IDS[target])
     errors.apiKey = "API Key 不能使用该值";
   if (value.apiKey && isHttpUrl(value.baseUrl)) {
     const parsed = new URL(value.baseUrl);

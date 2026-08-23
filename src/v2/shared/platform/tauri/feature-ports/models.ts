@@ -342,7 +342,7 @@ function isValidCodexFeatures(value: unknown): boolean {
   );
 }
 
-function assertQuickSetupRequest(
+export function assertQuickSetupRequest(
   request: ProviderQuickSetupRequest,
 ): ProviderQuickSetupRequest {
   if (

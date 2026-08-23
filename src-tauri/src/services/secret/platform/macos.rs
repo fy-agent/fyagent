@@ -1,4 +1,6 @@
-#![allow(non_camel_case_types, non_upper_case_globals)]
+// The #35 backend contract intentionally ships CRUD/probe together although
+// the first #63 production slice currently needs only create/read/delete.
+#![allow(dead_code, non_camel_case_types, non_upper_case_globals)]
 
 use std::{ffi::c_void, ptr, sync::Mutex};
 

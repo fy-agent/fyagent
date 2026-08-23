@@ -319,6 +319,173 @@ export async function installRichTauriFeatureFixture(
     let qoderHooksRevision = "fixture-qoder-hooks-revision-1";
     let qoderHookGroups: Array<Record<string, unknown>> = [];
     const traeRequestId = "123e4567-e89b-42d3-a456-426614174000";
+    let changePlanSequence = 0;
+    const pendingChangePlans: Record<
+      string,
+      {
+        operation: "codex_provider_switch" | "codex_provider_upsert_and_switch";
+        targetProviderId: string;
+        request?: Record<string, unknown>;
+      }
+    > = {};
+    const changeJobs: Record<string, Record<string, unknown>> = {};
+    const changePhases = [
+      "precheck",
+      "snapshot",
+      "managed_write",
+      "readback",
+      "finalize",
+    ];
+    const changeResources = [
+      "provider_db_current",
+      "device_current",
+      "target_definition",
+      "codex_live_projection",
+    ];
+    const createChangePlan = (
+      operation: "codex_provider_switch" | "codex_provider_upsert_and_switch",
+      targetProviderId: string,
+      targetProviderName: string,
+      request?: Record<string, unknown>,
+    ): Record<string, unknown> => {
+      const sequence = ++changePlanSequence;
+      const planId = `fixture-change-plan-${sequence}`;
+      pendingChangePlans[planId] = {
+        operation,
+        targetProviderId,
+        ...(request ? { request: structuredClone(request) } : {}),
+      };
+      return {
+        planId,
+        operation,
+        targetProviderId,
+        targetProviderName,
+        planDigest: `fixture-plan-digest-${sequence}`,
+        baselineDigest: `fixture-baseline-digest-${sequence}`,
+        actor: { type: "direct_user" },
+        sourceVersion: "0.4.2",
+        revision: sequence,
+        createdAt: 1_700_000_000 + sequence,
+        expiresAt: 1_700_000_300 + sequence,
+        status: "ready",
+        businessSteps:
+          operation === "codex_provider_upsert_and_switch"
+            ? ["save_provider", "set_current_provider"]
+            : ["set_current_provider"],
+        ...(operation === "codex_provider_upsert_and_switch"
+          ? {
+              credential: {
+                secretRefDisplay: `sec_…${sequence.toString(16).padStart(4, "0")}`,
+                backend: "os_keyring",
+              },
+            }
+          : {}),
+        adapter: {
+          adapterId:
+            operation === "codex_provider_upsert_and_switch"
+              ? "codex_provider_upsert_switch"
+              : "codex_provider_switch",
+          adapterVersion: "1",
+          operationType: operation,
+          phases: [...changePhases],
+          readSet: [...changeResources],
+          writeSet:
+            operation === "codex_provider_upsert_and_switch"
+              ? [...changeResources]
+              : [
+                  "provider_db_current",
+                  "device_current",
+                  "codex_live_projection",
+                ],
+          idempotencyScope: "plan",
+          cancelMode: "before_managed_write",
+          compensationMode: "writer_owned_rollback",
+          faultPoints: [
+            "before_managed_write",
+            "after_managed_write_before_record",
+          ],
+        },
+        currentProviderCode: "current_configured",
+        targetProviderCode:
+          operation === "codex_provider_upsert_and_switch"
+            ? "planned_provider"
+            : "existing_provider",
+        restartExpectation: "recommended",
+        risks: [{ code: "local_configuration_write", severity: "notice" }],
+        evidenceNote: "usage_not_observed",
+      };
+    };
+    const createChangeJob = (
+      planId: string,
+      targetProviderId: string,
+      failed: boolean,
+    ): Record<string, unknown> => {
+      const jobId = `fixture-change-job-${changePlanSequence}`;
+      const job = {
+        jobId,
+        executionId: jobId,
+        idempotencyKey: planId,
+        planId,
+        targetProviderId,
+        revision: 7,
+        eventSeq: 7,
+        status: failed ? "failed" : "succeeded",
+        resultCode: failed
+          ? "writer_failed_baseline_restored"
+          : "applied_restart_recommended",
+        steps: changePhases.map((kind) => ({
+          kind,
+          status:
+            failed && kind === "managed_write" ? "compensated" : "succeeded",
+          code:
+            failed && kind === "managed_write"
+              ? "writer_rollback_observed"
+              : kind === "precheck"
+                ? "baseline_matched"
+                : kind === "snapshot"
+                  ? "snapshot_bound"
+                  : kind === "managed_write"
+                    ? "writer_returned"
+                    : kind === "readback"
+                      ? failed
+                        ? "baseline_restored"
+                        : "target_matched"
+                      : "finalized",
+        })),
+        resources: changeResources.map((kind) => ({
+          kind,
+          status: "matched",
+          code: failed ? "baseline_matched" : "target_matched",
+        })),
+        restartRequirement: failed ? "not_required" : "recommended",
+        usageEvidence: "not_observed",
+        recoveryState: failed ? "succeeded" : "not_needed",
+        ...(failed
+          ? {
+              partialResult: {
+                succeededSteps: [
+                  "precheck",
+                  "snapshot",
+                  "readback",
+                  "finalize",
+                ],
+                compensatedSteps: ["managed_write"],
+                unverifiedSteps: [],
+                remainingEffects: [],
+                manualActions: [],
+              },
+            }
+          : {}),
+        diagnosticCode: failed
+          ? "baseline_restored"
+          : "target_readback_matched",
+        liveConfigChanged: !failed,
+        createdAt: 1_700_000_100 + changePlanSequence,
+        updatedAt: 1_700_000_101 + changePlanSequence,
+      };
+      changeJobs[jobId] = structuredClone(job);
+      return job;
+    };
     const makeInstallerJob = (
       stage: "checking" | "cancelled",
     ): Record<string, unknown> => ({
@@ -599,6 +766,69 @@ export async function installRichTauriFeatureFixture(
               currentId: currentProviderIds[app] ?? "",
             };
           }
+          case "create_codex_provider_upsert_plan": {
+            await delay(fixtureOptions.providerWriteDelayMs);
+            if (fixtureOptions.providerMutation === "save_failure") {
+              throw new Error("fixture Change Plan creation rejected");
+            }
+            const request = structuredClone(
+              payload.request as Record<string, unknown>,
+            );
+            return createChangePlan(
+              "codex_provider_upsert_and_switch",
+              quickSetupIds.codex,
+              String(request.name),
+              request,
+            );
+          }
+          case "create_codex_provider_switch_plan": {
+            const targetProviderId = String(payload.targetProviderId);
+            const target = providers.codex[targetProviderId];
+            if (!target) throw new Error("fixture Provider missing");
+            return createChangePlan(
+              "codex_provider_switch",
+              targetProviderId,
+              String(target.name),
+            );
+          }
+          case "apply_change_plan": {
+            await delay(fixtureOptions.providerWriteDelayMs);
+            const planId = String(payload.planId);
+            const pending = pendingChangePlans[planId];
+            if (!pending)
+              return { kind: "rejected", errorCode: "plan_not_found" };
+            const failed = fixtureOptions.providerMutation === "switch_failure";
+            if (!failed) {
+              if (pending.operation === "codex_provider_upsert_and_switch") {
+                const request = pending.request ?? {};
+                providers.codex[pending.targetProviderId] = {
+                  id: pending.targetProviderId,
+                  name: String(request.name),
+                };
+              }
+              currentProviderIds.codex = pending.targetProviderId;
+            }
+            const job = createChangeJob(
+              planId,
+              pending.targetProviderId,
+              failed,
+            );
+            delete pendingChangePlans[planId];
+            return { kind: "admitted", job: structuredClone(job) };
+          }
+          case "get_change_job": {
+            const job = changeJobs[String(payload.jobId)];
+            if (!job) throw new Error("fixture Change Job missing");
+            return structuredClone(job);
+          }
+          case "list_recoverable_change_jobs":
+            return [];
+          case "cancel_change_job":
+            return {
+              accepted: false,
+              code: "already_terminal",
+              jobId: String(payload.jobId),
+            };
           case "apply_provider_quick_setup_with_result": {
             await delay(fixtureOptions.providerWriteDelayMs);
             if (fixtureOptions.providerMutation === "save_failure") {

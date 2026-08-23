@@ -34,6 +34,8 @@ export type ChangePlanSwitchProps = {
   currentProviderId: string;
   providers: Record<string, SafeProvider>;
   port: ChangePlanPort;
+  externalPlan?: ChangePlan | null;
+  onExternalPlanConsumed?: () => void;
   onTerminal: () => void | Promise<void>;
 };
 
@@ -56,6 +58,7 @@ function PreviewSection({
 }
 
 function ChangePlanPreview({ plan }: { plan: ChangePlan }) {
+  const upsert = plan.operation === "codex_provider_upsert_and_switch";
   const readLabels = plan.adapter.readSet.map((kind) => RESOURCE_LABELS[kind]);
   const writeLabels = plan.adapter.writeSet.map(
     (kind) => RESOURCE_LABELS[kind],
@@ -64,10 +67,31 @@ function ChangePlanPreview({ plan }: { plan: ChangePlan }) {
     <div className="fy-change-plan-preview" data-testid="change-plan-preview">
       <PreviewSection title="语义变化">
         <p>
-          将 Codex 当前配置切换到 <strong>{plan.targetProviderName}</strong>。
+          {upsert ? "保存" : "将 Codex 当前配置切换到"}{" "}
+          <strong>{plan.targetProviderName}</strong>
+          {upsert ? "，并设为当前配置。" : "。"}
         </p>
         <p>不会在应用流程中发送模型请求或主动验证网络。</p>
+        <ol>
+          {plan.businessSteps.map((step) => (
+            <li key={step}>
+              {step === "save_provider" ? "保存 Provider" : "设为当前 Provider"}
+            </li>
+          ))}
+        </ol>
       </PreviewSection>
+      {plan.credential ? (
+        <PreviewSection title="凭据边界">
+          <p>
+            API Key 将保存到系统钥匙串（{plan.credential.secretRefDisplay}
+            ）；数据库、事件和日志不保存明文或摘要。
+          </p>
+          <p>
+            应用时仍会把明文投影到 Codex 自己的 auth/config 文件，这是 Codex CLI
+            当前运行所需的本机边界。
+          </p>
+        </PreviewSection>
+      ) : null}
       <PreviewSection title="风险与重启">
         <p>{RESTART_LABELS[plan.restartExpectation]}</p>
         <p>
@@ -186,6 +210,8 @@ export function ChangePlanSwitch({
   currentProviderId,
   providers,
   port,
+  externalPlan = null,
+  onExternalPlanConsumed,
   onTerminal,
 }: ChangePlanSwitchProps) {
   const [plan, setPlan] = useState<ChangePlan | null>(null);
@@ -198,6 +224,17 @@ export function ChangePlanSwitch({
   const jobRef = useRef<ChangeJobSnapshot | null>(null);
   const terminalReportedRef = useRef<string | null>(null);
   const recoveryLoadedRef = useRef(false);
+  const externalPlanHandledRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!active || !externalPlan) return;
+    if (externalPlanHandledRef.current === externalPlan.planId) return;
+    externalPlanHandledRef.current = externalPlan.planId;
+    planRef.current = externalPlan;
+    setPlan(externalPlan);
+    setNotice(null);
+    setPreviewOpen(true);
+  }, [active, externalPlan]);
 
   const acceptSnapshot = useCallback((snapshot: ChangeJobSnapshot) => {
     if (!mountedRef.current) return;
@@ -243,20 +280,13 @@ export function ChangePlanSwitch({
   }, [acceptSnapshot, port]);
 
   useEffect(() => {
-    if (
-      !active ||
-      recoveryLoadedRef.current ||
-      Object.keys(providers).length === 0
-    )
-      return;
+    if (!active || recoveryLoadedRef.current) return;
     recoveryLoadedRef.current = true;
     void port
       .listRecoverableJobs()
       .then(
         (jobs) =>
-          jobs
-            .filter((candidate) => candidate.targetProviderId in providers)
-            .sort((left, right) => right.updatedAt - left.updatedAt)[0],
+          jobs.sort((left, right) => right.updatedAt - left.updatedAt)[0],
       )
       .then((candidate) => candidate && acceptSnapshot(candidate))
       .catch(() => undefined);
@@ -372,6 +402,7 @@ export function ChangePlanSwitch({
     setJob(null);
     setPlan(null);
     setNotice(null);
+    onExternalPlanConsumed?.();
   };
 
   return (
@@ -433,7 +464,11 @@ export function ChangePlanSwitch({
       <Dialog
         open={previewOpen && plan !== null}
         onOpenChange={(open) => busy === null && setPreviewOpen(open)}
-        title="确认 Codex 配置切换"
+        title={
+          plan?.operation === "codex_provider_upsert_and_switch"
+            ? "确认保存 Codex 配置"
+            : "确认 Codex 配置切换"
+        }
         description="确认的是这一张已绑定当前基线的计划；配置漂移或过期后不会继续写入。"
         large
         actions={

@@ -160,6 +160,7 @@ impl SecretServiceError {
         self.code
     }
 
+    #[allow(dead_code)]
     pub(crate) const fn as_probe(&self) -> Option<BackendProbe> {
         match self.code {
             SecretErrorCode::Missing => Some(BackendProbe::missing()),

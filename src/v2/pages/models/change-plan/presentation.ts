@@ -80,6 +80,7 @@ const RESULT_COPY: Readonly<Record<ChangeResultCode, string>> = {
 
 const PLAN_ERROR_COPY: Readonly<Record<ChangePlanErrorCode, string>> = {
   unsupported_operation: "当前操作暂不受支持。",
+  invalid_request: "配置内容无效，请返回检查后重新生成计划。",
   target_not_found: "目标 Provider 已不存在，请刷新后重试。",
   target_already_current: "目标 Provider 已是当前配置。",
   baseline_unavailable: "当前基线无法安全读取，请修复本机配置后重试。",
@@ -120,6 +121,10 @@ export function manualRecoveryCopy(job: ChangeJobSnapshot): string[] {
         return "恢复本机配置的可读状态后重新回读。";
       case "inspect_and_resolve":
         return "检查本机 Provider 与 Codex 配置并人工消除不一致。";
+      case "delete_previous_secret_ref":
+        return "旧凭据仍保留在系统钥匙串，请在确认新配置可用后人工删除。";
+      case "inspect_secret_store":
+        return "检查系统钥匙串中的新旧凭据引用，并只删除已确认不再使用的条目。";
       default:
         return "请人工检查本机状态后再继续修改。";
     }

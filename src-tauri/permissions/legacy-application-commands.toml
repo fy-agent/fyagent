@@ -52,6 +52,7 @@ commands.allow = [
   "copilot_start_device_flow",
   "copy_text_to_clipboard",
   "create_codex_provider_switch_plan",
+  "create_codex_provider_upsert_plan",
   "create_db_backup",
   "create_profile",
   "delete_claude_mcp_server",

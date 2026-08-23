@@ -121,6 +121,10 @@ pub(crate) struct SecretHandle {
 }
 
 impl SecretHandle {
+    pub(crate) fn generate() -> Self {
+        Self::new(SecretRef::generate(), SecretVersion::generate())
+    }
+
     pub(crate) fn new(secret_ref: SecretRef, version: SecretVersion) -> Self {
         Self {
             secret_ref,
@@ -183,6 +187,7 @@ impl BackendProbe {
         }
     }
 
+    #[allow(dead_code)]
     pub(crate) const fn missing() -> Self {
         Self {
             presence: SecretPresence::Missing,
@@ -223,16 +228,24 @@ impl SecretSummaryDto {
         }
     }
 
+    #[allow(dead_code)]
     pub(crate) fn handle(&self) -> SecretHandle {
         SecretHandle::new(self.secret_ref.clone(), self.version.clone())
     }
 
+    #[allow(dead_code)]
     pub(crate) fn presence(&self) -> SecretPresence {
         self.presence
     }
 
+    #[allow(dead_code)]
     pub(crate) fn availability(&self) -> SecretAvailability {
         self.availability
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn backend_kind(&self) -> SecretBackendKind {
+        self.backend_kind
     }
 }
 

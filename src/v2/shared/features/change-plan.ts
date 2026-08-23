@@ -7,7 +7,10 @@ export const CHANGE_STEP_KINDS = [
 ] as const;
 
 export type ChangeStepKind = (typeof CHANGE_STEP_KINDS)[number];
-export type ChangeOperation = "codex_provider_switch";
+export type ChangeOperation =
+  | "codex_provider_switch"
+  | "codex_provider_upsert_and_switch";
+export type ChangeBusinessStepKind = "save_provider" | "set_current_provider";
 export type ChangePlanStatus = "ready" | "consumed";
 export type ChangeJobStatus =
   | "planned"
@@ -63,6 +66,7 @@ export type ChangeResultCode =
   | "recovery_required";
 export type ChangePlanErrorCode =
   | "unsupported_operation"
+  | "invalid_request"
   | "target_not_found"
   | "target_already_current"
   | "baseline_unavailable"
@@ -102,6 +106,11 @@ export type ChangePlan = {
   createdAt: number;
   expiresAt: number;
   status: ChangePlanStatus;
+  businessSteps: ChangeBusinessStepKind[];
+  credential?: {
+    secretRefDisplay: string;
+    backend: "os_keyring";
+  };
   adapter: ChangeAdapterDescriptor;
   currentProviderCode: string;
   targetProviderCode: string;

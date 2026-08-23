@@ -17,7 +17,9 @@ use std::collections::HashMap;
 use std::fmt;
 use std::fs;
 use std::io::ErrorKind;
+use std::ops::{Deref, DerefMut};
 use std::path::PathBuf;
+use zeroize::Zeroize;
 
 use crate::app_config::AppType;
 use crate::database::{validate_cost_multiplier, validate_pricing_source};
@@ -127,6 +129,176 @@ pub fn reapply_current_codex_official_live(state: &AppState) -> Result<bool, App
 
 /// Provider business logic service
 pub struct ProviderService;
+
+/// A Provider materialized only for a native write. Codex credentials can
+/// appear in both `auth.OPENAI_API_KEY` and a generated bearer-token field;
+/// zeroize the complete settings projection when every exit path drops it.
+pub(crate) struct EphemeralProvider(Provider);
+
+impl EphemeralProvider {
+    pub(crate) fn new(provider: Provider) -> Self {
+        Self(provider)
+    }
+}
+
+/// Materialize one SecretRef-backed Codex Provider for the established native
+/// writer. The returned wrapper owns and zeroizes every plaintext projection.
+pub(crate) fn materialize_codex_secret_ref_provider(
+    persisted_provider: &Provider,
+    material: &crate::services::secret::SecretMaterial,
+) -> Result<EphemeralProvider, AppError> {
+    let auth = persisted_provider
+        .settings_config
+        .get("auth")
+        .and_then(Value::as_object)
+        .ok_or_else(|| AppError::Message("Codex SecretRef contract is invalid".to_string()))?;
+    let safe_contract = auth
+        .get("secretRef")
+        .and_then(Value::as_str)
+        .is_some_and(|value| value.starts_with("sec_"))
+        && auth
+            .get("secretVersion")
+            .and_then(Value::as_str)
+            .is_some_and(|value| value.starts_with("sv_"))
+        && auth.get("backend").and_then(Value::as_str) == Some("osKeyring")
+        && auth.get("OPENAI_API_KEY").is_none()
+        && persisted_provider
+            .settings_config
+            .get("config")
+            .and_then(Value::as_str)
+            .and_then(crate::codex_config::extract_codex_experimental_bearer_token)
+            .is_none();
+    if !safe_contract {
+        return Err(AppError::Message(
+            "Codex SecretRef contract is invalid".to_string(),
+        ));
+    }
+    let key = String::from_utf8(material.as_bytes().to_vec())
+        .map_err(|_| AppError::Message("Codex secret material is invalid".to_string()))?;
+    let mut live = persisted_provider.clone();
+    live.settings_config["auth"] = serde_json::json!({ "OPENAI_API_KEY": key });
+    Ok(EphemeralProvider::new(live))
+}
+
+pub(crate) fn codex_secret_ref_handle(
+    provider: &Provider,
+) -> Result<Option<crate::services::secret::SecretHandle>, AppError> {
+    use crate::services::secret::{SecretHandle, SecretRef, SecretVersion};
+
+    let Some(auth) = provider.settings_config.get("auth") else {
+        return Ok(None);
+    };
+    let Some(secret_ref) = auth.get("secretRef") else {
+        return Ok(None);
+    };
+    let secret_ref = secret_ref
+        .as_str()
+        .ok_or_else(|| AppError::Message("Codex SecretRef contract is invalid".to_string()))?;
+    let version = auth
+        .get("secretVersion")
+        .and_then(Value::as_str)
+        .ok_or_else(|| AppError::Message("Codex SecretRef contract is invalid".to_string()))?;
+    if auth.get("backend").and_then(Value::as_str) != Some("osKeyring")
+        || auth.get("OPENAI_API_KEY").is_some()
+        || provider
+            .settings_config
+            .get("config")
+            .and_then(Value::as_str)
+            .and_then(crate::codex_config::extract_codex_experimental_bearer_token)
+            .is_some()
+    {
+        return Err(AppError::Message(
+            "Codex SecretRef contract is invalid".to_string(),
+        ));
+    }
+    Ok(Some(SecretHandle::new(
+        SecretRef::parse(secret_ref.to_string())
+            .map_err(|_| AppError::Message("Codex SecretRef contract is invalid".to_string()))?,
+        SecretVersion::parse(version.to_string())
+            .map_err(|_| AppError::Message("Codex SecretRef contract is invalid".to_string()))?,
+    )))
+}
+
+pub(crate) fn materialize_codex_secret_ref_provider_from_keyring(
+    provider: &Provider,
+) -> Result<Option<EphemeralProvider>, AppError> {
+    use crate::services::secret::{NativeSecretBackend, SecretBackend};
+
+    let Some(handle) = codex_secret_ref_handle(provider)? else {
+        return Ok(None);
+    };
+    let material = NativeSecretBackend::new()
+        .read(handle.secret_ref())
+        .map_err(|error| {
+            AppError::Message(format!(
+                "Codex SecretRef is unavailable: {:?}",
+                error.code()
+            ))
+        })?;
+    materialize_codex_secret_ref_provider(provider, &material).map(Some)
+}
+
+fn sanitize_codex_secret_ref_backfill(
+    db: &crate::database::Database,
+    provider: &Provider,
+    live_settings: Value,
+) -> Result<Value, AppError> {
+    if codex_secret_ref_handle(provider)?.is_none() {
+        return Ok(strip_common_config_from_live_settings(
+            db,
+            &AppType::Codex,
+            provider,
+            live_settings,
+        ));
+    }
+    let mut sanitized =
+        strip_common_config_from_live_settings(db, &AppType::Codex, provider, live_settings);
+    let safe_auth = provider
+        .settings_config
+        .get("auth")
+        .cloned()
+        .ok_or_else(|| AppError::Message("Codex SecretRef contract is invalid".to_string()))?;
+    let config = sanitized
+        .get("config")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let safe_config =
+        crate::codex_config::remove_codex_experimental_bearer_token_if(config, |_| true)?;
+    let object = sanitized
+        .as_object_mut()
+        .ok_or_else(|| AppError::Message("Codex live settings are invalid".to_string()))?;
+    object.insert("auth".to_string(), safe_auth);
+    object.insert("config".to_string(), Value::String(safe_config));
+    Ok(sanitized)
+}
+
+impl Deref for EphemeralProvider {
+    type Target = Provider;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for EphemeralProvider {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl Drop for EphemeralProvider {
+    fn drop(&mut self) {
+        if let Some(Value::String(value)) =
+            self.0.settings_config.pointer_mut("/auth/OPENAI_API_KEY")
+        {
+            value.zeroize();
+        }
+        if let Some(Value::String(value)) = self.0.settings_config.get_mut("config") {
+            value.zeroize();
+        }
+        self.0.settings_config = Value::Null;
+    }
+}
 
 const QUICK_SETUP_CLAUDE_PROVIDER_ID: &str = "fyagent-v2-quick-setup-claude";
 const QUICK_SETUP_CODEX_PROVIDER_ID: &str = "fyagent-v2-quick-setup-codex";
@@ -1163,6 +1335,62 @@ mod tests {
                 assert_eq!(state.db.get_current_provider("codex").unwrap(), None);
                 assert_eq!(fs::read(get_codex_config_path()).unwrap(), original_live);
             }
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn secret_ref_quick_setup_persists_only_safe_provider_and_materializes_live_once() {
+        with_test_home(|state, _| {
+            let handle = crate::services::secret::SecretHandle::generate();
+            let material = crate::services::secret::SecretMaterial::from_native_input(
+                b"secret-ref-writer-canary".to_vec(),
+                crate::services::secret::SecretPurpose::CodexApiKey,
+            )
+            .unwrap();
+            let mut persisted = Provider::with_id(
+                QUICK_SETUP_CODEX_PROVIDER_ID.to_string(),
+                "Safe Codex".to_string(),
+                json!({
+                    "auth": {
+                        "secretRef": handle.secret_ref().as_str(),
+                        "secretVersion": handle.version().as_str(),
+                        "backend": "osKeyring",
+                    },
+                    "config": "model = \"gpt-safe\"\nmodel_provider = \"custom\"\n[model_providers.custom]\nname = \"Safe Codex\"\nbase_url = \"https://gateway.example.test/v1\"\nwire_api = \"responses\"\nrequires_openai_auth = true\n",
+                }),
+                None,
+            );
+            persisted.category = Some("custom".to_string());
+            persisted.meta = Some(ProviderMeta {
+                image_extension_configured: Some(true),
+                ..ProviderMeta::default()
+            });
+            let live = materialize_codex_secret_ref_provider(&persisted, &material).unwrap();
+
+            let result = ProviderService::apply_quick_setup_with_secret_ref_lock_held(
+                state,
+                persisted.clone(),
+                live,
+            )
+            .unwrap();
+            assert_eq!(result.app, "codex");
+            let stored = state
+                .db
+                .get_provider_by_id(QUICK_SETUP_CODEX_PROVIDER_ID, "codex")
+                .unwrap()
+                .unwrap();
+            let stored_json = serde_json::to_string(&stored).unwrap();
+            assert_eq!(stored.settings_config, persisted.settings_config);
+            assert!(!stored_json.contains("secret-ref-writer-canary"));
+            assert!(!stored_json.contains("OPENAI_API_KEY"));
+            let live_json =
+                serde_json::to_string(&read_live_settings(AppType::Codex).unwrap()).unwrap();
+            assert!(live_json.contains("secret-ref-writer-canary"));
+            assert_eq!(
+                state.db.get_current_provider("codex").unwrap().as_deref(),
+                Some(QUICK_SETUP_CODEX_PROVIDER_ID)
+            );
         });
     }
 
@@ -4121,13 +4349,86 @@ impl ProviderService {
 
         let _guard =
             futures::executor::block_on(state.proxy_service.lock_switch_for_app(app_type.as_str()));
-        Self::apply_quick_setup_locked(state, app_type, provider)
+        Self::apply_quick_setup_locked_with_storage(
+            state,
+            app_type,
+            EphemeralProvider::new(provider),
+            None,
+        )
     }
 
-    fn apply_quick_setup_locked(
+    /// Apply the SecretRef-backed Codex quick-setup projection while the UCP
+    /// executor already owns the provider mutation lock. The database receives
+    /// only `persisted_provider`; `live_provider` exists solely for the one
+    /// established atomic Provider writer and is zeroized on every exit path.
+    pub(crate) fn apply_quick_setup_with_secret_ref_lock_held(
+        state: &AppState,
+        persisted_provider: Provider,
+        live_provider: EphemeralProvider,
+    ) -> Result<ProviderMutationResult<SwitchResult>, QuickSetupApplyError> {
+        let raw_key_present = live_provider
+            .settings_config
+            .pointer("/auth/OPENAI_API_KEY")
+            .and_then(Value::as_str)
+            .is_some_and(|value| !value.trim().is_empty());
+        let safe_auth = persisted_provider.settings_config.get("auth");
+        let safe_contract = safe_auth
+            .and_then(|auth| auth.get("secretRef"))
+            .and_then(Value::as_str)
+            .is_some_and(|value| value.starts_with("sec_"))
+            && safe_auth
+                .and_then(|auth| auth.get("secretVersion"))
+                .and_then(Value::as_str)
+                .is_some_and(|value| value.starts_with("sv_"))
+            && safe_auth
+                .and_then(|auth| auth.get("backend"))
+                .and_then(Value::as_str)
+                == Some("osKeyring")
+            && safe_auth
+                .and_then(|auth| auth.get("OPENAI_API_KEY"))
+                .is_none()
+            && persisted_provider
+                .settings_config
+                .get("config")
+                .and_then(Value::as_str)
+                .and_then(crate::codex_config::extract_codex_experimental_bearer_token)
+                .is_none();
+        let same_public_identity = {
+            let mut persisted = serde_json::to_value(&persisted_provider).unwrap_or(Value::Null);
+            let mut live = serde_json::to_value(&*live_provider).unwrap_or(Value::Null);
+            for value in [&mut persisted, &mut live] {
+                if let Some(object) = value.as_object_mut() {
+                    object.remove("settingsConfig");
+                }
+            }
+            persisted == live
+        };
+        if !raw_key_present
+            || !safe_contract
+            || !same_public_identity
+            || persisted_provider.id != QUICK_SETUP_CODEX_PROVIDER_ID
+        {
+            return Err(QuickSetupApplyError::rolled_back(
+                "SecretRef-backed Codex quick setup contract is invalid",
+            ));
+        }
+        Self::reject_quick_setup_secret_collisions(&AppType::Codex, &live_provider)
+            .map_err(QuickSetupApplyError::rolled_back)?;
+        Self::validate_quick_setup_base_url(&AppType::Codex, &live_provider)
+            .map_err(QuickSetupApplyError::rolled_back)?;
+        Self::apply_quick_setup_locked_with_storage(
+            state,
+            AppType::Codex,
+            live_provider,
+            Some(persisted_provider),
+        )
+    }
+
+    fn apply_quick_setup_locked_with_storage(
         state: &AppState,
         app_type: AppType,
-        mut provider: Provider,
+        mut provider: EphemeralProvider,
+        persisted_override: Option<Provider>,
     ) -> Result<ProviderMutationResult<SwitchResult>, QuickSetupApplyError> {
         let existing_provider = state
             .db
@@ -4166,6 +4467,28 @@ impl ProviderService {
             // update. Make that persistence rule part of the normalized value
             // verified below instead of treating it as trigger interference.
             provider.in_failover_queue = existing.in_failover_queue;
+        }
+
+        let mut persisted_provider = persisted_override.unwrap_or_else(|| provider.0.clone());
+        Self::normalize_provider_if_claude(&app_type, &mut persisted_provider);
+        Self::validate_provider_settings(&app_type, &persisted_provider)
+            .map_err(QuickSetupApplyError::rolled_back)?;
+        if matches!(app_type, AppType::Codex) {
+            crate::codex_config::prepare_codex_provider_features_for_save(
+                &mut persisted_provider,
+                existing_provider.is_none(),
+            )
+            .map_err(QuickSetupApplyError::rolled_back)?;
+        }
+        normalize_provider_common_config_for_storage(
+            state.db.as_ref(),
+            &app_type,
+            &mut persisted_provider,
+        )
+        .map_err(QuickSetupApplyError::rolled_back)?;
+        Self::normalize_usage_script_credential_overrides(&app_type, &mut persisted_provider);
+        if let Some(existing) = &existing_provider {
+            persisted_provider.in_failover_queue = existing.in_failover_queue;
         }
 
         let has_live_backup = backup_before.is_some();
@@ -4215,11 +4538,13 @@ impl ProviderService {
 
             // Commit the exact normalized request provider only after every
             // fallible live/backup preparation and observation has succeeded.
-            state.db.save_provider(app_type.as_str(), &provider)?;
-            crate::settings::set_current_provider(&app_type, Some(&provider.id))?;
             state
                 .db
-                .set_current_provider(app_type.as_str(), &provider.id)?;
+                .save_provider(app_type.as_str(), &persisted_provider)?;
+            crate::settings::set_current_provider(&app_type, Some(&persisted_provider.id))?;
+            state
+                .db
+                .set_current_provider(app_type.as_str(), &persisted_provider.id)?;
 
             let mut result = SwitchResult::default();
             if !should_prepare_takeover {
@@ -4236,17 +4561,17 @@ impl ProviderService {
             // after those trigger-sensitive statements have finished.
             let persisted = state
                 .db
-                .get_provider_by_id(&provider.id, app_type.as_str())?
+                .get_provider_by_id(&persisted_provider.id, app_type.as_str())?
                 .ok_or_else(|| {
                     AppError::Message(
                         "Provider quick setup persistence verification failed".to_string(),
                     )
                 })?;
-            if !Self::quick_setup_persisted_provider_matches(&provider, &persisted)?
+            if !Self::quick_setup_persisted_provider_matches(&persisted_provider, &persisted)?
                 || state.db.get_current_provider(app_type.as_str())?.as_deref()
-                    != Some(provider.id.as_str())
+                    != Some(persisted_provider.id.as_str())
                 || crate::settings::get_current_provider(&app_type).as_deref()
-                    != Some(provider.id.as_str())
+                    != Some(persisted_provider.id.as_str())
             {
                 return Err(AppError::Message(
                     "Provider quick setup persistence verification failed".to_string(),
@@ -4273,7 +4598,9 @@ impl ProviderService {
                 let mut rollback_errors = Vec::new();
                 let restore_provider = match &existing_provider {
                     Some(previous) => state.db.save_provider(app_type.as_str(), previous),
-                    None => state.db.delete_provider(app_type.as_str(), &provider.id),
+                    None => state
+                        .db
+                        .delete_provider(app_type.as_str(), &persisted_provider.id),
                 };
                 if let Err(error) = restore_provider {
                     rollback_errors.push(format!("restore provider: {error}"));
@@ -4308,7 +4635,10 @@ impl ProviderService {
                 }
                 rollback_errors.extend(restore_quick_setup_live(&live_snapshots));
 
-                match state.db.get_provider_by_id(&provider.id, app_type.as_str()) {
+                match state
+                    .db
+                    .get_provider_by_id(&persisted_provider.id, app_type.as_str())
+                {
                     Ok(restored) => {
                         let matches = match (&existing_provider, restored.as_ref()) {
                             (None, None) => Ok(true),
@@ -4386,7 +4716,7 @@ impl ProviderService {
                 .zip(live_after)
                 .is_some_and(|(before, after)| before != after),
             app: app_type.as_str().to_string(),
-            warning_codes: Self::quick_setup_warning_codes(state, &app_type, &provider),
+            warning_codes: Self::quick_setup_warning_codes(state, &app_type, &persisted_provider),
         })
     }
 
@@ -4974,6 +5304,17 @@ impl ProviderService {
 
         let should_hot_switch = is_app_taken_over || live_taken_over;
 
+        if should_hot_switch
+            && matches!(app_type, AppType::Codex)
+            && codex_secret_ref_handle(_provider)?.is_some()
+        {
+            return Err(AppError::localized(
+                "switch.secret_ref_proxy_takeover_unsupported",
+                "SecretRef 管理的 Codex 配置暂不支持代理接管，请先关闭代理接管。",
+                "SecretRef-managed Codex providers do not support proxy takeover yet. Disable proxy takeover first.",
+            ));
+        }
+
         // Block switching to official providers when proxy takeover is active.
         // Using a proxy with official APIs (Anthropic/OpenAI/Google) may cause account bans.
         if should_hot_switch
@@ -5069,13 +5410,21 @@ impl ProviderService {
                                 &mut result,
                             );
 
-                            current_provider.settings_config =
+                            current_provider.settings_config = if matches!(app_type, AppType::Codex)
+                            {
+                                sanitize_codex_secret_ref_backfill(
+                                    state.db.as_ref(),
+                                    &current_provider,
+                                    live_config,
+                                )?
+                            } else {
                                 strip_common_config_from_live_settings(
                                     state.db.as_ref(),
                                     &app_type,
                                     &current_provider,
                                     live_config,
-                                );
+                                )
+                            };
                             if let Err(e) =
                                 state.db.save_provider(app_type.as_str(), &current_provider)
                             {
@@ -5240,6 +5589,13 @@ impl ProviderService {
         // See the save path above: backup/placeholders are the ownership signal
         // here, not just proxy_config.enabled.
         if has_live_backup || live_taken_over {
+            if matches!(app_type, AppType::Codex) && codex_secret_ref_handle(provider)?.is_some() {
+                return Err(AppError::localized(
+                    "sync.secret_ref_proxy_takeover_unsupported",
+                    "SecretRef 管理的 Codex 配置暂不支持代理接管同步。",
+                    "SecretRef-managed Codex providers do not support proxy takeover sync yet.",
+                ));
+            }
             if matches!(app_type, AppType::ClaudeDesktop) {
                 write_live_with_common_config(state.db.as_ref(), &app_type, provider)?;
                 return Ok(());

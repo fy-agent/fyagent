@@ -73,6 +73,7 @@ function createPort(overrides: Partial<ChangePlanPort> = {}): {
   let listener: ((event: ChangeJobUpdatedEvent) => void) | undefined;
   const port: ChangePlanPort = {
     createCodexProviderSwitchPlan: vi.fn(async () => planFixture()),
+    createCodexProviderUpsertPlan: vi.fn(async () => planFixture()),
     apply: vi.fn<ChangePlanPort["apply"]>(async () => ({
       kind: "admitted",
       job: terminalFixture(),

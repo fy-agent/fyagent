@@ -1,7 +1,9 @@
 use std::fmt;
 
 use subtle::ConstantTimeEq;
-use zeroize::{Zeroize, Zeroizing};
+#[cfg(test)]
+use zeroize::Zeroize;
+use zeroize::Zeroizing;
 
 use super::{SecretPurpose, SecretServiceError};
 
@@ -34,6 +36,7 @@ impl SecretMaterial {
         bool::from(self.0.as_slice().ct_eq(other))
     }
 
+    #[cfg(test)]
     pub(crate) fn zeroize_now(&mut self) {
         self.0.zeroize();
     }

@@ -1,0 +1,3 @@
+{"phase":"check","status":"pending","at":"2026-08-24T05:05:00+08:00"}
+{"phase":"check","status":"in_progress","at":"2026-08-24T06:16:00+08:00","evidence":"final-head full repository gate and Required CI pending"}
+{"phase":"check","status":"local_completed","at":"2026-08-24T06:22:00+08:00","evidence":"final-code mise run check and 116-case browser gate passed; Required CI pending push"}

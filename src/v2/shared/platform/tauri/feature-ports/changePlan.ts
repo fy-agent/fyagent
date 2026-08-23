@@ -15,6 +15,7 @@ import {
   type ChangeResourceResult,
 } from "../../../features/change-plan";
 import type { FeaturePorts } from "../../../features/ports";
+import { assertQuickSetupRequest } from "./models";
 import {
   hasExactKeys,
   hasRequiredAndOptionalKeys,
@@ -89,6 +90,7 @@ const RESULT_CODES = [
 ] as const;
 const PLAN_ERRORS = [
   "unsupported_operation",
+  "invalid_request",
   "target_not_found",
   "target_already_current",
   "baseline_unavailable",
@@ -144,7 +146,10 @@ function parseAdapter(value: unknown): ChangeAdapterDescriptor {
     ]) ||
     !isSafeId(value.adapterId) ||
     !isSafeId(value.adapterVersion) ||
-    value.operationType !== "codex_provider_switch" ||
+    !isOneOf(value.operationType, [
+      "codex_provider_switch",
+      "codex_provider_upsert_and_switch",
+    ] as const) ||
     !Array.isArray(value.phases) ||
     value.phases.length !== CHANGE_STEP_KINDS.length ||
     !value.phases.every((item, index) => item === CHANGE_STEP_KINDS[index]) ||
@@ -181,28 +186,36 @@ function parseAdapter(value: unknown): ChangeAdapterDescriptor {
 function parsePlan(value: unknown): ChangePlan {
   if (
     !isRecord(value) ||
-    !hasExactKeys(value, [
-      "planId",
-      "operation",
-      "targetProviderId",
-      "targetProviderName",
-      "planDigest",
-      "baselineDigest",
-      "actor",
-      "sourceVersion",
-      "revision",
-      "createdAt",
-      "expiresAt",
-      "status",
-      "adapter",
-      "currentProviderCode",
-      "targetProviderCode",
-      "restartExpectation",
-      "risks",
-      "evidenceNote",
-    ]) ||
+    !hasRequiredAndOptionalKeys(
+      value,
+      [
+        "planId",
+        "operation",
+        "targetProviderId",
+        "targetProviderName",
+        "planDigest",
+        "baselineDigest",
+        "actor",
+        "sourceVersion",
+        "revision",
+        "createdAt",
+        "expiresAt",
+        "status",
+        "businessSteps",
+        "adapter",
+        "currentProviderCode",
+        "targetProviderCode",
+        "restartExpectation",
+        "risks",
+        "evidenceNote",
+      ],
+      ["credential"],
+    ) ||
     !isSafeId(value.planId) ||
-    value.operation !== "codex_provider_switch" ||
+    !isOneOf(value.operation, [
+      "codex_provider_switch",
+      "codex_provider_upsert_and_switch",
+    ] as const) ||
     !isSafeId(value.targetProviderId) ||
     typeof value.targetProviderName !== "string" ||
     value.targetProviderName.length === 0 ||
@@ -217,11 +230,31 @@ function parsePlan(value: unknown): ChangePlan {
     !isInteger(value.createdAt) ||
     !isInteger(value.expiresAt) ||
     !isOneOf(value.status, ["ready", "consumed"] as const) ||
+    !Array.isArray(value.businessSteps) ||
     typeof value.currentProviderCode !== "string" ||
     typeof value.targetProviderCode !== "string" ||
     !isOneOf(value.restartExpectation, RESTART_REQUIREMENTS) ||
     !Array.isArray(value.risks) ||
     value.evidenceNote !== "usage_not_observed"
+  )
+    throw new Error("Change Plan is unavailable");
+  const expectedSteps =
+    value.operation === "codex_provider_upsert_and_switch"
+      ? ["save_provider", "set_current_provider"]
+      : ["set_current_provider"];
+  if (
+    value.businessSteps.length !== expectedSteps.length ||
+    !value.businessSteps.every(
+      (step, index) => step === expectedSteps[index],
+    ) ||
+    (value.operation === "codex_provider_upsert_and_switch" &&
+      (!isRecord(value.credential) ||
+        !hasExactKeys(value.credential, ["secretRefDisplay", "backend"]) ||
+        typeof value.credential.secretRefDisplay !== "string" ||
+        !/^sec_…[0-9a-f]{4}$/.test(value.credential.secretRefDisplay) ||
+        value.credential.backend !== "os_keyring")) ||
+    (value.operation === "codex_provider_switch" &&
+      value.credential !== undefined)
   )
     throw new Error("Change Plan is unavailable");
   const risks = value.risks.map((risk) => {
@@ -234,6 +267,9 @@ function parsePlan(value: unknown): ChangePlan {
       throw new Error("Change Plan is unavailable");
     return { code: risk.code, severity: risk.severity };
   });
+  const adapter = parseAdapter(value.adapter);
+  if (adapter.operationType !== value.operation)
+    throw new Error("Change Plan is unavailable");
   return {
     planId: value.planId,
     operation: value.operation,
@@ -247,7 +283,16 @@ function parsePlan(value: unknown): ChangePlan {
     createdAt: value.createdAt,
     expiresAt: value.expiresAt,
     status: value.status,
-    adapter: parseAdapter(value.adapter),
+    businessSteps: [...value.businessSteps],
+    credential:
+      value.operation === "codex_provider_upsert_and_switch"
+        ? {
+            secretRefDisplay: (value.credential as { secretRefDisplay: string })
+              .secretRefDisplay,
+            backend: "os_keyring",
+          }
+        : undefined,
+    adapter,
     currentProviderCode: value.currentProviderCode,
     targetProviderCode: value.targetProviderCode,
     restartExpectation: value.restartExpectation,
@@ -453,6 +498,12 @@ export function createChangePlanPort(): FeaturePorts["changePlan"] {
       parsePlan(
         await invoke<unknown>("create_codex_provider_switch_plan", {
           targetProviderId: assertId(targetProviderId),
+        }),
+      ),
+    createCodexProviderUpsertPlan: async (request) =>
+      parsePlan(
+        await invoke<unknown>("create_codex_provider_upsert_plan", {
+          request: assertQuickSetupRequest(request),
         }),
       ),
     apply: async (planId, planDigest) =>

@@ -745,7 +745,7 @@ pub fn write_codex_live_for_provider(
 /// provider-scoped `experimental_bearer_token` so live requests still authenticate.
 /// `requires_openai_auth = true` or a missing field keeps the stored TOML as-is
 /// so the API key continues to live only in `auth.json`.
-fn project_codex_live_config_when_openai_auth_disabled(
+pub(crate) fn project_codex_live_config_when_openai_auth_disabled(
     auth: &Value,
     config_text: &str,
 ) -> Result<String, AppError> {

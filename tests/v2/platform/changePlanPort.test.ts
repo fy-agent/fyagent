@@ -90,6 +90,56 @@ describe("V2 Change Plan port", () => {
     });
   });
 
+  it("creates a strict Codex save-and-switch plan without exposing plaintext credentials", async () => {
+    const basePlan = structuredClone(fixtureJson.plan);
+    const upsertPlan = {
+      ...basePlan,
+      operation: "codex_provider_upsert_and_switch",
+      targetProviderId: "fyagent-v2-quick-setup-codex",
+      targetProviderName: "Codex Gateway",
+      businessSteps: ["save_provider", "set_current_provider"],
+      credential: {
+        secretRefDisplay: "sec_…1a2b",
+        backend: "os_keyring",
+      },
+      adapter: {
+        ...basePlan.adapter,
+        adapterId: "codex_provider_upsert_switch",
+        operationType: "codex_provider_upsert_and_switch",
+        writeSet: [
+          "target_definition",
+          "provider_db_current",
+          "device_current",
+          "codex_live_projection",
+        ],
+      },
+    };
+    invoke.mockResolvedValueOnce(upsertPlan);
+
+    const { createChangePlanPort } = await import(
+      "@/v2/shared/platform/tauri/feature-ports/changePlan"
+    );
+    const port = createChangePlanPort();
+    const request = {
+      name: "Codex Gateway",
+      baseUrl: "https://codex.example/v1",
+      apiKey: "SECRET-CANARY-MUST-NOT-CROSS-RESPONSE",
+      modelId: "gpt-5",
+      codexFeatures: { imageExtension: true, websockets: false },
+    };
+    const plan = await port.createCodexProviderUpsertPlan(request);
+
+    expect(plan).toMatchObject({
+      operation: "codex_provider_upsert_and_switch",
+      businessSteps: ["save_provider", "set_current_provider"],
+      credential: { secretRefDisplay: "sec_…1a2b", backend: "os_keyring" },
+    });
+    expect(JSON.stringify(plan)).not.toContain(request.apiKey);
+    expect(invoke).toHaveBeenCalledWith("create_codex_provider_upsert_plan", {
+      request,
+    });
+  });
+
   it("fails closed on excess wire fields and ignores malformed event hints", async () => {
     let eventHandler: ((event: { payload: unknown }) => void) | undefined;
     listen.mockImplementation(async (_name, handler) => {
@@ -106,6 +156,31 @@ describe("V2 Change Plan port", () => {
     });
     await expect(
       port.createCodexProviderSwitchPlan("provider-target"),
+    ).rejects.toThrow("Change Plan is unavailable");
+
+    const malformedBase = structuredClone(fixtureJson.plan);
+    const malformedUpsert = {
+      ...malformedBase,
+      operation: "codex_provider_upsert_and_switch",
+      businessSteps: ["set_current_provider", "save_provider"],
+      credential: {
+        secretRefDisplay: "sec_full-secret-ref-must-not-cross-wire",
+        backend: "os_keyring",
+      },
+      adapter: {
+        ...malformedBase.adapter,
+        operationType: "codex_provider_upsert_and_switch",
+      },
+    };
+    invoke.mockResolvedValueOnce(malformedUpsert);
+    await expect(
+      port.createCodexProviderUpsertPlan({
+        name: "Codex",
+        baseUrl: "https://codex.example/v1",
+        apiKey: "SECRET-CANARY-MUST-NOT-PARSE",
+        modelId: "gpt-5",
+        codexFeatures: { imageExtension: false, websockets: false },
+      }),
     ).rejects.toThrow("Change Plan is unavailable");
 
     invoke.mockResolvedValueOnce({
@@ -130,6 +205,15 @@ describe("V2 Change Plan port", () => {
     const port = createBrowserFeaturePorts().changePlan;
     await expect(
       port.createCodexProviderSwitchPlan("provider-target"),
+    ).rejects.toThrow(NATIVE_ONLY_ERROR);
+    await expect(
+      port.createCodexProviderUpsertPlan({
+        name: "Codex",
+        baseUrl: "https://codex.example/v1",
+        apiKey: "native-only-secret",
+        modelId: "gpt-5",
+        codexFeatures: { imageExtension: false, websockets: false },
+      }),
     ).rejects.toThrow(NATIVE_ONLY_ERROR);
     await expect(port.apply("plan-contract", "plan-digest")).rejects.toThrow(
       NATIVE_ONLY_ERROR,

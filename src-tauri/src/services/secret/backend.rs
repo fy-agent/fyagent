@@ -1,3 +1,9 @@
+// Issue #35 freezes the complete CRUD/probe callback contract before every
+// operation has a production caller. Keep the dormant methods available to
+// later UCP adapters without weakening clippy for the rest of the crate.
+#![allow(dead_code)]
+
+#[cfg(test)]
 use subtle::ConstantTimeEq;
 
 use super::{
@@ -48,11 +54,22 @@ where
         material: SecretMaterial,
         purpose: SecretPurpose,
     ) -> Result<SecretSummaryDto, SecretServiceError> {
-        let secret_ref = SecretRef::generate();
-        self.backend.create_new(&secret_ref, &material)?;
-        let handle = SecretHandle::new(secret_ref, SecretVersion::generate());
+        let handle = SecretHandle::generate();
+        self.create_reserved(&handle, &material, purpose)
+    }
+
+    /// Commit a handle that was generated for a side-effect-free preview.
+    /// `create_new` is deliberately not an upsert: replay cannot overwrite an
+    /// existing system-keyring item.
+    pub(crate) fn create_reserved(
+        &self,
+        handle: &SecretHandle,
+        material: &SecretMaterial,
+        purpose: SecretPurpose,
+    ) -> Result<SecretSummaryDto, SecretServiceError> {
+        self.backend.create_new(handle.secret_ref(), material)?;
         Ok(SecretSummaryDto::from_probe(
-            &handle,
+            handle,
             purpose,
             self.backend.kind(),
             BackendProbe::ready(),
