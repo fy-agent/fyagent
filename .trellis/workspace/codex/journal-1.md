@@ -104,3 +104,24 @@ Rebuilt the current-main Codex Provider switch Change Plan backend, opened revie
 ### Next Steps
 
 - Review and merge PR #130 only with separate main-merge authorization; keep Issue #55 open for V2 UI and broader follow-up slices.
+
+
+## Session 4: Recover WorkBuddy Unified Change Plan adapter
+
+**Date**: 2026-08-24
+**Task**: Recover WorkBuddy Unified Change Plan adapter
+**Branch**: `codex/issue-66-workbuddy-adapter-recovery`
+
+### Summary
+
+Added the WorkBuddy second real UCP adapter, V2 one-confirmation flow, no-replay recovery, contract tests, full gates, and isolated macOS native UAT; Draft PR 139 remains open for Windows HIL.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `29ff57e2be0a66b1d4362347563ae27c32ecd825` | (see git log) |
+
+### Status
+
+[OK] **Completed**
