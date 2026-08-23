@@ -2,6 +2,10 @@
 
 Evidence date: 2026-08-24 (Asia/Shanghai)
 
+Implementation commit: `fe6570eb63af6ff9411498286ebd11a5ee41a900`
+on top of the reviewed PR #130 head
+`9b4599db7f2ae79d957cdf257f44111e9dd7377d`.
+
 ## Review findings closed by this increment
 
 - PR #130 compared the caller digest with the stored digest but did not
