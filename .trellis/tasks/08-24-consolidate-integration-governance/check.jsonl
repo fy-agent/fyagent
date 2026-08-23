@@ -1,0 +1,5 @@
+{"file":".trellis/spec/backend/github-ci-workflow.md","reason":"Registered domains and Required CI expectations."}
+{"file":".trellis/spec/backend/development-environment.md","reason":"Canonical Rust/V2 verification entrypoints."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Cross-layer frontend verification."}
+{"file":".trellis/tasks/08-24-pr-108-115-consolidation/prd.md","reason":"Final integration acceptance."}
+{"file":".trellis/tasks/08-24-consolidate-integration-governance/prd.md","reason":"Focused schema/registration/port checks."}

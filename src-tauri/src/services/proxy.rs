@@ -5,6 +5,7 @@
 use crate::app_config::AppType;
 use crate::config::{get_claude_settings_path, read_json_file, write_json_file};
 use crate::database::Database;
+use crate::error::AppError;
 use crate::provider::Provider;
 use crate::proxy::server::ProxyServer;
 use crate::proxy::switch_lock::SwitchLockManager;
@@ -80,6 +81,38 @@ impl ProxyService {
             app_handle: Arc::new(RwLock::new(None)),
             switch_locks: SwitchLockManager::new(),
         }
+    }
+
+    pub(crate) fn inspect_codex_switch_environment(
+        &self,
+    ) -> Result<crate::services::provider::CodexSwitchEnvironment, AppError> {
+        futures::executor::block_on(self.inspect_codex_switch_environment_async())
+    }
+
+    async fn inspect_codex_switch_environment_async(
+        &self,
+    ) -> Result<crate::services::provider::CodexSwitchEnvironment, AppError> {
+        let live_settings = crate::codex_config::read_codex_live_settings()?;
+        let backup = self.db.get_live_backup(AppType::Codex.as_str()).await?;
+        let backup_settings = backup
+            .as_ref()
+            .map(|backup| {
+                serde_json::from_str::<Value>(&backup.original_config).map_err(|_| {
+                    AppError::Config("Codex live backup is not valid JSON".to_string())
+                })
+            })
+            .transpose()?;
+        let preservation_source = backup_settings.as_ref().unwrap_or(&live_settings);
+        let preserved_strict_login = preservation_source
+            .get("auth")
+            .is_some_and(crate::codex_config::codex_auth_has_credential_login_material);
+
+        Ok(crate::services::provider::CodexSwitchEnvironment {
+            live_taken_over: Self::is_codex_live_taken_over(&live_settings),
+            live_settings,
+            has_live_backup: backup.is_some(),
+            preserved_strict_login,
+        })
     }
 
     #[cfg(test)]
@@ -374,13 +407,29 @@ impl ProxyService {
         provider: &Provider,
     ) -> Result<(), String> {
         let existing_live = self.read_codex_live().ok();
+        let effective_settings = self
+            .build_codex_live_from_provider_while_proxy_active(provider, existing_live.as_ref())
+            .await?;
+
+        self.write_codex_takeover_live_for_provider(&effective_settings, Some(provider))?;
+        Ok(())
+    }
+
+    /// Pure, read-only Codex takeover projection. Change Plan uses this exact
+    /// builder before admission and the hot-switch writer uses it immediately
+    /// before writing, preventing the preview and writer from drifting.
+    pub(crate) async fn build_codex_live_from_provider_while_proxy_active(
+        &self,
+        provider: &Provider,
+        existing_live: Option<&Value>,
+    ) -> Result<Value, String> {
         let mut effective_settings = build_effective_settings_with_common_config(
             self.db.as_ref(),
             &AppType::Codex,
             provider,
         )
         .map_err(|e| format!("构建 codex 有效配置失败: {e}"))?;
-        if let Some(existing_live) = existing_live.as_ref() {
+        if let Some(existing_live) = existing_live {
             Self::preserve_toml_mcp_servers_from_existing_config(
                 &mut effective_settings,
                 existing_live,
@@ -393,9 +442,7 @@ impl ProxyService {
             &proxy_codex_base_url,
             provider,
         )?;
-
-        self.write_codex_takeover_live_for_provider(&effective_settings, Some(provider))?;
-        Ok(())
+        Ok(effective_settings)
     }
 
     pub async fn sync_grok_live_from_provider_while_proxy_active(
@@ -2234,7 +2281,7 @@ impl ProxyService {
             == Some(PROXY_TOKEN_PLACEHOLDER)
     }
 
-    fn is_codex_live_taken_over(config: &Value) -> bool {
+    pub(crate) fn is_codex_live_taken_over(config: &Value) -> bool {
         Self::codex_live_has_proxy_placeholder(config)
             || config
                 .get("config")
@@ -2432,13 +2479,28 @@ impl ProxyService {
         let previous_local_provider_id = crate::settings::get_current_provider(&app_type_enum);
         let logical_target_changed = previous_provider_id.as_deref() != Some(provider_id);
 
-        let has_backup = self
-            .db
-            .get_live_backup(app_type_enum.as_str())
-            .await
-            .map_err(|e| format!("读取 {app_type} 备份失败: {e}"))?
-            .is_some();
-        let live_taken_over = self.detect_takeover_in_live_config_for_app(&app_type_enum);
+        let codex_environment = if matches!(app_type_enum, AppType::Codex) {
+            Some(
+                self.inspect_codex_switch_environment_async()
+                    .await
+                    .map_err(|error| format!("读取 Codex 切换环境失败: {error}"))?,
+            )
+        } else {
+            None
+        };
+        let has_backup = match codex_environment.as_ref() {
+            Some(environment) => environment.has_live_backup,
+            None => self
+                .db
+                .get_live_backup(app_type_enum.as_str())
+                .await
+                .map_err(|e| format!("读取 {app_type} 备份失败: {e}"))?
+                .is_some(),
+        };
+        let live_taken_over = codex_environment
+            .as_ref()
+            .map(|environment| environment.live_taken_over)
+            .unwrap_or_else(|| self.detect_takeover_in_live_config_for_app(&app_type_enum));
         let should_sync_backup = has_backup || live_taken_over;
 
         // All fallible backup/live writes must finish before committing the logical
@@ -2456,8 +2518,11 @@ impl ProxyService {
         let previous_live_before_direct_write =
             if has_backup && !live_taken_over && matches!(app_type_enum, AppType::Codex) {
                 Some(
-                    self.read_codex_live()
-                        .map_err(|error| format!("读取 Codex 原 Live 配置失败: {error}"))?,
+                    codex_environment
+                        .as_ref()
+                        .expect("Codex environment exists")
+                        .live_settings
+                        .clone(),
                 )
             } else {
                 None
@@ -2481,27 +2546,18 @@ impl ProxyService {
             }
 
             if has_backup && !live_taken_over && matches!(app_type_enum, AppType::Codex) {
-                let effective_settings = build_effective_settings_with_common_config(
-                    self.db.as_ref(),
-                    &AppType::Codex,
-                    &provider,
-                )
-                .map_err(|e| format!("构建 Codex 有效配置失败: {e}"))?;
-                let auth = effective_settings
-                    .get("auth")
-                    .ok_or_else(|| "Codex 供应商缺少 auth 配置".to_string())?;
-                let config_str = effective_settings.get("config").and_then(|v| v.as_str());
-                let profile =
-                    crate::proxy::providers::resolve_codex_catalog_tool_profile(&provider);
-
-                crate::codex_config::write_codex_provider_live_with_catalog(
-                    &effective_settings,
-                    provider.category.as_deref(),
-                    auth,
-                    config_str,
-                    profile,
-                )
-                .map_err(|e| format!("写入 Codex 配置失败: {e}"))?;
+                let existing_live = codex_environment
+                    .as_ref()
+                    .expect("Codex environment exists")
+                    .live_settings
+                    .clone();
+                let projected = self
+                    .build_codex_live_from_provider_while_proxy_active(
+                        &provider,
+                        Some(&existing_live),
+                    )
+                    .await?;
+                self.write_codex_takeover_live_for_provider(&projected, Some(&provider))?;
             }
 
             Ok(())
@@ -2654,9 +2710,9 @@ impl ProxyService {
             .get("auth")
             .filter(|auth| {
                 !Self::codex_auth_has_proxy_placeholder(auth)
-                    && (crate::codex_config::codex_auth_has_oauth_login_material(auth)
+                    && (crate::codex_config::codex_auth_has_credential_login_material(auth)
                         || (preserve_api_key
-                            && crate::codex_config::codex_auth_has_login_material(auth)))
+                            && crate::codex_config::extract_codex_auth_api_key(auth).is_some()))
             })
             .cloned()
         else {

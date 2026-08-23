@@ -1,0 +1,8 @@
+{"file":".trellis/spec/backend/modular-boundaries.md","reason":"Shared Rust registration and schema ownership."}
+{"file":".trellis/spec/backend/codex-provider-configuration.md","reason":"Provider lock/writer integration."}
+{"file":".trellis/spec/backend/external-agent-p0.md","reason":"Catalog/ACL command-union boundary."}
+{"file":".trellis/spec/frontend/modular-boundaries.md","reason":"FeaturePorts/parser composition ownership."}
+{"file":".trellis/spec/frontend/v2-shell.md","reason":"V2 browser/Tauri native-only integration."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Reachability across DB/host/IPC/renderer."}
+{"file":".trellis/tasks/08-24-pr-108-115-consolidation/design.md","reason":"Parent cross-feature frozen contracts."}
+{"file":".trellis/tasks/08-24-consolidate-integration-governance/design.md","reason":"Integration file ownership and order."}

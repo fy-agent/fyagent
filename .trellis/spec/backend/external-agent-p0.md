@@ -6,7 +6,8 @@ Read this contract before changing the static Agent catalog, external-agent
 runtime observation or launch, QoderWork/TRAE Work/WorkBuddy Skill or MCP
 targets, Qoder Hooks, TRAE model endpoint preflight and read-only
 `state.vscdb` observation, OpenCode `opencode.json` model persist, external MCP
-validation, or their Tauri permissions. These capabilities are deliberately
+validation, the read-only Agent install-readiness projection, or their Tauri
+permissions. These capabilities are deliberately
 narrower than Provider,
 proxy, prompt, session, installer, and vendor-private configuration domains.
 
@@ -103,6 +104,23 @@ contract version is 4 and includes Grok Build (`https://x.ai/grok`).
   handler surface. The compatibility and feature-specific sets are disjoint,
   their union must equal the registered handler commands, no remote origin is
   granted, and no generic filesystem/shell permission is introduced.
+
+### Read-only install readiness
+
+- `get_agent_install_readiness` is the only install-readiness command. Its
+  selector is the catalog's exact seven `AgentCatalogId` values; there is no
+  second catalog, registry, installer, executor, job, cancel, probe, doctor, or
+  helper surface.
+- The bounded DTO contains only contract version, canonical ID, reviewed/check
+  timestamps, closed states/reason codes, and sanitized preflight summaries.
+  URL, path, hash, script, secret, package path, and signer fingerprint fields
+  are forbidden.
+- Generic automation is `unavailable`; Codex is
+  `managed_by_codex_desktop` and keeps the existing dedicated installer.
+  Source/license, integrity, preflight, and plan remain independent layers;
+  fail dominates and unknown never upgrades to green. Readiness creates no
+  plan snapshot and always reports `plan_not_created` until a separate future
+  contract exists.
 
 ### Skills and persistence
 
@@ -328,6 +346,8 @@ underscore IDE key.
 | TRAE request is cancelled/times out/fails                                                  | Remove active state and return only a sanitized terminal result                            |
 | MCP server mixes transports or exceeds limits                                              | Reject; execute and persist nothing                                                        |
 | A secret reaches DTO, error, log, DOM, query, storage, URL, snapshot, or default clipboard | Security regression gate fails                                                             |
+| Install readiness receives an unknown/legacy Agent ID or an excess/sensitive DTO field     | Reject; do not fall back to another ID or infer readiness                                   |
+| Generic install automation is requested                                                    | Report unavailable; create no snapshot, executor, job, or write command                     |
 
 ## 5. Good / Base / Bad Cases
 
@@ -340,6 +360,9 @@ underscore IDE key.
 - **Base:** an external Agent has no trusted runtime identity. Catalog guidance
   and official links remain available, while detection and launch stay
   `unverified`.
+- **Good:** Agent detail reads one bounded readiness DTO; all generic products
+  remain unavailable/unknown and Codex still delegates to its existing managed
+  installer.
 - **Bad:** infer installation from `.qoderwork`, accept a renderer executable,
   route Qoder/TRAE through `AppType`, fall back around a proxy pin failure,
   execute an MCP command, or serialize a credential-bearing error.

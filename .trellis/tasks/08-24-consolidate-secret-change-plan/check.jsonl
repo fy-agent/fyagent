@@ -1,0 +1,3 @@
+{"file":".trellis/spec/backend/development-environment.md","reason":"Canonical Rust verification commands."}
+{"file":".trellis/spec/backend/codex-provider-configuration.md","reason":"Lock/write/readback regression checks."}
+{"file":".trellis/tasks/08-24-consolidate-secret-change-plan/prd.md","reason":"Focused acceptance matrix."}

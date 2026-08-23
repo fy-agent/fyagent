@@ -1187,6 +1187,8 @@ mod tests {
             "allow-external-agent-launch",
             "allow-qoderwork-hooks-write",
             "allow-external-agent-endpoint-probe",
+            "allow-change-plan",
+            "allow-agent-install-readiness",
         ] {
             assert_eq!(
                 permissions
@@ -1221,12 +1223,17 @@ mod tests {
 
         let legacy_manifest = include_str!("../../permissions/legacy-application-commands.toml");
         let external_manifest = include_str!("../../permissions/external-agent-p0.toml");
+        let change_plan_manifest = include_str!("../../permissions/change-plan-readiness.toml");
         let legacy_commands = allowed_commands(legacy_manifest);
         let external_commands = allowed_commands(external_manifest);
+        let change_plan_commands = allowed_commands(change_plan_manifest);
         assert!(legacy_commands.is_disjoint(&external_commands));
+        assert!(legacy_commands.is_disjoint(&change_plan_commands));
+        assert!(external_commands.is_disjoint(&change_plan_commands));
 
         let mut allowed = legacy_commands;
         allowed.extend(external_commands);
+        allowed.extend(change_plan_commands);
 
         let handler = include_str!("../lib.rs");
         let registered = handler
@@ -1241,7 +1248,7 @@ mod tests {
             })
             .collect::<BTreeSet<_>>();
 
-        assert_eq!(registered.len(), 336, "review intentional handler changes");
+        assert_eq!(registered.len(), 341, "review intentional handler changes");
         assert_eq!(allowed, registered, "every registered application command must be granted exactly once while an app ACL manifest exists");
     }
 }

@@ -6,7 +6,7 @@ Read this contract before changing the V2 Agent directory, Models quick setup,
 their local Agent assets, the versioned native catalog (including OpenCode and
 Grok Build), the shared `PRODUCT_DIRECTORY`, WorkBuddy model ports,
 Claude/Codex/Grok Build Provider quick setup, or the sanitized Provider
-summary boundary.
+summary boundary, Agent install-readiness region, or Codex Change Plan UI.
 The common shell, native-chrome, router, and layer rules remain in
 [V2 Shell](./v2-shell.md). Skills/MCP and Prompt/Memory have separate feature
 contracts and must not be folded into the Agent capability catalog. Reuse is
@@ -536,6 +536,22 @@ fetch/save controls.
 - The normal browser adapter returns native-only unavailability. Rich fixtures
   live only in focused tests and are always labelled/non-authoritative.
 
+### Agent readiness and Codex Change Plan UI
+
+- Agent detail adds one compact read-only 「安装方式」 region backed by
+  `FeaturePorts.agentInstallReadiness`. It renders unavailable/unknown as
+  non-green, exposes no install/recheck/cancel/health button, and leaves the
+  existing Codex Desktop installer intact. Browser ports reject native-only.
+- Codex Models consumes `FeaturePorts.changePlans` through exact unknown-input
+  parsers. Preview creates no Provider write; confirm sends only
+  `planId + planDigest` and holds a per-plan repeat-click lock. The page owns no
+  fake coordinator, scenario, cancel, backup, restore, or second state machine.
+- Positive Apply copy derives only from a validated terminal job. Succeeded and
+  warning both state that real usage has not been observed. Recovery-required
+  and mixed/unavailable resources are never green; a failed writer with the
+  original baseline authoritatively restored remains a confirmed failure, not
+  an unknown recovery state.
+
 ## 4. Validation & Error Matrix
 
 | Condition                                                                                  | Required result                                                                                         |
@@ -571,6 +587,9 @@ fetch/save controls.
 | WorkBuddy revision or overwrite token drifts                                               | Write nothing; reread before claiming state                                                             |
 | Provider Base URL has userinfo/query/fragment or a credential component                    | Reject before DB/current/live mutation                                                                  |
 | Provider request is empty, generic, wrong-ID, or has public/secret collision               | Reject in Rust; no state mutation                                                                       |
+| Apply is repeated by StrictMode/double click or carries fields beyond ID/digest            | Invoke at most once for that plan; reject the widened request                                            |
+| Apply readback is mixed/unavailable or recovery-required                                   | Render non-green recovery copy and never synthesize success                                              |
+| Writer failed and the original baseline is authoritatively restored                        | Render failed/danger with confirmed-baseline copy; target mismatches are expected, not unknown authority |
 | Codex `imageExtension: true` omits `experimental_bearer_token` while `requires_openai_auth` is false | Host derivation/test fails; current Codex would not send `auth.json`'s key |
 | Concurrent Provider/live writer                                                            | Serialize or detect conflict; never return a split DB/current/live state                                |
 | Required atomic step fails and compensation succeeds                                       | Return `APPLY_FAILED_ROLLED_BACK`; UI may say rollback confirmed                                        |
@@ -672,6 +691,12 @@ Required focused coverage includes:
   target panels; the other primary routes keep the same in-session page.
   Secrets stay in component memory only. Immediate WorkBuddy
   existing-model delete after an unrecoverable-delete confirmation.
+- Agent readiness exact seven-ID/exact-key/sensitive-field-negative coverage,
+  single-command ACL registration, browser native-only behavior, no action
+  controls, and Codex installer non-regression. Change Plan coverage includes
+  strict DTO parsing, ID/digest-only confirm, realistic baseline-restored
+  resources, all terminal/recovery states, honest usage-evidence copy, and
+  static absence of fake/scenario/cancel/backup/restore product surfaces.
 - Models Qoder/TRAE details must not render 「打开官方设置」 or
   「打开 TRAE 官方模型设置」; Qoder states 官方不支持第三方模型配置 and
   has no 「管理 MCP」 or 「测试连通」.

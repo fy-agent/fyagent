@@ -1,4 +1,5 @@
 pub(crate) mod balance;
+pub(crate) mod change_plan;
 pub(crate) mod codex_desktop;
 pub(crate) mod codex_oauth_models;
 pub(crate) mod coding_plan;

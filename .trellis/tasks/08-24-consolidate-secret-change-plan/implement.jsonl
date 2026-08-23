@@ -1,0 +1,5 @@
+{"file":".trellis/spec/backend/modular-boundaries.md","reason":"Service/DAO ownership and dependency direction."}
+{"file":".trellis/spec/backend/codex-provider-configuration.md","reason":"Existing Provider mutation lock and writer semantics."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Define safe domain and IPC seams for later integration."}
+{"file":".trellis/tasks/08-24-pr-108-115-consolidation/research/source-pr-ledger.md","reason":"#112/#114 keep and exclusion decisions."}
+{"file":".trellis/tasks/08-24-consolidate-secret-change-plan/design.md","reason":"Frozen Change Plan and Secret boundary."}

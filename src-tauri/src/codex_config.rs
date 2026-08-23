@@ -18,14 +18,12 @@ mod catalog;
 mod features;
 mod storage;
 
+pub(crate) use auth::codex_auth_has_credential_login_material;
+#[cfg(test)]
+use auth::codex_live_auth_is_stale_third_party_residue;
 pub use auth::{
     clear_stale_codex_live_auth_after_official_switch, codex_auth_has_login_material,
-    codex_auth_has_oauth_login_material, extract_codex_auth_api_key,
-    should_restore_codex_provider_token_for_backfill,
-};
-#[cfg(test)]
-use auth::{
-    codex_auth_has_credential_login_material, codex_live_auth_is_stale_third_party_residue,
+    extract_codex_auth_api_key, should_restore_codex_provider_token_for_backfill,
 };
 
 #[cfg(test)]

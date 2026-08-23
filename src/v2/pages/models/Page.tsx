@@ -63,6 +63,7 @@ import { ModelsPanelHeader, NoApiKeyOption, NoticeView } from "./modelsShared";
 import { OpenCodeModelsPanel } from "./OpenCodeModelsPanel";
 import { QoderModelsPanel } from "./QoderModelsPanel";
 import { TraeModelsPanel } from "./TraeModelsPanel";
+import { ChangePlanWorkspace } from "./apply";
 import {
   addUniqueModelIds,
   filterModelIds,
@@ -1218,6 +1219,14 @@ function ProviderPanel({
           </div>
         </div>
       )}
+
+      {app === "codex" && summaryQuery.data ? (
+        <ChangePlanWorkspace
+          active={active}
+          providers={summaryQuery.data.providers}
+          currentId={summaryQuery.data.currentId}
+        />
+      ) : null}
 
       <div className="fy-models-form">
         <div className="fy-control-field">

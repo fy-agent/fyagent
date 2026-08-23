@@ -167,3 +167,11 @@ export type {
   MemoryDocumentId,
   OpenClawDirectory,
 } from "./memory";
+
+export type {
+  ApplyChangePlanOutcome,
+  ChangeJobSnapshot,
+  ChangePlan,
+  ChangePlanErrorCode,
+} from "./change-plans";
+export type { AgentInstallReadiness } from "./agent-install-readiness";

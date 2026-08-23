@@ -6,6 +6,7 @@ import { CodexDesktopInstallerPanel } from "../../shared/codex-desktop/CodexDesk
 import { PRODUCT_DIRECTORY } from "../../shared/features/directory";
 import { convergeSelection } from "../../shared/features/helpers";
 import { useAgentCatalog } from "../../shared/features/queries";
+import { useFeatures } from "../../shared/features/provider";
 import type {
   AgentCapabilityId,
   AgentCatalogEntry,
@@ -29,6 +30,7 @@ import {
 } from "../../shared/ui/catalog";
 
 import { getAgentIntro } from "./intros";
+import { AgentInstallReadinessSection } from "./AgentInstallReadinessSection";
 import "./Page.css";
 
 const MODEL_TARGET_BY_CATALOG_ID = Object.fromEntries(
@@ -42,6 +44,7 @@ function capability(entry: AgentCatalogEntry, id: AgentCapabilityId) {
 }
 
 function AgentDetail({ entry }: { entry: AgentCatalogEntry }) {
+  const { ports } = useFeatures();
   const navigate = useNavigate();
   const modelTarget = MODEL_TARGET_BY_CATALOG_ID[entry.id];
   const productCapability = capability(entry, "product.open");
@@ -86,6 +89,11 @@ function AgentDetail({ entry }: { entry: AgentCatalogEntry }) {
           ))}
         </section>
       ) : null}
+
+      <AgentInstallReadinessSection
+        agentId={entry.id}
+        load={ports.agentInstallReadiness.get}
+      />
 
       {entry.id === "codex" && <CodexDesktopInstallerPanel />}
 

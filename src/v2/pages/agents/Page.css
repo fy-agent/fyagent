@@ -56,6 +56,59 @@
   font-size: 14px;
 }
 
+.fy-agent-install-readiness {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--fy-border);
+  border-radius: 12px;
+  background: rgba(226, 243, 255, 0.05);
+}
+
+.fy-agent-install-readiness-summary,
+.fy-agent-install-readiness-note {
+  margin: 0;
+  color: var(--fy-text-secondary);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.fy-agent-install-readiness-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 7px;
+  margin: 0;
+}
+
+.fy-agent-install-readiness-grid div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 8px 9px;
+  border-radius: 9px;
+  background: rgba(9, 29, 48, 0.16);
+}
+
+.fy-agent-install-readiness-grid dt {
+  color: var(--fy-text-secondary);
+  font-size: 10px;
+}
+
+.fy-agent-install-readiness-grid dd {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.fy-agent-install-readiness-loading {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 36px;
+  color: var(--fy-text-secondary);
+  font-size: 12px;
+}
+
 .fy-agent-section-heading {
   display: flex;
   flex-wrap: wrap;
@@ -370,7 +423,8 @@
 
 @media (max-width: 520px) {
   .fy-agent-observation-grid,
-  .fy-codex-installer-versions {
+  .fy-codex-installer-versions,
+  .fy-agent-install-readiness-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 

@@ -63,7 +63,7 @@
     ],
     [
       "src-tauri/src/codex_config.rs",
-      "f0d6f635b895e13ef272fdd65b2098543588090dd272dd229fe9296ad27424e7"
+      "0fb49ba8df8119a359df75f7c29ef37d97233dfc5a0aeca3476792136acc0147"
     ],
     [
       "src-tauri/src/codex_config/catalog.rs",
@@ -123,7 +123,7 @@
     ],
     [
       "src-tauri/src/lib.rs",
-      "182ea4b2db0d51348938b50cf97abfccef4d3f3eabc4ecb1b5d0570d5aa6f98f"
+      "04a8393436b8edd4386ffc1659e670aa29dbb28b24ea95fa2690b56fd8241f9b"
     ],
     [
       "src-tauri/src/lightweight.rs",
@@ -179,7 +179,7 @@
     ],
     [
       "src-tauri/src/services/provider/mod.rs",
-      "0a8dc2e9d43b60df18488212b74e8309a7fc51daf0eaaba79f09461f6f579297"
+      "796d6c2f9c2575923f699e9b893aa879aa327e5dbca50ea1b727ac035895b350"
     ],
     [
       "src-tauri/src/services/qoderwork.rs",

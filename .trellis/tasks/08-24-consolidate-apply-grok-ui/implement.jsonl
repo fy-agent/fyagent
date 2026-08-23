@@ -1,0 +1,7 @@
+{"file":".trellis/spec/frontend/v2-shell.md","reason":"V2 boundaries, state and accessibility."}
+{"file":".trellis/spec/frontend/v2-agent-models.md","reason":"Models route and Provider summary behavior."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Strict DTO ownership and parser boundary."}
+{"file":".trellis/spec/frontend/state-management.md","reason":"No duplicate state or persistence."}
+{"file":".trellis/spec/frontend/reuse.md","reason":"Reuse V2 primitives; no fake page-local platform layer."}
+{"file":".trellis/tasks/08-24-pr-108-115-consolidation/research/source-pr-ledger.md","reason":"#108/#113 keep and exclusion decisions."}
+{"file":".trellis/tasks/08-24-consolidate-apply-grok-ui/design.md","reason":"Frozen real Apply UI contract."}

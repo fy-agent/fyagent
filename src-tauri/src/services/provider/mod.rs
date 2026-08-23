@@ -66,6 +66,64 @@ pub fn official_provider_supports_proxy_takeover(app_type: &AppType, provider: &
         && crate::proxy::providers::is_codex_official_provider(provider)
 }
 
+/// Read-only snapshot of the Codex live/takeover inputs used by both Change
+/// Plan inspection and the real provider writer. Credentials stay in memory
+/// only; callers may consume the strict-login boolean but must never persist or
+/// hash the raw settings.
+#[derive(Clone)]
+pub(crate) struct CodexSwitchEnvironment {
+    pub live_settings: Value,
+    pub has_live_backup: bool,
+    pub live_taken_over: bool,
+    pub preserved_strict_login: bool,
+}
+
+impl CodexSwitchEnvironment {
+    pub(crate) fn mode_code(&self) -> &'static str {
+        match (self.has_live_backup, self.live_taken_over) {
+            (_, true) => "live_takeover",
+            (true, false) => "backup_only",
+            (false, false) => "normal",
+        }
+    }
+
+    fn should_hot_switch(&self) -> bool {
+        self.has_live_backup || self.live_taken_over
+    }
+}
+
+pub(crate) fn inspect_codex_switch_environment(
+    state: &AppState,
+) -> Result<CodexSwitchEnvironment, AppError> {
+    state.proxy_service.inspect_codex_switch_environment()
+}
+
+pub(crate) fn build_codex_switch_target_live_projection(
+    state: &AppState,
+    provider: &Provider,
+    environment: &CodexSwitchEnvironment,
+) -> Result<Value, AppError> {
+    if environment.should_hot_switch() {
+        return futures::executor::block_on(
+            state
+                .proxy_service
+                .build_codex_live_from_provider_while_proxy_active(
+                    provider,
+                    Some(&environment.live_settings),
+                ),
+        )
+        .map_err(AppError::Message);
+    }
+
+    let mut effective_settings =
+        build_effective_settings_with_common_config(state.db.as_ref(), &AppType::Codex, provider)?;
+    crate::codex_config::apply_codex_unified_session_bucket_to_settings(
+        provider.category.as_deref(),
+        &mut effective_settings,
+    )?;
+    Ok(effective_settings)
+}
+
 /// 统一会话开关变更后，立即按新开关状态重写当前官方 Codex 供应商的
 /// live 配置，使开关即时生效（无需等下一次切换）。
 /// 当前供应商非官方（或不存在）时为 no-op：注入只作用于官方配置，
@@ -4926,6 +4984,17 @@ impl ProviderService {
         } else {
             None
         };
+        Self::switch_with_lock_held(state, app_type, id)
+    }
+
+    /// Provider switch implementation for callers that already hold the
+    /// per-app mutation guard. This is crate-visible only so Change Plan can
+    /// keep admission, the single writer call and readback under one guard.
+    pub(crate) fn switch_with_lock_held(
+        state: &AppState,
+        app_type: AppType,
+        id: &str,
+    ) -> Result<SwitchResult, AppError> {
         // Check if provider exists
         let providers = state.db.get_all_providers(app_type.as_str())?;
         let _provider = providers
@@ -4959,8 +5028,17 @@ impl ProviderService {
         let live_taken_over = state
             .proxy_service
             .detect_takeover_in_live_config_for_app(&app_type);
+        let codex_environment =
+            if matches!(app_type, AppType::Codex) && (is_app_taken_over || live_taken_over) {
+                Some(inspect_codex_switch_environment(state)?)
+            } else {
+                None
+            };
 
-        let should_hot_switch = is_app_taken_over || live_taken_over;
+        let should_hot_switch = codex_environment
+            .as_ref()
+            .map(CodexSwitchEnvironment::should_hot_switch)
+            .unwrap_or(is_app_taken_over || live_taken_over);
 
         // Block switching to official providers when proxy takeover is active.
         // Using a proxy with official APIs (Anthropic/OpenAI/Google) may cause account bans.

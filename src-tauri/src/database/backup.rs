@@ -79,6 +79,9 @@ const SYNC_SKIP_TABLES: &[&str] = &[
     "provider_health",
     "proxy_live_backup",
     "usage_daily_rollups",
+    "change_plans",
+    "change_jobs",
+    "change_job_events",
 ];
 
 /// Tables whose local data is preserved (restored from local snapshot) during WebDAV import.
@@ -88,6 +91,9 @@ const SYNC_PRESERVE_TABLES: &[&str] = &[
     "stream_check_logs",
     "proxy_live_backup",
     "usage_daily_rollups",
+    "change_plans",
+    "change_jobs",
+    "change_job_events",
 ];
 
 /// A database backup entry for the UI
@@ -1802,6 +1808,80 @@ mod tests {
         );
         assert_eq!(rollups, 1, "old request logs should be rolled up");
 
+        Ok(())
+    }
+
+    #[test]
+    #[serial]
+    fn sync_skips_and_preserves_all_change_plan_ledger_rows() -> Result<(), AppError> {
+        fn insert_ledger(db: &Database, suffix: &str) -> Result<(), AppError> {
+            let conn = crate::database::lock_conn!(db.conn);
+            conn.execute(
+                "INSERT INTO providers (id, app_type, name, settings_config, meta)
+                 VALUES (?1, 'codex', 'Sync Fixture', '{}', '{}')",
+                [format!("provider-{suffix}")],
+            )?;
+            conn.execute(
+                "INSERT INTO change_plans (
+                    plan_id, operation, target_provider_id, target_provider_name,
+                    plan_digest, baseline_digest, target_definition_digest,
+                    live_baseline_digest, target_projection_digest, contract_digest,
+                    secret_capability, created_at, expires_at, status, consumed_at
+                 ) VALUES (?1, 'codex_provider_switch', 'target', 'Target',
+                    'plan-digest', 'baseline-digest', 'definition-digest',
+                    'live-digest', 'projection-digest', 'fyagent-change-plan/v1',
+                    'no_new_credential_material', 1, 2, 'consumed', 1)",
+                [format!("plan-{suffix}")],
+            )?;
+            conn.execute(
+                "INSERT INTO change_jobs (
+                    job_id, plan_id, target_provider_id, revision, event_seq, status,
+                    result_code, steps_json, resources_json, restart_requirement,
+                    usage_evidence, recovery_state, live_config_changed, created_at, updated_at
+                 ) VALUES (?1, ?2, 'target', 1, 1, 'running', 'running', '[]', '[]',
+                    'unknown', 'not_observed', 'recovery_required', 0, 1, 1)",
+                rusqlite::params![format!("job-{suffix}"), format!("plan-{suffix}")],
+            )?;
+            conn.execute(
+                "INSERT INTO change_job_events
+                    (job_id, event_seq, phase, reason_code, created_at)
+                 VALUES (?1, 1, 'precheck', 'planned', 1)",
+                [format!("job-{suffix}")],
+            )?;
+            Ok(())
+        }
+
+        let remote = Database::memory()?;
+        insert_ledger(&remote, "remote")?;
+        let sync_sql = remote.export_sql_string_for_sync()?;
+        let exported = Connection::open_in_memory()?;
+        exported.execute_batch(&sync_sql)?;
+        let exported_counts: (i64, i64, i64) = exported.query_row(
+            "SELECT
+                (SELECT COUNT(*) FROM change_plans),
+                (SELECT COUNT(*) FROM change_jobs),
+                (SELECT COUNT(*) FROM change_job_events)",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )?;
+        assert_eq!(exported_counts, (0, 0, 0));
+
+        let local = Database::memory()?;
+        insert_ledger(&local, "local")?;
+        local.import_sql_string_for_sync(&sync_sql)?;
+        let conn = crate::database::lock_conn!(local.conn);
+        let preserved: (String, String, String) = conn.query_row(
+            "SELECT
+                (SELECT plan_id FROM change_plans),
+                (SELECT job_id FROM change_jobs),
+                (SELECT job_id FROM change_job_events)",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )?;
+        assert_eq!(
+            preserved,
+            ("plan-local".into(), "job-local".into(), "job-local".into())
+        );
         Ok(())
     }
 

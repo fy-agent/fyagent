@@ -4,7 +4,8 @@
 
 Read this contract before changing Codex Provider TOML analysis or mutation,
 native capability controls, vendor-specific model projection, session-resume
-command construction, provider warnings, or the `liveConfigChanged` result.
+command construction, provider warnings, the `liveConfigChanged` result, or
+the Codex Provider Change Plan ledger/readback path.
 It owns the Codex provider configuration domain only. Trusted Codex Desktop
 discovery, installation, process restart, and launch are owned by
 [Codex Desktop Installer](./codex-desktop-installer.md); application version and
@@ -143,6 +144,33 @@ CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED
   [Codex Desktop Installer](./codex-desktop-installer.md), but saving and
   restarting remain separate outcomes.
 
+### Change Plan admission, apply, and recovery
+
+- Schema 20 owns local-only `change_plans`, `change_jobs`, and append-only
+  `change_job_events`. Fresh creation and v19 migration call the same
+  idempotent table helper; WebDAV sync skips and locally preserves all three.
+- `create_codex_provider_switch_plan` runs under the existing Provider mutation
+  guard, reads DB/device/live baselines, and writes only the credential-free
+  ledger. It performs no Provider mutation or network request. The plan expires
+  after 15 minutes and stores separate DB/device current IDs.
+- Admission accepts only an existing saved Codex Provider whose already-saved
+  material proves that no new credential is needed. Unknown or managed auth is
+  `secret_dependency_unavailable`; API keys, auth objects, raw config, paths,
+  SecretRef/Keychain values, and credential-derived values never enter DTOs,
+  ledger rows, errors, or logs.
+- `apply_change_plan` accepts only `planId + planDigest`, reacquires the same
+  Provider guard, rechecks contract/digest/TTL/consumption/baselines/secret
+  capability, atomically consumes the plan, and invokes the lock-held Provider
+  writer at most once. Invalid, expired, replayed, stale, or secret-blocked
+  requests invoke it zero times.
+- Readback covers DB current, device current, target definition, and the
+  credential-neutral live projection. Mixed/unavailable authority becomes
+  `recovery_required`. `get_change_job` and
+  `list_recoverable_change_jobs` may converge that ledger state by readback,
+  including a prior failed/recovery-required snapshot, but never replay the
+  writer. A target reached after uncertain execution is warning, not success;
+  a confirmed original baseline is failed/restored.
+
 ## 4. Validation & Error Matrix
 
 | Condition                                                                                            | Required result                                                                                                         |
@@ -156,6 +184,8 @@ CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED
 | A DeepSeek-looking URL has HTTP, user information, a suffix-confusion hostname, or only a path match | Use the neutral template; grant no vendor behavior.                                                                     |
 | A mutation succeeds but final live Codex bytes do not change                                         | Return `liveConfigChanged: false`; do not offer an automatic restart.                                                   |
 | A mutation fails                                                                                     | Preserve prior live bytes and omit risk/restart success signals.                                                        |
+| Change Plan admission is invalid, expired, consumed, stale, or secret-blocked                       | Return a closed error code and invoke the Provider writer zero times.                                                   |
+| Change Plan readback is mixed/unavailable                                                            | Persist `recovery_required`; later recovery performs readback only and never replays the writer.                        |
 | Codex image-extension is enabled (`requires_openai_auth = false`) and the Provider has an API key    | Stored and live `[model_providers.<id>]` contain `experimental_bearer_token` equal to `auth.OPENAI_API_KEY`.            |
 | Codex image-extension is disabled (`requires_openai_auth = true`)                                    | Write `OPENAI_API_KEY` to `auth.json`; do not add `experimental_bearer_token` for this reason.                          |
 | `requires_openai_auth` is missing or `true` during a default (preservation-off) live write           | Leave stored TOML bearer fields unchanged; authenticate via `auth.json`.                                                |
@@ -202,6 +232,11 @@ CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED
   key in `auth.json` only, live switch injecting the token when
   `requires_openai_auth = false`, and no injection when the field is `true` or
   missing.
+- Change Plan tests cover 0/v19 to schema 20, sync skip/local preserve,
+  zero-side-effect planning, 15-minute expiry, concurrent single admission,
+  writer exactly once/zero on rejection, normal/backup-only/live-takeover
+  projection parity, credential-negative persistence/serialization, and
+  recovery-required readback convergence without replay.
 
 ## 7. Wrong vs Correct
 
