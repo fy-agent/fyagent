@@ -31,6 +31,7 @@ type SafeProvider = { id: string; name: string };
 
 export type ChangePlanSwitchProps = {
   active: boolean;
+  surface?: "codex" | "workbuddy";
   currentProviderId: string;
   providers: Record<string, SafeProvider>;
   port: ChangePlanPort;
@@ -59,6 +60,7 @@ function PreviewSection({
 
 function ChangePlanPreview({ plan }: { plan: ChangePlan }) {
   const upsert = plan.operation === "codex_provider_upsert_and_switch";
+  const workbuddy = plan.operation === "work_buddy_models_update";
   const readLabels = plan.adapter.readSet.map((kind) => RESOURCE_LABELS[kind]);
   const writeLabels = plan.adapter.writeSet.map(
     (kind) => RESOURCE_LABELS[kind],
@@ -67,15 +69,19 @@ function ChangePlanPreview({ plan }: { plan: ChangePlan }) {
     <div className="fy-change-plan-preview" data-testid="change-plan-preview">
       <PreviewSection title="语义变化">
         <p>
-          {upsert ? "保存" : "将 Codex 当前配置切换到"}{" "}
+          {workbuddy ? "更新" : upsert ? "保存" : "将 Codex 当前配置切换到"}{" "}
           <strong>{plan.targetProviderName}</strong>
-          {upsert ? "，并设为当前配置。" : "。"}
+          {workbuddy ? "。" : upsert ? "，并设为当前配置。" : "。"}
         </p>
         <p>不会在应用流程中发送模型请求或主动验证网络。</p>
         <ol>
           {plan.businessSteps.map((step) => (
             <li key={step}>
-              {step === "save_provider" ? "保存 Provider" : "设为当前 Provider"}
+              {step === "save_provider"
+                ? "保存 Provider"
+                : step === "save_work_buddy_models"
+                  ? "保存 WorkBuddy 模型配置"
+                  : "设为当前 Provider"}
             </li>
           ))}
         </ol>
@@ -89,6 +95,17 @@ function ChangePlanPreview({ plan }: { plan: ChangePlan }) {
           <p>
             应用时仍会把明文投影到 Codex 自己的 auth/config 文件，这是 Codex CLI
             当前运行所需的本机边界。
+          </p>
+        </PreviewSection>
+      ) : workbuddy ? (
+        <PreviewSection title="凭据边界">
+          <p>
+            API Key、完整基线和私有 revision 只保留在当前进程，不进入 Change
+            Plan 数据库、事件、日志或导出。
+          </p>
+          <p>
+            WorkBuddy 运行仍要求把凭据写入它自己的
+            models.json；预览不会显示绝对路径或明文。
           </p>
         </PreviewSection>
       ) : null}
@@ -107,7 +124,11 @@ function ChangePlanPreview({ plan }: { plan: ChangePlan }) {
         <p>写入：{writeLabels.join("、")}</p>
       </PreviewSection>
       <PreviewSection title="恢复方式">
-        <p>失败补偿由现有 Provider writer 管理，并以真实回读结果为准。</p>
+        <p>
+          {workbuddy
+            ? "失败补偿复用 WorkBuddy 的备份与原子替换，并以真实 models.json 回读为准。"
+            : "失败补偿由现有 Provider writer 管理，并以真实回读结果为准。"}
+        </p>
         <p>无法证明结果时会停止自动处理并要求人工检查，不会重放写入。</p>
       </PreviewSection>
     </div>
@@ -207,6 +228,7 @@ function ChangeJobWorkspace({
 
 export function ChangePlanSwitch({
   active,
+  surface = "codex",
   currentProviderId,
   providers,
   port,
@@ -356,6 +378,7 @@ export function ChangePlanSwitch({
           planRef.current = null;
           setPlan(null);
         }
+        await onTerminal();
         return;
       }
       acceptSnapshot(outcome.job);
@@ -410,39 +433,53 @@ export function ChangePlanSwitch({
       className="fy-change-plan-switch"
       aria-labelledby="fy-change-plan-switch-title"
     >
-      <div className="fy-change-plan-switch-heading">
-        <div>
-          <h3 id="fy-change-plan-switch-title">切换已有 Codex 配置</h3>
-          <p>先生成无副作用计划，确认一次后再写入并真实回读。</p>
-        </div>
-        <span>当前：{currentName}</span>
-      </div>
+      {surface === "codex" ? (
+        <>
+          <div className="fy-change-plan-switch-heading">
+            <div>
+              <h3 id="fy-change-plan-switch-title">切换已有 Codex 配置</h3>
+              <p>先生成无副作用计划，确认一次后再写入并真实回读。</p>
+            </div>
+            <span>当前：{currentName}</span>
+          </div>
 
-      {options.length === 0 ? (
-        <InlineNotice>暂无可用于切换的已有 Provider。</InlineNotice>
+          {options.length === 0 ? (
+            <InlineNotice>暂无可用于切换的已有 Provider。</InlineNotice>
+          ) : (
+            <div className="fy-change-plan-provider-list">
+              {options.map((provider) => {
+                const current = provider.id === currentProviderId;
+                return (
+                  <div
+                    key={provider.id}
+                    data-current={current ? "true" : "false"}
+                  >
+                    <span>
+                      <strong>{provider.name}</strong>
+                      {current ? <small>当前配置</small> : null}
+                    </span>
+                    <Button
+                      disabled={current || busy !== null}
+                      onClick={() => void createPlan(provider)}
+                    >
+                      {busy === "planning" && !current
+                        ? "正在生成…"
+                        : current
+                          ? "正在使用"
+                          : "预览切换"}
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
       ) : (
-        <div className="fy-change-plan-provider-list">
-          {options.map((provider) => {
-            const current = provider.id === currentProviderId;
-            return (
-              <div key={provider.id} data-current={current ? "true" : "false"}>
-                <span>
-                  <strong>{provider.name}</strong>
-                  {current ? <small>当前配置</small> : null}
-                </span>
-                <Button
-                  disabled={current || busy !== null}
-                  onClick={() => void createPlan(provider)}
-                >
-                  {busy === "planning" && !current
-                    ? "正在生成…"
-                    : current
-                      ? "正在使用"
-                      : "预览切换"}
-                </Button>
-              </div>
-            );
-          })}
+        <div className="fy-change-plan-switch-heading">
+          <div>
+            <h3 id="fy-change-plan-switch-title">WorkBuddy 变更计划</h3>
+            <p>保存、覆盖和删除都先预览一张计划，只确认一次。</p>
+          </div>
         </div>
       )}
 
@@ -465,9 +502,11 @@ export function ChangePlanSwitch({
         open={previewOpen && plan !== null}
         onOpenChange={(open) => busy === null && setPreviewOpen(open)}
         title={
-          plan?.operation === "codex_provider_upsert_and_switch"
-            ? "确认保存 Codex 配置"
-            : "确认 Codex 配置切换"
+          plan?.operation === "work_buddy_models_update"
+            ? "确认 WorkBuddy 模型变更"
+            : plan?.operation === "codex_provider_upsert_and_switch"
+              ? "确认保存 Codex 配置"
+              : "确认 Codex 配置切换"
         }
         description="确认的是这一张已绑定当前基线的计划；配置漂移或过期后不会继续写入。"
         large

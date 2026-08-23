@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -16,6 +16,23 @@ const planFixture = (): ChangePlan =>
   structuredClone(fixtureJson.plan) as unknown as ChangePlan;
 const terminalFixture = (): ChangeJobSnapshot =>
   structuredClone(fixtureJson.applyOutcome.job) as unknown as ChangeJobSnapshot;
+
+function workBuddyPlanFixture(): ChangePlan {
+  const plan = planFixture();
+  plan.operation = "work_buddy_models_update";
+  plan.targetProviderId = "workbuddy-models";
+  plan.targetProviderName = "WorkBuddy 模型配置（1 个模型）";
+  plan.businessSteps = ["save_work_buddy_models"];
+  plan.restartExpectation = "not_required";
+  plan.adapter = {
+    ...plan.adapter,
+    adapterId: "workbuddy_models",
+    operationType: "work_buddy_models_update",
+    readSet: ["work_buddy_models_config", "work_buddy_backup"],
+    writeSet: ["work_buddy_models_config", "work_buddy_backup"],
+  };
+  return plan;
+}
 
 function runningFixture(eventSeq = 4): ChangeJobSnapshot {
   const job = terminalFixture();
@@ -74,6 +91,7 @@ function createPort(overrides: Partial<ChangePlanPort> = {}): {
   const port: ChangePlanPort = {
     createCodexProviderSwitchPlan: vi.fn(async () => planFixture()),
     createCodexProviderUpsertPlan: vi.fn(async () => planFixture()),
+    createWorkBuddyModelsPlan: vi.fn(async () => planFixture()),
     apply: vi.fn<ChangePlanPort["apply"]>(async () => ({
       kind: "admitted",
       job: terminalFixture(),
@@ -115,6 +133,43 @@ function renderSwitch(port: ChangePlanPort, onTerminal = vi.fn()) {
 }
 
 describe("V2 Change Plan switch", () => {
+  it("uses the same one-confirmation workspace for a WorkBuddy external plan", async () => {
+    const user = userEvent.setup();
+    const { port } = createPort();
+    render(
+      <TooltipProvider delayDuration={0} skipDelayDuration={0}>
+        <ChangePlanSwitch
+          active
+          surface="workbuddy"
+          currentProviderId=""
+          providers={{}}
+          port={port}
+          externalPlan={workBuddyPlanFixture()}
+          onTerminal={vi.fn()}
+        />
+      </TooltipProvider>,
+    );
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "确认 WorkBuddy 模型变更",
+    });
+    expect(dialog).toHaveTextContent("保存 WorkBuddy 模型配置");
+    expect(dialog).toHaveTextContent("WorkBuddy 模型配置");
+    expect(dialog).toHaveTextContent("WorkBuddy 恢复备份");
+    expect(dialog).toHaveTextContent("不会在应用流程中发送模型请求");
+    expect(
+      screen.queryByRole("button", { name: "确认覆盖" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "切换已有 Codex 配置" }),
+    ).not.toBeInTheDocument();
+
+    await user.click(
+      within(dialog).getByRole("button", { name: "确认并应用一次" }),
+    );
+    expect(port.apply).toHaveBeenCalledTimes(1);
+  });
+
   it("previews one real plan, confirms once, and renders event/readback truth", async () => {
     const user = userEvent.setup();
     const admitted = runningFixture(1);

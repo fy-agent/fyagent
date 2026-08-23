@@ -9,8 +9,12 @@ export const CHANGE_STEP_KINDS = [
 export type ChangeStepKind = (typeof CHANGE_STEP_KINDS)[number];
 export type ChangeOperation =
   | "codex_provider_switch"
-  | "codex_provider_upsert_and_switch";
-export type ChangeBusinessStepKind = "save_provider" | "set_current_provider";
+  | "codex_provider_upsert_and_switch"
+  | "work_buddy_models_update";
+export type ChangeBusinessStepKind =
+  | "save_provider"
+  | "set_current_provider"
+  | "save_work_buddy_models";
 export type ChangePlanStatus = "ready" | "consumed";
 export type ChangeJobStatus =
   | "planned"
@@ -31,7 +35,9 @@ export type ChangeResourceKind =
   | "provider_db_current"
   | "device_current"
   | "target_definition"
-  | "codex_live_projection";
+  | "codex_live_projection"
+  | "work_buddy_models_config"
+  | "work_buddy_backup";
 export type ChangeResourceStatus =
   | "pending"
   | "matched"

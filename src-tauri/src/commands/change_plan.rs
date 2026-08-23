@@ -4,6 +4,7 @@ use tauri::{Emitter, Manager, State};
 use crate::change_plan::{
     ApplyChangePlanOutcome, CancelChangeJobOutcome, ChangeJobSnapshot, ChangePlan,
     ChangePlanErrorCode, ChangePlanService, CodexProviderUpsertPlanRequest,
+    WorkBuddyModelsPlanRequest,
 };
 use crate::store::AppState;
 
@@ -21,6 +22,14 @@ pub fn create_codex_provider_upsert_plan(
     request: CodexProviderUpsertPlanRequest,
 ) -> Result<ChangePlan, ChangePlanErrorCode> {
     ChangePlanService::plan_codex_provider_upsert(state.inner(), request)
+}
+
+#[tauri::command]
+pub fn create_workbuddy_models_plan(
+    state: State<'_, AppState>,
+    request: WorkBuddyModelsPlanRequest,
+) -> Result<ChangePlan, ChangePlanErrorCode> {
+    ChangePlanService::plan_workbuddy_models(state.inner(), request)
 }
 
 #[derive(Clone, Serialize)]

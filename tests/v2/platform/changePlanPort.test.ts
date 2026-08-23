@@ -140,6 +140,61 @@ describe("V2 Change Plan port", () => {
     });
   });
 
+  it("creates a strict WorkBuddy plan without exposing credentials or overwrite capabilities", async () => {
+    const basePlan = structuredClone(fixtureJson.plan);
+    const workBuddyPlan = {
+      ...basePlan,
+      operation: "work_buddy_models_update",
+      targetProviderId: "workbuddy-models",
+      targetProviderName: "WorkBuddy 模型配置（2 个模型）",
+      businessSteps: ["save_work_buddy_models"],
+      restartExpectation: "not_required",
+      adapter: {
+        ...basePlan.adapter,
+        adapterId: "workbuddy_models",
+        operationType: "work_buddy_models_update",
+        readSet: ["work_buddy_models_config", "work_buddy_backup"],
+        writeSet: ["work_buddy_models_config", "work_buddy_backup"],
+      },
+    };
+    invoke.mockResolvedValueOnce(workBuddyPlan);
+
+    const { createChangePlanPort } = await import(
+      "@/v2/shared/platform/tauri/feature-ports/changePlan"
+    );
+    const port = createChangePlanPort();
+    const request = {
+      baseUrl: "https://workbuddy.example/v1",
+      apiKey: "SECRET-CANARY-WORKBUDDY-PLAN",
+      allowNoApiKey: false,
+      selectedModelIds: ["gpt-5"],
+      manualModelIds: ["custom-model"],
+      removedModelIds: [],
+      clearExistingApiKeys: false,
+      expectedRevision: "opaque-revision",
+    };
+    const plan = await port.createWorkBuddyModelsPlan(request);
+
+    expect(plan).toMatchObject({
+      operation: "work_buddy_models_update",
+      businessSteps: ["save_work_buddy_models"],
+      adapter: {
+        readSet: ["work_buddy_models_config", "work_buddy_backup"],
+      },
+    });
+    expect(JSON.stringify(plan)).not.toContain(request.apiKey);
+    expect(invoke).toHaveBeenCalledWith("create_workbuddy_models_plan", {
+      request,
+    });
+    const malformedRequest = {
+      ...request,
+      overwriteToken: "must-not-cross",
+    } as unknown as typeof request;
+    await expect(
+      port.createWorkBuddyModelsPlan(malformedRequest),
+    ).rejects.toThrow("WorkBuddy Change Plan request is invalid");
+  });
+
   it("fails closed on excess wire fields and ignores malformed event hints", async () => {
     let eventHandler: ((event: { payload: unknown }) => void) | undefined;
     listen.mockImplementation(async (_name, handler) => {
@@ -213,6 +268,18 @@ describe("V2 Change Plan port", () => {
         apiKey: "native-only-secret",
         modelId: "gpt-5",
         codexFeatures: { imageExtension: false, websockets: false },
+      }),
+    ).rejects.toThrow(NATIVE_ONLY_ERROR);
+    await expect(
+      port.createWorkBuddyModelsPlan({
+        baseUrl: "https://workbuddy.example/v1",
+        apiKey: "native-only-secret",
+        allowNoApiKey: false,
+        selectedModelIds: ["gpt-5"],
+        manualModelIds: [],
+        removedModelIds: [],
+        clearExistingApiKeys: false,
+        expectedRevision: null,
       }),
     ).rejects.toThrow(NATIVE_ONLY_ERROR);
     await expect(port.apply("plan-contract", "plan-digest")).rejects.toThrow(

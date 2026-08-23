@@ -110,6 +110,17 @@ impl fmt::Debug for SaveWorkBuddyModelsRequest {
     }
 }
 
+impl Drop for SaveWorkBuddyModelsRequest {
+    fn drop(&mut self) {
+        use zeroize::Zeroize;
+
+        self.api_key.zeroize();
+        if let Some(token) = self.overwrite_token.as_mut() {
+            token.zeroize();
+        }
+    }
+}
+
 /// Result of the save preflight or committed transaction.
 ///
 /// Existing targets are not an error: the renderer receives one aggregate

@@ -30,6 +30,7 @@ import type {
   ProviderSwitchResult,
   WorkBuddyFetchModelsRequest,
   WorkBuddyFetchModelsResult,
+  WorkBuddyChangePlanRequest,
   WorkBuddyModelIdsResult,
   WorkBuddySaveModelsRequest,
   WorkBuddySaveModelsResult,
@@ -139,6 +140,9 @@ export interface ChangePlanPort {
   createCodexProviderSwitchPlan(targetProviderId: string): Promise<ChangePlan>;
   createCodexProviderUpsertPlan(
     request: ProviderQuickSetupRequest,
+  ): Promise<ChangePlan>;
+  createWorkBuddyModelsPlan(
+    request: WorkBuddyChangePlanRequest,
   ): Promise<ChangePlan>;
   apply(planId: string, planDigest: string): Promise<ApplyChangePlanOutcome>;
   getJob(jobId: string): Promise<ChangeJobSnapshot>;

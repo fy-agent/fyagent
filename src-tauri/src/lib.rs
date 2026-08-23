@@ -1870,6 +1870,7 @@ pub fn run() {
             commands::switch_provider_with_result,
             commands::create_codex_provider_switch_plan,
             commands::create_codex_provider_upsert_plan,
+            commands::create_workbuddy_models_plan,
             commands::apply_change_plan,
             commands::get_change_job,
             commands::list_recoverable_change_jobs,

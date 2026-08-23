@@ -125,10 +125,11 @@ otherwise exact save request plus the expected revision.
   entry ID, detects duplicate target IDs, and only then considers a write.
 - Existing target IDs without a valid matching confirmation capability return
   `overwrite_confirmation_required` with one opaque token and unique
-  `existingIds`. This preflight creates neither backup nor primary write. The UI
-  freezes the exact request and retries only that request with the token. V2
-  existing-model delete confirms once in the UI, then may auto-replay that
-  token so the user is not asked a second time.
+  `existingIds`. This preflight creates neither backup nor primary write. A
+  direct legacy caller freezes the exact request and retries only that request
+  with the token. The registered UCP adapter instead issues and consumes this
+  capability inside the backend after the one UCP confirmation; V2 never sees
+  the token and never asks for a WorkBuddy-specific second confirmation.
 - The backend consumes the token before rereading, validates request and
   revision binding, rereads under the lock, and checks the revision again.
   Malformed, mismatched, expired, or reused tokens never authorize a write.
@@ -147,6 +148,34 @@ otherwise exact save request plus the expected revision.
 - Commit backup then primary using flush/sync and same-directory atomic
   replacement. Windows uses replacement semantics with no delete-before-rename
   gap. Unix primary and backup credential files remain mode `0600`.
+
+### Unified Change Plan adapter
+
+- `create_workbuddy_models_plan` accepts the save intent without
+  `overwriteToken`. Under the WorkBuddy mutation lock it runs the same strict
+  normalization and pure document transform used by the writer, captures the
+  exact baseline privately, and inserts one safe UCP plan row. It creates no
+  backup, token, job/event, file write, Provider state, or network request.
+- The full request, complete-byte revision, and exact credential-bearing
+  baseline bytes remain in the process-private plan proof. They never enter the
+  UCP database, IPC response, event, log, Debug output, or export. The public
+  plan contains only fixed operation/resource codes and bounded counts.
+- Confirmed apply holds the same WorkBuddy lock from private baseline precheck
+  through atomic admission, the existing writer, and real-file readback. Its
+  phases are exactly `precheck -> snapshot -> managed_write -> readback ->
+  finalize`; the plan ID is the durable idempotency key.
+- Revision drift, including API-key-only drift, rejects the plan before
+  admission and leaves job, backup, and primary writes at zero. Duplicate apply
+  returns the existing job and never invokes the writer again.
+- A readback mismatch restores the exact private baseline through the same
+  fixed-path atomic storage implementation when possible. Crash reconciliation
+  only rereads/classifies/restores; it never replays the writer. If process
+  restart removes the private proof, the outcome is `recovery_required` rather
+  than guessed secret equality.
+- `usageEvidence=not_observed` and `restartRequirement=not_required` are the
+  only supported WorkBuddy claims. Native Windows storage still requires
+  matching-host evidence; macOS tests do not prove the handle-pinned Windows
+  path.
 
 ### Credential and renderer isolation
 
@@ -191,6 +220,10 @@ otherwise exact save request plus the expected revision.
 | A removal-only save commits with a valid token                                | Delete matching entries and prune populated `availableModels`; URL/key are not required.          |
 | Token is malformed, expired, mismatched, or reused                            | Consume/reject it, expose no credential or target contents, and write nothing.                    |
 | A save updates an existing target                                             | Preserve entry position, unknown fields, and unrelated entries; update only documented fields.    |
+| UCP preview is created                                                        | Insert one safe plan row; no token, job/event, backup, primary write, Provider mutation, or network. |
+| UCP baseline drifts before apply                                              | Reject `stale`; create no job and invoke no writer.                                                  |
+| UCP writer returns but target readback mismatches                             | Restore the exact baseline when possible; otherwise require recovery.                               |
+| UCP crash/restart leaves a nonterminal job                                    | Read back without writer replay; missing private proof is `recovery_required`.                       |
 | WorkBuddy view unmounts                                                       | Clear the in-memory API key and cancel/isolate its queries from other app domains. V2 Models keep-alive hide is not an unmount. |
 
 ## 5. Good / Base / Bad Cases
@@ -202,6 +235,9 @@ otherwise exact save request plus the expected revision.
 - Good: an external edit changes only an existing API key. The HMAC revision
   changes, the stale save returns `concurrent_modification`, and no public hash
   can be used to test key guesses.
+- Good: UCP preview and one confirmation reuse the same service transform and
+  atomic writer; overwrite capability stays backend-private and terminal truth
+  comes from rereading the real document.
 - Bad: append a second `/v1`, follow a credential-bearing redirect, rebuild the
   complete JSON entry, delete the primary before rename on Windows, or store an
   API key in query state.

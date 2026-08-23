@@ -55,7 +55,7 @@
     ],
     [
       "src-tauri/src/change_plan.rs",
-      "57c47fae23363651fbd970b040ddaf3c174644e2722b228a8943faf00911003e"
+      "054ee20cc3a64df45f6953e2df920387411f57003ae3a36d7f201d1ba2f33671"
     ],
     [
       "src-tauri/src/claude_desktop_config.rs",
@@ -127,7 +127,7 @@
     ],
     [
       "src-tauri/src/lib.rs",
-      "57ecc19a2856ae13b05579181e17d7886e677ed1b5235eaacf9721e781d7dedd"
+      "b4174b66edc9258b2d019d7d60c72b4e8c2e155a0b163e207ea3b3ecbbe72766"
     ],
     [
       "src-tauri/src/lightweight.rs",
@@ -239,11 +239,11 @@
     ],
     [
       "src-tauri/src/services/workbuddy/config.rs",
-      "90951103b2785b10d80373a83481db08413996235f1785b46b83d096bc2651cd"
+      "1c84db98d3cfb248a48367b6d80036636666e3870055ce0d0c695f70d667de77"
     ],
     [
       "src-tauri/src/services/workbuddy/mod.rs",
-      "fb53f72d1b71cb0b0137aa3db4c989e79a2578caac3e7eae36a4cd1598a73044"
+      "8b8fa2b91919c19b613e0b5f7329d8ca194ae4a8d2ac9f31027f7b601a115413"
     ],
     [
       "src-tauri/src/session_manager/providers/opencode.rs",

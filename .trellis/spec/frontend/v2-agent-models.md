@@ -440,19 +440,18 @@ fetch/save controls.
   toggle may reveal the value in the input only; it never enters query cache,
   URL, storage, notices, or logs.
 - Existing third-party model IDs are grouped by model family and start
-  collapsed. Clicking a chip remove asks for confirmation that the model
-  configuration will be deleted and cannot be recovered; confirming writes
-  immediately via `removedModelIds` and does not wait for 「保存并应用」. The
-  renderer may auto-replay one backend overwrite token after that UI
-  confirmation so the user is not asked twice. Fetch and manual entry share one
-  draft list: pull merges remote IDs, fill adds typed IDs, and save splits the
-  draft back into selected versus manual IDs. Both the existing list and the
-  draft list can be filtered by model ID. The panel does not display backup,
-  configuration-file status, or the persisted-key-clear checkbox.
+  collapsed. Add, update, and chip removal all freeze one no-token request and
+  create a `work_buddy_models_update` Change Plan. Removal does not run a
+  separate delete dialog or direct writer; the shared immutable preview is the
+  one confirmation. Fetch and manual entry share one draft list: pull merges
+  remote IDs, fill adds typed IDs, and save splits the draft back into selected
+  versus manual IDs. Both the existing list and the draft list can be filtered
+  by model ID. The panel does not display backup, configuration-file status, or
+  the persisted-key-clear checkbox.
 - Discovery, revision, overwrite capability, atomic persistence, concurrent
   modification, and authoritative reread follow the backend WorkBuddy
-  contract. The UI freezes one exact overwrite request and replays it only with
-  its opaque one-time token.
+  contract. The renderer never receives or replays an overwrite token; after
+  the one UCP confirmation the backend adapter owns any internal capability.
 - A remote response or local document in which a model ID contains a complete credential
   fails closed before DTO/query/DOM construction. The frontend repeats the
   collision rejection before save as defense in depth.
@@ -536,13 +535,13 @@ fetch/save controls.
 - The normal browser adapter returns native-only unavailability. Rich fixtures
   live only in focused tests and are always labelled/non-authoritative.
 
-### Codex existing-Provider Change Plan
+### Codex and WorkBuddy Change Plan
 
-- Codex switching to an existing Provider uses the bounded `changePlan` port,
-  not quick setup and not a page-owned coordinator. The Tauri adapter strictly
-  parses the complete plan/apply/job/cancel/event envelopes, rejects excess
-  fields and unknown enum values, and invokes only
-  `create_codex_provider_switch_plan`, `apply_change_plan`, `get_change_job`,
+- Codex switch/upsert and WorkBuddy model mutation use the bounded `changePlan`
+  port, not direct V2 writers or a page-owned coordinator. The Tauri adapter
+  strictly parses complete plan/apply/job/cancel/event envelopes, rejects
+  excess fields and unknown enum values, and invokes only the three registered
+  plan commands plus `apply_change_plan`, `get_change_job`,
   `list_recoverable_change_jobs`, and `cancel_change_job`.
 - The current Provider is labelled and cannot create a plan. A non-current
   Provider may create a side-effect-free preview. The preview shows only the
@@ -563,9 +562,10 @@ fetch/save controls.
   partial/recovery, restart, and `usageEvidence=not_observed` truth. A successful
   write is not described as real model usage. Browser adapters always reject
   this surface as native-only and never return a production-looking fixture.
-- This slice is switch-only. Provider create/edit remains outside the module
-  until the SecretRef/version contract is integrated; the apply path performs
-  no model/connectivity request and imports no leftover V1 coordinator or hook.
+- The preview is operation-aware: Codex shows Provider authorities; WorkBuddy
+  shows only its fixed config/backup resources and recovery copy. WorkBuddy
+  requests contain no `overwriteToken`, and neither operation performs a
+  model/connectivity request at apply time or imports the legacy V1 coordinator.
 
 ## 4. Validation & Error Matrix
 
@@ -599,7 +599,8 @@ fetch/save controls.
 | A displayed model ID has no local vendor icon resolver                                     | Asset mapping test fails; never load `https?://` icons                                                  |
 | Any selector lacks a local icon                                                            | Asset mapping/unit/browser gate fails                                                                   |
 | WorkBuddy remote/local ID contains a complete API key                                      | Generic fail-closed error before DTO/cache/DOM/write                                                    |
-| WorkBuddy revision or overwrite token drifts                                               | Write nothing; reread before claiming state                                                             |
+| WorkBuddy revision drifts before UCP admission                                             | Reject stale; no job, backup, primary write, or writer call                                              |
+| WorkBuddy UCP request contains `overwriteToken`                                            | Strict adapter rejects it before IPC; renderer never owns the capability                                 |
 | Provider Base URL has userinfo/query/fragment or a credential component                    | Reject before DB/current/live mutation                                                                  |
 | Provider request is empty, generic, wrong-ID, or has public/secret collision               | Reject in Rust; no state mutation                                                                       |
 | Codex `imageExtension: true` omits `experimental_bearer_token` while `requires_openai_auth` is false | Host derivation/test fails; current Codex would not send `auth.json`'s key |
@@ -615,6 +616,7 @@ fetch/save controls.
 | Event snapshot is stale or an event is lost                                                 | Ignore the stale sequence; authoritative `get_change_job` plus polling may advance state                 |
 | `managed_write` has started                                                                 | Hide safe-cancel action; preserve backend `commit_point_passed` outcome                                  |
 | Terminal execution has no usage observation                                                 | Render `not_observed`; never claim the new Provider was used successfully                               |
+| WorkBuddy plan/apply renders a second product-specific confirmation                         | Component contract fails; the shared immutable-plan confirmation is the only gate                       |
 | API key appears in URL/storage/query/log/error/DOM/snapshot                                | Security regression test fails                                                                          |
 
 ## 5. Good / Base / Bad Cases

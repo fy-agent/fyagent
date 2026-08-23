@@ -705,7 +705,7 @@ test("Provider read failure disables writes and remains an unknown observation",
   await expectHealthyPage(page, health);
 });
 
-test("WorkBuddy freezes overwrite input, sends revision, rereads, and clears credentials", async ({
+test("WorkBuddy freezes one no-token plan, confirms once, rereads, and clears credentials", async ({
   page,
 }) => {
   await installRichTauriFeatureFixture(page, {
@@ -720,35 +720,38 @@ test("WorkBuddy freezes overwrite input, sends revision, rereads, and clears cre
   await page.getByLabel("自定义模型 ID").fill("manual-browser-model");
   await page.getByRole("button", { name: "保存并应用" }).click();
 
-  const dialog = page.getByRole("dialog", { name: "确认覆盖已有模型" });
+  const dialog = page.getByRole("dialog", {
+    name: "确认 WorkBuddy 模型变更",
+  });
   await expect(dialog).toBeVisible();
-  await dialog.getByRole("button", { name: "确认覆盖" }).click();
   await expect(page.getByLabel("API Key", { exact: true })).toHaveValue("");
-
-  await expect
-    .poll(
-      async () =>
-        (await featureFixtureCalls(page)).filter(
-          (call) => call.command === "save_workbuddy_models",
-        ).length,
-    )
-    .toBe(2);
-  const calls = await featureFixtureCalls(page);
-  const saveCalls = calls.filter(
-    (call) => call.command === "save_workbuddy_models",
+  const planCalls = (await featureFixtureCalls(page)).filter(
+    (call) => call.command === "create_workbuddy_models_plan",
   );
-  const firstRequest = saveCalls[0].payload.request as Record<string, unknown>;
-  const secondRequest = saveCalls[1].payload.request as Record<string, unknown>;
-  expect(firstRequest).toMatchObject({
+  expect(planCalls).toHaveLength(1);
+  const request = planCalls[0].payload.request as Record<string, unknown>;
+  expect(request).toMatchObject({
     baseUrl: "https://workbuddy.example.test/v1",
     apiKey,
     manualModelIds: ["manual-browser-model"],
     expectedRevision: "fixture-revision-1",
   });
-  expect(secondRequest).toEqual({
-    ...firstRequest,
-    overwriteToken: "fixture-opaque-overwrite-token",
-  });
+  expect(request).not.toHaveProperty("overwriteToken");
+  expect(
+    (await featureFixtureCalls(page)).filter(
+      (call) => call.command === "save_workbuddy_models",
+    ),
+  ).toEqual([]);
+
+  await dialog.getByRole("button", { name: "确认并应用一次" }).click();
+  await expect(page.getByTestId("change-job-workspace")).toBeVisible();
+  await expect(page.getByTestId("change-job-workspace")).toContainText(
+    "配置已应用，可直接开始使用。",
+  );
+  const calls = await featureFixtureCalls(page);
+  expect(
+    calls.filter((call) => call.command === "apply_change_plan"),
+  ).toHaveLength(1);
   expect(
     calls.filter((call) => call.command === "get_workbuddy_status").length,
   ).toBeGreaterThanOrEqual(2);
@@ -787,18 +790,27 @@ test("WorkBuddy write failures stay redacted and clear the submitted credential"
   await page.getByLabel("API Key", { exact: true }).fill(apiKey);
   await page.getByLabel("自定义模型 ID").fill("failure-model");
   await page.getByRole("button", { name: "保存并应用" }).click();
+  const dialog = page.getByRole("dialog", {
+    name: "确认 WorkBuddy 模型变更",
+  });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "确认并应用一次" }).click();
 
-  await expect(page.locator("body")).toContainText("保存失败");
-  await expect(page.locator("body")).toContainText(
-    "请刷新当前设置、检查输入后重试。",
+  await expect(page.getByTestId("change-job-workspace")).toContainText(
+    "写入未完成，已通过回读确认此前状态得到恢复。",
   );
   await expect(page.locator("body")).not.toContainText(apiKey);
   await expect(page.getByLabel("API Key", { exact: true })).toHaveValue("");
+  const calls = await featureFixtureCalls(page);
   expect(
-    (await featureFixtureCalls(page)).filter(
-      (call) => call.command === "save_workbuddy_models",
-    ),
+    calls.filter((call) => call.command === "create_workbuddy_models_plan"),
   ).toHaveLength(1);
+  expect(
+    calls.filter((call) => call.command === "apply_change_plan"),
+  ).toHaveLength(1);
+  expect(
+    calls.filter((call) => call.command === "save_workbuddy_models"),
+  ).toEqual([]);
 
   await expectHealthyPage(page, health);
 });
@@ -818,10 +830,17 @@ test("WorkBuddy concurrent modification rereads authority instead of claiming su
     .fill("browser-conflict-secret");
   await page.getByLabel("自定义模型 ID").fill("conflict-model");
   await page.getByRole("button", { name: "保存并应用" }).click();
+  const dialog = page.getByRole("dialog", {
+    name: "确认 WorkBuddy 模型变更",
+  });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "确认并应用一次" }).click();
 
-  await expect(page.locator("body")).toContainText("配置已被其他操作修改");
+  await expect(page.locator("body")).toContainText(
+    "计划生成后配置已变化，请重新预览。",
+  );
   await expect(page.locator("body")).not.toContainText(
-    "WorkBuddy 模型配置已保存",
+    "配置已应用，可直接开始使用。",
   );
   await expect(page.getByLabel("API Key", { exact: true })).toHaveValue("");
   const calls = await featureFixtureCalls(page);
@@ -831,6 +850,9 @@ test("WorkBuddy concurrent modification rereads authority instead of claiming su
   expect(
     calls.filter((call) => call.command === "get_workbuddy_model_ids").length,
   ).toBeGreaterThanOrEqual(2);
+  expect(
+    calls.filter((call) => call.command === "save_workbuddy_models"),
+  ).toEqual([]);
 
   await expectHealthyPage(page, health);
 });

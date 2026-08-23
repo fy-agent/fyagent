@@ -147,6 +147,7 @@ export type {
   ReachabilityStatus,
   TraeWorkModelIdsResult,
   WorkBuddyConcurrentModificationResult,
+  WorkBuddyChangePlanRequest,
   WorkBuddyFetchModelsRequest,
   WorkBuddyFetchModelsResult,
   WorkBuddyModelIdsResult,

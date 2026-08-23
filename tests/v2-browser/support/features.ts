@@ -323,7 +323,10 @@ export async function installRichTauriFeatureFixture(
     const pendingChangePlans: Record<
       string,
       {
-        operation: "codex_provider_switch" | "codex_provider_upsert_and_switch";
+        operation:
+          | "codex_provider_switch"
+          | "codex_provider_upsert_and_switch"
+          | "work_buddy_models_update";
         targetProviderId: string;
         request?: Record<string, unknown>;
       }
@@ -342,8 +345,15 @@ export async function installRichTauriFeatureFixture(
       "target_definition",
       "codex_live_projection",
     ];
+    const workBuddyChangeResources = [
+      "work_buddy_models_config",
+      "work_buddy_backup",
+    ];
     const createChangePlan = (
-      operation: "codex_provider_switch" | "codex_provider_upsert_and_switch",
+      operation:
+        | "codex_provider_switch"
+        | "codex_provider_upsert_and_switch"
+        | "work_buddy_models_update",
       targetProviderId: string,
       targetProviderName: string,
       request?: Record<string, unknown>,
@@ -371,7 +381,9 @@ export async function installRichTauriFeatureFixture(
         businessSteps:
           operation === "codex_provider_upsert_and_switch"
             ? ["save_provider", "set_current_provider"]
-            : ["set_current_provider"],
+            : operation === "work_buddy_models_update"
+              ? ["save_work_buddy_models"]
+              : ["set_current_provider"],
         ...(operation === "codex_provider_upsert_and_switch"
           ? {
               credential: {
@@ -384,19 +396,26 @@ export async function installRichTauriFeatureFixture(
           adapterId:
             operation === "codex_provider_upsert_and_switch"
               ? "codex_provider_upsert_switch"
-              : "codex_provider_switch",
+              : operation === "work_buddy_models_update"
+                ? "workbuddy_models"
+                : "codex_provider_switch",
           adapterVersion: "1",
           operationType: operation,
           phases: [...changePhases],
-          readSet: [...changeResources],
+          readSet:
+            operation === "work_buddy_models_update"
+              ? [...workBuddyChangeResources]
+              : [...changeResources],
           writeSet:
             operation === "codex_provider_upsert_and_switch"
               ? [...changeResources]
-              : [
-                  "provider_db_current",
-                  "device_current",
-                  "codex_live_projection",
-                ],
+              : operation === "work_buddy_models_update"
+                ? [...workBuddyChangeResources]
+                : [
+                    "provider_db_current",
+                    "device_current",
+                    "codex_live_projection",
+                  ],
           idempotencyScope: "plan",
           cancelMode: "before_managed_write",
           compensationMode: "writer_owned_rollback",
@@ -405,13 +424,29 @@ export async function installRichTauriFeatureFixture(
             "after_managed_write_before_record",
           ],
         },
-        currentProviderCode: "current_configured",
+        currentProviderCode:
+          operation === "work_buddy_models_update"
+            ? "workbuddy_configured"
+            : "current_configured",
         targetProviderCode:
           operation === "codex_provider_upsert_and_switch"
             ? "planned_provider"
-            : "existing_provider",
-        restartExpectation: "recommended",
-        risks: [{ code: "local_configuration_write", severity: "notice" }],
+            : operation === "work_buddy_models_update"
+              ? "workbuddy_models_update"
+              : "existing_provider",
+        restartExpectation:
+          operation === "work_buddy_models_update"
+            ? "not_required"
+            : "recommended",
+        risks: [
+          {
+            code:
+              operation === "work_buddy_models_update"
+                ? "workbuddy_local_configuration_write"
+                : "local_configuration_write",
+            severity: "notice",
+          },
+        ],
         evidenceNote: "usage_not_observed",
       };
     };
@@ -419,7 +454,13 @@ export async function installRichTauriFeatureFixture(
       planId: string,
       targetProviderId: string,
       failed: boolean,
+      operation:
+        | "codex_provider_switch"
+        | "codex_provider_upsert_and_switch"
+        | "work_buddy_models_update",
     ): Record<string, unknown> => {
+      const workBuddy = operation === "work_buddy_models_update";
+      const resources = workBuddy ? workBuddyChangeResources : changeResources;
       const jobId = `fixture-change-job-${changePlanSequence}`;
       const job = {
         jobId,
@@ -432,7 +473,9 @@ export async function installRichTauriFeatureFixture(
         status: failed ? "failed" : "succeeded",
         resultCode: failed
           ? "writer_failed_baseline_restored"
-          : "applied_restart_recommended",
+          : workBuddy
+            ? "applied"
+            : "applied_restart_recommended",
         steps: changePhases.map((kind) => ({
           kind,
           status:
@@ -452,12 +495,21 @@ export async function installRichTauriFeatureFixture(
                         : "target_matched"
                       : "finalized",
         })),
-        resources: changeResources.map((kind) => ({
+        resources: resources.map((kind) => ({
           kind,
           status: "matched",
-          code: failed ? "baseline_matched" : "target_matched",
+          code: failed
+            ? workBuddy
+              ? "workbuddy_baseline_restored"
+              : "baseline_matched"
+            : workBuddy
+              ? kind === "work_buddy_backup"
+                ? "workbuddy_backup_observed"
+                : "workbuddy_target_matched"
+              : "target_matched",
         })),
-        restartRequirement: failed ? "not_required" : "recommended",
+        restartRequirement:
+          failed || workBuddy ? "not_required" : "recommended",
         usageEvidence: "not_observed",
         recoveryState: failed ? "succeeded" : "not_needed",
         ...(failed
@@ -479,7 +531,7 @@ export async function installRichTauriFeatureFixture(
         diagnosticCode: failed
           ? "baseline_restored"
           : "target_readback_matched",
-        liveConfigChanged: !failed,
+        liveConfigChanged: !failed && !workBuddy,
         createdAt: 1_700_000_100 + changePlanSequence,
         updatedAt: 1_700_000_101 + changePlanSequence,
       };
@@ -754,6 +806,29 @@ export async function installRichTauriFeatureFixture(
               updatedEntries: 0,
             };
           }
+          case "create_workbuddy_models_plan": {
+            await delay(fixtureOptions.workBuddyWriteDelayMs);
+            const request = structuredClone(
+              payload.request as Record<string, unknown>,
+            );
+            const targetIds = [
+              ...((request.selectedModelIds as string[] | undefined) ?? []),
+              ...((request.manualModelIds as string[] | undefined) ?? []),
+            ];
+            const removedIds = new Set(
+              (request.removedModelIds as string[] | undefined) ?? [],
+            );
+            const projected = [
+              ...workBuddyModelIds.filter((id) => !removedIds.has(id)),
+              ...targetIds,
+            ];
+            return createChangePlan(
+              "work_buddy_models_update",
+              "workbuddy-models",
+              `WorkBuddy 模型配置（${new Set(projected).size} 个模型）`,
+              request,
+            );
+          }
           case "get_provider_summary": {
             const app = String(payload.app);
             if (fixtureOptions.observationFailure === app) {
@@ -797,7 +872,18 @@ export async function installRichTauriFeatureFixture(
             const pending = pendingChangePlans[planId];
             if (!pending)
               return { kind: "rejected", errorCode: "plan_not_found" };
-            const failed = fixtureOptions.providerMutation === "switch_failure";
+            if (
+              pending.operation === "work_buddy_models_update" &&
+              fixtureOptions.workBuddySave === "concurrent_modification"
+            ) {
+              workBuddyRevision = "fixture-revision-external-drift";
+              delete pendingChangePlans[planId];
+              return { kind: "rejected", errorCode: "stale" };
+            }
+            const failed =
+              pending.operation === "work_buddy_models_update"
+                ? fixtureOptions.workBuddySave === "failure"
+                : fixtureOptions.providerMutation === "switch_failure";
             if (!failed) {
               if (pending.operation === "codex_provider_upsert_and_switch") {
                 const request = pending.request ?? {};
@@ -805,13 +891,29 @@ export async function installRichTauriFeatureFixture(
                   id: pending.targetProviderId,
                   name: String(request.name),
                 };
+              } else if (pending.operation === "work_buddy_models_update") {
+                const request = pending.request ?? {};
+                const removedIds = new Set(
+                  (request.removedModelIds as string[] | undefined) ?? [],
+                );
+                workBuddyModelIds = [
+                  ...new Set([
+                    ...workBuddyModelIds.filter((id) => !removedIds.has(id)),
+                    ...((request.selectedModelIds as string[] | undefined) ??
+                      []),
+                    ...((request.manualModelIds as string[] | undefined) ?? []),
+                  ]),
+                ];
+                workBuddyRevision = `fixture-revision-${changePlanSequence + 1}`;
               }
-              currentProviderIds.codex = pending.targetProviderId;
+              if (pending.operation !== "work_buddy_models_update")
+                currentProviderIds.codex = pending.targetProviderId;
             }
             const job = createChangeJob(
               planId,
               pending.targetProviderId,
               failed,
+              pending.operation,
             );
             delete pendingChangePlans[planId];
             return { kind: "admitted", job: structuredClone(job) };

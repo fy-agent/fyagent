@@ -81,6 +81,11 @@ export interface WorkBuddySaveModelsRequest
   overwriteToken?: string;
 }
 
+export type WorkBuddyChangePlanRequest = Omit<
+  WorkBuddySaveModelsRequest,
+  "overwriteToken"
+>;
+
 export interface WorkBuddySaveModelsSavedResult {
   state: "saved";
   revision: string;

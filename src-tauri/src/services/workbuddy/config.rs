@@ -33,7 +33,7 @@ use super::{
         SaveWorkBuddyModelsOutcome, SaveWorkBuddyModelsRequest, WorkBuddyModelIdsResult,
         WorkBuddyStatus,
     },
-    url::{normalize_workbuddy_base_url, reject_url_credential_collision},
+    url::{normalize_workbuddy_base_url, reject_url_credential_collision, NormalizedWorkBuddyUrl},
 };
 
 const MODELS_FILE_NAME: &str = "models.json";
@@ -69,6 +69,59 @@ struct LoadedConfig {
     document: WorkBuddyDocument,
 }
 
+/// Exact, process-private snapshot used only by the registered Change Plan
+/// adapter. `original_bytes` can contain credentials and must never cross IPC
+/// or persistence.
+#[derive(Clone)]
+pub(crate) struct WorkBuddyChangeSnapshot {
+    pub(crate) status: WorkBuddyStatus,
+    pub(crate) model_ids: Vec<String>,
+    original_bytes: Option<Vec<u8>>,
+}
+
+impl Drop for WorkBuddyChangeSnapshot {
+    fn drop(&mut self) {
+        use zeroize::Zeroize;
+
+        if let Some(bytes) = self.original_bytes.as_mut() {
+            bytes.zeroize();
+        }
+    }
+}
+
+pub(crate) struct WorkBuddyChangePreview {
+    pub(crate) baseline: WorkBuddyChangeSnapshot,
+    pub(crate) target_model_count: usize,
+    pub(crate) existing_target_count: usize,
+}
+
+pub(crate) struct WorkBuddyMutationGuard {
+    _guard: tokio::sync::MutexGuard<'static, ()>,
+}
+
+struct NormalizedSaveRequest {
+    target_ids: Vec<String>,
+    removed_ids: Vec<String>,
+    normalized_url: Option<NormalizedWorkBuddyUrl>,
+}
+
+impl NormalizedSaveRequest {
+    fn digest_url(&self) -> &str {
+        self.normalized_url
+            .as_ref()
+            .map(|url| url.base_url.as_str())
+            .unwrap_or("")
+    }
+}
+
+struct PreparedMutation {
+    serialized: Vec<u8>,
+    model_count: usize,
+    created_entries: usize,
+    updated_entries: usize,
+    confirmation_ids: Vec<String>,
+}
+
 /// Server-side state for an aggregate overwrite confirmation.
 ///
 /// Only hashes, a revision, and an expiry live here. The opaque token does not
@@ -100,6 +153,106 @@ pub(crate) async fn save_workbuddy_models(
     save_workbuddy_models_at(current_paths(), request).await
 }
 
+pub(crate) fn lock_workbuddy_mutation() -> WorkBuddyMutationGuard {
+    WorkBuddyMutationGuard {
+        _guard: write_lock().blocking_lock(),
+    }
+}
+
+pub(crate) fn inspect_workbuddy_change_locked(
+    _guard: &WorkBuddyMutationGuard,
+) -> Result<WorkBuddyChangeSnapshot, WorkBuddyError> {
+    capture_change_snapshot_at(&current_paths())
+}
+
+pub(crate) fn preview_workbuddy_change_locked(
+    _guard: &WorkBuddyMutationGuard,
+    request: &SaveWorkBuddyModelsRequest,
+) -> Result<WorkBuddyChangePreview, WorkBuddyError> {
+    if request.overwrite_token.is_some() {
+        return Err(WorkBuddyError::new(
+            WorkBuddyErrorCode::OverwriteTokenInvalid,
+        ));
+    }
+    let paths = current_paths();
+    let (loaded, backup_exists) = load_current_config_at(&paths)?;
+    if request.expected_revision != loaded.revision {
+        return Err(WorkBuddyError::new(
+            WorkBuddyErrorCode::ConfigConcurrentModification,
+        ));
+    }
+    let normalized = normalize_save_request(request)?;
+    let prepared = prepare_mutation(&loaded, request, &normalized)?;
+    let baseline = change_snapshot_from_loaded(loaded, backup_exists);
+    Ok(WorkBuddyChangePreview {
+        baseline,
+        target_model_count: prepared.model_count,
+        existing_target_count: prepared.confirmation_ids.len(),
+    })
+}
+
+/// Execute the existing writer under the caller-held WorkBuddy mutation lock.
+/// The legacy overwrite capability is created and consumed entirely inside
+/// this method after the one UCP confirmation.
+pub(crate) fn apply_workbuddy_change_locked(
+    _guard: &WorkBuddyMutationGuard,
+    request: &SaveWorkBuddyModelsRequest,
+) -> Result<SaveWorkBuddyModelsOutcome, WorkBuddyError> {
+    let paths = current_paths();
+    let outcome = save_workbuddy_models_at_locked(&paths, request)?;
+    let SaveWorkBuddyModelsOutcome::OverwriteConfirmationRequired { token, .. } = outcome else {
+        return Ok(outcome);
+    };
+    let mut confirmed = request.clone();
+    confirmed.overwrite_token = Some(token);
+    save_workbuddy_models_at_locked(&paths, &confirmed)
+}
+
+pub(crate) fn workbuddy_target_matches_locked(
+    _guard: &WorkBuddyMutationGuard,
+    request: &SaveWorkBuddyModelsRequest,
+) -> Result<bool, WorkBuddyError> {
+    let paths = current_paths();
+    let (loaded, _) = load_current_config_at(&paths)?;
+    let normalized = normalize_save_request(request)?;
+    Ok(document_matches_request(
+        &loaded.document,
+        request,
+        &normalized,
+    ))
+}
+
+pub(crate) fn restore_workbuddy_change_snapshot_locked(
+    _guard: &WorkBuddyMutationGuard,
+    snapshot: &WorkBuddyChangeSnapshot,
+) -> Result<bool, WorkBuddyError> {
+    let paths = current_paths();
+
+    #[cfg(target_os = "macos")]
+    match snapshot.original_bytes.as_deref() {
+        Some(bytes) => write_credential_file_atomically(&paths.models, bytes)
+            .map_err(|_| WorkBuddyError::new(WorkBuddyErrorCode::ConfigWriteFailed))?,
+        None => match fs::remove_file(&paths.models) {
+            Ok(()) => {}
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(_) => return Err(WorkBuddyError::new(WorkBuddyErrorCode::ConfigWriteFailed)),
+        },
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let storage = open_windows_storage(&paths, snapshot.original_bytes.is_some())
+            .map_err(|_| WorkBuddyError::new(WorkBuddyErrorCode::ConfigWriteFailed))?;
+        storage
+            .restore_models(snapshot.original_bytes.as_deref())
+            .map_err(|_| WorkBuddyError::new(WorkBuddyErrorCode::ConfigWriteFailed))?;
+    }
+
+    let restored = capture_change_snapshot_at(&paths)?;
+    Ok(restored.status.exists == snapshot.status.exists
+        && restored.status.revision == snapshot.status.revision)
+}
+
 async fn save_workbuddy_models_at(
     paths: WorkBuddyPaths,
     request: SaveWorkBuddyModelsRequest,
@@ -127,23 +280,7 @@ fn pending_overwrites() -> &'static StdMutex<HashMap<String, PendingOverwrite>> 
 pub(crate) fn get_workbuddy_status_at(
     paths: &WorkBuddyPaths,
 ) -> Result<WorkBuddyStatus, WorkBuddyError> {
-    #[cfg(target_os = "windows")]
-    let (loaded, backup_exists) = match open_windows_storage(paths, false) {
-        Ok(storage) => {
-            let bytes = storage
-                .read_models()
-                .map_err(|_| WorkBuddyError::new(WorkBuddyErrorCode::ConfigReadFailed))?;
-            let backup_exists = storage
-                .backup_exists()
-                .map_err(|_| WorkBuddyError::new(WorkBuddyErrorCode::ConfigReadFailed))?;
-            (load_config_bytes(bytes)?, backup_exists)
-        }
-        Err(error) if error.kind() == io::ErrorKind::NotFound => (load_config_bytes(None)?, false),
-        Err(_) => return Err(WorkBuddyError::new(WorkBuddyErrorCode::ConfigReadFailed)),
-    };
-
-    #[cfg(target_os = "macos")]
-    let (loaded, backup_exists) = (load_config(&paths.models)?, paths.backup.exists());
+    let (loaded, backup_exists) = load_current_config_at(paths)?;
 
     Ok(WorkBuddyStatus {
         path: DISPLAY_PATH.to_string(),
@@ -178,45 +315,63 @@ pub(crate) fn get_workbuddy_model_ids_at(
     })
 }
 
+fn load_current_config_at(paths: &WorkBuddyPaths) -> Result<(LoadedConfig, bool), WorkBuddyError> {
+    #[cfg(target_os = "windows")]
+    {
+        return match open_windows_storage(paths, false) {
+            Ok(storage) => {
+                let bytes = storage
+                    .read_models()
+                    .map_err(|_| WorkBuddyError::new(WorkBuddyErrorCode::ConfigReadFailed))?;
+                let backup_exists = storage
+                    .backup_exists()
+                    .map_err(|_| WorkBuddyError::new(WorkBuddyErrorCode::ConfigReadFailed))?;
+                Ok((load_config_bytes(bytes)?, backup_exists))
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                Ok((load_config_bytes(None)?, false))
+            }
+            Err(_) => Err(WorkBuddyError::new(WorkBuddyErrorCode::ConfigReadFailed)),
+        };
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        Ok((load_config(&paths.models)?, paths.backup.exists()))
+    }
+}
+
+fn change_snapshot_from_loaded(
+    loaded: LoadedConfig,
+    backup_exists: bool,
+) -> WorkBuddyChangeSnapshot {
+    let original_bytes = loaded.exists.then_some(loaded.original_bytes.clone());
+    WorkBuddyChangeSnapshot {
+        status: WorkBuddyStatus {
+            path: DISPLAY_PATH.to_string(),
+            exists: loaded.exists,
+            model_count: loaded.document.unique_model_ids().len(),
+            revision: loaded.revision,
+            backup_exists,
+            format: loaded.document.format(),
+        },
+        model_ids: loaded.document.unique_model_ids(),
+        original_bytes,
+    }
+}
+
+fn capture_change_snapshot_at(
+    paths: &WorkBuddyPaths,
+) -> Result<WorkBuddyChangeSnapshot, WorkBuddyError> {
+    let (loaded, backup_exists) = load_current_config_at(paths)?;
+    Ok(change_snapshot_from_loaded(loaded, backup_exists))
+}
+
 pub(crate) fn save_workbuddy_models_at_locked(
     paths: &WorkBuddyPaths,
     request: &SaveWorkBuddyModelsRequest,
 ) -> Result<SaveWorkBuddyModelsOutcome, WorkBuddyError> {
-    let target_ids = normalized_target_ids(request);
-    let removed_ids = normalized_removed_ids(request);
-    if target_ids
-        .iter()
-        .any(|id| removed_ids.iter().any(|removed| removed == id))
-    {
-        return Err(WorkBuddyError::new(WorkBuddyErrorCode::ConfigInvalidEntry));
-    }
-    if target_ids.is_empty() && removed_ids.is_empty() {
-        return Err(WorkBuddyError::new(
-            WorkBuddyErrorCode::ConfigNoTargetModels,
-        ));
-    }
-
-    let normalized_url = if target_ids.is_empty() {
-        None
-    } else {
-        let normalized_url = normalize_workbuddy_base_url(&request.base_url)?;
-        reject_url_credential_collision(&normalized_url, &request.api_key)?;
-        if request.api_key.trim().is_empty() && !request.allow_no_api_key {
-            return Err(WorkBuddyError::new(WorkBuddyErrorCode::ApiKeyRequired));
-        }
-        let credential = request.api_key.trim();
-        if target_ids
-            .iter()
-            .any(|id| credential_matches_model_id(credential, id))
-        {
-            return Err(WorkBuddyError::new(WorkBuddyErrorCode::ConfigInvalidEntry));
-        }
-        Some(normalized_url)
-    };
-    let digest_url = normalized_url
-        .as_ref()
-        .map(|url| url.base_url.as_str())
-        .unwrap_or("");
+    let normalized = normalize_save_request(request)?;
 
     // Consume a confirmation capability before the latest file reread. A
     // stale or malformed follow-up must not leave a reusable token behind.
@@ -225,11 +380,19 @@ pub(crate) fn save_workbuddy_models_at_locked(
     let pending = request
         .overwrite_token
         .as_deref()
-        .map(|token| consume_overwrite_token(token, request, digest_url, &target_ids, &removed_ids))
+        .map(|token| {
+            consume_overwrite_token(
+                token,
+                request,
+                normalized.digest_url(),
+                &normalized.target_ids,
+                &normalized.removed_ids,
+            )
+        })
         .transpose()?;
 
     #[cfg(target_os = "windows")]
-    let (mut loaded, mut windows_state) = match open_windows_storage(paths, false) {
+    let (loaded, mut windows_state) = match open_windows_storage(paths, false) {
         Ok(storage) => {
             let snapshot = storage
                 .snapshot_models()
@@ -242,75 +405,29 @@ pub(crate) fn save_workbuddy_models_at_locked(
     };
 
     #[cfg(target_os = "macos")]
-    let mut loaded = load_config(&paths.models)?;
+    let loaded = load_config(&paths.models)?;
     if request.expected_revision != loaded.revision {
         return Ok(SaveWorkBuddyModelsOutcome::ConcurrentModification);
     }
 
-    let existing_update_ids = loaded.document.existing_target_ids(&target_ids);
-    let existing_removed_ids = loaded.document.existing_target_ids(&removed_ids);
-    if target_ids.is_empty() && existing_removed_ids.is_empty() {
-        return Err(WorkBuddyError::new(
-            WorkBuddyErrorCode::ConfigNoTargetModels,
-        ));
-    }
-    let mut confirmation_ids = existing_update_ids;
-    confirmation_ids.extend(existing_removed_ids.iter().cloned());
+    let prepared = prepare_mutation(&loaded, request, &normalized)?;
     if let Some(pending) = pending {
         if pending.expected_revision != loaded.revision {
             return Ok(SaveWorkBuddyModelsOutcome::ConcurrentModification);
         }
-    } else if !confirmation_ids.is_empty() {
-        let token = issue_overwrite_token(request, digest_url, &target_ids, &removed_ids);
+    } else if !prepared.confirmation_ids.is_empty() {
+        let token = issue_overwrite_token(
+            request,
+            normalized.digest_url(),
+            &normalized.target_ids,
+            &normalized.removed_ids,
+        );
         return Ok(SaveWorkBuddyModelsOutcome::OverwriteConfirmationRequired {
             token,
-            existing_ids: confirmation_ids,
+            existing_ids: prepared.confirmation_ids,
         });
     }
-
-    loaded.document.remove_models(&removed_ids);
-    loaded.document.prune_available_models(&removed_ids)?;
-
-    let mut created_entries = 0usize;
-    let mut updated_entries = 0usize;
-
-    if let Some(normalized_url) = normalized_url.as_ref() {
-        let normalized_base_url = normalized_url.base_url.to_string();
-        for target_id in &target_ids {
-            let mut matched_existing = false;
-            for entry in loaded.document.models_mut() {
-                let model = entry
-                    .as_object_mut()
-                    .expect("document validation guarantees model-object entries");
-                let matches_target = model
-                    .get("id")
-                    .and_then(Value::as_str)
-                    .is_some_and(|id| id.trim() == target_id);
-                if matches_target {
-                    patch_existing_connection_fields(model, &normalized_base_url, request);
-                    updated_entries += 1;
-                    matched_existing = true;
-                }
-            }
-            if !matched_existing {
-                loaded
-                    .document
-                    .models_mut()
-                    .push(Value::Object(new_managed_model(
-                        target_id,
-                        &normalized_base_url,
-                        request,
-                    )));
-                created_entries += 1;
-            }
-        }
-    }
-
-    // This runs before backups and the primary write. Therefore a malformed
-    // `availableModels` field cannot produce a partial configuration update.
-    loaded.document.update_available_models(&target_ids)?;
-    let model_count = loaded.document.unique_model_ids().len();
-    let serialized = loaded.document.serialize()?;
+    let serialized = &prepared.serialized;
 
     #[cfg(all(test, target_os = "macos"))]
     if let Some(replacement) = WORKBUDDY_PRECOMMIT_REPLACEMENT.with(|slot| slot.borrow_mut().take())
@@ -374,7 +491,7 @@ pub(crate) fn save_workbuddy_models_at_locked(
                 (storage, snapshot)
             }
         };
-        match storage.commit(&mut snapshot, &serialized) {
+        match storage.commit(&mut snapshot, serialized) {
             Ok(()) => {}
             Err(super::windows_storage::WindowsCommitError::Concurrent) => {
                 return Ok(SaveWorkBuddyModelsOutcome::ConcurrentModification);
@@ -402,14 +519,170 @@ pub(crate) fn save_workbuddy_models_at_locked(
     }
 
     #[cfg(target_os = "macos")]
-    write_credential_file_atomically(&paths.models, &serialized)
+    write_credential_file_atomically(&paths.models, serialized)
         .map_err(|_| WorkBuddyError::new(WorkBuddyErrorCode::ConfigWriteFailed))?;
 
+    #[cfg(all(test, target_os = "macos"))]
+    if let Some(replacement) =
+        WORKBUDDY_POSTCOMMIT_REPLACEMENT.with(|slot| slot.borrow_mut().take())
+    {
+        fs::write(&paths.models, replacement)
+            .expect("workbuddy postcommit test hook must replace primary file");
+    }
+
     Ok(SaveWorkBuddyModelsOutcome::Saved {
-        revision: revision_for(&serialized),
-        model_count,
+        revision: revision_for(serialized),
+        model_count: prepared.model_count,
+        created_entries: prepared.created_entries,
+        updated_entries: prepared.updated_entries,
+    })
+}
+
+fn normalize_save_request(
+    request: &SaveWorkBuddyModelsRequest,
+) -> Result<NormalizedSaveRequest, WorkBuddyError> {
+    let target_ids = normalized_target_ids(request);
+    let removed_ids = normalized_removed_ids(request);
+    if target_ids
+        .iter()
+        .any(|id| removed_ids.iter().any(|removed| removed == id))
+    {
+        return Err(WorkBuddyError::new(WorkBuddyErrorCode::ConfigInvalidEntry));
+    }
+    if target_ids.is_empty() && removed_ids.is_empty() {
+        return Err(WorkBuddyError::new(
+            WorkBuddyErrorCode::ConfigNoTargetModels,
+        ));
+    }
+
+    let normalized_url = if target_ids.is_empty() {
+        None
+    } else {
+        let normalized_url = normalize_workbuddy_base_url(&request.base_url)?;
+        reject_url_credential_collision(&normalized_url, &request.api_key)?;
+        if request.api_key.trim().is_empty() && !request.allow_no_api_key {
+            return Err(WorkBuddyError::new(WorkBuddyErrorCode::ApiKeyRequired));
+        }
+        let credential = request.api_key.trim();
+        if target_ids
+            .iter()
+            .any(|id| credential_matches_model_id(credential, id))
+        {
+            return Err(WorkBuddyError::new(WorkBuddyErrorCode::ConfigInvalidEntry));
+        }
+        Some(normalized_url)
+    };
+    Ok(NormalizedSaveRequest {
+        target_ids,
+        removed_ids,
+        normalized_url,
+    })
+}
+
+fn prepare_mutation(
+    loaded: &LoadedConfig,
+    request: &SaveWorkBuddyModelsRequest,
+    normalized: &NormalizedSaveRequest,
+) -> Result<PreparedMutation, WorkBuddyError> {
+    let existing_update_ids = loaded.document.existing_target_ids(&normalized.target_ids);
+    let existing_removed_ids = loaded.document.existing_target_ids(&normalized.removed_ids);
+    if normalized.target_ids.is_empty() && existing_removed_ids.is_empty() {
+        return Err(WorkBuddyError::new(
+            WorkBuddyErrorCode::ConfigNoTargetModels,
+        ));
+    }
+    let mut confirmation_ids = existing_update_ids;
+    confirmation_ids.extend(existing_removed_ids.iter().cloned());
+
+    let mut document = loaded.document.clone();
+    document.remove_models(&normalized.removed_ids);
+    document.prune_available_models(&normalized.removed_ids)?;
+
+    let mut created_entries = 0usize;
+    let mut updated_entries = 0usize;
+    if let Some(normalized_url) = normalized.normalized_url.as_ref() {
+        let normalized_base_url = normalized_url.base_url.to_string();
+        for target_id in &normalized.target_ids {
+            let mut matched_existing = false;
+            for entry in document.models_mut() {
+                let model = entry
+                    .as_object_mut()
+                    .expect("document validation guarantees model-object entries");
+                let matches_target = model
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .is_some_and(|id| id.trim() == target_id);
+                if matches_target {
+                    patch_existing_connection_fields(model, &normalized_base_url, request);
+                    updated_entries += 1;
+                    matched_existing = true;
+                }
+            }
+            if !matched_existing {
+                document.models_mut().push(Value::Object(new_managed_model(
+                    target_id,
+                    &normalized_base_url,
+                    request,
+                )));
+                created_entries += 1;
+            }
+        }
+    }
+
+    // This runs before backups and the primary write. Therefore a malformed
+    // `availableModels` field cannot produce a partial configuration update.
+    document.update_available_models(&normalized.target_ids)?;
+    Ok(PreparedMutation {
+        model_count: document.unique_model_ids().len(),
+        serialized: document.serialize()?,
         created_entries,
         updated_entries,
+        confirmation_ids,
+    })
+}
+
+fn document_matches_request(
+    document: &WorkBuddyDocument,
+    request: &SaveWorkBuddyModelsRequest,
+    normalized: &NormalizedSaveRequest,
+) -> bool {
+    let ids = document.unique_model_ids();
+    if normalized
+        .removed_ids
+        .iter()
+        .any(|removed| ids.iter().any(|id| id == removed))
+        || normalized
+            .target_ids
+            .iter()
+            .any(|target| !ids.iter().any(|id| id == target))
+    {
+        return false;
+    }
+
+    let Some(normalized_url) = normalized.normalized_url.as_ref() else {
+        return true;
+    };
+    let expected_url = normalized_url.base_url.as_str();
+    let expected_key = request.api_key.trim();
+    document.models().iter().all(|entry| {
+        let Some(model) = entry.as_object() else {
+            return false;
+        };
+        let Some(id) = model.get("id").and_then(Value::as_str).map(str::trim) else {
+            return false;
+        };
+        if !normalized.target_ids.iter().any(|target| target == id) {
+            return true;
+        }
+        let url_matches = model.get("url").and_then(Value::as_str) == Some(expected_url);
+        let key_matches = if !expected_key.is_empty() {
+            model.get("apiKey").and_then(Value::as_str) == Some(expected_key)
+        } else if request.clear_existing_api_keys {
+            model.get("apiKey").and_then(Value::as_str) == Some("")
+        } else {
+            true
+        };
+        url_matches && key_matches
     })
 }
 
@@ -417,6 +690,15 @@ pub(crate) fn save_workbuddy_models_at_locked(
 thread_local! {
     static WORKBUDDY_PRECOMMIT_REPLACEMENT: std::cell::RefCell<Option<Vec<u8>>> =
         const { std::cell::RefCell::new(None) };
+    static WORKBUDDY_POSTCOMMIT_REPLACEMENT: std::cell::RefCell<Option<Vec<u8>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(all(test, target_os = "macos"))]
+pub(crate) fn replace_after_commit_for_test(bytes: Vec<u8>) {
+    WORKBUDDY_POSTCOMMIT_REPLACEMENT.with(|slot| {
+        *slot.borrow_mut() = Some(bytes);
+    });
 }
 
 #[cfg(target_os = "macos")]

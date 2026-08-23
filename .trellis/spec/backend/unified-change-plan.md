@@ -1,13 +1,14 @@
-# Unified Change Plan: Codex Provider Switch Contract
+# Unified Change Plan: Registered Native Adapter Contract
 
 ## 1. Scope / Trigger
 
-Read this contract before changing the first Unified Change Plan vertical
-slice: switching Codex to an existing Provider. It covers plan identity,
-schema-v20 persistence, registered adapter identity, idempotent admission, the
-five-phase executor, Provider mutation ownership, readback/reconciliation, and
-the Rust/Tauri wire DTOs. It does not make multi-adapter execution, generic
-Undo, V2 Apply UI, SecretBackend, or create/edit Provider flows complete.
+Read this contract before changing the Unified Change Plan verticals for Codex
+Provider switch/upsert or WorkBuddy model configuration. It covers plan
+identity, schema-v20 persistence, registered adapter identity, idempotent
+admission, the five-phase executor, domain mutation ownership,
+readback/reconciliation, and the Rust/Tauri wire DTOs. It does not authorize
+arbitrary adapters, dynamic writes, generic Undo, or a generic execution
+engine.
 
 Plan creation may insert one immutable UCP control-plane row. It must perform
 zero Provider/business-state writes, zero live/external-target writes, zero
@@ -18,6 +19,14 @@ job/event writes, and zero network requests.
 ```text
 create_codex_provider_switch_plan(targetProviderId: String)
   -> Result<ChangePlan, ChangePlanErrorCode>
+
+create_codex_provider_upsert_plan({ name, baseUrl, apiKey, modelId, codexFeatures? })
+  -> Result<ChangePlan, ChangePlanErrorCode>
+
+create_workbuddy_models_plan({
+  baseUrl, apiKey, allowNoApiKey, selectedModelIds, manualModelIds,
+  removedModelIds, clearExistingApiKeys, expectedRevision
+}) -> Result<ChangePlan, ChangePlanErrorCode>
 
 apply_change_plan(planId: String, planDigest: String)
   -> Result<ApplyChangePlanOutcome, ChangePlanErrorCode>
@@ -35,10 +44,12 @@ event change-job://updated
   -> { jobId: String, eventSeq: i64 }
 ```
 
-The existing `ProviderService::switch` remains the public writer. UCP holds
-`ProviderService::lock_provider_mutation(..., Codex)` across baseline check,
-SQLite admission, one call to `switch_with_lock_held`, and fresh readback.
-No second Provider writer is allowed.
+The existing Provider and WorkBuddy services remain the only writers. Codex
+UCP holds `ProviderService::lock_provider_mutation(..., Codex)` across baseline
+check, SQLite admission, one guarded writer call, and fresh readback. WorkBuddy
+UCP holds its existing mutation lock across the equivalent lifecycle and calls
+the existing atomic fixed-path writer through a lock-held facade. No second
+domain writer is allowed.
 
 Schema v20 adds:
 
@@ -73,6 +84,11 @@ change_job_events(PRIMARY KEY(job_id, event_seq), ...)
 - Full current/target Provider definitions and Codex live/target projections
   are bound only by process-private HMAC proofs keyed by random `proofId`.
   Private proof bytes never enter SQLite, IPC, logs, exports, events, or Debug.
+- A WorkBuddy plan keeps the full request, exact credential-bearing preimage,
+  and complete-byte revision only in the process-private proof map. SQLite and
+  IPC receive only bounded model counts/codes, random proof/epoch IDs, and the
+  per-plan non-secret approval binding. Plan creation performs no WorkBuddy
+  write, backup, overwrite-token issuance, network request, job, or event.
 - SQLite stores only the random `proofId`, random `processEpochId`, bounded
   non-sensitive metadata, and non-secret approval bindings. A process restart
   loses the private proof by design.
@@ -105,6 +121,15 @@ change_job_events(PRIMARY KEY(job_id, event_seq), ...)
   `interrupted_before_write` without readback or replay.
 - Writer return is not success evidence. DB current, device current, target
   definition, and Codex live projection must pass fresh readback.
+- WorkBuddy apply performs no network request and never enters Provider/AppType.
+  Its one UCP confirmation authorizes the admitted plan. If the existing writer
+  requires an overwrite capability, the adapter issues and consumes that
+  request/revision-bound token internally; it never crosses IPC and there is no
+  WorkBuddy-specific second confirmation.
+- WorkBuddy readback rereads the real `models.json`. Exact writer revision or a
+  same-process semantic target proves target state. A post-write mixed state is
+  restored from the exact private baseline through the same fixed-path atomic
+  storage service when possible; reconciliation never invokes the writer.
 - A known-missing Codex live file is a bindable baseline distinct from an
   unreadable/malformed file. Unreadable/malformed state cannot create a plan
   or reach the writer. The first switch slice also rejects proxy-takeover mode
@@ -140,6 +165,10 @@ change_job_events(PRIMARY KEY(job_id, event_seq), ...)
 | Readback unavailable | failed `readback_unavailable`, recovery required |
 | Crash before `managed_write` journal | failed `interrupted_before_write`; writer zero |
 | Crash after writer side effect, before receipt journal | readback target -> `recovered_target_reached`; never replay |
+| WorkBuddy API-key-only or complete-byte revision drift | rejected `stale`; no job, backup, or writer |
+| WorkBuddy overwrite is required after UCP confirmation | token issued/consumed only inside the adapter; one writer commit |
+| WorkBuddy post-write mismatch with restorable baseline | failed `writer_failed_baseline_restored`, recovery succeeded |
+| WorkBuddy interrupted job loses private proof on restart | failed `recovery_required`; never replay or guess secret equality |
 
 ## 5. Good / Base / Bad Cases
 
@@ -150,6 +179,11 @@ change_job_events(PRIMARY KEY(job_id, event_seq), ...)
   memory-only proof before admission, so writer calls remain zero.
 - Base: a valid apply calls the existing Provider writer once, reports
   `not_observed`, and uses readback to decide success/restart truth.
+- Good: WorkBuddy preview inserts one safe plan row and leaves the primary,
+  backup, jobs, events, and network untouched; one confirmed apply consumes any
+  legacy overwrite capability internally and performs one atomic commit.
+- Good: WorkBuddy crash reconciliation either proves the target, restores the
+  exact baseline, or requires recovery. It never replays the writer.
 - Good: concurrent exact duplicate applies all return one execution ID and the
   Provider writer count remains exactly one.
 - Bad: hash or HMAC full Provider/live projections and persist the result.
@@ -183,6 +217,10 @@ Focused Rust assertions must cover:
 - structured partial projection and compensated rollback classification;
 - before-write and after-write-before-record fault injection, followed by
   read-only reconciliation that never replays the writer.
+- WorkBuddy preview zero-write and canary non-persistence; internal overwrite
+  capability, exact real-file readback, duplicate apply idempotency,
+  API-key-only stale detection, post-write compensation, and proof-loss crash
+  recovery without writer replay.
 
 Final gates:
 

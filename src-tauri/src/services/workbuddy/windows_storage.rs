@@ -283,6 +283,40 @@ impl WindowsWorkBuddyStorage {
             .map_err(|_| WindowsCommitError::Primary)
     }
 
+    /// Restore the exact process-private UCP baseline without resolving an
+    /// attacker-controlled absolute path. A present baseline uses the same
+    /// backup-first atomic commit; a missing baseline deletes the pinned
+    /// primary leaf by handle.
+    pub(super) fn restore_models(&self, original: Option<&[u8]>) -> io::Result<()> {
+        match original {
+            Some(bytes) => {
+                let mut current = self.snapshot_models()?;
+                self.commit(&mut current, bytes)
+                    .map_err(|_| integrity_error())
+            }
+            None => self.delete_models(),
+        }
+    }
+
+    fn delete_models(&self) -> io::Result<()> {
+        self.recheck()?;
+        let Some(leaf) = self.open_leaf(MODELS_FILE_NAME, LeafAccess::Delete)? else {
+            return Ok(());
+        };
+        leaf.recheck()?;
+        let current = self
+            .open_leaf(MODELS_FILE_NAME, LeafAccess::Read)?
+            .ok_or_else(integrity_error)?;
+        if current.identity != leaf.identity {
+            return Err(integrity_error());
+        }
+        revalidate_production_context(self.production_context)?;
+        mark_delete_by_handle(&leaf.file)?;
+        drop(current);
+        drop(leaf);
+        self.recheck()
+    }
+
     fn read_named(&self, name: &str) -> io::Result<Option<Vec<u8>>> {
         self.recheck()?;
         let Some(mut leaf) = self.open_leaf(name, LeafAccess::Read)? else {
@@ -327,6 +361,11 @@ impl WindowsWorkBuddyStorage {
         let (desired_access, share_access, disposition) = match access {
             LeafAccess::Read => (
                 (FILE_GENERIC_READ | FILE_READ_ATTRIBUTES | SYNCHRONIZE).0,
+                (FILE_SHARE_READ | FILE_SHARE_DELETE).0,
+                RelativeDisposition::Open,
+            ),
+            LeafAccess::Delete => (
+                (FILE_GENERIC_READ | FILE_READ_ATTRIBUTES | DELETE | SYNCHRONIZE).0,
                 (FILE_SHARE_READ | FILE_SHARE_DELETE).0,
                 RelativeDisposition::Open,
             ),
@@ -473,6 +512,7 @@ impl WindowsWorkBuddyStorage {
 #[derive(Clone, Copy)]
 enum LeafAccess {
     Read,
+    Delete,
 }
 
 #[derive(Clone, Copy)]

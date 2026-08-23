@@ -21,6 +21,9 @@ use crate::services::secret::{
     NativeSecretBackend, SecretBackendKind, SecretHandle, SecretMaterial, SecretPurpose,
     SecretService,
 };
+use crate::services::workbuddy::{
+    self, types::SaveWorkBuddyModelsRequest, WorkBuddyChangeSnapshot,
+};
 use crate::store::AppState;
 use crate::AppError;
 
@@ -28,6 +31,7 @@ mod adapter;
 
 use adapter::{
     ChangeAdapter, CodexProviderSwitchAdapter, CodexProviderUpsertAdapter, RegisteredCodexAdapter,
+    WorkBuddyModelsAdapter,
 };
 
 pub(crate) const CHANGE_PLAN_CONTRACT_VERSION: &str = "fyagent-change-plan-v2-schema20";
@@ -44,11 +48,13 @@ macro_rules! string_enum {
 
 string_enum!(ChangeOperation {
     CodexProviderSwitch,
-    CodexProviderUpsertAndSwitch
+    CodexProviderUpsertAndSwitch,
+    WorkBuddyModelsUpdate
 });
 string_enum!(ChangeBusinessStepKind {
     SaveProvider,
-    SetCurrentProvider
+    SetCurrentProvider,
+    SaveWorkBuddyModels
 });
 string_enum!(ChangeSecretBackend { OsKeyring });
 string_enum!(ChangeActorType { DirectUser });
@@ -81,7 +87,9 @@ string_enum!(ChangeResourceKind {
     ProviderDbCurrent,
     DeviceCurrent,
     TargetDefinition,
-    CodexLiveProjection
+    CodexLiveProjection,
+    WorkBuddyModelsConfig,
+    WorkBuddyBackup
 });
 string_enum!(ChangeResourceStatus {
     Pending,
@@ -285,7 +293,13 @@ pub struct ChangeJobSnapshot {
 }
 
 impl ChangeJobSnapshot {
-    pub(crate) fn planned(job_id: String, plan_id: String, target_id: String, now: i64) -> Self {
+    pub(crate) fn planned(
+        job_id: String,
+        plan_id: String,
+        target_id: String,
+        resources: Vec<ChangeResourceKind>,
+        now: i64,
+    ) -> Self {
         Self {
             execution_id: job_id.clone(),
             idempotency_key: plan_id.clone(),
@@ -310,19 +324,14 @@ impl ChangeJobSnapshot {
                 code: "not_started".to_string(),
             })
             .collect(),
-            resources: [
-                ChangeResourceKind::ProviderDbCurrent,
-                ChangeResourceKind::DeviceCurrent,
-                ChangeResourceKind::TargetDefinition,
-                ChangeResourceKind::CodexLiveProjection,
-            ]
-            .into_iter()
-            .map(|kind| ChangeResourceResult {
-                kind,
-                status: ChangeResourceStatus::Pending,
-                code: "pending".to_string(),
-            })
-            .collect(),
+            resources: resources
+                .into_iter()
+                .map(|kind| ChangeResourceResult {
+                    kind,
+                    status: ChangeResourceStatus::Pending,
+                    code: "pending".to_string(),
+                })
+                .collect(),
             restart_requirement: RestartRequirement::Unknown,
             usage_evidence: UsageEvidence::NotObserved,
             recovery_state: RecoveryState::NotNeeded,
@@ -423,6 +432,7 @@ struct PrivatePlanProof {
     projection: PrivateProjectionProof,
     expires_at: i64,
     credential: Option<Arc<PrivateCodexCredentialPlan>>,
+    workbuddy: Option<Arc<PrivateWorkBuddyPlan>>,
 }
 
 struct PrivateCodexCredentialPlan {
@@ -431,6 +441,20 @@ struct PrivateCodexCredentialPlan {
     persisted_provider: Provider,
     previous_handle: Option<SecretHandle>,
     cleanup_state: AtomicU8,
+}
+
+struct PrivateWorkBuddyPlan {
+    request: SaveWorkBuddyModelsRequest,
+    baseline: WorkBuddyChangeSnapshot,
+    target_model_count: usize,
+    existing_target_count: usize,
+}
+
+#[derive(Clone)]
+enum WorkBuddyWriteReceipt {
+    Applied { revision: String },
+    NoWrite,
+    UnknownOutcome,
 }
 
 #[derive(Deserialize)]
@@ -445,6 +469,46 @@ pub struct CodexProviderUpsertPlanRequest {
 }
 
 impl Drop for CodexProviderUpsertPlanRequest {
+    fn drop(&mut self) {
+        use zeroize::Zeroize;
+        self.api_key.zeroize();
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkBuddyModelsPlanRequest {
+    base_url: String,
+    api_key: String,
+    allow_no_api_key: bool,
+    #[serde(default)]
+    selected_model_ids: Vec<String>,
+    #[serde(default)]
+    manual_model_ids: Vec<String>,
+    #[serde(default)]
+    removed_model_ids: Vec<String>,
+    #[serde(default)]
+    clear_existing_api_keys: bool,
+    expected_revision: Option<String>,
+}
+
+impl WorkBuddyModelsPlanRequest {
+    fn into_save_request(mut self) -> SaveWorkBuddyModelsRequest {
+        SaveWorkBuddyModelsRequest {
+            base_url: std::mem::take(&mut self.base_url),
+            api_key: std::mem::take(&mut self.api_key),
+            allow_no_api_key: self.allow_no_api_key,
+            selected_model_ids: std::mem::take(&mut self.selected_model_ids),
+            manual_model_ids: std::mem::take(&mut self.manual_model_ids),
+            removed_model_ids: std::mem::take(&mut self.removed_model_ids),
+            clear_existing_api_keys: self.clear_existing_api_keys,
+            expected_revision: self.expected_revision.take(),
+            overwrite_token: None,
+        }
+    }
+}
+
+impl Drop for WorkBuddyModelsPlanRequest {
     fn drop(&mut self) {
         use zeroize::Zeroize;
         self.api_key.zeroize();
@@ -1162,6 +1226,79 @@ fn baseline_binding_digest(
     ))
 }
 
+fn workbuddy_baseline_binding_digest(
+    plan_id: &str,
+    proof_id: &str,
+    epoch_id: &str,
+    snapshot: &WorkBuddyChangeSnapshot,
+) -> Result<String, ChangePlanErrorCode> {
+    let value = serde_json::json!({
+        "contract": CHANGE_PLAN_CONTRACT_VERSION,
+        "proofId": proof_id,
+        "processEpochId": epoch_id,
+        "exists": snapshot.status.exists,
+        "modelCount": snapshot.status.model_count,
+        "backupExists": snapshot.status.backup_exists,
+        "format": snapshot.status.format,
+    });
+    Ok(opaque_revision_json(
+        "fyagent.change-plan.workbuddy-baseline-binding.v1",
+        plan_id,
+        &value,
+    ))
+}
+
+fn workbuddy_snapshot_matches(
+    left: &WorkBuddyChangeSnapshot,
+    right: &WorkBuddyChangeSnapshot,
+) -> bool {
+    workbuddy_primary_matches(left, right)
+        && left.status.backup_exists == right.status.backup_exists
+}
+
+fn workbuddy_primary_matches(
+    left: &WorkBuddyChangeSnapshot,
+    right: &WorkBuddyChangeSnapshot,
+) -> bool {
+    left.status.exists == right.status.exists
+        && left.status.model_count == right.status.model_count
+        && left.status.format == right.status.format
+        && left.model_ids == right.model_ids
+        && optional_text_matches(
+            left.status.revision.as_deref(),
+            right.status.revision.as_deref(),
+        )
+}
+
+fn optional_text_matches(left: Option<&str>, right: Option<&str>) -> bool {
+    match (left, right) {
+        (Some(left), Some(right)) => constant_time_text_matches(left, right),
+        (None, None) => true,
+        _ => false,
+    }
+}
+
+fn map_workbuddy_plan_error(
+    error: crate::services::workbuddy::error::WorkBuddyError,
+) -> ChangePlanErrorCode {
+    use crate::services::workbuddy::error::WorkBuddyErrorCode;
+
+    match error.code() {
+        WorkBuddyErrorCode::ConfigConcurrentModification => ChangePlanErrorCode::Stale,
+        WorkBuddyErrorCode::InvalidUrl
+        | WorkBuddyErrorCode::ApiKeyRequired
+        | WorkBuddyErrorCode::ConfigInvalidEntry
+        | WorkBuddyErrorCode::ConfigNoTargetModels
+        | WorkBuddyErrorCode::OverwriteTokenInvalid
+        | WorkBuddyErrorCode::OverwriteTokenExpired => ChangePlanErrorCode::InvalidRequest,
+        WorkBuddyErrorCode::ConfigReadFailed
+        | WorkBuddyErrorCode::ConfigInvalidJson
+        | WorkBuddyErrorCode::ConfigRootUnsupported
+        | WorkBuddyErrorCode::ConfigModelsNotArray => ChangePlanErrorCode::BaselineUnavailable,
+        _ => ChangePlanErrorCode::Internal,
+    }
+}
+
 fn plan_approval_binding_digest(
     plan: &ChangePlan,
     proof_id: &str,
@@ -1385,6 +1522,7 @@ impl ChangePlanService {
                 projection: inspection.private_proof,
                 expires_at: public.expires_at,
                 credential: None,
+                workbuddy: None,
             },
             now,
         );
@@ -1475,6 +1613,100 @@ impl ChangePlanService {
                 projection: inspection.private_proof,
                 expires_at: public.expires_at,
                 credential: Some(credential),
+                workbuddy: None,
+            },
+            now,
+        );
+        Ok(public)
+    }
+
+    pub fn plan_workbuddy_models(
+        state: &AppState,
+        request: WorkBuddyModelsPlanRequest,
+    ) -> Result<ChangePlan, ChangePlanErrorCode> {
+        Self::plan_workbuddy_models_at(state, request, chrono::Utc::now().timestamp())
+    }
+
+    fn plan_workbuddy_models_at(
+        state: &AppState,
+        request: WorkBuddyModelsPlanRequest,
+        now: i64,
+    ) -> Result<ChangePlan, ChangePlanErrorCode> {
+        let workbuddy_guard = workbuddy::lock_workbuddy_mutation();
+        let _guard = change_plan_lock()
+            .lock()
+            .map_err(|_| ChangePlanErrorCode::Internal)?;
+        let request = request.into_save_request();
+        let preview = workbuddy::preview_workbuddy_change_locked(&workbuddy_guard, &request)
+            .map_err(map_workbuddy_plan_error)?;
+        let plan_id = uuid::Uuid::new_v4().to_string();
+        let proof_id = uuid::Uuid::new_v4().to_string();
+        let epoch_id = process_epoch_id().to_string();
+        let private = Arc::new(PrivateWorkBuddyPlan {
+            request,
+            baseline: preview.baseline,
+            target_model_count: preview.target_model_count,
+            existing_target_count: preview.existing_target_count,
+        });
+        let adapter = WorkBuddyModelsAdapter::for_plan(&workbuddy_guard, private.clone());
+        let inspection = private.baseline.clone();
+        let baseline_digest =
+            workbuddy_baseline_binding_digest(&plan_id, &proof_id, &epoch_id, &inspection)?;
+        let plan_fields = adapter.plan(&inspection);
+        let mut public = ChangePlan {
+            plan_id,
+            operation: ChangeOperation::WorkBuddyModelsUpdate,
+            target_provider_id: "workbuddy-models".to_string(),
+            target_provider_name: plan_fields.target_provider_name,
+            plan_digest: String::new(),
+            baseline_digest,
+            actor: ChangeActor {
+                actor_type: ChangeActorType::DirectUser,
+            },
+            source_version: env!("CARGO_PKG_VERSION").to_string(),
+            revision: 1,
+            created_at: now,
+            expires_at: now + CHANGE_PLAN_TTL_SECONDS,
+            status: ChangePlanStatus::Ready,
+            business_steps: vec![ChangeBusinessStepKind::SaveWorkBuddyModels],
+            credential: None,
+            adapter: adapter.descriptor(),
+            current_provider_code: plan_fields.current_provider_code,
+            target_provider_code: plan_fields.target_provider_code,
+            restart_expectation: plan_fields.restart_expectation,
+            risks: plan_fields.risks,
+            evidence_note: plan_fields.evidence_note,
+        };
+        public.plan_digest = plan_approval_binding_digest(
+            &public,
+            &proof_id,
+            &epoch_id,
+            CHANGE_PLAN_CONTRACT_VERSION,
+        )?;
+        drop(adapter);
+        state
+            .db
+            .insert_change_plan(&StoredChangePlan {
+                public: public.clone(),
+                proof_id: proof_id.clone(),
+                process_epoch_id: epoch_id,
+                current_provider_id: None,
+                contract_digest: CHANGE_PLAN_CONTRACT_VERSION.to_string(),
+            })
+            .map_err(|_| ChangePlanErrorCode::Internal)?;
+        register_private_proof(
+            proof_id,
+            PrivatePlanProof {
+                projection: PrivateProjectionProof {
+                    current_definition: None,
+                    baseline_target_definition: [0; 32],
+                    target_definition: [0; 32],
+                    live_projection: [0; 32],
+                    target_projection: [0; 32],
+                },
+                expires_at: public.expires_at,
+                credential: None,
+                workbuddy: Some(private),
             },
             now,
         );
@@ -1525,6 +1757,16 @@ impl ChangePlanService {
                     plan_digest,
                     chrono::Utc::now().timestamp(),
                     move || apply_codex_provider_upsert_writer(state, &writer_credential),
+                    observer,
+                    None,
+                )
+            }
+            ChangeOperation::WorkBuddyModelsUpdate => {
+                Self::apply_workbuddy_with_observer_and_fault(
+                    state,
+                    plan_id,
+                    plan_digest,
+                    chrono::Utc::now().timestamp(),
                     observer,
                     None,
                 )
@@ -1860,6 +2102,261 @@ impl ChangePlanService {
         })
     }
 
+    fn apply_workbuddy_with_observer_and_fault<O>(
+        state: &AppState,
+        plan_id: &str,
+        plan_digest: &str,
+        now: i64,
+        observer: O,
+        injected_fault: Option<ChangeFaultPoint>,
+    ) -> Result<ApplyChangePlanOutcome, ChangePlanErrorCode>
+    where
+        O: Fn(&ChangeJobSnapshot),
+    {
+        if let Some(existing) = Self::idempotent_replay_if_consumed(state, plan_id, plan_digest)? {
+            return Ok(existing);
+        }
+        let workbuddy_guard = workbuddy::lock_workbuddy_mutation();
+        let _guard = change_plan_lock()
+            .lock()
+            .map_err(|_| ChangePlanErrorCode::Internal)?;
+        if let Some(existing) = Self::idempotent_replay_if_consumed(state, plan_id, plan_digest)? {
+            return Ok(existing);
+        }
+        let Some(stored) = state
+            .db
+            .get_stored_change_plan(plan_id)
+            .map_err(|_| ChangePlanErrorCode::Internal)?
+        else {
+            return Ok(rejected(ChangePlanErrorCode::PlanNotFound));
+        };
+        if stored.public.operation != ChangeOperation::WorkBuddyModelsUpdate {
+            return Ok(rejected(ChangePlanErrorCode::UnsupportedOperation));
+        }
+        if !constant_time_text_matches(&stored.public.plan_digest, plan_digest) {
+            return Ok(rejected(ChangePlanErrorCode::InvalidDigest));
+        }
+        if now >= stored.public.expires_at {
+            return Ok(rejected(ChangePlanErrorCode::Expired));
+        }
+        if stored.process_epoch_id != process_epoch_id()
+            || stored.contract_digest != CHANGE_PLAN_CONTRACT_VERSION
+            || stored.public.adapter != registered_adapter_descriptor(stored.public.operation)
+        {
+            return Ok(rejected(ChangePlanErrorCode::Stale));
+        }
+        let rebound_digest = plan_approval_binding_digest(
+            &stored.public,
+            &stored.proof_id,
+            &stored.process_epoch_id,
+            &stored.contract_digest,
+        )?;
+        if !constant_time_text_matches(&stored.public.plan_digest, &rebound_digest) {
+            return Ok(rejected(ChangePlanErrorCode::Stale));
+        }
+        let Some(private) = get_private_proof(&stored.proof_id).and_then(|proof| proof.workbuddy)
+        else {
+            return Ok(rejected(ChangePlanErrorCode::Stale));
+        };
+        let writer_plan = private.clone();
+        let guard_for_writer = &workbuddy_guard;
+        let mut adapter =
+            WorkBuddyModelsAdapter::for_execution(&workbuddy_guard, private.clone(), move || {
+                Ok(match workbuddy::apply_workbuddy_change_locked(
+                    guard_for_writer,
+                    &writer_plan.request,
+                ) {
+                    Ok(workbuddy::types::SaveWorkBuddyModelsOutcome::Saved {
+                        revision, ..
+                    }) => WorkBuddyWriteReceipt::Applied { revision },
+                    Ok(workbuddy::types::SaveWorkBuddyModelsOutcome::ConcurrentModification) => {
+                        WorkBuddyWriteReceipt::NoWrite
+                    }
+                    Ok(workbuddy::types::SaveWorkBuddyModelsOutcome::OverwriteConfirmationRequired {
+                        ..
+                    })
+                    | Err(_) => WorkBuddyWriteReceipt::UnknownOutcome,
+                })
+            });
+        if adapter.descriptor() != stored.public.adapter
+            || adapter.compensation_capability() != stored.public.adapter.compensation_mode
+        {
+            return Ok(rejected(ChangePlanErrorCode::Stale));
+        }
+        let observed = adapter.precheck()?;
+        if !workbuddy_snapshot_matches(&private.baseline, &observed) {
+            return Ok(rejected(ChangePlanErrorCode::Stale));
+        }
+        let observed_baseline = workbuddy_baseline_binding_digest(
+            &stored.public.plan_id,
+            &stored.proof_id,
+            &stored.process_epoch_id,
+            &observed,
+        )?;
+        let job_id = uuid::Uuid::new_v4().to_string();
+        let execution = ActiveExecutionRegistration::register(&job_id)?;
+        let admitted = state
+            .db
+            .admit_change_plan(plan_id, plan_digest, &observed_baseline, &job_id, now)
+            .map_err(|_| ChangePlanErrorCode::Internal)?;
+        if admitted.kind == ChangeApplyOutcomeKind::Rejected {
+            return Ok(admitted);
+        }
+        let mut job = admitted.job.ok_or(ChangePlanErrorCode::Internal)?;
+        normalize_job_projection(&mut job);
+        observer(&job);
+
+        set_step(
+            &mut job,
+            ChangeStepKind::Precheck,
+            ChangeStepStatus::Succeeded,
+            "baseline_matched",
+        );
+        advance_job(&mut job, now, "precheck_succeeded");
+        persist_job(state, &mut job, "precheck_succeeded", &observer)?;
+
+        let captured_snapshot = adapter.snapshot(&observed);
+        if !workbuddy_snapshot_matches(&captured_snapshot, &private.baseline) {
+            return Err(ChangePlanErrorCode::Internal);
+        }
+        set_step(
+            &mut job,
+            ChangeStepKind::Snapshot,
+            ChangeStepStatus::Succeeded,
+            "snapshot_bound",
+        );
+        advance_job(&mut job, now, "snapshot_succeeded");
+        persist_job(state, &mut job, "snapshot_succeeded", &observer)?;
+
+        if injected_fault == Some(ChangeFaultPoint::BeforeManagedWrite) {
+            return Err(ChangePlanErrorCode::Internal);
+        }
+        if !execution.gate.claim_managed_write() {
+            set_step(
+                &mut job,
+                ChangeStepKind::ManagedWrite,
+                ChangeStepStatus::Skipped,
+                "cancelled_before_write",
+            );
+            set_step(
+                &mut job,
+                ChangeStepKind::Readback,
+                ChangeStepStatus::Skipped,
+                "cancelled_before_write",
+            );
+            set_step(
+                &mut job,
+                ChangeStepKind::Finalize,
+                ChangeStepStatus::Succeeded,
+                "cancelled_before_write",
+            );
+            terminal_job(
+                &mut job,
+                now,
+                ChangeJobStatus::Cancelled,
+                ChangeResultCode::CancelledBeforeWrite,
+                RestartRequirement::NotRequired,
+                RecoveryState::NotNeeded,
+                "cancelled_before_write",
+            );
+            persist_job(state, &mut job, "cancelled_before_write", &observer)?;
+            execution.gate.mark_terminal();
+            return Ok(ApplyChangePlanOutcome {
+                kind: ChangeApplyOutcomeKind::Admitted,
+                job: Some(job),
+                error_code: None,
+            });
+        }
+
+        set_step(
+            &mut job,
+            ChangeStepKind::ManagedWrite,
+            ChangeStepStatus::Running,
+            "managed_write_started",
+        );
+        advance_job(&mut job, now, "managed_write_started");
+        persist_job(state, &mut job, "managed_write_started", &observer)?;
+        let writer_result = adapter.managed_write();
+        if injected_fault == Some(ChangeFaultPoint::AfterManagedWriteBeforeRecord) {
+            return Err(ChangePlanErrorCode::Internal);
+        }
+        let writer_applied = matches!(&writer_result, Ok(WorkBuddyWriteReceipt::Applied { .. }));
+        set_step(
+            &mut job,
+            ChangeStepKind::ManagedWrite,
+            if writer_applied {
+                ChangeStepStatus::Succeeded
+            } else {
+                ChangeStepStatus::Failed
+            },
+            if writer_applied {
+                "writer_returned"
+            } else {
+                "writer_failed"
+            },
+        );
+        set_step(
+            &mut job,
+            ChangeStepKind::Readback,
+            ChangeStepStatus::Running,
+            "readback_started",
+        );
+        advance_job(&mut job, now, "readback_started");
+        persist_job(state, &mut job, "readback_started", &observer)?;
+
+        let mut readback = adapter.readback();
+        let mut target_matches =
+            workbuddy::workbuddy_target_matches_locked(&workbuddy_guard, &private.request)
+                .unwrap_or(false);
+        let baseline_matches = readback
+            .as_ref()
+            .is_ok_and(|snapshot| workbuddy_primary_matches(&private.baseline, snapshot));
+        let may_have_written = !matches!(&writer_result, Ok(WorkBuddyWriteReceipt::NoWrite));
+        let exact_target = match (&writer_result, &readback) {
+            (Ok(WorkBuddyWriteReceipt::Applied { revision }), Ok(snapshot)) => snapshot
+                .status
+                .revision
+                .as_deref()
+                .is_some_and(|actual| constant_time_text_matches(actual, revision)),
+            _ => false,
+        };
+        let mut restored = false;
+        if may_have_written && !exact_target && !target_matches && !baseline_matches {
+            set_step(
+                &mut job,
+                ChangeStepKind::ManagedWrite,
+                ChangeStepStatus::Compensating,
+                "restoring_baseline",
+            );
+            advance_job(&mut job, now, "compensation_started");
+            persist_job(state, &mut job, "compensation_started", &observer)?;
+            restored = workbuddy::restore_workbuddy_change_snapshot_locked(
+                &workbuddy_guard,
+                &private.baseline,
+            )
+            .unwrap_or(false);
+            readback = adapter.readback();
+            target_matches = false;
+        }
+        finalize_workbuddy_readback(
+            state,
+            &private,
+            &mut job,
+            writer_result,
+            readback,
+            target_matches,
+            restored,
+            now,
+            &observer,
+        )?;
+        execution.gate.mark_terminal();
+        Ok(ApplyChangePlanOutcome {
+            kind: ChangeApplyOutcomeKind::Admitted,
+            job: Some(job),
+            error_code: None,
+        })
+    }
+
     pub fn get_job(
         state: &AppState,
         job_id: &str,
@@ -1888,6 +2385,30 @@ impl ChangePlanService {
     }
 
     fn reconcile_job<O>(
+        state: &AppState,
+        job: ChangeJobSnapshot,
+        observer: &O,
+    ) -> Result<ChangeJobSnapshot, ChangePlanErrorCode>
+    where
+        O: Fn(&ChangeJobSnapshot),
+    {
+        let stored = state
+            .db
+            .get_stored_change_plan(&job.plan_id)
+            .map_err(|_| ChangePlanErrorCode::Internal)?
+            .ok_or(ChangePlanErrorCode::PlanNotFound)?;
+        match stored.public.operation {
+            ChangeOperation::WorkBuddyModelsUpdate => {
+                Self::reconcile_workbuddy_job(state, job, observer)
+            }
+            ChangeOperation::CodexProviderSwitch
+            | ChangeOperation::CodexProviderUpsertAndSwitch => {
+                Self::reconcile_codex_job(state, job, observer)
+            }
+        }
+    }
+
+    fn reconcile_codex_job<O>(
         state: &AppState,
         mut job: ChangeJobSnapshot,
         observer: &O,
@@ -1980,6 +2501,154 @@ impl ChangePlanService {
             &mut job,
             WriterObservation::Unknown,
             readback,
+            now,
+            observer,
+        )?;
+        Ok(job)
+    }
+
+    fn reconcile_workbuddy_job<O>(
+        state: &AppState,
+        mut job: ChangeJobSnapshot,
+        observer: &O,
+    ) -> Result<ChangeJobSnapshot, ChangePlanErrorCode>
+    where
+        O: Fn(&ChangeJobSnapshot),
+    {
+        let workbuddy_guard = workbuddy::lock_workbuddy_mutation();
+        let _guard = change_plan_lock()
+            .lock()
+            .map_err(|_| ChangePlanErrorCode::Internal)?;
+        job = state
+            .db
+            .get_change_job(&job.job_id)
+            .map_err(|_| ChangePlanErrorCode::Internal)?
+            .ok_or(ChangePlanErrorCode::JobNotFound)?;
+        if job.status.is_terminal() {
+            normalize_job_projection(&mut job);
+            return Ok(job);
+        }
+        let stored = state
+            .db
+            .get_stored_change_plan(&job.plan_id)
+            .map_err(|_| ChangePlanErrorCode::Internal)?
+            .ok_or(ChangePlanErrorCode::PlanNotFound)?;
+        let now = chrono::Utc::now().timestamp();
+        let managed_write_started = job.steps.iter().any(|step| {
+            step.kind == ChangeStepKind::ManagedWrite
+                && step.status != ChangeStepStatus::NotStarted
+                && step.status != ChangeStepStatus::Skipped
+        });
+        if !managed_write_started {
+            set_step(
+                &mut job,
+                ChangeStepKind::Readback,
+                ChangeStepStatus::Skipped,
+                "write_never_started",
+            );
+            set_step(
+                &mut job,
+                ChangeStepKind::Finalize,
+                ChangeStepStatus::Succeeded,
+                "interrupted_before_write",
+            );
+            terminal_job(
+                &mut job,
+                now,
+                ChangeJobStatus::Failed,
+                ChangeResultCode::InterruptedBeforeWrite,
+                RestartRequirement::NotRequired,
+                RecoveryState::NotNeeded,
+                "interrupted_before_write",
+            );
+            persist_job(state, &mut job, "interrupted_before_write", observer)?;
+            return Ok(job);
+        }
+
+        set_step(
+            &mut job,
+            ChangeStepKind::Readback,
+            ChangeStepStatus::Running,
+            "reconcile_readback_started",
+        );
+        advance_job(&mut job, now, "reconcile_readback_started");
+        persist_job(state, &mut job, "reconcile_readback_started", observer)?;
+        let private = (stored.process_epoch_id == process_epoch_id())
+            .then(|| get_private_proof(&stored.proof_id))
+            .flatten()
+            .and_then(|proof| proof.workbuddy);
+        let Some(private) = private else {
+            set_resource(
+                &mut job,
+                ChangeResourceKind::WorkBuddyModelsConfig,
+                ChangeResourceStatus::Unavailable,
+                "private_proof_unavailable",
+            );
+            set_resource(
+                &mut job,
+                ChangeResourceKind::WorkBuddyBackup,
+                ChangeResourceStatus::Unavailable,
+                "private_proof_unavailable",
+            );
+            set_step(
+                &mut job,
+                ChangeStepKind::Readback,
+                ChangeStepStatus::Failed,
+                "private_proof_unavailable",
+            );
+            set_step(
+                &mut job,
+                ChangeStepKind::Finalize,
+                ChangeStepStatus::Succeeded,
+                "recovery_required",
+            );
+            terminal_job(
+                &mut job,
+                now,
+                ChangeJobStatus::Failed,
+                ChangeResultCode::RecoveryRequired,
+                RestartRequirement::Unknown,
+                RecoveryState::RecoveryRequired,
+                "private_proof_unavailable",
+            );
+            persist_job(state, &mut job, "recovery_required", observer)?;
+            return Ok(job);
+        };
+
+        let adapter = WorkBuddyModelsAdapter::for_plan(&workbuddy_guard, private.clone());
+        let mut readback = adapter.readback();
+        let baseline_matches = readback
+            .as_ref()
+            .is_ok_and(|snapshot| workbuddy_primary_matches(&private.baseline, snapshot));
+        let mut target_matches =
+            workbuddy::workbuddy_target_matches_locked(&workbuddy_guard, &private.request)
+                .unwrap_or(false);
+        let mut restored = false;
+        if !baseline_matches && !target_matches {
+            set_step(
+                &mut job,
+                ChangeStepKind::ManagedWrite,
+                ChangeStepStatus::Compensating,
+                "reconcile_restoring_baseline",
+            );
+            advance_job(&mut job, now, "compensation_started");
+            persist_job(state, &mut job, "compensation_started", observer)?;
+            restored = workbuddy::restore_workbuddy_change_snapshot_locked(
+                &workbuddy_guard,
+                &private.baseline,
+            )
+            .unwrap_or(false);
+            readback = adapter.readback();
+            target_matches = false;
+        }
+        finalize_workbuddy_readback(
+            state,
+            &private,
+            &mut job,
+            Ok(WorkBuddyWriteReceipt::UnknownOutcome),
+            readback,
+            target_matches,
+            restored,
             now,
             observer,
         )?;
@@ -2143,6 +2812,213 @@ where
         "finalized",
     );
     persist_job(state, job, "terminal", observer)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn finalize_workbuddy_readback<O>(
+    state: &AppState,
+    private: &PrivateWorkBuddyPlan,
+    job: &mut ChangeJobSnapshot,
+    writer_result: Result<WorkBuddyWriteReceipt, ()>,
+    readback: Result<WorkBuddyChangeSnapshot, ChangePlanErrorCode>,
+    semantic_target_matches: bool,
+    restored: bool,
+    now: i64,
+    observer: &O,
+) -> Result<(), ChangePlanErrorCode>
+where
+    O: Fn(&ChangeJobSnapshot),
+{
+    classify_workbuddy_job(
+        private,
+        job,
+        writer_result,
+        readback,
+        semantic_target_matches,
+        restored,
+    );
+    let final_status = job.status;
+    let final_result = job.result_code;
+    let final_restart = job.restart_requirement;
+    let final_recovery = job.recovery_state;
+    let final_diagnostic = job.diagnostic_code.clone();
+
+    set_step(
+        job,
+        ChangeStepKind::Finalize,
+        ChangeStepStatus::Running,
+        "finalize_started",
+    );
+    advance_job(job, now, "finalize_started");
+    persist_job(state, job, "finalize_started", observer)?;
+
+    job.revision += 1;
+    job.event_seq += 1;
+    job.status = final_status;
+    job.result_code = final_result;
+    job.restart_requirement = final_restart;
+    job.recovery_state = final_recovery;
+    job.diagnostic_code = final_diagnostic;
+    job.live_config_changed = false;
+    job.updated_at = now;
+    set_step(
+        job,
+        ChangeStepKind::Finalize,
+        ChangeStepStatus::Succeeded,
+        "finalized",
+    );
+    persist_job(state, job, "terminal", observer)
+}
+
+fn classify_workbuddy_job(
+    private: &PrivateWorkBuddyPlan,
+    job: &mut ChangeJobSnapshot,
+    writer_result: Result<WorkBuddyWriteReceipt, ()>,
+    readback: Result<WorkBuddyChangeSnapshot, ChangePlanErrorCode>,
+    semantic_target_matches: bool,
+    restored: bool,
+) {
+    let Ok(readback) = readback else {
+        set_resource(
+            job,
+            ChangeResourceKind::WorkBuddyModelsConfig,
+            ChangeResourceStatus::Unavailable,
+            "workbuddy_readback_unavailable",
+        );
+        set_resource(
+            job,
+            ChangeResourceKind::WorkBuddyBackup,
+            ChangeResourceStatus::Unavailable,
+            "workbuddy_backup_unavailable",
+        );
+        job.status = ChangeJobStatus::Failed;
+        job.result_code = ChangeResultCode::ReadbackUnavailable;
+        job.restart_requirement = RestartRequirement::Unknown;
+        job.recovery_state = RecoveryState::RecoveryRequired;
+        job.diagnostic_code = Some("workbuddy_readback_unavailable".to_string());
+        set_step(
+            job,
+            ChangeStepKind::Readback,
+            ChangeStepStatus::Failed,
+            "readback_unavailable",
+        );
+        return;
+    };
+
+    let exact_target = match &writer_result {
+        Ok(WorkBuddyWriteReceipt::Applied { revision }) => readback
+            .status
+            .revision
+            .as_deref()
+            .is_some_and(|actual| constant_time_text_matches(actual, revision)),
+        _ => false,
+    };
+    let baseline = workbuddy_primary_matches(&private.baseline, &readback);
+    let target = exact_target || semantic_target_matches;
+    set_resource(
+        job,
+        ChangeResourceKind::WorkBuddyModelsConfig,
+        if target || baseline {
+            ChangeResourceStatus::Matched
+        } else {
+            ChangeResourceStatus::Mismatched
+        },
+        if target {
+            "workbuddy_target_matched"
+        } else if baseline {
+            "workbuddy_baseline_restored"
+        } else {
+            "workbuddy_config_mismatched"
+        },
+    );
+    set_resource(
+        job,
+        ChangeResourceKind::WorkBuddyBackup,
+        if target || baseline {
+            ChangeResourceStatus::Matched
+        } else if readback.status.backup_exists {
+            ChangeResourceStatus::Mismatched
+        } else {
+            ChangeResourceStatus::Unavailable
+        },
+        if target {
+            if private.baseline.status.exists {
+                "workbuddy_backup_observed"
+            } else {
+                "workbuddy_backup_not_required"
+            }
+        } else if baseline && restored {
+            "workbuddy_recovery_snapshot_applied"
+        } else if baseline {
+            "workbuddy_baseline_backup_state_observed"
+        } else if readback.status.backup_exists {
+            "workbuddy_backup_requires_inspection"
+        } else {
+            "workbuddy_backup_unavailable"
+        },
+    );
+
+    if exact_target {
+        job.status = ChangeJobStatus::Succeeded;
+        job.result_code = ChangeResultCode::Applied;
+        job.restart_requirement = RestartRequirement::NotRequired;
+        job.recovery_state = RecoveryState::NotNeeded;
+        job.diagnostic_code = Some("workbuddy_target_readback_matched".to_string());
+        set_step(
+            job,
+            ChangeStepKind::Readback,
+            ChangeStepStatus::Succeeded,
+            "target_matched",
+        );
+    } else if target {
+        job.status = ChangeJobStatus::Warning;
+        job.result_code = ChangeResultCode::RecoveredTargetReached;
+        job.restart_requirement = RestartRequirement::NotRequired;
+        job.recovery_state = RecoveryState::NotNeeded;
+        job.diagnostic_code = Some("workbuddy_target_recovered_by_readback".to_string());
+        set_step(
+            job,
+            ChangeStepKind::ManagedWrite,
+            ChangeStepStatus::Succeeded,
+            "target_reached_after_unknown_outcome",
+        );
+        set_step(
+            job,
+            ChangeStepKind::Readback,
+            ChangeStepStatus::Succeeded,
+            "target_matched",
+        );
+    } else if baseline {
+        job.status = ChangeJobStatus::Failed;
+        job.result_code = ChangeResultCode::WriterFailedBaselineRestored;
+        job.restart_requirement = RestartRequirement::NotRequired;
+        job.recovery_state = RecoveryState::Succeeded;
+        job.diagnostic_code = Some("workbuddy_baseline_restored".to_string());
+        set_step(
+            job,
+            ChangeStepKind::ManagedWrite,
+            ChangeStepStatus::Compensated,
+            "writer_rollback_observed",
+        );
+        set_step(
+            job,
+            ChangeStepKind::Readback,
+            ChangeStepStatus::Succeeded,
+            "baseline_restored",
+        );
+    } else {
+        job.status = ChangeJobStatus::Failed;
+        job.result_code = ChangeResultCode::PostWriteMismatch;
+        job.restart_requirement = RestartRequirement::Unknown;
+        job.recovery_state = RecoveryState::RecoveryRequired;
+        job.diagnostic_code = Some("workbuddy_recovery_required".to_string());
+        set_step(
+            job,
+            ChangeStepKind::Readback,
+            ChangeStepStatus::Failed,
+            "state_mixed",
+        );
+    }
 }
 
 fn rejected(error_code: ChangePlanErrorCode) -> ApplyChangePlanOutcome {
@@ -3546,6 +4422,94 @@ mod tests {
         (home, home_guard, db, state, current, target)
     }
 
+    fn workbuddy_request(
+        expected_revision: Option<String>,
+        api_key: &str,
+    ) -> WorkBuddyModelsPlanRequest {
+        WorkBuddyModelsPlanRequest {
+            base_url: "https://new.example.test/v1".to_string(),
+            api_key: api_key.to_string(),
+            allow_no_api_key: false,
+            selected_model_ids: vec!["model-a".to_string()],
+            manual_model_ids: Vec::new(),
+            removed_model_ids: Vec::new(),
+            clear_existing_api_keys: false,
+            expected_revision,
+        }
+    }
+
+    fn setup_workbuddy_state() -> (
+        tempfile::TempDir,
+        TestHome,
+        Arc<Database>,
+        AppState,
+        std::path::PathBuf,
+        std::path::PathBuf,
+        Vec<u8>,
+        String,
+    ) {
+        let home = tempfile::tempdir().expect("test home");
+        let home_guard = TestHome::set(home.path());
+        let directory = home.path().join(".workbuddy");
+        let models = directory.join("models.json");
+        let backup = directory.join("models.json.backup");
+        let original = br#"{"models":[{"id":"model-a","url":"https://old.example.test/v1","apiKey":"BASELINE-SECRET-CANARY"}],"unknown":{"kept":true}}"#.to_vec();
+        std::fs::create_dir_all(&directory).unwrap();
+        std::fs::write(&models, &original).unwrap();
+        let workbuddy_guard = workbuddy::lock_workbuddy_mutation();
+        let revision = workbuddy::inspect_workbuddy_change_locked(&workbuddy_guard)
+            .unwrap()
+            .status
+            .revision
+            .clone()
+            .expect("existing WorkBuddy document has a revision");
+        drop(workbuddy_guard);
+        let db = Arc::new(Database::memory().expect("database"));
+        let state = AppState::new(db.clone());
+        (
+            home, home_guard, db, state, models, backup, original, revision,
+        )
+    }
+
+    fn change_ledger_counts(db: &Database) -> (i64, i64, i64) {
+        db.conn
+            .lock()
+            .unwrap()
+            .query_row(
+                "SELECT
+                    (SELECT COUNT(*) FROM change_plans),
+                    (SELECT COUNT(*) FROM change_jobs),
+                    (SELECT COUNT(*) FROM change_job_events)",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap()
+    }
+
+    fn persisted_plan_text(db: &Database, plan_id: &str) -> String {
+        db.conn
+            .lock()
+            .unwrap()
+            .query_row(
+                "SELECT operation, target_provider_id, target_provider_name, plan_digest,
+                        baseline_digest, actor_code, source_version, proof_id,
+                        process_epoch_id, COALESCE(current_provider_id, ''),
+                        current_provider_code, target_provider_code, business_steps_json,
+                        COALESCE(credential_json, ''), risks_json, restart_requirement,
+                        contract_digest, status
+                 FROM change_plans WHERE plan_id = ?1",
+                [plan_id],
+                |row| {
+                    let mut fields = Vec::new();
+                    for index in 0..18 {
+                        fields.push(row.get::<_, String>(index)?);
+                    }
+                    Ok(fields.join("|"))
+                },
+            )
+            .unwrap()
+    }
+
     #[test]
     #[serial]
     fn codex_provider_change_job_calls_existing_writer_once_and_rejects_replay() {
@@ -4305,6 +5269,277 @@ mod tests {
             ChangePlanService::get_job(&state, &job.job_id).unwrap(),
             job
         );
+    }
+
+    #[test]
+    #[serial]
+    fn workbuddy_plan_is_one_safe_ledger_insert_and_zero_external_writes() {
+        const REQUEST_KEY: &str = "REQUEST-SECRET-CANARY-WORKBUDDY";
+        let (_home, _guard, db, state, models, backup, original, revision) =
+            setup_workbuddy_state();
+
+        let plan = ChangePlanService::plan_workbuddy_models_at(
+            &state,
+            workbuddy_request(Some(revision.clone()), REQUEST_KEY),
+            100,
+        )
+        .unwrap();
+
+        assert_eq!(plan.operation, ChangeOperation::WorkBuddyModelsUpdate);
+        assert_eq!(
+            plan.business_steps,
+            vec![ChangeBusinessStepKind::SaveWorkBuddyModels]
+        );
+        assert_eq!(
+            plan.adapter.read_set,
+            vec![
+                ChangeResourceKind::WorkBuddyModelsConfig,
+                ChangeResourceKind::WorkBuddyBackup,
+            ]
+        );
+        assert_eq!(change_ledger_counts(&db), (1, 0, 0));
+        assert_eq!(std::fs::read(&models).unwrap(), original);
+        assert!(!backup.exists());
+
+        let public = serde_json::to_string(&plan).unwrap();
+        let persisted = persisted_plan_text(&db, &plan.plan_id);
+        for forbidden in [
+            REQUEST_KEY,
+            "BASELINE-SECRET-CANARY",
+            "https://new.example.test/v1",
+            revision.as_str(),
+            models.to_string_lossy().as_ref(),
+            "overwriteToken",
+        ] {
+            assert!(
+                !public.contains(forbidden),
+                "public plan leaked {forbidden}"
+            );
+            assert!(
+                !persisted.contains(forbidden),
+                "persisted plan leaked {forbidden}"
+            );
+        }
+        clear_private_proofs_for_test();
+    }
+
+    #[test]
+    #[serial]
+    fn workbuddy_apply_consumes_one_confirmation_and_is_idempotent() {
+        const REQUEST_KEY: &str = "REQUEST-SECRET-CANARY-WORKBUDDY";
+        let (_home, _guard, db, state, models, backup, original, revision) =
+            setup_workbuddy_state();
+        let plan = ChangePlanService::plan_workbuddy_models_at(
+            &state,
+            workbuddy_request(Some(revision), REQUEST_KEY),
+            100,
+        )
+        .unwrap();
+
+        let outcome = ChangePlanService::apply_workbuddy_with_observer_and_fault(
+            &state,
+            &plan.plan_id,
+            &plan.plan_digest,
+            101,
+            |_| {},
+            None,
+        )
+        .unwrap();
+        let job = outcome.job.expect("admitted WorkBuddy job");
+        assert_eq!(job.status, ChangeJobStatus::Succeeded);
+        assert_eq!(job.result_code, ChangeResultCode::Applied);
+        assert_eq!(job.restart_requirement, RestartRequirement::NotRequired);
+        assert_eq!(job.usage_evidence, UsageEvidence::NotObserved);
+        assert!(job
+            .steps
+            .iter()
+            .all(|step| step.status == ChangeStepStatus::Succeeded));
+        assert!(job
+            .resources
+            .iter()
+            .all(|resource| resource.status == ChangeResourceStatus::Matched));
+        assert_eq!(change_ledger_counts(&db).0, 1);
+        assert_eq!(std::fs::read(&backup).unwrap(), original);
+        let written = std::fs::read(&models).unwrap();
+        let document: Value = serde_json::from_slice(&written).unwrap();
+        assert_eq!(document["models"][0]["id"], "model-a");
+        assert_eq!(document["models"][0]["url"], "https://new.example.test/v1");
+        assert_eq!(document["models"][0]["apiKey"], REQUEST_KEY);
+        assert_eq!(document["unknown"]["kept"], true);
+
+        let replay = ChangePlanService::apply_workbuddy_with_observer_and_fault(
+            &state,
+            &plan.plan_id,
+            &plan.plan_digest,
+            102,
+            |_| {},
+            None,
+        )
+        .unwrap()
+        .job
+        .unwrap();
+        assert_eq!(replay.job_id, job.job_id);
+        assert_eq!(replay.event_seq, job.event_seq);
+        assert_eq!(std::fs::read(&models).unwrap(), written);
+        assert_eq!(std::fs::read(&backup).unwrap(), original);
+        clear_private_proofs_for_test();
+    }
+
+    #[test]
+    #[serial]
+    fn workbuddy_api_key_only_drift_is_stale_and_writer_zero() {
+        let (_home, _guard, db, state, models, backup, _original, revision) =
+            setup_workbuddy_state();
+        let plan = ChangePlanService::plan_workbuddy_models_at(
+            &state,
+            workbuddy_request(Some(revision), "REQUEST-SECRET-CANARY-WORKBUDDY"),
+            100,
+        )
+        .unwrap();
+        let external = br#"{"models":[{"id":"model-a","url":"https://old.example.test/v1","apiKey":"EXTERNAL-SECRET-ONLY-DRIFT"}],"unknown":{"kept":true}}"#;
+        std::fs::write(&models, external).unwrap();
+
+        let outcome = ChangePlanService::apply_workbuddy_with_observer_and_fault(
+            &state,
+            &plan.plan_id,
+            &plan.plan_digest,
+            101,
+            |_| {},
+            None,
+        )
+        .unwrap();
+        assert_eq!(outcome.kind, ChangeApplyOutcomeKind::Rejected);
+        assert_eq!(outcome.error_code, Some(ChangePlanErrorCode::Stale));
+        assert!(outcome.job.is_none());
+        assert_eq!(change_ledger_counts(&db), (1, 0, 0));
+        assert_eq!(std::fs::read(&models).unwrap(), external);
+        assert!(!backup.exists());
+        clear_private_proofs_for_test();
+    }
+
+    #[test]
+    #[serial]
+    #[cfg(target_os = "macos")]
+    fn workbuddy_postwrite_mismatch_restores_the_exact_baseline() {
+        let (_home, _guard, _db, state, models, backup, original, revision) =
+            setup_workbuddy_state();
+        let plan = ChangePlanService::plan_workbuddy_models_at(
+            &state,
+            workbuddy_request(Some(revision), "REQUEST-SECRET-CANARY-WORKBUDDY"),
+            100,
+        )
+        .unwrap();
+        crate::services::workbuddy::config::replace_after_commit_for_test(
+            br#"{"models":[{"id":"mismatch","apiKey":"POSTWRITE-MISMATCH-CANARY"}]}"#.to_vec(),
+        );
+
+        let job = ChangePlanService::apply_workbuddy_with_observer_and_fault(
+            &state,
+            &plan.plan_id,
+            &plan.plan_digest,
+            101,
+            |_| {},
+            None,
+        )
+        .unwrap()
+        .job
+        .unwrap();
+        assert_eq!(job.status, ChangeJobStatus::Failed);
+        assert_eq!(
+            job.result_code,
+            ChangeResultCode::WriterFailedBaselineRestored
+        );
+        assert_eq!(job.recovery_state, RecoveryState::Succeeded);
+        assert_eq!(std::fs::read(&models).unwrap(), original);
+        assert_eq!(std::fs::read(&backup).unwrap(), original);
+        assert!(!String::from_utf8_lossy(&std::fs::read(&models).unwrap())
+            .contains("POSTWRITE-MISMATCH-CANARY"));
+        clear_private_proofs_for_test();
+    }
+
+    #[test]
+    #[serial]
+    fn workbuddy_crash_reconcile_never_replays_the_writer() {
+        let (_home, _guard, db, state, models, backup, original, revision) =
+            setup_workbuddy_state();
+        let plan = ChangePlanService::plan_workbuddy_models_at(
+            &state,
+            workbuddy_request(Some(revision), "REQUEST-SECRET-CANARY-WORKBUDDY"),
+            100,
+        )
+        .unwrap();
+        let interrupted = ChangePlanService::apply_workbuddy_with_observer_and_fault(
+            &state,
+            &plan.plan_id,
+            &plan.plan_digest,
+            101,
+            |_| {},
+            Some(ChangeFaultPoint::AfterManagedWriteBeforeRecord),
+        );
+        assert_eq!(interrupted.unwrap_err(), ChangePlanErrorCode::Internal);
+        let pending = db
+            .get_change_job_by_plan_id(&plan.plan_id)
+            .unwrap()
+            .unwrap();
+        let written = std::fs::read(&models).unwrap();
+        let recovered = ChangePlanService::get_job(&state, &pending.job_id).unwrap();
+        assert_eq!(recovered.status, ChangeJobStatus::Warning);
+        assert_eq!(
+            recovered.result_code,
+            ChangeResultCode::RecoveredTargetReached
+        );
+        assert_eq!(std::fs::read(&models).unwrap(), written);
+        assert_eq!(std::fs::read(&backup).unwrap(), original);
+        assert_eq!(
+            ChangePlanService::get_job(&state, &pending.job_id)
+                .unwrap()
+                .event_seq,
+            recovered.event_seq
+        );
+        assert_eq!(std::fs::read(&models).unwrap(), written);
+
+        let (_home, _guard, db, state, models, backup, original, revision) =
+            setup_workbuddy_state();
+        let plan = ChangePlanService::plan_workbuddy_models_at(
+            &state,
+            workbuddy_request(Some(revision), "REQUEST-SECRET-CANARY-WORKBUDDY-RESTART"),
+            200,
+        )
+        .unwrap();
+        let interrupted = ChangePlanService::apply_workbuddy_with_observer_and_fault(
+            &state,
+            &plan.plan_id,
+            &plan.plan_digest,
+            201,
+            |_| {},
+            Some(ChangeFaultPoint::AfterManagedWriteBeforeRecord),
+        );
+        assert_eq!(interrupted.unwrap_err(), ChangePlanErrorCode::Internal);
+        let pending = db
+            .get_change_job_by_plan_id(&plan.plan_id)
+            .unwrap()
+            .unwrap();
+        let written = std::fs::read(&models).unwrap();
+        clear_private_proofs_for_test();
+        let recovery_required = ChangePlanService::get_job(&state, &pending.job_id).unwrap();
+        assert_eq!(recovery_required.status, ChangeJobStatus::Failed);
+        assert_eq!(
+            recovery_required.result_code,
+            ChangeResultCode::RecoveryRequired
+        );
+        assert_eq!(
+            recovery_required.recovery_state,
+            RecoveryState::RecoveryRequired
+        );
+        assert_eq!(std::fs::read(&models).unwrap(), written);
+        assert_eq!(std::fs::read(&backup).unwrap(), original);
+        assert_eq!(
+            ChangePlanService::get_job(&state, &pending.job_id)
+                .unwrap()
+                .event_seq,
+            recovery_required.event_seq
+        );
+        assert_eq!(std::fs::read(&models).unwrap(), written);
     }
 
     #[test]

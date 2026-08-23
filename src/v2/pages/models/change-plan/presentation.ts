@@ -42,6 +42,8 @@ export const RESOURCE_LABELS: Readonly<Record<ChangeResourceKind, string>> = {
   device_current: "本机当前选择",
   target_definition: "目标 Provider 定义",
   codex_live_projection: "Codex 本机配置投影",
+  work_buddy_models_config: "WorkBuddy 模型配置",
+  work_buddy_backup: "WorkBuddy 恢复备份",
 };
 
 export const RESOURCE_STATUS_LABELS: Readonly<
@@ -120,7 +122,11 @@ export function manualRecoveryCopy(job: ChangeJobSnapshot): string[] {
       case "restore_readback_authority":
         return "恢复本机配置的可读状态后重新回读。";
       case "inspect_and_resolve":
-        return "检查本机 Provider 与 Codex 配置并人工消除不一致。";
+        return job.resources.some(
+          (resource) => resource.kind === "work_buddy_models_config",
+        )
+          ? "检查 WorkBuddy 模型配置与恢复备份，并人工消除不一致。"
+          : "检查本机 Provider 与 Codex 配置并人工消除不一致。";
       case "delete_previous_secret_ref":
         return "旧凭据仍保留在系统钥匙串，请在确认新配置可用后人工删除。";
       case "inspect_secret_store":

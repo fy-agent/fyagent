@@ -15,6 +15,7 @@ import {
   type ChangeResourceResult,
 } from "../../../features/change-plan";
 import type { FeaturePorts } from "../../../features/ports";
+import type { WorkBuddyChangePlanRequest } from "../../../features/types";
 import { assertQuickSetupRequest } from "./models";
 import {
   hasExactKeys,
@@ -47,6 +48,8 @@ const RESOURCE_KINDS = [
   "device_current",
   "target_definition",
   "codex_live_projection",
+  "work_buddy_models_config",
+  "work_buddy_backup",
 ] as const;
 const RESOURCE_STATUSES = [
   "pending",
@@ -149,6 +152,7 @@ function parseAdapter(value: unknown): ChangeAdapterDescriptor {
     !isOneOf(value.operationType, [
       "codex_provider_switch",
       "codex_provider_upsert_and_switch",
+      "work_buddy_models_update",
     ] as const) ||
     !Array.isArray(value.phases) ||
     value.phases.length !== CHANGE_STEP_KINDS.length ||
@@ -215,6 +219,7 @@ function parsePlan(value: unknown): ChangePlan {
     !isOneOf(value.operation, [
       "codex_provider_switch",
       "codex_provider_upsert_and_switch",
+      "work_buddy_models_update",
     ] as const) ||
     !isSafeId(value.targetProviderId) ||
     typeof value.targetProviderName !== "string" ||
@@ -241,7 +246,9 @@ function parsePlan(value: unknown): ChangePlan {
   const expectedSteps =
     value.operation === "codex_provider_upsert_and_switch"
       ? ["save_provider", "set_current_provider"]
-      : ["set_current_provider"];
+      : value.operation === "work_buddy_models_update"
+        ? ["save_work_buddy_models"]
+        : ["set_current_provider"];
   if (
     value.businessSteps.length !== expectedSteps.length ||
     !value.businessSteps.every(
@@ -253,7 +260,7 @@ function parsePlan(value: unknown): ChangePlan {
         typeof value.credential.secretRefDisplay !== "string" ||
         !/^sec_…[0-9a-f]{4}$/.test(value.credential.secretRefDisplay) ||
         value.credential.backend !== "os_keyring")) ||
-    (value.operation === "codex_provider_switch" &&
+    (value.operation !== "codex_provider_upsert_and_switch" &&
       value.credential !== undefined)
   )
     throw new Error("Change Plan is unavailable");
@@ -492,6 +499,50 @@ function assertId(value: string): string {
   return value;
 }
 
+function assertWorkBuddyPlanRequest(
+  request: WorkBuddyChangePlanRequest,
+): WorkBuddyChangePlanRequest {
+  if (
+    !isRecord(request) ||
+    !hasRequiredAndOptionalKeys(
+      request,
+      [
+        "baseUrl",
+        "apiKey",
+        "allowNoApiKey",
+        "selectedModelIds",
+        "manualModelIds",
+        "clearExistingApiKeys",
+        "expectedRevision",
+      ],
+      ["removedModelIds"],
+    ) ||
+    typeof request.baseUrl !== "string" ||
+    typeof request.apiKey !== "string" ||
+    typeof request.allowNoApiKey !== "boolean" ||
+    !isStringArray(request.selectedModelIds) ||
+    !isStringArray(request.manualModelIds) ||
+    (request.removedModelIds !== undefined &&
+      !isStringArray(request.removedModelIds)) ||
+    typeof request.clearExistingApiKeys !== "boolean" ||
+    (request.expectedRevision !== null &&
+      typeof request.expectedRevision !== "string")
+  )
+    throw new Error("WorkBuddy Change Plan request is invalid");
+  return {
+    baseUrl: request.baseUrl,
+    apiKey: request.apiKey,
+    allowNoApiKey: request.allowNoApiKey,
+    selectedModelIds: [...request.selectedModelIds],
+    manualModelIds: [...request.manualModelIds],
+    ...(request.removedModelIds === undefined
+      ? {}
+      : { removedModelIds: [...request.removedModelIds] }),
+    clearExistingApiKeys: request.clearExistingApiKeys,
+    expectedRevision: request.expectedRevision,
+  };
+}
+
 export function createChangePlanPort(): FeaturePorts["changePlan"] {
   return {
     createCodexProviderSwitchPlan: async (targetProviderId) =>
@@ -504,6 +555,12 @@ export function createChangePlanPort(): FeaturePorts["changePlan"] {
       parsePlan(
         await invoke<unknown>("create_codex_provider_upsert_plan", {
           request: assertQuickSetupRequest(request),
+        }),
+      ),
+    createWorkBuddyModelsPlan: async (request) =>
+      parsePlan(
+        await invoke<unknown>("create_workbuddy_models_plan", {
+          request: assertWorkBuddyPlanRequest(request),
         }),
       ),
     apply: async (planId, planDigest) =>

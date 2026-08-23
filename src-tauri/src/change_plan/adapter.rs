@@ -3,8 +3,9 @@ use super::{
     safe_provider_display_name, ChangeAdapterDescriptor, ChangeCancelMode, ChangeCompensationMode,
     ChangeFaultPoint, ChangeIdempotencyScope, ChangeOperation, ChangePlanErrorCode, ChangePlanRisk,
     ChangeResourceKind, ChangeStepKind, CodexSwitchInspection, PrivateCodexCredentialPlan,
-    PrivateProjectionProof, RestartRequirement,
+    PrivateProjectionProof, PrivateWorkBuddyPlan, RestartRequirement, WorkBuddyWriteReceipt,
 };
+use crate::services::workbuddy::{self, WorkBuddyChangeSnapshot, WorkBuddyMutationGuard};
 use crate::store::AppState;
 use std::sync::Arc;
 
@@ -98,6 +99,136 @@ pub(super) fn descriptor_for_operation(operation: ChangeOperation) -> ChangeAdap
                 ChangeFaultPoint::AfterManagedWriteBeforeRecord,
             ],
         },
+        ChangeOperation::WorkBuddyModelsUpdate => ChangeAdapterDescriptor {
+            adapter_id: "workbuddy_models".to_string(),
+            adapter_version: "1".to_string(),
+            operation_type: ChangeOperation::WorkBuddyModelsUpdate,
+            phases: vec![
+                ChangeStepKind::Precheck,
+                ChangeStepKind::Snapshot,
+                ChangeStepKind::ManagedWrite,
+                ChangeStepKind::Readback,
+                ChangeStepKind::Finalize,
+            ],
+            read_set: vec![
+                ChangeResourceKind::WorkBuddyModelsConfig,
+                ChangeResourceKind::WorkBuddyBackup,
+            ],
+            write_set: vec![
+                ChangeResourceKind::WorkBuddyModelsConfig,
+                ChangeResourceKind::WorkBuddyBackup,
+            ],
+            idempotency_scope: ChangeIdempotencyScope::Plan,
+            cancel_mode: ChangeCancelMode::BeforeManagedWrite,
+            compensation_mode: ChangeCompensationMode::WriterOwnedRollback,
+            fault_points: vec![
+                ChangeFaultPoint::BeforeManagedWrite,
+                ChangeFaultPoint::AfterManagedWriteBeforeRecord,
+            ],
+        },
+    }
+}
+
+pub(super) struct WorkBuddyModelsAdapter<'a> {
+    guard: &'a WorkBuddyMutationGuard,
+    plan: Arc<PrivateWorkBuddyPlan>,
+    writer: Option<Box<dyn FnOnce() -> Result<WorkBuddyWriteReceipt, ()> + 'a>>,
+}
+
+impl<'a> WorkBuddyModelsAdapter<'a> {
+    pub(super) fn for_plan(
+        guard: &'a WorkBuddyMutationGuard,
+        plan: Arc<PrivateWorkBuddyPlan>,
+    ) -> Self {
+        Self {
+            guard,
+            plan,
+            writer: None,
+        }
+    }
+
+    pub(super) fn for_execution<F>(
+        guard: &'a WorkBuddyMutationGuard,
+        plan: Arc<PrivateWorkBuddyPlan>,
+        writer: F,
+    ) -> Self
+    where
+        F: FnOnce() -> Result<WorkBuddyWriteReceipt, ()> + 'a,
+    {
+        Self {
+            guard,
+            plan,
+            writer: Some(Box::new(writer)),
+        }
+    }
+}
+
+impl ChangeAdapter for WorkBuddyModelsAdapter<'_> {
+    type Inspection = WorkBuddyChangeSnapshot;
+    type Snapshot = WorkBuddyChangeSnapshot;
+    type WriteReceipt = WorkBuddyWriteReceipt;
+
+    fn descriptor(&self) -> ChangeAdapterDescriptor {
+        descriptor_for_operation(ChangeOperation::WorkBuddyModelsUpdate)
+    }
+
+    fn inspect(&self) -> Result<Self::Inspection, ChangePlanErrorCode> {
+        workbuddy::inspect_workbuddy_change_locked(self.guard)
+            .map_err(|_| ChangePlanErrorCode::BaselineUnavailable)
+    }
+
+    fn plan(&self, inspection: &Self::Inspection) -> ChangeAdapterPlanFields {
+        let mut risks = vec![
+            ChangePlanRisk {
+                code: "workbuddy_local_configuration_write".to_string(),
+                severity: "notice".to_string(),
+            },
+            ChangePlanRisk {
+                code: "workbuddy_backup_replace".to_string(),
+                severity: "notice".to_string(),
+            },
+        ];
+        if self.plan.existing_target_count > 0 {
+            risks.push(ChangePlanRisk {
+                code: "workbuddy_existing_entries_overwritten".to_string(),
+                severity: "notice".to_string(),
+            });
+        }
+        ChangeAdapterPlanFields {
+            target_provider_name: format!(
+                "WorkBuddy 模型配置（{} 个模型）",
+                self.plan.target_model_count
+            ),
+            current_provider_code: if inspection.status.exists {
+                "workbuddy_configured".to_string()
+            } else {
+                "workbuddy_missing".to_string()
+            },
+            target_provider_code: "workbuddy_models_update".to_string(),
+            restart_expectation: RestartRequirement::NotRequired,
+            risks,
+            evidence_note: "usage_not_observed".to_string(),
+        }
+    }
+
+    fn precheck(&self) -> Result<Self::Inspection, ChangePlanErrorCode> {
+        self.inspect()
+    }
+
+    fn snapshot(&self, inspection: &Self::Inspection) -> Self::Snapshot {
+        inspection.clone()
+    }
+
+    fn managed_write(&mut self) -> Result<Self::WriteReceipt, ()> {
+        self.writer.take().ok_or(())?()
+    }
+
+    fn readback(&self) -> Result<Self::Inspection, ChangePlanErrorCode> {
+        self.inspect()
+    }
+
+    fn compensation_capability(&self) -> ChangeCompensationMode {
+        ChangeCompensationMode::WriterOwnedRollback
     }
 }
 
@@ -323,6 +454,9 @@ impl<'a> RegisteredCodexAdapter<'a> {
                     writer,
                 ))
             }
+            ChangeOperation::WorkBuddyModelsUpdate => {
+                return Err(ChangePlanErrorCode::UnsupportedOperation)
+            }
         })
     }
 
@@ -343,6 +477,9 @@ impl<'a> RegisteredCodexAdapter<'a> {
                     proof_id,
                     credential.ok_or(ChangePlanErrorCode::Stale)?,
                 ))
+            }
+            ChangeOperation::WorkBuddyModelsUpdate => {
+                return Err(ChangePlanErrorCode::UnsupportedOperation)
             }
         })
     }

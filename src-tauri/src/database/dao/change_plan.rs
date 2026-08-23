@@ -136,7 +136,7 @@ impl Database {
             .map_err(|error| AppError::Database(format!("start admission failed: {error}")))?;
         let row = tx
             .query_row(
-                "SELECT target_provider_id, plan_digest, baseline_digest, expires_at, status
+                "SELECT operation, target_provider_id, plan_digest, baseline_digest, expires_at, status
                  FROM change_plans WHERE plan_id = ?1",
                 params![plan_id],
                 |row| {
@@ -144,19 +144,26 @@ impl Database {
                         row.get::<_, String>(0)?,
                         row.get::<_, String>(1)?,
                         row.get::<_, String>(2)?,
-                        row.get::<_, i64>(3)?,
-                        row.get::<_, String>(4)?,
+                        row.get::<_, String>(3)?,
+                        row.get::<_, i64>(4)?,
+                        row.get::<_, String>(5)?,
                     ))
                 },
             )
             .optional()
             .map_err(|error| AppError::Database(format!("read admission plan failed: {error}")))?;
 
-        let Some((target_id, expected_digest, baseline_digest, expires_at, status)) = row else {
+        let Some((operation, target_id, expected_digest, baseline_digest, expires_at, status)) =
+            row
+        else {
             return Ok(Self::rejected_change_plan(
                 ChangePlanErrorCode::PlanNotFound,
             ));
         };
+        let operation: ChangeOperation =
+            serde_json::from_value(serde_json::Value::String(operation)).map_err(|error| {
+                AppError::Database(format!("invalid change operation: {error}"))
+            })?;
         let rejection = if expected_digest != plan_digest {
             Some(ChangePlanErrorCode::InvalidDigest)
         } else if status != "ready" {
@@ -183,8 +190,13 @@ impl Database {
             return Ok(Self::rejected_change_plan(ChangePlanErrorCode::Consumed));
         }
 
-        let job =
-            ChangeJobSnapshot::planned(job_id.to_string(), plan_id.to_string(), target_id, now);
+        let job = ChangeJobSnapshot::planned(
+            job_id.to_string(),
+            plan_id.to_string(),
+            target_id,
+            registered_adapter_descriptor(operation).read_set,
+            now,
+        );
         Self::insert_change_job_on_conn(&tx, &job)?;
         tx.execute(
             "INSERT INTO change_job_events (job_id, event_seq, kind, code, created_at)

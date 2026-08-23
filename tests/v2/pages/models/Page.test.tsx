@@ -118,7 +118,58 @@ function workBuddyPorts(): FeaturePorts {
       revision: "revision-1",
     }),
   );
+  ports.changePlan.createWorkBuddyModelsPlan = vi.fn(async () =>
+    workBuddyPlanFixture(),
+  );
+  ports.changePlan.apply = vi.fn(async () => ({
+    kind: "admitted" as const,
+    job: terminalWorkBuddyFixture(),
+  }));
+  ports.changePlan.getJob = vi.fn(async () => terminalWorkBuddyFixture());
+  ports.changePlan.listRecoverableJobs = vi.fn(async () => []);
+  ports.changePlan.subscribeJobUpdates = vi.fn(async () => vi.fn());
   return ports;
+}
+
+function workBuddyPlanFixture(): ChangePlan {
+  const plan = structuredClone(fixtureJson.plan) as unknown as ChangePlan;
+  plan.operation = "work_buddy_models_update";
+  plan.targetProviderId = "workbuddy-models";
+  plan.targetProviderName = "WorkBuddy 模型配置（1 个模型）";
+  plan.businessSteps = ["save_work_buddy_models"];
+  plan.credential = undefined;
+  plan.restartExpectation = "not_required";
+  plan.adapter = {
+    ...plan.adapter,
+    adapterId: "workbuddy_models",
+    operationType: "work_buddy_models_update",
+    readSet: ["work_buddy_models_config", "work_buddy_backup"],
+    writeSet: ["work_buddy_models_config", "work_buddy_backup"],
+  };
+  return plan;
+}
+
+function terminalWorkBuddyFixture(): ChangeJobSnapshot {
+  const job = structuredClone(
+    fixtureJson.applyOutcome.job,
+  ) as unknown as ChangeJobSnapshot;
+  job.targetProviderId = "workbuddy-models";
+  job.resultCode = "applied";
+  job.restartRequirement = "not_required";
+  job.liveConfigChanged = false;
+  job.resources = [
+    {
+      kind: "work_buddy_models_config",
+      status: "matched",
+      code: "workbuddy_target_matched",
+    },
+    {
+      kind: "work_buddy_backup",
+      status: "matched",
+      code: "workbuddy_backup_observed",
+    },
+  ];
+  return job;
 }
 
 function upsertPlanFixture(): ChangePlan {
@@ -439,23 +490,10 @@ describe("V2 Models page", () => {
     expect(within(header as HTMLElement).getByText("待保存")).toBeVisible();
   });
 
-  it("freezes the WorkBuddy overwrite request, rereads authority, and clears credentials", async () => {
+  it("freezes one WorkBuddy plan request, exposes no overwrite token, and clears credentials", async () => {
     const user = userEvent.setup();
     const ports = workBuddyPorts();
-    ports.workbuddy.saveModels = vi
-      .fn()
-      .mockResolvedValueOnce({
-        state: "overwrite_confirmation_required",
-        token: "opaque-overwrite-token",
-        existingIds: ["existing-model"],
-      })
-      .mockResolvedValueOnce({
-        state: "saved",
-        revision: "revision-2",
-        modelCount: 1,
-        createdEntries: 0,
-        updatedEntries: 1,
-      });
+    ports.workbuddy.saveModels = vi.fn();
     renderPage(ports, "workbuddy");
 
     await screen.findByText("已有第三方模型数量");
@@ -467,8 +505,13 @@ describe("V2 Models page", () => {
     await user.type(screen.getByLabelText("自定义模型 ID"), "manual-model");
     await user.click(screen.getByRole("button", { name: "保存并应用" }));
 
-    const confirm = await screen.findByRole("button", { name: "确认覆盖" });
+    const dialog = await screen.findByRole("dialog", {
+      name: "确认 WorkBuddy 模型变更",
+    });
     expect(screen.getByLabelText("API Key")).toHaveValue("");
+    expect(dialog).toHaveTextContent("保存 WorkBuddy 模型配置");
+    expect(dialog).toHaveTextContent("WorkBuddy 恢复备份");
+    expect(dialog).not.toHaveTextContent("first-secret");
 
     fireEvent.change(screen.getByLabelText("服务地址"), {
       target: { value: "https://changed.example/v1" },
@@ -479,14 +522,8 @@ describe("V2 Models page", () => {
     fireEvent.change(screen.getByLabelText("自定义模型 ID"), {
       target: { value: "replacement-model" },
     });
-    await user.click(confirm);
-
-    await screen.findByText("WorkBuddy 模型配置已保存");
-    expect(ports.workbuddy.saveModels).toHaveBeenCalledTimes(2);
-    const firstRequest = vi.mocked(ports.workbuddy.saveModels).mock.calls[0][0];
-    const secondRequest = vi.mocked(ports.workbuddy.saveModels).mock
-      .calls[1][0];
-    expect(firstRequest).toEqual({
+    expect(ports.changePlan.createWorkBuddyModelsPlan).toHaveBeenCalledTimes(1);
+    expect(ports.changePlan.createWorkBuddyModelsPlan).toHaveBeenCalledWith({
       baseUrl: "https://workbuddy.example/v1",
       apiKey: "first-secret",
       allowNoApiKey: false,
@@ -496,13 +533,14 @@ describe("V2 Models page", () => {
       clearExistingApiKeys: false,
       expectedRevision: "revision-1",
     });
-    expect(secondRequest).toEqual({
-      ...firstRequest,
-      overwriteToken: "opaque-overwrite-token",
-    });
-    expect(screen.getByLabelText("API Key")).toHaveValue("");
-    expect(ports.workbuddy.getStatus).toHaveBeenCalledTimes(2);
-    expect(ports.workbuddy.getModelIds).toHaveBeenCalledTimes(2);
+    expect(ports.workbuddy.saveModels).not.toHaveBeenCalled();
+    expect(ports.changePlan.apply).not.toHaveBeenCalled();
+    await user.click(
+      within(dialog).getByRole("button", { name: "确认并应用一次" }),
+    );
+    expect(ports.changePlan.apply).toHaveBeenCalledTimes(1);
+    expect(await screen.findByTestId("change-job-workspace")).toBeVisible();
+    expect(screen.getByLabelText("API Key")).toHaveValue("replacement-secret");
   });
 
   it("locks duplicate WorkBuddy fetches, preserves truncation, and keeps the key", async () => {
@@ -611,22 +649,13 @@ describe("V2 Models page", () => {
     expect(ports.workbuddy.saveModels).not.toHaveBeenCalled();
   });
 
-  it("does not claim a WorkBuddy authoritative reread when either refresh fails", async () => {
+  it("keeps WorkBuddy unchanged when plan creation fails", async () => {
     const user = userEvent.setup();
     const ports = workBuddyPorts();
-    vi.mocked(ports.workbuddy.getStatus)
-      .mockResolvedValueOnce({
-        path: "C:/redacted/models.json",
-        exists: true,
-        modelCount: 1,
-        revision: "revision-1",
-        backupExists: true,
-        format: "objectRoot",
-      })
-      .mockRejectedValue(new Error("status refresh failed"));
-    ports.workbuddy.saveModels = vi.fn(async () => ({
-      state: "concurrent_modification" as const,
-    }));
+    ports.changePlan.createWorkBuddyModelsPlan = vi.fn(async () => {
+      throw new Error("stale");
+    });
+    ports.workbuddy.saveModels = vi.fn();
     renderPage(ports, "workbuddy");
 
     await screen.findByText("已有第三方模型数量");
@@ -639,33 +668,18 @@ describe("V2 Models page", () => {
     await user.click(screen.getByRole("button", { name: "保存并应用" }));
 
     expect(
-      await screen.findByText("暂时无法刷新当前设置，请刷新后再次提交。"),
+      await screen.findByText("未能生成 WorkBuddy 变更计划"),
     ).toBeVisible();
-    expect(document.body).not.toHaveTextContent("权威状态");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(ports.changePlan.apply).not.toHaveBeenCalled();
+    expect(ports.workbuddy.saveModels).not.toHaveBeenCalled();
     expect(screen.getByLabelText("API Key")).toHaveValue("");
   });
 
-  it("does not claim a reread after an expired overwrite token when refresh fails", async () => {
+  it("uses the UCP preview as the only WorkBuddy overwrite confirmation", async () => {
     const user = userEvent.setup();
     const ports = workBuddyPorts();
-    vi.mocked(ports.workbuddy.getModelIds)
-      .mockResolvedValueOnce({
-        ids: ["existing-model"],
-        revision: "revision-1",
-      })
-      .mockRejectedValue(new Error("model IDs refresh failed"));
-    ports.workbuddy.saveModels = vi
-      .fn()
-      .mockResolvedValueOnce({
-        state: "overwrite_confirmation_required" as const,
-        token: "expired-token",
-        existingIds: ["existing-model"],
-      })
-      .mockRejectedValueOnce({
-        code: "WORKBUDDY_OVERWRITE_TOKEN_EXPIRED",
-        messageKey: "workbuddy.error.overwriteTokenExpired",
-        details: {},
-      });
+    ports.workbuddy.saveModels = vi.fn();
     renderPage(ports, "workbuddy");
 
     await screen.findByText("已有第三方模型数量");
@@ -676,14 +690,14 @@ describe("V2 Models page", () => {
     await user.type(screen.getByLabelText("API Key"), "expired-secret");
     await user.type(screen.getByLabelText("自定义模型 ID"), "expired-model");
     await user.click(screen.getByRole("button", { name: "保存并应用" }));
-    await user.click(await screen.findByRole("button", { name: "确认覆盖" }));
-
-    expect(await screen.findByText("覆盖确认已失效")).toBeVisible();
+    const dialog = await screen.findByRole("dialog", {
+      name: "确认 WorkBuddy 模型变更",
+    });
     expect(
-      screen.getByText("暂时无法刷新当前设置，请刷新后重新提交。"),
-    ).toBeVisible();
-    expect(document.body).not.toHaveTextContent("权威状态");
-    expect(screen.getByLabelText("API Key")).toHaveValue("");
+      screen.queryByRole("button", { name: "确认覆盖" }),
+    ).not.toBeInTheDocument();
+    expect(within(dialog).getAllByRole("button")).toHaveLength(2);
+    expect(ports.workbuddy.saveModels).not.toHaveBeenCalled();
   });
 
   it("blocks WorkBuddy saves while authoritative local state is unavailable", async () => {
@@ -777,7 +791,7 @@ describe("V2 Models page", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("deletes an existing WorkBuddy model immediately after confirmation", async () => {
+  it("routes WorkBuddy deletion through the same one-confirmation plan", async () => {
     const user = userEvent.setup();
     const ports = workBuddyPorts();
     let ids = ["existing-model"];
@@ -785,25 +799,14 @@ describe("V2 Models page", () => {
       ids: [...ids],
       revision: ids.length === 0 ? "revision-2" : "revision-1",
     }));
-    ports.workbuddy.saveModels = vi
-      .fn()
-      .mockImplementation(async (request: { overwriteToken?: string }) => {
-        if (!request.overwriteToken) {
-          return {
-            state: "overwrite_confirmation_required",
-            token: "opaque-delete-token",
-            existingIds: ["existing-model"],
-          };
-        }
-        ids = [];
-        return {
-          state: "saved",
-          revision: "revision-2",
-          modelCount: 0,
-          createdEntries: 0,
-          updatedEntries: 0,
-        };
-      });
+    ports.workbuddy.saveModels = vi.fn();
+    ports.changePlan.apply = vi.fn(async () => {
+      ids = [];
+      return {
+        kind: "admitted" as const,
+        job: terminalWorkBuddyFixture(),
+      };
+    });
     renderPage(ports, "workbuddy");
 
     await screen.findByText("已有第三方模型数量");
@@ -814,52 +817,34 @@ describe("V2 Models page", () => {
     await user.click(
       screen.getByRole("button", { name: "移除模型 existing-model" }),
     );
-    expect(ports.workbuddy.saveModels).not.toHaveBeenCalled();
-    const dialog = await screen.findByRole("dialog", { name: "确认删除模型" });
-    expect(dialog).toHaveTextContent(
-      "此操作将会删除该模型配置，不可恢复，是否确认删除",
-    );
-    expect(within(dialog).getByText("existing-model")).toBeVisible();
-    await user.click(within(dialog).getByRole("button", { name: "取消" }));
     expect(
       screen.queryByRole("dialog", { name: "确认删除模型" }),
     ).not.toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "移除模型 existing-model" }),
-    ).toBeVisible();
-
+    const dialog = await screen.findByRole("dialog", {
+      name: "确认 WorkBuddy 模型变更",
+    });
+    expect(ports.changePlan.createWorkBuddyModelsPlan).toHaveBeenCalledWith({
+      baseUrl: "",
+      apiKey: "",
+      allowNoApiKey: false,
+      selectedModelIds: [],
+      manualModelIds: [],
+      removedModelIds: ["existing-model"],
+      clearExistingApiKeys: false,
+      expectedRevision: "revision-1",
+    });
+    expect(ports.workbuddy.saveModels).not.toHaveBeenCalled();
     await user.click(
-      screen.getByRole("button", { name: "移除模型 existing-model" }),
+      within(dialog).getByRole("button", { name: "确认并应用一次" }),
     );
-    await user.click(await screen.findByRole("button", { name: "确认删除" }));
 
-    expect(await screen.findByText("已删除该模型配置")).toBeVisible();
-    expect(
-      screen.queryByRole("button", { name: "移除模型 existing-model" }),
-    ).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: "移除模型 existing-model" }),
+      ).not.toBeInTheDocument(),
+    );
     expect(screen.getByLabelText("API Key")).toHaveValue("keep-secret");
-    expect(ports.workbuddy.saveModels).toHaveBeenCalledTimes(2);
-    expect(ports.workbuddy.saveModels).toHaveBeenCalledWith({
-      baseUrl: "",
-      apiKey: "",
-      allowNoApiKey: false,
-      selectedModelIds: [],
-      manualModelIds: [],
-      removedModelIds: ["existing-model"],
-      clearExistingApiKeys: false,
-      expectedRevision: "revision-1",
-    });
-    expect(ports.workbuddy.saveModels).toHaveBeenCalledWith({
-      baseUrl: "",
-      apiKey: "",
-      allowNoApiKey: false,
-      selectedModelIds: [],
-      manualModelIds: [],
-      removedModelIds: ["existing-model"],
-      clearExistingApiKeys: false,
-      expectedRevision: "revision-1",
-      overwriteToken: "opaque-delete-token",
-    });
+    expect(ports.changePlan.apply).toHaveBeenCalledTimes(1);
   });
 
   it("toggles WorkBuddy API key visibility without leaving the input", async () => {
@@ -924,8 +909,10 @@ describe("V2 Models page", () => {
     );
     await user.click(screen.getByRole("button", { name: "保存并应用" }));
 
-    await screen.findByText("WorkBuddy 模型配置已保存");
-    expect(ports.workbuddy.saveModels).toHaveBeenCalledWith({
+    const dialog = await screen.findByRole("dialog", {
+      name: "确认 WorkBuddy 模型变更",
+    });
+    expect(ports.changePlan.createWorkBuddyModelsPlan).toHaveBeenCalledWith({
       baseUrl: "https://draft.example/v1",
       apiKey: "draft-secret",
       allowNoApiKey: false,
@@ -935,6 +922,11 @@ describe("V2 Models page", () => {
       clearExistingApiKeys: false,
       expectedRevision: "revision-1",
     });
+    expect(ports.workbuddy.saveModels).not.toHaveBeenCalled();
+    await user.click(
+      within(dialog).getByRole("button", { name: "确认并应用一次" }),
+    );
+    expect(await screen.findByTestId("change-job-workspace")).toBeVisible();
     expect(screen.getByLabelText("API Key")).toHaveValue("");
   });
 

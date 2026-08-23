@@ -13,7 +13,12 @@ pub mod url;
 #[cfg(target_os = "windows")]
 mod windows_storage;
 
-pub(crate) use config::{get_workbuddy_model_ids, get_workbuddy_status, save_workbuddy_models};
+pub(crate) use config::{
+    apply_workbuddy_change_locked, get_workbuddy_model_ids, get_workbuddy_status,
+    inspect_workbuddy_change_locked, lock_workbuddy_mutation, preview_workbuddy_change_locked,
+    restore_workbuddy_change_snapshot_locked, save_workbuddy_models,
+    workbuddy_target_matches_locked, WorkBuddyChangeSnapshot, WorkBuddyMutationGuard,
+};
 pub(crate) use model_fetch::fetch_workbuddy_models;
 
 pub(crate) fn credential_matches_model_id(credential: &str, model_id: &str) -> bool {
