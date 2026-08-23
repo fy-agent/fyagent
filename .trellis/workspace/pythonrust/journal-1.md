@@ -1351,3 +1351,42 @@ Captured the Windows CI lessons in the backend modular code-spec: parent imports
 ### Status
 
 [OK] **Completed**
+
+
+## Session 41: Harden V2 Models config writes
+
+**Date**: 2026-08-24
+**Task**: Harden V2 Models config writes
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Completed and archived the V2 Models configuration-safety task: Quick Setup now patches only owned Claude/Codex/Grok fields, native write plans disclose exact target/rolling-backup locations, backup failure blocks primary writes, Models dirty/probe state uses shared revisions, SecretInput geometry is stable, and model-probe protocols are aligned with the configured clients. No live external API check was added to implementation validation.
+
+### Main Changes
+
+- Replaced destructive V2 Quick Setup live snapshots with targeted, syntax/data-preserving patches and single-preimage backups.
+- Added native write-target disclosure, revision-based pending state, stale probe invalidation, and shared SecretInput geometry hardening.
+- Aligned Codex/Grok model-probe wire contracts and corrected stale seven-target V2 browser expectations.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `86ff85dd` | (see git log) |
+| `ac9b2e62` | (see git log) |
+| `63b60659` | (see git log) |
+
+### Testing
+
+- [OK] mise run check and direct-session prearchive both passed.
+- [OK] V2 unit suite: 37 files / 279 tests; V2 browser: 120/120.
+- [OK] Rust main library: 2814 passed / 5 ignored; release contracts: 510 passed / 1 skipped; native fetch: 4/4; supported-platform: 2011 files.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- No remaining local task work; remote push/CI was not requested.
