@@ -1,6 +1,6 @@
 use crate::change_plan::{
-    enum_json, ApplyChangePlanOutcome, ChangeApplyOutcomeKind, ChangeJobSnapshot, ChangePlan,
-    ChangePlanErrorCode, RestartRequirement, StoredChangePlan,
+    enum_json, ApplyChangePlanOutcome, ChangeActor, ChangeApplyOutcomeKind, ChangeJobSnapshot,
+    ChangePlan, ChangePlanErrorCode, RestartRequirement, StoredChangePlan,
 };
 use crate::database::{lock_conn, Database};
 use crate::error::AppError;
@@ -12,11 +12,11 @@ impl Database {
         conn.execute(
             "INSERT INTO change_plans (
                 plan_id, operation, target_provider_id, target_provider_name, plan_digest,
-                baseline_digest, current_provider_id, current_provider_code,
-                target_provider_code, current_definition_digest, target_definition_digest,
-                live_projection_digest, target_projection_digest, contract_digest,
+                baseline_digest, actor_code, source_version, plan_revision, proof_id,
+                process_epoch_id, current_provider_id, current_provider_code,
+                target_provider_code, contract_digest,
                 created_at, expires_at, status
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
             params![
                 plan.public.plan_id,
                 enum_json(plan.public.operation)?,
@@ -24,13 +24,14 @@ impl Database {
                 plan.public.target_provider_name,
                 plan.public.plan_digest,
                 plan.public.baseline_digest,
+                enum_json(plan.public.actor.actor_type)?,
+                plan.public.source_version,
+                plan.public.revision,
+                plan.proof_id,
+                plan.process_epoch_id,
                 plan.current_provider_id,
                 plan.public.current_provider_code,
                 plan.public.target_provider_code,
-                plan.current_definition_digest,
-                plan.target_definition_digest,
-                plan.live_projection_digest,
-                plan.target_projection_digest,
                 plan.contract_digest,
                 plan.public.created_at,
                 plan.public.expires_at,
@@ -48,15 +49,16 @@ impl Database {
         let conn = lock_conn!(self.conn);
         conn.query_row(
             "SELECT operation, target_provider_id, target_provider_name, plan_digest,
-                    baseline_digest, current_provider_id, current_provider_code,
-                    target_provider_code, current_definition_digest, target_definition_digest,
-                    live_projection_digest, target_projection_digest, contract_digest,
+                    baseline_digest, actor_code, source_version, plan_revision, proof_id,
+                    process_epoch_id, current_provider_id, current_provider_code,
+                    target_provider_code, contract_digest,
                     created_at, expires_at, status
              FROM change_plans WHERE plan_id = ?1",
             params![plan_id],
             |row| {
                 let operation = serde_json::Value::String(row.get(0)?);
-                let status = serde_json::Value::String(row.get(15)?);
+                let actor_type = serde_json::Value::String(row.get(5)?);
+                let status = serde_json::Value::String(row.get(16)?);
                 Ok(StoredChangePlan {
                     public: ChangePlan {
                         plan_id: plan_id.to_string(),
@@ -66,12 +68,18 @@ impl Database {
                         target_provider_name: row.get(2)?,
                         plan_digest: row.get(3)?,
                         baseline_digest: row.get(4)?,
-                        created_at: row.get(13)?,
-                        expires_at: row.get(14)?,
+                        actor: ChangeActor {
+                            actor_type: serde_json::from_value(actor_type)
+                                .map_err(|_| rusqlite::Error::InvalidQuery)?,
+                        },
+                        source_version: row.get(6)?,
+                        revision: row.get(7)?,
+                        created_at: row.get(14)?,
+                        expires_at: row.get(15)?,
                         status: serde_json::from_value(status)
                             .map_err(|_| rusqlite::Error::InvalidQuery)?,
-                        current_provider_code: row.get(6)?,
-                        target_provider_code: row.get(7)?,
+                        current_provider_code: row.get(11)?,
+                        target_provider_code: row.get(12)?,
                         restart_expectation: RestartRequirement::Recommended,
                         risks: vec![crate::change_plan::ChangePlanRisk {
                             code: "local_configuration_write".to_string(),
@@ -79,12 +87,10 @@ impl Database {
                         }],
                         evidence_note: "usage_not_observed".to_string(),
                     },
-                    current_provider_id: row.get(5)?,
-                    current_definition_digest: row.get(8)?,
-                    target_definition_digest: row.get(9)?,
-                    live_projection_digest: row.get(10)?,
-                    target_projection_digest: row.get(11)?,
-                    contract_digest: row.get(12)?,
+                    proof_id: row.get(8)?,
+                    process_epoch_id: row.get(9)?,
+                    current_provider_id: row.get(10)?,
+                    contract_digest: row.get(13)?,
                 })
             },
         )
@@ -332,7 +338,8 @@ impl Database {
 mod tests {
     use super::*;
     use crate::change_plan::{
-        ChangeOperation, ChangePlanRisk, ChangePlanStatus, CHANGE_PLAN_CONTRACT_VERSION,
+        ChangeActorType, ChangeOperation, ChangePlanRisk, ChangePlanStatus,
+        CHANGE_PLAN_CONTRACT_VERSION,
     };
     use crate::database::SCHEMA_VERSION;
 
@@ -345,6 +352,11 @@ mod tests {
                 target_provider_name: "Target".into(),
                 plan_digest: "plan-digest".into(),
                 baseline_digest: "baseline-digest".into(),
+                actor: ChangeActor {
+                    actor_type: ChangeActorType::DirectUser,
+                },
+                source_version: "0.4.2".into(),
+                revision: 1,
                 created_at: now,
                 expires_at: now + 900,
                 status: ChangePlanStatus::Ready,
@@ -357,23 +369,21 @@ mod tests {
                 }],
                 evidence_note: "usage_not_observed".into(),
             },
+            proof_id: "proof-1".into(),
+            process_epoch_id: "epoch-1".into(),
             current_provider_id: Some("current".into()),
-            current_definition_digest: Some("current-def".into()),
-            target_definition_digest: "target-def".into(),
-            live_projection_digest: "live-digest".into(),
-            target_projection_digest: "target-live-digest".into(),
             contract_digest: CHANGE_PLAN_CONTRACT_VERSION.into(),
         }
     }
 
     #[test]
-    fn change_plan_store_adds_tables_without_claiming_schema_v17() {
+    fn change_plan_store_adds_schema_v20_tables_for_fresh_databases() {
         let db = Database::memory().expect("database");
         let conn = db.conn.lock().expect("database lock");
         let version: i32 = conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(SCHEMA_VERSION, 16);
+        assert_eq!(SCHEMA_VERSION, 20);
         assert_eq!(version, 0);
         for table in ["change_plans", "change_jobs", "change_job_events"] {
             let exists: i64 = conn

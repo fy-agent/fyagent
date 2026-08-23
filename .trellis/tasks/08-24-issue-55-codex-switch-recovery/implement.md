@@ -7,8 +7,9 @@
 2. Resolve current-main API/schema conflicts without importing obsolete V1 UI
    or old task history.
 3. Promote persistence to a real v20 migration with fresh/upgrade coverage.
-4. Restore focused redaction, zero-write, replay, stale, readback, and reconcile
-   tests; fix path sanitization for both separator families.
+4. Restore focused redaction, target-side-effect-free create, replay, stale,
+   API-key drift, private-proof loss, readback, and reconcile tests; fix path
+   sanitization for both separator families.
 5. Run focused gates, then repository format/clippy/Rust/tests/contracts and
    Trellis validation; review the cumulative branch diff.
 6. Commit, push, open the replacement PR, wait for required CI, fix failures,
@@ -37,11 +38,12 @@ mise run rust:test -- change_plan_reconciliation
 
 ```text
 mise run rust:fmt:check
+mise run rust:check
 mise run rust:clippy
 mise run rust:test
 mise run test:unit -- tests/architecture/rustModuleBoundaries.test.ts
 mise run test:unit -- tests/remainingPlatformSurface.test.ts
-mise run test:contracts
+mise run check:contracts:prearchive -- --exclude-active-task .trellis/tasks/08-24-issue-55-codex-switch-recovery
 git diff --check origin/main...HEAD
 python3 .trellis/scripts/task.py validate 08-24-issue-55-codex-switch-recovery
 ```

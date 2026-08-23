@@ -329,69 +329,8 @@ impl Database {
         )
         .map_err(|e| AppError::Database(e.to_string()))?;
 
-        // Additive Unified Change Plan persistence. This first vertical slice
-        // deliberately remains on schema v16 and does not claim v17.
-        conn.execute_batch(
-            "CREATE TABLE IF NOT EXISTS change_plans (
-                plan_id TEXT PRIMARY KEY,
-                operation TEXT NOT NULL,
-                target_provider_id TEXT NOT NULL,
-                target_provider_name TEXT NOT NULL,
-                plan_digest TEXT NOT NULL,
-                baseline_digest TEXT NOT NULL,
-                current_provider_id TEXT,
-                current_provider_code TEXT NOT NULL,
-                target_provider_code TEXT NOT NULL,
-                current_definition_digest TEXT,
-                target_definition_digest TEXT NOT NULL,
-                live_projection_digest TEXT NOT NULL,
-                target_projection_digest TEXT NOT NULL,
-                contract_digest TEXT NOT NULL,
-                created_at INTEGER NOT NULL,
-                expires_at INTEGER NOT NULL,
-                status TEXT NOT NULL CHECK (status IN ('ready', 'consumed')),
-                consumed_at INTEGER
-            );
-            CREATE TABLE IF NOT EXISTS change_jobs (
-                job_id TEXT PRIMARY KEY,
-                plan_id TEXT NOT NULL UNIQUE,
-                target_provider_id TEXT NOT NULL,
-                revision INTEGER NOT NULL,
-                event_seq INTEGER NOT NULL,
-                status TEXT NOT NULL,
-                result_code TEXT NOT NULL,
-                steps_json TEXT NOT NULL,
-                resources_json TEXT NOT NULL,
-                restart_requirement TEXT NOT NULL,
-                usage_evidence TEXT NOT NULL,
-                recovery_state TEXT NOT NULL,
-                diagnostic_code TEXT,
-                live_config_changed INTEGER NOT NULL DEFAULT 0,
-                created_at INTEGER NOT NULL,
-                updated_at INTEGER NOT NULL,
-                FOREIGN KEY (plan_id) REFERENCES change_plans(plan_id)
-            );
-            CREATE TABLE IF NOT EXISTS change_job_events (
-                job_id TEXT NOT NULL,
-                event_seq INTEGER NOT NULL,
-                kind TEXT NOT NULL,
-                code TEXT NOT NULL,
-                created_at INTEGER NOT NULL,
-                PRIMARY KEY (job_id, event_seq),
-                FOREIGN KEY (job_id) REFERENCES change_jobs(job_id) ON DELETE CASCADE
-            );
-            CREATE INDEX IF NOT EXISTS idx_change_jobs_recoverable
-                ON change_jobs(status, updated_at);
-            CREATE INDEX IF NOT EXISTS idx_change_job_events_job
-                ON change_job_events(job_id, event_seq);",
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
-        Self::add_column_if_missing(
-            conn,
-            "change_plans",
-            "target_projection_digest",
-            "TEXT NOT NULL DEFAULT ''",
-        )?;
+        // Unified Change Plan persistence (schema v20).
+        Self::create_change_plan_tables(conn)?;
 
         // 修复跑过未发布开发版的库：current 标记曾是全局 key，现按应用分组
         // （随 v12 定稿为 current_profile_id_<scope>，不单独 bump 版本）
@@ -472,6 +411,66 @@ impl Database {
             [],
         );
 
+        Ok(())
+    }
+
+    fn create_change_plan_tables(conn: &Connection) -> Result<(), AppError> {
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS change_plans (
+                plan_id TEXT PRIMARY KEY,
+                operation TEXT NOT NULL,
+                target_provider_id TEXT NOT NULL,
+                target_provider_name TEXT NOT NULL,
+                plan_digest TEXT NOT NULL,
+                baseline_digest TEXT NOT NULL,
+                actor_code TEXT NOT NULL,
+                source_version TEXT NOT NULL,
+                plan_revision INTEGER NOT NULL,
+                proof_id TEXT NOT NULL,
+                process_epoch_id TEXT NOT NULL,
+                current_provider_id TEXT,
+                current_provider_code TEXT NOT NULL,
+                target_provider_code TEXT NOT NULL,
+                contract_digest TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                expires_at INTEGER NOT NULL,
+                status TEXT NOT NULL CHECK (status IN ('ready', 'consumed')),
+                consumed_at INTEGER
+            );
+            CREATE TABLE IF NOT EXISTS change_jobs (
+                job_id TEXT PRIMARY KEY,
+                plan_id TEXT NOT NULL UNIQUE,
+                target_provider_id TEXT NOT NULL,
+                revision INTEGER NOT NULL,
+                event_seq INTEGER NOT NULL,
+                status TEXT NOT NULL,
+                result_code TEXT NOT NULL,
+                steps_json TEXT NOT NULL,
+                resources_json TEXT NOT NULL,
+                restart_requirement TEXT NOT NULL,
+                usage_evidence TEXT NOT NULL,
+                recovery_state TEXT NOT NULL,
+                diagnostic_code TEXT,
+                live_config_changed INTEGER NOT NULL DEFAULT 0,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                FOREIGN KEY (plan_id) REFERENCES change_plans(plan_id)
+            );
+            CREATE TABLE IF NOT EXISTS change_job_events (
+                job_id TEXT NOT NULL,
+                event_seq INTEGER NOT NULL,
+                kind TEXT NOT NULL,
+                code TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                PRIMARY KEY (job_id, event_seq),
+                FOREIGN KEY (job_id) REFERENCES change_jobs(job_id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_change_jobs_recoverable
+                ON change_jobs(status, updated_at);
+            CREATE INDEX IF NOT EXISTS idx_change_job_events_job
+                ON change_job_events(job_id, event_seq);",
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
         Ok(())
     }
 
@@ -597,6 +596,11 @@ impl Database {
                         log::info!("迁移数据库从 v18 到 v19（MCP 添加 QoderWork/TRAE Work 目标）");
                         Self::migrate_v18_to_v19(conn)?;
                         Self::set_user_version(conn, 19)?;
+                    }
+                    19 => {
+                        log::info!("迁移数据库从 v19 到 v20（添加 Unified Change Plan 账本）");
+                        Self::migrate_v19_to_v20(conn)?;
+                        Self::set_user_version(conn, 20)?;
                     }
                     _ => {
                         return Err(AppError::Database(format!(
@@ -1687,6 +1691,13 @@ impl Database {
         }
 
         log::info!("v18 -> v19 迁移完成：MCP 已添加 QoderWork/TRAE Work 目标");
+        Ok(())
+    }
+
+    /// v19 -> v20：添加 Unified Change Plan 的不可变计划、任务快照和事件账本。
+    fn migrate_v19_to_v20(conn: &Connection) -> Result<(), AppError> {
+        Self::create_change_plan_tables(conn)?;
+        log::info!("v19 -> v20 迁移完成：Unified Change Plan 账本已就绪");
         Ok(())
     }
 
@@ -3500,6 +3511,26 @@ mod tests {
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
         )?;
         assert_eq!(mcp_values, (1, 1, 1, 0, 0));
+        Ok(())
+    }
+
+    #[test]
+    fn migrate_v19_to_v20_adds_change_plan_ledger() -> Result<(), AppError> {
+        let conn = Connection::open_in_memory()?;
+        Database::set_user_version(&conn, 19)?;
+
+        Database::apply_schema_migrations_on_conn(&conn)?;
+
+        assert_eq!(Database::get_user_version(&conn)?, 20);
+        for table in ["change_plans", "change_jobs", "change_job_events"] {
+            assert!(Database::table_exists(&conn, table)?, "missing {table}");
+        }
+        assert!(Database::has_column(&conn, "change_plans", "proof_id")?);
+        assert!(Database::has_column(
+            &conn,
+            "change_plans",
+            "process_epoch_id"
+        )?);
         Ok(())
     }
 

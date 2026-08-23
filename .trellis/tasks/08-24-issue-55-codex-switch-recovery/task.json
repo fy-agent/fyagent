@@ -2,7 +2,7 @@
   "id": "issue-55-codex-switch-recovery",
   "name": "issue-55-codex-switch-recovery",
   "title": "Recover Unified Change Plan Codex switch",
-  "description": "Rebuild the proven Codex provider-switch vertical slice from current main as a narrow, reviewable replacement for PR #114; preserve zero-write create, single apply, stale-plan rejection, readback reconciliation, and cross-platform behavior.",
+  "description": "Rebuild the proven Codex provider-switch vertical slice from current main as a narrow, reviewable replacement for PR #114; preserve target-side-effect-free create, single apply, stale-plan rejection, readback reconciliation, and cross-platform behavior.",
   "status": "in_progress",
   "dev_type": null,
   "scope": "backend",

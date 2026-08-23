@@ -15,13 +15,14 @@ UI can consume one stable IPC contract without reviving `src/App.tsx`.
 create command
   -> ChangePlanService::create_codex_provider_switch_plan
   -> inspect current Provider + target Provider + Codex live projection
-  -> canonical semantic digests
+  -> memory-only per-plan private proof + non-secret approval binding
   -> immutable change_plans row
   -> redacted public plan DTO
 
 apply command(plan_id, plan_digest)
-  -> process-local apply lock
+  -> existing per-Codex Provider mutation lock + process-local apply lock
   -> fresh baseline inspection
+  -> constant-time private-proof comparison
   -> transactional one-time admission + change_jobs row
   -> existing ProviderService::switch exactly once
   -> independent fresh readback
@@ -44,16 +45,24 @@ single SQLite transaction: validate status/digest/expiry/baseline, consume the
 plan, and create one job. Rejected admission leaves no job.
 
 Persisted JSON is limited to closed enums, stable codes, bounded presentation
-fields, and domain-separated digests. Provider settings, raw live config,
-filesystem paths, secrets, and unrestricted error strings are excluded.
+fields, random `proofId`/`processEpochId`, and per-plan bindings over
+non-secret fields. Full Provider definitions and live/target projections are
+bound by per-plan HMAC only in process memory. Their proof bytes, Provider
+settings, raw live config, filesystem paths, secrets, and unrestricted error
+strings are excluded from SQLite, IPC, events, logs, and exports. Losing that
+proof on process restart intentionally makes an unapplied plan stale and an
+uncertain job recovery-required.
 
 ## Ownership and compatibility
 
-- `change_plan.rs` owns domain types, inspection, digesting, apply sequencing,
+- `change_plan.rs` owns domain types, inspection, private proof/binding, apply sequencing,
   readback classification, and reconciliation.
 - `database/dao/change_plan.rs` owns transactional persistence.
 - `commands/change_plan.rs` is a thin Tauri transport facade.
 - `ProviderService::switch` remains the only Codex switch writer.
+- `ProviderService::switch_with_lock_held` is the crate-private orchestration
+  entry used only while UCP owns the existing per-app mutation guard; it is not
+  a second writer.
 - Existing Provider commands and non-Codex paths are unchanged.
 - No production renderer is added in this PR; #41/V2 integration follows on
   top of the stable backend contract.
@@ -75,6 +84,8 @@ returns only the last non-empty segment, with a stable fallback.
 - Target reached despite writer error: warning, not a false failure.
 - Mixed/third/unavailable state: recovery required.
 - Interrupted job: same readback classifier; no automatic apply retry.
+- Missing process-private proof: unapplied plan is stale; nonterminal job is
+  recovery-required even when non-sensitive current IDs appear to match.
 
 ## Verification boundary
 

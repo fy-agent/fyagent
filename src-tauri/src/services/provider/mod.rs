@@ -4926,6 +4926,18 @@ impl ProviderService {
         } else {
             None
         };
+        Self::switch_with_lock_held(state, app_type, id)
+    }
+
+    /// Execute a Provider switch while the caller owns the per-app mutation
+    /// guard. This is reserved for orchestration that must keep a baseline
+    /// check, one-time admission, the existing writer, and readback in one
+    /// critical section.
+    pub(crate) fn switch_with_lock_held(
+        state: &AppState,
+        app_type: AppType,
+        id: &str,
+    ) -> Result<SwitchResult, AppError> {
         // Check if provider exists
         let providers = state.db.get_all_providers(app_type.as_str())?;
         let _provider = providers
