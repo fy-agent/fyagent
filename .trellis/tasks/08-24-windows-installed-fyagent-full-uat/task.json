@@ -3,7 +3,7 @@
   "name": "windows-installed-fyagent-full-uat",
   "title": "Installed FyAgent full-page UAT (Windows AIMASTER)",
   "description": "Independent Windows-native UAT of the FyAgent build actually installed and running on AIMASTER, with DPI, failure-path, agent-tool inventory, privacy-safe evidence, and Git/PR handoff.",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": "AIMASTER installed Windows app full-page UAT and evidence only; no product code fixes",
   "package": null,
@@ -14,7 +14,7 @@
   "completedAt": null,
   "branch": "codex/windows-installed-fyagent-full-uat-20260824",
   "base_branch": "main",
-  "worktree_path": null,
+  "worktree_path": "E:\\fyagent-windows-installed-fyagent-full-uat-20260824",
   "commit": null,
   "pr_url": null,
   "subtasks": [],
@@ -27,9 +27,16 @@
   ],
   "notes": "Seeded on Mac for Git handoff only. AIMASTER Windows Codex owns claim, execution, evidence, commits, push, and PR. Do not inherit any macOS result.",
   "ExecutorLock": "AIMASTER-Windows-Codex",
-  "ClaimedBy": null,
-  "ClaimedAt": null,
-  "progress_log": [],
+  "ClaimedBy": "aimaster-windows-codex",
+  "ClaimedAt": "2026-08-24T05:55:08.0660405+08:00",
+  "progress_log": [
+    {
+      "at": "2026-08-24T05:55:08.0660405+08:00",
+      "by": "aimaster-windows-codex",
+      "status": "in_progress",
+      "message": "Claimed on AIMASTER after the standalone machine acceptance receipt was committed and pushed at 2cc7158db4cde13ca050ab818d006cac7d6e1d6e."
+    }
+  ],
   "meta": {
     "platform": "Windows",
     "execution_host": "AIMASTER",
