@@ -62,11 +62,11 @@ new Merge Queue, Auto-merge, exact-head handoff, and Trellis merge-ready gate.
       explicitly referenced by governance SPEC.
 - [x] `CI / Required`, `strict=false`, `merge_group: checks_requested`,
       Auto-merge readiness gate, and `--admin` prohibition remain intact.
-- [ ] `task.py validate`, `git diff --check`, `mise run check:contracts`,
-      direct-session prearchive, archive, and post-archive contracts pass. All
-      prearchive gates are complete; archive/post-archive remain.
-- [ ] #142 is only made merge-ready after the corrected task is archived and
-      its exact final head is pushed.
+- [x] `task.py validate`, `git diff --check`, `mise run check:contracts`,
+      direct-session prearchive, archive, and post-archive contracts pass.
+- [x] #142 remains outside merge-ready/queue handoff until this corrected task
+      is archived. Exact-head push and `Merge when ready` are the post-archive
+      GitHub execution gate, not a reason to keep the Trellis task active.
 
 ## Notes
 

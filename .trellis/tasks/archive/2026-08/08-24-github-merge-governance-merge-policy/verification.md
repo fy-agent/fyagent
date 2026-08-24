@@ -92,5 +92,10 @@ owned exclusively by `github-merge-governance.md`.
   gate passed: frontend 1489 passed / 1 skipped, Rust library 2847 passed /
   5 ignored plus integration/helper suites, release contracts 510 passed /
   1 skipped, native fetch 4/4.
-- archive and post-archive contracts
+- Task archived to
+  `.trellis/tasks/archive/2026-08/08-24-github-merge-governance-merge-policy`;
+  active task count is zero.
+- Post-archive `mise run check:contracts`: pass in the staged canonical archive
+  shape; contract tests 510 passed / 1 skipped, native fetch 4/4,
+  supported-platform scanner passed with 2104 current files.
 - corrected exact #142 head push and Merge Queue handoff
