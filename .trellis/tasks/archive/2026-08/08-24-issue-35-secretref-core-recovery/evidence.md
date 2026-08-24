@@ -79,6 +79,10 @@ Evidence date: 2026-08-24 (Asia/Shanghai)
   The composite reran frontend 1491 passed / 1 skipped, Rust 2847 passed / 5
   ignored plus integration/helper suites, SecretRef 7 passed / 1 ignored native
   HIL, task/docs/platform/release contracts, and native-fetch 4/4.
+- Canonical post-archive `mise run check:contracts` — PASS with exit 0 after
+  moving the completed task into `archive/2026-08/`; task validation, archive
+  scanner, supported-platform surface (2133 current files), release contracts,
+  512 contract tests with 1 skip, and native-fetch 4/4 all remained green.
 
 An additional `cargo check --locked --target x86_64-pc-windows-msvc --all-targets`
 attempt reached the Windows dependency graph, then stopped in unrelated native
