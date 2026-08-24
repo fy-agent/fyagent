@@ -279,7 +279,7 @@
     ],
     [
       "src-tauri/tests/secret_service_contract.rs",
-      "f2622569cd6410cf66c9c02d24f5980d9f334e247585483c35bd96923129d8ca"
+      "f74786991a70fe1ee9a8af56d8980011a69e8f7df39b687ab85e977f3f54e8b0"
     ],
     [
       "src-tauri/tests/skill_sync.rs",

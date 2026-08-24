@@ -178,6 +178,10 @@ mise run supported-platform:check
 mise run check:contracts
 ```
 
+The focused contract suite also source-checks the target-gated native leaves so
+DPK/non-sync query selection and the no-blind-compensation rule remain
+executable on hosts that cannot access the opposite platform credential store.
+
 The local native-HIL command proves only the current host and, on macOS, only
 when the host process has the required authorized access-group identity.
 Windows acceptance must be bound to the hosted Windows job on the exact

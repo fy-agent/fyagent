@@ -241,6 +241,47 @@ fn public_dtos_errors_and_debug_output_are_material_free() {
     assert!(!format!("{error:?} {error}").contains(&canary));
 }
 
+#[test]
+fn native_leaf_sources_keep_reviewed_store_and_cleanup_guards() {
+    fn section<'a>(source: &'a str, start: &str, end: &str) -> &'a str {
+        let start = source.find(start).expect("reviewed section start");
+        let tail = &source[start..];
+        let end = tail.find(end).expect("reviewed section end");
+        &tail[..end]
+    }
+
+    let macos = include_str!("../src/services/secret/platform/macos.rs");
+    assert_eq!(
+        macos
+            .matches("kSecUseDataProtectionKeychain as CFTypeRef")
+            .count(),
+        4,
+        "every macOS item-identity/read/probe/create query must select DPK"
+    );
+    assert_eq!(
+        macos.matches("kSecAttrSynchronizable as CFTypeRef").count(),
+        4,
+        "every macOS item-identity/read/probe/create query must stay non-sync"
+    );
+    assert!(macos.contains("kSecAttrAccessibleWhenUnlockedThisDeviceOnly as CFTypeRef"));
+    let macos_create = section(macos, "    fn create_new(", "    fn replace(");
+    assert!(macos_create.contains("SecItemAdd("));
+    assert!(macos_create.contains("self.verify_locked(secret_ref, material)"));
+    assert!(
+        !macos_create.contains("SecItemDelete("),
+        "failed create readback must not delete an unproven raced value"
+    );
+
+    let windows = include_str!("../src/services/secret/platform/windows.rs");
+    let windows_write = section(windows, "    fn write_locked(", "\n}\n\nimpl SecretBackend");
+    assert!(windows_write.contains("CredWriteW(&credential, 0)"));
+    assert!(windows_write.contains("self.read_locked(secret_ref, CredentialOperation::Read)?"));
+    assert!(
+        !windows_write.contains("CredDeleteW("),
+        "failed Windows readback must not blindly delete an unproven value"
+    );
+}
+
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 #[test]
 #[ignore = "requires explicit matching-host OS credential-store HIL"]
