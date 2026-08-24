@@ -1511,3 +1511,43 @@ Separated Required CI from ordinary push policy, eliminated queue push/merge_gro
 ### Next Steps
 
 - Push exact head, verify only lightweight push policy runs, then hand the PR to Merge Queue and verify merge_group is the sole Required CI authority.
+
+
+## Session 47: Integrate hardened SecretRef native core
+
+**Date**: 2026-08-24
+**Task**: Integrate hardened SecretRef native core
+**Branch**: `dev/secretref-core-final`
+
+### Summary
+
+Preserved PR 132 contributor ancestry, hardened macOS Data Protection Keychain and Windows Credential Manager semantics, added process-global native-store serialization and Windows HIL, and kept the dormant core production-unregistered until signed-app macOS DPK activation is proven.
+
+### Main Changes
+
+- Preserved the original PR 132 commits through an explicit two-parent integration while replacing invalid integration merge subjects.
+- Hardened macOS DPK/non-sync semantics, removed unproven destructive compensation, and made native-store locking process-global on macOS and Windows.
+- Kept SecretRef production-unregistered; the first production consumer must provide signed-app DPK evidence and recoverable create admission.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `791baf03` | (see git log) |
+| `cbbfdde0` | (see git log) |
+| `aeb242f0` | (see git log) |
+| `a2064465` | (see git log) |
+
+### Testing
+
+- [OK] Final mise run check passed: frontend 1491/1 skipped; Rust 2847/5 ignored; SecretRef 7/1 ignored; contracts green.
+- [OK] Direct-session prearchive and canonical post-archive contracts both exited 0.
+- [OK] Hosted Windows Credential Manager HIL previously executed exactly one native CRUD test successfully; final replacement head must rerun it.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- Push final exact head, create replacement PR, close Draft #143 as superseded, and hand the final PR to Merge Queue after hosted Windows HIL and CI / Required pass.
