@@ -255,6 +255,14 @@ describe("V2 feature ports", () => {
       ports.changePlans.createCodexProviderSwitchPlan("provider-1"),
     ).rejects.toThrow(NATIVE_ONLY_ERROR);
     await expect(
+      ports.changePlans.createCodexProviderUpsertPlan({
+        name: "Gateway",
+        baseUrl: "https://codex.example/v1",
+        apiKey: "secret",
+        modelId: "gpt-5",
+      }),
+    ).rejects.toThrow(NATIVE_ONLY_ERROR);
+    await expect(
       ports.changePlans.applyChangePlan({
         planId: "plan-1",
         planDigest: "a".repeat(64),

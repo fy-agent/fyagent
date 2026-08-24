@@ -6,11 +6,12 @@ import {
   parseChangeJobSnapshot,
   parseChangePlan,
 } from "@/v2/shared/features/change-plans";
-import { changeJobWire, changePlanWire } from "../fixtures/changePlans";
+import { changeJobWire, changePlanUpsertWire, changePlanWire } from "../fixtures/changePlans";
 
 describe("Change Plan strict wire parsers", () => {
   it("accepts the exact nullable plan and job contracts", () => {
     expect(parseChangePlan(changePlanWire)).toEqual(changePlanWire);
+    expect(parseChangePlan(changePlanUpsertWire)).toEqual(changePlanUpsertWire);
     expect(parseChangeJobSnapshot(changeJobWire)).toEqual(changeJobWire);
     expect(
       parseApplyChangePlanOutcome({ kind: "admitted", job: changeJobWire }),
@@ -37,6 +38,12 @@ describe("Change Plan strict wire parsers", () => {
     expect(() =>
       parseChangeJobSnapshot({ ...changeJobWire, status: "future" }),
     ).toThrow("Change Job is unavailable");
+    expect(() =>
+      parseChangePlan({
+        ...changePlanUpsertWire,
+        adapter: changePlanWire.adapter,
+      }),
+    ).toThrow("Change Plan is unavailable");
     expect(() =>
       parseChangePlan({
         ...changePlanWire,

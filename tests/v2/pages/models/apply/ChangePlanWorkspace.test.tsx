@@ -29,6 +29,7 @@ describe("Models Change Plan connection", () => {
       ...createBrowserFeaturePorts(),
       changePlans: {
         createCodexProviderSwitchPlan: create,
+        createCodexProviderUpsertPlan: vi.fn(),
         applyChangePlan: apply,
         cancelChangeJob: cancel,
         getChangeJob: get,
@@ -105,6 +106,7 @@ describe("Models Change Plan connection", () => {
           planId: "plan-targetA",
           targetProviderId: "targetA",
         })),
+        createCodexProviderUpsertPlan: vi.fn(),
         applyChangePlan: vi.fn(async () => ({
           kind: "admitted" as const,
           job: running,

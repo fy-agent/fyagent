@@ -342,6 +342,151 @@ export async function installRichTauriFeatureFixture(
         window.setTimeout(resolve, milliseconds);
       });
     };
+    const digest = (value: string) => value.repeat(64);
+    const changePlanNow = () => Math.floor(Date.now() / 1000);
+    const upsertAdapter = {
+      adapterId: "codex_provider_upsert_and_switch",
+      adapterVersion: "1",
+      operationType: "codex_provider_upsert_and_switch",
+      phases: [
+        "precheck",
+        "snapshot",
+        "managed_write",
+        "readback",
+        "finalize",
+      ],
+      readSet: [
+        "provider_db_current",
+        "device_current",
+        "target_definition",
+        "codex_live_projection",
+      ],
+      writeSet: [
+        "provider_db_current",
+        "device_current",
+        "codex_live_projection",
+      ],
+      idempotencyScope: "plan",
+      cancelMode: "before_managed_write",
+      compensationMode: "writer_owned_rollback",
+      faultPoints: [
+        "before_managed_write",
+        "after_managed_write_before_record",
+      ],
+    };
+    let upsertPlan: Record<string, unknown> | null = null;
+    let changeJob: Record<string, unknown> | null = null;
+    const makeUpsertPlan = (name: string) => {
+      const createdAt = changePlanNow();
+      return {
+        planId: "plan-codex-upsert",
+        operation: "codex_provider_upsert_and_switch",
+        targetProviderId: "fyagent-v2-quick-setup-codex",
+        targetProviderName: name,
+        planDigest: digest("a"),
+        baselineDigest: digest("b"),
+        dbBaselineProviderId: null,
+        deviceBaselineProviderId: currentProviderIds.codex ?? null,
+        secretCapability: "no_new_credential_material",
+        createdAt,
+        expiresAt: createdAt + 900,
+        status: "ready",
+        adapter: upsertAdapter,
+        currentProviderCode: "current_mixed",
+        targetProviderCode: providers.codex?.["fyagent-v2-quick-setup-codex"]
+          ? "quick_setup_update"
+          : "quick_setup_create",
+        restartExpectation: "recommended",
+        risks: [
+          { code: "local_configuration_write", severity: "notice" },
+          { code: "save_provider_then_set_current", severity: "notice" },
+        ],
+        evidenceNote: "usage_not_observed",
+      };
+    };
+    const makeTerminalJob = (failed: boolean) => ({
+      jobId: "job-codex-upsert",
+      executionId: "job-codex-upsert",
+      planId: "plan-codex-upsert",
+      idempotencyKey: "plan-codex-upsert",
+      targetProviderId: "fyagent-v2-quick-setup-codex",
+      revision: 5,
+      eventSeq: 5,
+      status: failed ? "failed" : "succeeded",
+      resultCode: failed ? "writer_failed_baseline_restored" : "applied",
+      adapterErrorCode: failed ? "writer_failed" : null,
+      steps: failed
+        ? [
+            { kind: "precheck", status: "succeeded", code: "ok" },
+            { kind: "snapshot", status: "succeeded", code: "ok" },
+            { kind: "managed_write", status: "failed", code: "writer_failed" },
+            { kind: "readback", status: "skipped", code: "skipped" },
+            { kind: "finalize", status: "skipped", code: "skipped" },
+          ]
+        : [
+            { kind: "precheck", status: "succeeded", code: "ok" },
+            { kind: "snapshot", status: "succeeded", code: "ok" },
+            { kind: "managed_write", status: "succeeded", code: "ok" },
+            { kind: "readback", status: "succeeded", code: "ok" },
+            { kind: "finalize", status: "succeeded", code: "ok" },
+          ],
+      resources: [
+        { kind: "provider_db_current", status: "matched", code: "ok" },
+        { kind: "device_current", status: "matched", code: "ok" },
+        { kind: "target_definition", status: "matched", code: "ok" },
+        { kind: "codex_live_projection", status: "matched", code: "ok" },
+      ],
+      partialResult: failed
+        ? {
+            succeededSteps: ["precheck", "snapshot"],
+            compensatedSteps: ["managed_write"],
+            unverifiedSteps: [],
+            remainingEffects: [],
+            manualActions: [],
+          }
+        : {
+            succeededSteps: [
+              "precheck",
+              "snapshot",
+              "managed_write",
+              "readback",
+              "finalize",
+            ],
+            compensatedSteps: [],
+            unverifiedSteps: [],
+            remainingEffects: [],
+            manualActions: [],
+          },
+      events: [
+        { sequence: 1, phase: "precheck", reasonCode: "ok", createdAt: 1 },
+        { sequence: 2, phase: "snapshot", reasonCode: "ok", createdAt: 2 },
+        {
+          sequence: 3,
+          phase: "managed_write",
+          reasonCode: failed ? "writer_failed" : "ok",
+          createdAt: 3,
+        },
+        {
+          sequence: 4,
+          phase: "readback",
+          reasonCode: failed ? "skipped" : "ok",
+          createdAt: 4,
+        },
+        {
+          sequence: 5,
+          phase: "finalize",
+          reasonCode: failed ? "skipped" : "ok",
+          createdAt: 5,
+        },
+      ],
+      restartRequirement: failed ? "unknown" : "recommended",
+      usageEvidence: "not_observed",
+      recoveryState: failed ? "succeeded" : "not_needed",
+      diagnosticCode: null,
+      liveConfigChanged: !failed,
+      createdAt: 1,
+      updatedAt: 5,
+    });
 
     window.__FYAGENT_FEATURE_FIXTURE__ = { calls };
     window.__TAURI_EVENT_PLUGIN_INTERNALS__ = {
@@ -613,6 +758,82 @@ export async function installRichTauriFeatureFixture(
               ],
             };
           }
+          case "list_recoverable_change_jobs":
+            return [];
+          case "create_codex_provider_switch_plan": {
+            const createdAt = changePlanNow();
+            return {
+              planId: "plan-codex-switch",
+              operation: "codex_provider_switch",
+              targetProviderId: String(payload.targetProviderId),
+              targetProviderName: "Fixture Codex Switch",
+              planDigest: digest("c"),
+              baselineDigest: digest("d"),
+              dbBaselineProviderId: currentProviderIds.codex ?? null,
+              deviceBaselineProviderId: currentProviderIds.codex ?? null,
+              secretCapability: "no_new_credential_material",
+              createdAt,
+              expiresAt: createdAt + 900,
+              status: "ready",
+              adapter: {
+                ...upsertAdapter,
+                adapterId: "codex_provider_switch",
+                operationType: "codex_provider_switch",
+              },
+              currentProviderCode: "current_mixed",
+              targetProviderCode: "existing_provider",
+              restartExpectation: "recommended",
+              risks: [
+                { code: "local_configuration_write", severity: "notice" },
+              ],
+              evidenceNote: "usage_not_observed",
+            };
+          }
+          case "create_codex_provider_upsert_plan": {
+            await delay(fixtureOptions.providerWriteDelayMs);
+            const request = payload.request as
+              | Record<string, unknown>
+              | undefined;
+            upsertPlan = makeUpsertPlan(String(request?.name ?? "Codex"));
+            changeJob = null;
+            return structuredClone(upsertPlan);
+          }
+          case "apply_change_plan": {
+            if (
+              !upsertPlan ||
+              payload.planId !== upsertPlan.planId ||
+              payload.planDigest !== upsertPlan.planDigest
+            ) {
+              return { kind: "rejected", errorCode: "stale" };
+            }
+            const failed = fixtureOptions.providerMutation === "switch_failure";
+            if (!failed) {
+              const providerId = "fyagent-v2-quick-setup-codex";
+              providers.codex ??= {};
+              providers.codex[providerId] = {
+                id: providerId,
+                name: String(upsertPlan.targetProviderName),
+              };
+              currentProviderIds.codex = providerId;
+            }
+            upsertPlan = { ...upsertPlan, status: "consumed" };
+            changeJob = makeTerminalJob(failed);
+            return {
+              kind: "admitted",
+              job: structuredClone(changeJob),
+            };
+          }
+          case "get_change_job":
+            if (!changeJob || payload.jobId !== changeJob.jobId) {
+              throw new Error("fixture Change Job not found");
+            }
+            return structuredClone(changeJob);
+          case "cancel_change_job":
+            return {
+              accepted: true,
+              code: "accepted",
+              jobId: String(payload.jobId),
+            };
           case "apply_provider_quick_setup_with_result": {
             await delay(fixtureOptions.providerWriteDelayMs);
             if (fixtureOptions.providerMutation === "save_failure") {

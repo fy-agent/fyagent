@@ -196,7 +196,7 @@ pub fn reapply_current_codex_official_live(state: &AppState) -> Result<bool, App
 pub struct ProviderService;
 
 const QUICK_SETUP_CLAUDE_PROVIDER_ID: &str = "fyagent-v2-quick-setup-claude";
-const QUICK_SETUP_CODEX_PROVIDER_ID: &str = "fyagent-v2-quick-setup-codex";
+pub(crate) const QUICK_SETUP_CODEX_PROVIDER_ID: &str = "fyagent-v2-quick-setup-codex";
 const QUICK_SETUP_GROKBUILD_PROVIDER_ID: &str = "fyagent-v2-quick-setup-grokbuild";
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
@@ -4621,6 +4621,17 @@ impl ProviderService {
 
         let _guard =
             futures::executor::block_on(state.proxy_service.lock_switch_for_app(app_type.as_str()));
+        Self::apply_quick_setup_locked(state, app_type, provider)
+    }
+
+    /// Quick Setup writer for callers that already hold the per-app mutation
+    /// guard. Change Plan upsert reuses this so admission and the single write
+    /// stay under one lock without re-entering `lock_switch_for_app`.
+    pub(crate) fn apply_quick_setup_with_lock_held(
+        state: &AppState,
+        app_type: AppType,
+        provider: Provider,
+    ) -> Result<ProviderMutationResult<SwitchResult>, QuickSetupApplyError> {
         Self::apply_quick_setup_locked(state, app_type, provider)
     }
 

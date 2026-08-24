@@ -1,3 +1,5 @@
+import type { ProviderQuickSetupRequest } from "./models";
+
 export const CHANGE_PLAN_CONTRACT_VERSION = "fyagent-change-plan/v2" as const;
 
 export type ChangePlanErrorCode =
@@ -27,10 +29,14 @@ export type ChangeResourceKind =
   | "target_definition"
   | "codex_live_projection";
 
+export type ChangePlanOperation =
+  | "codex_provider_switch"
+  | "codex_provider_upsert_and_switch";
+
 export type ChangeAdapterDescriptor = {
-  readonly adapterId: "codex_provider_switch";
+  readonly adapterId: ChangePlanOperation;
   readonly adapterVersion: "1";
-  readonly operationType: "codex_provider_switch";
+  readonly operationType: ChangePlanOperation;
   readonly phases: readonly ChangeStepKind[];
   readonly readSet: readonly ChangeResourceKind[];
   readonly writeSet: readonly ChangeResourceKind[];
@@ -45,7 +51,7 @@ export type ChangeAdapterDescriptor = {
 
 export type ChangePlan = {
   readonly planId: string;
-  readonly operation: "codex_provider_switch";
+  readonly operation: ChangePlanOperation;
   readonly targetProviderId: string;
   readonly targetProviderName: string;
   readonly planDigest: string;
@@ -172,6 +178,9 @@ export type CancelChangeJobOutcome = {
 
 export interface ChangePlansPort {
   createCodexProviderSwitchPlan(targetProviderId: string): Promise<ChangePlan>;
+  createCodexProviderUpsertPlan(
+    request: ProviderQuickSetupRequest,
+  ): Promise<ChangePlan>;
   applyChangePlan(input: {
     readonly planId: string;
     readonly planDigest: string;
@@ -250,6 +259,11 @@ function parseEnumArray<T extends string>(
   return value;
 }
 
+const CHANGE_PLAN_OPERATIONS = [
+  "codex_provider_switch",
+  "codex_provider_upsert_and_switch",
+] as const;
+
 function parseAdapterDescriptor(value: unknown): ChangeAdapterDescriptor {
   if (
     !isRecord(value) ||
@@ -265,9 +279,9 @@ function parseAdapterDescriptor(value: unknown): ChangeAdapterDescriptor {
       "compensationMode",
       "faultPoints",
     ]) ||
-    value.adapterId !== "codex_provider_switch" ||
+    !isOneOf(value.adapterId, CHANGE_PLAN_OPERATIONS) ||
     value.adapterVersion !== "1" ||
-    value.operationType !== "codex_provider_switch" ||
+    value.operationType !== value.adapterId ||
     !isExactSequence(value.phases, STEP_KINDS) ||
     !isExactSequence(value.readSet, RESOURCE_KINDS) ||
     !isExactSequence(value.writeSet, [
@@ -392,7 +406,7 @@ export function parseChangePlan(value: unknown): ChangePlan {
   if (
     !isRecord(value) ||
     !hasExactKeys(value, keys) ||
-    value.operation !== "codex_provider_switch" ||
+    !isOneOf(value.operation, CHANGE_PLAN_OPERATIONS) ||
     typeof value.targetProviderId !== "string" ||
     !value.targetProviderId ||
     typeof value.targetProviderName !== "string" ||
@@ -434,9 +448,12 @@ export function parseChangePlan(value: unknown): ChangePlan {
       throw new Error("Change Plan is unavailable");
     return { code: risk.code, severity: risk.severity };
   });
+  const adapter = parseAdapterDescriptor(value.adapter);
+  if (adapter.operationType !== value.operation)
+    throw new Error("Change Plan is unavailable");
   return {
     ...value,
-    adapter: parseAdapterDescriptor(value.adapter),
+    adapter,
     risks,
   } as unknown as ChangePlan;
 }

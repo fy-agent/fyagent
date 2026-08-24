@@ -9,12 +9,14 @@ use crate::app_config::AppType;
 use crate::provider::Provider;
 use crate::services::provider::{
     build_codex_switch_target_live_projection, inspect_codex_switch_environment,
+    QUICK_SETUP_CODEX_PROVIDER_ID,
 };
 use crate::services::ProviderService;
 use crate::store::AppState;
 
 use super::adapter::{
-    descriptor_for_operation, ChangeAdapter, CodexProviderSwitchAdapter, CodexSwitchSnapshot,
+    descriptor_for_operation, ChangeAdapter, CodexExecutionAdapter, CodexProviderSwitchAdapter,
+    CodexProviderUpsertAdapter, CodexSwitchSnapshot,
 };
 use super::domain::*;
 use super::projection::{
@@ -107,6 +109,34 @@ fn active_execution_gate(job_id: &str) -> Option<Arc<ExecutionGate>> {
         .and_then(|executions| executions.get(job_id).cloned())
 }
 
+fn upsert_drafts() -> &'static Mutex<HashMap<String, Provider>> {
+    static DRAFTS: OnceLock<Mutex<HashMap<String, Provider>>> = OnceLock::new();
+    DRAFTS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn store_upsert_draft(plan_id: String, provider: Provider) -> Result<(), ChangePlanErrorCode> {
+    upsert_drafts()
+        .lock()
+        .map_err(|_| ChangePlanErrorCode::Internal)?
+        .insert(plan_id, provider);
+    Ok(())
+}
+
+fn clone_upsert_draft(plan_id: &str) -> Result<Option<Provider>, ChangePlanErrorCode> {
+    Ok(upsert_drafts()
+        .lock()
+        .map_err(|_| ChangePlanErrorCode::Internal)?
+        .get(plan_id)
+        .cloned())
+}
+
+fn take_upsert_draft(plan_id: &str) -> Result<Option<Provider>, ChangePlanErrorCode> {
+    Ok(upsert_drafts()
+        .lock()
+        .map_err(|_| ChangePlanErrorCode::Internal)?
+        .remove(plan_id))
+}
+
 struct ActiveExecutionRegistration {
     job_id: String,
     gate: Arc<ExecutionGate>,
@@ -142,6 +172,12 @@ impl Drop for ActiveExecutionRegistration {
             }
         }
     }
+}
+
+struct CodexApplyIdentity<'a> {
+    plan_id: &'a str,
+    plan_digest: &'a str,
+    now: i64,
 }
 
 impl ChangePlanService {
@@ -219,30 +255,91 @@ impl ChangePlanService {
         Ok(public)
     }
 
-    /// Apply using the canonical Provider lock. The supplied writer MUST be
-    /// the ProviderService lock-held switch primitive; the integration worker
-    /// owns that shared extraction. `FnOnce` plus admission CAS guarantees at
-    /// most one writer call.
-    pub(crate) fn apply_codex_switch_with_writer_observer<F, E, O>(
+    /// Create a zero-write plan for Codex Quick Setup save + set-current.
+    /// The intended Provider is held in a process-private draft; SQLite only
+    /// stores the credential-free ledger row.
+    pub fn plan_codex_upsert(
         state: &AppState,
-        plan_id: &str,
-        plan_digest: &str,
-        writer: F,
-        observer: O,
-    ) -> Result<ApplyChangePlanOutcome, ChangePlanErrorCode>
-    where
-        F: FnOnce(&str) -> Result<WriterReceipt, E>,
-        O: Fn(ChangeJobEventHint),
-    {
-        Self::apply_codex_switch_at_with_writer_observer_and_fault(
-            state,
-            plan_id,
-            plan_digest,
-            chrono::Utc::now().timestamp(),
-            writer,
-            observer,
-            None,
+        provider: Provider,
+    ) -> Result<ChangePlan, ChangePlanErrorCode> {
+        Self::plan_codex_upsert_at(state, provider, chrono::Utc::now().timestamp())
+    }
+
+    pub(crate) fn plan_codex_upsert_at(
+        state: &AppState,
+        provider: Provider,
+        now: i64,
+    ) -> Result<ChangePlan, ChangePlanErrorCode> {
+        if provider.id != QUICK_SETUP_CODEX_PROVIDER_ID || !is_safe_opaque_id(&provider.id) {
+            return Err(ChangePlanErrorCode::InvalidTarget);
+        }
+
+        let _provider_guard = ProviderService::lock_provider_mutation(state, &AppType::Codex);
+        let existing_reserved_row = state
+            .db
+            .get_provider_by_id(&provider.id, AppType::Codex.as_str())
+            .map_err(|_| ChangePlanErrorCode::Internal)?
+            .is_some();
+        let mut provider = provider;
+        crate::codex_config::prepare_codex_provider_features_for_save(
+            &mut provider,
+            !existing_reserved_row,
         )
+        .map_err(|_| ChangePlanErrorCode::InvalidTarget)?;
+        let adapter =
+            CodexProviderUpsertAdapter::for_plan(state, provider.clone(), existing_reserved_row);
+        let inspection = adapter.inspect()?;
+        let secret_capability = prove_codex_target_credential_capability(&inspection);
+        if secret_capability != SecretCapabilityResult::NoNewCredentialMaterial {
+            return Err(ChangePlanErrorCode::SecretDependencyUnavailable);
+        }
+        if inspection.is_fully_target() {
+            return Err(ChangePlanErrorCode::TargetAlreadyCurrent);
+        }
+
+        let descriptor = adapter.descriptor();
+        if descriptor.compensation_mode != adapter.compensation_capability() {
+            return Err(ChangePlanErrorCode::Internal);
+        }
+        let plan_fields = adapter.plan(&inspection);
+        let public = ChangePlan {
+            plan_id: uuid::Uuid::new_v4().to_string(),
+            operation: ChangeOperation::CodexProviderUpsertAndSwitch,
+            target_provider_id: provider.id.clone(),
+            target_provider_name: plan_fields.target_provider_name,
+            plan_digest: plan_approval_digest(
+                ChangeOperation::CodexProviderUpsertAndSwitch,
+                &provider.id,
+                &inspection.baseline_digest,
+                secret_capability,
+                &descriptor,
+            ),
+            baseline_digest: inspection.baseline_digest,
+            db_baseline_provider_id: inspection.db_current_provider_id,
+            device_baseline_provider_id: inspection.device_current_provider_id,
+            secret_capability,
+            created_at: now,
+            expires_at: now + CHANGE_PLAN_TTL_SECONDS,
+            status: ChangePlanStatus::Ready,
+            adapter: descriptor,
+            current_provider_code: plan_fields.current_provider_code,
+            target_provider_code: plan_fields.target_provider_code,
+            restart_expectation: plan_fields.restart_expectation,
+            risks: plan_fields.risks,
+            evidence_note: plan_fields.evidence_note,
+        };
+        state
+            .db
+            .insert_change_plan(&StoredChangePlan {
+                public: public.clone(),
+                target_definition_digest: inspection.target_definition_digest,
+                live_baseline_digest: inspection.live_projection_digest,
+                target_projection_digest: inspection.target_projection_digest,
+                contract_digest: CHANGE_PLAN_CONTRACT_VERSION.to_string(),
+            })
+            .map_err(|_| ChangePlanErrorCode::Internal)?;
+        store_upsert_draft(public.plan_id.clone(), provider)?;
+        Ok(public)
     }
 
     #[cfg(test)]
@@ -267,6 +364,7 @@ impl ChangePlanService {
         )
     }
 
+    #[cfg(test)]
     pub(crate) fn apply_codex_switch_at_with_writer_observer_and_fault<F, E, O>(
         state: &AppState,
         plan_id: &str,
@@ -281,14 +379,48 @@ impl ChangePlanService {
         O: Fn(ChangeJobEventHint),
     {
         let writer = move |target: &str| writer(target).map_err(|_| ());
-        Self::apply_codex_switch_inner(
+        Self::apply_registered_inner(
             state,
-            plan_id,
-            plan_digest,
-            now,
+            CodexApplyIdentity {
+                plan_id,
+                plan_digest,
+                now,
+            },
             writer,
+            |_| Err(()),
             observer,
             injected_fault,
+        )
+    }
+
+    /// Apply using the canonical Provider lock. The supplied writers MUST be
+    /// the ProviderService lock-held primitives; the integration worker owns
+    /// that shared extraction. `FnOnce` plus admission CAS guarantees at most
+    /// one writer call.
+    pub(crate) fn apply_with_writers<FS, FU, ES, EU, O>(
+        state: &AppState,
+        plan_id: &str,
+        plan_digest: &str,
+        switch_writer: FS,
+        upsert_writer: FU,
+        observer: O,
+    ) -> Result<ApplyChangePlanOutcome, ChangePlanErrorCode>
+    where
+        FS: FnOnce(&str) -> Result<WriterReceipt, ES>,
+        FU: FnOnce(Provider) -> Result<WriterReceipt, EU>,
+        O: Fn(ChangeJobEventHint),
+    {
+        Self::apply_registered_inner(
+            state,
+            CodexApplyIdentity {
+                plan_id,
+                plan_digest,
+                now: chrono::Utc::now().timestamp(),
+            },
+            move |target| switch_writer(target).map_err(|_| ()),
+            move |provider| upsert_writer(provider).map_err(|_| ()),
+            observer,
+            None,
         )
     }
 
@@ -347,19 +479,24 @@ impl ChangePlanService {
         }))
     }
 
-    fn apply_codex_switch_inner<F, O>(
+    fn apply_registered_inner<FS, FU, O>(
         state: &AppState,
-        plan_id: &str,
-        plan_digest: &str,
-        now: i64,
-        writer: F,
+        identity: CodexApplyIdentity<'_>,
+        switch_writer: FS,
+        upsert_writer: FU,
         observer: O,
         injected_fault: Option<ChangeFaultPoint>,
     ) -> Result<ApplyChangePlanOutcome, ChangePlanErrorCode>
     where
-        F: FnOnce(&str) -> Result<WriterReceipt, ()>,
+        FS: FnOnce(&str) -> Result<WriterReceipt, ()>,
+        FU: FnOnce(Provider) -> Result<WriterReceipt, ()>,
         O: Fn(ChangeJobEventHint),
     {
+        let CodexApplyIdentity {
+            plan_id,
+            plan_digest,
+            now,
+        } = identity;
         if let Some(existing) = Self::idempotent_replay_if_consumed(state, plan_id, plan_digest)? {
             return Ok(existing);
         }
@@ -399,11 +536,33 @@ impl ChangePlanService {
             return Ok(ApplyChangePlanOutcome::rejected(ChangePlanErrorCode::Stale));
         }
 
-        let mut adapter = CodexProviderSwitchAdapter::for_execution(
-            state,
-            &stored.public.target_provider_id,
-            writer,
-        );
+        let mut adapter = match stored.public.operation {
+            ChangeOperation::CodexProviderSwitch => {
+                drop(upsert_writer);
+                CodexExecutionAdapter::Switch(CodexProviderSwitchAdapter::for_execution(
+                    state,
+                    &stored.public.target_provider_id,
+                    switch_writer,
+                ))
+            }
+            ChangeOperation::CodexProviderUpsertAndSwitch => {
+                drop(switch_writer);
+                let Some(provider) = clone_upsert_draft(&stored.public.plan_id)? else {
+                    return Ok(ApplyChangePlanOutcome::rejected(ChangePlanErrorCode::Stale));
+                };
+                let existing_reserved_row = state
+                    .db
+                    .get_provider_by_id(&provider.id, AppType::Codex.as_str())
+                    .map_err(|_| ChangePlanErrorCode::Internal)?
+                    .is_some();
+                CodexExecutionAdapter::Upsert(Box::new(CodexProviderUpsertAdapter::for_execution(
+                    state,
+                    provider,
+                    existing_reserved_row,
+                    upsert_writer,
+                )))
+            }
+        };
         let observed = adapter.precheck()?;
         if prove_codex_target_credential_capability(&observed)
             != SecretCapabilityResult::NoNewCredentialMaterial
@@ -437,6 +596,9 @@ impl ChangePlanService {
         }
 
         let mut job = admitted.job.ok_or(ChangePlanErrorCode::Internal)?;
+        if stored.public.operation == ChangeOperation::CodexProviderUpsertAndSwitch {
+            let _ = take_upsert_draft(&stored.public.plan_id);
+        }
         normalize_job_projection(&mut job);
         let execution = ActiveExecutionRegistration::register(&job.job_id)?;
         observer(job_hint(&job));
@@ -795,6 +957,16 @@ pub(crate) fn inspect_codex_switch(
         .get_provider_by_id(target_provider_id, AppType::Codex.as_str())
         .map_err(|_| ChangePlanErrorCode::Internal)?
         .ok_or(ChangePlanErrorCode::TargetNotFound)?;
+    inspect_codex_intended_provider(state, target)
+}
+
+pub(crate) fn inspect_codex_intended_provider(
+    state: &AppState,
+    target: Provider,
+) -> Result<CodexSwitchInspection, ChangePlanErrorCode> {
+    if !is_safe_opaque_id(&target.id) {
+        return Err(ChangePlanErrorCode::InvalidTarget);
+    }
     let db_current_provider_id = validate_optional_provider_id(
         state
             .db
@@ -845,7 +1017,7 @@ pub(crate) fn inspect_codex_switch(
             db_current_provider_id: &db_current_provider_id,
             device_current_provider_id: &device_current_provider_id,
             current_definition_digest: &current_definition_digest,
-            target_provider_id,
+            target_provider_id: &target.id,
             target_definition_digest: &target_definition_digest,
             live_projection_digest: &live_projection_digest,
             switch_mode_code: environment.mode_code(),
@@ -2534,5 +2706,132 @@ mod tests {
                 ChangeManualActionCode::ReviewConfiguration,
             ]
         );
+    }
+
+    #[test]
+    #[serial]
+    fn upsert_plan_is_side_effect_free_and_apply_writes_once() {
+        let (home, _guard, db, state, current, _target) = setup_switch_state();
+        let mut intended = provider(QUICK_SETUP_CODEX_PROVIDER_ID, "Gateway", "gpt-upsert");
+        intended.category = Some("custom".to_string());
+        let before_live = read_live_settings(AppType::Codex).unwrap();
+        let plan = ChangePlanService::plan_codex_upsert(&state, intended.clone()).unwrap();
+        assert_eq!(
+            plan.operation,
+            ChangeOperation::CodexProviderUpsertAndSwitch
+        );
+        assert_eq!(plan.adapter.adapter_id, "codex_provider_upsert_and_switch");
+        assert_eq!(plan.target_provider_code, "quick_setup_create");
+        assert_eq!(
+            db.get_current_provider(AppType::Codex.as_str()).unwrap(),
+            Some(current.id.clone())
+        );
+        assert_eq!(read_live_settings(AppType::Codex).unwrap(), before_live);
+        assert!(db
+            .get_provider_by_id(QUICK_SETUP_CODEX_PROVIDER_ID, "codex")
+            .unwrap()
+            .is_none());
+
+        let persisted: String = {
+            let conn = db.conn.lock().unwrap();
+            conn.query_row(
+                "SELECT group_concat(quote(plan_id || operation || target_provider_id || target_provider_name || plan_digest || baseline_digest || secret_capability)) FROM change_plans WHERE plan_id=?1",
+                rusqlite::params![plan.plan_id],
+                |row| row.get(0),
+            )
+            .unwrap()
+        };
+        assert!(!persisted.contains("sentinel"));
+        assert!(!persisted.contains(home.path().to_string_lossy().as_ref()));
+
+        let writer_calls = AtomicUsize::new(0);
+        let outcome = ChangePlanService::apply_with_writers(
+            &state,
+            &plan.plan_id,
+            &plan.plan_digest,
+            |_| Err::<WriterReceipt, ()>(()),
+            |provider| {
+                writer_calls.fetch_add(1, Ordering::SeqCst);
+                ProviderService::apply_quick_setup_with_lock_held(&state, AppType::Codex, provider)
+                    .map(|result| WriterReceipt {
+                        live_config_changed: result.live_config_changed,
+                    })
+            },
+            |_| {},
+        )
+        .unwrap();
+        assert_eq!(
+            outcome.kind,
+            ChangeApplyOutcomeKind::Admitted,
+            "{:?}",
+            outcome.error_code
+        );
+        assert_eq!(
+            outcome.job.as_ref().map(|job| job.status),
+            Some(ChangeJobStatus::Succeeded)
+        );
+        assert_eq!(writer_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            db.get_current_provider(AppType::Codex.as_str())
+                .unwrap()
+                .as_deref(),
+            Some(QUICK_SETUP_CODEX_PROVIDER_ID)
+        );
+
+        let replay = ChangePlanService::apply_with_writers(
+            &state,
+            &plan.plan_id,
+            &plan.plan_digest,
+            |_| Err::<WriterReceipt, ()>(()),
+            |_| {
+                writer_calls.fetch_add(1, Ordering::SeqCst);
+                Err(())
+            },
+            |_| {},
+        )
+        .unwrap();
+        assert_eq!(replay.kind, ChangeApplyOutcomeKind::IdempotentReplay);
+        assert_eq!(writer_calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    #[serial]
+    fn upsert_plan_for_existing_reserved_row_is_update_and_side_effect_free() {
+        let (_home, _guard, db, state, current, _target) = setup_switch_state();
+        let mut intended = provider(QUICK_SETUP_CODEX_PROVIDER_ID, "Gateway", "gpt-upsert");
+        intended.category = Some("custom".to_string());
+        db.save_provider(AppType::Codex.as_str(), &intended)
+            .unwrap();
+        let before_live = read_live_settings(AppType::Codex).unwrap();
+        let mut updated = intended.clone();
+        updated.name = "Gateway Updated".to_string();
+        let plan = ChangePlanService::plan_codex_upsert(&state, updated).unwrap();
+        assert_eq!(plan.target_provider_code, "quick_setup_update");
+        assert_eq!(
+            db.get_current_provider(AppType::Codex.as_str()).unwrap(),
+            Some(current.id.clone())
+        );
+        assert_eq!(read_live_settings(AppType::Codex).unwrap(), before_live);
+    }
+
+    #[test]
+    #[serial]
+    fn upsert_apply_without_process_draft_is_stale() {
+        let (_home, _guard, _db, state, _current, _target) = setup_switch_state();
+        let mut intended = provider(QUICK_SETUP_CODEX_PROVIDER_ID, "Gateway", "gpt-upsert");
+        intended.category = Some("custom".to_string());
+        let plan = ChangePlanService::plan_codex_upsert(&state, intended).unwrap();
+        upsert_drafts().lock().unwrap().clear();
+        let outcome = ChangePlanService::apply_with_writers(
+            &state,
+            &plan.plan_id,
+            &plan.plan_digest,
+            |_| Err::<WriterReceipt, ()>(()),
+            |_| Err::<WriterReceipt, ()>(()),
+            |_| {},
+        )
+        .unwrap();
+        assert_eq!(outcome.kind, ChangeApplyOutcomeKind::Rejected);
+        assert_eq!(outcome.error_code, Some(ChangePlanErrorCode::Stale));
     }
 }

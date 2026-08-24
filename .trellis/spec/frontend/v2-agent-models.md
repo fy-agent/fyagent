@@ -602,16 +602,21 @@ fetch/save controls.
   non-green, exposes no install/recheck/cancel/health button, and leaves the
   existing Codex Desktop installer intact. Browser ports reject native-only.
 - Codex Models consumes `FeaturePorts.changePlans` through exact unknown-input
-  parsers. Preview creates no Provider write; confirm sends only
+  parsers. Switch uses `createCodexProviderSwitchPlan(targetProviderId)`.
+  Codex Quick Setup save uses `createCodexProviderUpsertPlan(request)` and
+  must not call `applyQuickSetupWithResult`. Preview creates no Provider
+  write; confirm sends only
   `planId + planDigest` and holds a per-plan repeat-click lock. A ready plan
   always renders four labelled sections — 语义变化 / 风险与重启 /
   前置条件与范围 / 恢复方式 — projected only from the closed `ChangePlan`
   DTO (current/target codes and name, operation, risks, restartExpectation,
   adapter read/write sets, secretCapability, baseline ids, expiry,
-  evidenceNote, and writer-owned compensation). An empty risk list is shown
+  evidenceNote, and writer-owned compensation). Upsert preview labels the
+  operation as 保存并设为当前. An empty risk list is shown
   as 「无额外风险项」, not omitted. `secretCapability=secret_dependency_unavailable`
   remains fail-closed with no confirm. After apply, `ChangePlanWorkspace`
-  polls `getChangeJob` on a 1s interval while status is `planned` or
+  and `CodexSavePlanWorkspace`
+  poll `getChangeJob` on a 1s interval while status is `planned` or
   `running`, ignores stale `requestRevision` responses, and stops on a
   terminal snapshot, target change, close, or unmount. It does not start a
   second apply to refresh. When `partialResult` is present, the UI shows
@@ -619,7 +624,8 @@ fetch/save controls.
   manual actions (`retry_readback`, `review_configuration`). Visible event
   identity is `eventSeq` / job events, never a React or `Date.now()`
   sequencer. The v2 wire parser accepts only the registered adapter
-  descriptor and the five backend phases
+  descriptors (`codex_provider_switch` and
+  `codex_provider_upsert_and_switch`) and the five backend phases
   `precheck -> snapshot -> managed_write -> readback -> finalize`.
   `executionId` must equal `jobId`, `idempotencyKey` must equal `planId`,
   and event sequences must be strictly increasing with the final sequence

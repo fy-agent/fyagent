@@ -1,3 +1,5 @@
+use crate::app_config::AppType;
+use crate::provider::Provider;
 use crate::store::AppState;
 
 use super::domain::{
@@ -6,7 +8,9 @@ use super::domain::{
     ChangeResourceKind, ChangeStepKind, RestartRequirement, WriterReceipt,
 };
 use super::sanitize::sanitize_display_name;
-use super::service::{inspect_codex_switch, CodexSwitchInspection};
+use super::service::{
+    inspect_codex_intended_provider, inspect_codex_switch, CodexSwitchInspection,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct CodexSwitchSnapshot {
@@ -43,46 +47,50 @@ pub(super) trait ChangeAdapter {
 }
 
 pub(crate) fn descriptor_for_operation(operation: ChangeOperation) -> ChangeAdapterDescriptor {
-    match operation {
-        ChangeOperation::CodexProviderSwitch => ChangeAdapterDescriptor {
-            adapter_id: "codex_provider_switch".to_string(),
-            adapter_version: "1".to_string(),
-            operation_type: ChangeOperation::CodexProviderSwitch,
-            phases: vec![
-                ChangeStepKind::Precheck,
-                ChangeStepKind::Snapshot,
-                ChangeStepKind::ManagedWrite,
-                ChangeStepKind::Readback,
-                ChangeStepKind::Finalize,
-            ],
-            read_set: vec![
-                ChangeResourceKind::ProviderDbCurrent,
-                ChangeResourceKind::DeviceCurrent,
-                ChangeResourceKind::TargetDefinition,
-                ChangeResourceKind::CodexLiveProjection,
-            ],
-            write_set: vec![
-                ChangeResourceKind::ProviderDbCurrent,
-                ChangeResourceKind::DeviceCurrent,
-                ChangeResourceKind::CodexLiveProjection,
-            ],
-            idempotency_scope: ChangeIdempotencyScope::Plan,
-            cancel_mode: ChangeCancelMode::BeforeManagedWrite,
-            compensation_mode: ChangeCompensationMode::WriterOwnedRollback,
-            fault_points: vec![
-                ChangeFaultPoint::BeforeManagedWrite,
-                ChangeFaultPoint::AfterManagedWriteBeforeRecord,
-            ],
-        },
+    let operation_type = operation;
+    let adapter_id = match operation {
+        ChangeOperation::CodexProviderSwitch => "codex_provider_switch",
+        ChangeOperation::CodexProviderUpsertAndSwitch => "codex_provider_upsert_and_switch",
+    };
+    ChangeAdapterDescriptor {
+        adapter_id: adapter_id.to_string(),
+        adapter_version: "1".to_string(),
+        operation_type,
+        phases: vec![
+            ChangeStepKind::Precheck,
+            ChangeStepKind::Snapshot,
+            ChangeStepKind::ManagedWrite,
+            ChangeStepKind::Readback,
+            ChangeStepKind::Finalize,
+        ],
+        read_set: vec![
+            ChangeResourceKind::ProviderDbCurrent,
+            ChangeResourceKind::DeviceCurrent,
+            ChangeResourceKind::TargetDefinition,
+            ChangeResourceKind::CodexLiveProjection,
+        ],
+        write_set: vec![
+            ChangeResourceKind::ProviderDbCurrent,
+            ChangeResourceKind::DeviceCurrent,
+            ChangeResourceKind::CodexLiveProjection,
+        ],
+        idempotency_scope: ChangeIdempotencyScope::Plan,
+        cancel_mode: ChangeCancelMode::BeforeManagedWrite,
+        compensation_mode: ChangeCompensationMode::WriterOwnedRollback,
+        fault_points: vec![
+            ChangeFaultPoint::BeforeManagedWrite,
+            ChangeFaultPoint::AfterManagedWriteBeforeRecord,
+        ],
     }
 }
 
-type CodexWriter<'a> = Box<dyn FnOnce(&str) -> Result<WriterReceipt, ()> + 'a>;
+type CodexSwitchWriter<'a> = Box<dyn FnOnce(&str) -> Result<WriterReceipt, ()> + 'a>;
+type CodexUpsertWriter<'a> = Box<dyn FnOnce(Provider) -> Result<WriterReceipt, ()> + 'a>;
 
 pub(super) struct CodexProviderSwitchAdapter<'a> {
     state: &'a AppState,
     target_provider_id: &'a str,
-    writer: Option<CodexWriter<'a>>,
+    writer: Option<CodexSwitchWriter<'a>>,
 }
 
 impl<'a> CodexProviderSwitchAdapter<'a> {
@@ -124,20 +132,7 @@ impl ChangeAdapter for CodexProviderSwitchAdapter<'_> {
     }
 
     fn plan(&self, inspection: &Self::Inspection) -> ChangeAdapterPlanFields {
-        ChangeAdapterPlanFields {
-            target_provider_name: sanitize_display_name(&inspection.target.name),
-            current_provider_code: current_provider_code(
-                &inspection.db_current_provider_id,
-                &inspection.device_current_provider_id,
-            ),
-            target_provider_code: "existing_provider".to_string(),
-            restart_expectation: RestartRequirement::Recommended,
-            risks: vec![ChangePlanRisk {
-                code: "local_configuration_write".to_string(),
-                severity: "notice".to_string(),
-            }],
-            evidence_note: "usage_not_observed".to_string(),
-        }
+        switch_plan_fields(inspection)
     }
 
     fn precheck(&self) -> Result<Self::Inspection, ChangePlanErrorCode> {
@@ -145,11 +140,7 @@ impl ChangeAdapter for CodexProviderSwitchAdapter<'_> {
     }
 
     fn snapshot(&self, inspection: &Self::Inspection) -> Self::Snapshot {
-        CodexSwitchSnapshot {
-            baseline_digest: inspection.baseline_digest.clone(),
-            target_definition_digest: inspection.target_definition_digest.clone(),
-            target_projection_digest: inspection.target_projection_digest.clone(),
-        }
+        snapshot_from_inspection(inspection)
     }
 
     fn managed_write(&mut self) -> Result<WriterReceipt, ()> {
@@ -162,6 +153,213 @@ impl ChangeAdapter for CodexProviderSwitchAdapter<'_> {
 
     fn compensation_capability(&self) -> ChangeCompensationMode {
         ChangeCompensationMode::WriterOwnedRollback
+    }
+}
+
+pub(super) struct CodexProviderUpsertAdapter<'a> {
+    state: &'a AppState,
+    provider: Provider,
+    existing_reserved_row: bool,
+    writer: Option<CodexUpsertWriter<'a>>,
+}
+
+impl<'a> CodexProviderUpsertAdapter<'a> {
+    pub(super) fn for_plan(
+        state: &'a AppState,
+        provider: Provider,
+        existing_reserved_row: bool,
+    ) -> Self {
+        Self {
+            state,
+            provider,
+            existing_reserved_row,
+            writer: None,
+        }
+    }
+
+    pub(super) fn for_execution<F>(
+        state: &'a AppState,
+        provider: Provider,
+        existing_reserved_row: bool,
+        writer: F,
+    ) -> Self
+    where
+        F: FnOnce(Provider) -> Result<WriterReceipt, ()> + 'a,
+    {
+        Self {
+            state,
+            provider,
+            existing_reserved_row,
+            writer: Some(Box::new(writer)),
+        }
+    }
+}
+
+impl ChangeAdapter for CodexProviderUpsertAdapter<'_> {
+    type Inspection = CodexSwitchInspection;
+    type Snapshot = CodexSwitchSnapshot;
+    type WriteReceipt = WriterReceipt;
+
+    fn descriptor(&self) -> ChangeAdapterDescriptor {
+        descriptor_for_operation(ChangeOperation::CodexProviderUpsertAndSwitch)
+    }
+
+    fn inspect(&self) -> Result<Self::Inspection, ChangePlanErrorCode> {
+        inspect_codex_intended_provider(self.state, self.provider.clone())
+    }
+
+    fn plan(&self, inspection: &Self::Inspection) -> ChangeAdapterPlanFields {
+        let mut risks = vec![
+            ChangePlanRisk {
+                code: "local_configuration_write".to_string(),
+                severity: "notice".to_string(),
+            },
+            ChangePlanRisk {
+                code: "save_provider_then_set_current".to_string(),
+                severity: "notice".to_string(),
+            },
+        ];
+        let proxy_takeover_active = self
+            .state
+            .proxy_service
+            .detect_takeover_in_live_config_for_app(&AppType::Codex);
+        for code in crate::codex_config::codex_provider_save_warning_codes(
+            &self.provider,
+            proxy_takeover_active,
+        ) {
+            risks.push(ChangePlanRisk {
+                code,
+                severity: "warning".to_string(),
+            });
+        }
+        ChangeAdapterPlanFields {
+            target_provider_name: sanitize_display_name(&inspection.target.name),
+            current_provider_code: current_provider_code(
+                &inspection.db_current_provider_id,
+                &inspection.device_current_provider_id,
+            ),
+            target_provider_code: if self.existing_reserved_row {
+                "quick_setup_update"
+            } else {
+                "quick_setup_create"
+            }
+            .to_string(),
+            restart_expectation: RestartRequirement::Recommended,
+            risks,
+            evidence_note: "usage_not_observed".to_string(),
+        }
+    }
+
+    fn precheck(&self) -> Result<Self::Inspection, ChangePlanErrorCode> {
+        self.inspect()
+    }
+
+    fn snapshot(&self, inspection: &Self::Inspection) -> Self::Snapshot {
+        snapshot_from_inspection(inspection)
+    }
+
+    fn managed_write(&mut self) -> Result<WriterReceipt, ()> {
+        self.writer.take().ok_or(())?(self.provider.clone())
+    }
+
+    fn verify(&self) -> Result<Self::Inspection, ChangePlanErrorCode> {
+        self.inspect()
+    }
+
+    fn compensation_capability(&self) -> ChangeCompensationMode {
+        ChangeCompensationMode::WriterOwnedRollback
+    }
+}
+
+pub(super) enum CodexExecutionAdapter<'a> {
+    Switch(CodexProviderSwitchAdapter<'a>),
+    Upsert(Box<CodexProviderUpsertAdapter<'a>>),
+}
+
+impl ChangeAdapter for CodexExecutionAdapter<'_> {
+    type Inspection = CodexSwitchInspection;
+    type Snapshot = CodexSwitchSnapshot;
+    type WriteReceipt = WriterReceipt;
+
+    fn descriptor(&self) -> ChangeAdapterDescriptor {
+        match self {
+            Self::Switch(adapter) => adapter.descriptor(),
+            Self::Upsert(adapter) => adapter.descriptor(),
+        }
+    }
+
+    fn inspect(&self) -> Result<Self::Inspection, ChangePlanErrorCode> {
+        match self {
+            Self::Switch(adapter) => adapter.inspect(),
+            Self::Upsert(adapter) => adapter.inspect(),
+        }
+    }
+
+    fn plan(&self, inspection: &Self::Inspection) -> ChangeAdapterPlanFields {
+        match self {
+            Self::Switch(adapter) => adapter.plan(inspection),
+            Self::Upsert(adapter) => adapter.plan(inspection),
+        }
+    }
+
+    fn precheck(&self) -> Result<Self::Inspection, ChangePlanErrorCode> {
+        match self {
+            Self::Switch(adapter) => adapter.precheck(),
+            Self::Upsert(adapter) => adapter.precheck(),
+        }
+    }
+
+    fn snapshot(&self, inspection: &Self::Inspection) -> Self::Snapshot {
+        match self {
+            Self::Switch(adapter) => adapter.snapshot(inspection),
+            Self::Upsert(adapter) => adapter.snapshot(inspection),
+        }
+    }
+
+    fn managed_write(&mut self) -> Result<Self::WriteReceipt, ()> {
+        match self {
+            Self::Switch(adapter) => adapter.managed_write(),
+            Self::Upsert(adapter) => adapter.managed_write(),
+        }
+    }
+
+    fn verify(&self) -> Result<Self::Inspection, ChangePlanErrorCode> {
+        match self {
+            Self::Switch(adapter) => adapter.verify(),
+            Self::Upsert(adapter) => adapter.verify(),
+        }
+    }
+
+    fn compensation_capability(&self) -> ChangeCompensationMode {
+        match self {
+            Self::Switch(adapter) => adapter.compensation_capability(),
+            Self::Upsert(adapter) => adapter.compensation_capability(),
+        }
+    }
+}
+
+fn switch_plan_fields(inspection: &CodexSwitchInspection) -> ChangeAdapterPlanFields {
+    ChangeAdapterPlanFields {
+        target_provider_name: sanitize_display_name(&inspection.target.name),
+        current_provider_code: current_provider_code(
+            &inspection.db_current_provider_id,
+            &inspection.device_current_provider_id,
+        ),
+        target_provider_code: "existing_provider".to_string(),
+        restart_expectation: RestartRequirement::Recommended,
+        risks: vec![ChangePlanRisk {
+            code: "local_configuration_write".to_string(),
+            severity: "notice".to_string(),
+        }],
+        evidence_note: "usage_not_observed".to_string(),
+    }
+}
+
+fn snapshot_from_inspection(inspection: &CodexSwitchInspection) -> CodexSwitchSnapshot {
+    CodexSwitchSnapshot {
+        baseline_digest: inspection.baseline_digest.clone(),
+        target_definition_digest: inspection.target_definition_digest.clone(),
+        target_projection_digest: inspection.target_projection_digest.clone(),
     }
 }
 

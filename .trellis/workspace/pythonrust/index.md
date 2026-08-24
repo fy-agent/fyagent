@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 49
-- **Last Active**: 2026-08-24
+- **Total Sessions**: 50
+- **Last Active**: 2026-08-25
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1616 | Active |
+| `journal-1.md` | ~1651 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 50 | 2026-08-25 | Codex Provider Change Plan salvage | `d277beb3` | `dev/codex-provider-change-plan` |
 | 49 | 2026-08-24 | V2 Change Plan UI salvage | `ca6e2b89` | `dev/v2-change-plan-ui` |
 | 48 | 2026-08-24 | Canonical Change Plan typed executor replacement | `faac9b93`, `4186fb92`, `35ea4634`, `39e60438`, `2812830d` | `dev/change-plan-typed-executor-final` |
 | 47 | 2026-08-24 | Integrate hardened SecretRef native core | `791baf03`, `cbbfdde0`, `aeb242f0`, `a2064465` | `dev/secretref-core-final` |

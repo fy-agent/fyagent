@@ -1,5 +1,6 @@
 use tauri::{AppHandle, Emitter, Manager};
 
+use super::provider::ProviderQuickSetupRequest;
 use crate::app_config::AppType;
 use crate::services::change_plan::{
     ApplyChangePlanOutcome, CancelChangeJobOutcome, ChangeJobEventHint, ChangeJobSnapshot,
@@ -24,6 +25,24 @@ pub async fn create_codex_provider_switch_plan(
 }
 
 #[tauri::command]
+pub async fn create_codex_provider_upsert_plan(
+    app_handle: AppHandle,
+    request: ProviderQuickSetupRequest,
+) -> Result<ChangePlan, ChangePlanErrorCode> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app_handle
+            .try_state::<AppState>()
+            .ok_or(ChangePlanErrorCode::Internal)?;
+        let provider = request
+            .into_provider(&AppType::Codex)
+            .map_err(|_| ChangePlanErrorCode::InvalidTarget)?;
+        ChangePlanService::plan_codex_upsert(&state, provider)
+    })
+    .await
+    .map_err(|_| ChangePlanErrorCode::Internal)?
+}
+
+#[tauri::command]
 pub async fn apply_change_plan(
     app_handle: AppHandle,
     plan_id: String,
@@ -35,7 +54,7 @@ pub async fn apply_change_plan(
             .try_state::<AppState>()
             .ok_or(ChangePlanErrorCode::Internal)?;
         let app_for_events = app_for_work.clone();
-        ChangePlanService::apply_codex_switch_with_writer_observer(
+        ChangePlanService::apply_with_writers(
             &state,
             &plan_id,
             &plan_digest,
@@ -51,6 +70,12 @@ pub async fn apply_change_plan(
                 .map(|result| WriterReceipt {
                     live_config_changed: result.live_config_changed,
                 })
+            },
+            |provider| {
+                ProviderService::apply_quick_setup_with_lock_held(&state, AppType::Codex, provider)
+                    .map(|result| WriterReceipt {
+                        live_config_changed: result.live_config_changed,
+                    })
             },
             move |hint: ChangeJobEventHint| {
                 let _ = app_for_events.emit("change-job://updated", hint);
