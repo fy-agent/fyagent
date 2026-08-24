@@ -294,7 +294,9 @@ head: dev/change-plan-typed-executor-final
 The replacement task is archived at
 `.trellis/tasks/archive/2026-08/08-24-change-plan-typed-executor-final`.
 Once the PR URL binding is committed/pushed, close old Draft #134 as superseded
-and let #146 complete through exact-head PR CI + Merge Queue.
+and let #146 complete through exact-head PR CI + Merge Queue. Do not create the
+#136 replacement branch from pre-merge ancestry; implementation starts from the
+final #146 merge result on `main`.
 
 Old PR value to salvage:
 
@@ -363,7 +365,8 @@ Validation already observed on the replacement work:
 **Current handoff point:** implementation, final direct-session prearchive,
 archive, and post-archive contracts are complete. Replacement PR #146 exists.
 Commit/push its archive binding, close old #134 as superseded, hand #146 to
-Merge Queue, then continue directly to #136 salvage while #146 is hosted.
+Merge Queue, then wait for the queue result and synchronize the canonical
+mainline before starting the #136 replacement.
 
 Issue closure guidance:
 
@@ -624,5 +627,6 @@ completion.
 At the moment this handoff was last updated, #134 replacement PR #146 already
 exists and its Trellis task is archived. Finish the PR URL binding commit,
 close old Draft #134 as superseded, and enable exact-head Merge Queue handoff
-for #146. Then immediately start #136 V2 UI salvage from the latest main/current
-canonical executor, using this document as the cross-PR source of truth.
+for #146. After #146 merges, fast-forward `dev/laiyongjie` to the verified final
+`main` and only then start #136 V2 UI salvage from that canonical executor
+baseline, using this document as the cross-PR source of truth.
