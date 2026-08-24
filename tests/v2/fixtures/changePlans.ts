@@ -26,3 +26,37 @@ export const changePlanUpsertWire: ChangePlan = {
     { code: "save_provider_then_set_current", severity: "notice" },
   ],
 };
+
+export const changePlanWorkBuddyWire: ChangePlan = {
+  ...changePlanWire,
+  operation: "workbuddy_models_save",
+  targetProviderId: "fyagent-v2-workbuddy-models",
+  targetProviderName: "https://api.example.test/v1",
+  currentProviderCode: "object_root",
+  targetProviderCode: "object_root",
+  restartExpectation: "not_required",
+  adapter: {
+    ...changePlanWire.adapter,
+    adapterId: "workbuddy_models_save",
+    operationType: "workbuddy_models_save",
+    readSet: ["work_buddy_models_config", "work_buddy_backup"],
+    writeSet: ["work_buddy_models_config", "work_buddy_backup"],
+  },
+  risks: [
+    { code: "local_configuration_write", severity: "notice" },
+    { code: "existing_model_ids_will_be_updated", severity: "warning" },
+  ],
+};
+
+export const changeJobWorkBuddyWire: ChangeJobSnapshot = {
+  ...changeJobWire,
+  targetProviderId: "fyagent-v2-workbuddy-models",
+  resources: [
+    {
+      kind: "work_buddy_models_config",
+      status: "pending",
+      code: "pending",
+    },
+    { kind: "work_buddy_backup", status: "pending", code: "pending" },
+  ],
+};

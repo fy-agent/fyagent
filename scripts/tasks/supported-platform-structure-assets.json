@@ -123,7 +123,7 @@
     ],
     [
       "src-tauri/src/lib.rs",
-      "6a38026c44fba65eb91fc008977a1fbca55407f1e6b0f74b1822707b36d894f0"
+      "6f9092d033ad51775b35e945c77735871e85d00aa3a7c5e5b74e5b267e115014"
     ],
     [
       "src-tauri/src/lightweight.rs",
@@ -235,11 +235,11 @@
     ],
     [
       "src-tauri/src/services/workbuddy/config.rs",
-      "a70b6ccd4418562d1f8dd596178a6beb35f263c25f25d9154da48919a1d200a9"
+      "97a52e3ebdac72b4f82bd20e039a0f68d82bddd9fd2ec92ecc0eceb3c30e0d73"
     ],
     [
       "src-tauri/src/services/workbuddy/mod.rs",
-      "fb53f72d1b71cb0b0137aa3db4c989e79a2578caac3e7eae36a4cd1598a73044"
+      "ca870acdfde21ae41f3cf211ee235c1db1f5535c727e9b8613b899cce94b250f"
     ],
     [
       "src-tauri/src/session_manager/providers/opencode.rs",

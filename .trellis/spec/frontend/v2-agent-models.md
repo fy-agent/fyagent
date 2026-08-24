@@ -495,10 +495,16 @@ fetch/save controls.
   draft list can be filtered by model ID. The panel displays only the shared
   write/backup disclosure; it does not expose a backup-management UI or the
   persisted-key-clear checkbox.
+- 「保存并应用」 creates a WorkBuddy Change Plan through
+  `createWorkBuddySavePlan` on click (not `useEffect`) and mounts
+  `WorkBuddySavePlanWorkspace`. Confirm sends only `{planId, planDigest}`.
+  Preview is credential-free. There is no cancel button and no save-path
+  overwrite dialog; overwrite impact is a plan risk. Chip-remove still calls
+  `saveModels` / `save_workbuddy_models`.
 - Discovery, revision, overwrite capability, atomic persistence, concurrent
   modification, and authoritative reread follow the backend WorkBuddy
-  contract. The UI freezes one exact overwrite request and replays it only with
-  its opaque one-time token.
+  contract. Chip-remove still freezes one exact overwrite request and replays
+  it only with its opaque one-time token. The save path does not.
 - A remote response or local document in which a model ID contains a complete credential
   fails closed before DTO/query/DOM construction. The frontend repeats the
   collision rejection before save as defense in depth.
@@ -623,9 +629,12 @@ fetch/save controls.
   succeeded/compensated/unverified counts, remaining effects, and closed
   manual actions (`retry_readback`, `review_configuration`). Visible event
   identity is `eventSeq` / job events, never a React or `Date.now()`
-  sequencer. The v2 wire parser accepts only the registered adapter
-  descriptors (`codex_provider_switch` and
-  `codex_provider_upsert_and_switch`) and the five backend phases
+  sequencer. The v2 wire parser accepts the union of Codex and WorkBuddy
+  operations/resource kinds, and requires `adapter.readSet` / `writeSet` and
+  `job.resources` to match that plan or job's `operationType` (not a single
+  global concatenation of every kind). Registered operations are
+  `codex_provider_switch`, `codex_provider_upsert_and_switch`, and
+  `workbuddy_models_save`. Jobs expose the five backend phases
   `precheck -> snapshot -> managed_write -> readback -> finalize`.
   `executionId` must equal `jobId`, `idempotencyKey` must equal `planId`,
   and event sequences must be strictly increasing with the final sequence
@@ -633,7 +642,8 @@ fetch/save controls.
   for later product use, but the current Models page intentionally adds no
   cancel button or client-owned cancellation state machine. It also owns no
   fake coordinator, scenario, backup, restore, or second execution state
-  machine.
+  machine. WorkBuddy save uses `createWorkBuddySavePlan(request)` plus the
+  page-local `WorkBuddySavePlanWorkspace`.
 - Same-plan/same-digest backend replay is an authoritative
   `idempotent_replay`, not a second execution. Existing repeat-click protection
   remains a UX guard rather than the idempotency authority.

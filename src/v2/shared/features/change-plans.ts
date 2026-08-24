@@ -1,4 +1,7 @@
-import type { ProviderQuickSetupRequest } from "./models";
+import type {
+  ProviderQuickSetupRequest,
+  WorkBuddySaveModelsRequest,
+} from "./models";
 
 export const CHANGE_PLAN_CONTRACT_VERSION = "fyagent-change-plan/v2" as const;
 
@@ -27,11 +30,14 @@ export type ChangeResourceKind =
   | "provider_db_current"
   | "device_current"
   | "target_definition"
-  | "codex_live_projection";
+  | "codex_live_projection"
+  | "work_buddy_models_config"
+  | "work_buddy_backup";
 
 export type ChangePlanOperation =
   | "codex_provider_switch"
-  | "codex_provider_upsert_and_switch";
+  | "codex_provider_upsert_and_switch"
+  | "workbuddy_models_save";
 
 export type ChangeAdapterDescriptor = {
   readonly adapterId: ChangePlanOperation;
@@ -181,6 +187,9 @@ export interface ChangePlansPort {
   createCodexProviderUpsertPlan(
     request: ProviderQuickSetupRequest,
   ): Promise<ChangePlan>;
+  createWorkBuddySavePlan(
+    request: WorkBuddySaveModelsRequest,
+  ): Promise<ChangePlan>;
   applyChangePlan(input: {
     readonly planId: string;
     readonly planDigest: string;
@@ -226,12 +235,82 @@ const STEP_KINDS = [
   "finalize",
 ] as const;
 
-const RESOURCE_KINDS = [
+const CODEX_READ_SET = [
   "provider_db_current",
   "device_current",
   "target_definition",
   "codex_live_projection",
 ] as const;
+
+const CODEX_WRITE_SET = [
+  "provider_db_current",
+  "device_current",
+  "codex_live_projection",
+] as const;
+
+const WORKBUDDY_READ_SET = [
+  "work_buddy_models_config",
+  "work_buddy_backup",
+] as const;
+
+const WORKBUDDY_WRITE_SET = WORKBUDDY_READ_SET;
+
+const RESOURCE_KINDS = [...CODEX_READ_SET, ...WORKBUDDY_READ_SET] as const;
+
+const CHANGE_PLAN_OPERATIONS = [
+  "codex_provider_switch",
+  "codex_provider_upsert_and_switch",
+  "workbuddy_models_save",
+] as const;
+
+function resourcesForOperation(operation: ChangePlanOperation): {
+  readonly readSet: readonly ChangeResourceKind[];
+  readonly writeSet: readonly ChangeResourceKind[];
+} {
+  if (operation === "workbuddy_models_save") {
+    return { readSet: WORKBUDDY_READ_SET, writeSet: WORKBUDDY_WRITE_SET };
+  }
+  return { readSet: CODEX_READ_SET, writeSet: CODEX_WRITE_SET };
+}
+
+function parseAdapterDescriptor(value: unknown): ChangeAdapterDescriptor {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, [
+      "adapterId",
+      "adapterVersion",
+      "operationType",
+      "phases",
+      "readSet",
+      "writeSet",
+      "idempotencyScope",
+      "cancelMode",
+      "compensationMode",
+      "faultPoints",
+    ]) ||
+    !isOneOf(value.adapterId, CHANGE_PLAN_OPERATIONS) ||
+    value.adapterVersion !== "1" ||
+    value.operationType !== value.adapterId ||
+    !isExactSequence(value.phases, STEP_KINDS)
+  ) {
+    throw new Error("Change Plan is unavailable");
+  }
+  const expected = resourcesForOperation(value.adapterId);
+  if (
+    !isExactSequence(value.readSet, expected.readSet) ||
+    !isExactSequence(value.writeSet, expected.writeSet) ||
+    value.idempotencyScope !== "plan" ||
+    value.cancelMode !== "before_managed_write" ||
+    value.compensationMode !== "writer_owned_rollback" ||
+    !isExactSequence(value.faultPoints, [
+      "before_managed_write",
+      "after_managed_write_before_record",
+    ])
+  ) {
+    throw new Error("Change Plan is unavailable");
+  }
+  return value as unknown as ChangeAdapterDescriptor;
+}
 
 function isExactSequence(
   value: unknown,
@@ -257,49 +336,6 @@ function parseEnumArray<T extends string>(
     throw new Error(label);
   }
   return value;
-}
-
-const CHANGE_PLAN_OPERATIONS = [
-  "codex_provider_switch",
-  "codex_provider_upsert_and_switch",
-] as const;
-
-function parseAdapterDescriptor(value: unknown): ChangeAdapterDescriptor {
-  if (
-    !isRecord(value) ||
-    !hasExactKeys(value, [
-      "adapterId",
-      "adapterVersion",
-      "operationType",
-      "phases",
-      "readSet",
-      "writeSet",
-      "idempotencyScope",
-      "cancelMode",
-      "compensationMode",
-      "faultPoints",
-    ]) ||
-    !isOneOf(value.adapterId, CHANGE_PLAN_OPERATIONS) ||
-    value.adapterVersion !== "1" ||
-    value.operationType !== value.adapterId ||
-    !isExactSequence(value.phases, STEP_KINDS) ||
-    !isExactSequence(value.readSet, RESOURCE_KINDS) ||
-    !isExactSequence(value.writeSet, [
-      "provider_db_current",
-      "device_current",
-      "codex_live_projection",
-    ]) ||
-    value.idempotencyScope !== "plan" ||
-    value.cancelMode !== "before_managed_write" ||
-    value.compensationMode !== "writer_owned_rollback" ||
-    !isExactSequence(value.faultPoints, [
-      "before_managed_write",
-      "after_managed_write_before_record",
-    ])
-  ) {
-    throw new Error("Change Plan is unavailable");
-  }
-  return value as unknown as ChangeAdapterDescriptor;
 }
 
 function parseStep(value: unknown): ChangeJobStep {
@@ -579,15 +615,14 @@ export function parseChangeJobSnapshot(value: unknown): ChangeJobSnapshot {
   }
   const steps = value.steps.map(parseStep);
   const resources = value.resources.map(parseResource);
+  const resourceKinds = resources.map((resource) => resource.kind);
   if (
     !isExactSequence(
       steps.map((step) => step.kind),
       STEP_KINDS,
     ) ||
-    !isExactSequence(
-      resources.map((resource) => resource.kind),
-      RESOURCE_KINDS,
-    )
+    (!isExactSequence(resourceKinds, CODEX_READ_SET) &&
+      !isExactSequence(resourceKinds, WORKBUDDY_READ_SET))
   ) {
     throw new Error("Change Job is unavailable");
   }

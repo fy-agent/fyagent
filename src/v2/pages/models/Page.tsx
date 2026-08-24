@@ -78,13 +78,13 @@ import { TraeModelsPanel } from "./TraeModelsPanel";
 import {
   ChangePlanWorkspace,
   CodexSavePlanWorkspace,
+  WorkBuddySavePlanWorkspace,
   hasUnconfirmedAuthority,
 } from "./apply";
 import { changePlanErrorCode } from "./apply/changePlanErrors";
 import {
   addUniqueModelIds,
   filterModelIds,
-  nativeErrorCode,
   splitWorkBuddyDraft,
 } from "./workBuddyModels";
 import "./Page.css";
@@ -145,14 +145,18 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
   >(null);
   const { notices, show, clear, dismiss } =
     useFieldNotices<WorkBuddyNoticeField>();
-  const [pendingOverwrite, setPendingOverwrite] = useState<{
-    request: WorkBuddySaveRequest;
-    token: string;
-    existingIds: string[];
-    revision: number;
-  } | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [workBuddySaveRequest, setWorkBuddySaveRequest] =
+    useState<WorkBuddySaveRequest | null>(null);
+  const [workBuddySavePlan, setWorkBuddySavePlan] = useState<ChangePlan | null>(
+    null,
+  );
+  const [workBuddySavePreviewError, setWorkBuddySavePreviewError] = useState<{
+    code: ChangePlanErrorCode;
+    message?: string;
+  } | null>(null);
   const writeLock = useRef(false);
+  const submittedRevisionRef = useRef(0);
   const mountedRef = useRef(true);
   const baseUrlInputRef = useRef<HTMLInputElement>(null);
   const apiKeyInputRef = useRef<HTMLInputElement>(null);
@@ -338,119 +342,6 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
     return Object.freeze(request);
   };
 
-  const saveRequest = async (
-    request: WorkBuddySaveRequest,
-    submittedRevision: number,
-  ) => {
-    if (writeLock.current) return;
-    writeLock.current = true;
-    setBusy("save");
-    clear();
-    let shouldRefresh = true;
-    let rereadNotice: {
-      confirmed: Notice;
-      unconfirmed: Notice;
-    } | null = null;
-    try {
-      const result = await ports.workbuddy.saveModels(request);
-      if (!mountedRef.current) return;
-
-      switch (result.state) {
-        case "saved":
-          setPendingOverwrite(null);
-          draftCommit.commitRevision(submittedRevision);
-          show("save", {
-            tone: "info",
-            title: "WorkBuddy 模型配置已保存",
-            description: `共 ${result.modelCount} 个模型；新增 ${result.createdEntries}，更新 ${result.updatedEntries}。`,
-          });
-          break;
-        case "concurrent_modification":
-          setPendingOverwrite(null);
-          rereadNotice = {
-            confirmed: {
-              tone: "warning",
-              title: "配置已被其他操作修改",
-              description: "已刷新当前设置，请检查后再次提交。",
-            },
-            unconfirmed: {
-              tone: "warning",
-              title: "配置已被其他操作修改",
-              description: "暂时无法刷新当前设置，请刷新后再次提交。",
-            },
-          };
-          break;
-        case "overwrite_confirmation_required":
-          if (request.overwriteToken) {
-            setPendingOverwrite(null);
-            rereadNotice = {
-              confirmed: {
-                tone: "error",
-                title: "覆盖确认已失效",
-                description: "已刷新当前设置，请重新提交。",
-              },
-              unconfirmed: {
-                tone: "error",
-                title: "覆盖确认已失效",
-                description: "暂时无法刷新当前设置，请刷新后重新提交。",
-              },
-            };
-          } else {
-            shouldRefresh = false;
-            setPendingOverwrite({
-              request,
-              token: result.token,
-              existingIds: [...result.existingIds],
-              revision: submittedRevision,
-            });
-          }
-          break;
-      }
-    } catch (error) {
-      if (mountedRef.current) {
-        setPendingOverwrite(null);
-        const code = nativeErrorCode(error);
-        if (
-          request.overwriteToken &&
-          (code === "WORKBUDDY_OVERWRITE_TOKEN_EXPIRED" ||
-            code === "WORKBUDDY_OVERWRITE_TOKEN_INVALID")
-        ) {
-          rereadNotice = {
-            confirmed: {
-              tone: "error",
-              title: "覆盖确认已失效",
-              description: "已刷新当前设置，请重新提交。",
-            },
-            unconfirmed: {
-              tone: "error",
-              title: "覆盖确认已失效",
-              description: "暂时无法刷新当前设置，请刷新后重新提交。",
-            },
-          };
-        } else {
-          show("save", {
-            tone: "error",
-            title: "保存失败",
-            description: "请刷新当前设置、检查输入后重试。",
-          });
-        }
-      }
-    } finally {
-      if (draftCommit.isCurrentRevision(submittedRevision)) clearApiKey();
-      const rereadConfirmed = shouldRefresh
-        ? await refreshAuthoritativeState()
-        : false;
-      if (mountedRef.current && rereadNotice) {
-        show(
-          "save",
-          rereadConfirmed ? rereadNotice.confirmed : rereadNotice.unconfirmed,
-        );
-      }
-      if (mountedRef.current) setBusy(null);
-      writeLock.current = false;
-    }
-  };
-
   const startSave = () => {
     if (writeLock.current) return;
     const draftIds = collectDraftIds();
@@ -486,20 +377,94 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
       setDraftModelIds(draftIds);
       setManualDraft("");
     }
-    void saveRequest(request, submittedRevision);
+    void createSavePlan(request, submittedRevision);
   };
 
-  const confirmOverwrite = () => {
-    if (!pendingOverwrite || writeLock.current) return;
-    const frozen = pendingOverwrite;
-    setPendingOverwrite(null);
-    void saveRequest(
-      {
-        ...frozen.request,
-        overwriteToken: frozen.token,
-      },
-      frozen.revision,
-    );
+  const createSavePlan = async (
+    request: WorkBuddySaveRequest,
+    submittedRevision: number,
+  ) => {
+    if (writeLock.current) return;
+    writeLock.current = true;
+    submittedRevisionRef.current = submittedRevision;
+    setBusy("save");
+    clear();
+    setWorkBuddySavePreviewError(null);
+    try {
+      const nextPlan = await ports.changePlans.createWorkBuddySavePlan(request);
+      if (!mountedRef.current) return;
+      setWorkBuddySaveRequest(request);
+      setWorkBuddySavePlan(nextPlan);
+    } catch (cause) {
+      if (!mountedRef.current) return;
+      setWorkBuddySaveRequest(request);
+      setWorkBuddySavePlan(null);
+      setWorkBuddySavePreviewError({ code: changePlanErrorCode(cause) });
+    } finally {
+      if (mountedRef.current) setBusy(null);
+    }
+  };
+
+  const handleWorkBuddySaveDismiss = () => {
+    setWorkBuddySaveRequest(null);
+    setWorkBuddySavePlan(null);
+    setWorkBuddySavePreviewError(null);
+    writeLock.current = false;
+    if (mountedRef.current) setBusy(null);
+  };
+
+  const handleWorkBuddySavePlanChange = (plan: ChangePlan | null) => {
+    setWorkBuddySavePlan(plan);
+    if (plan) setWorkBuddySavePreviewError(null);
+  };
+
+  const handleWorkBuddySaveTerminal = (job: ChangeJobSnapshot) => {
+    const submittedRevision = submittedRevisionRef.current;
+    const unconfirmed = hasUnconfirmedAuthority(job);
+    const applied =
+      !unconfirmed && (job.status === "succeeded" || job.status === "warning");
+    if (applied) draftCommit.commitRevision(submittedRevision);
+    if (draftCommit.isCurrentRevision(submittedRevision)) clearApiKey();
+    void (async () => {
+      const rereadConfirmed = await refreshAuthoritativeState();
+      if (!mountedRef.current) return;
+      if (unconfirmed) {
+        writeLock.current = true;
+        show("save", {
+          tone: "warning",
+          title: "配置结果需要人工确认",
+          description: rereadConfirmed
+            ? "已刷新当前设置，请检查后再次确认。"
+            : "暂时无法刷新当前设置，请刷新后再次提交。",
+        });
+        return;
+      }
+      if (applied) {
+        show("save", {
+          tone: "info",
+          title: "WorkBuddy 模型配置已保存",
+          description: rereadConfirmed
+            ? "本机配置写入与回读已完成。"
+            : "暂时无法刷新当前设置，请刷新后确认。",
+        });
+        writeLock.current = false;
+        return;
+      }
+      show("save", {
+        tone:
+          job.resultCode === "writer_failed_baseline_restored"
+            ? "error"
+            : "warning",
+        title:
+          job.resultCode === "writer_failed_baseline_restored"
+            ? "保存失败，已恢复原配置"
+            : "保存未完成",
+        description: rereadConfirmed
+          ? "已刷新当前设置，请检查后重试。"
+          : "暂时无法刷新当前设置，请刷新后再次提交。",
+      });
+      writeLock.current = false;
+    })();
   };
 
   const deleteExistingModel = async (modelId: string) => {
@@ -595,13 +560,32 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
       >
         <Button
           className="fy-control-button-primary fy-models-commit-button"
-          disabled={busy !== null || loading || readFailed}
+          disabled={
+            busy !== null ||
+            loading ||
+            readFailed ||
+            Boolean(
+              workBuddySaveRequest ||
+                workBuddySavePlan ||
+                workBuddySavePreviewError,
+            )
+          }
           onClick={startSave}
         >
           {busy === "save" ? "保存中…" : "保存并应用"}
         </Button>
       </ModelsPanelHeader>
       <FieldFeedback id="workbuddy-save-error" notice={notices.save} />
+      <WorkBuddySavePlanWorkspace
+        key={workBuddySavePlan?.planId ?? "workbuddy-save-preview"}
+        active={active}
+        request={workBuddySaveRequest}
+        plan={workBuddySavePlan}
+        previewError={workBuddySavePreviewError}
+        onPlanChange={handleWorkBuddySavePlanChange}
+        onTerminal={handleWorkBuddySaveTerminal}
+        onDismiss={handleWorkBuddySaveDismiss}
+      />
 
       {loading && <Spinner label="正在读取 WorkBuddy 状态" />}
       {readFailed && (
@@ -857,37 +841,6 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
         </p>
       </section>
 
-      <Dialog
-        open={Boolean(pendingOverwrite)}
-        onOpenChange={(open) => {
-          if (!open && busy === null) setPendingOverwrite(null);
-        }}
-        title="确认覆盖已有模型"
-        description={
-          pendingOverwrite
-            ? `以下模型已存在：${pendingOverwrite.existingIds.slice(0, 6).join(", ")}${pendingOverwrite.existingIds.length > 6 ? "…" : ""}`
-            : undefined
-        }
-        actions={
-          <>
-            <Button
-              disabled={busy !== null}
-              onClick={() => setPendingOverwrite(null)}
-            >
-              取消
-            </Button>
-            <Button
-              className="fy-control-button-danger"
-              disabled={busy !== null}
-              onClick={confirmOverwrite}
-            >
-              {busy === "save" ? "处理中…" : "确认覆盖"}
-            </Button>
-          </>
-        }
-      >
-        <p>确认后将使用当前选择覆盖已有模型。</p>
-      </Dialog>
       <Dialog
         open={pendingDeleteId !== null}
         onOpenChange={(open) => {

@@ -1649,3 +1649,38 @@ Salvaged Codex Provider create/edit/set-current onto current-main plural change-
 ### Next Steps
 
 - Open replacement PR, close old Draft #137 as superseded, exact-head Merge Queue. Keep #63 open.
+
+
+## Session 51: WorkBuddy Change Plan salvage
+
+**Date**: 2026-08-25
+**Task**: WorkBuddy Change Plan salvage
+**Branch**: `dev/workbuddy-change-plan`
+
+### Summary
+
+Salvaged WorkBuddy models.json save onto current-main plural change-plans. Draft #139 is not merged; Issue #66 stays open.
+
+### Main Changes
+
+- Added workbuddy_models_save plus create_workbuddy_save_plan with a process-private save draft.
+- WorkBuddy Models save now previews then confirms with planId+planDigest only; chip-remove still writes immediately.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `07d3e952` | (see git log) |
+
+### Testing
+
+- [OK] mise run check:prearchive PASS with TRELLIS_CONTEXT_ID=workbuddy-change-plan.
+- [OK] mise run test:v2:browser 120/120 PASS.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- Open replacement PR, close old Draft #139 as superseded, exact-head Merge Queue. Keep #66 open.

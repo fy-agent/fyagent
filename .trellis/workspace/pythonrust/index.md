@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 50
+- **Total Sessions**: 51
 - **Last Active**: 2026-08-25
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1651 | Active |
+| `journal-1.md` | ~1686 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 51 | 2026-08-25 | WorkBuddy Change Plan salvage | `07d3e952` | `dev/workbuddy-change-plan` |
 | 50 | 2026-08-25 | Codex Provider Change Plan salvage | `d277beb3` | `dev/codex-provider-change-plan` |
 | 49 | 2026-08-24 | V2 Change Plan UI salvage | `ca6e2b89` | `dev/v2-change-plan-ui` |
 | 48 | 2026-08-24 | Canonical Change Plan typed executor replacement | `faac9b93`, `4186fb92`, `35ea4634`, `39e60438`, `2812830d` | `dev/change-plan-typed-executor-final` |

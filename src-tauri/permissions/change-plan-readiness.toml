@@ -4,6 +4,7 @@ description = "Allows the main local webview to create, apply, cancel and read t
 commands.allow = [
   "create_codex_provider_switch_plan",
   "create_codex_provider_upsert_plan",
+  "create_workbuddy_save_plan",
   "apply_change_plan",
   "cancel_change_job",
   "get_change_job",

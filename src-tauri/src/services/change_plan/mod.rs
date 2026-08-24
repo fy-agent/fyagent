@@ -15,6 +15,7 @@ pub use domain::{
     ChangeResultCode, ChangeStepKind, ChangeStepStatus, RecoveryState, RestartRequirement,
     SecretCapabilityResult, UsageEvidence,
 };
+pub(crate) use service::write_workbuddy_save_locked;
 pub use service::ChangePlanService;
 
 pub(crate) use adapter::descriptor_for_operation;

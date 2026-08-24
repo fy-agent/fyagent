@@ -60,12 +60,12 @@ impl WorkBuddyPaths {
     }
 }
 
-#[derive(Debug)]
-struct LoadedConfig {
-    exists: bool,
-    original_bytes: Vec<u8>,
-    revision: Option<String>,
-    document: WorkBuddyDocument,
+#[derive(Debug, Clone)]
+pub(crate) struct LoadedConfig {
+    pub(crate) exists: bool,
+    pub(crate) original_bytes: Vec<u8>,
+    pub(crate) revision: Option<String>,
+    pub(crate) document: WorkBuddyDocument,
 }
 
 /// Server-side state for an aggregate overwrite confirmation.
@@ -109,11 +109,11 @@ async fn save_workbuddy_models_at(
         .map_err(|_| WorkBuddyError::new(WorkBuddyErrorCode::InternalError))?
 }
 
-fn current_paths() -> WorkBuddyPaths {
+pub(crate) fn current_paths() -> WorkBuddyPaths {
     WorkBuddyPaths::from_home(&crate::config::get_home_dir())
 }
 
-fn write_lock() -> &'static Mutex<()> {
+pub(crate) fn write_lock() -> &'static Mutex<()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
     LOCK.get_or_init(|| Mutex::new(()))
 }
@@ -176,6 +176,41 @@ pub(crate) fn get_workbuddy_model_ids_at(
         ids: loaded.document.unique_model_ids(),
         revision: loaded.revision,
     })
+}
+
+pub(crate) fn load_workbuddy_files(
+    paths: &WorkBuddyPaths,
+) -> Result<(LoadedConfig, Option<Vec<u8>>), WorkBuddyError> {
+    #[cfg(target_os = "windows")]
+    {
+        let (loaded, backup_bytes) = match open_windows_storage(paths, false) {
+            Ok(storage) => {
+                let bytes = storage
+                    .read_models()
+                    .map_err(|_| WorkBuddyError::new(WorkBuddyErrorCode::ConfigReadFailed))?;
+                let backup_bytes = storage
+                    .read_backup()
+                    .map_err(|_| WorkBuddyError::new(WorkBuddyErrorCode::ConfigReadFailed))?;
+                (load_config_bytes(bytes)?, backup_bytes)
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                (load_config_bytes(None)?, None)
+            }
+            Err(_) => return Err(WorkBuddyError::new(WorkBuddyErrorCode::ConfigReadFailed)),
+        };
+        Ok((loaded, backup_bytes))
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let loaded = load_config(&paths.models)?;
+        let backup_bytes = match fs::read(&paths.backup) {
+            Ok(bytes) => Some(bytes),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => None,
+            Err(_) => return Err(WorkBuddyError::new(WorkBuddyErrorCode::ConfigReadFailed)),
+        };
+        Ok((loaded, backup_bytes))
+    }
 }
 
 pub(crate) fn save_workbuddy_models_at_locked(
@@ -401,6 +436,11 @@ pub(crate) fn save_workbuddy_models_at_locked(
         return Err(WorkBuddyError::new(WorkBuddyErrorCode::ConfigWriteFailed));
     }
 
+    #[cfg(all(test, target_os = "macos"))]
+    if FAIL_NEXT_PRIMARY_WRITE.with(|flag| flag.replace(false)) {
+        return Err(WorkBuddyError::new(WorkBuddyErrorCode::ConfigWriteFailed));
+    }
+
     #[cfg(target_os = "macos")]
     write_credential_file_atomically(&paths.models, &serialized)
         .map_err(|_| WorkBuddyError::new(WorkBuddyErrorCode::ConfigWriteFailed))?;
@@ -417,6 +457,20 @@ pub(crate) fn save_workbuddy_models_at_locked(
 thread_local! {
     static WORKBUDDY_PRECOMMIT_REPLACEMENT: std::cell::RefCell<Option<Vec<u8>>> =
         const { std::cell::RefCell::new(None) };
+    static FAIL_NEXT_PRIMARY_WRITE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+#[cfg(test)]
+pub(crate) fn arm_next_workbuddy_primary_write_fault() -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        FAIL_NEXT_PRIMARY_WRITE.with(|flag| flag.set(true));
+        true
+    }
+    #[cfg(target_os = "windows")]
+    {
+        false
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -474,7 +528,7 @@ fn open_windows_storage(
     super::windows_storage::WindowsWorkBuddyStorage::open(home, create_directory)
 }
 
-fn normalized_target_ids(request: &SaveWorkBuddyModelsRequest) -> Vec<String> {
+pub(crate) fn normalized_target_ids(request: &SaveWorkBuddyModelsRequest) -> Vec<String> {
     let mut target_ids = Vec::new();
     let mut seen = HashSet::new();
     for id in request
@@ -704,6 +758,39 @@ fn api_key_mac_key() -> &'static [u8; 32] {
     KEY.get_or_init(random_mac_key)
 }
 
+pub(crate) fn restore_workbuddy_from_backup_at_locked(paths: &WorkBuddyPaths) -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        restore_workbuddy_from_backup_windows(paths)
+    }
+    #[cfg(target_os = "macos")]
+    {
+        restore_workbuddy_from_backup_macos(paths)
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn restore_workbuddy_from_backup_windows(paths: &WorkBuddyPaths) -> bool {
+    let Ok(storage) = open_windows_storage(paths, false) else {
+        return false;
+    };
+    let Ok(Some(backup)) = storage.read_backup() else {
+        return false;
+    };
+    let Ok(mut snapshot) = storage.snapshot_models() else {
+        return false;
+    };
+    storage.commit(&mut snapshot, &backup).is_ok()
+}
+
+#[cfg(target_os = "macos")]
+fn restore_workbuddy_from_backup_macos(paths: &WorkBuddyPaths) -> bool {
+    let Ok(backup) = fs::read(&paths.backup) else {
+        return false;
+    };
+    write_credential_file_atomically(&paths.models, &backup).is_ok()
+}
+
 fn random_mac_key() -> [u8; 32] {
     let mut key = [0u8; 32];
     key[..16].copy_from_slice(Uuid::new_v4().as_bytes());
@@ -803,6 +890,17 @@ mod tests {
         assert_eq!(first.len(), 64);
         assert_eq!(second.len(), 64);
         assert_ne!(first, second);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn restore_from_backup_replaces_primary_with_backup_bytes() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let paths = paths(&temp);
+        write_models(&paths, r#"{"models":[{"id":"new"}]}"#);
+        fs::write(&paths.backup, br#"{"models":[{"id":"old"}]}"#).unwrap();
+        assert!(restore_workbuddy_from_backup_at_locked(&paths));
+        assert_eq!(read_json(&paths)["models"][0]["id"], "old");
     }
 
     #[cfg(all(test, target_os = "macos"))]

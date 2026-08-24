@@ -263,6 +263,17 @@ describe("V2 feature ports", () => {
       }),
     ).rejects.toThrow(NATIVE_ONLY_ERROR);
     await expect(
+      ports.changePlans.createWorkBuddySavePlan({
+        baseUrl: "https://api.example.test/v1",
+        apiKey: "secret",
+        allowNoApiKey: false,
+        selectedModelIds: ["model-a"],
+        manualModelIds: [],
+        clearExistingApiKeys: false,
+        expectedRevision: null,
+      }),
+    ).rejects.toThrow(NATIVE_ONLY_ERROR);
+    await expect(
       ports.changePlans.applyChangePlan({
         planId: "plan-1",
         planDigest: "a".repeat(64),

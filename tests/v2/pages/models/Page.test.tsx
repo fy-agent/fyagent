@@ -21,7 +21,9 @@ import { createBrowserFeaturePorts } from "@/v2/shared/platform/browser/features
 import { TooltipProvider } from "@/v2/shared/ui/primitives";
 import {
   changeJobWire,
+  changeJobWorkBuddyWire,
   changePlanUpsertWire,
+  changePlanWorkBuddyWire,
 } from "../../fixtures/changePlans";
 
 function renderPage(ports: FeaturePorts, target?: string) {
@@ -74,6 +76,56 @@ function succeededCodexJob(): ChangeJobSnapshot {
     liveConfigChanged: true,
     recoveryState: "not_needed",
   };
+}
+
+function succeededWorkBuddyJob(): ChangeJobSnapshot {
+  return {
+    ...changeJobWorkBuddyWire,
+    jobId: "job-workbuddy-save",
+    executionId: "job-workbuddy-save",
+    planId: changePlanWorkBuddyWire.planId,
+    idempotencyKey: changePlanWorkBuddyWire.planId,
+    targetProviderId: changePlanWorkBuddyWire.targetProviderId,
+    status: "succeeded",
+    resultCode: "applied",
+    revision: 5,
+    eventSeq: 5,
+    steps: [
+      { kind: "precheck", status: "succeeded", code: "ok" },
+      { kind: "snapshot", status: "succeeded", code: "ok" },
+      { kind: "managed_write", status: "succeeded", code: "ok" },
+      { kind: "readback", status: "succeeded", code: "ok" },
+      { kind: "finalize", status: "succeeded", code: "ok" },
+    ],
+    resources: [
+      { kind: "work_buddy_models_config", status: "matched", code: "ok" },
+      { kind: "work_buddy_backup", status: "matched", code: "ok" },
+    ],
+    events: [
+      { sequence: 1, phase: "precheck", reasonCode: "ok", createdAt: 1 },
+      { sequence: 2, phase: "snapshot", reasonCode: "ok", createdAt: 2 },
+      { sequence: 3, phase: "managed_write", reasonCode: "ok", createdAt: 3 },
+      { sequence: 4, phase: "readback", reasonCode: "ok", createdAt: 4 },
+      { sequence: 5, phase: "finalize", reasonCode: "ok", createdAt: 5 },
+    ],
+    liveConfigChanged: false,
+    restartRequirement: "not_required",
+    recoveryState: "not_needed",
+  };
+}
+
+function stubWorkBuddySavePlan(
+  ports: FeaturePorts,
+  job: ChangeJobSnapshot = succeededWorkBuddyJob(),
+  plan = changePlanWorkBuddyWire,
+) {
+  ports.workbuddy.saveModels = vi.fn();
+  ports.changePlans.createWorkBuddySavePlan = vi.fn(async () => ({ ...plan }));
+  ports.changePlans.applyChangePlan = vi.fn(async () => ({
+    kind: "admitted" as const,
+    job,
+  }));
+  ports.changePlans.getChangeJob = vi.fn(async () => job);
 }
 
 function stubCodexSavePlan(
@@ -473,23 +525,10 @@ describe("V2 Models page", () => {
     expect(within(header as HTMLElement).getByText("待保存")).toBeVisible();
   });
 
-  it("freezes the WorkBuddy overwrite request, rereads authority, and clears credentials", async () => {
+  it("previews WorkBuddy overwrite as a Change Plan risk and confirms with plan identity only", async () => {
     const user = userEvent.setup();
     const ports = workBuddyPorts();
-    ports.workbuddy.saveModels = vi
-      .fn()
-      .mockResolvedValueOnce({
-        state: "overwrite_confirmation_required",
-        token: "opaque-overwrite-token",
-        existingIds: ["existing-model"],
-      })
-      .mockResolvedValueOnce({
-        state: "saved",
-        revision: "revision-2",
-        modelCount: 1,
-        createdEntries: 0,
-        updatedEntries: 1,
-      });
+    stubWorkBuddySavePlan(ports);
     renderPage(ports, "workbuddy");
 
     await screen.findByText("已有第三方模型数量");
@@ -501,26 +540,15 @@ describe("V2 Models page", () => {
     await user.type(screen.getByLabelText("自定义模型 ID"), "manual-model");
     await user.click(screen.getByRole("button", { name: "保存并应用" }));
 
-    const confirm = await screen.findByRole("button", { name: "确认覆盖" });
-    expect(screen.getByLabelText("API Key")).toHaveValue("");
-
-    fireEvent.change(screen.getByLabelText("服务地址"), {
-      target: { value: "https://changed.example/v1" },
-    });
-    fireEvent.change(screen.getByLabelText("API Key"), {
-      target: { value: "replacement-secret" },
-    });
-    fireEvent.change(screen.getByLabelText("自定义模型 ID"), {
-      target: { value: "replacement-model" },
-    });
-    await user.click(confirm);
-
-    await screen.findByText("WorkBuddy 模型配置已保存");
-    expect(ports.workbuddy.saveModels).toHaveBeenCalledTimes(2);
-    const firstRequest = vi.mocked(ports.workbuddy.saveModels).mock.calls[0][0];
-    const secondRequest = vi.mocked(ports.workbuddy.saveModels).mock
-      .calls[1][0];
-    expect(firstRequest).toEqual({
+    expect(
+      await screen.findByText("WorkBuddy 模型保存并应用"),
+    ).toBeVisible();
+    expect(screen.queryByRole("button", { name: "确认覆盖" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "取消" })).toBeNull();
+    expect(document.body).not.toHaveTextContent("first-secret");
+    expect(screen.getByLabelText("API Key")).toHaveValue("first-secret");
+    expect(ports.workbuddy.saveModels).not.toHaveBeenCalled();
+    expect(ports.changePlans.createWorkBuddySavePlan).toHaveBeenCalledWith({
       baseUrl: "https://workbuddy.example/v1",
       apiKey: "first-secret",
       allowNoApiKey: false,
@@ -530,18 +558,15 @@ describe("V2 Models page", () => {
       clearExistingApiKeys: false,
       expectedRevision: "revision-1",
     });
-    expect(secondRequest).toEqual({
-      ...firstRequest,
-      overwriteToken: "opaque-overwrite-token",
+
+    await user.click(screen.getByRole("button", { name: "确认应用" }));
+    await screen.findByText("WorkBuddy 模型配置已保存");
+    expect(ports.changePlans.applyChangePlan).toHaveBeenCalledWith({
+      planId: changePlanWorkBuddyWire.planId,
+      planDigest: changePlanWorkBuddyWire.planDigest,
     });
-    expect(screen.getByLabelText("API Key")).toHaveValue("replacement-secret");
-    const header = screen
-      .getByRole("heading", { name: "WorkBuddy" })
-      .closest("header");
-    expect(header).not.toBeNull();
-    expect(within(header as HTMLElement).getByText("待保存")).toBeVisible();
-    expect(ports.workbuddy.getStatus).toHaveBeenCalledTimes(2);
-    expect(ports.workbuddy.getModelIds).toHaveBeenCalledTimes(2);
+    expect(ports.workbuddy.saveModels).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("API Key")).toHaveValue("");
   });
 
   it("locks duplicate WorkBuddy fetches, preserves truncation, and keeps the key", async () => {
@@ -653,6 +678,7 @@ describe("V2 Models page", () => {
   it("does not claim a WorkBuddy authoritative reread when either refresh fails", async () => {
     const user = userEvent.setup();
     const ports = workBuddyPorts();
+    stubWorkBuddySavePlan(ports);
     vi.mocked(ports.workbuddy.getStatus)
       .mockResolvedValueOnce({
         path: "C:/redacted/models.json",
@@ -664,9 +690,6 @@ describe("V2 Models page", () => {
         format: "objectRoot",
       })
       .mockRejectedValue(new Error("status refresh failed"));
-    ports.workbuddy.saveModels = vi.fn(async () => ({
-      state: "concurrent_modification" as const,
-    }));
     renderPage(ports, "workbuddy");
 
     await screen.findByText("已有第三方模型数量");
@@ -677,42 +700,24 @@ describe("V2 Models page", () => {
     await user.type(screen.getByLabelText("API Key"), "conflict-secret");
     await user.type(screen.getByLabelText("自定义模型 ID"), "conflict-model");
     await user.click(screen.getByRole("button", { name: "保存并应用" }));
+    await user.click(await screen.findByRole("button", { name: "确认应用" }));
 
     expect(
-      await screen.findByText("暂时无法刷新当前设置，请刷新后再次提交。"),
+      await screen.findByText("暂时无法刷新当前设置，请刷新后确认。"),
     ).toBeVisible();
     expect(document.body).not.toHaveTextContent("权威状态");
     expect(screen.getByLabelText("API Key")).toHaveValue("");
-    const savedHeader = screen
-      .getByRole("heading", { name: "WorkBuddy" })
-      .closest("header");
-    expect(savedHeader).not.toBeNull();
-    expect(
-      within(savedHeader as HTMLElement).getByText("待保存"),
-    ).toBeVisible();
+    expect(ports.workbuddy.saveModels).not.toHaveBeenCalled();
   });
 
-  it("does not claim a reread after an expired overwrite token when refresh fails", async () => {
+  it("treats a stale WorkBuddy apply as regenerate instead of an overwrite dialog", async () => {
     const user = userEvent.setup();
     const ports = workBuddyPorts();
-    vi.mocked(ports.workbuddy.getModelIds)
-      .mockResolvedValueOnce({
-        ids: ["existing-model"],
-        revision: "revision-1",
-      })
-      .mockRejectedValue(new Error("model IDs refresh failed"));
-    ports.workbuddy.saveModels = vi
-      .fn()
-      .mockResolvedValueOnce({
-        state: "overwrite_confirmation_required" as const,
-        token: "expired-token",
-        existingIds: ["existing-model"],
-      })
-      .mockRejectedValueOnce({
-        code: "WORKBUDDY_OVERWRITE_TOKEN_EXPIRED",
-        messageKey: "workbuddy.error.overwriteTokenExpired",
-        details: {},
-      });
+    stubWorkBuddySavePlan(ports);
+    ports.changePlans.applyChangePlan = vi.fn(async () => ({
+      kind: "rejected" as const,
+      errorCode: "stale" as const,
+    }));
     renderPage(ports, "workbuddy");
 
     await screen.findByText("已有第三方模型数量");
@@ -723,14 +728,15 @@ describe("V2 Models page", () => {
     await user.type(screen.getByLabelText("API Key"), "expired-secret");
     await user.type(screen.getByLabelText("自定义模型 ID"), "expired-model");
     await user.click(screen.getByRole("button", { name: "保存并应用" }));
-    await user.click(await screen.findByRole("button", { name: "确认覆盖" }));
+    await user.click(await screen.findByRole("button", { name: "确认应用" }));
 
-    expect(await screen.findByText("覆盖确认已失效")).toBeVisible();
+    expect(await screen.findByText("计划已失效")).toBeVisible();
     expect(
-      screen.getByText("暂时无法刷新当前设置，请刷新后重新提交。"),
+      screen.getByRole("button", { name: "重新生成计划" }),
     ).toBeVisible();
-    expect(document.body).not.toHaveTextContent("权威状态");
-    expect(screen.getByLabelText("API Key")).toHaveValue("");
+    expect(screen.queryByRole("button", { name: "确认覆盖" })).toBeNull();
+    expect(ports.workbuddy.saveModels).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("API Key")).toHaveValue("expired-secret");
   });
 
   it("blocks WorkBuddy saves while authoritative local state is unavailable", async () => {
@@ -947,13 +953,7 @@ describe("V2 Models page", () => {
       models: ["gpt-4o", "gemini-2.5-pro"],
       truncated: false,
     }));
-    ports.workbuddy.saveModels = vi.fn(async () => ({
-      state: "saved" as const,
-      revision: "revision-2",
-      modelCount: 3,
-      createdEntries: 2,
-      updatedEntries: 1,
-    }));
+    stubWorkBuddySavePlan(ports);
     renderPage(ports, "workbuddy");
 
     await screen.findByText("已有第三方模型数量");
@@ -970,9 +970,10 @@ describe("V2 Models page", () => {
       screen.getByRole("button", { name: "移除模型 gemini-2.5-pro" }),
     );
     await user.click(screen.getByRole("button", { name: "保存并应用" }));
+    await user.click(await screen.findByRole("button", { name: "确认应用" }));
 
     await screen.findByText("WorkBuddy 模型配置已保存");
-    expect(ports.workbuddy.saveModels).toHaveBeenCalledWith({
+    expect(ports.changePlans.createWorkBuddySavePlan).toHaveBeenCalledWith({
       baseUrl: "https://draft.example/v1",
       apiKey: "draft-secret",
       allowNoApiKey: false,
@@ -982,6 +983,11 @@ describe("V2 Models page", () => {
       clearExistingApiKeys: false,
       expectedRevision: "revision-1",
     });
+    expect(ports.changePlans.applyChangePlan).toHaveBeenCalledWith({
+      planId: changePlanWorkBuddyWire.planId,
+      planDigest: changePlanWorkBuddyWire.planDigest,
+    });
+    expect(ports.workbuddy.saveModels).not.toHaveBeenCalled();
     expect(screen.getByLabelText("API Key")).toHaveValue("");
     const savedHeader = screen
       .getByRole("heading", { name: "WorkBuddy" })

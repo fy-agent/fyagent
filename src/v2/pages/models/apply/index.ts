@@ -5,6 +5,7 @@ export {
 } from "./ApplyWorkspace";
 export { ChangePlanWorkspace } from "./ChangePlanWorkspace";
 export { CodexSavePlanWorkspace } from "./CodexSavePlanWorkspace";
+export { WorkBuddySavePlanWorkspace } from "./WorkBuddySavePlanWorkspace";
 export {
   createApplyViewModel,
   hasUnconfirmedAuthority,
