@@ -1432,3 +1432,24 @@ Recorded squash-only Auto-merge and main Merge Queue settings, made Trellis prea
 ### Status
 
 [OK] **Completed**
+
+
+## Session 44: Correct main merge governance
+
+**Date**: 2026-08-24
+**Task**: Correct main merge governance
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Superseded the squash-only policy with Merge Queue + MERGE, preserved the upstream two-parent ancestry contract, separated commit hygiene from merge topology, updated contributor guidance, changed and read back live GitHub merge settings, and passed pre/post-archive contracts.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b55218c5` | (see git log) |
+
+### Status
+
+[OK] **Completed**
