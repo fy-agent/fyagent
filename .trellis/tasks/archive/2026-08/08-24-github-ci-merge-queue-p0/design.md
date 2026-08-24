@@ -96,4 +96,3 @@ non-required affected-domain workflow. Do not reintroduce push into
 - Required gate still validates requested-vs-skipped job conclusions.
 - Merge Queue continues to require exactly the stable `CI / Required` check.
 - No cache-policy change is coupled to this event-topology fix.
-

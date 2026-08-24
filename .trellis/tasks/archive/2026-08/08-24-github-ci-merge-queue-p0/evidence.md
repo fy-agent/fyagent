@@ -52,4 +52,3 @@ classifier or Required gate.
   shape with no active-task exclusion.
 - Redundant dev-sync push run `32709555068` was cancelled after confirming it
   was another old-policy Full Push CI with no PR/Merge Queue authority.
-

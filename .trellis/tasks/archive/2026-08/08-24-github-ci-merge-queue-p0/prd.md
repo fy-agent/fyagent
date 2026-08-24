@@ -99,4 +99,3 @@ archive before Auto-merge/Merge Queue handoff.
   a new post-deduplication baseline exists).
 - Rewriting product tests or reducing the actual affected-domain coverage.
 - Changing the Merge Queue `MERGE` topology or `max_entries_to_merge=1` policy.
-

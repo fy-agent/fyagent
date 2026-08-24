@@ -27,4 +27,3 @@
 - Any proposal to use top-level path filtering for Required CI.
 - Any need to alter Merge Queue merge topology or cache policy; those are
   separate tasks.
-
