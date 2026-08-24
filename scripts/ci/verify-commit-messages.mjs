@@ -66,11 +66,14 @@ export function isRevertCommitSubject(subject) {
 
 export function isConventionalCommitSubject(subject) {
   const trimmed = subject.trim();
-  if (trimmed.length === 0 || trimmed.length > SUBJECT_MAX_LENGTH) {
+  if (trimmed.length === 0) {
     return false;
   }
   if (isMergeCommitSubject(trimmed) || isRevertCommitSubject(trimmed)) {
     return true;
+  }
+  if (trimmed.length > SUBJECT_MAX_LENGTH) {
+    return false;
   }
   const normalized = stripGithubSquashSuffix(trimmed);
   if (normalized.length === 0 || normalized.length > SUBJECT_MAX_LENGTH) {
@@ -84,11 +87,11 @@ export function validateCommitSubject(subject) {
   if (trimmed.length === 0) {
     return "commit subject must not be empty";
   }
-  if (trimmed.length > SUBJECT_MAX_LENGTH) {
-    return `commit subject exceeds ${SUBJECT_MAX_LENGTH} characters`;
-  }
   if (isMergeCommitSubject(trimmed) || isRevertCommitSubject(trimmed)) {
     return null;
+  }
+  if (trimmed.length > SUBJECT_MAX_LENGTH) {
+    return `commit subject exceeds ${SUBJECT_MAX_LENGTH} characters`;
   }
   const normalized = stripGithubSquashSuffix(trimmed);
   if (normalized.length === 0) {

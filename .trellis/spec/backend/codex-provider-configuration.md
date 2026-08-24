@@ -158,6 +158,12 @@ CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED
 
 ### Change Plan admission, apply, and recovery
 
+- The reusable executor contract (typed adapter descriptor, five durable
+  phases, idempotent replay, cancellation, partial truth, event ordering, and
+  crash recovery) is owned by
+  [Change Plan Typed Executor](./change-plan-executor.md). This section owns
+  only the Codex-specific Provider/projection/security semantics layered on
+  that executor.
 - Schema 20 owns local-only `change_plans`, `change_jobs`, and append-only
   `change_job_events`. Fresh creation and v19 migration call the same
   idempotent table helper; WebDAV sync skips and locally preserves all three.
@@ -173,8 +179,10 @@ CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED
 - `apply_change_plan` accepts only `planId + planDigest`, reacquires the same
   Provider guard, rechecks contract/digest/TTL/consumption/baselines/secret
   capability, atomically consumes the plan, and invokes the lock-held Provider
-  writer at most once. Invalid, expired, replayed, stale, or secret-blocked
-  requests invoke it zero times.
+  writer at most once. Invalid, expired, stale, secret-blocked, or changed-
+  digest requests invoke it zero times. A same-digest replay of a consumed v2
+  plan returns the existing execution snapshot as an idempotent replay and
+  likewise invokes the writer zero additional times.
 - When the target is the fixed V2 Codex Quick Setup Provider, Change Plan must
   derive `target_projection_digest` from the **same pure targeted-patch
   projection** consumed by the real Quick Setup writer. The current live
@@ -187,7 +195,10 @@ CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED
   `list_recoverable_change_jobs` may converge that ledger state by readback,
   including a prior failed/recovery-required snapshot, but never replay the
   writer. A target reached after uncertain execution is warning, not success;
-  a confirmed original baseline is failed/restored.
+  a confirmed original baseline is failed/restored. If the executor proves the
+  interruption occurred before managed write, it reports
+  `interrupted_before_write`; if an unknown post-write outcome is later proven
+  at the target, it reports `recovered_target_reached`.
 
 ## 4. Validation & Error Matrix
 
@@ -202,7 +213,8 @@ CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED
 | A DeepSeek-looking URL has HTTP, user information, a suffix-confusion hostname, or only a path match | Use the neutral template; grant no vendor behavior.                                                                     |
 | A mutation succeeds but final live Codex bytes do not change                                         | Return `liveConfigChanged: false`; do not offer an automatic restart.                                                   |
 | A mutation fails                                                                                     | Preserve prior live bytes and omit risk/restart success signals.                                                        |
-| Change Plan admission is invalid, expired, consumed, stale, or secret-blocked                       | Return a closed error code and invoke the Provider writer zero times.                                                   |
+| Change Plan admission is invalid, expired, stale, secret-blocked, or uses a changed digest          | Return a closed error code and invoke the Provider writer zero times.                                                   |
+| A consumed v2 Change Plan is reapplied with the exact same digest                                   | Return the already-created execution as `idempotent_replay`; invoke the Provider writer zero additional times.          |
 | Change Plan readback is mixed/unavailable                                                            | Persist `recovery_required`; later recovery performs readback only and never replays the writer.                        |
 | Change Plan targets the fixed Quick Setup row while live TOML contains unrelated user content        | Preview and writer use the same targeted projection; preserved content does not create a false readback mismatch.       |
 | Codex image-extension is enabled (`requires_openai_auth = false`) and the Provider has an API key    | Stored and live `[model_providers.<id>]` contain `experimental_bearer_token` equal to `auth.OPENAI_API_KEY`.            |
@@ -253,10 +265,14 @@ CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED
   missing.
 - Change Plan tests cover 0/v19 to schema 20, sync skip/local preserve,
   zero-side-effect planning, 15-minute expiry, concurrent single admission,
-  writer exactly once/zero on rejection, normal/backup-only/live-takeover
+  writer exactly once/zero on rejection, same-plan idempotent replay,
+  pre-write cancellation, five-phase durable event ordering,
+  normal/backup-only/live-takeover
   projection parity, fixed-Quick-Setup targeted-patch projection parity,
   credential-negative persistence/serialization, and recovery-required
-  readback convergence without replay.
+  readback convergence/fault recovery without replay. Generic executor tests
+  and the shared v2 DTO fixture are specified in
+  [Change Plan Typed Executor](./change-plan-executor.md).
 
 ## 7. Wrong vs Correct
 

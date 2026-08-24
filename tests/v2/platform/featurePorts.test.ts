@@ -260,6 +260,9 @@ describe("V2 feature ports", () => {
         planDigest: "a".repeat(64),
       }),
     ).rejects.toThrow(NATIVE_ONLY_ERROR);
+    await expect(ports.changePlans.cancelChangeJob("job-1")).rejects.toThrow(
+      NATIVE_ONLY_ERROR,
+    );
     await expect(ports.changePlans.getChangeJob("job-1")).rejects.toThrow(
       NATIVE_ONLY_ERROR,
     );

@@ -1,8 +1,10 @@
 use crate::database::{lock_conn, Database};
 use crate::error::AppError;
 use crate::services::change_plan::{
-    enum_json, ApplyChangePlanOutcome, ChangeApplyOutcomeKind, ChangeJobEvent, ChangeJobSnapshot,
-    ChangePlan, ChangePlanErrorCode, ChangePlanRisk, RestartRequirement, StoredChangePlan,
+    descriptor_for_operation, enum_json, ApplyChangePlanOutcome, ChangeApplyOutcomeKind,
+    ChangeJobEvent, ChangeJobSnapshot, ChangeJobStatus, ChangeJobStep, ChangeOperation, ChangePlan,
+    ChangePlanErrorCode, ChangePlanRisk, ChangeResultCode, ChangeStepKind, ChangeStepStatus,
+    RestartRequirement, StoredChangePlan,
 };
 use rusqlite::{params, Connection, OptionalExtension};
 
@@ -52,10 +54,11 @@ impl Database {
              FROM change_plans WHERE plan_id = ?1",
             params![plan_id],
             |row| {
+                let operation: ChangeOperation = parse_enum(row.get(0)?)?;
                 Ok(StoredChangePlan {
                     public: ChangePlan {
                         plan_id: plan_id.to_string(),
-                        operation: parse_enum(row.get(0)?)?,
+                        operation,
                         target_provider_id: row.get(1)?,
                         target_provider_name: row.get(2)?,
                         plan_digest: row.get(3)?,
@@ -66,6 +69,7 @@ impl Database {
                         created_at: row.get(12)?,
                         expires_at: row.get(13)?,
                         status: parse_enum(row.get(14)?)?,
+                        adapter: descriptor_for_operation(operation),
                         current_provider_code: current_provider_code(
                             &row.get::<_, Option<String>>(5)?,
                             &row.get::<_, Option<String>>(6)?,
@@ -191,7 +195,7 @@ impl Database {
                 job.target_provider_id,
                 job.revision,
                 job.event_seq,
-                enum_json(job.status)?,
+                enum_json(persisted_job_status(job.status))?,
                 enum_json(job.result_code)?,
                 serde_json::to_string(&job.steps)
                     .map_err(|error| AppError::Database(error.to_string()))?,
@@ -218,6 +222,26 @@ impl Database {
         Self::get_change_job_on_conn(&conn, job_id)
     }
 
+    pub(crate) fn get_change_job_by_plan_id(
+        &self,
+        plan_id: &str,
+    ) -> Result<Option<ChangeJobSnapshot>, AppError> {
+        let conn = lock_conn!(self.conn);
+        let job_id = conn
+            .query_row(
+                "SELECT job_id FROM change_jobs WHERE plan_id = ?1",
+                params![plan_id],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(|error| AppError::Database(format!("read change job id failed: {error}")))?;
+        job_id
+            .as_deref()
+            .map(|job_id| Self::get_change_job_on_conn(&conn, job_id))
+            .transpose()
+            .map(Option::flatten)
+    }
+
     fn get_change_job_on_conn(
         conn: &Connection,
         job_id: &str,
@@ -230,18 +254,25 @@ impl Database {
                  FROM change_jobs WHERE job_id = ?1",
                 params![job_id],
                 |row| {
+                    let result_code: ChangeResultCode = parse_enum(row.get(5)?)?;
+                    let stored_status: ChangeJobStatus = parse_enum(row.get(4)?)?;
+                    let steps: Vec<ChangeJobStep> = serde_json::from_str(&row.get::<_, String>(6)?)
+                        .map_err(|_| rusqlite::Error::InvalidQuery)?;
                     Ok(ChangeJobSnapshot {
                         job_id: job_id.to_string(),
+                        execution_id: job_id.to_string(),
                         plan_id: row.get(0)?,
+                        idempotency_key: row.get(0)?,
                         target_provider_id: row.get(1)?,
                         revision: row.get(2)?,
                         event_seq: row.get(3)?,
-                        status: parse_enum(row.get(4)?)?,
-                        result_code: parse_enum(row.get(5)?)?,
-                        steps: serde_json::from_str(&row.get::<_, String>(6)?)
-                            .map_err(|_| rusqlite::Error::InvalidQuery)?,
+                        status: public_job_status(stored_status, result_code),
+                        result_code,
+                        adapter_error_code: None,
+                        steps: normalize_job_steps(steps),
                         resources: serde_json::from_str(&row.get::<_, String>(7)?)
                             .map_err(|_| rusqlite::Error::InvalidQuery)?,
+                        partial_result: None,
                         events: Vec::new(),
                         restart_requirement: parse_enum(row.get(8)?)?,
                         usage_evidence: parse_enum(row.get(9)?)?,
@@ -259,6 +290,7 @@ impl Database {
             return Ok(None);
         };
         job.events = Self::list_change_job_events_on_conn(conn, job_id)?;
+        normalize_job_events(&mut job.events);
         Ok(Some(job))
     }
 
@@ -287,7 +319,7 @@ impl Database {
                     job.job_id,
                     job.revision,
                     job.event_seq,
-                    enum_json(job.status)?,
+                    enum_json(persisted_job_status(job.status))?,
                     enum_json(job.result_code)?,
                     serde_json::to_string(&job.steps)
                         .map_err(|error| AppError::Database(error.to_string()))?,
@@ -406,6 +438,78 @@ fn current_provider_code(db: &Option<String>, device: &Option<String>) -> String
     .to_string()
 }
 
+fn persisted_job_status(status: ChangeJobStatus) -> ChangeJobStatus {
+    match status {
+        // Schema v20 intentionally stays immutable. Public cancellation is
+        // represented durably by result_code=cancelled_before_write while the
+        // coarse SQLite status remains a v20-legal terminal value.
+        ChangeJobStatus::Cancelled => ChangeJobStatus::Failed,
+        other => other,
+    }
+}
+
+fn public_job_status(
+    stored_status: ChangeJobStatus,
+    result_code: ChangeResultCode,
+) -> ChangeJobStatus {
+    if result_code == ChangeResultCode::CancelledBeforeWrite {
+        ChangeJobStatus::Cancelled
+    } else {
+        stored_status
+    }
+}
+
+fn normalize_job_steps(steps: Vec<ChangeJobStep>) -> Vec<ChangeJobStep> {
+    let mut normalized = steps
+        .into_iter()
+        .map(|mut step| {
+            step.kind = match step.kind {
+                ChangeStepKind::Apply => ChangeStepKind::ManagedWrite,
+                ChangeStepKind::Reconcile => ChangeStepKind::Finalize,
+                other => other,
+            };
+            step
+        })
+        .collect::<Vec<_>>();
+
+    if !normalized
+        .iter()
+        .any(|step| step.kind == ChangeStepKind::Snapshot)
+    {
+        normalized.push(ChangeJobStep {
+            kind: ChangeStepKind::Snapshot,
+            status: ChangeStepStatus::Skipped,
+            code: "legacy_not_recorded".to_string(),
+        });
+    }
+
+    let order = [
+        ChangeStepKind::Precheck,
+        ChangeStepKind::Snapshot,
+        ChangeStepKind::ManagedWrite,
+        ChangeStepKind::Readback,
+        ChangeStepKind::Finalize,
+    ];
+    normalized.sort_by_key(|step| {
+        order
+            .iter()
+            .position(|kind| *kind == step.kind)
+            .unwrap_or(order.len())
+    });
+    normalized.dedup_by_key(|step| step.kind);
+    normalized
+}
+
+fn normalize_job_events(events: &mut [ChangeJobEvent]) {
+    for event in events {
+        event.phase = match event.phase {
+            ChangeStepKind::Apply => ChangeStepKind::ManagedWrite,
+            ChangeStepKind::Reconcile => ChangeStepKind::Finalize,
+            other => other,
+        };
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -428,6 +532,7 @@ mod tests {
                 created_at: now,
                 expires_at: now + 900,
                 status: ChangePlanStatus::Ready,
+                adapter: descriptor_for_operation(ChangeOperation::CodexProviderSwitch),
                 current_provider_code: "current_mixed".into(),
                 target_provider_code: "existing_provider".into(),
                 restart_expectation: RestartRequirement::Recommended,
@@ -534,5 +639,82 @@ mod tests {
                 .unwrap();
             assert_eq!(event_count, 0);
         }
+    }
+
+    #[test]
+    fn legacy_v1_steps_and_events_normalize_without_schema_migration() {
+        let db = database();
+        db.insert_change_plan(&record(100)).unwrap();
+        db.conn
+            .lock()
+            .unwrap()
+            .execute_batch(
+                r#"
+                UPDATE change_plans
+                   SET status='consumed', consumed_at=101
+                 WHERE plan_id='plan-1';
+                INSERT INTO change_jobs (
+                    job_id, plan_id, target_provider_id, revision, event_seq, status,
+                    result_code, steps_json, resources_json, restart_requirement,
+                    usage_evidence, recovery_state, diagnostic_code, live_config_changed,
+                    created_at, updated_at
+                ) VALUES (
+                    'legacy-job', 'plan-1', 'target', 3, 3, 'running', 'running',
+                    '[{"kind":"precheck","status":"succeeded","code":"ok"},{"kind":"apply","status":"running","code":"writer_started"},{"kind":"readback","status":"pending","code":"pending"},{"kind":"reconcile","status":"pending","code":"pending"}]',
+                    '[{"kind":"provider_db_current","status":"pending","code":"pending"},{"kind":"device_current","status":"pending","code":"pending"},{"kind":"target_definition","status":"pending","code":"pending"},{"kind":"codex_live_projection","status":"pending","code":"pending"}]',
+                    'unknown', 'not_observed', 'not_needed', NULL, 0, 101, 103
+                );
+                INSERT INTO change_job_events (job_id, event_seq, phase, reason_code, created_at)
+                VALUES
+                    ('legacy-job', 1, 'precheck', 'planned', 101),
+                    ('legacy-job', 2, 'apply', 'writer_started', 102),
+                    ('legacy-job', 3, 'reconcile', 'legacy_reconcile', 103);
+                "#,
+            )
+            .unwrap();
+
+        let job = db.get_change_job("legacy-job").unwrap().unwrap();
+        assert_eq!(
+            job.steps.iter().map(|step| step.kind).collect::<Vec<_>>(),
+            vec![
+                ChangeStepKind::Precheck,
+                ChangeStepKind::Snapshot,
+                ChangeStepKind::ManagedWrite,
+                ChangeStepKind::Readback,
+                ChangeStepKind::Finalize,
+            ]
+        );
+        assert_eq!(
+            job.steps
+                .iter()
+                .find(|step| step.kind == ChangeStepKind::Snapshot)
+                .unwrap()
+                .code,
+            "legacy_not_recorded"
+        );
+        assert_eq!(
+            job.events
+                .iter()
+                .map(|event| event.phase)
+                .collect::<Vec<_>>(),
+            vec![
+                ChangeStepKind::Precheck,
+                ChangeStepKind::ManagedWrite,
+                ChangeStepKind::Finalize,
+            ]
+        );
+
+        let raw_steps: String = db
+            .conn
+            .lock()
+            .unwrap()
+            .query_row(
+                "SELECT steps_json FROM change_jobs WHERE job_id='legacy-job'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(raw_steps.contains("\"apply\""));
+        assert!(raw_steps.contains("\"reconcile\""));
     }
 }

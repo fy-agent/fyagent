@@ -9,10 +9,11 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke }));
 describe("Tauri Change Plans port", () => {
   beforeEach(() => invoke.mockReset());
 
-  it("uses exactly the four native commands and bounded payloads", async () => {
+  it("uses exactly the five native commands and bounded payloads", async () => {
     invoke
       .mockResolvedValueOnce(changePlanWire)
       .mockResolvedValueOnce({ kind: "admitted", job: changeJobWire })
+      .mockResolvedValueOnce({ accepted: false, code: "commit_point_passed", jobId: "job-1" })
       .mockResolvedValueOnce(changeJobWire)
       .mockResolvedValueOnce([changeJobWire]);
     const port = createChangePlansPort();
@@ -22,12 +23,14 @@ describe("Tauri Change Plans port", () => {
       planId: "plan-1",
       planDigest: "a".repeat(64),
     });
+    await port.cancelChangeJob("job-1");
     await port.getChangeJob("job-1");
     await port.listRecoverableChangeJobs();
 
     expect(invoke.mock.calls).toEqual([
       ["create_codex_provider_switch_plan", { targetProviderId: "provider-1" }],
       ["apply_change_plan", { planId: "plan-1", planDigest: "a".repeat(64) }],
+      ["cancel_change_job", { jobId: "job-1" }],
       ["get_change_job", { jobId: "job-1" }],
       ["list_recoverable_change_jobs"],
     ]);

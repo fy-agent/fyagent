@@ -47,6 +47,11 @@ describe("commit message convention", () => {
   });
 
   it("accepts merge, revert, and GitHub squash suffix subjects", () => {
+    const mergeQueueSubject =
+      "Merge pull request #146 from fy-agent/dev/change-plan-typed-executor-final";
+    expect(mergeQueueSubject.length).toBeGreaterThan(72);
+    expect(isConventionalCommitSubject(mergeQueueSubject)).toBe(true);
+    expect(validateCommitSubject(mergeQueueSubject)).toBeNull();
     expect(
       isConventionalCommitSubject(
         "Merge pull request #19 from fy-agent/codex/fix-v0.3.4-release",

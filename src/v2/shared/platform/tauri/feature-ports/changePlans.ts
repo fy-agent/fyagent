@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 import {
   parseApplyChangePlanOutcome,
+  parseCancelChangeJobOutcome,
   parseChangeJobSnapshot,
   parseChangePlan,
   parseRecoverableChangeJobs,
@@ -44,6 +45,12 @@ export function createChangePlansPort(): ChangePlansPort {
         }),
       );
     },
+    cancelChangeJob: async (jobId) =>
+      parseCancelChangeJobOutcome(
+        await invoke<unknown>("cancel_change_job", {
+          jobId: assertOpaqueId(jobId, "Change Job ID"),
+        }),
+      ),
     getChangeJob: async (jobId) =>
       parseChangeJobSnapshot(
         await invoke<unknown>("get_change_job", {

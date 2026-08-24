@@ -1,0 +1,3 @@
+{"file":".trellis/spec/backend/change-plan-executor.md","reason":"Verify final executor behavior against its durable code-spec before archive."}
+{"file":".trellis/spec/backend/codex-provider-configuration.md","reason":"Verify no regression in schema-v20, local-only, single-writer, targeted projection, or recovery semantics."}
+{"file":".trellis/spec/frontend/v2-agent-models.md","reason":"Verify strict V2 DTO parsing and result copy remain aligned with the host contract."}

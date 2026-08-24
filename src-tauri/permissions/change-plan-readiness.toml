@@ -1,9 +1,10 @@
 [[permission]]
 identifier = "allow-change-plan"
-description = "Allows the main local webview to create, apply and read the bounded Codex Change Plan ledger."
+description = "Allows the main local webview to create, apply, cancel and read the bounded Codex Change Plan ledger."
 commands.allow = [
   "create_codex_provider_switch_plan",
   "apply_change_plan",
+  "cancel_change_job",
   "get_change_job",
   "list_recoverable_change_jobs",
 ]

@@ -24,6 +24,36 @@ const plan: ChangePlan = {
   createdAt: 1_800_000_000,
   expiresAt: 1_800_000_900,
   status: "ready",
+  adapter: {
+    adapterId: "codex_provider_switch",
+    adapterVersion: "1",
+    operationType: "codex_provider_switch",
+    phases: [
+      "precheck",
+      "snapshot",
+      "managed_write",
+      "readback",
+      "finalize",
+    ],
+    readSet: [
+      "provider_db_current",
+      "device_current",
+      "target_definition",
+      "codex_live_projection",
+    ],
+    writeSet: [
+      "provider_db_current",
+      "device_current",
+      "codex_live_projection",
+    ],
+    idempotencyScope: "plan",
+    cancelMode: "before_managed_write",
+    compensationMode: "writer_owned_rollback",
+    faultPoints: [
+      "before_managed_write",
+      "after_managed_write_before_record",
+    ],
+  },
   currentProviderCode: "provider-before",
   targetProviderCode: "provider-1",
   restartExpectation: "not_required",
@@ -34,17 +64,21 @@ const plan: ChangePlan = {
 function job(overrides: Partial<ChangeJobSnapshot> = {}): ChangeJobSnapshot {
   return {
     jobId: "job-1",
+    executionId: "job-1",
     planId: plan.planId,
+    idempotencyKey: plan.planId,
     targetProviderId: plan.targetProviderId,
     revision: 1,
     eventSeq: 4,
     status: "running",
     resultCode: "running",
+    adapterErrorCode: null,
     steps: [
       { kind: "precheck", status: "succeeded", code: "ok" },
-      { kind: "apply", status: "running", code: "started" },
+      { kind: "snapshot", status: "succeeded", code: "bound" },
+      { kind: "managed_write", status: "running", code: "started" },
       { kind: "readback", status: "pending", code: "pending" },
-      { kind: "reconcile", status: "pending", code: "pending" },
+      { kind: "finalize", status: "pending", code: "pending" },
     ],
     resources: [
       { kind: "provider_db_current", status: "pending", code: "pending" },
@@ -52,6 +86,13 @@ function job(overrides: Partial<ChangeJobSnapshot> = {}): ChangeJobSnapshot {
       { kind: "target_definition", status: "pending", code: "pending" },
       { kind: "codex_live_projection", status: "pending", code: "pending" },
     ],
+    partialResult: {
+      succeededSteps: ["precheck", "snapshot"],
+      compensatedSteps: [],
+      unverifiedSteps: [],
+      remainingEffects: [],
+      manualActions: [],
+    },
     events: [
       {
         sequence: 1,
@@ -194,6 +235,77 @@ describe("Apply view model", () => {
     expect(view.mode).toBe("failed");
     expect(view.tone).toBe("danger");
     expect(view.title).toContain("原基线已确认");
+  });
+
+  it("renders pre-write cancellation and interruption without inventing recovery uncertainty", () => {
+    const cancelled = createApplyViewModel(
+      plan,
+      job({
+        status: "cancelled",
+        resultCode: "cancelled_before_write",
+        recoveryState: "not_needed",
+        resources: [],
+      }),
+      { busy: false, error: null },
+    );
+    expect(cancelled.mode).toBe("failed");
+    expect(cancelled.tone).toBe("neutral");
+    expect(cancelled.title).toContain("已取消");
+
+    const interrupted = createApplyViewModel(
+      plan,
+      job({
+        status: "failed",
+        resultCode: "interrupted_before_write",
+        recoveryState: "succeeded",
+        resources: [
+          {
+            kind: "provider_db_current",
+            status: "mismatched",
+            code: "target_not_current",
+          },
+        ],
+      }),
+      { busy: false, error: null },
+    );
+    expect(interrupted.mode).toBe("failed");
+    expect(interrupted.title).toContain("写入前中断");
+  });
+
+  it("renders recovered target and compensation from authoritative job fields", () => {
+    const recovered = createApplyViewModel(
+      plan,
+      job({
+        status: "warning",
+        resultCode: "recovered_target_reached",
+        recoveryState: "not_needed",
+        resources: [],
+      }),
+      { busy: false, error: null },
+    );
+    expect(recovered.mode).toBe("warning");
+    expect(recovered.title).toContain("恢复回读确认");
+
+    const compensated = createApplyViewModel(
+      plan,
+      job({
+        steps: [
+          { kind: "precheck", status: "succeeded", code: "ok" },
+          { kind: "snapshot", status: "succeeded", code: "bound" },
+          {
+            kind: "managed_write",
+            status: "compensated",
+            code: "writer_owned_rollback_confirmed",
+          },
+          { kind: "readback", status: "succeeded", code: "baseline_restored" },
+          { kind: "finalize", status: "succeeded", code: "finalized" },
+        ],
+      }),
+      { busy: false, error: null },
+    );
+    expect(
+      compensated.steps.find((step) => step.key.startsWith("managed_write")),
+    ).toMatchObject({ detail: "已补偿", status: "succeeded" });
   });
 
   it.each(["expired", "stale", "consumed", "invalid_digest"])(

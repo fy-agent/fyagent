@@ -1844,6 +1844,7 @@ pub fn run() {
             commands::get_agent_install_readiness,
             commands::create_codex_provider_switch_plan,
             commands::apply_change_plan,
+            commands::cancel_change_job,
             commands::get_change_job,
             commands::list_recoverable_change_jobs,
             commands::get_external_agent_status,

@@ -1,0 +1,88 @@
+{
+  "contractVersion": "fyagent-change-plan/v2",
+  "plan": {
+    "planId": "plan-1",
+    "operation": "codex_provider_switch",
+    "targetProviderId": "provider-1",
+    "targetProviderName": "Provider One",
+    "planDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "baselineDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "dbBaselineProviderId": null,
+    "deviceBaselineProviderId": "provider-before",
+    "secretCapability": "no_new_credential_material",
+    "createdAt": 1800000000,
+    "expiresAt": 1800000900,
+    "status": "ready",
+    "adapter": {
+      "adapterId": "codex_provider_switch",
+      "adapterVersion": "1",
+      "operationType": "codex_provider_switch",
+      "phases": ["precheck", "snapshot", "managed_write", "readback", "finalize"],
+      "readSet": ["provider_db_current", "device_current", "target_definition", "codex_live_projection"],
+      "writeSet": ["provider_db_current", "device_current", "codex_live_projection"],
+      "idempotencyScope": "plan",
+      "cancelMode": "before_managed_write",
+      "compensationMode": "writer_owned_rollback",
+      "faultPoints": ["before_managed_write", "after_managed_write_before_record"]
+    },
+    "currentProviderCode": "current_mixed",
+    "targetProviderCode": "existing_provider",
+    "restartExpectation": "recommended",
+    "risks": [{ "code": "local_configuration_write", "severity": "notice" }],
+    "evidenceNote": "usage_not_observed"
+  },
+  "job": {
+    "jobId": "job-1",
+    "executionId": "job-1",
+    "planId": "plan-1",
+    "idempotencyKey": "plan-1",
+    "targetProviderId": "provider-1",
+    "revision": 4,
+    "eventSeq": 4,
+    "status": "running",
+    "resultCode": "running",
+    "adapterErrorCode": null,
+    "steps": [
+      { "kind": "precheck", "status": "succeeded", "code": "baseline_matched" },
+      { "kind": "snapshot", "status": "succeeded", "code": "snapshot_bound" },
+      { "kind": "managed_write", "status": "running", "code": "managed_write_started" },
+      { "kind": "readback", "status": "pending", "code": "pending" },
+      { "kind": "finalize", "status": "pending", "code": "pending" }
+    ],
+    "resources": [
+      { "kind": "provider_db_current", "status": "pending", "code": "pending" },
+      { "kind": "device_current", "status": "pending", "code": "pending" },
+      { "kind": "target_definition", "status": "pending", "code": "pending" },
+      { "kind": "codex_live_projection", "status": "pending", "code": "pending" }
+    ],
+    "partialResult": {
+      "succeededSteps": ["precheck", "snapshot"],
+      "compensatedSteps": [],
+      "unverifiedSteps": [],
+      "remainingEffects": [],
+      "manualActions": []
+    },
+    "events": [
+      { "sequence": 1, "phase": "precheck", "reasonCode": "planned", "createdAt": 1800000001 },
+      { "sequence": 2, "phase": "precheck", "reasonCode": "precheck_succeeded", "createdAt": 1800000002 },
+      { "sequence": 3, "phase": "snapshot", "reasonCode": "snapshot_succeeded", "createdAt": 1800000003 },
+      { "sequence": 4, "phase": "managed_write", "reasonCode": "managed_write_started", "createdAt": 1800000004 }
+    ],
+    "restartRequirement": "unknown",
+    "usageEvidence": "not_observed",
+    "recoveryState": "not_needed",
+    "diagnosticCode": null,
+    "liveConfigChanged": false,
+    "createdAt": 1800000001,
+    "updatedAt": 1800000004
+  },
+  "cancelOutcome": {
+    "accepted": true,
+    "code": "accepted",
+    "jobId": "job-1"
+  },
+  "eventHint": {
+    "jobId": "job-1",
+    "eventSeq": 4
+  }
+}
