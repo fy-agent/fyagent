@@ -40,10 +40,9 @@ equate `CI / Required == green` with permission to merge.
       merge-ready decision-maker.
 - [x] The spec requires exact-head binding and forbids `--admin` bypass.
 - [x] The spec records the final `main` / `dev/laiyongjie` synchronization rule.
-- [ ] `task.py validate`, `mise run check:contracts`, direct-session
-      prearchive, and post-archive contracts all pass. The first three are
-      complete; post-archive remains the final lifecycle check.
-- [ ] This task is archived before its PR is made merge-ready.
+- [x] `task.py validate`, `mise run check:contracts`, direct-session
+      prearchive, and post-archive contracts all pass.
+- [x] This task is archived before its PR is made merge-ready.
 
 ## Notes
 

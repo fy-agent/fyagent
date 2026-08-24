@@ -63,4 +63,10 @@ Official GitHub documentation was rechecked before writing the SPEC:
   gate also passed: frontend 1489 passed / 1 skipped, Rust library 2847 passed /
   5 ignored plus integration/helper suites, and release contracts 510 passed /
   1 skipped.
+- Trellis archive completed to
+  `.trellis/tasks/archive/2026-08/08-24-github-merge-governance-spec` with zero
+  active tasks remaining.
+- Post-archive `mise run check:contracts`: pass after staging the canonical
+  archive move so the repository scanner could verify regular-file Git modes;
+  contract tests 510 passed / 1 skipped and native fetch 4/4.
 - No product/runtime code changed in this task.
