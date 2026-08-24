@@ -135,9 +135,17 @@ grandfather the final metadata state.
 
 ## Remaining merge-ready evidence
 
-- replacement PR exact-head `CI / Required` and Merge Queue `merge_group` must
+- replacement PR #146 exact-head `CI / Required` and Merge Queue `merge_group` must
   pass before merge;
 - old Draft #134 is closed only after the replacement PR exists.
+
+## Replacement PR binding
+
+- Replacement PR: https://github.com/fy-agent/fyagent/pull/146
+- Base: `main`
+- Head: `dev/change-plan-typed-executor-final`
+- The old Draft #134 is now eligible to be closed as superseded after this
+  binding is committed and pushed.
 
 ## Final direct-session prearchive
 

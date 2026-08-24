@@ -283,6 +283,19 @@ head SHA: ec15bef545145528f03778003c586ebc1b64971e
 issues: #58 #59 #60 (all OPEN)
 ```
 
+Replacement PR created during execution:
+
+```text
+#146 feat(change-plan): add canonical typed executor
+base: main
+head: dev/change-plan-typed-executor-final
+```
+
+The replacement task is archived at
+`.trellis/tasks/archive/2026-08/08-24-change-plan-typed-executor-final`.
+Once the PR URL binding is committed/pushed, close old Draft #134 as superseded
+and let #146 complete through exact-head PR CI + Merge Queue.
+
 Old PR value to salvage:
 
 - typed adapter descriptor/registry;
@@ -347,11 +360,10 @@ Validation already observed on the replacement work:
 - a cross-process Cargo integration-fixture race was discovered and fixed by
   PID-isolating test HOME in `4186fb92`.
 
-**Current handoff point:** the final code/spec metadata correction was made in
-`35ea4634`; re-run the final direct-session prearchive on that exact code, then
-complete/archive the Trellis task, run post-archive contracts, create a
-replacement PR, close old #134 as superseded, and hand the replacement to
-Merge Queue.
+**Current handoff point:** implementation, final direct-session prearchive,
+archive, and post-archive contracts are complete. Replacement PR #146 exists.
+Commit/push its archive binding, close old #134 as superseded, hand #146 to
+Merge Queue, then continue directly to #136 salvage while #146 is hosted.
 
 Issue closure guidance:
 
@@ -609,9 +621,8 @@ completion.
 
 ## 10. Immediate next action
 
-At the moment this handoff was written, the immediate task is still the #134
-replacement. The final adapter metadata correction is committed as `35ea4634`.
-Run the final direct-session prearchive against that exact code/spec state,
-finish/archive the task, run post-archive contracts, create the replacement PR,
-close old #134 as superseded, and hand the replacement to Merge Queue. Then
-continue directly to #136 using this document as the cross-PR source of truth.
+At the moment this handoff was last updated, #134 replacement PR #146 already
+exists and its Trellis task is archived. Finish the PR URL binding commit,
+close old Draft #134 as superseded, and enable exact-head Merge Queue handoff
+for #146. Then immediately start #136 V2 UI salvage from the latest main/current
+canonical executor, using this document as the cross-PR source of truth.
