@@ -1453,3 +1453,24 @@ Superseded the squash-only policy with Merge Queue + MERGE, preserved the upstre
 ### Status
 
 [OK] **Completed**
+
+
+## Session 45: Clarify CI history rewrite fallback
+
+**Date**: 2026-08-24
+**Task**: Clarify CI history rewrite fallback
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Removed stale squash-main wording from the defensive unreachable-push-before CI scenario without changing CI behavior; validated, prearchived, archived, and passed post-archive contracts.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `3c7babb5` | (see git log) |
+
+### Status
+
+[OK] **Completed**
