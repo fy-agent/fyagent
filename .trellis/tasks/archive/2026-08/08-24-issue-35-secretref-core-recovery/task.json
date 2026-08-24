@@ -16,7 +16,7 @@
   "base_branch": "main",
   "worktree_path": null,
   "commit": "a20644656c885e00d630cfbf2ffac1ef554c4772",
-  "pr_url": null,
+  "pr_url": "https://github.com/fy-agent/fyagent/pull/145",
   "subtasks": [],
   "children": [],
   "parent": null,
@@ -30,6 +30,7 @@
   "meta": {
     "issue": "35",
     "replaces_pr": "132",
-    "historical_source_pr": "112"
+    "historical_source_pr": "112",
+    "supersedes_pr": "143"
   }
 }

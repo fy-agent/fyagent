@@ -15,8 +15,8 @@ Evidence date: 2026-08-24 (Asia/Shanghai)
   commit `chore(secrets): sync final main baseline` before final local gates.
 - Implementation commit: `6d1636f76abc392dcaeef87bcaa0b4330a8ad75b`
 - Historical source Draft PR #132 is closed unmerged. Earlier replacement Draft
-  #143 remains historical integration evidence and will be closed as superseded
-  after the final clean replacement PR exists.
+  #143 remains historical integration evidence and is superseded by final
+  replacement PR #145: <https://github.com/fy-agent/fyagent/pull/145>.
 - Old PR #112 was not rebased or cherry-picked.
 - Original PR #132 is preserved as a merge parent in the replacement branch;
   its contributor commits are not flattened or anonymously copied.
@@ -83,6 +83,9 @@ Evidence date: 2026-08-24 (Asia/Shanghai)
   moving the completed task into `archive/2026-08/`; task validation, archive
   scanner, supported-platform surface (2133 current files), release contracts,
   512 contract tests with 1 skip, and native-fetch 4/4 all remained green.
+- Final replacement PR created as #145 from `dev/secretref-core-final`; the
+  archived task metadata is bound to that PR before exact-head auto-merge
+  handoff.
 
 An additional `cargo check --locked --target x86_64-pc-windows-msvc --all-targets`
 attempt reached the Windows dependency graph, then stopped in unrelated native
