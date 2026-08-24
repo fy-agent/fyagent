@@ -41,6 +41,66 @@ pub fn get_home_dir() -> PathBuf {
     })
 }
 
+/// Format a user-owned path for UI disclosure without baking the interactive
+/// user's absolute home directory into renderer state. Paths under the frozen
+/// user home are shown with a leading `~`; paths outside that home (for
+/// example an explicit override directory) remain absolute so the UI does not
+/// lie about the actual mutation target.
+pub fn display_user_path(path: &Path) -> String {
+    let home = get_home_dir();
+    match path.strip_prefix(&home) {
+        Ok(relative) if relative.as_os_str().is_empty() => "~".to_string(),
+        Ok(relative) => PathBuf::from("~")
+            .join(relative)
+            .to_string_lossy()
+            .to_string(),
+        Err(_) => path.to_string_lossy().to_string(),
+    }
+}
+
+/// Return the single rolling backup path used before a managed user-config
+/// mutation. Keeping the backup adjacent to the source makes the disclosure
+/// truthful for override directories and avoids a second location policy.
+pub fn rolling_backup_path(path: &Path) -> PathBuf {
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("config");
+    path.with_file_name(format!("{file_name}.fyagent.backup"))
+}
+
+/// Replace the single rolling backup with the immediately previous source
+/// bytes. A missing source has no preimage and therefore creates no backup.
+/// The primary caller must abort if this function returns an error.
+pub fn backup_existing_file(path: &Path) -> Result<Option<PathBuf>, AppError> {
+    backup_existing_file_to(path, &rolling_backup_path(path))
+}
+
+/// Same safety contract as [`backup_existing_file`], but lets an existing
+/// domain keep its historical fixed backup filename.
+pub fn backup_existing_file_to(
+    path: &Path,
+    backup_path: &Path,
+) -> Result<Option<PathBuf>, AppError> {
+    let bytes = match fs::read(path) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(AppError::io(path, error)),
+    };
+    atomic_write(backup_path, &bytes)?;
+
+    #[cfg(target_os = "macos")]
+    {
+        let metadata = fs::metadata(path).map_err(|error| AppError::io(path, error))?;
+        if let Err(error) = fs::set_permissions(backup_path, metadata.permissions()) {
+            let _ = fs::remove_file(backup_path);
+            return Err(AppError::io(backup_path, error));
+        }
+    }
+
+    Ok(Some(backup_path.to_path_buf()))
+}
+
 #[cfg(target_os = "windows")]
 pub(crate) fn get_user_local_app_data_dir() -> PathBuf {
     #[cfg(any(test, feature = "test-hooks"))]

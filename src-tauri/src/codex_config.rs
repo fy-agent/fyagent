@@ -784,6 +784,104 @@ pub fn prepare_codex_provider_live_config(
     })
 }
 
+/// Apply only the fields owned by the V2 Quick Setup form to an existing
+/// Codex `config.toml`. The existing document is the authority for every
+/// unrelated field/table/comment; the Quick Setup provider is intentionally a
+/// patch, not a complete replacement snapshot.
+pub fn patch_codex_quick_setup_live_config(
+    current_config: &str,
+    desired_config: &str,
+) -> Result<String, AppError> {
+    let mut target = if current_config.trim().is_empty() {
+        DocumentMut::new()
+    } else {
+        current_config
+            .parse::<DocumentMut>()
+            .map_err(|error| AppError::Message(format!("Invalid Codex config.toml: {error}")))?
+    };
+    let desired = desired_config
+        .parse::<DocumentMut>()
+        .map_err(|error| AppError::Message(format!("Invalid Codex quick setup TOML: {error}")))?;
+
+    let provider_id = active_codex_model_provider_id(&desired).ok_or_else(|| {
+        AppError::Message("Codex quick setup is missing model_provider".to_string())
+    })?;
+    let desired_provider = active_codex_provider_table(&desired)
+        .map(|(_, table)| table)
+        .ok_or_else(|| {
+            AppError::Message("Codex quick setup provider table is missing".to_string())
+        })?;
+
+    target["model_provider"] = toml_edit::value(&provider_id);
+    if let Some(desired_model) = desired.get("model").and_then(Item::as_str) {
+        target["model"] = toml_edit::value(desired_model);
+    }
+
+    if target.get("model_providers").is_none() {
+        target["model_providers"] = toml_edit::table();
+    }
+    let providers = target
+        .get_mut("model_providers")
+        .and_then(Item::as_table_like_mut)
+        .ok_or_else(|| {
+            AppError::Message("Codex model_providers must be an editable table".to_string())
+        })?;
+    if providers.get(&provider_id).is_none() {
+        providers.insert(&provider_id, toml_edit::table());
+    }
+    let target_provider = providers
+        .get_mut(&provider_id)
+        .and_then(Item::as_table_like_mut)
+        .ok_or_else(|| {
+            AppError::Message("Codex quick setup provider must be an editable table".to_string())
+        })?;
+
+    for key in ["name", "base_url", "wire_api", "requires_openai_auth"] {
+        if let Some(item) = desired_provider.get(key) {
+            target_provider.insert(key, item.clone());
+        }
+    }
+
+    // Historical reserved Quick Setup rows predate the explicit capability
+    // intent and therefore do not carry `requires_openai_auth`. Treat absence
+    // as "preserve current capability fields" rather than inventing a default.
+    // New V2 requests always carry the field, so their false/true choices are
+    // authoritative for image/WebSocket/token ownership.
+    if desired_provider.get("requires_openai_auth").is_some() {
+        let image_enabled = match inspect_managed_image_header(desired_provider) {
+            ManagedHeaderInspection::Controlled { .. } => true,
+            ManagedHeaderInspection::Missing => false,
+            ManagedHeaderInspection::Conflict { .. } | ManagedHeaderInspection::Invalid => {
+                return Err(AppError::Message(
+                    "Codex quick setup image header is invalid".to_string(),
+                ))
+            }
+        };
+        set_managed_image_header(target_provider, image_enabled);
+
+        if desired_provider
+            .get("supports_websockets")
+            .and_then(Item::as_bool)
+            == Some(true)
+        {
+            target_provider.insert("supports_websockets", toml_edit::value(true));
+        } else {
+            target_provider.remove("supports_websockets");
+        }
+
+        if let Some(token) = desired_provider
+            .get("experimental_bearer_token")
+            .and_then(Item::as_str)
+        {
+            target_provider.insert("experimental_bearer_token", toml_edit::value(token));
+        } else {
+            target_provider.remove("experimental_bearer_token");
+        }
+    }
+
+    Ok(target.to_string())
+}
+
 /// During DB backfill, lift a live `experimental_bearer_token` back into
 /// `auth.OPENAI_API_KEY` so the stored provider keeps its canonical shape
 /// and generated live tokens don't leak into stored provider TOML.

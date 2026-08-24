@@ -132,6 +132,32 @@ const QUICK_SETUP_CLAUDE_PROVIDER_ID: &str = "fyagent-v2-quick-setup-claude";
 const QUICK_SETUP_CODEX_PROVIDER_ID: &str = "fyagent-v2-quick-setup-codex";
 const QUICK_SETUP_GROKBUILD_PROVIDER_ID: &str = "fyagent-v2-quick-setup-grokbuild";
 
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QuickSetupWriteTarget {
+    pub path: String,
+    pub backup_path: String,
+    pub exists: bool,
+}
+
+fn quick_setup_write_target(path: PathBuf) -> QuickSetupWriteTarget {
+    let backup_path = crate::config::rolling_backup_path(&path);
+    QuickSetupWriteTarget {
+        exists: path.exists(),
+        path: crate::config::display_user_path(&path),
+        backup_path: crate::config::display_user_path(&backup_path),
+    }
+}
+
+fn is_quick_setup_provider_id(app_type: &AppType, provider_id: &str) -> bool {
+    matches!(
+        (app_type, provider_id),
+        (AppType::Claude, QUICK_SETUP_CLAUDE_PROVIDER_ID)
+            | (AppType::Codex, QUICK_SETUP_CODEX_PROVIDER_ID)
+            | (AppType::GrokBuild, QUICK_SETUP_GROKBUILD_PROVIDER_ID)
+    )
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum QuickSetupApplyFailureCode {
@@ -517,6 +543,22 @@ mod tests {
         fn drop(&mut self) {
             let _ =
                 crate::settings::set_current_provider(&AppType::Codex, self.previous.as_deref());
+        }
+    }
+
+    struct AppSettingsRestore(crate::settings::AppSettings);
+
+    impl AppSettingsRestore {
+        fn replace_with(next: crate::settings::AppSettings) -> Self {
+            let previous = crate::settings::get_settings();
+            crate::settings::update_settings(next).expect("update test settings");
+            Self(previous)
+        }
+    }
+
+    impl Drop for AppSettingsRestore {
+        fn drop(&mut self) {
+            let _ = crate::settings::update_settings(self.0.clone());
         }
     }
 
@@ -1688,6 +1730,329 @@ mod tests {
                 "intermediate Provider rewrite must not hide an identical final MCP projection"
             );
             assert_eq!(fs::read(get_codex_config_path()).unwrap(), before);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn codex_quick_setup_patches_owned_fields_and_keeps_one_exact_preimage_backup() {
+        with_test_home(|state, _| {
+            let config_path = get_codex_config_path();
+            let auth_path = get_codex_auth_path();
+            fs::create_dir_all(config_path.parent().unwrap()).unwrap();
+            let original_config = r#"# keep-user-comment
+model_provider = "OpenAI"
+model = "gpt-old"
+review_model = "gpt-review"
+disable_response_storage = false
+
+[model_providers.OpenAI]
+name = "OpenAI"
+base_url = "https://old.example.test/v1"
+wire_api = "responses"
+
+[model_providers.custom]
+name = "Old custom"
+base_url = "https://old-custom.example.test/v1"
+wire_api = "responses"
+requires_openai_auth = false
+supports_websockets = true
+experimental_bearer_token = "old-token"
+custom_user_field = "keep-me"
+http_headers = { "x-user-header" = "keep-me" }
+
+[features]
+plugins = true
+
+[mcp_servers.user_owned]
+command = "echo"
+args = ["keep"]
+"#;
+            fs::write(&config_path, original_config).unwrap();
+            let original_auth = serde_json::json!({
+                "OPENAI_API_KEY": "old-key",
+                "tokens": { "access_token": "keep-login" },
+                "account_id": "keep-account"
+            });
+            let original_auth_bytes = serde_json::to_vec_pretty(&original_auth).unwrap();
+            fs::write(&auth_path, &original_auth_bytes).unwrap();
+
+            let desired_config = r#"model_provider = "custom"
+model = "gpt-new"
+
+[model_providers.custom]
+name = "FyAgent Codex"
+base_url = "https://new.example.test/v1"
+wire_api = "responses"
+requires_openai_auth = true
+"#;
+            let mut provider = Provider::with_id(
+                QUICK_SETUP_CODEX_PROVIDER_ID.to_string(),
+                "FyAgent Codex".to_string(),
+                json!({
+                    "auth": { "OPENAI_API_KEY": "new-key" },
+                    "config": desired_config,
+                }),
+                None,
+            );
+            provider.category = Some("custom".to_string());
+            provider.meta = Some(ProviderMeta {
+                image_extension_configured: Some(true),
+                ..Default::default()
+            });
+
+            ProviderService::apply_quick_setup(state, AppType::Codex, provider)
+                .expect("targeted quick setup");
+
+            let live = fs::read_to_string(&config_path).unwrap();
+            let parsed: toml::Value = toml::from_str(&live).unwrap();
+            assert!(live.contains("# keep-user-comment"));
+            assert_eq!(parsed["review_model"].as_str(), Some("gpt-review"));
+            assert_eq!(parsed["disable_response_storage"].as_bool(), Some(false));
+            assert_eq!(parsed["features"]["plugins"].as_bool(), Some(true));
+            assert_eq!(
+                parsed["mcp_servers"]["user_owned"]["command"].as_str(),
+                Some("echo")
+            );
+            assert_eq!(
+                parsed["model_providers"]["OpenAI"]["base_url"].as_str(),
+                Some("https://old.example.test/v1")
+            );
+            let custom = &parsed["model_providers"]["custom"];
+            assert_eq!(
+                custom["base_url"].as_str(),
+                Some("https://new.example.test/v1")
+            );
+            assert_eq!(custom["custom_user_field"].as_str(), Some("keep-me"));
+            assert_eq!(
+                custom["http_headers"]["x-user-header"].as_str(),
+                Some("keep-me")
+            );
+            assert!(custom.get("supports_websockets").is_none());
+            assert!(custom.get("experimental_bearer_token").is_none());
+
+            let live_auth: Value = serde_json::from_slice(&fs::read(&auth_path).unwrap()).unwrap();
+            assert_eq!(live_auth["OPENAI_API_KEY"], "new-key");
+            assert_eq!(live_auth["tokens"]["access_token"], "keep-login");
+            assert_eq!(live_auth["account_id"], "keep-account");
+
+            assert_eq!(
+                fs::read(crate::config::rolling_backup_path(&config_path)).unwrap(),
+                original_config.as_bytes()
+            );
+            assert_eq!(
+                fs::read(crate::config::rolling_backup_path(&auth_path)).unwrap(),
+                original_auth_bytes
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn codex_quick_setup_preserves_official_auth_via_provider_bearer_when_configured() {
+        with_test_home(|state, _| {
+            let previous_settings = crate::settings::get_settings();
+            let _settings = AppSettingsRestore::replace_with(crate::settings::AppSettings {
+                preserve_codex_official_auth_on_switch: true,
+                ..previous_settings
+            });
+            let config_path = get_codex_config_path();
+            let auth_path = get_codex_auth_path();
+            fs::create_dir_all(config_path.parent().unwrap()).unwrap();
+            let original_auth = br#"{
+  "auth_mode": "chatgpt",
+  "tokens": { "access_token": "keep-login" }
+}"#;
+            fs::write(&auth_path, original_auth).unwrap();
+            fs::write(
+                &config_path,
+                "model_provider = \"OpenAI\"\nmodel = \"gpt-old\"\n",
+            )
+            .unwrap();
+
+            let desired_config = r#"model_provider = "custom"
+model = "gpt-new"
+
+[model_providers.custom]
+name = "FyAgent Codex"
+base_url = "https://new.example.test/v1"
+wire_api = "responses"
+requires_openai_auth = true
+"#;
+            let mut provider = Provider::with_id(
+                QUICK_SETUP_CODEX_PROVIDER_ID.to_string(),
+                "FyAgent Codex".to_string(),
+                json!({
+                    "auth": { "OPENAI_API_KEY": "provider-key" },
+                    "config": desired_config,
+                }),
+                None,
+            );
+            provider.category = Some("custom".to_string());
+            provider.meta = Some(ProviderMeta {
+                image_extension_configured: Some(true),
+                ..Default::default()
+            });
+
+            let targets = ProviderService::quick_setup_write_targets(&AppType::Codex).unwrap();
+            assert_eq!(targets.len(), 1);
+            assert_eq!(
+                targets[0].path,
+                crate::config::display_user_path(&config_path)
+            );
+
+            ProviderService::apply_quick_setup(state, AppType::Codex, provider)
+                .expect("config-only quick setup");
+            assert_eq!(fs::read(&auth_path).unwrap(), original_auth);
+            assert!(!crate::config::rolling_backup_path(&auth_path).exists());
+
+            let live = fs::read_to_string(&config_path).unwrap();
+            let parsed: toml::Value = toml::from_str(&live).unwrap();
+            assert_eq!(
+                parsed["model_providers"]["custom"]["experimental_bearer_token"].as_str(),
+                Some("provider-key")
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn claude_quick_setup_preserves_unrelated_settings_and_env() {
+        with_test_home(|state, _| {
+            let path = crate::config::get_claude_settings_path();
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            let original = br#"{
+  "permissions": { "allow": ["Read"] },
+  "env": { "PATH": "/custom/bin", "KEEP_ME": "yes", "ANTHROPIC_MODEL": "old" }
+}"#;
+            fs::write(&path, original).unwrap();
+            let mut provider = Provider::with_id(
+                QUICK_SETUP_CLAUDE_PROVIDER_ID.to_string(),
+                "FyAgent Claude".to_string(),
+                json!({
+                    "env": {
+                        "ANTHROPIC_BASE_URL": "https://new.example.test",
+                        "ANTHROPIC_AUTH_TOKEN": "new-key",
+                        "ANTHROPIC_MODEL": "new-model"
+                    }
+                }),
+                None,
+            );
+            provider.category = Some("custom".to_string());
+
+            ProviderService::apply_quick_setup(state, AppType::Claude, provider)
+                .expect("targeted Claude quick setup");
+            let live: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+            assert_eq!(live["permissions"]["allow"][0], "Read");
+            assert_eq!(live["env"]["PATH"], "/custom/bin");
+            assert_eq!(live["env"]["KEEP_ME"], "yes");
+            assert_eq!(live["env"]["ANTHROPIC_MODEL"], "new-model");
+            assert_eq!(
+                fs::read(crate::config::rolling_backup_path(&path)).unwrap(),
+                original
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn grok_quick_setup_preserves_other_models_and_unrelated_tables() {
+        with_test_home(|state, _| {
+            let path = crate::grok_config::get_grok_config_path();
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            let original = r#"[models]
+default = "old-model"
+
+[model.old-model]
+model = "old-model"
+base_url = "https://old.example.test/v1"
+name = "Old"
+api_key = "old-key"
+api_backend = "responses"
+context_window = 131072
+
+[model.new-model]
+model = "new-model"
+base_url = "https://previous.example.test/v1"
+name = "Previous"
+api_key = "previous-key"
+api_backend = "responses"
+context_window = 131072
+user_note = "keep-me"
+
+[mcp_servers.user_owned]
+command = "echo"
+"#;
+            fs::write(&path, original).unwrap();
+            let desired = r#"[models]
+default = "new-model"
+
+[model.new-model]
+model = "new-model"
+base_url = "https://new.example.test/v1"
+name = "New"
+api_key = "new-key"
+api_backend = "responses"
+context_window = 262144
+"#;
+            let mut provider = Provider::with_id(
+                QUICK_SETUP_GROKBUILD_PROVIDER_ID.to_string(),
+                "FyAgent Grok Build".to_string(),
+                json!({ "config": desired }),
+                None,
+            );
+            provider.category = Some("custom".to_string());
+
+            ProviderService::apply_quick_setup(state, AppType::GrokBuild, provider)
+                .expect("targeted Grok quick setup");
+            let live = fs::read_to_string(&path).unwrap();
+            let parsed: toml::Value = toml::from_str(&live).unwrap();
+            assert_eq!(parsed["models"]["default"].as_str(), Some("new-model"));
+            assert_eq!(
+                parsed["model"]["old-model"]["base_url"].as_str(),
+                Some("https://old.example.test/v1")
+            );
+            assert_eq!(
+                parsed["model"]["new-model"]["user_note"].as_str(),
+                Some("keep-me")
+            );
+            assert_eq!(
+                parsed["mcp_servers"]["user_owned"]["command"].as_str(),
+                Some("echo")
+            );
+            assert_eq!(
+                fs::read(crate::config::rolling_backup_path(&path)).unwrap(),
+                original.as_bytes()
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn quick_setup_backup_failure_leaves_primary_unchanged() {
+        with_test_home(|state, _| {
+            let path = crate::config::get_claude_settings_path();
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            let original = br#"{"env":{"KEEP_ME":"yes"}}"#;
+            fs::write(&path, original).unwrap();
+            let backup_path = crate::config::rolling_backup_path(&path);
+            fs::create_dir_all(&backup_path).unwrap();
+            let mut provider = Provider::with_id(
+                QUICK_SETUP_CLAUDE_PROVIDER_ID.to_string(),
+                "FyAgent Claude".to_string(),
+                json!({
+                    "env": {
+                        "ANTHROPIC_BASE_URL": "https://new.example.test",
+                        "ANTHROPIC_AUTH_TOKEN": "new-key",
+                        "ANTHROPIC_MODEL": "new-model"
+                    }
+                }),
+                None,
+            );
+            provider.category = Some("custom".to_string());
+
+            assert!(ProviderService::apply_quick_setup(state, AppType::Claude, provider).is_err());
+            assert_eq!(fs::read(&path).unwrap(), original);
         });
     }
 
@@ -3696,6 +4061,28 @@ requires_openai_auth = true
 }
 
 impl ProviderService {
+    pub fn quick_setup_write_targets(
+        app_type: &AppType,
+    ) -> Result<Vec<QuickSetupWriteTarget>, AppError> {
+        let paths = match app_type {
+            AppType::Claude => vec![crate::config::get_claude_settings_path()],
+            AppType::Codex => {
+                let mut paths = vec![crate::codex_config::get_codex_config_path()];
+                if !crate::settings::preserve_codex_official_auth_on_switch() {
+                    paths.push(crate::codex_config::get_codex_auth_path());
+                }
+                paths
+            }
+            AppType::GrokBuild => vec![crate::grok_config::get_grok_config_path()],
+            _ => {
+                return Err(AppError::Message(
+                    "Provider Quick Setup write targets are unavailable".to_string(),
+                ))
+            }
+        };
+        Ok(paths.into_iter().map(quick_setup_write_target).collect())
+    }
+
     /// Execute a provider mutation and derive the restart-relevant live result
     /// from the final `~/.codex/config.toml` bytes. Non-Codex apps deliberately
     /// skip both reads and always return `false`; only the Codex live file is

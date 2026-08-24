@@ -59,7 +59,13 @@ import {
   ModelVendorIcon,
 } from "./modelChips";
 import { ModelConnectivityTest } from "./ModelConnectivityTest";
-import { ModelsPanelHeader, NoApiKeyOption, NoticeView } from "./modelsShared";
+import {
+  ModelsPanelHeader,
+  ModelsWriteDisclosure,
+  NoApiKeyOption,
+  NoticeView,
+  useModelsDraftCommit,
+} from "./modelsShared";
 import { OpenCodeModelsPanel } from "./OpenCodeModelsPanel";
 import { QoderModelsPanel } from "./QoderModelsPanel";
 import { TraeModelsPanel } from "./TraeModelsPanel";
@@ -131,6 +137,7 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
     request: WorkBuddySaveRequest;
     token: string;
     existingIds: string[];
+    revision: number;
   } | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const writeLock = useRef(false);
@@ -138,10 +145,12 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
   const baseUrlInputRef = useRef<HTMLInputElement>(null);
   const apiKeyInputRef = useRef<HTMLInputElement>(null);
   const manualModelsInputRef = useRef<HTMLInputElement>(null);
+  const draftCommit = useModelsDraftCommit();
 
   const setApiKey = (value: string) => {
     apiKeyRef.current = value;
     setApiKeyState(value);
+    draftCommit.markDirty();
   };
   const clearApiKey = () => {
     apiKeyRef.current = "";
@@ -235,6 +244,7 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
         throw new Error("credential-model-id-conflict");
       }
       setDraftModelIds((current) => addUniqueModelIds(current, result.models));
+      draftCommit.markDirty();
       setFetchedSourceIds(new Set(result.models));
       setTruncated(result.truncated);
       show("fetch", {
@@ -282,6 +292,7 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
     }
     setDraftModelIds((current) => addUniqueModelIds(current, pending));
     setManualDraft("");
+    draftCommit.markDirty();
     dismiss("draft");
   };
 
@@ -289,6 +300,7 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
     setDraftModelIds([]);
     setFetchedSourceIds(new Set());
     setTruncated(false);
+    draftCommit.markDirty();
   };
 
   const buildSaveRequest = (draftIds: string[]): WorkBuddySaveRequest => {
@@ -314,7 +326,10 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
     return Object.freeze(request);
   };
 
-  const saveRequest = async (request: WorkBuddySaveRequest) => {
+  const saveRequest = async (
+    request: WorkBuddySaveRequest,
+    submittedRevision: number,
+  ) => {
     if (writeLock.current) return;
     writeLock.current = true;
     setBusy("save");
@@ -331,6 +346,7 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
       switch (result.state) {
         case "saved":
           setPendingOverwrite(null);
+          draftCommit.commitRevision(submittedRevision);
           show("save", {
             tone: "info",
             title: "WorkBuddy 模型配置已保存",
@@ -373,6 +389,7 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
               request,
               token: result.token,
               existingIds: [...result.existingIds],
+              revision: submittedRevision,
             });
           }
           break;
@@ -407,7 +424,7 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
         }
       }
     } finally {
-      clearApiKey();
+      if (draftCommit.isCurrentRevision(submittedRevision)) clearApiKey();
       const rereadConfirmed = shouldRefresh
         ? await refreshAuthoritativeState()
         : false;
@@ -435,6 +452,7 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
       return;
     }
     if (!validateConnection()) return;
+    const submittedRevision = draftCommit.captureRevision();
     const request = buildSaveRequest(draftIds);
     const submittedApiKey = request.apiKey.trim();
     if (
@@ -456,17 +474,20 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
       setDraftModelIds(draftIds);
       setManualDraft("");
     }
-    void saveRequest(request);
+    void saveRequest(request, submittedRevision);
   };
 
   const confirmOverwrite = () => {
     if (!pendingOverwrite || writeLock.current) return;
     const frozen = pendingOverwrite;
     setPendingOverwrite(null);
-    void saveRequest({
-      ...frozen.request,
-      overwriteToken: frozen.token,
-    });
+    void saveRequest(
+      {
+        ...frozen.request,
+        overwriteToken: frozen.token,
+      },
+      frozen.revision,
+    );
   };
 
   const deleteExistingModel = async (modelId: string) => {
@@ -558,12 +579,7 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
       <ModelsPanelHeader
         title="WorkBuddy"
         summary="查看并管理 WorkBuddy 的模型设置。添加或修改后请保存并应用。"
-        pending={
-          draftModelIds.length > 0 ||
-          Boolean(manualDraft.trim()) ||
-          Boolean(baseUrl.trim()) ||
-          Boolean(apiKey.trim())
-        }
+        pending={draftCommit.pending}
       >
         <Button
           className="fy-control-button-primary fy-models-commit-button"
@@ -581,6 +597,17 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
           暂时无法读取 WorkBuddy 配置，请重试。
         </InlineNotice>
       )}
+      {!loading && !readFailed && statusQuery.data ? (
+        <ModelsWriteDisclosure
+          targets={[
+            {
+              path: statusQuery.data.path,
+              backupPath: statusQuery.data.backupPath,
+              exists: statusQuery.data.exists,
+            },
+          ]}
+        />
+      ) : null}
       <section
         className="fy-models-existing"
         data-testid="workbuddy-model-ids"
@@ -658,6 +685,7 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
               value={baseUrl}
               onChange={(event) => {
                 setBaseUrl(event.target.value);
+                draftCommit.markDirty();
                 dismiss("baseUrl");
               }}
               placeholder="https://gateway.example/v1"
@@ -702,6 +730,7 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
             checked={allowNoApiKey}
             onCheckedChange={(checked) => {
               setAllowNoApiKey(checked);
+              draftCommit.markDirty();
               if (checked) dismiss("apiKey");
             }}
             disabled={busy !== null}
@@ -731,11 +760,12 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
           ids={filteredDraftIds}
           removable
           removeDisabled={busy !== null}
-          onRemove={(modelId) =>
+          onRemove={(modelId) => {
             setDraftModelIds((current) =>
               current.filter((id) => id !== modelId),
-            )
-          }
+            );
+            draftCommit.markDirty();
+          }}
           emptyLabel={
             draftSearch.trim()
               ? "没有匹配的模型 ID"
@@ -748,6 +778,7 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
               searchId="workbuddy-probe-search"
               modelIds={draftModelIds}
               disabled={busy !== null && busy !== "reachability"}
+              resetVersion={draftCommit.resetVersion}
               onPrepare={validateConnection}
               onBusyChange={(probing) =>
                 setBusy(probing ? "reachability" : null)
@@ -784,6 +815,7 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
               value={manualDraft}
               onChange={(event) => {
                 setManualDraft(event.target.value);
+                draftCommit.markDirty();
                 dismiss("draft");
               }}
               onKeyDown={(event) => {
@@ -950,10 +982,12 @@ function ProviderPanel({
   const baseUrlInputRef = useRef<HTMLInputElement>(null);
   const apiKeyInputRef = useRef<HTMLInputElement>(null);
   const modelIdInputRef = useRef<HTMLInputElement>(null);
+  const draftCommit = useModelsDraftCommit();
 
   const setApiKey = (value: string) => {
     apiKeyRef.current = value;
     setApiKeyState(value);
+    draftCommit.markDirty();
   };
   const clearApiKey = () => {
     apiKeyRef.current = "";
@@ -1073,6 +1107,7 @@ function ProviderPanel({
     }
 
     writeLock.current = true;
+    const submittedRevision = draftCommit.captureRevision();
     setBusy(true);
     setErrors({});
     setNotice(null);
@@ -1090,6 +1125,7 @@ function ProviderPanel({
         app,
       );
       if (!mountedRef.current) return;
+      draftCommit.commitRevision(submittedRevision);
       const warnings = sanitizeWarningCodes(applyResult.warningCodes);
       setWarningCodes(warnings);
       const hasPartialWarning = applyResult.value.warnings.length > 0;
@@ -1157,7 +1193,7 @@ function ProviderPanel({
         });
       }
     } finally {
-      clearApiKey();
+      if (draftCommit.isCurrentRevision(submittedRevision)) clearApiKey();
       if (!authorityRereadAttempted) await summaryQuery.refetch();
       if (mountedRef.current) setBusy(false);
       if (!keepWriteLock) writeLock.current = false;
@@ -1176,7 +1212,7 @@ function ProviderPanel({
       <ModelsPanelHeader
         title={label}
         summary="配置服务地址、模型和 API Key，并设为当前配置。"
-        pending={Boolean(baseUrl.trim() || apiKey.trim() || modelId.trim())}
+        pending={draftCommit.pending}
       >
         <Button
           className="fy-control-button-primary fy-models-commit-button"
@@ -1185,7 +1221,8 @@ function ProviderPanel({
             probeBusy ||
             writesBlocked ||
             queryPending ||
-            queryUnavailable
+            queryUnavailable ||
+            (summaryQuery.data?.writeTargets.length ?? 0) === 0
           }
           onClick={() => void submit()}
         >
@@ -1203,6 +1240,11 @@ function ProviderPanel({
           暂时无法读取当前配置，请稍后重试。
         </InlineNotice>
       )}
+      {!queryUnavailable && !queryPending ? (
+        <ModelsWriteDisclosure
+          targets={summaryQuery.data?.writeTargets ?? []}
+        />
+      ) : null}
       {!queryUnavailable && !queryPending && (
         <div
           className="fy-models-status-grid"
@@ -1227,7 +1269,10 @@ function ProviderPanel({
             id={`${app}-quick-setup-name`}
             name={`${app}-quick-setup-name`}
             value={name}
-            onChange={(event) => setName(event.target.value)}
+            onChange={(event) => {
+              setName(event.target.value);
+              draftCommit.markDirty();
+            }}
             aria-invalid={Boolean(errors.name)}
             aria-describedby={
               errors.name ? `${app}-quick-setup-name-error` : undefined
@@ -1251,7 +1296,10 @@ function ProviderPanel({
             name={`${app}-quick-setup-base-url`}
             type="url"
             value={baseUrl}
-            onChange={(event) => setBaseUrl(event.target.value)}
+            onChange={(event) => {
+              setBaseUrl(event.target.value);
+              draftCommit.markDirty();
+            }}
             placeholder={
               app === "claude"
                 ? "https://gateway.example"
@@ -1326,7 +1374,10 @@ function ProviderPanel({
               id={`${app}-quick-setup-model-id`}
               name={`${app}-quick-setup-model-id`}
               value={modelId}
-              onChange={(event) => setModelId(event.target.value)}
+              onChange={(event) => {
+                setModelId(event.target.value);
+                draftCommit.markDirty();
+              }}
               autoComplete="off"
               spellCheck={false}
               aria-invalid={Boolean(errors.modelId)}
@@ -1352,6 +1403,7 @@ function ProviderPanel({
               modelIds={selectableModelIds}
               ownedByById={ownedByById}
               disabled={busy || fetchBusy || writesBlocked}
+              resetVersion={draftCommit.resetVersion}
               onPrepare={prepareModelProbe}
               onBusyChange={setProbeBusy}
               onProbe={(selectedModelId) =>
@@ -1360,6 +1412,9 @@ function ProviderPanel({
                   baseUrl: baseUrl.trim(),
                   apiKey: apiKeyRef.current.trim(),
                   modelId: selectedModelId,
+                  ...(app === "codex"
+                    ? { codexImageExtension: imageExtension }
+                    : {}),
                 })
               }
             />
@@ -1375,7 +1430,10 @@ function ProviderPanel({
           <GroupedModelChips
             ids={selectableModelIds}
             selectedId={modelId}
-            onSelect={setModelId}
+            onSelect={(id) => {
+              setModelId(id);
+              draftCommit.markDirty();
+            }}
             removable
             removeDisabled={busy || fetchBusy || probeBusy}
             ownedByById={ownedByById}
@@ -1383,7 +1441,10 @@ function ProviderPanel({
               setFetchedModelIds((current) =>
                 current.filter((item) => item !== id),
               );
-              if (modelId === id) setModelId("");
+              if (modelId === id) {
+                setModelId("");
+                draftCommit.markDirty();
+              }
             }}
             emptyLabel="尚未拉取模型。可点击拉取，或手动填入模型 ID。"
           />
@@ -1396,7 +1457,10 @@ function ProviderPanel({
             <div className="fy-models-checkbox-row">
               <Checkbox
                 checked={imageExtension}
-                onCheckedChange={setImageExtension}
+                onCheckedChange={(checked) => {
+                  setImageExtension(checked);
+                  draftCommit.markDirty();
+                }}
                 label="启用内置生图扩展"
               />
               <span>启用内置生图扩展</span>
@@ -1404,7 +1468,10 @@ function ProviderPanel({
             <div className="fy-models-checkbox-row">
               <Checkbox
                 checked={websockets}
-                onCheckedChange={setWebsockets}
+                onCheckedChange={(checked) => {
+                  setWebsockets(checked);
+                  draftCommit.markDirty();
+                }}
                 label="启用 WebSocket 传输"
               />
               <span>启用 WebSocket 传输</span>

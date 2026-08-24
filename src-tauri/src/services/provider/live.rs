@@ -9,7 +9,10 @@ use toml_edit::{DocumentMut, Item, TableLike};
 
 use crate::app_config::AppType;
 use crate::codex_config::{get_codex_auth_path, get_codex_config_path};
-use crate::config::{delete_file, get_claude_settings_path, read_json_file, write_json_file};
+use crate::config::{
+    backup_existing_file, delete_file, get_claude_settings_path, read_json_file, write_json_file,
+    write_text_file,
+};
 use crate::database::Database;
 use crate::error::AppError;
 use crate::provider::Provider;
@@ -714,7 +717,212 @@ pub(crate) fn write_live_with_common_config(
         return Ok(());
     }
 
+    if super::is_quick_setup_provider_id(app_type, &effective_provider.id) {
+        return write_quick_setup_live_snapshot(app_type, &effective_provider);
+    }
+
     write_live_snapshot(app_type, &effective_provider)
+}
+
+fn write_quick_setup_live_snapshot(
+    app_type: &AppType,
+    provider: &Provider,
+) -> Result<(), AppError> {
+    match app_type {
+        AppType::Claude => write_quick_setup_claude_live(provider),
+        AppType::Codex => write_quick_setup_codex_live(provider),
+        AppType::GrokBuild => write_quick_setup_grok_live(provider),
+        _ => Err(AppError::Message(
+            "Quick Setup patch write is unsupported for this application".to_string(),
+        )),
+    }
+}
+
+fn write_quick_setup_claude_live(provider: &Provider) -> Result<(), AppError> {
+    let path = get_claude_settings_path();
+    let mut current = if path.exists() {
+        read_json_file::<Value>(&path)?
+    } else {
+        json!({})
+    };
+    let current_obj = current.as_object_mut().ok_or_else(|| {
+        AppError::Config("Claude settings.json root must be an object".to_string())
+    })?;
+    let source_env = provider
+        .settings_config
+        .get("env")
+        .and_then(Value::as_object)
+        .ok_or_else(|| AppError::Config("Claude Quick Setup env is missing".to_string()))?;
+    if !current_obj.get("env").is_some_and(Value::is_object) {
+        if current_obj.contains_key("env") {
+            return Err(AppError::Config(
+                "Claude settings.json env must be an object".to_string(),
+            ));
+        }
+        current_obj.insert("env".to_string(), json!({}));
+    }
+    let current_env = current_obj
+        .get_mut("env")
+        .and_then(Value::as_object_mut)
+        .expect("Claude env was normalized to an object");
+    for key in [
+        "ANTHROPIC_BASE_URL",
+        "ANTHROPIC_AUTH_TOKEN",
+        "ANTHROPIC_MODEL",
+    ] {
+        let value = source_env
+            .get(key)
+            .ok_or_else(|| AppError::Config(format!("Claude Quick Setup is missing {key}")))?;
+        current_env.insert(key.to_string(), value.clone());
+    }
+
+    backup_existing_file(&path)?;
+    write_json_file(&path, &current)
+}
+
+fn write_quick_setup_codex_live(provider: &Provider) -> Result<(), AppError> {
+    let settings = provider.settings_config.as_object().ok_or_else(|| {
+        AppError::Config("Codex Quick Setup settings must be an object".to_string())
+    })?;
+    let desired_config = settings
+        .get("config")
+        .and_then(Value::as_str)
+        .ok_or_else(|| AppError::Config("Codex Quick Setup config is missing".to_string()))?;
+    let desired_auth = settings
+        .get("auth")
+        .ok_or_else(|| AppError::Config("Codex Quick Setup auth is missing".to_string()))?;
+    let desired_key = desired_auth
+        .get("OPENAI_API_KEY")
+        .and_then(Value::as_str)
+        .ok_or_else(|| AppError::Config("Codex Quick Setup API key is missing".to_string()))?;
+
+    let config_path = crate::codex_config::get_codex_config_path();
+    let current_config = if config_path.exists() {
+        std::fs::read_to_string(&config_path).map_err(|error| AppError::io(&config_path, error))?
+    } else {
+        String::new()
+    };
+    let patched_config =
+        crate::codex_config::patch_codex_quick_setup_live_config(&current_config, desired_config)?;
+
+    let should_write_auth = !crate::settings::preserve_codex_official_auth_on_switch();
+    let patched_config = if should_write_auth {
+        patched_config
+    } else {
+        crate::codex_config::prepare_codex_provider_live_config(desired_auth, &patched_config)?
+    };
+    let auth_path = crate::codex_config::get_codex_auth_path();
+    let merged_auth = if should_write_auth {
+        let mut current_auth = if auth_path.exists() {
+            read_json_file::<Value>(&auth_path)?
+        } else {
+            json!({})
+        };
+        let auth_obj = current_auth.as_object_mut().ok_or_else(|| {
+            AppError::Config("Codex auth.json root must be an object".to_string())
+        })?;
+        auth_obj.insert(
+            "OPENAI_API_KEY".to_string(),
+            Value::String(desired_key.to_string()),
+        );
+        Some(current_auth)
+    } else {
+        None
+    };
+
+    if should_write_auth {
+        backup_existing_file(&auth_path)?;
+    }
+    backup_existing_file(&config_path)?;
+
+    match merged_auth {
+        Some(auth) => crate::codex_config::write_codex_live_atomic(&auth, Some(&patched_config)),
+        None => crate::codex_config::write_codex_live_config_atomic(Some(&patched_config)),
+    }
+}
+
+fn write_quick_setup_grok_live(provider: &Provider) -> Result<(), AppError> {
+    let desired_config = provider
+        .settings_config
+        .get("config")
+        .and_then(Value::as_str)
+        .ok_or_else(|| AppError::Config("Grok Build Quick Setup config is missing".to_string()))?;
+    let desired = desired_config.parse::<DocumentMut>().map_err(|error| {
+        AppError::Message(format!("Invalid Grok Build Quick Setup TOML: {error}"))
+    })?;
+    let selected_model = desired
+        .get("models")
+        .and_then(|item| item.get("default"))
+        .and_then(Item::as_str)
+        .ok_or_else(|| AppError::Config("Grok Build Quick Setup model is missing".to_string()))?;
+    let desired_model = desired
+        .get("model")
+        .and_then(|item| item.get(selected_model))
+        .and_then(Item::as_table_like)
+        .ok_or_else(|| {
+            AppError::Config("Grok Build Quick Setup model table is missing".to_string())
+        })?;
+
+    let path = crate::grok_config::get_grok_config_path();
+    let current_config = if path.exists() {
+        std::fs::read_to_string(&path).map_err(|error| AppError::io(&path, error))?
+    } else {
+        String::new()
+    };
+    let mut target = if current_config.trim().is_empty() {
+        DocumentMut::new()
+    } else {
+        current_config.parse::<DocumentMut>().map_err(|error| {
+            AppError::Message(format!("Invalid Grok Build config.toml: {error}"))
+        })?
+    };
+    if target.get("models").is_none() {
+        target["models"] = toml_edit::table();
+    }
+    let models = target
+        .get_mut("models")
+        .and_then(Item::as_table_like_mut)
+        .ok_or_else(|| {
+            AppError::Config("Grok Build models must be an editable table".to_string())
+        })?;
+    models.insert("default", toml_edit::value(selected_model));
+
+    if target.get("model").is_none() {
+        target["model"] = toml_edit::table();
+    }
+    let models_root = target
+        .get_mut("model")
+        .and_then(Item::as_table_like_mut)
+        .ok_or_else(|| {
+            AppError::Config("Grok Build model must be an editable table".to_string())
+        })?;
+    if models_root.get(selected_model).is_none() {
+        models_root.insert(selected_model, toml_edit::table());
+    }
+    let target_model = models_root
+        .get_mut(selected_model)
+        .and_then(Item::as_table_like_mut)
+        .ok_or_else(|| {
+            AppError::Config("Grok Build selected model must be editable".to_string())
+        })?;
+    for key in [
+        "model",
+        "base_url",
+        "name",
+        "api_key",
+        "api_backend",
+        "context_window",
+    ] {
+        let item = desired_model
+            .get(key)
+            .ok_or_else(|| AppError::Config(format!("Grok Build Quick Setup is missing {key}")))?;
+        target_model.insert(key, item.clone());
+    }
+
+    let patched = target.to_string();
+    crate::grok_config::validate_config_toml(&patched)?;
+    backup_existing_file(&path)?;
+    write_text_file(&path, &patched)
 }
 
 pub(crate) fn strip_common_config_from_live_settings(

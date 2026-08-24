@@ -17,10 +17,17 @@ export interface ProviderSummary {
   modelId?: string;
 }
 
+export interface ModelWriteTarget {
+  path: string;
+  backupPath: string;
+  exists: boolean;
+}
+
 export type ProviderSummaryMap = Record<string, ProviderSummary>;
 export interface ProviderSummaryQueryData {
   providers: ProviderSummaryMap;
   currentId: string;
+  writeTargets: ModelWriteTarget[];
 }
 
 export type CodexProviderMutationWarning =
@@ -48,6 +55,7 @@ export interface ProviderQuickSetupCommandError {
 
 export interface WorkBuddyStatus {
   path: string;
+  backupPath: string;
   exists: boolean;
   modelCount: number;
   revision: string | null;
@@ -135,6 +143,7 @@ export interface ModelProbeRequest {
   baseUrl: string;
   apiKey: string;
   modelId: string;
+  codexImageExtension?: boolean;
 }
 
 export interface ModelProbeResult {
@@ -162,6 +171,9 @@ export interface OpenCodeProviderSnapshot {
 export interface OpenCodeModelSnapshot {
   providers: OpenCodeProviderSnapshot[];
   revision: string | null;
+  path: string;
+  backupPath: string;
+  exists: boolean;
 }
 
 export interface OpenCodeFetchModelsRequest {

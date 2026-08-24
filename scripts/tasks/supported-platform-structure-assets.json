@@ -63,7 +63,7 @@
     ],
     [
       "src-tauri/src/codex_config.rs",
-      "f0d6f635b895e13ef272fdd65b2098543588090dd272dd229fe9296ad27424e7"
+      "129227546fbb42798dc26f8889aa830fafb19b8bdecd073c8e71c5b74704ebb8"
     ],
     [
       "src-tauri/src/codex_config/catalog.rs",
@@ -111,7 +111,7 @@
     ],
     [
       "src-tauri/src/config.rs",
-      "cae46a749b128f5187be11080edb65e9b9de3e0335fe1f2cbdda4788bd3f3ba0"
+      "1791a9f60583e7b735e621e56890e2f07d4bffad47b777016945bad9b2fa8c4b"
     ],
     [
       "src-tauri/src/gemini_config.rs",
@@ -175,11 +175,11 @@
     ],
     [
       "src-tauri/src/services/model_probe.rs",
-      "7ad344f8ae4a4c0ba3da18eb55127efdf45f9afbdb942073009f9c806c8b1e17"
+      "88a795f114a5ee81f75448668dd471f13c78027619372187f8f1caaacec53305"
     ],
     [
       "src-tauri/src/services/provider/mod.rs",
-      "0a8dc2e9d43b60df18488212b74e8309a7fc51daf0eaaba79f09461f6f579297"
+      "69584761b001be0e388e05e1a19fe5c467aa8c553ea99db1030edf232fe65aba"
     ],
     [
       "src-tauri/src/services/qoderwork.rs",
@@ -227,7 +227,7 @@
     ],
     [
       "src-tauri/src/services/workbuddy/config.rs",
-      "90951103b2785b10d80373a83481db08413996235f1785b46b83d096bc2651cd"
+      "a70b6ccd4418562d1f8dd596178a6beb35f263c25f25d9154da48919a1d200a9"
     ],
     [
       "src-tauri/src/services/workbuddy/mod.rs",

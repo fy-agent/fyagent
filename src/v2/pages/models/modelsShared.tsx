@@ -1,10 +1,12 @@
 /* eslint-disable react-refresh/only-export-components */
 import { CaretDownIcon } from "@phosphor-icons/react/dist/csr/CaretDown";
 import { QuestionIcon } from "@phosphor-icons/react/dist/csr/Question";
-import type { ReactNode } from "react";
+import { useCallback, useRef, useState, type ReactNode } from "react";
 
 import { classNames } from "../../shared/design-system/classNames";
+import type { ModelWriteTarget } from "../../shared/features/types";
 import { CatalogDetail } from "../../shared/ui/catalog";
+import { CopyablePath } from "../../shared/ui/CopyablePath";
 import { Badge, Checkbox, Tooltip } from "../../shared/ui/primitives";
 import { FieldFeedback, type Notice } from "./feedback";
 import type {
@@ -14,6 +16,72 @@ import type {
 
 export function NoticeView({ notice }: { notice: Notice | null }) {
   return <FieldFeedback notice={notice} />;
+}
+
+export function useModelsDraftCommit() {
+  const draftRevisionRef = useRef(0);
+  const [draftRevision, setDraftRevision] = useState(0);
+  const [committedRevision, setCommittedRevision] = useState(0);
+
+  const markDirty = useCallback(() => {
+    draftRevisionRef.current += 1;
+    setDraftRevision(draftRevisionRef.current);
+  }, []);
+  const captureRevision = useCallback(() => draftRevisionRef.current, []);
+  const isCurrentRevision = useCallback(
+    (revision: number) => draftRevisionRef.current === revision,
+    [],
+  );
+  const commitRevision = useCallback((revision: number) => {
+    setCommittedRevision(revision);
+  }, []);
+
+  return {
+    pending: draftRevision !== committedRevision,
+    resetVersion: `${draftRevision}:${committedRevision}`,
+    markDirty,
+    captureRevision,
+    isCurrentRevision,
+    commitRevision,
+  };
+}
+
+export function ModelsWriteDisclosure({
+  targets,
+}: {
+  targets: readonly ModelWriteTarget[];
+}) {
+  if (targets.length === 0) return null;
+  return (
+    <section className="fy-models-write-disclosure" aria-label="配置写入与备份">
+      <strong>保存前确认</strong>
+      <p>
+        本次只修改下列配置文件中的相关模型字段，并在写入前保留一份滚动备份。
+      </p>
+      <div className="fy-models-write-targets">
+        {targets.map((target) => (
+          <div className="fy-models-write-target" key={target.path}>
+            <div className="fy-models-write-path-row">
+              <span className="fy-models-write-path-label">将修改</span>
+              <CopyablePath label="配置文件路径" value={target.path} />
+            </div>
+            <div className="fy-models-write-path-row">
+              <span className="fy-models-write-path-label">备份位置</span>
+              <CopyablePath label="备份文件路径" value={target.backupPath} />
+            </div>
+            {!target.exists ? (
+              <span className="fy-models-muted">
+                当前文件尚不存在，首次创建时没有前像可备份。
+              </span>
+            ) : null}
+          </div>
+        ))}
+      </div>
+      <p className="fy-models-muted">
+        每个文件只保留这一份备份；再次保存会用修改前的最新内容更新它。
+      </p>
+    </section>
+  );
 }
 
 export function noticeFromReachability(result: ReachabilityResult): Notice {

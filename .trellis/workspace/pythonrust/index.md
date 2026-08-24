@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 39
-- **Last Active**: 2026-08-22
+- **Total Sessions**: 41
+- **Last Active**: 2026-08-24
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1332 | Active |
+| `journal-1.md` | ~1392 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,8 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 41 | 2026-08-24 | Harden V2 Models config writes | `86ff85dd`, `ac9b2e62`, `63b60659` | `dev/laiyongjie` |
+| 40 | 2026-08-23 | Document Tooling target-gated module boundaries | `9c28c518` | `dev/laiyongjie` |
 | 39 | 2026-08-22 | Fix Windows Tooling Clippy import | `bf727670` | `dev/laiyongjie` |
 | 38 | 2026-08-22 | Fix Windows Tooling CI ownership | `86e4cf58` | `dev/laiyongjie` |
 | 37 | 2026-08-22 | Complete P0 modular architecture | `69879a24`, `870cb6ae`, `10c68883`, `7bb49e2b`, `f404ac32`, `506ea8c1`, `44531db0`, `b730c694`, `1a327388`, `abdd9a48`, `7cb2289c`, `ceb19a0e`, `bc39f885`, `00358063`, `ea1cd1eb` | `dev/laiyongjie` |

@@ -136,9 +136,15 @@ V2 reads a non-secret Provider projection in one native snapshot:
 ```ts
 type ProviderAppId = "claude" | "codex" | "grokbuild";
 type ProviderSummary = { id: string; name: string };
+type ModelWriteTarget = {
+  path: string;
+  backupPath: string;
+  exists: boolean;
+};
 type ProviderSummaryQueryData = {
   providers: Record<string, ProviderSummary>;
   currentId: string;
+  writeTargets: ModelWriteTarget[];
 };
 
 get_provider_summary({ app }) -> ProviderSummaryQueryData
@@ -197,6 +203,9 @@ get_traework_model_ids() -> {
 get_opencode_model_snapshot() -> {
   providers: Array<{ id: string; name: string; modelIds: string[] }>;
   revision: string | null;
+  path: string;
+  backupPath: string;
+  exists: boolean;
 }
 
 fetch_opencode_provider_models({ request: OpenCodeFetchModelsRequest })
@@ -219,6 +228,7 @@ stream_check_model({
   baseUrl: string,
   apiKey: string,
   modelId: string,
+  codexImageExtension?: boolean,
 })
   -> {
        success: boolean;
@@ -235,13 +245,17 @@ stream_check_model({
 `opencodeModels` as the URL-only GET probe (`stream_check_url`). Models UI
 must not use it for 「测试连通」.
 
-`checkModel({ app, baseUrl, apiKey, modelId })` is available on the same three
+`checkModel({ app, baseUrl, apiKey, modelId, codexImageExtension? })` is available on the same three
 ports and invokes `stream_check_model`. It sends one authenticated streaming
 request for the selected model (first SSE chunk = success) and never looks up
 a saved Provider or touches the failover circuit breaker. Protocol is
-Anthropic Messages for Claude, OpenAI Responses for Codex, and OpenAI Chat
-Completions for Grok Build / WorkBuddy / OpenCode. Empty `apiKey` omits the
-auth header. Failure `message` is `HTTP {status}: {truncated body}` or the
+Anthropic Messages for Claude, OpenAI Responses for Codex and Grok Build, and
+OpenAI Chat Completions for WorkBuddy / OpenCode. Codex Responses does not add
+an output-token limit merely for the probe. `codexImageExtension` is the only
+renderer-controlled header intent: when true on Codex, Rust adds the same
+managed actor header as Quick Setup; the renderer cannot submit arbitrary
+headers. Empty `apiKey` omits the auth header. Failure `message` is
+`HTTP {status}: {truncated body}` or the
 transport error, with the API key redacted. Browser adapters reject both
 methods as native-only. Qoder and TRAE Models ports must not expose
 `checkModel`.
@@ -258,7 +272,7 @@ and a revision, never `ak` / `sk` / `apiKey`.
   exactly: QoderWork CN, TRAE Work CN, WorkBuddy, Grok Build, Codex,
   Claude Code, OpenCode. Grok Build's product URL is exactly `https://x.ai/grok`.
   TRAE `displayName` is `TRAE Work CN`; its product URL is exactly
-  `https://www.trae.cn/sem-work`.   Catalog descriptions use 支持 / 不支持
+  `https://www.trae.cn/sem-work`. Catalog descriptions use 支持 / 不支持
   wording and must not contain `可在 FyAgent` or `可通过 FyAgent`.
   QoderWork CN catalog `description` and Agent intro copy must not mention
   Hooks.
@@ -389,6 +403,7 @@ disk, but Work CN listing is owned by cloud `model` / `model_list`. Launch
 overwrites local-only rows that were never registered with `add_custom_model`.
 
 **Options Considered**:
+
 1. Keep sqlite SAVE and change copy to “请回 TRAE 保存”
 2. Call TRAE cloud `add_custom_model`
 3. GET observation plus vendor-UI guidance
@@ -398,6 +413,7 @@ overwrites local-only rows that were never registered with `add_custom_model`.
 `save_traework_models`. The Models page does not collect a TRAE API key.
 
 **Example**:
+
 ```ts
 await ports.traeWork.getModelIds();
 ```
@@ -429,6 +445,35 @@ fetch/save controls.
   WorkBuddy. Snapshot IDs are sanitized; `get_opencode_models` (CLI runtime
   list) is not the write path.
 
+### Writable Models disclosure and draft commit state
+
+- Provider Quick Setup, WorkBuddy, and OpenCode must show `ModelsWriteDisclosure`
+  before a local save can run. Every displayed target comes from a native DTO;
+  React never constructs `~/.codex`, `.workbuddy`, `.config/opencode`, or a
+  backup path. Each row visibly labels `将修改` and `备份位置`, and states that
+  the single rolling backup is replaced by the immediately previous preimage.
+  A missing target explicitly says that first creation has no preimage; it must
+  not claim that an empty backup already exists.
+- Provider summary exposes `writeTargets`; WorkBuddy status exposes `path` /
+  `backupPath`; OpenCode snapshot exposes `path` / `backupPath` / `exists`.
+  These are user-visible path metadata only. They contain no file bytes,
+  digests, credentials, Provider settings, or arbitrary renderer-supplied path.
+  Paths under the frozen user home use a `~` display form; an explicit override
+  outside that home may remain absolute so the UI tells the user the real file.
+- The shared dirty-state owner is revision based, not "field is nonempty".
+  Every user edit increments a draft revision; save freezes that revision;
+  success commits only the frozen revision. Edits made while a save or
+  overwrite-confirmation is in flight remain dirty and must not be cleared by
+  the older success. Programmatic credential cleanup does not increment the
+  revision. Header `待保存` is exactly `draftRevision != committedRevision`.
+- `ModelConnectivityTest` receives the same non-secret reset version. Probe
+  results are tagged with the version that created them and render only while
+  it still matches. A later edit or successful save therefore hides an old
+  failure, including an async result that arrives after the draft changed.
+- `SecretInput` remains the single password owner. Its relative reveal-toggle
+  geometry must stay inside the input for long values and across password/text
+  toggles at every maintained viewport; pages must not add a Codex-only offset.
+
 ### WorkBuddy
 
 - Cache only sanitized status and model-ID DTOs. The API key lives in component
@@ -447,8 +492,9 @@ fetch/save controls.
   confirmation so the user is not asked twice. Fetch and manual entry share one
   draft list: pull merges remote IDs, fill adds typed IDs, and save splits the
   draft back into selected versus manual IDs. Both the existing list and the
-  draft list can be filtered by model ID. The panel does not display backup,
-  configuration-file status, or the persisted-key-clear checkbox.
+  draft list can be filtered by model ID. The panel displays only the shared
+  write/backup disclosure; it does not expose a backup-management UI or the
+  persisted-key-clear checkbox.
 - Discovery, revision, overwrite capability, atomic persistence, concurrent
   modification, and authoritative reread follow the backend WorkBuddy
   contract. The UI freezes one exact overwrite request and replays it only with
@@ -489,6 +535,19 @@ fetch/save controls.
 - Rust derives one stable reserved Provider ID per app. The renderer cannot
   submit a generic Provider, arbitrary ID, category, metadata, usage script,
   icon, sort order, or live-config fragment.
+- Those three reserved V2 Quick Setup rows are patch-style live projections,
+  not complete user-file snapshots. Claude patches only its three managed env
+  keys; Codex patches its model route plus managed provider fields; Grok Build
+  patches `[models].default` plus the selected model's managed fields. Other
+  settings, comments, tables, models, MCP entries, Provider entries, and
+  user-owned fields survive. Invalid existing JSON/TOML fails closed rather
+  than being replaced by a minimal Quick Setup template.
+- Before mutating an existing Quick Setup target, native code replaces one
+  adjacent rolling backup with the exact preimage and preserves the source
+  permission boundary. Backup failure aborts before the primary write. Codex
+  may touch both config and auth or config only, depending on the existing
+  official-auth preservation setting; `writeTargets` must describe the exact
+  physical files this invocation mode can mutate.
 - Codex `imageExtension: true` derives `requires_openai_auth = false` plus
   provider-scoped `experimental_bearer_token` equal to `apiKey`, because
   current Codex ignores `auth.json` in that mode. `imageExtension: false`
@@ -538,47 +597,53 @@ fetch/save controls.
 
 ## 4. Validation & Error Matrix
 
-| Condition                                                                                  | Required result                                                                                         |
-| ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
-| Catalog version/order/ID/link/capability/evidence state drifts                             | Exact Rust/V2 contract test fails                                                                       |
-| V1 `officialUrl`, catalog v2/future, unknown enum, duplicate ID, non-HTTPS URL, or Codex link arrives | Runtime parse fails; catalog is unavailable                                                  |
-| Codex is selected                                                                          | Show the managed installer below the identity heading and no official-link button                       |
-| A non-Codex entry is selected                                                              | Do not read or subscribe to the Codex installer                                                         |
-| Native external open fails                                                                 | Show fixed controlled failure text; do not install or configure                                         |
-| QoderWork/TRAE selected                                                                    | Only catalog-declared and native-port capabilities are available; vendor-private writes remain unavailable |
-| Models Qoder/TRAE shows 「打开官方设置」 or 「打开 TRAE 官方模型设置」                      | Component test fails; Qoder has no 「管理 MCP」; TRAE stays guidance-only                                 |
-| Models Qoder/TRAE shows 「测试连通」                                                       | Component test fails; model probe belongs on WorkBuddy, Claude, Codex, Grok Build, and OpenCode only      |
-| Models 「测试连通」 renders before any selectable model ID                                 | Component test fails; the button is owned by `ModelConnectivityTest` and hidden when `modelIds` is empty |
-| `stream_check_url` is empty, not HTTP(S), `file://`, missing a host, or has userinfo/query/fragment | Command error `服务地址无效` or `base_url 为空`; no network probe and no API key |
-| Models 「测试连通」 calls `checkReachability` / `stream_check_url` or `stream_check_provider` | Port/page test fails; model probe is `checkModel` → `stream_check_model` only |
-| `stream_check_model` is empty, not HTTP(S), `file://`, missing a host, has userinfo/query/fragment, or has an empty model ID | Command error `服务地址无效` / `base_url 为空` / `模型 ID 为空`; no model request |
-| Model probe failure hides the upstream body behind generic network copy                    | Component test fails; `message` from `checkModel` is shown to the user |
-| Claude Base URL pathname contains a `v1` segment                                           | Warn-only FieldFeedback; save remains enabled                                                             |
-| Native observation fails on Models                                                         | Show controlled unavailable/unknown; never infer absence                                                |
-| Runtime value is unknown                                                                   | Preserve `null`/`unverified`; never display "not installed"                                            |
-| Agent directory mounts Hooks editor, MCP validation, observation, or unsupported lists     | Page test fails; those surfaces stay off the Agent directory                                            |
-| Non-Codex Agent detail omits 「产品介绍」 or Codex detail shows that region                 | Page test fails; intros are page-local copy, never catalog `description`                                |
-| Agent directory intro or Codex installer copy names FyAgent                                | Intro/page/installer test fails; Agent directory copy describes the third-party product only            |
-| QoderWork CN catalog description or Agent intro mentions Hooks                             | Catalog/intro test fails; Qoder user-facing copy must not name Hooks                                    |
-| TRAE Models attempts sqlite save or fetch-and-apply                                        | Forbidden; GET observation and catalog guidance only, never 请回 TRAE 保存                              |
-| TRAE/OpenCode GET snapshot or Debug/log contains `ak`/`sk`/`apiKey`                        | Security regression test fails                                                                          |
-| External MCP result contains an original env/header value                                  | Reject the result and expose no copy action                                                             |
-| Models target missing or unknown                                                           | Select QoderWork CN; issue no write                                                                     |
-| OpenCode is the Models target                                                              | Mount `opencodeModels` CRUD; do not call Provider quick setup or the Codex installer                    |
-| A displayed model ID has no local vendor icon resolver                                     | Asset mapping test fails; never load `https?://` icons                                                  |
-| Any selector lacks a local icon                                                            | Asset mapping/unit/browser gate fails                                                                   |
-| WorkBuddy remote/local ID contains a complete API key                                      | Generic fail-closed error before DTO/cache/DOM/write                                                    |
-| WorkBuddy revision or overwrite token drifts                                               | Write nothing; reread before claiming state                                                             |
-| Provider Base URL has userinfo/query/fragment or a credential component                    | Reject before DB/current/live mutation                                                                  |
-| Provider request is empty, generic, wrong-ID, or has public/secret collision               | Reject in Rust; no state mutation                                                                       |
-| Codex `imageExtension: true` omits `experimental_bearer_token` while `requires_openai_auth` is false | Host derivation/test fails; current Codex would not send `auth.json`'s key |
-| Concurrent Provider/live writer                                                            | Serialize or detect conflict; never return a split DB/current/live state                                |
-| Required atomic step fails and compensation succeeds                                       | Return `APPLY_FAILED_ROLLED_BACK`; UI may say rollback confirmed                                        |
-| Compensation is incomplete                                                                 | Return `ROLLBACK_PARTIAL_STATE_UNKNOWN`; stop writes and state that authority is unknown                |
-| Mutation succeeds but sanitized reread fails/mismatches                                    | Show the atomic apply result as unconfirmed; never claim fixed-ID activation                            |
-| Mutation succeeds and another serialized request replaces the reserved row                 | Keep this request's guard-time warnings; reread may confirm only fixed-ID activation, never exact bytes |
-| Browser preview calls authoritative read/write                                             | Return native-only unavailable; never return production-looking fake state                              |
-| API key appears in URL/storage/query/log/error/DOM/snapshot                                | Security regression test fails                                                                          |
+| Condition                                                                                                                    | Required result                                                                                            |
+| ---------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Catalog version/order/ID/link/capability/evidence state drifts                                                               | Exact Rust/V2 contract test fails                                                                          |
+| V1 `officialUrl`, catalog v2/future, unknown enum, duplicate ID, non-HTTPS URL, or Codex link arrives                        | Runtime parse fails; catalog is unavailable                                                                |
+| Codex is selected                                                                                                            | Show the managed installer below the identity heading and no official-link button                          |
+| A non-Codex entry is selected                                                                                                | Do not read or subscribe to the Codex installer                                                            |
+| Native external open fails                                                                                                   | Show fixed controlled failure text; do not install or configure                                            |
+| QoderWork/TRAE selected                                                                                                      | Only catalog-declared and native-port capabilities are available; vendor-private writes remain unavailable |
+| Models Qoder/TRAE shows 「打开官方设置」 or 「打开 TRAE 官方模型设置」                                                       | Component test fails; Qoder has no 「管理 MCP」; TRAE stays guidance-only                                  |
+| Models Qoder/TRAE shows 「测试连通」                                                                                         | Component test fails; model probe belongs on WorkBuddy, Claude, Codex, Grok Build, and OpenCode only       |
+| Models 「测试连通」 renders before any selectable model ID                                                                   | Component test fails; the button is owned by `ModelConnectivityTest` and hidden when `modelIds` is empty   |
+| `stream_check_url` is empty, not HTTP(S), `file://`, missing a host, or has userinfo/query/fragment                          | Command error `服务地址无效` or `base_url 为空`; no network probe and no API key                           |
+| Models 「测试连通」 calls `checkReachability` / `stream_check_url` or `stream_check_provider`                                | Port/page test fails; model probe is `checkModel` → `stream_check_model` only                              |
+| `stream_check_model` is empty, not HTTP(S), `file://`, missing a host, has userinfo/query/fragment, or has an empty model ID | Command error `服务地址无效` / `base_url 为空` / `模型 ID 为空`; no model request                          |
+| Model probe failure hides the upstream body behind generic network copy                                                      | Component test fails; `message` from `checkModel` is shown to the user                                     |
+| Claude Base URL pathname contains a `v1` segment                                                                             | Warn-only FieldFeedback; save remains enabled                                                              |
+| Native observation fails on Models                                                                                           | Show controlled unavailable/unknown; never infer absence                                                   |
+| Runtime value is unknown                                                                                                     | Preserve `null`/`unverified`; never display "not installed"                                                |
+| Agent directory mounts Hooks editor, MCP validation, observation, or unsupported lists                                       | Page test fails; those surfaces stay off the Agent directory                                               |
+| Non-Codex Agent detail omits 「产品介绍」 or Codex detail shows that region                                                  | Page test fails; intros are page-local copy, never catalog `description`                                   |
+| Agent directory intro or Codex installer copy names FyAgent                                                                  | Intro/page/installer test fails; Agent directory copy describes the third-party product only               |
+| QoderWork CN catalog description or Agent intro mentions Hooks                                                               | Catalog/intro test fails; Qoder user-facing copy must not name Hooks                                       |
+| TRAE Models attempts sqlite save or fetch-and-apply                                                                          | Forbidden; GET observation and catalog guidance only, never 请回 TRAE 保存                                 |
+| TRAE/OpenCode GET snapshot or Debug/log contains `ak`/`sk`/`apiKey`                                                          | Security regression test fails                                                                             |
+| External MCP result contains an original env/header value                                                                    | Reject the result and expose no copy action                                                                |
+| Models target missing or unknown                                                                                             | Select QoderWork CN; issue no write                                                                        |
+| OpenCode is the Models target                                                                                                | Mount `opencodeModels` CRUD; do not call Provider quick setup or the Codex installer                       |
+| A displayed model ID has no local vendor icon resolver                                                                       | Asset mapping test fails; never load `https?://` icons                                                     |
+| Any selector lacks a local icon                                                                                              | Asset mapping/unit/browser gate fails                                                                      |
+| WorkBuddy remote/local ID contains a complete API key                                                                        | Generic fail-closed error before DTO/cache/DOM/write                                                       |
+| WorkBuddy revision or overwrite token drifts                                                                                 | Write nothing; reread before claiming state                                                                |
+| Writable Models path/backup metadata is unavailable or malformed                                                             | Disable the save; do not let React guess a filesystem path                                                 |
+| Existing local config cannot be parsed or the required backup cannot be created                                              | Write nothing to the primary file; never replace it with a minimal Quick Setup template                    |
+| A save succeeds for revision N after the user already edited revision N+1                                                    | Commit only N; keep `待保存` and preserve the N+1 credential/draft                                         |
+| Draft/save revision changes after a probe result was created                                                                 | Hide that stale result; an old async completion must not become the current configuration status           |
+| Provider Base URL has userinfo/query/fragment or a credential component                                                      | Reject before DB/current/live mutation                                                                     |
+| Provider request is empty, generic, wrong-ID, or has public/secret collision                                                 | Reject in Rust; no state mutation                                                                          |
+| Codex `imageExtension: true` omits `experimental_bearer_token` while `requires_openai_auth` is false                         | Host derivation/test fails; current Codex would not send `auth.json`'s key                                 |
+| Codex model probe adds an output-token limit solely for connectivity                                                         | Wire test fails; send the bounded Responses probe without that compatibility-breaking field                |
+| Grok Build probe uses Chat Completions while Quick Setup writes `api_backend = "responses"`                                  | Wire test fails; use the Responses endpoint                                                                |
+| Concurrent Provider/live writer                                                                                              | Serialize or detect conflict; never return a split DB/current/live state                                   |
+| Required atomic step fails and compensation succeeds                                                                         | Return `APPLY_FAILED_ROLLED_BACK`; UI may say rollback confirmed                                           |
+| Compensation is incomplete                                                                                                   | Return `ROLLBACK_PARTIAL_STATE_UNKNOWN`; stop writes and state that authority is unknown                   |
+| Mutation succeeds but sanitized reread fails/mismatches                                                                      | Show the atomic apply result as unconfirmed; never claim fixed-ID activation                               |
+| Mutation succeeds and another serialized request replaces the reserved row                                                   | Keep this request's guard-time warnings; reread may confirm only fixed-ID activation, never exact bytes    |
+| Browser preview calls authoritative read/write                                                                               | Return native-only unavailable; never return production-looking fake state                                 |
+| API key appears in URL/storage/query/log/error/DOM/snapshot                                                                  | Security regression test fails                                                                             |
 
 ## 5. Good / Base / Bad Cases
 
@@ -605,6 +670,14 @@ fetch/save controls.
   shared config lock, returns request-attributed non-secret warnings/live-change
   state, clears the key, and describes a matching `currentId` reread only as
   fixed-ID activation confirmation.
+- Good: a writable Models panel shows native `将修改` / `备份位置` metadata,
+  saves revision N, and becomes clean only if no N+1 edit happened while the
+  request was pending. A successful save also invalidates probe feedback from
+  the old revision.
+- Good: Codex/Grok Build probes use Responses, Claude uses Messages, and
+  WorkBuddy/OpenCode use Chat Completions. Codex may project only the bounded
+  image-extension actor intent; it does not add an output-token limit for a
+  one-shot connectivity probe.
 - Base: browser preview renders the pages but authoritative panels report that
   desktop state is unavailable; test-only fixtures may exercise UI branches.
 - Bad: hard-code a second capability matrix, treat `null` runtime as absence,
@@ -647,14 +720,17 @@ Required focused coverage includes:
 - normal browser native-only reads/writes and rich fake-Tauri test isolation;
 - WorkBuddy plus OpenCode discovery success/truncation/failure/duplicate
   lock, revision, frozen overwrite, expired token, TOCTOU, authoritative
-  reread, API-key lifecycle, and malicious ID/credential collisions;
+  reread, API-key lifecycle, exact single-preimage backup behavior, first-save
+  no-fake-backup behavior, and malicious ID/credential collisions;
   TRAE GET tests use fixture sqlite, prefer the colon Work CN key when
   an underscore IDE map also exists, and assert GET DTO JSON has no `ak`/`sk`.
   TRAE Models tests prove guidance copy and the absence of fetch/save
   controls; they never invoke `save_traework_models`.
 - minimum Provider request/unknown-field rejection, fixed derived IDs/shapes,
   empty/URL/credential collisions, success warnings, current reread mismatch,
-  full rollback, rollback-partial structured outcome, and secret-free errors;
+  full rollback, rollback-partial structured outcome, secret-free errors,
+  native `writeTargets`, targeted live preservation for Claude/Codex/Grok
+  fixtures, exact rolling backups, and backup-failure no-primary-write;
   Codex image-extension derivation must write `experimental_bearer_token`
   when `requires_openai_auth` is false and must keep the key in `auth.json`
   only when image-extension is off;
@@ -665,13 +741,18 @@ Required focused coverage includes:
   for its own guarded request, and renderer copy never treats an ID-only reread
   as exact configuration-content confirmation;
 - Provider summary app allowlist, credential carriers, exact DTO, key/ID/current
-  consistency, Tauri runtime parser, React Query/DOM secret-negative scans;
+  consistency, write-target path metadata, Tauri runtime parser, React
+  Query/DOM secret-negative scans;
 - StrictMode replay, repeat-click locks, no API
   key in DOM/hash/localStorage/sessionStorage/query cache or logged fixtures.
   Models page keep-alive across primary-route switches and previously opened
   target panels; the other primary routes keep the same in-session page.
   Secrets stay in component memory only. Immediate WorkBuddy
   existing-model delete after an unrecoverable-delete confirmation.
+  Revision tests prove a save of N cannot clear a credential/draft entered at
+  N+1, successful current-revision saves clear `待保存`, and stale probe
+  results disappear after edit/commit. Browser geometry measures the shared
+  `SecretInput` toggle relative to its input at all maintained viewports.
 - Models Qoder/TRAE details must not render 「打开官方设置」 or
   「打开 TRAE 官方模型设置」; Qoder states 官方不支持第三方模型配置 and
   has no 「管理 MCP」 or 「测试连通」.
@@ -679,7 +760,10 @@ Required focused coverage includes:
   after selectable model IDs exist. The picker searches and filters by group,
   then `checkModel` sends a real streaming request. Failure shows the
   backend `message`. `stream_check_model` validates the draft HTTP(S) URL the
-  same way as `validate_probe_url` and never resets the circuit breaker.
+  same way as `validate_probe_url` and never resets the circuit breaker. Wire
+  tests prove Codex/Grok Build use Responses, the Codex probe omits the
+  connectivity-only output limit, and only bounded image-extension intent can
+  add the managed actor header.
   Claude, Codex, and Grok Build all expose 「拉取模型」.
   Claude shows a warn-only explicit `/v1` pathname notice and a placeholder
   without `/v1`.
@@ -736,6 +820,24 @@ const summary = await ports.providers.getSummary(app);
 if (summary.currentId !== QUICK_SETUP_PROVIDER_IDS[app]) {
   showUnconfirmedState();
 }
+```
+
+Wrong: treat the minimum Quick Setup Provider snapshot as the complete user
+file, or show `待保存` merely because a saved field is nonempty.
+
+```ts
+await writeWholeConfig(quickSetupProvider.settingsConfig);
+const pending = Boolean(baseUrl || apiKey || modelId);
+```
+
+Correct: Rust patches only the reserved Quick Setup fields into the current
+live preimage after the native write-plan/backup gate. The renderer tracks a
+submitted revision independently from the visible field values.
+
+```ts
+const submitted = draft.captureRevision();
+await ports.providers.applyQuickSetupWithResult(request, app);
+draft.commitRevision(submitted); // newer edits still remain pending
 ```
 
 Wrong: read the first catalog URL or manufacture a Codex website action in the

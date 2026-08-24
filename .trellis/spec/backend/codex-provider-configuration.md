@@ -30,11 +30,23 @@ patch_codex_provider_features(app: "codex", provider, intent, isNew?)
        imageExtensionConfigured?,
        codexNativeCapabilitiesGeneratedProvider?
      }
+
+get_provider_summary({ app: "codex" })
+  -> {
+       providers: Record<string, { id: string; name: string }>;
+       currentId: string;
+       writeTargets: Array<{ path: string; backupPath: string; exists: boolean }>;
+     }
 ```
 
 Feature commands reject every `app` other than Codex. No provider command may
-accept or return a filesystem path, process identifier, launch command,
-credential-bearing diagnostic, or generic application-version field.
+accept a renderer-controlled filesystem path. Generic mutation results never
+return a filesystem path, process identifier, launch command,
+credential-bearing diagnostic, or generic application-version field. The V2
+sanitized summary is the narrow exception: it may return user-visible
+`writeTargets` path/backup metadata owned by native path resolution. Paths under
+the frozen user home use `~`; the DTO contains no file bytes, digest, Provider
+settings, credentials, or arbitrary renderer-supplied path.
 
 Successful Codex add/update mutations may return these stable warning codes:
 
@@ -227,15 +239,122 @@ imageExtension false -> requires_openai_auth = true
   + no experimental_bearer_token
 ```
 
+## Scenario: V2 Codex Quick Setup targeted live write
+
+### 1. Scope / Trigger
+
+- Trigger: the fixed V2 Quick Setup Provider ID is written or switched to live.
+- The stored Provider remains a minimum snapshot. It is **not** the authority
+  for unrelated user-owned `config.toml` or `auth.json` fields.
+- Generic imported Providers keep their existing snapshot semantics; do not
+  broaden this patch mode to every Codex Provider.
+
+### 2. Signatures
+
+```text
+patch_codex_quick_setup_live_config(currentConfig, desiredQuickSetupConfig)
+  -> patchedConfig
+
+ProviderService::quick_setup_write_targets(Codex)
+  -> [{ path, backupPath, exists }, ...]
+
+write_live_with_common_config(Codex, fixedQuickSetupProvider)
+  -> targeted config/auth write
+```
+
+### 3. Contracts
+
+- Parse the current live TOML with `toml_edit::DocumentMut`. Invalid current
+  TOML fails closed; never rebuild a minimal document from form state.
+- The fixed Quick Setup patch may own top-level `model_provider` and `model`,
+  plus its active provider's `name`, `base_url`, `wire_api`,
+  `requires_openai_auth`, managed image header, managed WebSocket field, and
+  managed bearer-token field. A historical fixed row that does not yet carry a
+  modern owned field preserves the current live value rather than guessing a
+  default.
+- Existing `disable_response_storage`, `review_model`, other providers,
+  comments, ordering, unrelated provider fields/headers, MCP, features,
+  projects, hooks, desktop, memory/history, sandbox/approval, and user tables
+  survive.
+- When the current compatibility setting allows third-party auth writes,
+  `auth.json` is read-modify-written: only `OPENAI_API_KEY` changes; login,
+  account, token, and future unknown fields survive.
+- When official-auth preservation is enabled, `auth.json` is not written and
+  is absent from `writeTargets`; the submitted key is projected through the
+  established provider-scoped bearer-token path in `config.toml`.
+- Before each existing physical file is mutated, replace exactly one adjacent
+  `.fyagent.backup` with that file's exact preimage. No source file means no
+  fake empty backup. Backup creation/permission failure aborts before the
+  primary write. Backups inherit the source permission boundary.
+- `writeTargets` must list exactly the physical files the current mode can
+  mutate. Renderer code displays it but never supplies a path back to Rust.
+
+### 4. Validation & Error Matrix
+
+| Condition                                                                   | Required result                                                        |
+| --------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Current `config.toml` is invalid or `model_providers` is not editable       | Reject; no backup/primary rewrite from the minimum snapshot            |
+| Current `auth.json` must be written but its root is not an object           | Reject before primary mutation                                         |
+| Required backup cannot be created or source permissions cannot be preserved | Reject; primary file remains byte-for-byte unchanged                   |
+| Config exists but auth preservation mode is enabled                         | Back up/write config only; leave auth bytes untouched                  |
+| Existing unrelated provider/header/MCP/feature fields are present           | Preserve them while changing only owned Quick Setup fields             |
+| Fixed historical row omits a modern optional owned field                    | Preserve the corresponding current live field; do not invent a default |
+
+### 5. Good / Base / Bad Cases
+
+- Good: a large hand-written config keeps comments, other providers, custom
+  headers, MCP, features, and `disable_response_storage = false`; only the
+  selected Quick Setup route changes and the backup equals the exact old file.
+- Base: first creation has no config preimage, so no backup file is fabricated;
+  the new config is still created atomically.
+- Good: official-auth preservation keeps `auth.json` byte-identical and places
+  the third-party key in the active provider bearer field only.
+- Bad: serialize the minimum Quick Setup Provider as the complete
+  `config.toml`, or overwrite all of `auth.json` with `{ OPENAI_API_KEY }`.
+
+### 6. Tests Required
+
+- Large TOML fixture: assert comments, unrelated top-level keys, other provider,
+  custom provider field/header, MCP and features survive while owned route
+  fields change.
+- Assert config/auth rolling backups equal their exact immediate preimages.
+- Assert backup failure leaves the primary unchanged.
+- Assert Claude/Codex/Grok fixed Quick Setup rows all use targeted projection,
+  so switching back to a saved reserved row cannot reintroduce full-file
+  clobbering.
+- Auth-preservation test: summary lists config only, auth bytes remain exact,
+  and live config contains the required provider-scoped bearer token.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```text
+stored quick-setup Provider.config -> replace ~/.codex/config.toml
+stored quick-setup Provider.auth   -> replace ~/.codex/auth.json
+```
+
+#### Correct
+
+```text
+current live preimage
+  -> validate
+  -> patch only Quick Setup-owned fields
+  -> exact single rolling backup of each existing target
+  -> atomic primary write
+```
+
 ## Scenario: Codex image-mode API key projection
 
 ### 1. Scope / Trigger
+
 - Trigger: current Codex does not attach `auth.json`'s `OPENAI_API_KEY` when
   the active provider sets `requires_openai_auth = false`. FyAgent image
   extension writes that field to `false`, so the API key must also live on
   the provider table as `experimental_bearer_token`.
 
 ### 2. Signatures
+
 ```text
 ProviderQuickSetupRequest.codexFeatures.imageExtension: Option<bool>
 into_provider(AppType::Codex) -> Provider.settings_config { auth, config }
@@ -244,6 +363,7 @@ project_codex_live_config_when_openai_auth_disabled(auth, config_text) -> config
 ```
 
 ### 3. Contracts
+
 - Request: V2 `apiKey` plus optional `codexFeatures.imageExtension`.
 - Stored Codex shape always keeps `auth.OPENAI_API_KEY`.
 - Image on: `[model_providers.custom].requires_openai_auth = false` and
@@ -257,6 +377,7 @@ project_codex_live_config_when_openai_auth_disabled(auth, config_text) -> config
   `~/.codex/config.toml`. No new env key.
 
 ### 4. Validation & Error Matrix
+
 - Empty `apiKey` -> quick setup rejects before TOML derivation.
 - Invalid TOML at live write -> existing parse error; do not synthesize a
   bearer token onto a document that cannot be parsed.
@@ -264,6 +385,7 @@ project_codex_live_config_when_openai_auth_disabled(auth, config_text) -> config
   `prepare_codex_provider_live_config` leaves the text unchanged.
 
 ### 5. Good/Base/Bad Cases
+
 - Good: image-on quick setup stores and lives the same key in auth and the
   provider bearer token.
 - Base: image-off quick setup writes only `auth.json`.
@@ -272,6 +394,7 @@ project_codex_live_config_when_openai_auth_disabled(auth, config_text) -> config
   `requires_openai_auth` remains `true`.
 
 ### 6. Tests Required
+
 - `quick_setup_request_writes_image_extension_and_websocket_features`
 - `quick_setup_request_disabling_image_keeps_requires_openai_auth_true`
 - `quick_setup_request_derives_the_fixed_provider_shape` (no bearer token)
@@ -280,13 +403,17 @@ project_codex_live_config_when_openai_auth_disabled(auth, config_text) -> config
 - `provider_service_switch_codex_projects_bearer_token_when_openai_auth_disabled`
 
 ### 7. Wrong vs Correct
+
 #### Wrong
+
 ```text
 imageExtension true -> requires_openai_auth = false
 live auth.json OPENAI_API_KEY = apiKey
 live config.toml has no experimental_bearer_token
 ```
+
 #### Correct
+
 ```text
 imageExtension true -> requires_openai_auth = false
 live auth.json OPENAI_API_KEY = apiKey

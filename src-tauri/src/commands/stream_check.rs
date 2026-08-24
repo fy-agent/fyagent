@@ -64,8 +64,16 @@ pub async fn stream_check_model(
     base_url: String,
     api_key: String,
     model_id: String,
+    codex_image_extension: Option<bool>,
 ) -> Result<ModelProbeResult, AppError> {
-    model_probe::probe(app, &base_url, &api_key, &model_id).await
+    model_probe::probe(
+        app,
+        &base_url,
+        &api_key,
+        &model_id,
+        codex_image_extension.unwrap_or(false),
+    )
+    .await
 }
 
 /// 批量连通性检查

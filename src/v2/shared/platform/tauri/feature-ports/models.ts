@@ -6,6 +6,7 @@ import type {
   FetchedModelRef,
   ModelProbeRequest,
   ModelProbeResult,
+  ModelWriteTarget,
   OpenCodeFetchModelsRequest,
   OpenCodeModelSnapshot,
   OpenCodeSaveModelsRequest,
@@ -191,6 +192,12 @@ function assertModelProbeRequest(
   request: ModelProbeRequest,
 ): ModelProbeRequest {
   if (
+    !isRecord(request) ||
+    !hasRequiredAndOptionalKeys(
+      request,
+      ["app", "baseUrl", "apiKey", "modelId"],
+      ["codexImageExtension"],
+    ) ||
     !isOneOf(request.app, [
       "claude",
       "codex",
@@ -201,7 +208,9 @@ function assertModelProbeRequest(
     typeof request.baseUrl !== "string" ||
     typeof request.apiKey !== "string" ||
     typeof request.modelId !== "string" ||
-    request.modelId.trim().length === 0
+    request.modelId.trim().length === 0 ||
+    (request.codexImageExtension !== undefined &&
+      typeof request.codexImageExtension !== "boolean")
   )
     throw new Error("Model probe request is invalid");
   return request;
@@ -225,6 +234,7 @@ async function invokeModelProbe(
       baseUrl: payload.baseUrl,
       apiKey: payload.apiKey,
       modelId: payload.modelId,
+      codexImageExtension: payload.codexImageExtension,
     }),
   );
 }
@@ -232,9 +242,18 @@ async function invokeModelProbe(
 function parseOpenCodeModelSnapshot(value: unknown): OpenCodeModelSnapshot {
   if (
     !isRecord(value) ||
-    !hasExactKeys(value, ["providers", "revision"]) ||
+    !hasExactKeys(value, [
+      "providers",
+      "revision",
+      "path",
+      "backupPath",
+      "exists",
+    ]) ||
     !Array.isArray(value.providers) ||
-    (value.revision !== null && typeof value.revision !== "string")
+    (value.revision !== null && typeof value.revision !== "string") ||
+    typeof value.path !== "string" ||
+    typeof value.backupPath !== "string" ||
+    typeof value.exists !== "boolean"
   )
     throw new Error("OpenCode model snapshot is unavailable");
   const providers = value.providers.map((provider) => {
@@ -252,7 +271,29 @@ function parseOpenCodeModelSnapshot(value: unknown): OpenCodeModelSnapshot {
       modelIds: provider.modelIds,
     };
   });
-  return { providers, revision: value.revision };
+  return {
+    providers,
+    revision: value.revision,
+    path: value.path,
+    backupPath: value.backupPath,
+    exists: value.exists,
+  };
+}
+
+function parseModelWriteTarget(value: unknown): ModelWriteTarget {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, ["path", "backupPath", "exists"]) ||
+    typeof value.path !== "string" ||
+    typeof value.backupPath !== "string" ||
+    typeof value.exists !== "boolean"
+  )
+    throw new Error("Model write target is unavailable");
+  return {
+    path: value.path,
+    backupPath: value.backupPath,
+    exists: value.exists,
+  };
 }
 
 function parseRevisionedSaveResult(value: unknown): WorkBuddySaveModelsResult {
@@ -303,9 +344,16 @@ function parseRevisionedSaveResult(value: unknown): WorkBuddySaveModelsResult {
 }
 
 function parseProviderSummary(value: unknown): ProviderSummaryQueryData {
-  if (!isRecord(value) || !hasExactKeys(value, ["providers", "currentId"]))
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, ["providers", "currentId", "writeTargets"])
+  )
     throw new Error("Provider public summary is unavailable");
-  if (!isRecord(value.providers) || typeof value.currentId !== "string")
+  if (
+    !isRecord(value.providers) ||
+    typeof value.currentId !== "string" ||
+    !Array.isArray(value.writeTargets)
+  )
     throw new Error("Provider public summary is unavailable");
 
   const providers: ProviderSummaryQueryData["providers"] = {};
@@ -330,7 +378,11 @@ function parseProviderSummary(value: unknown): ProviderSummaryQueryData {
   }
   if (value.currentId !== "" && !(value.currentId in providers))
     throw new Error("Provider public summary is unavailable");
-  return { providers, currentId: value.currentId };
+  return {
+    providers,
+    currentId: value.currentId,
+    writeTargets: value.writeTargets.map(parseModelWriteTarget),
+  };
 }
 
 function isValidCodexFeatures(value: unknown): boolean {

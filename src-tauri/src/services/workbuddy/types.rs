@@ -21,8 +21,10 @@ pub enum WorkBuddyConfigFormat {
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkBuddyStatus {
-    /// A stable display value, deliberately not an absolute user path.
+    /// User-visible path, shortened to `~` when it lives under the frozen
+    /// interactive-user home.
     pub path: String,
+    pub backup_path: String,
     pub exists: bool,
     /// Count of unique, trimmed IDs in their first-occurrence order.
     pub model_count: usize,

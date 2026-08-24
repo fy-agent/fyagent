@@ -38,7 +38,6 @@ use super::{
 
 const MODELS_FILE_NAME: &str = "models.json";
 const BACKUP_FILE_NAME: &str = "models.json.backup";
-const DISPLAY_PATH: &str = ".workbuddy/models.json";
 const OVERWRITE_TOKEN_TTL: Duration = Duration::from_secs(3 * 60);
 const OVERWRITE_TOKEN_EXPIRED_RETENTION: Duration = Duration::from_secs(3 * 60);
 type HmacSha256 = Hmac<Sha256>;
@@ -146,7 +145,8 @@ pub(crate) fn get_workbuddy_status_at(
     let (loaded, backup_exists) = (load_config(&paths.models)?, paths.backup.exists());
 
     Ok(WorkBuddyStatus {
-        path: DISPLAY_PATH.to_string(),
+        path: crate::config::display_user_path(&paths.models),
+        backup_path: crate::config::display_user_path(&paths.backup),
         exists: loaded.exists,
         model_count: loaded.document.unique_model_ids().len(),
         revision: loaded.revision,
@@ -990,7 +990,11 @@ mod tests {
         let status = get_workbuddy_status_at(&paths).unwrap();
         let ids = get_workbuddy_model_ids_at(&paths).unwrap();
         let serialized_status = serde_json::to_string(&status).unwrap();
-        assert_eq!(status.path, DISPLAY_PATH);
+        assert_eq!(status.path, crate::config::display_user_path(&paths.models));
+        assert_eq!(
+            status.backup_path,
+            crate::config::display_user_path(&paths.backup)
+        );
         assert_eq!(status.format, WorkBuddyConfigFormat::ObjectRoot);
         assert_eq!(status.model_count, 2);
         assert_eq!(ids.ids, ["model-a", "Model-A"]);

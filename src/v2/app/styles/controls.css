@@ -65,8 +65,11 @@
 }
 .fy-control-secret {
   position: relative;
+  width: 100%;
+  min-width: 0;
 }
 .fy-control-secret .fy-control-input {
+  display: block;
   padding-right: 46px;
 }
 .fy-control-secret-toggle,
