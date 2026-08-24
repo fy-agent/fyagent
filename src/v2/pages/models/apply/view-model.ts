@@ -41,6 +41,43 @@ export type ApplyResourcePresentation = {
   readonly tone: ApplyTone;
 };
 
+export type ApplyPreviewModel = {
+  readonly semantic: {
+    readonly summary: string;
+    readonly currentCode: string;
+    readonly targetCode: string;
+    readonly targetName: string;
+    readonly operationLabel: string;
+    readonly planStatusLabel: string;
+  };
+  readonly risk: {
+    readonly restartLabel: string;
+    readonly items: ChangePlan["risks"];
+    readonly empty: boolean;
+  };
+  readonly scope: {
+    readonly readLabels: readonly string[];
+    readonly writeLabels: readonly string[];
+    readonly secretLabel: string;
+    readonly dbBaselineLabel: string;
+    readonly deviceBaselineLabel: string;
+    readonly expiresLabel: string;
+  };
+  readonly recovery: {
+    readonly evidenceLabel: string;
+    readonly compensationLabel: string;
+    readonly readbackLabel: string;
+  };
+};
+
+export type ApplyPartialTruth = {
+  readonly succeededCount: number;
+  readonly compensatedCount: number;
+  readonly unverifiedCount: number;
+  readonly remainingEffects: readonly string[];
+  readonly manualActions: readonly string[];
+};
+
 export type ApplyPresentation = {
   readonly mode: ApplyViewMode;
   readonly tone: ApplyTone;
@@ -49,6 +86,9 @@ export type ApplyPresentation = {
   readonly statusLabel: string;
   readonly usageEvidenceCopy: string | null;
   readonly plan: ChangePlan | null;
+  readonly preview: ApplyPreviewModel | null;
+  readonly partialTruth: ApplyPartialTruth | null;
+  readonly eventSeq: number | null;
   readonly steps: readonly ApplyStepPresentation[];
   readonly resources: readonly ApplyResourcePresentation[];
   readonly canConfirm: boolean;
@@ -101,8 +141,96 @@ const RESOURCE_LABELS = {
   string
 >;
 
+const MANUAL_ACTION_LABELS = {
+  retry_readback: "重新回读",
+  review_configuration: "检查配置",
+} as const satisfies Record<
+  NonNullable<ChangeJobSnapshot["partialResult"]>["manualActions"][number],
+  string
+>;
+
 function assertNever(value: never): never {
   throw new Error(`Unhandled Apply state: ${String(value)}`);
+}
+
+function restartExpectationLabel(
+  value: ChangePlan["restartExpectation"],
+): string {
+  switch (value) {
+    case "recommended":
+      return "建议重启 Codex";
+    case "not_required":
+      return "无需重启";
+    case "unknown":
+      return "尚未确认";
+    default:
+      return assertNever(value);
+  }
+}
+
+function secretCapabilityLabel(value: ChangePlan["secretCapability"]): string {
+  switch (value) {
+    case "no_new_credential_material":
+      return "不写入新的凭据材料";
+    case "secret_dependency_unavailable":
+      return "缺少可用凭据依赖，无法安全应用";
+    default:
+      return assertNever(value);
+  }
+}
+
+function evidenceNoteLabel(note: string): string {
+  return note === "usage_not_observed"
+    ? "本次不把真实使用观察当作成功证据。"
+    : "仅采用计划内证据说明，不把未观察的使用当成成功。";
+}
+
+function createPreviewModel(plan: ChangePlan): ApplyPreviewModel {
+  return {
+    semantic: {
+      summary: `将 Codex 当前 Provider ${plan.currentProviderCode} 切换到 ${plan.targetProviderName}（${plan.targetProviderCode}）。`,
+      currentCode: plan.currentProviderCode,
+      targetCode: plan.targetProviderCode,
+      targetName: plan.targetProviderName,
+      operationLabel: "Codex Provider 切换",
+      planStatusLabel: plan.status === "ready" ? "可确认" : "不可再次使用",
+    },
+    risk: {
+      restartLabel: restartExpectationLabel(plan.restartExpectation),
+      items: plan.risks,
+      empty: plan.risks.length === 0,
+    },
+    scope: {
+      readLabels: plan.adapter.readSet.map((kind) => RESOURCE_LABELS[kind]),
+      writeLabels: plan.adapter.writeSet.map((kind) => RESOURCE_LABELS[kind]),
+      secretLabel: secretCapabilityLabel(plan.secretCapability),
+      dbBaselineLabel: plan.dbBaselineProviderId ?? "无数据库基线",
+      deviceBaselineLabel: plan.deviceBaselineProviderId ?? "无设备基线",
+      expiresLabel: new Date(plan.expiresAt * 1000).toISOString(),
+    },
+    recovery: {
+      evidenceLabel: evidenceNoteLabel(plan.evidenceNote),
+      compensationLabel: "失败时由写入方回滚到原基线，而不是另一套撤销引擎。",
+      readbackLabel: "中断后只做只读回读，不重放写入。",
+    },
+  };
+}
+
+function projectPartialTruth(
+  partial: ChangeJobSnapshot["partialResult"],
+): ApplyPartialTruth | null {
+  if (!partial) return null;
+  return {
+    succeededCount: partial.succeededSteps.length,
+    compensatedCount: partial.compensatedSteps.length,
+    unverifiedCount: partial.unverifiedSteps.length,
+    remainingEffects: partial.remainingEffects.map(
+      (kind) => RESOURCE_LABELS[kind],
+    ),
+    manualActions: partial.manualActions.map(
+      (action) => MANUAL_ACTION_LABELS[action],
+    ),
+  };
 }
 
 function stepStatus(
@@ -392,6 +520,9 @@ export function createApplyViewModel(
         ? "配置结果已记录，尚无真实使用证据。"
         : null,
     plan,
+    preview: plan ? createPreviewModel(plan) : null,
+    partialTruth: projectPartialTruth(job?.partialResult ?? null),
+    eventSeq: job?.eventSeq ?? null,
     steps,
     resources,
     canConfirm,

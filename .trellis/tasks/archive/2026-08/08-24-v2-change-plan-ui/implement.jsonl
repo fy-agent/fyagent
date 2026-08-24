@@ -1,0 +1,5 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/frontend/v2-agent-models.md", "reason": "Current Models Change Plan UI contract"}
+{"file": ".trellis/spec/frontend/reuse.md", "reason": "Reuse existing Apply workspace instead of a new page tree"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Closed DTO parsing before React state"}
+{"file": ".trellis/spec/backend/change-plan-executor.md", "reason": "Backend job/partial-result contract already on main"}

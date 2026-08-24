@@ -1593,3 +1593,24 @@ Salvaged PR #134 typed-executor capabilities onto canonical Change Plan v20, pre
 
 - Push the exact replacement head, create the current-main replacement PR, close Draft #134 as superseded, and hand the replacement to Merge Queue.
 - After main merge, sync dev/laiyongjie and immediately start #136 V2 UI salvage using pr-consolidation-handoff.md.
+
+
+## Session 49: V2 Change Plan UI salvage
+
+**Date**: 2026-08-24
+**Task**: V2 Change Plan UI salvage
+**Branch**: `dev/v2-change-plan-ui`
+
+### Summary
+
+Restored Models Apply four-section preview, partial-result/eventSeq display, and bounded getChangeJob polling on current main as the #136 replacement. No cancel button. SPEC updated. Task archived.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ca6e2b89` | (see git log) |
+
+### Status
+
+[OK] **Completed**

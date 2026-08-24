@@ -93,38 +93,117 @@ export function ApplyWorkspace({
         </span>
       </header>
 
-      <div className="fy-apply-grid">
-        <section
-          className="fy-apply-pane"
-          aria-labelledby="fy-apply-plan-title"
-        >
-          <h3 id="fy-apply-plan-title">变更计划</h3>
-          {plan ? (
+      {view.preview ? (
+        <div className="fy-apply-preview" aria-label="变更计划预览">
+          <section
+            className="fy-apply-pane"
+            aria-labelledby="fy-apply-semantic-title"
+          >
+            <h3 id="fy-apply-semantic-title">语义变化</h3>
+            <p>{view.preview.semantic.summary}</p>
             <dl className="fy-apply-plan-details">
               <div>
-                <dt>目标 Provider</dt>
-                <dd>{plan.targetProviderName}</dd>
+                <dt>操作</dt>
+                <dd>{view.preview.semantic.operationLabel}</dd>
               </div>
               <div>
-                <dt>重启预期</dt>
+                <dt>当前 Provider</dt>
+                <dd>{view.preview.semantic.currentCode}</dd>
+              </div>
+              <div>
+                <dt>目标 Provider</dt>
                 <dd>
-                  {plan.restartExpectation === "recommended"
-                    ? "建议重启 Codex"
-                    : plan.restartExpectation === "not_required"
-                      ? "无需重启"
-                      : "尚未确认"}
+                  {view.preview.semantic.targetName}（
+                  {view.preview.semantic.targetCode}）
                 </dd>
               </div>
               <div>
                 <dt>计划状态</dt>
-                <dd>{plan.status === "ready" ? "可确认" : "不可再次使用"}</dd>
+                <dd>{view.preview.semantic.planStatusLabel}</dd>
               </div>
             </dl>
-          ) : (
-            <p className="fy-apply-empty">尚未生成可应用的计划。</p>
-          )}
-        </section>
+          </section>
+          <section
+            className="fy-apply-pane"
+            aria-labelledby="fy-apply-risk-title"
+          >
+            <h3 id="fy-apply-risk-title">风险与重启</h3>
+            <dl className="fy-apply-plan-details">
+              <div>
+                <dt>重启预期</dt>
+                <dd>{view.preview.risk.restartLabel}</dd>
+              </div>
+            </dl>
+            {view.preview.risk.empty ? (
+              <p className="fy-apply-empty">无额外风险项</p>
+            ) : (
+              <ul className="fy-apply-risk-list">
+                {view.preview.risk.items.map((item) => (
+                  <li key={item.code}>
+                    {item.code}（{item.severity}）
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+          <section
+            className="fy-apply-pane"
+            aria-labelledby="fy-apply-scope-title"
+          >
+            <h3 id="fy-apply-scope-title">前置条件与范围</h3>
+            <dl className="fy-apply-plan-details">
+              <div>
+                <dt>读取范围</dt>
+                <dd>{view.preview.scope.readLabels.join("、")}</dd>
+              </div>
+              <div>
+                <dt>写入范围</dt>
+                <dd>{view.preview.scope.writeLabels.join("、")}</dd>
+              </div>
+              <div>
+                <dt>凭据条件</dt>
+                <dd>{view.preview.scope.secretLabel}</dd>
+              </div>
+              <div>
+                <dt>数据库基线</dt>
+                <dd>{view.preview.scope.dbBaselineLabel}</dd>
+              </div>
+              <div>
+                <dt>设备基线</dt>
+                <dd>{view.preview.scope.deviceBaselineLabel}</dd>
+              </div>
+              <div>
+                <dt>过期时间</dt>
+                <dd>{view.preview.scope.expiresLabel}</dd>
+              </div>
+            </dl>
+          </section>
+          <section
+            className="fy-apply-pane"
+            aria-labelledby="fy-apply-recovery-title"
+          >
+            <h3 id="fy-apply-recovery-title">恢复方式</h3>
+            <dl className="fy-apply-plan-details">
+              <div>
+                <dt>证据</dt>
+                <dd>{view.preview.recovery.evidenceLabel}</dd>
+              </div>
+              <div>
+                <dt>补偿</dt>
+                <dd>{view.preview.recovery.compensationLabel}</dd>
+              </div>
+              <div>
+                <dt>回读</dt>
+                <dd>{view.preview.recovery.readbackLabel}</dd>
+              </div>
+            </dl>
+          </section>
+        </div>
+      ) : (
+        <p className="fy-apply-empty">尚未生成可应用的计划。</p>
+      )}
 
+      <div className="fy-apply-grid">
         <section
           className="fy-apply-pane"
           aria-labelledby="fy-apply-progress-title"
@@ -149,6 +228,9 @@ export function ApplyWorkspace({
           <p className="fy-apply-live" aria-live="polite">
             {view.statusLabel}
           </p>
+          {view.eventSeq !== null ? (
+            <p className="fy-apply-event-seq">后端事件序号 {view.eventSeq}</p>
+          ) : null}
           {view.resources.length > 0 ? (
             <ul className="fy-apply-resource-list">
               {view.resources.map((resource) => (
@@ -161,6 +243,38 @@ export function ApplyWorkspace({
           ) : (
             <p className="fy-apply-empty">尚无真实回读结果。</p>
           )}
+          {view.partialTruth ? (
+            <dl className="fy-apply-partial" aria-label="部分执行结果">
+              <div>
+                <dt>已成功步骤</dt>
+                <dd>{view.partialTruth.succeededCount}</dd>
+              </div>
+              <div>
+                <dt>已补偿步骤</dt>
+                <dd>{view.partialTruth.compensatedCount}</dd>
+              </div>
+              <div>
+                <dt>未确认步骤</dt>
+                <dd>{view.partialTruth.unverifiedCount}</dd>
+              </div>
+              <div>
+                <dt>剩余效果</dt>
+                <dd>
+                  {view.partialTruth.remainingEffects.length > 0
+                    ? view.partialTruth.remainingEffects.join("、")
+                    : "无剩余写入效果"}
+                </dd>
+              </div>
+              <div>
+                <dt>人工动作</dt>
+                <dd>
+                  {view.partialTruth.manualActions.length > 0
+                    ? view.partialTruth.manualActions.join("、")
+                    : "无需额外人工动作"}
+                </dd>
+              </div>
+            </dl>
+          ) : null}
           {view.usageEvidenceCopy ? (
             <p className="fy-apply-usage">{view.usageEvidenceCopy}</p>
           ) : null}

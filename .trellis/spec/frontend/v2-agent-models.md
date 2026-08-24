@@ -603,15 +603,31 @@ fetch/save controls.
   existing Codex Desktop installer intact. Browser ports reject native-only.
 - Codex Models consumes `FeaturePorts.changePlans` through exact unknown-input
   parsers. Preview creates no Provider write; confirm sends only
-  `planId + planDigest` and holds a per-plan repeat-click lock. The v2 wire
-  parser accepts only the registered adapter descriptor and the five backend
-  phases `precheck -> snapshot -> managed_write -> readback -> finalize`.
-  `executionId` must equal `jobId`, `idempotencyKey` must equal `planId`, and
-  event sequences must be strictly increasing with the final sequence equal to
-  `eventSeq`. The port exposes bounded `cancelChangeJob(jobId)` for later
-  product use, but the current Models page intentionally adds no cancel button
-  or client-owned cancellation state machine. It also owns no fake coordinator,
-  scenario, backup, restore, or second execution state machine.
+  `planId + planDigest` and holds a per-plan repeat-click lock. A ready plan
+  always renders four labelled sections — 语义变化 / 风险与重启 /
+  前置条件与范围 / 恢复方式 — projected only from the closed `ChangePlan`
+  DTO (current/target codes and name, operation, risks, restartExpectation,
+  adapter read/write sets, secretCapability, baseline ids, expiry,
+  evidenceNote, and writer-owned compensation). An empty risk list is shown
+  as 「无额外风险项」, not omitted. `secretCapability=secret_dependency_unavailable`
+  remains fail-closed with no confirm. After apply, `ChangePlanWorkspace`
+  polls `getChangeJob` on a 1s interval while status is `planned` or
+  `running`, ignores stale `requestRevision` responses, and stops on a
+  terminal snapshot, target change, close, or unmount. It does not start a
+  second apply to refresh. When `partialResult` is present, the UI shows
+  succeeded/compensated/unverified counts, remaining effects, and closed
+  manual actions (`retry_readback`, `review_configuration`). Visible event
+  identity is `eventSeq` / job events, never a React or `Date.now()`
+  sequencer. The v2 wire parser accepts only the registered adapter
+  descriptor and the five backend phases
+  `precheck -> snapshot -> managed_write -> readback -> finalize`.
+  `executionId` must equal `jobId`, `idempotencyKey` must equal `planId`,
+  and event sequences must be strictly increasing with the final sequence
+  equal to `eventSeq`. The port exposes bounded `cancelChangeJob(jobId)`
+  for later product use, but the current Models page intentionally adds no
+  cancel button or client-owned cancellation state machine. It also owns no
+  fake coordinator, scenario, backup, restore, or second execution state
+  machine.
 - Same-plan/same-digest backend replay is an authoritative
   `idempotent_replay`, not a second execution. Existing repeat-click protection
   remains a UX guard rather than the idempotency authority.
@@ -664,6 +680,9 @@ fetch/save controls.
 | Provider Base URL has userinfo/query/fragment or a credential component                                                      | Reject before DB/current/live mutation                                                                     |
 | Provider request is empty, generic, wrong-ID, or has public/secret collision                                                 | Reject in Rust; no state mutation                                                                          |
 | Apply is repeated by StrictMode/double click or carries fields beyond ID/digest                                              | Same plan/digest converges to one execution; widened request is rejected before product use                |
+| Ready-plan preview omits a four-section block or invents wire fields                                                         | Component/SPEC test fails; preview stays a projector of the closed `ChangePlan` DTO                        |
+| A `running` job is left as a one-shot snapshot                                                                               | `ChangePlanWorkspace` must keep polling `getChangeJob` until terminal/close/retarget                       |
+| Models Apply shows a cancel control or client-owned cancel busy state                                                        | Page/source test fails; `cancelChangeJob` stays a bounded port without Models UI                           |
 | Change Plan descriptor, phase/resource enum, execution/idempotency identity, event sequence, partial result, or cancel DTO drifts | Exact v2 parser fails closed; React never locally guesses the new shape                                |
 | A job is `cancelled_before_write`, `interrupted_before_write`, or `recovered_target_reached`                                 | Render the corresponding confirmed cancellation/interruption/recovered-warning copy; never synthesize generic success |
 | Apply readback is mixed/unavailable or recovery-required                                                                     | Render non-green recovery copy and never synthesize success                                                |
@@ -787,7 +806,9 @@ Required focused coverage includes:
   single-command ACL registration, browser native-only behavior, no action
   controls, and Codex installer non-regression. Change Plan coverage includes
   strict v2 descriptor/five-phase/partial/cancel/event parsing,
-  ID/digest-only confirm, same-plan idempotent replay, realistic
+  ID/digest-only confirm, four-section closed-DTO preview, bounded
+  `getChangeJob` polling for non-terminal jobs, partial-result and
+  `eventSeq` presentation, same-plan idempotent replay, realistic
   baseline-restored resources, compensated/cancelled/interrupted/recovered
   states, honest usage-evidence copy, and static absence of a client-owned
   fake/scenario/cancel/backup/restore product state machine.
