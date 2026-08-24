@@ -435,11 +435,19 @@ describe("V2 feature ports", () => {
             },
           },
           currentId: "provider-a",
+          writeTargets: [
+            {
+              path: "~/.codex/config.toml",
+              backupPath: "~/.codex/config.toml.fyagent.backup",
+              exists: true,
+            },
+          ],
         };
       }
       if (command === "get_workbuddy_status") {
         return {
           path: "~/.workbuddy/models.json",
+          backupPath: "~/.workbuddy/models.json.backup",
           exists: true,
           modelCount: 1,
           revision: "opaque-revision",
@@ -596,6 +604,9 @@ describe("V2 feature ports", () => {
             { id: "gateway", name: "Gateway", modelIds: ["model-a"] },
           ],
           revision: "oc-rev",
+          path: "~/.config/opencode/opencode.json",
+          backupPath: "~/.config/opencode/opencode.json.backup",
+          exists: true,
         };
       }
       if (command === "fetch_opencode_provider_models") {
@@ -652,6 +663,9 @@ describe("V2 feature ports", () => {
     await expect(ports.opencodeModels.getSnapshot()).resolves.toEqual({
       providers: [{ id: "gateway", name: "Gateway", modelIds: ["model-a"] }],
       revision: "oc-rev",
+      path: "~/.config/opencode/opencode.json",
+      backupPath: "~/.config/opencode/opencode.json.backup",
+      exists: true,
     });
     await ports.opencodeModels.fetchProviderModels(openCodeFetch);
     await ports.opencodeModels.saveModels({
@@ -728,6 +742,7 @@ describe("V2 feature ports", () => {
         },
       },
       currentId: "provider-map-key",
+      writeTargets: [],
     });
 
     await expect(

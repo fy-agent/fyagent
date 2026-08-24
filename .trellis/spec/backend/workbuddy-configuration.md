@@ -11,7 +11,15 @@ Profile, Session, usage, environment, migration, or local-proxy domain.
 ## 2. Signatures
 
 ```text
-get_workbuddy_status() -> WorkBuddyStatus
+get_workbuddy_status() -> {
+  path: string,
+  backupPath: string,
+  exists: boolean,
+  modelCount: number,
+  revision: string | null,
+  backupExists: boolean,
+  format: "legacyArray" | "objectRoot" | "missing",
+}
 get_workbuddy_model_ids() -> WorkBuddyModelIdsResult
 
 fetch_workbuddy_models({ baseUrl, apiKey, allowNoApiKey })
@@ -46,6 +54,11 @@ otherwise exact save request plus the expected revision.
   established `FYAGENT_TEST_HOME` override in hermetic tests. The only backup is
   same-folder `models.json.backup`. Never probe `.codebuddy`, a project path, or
   the real profile from a test.
+- `get_workbuddy_status` may expose the main/backup locations only as
+  user-visible native-owned path metadata for the Models write disclosure.
+  Paths under the frozen user home use `~`; the renderer never supplies either
+  path back to the backend. The DTO still contains no document bytes,
+  credentials, file digest, or arbitrary path field.
 - Accept only absolute HTTP(S) base URLs with a host and no user information,
   query, or fragment. Strip only terminal `/models`, `/chat/completions`, or
   `/responses`. Append `/v1` only when no decoded path segment already equals
@@ -72,7 +85,7 @@ otherwise exact save request plus the expected revision.
   change, missing/existing race, or namespace identity drift fails closed with
   a generic configuration-storage error.
 - A save snapshot opens the primary with `FILE_SHARE_READ |
-  FILE_SHARE_DELETE` but never `FILE_SHARE_WRITE`, records its identity and
+FILE_SHARE_DELETE` but never `FILE_SHARE_WRITE`, records its identity and
   exact bounded preimage, and holds that guard through the handle-relative
   replacement. Delete sharing is required for Windows replacement semantics;
   omitting write sharing still prevents a second writer, and an already-open
@@ -174,24 +187,25 @@ otherwise exact save request plus the expected revision.
 
 ## 4. Validation & Error Matrix
 
-| Condition                                                                     | Required result                                                                                   |
-| ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| URL is non-HTTP(S), lacks a host, or contains credentials, query, or fragment | Return `WORKBUDDY_INVALID_URL`; send no request.                                                  |
-| Redirect exceeds three hops, changes origin, downgrades HTTPS, has query/fragment/userinfo, or contains the key | Return `WORKBUDDY_FETCH_REDIRECT_REJECTED`; issue no next request. |
-| Fetch exceeds 15 seconds or 2 MiB, or `data[]` is malformed                   | Return the bounded fetch error and retain no model IDs from that response.                        |
-| Remote or local model ID contains a complete request/document API key         | Fail closed with a generic error; return, cache, render, and write none of the colliding values.   |
-| Empty API key is explicitly allowed                                           | Omit Authorization; do not synthesize an empty bearer value.                                      |
-| Base URL hostname/path contains the complete submitted API key                 | Return a generic invalid-request error before network, token, backup, or primary-file activity.    |
-| Existing JSON is invalid, not an array, or contains an invalid entry          | Return a safe configuration error, with only an index when useful; do not repair or overwrite it. |
-| Revision changes before save or confirmed overwrite                           | Return `concurrent_modification`; write neither backup nor primary.                               |
-| Windows profile, `.workbuddy`, primary, or backup resolves through a reparse point or changes identity | Fail closed before the target, backup, or any temporary leaf is mutated. |
-| A Windows writer already owns, or tries to acquire, a write-compatible primary handle | Reject the snapshot/save; create neither backup nor temporary leaf. |
-| Target IDs already exist without a matching overwrite token                   | Return one confirmation requirement; write neither backup nor primary.                            |
-| `removedModelIds` match existing entries without a matching overwrite token   | Return one confirmation requirement listing those IDs; write neither backup nor primary.          |
-| A removal-only save commits with a valid token                                | Delete matching entries and prune populated `availableModels`; URL/key are not required.          |
-| Token is malformed, expired, mismatched, or reused                            | Consume/reject it, expose no credential or target contents, and write nothing.                    |
-| A save updates an existing target                                             | Preserve entry position, unknown fields, and unrelated entries; update only documented fields.    |
-| WorkBuddy view unmounts                                                       | Clear the in-memory API key and cancel/isolate its queries from other app domains. V2 Models keep-alive hide is not an unmount. |
+| Condition                                                                                                       | Required result                                                                                                                 |
+| --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| URL is non-HTTP(S), lacks a host, or contains credentials, query, or fragment                                   | Return `WORKBUDDY_INVALID_URL`; send no request.                                                                                |
+| Redirect exceeds three hops, changes origin, downgrades HTTPS, has query/fragment/userinfo, or contains the key | Return `WORKBUDDY_FETCH_REDIRECT_REJECTED`; issue no next request.                                                              |
+| Fetch exceeds 15 seconds or 2 MiB, or `data[]` is malformed                                                     | Return the bounded fetch error and retain no model IDs from that response.                                                      |
+| Remote or local model ID contains a complete request/document API key                                           | Fail closed with a generic error; return, cache, render, and write none of the colliding values.                                |
+| Empty API key is explicitly allowed                                                                             | Omit Authorization; do not synthesize an empty bearer value.                                                                    |
+| Base URL hostname/path contains the complete submitted API key                                                  | Return a generic invalid-request error before network, token, backup, or primary-file activity.                                 |
+| Existing JSON is invalid, not an array, or contains an invalid entry                                            | Return a safe configuration error, with only an index when useful; do not repair or overwrite it.                               |
+| Revision changes before save or confirmed overwrite                                                             | Return `concurrent_modification`; write neither backup nor primary.                                                             |
+| Windows profile, `.workbuddy`, primary, or backup resolves through a reparse point or changes identity          | Fail closed before the target, backup, or any temporary leaf is mutated.                                                        |
+| A Windows writer already owns, or tries to acquire, a write-compatible primary handle                           | Reject the snapshot/save; create neither backup nor temporary leaf.                                                             |
+| Target IDs already exist without a matching overwrite token                                                     | Return one confirmation requirement; write neither backup nor primary.                                                          |
+| `removedModelIds` match existing entries without a matching overwrite token                                     | Return one confirmation requirement listing those IDs; write neither backup nor primary.                                        |
+| A removal-only save commits with a valid token                                                                  | Delete matching entries and prune populated `availableModels`; URL/key are not required.                                        |
+| Token is malformed, expired, mismatched, or reused                                                              | Consume/reject it, expose no credential or target contents, and write nothing.                                                  |
+| A save updates an existing target                                                                               | Preserve entry position, unknown fields, and unrelated entries; update only documented fields.                                  |
+| WorkBuddy view unmounts                                                                                         | Clear the in-memory API key and cancel/isolate its queries from other app domains. V2 Models keep-alive hide is not an unmount. |
+| Renderer cannot obtain valid status/path metadata                                                               | Disable the write UI; never guess `.workbuddy` or a backup path in React.                                                       |
 
 ## 5. Good / Base / Bad Cases
 
@@ -235,6 +249,8 @@ otherwise exact save request plus the expected revision.
 - Security/static tests prove credentials cannot reach logs, URLs, caches,
   errors, revisions, or tokens. A malicious on-disk fixture with an ID equal to
   one of its API keys must fail before status/model-ID DTO construction.
+  Status tests assert `path` and `backupPath` resolve from the same authoritative
+  user location and are display metadata only.
   Renderer tests prove top-level navigation,
   default visibility, domain-query isolation, truncation state, frozen retry
   payload, and key clearing on unmount.
@@ -247,6 +263,7 @@ Wrong:
 normalized = trimTrailingSlash(baseUrl) + "/v1/models"
 revision = sha256(modelsJson)
 overwrite confirmed = boolean from renderer
+renderer path = "~/.workbuddy/models.json"
 ```
 
 Correct:
@@ -255,4 +272,5 @@ Correct:
 parsed and admitted base + protocol-aware terminal normalization -> /models
 revision = HMAC(process-local key, complete current bytes)
 overwrite confirmed = one-time request-and-revision-bound backend capability
+main/backup display paths = native status DTO only
 ```

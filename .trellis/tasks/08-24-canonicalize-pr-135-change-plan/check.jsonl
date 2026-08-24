@@ -1,0 +1,5 @@
+{"file":".trellis/spec/backend/codex-provider-configuration.md","reason":"verify final schema/sync/single-writer/recovery contract matches implementation"}
+{"file":".trellis/spec/backend/modular-boundaries.md","reason":"verify no competing mutation owner or architecture regression"}
+{"file":".trellis/spec/backend/task-runner-contract.md","reason":"Trellis/prearchive and canonical repository task validation"}
+{"file":".trellis/spec/frontend/v2-agent-models.md","reason":"verify final V2 Apply and Models behavior including #140 compatibility"}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"final V2/unit/browser/desktop acceptance validation guidance"}

@@ -133,6 +133,9 @@ pub struct OpenCodeProviderSnapshot {
 pub struct OpenCodeModelSnapshot {
     pub providers: Vec<OpenCodeProviderSnapshot>,
     pub revision: Option<String>,
+    pub path: String,
+    pub backup_path: String,
+    pub exists: bool,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -172,18 +175,26 @@ fn pending_overwrites() -> &'static StdMutex<HashMap<String, PendingOverwrite>> 
 pub(crate) fn get_opencode_model_snapshot() -> Result<OpenCodeModelSnapshot, OpenCodeModelsErrorDto>
 {
     let _guard = lock_opencode_config();
+    let config_path = crate::opencode_config::get_opencode_config_path();
+    let backup_path = crate::opencode_config::get_opencode_dir().join("opencode.json.backup");
     let bytes = read_opencode_config_bytes()
         .map_err(|_| OpenCodeModelsErrorDto::new(OpenCodeModelsErrorCode::ConfigUnavailable))?;
     let Some(bytes) = bytes else {
         return Ok(OpenCodeModelSnapshot {
             providers: Vec::new(),
             revision: None,
+            path: crate::config::display_user_path(&config_path),
+            backup_path: crate::config::display_user_path(&backup_path),
+            exists: false,
         });
     };
     let config = parse_config_object(&bytes)?;
     Ok(OpenCodeModelSnapshot {
         providers: project_providers(&config)?,
         revision: Some(revision_for(&bytes)),
+        path: crate::config::display_user_path(&config_path),
+        backup_path: crate::config::display_user_path(&backup_path),
+        exists: true,
     })
 }
 
@@ -290,12 +301,13 @@ fn save_opencode_models_locked(
     reject_secret_model_ids(&config, credential)?;
 
     let backup_path = crate::opencode_config::get_opencode_dir().join("opencode.json.backup");
-    if let Some(parent) = backup_path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|_| OpenCodeModelsErrorDto::new(OpenCodeModelsErrorCode::BackupFailed))?;
-    }
-    std::fs::write(&backup_path, previous_bytes.as_deref().unwrap_or(b"{}"))
+    if previous_bytes.is_some() {
+        crate::config::backup_existing_file_to(
+            &crate::opencode_config::get_opencode_config_path(),
+            &backup_path,
+        )
         .map_err(|_| OpenCodeModelsErrorDto::new(OpenCodeModelsErrorCode::BackupFailed))?;
+    }
     let written = write_opencode_config_value(&config)
         .map_err(|_| OpenCodeModelsErrorDto::new(OpenCodeModelsErrorCode::WriteFailed))?;
     let model_count = existing_model_ids(&config, &provider_id)?.len();
@@ -852,6 +864,13 @@ mod tests {
         let temp = tempfile::TempDir::new().unwrap();
         let _home = TestHomeGuard::set(temp.path());
         write_config(temp.path(), &seeded_config());
+        let original_bytes = std::fs::read(
+            temp.path()
+                .join(".config")
+                .join("opencode")
+                .join("opencode.json"),
+        )
+        .unwrap();
         let revision = get_opencode_model_snapshot().unwrap().revision;
         let outcome = save_opencode_models(save_request(revision, &["new-model"], &[])).unwrap();
         match outcome {
@@ -886,6 +905,28 @@ mod tests {
         let debug = format!("{snapshot:?}");
         assert!(!debug.contains("USER-OPENCODE-KEY"));
         assert!(!debug.contains("OPENCODE-SECRET"));
+        assert_eq!(
+            std::fs::read(
+                temp.path()
+                    .join(".config")
+                    .join("opencode")
+                    .join("opencode.json.backup"),
+            )
+            .unwrap(),
+            original_bytes
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn first_save_creates_no_fake_backup_without_a_preimage() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let _home = TestHomeGuard::set(temp.path());
+        let outcome = save_opencode_models(save_request(None, &["new-model"], &[])).unwrap();
+        assert!(matches!(outcome, SaveOpenCodeModelsOutcome::Saved { .. }));
+        let dir = temp.path().join(".config").join("opencode");
+        assert!(dir.join("opencode.json").exists());
+        assert!(!dir.join("opencode.json.backup").exists());
     }
 
     #[test]

@@ -48,7 +48,7 @@ pub use config::ConfigService;
 pub use mcp::McpService;
 pub use omo::OmoService;
 pub use prompt::PromptService;
-pub use provider::{ProviderService, ProviderSortUpdate, SwitchResult};
+pub use provider::{ProviderService, ProviderSortUpdate, QuickSetupWriteTarget, SwitchResult};
 pub use proxy::ProxyService;
 #[allow(unused_imports)]
 pub use skill::{DiscoverableSkill, DiscoverableSkillsPage, Skill, SkillRepo, SkillService};

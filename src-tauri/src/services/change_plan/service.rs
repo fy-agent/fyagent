@@ -836,6 +836,60 @@ mod tests {
 
     #[test]
     #[serial]
+    fn quick_setup_target_projection_matches_targeted_live_patch_writer() {
+        let (_home, _guard, db, state, current, _target) = setup_switch_state();
+        let quick_setup = provider("fyagent-v2-quick-setup-codex", "FyAgent Codex", "gpt-quick");
+        db.save_provider(AppType::Codex.as_str(), &quick_setup)
+            .unwrap();
+
+        let live_config = "# user-owned-comment\nmodel_provider = \"custom\"\nmodel = \"gpt-current\"\nreview_model = \"gpt-review\"\n\
+             [model_providers.custom]\nname = \"Current\"\nbase_url = \"https://example.test/v1\"\nwire_api = \"responses\"\ncustom_user_field = \"keep-me\"\n\
+             [features]\nplugins = true\n\n[mcp_servers.user_owned]\ncommand = \"echo\"\nargs = [\"keep\"]\n"
+            .to_string();
+        crate::codex_config::write_codex_live_atomic(
+            &json!({"OPENAI_API_KEY": format!("sentinel-{}", current.id)}),
+            Some(&live_config),
+        )
+        .unwrap();
+
+        let plan = ChangePlanService::plan_codex_switch_at(&state, &quick_setup.id, 100).unwrap();
+        let outcome = ChangePlanService::apply_codex_switch_at_with_writer(
+            &state,
+            &plan.plan_id,
+            &plan.plan_digest,
+            101,
+            |target_id| {
+                ProviderService::with_live_config_result(AppType::Codex, || {
+                    ProviderService::switch_with_lock_held(&state, AppType::Codex, target_id)
+                        .map(|_| true)
+                })
+                .map(|result| WriterReceipt {
+                    live_config_changed: result.live_config_changed,
+                })
+            },
+        )
+        .unwrap();
+        let job = outcome.job.expect("admitted job");
+        assert_eq!(job.status, ChangeJobStatus::Succeeded);
+        assert_eq!(job.recovery_state, RecoveryState::NotNeeded);
+
+        let live = crate::codex_config::read_codex_config_text().unwrap();
+        assert!(live.contains("# user-owned-comment"));
+        let parsed: toml::Value = toml::from_str(&live).unwrap();
+        assert_eq!(parsed["review_model"].as_str(), Some("gpt-review"));
+        assert_eq!(parsed["features"]["plugins"].as_bool(), Some(true));
+        assert_eq!(
+            parsed["mcp_servers"]["user_owned"]["command"].as_str(),
+            Some("echo")
+        );
+        assert_eq!(
+            parsed["model_providers"]["custom"]["custom_user_field"].as_str(),
+            Some("keep-me")
+        );
+    }
+
+    #[test]
+    #[serial]
     fn credential_capability_accepts_only_extractable_unmanaged_target_material() {
         let (_home, _guard, db, state, _current, target) = setup_switch_state();
 

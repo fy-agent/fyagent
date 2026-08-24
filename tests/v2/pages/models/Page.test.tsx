@@ -100,6 +100,7 @@ function workBuddyPorts(): FeaturePorts {
   ports.workbuddy.getStatus = vi.fn<FeaturePorts["workbuddy"]["getStatus"]>(
     async () => ({
       path: "C:/redacted/models.json",
+      backupPath: "C:/redacted/models.json.backup",
       exists: true,
       modelCount: 1,
       revision: "revision-1",
@@ -115,6 +116,20 @@ function workBuddyPorts(): FeaturePorts {
   );
   return ports;
 }
+
+const TEST_PROVIDER_WRITE_TARGETS = [
+  {
+    path: "~/.config/provider/config.json",
+    backupPath: "~/.config/provider/config.json.fyagent.backup",
+    exists: true,
+  },
+] as const;
+
+const TEST_OPENCODE_SNAPSHOT_META = {
+  path: "~/.config/opencode/opencode.json",
+  backupPath: "~/.config/opencode/opencode.json.backup",
+  exists: true,
+} as const;
 
 describe("V2 Models page", () => {
   it("renders the exact selector order, local decorative icons, and QoderWork default", () => {
@@ -161,7 +176,9 @@ describe("V2 Models page", () => {
     expect(qoderRegion).toBeVisible();
     expect(qoderRegion.querySelector(".fy-control-badge")).toBeNull();
     expect(qoderRegion.querySelector(".fy-control-button-primary")).toBeNull();
-    expect(qoderRegion.querySelector(".fy-models-commit-heading")).not.toBeNull();
+    expect(
+      qoderRegion.querySelector(".fy-models-commit-heading"),
+    ).not.toBeNull();
     expect(qoderRegion.querySelector(".fy-models-existing")).toBeNull();
     expect(qoderRegion).toHaveTextContent("官方不支持第三方模型配置");
   });
@@ -257,6 +274,7 @@ describe("V2 Models page", () => {
     ports.opencodeModels.getSnapshot = vi.fn(async () => ({
       providers: [],
       revision: "revision-1",
+      ...TEST_OPENCODE_SNAPSHOT_META,
     }));
     ports.opencodeModels.fetchProviderModels = vi.fn(async () => ({
       models: [{ id: "gpt-4o", ownedBy: "openai" }],
@@ -302,6 +320,13 @@ describe("V2 Models page", () => {
     );
     expect(await screen.findByText("OpenCode 模型配置已保存")).toBeVisible();
     expect(screen.getByLabelText("API Key")).toHaveValue("");
+    const openCodeHeader = screen
+      .getByRole("heading", { name: "OpenCode" })
+      .closest("header");
+    expect(openCodeHeader).not.toBeNull();
+    expect(
+      within(openCodeHeader as HTMLElement).queryByText("待保存"),
+    ).not.toBeInTheDocument();
     expect(document.body.innerHTML).not.toContain(secret);
     expect(JSON.stringify(localStorage)).not.toContain(secret);
     expect(JSON.stringify(sessionStorage)).not.toContain(secret);
@@ -314,6 +339,7 @@ describe("V2 Models page", () => {
     ports.providers.getSummary = vi.fn(async () => ({
       providers: {},
       currentId: "",
+      writeTargets: [...TEST_PROVIDER_WRITE_TARGETS],
     }));
     ports.providers.fetchModels = vi.fn(async () => [
       { id: "claude-sonnet-4", ownedBy: "anthropic" },
@@ -451,7 +477,12 @@ describe("V2 Models page", () => {
       ...firstRequest,
       overwriteToken: "opaque-overwrite-token",
     });
-    expect(screen.getByLabelText("API Key")).toHaveValue("");
+    expect(screen.getByLabelText("API Key")).toHaveValue("replacement-secret");
+    const header = screen
+      .getByRole("heading", { name: "WorkBuddy" })
+      .closest("header");
+    expect(header).not.toBeNull();
+    expect(within(header as HTMLElement).getByText("待保存")).toBeVisible();
     expect(ports.workbuddy.getStatus).toHaveBeenCalledTimes(2);
     expect(ports.workbuddy.getModelIds).toHaveBeenCalledTimes(2);
   });
@@ -569,6 +600,7 @@ describe("V2 Models page", () => {
       .mockResolvedValueOnce({
         path: "C:/redacted/models.json",
         exists: true,
+        backupPath: "C:/redacted/models.json.backup",
         modelCount: 1,
         revision: "revision-1",
         backupExists: true,
@@ -594,6 +626,13 @@ describe("V2 Models page", () => {
     ).toBeVisible();
     expect(document.body).not.toHaveTextContent("权威状态");
     expect(screen.getByLabelText("API Key")).toHaveValue("");
+    const savedHeader = screen
+      .getByRole("heading", { name: "WorkBuddy" })
+      .closest("header");
+    expect(savedHeader).not.toBeNull();
+    expect(
+      within(savedHeader as HTMLElement).getByText("待保存"),
+    ).toBeVisible();
   });
 
   it("does not claim a reread after an expired overwrite token when refresh fails", async () => {
@@ -887,6 +926,13 @@ describe("V2 Models page", () => {
       expectedRevision: "revision-1",
     });
     expect(screen.getByLabelText("API Key")).toHaveValue("");
+    const savedHeader = screen
+      .getByRole("heading", { name: "WorkBuddy" })
+      .closest("header");
+    expect(savedHeader).not.toBeNull();
+    expect(
+      within(savedHeader as HTMLElement).queryByText("待保存"),
+    ).not.toBeInTheDocument();
   });
 
   it("atomically applies Codex once with the exact provider payload", async () => {
@@ -896,6 +942,7 @@ describe("V2 Models page", () => {
     ports.providers.getSummary = vi.fn(async () => ({
       providers: {},
       currentId: currentProviderId,
+      writeTargets: [...TEST_PROVIDER_WRITE_TARGETS],
     }));
     type ApplyResult = Awaited<
       ReturnType<FeaturePorts["providers"]["applyQuickSetupWithResult"]>
@@ -927,6 +974,11 @@ describe("V2 Models page", () => {
     );
     await user.type(screen.getByLabelText("API Key"), "codex-secret");
     await user.type(screen.getByLabelText("模型 ID"), "gpt-5");
+    expect(
+      within(codexHeader as HTMLElement).getByText("待保存"),
+    ).toBeVisible();
+    expect(screen.getByText("将修改")).toBeVisible();
+    expect(screen.getByText("备份位置")).toBeVisible();
     const submit = screen.getByRole("button", { name: "保存并设为当前配置" });
     await user.click(submit);
     expect(submit).toBeDisabled();
@@ -960,6 +1012,9 @@ describe("V2 Models page", () => {
     ).toBeVisible();
     expect(document.body).not.toHaveTextContent("Quick Setup Provider ID");
     expect(screen.getByLabelText("API Key")).toHaveValue("");
+    expect(
+      within(codexHeader as HTMLElement).queryByText("待保存"),
+    ).not.toBeInTheDocument();
     expect(ports.providers.getSummary).toHaveBeenCalledTimes(2);
   });
 
@@ -969,6 +1024,7 @@ describe("V2 Models page", () => {
     ports.providers.getSummary = vi.fn(async () => ({
       providers: {},
       currentId: "",
+      writeTargets: [...TEST_PROVIDER_WRITE_TARGETS],
     }));
     ports.providers.applyQuickSetupWithResult = vi.fn(async () => ({
       value: { warnings: [] },
@@ -1027,6 +1083,7 @@ describe("V2 Models page", () => {
         },
       },
       currentId: "another-provider",
+      writeTargets: [...TEST_PROVIDER_WRITE_TARGETS],
     }));
     ports.providers.applyQuickSetupWithResult = vi.fn(async () => {
       throw new Error("atomic response contains claude-secret");
@@ -1069,6 +1126,7 @@ describe("V2 Models page", () => {
     ports.providers.getSummary = vi.fn(async () => ({
       providers: {},
       currentId: "",
+      writeTargets: [...TEST_PROVIDER_WRITE_TARGETS],
     }));
     ports.providers.applyQuickSetupWithResult = vi.fn(async () => {
       throw {
@@ -1117,6 +1175,7 @@ describe("V2 Models page", () => {
     ports.providers.getSummary = vi.fn(async () => ({
       providers: {},
       currentId: QUICK_SETUP_PROVIDER_IDS.codex,
+      writeTargets: [...TEST_PROVIDER_WRITE_TARGETS],
     }));
     ports.providers.applyQuickSetupWithResult = vi.fn(async () => ({
       value: { warnings: ["mcp_sync_failed"] },
@@ -1154,6 +1213,7 @@ describe("V2 Models page", () => {
     ports.providers.getSummary = vi.fn(async () => ({
       providers: {},
       currentId: "another-provider",
+      writeTargets: [...TEST_PROVIDER_WRITE_TARGETS],
     }));
     ports.providers.applyQuickSetupWithResult = vi.fn(async () => ({
       value: { warnings: [] },
@@ -1248,6 +1308,7 @@ describe("V2 Models page", () => {
     ports.providers.getSummary = vi.fn(async () => ({
       providers: {},
       currentId: "",
+      writeTargets: [...TEST_PROVIDER_WRITE_TARGETS],
     }));
     renderPage(ports, "claude");
 
@@ -1263,7 +1324,9 @@ describe("V2 Models page", () => {
         "最终 claude 需要访问的完整端点将会是：/v1/v1/XXXX，请确认是否需要添加 v1，通常路径一般为 /v1/XXXX.",
       ),
     ).toBeVisible();
-    expect(screen.getByRole("button", { name: "保存并设为当前配置" })).toBeEnabled();
+    expect(
+      screen.getByRole("button", { name: "保存并设为当前配置" }),
+    ).toBeEnabled();
   });
 
   it("probes a selected model after IDs exist on WorkBuddy, Provider, and OpenCode", async () => {
@@ -1282,6 +1345,7 @@ describe("V2 Models page", () => {
       async () => ({
         path: "C:/redacted/models.json",
         exists: true,
+        backupPath: "C:/redacted/models.json.backup",
         modelCount: 0,
         revision: "revision-1",
         backupExists: false,
@@ -1296,11 +1360,13 @@ describe("V2 Models page", () => {
     ports.providers.getSummary = vi.fn(async () => ({
       providers: {},
       currentId: "",
+      writeTargets: [...TEST_PROVIDER_WRITE_TARGETS],
     }));
     ports.providers.checkModel = vi.fn(async () => probed);
     ports.opencodeModels.getSnapshot = vi.fn(async () => ({
       providers: [],
       revision: "revision-1",
+      ...TEST_OPENCODE_SNAPSHOT_META,
     }));
     ports.opencodeModels.checkModel = vi.fn(async () => probed);
 
@@ -1359,6 +1425,7 @@ describe("V2 Models page", () => {
       baseUrl: "https://codex.example/v1",
       apiKey: "codex-key",
       modelId: "gpt-test",
+      codexImageExtension: false,
     });
     expect(screen.queryByText(/\/v1\/v1\/XXXX/)).not.toBeInTheDocument();
     codexView.unmount();

@@ -1,0 +1,30 @@
+{
+  "id": "canonicalize-pr-135-change-plan",
+  "name": "canonicalize-pr-135-change-plan",
+  "title": "Canonicalize PR 135 Change Plan",
+  "description": "Rebase and harden PR #135 against the latest main so it becomes the single canonical Change Plan implementation, with current config-safety contracts, exact persistence/recovery semantics, normalized specs, archived Trellis tasks, green CI, and PR-only merge.",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": "PR #135 latest-main integration, Change Plan v20/schema/sync/single-writer/recovery/readback/IPC/V2 review, spec normalization, Trellis closeout, CI and PR merge",
+  "package": null,
+  "priority": "P1",
+  "creator": "pythonrust",
+  "assignee": "pythonrust",
+  "createdAt": "2026-08-24",
+  "completedAt": null,
+  "branch": "codex/pr-108-115-consolidation",
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    ".trellis/tasks/08-24-pr-108-115-consolidation",
+    ".trellis/spec/backend/codex-provider-configuration.md",
+    ".trellis/spec/frontend/v2-agent-models.md"
+  ],
+  "notes": "Hard merge gates: every completed/review Trellis task carried by PR #135 must be correctly closed/archived before main merge; applicable specs must be normalized against final code/tests so #140 contracts are not overwritten by stale #135 text.",
+  "meta": {}
+}

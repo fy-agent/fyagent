@@ -1,9 +1,4 @@
-import {
-  render,
-  screen,
-  waitFor,
-  within,
-} from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
@@ -154,6 +149,7 @@ function configuredPorts(): FeaturePorts {
   ports.catalog.get = async () => catalog();
   ports.workbuddy.getStatus = async () => ({
     path: "C:/redacted/models.json",
+    backupPath: "C:/redacted/models.json.backup",
     exists: true,
     modelCount: 3,
     revision: "opaque-revision",
@@ -170,6 +166,13 @@ function configuredPorts(): FeaturePorts {
       },
     },
     currentId: `fyagent-${app}`,
+    writeTargets: [
+      {
+        path: "~/.config/provider/config.json",
+        backupPath: "~/.config/provider/config.json.fyagent.backup",
+        exists: true,
+      },
+    ],
   });
   ports.codexDesktop = {
     getLocalStatus: async () => ({
@@ -405,7 +408,9 @@ describe("V2 Agent directory", () => {
       within(qoderDetail).queryByRole("button", { name: "管理 Hooks" }),
     ).not.toBeInTheDocument();
     expect(
-      within(qoderDetail).queryByRole("region", { name: "QoderWork Hooks 配置" }),
+      within(qoderDetail).queryByRole("region", {
+        name: "QoderWork Hooks 配置",
+      }),
     ).not.toBeInTheDocument();
     expect(
       within(qoderDetail).queryByRole("region", { name: "MCP 配置检查" }),

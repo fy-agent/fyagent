@@ -478,7 +478,13 @@ export async function installRichTauriFeatureFixture(
               truncated: false,
             };
           case "get_opencode_model_snapshot":
-            return { providers: [], revision: null };
+            return {
+              providers: [],
+              revision: null,
+              path: "~/.config/opencode/opencode.json",
+              backupPath: "~/.config/opencode/opencode.json.backup",
+              exists: true,
+            };
           case "fetch_opencode_provider_models":
             return {
               models: [{ id: "fixture-opencode-model" }],
@@ -516,7 +522,8 @@ export async function installRichTauriFeatureFixture(
               };
             }
             return {
-              path: ".workbuddy/models.json",
+              path: "~/.workbuddy/models.json",
+              backupPath: "~/.workbuddy/models.json.backup",
               exists: true,
               modelCount: workBuddyModelIds.length,
               revision: workBuddyRevision,
@@ -597,6 +604,13 @@ export async function installRichTauriFeatureFixture(
             return {
               providers: structuredClone(providers[app] ?? {}),
               currentId: currentProviderIds[app] ?? "",
+              writeTargets: [
+                {
+                  path: `~/.config/${app}/config`,
+                  backupPath: `~/.config/${app}/config.fyagent.backup`,
+                  exists: true,
+                },
+              ],
             };
           }
           case "apply_provider_quick_setup_with_result": {

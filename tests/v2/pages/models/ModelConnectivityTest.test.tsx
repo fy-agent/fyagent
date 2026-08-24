@@ -74,9 +74,49 @@ describe("ModelConnectivityTest", () => {
     await user.click(screen.getByRole("button", { name: "gpt-test" }));
     await user.click(screen.getByRole("button", { name: "开始测试" }));
     expect(onProbe).toHaveBeenCalledWith("gpt-test");
-    expect(
-      await screen.findByText("连通测试失败"),
-    ).toBeVisible();
+    expect(await screen.findByText("连通测试失败")).toBeVisible();
     expect(screen.getByText(/invalid api key/)).toBeVisible();
+  });
+
+  it("invalidates a stale probe result when the owning draft revision changes", async () => {
+    const user = userEvent.setup();
+    const onProbe = vi.fn(async () => ({
+      success: false,
+      status: "failed" as const,
+      message: "HTTP 400: stale failure",
+      responseTimeMs: 20,
+      httpStatus: 400,
+      modelUsed: "gpt-test",
+      errorCategory: null,
+    }));
+    const view = render(
+      <TooltipProvider delayDuration={0} skipDelayDuration={0}>
+        <ModelConnectivityTest
+          searchId="probe-reset-search"
+          modelIds={["gpt-test"]}
+          onProbe={onProbe}
+          resetVersion="1:0"
+        />
+      </TooltipProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "测试连通" }));
+    await user.click(screen.getByRole("button", { name: "gpt-test" }));
+    await user.click(screen.getByRole("button", { name: "开始测试" }));
+    expect(await screen.findByText("连通测试失败")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "关闭" }));
+    expect(screen.getByText("连通测试失败")).toBeVisible();
+
+    view.rerender(
+      <TooltipProvider delayDuration={0} skipDelayDuration={0}>
+        <ModelConnectivityTest
+          searchId="probe-reset-search"
+          modelIds={["gpt-test"]}
+          onProbe={onProbe}
+          resetVersion="1:1"
+        />
+      </TooltipProvider>,
+    );
+    expect(screen.queryByText("连通测试失败")).not.toBeInTheDocument();
   });
 });

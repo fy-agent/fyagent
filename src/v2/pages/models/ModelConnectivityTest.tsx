@@ -20,6 +20,7 @@ export function ModelConnectivityTest({
   onPrepare,
   onProbe,
   onBusyChange,
+  resetVersion,
 }: {
   modelIds: readonly string[];
   ownedByById?: Readonly<Record<string, string>>;
@@ -28,13 +29,26 @@ export function ModelConnectivityTest({
   onPrepare?: () => boolean;
   onProbe: (modelId: string) => Promise<ModelProbeResult>;
   onBusyChange?: (busy: boolean) => void;
+  resetVersion?: string | number;
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [groupFilter, setGroupFilter] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [probing, setProbing] = useState(false);
-  const [notice, setNotice] = useState<Notice | null>(null);
+  const [noticeState, setNoticeState] = useState<{
+    notice: Notice;
+    version: string | number | undefined;
+  } | null>(null);
+  const notice =
+    noticeState && noticeState.version === resetVersion
+      ? noticeState.notice
+      : null;
+  const setNotice = (next: Notice | null) => {
+    setNoticeState(
+      next === null ? null : { notice: next, version: resetVersion },
+    );
+  };
 
   const groups = useMemo(() => groupModelIds(modelIds), [modelIds]);
   const groupedIds = useMemo(() => {

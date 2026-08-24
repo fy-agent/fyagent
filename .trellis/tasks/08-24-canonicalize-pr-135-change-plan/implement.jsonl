@@ -1,0 +1,5 @@
+{"file":".trellis/spec/backend/codex-provider-configuration.md","reason":"canonical Change Plan admission/apply/recovery and current Codex targeted-write contract"}
+{"file":".trellis/spec/backend/modular-boundaries.md","reason":"Provider single-writer ownership and Rust command/service boundaries"}
+{"file":".trellis/spec/backend/workbuddy-configuration.md","reason":"preserve current-main WorkBuddy persistence/backup boundaries during integration"}
+{"file":".trellis/spec/frontend/v2-agent-models.md","reason":"V2 Apply/Models contracts and #140 current behavior"}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"strict renderer/Tauri wire contract review"}
