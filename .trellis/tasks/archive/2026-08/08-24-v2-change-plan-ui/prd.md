@@ -107,5 +107,5 @@ job instead of a one-shot snapshot.
 ## Notes
 
 Branch: `dev/v2-change-plan-ui`.
-Worktree: `/Users/pythonrust/.devspace/worktrees/fyagent-v2-cp-ui`.
+Worktree: `/Users/<username>/.devspace/worktrees/fyagent-v2-cp-ui`.
 Sources: Draft PR #136 for product UX only; current `main` for contracts.
