@@ -1,0 +1,36 @@
+{
+  "id": "issue-35-secretref-core-recovery",
+  "name": "issue-35-secretref-core-recovery",
+  "title": "Recover Issue 35 SecretRef core",
+  "description": "Integrate and harden the minimal SecretRef/local SecretBackend core on the corrected CI mainline while preserving PR 132 contributor ancestry and keeping production Provider/UCP activation deferred.",
+  "status": "completed",
+  "dev_type": null,
+  "scope": "backend",
+  "package": null,
+  "priority": "P0",
+  "creator": "codex",
+  "assignee": "codex",
+  "createdAt": "2026-08-24",
+  "completedAt": "2026-08-24",
+  "branch": "dev/secretref-core-final",
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": "a20644656c885e00d630cfbf2ffac1ef554c4772",
+  "pr_url": "https://github.com/fy-agent/fyagent/pull/145",
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "src-tauri/src/services/secret/**",
+    "src-tauri/tests/secret_service_contract.rs",
+    "src-tauri/Cargo.toml",
+    "src-tauri/Cargo.lock"
+  ],
+  "notes": "",
+  "meta": {
+    "issue": "35",
+    "replaces_pr": "132",
+    "historical_source_pr": "112",
+    "supersedes_pr": "143"
+  }
+}

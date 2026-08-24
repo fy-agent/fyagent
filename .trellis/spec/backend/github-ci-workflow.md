@@ -295,6 +295,16 @@ atomically stages the matching helper executable. The desktop build remains
 fail closed when its declared Tauri sidecar is absent; CI must not substitute an
 empty placeholder or make the resource optional.
 
+The Windows backend also owns the matching-host Credential Manager evidence
+for the private SecretRef core. After the ordinary workspace Rust tests, it
+runs the ignored `secret_service_contract::native_os_backend_crud_readback`
+integration test with `FYAGENT_NATIVE_SECRET_TEST=1`, captures the Cargo output,
+and requires both exit status zero and an exact `1 passed; 0 failed` result.
+Merely compiling the Windows leaf or selecting a filter that executes zero
+tests is not native credential-store evidence. The step is part of the job's
+collected required outcomes, so a failed create/read/replace/delete/cleanup
+round trip fails `CI / Required`.
+
 Every CI job treats checkout as the hard prerequisite, then collects the raw
 outcome of every repository-owned setup or validation step that follows it.
 Every later step uses the explicit condition
