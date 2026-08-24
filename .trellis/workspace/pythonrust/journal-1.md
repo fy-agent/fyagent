@@ -1390,3 +1390,24 @@ Completed and archived the V2 Models configuration-safety task: Quick Setup now 
 ### Next Steps
 
 - No remaining local task work; remote push/CI was not requested.
+
+
+## Session 42: Canonicalize PR 135 Change Plan
+
+**Date**: 2026-08-24
+**Task**: Canonicalize PR 135 Change Plan
+**Branch**: `codex/pr-108-115-consolidation`
+
+### Summary
+
+Synced PR #135 with post-#140 main, fixed Change Plan projection parity for targeted Codex Quick Setup writes, reconciled backend/frontend SPEC and supported-platform digests, passed full local/prearchive/post-archive gates, and archived the complete PR #135 Trellis task tree.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `46f683a2` | (see git log) |
+
+### Status
+
+[OK] **Completed**
