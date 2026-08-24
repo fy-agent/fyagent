@@ -1411,3 +1411,66 @@ Synced PR #135 with post-#140 main, fixed Change Plan projection parity for targ
 ### Status
 
 [OK] **Completed**
+
+
+## Session 43: Codify GitHub merge governance
+
+**Date**: 2026-08-24
+**Task**: Codify GitHub merge governance
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Recorded squash-only Auto-merge and main Merge Queue settings, made Trellis prearchive/archive the merge-ready authority, documented exact-head queue handoff and final dev/main synchronization, and verified live GitHub settings plus pre/post-archive contracts.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a8587c8c` | (see git log) |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 44: Correct main merge governance
+
+**Date**: 2026-08-24
+**Task**: Correct main merge governance
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Superseded the squash-only policy with Merge Queue + MERGE, preserved the upstream two-parent ancestry contract, separated commit hygiene from merge topology, updated contributor guidance, changed and read back live GitHub merge settings, and passed pre/post-archive contracts.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b55218c5` | (see git log) |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 45: Clarify CI history rewrite fallback
+
+**Date**: 2026-08-24
+**Task**: Clarify CI history rewrite fallback
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Removed stale squash-main wording from the defensive unreachable-push-before CI scenario without changing CI behavior; validated, prearchived, archived, and passed post-archive contracts.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `3c7babb5` | (see git log) |
+
+### Status
+
+[OK] **Completed**
