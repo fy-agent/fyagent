@@ -87,6 +87,10 @@ mod tests {
     never command internals.
 - `services/mod.rs` modules are `pub(crate)`; stable caller APIs are explicit
   re-exports.
+- `services/secret` is a crate-scoped native security owner. Its standalone
+  core remains unregistered while integration tests/native HIL compile it;
+  add the `services/mod.rs` registration with the first production consumer
+  instead of suppressing dead-code warnings for a dormant module.
 - Provider/Skill/Proxy/Codex implementation subdomains are private `mod` and
   the parent remains the compatibility facade.
 - `codex_config/storage.rs` owns path/file/atomic-write behavior.
