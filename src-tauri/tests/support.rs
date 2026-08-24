@@ -7,7 +7,7 @@ use fyagent_lib::{update_settings, AppSettings, AppState, Database, MultiAppConf
 pub fn ensure_test_home() -> &'static Path {
     static HOME: OnceLock<PathBuf> = OnceLock::new();
     HOME.get_or_init(|| {
-        let base = std::env::temp_dir().join("fyagent-test-home");
+        let base = std::env::temp_dir().join(format!("fyagent-test-home-{}", std::process::id()));
         if base.exists() {
             let _ = std::fs::remove_dir_all(&base);
         }

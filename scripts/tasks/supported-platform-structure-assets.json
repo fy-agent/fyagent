@@ -287,7 +287,7 @@
     ],
     [
       "src-tauri/tests/support.rs",
-      "8adb68cc7ae1ce245ab67ff826a06dda7c9b12493d04c1fc44698f59caa3f330"
+      "f12d0dd87fab436cd7880d9569c2a37aab17b835af6ca631b1f28cc0b00b0c6b"
     ],
     [
       "src-tauri/user-helper/build.rs",
