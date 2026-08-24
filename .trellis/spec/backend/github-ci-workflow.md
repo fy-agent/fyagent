@@ -43,10 +43,13 @@ workflow_dispatch:
 - `workflow_dispatch` is a full diagnostic run and is never release evidence
   because its event is not `push`.
 
-Repository branch protection, rulesets, merge methods, and Main Provenance are
-outside this workflow. Formal Release trust is the tagged source SHA plus the
-Release workflow's own native compile, not an administrator-enforced branch
-claim or a prior `CI / Required` run.
+Repository branch protection, rulesets, merge methods, and the Trellis
+merge-readiness lifecycle are outside this workflow and are owned by
+[GitHub Merge Governance](./github-merge-governance.md). In particular, a
+green `CI / Required` does not authorize merge before the task/spec/prearchive
+and archive lifecycle is complete. Formal Release trust is the tagged source
+SHA plus the Release workflow's own native compile, not an
+administrator-enforced branch claim or a prior `CI / Required` run.
 
 ## 2. Explicit change classification
 
