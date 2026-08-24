@@ -154,7 +154,7 @@ and reviewed; they do not belong in ordinary read-only checks.
 3. **Keep PRs focused** — Open one focused PR against canonical `main` for one feature or fix. Avoid unrelated changes.
 4. **Follow the PR template** — Fill in the summary, related issue, and checklist.
 5. **Wait for the exact-head gate** — The stable `CI / Required` check must succeed on the exact PR head; another SHA or an individual job is not a substitute.
-6. **Use the repository merge path** — Accepted changes are squash-merged. This policy does not promise source-branch deletion or require a human approval unless live GitHub protection says so.
+6. **Use the repository merge path** — Accepted changes enter `main` through the protected Merge Queue as merge commits. Clean meaningless fixup/checkpoint commits before merge-ready when practical; do not use squash/rebase to erase meaningful ancestry or upstream provenance. `git log --first-parent main` is the normal one-PR/one-boundary mainline view. This policy does not promise source-branch deletion or require a human approval unless live GitHub protection says so.
 
 ### PR Checklist
 
@@ -400,7 +400,7 @@ mise run check
 3. **保持 PR 专注** — 针对规范仓库的 `main` 开一个聚焦 PR，每个 PR 只做一个功能或修复，避免无关改动。
 4. **遵循 PR 模板** — 填写概述、关联 Issue 和检查清单。
 5. **等待精确 head 门禁** — 名称稳定的 `CI / Required` 必须在 PR 的精确 head 上成功；其他 SHA 或单个 job 不能替代。
-6. **使用仓库合并路径** — 接受的改动使用 squash merge；除非 GitHub 实时保护策略另有要求，此流程不承诺删除源分支，也不声称必须获得人工批准。
+6. **使用仓库合并路径** — 接受的改动通过受保护的 Merge Queue，以 merge commit 进入 `main`。在进入 merge-ready 前应尽量整理无意义的 fixup/checkpoint 提交；不得用 squash/rebase 抹掉有意义的工程 ancestry 或 upstream provenance。日常查看主线使用 `git log --first-parent main`，保持一个 PR 一个主线边界。除非 GitHub 实时保护策略另有要求，此流程不承诺删除源分支，也不声称必须获得人工批准。
 
 ### PR 检查清单
 

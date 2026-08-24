@@ -21,6 +21,30 @@ up-to-date checks. GitHub's queue tests the candidate against the latest
 `main` plus earlier queued changes, avoiding repeated manual branch updates
 while preserving latest-base integration evidence.
 
+The queue uses **merge commits**, not squash or rebase. This is a repository
+contract rather than a cosmetic preference: [CC Switch Upstream
+Synchronization](./upstream-sync.md) requires approved upstream integrations to
+remain explicit two-parent merge commits with the verified upstream commit/tag
+preserved in `main` ancestry. Squash and rebase may preserve the resulting tree
+but irreversibly destroy that topology and provenance.
+
+Merge commits also preserve meaningful engineering boundaries in large
+architecture/integration PRs. Normal mainline browsing should use:
+
+```bash
+git log --first-parent main
+```
+
+With `max_entries_to_merge=1`, this remains one visible mainline boundary per
+accepted PR. Full DAG traversal is reserved for debugging, archaeology, and
+provenance work.
+
+Commit hygiene and merge topology are separate concerns. Before a PR becomes
+merge-ready, meaningless fixup/checkpoint commits should be folded or removed
+when practical, while meaningful implementation/test/docs/refactor boundaries
+may remain. The repository must not use a global squash policy as a substitute
+for branch-level commit hygiene.
+
 ## 2. Signatures
 
 ### Repository merge settings
@@ -29,13 +53,14 @@ The effective repository settings are:
 
 ```text
 allow_auto_merge    = true
-allow_squash_merge  = true
-allow_merge_commit  = false
+allow_merge_commit  = true
+allow_squash_merge  = false
 allow_rebase_merge  = false
 ```
 
-This matches the repository contribution convention: accepted PR work enters
-`main` as one squash commit.
+Accepted PR work enters `main` through one explicit merge-commit boundary.
+The PR branch's meaningful internal commits and ancestry remain reachable from
+that merge commit.
 
 ### `main` protection and queue
 
@@ -55,7 +80,7 @@ Latest-base integration is instead owned by the active `main` Merge Queue
 ruleset:
 
 ```text
-merge_method                   = SQUASH
+merge_method                   = MERGE
 grouping_strategy              = ALLGREEN
 max_entries_to_build           = 2
 max_entries_to_merge           = 1
@@ -80,8 +105,12 @@ gh pr merge <pr> --auto --match-head-commit <exact-pr-head-sha>
 ```
 
 When `main` requires Merge Queue, GitHub either waits for unmet PR requirements
-or adds the eligible PR to the queue. The queue's `SQUASH` policy owns the final
+or adds the eligible PR to the queue. The queue's `MERGE` policy owns the final
 merge method. `--admin` is forbidden in the normal project workflow.
+
+Do not temporarily flip the queue between `SQUASH` and `MERGE` for individual
+PRs. Merge Queue policy is shared mutable repository state; per-PR method
+flipping creates concurrency races and makes audit evidence ambiguous.
 
 ## 3. Contracts
 
@@ -102,7 +131,7 @@ implementation complete
   -> enable Merge when ready / auto-merge for that exact head
   -> Merge Queue creates merge_group against latest main
   -> CI / Required passes on merge_group
-  -> squash merge into main
+  -> merge commit into main
   -> main push CI passes for the resulting merge SHA
 ```
 
@@ -144,11 +173,12 @@ After a successful mainline merge and successful main push CI:
 | `CI / Required` is green before task archive | Treat as CI evidence only; merge remains blocked |
 | Task is archived but working tree/spec has new drift | Stop; repair and rerun applicable gates before handoff |
 | PR head changes after reviewed exact SHA | Previous handoff is stale; do not merge under old evidence |
-| Merge Queue/ruleset is missing or no longer uses `SQUASH` | Stop; restore/explicitly review repository policy before merging |
+| Merge Queue/ruleset is missing or no longer uses `MERGE` | Stop; restore/explicitly review repository policy before merging |
 | Workflow stops handling `merge_group` | Merge Queue cannot satisfy required CI; fix CI before queue use |
 | Queue merge group fails/conflicts | Let GitHub remove/block the candidate; fix on the PR branch and repeat readiness |
 | `gh pr merge --admin` would bypass queue/protection | Forbidden; never use it for ordinary FyAgent work |
 | Direct push to `main` is proposed | Forbidden; use PR + Merge Queue |
+| A special PR appears to require squash/rebase or temporary queue-method flipping | Stop; keep queue policy stable and resolve commit hygiene/topology on the PR branch |
 | `dev/laiyongjie` is behind final main with zero unique commits | Fast-forward dev to final main after main CI succeeds |
 | `dev/laiyongjie` has unique commits | Do not force-update; create/finish a PR for those commits first |
 | Post-merge main push CI fails | Main has merged but closeout is not green; investigate before declaring completion/syncing dependent work |
@@ -157,8 +187,8 @@ After a successful mainline merge and successful main push CI:
 
 - **Good:** implementation, SPEC, Trellis prearchive and archive are complete;
   the exact head is pushed; auto-merge is enabled with an exact-head guard;
-  Merge Queue validates `merge_group`; the PR is squashed; main push CI passes;
-  clean dev is then fast-forwarded to the same SHA.
+  Merge Queue validates `merge_group`; one PR enters `main` through one merge
+  commit; main push CI passes; clean dev is then fast-forwarded to the same SHA.
 - **Base:** the PR head is ready but hosted PR checks are still running. It is
   valid to enable `Merge when ready` **only because** the local/Trellis
   lifecycle is already closed. GitHub waits and later queues the PR.
@@ -166,16 +196,21 @@ After a successful mainline merge and successful main push CI:
   imply that SPEC, task archive, review, and exact-head lifecycle work happened.
 - **Bad:** use `strict=true` plus repeated manual update-branch cycles as a
   second latest-main authority while Merge Queue is enabled.
-- **Bad:** use `--admin`, direct push to `main`, merge commit, or rebase merge
-  to make a blocked change land faster.
+- **Bad:** use `--admin`, direct push to `main`, squash/rebase merge, or
+  temporary queue-method changes to make a blocked/special change land faster.
+- **Bad:** keep meaningless `fix test`/`fix lint` checkpoint noise solely
+  because MERGE preserves branch history; clean such noise before merge-ready
+  when practical.
+- **Bad:** squash an upstream-sync PR whose verified upstream commit must remain
+  an ancestor of `main`; matching tree contents do not preserve provenance.
 - **Bad:** force `dev/laiyongjie` to `main` when dev contains independent work.
 
 ## 6. Tests Required
 
 For changes to this governance contract or repository merge configuration:
 
-1. Read back repository merge settings and assert auto-merge + squash are
-   enabled while merge/rebase merge are disabled.
+1. Read back repository merge settings and assert auto-merge + merge commits
+   are enabled while squash/rebase merge are disabled.
 2. Read back `main` protections/rulesets and assert `CI / Required` remains the
    required check, classic strict mode remains false, and Merge Queue is active
    with the parameters in section 2.
@@ -191,6 +226,10 @@ For changes to this governance contract or repository merge configuration:
    CI to the resulting main SHA.
 7. When synchronizing `dev/laiyongjie`, assert ancestry/unique-commit counts
    before update and exact SHA equality plus `0/0` ahead/behind afterward.
+8. Upstream synchronization evidence must continue to prove an explicit
+   two-parent merge and `git merge-base --is-ancestor <verified-upstream> <main>`.
+9. Mainline readability guidance should use `git log --first-parent main`; do
+   not require history rewriting merely to make the default full-DAG log flat.
 
 Repository settings are remote configuration, so local static tests do not
 claim to prove the live GitHub settings. Live API/readback is required when
@@ -227,7 +266,7 @@ implementation/test/review
   -> push exact head
   -> gh pr merge <pr> --auto --match-head-commit <sha>
   -> Merge Queue merge_group + CI / Required
-  -> squash into main
+  -> merge commit into main
   -> main push CI
   -> fast-forward clean dev/laiyongjie to final main
 ```

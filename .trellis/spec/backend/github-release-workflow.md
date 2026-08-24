@@ -606,10 +606,12 @@ xcrun notarytool info "$id" --output-format json      # poll until Accepted
 ## Scenario: Formal tag-target identity
 
 ### 1. Scope / Trigger
-- Trigger: Formal publication identity is an infra contract. Squash-merge
-  history on `main` and unpublished notarization timeouts must not require a
-  Cargo bump. The workflow must not freeze live `main` HEAD or a prior
-  `CI / Required` run as `sourceSha`.
+- Trigger: Formal publication identity is an infra contract. Historical
+  squash-merged commits already present on `main` and unpublished notarization
+  timeouts must not require a Cargo bump. Current mainline merge policy is
+  owned by [GitHub Merge Governance](./github-merge-governance.md). The workflow
+  must not freeze live `main` HEAD or a prior `CI / Required` run as
+  `sourceSha`.
 - Owner: `scripts/release/dev-release-eligibility.mjs` plus the `eligibility`
   job in `.github/workflows/release.yml`.
 
