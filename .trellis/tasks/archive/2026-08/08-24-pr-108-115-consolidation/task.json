@@ -26,8 +26,8 @@
   ],
   "parent": null,
   "relatedFiles": [
-    ".trellis/tasks/08-24-pr-108-115-consolidation/evidence/verification.md",
-    ".trellis/tasks/08-24-pr-108-115-consolidation/evidence/pr-governance-readback.md"
+    ".trellis/tasks/archive/2026-08/08-24-pr-108-115-consolidation/verification.md",
+    ".trellis/tasks/archive/2026-08/08-24-pr-108-115-consolidation/pr-governance-readback.md"
   ],
   "notes": "Original consolidation scope completed its implementation, local gates, independent reviews, source-PR closure readback, governance-head Required gate, and handoff. The subsequent python-rust review/canonicalization is tracked by 08-24-canonicalize-pr-135-change-plan; that follow-up rebased the result onto the post-#140 main baseline, resolved SPEC/structure drift, fixed the Quick Setup targeted-patch Change Plan projection mismatch, and owns final PR merge authorization. This task can therefore close as the historical consolidation/handoff task without claiming that it itself merged main.",
   "meta": {

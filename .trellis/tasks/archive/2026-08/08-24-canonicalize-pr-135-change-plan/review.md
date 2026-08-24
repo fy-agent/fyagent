@@ -97,3 +97,15 @@ Resolution:
 The recovery-event deduplication item is a non-writing P2 follow-up. Merge remains blocked until
 the carried Trellis task tree and this task are correctly archived, latest-main drift is rechecked,
 the exact pushed PR head has green Required CI, and merge occurs through GitHub PR only.
+
+## Trellis closeout
+
+- The four completed consolidation child tasks and the historical parent review task were validated
+  and archived under `.trellis/tasks/archive/2026-08/` before this task's own prearchive gate.
+- The first prearchive attempt correctly rejected non-standard nested `evidence/` / `reviews/`
+  archive payloads. Those historical Markdown receipts were flattened into the canonical archive
+  root (with `research/` retained as the only allowed subdirectory), and the fresh direct-session
+  `check:prearchive` then passed in full.
+- This task completes at merge-ready/prearchive state so that its own archive is present in the PR
+  head before GitHub merge. Exact-head Required CI and post-merge main CI are post-archive gates,
+  not reasons to leave an active Trellis task in `main`.

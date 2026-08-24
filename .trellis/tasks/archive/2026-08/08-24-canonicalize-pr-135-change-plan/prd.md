@@ -4,8 +4,9 @@
 
 将 PR #135 从旧 `main@e94307cd` 上的 consolidation 候选，收敛为当前
 `main@67f50b8f` 上唯一可信的 Change Plan 主线实现，并在不回退 #140 已建立
-的 Models / Codex / WorkBuddy 配置安全合同的前提下，通过工程审查、规范化
-SPEC、Trellis 收尾、完整 CI 后仅经 GitHub PR 合入 `main`。
+的 Models / Codex / WorkBuddy 配置安全合同的前提下，完成工程审查、规范化
+SPEC、Trellis 收尾和本地完整门禁，形成可推送并进入最终 Required CI 的
+merge-ready PR head。任务归档后，最终仅经 GitHub PR 合入 `main`。
 
 ## Confirmed Facts
 
@@ -59,22 +60,28 @@ SPEC、Trellis 收尾、完整 CI 后仅经 GitHub PR 合入 `main`。
 
 ## Acceptance Criteria
 
-- [ ] #135 已基于执行时最新 main 完成语义整合，`git diff --check` 通过。
-- [ ] Schema 0→20、19→20、reopen、future rejection、memory DB、sync skip/local preserve
+- [x] #135 已基于执行时最新 main 完成语义整合，`git diff --check` 通过。
+- [x] Schema 0→20、19→20、reopen、future rejection、memory DB、sync skip/local preserve
       全部通过，仓库不存在第二套有效 v20 Change Plan 定义。
-- [ ] focused tests 证明 preview 零副作用、TTL/digest/baseline stale、并发单次 admission、
+- [x] focused tests 证明 preview 零副作用、TTL/digest/baseline stale、并发单次 admission、
       writer exactly-once、所有 rejection writer=0、recovery no-replay。
-- [ ] #140 Codex targeted patch、backup/write-target、WorkBuddy/OpenCode 回归全部继续通过。
-- [ ] readback/recovery 故障注入覆盖 writer failure、target mismatch、baseline restored、
+- [x] #140 Codex targeted patch、backup/write-target、WorkBuddy/OpenCode 回归全部继续通过。
+- [x] readback/recovery 故障注入覆盖 writer failure、target mismatch、baseline restored、
       interrupted/recovery-required，UI 不产生假绿色状态。
-- [ ] Tauri DTO/ACL、V2 typecheck/lint/unit/browser、Rust fmt/check/clippy/test、Repository
+- [x] Tauri DTO/ACL、V2 typecheck/lint/unit/browser、Rust fmt/check/clippy/test、Repository
       Contracts、supported-platform 与 `mise run check` 全绿。
-- [ ] 两轮最终 review 无未解决 P0/P1/blocker；非阻断项明确记录为 follow-up。
-- [ ] backend/frontend SPEC 与最终实现/测试一致，SPEC/contract 漂移检查通过。
-- [ ] #135 原 consolidation Trellis task tree 与本任务全部正确归档，merge 前无本次工作遗留
-      的 completed/review active task。
-- [ ] PR #135（或明确替代它的 PR）仅通过 GitHub PR merge 到最新 main；merge 后 main CI
-      `CI / Required` success。
+- [x] 两轮最终 review 无未解决 P0/P1/blocker；非阻断项明确记录为 follow-up。
+- [x] backend/frontend SPEC 与最终实现/测试一致，SPEC/contract 漂移检查通过。
+- [x] #135 原 consolidation Trellis task tree 已归档，本任务 `check:prearchive` 通过；随后立即
+      归档本任务，确保 merge 前无本次工作遗留的 completed/review/in-progress active task。
+
+## Post-Archive Merge Gate
+
+- 最终 archive commit 推送到 PR #135 后，以该精确 head SHA 的 GitHub Required CI 为准；
+  旧 SHA 的绿灯不替代最终 head。
+- Required CI 全绿且 `origin/main` 未发生未整合漂移后，只通过 GitHub PR merge；禁止直接
+  push `main`。
+- merge 后继续核对 `origin/main` merge SHA，并等待该 main SHA 的 `CI / Required` success。
 
 ## Out of Scope
 
