@@ -152,10 +152,6 @@ impl WindowsSecretBackend {
         if actual.ct_eq_slice(material.as_bytes()) {
             return Ok(());
         }
-        if matches!(operation, CredentialOperation::Create) {
-            let target_name = target(secret_ref);
-            unsafe { CredDeleteW(target_name.as_ptr(), CRED_TYPE_GENERIC, 0) };
-        }
         Err(SecretServiceError::verify_failed())
     }
 }

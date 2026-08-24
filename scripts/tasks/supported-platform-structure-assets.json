@@ -186,6 +186,10 @@
       "6c587d547b7fae6adac402781a50776886572faa65ad17ab4c16cc153309b882"
     ],
     [
+      "src-tauri/src/services/secret/mod.rs",
+      "4a1ee72e0fafbd0b4e6d1a2cd617bcecb79e80258f084059bb1f4083844e8e71"
+    ],
+    [
       "src-tauri/src/services/secret/platform/mod.rs",
       "8bb551cb9d50e8b6e4f85aad1de66031e66ae966d3c10b394f3a7e6209bf72ff"
     ],
@@ -275,7 +279,7 @@
     ],
     [
       "src-tauri/tests/secret_service_contract.rs",
-      "fe6817fc80a47b80255f0bd5d1dacb9eaa5a55a288cd65346a5d2e2f596afed7"
+      "f2622569cd6410cf66c9c02d24f5980d9f334e247585483c35bd96923129d8ca"
     ],
     [
       "src-tauri/tests/skill_sync.rs",

@@ -13,6 +13,7 @@ pub(crate) use error::{SecretErrorCode, SecretServiceError};
 pub(crate) use material::SecretMaterial;
 #[cfg(test)]
 pub(crate) use memory::{MemoryFailureMode, MemorySecretBackend};
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 pub(crate) use platform::NativeSecretBackend;
 pub(crate) use types::{
     BackendProbe, SecretAvailability, SecretBackendKind, SecretDeleteReceiptDto, SecretHandle,

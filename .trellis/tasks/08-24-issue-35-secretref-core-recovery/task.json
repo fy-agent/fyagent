@@ -12,7 +12,7 @@
   "assignee": "codex",
   "createdAt": "2026-08-24",
   "completedAt": null,
-  "branch": "codex/issue-35-secretref-core-recovery",
+  "branch": "dev/secretref-core-integration",
   "base_branch": "main",
   "worktree_path": null,
   "commit": "6d1636f76abc392dcaeef87bcaa0b4330a8ad75b",
