@@ -18,6 +18,7 @@ use super::super::{
 
 const TARGET_PREFIX: &str = "FyAgent/secret/v1/";
 const USERNAME: &str = "FyAgent";
+static CREDENTIAL_LOCK: Mutex<()> = Mutex::new(());
 
 #[derive(Clone, Copy)]
 enum CredentialOperation {
@@ -71,19 +72,17 @@ impl Drop for CredentialGuard {
     }
 }
 
-pub(crate) struct WindowsSecretBackend {
-    lock: Mutex<()>,
-}
+pub(crate) struct WindowsSecretBackend;
 
 impl WindowsSecretBackend {
     pub(crate) fn new() -> Self {
-        Self {
-            lock: Mutex::new(()),
-        }
+        Self
     }
 
     fn lock(&self) -> Result<std::sync::MutexGuard<'_, ()>, SecretServiceError> {
-        self.lock.lock().map_err(|_| SecretServiceError::internal())
+        CREDENTIAL_LOCK
+            .lock()
+            .map_err(|_| SecretServiceError::internal())
     }
 
     fn read_locked(

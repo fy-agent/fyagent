@@ -8,6 +8,7 @@ use super::super::{
 };
 
 const SERVICE: &str = "com.fyagent.secrets.v1";
+static KEYCHAIN_LOCK: Mutex<()> = Mutex::new(());
 
 const ERR_SUCCESS: i32 = 0;
 const ERR_USER_CANCELED: i32 = -128;
@@ -290,19 +291,17 @@ fn copy_data(data: CFTypeRef) -> Result<Vec<u8>, SecretServiceError> {
     Ok(unsafe { std::slice::from_raw_parts(bytes, length as usize) }.to_vec())
 }
 
-pub(crate) struct MacOsSecretBackend {
-    lock: Mutex<()>,
-}
+pub(crate) struct MacOsSecretBackend;
 
 impl MacOsSecretBackend {
     pub(crate) fn new() -> Self {
-        Self {
-            lock: Mutex::new(()),
-        }
+        Self
     }
 
     fn lock(&self) -> Result<std::sync::MutexGuard<'_, ()>, SecretServiceError> {
-        self.lock.lock().map_err(|_| SecretServiceError::internal())
+        KEYCHAIN_LOCK
+            .lock()
+            .map_err(|_| SecretServiceError::internal())
     }
 
     fn read_locked(&self, secret_ref: &SecretRef) -> Result<SecretMaterial, SecretServiceError> {

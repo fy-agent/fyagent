@@ -251,6 +251,8 @@ fn native_leaf_sources_keep_reviewed_store_and_cleanup_guards() {
     }
 
     let macos = include_str!("../src/services/secret/platform/macos.rs");
+    assert!(macos.contains("static KEYCHAIN_LOCK: Mutex<()> = Mutex::new(())"));
+    assert!(macos.contains("KEYCHAIN_LOCK\n            .lock()"));
     assert_eq!(
         macos
             .matches("kSecUseDataProtectionKeychain as CFTypeRef")
@@ -273,6 +275,8 @@ fn native_leaf_sources_keep_reviewed_store_and_cleanup_guards() {
     );
 
     let windows = include_str!("../src/services/secret/platform/windows.rs");
+    assert!(windows.contains("static CREDENTIAL_LOCK: Mutex<()> = Mutex::new(())"));
+    assert!(windows.contains("CREDENTIAL_LOCK\n            .lock()"));
     let windows_write = section(windows, "    fn write_locked(", "\n}\n\nimpl SecretBackend");
     assert!(windows_write.contains("CredWriteW(&credential, 0)"));
     assert!(windows_write.contains("self.read_locked(secret_ref, CredentialOperation::Read)?"));

@@ -95,7 +95,7 @@ username = FyAgent
 Windows `CredWriteW` is an upsert API: it creates a missing credential and
 replaces an existing credential with the same target/type. FyAgent must **not**
 claim an OS-level atomic create-only primitive. `create_new` uses a
-process-local mutex, an explicit pre-write probe, an unpredictable UUIDv4
+process-global backend mutex, an explicit pre-write probe, an unpredictable UUIDv4
 `SecretRef`, and mandatory readback. This prevents silent replacement by
 FyAgent's own concurrent create paths; an external process racing the same
 random target is outside the Win32 API guarantee and belongs to later
@@ -156,7 +156,7 @@ Credential Manager memory returned by `CredReadW` is always released with
   constant-time readback, source-free errors, Data Protection Keychain on
   macOS, and explicit Windows Credential Manager CRUD HIL.
 - **Base:** Windows cannot make `CredWriteW` atomically create-only. State the
-  limitation accurately and use random identities + process serialization +
+  limitation accurately and use random identities + process-global serialization +
   later lifecycle CAS rather than inventing an OS guarantee.
 - **Bad:** persist plaintext in SQLite, logs, DTOs, errors, Provider fields, or
   environment fallback because the OS credential store is unavailable.
