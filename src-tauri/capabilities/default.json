@@ -18,6 +18,8 @@
     "allow-external-agent-observe",
     "allow-external-agent-launch",
     "allow-qoderwork-hooks-write",
-    "allow-external-agent-endpoint-probe"
+    "allow-external-agent-endpoint-probe",
+    "allow-change-plan",
+    "allow-agent-install-readiness"
   ]
 }

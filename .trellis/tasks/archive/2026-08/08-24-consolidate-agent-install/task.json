@@ -1,0 +1,35 @@
+{
+  "id": "consolidate-agent-install",
+  "name": "consolidate-agent-install",
+  "title": "Agent install readiness consolidation",
+  "description": "PR 115: integrate read-only install readiness with the canonical Agent Catalog.",
+  "status": "completed",
+  "dev_type": null,
+  "scope": "fullstack",
+  "package": null,
+  "priority": "P0",
+  "creator": "codex",
+  "assignee": "codex",
+  "createdAt": "2026-08-24",
+  "completedAt": "2026-08-24",
+  "branch": "codex/pr-108-115-consolidation",
+  "base_branch": "main",
+  "worktree_path": "/Users/<username>/.codex/worktrees/08-24-pr-108-115-consolidation/fyagent",
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "08-24-pr-108-115-consolidation",
+  "relatedFiles": [
+    "src-tauri/src/agent_install/mod.rs",
+    "src/v2/pages/agents/AgentInstallReadinessSection.tsx"
+  ],
+  "notes": "Read-only readiness implementation and focused acceptance are complete; root retains commit and PR ownership.",
+  "meta": {
+    "executor_lock": "gpt-5.6-sol-medium",
+    "parent_task": "08-24-pr-108-115-consolidation",
+    "handoff_state": "verified",
+    "ClaimedBy": "gpt-5.6-sol-medium",
+    "ClaimedAt": "2026-08-24T00:00:00+08:00"
+  }
+}

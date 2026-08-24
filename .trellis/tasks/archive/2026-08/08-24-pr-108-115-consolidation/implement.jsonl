@@ -1,0 +1,8 @@
+{"file":".trellis/workflow.md","reason":"Complex-task phases, agent dispatch and task lifecycle."}
+{"file":".trellis/spec/backend/modular-boundaries.md","reason":"Rust module and shared registration ownership."}
+{"file":".trellis/spec/backend/codex-provider-configuration.md","reason":"Existing provider writer, lock and live projection authority."}
+{"file":".trellis/spec/backend/external-agent-p0.md","reason":"Canonical Agent catalog, ACL and unknown-evidence boundaries."}
+{"file":".trellis/spec/frontend/v2-shell.md","reason":"V2 layer, native-only and shell contracts."}
+{"file":".trellis/spec/frontend/v2-agent-models.md","reason":"Canonical seven-Agent and Provider summary contracts."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Host/IPC/renderer contract mapping."}
+{"file":".trellis/tasks/08-24-pr-108-115-consolidation/research/source-pr-ledger.md","reason":"Approved per-PR keep/rewrite/exclude scope."}

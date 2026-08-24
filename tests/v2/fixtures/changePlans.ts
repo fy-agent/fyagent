@@ -1,0 +1,48 @@
+export const changePlanWire = {
+  planId: "plan-1",
+  operation: "codex_provider_switch",
+  targetProviderId: "provider-1",
+  targetProviderName: "Provider One",
+  planDigest: "a".repeat(64),
+  baselineDigest: "b".repeat(64),
+  dbBaselineProviderId: null,
+  deviceBaselineProviderId: "provider-before",
+  secretCapability: "no_new_credential_material",
+  createdAt: 1_800_000_000,
+  expiresAt: 1_800_000_900,
+  status: "ready",
+  currentProviderCode: "current_mixed",
+  targetProviderCode: "existing_provider",
+  restartExpectation: "recommended",
+  risks: [{ code: "local_configuration_write", severity: "notice" }],
+  evidenceNote: "usage_not_observed",
+} as const;
+
+export const changeJobWire = {
+  jobId: "job-1",
+  planId: "plan-1",
+  targetProviderId: "provider-1",
+  revision: 2,
+  eventSeq: 2,
+  status: "running",
+  resultCode: "running",
+  steps: [{ kind: "apply", status: "running", code: "writer_started" }],
+  resources: [
+    { kind: "provider_db_current", status: "pending", code: "pending" },
+  ],
+  events: [
+    {
+      sequence: 1,
+      phase: "precheck",
+      reasonCode: "planned",
+      createdAt: 1_800_000_001,
+    },
+  ],
+  restartRequirement: "unknown",
+  usageEvidence: "not_observed",
+  recoveryState: "not_needed",
+  diagnosticCode: null,
+  liveConfigChanged: false,
+  createdAt: 1_800_000_001,
+  updatedAt: 1_800_000_002,
+} as const;

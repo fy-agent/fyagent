@@ -400,6 +400,10 @@ describe("V2 Agent directory", () => {
     expect(qoderDetail).not.toHaveTextContent("配置概览");
     expect(qoderDetail).not.toHaveTextContent("不适用的功能");
     expect(qoderDetail).not.toHaveTextContent("使用说明");
+    const readiness = within(qoderDetail).getByRole("region", {
+      name: "安装方式",
+    });
+    expect(within(readiness).queryByRole("button")).not.toBeInTheDocument();
     expect(
       within(qoderDetail).queryByRole("button", { name: "管理 Hooks" }),
     ).not.toBeInTheDocument();

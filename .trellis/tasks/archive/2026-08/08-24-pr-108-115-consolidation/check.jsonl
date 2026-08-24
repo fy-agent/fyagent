@@ -1,0 +1,7 @@
+{"file":".trellis/spec/backend/github-ci-workflow.md","reason":"Required CI topology and hosted evidence truth."}
+{"file":".trellis/spec/backend/development-environment.md","reason":"Canonical local task API and host-native evidence boundary."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Renderer/i18n gates and evidence labels."}
+{"file":".trellis/spec/frontend/reuse.md","reason":"No duplicate V2 chrome or port owners."}
+{"file":".trellis/tasks/08-24-pr-108-115-consolidation/prd.md","reason":"Parent acceptance criteria and completion truth."}
+{"file":".trellis/tasks/archive/2026-08/08-24-pr-108-115-consolidation/verification.md","reason":"Fresh local and CI evidence ledger preserved in the canonical archive root."}
+{"file":".trellis/tasks/archive/2026-08/08-24-pr-108-115-consolidation/pr-governance-readback.md","reason":"Single-PR and old-PR closure truth preserved in the canonical archive root."}

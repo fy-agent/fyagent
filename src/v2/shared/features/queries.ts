@@ -5,6 +5,7 @@ import {
   PROMPT_APP_IDS,
   SKILL_DISCOVERY_PAGE_SIZE,
   SKILLHUB_CATEGORY_ALL,
+  type AgentCatalogId,
   type MemoryDocumentId,
   type PromptAppId,
   type SkillDiscoveryStatus,
@@ -14,6 +15,9 @@ import type { ProviderAppId } from "./types";
 
 export const featureKeys = {
   agentCatalog: ["v2", "agents", "catalog"] as const,
+  agentInstallReadiness: (agentId: AgentCatalogId) =>
+    ["v2", "agents", agentId, "install-readiness"] as const,
+  recoverableChangeJobs: ["v2", "change-plans", "recoverable"] as const,
   providerSummary: (app: ProviderAppId) =>
     ["v2", "providers", app, "summary"] as const,
   workbuddyStatus: ["v2", "workbuddy", "status"] as const,
@@ -45,6 +49,27 @@ export function useAgentCatalog(enabled = true) {
   return useQuery({
     queryKey: featureKeys.agentCatalog,
     queryFn: ports.catalog.get,
+    enabled,
+  });
+}
+
+export function useAgentInstallReadiness(
+  agentId: AgentCatalogId,
+  enabled = true,
+) {
+  const { ports } = useFeatures();
+  return useQuery({
+    queryKey: featureKeys.agentInstallReadiness(agentId),
+    queryFn: () => ports.agentInstallReadiness.get(agentId),
+    enabled,
+  });
+}
+
+export function useRecoverableChangeJobs(enabled = true) {
+  const { ports } = useFeatures();
+  return useQuery({
+    queryKey: featureKeys.recoverableChangeJobs,
+    queryFn: ports.changePlans.listRecoverableChangeJobs,
     enabled,
   });
 }

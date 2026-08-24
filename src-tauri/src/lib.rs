@@ -1,3 +1,4 @@
+mod agent_install;
 mod app_config;
 mod app_store;
 mod auto_launch;
@@ -1840,6 +1841,11 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_agent_catalog,
+            commands::get_agent_install_readiness,
+            commands::create_codex_provider_switch_plan,
+            commands::apply_change_plan,
+            commands::get_change_job,
+            commands::list_recoverable_change_jobs,
             commands::get_external_agent_status,
             commands::launch_external_agent,
             commands::get_qoderwork_hooks,

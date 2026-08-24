@@ -64,7 +64,7 @@ pub fn codex_auth_has_oauth_login_material(auth: &Value) -> bool {
 /// ahead of the API-key fallback: OAuth tokens or another first-class login
 /// carrier. Pure metadata such as `last_refresh` or `tokens.account_id` does
 /// not count.
-pub(super) fn codex_auth_has_credential_login_material(auth: &Value) -> bool {
+pub(crate) fn codex_auth_has_credential_login_material(auth: &Value) -> bool {
     let Some(obj) = auth.as_object() else {
         return false;
     };

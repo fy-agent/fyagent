@@ -1,0 +1,35 @@
+{
+  "id": "consolidate-apply-grok-ui",
+  "name": "consolidate-apply-grok-ui",
+  "title": "Apply and Grok UI consolidation",
+  "description": "PRs 108 and 113: integrate Grok copy and ApplyWorkspace against the canonical Change Plan port.",
+  "status": "completed",
+  "dev_type": null,
+  "scope": "frontend",
+  "package": null,
+  "priority": "P0",
+  "creator": "codex",
+  "assignee": "codex",
+  "createdAt": "2026-08-24",
+  "completedAt": "2026-08-24",
+  "branch": "codex/pr-108-115-consolidation",
+  "base_branch": "main",
+  "worktree_path": "/Users/<username>/.codex/worktrees/08-24-pr-108-115-consolidation/fyagent",
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "08-24-pr-108-115-consolidation",
+  "relatedFiles": [
+    "src/v2/pages/models/apply/",
+    "src/components/providers/forms/GrokBuildProviderForm.tsx"
+  ],
+  "notes": "Apply/Grok implementation and focused acceptance are complete; root retains commit and PR ownership.",
+  "meta": {
+    "executor_lock": "gpt-5.6-sol-medium",
+    "parent_task": "08-24-pr-108-115-consolidation",
+    "handoff_state": "verified",
+    "ClaimedBy": "gpt-5.6-sol-medium",
+    "ClaimedAt": "2026-08-24T00:00:00+08:00"
+  }
+}

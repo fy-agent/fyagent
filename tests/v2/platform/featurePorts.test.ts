@@ -248,6 +248,24 @@ describe("V2 feature ports", () => {
   it("keeps native observations unavailable in browsers and rejects writes", async () => {
     const ports = createBrowserFeaturePorts();
     await expect(ports.catalog.get()).rejects.toThrow(NATIVE_ONLY_ERROR);
+    await expect(ports.agentInstallReadiness.get("codex")).rejects.toThrow(
+      NATIVE_ONLY_ERROR,
+    );
+    await expect(
+      ports.changePlans.createCodexProviderSwitchPlan("provider-1"),
+    ).rejects.toThrow(NATIVE_ONLY_ERROR);
+    await expect(
+      ports.changePlans.applyChangePlan({
+        planId: "plan-1",
+        planDigest: "a".repeat(64),
+      }),
+    ).rejects.toThrow(NATIVE_ONLY_ERROR);
+    await expect(ports.changePlans.getChangeJob("job-1")).rejects.toThrow(
+      NATIVE_ONLY_ERROR,
+    );
+    await expect(ports.changePlans.listRecoverableChangeJobs()).rejects.toThrow(
+      NATIVE_ONLY_ERROR,
+    );
     await expect(ports.externalAgents.getStatus("qoderwork")).resolves.toEqual({
       agentId: "qoderwork",
       detected: null,

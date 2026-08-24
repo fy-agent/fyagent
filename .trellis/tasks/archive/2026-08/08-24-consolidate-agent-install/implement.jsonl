@@ -1,0 +1,6 @@
+{"file":".trellis/spec/backend/external-agent-p0.md","reason":"Canonical catalog, ACL and unknown evidence semantics."}
+{"file":".trellis/spec/frontend/v2-agent-models.md","reason":"Seven-Agent directory and Codex installer boundary."}
+{"file":".trellis/spec/frontend/v2-shell.md","reason":"V2 ports and native-only boundary."}
+{"file":".trellis/spec/frontend/reuse.md","reason":"Reuse existing Agent detail owners."}
+{"file":".trellis/tasks/08-24-pr-108-115-consolidation/research/source-pr-ledger.md","reason":"#115 salvage and exclusion decisions."}
+{"file":".trellis/tasks/08-24-consolidate-agent-install/design.md","reason":"Frozen readiness DTO and truth policy."}

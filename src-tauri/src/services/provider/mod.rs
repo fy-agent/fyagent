@@ -38,9 +38,10 @@ pub use live::{
 // Internal re-exports (pub(crate))
 pub(crate) use live::sanitize_claude_settings_for_live;
 pub(crate) use live::{
-    build_effective_settings_with_common_config, normalize_provider_common_config_for_storage,
-    provider_exists_in_live_config, strip_common_config_from_live_settings,
-    sync_current_provider_for_app_to_live, write_live_with_common_config,
+    build_codex_quick_setup_live_projection, build_effective_settings_with_common_config,
+    normalize_provider_common_config_for_storage, provider_exists_in_live_config,
+    strip_common_config_from_live_settings, sync_current_provider_for_app_to_live,
+    write_live_with_common_config,
 };
 
 // Internal re-exports
@@ -64,6 +65,72 @@ pub fn import_default_config(state: &AppState, app_type: AppType) -> Result<bool
 pub fn official_provider_supports_proxy_takeover(app_type: &AppType, provider: &Provider) -> bool {
     matches!(app_type, AppType::Codex)
         && crate::proxy::providers::is_codex_official_provider(provider)
+}
+
+/// Read-only snapshot of the Codex live/takeover inputs used by both Change
+/// Plan inspection and the real provider writer. Credentials stay in memory
+/// only; callers may consume the strict-login boolean but must never persist or
+/// hash the raw settings.
+#[derive(Clone)]
+pub(crate) struct CodexSwitchEnvironment {
+    pub live_settings: Value,
+    pub has_live_backup: bool,
+    pub live_taken_over: bool,
+    pub preserved_strict_login: bool,
+}
+
+impl CodexSwitchEnvironment {
+    pub(crate) fn mode_code(&self) -> &'static str {
+        match (self.has_live_backup, self.live_taken_over) {
+            (_, true) => "live_takeover",
+            (true, false) => "backup_only",
+            (false, false) => "normal",
+        }
+    }
+
+    fn should_hot_switch(&self) -> bool {
+        self.has_live_backup || self.live_taken_over
+    }
+}
+
+pub(crate) fn inspect_codex_switch_environment(
+    state: &AppState,
+) -> Result<CodexSwitchEnvironment, AppError> {
+    state.proxy_service.inspect_codex_switch_environment()
+}
+
+pub(crate) fn build_codex_switch_target_live_projection(
+    state: &AppState,
+    provider: &Provider,
+    environment: &CodexSwitchEnvironment,
+) -> Result<Value, AppError> {
+    if environment.should_hot_switch() {
+        return futures::executor::block_on(
+            state
+                .proxy_service
+                .build_codex_live_from_provider_while_proxy_active(
+                    provider,
+                    Some(&environment.live_settings),
+                ),
+        )
+        .map_err(AppError::Message);
+    }
+
+    let mut effective_provider = provider.clone();
+    effective_provider.settings_config =
+        build_effective_settings_with_common_config(state.db.as_ref(), &AppType::Codex, provider)?;
+    if is_quick_setup_provider_id(&AppType::Codex, &effective_provider.id) {
+        return build_codex_quick_setup_live_projection(
+            &environment.live_settings,
+            &effective_provider,
+        );
+    }
+    let mut effective_settings = effective_provider.settings_config;
+    crate::codex_config::apply_codex_unified_session_bucket_to_settings(
+        provider.category.as_deref(),
+        &mut effective_settings,
+    )?;
+    Ok(effective_settings)
 }
 
 /// 统一会话开关变更后，立即按新开关状态重写当前官方 Codex 供应商的
@@ -1908,6 +1975,52 @@ requires_openai_auth = true
 
             let live = fs::read_to_string(&config_path).unwrap();
             let parsed: toml::Value = toml::from_str(&live).unwrap();
+            assert_eq!(
+                parsed["model_providers"]["custom"]["experimental_bearer_token"].as_str(),
+                Some("provider-key")
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn codex_quick_setup_config_only_preservation_does_not_parse_untouched_auth() {
+        with_test_home(|state, _| {
+            let previous_settings = crate::settings::get_settings();
+            let _settings = AppSettingsRestore::replace_with(crate::settings::AppSettings {
+                preserve_codex_official_auth_on_switch: true,
+                ..previous_settings
+            });
+            let config_path = get_codex_config_path();
+            let auth_path = get_codex_auth_path();
+            fs::create_dir_all(config_path.parent().unwrap()).unwrap();
+            let opaque_auth_bytes = b"not-json-auth-owned-by-codex";
+            fs::write(&auth_path, opaque_auth_bytes).unwrap();
+            fs::write(
+                &config_path,
+                "model_provider = \"OpenAI\"\nmodel = \"gpt-old\"\n",
+            )
+            .unwrap();
+
+            let mut provider = Provider::with_id(
+                QUICK_SETUP_CODEX_PROVIDER_ID.to_string(),
+                "FyAgent Codex".to_string(),
+                json!({
+                    "auth": { "OPENAI_API_KEY": "provider-key" },
+                    "config": "model_provider = \"custom\"\nmodel = \"gpt-new\"\n\n[model_providers.custom]\nname = \"FyAgent Codex\"\nbase_url = \"https://new.example.test/v1\"\nwire_api = \"responses\"\nrequires_openai_auth = true\n",
+                }),
+                None,
+            );
+            provider.category = Some("custom".to_string());
+
+            ProviderService::apply_quick_setup(state, AppType::Codex, provider)
+                .expect("config-only quick setup must not parse untouched auth");
+
+            assert_eq!(fs::read(&auth_path).unwrap(), opaque_auth_bytes);
+            assert!(!crate::config::rolling_backup_path(&auth_path).exists());
+            let live = fs::read_to_string(&config_path).unwrap();
+            let parsed: toml::Value = toml::from_str(&live).unwrap();
+            assert_eq!(parsed["model"].as_str(), Some("gpt-new"));
             assert_eq!(
                 parsed["model_providers"]["custom"]["experimental_bearer_token"].as_str(),
                 Some("provider-key")
@@ -5313,6 +5426,17 @@ impl ProviderService {
         } else {
             None
         };
+        Self::switch_with_lock_held(state, app_type, id)
+    }
+
+    /// Provider switch implementation for callers that already hold the
+    /// per-app mutation guard. This is crate-visible only so Change Plan can
+    /// keep admission, the single writer call and readback under one guard.
+    pub(crate) fn switch_with_lock_held(
+        state: &AppState,
+        app_type: AppType,
+        id: &str,
+    ) -> Result<SwitchResult, AppError> {
         // Check if provider exists
         let providers = state.db.get_all_providers(app_type.as_str())?;
         let _provider = providers
@@ -5346,8 +5470,17 @@ impl ProviderService {
         let live_taken_over = state
             .proxy_service
             .detect_takeover_in_live_config_for_app(&app_type);
+        let codex_environment =
+            if matches!(app_type, AppType::Codex) && (is_app_taken_over || live_taken_over) {
+                Some(inspect_codex_switch_environment(state)?)
+            } else {
+                None
+            };
 
-        let should_hot_switch = is_app_taken_over || live_taken_over;
+        let should_hot_switch = codex_environment
+            .as_ref()
+            .map(CodexSwitchEnvironment::should_hot_switch)
+            .unwrap_or(is_app_taken_over || live_taken_over);
 
         // Block switching to official providers when proxy takeover is active.
         // Using a proxy with official APIs (Anthropic/OpenAI/Google) may cause account bans.

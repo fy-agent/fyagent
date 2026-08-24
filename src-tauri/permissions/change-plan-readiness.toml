@@ -1,0 +1,14 @@
+[[permission]]
+identifier = "allow-change-plan"
+description = "Allows the main local webview to create, apply and read the bounded Codex Change Plan ledger."
+commands.allow = [
+  "create_codex_provider_switch_plan",
+  "apply_change_plan",
+  "get_change_job",
+  "list_recoverable_change_jobs",
+]
+
+[[permission]]
+identifier = "allow-agent-install-readiness"
+description = "Allows the main local webview to read the bounded Agent install readiness projection."
+commands.allow = ["get_agent_install_readiness"]

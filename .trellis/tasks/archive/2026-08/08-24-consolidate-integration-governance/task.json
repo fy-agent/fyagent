@@ -1,0 +1,36 @@
+{
+  "id": "consolidate-integration-governance",
+  "name": "consolidate-integration-governance",
+  "title": "Integration and governance consolidation",
+  "description": "Own shared registration, schema migration, cross-layer integration, final validation, and governance evidence.",
+  "status": "completed",
+  "dev_type": null,
+  "scope": "fullstack",
+  "package": null,
+  "priority": "P0",
+  "creator": "codex",
+  "assignee": "codex",
+  "createdAt": "2026-08-24",
+  "completedAt": "2026-08-24",
+  "branch": "codex/pr-108-115-consolidation",
+  "base_branch": "main",
+  "worktree_path": "/Users/<username>/.codex/worktrees/08-24-pr-108-115-consolidation/fyagent",
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "08-24-pr-108-115-consolidation",
+  "relatedFiles": [
+    "src-tauri/src/database/schema.rs",
+    "src-tauri/src/lib.rs",
+    "src/v2/shared/features/ports.ts"
+  ],
+  "notes": "Shared integration and local cross-layer acceptance are complete; GitHub governance remains root-owned.",
+  "meta": {
+    "executor_lock": "gpt-5.6-sol-high",
+    "parent_task": "08-24-pr-108-115-consolidation",
+    "handoff_state": "verified",
+    "ClaimedBy": "gpt-5.6-sol-high",
+    "ClaimedAt": "2026-08-24T00:00:00+08:00"
+  }
+}

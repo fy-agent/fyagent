@@ -3,6 +3,7 @@
 mod agent_catalog;
 mod auth;
 mod balance;
+mod change_plan;
 mod codex_desktop;
 mod codex_oauth;
 mod coding_plan;
@@ -37,6 +38,7 @@ mod tooling;
 mod traework;
 mod xai_oauth;
 
+mod agent_install_readiness;
 mod lightweight;
 mod s3_sync;
 mod usage;
@@ -47,6 +49,7 @@ mod workspace;
 pub use agent_catalog::*;
 pub use auth::*;
 pub use balance::*;
+pub use change_plan::*;
 pub use codex_desktop::*;
 pub use codex_oauth::*;
 pub use coding_plan::*;
@@ -80,6 +83,7 @@ pub use tooling::*;
 pub use traework::*;
 pub use xai_oauth::*;
 
+pub use agent_install_readiness::*;
 pub use lightweight::*;
 pub use s3_sync::*;
 pub use usage::*;

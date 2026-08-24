@@ -65,6 +65,8 @@ import type {
   OpenClawDirectory,
   PromptAppId,
 } from "./types";
+import type { AgentInstallReadinessPort } from "./agent-install-readiness";
+import type { ChangePlansPort } from "./change-plans";
 
 export interface AgentCatalogPort {
   get(): Promise<AgentCatalogResult>;
@@ -237,6 +239,8 @@ export interface MemoryPort {
 
 export interface FeaturePorts {
   catalog: AgentCatalogPort;
+  agentInstallReadiness: AgentInstallReadinessPort;
+  changePlans: ChangePlansPort;
   externalAgents: ExternalAgentsPort;
   qoderwork: QoderWorkPort;
   externalMcp: ExternalMcpPort;

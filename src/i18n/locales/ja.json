@@ -1271,6 +1271,7 @@
     "customApiKeyHint": "💡 カスタム設定では必要な項目をすべて手動で入力してください",
     "omoHint": "💡 OMO 設定は Agent のモデル割り当てを管理し、oh-my-openagent.jsonc / oh-my-opencode.jsonc の両方に対応します",
     "officialHint": "💡 公式プロバイダーはブラウザログインで、API Key は不要です",
+    "grokOfficialHint": "💡 Grok Official は空の設定を使います。保存後、ターミナルで `grok login` を実行してください。FyAgent は代わりにログインせず、~/.grok/auth.json にも書き込みません。",
     "providerKeyStatusLoading": "プロバイダー識別子の状態を読み込んでいます。しばらくしてからもう一度お試しください",
     "getApiKey": "API Key を取得",
     "presets": {
@@ -3252,6 +3253,8 @@
     "extraUsage": "超過使用量",
     "expired": "セッション期限切れ",
     "expiredHint": "{{tool}}コマンドを実行してログインを更新してください",
+    "grokOfficialExpiredHint": "このログインを更新するには、ターミナルで `grok login` を実行してください。",
+    "xaiOauthExpiredHint": "認証センターでこの xAI アカウントを再認証してください。",
     "queryFailed": "クエリに失敗しました",
     "refresh": "更新"
   }

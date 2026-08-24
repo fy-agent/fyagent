@@ -329,6 +329,9 @@ impl Database {
         )
         .map_err(|e| AppError::Database(e.to_string()))?;
 
+        // 20. Change Plan local-only ledger.
+        Self::create_change_plan_tables_on_conn(conn)?;
+
         // 修复跑过未发布开发版的库：current 标记曾是全局 key，现按应用分组
         // （随 v12 定稿为 current_profile_id_<scope>，不单独 bump 版本）
         if conn
@@ -533,6 +536,11 @@ impl Database {
                         log::info!("迁移数据库从 v18 到 v19（MCP 添加 QoderWork/TRAE Work 目标）");
                         Self::migrate_v18_to_v19(conn)?;
                         Self::set_user_version(conn, 19)?;
+                    }
+                    19 => {
+                        log::info!("迁移数据库从 v19 到 v20（添加 Change Plan 本地变更账本）");
+                        Self::migrate_v19_to_v20(conn)?;
+                        Self::set_user_version(conn, 20)?;
                     }
                     _ => {
                         return Err(AppError::Database(format!(
@@ -1624,6 +1632,73 @@ impl Database {
 
         log::info!("v18 -> v19 迁移完成：MCP 已添加 QoderWork/TRAE Work 目标");
         Ok(())
+    }
+
+    /// v19 -> v20: add the local-only Change Plan ledger.
+    ///
+    /// Fresh creation, migration and in-memory databases deliberately share
+    /// this one idempotent helper so their nullability and indexes cannot drift.
+    fn migrate_v19_to_v20(conn: &Connection) -> Result<(), AppError> {
+        Self::create_change_plan_tables_on_conn(conn)
+    }
+
+    pub(crate) fn create_change_plan_tables_on_conn(conn: &Connection) -> Result<(), AppError> {
+        conn.execute_batch(
+            r#"
+            CREATE TABLE IF NOT EXISTS change_plans (
+                plan_id TEXT PRIMARY KEY,
+                operation TEXT NOT NULL,
+                target_provider_id TEXT NOT NULL,
+                target_provider_name TEXT NOT NULL,
+                plan_digest TEXT NOT NULL,
+                baseline_digest TEXT NOT NULL,
+                db_baseline_provider_id TEXT,
+                device_baseline_provider_id TEXT,
+                target_definition_digest TEXT NOT NULL,
+                live_baseline_digest TEXT NOT NULL,
+                target_projection_digest TEXT NOT NULL,
+                contract_digest TEXT NOT NULL,
+                secret_capability TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                expires_at INTEGER NOT NULL,
+                status TEXT NOT NULL CHECK (status IN ('ready', 'consumed')),
+                consumed_at INTEGER
+            );
+            CREATE TABLE IF NOT EXISTS change_jobs (
+                job_id TEXT PRIMARY KEY,
+                plan_id TEXT NOT NULL UNIQUE,
+                target_provider_id TEXT NOT NULL,
+                revision INTEGER NOT NULL,
+                event_seq INTEGER NOT NULL,
+                status TEXT NOT NULL CHECK (status IN ('planned','running','succeeded','warning','failed')),
+                result_code TEXT NOT NULL,
+                steps_json TEXT NOT NULL,
+                resources_json TEXT NOT NULL,
+                restart_requirement TEXT NOT NULL,
+                usage_evidence TEXT NOT NULL,
+                recovery_state TEXT NOT NULL,
+                diagnostic_code TEXT,
+                live_config_changed INTEGER NOT NULL DEFAULT 0,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                FOREIGN KEY (plan_id) REFERENCES change_plans(plan_id)
+            );
+            CREATE TABLE IF NOT EXISTS change_job_events (
+                job_id TEXT NOT NULL,
+                event_seq INTEGER NOT NULL,
+                phase TEXT NOT NULL,
+                reason_code TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                PRIMARY KEY (job_id, event_seq),
+                FOREIGN KEY (job_id) REFERENCES change_jobs(job_id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_change_jobs_recoverable
+                ON change_jobs(status, updated_at);
+            CREATE INDEX IF NOT EXISTS idx_change_job_events_job
+                ON change_job_events(job_id, event_seq);
+            "#,
+        )
+        .map_err(|error| AppError::Database(format!("创建 Change Plan 表失败: {error}")))
     }
 
     /// 插入默认模型定价数据
@@ -3184,6 +3259,60 @@ impl Database {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn change_plan_table_count(conn: &Connection) -> Result<i64, AppError> {
+        conn.query_row(
+            "SELECT COUNT(*) FROM sqlite_master
+             WHERE type='table' AND name IN ('change_plans','change_jobs','change_job_events')",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|error| AppError::Database(error.to_string()))
+    }
+
+    #[test]
+    fn schema_v20_change_plan_helper_is_shared_idempotent_and_nullable() -> Result<(), AppError> {
+        let conn = Connection::open_in_memory()?;
+        Database::create_change_plan_tables_on_conn(&conn)?;
+        Database::create_change_plan_tables_on_conn(&conn)?;
+        assert_eq!(change_plan_table_count(&conn)?, 3);
+        let consumed_at_nullable: i64 = conn.query_row(
+            "SELECT [notnull] = 0 FROM pragma_table_info('change_plans')
+             WHERE name='consumed_at'",
+            [],
+            |row| row.get(0),
+        )?;
+        assert_eq!(consumed_at_nullable, 1);
+        Ok(())
+    }
+
+    #[test]
+    fn schema_zero_and_v19_upgrade_to_v20_and_future_rejects() -> Result<(), AppError> {
+        let fresh = Connection::open_in_memory()?;
+        Database::create_tables_on_conn(&fresh)?;
+        Database::set_user_version(&fresh, 0)?;
+        Database::apply_schema_migrations_on_conn(&fresh)?;
+        assert_eq!(Database::get_user_version(&fresh)?, 20);
+        assert_eq!(change_plan_table_count(&fresh)?, 3);
+
+        let v19 = Connection::open_in_memory()?;
+        Database::set_user_version(&v19, 19)?;
+        Database::apply_schema_migrations_on_conn(&v19)?;
+        assert_eq!(Database::get_user_version(&v19)?, 20);
+        assert_eq!(change_plan_table_count(&v19)?, 3);
+
+        let future = Connection::open_in_memory()?;
+        Database::set_user_version(&future, 21)?;
+        let error = Database::apply_schema_migrations_on_conn(&future)
+            .expect_err("future schema must fail closed");
+        assert!(error.to_string().contains("数据库版本过新"));
+        assert_eq!(Database::get_user_version(&future)?, 21);
+
+        let memory = Database::memory()?;
+        let memory_conn = lock_conn!(memory.conn);
+        assert_eq!(change_plan_table_count(&memory_conn)?, 3);
+        Ok(())
+    }
 
     #[test]
     fn migrate_v12_to_v13_adds_input_token_semantics_columns() -> Result<(), AppError> {

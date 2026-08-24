@@ -33,7 +33,12 @@ function rendererInvokeCommands(): {
     join(root, "src/v2/shared/platform/tauri"),
   )) {
     const source = readFileSync(path, "utf8");
-    const file = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true);
+    const file = ts.createSourceFile(
+      path,
+      source,
+      ts.ScriptTarget.Latest,
+      true,
+    );
 
     const visit = (node: ts.Node): void => {
       if (
@@ -119,12 +124,37 @@ describe("V2 native ACL contract", () => {
     const allowed = activeAclCommands();
 
     expect(renderer.dynamicInvokes).toEqual([]);
-    expect(renderer.commands.size).toBe(75);
+    expect(renderer.commands.size).toBe(80);
     expect(
       [...renderer.commands].filter((command) => !registered.has(command)),
     ).toEqual([]);
     expect(
       [...renderer.commands].filter((command) => !allowed.has(command)),
     ).toEqual([]);
+    expect([...registered].filter((command) => !allowed.has(command))).toEqual(
+      [],
+    );
+    expect([...allowed].filter((command) => !registered.has(command))).toEqual(
+      [],
+    );
+  });
+
+  it("registers exactly four Change Plan commands and one readiness command", () => {
+    const registered = registeredCommands();
+    const expected = [
+      "create_codex_provider_switch_plan",
+      "apply_change_plan",
+      "get_change_job",
+      "list_recoverable_change_jobs",
+      "get_agent_install_readiness",
+    ];
+    expect(expected.filter((command) => !registered.has(command))).toEqual([]);
+
+    const forbidden = [...registered].filter((command) =>
+      /(?:agent_install_(?:start|get_job|cancel|probe|doctor|helper)|fake_change|change_plan_cancel)/u.test(
+        command,
+      ),
+    );
+    expect(forbidden).toEqual([]);
   });
 });

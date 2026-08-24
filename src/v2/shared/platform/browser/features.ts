@@ -14,6 +14,15 @@ export function createBrowserFeaturePorts(): FeaturePorts {
     catalog: {
       get: rejectNativeOnly,
     },
+    agentInstallReadiness: {
+      get: rejectNativeOnly,
+    },
+    changePlans: {
+      createCodexProviderSwitchPlan: rejectNativeOnly,
+      applyChangePlan: rejectNativeOnly,
+      getChangeJob: rejectNativeOnly,
+      listRecoverableChangeJobs: rejectNativeOnly,
+    },
     externalAgents: {
       getStatus: async (agentId) => ({
         agentId,

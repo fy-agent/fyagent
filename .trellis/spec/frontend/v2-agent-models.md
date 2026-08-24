@@ -6,7 +6,7 @@ Read this contract before changing the V2 Agent directory, Models quick setup,
 their local Agent assets, the versioned native catalog (including OpenCode and
 Grok Build), the shared `PRODUCT_DIRECTORY`, WorkBuddy model ports,
 Claude/Codex/Grok Build Provider quick setup, or the sanitized Provider
-summary boundary.
+summary boundary, Agent install-readiness region, or Codex Change Plan UI.
 The common shell, native-chrome, router, and layer rules remain in
 [V2 Shell](./v2-shell.md). Skills/MCP and Prompt/Memory have separate feature
 contracts and must not be folded into the Agent capability catalog. Reuse is
@@ -595,6 +595,22 @@ fetch/save controls.
 - The normal browser adapter returns native-only unavailability. Rich fixtures
   live only in focused tests and are always labelled/non-authoritative.
 
+### Agent readiness and Codex Change Plan UI
+
+- Agent detail adds one compact read-only 「安装方式」 region backed by
+  `FeaturePorts.agentInstallReadiness`. It renders unavailable/unknown as
+  non-green, exposes no install/recheck/cancel/health button, and leaves the
+  existing Codex Desktop installer intact. Browser ports reject native-only.
+- Codex Models consumes `FeaturePorts.changePlans` through exact unknown-input
+  parsers. Preview creates no Provider write; confirm sends only
+  `planId + planDigest` and holds a per-plan repeat-click lock. The page owns no
+  fake coordinator, scenario, cancel, backup, restore, or second state machine.
+- Positive Apply copy derives only from a validated terminal job. Succeeded and
+  warning both state that real usage has not been observed. Recovery-required
+  and mixed/unavailable resources are never green; a failed writer with the
+  original baseline authoritatively restored remains a confirmed failure, not
+  an unknown recovery state.
+
 ## 4. Validation & Error Matrix
 
 | Condition                                                                                                                    | Required result                                                                                            |
@@ -634,6 +650,9 @@ fetch/save controls.
 | Draft/save revision changes after a probe result was created                                                                 | Hide that stale result; an old async completion must not become the current configuration status           |
 | Provider Base URL has userinfo/query/fragment or a credential component                                                      | Reject before DB/current/live mutation                                                                     |
 | Provider request is empty, generic, wrong-ID, or has public/secret collision                                                 | Reject in Rust; no state mutation                                                                          |
+| Apply is repeated by StrictMode/double click or carries fields beyond ID/digest                                              | Invoke at most once for that plan; reject the widened request                                              |
+| Apply readback is mixed/unavailable or recovery-required                                                                     | Render non-green recovery copy and never synthesize success                                                |
+| Writer failed and the original baseline is authoritatively restored                                                          | Render failed/danger with confirmed-baseline copy; target mismatches are expected, not unknown authority   |
 | Codex `imageExtension: true` omits `experimental_bearer_token` while `requires_openai_auth` is false                         | Host derivation/test fails; current Codex would not send `auth.json`'s key                                 |
 | Codex model probe adds an output-token limit solely for connectivity                                                         | Wire test fails; send the bounded Responses probe without that compatibility-breaking field                |
 | Grok Build probe uses Chat Completions while Quick Setup writes `api_backend = "responses"`                                  | Wire test fails; use the Responses endpoint                                                                |
@@ -749,7 +768,13 @@ Required focused coverage includes:
   target panels; the other primary routes keep the same in-session page.
   Secrets stay in component memory only. Immediate WorkBuddy
   existing-model delete after an unrecoverable-delete confirmation.
-  Revision tests prove a save of N cannot clear a credential/draft entered at
+- Agent readiness exact seven-ID/exact-key/sensitive-field-negative coverage,
+  single-command ACL registration, browser native-only behavior, no action
+  controls, and Codex installer non-regression. Change Plan coverage includes
+  strict DTO parsing, ID/digest-only confirm, realistic baseline-restored
+  resources, all terminal/recovery states, honest usage-evidence copy, and
+  static absence of fake/scenario/cancel/backup/restore product surfaces.
+- Revision tests prove a save of N cannot clear a credential/draft entered at
   N+1, successful current-revision saves clear `待保存`, and stale probe
   results disappear after edit/commit. Browser geometry measures the shared
   `SecretInput` toggle relative to its input at all maintained viewports.
