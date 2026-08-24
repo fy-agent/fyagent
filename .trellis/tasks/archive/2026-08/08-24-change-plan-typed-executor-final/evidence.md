@@ -135,8 +135,6 @@ grandfather the final metadata state.
 
 ## Remaining merge-ready evidence
 
-- the Trellis task must be completed and archived before PR auto-merge handoff;
-- post-archive contracts must pass on the committed archive shape;
 - replacement PR exact-head `CI / Required` and Merge Queue `merge_group` must
   pass before merge;
 - old Draft #134 is closed only after the replacement PR exists.
@@ -149,3 +147,13 @@ grandfather the final metadata state.
   5 ignored, supported-platform 2135 current files, release contracts, task/docs
   contracts, and native-fetch 4/4.
 - This final prearchive supersedes all earlier aborted or pre-correction runs.
+
+## Final archive verification
+
+- Task status is `completed` with `completedAt=2026-08-24` and is stored at
+  `.trellis/tasks/archive/2026-08/08-24-change-plan-typed-executor-final`.
+- `task.py list` reports zero active tasks after archival.
+- `mise run check:contracts` on the staged canonical archive shape — PASS,
+  exit 0.
+- The post-archive run reported supported-platform 2142 current files and all
+  task/docs/release/native-fetch contracts green.

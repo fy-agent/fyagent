@@ -1551,3 +1551,45 @@ Preserved PR 132 contributor ancestry, hardened macOS Data Protection Keychain a
 ### Next Steps
 
 - Push final exact head, create replacement PR, close Draft #143 as superseded, and hand the final PR to Merge Queue after hosted Windows HIL and CI / Required pass.
+
+
+## Session 48: Canonical Change Plan typed executor replacement
+
+**Date**: 2026-08-24
+**Task**: Canonical Change Plan typed executor replacement
+**Branch**: `dev/change-plan-typed-executor-final`
+
+### Summary
+
+Salvaged PR #134 typed-executor capabilities onto canonical Change Plan v20, preserved single-writer/readback ownership, fixed cross-process Rust fixture isolation, and recorded the full #134/#136/#137/#139 consolidation handoff.
+
+### Main Changes
+
+- Added closed typed adapter metadata, five durable phases, idempotent replay, pre-write cancellation, partial-result projection, fault injection, and persist-before-observe event hints without schema changes.
+- Kept schema v20, WebDAV local-only ledger, Provider single writer, #140 targeted projection, and readback-only recovery intact; legacy apply/reconcile rows remain decode-compatible.
+- Added persistent cross-PR handoff covering completed PR dispositions and the remaining #134 -> #136 -> #137 -> #139 replacement sequence.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `faac9b93` | (see git log) |
+| `4186fb92` | (see git log) |
+| `35ea4634` | (see git log) |
+| `39e60438` | (see git log) |
+| `2812830d` | (see git log) |
+
+### Testing
+
+- [OK] Focused Change Plan Rust 24/24; focused V2 28/28; V2 browser 120/120.
+- [OK] Full local gate: frontend 1491/1 skipped; Rust 2853/5 ignored; release/contracts/native-fetch green.
+- [OK] Final direct-session prearchive and committed post-archive contracts passed.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- Push the exact replacement head, create the current-main replacement PR, close Draft #134 as superseded, and hand the replacement to Merge Queue.
+- After main merge, sync dev/laiyongjie and immediately start #136 V2 UI salvage using pr-consolidation-handoff.md.
