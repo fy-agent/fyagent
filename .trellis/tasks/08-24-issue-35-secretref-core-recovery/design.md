@@ -56,6 +56,9 @@ another entitled process could have updated the item after `SecItemAdd`.
 Because that fail-closed rule can leave an unverified native item, the first
 production consumer must retain durable create-admission/recovery authority
 until verification settles.
+All macOS native-store operations share one process-global mutex rather than an
+instance-local lock, so constructing another backend instance cannot bypass
+FyAgent's own serialization boundary.
 
 ### Windows
 
@@ -67,7 +70,9 @@ Use Credential Manager generic credentials:
 - username: `FyAgent`
 
 Create probes first and rejects a record already visible to this FyAgent
-process; replace requires an existing record. `CredWriteW`, `CredReadW`,
+process; all native Credential Manager operations are serialized by one
+process-global backend mutex even if multiple backend instances are constructed.
+Replace requires an existing record. `CredWriteW`, `CredReadW`,
 `CredDeleteW`, and `CredFree` stay inside the leaf. Microsoft defines
 `CredWriteW` as create-or-replace, so the OS does not provide an atomic
 create-only primitive here. The generated ref is random and remains private to

@@ -34,15 +34,22 @@ work that belongs to later verticals.
 - [x] Historical pre-DPK macOS CRUD evidence is retained only as legacy file-based Keychain evidence and is explicitly not treated as acceptance for the corrected DPK contract.
 - [x] The former plain-`cargo test` macOS Keychain HIL is invalidated after DPK correction: it now fails closed with `errSecMissingEntitlement`, as expected for an unsigned/non-provisioned test host. This result is recorded and is not misreported as DPK acceptance.
 - [x] Signed-app macOS DPK CRUD/readback/cleanup is explicitly deferred to the first production consumer, and the maintained contract blocks activation until FyAgent's host identity/provisioning profile authorizes the access group.
-- [x] Windows matching-host Credential Manager CRUD/readback/cleanup runs as an explicit native CI step and proves exactly one ignored integration test executed successfully; final replacement-head Required CI must rerun this after the CI-topology update.
+- [x] Windows matching-host Credential Manager CRUD/readback/cleanup has executed as an explicit native CI step and proved exactly one ignored integration test ran successfully. The final replacement head reruns this as a post-archive hosted closeout gate before merge.
 - [x] Production Rust lint remains warnings-denied without dormant SecretRef lint suppressions; `services/mod.rs` registration is deferred to the first real consumer.
 - [x] `cargo check --locked --all-targets`, Clippy, focused Rust tests, architecture/CI contract tests, and full repository gates pass on the integrated current-main branch.
 - [x] A secret canary scan finds zero occurrences in serialized DTOs, Debug/Display output, errors, logs produced by focused tests, and repository fixtures added by this PR.
 - [x] Maintained `.trellis/spec/backend/secretref-backend.md` records signatures, platform semantics, validation/error behavior, native evidence, and the Windows non-atomic-create limitation.
-- [ ] The old PR #132 provenance/salvage intent is retained, but its active Trellis task is updated, validated, and archived on the replacement branch before merge-ready handoff.
+- [x] PR #132 contributor provenance/salvage intent is retained by an explicit two-parent merge; this task's final branch metadata and maintained SPEC are current. The task archive itself is the post-completion Trellis lifecycle step and remains mandatory before auto-merge handoff.
 - [x] Issue #35 remains OPEN until create/edit Provider integration, signed-app macOS DPK HIL, Windows native HIL, full lifecycle AC, exact merged SHA, and Required CI are complete.
 
 ## Notes
 
 - This task is the consumable core slice required by #63 create/edit. It is not the whole historical #112 implementation and must not be described as closing #35 by itself.
-- Replacement integration branch: `dev/secretref-core-integration`; original PR #132 head is preserved as a merge parent rather than copied as anonymous source.
+- Final integration branch: `dev/secretref-core-final`; original PR #132 head is preserved as a merge parent by the explicit conventional two-parent commit `chore(secrets): preserve PR 132 ancestry`, rather than copied as anonymous source. The earlier Draft #143 is superseded because its integration merge subjects violated the repository Commit Convention contract.
+
+## Post-archive hosted closeout
+
+- Push the exact final replacement head only after this task is archived and post-archive contracts are green.
+- Hosted PR CI must rerun `Exercise Credential Manager SecretRef CRUD` on Windows and produce exactly `1 passed; 0 failed` for the ignored native test.
+- `CI / Required` must pass for the exact PR head; Merge Queue must then pass one `merge_group` authority under the corrected CI topology.
+- Signed-app macOS Data Protection Keychain HIL remains deliberately outside this dormant core slice and blocks the first production consumer instead of this merge.
