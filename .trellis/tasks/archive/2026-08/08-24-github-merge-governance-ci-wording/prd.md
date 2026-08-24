@@ -18,7 +18,6 @@ scenario now that canonical mainline policy is Merge Queue + merge commit.
 - [x] `github-ci-workflow.md` contains no wording implying squash-main alignment
       is the current dev synchronization workflow.
 - [x] No CI YAML/script/test behavior changes.
-- [ ] `git diff --check`, contracts, direct-session prearchive and post-archive
-      contracts pass. Prearchive and pre-archive contracts are complete;
-      post-archive remains.
-- [ ] Task is archived before #142 is handed back to Merge Queue.
+- [x] `git diff --check`, contracts, direct-session prearchive and post-archive
+      contracts pass.
+- [x] Task is archived before #142 is handed back to Merge Queue.
