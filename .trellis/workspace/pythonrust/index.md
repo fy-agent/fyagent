@@ -85,3 +85,6 @@
 - Sessions are appended to journal files
 - New journal file created when current exceeds 2000 lines
 - Use `add_session.py` to record sessions
+- Cross-PR consolidation status and the #134 -> #136 -> #137 -> #139 replacement
+  plan are maintained in `pr-consolidation-handoff.md`; update it whenever one
+  of those PRs reaches a new terminal/mainline state.

@@ -15,7 +15,7 @@
   "branch": "dev/change-plan-typed-executor-final",
   "base_branch": "main",
   "worktree_path": null,
-  "commit": null,
+  "commit": "35ea4634",
   "pr_url": null,
   "subtasks": [],
   "children": [],

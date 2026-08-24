@@ -49,28 +49,31 @@ recovery while adding the reusable execution contract needed by Issues #58,
 
 ## Acceptance Criteria
 
-- [ ] New plans/jobs expose one closed typed adapter descriptor and five phases;
+- [x] New plans/jobs expose one closed typed adapter descriptor and five phases;
       renderer parsers reject unknown descriptor/resource/cancel values.
-- [ ] Sequential and concurrent duplicate apply with the same digest return the
+- [x] Sequential and concurrent duplicate apply with the same digest return the
       same execution and call the Provider writer no additional times; changed
       digest remains rejected.
-- [ ] Pre-write cancellation produces a durable public `cancelled` snapshot
+- [x] Pre-write cancellation produces a durable public `cancelled` snapshot
       without violating the schema-v20 status CHECK; post-commit cancellation
       is rejected.
-- [ ] Existing persisted v1 `apply/reconcile` job/event rows decode and
+- [x] Existing persisted v1 `apply/reconcile` job/event rows decode and
       normalize without migration or data loss.
-- [ ] Observer tests prove every emitted `{jobId,eventSeq}` resolves to an
+- [x] Observer tests prove every emitted `{jobId,eventSeq}` resolves to an
       already-committed SQLite snapshot with at least that sequence.
-- [ ] Both fault boundaries leave durable recoverable truth; reconciliation
+- [x] Both fault boundaries leave durable recoverable truth; reconciliation
       performs readback only and writer call count remains unchanged.
-- [ ] Partial-result projection is deterministic, secret/path free, and
+- [x] Partial-result projection is deterministic, secret/path free, and
       accurately identifies succeeded/unverified/remaining/manual work.
-- [ ] Existing #135 stale/TTL/secret/projection/readback/single-writer tests stay
+- [x] Existing #135 stale/TTL/secret/projection/readback/single-writer tests stay
       green; no schema v20 or WebDAV local-only regression is introduced.
-- [ ] Maintained backend/frontend SPECs describe the final executor contract,
+- [x] Maintained backend/frontend SPECs describe the final executor contract,
       compatibility mapping, and cancellation persistence rule.
-- [ ] Full local gate, Trellis prearchive/archive/post-archive contracts, exact
-      head PR CI, and Merge Queue `CI / Required` pass before merge.
+- [x] Full local gate and V2 browser matrix pass on the final-main baseline.
+- [x] Direct-session Trellis prearchive passes on the final code/spec/workspace
+      handoff state.
+- [ ] Trellis archive/post-archive contracts, exact-head PR CI, and Merge Queue
+      `CI / Required` pass before merge.
 
 ## Notes
 

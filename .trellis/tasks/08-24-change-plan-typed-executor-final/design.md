@@ -39,7 +39,11 @@ Each active execution registers one process-local atomic gate:
 Only one CAS wins. Cancel does not take the Provider lock. If cancellation wins,
 apply persists terminal `cancelled_before_write` without entering the writer.
 After `write_claimed`, cancel returns `commit_point_passed`. Process loss drops
-the in-memory gate; durable nonterminal jobs are recovered by readback only.
+the in-memory gate; durable nonterminal jobs are recovered by readback only. If
+the process is lost after the cancel CAS but before the terminal cancellation
+snapshot commits, recovery can prove only that managed write never started, so
+the durable result is `interrupted_before_write` rather than a fabricated
+`cancelled_before_write`.
 
 ## Observation
 

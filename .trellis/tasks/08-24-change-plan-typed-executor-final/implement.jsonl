@@ -1,1 +1,4 @@
-{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file":".trellis/spec/backend/change-plan-executor.md","reason":"Canonical typed executor phases, idempotency, cancellation, partial truth, and crash-recovery contract."}
+{"file":".trellis/spec/backend/codex-provider-configuration.md","reason":"Codex-specific single-writer, projection, secret-capability, and readback invariants that the executor must preserve."}
+{"file":".trellis/spec/frontend/v2-agent-models.md","reason":"V2 Change Plan strict parser and honest execution-state presentation contract."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Rust/Tauri/V2 DTO changes must normalize unknown input at the owner boundary."}
