@@ -364,8 +364,9 @@ Validation already observed on the replacement work:
 
 **Current handoff point:** implementation, final direct-session prearchive,
 archive, and post-archive contracts are complete. Replacement PR #146 exists.
-Its archive binding is committed, old #134 is closed as superseded, and #146 is
-handed to Auto-merge/Merge Queue. Wait for the queue result, synchronize the
+Its archive binding is committed, old #134 is closed as superseded, and #146 has
+Auto-merge enabled. Queue admission still depends on the exact-head required PR
+checks; after the subsequent `merge_group` gate succeeds, synchronize the
 canonical mainline and `dev/laiyongjie`, then create the #136 replacement branch.
 Read-only #136 salvage analysis may proceed while #146 is hosted.
 
