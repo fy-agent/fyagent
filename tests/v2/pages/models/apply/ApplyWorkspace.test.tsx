@@ -406,6 +406,50 @@ describe("ApplyWorkspace", () => {
     ).toHaveAttribute("aria-live", "polite");
   });
 
+  it("renders four preview sections from the closed plan DTO", () => {
+    render(<ApplyWorkspace {...baseProps} />);
+
+    expect(screen.getByRole("heading", { name: "语义变化" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "风险与重启" })).toBeVisible();
+    expect(
+      screen.getByRole("heading", { name: "前置条件与范围" }),
+    ).toBeVisible();
+    expect(screen.getByRole("heading", { name: "恢复方式" })).toBeVisible();
+    expect(screen.getByText("无额外风险项")).toBeVisible();
+    expect(
+      screen.getAllByText(plan.currentProviderCode).length,
+    ).toBeGreaterThan(0);
+    expect(screen.getByText("只读回读", { exact: false })).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "取消" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders partial truth and backend event sequence from the job DTO", () => {
+    render(
+      <ApplyWorkspace
+        {...baseProps}
+        job={job({
+          eventSeq: 7,
+          partialResult: {
+            succeededSteps: ["precheck", "snapshot"],
+            compensatedSteps: ["managed_write"],
+            unverifiedSteps: ["readback"],
+            remainingEffects: ["provider_db_current"],
+            manualActions: ["retry_readback"],
+          },
+        })}
+      />,
+    );
+
+    expect(screen.getByText("后端事件序号 7")).toBeVisible();
+    expect(screen.getByText("2")).toBeVisible();
+    expect(screen.getByText("重新回读")).toBeVisible();
+    expect(
+      screen.getAllByText("数据库当前 Provider").length,
+    ).toBeGreaterThan(0);
+  });
+
   it("keeps prohibited prototype controls and data sources out of product code", () => {
     const sourceDir = resolve("src/v2/pages/models/apply");
     const sources = ["ApplyWorkspace.tsx", "view-model.ts", "index.ts"]

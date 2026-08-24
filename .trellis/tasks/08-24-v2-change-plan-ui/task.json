@@ -1,0 +1,28 @@
+{
+  "id": "v2-change-plan-ui",
+  "name": "v2-change-plan-ui",
+  "title": "Canonical V2 Change Plan UI salvage",
+  "description": "",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": "v2",
+  "package": null,
+  "priority": "P2",
+  "creator": "pythonrust",
+  "assignee": "pythonrust",
+  "createdAt": "2026-08-24",
+  "completedAt": null,
+  "branch": "dev/v2-change-plan-ui",
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {
+    "description": "Salvage remaining V2 Change Plan preview/progress UX from Draft #136 onto current main after #146"
+  }
+}

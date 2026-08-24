@@ -73,11 +73,19 @@
   background: var(--fy-surface-strong);
 }
 
+.fy-apply-preview,
 .fy-apply-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
   min-width: 0;
+}
+
+.fy-apply-preview {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.fy-apply-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .fy-apply-pane {
@@ -101,7 +109,9 @@
 
 .fy-apply-plan-details,
 .fy-apply-step-list,
-.fy-apply-resource-list {
+.fy-apply-resource-list,
+.fy-apply-risk-list,
+.fy-apply-partial {
   display: grid;
   gap: 10px;
   margin: 16px 0 0;
@@ -175,7 +185,8 @@
 
 .fy-apply-empty,
 .fy-apply-live,
-.fy-apply-usage {
+.fy-apply-usage,
+.fy-apply-event-seq {
   margin-top: 16px;
   color: var(--fy-text-secondary);
   font-size: 14px;
@@ -233,12 +244,9 @@
 }
 
 @media (max-width: 1000px) {
+  .fy-apply-preview,
   .fy-apply-grid {
     grid-template-columns: 1fr 1fr;
-  }
-
-  .fy-apply-result {
-    grid-column: 1 / -1;
   }
 }
 
@@ -247,12 +255,9 @@
     flex-direction: column;
   }
 
+  .fy-apply-preview,
   .fy-apply-grid {
     grid-template-columns: 1fr;
-  }
-
-  .fy-apply-result {
-    grid-column: auto;
   }
 }
 

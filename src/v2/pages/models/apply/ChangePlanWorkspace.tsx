@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import type {
   ChangeJobSnapshot,
@@ -25,6 +25,12 @@ const ERROR_CODES = new Set<ChangePlanErrorCode>([
   "job_not_found",
   "internal",
 ]);
+
+const JOB_REFRESH_INTERVAL_MS = 1000;
+
+function isActiveJobStatus(status: ChangeJobSnapshot["status"]): boolean {
+  return status === "planned" || status === "running";
+}
 
 function errorCode(error: unknown): ChangePlanErrorCode {
   const candidate =
@@ -130,6 +136,31 @@ export function ChangePlanWorkspace({
       if (requestRevision.current === revision) setBusy(false);
     }
   };
+
+  useEffect(() => {
+    const jobId = visibleJob?.jobId;
+    const status = visibleJob?.status;
+    if (busy || !jobId || !status || !isActiveJobStatus(status)) return;
+    const revision = requestRevision.current;
+    let disposed = false;
+    const timer = window.setInterval(() => {
+      void (async () => {
+        try {
+          const refreshed = await ports.changePlans.getChangeJob(jobId);
+          if (disposed || requestRevision.current !== revision) return;
+          setJob(refreshed);
+        } catch (cause) {
+          if (disposed || requestRevision.current !== revision) return;
+          setError({ code: errorCode(cause) });
+          window.clearInterval(timer);
+        }
+      })();
+    }, JOB_REFRESH_INTERVAL_MS);
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+    };
+  }, [busy, ports.changePlans, visibleJob?.jobId, visibleJob?.status]);
 
   return (
     <section
