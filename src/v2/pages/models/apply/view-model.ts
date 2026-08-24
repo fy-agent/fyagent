@@ -188,11 +188,17 @@ function evidenceNoteLabel(note: string): string {
 function createPreviewModel(plan: ChangePlan): ApplyPreviewModel {
   return {
     semantic: {
-      summary: `将 Codex 当前 Provider ${plan.currentProviderCode} 切换到 ${plan.targetProviderName}（${plan.targetProviderCode}）。`,
+      summary:
+        plan.operation === "codex_provider_upsert_and_switch"
+          ? `保存 Codex Provider ${plan.targetProviderName}（${plan.targetProviderCode}）并设为当前配置。`
+          : `将 Codex 当前 Provider ${plan.currentProviderCode} 切换到 ${plan.targetProviderName}（${plan.targetProviderCode}）。`,
       currentCode: plan.currentProviderCode,
       targetCode: plan.targetProviderCode,
       targetName: plan.targetProviderName,
-      operationLabel: "Codex Provider 切换",
+      operationLabel:
+        plan.operation === "codex_provider_upsert_and_switch"
+          ? "Codex Provider 保存并设为当前"
+          : "Codex Provider 切换",
       planStatusLabel: plan.status === "ready" ? "可确认" : "不可再次使用",
     },
     risk: {
@@ -290,7 +296,7 @@ function resourcePresentation(
   }
 }
 
-function hasUnconfirmedAuthority(job: ChangeJobSnapshot): boolean {
+export function hasUnconfirmedAuthority(job: ChangeJobSnapshot): boolean {
   if (
     job.recoveryState === "succeeded" &&
     (job.resultCode === "writer_failed_baseline_restored" ||

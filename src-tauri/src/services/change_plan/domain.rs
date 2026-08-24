@@ -12,7 +12,8 @@ macro_rules! string_enum {
 }
 
 string_enum!(ChangeOperation {
-    CodexProviderSwitch
+    CodexProviderSwitch,
+    CodexProviderUpsertAndSwitch
 });
 string_enum!(ChangePlanStatus { Ready, Consumed });
 string_enum!(SecretCapabilityResult {

@@ -16,8 +16,13 @@ import { getAgentIcon } from "@/v2/shared/assets/agents";
 import type { FeaturePorts } from "@/v2/shared/features/ports";
 import { FeatureProvider } from "@/v2/shared/features/provider";
 import type { AgentCatalogResult } from "@/v2/shared/features/types";
+import type { ChangeJobSnapshot } from "@/v2/shared/features/change-plans";
 import { createBrowserFeaturePorts } from "@/v2/shared/platform/browser/features";
 import { TooltipProvider } from "@/v2/shared/ui/primitives";
+import {
+  changeJobWire,
+  changePlanUpsertWire,
+} from "../../fixtures/changePlans";
 
 function renderPage(ports: FeaturePorts, target?: string) {
   const initialEntry = target ? `/models?target=${target}` : "/models";
@@ -32,6 +37,58 @@ function renderPage(ports: FeaturePorts, target?: string) {
       </MemoryRouter>
     </StrictMode>,
   );
+}
+
+function succeededCodexJob(): ChangeJobSnapshot {
+  return {
+    ...changeJobWire,
+    jobId: "job-save",
+    executionId: "job-save",
+    planId: changePlanUpsertWire.planId,
+    idempotencyKey: changePlanUpsertWire.planId,
+    targetProviderId: changePlanUpsertWire.targetProviderId,
+    status: "succeeded",
+    resultCode: "applied",
+    revision: 5,
+    eventSeq: 5,
+    steps: [
+      { kind: "precheck", status: "succeeded", code: "ok" },
+      { kind: "snapshot", status: "succeeded", code: "ok" },
+      { kind: "managed_write", status: "succeeded", code: "ok" },
+      { kind: "readback", status: "succeeded", code: "ok" },
+      { kind: "finalize", status: "succeeded", code: "ok" },
+    ],
+    resources: [
+      { kind: "provider_db_current", status: "matched", code: "ok" },
+      { kind: "device_current", status: "matched", code: "ok" },
+      { kind: "target_definition", status: "matched", code: "ok" },
+      { kind: "codex_live_projection", status: "matched", code: "ok" },
+    ],
+    events: [
+      { sequence: 1, phase: "precheck", reasonCode: "ok", createdAt: 1 },
+      { sequence: 2, phase: "snapshot", reasonCode: "ok", createdAt: 2 },
+      { sequence: 3, phase: "managed_write", reasonCode: "ok", createdAt: 3 },
+      { sequence: 4, phase: "readback", reasonCode: "ok", createdAt: 4 },
+      { sequence: 5, phase: "finalize", reasonCode: "ok", createdAt: 5 },
+    ],
+    liveConfigChanged: true,
+    recoveryState: "not_needed",
+  };
+}
+
+function stubCodexSavePlan(
+  ports: FeaturePorts,
+  job: ChangeJobSnapshot = succeededCodexJob(),
+) {
+  ports.providers.applyQuickSetupWithResult = vi.fn();
+  ports.changePlans.createCodexProviderUpsertPlan = vi.fn(async () => ({
+    ...changePlanUpsertWire,
+  }));
+  ports.changePlans.applyChangePlan = vi.fn(async () => ({
+    kind: "admitted" as const,
+    job,
+  }));
+  ports.changePlans.getChangeJob = vi.fn(async () => job);
 }
 
 function catalog(): AgentCatalogResult {
@@ -944,16 +1001,22 @@ describe("V2 Models page", () => {
       currentId: currentProviderId,
       writeTargets: [...TEST_PROVIDER_WRITE_TARGETS],
     }));
-    type ApplyResult = Awaited<
-      ReturnType<FeaturePorts["providers"]["applyQuickSetupWithResult"]>
-    >;
-    let resolveApply!: (result: ApplyResult) => void;
-    const pendingApply = new Promise<ApplyResult>((resolve) => {
-      resolveApply = resolve;
-    });
-    ports.providers.applyQuickSetupWithResult = vi.fn<
-      FeaturePorts["providers"]["applyQuickSetupWithResult"]
-    >(() => pendingApply);
+    ports.providers.applyQuickSetupWithResult = vi.fn();
+    let resolveCreate!: (plan: typeof changePlanUpsertWire) => void;
+    const pendingCreate = new Promise<typeof changePlanUpsertWire>(
+      (resolve) => {
+        resolveCreate = resolve;
+      },
+    );
+    ports.changePlans.createCodexProviderUpsertPlan = vi.fn(
+      () => pendingCreate,
+    );
+    const job = succeededCodexJob();
+    ports.changePlans.applyChangePlan = vi.fn(async () => ({
+      kind: "admitted" as const,
+      job,
+    }));
+    ports.changePlans.getChangeJob = vi.fn(async () => job);
     renderPage(ports, "codex");
 
     await screen.findByTestId("provider-status");
@@ -983,30 +1046,43 @@ describe("V2 Models page", () => {
     await user.click(submit);
     expect(submit).toBeDisabled();
     fireEvent.click(submit);
-    expect(ports.providers.applyQuickSetupWithResult).toHaveBeenCalledTimes(1);
+    expect(
+      ports.changePlans.createCodexProviderUpsertPlan,
+    ).toHaveBeenCalledTimes(1);
+    expect(ports.providers.applyQuickSetupWithResult).not.toHaveBeenCalled();
     currentProviderId = QUICK_SETUP_PROVIDER_IDS.codex;
-    resolveApply({
-      value: { warnings: [] },
-      liveConfigChanged: true,
-      app: "codex" as const,
-      warningCodes: ["CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED"],
+    resolveCreate({
+      ...changePlanUpsertWire,
+      risks: [
+        ...changePlanUpsertWire.risks,
+        {
+          code: "CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED",
+          severity: "warning",
+        },
+      ],
     });
 
-    await screen.findByText("模型设置已保存并设为当前配置");
-    expect(ports.providers.applyQuickSetupWithResult).toHaveBeenCalledTimes(1);
-    expect(ports.providers.applyQuickSetupWithResult).toHaveBeenCalledWith(
-      {
-        name: "Codex Gateway",
-        baseUrl: "https://codex.example/v1",
-        apiKey: "codex-secret",
-        modelId: "gpt-5",
-        codexFeatures: { imageExtension: false, websockets: false },
-      },
-      "codex",
-    );
+    expect(
+      await screen.findByRole("button", { name: "确认应用" }),
+    ).toBeEnabled();
     expect(
       screen.getByText("当前网络代理可能影响连接，请确认后使用。"),
     ).toBeVisible();
+    expect(
+      ports.changePlans.createCodexProviderUpsertPlan,
+    ).toHaveBeenCalledWith({
+      name: "Codex Gateway",
+      baseUrl: "https://codex.example/v1",
+      apiKey: "codex-secret",
+      modelId: "gpt-5",
+      codexFeatures: { imageExtension: false, websockets: false },
+    });
+    await user.click(screen.getByRole("button", { name: "确认应用" }));
+    await screen.findByText("模型设置已保存并设为当前配置");
+    expect(ports.changePlans.applyChangePlan).toHaveBeenCalledWith({
+      planId: changePlanUpsertWire.planId,
+      planDigest: changePlanUpsertWire.planDigest,
+    });
     expect(
       screen.getByText("重启或新建会话后即可使用新的设置。"),
     ).toBeVisible();
@@ -1016,6 +1092,7 @@ describe("V2 Models page", () => {
       within(codexHeader as HTMLElement).queryByText("待保存"),
     ).not.toBeInTheDocument();
     expect(ports.providers.getSummary).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole("button", { name: "取消" })).toBeNull();
   });
 
   it("sends Codex image-extension and websocket toggles in the quick setup payload", async () => {
@@ -1026,12 +1103,7 @@ describe("V2 Models page", () => {
       currentId: "",
       writeTargets: [...TEST_PROVIDER_WRITE_TARGETS],
     }));
-    ports.providers.applyQuickSetupWithResult = vi.fn(async () => ({
-      value: { warnings: [] },
-      liveConfigChanged: true,
-      app: "codex" as const,
-      warningCodes: [],
-    }));
+    stubCodexSavePlan(ports);
     renderPage(ports, "codex");
 
     await screen.findByTestId("provider-status");
@@ -1056,20 +1128,20 @@ describe("V2 Models page", () => {
     );
 
     await waitFor(() =>
-      expect(ports.providers.applyQuickSetupWithResult).toHaveBeenCalledTimes(
-        1,
-      ),
+      expect(
+        ports.changePlans.createCodexProviderUpsertPlan,
+      ).toHaveBeenCalledTimes(1),
     );
-    expect(ports.providers.applyQuickSetupWithResult).toHaveBeenCalledWith(
-      {
-        name: "Codex Gateway",
-        baseUrl: "https://codex.example/v1",
-        apiKey: "codex-secret",
-        modelId: "gpt-5",
-        codexFeatures: { imageExtension: true, websockets: true },
-      },
-      "codex",
-    );
+    expect(ports.providers.applyQuickSetupWithResult).not.toHaveBeenCalled();
+    expect(
+      ports.changePlans.createCodexProviderUpsertPlan,
+    ).toHaveBeenCalledWith({
+      name: "Codex Gateway",
+      baseUrl: "https://codex.example/v1",
+      apiKey: "codex-secret",
+      modelId: "gpt-5",
+      codexFeatures: { imageExtension: true, websockets: true },
+    });
   });
 
   it("treats an unclassified apply failure as unknown and stops writes", async () => {
@@ -1128,12 +1200,23 @@ describe("V2 Models page", () => {
       currentId: "",
       writeTargets: [...TEST_PROVIDER_WRITE_TARGETS],
     }));
-    ports.providers.applyQuickSetupWithResult = vi.fn(async () => {
-      throw {
-        code: "ROLLBACK_PARTIAL_STATE_UNKNOWN",
-        hidden: "partial-secret",
-      };
-    });
+    const recoveryJob: ChangeJobSnapshot = {
+      ...succeededCodexJob(),
+      status: "failed",
+      resultCode: "recovery_required",
+      recoveryState: "recovery_required",
+      resources: [
+        { kind: "provider_db_current", status: "matched", code: "ok" },
+        { kind: "device_current", status: "matched", code: "ok" },
+        { kind: "target_definition", status: "unavailable", code: "unknown" },
+        {
+          kind: "codex_live_projection",
+          status: "unavailable",
+          code: "unknown",
+        },
+      ],
+    };
+    stubCodexSavePlan(ports, recoveryJob);
     renderPage(ports, "codex");
 
     await screen.findByTestId("provider-status");
@@ -1146,17 +1229,19 @@ describe("V2 Models page", () => {
     await user.click(
       screen.getByRole("button", { name: "保存并设为当前配置" }),
     );
+    await user.click(await screen.findByRole("button", { name: "确认应用" }));
 
     await screen.findByText("无法确认当前设置");
     expect(document.body).not.toHaveTextContent("partial-secret");
     expect(screen.getByLabelText("API Key")).toHaveValue("");
-    expect(ports.providers.applyQuickSetupWithResult).toHaveBeenCalledTimes(1);
+    expect(ports.providers.applyQuickSetupWithResult).not.toHaveBeenCalled();
+    expect(ports.changePlans.applyChangePlan).toHaveBeenCalledTimes(1);
     const blockedButton = screen.getByRole("button", {
       name: "暂时无法确认当前设置",
     });
     expect(blockedButton).toBeDisabled();
     await user.click(blockedButton);
-    expect(ports.providers.applyQuickSetupWithResult).toHaveBeenCalledTimes(1);
+    expect(ports.changePlans.applyChangePlan).toHaveBeenCalledTimes(1);
 
     await user.click(screen.getByTestId("model-target-claude"));
     await screen.findByRole("heading", { name: "Claude Code" });
@@ -1166,7 +1251,83 @@ describe("V2 Models page", () => {
         name: "暂时无法确认当前设置",
       }),
     ).toBeDisabled();
-    expect(ports.providers.applyQuickSetupWithResult).toHaveBeenCalledTimes(1);
+    expect(ports.changePlans.applyChangePlan).toHaveBeenCalledTimes(1);
+  });
+
+  it("treats a confirmed baseline restore as a failed save, not unknown authority", async () => {
+    const user = userEvent.setup();
+    const ports = createBrowserFeaturePorts();
+    ports.providers.getSummary = vi.fn(async () => ({
+      providers: {
+        [QUICK_SETUP_PROVIDER_IDS.codex]: {
+          id: QUICK_SETUP_PROVIDER_IDS.codex,
+          name: "FyAgent Codex",
+        },
+      },
+      currentId: QUICK_SETUP_PROVIDER_IDS.codex,
+      writeTargets: [...TEST_PROVIDER_WRITE_TARGETS],
+    }));
+    const restoredJob: ChangeJobSnapshot = {
+      ...succeededCodexJob(),
+      status: "failed",
+      resultCode: "writer_failed_baseline_restored",
+      recoveryState: "succeeded",
+      liveConfigChanged: false,
+      resources: [
+        {
+          kind: "provider_db_current",
+          status: "mismatched",
+          code: "target_not_current",
+        },
+        {
+          kind: "device_current",
+          status: "mismatched",
+          code: "target_not_current",
+        },
+        {
+          kind: "target_definition",
+          status: "matched",
+          code: "definition_matched",
+        },
+        {
+          kind: "codex_live_projection",
+          status: "mismatched",
+          code: "live_mismatched",
+        },
+      ],
+    };
+    stubCodexSavePlan(ports, restoredJob);
+    renderPage(ports, "codex");
+
+    await screen.findByTestId("provider-status");
+    await user.type(
+      screen.getByLabelText("服务地址"),
+      "https://restored.example/v1",
+    );
+    await user.type(screen.getByLabelText("API Key"), "restored-secret");
+    await user.type(screen.getByLabelText("模型 ID"), "gpt-restored");
+    await user.click(
+      screen.getByRole("button", { name: "保存并设为当前配置" }),
+    );
+    expect(ports.providers.applyQuickSetupWithResult).not.toHaveBeenCalled();
+    expect(
+      ports.changePlans.createCodexProviderUpsertPlan,
+    ).toHaveBeenCalledTimes(1);
+    await user.click(await screen.findByRole("button", { name: "确认应用" }));
+
+    expect(
+      await screen.findByText("未能保存设置，已还原之前的状态"),
+    ).toBeVisible();
+    expect(screen.queryByText("无法确认当前设置")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "暂时无法确认当前设置" }),
+    ).toBeNull();
+    expect(screen.getByLabelText("API Key")).toHaveValue("");
+    const header = screen
+      .getByRole("heading", { name: "Codex" })
+      .closest("header");
+    expect(header).not.toBeNull();
+    expect(within(header as HTMLElement).getByText("待保存")).toBeVisible();
   });
 
   it("surfaces only a generic partial warning from an atomic apply", async () => {
@@ -1177,11 +1338,18 @@ describe("V2 Models page", () => {
       currentId: QUICK_SETUP_PROVIDER_IDS.codex,
       writeTargets: [...TEST_PROVIDER_WRITE_TARGETS],
     }));
-    ports.providers.applyQuickSetupWithResult = vi.fn(async () => ({
-      value: { warnings: ["mcp_sync_failed"] },
-      liveConfigChanged: true,
-      app: "codex" as const,
-      warningCodes: ["CODEX_WEBSOCKET_NON_GPT_MODEL" as const],
+    const warningJob: ChangeJobSnapshot = {
+      ...succeededCodexJob(),
+      status: "warning",
+      resultCode: "applied_with_warning",
+    };
+    stubCodexSavePlan(ports, warningJob);
+    ports.changePlans.createCodexProviderUpsertPlan = vi.fn(async () => ({
+      ...changePlanUpsertWire,
+      risks: [
+        ...changePlanUpsertWire.risks,
+        { code: "CODEX_WEBSOCKET_NON_GPT_MODEL", severity: "warning" },
+      ],
     }));
     renderPage(ports, "codex");
 
@@ -1195,15 +1363,16 @@ describe("V2 Models page", () => {
     await user.click(
       screen.getByRole("button", { name: "保存并设为当前配置" }),
     );
+    expect(
+      await screen.findByText("当前模型可能与此连接方式不兼容，请确认后使用。"),
+    ).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "确认应用" }));
 
     await screen.findByText("模型设置已保存并设为当前配置");
-    expect(
-      screen.getByText("当前模型可能与此连接方式不兼容，请确认后使用。"),
-    ).toBeVisible();
     expect(screen.getByText(/部分设置仍需确认/)).toBeVisible();
     expect(screen.getByLabelText("API Key")).toHaveValue("");
     expect(document.body).not.toHaveTextContent("partial-secret");
-    expect(ports.providers.applyQuickSetupWithResult).toHaveBeenCalledTimes(1);
+    expect(ports.providers.applyQuickSetupWithResult).not.toHaveBeenCalled();
     expect(ports.providers.getSummary).toHaveBeenCalledTimes(2);
   });
 
@@ -1215,11 +1384,7 @@ describe("V2 Models page", () => {
       currentId: "another-provider",
       writeTargets: [...TEST_PROVIDER_WRITE_TARGETS],
     }));
-    ports.providers.applyQuickSetupWithResult = vi.fn(async () => ({
-      value: { warnings: [] },
-      liveConfigChanged: true,
-      app: "codex" as const,
-    }));
+    stubCodexSavePlan(ports);
     renderPage(ports, "codex");
 
     await screen.findByTestId("provider-status");
@@ -1232,6 +1397,7 @@ describe("V2 Models page", () => {
     await user.click(
       screen.getByRole("button", { name: "保存并设为当前配置" }),
     );
+    await user.click(await screen.findByRole("button", { name: "确认应用" }));
 
     expect(await screen.findByText("模型设置已保存，待确认")).toBeVisible();
     expect(

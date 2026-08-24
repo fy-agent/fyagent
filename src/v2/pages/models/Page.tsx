@@ -1,9 +1,14 @@
 import { CaretDownIcon } from "@phosphor-icons/react/dist/csr/CaretDown";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useSearchParams } from "react-router-dom";
 
 import { getAgentBrand, type AgentIconId } from "../../shared/assets/agents";
 import { classNames } from "../../shared/design-system/classNames";
+import type {
+  ChangeJobSnapshot,
+  ChangePlan,
+  ChangePlanErrorCode,
+} from "../../shared/features/change-plans";
 import type { FeaturePorts } from "../../shared/features/ports";
 import { useFeatures } from "../../shared/features/provider";
 import {
@@ -14,6 +19,7 @@ import {
 import type {
   CodexProviderMutationWarning,
   ProviderAppId,
+  ProviderQuickSetupRequest,
 } from "../../shared/features/types";
 import { PersistentSurface } from "../../shared/ui/PersistentSurface";
 import {
@@ -69,7 +75,12 @@ import {
 import { OpenCodeModelsPanel } from "./OpenCodeModelsPanel";
 import { QoderModelsPanel } from "./QoderModelsPanel";
 import { TraeModelsPanel } from "./TraeModelsPanel";
-import { ChangePlanWorkspace } from "./apply";
+import {
+  ChangePlanWorkspace,
+  CodexSavePlanWorkspace,
+  hasUnconfirmedAuthority,
+} from "./apply";
+import { changePlanErrorCode } from "./apply/changePlanErrors";
 import {
   addUniqueModelIds,
   filterModelIds,
@@ -977,7 +988,15 @@ function ProviderPanel({
   const [warningCodes, setWarningCodes] = useState<
     CodexProviderMutationWarning[]
   >([]);
+  const [codexSaveRequest, setCodexSaveRequest] =
+    useState<ProviderQuickSetupRequest | null>(null);
+  const [codexSavePlan, setCodexSavePlan] = useState<ChangePlan | null>(null);
+  const [codexSavePreviewError, setCodexSavePreviewError] = useState<{
+    code: ChangePlanErrorCode;
+    message?: string;
+  } | null>(null);
   const writeLock = useRef(false);
+  const submittedRevisionRef = useRef(0);
   const mountedRef = useRef(true);
   const nameInputRef = useRef<HTMLInputElement>(null);
   const baseUrlInputRef = useRef<HTMLInputElement>(null);
@@ -1113,14 +1132,36 @@ function ProviderPanel({
     setErrors({});
     setNotice(null);
     setWarningCodes([]);
+    const request = buildQuickSetupRequest(
+      app,
+      validated.value,
+      app === "codex" ? { imageExtension, websockets } : undefined,
+    );
+    if (app === "codex") {
+      submittedRevisionRef.current = submittedRevision;
+      setCodexSavePreviewError(null);
+      try {
+        const nextPlan =
+          await ports.changePlans.createCodexProviderUpsertPlan(request);
+        if (!mountedRef.current) return;
+        setCodexSaveRequest(request);
+        setCodexSavePlan(nextPlan);
+        setWarningCodes(
+          sanitizeWarningCodes(nextPlan.risks.map((risk) => risk.code)),
+        );
+      } catch (cause) {
+        if (!mountedRef.current) return;
+        setCodexSaveRequest(request);
+        setCodexSavePlan(null);
+        setCodexSavePreviewError({ code: changePlanErrorCode(cause) });
+      }
+      if (mountedRef.current) setBusy(false);
+      return;
+    }
+
     let authorityRereadAttempted = false;
     let keepWriteLock = false;
     try {
-      const request = buildQuickSetupRequest(
-        app,
-        validated.value,
-        app === "codex" ? { imageExtension, websockets } : undefined,
-      );
       const applyResult = await ports.providers.applyQuickSetupWithResult(
         request,
         app,
@@ -1145,30 +1186,19 @@ function ProviderPanel({
         refreshed !== null &&
         !refreshed.isError &&
         refreshed.data?.currentId === providerId;
-      const liveDescription = applyResult.liveConfigChanged
-        ? "重启或新建会话后即可使用新的设置。"
-        : "请在应用中刷新或新建会话后查看更改。";
       if (!activeIdConfirmed) {
         setNotice({
           tone: "warning",
           title: "模型设置已保存，待确认",
-          description:
-            app === "codex"
-              ? `${liveDescription} 请刷新状态后确认当前配置。`
-              : "请刷新状态后确认当前配置。",
+          description: "请刷新状态后确认当前配置。",
         });
       } else {
         setNotice({
           tone: warnings.length || hasPartialWarning ? "warning" : "info",
           title: "模型设置已保存并设为当前配置",
-          description:
-            app === "codex"
-              ? hasPartialWarning
-                ? `${liveDescription} 部分设置仍需确认。`
-                : liveDescription
-              : hasPartialWarning
-                ? "保存完成，但部分设置仍需确认。"
-                : "请在应用中刷新或新建会话后查看更改。",
+          description: hasPartialWarning
+            ? "保存完成，但部分设置仍需确认。"
+            : "请在应用中刷新或新建会话后查看更改。",
         });
       }
     } catch (error) {
@@ -1201,6 +1231,93 @@ function ProviderPanel({
     }
   };
 
+  const handleCodexSaveDismiss = useCallback(() => {
+    setCodexSaveRequest(null);
+    setCodexSavePlan(null);
+    setCodexSavePreviewError(null);
+    writeLock.current = false;
+    if (mountedRef.current) setBusy(false);
+  }, []);
+
+  const handleCodexSavePlanChange = useCallback((plan: ChangePlan | null) => {
+    setCodexSavePlan(plan);
+    if (plan) {
+      setCodexSavePreviewError(null);
+      setWarningCodes(
+        sanitizeWarningCodes(plan.risks.map((risk) => risk.code)),
+      );
+    }
+  }, []);
+
+  const handleCodexSaveTerminal = useCallback(
+    (job: ChangeJobSnapshot) => {
+      const submittedRevision = submittedRevisionRef.current;
+      const unconfirmed = hasUnconfirmedAuthority(job);
+      const applied =
+        !unconfirmed &&
+        (job.status === "succeeded" || job.status === "warning");
+      if (applied) draftCommit.commitRevision(submittedRevision);
+      if (draftCommit.isCurrentRevision(submittedRevision)) clearApiKey();
+      void (async () => {
+        let refreshed: Awaited<ReturnType<typeof summaryQuery.refetch>> | null;
+        try {
+          refreshed = await summaryQuery.refetch();
+        } catch {
+          refreshed = null;
+        }
+        if (!mountedRef.current) return;
+        const activeIdConfirmed =
+          refreshed !== null &&
+          !refreshed.isError &&
+          refreshed.data?.currentId === providerId;
+        const liveDescription = job.liveConfigChanged
+          ? "重启或新建会话后即可使用新的设置。"
+          : "请在应用中刷新或新建会话后查看更改。";
+        if (unconfirmed) {
+          writeLock.current = true;
+          onBlockWrites(app);
+          setNotice({
+            tone: "error",
+            title: "无法确认当前设置",
+            description:
+              "为避免覆盖现有设置，已暂停继续保存。请重新打开页面并检查当前配置。",
+          });
+          return;
+        }
+        writeLock.current = false;
+        if (job.status === "failed" || job.status === "cancelled") {
+          setNotice({
+            tone: "error",
+            title:
+              job.resultCode === "writer_failed_baseline_restored"
+                ? "未能保存设置，已还原之前的状态"
+                : "未能保存设置",
+            description: "请检查输入后重试。",
+          });
+          return;
+        }
+        if (!applied) return;
+        if (!activeIdConfirmed) {
+          setNotice({
+            tone: "warning",
+            title: "模型设置已保存，待确认",
+            description: `${liveDescription} 请刷新状态后确认当前配置。`,
+          });
+          return;
+        }
+        setNotice({
+          tone: job.status === "warning" ? "warning" : "info",
+          title: "模型设置已保存并设为当前配置",
+          description:
+            job.status === "warning"
+              ? `${liveDescription} 部分设置仍需确认。`
+              : liveDescription,
+        });
+      })();
+    },
+    [app, draftCommit, onBlockWrites, providerId, summaryQuery],
+  );
+
   const label = PROVIDER_LABELS[app];
   const queryUnavailable = summaryQuery.isError;
   const queryPending = summaryQuery.isLoading;
@@ -1223,6 +1340,7 @@ function ProviderPanel({
             writesBlocked ||
             queryPending ||
             queryUnavailable ||
+            Boolean(codexSaveRequest || codexSavePlan) ||
             (summaryQuery.data?.writeTargets.length ?? 0) === 0
           }
           onClick={() => void submit()}
@@ -1263,11 +1381,23 @@ function ProviderPanel({
       )}
 
       {app === "codex" && summaryQuery.data ? (
-        <ChangePlanWorkspace
-          active={active}
-          providers={summaryQuery.data.providers}
-          currentId={summaryQuery.data.currentId}
-        />
+        <>
+          <CodexSavePlanWorkspace
+            key={codexSavePlan?.planId ?? "codex-save-preview"}
+            active={active}
+            request={codexSaveRequest}
+            plan={codexSavePlan}
+            previewError={codexSavePreviewError}
+            onPlanChange={handleCodexSavePlanChange}
+            onTerminal={handleCodexSaveTerminal}
+            onDismiss={handleCodexSaveDismiss}
+          />
+          <ChangePlanWorkspace
+            active={active}
+            providers={summaryQuery.data.providers}
+            currentId={summaryQuery.data.currentId}
+          />
+        </>
       ) : null}
 
       <div className="fy-models-form">

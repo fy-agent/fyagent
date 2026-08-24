@@ -7,10 +7,13 @@ Change Plan schema-v20 ledger. Use it when adding an operation adapter,
 execution phase, idempotency/cancellation behavior, job event, partial result,
 or crash-recovery rule.
 
-The current registered operation is only `codex_provider_switch`. The executor
-must not become an arbitrary workflow engine: no shell command, script, caller
-path, raw Provider definition, network action, or dynamic write target may be
-supplied by the renderer or stored in the ledger.
+The current registered operations are `codex_provider_switch` and
+`codex_provider_upsert_and_switch`. The executor must not become an arbitrary
+workflow engine: no shell command, script, caller path, raw Provider
+definition, network action, or dynamic write target may be supplied by the
+renderer or stored in the ledger. Upsert holds the intended Provider in a
+process-private draft keyed by `planId`; the public plan and SQLite row stay
+credential-free.
 
 Schema v20 remains canonical. `change_plans`, `change_jobs`, and
 `change_job_events` stay local-only and are not redefined by executor changes.
@@ -21,6 +24,7 @@ Schema v20 remains canonical. `change_plans`, `change_jobs`, and
 
 ```text
 create_codex_provider_switch_plan(targetProviderId) -> ChangePlan
+create_codex_provider_upsert_plan(request) -> ChangePlan
 apply_change_plan(planId, planDigest) -> ApplyChangePlanOutcome
 cancel_change_job(jobId) -> CancelChangeJobOutcome
 get_change_job(jobId) -> ChangeJobSnapshot
@@ -44,12 +48,14 @@ event never carries the full snapshot.
 
 The private registered adapter owns typed `inspect`, `plan`, `precheck`,
 `snapshot`, `managed_write`, `verify`, and `compensation_capability` methods.
-The current Codex descriptor is closed:
+Both Codex descriptors share this closed execution contract; only
+`adapterId` / `operationType` differ:
 
 ```text
 adapterId          = codex_provider_switch
+                     | codex_provider_upsert_and_switch
 adapterVersion     = 1
-operationType      = codex_provider_switch
+operationType      = same as adapterId
 phases             = precheck -> snapshot -> managed_write -> readback -> finalize
 readSet            = provider_db_current, device_current,
                      target_definition, codex_live_projection

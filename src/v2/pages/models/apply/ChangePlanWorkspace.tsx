@@ -10,40 +10,11 @@ import { useRecoverableChangeJobs } from "../../../shared/features/queries";
 import type { ProviderSummaryMap } from "../../../shared/features/types";
 import { Button, InlineNotice } from "../../../shared/ui/primitives";
 import { ApplyWorkspace } from "./ApplyWorkspace";
-
-const ERROR_CODES = new Set<ChangePlanErrorCode>([
-  "unsupported_operation",
-  "invalid_target",
-  "target_not_found",
-  "target_already_current",
-  "secret_dependency_unavailable",
-  "invalid_digest",
-  "expired",
-  "consumed",
-  "stale",
-  "plan_not_found",
-  "job_not_found",
-  "internal",
-]);
-
-const JOB_REFRESH_INTERVAL_MS = 1000;
-
-function isActiveJobStatus(status: ChangeJobSnapshot["status"]): boolean {
-  return status === "planned" || status === "running";
-}
-
-function errorCode(error: unknown): ChangePlanErrorCode {
-  const candidate =
-    typeof error === "string"
-      ? error
-      : typeof error === "object" && error !== null && "code" in error
-        ? error.code
-        : null;
-  return typeof candidate === "string" &&
-    ERROR_CODES.has(candidate as ChangePlanErrorCode)
-    ? (candidate as ChangePlanErrorCode)
-    : "internal";
-}
+import {
+  changePlanErrorCode,
+  isActiveJobStatus,
+  JOB_REFRESH_INTERVAL_MS,
+} from "./changePlanErrors";
 
 export function ChangePlanWorkspace({
   active,
@@ -100,7 +71,7 @@ export function ChangePlanWorkspace({
       if (requestRevision.current === revision) setPlan(nextPlan);
     } catch (cause) {
       if (requestRevision.current === revision)
-        setError({ code: errorCode(cause) });
+        setError({ code: changePlanErrorCode(cause) });
     } finally {
       if (requestRevision.current === revision) setBusy(false);
     }
@@ -131,7 +102,7 @@ export function ChangePlanWorkspace({
       if (requestRevision.current === revision) setJob(refreshed);
     } catch (cause) {
       if (requestRevision.current === revision)
-        setError({ code: errorCode(cause) });
+        setError({ code: changePlanErrorCode(cause) });
     } finally {
       if (requestRevision.current === revision) setBusy(false);
     }
@@ -151,7 +122,7 @@ export function ChangePlanWorkspace({
           setJob(refreshed);
         } catch (cause) {
           if (disposed || requestRevision.current !== revision) return;
-          setError({ code: errorCode(cause) });
+          setError({ code: changePlanErrorCode(cause) });
           window.clearInterval(timer);
         }
       })();

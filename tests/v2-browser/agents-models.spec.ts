@@ -853,23 +853,33 @@ test("Codex quick setup locks duplicate submission and sends exact provider payl
   await submit.click();
   await expect(submit).toBeDisabled();
   await submit.dispatchEvent("click");
-  await expect(page.getByLabel("API Key", { exact: true })).toHaveValue("");
+  const saveWorkspace = page.getByRole("region", {
+    name: "Change Plan Provider 保存",
+  });
+  const confirm = saveWorkspace.getByRole("button", { name: "确认应用" });
+  await expect(confirm).toBeEnabled();
+  await expect(page.getByLabel("API Key", { exact: true })).toHaveValue(apiKey);
 
   await expect
     .poll(
       async () =>
         (await featureFixtureCalls(page)).filter(
-          (call) => call.command === "apply_provider_quick_setup_with_result",
+          (call) => call.command === "create_codex_provider_upsert_plan",
         ).length,
     )
     .toBe(1);
-  const calls = await featureFixtureCalls(page);
-  const applyCalls = calls.filter(
-    (call) => call.command === "apply_provider_quick_setup_with_result",
+  await confirm.click();
+  await expect(page.getByLabel("API Key", { exact: true })).toHaveValue("");
+  await expect(page.locator("body")).toContainText(
+    "模型设置已保存并设为当前配置",
   );
-  expect(applyCalls).toHaveLength(1);
-  expect(applyCalls[0].payload).toMatchObject({
-    app: "codex",
+
+  const calls = await featureFixtureCalls(page);
+  const createCalls = calls.filter(
+    (call) => call.command === "create_codex_provider_upsert_plan",
+  );
+  expect(createCalls).toHaveLength(1);
+  expect(createCalls[0].payload).toMatchObject({
     request: {
       name: "Browser Codex",
       baseUrl: "https://codex.example.test/v1",
@@ -877,6 +887,23 @@ test("Codex quick setup locks duplicate submission and sends exact provider payl
       modelId: "gpt-browser",
     },
   });
+  const applyCalls = calls.filter(
+    (call) => call.command === "apply_change_plan",
+  );
+  expect(applyCalls).toHaveLength(1);
+  expect(Object.keys(applyCalls[0].payload).sort()).toEqual([
+    "planDigest",
+    "planId",
+  ]);
+  expect(applyCalls[0].payload).toEqual({
+    planId: "plan-codex-upsert",
+    planDigest: "a".repeat(64),
+  });
+  expect(
+    calls.filter(
+      (call) => call.command === "apply_provider_quick_setup_with_result",
+    ),
+  ).toEqual([]);
   expect(
     calls.filter((call) => call.command === "switch_provider_with_result"),
   ).toEqual([]);
@@ -1015,6 +1042,10 @@ test("Provider atomic failure reports rollback instead of a partial result", asy
   await page.getByLabel("API Key", { exact: true }).fill("partial-secret");
   await page.getByLabel("模型 ID").fill("partial-model");
   await page.getByRole("button", { name: "保存并设为当前配置" }).click();
+  await page
+    .getByRole("region", { name: "Change Plan Provider 保存" })
+    .getByRole("button", { name: "确认应用" })
+    .click();
 
   await expect(page.locator("body")).toContainText(
     "未能保存设置，已还原之前的状态",
@@ -1022,10 +1053,16 @@ test("Provider atomic failure reports rollback instead of a partial result", asy
   await expect(page.locator("body")).not.toContainText("partial-secret");
   const calls = await featureFixtureCalls(page);
   expect(
+    calls.filter((call) => call.command === "create_codex_provider_upsert_plan"),
+  ).toHaveLength(1);
+  expect(
+    calls.filter((call) => call.command === "apply_change_plan"),
+  ).toHaveLength(1);
+  expect(
     calls.filter(
       (call) => call.command === "apply_provider_quick_setup_with_result",
     ),
-  ).toHaveLength(1);
+  ).toHaveLength(0);
   expect(
     calls.filter((call) => call.command === "switch_provider_with_result"),
   ).toHaveLength(0);

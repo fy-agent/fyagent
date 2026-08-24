@@ -211,7 +211,10 @@ pub struct ProviderQuickSetupRequest {
 }
 
 impl ProviderQuickSetupRequest {
-    fn into_provider(self, app_type: &AppType) -> Result<Provider, ProviderQuickSetupCommandError> {
+    pub(crate) fn into_provider(
+        self,
+        app_type: &AppType,
+    ) -> Result<Provider, ProviderQuickSetupCommandError> {
         let codex_features = self.codex_features.unwrap_or_default();
         let name = self.name.trim().to_string();
         let base_url = self.base_url.trim().to_string();

@@ -171,8 +171,16 @@ CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED
   guard, reads DB/device/live baselines, and writes only the credential-free
   ledger. It performs no Provider mutation or network request. The plan expires
   after 15 minutes and stores separate DB/device current IDs.
-- Admission accepts only an existing saved Codex Provider whose already-saved
-  material proves that no new credential is needed. Unknown or managed auth is
+- `create_codex_provider_upsert_plan` accepts the closed Codex Quick Setup
+  request, converts it to the reserved Quick Setup Provider, and likewise
+  writes only the credential-free ledger. The intended Provider is held in a
+  process-private draft until apply; a lost process makes the plan `stale`.
+  The public plan names save-then-set-current as the operation without a
+  second confirm payload.
+- Switch admission accepts only an existing saved Codex Provider whose
+  already-saved material proves that no new credential is needed. Upsert
+  admission proves the same capability from the process-private intended
+  Provider and does not call SecretRef. Unknown or managed auth is
   `secret_dependency_unavailable`; API keys, auth objects, raw config, paths,
   SecretRef/Keychain values, and credential-derived values never enter DTOs,
   ledger rows, errors, or logs.

@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 
+import type { ProviderQuickSetupRequest } from "../../../features/models";
 import {
   parseApplyChangePlanOutcome,
   parseCancelChangeJobOutcome,
@@ -17,6 +18,40 @@ function assertOpaqueId(value: string, label: string): string {
   return value;
 }
 
+function assertUpsertRequest(
+  request: ProviderQuickSetupRequest,
+): ProviderQuickSetupRequest {
+  if (
+    typeof request !== "object" ||
+    request === null ||
+    Array.isArray(request)
+  ) {
+    throw new Error("Change Plan upsert request is invalid");
+  }
+  const keys = Object.keys(request).sort();
+  const allowed = new Set([
+    "apiKey",
+    "baseUrl",
+    "codexFeatures",
+    "modelId",
+    "name",
+  ]);
+  if (
+    keys.some((key) => !allowed.has(key)) ||
+    typeof request.name !== "string" ||
+    !request.name ||
+    typeof request.baseUrl !== "string" ||
+    !request.baseUrl ||
+    typeof request.apiKey !== "string" ||
+    !request.apiKey ||
+    typeof request.modelId !== "string" ||
+    !request.modelId
+  ) {
+    throw new Error("Change Plan upsert request is invalid");
+  }
+  return request;
+}
+
 export function createChangePlansPort(): ChangePlansPort {
   return {
     createCodexProviderSwitchPlan: async (targetProviderId) =>
@@ -26,6 +61,12 @@ export function createChangePlansPort(): ChangePlansPort {
             targetProviderId,
             "Change Plan target",
           ),
+        }),
+      ),
+    createCodexProviderUpsertPlan: async (request) =>
+      parseChangePlan(
+        await invoke<unknown>("create_codex_provider_upsert_plan", {
+          request: assertUpsertRequest(request),
         }),
       ),
     applyChangePlan: async (input) => {

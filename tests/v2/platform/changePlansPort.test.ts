@@ -9,8 +9,9 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke }));
 describe("Tauri Change Plans port", () => {
   beforeEach(() => invoke.mockReset());
 
-  it("uses exactly the five native commands and bounded payloads", async () => {
+  it("uses exactly the six native commands and bounded payloads", async () => {
     invoke
+      .mockResolvedValueOnce(changePlanWire)
       .mockResolvedValueOnce(changePlanWire)
       .mockResolvedValueOnce({ kind: "admitted", job: changeJobWire })
       .mockResolvedValueOnce({ accepted: false, code: "commit_point_passed", jobId: "job-1" })
@@ -19,6 +20,12 @@ describe("Tauri Change Plans port", () => {
     const port = createChangePlansPort();
 
     await port.createCodexProviderSwitchPlan("provider-1");
+    await port.createCodexProviderUpsertPlan({
+      name: "Gateway",
+      baseUrl: "https://codex.example/v1",
+      apiKey: "secret",
+      modelId: "gpt-5",
+    });
     await port.applyChangePlan({
       planId: "plan-1",
       planDigest: "a".repeat(64),
@@ -29,6 +36,17 @@ describe("Tauri Change Plans port", () => {
 
     expect(invoke.mock.calls).toEqual([
       ["create_codex_provider_switch_plan", { targetProviderId: "provider-1" }],
+      [
+        "create_codex_provider_upsert_plan",
+        {
+          request: {
+            name: "Gateway",
+            baseUrl: "https://codex.example/v1",
+            apiKey: "secret",
+            modelId: "gpt-5",
+          },
+        },
+      ],
       ["apply_change_plan", { planId: "plan-1", planDigest: "a".repeat(64) }],
       ["cancel_change_job", { jobId: "job-1" }],
       ["get_change_job", { jobId: "job-1" }],
