@@ -1,0 +1,62 @@
+name: Commit Convention / Push
+
+on:
+  push:
+    branches-ignore:
+      - "gh-readonly-queue/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: commit-convention-push-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  commit-convention-push:
+    name: Commit Convention / Push
+    runs-on: macos-15
+    timeout-minutes: 5
+    steps:
+      - name: Checkout complete comparison history
+        id: checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Node.js
+        id: setup-node
+        if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+
+      - name: Verify commit messages
+        id: verify
+        if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
+        shell: bash
+        env:
+          PUSH_BASE_SHA: ${{ github.event.before }}
+          PUSH_HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          base_sha="$PUSH_BASE_SHA"
+          head_sha="$PUSH_HEAD_SHA"
+          if [[ "$base_sha" =~ ^0{40}$ ]]; then
+            base_sha="$head_sha"
+          fi
+          if ! git cat-file -e "${base_sha}^{commit}" 2>/dev/null; then
+            echo "Push before SHA is not a commit in this clone; using head as an empty comparison" >&2
+            base_sha="$head_sha"
+          fi
+          node scripts/ci/verify-commit-messages.mjs \
+            --base "$base_sha" \
+            --head "$head_sha"
+
+      - name: Evaluate collected diagnostics
+        if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
+        env:
+          CI_REQUIRED_STEPS: setup-node,verify
+          CI_STEP_RESULTS: ${{ toJSON(steps) }}
+        run: node scripts/ci/evaluate-step-outcomes.mjs

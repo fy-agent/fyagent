@@ -17,7 +17,7 @@ function readHeaderBefore(source: string, marker: string): string {
 }
 
 describe("GitHub workflow trigger policy", () => {
-  it("keeps one required CI surface for every branch, merge queue, push, and diagnostics", () => {
+  it("keeps Required CI on PR, merge queue, and explicit diagnostics only", () => {
     const source = readWorkflow("ci.yml");
     const triggerSection = readHeaderBefore(source, "\npermissions:");
 
@@ -27,7 +27,6 @@ describe("GitHub workflow trigger policy", () => {
         "",
         "on:",
         "  pull_request:",
-        "  push:",
         "  merge_group:",
         "    types: [checks_requested]",
         "  workflow_dispatch:",
@@ -36,11 +35,56 @@ describe("GitHub workflow trigger policy", () => {
     expect(triggerSection).not.toMatch(/paths(?:-ignore)?:/);
     expect(source).toContain("name: CI / Required");
     expect(source).toContain("if: always()");
+    expect(source).not.toMatch(/^  push:/m);
     expect(source).toContain(
       "cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}",
     );
     expect(source).toContain(
+      "group: ci-${{ github.workflow }}-${{ github.event_name }}-",
+    );
+    expect(source).toContain(
       "format('dispatch-{0}-{1}', github.run_id, github.run_attempt)",
+    );
+  });
+
+  it("keeps branch-push commit policy lightweight and excludes merge-queue refs", () => {
+    const source = readWorkflow("commit-convention-push.yml");
+    const triggerSection = readHeaderBefore(source, "\npermissions:");
+
+    expect(triggerSection).toBe(
+      [
+        "name: Commit Convention / Push",
+        "",
+        "on:",
+        "  push:",
+        "    branches-ignore:",
+        '      - "gh-readonly-queue/**"',
+      ].join("\n"),
+    );
+    expect(source).toContain("name: Commit Convention / Push");
+    expect(source).toContain("node scripts/ci/verify-commit-messages.mjs");
+    expect(source).toContain("PUSH_BASE_SHA: ${{ github.event.before }}");
+    expect(source).toContain("PUSH_HEAD_SHA: ${{ github.sha }}");
+    expect(source).toContain(
+      "Push before SHA is not a commit in this clone; using head as an empty comparison",
+    );
+    expect(source).not.toContain("CI / Required");
+    expect(source).not.toContain("classify-changes.mjs");
+    expect(source).not.toContain("pnpm install");
+    expect(source).not.toContain("cargo ");
+  });
+
+  it("keeps the branch-push policy read-only and pins its actions", () => {
+    const source = readWorkflow("commit-convention-push.yml");
+
+    expect(source).toContain("permissions:\n  contents: read");
+    expect(source).not.toMatch(/^\s+(?:actions|checks|pull-requests|id-token):\s+write/m);
+    expect(source).not.toContain("secrets.");
+    expect(source).toContain(
+      "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1",
+    );
+    expect(source).toContain(
+      "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0",
     );
   });
 
