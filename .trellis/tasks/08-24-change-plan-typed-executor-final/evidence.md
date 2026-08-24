@@ -130,14 +130,13 @@ grandfather the final metadata state.
   — PASS: 24/24 after the adapter-version correction.
 - focused V2 Change Plan tests — PASS: 4 files / 28 tests.
 - `mise run typecheck:v2` — PASS.
-- A final full direct-session prearchive is required after this correction;
-  the earlier full pass is process evidence only, not the final merge-ready
-  assertion.
+- The final full direct-session prearchive was rerun after this correction and
+  passed; earlier full runs remain supporting process evidence only.
 
 ## Remaining merge-ready evidence
 
 - the Trellis task must be completed and archived before PR auto-merge handoff;
-- post-archive contracts must pass;
+- post-archive contracts must pass on the committed archive shape;
 - replacement PR exact-head `CI / Required` and Merge Queue `merge_group` must
   pass before merge;
 - old Draft #134 is closed only after the replacement PR exists.

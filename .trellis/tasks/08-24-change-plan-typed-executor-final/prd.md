@@ -72,14 +72,16 @@ recovery while adding the reusable execution contract needed by Issues #58,
 - [x] Full local gate and V2 browser matrix pass on the final-main baseline.
 - [x] Direct-session Trellis prearchive passes on the final code/spec/workspace
       handoff state.
-- [ ] Trellis archive/post-archive contracts, exact-head PR CI, and Merge Queue
-      `CI / Required` pass before merge.
 
 ## Notes
 
 - Draft PR #134 is an implementation/reference source only and must be closed as
   superseded after the replacement PR exists. Its old #130 ancestry and
   incompatible schema-v20 definition do not enter main.
+- Task completion ends at the passing direct-session prearchive. Archival,
+  post-archive contracts, exact-head PR CI, and Merge Queue `CI / Required`
+  are mandatory post-completion merge gates so the repository can satisfy the
+  invariant that Trellis is archived before main merge.
 - Issue #58 can be partially closed by the first typed Codex adapter, but its
   second-adapter proof remains WorkBuddy. Issues #59/#60 retain any acceptance
   that depends on later V2 runtime/crash evidence outside this backend slice.
