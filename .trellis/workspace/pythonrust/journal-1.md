@@ -1614,3 +1614,38 @@ Restored Models Apply four-section preview, partial-result/eventSeq display, and
 ### Status
 
 [OK] **Completed**
+
+
+## Session 50: Codex Provider Change Plan salvage
+
+**Date**: 2026-08-25
+**Task**: Codex Provider Change Plan salvage
+**Branch**: `dev/codex-provider-change-plan`
+
+### Summary
+
+Salvaged Codex Provider create/edit/set-current onto current-main plural change-plans. Draft #137 is not merged; Issue #63 stays open.
+
+### Main Changes
+
+- Added codex_provider_upsert_and_switch plus create_codex_provider_upsert_plan with a process-private draft.
+- Codex Models save now previews then confirms with planId+planDigest only.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d277beb3` | (see git log) |
+
+### Testing
+
+- [OK] mise run check:prearchive PASS with TRELLIS_CONTEXT_ID=codex-provider-change-plan.
+- [OK] mise run test:v2:browser 120/120 PASS.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- Open replacement PR, close old Draft #137 as superseded, exact-head Merge Queue. Keep #63 open.
