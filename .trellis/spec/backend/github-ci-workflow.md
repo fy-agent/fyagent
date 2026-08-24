@@ -167,6 +167,13 @@ changes
 only, validates every commit subject in the explicit base/head comparison, and
 validates the pull request title on `pull_request` events. When it fails, every
 downstream job is skipped so the workflow stops before expensive domain work.
+The 72-character subject cap applies only to Conventional Commit hygiene.
+GitHub merge subjects matching `Merge pull request #<n> from ...`,
+`Merge branch ...`, or `Merge remote-tracking branch ...`, and revert subjects
+matching `Revert "..."`, are merge-topology records and are accepted without
+that cap, so Merge Queue titles that include a long head-branch name cannot
+fail this gate.
+
 Empty-comparison coverage must use an isolated git fixture, not the Actions
 checkout HEAD: `pull_request` checkouts are merge commits whose subject is
 `Merge <sha> into <sha>`, while this job compares `PR_BASE_SHA`..`PR_HEAD_SHA`.

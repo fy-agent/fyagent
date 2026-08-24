@@ -43,7 +43,9 @@ Commit hygiene and merge topology are separate concerns. Before a PR becomes
 merge-ready, meaningless fixup/checkpoint commits should be folded or removed
 when practical, while meaningful implementation/test/docs/refactor boundaries
 may remain. The repository must not use a global squash policy as a substitute
-for branch-level commit hygiene.
+for branch-level commit hygiene. GitHub Merge Queue merge-commit subjects are
+topology, not hygiene: `commit-convention` must not reject them for exceeding
+the 72-character Conventional Commit subject cap.
 
 ## 2. Signatures
 
