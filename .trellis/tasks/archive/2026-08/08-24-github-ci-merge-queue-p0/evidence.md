@@ -48,6 +48,8 @@ classifier or Required gate.
   desktop mock/visual preflight, Rust formatting/check/Clippy/tests (2847 passed,
   5 ignored in the main Rust suite), task/docs/platform contracts, release
   contracts, and native-fetch contracts.
+- Post-archive `mise run check:contracts`: **PASS** on the canonical archive
+  shape with no active-task exclusion.
 - Redundant dev-sync push run `32709555068` was cancelled after confirming it
   was another old-policy Full Push CI with no PR/Merge Queue authority.
 

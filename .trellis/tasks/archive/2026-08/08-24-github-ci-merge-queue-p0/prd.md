@@ -58,7 +58,7 @@ branch pushes keep only a lightweight Conventional Commit policy check.
 - [x] `.trellis/spec/backend/github-ci-workflow.md` and related indexes/contracts
   match the implementation with no stale full-push claims.
 - [x] Full Trellis prearchive passes with the task's direct session binding.
-- [ ] Task is archived before the exact-head PR is handed to Auto-merge/Merge Queue.
+- [x] Task is archived before the exact-head PR is handed to Auto-merge/Merge Queue.
 
 ## Post-archive GitHub closeout
 
