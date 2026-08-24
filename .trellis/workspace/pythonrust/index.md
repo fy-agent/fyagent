@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 45
+- **Total Sessions**: 46
 - **Last Active**: 2026-08-24
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1476 | Active |
+| `journal-1.md` | ~1513 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 46 | 2026-08-24 | Fix Merge Queue CI event topology | `b46dbf27` | `dev/laiyongjie` |
 | 45 | 2026-08-24 | Clarify CI history rewrite fallback | `3c7babb5` | `dev/laiyongjie` |
 | 44 | 2026-08-24 | Correct main merge governance | `b55218c5` | `dev/laiyongjie` |
 | 43 | 2026-08-24 | Codify GitHub merge governance | `a8587c8c` | `dev/laiyongjie` |
