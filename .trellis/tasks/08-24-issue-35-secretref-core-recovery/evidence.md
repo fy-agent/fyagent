@@ -7,11 +7,12 @@ Evidence date: 2026-08-24 (Asia/Shanghai)
 - Original external branch: `codex/issue-35-secretref-core-recovery`
 - Replacement integration branch: `dev/secretref-core-integration`
 - Original base: `origin/main@e94307cd810d7c5157b3791da2a8d7ef6a01b8a7`
-- Integration base includes canonical Change Plan/mainline governance through
-  `6e2a065be713a7add8ddbf5fe1ee128972f533db`; the final branch will refresh
-  against latest `main`/`dev/laiyongjie` before merge-ready handoff.
-- Implementation commit: `6d1636f76abc392dcaeef87bcaa0b4330a8ad75b`
-- Replacement Draft PR: <https://github.com/fy-agent/fyagent/pull/132>
+- Integration base was refreshed to current `main@d2340abc48094a766ce23615d95195d7bae12e45`
+  after merge-governance PR #142 landed.
+- Original implementation commit: `6d1636f76abc392dcaeef87bcaa0b4330a8ad75b`
+- Current hardening commit: `ada20b4f187a6c43d339dae021578e79b545db6c`
+- Historical recovery Draft PR: <https://github.com/fy-agent/fyagent/pull/132>
+- Current replacement Draft PR: <https://github.com/fy-agent/fyagent/pull/143>
 - Old PR #112 was not rebased or cherry-picked.
 - Original PR #132 is preserved as a merge parent in the replacement branch;
   its contributor commits are not flattened or anonymously copied.

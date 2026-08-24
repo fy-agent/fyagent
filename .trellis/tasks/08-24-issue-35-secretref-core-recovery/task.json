@@ -2,7 +2,7 @@
   "id": "issue-35-secretref-core-recovery",
   "name": "issue-35-secretref-core-recovery",
   "title": "Recover Issue 35 SecretRef core",
-  "description": "Rebuild the minimal SecretRef and pluggable local SecretBackend contract from current main without importing PR 112 history or touching UCP v20 ownership.",
+  "description": "Integrate and harden the minimal SecretRef/local SecretBackend core on current main while preserving PR 132 contributor ancestry and keeping Provider/UCP integration deferred.",
   "status": "in_progress",
   "dev_type": null,
   "scope": "backend",
@@ -15,8 +15,8 @@
   "branch": "dev/secretref-core-integration",
   "base_branch": "main",
   "worktree_path": null,
-  "commit": "6d1636f76abc392dcaeef87bcaa0b4330a8ad75b",
-  "pr_url": "https://github.com/fy-agent/fyagent/pull/132",
+  "commit": "ada20b4f187a6c43d339dae021578e79b545db6c",
+  "pr_url": "https://github.com/fy-agent/fyagent/pull/143",
   "subtasks": [],
   "children": [],
   "parent": null,
@@ -29,6 +29,7 @@
   "notes": "",
   "meta": {
     "issue": "35",
-    "replaces_pr": "112"
+    "replaces_pr": "132",
+    "historical_source_pr": "112"
   }
 }
