@@ -1,9 +1,9 @@
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 
 use crate::app_config::AppType;
 use crate::services::change_plan::{
-    ApplyChangePlanOutcome, ChangeJobSnapshot, ChangePlan, ChangePlanErrorCode, ChangePlanService,
-    WriterReceipt,
+    ApplyChangePlanOutcome, CancelChangeJobOutcome, ChangeJobEventHint, ChangeJobSnapshot,
+    ChangePlan, ChangePlanErrorCode, ChangePlanService, WriterReceipt,
 };
 use crate::services::ProviderService;
 use crate::store::AppState;
@@ -29,11 +29,13 @@ pub async fn apply_change_plan(
     plan_id: String,
     plan_digest: String,
 ) -> Result<ApplyChangePlanOutcome, ChangePlanErrorCode> {
+    let app_for_work = app_handle.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let state = app_handle
+        let state = app_for_work
             .try_state::<AppState>()
             .ok_or(ChangePlanErrorCode::Internal)?;
-        ChangePlanService::apply_codex_switch_with_writer(
+        let app_for_events = app_for_work.clone();
+        ChangePlanService::apply_codex_switch_with_writer_observer(
             &state,
             &plan_id,
             &plan_digest,
@@ -50,7 +52,25 @@ pub async fn apply_change_plan(
                     live_config_changed: result.live_config_changed,
                 })
             },
+            move |hint: ChangeJobEventHint| {
+                let _ = app_for_events.emit("change-job://updated", hint);
+            },
         )
+    })
+    .await
+    .map_err(|_| ChangePlanErrorCode::Internal)?
+}
+
+#[tauri::command]
+pub async fn cancel_change_job(
+    app_handle: AppHandle,
+    job_id: String,
+) -> Result<CancelChangeJobOutcome, ChangePlanErrorCode> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app_handle
+            .try_state::<AppState>()
+            .ok_or(ChangePlanErrorCode::Internal)?;
+        ChangePlanService::cancel_job(&state, &job_id)
     })
     .await
     .map_err(|_| ChangePlanErrorCode::Internal)?
@@ -65,7 +85,10 @@ pub async fn get_change_job(
         let state = app_handle
             .try_state::<AppState>()
             .ok_or(ChangePlanErrorCode::Internal)?;
-        ChangePlanService::get_job(&state, &job_id)
+        let app_for_events = app_handle.clone();
+        ChangePlanService::get_job_with_observer(&state, &job_id, move |hint| {
+            let _ = app_for_events.emit("change-job://updated", hint);
+        })
     })
     .await
     .map_err(|_| ChangePlanErrorCode::Internal)?
@@ -79,7 +102,10 @@ pub async fn list_recoverable_change_jobs(
         let state = app_handle
             .try_state::<AppState>()
             .ok_or(ChangePlanErrorCode::Internal)?;
-        ChangePlanService::list_recoverable_jobs(&state)
+        let app_for_events = app_handle.clone();
+        ChangePlanService::list_recoverable_jobs_with_observer(&state, move |hint| {
+            let _ = app_for_events.emit("change-job://updated", hint);
+        })
     })
     .await
     .map_err(|_| ChangePlanErrorCode::Internal)?

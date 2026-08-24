@@ -1,3 +1,7 @@
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
+
 use serde::Serialize;
 use serde_json::Value;
 
@@ -9,12 +13,15 @@ use crate::services::provider::{
 use crate::services::ProviderService;
 use crate::store::AppState;
 
+use super::adapter::{
+    descriptor_for_operation, ChangeAdapter, CodexProviderSwitchAdapter, CodexSwitchSnapshot,
+};
 use super::domain::*;
 use super::projection::{
     credential_neutral_codex_projection, digest_json, digest_serializable,
     provider_definition_digest,
 };
-use super::sanitize::{is_safe_opaque_id, sanitize_display_name};
+use super::sanitize::is_safe_opaque_id;
 
 #[derive(Debug, Clone, Serialize)]
 struct BaselineDigestInput<'a> {
@@ -43,6 +50,100 @@ pub(crate) struct CodexSwitchInspection {
 
 pub struct ChangePlanService;
 
+const EXECUTION_CANCEL_SAFE: u8 = 0;
+const EXECUTION_WRITE_CLAIMED: u8 = 1;
+const EXECUTION_CANCELLED: u8 = 2;
+const EXECUTION_TERMINAL: u8 = 3;
+
+struct ExecutionGate {
+    state: AtomicU8,
+}
+
+impl ExecutionGate {
+    fn new() -> Self {
+        Self {
+            state: AtomicU8::new(EXECUTION_CANCEL_SAFE),
+        }
+    }
+
+    fn request_cancel(&self) -> ChangeCancelCode {
+        match self.state.compare_exchange(
+            EXECUTION_CANCEL_SAFE,
+            EXECUTION_CANCELLED,
+            Ordering::SeqCst,
+            Ordering::SeqCst,
+        ) {
+            Ok(_) | Err(EXECUTION_CANCELLED) => ChangeCancelCode::Accepted,
+            Err(EXECUTION_TERMINAL) => ChangeCancelCode::AlreadyTerminal,
+            Err(_) => ChangeCancelCode::CommitPointPassed,
+        }
+    }
+
+    fn claim_managed_write(&self) -> bool {
+        self.state
+            .compare_exchange(
+                EXECUTION_CANCEL_SAFE,
+                EXECUTION_WRITE_CLAIMED,
+                Ordering::SeqCst,
+                Ordering::SeqCst,
+            )
+            .is_ok()
+    }
+
+    fn mark_terminal(&self) {
+        self.state.store(EXECUTION_TERMINAL, Ordering::SeqCst);
+    }
+}
+
+fn active_executions() -> &'static Mutex<HashMap<String, Arc<ExecutionGate>>> {
+    static EXECUTIONS: OnceLock<Mutex<HashMap<String, Arc<ExecutionGate>>>> = OnceLock::new();
+    EXECUTIONS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn active_execution_gate(job_id: &str) -> Option<Arc<ExecutionGate>> {
+    active_executions()
+        .lock()
+        .ok()
+        .and_then(|executions| executions.get(job_id).cloned())
+}
+
+struct ActiveExecutionRegistration {
+    job_id: String,
+    gate: Arc<ExecutionGate>,
+}
+
+impl ActiveExecutionRegistration {
+    fn register(job_id: &str) -> Result<Self, ChangePlanErrorCode> {
+        let gate = Arc::new(ExecutionGate::new());
+        let mut executions = active_executions()
+            .lock()
+            .map_err(|_| ChangePlanErrorCode::Internal)?;
+        if executions
+            .insert(job_id.to_string(), gate.clone())
+            .is_some()
+        {
+            return Err(ChangePlanErrorCode::Internal);
+        }
+        Ok(Self {
+            job_id: job_id.to_string(),
+            gate,
+        })
+    }
+}
+
+impl Drop for ActiveExecutionRegistration {
+    fn drop(&mut self) {
+        if let Ok(mut executions) = active_executions().lock() {
+            if executions
+                .get(&self.job_id)
+                .is_some_and(|current| Arc::ptr_eq(current, &self.gate))
+            {
+                executions.remove(&self.job_id);
+            }
+        }
+    }
+}
+
 impl ChangePlanService {
     /// Create an immutable, credential-free plan. The existing Provider
     /// mutation guard makes the DB/device/live baseline one stable snapshot;
@@ -64,7 +165,8 @@ impl ChangePlanService {
         }
 
         let _provider_guard = ProviderService::lock_provider_mutation(state, &AppType::Codex);
-        let inspection = inspect_codex_switch(state, target_provider_id)?;
+        let adapter = CodexProviderSwitchAdapter::for_plan(state, target_provider_id);
+        let inspection = adapter.inspect()?;
         let secret_capability = prove_codex_target_credential_capability(&inspection);
         if secret_capability != SecretCapabilityResult::NoNewCredentialMaterial {
             return Err(ChangePlanErrorCode::SecretDependencyUnavailable);
@@ -73,23 +175,23 @@ impl ChangePlanService {
             return Err(ChangePlanErrorCode::TargetAlreadyCurrent);
         }
 
-        let semantic = serde_json::json!({
-            "operation": "codex_provider_switch",
-            "targetProviderId": target_provider_id,
-            "baselineDigest": inspection.baseline_digest,
-            "secretCapability": secret_capability,
-            "contract": CHANGE_PLAN_CONTRACT_VERSION,
-        });
-        let current_provider_code = current_provider_code(
-            &inspection.db_current_provider_id,
-            &inspection.device_current_provider_id,
-        );
+        let descriptor = adapter.descriptor();
+        if descriptor.compensation_mode != adapter.compensation_capability() {
+            return Err(ChangePlanErrorCode::Internal);
+        }
+        let plan_fields = adapter.plan(&inspection);
         let public = ChangePlan {
             plan_id: uuid::Uuid::new_v4().to_string(),
             operation: ChangeOperation::CodexProviderSwitch,
             target_provider_id: target_provider_id.to_string(),
-            target_provider_name: sanitize_display_name(&inspection.target.name),
-            plan_digest: digest_json("fyagent.change-plan.plan.v2", &semantic),
+            target_provider_name: plan_fields.target_provider_name,
+            plan_digest: plan_approval_digest(
+                ChangeOperation::CodexProviderSwitch,
+                target_provider_id,
+                &inspection.baseline_digest,
+                secret_capability,
+                &descriptor,
+            ),
             baseline_digest: inspection.baseline_digest,
             db_baseline_provider_id: inspection.db_current_provider_id,
             device_baseline_provider_id: inspection.device_current_provider_id,
@@ -97,14 +199,12 @@ impl ChangePlanService {
             created_at: now,
             expires_at: now + CHANGE_PLAN_TTL_SECONDS,
             status: ChangePlanStatus::Ready,
-            current_provider_code,
-            target_provider_code: "existing_provider".to_string(),
-            restart_expectation: RestartRequirement::Recommended,
-            risks: vec![ChangePlanRisk {
-                code: "local_configuration_write".to_string(),
-                severity: "notice".to_string(),
-            }],
-            evidence_note: "usage_not_observed".to_string(),
+            adapter: descriptor,
+            current_provider_code: plan_fields.current_provider_code,
+            target_provider_code: plan_fields.target_provider_code,
+            restart_expectation: plan_fields.restart_expectation,
+            risks: plan_fields.risks,
+            evidence_note: plan_fields.evidence_note,
         };
         state
             .db
@@ -123,24 +223,29 @@ impl ChangePlanService {
     /// the ProviderService lock-held switch primitive; the integration worker
     /// owns that shared extraction. `FnOnce` plus admission CAS guarantees at
     /// most one writer call.
-    pub(crate) fn apply_codex_switch_with_writer<F, E>(
+    pub(crate) fn apply_codex_switch_with_writer_observer<F, E, O>(
         state: &AppState,
         plan_id: &str,
         plan_digest: &str,
         writer: F,
+        observer: O,
     ) -> Result<ApplyChangePlanOutcome, ChangePlanErrorCode>
     where
         F: FnOnce(&str) -> Result<WriterReceipt, E>,
+        O: Fn(ChangeJobEventHint),
     {
-        Self::apply_codex_switch_at_with_writer(
+        Self::apply_codex_switch_at_with_writer_observer_and_fault(
             state,
             plan_id,
             plan_digest,
             chrono::Utc::now().timestamp(),
             writer,
+            observer,
+            None,
         )
     }
 
+    #[cfg(test)]
     pub(crate) fn apply_codex_switch_at_with_writer<F, E>(
         state: &AppState,
         plan_id: &str,
@@ -151,7 +256,117 @@ impl ChangePlanService {
     where
         F: FnOnce(&str) -> Result<WriterReceipt, E>,
     {
+        Self::apply_codex_switch_at_with_writer_observer_and_fault(
+            state,
+            plan_id,
+            plan_digest,
+            now,
+            writer,
+            |_| {},
+            None,
+        )
+    }
+
+    pub(crate) fn apply_codex_switch_at_with_writer_observer_and_fault<F, E, O>(
+        state: &AppState,
+        plan_id: &str,
+        plan_digest: &str,
+        now: i64,
+        writer: F,
+        observer: O,
+        injected_fault: Option<ChangeFaultPoint>,
+    ) -> Result<ApplyChangePlanOutcome, ChangePlanErrorCode>
+    where
+        F: FnOnce(&str) -> Result<WriterReceipt, E>,
+        O: Fn(ChangeJobEventHint),
+    {
+        let writer = move |target: &str| writer(target).map_err(|_| ());
+        Self::apply_codex_switch_inner(
+            state,
+            plan_id,
+            plan_digest,
+            now,
+            writer,
+            observer,
+            injected_fault,
+        )
+    }
+
+    fn idempotent_replay_if_consumed(
+        state: &AppState,
+        plan_id: &str,
+        plan_digest: &str,
+    ) -> Result<Option<ApplyChangePlanOutcome>, ChangePlanErrorCode> {
+        let stored = state
+            .db
+            .get_stored_change_plan(plan_id)
+            .map_err(|_| ChangePlanErrorCode::Internal)?;
+        let Some(stored) = stored else {
+            return Ok(Some(ApplyChangePlanOutcome::rejected(
+                ChangePlanErrorCode::PlanNotFound,
+            )));
+        };
+        if stored.public.plan_digest != plan_digest {
+            return Ok(Some(ApplyChangePlanOutcome::rejected(
+                ChangePlanErrorCode::InvalidDigest,
+            )));
+        }
+        if stored.public.status != ChangePlanStatus::Consumed {
+            return Ok(None);
+        }
+        if stored.contract_digest != CHANGE_PLAN_CONTRACT_VERSION
+            || stored.public.adapter != descriptor_for_operation(stored.public.operation)
+        {
+            return Ok(Some(ApplyChangePlanOutcome::rejected(
+                ChangePlanErrorCode::Stale,
+            )));
+        }
+        if stored.public.plan_digest
+            != plan_approval_digest(
+                stored.public.operation,
+                &stored.public.target_provider_id,
+                &stored.public.baseline_digest,
+                stored.public.secret_capability,
+                &stored.public.adapter,
+            )
+        {
+            return Ok(Some(ApplyChangePlanOutcome::rejected(
+                ChangePlanErrorCode::Stale,
+            )));
+        }
+        let mut job = state
+            .db
+            .get_change_job_by_plan_id(plan_id)
+            .map_err(|_| ChangePlanErrorCode::Internal)?
+            .ok_or(ChangePlanErrorCode::Internal)?;
+        normalize_job_projection(&mut job);
+        Ok(Some(ApplyChangePlanOutcome {
+            kind: ChangeApplyOutcomeKind::IdempotentReplay,
+            job: Some(job),
+            error_code: None,
+        }))
+    }
+
+    fn apply_codex_switch_inner<F, O>(
+        state: &AppState,
+        plan_id: &str,
+        plan_digest: &str,
+        now: i64,
+        writer: F,
+        observer: O,
+        injected_fault: Option<ChangeFaultPoint>,
+    ) -> Result<ApplyChangePlanOutcome, ChangePlanErrorCode>
+    where
+        F: FnOnce(&str) -> Result<WriterReceipt, ()>,
+        O: Fn(ChangeJobEventHint),
+    {
+        if let Some(existing) = Self::idempotent_replay_if_consumed(state, plan_id, plan_digest)? {
+            return Ok(existing);
+        }
         let _provider_guard = ProviderService::lock_provider_mutation(state, &AppType::Codex);
+        if let Some(existing) = Self::idempotent_replay_if_consumed(state, plan_id, plan_digest)? {
+            return Ok(existing);
+        }
         let stored = state
             .db
             .get_stored_change_plan(plan_id)
@@ -169,14 +384,42 @@ impl ChangePlanService {
         if stored.contract_digest != CHANGE_PLAN_CONTRACT_VERSION {
             return Ok(ApplyChangePlanOutcome::rejected(ChangePlanErrorCode::Stale));
         }
+        if stored.public.adapter != descriptor_for_operation(stored.public.operation) {
+            return Ok(ApplyChangePlanOutcome::rejected(ChangePlanErrorCode::Stale));
+        }
+        if stored.public.plan_digest
+            != plan_approval_digest(
+                stored.public.operation,
+                &stored.public.target_provider_id,
+                &stored.public.baseline_digest,
+                stored.public.secret_capability,
+                &stored.public.adapter,
+            )
+        {
+            return Ok(ApplyChangePlanOutcome::rejected(ChangePlanErrorCode::Stale));
+        }
 
-        let observed = inspect_codex_switch(state, &stored.public.target_provider_id)?;
+        let mut adapter = CodexProviderSwitchAdapter::for_execution(
+            state,
+            &stored.public.target_provider_id,
+            writer,
+        );
+        let observed = adapter.precheck()?;
         if prove_codex_target_credential_capability(&observed)
             != SecretCapabilityResult::NoNewCredentialMaterial
         {
             return Ok(ApplyChangePlanOutcome::rejected(
                 ChangePlanErrorCode::SecretDependencyUnavailable,
             ));
+        }
+        let captured = adapter.snapshot(&observed);
+        let expected = CodexSwitchSnapshot {
+            baseline_digest: stored.public.baseline_digest.clone(),
+            target_definition_digest: stored.target_definition_digest.clone(),
+            target_projection_digest: stored.target_projection_digest.clone(),
+        };
+        if captured != expected {
+            return Ok(ApplyChangePlanOutcome::rejected(ChangePlanErrorCode::Stale));
         }
         let job_id = uuid::Uuid::new_v4().to_string();
         let admitted = state
@@ -194,30 +437,108 @@ impl ChangePlanService {
         }
 
         let mut job = admitted.job.ok_or(ChangePlanErrorCode::Internal)?;
+        normalize_job_projection(&mut job);
+        let execution = ActiveExecutionRegistration::register(&job.job_id)?;
+        observer(job_hint(&job));
+
+        job.status = ChangeJobStatus::Running;
+        job.result_code = ChangeResultCode::Running;
         set_step(
             &mut job,
             ChangeStepKind::Precheck,
             ChangeStepStatus::Succeeded,
             "baseline_matched",
         );
-        set_step(
+        persist_transition(
+            state,
             &mut job,
-            ChangeStepKind::Apply,
-            ChangeStepStatus::Running,
-            "writer_started",
-        );
-        job.status = ChangeJobStatus::Running;
-        job.result_code = ChangeResultCode::Running;
-        let event = append_event(&mut job, ChangeStepKind::Apply, "writer_started", now);
-        state
-            .db
-            .save_change_job(&job, &event)
-            .map_err(|_| ChangePlanErrorCode::Internal)?;
+            ChangeStepKind::Precheck,
+            "precheck_succeeded",
+            now,
+            &observer,
+        )?;
 
-        let writer_result = writer(&stored.public.target_provider_id);
         set_step(
             &mut job,
-            ChangeStepKind::Apply,
+            ChangeStepKind::Snapshot,
+            ChangeStepStatus::Succeeded,
+            "snapshot_bound",
+        );
+        persist_transition(
+            state,
+            &mut job,
+            ChangeStepKind::Snapshot,
+            "snapshot_succeeded",
+            now,
+            &observer,
+        )?;
+
+        if injected_fault == Some(ChangeFaultPoint::BeforeManagedWrite) {
+            return Err(ChangePlanErrorCode::Internal);
+        }
+
+        if !execution.gate.claim_managed_write() {
+            set_step(
+                &mut job,
+                ChangeStepKind::ManagedWrite,
+                ChangeStepStatus::Skipped,
+                "cancelled_before_write",
+            );
+            set_step(
+                &mut job,
+                ChangeStepKind::Readback,
+                ChangeStepStatus::Skipped,
+                "cancelled_before_write",
+            );
+            set_step(
+                &mut job,
+                ChangeStepKind::Finalize,
+                ChangeStepStatus::Succeeded,
+                "cancelled_before_write",
+            );
+            job.status = ChangeJobStatus::Cancelled;
+            job.result_code = ChangeResultCode::CancelledBeforeWrite;
+            job.restart_requirement = RestartRequirement::NotRequired;
+            job.recovery_state = RecoveryState::NotNeeded;
+            job.diagnostic_code = Some("cancelled_before_write".to_string());
+            persist_transition(
+                state,
+                &mut job,
+                ChangeStepKind::Finalize,
+                "cancelled_before_write",
+                now,
+                &observer,
+            )?;
+            execution.gate.mark_terminal();
+            return Ok(ApplyChangePlanOutcome {
+                kind: ChangeApplyOutcomeKind::Admitted,
+                job: Some(job),
+                error_code: None,
+            });
+        }
+
+        set_step(
+            &mut job,
+            ChangeStepKind::ManagedWrite,
+            ChangeStepStatus::Running,
+            "managed_write_started",
+        );
+        persist_transition(
+            state,
+            &mut job,
+            ChangeStepKind::ManagedWrite,
+            "managed_write_started",
+            now,
+            &observer,
+        )?;
+
+        let writer_result = adapter.managed_write();
+        if injected_fault == Some(ChangeFaultPoint::AfterManagedWriteBeforeRecord) {
+            return Err(ChangePlanErrorCode::Internal);
+        }
+        set_step(
+            &mut job,
+            ChangeStepKind::ManagedWrite,
             if writer_result.is_ok() {
                 ChangeStepStatus::Succeeded
             } else {
@@ -235,24 +556,36 @@ impl ChangePlanService {
             ChangeStepStatus::Running,
             "readback_started",
         );
-        let event = append_event(&mut job, ChangeStepKind::Readback, "readback_started", now);
-        state
-            .db
-            .save_change_job(&job, &event)
-            .map_err(|_| ChangePlanErrorCode::Internal)?;
+        persist_transition(
+            state,
+            &mut job,
+            ChangeStepKind::Readback,
+            "readback_started",
+            now,
+            &observer,
+        )?;
 
-        let readback = inspect_codex_switch(state, &stored.public.target_provider_id);
-        let writer_result = writer_result.map_err(|_| ());
+        let readback = adapter.verify();
         classify_job(&stored, &mut job, writer_result, readback, now);
         let terminal_reason = job
             .diagnostic_code
             .clone()
             .unwrap_or_else(|| "recovery_required".to_string());
-        let event = append_event(&mut job, ChangeStepKind::Readback, &terminal_reason, now);
-        state
-            .db
-            .save_change_job(&job, &event)
-            .map_err(|_| ChangePlanErrorCode::Internal)?;
+        set_step(
+            &mut job,
+            ChangeStepKind::Finalize,
+            ChangeStepStatus::Succeeded,
+            "finalized",
+        );
+        persist_transition(
+            state,
+            &mut job,
+            ChangeStepKind::Finalize,
+            &terminal_reason,
+            now,
+            &observer,
+        )?;
+        execution.gate.mark_terminal();
         Ok(ApplyChangePlanOutcome {
             kind: ChangeApplyOutcomeKind::Admitted,
             job: Some(job),
@@ -260,26 +593,61 @@ impl ChangePlanService {
         })
     }
 
+    #[cfg(test)]
     pub fn get_job(
         state: &AppState,
         job_id: &str,
     ) -> Result<ChangeJobSnapshot, ChangePlanErrorCode> {
-        let job = state
+        Self::get_job_with_observer(state, job_id, |_| {})
+    }
+
+    pub(crate) fn get_job_with_observer<O>(
+        state: &AppState,
+        job_id: &str,
+        observer: O,
+    ) -> Result<ChangeJobSnapshot, ChangePlanErrorCode>
+    where
+        O: Fn(ChangeJobEventHint),
+    {
+        let mut job = state
             .db
             .get_change_job(job_id)
             .map_err(|_| ChangePlanErrorCode::Internal)?
             .ok_or(ChangePlanErrorCode::JobNotFound)?;
+        normalize_job_projection(&mut job);
+        if active_execution_gate(job_id).is_some() {
+            return Ok(job);
+        }
         if !job.needs_reconcile() {
             return Ok(job);
         }
-        Self::reconcile_job_at(state, &job.job_id, chrono::Utc::now().timestamp())
+        Self::reconcile_job_at_with_observer(
+            state,
+            &job.job_id,
+            chrono::Utc::now().timestamp(),
+            &observer,
+        )
     }
 
-    fn reconcile_job_at(
+    fn reconcile_job_at_with_observer<O>(
         state: &AppState,
         job_id: &str,
         now: i64,
-    ) -> Result<ChangeJobSnapshot, ChangePlanErrorCode> {
+        observer: &O,
+    ) -> Result<ChangeJobSnapshot, ChangePlanErrorCode>
+    where
+        O: Fn(ChangeJobEventHint),
+    {
+        if let Some(mut job) = state
+            .db
+            .get_change_job(job_id)
+            .map_err(|_| ChangePlanErrorCode::Internal)?
+        {
+            normalize_job_projection(&mut job);
+            if active_execution_gate(job_id).is_some() || !job.needs_reconcile() {
+                return Ok(job);
+            }
+        }
         let _provider_guard = ProviderService::lock_provider_mutation(state, &AppType::Codex);
         let mut job = state
             .db
@@ -294,41 +662,114 @@ impl ChangePlanService {
             .get_stored_change_plan(&job.plan_id)
             .map_err(|_| ChangePlanErrorCode::Internal)?
             .ok_or(ChangePlanErrorCode::PlanNotFound)?;
+        let managed_write_started = job
+            .steps
+            .iter()
+            .find(|step| step.kind == ChangeStepKind::ManagedWrite)
+            .is_some_and(|step| step.status != ChangeStepStatus::Pending);
         let readback = inspect_codex_switch(state, &stored.public.target_provider_id);
         classify_job(&stored, &mut job, Err(()), readback, now);
-        let reconcile_status = if job.recovery_state == RecoveryState::RecoveryRequired {
+        if !managed_write_started
+            && job.result_code == ChangeResultCode::WriterFailedBaselineRestored
+        {
+            job.status = ChangeJobStatus::Failed;
+            job.result_code = ChangeResultCode::InterruptedBeforeWrite;
+            job.recovery_state = RecoveryState::Succeeded;
+            job.restart_requirement = RestartRequirement::NotRequired;
+            job.diagnostic_code = Some("interrupted_before_write".to_string());
+            set_step(
+                &mut job,
+                ChangeStepKind::ManagedWrite,
+                ChangeStepStatus::Skipped,
+                "interrupted_before_write",
+            );
+        } else if managed_write_started
+            && job.result_code == ChangeResultCode::WriterErrorTargetReached
+        {
+            job.result_code = ChangeResultCode::RecoveredTargetReached;
+            job.restart_requirement = RestartRequirement::Recommended;
+            job.diagnostic_code = Some("recovered_target_reached".to_string());
+            set_step(
+                &mut job,
+                ChangeStepKind::ManagedWrite,
+                ChangeStepStatus::Succeeded,
+                "target_reached_after_unknown_outcome",
+            );
+        }
+        let finalize_status = if job.recovery_state == RecoveryState::RecoveryRequired {
             ChangeStepStatus::Failed
         } else {
             ChangeStepStatus::Succeeded
         };
         set_step(
             &mut job,
-            ChangeStepKind::Reconcile,
-            reconcile_status,
+            ChangeStepKind::Finalize,
+            finalize_status,
             "reconciled_without_replay",
         );
         let event = append_event(
             &mut job,
-            ChangeStepKind::Reconcile,
+            ChangeStepKind::Finalize,
             "reconciled_without_replay",
             now,
         );
+        normalize_job_projection(&mut job);
         state
             .db
             .save_change_job(&job, &event)
             .map_err(|_| ChangePlanErrorCode::Internal)?;
+        observer(job_hint(&job));
         Ok(job)
     }
 
-    pub fn list_recoverable_jobs(
+    pub fn cancel_job(
         state: &AppState,
-    ) -> Result<Vec<ChangeJobSnapshot>, ChangePlanErrorCode> {
+        job_id: &str,
+    ) -> Result<CancelChangeJobOutcome, ChangePlanErrorCode> {
+        if let Some(gate) = active_execution_gate(job_id) {
+            let code = gate.request_cancel();
+            return Ok(CancelChangeJobOutcome {
+                accepted: code == ChangeCancelCode::Accepted,
+                code,
+                job_id: job_id.to_string(),
+            });
+        }
+        let job = state
+            .db
+            .get_change_job(job_id)
+            .map_err(|_| ChangePlanErrorCode::Internal)?;
+        let code = match job {
+            None => ChangeCancelCode::JobNotFound,
+            Some(job) if job.status.is_terminal() => ChangeCancelCode::AlreadyTerminal,
+            Some(_) => ChangeCancelCode::NotActive,
+        };
+        Ok(CancelChangeJobOutcome {
+            accepted: false,
+            code,
+            job_id: job_id.to_string(),
+        })
+    }
+
+    pub(crate) fn list_recoverable_jobs_with_observer<O>(
+        state: &AppState,
+        observer: O,
+    ) -> Result<Vec<ChangeJobSnapshot>, ChangePlanErrorCode>
+    where
+        O: Fn(ChangeJobEventHint),
+    {
         let jobs = state
             .db
             .list_recoverable_change_jobs()
             .map_err(|_| ChangePlanErrorCode::Internal)?;
         jobs.into_iter()
-            .map(|job| Self::reconcile_job_at(state, &job.job_id, chrono::Utc::now().timestamp()))
+            .map(|job| {
+                Self::reconcile_job_at_with_observer(
+                    state,
+                    &job.job_id,
+                    chrono::Utc::now().timestamp(),
+                    &observer,
+                )
+            })
             .collect()
     }
 }
@@ -494,13 +935,22 @@ fn validate_optional_provider_id(
     Ok(value)
 }
 
-fn current_provider_code(db: &Option<String>, device: &Option<String>) -> String {
-    match (db, device) {
-        (None, None) => "current_unconfigured",
-        (Some(db), Some(device)) if db == device => "current_configured",
-        _ => "current_mixed",
-    }
-    .to_string()
+fn plan_approval_digest(
+    operation: ChangeOperation,
+    target_provider_id: &str,
+    baseline_digest: &str,
+    secret_capability: SecretCapabilityResult,
+    adapter: &ChangeAdapterDescriptor,
+) -> String {
+    let semantic = serde_json::json!({
+        "operation": operation,
+        "targetProviderId": target_provider_id,
+        "baselineDigest": baseline_digest,
+        "secretCapability": secret_capability,
+        "adapter": adapter,
+        "contract": CHANGE_PLAN_CONTRACT_VERSION,
+    });
+    digest_json("fyagent.change-plan.plan.v2", &semantic)
 }
 
 fn set_step(
@@ -544,6 +994,120 @@ fn append_event(
     };
     job.events.push(event.clone());
     event
+}
+
+fn job_hint(job: &ChangeJobSnapshot) -> ChangeJobEventHint {
+    ChangeJobEventHint {
+        job_id: job.job_id.clone(),
+        event_seq: job.event_seq,
+    }
+}
+
+fn persist_transition<O>(
+    state: &AppState,
+    job: &mut ChangeJobSnapshot,
+    phase: ChangeStepKind,
+    reason_code: &str,
+    now: i64,
+    observer: &O,
+) -> Result<(), ChangePlanErrorCode>
+where
+    O: Fn(ChangeJobEventHint),
+{
+    let event = append_event(job, phase, reason_code, now);
+    normalize_job_projection(job);
+    state
+        .db
+        .save_change_job(job, &event)
+        .map_err(|_| ChangePlanErrorCode::Internal)?;
+    observer(job_hint(job));
+    Ok(())
+}
+
+fn adapter_error_for_result(result: ChangeResultCode) -> Option<ChangeAdapterErrorCode> {
+    match result {
+        ChangeResultCode::WriterFailedBaselineRestored => Some(ChangeAdapterErrorCode::Permanent),
+        ChangeResultCode::WriterErrorTargetReached => Some(ChangeAdapterErrorCode::Transient),
+        ChangeResultCode::PostWriteMismatch => Some(ChangeAdapterErrorCode::VerifyFailed),
+        ChangeResultCode::ReadbackUnavailable
+        | ChangeResultCode::RecoveryRequired
+        | ChangeResultCode::RecoveredTargetReached => Some(ChangeAdapterErrorCode::UnknownOutcome),
+        ChangeResultCode::InterruptedBeforeWrite => Some(ChangeAdapterErrorCode::Transient),
+        _ => None,
+    }
+}
+
+fn normalize_job_projection(job: &mut ChangeJobSnapshot) {
+    job.execution_id.clone_from(&job.job_id);
+    job.idempotency_key.clone_from(&job.plan_id);
+    if job.result_code == ChangeResultCode::CancelledBeforeWrite {
+        job.status = ChangeJobStatus::Cancelled;
+    }
+    job.adapter_error_code = adapter_error_for_result(job.result_code);
+
+    let succeeded_steps = job
+        .steps
+        .iter()
+        .filter(|step| step.status == ChangeStepStatus::Succeeded)
+        .map(|step| step.kind)
+        .collect::<Vec<_>>();
+    let compensated_steps = job
+        .steps
+        .iter()
+        .filter(|step| step.status == ChangeStepStatus::Compensated)
+        .map(|step| step.kind)
+        .collect::<Vec<_>>();
+    let managed_write_may_have_effect = job
+        .steps
+        .iter()
+        .find(|step| step.kind == ChangeStepKind::ManagedWrite)
+        .is_some_and(|step| {
+            matches!(
+                step.status,
+                ChangeStepStatus::Running | ChangeStepStatus::Succeeded | ChangeStepStatus::Failed
+            )
+        });
+    let readback_succeeded = job.steps.iter().any(|step| {
+        step.kind == ChangeStepKind::Readback && step.status == ChangeStepStatus::Succeeded
+    });
+    let unverified_steps = if managed_write_may_have_effect && !readback_succeeded {
+        vec![ChangeStepKind::ManagedWrite]
+    } else {
+        Vec::new()
+    };
+    let remaining_effects = if job.recovery_state == RecoveryState::Succeeded {
+        Vec::new()
+    } else {
+        job.resources
+            .iter()
+            .filter(|resource| {
+                matches!(
+                    resource.status,
+                    ChangeResourceStatus::Mismatched | ChangeResourceStatus::Unavailable
+                )
+            })
+            .map(|resource| resource.kind)
+            .collect::<Vec<_>>()
+    };
+    let mut manual_actions = Vec::new();
+    if job.result_code == ChangeResultCode::ReadbackUnavailable {
+        manual_actions.push(ChangeManualActionCode::RetryReadback);
+    }
+    if job.recovery_state == RecoveryState::RecoveryRequired || !remaining_effects.is_empty() {
+        manual_actions.push(ChangeManualActionCode::ReviewConfiguration);
+    }
+
+    let needs_partial = matches!(
+        job.status,
+        ChangeJobStatus::Running | ChangeJobStatus::Warning | ChangeJobStatus::Failed
+    ) || job.recovery_state == RecoveryState::RecoveryRequired;
+    job.partial_result = needs_partial.then_some(ChangePartialResult {
+        succeeded_steps,
+        compensated_steps,
+        unverified_steps,
+        remaining_effects,
+        manual_actions,
+    });
 }
 
 fn classify_job(
@@ -643,27 +1207,28 @@ fn classify_job(
     );
 
     if db_target && device_target && definition_target && live_target {
-        job.live_config_changed = writer_result
-            .as_ref()
-            .map(|receipt| receipt.live_config_changed)
-            .unwrap_or(false);
-        job.restart_requirement = if job.live_config_changed {
-            RestartRequirement::Recommended
-        } else {
-            RestartRequirement::NotRequired
-        };
-        job.status = if writer_result.is_ok() {
-            ChangeJobStatus::Succeeded
-        } else {
-            ChangeJobStatus::Warning
-        };
-        job.result_code = if writer_result.is_err() {
-            ChangeResultCode::WriterErrorTargetReached
-        } else if job.live_config_changed {
-            ChangeResultCode::AppliedRestartRecommended
-        } else {
-            ChangeResultCode::Applied
-        };
+        match writer_result {
+            Ok(receipt) => {
+                job.live_config_changed = receipt.live_config_changed;
+                job.restart_requirement = if job.live_config_changed {
+                    RestartRequirement::Recommended
+                } else {
+                    RestartRequirement::NotRequired
+                };
+                job.status = ChangeJobStatus::Succeeded;
+                job.result_code = if job.live_config_changed {
+                    ChangeResultCode::AppliedRestartRecommended
+                } else {
+                    ChangeResultCode::Applied
+                };
+            }
+            Err(()) => {
+                job.live_config_changed = false;
+                job.restart_requirement = RestartRequirement::Recommended;
+                job.status = ChangeJobStatus::Warning;
+                job.result_code = ChangeResultCode::WriterErrorTargetReached;
+            }
+        }
         job.recovery_state = RecoveryState::NotNeeded;
         job.diagnostic_code = Some("target_readback_matched".to_string());
         set_step(
@@ -678,6 +1243,19 @@ fn classify_job(
         job.restart_requirement = RestartRequirement::NotRequired;
         job.recovery_state = RecoveryState::Succeeded;
         job.diagnostic_code = Some("baseline_restored".to_string());
+        if job
+            .steps
+            .iter()
+            .find(|step| step.kind == ChangeStepKind::ManagedWrite)
+            .is_some_and(|step| step.status != ChangeStepStatus::Pending)
+        {
+            set_step(
+                job,
+                ChangeStepKind::ManagedWrite,
+                ChangeStepStatus::Compensated,
+                "writer_owned_rollback_confirmed",
+            );
+        }
         set_step(
             job,
             ChangeStepKind::Readback,
@@ -710,8 +1288,8 @@ mod tests {
     use crate::services::provider::{read_live_settings, write_live_with_common_config};
     use serde_json::json;
     use serial_test::serial;
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::{Arc, Barrier};
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use std::sync::{Arc, Barrier, Mutex};
 
     struct TestHome(Option<std::ffi::OsString>);
 
@@ -781,6 +1359,30 @@ mod tests {
         assert_ne!(first.plan_id, second.plan_id);
         assert_eq!(first.plan_digest, second.plan_digest);
         assert_eq!(first.baseline_digest, second.baseline_digest);
+        assert_eq!(first.adapter.adapter_id, "codex_provider_switch");
+        assert_eq!(first.adapter.adapter_version, "2");
+        assert_eq!(
+            first.adapter.phases,
+            vec![
+                ChangeStepKind::Precheck,
+                ChangeStepKind::Snapshot,
+                ChangeStepKind::ManagedWrite,
+                ChangeStepKind::Readback,
+                ChangeStepKind::Finalize,
+            ]
+        );
+        assert_eq!(
+            first.adapter.idempotency_scope,
+            ChangeIdempotencyScope::Plan
+        );
+        assert_eq!(
+            first.adapter.cancel_mode,
+            ChangeCancelMode::BeforeManagedWrite
+        );
+        assert_eq!(
+            first.adapter.compensation_mode,
+            ChangeCompensationMode::WriterOwnedRollback
+        );
         assert_eq!(
             db.get_current_provider(AppType::Codex.as_str()).unwrap(),
             Some(current.id)
@@ -1314,6 +1916,43 @@ mod tests {
 
     #[test]
     #[serial]
+    fn persisted_plan_digest_remains_bound_to_the_current_adapter_descriptor() {
+        let (_home, _guard, db, state, _current, target) = setup_switch_state();
+        let plan = ChangePlanService::plan_codex_switch_at(&state, &target.id, 100).unwrap();
+        let tampered_digest = "0".repeat(64);
+        db.conn
+            .lock()
+            .unwrap()
+            .execute(
+                "UPDATE change_plans SET plan_digest=?1 WHERE plan_id=?2",
+                [&tampered_digest, &plan.plan_id],
+            )
+            .unwrap();
+
+        let calls = AtomicUsize::new(0);
+        let outcome = ChangePlanService::apply_codex_switch_at_with_writer(
+            &state,
+            &plan.plan_id,
+            &tampered_digest,
+            101,
+            |_| {
+                calls.fetch_add(1, Ordering::SeqCst);
+                Ok::<_, ()>(WriterReceipt {
+                    live_config_changed: false,
+                })
+            },
+        )
+        .unwrap();
+        assert_eq!(outcome.error_code, Some(ChangePlanErrorCode::Stale));
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+        assert!(db
+            .get_change_job_by_plan_id(&plan.plan_id)
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
+    #[serial]
     fn normal_apply_calls_writer_once_and_replay_stale_expired_call_zero_times() {
         let (_home, _guard, db, state, _current, target) = setup_switch_state();
         let plan = ChangePlanService::plan_codex_switch_at(&state, &target.id, 100).unwrap();
@@ -1340,7 +1979,7 @@ mod tests {
         assert_eq!(job.status, ChangeJobStatus::Succeeded);
         assert_eq!(job.result_code, ChangeResultCode::AppliedRestartRecommended);
         assert_eq!(job.usage_evidence, UsageEvidence::NotObserved);
-        assert_eq!(job.events.len(), 4);
+        assert_eq!(job.events.len(), 6);
         assert!(job
             .events
             .windows(2)
@@ -1359,7 +1998,12 @@ mod tests {
             },
         )
         .unwrap();
-        assert_eq!(replay.error_code, Some(ChangePlanErrorCode::Consumed));
+        assert_eq!(replay.kind, ChangeApplyOutcomeKind::IdempotentReplay);
+        assert_eq!(replay.error_code, None);
+        assert_eq!(
+            replay.job.as_ref().map(|job| job.job_id.as_str()),
+            Some(job.job_id.as_str())
+        );
         assert_eq!(calls.load(Ordering::SeqCst), 1);
     }
 
@@ -1408,7 +2052,7 @@ mod tests {
         assert_eq!(
             outcomes
                 .iter()
-                .filter(|outcome| outcome.error_code == Some(ChangePlanErrorCode::Consumed))
+                .filter(|outcome| outcome.kind == ChangeApplyOutcomeKind::IdempotentReplay)
                 .count(),
             1
         );
@@ -1513,7 +2157,7 @@ mod tests {
         assert_eq!(converged.status, ChangeJobStatus::Warning);
         assert_eq!(
             converged.result_code,
-            ChangeResultCode::WriterErrorTargetReached
+            ChangeResultCode::RecoveredTargetReached
         );
         assert_eq!(converged.recovery_state, RecoveryState::NotNeeded);
         assert_eq!(
@@ -1558,7 +2202,7 @@ mod tests {
                 snapshot
                     .steps
                     .iter()
-                    .find(|step| step.kind == ChangeStepKind::Reconcile)
+                    .find(|step| step.kind == ChangeStepKind::Finalize)
                     .unwrap()
                     .code,
                 "reconciled_without_replay"
@@ -1567,10 +2211,329 @@ mod tests {
                 snapshot
                     .events
                     .iter()
-                    .filter(|event| event.phase == ChangeStepKind::Reconcile)
+                    .filter(|event| event.phase == ChangeStepKind::Finalize)
                     .count(),
                 1
             );
         }
+    }
+
+    #[test]
+    #[serial]
+    fn cancellation_wins_only_before_managed_write_and_observer_reads_committed_snapshots() {
+        {
+            let (_home, _guard, db, state, _current, target) = setup_switch_state();
+            let plan = ChangePlanService::plan_codex_switch_at(&state, &target.id, 100).unwrap();
+            let writer_calls = AtomicUsize::new(0);
+            let cancel_sent = AtomicBool::new(false);
+            let cancel_code = Mutex::new(None);
+            let hints = Mutex::new(Vec::new());
+
+            let outcome = ChangePlanService::apply_codex_switch_at_with_writer_observer_and_fault(
+                &state,
+                &plan.plan_id,
+                &plan.plan_digest,
+                101,
+                |_| {
+                    writer_calls.fetch_add(1, Ordering::SeqCst);
+                    Ok::<_, ()>(WriterReceipt {
+                        live_config_changed: false,
+                    })
+                },
+                |hint| {
+                    let persisted = db
+                        .get_change_job(&hint.job_id)
+                        .unwrap()
+                        .expect("observer hint must reference a committed snapshot");
+                    assert_eq!(persisted.event_seq, hint.event_seq);
+                    hints.lock().unwrap().push(hint.event_seq);
+
+                    let snapshot_done = persisted.steps.iter().any(|step| {
+                        step.kind == ChangeStepKind::Snapshot
+                            && step.status == ChangeStepStatus::Succeeded
+                    });
+                    let write_pending = persisted.steps.iter().any(|step| {
+                        step.kind == ChangeStepKind::ManagedWrite
+                            && step.status == ChangeStepStatus::Pending
+                    });
+                    if snapshot_done && write_pending && !cancel_sent.swap(true, Ordering::SeqCst) {
+                        let cancelled =
+                            ChangePlanService::cancel_job(&state, &persisted.job_id).unwrap();
+                        *cancel_code.lock().unwrap() = Some(cancelled.code);
+                    }
+                },
+                None,
+            )
+            .unwrap();
+
+            let job = outcome.job.expect("cancelled job");
+            assert_eq!(writer_calls.load(Ordering::SeqCst), 0);
+            assert_eq!(
+                *cancel_code.lock().unwrap(),
+                Some(ChangeCancelCode::Accepted)
+            );
+            assert_eq!(job.status, ChangeJobStatus::Cancelled);
+            assert_eq!(job.result_code, ChangeResultCode::CancelledBeforeWrite);
+            assert!(job.partial_result.is_none());
+            assert!(hints
+                .lock()
+                .unwrap()
+                .windows(2)
+                .all(|pair| pair[0] < pair[1]));
+
+            let (stored_status, stored_result): (String, String) = db
+                .conn
+                .lock()
+                .unwrap()
+                .query_row(
+                    "SELECT status, result_code FROM change_jobs WHERE job_id=?1",
+                    [&job.job_id],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .unwrap();
+            assert_eq!(stored_status, "failed");
+            assert_eq!(stored_result, "cancelled_before_write");
+            assert_eq!(
+                db.get_change_job(&job.job_id).unwrap().unwrap().status,
+                ChangeJobStatus::Cancelled
+            );
+        }
+
+        {
+            let (_home, _guard, db, state, _current, target) = setup_switch_state();
+            let plan = ChangePlanService::plan_codex_switch_at(&state, &target.id, 200).unwrap();
+            let writer_calls = AtomicUsize::new(0);
+            let cancel_code = Mutex::new(None);
+
+            let outcome = ChangePlanService::apply_codex_switch_at_with_writer_observer_and_fault(
+                &state,
+                &plan.plan_id,
+                &plan.plan_digest,
+                201,
+                |_| {
+                    writer_calls.fetch_add(1, Ordering::SeqCst);
+                    db.set_current_provider(AppType::Codex.as_str(), &target.id)
+                        .unwrap();
+                    crate::settings::set_current_provider(&AppType::Codex, Some(&target.id))
+                        .unwrap();
+                    write_live_with_common_config(db.as_ref(), &AppType::Codex, &target).unwrap();
+                    Ok::<_, ()>(WriterReceipt {
+                        live_config_changed: true,
+                    })
+                },
+                |hint| {
+                    let persisted = db.get_change_job(&hint.job_id).unwrap().unwrap();
+                    let write_started = persisted.steps.iter().any(|step| {
+                        step.kind == ChangeStepKind::ManagedWrite
+                            && step.status == ChangeStepStatus::Running
+                    });
+                    if write_started && cancel_code.lock().unwrap().is_none() {
+                        let cancelled =
+                            ChangePlanService::cancel_job(&state, &persisted.job_id).unwrap();
+                        *cancel_code.lock().unwrap() = Some(cancelled.code);
+                    }
+                },
+                None,
+            )
+            .unwrap();
+
+            assert_eq!(writer_calls.load(Ordering::SeqCst), 1);
+            assert_eq!(
+                *cancel_code.lock().unwrap(),
+                Some(ChangeCancelCode::CommitPointPassed)
+            );
+            assert_eq!(outcome.job.unwrap().status, ChangeJobStatus::Succeeded);
+        }
+    }
+
+    #[test]
+    #[serial]
+    fn executor_fault_points_recover_by_readback_without_replaying_writer() {
+        {
+            let (_home, _guard, _db, state, _current, target) = setup_switch_state();
+            let plan = ChangePlanService::plan_codex_switch_at(&state, &target.id, 100).unwrap();
+            let writer_calls = AtomicUsize::new(0);
+            let result = ChangePlanService::apply_codex_switch_at_with_writer_observer_and_fault(
+                &state,
+                &plan.plan_id,
+                &plan.plan_digest,
+                101,
+                |_| {
+                    writer_calls.fetch_add(1, Ordering::SeqCst);
+                    Ok::<_, ()>(WriterReceipt {
+                        live_config_changed: false,
+                    })
+                },
+                |_| {},
+                Some(ChangeFaultPoint::BeforeManagedWrite),
+            );
+            assert_eq!(result, Err(ChangePlanErrorCode::Internal));
+            assert_eq!(writer_calls.load(Ordering::SeqCst), 0);
+
+            let recovered = ChangePlanService::get_job(
+                &state,
+                &state
+                    .db
+                    .get_change_job_by_plan_id(&plan.plan_id)
+                    .unwrap()
+                    .unwrap()
+                    .job_id,
+            )
+            .unwrap();
+            assert_eq!(recovered.status, ChangeJobStatus::Failed);
+            assert_eq!(
+                recovered.result_code,
+                ChangeResultCode::InterruptedBeforeWrite
+            );
+            assert_eq!(recovered.recovery_state, RecoveryState::Succeeded);
+            assert_eq!(writer_calls.load(Ordering::SeqCst), 0);
+            assert!(recovered.steps.iter().any(|step| {
+                step.kind == ChangeStepKind::ManagedWrite
+                    && step.status == ChangeStepStatus::Skipped
+            }));
+        }
+
+        {
+            let (_home, _guard, db, state, _current, target) = setup_switch_state();
+            let plan = ChangePlanService::plan_codex_switch_at(&state, &target.id, 200).unwrap();
+            let writer_calls = AtomicUsize::new(0);
+            let result = ChangePlanService::apply_codex_switch_at_with_writer_observer_and_fault(
+                &state,
+                &plan.plan_id,
+                &plan.plan_digest,
+                201,
+                |_| {
+                    writer_calls.fetch_add(1, Ordering::SeqCst);
+                    db.set_current_provider(AppType::Codex.as_str(), &target.id)
+                        .unwrap();
+                    crate::settings::set_current_provider(&AppType::Codex, Some(&target.id))
+                        .unwrap();
+                    write_live_with_common_config(db.as_ref(), &AppType::Codex, &target).unwrap();
+                    Ok::<_, ()>(WriterReceipt {
+                        live_config_changed: true,
+                    })
+                },
+                |_| {},
+                Some(ChangeFaultPoint::AfterManagedWriteBeforeRecord),
+            );
+            assert_eq!(result, Err(ChangePlanErrorCode::Internal));
+            assert_eq!(writer_calls.load(Ordering::SeqCst), 1);
+
+            let job_id = db
+                .get_change_job_by_plan_id(&plan.plan_id)
+                .unwrap()
+                .unwrap()
+                .job_id;
+            let recovery_hints = Mutex::new(Vec::new());
+            let recovered = ChangePlanService::get_job_with_observer(&state, &job_id, |hint| {
+                let persisted = db
+                    .get_change_job(&hint.job_id)
+                    .unwrap()
+                    .expect("recovery hint must reference a committed snapshot");
+                assert_eq!(persisted.event_seq, hint.event_seq);
+                recovery_hints.lock().unwrap().push(hint.event_seq);
+            })
+            .unwrap();
+            assert_eq!(
+                recovery_hints.lock().unwrap().as_slice(),
+                &[recovered.event_seq]
+            );
+            assert_eq!(recovered.status, ChangeJobStatus::Warning);
+            assert_eq!(
+                recovered.result_code,
+                ChangeResultCode::RecoveredTargetReached
+            );
+            assert_eq!(recovered.recovery_state, RecoveryState::NotNeeded);
+            assert_eq!(
+                recovered.adapter_error_code,
+                Some(ChangeAdapterErrorCode::UnknownOutcome)
+            );
+            assert_eq!(
+                recovered.restart_requirement,
+                RestartRequirement::Recommended
+            );
+            assert!(recovered.steps.iter().any(|step| {
+                step.kind == ChangeStepKind::ManagedWrite
+                    && step.status == ChangeStepStatus::Succeeded
+                    && step.code == "target_reached_after_unknown_outcome"
+            }));
+            assert!(recovered.partial_result.as_ref().is_some_and(|partial| {
+                partial.unverified_steps.is_empty() && partial.remaining_effects.is_empty()
+            }));
+            assert_eq!(writer_calls.load(Ordering::SeqCst), 1);
+            let reread = ChangePlanService::get_job(&state, &job_id).unwrap();
+            assert_eq!(reread.event_seq, recovered.event_seq);
+            assert_eq!(writer_calls.load(Ordering::SeqCst), 1);
+        }
+    }
+
+    #[test]
+    fn partial_projection_distinguishes_compensated_and_unverified_effects() {
+        let mut restored = ChangeJobSnapshot::planned(
+            "restored-job".into(),
+            "restored-plan".into(),
+            "target".into(),
+            100,
+        );
+        restored.status = ChangeJobStatus::Failed;
+        restored.result_code = ChangeResultCode::WriterFailedBaselineRestored;
+        restored.recovery_state = RecoveryState::Succeeded;
+        set_step(
+            &mut restored,
+            ChangeStepKind::ManagedWrite,
+            ChangeStepStatus::Compensated,
+            "writer_owned_rollback_confirmed",
+        );
+        set_step(
+            &mut restored,
+            ChangeStepKind::Readback,
+            ChangeStepStatus::Succeeded,
+            "baseline_restored",
+        );
+        for resource in &mut restored.resources {
+            resource.status = ChangeResourceStatus::Mismatched;
+        }
+        normalize_job_projection(&mut restored);
+        let partial = restored.partial_result.expect("restored partial truth");
+        assert_eq!(
+            partial.compensated_steps,
+            vec![ChangeStepKind::ManagedWrite]
+        );
+        assert!(partial.unverified_steps.is_empty());
+        assert!(partial.remaining_effects.is_empty());
+        assert!(partial.manual_actions.is_empty());
+
+        let mut unknown = ChangeJobSnapshot::planned(
+            "unknown-job".into(),
+            "unknown-plan".into(),
+            "target".into(),
+            100,
+        );
+        unknown.status = ChangeJobStatus::Failed;
+        unknown.result_code = ChangeResultCode::ReadbackUnavailable;
+        unknown.recovery_state = RecoveryState::RecoveryRequired;
+        set_step(
+            &mut unknown,
+            ChangeStepKind::ManagedWrite,
+            ChangeStepStatus::Running,
+            "managed_write_started",
+        );
+        set_step(
+            &mut unknown,
+            ChangeStepKind::Readback,
+            ChangeStepStatus::Failed,
+            "readback_unavailable",
+        );
+        unknown.resources[0].status = ChangeResourceStatus::Unavailable;
+        normalize_job_projection(&mut unknown);
+        let partial = unknown.partial_result.expect("unknown partial truth");
+        assert_eq!(partial.unverified_steps, vec![ChangeStepKind::ManagedWrite]);
+        assert_eq!(
+            partial.manual_actions,
+            vec![
+                ChangeManualActionCode::RetryReadback,
+                ChangeManualActionCode::ReviewConfiguration,
+            ]
+        );
     }
 }

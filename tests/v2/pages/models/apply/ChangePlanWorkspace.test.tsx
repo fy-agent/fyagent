@@ -19,12 +19,18 @@ describe("Models Change Plan connection", () => {
       job: changeJobWire,
     }));
     const get = vi.fn(async () => changeJobWire);
+    const cancel = vi.fn(async () => ({
+      accepted: false,
+      code: "not_active" as const,
+      jobId: "job-1",
+    }));
     const list = vi.fn(async () => []);
     const ports = {
       ...createBrowserFeaturePorts(),
       changePlans: {
         createCodexProviderSwitchPlan: create,
         applyChangePlan: apply,
+        cancelChangeJob: cancel,
         getChangeJob: get,
         listRecoverableChangeJobs: list,
       },

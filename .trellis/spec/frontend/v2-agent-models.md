@@ -603,13 +603,26 @@ fetch/save controls.
   existing Codex Desktop installer intact. Browser ports reject native-only.
 - Codex Models consumes `FeaturePorts.changePlans` through exact unknown-input
   parsers. Preview creates no Provider write; confirm sends only
-  `planId + planDigest` and holds a per-plan repeat-click lock. The page owns no
-  fake coordinator, scenario, cancel, backup, restore, or second state machine.
+  `planId + planDigest` and holds a per-plan repeat-click lock. The v2 wire
+  parser accepts only the registered adapter descriptor and the five backend
+  phases `precheck -> snapshot -> managed_write -> readback -> finalize`.
+  `executionId` must equal `jobId`, `idempotencyKey` must equal `planId`, and
+  event sequences must be strictly increasing with the final sequence equal to
+  `eventSeq`. The port exposes bounded `cancelChangeJob(jobId)` for later
+  product use, but the current Models page intentionally adds no cancel button
+  or client-owned cancellation state machine. It also owns no fake coordinator,
+  scenario, backup, restore, or second execution state machine.
+- Same-plan/same-digest backend replay is an authoritative
+  `idempotent_replay`, not a second execution. Existing repeat-click protection
+  remains a UX guard rather than the idempotency authority.
 - Positive Apply copy derives only from a validated terminal job. Succeeded and
   warning both state that real usage has not been observed. Recovery-required
   and mixed/unavailable resources are never green; a failed writer with the
   original baseline authoritatively restored remains a confirmed failure, not
-  an unknown recovery state.
+  an unknown recovery state. `cancelled_before_write` is shown as a confirmed
+  pre-write cancellation, `interrupted_before_write` as a confirmed no-write
+  interruption, `recovered_target_reached` as a warning recovered from real
+  readback, and `compensated` steps are labelled as confirmed compensation.
 
 ## 4. Validation & Error Matrix
 
@@ -650,7 +663,9 @@ fetch/save controls.
 | Draft/save revision changes after a probe result was created                                                                 | Hide that stale result; an old async completion must not become the current configuration status           |
 | Provider Base URL has userinfo/query/fragment or a credential component                                                      | Reject before DB/current/live mutation                                                                     |
 | Provider request is empty, generic, wrong-ID, or has public/secret collision                                                 | Reject in Rust; no state mutation                                                                          |
-| Apply is repeated by StrictMode/double click or carries fields beyond ID/digest                                              | Invoke at most once for that plan; reject the widened request                                              |
+| Apply is repeated by StrictMode/double click or carries fields beyond ID/digest                                              | Same plan/digest converges to one execution; widened request is rejected before product use                |
+| Change Plan descriptor, phase/resource enum, execution/idempotency identity, event sequence, partial result, or cancel DTO drifts | Exact v2 parser fails closed; React never locally guesses the new shape                                |
+| A job is `cancelled_before_write`, `interrupted_before_write`, or `recovered_target_reached`                                 | Render the corresponding confirmed cancellation/interruption/recovered-warning copy; never synthesize generic success |
 | Apply readback is mixed/unavailable or recovery-required                                                                     | Render non-green recovery copy and never synthesize success                                                |
 | Writer failed and the original baseline is authoritatively restored                                                          | Render failed/danger with confirmed-baseline copy; target mismatches are expected, not unknown authority   |
 | Codex `imageExtension: true` omits `experimental_bearer_token` while `requires_openai_auth` is false                         | Host derivation/test fails; current Codex would not send `auth.json`'s key                                 |
@@ -771,9 +786,11 @@ Required focused coverage includes:
 - Agent readiness exact seven-ID/exact-key/sensitive-field-negative coverage,
   single-command ACL registration, browser native-only behavior, no action
   controls, and Codex installer non-regression. Change Plan coverage includes
-  strict DTO parsing, ID/digest-only confirm, realistic baseline-restored
-  resources, all terminal/recovery states, honest usage-evidence copy, and
-  static absence of fake/scenario/cancel/backup/restore product surfaces.
+  strict v2 descriptor/five-phase/partial/cancel/event parsing,
+  ID/digest-only confirm, same-plan idempotent replay, realistic
+  baseline-restored resources, compensated/cancelled/interrupted/recovered
+  states, honest usage-evidence copy, and static absence of a client-owned
+  fake/scenario/cancel/backup/restore product state machine.
 - Revision tests prove a save of N cannot clear a credential/draft entered at
   N+1, successful current-revision saves clear `待保存`, and stale probe
   results disappear after edit/commit. Browser geometry measures the shared

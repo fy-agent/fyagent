@@ -1,0 +1,39 @@
+{
+  "id": "change-plan-typed-executor-final",
+  "name": "change-plan-typed-executor-final",
+  "title": "Canonical Change Plan typed executor",
+  "description": "Salvage the typed executor capabilities from PR #134 onto the canonical Change Plan mainline without restoring the obsolete #130 schema/proof stack.",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": "backend",
+  "package": null,
+  "priority": "P0",
+  "creator": "pythonrust",
+  "assignee": "pythonrust",
+  "createdAt": "2026-08-24",
+  "completedAt": null,
+  "branch": "dev/change-plan-typed-executor-final",
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "src-tauri/src/services/change_plan/**",
+    "src-tauri/src/database/dao/change_plan.rs",
+    "src-tauri/src/commands/change_plan.rs",
+    "src/v2/shared/features/change-plans.ts",
+    "tests/v2/features/change-plans.test.ts"
+  ],
+  "notes": "",
+  "meta": {
+    "issues": [
+      58,
+      59,
+      60
+    ],
+    "supersedes_pr": 134
+  }
+}

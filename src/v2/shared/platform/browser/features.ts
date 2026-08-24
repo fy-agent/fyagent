@@ -20,6 +20,7 @@ export function createBrowserFeaturePorts(): FeaturePorts {
     changePlans: {
       createCodexProviderSwitchPlan: rejectNativeOnly,
       applyChangePlan: rejectNativeOnly,
+      cancelChangeJob: rejectNativeOnly,
       getChangeJob: rejectNativeOnly,
       listRecoverableChangeJobs: rejectNativeOnly,
     },

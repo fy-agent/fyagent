@@ -72,9 +72,10 @@ const REGENERATE_ERRORS = new Set([
 
 const STEP_LABELS = {
   precheck: "核对计划",
-  apply: "应用配置",
+  snapshot: "冻结执行快照",
+  managed_write: "应用配置",
   readback: "回读核对",
-  reconcile: "确认最终状态",
+  finalize: "确认最终状态",
 } as const satisfies Record<ChangeJobSnapshot["steps"][number]["kind"], string>;
 
 const STEP_STATUS_LABELS = {
@@ -82,6 +83,8 @@ const STEP_STATUS_LABELS = {
   running: "进行中",
   succeeded: "已完成",
   failed: "失败",
+  compensating: "正在补偿",
+  compensated: "已补偿",
   skipped: "已跳过",
 } as const satisfies Record<
   ChangeJobSnapshot["steps"][number]["status"],
@@ -108,7 +111,11 @@ function stepStatus(
   switch (status) {
     case "pending":
     case "running":
+    case "compensating":
+      return "running";
     case "succeeded":
+    case "compensated":
+      return "succeeded";
     case "failed":
     case "skipped":
       return status;
@@ -158,7 +165,8 @@ function resourcePresentation(
 function hasUnconfirmedAuthority(job: ChangeJobSnapshot): boolean {
   if (
     job.recoveryState === "succeeded" &&
-    job.resultCode === "writer_failed_baseline_restored"
+    (job.resultCode === "writer_failed_baseline_restored" ||
+      job.resultCode === "interrupted_before_write")
   ) {
     return false;
   }
@@ -223,6 +231,9 @@ function terminalPresentation(
             description: "请按提示完成后续操作，再验证真实使用情况。",
             statusLabel: "需留意",
           };
+        case "recovered_target_reached":
+        case "cancelled_before_write":
+        case "interrupted_before_write":
         case "planned":
         case "running":
         case "writer_failed_baseline_restored":
@@ -241,6 +252,15 @@ function terminalPresentation(
           return assertNever(job.resultCode);
       }
     case "warning":
+      if (job.resultCode === "recovered_target_reached") {
+        return {
+          mode: "warning",
+          tone: "warning",
+          title: "配置已通过恢复回读确认",
+          description: "进程中断后已从真实目标确认配置生效；系统没有重放写入。",
+          statusLabel: "恢复后已确认",
+        };
+      }
       return {
         mode: "warning",
         tone: "warning",
@@ -249,10 +269,20 @@ function terminalPresentation(
         statusLabel: "需留意",
       };
     case "failed":
+      if (job.resultCode === "interrupted_before_write") {
+        return {
+          mode: "failed",
+          tone: "danger",
+          title: "执行在写入前中断",
+          description: "回读已确认未进入托管写入，系统没有重放配置写入。",
+          statusLabel: "未执行写入",
+        };
+      }
       return {
         mode:
           job.resultCode === "recovery_required" ||
           job.resultCode === "writer_error_target_reached" ||
+          job.resultCode === "recovered_target_reached" ||
           job.resultCode === "post_write_mismatch" ||
           job.resultCode === "readback_unavailable"
             ? "recovery"
@@ -273,6 +303,14 @@ function terminalPresentation(
           job.resultCode === "writer_failed_baseline_restored"
             ? "失败"
             : "需要恢复确认",
+      };
+    case "cancelled":
+      return {
+        mode: "failed",
+        tone: "neutral",
+        title: "执行已取消",
+        description: "取消发生在托管写入提交点之前，没有执行配置写入。",
+        statusLabel: "写入前已取消",
       };
     default:
       return assertNever(job.status);
@@ -332,7 +370,7 @@ export function createApplyViewModel(
     label: STEP_LABELS[step.kind],
     detail: STEP_STATUS_LABELS[step.status],
     status: stepStatus(step.status),
-    current: step.status === "running",
+    current: step.status === "running" || step.status === "compensating",
   }));
 
   const resources = (job?.resources ?? []).map(resourcePresentation);
