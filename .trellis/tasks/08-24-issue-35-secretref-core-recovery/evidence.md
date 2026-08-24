@@ -71,11 +71,13 @@ Current canonical toolchain is Rust 1.97.1 as frozen by `rust-toolchain.toml` an
 
 ## Not yet established
 
-- Windows Credential Manager matching-host CRUD/readback/cleanup evidence has
-  not yet run for the replacement branch. A new explicit Windows Backend CI
-  step will own that proof.
-- The final Windows Backend and aggregate Required CI run for the immutable
-  `CredWriteW` fix is pending; earlier runs are failure evidence, not acceptance.
+- Windows Credential Manager matching-host CRUD/readback/cleanup is established
+  on hosted Windows run `32709228999`, job `Backend Checks (Windows)`:
+  `Exercise Credential Manager SecretRef CRUD` ran with
+  `FYAGENT_NATIVE_SECRET_TEST=1` and reported exactly `1 passed; 0 failed; 6 filtered`.
+  The final replacement head must rerun this after rebasing/merging the corrected
+  CI topology; the old run proves native behavior, not final Required closeout.
+- The final aggregate Required CI run for the replacement head remains pending.
 - PR CI evidence is recorded only after the final replacement-PR head finishes.
 - Signed-app macOS Data Protection Keychain CRUD has not yet been established.
   Apple TN3137 requires DPK access groups to come from code-signing entitlements
@@ -85,18 +87,19 @@ Current canonical toolchain is Rust 1.97.1 as frozen by `rust-toolchain.toml` an
 - Provider create/edit, device-local binding authority, lifecycle/journals, commands, V2 UI, and #63 integration are outside this narrow core slice.
 - This evidence does not close Issue #35.
 
-## Integration review findings to resolve
+## Integration review findings resolved in this slice
 
-1. macOS source currently uses
-   `kSecAttrAccessibleWhenUnlockedThisDeviceOnly` without
-   `kSecUseDataProtectionKeychain=true`; official Apple guidance requires the
-   Data Protection Keychain (or synchronizable items) when using accessibility
-   attributes on macOS. This slice chooses DPK + non-sync.
-2. Windows `CredWriteW` is create-or-replace. The original read-before-write
-   comment overclaimed external-race detection: a racing external writer can
-   be overwritten before readback. The implementation and SPEC must state the
-   real limitation and must not delete an unverified raced value.
-3. `SecretVersion` rotates at the service boundary but is not persisted in the
-   OS store. It is therefore a caller-side generation token, not an OS revision
-   or standalone CAS mechanism; later binding integration owns authoritative
-   stale-handle checks.
+1. macOS now sets `kSecUseDataProtectionKeychain=true` together with
+   `kSecAttrAccessibleWhenUnlockedThisDeviceOnly` and non-synchronizing items.
+   The unsigned/plain-Cargo harness fails closed with `errSecMissingEntitlement`;
+   signed-app DPK activation remains a later production-consumer gate.
+2. Windows `CredWriteW` is documented and implemented as create-or-replace at
+   the OS boundary. The original external-race overclaim was removed, and a
+   failed verification no longer blindly deletes an unverified raced value.
+3. macOS create verification now follows the same ownership rule: `SecItemAdd`
+   remains atomic create-only, but a later readback failure/mismatch does not
+   authorize deleting a value that may have been updated by another entitled
+   process between add and verification.
+4. `SecretVersion` is explicitly documented as a caller-side generation token,
+   not an OS revision or standalone CAS mechanism; later binding integration
+   owns authoritative stale-handle checks.

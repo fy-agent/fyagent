@@ -71,7 +71,15 @@ the accessibility attribute apply.
 
 Create uses `SecItemAdd`, so an existing composite identity returns duplicate
 instead of silently replacing it. Create/replace must read back and compare the
-material in constant time; failed create verification attempts cleanup.
+material in constant time. A failed create verification must not blindly delete
+the item: after the add returns, a same-access-group process could have raced an
+update, and FyAgent may delete only a value whose ownership is still proven.
+With the current dormant core API this can leave an unreachable native item if
+`SecItemAdd` succeeds but authoritative readback does not settle successfully.
+That is preferable to destructive compensation, but it is not a complete
+production lifecycle. The first production consumer must retain the generated
+`SecretRef` in a durable admission/recovery boundary until verification settles,
+or provide an equivalent ownership-safe reconciliation mechanism.
 
 ### Windows Credential Manager
 
@@ -116,6 +124,9 @@ Credential Manager memory returned by `CredReadW` is always released with
 - The first production consumer must register `services::secret` in the same
   reviewed integration change; do not pre-register it with broad dead-code or
   unused-import lint allowances.
+- That consumer also owns create admission/recovery so a native create that
+  succeeded but could not be authoritatively read back does not become an
+  unrecoverable hidden lifecycle state.
 - The first macOS production consumer must also prove the signed FyAgent host
   carries an authorized data-protection-keychain access group. The current
   Developer ID/notarization chain must not be assumed to provide that identity
@@ -134,7 +145,7 @@ Credential Manager memory returned by `CredReadW` is always released with
 | Windows create sees an existing target | return stable already-exists error before `CredWriteW` |
 | Windows documentation/code claims `CredWriteW` is atomic create-only | reject; Win32 specifies create-or-replace semantics |
 | native store locked/denied/unavailable | source-free stable error/probe; no fallback |
-| create/replace readback differs | fail verification; create attempts cleanup |
+| create/replace readback differs | fail verification; never delete an unproven current value; production activation additionally requires recoverable create ownership |
 | serialized DTO/error/debug contains secret canary | test failure / NO-GO |
 | Windows matching-host HIL did not execute | Windows SecretRef merge gate remains incomplete |
 | dormant SecretRef module requires `allow(dead_code)` to stay registered | remove premature registration; register with the first real consumer instead |

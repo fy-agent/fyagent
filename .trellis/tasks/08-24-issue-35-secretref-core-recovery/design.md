@@ -51,7 +51,11 @@ Protection Keychain selector is mandatory because macOS only supports
 `kSecAttrAccessible` with the Data Protection Keychain or synchronizable items;
 this contract chooses device-local Data Protection Keychain plus explicit
 non-sync. Raw `OSStatus` values are mapped inside the leaf and not stored or
-returned.
+returned. A failed create readback does not authorize a compensating delete:
+another entitled process could have updated the item after `SecItemAdd`.
+Because that fail-closed rule can leave an unverified native item, the first
+production consumer must retain durable create-admission/recovery authority
+until verification settles.
 
 ### Windows
 

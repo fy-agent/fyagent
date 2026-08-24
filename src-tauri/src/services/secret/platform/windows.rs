@@ -176,8 +176,10 @@ impl SecretBackend for WindowsSecretBackend {
         }
         // Credential Manager exposes upsert semantics. The instance mutex plus
         // this explicit read-before-write prevents FyAgent's own create paths
-        // from silently replacing a record; external writers remain detectable
-        // through the mandatory readback and higher-level handle/version CAS.
+        // from silently replacing a record. Win32 offers no atomic create-only
+        // primitive here, so a process that somehow races this exact random
+        // target is not ruled out by this leaf; the first production binding
+        // owner must add authoritative generation/CAS lifecycle protection.
         self.write_locked(secret_ref, material, CredentialOperation::Create)
     }
 

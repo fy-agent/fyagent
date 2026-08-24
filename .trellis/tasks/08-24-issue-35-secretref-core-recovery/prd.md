@@ -19,6 +19,7 @@ work that belongs to later verticals.
 - Zeroize material buffers on drop and prevent `Clone`, `Serialize`, `Deserialize`, `Display`, and value-bearing `Debug` implementations.
 - Add a deterministic in-memory backend only for contract/failure tests. It must not be selected by production construction.
 - Keep the standalone core unregistered until the first production consumer. Integration tests and native HIL compile it now; do not add broad dead-code/unused-import allowances merely to pre-register a dormant module. Do not add public Tauri commands, AppState wiring, SQLite schema/version, Provider writer paths, Change Plan mutations, network behavior, V2 UI, hardware backends, or migration in this slice.
+- Because fail-closed create verification no longer performs an unproven compensating delete, the first production consumer must retain enough durable admission/recovery authority to reconcile a create that reached the native store but whose readback outcome is unknown. This dormant core slice does not claim that lifecycle is complete.
 - Treat the frozen #35 D2 documents at `a338ee18` as behavioral input only. Do not rebase or cherry-pick PR #112.
 - Preserve the contributor ancestry from PR #132 in the replacement integration branch; the external PR itself will be closed unmerged only after the replacement PR exists.
 - Add a maintained SecretBackend code-spec and native Windows CI evidence so the security contract is executable and durable rather than living only in the recovery task.
@@ -33,7 +34,7 @@ work that belongs to later verticals.
 - [x] Historical pre-DPK macOS CRUD evidence is retained only as legacy file-based Keychain evidence and is explicitly not treated as acceptance for the corrected DPK contract.
 - [x] The former plain-`cargo test` macOS Keychain HIL is invalidated after DPK correction: it now fails closed with `errSecMissingEntitlement`, as expected for an unsigned/non-provisioned test host. This result is recorded and is not misreported as DPK acceptance.
 - [x] Signed-app macOS DPK CRUD/readback/cleanup is explicitly deferred to the first production consumer, and the maintained contract blocks activation until FyAgent's host identity/provisioning profile authorizes the access group.
-- [ ] Windows matching-host Credential Manager CRUD/readback/cleanup runs as an explicit native CI step and proves exactly one ignored integration test executed successfully.
+- [x] Windows matching-host Credential Manager CRUD/readback/cleanup runs as an explicit native CI step and proves exactly one ignored integration test executed successfully; final replacement-head Required CI must rerun this after the CI-topology update.
 - [x] Production Rust lint remains warnings-denied without dormant SecretRef lint suppressions; `services/mod.rs` registration is deferred to the first real consumer.
 - [x] `cargo check --locked --all-targets`, Clippy, focused Rust tests, architecture/CI contract tests, and full repository gates pass on the integrated current-main branch.
 - [x] A secret canary scan finds zero occurrences in serialized DTOs, Debug/Display output, errors, logs produced by focused tests, and repository fixtures added by this PR.

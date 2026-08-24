@@ -369,13 +369,7 @@ impl SecretBackend for MacOsSecretBackend {
         if status != ERR_SUCCESS {
             return Err(map_status(status, KeychainOperation::Create));
         }
-        if let Err(error) = self.verify_locked(secret_ref, material) {
-            if let Ok(query) = identity_query(service.raw(), account.raw()) {
-                unsafe { SecItemDelete(query.raw() as CFDictionaryRef) };
-            }
-            return Err(error);
-        }
-        Ok(())
+        self.verify_locked(secret_ref, material)
     }
 
     fn replace(
