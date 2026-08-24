@@ -48,7 +48,7 @@ The current Codex descriptor is closed:
 
 ```text
 adapterId          = codex_provider_switch
-adapterVersion     = 2
+adapterVersion     = 1
 operationType      = codex_provider_switch
 phases             = precheck -> snapshot -> managed_write -> readback -> finalize
 readSet            = provider_db_current, device_current,
@@ -66,6 +66,9 @@ faultPoints        = before_managed_write,
 ### Wire version and phase model
 
 - `CHANGE_PLAN_CONTRACT_VERSION = fyagent-change-plan/v2`.
+- Wire-contract and adapter versions are independent axes. The current Codex
+  adapter is the first registered implementation (`adapterVersion=1`); a wire
+  contract revision alone does not imply an adapter-version bump.
 - New jobs expose exactly five phases: `precheck`, `snapshot`,
   `managed_write`, `readback`, `finalize`.
 - Step status is closed to `pending`, `running`, `succeeded`, `failed`,
@@ -97,6 +100,11 @@ faultPoints        = before_managed_write,
   `status=cancelled`.
 - After managed-write claim, cancel returns `commit_point_passed` and cannot
   hide or roll back an in-flight write.
+- The cancellation gate is process-local. If cancellation wins but the process
+  is lost before the executor commits the terminal cancellation snapshot, the
+  durable ledger still proves only a pre-write interruption. Recovery therefore
+  reports `interrupted_before_write`, never fabricates a persisted
+  `cancelled_before_write` record, and still invokes the writer zero times.
 
 ### Durable transitions and partial truth
 
@@ -109,6 +117,12 @@ faultPoints        = before_managed_write,
   action codes (`retry_readback`, `review_configuration`).
 - A confirmed writer-owned rollback marks `managed_write=compensated`.
   Current Codex has no generic undo executor.
+- Adapter error classes must describe facts the executor can actually prove.
+  The current Provider writer does not expose retryability, so writer-returned
+  failures use `writer_failed`; do not infer `transient` or `permanent` from a
+  collapsed writer error. `unknown_outcome` is reserved for execution/readback
+  uncertainty, while executor-level cancellation/interruption is represented
+  by its result code rather than misclassified as an adapter error.
 
 ### Crash recovery
 

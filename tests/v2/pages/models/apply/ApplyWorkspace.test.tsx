@@ -26,7 +26,7 @@ const plan: ChangePlan = {
   status: "ready",
   adapter: {
     adapterId: "codex_provider_switch",
-    adapterVersion: "2",
+    adapterVersion: "1",
     operationType: "codex_provider_switch",
     phases: [
       "precheck",

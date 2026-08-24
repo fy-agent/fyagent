@@ -84,8 +84,7 @@ string_enum!(ChangeFaultPoint {
 });
 string_enum!(ChangeAdapterErrorCode {
     PreconditionFailed,
-    Transient,
-    Permanent,
+    WriterFailed,
     UnknownOutcome,
     VerifyFailed,
     CompensationFailed,
@@ -387,7 +386,7 @@ mod tests {
     fn descriptor() -> ChangeAdapterDescriptor {
         ChangeAdapterDescriptor {
             adapter_id: "codex_provider_switch".into(),
-            adapter_version: "2".into(),
+            adapter_version: "1".into(),
             operation_type: ChangeOperation::CodexProviderSwitch,
             phases: vec![
                 ChangeStepKind::Precheck,

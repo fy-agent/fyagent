@@ -29,7 +29,7 @@ export type ChangeResourceKind =
 
 export type ChangeAdapterDescriptor = {
   readonly adapterId: "codex_provider_switch";
-  readonly adapterVersion: "2";
+  readonly adapterVersion: "1";
   readonly operationType: "codex_provider_switch";
   readonly phases: readonly ChangeStepKind[];
   readonly readSet: readonly ChangeResourceKind[];
@@ -130,8 +130,7 @@ export type ChangeJobSnapshot = {
     | "recovery_required";
   readonly adapterErrorCode:
     | "precondition_failed"
-    | "transient"
-    | "permanent"
+    | "writer_failed"
     | "unknown_outcome"
     | "verify_failed"
     | "compensation_failed"
@@ -267,7 +266,7 @@ function parseAdapterDescriptor(value: unknown): ChangeAdapterDescriptor {
       "faultPoints",
     ]) ||
     value.adapterId !== "codex_provider_switch" ||
-    value.adapterVersion !== "2" ||
+    value.adapterVersion !== "1" ||
     value.operationType !== "codex_provider_switch" ||
     !isExactSequence(value.phases, STEP_KINDS) ||
     !isExactSequence(value.readSet, RESOURCE_KINDS) ||
@@ -507,8 +506,7 @@ export function parseChangeJobSnapshot(value: unknown): ChangeJobSnapshot {
       value.adapterErrorCode === null ||
       isOneOf(value.adapterErrorCode, [
         "precondition_failed",
-        "transient",
-        "permanent",
+        "writer_failed",
         "unknown_outcome",
         "verify_failed",
         "compensation_failed",

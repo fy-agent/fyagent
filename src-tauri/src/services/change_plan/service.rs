@@ -1026,13 +1026,12 @@ where
 
 fn adapter_error_for_result(result: ChangeResultCode) -> Option<ChangeAdapterErrorCode> {
     match result {
-        ChangeResultCode::WriterFailedBaselineRestored => Some(ChangeAdapterErrorCode::Permanent),
-        ChangeResultCode::WriterErrorTargetReached => Some(ChangeAdapterErrorCode::Transient),
+        ChangeResultCode::WriterFailedBaselineRestored
+        | ChangeResultCode::WriterErrorTargetReached => Some(ChangeAdapterErrorCode::WriterFailed),
         ChangeResultCode::PostWriteMismatch => Some(ChangeAdapterErrorCode::VerifyFailed),
         ChangeResultCode::ReadbackUnavailable
         | ChangeResultCode::RecoveryRequired
         | ChangeResultCode::RecoveredTargetReached => Some(ChangeAdapterErrorCode::UnknownOutcome),
-        ChangeResultCode::InterruptedBeforeWrite => Some(ChangeAdapterErrorCode::Transient),
         _ => None,
     }
 }
@@ -1360,7 +1359,7 @@ mod tests {
         assert_eq!(first.plan_digest, second.plan_digest);
         assert_eq!(first.baseline_digest, second.baseline_digest);
         assert_eq!(first.adapter.adapter_id, "codex_provider_switch");
-        assert_eq!(first.adapter.adapter_version, "2");
+        assert_eq!(first.adapter.adapter_version, "1");
         assert_eq!(
             first.adapter.phases,
             vec![

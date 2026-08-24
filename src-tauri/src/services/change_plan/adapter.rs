@@ -46,7 +46,7 @@ pub(crate) fn descriptor_for_operation(operation: ChangeOperation) -> ChangeAdap
     match operation {
         ChangeOperation::CodexProviderSwitch => ChangeAdapterDescriptor {
             adapter_id: "codex_provider_switch".to_string(),
-            adapter_version: "2".to_string(),
+            adapter_version: "1".to_string(),
             operation_type: ChangeOperation::CodexProviderSwitch,
             phases: vec![
                 ChangeStepKind::Precheck,

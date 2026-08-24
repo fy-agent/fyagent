@@ -15,7 +15,7 @@
     "status": "ready",
     "adapter": {
       "adapterId": "codex_provider_switch",
-      "adapterVersion": "2",
+      "adapterVersion": "1",
       "operationType": "codex_provider_switch",
       "phases": ["precheck", "snapshot", "managed_write", "readback", "finalize"],
       "readSet": ["provider_db_current", "device_current", "target_definition", "codex_live_projection"],
