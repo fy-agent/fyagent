@@ -276,7 +276,7 @@ must not be merged directly into current main.
 Remote state at handoff:
 
 ```text
-state: OPEN Draft
+state: CLOSED Draft, not merged
 base: codex/issue-55-codex-switch-recovery
 head: codex/issue-58-60-executor-recovery
 head SHA: ec15bef545145528f03778003c586ebc1b64971e
@@ -293,8 +293,8 @@ head: dev/change-plan-typed-executor-final
 
 The replacement task is archived at
 `.trellis/tasks/archive/2026-08/08-24-change-plan-typed-executor-final`.
-Once the PR URL binding is committed/pushed, close old Draft #134 as superseded
-and let #146 complete through exact-head PR CI + Merge Queue. Do not create the
+#134 has been closed as superseded and #146 has `Merge when ready` enabled.
+Let #146 complete through exact-head PR CI + Merge Queue. Do not create the
 #136 replacement branch from pre-merge ancestry; implementation starts from the
 final #146 merge result on `main`.
 
@@ -320,8 +320,8 @@ Do **not** salvage:
 
 ```text
 branch: dev/change-plan-typed-executor-final
-task: .trellis/tasks/08-24-change-plan-typed-executor-final
-status: in_progress until final prearchive/archive closeout
+task: .trellis/tasks/archive/2026-08/08-24-change-plan-typed-executor-final
+status: completed and archived
 ```
 
 Key commits already created:
@@ -364,9 +364,10 @@ Validation already observed on the replacement work:
 
 **Current handoff point:** implementation, final direct-session prearchive,
 archive, and post-archive contracts are complete. Replacement PR #146 exists.
-Commit/push its archive binding, close old #134 as superseded, hand #146 to
-Merge Queue, then wait for the queue result and synchronize the canonical
-mainline before starting the #136 replacement.
+Its archive binding is committed, old #134 is closed as superseded, and #146 is
+handed to Auto-merge/Merge Queue. Wait for the queue result, synchronize the
+canonical mainline and `dev/laiyongjie`, then create the #136 replacement branch.
+Read-only #136 salvage analysis may proceed while #146 is hosted.
 
 Issue closure guidance:
 

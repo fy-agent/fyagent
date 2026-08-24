@@ -149,7 +149,7 @@ grandfather the final metadata state.
 
 ## Final direct-session prearchive
 
-- `TRELLIS_CONTEXT_ID=chatgpt-change-plan-executor mise run check:prearchive --exclude-active-task .trellis/tasks/08-24-change-plan-typed-executor-final`
+- `TRELLIS_CONTEXT_ID=chatgpt-change-plan-executor mise run check:prearchive -- --exclude-active-task .trellis/tasks/08-24-change-plan-typed-executor-final`
   — PASS, exit 0 on the final code/spec/workspace-handoff state.
 - The passing run included frontend 1491 passed / 1 skipped, Rust 2853 passed /
   5 ignored, supported-platform 2135 current files, release contracts, task/docs
