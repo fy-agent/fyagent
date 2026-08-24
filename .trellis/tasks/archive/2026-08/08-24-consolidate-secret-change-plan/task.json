@@ -1,17 +1,17 @@
 {
-  "id": "consolidate-integration-governance",
-  "name": "consolidate-integration-governance",
-  "title": "Integration and governance consolidation",
-  "description": "Own shared registration, schema migration, cross-layer integration, final validation, and governance evidence.",
+  "id": "consolidate-secret-change-plan",
+  "name": "consolidate-secret-change-plan",
+  "title": "Secret and Change Plan consolidation",
+  "description": "PRs 112 and 114: implement canonical Change Plan contracts and secret admission boundary without shared registration.",
   "status": "completed",
   "dev_type": null,
-  "scope": "fullstack",
+  "scope": "backend",
   "package": null,
   "priority": "P0",
   "creator": "codex",
   "assignee": "codex",
   "createdAt": "2026-08-24",
-  "completedAt": "2026-08-24T04:11:43+08:00",
+  "completedAt": "2026-08-24",
   "branch": "codex/pr-108-115-consolidation",
   "base_branch": "main",
   "worktree_path": "/Users/<username>/.codex/worktrees/08-24-pr-108-115-consolidation/fyagent",
@@ -21,11 +21,10 @@
   "children": [],
   "parent": "08-24-pr-108-115-consolidation",
   "relatedFiles": [
-    "src-tauri/src/database/schema.rs",
-    "src-tauri/src/lib.rs",
-    "src/v2/shared/features/ports.ts"
+    "src-tauri/src/services/change_plan/",
+    "src-tauri/src/database/dao/change_plan.rs"
   ],
-  "notes": "Shared integration and local cross-layer acceptance are complete; GitHub governance remains root-owned.",
+  "notes": "Implementation and focused acceptance are complete; root retains commit and PR ownership.",
   "meta": {
     "executor_lock": "gpt-5.6-sol-high",
     "parent_task": "08-24-pr-108-115-consolidation",

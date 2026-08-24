@@ -11,7 +11,7 @@
   "creator": "codex",
   "assignee": "codex",
   "createdAt": "2026-08-24",
-  "completedAt": "2026-08-24T04:11:43+08:00",
+  "completedAt": "2026-08-24",
   "branch": "codex/pr-108-115-consolidation",
   "base_branch": "main",
   "worktree_path": "/Users/<username>/.codex/worktrees/08-24-pr-108-115-consolidation/fyagent",
