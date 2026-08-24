@@ -535,10 +535,25 @@ jobs:
           RUST_TEST_THREADS: "1"
         run: cargo test --workspace --features fyagent/test-hooks --locked --manifest-path src-tauri/Cargo.toml --no-fail-fast
 
+      - name: Exercise Credential Manager SecretRef CRUD
+        id: secretref-hil
+        if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
+        env:
+          FYAGENT_NATIVE_SECRET_TEST: "1"
+        shell: pwsh
+        run: |
+          $output = @(& cargo test --locked --manifest-path src-tauri/Cargo.toml --test secret_service_contract native_os_backend_crud_readback -- --ignored --exact --nocapture --test-threads=1 2>&1)
+          $exitCode = $LASTEXITCODE
+          $output | ForEach-Object { Write-Host $_ }
+          $joined = $output -join "`n"
+          if ($exitCode -ne 0 -or $joined -notmatch "test result: ok\. 1 passed; 0 failed") {
+            throw "Credential Manager SecretRef CRUD did not execute exactly once"
+          }
+
       - name: Evaluate collected diagnostics
         if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
         env:
-          CI_REQUIRED_STEPS: setup-pnpm,setup-node,setup-rust,cache-cargo-registry,toolchains,frontend-placeholder,prepare-helper,rust-check,clippy,rust-tests
+          CI_REQUIRED_STEPS: setup-pnpm,setup-node,setup-rust,cache-cargo-registry,toolchains,frontend-placeholder,prepare-helper,rust-check,clippy,rust-tests,secretref-hil
           CI_STEP_RESULTS: ${{ toJSON(steps) }}
         run: node scripts/ci/evaluate-step-outcomes.mjs
 

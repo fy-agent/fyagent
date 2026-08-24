@@ -3,10 +3,11 @@ mod secret;
 
 use std::collections::HashSet;
 
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+use secret::NativeSecretBackend;
 use secret::{
-    MaterialMatches, MemoryFailureMode, MemorySecretBackend, NativeSecretBackend,
-    SecretAvailability, SecretBackend, SecretErrorCode, SecretMaterial, SecretPresence,
-    SecretPurpose, SecretRef, SecretService,
+    MaterialMatches, MemoryFailureMode, MemorySecretBackend, SecretAvailability, SecretBackend,
+    SecretErrorCode, SecretMaterial, SecretPresence, SecretPurpose, SecretRef, SecretService,
 };
 use serde_json::Value;
 use uuid::Uuid;

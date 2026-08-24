@@ -91,6 +91,7 @@ extern "C" {
     static kSecAttrSynchronizable: CFStringRef;
     static kSecAttrAccessible: CFStringRef;
     static kSecAttrAccessibleWhenUnlockedThisDeviceOnly: CFStringRef;
+    static kSecUseDataProtectionKeychain: CFStringRef;
     static kSecValueData: CFStringRef;
     static kSecReturnData: CFStringRef;
     static kSecReturnAttributes: CFStringRef;
@@ -203,6 +204,10 @@ fn identity_query(service: CFTypeRef, account: CFTypeRef) -> Result<CfOwned, Sec
                 kSecAttrSynchronizable as CFTypeRef,
                 kCFBooleanFalse as CFTypeRef,
             ),
+            (
+                kSecUseDataProtectionKeychain as CFTypeRef,
+                kCFBooleanTrue as CFTypeRef,
+            ),
             (kSecMatchLimit as CFTypeRef, kSecMatchLimitOne as CFTypeRef),
         ])
     }
@@ -220,6 +225,10 @@ fn read_query(service: CFTypeRef, account: CFTypeRef) -> Result<CfOwned, SecretS
             (
                 kSecAttrSynchronizable as CFTypeRef,
                 kCFBooleanFalse as CFTypeRef,
+            ),
+            (
+                kSecUseDataProtectionKeychain as CFTypeRef,
+                kCFBooleanTrue as CFTypeRef,
             ),
             (kSecMatchLimit as CFTypeRef, kSecMatchLimitOne as CFTypeRef),
             (kSecReturnData as CFTypeRef, kCFBooleanTrue as CFTypeRef),
@@ -239,6 +248,10 @@ fn probe_query(service: CFTypeRef, account: CFTypeRef) -> Result<CfOwned, Secret
             (
                 kSecAttrSynchronizable as CFTypeRef,
                 kCFBooleanFalse as CFTypeRef,
+            ),
+            (
+                kSecUseDataProtectionKeychain as CFTypeRef,
+                kCFBooleanTrue as CFTypeRef,
             ),
             (kSecMatchLimit as CFTypeRef, kSecMatchLimitOne as CFTypeRef),
             (
@@ -340,6 +353,10 @@ impl SecretBackend for MacOsSecretBackend {
                 (
                     kSecAttrSynchronizable as CFTypeRef,
                     kCFBooleanFalse as CFTypeRef,
+                ),
+                (
+                    kSecUseDataProtectionKeychain as CFTypeRef,
+                    kCFBooleanTrue as CFTypeRef,
                 ),
                 (
                     kSecAttrAccessible as CFTypeRef,

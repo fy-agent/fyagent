@@ -374,6 +374,17 @@ describe("automatic CI workflow", () => {
       firstWindowsCargo,
     );
     expect(windows).not.toContain("pnpm install");
+    const secretRefHil = namedStepBlock(
+      "backend-windows",
+      "Exercise Credential Manager SecretRef CRUD",
+    );
+    expect(secretRefHil).toContain('FYAGENT_NATIVE_SECRET_TEST: "1"');
+    expect(secretRefHil).toContain(
+      "--test secret_service_contract native_os_backend_crud_readback -- --ignored --exact --nocapture --test-threads=1",
+    );
+    expect(secretRefHil).toContain(
+      'if ($exitCode -ne 0 -or $joined -notmatch "test result: ok\\. 1 passed; 0 failed")',
+    );
     expect(
       source.match(
         /^        run: node scripts\/prepare-windows-user-helper\.mjs$/gm,
@@ -438,6 +449,7 @@ describe("automatic CI workflow", () => {
         "Check Rust workspace",
         "Run Clippy",
         "Run Rust tests",
+        "Exercise Credential Manager SecretRef CRUD",
       ],
       "windows-native-contracts": [
         "Setup Node.js",
