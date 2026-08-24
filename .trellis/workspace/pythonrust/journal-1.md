@@ -1474,3 +1474,40 @@ Removed stale squash-main wording from the defensive unreachable-push-before CI 
 ### Status
 
 [OK] **Completed**
+
+
+## Session 46: Fix Merge Queue CI event topology
+
+**Date**: 2026-08-24
+**Task**: Fix Merge Queue CI event topology
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Separated Required CI from ordinary push policy, eliminated queue push/merge_group authority races, updated CI/merge governance specs, and archived the P0 task after full prearchive and post-archive contract gates.
+
+### Main Changes
+
+- Required CI now runs on pull_request, merge_group, and workflow_dispatch only.
+- Added lightweight Commit Convention / Push workflow excluding gh-readonly-queue refs.
+- Added event identity to Required CI concurrency and removed push force-full logic.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b46dbf27` | (see git log) |
+
+### Testing
+
+- [OK] Focused CI/classifier/gate tests: 70/70 passed.
+- [OK] Direct-session full prearchive passed.
+- [OK] Post-archive check:contracts passed.
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- Push exact head, verify only lightweight push policy runs, then hand the PR to Merge Queue and verify merge_group is the sole Required CI authority.

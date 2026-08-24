@@ -112,16 +112,14 @@ describe("automatic CI workflow", () => {
     );
     expect(changes).toContain("PR_BASE_SHA:");
     expect(changes).toContain("MERGE_GROUP_BASE_SHA:");
-    expect(changes).toContain("PUSH_BASE_SHA:");
+    expect(changes).not.toContain("PUSH_BASE_SHA:");
+    expect(changes).toContain("CURRENT_SHA: ${{ github.sha }}");
     expect(changes).toContain("event_force_full=true");
     expect(changes).toContain(".domains |= with_entries(.value = true)");
-    expect(changes).toContain('if [ "$EVENT_NAME" = push ] &&');
-    expect(changes).toContain(
-      'git cat-file -e "${base_sha}^{commit}" 2>/dev/null; then',
-    );
-    expect(changes).toContain(
-      "Push before SHA is not a commit in this clone; using head as an empty comparison",
-    );
+    expect(changes).not.toContain('if [ "$EVENT_NAME" = push ] &&');
+    expect(changes).not.toContain("Push before SHA is not a commit in this clone");
+    expect(changes).toContain("workflow_dispatch)");
+    expect(changes).not.toContain("push)");
 
     expect(jobBlock("contracts")).toContain(
       "if: ${{ !cancelled() && (needs.changes.result == 'failure' || (needs.changes.result == 'success' && (needs.changes.outputs.contracts == 'true' || needs.changes.outputs.docs_spec == 'true'))) }}",

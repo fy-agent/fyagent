@@ -2,7 +2,6 @@ name: CI
 
 on:
   pull_request:
-  push:
   merge_group:
     types: [checks_requested]
   workflow_dispatch:
@@ -11,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && format('dispatch-{0}-{1}', github.run_id, github.run_attempt) || github.event.pull_request.number || github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'workflow_dispatch' && format('dispatch-{0}-{1}', github.run_id, github.run_attempt) || github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 jobs:
@@ -44,8 +43,7 @@ jobs:
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           MERGE_GROUP_BASE_SHA: ${{ github.event.merge_group.base_sha }}
           MERGE_GROUP_HEAD_SHA: ${{ github.event.merge_group.head_sha }}
-          PUSH_BASE_SHA: ${{ github.event.before }}
-          PUSH_HEAD_SHA: ${{ github.sha }}
+          CURRENT_SHA: ${{ github.sha }}
           PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
           set -euo pipefail
@@ -58,23 +56,15 @@ jobs:
               base_sha="$MERGE_GROUP_BASE_SHA"
               head_sha="$MERGE_GROUP_HEAD_SHA"
               ;;
-            push|workflow_dispatch)
-              base_sha="$PUSH_BASE_SHA"
-              head_sha="$PUSH_HEAD_SHA"
+            workflow_dispatch)
+              base_sha="$CURRENT_SHA"
+              head_sha="$CURRENT_SHA"
               ;;
             *)
               echo "Unsupported CI event: $EVENT_NAME" >&2
               exit 1
               ;;
           esac
-          if [[ "$base_sha" =~ ^0{40}$ ]]; then
-            base_sha="$head_sha"
-          fi
-          if [ "$EVENT_NAME" = push ] &&
-            ! git cat-file -e "${base_sha}^{commit}" 2>/dev/null; then
-            echo "Push before SHA is not a commit in this clone; using head as an empty comparison" >&2
-            base_sha="$head_sha"
-          fi
           args=(
             --base "$base_sha"
             --head "$head_sha"
@@ -128,8 +118,7 @@ jobs:
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           MERGE_GROUP_BASE_SHA: ${{ github.event.merge_group.base_sha }}
           MERGE_GROUP_HEAD_SHA: ${{ github.event.merge_group.head_sha }}
-          PUSH_BASE_SHA: ${{ github.event.before }}
-          PUSH_HEAD_SHA: ${{ github.sha }}
+          CURRENT_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           event_force_full=false
@@ -142,14 +131,9 @@ jobs:
               base_sha="$MERGE_GROUP_BASE_SHA"
               head_sha="$MERGE_GROUP_HEAD_SHA"
               ;;
-            push)
-              base_sha="$PUSH_BASE_SHA"
-              head_sha="$PUSH_HEAD_SHA"
-              event_force_full=true
-              ;;
             workflow_dispatch)
-              base_sha="$PUSH_HEAD_SHA"
-              head_sha="$PUSH_HEAD_SHA"
+              base_sha="$CURRENT_SHA"
+              head_sha="$CURRENT_SHA"
               event_force_full=true
               ;;
             *)
@@ -157,20 +141,6 @@ jobs:
               exit 1
               ;;
           esac
-          if [[ "$base_sha" =~ ^0{40}$ ]]; then
-            base_sha="$head_sha"
-          fi
-          # A force-push can set event.before to a commit that fetch-depth: 0
-          # never cloned because no remaining ref points at it. Push events
-          # already force a full domain run, so an empty comparison is enough
-          # for the classifier to succeed. PR/merge-group missing SHAs still
-          # fail closed below.
-          if [ "$EVENT_NAME" = push ] &&
-            ! git cat-file -e "${base_sha}^{commit}" 2>/dev/null; then
-            echo "Push before SHA is not a commit in this clone; using head as an empty comparison" >&2
-            base_sha="$head_sha"
-          fi
-
           classifier_status=0
           node scripts/ci/classify-changes.mjs \
             --base "$base_sha" --head "$head_sha" --json \

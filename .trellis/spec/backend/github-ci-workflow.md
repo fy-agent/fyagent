@@ -3,10 +3,11 @@
 ## 1. Scope and stable public result
 
 This contract owns `.github/workflows/ci.yml`,
+`.github/workflows/commit-convention-push.yml`,
 `scripts/ci/classify-changes.mjs`, `scripts/ci/required-gate.mjs`,
 `scripts/ci/verify-commit-messages.mjs`, and their fixture suites. It applies to
-pull requests, merge queue candidates, pushes on every branch, and manual
-diagnostics.
+pull requests, merge queue candidates, lightweight branch-push commit policy,
+and manual diagnostics.
 
 This workflow owns scheduling and aggregation, not the underlying product
 behavior. Windows installer/runtime review guidance is recorded in
@@ -24,24 +25,32 @@ The workflow has no top-level `paths` or `paths-ignore` filter. The aggregate
 job uses `if: always()`, so a docs-only change, classifier failure, cancelled
 domain job, or timeout cannot make the required result disappear.
 
-The workflow triggers are:
+The Required CI workflow triggers are:
 
 ```yaml
 pull_request:
-push:
 merge_group:
   types: [checks_requested]
 workflow_dispatch:
 ```
 
-- every branch push remains subject to commit-convention and event policy;
-- every `main` push remains a full CI run for that SHA when event policy forces
-  full domains; it is not a formal Release eligibility gate;
-- every `dev/laiyongjie` push remains a full CI run for that SHA; preflight still
-  binds the live remote `dev/laiyongjie` HEAD;
 - PR and `merge_group` runs execute only affected domains;
-- `workflow_dispatch` is a full diagnostic run and is never release evidence
-  because its event is not `push`.
+- `workflow_dispatch` is the explicit full diagnostic path;
+- ordinary branch pushes and `gh-readonly-queue/**` queue-ref pushes do not
+  create `CI / Required` at all.
+
+Branch pushes use the separate lightweight workflow:
+
+```yaml
+push:
+  branches-ignore:
+    - "gh-readonly-queue/**"
+```
+
+It checks only Conventional Commit history and emits `Commit Convention / Push`.
+It does not classify domains, install frontend/Python/Rust dependencies, run
+product tests, or emit `CI / Required`. Queue-ref pushes are excluded because
+`merge_group` is the sole Required CI authority for Merge Queue candidates.
 
 Repository branch protection, rulesets, merge methods, and the Trellis
 merge-readiness lifecycle are outside this workflow and are owned by
@@ -110,11 +119,11 @@ Classification invariants:
   duplicate flags, and option injection fail closed.
 
 The classifier's `forceFull` is path-derived only. Event policy is applied by
-the workflow after classification:
+the Required workflow after classification:
 
 - PR and merge-group candidates keep the classifier plan;
-- pushes to either configured branch and manual diagnostics replace the plan
-  with `forceFull=true` and every existing domain true;
+- manual diagnostics replace the plan with `forceFull=true` and every existing
+  domain true;
 - event forcing never clears `unknownPaths` or converts a classifier error to
   success.
 
@@ -126,21 +135,17 @@ The classifier receives these explicit inputs:
 | ------------------- | ----------------------- | ----------------------- | ---------------- |
 | `pull_request`      | `pull_request.base.sha` | `pull_request.head.sha` | affected domains |
 | `merge_group`       | `merge_group.base_sha`  | `merge_group.head_sha`  | affected domains |
-| `push`              | event `before`          | `github.sha`            | full             |
 | `workflow_dispatch` | `github.sha`            | `github.sha`            | full             |
-
-A first branch push whose `before` value is forty zeroes uses `head` as the
-classifier base, then relies on the independent event full-run policy. A
-`push` whose `before` SHA is not a commit object in the clone (rewritten
-history / force-update that dropped the previous tip) uses the same empty
-comparison. Checkout uses complete comparison history and never executes a
-path-filter action as a second authority.
 
 PR checks intentionally classify the PR head against the explicit base rather
 than inferring identity from a local merge commit. Merge queue checks use the
 event's explicit group base/head pair. A missing PR or merge-group SHA is a
-classifier job failure and therefore a failed `CI / Required`. The workflow
-must not pass an unresolvable push `before` SHA into the classifier.
+classifier job failure and therefore a failed `CI / Required`.
+
+The lightweight push workflow independently compares event `before` to
+`github.sha` for commit-message policy. A first push or an unreachable rewritten
+`before` uses `head` as an empty comparison so the current head subject is still
+validated without escalating into product CI.
 
 ## 4. Domain-to-job topology
 
@@ -220,8 +225,13 @@ exceeds the bound must add complete pagination in the same change.
 
 ## 6. Concurrency and reruns
 
-- PR, merge-group, main push, and dev push groups cancel stale in-progress
-  runs when a newer commit for the same ref/group arrives.
+- Required CI includes `github.event_name` in its concurrency key. PR and
+  merge-group runs therefore cannot cancel each other even if a future workflow
+  change accidentally reuses the same ref text.
+- PR and merge-group groups cancel stale in-progress runs when a newer candidate
+  for the same PR/ref arrives.
+- the lightweight push workflow has its own workflow/ref concurrency namespace
+  and may cancel only an older commit-policy run for that pushed branch.
 - each manual diagnostic run uses its own run ID/attempt group and sets
   `cancel-in-progress=false`; two manual diagnostics do not cancel each other.
 - a native GitHub rerun remains the same run identity with a later attempt and
@@ -380,8 +390,10 @@ Required automated fixtures cover:
   control-plane, multi-path union, rename/delete, unknown paths, and the
   retired generated standalone preview path;
 - malformed/missing/non-commit base/head revisions and option injection;
-- PR, merge-group, push, and manual event wiring;
-- event-forced full CI for both dev/main pushes and diagnostics;
+- PR, merge-group, lightweight push-policy, and manual event wiring;
+- manual-only event-forced full CI;
+- absence of Required CI `push`, absence of queue-ref push policy, and event
+  identity in Required CI concurrency;
 - legal skip versus required skip, unexpected execution, failure,
   cancellation, timeout, classifier failure, incomplete API evidence, and
   result/conclusion mismatch;
@@ -392,9 +404,10 @@ Required automated fixtures cover:
 
 Local static and hermetic tests prove workflow structure and evaluator logic.
 They do not prove a hosted runner exists or that native code executed. A
-successful `CI / Required` on a pushed SHA remains the hosted proof that CI
-domains ran, including x64 and ARM64 native matrix children. It is not a
-formal Release eligibility gate. `windows-11-arm` is public preview;
+successful PR/merge-group `CI / Required` remains hosted proof for the domains
+requested by that exact comparison; when Windows-native is requested it
+includes the x64 and ARM64 matrix children. It is not a formal Release
+eligibility gate. `windows-11-arm` is public preview;
 unavailability blocks that CI job and is never converted into a reduced or
 cross-built run.
 
@@ -443,50 +456,48 @@ never src-tauri/target, never RUSTC_WRAPPER / sccache
 
 ### 1. Scope / Trigger
 
-- Trigger: CI classification is an infra contract. An abnormal history rewrite
-  or force-update can leave `github.event.before` pointing to a commit that
-  `actions/checkout` `fetch-depth: 0` does not clone once no ref points at it.
-  The classifier then fail-closes on a missing `--base`. This is defensive CI
-  behavior, not the supported `dev/laiyongjie` synchronization path; normal dev
-  synchronization follows [GitHub Merge Governance](./github-merge-governance.md).
-- Owner: `.github/workflows/ci.yml` job `changes`, before
-  `scripts/ci/classify-changes.mjs`.
+- Trigger: lightweight branch-push commit policy still needs a comparison range.
+  An abnormal history rewrite or force-update can leave `github.event.before`
+  pointing to a commit that `actions/checkout` `fetch-depth: 0` does not clone
+  once no ref points at it. This is defensive commit-policy behavior, not the
+  supported `dev/laiyongjie` synchronization path; normal dev synchronization
+  follows [GitHub Merge Governance](./github-merge-governance.md).
+- Owner: `.github/workflows/commit-convention-push.yml` before
+  `scripts/ci/verify-commit-messages.mjs`.
 
 ### 2. Signatures
 
 - Workflow resolves `base_sha` / `head_sha`, then
-  `node scripts/ci/classify-changes.mjs --base <sha> --head <sha> --json`
+  `node scripts/ci/verify-commit-messages.mjs --base <sha> --head <sha>`.
 
 ### 3. Contracts
 
 - `push` event `before` that is forty zeroes -> `base_sha = head_sha`.
 - `push` event `before` that is not `${base_sha}^{commit}` in the clone ->
-  `base_sha = head_sha` (empty comparison). Event policy still sets every
-  domain true.
-- `pull_request` / `merge_group` missing SHAs are not rewritten; the
-  classifier still fail-closes.
+  `base_sha = head_sha` (empty comparison).
+- this fallback never invokes the domain classifier or `CI / Required`.
 
 ### 4. Validation & Error Matrix
 
-- Forty-zero or unreachable push `before` -> empty comparison, full push CI.
-- Missing PR/merge-group SHA -> classifier job failure -> failed
-  `CI / Required`.
-- Classifier error after a resolvable SHA -> still a failed classify job;
-  event forcing does not convert that error to success.
+- Forty-zero or unreachable push `before` -> empty comparison and current-head
+  commit subject validation only.
+- Missing PR/merge-group SHA remains a Required classifier failure in
+  `.github/workflows/ci.yml`.
 
 ### 5. Good / Base / Bad Cases
 
 - Good: ordinary push; `before` is an ancestor still fetched by complete
-  history; classifier runs, then event policy forces every domain.
+  history; only the pushed commit range is checked for Conventional Commits.
 - Base: force-update drops the previous tip; workflow logs that `before` is
-  not a commit in the clone and classifies `head` against `head`.
-- Bad: pass the unreachable `before` SHA into the classifier; fail
-  `Classify Changes` while domain jobs already ran as fail-closed full CI.
+  not a commit in the clone and validates `head` against `head`.
+- Bad: use branch push as a second Required CI authority or start product-domain
+  jobs merely to enforce commit-message policy.
 
 ### 6. Tests Required
 
-- `tests/ciWorkflow.test.ts` asserts the push-only `git cat-file -e` fallback
-  and the empty-comparison diagnostic string.
+- `tests/githubWorkflowTriggers.test.ts` asserts the push-only `git cat-file -e`
+  fallback, queue-ref exclusion, and absence of `CI / Required` in the push
+  workflow.
 - Local tests do not clone GitHub's unreachable `before` objects.
 
 ### 7. Wrong vs Correct
@@ -494,16 +505,15 @@ never src-tauri/target, never RUSTC_WRAPPER / sccache
 #### Wrong
 
 ```bash
-node scripts/ci/classify-changes.mjs --base "$PUSH_BASE_SHA" --head "$head_sha" --json
+node scripts/ci/verify-commit-messages.mjs --base "$PUSH_BASE_SHA" --head "$head_sha"
 # git cat-file: before SHA does not identify a commit object
 ```
 
 #### Correct
 
 ```bash
-if [ "$EVENT_NAME" = push ] &&
-  ! git cat-file -e "${base_sha}^{commit}" 2>/dev/null; then
+if ! git cat-file -e "${base_sha}^{commit}" 2>/dev/null; then
   base_sha="$head_sha"
 fi
-node scripts/ci/classify-changes.mjs --base "$base_sha" --head "$head_sha" --json
+node scripts/ci/verify-commit-messages.mjs --base "$base_sha" --head "$head_sha"
 ```

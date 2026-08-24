@@ -132,7 +132,8 @@ implementation complete
   -> Merge Queue creates merge_group against latest main
   -> CI / Required passes on merge_group
   -> merge commit into main
-  -> main push CI passes for the resulting merge SHA
+  -> read back final main merge SHA
+  -> synchronize clean dev/laiyongjie to that final SHA
 ```
 
 The exact PR head passed to GitHub must equal the reviewed/pushed head. A new
@@ -148,12 +149,14 @@ applicable lifecycle checks again before auto-merge is re-enabled.
   current PR comparison.
 - **Merge Queue** proves the candidate still satisfies required checks when
   combined with the latest `main` and earlier queued changes.
-- **main push CI** is post-merge evidence for the exact resulting main SHA.
+- **post-merge readback** proves which exact merge SHA entered `main`. Required
+  CI intentionally does not run on `push`; the merge-group check is the
+  latest-main authority before admission.
 - None of those evidence levels may impersonate another.
 
 ### Long-lived `dev/laiyongjie` synchronization
 
-After a successful mainline merge and successful main push CI:
+After a successful mainline merge whose merge-group Required CI passed:
 
 1. Read back exact remote SHAs for `main` and `dev/laiyongjie`.
 2. If `dev/laiyongjie` has **zero independent commits** and is an ancestor of
@@ -179,16 +182,17 @@ After a successful mainline merge and successful main push CI:
 | `gh pr merge --admin` would bypass queue/protection | Forbidden; never use it for ordinary FyAgent work |
 | Direct push to `main` is proposed | Forbidden; use PR + Merge Queue |
 | A special PR appears to require squash/rebase or temporary queue-method flipping | Stop; keep queue policy stable and resolve commit hygiene/topology on the PR branch |
-| `dev/laiyongjie` is behind final main with zero unique commits | Fast-forward dev to final main after main CI succeeds |
+| `dev/laiyongjie` is behind final main with zero unique commits | Fast-forward dev to the read-back final main SHA |
 | `dev/laiyongjie` has unique commits | Do not force-update; create/finish a PR for those commits first |
-| Post-merge main push CI fails | Main has merged but closeout is not green; investigate before declaring completion/syncing dependent work |
+| A `push` workflow emits `CI / Required` for main, dev, or `gh-readonly-queue/**` | Policy regression; Required CI authority must remain PR/merge-group/manual only |
 
 ## 5. Good / Base / Bad Cases
 
 - **Good:** implementation, SPEC, Trellis prearchive and archive are complete;
   the exact head is pushed; auto-merge is enabled with an exact-head guard;
   Merge Queue validates `merge_group`; one PR enters `main` through one merge
-  commit; main push CI passes; clean dev is then fast-forwarded to the same SHA.
+  commit; final main SHA is read back; clean dev is then fast-forwarded to the
+  same SHA.
 - **Base:** the PR head is ready but hosted PR checks are still running. It is
   valid to enable `Merge when ready` **only because** the local/Trellis
   lifecycle is already closed. GitHub waits and later queues the PR.
@@ -221,9 +225,10 @@ For changes to this governance contract or repository merge configuration:
 5. A Trellis task that changes this policy must pass direct-session prearchive,
    archive successfully, and pass post-archive contracts before its PR is made
    merge-ready.
-6. For a real queued PR, GitHub readback must show the queue-required
-   `CI / Required` success before merge; post-merge readback must bind main push
-   CI to the resulting main SHA.
+6. For a real queued PR, GitHub readback must show exactly one queue authority:
+   `CI / Required` from `merge_group` succeeds before merge, and no queue-ref
+   `push` run may publish a second `CI / Required`. Post-merge readback binds the
+   resulting main SHA directly rather than waiting for a duplicate Full Push CI.
 7. When synchronizing `dev/laiyongjie`, assert ancestry/unique-commit counts
    before update and exact SHA equality plus `0/0` ahead/behind afterward.
 8. Upstream synchronization evidence must continue to prove an explicit
@@ -267,7 +272,7 @@ implementation/test/review
   -> gh pr merge <pr> --auto --match-head-commit <sha>
   -> Merge Queue merge_group + CI / Required
   -> merge commit into main
-  -> main push CI
+  -> read back final main SHA
   -> fast-forward clean dev/laiyongjie to final main
 ```
 
