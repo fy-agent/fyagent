@@ -1411,3 +1411,24 @@ Synced PR #135 with post-#140 main, fixed Change Plan projection parity for targ
 ### Status
 
 [OK] **Completed**
+
+
+## Session 43: Codify GitHub merge governance
+
+**Date**: 2026-08-24
+**Task**: Codify GitHub merge governance
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Recorded squash-only Auto-merge and main Merge Queue settings, made Trellis prearchive/archive the merge-ready authority, documented exact-head queue handoff and final dev/main synchronization, and verified live GitHub settings plus pre/post-archive contracts.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a8587c8c` | (see git log) |
+
+### Status
+
+[OK] **Completed**

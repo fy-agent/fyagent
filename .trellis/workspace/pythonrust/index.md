@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 42
+- **Total Sessions**: 43
 - **Last Active**: 2026-08-24
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1413 | Active |
+| `journal-1.md` | ~1434 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 43 | 2026-08-24 | Codify GitHub merge governance | `a8587c8c` | `dev/laiyongjie` |
 | 42 | 2026-08-24 | Canonicalize PR 135 Change Plan | `46f683a2` | `codex/pr-108-115-consolidation` |
 | 41 | 2026-08-24 | Harden V2 Models config writes | `86ff85dd`, `ac9b2e62`, `63b60659` | `dev/laiyongjie` |
 | 40 | 2026-08-23 | Document Tooling target-gated module boundaries | `9c28c518` | `dev/laiyongjie` |
