@@ -108,7 +108,7 @@ impl Database {
         let row = tx
             .query_row(
                 "SELECT target_provider_id, plan_digest, baseline_digest, expires_at,
-                        status, secret_capability
+                        status, secret_capability, operation
                  FROM change_plans WHERE plan_id = ?1",
                 params![plan_id],
                 |row| {
@@ -119,18 +119,30 @@ impl Database {
                         row.get::<_, i64>(3)?,
                         row.get::<_, String>(4)?,
                         row.get::<_, String>(5)?,
+                        row.get::<_, String>(6)?,
                     ))
                 },
             )
             .optional()
             .map_err(|error| AppError::Database(format!("read admission plan failed: {error}")))?;
 
-        let Some((target_id, expected_digest, baseline_digest, expires_at, status, secret)) = row
+        let Some((
+            target_id,
+            expected_digest,
+            baseline_digest,
+            expires_at,
+            status,
+            secret,
+            operation_value,
+        )) = row
         else {
             return Ok(ApplyChangePlanOutcome::rejected(
                 ChangePlanErrorCode::PlanNotFound,
             ));
         };
+        let operation: ChangeOperation = parse_enum(operation_value).map_err(|error| {
+            AppError::Database(format!("read admission operation failed: {error}"))
+        })?;
         let rejection = if expected_digest != plan_digest {
             Some(ChangePlanErrorCode::InvalidDigest)
         } else if status != "ready" {
@@ -161,8 +173,13 @@ impl Database {
             ));
         }
 
-        let job =
-            ChangeJobSnapshot::planned(job_id.to_string(), plan_id.to_string(), target_id, now);
+        let job = ChangeJobSnapshot::planned(
+            job_id.to_string(),
+            plan_id.to_string(),
+            target_id,
+            now,
+            operation,
+        );
         Self::insert_change_job_on_conn(&tx, &job)?;
         let event = job
             .events

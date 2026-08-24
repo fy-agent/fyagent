@@ -136,6 +136,8 @@ const RESOURCE_LABELS = {
   device_current: "设备当前 Provider",
   target_definition: "目标 Provider 定义",
   codex_live_projection: "Codex 实时配置投影",
+  work_buddy_models_config: "WorkBuddy 模型配置",
+  work_buddy_backup: "WorkBuddy 备份",
 } as const satisfies Record<
   ChangeJobSnapshot["resources"][number]["kind"],
   string
@@ -186,19 +188,28 @@ function evidenceNoteLabel(note: string): string {
 }
 
 function createPreviewModel(plan: ChangePlan): ApplyPreviewModel {
+  const semantic =
+    plan.operation === "workbuddy_models_save"
+      ? {
+          summary: `保存 WorkBuddy 模型配置 ${plan.targetProviderName}（${plan.targetProviderCode}）。`,
+          operationLabel: "WorkBuddy 模型保存并应用",
+        }
+      : plan.operation === "codex_provider_upsert_and_switch"
+        ? {
+            summary: `保存 Codex Provider ${plan.targetProviderName}（${plan.targetProviderCode}）并设为当前配置。`,
+            operationLabel: "Codex Provider 保存并设为当前",
+          }
+        : {
+            summary: `将 Codex 当前 Provider ${plan.currentProviderCode} 切换到 ${plan.targetProviderName}（${plan.targetProviderCode}）。`,
+            operationLabel: "Codex Provider 切换",
+          };
   return {
     semantic: {
-      summary:
-        plan.operation === "codex_provider_upsert_and_switch"
-          ? `保存 Codex Provider ${plan.targetProviderName}（${plan.targetProviderCode}）并设为当前配置。`
-          : `将 Codex 当前 Provider ${plan.currentProviderCode} 切换到 ${plan.targetProviderName}（${plan.targetProviderCode}）。`,
+      summary: semantic.summary,
       currentCode: plan.currentProviderCode,
       targetCode: plan.targetProviderCode,
       targetName: plan.targetProviderName,
-      operationLabel:
-        plan.operation === "codex_provider_upsert_and_switch"
-          ? "Codex Provider 保存并设为当前"
-          : "Codex Provider 切换",
+      operationLabel: semantic.operationLabel,
       planStatusLabel: plan.status === "ready" ? "可确认" : "不可再次使用",
     },
     risk: {

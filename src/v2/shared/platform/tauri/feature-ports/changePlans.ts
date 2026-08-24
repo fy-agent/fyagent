@@ -1,6 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
 
-import type { ProviderQuickSetupRequest } from "../../../features/models";
+import type {
+  ProviderQuickSetupRequest,
+  WorkBuddySaveModelsRequest,
+} from "../../../features/models";
 import {
   parseApplyChangePlanOutcome,
   parseCancelChangeJobOutcome,
@@ -52,6 +55,48 @@ function assertUpsertRequest(
   return request;
 }
 
+function assertWorkBuddySaveRequest(
+  request: WorkBuddySaveModelsRequest,
+): WorkBuddySaveModelsRequest {
+  if (
+    typeof request !== "object" ||
+    request === null ||
+    Array.isArray(request)
+  ) {
+    throw new Error("Change Plan WorkBuddy save request is invalid");
+  }
+  const keys = Object.keys(request);
+  const allowed = new Set([
+    "allowNoApiKey",
+    "apiKey",
+    "baseUrl",
+    "clearExistingApiKeys",
+    "expectedRevision",
+    "manualModelIds",
+    "removedModelIds",
+    "selectedModelIds",
+  ]);
+  if (
+    keys.some((key) => !allowed.has(key)) ||
+    typeof request.baseUrl !== "string" ||
+    !request.baseUrl ||
+    typeof request.apiKey !== "string" ||
+    typeof request.allowNoApiKey !== "boolean" ||
+    !Array.isArray(request.selectedModelIds) ||
+    !Array.isArray(request.manualModelIds) ||
+    (request.removedModelIds !== undefined &&
+      !Array.isArray(request.removedModelIds)) ||
+    typeof request.clearExistingApiKeys !== "boolean" ||
+    !(
+      request.expectedRevision === null ||
+      typeof request.expectedRevision === "string"
+    )
+  ) {
+    throw new Error("Change Plan WorkBuddy save request is invalid");
+  }
+  return request;
+}
+
 export function createChangePlansPort(): ChangePlansPort {
   return {
     createCodexProviderSwitchPlan: async (targetProviderId) =>
@@ -67,6 +112,12 @@ export function createChangePlansPort(): ChangePlansPort {
       parseChangePlan(
         await invoke<unknown>("create_codex_provider_upsert_plan", {
           request: assertUpsertRequest(request),
+        }),
+      ),
+    createWorkBuddySavePlan: async (request) =>
+      parseChangePlan(
+        await invoke<unknown>("create_workbuddy_save_plan", {
+          request: assertWorkBuddySaveRequest(request),
         }),
       ),
     applyChangePlan: async (input) => {

@@ -1,15 +1,17 @@
 use crate::app_config::AppType;
 use crate::provider::Provider;
+use crate::services::workbuddy::types::{SaveWorkBuddyModelsRequest, WorkBuddyConfigFormat};
 use crate::store::AppState;
 
 use super::domain::{
-    ChangeAdapterDescriptor, ChangeCancelMode, ChangeCompensationMode, ChangeFaultPoint,
-    ChangeIdempotencyScope, ChangeOperation, ChangePlanErrorCode, ChangePlanRisk,
+    resources_for_operation, ChangeAdapterDescriptor, ChangeCancelMode, ChangeCompensationMode,
+    ChangeFaultPoint, ChangeIdempotencyScope, ChangeOperation, ChangePlanErrorCode, ChangePlanRisk,
     ChangeResourceKind, ChangeStepKind, RestartRequirement, WriterReceipt,
 };
 use super::sanitize::sanitize_display_name;
 use super::service::{
-    inspect_codex_intended_provider, inspect_codex_switch, CodexSwitchInspection,
+    inspect_codex_intended_provider, inspect_codex_switch, inspect_workbuddy_save,
+    CodexSwitchInspection, WorkBuddySaveInspection,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -51,6 +53,21 @@ pub(crate) fn descriptor_for_operation(operation: ChangeOperation) -> ChangeAdap
     let adapter_id = match operation {
         ChangeOperation::CodexProviderSwitch => "codex_provider_switch",
         ChangeOperation::CodexProviderUpsertAndSwitch => "codex_provider_upsert_and_switch",
+        ChangeOperation::WorkbuddyModelsSave => "workbuddy_models_save",
+    };
+    let (read_set, write_set) = match operation {
+        ChangeOperation::CodexProviderSwitch | ChangeOperation::CodexProviderUpsertAndSwitch => (
+            resources_for_operation(operation),
+            vec![
+                ChangeResourceKind::ProviderDbCurrent,
+                ChangeResourceKind::DeviceCurrent,
+                ChangeResourceKind::CodexLiveProjection,
+            ],
+        ),
+        ChangeOperation::WorkbuddyModelsSave => {
+            let resources = resources_for_operation(operation);
+            (resources.clone(), resources)
+        }
     };
     ChangeAdapterDescriptor {
         adapter_id: adapter_id.to_string(),
@@ -63,17 +80,8 @@ pub(crate) fn descriptor_for_operation(operation: ChangeOperation) -> ChangeAdap
             ChangeStepKind::Readback,
             ChangeStepKind::Finalize,
         ],
-        read_set: vec![
-            ChangeResourceKind::ProviderDbCurrent,
-            ChangeResourceKind::DeviceCurrent,
-            ChangeResourceKind::TargetDefinition,
-            ChangeResourceKind::CodexLiveProjection,
-        ],
-        write_set: vec![
-            ChangeResourceKind::ProviderDbCurrent,
-            ChangeResourceKind::DeviceCurrent,
-            ChangeResourceKind::CodexLiveProjection,
-        ],
+        read_set,
+        write_set,
         idempotency_scope: ChangeIdempotencyScope::Plan,
         cancel_mode: ChangeCancelMode::BeforeManagedWrite,
         compensation_mode: ChangeCompensationMode::WriterOwnedRollback,
@@ -86,6 +94,8 @@ pub(crate) fn descriptor_for_operation(operation: ChangeOperation) -> ChangeAdap
 
 type CodexSwitchWriter<'a> = Box<dyn FnOnce(&str) -> Result<WriterReceipt, ()> + 'a>;
 type CodexUpsertWriter<'a> = Box<dyn FnOnce(Provider) -> Result<WriterReceipt, ()> + 'a>;
+type WorkBuddySaveWriter<'a> =
+    Box<dyn FnOnce(SaveWorkBuddyModelsRequest) -> Result<WriterReceipt, ()> + 'a>;
 
 pub(super) struct CodexProviderSwitchAdapter<'a> {
     state: &'a AppState,
@@ -271,6 +281,100 @@ impl ChangeAdapter for CodexProviderUpsertAdapter<'_> {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct WorkBuddySaveSnapshot {
+    pub config_digest: String,
+    pub backup_digest: String,
+    pub revision: Option<String>,
+}
+
+pub(super) struct WorkBuddySaveAdapter<'a> {
+    request: SaveWorkBuddyModelsRequest,
+    writer: Option<WorkBuddySaveWriter<'a>>,
+}
+
+impl<'a> WorkBuddySaveAdapter<'a> {
+    pub(super) fn for_plan(request: SaveWorkBuddyModelsRequest) -> Self {
+        Self {
+            request,
+            writer: None,
+        }
+    }
+
+    pub(super) fn for_execution<F>(request: SaveWorkBuddyModelsRequest, writer: F) -> Self
+    where
+        F: FnOnce(SaveWorkBuddyModelsRequest) -> Result<WriterReceipt, ()> + 'a,
+    {
+        Self {
+            request,
+            writer: Some(Box::new(writer)),
+        }
+    }
+}
+
+impl ChangeAdapter for WorkBuddySaveAdapter<'_> {
+    type Inspection = WorkBuddySaveInspection;
+    type Snapshot = WorkBuddySaveSnapshot;
+    type WriteReceipt = WriterReceipt;
+
+    fn descriptor(&self) -> ChangeAdapterDescriptor {
+        descriptor_for_operation(ChangeOperation::WorkbuddyModelsSave)
+    }
+
+    fn inspect(&self) -> Result<Self::Inspection, ChangePlanErrorCode> {
+        inspect_workbuddy_save(&self.request)
+    }
+
+    fn plan(&self, inspection: &Self::Inspection) -> ChangeAdapterPlanFields {
+        let mut risks = vec![ChangePlanRisk {
+            code: "local_configuration_write".to_string(),
+            severity: "notice".to_string(),
+        }];
+        if !inspection.existing_update_ids.is_empty() {
+            risks.push(ChangePlanRisk {
+                code: "existing_model_ids_will_be_updated".to_string(),
+                severity: "warning".to_string(),
+            });
+        }
+        ChangeAdapterPlanFields {
+            target_provider_name: workbuddy_display_name(&inspection.canonical_base_url),
+            current_provider_code: workbuddy_format_code(inspection.format).to_string(),
+            target_provider_code: if inspection.format == WorkBuddyConfigFormat::Missing {
+                "object_root".to_string()
+            } else {
+                workbuddy_format_code(inspection.format).to_string()
+            },
+            restart_expectation: RestartRequirement::NotRequired,
+            risks,
+            evidence_note: "usage_not_observed".to_string(),
+        }
+    }
+
+    fn precheck(&self) -> Result<Self::Inspection, ChangePlanErrorCode> {
+        self.inspect()
+    }
+
+    fn snapshot(&self, inspection: &Self::Inspection) -> Self::Snapshot {
+        WorkBuddySaveSnapshot {
+            config_digest: inspection.config_digest.clone(),
+            backup_digest: inspection.backup_digest.clone(),
+            revision: inspection.revision.clone(),
+        }
+    }
+
+    fn managed_write(&mut self) -> Result<WriterReceipt, ()> {
+        self.writer.take().ok_or(())?(self.request.clone())
+    }
+
+    fn verify(&self) -> Result<Self::Inspection, ChangePlanErrorCode> {
+        self.inspect()
+    }
+
+    fn compensation_capability(&self) -> ChangeCompensationMode {
+        ChangeCompensationMode::WriterOwnedRollback
+    }
+}
+
 pub(super) enum CodexExecutionAdapter<'a> {
     Switch(CodexProviderSwitchAdapter<'a>),
     Upsert(Box<CodexProviderUpsertAdapter<'a>>),
@@ -370,4 +474,20 @@ fn current_provider_code(db: &Option<String>, device: &Option<String>) -> String
         _ => "current_mixed",
     }
     .to_string()
+}
+
+fn workbuddy_format_code(format: WorkBuddyConfigFormat) -> &'static str {
+    match format {
+        WorkBuddyConfigFormat::Missing => "missing",
+        WorkBuddyConfigFormat::LegacyArray => "legacy_array",
+        WorkBuddyConfigFormat::ObjectRoot => "object_root",
+    }
+}
+
+fn workbuddy_display_name(canonical_base_url: &str) -> String {
+    let trimmed = canonical_base_url.trim();
+    if trimmed.is_empty() || trimmed.chars().any(char::is_control) {
+        return "WorkBuddy".to_string();
+    }
+    trimmed.chars().take(80).collect()
 }

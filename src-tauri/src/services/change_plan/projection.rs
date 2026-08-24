@@ -26,6 +26,31 @@ pub(crate) fn digest_serializable<T: Serialize>(
     Ok(digest_json(domain, &value))
 }
 
+pub(crate) fn workbuddy_file_digest(bytes: Option<&[u8]>) -> String {
+    digest_json(
+        "fyagent.change-plan.workbuddy-file.v1",
+        &json!({
+            "present": bytes.is_some(),
+            "sha256": bytes.map(|value| format!("{:x}", Sha256::digest(value))),
+        }),
+    )
+}
+
+pub(crate) fn workbuddy_baseline_digest(
+    config_digest: &str,
+    backup_digest: &str,
+    revision: Option<&str>,
+) -> String {
+    digest_json(
+        "fyagent.change-plan.workbuddy-baseline.v1",
+        &json!({
+            "configDigest": config_digest,
+            "backupDigest": backup_digest,
+            "revision": revision,
+        }),
+    )
+}
+
 pub(crate) fn provider_definition_digest(
     provider: &Provider,
 ) -> Result<String, ChangePlanErrorCode> {

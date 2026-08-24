@@ -48,6 +48,7 @@ describe("Codex save Change Plan workspace", () => {
       changePlans: {
         createCodexProviderSwitchPlan: vi.fn(),
         createCodexProviderUpsertPlan: create,
+        createWorkBuddySavePlan: vi.fn(),
         applyChangePlan: apply,
         cancelChangeJob: vi.fn(),
         getChangeJob: get,
@@ -103,6 +104,7 @@ describe("Codex save Change Plan workspace", () => {
       changePlans: {
         createCodexProviderSwitchPlan: vi.fn(),
         createCodexProviderUpsertPlan: create,
+        createWorkBuddySavePlan: vi.fn(),
         applyChangePlan: apply,
         cancelChangeJob: vi.fn(),
         getChangeJob: vi.fn(),

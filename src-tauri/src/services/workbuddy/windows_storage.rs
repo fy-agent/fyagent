@@ -226,6 +226,10 @@ impl WindowsWorkBuddyStorage {
         self.read_named(MODELS_FILE_NAME)
     }
 
+    pub(super) fn read_backup(&self) -> io::Result<Option<Vec<u8>>> {
+        self.read_named(BACKUP_FILE_NAME)
+    }
+
     pub(super) fn snapshot_models(&self) -> io::Result<WindowsModelsSnapshot> {
         self.recheck()?;
         let Some(mut leaf) = self.open_leaf(MODELS_FILE_NAME, LeafAccess::Read)? else {

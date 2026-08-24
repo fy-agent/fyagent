@@ -3,9 +3,11 @@ use tauri::{AppHandle, Emitter, Manager};
 use super::provider::ProviderQuickSetupRequest;
 use crate::app_config::AppType;
 use crate::services::change_plan::{
-    ApplyChangePlanOutcome, CancelChangeJobOutcome, ChangeJobEventHint, ChangeJobSnapshot,
-    ChangePlan, ChangePlanErrorCode, ChangePlanService, WriterReceipt,
+    write_workbuddy_save_locked, ApplyChangePlanOutcome, CancelChangeJobOutcome,
+    ChangeJobEventHint, ChangeJobSnapshot, ChangePlan, ChangePlanErrorCode, ChangePlanService,
+    WriterReceipt,
 };
+use crate::services::workbuddy::types::SaveWorkBuddyModelsRequest;
 use crate::services::ProviderService;
 use crate::store::AppState;
 
@@ -37,6 +39,21 @@ pub async fn create_codex_provider_upsert_plan(
             .into_provider(&AppType::Codex)
             .map_err(|_| ChangePlanErrorCode::InvalidTarget)?;
         ChangePlanService::plan_codex_upsert(&state, provider)
+    })
+    .await
+    .map_err(|_| ChangePlanErrorCode::Internal)?
+}
+
+#[tauri::command]
+pub async fn create_workbuddy_save_plan(
+    app_handle: AppHandle,
+    request: SaveWorkBuddyModelsRequest,
+) -> Result<ChangePlan, ChangePlanErrorCode> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app_handle
+            .try_state::<AppState>()
+            .ok_or(ChangePlanErrorCode::Internal)?;
+        ChangePlanService::plan_workbuddy_save(&state, request)
     })
     .await
     .map_err(|_| ChangePlanErrorCode::Internal)?
@@ -77,6 +94,7 @@ pub async fn apply_change_plan(
                         live_config_changed: result.live_config_changed,
                     })
             },
+            write_workbuddy_save_locked,
             move |hint: ChangeJobEventHint| {
                 let _ = app_for_events.emit("change-job://updated", hint);
             },

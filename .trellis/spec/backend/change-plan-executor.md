@@ -7,13 +7,15 @@ Change Plan schema-v20 ledger. Use it when adding an operation adapter,
 execution phase, idempotency/cancellation behavior, job event, partial result,
 or crash-recovery rule.
 
-The current registered operations are `codex_provider_switch` and
-`codex_provider_upsert_and_switch`. The executor must not become an arbitrary
-workflow engine: no shell command, script, caller path, raw Provider
-definition, network action, or dynamic write target may be supplied by the
-renderer or stored in the ledger. Upsert holds the intended Provider in a
-process-private draft keyed by `planId`; the public plan and SQLite row stay
-credential-free.
+The current registered operations are `codex_provider_switch`,
+`codex_provider_upsert_and_switch`, and `workbuddy_models_save`. The executor
+must not become an arbitrary workflow engine: no shell command, script, caller
+path, raw Provider definition, network action, or dynamic write target may be
+supplied by the renderer or stored in the ledger. Upsert holds the intended
+Provider in a process-private draft keyed by `planId`; WorkBuddy save holds the
+intended `SaveWorkBuddyModelsRequest` (including API Key) the same way. The
+public plan and SQLite row stay credential-free. API keys and overwrite tokens
+never appear in plan, job, event, or log payloads.
 
 Schema v20 remains canonical. `change_plans`, `change_jobs`, and
 `change_job_events` stay local-only and are not redefined by executor changes.
@@ -25,6 +27,7 @@ Schema v20 remains canonical. `change_plans`, `change_jobs`, and
 ```text
 create_codex_provider_switch_plan(targetProviderId) -> ChangePlan
 create_codex_provider_upsert_plan(request) -> ChangePlan
+create_workbuddy_save_plan(request) -> ChangePlan
 apply_change_plan(planId, planDigest) -> ApplyChangePlanOutcome
 cancel_change_job(jobId) -> CancelChangeJobOutcome
 get_change_job(jobId) -> ChangeJobSnapshot
@@ -33,7 +36,8 @@ list_recoverable_change_jobs() -> ChangeJobSnapshot[]
 
 Apply accepts exactly `planId + planDigest`. Cancel accepts exactly `jobId`.
 Neither command accepts an operation body, path, command, secret, or target
-configuration.
+configuration. `create_workbuddy_save_plan` is zero-write; it inspects
+`models.json` without taking the WorkBuddy write lock.
 
 ### Event hint
 
@@ -48,18 +52,28 @@ event never carries the full snapshot.
 
 The private registered adapter owns typed `inspect`, `plan`, `precheck`,
 `snapshot`, `managed_write`, `verify`, and `compensation_capability` methods.
-Both Codex descriptors share this closed execution contract; only
-`adapterId` / `operationType` differ:
+Codex switch and upsert share `CodexExecutionAdapter` and this closed
+execution contract; only `adapterId` / `operationType` differ. WorkBuddy save
+is a separate adapter and apply path that reuses the same phase machine,
+admission, and `persist_transition` helpers. It is not a third
+`CodexExecutionAdapter` variant.
+
+Resource sets are operation-scoped. Codex keeps the four-kind read set and
+three-kind write set below. WorkBuddy `readSet` and `writeSet` are
+`work_buddy_models_config`, `work_buddy_backup`.
 
 ```text
 adapterId          = codex_provider_switch
                      | codex_provider_upsert_and_switch
+                     | workbuddy_models_save
 adapterVersion     = 1
 operationType      = same as adapterId
 phases             = precheck -> snapshot -> managed_write -> readback -> finalize
-readSet            = provider_db_current, device_current,
+Codex readSet      = provider_db_current, device_current,
                      target_definition, codex_live_projection
-writeSet           = provider_db_current, device_current, codex_live_projection
+Codex writeSet     = provider_db_current, device_current, codex_live_projection
+WorkBuddy readSet  = work_buddy_models_config, work_buddy_backup
+WorkBuddy writeSet = work_buddy_models_config, work_buddy_backup
 idempotencyScope   = plan
 cancelMode         = before_managed_write
 compensationMode   = writer_owned_rollback
@@ -146,7 +160,20 @@ faultPoints        = before_managed_write,
 ### Security and ownership
 
 - Provider mutation remains owned by the existing lock-held Provider writer;
-  the executor does not implement a second writer.
+  the executor does not implement a second writer. WorkBuddy apply never takes
+  the Codex Provider mutation lock. It takes the existing WorkBuddy tokio
+  Mutex via `blocking_lock()` on the `spawn_blocking` apply path, then calls
+  `save_workbuddy_models_at_locked`. If the first call returns
+  `overwrite_confirmation_required`, apply retries once with that token while
+  still holding the lock. The overwrite token never leaves the adapter. A
+  successful WorkBuddy write returns `WriterReceipt { live_config_changed: false }`
+  and `restartExpectation=not_required`. Reserved `targetProviderId` is
+  `fyagent-v2-workbuddy-models`. Plan inspect is read-only. Risks always include
+  `local_configuration_write`; when existing model IDs would be updated, add
+  `existing_model_ids_will_be_updated`. WorkBuddy classify compares models.json
+  revision/content digest and backup digest against the stored baseline. Writer
+  failure plus restored baseline is `writer_failed_baseline_restored` with
+  recovery succeeded. Revision drift before admit is `stale`.
 - Plan/job/event/partial/error DTOs remain credential- and path-free.
 - SecretRef integration is separate. A secret-blocked target fails closed
   before admission/writer invocation.

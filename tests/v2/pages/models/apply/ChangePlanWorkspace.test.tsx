@@ -30,6 +30,7 @@ describe("Models Change Plan connection", () => {
       changePlans: {
         createCodexProviderSwitchPlan: create,
         createCodexProviderUpsertPlan: vi.fn(),
+        createWorkBuddySavePlan: vi.fn(),
         applyChangePlan: apply,
         cancelChangeJob: cancel,
         getChangeJob: get,
@@ -107,6 +108,7 @@ describe("Models Change Plan connection", () => {
           targetProviderId: "targetA",
         })),
         createCodexProviderUpsertPlan: vi.fn(),
+        createWorkBuddySavePlan: vi.fn(),
         applyChangePlan: vi.fn(async () => ({
           kind: "admitted" as const,
           job: running,

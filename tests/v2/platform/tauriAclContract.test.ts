@@ -124,7 +124,7 @@ describe("V2 native ACL contract", () => {
     const allowed = activeAclCommands();
 
     expect(renderer.dynamicInvokes).toEqual([]);
-    expect(renderer.commands.size).toBe(82);
+    expect(renderer.commands.size).toBe(83);
     expect(
       [...renderer.commands].filter((command) => !registered.has(command)),
     ).toEqual([]);
@@ -144,6 +144,7 @@ describe("V2 native ACL contract", () => {
     const expected = [
       "create_codex_provider_switch_plan",
       "create_codex_provider_upsert_plan",
+      "create_workbuddy_save_plan",
       "apply_change_plan",
       "get_change_job",
       "list_recoverable_change_jobs",

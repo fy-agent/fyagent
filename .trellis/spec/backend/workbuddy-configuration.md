@@ -39,12 +39,22 @@ save_workbuddy_models({
   -> { state: "saved", revision, modelCount, createdEntries, updatedEntries }
    | { state: "overwrite_confirmation_required", token, existingIds }
    | { state: "concurrent_modification" }
+
+create_workbuddy_save_plan(SaveWorkBuddyModelsRequest) -> ChangePlan
 ```
 
 The dedicated commands accept no `AppType`, Provider ID, renderer-controlled
 filesystem path, arbitrary request URL, or log/debug echo field. An overwrite
 token is opaque, short-lived, one-time, and bound to the normalized but
 otherwise exact save request plus the expected revision.
+
+Chip-remove continues to call `save_workbuddy_models` immediately, including
+one internal overwrite-token replay after the delete confirmation. Models
+「保存并应用」 does not call `save_workbuddy_models`. It creates a zero-write
+Change Plan, then confirms with `{planId, planDigest}` only. Overwrite is a
+plan risk (`existing_model_ids_will_be_updated`) digested inside the adapter
+during apply; the save path has no overwrite confirmation dialog. Apply holds
+the existing WorkBuddy write lock, never the Codex Provider mutation lock.
 
 ## 3. Contracts
 
@@ -138,10 +148,19 @@ FILE_SHARE_DELETE` but never `FILE_SHARE_WRITE`, records its identity and
   entry ID, detects duplicate target IDs, and only then considers a write.
 - Existing target IDs without a valid matching confirmation capability return
   `overwrite_confirmation_required` with one opaque token and unique
-  `existingIds`. This preflight creates neither backup nor primary write. The UI
-  freezes the exact request and retries only that request with the token. V2
-  existing-model delete confirms once in the UI, then may auto-replay that
-  token so the user is not asked a second time.
+  `existingIds`. This preflight creates neither backup nor primary write.
+  Chip-remove (existing-model delete) still calls `save_workbuddy_models`
+  directly: the UI confirms once, then may auto-replay that token so the user
+  is not asked a second time. V2 Models 「保存并应用」 does not surface that
+  token. It creates a zero-write Change Plan through `create_workbuddy_save_plan`
+  and confirms with `{planId, planDigest}` only. The adapter holds the
+  WorkBuddy write lock and consumes any overwrite capability internally.
+  Revision drift at apply is `stale`; the UI regenerates the plan rather than
+  retrying the old digest. A failed apply write restores `models.json` from the
+  pre-apply backup when that restore succeeds, and the job remains a confirmed
+  failure with `writer_failed_baseline_restored`. API keys stay in the
+  process-private draft and the locked writer; they never enter the public
+  plan, job, events, logs, or query cache.
 - The backend consumes the token before rereading, validates request and
   revision binding, rereads under the lock, and checks the revision again.
   Malformed, mismatched, expired, or reused tokens never authorize a write.
@@ -199,7 +218,9 @@ FILE_SHARE_DELETE` but never `FILE_SHARE_WRITE`, records its identity and
 | Revision changes before save or confirmed overwrite                                                             | Return `concurrent_modification`; write neither backup nor primary.                                                             |
 | Windows profile, `.workbuddy`, primary, or backup resolves through a reparse point or changes identity          | Fail closed before the target, backup, or any temporary leaf is mutated.                                                        |
 | A Windows writer already owns, or tries to acquire, a write-compatible primary handle                           | Reject the snapshot/save; create neither backup nor temporary leaf.                                                             |
-| Target IDs already exist without a matching overwrite token                                                     | Return one confirmation requirement; write neither backup nor primary.                                                          |
+| Target IDs already exist without a matching overwrite token                                                     | Direct `save_workbuddy_models` returns one confirmation requirement and writes nothing. Change Plan apply consumes the capability internally; the renderer never sees the token. |
+| Change Plan apply sees revision/file baseline drift                                                             | `stale`; no write; UI regenerates the plan.                                                                                    |
+| A failed Change Plan write restores the pre-apply backup                                                        | Failed job with `writer_failed_baseline_restored`, compensated managed-write, and `recoveryState=succeeded`.                    |
 | `removedModelIds` match existing entries without a matching overwrite token                                     | Return one confirmation requirement listing those IDs; write neither backup nor primary.                                        |
 | A removal-only save commits with a valid token                                                                  | Delete matching entries and prune populated `availableModels`; URL/key are not required.                                        |
 | Token is malformed, expired, mismatched, or reused                                                              | Consume/reject it, expose no credential or target contents, and write nothing.                                                  |

@@ -2,6 +2,24 @@ use serde::{Deserialize, Serialize};
 
 pub(crate) const CHANGE_PLAN_CONTRACT_VERSION: &str = "fyagent-change-plan/v2";
 pub(crate) const CHANGE_PLAN_TTL_SECONDS: i64 = 15 * 60;
+pub(crate) const WORKBUDDY_MODELS_TARGET_ID: &str = "fyagent-v2-workbuddy-models";
+
+pub(crate) fn resources_for_operation(operation: ChangeOperation) -> Vec<ChangeResourceKind> {
+    match operation {
+        ChangeOperation::CodexProviderSwitch | ChangeOperation::CodexProviderUpsertAndSwitch => {
+            vec![
+                ChangeResourceKind::ProviderDbCurrent,
+                ChangeResourceKind::DeviceCurrent,
+                ChangeResourceKind::TargetDefinition,
+                ChangeResourceKind::CodexLiveProjection,
+            ]
+        }
+        ChangeOperation::WorkbuddyModelsSave => vec![
+            ChangeResourceKind::WorkBuddyModelsConfig,
+            ChangeResourceKind::WorkBuddyBackup,
+        ],
+    }
+}
 
 macro_rules! string_enum {
     ($name:ident { $($variant:ident),+ $(,)? }) => {
@@ -13,7 +31,8 @@ macro_rules! string_enum {
 
 string_enum!(ChangeOperation {
     CodexProviderSwitch,
-    CodexProviderUpsertAndSwitch
+    CodexProviderUpsertAndSwitch,
+    WorkbuddyModelsSave
 });
 string_enum!(ChangePlanStatus { Ready, Consumed });
 string_enum!(SecretCapabilityResult {
@@ -55,7 +74,9 @@ string_enum!(ChangeResourceKind {
     ProviderDbCurrent,
     DeviceCurrent,
     TargetDefinition,
-    CodexLiveProjection
+    CodexLiveProjection,
+    WorkBuddyModelsConfig,
+    WorkBuddyBackup
 });
 string_enum!(ChangeResourceStatus {
     Pending,
@@ -258,7 +279,13 @@ impl ChangeJobSnapshot {
         !self.status.is_terminal() || self.recovery_state == RecoveryState::RecoveryRequired
     }
 
-    pub(crate) fn planned(job_id: String, plan_id: String, target_id: String, now: i64) -> Self {
+    pub(crate) fn planned(
+        job_id: String,
+        plan_id: String,
+        target_id: String,
+        now: i64,
+        operation: ChangeOperation,
+    ) -> Self {
         let first_event = ChangeJobEvent {
             sequence: 1,
             phase: ChangeStepKind::Precheck,
@@ -290,19 +317,14 @@ impl ChangeJobSnapshot {
                 code: "pending".to_string(),
             })
             .collect(),
-            resources: [
-                ChangeResourceKind::ProviderDbCurrent,
-                ChangeResourceKind::DeviceCurrent,
-                ChangeResourceKind::TargetDefinition,
-                ChangeResourceKind::CodexLiveProjection,
-            ]
-            .into_iter()
-            .map(|kind| ChangeResourceResult {
-                kind,
-                status: ChangeResourceStatus::Pending,
-                code: "pending".to_string(),
-            })
-            .collect(),
+            resources: resources_for_operation(operation)
+                .into_iter()
+                .map(|kind| ChangeResourceResult {
+                    kind,
+                    status: ChangeResourceStatus::Pending,
+                    code: "pending".to_string(),
+                })
+                .collect(),
             partial_result: None,
             events: vec![first_event],
             restart_requirement: RestartRequirement::Unknown,

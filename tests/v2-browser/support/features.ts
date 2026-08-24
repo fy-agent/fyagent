@@ -295,6 +295,8 @@ export async function installRichTauriFeatureFixture(
     let workBuddyRevision = "fixture-revision-1";
     let workBuddyModelIds = ["existing-model"];
     let workBuddySaveAttempts = 0;
+    let workBuddyPlan: Record<string, unknown> | null = null;
+    let workBuddySaveRequest: Record<string, unknown> | null = null;
     const installerReleaseId = `v1:${"a".repeat(64)}`;
     const installerRemote = {
       releaseId: installerReleaseId,
@@ -404,6 +406,129 @@ export async function installRichTauriFeatureFixture(
         evidenceNote: "usage_not_observed",
       };
     };
+    const workBuddyAdapter = {
+      adapterId: "workbuddy_models_save",
+      adapterVersion: "1",
+      operationType: "workbuddy_models_save",
+      phases: [
+        "precheck",
+        "snapshot",
+        "managed_write",
+        "readback",
+        "finalize",
+      ],
+      readSet: ["work_buddy_models_config", "work_buddy_backup"],
+      writeSet: ["work_buddy_models_config", "work_buddy_backup"],
+      idempotencyScope: "plan",
+      cancelMode: "before_managed_write",
+      compensationMode: "writer_owned_rollback",
+      faultPoints: [
+        "before_managed_write",
+        "after_managed_write_before_record",
+      ],
+    };
+    const makeWorkBuddyPlan = (overwrite: boolean) => {
+      const createdAt = changePlanNow();
+      return {
+        planId: "plan-workbuddy-save",
+        operation: "workbuddy_models_save",
+        targetProviderId: "fyagent-v2-workbuddy-models",
+        targetProviderName: "https://workbuddy.example.test/v1",
+        planDigest: digest("c"),
+        baselineDigest: digest("d"),
+        dbBaselineProviderId: null,
+        deviceBaselineProviderId: null,
+        secretCapability: "no_new_credential_material",
+        createdAt,
+        expiresAt: createdAt + 900,
+        status: "ready",
+        adapter: workBuddyAdapter,
+        currentProviderCode: "object_root",
+        targetProviderCode: "object_root",
+        restartExpectation: "not_required",
+        risks: overwrite
+          ? [
+              { code: "local_configuration_write", severity: "notice" },
+              {
+                code: "existing_model_ids_will_be_updated",
+                severity: "warning",
+              },
+            ]
+          : [{ code: "local_configuration_write", severity: "notice" }],
+        evidenceNote: "usage_not_observed",
+      };
+    };
+    const makeWorkBuddyJob = (failed: boolean) => ({
+      jobId: "job-workbuddy-save",
+      executionId: "job-workbuddy-save",
+      planId: "plan-workbuddy-save",
+      idempotencyKey: "plan-workbuddy-save",
+      targetProviderId: "fyagent-v2-workbuddy-models",
+      revision: 5,
+      eventSeq: 5,
+      status: failed ? "failed" : "succeeded",
+      resultCode: failed ? "writer_failed_baseline_restored" : "applied",
+      adapterErrorCode: failed ? "writer_failed" : null,
+      steps: failed
+        ? [
+            { kind: "precheck", status: "succeeded", code: "ok" },
+            { kind: "snapshot", status: "succeeded", code: "ok" },
+            { kind: "managed_write", status: "compensated", code: "ok" },
+            { kind: "readback", status: "succeeded", code: "ok" },
+            { kind: "finalize", status: "succeeded", code: "ok" },
+          ]
+        : [
+            { kind: "precheck", status: "succeeded", code: "ok" },
+            { kind: "snapshot", status: "succeeded", code: "ok" },
+            { kind: "managed_write", status: "succeeded", code: "ok" },
+            { kind: "readback", status: "succeeded", code: "ok" },
+            { kind: "finalize", status: "succeeded", code: "ok" },
+          ],
+      resources: [
+        { kind: "work_buddy_models_config", status: "matched", code: "ok" },
+        { kind: "work_buddy_backup", status: "matched", code: "ok" },
+      ],
+      partialResult: failed
+        ? {
+            succeededSteps: ["precheck", "snapshot", "readback", "finalize"],
+            compensatedSteps: ["managed_write"],
+            unverifiedSteps: [],
+            remainingEffects: [],
+            manualActions: [],
+          }
+        : {
+            succeededSteps: [
+              "precheck",
+              "snapshot",
+              "managed_write",
+              "readback",
+              "finalize",
+            ],
+            compensatedSteps: [],
+            unverifiedSteps: [],
+            remainingEffects: [],
+            manualActions: [],
+          },
+      events: [
+        { sequence: 1, phase: "precheck", reasonCode: "ok", createdAt: 1 },
+        { sequence: 2, phase: "snapshot", reasonCode: "ok", createdAt: 2 },
+        {
+          sequence: 3,
+          phase: "managed_write",
+          reasonCode: failed ? "writer_owned_rollback_confirmed" : "ok",
+          createdAt: 3,
+        },
+        { sequence: 4, phase: "readback", reasonCode: "ok", createdAt: 4 },
+        { sequence: 5, phase: "finalize", reasonCode: "ok", createdAt: 5 },
+      ],
+      restartRequirement: "not_required",
+      usageEvidence: "not_observed",
+      recoveryState: failed ? "succeeded" : "not_needed",
+      diagnosticCode: null,
+      liveConfigChanged: false,
+      createdAt: 1,
+      updatedAt: 5,
+    });
     const makeTerminalJob = (failed: boolean) => ({
       jobId: "job-codex-upsert",
       executionId: "job-codex-upsert",
@@ -798,7 +923,51 @@ export async function installRichTauriFeatureFixture(
             changeJob = null;
             return structuredClone(upsertPlan);
           }
+          case "create_workbuddy_save_plan": {
+            const request = payload.request as
+              | Record<string, unknown>
+              | undefined;
+            workBuddySaveRequest = structuredClone(request ?? {});
+            workBuddyPlan = makeWorkBuddyPlan(
+              fixtureOptions.workBuddySave === "overwrite_then_saved",
+            );
+            changeJob = null;
+            return structuredClone(workBuddyPlan);
+          }
           case "apply_change_plan": {
+            if (
+              workBuddyPlan &&
+              payload.planId === workBuddyPlan.planId
+            ) {
+              if (payload.planDigest !== workBuddyPlan.planDigest) {
+                return { kind: "rejected", errorCode: "stale" };
+              }
+              if (fixtureOptions.workBuddySave === "concurrent_modification") {
+                return { kind: "rejected", errorCode: "stale" };
+              }
+              const failed = fixtureOptions.workBuddySave === "failure";
+              if (!failed && workBuddySaveRequest) {
+                workBuddyModelIds = [
+                  ...new Set(
+                    [
+                      ...((workBuddySaveRequest.selectedModelIds as
+                        | string[]
+                        | undefined) ?? []),
+                      ...((workBuddySaveRequest.manualModelIds as
+                        | string[]
+                        | undefined) ?? []),
+                    ].filter(Boolean),
+                  ),
+                ];
+                workBuddyRevision = "fixture-revision-applied";
+              }
+              workBuddyPlan = { ...workBuddyPlan, status: "consumed" };
+              changeJob = makeWorkBuddyJob(failed);
+              return {
+                kind: "admitted",
+                job: structuredClone(changeJob),
+              };
+            }
             if (
               !upsertPlan ||
               payload.planId !== upsertPlan.planId ||
