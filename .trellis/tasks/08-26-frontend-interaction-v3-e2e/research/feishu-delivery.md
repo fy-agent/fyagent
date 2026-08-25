@@ -33,3 +33,14 @@ Batch readback returned `total=12`. All 11 attachments are `msg_type=image`, `de
 - Message: `om_x100b67e811a83ca0defd6075efa841e`
 - Readback: `msg_type=post`, `deleted=false`, position `22`, expected chat and bot sender confirmed.
 - Content: six-surface/eleven-state implementation boundary, query navigation, readiness/unknown/no-fake-cancel rule, model/prompt capability honesty, Memory copy-content requirement, focused test strategy, and the single model/plan approval request.
+
+## 2026-08-26 A-to-A audit and implementation-start report
+
+- Design document append/readback: revision `22`.
+- Added authority section: `2026-08-26｜A-to-A 审计完成与并行实现启动（M1 前置）`.
+- Document identity: `user`; append and section readback both returned `ok=true`.
+- Group report: `om_x100b67e884d134a4de3cee3f344a27b`.
+- Report readback: `msg_type=post`, `deleted=false`, position `25`, expected chat and `codex` bot sender confirmed.
+- Representative image: `om_x100b67e8823318a0c49e00172f9b21d`.
+- Image readback: `msg_type=image`, `deleted=false`, position `26`, real `img_v3_*` key, expected chat and bot sender confirmed.
+- Content: historical rationale, six-route/eleven-state boundary, Gemini and Grok route truth, fixed `gpt-5.6-sol/max` Codex implementation tasks, four-way ownership, current Memory evidence, and explicit uncompleted runtime/UAT boundaries.
