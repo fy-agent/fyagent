@@ -387,6 +387,7 @@ fn plist_string(app: &Path, key: &str) -> Option<String> {
     Some(value.to_string())
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn parse_mount_point(plist: &[u8]) -> Option<PathBuf> {
     let text = String::from_utf8_lossy(plist);
     let key = "<key>mount-point</key>";
