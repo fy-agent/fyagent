@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 51
+- **Total Sessions**: 52
 - **Last Active**: 2026-08-25
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1686 | Active |
+| `journal-1.md` | ~1708 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 52 | 2026-08-25 | Agent one-click install and Codex multi-account auth | `2f468156`, `d9c582b5` | `feat/agent-install-auth` |
 | 51 | 2026-08-25 | WorkBuddy Change Plan salvage | `07d3e952` | `dev/workbuddy-change-plan` |
 | 50 | 2026-08-25 | Codex Provider Change Plan salvage | `d277beb3` | `dev/codex-provider-change-plan` |
 | 49 | 2026-08-24 | V2 Change Plan UI salvage | `ca6e2b89` | `dev/v2-change-plan-ui` |
