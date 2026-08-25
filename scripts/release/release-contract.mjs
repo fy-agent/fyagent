@@ -117,9 +117,10 @@ export function readCargoWorkspaceVersion(source) {
       continue;
     }
     if (!inWorkspacePackage) continue;
-    const assignment = /^version\s*=\s*"((?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))"\s*(?:#.*)?$/u.exec(
-      line,
-    );
+    const assignment =
+      /^version\s*=\s*"((?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))"\s*(?:#.*)?$/u.exec(
+        line,
+      );
     if (assignment) versions.push(assignment[1]);
   }
   assert(
@@ -523,7 +524,9 @@ export function buildBuildMetadata({
     `Unsupported release event: ${identity.event}`,
   );
   assert(
-    identity.mode === (identity.event === "push" ? "formal" : "preflight"),
+    (identity.mode === "formal" &&
+      ["push", "workflow_dispatch"].includes(identity.event)) ||
+      (identity.mode === "preflight" && identity.event === "workflow_dispatch"),
     "Release mode does not match event",
   );
   assert(
@@ -557,10 +560,7 @@ export function buildBuildMetadata({
   const ciRunAttempt = identity.ciRunAttempt;
   const ciAbsent = ciRunId === null && ciRunAttempt === null;
   if (!ciAbsent) {
-    assert(
-      /^[1-9]\d*$/.test(String(ciRunId)),
-      "ciRunId must be numeric",
-    );
+    assert(/^[1-9]\d*$/.test(String(ciRunId)), "ciRunId must be numeric");
     assert(
       /^[1-9]\d*$/.test(String(ciRunAttempt)),
       "ciRunAttempt must be numeric",

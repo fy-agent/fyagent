@@ -175,14 +175,19 @@ function normalizeRef(value, expectedRef, label) {
   };
 }
 
-function authorityBranchForEvent(eventName) {
-  if (eventName === "workflow_dispatch") {
+function authorityBranchForEvent(eventName, dispatchMode) {
+  if (eventName === "workflow_dispatch" && dispatchMode === "preflight") {
     return { branch: DEV_BRANCH, ref: DEV_REF };
   }
-  if (eventName === "push") {
+  if (
+    eventName === "push" ||
+    (eventName === "workflow_dispatch" && dispatchMode === "formal")
+  ) {
     return { branch: FORMAL_BRANCH, ref: FORMAL_REF };
   }
-  fail(`unsupported release event ${JSON.stringify(eventName)}`);
+  fail(
+    `unsupported release event/mode ${JSON.stringify(eventName)} / ${JSON.stringify(dispatchMode)}`,
+  );
 }
 
 async function collectRemoteDev(client, repoPath, authority) {
@@ -206,8 +211,8 @@ async function collectRemoteDev(client, repoPath, authority) {
   };
 }
 
-async function collectRemoteTag(client, repoPath, eventName, candidate) {
-  if (eventName !== "push") return null;
+async function collectRemoteTag(client, repoPath, formal, candidate) {
+  if (!formal) return null;
   const expectedTagRef = `refs/tags/${candidate.releaseTag}`;
   const refResponse = await client.get(
     `/repos/${repoPath}/git/ref/tags/${encodeURIComponent(candidate.releaseTag)}`,
@@ -259,22 +264,53 @@ function createEventAndCandidate(context) {
   expectEqual(repositoryId, EXPECTED_REPOSITORY_ID, "context.repositoryId");
 
   const eventName = expectString(context.eventName, "context.eventName");
-  const dispatchSourceSha =
-    eventName === "workflow_dispatch"
-      ? expectSha(context.dispatchSourceSha, "context.dispatchSourceSha")
-      : null;
-  if (
-    eventName !== "workflow_dispatch" &&
-    context.dispatchSourceSha !== null &&
-    context.dispatchSourceSha !== undefined &&
-    context.dispatchSourceSha !== ""
-  ) {
-    fail("context.dispatchSourceSha must be empty outside workflow_dispatch");
+  const rawDispatchMode = context.dispatchMode;
+  const rawDispatchSourceSha = context.dispatchSourceSha;
+  let dispatchMode = null;
+  let dispatchSourceSha = null;
+  if (eventName === "workflow_dispatch") {
+    dispatchMode = expectString(rawDispatchMode, "context.dispatchMode");
+    if (dispatchMode === "preflight") {
+      dispatchSourceSha = expectSha(
+        rawDispatchSourceSha,
+        "context.dispatchSourceSha",
+      );
+    } else if (dispatchMode === "formal") {
+      if (
+        rawDispatchSourceSha !== null &&
+        rawDispatchSourceSha !== undefined &&
+        rawDispatchSourceSha !== ""
+      ) {
+        fail(
+          "context.dispatchSourceSha must be empty for formal workflow_dispatch",
+        );
+      }
+    } else {
+      fail(
+        `context.dispatchMode must be \"preflight\" or \"formal\" for workflow_dispatch; received ${JSON.stringify(dispatchMode)}`,
+      );
+    }
+  } else {
+    if (
+      rawDispatchMode !== null &&
+      rawDispatchMode !== undefined &&
+      rawDispatchMode !== ""
+    ) {
+      fail("context.dispatchMode must be empty outside workflow_dispatch");
+    }
+    if (
+      rawDispatchSourceSha !== null &&
+      rawDispatchSourceSha !== undefined &&
+      rawDispatchSourceSha !== ""
+    ) {
+      fail("context.dispatchSourceSha must be empty outside workflow_dispatch");
+    }
   }
 
   return {
     repository: { nameWithOwner: repository, id: repositoryId },
     event: {
+      dispatchMode,
       dispatchSourceSha,
       name: eventName,
       ref: expectString(context.ref, "context.ref"),
@@ -303,7 +339,10 @@ export async function collectDevReleaseRemoteEvidence(
   if (typeof fetchImpl !== "function")
     fail("fetch implementation is unavailable");
   const identity = createEventAndCandidate(context);
-  const authority = authorityBranchForEvent(identity.event.name);
+  const authority = authorityBranchForEvent(
+    identity.event.name,
+    identity.event.dispatchMode,
+  );
   const repoPath = repositoryPath(identity.repository.nameWithOwner);
   const client = createApiClient({
     apiBase: expectString(context.apiBase, "context.apiBase"),
@@ -323,7 +362,7 @@ export async function collectDevReleaseRemoteEvidence(
   const remoteTag = await collectRemoteTag(
     client,
     repoPath,
-    identity.event.name,
+    identity.event.name === "push" || identity.event.dispatchMode === "formal",
     identity.candidate,
   );
   const remoteDev = await collectRemoteDev(client, repoPath, authority);
@@ -392,6 +431,7 @@ export function contextFromEnvironment(env = process.env) {
     appVersion: requiredEnvironment(env, "RELEASE_APP_VERSION"),
     releaseTag: requiredEnvironment(env, "RELEASE_TAG"),
     sourceSha: requiredEnvironment(env, "RELEASE_SOURCE_SHA"),
+    dispatchMode: env.RELEASE_DISPATCH_MODE ?? null,
     dispatchSourceSha: env.RELEASE_DISPATCH_SOURCE_SHA ?? null,
   };
 }

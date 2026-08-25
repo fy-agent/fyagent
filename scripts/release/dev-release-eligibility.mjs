@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
 export const DEV_RELEASE_ELIGIBILITY_INPUT_SCHEMA =
-  "fyagent-dev-release-eligibility-input/v1";
+  "fyagent-dev-release-eligibility-input/v2";
 export const EXPECTED_REPOSITORY = "fy-agent/fyagent";
 export const EXPECTED_REPOSITORY_ID = "1313497021";
 export const RELEASE_WORKFLOW_NAME = "Release";
@@ -138,10 +138,22 @@ function validateCandidate(value) {
 function validateEvent(value) {
   const event = expectExactKeys(
     value,
-    ["dispatchSourceSha", "name", "ref", "refName", "refType", "sha"],
+    [
+      "dispatchMode",
+      "dispatchSourceSha",
+      "name",
+      "ref",
+      "refName",
+      "refType",
+      "sha",
+    ],
     "event",
   );
   return {
+    dispatchMode:
+      event.dispatchMode === null
+        ? null
+        : expectString(event.dispatchMode, "event.dispatchMode"),
     dispatchSourceSha: event.dispatchSourceSha,
     name: expectString(event.name, "event.name"),
     ref: expectString(event.ref, "event.ref"),
@@ -216,11 +228,7 @@ function validateRemoteTag(value, releaseTag, sourceSha) {
     if (remoteTag.tagObject !== null) {
       fail("lightweight remoteTag.tagObject must be null");
     }
-    expectEqual(
-      refObjectSha,
-      sourceSha,
-      "remoteTag.refObject.sha",
-    );
+    expectEqual(refObjectSha, sourceSha, "remoteTag.refObject.sha");
     return;
   }
 
@@ -306,26 +314,7 @@ export function evaluateDevReleaseEligibility(inputValue, expectedFrozen) {
   const expectedWorkflowRefPrefix = `${EXPECTED_REPOSITORY}/${RELEASE_WORKFLOW_PATH}@`;
   let mode;
   let authorityBranch;
-  if (event.name === "workflow_dispatch") {
-    mode = "preflight";
-    authorityBranch = DEV_BRANCH;
-    expectEqual(
-      expectSha(event.dispatchSourceSha, "event.dispatchSourceSha"),
-      candidate.sourceSha,
-      "event.dispatchSourceSha",
-    );
-    expectEqual(event.ref, DEV_REF, "event.ref");
-    expectEqual(event.refType, "branch", "event.refType");
-    expectEqual(event.refName, DEV_BRANCH, "event.refName");
-    expectEqual(
-      workflow.ref,
-      `${expectedWorkflowRefPrefix}${DEV_REF}`,
-      "workflow.ref",
-    );
-    if (input.remoteTag !== null) {
-      fail("remoteTag must be null for workflow_dispatch preflight");
-    }
-  } else if (event.name === "push") {
+  const validateFormalIdentity = () => {
     mode = "formal";
     authorityBranch = FORMAL_BRANCH;
     expectEqual(event.dispatchSourceSha, null, "event.dispatchSourceSha");
@@ -346,14 +335,43 @@ export function evaluateDevReleaseEligibility(inputValue, expectedFrozen) {
       candidate.releaseTag,
       candidate.sourceSha,
     );
+  };
+  if (event.name === "workflow_dispatch") {
+    if (event.dispatchMode === "preflight") {
+      mode = "preflight";
+      authorityBranch = DEV_BRANCH;
+      expectEqual(
+        expectSha(event.dispatchSourceSha, "event.dispatchSourceSha"),
+        candidate.sourceSha,
+        "event.dispatchSourceSha",
+      );
+      expectEqual(event.ref, DEV_REF, "event.ref");
+      expectEqual(event.refType, "branch", "event.refType");
+      expectEqual(event.refName, DEV_BRANCH, "event.refName");
+      expectEqual(
+        workflow.ref,
+        `${expectedWorkflowRefPrefix}${DEV_REF}`,
+        "workflow.ref",
+      );
+      if (input.remoteTag !== null) {
+        fail("remoteTag must be null for workflow_dispatch preflight");
+      }
+    } else if (event.dispatchMode === "formal") {
+      validateFormalIdentity();
+    } else {
+      fail(
+        `workflow_dispatch event.dispatchMode must be \"preflight\" or \"formal\"; received ${JSON.stringify(event.dispatchMode)}`,
+      );
+    }
+  } else if (event.name === "push") {
+    expectEqual(event.dispatchMode, null, "event.dispatchMode");
+    expectEqual(event.dispatchSourceSha, null, "event.dispatchSourceSha");
+    validateFormalIdentity();
   } else {
     fail(`unsupported event.name ${JSON.stringify(event.name)}`);
   }
 
-  const remoteDevHeadSha = validateRemoteDev(
-    input.remoteDev,
-    authorityBranch,
-  );
+  const remoteDevHeadSha = validateRemoteDev(input.remoteDev, authorityBranch);
   if (mode === "preflight") {
     expectEqual(remoteDevHeadSha, candidate.sourceSha, "remoteDev.headSha");
   }

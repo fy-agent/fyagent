@@ -378,7 +378,7 @@ const EXPECTED_RELEASE_JOB_IDS = [
 
 const ATTEST_JOB_IF_LINE = "    if: ${{ !cancelled() }}";
 const PUBLISH_JOB_IF_LINE =
-  "    if: ${{ !cancelled() && github.event_name == 'push' && needs.eligibility.result == 'success' && needs.eligibility.outputs.release_mode == 'formal' && needs.attest.result == 'success' }}";
+  "    if: ${{ !cancelled() && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.eligibility.result == 'success' && needs.eligibility.outputs.release_mode == 'formal' && needs.attest.result == 'success' }}";
 const ATTEST_PREREQUISITE_STEP = `      - name: Require successful attestation prerequisites
         shell: bash
         env:
@@ -425,7 +425,7 @@ function releaseTailGateOutcome(input: ReleaseTailGateInput) {
       : "failure";
   const publishRuns =
     !input.cancelled &&
-    input.eventName === "push" &&
+    (input.eventName === "push" || input.eventName === "workflow_dispatch") &&
     input.eligibilityResult === "success" &&
     input.mode === "formal" &&
     attestResult === "success";
@@ -444,7 +444,7 @@ function assertReleaseTailStatusGates(workflow: string) {
   }
   if (exactLineCount(publish, PUBLISH_JOB_IF_LINE) !== 1) {
     throw new Error(
-      "publish must bind !cancelled(), formal push, eligibility success, and attestation success",
+      "publish must bind !cancelled(), a supported formal event, eligibility success, and attestation success",
     );
   }
 
@@ -968,20 +968,34 @@ describe("FyAgent release workflow", () => {
     ).rejects.toThrow(/Unexpected trusted build input entry/u);
   });
 
-  it("supports an immutable dev preflight and stable tag candidates without publishing dispatches", () => {
+  it("supports dev preflight and tag-bound formal dispatch without weakening stable tag routing", () => {
     const trigger = source.slice(0, source.indexOf("\npermissions:"));
     expect(trigger).toContain('      - "v*.*.*"');
     expect(trigger).not.toContain('      - "v*"');
     expect(trigger).not.toMatch(/^\s+- ["']v\d+\.\d+\.\d+["']\s*$/mu);
     expect(trigger).toContain("workflow_dispatch:");
+    expect(trigger).toContain("mode:");
+    expect(trigger).toContain("type: choice");
+    expect(trigger).toContain("default: preflight");
+    expect(trigger).toContain("          - preflight");
+    expect(trigger).toContain("          - formal");
     expect(trigger).toContain("source_sha:");
-    expect(trigger).toContain("dev/laiyongjie HEAD SHA");
-    expect(trigger).toContain("required: true");
+    expect(trigger).toContain(
+      "Preflight-only immutable 40-character dev/laiyongjie HEAD SHA",
+    );
+    expect(trigger).toContain("        required: false");
     expect(source).toContain("release_mode='preflight'");
     expect(source).toContain("release_mode='formal'");
     expect(source).toContain(PUBLISH_JOB_IF_LINE);
-    expect(source).not.toContain(
-      "if: github.event_name == 'workflow_dispatch' && needs.eligibility.outputs.release_mode == 'formal'",
+    expect(source).toContain(
+      "workflow_dispatch formal source_sha must be empty; the selected tag ref is authoritative",
+    );
+    expect(source).toContain("[ \"$GITHUB_REF_TYPE\" = 'tag' ]");
+    expect(source).toContain(
+      '[ "$GITHUB_WORKFLOW_REF" = "${expected_workflow_ref_prefix}refs/tags/$GITHUB_REF_NAME" ]',
+    );
+    expect(source).toContain(
+      "group: release-${{ github.event_name == 'push' && 'formal' || inputs.mode }}-${{ (github.event_name == 'push' || inputs.mode == 'formal') && github.ref_name || inputs.source_sha }}",
     );
     expect(source).not.toContain("gh release create");
     expect(source).toContain("draft:true,prerelease:false");
@@ -1126,7 +1140,7 @@ describe("FyAgent release workflow", () => {
         },
       },
       {
-        name: "dispatch cannot publish even with a formal-mode mutation",
+        name: "successful tag-bound formal dispatch attests and publishes",
         input: {
           cancelled: false,
           eligibilityResult: "success",
@@ -1137,7 +1151,7 @@ describe("FyAgent release workflow", () => {
         expected: {
           attestResult: "success",
           attestRuns: true,
-          publishRuns: false,
+          publishRuns: true,
         },
       },
       {
@@ -1380,6 +1394,7 @@ describe("FyAgent release workflow", () => {
     expect(eligibility).toContain(
       '--evidence "$RUNNER_TEMP/fyagent-release-remote-evidence.json"',
     );
+    expect(eligibility).toContain("RELEASE_DISPATCH_MODE: ${{ inputs.mode }}");
     expect(eligibility).toContain(
       "RELEASE_DISPATCH_SOURCE_SHA: ${{ inputs.source_sha }}",
     );
@@ -1630,7 +1645,7 @@ describe("FyAgent release workflow", () => {
     );
     expectExactLine(
       formal,
-      "    if: needs.eligibility.outputs.release_mode == 'formal' && github.event_name == 'push'",
+      "    if: needs.eligibility.outputs.release_mode == 'formal' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')",
     );
     expectExactLine(
       formal,
@@ -1706,7 +1721,7 @@ describe("FyAgent release workflow", () => {
     );
     expectExactLine(
       sealer,
-      "    if: needs.eligibility.outputs.release_mode == 'formal' && github.event_name == 'push'",
+      "    if: needs.eligibility.outputs.release_mode == 'formal' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')",
     );
     expectExactLine(
       sealer,
@@ -1759,7 +1774,7 @@ describe("FyAgent release workflow", () => {
     const verify = workflowJobBlock(source, "verify-assets", "attest");
     expectExactLine(
       verify,
-      "    if: ${{ always() && needs.eligibility.result == 'success' && needs['build-windows'].result == 'success' && needs['build-macos'].result == 'success' && needs['pin-release-build-inputs'].result == 'success' && ((github.event_name == 'workflow_dispatch' && needs.eligibility.outputs.release_mode == 'preflight' && needs['prove-windows-preflight'].result == 'success' && needs['sign-windows-formal'].result == 'skipped' && needs['seal-windows-formal'].result == 'skipped') || (github.event_name == 'push' && needs.eligibility.outputs.release_mode == 'formal' && needs['prove-windows-preflight'].result == 'skipped' && needs['sign-windows-formal'].result == 'success' && needs['seal-windows-formal'].result == 'success')) }}",
+      "    if: ${{ always() && needs.eligibility.result == 'success' && needs['build-windows'].result == 'success' && needs['build-macos'].result == 'success' && needs['pin-release-build-inputs'].result == 'success' && ((github.event_name == 'workflow_dispatch' && needs.eligibility.outputs.release_mode == 'preflight' && needs['prove-windows-preflight'].result == 'success' && needs['sign-windows-formal'].result == 'skipped' && needs['seal-windows-formal'].result == 'skipped') || ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.eligibility.outputs.release_mode == 'formal' && needs['prove-windows-preflight'].result == 'skipped' && needs['sign-windows-formal'].result == 'success' && needs['seal-windows-formal'].result == 'success')) }}",
     );
     expect(verify).toContain(
       "    needs:\n      [\n        eligibility,\n        build-windows,\n        build-macos,\n        pin-release-build-inputs,\n        prove-windows-preflight,\n        sign-windows-formal,\n        seal-windows-formal,\n      ]",
@@ -2059,10 +2074,14 @@ jobs:
     expect(macJob).toContain(
       "scripts/release/macos-developer-id.sh notarize-dmg",
     );
-    expect(macJob).toContain("scripts/release/macos-developer-id.sh staple-app");
+    expect(macJob).toContain(
+      "scripts/release/macos-developer-id.sh staple-app",
+    );
     expect(macJob).toContain("scripts/release/create-macos-dmg.sh");
     expect(macJob).toContain("src-tauri/icons/dmg-background.png");
-    expect(macJob).toContain("[ -f \"$mount_point/.background/background.png\" ]");
+    expect(macJob).toContain(
+      '[ -f "$mount_point/.background/background.png" ]',
+    );
     expect(macJob).toContain('[ -f "$mount_point/.DS_Store" ]');
     expect(macJob).toContain(
       "astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9",
@@ -2077,7 +2096,9 @@ jobs:
     expect(createDmg).toContain("--window 660x400");
     expect(createDmg).toContain("--icon-size 128");
     expect(createDmg).toContain("uv run --locked --group dmg-layout python");
-    expect(createDmg).toContain('create -volname \'FyAgent\' -srcfolder "$stage" -ov -fs HFS+ -format UDRW "$udrw_path"');
+    expect(createDmg).toContain(
+      'create -volname \'FyAgent\' -srcfolder "$stage" -ov -fs HFS+ -format UDRW "$udrw_path"',
+    );
     expect(createDmg).toContain(
       'convert "$udrw_path" -format UDZO -imagekey zlib-level=9 -ov -o "$output_path"',
     );
@@ -2087,7 +2108,9 @@ jobs:
     expect(createDmg).not.toContain("dmgbuild");
     expect(createDmg).not.toContain("hdiutil detach -force");
     expect(dmgLayout).toContain('store[app_name]["Iloc"] = app_xy');
-    expect(dmgLayout).toContain('store[applications_name]["Iloc"] = applications_xy');
+    expect(dmgLayout).toContain(
+      'store[applications_name]["Iloc"] = applications_xy',
+    );
     expect(dmgLayout).toContain("backgroundImageAlias");
     expect(dmgLayout).toContain(
       '"{{%d, %d}, {%d, %d}}"\n            % (left, top, window[0], window[1])',
@@ -2166,9 +2189,9 @@ jobs:
     );
     expect(macJob).not.toContain("APPLE_SIGNING_IDENTITY");
     expect(macJob).not.toContain("codesign --force --sign -");
-    expect(macJob.match(/scripts\/release\/verify-macos-signed-app\.sh/gu)).toHaveLength(
-      3,
-    );
+    expect(
+      macJob.match(/scripts\/release\/verify-macos-signed-app\.sh/gu),
+    ).toHaveLength(3);
     expect(macJob).toContain(
       "scripts/release/verify-macos-signed-app.sh --signature-only",
     );
@@ -2186,7 +2209,9 @@ jobs:
       "codesign --verify --deep --strict --verbose=4",
     );
     expect(macSignedAppVerifier).toContain("xcrun stapler validate");
-    expect(macSignedAppVerifier).not.toMatch(/codesign\s+--force[^\n]*--deep/gu);
+    expect(macSignedAppVerifier).not.toMatch(
+      /codesign\s+--force[^\n]*--deep/gu,
+    );
     expect(macSignedDmgVerifier).toContain("Authority=$EXPECTED_AUTHORITY");
     expect(macSignedDmgVerifier).toContain("xcrun stapler validate");
     expect(macJob).not.toContain("unexpectedly has a code signature");
@@ -2237,9 +2262,30 @@ jobs:
     }
   });
 
-  it("publishes once through a verified draft and never auto-deletes failure residue", () => {
+  it("recovers only an owned failed draft, then publishes once through a fresh verified transaction", () => {
     const publish = source.slice(source.indexOf("\n  publish:\n"));
     expect(publish).toContain("releases?per_page=100");
+    expect(publish).toContain(
+      "A published Release already exists for $RELEASE_TAG; published versions are immutable",
+    );
+    expect(publish).toContain("verify-release-draft-ownership.mjs inspect");
+    expect(publish).toContain("verify-release-draft-ownership.mjs verify");
+    expect(publish).toContain(
+      "actions/runs/$recovery_run_id/attempts/$recovery_run_attempt",
+    );
+    expect(publish).toContain(
+      "actions/runs/$recovery_run_id/attempts/$recovery_run_attempt/jobs?per_page=100",
+    );
+    expect(publish).toContain("recovery-release-fresh.json");
+    expect(publish).toContain(
+      '--request DELETE --output "$recovery_delete_json"',
+    );
+    expect(publish).toContain(
+      "Owned draft id=$recovery_release_id still resolves after deletion",
+    );
+    expect(publish).toContain(
+      "Recovered owned failed draft id=$recovery_release_id",
+    );
     expect(publish).toContain("draft:true,prerelease:false");
     expect(publish).toContain('all(.state == "uploaded" and .size > 0)');
     expect(publish).toContain(
@@ -2255,9 +2301,13 @@ jobs:
       'release_notes_path="docs/release-notes/${RELEASE_TAG}-en.md"',
     );
     expect(publish).not.toContain("gh release create");
-    expect(publish).not.toContain("--request DELETE");
     expect(publish).not.toContain("gh release delete");
     expect(publish).not.toMatch(/git (?:push --delete|tag -d)/);
+    expect(publish.match(/--request DELETE/gu)).toHaveLength(1);
+    expect(publish).not.toMatch(/--request DELETE[^\n]*releases\/assets/iu);
+    expect(publish).toContain(
+      "a later formal retry may recover it only after exact source and originating-workflow provenance checks",
+    );
   });
 
   it("rechecks the exact frozen remote eligibility before publication starts and immediately before the final PATCH", () => {
