@@ -44,8 +44,10 @@ merge-ready, meaningless fixup/checkpoint commits should be folded or removed
 when practical, while meaningful implementation/test/docs/refactor boundaries
 may remain. The repository must not use a global squash policy as a substitute
 for branch-level commit hygiene. GitHub Merge Queue merge-commit subjects are
-topology, not hygiene: `commit-convention` must not reject them for exceeding
-the 72-character Conventional Commit subject cap.
+topology, not hygiene: `commit-convention` accepts them as merge records
+without Conventional Commit structure. FyAgent also imposes no
+repository-defined maximum length on an otherwise-valid Conventional Commit
+subject or pull-request title.
 
 ## 2. Signatures
 

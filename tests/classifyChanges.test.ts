@@ -178,19 +178,171 @@ describe("repository change classifier", () => {
 
   it.each([
     ".github/workflows/ci.yml",
-    "scripts/audit/repository-governance-scan.mjs",
     "scripts/ci/classify-changes.mjs",
-    "scripts/release/release-contract.mjs",
-    "scripts/prepare-windows-user-helper.mjs",
-    ".codex/hooks.json",
-    ".cursor/skills/trellis-check/SKILL.md",
-    ".codebuddy/settings.json",
+    "scripts/ci/required-gate.mjs",
+    "scripts/ci/evaluate-step-outcomes.mjs",
+    "scripts/ci/verify-toolchain.mjs",
+    "scripts/tasks/lib.mjs",
+    "scripts/tasks/supported-platform-check.mjs",
+    "scripts/tasks/toolchain-check.mjs",
     "rust-toolchain.toml",
-  ])("forces every domain for control-plane path %s", (changedPath) => {
+  ])("forces every domain for global authority path %s", (changedPath) => {
     expect(classifyChangedPaths([changedPath])).toEqual({
       domains: domains(...CHANGE_DOMAINS),
       unknownPaths: [],
       forceFull: true,
+    });
+  });
+
+  it.each([
+    [
+      "release authority",
+      [
+        ".github/workflows/release.yml",
+        "scripts/release/release-contract.mjs",
+        "scripts/tasks/release-check.mjs",
+        "tests/releaseWorkflow.test.ts",
+      ],
+      domains("contracts"),
+    ],
+    [
+      "commit policy authority",
+      [
+        ".github/workflows/commit-convention-push.yml",
+        "scripts/ci/verify-commit-messages.mjs",
+        "tests/verifyCommitMessages.test.ts",
+      ],
+      domains("contracts"),
+    ],
+    [
+      "developer governance",
+      [
+        ".codex/hooks.json",
+        ".cursor/skills/trellis-check/SKILL.md",
+        ".codebuddy/settings.json",
+        "scripts/audit/repository-governance-scan.mjs",
+      ],
+      domains("contracts", "docsSpec"),
+    ],
+    [
+      "frontend repository task",
+      ["scripts/tasks/frontend.mjs"],
+      domains("contracts", "frontend"),
+    ],
+    [
+      "backend repository task",
+      ["scripts/tasks/rust.mjs"],
+      domains("contracts", "backend", "windowsNative"),
+    ],
+    [
+      "Windows helper preparation",
+      ["scripts/prepare-windows-user-helper.mjs"],
+      domains("contracts", "backend", "windowsNative"),
+    ],
+    [
+      "supported-platform digest inventory",
+      [
+        "scripts/tasks/supported-platform-structure-assets.json",
+        "scripts/tasks/supported-platform-raster-assets.json",
+      ],
+      domains("contracts"),
+    ],
+  ])("classifies typed control plane: %s", (_name, paths, expectedDomains) => {
+    expect(classifyChangedPaths(paths as string[])).toEqual({
+      domains: expectedDomains,
+      unknownPaths: [],
+      forceFull: false,
+    });
+  });
+
+  it("keeps a PR-151-style release change out of unrelated product domains", () => {
+    expect(
+      classifyChangedPaths([
+        ".github/workflows/release.yml",
+        "scripts/release/dev-release-eligibility.mjs",
+        "scripts/release/verify-release-draft-ownership.mjs",
+        "scripts/tasks/release-check.mjs",
+        "scripts/tasks/supported-platform-structure-assets.json",
+        "tests/releaseDraftOwnership.test.ts",
+        "tests/releaseWorkflow.test.ts",
+        ".trellis/spec/backend/github-release-workflow.md",
+      ]),
+    ).toEqual({
+      domains: domains("contracts", "docsSpec"),
+      unknownPaths: [],
+      forceFull: false,
+    });
+  });
+
+  it("keeps a PR-147-style frontend change off Full CI", () => {
+    expect(
+      classifyChangedPaths([
+        "src/v2/pages/models/apply/ChangePlanWorkspace.tsx",
+        "tests/v2/pages/models/apply/ChangePlanWorkspace.test.tsx",
+        ".trellis/spec/frontend/v2-agent-models.md",
+      ]),
+    ).toEqual({
+      domains: domains("contracts", "frontend", "docsSpec"),
+      unknownPaths: [],
+      forceFull: false,
+    });
+  });
+
+  it("keeps a PR-148-style frontend and backend product change off Full CI", () => {
+    expect(
+      classifyChangedPaths([
+        "src/v2/pages/models/apply/CodexSavePlanWorkspace.tsx",
+        "src-tauri/src/services/change_plan/service.rs",
+        "tests/v2/pages/models/apply/CodexSavePlanWorkspace.test.tsx",
+        ".trellis/spec/backend/change-plan-executor.md",
+      ]),
+    ).toEqual({
+      domains: domains("contracts", "frontend", "backend", "docsSpec"),
+      unknownPaths: [],
+      forceFull: false,
+    });
+  });
+
+  it("keeps a PR-150-style spec-only change on contracts and docs", () => {
+    expect(
+      classifyChangedPaths([
+        ".trellis/spec/backend/github-release-workflow.md",
+        ".trellis/spec/frontend/index.md",
+      ]),
+    ).toEqual({
+      domains: domains("contracts", "docsSpec"),
+      unknownPaths: [],
+      forceFull: false,
+    });
+  });
+
+  it("keeps a PR-144-style CI authority change on Full CI", () => {
+    expect(
+      classifyChangedPaths([
+        ".github/workflows/ci.yml",
+        "scripts/ci/classify-changes.mjs",
+        "scripts/ci/required-gate.mjs",
+        ".trellis/spec/backend/github-ci-workflow.md",
+      ]),
+    ).toEqual({
+      domains: domains(...CHANGE_DOMAINS),
+      unknownPaths: [],
+      forceFull: true,
+    });
+  });
+
+  it("unions release authority with product changes without forcing every domain", () => {
+    expect(
+      classifyChangedPaths([
+        ".github/workflows/release.yml",
+        "scripts/release/release-contract.mjs",
+        "src/v2/App.tsx",
+        "src-tauri/src/proxy/server.rs",
+      ]),
+    ).toEqual({
+      domains: domains("contracts", "frontend", "backend"),
+      unknownPaths: [],
+      forceFull: false,
     });
   });
 
@@ -356,6 +508,37 @@ describe("repository change classifier", () => {
       forceFull: false,
     });
     expect(result.stderr).toContain("Unclassified repository paths");
+  });
+
+  it("writes path ownership diagnostics without changing the stable JSON plan", () => {
+    const root = temporaryRepository();
+    write(root, "README.md", "base\n");
+    const base = commit(root, "base");
+    write(root, ".github/workflows/release.yml", "name: Release\n");
+    const head = commit(root, "release workflow");
+    const summary = path.join(root, "classification-summary.md");
+
+    const result = runClassifier(root, [
+      "--base",
+      base,
+      "--head",
+      head,
+      "--json",
+      "--summary-file",
+      summary,
+    ]);
+    expect(result.status).toBe(0);
+    expect(JSON.parse(result.stdout) as ChangeClassification).toEqual({
+      domains: domains("contracts"),
+      unknownPaths: [],
+      forceFull: false,
+    });
+    const prose = fs.readFileSync(summary, "utf8");
+    expect(prose).toContain("### Change classification");
+    expect(prose).toContain("`release-authority`");
+    expect(prose).toContain("Path-derived forceFull: `false`");
+    expect(prose).toContain("Selected domains: `contracts`");
+    expect(prose).toContain("Full CI reason: none");
   });
 
   it("fails closed for malformed, injected, missing, and non-commit revisions", () => {

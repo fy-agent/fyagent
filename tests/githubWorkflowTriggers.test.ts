@@ -78,7 +78,9 @@ describe("GitHub workflow trigger policy", () => {
     const source = readWorkflow("commit-convention-push.yml");
 
     expect(source).toContain("permissions:\n  contents: read");
-    expect(source).not.toMatch(/^\s+(?:actions|checks|pull-requests|id-token):\s+write/m);
+    expect(source).not.toMatch(
+      /^\s+(?:actions|checks|pull-requests|id-token):\s+write/m,
+    );
     expect(source).not.toContain("secrets.");
     expect(source).toContain(
       "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1",
@@ -154,6 +156,26 @@ describe("GitHub workflow trigger policy", () => {
     expect(uses).toEqual([
       "actions/labeler@bf12e9b00b37c5c0ca2b87b79b2daf7891dbda13 # v7.0.0",
     ]);
+  });
+
+  it("keeps frontend labeling scoped to frontend-owned tests", () => {
+    const source = fs
+      .readFileSync(path.resolve(WORKFLOWS_DIR, "..", "labeler.yml"), "utf8")
+      .replace(/\r\n/g, "\n");
+
+    expect(source).not.toContain('          - "tests/**"');
+    for (const frontendTests of [
+      "tests/components/**",
+      "tests/config/**",
+      "tests/hooks/**",
+      "tests/integration/**",
+      "tests/lib/**",
+      "tests/msw/**",
+      "tests/utils/**",
+      "tests/e2e/**",
+    ]) {
+      expect(source).toContain(`          - "${frontendTests}"`);
+    }
   });
 
   it("offers bug reports only for supported desktop operating systems", () => {

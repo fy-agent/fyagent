@@ -1,0 +1,3 @@
+{"file": ".trellis/spec/backend/github-ci-workflow.md", "reason": "Primary CI classifier, Required CI, commit-convention contract"}
+{"file": ".trellis/spec/backend/github-release-workflow.md", "reason": "Release workflow boundary used to distinguish release authority from CI authority"}
+{"file": ".trellis/spec/backend/task-runner-contract.md", "reason": "Repository task ownership and canonical task validation boundary"}

@@ -29,6 +29,9 @@ const CI_SAFE_TESTS = Object.freeze([
   "tests/dep0040Contract.test.ts",
   "tests/localBuildBoundary.test.ts",
   "tests/releaseCheckAggregation.test.ts",
+  "tests/verifyCommitMessages.test.ts",
+  "tests/versionConsistency.test.ts",
+  "tests/windowsMsvcEnv.test.ts",
 ]);
 
 const LOCAL_MISE_TESTS = Object.freeze([
