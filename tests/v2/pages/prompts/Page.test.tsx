@@ -134,8 +134,39 @@ describe("PromptsPage native business management", () => {
     const user = userEvent.setup();
     renderPrompts(ports);
 
+    const page = screen.getByTestId("prompts-page");
+    const pageHeader = page.querySelector<HTMLElement>(
+      ":scope > .fy-feature-header",
+    );
+    expect(pageHeader).not.toBeNull();
+    expect(
+      within(pageHeader!).getByRole("heading", {
+        level: 1,
+        name: "提示词管理",
+      }),
+    ).toBeVisible();
+    expect(
+      within(pageHeader!).getByRole("button", { name: "从文件导入" }),
+    ).toBeVisible();
+    expect(
+      within(pageHeader!).getByRole("button", { name: "新建提示词" }),
+    ).toBeVisible();
     expect(
       await screen.findByRole("heading", { name: "Claude rule" }),
+    ).toBeVisible();
+    const editor = screen.getByRole("region", { name: "提示词详情" });
+    const editorHead = editor.querySelector<HTMLElement>(
+      ".fy-prompts-editor-head",
+    );
+    expect(editorHead).not.toBeNull();
+    expect(
+      within(editorHead!).getByRole("switch", { name: "停用Claude rule" }),
+    ).toBeVisible();
+    expect(
+      within(editorHead!).getByRole("button", { name: "保存" }),
+    ).toBeVisible();
+    expect(
+      within(editorHead!).getByRole("button", { name: "删除" }),
     ).toBeVisible();
     expect(screen.getByRole("textbox", { name: "内容" })).toBeVisible();
     expect(screen.getByRole("textbox", { name: "内容" })).toHaveValue(

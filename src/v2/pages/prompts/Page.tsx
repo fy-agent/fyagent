@@ -550,6 +550,7 @@ export function PromptsPage() {
       aria-label="提示词"
     >
       <header className="fy-feature-header">
+        <h1 className="fy-prompts-page-title">提示词管理</h1>
         <div className="fy-feature-actions">
           <Button
             disabled={busy || nativeUnavailable}
@@ -734,22 +735,29 @@ function PromptEditorPane({
         onSubmit={onSave}
       >
         <header className="fy-prompts-editor-head">
-          <div className="fy-feature-detail-title">
-            <h2>{title}</h2>
-            {editor.mode === "edit" && (
-              <Badge tone={enabled ? "accent" : "neutral"}>
-                {enabled ? "已启用" : "未启用"}
-              </Badge>
-            )}
+          <div className="fy-prompts-editor-summary">
+            <div className="fy-feature-detail-title">
+              <h2>{title}</h2>
+              {editor.mode === "edit" && (
+                <Badge tone={enabled ? "accent" : "neutral"}>
+                  {enabled ? "已启用" : "未启用"}
+                </Badge>
+              )}
+            </div>
+            {editor.prompt && onToggle ? (
+              <div className="fy-prompts-editor-toggle">
+                <Switch
+                  checked={enabled}
+                  disabled={busy}
+                  label={`${enabled ? "停用" : "启用"}${editor.prompt.name}`}
+                  onCheckedChange={onToggle}
+                />
+                <span className="fy-prompts-editor-toggle-state">
+                  {enabled ? "已启用" : "未启用"}
+                </span>
+              </div>
+            ) : null}
           </div>
-          {editor.prompt && onToggle ? (
-            <Switch
-              checked={enabled}
-              disabled={busy}
-              label={`${enabled ? "停用" : "启用"}${editor.prompt.name}`}
-              onCheckedChange={onToggle}
-            />
-          ) : null}
           <div className="fy-feature-actions">
             <Button
               className="fy-control-button-primary"

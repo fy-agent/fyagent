@@ -196,8 +196,12 @@ export function MemoryPage() {
       data-testid="memory-page"
       aria-label="记忆"
     >
+      <header className="fy-feature-header">
+        <h1 className="fy-memory-page-title">记忆模块</h1>
+      </header>
       <FeatureTabs
         id="memory-type-tabs"
+        className="fy-memory-type-tabs"
         label="记忆类型"
         value={activeTab}
         onChange={switchTab}
@@ -525,7 +529,12 @@ function LongTermEditor({
         </div>
       </header>
       <div className="fy-memory-editor-meta">
-        <CopyablePath label="路径" value={resource.path} />
+        <code
+          className="fy-feature-path-value fy-memory-resource-path"
+          title={resource.path}
+        >
+          {resource.path}
+        </code>
         <p>
           {characterCount}
           {limit !== undefined ? ` / ${limit}` : ""} 字符
