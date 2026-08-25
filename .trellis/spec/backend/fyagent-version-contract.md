@@ -85,7 +85,7 @@ mise run version:bump -- patch|minor|major [--apply]
   value and must not be rewritten. Dependencies, package.json, Tauri
   configuration, release workflow, docs, tags, assets, and `CHANGELOG.md` are
   also outside the write set. Missing Keep a Changelog notes fail
-  `mise run release-check` / `scripts/release/verify-changelog-release.mjs`
+  `mise run release:check` / `scripts/release/verify-changelog-release.mjs`
   instead of being auto-inserted here.
 - Each target uses a unique same-directory temporary file, complete write,
   `fsync`, close, and rename. If a later write or post-write contract check
@@ -164,7 +164,7 @@ the seventh and final Release attachment and does not attest itself.
 | Either local `fyagent` / `fyagent-user-helper` lock block is missing, duplicated, sourced, or mismatched | `version:check` fails; `set` may repair only version drift in both local blocks after every other preflight passes. |
 | Tag differs from `v` plus the canonical version                                                          | Eligibility/version checking fails before platform builds.                                                          |
 | An asset contains a v-prefixed, wrong, or missing version                                                | Platform or aggregate validation rejects it.                                                                        |
-| Cargo version `X.Y.Z` has no matching non-empty `## [X.Y.Z] - YYYY-MM-DD` heading as the first version in `CHANGELOG.md` | `release-check` fails; `version:set` does not write or repair changelog. |
+| Cargo version `X.Y.Z` has no matching non-empty `## [X.Y.Z] - YYYY-MM-DD` heading as the first version in `CHANGELOG.md` | `mise run release:check` fails; `version:set` does not write or repair changelog. |
 | Installer, metadata, signing status, or attestation subject set is missing or has extras                 | Evidence generation/publication stops.                                                                              |
 | A write fails after one canonical file was replaced                                                      | Restore all touched files, remove temporary files, and fail with rollback evidence.                                 |
 

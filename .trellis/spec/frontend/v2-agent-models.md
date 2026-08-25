@@ -533,11 +533,15 @@ fetch/save controls.
   `/v1/v1/XXXX` and that the usual path is `/v1/XXXX`. Hostname `v1.example.com`
   is not a v1 path. The warning must not block save. Codex and Grok Build must
   not show this warning. The Claude placeholder must not include `/v1`.
-- The V2 port is `applyQuickSetupWithResult(request, app)`. Codex may attach
-  optional `codexFeatures.imageExtension` / `codexFeatures.websockets`; Claude
-  and Grok Build must omit `codexFeatures`. Grok Build uses reserved ID
-  `fyagent-v2-quick-setup-grokbuild` and live `~/.grok/config.toml`. OpenCode
-  is not a `ProviderAppId` and must not call this port.
+- The direct V2 Provider mutation port is
+  `applyQuickSetupWithResult(request, app)` and is used only by Claude and Grok
+  Build. Codex builds the same minimum Quick Setup request, may attach optional
+  `codexFeatures.imageExtension` / `codexFeatures.websockets`, and submits it
+  through `createCodexProviderUpsertPlan(request)` instead; Codex must not call
+  the direct mutation port. Claude and Grok Build must omit `codexFeatures`.
+  Grok Build uses reserved ID `fyagent-v2-quick-setup-grokbuild` and live
+  `~/.grok/config.toml`. OpenCode is not a `ProviderAppId` and must not call
+  either Provider Quick Setup path.
 - Rust derives one stable reserved Provider ID per app. The renderer cannot
   submit a generic Provider, arbitrary ID, category, metadata, usage script,
   icon, sort order, or live-config fragment.
@@ -735,10 +739,12 @@ fetch/save controls.
 - Good: Claude Code renders independent CLI and Desktop official-site actions
   in the detail identity, while Codex renders no link and reuses the existing
   native installer contract through a V2 port, placed below the title.
-- Good: a Codex quick setup passes one minimum request to Rust, applies under the
-  shared config lock, returns request-attributed non-secret warnings/live-change
-  state, clears the key, and describes a matching `currentId` reread only as
-  fixed-ID activation confirmation.
+- Good: a Codex quick setup passes one minimum request to Rust to create a
+  zero-write Change Plan, confirms only `{planId, planDigest}`, then applies
+  through the typed executor under the shared config lock. The terminal job
+  carries non-secret live-change state, plan risks remain request-attributed,
+  the current draft's key is cleared at terminal handling, and a matching
+  `currentId` reread is described only as fixed-ID activation confirmation.
 - Good: a writable Models panel shows native `将修改` / `备份位置` metadata,
   saves revision N, and becomes clean only if no N+1 edit happened while the
   request was pending. A successful save also invalidates probe feedback from
@@ -882,19 +888,24 @@ await ports.providers.updateWithResult(app, provider);
 await ports.providers.switchWithResult(app, provider.id);
 ```
 
-Correct: submit the minimum request once, then independently confirm the safe
-native snapshot.
+Correct: submit the minimum request through the app's authoritative path, then
+independently confirm the safe native snapshot. Codex creates a zero-write
+Change Plan; Claude/Grok Build use the direct atomic Quick Setup port.
 
 ```ts
-await ports.providers.applyQuickSetupWithResult(
-  {
-    name,
-    baseUrl,
-    apiKey,
-    modelId,
-  },
+const request = buildQuickSetupRequest(
   app,
+  validated.value,
+  app === "codex" ? { imageExtension, websockets } : undefined,
 );
+if (app === "codex") {
+  const plan = await ports.changePlans.createCodexProviderUpsertPlan(request);
+  setCodexSaveRequest(request);
+  setCodexSavePlan(plan);
+  return; // terminal handler rereads authority after confirm/apply
+}
+
+await ports.providers.applyQuickSetupWithResult(request, app); // claude | grokbuild
 const summary = await ports.providers.getSummary(app);
 if (summary.currentId !== QUICK_SETUP_PROVIDER_IDS[app]) {
   showUnconfirmedState();
@@ -911,12 +922,20 @@ const pending = Boolean(baseUrl || apiKey || modelId);
 
 Correct: Rust patches only the reserved Quick Setup fields into the current
 live preimage after the native write-plan/backup gate. The renderer tracks a
-submitted revision independently from the visible field values.
+submitted revision independently from the visible field values; Codex commits
+that revision only after its Change Plan reaches a confirmed terminal success.
 
 ```ts
 const submitted = draft.captureRevision();
-await ports.providers.applyQuickSetupWithResult(request, app);
-draft.commitRevision(submitted); // newer edits still remain pending
+if (app === "codex") {
+  submittedRevisionRef.current = submitted;
+  const plan = await ports.changePlans.createCodexProviderUpsertPlan(request);
+  setCodexSavePlan(plan);
+  // handleCodexSaveTerminal commits only confirmed terminal success/warning.
+} else {
+  await ports.providers.applyQuickSetupWithResult(request, app);
+  draft.commitRevision(submitted); // newer edits still remain pending
+}
 ```
 
 Wrong: read the first catalog URL or manufacture a Codex website action in the

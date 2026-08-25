@@ -144,8 +144,8 @@ FILE_SHARE_DELETE` but never `FILE_SHARE_WRITE`, records its identity and
 ### Revision, overwrite capability, and persistence
 
 - A save takes the in-process write lock, rereads current bytes, checks the
-  opaque expected revision, validates the complete existing array and every
-  entry ID, detects duplicate target IDs, and only then considers a write.
+  opaque expected revision, validates the complete existing document and model
+  collection, detects duplicate target IDs, and only then considers a write.
 - Existing target IDs without a valid matching confirmation capability return
   `overwrite_confirmation_required` with one opaque token and unique
   `existingIds`. This preflight creates neither backup nor primary write.
@@ -169,13 +169,21 @@ FILE_SHARE_DELETE` but never `FILE_SHARE_WRITE`, records its identity and
   the renderer a public credential-guess oracle. The key is never persisted or
   serialized; after host restart, old revisions and tokens fail safely and the
   renderer refreshes status.
-- Preserve non-target entries, array order, target positions, unknown fields,
+- Preserve the existing document shape: a legacy array remains an array, and
+  an object root remains an object. A missing file is created as an object root
+  with `models`; an existing object root with no `models` field is treated as
+  an empty model collection and persists that field only after a successful
+  save. Preserve unknown top-level fields and key order, non-target entries,
+  model-array order, target positions, model key order, unknown fields,
   existing `onlyReasoning`, and unknown `reasoning` members. Update only the
   documented connection fields (`url` and policy-controlled `apiKey`); do not
-  rebuild or normalize existing entries. `removedModelIds` delete matching
-  entries and prune them from a populated `availableModels` list. A
-  removal-only save does not require a Base URL or API key. An ID present in
-  both the target set and `removedModelIds` fails closed.
+  rebuild or normalize existing entries. Object-root `availableModels` is
+  updated only when it is a valid string array: populated lists append missing
+  target IDs and prune removed IDs, while missing or empty lists remain as-is.
+  A malformed `availableModels` fails before backup or primary mutation.
+  `removedModelIds` delete matching entries. A removal-only save does not
+  require a Base URL or API key. An ID present in both the target set and
+  `removedModelIds` fails closed.
 - Commit backup then primary using flush/sync and same-directory atomic
   replacement. Windows uses replacement semantics with no delete-before-rename
   gap. Unix primary and backup credential files remain mode `0600`.
@@ -214,7 +222,8 @@ FILE_SHARE_DELETE` but never `FILE_SHARE_WRITE`, records its identity and
 | Remote or local model ID contains a complete request/document API key                                           | Fail closed with a generic error; return, cache, render, and write none of the colliding values.                                |
 | Empty API key is explicitly allowed                                                                             | Omit Authorization; do not synthesize an empty bearer value.                                                                    |
 | Base URL hostname/path contains the complete submitted API key                                                  | Return a generic invalid-request error before network, token, backup, or primary-file activity.                                 |
-| Existing JSON is invalid, not an array, or contains an invalid entry                                            | Return a safe configuration error, with only an index when useful; do not repair or overwrite it.                               |
+| Existing JSON root is neither an array nor an object, object-root `models` exists but is not an array, or a model entry is invalid | Return a safe configuration error, with only an index when useful; do not repair or overwrite it.                               |
+| Object-root `availableModels` exists but is not a string array                                                | Return a safe configuration error before backup or primary mutation; do not repair the field.                                  |
 | Revision changes before save or confirmed overwrite                                                             | Return `concurrent_modification`; write neither backup nor primary.                                                             |
 | Windows profile, `.workbuddy`, primary, or backup resolves through a reparse point or changes identity          | Fail closed before the target, backup, or any temporary leaf is mutated.                                                        |
 | A Windows writer already owns, or tries to acquire, a write-compatible primary handle                           | Reject the snapshot/save; create neither backup nor temporary leaf.                                                             |
@@ -252,11 +261,14 @@ FILE_SHARE_DELETE` but never `FILE_SHARE_WRITE`, records its identity and
   case-sensitive IDs, stable first occurrence, exactly 1,000/1,001 IDs,
   truncation plus a later malformed element, empty-key header omission, and a
   malicious successful response that echoes the submitted credential as an ID.
-- Persistence tests cover empty/new files, invalid root/entries, target
-  duplicates, request-bound one-time overwrite tokens, revision drift before
-  both initial and confirmed saves, API-key-only external drift, process restart,
-  stable ordering/unknown fields, backup ordering, atomic replacement, and Unix
-  permissions.
+- Persistence tests cover empty/new files, legacy-array input and root-shape
+  preservation, object-root input including a missing `models` field,
+  top-level/model-key ordering and unknown-field preservation, invalid roots /
+  non-array object-root `models` / invalid entries, valid and malformed
+  `availableModels`, target duplicates, request-bound one-time overwrite
+  tokens, revision drift before both initial and confirmed saves, API-key-only
+  external drift, process restart, backup ordering, atomic replacement, and
+  Unix permissions.
 - Windows-native persistence tests cover normal first create and repeated
   backup/primary replacement, a parent `.workbuddy` junction, primary and
   backup leaf reparse points, a profile-directory rename followed by junction
