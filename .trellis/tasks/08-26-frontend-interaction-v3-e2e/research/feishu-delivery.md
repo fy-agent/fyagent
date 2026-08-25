@@ -44,3 +44,33 @@ Batch readback returned `total=12`. All 11 attachments are `msg_type=image`, `de
 - Representative image: `om_x100b67e8823318a0c49e00172f9b21d`.
 - Image readback: `msg_type=image`, `deleted=false`, position `26`, real `img_v3_*` key, expected chat and bot sender confirmed.
 - Content: historical rationale, six-route/eleven-state boundary, Gemini and Grok route truth, fixed `gpt-5.6-sol/max` Codex implementation tasks, four-way ownership, current Memory evidence, and explicit uncompleted runtime/UAT boundaries.
+
+## 2026-08-26 M1 integration, full gates, and macOS read-only UAT
+
+- Candidate branch: `codex/frontend-interaction-v3-20260825`.
+- Candidate commit: `0ad9a7e122d8877f4ab6d648ac187cdb037ba444`.
+- Design document append/readback: revision `34`.
+- Added authority section: `2026-08-26｜M1 集成、全门禁与 macOS 只读 UAT`.
+- Document identity: `user`; append, five media inserts, keyword readback, and range readback all returned `ok=true`.
+- Document UAT image blocks:
+  - `doxcnDi8OBQmZgTkpgllhIeqYvc`
+  - `doxcnpxqRhMuG0b5dJgicqIt8Gd`
+  - `doxcntIAdqIYZnxEKD7Da9aEpfd`
+  - `doxcnbDAU8ML55Qwg6phh2fchXk`
+  - `doxcnwbo2jEYj4mHgVmq1AH1fzg`
+- Group report: `om_x100b67eacbe674a8c4bc46958580860`; readback `msg_type=post`, `deleted=false`, position `27`, expected chat and `codex` bot sender confirmed.
+- Image index: `om_x100b67eac87fa4a0c39b0a1520e30dc`; readback `msg_type=post`, `deleted=false`, position `28`.
+
+### Runtime image messages
+
+| Evidence | Message ID | Readback position |
+|---|---|---:|
+| AI software directory | `om_x100b67eac973aca0c2ac9215d4b343b` | 29 |
+| Seven-Agent scan complete | `om_x100b67eac910dca0c44e456b9512229` | 30 |
+| WorkBuddy model projection | `om_x100b67eac93b2ca0dd86491ebf5c9b2` | 31 |
+| WorkBuddy prompt unsupported | `om_x100b67eac6c140a0ddba740d91c6c66` | 32 |
+| Memory current-content view | `om_x100b67eac6aaa4a0de2d787b033b546` | 33 |
+
+Batch readback returned `total=7`. Both context messages are `msg_type=post`; all five attachments are `msg_type=image`, `deleted=false`, have real `img_v3_*` keys, and belong to the expected chat. No local path was used as fallback message text.
+
+Report content records: history, six-route/eleven-state solution, A-to-A model truth, exact candidate, WorkBuddy zero-change trust regression, full `mise run check` exit `0`, browser `132/132`, final debug-package smoke, DMG SHA-256, ad-hoc signing boundary, macOS read-only UAT, Windows `PENDING`, pixel diff `NOT RUN`, and no push/main/Release/production claim.

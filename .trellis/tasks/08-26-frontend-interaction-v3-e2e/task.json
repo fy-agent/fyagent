@@ -15,7 +15,7 @@
   "branch": "codex/frontend-interaction-v3-20260825",
   "base_branch": "main",
   "worktree_path": "/Users/<username>/.codex/worktrees/frontend-interaction-v3/fyagent",
-  "commit": null,
+  "commit": "0ad9a7e122d8877f4ab6d648ac187cdb037ba444",
   "pr_url": null,
   "subtasks": [],
   "children": [],
@@ -25,6 +25,7 @@
     "docs/fyagent/design/frontend-interaction-v3/REVIEW_PACKET.md",
     "docs/fyagent/design/frontend-interaction-v3/PROMPTS_AND_WORKFLOW.md",
     ".trellis/tasks/08-26-frontend-interaction-v3-e2e/research/feishu-delivery.md",
+    ".trellis/tasks/08-26-frontend-interaction-v3-e2e/research/feishu-m1-integration-uat.md",
     "src/v2/app/router.tsx",
     "src/v2/app/PersistentPrimaryOutlet.tsx",
     "src/v2/widgets/app-shell/AppShell.tsx",
@@ -36,7 +37,7 @@
     "src/v2/pages/prompts/Page.tsx",
     "src/v2/pages/memory/Page.tsx"
   ],
-  "notes": "Planning gate active. Do not start implementation until the user approves the final plan and external model routing. Branch-only work; push, merge, release, and production are excluded.",
+  "notes": "M1 integration candidate 0ad9a7e1 passed full repository checks, Playwright 132/132, debug packaging, macOS read-only UAT, exact final-package startup smoke, and Feishu document/group readback. Windows-native fresh validation remains pending. Branch-only work; push, merge, release, and production remain excluded.",
   "meta": {
     "design_doc": "https://bcnntymbwnto.feishu.cn/docx/EbIdduAkloEUakxPbqYcYHsCnZg",
     "branch": "codex/frontend-interaction-v3-20260825",
@@ -50,8 +51,19 @@
     "grok_active_route": "vibekey/grok-4.6/high",
     "planning_status": "approved_implementation_started",
     "approved_at": "2026-08-26T00:45:00+08:00",
-    "feishu_design_revision": 21,
+    "feishu_design_revision": 34,
     "feishu_m0_message": "om_x100b67e81d1ef4a0de2bfa46bfb3bbe",
-    "feishu_m0_audit_message": "om_x100b67e811a83ca0defd6075efa841e"
+    "feishu_m0_audit_message": "om_x100b67e811a83ca0defd6075efa841e",
+    "feishu_m1_message": "om_x100b67eacbe674a8c4bc46958580860",
+    "feishu_m1_image_index_message": "om_x100b67eac87fa4a0c39b0a1520e30dc",
+    "feishu_m1_image_messages": [
+      "om_x100b67eac973aca0c2ac9215d4b343b",
+      "om_x100b67eac910dca0c44e456b9512229",
+      "om_x100b67eac93b2ca0dd86491ebf5c9b2",
+      "om_x100b67eac6c140a0ddba740d91c6c66",
+      "om_x100b67eac6aaa4a0de2d787b033b546"
+    ],
+    "local_candidate_status": "PASS_0ad9a7e1_2026-08-26",
+    "windows_native_status": "PENDING"
   }
 }

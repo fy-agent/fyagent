@@ -5,12 +5,12 @@
 任务只有同时满足以下条件才可标记完成：
 
 - [ ] 11 个批准状态均已实现并有运行态截图。
-- [ ] 真实 capability matrix 生效，无假写入或假成功。
-- [ ] 全部必需检查、构建和本地桌面包 UAT fresh pass。
+- [x] 真实 capability matrix 生效，无假写入或假成功。
+- [x] 全部必需检查、构建和本地桌面包 UAT fresh pass。
 - [ ] Windows 原生验证有独立 fresh evidence。
-- [ ] 缺陷表中无未解释的 Blocking/Major。
+- [x] 缺陷表中无未解释的 Blocking/Major。
 - [ ] 飞书阶段与最终消息均有 message ID、readback 和真实附件。
-- [ ] 未触碰 main，未 push/merge/release。
+- [x] 未触碰 main，未 push/merge/release。
 
 ## Phase 0｜规划与边界冻结（M0）
 
@@ -21,7 +21,7 @@
 5. 批准后才运行 `task.py start`，把任务变为 `in_progress`。
 6. 向飞书群汇报 M0，附上下文、分支、边界和下一步，保存 message ID/readback。
 
-目标时间：00:45。当前状态：`planning_ready_pending_approval`。
+目标时间：00:45。当前状态：`completed_approved_implementation_started`。
 
 ## Phase 1｜环境与壳层（M1）
 
@@ -84,6 +84,8 @@ mise run rust:test
 目标时间：10:00。里程碑证据：UAT ledger、截图和缺陷关闭记录。
 
 ## Phase 5｜Windows 原生验证与交付（M5）
+
+当前状态：`PENDING`。本地候选固定为 `0ad9a7e1`；macOS/browser 证据不得替代 Windows fresh receipt。
 
 1. 将候选产物发送到已授权的 Windows 执行路径；传输成功不算运行成功。
 2. 在 Windows 原生环境验证安装/启动或当前任务约定的可运行包、六 route、11 状态与关键平台路径。

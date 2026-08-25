@@ -11,3 +11,4 @@
 {"file":".trellis/spec/backend/windows-installer.md","reason":"Keep Windows native validation separate from local build evidence."}
 {"file":".trellis/tasks/08-26-frontend-interaction-v3-e2e/research/current-v2-gap.md","reason":"Check the implementation against the audited gap and no-fake-capability constraint."}
 {"file":".trellis/tasks/08-26-frontend-interaction-v3-e2e/research/feishu-delivery.md","reason":"Verify milestone messages, image attachments, message IDs and fresh readback evidence."}
+{"file":".trellis/tasks/08-26-frontend-interaction-v3-e2e/research/feishu-m1-integration-uat.md","reason":"Verify the M1 candidate, full gates, package identity, macOS read-only UAT, Feishu readback, and Windows pending boundary."}
