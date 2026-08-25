@@ -74,3 +74,13 @@ Batch readback returned `total=12`. All 11 attachments are `msg_type=image`, `de
 Batch readback returned `total=7`. Both context messages are `msg_type=post`; all five attachments are `msg_type=image`, `deleted=false`, have real `img_v3_*` keys, and belong to the expected chat. No local path was used as fallback message text.
 
 Report content records: history, six-route/eleven-state solution, A-to-A model truth, exact candidate, WorkBuddy zero-change trust regression, full `mise run check` exit `0`, browser `132/132`, final debug-package smoke, DMG SHA-256, ad-hoc signing boundary, macOS read-only UAT, Windows `PENDING`, pixel diff `NOT RUN`, and no push/main/Release/production claim.
+
+## 2026-08-26 M5 Windows handoff boundary
+
+- Design document append and media readback: revision `37`.
+- Added authority section: `2026-08-26｜M5 Windows 交付状态与验收边界`.
+- Document identity: `user`; append returned revision `35`, image insertion created block `doxcnXs6r92xHDP7Xh1gbLWqCBc`, and final section readback returned revision `37`.
+- Group report: `om_x100b67eb4064f0a0c425b568f9ec461`; readback `msg_type=post`, `deleted=false`, position `34`, expected chat and `codex` bot sender confirmed.
+- Status image: `om_x100b67eb5c3838a0def6bf88aaf7f2b`; readback `msg_type=image`, `deleted=false`, position `35`, real `img_v3_*` key, expected chat and bot sender confirmed.
+- Deterministic status card: 1600×900 PNG, SHA-256 `74b921a68186c92a6a9047d8b96c19151aaf2d35966fe07cddb26e71701ddef3`.
+- Report content records the exact `DELIVERED_NOT_EXECUTED` boundary, candidate/package/hash/nonce, fresh control-plane failure facts, missing Windows-native evidence, next execution condition, fixed Codex `gpt-5.6-sol/max` thread configuration, and no push/main/Release/production claim.

@@ -1,6 +1,6 @@
 # V2 Shell Contract
 
-> **Frontend Interaction V3 override — 2026-08-26**  
+> **Frontend Interaction V3 override — 2026-08-26**
 > `SUPERSEDES_TOP_PRIMARY_NAV_ONLY`: the six first-level routes and
 > `PersistentPrimaryOutlet` stay authoritative, but clauses below that require
 > all six links inside the top chrome row are superseded. The approved V3 shell

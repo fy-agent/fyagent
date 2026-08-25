@@ -41,7 +41,7 @@
 
 ## 当前边界
 
-- 已完成：线框和讨论内容读取、高保真视觉方向确认、11 张原型及其人类批准、协作提示词、评审材料和开发规划。
-- 当前：`planning_ready_pending_approval`，等待实施计划与 Grok/Gemini 真实模型路由的一次最终批准。
-- 未开始：前端代码重构、运行态截图、交互测试、像素对比、合并、发布。
-- 下一门禁：批准后启动 Trellis 任务与 A-to-A 实现；代码仍只允许落在 `codex/frontend-interaction-v3-20260825`。
+- 已完成：11 张原型及人类批准、A-to-A 审计、6 路由 / 11 状态实现、全仓门禁、浏览器 132/132、macOS 调试包与只读 UAT、飞书 M1 文档和群消息回读。
+- 当前：`local_candidate_pass_windows_delivered_not_executed`；运行代码冻结在 `0ad9a7e122d8877f4ab6d648ac187cdb037ba444`。Windows UAT 交接包已送达 AIMaster，但没有认证执行入口和 Windows 本机返回证据；分支后续提交仅记录任务与交付证据。
+- 未完成：Windows-native 执行与 fresh validation、严格 1:1 pixel diff、push、PR、main 合并、正式签名、Release 和生产部署。
+- 下一门禁：AIMaster 本机 Codex 在隔离 fixture 中执行后，返回 nonce/hash 绑定的 fresh receipt、截图或日志与应用失败路径证据；macOS、浏览器、Taildrop 送达或远程可达均不能替代。

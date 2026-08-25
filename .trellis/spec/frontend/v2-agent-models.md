@@ -1,6 +1,6 @@
 # V2 Agent Directory and Models Quick-Setup Contract
 
-> **Frontend Interaction V3 override — 2026-08-26**  
+> **Frontend Interaction V3 override — 2026-08-26**
 > `SUPERSEDES_DIRECT_JUMPS_ONLY`: clauses below that restrict the Agent
 > directory to direct capability jumps, forbid a capability-item/configuration
 > surface, or require the previous master/detail-only information architecture

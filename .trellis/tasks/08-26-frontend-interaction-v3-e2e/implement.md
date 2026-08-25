@@ -85,7 +85,7 @@ mise run rust:test
 
 ## Phase 5｜Windows 原生验证与交付（M5）
 
-当前状态：`PENDING`。本地候选固定为 `0ad9a7e1`；macOS/browser 证据不得替代 Windows fresh receipt。
+当前状态：`DELIVERED_NOT_EXECUTED`。本地候选固定为 `0ad9a7e1`；nonce 绑定的交接包已于 2026-08-26 03:29:46 +08:00 通过 Taildrop 送达 AIMaster，但现有控制面没有认证写入口，也没有 Windows 本机返回 receipt。macOS/browser/Taildrop 证据不得替代 Windows fresh receipt。
 
 1. 将候选产物发送到已授权的 Windows 执行路径；传输成功不算运行成功。
 2. 在 Windows 原生环境验证安装/启动或当前任务约定的可运行包、六 route、11 状态与关键平台路径。
@@ -93,7 +93,7 @@ mise run rust:test
 4. Codex 核验所有 Agent 产物、任务卡状态、证据层级和 stale 结论。
 5. 在飞书群发送最终详细报告与图片，message ID + readback 后才声明群内交付完成。
 
-目标时间：12:00。若 Windows 环境/权限不可达，只能报告真实 blocker，不能用 macOS 证据替代。
+目标时间：12:00。当前已按真实边界停止在交付层；只有 AIMaster 本机 Codex 执行隔离 UAT、返回 nonce/hash 绑定的 evidence ZIP，并由 Mac 独立重算与回读后，才可继续判定 Windows PASS。不得为推进本任务擅自改 ACL、开放 Funnel、重启或升级控制面。
 
 ## A-to-A 责任与模型
 

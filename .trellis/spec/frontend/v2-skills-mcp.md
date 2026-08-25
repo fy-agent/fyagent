@@ -1,6 +1,6 @@
 # V2 Skills and MCP Feature Contract
 
-> **Frontend Interaction V3 integration note — 2026-08-26**  
+> **Frontend Interaction V3 integration note — 2026-08-26**
 > The existing Skills/MCP stores, ports, discovery/install flows and per-Agent
 > assignment contracts remain the sole authorities. The new `/agents`
 > configuration shell may present a filtered search/toggle view for the selected

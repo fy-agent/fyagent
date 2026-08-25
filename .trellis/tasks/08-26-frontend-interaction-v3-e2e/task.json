@@ -26,6 +26,7 @@
     "docs/fyagent/design/frontend-interaction-v3/PROMPTS_AND_WORKFLOW.md",
     ".trellis/tasks/08-26-frontend-interaction-v3-e2e/research/feishu-delivery.md",
     ".trellis/tasks/08-26-frontend-interaction-v3-e2e/research/feishu-m1-integration-uat.md",
+    ".trellis/tasks/08-26-frontend-interaction-v3-e2e/research/windows-native-handoff.md",
     "src/v2/app/router.tsx",
     "src/v2/app/PersistentPrimaryOutlet.tsx",
     "src/v2/widgets/app-shell/AppShell.tsx",
@@ -37,7 +38,7 @@
     "src/v2/pages/prompts/Page.tsx",
     "src/v2/pages/memory/Page.tsx"
   ],
-  "notes": "M1 integration candidate 0ad9a7e1 passed full repository checks, Playwright 132/132, debug packaging, macOS read-only UAT, exact final-package startup smoke, and Feishu document/group readback. Windows-native fresh validation remains pending. Branch-only work; push, merge, release, and production remain excluded.",
+  "notes": "M1 integration candidate 0ad9a7e1 passed full repository checks, Playwright 132/132, debug packaging, macOS read-only UAT, exact final-package startup smoke, and Feishu document/group readback. The nonce-bound Windows UAT package was delivered to AIMaster by Taildrop, but no authenticated execution ingress or Windows-native return receipt exists; status is DELIVERED_NOT_EXECUTED and the task remains in progress. Branch-only work; push, merge, release, and production remain excluded.",
   "meta": {
     "design_doc": "https://bcnntymbwnto.feishu.cn/docx/EbIdduAkloEUakxPbqYcYHsCnZg",
     "branch": "codex/frontend-interaction-v3-20260825",
@@ -51,7 +52,7 @@
     "grok_active_route": "vibekey/grok-4.6/high",
     "planning_status": "approved_implementation_started",
     "approved_at": "2026-08-26T00:45:00+08:00",
-    "feishu_design_revision": 34,
+    "feishu_design_revision": 37,
     "feishu_m0_message": "om_x100b67e81d1ef4a0de2bfa46bfb3bbe",
     "feishu_m0_audit_message": "om_x100b67e811a83ca0defd6075efa841e",
     "feishu_m1_message": "om_x100b67eacbe674a8c4bc46958580860",
@@ -63,7 +64,16 @@
       "om_x100b67eac6c140a0ddba740d91c6c66",
       "om_x100b67eac6aaa4a0de2d787b033b546"
     ],
+    "feishu_m5_windows_message": "om_x100b67eb4064f0a0c425b568f9ec461",
+    "feishu_m5_windows_image_message": "om_x100b67eb5c3838a0def6bf88aaf7f2b",
     "local_candidate_status": "PASS_0ad9a7e1_2026-08-26",
-    "windows_native_status": "PENDING"
+    "windows_native_status": "DELIVERED_NOT_EXECUTED",
+    "windows_validation_thread": "01a03a59-655c-7800-9f57-0d30943f42e8",
+    "windows_handoff_delivered_at": "2026-08-26T03:29:46+08:00",
+    "windows_handoff_target": "aimaster/100.76.239.119",
+    "windows_handoff_bytes": 39384111,
+    "windows_handoff_sha256": "97ff23223e71667388df645d40a4690edf327d9d84a58ff1bd71caf028277f3c",
+    "windows_handoff_nonce": "ad33461d1416d71ec99bf95f61fce2f3",
+    "windows_return_receipt": null
   }
 }

@@ -1,6 +1,6 @@
 # V2 Prompts and Memory Native Business Contract
 
-> **Frontend Interaction V3 integration note — 2026-08-26**  
+> **Frontend Interaction V3 integration note — 2026-08-26**
 > `/agents` may expose a selected-Agent prompt library/editor entry and link to
 > `/prompts`, but the supported `PromptAppId` set and native prompt port in this
 > contract remain authoritative. Unsupported targets render truthful unavailable

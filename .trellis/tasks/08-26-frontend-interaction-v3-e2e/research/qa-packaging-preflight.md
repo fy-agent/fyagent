@@ -44,6 +44,15 @@
 - The destructive install/uninstall lifecycle script belongs only on a clean disposable administrator VM because it refuses existing FyAgent registrations and may touch ProgramData. It must not be run casually on the daily AIMaster machine.
 - A push, PR/main merge, tag, Release workflow, or production rollout remains a separate authorization/evidence boundary.
 
+### 2026-08-26 delivery result
+
+- Evidence level: `DELIVERED_NOT_EXECUTED`; final status remains `PENDING`.
+- The exact code candidate `0ad9a7e1` is an ancestor of the task evidence commit `4ae74c53`.
+- Taildrop returned `sent` for AIMaster at 2026-08-26 03:29:46 +08:00.
+- Handoff package: 39,384,111 bytes; SHA-256 `97ff23223e71667388df645d40a4690edf327d9d84a58ff1bd71caf028277f3c`; nonce `ad33461d1416d71ec99bf95f61fce2f3`.
+- Fresh discovery found no authenticated write ingress: isolated Windows profile has no credential, WSS returned 403, direct port 18789 requires explicit credentials, the Mac Gateway has zero connected Windows nodes, and SSH/RDP are closed.
+- These facts prove the control-plane failure path only. They do not prove a FyAgent Windows build, startup, route/state UAT, or application failure path.
+
 ## Focused coverage
 
 - Shell: three navigation groups, expansion semantics, active route, keyboard focus, keep-alive.
