@@ -1,5 +1,13 @@
 # V2 Skills and MCP Feature Contract
 
+> **Frontend Interaction V3 integration note — 2026-08-26**  
+> The existing Skills/MCP stores, ports, discovery/install flows and per-Agent
+> assignment contracts remain the sole authorities. The new `/agents`
+> configuration shell may present a filtered search/toggle view for the selected
+> Agent and link to `/skills` or `/mcp`, but it must delegate every mutation to
+> these existing owners and wait for authoritative readback. It must not create
+> a second assignment store or treat browser fixtures as desktop writes.
+
 ## 1. Scope / Trigger
 
 Read this contract before changing the V2 Skills or MCP pages, their shared

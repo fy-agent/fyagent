@@ -1,5 +1,17 @@
 # V2 Shell Contract
 
+> **Frontend Interaction V3 override — 2026-08-26**  
+> `SUPERSEDES_TOP_PRIMARY_NAV_ONLY`: the six first-level routes and
+> `PersistentPrimaryOutlet` stay authoritative, but clauses below that require
+> all six links inside the top chrome row are superseded. The approved V3 shell
+> renders three labelled groups in a persistent left navigation:
+> `AI软件配置`, expandable `配置管理` (Models/Skills/MCP/Prompts), and
+> `记忆模块`. `TopBar` retains Brand and ToolCluster. Existing route order,
+> redirects, keep-alive, platform boundaries and no-overflow requirements still
+> apply. Tests that assert "six top links", "Brand/Nav/Tools" or a nine-stop
+> top-bar lens must be replaced by equivalent left-navigation group, leaf,
+> active, keyboard and responsive assertions in the V3 task.
+
 ## 1. Scope / Trigger
 
 Read this contract before changing `src/v2/**`, the V2-only test/configuration
@@ -55,6 +67,23 @@ export type NavigationItem = {
   label: string;
 };
 ```
+
+For V3, `NavigationItem` remains the authoritative leaf route type and is
+wrapped by a typed presentation tree rather than replaced by a second route
+registry:
+
+```ts
+export type NavigationGroup = {
+  id: "agent-configuration" | "configuration-management" | "memory";
+  label: string;
+  collapsible: boolean;
+  items: readonly NavigationItem[];
+};
+```
+
+The configuration group owns expandable UI state. Leaf route selection stays
+Router-owned, and the leaf list derived from the tree is the sole input to
+`PersistentPrimaryOutlet`.
 
 The selected-lens adapter is V2-internal and does not expose the dependency's
 props or types:

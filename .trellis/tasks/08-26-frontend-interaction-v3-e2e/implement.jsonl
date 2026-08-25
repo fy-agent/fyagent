@@ -1,0 +1,14 @@
+{"file":".trellis/spec/frontend/v2-shell.md","reason":"V2 production entry, six-route shell, keep-alive and navigation contract; V3 supersedes its top-navigation clause."}
+{"file":".trellis/spec/frontend/reuse.md","reason":"Shared UI ownership and reuse-before-create rules for the shell and management pages."}
+{"file":".trellis/spec/frontend/v2-agent-models.md","reason":"Current Agent and model capability contracts, including unsupported and assisted paths."}
+{"file":".trellis/spec/frontend/v2-skills-mcp.md","reason":"Authoritative Skills/MCP assignment owners, discovery flows and target constraints."}
+{"file":".trellis/spec/frontend/v2-prompts-memory.md","reason":"Prompt target support and memory data-owner boundaries."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Typed navigation tree, state machine and capability matrix requirements."}
+{"file":".trellis/spec/frontend/state-management.md","reason":"Async scan state, stale response and authoritative readback rules."}
+{"file":".trellis/spec/frontend/modular-boundaries.md","reason":"V2 import direction and Tauri platform boundary."}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Prevents duplicate V3 components where current shared UI already owns the concept."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Guides UI-to-platform contract changes for model and prompt capability gaps."}
+{"file":".trellis/spec/backend/development-environment.md","reason":"Bootstrap and local verification prerequisites."}
+{"file":".trellis/spec/backend/main-window-layout.md","reason":"Desktop shell and maintained viewport constraints."}
+{"file":".trellis/spec/backend/windows-installer.md","reason":"Windows-native packaging/validation evidence boundary."}
+{"file":".trellis/tasks/08-26-frontend-interaction-v3-e2e/research/current-v2-gap.md","reason":"Task-specific gap audit, capability asymmetry and implementation risk ranking."}

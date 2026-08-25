@@ -1,5 +1,20 @@
 # V2 Agent Directory and Models Quick-Setup Contract
 
+> **Frontend Interaction V3 override — 2026-08-26**  
+> `SUPERSEDES_DIRECT_JUMPS_ONLY`: clauses below that restrict the Agent
+> directory to direct capability jumps, forbid a capability-item/configuration
+> surface, or require the previous master/detail-only information architecture
+> are superseded. `/agents` now owns software scan states plus a selected-Agent
+> configuration shell with four sections: `模型 / Skills / MCP / 提示词`, a
+> return-to-directory action, and entry points to the existing global management
+> routes. The capability matrix, native data owners, installer boundaries,
+> unsupported/assisted semantics, browser-authority limits, official links and
+> vendor-specific write rules in this document remain fully authoritative.
+> In particular, V3 must not turn Qoder model writes or TRAE assisted model
+> setup into direct writes, and must not invent prompt writers for unsupported
+> Agent targets. Tests for the old direct-jump-only layout must be replaced by
+> scan/configure state, four-section navigation and capability-honesty tests.
+
 ## 1. Scope / Trigger
 
 Read this contract before changing the V2 Agent directory, Models quick setup,

@@ -1,0 +1,13 @@
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Fresh lint, typecheck, unit, browser and build verification expectations."}
+{"file":".trellis/spec/frontend/v2-shell.md","reason":"Verify V3 navigation while preserving route and keep-alive behavior."}
+{"file":".trellis/spec/frontend/reuse.md","reason":"Check shared owner reuse and reject duplicate controls."}
+{"file":".trellis/spec/frontend/v2-agent-models.md","reason":"Check Agent/model capability honesty and failure feedback."}
+{"file":".trellis/spec/frontend/v2-skills-mcp.md","reason":"Check real Skills/MCP assignment, discovery and readback behavior."}
+{"file":".trellis/spec/frontend/v2-prompts-memory.md","reason":"Check prompt support boundaries and memory regression coverage."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Check typed states and removal of unsafe casts or duplicated domain types."}
+{"file":".trellis/spec/frontend/modular-boundaries.md","reason":"Check V2-only imports and platform adapter isolation."}
+{"file":".trellis/spec/backend/development-environment.md","reason":"Verify bootstrap and fresh local environment checks."}
+{"file":".trellis/spec/backend/main-window-layout.md","reason":"Verify desktop window, 900px viewport and shell behavior."}
+{"file":".trellis/spec/backend/windows-installer.md","reason":"Keep Windows native validation separate from local build evidence."}
+{"file":".trellis/tasks/08-26-frontend-interaction-v3-e2e/research/current-v2-gap.md","reason":"Check the implementation against the audited gap and no-fake-capability constraint."}
+{"file":".trellis/tasks/08-26-frontend-interaction-v3-e2e/research/feishu-delivery.md","reason":"Verify milestone messages, image attachments, message IDs and fresh readback evidence."}
