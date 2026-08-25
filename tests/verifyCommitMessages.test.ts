@@ -68,14 +68,18 @@ describe("commit message convention", () => {
     );
   });
 
-  it("rejects empty, overlong, and non-conventional subjects", () => {
+  it("rejects empty and non-conventional subjects without imposing a max length", () => {
     expect(validateCommitSubject("")).toContain("must not be empty");
     expect(validateCommitSubject("Update files")).toContain(
       "Conventional Commits",
     );
     expect(validateCommitSubject("feat: ")).toContain("Conventional Commits");
-    expect(validateCommitSubject(`fix(ci): ${"x".repeat(80)}`)).toContain(
-      "exceeds 72",
+    const longSubject = `fix(ci): ${"x".repeat(240)}`;
+    expect(longSubject.length).toBeGreaterThan(200);
+    expect(isConventionalCommitSubject(longSubject)).toBe(true);
+    expect(validateCommitSubject(longSubject)).toBeNull();
+    expect(validateCommitSubject(`Update files ${"x".repeat(240)}`)).toContain(
+      "Conventional Commits",
     );
   });
 
@@ -134,5 +138,42 @@ describe("commit message range verification", () => {
     };
     expect(report.ok).toBe(true);
     expect(report.commitCount).toBe(1);
+  });
+
+  it("accepts a long conventional pull request title", () => {
+    const root = fs.mkdtempSync(
+      path.join(os.tmpdir(), "fyagent-commit-messages-"),
+    );
+    temporaryRoots.push(root);
+    git(root, "init", "--quiet");
+    git(root, "config", "user.name", "FyAgent Tests");
+    git(root, "config", "user.email", "tests@fyagent.invalid");
+    fs.writeFileSync(path.join(root, "README"), "fixture\n");
+    git(root, "add", "README");
+    git(root, "commit", "-m", "ci: long title fixture");
+    const head = git(root, "rev-parse", "HEAD");
+    const prTitle = `ci(release): ${"formal retry contract ".repeat(12).trim()}`;
+    expect(prTitle.length).toBeGreaterThan(200);
+
+    const result = spawnSync(
+      process.execPath,
+      [
+        VERIFY_COMMIT_MESSAGES,
+        "--base",
+        head,
+        "--head",
+        head,
+        "--pr-title",
+        prTitle,
+      ],
+      { cwd: root, encoding: "utf8" },
+    );
+    expect(result.status).toBe(0);
+    const report = JSON.parse(result.stdout) as {
+      ok: boolean;
+      commitCount: number;
+      errors: string[];
+    };
+    expect(report).toEqual({ ok: true, commitCount: 1, errors: [] });
   });
 });

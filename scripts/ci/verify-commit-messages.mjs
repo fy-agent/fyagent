@@ -28,8 +28,6 @@ export const REVERT_COMMIT_SUBJECT_PATTERN = /^Revert "/u;
 
 export const GITHUB_SQUASH_PR_SUFFIX_PATTERN = /\s\(#\d+\)$/u;
 
-const SUBJECT_MAX_LENGTH = 72;
-
 function git(args) {
   const result = spawnSync("git", args, {
     encoding: "utf8",
@@ -38,7 +36,9 @@ function git(args) {
   if (result.status !== 0) {
     const detail = (result.stderr || result.stdout || "").trim();
     throw new Error(
-      detail ? `git ${args.join(" ")} failed: ${detail}` : `git ${args.join(" ")} failed`,
+      detail
+        ? `git ${args.join(" ")} failed: ${detail}`
+        : `git ${args.join(" ")} failed`,
     );
   }
   return result.stdout;
@@ -72,11 +72,8 @@ export function isConventionalCommitSubject(subject) {
   if (isMergeCommitSubject(trimmed) || isRevertCommitSubject(trimmed)) {
     return true;
   }
-  if (trimmed.length > SUBJECT_MAX_LENGTH) {
-    return false;
-  }
   const normalized = stripGithubSquashSuffix(trimmed);
-  if (normalized.length === 0 || normalized.length > SUBJECT_MAX_LENGTH) {
+  if (normalized.length === 0) {
     return false;
   }
   return CONVENTIONAL_SUBJECT_PATTERN.test(normalized);
@@ -90,15 +87,9 @@ export function validateCommitSubject(subject) {
   if (isMergeCommitSubject(trimmed) || isRevertCommitSubject(trimmed)) {
     return null;
   }
-  if (trimmed.length > SUBJECT_MAX_LENGTH) {
-    return `commit subject exceeds ${SUBJECT_MAX_LENGTH} characters`;
-  }
   const normalized = stripGithubSquashSuffix(trimmed);
   if (normalized.length === 0) {
     return "commit subject must not be empty after removing GitHub PR suffix";
-  }
-  if (normalized.length > SUBJECT_MAX_LENGTH) {
-    return `commit subject exceeds ${SUBJECT_MAX_LENGTH} characters after removing GitHub PR suffix`;
   }
   if (!CONVENTIONAL_SUBJECT_PATTERN.test(normalized)) {
     return [
@@ -115,7 +106,12 @@ export function listCommitSubjectsInRange(baseSha, headSha) {
   assertCommitSha(baseSha, "base");
   assertCommitSha(headSha, "head");
   if (baseSha === headSha) {
-    return [{ sha: headSha, subject: git(["show", "-s", "--format=%s", headSha]).trim() }];
+    return [
+      {
+        sha: headSha,
+        subject: git(["show", "-s", "--format=%s", headSha]).trim(),
+      },
+    ];
   }
   const output = git([
     "log",
@@ -137,23 +133,23 @@ export function listCommitSubjectsInRange(baseSha, headSha) {
   });
 }
 
-export function verifyCommitMessages({
-  baseSha,
-  headSha,
-  prTitle = null,
-}) {
+export function verifyCommitMessages({ baseSha, headSha, prTitle = null }) {
   const errors = [];
   const commits = listCommitSubjectsInRange(baseSha, headSha);
   for (const commit of commits) {
     const violation = validateCommitSubject(commit.subject);
     if (violation) {
-      errors.push(`${commit.sha.slice(0, 12)} ${commit.subject}\n  ${violation}`);
+      errors.push(
+        `${commit.sha.slice(0, 12)} ${commit.subject}\n  ${violation}`,
+      );
     }
   }
   if (typeof prTitle === "string" && prTitle.trim().length > 0) {
     const violation = validateCommitSubject(prTitle);
     if (violation) {
-      errors.push(`pull request title ${JSON.stringify(prTitle)}\n  ${violation}`);
+      errors.push(
+        `pull request title ${JSON.stringify(prTitle)}\n  ${violation}`,
+      );
     }
   }
   return {

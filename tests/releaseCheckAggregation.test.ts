@@ -53,6 +53,9 @@ describe("release check diagnostic aggregation", () => {
     expect(contractTests?.[2]).toContain(
       "tests/releaseCheckAggregation.test.ts",
     );
+    expect(contractTests?.[2]).toContain("tests/verifyCommitMessages.test.ts");
+    expect(contractTests?.[2]).toContain("tests/versionConsistency.test.ts");
+    expect(contractTests?.[2]).toContain("tests/windowsMsvcEnv.test.ts");
     expect(releaseCheckPlan(true)).toContainEqual([
       "supported-platform",
       "node",

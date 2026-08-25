@@ -144,6 +144,7 @@ jobs:
           classifier_status=0
           node scripts/ci/classify-changes.mjs \
             --base "$base_sha" --head "$head_sha" --json \
+            --summary-file "$GITHUB_STEP_SUMMARY" \
             > classifier-report.json || classifier_status=$?
           [ -s classifier-report.json ] || {
             echo 'Change classifier did not emit a JSON report' >&2
@@ -160,6 +161,21 @@ jobs:
             end
           ' classifier-report.json > ci-plan.json
           plan="$(jq -c . ci-plan.json)"
+          {
+            printf '\n### Final CI plan\n\n'
+            printf '%s\n' "- Event: \`$EVENT_NAME\`"
+            printf '%s\n' "- Event-forced Full CI: \`$event_force_full\`"
+            printf '%s\n' "- Final forceFull: \`$(jq -r '.forceFull' ci-plan.json)\`"
+            printf '%s\n' "- contracts: \`$(jq -r '.domains.contracts' ci-plan.json)\`"
+            printf '%s\n' "- frontend: \`$(jq -r '.domains.frontend' ci-plan.json)\`"
+            printf '%s\n' "- desktop: \`$(jq -r '.domains.desktop' ci-plan.json)\`"
+            printf '%s\n' "- backend: \`$(jq -r '.domains.backend' ci-plan.json)\`"
+            printf '%s\n' "- windowsNative: \`$(jq -r '.domains.windowsNative' ci-plan.json)\`"
+            printf '%s\n' "- docsSpec: \`$(jq -r '.domains.docsSpec' ci-plan.json)\`"
+            if [ "$event_force_full" = true ]; then
+              printf '%s\n' '- Event policy reason: `workflow_dispatch` is the explicit Full CI diagnostic path.'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
           {
             printf 'plan=%s\n' "$plan"
             printf 'contracts=%s\n' "$(jq -r '.domains.contracts' ci-plan.json)"
