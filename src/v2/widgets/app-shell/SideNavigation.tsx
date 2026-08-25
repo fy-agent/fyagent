@@ -1,5 +1,5 @@
 import { CaretDownIcon } from "@phosphor-icons/react/dist/csr/CaretDown";
-import { useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useRef, useState, type KeyboardEvent } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 
 import {
@@ -146,28 +146,45 @@ export function SideNavigation() {
         inset={1}
       >
         {navigationGroups.map((group) => {
+          if (!group.collapsible) {
+            return (
+              <section
+                className="fy-side-navigation-group"
+                data-navigation-group={group.id}
+                key={group.id}
+              >
+                {group.items.map((item) => (
+                  <NavigationLink item={item} key={item.id} />
+                ))}
+              </section>
+            );
+          }
+
           const groupLabelId = `fy-side-navigation-${group.id}-label`;
-          const { collapsible } = group;
           const groupActive = group.items.some(
             (item) => item.path === pathname,
           );
-          let groupLabel: ReactNode;
+          const content = (
+            <span className="fy-side-navigation-toggle-content">
+              <span>{group.label}</span>
+              <CaretDownIcon
+                className="fy-side-navigation-caret"
+                size={16}
+                weight="bold"
+                aria-hidden
+                data-testid="configuration-management-caret"
+              />
+            </span>
+          );
+          const visuallyActive = groupActive && !configurationExpanded;
 
-          if (collapsible) {
-            const content = (
-              <span className="fy-side-navigation-toggle-content">
-                <span>{group.label}</span>
-                <CaretDownIcon
-                  className="fy-side-navigation-caret"
-                  size={16}
-                  weight="bold"
-                  aria-hidden
-                  data-testid="configuration-management-caret"
-                />
-              </span>
-            );
-            const visuallyActive = groupActive && !configurationExpanded;
-            groupLabel = (
+          return (
+            <section
+              className="fy-side-navigation-group fy-side-navigation-group-collapsible"
+              aria-labelledby={groupLabelId}
+              data-navigation-group={group.id}
+              key={group.id}
+            >
               <button
                 ref={configurationToggleRef}
                 className={classNames(
@@ -193,40 +210,18 @@ export function SideNavigation() {
                   content
                 )}
               </button>
-            );
-          } else {
-            groupLabel = (
-              <h2 className="fy-side-navigation-group-title" id={groupLabelId}>
-                {group.label}
-              </h2>
-            );
-          }
-
-          return (
-            <section
-              className={classNames(
-                "fy-side-navigation-group",
-                collapsible && "fy-side-navigation-group-collapsible",
-              )}
-              aria-labelledby={groupLabelId}
-              data-navigation-group={group.id}
-              key={group.id}
-            >
-              {groupLabel}
               <ul
-                ref={collapsible ? configurationItemsRef : undefined}
+                ref={configurationItemsRef}
                 className="fy-side-navigation-items"
-                id={collapsible ? configurationItemsId : undefined}
-                hidden={collapsible && !configurationExpanded}
-                data-testid={
-                  collapsible ? "configuration-management-items" : undefined
-                }
+                id={configurationItemsId}
+                hidden={!configurationExpanded}
+                data-testid="configuration-management-items"
               >
                 {group.items.map((item) => (
                   <li key={item.id}>
                     <NavigationLink
                       item={item}
-                      visuallyAvailable={!collapsible || configurationExpanded}
+                      visuallyAvailable={configurationExpanded}
                     />
                   </li>
                 ))}

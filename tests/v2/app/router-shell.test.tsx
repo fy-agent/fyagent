@@ -34,12 +34,12 @@ vi.mock("@samasante/liquid-glass", () => ({
 }));
 
 const navigationContract = [
-  { path: "/agents", label: "Agent 目录" },
-  { path: "/models", label: "模型" },
-  { path: "/skills", label: "Skills" },
-  { path: "/mcp", label: "MCP" },
-  { path: "/prompts", label: "提示词" },
-  { path: "/memory", label: "记忆" },
+  { path: "/agents", label: "AI软件配置" },
+  { path: "/models", label: "模型管理" },
+  { path: "/skills", label: "Skills 管理" },
+  { path: "/mcp", label: "MCP 管理" },
+  { path: "/prompts", label: "提示词管理" },
+  { path: "/memory", label: "记忆模块" },
 ] as const;
 
 const toolNames = ["搜索", "设置", "账户"] as const;
@@ -91,7 +91,7 @@ describe("FyAgent V2 routing", () => {
       await expectPath(router, "/agents");
       const navigation = screen.getByRole("navigation", { name: "主导航" });
       expect(
-        screen.getByRole("link", { name: "Agent 目录", current: "page" }),
+        screen.getByRole("link", { name: "AI软件配置", current: "page" }),
       ).toHaveAttribute("href", "/agents");
       expect(screen.getAllByTestId("liquid-glass-lens")).toHaveLength(1);
       expect(within(navigation).getAllByTestId("selection-lens")).toHaveLength(
@@ -240,6 +240,17 @@ describe("FyAgent V2 shell accessibility", () => {
     expect(
       within(navigation).getByText("记忆模块", { exact: true }),
     ).toBeVisible();
+    expect(
+      navigation.querySelectorAll(
+        ".fy-side-navigation-group > .fy-side-navigation-item, .fy-side-navigation-group > .fy-side-navigation-toggle",
+      ),
+    ).toHaveLength(3);
+    expect(
+      within(navigation).queryByRole("link", { name: "Agent 目录" }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(navigation).queryByRole("link", { name: /^记忆$/ }),
+    ).not.toBeInTheDocument();
     expect(configurationToggle).toHaveAttribute("aria-expanded", "true");
     expect(configurationItems).toBeVisible();
 
@@ -252,11 +263,11 @@ describe("FyAgent V2 shell accessibility", () => {
     expect(configurationToggle).toHaveAttribute("aria-expanded", "true");
     await user.keyboard("{ArrowRight}");
     expect(
-      within(navigation).getByRole("link", { name: "模型" }),
+      within(navigation).getByRole("link", { name: "模型管理" }),
     ).toHaveFocus();
     await user.keyboard("{ArrowDown}");
     expect(
-      within(navigation).getByRole("link", { name: "Skills" }),
+      within(navigation).getByRole("link", { name: "Skills 管理" }),
     ).toHaveFocus();
     await user.keyboard("{Escape}");
     expect(configurationToggle).toHaveFocus();
@@ -287,11 +298,11 @@ describe("FyAgent V2 primary page persistence", () => {
 
     const url = await screen.findByLabelText("服务地址");
     await user.type(url, "https://keep.example/v1");
-    await user.click(screen.getByRole("link", { name: "Agent 目录" }));
+    await user.click(screen.getByRole("link", { name: "AI软件配置" }));
     await expectPath(router, "/agents");
     expect(screen.getByTestId("models-page")).not.toBeVisible();
 
-    await user.click(screen.getByRole("link", { name: "模型" }));
+    await user.click(screen.getByRole("link", { name: "模型管理" }));
     await expectPath(router, "/models");
     expect(await screen.findByLabelText("服务地址")).toHaveValue(
       "https://keep.example/v1",
@@ -345,11 +356,11 @@ describe("FyAgent V2 primary page persistence", () => {
       expect(
         await screen.findByRole("heading", { name: "Claude Code" }),
       ).toBeVisible();
-      await user.click(screen.getByRole("link", { name: "模型" }));
+      await user.click(screen.getByRole("link", { name: "模型管理" }));
       await expectPath(router, "/models");
       expect(screen.getByTestId("agents-page")).not.toBeVisible();
 
-      await user.click(screen.getByRole("link", { name: "Agent 目录" }));
+      await user.click(screen.getByRole("link", { name: "AI软件配置" }));
       await expectPath(router, "/agents");
       expect(
         await screen.findByRole("heading", { name: "Claude Code" }),
@@ -369,7 +380,7 @@ describe("FyAgent V2 primary page persistence", () => {
       "aria-selected",
       "true",
     );
-    await user.click(screen.getByRole("link", { name: "提示词" }));
+    await user.click(screen.getByRole("link", { name: "提示词管理" }));
     await expectPath(router, "/prompts");
     expect(screen.getByTestId("skills-page")).not.toBeVisible();
 
@@ -378,7 +389,7 @@ describe("FyAgent V2 primary page persistence", () => {
       "aria-current",
       "true",
     );
-    await user.click(screen.getByRole("link", { name: "记忆" }));
+    await user.click(screen.getByRole("link", { name: "记忆模块" }));
     await expectPath(router, "/memory");
     expect(screen.getByTestId("prompts-page")).not.toBeVisible();
 
@@ -387,29 +398,29 @@ describe("FyAgent V2 primary page persistence", () => {
       "aria-selected",
       "true",
     );
-    await user.click(screen.getByRole("link", { name: "MCP" }));
+    await user.click(screen.getByRole("link", { name: "MCP 管理" }));
     await expectPath(router, "/mcp");
     expect(screen.getByTestId("memory-page")).not.toBeVisible();
     expect(screen.getByTestId("mcp-page")).toBeVisible();
 
-    await user.click(screen.getByRole("link", { name: "Skills" }));
+    await user.click(screen.getByRole("link", { name: "Skills 管理" }));
     await expectPath(router, "/skills");
     expect(screen.getByTestId("mcp-page")).not.toBeVisible();
     expect(screen.getByRole("tab", { name: "发现" })).toHaveAttribute(
       "aria-selected",
       "true",
     );
-    await user.click(screen.getByRole("link", { name: "提示词" }));
+    await user.click(screen.getByRole("link", { name: "提示词管理" }));
     expect(screen.getByTestId("prompt-app-gemini")).toHaveAttribute(
       "aria-current",
       "true",
     );
-    await user.click(screen.getByRole("link", { name: "记忆" }));
+    await user.click(screen.getByRole("link", { name: "记忆模块" }));
     expect(screen.getByRole("tab", { name: "每日记忆" })).toHaveAttribute(
       "aria-selected",
       "true",
     );
-    await user.click(screen.getByRole("link", { name: "MCP" }));
+    await user.click(screen.getByRole("link", { name: "MCP 管理" }));
     expect(screen.getByTestId("mcp-page")).toBeVisible();
   });
 });

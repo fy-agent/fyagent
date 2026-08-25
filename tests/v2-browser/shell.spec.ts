@@ -10,12 +10,12 @@ import {
 } from "./support";
 
 const navigationContract = [
-  { path: "/agents", label: "Agent 目录" },
-  { path: "/models", label: "模型" },
-  { path: "/skills", label: "Skills" },
-  { path: "/mcp", label: "MCP" },
-  { path: "/prompts", label: "提示词" },
-  { path: "/memory", label: "记忆" },
+  { path: "/agents", label: "AI软件配置" },
+  { path: "/models", label: "模型管理" },
+  { path: "/skills", label: "Skills 管理" },
+  { path: "/mcp", label: "MCP 管理" },
+  { path: "/prompts", label: "提示词管理" },
+  { path: "/memory", label: "记忆模块" },
 ] as const;
 
 const visibleControlTestIds = ["search", "settings", "avatar"] as const;
@@ -121,6 +121,17 @@ test("keeps the complete shell visible, separate, and overflow-free", async ({
   await expect(configurationToggle).toBeVisible();
   await expect(configurationToggle).toHaveAttribute("aria-expanded", "true");
   await expect(navigation.getByText("记忆模块", { exact: true })).toBeVisible();
+  await expect(
+    navigation.locator(
+      ".fy-side-navigation-group > .fy-side-navigation-item, .fy-side-navigation-group > .fy-side-navigation-toggle",
+    ),
+  ).toHaveCount(3);
+  await expect(
+    navigation.getByRole("link", { name: "Agent 目录" }),
+  ).toHaveCount(0);
+  await expect(
+    navigation.getByRole("link", { name: "记忆", exact: true }),
+  ).toHaveCount(0);
   const primaryControls: Locator[] = [];
   for (const { label } of navigationContract) {
     const link = routeLink(navigation, label);
@@ -291,7 +302,7 @@ test("supports expand, collapse, focus movement, and reduced motion", async ({
   await page.keyboard.press("ArrowRight");
   await expect(configurationToggle).toHaveAttribute("aria-expanded", "true");
   await page.keyboard.press("ArrowRight");
-  const modelsLink = routeLink(navigation, "模型");
+  const modelsLink = routeLink(navigation, "模型管理");
   await expect(modelsLink).toBeFocused();
   expect(
     await modelsLink.evaluate(
@@ -300,7 +311,7 @@ test("supports expand, collapse, focus movement, and reduced motion", async ({
   ).not.toBe("none");
 
   await page.keyboard.press("ArrowDown");
-  await expect(routeLink(navigation, "Skills")).toBeFocused();
+  await expect(routeLink(navigation, "Skills 管理")).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(configurationToggle).toBeFocused();
   await expect(configurationToggle).toHaveAttribute("aria-expanded", "false");

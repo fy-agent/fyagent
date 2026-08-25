@@ -144,15 +144,6 @@
   border-top: 1px solid var(--fy-divider);
 }
 
-.fy-side-navigation-group-title {
-  margin: 0 8px 6px;
-  color: var(--fy-text-tertiary);
-  font-size: 11.5px;
-  font-weight: 650;
-  line-height: 1.2;
-  letter-spacing: 0.035em;
-}
-
 .fy-side-navigation-toggle,
 .fy-side-navigation-item {
   position: relative;
@@ -712,10 +703,6 @@
 
   .fy-brand-name {
     font-size: 18px;
-  }
-
-  .fy-side-navigation-group-title {
-    margin-inline: 7px;
   }
 
   .fy-tool-cluster {
