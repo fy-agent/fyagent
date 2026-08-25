@@ -175,7 +175,7 @@
     ],
     [
       "src-tauri/src/services/model_probe.rs",
-      "88a795f114a5ee81f75448668dd471f13c78027619372187f8f1caaacec53305"
+      "f5c87f86e62c5738d3c345e191960d02100b3df8b79f74ec9e1909428f0e0578"
     ],
     [
       "src-tauri/src/services/provider/mod.rs",
