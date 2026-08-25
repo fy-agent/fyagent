@@ -1,125 +1,23 @@
-import { useEffect, useState } from "react";
-import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { useEffect, useRef } from "react";
+import { useLocation, useSearchParams } from "react-router-dom";
 
-import { getAgentBrand } from "../../shared/assets/agents";
-import { CodexDesktopInstallerPanel } from "../../shared/codex-desktop/CodexDesktopInstallerPanel";
 import { PRODUCT_DIRECTORY } from "../../shared/features/directory";
-import { convergeSelection } from "../../shared/features/helpers";
 import { useAgentCatalog } from "../../shared/features/queries";
-import { useFeatures } from "../../shared/features/provider";
-import type {
-  AgentCapabilityId,
-  AgentCatalogEntry,
-  AgentCatalogId,
-} from "../../shared/features/types";
-import { AGENT_CATALOG_IDS } from "../../shared/features/types";
 import {
   Button,
   EmptyState,
   InlineNotice,
   Spinner,
 } from "../../shared/ui/primitives";
-import {
-  BrandIconFrame,
-  CatalogDetail,
-  CatalogList,
-  CatalogListItem,
-  CatalogMasterDetail,
-  CatalogOfficialLinks,
-  CatalogRail,
-} from "../../shared/ui/catalog";
 
-import { getAgentIntro } from "./intros";
-import { AgentInstallReadinessSection } from "./AgentInstallReadinessSection";
+import { AgentConfiguration } from "./AgentConfiguration";
+import { AgentDirectory } from "./AgentDirectory";
+import { AGENT_SECTION_IDS, type AgentSection } from "./agentSections";
+import { useAgentDirectoryScan } from "./useAgentDirectoryScan";
 import "./Page.css";
 
-const MODEL_TARGET_BY_CATALOG_ID = Object.fromEntries(
-  PRODUCT_DIRECTORY.map((entry) => [entry.agentId, entry.modelTarget]),
-) as Readonly<
-  Record<AgentCatalogId, (typeof PRODUCT_DIRECTORY)[number]["modelTarget"]>
->;
-
-function capability(entry: AgentCatalogEntry, id: AgentCapabilityId) {
-  return entry.capabilities.find((candidate) => candidate.id === id);
-}
-
-function AgentDetail({ entry }: { entry: AgentCatalogEntry }) {
-  const { ports } = useFeatures();
-  const navigate = useNavigate();
-  const modelTarget = MODEL_TARGET_BY_CATALOG_ID[entry.id];
-  const productCapability = capability(entry, "product.open");
-  const modelWrite = capability(entry, "models.write");
-  const skillsRead = capability(entry, "skills.read");
-  const skillsWrite = capability(entry, "skills.write");
-  const mcpWrite = capability(entry, "mcp.write");
-  const showModelsJump = modelWrite?.mode === "direct";
-  const showSkillsJump =
-    skillsRead?.mode === "direct" || skillsWrite?.mode === "direct";
-  const showMcpJump = mcpWrite?.mode === "direct";
-  const showJumps = showModelsJump || showSkillsJump || showMcpJump;
-  const intro = getAgentIntro(entry.id);
-
-  return (
-    <CatalogDetail
-      className="fy-agent-detail"
-      ariaLabel={`${entry.displayName} 详情`}
-    >
-      <div className="fy-agent-identity">
-        <BrandIconFrame asset={getAgentBrand(entry.id)} size="detail" />
-        <div className="fy-agent-identity-copy">
-          <div className="fy-agent-identity-title">
-            <h2>{entry.displayName}</h2>
-          </div>
-        </div>
-        <CatalogOfficialLinks
-          links={entry.officialLinks}
-          disabled={
-            productCapability?.mode !== "direct" &&
-            productCapability?.mode !== "assisted"
-          }
-        />
-      </div>
-
-      {intro ? (
-        <section className="fy-agent-section" aria-label="产品介绍">
-          {intro.paragraphs.map((paragraph) => (
-            <p key={paragraph} className="fy-feature-intro">
-              {paragraph}
-            </p>
-          ))}
-        </section>
-      ) : null}
-
-      <AgentInstallReadinessSection
-        agentId={entry.id}
-        port={ports.agentInstallReadiness}
-      />
-
-      {entry.id === "codex" && <CodexDesktopInstallerPanel />}
-
-      {showJumps ? (
-        <section className="fy-agent-section" aria-label="支持的功能">
-          <h3>支持的功能</h3>
-          <div className="fy-agent-action-row">
-            {showModelsJump && (
-              <Button
-                className="fy-control-button-primary"
-                onClick={() => navigate(`/models?target=${modelTarget}`)}
-              >
-                配置模型
-              </Button>
-            )}
-            {showSkillsJump && (
-              <Button onClick={() => navigate("/skills")}>打开 Skills</Button>
-            )}
-            {showMcpJump && (
-              <Button onClick={() => navigate("/mcp")}>打开 MCP</Button>
-            )}
-          </div>
-        </section>
-      ) : null}
-    </CatalogDetail>
-  );
+function agentSection(value: string | null): AgentSection | null {
+  return AGENT_SECTION_IDS.find((section) => section === value) ?? null;
 }
 
 export function AgentsPage() {
@@ -127,35 +25,80 @@ export function AgentsPage() {
   const pageActive = pathname === "/agents";
   const [searchParams, setSearchParams] = useSearchParams();
   const catalogQuery = useAgentCatalog();
-  const [selectedId, setSelectedId] = useState<AgentCatalogId | null>(null);
+  const scanController = useAgentDirectoryScan();
+  const lastConfiguration = useRef<{
+    target: (typeof PRODUCT_DIRECTORY)[number]["agentId"];
+    section: AgentSection;
+  } | null>(null);
+  const wasPageActive = useRef(pageActive);
   const entries = catalogQuery.data?.agents ?? [];
-  const requestedTarget = pageActive ? searchParams.get("target") : null;
-  const targetFromRoute =
-    AGENT_CATALOG_IDS.find((id) => id === requestedTarget) ?? null;
-  if (pageActive && targetFromRoute && targetFromRoute !== selectedId) {
-    setSelectedId(targetFromRoute);
-  }
-  const convergedId = convergeSelection(entries, selectedId ?? targetFromRoute);
-  const selected = entries.find((entry) => entry.id === convergedId) ?? null;
+  const rawTarget = pageActive ? searchParams.get("target") : null;
+  const rawSection = pageActive ? searchParams.get("section") : null;
+  const directoryEntry = PRODUCT_DIRECTORY.find(
+    (entry) => entry.agentId === rawTarget,
+  );
+  const requestedSection = agentSection(rawSection);
+  const section = requestedSection ?? "models";
+  const catalogEntry = directoryEntry
+    ? entries.find((entry) => entry.id === directoryEntry.agentId)
+    : undefined;
 
   useEffect(() => {
+    const becameActive = pageActive && !wasPageActive.current;
+    wasPageActive.current = pageActive;
     if (!pageActive) return;
-    if (searchParams.get("target") !== null) return;
-    if (!selectedId) return;
-    setSearchParams({ target: selectedId }, { replace: true });
-  }, [pageActive, searchParams, selectedId, setSearchParams]);
+    if (directoryEntry && requestedSection) {
+      lastConfiguration.current = {
+        target: directoryEntry.agentId,
+        section: requestedSection,
+      };
+    }
+    if (!rawTarget) {
+      if (becameActive && lastConfiguration.current) {
+        setSearchParams(lastConfiguration.current, { replace: true });
+      } else {
+        lastConfiguration.current = null;
+        if (rawSection) setSearchParams({}, { replace: true });
+      }
+      return;
+    }
+    if (!directoryEntry) {
+      setSearchParams({}, { replace: true });
+      return;
+    }
+    if (!requestedSection) {
+      setSearchParams(
+        { target: directoryEntry.agentId, section: "models" },
+        { replace: true },
+      );
+    }
+  }, [
+    directoryEntry,
+    pageActive,
+    rawSection,
+    rawTarget,
+    requestedSection,
+    setSearchParams,
+  ]);
+
+  const showDirectory = !directoryEntry;
+  const returnToDirectory = () => {
+    lastConfiguration.current = null;
+    setSearchParams({});
+  };
 
   return (
     <div
-      className="fy-feature-page fy-split-page fy-catalog-page fy-agents-page"
+      className="fy-feature-page fy-agents-page"
       data-testid="agents-page"
-      aria-label="Agent 目录"
+      data-view={showDirectory ? "directory" : "configuration"}
+      aria-label="AI 软件配置"
     >
-      {catalogQuery.error && catalogQuery.data !== undefined && (
+      {catalogQuery.error && catalogQuery.data !== undefined ? (
         <InlineNotice tone="warning">
-          暂时无法刷新应用信息，正在显示已加载内容。
+          暂时无法刷新 Agent 目录，正在显示已加载内容。
         </InlineNotice>
-      )}
+      ) : null}
 
       {catalogQuery.isPending ? (
         <EmptyState title="正在加载 Agent 目录" description="正在获取应用信息">
@@ -169,7 +112,7 @@ export function AgentsPage() {
             <Button onClick={() => void catalogQuery.refetch()}>重试</Button>
           }
         />
-      ) : entries.length === 0 || !selected ? (
+      ) : entries.length === 0 ? (
         <EmptyState
           title="Agent 目录暂不可用"
           description="暂时没有可显示的应用，请重试。"
@@ -177,28 +120,34 @@ export function AgentsPage() {
             <Button onClick={() => void catalogQuery.refetch()}>重试</Button>
           }
         />
-      ) : (
-        <CatalogMasterDetail>
-          <CatalogRail ariaLabel="Agent 选择" title="选择 Agent">
-            <CatalogList>
-              {entries.map((entry) => (
-                <CatalogListItem
-                  key={entry.id}
-                  asset={getAgentBrand(entry.id)}
-                  label={entry.displayName}
-                  selected={entry.id === selected.id}
-                  onSelect={() => {
-                    setSelectedId(entry.id);
-                    setSearchParams({ target: entry.id }, { replace: true });
-                  }}
-                />
-              ))}
-            </CatalogList>
-          </CatalogRail>
-
-          <AgentDetail entry={selected} />
-        </CatalogMasterDetail>
-      )}
+      ) : directoryEntry && !catalogEntry ? (
+        <EmptyState
+          title="无法恢复 Agent 配置"
+          description="当前目录没有这个 Agent，请返回软件目录后重试。"
+          actions={<Button onClick={returnToDirectory}>返回目录</Button>}
+        />
+      ) : showDirectory ? (
+        <AgentDirectory
+          entries={entries}
+          scanController={scanController}
+          onConfigure={(agentId) =>
+            setSearchParams({ target: agentId, section: "models" })
+          }
+        />
+      ) : catalogEntry && directoryEntry ? (
+        <AgentConfiguration
+          entry={directoryEntry}
+          catalogEntry={catalogEntry}
+          section={section}
+          onBack={returnToDirectory}
+          onSectionChange={(nextSection) =>
+            setSearchParams({
+              target: directoryEntry.agentId,
+              section: nextSection,
+            })
+          }
+        />
+      ) : null}
     </div>
   );
 }

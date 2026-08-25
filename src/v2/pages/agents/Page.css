@@ -1,3 +1,370 @@
+.fy-agents-page {
+  overflow: auto;
+}
+
+.fy-agent-directory,
+.fy-agent-configuration {
+  --fy-catalog-list-frame-size: 36px;
+  --fy-catalog-list-artwork-size: 28px;
+  --fy-catalog-detail-frame-size: 64px;
+  --fy-catalog-detail-artwork-size: 48px;
+
+  display: grid;
+  align-content: start;
+  gap: 16px;
+  min-width: 0;
+}
+
+.fy-agent-directory-header,
+.fy-agent-config-header,
+.fy-agent-config-section-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.fy-agent-directory-header > div,
+.fy-agent-config-section-header > div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.fy-agent-directory-header h1,
+.fy-agent-config-header h1,
+.fy-agent-config-section-header h2 {
+  margin: 0;
+  letter-spacing: -0.02em;
+}
+
+.fy-agent-directory-header h1,
+.fy-agent-config-header h1 {
+  font-size: 22px;
+}
+
+.fy-agent-config-section-header h2 {
+  font-size: 17px;
+}
+
+.fy-agent-directory-header p,
+.fy-agent-config-section-header p,
+.fy-agent-config-identity p {
+  margin: 0;
+  color: var(--fy-text-secondary);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.fy-agent-directory-header .fy-agent-directory-eyebrow {
+  color: var(--fy-accent-text);
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.fy-agent-directory-progress {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--fy-border-emphasis);
+  border-radius: 13px;
+  background: var(--fy-surface-soft);
+}
+
+.fy-agent-directory-progress > div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--fy-text);
+  font-size: 12px;
+}
+
+.fy-agent-directory-progress progress {
+  width: 100%;
+  height: 7px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(226, 243, 255, 0.12);
+  accent-color: var(--fy-accent);
+}
+
+.fy-agent-directory-progress progress::-webkit-progress-bar {
+  border-radius: inherit;
+  background: rgba(226, 243, 255, 0.12);
+}
+
+.fy-agent-directory-progress progress::-webkit-progress-value {
+  border-radius: inherit;
+  background: var(--fy-accent);
+}
+
+.fy-agent-directory-progress p {
+  margin: 0;
+  color: var(--fy-text-secondary);
+  font-size: 11px;
+}
+
+.fy-agent-directory-list {
+  display: grid;
+  gap: 10px;
+}
+
+.fy-agent-directory-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--fy-border);
+  border-radius: 15px;
+  background: var(--fy-surface-soft);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.fy-agent-directory-card-copy,
+.fy-agent-directory-card-heading,
+.fy-agent-directory-meta {
+  min-width: 0;
+}
+
+.fy-agent-directory-card-copy {
+  display: grid;
+  gap: 7px;
+}
+
+.fy-agent-directory-card-heading,
+.fy-agent-directory-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.fy-agent-directory-card-heading h2 {
+  margin: 0;
+  font-size: 17px;
+  letter-spacing: -0.015em;
+}
+
+.fy-agent-directory-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 23px;
+  padding: 2px 8px;
+  border: 1px solid var(--fy-border);
+  border-radius: 999px;
+  color: var(--fy-text-secondary);
+  background: rgba(9, 29, 48, 0.16);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.fy-agent-directory-status .fy-control-spinner {
+  width: 12px;
+  height: 12px;
+}
+
+.fy-agent-directory-status[data-status="installed"] {
+  border-color: color-mix(in srgb, var(--fy-success) 48%, transparent);
+  color: var(--fy-success);
+}
+
+.fy-agent-directory-status[data-status="warning"],
+.fy-agent-directory-status[data-status="unknown"] {
+  border-color: rgba(157, 220, 255, 0.35);
+  color: var(--fy-accent-text);
+}
+
+.fy-agent-directory-status[data-status="error"] {
+  border-color: var(--fy-danger-border);
+  color: var(--fy-danger-text);
+}
+
+.fy-agent-directory-description {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: 0;
+  color: var(--fy-text-secondary);
+  font-size: 12px;
+  line-height: 1.55;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.fy-agent-directory-meta {
+  color: var(--fy-text-secondary);
+  font-size: 11px;
+}
+
+.fy-agent-directory-more summary {
+  cursor: pointer;
+  color: var(--fy-accent-text);
+}
+
+.fy-agent-directory-more[open] {
+  flex-basis: 100%;
+  padding-top: 7px;
+}
+
+.fy-agent-directory-more p {
+  margin: 0 0 9px;
+  color: var(--fy-text-secondary);
+  line-height: 1.6;
+}
+
+.fy-agent-config-identity {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+}
+
+.fy-agent-config-identity > div:last-child {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.fy-agent-config-tabs {
+  width: 100%;
+  margin-bottom: 0;
+}
+
+.fy-agent-config-tabs > .fy-feature-tab {
+  flex: 1 1 0;
+}
+
+.fy-agent-config-body {
+  min-width: 0;
+  padding: 15px;
+  border: 1px solid var(--fy-border);
+  border-radius: 16px;
+  background: rgba(9, 29, 48, 0.12);
+}
+
+.fy-agent-config-section {
+  display: grid;
+  align-content: start;
+  gap: 13px;
+  min-width: 0;
+}
+
+.fy-agent-config-loading {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 80px;
+  color: var(--fy-text-secondary);
+  font-size: 12px;
+}
+
+.fy-agent-resource-workspace {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.75fr) minmax(0, 1.25fr);
+  gap: 12px;
+  min-width: 0;
+  min-height: 310px;
+}
+
+.fy-agent-resource-list-panel,
+.fy-agent-resource-detail {
+  min-height: 0;
+  overflow: auto;
+}
+
+.fy-agent-resource-list-panel .fy-feature-list {
+  margin-top: 0;
+}
+
+.fy-agent-resource-detail {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+}
+
+.fy-agent-resource-detail > div:first-child {
+  display: grid;
+  gap: 6px;
+}
+
+.fy-agent-resource-detail h3,
+.fy-agent-resource-detail p {
+  margin: 0;
+}
+
+.fy-agent-resource-detail p,
+.fy-agent-resource-meta {
+  color: var(--fy-text-secondary);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.fy-agent-resource-detail .fy-feature-assignments {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.fy-agent-prompt-detail-heading {
+  display: flex !important;
+  grid-template-columns: none;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.fy-agent-prompt-detail-heading > div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.fy-agent-prompt-preview {
+  max-height: 280px;
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  border: 1px solid var(--fy-border);
+  border-radius: 11px;
+  background: rgba(9, 29, 48, 0.2);
+  color: var(--fy-text);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.fy-agent-install-disclosure {
+  min-width: 0;
+  border: 1px solid var(--fy-border);
+  border-radius: 13px;
+  background: var(--fy-surface-soft);
+}
+
+.fy-agent-install-disclosure > summary {
+  cursor: pointer;
+  padding: 11px 13px;
+  color: var(--fy-text-secondary);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.fy-agent-install-disclosure[open] > summary {
+  border-bottom: 1px solid var(--fy-border);
+}
+
+.fy-agent-install-disclosure > :not(summary) {
+  margin: 13px;
+}
+
 .fy-agent-detail {
   display: grid;
   align-content: start;
@@ -419,6 +786,21 @@
   font-size: 11px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+@media (max-width: 760px) {
+  .fy-agent-directory-card {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .fy-agent-directory-card > .fy-control-button {
+    grid-column: 1 / -1;
+    justify-self: stretch;
+  }
+
+  .fy-agent-resource-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 @media (max-width: 520px) {
