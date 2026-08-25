@@ -183,6 +183,13 @@ test("Agent V3 scans only on demand and reuses existing Skill and MCP assignment
   });
   await expect(mcpSwitch).not.toBeChecked();
   await mcpSwitch.click();
+  const trustDialog = page.getByRole("dialog", {
+    name: "需要在 WorkBuddy 中信任 MCP",
+  });
+  await expect(trustDialog).toBeVisible();
+  await expect(trustDialog).toContainText("连接器 → 自定义连接器");
+  await trustDialog.getByRole("button", { name: "知道了" }).click();
+  await expect(trustDialog).toHaveCount(0);
   await expect(mcpSwitch).toBeChecked();
   await expect(
     configuration.getByText(/已从真实配置回读：WorkBuddy 已分配此 MCP/),
@@ -208,7 +215,7 @@ test("Agent V3 scans only on demand and reuses existing Skill and MCP assignment
 
   await configuration.getByRole("button", { name: "进入 MCP 管理" }).click();
   await expect(page).toHaveURL(/#\/mcp$/);
-  await page.getByRole("link", { name: "Agent 目录" }).click();
+  await page.getByRole("link", { name: "AI软件配置", exact: true }).click();
   await expect(page).toHaveURL(/#\/agents\?target=workbuddy&section=mcp$/);
   await expect(configuration).toBeVisible();
 

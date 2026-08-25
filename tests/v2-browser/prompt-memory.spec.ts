@@ -12,12 +12,12 @@ import {
 } from "./support";
 
 const navigationContract = [
-  { path: "/agents", label: "Agent 目录" },
-  { path: "/models", label: "模型" },
-  { path: "/skills", label: "Skills" },
-  { path: "/mcp", label: "MCP" },
-  { path: "/prompts", label: "提示词" },
-  { path: "/memory", label: "记忆" },
+  { path: "/agents", label: "AI软件配置" },
+  { path: "/models", label: "模型管理" },
+  { path: "/skills", label: "Skills 管理" },
+  { path: "/mcp", label: "MCP 管理" },
+  { path: "/prompts", label: "提示词管理" },
+  { path: "/memory", label: "记忆模块" },
 ] as const;
 
 const retiredPrototypeCopy = [
@@ -140,7 +140,7 @@ test("shows truthful native-only Prompt and Memory states without seeded data", 
   await expectNoHorizontalOverflow(page);
 
   await primaryNavigation(page)
-    .getByRole("link", { name: "记忆", exact: true })
+    .getByRole("link", { name: "记忆模块", exact: true })
     .click();
   await expect(page).toHaveURL(/#\/memory$/);
   await expectMemoryNativeOnly(page, "长期记忆");
@@ -200,7 +200,9 @@ test("switches all six routes and keeps Prompt and Memory controls reachable", a
     await expectNoHorizontalOverflow(page);
   }
 
-  await navigation.getByRole("link", { name: "提示词", exact: true }).click();
+  await navigation
+    .getByRole("link", { name: "提示词管理", exact: true })
+    .click();
   await expectPromptNativeOnly(page);
   for (const control of [
     page.getByTestId("prompt-app-claude"),
@@ -213,7 +215,7 @@ test("switches all six routes and keeps Prompt and Memory controls reachable", a
   }
   await expectNoHorizontalOverflow(page);
 
-  await navigation.getByRole("link", { name: "记忆", exact: true }).click();
+  await navigation.getByRole("link", { name: "记忆模块", exact: true }).click();
   await expectMemoryNativeOnly(page, "长期记忆");
   for (const control of [
     page.getByRole("tab", { name: "长期记忆" }),
@@ -270,7 +272,7 @@ test("opens both native-only pages from the self-contained standalone file", asy
   await expectNoHorizontalOverflow(page);
 
   await primaryNavigation(page)
-    .getByRole("link", { name: "记忆", exact: true })
+    .getByRole("link", { name: "记忆模块", exact: true })
     .click();
   await expect(page).toHaveURL(/#\/memory$/);
   await expectMemoryNativeOnly(page, "长期记忆");
@@ -279,7 +281,7 @@ test("opens both native-only pages from the self-contained standalone file", asy
   await expectNoHorizontalOverflow(page);
 
   await primaryNavigation(page)
-    .getByRole("link", { name: "提示词", exact: true })
+    .getByRole("link", { name: "提示词管理", exact: true })
     .click();
   await expectPromptNativeOnly(page);
   expect(externalRequests).toEqual([]);

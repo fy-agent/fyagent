@@ -43,7 +43,7 @@ const modelTargetIconSources = [
 ] as const;
 
 function agentSelector(page: Parameters<typeof openV2Page>[0]): Locator {
-  return page.getByRole("region", { name: "Agent 选择" });
+  return page.getByRole("region", { name: "AI 软件目录" });
 }
 
 function agentItem(
@@ -51,11 +51,20 @@ function agentItem(
   name: (typeof agentOrder)[number],
 ): Locator {
   return agentSelector(page)
-    .locator(".fy-catalog-list-item")
-    .filter({ has: page.getByText(name, { exact: true }) });
+    .locator(".fy-agent-directory-card")
+    .filter({ has: page.getByRole("heading", { name, exact: true }) });
 }
 
-test("Agent catalog keeps exact native order and accessible master-detail selection", async ({
+async function expandAgentDetails(
+  page: Parameters<typeof openV2Page>[0],
+  name: (typeof agentOrder)[number],
+): Promise<Locator> {
+  const card = agentItem(page, name);
+  await card.getByText("查看完整介绍", { exact: true }).click();
+  return card;
+}
+
+test("Agent directory keeps exact native order and accessible configuration entry points", async ({
   page,
 }) => {
   await installRichTauriFeatureFixture(page);
@@ -63,12 +72,12 @@ test("Agent catalog keeps exact native order and accessible master-detail select
   await openV2Page(page, "/agents");
 
   await expect(page.getByTestId("agents-page")).toBeVisible();
-  const items = agentSelector(page).locator(".fy-catalog-list-item");
+  const items = agentSelector(page).locator(".fy-agent-directory-card");
   await expect(items).toHaveCount(7);
   expect(
     await items.evaluateAll((elements) =>
       elements.map(
-        (element) => element.querySelector("strong")?.textContent?.trim() ?? "",
+        (element) => element.querySelector("h2")?.textContent?.trim() ?? "",
       ),
     ),
   ).toEqual([...agentOrder]);
@@ -76,38 +85,23 @@ test("Agent catalog keeps exact native order and accessible master-detail select
     await items.evaluateAll((elements) =>
       elements.map((element) => ({
         tagName: element.tagName,
-        tabIndex: (element as HTMLElement).tabIndex,
+        configureTabIndex:
+          element.querySelector<HTMLButtonElement>("button")?.tabIndex ?? -1,
       })),
     ),
   ).toEqual(
     agentOrder.map(() => ({
-      tagName: "BUTTON",
-      tabIndex: 0,
+      tagName: "ARTICLE",
+      configureTabIndex: 0,
     })),
   );
 
   await expect(
-    items.filter({ has: page.getByText("QoderWork CN") }),
-  ).toHaveAttribute("aria-current", "true");
-  await expect(
-    page.getByRole("region", { name: "QoderWork CN 详情" }),
-  ).toBeVisible();
-  const qoderDetailArtwork = page
-    .getByRole("region", { name: "QoderWork CN 详情" })
-    .locator('[data-size="detail"] img');
-  await expect(qoderDetailArtwork).toHaveAttribute("alt", "");
-  await expect(qoderDetailArtwork).toHaveAttribute("aria-hidden", "true");
-
-  await items.first().focus();
-  await page.keyboard.press("Tab");
-  await expect(items.nth(1)).toBeFocused();
-  await page.keyboard.press("Enter");
-  await expect(items.nth(1)).toHaveAttribute("aria-current", "true");
-  await expect(
-    page.getByRole("region", { name: "TRAE Work CN 详情" }),
-  ).toBeVisible();
-  const traeDetail = page.getByRole("region", { name: "TRAE Work CN 详情" });
-  const traeDetailFrame = traeDetail.locator('[data-size="detail"]');
+    agentSelector(page).getByText("尚未扫描", { exact: true }),
+  ).toHaveCount(7);
+  const traeDetailFrame = agentItem(page, "TRAE Work CN").locator(
+    '[data-size="detail"]',
+  );
   expect(
     await traeDetailFrame.evaluate((frame) => {
       const image = frame.querySelector("img") as HTMLImageElement;
@@ -126,75 +120,69 @@ test("Agent catalog keeps exact native order and accessible master-detail select
     artworkWidth: 48,
     artworkHeight: 48,
   });
-  await expect(items.locator('[aria-current="true"]')).toHaveCount(0);
+  await agentItem(page, "TRAE Work CN")
+    .getByRole("button", { name: "进行配置" })
+    .click();
+  await expect(page).toHaveURL(/#\/agents\?target=trae-work&section=models$/);
   await expect(
-    agentSelector(page).locator('[aria-current="true"]'),
-  ).toHaveCount(1);
+    page.getByRole("region", { name: "TRAE Work CN 配置" }),
+  ).toBeVisible();
 
   await expectNoHorizontalOverflow(page);
   await expectHealthyPage(page, health);
 });
 
-test("Agents and Models share exact catalog geometry, stable gutters, and the 760px stack", async ({
+test("Agent directory and Models keep their responsive 760px boundaries", async ({
   page,
 }) => {
   await installRichTauriFeatureFixture(page);
   const health = monitorPageHealth(page);
   await openV2Page(page, "/agents");
 
-  const agentRail = agentSelector(page);
-  const agentRows = agentRail.locator(".fy-catalog-list-item");
-  await expect(agentRows).toHaveCount(7);
-  const agentRailBox = await requiredBox(agentRail, "Agent catalog rail");
-  const agentRowGeometry = await agentRows.evaluateAll((rows) =>
-    rows.map((row) => {
-      const frame = row.querySelector('[data-size="list"]');
-      const rowBox = row.getBoundingClientRect();
-      const frameBox = frame?.getBoundingClientRect();
-      return {
-        rowHeight: rowBox.height,
-        frameWidth: frameBox?.width ?? 0,
-        frameHeight: frameBox?.height ?? 0,
-      };
-    }),
-  );
-  const agentRowHeights = agentRowGeometry.map(({ rowHeight }) => rowHeight);
-  expect(Math.min(...agentRowHeights)).toBeGreaterThanOrEqual(56);
+  const desktopCard = agentItem(page, "QoderWork CN");
+  await expect(desktopCard).toBeVisible();
   expect(
-    Math.max(...agentRowHeights) - Math.min(...agentRowHeights),
-  ).toBeLessThanOrEqual(1);
-  for (const geometry of agentRowGeometry) {
-    expect(geometry.frameWidth).toBe(36);
-    expect(geometry.frameHeight).toBe(36);
-  }
+    await desktopCard.evaluate(
+      (card) =>
+        getComputedStyle(card).gridTemplateColumns.trim().split(/\s+/).length,
+    ),
+  ).toBe(3);
+  const desktopFrame = await requiredBox(
+    desktopCard.locator('[data-size="detail"]'),
+    "Agent directory artwork",
+  );
+  expect(desktopFrame.width).toBe(64);
+  expect(desktopFrame.height).toBe(64);
 
-  const railHeightBeforeSelection = agentRailBox.height;
-  await expect(
-    page.getByRole("separator", { name: "调整目录与详情的宽度" }),
-  ).toBeVisible();
+  await page.setViewportSize({ width: 760, height: 900 });
+  await openV2Page(page, "/agents");
+  const stackedAgentCard = agentItem(page, "QoderWork CN");
   expect(
-    await agentRail.evaluate((el) => getComputedStyle(el).overflowY),
-  ).toMatch(/auto|scroll/);
-  expect(
-    await page
-      .locator(".fy-catalog-pane")
-      .evaluate((el) => getComputedStyle(el).overflowY),
-  ).toMatch(/auto|scroll/);
-  await agentItem(page, "Codex").click();
-  const railAfterSelection = await requiredBox(
-    agentRail,
-    "selected Agent rail",
+    await stackedAgentCard.evaluate(
+      (card) =>
+        getComputedStyle(card).gridTemplateColumns.trim().split(/\s+/).length,
+    ),
+  ).toBe(2);
+  const stackedAgentBox = await requiredBox(
+    stackedAgentCard,
+    "760px Agent card",
   );
-  const paneAfterSelection = await requiredBox(
-    page.locator(".fy-catalog-pane"),
-    "catalog pane",
+  const stackedAgentActionBox = await requiredBox(
+    stackedAgentCard.getByRole("button", { name: "进行配置" }),
+    "760px Agent action",
   );
+  expect(stackedAgentActionBox.width).toBeGreaterThan(
+    stackedAgentBox.width - 40,
+  );
+
+  await page.setViewportSize({ width: 761, height: 900 });
+  await openV2Page(page, "/agents");
   expect(
-    Math.abs(railAfterSelection.height - railHeightBeforeSelection),
-  ).toBeLessThanOrEqual(1);
-  expect(
-    Math.abs(paneAfterSelection.height - railAfterSelection.height),
-  ).toBeLessThanOrEqual(2);
+    await agentItem(page, "QoderWork CN").evaluate(
+      (card) =>
+        getComputedStyle(card).gridTemplateColumns.trim().split(/\s+/).length,
+    ),
+  ).toBe(3);
 
   await openV2Page(page, "/models");
   const modelRail = page.getByRole("complementary", {
@@ -202,30 +190,11 @@ test("Agents and Models share exact catalog geometry, stable gutters, and the 76
   });
   const modelRows = modelRail.locator(".fy-catalog-list-item");
   await expect(modelRows).toHaveCount(7);
-  const modelRailBox = await requiredBox(modelRail, "Models catalog rail");
-  expect(Math.abs(modelRailBox.x - agentRailBox.x)).toBeLessThanOrEqual(1);
-  expect(Math.abs(modelRailBox.width - agentRailBox.width)).toBeLessThanOrEqual(
-    1,
-  );
   expect(
     await page
       .getByTestId("content-viewport")
       .evaluate((viewport) => getComputedStyle(viewport).scrollbarGutter),
   ).toContain("stable");
-
-  const modelRowGeometry = await modelRows.evaluateAll((rows) =>
-    rows.map((row) => {
-      const frame = row.querySelector('[data-size="list"]');
-      const rowBox = row.getBoundingClientRect();
-      const frameBox = frame?.getBoundingClientRect();
-      return {
-        rowHeight: rowBox.height,
-        frameWidth: frameBox?.width ?? 0,
-        frameHeight: frameBox?.height ?? 0,
-      };
-    }),
-  );
-  expect(modelRowGeometry).toEqual(agentRowGeometry);
 
   await page.emulateMedia({ reducedMotion: "reduce" });
   expect(
@@ -282,15 +251,12 @@ test("Agent catalog links invoke exact official URLs and Codex has no external a
   const health = monitorPageHealth(page);
   await openV2Page(page, "/agents");
 
-  const qoderDetail = page.getByRole("region", {
-    name: "QoderWork CN 详情",
-  });
+  const qoderDetail = await expandAgentDetails(page, "QoderWork CN");
   await qoderDetail
     .getByRole("button", { name: "打开 QoderWork 官方页面" })
     .click();
 
-  await agentItem(page, "TRAE Work CN").click();
-  const traeDetail = page.getByRole("region", { name: "TRAE Work CN 详情" });
+  const traeDetail = await expandAgentDetails(page, "TRAE Work CN");
   await expect(
     traeDetail.getByRole("button", { name: "启动应用" }),
   ).toHaveCount(0);
@@ -298,22 +264,15 @@ test("Agent catalog links invoke exact official URLs and Codex has no external a
     .getByRole("button", { name: "打开 TRAE Work CN 官方页面" })
     .click();
 
-  await agentItem(page, "WorkBuddy").click();
-  await page
-    .getByRole("region", { name: "WorkBuddy 详情" })
+  await (await expandAgentDetails(page, "WorkBuddy"))
     .getByRole("button", { name: "打开 WorkBuddy 官方页面" })
     .click();
 
-  await agentItem(page, "Grok Build").click();
-  await page
-    .getByRole("region", { name: "Grok Build 详情" })
+  await (await expandAgentDetails(page, "Grok Build"))
     .getByRole("button", { name: "打开 Grok Build 官方页面" })
     .click();
 
-  await agentItem(page, "Claude Code").click();
-  const claudeDetail = page.getByRole("region", {
-    name: "Claude Code 详情",
-  });
+  const claudeDetail = await expandAgentDetails(page, "Claude Code");
   await claudeDetail
     .getByRole("button", { name: "打开 Claude Code CLI 官网" })
     .click();
@@ -321,8 +280,7 @@ test("Agent catalog links invoke exact official URLs and Codex has no external a
     .getByRole("button", { name: "打开 Claude Desktop 官网" })
     .click();
 
-  await agentItem(page, "Codex").click();
-  const codexDetail = page.getByRole("region", { name: "Codex 详情" });
+  const codexDetail = await expandAgentDetails(page, "Codex");
   await expect(codexDetail.getByRole("button", { name: /官方/ })).toHaveCount(
     0,
   );
@@ -388,7 +346,11 @@ test("Codex Desktop fixture reads safely and starts only after the explicit inst
   ).toEqual([]);
   const codexCallStartIndex = callsBeforeCodex.length;
 
-  await agentItem(page, "Codex").click();
+  await agentItem(page, "Codex")
+    .getByRole("button", { name: "进行配置" })
+    .click();
+  await expect(page).toHaveURL(/#\/agents\?target=codex&section=models$/);
+  await page.getByText("安装、登录与启动能力", { exact: true }).click();
   const installer = page.getByRole("region", {
     name: "Codex Desktop 安装器",
   });
@@ -509,7 +471,7 @@ test("Codex Desktop fixture reads safely and starts only after the explicit inst
   await expectHealthyPage(page, health);
 });
 
-test("Agent directory does not observe WorkBuddy or Provider summaries", async ({
+test("Agent directory does not observe WorkBuddy or Provider summaries before configuration", async ({
   page,
 }) => {
   await installRichTauriFeatureFixture(page, {
@@ -523,20 +485,13 @@ test("Agent directory does not observe WorkBuddy or Provider summaries", async (
   expect(commands).not.toContain("get_workbuddy_status");
   expect(commands).not.toContain("get_providers");
 
-  await agentItem(page, "WorkBuddy").click();
+  const workbuddyCard = await expandAgentDetails(page, "WorkBuddy");
   await expect(
-    page.getByRole("region", { name: "WorkBuddy 配置概览" }),
-  ).toHaveCount(0);
-  await expect(
-    page.getByRole("region", { name: "WorkBuddy 详情" }),
+    workbuddyCard.getByRole("group", { name: "官方网站" }),
   ).toBeVisible();
-
-  await agentItem(page, "Claude Code").click();
+  const claudeCard = await expandAgentDetails(page, "Claude Code");
   await expect(
-    page.getByRole("region", { name: "Claude Code 模型配置" }),
-  ).toHaveCount(0);
-  await expect(
-    page.getByRole("region", { name: "Claude Code 详情" }),
+    claudeCard.getByRole("group", { name: "官方网站" }),
   ).toBeVisible();
 
   commands = (await featureFixtureCalls(page)).map((call) => call.command);
@@ -718,9 +673,7 @@ test("WorkBuddy save preview uses Change Plan and does not expose overwrite toke
   await page.getByLabel("自定义模型 ID").fill("manual-browser-model");
   await page.getByRole("button", { name: "保存并应用" }).click();
 
-  await expect(
-    page.getByRole("button", { name: "确认应用" }),
-  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "确认应用" })).toBeVisible();
   await expect(
     page.getByRole("dialog", { name: "确认覆盖已有模型" }),
   ).toHaveCount(0);
@@ -747,9 +700,7 @@ test("WorkBuddy save preview uses Change Plan and does not expose overwrite toke
     expectedRevision: "fixture-revision-1",
   });
   expect(createCalls[0].payload.request).not.toHaveProperty("overwriteToken");
-  expect(
-    calls.filter((call) => call.command === "apply_change_plan"),
-  ).toEqual([
+  expect(calls.filter((call) => call.command === "apply_change_plan")).toEqual([
     expect.objectContaining({
       command: "apply_change_plan",
       payload: {
@@ -758,9 +709,7 @@ test("WorkBuddy save preview uses Change Plan and does not expose overwrite toke
       },
     }),
   ]);
-  expect(
-    JSON.stringify(calls),
-  ).not.toContain("fixture-opaque-overwrite-token");
+  expect(JSON.stringify(calls)).not.toContain("fixture-opaque-overwrite-token");
 
   await expectNoHorizontalOverflow(page);
   await expectHealthyPage(page, health);
@@ -1055,7 +1004,9 @@ test("Provider atomic failure reports rollback instead of a partial result", asy
   await expect(page.locator("body")).not.toContainText("partial-secret");
   const calls = await featureFixtureCalls(page);
   expect(
-    calls.filter((call) => call.command === "create_codex_provider_upsert_plan"),
+    calls.filter(
+      (call) => call.command === "create_codex_provider_upsert_plan",
+    ),
   ).toHaveLength(1);
   expect(
     calls.filter((call) => call.command === "apply_change_plan"),
