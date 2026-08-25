@@ -1,0 +1,6 @@
+{"file":".trellis/spec/backend/external-agent-p0.md","reason":"Review canonical IDs, closed actions, secret-free DTOs and runtime verification semantics after implementation."}
+{"file":".trellis/spec/backend/codex-desktop-installer.md","reason":"Review that all desktop package flows still use the single executable-installer contract."}
+{"file":".trellis/spec/backend/windows-runtime-security.md","reason":"Review that formal elevated Windows never gains a generic user CLI/shell capability."}
+{"file":".trellis/spec/backend/codex-provider-configuration.md","reason":"Review Codex live-auth preservation, binding and targeted write regressions."}
+{"file":".trellis/tasks/08-25-agent-install-auth/research/security-and-compatibility-decisions.md","reason":"Check implementation against approved fail-closed architecture decisions."}
+{"file":".trellis/tasks/08-25-agent-install-auth/research/review-rounds.md","reason":"Preserve the four planning-review corrections as explicit implementation review gates."}
