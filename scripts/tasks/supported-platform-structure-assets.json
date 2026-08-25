@@ -47,7 +47,7 @@
     ],
     [
       "src-tauri/src/agent_install/desktop.rs",
-      "3db65eb5c1eb269a1e0d168b9ff370dbede3532d52f2b73e3ca818f94f1aca1b"
+      "f8df667b2d3f724805eaf5e60f3ceb723ffe544b7c9419a79a5a141410726d10"
     ],
     [
       "src-tauri/src/agent_install/sources/mod.rs",
