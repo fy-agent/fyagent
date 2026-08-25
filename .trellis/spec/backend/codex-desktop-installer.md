@@ -4,7 +4,13 @@
 
 This contract owns every current and future FyAgent one-click install or upgrade
 flow for executable software, regardless of product or platform. Codex Desktop
-is the first implementation, not a policy exception.
+is the first implementation, not a policy exception. QoderWork CN, TRAE Work CN,
+and WorkBuddy reuse the same source/download/job/cancel/temp/post-install
+orchestration policy through the Agent install façade; they must not grow a
+second downloader. Codex remains the golden MSIX/DMG regression fixture.
+Windows EXE/NSIS artifacts in this iteration are not deployed from elevated
+FyAgent; they stay a closed format that reports `interactive_user_unavailable`
+until a later authenticated ordinary-user helper exists.
 
 FyAgent MUST NOT admit or reject downloaded executable software by comparing
 downloaded content or native package contents with mirror/upstream publication
@@ -328,6 +334,9 @@ Tests must prove:
 - DTO/parser/fixture/UI/i18n contracts omit download verification stage and
   obsolete content-admission errors;
 - generic CLI install/update flows are unchanged and contain no new validator.
+- Agent Catalog desktop adapters reuse this policy without a second downloader
+  and without occupying the Codex job slot; Windows EXE remains
+  `interactive_user_unavailable` in this iteration.
 
 Portable tests and Windows-host compilation do not establish real Windows or
 macOS native compatibility. Unless native HIL is actually run, report
@@ -362,4 +371,90 @@ let artifact = download_from_fixed_endpoint(release.endpoint()).await?;
 native_install(&artifact)?;
 let installed = select_unique_dynamic_install_result(before, after)?;
 verify_operational_shape(&installed)?;
+```
+
+## Scenario: Agent Catalog managed-desktop reuse
+
+### 1. Scope / Trigger
+
+- Trigger: QoderWork CN, TRAE Work CN, and WorkBuddy now consume this
+  contract's source/download/job/cancel/temp/post-install policy through the
+  Agent install façade. Codex remains the golden MSIX/DMG fixture. This is
+  a cross-product installer boundary, not a second downloader.
+
+### 2. Signatures
+
+Codex renderer input is unchanged:
+
+```ts
+type StartInstallRequest = { expectedReleaseId: string };
+```
+
+Agent Catalog desktop install does **not** call Codex job commands. It uses
+`start_agent_action` from
+[External Agent P0 Safety](./external-agent-p0.md). Package format is a
+Rust-only field and is never on the Agent DTO.
+
+### 3. Contracts
+
+- Reuse the orchestration policy (fixed product source, HTTPS/redirect,
+  cancel, temp ownership, post-install reread). Reuse a concrete DMG/MSIX
+  deployer only when the vendor artifact format matches.
+- Windows EXE/NSIS for Catalog desktop agents is a closed recognized format
+  that currently returns `interactive_user_unavailable` from elevated
+  FyAgent. Do not route it through Codex PackageBridge/MSIX, and do not add
+  a generic executable/path runner.
+- Codex `install`/`update` stay on this service. The Agent façade must not
+  occupy the Codex job slot or start a parallel Codex download.
+- TRAE/WorkBuddy still require opaque release-id coherence before creating
+  an Agent job. Qoder's versionless `/latest/` alias is the documented
+  exception in the Agent contract, not a license to skip Codex
+  `expectedReleaseId` checks.
+- Publication-field admission remains forbidden for every product that
+  inherits this contract.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+| --- | --- |
+| Agent façade starts Codex install/update | `managed_by_codex_desktop`; Codex job unchanged |
+| Catalog desktop EXE on elevated Windows | `interactive_user_unavailable`; no PackageBridge |
+| Renderer supplies a download URL to either installer | Contract/static test fails |
+| A second downloader module is added for Qoder/TRAE/WorkBuddy | Architecture regression |
+
+### 5. Good/Base/Bad Cases
+
+- Good: Codex domain tests (109+) stay green while Catalog desktop adapters
+  use first-party sources.
+- Base: no Catalog desktop action is requested; Codex one-click flow is
+  unchanged.
+- Bad: install WorkBuddy by copying Codex MSIX helper argv, or hardcode a
+  researched TRAE version URL as a fallback artifact.
+
+### 6. Tests Required
+
+- Existing Codex desktop domain suite remains authoritative and unforked.
+- Agent source/job tests live under `agent_install` and must not weaken
+  Codex `expectedReleaseId` or helper-CLI contracts.
+- Negative scan: no renderer/helper URL/path/hash/bypass input on either
+  surface.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```rust
+install_msix_via_codex_helper(workbuddy_exe_path)?;
+start_codex_desktop_job_from_agent_action()?;
+```
+
+#### Correct
+
+```rust
+if source.format == PackageFormat::Exe {
+    return Err(AgentReasonCode::InteractiveUserUnavailable);
+}
+if agent_id == AgentCatalogId::Codex && matches!(action, Install | Update) {
+    return Err(AgentReasonCode::ManagedByCodexDesktop);
+}
 ```

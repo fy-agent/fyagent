@@ -131,6 +131,33 @@ launch_external_agent({
 }) -> { agentId, destination, state, reasonCode }
 ```
 
+Agent install/action is a second native port. The page may submit only
+closed IDs previously returned by readiness:
+
+```ts
+type AgentInstallReadinessPort = {
+  get(agentId: AgentCatalogId): Promise<AgentInstallReadiness>;
+  startAction(request: {
+    agentId: AgentCatalogId;
+    action:
+      | "install"
+      | "update"
+      | "launch"
+      | "auth_login"
+      | "auth_logout"
+      | "auth_connect_provider";
+    expectedReleaseId?: string; // opaque v1:+64 hex from readiness.releaseId
+  }): Promise<AgentActionResult>;
+  cancelAction(jobId: string): Promise<AgentActionJobSnapshot>;
+  getActionJob(jobId: string): Promise<AgentActionJobSnapshot>;
+};
+
+get_agent_install_readiness({ agentId })
+start_agent_action({ request })
+cancel_agent_action({ jobId })
+get_agent_action_job({ jobId })
+```
+
 V2 reads a non-secret Provider projection in one native snapshot:
 
 ```ts
@@ -618,12 +645,18 @@ fetch/save controls.
 - The normal browser adapter returns native-only unavailability. Rich fixtures
   live only in focused tests and are always labelled/non-authoritative.
 
-### Agent readiness and Codex Change Plan UI
+### Agent readiness, closed actions, and Codex Change Plan UI
 
-- Agent detail adds one compact read-only 「安装方式」 region backed by
-  `FeaturePorts.agentInstallReadiness`. It renders unavailable/unknown as
-  non-green, exposes no install/recheck/cancel/health button, and leaves the
-  existing Codex Desktop installer intact. Browser ports reject native-only.
+- Agent detail mounts 「安装方式」 from `FeaturePorts.agentInstallReadiness`.
+  The port parses unknown IPC at the adapter with exact keys and a
+  forbidden-wire scan. React never reconstructs URL, command, hash, or
+  `packageFormat` policy. Browser ports stay native-only.
+- Visible actions are exactly `allowedActions` from the backend DTO.
+  Codex install/update remain the dedicated desktop installer; this region
+  must not start a Codex Agent job. Qoder has no claimed remote semver.
+  TRAE/WorkBuddy pass the opaque `releaseId` back as `expectedReleaseId`.
+- Auth copy follows `authOwnership` / `authState`: OpenCode is a provider
+  connection, not a global logged-in badge. Unknown stays unknown.
 - Codex Models consumes `FeaturePorts.changePlans` through exact unknown-input
   parsers. Switch uses `createCodexProviderSwitchPlan(targetProviderId)`.
   Codex Quick Setup save uses `createCodexProviderUpsertPlan(request)` and
@@ -733,6 +766,10 @@ fetch/save controls.
 | Mutation succeeds and another serialized request replaces the reserved row                                                   | Keep this request's guard-time warnings; reread may confirm only fixed-ID activation, never exact bytes    |
 | Browser preview calls authoritative read/write                                                                               | Return native-only unavailable; never return production-looking fake state                                 |
 | API key appears in URL/storage/query/log/error/DOM/snapshot                                                                  | Security regression test fails                                                                             |
+| Agent install IPC contains URL/path/token/`packageFormat`, or the page builds a download locator                             | Port/page test fails; only `agentId + action + optional expectedReleaseId`                                 |
+| Agent detail starts Codex install/update through `start_agent_action`                                                        | Page test fails; Codex keeps the dedicated installer                                                       |
+| Agent detail shows a global OpenCode logged-in bool or invents Qoder remote semver                                           | Component test fails                                                                                       |
+| Pi appears in Agent install UI or tests                                                                                      | Contract test fails                                                                                        |
 
 ## 5. Good / Base / Bad Cases
 
@@ -743,6 +780,10 @@ fetch/save controls.
   Provider quick setup. After a model ID exists, WorkBuddy/Claude/Codex/Grok
   Build/OpenCode 「测试连通」 opens a searchable grouped picker and
   `checkModel` shows the upstream error body on failure.
+- Good: Agent detail renders install/auth controls only from backend
+  `allowedActions`, starts TRAE/WorkBuddy jobs with the opaque `releaseId`,
+  leaves Codex on the dedicated installer, and never shows a global OpenCode
+  logged-in badge.
 - Good: OpenCode's Models panel lists existing sanitized provider/model IDs,
   fetches, adds, deletes, and saves through `opencodeModels`; it never submits
   Provider quick setup.
@@ -844,8 +885,10 @@ Required focused coverage includes:
   Secrets stay in component memory only. Immediate WorkBuddy
   existing-model delete after an unrecoverable-delete confirmation.
 - Agent readiness exact seven-ID/exact-key/sensitive-field-negative coverage,
-  single-command ACL registration, browser native-only behavior, no action
-  controls, and Codex installer non-regression. Change Plan coverage includes
+  closed `startAction`/`cancelAction`/`getActionJob` wires, opaque
+  `expectedReleaseId` grammar, `allowedActions` as the only control source,
+  Codex installer non-regression, OpenCode provider-connection copy, browser
+  native-only behavior, and no Pi. Change Plan coverage includes
   strict v2 descriptor/five-phase/partial/cancel/event parsing,
   ID/digest-only confirm, four-section closed-DTO preview, bounded
   `getChangeJob` polling for non-terminal jobs, partial-result and
@@ -888,6 +931,30 @@ contracts. Real Windows Tauri HIL and an isolated/reversible native mutation are
 separate acceptance evidence.
 
 ## 7. Wrong vs Correct
+
+Wrong: let Agent detail download from a constructed URL or treat OpenCode as
+a global login badge.
+
+```ts
+await invoke("start_agent_action", {
+  agentId: "workbuddy",
+  action: "install",
+  url: "https://download.codebuddy.cn/WorkBuddy-....exe",
+});
+setOpenCodeLoggedIn(Boolean(authJsonOnDisk));
+```
+
+Correct: submit only catalog ID, closed action, and the opaque backend
+release id; render `allowedActions` and `authState` as returned.
+
+```ts
+const readiness = await ports.agentInstallReadiness.get("workbuddy");
+await ports.agentInstallReadiness.startAction({
+  agentId: "workbuddy",
+  action: "install",
+  expectedReleaseId: readiness.releaseId ?? undefined,
+});
+```
 
 Wrong: write TRAE custom models into local sqlite, or write OpenCode through
 Provider quick setup.

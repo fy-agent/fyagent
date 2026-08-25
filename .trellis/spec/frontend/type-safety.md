@@ -55,6 +55,15 @@ The Tauri wire boundary uses camelCase names on the TypeScript side and
 `serde(rename = "...")` on Rust fields where needed. A command payload change
 must be checked against both sides of that boundary.
 
+V2 Agent install/action wires are owned by
+`src/v2/shared/features/agent-install-readiness.ts` and parsed in
+`src/v2/shared/platform/tauri/feature-ports/agentInstallReadiness.ts`
+before React Query. Pages must not locally cast `invoke` results or add
+URL/path/command fields. Exact keys, opaque `v1:` release IDs, and the
+forbidden-wire scan are part of that owner. See
+[External Agent P0 Safety](../backend/external-agent-p0.md) and
+[V2 Agent and Models](./v2-agent-models.md).
+
 ```rust
 // src-tauri/src/provider.rs
 #[serde(rename = "settingsConfig")]
@@ -69,5 +78,7 @@ pub settings_config: Value,
   `ProviderFormData` from the runtime Zod schema.
 - [src-tauri/src/provider.rs](../../../src-tauri/src/provider.rs) shows the
   serialized Rust companion for frontend provider data.
+- [src/v2/shared/features/agent-install-readiness.ts](../../../src/v2/shared/features/agent-install-readiness.ts)
+  owns the Agent install/action wire parser.
 - [src/components/theme-provider.tsx](../../../src/components/theme-provider.tsx)
   shows a narrow direct-`invoke` boundary alongside the facade-based paths.

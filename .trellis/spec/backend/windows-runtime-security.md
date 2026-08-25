@@ -194,6 +194,10 @@ command-level check.
 It no longer selects a machine runtime or requires the process SID to equal the
 Shell SID. Legacy Run-value cleanup is known-name-only, runs after primary
 instance admission, and is best-effort; its failure must not block startup.
+Agent Catalog CLI/auth actions (Claude/Grok/OpenCode) reuse the same Tooling
+gate: a formal elevated Windows build reports `interactive_user_unavailable`
+rather than introducing a generic command/path helper. A later ordinary-user
+helper may accept only a closed `{tool, action}` enum.
 
 ### Open validated links through the interactive Explorer shell
 
@@ -239,6 +243,8 @@ IShellFolderViewDual.Application -> IShellDispatch2`.
 | Desktop background object is requested directly as `IShellFolderViewDual`                        | Treat as a contract regression; request `IDispatch` first and cast explicitly.                                                                                             |
 | External link is accepted but browser would remain backgrounded                                  | Pass fixed `SW_SHOWNORMAL` for ordinary external links; helper show semantics remain unchanged.                                                                            |
 | Explorer COM acquisition or `ShellExecute` fails                                                 | Return controlled `INTERACTIVE_USER_UNAVAILABLE`; do not try a command, direct shell, renderer, or elevated-user fallback.                                                 |
+| Formal elevated Windows Agent Catalog CLI/auth (Claude/Grok/OpenCode)                            | Return `interactive_user_unavailable`; do not inspect or launch the user tool.                                                                                             |
+| A Catalog/user helper accepts URL, path, shell string, or returns raw child stdout               | Contract/static test fails; no such helper is registered in this iteration.                                                                                                |
 | Non-Windows platform                                                                             | Preserve its existing path resolver, Store/window-state plugin, and single-instance behavior.                                                                              |
 
 ## 5. Good / Base / Bad Cases
@@ -259,6 +265,8 @@ IShellFolderViewDual.Application -> IShellDispatch2`.
 - Bad: restore `%ProgramData%\FyAgent\runtime`, treat PackageBridge as runtime
   state or an activation channel, infer a user from an active WTS session, or
   let a second-instance argument invoke helper/package/filesystem side effects.
+- Bad: start Claude/Grok/OpenCode CLI or a Catalog EXE from the elevated
+  parent, or add a helper that accepts a renderer command string.
 
 ## 6. Tests Required
 
@@ -294,6 +302,10 @@ IShellFolderViewDual.Application -> IShellDispatch2`.
   Native acceptance must click a real Tauri catalog action and observe the
   target in the interactive user's foreground browser; process creation or a
   successful HRESULT alone is insufficient.
+- Agent Catalog CLI/auth tests must map formal elevated Windows to
+  `interactive_user_unavailable` and must not register a generic command
+  helper. Existing Tooling formal-build fail-closed tests remain
+  authoritative. Bob/Alice/UAC installer HIL remains unverified.
 - A real current-host Tauri click may prove only the external-link path it
   exercises. It does not establish Windows 10/11 coverage, ARM64, elevated
   Bob/Alice, startup admission, WebView path ownership, Shell-token freezing,
@@ -333,4 +345,82 @@ Correct:
 validated HTTP(S) -> SWC_DESKTOP automation chain -> IDispatch cast
                   -> interactive Explorer ShellExecute(SW_SHOWNORMAL)
 COM failure -> controlled error with no fallback
+```
+
+## Scenario: Agent Catalog CLI/auth on formal elevated Windows
+
+### 1. Scope / Trigger
+
+- Trigger: Agent Catalog now starts Claude/Grok/OpenCode install/update/auth
+  through Tooling. Formal elevated Windows already forbids user-CLI
+  execution. This must not grow a generic command/path helper.
+
+### 2. Signatures
+
+No new Windows helper command is registered in this iteration.
+
+```text
+start_agent_action({ agentId: claude-code|grokbuild|opencode, action })
+  -> interactive_user_unavailable   // formal elevated Windows
+
+fyagent-user-helper.exe  // still Codex MSIX only:
+  codex-msix-install --job-id <uuid> --pipe <nonce>
+```
+
+A future ordinary-user helper, if added, may accept only
+`{ tool: claude|grok|opencode, action: closed enum }` and may return only
+closed states plus sanitized reason codes.
+
+### 3. Contracts
+
+- Catalog CLI/auth reuses `services/tooling` detected-tool execution. The
+  formal-build gate runs before inspecting or launching a user tool.
+- Updating Claude's official Windows `install.ps1` / WinGet fact does not
+  remove the elevated boundary.
+- Helper stdout/stderr, environment, browser URL, device code, executable
+  path, and command line must never return to the elevated parent or
+  renderer.
+- Catalog desktop EXE deploy is the same fail-closed class: no generic
+  `ShellExecute` of a downloaded path from Bob.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+| --- | --- |
+| Formal elevated Windows Catalog CLI/auth | `interactive_user_unavailable`; no child process |
+| Helper argv contains URL/path/shell string | Contract test fails; helper is not this iteration |
+| Codex MSIX helper argv gains a Catalog tool verb | Architecture regression |
+| Non-formal/non-Windows Tooling lifecycle | Existing Tooling behavior unchanged |
+
+### 5. Good/Base/Bad Cases
+
+- Good: macOS/non-formal Windows Claude install still uses Tooling.
+- Base: formal Windows Agent detail shows unavailable CLI actions and keeps
+  official-page fallback.
+- Bad: `fyagent-user-helper.exe run --cmd <renderer string>`.
+
+### 6. Tests Required
+
+- Existing `formal_windows_cli_boundary_is_fail_closed_without_a_native_runtime`
+  remains green.
+- Agent CLI/auth paths map elevated failures to
+  `interactive_user_unavailable`.
+- Negative scan: no new helper verb, no path/URL argv, no raw stdout DTO.
+- Bob/Alice/UAC HIL remains unverified residual risk.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```text
+elevated parent -> helper argv includes installer URL or shell command
+helper -> raw child stdout back to renderer
+```
+
+#### Correct
+
+```text
+formal elevated Windows -> interactive_user_unavailable
+future helper (if any) -> closed {tool, action} in, closed state out
+Codex helper argv remains exactly codex-msix-install --job-id --pipe
 ```
