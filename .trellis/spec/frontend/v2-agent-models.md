@@ -248,15 +248,28 @@ must not use it for 「测试连通」.
 `checkModel({ app, baseUrl, apiKey, modelId, codexImageExtension? })` is available on the same three
 ports and invokes `stream_check_model`. It sends one authenticated streaming
 request for the selected model (first SSE chunk = success) and never looks up
-a saved Provider or touches the failover circuit breaker. Protocol is
-Anthropic Messages for Claude, OpenAI Responses for Codex and Grok Build, and
-OpenAI Chat Completions for WorkBuddy / OpenCode. Codex Responses does not add
-an output-token limit merely for the probe. `codexImageExtension` is the only
-renderer-controlled header intent: when true on Codex, Rust adds the same
-managed actor header as Quick Setup; the renderer cannot submit arbitrary
-headers. Empty `apiKey` omits the auth header. Failure `message` is
-`HTTP {status}: {truncated body}` or the
-transport error, with the API key redacted. Browser adapters reject both
+a saved Provider or touches the failover circuit breaker. Protocol projection
+is per-app and must match the client Quick Setup writes: Anthropic Messages
+plus `Authorization: Bearer` for Claude (`ANTHROPIC_AUTH_TOKEN`; not
+`x-api-key`), OpenAI Responses for Codex and Grok Build, and OpenAI Chat
+Completions for WorkBuddy / OpenCode. Each app emits one determined URL with
+no 404/400 fallback: Claude Code `{ANTHROPIC_BASE_URL}/v1/messages` (do not
+collapse `/v1/v1`), Codex/Grok `{base}/responses`, OpenCode
+`{base}/chat/completions`, WorkBuddy the same Chat path after its URL
+normalizer. Every probe sets `stream: true` and reads the first stream chunk.
+Claude Messages keeps `max_tokens: 1` and `Accept: text/event-stream`.
+Codex/Grok Responses use `Accept: text/event-stream`. WorkBuddy/OpenCode Chat
+keep `stream: true` and `Accept: application/json`. Transport must send a
+single `Content-Type: application/json` header (do not combine reqwest
+`.json()` with a second Content-Type append). Every app pads the user content
+to at least 1024 estimated input tokens so short-prompt interceptors do not
+drop the request; they omit a probe-only `max_tokens`.
+`codexImageExtension` is the only renderer-controlled header intent: when true
+on Codex, Rust adds the same managed actor header as Quick Setup; the renderer
+cannot submit arbitrary headers. Empty `apiKey` omits the auth header. Failure
+`message` is `HTTP {status}: {truncated body}` or the
+transport error, with the API key redacted. HTTP 400 is a real failure and
+must not trigger another URL. Browser adapters reject both
 methods as native-only. Qoder and TRAE Models ports must not expose
 `checkModel`.
 
@@ -709,6 +722,9 @@ fetch/save controls.
 | Writer failed and the original baseline is authoritatively restored                                                          | Render failed/danger with confirmed-baseline copy; target mismatches are expected, not unknown authority   |
 | Codex `imageExtension: true` omits `experimental_bearer_token` while `requires_openai_auth` is false                         | Host derivation/test fails; current Codex would not send `auth.json`'s key                                 |
 | Codex model probe adds an output-token limit solely for connectivity                                                         | Wire test fails; send the bounded Responses probe without that compatibility-breaking field                |
+| WorkBuddy/OpenCode Chat probe adds `max_tokens` solely for connectivity                                                      | Wire test fails; o-series and strict gateways reject that deprecated field                                 |
+| Claude model probe sends `x-api-key` while Quick Setup writes `ANTHROPIC_AUTH_TOKEN`                                         | Wire/contract test fails; Claude Code sends `Authorization: Bearer`                                        |
+| Model probe guesses a second URL after HTTP 400/404                                                                          | Wire test fails; each app has one determined client URL and returns the truncated body                     |
 | Grok Build probe uses Chat Completions while Quick Setup writes `api_backend = "responses"`                                  | Wire test fails; use the Responses endpoint                                                                |
 | Concurrent Provider/live writer                                                                                              | Serialize or detect conflict; never return a split DB/current/live state                                   |
 | Required atomic step fails and compensation succeeds                                                                         | Return `APPLY_FAILED_ROLLED_BACK`; UI may say rollback confirmed                                           |
@@ -749,10 +765,13 @@ fetch/save controls.
   saves revision N, and becomes clean only if no N+1 edit happened while the
   request was pending. A successful save also invalidates probe feedback from
   the old revision.
-- Good: Codex/Grok Build probes use Responses, Claude uses Messages, and
-  WorkBuddy/OpenCode use Chat Completions. Codex may project only the bounded
-  image-extension actor intent; it does not add an output-token limit for a
-  one-shot connectivity probe.
+- Good: Codex/Grok Build probes use Responses, Claude uses Messages with
+  Bearer (Quick Setup `ANTHROPIC_AUTH_TOKEN`) and `{base}/v1/messages`, and
+  WorkBuddy/OpenCode use streaming Chat Completions (`stream: true`) with
+  `Accept: application/json` rather than `text/event-stream`. Codex may
+  project only the bounded image-extension actor intent; it does not add an
+  output-token limit for a one-shot connectivity probe. HTTP 400 returns the
+  truncated upstream body and does not retry another path.
 - Base: browser preview renders the pages but authoritative panels report that
   desktop state is unavailable; test-only fixtures may exercise UI branches.
 - Bad: hard-code a second capability matrix, treat `null` runtime as absence,
@@ -847,8 +866,14 @@ Required focused coverage includes:
   backend `message`. `stream_check_model` validates the draft HTTP(S) URL the
   same way as `validate_probe_url` and never resets the circuit breaker. Wire
   tests prove Codex/Grok Build use Responses, the Codex probe omits the
-  connectivity-only output limit, and only bounded image-extension intent can
-  add the managed actor header.
+  connectivity-only output limit, WorkBuddy/OpenCode Chat omit `max_tokens`
+  and send `stream: true` with `Accept: application/json` (not
+  `text/event-stream`), every app pads user content to at least 1024 estimated
+  input tokens,
+  Claude Quick Setup AUTH_TOKEN projects `Authorization: Bearer` onto
+  `{base}/v1/messages` with no URL fallback, HTTP 400 returns the truncated
+  body, and only bounded image-extension intent can add the managed actor
+  header.
   Claude, Codex, and Grok Build all expose 「拉取模型」.
   Claude shows a warn-only explicit `/v1` pathname notice and a placeholder
   without `/v1`.
