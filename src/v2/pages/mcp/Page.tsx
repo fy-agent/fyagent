@@ -322,13 +322,13 @@ export function McpPage() {
         if (app === "workbuddy" && enabled) noteWorkBuddyTrust();
       },
     );
-  const bulkAssign = (app: McpTargetId, enabled: boolean) =>
-    write(
+  const bulkAssign = (app: McpTargetId, enabled: boolean) => {
+    const ids = servers
+      .filter((server) => Boolean(server.apps[app]) !== enabled)
+      .map((server) => server.id);
+    return write(
       "批量分配完成",
       async () => {
-        const ids = servers
-          .filter((server) => Boolean(server.apps[app]) !== enabled)
-          .map((server) => server.id);
         const result = await runSequentialBulk(
           ids,
           (id) => ports.mcp.toggleApp(id, app, enabled),
@@ -340,9 +340,11 @@ export function McpPage() {
           );
       },
       () => {
-        if (app === "workbuddy" && enabled) noteWorkBuddyTrust();
+        if (app === "workbuddy" && enabled && ids.length > 0)
+          noteWorkBuddyTrust();
       },
     );
+  };
   const importExisting = () =>
     write("MCP 导入", async () => {
       const count = await ports.mcp.importFromApps();
