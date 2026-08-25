@@ -3,10 +3,11 @@
 
 use std::{
     fs,
-    io::Write,
     path::{Path, PathBuf},
-    process::Command,
 };
+
+#[cfg(target_os = "macos")]
+use std::{io::Write, process::Command};
 
 use super::fetch::{fetch_artifact_bytes, fetch_metadata_bytes};
 use super::sources::{
@@ -136,26 +137,24 @@ fn download_hosts(product: AgentCatalogId) -> Result<&'static [&'static str], Ag
     }
 }
 
+#[cfg(target_os = "windows")]
+fn install_macos_dmg(_product: AgentCatalogId, _bytes: &[u8]) -> Result<(), AgentReasonCode> {
+    Err(AgentReasonCode::PlatformUnsupported)
+}
+
+#[cfg(target_os = "macos")]
 fn install_macos_dmg(product: AgentCatalogId, bytes: &[u8]) -> Result<(), AgentReasonCode> {
-    #[cfg(not(target_os = "macos"))]
-    {
-        let _ = (product, bytes);
-        return Err(AgentReasonCode::PlatformUnsupported);
-    }
-    #[cfg(target_os = "macos")]
-    {
-        let job_dir = job_temp_dir()?;
-        let dmg_path = job_dir.join("installer.dmg");
-        write_exclusive(&dmg_path, bytes)?;
-        let mounted = mount_dmg(&dmg_path);
-        let result = mounted.and_then(|mount| {
-            let outcome = install_from_mount(product, &mount);
-            let _ = detach_dmg(&mount);
-            outcome
-        });
-        let _ = fs::remove_dir_all(&job_dir);
-        result
-    }
+    let job_dir = job_temp_dir()?;
+    let dmg_path = job_dir.join("installer.dmg");
+    write_exclusive(&dmg_path, bytes)?;
+    let mounted = mount_dmg(&dmg_path);
+    let result = mounted.and_then(|mount| {
+        let outcome = install_from_mount(product, &mount);
+        let _ = detach_dmg(&mount);
+        outcome
+    });
+    let _ = fs::remove_dir_all(&job_dir);
+    result
 }
 
 #[cfg(target_os = "macos")]
@@ -338,25 +337,28 @@ pub fn launch_trae_if_present() -> Result<(), AgentReasonCode> {
             if !path.starts_with(&root) {
                 return Err(AgentReasonCode::SourceNotVerified);
             }
-            #[cfg(target_os = "macos")]
-            {
-                let status = Command::new("open")
-                    .arg(&path)
-                    .status()
-                    .map_err(|_| AgentReasonCode::InteractiveUserUnavailable)?;
-                return if status.success() {
-                    Ok(())
-                } else {
-                    Err(AgentReasonCode::InteractiveUserUnavailable)
-                };
-            }
-            #[cfg(not(target_os = "macos"))]
-            {
-                return Err(AgentReasonCode::PlatformUnsupported);
-            }
+            return launch_bundle(&path);
         }
     }
     Err(AgentReasonCode::InstalledNotRunnable)
+}
+
+#[cfg(target_os = "macos")]
+fn launch_bundle(path: &Path) -> Result<(), AgentReasonCode> {
+    let status = Command::new("open")
+        .arg(path)
+        .status()
+        .map_err(|_| AgentReasonCode::InteractiveUserUnavailable)?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(AgentReasonCode::InteractiveUserUnavailable)
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn launch_bundle(_path: &Path) -> Result<(), AgentReasonCode> {
+    Err(AgentReasonCode::PlatformUnsupported)
 }
 
 fn read_bundle_id(app: &Path) -> Option<String> {

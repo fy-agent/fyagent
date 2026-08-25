@@ -93,32 +93,21 @@ pub enum SourceResolveError {
 }
 
 pub fn current_host_target() -> Option<(AgentPlatform, AgentArch)> {
-    #[cfg(target_os = "macos")]
-    {
-        let arch = if cfg!(target_arch = "aarch64") {
-            AgentArch::Aarch64
-        } else if cfg!(target_arch = "x86_64") {
-            AgentArch::X86_64
-        } else {
-            return None;
-        };
-        Some((AgentPlatform::Macos, arch))
-    }
-    #[cfg(target_os = "windows")]
-    {
-        let arch = if cfg!(target_arch = "aarch64") {
-            AgentArch::Aarch64
-        } else if cfg!(target_arch = "x86_64") {
-            AgentArch::X86_64
-        } else {
-            return None;
-        };
-        Some((AgentPlatform::Windows, arch))
-    }
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    {
-        None
-    }
+    let platform = if cfg!(target_os = "macos") {
+        AgentPlatform::Macos
+    } else if cfg!(target_os = "windows") {
+        AgentPlatform::Windows
+    } else {
+        return None;
+    };
+    let architecture = if cfg!(target_arch = "aarch64") {
+        AgentArch::Aarch64
+    } else if cfg!(target_arch = "x86_64") {
+        AgentArch::X86_64
+    } else {
+        return None;
+    };
+    Some((platform, architecture))
 }
 
 pub fn https_url_on_allowlist(url: &Url, hosts: &[&str]) -> Result<(), SourceResolveError> {

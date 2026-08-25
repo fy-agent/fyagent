@@ -229,7 +229,10 @@ export function parseAgentInstallReadiness(
   ) {
     throw new Error("Agent install readiness is unavailable");
   }
-  if (typeof value.releaseId === "string" && !/^v1:[0-9a-f]{64}$/u.test(value.releaseId)) {
+  if (
+    typeof value.releaseId === "string" &&
+    !/^v1:[0-9a-f]{64}$/u.test(value.releaseId)
+  ) {
     throw new Error("Agent install readiness is unavailable");
   }
   const matchesKind =
@@ -281,7 +284,8 @@ export function parseAgentActionResult(
     value.action !== expectedAction ||
     (value.jobId !== null && typeof value.jobId !== "string") ||
     !isOneOf(value.stage, AGENT_ACTION_JOB_STAGES) ||
-    (value.reasonCode !== null && !isOneOf(value.reasonCode, AGENT_REASON_CODES))
+    (value.reasonCode !== null &&
+      !isOneOf(value.reasonCode, AGENT_REASON_CODES))
   ) {
     throw new Error("Agent action is unavailable");
   }
@@ -315,7 +319,8 @@ export function parseAgentActionJobSnapshot(
     !isOneOf(value.action, AGENT_ACTION_IDS) ||
     !isOneOf(value.stage, AGENT_ACTION_JOB_STAGES) ||
     typeof value.cancellable !== "boolean" ||
-    (value.reasonCode !== null && !isOneOf(value.reasonCode, AGENT_REASON_CODES))
+    (value.reasonCode !== null &&
+      !isOneOf(value.reasonCode, AGENT_REASON_CODES))
   ) {
     throw new Error("Agent action job is unavailable");
   }

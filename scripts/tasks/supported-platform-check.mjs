@@ -396,6 +396,38 @@ const RUST_CFG_MACRO_CONTRACT = Object.freeze(
         'if cfg!(target_os = "macos") { "MacOS" } else if cfg!(target_os = "windows") { "Windows" } else { "unknown" }',
       ],
     ],
+    [
+      "src-tauri/src/agent_install/sources/mod.rs",
+      'cfg!(target_os="macos")',
+      1,
+      [
+        'let platform = if cfg!(target_os = "macos") { AgentPlatform::Macos } else if cfg!(target_os = "windows") { AgentPlatform::Windows } else { return None; };',
+      ],
+    ],
+    [
+      "src-tauri/src/agent_install/sources/mod.rs",
+      'cfg!(target_os="windows")',
+      1,
+      [
+        'let platform = if cfg!(target_os = "macos") { AgentPlatform::Macos } else if cfg!(target_os = "windows") { AgentPlatform::Windows } else { return None; };',
+      ],
+    ],
+    [
+      "src-tauri/src/agent_install/sources/mod.rs",
+      'cfg!(target_arch="aarch64")',
+      1,
+      [
+        'let architecture = if cfg!(target_arch = "aarch64") { AgentArch::Aarch64 } else if cfg!(target_arch = "x86_64") { AgentArch::X86_64 } else { return None; };',
+      ],
+    ],
+    [
+      "src-tauri/src/agent_install/sources/mod.rs",
+      'cfg!(target_arch="x86_64")',
+      1,
+      [
+        'let architecture = if cfg!(target_arch = "aarch64") { AgentArch::Aarch64 } else if cfg!(target_arch = "x86_64") { AgentArch::X86_64 } else { return None; };',
+      ],
+    ],
   ].map(([file, expression, count, anchors]) =>
     Object.freeze({ file, expression, count, anchors: Object.freeze(anchors) }),
   ),
