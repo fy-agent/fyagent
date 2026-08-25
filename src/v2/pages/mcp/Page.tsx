@@ -360,6 +360,7 @@ export function McpPage() {
       aria-label="MCP"
     >
       <header className="fy-feature-header">
+        <h1 className="fy-mcp-page-title">MCP 管理</h1>
         <FeatureTabs
           id="mcp-view-tabs"
           label="MCP 视图"

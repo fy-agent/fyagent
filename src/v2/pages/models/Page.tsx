@@ -1666,6 +1666,9 @@ export function ModelsPage() {
       data-testid="models-page"
       aria-label="模型"
     >
+      <header className="fy-models-page-heading">
+        <h1>模型管理</h1>
+      </header>
       <CatalogMasterDetail>
         <CatalogRail as="aside" ariaLabel="模型配置目标" title="选择应用">
           <CatalogList>

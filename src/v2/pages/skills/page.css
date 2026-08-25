@@ -1,3 +1,43 @@
+.fy-skills-page > .fy-feature-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 10px 16px;
+}
+
+.fy-skills-page-title {
+  position: relative;
+  grid-column: 1 / -1;
+  width: max-content;
+  margin: 0;
+  padding-bottom: 10px;
+  color: var(--fy-text);
+  font-size: 22px;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+
+.fy-skills-page-title::after {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 46px;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--fy-accent);
+  content: "";
+}
+
+.fy-skills-page > .fy-feature-header > .fy-feature-tabs {
+  grid-column: 1;
+  margin-bottom: 0;
+}
+
+.fy-skills-page > .fy-feature-header > .fy-feature-actions {
+  grid-column: 2;
+  justify-content: flex-end;
+}
+
 .fy-skills-page .fy-feature-toolbar > .fy-feature-tabs {
   flex-wrap: wrap;
   width: auto;
@@ -47,4 +87,25 @@
   color: var(--fy-text-secondary);
   font-size: 13px;
   font-weight: 650;
+}
+
+@media (min-width: 1181px) {
+  .fy-skills-page .fy-split-panes[data-panes="3"] {
+    --fy-split-pane-0: clamp(230px, 22vw, 292px);
+    --fy-split-pane-1: clamp(350px, 31vw, 470px);
+  }
+}
+
+@media (max-width: 760px) {
+  .fy-skills-page > .fy-feature-header {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .fy-skills-page > .fy-feature-header > .fy-feature-tabs,
+  .fy-skills-page > .fy-feature-header > .fy-feature-actions {
+    grid-column: 1;
+    justify-content: flex-start;
+    margin-left: 0;
+  }
 }

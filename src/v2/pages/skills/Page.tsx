@@ -485,6 +485,7 @@ export function SkillsPage() {
       aria-label="Skills"
     >
       <header className="fy-feature-header">
+        <h1 className="fy-skills-page-title">Skills 管理</h1>
         <FeatureTabs
           id="skills-view-tabs"
           label="Skills 视图"
