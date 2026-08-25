@@ -57,6 +57,32 @@ pub struct ToolVersion {
     installed_but_broken: bool,
 }
 
+impl ToolVersion {
+    pub(crate) fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub(crate) fn local_version(&self) -> Option<&str> {
+        self.version.as_deref()
+    }
+
+    pub(crate) fn latest_version(&self) -> Option<&str> {
+        self.latest_version.as_deref()
+    }
+
+    pub(crate) fn error(&self) -> Option<&str> {
+        self.error.as_deref()
+    }
+
+    pub(crate) fn installed_but_broken(&self) -> bool {
+        self.installed_but_broken
+    }
+
+    pub(crate) fn is_detected(&self) -> bool {
+        self.version.is_some() || self.installed_but_broken
+    }
+}
+
 const VALID_TOOLS: [&str; 7] = [
     "claude", "codex", "gemini", "grok", "opencode", "openclaw", "hermes",
 ];
@@ -2133,8 +2159,9 @@ fn static_fallback_command(tool: &str) -> String {
 /// - 对**有 npm 包**的工具(claude/grok/opencode),短路链(POSIX `||`)保证官方脚本不可达/
 ///   防火墙拦截时仍能装上,降级到裸 `npm i -g`。官方脚本本身不用 pipe，
 ///   因此不依赖调用方 shell 的 `pipefail` 设置。
-/// - Windows 上 Claude/OpenCode 原生不启用（对应 installer 都是 bash 脚本）；Grok
-///   使用官方 PowerShell installer，并同样保留 npm fallback。
+/// - Windows 上 Claude 使用官方 PowerShell installer（claude.ai/install.ps1）并保留 npm
+///   fallback；WinGet `Anthropic.ClaudeCode` 仍是官方并列渠道，但不作为 FyAgent 命令构造。
+///   OpenCode 原生 upgrade 在 Windows 上仍避免交互式提示。Grok 使用官方 PowerShell installer。
 #[cfg(target_os = "macos")]
 fn installer_with_npm_fallback(installer: &str, tool: &str) -> String {
     match npm_install_command_for(tool) {

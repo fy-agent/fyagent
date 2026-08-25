@@ -13,7 +13,7 @@
 //! ## 多账号支持
 //! - 每个 ChatGPT 账号独立存储 refresh_token
 //! - Provider 通过 meta.authBinding 关联账号（auth_provider = "codex_oauth"）
-//! - 通过 JWT id_token 提取 chatgpt_account_id 作为账号唯一标识
+//! - HashMap 键是 FyAgent `credential_id`；`chatgpt_account_id` 只做上游路由元数据
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 
@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
 
@@ -56,6 +56,16 @@ const POLLING_SAFETY_MARGIN_SECS: u64 = 3;
 
 /// User-Agent
 const CODEX_USER_AGENT: &str = "fyagent-codex-oauth";
+const OAUTH_HTTP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
+
+async fn send_bounded(
+    request: reqwest::RequestBuilder,
+) -> Result<reqwest::Response, CodexOAuthError> {
+    tokio::time::timeout(OAUTH_HTTP_TIMEOUT, request.send())
+        .await
+        .map_err(|_| CodexOAuthError::NetworkError("OAuth 请求超时".to_string()))?
+        .map_err(CodexOAuthError::from)
+}
 
 /// Codex OAuth 错误
 #[derive(Debug, thiserror::Error)]
@@ -86,6 +96,9 @@ pub enum CodexOAuthError {
 
     #[error("账号不存在: {0}")]
     AccountNotFound(String),
+
+    #[error("登录已取消")]
+    Cancelled,
 }
 
 impl From<reqwest::Error> for CodexOAuthError {
@@ -177,38 +190,49 @@ struct PendingDeviceCode {
     expires_at_ms: i64,
 }
 
-/// 持久化的账号数据
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// 持久化的账号数据。HashMap 键是 `credential_id`，不是 ChatGPT workspace id。
+#[derive(Clone, Serialize, Deserialize)]
 struct CodexAccountData {
-    /// chatgpt_account_id（同时作为 HashMap 的 key）
-    pub account_id: String,
-    /// 账号邮箱（如果可获取）
+    pub credential_id: String,
+    pub chatgpt_account_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub email: Option<String>,
-    /// Refresh Token（持久化）
     pub refresh_token: String,
-    /// 认证时间戳（秒）
     pub authenticated_at: i64,
+}
+
+impl std::fmt::Debug for CodexAccountData {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CodexAccountData")
+            .field("credential_id", &self.credential_id)
+            .field("chatgpt_account_id", &self.chatgpt_account_id)
+            .field("email", &self.email)
+            .field("refresh_token", &"<redacted>")
+            .field("authenticated_at", &self.authenticated_at)
+            .finish()
+    }
 }
 
 /// 公开的账号信息（返回给前端，复用 GitHubAccount 结构）
 impl From<&CodexAccountData> for GitHubAccount {
     fn from(data: &CodexAccountData) -> Self {
         GitHubAccount {
-            id: data.account_id.clone(),
-            // 用 email 作为显示名（若无则用 account_id）
+            id: data.credential_id.clone(),
             login: data
                 .email
                 .clone()
-                .unwrap_or_else(|| format!("ChatGPT ({})", data.account_id)),
+                .unwrap_or_else(|| format!("ChatGPT ({})", data.chatgpt_account_id)),
             avatar_url: None,
             authenticated_at: data.authenticated_at,
             github_domain: "github.com".to_string(),
+            chatgpt_account_id: Some(data.chatgpt_account_id.clone()),
         }
     }
 }
 
-/// 持久化存储结构（v1）
+const CODEX_OAUTH_STORE_VERSION: u32 = 2;
+
+/// 持久化存储结构（v2）
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 struct CodexOAuthStore {
     #[serde(default)]
@@ -216,6 +240,26 @@ struct CodexOAuthStore {
     #[serde(default)]
     accounts: HashMap<String, CodexAccountData>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    default_account_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct LegacyCodexAccountData {
+    account_id: String,
+    #[serde(default)]
+    email: Option<String>,
+    refresh_token: String,
+    authenticated_at: i64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct LegacyCodexOAuthStore {
+    #[serde(default)]
+    #[allow(dead_code)]
+    version: u32,
+    #[serde(default)]
+    accounts: HashMap<String, LegacyCodexAccountData>,
+    #[serde(default)]
     default_account_id: Option<String>,
 }
 
@@ -230,27 +274,36 @@ pub struct CodexOAuthManager {
     /// 进行中的 Device Code 流程：device_auth_id -> {user_code, expires_at_ms}
     /// 过期条目会在 start_device_flow 时被清理，防止放弃的登录流程导致无界增长
     pending_device_codes: Arc<RwLock<HashMap<String, PendingDeviceCode>>>,
+    login_lock: Mutex<()>,
     storage_path: PathBuf,
+    store_loaded: bool,
 }
 
 impl CodexOAuthManager {
     pub fn new(data_dir: PathBuf) -> Self {
         let storage_path = data_dir.join("codex_oauth_auth.json");
 
-        let manager = Self {
+        let mut manager = Self {
             accounts: Arc::new(RwLock::new(HashMap::new())),
             default_account_id: Arc::new(RwLock::new(None)),
             access_tokens: Arc::new(RwLock::new(HashMap::new())),
             refresh_locks: Arc::new(RwLock::new(HashMap::new())),
             pending_device_codes: Arc::new(RwLock::new(HashMap::new())),
+            login_lock: Mutex::new(()),
             storage_path,
+            store_loaded: false,
         };
 
-        if let Err(e) = manager.load_from_disk_sync() {
-            log::warn!("[CodexOAuth] 加载存储失败: {e}");
+        match manager.load_from_disk_sync() {
+            Ok(()) => manager.store_loaded = true,
+            Err(e) => log::warn!("[CodexOAuth] 加载存储失败: {e}"),
         }
 
         manager
+    }
+
+    pub fn store_loaded(&self) -> bool {
+        self.store_loaded
     }
 
     // ==================== 设备码流程 ====================
@@ -264,19 +317,19 @@ impl CodexOAuthManager {
     pub async fn start_device_flow(&self) -> Result<GitHubDeviceCodeResponse, CodexOAuthError> {
         log::info!("[CodexOAuth] 启动 Device Code 流程");
 
-        let response = crate::proxy::http_client::get()
-            .post(DEVICE_AUTH_USERCODE_URL)
-            .header("Content-Type", "application/json")
-            .header("User-Agent", CODEX_USER_AGENT)
-            .json(&serde_json::json!({ "client_id": CODEX_CLIENT_ID }))
-            .send()
-            .await?;
+        let response = send_bounded(
+            crate::proxy::http_client::get()
+                .post(DEVICE_AUTH_USERCODE_URL)
+                .header("Content-Type", "application/json")
+                .header("User-Agent", CODEX_USER_AGENT)
+                .json(&serde_json::json!({ "client_id": CODEX_CLIENT_ID })),
+        )
+        .await?;
 
         if !response.status().is_success() {
             let status = response.status();
-            let text = response.text().await.unwrap_or_default();
             return Err(CodexOAuthError::NetworkError(format!(
-                "Device Code 请求失败: {status} - {text}"
+                "Device Code 请求失败 ({status})"
             )));
         }
 
@@ -346,16 +399,17 @@ impl CodexOAuthManager {
 
         log::debug!("[CodexOAuth] 轮询 Device Code");
 
-        let poll_response = crate::proxy::http_client::get()
-            .post(DEVICE_AUTH_TOKEN_URL)
-            .header("Content-Type", "application/json")
-            .header("User-Agent", CODEX_USER_AGENT)
-            .json(&serde_json::json!({
-                "device_auth_id": device_code,
-                "user_code": user_code,
-            }))
-            .send()
-            .await?;
+        let poll_response = send_bounded(
+            crate::proxy::http_client::get()
+                .post(DEVICE_AUTH_TOKEN_URL)
+                .header("Content-Type", "application/json")
+                .header("User-Agent", CODEX_USER_AGENT)
+                .json(&serde_json::json!({
+                    "device_auth_id": device_code,
+                    "user_code": user_code,
+                })),
+        )
+        .await?;
 
         let status = poll_response.status();
 
@@ -369,9 +423,8 @@ impl CodexOAuthManager {
         }
 
         if !status.is_success() {
-            let text = poll_response.text().await.unwrap_or_default();
             return Err(CodexOAuthError::TokenFetchFailed(format!(
-                "{status} - {text}"
+                "OAuth 轮询失败 ({status})"
             )));
         }
 
@@ -387,35 +440,30 @@ impl CodexOAuthManager {
             .exchange_code_for_tokens(&success.authorization_code, &success.code_verifier)
             .await?;
 
-        // 清理 pending device code
         {
             let mut pending = self.pending_device_codes.write().await;
-            pending.remove(device_code);
+            if pending.remove(device_code).is_none() {
+                return Err(CodexOAuthError::Cancelled);
+            }
         }
 
         let refresh_token = tokens.refresh_token.clone().ok_or_else(|| {
             CodexOAuthError::TokenFetchFailed("响应缺少 refresh_token".to_string())
         })?;
 
-        let (account_id, email) = extract_identity_from_tokens(&tokens);
-        let account_id = account_id.ok_or_else(|| {
-            CodexOAuthError::ParseError("无法从 token 中提取 account_id".to_string())
+        let (chatgpt_account_id, email) = extract_identity_from_tokens(&tokens);
+        let chatgpt_account_id = chatgpt_account_id.ok_or_else(|| {
+            CodexOAuthError::ParseError("无法从 token 中提取 chatgpt_account_id".to_string())
         })?;
 
-        // 缓存 access_token
-        {
-            let mut tokens_cache = self.access_tokens.write().await;
-            tokens_cache.insert(
-                account_id.clone(),
-                CachedAccessToken {
-                    token: tokens.access_token.clone(),
-                    expires_at_ms: compute_expires_at_ms(tokens.expires_in),
-                },
-            );
-        }
-
         let account = self
-            .add_account_internal(account_id, refresh_token, email)
+            .add_account_internal(
+                chatgpt_account_id,
+                refresh_token,
+                email,
+                tokens.access_token.clone(),
+                tokens.expires_in,
+            )
             .await?;
 
         Ok(Some(account))
@@ -427,25 +475,25 @@ impl CodexOAuthManager {
         code: &str,
         code_verifier: &str,
     ) -> Result<OAuthTokenResponse, CodexOAuthError> {
-        let response = crate::proxy::http_client::get()
-            .post(OAUTH_TOKEN_URL)
-            .header("Content-Type", "application/x-www-form-urlencoded")
-            .header("User-Agent", CODEX_USER_AGENT)
-            .form(&[
-                ("grant_type", "authorization_code"),
-                ("code", code),
-                ("redirect_uri", DEVICE_REDIRECT_URI),
-                ("client_id", CODEX_CLIENT_ID),
-                ("code_verifier", code_verifier),
-            ])
-            .send()
-            .await?;
+        let response = send_bounded(
+            crate::proxy::http_client::get()
+                .post(OAUTH_TOKEN_URL)
+                .header("Content-Type", "application/x-www-form-urlencoded")
+                .header("User-Agent", CODEX_USER_AGENT)
+                .form(&[
+                    ("grant_type", "authorization_code"),
+                    ("code", code),
+                    ("redirect_uri", DEVICE_REDIRECT_URI),
+                    ("client_id", CODEX_CLIENT_ID),
+                    ("code_verifier", code_verifier),
+                ]),
+        )
+        .await?;
 
         if !response.status().is_success() {
             let status = response.status();
-            let text = response.text().await.unwrap_or_default();
             return Err(CodexOAuthError::TokenFetchFailed(format!(
-                "Token 交换失败: {status} - {text}"
+                "Token 交换失败 ({status})"
             )));
         }
 
@@ -460,18 +508,19 @@ impl CodexOAuthManager {
         &self,
         refresh_token: &str,
     ) -> Result<OAuthTokenResponse, CodexOAuthError> {
-        let response = crate::proxy::http_client::get()
-            .post(OAUTH_TOKEN_URL)
-            .header("Content-Type", "application/x-www-form-urlencoded")
-            .header("User-Agent", CODEX_USER_AGENT)
-            .form(&[
-                ("grant_type", "refresh_token"),
-                ("refresh_token", refresh_token),
-                ("client_id", CODEX_CLIENT_ID),
-                ("scope", "openid profile email"),
-            ])
-            .send()
-            .await?;
+        let response = send_bounded(
+            crate::proxy::http_client::get()
+                .post(OAUTH_TOKEN_URL)
+                .header("Content-Type", "application/x-www-form-urlencoded")
+                .header("User-Agent", CODEX_USER_AGENT)
+                .form(&[
+                    ("grant_type", "refresh_token"),
+                    ("refresh_token", refresh_token),
+                    ("client_id", CODEX_CLIENT_ID),
+                    ("scope", "openid profile email"),
+                ]),
+        )
+        .await?;
 
         let status = response.status();
         if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
@@ -479,9 +528,8 @@ impl CodexOAuthManager {
         }
 
         if !status.is_success() {
-            let text = response.text().await.unwrap_or_default();
             return Err(CodexOAuthError::TokenFetchFailed(format!(
-                "Refresh 失败: {status} - {text}"
+                "Refresh 失败 ({status})"
             )));
         }
 
@@ -575,6 +623,27 @@ impl CodexOAuthManager {
     /// 获取默认账号 ID（热路径使用，避免克隆整个账号 HashMap）
     pub async fn default_account_id(&self) -> Option<String> {
         self.resolve_default_account_id().await
+    }
+
+    pub async fn chatgpt_account_id_for(&self, credential_id: &str) -> Option<String> {
+        self.accounts
+            .read()
+            .await
+            .get(credential_id)
+            .map(|account| account.chatgpt_account_id.clone())
+    }
+
+    pub async fn cancel_pending_login(
+        &self,
+        device_code: Option<&str>,
+    ) -> Result<(), CodexOAuthError> {
+        let mut pending = self.pending_device_codes.write().await;
+        if let Some(device_code) = device_code {
+            pending.remove(device_code);
+        } else {
+            pending.clear();
+        }
+        Ok(())
     }
 
     // ==================== 多账号管理 ====================
@@ -693,14 +762,19 @@ impl CodexOAuthManager {
 
     async fn add_account_internal(
         &self,
-        account_id: String,
+        chatgpt_account_id: String,
         refresh_token: String,
         email: Option<String>,
+        access_token: String,
+        expires_in: Option<i64>,
     ) -> Result<GitHubAccount, CodexOAuthError> {
+        let _guard = self.login_lock.lock().await;
         let now = chrono::Utc::now().timestamp();
+        let credential_id = uuid::Uuid::new_v4().to_string();
 
         let data = CodexAccountData {
-            account_id: account_id.clone(),
+            credential_id: credential_id.clone(),
+            chatgpt_account_id,
             email,
             refresh_token,
             authenticated_at: now,
@@ -710,13 +784,24 @@ impl CodexOAuthManager {
 
         {
             let mut accounts = self.accounts.write().await;
-            accounts.insert(account_id.clone(), data);
+            accounts.insert(credential_id.clone(), data);
+        }
+
+        {
+            let mut tokens_cache = self.access_tokens.write().await;
+            tokens_cache.insert(
+                credential_id.clone(),
+                CachedAccessToken {
+                    token: access_token,
+                    expires_at_ms: compute_expires_at_ms(expires_in),
+                },
+            );
         }
 
         {
             let mut default = self.default_account_id.write().await;
             if default.is_none() {
-                *default = Some(account_id);
+                *default = Some(credential_id);
             }
         }
 
@@ -841,23 +926,46 @@ impl CodexOAuthManager {
         }
 
         let content = std::fs::read_to_string(&self.storage_path)?;
-        let store: CodexOAuthStore = serde_json::from_str(&content)
+        let value: serde_json::Value = serde_json::from_str(&content)
             .map_err(|e| CodexOAuthError::ParseError(e.to_string()))?;
+        let version = value
+            .get("version")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0);
 
-        if let Ok(mut accounts) = self.accounts.try_write() {
-            *accounts = store.accounts;
-            log::info!("[CodexOAuth] 从磁盘加载 {} 个账号", accounts.len());
-        }
-        if let Ok(mut default) = self.default_account_id.try_write() {
-            *default = store.default_account_id;
-            if default.is_none() {
-                if let Ok(accounts) = self.accounts.try_read() {
-                    *default = Self::fallback_default_account_id(&accounts);
-                }
-            }
+        let store = if version >= u64::from(CODEX_OAUTH_STORE_VERSION) {
+            serde_json::from_value::<CodexOAuthStore>(value)
+                .map_err(|e| CodexOAuthError::ParseError(e.to_string()))?
+        } else {
+            migrate_v1_store(&self.storage_path, &content)?
+        };
+
+        let mut accounts = self
+            .accounts
+            .try_write()
+            .map_err(|_| CodexOAuthError::IoError("无法写入账号缓存".to_string()))?;
+        let mut default = self
+            .default_account_id
+            .try_write()
+            .map_err(|_| CodexOAuthError::IoError("无法写入默认账号缓存".to_string()))?;
+        *accounts = store.accounts;
+        log::info!("[CodexOAuth] 从磁盘加载 {} 个账号", accounts.len());
+        *default = store.default_account_id;
+        if default.is_none() {
+            *default = Self::fallback_default_account_id(&accounts);
         }
 
         Ok(())
+    }
+
+    pub fn remap_provider_bindings(&self) {
+        if !self.store_loaded {
+            return;
+        }
+        let Ok(accounts) = self.accounts.try_read() else {
+            return;
+        };
+        remap_codex_provider_bindings(&chatgpt_to_credential_map(&accounts));
     }
 
     async fn save_to_disk(&self) -> Result<(), CodexOAuthError> {
@@ -865,7 +973,7 @@ impl CodexOAuthManager {
         let default = self.resolve_default_account_id().await;
 
         let store = CodexOAuthStore {
-            version: 1,
+            version: CODEX_OAUTH_STORE_VERSION,
             accounts,
             default_account_id: default,
         };
@@ -881,6 +989,132 @@ impl CodexOAuthManager {
         );
 
         Ok(())
+    }
+}
+
+fn backup_v1_store(path: &Path, content: &str) -> Result<(), CodexOAuthError> {
+    let backup = path.with_extension("json.v1.bak");
+    if backup.exists() {
+        return Ok(());
+    }
+    if let Some(parent) = backup.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(&backup, content)?;
+    Ok(())
+}
+
+fn migrate_v1_store(path: &Path, content: &str) -> Result<CodexOAuthStore, CodexOAuthError> {
+    backup_v1_store(path, content)?;
+    let legacy: LegacyCodexOAuthStore =
+        serde_json::from_str(content).map_err(|e| CodexOAuthError::ParseError(e.to_string()))?;
+    let mut accounts = HashMap::new();
+    let mut old_to_new = HashMap::new();
+    for (old_key, legacy_account) in legacy.accounts {
+        let credential_id = uuid::Uuid::new_v4().to_string();
+        let chatgpt_account_id = if legacy_account.account_id.is_empty() {
+            old_key.clone()
+        } else {
+            legacy_account.account_id
+        };
+        old_to_new.insert(old_key, credential_id.clone());
+        accounts.insert(
+            credential_id.clone(),
+            CodexAccountData {
+                credential_id: credential_id.clone(),
+                chatgpt_account_id,
+                email: legacy_account.email,
+                refresh_token: legacy_account.refresh_token,
+                authenticated_at: legacy_account.authenticated_at,
+            },
+        );
+    }
+    let default_account_id = legacy
+        .default_account_id
+        .and_then(|id| old_to_new.get(&id).cloned());
+    let store = CodexOAuthStore {
+        version: CODEX_OAUTH_STORE_VERSION,
+        accounts,
+        default_account_id,
+    };
+    let migrated = serde_json::to_string_pretty(&store)
+        .map_err(|e| CodexOAuthError::ParseError(e.to_string()))?;
+    fs::write(path, migrated)?;
+    Ok(store)
+}
+
+fn chatgpt_to_credential_map(
+    accounts: &HashMap<String, CodexAccountData>,
+) -> HashMap<String, Vec<String>> {
+    let mut map = HashMap::new();
+    for account in accounts.values() {
+        map.entry(account.chatgpt_account_id.clone())
+            .or_insert_with(Vec::new)
+            .push(account.credential_id.clone());
+    }
+    map
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum BindingRemap {
+    Keep,
+    Replace(String),
+    Unbind,
+}
+
+fn remap_managed_account_binding(
+    account_id: &str,
+    valid_credential_ids: &std::collections::HashSet<String>,
+    chatgpt_to_credentials: &HashMap<String, Vec<String>>,
+) -> BindingRemap {
+    if valid_credential_ids.contains(account_id) {
+        return BindingRemap::Keep;
+    }
+    match chatgpt_to_credentials.get(account_id) {
+        Some(ids) if ids.len() == 1 => BindingRemap::Replace(ids[0].clone()),
+        _ => BindingRemap::Unbind,
+    }
+}
+
+fn remap_codex_provider_bindings(chatgpt_to_credentials: &HashMap<String, Vec<String>>) {
+    let Ok(mut config) = crate::app_config::MultiAppConfig::load() else {
+        return;
+    };
+    let Some(manager) = config.get_manager_mut(&crate::app_config::AppType::Codex) else {
+        return;
+    };
+    let valid: std::collections::HashSet<String> =
+        chatgpt_to_credentials.values().flatten().cloned().collect();
+    let mut changed = false;
+    for provider in manager.providers.values_mut() {
+        let Some(meta) = provider.meta.as_mut() else {
+            continue;
+        };
+        let Some(binding) = meta.auth_binding.as_mut() else {
+            continue;
+        };
+        if binding.source != crate::provider::AuthBindingSource::ManagedAccount
+            || binding.auth_provider.as_deref() != Some("codex_oauth")
+        {
+            continue;
+        }
+        let Some(account_id) = binding.account_id.clone() else {
+            continue;
+        };
+        match remap_managed_account_binding(&account_id, &valid, chatgpt_to_credentials) {
+            BindingRemap::Keep => {}
+            BindingRemap::Replace(credential_id) => {
+                binding.account_id = Some(credential_id);
+                changed = true;
+            }
+            BindingRemap::Unbind => {
+                meta.auth_binding = None;
+                changed = true;
+            }
+        }
+    }
+    if changed {
+        let _ = config.save();
     }
 }
 
@@ -969,6 +1203,8 @@ fn extract_identity_from_tokens(tokens: &OAuthTokenResponse) -> (Option<String>,
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
+    use std::fs;
 
     #[test]
     fn test_parse_interval_number() {
@@ -1076,25 +1312,32 @@ mod tests {
     async fn test_manager_save_and_load() {
         let temp = tempfile::tempdir().unwrap();
         let path = temp.path().to_path_buf();
-
-        // Manually inject an account through internal methods
+        let credential_id;
         {
             let manager = CodexOAuthManager::new(path.clone());
-            manager
+            let account = manager
                 .add_account_internal(
                     "acc-123".to_string(),
                     "rt-secret".to_string(),
                     Some("user@example.com".to_string()),
+                    "at-secret".to_string(),
+                    Some(3600),
                 )
                 .await
                 .unwrap();
+            credential_id = account.id.clone();
+            assert_ne!(account.id, "acc-123");
+            assert_eq!(account.chatgpt_account_id.as_deref(), Some("acc-123"));
+            let json = serde_json::to_string(&account).unwrap();
+            assert!(!json.contains("rt-secret"));
+            assert!(!json.contains("at-secret"));
         }
 
-        // New manager should load from disk
         let manager2 = CodexOAuthManager::new(path);
         let accounts = manager2.list_accounts().await;
         assert_eq!(accounts.len(), 1);
-        assert_eq!(accounts[0].id, "acc-123");
+        assert_eq!(accounts[0].id, credential_id);
+        assert_eq!(accounts[0].chatgpt_account_id.as_deref(), Some("acc-123"));
     }
 
     #[tokio::test]
@@ -1102,26 +1345,220 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let manager = CodexOAuthManager::new(temp.path().to_path_buf());
 
-        manager
+        let first = manager
             .add_account_internal(
                 "acc-123".to_string(),
                 "rt".to_string(),
                 Some("a@example.com".to_string()),
+                "at".to_string(),
+                Some(3600),
             )
             .await
             .unwrap();
-        manager
+        let second = manager
             .add_account_internal(
                 "acc-456".to_string(),
                 "rt2".to_string(),
                 Some("b@example.com".to_string()),
+                "at2".to_string(),
+                Some(3600),
             )
             .await
             .unwrap();
 
-        manager.remove_account("acc-123").await.unwrap();
+        manager.remove_account(&first.id).await.unwrap();
         let accounts = manager.list_accounts().await;
         assert_eq!(accounts.len(), 1);
-        assert_eq!(accounts[0].id, "acc-456");
+        assert_eq!(accounts[0].id, second.id);
+    }
+
+    #[tokio::test]
+    async fn same_workspace_two_users_coexist_under_distinct_credential_ids() {
+        let temp = tempfile::tempdir().unwrap();
+        let manager = CodexOAuthManager::new(temp.path().to_path_buf());
+        let alice = manager
+            .add_account_internal(
+                "team-workspace".to_string(),
+                "alice-rt".to_string(),
+                Some("alice@example.com".to_string()),
+                "alice-at".to_string(),
+                Some(3600),
+            )
+            .await
+            .unwrap();
+        let bob = manager
+            .add_account_internal(
+                "team-workspace".to_string(),
+                "bob-rt".to_string(),
+                Some("bob@example.com".to_string()),
+                "bob-at".to_string(),
+                Some(3600),
+            )
+            .await
+            .unwrap();
+        assert_ne!(alice.id, bob.id);
+        assert_eq!(alice.chatgpt_account_id, bob.chatgpt_account_id);
+        let listed = manager.list_accounts().await;
+        assert_eq!(listed.len(), 2);
+        assert_eq!(
+            manager.chatgpt_account_id_for(&alice.id).await.as_deref(),
+            Some("team-workspace")
+        );
+    }
+
+    #[tokio::test]
+    async fn v1_store_migrates_to_credential_ids_and_keeps_backup() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("codex_oauth_auth.json");
+        let v1 = serde_json::json!({
+            "version": 1,
+            "default_account_id": "ws-shared",
+            "accounts": {
+                "ws-shared": {
+                    "account_id": "ws-shared",
+                    "email": "user@example.com",
+                    "refresh_token": "legacy-rt",
+                    "authenticated_at": 1
+                }
+            }
+        });
+        fs::write(&path, serde_json::to_vec(&v1).unwrap()).unwrap();
+        let manager = CodexOAuthManager::new(temp.path().to_path_buf());
+        let backup = path.with_extension("json.v1.bak");
+        assert!(backup.exists());
+        let migrated: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(migrated["version"], 2);
+        let accounts = migrated["accounts"].as_object().unwrap();
+        assert_eq!(accounts.len(), 1);
+        let credential_id = accounts.keys().next().unwrap();
+        assert_ne!(credential_id.as_str(), "ws-shared");
+        assert_eq!(accounts[credential_id]["chatgpt_account_id"], "ws-shared");
+        let accounts = manager.list_accounts().await;
+        assert_eq!(accounts.len(), 1);
+        assert_ne!(accounts[0].id, "ws-shared");
+        assert_eq!(accounts[0].chatgpt_account_id.as_deref(), Some("ws-shared"));
+    }
+
+    #[test]
+    fn account_debug_redacts_refresh_token() {
+        let data = CodexAccountData {
+            credential_id: "cred".to_string(),
+            chatgpt_account_id: "ws".to_string(),
+            email: None,
+            refresh_token: "super-secret".to_string(),
+            authenticated_at: 1,
+        };
+        let rendered = format!("{data:?}");
+        assert!(!rendered.contains("super-secret"));
+        assert!(rendered.contains("<redacted>"));
+    }
+
+    #[test]
+    fn unique_workspace_binding_remaps_ambiguous_unbinds() {
+        let mut map = HashMap::new();
+        map.insert("ws-unique".to_string(), vec!["cred-a".to_string()]);
+        map.insert(
+            "ws-shared".to_string(),
+            vec!["cred-b".to_string(), "cred-c".to_string()],
+        );
+        let valid: std::collections::HashSet<String> = map.values().flatten().cloned().collect();
+
+        assert_eq!(
+            remap_managed_account_binding("cred-a", &valid, &map),
+            BindingRemap::Keep
+        );
+        assert_eq!(
+            remap_managed_account_binding("ws-unique", &valid, &map),
+            BindingRemap::Replace("cred-a".to_string())
+        );
+        assert_eq!(
+            remap_managed_account_binding("ws-shared", &valid, &map),
+            BindingRemap::Unbind
+        );
+        assert_eq!(
+            remap_managed_account_binding("missing", &valid, &map),
+            BindingRemap::Unbind
+        );
+    }
+
+    #[test]
+    fn corrupt_store_does_not_count_as_loaded() {
+        let temp = tempfile::tempdir().unwrap();
+        fs::write(temp.path().join("codex_oauth_auth.json"), "{not-json").unwrap();
+        let manager = CodexOAuthManager::new(temp.path().to_path_buf());
+        assert!(!manager.store_loaded());
+    }
+
+    #[test]
+    fn missing_store_is_an_empty_successful_load() {
+        let temp = tempfile::tempdir().unwrap();
+        let manager = CodexOAuthManager::new(temp.path().to_path_buf());
+        assert!(manager.store_loaded());
+    }
+
+    #[tokio::test]
+    async fn v2_reload_is_idempotent_and_keeps_the_v1_backup() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("codex_oauth_auth.json");
+        let v1 = serde_json::json!({
+            "version": 1,
+            "default_account_id": "ws-shared",
+            "accounts": {
+                "ws-shared": {
+                    "account_id": "ws-shared",
+                    "email": "user@example.com",
+                    "refresh_token": "legacy-rt",
+                    "authenticated_at": 1
+                }
+            }
+        });
+        fs::write(&path, serde_json::to_vec(&v1).unwrap()).unwrap();
+        let first = CodexOAuthManager::new(temp.path().to_path_buf());
+        let first_id = first.list_accounts().await[0].id.clone();
+        let backup = fs::read_to_string(path.with_extension("json.v1.bak")).unwrap();
+        let second = CodexOAuthManager::new(temp.path().to_path_buf());
+        assert_eq!(second.list_accounts().await[0].id, first_id);
+        assert_eq!(
+            fs::read_to_string(path.with_extension("json.v1.bak")).unwrap(),
+            backup
+        );
+        assert!(backup.contains("ws-shared"));
+        assert!(second.store_loaded());
+    }
+
+    #[tokio::test]
+    async fn missing_bound_credential_does_not_yield_another_routing_id() {
+        let temp = tempfile::tempdir().unwrap();
+        let manager = CodexOAuthManager::new(temp.path().to_path_buf());
+        let alice = manager
+            .add_account_internal(
+                "ws".to_string(),
+                "alice-rt".to_string(),
+                Some("alice@example.com".to_string()),
+                "alice-at".to_string(),
+                Some(3600),
+            )
+            .await
+            .unwrap();
+        assert!(manager.chatgpt_account_id_for("deleted-id").await.is_none());
+        assert_eq!(
+            manager.chatgpt_account_id_for(&alice.id).await.as_deref(),
+            Some("ws")
+        );
+        assert!(matches!(
+            manager.get_valid_token_for_account("deleted-id").await,
+            Err(CodexOAuthError::AccountNotFound(_))
+        ));
+    }
+
+    #[test]
+    fn oauth_status_errors_do_not_embed_response_bodies() {
+        let failed = CodexOAuthError::TokenFetchFailed("OAuth 轮询失败 (401)".to_string());
+        let rendered = failed.to_string();
+        assert!(!rendered.contains("access_token"));
+        assert!(!rendered.contains("refresh_token"));
+        assert!(!rendered.contains("{"));
+        assert!(rendered.contains("401"));
     }
 }

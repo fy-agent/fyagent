@@ -14,6 +14,7 @@ export interface ManagedAuthAccount {
   is_default: boolean;
   github_domain: string;
   requires_reauth: boolean;
+  chatgpt_account_id?: string | null;
 }
 
 export interface ManagedAuthStatus {
@@ -22,6 +23,7 @@ export interface ManagedAuthStatus {
   default_account_id: string | null;
   migration_error?: string | null;
   accounts: ManagedAuthAccount[];
+  native_projection_available?: boolean | null;
 }
 
 export interface ManagedAuthDeviceCodeResponse {
@@ -99,6 +101,16 @@ export async function authLogout(
   });
 }
 
+export async function authCancelLogin(
+  authProvider: ManagedAuthProvider,
+  deviceCode?: string | null,
+): Promise<void> {
+  return invoke("auth_cancel_login", {
+    authProvider,
+    deviceCode: deviceCode || null,
+  });
+}
+
 export const authApi = {
   authStartLogin,
   authPollForAccount,
@@ -107,4 +119,5 @@ export const authApi = {
   authRemoveAccount,
   authSetDefaultAccount,
   authLogout,
+  authCancelLogin,
 };

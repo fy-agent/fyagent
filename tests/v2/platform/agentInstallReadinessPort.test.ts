@@ -7,53 +7,67 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke }));
 
 function wire(agentId = "qoderwork") {
   const codex = agentId === "codex";
+  const cli =
+    agentId === "claude-code" || agentId === "grokbuild" || agentId === "opencode";
   return {
-    contractVersion: 1,
+    contractVersion: 2,
     agentId,
-    reviewedAt: "2026-08-24",
-    automation: {
-      state: "unavailable",
-      reasonCode: codex ? "managed_by_codex_desktop" : "official_guide_only",
-    },
-    source: {
-      state: "unknown",
-      reasonCode: "source_review_not_refreshed",
-      installMode: codex ? "managed_package" : "official_guide",
-      licenseScope: "unconfirmed",
-      distributionState: "unconfirmed",
-      checkedAt: null,
-    },
-    integrity: {
-      state: "unknown",
-      summaryCode: "integrity_not_checked",
-      checkedAt: null,
-    },
-    preflight: {
-      state: "unknown",
-      reasonCode: "preflight_not_run",
-      checks: [],
-      checkedAt: null,
-    },
-    plan: {
-      state: "unknown",
-      reasonCode: "plan_not_created",
-      snapshotId: null,
-      snapshotStale: null,
-    },
+    reviewedAt: "2026-08-25",
+    installState: "unknown",
+    updateState: "unknown",
+    releaseId: null,
+    localVersion: null,
+    remoteVersion: null,
+    authOwnership: codex
+      ? "fyagent_managed"
+      : agentId === "opencode"
+        ? "provider_owned"
+        : "agent_owned",
+    authState: "unknown",
+    sourceKind: codex ? "codex_desktop" : cli ? "cli_tooling" : "managed_desktop",
+    allowedActions: [],
+    reasonCodes: ["auth_state_unknown"],
   };
 }
 
 describe("Tauri Agent install readiness port", () => {
   beforeEach(() => invoke.mockReset());
 
-  it("invokes the sole read-only command with one canonical ID", async () => {
+  it("invokes readiness and action commands with closed payloads", async () => {
     invoke.mockResolvedValue(wire("codex"));
     await expect(
       createAgentInstallReadinessPort().get("codex"),
-    ).resolves.toEqual(wire("codex"));
-    expect(invoke).toHaveBeenCalledOnce();
+    ).resolves.toEqual({
+      ...wire("codex"),
+      reasonCodes: ["auth_state_unknown"],
+    });
     expect(invoke).toHaveBeenCalledWith("get_agent_install_readiness", {
       agentId: "codex",
+    });
+
+    invoke.mockResolvedValue({
+      contractVersion: 1,
+      agentId: "qoderwork",
+      action: "install",
+      jobId: "job-1",
+      stage: "checking",
+      reasonCode: null,
+    });
+    await expect(
+      createAgentInstallReadinessPort().startAction({
+        agentId: "qoderwork",
+        action: "install",
+        expectedReleaseId:
+          "v1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      }),
+    ).resolves.toMatchObject({ jobId: "job-1" });
+    expect(invoke).toHaveBeenCalledWith("start_agent_action", {
+      request: {
+        agentId: "qoderwork",
+        action: "install",
+        expectedReleaseId:
+          "v1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      },
     });
   });
 

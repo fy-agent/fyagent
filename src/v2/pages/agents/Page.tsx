@@ -92,7 +92,7 @@ function AgentDetail({ entry }: { entry: AgentCatalogEntry }) {
 
       <AgentInstallReadinessSection
         agentId={entry.id}
-        load={ports.agentInstallReadiness.get}
+        port={ports.agentInstallReadiness}
       />
 
       {entry.id === "codex" && <CodexDesktopInstallerPanel />}

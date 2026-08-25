@@ -1,66 +1,137 @@
 import { AGENT_CATALOG_IDS, type AgentCatalogId } from "./directory";
 
-export const AGENT_INSTALL_READINESS_CONTRACT_VERSION = 1 as const;
+export const AGENT_INSTALL_READINESS_CONTRACT_VERSION = 2 as const;
+export const AGENT_ACTION_CONTRACT_VERSION = 1 as const;
 
-export const READINESS_LAYER_STATES = [
-  "ok",
-  "warn",
-  "fail",
+export const AGENT_INSTALL_STATES = [
+  "not_installed",
+  "installed",
+  "installed_not_runnable",
   "unknown",
+  "unavailable",
 ] as const;
-export type ReadinessLayerState = (typeof READINESS_LAYER_STATES)[number];
+export type AgentInstallState = (typeof AGENT_INSTALL_STATES)[number];
 
-export const AGENT_INSTALL_MODES = [
-  "official_guide",
-  "managed_package",
-  "native_verified",
-  "unsupported",
+export const AGENT_UPDATE_STATES = [
+  "unavailable",
+  "unknown",
+  "up_to_date",
+  "update_available",
+  "latest_unknown",
 ] as const;
-export type AgentInstallMode = (typeof AGENT_INSTALL_MODES)[number];
+export type AgentUpdateState = (typeof AGENT_UPDATE_STATES)[number];
+
+export const AGENT_AUTH_OWNERSHIPS = [
+  "fyagent_managed",
+  "agent_owned",
+  "provider_owned",
+  "unavailable",
+] as const;
+export type AgentAuthOwnership = (typeof AGENT_AUTH_OWNERSHIPS)[number];
+
+export const AGENT_AUTH_STATES = [
+  "unknown",
+  "logged_in",
+  "logged_out",
+  "provider_connection_required",
+  "unavailable",
+] as const;
+export type AgentAuthState = (typeof AGENT_AUTH_STATES)[number];
+
+export const AGENT_SOURCE_KINDS = [
+  "cli_tooling",
+  "managed_desktop",
+  "codex_desktop",
+] as const;
+export type AgentSourceKind = (typeof AGENT_SOURCE_KINDS)[number];
+
+export const AGENT_ACTION_IDS = [
+  "install",
+  "update",
+  "launch",
+  "auth_login",
+  "auth_logout",
+  "auth_connect_provider",
+] as const;
+export type AgentActionId = (typeof AGENT_ACTION_IDS)[number];
+
+export const AGENT_REASON_CODES = [
+  "official_page_only",
+  "source_not_verified",
+  "platform_unsupported",
+  "interactive_user_unavailable",
+  "installed_not_runnable",
+  "auth_state_unknown",
+  "provider_connection_required",
+  "credential_store_unsupported",
+  "binding_account_missing",
+  "binding_identity_mismatch",
+  "operation_conflict",
+  "cancelled",
+  "managed_by_codex_desktop",
+  "native_projection_unavailable",
+  "refresh_required",
+  "executor_not_implemented",
+] as const;
+export type AgentReasonCode = (typeof AGENT_REASON_CODES)[number];
+
+export const AGENT_ACTION_JOB_STAGES = [
+  "checking",
+  "downloading",
+  "installing",
+  "verifying_installation",
+  "succeeded",
+  "failed",
+  "cancelled",
+] as const;
+export type AgentActionJobStage = (typeof AGENT_ACTION_JOB_STAGES)[number];
 
 export interface AgentInstallReadiness {
   contractVersion: typeof AGENT_INSTALL_READINESS_CONTRACT_VERSION;
   agentId: AgentCatalogId;
   reviewedAt: string;
-  automation: {
-    state: "unavailable";
-    reasonCode:
-      | "official_guide_only"
-      | "executor_not_implemented"
-      | "managed_by_codex_desktop";
-  };
-  source: {
-    state: ReadinessLayerState;
-    reasonCode: "source_review_not_refreshed";
-    installMode: AgentInstallMode;
-    licenseScope: "unconfirmed";
-    distributionState: "unconfirmed";
-    checkedAt: null;
-  };
-  integrity: {
-    state: ReadinessLayerState;
-    summaryCode: "integrity_not_checked";
-    checkedAt: null;
-  };
-  preflight: {
-    state: ReadinessLayerState;
-    reasonCode: "preflight_not_run";
-    checks: Array<{
-      code: "os_compatibility" | "architecture_compatibility" | "requirements";
-      state: ReadinessLayerState;
-    }>;
-    checkedAt: null;
-  };
-  plan: {
-    state: ReadinessLayerState;
-    reasonCode: "plan_not_created";
-    snapshotId: null;
-    snapshotStale: null;
-  };
+  installState: AgentInstallState;
+  updateState: AgentUpdateState;
+  releaseId: string | null;
+  localVersion: string | null;
+  remoteVersion: string | null;
+  authOwnership: AgentAuthOwnership;
+  authState: AgentAuthState;
+  sourceKind: AgentSourceKind;
+  allowedActions: AgentActionId[];
+  reasonCodes: AgentReasonCode[];
+}
+
+export interface StartAgentActionRequest {
+  agentId: AgentCatalogId;
+  action: AgentActionId;
+  expectedReleaseId?: string;
+}
+
+export interface AgentActionResult {
+  contractVersion: typeof AGENT_ACTION_CONTRACT_VERSION;
+  agentId: AgentCatalogId;
+  action: AgentActionId;
+  jobId: string | null;
+  stage: AgentActionJobStage;
+  reasonCode: AgentReasonCode | null;
+}
+
+export interface AgentActionJobSnapshot {
+  contractVersion: typeof AGENT_ACTION_CONTRACT_VERSION;
+  jobId: string;
+  agentId: AgentCatalogId;
+  action: AgentActionId;
+  stage: AgentActionJobStage;
+  cancellable: boolean;
+  reasonCode: AgentReasonCode | null;
 }
 
 export interface AgentInstallReadinessPort {
   get(agentId: AgentCatalogId): Promise<AgentInstallReadiness>;
+  startAction(request: StartAgentActionRequest): Promise<AgentActionResult>;
+  cancelAction(jobId: string): Promise<AgentActionJobSnapshot>;
+  getActionJob(jobId: string): Promise<AgentActionJobSnapshot>;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -86,153 +157,176 @@ function isOneOf<T extends string>(
   return typeof value === "string" && candidates.includes(value as T);
 }
 
-function parseLayerState(value: unknown): ReadinessLayerState {
-  if (!isOneOf(value, READINESS_LAYER_STATES)) {
+function parseStringList<T extends string>(
+  value: unknown,
+  candidates: readonly T[],
+): T[] {
+  if (!Array.isArray(value)) {
     throw new Error("Agent install readiness is unavailable");
   }
-  return value;
+  return value.map((item) => {
+    if (!isOneOf(item, candidates)) {
+      throw new Error("Agent install readiness is unavailable");
+    }
+    return item;
+  });
 }
 
-function parsePreflightCheck(
-  value: unknown,
-): AgentInstallReadiness["preflight"]["checks"][number] {
-  if (
-    !isRecord(value) ||
-    !hasExactKeys(value, ["code", "state"]) ||
-    !isOneOf(value.code, [
-      "os_compatibility",
-      "architecture_compatibility",
-      "requirements",
-    ] as const)
-  ) {
-    throw new Error("Agent install readiness is unavailable");
-  }
-  return { code: value.code, state: parseLayerState(value.state) };
-}
+const READINESS_KEYS = [
+  "contractVersion",
+  "agentId",
+  "reviewedAt",
+  "installState",
+  "updateState",
+  "releaseId",
+  "localVersion",
+  "remoteVersion",
+  "authOwnership",
+  "authState",
+  "sourceKind",
+  "allowedActions",
+  "reasonCodes",
+] as const;
+
+const FORBIDDEN_WIRE = [
+  "http://",
+  "https://",
+  "token",
+  "secret",
+  "apiKey",
+  "api_key",
+  "sha256",
+  "script",
+  "packageFormat",
+  "managed_package",
+] as const;
 
 export function parseAgentInstallReadiness(
   value: unknown,
   expectedAgentId: AgentCatalogId,
 ): AgentInstallReadiness {
+  const encoded = JSON.stringify(value).toLowerCase();
+  for (const needle of FORBIDDEN_WIRE) {
+    if (encoded.includes(needle.toLowerCase())) {
+      throw new Error("Agent install readiness is unavailable");
+    }
+  }
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, READINESS_KEYS) ||
+    value.contractVersion !== AGENT_INSTALL_READINESS_CONTRACT_VERSION ||
+    value.agentId !== expectedAgentId ||
+    typeof value.reviewedAt !== "string" ||
+    !/^\d{4}-\d{2}-\d{2}$/u.test(value.reviewedAt) ||
+    !isOneOf(value.installState, AGENT_INSTALL_STATES) ||
+    !isOneOf(value.updateState, AGENT_UPDATE_STATES) ||
+    (value.releaseId !== null && typeof value.releaseId !== "string") ||
+    (value.localVersion !== null && typeof value.localVersion !== "string") ||
+    (value.remoteVersion !== null && typeof value.remoteVersion !== "string") ||
+    !isOneOf(value.authOwnership, AGENT_AUTH_OWNERSHIPS) ||
+    !isOneOf(value.authState, AGENT_AUTH_STATES) ||
+    !isOneOf(value.sourceKind, AGENT_SOURCE_KINDS)
+  ) {
+    throw new Error("Agent install readiness is unavailable");
+  }
+  if (typeof value.releaseId === "string" && !/^v1:[0-9a-f]{64}$/u.test(value.releaseId)) {
+    throw new Error("Agent install readiness is unavailable");
+  }
+  const matchesKind =
+    expectedAgentId === "codex"
+      ? value.sourceKind === "codex_desktop" &&
+        value.authOwnership === "fyagent_managed"
+      : expectedAgentId === "opencode" ||
+          expectedAgentId === "claude-code" ||
+          expectedAgentId === "grokbuild"
+        ? value.sourceKind === "cli_tooling"
+        : value.sourceKind === "managed_desktop";
+  if (!matchesKind) {
+    throw new Error("Agent install readiness is unavailable");
+  }
+  return {
+    contractVersion: AGENT_INSTALL_READINESS_CONTRACT_VERSION,
+    agentId: expectedAgentId,
+    reviewedAt: value.reviewedAt,
+    installState: value.installState,
+    updateState: value.updateState,
+    releaseId: value.releaseId,
+    localVersion: value.localVersion,
+    remoteVersion: value.remoteVersion,
+    authOwnership: value.authOwnership,
+    authState: value.authState,
+    sourceKind: value.sourceKind,
+    allowedActions: parseStringList(value.allowedActions, AGENT_ACTION_IDS),
+    reasonCodes: parseStringList(value.reasonCodes, AGENT_REASON_CODES),
+  };
+}
+
+export function parseAgentActionResult(
+  value: unknown,
+  expectedAgentId: AgentCatalogId,
+  expectedAction: AgentActionId,
+): AgentActionResult {
   if (
     !isRecord(value) ||
     !hasExactKeys(value, [
       "contractVersion",
       "agentId",
-      "reviewedAt",
-      "automation",
-      "source",
-      "integrity",
-      "preflight",
-      "plan",
+      "action",
+      "jobId",
+      "stage",
+      "reasonCode",
     ]) ||
-    value.contractVersion !== AGENT_INSTALL_READINESS_CONTRACT_VERSION ||
+    value.contractVersion !== AGENT_ACTION_CONTRACT_VERSION ||
     value.agentId !== expectedAgentId ||
-    typeof value.reviewedAt !== "string" ||
-    !/^\d{4}-\d{2}-\d{2}$/u.test(value.reviewedAt) ||
-    !isRecord(value.automation) ||
-    !hasExactKeys(value.automation, ["state", "reasonCode"]) ||
-    value.automation.state !== "unavailable" ||
-    !isOneOf(value.automation.reasonCode, [
-      "executor_not_implemented",
-      "official_guide_only",
-      "managed_by_codex_desktop",
-    ] as const) ||
-    !isRecord(value.source) ||
-    !hasExactKeys(value.source, [
-      "state",
-      "reasonCode",
-      "installMode",
-      "licenseScope",
-      "distributionState",
-      "checkedAt",
-    ]) ||
-    value.source.reasonCode !== "source_review_not_refreshed" ||
-    !isOneOf(value.source.installMode, AGENT_INSTALL_MODES) ||
-    value.source.licenseScope !== "unconfirmed" ||
-    value.source.distributionState !== "unconfirmed" ||
-    value.source.checkedAt !== null ||
-    !isRecord(value.integrity) ||
-    !hasExactKeys(value.integrity, ["state", "summaryCode", "checkedAt"]) ||
-    value.integrity.summaryCode !== "integrity_not_checked" ||
-    value.integrity.checkedAt !== null ||
-    !isRecord(value.preflight) ||
-    !hasExactKeys(value.preflight, [
-      "state",
-      "reasonCode",
-      "checks",
-      "checkedAt",
-    ]) ||
-    value.preflight.reasonCode !== "preflight_not_run" ||
-    !Array.isArray(value.preflight.checks) ||
-    value.preflight.checkedAt !== null ||
-    !isRecord(value.plan) ||
-    !hasExactKeys(value.plan, [
-      "state",
-      "reasonCode",
-      "snapshotId",
-      "snapshotStale",
-    ]) ||
-    value.plan.reasonCode !== "plan_not_created" ||
-    value.plan.snapshotId !== null ||
-    value.plan.snapshotStale !== null
+    value.action !== expectedAction ||
+    (value.jobId !== null && typeof value.jobId !== "string") ||
+    !isOneOf(value.stage, AGENT_ACTION_JOB_STAGES) ||
+    (value.reasonCode !== null && !isOneOf(value.reasonCode, AGENT_REASON_CODES))
   ) {
-    throw new Error("Agent install readiness is unavailable");
+    throw new Error("Agent action is unavailable");
   }
-
-  const automationReason = value.automation.reasonCode;
-  const installMode = value.source.installMode;
-  const matchesAgentPolicy =
-    expectedAgentId === "codex"
-      ? automationReason === "managed_by_codex_desktop" &&
-        installMode === "managed_package"
-      : isOneOf(expectedAgentId, [
-            "qoderwork",
-            "trae-work",
-            "workbuddy",
-            "grokbuild",
-          ] as const)
-        ? automationReason === "official_guide_only" &&
-          installMode === "official_guide"
-        : automationReason === "executor_not_implemented" &&
-          installMode === "unsupported";
-  if (!matchesAgentPolicy) {
-    throw new Error("Agent install readiness is unavailable");
-  }
-
   return {
-    contractVersion: AGENT_INSTALL_READINESS_CONTRACT_VERSION,
+    contractVersion: AGENT_ACTION_CONTRACT_VERSION,
     agentId: expectedAgentId,
-    reviewedAt: value.reviewedAt as string,
-    automation: {
-      state: "unavailable",
-      reasonCode: automationReason,
-    },
-    source: {
-      state: parseLayerState(value.source.state),
-      reasonCode: "source_review_not_refreshed",
-      installMode,
-      licenseScope: "unconfirmed",
-      distributionState: "unconfirmed",
-      checkedAt: null,
-    },
-    integrity: {
-      state: parseLayerState(value.integrity.state),
-      summaryCode: "integrity_not_checked",
-      checkedAt: null,
-    },
-    preflight: {
-      state: parseLayerState(value.preflight.state),
-      reasonCode: "preflight_not_run",
-      checks: value.preflight.checks.map(parsePreflightCheck),
-      checkedAt: null,
-    },
-    plan: {
-      state: parseLayerState(value.plan.state),
-      reasonCode: "plan_not_created",
-      snapshotId: null,
-      snapshotStale: null,
-    },
+    action: expectedAction,
+    jobId: value.jobId,
+    stage: value.stage,
+    reasonCode: value.reasonCode,
+  };
+}
+
+export function parseAgentActionJobSnapshot(
+  value: unknown,
+): AgentActionJobSnapshot {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, [
+      "contractVersion",
+      "jobId",
+      "agentId",
+      "action",
+      "stage",
+      "cancellable",
+      "reasonCode",
+    ]) ||
+    value.contractVersion !== AGENT_ACTION_CONTRACT_VERSION ||
+    typeof value.jobId !== "string" ||
+    !isOneOf(value.agentId, AGENT_CATALOG_IDS) ||
+    !isOneOf(value.action, AGENT_ACTION_IDS) ||
+    !isOneOf(value.stage, AGENT_ACTION_JOB_STAGES) ||
+    typeof value.cancellable !== "boolean" ||
+    (value.reasonCode !== null && !isOneOf(value.reasonCode, AGENT_REASON_CODES))
+  ) {
+    throw new Error("Agent action job is unavailable");
+  }
+  return {
+    contractVersion: AGENT_ACTION_CONTRACT_VERSION,
+    jobId: value.jobId,
+    agentId: value.agentId,
+    action: value.action,
+    stage: value.stage,
+    cancellable: value.cancellable,
+    reasonCode: value.reasonCode,
   };
 }
 

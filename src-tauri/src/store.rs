@@ -11,6 +11,7 @@ pub struct AppState {
     /// Process-local installer state. Its factory is inert: no metadata or
     /// package I/O is performed while constructing ordinary application state.
     pub codex_desktop_service: Arc<CodexDesktopService>,
+    pub agent_action_jobs: Arc<crate::agent_install::AgentActionJobStore>,
 }
 
 impl AppState {
@@ -23,6 +24,7 @@ impl AppState {
             proxy_service,
             usage_cache: Arc::new(UsageCache::new()),
             codex_desktop_service: Arc::new(production_service()),
+            agent_action_jobs: Arc::new(crate::agent_install::AgentActionJobStore::new()),
         }
     }
 }

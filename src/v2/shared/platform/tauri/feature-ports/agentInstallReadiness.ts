@@ -2,8 +2,11 @@ import { invoke } from "@tauri-apps/api/core";
 
 import {
   assertAgentInstallReadinessId,
+  parseAgentActionJobSnapshot,
+  parseAgentActionResult,
   parseAgentInstallReadiness,
   type AgentInstallReadinessPort,
+  type StartAgentActionRequest,
 } from "../../../features/agent-install-readiness";
 
 export function createAgentInstallReadinessPort(): AgentInstallReadinessPort {
@@ -17,5 +20,29 @@ export function createAgentInstallReadinessPort(): AgentInstallReadinessPort {
         safeAgentId,
       );
     },
+    startAction: async (request: StartAgentActionRequest) => {
+      const safeAgentId = assertAgentInstallReadinessId(request.agentId);
+      return parseAgentActionResult(
+        await invoke<unknown>("start_agent_action", {
+          request: {
+            agentId: safeAgentId,
+            action: request.action,
+            ...(request.expectedReleaseId
+              ? { expectedReleaseId: request.expectedReleaseId }
+              : {}),
+          },
+        }),
+        safeAgentId,
+        request.action,
+      );
+    },
+    cancelAction: async (jobId) =>
+      parseAgentActionJobSnapshot(
+        await invoke<unknown>("cancel_agent_action", { jobId }),
+      ),
+    getActionJob: async (jobId) =>
+      parseAgentActionJobSnapshot(
+        await invoke<unknown>("get_agent_action_job", { jobId }),
+      ),
   };
 }

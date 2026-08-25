@@ -1658,6 +1658,7 @@ pub fn run() {
 
                 let app_config_dir = crate::config::get_app_config_dir();
                 let codex_oauth_manager = CodexOAuthManager::new(app_config_dir);
+                codex_oauth_manager.remap_provider_bindings();
                 app.manage(CodexOAuthState(Arc::new(RwLock::new(codex_oauth_manager))));
                 log::info!("✓ CodexOAuthManager initialized");
             }
@@ -1842,6 +1843,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::get_agent_catalog,
             commands::get_agent_install_readiness,
+            commands::start_agent_action,
+            commands::cancel_agent_action,
+            commands::get_agent_action_job,
             commands::create_codex_provider_switch_plan,
             commands::create_codex_provider_upsert_plan,
             commands::create_workbuddy_save_plan,
@@ -2170,6 +2174,7 @@ pub fn run() {
             commands::auth_remove_account,
             commands::auth_set_default_account,
             commands::auth_logout,
+            commands::auth_cancel_login,
             // Copilot OAuth commands (multi-account support)
             commands::copilot_start_device_flow,
             commands::copilot_poll_for_auth,
