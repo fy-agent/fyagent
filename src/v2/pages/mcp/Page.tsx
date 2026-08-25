@@ -43,6 +43,7 @@ import { FeatureList, FeatureListItem } from "../../shared/ui/FeatureList";
 import { FeatureSearch } from "../../shared/ui/FeatureSearch";
 import { FeatureTabs } from "../../shared/ui/FeatureTabs";
 import { SplitPanes } from "../../shared/ui/split";
+import { WorkBuddyTrustDialog } from "../../shared/ui/WorkBuddyTrustDialog";
 import { findCatalogItem, MCP_PROVENANCE_LABEL } from "./catalog";
 import { DEFAULT_NEW_APPS } from "./constants";
 import { McpDiscovery } from "./Discovery";
@@ -60,9 +61,6 @@ function assignedMcpTargets(server: McpServer) {
 }
 
 const INSTALLED_SPLIT_LABELS = ["调整列表与详情的宽度", "调整详情与分配的宽度"];
-const WORKBUDDY_TRUST_TITLE = "需要在 WorkBuddy 中信任 MCP";
-const WORKBUDDY_TRUST_DESCRIPTION =
-  "请到「连接器 → 自定义连接器」中信任该 MCP 后才能使用。";
 
 function ServerDetail({
   server,
@@ -575,26 +573,12 @@ export function McpPage() {
           }}
         />
       )}
-      <Dialog
+      <WorkBuddyTrustDialog
         open={workbuddyTrustOpen}
-        title={WORKBUDDY_TRUST_TITLE}
-        description={WORKBUDDY_TRUST_DESCRIPTION}
         onOpenChange={(open) => {
           if (!open) setWorkbuddyTrustOpen(false);
         }}
-        actions={
-          <Button
-            className="fy-control-button-primary"
-            onClick={() => setWorkbuddyTrustOpen(false)}
-          >
-            知道了
-          </Button>
-        }
-      >
-        <p>
-          WorkBuddy 官方限制第三方 MCP 必须在安装后手动信任授权才能正常使用。
-        </p>
-      </Dialog>
+      />
       <ConfirmDialog
         open={deleteTarget !== null}
         title={`删除 ${deleteTarget?.name ?? "MCP"}`}

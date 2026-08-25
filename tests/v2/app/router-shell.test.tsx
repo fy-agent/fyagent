@@ -365,7 +365,9 @@ describe("FyAgent V2 primary page persistence", () => {
       expect(
         await screen.findByRole("heading", { name: "Claude Code" }),
       ).toBeVisible();
-      expect(router.state.location.search).toBe("?target=claude-code");
+      expect(router.state.location.search).toBe(
+        "?target=claude-code&section=models",
+      );
     } finally {
       createPorts.mockRestore();
     }

@@ -490,6 +490,20 @@ describe("V3 Agent directory and configuration shell", () => {
     expect(
       await screen.findByText(/已从真实配置回读：WorkBuddy 已分配此 MCP/),
     ).toBeVisible();
+    const trustDialog = await screen.findByRole("dialog", {
+      name: "需要在 WorkBuddy 中信任 MCP",
+    });
+    expect(trustDialog).toHaveTextContent("连接器 → 自定义连接器");
+    await user.click(
+      within(trustDialog).getByRole("button", { name: "知道了" }),
+    );
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", {
+          name: "需要在 WorkBuddy 中信任 MCP",
+        }),
+      ).not.toBeInTheDocument();
+    });
   });
 
   it("fails closed when Skill or MCP assignment readback does not match", async () => {

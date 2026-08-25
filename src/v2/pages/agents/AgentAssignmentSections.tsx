@@ -15,6 +15,7 @@ import type { McpServer, SkillTargetId } from "../../shared/features/types";
 import { AssignmentPanel } from "../../shared/ui/AssignmentPanel";
 import { FeatureList, FeatureListItem } from "../../shared/ui/FeatureList";
 import { FeatureSearch } from "../../shared/ui/FeatureSearch";
+import { WorkBuddyTrustDialog } from "../../shared/ui/WorkBuddyTrustDialog";
 import {
   Button,
   EmptyState,
@@ -202,6 +203,7 @@ export function AgentMcpSection({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
+  const [workbuddyTrustOpen, setWorkbuddyTrustOpen] = useState(false);
   const servers = Object.values(query.data ?? {});
   const normalizedSearch = search.trim().toLocaleLowerCase();
   const filtered = servers.filter((server) =>
@@ -232,6 +234,9 @@ export function AgentMcpSection({
           ? `已从真实配置回读：${entry.displayName} 已分配此 MCP。`
           : `已从真实配置回读：${entry.displayName} 已取消此 MCP 分配。`,
       });
+      if (entry.assignmentId === "workbuddy" && enabled) {
+        setWorkbuddyTrustOpen(true);
+      }
     } catch {
       setFeedback({
         itemId: serverId,
@@ -329,6 +334,10 @@ export function AgentMcpSection({
           ) : null}
         </div>
       )}
+      <WorkBuddyTrustDialog
+        open={workbuddyTrustOpen}
+        onOpenChange={setWorkbuddyTrustOpen}
+      />
     </section>
   );
 }
