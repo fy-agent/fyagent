@@ -222,6 +222,39 @@ describe("MemoryPage native business management", () => {
     );
   });
 
+  it("copies the current long-term and daily memory drafts instead of their paths", async () => {
+    const { ports } = statefulMemoryPorts(
+      { "openclaw-memory": "long-term baseline" },
+      { "2026-08-26.md": "daily baseline" },
+    );
+    const user = userEvent.setup();
+    renderMemory(ports);
+    const writeText = vi.spyOn(navigator.clipboard, "writeText");
+
+    const longTermEditor = await screen.findByRole("textbox", {
+      name: "记忆内容",
+    });
+    await user.type(longTermEditor, " + local draft");
+    await user.click(
+      screen.getByRole("button", { name: "复制记忆内容" }),
+    );
+    expect(writeText).toHaveBeenLastCalledWith(
+      "long-term baseline + local draft",
+    );
+
+    await user.click(screen.getByRole("tab", { name: "每日记忆" }));
+    await confirmDialog(user, /放弃未保存的更改/);
+    const dailyEditor = await screen.findByRole("textbox", {
+      name: "每日记忆内容",
+    });
+    await user.type(dailyEditor, " + local draft");
+    await user.click(
+      screen.getByRole("button", { name: "复制每日记忆内容" }),
+    );
+    expect(writeText).toHaveBeenLastCalledWith("daily baseline + local draft");
+    expect(writeText).not.toHaveBeenCalledWith("workspace/MEMORY.md");
+  });
+
   it("keeps a missing OpenClaw document absent until explicit save", async () => {
     const { ports, stores } = statefulMemoryPorts({
       "openclaw-memory": null,

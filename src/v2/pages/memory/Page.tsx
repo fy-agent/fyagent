@@ -501,6 +501,11 @@ function LongTermEditor({
               打开 OpenClaw 工作区
             </Button>
           ) : null}
+          <CopyablePath
+            label="记忆内容"
+            value={draft}
+            revealValue={false}
+          />
           <Button
             className="fy-control-button-primary"
             disabled={busy || (!dirty && !missing)}
@@ -915,6 +920,11 @@ function DailyEditor({
         </div>
         <div className="fy-memory-editor-tools">
           <p>{characterCount} 字符</p>
+          <CopyablePath
+            label="每日记忆内容"
+            value={draft}
+            revealValue={false}
+          />
           <Button
             className="fy-control-button-primary"
             disabled={busy || (!dirty && !missing)}
