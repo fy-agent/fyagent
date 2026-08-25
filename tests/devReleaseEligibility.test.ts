@@ -29,6 +29,7 @@ function validInput(
     schema: DEV_RELEASE_ELIGIBILITY_INPUT_SCHEMA,
     repository: { ...REPOSITORY },
     event: {
+      dispatchMode: mode === "preflight" ? "preflight" : null,
       dispatchSourceSha: mode === "preflight" ? SOURCE_SHA : null,
       name: mode === "preflight" ? "workflow_dispatch" : "push",
       ref,
@@ -113,6 +114,30 @@ describe("split preflight and formal release identity", () => {
     },
   );
 
+  it("accepts workflow_dispatch formal when the selected ref is the exact release tag", () => {
+    const input = mutableInput("formal");
+    input.event.name = "workflow_dispatch";
+    input.event.dispatchMode = "formal";
+    expect(
+      evaluateDevReleaseEligibility(input as DevReleaseEligibilityInput),
+    ).toMatchObject({
+      sourceSha: SOURCE_SHA,
+      workflowSha: SOURCE_SHA,
+      releaseTag: "v0.3.1",
+      mode: "formal",
+    });
+  });
+
+  it("rejects workflow_dispatch formal when source_sha is supplied instead of trusting the tag ref", () => {
+    const input = mutableInput("formal");
+    input.event.name = "workflow_dispatch";
+    input.event.dispatchMode = "formal";
+    input.event.dispatchSourceSha = SOURCE_SHA;
+    expect(() =>
+      evaluateDevReleaseEligibility(input as DevReleaseEligibilityInput),
+    ).toThrow(/event\.dispatchSourceSha/);
+  });
+
   it("accepts only strict stable tags equal to the canonical version", () => {
     for (const [version, tag] of [
       ["1.2.3", "v1.2.3"],
@@ -170,6 +195,10 @@ describe("split preflight and formal release identity", () => {
     [
       "dispatch source SHA",
       (input: MutableRecord) => (input.event.dispatchSourceSha = OTHER_SHA),
+    ],
+    [
+      "dispatch mode",
+      (input: MutableRecord) => (input.event.dispatchMode = "formal"),
     ],
     [
       "candidate SHA",
@@ -230,6 +259,10 @@ describe("split preflight and formal release identity", () => {
       (input: MutableRecord) => (input.event.dispatchSourceSha = SOURCE_SHA),
     ],
     [
+      "dispatch mode",
+      (input: MutableRecord) => (input.event.dispatchMode = "formal"),
+    ],
+    [
       "tag ref",
       (input: MutableRecord) => (input.event.ref = "refs/tags/v0.3.2"),
     ],
@@ -247,10 +280,7 @@ describe("split preflight and formal release identity", () => {
         (input.workflow.ref =
           "fy-agent/fyagent/.github/workflows/release.yml@refs/heads/main"),
     ],
-    [
-      "missing tag",
-      (input: MutableRecord) => (input.remoteTag = null),
-    ],
+    ["missing tag", (input: MutableRecord) => (input.remoteTag = null)],
     [
       "lightweight tag object",
       (input: MutableRecord) => {
@@ -294,10 +324,14 @@ describe("split preflight and formal release identity", () => {
   });
 
   it("rejects a lightweight formal tag that points at another commit", () => {
-    expectRejected((input) => {
-      input.remoteTag.refObject = { type: "commit", sha: OTHER_SHA };
-      input.remoteTag.tagObject = null;
-    }, /remoteTag\.refObject\.sha/, "formal");
+    expectRejected(
+      (input) => {
+        input.remoteTag.refObject = { type: "commit", sha: OTHER_SHA };
+        input.remoteTag.tagObject = null;
+      },
+      /remoteTag\.refObject\.sha/,
+      "formal",
+    );
   });
 
   it("accepts a formal tag after live main has moved past the frozen source", () => {
@@ -326,11 +360,14 @@ describe("frozen output recheck", () => {
       ),
     ).toThrow(/expectedFrozen\.ciRunAttempt/);
     expect(() =>
-      evaluateDevReleaseEligibility(input as DevReleaseEligibilityInput, {
-        ...expected,
-        ciRunAttempt: null,
-        unexpected: true,
-      } as never),
+      evaluateDevReleaseEligibility(
+        input as DevReleaseEligibilityInput,
+        {
+          ...expected,
+          ciRunAttempt: null,
+          unexpected: true,
+        } as never,
+      ),
     ).toThrow(/expectedFrozen must contain exactly/);
   });
 });

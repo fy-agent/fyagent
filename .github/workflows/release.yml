@@ -10,16 +10,24 @@ on:
       - "v*.*.*"
   workflow_dispatch:
     inputs:
-      source_sha:
-        description: Immutable 40-character dev/laiyongjie HEAD SHA to preflight
+      mode:
+        description: preflight from dev/laiyongjie, or formal retry from an existing vX.Y.Z tag ref
         required: true
+        default: preflight
+        type: choice
+        options:
+          - preflight
+          - formal
+      source_sha:
+        description: Preflight-only immutable 40-character dev/laiyongjie HEAD SHA; leave empty for formal
+        required: false
         type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.event_name }}-${{ github.event_name == 'workflow_dispatch' && inputs.source_sha || github.sha }}
+  group: release-${{ github.event_name == 'push' && 'formal' || inputs.mode }}-${{ (github.event_name == 'push' || inputs.mode == 'formal') && github.ref_name || inputs.source_sha }}
   cancel-in-progress: false
 
 jobs:
@@ -46,6 +54,7 @@ jobs:
         id: request
         shell: bash
         env:
+          DISPATCH_MODE: ${{ inputs.mode }}
           DISPATCH_SOURCE_SHA: ${{ inputs.source_sha }}
         run: |
           set -euo pipefail
@@ -59,21 +68,42 @@ jobs:
 
           case "$GITHUB_EVENT_NAME" in
             workflow_dispatch)
-              [[ "$DISPATCH_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || {
-                echo 'workflow_dispatch source_sha must be a lowercase full 40-character commit SHA' >&2
-                exit 1
-              }
-              if [ "$DISPATCH_SOURCE_SHA" != "$GITHUB_SHA" ] ||
-                [ "$DISPATCH_SOURCE_SHA" != "$GITHUB_WORKFLOW_SHA" ]; then
-                echo 'Preflight must attest the exact trusted dev/laiyongjie workflow commit' >&2
-                exit 1
-              fi
-              [ "$GITHUB_REF" = 'refs/heads/dev/laiyongjie' ]
-              [ "$GITHUB_REF_TYPE" = 'branch' ]
-              [ "$GITHUB_REF_NAME" = 'dev/laiyongjie' ]
-              [ "$GITHUB_WORKFLOW_REF" = "${expected_workflow_ref_prefix}refs/heads/dev/laiyongjie" ]
-              requested_source_sha="$DISPATCH_SOURCE_SHA"
-              requested_mode='preflight'
+              case "$DISPATCH_MODE" in
+                preflight)
+                  [[ "$DISPATCH_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+                    echo 'workflow_dispatch preflight source_sha must be a lowercase full 40-character commit SHA' >&2
+                    exit 1
+                  }
+                  if [ "$DISPATCH_SOURCE_SHA" != "$GITHUB_SHA" ] ||
+                    [ "$DISPATCH_SOURCE_SHA" != "$GITHUB_WORKFLOW_SHA" ]; then
+                    echo 'Preflight must attest the exact trusted dev/laiyongjie workflow commit' >&2
+                    exit 1
+                  fi
+                  [ "$GITHUB_REF" = 'refs/heads/dev/laiyongjie' ]
+                  [ "$GITHUB_REF_TYPE" = 'branch' ]
+                  [ "$GITHUB_REF_NAME" = 'dev/laiyongjie' ]
+                  [ "$GITHUB_WORKFLOW_REF" = "${expected_workflow_ref_prefix}refs/heads/dev/laiyongjie" ]
+                  requested_source_sha="$DISPATCH_SOURCE_SHA"
+                  requested_mode='preflight'
+                  ;;
+                formal)
+                  [ -z "$DISPATCH_SOURCE_SHA" ] || {
+                    echo 'workflow_dispatch formal source_sha must be empty; the selected tag ref is authoritative' >&2
+                    exit 1
+                  }
+                  [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]
+                  [ "$GITHUB_REF_TYPE" = 'tag' ]
+                  [ "$GITHUB_REF" = "refs/tags/$GITHUB_REF_NAME" ]
+                  [ "$GITHUB_WORKFLOW_REF" = "${expected_workflow_ref_prefix}refs/tags/$GITHUB_REF_NAME" ]
+                  [ "$GITHUB_SHA" = "$GITHUB_WORKFLOW_SHA" ]
+                  requested_source_sha="$GITHUB_SHA"
+                  requested_mode='formal'
+                  ;;
+                *)
+                  echo "Unsupported workflow_dispatch mode: $DISPATCH_MODE" >&2
+                  exit 1
+                  ;;
+              esac
               ;;
             push)
               [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]
@@ -116,6 +146,7 @@ jobs:
         id: contract
         shell: bash
         env:
+          DISPATCH_MODE: ${{ inputs.mode }}
           DISPATCH_SOURCE_SHA: ${{ inputs.source_sha }}
           REQUESTED_MODE: ${{ steps.request.outputs.requested_mode }}
           REQUESTED_SOURCE_SHA: ${{ steps.request.outputs.requested_source_sha }}
@@ -150,46 +181,65 @@ jobs:
             exit 1
           }
 
+          validate_formal_tag_contract() {
+            if [ "$GITHUB_REF_TYPE" != 'tag' ] || [ "$GITHUB_REF" != "refs/tags/$GITHUB_REF_NAME" ]; then
+              echo 'Formal Release event is not bound to a tag ref' >&2
+              exit 1
+            fi
+            [ "$GITHUB_WORKFLOW_REF" = "${expected_workflow_ref_prefix}refs/tags/$GITHUB_REF_NAME" ] || {
+              echo "Formal workflow ref is not bound to the event tag: $GITHUB_WORKFLOW_REF" >&2
+              exit 1
+            }
+            tag_commit="$(git rev-parse "refs/tags/$GITHUB_REF_NAME^{commit}")"
+            if [ "$source_sha" != "$trusted_checkout_sha" ] ||
+              [ "$source_sha" != "$event_commit" ] || [ "$source_sha" != "$tag_commit" ]; then
+              echo 'Tag, event SHA, and checked-out source do not resolve to one commit' >&2
+              exit 1
+            fi
+            release_mode='formal'
+          }
+
           case "$GITHUB_EVENT_NAME" in
             workflow_dispatch)
-              [[ "$DISPATCH_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || {
-                echo 'workflow_dispatch source_sha must be a lowercase full 40-character commit SHA' >&2
-                exit 1
-              }
-              [ "$GITHUB_REF" = 'refs/heads/dev/laiyongjie' ] || {
-                echo "Preflight must run from trusted refs/heads/dev/laiyongjie; received $GITHUB_REF" >&2
-                exit 1
-              }
-              [ "$GITHUB_WORKFLOW_REF" = "${expected_workflow_ref_prefix}refs/heads/dev/laiyongjie" ] || {
-                echo "Preflight workflow ref is not trusted dev/laiyongjie: $GITHUB_WORKFLOW_REF" >&2
-                exit 1
-              }
-              [ "$source_sha" = "$DISPATCH_SOURCE_SHA" ] || {
-                echo "Dispatch input does not resolve to the exact candidate commit: $DISPATCH_SOURCE_SHA" >&2
-                exit 1
-              }
-              if [ "$GITHUB_REF_TYPE" != 'branch' ] || [ "$GITHUB_REF_NAME" != 'dev/laiyongjie' ]; then
-                echo 'Preflight event is not the exact dev/laiyongjie branch' >&2
-                exit 1
-              fi
-              release_mode='preflight'
+              case "$DISPATCH_MODE" in
+                preflight)
+                  [[ "$DISPATCH_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+                    echo 'workflow_dispatch preflight source_sha must be a lowercase full 40-character commit SHA' >&2
+                    exit 1
+                  }
+                  [ "$GITHUB_REF" = 'refs/heads/dev/laiyongjie' ] || {
+                    echo "Preflight must run from trusted refs/heads/dev/laiyongjie; received $GITHUB_REF" >&2
+                    exit 1
+                  }
+                  [ "$GITHUB_WORKFLOW_REF" = "${expected_workflow_ref_prefix}refs/heads/dev/laiyongjie" ] || {
+                    echo "Preflight workflow ref is not trusted dev/laiyongjie: $GITHUB_WORKFLOW_REF" >&2
+                    exit 1
+                  }
+                  [ "$source_sha" = "$DISPATCH_SOURCE_SHA" ] || {
+                    echo "Dispatch input does not resolve to the exact candidate commit: $DISPATCH_SOURCE_SHA" >&2
+                    exit 1
+                  }
+                  if [ "$GITHUB_REF_TYPE" != 'branch' ] || [ "$GITHUB_REF_NAME" != 'dev/laiyongjie' ]; then
+                    echo 'Preflight event is not the exact dev/laiyongjie branch' >&2
+                    exit 1
+                  fi
+                  release_mode='preflight'
+                  ;;
+                formal)
+                  [ -z "$DISPATCH_SOURCE_SHA" ] || {
+                    echo 'workflow_dispatch formal source_sha must be empty; the selected tag ref is authoritative' >&2
+                    exit 1
+                  }
+                  validate_formal_tag_contract
+                  ;;
+                *)
+                  echo "Unsupported workflow_dispatch mode after checkout: $DISPATCH_MODE" >&2
+                  exit 1
+                  ;;
+              esac
               ;;
             push)
-              if [ "$GITHUB_REF_TYPE" != 'tag' ] || [ "$GITHUB_REF" != "refs/tags/$GITHUB_REF_NAME" ]; then
-                echo 'Formal Release event is not a tag push' >&2
-                exit 1
-              fi
-              [ "$GITHUB_WORKFLOW_REF" = "${expected_workflow_ref_prefix}refs/tags/$GITHUB_REF_NAME" ] || {
-                echo "Formal workflow ref is not bound to the event tag: $GITHUB_WORKFLOW_REF" >&2
-                exit 1
-              }
-              tag_commit="$(git rev-parse "refs/tags/$GITHUB_REF_NAME^{commit}")"
-              if [ "$source_sha" != "$trusted_checkout_sha" ] ||
-                [ "$source_sha" != "$event_commit" ] || [ "$source_sha" != "$tag_commit" ]; then
-                echo 'Tag, event SHA, and checked-out source do not resolve to one commit' >&2
-                exit 1
-              fi
-              release_mode='formal'
+              validate_formal_tag_contract
               ;;
             *)
               echo "Unsupported release event: $GITHUB_EVENT_NAME" >&2
@@ -240,6 +290,7 @@ jobs:
           RELEASE_APP_VERSION: ${{ steps.contract.outputs.app_version }}
           RELEASE_TAG: ${{ steps.contract.outputs.release_tag }}
           RELEASE_SOURCE_SHA: ${{ steps.contract.outputs.source_sha }}
+          RELEASE_DISPATCH_MODE: ${{ inputs.mode }}
           RELEASE_DISPATCH_SOURCE_SHA: ${{ inputs.source_sha }}
         run: |
           set -euo pipefail
@@ -697,7 +748,7 @@ jobs:
 
   sign-windows-formal:
     name: Windows ${{ matrix.architecture }} formal signing
-    if: needs.eligibility.outputs.release_mode == 'formal' && github.event_name == 'push'
+    if: needs.eligibility.outputs.release_mode == 'formal' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     needs: [eligibility, pin-release-build-inputs]
     runs-on: ${{ matrix.runner }}
     permissions:
@@ -929,7 +980,7 @@ jobs:
 
   seal-windows-formal:
     name: Windows ${{ matrix.architecture }} fresh formal verification and sealing
-    if: needs.eligibility.outputs.release_mode == 'formal' && github.event_name == 'push'
+    if: needs.eligibility.outputs.release_mode == 'formal' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     needs: [eligibility, pin-release-build-inputs, sign-windows-formal]
     runs-on: ${{ matrix.runner }}
     permissions:
@@ -1361,7 +1412,7 @@ jobs:
 
   verify-assets:
     name: Verify exact installers and generate evidence
-    if: ${{ always() && needs.eligibility.result == 'success' && needs['build-windows'].result == 'success' && needs['build-macos'].result == 'success' && needs['pin-release-build-inputs'].result == 'success' && ((github.event_name == 'workflow_dispatch' && needs.eligibility.outputs.release_mode == 'preflight' && needs['prove-windows-preflight'].result == 'success' && needs['sign-windows-formal'].result == 'skipped' && needs['seal-windows-formal'].result == 'skipped') || (github.event_name == 'push' && needs.eligibility.outputs.release_mode == 'formal' && needs['prove-windows-preflight'].result == 'skipped' && needs['sign-windows-formal'].result == 'success' && needs['seal-windows-formal'].result == 'success')) }}
+    if: ${{ always() && needs.eligibility.result == 'success' && needs['build-windows'].result == 'success' && needs['build-macos'].result == 'success' && needs['pin-release-build-inputs'].result == 'success' && ((github.event_name == 'workflow_dispatch' && needs.eligibility.outputs.release_mode == 'preflight' && needs['prove-windows-preflight'].result == 'success' && needs['sign-windows-formal'].result == 'skipped' && needs['seal-windows-formal'].result == 'skipped') || ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.eligibility.outputs.release_mode == 'formal' && needs['prove-windows-preflight'].result == 'skipped' && needs['sign-windows-formal'].result == 'success' && needs['seal-windows-formal'].result == 'success')) }}
     needs:
       [
         eligibility,
@@ -1539,7 +1590,7 @@ jobs:
 
   publish:
     name: Publish stable GitHub Release
-    if: ${{ !cancelled() && github.event_name == 'push' && needs.eligibility.result == 'success' && needs.eligibility.outputs.release_mode == 'formal' && needs.attest.result == 'success' }}
+    if: ${{ !cancelled() && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.eligibility.result == 'success' && needs.eligibility.outputs.release_mode == 'formal' && needs.attest.result == 'success' }}
     needs: [eligibility, attest]
     runs-on: macos-15
     permissions:
@@ -1555,6 +1606,8 @@ jobs:
       TRUSTED_WORKFLOW_SHA: ${{ needs.eligibility.outputs.workflow_sha }}
       EXPECTED_CI_RUN_ID: ${{ needs.eligibility.outputs.ci_run_id }}
       EXPECTED_CI_RUN_ATTEMPT: ${{ needs.eligibility.outputs.ci_run_attempt }}
+      RELEASE_DISPATCH_MODE: ${{ inputs.mode }}
+      RELEASE_DISPATCH_SOURCE_SHA: ${{ inputs.source_sha }}
       GITHUB_TOKEN: ${{ github.token }}
       GITHUB_WORKFLOW_SHA: ${{ github.workflow_sha }}
       GH_TOKEN: ${{ github.token }}
@@ -1604,7 +1657,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          [ "$GITHUB_EVENT_NAME" = push ] && [ "$GITHUB_REF" = "refs/tags/$RELEASE_TAG" ]
+          case "$GITHUB_EVENT_NAME" in
+            push)
+              ;;
+            workflow_dispatch)
+              [ "$RELEASE_DISPATCH_MODE" = formal ]
+              [ -z "$RELEASE_DISPATCH_SOURCE_SHA" ]
+              ;;
+            *)
+              echo "Unsupported formal publication event: $GITHUB_EVENT_NAME" >&2
+              exit 1
+              ;;
+          esac
+          [ "$GITHUB_REF" = "refs/tags/$RELEASE_TAG" ]
           [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" = "$RELEASE_TAG" ]
           [ "$GITHUB_WORKFLOW_REF" = "fy-agent/fyagent/.github/workflows/release.yml@refs/tags/$RELEASE_TAG" ]
           [ "$GITHUB_WORKFLOW_SHA" = "$SOURCE_SHA" ] && [ "$TRUSTED_WORKFLOW_SHA" = "$SOURCE_SHA" ]
@@ -1658,7 +1723,7 @@ jobs:
               echo "Release transaction failed after creating id=$draft_id url=$draft_url; publish_attempted=$publish_attempted; observed_state=$observed_state" >&2
               case "$observed_state" in
                 draft)
-                  echo 'The API re-read shows that the Release remains a draft. The workflow leaves it untouched; inspect it and make a separate manual cleanup decision before retrying.' >&2
+                  echo 'The API re-read shows that the Release remains a draft. This failed attempt leaves it untouched; a later formal retry may recover it only after exact source and originating-workflow provenance checks.' >&2
                   ;;
                 published)
                   echo 'The API re-read shows that the Release is published. Do not retry, patch, delete, or move the tag; perform an independent release verification and decision.' >&2
@@ -1674,6 +1739,7 @@ jobs:
           trap report_failure EXIT
 
           api_headers=(
+            -H "Accept: application/vnd.github+json"
             -H "Authorization: Bearer $GH_TOKEN"
             -H "X-GitHub-Api-Version: 2022-11-28"
           )
@@ -1704,10 +1770,92 @@ jobs:
               exit 1
             }
           done
-          [ "$(jq --arg tag "$RELEASE_TAG" '[.[] | select(.tag_name == $tag)] | length' "$existing_json")" -eq 0 ] || {
-            echo "A draft or published Release already exists for $RELEASE_TAG; refusing to update, replace, or delete it" >&2
+          matching_release_count="$(jq --arg tag "$RELEASE_TAG" '[.[] | select(.tag_name == $tag)] | length' "$existing_json")"
+          [ "$matching_release_count" -le 1 ] || {
+            echo "Multiple Releases unexpectedly claim $RELEASE_TAG; refusing recovery" >&2
             exit 1
           }
+          if [ "$matching_release_count" -eq 1 ]; then
+            recovery_release_json="$transaction_root/recovery-release.json"
+            jq --arg tag "$RELEASE_TAG" '[.[] | select(.tag_name == $tag)][0]' \
+              "$existing_json" > "$recovery_release_json"
+            jq -e '.draft == true' "$recovery_release_json" >/dev/null || {
+              echo "A published Release already exists for $RELEASE_TAG; published versions are immutable" >&2
+              exit 1
+            }
+
+            recovery_marker_json="$transaction_root/recovery-marker.json"
+            node scripts/release/verify-release-draft-ownership.mjs inspect \
+              "$recovery_release_json" "$RELEASE_TAG" "$SOURCE_SHA" \
+              > "$recovery_marker_json"
+            recovery_release_id="$(jq -r '.releaseId' "$recovery_marker_json")"
+            recovery_run_id="$(jq -r '.runId' "$recovery_marker_json")"
+            recovery_run_attempt="$(jq -r '.runAttempt' "$recovery_marker_json")"
+            [[ "$recovery_release_id" =~ ^[1-9][0-9]*$ ]]
+            [[ "$recovery_run_id" =~ ^[1-9][0-9]*$ ]]
+            [[ "$recovery_run_attempt" =~ ^[1-9][0-9]*$ ]]
+
+            recovery_run_json="$transaction_root/recovery-run-attempt.json"
+            recovery_run_status="$(curl --silent --show-error \
+              --output "$recovery_run_json" --write-out '%{http_code}' \
+              "${api_headers[@]}" \
+              "$api_root/repos/$repository/actions/runs/$recovery_run_id/attempts/$recovery_run_attempt")"
+            [ "$recovery_run_status" = 200 ] || {
+              echo "Cannot prove the originating Release workflow attempt for draft id=$recovery_release_id (HTTP $recovery_run_status)" >&2
+              exit 1
+            }
+            recovery_jobs_json="$transaction_root/recovery-jobs.json"
+            recovery_jobs_status="$(curl --silent --show-error \
+              --output "$recovery_jobs_json" --write-out '%{http_code}' \
+              "${api_headers[@]}" \
+              "$api_root/repos/$repository/actions/runs/$recovery_run_id/attempts/$recovery_run_attempt/jobs?per_page=100")"
+            [ "$recovery_jobs_status" = 200 ] || {
+              echo "Cannot prove the originating Release publish job for draft id=$recovery_release_id (HTTP $recovery_jobs_status)" >&2
+              exit 1
+            }
+            node scripts/release/verify-release-draft-ownership.mjs verify \
+              "$recovery_release_json" "$recovery_run_json" "$recovery_jobs_json" \
+              "$RELEASE_TAG" "$SOURCE_SHA" >/dev/null
+
+            recovery_fresh_json="$transaction_root/recovery-release-fresh.json"
+            recovery_fresh_status="$(curl --silent --show-error \
+              --output "$recovery_fresh_json" --write-out '%{http_code}' \
+              "${api_headers[@]}" \
+              "$api_root/repos/$repository/releases/$recovery_release_id")"
+            [ "$recovery_fresh_status" = 200 ] || {
+              echo "Cannot re-read owned draft id=$recovery_release_id immediately before recovery (HTTP $recovery_fresh_status)" >&2
+              exit 1
+            }
+            node scripts/release/verify-release-draft-ownership.mjs verify \
+              "$recovery_fresh_json" "$recovery_run_json" "$recovery_jobs_json" \
+              "$RELEASE_TAG" "$SOURCE_SHA" >/dev/null
+
+            recovery_delete_json="$transaction_root/recovery-delete.json"
+            if ! recovery_delete_status="$(curl --silent --show-error \
+              --request DELETE --output "$recovery_delete_json" --write-out '%{http_code}' \
+              "${api_headers[@]}" \
+              "$api_root/repos/$repository/releases/$recovery_release_id")"; then
+              echo "Owned draft deletion outcome is unknown for id=$recovery_release_id; refusing to create a replacement" >&2
+              exit 1
+            fi
+            [ "$recovery_delete_status" = 204 ] || {
+              echo "Owned draft deletion failed for id=$recovery_release_id (HTTP $recovery_delete_status)" >&2
+              exit 1
+            }
+            recovery_deleted_json="$transaction_root/recovery-deleted-state.json"
+            if ! recovery_deleted_status="$(curl --silent --show-error \
+              --output "$recovery_deleted_json" --write-out '%{http_code}' \
+              "${api_headers[@]}" \
+              "$api_root/repos/$repository/releases/$recovery_release_id")"; then
+              echo "Cannot confirm owned draft deletion for id=$recovery_release_id; refusing to create a replacement" >&2
+              exit 1
+            fi
+            [ "$recovery_deleted_status" = 404 ] || {
+              echo "Owned draft id=$recovery_release_id still resolves after deletion (HTTP $recovery_deleted_status); refusing replacement" >&2
+              exit 1
+            }
+            echo "Recovered owned failed draft id=$recovery_release_id for $RELEASE_TAG at $SOURCE_SHA"
+          fi
 
           transaction_marker="fyagent-release-transaction:run=$GITHUB_RUN_ID;attempt=$GITHUB_RUN_ATTEMPT;source=$SOURCE_SHA"
           signing_disclosure="$(jq -r '

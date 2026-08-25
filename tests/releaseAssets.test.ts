@@ -413,7 +413,15 @@ describe("release asset and metadata contract", () => {
       event: "push",
       mode: "formal",
     };
-    for (const candidate of [identity, formalIdentity]) {
+    const formalDispatchIdentity: ReleaseIdentity = {
+      ...formalIdentity,
+      event: "workflow_dispatch",
+    };
+    for (const candidate of [
+      identity,
+      formalIdentity,
+      formalDispatchIdentity,
+    ]) {
       const directory = temporaryDirectory();
       writePlatformMetadata(directory, candidate);
       expect(

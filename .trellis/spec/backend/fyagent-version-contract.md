@@ -113,7 +113,12 @@ different version field, or substitute another source SHA. Preflight requires
 the source to equal the live remote `dev/laiyongjie` HEAD; it cannot publish.
 Formal mode binds `source_sha` to the remote tag's target commit, annotated or
 lightweight, and does not require live `main` HEAD equality or a successful
-push CI. The eligibility engine and
+push CI. Formal mode may be entered by the normal tag push or by a
+`workflow_dispatch(mode=formal)` run whose selected workflow ref is that same
+`refs/tags/vX.Y.Z`; manual formal dispatch must not supply an independent
+`source_sha`. Both formal entry events therefore freeze the same version/tag/
+source/workflow identity and may be used to rerun the same tag/SHA without
+moving the tag. The eligibility engine and
 [GitHub Release Workflow](./github-release-workflow.md) own the branch split;
 do not treat `main` as the preflight authority.
 
@@ -156,17 +161,20 @@ the seventh and final Release attachment and does not attest itself.
 
 ## 5. Change and Failure Rules
 
-| Condition                                                                                                | Required result                                                                                                     |
-| -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| Workspace member, resolver, inherited version, private package flag, or duplicate version field drifts   | `version:check` fails before release or version writes.                                                             |
-| Version is not stable `X.Y.Z`                                                                            | `get`, `set`, `bump`, or `check` fails without writes.                                                              |
-| A component exceeds `65535` while entering a Windows bundle or formal Release                            | The NSIS/release contract fails before packaging; the canonical Cargo value is not rewritten.                       |
-| Either local `fyagent` / `fyagent-user-helper` lock block is missing, duplicated, sourced, or mismatched | `version:check` fails; `set` may repair only version drift in both local blocks after every other preflight passes. |
-| Tag differs from `v` plus the canonical version                                                          | Eligibility/version checking fails before platform builds.                                                          |
-| An asset contains a v-prefixed, wrong, or missing version                                                | Platform or aggregate validation rejects it.                                                                        |
-| Cargo version `X.Y.Z` has no matching non-empty `## [X.Y.Z] - YYYY-MM-DD` heading as the first version in `CHANGELOG.md` | `mise run release:check` fails; `version:set` does not write or repair changelog. |
-| Installer, metadata, signing status, or attestation subject set is missing or has extras                 | Evidence generation/publication stops.                                                                              |
-| A write fails after one canonical file was replaced                                                      | Restore all touched files, remove temporary files, and fail with rollback evidence.                                 |
+| Condition                                                                                                                                         | Required result                                                                                                                 |
+| ------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| Workspace member, resolver, inherited version, private package flag, or duplicate version field drifts                                            | `version:check` fails before release or version writes.                                                                         |
+| Version is not stable `X.Y.Z`                                                                                                                     | `get`, `set`, `bump`, or `check` fails without writes.                                                                          |
+| A component exceeds `65535` while entering a Windows bundle or formal Release                                                                     | The NSIS/release contract fails before packaging; the canonical Cargo value is not rewritten.                                   |
+| Either local `fyagent` / `fyagent-user-helper` lock block is missing, duplicated, sourced, or mismatched                                          | `version:check` fails; `set` may repair only version drift in both local blocks after every other preflight passes.             |
+| Tag differs from `v` plus the canonical version                                                                                                   | Eligibility/version checking fails before platform builds.                                                                      |
+| Formal dispatch is launched from a branch ref, supplies an independent `source_sha`, or its workflow/event/source SHA differs from the tag target | Eligibility fails before platform builds; the canonical version is not rewritten and the workflow never moves the tag.          |
+| Same tag/SHA formal run needs retry before publication                                                                                            | Dispatch formal mode at the existing tag ref; do not bump the version or move/re-push the tag solely to retrigger the workflow. |
+| A public Release already exists for the version tag                                                                                               | Treat the version as immutable; publish later changes under a new canonical version/tag.                                        |
+| An asset contains a v-prefixed, wrong, or missing version                                                                                         | Platform or aggregate validation rejects it.                                                                                    |
+| Cargo version `X.Y.Z` has no matching non-empty `## [X.Y.Z] - YYYY-MM-DD` heading as the first version in `CHANGELOG.md`                          | `mise run release:check` fails; `version:set` does not write or repair changelog.                                               |
+| Installer, metadata, signing status, or attestation subject set is missing or has extras                                                          | Evidence generation/publication stops.                                                                                          |
+| A write fails after one canonical file was replaced                                                                                               | Restore all touched files, remove temporary files, and fail with rollback evidence.                                             |
 
 ## 6. Tests Required
 
@@ -188,7 +196,9 @@ the seventh and final Release attachment and does not attest itself.
   build, signing, attestation, and publication stages use the same version,
   source SHA, CI run, and attempt. They cover `dev/laiyongjie` preflight and
   `main` formal authority-branch movement, annotated versus lightweight tags,
-  and exact frozen rechecks before publication.
+  tag-push versus tag-ref formal dispatch, same-tag concurrency identity, and
+  exact frozen rechecks before publication. Formal dispatch metadata is valid
+  only when `mode=formal` and its workflow ref remains the exact version tag.
 - Windows release tests accept `65535`, reject `65536`, and use an integer path
   that also rejects values beyond JavaScript's safe-number range without
   truncation.
@@ -219,6 +229,9 @@ package.json.version = "X.Y.Z"
 tauri.conf.json.version = "X.Y.Z"
 GITHUB_REF_NAME is stripped and reused as an installer version
 FyAgent-vX.Y.Z-Windows-setup.exe
+workflow_dispatch mode=formal from refs/heads/dev/laiyongjie with source_sha=<sha>
+move vX.Y.Z only to retrigger the same source SHA
+overwrite a published vX.Y.Z Release with new assets
 ```
 
 Correct:
@@ -229,4 +242,7 @@ mise run version:check -- --tag vX.Y.Z
 ```
 
 Then eligibility freezes the canonical version, tag, source SHA, and release
-mode once; every platform and evidence step consumes those exact values.
+mode once; every platform and evidence step consumes those exact values. A
+failed same-source unpublished formal run may be retried by dispatching formal
+mode at `refs/tags/vX.Y.Z`; the tag remains authoritative and published
+`vX.Y.Z` remains immutable.

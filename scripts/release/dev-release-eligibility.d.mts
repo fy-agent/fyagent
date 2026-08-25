@@ -6,6 +6,7 @@ export interface RepositoryIdentity {
 }
 
 export interface ReleaseEventIdentity {
+  readonly dispatchMode: DevReleaseMode | null;
   readonly dispatchSourceSha: string | null;
   readonly name: "workflow_dispatch" | "push" | string;
   readonly ref: string;
@@ -50,7 +51,7 @@ export interface RemoteTagIdentity {
 }
 
 export interface DevReleaseEligibilityInput {
-  readonly schema: "fyagent-dev-release-eligibility-input/v1";
+  readonly schema: "fyagent-dev-release-eligibility-input/v2";
   readonly repository: RepositoryIdentity;
   readonly event: ReleaseEventIdentity;
   readonly workflow: ReleaseWorkflowIdentity;
@@ -69,7 +70,7 @@ export interface DevReleaseEligibilityOutput {
   readonly mode: DevReleaseMode;
 }
 
-export const DEV_RELEASE_ELIGIBILITY_INPUT_SCHEMA: "fyagent-dev-release-eligibility-input/v1";
+export const DEV_RELEASE_ELIGIBILITY_INPUT_SCHEMA: "fyagent-dev-release-eligibility-input/v2";
 export const EXPECTED_REPOSITORY: "fy-agent/fyagent";
 export const EXPECTED_REPOSITORY_ID: "1313497021";
 export const RELEASE_WORKFLOW_NAME: "Release";

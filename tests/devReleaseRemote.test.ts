@@ -26,7 +26,12 @@ type FixtureOptions = {
   tagTargetSha?: string;
 };
 
-function context(mode: Mode = "preflight"): DevReleaseRemoteContext {
+function context(
+  mode: Mode = "preflight",
+  eventName: "push" | "workflow_dispatch" = mode === "preflight"
+    ? "workflow_dispatch"
+    : "push",
+): DevReleaseRemoteContext {
   const releaseTag = "v0.3.1";
   const authorityBranch = mode === "preflight" ? "dev/laiyongjie" : "main";
   const ref =
@@ -38,7 +43,7 @@ function context(mode: Mode = "preflight"): DevReleaseRemoteContext {
     apiBase: "https://api.github.com",
     repository: "fy-agent/fyagent",
     repositoryId: "1313497021",
-    eventName: mode === "preflight" ? "workflow_dispatch" : "push",
+    eventName,
     ref,
     refName: mode === "preflight" ? authorityBranch : releaseTag,
     refType: mode === "preflight" ? "branch" : "tag",
@@ -49,7 +54,11 @@ function context(mode: Mode = "preflight"): DevReleaseRemoteContext {
     appVersion: "0.3.1",
     releaseTag,
     sourceSha: SOURCE_SHA,
-    dispatchSourceSha: mode === "preflight" ? SOURCE_SHA : null,
+    dispatchMode: eventName === "workflow_dispatch" ? mode : null,
+    dispatchSourceSha:
+      eventName === "workflow_dispatch" && mode === "preflight"
+        ? SOURCE_SHA
+        : null,
   };
 }
 
@@ -158,6 +167,29 @@ describe("dev release remote evidence", () => {
         target: { type: "commit", sha: SOURCE_SHA },
       },
     });
+  });
+
+  it("binds workflow_dispatch formal to the same remote tag identity", async () => {
+    const fixture = fixtureFetch({ mode: "formal" });
+    const { evidence, result } = await verifyDevReleaseRemote(
+      context("formal", "workflow_dispatch"),
+      { fetchImpl: fixture.fetchImpl },
+    );
+
+    expect(result).toMatchObject({
+      sourceSha: SOURCE_SHA,
+      workflowSha: SOURCE_SHA,
+      releaseTag: "v0.3.1",
+      mode: "formal",
+    });
+    expect(evidence.event).toMatchObject({
+      name: "workflow_dispatch",
+      dispatchMode: "formal",
+      dispatchSourceSha: null,
+      ref: "refs/tags/v0.3.1",
+      refType: "tag",
+    });
+    expect(evidence.remoteTag).not.toBeNull();
   });
 
   it("accepts a lightweight formal tag without reading an annotated tag object", async () => {
@@ -295,25 +327,28 @@ describe("remote verifier environment", () => {
       RELEASE_APP_VERSION: "0.3.1",
       RELEASE_TAG: "v0.3.1",
       RELEASE_SOURCE_SHA: SOURCE_SHA,
+      RELEASE_DISPATCH_MODE: "preflight",
       RELEASE_DISPATCH_SOURCE_SHA: SOURCE_SHA,
     });
 
     expect(ctx).toMatchObject({
       token: TOKEN,
       sourceSha: SOURCE_SHA,
+      dispatchMode: "preflight",
       dispatchSourceSha: SOURCE_SHA,
     });
     expect(JSON.stringify({ ...ctx, token: undefined })).not.toContain(TOKEN);
   });
 
   it("normalizes an empty formal dispatch input to null evidence", async () => {
-    const formal = context("formal");
+    const formal = context("formal", "workflow_dispatch");
     const fixture = fixtureFetch({ mode: "formal" });
     const { evidence } = await verifyDevReleaseRemote(
       { ...formal, dispatchSourceSha: "" },
       { fetchImpl: fixture.fetchImpl },
     );
 
+    expect(evidence.event.dispatchMode).toBe("formal");
     expect(evidence.event.dispatchSourceSha).toBeNull();
   });
 
