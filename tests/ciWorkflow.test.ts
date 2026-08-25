@@ -16,7 +16,11 @@ const REQUIRED_JOBS = [
   "backend-macos",
 ] as const;
 
-const DEPENDENCY_JOBS = ["commit-convention", "changes", ...REQUIRED_JOBS] as const;
+const DEPENDENCY_JOBS = [
+  "commit-convention",
+  "changes",
+  ...REQUIRED_JOBS,
+] as const;
 
 const LOCAL_MISE_TESTS = [
   "tests/developmentEnvironment.test.ts",
@@ -43,10 +47,7 @@ const ACTION_PINS = new Map([
     "astral-sh/setup-uv",
     ["c771a70e6277c0a99b617c7a806ffedaca235ff9", "v9.0.0"],
   ],
-  [
-    "actions/cache",
-    ["55cc8345863c7cc4c66a329aec7e433d2d1c52a9", "v6.1.0"],
-  ],
+  ["actions/cache", ["55cc8345863c7cc4c66a329aec7e433d2d1c52a9", "v6.1.0"]],
 ]);
 
 function jobBlock(id: string): string {
@@ -107,6 +108,7 @@ describe("automatic CI workflow", () => {
     expect(changes).toContain("needs: commit-convention");
     expect(changes).toContain("name: Classify Changes");
     expect(changes).toContain("fetch-depth: 0");
+    expect(changes).toContain('--summary-file "$GITHUB_STEP_SUMMARY"');
     expect(changes).toContain(
       'node scripts/ci/classify-changes.mjs \\\n            --base "$base_sha" --head "$head_sha" --json',
     );
@@ -116,8 +118,15 @@ describe("automatic CI workflow", () => {
     expect(changes).toContain("CURRENT_SHA: ${{ github.sha }}");
     expect(changes).toContain("event_force_full=true");
     expect(changes).toContain(".domains |= with_entries(.value = true)");
+    expect(changes).toContain("### Final CI plan");
+    expect(changes).toContain("Event-forced Full CI");
+    expect(changes).toContain(
+      "workflow_dispatch` is the explicit Full CI diagnostic path",
+    );
     expect(changes).not.toContain('if [ "$EVENT_NAME" = push ] &&');
-    expect(changes).not.toContain("Push before SHA is not a commit in this clone");
+    expect(changes).not.toContain(
+      "Push before SHA is not a commit in this clone",
+    );
     expect(changes).toContain("workflow_dispatch)");
     expect(changes).not.toContain("push)");
 

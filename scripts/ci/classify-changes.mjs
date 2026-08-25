@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
+import fs from "node:fs";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
 
@@ -21,38 +22,109 @@ const ALL_DOMAINS = Object.freeze(
   Object.fromEntries(CHANGE_DOMAINS.map((domain) => [domain, true])),
 );
 
-const CONTROL_PLANE_PREFIXES = Object.freeze([
+const GLOBAL_TOOLING_PREFIXES = Object.freeze([".mise/"]);
+
+const DOCUMENTATION_CONTROL_PREFIXES = Object.freeze([
   ".agents/",
   ".codebuddy/",
   ".codex/",
   ".cursor/",
-  ".github/",
-  ".mise/",
   ".trellis/agents/",
   ".trellis/scripts/",
   "scripts/audit/",
-  "scripts/ci/",
-  "scripts/release/",
-  "scripts/tasks/",
 ]);
 
-const CONTROL_PLANE_FILES = new Set([
+const RELEASE_CONTROL_PREFIXES = Object.freeze(["scripts/release/"]);
+
+const GLOBAL_TOOLING_FILES = new Set([
   ".node-version",
   ".python-version",
+  "mise.lock",
+  "mise.toml",
+  "pyproject.toml",
+  "rust-toolchain.toml",
+  "uv.lock",
+]);
+
+const CI_AUTHORITY_FILES = new Set([
+  ".github/workflows/ci.yml",
+  "scripts/ci/classify-changes.d.mts",
+  "scripts/ci/classify-changes.mjs",
+  "scripts/ci/evaluate-step-outcomes.mjs",
+  "scripts/ci/required-gate.mjs",
+  "scripts/ci/verify-toolchain.mjs",
+]);
+
+const CI_POLICY_FILES = new Set([
+  ".github/workflows/commit-convention-push.yml",
+  "scripts/ci/verify-commit-messages.mjs",
+]);
+
+const RELEASE_CONTROL_FILES = new Set([
+  ".github/workflows/release.yml",
+  "scripts/generate-download-manifest.mjs",
+  "scripts/tasks/release-check.mjs",
+  "scripts/version.mjs",
+]);
+
+const GITHUB_CONTRACT_FILES = new Set([
+  ".github/labeler.yml",
+  ".github/workflows/labeler.yml",
+]);
+
+const GITHUB_DOCUMENTATION_FILES = new Set([
+  ".github/CODEOWNERS",
+  ".github/FUNDING.yml",
+  ".github/dependabot.yml",
+  ".github/pull_request_template.md",
+]);
+
+const TRELLIS_CONTROL_FILES = new Set([
   ".trellis/.gitignore",
   ".trellis/.template-hashes.json",
   ".trellis/.version",
   ".trellis/config.yaml",
   ".trellis/workflow.md",
   "AGENTS.md",
-  "mise.lock",
-  "mise.toml",
-  "pyproject.toml",
-  "rust-toolchain.toml",
-  "scripts/generate-download-manifest.mjs",
-  "scripts/prepare-windows-user-helper.mjs",
-  "scripts/version.mjs",
-  "uv.lock",
+]);
+
+const TASK_CONTRACT_FILES = new Set([
+  "scripts/tasks/clean.mjs",
+  "scripts/tasks/dep0040-check.mjs",
+  "scripts/tasks/format-files.mjs",
+  "scripts/tasks/lockfile-check.mjs",
+  "scripts/tasks/maintenance.mjs",
+  "scripts/tasks/python.mjs",
+  "scripts/tasks/system-check.mjs",
+  "scripts/tasks/task-contract-check.mjs",
+  "scripts/tasks/upstream.mjs",
+]);
+
+const TASK_DOCUMENTATION_FILES = new Set([
+  "scripts/tasks/docs-contract-check.mjs",
+  "scripts/tasks/prearchive-check.mjs",
+  "scripts/tasks/task-docs.mjs",
+]);
+
+const TASK_FRONTEND_FILES = new Set([
+  "scripts/tasks/frontend.d.mts",
+  "scripts/tasks/frontend.mjs",
+]);
+
+const TASK_BACKEND_FILES = new Set([
+  "scripts/tasks/rust.mjs",
+  "scripts/tasks/windows-msvc-env.mjs",
+]);
+
+const TASK_GLOBAL_AUTHORITY_FILES = new Set([
+  "scripts/tasks/lib.mjs",
+  "scripts/tasks/supported-platform-check.mjs",
+  "scripts/tasks/toolchain-check.mjs",
+]);
+
+const TASK_PLATFORM_INVENTORY_FILES = new Set([
+  "scripts/tasks/supported-platform-raster-assets.json",
+  "scripts/tasks/supported-platform-structure-assets.json",
 ]);
 
 const RELEASE_AND_CI_CONTRACT_TEST =
@@ -83,7 +155,6 @@ const FRONTEND_ROOT_FILES = new Set([
   "tsconfig.node.json",
   "tsconfig.v2.json",
   "vite.config.ts",
-  "vitest.v2.config.ts",
   "vitest.config.ts",
   "vitest.v2.config.ts",
 ]);
@@ -146,6 +217,16 @@ function addDomains(target, domains) {
   for (const domain of domains) target[domain] = true;
 }
 
+function matchDomains(domains, enabledDomains, reason, forceFull = false) {
+  addDomains(domains, enabledDomains);
+  return {
+    matched: true,
+    forceFull,
+    reason,
+    domains: [...enabledDomains],
+  };
+}
+
 function isRepositoryPath(path) {
   if (
     typeof path !== "string" ||
@@ -168,12 +249,109 @@ function isRepositoryPath(path) {
  */
 function classifyPath(path, domains) {
   if (
-    CONTROL_PLANE_FILES.has(path) ||
-    hasPrefix(path, CONTROL_PLANE_PREFIXES) ||
-    RELEASE_AND_CI_CONTRACT_TEST.test(path)
+    CI_AUTHORITY_FILES.has(path) ||
+    GLOBAL_TOOLING_FILES.has(path) ||
+    TASK_GLOBAL_AUTHORITY_FILES.has(path) ||
+    hasPrefix(path, GLOBAL_TOOLING_PREFIXES)
   ) {
-    addDomains(domains, CHANGE_DOMAINS);
-    return { matched: true, forceFull: true };
+    return matchDomains(
+      domains,
+      CHANGE_DOMAINS,
+      CI_AUTHORITY_FILES.has(path)
+        ? "ci-authority"
+        : "global-tooling-authority",
+      true,
+    );
+  }
+
+  if (CI_POLICY_FILES.has(path)) {
+    return matchDomains(domains, ["contracts"], "ci-policy");
+  }
+
+  if (TASK_PLATFORM_INVENTORY_FILES.has(path)) {
+    return matchDomains(domains, ["contracts"], "supported-platform-inventory");
+  }
+
+  if (
+    RELEASE_CONTROL_FILES.has(path) ||
+    hasPrefix(path, RELEASE_CONTROL_PREFIXES)
+  ) {
+    return matchDomains(domains, ["contracts"], "release-authority");
+  }
+
+  if (RELEASE_AND_CI_CONTRACT_TEST.test(path)) {
+    return matchDomains(domains, ["contracts"], "ci-release-contract-test");
+  }
+
+  if (GITHUB_CONTRACT_FILES.has(path)) {
+    return matchDomains(domains, ["contracts"], "github-contract");
+  }
+
+  if (
+    GITHUB_DOCUMENTATION_FILES.has(path) ||
+    path.startsWith(".github/ISSUE_TEMPLATE/") ||
+    path.startsWith(".github/DISCUSSION_TEMPLATE/")
+  ) {
+    return matchDomains(
+      domains,
+      ["contracts", "docsSpec"],
+      "github-governance-docs",
+    );
+  }
+
+  if (
+    TRELLIS_CONTROL_FILES.has(path) ||
+    hasPrefix(path, DOCUMENTATION_CONTROL_PREFIXES)
+  ) {
+    return matchDomains(
+      domains,
+      ["contracts", "docsSpec"],
+      "developer-governance",
+    );
+  }
+
+  if (TASK_CONTRACT_FILES.has(path)) {
+    return matchDomains(domains, ["contracts"], "repository-task-contract");
+  }
+
+  if (TASK_DOCUMENTATION_FILES.has(path)) {
+    return matchDomains(
+      domains,
+      ["contracts", "docsSpec"],
+      "repository-task-docs",
+    );
+  }
+
+  if (TASK_FRONTEND_FILES.has(path)) {
+    return matchDomains(
+      domains,
+      ["contracts", "frontend"],
+      "repository-task-frontend",
+    );
+  }
+
+  if (path === "scripts/tasks/host-native.mjs") {
+    return matchDomains(
+      domains,
+      ["contracts", "frontend", "backend", "windowsNative"],
+      "repository-task-host-native",
+    );
+  }
+
+  if (TASK_BACKEND_FILES.has(path)) {
+    return matchDomains(
+      domains,
+      ["contracts", "backend", "windowsNative"],
+      "repository-task-backend",
+    );
+  }
+
+  if (path === "scripts/prepare-windows-user-helper.mjs") {
+    return matchDomains(
+      domains,
+      ["contracts", "backend", "windowsNative"],
+      "windows-build-preparation",
+    );
   }
 
   if (
@@ -181,13 +359,11 @@ function classifyPath(path, domains) {
     path.startsWith(".trellis/tasks/") ||
     path.startsWith(".trellis/workspace/")
   ) {
-    addDomains(domains, ["contracts", "docsSpec"]);
-    return { matched: true, forceFull: false };
+    return matchDomains(domains, ["contracts", "docsSpec"], "trellis-content");
   }
 
   if (path === ".gitattributes" || path === ".gitignore") {
-    addDomains(domains, ["contracts"]);
-    return { matched: true, forceFull: false };
+    return matchDomains(domains, ["contracts"], "repository-metadata");
   }
 
   if (
@@ -195,13 +371,19 @@ function classifyPath(path, domains) {
     path === "pnpm-lock.yaml" ||
     path === "pnpm-workspace.yaml"
   ) {
-    addDomains(domains, ["contracts", "frontend", "desktop"]);
-    return { matched: true, forceFull: false };
+    return matchDomains(
+      domains,
+      ["contracts", "frontend", "desktop"],
+      "frontend-dependency-root",
+    );
   }
 
   if (path === "src-tauri/Cargo.toml" || path === "src-tauri/Cargo.lock") {
-    addDomains(domains, ["contracts", "backend", "windowsNative"]);
-    return { matched: true, forceFull: false };
+    return matchDomains(
+      domains,
+      ["contracts", "backend", "windowsNative"],
+      "cargo-dependency-root",
+    );
   }
 
   if (
@@ -209,61 +391,70 @@ function classifyPath(path, domains) {
     path.startsWith("src-tauri/nsis/") ||
     path.startsWith("src-tauri/windows/")
   ) {
-    addDomains(domains, ["contracts", "windowsNative"]);
-    return { matched: true, forceFull: false };
+    return matchDomains(
+      domains,
+      ["contracts", "windowsNative"],
+      "windows-packaging",
+    );
   }
 
   if (
     CODEX_WINDOWS_FILES.has(path) ||
     hasPrefix(path, CODEX_WINDOWS_PREFIXES)
   ) {
-    addDomains(domains, ["contracts", "backend", "windowsNative"]);
-    return { matched: true, forceFull: false };
+    return matchDomains(
+      domains,
+      ["contracts", "backend", "windowsNative"],
+      "windows-backend",
+    );
   }
 
   if (path.startsWith("src-tauri/")) {
-    addDomains(domains, ["contracts", "backend"]);
-    return { matched: true, forceFull: false };
+    return matchDomains(domains, ["contracts", "backend"], "backend");
   }
 
   if (path.startsWith("src/")) {
-    addDomains(domains, ["frontend"]);
-    return { matched: true, forceFull: false };
+    return matchDomains(domains, ["frontend"], "frontend");
   }
 
   if (FRONTEND_ROOT_FILES.has(path) || LEGACY_FRONTEND_ROOT_FILES.has(path)) {
-    addDomains(domains, ["contracts", "frontend"]);
-    return { matched: true, forceFull: false };
+    return matchDomains(domains, ["contracts", "frontend"], "frontend-tooling");
   }
 
   if (path.startsWith("tests/desktop-acceptance/")) {
-    addDomains(domains, ["contracts", "desktop"]);
-    return { matched: true, forceFull: false };
+    return matchDomains(
+      domains,
+      ["contracts", "desktop"],
+      "desktop-acceptance",
+    );
   }
 
   if (path.startsWith("scripts/desktop-acceptance/")) {
-    addDomains(domains, ["contracts", "desktop"]);
-    return { matched: true, forceFull: false };
+    return matchDomains(
+      domains,
+      ["contracts", "desktop"],
+      "desktop-acceptance",
+    );
   }
 
   if (path.startsWith("tests/e2e/")) {
-    addDomains(domains, ["frontend", "desktop"]);
-    return { matched: true, forceFull: false };
+    return matchDomains(domains, ["frontend", "desktop"], "desktop-e2e");
   }
 
   if (WINDOWS_NATIVE_TEST.test(path)) {
-    addDomains(domains, ["contracts", "windowsNative"]);
-    return { matched: true, forceFull: false };
+    return matchDomains(
+      domains,
+      ["contracts", "windowsNative"],
+      "windows-native-contract",
+    );
   }
 
   if (hasPrefix(path, FRONTEND_TEST_PREFIXES)) {
-    addDomains(domains, ["frontend"]);
-    return { matched: true, forceFull: false };
+    return matchDomains(domains, ["frontend"], "frontend-test");
   }
 
   if (path.startsWith("tests/")) {
-    addDomains(domains, ["contracts"]);
-    return { matched: true, forceFull: false };
+    return matchDomains(domains, ["contracts"], "repository-contract-test");
   }
 
   if (
@@ -271,32 +462,36 @@ function classifyPath(path, domains) {
     path.startsWith("LICENSES/") ||
     hasPrefix(path, RETIRED_SESSION_MEMORY_PREFIXES)
   ) {
-    addDomains(domains, ["contracts", "docsSpec"]);
-    return { matched: true, forceFull: false };
+    return matchDomains(domains, ["contracts", "docsSpec"], "documentation");
   }
 
   if (
     DOCUMENTATION_ROOT_FILES.has(path) ||
     LEGACY_DOCUMENTATION_ROOT_FILES.has(path)
   ) {
-    addDomains(domains, ["contracts", "docsSpec"]);
-    return { matched: true, forceFull: false };
+    return matchDomains(domains, ["contracts", "docsSpec"], "documentation");
   }
 
   if (path.startsWith(RETIRED_SANDBOX_PACKAGE_PREFIX)) {
-    addDomains(domains, ["contracts", "docsSpec"]);
-    return { matched: true, forceFull: false };
+    return matchDomains(
+      domains,
+      ["contracts", "docsSpec"],
+      "retired-documentation",
+    );
   }
 
   if (path.startsWith("assets/")) {
-    addDomains(domains, ["frontend", "backend", "docsSpec"]);
-    return { matched: true, forceFull: false };
+    return matchDomains(
+      domains,
+      ["frontend", "backend", "docsSpec"],
+      "shared-assets",
+    );
   }
 
-  return { matched: false, forceFull: false };
+  return { matched: false, forceFull: false, reason: null, domains: [] };
 }
 
-export function classifyChangedPaths(paths) {
+function classifyChangedPathsDetailed(paths) {
   if (!Array.isArray(paths)) {
     throw new TypeError("changed paths must be an array");
   }
@@ -304,23 +499,97 @@ export function classifyChangedPaths(paths) {
   const domains = { ...EMPTY_DOMAINS };
   const uniquePaths = [...new Set(paths)].sort();
   const unknownPaths = [];
+  const entries = [];
   let forceFull = false;
 
   for (const path of uniquePaths) {
     if (!isRepositoryPath(path)) {
       unknownPaths.push(String(path));
+      entries.push({
+        path: String(path),
+        reason: "invalid-or-unsafe-path",
+        domains: [],
+        forceFull: false,
+      });
       continue;
     }
     const classification = classifyPath(path, domains);
     if (!classification.matched) unknownPaths.push(path);
     if (classification.forceFull) forceFull = true;
+    entries.push({
+      path,
+      reason: classification.reason ?? "unclassified",
+      domains: classification.domains,
+      forceFull: classification.forceFull,
+    });
   }
 
   return {
-    domains: forceFull ? { ...ALL_DOMAINS } : domains,
-    unknownPaths,
-    forceFull,
+    report: {
+      domains: forceFull ? { ...ALL_DOMAINS } : domains,
+      unknownPaths,
+      forceFull,
+    },
+    entries,
   };
+}
+
+export function classifyChangedPaths(paths) {
+  return classifyChangedPathsDetailed(paths).report;
+}
+
+function markdownCode(value) {
+  return `\`${String(value).replaceAll("`", "\\`")}\``;
+}
+
+function renderClassificationSummary(details) {
+  const lines = [
+    "### Change classification",
+    "",
+    "| Path | Owner | Requested domains | Full CI |",
+    "| --- | --- | --- | --- |",
+  ];
+
+  if (details.entries.length === 0) {
+    lines.push("| _(empty comparison)_ | — | — | no |");
+  } else {
+    for (const entry of details.entries) {
+      lines.push(
+        `| ${markdownCode(entry.path)} | ${markdownCode(entry.reason)} | ${
+          entry.domains.length > 0
+            ? entry.domains.map(markdownCode).join(", ")
+            : "—"
+        } | ${entry.forceFull ? "yes" : "no"} |`,
+      );
+    }
+  }
+
+  const selected = CHANGE_DOMAINS.filter(
+    (domain) => details.report.domains[domain],
+  );
+  const forceReasons = details.entries
+    .filter((entry) => entry.forceFull)
+    .map((entry) => `${entry.path} (${entry.reason})`);
+
+  lines.push(
+    "",
+    `- Path-derived forceFull: ${markdownCode(details.report.forceFull)}`,
+    `- Selected domains: ${
+      selected.length > 0 ? selected.map(markdownCode).join(", ") : "none"
+    }`,
+    `- Full CI reason: ${
+      forceReasons.length > 0
+        ? forceReasons.map(markdownCode).join(", ")
+        : "none"
+    }`,
+  );
+  if (details.report.unknownPaths.length > 0) {
+    lines.push(
+      `- Unknown paths: ${details.report.unknownPaths.map(markdownCode).join(", ")}`,
+    );
+  }
+  lines.push("");
+  return `${lines.join("\n")}\n`;
 }
 
 export function parseNameStatusZ(output) {
@@ -411,7 +680,11 @@ function parseArguments(argv) {
       json = true;
       continue;
     }
-    if (argument !== "--base" && argument !== "--head") {
+    if (
+      argument !== "--base" &&
+      argument !== "--head" &&
+      argument !== "--summary-file"
+    ) {
       throw new Error(`unknown argument: ${argument}`);
     }
     if (values.has(argument)) {
@@ -419,7 +692,7 @@ function parseArguments(argv) {
     }
     const value = argv[index + 1];
     if (!value || value.startsWith("-")) {
-      throw new Error(`${argument} requires a commit SHA value`);
+      throw new Error(`${argument} requires a value`);
     }
     values.set(argument, value);
     index += 1;
@@ -428,7 +701,11 @@ function parseArguments(argv) {
   if (!json) throw new Error("--json is required");
   if (!values.has("--base")) throw new Error("--base is required");
   if (!values.has("--head")) throw new Error("--head is required");
-  return { base: values.get("--base"), head: values.get("--head") };
+  return {
+    base: values.get("--base"),
+    head: values.get("--head"),
+    summaryFile: values.get("--summary-file") ?? null,
+  };
 }
 
 export function runChangeClassifierCli(
@@ -436,10 +713,18 @@ export function runChangeClassifierCli(
   cwd = process.cwd(),
 ) {
   try {
-    const { base, head } = parseArguments(argv);
-    const report = classifyChangedPaths(
+    const { base, head, summaryFile } = parseArguments(argv);
+    const details = classifyChangedPathsDetailed(
       changedPathsBetweenCommits(base, head, cwd),
     );
+    const report = details.report;
+    if (summaryFile) {
+      fs.appendFileSync(
+        summaryFile,
+        renderClassificationSummary(details),
+        "utf8",
+      );
+    }
     console.log(JSON.stringify(report));
     if (report.unknownPaths.length > 0) {
       console.error(

@@ -13,7 +13,14 @@ frontend:
           - "tsconfig.json"
           - "tsconfig.node.json"
           - "components.json"
-          - "tests/**"
+          - "tests/components/**"
+          - "tests/config/**"
+          - "tests/hooks/**"
+          - "tests/integration/**"
+          - "tests/lib/**"
+          - "tests/msw/**"
+          - "tests/utils/**"
+          - "tests/e2e/**"
 
 backend:
   - changed-files:

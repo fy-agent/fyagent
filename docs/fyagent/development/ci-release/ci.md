@@ -18,8 +18,11 @@ explicit base SHA + head SHA
 
 Path ownership lives in the classifier rather than being duplicated across
 workflow filters. A new path that has no mapping is a classification failure,
-not an implicit full build or an implicit skip. Control-plane changes force the
-full domain set.
+not an implicit full build or an implicit skip. CI scheduling, classification,
+Required-gate, and global toolchain authority still force the full domain set.
+Release orchestration, commit-message policy, and other typed control-plane
+paths use the contracts owner without automatically starting unrelated product
+jobs.
 
 ## Branch-push flow
 

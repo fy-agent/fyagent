@@ -65,7 +65,7 @@ administrator-enforced branch claim or a prior `CI / Required` run.
 The repository-owned public CLI is:
 
 ```text
-node scripts/ci/classify-changes.mjs --base <sha> --head <sha> --json
+node scripts/ci/classify-changes.mjs --base <sha> --head <sha> --json [--summary-file <path>]
 ```
 
 Both revisions must be full 40-character commit object IDs. The classifier
@@ -90,12 +90,38 @@ classifies both sides of rename/copy records, and emits exactly:
 
 Path ownership exists only in the classifier module. Workflow YAML may map
 domain booleans to jobs, but it must not duplicate repository path globs.
+When `--summary-file` is provided, the same classifier appends Markdown
+diagnostics for the changed paths, matched owner, requested domains, and any
+path-derived Full CI reason. This diagnostic output never changes the stable
+JSON plan consumed by Required CI.
 
 Classification invariants:
 
-- workflow, classifier, release, repository task, mise, optional agent/hook
-  (including tracked `.cursor/` and `.codebuddy/` Trellis trees),
-  and toolchain control-plane paths set `forceFull=true` and every domain true;
+- CI authority that can change Required CI scheduling, classification,
+  aggregation, collected step outcomes, or CI toolchain admission sets
+  `forceFull=true` and every domain true;
+- global checked-in toolchain authority such as mise, Node/Python/Rust version
+  roots, `supported-platform-check.mjs`, `toolchain-check.mjs`, and the shared
+  task library remains Full CI;
+- supported-platform digest inventories
+  (`supported-platform-structure-assets.json` and
+  `supported-platform-raster-assets.json`) reach contracts without Full CI.
+  The Changes job already runs the live checker on every Required CI plan, so
+  hash bookkeeping for an otherwise-narrow change must not force unrelated
+  product domains;
+- release authority (`.github/workflows/release.yml`, `scripts/release/**`, the
+  release task/check helpers, and release/CI contract tests) reaches the
+  lightweight contracts owner without automatically requesting unrelated
+  frontend, desktop, backend, or Windows-native product jobs;
+- commit-message policy (`commit-convention-push.yml` and
+  `verify-commit-messages.mjs`) reaches contracts without becoming Full CI;
+- tracked GitHub metadata/templates, optional agent/editor/Trellis governance,
+  and repository-governance helpers reach contracts plus docs/spec where they
+  are documentation/governance surfaces rather than product code;
+- repository task scripts are classified by responsibility: frontend and
+  backend/native wrappers reach their affected domains, release/docs/contract
+  helpers reach contracts/docs as applicable, and ambiguous shared
+  task/toolchain authorities stay Full CI;
 - `package.json` and pnpm dependency roots widen contracts/frontend/desktop;
 - every `src-tauri/**` change reaches contracts plus its backend/native owner,
   so version, release, manifest, NSIS, and desktop-security static suites cannot
@@ -167,12 +193,14 @@ changes
 only, validates every commit subject in the explicit base/head comparison, and
 validates the pull request title on `pull_request` events. When it fails, every
 downstream job is skipped so the workflow stops before expensive domain work.
-The 72-character subject cap applies only to Conventional Commit hygiene.
+FyAgent imposes no repository-defined maximum character length on an otherwise
+valid Conventional Commit subject or pull-request title. The gate still
+requires a non-empty Conventional Commit structure and keeps the existing
+merge/revert and GitHub squash-suffix handling.
 GitHub merge subjects matching `Merge pull request #<n> from ...`,
 `Merge branch ...`, or `Merge remote-tracking branch ...`, and revert subjects
-matching `Revert "..."`, are merge-topology records and are accepted without
-that cap, so Merge Queue titles that include a long head-branch name cannot
-fail this gate.
+matching `Revert "..."`, are merge-topology records and remain accepted by the
+same policy.
 
 Empty-comparison coverage must use an isolated git fixture, not the Actions
 checkout HEAD: `pull_request` checkouts are merge commits whose subject is
@@ -398,14 +426,21 @@ not start a native window or claim hardware-in-the-loop evidence.
 uses `pull_request_target` plus numeric manual replay, does not checkout or run
 pull-request code, and has only `contents: read` and `pull-requests: write`.
 Labeler is not a CI dependency and cannot satisfy `CI / Required`.
+The `frontend` label owns frontend source/tooling and concrete frontend test
+directories; it must not use a blanket `tests/**` rule that labels release or
+CI-contract-only PRs as frontend.
 
 ## 10. Validation and evidence boundary
 
 Required automated fixtures cover:
 
 - docs/spec, frontend, desktop, backend, Windows native, dependency-root,
-  control-plane, multi-path union, rename/delete, unknown paths, and the
-  retired generated standalone preview path;
+  typed control-plane ownership, release-only versus CI-authority escalation,
+  multi-path union, rename/delete, unknown paths, and the retired generated
+  standalone preview path;
+- valid long Conventional Commit subjects and PR titles without a repository
+  maximum-length gate, while malformed/empty values still fail structurally;
+- classifier Markdown diagnostics while preserving the exact stable JSON plan;
 - malformed/missing/non-commit base/head revisions and option injection;
 - PR, merge-group, lightweight push-policy, and manual event wiring;
 - manual-only event-forced full CI;
