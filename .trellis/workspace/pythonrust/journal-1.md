@@ -1684,3 +1684,24 @@ Salvaged WorkBuddy models.json save onto current-main plural change-plans. Draft
 ### Next Steps
 
 - Open replacement PR, close old Draft #139 as superseded, exact-head Merge Queue. Keep #66 open.
+
+
+## Session 52: Finalize CI scope and title policy
+
+**Date**: 2026-08-25
+**Task**: Finalize CI scope and title policy
+**Branch**: `ci/refine-change-classifier`
+
+### Summary
+
+Completed final review, full prearchive validation, and merge-governance handoff for typed CI change classification and removal of repository-defined title length caps.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7b9e4a29` | (see git log) |
+
+### Status
+
+[OK] **Completed**
