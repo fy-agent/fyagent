@@ -13,7 +13,7 @@ bundle id, and `assets:icons` remain outside this contract.
 Orchestration and publication still belong to
 [GitHub Release Workflow](./github-release-workflow.md). Changelog heading
 alignment belongs to [Application Version](./fyagent-version-contract.md) as a
-`release-check` gate, not `version:set`.
+`mise run release:check` gate, not `version:set`.
 
 ## 2. Signatures
 
@@ -89,7 +89,7 @@ background file .background/background.png
 | Final attach lacks `.DS_Store` or background | Fail `build-macos` |
 | `ds-store` added to default uv `dev` or project dependencies | Fail the development-environment contract |
 | `assets:icons` rewrites `dmg-background.png` | Fail the brand-asset contract |
-| Checked-in PNG differs from `render-dmg-background.mjs --check` | Fail release-check / dmg background tests |
+| Checked-in PNG differs from `render-dmg-background.mjs --check` | Fail `mise run release:check` / dmg background tests |
 
 ## 5. Good / Base / Bad Cases
 

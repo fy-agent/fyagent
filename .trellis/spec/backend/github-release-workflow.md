@@ -425,7 +425,7 @@ in `CHANGELOG.md` must match `^## \[X.Y.Z\] - 20\d{2}-\d{2}-\d{2}$`. The
 text until the next `## [` heading must contain non-empty notes after
 stripping HTML comments. Keep a Changelog preamble above that heading is
 allowed. `scripts/release/verify-changelog-release.mjs` is invoked by
-`mise run release-check`. The write set of `version:set` / `version:bump`
+`mise run release:check`. The write set of `version:set` / `version:bump`
 remains `src-tauri/Cargo.toml` plus the two local Cargo.lock package
 blocks.
 
@@ -454,7 +454,7 @@ never called private or successful.
 | Windows proof/sealed binding or macOS identity fails                                                                                    | Stop aggregation and publication.                            |
 | An intentional producer skip propagates past successful asset verification                                                              | Attestation still runs; abnormal direct needs fail visibly.  |
 | Three/six/seven file allowlist or digest differs                                                                                      | Stop verification, attestation, or publication.              |
-| `CHANGELOG.md` first version heading is missing, empty, or not Cargo `X.Y.Z`                                                          | `release-check` fails before tag/publication.                |
+| `CHANGELOG.md` first version heading is missing, empty, or not Cargo `X.Y.Z`                                                          | `mise run release:check` fails before tag/publication.       |
 | Styled DMG layout write fails, or final attach lacks `.DS_Store` / background / Applications symlink                                  | Fail `build-macos`; do not publish an unstyled DMG.          |
 | Live main identity changes during the transaction                                                                                       | Continue; tag target SHA remains the frozen source.          |
 | A draft/published Release already exists                                                                                                | Refuse update, replacement, or deletion.                     |
