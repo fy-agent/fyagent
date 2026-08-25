@@ -23,6 +23,8 @@ pub struct ManagedAuthAccount {
     pub is_default: bool,
     pub github_domain: String,
     pub requires_reauth: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chatgpt_account_id: Option<String>,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -32,6 +34,8 @@ pub struct ManagedAuthStatus {
     pub default_account_id: Option<String>,
     pub migration_error: Option<String>,
     pub accounts: Vec<ManagedAuthAccount>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub native_projection_available: Option<bool>,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -67,6 +71,7 @@ fn map_account(
         authenticated_at: account.authenticated_at,
         github_domain: account.github_domain,
         requires_reauth: false,
+        chatgpt_account_id: account.chatgpt_account_id,
     }
 }
 
@@ -83,6 +88,7 @@ fn map_xai_account(
         authenticated_at: account.authenticated_at,
         github_domain: account.github_domain,
         requires_reauth: account.requires_reauth,
+        chatgpt_account_id: None,
     }
 }
 
@@ -262,6 +268,7 @@ pub async fn auth_get_status(
                         map_account(auth_provider, account, default_account_id.as_deref())
                     })
                     .collect(),
+                native_projection_available: None,
             })
         }
         AUTH_PROVIDER_CODEX_OAUTH => {
@@ -280,6 +287,7 @@ pub async fn auth_get_status(
                         map_account(auth_provider, account, default_account_id.as_deref())
                     })
                     .collect(),
+                native_projection_available: Some(native_codex_projection_available()),
             })
         }
         AUTH_PROVIDER_XAI_OAUTH => {
@@ -296,6 +304,7 @@ pub async fn auth_get_status(
                     .into_iter()
                     .map(|account| map_xai_account(account, default_account_id.as_deref()))
                     .collect(),
+                native_projection_available: None,
             })
         }
         _ => unreachable!(),
@@ -392,6 +401,41 @@ pub async fn auth_logout(
         AUTH_PROVIDER_XAI_OAUTH => {
             let auth_manager = xai_state.0.write().await;
             auth_manager.clear_auth().await.map_err(|e| e.to_string())
+        }
+        _ => unreachable!(),
+    }
+}
+
+fn native_codex_projection_available() -> bool {
+    let text =
+        std::fs::read_to_string(crate::codex_config::get_codex_config_path()).unwrap_or_default();
+    crate::codex_config::native_file_projection_allowed(&text).unwrap_or(false)
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub async fn auth_cancel_login(
+    auth_provider: String,
+    device_code: Option<String>,
+    copilot_state: State<'_, CopilotAuthState>,
+    codex_state: State<'_, CodexOAuthState>,
+    xai_state: State<'_, XaiOAuthState>,
+) -> Result<(), String> {
+    let auth_provider = ensure_auth_provider(&auth_provider)?;
+    match auth_provider {
+        AUTH_PROVIDER_CODEX_OAUTH => {
+            let auth_manager = codex_state.0.write().await;
+            auth_manager
+                .cancel_pending_login(device_code.as_deref())
+                .await
+                .map_err(|e| e.to_string())
+        }
+        AUTH_PROVIDER_GITHUB_COPILOT => {
+            let _ = copilot_state;
+            Ok(())
+        }
+        AUTH_PROVIDER_XAI_OAUTH => {
+            let _ = xai_state;
+            Ok(())
         }
         _ => unreachable!(),
     }

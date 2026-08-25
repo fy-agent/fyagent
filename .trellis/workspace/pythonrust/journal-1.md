@@ -1700,7 +1700,31 @@ Completed final review, full prearchive validation, and merge-governance handoff
 
 | Hash | Message |
 |------|---------|
+| `2f468156` | (see git log) |
+| `d9c582b5` | (see git log) |
 | `7b9e4a29` | (see git log) |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 53: Agent one-click install and Codex multi-account auth
+
+**Date**: 2026-08-25
+**Task**: Agent one-click install and Codex multi-account auth
+**Branch**: `feat/agent-install-auth`
+
+### Summary
+
+Closed Agent Catalog install/auth façade (7 products, Pi excluded) plus Codex credential_id store, file-only native auth.json projection, and Trellis contracts. Residual: simplified macOS DMG path, Qoder/WorkBuddy unknown bundle identity, no Windows EXE/HIL, no full rotated-refresh reconciliation.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `2f468156` | (see git log) |
+| `d9c582b5` | (see git log) |
 
 ### Status
 

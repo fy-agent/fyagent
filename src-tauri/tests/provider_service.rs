@@ -1477,7 +1477,11 @@ fn provider_service_switch_codex_official_accounts_write_auth_json() {
             "account_id": "acct-a"
         }
     });
-    write_codex_live_atomic(&live_auth_a, Some("")).expect("seed official account A live auth");
+    write_codex_live_atomic(
+        &live_auth_a,
+        Some("cli_auth_credentials_store = \"file\"\n"),
+    )
+    .expect("seed official account A live auth");
 
     let mut official_a = Provider::with_id(
         "official-a".to_string(),

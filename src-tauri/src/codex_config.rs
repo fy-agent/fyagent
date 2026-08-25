@@ -15,6 +15,7 @@ use std::collections::HashSet;
 
 mod auth;
 mod catalog;
+mod credential_store;
 mod features;
 mod storage;
 
@@ -24,6 +25,10 @@ use auth::codex_live_auth_is_stale_third_party_residue;
 pub use auth::{
     clear_stale_codex_live_auth_after_official_switch, codex_auth_has_login_material,
     extract_codex_auth_api_key, should_restore_codex_provider_token_for_backfill,
+};
+pub(crate) use credential_store::{
+    native_file_projection_allowed, overlay_cli_auth_credentials_store,
+    parse_cli_auth_credentials_store, CodexCredentialStore,
 };
 
 #[cfg(test)]
@@ -720,20 +725,32 @@ pub fn write_codex_live_for_provider(
         };
     let config_text = unified_official_config.as_deref().or(config_text);
 
-    let should_write_auth = (category == Some("official") && codex_auth_has_login_material(auth))
+    let oauth_native_projection =
+        category == Some("official") && auth::codex_auth_has_oauth_login_material(auth);
+    let current_live = fs::read_to_string(get_codex_config_path()).unwrap_or_default();
+    let native_file_store = parse_cli_auth_credentials_store(&current_live)
+        .map(CodexCredentialStore::allows_native_file_projection)
+        .unwrap_or(false);
+    let should_write_auth = ((category == Some("official") && codex_auth_has_login_material(auth))
         || (category != Some("official")
-            && !crate::settings::preserve_codex_official_auth_on_switch());
+            && !crate::settings::preserve_codex_official_auth_on_switch()))
+        && (!oauth_native_projection || native_file_store);
 
     if should_write_auth {
         let projected_config = match config_text {
-            Some(text) => Some(project_codex_live_config_when_openai_auth_disabled(
-                auth, text,
-            )?),
+            Some(text) => {
+                let projected = project_codex_live_config_when_openai_auth_disabled(auth, text)?;
+                Some(overlay_cli_auth_credentials_store(
+                    &projected,
+                    &current_live,
+                ))
+            }
             None => None,
         };
         write_codex_live_atomic(auth, projected_config.as_deref())
     } else {
         let live_config = prepare_codex_provider_live_config(auth, config_text.unwrap_or(""))?;
+        let live_config = overlay_cli_auth_credentials_store(&live_config, &current_live);
         write_codex_live_config_atomic(Some(&live_config))
     }
 }

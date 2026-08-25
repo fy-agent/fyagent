@@ -73,6 +73,7 @@ export const CodexOAuthSection: React.FC<CodexOAuthSectionProps> = ({
     setDefaultAccount,
     cancelAuth,
     logout,
+    authStatus,
   } = useCodexOauth();
 
   const copyUserCode = async () => {
@@ -113,6 +114,15 @@ export const CodexOAuthSection: React.FC<CodexOAuthSectionProps> = ({
             : t("codexOauth.notAuthenticated", "未认证")}
         </Badge>
       </div>
+
+      {authStatus?.native_projection_available === false ? (
+        <p className="text-xs text-muted-foreground">
+          {t(
+            "codexOauth.nativeProjectionUnavailable",
+            "这些账号可用于 FyAgent 路由；当前 Codex 凭据存储不是 file 模式，因此无法写入原生 auth.json。请在 Codex 中自行登录。",
+          )}
+        </p>
+      ) : null}
 
       {/* 账号选择器 */}
       {hasAnyAccount && onAccountSelect && (
@@ -225,6 +235,13 @@ export const CodexOAuthSection: React.FC<CodexOAuthSectionProps> = ({
                     </Button>
                   </div>
                 </div>
+                {account.chatgpt_account_id ? (
+                  <p className="text-xs text-muted-foreground pl-7">
+                    {t("codexOauth.workspaceRouting", "工作区路由 ID")}
+                    {": "}
+                    {account.chatgpt_account_id}
+                  </p>
+                ) : null}
                 {showAccountQuota && (
                   <CodexOauthAccountQuota accountId={account.id} />
                 )}

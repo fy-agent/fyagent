@@ -340,6 +340,9 @@ pub struct GitHubAccount {
     /// GitHub 域名（github.com 或 GHES 域名）
     #[serde(default = "default_github_domain")]
     pub github_domain: String,
+    /// Codex OAuth only: ChatGPT workspace/account routing id. Never a Map key.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chatgpt_account_id: Option<String>,
 }
 
 impl From<&GitHubAccountData> for GitHubAccount {
@@ -350,6 +353,7 @@ impl From<&GitHubAccountData> for GitHubAccount {
             avatar_url: data.user.avatar_url.clone(),
             authenticated_at: data.authenticated_at,
             github_domain: data.github_domain.clone(),
+            chatgpt_account_id: None,
         }
     }
 }
@@ -543,6 +547,7 @@ impl CopilotAuthManager {
             avatar_url: user.avatar_url.clone(),
             authenticated_at: now,
             github_domain,
+            chatgpt_account_id: None,
         };
 
         {
@@ -1546,6 +1551,7 @@ mod tests {
                 avatar_url: Some("https://example.com/avatar.png".to_string()),
                 authenticated_at: 1234567890,
                 github_domain: DEFAULT_GITHUB_DOMAIN.to_string(),
+                chatgpt_account_id: None,
             }],
             default_account_id: Some("12345".to_string()),
             migration_error: None,

@@ -102,6 +102,8 @@ const HERMES_INSTALL_WINDOWS_SCRIPT: &str =
     "irm https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.ps1 | iex";
 #[cfg(target_os = "windows")]
 const GROK_INSTALL_WINDOWS_SCRIPT: &str = "irm https://x.ai/cli/install.ps1 | iex";
+#[cfg(target_os = "windows")]
+const CLAUDE_INSTALL_WINDOWS_SCRIPT: &str = "irm https://claude.ai/install.ps1 | iex";
 
 #[cfg(target_os = "windows")]
 fn powershell_encoded_command(script: &str) -> String {
@@ -127,6 +129,14 @@ pub(super) fn grok_install_windows_command() -> String {
     format!(
         "powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand {}",
         powershell_encoded_command(GROK_INSTALL_WINDOWS_SCRIPT)
+    )
+}
+
+#[cfg(target_os = "windows")]
+pub(super) fn claude_install_windows_command() -> String {
+    format!(
+        "powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand {}",
+        powershell_encoded_command(CLAUDE_INSTALL_WINDOWS_SCRIPT)
     )
 }
 
@@ -195,12 +205,17 @@ pub(super) fn tool_action_shell_command_for_shell(
     }
 
     #[cfg(target_os = "windows")]
-    if tool == "grok"
+    if matches!(tool, "grok" | "claude")
         && matches!(action, ToolLifecycleAction::Install)
         && matches!(shell, LifecycleCommandShell::WindowsBatch)
     {
+        let native = if tool == "claude" {
+            claude_install_windows_command()
+        } else {
+            grok_install_windows_command()
+        };
         return Some(chain_update_commands(
-            grok_install_windows_command(),
+            native,
             npm_install_command_for(tool)?.to_string(),
             shell,
         ));
@@ -312,6 +327,27 @@ mod tests {
             "npm fallback should remain available: {install}"
         );
         let expected_encoded = powershell_encoded_command(GROK_INSTALL_WINDOWS_SCRIPT);
+        assert_eq!(
+            native
+                .split_once("-EncodedCommand ")
+                .map(|(_, encoded)| encoded),
+            Some(expected_encoded.as_str())
+        );
+    }
+
+    #[test]
+    fn claude_windows_install_prefers_powershell_with_npm_fallback() {
+        let install = static_fallback_command_for("claude", ToolLifecycleAction::Install);
+        let native = claude_install_windows_command();
+        assert!(
+            install.starts_with(&native),
+            "native installer first: {install}"
+        );
+        assert!(
+            install.ends_with("|| call npm i -g @anthropic-ai/claude-code@latest"),
+            "npm fallback should remain available: {install}"
+        );
+        let expected_encoded = powershell_encoded_command(CLAUDE_INSTALL_WINDOWS_SCRIPT);
         assert_eq!(
             native
                 .split_once("-EncodedCommand ")

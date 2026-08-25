@@ -190,11 +190,15 @@ export function useManagedAuth(
   }, [startLoginMutation, stopPolling]);
 
   const cancelAuth = useCallback(() => {
+    const pendingDeviceCode = deviceCode?.device_code;
     stopPolling();
     setPollingState("idle");
     setDeviceCode(null);
     setError(null);
-  }, [stopPolling]);
+    if (authProvider === "codex_oauth") {
+      void authApi.authCancelLogin(authProvider, pendingDeviceCode);
+    }
+  }, [authProvider, deviceCode, stopPolling]);
 
   const logout = useCallback(() => {
     logoutMutation.mutate();

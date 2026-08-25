@@ -1,0 +1,8 @@
+{"file":".trellis/spec/backend/external-agent-p0.md","reason":"Current canonical Agent catalog, runtime safety and read-only install-readiness contract to evolve without a second registry."}
+{"file":".trellis/spec/backend/codex-desktop-installer.md","reason":"Repository-wide one-click executable installer policy and reusable Codex implementation boundary."}
+{"file":".trellis/spec/backend/windows-runtime-security.md","reason":"Formal Windows elevated/Shell-user execution boundary for CLI install/auth actions and any user helper."}
+{"file":".trellis/spec/backend/codex-provider-configuration.md","reason":"Codex auth/config ownership, targeted writes, preservation and Change Plan regression constraints."}
+{"file":".trellis/spec/backend/upstream-sync.md","reason":"Selective CC Switch behavior reuse must preserve FyAgent identity, provenance and security conflict precedence."}
+{"file":".trellis/tasks/08-25-agent-install-auth/research/local-reuse-inventory.md","reason":"Inventory of existing Tooling, installer, Auth Center, Codex OAuth and binding modules that must be reused."}
+{"file":".trellis/tasks/08-25-agent-install-auth/research/upstream-and-official-evidence.md","reason":"Official vendor/OpenAI and CC Switch evidence for install/auth/source behavior."}
+{"file":".trellis/tasks/08-25-agent-install-auth/research/security-and-compatibility-decisions.md","reason":"Reviewed fail-closed decisions for sources, Windows, auth ownership and credential stores."}

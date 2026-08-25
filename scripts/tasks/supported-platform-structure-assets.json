@@ -23,7 +23,7 @@
     ],
     [
       "scripts/tasks/supported-platform-check.mjs",
-      "187676679574af70b6cd4b2e301bdfb76dfe1dcd2d44b22b343991f71c5aaf7e"
+      "38ac681530a5d8d8a79e18ca7dddab45e38067b75a1f4569e6247fbd23def3e0"
     ],
     [
       "scripts/tasks/system-check.mjs",
@@ -46,6 +46,14 @@
       "4fdb1639f2e92e5d8c0d97b82cf56e88cd6dcd0ebf23fd121f8fda92ac2d1fb6"
     ],
     [
+      "src-tauri/src/agent_install/desktop.rs",
+      "f8df667b2d3f724805eaf5e60f3ceb723ffe544b7c9419a79a5a141410726d10"
+    ],
+    [
+      "src-tauri/src/agent_install/sources/mod.rs",
+      "3041b8a15e03d931ec23be46fc23be7e680fdd0bb8d0fe6f6716e2bdd8bbb572"
+    ],
+    [
       "src-tauri/src/app_store.rs",
       "620fa26c7849529b14247f5472b78b7296f62963d827ec62067e7db488c12f2a"
     ],
@@ -63,7 +71,7 @@
     ],
     [
       "src-tauri/src/codex_config.rs",
-      "ba3d410a4c2e456a8802a53fec1149868c8a013e372763af44f1051c1b95213c"
+      "c63324411b27d4f4fbeb200d9b2f50743c557cc8ea57a714add5560bdd241535"
     ],
     [
       "src-tauri/src/codex_config/catalog.rs",
@@ -123,7 +131,7 @@
     ],
     [
       "src-tauri/src/lib.rs",
-      "6f9092d033ad51775b35e945c77735871e85d00aa3a7c5e5b74e5b267e115014"
+      "0165be0eab9002a8655fcdd4250b344ce2f56a6deda9c8c55c61d709755b4c4a"
     ],
     [
       "src-tauri/src/lightweight.rs",
@@ -155,11 +163,11 @@
     ],
     [
       "src-tauri/src/proxy/providers/codex_oauth_auth.rs",
-      "c8567d6c8e3e671af7feefeac14d5f7dab09d59c1eee66dfc2d563c3bc51dbf6"
+      "44e695bff9e13378ae9ecab65e57b149702a53bf2b13d45122df359f17e6d601"
     ],
     [
       "src-tauri/src/proxy/providers/copilot_auth.rs",
-      "e1dbfba8cc1ff5f26e66e72985c05624c3c1d29af5be0a4c476f8c1ebb2a5c53"
+      "45660916df172635b9f3af9e08fab5c825193aacb6ed8443ea356d3323f9a539"
     ],
     [
       "src-tauri/src/proxy/providers/xai_oauth_auth.rs",
@@ -211,7 +219,7 @@
     ],
     [
       "src-tauri/src/services/tooling.rs",
-      "8827a0b8b6cd65ad10530a5267ca93b316dbf9b9310becae3e095543284c6020"
+      "e41adad17bb48f149367cf72adf14d1a2f80e400dcf39b5dbe00669f8e7b54cb"
     ],
     [
       "src-tauri/src/services/tooling/discovery.rs",
@@ -219,7 +227,7 @@
     ],
     [
       "src-tauri/src/services/tooling/lifecycle.rs",
-      "091db75def671c9d39cb8738619ae5129aa825cab43c30447ff9f959142e9c3c"
+      "799a08441400b101a94cfae66e074c4a3ab35f36acda360e75bd6e8c8ed65634"
     ],
     [
       "src-tauri/src/services/tooling/terminal.rs",

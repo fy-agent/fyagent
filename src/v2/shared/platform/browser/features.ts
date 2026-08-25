@@ -16,6 +16,9 @@ export function createBrowserFeaturePorts(): FeaturePorts {
     },
     agentInstallReadiness: {
       get: rejectNativeOnly,
+      startAction: rejectNativeOnly,
+      cancelAction: rejectNativeOnly,
+      getActionJob: rejectNativeOnly,
     },
     changePlans: {
       createCodexProviderSwitchPlan: rejectNativeOnly,

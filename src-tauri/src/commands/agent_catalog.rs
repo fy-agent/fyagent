@@ -1248,7 +1248,7 @@ mod tests {
             })
             .collect::<BTreeSet<_>>();
 
-        assert_eq!(registered.len(), 344, "review intentional handler changes");
+        assert_eq!(registered.len(), 348, "review intentional handler changes");
         assert_eq!(allowed, registered, "every registered application command must be granted exactly once while an app ACL manifest exists");
     }
 }

@@ -39,6 +39,9 @@ These guides help you **ask the right questions before coding**.
 - [ ] Product UI may belong in V2 (`src/v2`) rather than leftover legacy `src/` code
 - [ ] Native window geometry (maximize / min-size / work area) and renderer
       chrome (Overlay drag) are changing together
+- [ ] Agent Catalog install/auth or Codex managed-account identity is changing
+      (closed `agentId+action` only; `credential_id` ≠ workspace id; native
+      `auth.json` only when the live store is `file`)
 
 → Read [Cross-Layer Thinking Guide](./cross-layer-thinking-guide.md).
   For V2 routes or shell chrome, read the

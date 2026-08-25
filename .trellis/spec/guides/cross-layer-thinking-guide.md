@@ -162,6 +162,16 @@ status check or endpoint probe:
       `checkReachability`, look up a saved Provider, or hang that button on
       Qoder/TRAE. Show the probe `message` on failure. Contract:
       [V2 Agent and Models](../frontend/v2-agent-models.md).
+- [ ] An Agent Catalog install/update/auth control submits only
+      `agentId + action` and an opaque backend `releaseId`. Do not reconstruct
+      CDN URLs, package formats, or CLI command strings in TypeScript.
+      Contract: [External Agent P0 Safety](../backend/external-agent-p0.md)
+      and [V2 Agent and Models](../frontend/v2-agent-models.md).
+- [ ] A Codex managed-account or `auth.json` change treats `credential_id`
+      and ChatGPT workspace/account id as different fields, and writes native
+      `auth.json` only for explicit `cli_auth_credentials_store = "file"`.
+      Contract:
+      [Codex Provider Configuration](../backend/codex-provider-configuration.md).
 
 Exact URLs, DTO fields, error codes, and tests belong in the owning spec:
 

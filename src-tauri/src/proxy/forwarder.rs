@@ -1687,11 +1687,11 @@ impl RequestForwarder {
 
                     let token_result = match &account_id {
                         Some(id) => {
-                            log::debug!("[CodexOAuth] 使用指定账号 {id} 获取 token");
+                            log::debug!("[CodexOAuth] 使用指定凭据 {id} 获取 token");
                             codex_auth.get_valid_token_for_account(id).await
                         }
                         None => {
-                            log::debug!("[CodexOAuth] 使用默认账号获取 token");
+                            log::debug!("[CodexOAuth] 使用默认凭据获取 token");
                             codex_auth.get_valid_token().await
                         }
                     };
@@ -1700,15 +1700,21 @@ impl RequestForwarder {
                         Ok(token) => {
                             auth = AuthInfo::new(token, AuthStrategy::CodexOAuth);
                             should_send_codex_oauth_session_headers = true;
-                            // 解析使用的 account_id（用于注入 ChatGPT-Account-Id header）
-                            codex_oauth_account_id = match account_id {
+                            let credential_id = match account_id {
                                 Some(id) => Some(id),
                                 None => codex_auth.default_account_id().await,
                             };
-                            log::debug!(
-                                "[CodexOAuth] 成功获取 access_token (account={})",
-                                codex_oauth_account_id.as_deref().unwrap_or("default")
-                            );
+                            let routing_id = match credential_id.as_deref() {
+                                Some(id) => codex_auth.chatgpt_account_id_for(id).await,
+                                None => None,
+                            };
+                            let Some(routing_id) = routing_id.filter(|id| !id.is_empty()) else {
+                                return Err(ProxyError::AuthError(
+                                    "Codex OAuth 绑定账号缺少 ChatGPT 路由身份".to_string(),
+                                ));
+                            };
+                            codex_oauth_account_id = Some(routing_id);
+                            log::debug!("[CodexOAuth] 成功获取 access_token");
                         }
                         Err(e) => {
                             log::error!("[CodexOAuth] 获取 access_token 失败: {e}");
