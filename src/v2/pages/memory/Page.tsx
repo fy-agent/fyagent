@@ -505,11 +505,7 @@ function LongTermEditor({
               打开 OpenClaw 工作区
             </Button>
           ) : null}
-          <CopyablePath
-            label="记忆内容"
-            value={draft}
-            revealValue={false}
-          />
+          <CopyablePath label="记忆内容" value={draft} revealValue={false} />
           <Button
             className="fy-control-button-primary"
             disabled={busy || (!dirty && !missing)}
