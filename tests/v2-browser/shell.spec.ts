@@ -20,22 +20,19 @@ const navigationContract = [
 
 const visibleControlTestIds = ["search", "settings", "avatar"] as const;
 
-const shellRegionTestIds = [
-  "brand",
-  "primary-navigation",
-  "tool-cluster",
-] as const;
+const shellRegionTestIds = ["brand", "tool-cluster"] as const;
 
 const windowControlNames = ["最小化", "最大化/还原", "关闭"] as const;
 
 const primaryControlTestIds = [
+  ...visibleControlTestIds,
   "#/agents",
+  "configuration-management-toggle",
   "#/models",
   "#/skills",
   "#/mcp",
   "#/prompts",
   "#/memory",
-  ...visibleControlTestIds,
 ] as const;
 
 function routeLink(navigation: Locator, label: string): Locator {
@@ -63,12 +60,13 @@ test("keeps the complete shell visible, separate, and overflow-free", async ({
     await topBar.evaluate((element) =>
       Array.from(
         element.querySelectorAll(
-          '[data-testid="brand"], [data-testid="primary-navigation"], [data-testid="tool-cluster"]',
+          '[data-testid="brand"], [data-testid="tool-cluster"]',
         ),
       ).map((region) => region.getAttribute("data-testid")),
     ),
-    "TopBar must expose only Brand, Primary Navigation, and Tools",
+    "TopBar must expose only Brand and Tools",
   ).toEqual([...shellRegionTestIds]);
+  await expect(topBar.getByRole("navigation")).toHaveCount(0);
 
   await expect(page.locator("[data-tauri-drag-region]")).toHaveCount(0);
   await expect(page.getByTestId("titlebar-drag-region")).toHaveCount(0);
@@ -113,6 +111,16 @@ test("keeps the complete shell visible, separate, and overflow-free", async ({
   }
 
   const navigation = page.getByRole("navigation", { name: "主导航" });
+  await expect(navigation).toHaveAttribute("data-testid", "side-navigation");
+  await expect(
+    navigation.getByText("AI软件配置", { exact: true }),
+  ).toBeVisible();
+  const configurationToggle = navigation.getByRole("button", {
+    name: "配置管理",
+  });
+  await expect(configurationToggle).toBeVisible();
+  await expect(configurationToggle).toHaveAttribute("aria-expanded", "true");
+  await expect(navigation.getByText("记忆模块", { exact: true })).toBeVisible();
   const primaryControls: Locator[] = [];
   for (const { label } of navigationContract) {
     const link = routeLink(navigation, label);
@@ -124,6 +132,7 @@ test("keeps the complete shell visible, separate, and overflow-free", async ({
     await expect(control).toBeVisible();
     primaryControls.push(control);
   }
+  primaryControls.push(configurationToggle);
 
   const viewportSize = page.viewportSize();
   expect(viewportSize).not.toBeNull();
@@ -139,8 +148,13 @@ test("keeps the complete shell visible, separate, and overflow-free", async ({
 
   const contentViewport = page.getByTestId("content-viewport");
   const contentBox = await requiredBox(contentViewport, "content viewport");
+  const navigationBox = await requiredBox(navigation, "side navigation");
   expect(contentBox.width).toBeGreaterThan(0);
   expect(contentBox.height).toBeGreaterThan(0);
+  expect(
+    boxesOverlap(navigationBox, contentBox),
+    "Side navigation must not overlap the content viewport",
+  ).toBe(false);
   expect(
     await contentViewport.evaluate((element) => element.textContent?.trim()),
   ).not.toBe("");
@@ -169,7 +183,7 @@ test("keeps hash, selected link, and aria-current aligned for every route", asyn
     const lenses = page.getByTestId("liquid-glass-lens");
     await expect(lenses).toHaveCount(1);
     await expect(link.getByTestId("liquid-glass-lens")).toHaveCount(1);
-    await expect(link).toHaveClass(/fy-primary-nav-item-selected/);
+    await expect(link).toHaveClass(/fy-side-navigation-item-selected/);
     await expect(page.getByTestId("content-viewport")).not.toHaveText("");
 
     const selectedLens = navigation.getByTestId("selection-lens");
@@ -216,7 +230,7 @@ test("reaches every primary control with the keyboard in document order", async 
 
   expect(
     await page
-      .getByTestId("top-bar")
+      .getByTestId("app-shell")
       .evaluate(
         (element) =>
           Array.from(
@@ -225,7 +239,7 @@ test("reaches every primary control with the keyboard in document order", async 
             ),
           ).filter((control) => control.tabIndex >= 0).length,
       ),
-    "Renderer TopBar must contain exactly nine keyboard stops",
+    "Renderer shell must contain the complete grouped keyboard path",
   ).toBe(primaryControlTestIds.length);
 
   const focusedControlIds: string[] = [];
@@ -243,6 +257,53 @@ test("reaches every primary control with the keyboard in document order", async 
   }
 
   expect(focusedControlIds).toEqual([...primaryControlTestIds]);
+
+  await expectHealthyPage(page, health);
+});
+
+test("supports expand, collapse, focus movement, and reduced motion", async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const health = monitorPageHealth(page);
+  await openV2Page(page, "/agents");
+
+  const navigation = page.getByRole("navigation", { name: "主导航" });
+  const configurationToggle = navigation.getByRole("button", {
+    name: "配置管理",
+  });
+  const configurationItems = page.getByTestId("configuration-management-items");
+  const caret = page.getByTestId("configuration-management-caret");
+
+  await expect(configurationToggle).toHaveAttribute("aria-expanded", "true");
+  await expect(configurationItems).toBeVisible();
+  expect(
+    await caret.evaluate(
+      (element) => getComputedStyle(element).transitionDuration,
+    ),
+  ).toBe("0s");
+
+  await configurationToggle.focus();
+  await page.keyboard.press("Enter");
+  await expect(configurationToggle).toHaveAttribute("aria-expanded", "false");
+  await expect(configurationItems).toBeHidden();
+
+  await page.keyboard.press("ArrowRight");
+  await expect(configurationToggle).toHaveAttribute("aria-expanded", "true");
+  await page.keyboard.press("ArrowRight");
+  const modelsLink = routeLink(navigation, "模型");
+  await expect(modelsLink).toBeFocused();
+  expect(
+    await modelsLink.evaluate(
+      (element) => getComputedStyle(element).outlineStyle,
+    ),
+  ).not.toBe("none");
+
+  await page.keyboard.press("ArrowDown");
+  await expect(routeLink(navigation, "Skills")).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(configurationToggle).toBeFocused();
+  await expect(configurationToggle).toHaveAttribute("aria-expanded", "false");
 
   await expectHealthyPage(page, health);
 });

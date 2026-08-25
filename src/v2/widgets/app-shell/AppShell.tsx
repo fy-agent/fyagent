@@ -8,6 +8,7 @@ import {
 import { PrimaryBlockerProvider } from "../../shared/ui/PrimaryBlocker";
 import { TooltipProvider } from "../../shared/ui/primitives";
 import { ContentViewport } from "./ContentViewport";
+import { SideNavigation } from "./SideNavigation";
 import { TopBar } from "./TopBar";
 
 export function AppShell() {
@@ -30,7 +31,10 @@ export function AppShell() {
       >
         <TopBar />
         <PrimaryBlockerProvider>
-          <ContentViewport />
+          <div className="fy-shell-body">
+            <SideNavigation />
+            <ContentViewport />
+          </div>
         </PrimaryBlockerProvider>
       </div>
     </TooltipProvider>

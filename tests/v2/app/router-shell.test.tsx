@@ -68,10 +68,12 @@ function expectSystemOwnedChrome(): void {
   expect(
     Array.from(
       topBar.querySelectorAll(
-        '[data-testid="brand"], [data-testid="primary-navigation"], [data-testid="tool-cluster"]',
+        '[data-testid="brand"], [data-testid="tool-cluster"]',
       ),
     ).map((element) => element.getAttribute("data-testid")),
-  ).toEqual(["brand", "primary-navigation", "tool-cluster"]);
+  ).toEqual(["brand", "tool-cluster"]);
+  expect(topBar.querySelector('[data-testid="side-navigation"]')).toBeNull();
+  expect(screen.getByTestId("side-navigation")).toBeVisible();
   expect(document.querySelector("[data-tauri-drag-region]")).toBeNull();
   expect(screen.queryByTestId("titlebar-drag-region")).not.toBeInTheDocument();
   expect(screen.queryByTestId("window-controls")).not.toBeInTheDocument();
@@ -187,7 +189,7 @@ describe("FyAgent V2 routing", () => {
 });
 
 describe("FyAgent V2 shell accessibility", () => {
-  it("exposes the frozen labels and landmarks in the primary tab order", async () => {
+  it("exposes the grouped labels and landmarks in document tab order", async () => {
     const user = userEvent.setup();
     renderRoute("/models");
 
@@ -197,6 +199,9 @@ describe("FyAgent V2 shell accessibility", () => {
     const toolButtons = toolNames.map((name) =>
       screen.getByRole("button", { name }),
     );
+    const configurationToggle = within(navigation).getByRole("button", {
+      name: "配置管理",
+    });
 
     expect(brand).toHaveAccessibleName("FyAgent");
     expect(screen.getByRole("main", { name: "内容" })).toBeVisible();
@@ -205,11 +210,57 @@ describe("FyAgent V2 shell accessibility", () => {
     );
     expectSystemOwnedChrome();
 
-    const expectedTabOrder = [...routeLinks, ...toolButtons];
+    const expectedTabOrder = [
+      ...toolButtons,
+      routeLinks[0],
+      configurationToggle,
+      ...routeLinks.slice(1),
+    ];
     for (const control of expectedTabOrder) {
       await user.tab();
       expect(control).toHaveFocus();
     }
+  });
+
+  it("supports configuration expansion and vertical keyboard focus", async () => {
+    const user = userEvent.setup();
+    renderRoute("/agents");
+
+    const navigation = screen.getByRole("navigation", { name: "主导航" });
+    const configurationToggle = within(navigation).getByRole("button", {
+      name: "配置管理",
+    });
+    const configurationItems = screen.getByTestId(
+      "configuration-management-items",
+    );
+
+    expect(
+      within(navigation).getByText("AI软件配置", { exact: true }),
+    ).toBeVisible();
+    expect(
+      within(navigation).getByText("记忆模块", { exact: true }),
+    ).toBeVisible();
+    expect(configurationToggle).toHaveAttribute("aria-expanded", "true");
+    expect(configurationItems).toBeVisible();
+
+    await user.click(configurationToggle);
+    expect(configurationToggle).toHaveAttribute("aria-expanded", "false");
+    expect(configurationItems).not.toBeVisible();
+
+    configurationToggle.focus();
+    await user.keyboard("{ArrowRight}");
+    expect(configurationToggle).toHaveAttribute("aria-expanded", "true");
+    await user.keyboard("{ArrowRight}");
+    expect(
+      within(navigation).getByRole("link", { name: "模型" }),
+    ).toHaveFocus();
+    await user.keyboard("{ArrowDown}");
+    expect(
+      within(navigation).getByRole("link", { name: "Skills" }),
+    ).toHaveFocus();
+    await user.keyboard("{Escape}");
+    expect(configurationToggle).toHaveFocus();
+    expect(configurationToggle).toHaveAttribute("aria-expanded", "false");
   });
 
   it("keeps inert shell tools safely clickable", () => {

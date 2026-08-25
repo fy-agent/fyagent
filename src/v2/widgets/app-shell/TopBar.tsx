@@ -1,7 +1,6 @@
 import { classNames } from "../../shared/design-system/classNames";
 import { shouldShowMacOverlayDragStrip } from "../../shared/platform";
 import { Brand } from "./Brand";
-import { PrimaryNav } from "./PrimaryNav";
 import { ToolCluster } from "./ToolCluster";
 
 export function TopBar() {
@@ -28,8 +27,6 @@ export function TopBar() {
         <div className="fy-top-bar-leading">
           <Brand />
         </div>
-
-        <PrimaryNav />
 
         <div className="fy-top-bar-trailing">
           <ToolCluster />
