@@ -168,7 +168,7 @@ describe("GitHub workflow trigger policy", () => {
         "",
         "on:",
         "  schedule:",
-        '    - cron: "17 3 * * *"',
+        '    - cron: "17 */3 * * *"',
         "  workflow_dispatch:",
       ].join("\n"),
     );

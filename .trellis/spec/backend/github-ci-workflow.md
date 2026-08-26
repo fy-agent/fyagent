@@ -148,6 +148,8 @@ Classification invariants:
   duplicate flags, and option injection fail closed.
 
 `star-history.yml` is repository automation rather than Required CI authority.
+Its scheduled refresh runs every three hours at minute 17, avoiding the
+top-of-hour scheduling peak while keeping the README chart reasonably fresh.
 GitHub's built-in `GITHUB_TOKEN` is not an owner/collaborator credential for the
 restricted stargazer timeline endpoint, so exact chart generation uses the
 repository secret `STAR_HISTORY_TOKEN`. Keep that credential out of the
