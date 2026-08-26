@@ -112,19 +112,19 @@ Active 导航：{active_nav}
 
 | 参与者 | 责任 | 主要产物 | 禁止越界 |
 |---|---|---|---|
-| Grok | 后端、组件与研究；挑战不必要的抽象和低价值测试 | 代码/研究、复杂度审查、验证输出 | 不修改视觉基线，不宣称最终验收 |
-| Gemini | 视觉与交互实现/审查，维护跨页一致性、文案和状态覆盖 | 责任文件、问题清单、运行证据 | 不覆盖他人责任文件，不把图片当运行态 |
-| Codex | 最终负责人：拆分、整合、冲突处理、测试、运行态证据和交付口径 | 最终分支、测试记录、截图、结论 | 不用单一 Agent 的完成声明替代验证 |
+| Gemini | 前端页面、局部 shared variant、状态投影与相关测试的实施 owner；承担全部 UI 返工 | 责任文件、实现 diff、测试结果 | 保持真实端口和责任文件边界；图片承担设计输入 |
+| Grok | 强制评审门槛；检查后端、组件边界、数据语义、复杂度、原型外内容和回归 | Gate A / Final verdict、精确修复合同 | 未通过项必须退回；最终验收归 Codex 与人类 |
+| Codex | 总调度、冲突处理、验证、桌面操作、截图、透明资产和交付口径 | 任务分支、测试记录、截图、结论 | 不编写页面 JSX/CSS；以命令、运行态和 Grok 门槛形成最终判断 |
 
-所有新 Codex 任务固定使用 `gpt-5.6-sol / max`。Gemini 使用已真实 probe 的 `antigravity/gemini-3.7-flash-high`。用户请求的 `grok-4.7/max` 当前不可用，执行侧透明使用最新可用 `vibekey/grok-4.6/high`，并持续保留未满足缺口；不得静默替换或伪称 4.7 已执行。
+Codex 调度与核验使用 `gpt-5.6-sol / max`。前端实施使用已真实 probe 的 `antigravity/gemini-3.7-flash-high`。评审首选 Cursor / Grok 4.6；Cursor CLI 当前需要认证，使用用户指定的 Grok Build / `grok-4.6` 候补并记录实际路由。
 
 ### 5.3 给实现 Agent 的任务提示词
 
 ```text
-任务：实现 FyAgent 前端交互重构 v3 的指定页面。
+你是 Antigravity / Gemini 3.7，负责实现 FyAgent 前端交互重构 v3 的指定页面。
 
 事实优先级：产品讨论 > 已确认决策 > 高保真图中的交互位置 > 当前代码细节。
-高保真图是设计候选，不是可直接复制的运行态证明。
+高保真图承担设计输入；运行状态由 fresh evidence 判定。
 
 你的责任范围：{owned_files_or_surfaces}
 输入页面：{screen_ids}
@@ -142,7 +142,7 @@ Active 导航：{active_nav}
 ### 5.4 给审查 Agent 的任务提示词
 
 ```text
-独立审查 FyAgent v3 指定页面，不修改代码。
+你是 Cursor / Grok 4.6 强制门槛，独立审查 FyAgent v3 指定页面，不修改代码。
 
 比较对象：高保真候选、产品讨论、线框、当前实现与运行态截图。
 按 Blocking / Major / Minor 输出；每条必须包含页面、位置、预期、实际和证据。
@@ -152,7 +152,7 @@ Active 导航：{active_nav}
 ### 5.5 给最终整合 Agent 的任务提示词
 
 ```text
-你是最终负责人。合并 Grok 的实现与 Gemini 的审查结论，保留来源和责任边界。
+你是 Codex 总调度与最终核验 owner。汇总 Gemini 的前端实现与 Grok 的门槛结论，保留来源和责任边界；页面返工继续退回 Gemini。
 
 顺序：
 1. 验证各自交付文件与命令结果；

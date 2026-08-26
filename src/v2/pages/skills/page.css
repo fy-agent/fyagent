@@ -6,26 +6,12 @@
 }
 
 .fy-skills-page-title {
-  position: relative;
   grid-column: 1 / -1;
-  width: max-content;
   margin: 0;
-  padding-bottom: 10px;
   color: var(--fy-text);
-  font-size: 22px;
-  line-height: 1.2;
-  letter-spacing: -0.02em;
-}
-
-.fy-skills-page-title::after {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  width: 46px;
-  height: 2px;
-  border-radius: 999px;
-  background: var(--fy-accent);
-  content: "";
+  font-size: 20px;
+  line-height: 1.25;
+  letter-spacing: -0.015em;
 }
 
 .fy-skills-page > .fy-feature-header > .fy-feature-tabs {

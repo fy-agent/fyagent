@@ -336,7 +336,7 @@ function deferred<T>() {
 }
 
 describe("V3 Agent directory and configuration shell", () => {
-  it("aggregates seven readiness queries with progress, unknown, and no fake cancel", async () => {
+  it("aggregates seven readiness queries with progress and filters completed list to installed only", async () => {
     const user = userEvent.setup();
     const ports = configuredPorts();
     const reads = {} as Record<
@@ -358,33 +358,20 @@ describe("V3 Agent directory and configuration shell", () => {
       "data-view",
       "directory",
     );
-    expect(
-      screen
-        .getAllByRole("article")
-        .map(
-          (article) =>
-            within(article).getByRole("heading", { level: 2 }).textContent,
-        ),
-    ).toEqual([
-      "QoderWork CN",
-      "TRAE Work CN",
-      "WorkBuddy",
-      "Grok Build",
-      "Codex",
-      "Claude Code",
-      "OpenCode",
-    ]);
+    // In idle state, list is empty before scan
+    expect(screen.queryByRole("article")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "开始扫描" }));
     expect(screen.getByRole("button", { name: "扫描中…" })).toBeDisabled();
-    expect(screen.getByText(/已完成 0 \/ 7/)).toBeVisible();
+    expect(screen.getByText("正在扫描本机 AI 软件")).toBeVisible();
+    expect(screen.getByText("已发现 0 个")).toBeVisible();
     expect(
       screen.queryByRole("button", { name: /取消扫描/ }),
     ).not.toBeInTheDocument();
 
     reads.qoderwork.resolve(readiness("qoderwork", "installed"));
     await waitFor(() =>
-      expect(screen.getByText(/已完成 1 \/ 7/)).toBeVisible(),
+      expect(screen.getByText("已发现 1 个")).toBeVisible(),
     );
     reads["trae-work"].resolve(readiness("trae-work", "unknown"));
     for (const agentId of AGENT_CATALOG_IDS.slice(2)) {
@@ -394,9 +381,20 @@ describe("V3 Agent directory and configuration shell", () => {
     expect(
       await screen.findByRole("button", { name: "重新扫描" }),
     ).toBeEnabled();
-    expect(screen.getByText("未确认")).toBeVisible();
-    expect(screen.getByText(/“未确认”不等于“未安装”/)).toBeVisible();
-    expect(screen.getAllByText(/上次扫描：/)).toHaveLength(7);
+
+    // Only installed agents enter the completed list
+    const articles = screen.getAllByRole("article");
+    expect(articles).toHaveLength(1);
+    expect(
+      within(articles[0]).getByRole("heading", { level: 2 }).textContent,
+    ).toBe("QoderWork CN");
+
+    // Negative assertions for prototype-violating elements
+    expect(screen.queryByText("未确认")).not.toBeInTheDocument();
+    expect(screen.queryByText("未安装")).not.toBeInTheDocument();
+    expect(screen.queryByText(/“未确认”不等于“未安装”/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/上次扫描：/)).not.toBeInTheDocument();
+    expect(screen.queryByText("查看完整介绍")).not.toBeInTheDocument();
     expect(ports.agentInstallReadiness.get).toHaveBeenCalledTimes(7);
   });
 
@@ -409,8 +407,9 @@ describe("V3 Agent directory and configuration shell", () => {
     renderPage(ports);
 
     await user.click(await screen.findByRole("button", { name: "开始扫描" }));
-    expect(await screen.findByText(/本次未发现已安装的 AI 软件/)).toBeVisible();
-    expect(screen.getAllByText("未安装")).toHaveLength(7);
+    expect(await screen.findByText("未发现已安装的 AI 软件")).toBeVisible();
+    expect(screen.queryByRole("article")).not.toBeInTheDocument();
+    expect(screen.queryByText("未安装")).not.toBeInTheDocument();
 
     vi.mocked(ports.agentInstallReadiness.get).mockRejectedValue(
       new Error("readiness offline"),
@@ -418,8 +417,7 @@ describe("V3 Agent directory and configuration shell", () => {
     await user.click(screen.getByRole("button", { name: "重新扫描" }));
     expect(
       await screen.findByText(/本次扫描未能读取任何软件状态/),
-    ).toHaveTextContent("正在保留上次成功结果");
-    expect(screen.getAllByText(/本次读取失败 · 未安装/)).toHaveLength(7);
+    ).toHaveTextContent("已保留上次成功结果");
     expect(screen.getByRole("button", { name: "重新扫描" })).toBeEnabled();
   });
 
@@ -442,7 +440,7 @@ describe("V3 Agent directory and configuration shell", () => {
       "/agents?target=trae-work&section=mcp",
     );
     await user.click(
-      within(configuration).getByRole("button", { name: "返回软件目录" }),
+      within(configuration).getByRole("button", { name: "返回" }),
     );
     expect(screen.getByTestId("location")).toHaveTextContent(/^\/agents$/);
     expect(screen.getByRole("region", { name: "AI 软件目录" })).toBeVisible();
@@ -460,9 +458,10 @@ describe("V3 Agent directory and configuration shell", () => {
     const ports = configuredPorts();
     renderPage(ports, "/agents?target=workbuddy&section=skills");
 
-    const skillSwitch = await screen.findByRole("switch", {
+    const skillSwitches = await screen.findAllByRole("switch", {
       name: "WorkBuddy Skill 分配",
     });
+    const skillSwitch = skillSwitches[0];
     expect(skillSwitch).not.toBeChecked();
     await user.click(skillSwitch);
     await waitFor(() => expect(skillSwitch).toBeChecked());
@@ -476,9 +475,10 @@ describe("V3 Agent directory and configuration shell", () => {
     ).toBeVisible();
 
     await user.click(screen.getByRole("tab", { name: "MCP" }));
-    const mcpSwitch = await screen.findByRole("switch", {
+    const mcpSwitches = await screen.findAllByRole("switch", {
       name: "WorkBuddy MCP 分配",
     });
+    const mcpSwitch = mcpSwitches[0];
     expect(mcpSwitch).not.toBeChecked();
     await user.click(mcpSwitch);
     await waitFor(() => expect(mcpSwitch).toBeChecked());
@@ -513,9 +513,10 @@ describe("V3 Agent directory and configuration shell", () => {
     ports.mcp.toggleApp = vi.fn(async () => undefined);
     renderPage(ports, "/agents?target=workbuddy&section=skills");
 
-    const skillSwitch = await screen.findByRole("switch", {
+    const skillSwitches = await screen.findAllByRole("switch", {
       name: "WorkBuddy Skill 分配",
     });
+    const skillSwitch = skillSwitches[0];
     await user.click(skillSwitch);
     expect(
       await screen.findByText(/Skill 分配未能完成或回读不一致/),
@@ -523,9 +524,10 @@ describe("V3 Agent directory and configuration shell", () => {
     expect(skillSwitch).not.toBeChecked();
 
     await user.click(screen.getByRole("tab", { name: "MCP" }));
-    const mcpSwitch = await screen.findByRole("switch", {
+    const mcpSwitches = await screen.findAllByRole("switch", {
       name: "WorkBuddy MCP 分配",
     });
+    const mcpSwitch = mcpSwitches[0];
     await user.click(mcpSwitch);
     expect(
       await screen.findByText(/MCP 分配未能完成或回读不一致/),
@@ -543,13 +545,13 @@ describe("V3 Agent directory and configuration shell", () => {
     ).toBeVisible();
     expect(screen.queryByRole("switch")).not.toBeInTheDocument();
     await user.click(screen.getByRole("tab", { name: "提示词" }));
-    expect(await screen.findByText(/当前没有 promptAppId/)).toBeVisible();
+    expect(await screen.findByText(/当前未接入提示词管理/)).toBeVisible();
     expect(ports.prompts.getAll).not.toHaveBeenCalled();
 
     qoder.unmount();
     const trae = renderPage(ports, "/agents?target=trae-work&section=models");
-    expect(await screen.findByText(/需要在供应商界面完成/)).toBeVisible();
-    expect(await screen.findAllByText("trae-observed-model")).toHaveLength(2);
+    expect(await screen.findByText(/TRAE Work CN 已观测模型/)).toBeVisible();
+    expect(await screen.findAllByText("trae-observed-model")).toHaveLength(1);
     expect(screen.queryByRole("switch")).not.toBeInTheDocument();
 
     trae.unmount();

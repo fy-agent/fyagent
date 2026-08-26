@@ -431,7 +431,6 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
     >
       <ModelsPanelHeader
         title="OpenCode"
-        summary="查看并管理 OpenCode 的模型设置。添加或修改后请保存并应用。"
         pending={draftCommit.pending}
       >
         <Button

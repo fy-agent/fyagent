@@ -8,7 +8,7 @@
 {"file":".trellis/spec/frontend/modular-boundaries.md","reason":"Check V2-only imports and platform adapter isolation."}
 {"file":".trellis/spec/backend/development-environment.md","reason":"Verify bootstrap and fresh local environment checks."}
 {"file":".trellis/spec/backend/main-window-layout.md","reason":"Verify desktop window, 900px viewport and shell behavior."}
-{"file":".trellis/spec/backend/windows-installer.md","reason":"Keep Windows native validation separate from local build evidence."}
+{"file":".trellis/spec/backend/windows-installer.md","reason":"Historical context only; this task is superseded and all remaining Windows work is stopped."}
 {"file":".trellis/tasks/08-26-frontend-interaction-v3-e2e/research/current-v2-gap.md","reason":"Check the implementation against the audited gap and no-fake-capability constraint."}
 {"file":".trellis/tasks/08-26-frontend-interaction-v3-e2e/research/feishu-delivery.md","reason":"Verify milestone messages, image attachments, message IDs and fresh readback evidence."}
-{"file":".trellis/tasks/08-26-frontend-interaction-v3-e2e/research/feishu-m1-integration-uat.md","reason":"Verify the M1 candidate, full gates, package identity, macOS read-only UAT, Feishu readback, and Windows pending boundary."}
+{"file":".trellis/tasks/08-26-frontend-interaction-v3-e2e/research/feishu-m1-integration-uat.md","reason":"Historical evidence only; the former M1 candidate is stale and has no active closure path."}

@@ -2,13 +2,13 @@
 
 > 日期：2026-08-25
 >
-> 状态：`APPROVED_FOR_IMPLEMENTATION_2026-08-26`
+> 状态：`DESIGN_APPROVED__IMPLEMENTATION_PLANNING_GATE_PENDING_2026-08-26`
 >
-> 本材料是设计评审依据，不是实现完成或上线证明。
+> 状态范围：本材料提供设计评审依据；实现与上线状态由当前 Trellis 任务卡判定。
 
 ## 1. 为什么做这轮改动
 
-FyAgent 当前版本已经形成稳定的蓝色 liquid-glass 主题，本轮并不重新定义品牌色或视觉风格。产品经理通过线框原型重排了按钮、入口和页面层级，目标是让用户更快分清两类动作：
+FyAgent 当前版本已经形成稳定的蓝色 liquid-glass 主题，本轮沿用现有品牌色与视觉风格。产品经理通过线框原型重排了按钮、入口和页面层级，目标是让用户更快分清两类动作：
 
 1. 在某个 Agent 内选择它要使用的模型、Skills、MCP 和提示词。
 2. 在全局管理页维护这些资源，并决定它们分配给哪些 Agent。
@@ -117,15 +117,16 @@ FyAgent 当前版本已经形成稳定的蓝色 liquid-glass 主题，本轮并�
 
 1. 冻结 11 张图和交互决策，形成开发基线。
 2. 盘点现有前端路由、导航壳层、页面状态和可复用组件。
-3. 将工作拆给 Grok、Gemini、Codex，并由 Codex 负责最终整合与证据口径。
+3. Gemini 负责前端实现，Grok 负责强制门槛，Codex 负责调度、运行核验与证据口径。
 4. 先实现稳定壳层与返回路径，再实现各资源页和状态覆盖。
 5. 依次完成代码检查、构建、运行态截图和关键状态交互测试。
-6. 若要求严格 1:1，再补像素对比；没有运行态证据前不宣称页面验收通过。
+6. 严格 1:1 需要单独加入像素对比；页面验收结论以运行态证据为准。
 
 ## 6. 当前交付边界
 
 - `design_approved`：11 张高保真图与本评审包，已获人类批准。
-- `code_audit`：已完成规划级差距盘点；尚未产生实现通过结论。
-- `runtime_screenshot`：尚未开始。
-- `pixel_diff`：尚未开始。
+- `implementation_task`：`.trellis/tasks/08-26-frontend-interaction-v3-1`。
+- `code_audit`：V3.1 逐页差异盘点进行中。
+- `runtime_screenshot`：等待 V3.1 表面冻结与 Grok 4.6 门槛。
+- `pixel_diff`：未设数值阈值。
 - `merge / release / production`：均未发生。

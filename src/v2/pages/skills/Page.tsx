@@ -204,10 +204,10 @@ function Detail({
       ? "GitHub 仓库"
       : "本地导入";
   const sourceLead = market
-    ? "此 Skill 从 Skill 市场安装，安装后保存在本地目录。"
+    ? "从 Skill 市场安装，保存在本地目录。"
     : repo
-      ? "此 Skill 来自 GitHub 仓库，安装后保存在本地目录，并可按仓库检查更新。"
-      : "此 Skill 来自本地导入或 ZIP 安装，当前没有绑定远程仓库。";
+      ? "来自 GitHub 仓库，保存在本地目录。"
+      : "来自本地导入或 ZIP 安装。";
   const description = skill.description?.trim() || "暂无说明";
 
   return (
@@ -285,8 +285,8 @@ function Detail({
           <h3>当前分配</h3>
           <p className="fy-feature-info-lead">
             {assigned.length > 0
-              ? `已启用 ${assigned.length} 个应用。需要增减时，使用应用分配开关。`
-              : "尚未分配到任何应用。启用后，对应软件才能加载此 Skill。"}
+              ? `已启用 ${assigned.length} 个应用。`
+              : "尚未分配到任何应用。"}
           </p>
           {assigned.length > 0 && (
             <ul className="fy-feature-app-chips">

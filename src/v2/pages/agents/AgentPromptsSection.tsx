@@ -82,6 +82,11 @@ function SupportedPromptProjection({
         ariaLabel="搜索 Agent 提示词"
         disabled={query.isPending}
       />
+      {feedback ? (
+        <InlineNotice tone={feedback.tone}>
+          {feedback.text}
+        </InlineNotice>
+      ) : null}
       {query.isError && query.data !== undefined ? (
         <InlineNotice tone="warning">
           暂时无法刷新提示词，正在显示已加载结果。
@@ -128,7 +133,9 @@ function SupportedPromptProjection({
             <div className="fy-feature-panel fy-agent-resource-detail">
               <div className="fy-agent-prompt-detail-heading">
                 <div>
-                  <h3>{selected.name}</h3>
+                  <div className="fy-feature-detail-title">
+                    <h3>{selected.name}</h3>
+                  </div>
                   <p>{selected.description ?? "此提示词暂无补充说明。"}</p>
                 </div>
                 <Button
@@ -142,11 +149,6 @@ function SupportedPromptProjection({
                 </Button>
               </div>
               <pre className="fy-agent-prompt-preview">{selected.content}</pre>
-              {feedback?.promptId === selected.id ? (
-                <InlineNotice tone={feedback.tone}>
-                  {feedback.text}
-                </InlineNotice>
-              ) : null}
             </div>
           ) : null}
         </div>
@@ -166,7 +168,6 @@ export function AgentPromptsSection({
     <section className="fy-agent-config-section" aria-label="Agent 提示词配置">
       <AgentSectionHeader
         title="当前提示词"
-        description="提示词支持范围直接来自现有 PromptAppId；启用后必须重新读取权威结果。"
         actionLabel="进入提示词管理"
         onAction={onOpenManagement}
       />
@@ -176,10 +177,9 @@ export function AgentPromptsSection({
           displayName={entry.displayName}
         />
       ) : (
-        <InlineNotice tone="warning">
-          {entry.displayName} 当前没有 promptAppId，尚未接入提示词
-          owner；本页不会创建本地提示词状态或显示保存成功。
-        </InlineNotice>
+        <EmptyState
+          title="当前未接入提示词管理"
+        />
       )}
     </section>
   );

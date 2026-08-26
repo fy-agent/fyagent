@@ -4,16 +4,13 @@ import type { ProductDirectoryEntry } from "../../shared/features/directory";
 import {
   buildMcpSearchText,
   buildSkillSearchText,
-  convergeSelection,
 } from "../../shared/features/helpers";
 import {
   useInstalledSkills,
   useMcpServers,
 } from "../../shared/features/queries";
 import { useFeatures } from "../../shared/features/provider";
-import type { McpServer, SkillTargetId } from "../../shared/features/types";
-import { AssignmentPanel } from "../../shared/ui/AssignmentPanel";
-import { FeatureList, FeatureListItem } from "../../shared/ui/FeatureList";
+import type { McpServer } from "../../shared/features/types";
 import { FeatureSearch } from "../../shared/ui/FeatureSearch";
 import { WorkBuddyTrustDialog } from "../../shared/ui/WorkBuddyTrustDialog";
 import {
@@ -21,6 +18,7 @@ import {
   EmptyState,
   InlineNotice,
   Spinner,
+  Switch,
 } from "../../shared/ui/primitives";
 
 import { AgentSectionHeader } from "./AgentSectionHeader";
@@ -30,12 +28,6 @@ type Feedback = {
   tone: "info" | "warning";
   text: string;
 };
-
-function targetFor(entry: ProductDirectoryEntry) {
-  return [
-    { id: entry.assignmentId, label: entry.displayName },
-  ] satisfies ReadonlyArray<{ id: SkillTargetId; label: string }>;
-}
 
 export function AgentSkillsSection({
   entry,
@@ -47,7 +39,6 @@ export function AgentSkillsSection({
   const { ports } = useFeatures();
   const query = useInstalledSkills();
   const [search, setSearch] = useState("");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const skills = query.data ?? [];
@@ -55,9 +46,6 @@ export function AgentSkillsSection({
   const filtered = skills.filter((skill) =>
     buildSkillSearchText(skill).toLocaleLowerCase().includes(normalizedSearch),
   );
-  const convergedId = convergeSelection(filtered, selectedId);
-  const selected = filtered.find((skill) => skill.id === convergedId) ?? null;
-  const targets = targetFor(entry);
 
   const toggle = async (skillId: string, enabled: boolean) => {
     if (pendingId) return;
@@ -103,7 +91,6 @@ export function AgentSkillsSection({
     <section className="fy-agent-config-section" aria-label="Agent Skills 配置">
       <AgentSectionHeader
         title="当前 Skills"
-        description="读取已安装 Skills，并通过既有 per-Agent assignment owner 启停。"
         actionLabel="进入 Skills 管理"
         onAction={onOpenManagement}
       />
@@ -114,6 +101,11 @@ export function AgentSkillsSection({
         ariaLabel="搜索 Agent Skills"
         disabled={query.isPending}
       />
+      {feedback ? (
+        <InlineNotice tone={feedback.tone}>
+          {feedback.text}
+        </InlineNotice>
+      ) : null}
       {query.isError && query.data !== undefined ? (
         <InlineNotice tone="warning">
           暂时无法刷新 Skills，正在显示已加载结果。
@@ -139,46 +131,38 @@ export function AgentSkillsSection({
       ) : filtered.length === 0 ? (
         <EmptyState title="没有匹配的 Skill" description="请调整搜索关键词。" />
       ) : (
-        <div className="fy-agent-resource-workspace">
-          <div className="fy-feature-panel fy-agent-resource-list-panel">
-            <FeatureList id="agent-skills-list" aria-label="Skills 列表">
-              {filtered.map((skill) => (
-                <FeatureListItem
-                  key={skill.id}
-                  selected={skill.id === selected?.id}
-                  onSelect={() => setSelectedId(skill.id)}
-                  title={skill.name}
-                >
-                  <span>
-                    {skill.apps[entry.assignmentId] ? "已分配" : "未分配"} ·{" "}
-                    {skill.repoOwner && skill.repoName
-                      ? `${skill.repoOwner}/${skill.repoName}`
-                      : skill.directory}
-                  </span>
-                </FeatureListItem>
-              ))}
-            </FeatureList>
-          </div>
-          {selected ? (
-            <div className="fy-feature-panel fy-agent-resource-detail">
-              <div>
-                <h3>{selected.name}</h3>
-                <p>{selected.description ?? "此 Skill 暂无补充说明。"}</p>
-              </div>
-              <AssignmentPanel
-                apps={selected.apps}
-                targets={targets}
-                labelSuffix="Skill 分配"
-                disabled={pendingId === selected.id}
-                onToggle={(_, enabled) => void toggle(selected.id, enabled)}
-              />
-              {feedback?.itemId === selected.id ? (
-                <InlineNotice tone={feedback.tone}>
-                  {feedback.text}
-                </InlineNotice>
-              ) : null}
-            </div>
-          ) : null}
+        <div className="fy-agent-resource-full-list">
+          {filtered.map((skill) => {
+            const isAssigned = Boolean(skill.apps[entry.assignmentId]);
+            const isPending = pendingId === skill.id;
+            const sourceText =
+              skill.repoOwner && skill.repoName
+                ? `${skill.repoOwner}/${skill.repoName}`
+                : skill.directory;
+            return (
+              <article key={skill.id} className="fy-agent-assignment-card">
+                <div className="fy-agent-assignment-card-copy">
+                  <div className="fy-agent-assignment-card-title">
+                    <h3>{skill.name}</h3>
+                    {sourceText ? (
+                      <span className="fy-agent-assignment-source-badge">
+                        {sourceText}
+                      </span>
+                    ) : null}
+                  </div>
+                  <p>{skill.description ?? "暂无说明"}</p>
+                </div>
+                <div className="fy-agent-assignment-card-action">
+                  <Switch
+                    checked={isAssigned}
+                    disabled={isPending}
+                    label={`${entry.displayName} Skill 分配`}
+                    onCheckedChange={(enabled) => void toggle(skill.id, enabled)}
+                  />
+                </div>
+              </article>
+            );
+          })}
         </div>
       )}
     </section>
@@ -200,7 +184,6 @@ export function AgentMcpSection({
   const { ports } = useFeatures();
   const query = useMcpServers();
   const [search, setSearch] = useState("");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [workbuddyTrustOpen, setWorkbuddyTrustOpen] = useState(false);
@@ -209,9 +192,6 @@ export function AgentMcpSection({
   const filtered = servers.filter((server) =>
     buildMcpSearchText(server).toLocaleLowerCase().includes(normalizedSearch),
   );
-  const convergedId = convergeSelection(filtered, selectedId);
-  const selected = filtered.find((server) => server.id === convergedId) ?? null;
-  const targets = targetFor(entry);
 
   const toggle = async (serverId: string, enabled: boolean) => {
     if (pendingId) return;
@@ -253,7 +233,6 @@ export function AgentMcpSection({
     <section className="fy-agent-config-section" aria-label="Agent MCP 配置">
       <AgentSectionHeader
         title="当前 MCP"
-        description="读取现有 MCP，并通过既有 per-Agent assignment owner 回写与回读。"
         actionLabel="进入 MCP 管理"
         onAction={onOpenManagement}
       />
@@ -264,6 +243,11 @@ export function AgentMcpSection({
         ariaLabel="搜索 Agent MCP"
         disabled={query.isPending}
       />
+      {feedback ? (
+        <InlineNotice tone={feedback.tone}>
+          {feedback.text}
+        </InlineNotice>
+      ) : null}
       {query.isError && query.data !== undefined ? (
         <InlineNotice tone="warning">
           暂时无法刷新 MCP，正在显示已加载结果。
@@ -289,49 +273,38 @@ export function AgentMcpSection({
       ) : filtered.length === 0 ? (
         <EmptyState title="没有匹配的 MCP" description="请调整搜索关键词。" />
       ) : (
-        <div className="fy-agent-resource-workspace">
-          <div className="fy-feature-panel fy-agent-resource-list-panel">
-            <FeatureList id="agent-mcp-list" aria-label="MCP 列表">
-              {filtered.map((server) => (
-                <FeatureListItem
-                  key={server.id}
-                  selected={server.id === selected?.id}
-                  onSelect={() => setSelectedId(server.id)}
-                  title={server.name}
-                >
-                  <span>
-                    {server.apps[entry.assignmentId] ? "已分配" : "未分配"} ·{" "}
-                    {mcpTransport(server)}
-                    {server.source ? ` · ${server.source}` : ""}
-                  </span>
-                </FeatureListItem>
-              ))}
-            </FeatureList>
-          </div>
-          {selected ? (
-            <div className="fy-feature-panel fy-agent-resource-detail">
-              <div>
-                <h3>{selected.name}</h3>
-                <p>{selected.description ?? "此 MCP 暂无补充说明。"}</p>
-                <span className="fy-agent-resource-meta">
-                  transport: {mcpTransport(selected)}
-                  {selected.source ? ` · source: ${selected.source}` : ""}
-                </span>
-              </div>
-              <AssignmentPanel
-                apps={selected.apps}
-                targets={targets}
-                labelSuffix="MCP 分配"
-                disabled={pendingId === selected.id}
-                onToggle={(_, enabled) => void toggle(selected.id, enabled)}
-              />
-              {feedback?.itemId === selected.id ? (
-                <InlineNotice tone={feedback.tone}>
-                  {feedback.text}
-                </InlineNotice>
-              ) : null}
-            </div>
-          ) : null}
+        <div className="fy-agent-resource-full-list">
+          {filtered.map((server) => {
+            const isAssigned = Boolean(server.apps[entry.assignmentId]);
+            const isPending = pendingId === server.id;
+            const transport = mcpTransport(server);
+            return (
+              <article key={server.id} className="fy-agent-assignment-card">
+                <div className="fy-agent-assignment-card-copy">
+                  <div className="fy-agent-assignment-card-title">
+                    <h3>{server.name}</h3>
+                    <span className="fy-agent-assignment-source-badge">
+                      {transport}
+                    </span>
+                    {server.source ? (
+                      <span className="fy-agent-assignment-source-badge">
+                        {server.source}
+                      </span>
+                    ) : null}
+                  </div>
+                  <p>{server.description ?? "暂无说明"}</p>
+                </div>
+                <div className="fy-agent-assignment-card-action">
+                  <Switch
+                    checked={isAssigned}
+                    disabled={isPending}
+                    label={`${entry.displayName} MCP 分配`}
+                    onCheckedChange={(enabled) => void toggle(server.id, enabled)}
+                  />
+                </div>
+              </article>
+            );
+          })}
         </div>
       )}
       <WorkBuddyTrustDialog

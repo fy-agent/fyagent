@@ -118,8 +118,8 @@ function ServerDetail({
           <h3>安装来源</h3>
           <p className="fy-feature-info-lead">
             {catalogItem
-              ? "此 MCP 来自内置精选目录。安装后写入统一配置，并可继续在编辑窗口调整。"
-              : "此 MCP 由手动添加或从现有 Agent 配置导入，没有绑定精选目录条目。"}
+              ? "来自内置精选目录。"
+              : "手动添加或从现有 Agent 配置导入。"}
           </p>
           <dl className="fy-feature-definition">
             <dt>来源类型</dt>
@@ -150,7 +150,7 @@ function ServerDetail({
               {homepage && (
                 <ExternalLinkButton url={homepage}>主页</ExternalLinkButton>
               )}
-              {docs && <ExternalLinkButton url={docs}>文档</ExternalLinkButton>}
+              {docs && <ExternalLinkButton url={docs}>说明</ExternalLinkButton>}
             </div>
           )}
         </section>
@@ -158,8 +158,8 @@ function ServerDetail({
           <h3>当前分配</h3>
           <p className="fy-feature-info-lead">
             {assigned.length > 0
-              ? `已启用 ${assigned.length} 个应用。需要增减时，使用应用分配开关。`
-              : "尚未分配到任何应用。启用后，对应软件才能加载此 MCP。"}
+              ? `已启用 ${assigned.length} 个应用。`
+              : "尚未分配到任何应用。"}
           </p>
           {assigned.length > 0 && (
             <ul className="fy-feature-app-chips">

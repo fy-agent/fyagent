@@ -1,9 +1,9 @@
 {
   "id": "frontend-interaction-v3-e2e",
   "name": "frontend-interaction-v3-e2e",
-  "title": "Frontend Interaction V3 End-to-End Implementation",
-  "description": "Implement the approved FyAgent v3 interaction redesign across all documented pages, integrate Grok/Gemini/Codex work, package and verify locally, then perform Windows validation without touching main.",
-  "status": "in_progress",
+  "title": "SUPERSEDED — Frontend Interaction V3 End-to-End Implementation",
+  "description": "SUPERSEDED_DO_NOT_EXECUTE. Historical V3 implementation and evidence task retained for traceability; all remaining closure, Windows and outbound work stopped on 2026-08-26.",
+  "status": "superseded",
   "dev_type": "feature",
   "scope": "frontend-v2-cross-layer",
   "package": "fyagent-desktop",
@@ -38,7 +38,7 @@
     "src/v2/pages/prompts/Page.tsx",
     "src/v2/pages/memory/Page.tsx"
   ],
-  "notes": "M1 integration candidate 0ad9a7e1 passed full repository checks, Playwright 132/132, debug packaging, macOS read-only UAT, exact final-package startup smoke, and Feishu document/group readback. The nonce-bound Windows UAT package was delivered to AIMaster by Taildrop, but no authenticated execution ingress or Windows-native return receipt exists; status is DELIVERED_NOT_EXECUTED and the task remains in progress. Branch-only work; push, merge, release, and production remain excluded.",
+  "notes": "SUPERSEDED_DO_NOT_EXECUTE as of 2026-08-26 by the user-directed V3.1 refactor. Stop old V3 evidence closure, Windows waiting, and external visual/report work. Commit 0ad9a7e1 and the former M1 package are historical inputs only and must not be treated as a completed or frozen candidate. Branch-only history is preserved; push, merge, release, and production remain excluded.",
   "meta": {
     "design_doc": "https://bcnntymbwnto.feishu.cn/docx/EbIdduAkloEUakxPbqYcYHsCnZg",
     "branch": "codex/frontend-interaction-v3-20260825",
@@ -50,7 +50,7 @@
     "grok_requested_route": "grok-4.7/max",
     "grok_requested_route_probe": "UNAVAILABLE_2026-08-26",
     "grok_active_route": "vibekey/grok-4.6/high",
-    "planning_status": "approved_implementation_started",
+    "planning_status": "SUPERSEDED_DO_NOT_EXECUTE",
     "approved_at": "2026-08-26T00:45:00+08:00",
     "feishu_design_revision": 37,
     "feishu_m0_message": "om_x100b67e81d1ef4a0de2bfa46bfb3bbe",
@@ -66,14 +66,19 @@
     ],
     "feishu_m5_windows_message": "om_x100b67eb4064f0a0c425b568f9ec461",
     "feishu_m5_windows_image_message": "om_x100b67eb5c3838a0def6bf88aaf7f2b",
-    "local_candidate_status": "PASS_0ad9a7e1_2026-08-26",
-    "windows_native_status": "DELIVERED_NOT_EXECUTED",
+    "local_candidate_status": "STALE_SUPERSEDED_0ad9a7e1_2026-08-26",
+    "windows_native_status": "STOPPED_SUPERSEDED_2026-08-26",
     "windows_validation_thread": "01a03a59-655c-7800-9f57-0d30943f42e8",
     "windows_handoff_delivered_at": "2026-08-26T03:29:46+08:00",
     "windows_handoff_target": "aimaster/100.76.239.119",
     "windows_handoff_bytes": 39384111,
     "windows_handoff_sha256": "97ff23223e71667388df645d40a4690edf327d9d84a58ff1bd71caf028277f3c",
     "windows_handoff_nonce": "ad33461d1416d71ec99bf95f61fce2f3",
-    "windows_return_receipt": null
+    "windows_return_receipt": null,
+    "execution_status": "SUPERSEDED_DO_NOT_EXECUTE",
+    "candidate_status": "STALE",
+    "windows_wait_status": "STOPPED_BY_USER_2026-08-26",
+    "external_visual_status": "STOPPED_BY_USER_2026-08-26",
+    "superseded_by": "08-26-frontend-interaction-v3-1"
   }
 }

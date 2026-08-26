@@ -478,64 +478,68 @@ function LongTermEditor({
       aria-label="长期记忆编辑器"
     >
       <header className="fy-memory-editor-head">
-        <div className="fy-feature-detail-title">
-          <h2>{resource.title}</h2>
-          <Badge tone={missing ? "warning" : "accent"}>
-            {missing ? "尚未创建" : "已读取"}
-          </Badge>
-          {dirty && <Badge tone="warning">未保存</Badge>}
+        <div className="fy-memory-editor-header-info">
+          <div className="fy-feature-detail-title">
+            <h2>{resource.title}</h2>
+            <Badge tone={missing ? "warning" : "accent"}>
+              {missing ? "尚未创建" : "已读取"}
+            </Badge>
+            {dirty && <Badge tone="warning">未保存</Badge>}
+          </div>
+          <div className="fy-memory-editor-meta-inline">
+            <code
+              className="fy-feature-path-value fy-memory-resource-path"
+              title={resource.path}
+            >
+              {resource.path}
+            </code>
+          </div>
         </div>
-        <div className="fy-memory-editor-tools">
-          {resource.hermesKind && onToggleHermes ? (
-            hermesLoading ? (
-              <Spinner label="正在读取 Hermes 状态" />
-            ) : (
-              <Switch
-                checked={hermesEnabled ?? false}
-                disabled={busy || Boolean(hermesError)}
-                label={`在 Hermes 中${
-                  hermesEnabled ? "停用" : "启用"
-                } ${resource.title}`}
-                onCheckedChange={onToggleHermes}
-              />
-            )
-          ) : null}
-          {resource.source === "OpenClaw" ? (
-            <Button disabled={directoryBusy} onClick={onOpenDirectory}>
-              打开 OpenClaw 工作区
+        <div className="fy-memory-editor-tools-wrapper">
+          <div className="fy-memory-editor-tools">
+            {resource.hermesKind && onToggleHermes ? (
+              hermesLoading ? (
+                <Spinner label="正在读取 Hermes 状态" />
+              ) : (
+                <Switch
+                  checked={hermesEnabled ?? false}
+                  disabled={busy || Boolean(hermesError)}
+                  label={`在 Hermes 中${
+                    hermesEnabled ? "停用" : "启用"
+                  } ${resource.title}`}
+                  onCheckedChange={onToggleHermes}
+                />
+              )
+            ) : null}
+            {resource.source === "OpenClaw" ? (
+              <Button disabled={directoryBusy} onClick={onOpenDirectory}>
+                打开 OpenClaw 工作区
+              </Button>
+            ) : null}
+            <CopyablePath label="记忆内容" value={draft} revealValue={false} />
+            <Button
+              className="fy-control-button-primary"
+              disabled={busy || (!dirty && !missing)}
+              onClick={() => {
+                void onSave(draft).then((content) => {
+                  if (content === undefined) return;
+                  const authoritative = content ?? "";
+                  setBaseline(authoritative);
+                  setDraft(authoritative);
+                  setExists(content !== null);
+                  onDirtyChange(false);
+                });
+              }}
+            >
+              {busy ? "保存中…" : "保存"}
             </Button>
-          ) : null}
-          <CopyablePath label="记忆内容" value={draft} revealValue={false} />
-          <Button
-            className="fy-control-button-primary"
-            disabled={busy || (!dirty && !missing)}
-            onClick={() => {
-              void onSave(draft).then((content) => {
-                if (content === undefined) return;
-                const authoritative = content ?? "";
-                setBaseline(authoritative);
-                setDraft(authoritative);
-                setExists(content !== null);
-                onDirtyChange(false);
-              });
-            }}
-          >
-            {busy ? "保存中…" : "保存"}
-          </Button>
+          </div>
+          <div className="fy-memory-char-count">
+            {characterCount}
+            {limit !== undefined ? ` / ${limit}` : ""} 字符
+          </div>
         </div>
       </header>
-      <div className="fy-memory-editor-meta">
-        <code
-          className="fy-feature-path-value fy-memory-resource-path"
-          title={resource.path}
-        >
-          {resource.path}
-        </code>
-        <p>
-          {characterCount}
-          {limit !== undefined ? ` / ${limit}` : ""} 字符
-        </p>
-      </div>
       {hermesError != null && resource.hermesKind && (
         <InlineNotice tone="error">
           无法读取 Hermes 限额和启停状态：
@@ -556,13 +560,13 @@ function LongTermEditor({
         <textarea
           className="fy-control-textarea fy-memory-editor-textarea"
           aria-label="记忆内容"
+          disabled={busy}
           value={draft}
           onChange={(event) => {
             const value = event.target.value;
             setDraft(value);
             onDirtyChange(value !== baseline);
           }}
-          disabled={busy}
           spellCheck={false}
         />
       </label>
@@ -916,45 +920,57 @@ function DailyEditor({
       aria-label="每日记忆编辑器"
     >
       <header className="fy-memory-editor-head">
-        <div className="fy-feature-detail-title">
-          <h2>{filename}</h2>
-          <Badge tone={missing ? "warning" : "accent"}>
-            {missing ? "尚未创建" : "已读取"}
-          </Badge>
-          {dirty && <Badge tone="warning">未保存</Badge>}
-        </div>
-        <div className="fy-memory-editor-tools">
-          <p>{characterCount} 字符</p>
-          <CopyablePath
-            label="每日记忆内容"
-            value={draft}
-            revealValue={false}
-          />
-          <Button
-            className="fy-control-button-primary"
-            disabled={busy || (!dirty && !missing)}
-            onClick={() => {
-              void onSave(draft).then((content) => {
-                if (content === undefined) return;
-                const authoritative = content ?? "";
-                setBaseline(authoritative);
-                setDraft(authoritative);
-                setExists(content !== null);
-                onDirtyChange(false);
-              });
-            }}
-          >
-            {busy ? "保存中…" : "保存"}
-          </Button>
-          {!missing && (
-            <Button
-              className="fy-control-button-danger"
-              disabled={busy}
-              onClick={onDelete}
+        <div className="fy-memory-editor-header-info">
+          <div className="fy-feature-detail-title">
+            <h2>{filename}</h2>
+            <Badge tone={missing ? "warning" : "accent"}>
+              {missing ? "尚未创建" : "已读取"}
+            </Badge>
+            {dirty && <Badge tone="warning">未保存</Badge>}
+          </div>
+          <div className="fy-memory-editor-meta-inline">
+            <code
+              className="fy-feature-path-value fy-memory-resource-path"
+              title={`daily/${filename}`}
             >
-              删除
+              daily/{filename}
+            </code>
+          </div>
+        </div>
+        <div className="fy-memory-editor-tools-wrapper">
+          <div className="fy-memory-editor-tools">
+            <CopyablePath
+              label="每日记忆内容"
+              value={draft}
+              revealValue={false}
+            />
+            <Button
+              className="fy-control-button-primary"
+              disabled={busy || (!dirty && !missing)}
+              onClick={() => {
+                void onSave(draft).then((content) => {
+                  if (content === undefined) return;
+                  const authoritative = content ?? "";
+                  setBaseline(authoritative);
+                  setDraft(authoritative);
+                  setExists(content !== null);
+                  onDirtyChange(false);
+                });
+              }}
+            >
+              {busy ? "保存中…" : "保存"}
             </Button>
-          )}
+            {!missing && (
+              <Button
+                className="fy-control-button-danger"
+                disabled={busy}
+                onClick={onDelete}
+              >
+                删除
+              </Button>
+            )}
+          </div>
+          <div className="fy-memory-char-count">{characterCount} 字符</div>
         </div>
       </header>
       {missing && (
@@ -965,13 +981,13 @@ function DailyEditor({
         <textarea
           className="fy-control-textarea fy-memory-editor-textarea"
           aria-label="每日记忆内容"
+          disabled={busy}
           value={draft}
           onChange={(event) => {
             const value = event.target.value;
             setDraft(value);
             onDirtyChange(value !== baseline);
           }}
-          disabled={busy}
           spellCheck={false}
         />
       </label>

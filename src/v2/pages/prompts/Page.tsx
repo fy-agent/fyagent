@@ -418,7 +418,6 @@ export function PromptsPage() {
   const nativeUnavailable =
     promptsQuery.data === undefined && isNativeOnlyError(promptsQuery.error);
   const readFailed = promptsQuery.error && promptsQuery.data === undefined;
-  const enabledCount = prompts.filter((prompt) => prompt.enabled).length;
 
   const workspaceBody = nativeUnavailable ? (
     <EmptyState
@@ -466,80 +465,85 @@ export function PromptsPage() {
       actions={<Button onClick={() => setSearch("")}>清空搜索</Button>}
     />
   ) : (
-    <SplitPanes
-      maxWidths={[240]}
-      minWidths={[200, 380]}
-      separatorLabels={PROMPT_SPLIT_LABELS}
-    >
-      <section
-        className="fy-feature-panel fy-prompts-library"
-        aria-label="提示词列表"
+    <div className="fy-prompts-split-wrapper">
+      <SplitPanes
+        className="fy-prompts-split"
+        maxWidths={[280]}
+        minWidths={[200, 380]}
+        separatorLabels={PROMPT_SPLIT_LABELS}
       >
-        <h2>
-          提示词库 · {prompts.length}
-          <span className="fy-prompts-heading-meta">
-            {enabledCount} 条已启用
-          </span>
-        </h2>
-        {selected &&
-        search.trim() &&
-        !filtered.some((prompt) => prompt.id === selected.id) ? (
-          <p className="fy-feature-description">
-            当前编辑的提示词不在搜索结果中。
-          </p>
-        ) : null}
-        <FeatureList id="prompts-list">
-          {filtered.length === 0 ? (
-            <p className="fy-feature-description">没有匹配的提示词</p>
-          ) : null}
-          {filtered.map((prompt) => (
-            <FeatureListItem
-              key={prompt.id}
-              selected={prompt.id === selected?.id}
-              title={prompt.name}
-              onSelect={() => requestSelect(prompt.id)}
-            >
-              <span>
-                {prompt.description || "暂无描述"} ·{" "}
-                {prompt.enabled ? "已启用" : "未启用"}
-              </span>
-            </FeatureListItem>
-          ))}
-        </FeatureList>
-      </section>
-      {activeEditor ? (
-        <PromptEditorPane
-          appLabel={APP_LABELS[app]}
-          busy={busy}
-          editor={activeEditor}
-          enabled={selected?.enabled ?? false}
-          liveError={liveFileQuery.error}
-          livePending={
-            liveFileQuery.isPending && liveFileQuery.data === undefined
-          }
-          liveValue={liveFileQuery.data}
-          onCloseNew={requestEditorClose}
-          onDelete={selected ? () => requestDelete(selected) : undefined}
-          onDraftChange={updateDraft}
-          onSave={saveEditor}
-          onToggle={
-            selected
-              ? (enabled) => void togglePrompt(selected, enabled)
-              : undefined
-          }
-        />
-      ) : (
         <section
-          className="fy-feature-panel fy-prompts-editor-pane"
-          aria-label="提示词详情"
+          className="fy-feature-panel fy-prompts-library-pane"
+          aria-label="提示词列表"
         >
-          <EmptyState
-            title="选择一条提示词"
-            description="从左侧打开提示词后即可直接阅读和编辑正文。"
-          />
+          <div className="fy-prompts-library-head">
+            <h2>提示词库 · {prompts.length}</h2>
+          </div>
+          {selected &&
+          search.trim() &&
+          !filtered.some((prompt) => prompt.id === selected.id) ? (
+            <p className="fy-feature-description">
+              当前编辑的提示词不在搜索结果中。
+            </p>
+          ) : null}
+          <FeatureList
+            id="prompts-list"
+            className="fy-prompts-library-list"
+          >
+            {filtered.length === 0 ? (
+              <p className="fy-feature-description">没有匹配的提示词</p>
+            ) : null}
+            {filtered.map((prompt) => (
+              <FeatureListItem
+                key={prompt.id}
+                selected={prompt.id === selected?.id}
+                title={prompt.name}
+                onSelect={() => requestSelect(prompt.id)}
+              >
+                <span className="fy-prompts-card-desc">
+                  {prompt.description || "暂无描述"}
+                </span>
+              </FeatureListItem>
+            ))}
+          </FeatureList>
         </section>
-      )}
-    </SplitPanes>
+        {activeEditor ? (
+          <PromptEditorPane
+            appLabel={APP_LABELS[app]}
+            busy={busy}
+            editor={activeEditor}
+            enabled={selected?.enabled ?? false}
+            liveError={liveFileQuery.error}
+            livePending={
+              liveFileQuery.isPending &&
+              liveFileQuery.data === undefined
+            }
+            liveValue={liveFileQuery.data}
+            onCloseNew={requestEditorClose}
+            onDelete={
+              selected ? () => requestDelete(selected) : undefined
+            }
+            onDraftChange={updateDraft}
+            onSave={saveEditor}
+            onToggle={
+              selected
+                ? (enabled) => void togglePrompt(selected, enabled)
+                : undefined
+            }
+          />
+        ) : (
+          <section
+            className="fy-feature-panel fy-prompts-editor-pane"
+            aria-label="提示词详情"
+          >
+            <EmptyState
+              title="选择一条提示词"
+              description="从左侧打开提示词后即可直接阅读和编辑正文。"
+            />
+          </section>
+        )}
+      </SplitPanes>
+    </div>
   );
 
   return (
@@ -582,9 +586,13 @@ export function PromptsPage() {
         </InlineNotice>
       )}
 
-      <div className="fy-feature-workspace">
-        <CatalogMasterDetail>
-          <CatalogRail ariaLabel="提示词应用" title="应用">
+      <div className="fy-feature-workspace fy-prompts-workspace">
+        <CatalogMasterDetail className="fy-prompts-master-detail">
+          <CatalogRail
+            ariaLabel="提示词应用"
+            title="应用"
+            className="fy-prompts-app-rail"
+          >
             <CatalogList>
               {PROMPT_APP_IDS.map((id) => (
                 <CatalogListItem
@@ -604,8 +612,11 @@ export function PromptsPage() {
               ))}
             </CatalogList>
           </CatalogRail>
-          <CatalogDetail ariaLabel={`${APP_LABELS[app]} 提示词工作区`}>
-            <div className="fy-feature-toolbar">
+          <CatalogDetail
+            ariaLabel={`${APP_LABELS[app]} 提示词工作区`}
+            className="fy-prompts-main-detail"
+          >
+            <div className="fy-feature-toolbar fy-prompts-search-toolbar">
               <label className="fy-control-field">
                 搜索
                 <FeatureSearch
@@ -735,30 +746,31 @@ function PromptEditorPane({
         onSubmit={onSave}
       >
         <header className="fy-prompts-editor-head">
-          <div className="fy-prompts-editor-summary">
-            <div className="fy-feature-detail-title">
+          <div className="fy-prompts-editor-header-info">
+            <div className="fy-prompts-editor-title-row">
               <h2>{title}</h2>
-              {editor.mode === "edit" && (
-                <Badge tone={enabled ? "accent" : "neutral"}>
-                  {enabled ? "已启用" : "未启用"}
-                </Badge>
+              {editor.mode === "edit" && enabled && (
+                <Badge tone="accent">已启用</Badge>
               )}
             </div>
             {editor.prompt && onToggle ? (
-              <div className="fy-prompts-editor-toggle">
+              <div className="fy-prompts-editor-toggle-row">
                 <Switch
                   checked={enabled}
                   disabled={busy}
                   label={`${enabled ? "停用" : "启用"}${editor.prompt.name}`}
                   onCheckedChange={onToggle}
                 />
-                <span className="fy-prompts-editor-toggle-state">
-                  {enabled ? "已启用" : "未启用"}
-                </span>
               </div>
             ) : null}
+            <div className="fy-prompts-editor-meta">
+              {appLabel} ·{" "}
+              {editor.mode === "new"
+                ? "未保存草稿"
+                : `更新于 ${formatTimestamp(editor.prompt?.updatedAt)}`}
+            </div>
           </div>
-          <div className="fy-feature-actions">
+          <div className="fy-feature-actions fy-prompts-editor-actions">
             <Button
               className="fy-control-button-primary"
               disabled={busy || !editor.draft.name.trim()}
@@ -782,24 +794,6 @@ function PromptEditorPane({
             )}
           </div>
         </header>
-        {editor.mode === "new" ? (
-          <p className="fy-feature-description">
-            保存后会写入该应用的提示词库，但不会自动启用。
-          </p>
-        ) : (
-          <p className="fy-prompts-editor-meta">
-            {appLabel} · 更新于 {formatTimestamp(editor.prompt?.updatedAt)}
-          </p>
-        )}
-        {editor.mode === "new" ? (
-          <PromptIdentityFields
-            autoFocusName
-            busy={busy}
-            description={editor.draft.description}
-            name={editor.draft.name}
-            onDraftChange={onDraftChange}
-          />
-        ) : null}
         <label className="fy-control-field fy-prompts-editor-content-field">
           内容
           <textarea
@@ -811,14 +805,13 @@ function PromptEditorPane({
             onChange={onDraftChange("content")}
           />
         </label>
-        {editor.mode === "edit" ? (
-          <PromptIdentityFields
-            busy={busy}
-            description={editor.draft.description}
-            name={editor.draft.name}
-            onDraftChange={onDraftChange}
-          />
-        ) : null}
+        <PromptIdentityFields
+          autoFocusName={editor.mode === "new"}
+          busy={busy}
+          description={editor.draft.description}
+          name={editor.draft.name}
+          onDraftChange={onDraftChange}
+        />
       </form>
       <details className="fy-prompts-live">
         <summary>当前使用的内容 · {appLabel}</summary>

@@ -555,7 +555,6 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
     >
       <ModelsPanelHeader
         title="WorkBuddy"
-        summary="查看并管理 WorkBuddy 的模型设置。添加或修改后请保存并应用。"
         pending={draftCommit.pending}
       >
         <Button
@@ -1282,7 +1281,6 @@ function ProviderPanel({
     >
       <ModelsPanelHeader
         title={label}
-        summary="配置服务地址、模型和 API Key，并设为当前配置。"
         pending={draftCommit.pending}
       >
         <Button

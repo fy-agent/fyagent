@@ -1,7 +1,6 @@
 import { useState } from "react";
 
 import type { ProductDirectoryEntry } from "../../shared/features/directory";
-import { convergeSelection } from "../../shared/features/helpers";
 import {
   useOpenCodeModelSnapshot,
   useProviderSummary,
@@ -10,11 +9,9 @@ import {
   useWorkBuddyStatus,
 } from "../../shared/features/queries";
 import type {
-  AgentCapabilityMode,
   AgentCatalogEntry,
   ProviderSummaryQueryData,
 } from "../../shared/features/types";
-import { FeatureList, FeatureListItem } from "../../shared/ui/FeatureList";
 import { FeatureSearch } from "../../shared/ui/FeatureSearch";
 import { EmptyState, InlineNotice, Spinner } from "../../shared/ui/primitives";
 
@@ -46,19 +43,6 @@ function providerObservations(
     }));
 }
 
-function capabilityCopy(mode: AgentCapabilityMode): string {
-  switch (mode) {
-    case "direct":
-      return "此 Agent 已有原生模型 owner。本页只投影已观测配置，写入继续由模型管理中的既有路径负责。";
-    case "assisted":
-      return "此 Agent 的模型配置需要在供应商界面完成；本页仅展示可安全读取的观察结果。";
-    case "unsupported":
-      return "当前官方能力不支持第三方模型配置；本页不会提供可写开关或伪造保存成功。";
-    case "unverified":
-      return "模型配置能力尚未验证；本页不推断可写，也不显示本地成功状态。";
-  }
-}
-
 export function AgentModelsSection({
   entry,
   catalogEntry,
@@ -69,7 +53,6 @@ export function AgentModelsSection({
   onOpenManagement: () => void;
 }) {
   const [search, setSearch] = useState("");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
   const workBuddyStatus = useWorkBuddyStatus(entry.agentId === "workbuddy");
   const workBuddyModels = useWorkBuddyModelIds(entry.agentId === "workbuddy");
   const traeModels = useTraeWorkModelIds(entry.agentId === "trae-work");
@@ -98,7 +81,7 @@ export function AgentModelsSection({
       observations = (traeModels.data?.modelIds ?? []).map((modelId) => ({
         id: modelId,
         label: modelId,
-        detail: "TRAE Work CN 缓存观察 · 供应商界面负责写入",
+        detail: "TRAE Work CN 已观测模型 · 供应商界面负责写入",
       }));
       pending = traeModels.isPending;
       failed = traeModels.isError;
@@ -155,20 +138,14 @@ export function AgentModelsSection({
       .toLocaleLowerCase()
       .includes(normalizedSearch),
   );
-  const convergedId = convergeSelection(filtered, selectedId);
-  const selected = filtered.find((item) => item.id === convergedId) ?? null;
 
   return (
     <section className="fy-agent-config-section" aria-label="Agent 模型配置">
       <AgentSectionHeader
         title="当前模型"
-        description="按 Agent 真实 capability 投影已观测或已配置模型，不创建第二套模型分配状态。"
         actionLabel="进入模型管理"
         onAction={onOpenManagement}
       />
-      <InlineNotice tone={mode === "unsupported" ? "warning" : "info"}>
-        {capabilityCopy(mode)}
-      </InlineNotice>
       {mode !== "unsupported" ? (
         <FeatureSearch
           value={search}
@@ -185,43 +162,28 @@ export function AgentModelsSection({
         </div>
       ) : failed ? (
         <InlineNotice tone="warning">
-          当前模型状态无法读取；此页不会把未知状态写成“未配置”。
+          当前模型状态无法读取，请检查网络或配置后重试。
         </InlineNotice>
-      ) : mode === "unsupported" ? null : observations.length === 0 ? (
+      ) : mode === "unsupported" ? (
+        <EmptyState
+          title="当前官方能力不支持第三方模型配置"
+        />
+      ) : observations.length === 0 ? (
         <EmptyState
           title="尚未观察到模型"
-          description="当前读取结果为空；这不等于已证明供应商侧没有配置。"
         />
       ) : filtered.length === 0 ? (
         <EmptyState title="没有匹配的模型" description="请调整搜索关键词。" />
       ) : (
-        <div className="fy-agent-resource-workspace">
-          <div className="fy-feature-panel fy-agent-resource-list-panel">
-            <FeatureList id="agent-model-list" aria-label="模型观察列表">
-              {filtered.map((item) => (
-                <FeatureListItem
-                  key={item.id}
-                  selected={item.id === selected?.id}
-                  onSelect={() => setSelectedId(item.id)}
-                  title={item.label}
-                >
-                  <span>{item.detail}</span>
-                </FeatureListItem>
-              ))}
-            </FeatureList>
-          </div>
-          {selected ? (
-            <div className="fy-feature-panel fy-agent-resource-detail">
-              <div>
-                <h3>{selected.label}</h3>
-                <p>{selected.detail}</p>
-                <span className="fy-agent-resource-meta">能力模式：{mode}</span>
+        <div className="fy-agent-models-list">
+          {filtered.map((item) => (
+            <div key={item.id} className="fy-agent-model-card">
+              <div className="fy-agent-model-card-info">
+                <h3>{item.label}</h3>
+                <p>{item.detail}</p>
               </div>
-              <InlineNotice>
-                此处没有模型开关；请进入模型管理使用该 Agent 已有的原生 owner。
-              </InlineNotice>
             </div>
-          ) : null}
+          ))}
         </div>
       )}
     </section>

@@ -1,5 +1,7 @@
 # Frontend Interaction V3 End-to-End Implementation
 
+> SUPERSEDED_DO_NOT_EXECUTE（2026-08-26）：V3.1 任务已接管执行。本文仅保留历史证据，旧候选、Windows 等待与对外发送流程已停止。
+
 ## 目标
 
 在分支 `codex/frontend-interaction-v3-20260825` 上完成 FyAgent 前端交互重构 v3：保留现有蓝色 liquid-glass 主题与真实业务能力，按照已批准的 11 张高保真原型调整导航、按钮位置、入口层级和状态反馈；完成本地检查、构建、桌面包 UAT，并把 Windows 原生验证作为独立证据层闭环。不得触碰、合并或发布 `main`。

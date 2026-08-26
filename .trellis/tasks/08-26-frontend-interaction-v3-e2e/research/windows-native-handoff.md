@@ -1,5 +1,7 @@
 # Windows native UAT handoff — 2026-08-26
 
+> SUPERSEDED_DO_NOT_EXECUTE（2026-08-26）：V3.1 任务已接管执行。本文仅保留历史证据，旧候选、Windows 等待与对外发送流程已停止。
+
 ## Conclusion
 
 `PENDING — DELIVERED_NOT_EXECUTED`

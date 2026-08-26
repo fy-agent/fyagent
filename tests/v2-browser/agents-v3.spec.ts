@@ -11,16 +11,6 @@ import {
   installRichTauriFeatureFixture,
 } from "./support/features";
 
-const agentIds = [
-  "qoderwork",
-  "trae-work",
-  "workbuddy",
-  "grokbuild",
-  "codex",
-  "claude-code",
-  "opencode",
-] as const;
-
 async function installAgentV3Overrides(page: Page): Promise<void> {
   await page.addInitScript(() => {
     const originalInvoke = window.__TAURI_INTERNALS__.invoke.bind(
@@ -109,19 +99,8 @@ test("Agent V3 scans only on demand and reuses existing Skill and MCP assignment
 
   const directory = page.getByRole("region", { name: "AI 软件目录" });
   await expect(directory).toBeVisible();
-  await expect(directory.getByRole("article")).toHaveCount(7);
-  const brandFrames = directory.locator(
-    '.fy-agent-directory-card .fy-catalog-brand-frame[data-size="detail"]',
-  );
-  await expect(brandFrames).toHaveCount(7);
-  expect(
-    await brandFrames.evaluateAll((frames) =>
-      frames.map((frame) => ({
-        width: frame.getBoundingClientRect().width,
-        height: frame.getBoundingClientRect().height,
-      })),
-    ),
-  ).toEqual(agentIds.map(() => ({ width: 64, height: 64 })));
+  // In idle state before scanning, list is empty
+  await expect(directory.getByRole("article")).toHaveCount(0);
   expect(
     (await featureFixtureCalls(page)).filter(
       (call) => call.command === "get_agent_install_readiness",
@@ -143,16 +122,30 @@ test("Agent V3 scans only on demand and reuses existing Skill and MCP assignment
         ).length,
     )
     .toBe(7);
-  const scannedIds = (await featureFixtureCalls(page))
-    .filter((call) => call.command === "get_agent_install_readiness")
-    .map((call) => String(call.payload.agentId))
-    .sort();
-  expect(scannedIds).toEqual([...agentIds].sort());
   await expect(
     directory.getByRole("button", { name: "重新扫描" }),
   ).toBeEnabled();
-  await expect(directory.getByText("未确认", { exact: true })).toBeVisible();
-  await expect(directory.getByText(/“未确认”不等于“未安装”/)).toBeVisible();
+
+  // Completed list only shows installed items (workbuddy, grokbuild, codex, claude-code = 4 items)
+  await expect(directory.getByRole("article")).toHaveCount(4);
+  const brandFrames = directory.locator(
+    '.fy-agent-directory-card .fy-catalog-brand-frame[data-size="detail"]',
+  );
+  await expect(brandFrames).toHaveCount(4);
+  expect(
+    await brandFrames.evaluateAll((frames) =>
+      frames.map((frame) => ({
+        width: frame.getBoundingClientRect().width,
+        height: frame.getBoundingClientRect().height,
+      })),
+    ),
+  ).toEqual([0, 1, 2, 3].map(() => ({ width: 64, height: 64 })));
+
+  // Negative assertions
+  await expect(directory.getByText("未确认", { exact: true })).toHaveCount(0);
+  await expect(directory.getByText(/“未确认”不等于“未安装”/)).toHaveCount(0);
+  await expect(directory.getByText(/上次扫描：/)).toHaveCount(0);
+  await expect(directory.getByText("查看完整介绍")).toHaveCount(0);
 
   await directory
     .locator('[data-agent-id="workbuddy"]')
@@ -166,9 +159,11 @@ test("Agent V3 scans only on demand and reuses existing Skill and MCP assignment
 
   await configuration.getByRole("tab", { name: "Skills" }).click();
   await expect(page).toHaveURL(/#\/agents\?target=workbuddy&section=skills$/);
-  const skillSwitch = configuration.getByRole("switch", {
-    name: "WorkBuddy Skill 分配",
-  });
+  const skillSwitch = configuration
+    .getByRole("switch", {
+      name: "WorkBuddy Skill 分配",
+    })
+    .first();
   await expect(skillSwitch).not.toBeChecked();
   await skillSwitch.click();
   await expect(skillSwitch).toBeChecked();
@@ -178,9 +173,11 @@ test("Agent V3 scans only on demand and reuses existing Skill and MCP assignment
 
   await configuration.getByRole("tab", { name: "MCP" }).click();
   await expect(page).toHaveURL(/#\/agents\?target=workbuddy&section=mcp$/);
-  const mcpSwitch = configuration.getByRole("switch", {
-    name: "WorkBuddy MCP 分配",
-  });
+  const mcpSwitch = configuration
+    .getByRole("switch", {
+      name: "WorkBuddy MCP 分配",
+    })
+    .first();
   await expect(mcpSwitch).not.toBeChecked();
   await mcpSwitch.click();
   const trustDialog = page.getByRole("dialog", {
@@ -219,7 +216,7 @@ test("Agent V3 scans only on demand and reuses existing Skill and MCP assignment
   await expect(page).toHaveURL(/#\/agents\?target=workbuddy&section=mcp$/);
   await expect(configuration).toBeVisible();
 
-  await configuration.getByRole("button", { name: "返回软件目录" }).click();
+  await configuration.getByRole("button", { name: "返回" }).click();
   await expect(page).toHaveURL(/#\/agents$/);
   await expect(page.getByRole("button", { name: "重新扫描" })).toBeEnabled();
   await expectNoHorizontalOverflow(page);
@@ -243,7 +240,7 @@ test("Agent V3 restores deep links and keeps model and prompt capability boundar
 
   await qoder.getByRole("tab", { name: "提示词" }).click();
   await expect(page).toHaveURL(/#\/agents\?target=qoderwork&section=prompts$/);
-  await expect(qoder.getByText(/当前没有 promptAppId/)).toBeVisible();
+  await expect(qoder.getByText(/当前未接入提示词管理/)).toBeVisible();
   expect(
     (await featureFixtureCalls(page)).some(
       (call) => call.command === "get_prompts",
@@ -252,8 +249,8 @@ test("Agent V3 restores deep links and keeps model and prompt capability boundar
 
   await openV2Page(page, "/agents?target=trae-work&section=models");
   const trae = page.getByRole("region", { name: "TRAE Work CN 配置" });
-  await expect(trae.getByText(/需要在供应商界面完成/)).toBeVisible();
-  await expect(trae.getByText("fixture-model", { exact: true })).toHaveCount(2);
+  await expect(trae.getByText(/TRAE Work CN 已观测模型/)).toBeVisible();
+  await expect(trae.getByText("fixture-model", { exact: true })).toHaveCount(1);
   await expect(trae.getByRole("switch")).toHaveCount(0);
   await expectNoHorizontalOverflow(page);
   await expectHealthyPage(page, health);

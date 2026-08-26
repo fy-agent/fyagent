@@ -2,7 +2,7 @@
 
 > 视觉方向：`CONFIRMED_BY_USER_2026-08-25`
 > 原型集状态：`APPROVED_FOR_IMPLEMENTATION_2026-08-26`
-> 说明：本目录记录高保真设计候选，不代表代码已实现、运行页面已验收或产品已发布。
+> 状态范围：本目录提供高保真设计输入；实现、运行验收与发布状态由当前 Trellis 任务卡判定。
 
 ## 设计来源
 
@@ -15,7 +15,7 @@
 - 产品类型：AI / Developer Tool 桌面控制中心。
 - 不更换现有主题；继续使用 FyAgent 的蓝色 liquid-glass 体系。
 - 核心色板：`#324D69`、`#567495`、`#7B99B8`、`#9DDCFF`、`#F6FBFF`。
-- 本轮重点是信息架构、按钮位置、入口层级和状态反馈，而不是重新做品牌视觉。
+- 本轮重点：信息架构、按钮位置、入口层级和状态反馈；品牌视觉继续沿用现有体系。
 - 主导航改为左侧三组：`AI软件配置`、`配置管理`、`记忆模块`。
 - Agent 内使用 `模型 / Skills / MCP / 提示词` 四段选配入口。
 - 线框第 5 页的“进入 Skills 管理”按讨论原文纠正为“进入提示词管理”。
@@ -41,7 +41,10 @@
 
 ## 当前边界
 
-- 已完成：11 张原型及人类批准、A-to-A 审计、6 路由 / 11 状态实现、全仓门禁、浏览器 132/132、macOS 调试包与只读 UAT、飞书 M1 文档和群消息回读。
-- 当前：`local_candidate_pass_windows_delivered_not_executed`；运行代码冻结在 `0ad9a7e122d8877f4ab6d648ac187cdb037ba444`。Windows UAT 交接包已送达 AIMaster，但没有认证执行入口和 Windows 本机返回证据；分支后续提交仅记录任务与交付证据。
-- 未完成：Windows-native 执行与 fresh validation、严格 1:1 pixel diff、push、PR、main 合并、正式签名、Release 和生产部署。
-- 下一门禁：AIMaster 本机 Codex 在隔离 fixture 中执行后，返回 nonce/hash 绑定的 fresh receipt、截图或日志与应用失败路径证据；macOS、浏览器、Taildrop 送达或远程可达均不能替代。
+- 当前状态：`V3_1_REFACTOR_PLANNING`。
+- 当前任务：`.trellis/tasks/08-26-frontend-interaction-v3-1`。
+- 当前分支：`codex/frontend-interaction-v3-1-20260826`。
+- 历史状态：`0ad9a7e1` 与旧 M1 包均为 `STALE`，仅保留代码与审计历史。
+- 已停止：旧 V3 证据收口、Windows 等待、旧候选冻结与对外图文。
+- 当前门槛：Antigravity / Gemini 3.7 实施；Grok 4.6 评审通过；Codex 运行核验。
+- 授权边界：`main`、push、PR、merge、tag、Release、production 与对外发布保持关闭。

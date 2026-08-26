@@ -1,5 +1,7 @@
 # Current V2 Gap Audit
 
+> SUPERSEDED_DO_NOT_EXECUTE（2026-08-26）：V3.1 任务已接管执行。本文仅保留历史证据，旧候选、Windows 等待与对外发送流程已停止。
+
 ## 审计边界
 
 - 基线：`origin/main` at `91a66254a0f7190fbc500591d188f52cde74fc7e`。

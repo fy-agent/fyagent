@@ -7,7 +7,7 @@ export function AgentSectionHeader({
   onAction,
 }: {
   title: string;
-  description: string;
+  description?: string;
   actionLabel: string;
   onAction: () => void;
 }) {
@@ -15,7 +15,7 @@ export function AgentSectionHeader({
     <header className="fy-agent-config-section-header">
       <div>
         <h2>{title}</h2>
-        <p>{description}</p>
+        {description ? <p>{description}</p> : null}
       </div>
       <Button onClick={onAction}>{actionLabel}</Button>
     </header>

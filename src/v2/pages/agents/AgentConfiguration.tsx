@@ -1,15 +1,12 @@
 import { useNavigate } from "react-router-dom";
 
 import { getAgentBrand } from "../../shared/assets/agents";
-import { CodexDesktopInstallerPanel } from "../../shared/codex-desktop/CodexDesktopInstallerPanel";
 import type { ProductDirectoryEntry } from "../../shared/features/directory";
-import { useFeatures } from "../../shared/features/provider";
 import type { AgentCatalogEntry } from "../../shared/features/types";
 import { FeatureTabs } from "../../shared/ui/FeatureTabs";
 import { BrandIconFrame } from "../../shared/ui/catalog";
 import { Button } from "../../shared/ui/primitives";
 
-import { AgentInstallReadinessSection } from "./AgentInstallReadinessSection";
 import { AgentMcpSection, AgentSkillsSection } from "./AgentAssignmentSections";
 import { AgentModelsSection } from "./AgentModelsSection";
 import { AgentPromptsSection } from "./AgentPromptsSection";
@@ -36,7 +33,6 @@ export function AgentConfiguration({
   onBack: () => void;
 }) {
   const navigate = useNavigate();
-  const { ports } = useFeatures();
   const openManagement = () => {
     switch (section) {
       case "models":
@@ -62,12 +58,9 @@ export function AgentConfiguration({
       <header className="fy-agent-config-header">
         <div className="fy-agent-config-identity">
           <BrandIconFrame asset={getAgentBrand(entry.agentId)} size="list" />
-          <div>
-            <p>单 Agent 配置</p>
-            <h1>{entry.displayName}</h1>
-          </div>
+          <h1>{entry.displayName}</h1>
         </div>
-        <Button onClick={onBack}>返回软件目录</Button>
+        <Button onClick={onBack}>返回</Button>
       </header>
 
       <FeatureTabs
@@ -97,15 +90,6 @@ export function AgentConfiguration({
           />
         )}
       </div>
-
-      <details className="fy-agent-install-disclosure">
-        <summary>安装、登录与启动能力</summary>
-        <AgentInstallReadinessSection
-          agentId={entry.agentId}
-          port={ports.agentInstallReadiness}
-        />
-        {entry.agentId === "codex" ? <CodexDesktopInstallerPanel /> : null}
-      </details>
     </section>
   );
 }

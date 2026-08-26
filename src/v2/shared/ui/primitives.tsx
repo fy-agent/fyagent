@@ -186,14 +186,14 @@ export function EmptyState({
   children,
 }: {
   title: string;
-  description: string;
+  description?: string;
   actions?: ReactNode;
   children?: ReactNode;
 }) {
   return (
     <div className="fy-control-empty">
       <h2>{title}</h2>
-      <p>{description}</p>
+      {description ? <p>{description}</p> : null}
       {children}
       {actions && <div>{actions}</div>}
     </div>

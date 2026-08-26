@@ -136,11 +136,11 @@ export function noticeFromModelProbe(result: ModelProbeResult): Notice {
 export function ModelsPanelHeader({
   title,
   summary,
-  pending = false,
+  pending,
   children,
 }: {
   title: string;
-  summary: string;
+  summary?: string;
   pending?: boolean;
   children?: ReactNode;
 }) {
@@ -151,7 +151,7 @@ export function ModelsPanelHeader({
     >
       <div>
         <h2>{title}</h2>
-        <p>{summary}</p>
+        {summary && <p>{summary}</p>}
       </div>
       {children ? (
         <div className="fy-models-commit" data-testid="models-commit">

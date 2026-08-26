@@ -10,5 +10,5 @@
 {"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Guides UI-to-platform contract changes for model and prompt capability gaps."}
 {"file":".trellis/spec/backend/development-environment.md","reason":"Bootstrap and local verification prerequisites."}
 {"file":".trellis/spec/backend/main-window-layout.md","reason":"Desktop shell and maintained viewport constraints."}
-{"file":".trellis/spec/backend/windows-installer.md","reason":"Windows-native packaging/validation evidence boundary."}
+{"file":".trellis/spec/backend/windows-installer.md","reason":"Historical context only; this task is superseded and all remaining Windows work is stopped."}
 {"file":".trellis/tasks/08-26-frontend-interaction-v3-e2e/research/current-v2-gap.md","reason":"Task-specific gap audit, capability asymmetry and implementation risk ranking."}

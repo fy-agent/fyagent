@@ -1,5 +1,7 @@
 # QA and packaging preflight
 
+> SUPERSEDED_DO_NOT_EXECUTE（2026-08-26）：V3.1 任务已接管执行。本文仅保留历史证据，旧候选、Windows 等待与对外发送流程已停止。
+
 ## Evidence boundary
 
 - Initial source: read-only Codex audit `01a039b6-f80f-7922-b364-57df6c9b1e91`, `gpt-5.6-sol/max`.

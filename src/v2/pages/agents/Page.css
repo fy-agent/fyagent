@@ -20,12 +20,38 @@
 .fy-agent-config-section-header {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 14px;
 }
 
-.fy-agent-directory-header > div,
+.fy-agent-directory-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  width: 100%;
+}
+
+.fy-agent-directory-title-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.fy-agent-scan-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(157, 220, 255, 0.16);
+  border: 1px solid rgba(157, 220, 255, 0.35);
+  color: var(--fy-accent-text);
+  font-size: 11px;
+  font-weight: 650;
+}
+
 .fy-agent-config-section-header > div {
   display: grid;
   gap: 5px;
@@ -57,13 +83,6 @@
   line-height: 1.55;
 }
 
-.fy-agent-directory-header .fy-agent-directory-eyebrow {
-  color: var(--fy-accent-text);
-  font-weight: 650;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
 .fy-agent-directory-progress {
   display: grid;
   gap: 8px;
@@ -73,7 +92,7 @@
   background: var(--fy-surface-soft);
 }
 
-.fy-agent-directory-progress > div {
+.fy-agent-directory-progress-labels {
   display: flex;
   flex-wrap: wrap;
   justify-content: space-between;
@@ -102,15 +121,119 @@
   background: var(--fy-accent);
 }
 
-.fy-agent-directory-progress p {
+.fy-agent-directory-list {
+  display: grid;
+  gap: 10px;
+}
+
+.fy-agent-directory-card.is-skeleton {
+  opacity: 0.7;
+}
+
+.fy-agent-skeleton-icon {
+  width: 64px;
+  height: 64px;
+  border-radius: 14px;
+  background: rgba(226, 243, 255, 0.08);
+}
+
+.fy-agent-skeleton-title {
+  width: 140px;
+  height: 18px;
+  border-radius: 4px;
+  background: rgba(226, 243, 255, 0.08);
+  margin-bottom: 6px;
+}
+
+.fy-agent-skeleton-desc {
+  width: 260px;
+  height: 14px;
+  border-radius: 4px;
+  background: rgba(226, 243, 255, 0.05);
+}
+
+.fy-agent-models-list {
+  display: grid;
+  gap: 10px;
+}
+
+.fy-agent-model-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px;
+  border: 1px solid var(--fy-border);
+  border-radius: 12px;
+  background: var(--fy-surface-soft);
+}
+
+.fy-agent-model-card-info h3 {
+  margin: 0 0 4px;
+  font-size: 14px;
+  color: var(--fy-text);
+}
+
+.fy-agent-model-card-info p {
   margin: 0;
+  font-size: 12px;
+  color: var(--fy-text-secondary);
+}
+
+.fy-agent-resource-full-list {
+  display: grid;
+  gap: 10px;
+}
+
+.fy-agent-assignment-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid var(--fy-border);
+  border-radius: 12px;
+  background: var(--fy-surface-soft);
+}
+
+.fy-agent-assignment-card-copy {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.fy-agent-assignment-card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.fy-agent-assignment-card-title h3 {
+  margin: 0;
+  font-size: 14px;
+  color: var(--fy-text);
+}
+
+.fy-agent-assignment-source-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(226, 243, 255, 0.08);
+  border: 1px solid var(--fy-border);
   color: var(--fy-text-secondary);
   font-size: 11px;
 }
 
-.fy-agent-directory-list {
-  display: grid;
-  gap: 10px;
+.fy-agent-assignment-card-copy p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--fy-text-secondary);
+  line-height: 1.5;
+}
+
+.fy-agent-assignment-card-action {
+  flex: 0 0 auto;
 }
 
 .fy-agent-directory-card {
