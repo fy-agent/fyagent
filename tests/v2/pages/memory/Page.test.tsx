@@ -186,6 +186,17 @@ describe("MemoryPage native business management", () => {
     const user = userEvent.setup();
     renderMemory(ports);
 
+    const page = screen.getByTestId("memory-page");
+    const pageHeader = page.querySelector<HTMLElement>(
+      ":scope > .fy-feature-header",
+    );
+    expect(pageHeader).not.toBeNull();
+    expect(
+      within(pageHeader!).getByRole("heading", {
+        level: 1,
+        name: "记忆模块",
+      }),
+    ).toBeVisible();
     const resources = await screen.findByRole("region", {
       name: "长期记忆资源",
     });
@@ -196,6 +207,28 @@ describe("MemoryPage native business management", () => {
       "openclaw memory",
     );
     expect(screen.getByRole("textbox", { name: "记忆内容" })).toBeVisible();
+    const editor = screen.getByRole("region", { name: "长期记忆编辑器" });
+    const editorHead = editor.querySelector<HTMLElement>(
+      ".fy-memory-editor-head",
+    );
+    expect(editorHead).not.toBeNull();
+    expect(
+      within(editorHead!).getByRole("button", {
+        name: "打开 OpenClaw 工作区",
+      }),
+    ).toBeVisible();
+    expect(
+      within(editorHead!).getByRole("button", { name: "复制记忆内容" }),
+    ).toBeVisible();
+    expect(
+      within(editorHead!).getByRole("button", { name: "保存" }),
+    ).toBeVisible();
+    expect(screen.getByTitle("workspace/MEMORY.md")).toHaveClass(
+      "fy-memory-resource-path",
+    );
+    expect(
+      screen.queryByRole("button", { name: "复制路径" }),
+    ).not.toBeInTheDocument();
     expect(screen.queryByText("记忆信息")).not.toBeInTheDocument();
     expect(screen.queryByText("使用说明")).not.toBeInTheDocument();
 
@@ -220,6 +253,39 @@ describe("MemoryPage native business management", () => {
     expect(document.body.textContent).not.toMatch(
       /前端原型|会话记录|重新扫描本机|同步预览|提炼草稿|修订 r\d+|待执行同步任务/,
     );
+  });
+
+  it("copies the current long-term and daily memory drafts instead of their paths", async () => {
+    const { ports } = statefulMemoryPorts(
+      { "openclaw-memory": "long-term baseline" },
+      { "2026-08-26.md": "daily baseline" },
+    );
+    const user = userEvent.setup();
+    renderMemory(ports);
+    const writeText = vi.spyOn(navigator.clipboard, "writeText");
+
+    const longTermEditor = await screen.findByRole("textbox", {
+      name: "记忆内容",
+    });
+    await user.type(longTermEditor, " + local draft");
+    await user.click(
+      screen.getByRole("button", { name: "复制记忆内容" }),
+    );
+    expect(writeText).toHaveBeenLastCalledWith(
+      "long-term baseline + local draft",
+    );
+
+    await user.click(screen.getByRole("tab", { name: "每日记忆" }));
+    await confirmDialog(user, /放弃未保存的更改/);
+    const dailyEditor = await screen.findByRole("textbox", {
+      name: "每日记忆内容",
+    });
+    await user.type(dailyEditor, " + local draft");
+    await user.click(
+      screen.getByRole("button", { name: "复制每日记忆内容" }),
+    );
+    expect(writeText).toHaveBeenLastCalledWith("daily baseline + local draft");
+    expect(writeText).not.toHaveBeenCalledWith("workspace/MEMORY.md");
   });
 
   it("keeps a missing OpenClaw document absent until explicit save", async () => {

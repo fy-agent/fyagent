@@ -2,6 +2,22 @@
   gap: 0;
 }
 
+.fy-memory-page .fy-feature-header {
+  margin-bottom: 12px;
+}
+
+.fy-memory-page-title {
+  margin: 0;
+  font-size: 20px;
+  line-height: 1.25;
+  letter-spacing: -0.015em;
+}
+
+.fy-memory-type-tabs {
+  align-self: flex-start;
+  margin-bottom: 12px;
+}
+
 .fy-memory-page > .fy-control-notice {
   margin-bottom: 14px;
 }
@@ -34,22 +50,65 @@
   color: var(--fy-text-secondary);
   font-size: 12px;
   font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .fy-memory-editor-panel {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   min-height: 0;
 }
 
 .fy-memory-editor-head {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 8px 12px;
+  gap: 10px 16px;
   flex: 0 0 auto;
+  padding-bottom: 4px;
+}
+
+.fy-memory-editor-header-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.fy-memory-editor-head .fy-feature-detail-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fy-memory-editor-head .fy-feature-detail-title h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.fy-memory-editor-meta-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fy-memory-resource-path {
+  color: var(--fy-text-secondary);
+  font-size: 12px;
+  font-family: ui-monospace, Consolas, monospace;
+}
+
+.fy-memory-editor-tools-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  margin-left: auto;
 }
 
 .fy-memory-editor-tools {
@@ -58,19 +117,20 @@
   align-items: center;
   justify-content: flex-end;
   gap: 8px 10px;
-  margin-left: auto;
 }
 
-.fy-memory-editor-tools > p {
+.fy-memory-char-count {
   margin: 0;
   color: var(--fy-text-secondary);
   font-size: 12px;
+  font-weight: 500;
 }
 
 .fy-memory-editor-meta {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: space-between;
   gap: 8px 12px;
   flex: 0 0 auto;
   min-width: 0;
@@ -83,7 +143,6 @@
 }
 
 .fy-memory-editor-meta .fy-feature-path {
-  flex: 1 1 220px;
   min-width: 0;
 }
 
@@ -94,7 +153,8 @@
   gap: 6px;
   min-height: 0;
   color: var(--fy-text-secondary);
-  font-size: 12px;
+  font-size: 13px;
+  font-weight: 550;
 }
 
 .fy-memory-editor-field-label {
@@ -132,6 +192,44 @@
 
 .fy-memory-daily-list {
   scrollbar-width: thin;
+}
+
+@media (max-width: 1100px) {
+  .fy-memory-page {
+    padding: 14px;
+  }
+
+  .fy-memory-page .fy-feature-header,
+  .fy-memory-type-tabs {
+    margin-bottom: 10px;
+  }
+
+  .fy-memory-master {
+    --fy-split-pane-0: clamp(180px, 20vw, 220px);
+    --fy-split-gap: 10px;
+  }
+
+  .fy-memory-editor-panel {
+    padding: 12px;
+  }
+
+  .fy-memory-editor-head {
+    align-items: flex-start;
+  }
+
+  .fy-memory-editor-head .fy-feature-detail-title h2 {
+    font-size: 16px;
+  }
+
+  .fy-memory-editor-tools-wrapper {
+    align-items: flex-start;
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .fy-memory-editor-tools {
+    justify-content: flex-start;
+  }
 }
 
 @media (max-width: 760px) {

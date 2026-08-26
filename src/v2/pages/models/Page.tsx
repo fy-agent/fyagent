@@ -553,11 +553,7 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
       className="fy-models-config-panel"
       ariaLabel="WorkBuddy 模型配置"
     >
-      <ModelsPanelHeader
-        title="WorkBuddy"
-        summary="查看并管理 WorkBuddy 的模型设置。添加或修改后请保存并应用。"
-        pending={draftCommit.pending}
-      >
+      <ModelsPanelHeader title="WorkBuddy" pending={draftCommit.pending}>
         <Button
           className="fy-control-button-primary fy-models-commit-button"
           disabled={
@@ -1280,11 +1276,7 @@ function ProviderPanel({
       className="fy-models-config-panel"
       ariaLabel={`${label} 模型配置`}
     >
-      <ModelsPanelHeader
-        title={label}
-        summary="配置服务地址、模型和 API Key，并设为当前配置。"
-        pending={draftCommit.pending}
-      >
+      <ModelsPanelHeader title={label} pending={draftCommit.pending}>
         <Button
           className="fy-control-button-primary fy-models-commit-button"
           disabled={
@@ -1666,6 +1658,9 @@ export function ModelsPage() {
       data-testid="models-page"
       aria-label="模型"
     >
+      <header className="fy-models-page-heading">
+        <h1>模型管理</h1>
+      </header>
       <CatalogMasterDetail>
         <CatalogRail as="aside" ariaLabel="模型配置目标" title="选择应用">
           <CatalogList>

@@ -1,5 +1,17 @@
 # V2 Shell Contract
 
+> **Frontend Interaction V3 override — 2026-08-26**
+> `SUPERSEDES_TOP_PRIMARY_NAV_ONLY`: the six first-level routes and
+> `PersistentPrimaryOutlet` stay authoritative, but clauses below that require
+> all six links inside the top chrome row are superseded. The approved V3 shell
+> renders three labelled groups in a persistent left navigation:
+> `AI软件配置`, expandable `配置管理` (Models/Skills/MCP/Prompts), and
+> `记忆模块`. `TopBar` retains Brand and ToolCluster. Existing route order,
+> redirects, keep-alive, platform boundaries and no-overflow requirements still
+> apply. Tests that assert "six top links", "Brand/Nav/Tools" or a nine-stop
+> top-bar lens must be replaced by equivalent left-navigation group, leaf,
+> active, keyboard and responsive assertions in the V3 task.
+
 ## 1. Scope / Trigger
 
 Read this contract before changing `src/v2/**`, the V2-only test/configuration
@@ -55,6 +67,23 @@ export type NavigationItem = {
   label: string;
 };
 ```
+
+For V3, `NavigationItem` remains the authoritative leaf route type and is
+wrapped by a typed presentation tree rather than replaced by a second route
+registry:
+
+```ts
+export type NavigationGroup = {
+  id: "agent-configuration" | "configuration-management" | "memory";
+  label: string;
+  collapsible: boolean;
+  items: readonly NavigationItem[];
+};
+```
+
+The configuration group owns expandable UI state. Leaf route selection stays
+Router-owned, and the leaf list derived from the tree is the sole input to
+`PersistentPrimaryOutlet`.
 
 The selected-lens adapter is V2-internal and does not expose the dependency's
 props or types:
@@ -187,16 +216,22 @@ every other `ExternalLinkButton` disables while `openingUrl` is set.
 
 ### Navigation and content
 
-The navigation source contains exactly these entries in this order:
+The navigation source remains the six leaf routes, presented as three
+left-navigation groups from `navigationGroups`. Leaf IDs and paths do not
+change; visible labels and grouping do:
 
-| ID        | Path       | Label        |
-| --------- | ---------- | ------------ |
-| `agents`  | `/agents`  | `Agent 目录` |
-| `models`  | `/models`  | `模型`       |
-| `skills`  | `/skills`  | `Skills`     |
-| `mcp`     | `/mcp`     | `MCP`        |
-| `prompts` | `/prompts` | `提示词`     |
-| `memory`  | `/memory`  | `记忆`       |
+| ID        | Path       | Group                    | Visible label  |
+| --------- | ---------- | ------------------------ | -------------- |
+| `agents`  | `/agents`  | `AI软件配置`             | `AI软件配置`   |
+| `models`  | `/models`  | `配置管理` (collapsible) | `模型管理`     |
+| `skills`  | `/skills`  | `配置管理` (collapsible) | `Skills 管理`  |
+| `mcp`     | `/mcp`     | `配置管理` (collapsible) | `MCP 管理`     |
+| `prompts` | `/prompts` | `配置管理` (collapsible) | `提示词管理`   |
+| `memory`  | `/memory`  | `记忆模块`               | `记忆模块`     |
+
+`configuration-management` owns expand/collapse UI state only. Leaf selection
+stays Router-owned. The flattened `navigationItems` list remains the sole
+input to `PersistentPrimaryOutlet`.
 
 - Use a hash data router. The index route and every unknown route redirect to
   `/agents`; the stable default URL is `#/agents`.
@@ -217,15 +252,18 @@ The navigation source contains exactly these entries in this order:
   as native-only and never seeds business data.
 - Register the UI Lab only when `import.meta.env.DEV` is true. Production must
   not expose `#/__dev/ui-lab`.
-- React keyboard order is the six navigation links followed by Search,
-  Settings, and Avatar. Native caption controls are outside the renderer and
-  outside this tab-order contract.
+- React tab order is Brand and ToolCluster in `TopBar`, then the visible
+  left-navigation controls. `SideNavigation` owns `ArrowUp` / `ArrowDown` /
+  `Home` / `End` among currently visible controls. The configuration toggle
+  uses `ArrowRight` to expand or enter the leaf list, and `ArrowLeft` /
+  `Escape` to collapse and return focus to the toggle. Native caption
+  controls are outside the renderer and outside this tab-order contract.
 
 ### Window chrome
 
-- The React top bar has exactly three web regions in its chrome row: Brand,
-  Primary Navigation, and Tools. It contains no minimize, maximize, close, or
-  traffic-light controls.
+- The React top bar has exactly two web regions in its chrome row: Brand and
+  Tools. Primary navigation lives in `SideNavigation`, not `TopBar`. The top
+  bar contains no minimize, maximize, close, or traffic-light controls.
 - Overlay React chrome is V2-owned window chrome in `TopBar.tsx` under
   `src/v2/widgets/app-shell/`. It is not a feature route and is not outside
   the V2 React tree. On native macOS `TopBar` renders one inert 28px
@@ -397,18 +435,20 @@ Agent/Models, Skills, and MCP ports do not by themselves make it Release-ready.
 
 ## 5. Good / Base / Bad Cases
 
-- **Good:** Clicking `Agent 目录` changes the hash to `#/agents`; that
+- **Good:** Clicking `AI软件配置` changes the hash to `#/agents`; that
   `NavLink` alone owns `aria-current="page"`, contains the sole production
-  `LiquidGlassLens`, remains keyboard-focusable, and the nav track keeps one
-  overlay `SelectionLens` aligned to that link. A second click before the
-  spring settles keeps the same overlay node and continues from its current
-  box. Opening a page with a catalog or feature rail expands that page's pill
-  from the selected row's top-left, not from the rail's parent origin. The
-  Agent directory renders its approved master/detail UI with its own catalog
-  pill. Models, Skills, MCP, Prompts, and Memory render only their approved
+  `LiquidGlassLens` for that leaf, remains keyboard-focusable, and the left
+  nav track keeps one overlay `SelectionLens` aligned to the active leaf or
+  the collapsed configuration toggle. A second click before the spring
+  settles keeps the same overlay node and continues from its current box.
+  Opening a page with a catalog or feature rail expands that page's pill
+  from the selected row's top-left, not from the rail's parent origin.
+  `/agents` renders the scan directory or four-section configuration shell.
+  Models, Skills, MCP, Prompts, and Memory render only their approved
   bounded feature surfaces.
-- **Base:** Opening without a route lands on `#/agents`, with six links and
-  three tools visible. Browser preview has no system or simulated controls.
+- **Base:** Opening without a route lands on `#/agents`, with the three left
+  groups and TopBar tools visible. Browser preview has no system or
+  simulated controls.
 - **Fallback:** If refraction cannot render, the selected item remains visibly
   distinct through its CSS material, text, border, shadow, and focus ring.
 - **Bad:** React disables decorations, stores `currentView`, renders caption
@@ -434,9 +474,9 @@ mise run build:renderer
   node identity when the active option changes, appear origin at the active
   host top-left via `selectionLensCollapsedOrigin` (not the track origin), no
   lens outside a
-  group, no `layoutId` / `LayoutGroup` on the pill adapter, the TopBar's
-  nine-stop primary
-  tab order, stable accessible names, inert tool clicks, absence of custom
+  group, no `layoutId` / `LayoutGroup` on the pill adapter, left-navigation
+  group / leaf / expanded / collapsed / keyboard behavior, stable accessible
+  names, inert tool clicks, absence of custom
   caption buttons, six non-empty product pages, and idempotent ready behavior.
   Browser/jsdom shells have no drag strip; native macOS may show one inert
   V2 `TopBar` Overlay strip above the chrome row.
@@ -453,11 +493,12 @@ mise run build:renderer
 - Vitest may mock the third-party filter surface to isolate router and semantic
   behavior. Playwright must load the real production dependency.
 - Playwright runs at `900x600`, `1152x640`, `1232x700`, and `1440x900`. At each
-  viewport assert no document/top-bar overflow; no Brand/Nav/Tools overlap;
-  all six links and three tools visible; all six product pages non-empty;
+  viewport assert no document/top-bar overflow; no Brand/Tools overlap with
+  the left navigation; the three navigation groups and TopBar tools are
+  reachable; all six product pages non-empty;
   hash/selected/ARIA/lens agreement;
-  the TopBar's nine-stop
-  keyboard order on the default shell route; absence of fake chrome; and no
+  left-navigation keyboard order on the default shell route; absence of fake
+  chrome; and no
   console, page, or framework-overlay error.
 - UI Lab browser tests cover translucent surfaces, backdrop or meaningful CSS
   fallback, selected styling without underline, edge/highlight/shadow,

@@ -2,92 +2,171 @@
   margin-bottom: 12px;
 }
 
-.fy-prompts-page .fy-feature-workspace {
-  min-height: 0;
+.fy-prompts-page-title {
+  margin: 0;
+  font-size: 20px;
+  line-height: 1.25;
+  letter-spacing: -0.015em;
 }
 
-.fy-prompts-page .fy-catalog-detail {
+.fy-prompts-page .fy-feature-workspace,
+.fy-prompts-workspace {
   display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-
-.fy-prompts-page .fy-feature-toolbar {
-  flex: 0 0 auto;
-  margin-bottom: 12px;
-}
-
-.fy-prompts-page .fy-catalog-detail > .fy-split-panes {
   flex: 1 1 auto;
   min-height: 0;
 }
 
-.fy-prompts-library {
+.fy-prompts-master-detail {
   display: flex;
-  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+}
+
+.fy-prompts-app-rail {
+  flex: 0 0 auto;
   min-height: 0;
 }
 
-.fy-prompts-library h2 {
+.fy-prompts-main-detail {
   display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 7px;
+  flex: 1 1 auto;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
 }
 
-.fy-prompts-heading-meta {
-  color: var(--fy-text-secondary);
-  font-size: 12px;
-  font-weight: 500;
+.fy-prompts-search-toolbar {
+  flex: 0 0 auto;
+  margin-bottom: 12px;
 }
 
-.fy-prompts-library .fy-feature-list {
+.fy-prompts-split-wrapper {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.fy-prompts-split {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+}
+
+.fy-prompts-library-pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.fy-prompts-library-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex: 0 0 auto;
+  margin-bottom: 8px;
+}
+
+.fy-prompts-library-head h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.fy-prompts-library-list {
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
 }
 
+.fy-prompts-card-desc {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--fy-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .fy-prompts-editor-pane {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   min-height: 0;
+  height: 100%;
+  overflow: hidden;
 }
 
 .fy-prompts-editor-form {
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   min-height: 0;
 }
 
 .fy-prompts-editor-head {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 8px 12px;
+  gap: 10px 16px;
   flex: 0 0 auto;
+  padding-bottom: 4px;
 }
 
-.fy-prompts-editor-head .fy-feature-actions {
-  margin-left: auto;
+.fy-prompts-editor-header-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
 }
 
-.fy-prompts-editor-meta,
-.fy-prompts-editor-form > .fy-feature-description {
-  flex: 0 0 auto;
+.fy-prompts-editor-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fy-prompts-editor-title-row h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.fy-prompts-editor-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--fy-text-secondary);
+}
+
+.fy-prompts-editor-toggle-state {
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.fy-prompts-editor-meta {
   margin: 0;
   color: var(--fy-text-secondary);
   font-size: 12px;
 }
 
-.fy-prompts-editor-identity {
-  display: grid;
-  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
-  gap: 10px;
+.fy-prompts-editor-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   flex: 0 0 auto;
+  margin-left: auto;
 }
 
 .fy-prompts-editor-content-field {
@@ -96,6 +175,9 @@
   flex-direction: column;
   gap: 6px;
   min-height: 0;
+  color: var(--fy-text-secondary);
+  font-size: 13px;
+  font-weight: 550;
 }
 
 .fy-prompts-editor-content,
@@ -103,10 +185,38 @@
   flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
+  padding: 12px;
   overflow: auto;
   resize: none;
+  border: 1px solid var(--fy-border);
+  border-radius: 10px;
+  outline: 0;
+  color: var(--fy-text);
   font-family: ui-monospace, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.6;
   white-space: pre-wrap;
+  background: var(--fy-surface-soft);
+}
+
+.fy-prompts-editor-content:focus-visible,
+.fy-prompts-live-content:focus-visible {
+  border-color: var(--fy-focus);
+  outline: 2px solid var(--fy-focus);
+  outline-offset: 1px;
+}
+
+.fy-prompts-editor-identity {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+  flex: 0 0 auto;
+}
+
+.fy-prompts-editor-identity .fy-control-field {
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--fy-text-secondary);
 }
 
 .fy-prompts-live {
@@ -119,12 +229,51 @@
   cursor: pointer;
   color: var(--fy-text-secondary);
   font-size: 13px;
+  font-weight: 500;
+  user-select: none;
 }
 
 .fy-prompts-live[open] .fy-prompts-live-content {
   margin-top: 10px;
   min-height: 96px;
-  max-height: 28vh;
+  max-height: 24vh;
+}
+
+@media (max-width: 1100px) {
+  .fy-prompts-page {
+    padding: 14px;
+  }
+
+  .fy-prompts-page .fy-feature-header,
+  .fy-prompts-search-toolbar {
+    margin-bottom: 10px;
+  }
+
+  .fy-prompts-master-detail {
+    --fy-catalog-rail-width: clamp(170px, 20vw, 220px);
+    --fy-catalog-gap: 10px;
+    --fy-catalog-row-min-height: 50px;
+    --fy-catalog-list-frame-size: 28px;
+    --fy-catalog-list-artwork-size: 22px;
+  }
+
+  .fy-prompts-split {
+    --fy-split-pane-0: clamp(160px, 18vw, 200px);
+    --fy-split-gap: 10px;
+  }
+
+  .fy-prompts-library-pane,
+  .fy-prompts-editor-pane {
+    padding: 12px;
+  }
+
+  .fy-prompts-editor-head {
+    align-items: flex-start;
+  }
+
+  .fy-prompts-editor-title-row h2 {
+    font-size: 16px;
+  }
 }
 
 @media (max-width: 760px) {

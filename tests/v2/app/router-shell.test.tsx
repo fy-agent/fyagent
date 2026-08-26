@@ -34,12 +34,12 @@ vi.mock("@samasante/liquid-glass", () => ({
 }));
 
 const navigationContract = [
-  { path: "/agents", label: "Agent 目录" },
-  { path: "/models", label: "模型" },
-  { path: "/skills", label: "Skills" },
-  { path: "/mcp", label: "MCP" },
-  { path: "/prompts", label: "提示词" },
-  { path: "/memory", label: "记忆" },
+  { path: "/agents", label: "AI软件配置" },
+  { path: "/models", label: "模型管理" },
+  { path: "/skills", label: "Skills 管理" },
+  { path: "/mcp", label: "MCP 管理" },
+  { path: "/prompts", label: "提示词管理" },
+  { path: "/memory", label: "记忆模块" },
 ] as const;
 
 const toolNames = ["搜索", "设置", "账户"] as const;
@@ -68,10 +68,12 @@ function expectSystemOwnedChrome(): void {
   expect(
     Array.from(
       topBar.querySelectorAll(
-        '[data-testid="brand"], [data-testid="primary-navigation"], [data-testid="tool-cluster"]',
+        '[data-testid="brand"], [data-testid="tool-cluster"]',
       ),
     ).map((element) => element.getAttribute("data-testid")),
-  ).toEqual(["brand", "primary-navigation", "tool-cluster"]);
+  ).toEqual(["brand", "tool-cluster"]);
+  expect(topBar.querySelector('[data-testid="side-navigation"]')).toBeNull();
+  expect(screen.getByTestId("side-navigation")).toBeVisible();
   expect(document.querySelector("[data-tauri-drag-region]")).toBeNull();
   expect(screen.queryByTestId("titlebar-drag-region")).not.toBeInTheDocument();
   expect(screen.queryByTestId("window-controls")).not.toBeInTheDocument();
@@ -89,7 +91,7 @@ describe("FyAgent V2 routing", () => {
       await expectPath(router, "/agents");
       const navigation = screen.getByRole("navigation", { name: "主导航" });
       expect(
-        screen.getByRole("link", { name: "Agent 目录", current: "page" }),
+        screen.getByRole("link", { name: "AI软件配置", current: "page" }),
       ).toHaveAttribute("href", "/agents");
       expect(screen.getAllByTestId("liquid-glass-lens")).toHaveLength(1);
       expect(within(navigation).getAllByTestId("selection-lens")).toHaveLength(
@@ -187,7 +189,7 @@ describe("FyAgent V2 routing", () => {
 });
 
 describe("FyAgent V2 shell accessibility", () => {
-  it("exposes the frozen labels and landmarks in the primary tab order", async () => {
+  it("exposes the grouped labels and landmarks in document tab order", async () => {
     const user = userEvent.setup();
     renderRoute("/models");
 
@@ -197,6 +199,9 @@ describe("FyAgent V2 shell accessibility", () => {
     const toolButtons = toolNames.map((name) =>
       screen.getByRole("button", { name }),
     );
+    const configurationToggle = within(navigation).getByRole("button", {
+      name: "配置管理",
+    });
 
     expect(brand).toHaveAccessibleName("FyAgent");
     expect(screen.getByRole("main", { name: "内容" })).toBeVisible();
@@ -205,11 +210,68 @@ describe("FyAgent V2 shell accessibility", () => {
     );
     expectSystemOwnedChrome();
 
-    const expectedTabOrder = [...routeLinks, ...toolButtons];
+    const expectedTabOrder = [
+      ...toolButtons,
+      routeLinks[0],
+      configurationToggle,
+      ...routeLinks.slice(1),
+    ];
     for (const control of expectedTabOrder) {
       await user.tab();
       expect(control).toHaveFocus();
     }
+  });
+
+  it("supports configuration expansion and vertical keyboard focus", async () => {
+    const user = userEvent.setup();
+    renderRoute("/agents");
+
+    const navigation = screen.getByRole("navigation", { name: "主导航" });
+    const configurationToggle = within(navigation).getByRole("button", {
+      name: "配置管理",
+    });
+    const configurationItems = screen.getByTestId(
+      "configuration-management-items",
+    );
+
+    expect(
+      within(navigation).getByText("AI软件配置", { exact: true }),
+    ).toBeVisible();
+    expect(
+      within(navigation).getByText("记忆模块", { exact: true }),
+    ).toBeVisible();
+    expect(
+      navigation.querySelectorAll(
+        ".fy-side-navigation-group > .fy-side-navigation-item, .fy-side-navigation-group > .fy-side-navigation-toggle",
+      ),
+    ).toHaveLength(3);
+    expect(
+      within(navigation).queryByRole("link", { name: "Agent 目录" }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(navigation).queryByRole("link", { name: /^记忆$/ }),
+    ).not.toBeInTheDocument();
+    expect(configurationToggle).toHaveAttribute("aria-expanded", "true");
+    expect(configurationItems).toBeVisible();
+
+    await user.click(configurationToggle);
+    expect(configurationToggle).toHaveAttribute("aria-expanded", "false");
+    expect(configurationItems).not.toBeVisible();
+
+    configurationToggle.focus();
+    await user.keyboard("{ArrowRight}");
+    expect(configurationToggle).toHaveAttribute("aria-expanded", "true");
+    await user.keyboard("{ArrowRight}");
+    expect(
+      within(navigation).getByRole("link", { name: "模型管理" }),
+    ).toHaveFocus();
+    await user.keyboard("{ArrowDown}");
+    expect(
+      within(navigation).getByRole("link", { name: "Skills 管理" }),
+    ).toHaveFocus();
+    await user.keyboard("{Escape}");
+    expect(configurationToggle).toHaveFocus();
+    expect(configurationToggle).toHaveAttribute("aria-expanded", "false");
   });
 
   it("keeps inert shell tools safely clickable", () => {
@@ -236,11 +298,11 @@ describe("FyAgent V2 primary page persistence", () => {
 
     const url = await screen.findByLabelText("服务地址");
     await user.type(url, "https://keep.example/v1");
-    await user.click(screen.getByRole("link", { name: "Agent 目录" }));
+    await user.click(screen.getByRole("link", { name: "AI软件配置" }));
     await expectPath(router, "/agents");
     expect(screen.getByTestId("models-page")).not.toBeVisible();
 
-    await user.click(screen.getByRole("link", { name: "模型" }));
+    await user.click(screen.getByRole("link", { name: "模型管理" }));
     await expectPath(router, "/models");
     expect(await screen.findByLabelText("服务地址")).toHaveValue(
       "https://keep.example/v1",
@@ -294,16 +356,18 @@ describe("FyAgent V2 primary page persistence", () => {
       expect(
         await screen.findByRole("heading", { name: "Claude Code" }),
       ).toBeVisible();
-      await user.click(screen.getByRole("link", { name: "模型" }));
+      await user.click(screen.getByRole("link", { name: "模型管理" }));
       await expectPath(router, "/models");
       expect(screen.getByTestId("agents-page")).not.toBeVisible();
 
-      await user.click(screen.getByRole("link", { name: "Agent 目录" }));
+      await user.click(screen.getByRole("link", { name: "AI软件配置" }));
       await expectPath(router, "/agents");
       expect(
         await screen.findByRole("heading", { name: "Claude Code" }),
       ).toBeVisible();
-      expect(router.state.location.search).toBe("?target=claude-code");
+      expect(router.state.location.search).toBe(
+        "?target=claude-code&section=models",
+      );
     } finally {
       createPorts.mockRestore();
     }
@@ -318,7 +382,7 @@ describe("FyAgent V2 primary page persistence", () => {
       "aria-selected",
       "true",
     );
-    await user.click(screen.getByRole("link", { name: "提示词" }));
+    await user.click(screen.getByRole("link", { name: "提示词管理" }));
     await expectPath(router, "/prompts");
     expect(screen.getByTestId("skills-page")).not.toBeVisible();
 
@@ -327,7 +391,7 @@ describe("FyAgent V2 primary page persistence", () => {
       "aria-current",
       "true",
     );
-    await user.click(screen.getByRole("link", { name: "记忆" }));
+    await user.click(screen.getByRole("link", { name: "记忆模块" }));
     await expectPath(router, "/memory");
     expect(screen.getByTestId("prompts-page")).not.toBeVisible();
 
@@ -336,29 +400,29 @@ describe("FyAgent V2 primary page persistence", () => {
       "aria-selected",
       "true",
     );
-    await user.click(screen.getByRole("link", { name: "MCP" }));
+    await user.click(screen.getByRole("link", { name: "MCP 管理" }));
     await expectPath(router, "/mcp");
     expect(screen.getByTestId("memory-page")).not.toBeVisible();
     expect(screen.getByTestId("mcp-page")).toBeVisible();
 
-    await user.click(screen.getByRole("link", { name: "Skills" }));
+    await user.click(screen.getByRole("link", { name: "Skills 管理" }));
     await expectPath(router, "/skills");
     expect(screen.getByTestId("mcp-page")).not.toBeVisible();
     expect(screen.getByRole("tab", { name: "发现" })).toHaveAttribute(
       "aria-selected",
       "true",
     );
-    await user.click(screen.getByRole("link", { name: "提示词" }));
+    await user.click(screen.getByRole("link", { name: "提示词管理" }));
     expect(screen.getByTestId("prompt-app-gemini")).toHaveAttribute(
       "aria-current",
       "true",
     );
-    await user.click(screen.getByRole("link", { name: "记忆" }));
+    await user.click(screen.getByRole("link", { name: "记忆模块" }));
     expect(screen.getByRole("tab", { name: "每日记忆" })).toHaveAttribute(
       "aria-selected",
       "true",
     );
-    await user.click(screen.getByRole("link", { name: "MCP" }));
+    await user.click(screen.getByRole("link", { name: "MCP 管理" }));
     expect(screen.getByTestId("mcp-page")).toBeVisible();
   });
 });

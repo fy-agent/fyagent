@@ -335,6 +335,59 @@ describe("V2 MCP management", () => {
     );
   });
 
+  it("does not repeat WorkBuddy trust guidance when bulk assignment changes nothing", async () => {
+    const user = userEvent.setup();
+    const originalMatchMedia = window.matchMedia;
+    window.matchMedia = (query: string) =>
+      ({
+        matches: true,
+        media: query,
+        onchange: null,
+        addEventListener() {},
+        removeEventListener() {},
+        addListener() {},
+        removeListener() {},
+        dispatchEvent() {
+          return false;
+        },
+      }) as MediaQueryList;
+    const server: McpServer = {
+      id: "docs",
+      name: "Docs server",
+      apps: createMcpAssignments(["workbuddy"]),
+      server: { type: "stdio", command: "npx" },
+    };
+    const ports = createBrowserFeaturePorts();
+    ports.mcp.getAll = vi.fn(async () => ({ docs: server }));
+    ports.mcp.toggleApp = vi.fn(async () => undefined);
+
+    try {
+      renderFeature(<McpPage />, ports);
+      await screen.findByRole("heading", { name: "Docs server" });
+      const workBuddyBulkRow = screen
+        .getByText("WorkBuddy", {
+          selector: ".fy-feature-assignment > span:first-child",
+        })
+        .closest(".fy-feature-assignment");
+      expect(workBuddyBulkRow).not.toBeNull();
+      await user.click(
+        within(workBuddyBulkRow as HTMLElement).getByRole("button", {
+          name: "全开",
+        }),
+      );
+
+      expect(await screen.findByText("批量分配完成")).toBeVisible();
+      expect(ports.mcp.toggleApp).not.toHaveBeenCalled();
+      expect(
+        screen.queryByRole("dialog", {
+          name: "需要在 WorkBuddy 中信任 MCP",
+        }),
+      ).not.toBeInTheDocument();
+    } finally {
+      window.matchMedia = originalMatchMedia;
+    }
+  });
+
   it("keeps cross-app import conflicts actionable without echoing the server ID", async () => {
     const user = userEvent.setup();
     const ports = createBrowserFeaturePorts();

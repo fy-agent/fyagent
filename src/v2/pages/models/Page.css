@@ -1,3 +1,21 @@
+.fy-models-page-heading {
+  flex: 0 0 auto;
+  margin-bottom: 14px;
+}
+
+.fy-models-page-heading h1 {
+  margin: 0;
+  color: var(--fy-text);
+  font-size: 20px;
+  line-height: 1.25;
+  letter-spacing: -0.015em;
+}
+
+.fy-models-page > .fy-catalog-master-detail {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
 .fy-models-target-stack {
   min-width: 0;
   min-height: 100%;

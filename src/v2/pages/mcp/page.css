@@ -1,3 +1,29 @@
+.fy-mcp-page > .fy-feature-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 10px 16px;
+}
+
+.fy-mcp-page-title {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--fy-text);
+  font-size: 20px;
+  line-height: 1.25;
+  letter-spacing: -0.015em;
+}
+
+.fy-mcp-page > .fy-feature-header > .fy-feature-tabs {
+  grid-column: 1;
+  margin-bottom: 0;
+}
+
+.fy-mcp-page > .fy-feature-header > .fy-feature-actions {
+  grid-column: 2;
+  justify-content: flex-end;
+}
+
 .fy-mcp-card-meta {
   display: flex;
   flex-wrap: wrap;
@@ -14,4 +40,25 @@
   color: var(--fy-text-secondary);
   font-size: 12px;
   line-height: 1.5;
+}
+
+@media (min-width: 1181px) {
+  .fy-mcp-page .fy-split-panes[data-panes="3"] {
+    --fy-split-pane-0: clamp(230px, 22vw, 292px);
+    --fy-split-pane-1: clamp(350px, 31vw, 470px);
+  }
+}
+
+@media (max-width: 760px) {
+  .fy-mcp-page > .fy-feature-header {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .fy-mcp-page > .fy-feature-header > .fy-feature-tabs,
+  .fy-mcp-page > .fy-feature-header > .fy-feature-actions {
+    grid-column: 1;
+    justify-content: flex-start;
+    margin-left: 0;
+  }
 }

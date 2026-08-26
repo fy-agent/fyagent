@@ -1,5 +1,18 @@
 # V2 Skills and MCP Feature Contract
 
+> **Frontend Interaction V3 integration note — 2026-08-26**
+> The existing Skills/MCP stores, ports, discovery/install flows and per-Agent
+> assignment contracts remain the sole authorities. The `/agents`
+> configuration shell may present a filtered search/toggle view for the selected
+> Agent and link to `/skills` or `/mcp`, but every mutation must go through
+> `ports.skills.toggleApp` / `ports.mcp.toggleApp` and then an authoritative
+> refetch. The switch stays pending until
+> `Boolean(readback.apps[entry.assignmentId]) === enabled`. A rejected write
+> or readback mismatch shows a warning and refetches; the page must not keep
+> an optimistic success state or a second assignment store. Browser fixtures
+> are not desktop writes. WorkBuddy MCP enable may open the existing trust
+> dialog only after a successful readback.
+
 ## 1. Scope / Trigger
 
 Read this contract before changing the V2 Skills or MCP pages, their shared

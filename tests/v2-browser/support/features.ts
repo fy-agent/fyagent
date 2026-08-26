@@ -1072,6 +1072,33 @@ export async function installRichTauriFeatureFixture(
             };
           case "install_skillhub":
             return [];
+          case "get_agent_install_readiness": {
+            const agentId = String(payload.agentId);
+            const cliAgent = ["grokbuild", "claude-code", "opencode"].includes(
+              agentId,
+            );
+            return {
+              contractVersion: 2,
+              agentId,
+              reviewedAt: "2026-08-26",
+              installState: "installed",
+              updateState: "up_to_date",
+              releaseId: null,
+              localVersion: "1.0.0",
+              remoteVersion: null,
+              authOwnership:
+                agentId === "codex" ? "fyagent_managed" : "agent_owned",
+              authState: "unknown",
+              sourceKind:
+                agentId === "codex"
+                  ? "codex_desktop"
+                  : cliAgent
+                    ? "cli_tooling"
+                    : "managed_desktop",
+              allowedActions: [],
+              reasonCodes: ["auth_state_unknown"],
+            };
+          }
           case "get_settings":
             return { skillSyncMethod: "auto", skillStorageLocation: "fyagent" };
           case "plugin:event|listen":

@@ -1,4 +1,8 @@
 .fy-app-shell {
+  --fy-side-navigation-width: 216px;
+  --fy-shell-gap: 12px;
+  --fy-shell-inline-padding: 20px;
+  --fy-shell-block-padding: 16px;
   display: grid;
   grid-template-rows: var(--fy-top-bar-height) minmax(0, 1fr);
   width: 100%;
@@ -45,7 +49,7 @@
 
 .fy-top-bar-chrome {
   display: grid;
-  grid-template-columns: minmax(max-content, 1fr) auto minmax(max-content, 1fr);
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   width: 100%;
   min-width: 0;
@@ -93,59 +97,163 @@
   text-shadow: 0 2px 10px rgba(12, 30, 49, 0.22);
 }
 
-.fy-primary-nav {
-  display: flex;
-  align-items: center;
-  height: 46px;
-  min-width: max-content;
-  padding: 4px;
+.fy-shell-body {
+  display: grid;
+  grid-template-columns: var(--fy-side-navigation-width) minmax(0, 1fr);
+  gap: var(--fy-shell-gap);
+  min-width: 0;
+  min-height: 0;
+  padding: 0 var(--fy-shell-inline-padding) var(--fy-shell-block-padding);
+  overflow: hidden;
+}
+
+.fy-side-navigation {
+  min-width: 0;
+  min-height: 0;
+  padding: 12px 10px;
   border: 1px solid var(--fy-border);
-  border-radius: 23px;
+  border-radius: 18px;
   background-color: var(--fy-glass-structural);
   background-image: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.1),
-    rgba(197, 228, 248, 0.04)
+    155deg,
+    rgba(255, 255, 255, 0.12),
+    rgba(184, 220, 244, 0.035) 64%,
+    rgba(255, 255, 255, 0.06)
   );
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.26),
+    inset 0 1px 0 rgba(255, 255, 255, 0.24),
     var(--fy-shadow-shell);
   backdrop-filter: blur(24px) saturate(1.22);
   -webkit-backdrop-filter: blur(24px) saturate(1.22);
+  overflow: auto;
 }
 
-.fy-primary-nav-item {
+.fy-side-navigation-track {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 100%;
+}
+
+.fy-side-navigation-group {
+  min-width: 0;
+}
+
+.fy-side-navigation-group + .fy-side-navigation-group {
+  padding-top: 10px;
+  border-top: 1px solid var(--fy-divider);
+}
+
+.fy-side-navigation-toggle,
+.fy-side-navigation-item {
   position: relative;
-  display: inline-flex;
+  display: flex;
+  width: 100%;
   align-items: center;
-  justify-content: center;
-  height: 38px;
+  min-width: 0;
   padding: 0;
   border: 1px solid transparent;
-  border-radius: 19px;
+  border-radius: 12px;
   color: var(--fy-text-secondary);
-  font-size: 14px;
-  font-weight: 540;
-  line-height: 1;
+  background: transparent;
+  font-size: 13.5px;
+  font-weight: 560;
+  line-height: 1.2;
   text-decoration: none;
   white-space: nowrap;
+  transition:
+    color 130ms ease,
+    background-color 150ms ease,
+    border-color 150ms ease,
+    opacity 120ms ease,
+    transform 90ms ease;
 }
 
-.fy-primary-nav-label {
-  display: inline-flex;
+.fy-side-navigation-toggle {
+  min-height: 42px;
+  cursor: pointer;
+}
+
+.fy-side-navigation-toggle-content,
+.fy-side-navigation-item-label {
+  display: flex;
   align-items: center;
-  justify-content: center;
-  height: 36px;
-  padding: 0 12px;
+  width: 100%;
+  min-width: 0;
 }
 
-.fy-primary-nav-item:hover {
+.fy-side-navigation-toggle-content {
+  justify-content: space-between;
+  height: 40px;
+  gap: 8px;
+  padding: 0 10px;
+}
+
+.fy-side-navigation-caret {
+  flex: 0 0 auto;
+  color: var(--fy-text-tertiary);
+  transition: transform 160ms ease;
+}
+
+.fy-side-navigation-toggle[aria-expanded="true"] .fy-side-navigation-caret {
+  transform: rotate(180deg);
+}
+
+.fy-side-navigation-items {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fy-side-navigation-items[hidden] {
+  display: none;
+}
+
+.fy-side-navigation-group-collapsible .fy-side-navigation-items {
+  margin-top: 4px;
+  padding-left: 8px;
+}
+
+.fy-side-navigation-item {
+  min-height: 38px;
+}
+
+.fy-side-navigation-item-label {
+  height: 36px;
+  padding: 0 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fy-side-navigation-group:not(.fy-side-navigation-group-collapsible)
+  .fy-side-navigation-item {
+  min-height: 42px;
+  color: var(--fy-text);
+  font-weight: 620;
+}
+
+.fy-side-navigation-group:not(.fy-side-navigation-group-collapsible)
+  .fy-side-navigation-item-label {
+  height: 40px;
+}
+
+.fy-side-navigation-toggle:hover,
+.fy-side-navigation-item:hover {
   color: var(--fy-text);
   background: rgba(229, 246, 255, 0.1);
 }
 
-.fy-primary-nav-item-selected,
-.fy-primary-nav-item-selected:hover {
+.fy-side-navigation-toggle:active,
+.fy-side-navigation-item:active {
+  transform: translateY(1px) scale(0.99);
+}
+
+.fy-side-navigation-toggle-active,
+.fy-side-navigation-toggle-active:hover,
+.fy-side-navigation-item-selected,
+.fy-side-navigation-item-selected:hover {
   border-color: transparent;
   color: var(--fy-accent-text);
   background: transparent;
@@ -172,7 +280,12 @@
   -webkit-backdrop-filter: blur(16px) saturate(1.3);
 }
 
-.fy-primary-nav-item .fy-liquid-glass-lens {
+.fy-side-navigation-toggle .fy-liquid-glass-lens,
+.fy-side-navigation-item .fy-liquid-glass-lens {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  height: 36px;
   border-color: transparent;
   background-color: transparent;
   background-image: none;
@@ -181,12 +294,17 @@
   -webkit-backdrop-filter: none;
 }
 
-.fy-liquid-glass-lens .fy-primary-nav-label {
-  height: 34px;
-  padding: 0 11px;
+.fy-side-navigation-toggle .fy-liquid-glass-lens {
+  height: 40px;
 }
 
-.fy-primary-nav-item-pending {
+.fy-side-navigation-group:not(.fy-side-navigation-group-collapsible)
+  .fy-side-navigation-item
+  .fy-liquid-glass-lens {
+  height: 40px;
+}
+
+.fy-side-navigation-item-pending {
   opacity: 0.72;
 }
 
@@ -249,7 +367,7 @@
 .fy-content-frame {
   min-width: 0;
   min-height: 0;
-  padding: 0 20px 16px;
+  padding: 0;
 }
 
 .fy-content-frame:has(
@@ -532,20 +650,19 @@
 }
 
 @media (max-width: 1024px) {
+  .fy-app-shell {
+    --fy-side-navigation-width: 190px;
+    --fy-shell-gap: 10px;
+    --fy-shell-inline-padding: 12px;
+    --fy-shell-block-padding: 12px;
+  }
+
   .fy-top-bar-chrome {
     padding: 0 12px;
   }
 
-  .fy-primary-nav-label {
-    padding: 0 10px;
-  }
-
-  .fy-liquid-glass-lens .fy-primary-nav-label {
-    padding: 0 9px;
-  }
-
-  .fy-primary-nav-item {
-    font-size: 13.5px;
+  .fy-side-navigation {
+    padding-inline: 8px;
   }
 
   .fy-tool-cluster {
@@ -563,16 +680,19 @@
     margin: 0;
   }
 
-  .fy-content-frame {
-    padding: 0 12px 12px;
-  }
-
   .fy-ui-lab {
     padding: 20px;
   }
 }
 
 @media (max-width: 920px) {
+  .fy-app-shell {
+    --fy-side-navigation-width: 178px;
+    --fy-shell-gap: 8px;
+    --fy-shell-inline-padding: 10px;
+    --fy-shell-block-padding: 10px;
+  }
+
   .fy-top-bar-chrome {
     padding: 0 10px;
   }
@@ -585,19 +705,19 @@
     font-size: 18px;
   }
 
-  .fy-primary-nav-label {
-    padding: 0 8px;
-  }
-
-  .fy-liquid-glass-lens .fy-primary-nav-label {
-    padding: 0 7px;
-  }
-
   .fy-tool-cluster {
     gap: 1px;
   }
 
   .fy-ui-lab-grid {
     gap: 10px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fy-side-navigation-toggle,
+  .fy-side-navigation-item,
+  .fy-side-navigation-caret {
+    transition: none;
   }
 }

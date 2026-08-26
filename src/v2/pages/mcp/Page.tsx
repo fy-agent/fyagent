@@ -43,6 +43,7 @@ import { FeatureList, FeatureListItem } from "../../shared/ui/FeatureList";
 import { FeatureSearch } from "../../shared/ui/FeatureSearch";
 import { FeatureTabs } from "../../shared/ui/FeatureTabs";
 import { SplitPanes } from "../../shared/ui/split";
+import { WorkBuddyTrustDialog } from "../../shared/ui/WorkBuddyTrustDialog";
 import { findCatalogItem, MCP_PROVENANCE_LABEL } from "./catalog";
 import { DEFAULT_NEW_APPS } from "./constants";
 import { McpDiscovery } from "./Discovery";
@@ -60,9 +61,6 @@ function assignedMcpTargets(server: McpServer) {
 }
 
 const INSTALLED_SPLIT_LABELS = ["调整列表与详情的宽度", "调整详情与分配的宽度"];
-const WORKBUDDY_TRUST_TITLE = "需要在 WorkBuddy 中信任 MCP";
-const WORKBUDDY_TRUST_DESCRIPTION =
-  "请到「连接器 → 自定义连接器」中信任该 MCP 后才能使用。";
 
 function ServerDetail({
   server,
@@ -120,8 +118,8 @@ function ServerDetail({
           <h3>安装来源</h3>
           <p className="fy-feature-info-lead">
             {catalogItem
-              ? "此 MCP 来自内置精选目录。安装后写入统一配置，并可继续在编辑窗口调整。"
-              : "此 MCP 由手动添加或从现有 Agent 配置导入，没有绑定精选目录条目。"}
+              ? "来自内置精选目录。"
+              : "手动添加或从现有 Agent 配置导入。"}
           </p>
           <dl className="fy-feature-definition">
             <dt>来源类型</dt>
@@ -152,7 +150,7 @@ function ServerDetail({
               {homepage && (
                 <ExternalLinkButton url={homepage}>主页</ExternalLinkButton>
               )}
-              {docs && <ExternalLinkButton url={docs}>文档</ExternalLinkButton>}
+              {docs && <ExternalLinkButton url={docs}>说明</ExternalLinkButton>}
             </div>
           )}
         </section>
@@ -160,8 +158,8 @@ function ServerDetail({
           <h3>当前分配</h3>
           <p className="fy-feature-info-lead">
             {assigned.length > 0
-              ? `已启用 ${assigned.length} 个应用。需要增减时，使用应用分配开关。`
-              : "尚未分配到任何应用。启用后，对应软件才能加载此 MCP。"}
+              ? `已启用 ${assigned.length} 个应用。`
+              : "尚未分配到任何应用。"}
           </p>
           {assigned.length > 0 && (
             <ul className="fy-feature-app-chips">
@@ -324,13 +322,13 @@ export function McpPage() {
         if (app === "workbuddy" && enabled) noteWorkBuddyTrust();
       },
     );
-  const bulkAssign = (app: McpTargetId, enabled: boolean) =>
-    write(
+  const bulkAssign = (app: McpTargetId, enabled: boolean) => {
+    const ids = servers
+      .filter((server) => Boolean(server.apps[app]) !== enabled)
+      .map((server) => server.id);
+    return write(
       "批量分配完成",
       async () => {
-        const ids = servers
-          .filter((server) => Boolean(server.apps[app]) !== enabled)
-          .map((server) => server.id);
         const result = await runSequentialBulk(
           ids,
           (id) => ports.mcp.toggleApp(id, app, enabled),
@@ -342,9 +340,11 @@ export function McpPage() {
           );
       },
       () => {
-        if (app === "workbuddy" && enabled) noteWorkBuddyTrust();
+        if (app === "workbuddy" && enabled && ids.length > 0)
+          noteWorkBuddyTrust();
       },
     );
+  };
   const importExisting = () =>
     write("MCP 导入", async () => {
       const count = await ports.mcp.importFromApps();
@@ -360,6 +360,7 @@ export function McpPage() {
       aria-label="MCP"
     >
       <header className="fy-feature-header">
+        <h1 className="fy-mcp-page-title">MCP 管理</h1>
         <FeatureTabs
           id="mcp-view-tabs"
           label="MCP 视图"
@@ -574,26 +575,12 @@ export function McpPage() {
           }}
         />
       )}
-      <Dialog
+      <WorkBuddyTrustDialog
         open={workbuddyTrustOpen}
-        title={WORKBUDDY_TRUST_TITLE}
-        description={WORKBUDDY_TRUST_DESCRIPTION}
         onOpenChange={(open) => {
           if (!open) setWorkbuddyTrustOpen(false);
         }}
-        actions={
-          <Button
-            className="fy-control-button-primary"
-            onClick={() => setWorkbuddyTrustOpen(false)}
-          >
-            知道了
-          </Button>
-        }
-      >
-        <p>
-          WorkBuddy 官方限制第三方 MCP 必须在安装后手动信任授权才能正常使用。
-        </p>
-      </Dialog>
+      />
       <ConfirmDialog
         open={deleteTarget !== null}
         title={`删除 ${deleteTarget?.name ?? "MCP"}`}

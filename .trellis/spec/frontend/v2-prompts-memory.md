@@ -1,5 +1,16 @@
 # V2 Prompts and Memory Native Business Contract
 
+> **Frontend Interaction V3 integration note — 2026-08-26**
+> `/agents?section=prompts` may show the selected Agent's existing prompt
+> library and an enable action, then link to `/prompts`. The supported
+> `PromptAppId` set and native `PromptsPort` remain authoritative. If
+> `entry.promptAppId` is absent, render `当前未接入提示词管理` and do not
+> invent a writer. Enable must call `ports.prompts.enable`, refetch, and
+> accept success only when the reread row has `enabled === true`. Failed or
+> mismatched readback must not keep an optimistic success state.
+> `/memory` receives the V3 left shell and visual hierarchy only; its data
+> ownership, persistence and native directory behavior do not change.
+
 ## 1. Scope / Trigger
 
 Read this contract before changing the V2 Prompts or Memory pages, their
