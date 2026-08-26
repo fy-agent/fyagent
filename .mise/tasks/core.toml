@@ -38,6 +38,7 @@ run = "node scripts/tasks/system-check.mjs"
 description = "Start native Tauri development on the current host"
 env = { FYAGENT_TASK_EFFECT = "interactive", FYAGENT_WINDOWS_MANIFEST = "dev" }
 interactive = true
+raw = true
 run = "pnpm dev"
 
 [build]

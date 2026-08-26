@@ -11,7 +11,10 @@ use url::Url;
 
 use crate::services::external_agents::AgentCatalogId;
 
-pub use qoderwork::{resolve_qoderwork_source, QODERWORK_REDIRECT_HOSTS};
+pub use qoderwork::{
+    parse_qoderwork_latest, qoderwork_latest_yml_url, QODERWORK_METADATA_HOSTS,
+    QODERWORK_REDIRECT_HOSTS,
+};
 pub use traework::{
     parse_traework_latest, TRAEWORK_DOWNLOAD_HOSTS, TRAEWORK_METADATA_ENDPOINTS,
     TRAEWORK_METADATA_HOSTS,

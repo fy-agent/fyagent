@@ -42,11 +42,22 @@ These guides help you **ask the right questions before coding**.
 - [ ] Agent Catalog install/auth or Codex managed-account identity is changing
       (closed `agentId+action` only; `credential_id` ≠ workspace id; native
       `auth.json` only when the live store is `file`)
+- [ ] WorkBuddy / QoderWork CN / TRAE Work CN install detection or launch is
+      changing (closed macOS bundle id and Windows PE ProductName together;
+      never infer from `~/.workbuddy` and never `CreateProcess` on Windows)
+- [ ] An interactive `mise run` task or `scripts/tasks/` process spawn is
+      changing (interactive requires `raw`; POSIX `kill(-pid)` and Windows
+      `taskkill /T /F` must be specified together)
 
 → Read [Cross-Layer Thinking Guide](./cross-layer-thinking-guide.md).
   For V2 routes or shell chrome, read the
   [V2 Shell Contract](../frontend/v2-shell.md). For host maximize/min-size,
   read the [Main Window Layout Contract](../backend/main-window-layout.md).
+  For desktop-agent identity, read
+  [External Agent P0 Safety](../backend/external-agent-p0.md) and
+  [Windows Runtime Security](../backend/windows-runtime-security.md).
+  For mise `dev` / process trees, read
+  [Repository Task Runner](../backend/task-runner-contract.md).
 
 ### When to Think About Code Reuse
 

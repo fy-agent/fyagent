@@ -123,7 +123,12 @@ export const PARAMETERIZED_TASKS = Object.freeze([
   "version:set",
 ]);
 
-export const RAW_TASKS = Object.freeze([]);
+export const RAW_TASKS = Object.freeze([
+  "dev",
+  "dev:renderer",
+  "test:unit:watch",
+  "test:v2:watch",
+]);
 
 const RETIRED_TASKS = Object.freeze([
   "macos:preflight",
@@ -313,6 +318,11 @@ export function validateTaskContract() {
     }
     if ((effect === "interactive") !== (task.interactive === true)) {
       throw new Error(`${name} interactive metadata and effect must agree`);
+    }
+    if ((effect === "interactive") !== (task.raw === true)) {
+      throw new Error(
+        `${name} interactive tasks must set raw so the console owns Ctrl+C and close`,
+      );
     }
   }
   const rawTasks = names.filter((name) => tasks[name].raw === true).sort();

@@ -314,6 +314,18 @@ export const RUST_ALLOWANCE_CONTRACT = Object.freeze([
     condition: TESTABLE_UNSUPPORTED_CFG,
     next: "impl CodexDesktopPlatform for UnsupportedPlatformAdapter {",
   }),
+  Object.freeze({
+    id: "desktop-non-product-mod",
+    file: "src-tauri/src/agent_install/desktop.rs",
+    condition: UNSUPPORTED_CFG,
+    next: "mod non_product_host {",
+  }),
+  Object.freeze({
+    id: "desktop-non-product-use",
+    file: "src-tauri/src/agent_install/desktop.rs",
+    condition: UNSUPPORTED_CFG,
+    next: "use non_product_host::{",
+  }),
 ]);
 const RUST_CFG_MACRO_CONTRACT = Object.freeze(
   [

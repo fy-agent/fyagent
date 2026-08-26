@@ -3,7 +3,8 @@
 //! The renderer never receives a generic executable, argument, working
 //! directory, or privilege selector. Callers can only ask this module to open
 //! an HTTP(S) URL, a host-owned directory, a backend-generated terminal
-//! script, or a verified Windows application as the interactive user.
+//! script, a verified Windows application AUMID, or a shape-validated Windows
+//! `.exe` as the interactive user.
 
 use std::path::{Path, PathBuf};
 
@@ -29,6 +30,7 @@ pub(crate) enum ProcessLaunchError {
     InvalidDirectory,
     InvalidTerminalScript,
     InvalidWindowsAppAumid,
+    InvalidWindowsExe,
     #[cfg(target_os = "windows")]
     InvalidUserHelper,
     InteractiveUserUnavailable,
@@ -57,6 +59,7 @@ impl ProcessLaunchError {
             Self::InvalidDirectory => "external_launch_invalid_directory",
             Self::InvalidTerminalScript => "external_launch_invalid_terminal_script",
             Self::InvalidWindowsAppAumid => "external_launch_invalid_windows_app_aumid",
+            Self::InvalidWindowsExe => "external_launch_invalid_windows_exe",
             #[cfg(target_os = "windows")]
             Self::InvalidUserHelper => "fyagent_user_helper_invalid",
             Self::InteractiveUserUnavailable => "interactive_user_launcher_unavailable",
@@ -83,6 +86,10 @@ pub(crate) trait InteractiveUserLauncher: Send + Sync {
     /// Opens a shape-validated AUMID that was already bound to a verified
     /// installed application by the Codex Desktop domain layer.
     fn open_trusted_windows_app_aumid(&self, aumid: &str) -> Result<(), ProcessLaunchError>;
+
+    /// Opens a shape-validated `.exe` that the caller already bound to a
+    /// closed desktop-agent identity. This boundary never accepts arguments.
+    fn open_trusted_windows_exe(&self, executable: &Path) -> Result<(), ProcessLaunchError>;
 
     /// Starts only FyAgent's installed sibling helper with the fixed package
     /// action and shape-validated capability arguments.
@@ -151,6 +158,15 @@ where
         self.dispatch(request)
     }
 
+    #[cfg(test)]
+    fn open_trusted_windows_exe_as_user(
+        &self,
+        executable: &Path,
+    ) -> Result<(), ProcessLaunchError> {
+        let request = InteractiveUserLaunch::trusted_windows_exe(executable)?;
+        self.dispatch(request)
+    }
+
     fn dispatch(&self, request: InteractiveUserLaunch) -> Result<(), ProcessLaunchError> {
         match request {
             InteractiveUserLaunch::HttpUrl(url) => self.launcher.open_http_url(&url),
@@ -160,6 +176,9 @@ where
             }
             InteractiveUserLaunch::TrustedWindowsAppAumid(aumid) => {
                 self.launcher.open_trusted_windows_app_aumid(&aumid)
+            }
+            InteractiveUserLaunch::TrustedWindowsExe(executable) => {
+                self.launcher.open_trusted_windows_exe(&executable)
             }
         }
     }
@@ -181,6 +200,7 @@ enum InteractiveUserLaunch {
     Directory(PathBuf),
     TerminalScript(PathBuf),
     TrustedWindowsAppAumid(String),
+    TrustedWindowsExe(PathBuf),
 }
 
 impl InteractiveUserLaunch {
@@ -220,6 +240,14 @@ impl InteractiveUserLaunch {
         }
 
         Ok(Self::TrustedWindowsAppAumid(aumid.to_owned()))
+    }
+
+    fn trusted_windows_exe(executable: &Path) -> Result<Self, ProcessLaunchError> {
+        if !is_valid_windows_exe_path(executable) {
+            return Err(ProcessLaunchError::InvalidWindowsExe);
+        }
+
+        Ok(Self::TrustedWindowsExe(executable.to_path_buf()))
     }
 }
 
@@ -324,6 +352,16 @@ pub(crate) fn launch_trusted_windows_app_aumid_as_user(aumid: &str) -> Result<()
     dispatch_sync_with_platform_launcher(request).map_err(|error| error.public_code().to_owned())
 }
 
+/// Opens a caller-verified Windows `.exe` through the interactive user's
+/// Explorer shell. Identity proof stays in the desktop observer; this
+/// boundary only accepts an absolute `.exe` path with no arguments.
+#[cfg_attr(target_os = "macos", allow(dead_code))]
+pub(crate) fn launch_trusted_windows_exe_as_user(executable: &Path) -> Result<(), String> {
+    let request = InteractiveUserLaunch::trusted_windows_exe(executable)
+        .map_err(|error| error.public_code().to_owned())?;
+    dispatch_sync_with_platform_launcher(request).map_err(|error| error.public_code().to_owned())
+}
+
 #[cfg(target_os = "windows")]
 async fn dispatch_with_platform_launcher(
     _app: AppHandle,
@@ -409,6 +447,10 @@ impl InteractiveUserLauncher for TauriOpenerInteractiveUserLauncher {
     fn open_trusted_windows_app_aumid(&self, _aumid: &str) -> Result<(), ProcessLaunchError> {
         Err(ProcessLaunchError::InteractiveUserUnavailable)
     }
+
+    fn open_trusted_windows_exe(&self, _executable: &Path) -> Result<(), ProcessLaunchError> {
+        Err(ProcessLaunchError::InteractiveUserUnavailable)
+    }
 }
 
 fn normalize_http_url(raw_url: &str) -> Result<String, ProcessLaunchError> {
@@ -478,6 +520,19 @@ fn is_valid_windows_app_aumid(value: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-'))
 }
 
+fn is_valid_windows_exe_path(value: &Path) -> bool {
+    let extension_is_exe = value
+        .extension()
+        .is_some_and(|extension| extension.to_string_lossy().eq_ignore_ascii_case("exe"));
+    !value.as_os_str().is_empty()
+        && value.is_absolute()
+        && !value.to_string_lossy().contains('\0')
+        && extension_is_exe
+        && value
+            .components()
+            .all(|component| !matches!(component, std::path::Component::ParentDir))
+}
+
 #[cfg(test)]
 mod tests {
     use std::{
@@ -496,6 +551,7 @@ mod tests {
         Directory(String),
         TerminalScript(String),
         WindowsAppAumid(String),
+        WindowsExe(String),
         #[cfg(target_os = "windows")]
         FyAgentUserHelper {
             job_id: String,
@@ -552,6 +608,14 @@ mod tests {
                 .lock()
                 .expect("fake lock")
                 .push(RecordedLaunch::WindowsAppAumid(aumid.to_owned()));
+            self.failure.map_or(Ok(()), Err)
+        }
+
+        fn open_trusted_windows_exe(&self, executable: &Path) -> Result<(), ProcessLaunchError> {
+            self.calls
+                .lock()
+                .expect("fake lock")
+                .push(RecordedLaunch::WindowsExe(executable.display().to_string()));
             self.failure.map_or(Ok(()), Err)
         }
 
@@ -719,6 +783,41 @@ mod tests {
         assert_eq!(launcher.recorded_calls().len(), 1);
     }
 
+    #[test]
+    fn verified_windows_exe_launch_rejects_non_exe_input_before_the_fake_runs() {
+        let launcher = FakeInteractiveUserLauncher::default();
+        let service = ProcessLaunchService::new(launcher.clone());
+        let temporary = tempfile::tempdir().expect("test directory");
+        let executable = temporary.path().join("WorkBuddy.exe");
+
+        service
+            .open_trusted_windows_exe_as_user(&executable)
+            .expect("shape-valid exe");
+        assert_eq!(
+            launcher.recorded_calls(),
+            vec![RecordedLaunch::WindowsExe(executable.display().to_string())]
+        );
+
+        let batch = temporary.path().join("WorkBuddy.bat");
+        let parent = temporary
+            .path()
+            .join("nested")
+            .join("..")
+            .join("WorkBuddy.exe");
+        for invalid in [
+            Path::new("WorkBuddy.exe"),
+            batch.as_path(),
+            parent.as_path(),
+        ] {
+            assert_eq!(
+                service.open_trusted_windows_exe_as_user(invalid),
+                Err(ProcessLaunchError::InvalidWindowsExe),
+                "invalid exe target {invalid:?} must not reach a launcher"
+            );
+        }
+        assert_eq!(launcher.recorded_calls().len(), 1);
+    }
+
     #[cfg(target_os = "windows")]
     #[test]
     fn user_helper_fake_accepts_only_typed_job_and_pipe_capabilities() {
@@ -794,5 +893,8 @@ mod tests {
         assert!(codex_source.contains("launch_trusted_windows_app_aumid_as_user"));
         assert!(!codex_source.contains("ActivateApplication"));
         assert!(!codex_source.contains("ApplicationActivationManager"));
+        let desktop_source = include_str!("../agent_install/desktop.rs");
+        assert!(desktop_source.contains("launch_trusted_windows_exe_as_user"));
+        assert!(!desktop_source.contains("CreateProcess"));
     }
 }

@@ -24,7 +24,8 @@ use windows::{
         UI::{
             Shell::{
                 FOLDERID_LocalAppData, FOLDERID_Profile, FOLDERID_ProgramFiles,
-                FOLDERID_RoamingAppData, SHGetKnownFolderPath, KNOWN_FOLDER_FLAG,
+                FOLDERID_ProgramFilesX86, FOLDERID_RoamingAppData, SHGetKnownFolderPath,
+                KNOWN_FOLDER_FLAG,
             },
             WindowsAndMessaging::{GetShellWindow, GetWindowThreadProcessId},
         },
@@ -407,6 +408,22 @@ pub(super) fn system_command_directories() -> Vec<PathBuf> {
         WindowsStartupErrorCode::InteractiveUserUnavailable,
     ) {
         directories.push(program_files.join("nodejs"));
+    }
+    directories
+}
+
+/// Machine Program Files locations. These are OS known folders, not Alice
+/// profile paths, so the query uses the process token (`None`).
+pub(super) fn machine_program_files_directories() -> Vec<PathBuf> {
+    let mut directories = Vec::new();
+    for folder in [&FOLDERID_ProgramFiles, &FOLDERID_ProgramFilesX86] {
+        if let Ok(path) = known_folder_for_token(
+            None,
+            folder,
+            WindowsStartupErrorCode::InteractiveUserUnavailable,
+        ) {
+            directories.push(path);
+        }
     }
     directories
 }

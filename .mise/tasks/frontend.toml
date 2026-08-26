@@ -2,6 +2,7 @@
 description = "Start the Vite renderer development server"
 env = { FYAGENT_TASK_EFFECT = "interactive" }
 interactive = true
+raw = true
 run = "pnpm dev:renderer"
 
 ["build:renderer"]
@@ -67,6 +68,7 @@ arg "[filters]" var=#true help="Vitest file or name filters"
 '''
 env = { FYAGENT_TASK_EFFECT = "interactive" }
 interactive = true
+raw = true
 run = "node scripts/tasks/frontend.mjs test-watch"
 
 ["test:v2"]
@@ -78,6 +80,7 @@ run = "pnpm test:v2"
 description = "Run isolated V2 renderer tests in interactive watch mode"
 env = { FYAGENT_TASK_EFFECT = "interactive" }
 interactive = true
+raw = true
 run = "pnpm test:v2:watch"
 
 ["test:v2:browser"]

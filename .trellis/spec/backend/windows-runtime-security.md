@@ -47,7 +47,20 @@ pub(crate) async fn open_http_url_as_user(
     app: tauri::AppHandle,
     raw_url: String,
 ) -> Result<(), String>;
+
+#[cfg(target_os = "windows")]
+pub(crate) fn machine_program_files_directories() -> Vec<PathBuf>;
+
+pub(crate) fn launch_trusted_windows_exe_as_user(
+    executable: &Path,
+) -> Result<(), String>;
 ```
+
+`launch_trusted_windows_exe_as_user` is crate-private. It does not accept
+arguments, a working directory, or a verb. Invalid shape maps to
+`external_launch_invalid_windows_exe` before any Explorer call. The AUMID
+helper remains a separate Codex path and must not be deleted to add EXE
+launch.
 
 The frozen internal value is deliberately not serializable:
 
@@ -219,6 +232,11 @@ IShellFolderViewDual.Application -> IShellDispatch2`.
   `IShellDispatch2::ShellExecute`, so the system browser receives a foreground-
   eligible normal-show request. The fixed Codex user-helper launch retains its
   separate empty show argument and fixed target/arguments contract.
+- Closed desktop-agent `.exe` paths (WorkBuddy / QoderWork CN / TRAE Work CN)
+  use the same Explorer `ShellExecute` route after the observer proves PE
+  `ProductName` at a closed relative path. The launch boundary accepts only an
+  absolute `.exe` with no arguments, `..`, or NUL. Identity proof stays in
+  the observer; this module never scans vendor config directories.
 - There is no `ShellExecuteW`, `Command::new`, `cmd`, PowerShell, arbitrary
   executable, current-process browser launch, or `window.open` fallback. If the
   Explorer COM chain is unavailable, fail closed instead of launching as the
@@ -243,6 +261,8 @@ IShellFolderViewDual.Application -> IShellDispatch2`.
 | Desktop background object is requested directly as `IShellFolderViewDual`                        | Treat as a contract regression; request `IDispatch` first and cast explicitly.                                                                                             |
 | External link is accepted but browser would remain backgrounded                                  | Pass fixed `SW_SHOWNORMAL` for ordinary external links; helper show semantics remain unchanged.                                                                            |
 | Explorer COM acquisition or `ShellExecute` fails                                                 | Return controlled `INTERACTIVE_USER_UNAVAILABLE`; do not try a command, direct shell, renderer, or elevated-user fallback.                                                 |
+| Closed desktop-agent `.exe` is relative, contains `..` or NUL, or is not `.exe`                  | `external_launch_invalid_windows_exe`; Explorer is not invoked.                                                                                                            |
+| Closed desktop-agent `.exe` is observer-proven under Alice Programs or machine Program Files     | Explorer `ShellExecute` as Alice; never `CreateProcess` / `ShellExecuteW` from Bob.                                                                                        |
 | Formal elevated Windows Agent Catalog CLI/auth (Claude/Grok/OpenCode)                            | Return `interactive_user_unavailable`; do not inspect or launch the user tool.                                                                                             |
 | A Catalog/user helper accepts URL, path, shell string, or returns raw child stdout               | Contract/static test fails; no such helper is registered in this iteration.                                                                                                |
 | Non-Windows platform                                                                             | Preserve its existing path resolver, Store/window-state plugin, and single-instance behavior.                                                                              |
@@ -265,8 +285,11 @@ IShellFolderViewDual.Application -> IShellDispatch2`.
 - Bad: restore `%ProgramData%\FyAgent\runtime`, treat PackageBridge as runtime
   state or an activation channel, infer a user from an active WTS session, or
   let a second-instance argument invoke helper/package/filesystem side effects.
+- Good: observer-proven `WorkBuddy.exe` (absolute, `.exe`, no `..`) opens
+  through the same Explorer `ShellExecute` chain as catalog HTTPS links.
 - Bad: start Claude/Grok/OpenCode CLI or a Catalog EXE from the elevated
-  parent, or add a helper that accepts a renderer command string.
+  parent with `CreateProcess`, or add a helper that accepts a renderer
+  command string.
 
 ## 6. Tests Required
 
@@ -299,9 +322,12 @@ IShellFolderViewDual.Application -> IShellDispatch2`.
   intermediate cast, exact OLE/DDE initialization, `SW_SHOWNORMAL` only on the
   ordinary link path, and negative scans for `SWC_EXPLORER`, command
   interpreters, direct `ShellExecuteW`, and arbitrary executable fallback.
-  Native acceptance must click a real Tauri catalog action and observe the
-  target in the interactive user's foreground browser; process creation or a
-  successful HRESULT alone is insufficient.
+  Trusted-exe tests must accept an absolute `.exe` (use a host-absolute
+  temp path; a `C:\...` string is not absolute on Unix) and reject
+  relative / `..` / non-`.exe` before the fake launcher. Native acceptance
+  must click a real Tauri catalog action and observe the target in the
+  interactive user's foreground browser; process creation or a successful
+  HRESULT alone is insufficient.
 - Agent Catalog CLI/auth tests must map formal elevated Windows to
   `interactive_user_unavailable` and must not register a generic command
   helper. Existing Tooling formal-build fail-closed tests remain
@@ -347,6 +373,98 @@ validated HTTP(S) -> SWC_DESKTOP automation chain -> IDispatch cast
 COM failure -> controlled error with no fallback
 ```
 
+Wrong:
+
+```text
+elevated FyAgent -> CreateProcess(WorkBuddy.exe)
+observer -> ~/.workbuddy exists => installed
+```
+
+Correct:
+
+```text
+observer proves closed relative path + PE ProductName
+  -> launch_trusted_windows_exe_as_user(absolute .exe, no args)
+  -> Explorer ShellExecute as Alice
+```
+
+## Scenario: Trusted desktop-agent EXE launch as Alice
+
+### 1. Scope / Trigger
+
+- Trigger: WorkBuddy / QoderWork CN / TRAE Work CN launch on formal
+  Windows must run as Alice. This is a new process-launch variant plus
+  machine Program Files roots, so code-spec depth is mandatory.
+- Identity proof stays in `agent_install/desktop.rs`. This module only
+  validates EXE shape and opens Explorer.
+
+### 2. Signatures
+
+```text
+InteractiveUserLaunch::trusted_windows_exe(path) -> TrustedWindowsExe | InvalidWindowsExe
+InteractiveUserLauncher::open_trusted_windows_exe(path)
+launch_trusted_windows_exe_as_user(path) -> () | INTERACTIVE_USER_UNAVAILABLE
+machine_program_files_directories() -> [ProgramFiles, ProgramFilesX86]
+```
+
+Public error: `ProcessLaunchError::InvalidWindowsExe` →
+`external_launch_invalid_windows_exe`.
+
+### 3. Contracts
+
+- Shape: nonempty, host-absolute, `.exe` (case-insensitive), no NUL, no
+  `ParentDir` component, no arguments.
+- Explorer adapter reuses `launch_from_explorer(path)` with
+  `SW_SHOWNORMAL`. macOS opener returns `InteractiveUserUnavailable`.
+- Keep `open_trusted_windows_app_aumid` / AUMID helper. Do not collapse
+  EXE launch into AUMID or into `open_directory`.
+- Observation roots on Windows: Alice `LocalAppData\Programs` plus
+  `machine_program_files_directories()` (`SHGetKnownFolderPath` with
+  token `None`). Tests may substitute `FYAGENT_TEST_HOME`.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+| --- | --- |
+| Relative, `..`, NUL, or non-`.exe` | `external_launch_invalid_windows_exe`; no Explorer |
+| Shape-valid absolute `.exe` | Explorer `ShellExecute` as Alice |
+| Explorer COM unavailable | `INTERACTIVE_USER_UNAVAILABLE`; no `CreateProcess` |
+| macOS / Linux call the EXE opener | `InteractiveUserUnavailable` / `PlatformUnsupported` |
+| Downloaded installer EXE, no closed identity | Install stays `interactive_user_unavailable` |
+
+### 5. Good/Base/Bad Cases
+
+- Good: tempdir `WorkBuddy.exe` is accepted by the shape check on Unix
+  test hosts because `Path::is_absolute` is host-native.
+- Base: HTTPS catalog links and Codex AUMID launch remain separate
+  request types.
+- Bad: `Command::new(exe)`, `ShellExecuteW` from Bob, or treating
+  `C:\WorkBuddy.exe` as absolute in a macOS unit test.
+
+### 6. Tests Required
+
+- `verified_windows_exe_launch_rejects_non_exe_input_before_the_fake_runs`.
+- Negative: relative path, `.bat`, `nested/../WorkBuddy.exe`.
+- Desktop observation tests on both hosts as listed in
+  [External Agent P0 Safety](./external-agent-p0.md).
+- NSIS contract still forbids `taskkill`; this launch path is not an
+  installer.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```rust
+std::process::Command::new(exe).spawn()?;
+```
+
+#### Correct
+
+```rust
+crate::platform::process_launch::launch_trusted_windows_exe_as_user(exe)
+    .map_err(|_| AgentReasonCode::InteractiveUserUnavailable)?;
+```
+
 ## Scenario: Agent Catalog CLI/auth on formal elevated Windows
 
 ### 1. Scope / Trigger
@@ -380,8 +498,10 @@ closed states plus sanitized reason codes.
 - Helper stdout/stderr, environment, browser URL, device code, executable
   path, and command line must never return to the elevated parent or
   renderer.
-- Catalog desktop EXE deploy is the same fail-closed class: no generic
-  `ShellExecute` of a downloaded path from Bob.
+- Catalog desktop EXE *install* is the same fail-closed class: no generic
+  `ShellExecute` of a downloaded path from Bob. Launch of an
+  observer-proven closed identity uses
+  `launch_trusted_windows_exe_as_user` and is not an install bypass.
 
 ### 4. Validation & Error Matrix
 
