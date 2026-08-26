@@ -77,6 +77,61 @@ function observeHiddenAncestors(
   return () => observer.disconnect();
 }
 
+function isSelectionLensOverlay(node: Element): boolean {
+  return node.classList.contains("fy-selection-lens");
+}
+
+function observeLayoutSubtree(
+  root: HTMLElement,
+  observer: ResizeObserver,
+): () => void {
+  const observed = new Set<Element>();
+
+  const observeNode = (node: Element) => {
+    if (isSelectionLensOverlay(node)) {
+      return;
+    }
+    if (!observed.has(node)) {
+      observer.observe(node);
+      observed.add(node);
+    }
+    for (const child of node.children) {
+      observeNode(child);
+    }
+  };
+
+  observeNode(root);
+
+  const mutations = new MutationObserver((records) => {
+    for (const record of records) {
+      for (const added of record.addedNodes) {
+        if (added instanceof Element) {
+          observeNode(added);
+        }
+      }
+      for (const removed of record.removedNodes) {
+        if (removed instanceof Element) {
+          const forget = (node: Element) => {
+            observer.unobserve(node);
+            observed.delete(node);
+            for (const child of node.children) {
+              forget(child);
+            }
+          };
+          forget(removed);
+        }
+      }
+    }
+  });
+  mutations.observe(root, { childList: true, subtree: true });
+
+  return () => {
+    mutations.disconnect();
+    observer.disconnect();
+    observed.clear();
+  };
+}
+
 export function SelectionLensGroup({
   id,
   inset = 0,
@@ -179,14 +234,15 @@ export function SelectionLensGroup({
         : new ResizeObserver(() => {
             syncBox();
           });
-    observer?.observe(scope);
-    observer?.observe(host);
+    const stopLayoutWatch = observer
+      ? observeLayoutSubtree(scope, observer)
+      : () => undefined;
     window.addEventListener("resize", syncBox);
     const stopHiddenWatch = observeHiddenAncestors(scope, syncBox);
     syncBox();
 
     return () => {
-      observer?.disconnect();
+      stopLayoutWatch();
       window.removeEventListener("resize", syncBox);
       stopHiddenWatch();
     };

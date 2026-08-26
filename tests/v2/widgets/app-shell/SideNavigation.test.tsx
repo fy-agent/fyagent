@@ -127,6 +127,31 @@ describe("SideNavigation", () => {
     expect(within(navigation).queryByTestId("liquid-glass-lens")).toBeNull();
   });
 
+  it("keeps one memory lens after collapsing then expanding configuration", async () => {
+    const user = userEvent.setup();
+    renderNavigation("/memory");
+
+    const navigation = screen.getByRole("navigation", { name: "主导航" });
+    const toggle = within(navigation).getByRole("button", {
+      name: "配置管理",
+    });
+    const memory = within(navigation).getByRole("link", { name: "记忆模块" });
+
+    expect(memory).toHaveAttribute("aria-current", "page");
+    expect(within(navigation).getAllByTestId("selection-lens")).toHaveLength(1);
+
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(memory).toHaveAttribute("aria-current", "page");
+    expect(within(navigation).getAllByTestId("selection-lens")).toHaveLength(1);
+
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(memory).toHaveAttribute("aria-current", "page");
+    expect(within(navigation).getAllByTestId("selection-lens")).toHaveLength(1);
+    expect(memory.querySelector("[data-selection-lens-target]")).not.toBeNull();
+  });
+
   it("supports expand, collapse, and vertical keyboard focus", async () => {
     const user = userEvent.setup();
     renderNavigation("/agents");
@@ -191,19 +216,18 @@ describe("SideNavigation", () => {
 
   it("collapses instantly when the user prefers reduced motion", async () => {
     const originalMatchMedia = window.matchMedia;
-    window.matchMedia = ((query: string) =>
-      ({
-        matches: query.includes("prefers-reduced-motion"),
-        media: query,
-        onchange: null,
-        addEventListener() {},
-        removeEventListener() {},
-        addListener() {},
-        removeListener() {},
-        dispatchEvent() {
-          return false;
-        },
-      })) as typeof window.matchMedia;
+    window.matchMedia = ((query: string) => ({
+      matches: query.includes("prefers-reduced-motion"),
+      media: query,
+      onchange: null,
+      addEventListener() {},
+      removeEventListener() {},
+      addListener() {},
+      removeListener() {},
+      dispatchEvent() {
+        return false;
+      },
+    })) as typeof window.matchMedia;
 
     try {
       const user = userEvent.setup();

@@ -345,6 +345,12 @@ L3 interactive glass       selected lens, tools, tooltip, and popover
   host (that host's top-left, size 0) and springs open in place. Do not
   collapse to the track origin (`inset`, `inset`). Do not give catalog rails a
   second slider. Do not interpolate size with `transform: scale`.
+  `SelectionLensGroup` must retarget that overlay when in-scope layout moves
+  the host, including sibling reflow from V2 `Collapsible` height. Observing
+  only the host and the track box is not enough: neither resizes when
+  「配置管理」 expands and 「记忆模块」 translates down inside a
+  `min-height: 100%` track. Observe in-scope descendants (skip the overlay
+  node). Do not use `layoutId` to chase that translation.
 - The `NavLink` owns hit area, focus, accessible name, and `aria-current`.
   Selected labels stay ordinary CSS text. Do not wrap them in `LiquidGlassLens`.
   Project CSS must independently express tint, selected border/color/shadow,
@@ -428,6 +434,7 @@ Agent/Models, Skills, and MCP ports do not by themselves make it Release-ready.
 | V2 imports `framer-motion` outside `shared/ui/motion.ts`            | Architecture test fails; SelectionLens and Collapsible consume the motion owner |
 | Changing the active option remounts the overlay or restarts from `{width:0}` | Unit test fails; the same overlay node must keep identity and retarget from current geometry |
 | First show or show-after-`hidden` collapses to the track origin (`inset`, `inset`) | Unit and architecture tests fail; appear must use `selectionLensCollapsedOrigin` of the active host |
+| 「记忆模块」 is selected, then 「配置管理」 expands | Overlay follows the memory host; unit tests observe in-scope descendants and retarget on sibling resize; Playwright keeps the pill on the memory link |
 | Any normal production route                                            | Exactly one active primary link and one nav `SelectionLens` overlay; no production `LiquidGlassLens`; other tracks may each have their own pill |
 | UI Lab development route                                               | No primary link active; the lab may render one isolated lens specimen              |
 | SVG/backdrop filter unavailable                                        | CSS tint, edge, shadow, focus, and selected state remain readable                  |
@@ -498,6 +505,9 @@ mise run build:renderer
   caption buttons, six non-empty product pages, and idempotent ready behavior.
   Browser/jsdom shells have no drag strip; native macOS may show one inert
   V2 `TopBar` Overlay strip above the chrome row.
+  Side-navigation tests cover collapsing 「配置管理」 while a configuration
+  leaf is active, and expanding it while 「记忆模块」 is active so the overlay
+  stays on the memory host instead of the pre-expand coordinate.
 - Architecture/static tests reject legacy dependencies, upward layer imports,
   direct Tauri imports outside `shared/platform/tauri`, and the retired
   window-frame contract. They keep `framer-motion` behind
@@ -515,7 +525,9 @@ mise run build:renderer
   the left navigation; the three navigation groups and TopBar tools are
   reachable; all six product pages non-empty;
   hash/selected/ARIA/lens agreement;
-  left-navigation keyboard order on the default shell route; absence of fake
+  left-navigation keyboard order on the default shell route; memory selected
+  then 「配置管理」 expanded keeps the nav overlay on the memory link;
+  absence of fake
   chrome; and no
   console, page, or framework-overlay error.
 - UI Lab browser tests cover translucent surfaces, backdrop or meaningful CSS
@@ -574,6 +586,22 @@ the pill expands from that host's top-left, not from the track origin.
     )}
   </NavLink>
 </SelectionLensGroup>
+```
+
+Wrong: observe only the overlay host and the track box. Expanding
+「配置管理」 translates 「记忆模块」 without resizing either node, so the
+pill stays between 模型管理 and Skills 管理.
+
+```ts
+observer.observe(scope);
+observer.observe(host);
+```
+
+Correct: observe in-scope descendants except the overlay, then spring the
+same overlay to the host's new box.
+
+```ts
+observeLayoutSubtree(scope, observer);
 ```
 
 Wrong: import `framer-motion` in a widget, or hide 「配置管理」 with only

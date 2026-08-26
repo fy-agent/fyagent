@@ -527,6 +527,12 @@ function ExternalLinkButton(props: {
   transports show that no local directory exists. Skill 市场 installs use
   source **从 Skill 市场安装**, not GitHub. `.fy-feature-code` and
   `.fy-feature-path-value` have no dark pill background.
+  `.fy-feature-definition` must keep that copy action inside the info card
+  in the two-column info grid (`min-width: 1181px`). Do not floor the label
+  column at `90px` while the value column can shrink to `0`: **复制** then
+  paints past the card. Size labels with `minmax(0, max-content)` and give
+  copy-only `dd` cells `min-width: min-content`. Do not `overflow: hidden`
+  the card to clip the button.
 - MCP has permanent Installed and Discover tabs. Discover is a static curated
   catalog of about 20–30 installable items: each card is either one-click or a
   credential/config form. Discover classification is only “直接安装” versus
@@ -619,6 +625,7 @@ function ExternalLinkButton(props: {
 | Skill/MCP install writes after picking a target, before path confirm | Page test fails; **下一步** must show the destination; host waits for **确认安装** |
 | MCP/Skills assignment order is alphabetical or Claude-first      | Page/component test fails; order must match Agent catalog                 |
 | `.fy-feature-list` is restored to CSS Grid                       | List rows overlap because `SelectionLens` occupies a grid track           |
+| `.fy-feature-definition` floors labels at `90px` in info cards   | Copy-only **复制** overflows the card in the two-column info grid         |
 | A supported app is missing from the local icon map               | Type/asset test fails; never render a remote fallback or broken image     |
 | An assignment icon contributes an accessible name                | Component accessibility test fails; switch text remains the sole name     |
 | Viewport changes between two- and three-column layouts           | Render exactly one panel: seven unique Skill or seven unique MCP switches |
@@ -775,11 +782,15 @@ git diff --check
   summary line, Skills page-level discovery
   scroll, MCP `.fy-feature-discovery-scroll` overflow, and no overflow on
   `.fy-feature-detail-scroll`.
+  CSS tests keep `.fy-feature-definition` at
+  `minmax(0, max-content) minmax(0, 1fr)` with copy-only `dd` `min-width:
+  min-content` so **复制** stays inside the info card.
 - Browser tests cover `900x600`, `1152x640`, `1232x700`, and `1440x900`, with
   populated two-/three-column layouts, a single correctly-sized assignment
   panel whose switch accessible names match catalog order, visible split
   separators above 760px, assignment rows contained
-  inside their pane, no overlapping list rows, no overflow, no secret
+  inside their pane, no overlapping list rows, no overflow, copy actions
+  contained in source info cards, no secret
   rendering, exact invoke payloads, and authoritative refetch.
 - Browser tests do not replace native Windows Tauri/WebView2 acceptance,
   actual filesystem/config writes, or 125%/150% display-scale review.
@@ -858,6 +869,28 @@ Correct: use a column flex track; the lens stays out of flow.
 .fy-feature-list {
   display: flex;
   flex-direction: column;
+}
+```
+
+Wrong: floor info-card labels at `90px` so the value column can collapse
+under the copy button.
+
+```css
+.fy-feature-definition {
+  grid-template-columns: minmax(90px, max-content) minmax(0, 1fr);
+}
+```
+
+Correct: let labels shrink and keep a copy-only path at its min-content
+width.
+
+```css
+.fy-feature-definition {
+  grid-template-columns: minmax(0, max-content) minmax(0, 1fr);
+}
+.fy-feature-definition
+  dd:has(> .fy-feature-path:not(:has(.fy-feature-path-value))) {
+  min-width: min-content;
 }
 ```
 

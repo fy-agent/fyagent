@@ -123,6 +123,25 @@ for (const feature of [
         }),
       );
     expect(assignmentOverflow).toEqual([]);
+    const copyOverflow = await page
+      .locator(".fy-feature-info-card .fy-feature-path .fy-control-button")
+      .evaluateAll((buttons) =>
+        buttons.flatMap((button) => {
+          const card = button.closest(".fy-feature-info-card");
+          if (!(card instanceof HTMLElement)) {
+            return ["copy action is missing an info card"];
+          }
+          const buttonBox = button.getBoundingClientRect();
+          const cardBox = card.getBoundingClientRect();
+          return buttonBox.left < cardBox.left - 1 ||
+            buttonBox.right > cardBox.right + 1 ||
+            buttonBox.top < cardBox.top - 1 ||
+            buttonBox.bottom > cardBox.bottom + 1
+            ? ["copy action overflows info card"]
+            : [];
+        }),
+      );
+    expect(copyOverflow).toEqual([]);
     await expectNoHorizontalOverflow(page);
     await expectHealthyPage(page, health);
   });
