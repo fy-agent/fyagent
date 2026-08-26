@@ -1,0 +1,29 @@
+{
+  "id": "agent-directory-lifecycle-ux",
+  "name": "agent-directory-lifecycle-ux",
+  "title": "AI 软件目录渐进扫描、安装更新与侧栏动效",
+  "description": "在单一开发分支中串行实现 AI 软件目录的全量首屏、渐进扫描、配置门禁、一键安装/更新与进度，以及配置管理展开收起动效；优先复用现有能力。",
+  "status": "completed",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P1",
+  "creator": "pythonrust",
+  "assignee": "pythonrust",
+  "createdAt": "2026-08-26",
+  "completedAt": "2026-08-26",
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {
+    "execution_shape": "single_branch_serial",
+    "planning_style": "stable_boundaries_flexible_implementation"
+  }
+}
