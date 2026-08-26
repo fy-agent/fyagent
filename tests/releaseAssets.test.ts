@@ -18,7 +18,7 @@ import {
   DOWNLOAD_MANIFEST_NAME,
   EXPECTED_INSTALLERS_BY_TARGET,
   EXPECTED_TARGETS,
-  PREFLIGHT_BRANCH,
+  PREFLIGHT_WORKFLOW_BRANCH,
   RELEASE_BRANCH,
   WINDOWS_SIGNING_FRAGMENTS_BY_TARGET,
   WINDOWS_SIGNING_STATUS_NAME,
@@ -65,9 +65,8 @@ const identity: ReleaseIdentity = {
   repository: "fy-agent/fyagent",
   repositoryId: "1313497021",
   workflowPath: ".github/workflows/release.yml",
-  workflowRef:
-    "fy-agent/fyagent/.github/workflows/release.yml@refs/heads/dev/laiyongjie",
-  workflowSha: "b".repeat(40),
+  workflowRef: "fy-agent/fyagent/.github/workflows/release.yml@refs/heads/main",
+  workflowSha: "c".repeat(40),
   runId: "123456",
   runAttempt: "2",
   event: "workflow_dispatch",
@@ -209,7 +208,7 @@ describe("release asset and metadata contract", () => {
 
   it("freezes three installers, six subjects, and seven attachments", () => {
     const installers = expectedInstallerNames("0.3.0");
-    expect(PREFLIGHT_BRANCH).toBe("dev/laiyongjie");
+    expect(PREFLIGHT_WORKFLOW_BRANCH).toBe("main");
     expect(RELEASE_BRANCH).toBe("main");
     expect(installers).toEqual([
       "FyAgent-0.3.0-macOS.dmg",
@@ -375,8 +374,8 @@ describe("release asset and metadata contract", () => {
         runAttempt: "2",
         event: "workflow_dispatch",
         mode: "preflight",
-        ref: "fy-agent/fyagent/.github/workflows/release.yml@refs/heads/dev/laiyongjie",
-        sha: "b".repeat(40),
+        ref: "fy-agent/fyagent/.github/workflows/release.yml@refs/heads/main",
+        sha: "c".repeat(40),
       },
       requiredCi: {
         path: ".github/workflows/ci.yml",
@@ -410,6 +409,7 @@ describe("release asset and metadata contract", () => {
       ...identity,
       workflowRef:
         "fy-agent/fyagent/.github/workflows/release.yml@refs/tags/v0.3.0",
+      workflowSha: identity.sourceSha,
       event: "push",
       mode: "formal",
     };
@@ -464,6 +464,7 @@ describe("release asset and metadata contract", () => {
       tag: "v12.34.56",
       workflowRef:
         "fy-agent/fyagent/.github/workflows/release.yml@refs/tags/v12.34.56",
+      workflowSha: identity.sourceSha,
       event: "push",
       mode: "formal",
     };
@@ -497,7 +498,7 @@ describe("release asset and metadata contract", () => {
         workflowRef:
           "fy-agent/fyagent/.github/workflows/release.yml@refs/heads/other",
       },
-      /Preflight must use the trusted dev\/laiyongjie workflow ref/,
+      /Preflight must use the trusted main workflow ref/,
     ],
     [
       "CI workflow",

@@ -32,9 +32,9 @@ workflow. It checks only the pushed commit range and does not emit
 `gh-readonly-queue/**` pushes are excluded: Merge Queue candidates are validated
 only by the `merge_group` Required CI authority.
 
-Full diagnostic CI is explicit through `workflow_dispatch`. A `main` or
-`dev/laiyongjie` push does not automatically repeat product CI that was already
-validated by PR/merge-group admission.
+Full diagnostic CI is explicit through `workflow_dispatch`. Ordinary branch
+pushes do not automatically repeat product CI that was already validated by
+PR/merge-group admission.
 
 Use `mise run check` for the complete current-host local gate. Local success
 does not produce a GitHub required check or matching-architecture native

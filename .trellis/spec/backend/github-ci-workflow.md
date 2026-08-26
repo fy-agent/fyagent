@@ -272,8 +272,8 @@ exceeds the bound must add complete pagination in the same change.
 - a native GitHub rerun remains the same run identity with a later attempt and
   keeps the original `GITHUB_SHA`/`GITHUB_REF` semantics.
 - formal Release eligibility does not require a successful exact-source CI
-  rerun. Preflight still requires the live remote `dev/laiyongjie` HEAD to
-  equal the dispatched source SHA.
+  rerun. Preflight is independently dispatched from the trusted `main`
+  workflow with an explicit immutable candidate SHA.
 
 ## 7. Job and toolchain contracts
 
@@ -511,9 +511,8 @@ never src-tauri/target, never RUSTC_WRAPPER / sccache
 - Trigger: lightweight branch-push commit policy still needs a comparison range.
   An abnormal history rewrite or force-update can leave `github.event.before`
   pointing to a commit that `actions/checkout` `fetch-depth: 0` does not clone
-  once no ref points at it. This is defensive commit-policy behavior, not the
-  supported `dev/laiyongjie` synchronization path; normal dev synchronization
-  follows [GitHub Merge Governance](./github-merge-governance.md).
+  once no ref points at it. This is defensive commit-policy behavior, not a
+  branch synchronization contract; branch maintenance is outside Required CI.
 - Owner: `.github/workflows/commit-convention-push.yml` before
   `scripts/ci/verify-commit-messages.mjs`.
 

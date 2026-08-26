@@ -43,7 +43,7 @@ VibeKey 当年最值得保留的不是硬件键盘，而是三项产品要求：
 
 ### 1.2 FyAgent 当前基线
 
-- 运行时代码基线：`origin/dev/laiyongjie` 的 `b6f60dfe0b4e815fdb9eb3ba446c827dc41e0527`，Cargo 版本 `0.3.1`。
+- 运行时代码基线：提交 `b6f60dfe0b4e815fdb9eb3ba446c827dc41e0527`，Cargo 版本 `0.3.1`。
 - 当前工作分支 HEAD：`df88ec9a331e858b5b912b5cd44585e7860b9af6`；相对 `b6f60dfe` 没有 `src/`、`src-tauri/` 运行时代码变化。
 - `v0.3.1` 是 annotated tag，剥离后指向 `99738a00260da3ea095f8d8750c6d8af97e07cf5`；截至审计时没有对应 GitHub Release。
 - 最新公开 Release 是 `v0.3.0`，有 13 个正式附件，但发布说明明确 Windows、macOS 均未签名，macOS 未公证。

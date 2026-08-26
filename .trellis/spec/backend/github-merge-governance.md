@@ -137,7 +137,6 @@ implementation complete
   -> CI / Required passes on merge_group
   -> merge commit into main
   -> read back final main merge SHA
-  -> synchronize clean dev/laiyongjie to that final SHA
 ```
 
 The exact PR head passed to GitHub must equal the reviewed/pushed head. A new
@@ -158,20 +157,6 @@ applicable lifecycle checks again before auto-merge is re-enabled.
   latest-main authority before admission.
 - None of those evidence levels may impersonate another.
 
-### Long-lived `dev/laiyongjie` synchronization
-
-After a successful mainline merge whose merge-group Required CI passed:
-
-1. Read back exact remote SHAs for `main` and `dev/laiyongjie`.
-2. If `dev/laiyongjie` has **zero independent commits** and is an ancestor of
-   final `main`, fast-forward it to the final main SHA.
-3. If the local `dev/laiyongjie` checkout is clean and tracks the same remote,
-   update it with `--ff-only`.
-4. Final readback must show remote `main`, remote `dev/laiyongjie`, and the
-   intended local checkout at the same SHA with ahead/behind `0/0`.
-5. If dev has independent commits, do **not** force-move or discard them; route
-   those commits through their own PR to `main`, then repeat synchronization.
-
 ## 4. Validation & Error Matrix
 
 | Condition | Required result |
@@ -186,8 +171,6 @@ After a successful mainline merge whose merge-group Required CI passed:
 | `gh pr merge --admin` would bypass queue/protection | Forbidden; never use it for ordinary FyAgent work |
 | Direct push to `main` is proposed | Forbidden; use PR + Merge Queue |
 | A special PR appears to require squash/rebase or temporary queue-method flipping | Stop; keep queue policy stable and resolve commit hygiene/topology on the PR branch |
-| `dev/laiyongjie` is behind final main with zero unique commits | Fast-forward dev to the read-back final main SHA |
-| `dev/laiyongjie` has unique commits | Do not force-update; create/finish a PR for those commits first |
 | A `push` workflow emits `CI / Required` for main, dev, or `gh-readonly-queue/**` | Policy regression; Required CI authority must remain PR/merge-group/manual only |
 
 ## 5. Good / Base / Bad Cases
@@ -195,8 +178,7 @@ After a successful mainline merge whose merge-group Required CI passed:
 - **Good:** implementation, SPEC, Trellis prearchive and archive are complete;
   the exact head is pushed; auto-merge is enabled with an exact-head guard;
   Merge Queue validates `merge_group`; one PR enters `main` through one merge
-  commit; final main SHA is read back; clean dev is then fast-forwarded to the
-  same SHA.
+  commit; final main SHA is read back.
 - **Base:** the PR head is ready but hosted PR checks are still running. It is
   valid to enable `Merge when ready` **only because** the local/Trellis
   lifecycle is already closed. GitHub waits and later queues the PR.
@@ -211,7 +193,6 @@ After a successful mainline merge whose merge-group Required CI passed:
   when practical.
 - **Bad:** squash an upstream-sync PR whose verified upstream commit must remain
   an ancestor of `main`; matching tree contents do not preserve provenance.
-- **Bad:** force `dev/laiyongjie` to `main` when dev contains independent work.
 
 ## 6. Tests Required
 
@@ -233,11 +214,9 @@ For changes to this governance contract or repository merge configuration:
    `CI / Required` from `merge_group` succeeds before merge, and no queue-ref
    `push` run may publish a second `CI / Required`. Post-merge readback binds the
    resulting main SHA directly rather than waiting for a duplicate Full Push CI.
-7. When synchronizing `dev/laiyongjie`, assert ancestry/unique-commit counts
-   before update and exact SHA equality plus `0/0` ahead/behind afterward.
-8. Upstream synchronization evidence must continue to prove an explicit
+7. Upstream synchronization evidence must continue to prove an explicit
    two-parent merge and `git merge-base --is-ancestor <verified-upstream> <main>`.
-9. Mainline readability guidance should use `git log --first-parent main`; do
+8. Mainline readability guidance should use `git log --first-parent main`; do
    not require history rewriting merely to make the default full-DAG log flat.
 
 Repository settings are remote configuration, so local static tests do not
@@ -277,7 +256,6 @@ implementation/test/review
   -> Merge Queue merge_group + CI / Required
   -> merge commit into main
   -> read back final main SHA
-  -> fast-forward clean dev/laiyongjie to final main
 ```
 
 This sequence preserves one authority per layer: Trellis decides readiness,

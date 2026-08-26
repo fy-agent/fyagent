@@ -9,6 +9,7 @@ import {
 const SOURCE_SHA = "a".repeat(40);
 const OTHER_SHA = "b".repeat(40);
 const TAG_OBJECT_SHA = "c".repeat(40);
+const WORKFLOW_SHA = "d".repeat(40);
 const PRE_TRANSFER_REPOSITORY = ["NongHua123", "fyagent"].join("/");
 const REPOSITORY = {
   id: 1_313_497_021,
@@ -33,11 +34,12 @@ function context(
     : "push",
 ): DevReleaseRemoteContext {
   const releaseTag = "v0.3.1";
-  const authorityBranch = mode === "preflight" ? "dev/laiyongjie" : "main";
+  const authorityBranch = "main";
   const ref =
     mode === "preflight"
       ? `refs/heads/${authorityBranch}`
       : `refs/tags/${releaseTag}`;
+  const workflowSha = mode === "preflight" ? WORKFLOW_SHA : SOURCE_SHA;
   return {
     token: TOKEN,
     apiBase: "https://api.github.com",
@@ -47,10 +49,10 @@ function context(
     ref,
     refName: mode === "preflight" ? authorityBranch : releaseTag,
     refType: mode === "preflight" ? "branch" : "tag",
-    eventSha: SOURCE_SHA,
+    eventSha: workflowSha,
     workflowName: "Release",
     workflowRef: `fy-agent/fyagent/.github/workflows/release.yml@${ref}`,
-    workflowSha: SOURCE_SHA,
+    workflowSha,
     appVersion: "0.3.1",
     releaseTag,
     sourceSha: SOURCE_SHA,
@@ -72,7 +74,7 @@ function jsonResponse(
 
 function fixtureFetch(options: FixtureOptions = {}) {
   const mode = options.mode ?? "preflight";
-  const authorityBranch = mode === "preflight" ? "dev/laiyongjie" : "main";
+  const authorityBranch = "main";
   const requests: Array<{ authorization: string | null; url: URL }> = [];
   const fetchImpl: typeof fetch = async (input, init) => {
     const url = new URL(String(input));
@@ -91,7 +93,12 @@ function fixtureFetch(options: FixtureOptions = {}) {
     if (path === `/repos/fy-agent/fyagent/git/ref/heads/${authorityBranch}`) {
       return jsonResponse({
         ref: `refs/heads/${authorityBranch}`,
-        object: { type: "commit", sha: options.branchSha ?? SOURCE_SHA },
+        object: {
+          type: "commit",
+          sha:
+            options.branchSha ??
+            (mode === "preflight" ? WORKFLOW_SHA : SOURCE_SHA),
+        },
       });
     }
     if (path === "/repos/fy-agent/fyagent/git/ref/tags/v0.3.1") {
@@ -130,7 +137,7 @@ describe("dev release remote evidence", () => {
       appVersion: "0.3.1",
       releaseTag: "v0.3.1",
       sourceSha: SOURCE_SHA,
-      workflowSha: SOURCE_SHA,
+      workflowSha: WORKFLOW_SHA,
       ciRunId: null,
       ciRunAttempt: null,
       mode: "preflight",
@@ -228,7 +235,7 @@ describe("dev release remote evidence", () => {
       appVersion: "0.3.1",
       releaseTag: "v0.3.1",
       sourceSha: SOURCE_SHA,
-      workflowSha: SOURCE_SHA,
+      workflowSha: WORKFLOW_SHA,
       ciRunId: null,
       ciRunAttempt: "1",
       mode: "preflight" as const,
@@ -242,12 +249,16 @@ describe("dev release remote evidence", () => {
     ).rejects.toThrow(/expectedFrozen\.ciRunAttempt/);
   });
 
-  it("rejects when the preflight dev branch moves", async () => {
+  it("accepts preflight when main moves after the trusted workflow commit was frozen", async () => {
     const fixture = fixtureFetch({ branchSha: OTHER_SHA });
-
-    await expect(
-      verifyDevReleaseRemote(context(), { fetchImpl: fixture.fetchImpl }),
-    ).rejects.toThrow(/remoteDev\.headSha/);
+    const { result } = await verifyDevReleaseRemote(context(), {
+      fetchImpl: fixture.fetchImpl,
+    });
+    expect(result).toMatchObject({
+      sourceSha: SOURCE_SHA,
+      workflowSha: WORKFLOW_SHA,
+      mode: "preflight",
+    });
   });
 
   it("accepts a formal tag after live main has moved", async () => {
@@ -316,14 +327,14 @@ describe("remote verifier environment", () => {
       GITHUB_REPOSITORY: "fy-agent/fyagent",
       GITHUB_REPOSITORY_ID: "1313497021",
       GITHUB_EVENT_NAME: "workflow_dispatch",
-      GITHUB_REF: "refs/heads/dev/laiyongjie",
-      GITHUB_REF_NAME: "dev/laiyongjie",
+      GITHUB_REF: "refs/heads/main",
+      GITHUB_REF_NAME: "main",
       GITHUB_REF_TYPE: "branch",
-      GITHUB_SHA: SOURCE_SHA,
+      GITHUB_SHA: WORKFLOW_SHA,
       GITHUB_WORKFLOW: "Release",
       GITHUB_WORKFLOW_REF:
-        "fy-agent/fyagent/.github/workflows/release.yml@refs/heads/dev/laiyongjie",
-      GITHUB_WORKFLOW_SHA: SOURCE_SHA,
+        "fy-agent/fyagent/.github/workflows/release.yml@refs/heads/main",
+      GITHUB_WORKFLOW_SHA: WORKFLOW_SHA,
       RELEASE_APP_VERSION: "0.3.1",
       RELEASE_TAG: "v0.3.1",
       RELEASE_SOURCE_SHA: SOURCE_SHA,

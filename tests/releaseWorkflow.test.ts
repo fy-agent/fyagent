@@ -968,7 +968,7 @@ describe("FyAgent release workflow", () => {
     ).rejects.toThrow(/Unexpected trusted build input entry/u);
   });
 
-  it("supports dev preflight and tag-bound formal dispatch without weakening stable tag routing", () => {
+  it("supports trusted-main preflight and tag-bound formal dispatch without weakening stable tag routing", () => {
     const trigger = source.slice(0, source.indexOf("\npermissions:"));
     expect(trigger).toContain('      - "v*.*.*"');
     expect(trigger).not.toContain('      - "v*"');
@@ -981,7 +981,7 @@ describe("FyAgent release workflow", () => {
     expect(trigger).toContain("          - formal");
     expect(trigger).toContain("source_sha:");
     expect(trigger).toContain(
-      "Preflight-only immutable 40-character dev/laiyongjie HEAD SHA",
+      "Preflight-only immutable 40-character candidate commit SHA",
     );
     expect(trigger).toContain("        required: false");
     expect(source).toContain("release_mode='preflight'");
@@ -1355,7 +1355,7 @@ describe("FyAgent release workflow", () => {
     );
   });
 
-  it("binds the formal tag and current-host preflight through the repository-owned verifier", () => {
+  it("binds the formal tag and trusted-main preflight through the repository-owned verifier", () => {
     const eligibility = source.slice(
       source.indexOf("\n  eligibility:\n"),
       source.indexOf("\n  build-windows:\n"),
@@ -1367,7 +1367,11 @@ describe("FyAgent release workflow", () => {
     expect(eligibility).toContain("path: candidate-source");
     expect(eligibility).not.toContain("installer-actions");
     expect(eligibility).not.toContain("pnpm install");
-    expect(eligibility).toContain("refs/heads/dev/laiyongjie");
+    expect(eligibility).toContain("refs/heads/main");
+    expect(eligibility).toContain("path: candidate-source");
+    expect(eligibility).toContain(
+      "ref: ${{ steps.request.outputs.requested_source_sha }}",
+    );
     expect(eligibility).toContain('"refs/tags/$GITHUB_REF_NAME"');
     expect(eligibility).toContain('release_tag="v$app_version"');
     expect(eligibility).toContain('check --tag "$release_tag"');
@@ -2143,6 +2147,14 @@ jobs:
     expect(macJob).toContain("secrets.FYAGENT_APPLE_ID");
     expect(macJob).toContain("secrets.FYAGENT_APPLE_APP_SPECIFIC_PASSWORD");
     expect(macJob.match(/\$\{\{ secrets\.FYAGENT_APPLE_/gu)).toHaveLength(4);
+    expectExactLine(
+      namedStepBlock(macJob, "Seal and verify the Developer ID app"),
+      "        if: needs.eligibility.outputs.release_mode == 'formal'",
+    );
+    expectExactLine(
+      namedStepBlock(macJob, "Create and notarize the styled Developer ID DMG"),
+      "        if: needs.eligibility.outputs.release_mode == 'formal'",
+    );
     expect(macDeveloperId).toContain("notarytool");
     expect(macDeveloperId).toContain("notarytool submit");
     expect(macDeveloperId).toContain("notarytool info");
@@ -2218,6 +2230,30 @@ jobs:
     expect(macJob).not.toContain("code object is not signed at all");
     expect(source).toContain("FyAgent-${APP_VERSION}-macOS.dmg");
     expect(source).not.toContain("FyAgent-${APP_VERSION}-macOS.zip");
+  });
+
+  it("keeps macOS preflight packaging secret-free and separate from formal signing", () => {
+    const macJob = workflowJobBlock(
+      source,
+      "build-macos",
+      "pin-release-build-inputs",
+    );
+    const preflight = namedStepBlock(
+      macJob,
+      "Package secret-free macOS preflight DMG",
+    );
+    expectExactLine(
+      preflight,
+      "        if: needs.eligibility.outputs.release_mode == 'preflight'",
+    );
+    expect(preflight).toContain("scripts/release/create-macos-dmg.sh");
+    expect(preflight).not.toContain("${{ secrets.");
+    expect(preflight).not.toContain("macos-developer-id.sh");
+    expect(preflight).not.toContain("verify-macos-signed-");
+    expect(preflight).not.toContain("notarytool");
+    expect(preflight).toContain(
+      "prepare-release-publication.mjs verify-target",
+    );
   });
 
   it("executes the Developer ID verifiers for both slices and fails closed on trust drift", () => {

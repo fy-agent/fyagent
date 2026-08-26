@@ -7,6 +7,7 @@ import {
 
 const SOURCE_SHA = "a".repeat(40);
 const OTHER_SHA = "c".repeat(40);
+const WORKFLOW_SHA = "d".repeat(40);
 const TAG_OBJECT_SHA = "b".repeat(40);
 const PRE_TRANSFER_REPOSITORY = ["NongHua123", "fyagent"].join("/");
 const REPOSITORY = {
@@ -20,11 +21,12 @@ function validInput(
   mode: "preflight" | "formal" = "preflight",
 ): DevReleaseEligibilityInput {
   const releaseTag = "v0.3.1";
-  const authorityBranch = mode === "preflight" ? "dev/laiyongjie" : "main";
+  const authorityBranch = "main";
   const ref =
     mode === "preflight"
       ? `refs/heads/${authorityBranch}`
       : `refs/tags/${releaseTag}`;
+  const workflowSha = mode === "preflight" ? WORKFLOW_SHA : SOURCE_SHA;
   return {
     schema: DEV_RELEASE_ELIGIBILITY_INPUT_SCHEMA,
     repository: { ...REPOSITORY },
@@ -35,13 +37,13 @@ function validInput(
       ref,
       refName: mode === "preflight" ? authorityBranch : releaseTag,
       refType: mode === "preflight" ? "branch" : "tag",
-      sha: SOURCE_SHA,
+      sha: workflowSha,
     },
     workflow: {
       name: "Release",
       path: ".github/workflows/release.yml",
       ref: `fy-agent/fyagent/.github/workflows/release.yml@${ref}`,
-      sha: SOURCE_SHA,
+      sha: workflowSha,
     },
     candidate: {
       canonicalVersion: "0.3.1",
@@ -51,7 +53,7 @@ function validInput(
     remoteDev: {
       name: authorityBranch,
       ref: `refs/heads/${authorityBranch}`,
-      headSha: SOURCE_SHA,
+      headSha: workflowSha,
     },
     remoteTag:
       mode === "preflight"
@@ -102,7 +104,7 @@ describe("split preflight and formal release identity", () => {
         appVersion: "0.3.1",
         releaseTag: "v0.3.1",
         sourceSha: SOURCE_SHA,
-        workflowSha: SOURCE_SHA,
+        workflowSha: mode === "preflight" ? WORKFLOW_SHA : SOURCE_SHA,
         ciRunId: null,
         ciRunAttempt: null,
         mode,
@@ -125,6 +127,16 @@ describe("split preflight and formal release identity", () => {
       workflowSha: SOURCE_SHA,
       releaseTag: "v0.3.1",
       mode: "formal",
+    });
+  });
+
+  it("allows preflight candidate SHA to differ from the trusted main workflow SHA", () => {
+    expect(
+      evaluateDevReleaseEligibility(validInput("preflight")),
+    ).toMatchObject({
+      sourceSha: SOURCE_SHA,
+      workflowSha: WORKFLOW_SHA,
+      mode: "preflight",
     });
   });
 
@@ -206,15 +218,11 @@ describe("split preflight and formal release identity", () => {
     ],
     [
       "remote authority branch",
-      (input: MutableRecord) => (input.remoteDev.name = "main"),
+      (input: MutableRecord) => (input.remoteDev.name = "other"),
     ],
     [
       "remote authority ref",
-      (input: MutableRecord) => (input.remoteDev.ref = "refs/heads/main"),
-    ],
-    [
-      "moved remote dev HEAD",
-      (input: MutableRecord) => (input.remoteDev.headSha = OTHER_SHA),
+      (input: MutableRecord) => (input.remoteDev.ref = "refs/heads/other"),
     ],
   ])("rejects wrong %s identity", (_label, mutate) => {
     expectRejected(mutate);
@@ -227,7 +235,7 @@ describe("split preflight and formal release identity", () => {
     ],
     [
       "branch ref",
-      (input: MutableRecord) => (input.event.ref = "refs/heads/main"),
+      (input: MutableRecord) => (input.event.ref = "refs/heads/feature/test"),
     ],
     [
       "branch ref type",
@@ -235,7 +243,7 @@ describe("split preflight and formal release identity", () => {
     ],
     [
       "branch ref name",
-      (input: MutableRecord) => (input.event.refName = "main"),
+      (input: MutableRecord) => (input.event.refName = "feature/test"),
     ],
     [
       "workflow ref",
@@ -342,6 +350,18 @@ describe("split preflight and formal release identity", () => {
     ).toMatchObject({
       sourceSha: SOURCE_SHA,
       mode: "formal",
+    });
+  });
+
+  it("accepts a preflight after live main moves past the trusted workflow commit", () => {
+    const input = mutableInput("preflight");
+    input.remoteDev.headSha = OTHER_SHA;
+    expect(
+      evaluateDevReleaseEligibility(input as DevReleaseEligibilityInput),
+    ).toMatchObject({
+      sourceSha: SOURCE_SHA,
+      workflowSha: WORKFLOW_SHA,
+      mode: "preflight",
     });
   });
 });

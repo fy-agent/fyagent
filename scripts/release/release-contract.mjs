@@ -11,7 +11,7 @@ import { basename, join } from "node:path";
 export const PRODUCT_NAME = "FyAgent";
 export const EXPECTED_REPOSITORY = "fy-agent/fyagent";
 export const EXPECTED_REPOSITORY_ID = "1313497021";
-export const PREFLIGHT_BRANCH = "dev/laiyongjie";
+export const PREFLIGHT_WORKFLOW_BRANCH = "main";
 export const RELEASE_BRANCH = "main";
 export const RELEASE_WORKFLOW_PATH = ".github/workflows/release.yml";
 export const CI_WORKFLOW_PATH = ".github/workflows/ci.yml";
@@ -530,12 +530,15 @@ export function buildBuildMetadata({
     "Release mode does not match event",
   );
   assert(
-    SHA_PATTERN.test(identity.workflowSha) &&
-      identity.workflowSha === identity.sourceSha,
-    "Trusted workflow SHA is invalid or differs from the attested source",
+    SHA_PATTERN.test(identity.workflowSha),
+    "Trusted workflow SHA is invalid",
   );
   const workflowRefPrefix = `${EXPECTED_REPOSITORY}/${RELEASE_WORKFLOW_PATH}@`;
   if (identity.mode === "formal") {
+    assert(
+      identity.workflowSha === identity.sourceSha,
+      "Formal trusted workflow SHA must equal the release source",
+    );
     assert(
       identity.workflowRef === `${workflowRefPrefix}refs/tags/${identity.tag}`,
       "Formal Release workflow ref drifted",
@@ -543,8 +546,8 @@ export function buildBuildMetadata({
   } else {
     assert(
       identity.workflowRef ===
-        `${workflowRefPrefix}refs/heads/${PREFLIGHT_BRANCH}`,
-      `Preflight must use the trusted ${PREFLIGHT_BRANCH} workflow ref`,
+        `${workflowRefPrefix}refs/heads/${PREFLIGHT_WORKFLOW_BRANCH}`,
+      `Preflight must use the trusted ${PREFLIGHT_WORKFLOW_BRANCH} workflow ref`,
     );
   }
   assert(/^[1-9]\d*$/.test(String(identity.runId)), "runId must be numeric");

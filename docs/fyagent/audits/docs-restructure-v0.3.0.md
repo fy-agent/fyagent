@@ -12,7 +12,7 @@ evidence: code_audit + local_artifact_audit
 
 ## 结论
 
-本轮以 `origin/dev/laiyongjie` 的
+本轮以仓库当时的审计基线提交
 `b6f60dfe0b4e815fdb9eb3ba446c827dc41e0527` 为基线，完成了公开入口、三语用户手册、
 历史资料和营销视觉规划的重构。当前分支仍包含该基线，产品运行时代码、许可证、社区
 治理文件和用户的 `.omo/run-continuation/` 都没有进入本轮改动。

@@ -9,8 +9,8 @@ export const RELEASE_WORKFLOW_NAME = "Release";
 export const RELEASE_WORKFLOW_PATH = ".github/workflows/release.yml";
 export const CI_WORKFLOW_NAME = "CI";
 export const CI_WORKFLOW_PATH = ".github/workflows/ci.yml";
-export const DEV_BRANCH = "dev/laiyongjie";
-export const DEV_REF = `refs/heads/${DEV_BRANCH}`;
+export const PREFLIGHT_WORKFLOW_BRANCH = "main";
+export const PREFLIGHT_WORKFLOW_REF = `refs/heads/${PREFLIGHT_WORKFLOW_BRANCH}`;
 export const FORMAL_BRANCH = "main";
 export const FORMAL_REF = `refs/heads/${FORMAL_BRANCH}`;
 export const REQUIRED_JOB_NAME = "CI / Required";
@@ -308,8 +308,7 @@ export function evaluateDevReleaseEligibility(inputValue, expectedFrozen) {
   const candidate = validateCandidate(input.candidate);
   const event = validateEvent(input.event);
   const workflow = validateWorkflow(input.workflow);
-  expectEqual(event.sha, candidate.sourceSha, "event.sha");
-  expectEqual(workflow.sha, candidate.sourceSha, "workflow.sha");
+  expectEqual(event.sha, workflow.sha, "event.sha");
 
   const expectedWorkflowRefPrefix = `${EXPECTED_REPOSITORY}/${RELEASE_WORKFLOW_PATH}@`;
   let mode;
@@ -317,6 +316,8 @@ export function evaluateDevReleaseEligibility(inputValue, expectedFrozen) {
   const validateFormalIdentity = () => {
     mode = "formal";
     authorityBranch = FORMAL_BRANCH;
+    expectEqual(event.sha, candidate.sourceSha, "event.sha");
+    expectEqual(workflow.sha, candidate.sourceSha, "workflow.sha");
     expectEqual(event.dispatchSourceSha, null, "event.dispatchSourceSha");
     const tagRef = `refs/tags/${candidate.releaseTag}`;
     expectEqual(event.ref, tagRef, "event.ref");
@@ -339,18 +340,18 @@ export function evaluateDevReleaseEligibility(inputValue, expectedFrozen) {
   if (event.name === "workflow_dispatch") {
     if (event.dispatchMode === "preflight") {
       mode = "preflight";
-      authorityBranch = DEV_BRANCH;
+      authorityBranch = PREFLIGHT_WORKFLOW_BRANCH;
       expectEqual(
         expectSha(event.dispatchSourceSha, "event.dispatchSourceSha"),
         candidate.sourceSha,
         "event.dispatchSourceSha",
       );
-      expectEqual(event.ref, DEV_REF, "event.ref");
+      expectEqual(event.ref, PREFLIGHT_WORKFLOW_REF, "event.ref");
       expectEqual(event.refType, "branch", "event.refType");
-      expectEqual(event.refName, DEV_BRANCH, "event.refName");
+      expectEqual(event.refName, PREFLIGHT_WORKFLOW_BRANCH, "event.refName");
       expectEqual(
         workflow.ref,
-        `${expectedWorkflowRefPrefix}${DEV_REF}`,
+        `${expectedWorkflowRefPrefix}${PREFLIGHT_WORKFLOW_REF}`,
         "workflow.ref",
       );
       if (input.remoteTag !== null) {
@@ -371,10 +372,7 @@ export function evaluateDevReleaseEligibility(inputValue, expectedFrozen) {
     fail(`unsupported event.name ${JSON.stringify(event.name)}`);
   }
 
-  const remoteDevHeadSha = validateRemoteDev(input.remoteDev, authorityBranch);
-  if (mode === "preflight") {
-    expectEqual(remoteDevHeadSha, candidate.sourceSha, "remoteDev.headSha");
-  }
+  validateRemoteDev(input.remoteDev, authorityBranch);
   const output = Object.freeze({
     appVersion: candidate.canonicalVersion,
     releaseTag: candidate.releaseTag,

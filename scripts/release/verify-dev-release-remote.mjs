@@ -1,8 +1,8 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import {
-  DEV_BRANCH,
-  DEV_REF,
+  PREFLIGHT_WORKFLOW_BRANCH,
+  PREFLIGHT_WORKFLOW_REF,
   FORMAL_BRANCH,
   FORMAL_REF,
   DEV_RELEASE_ELIGIBILITY_INPUT_SCHEMA,
@@ -177,7 +177,10 @@ function normalizeRef(value, expectedRef, label) {
 
 function authorityBranchForEvent(eventName, dispatchMode) {
   if (eventName === "workflow_dispatch" && dispatchMode === "preflight") {
-    return { branch: DEV_BRANCH, ref: DEV_REF };
+    return {
+      branch: PREFLIGHT_WORKFLOW_BRANCH,
+      ref: PREFLIGHT_WORKFLOW_REF,
+    };
   }
   if (
     eventName === "push" ||
