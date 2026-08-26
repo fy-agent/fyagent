@@ -177,11 +177,17 @@ describe("GitHub workflow trigger policy", () => {
       "generate:\n    name: Generate charts\n    runs-on: macos-15",
     );
     expect(source).toContain(
-      "generate:\n    name: Generate charts\n    runs-on: macos-15\n    timeout-minutes: 10\n    permissions:\n      contents: read",
+      "generate:\n    name: Generate charts\n    runs-on: macos-15\n    timeout-minutes: 10\n    permissions:\n      contents: read\n    outputs:\n      configured: ${{ steps.credential.outputs.configured }}",
     );
     expect(source).toContain(
-      "publish:\n    name: Publish charts\n    needs: generate\n    runs-on: macos-15\n    timeout-minutes: 5\n    permissions:\n      contents: write",
+      "publish:\n    name: Publish charts\n    needs: generate\n    if: needs.generate.outputs.configured == 'true'\n    runs-on: macos-15\n    timeout-minutes: 5\n    permissions:\n      contents: write",
     );
+    expect(source).toContain(
+      "STAR_HISTORY_TOKEN: ${{ secrets.STAR_HISTORY_TOKEN }}",
+    );
+    expect(source).toContain("GITHUB_TOKEN: ${{ secrets.STAR_HISTORY_TOKEN }}");
+    expect(source).not.toContain("GITHUB_TOKEN: ${{ github.token }}");
+    expect(source.match(/secrets\.STAR_HISTORY_TOKEN/g)).toHaveLength(2);
     expect(source).toContain(
       "STAR_HISTORY_SOURCE_SHA: 8b1f26dc5e9a17caa75da9351b688509ef312811",
     );
@@ -189,7 +195,9 @@ describe("GitHub workflow trigger policy", () => {
       "git push --force origin HEAD:refs/heads/star-history",
     );
     expect(source).not.toMatch(/HEAD:refs\/heads\/main/);
-    expect(source).not.toContain("secrets.");
+    const publishStart = source.indexOf("\n  publish:\n");
+    expect(publishStart).toBeGreaterThan(-1);
+    expect(source.slice(publishStart)).not.toContain("secrets.");
 
     const uses = [...source.matchAll(/^\s+uses:\s+(.+)$/gm)].map(
       (match) => match[1],

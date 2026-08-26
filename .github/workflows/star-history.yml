@@ -19,14 +19,30 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
+    outputs:
+      configured: ${{ steps.credential.outputs.configured }}
     steps:
+      - name: Check star history credential
+        id: credential
+        env:
+          STAR_HISTORY_TOKEN: ${{ secrets.STAR_HISTORY_TOKEN }}
+        run: |
+          if [ -z "$STAR_HISTORY_TOKEN" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::STAR_HISTORY_TOKEN is not configured; keeping the existing Star History chart."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Set up Go
+        if: steps.credential.outputs.configured == 'true'
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: "1.27.0"
           cache: false
 
       - name: Fetch reviewed star-history generator
+        if: steps.credential.outputs.configured == 'true'
         env:
           STAR_HISTORY_SOURCE_SHA: 8b1f26dc5e9a17caa75da9351b688509ef312811
         run: |
@@ -38,8 +54,9 @@ jobs:
           git -C "$source_dir" checkout --quiet --detach FETCH_HEAD
 
       - name: Generate light and dark charts
+        if: steps.credential.outputs.configured == 'true'
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ secrets.STAR_HISTORY_TOKEN }}
         run: |
           output_dir="$RUNNER_TEMP/star-history-output/assets"
           mkdir -p "$output_dir"
@@ -50,6 +67,7 @@ jobs:
             -out-dark "$output_dir/star-history-dark.svg"
 
       - name: Upload generated charts
+        if: steps.credential.outputs.configured == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: star-history-charts
@@ -60,6 +78,7 @@ jobs:
   publish:
     name: Publish charts
     needs: generate
+    if: needs.generate.outputs.configured == 'true'
     runs-on: macos-15
     timeout-minutes: 5
     permissions:
