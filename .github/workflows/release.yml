@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: preflight from dev/laiyongjie, or formal retry from an existing vX.Y.Z tag ref
+        description: diagnostic preflight from the trusted main workflow, or formal retry from an existing vX.Y.Z tag ref
         required: true
         default: preflight
         type: choice
@@ -19,7 +19,7 @@ on:
           - preflight
           - formal
       source_sha:
-        description: Preflight-only immutable 40-character dev/laiyongjie HEAD SHA; leave empty for formal
+        description: Preflight-only immutable 40-character candidate commit SHA; leave empty for formal
         required: false
         type: string
 
@@ -74,15 +74,14 @@ jobs:
                     echo 'workflow_dispatch preflight source_sha must be a lowercase full 40-character commit SHA' >&2
                     exit 1
                   }
-                  if [ "$DISPATCH_SOURCE_SHA" != "$GITHUB_SHA" ] ||
-                    [ "$DISPATCH_SOURCE_SHA" != "$GITHUB_WORKFLOW_SHA" ]; then
-                    echo 'Preflight must attest the exact trusted dev/laiyongjie workflow commit' >&2
+                  if [ "$GITHUB_SHA" != "$GITHUB_WORKFLOW_SHA" ]; then
+                    echo 'Preflight event and trusted workflow commit must agree' >&2
                     exit 1
                   fi
-                  [ "$GITHUB_REF" = 'refs/heads/dev/laiyongjie' ]
+                  [ "$GITHUB_REF" = 'refs/heads/main' ]
                   [ "$GITHUB_REF_TYPE" = 'branch' ]
-                  [ "$GITHUB_REF_NAME" = 'dev/laiyongjie' ]
-                  [ "$GITHUB_WORKFLOW_REF" = "${expected_workflow_ref_prefix}refs/heads/dev/laiyongjie" ]
+                  [ "$GITHUB_REF_NAME" = 'main' ]
+                  [ "$GITHUB_WORKFLOW_REF" = "${expected_workflow_ref_prefix}refs/heads/main" ]
                   requested_source_sha="$DISPATCH_SOURCE_SHA"
                   requested_mode='preflight'
                   ;;
@@ -207,20 +206,20 @@ jobs:
                     echo 'workflow_dispatch preflight source_sha must be a lowercase full 40-character commit SHA' >&2
                     exit 1
                   }
-                  [ "$GITHUB_REF" = 'refs/heads/dev/laiyongjie' ] || {
-                    echo "Preflight must run from trusted refs/heads/dev/laiyongjie; received $GITHUB_REF" >&2
+                  [ "$GITHUB_REF" = 'refs/heads/main' ] || {
+                    echo "Preflight must run from the trusted main workflow ref; received $GITHUB_REF" >&2
                     exit 1
                   }
-                  [ "$GITHUB_WORKFLOW_REF" = "${expected_workflow_ref_prefix}refs/heads/dev/laiyongjie" ] || {
-                    echo "Preflight workflow ref is not trusted dev/laiyongjie: $GITHUB_WORKFLOW_REF" >&2
+                  [ "$GITHUB_WORKFLOW_REF" = "${expected_workflow_ref_prefix}refs/heads/main" ] || {
+                    echo "Preflight workflow ref is not trusted main: $GITHUB_WORKFLOW_REF" >&2
                     exit 1
                   }
                   [ "$source_sha" = "$DISPATCH_SOURCE_SHA" ] || {
                     echo "Dispatch input does not resolve to the exact candidate commit: $DISPATCH_SOURCE_SHA" >&2
                     exit 1
                   }
-                  if [ "$GITHUB_REF_TYPE" != 'branch' ] || [ "$GITHUB_REF_NAME" != 'dev/laiyongjie' ]; then
-                    echo 'Preflight event is not the exact dev/laiyongjie branch' >&2
+                  if [ "$GITHUB_REF_TYPE" != 'branch' ] || [ "$GITHUB_REF_NAME" != 'main' ]; then
+                    echo 'Preflight event is not the trusted main workflow branch' >&2
                     exit 1
                   fi
                   release_mode='preflight'
@@ -1225,6 +1224,7 @@ jobs:
 
       - name: Seal and verify the Developer ID app
         id: app
+        if: needs.eligibility.outputs.release_mode == 'formal'
         shell: bash
         env:
           FYAGENT_APPLE_CERTIFICATE_P12_BASE64: ${{ secrets.FYAGENT_APPLE_CERTIFICATE_P12_BASE64 }}
@@ -1263,6 +1263,7 @@ jobs:
           printf 'executable=%s\n' "$executable" >> "$GITHUB_OUTPUT"
 
       - name: Create and notarize the styled Developer ID DMG
+        if: needs.eligibility.outputs.release_mode == 'formal'
         shell: bash
         env:
           APP_PATH: ${{ steps.app.outputs.app_path }}
@@ -1311,8 +1312,71 @@ jobs:
           node scripts/release/prepare-release-publication.mjs verify-target \
             release-assets "$APP_VERSION" macos-universal
 
+      - name: Package secret-free macOS preflight DMG
+        if: needs.eligibility.outputs.release_mode == 'preflight'
+        shell: bash
+        run: |
+          set -euo pipefail
+          bundle_root='src-tauri/target/universal-apple-darwin/release/bundle/macos'
+          shopt -s nullglob
+          app_paths=("$bundle_root"/*.app)
+          [ "${#app_paths[@]}" -eq 1 ] && [ -d "${app_paths[0]}" ] && [ "$(basename "${app_paths[0]}")" = 'FyAgent.app' ] || {
+            echo 'Expected exactly one raw universal FyAgent.app for preflight' >&2
+            exit 1
+          }
+          app_path="${app_paths[0]}"
+          plist="$app_path/Contents/Info.plist"
+          bundle_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$plist")"
+          bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$plist")"
+          executable="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$plist")"
+          if [ "$bundle_version" != "$APP_VERSION" ] || [ "$bundle_id" != 'com.fyagent.desktop' ]; then
+            echo "macOS preflight bundle identity drifted: version=$bundle_version id=$bundle_id" >&2
+            exit 1
+          fi
+          binary="$app_path/Contents/MacOS/$executable"
+          archs="$(lipo -archs "$binary")"
+          if [[ " $archs " != *' arm64 '* ]] || [[ " $archs " != *' x86_64 '* ]]; then
+            echo "FyAgent preflight executable is not universal: $archs" >&2
+            exit 1
+          fi
+
+          mkdir -p release-assets
+          dmg_path="release-assets/FyAgent-${APP_VERSION}-macOS.dmg"
+          mount_point="$RUNNER_TEMP/fyagent-preflight-dmg-mount"
+          rm -rf "$mount_point"
+          mkdir -p "$mount_point"
+          mounted=false
+          cleanup() {
+            status=$?
+            trap - EXIT
+            set +e
+            if [ "$mounted" = true ]; then hdiutil detach "$mount_point"; fi
+            rm -rf "$mount_point"
+            exit "$status"
+          }
+          trap cleanup EXIT
+
+          source_digest="$(shasum -a 256 "$binary" | awk '{print $1}')"
+          scripts/release/create-macos-dmg.sh \
+            --app "$app_path" \
+            --output "$dmg_path" \
+            --background src-tauri/icons/dmg-background.png
+          mounted=true
+          hdiutil attach "$dmg_path" -readonly -nobrowse -noautoopen -mountpoint "$mount_point"
+          [ -d "$mount_point/FyAgent.app" ]
+          [ -L "$mount_point/Applications" ]
+          [ "$(readlink "$mount_point/Applications")" = "/Applications" ]
+          [ -f "$mount_point/.background/background.png" ]
+          [ -f "$mount_point/.DS_Store" ]
+          [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$mount_point/FyAgent.app/Contents/Info.plist")" = "$APP_VERSION" ]
+          [ "$(shasum -a 256 "$mount_point/FyAgent.app/Contents/MacOS/$executable" | awk '{print $1}')" = "$source_digest" ]
+          hdiutil detach "$mount_point"
+          mounted=false
+          node scripts/release/prepare-release-publication.mjs verify-target \
+            release-assets "$APP_VERSION" macos-universal
+
       - name: Remove the temporary Developer ID keychain
-        if: always()
+        if: ${{ always() && needs.eligibility.outputs.release_mode == 'formal' }}
         shell: bash
         run: |
           scripts/release/macos-developer-id.sh teardown

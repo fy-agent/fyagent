@@ -36,13 +36,14 @@ The YAML tag filter is only routing. The repository-owned eligibility engine
 accepts exactly stable `vX.Y.Z` with no prerelease, build metadata, missing
 component, or leading zero.
 
-- `workflow_dispatch(mode=preflight)` is an optional full three-target
-  diagnostic preflight for the current trusted `dev/laiyongjie` HEAD.
-  `source_sha` is required semantically in this mode and must equal the exact
-  branch/workflow/event SHA. Preflight may build/package native targets, prove
-  and seal Windows bytes, create workflow artifacts, and attest candidate
-  bytes, but it can never create/update a GitHub Release and is not a release
-  closure prerequisite.
+- `workflow_dispatch(mode=preflight)` is an optional three-target diagnostic.
+  The workflow itself must be dispatched from the trusted `main` workflow ref,
+  while `source_sha` names the immutable candidate commit to build and may
+  differ from the workflow/event SHA. Preflight may build/package native
+  targets, prove and seal Windows bytes, create workflow artifacts, and attest
+  candidate bytes, but it can never create/update a GitHub Release and is not a
+  release closure prerequisite. Preflight candidate code receives no Windows
+  signing or Apple Developer ID/notarization secrets.
 - formal publication may begin either from the normal stable tag `push`, or
   from `workflow_dispatch(mode=formal)` executed **at that existing stable tag
   ref**. Formal dispatch requires `source_sha` to be empty because the selected
@@ -59,7 +60,8 @@ mode=formal` or the equivalent Actions API request); dispatching the current
   tag's target commit.
   Live `main` HEAD may move during the run. Exact-source push CI is not a
   publication gate; the Release compile is the proof.
-- `main` is the formal authority branch for the preflight/formal split.
+- `main` is the trusted workflow branch for preflight and the observed formal
+  mainline branch.
   Runtime eligibility does not infer publication from branch protection, a
   ruleset, merge settings, or a separate provenance workflow, and this project
   does not claim that those administrator controls exist.
@@ -82,8 +84,8 @@ Eligibility is the sole producer of these values:
 ```text
 app_version   = canonical Cargo stable version
 release_tag   = "v" + app_version
-source_sha    = current remote dev/laiyongjie HEAD (preflight) | tag target commit (formal)
-workflow_sha  = source_sha
+source_sha    = explicit candidate commit (preflight) | tag target commit (formal)
+workflow_sha  = trusted main workflow/event commit (preflight) | source_sha (formal)
 release_mode  = preflight | formal
 ci_run_id     = null
 ci_run_attempt = null
@@ -94,7 +96,8 @@ attestation, and publication step consumes these values unchanged. Downstream
 jobs must not strip a ref, reread a second version source, or substitute a
 different source/workflow SHA.
 
-Preflight binds the exact current `dev/laiyongjie` HEAD. Formal mode binds the
+Preflight binds an explicit candidate SHA while the workflow/event identity is
+independently bound to the trusted `main` workflow ref. Formal mode binds the
 remote tag's target commit regardless of whether the event is tag `push` or a
 manual dispatch at the same tag ref. Preflight is artifact-producing
 diagnostic evidence, not formal release authority or a closure gate.
@@ -106,7 +109,7 @@ The frozen output has exact keys:
   "appVersion": "X.Y.Z",
   "releaseTag": "vX.Y.Z",
   "sourceSha": "<40 lowercase hex>",
-  "workflowSha": "<same SHA>",
+  "workflowSha": "<trusted workflow SHA; equals sourceSha only in formal mode>",
   "ciRunId": null,
   "ciRunAttempt": null,
   "mode": "preflight | formal"
@@ -128,28 +131,27 @@ may compare against a previously frozen output.
 Eligibility fails closed unless all of these facts agree:
 
 1. repository name/id are `fy-agent/fyagent` / `1313497021`;
-2. the workflow is `Release` at `.github/workflows/release.yml` and its
-   workflow SHA equals the candidate source;
+2. the workflow is `Release` at `.github/workflows/release.yml`;
 3. the canonical version is stable `X.Y.Z` and the tag is exactly `vX.Y.Z`;
-4. the candidate, event, and workflow SHAs equal the frozen source;
-5. preflight is `workflow_dispatch(mode=preflight)`; event/ref/workflow ref are
-   the `dev/laiyongjie` branch and its explicit `source_sha` input equals the
-   frozen source; the live remote `dev/laiyongjie` HEAD equals that source;
+4. preflight is `workflow_dispatch(mode=preflight)` from `refs/heads/main`;
+   event SHA equals workflow SHA, the explicit `source_sha` input equals the
+   frozen candidate source, candidate source may differ from workflow SHA, and
    remote tag evidence is absent;
+5. formal event SHA and workflow SHA both equal the frozen source;
 6. formal is either a tag `push` or `workflow_dispatch(mode=formal)` with empty
    `source_sha`; event/ref/workflow ref are the same version tag, and the remote ref
    is either a Git `tag` object (annotated: exact name, target type `commit`,
    target SHA equals the frozen commit) or a Git `commit` object (lightweight:
    SHA equals the frozen commit and `tagObject` is null);
-7. live formal `main` HEAD is observed but is not required to equal the frozen
-   source.
+7. live `main` HEAD is observed for remote repository evidence but is not
+   required to equal either the preflight candidate or a formal frozen source.
 
 Unknown keys, malformed IDs/SHA/statuses, HTTP errors, wrong
-repository/workflow/event/branch, a preflight whose live HEAD moved, a tag
-whose target is not the frozen commit, missing tag evidence, or evidence URL
-drift are failures. Tokens and API responses are not written to Release notes
-or logs. Missing, empty, or failed exact-source push CI does not fail
-eligibility.
+repository/workflow/event/ref, a tag whose target is not the frozen commit,
+missing tag evidence, or evidence URL drift are failures. A later `main` move
+does not invalidate an already frozen preflight workflow SHA. Tokens and API
+responses are not written to Release notes or logs. Missing, empty, or failed
+exact-source push CI does not fail eligibility.
 
 ### Repository owner-transfer boundary
 
@@ -170,9 +172,9 @@ frozen value:
 - once after draft upload/re-download/digest verification and immediately
   before the one final publication PATCH.
 
-A branch move of `dev/laiyongjie` during preflight, tag replacement away from
-the frozen commit, identity drift, or API failure at either point stops
-publication. A later `main` commit does not. Operators may force-update
+A tag replacement away from the frozen commit, identity drift, or API failure
+at either formal recheck stops publication. A later `main` commit does not.
+Operators may force-update
 `vX.Y.Z` when no GitHub Release exists for that tag; the workflow itself never
 moves or deletes the tag. An existing published Release for the tag is an
 immutable boundary. An existing draft is recoverable only under the ownership
@@ -313,7 +315,12 @@ unavailability blocks acceptance.
 
 - one universal app contains `arm64` and `x86_64`, the frozen version, and
   bundle identifier `com.fyagent.desktop`;
-- Apple Developer ID secrets exist only in `build-macos`. That job imports a
+- preflight packages a styled macOS DMG from the candidate universal app
+  without injecting Apple Developer ID or notarization secrets. It verifies
+  version, bundle identifier, both architectures, DMG layout, and byte
+  preservation, but does not claim Developer ID signature or notarization;
+- formal-mode Apple Developer ID secrets exist only in the guarded signing /
+  notarization steps inside `build-macos`. Those steps import a
   temporary keychain, re-seals the complete app with
   `Developer ID Application: William Wang (HY446996QX)` / team `HY446996QX`,
   the hardened runtime, a secure timestamp, and the checked-in entitlements,
@@ -419,8 +426,9 @@ Workflow default permission is `contents: read`.
   Windows proof/seal, exact-asset, metadata, and attestation dependency
   succeeds;
 - provider secrets exist only in the formal Windows transform job. Apple
-  Developer ID secrets exist only in `build-macos`. They never reach Windows
-  builds, preflight, fresh sealing, aggregation, notes, or specs.
+  Developer ID secrets exist only in formal-mode `build-macos` steps. Neither
+  secret set reaches preflight candidate execution, fresh sealing,
+  aggregation, notes, or specs.
 
 The publish job has an explicit formal-mode condition. A stable tag push and a
 `workflow_dispatch(mode=formal)` run whose workflow ref is that same tag are
@@ -587,9 +595,10 @@ closed instead of being silently removed. For the common same-tag/same-SHA
 failure, do not move the tag: dispatch `mode=formal` at the existing tag ref;
 an owned failed draft for that same source can be recovered automatically.
 
-A successful `dev/laiyongjie` `mode=preflight` dispatch may be run to produce
-and attest candidate installers, but formal closure neither requires nor
-infers success from it.
+A successful `mode=preflight` dispatch from the trusted `main` workflow may be
+run for any explicitly frozen repository candidate SHA to produce and attest
+diagnostic installers, but formal closure neither requires nor infers success
+from it.
 
 `windows-11-arm` remains public preview and may block the run. Unsigned Windows
 installers may trigger trust prompts; disclosure, SHA-256, and attestation make
@@ -615,7 +624,7 @@ xcrun notarytool wait "$id" --timeout 1800
 # exit 124 / empty stdout => fail the Release job
 bump X.Y.Z after every failed unpublished formal run
 force-push the same tag just to rerun the same SHA
-workflow_dispatch mode=formal from refs/heads/dev/laiyongjie
+workflow_dispatch mode=formal from refs/heads/feature/test
 delete any draft merely because tag_name matches
 ```
 

@@ -19,10 +19,10 @@ These guides help you **ask the right questions before coding**.
 
 ## Available Guides
 
-| Guide                                                         | Purpose                                  | When to Use                       |
-| ------------------------------------------------------------- | ---------------------------------------- | --------------------------------- |
-| [Code Reuse Thinking Guide](./code-reuse-thinking-guide.md)   | Prefer existing shared code; share early | Before writing new frontend code |
-| [Cross-Layer Thinking Guide](./cross-layer-thinking-guide.md) | Think through data flow across layers    | Features spanning multiple layers |
+| Guide                                                         | Purpose                                                           | When to Use                         |
+| ------------------------------------------------------------- | ----------------------------------------------------------------- | ----------------------------------- |
+| [Code Reuse Thinking Guide](./code-reuse-thinking-guide.md)   | Prefer existing/adopted/open-source capabilities; share early     | Before writing new reusable code    |
+| [Cross-Layer Thinking Guide](./cross-layer-thinking-guide.md) | Think through data flow across layers                             | Features spanning multiple layers   |
 
 ---
 
@@ -50,19 +50,24 @@ These guides help you **ask the right questions before coding**.
 
 ### When to Think About Code Reuse
 
-- [ ] **You're writing any new frontend component, helper, hook, or CSS**
+- [ ] **You're writing any new component, service, helper, hook, parser, adapter, or CSS**
 - [ ] You're writing similar code to something that exists
 - [ ] A sibling route or later module is likely to need this
+- [ ] The current repository/dependency stack may already provide the needed capability
+- [ ] No current owner exists and an external open-source module/component may avoid a bespoke implementation
+- [ ] You're considering adding a new npm package or Rust crate
 - [ ] You're adding a new field to multiple places
 - [ ] **You're modifying any constant or config**
 - [ ] **You're creating a new utility/helper function** ← Search first!
 - [ ] **You're adding a new UI component or page chrome** ← If another module will use it, put it in `shared/` now
+- [ ] **You've discovered code with a concrete second consumer** ← Propose/promote one shared owner now
 - [ ] Two files read the same untyped payload field with local casts
 - [ ] Multiple branches update the same derived state from `kind` / `action`
 
 → Read [Code Reuse Thinking Guide](./code-reuse-thinking-guide.md).
   For renderer placement and V2 feature chrome, read the
-  [Frontend Reuse Contract](../frontend/reuse.md).
+  [Frontend Reuse Contract](../frontend/reuse.md). For Rust/Tauri owners and
+  dependency decisions, read the [Backend Reuse Contract](../backend/reuse.md).
 
 ### When Verifying AI Cross-Review Results
 

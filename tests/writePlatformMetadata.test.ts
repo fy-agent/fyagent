@@ -19,6 +19,7 @@ const writerPath = path.join(
   "write-platform-metadata.mjs",
 );
 const sourceSha = "b".repeat(40);
+const workflowSha = "c".repeat(40);
 const temporaryRoots: string[] = [];
 
 function temporaryDirectory(): string {
@@ -38,8 +39,8 @@ function releaseIdentity(mode: "preflight" | "formal"): ReleaseIdentity {
     workflowRef:
       mode === "formal"
         ? "fy-agent/fyagent/.github/workflows/release.yml@refs/tags/v0.3.0"
-        : "fy-agent/fyagent/.github/workflows/release.yml@refs/heads/dev/laiyongjie",
-    workflowSha: sourceSha,
+        : "fy-agent/fyagent/.github/workflows/release.yml@refs/heads/main",
+    workflowSha: mode === "formal" ? sourceSha : workflowSha,
     runId: "123456",
     runAttempt: "2",
     event: mode === "formal" ? "push" : "workflow_dispatch",
@@ -255,10 +256,12 @@ describe("write-platform-metadata CLI", () => {
       },
     });
     expect(result.status, result.stderr).toBe(0);
-    expect(JSON.parse(readFileSync(outputPath, "utf8")).identity).toMatchObject({
-      ciRunId: null,
-      ciRunAttempt: null,
-    });
+    expect(JSON.parse(readFileSync(outputPath, "utf8")).identity).toMatchObject(
+      {
+        ciRunId: null,
+        ciRunAttempt: null,
+      },
+    );
   });
 
   it.each([

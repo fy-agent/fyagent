@@ -205,11 +205,11 @@ boundary.
 ### CI and release contract
 
 - Pull-request and merge-group CI now classifies repository-owned domains;
-  unknown paths fail closed. Pushes to `dev/laiyongjie` and `main` still run the
-  complete graph under the stable `CI / Required` aggregate.
+  unknown paths fail closed. At that release point, designated branch pushes
+  still ran the complete graph under the stable `CI / Required` aggregate.
 - Formal publication is bound to equality between the annotated stable tag,
-  the live remote `dev/laiyongjie` HEAD, and a successful full push CI for the
-  same repository/workflow/branch/SHA. Dispatch remains preflight-only.
+  the then-designated development HEAD, and a successful full push CI for the
+  same repository/workflow/SHA. Dispatch remains preflight-only.
 - Windows signing supports either a complete provider configuration followed
   by independent Authenticode verification or a strictly proven `NotSigned`
   result for both architectures. Partial, inconsistent, or invalid signing

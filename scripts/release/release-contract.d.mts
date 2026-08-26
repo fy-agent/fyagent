@@ -118,7 +118,7 @@ export interface BuildMetadata {
 export const PRODUCT_NAME: "FyAgent";
 export const EXPECTED_REPOSITORY: "fy-agent/fyagent";
 export const EXPECTED_REPOSITORY_ID: "1313497021";
-export const PREFLIGHT_BRANCH: "dev/laiyongjie";
+export const PREFLIGHT_WORKFLOW_BRANCH: "main";
 export const RELEASE_BRANCH: "main";
 export const RELEASE_WORKFLOW_PATH: ".github/workflows/release.yml";
 export const CI_WORKFLOW_PATH: ".github/workflows/ci.yml";

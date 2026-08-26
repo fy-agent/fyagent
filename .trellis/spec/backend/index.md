@@ -15,16 +15,20 @@ to future automated review, but never use a note to override observed behavior.
 
 When using these notes before changing Rust/Tauri host code:
 
-1. Locate the nearest topic below; do not duplicate a rule already enforced by
+1. Read the [Backend Reuse Contract](./reuse.md) before adding a service,
+   helper, parser, platform primitive, or Cargo dependency. Search existing
+   owners and adopted crates first; when neither fits, research maintained
+   open-source candidates before choosing a bespoke implementation.
+2. Locate the nearest topic below; do not duplicate a rule already enforced by
    an existing installer, version, security, release, or platform test.
-2. For a Tauri command, serialized DTO, event, or persisted-data change, also
+3. For a Tauri command, serialized DTO, event, or persisted-data change, also
    read the [Frontend Development Guidelines](../frontend/index.md) and its
    [Type Safety](../frontend/type-safety.md) boundary before changing either
    side.
-3. For user files, credentials, deep links, process control, installers, or
+4. For user files, credentials, deep links, process control, installers, or
    release artifacts, identify the validation/error case and the executable
    test or matching native evidence that will prove it before editing code.
-4. Run local commands through the shared
+5. Run local commands through the shared
    [Development Environment Contract](./development-environment.md); do not
    substitute a machine-global Node, Rust, or pnpm toolchain, and never select
    a non-host OS/architecture locally. Linux is a development host for
@@ -32,9 +36,9 @@ When using these notes before changing Rust/Tauri host code:
    platform. Native compile/test entrypoints must use
    their guarded mise task (or the guarded `pnpm dev`/`pnpm build` alias), not
    the low-level `pnpm tauri` maintenance/Actions leaf.
-5. Preserve protocol and schema versions as protocol facts, but never infer the
+6. Preserve protocol and schema versions as protocol facts, but never infer the
    application version or current behavior from an archived design label.
-6. For main-window restore, maximize, min-size, or `layout-mode-changed`, read
+7. For main-window restore, maximize, min-size, or `layout-mode-changed`, read
    the [Main Window Layout Contract](./main-window-layout.md). Host owns
    geometry: do not mutate it while maximized. V2 Overlay is renderer
    app-shell chrome only; do not treat that React chrome or CSS as the
@@ -44,6 +48,7 @@ When using these notes before changing Rust/Tauri host code:
 
 | Guide                                                                     | Use it for                                                                                                                                                                                                                               |
 | ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [Backend Reuse Contract](./reuse.md)                                      | Reuse-first decision order for Rust/Tauri owners and crates, open-source candidate review, early promotion of multi-consumer capabilities, minimal crate-scoped facades, and bespoke-implementation exceptions.                            |
 | [Codex Desktop Installer](./codex-desktop-installer.md)                   | Fixed-source installer service without package-hash admission or multi-pass full-file SHA, shared renderer DTO/state core, V2 port/events, Shell-user package ownership, protected PackageBridge, trusted restart/launch, and Agent Catalog managed-desktop reuse of the same policy.            |
 | [Rust Host Modular Boundaries](./modular-boundaries.md)                   | Modular-monolith visibility/dependency rules, command ownership, private Provider/Skill/Proxy/Codex subdomains, target-gated Tooling imports/tests, and executable architecture checks.                                                  |
 | [Codex Provider Configuration](./codex-provider-configuration.md)         | Lossless Codex Provider TOML, targeted V2 Quick Setup live patches with native write-plan/rolling backups, Codex Change Plan admission/apply/readback, official-auth preservation, native capabilities, vendor/session projection, warnings, live-config change evidence, managed ChatGPT `credential_id` vs workspace routing, and file-only native `auth.json` projection. |
@@ -52,7 +57,7 @@ When using these notes before changing Rust/Tauri host code:
 | [External Agent P0 Safety](./external-agent-p0.md)                        | Catalog v4 (Grok Build + TRAE Work CN URL), runtime/launch authority, Skills including disk observation, Qoder Hooks, TRAE GET observation/`state.vscdb`, OpenCode `opencode.json` persist, Agent install/action façade, narrow permissions, and secret boundaries.   |
 | [Application Version and Installer Assets](./fyagent-version-contract.md) | Cargo version single source, version commands, frozen release values, exact cross-platform asset names, and evidence sets.                                                                                                               |
 | [GitHub CI Workflow](./github-ci-workflow.md)                             | Repository-owned change classification, domain-aware PR/merge-group Required CI, lightweight branch-push commit policy, merge-queue event isolation, explicit Full CI diagnostics, and the stable `CI / Required` aggregate.              |
-| [GitHub Merge Governance](./github-merge-governance.md)                  | Merge-commit mainline policy, first-parent PR boundaries, Trellis merge-ready lifecycle, exact-head Auto-merge handoff, Merge Queue latest-main validation, upstream ancestry preservation, and post-merge `dev/laiyongjie` sync.       |
+| [GitHub Merge Governance](./github-merge-governance.md)                  | Merge-commit mainline policy, first-parent PR boundaries, Trellis merge-ready lifecycle, exact-head Auto-merge handoff, Merge Queue latest-main validation, and upstream ancestry preservation.                                              |
 | [SecretRef Native Backend](./secretref-backend.md)                       | Opaque SecretRef/version identities, zeroizing material, macOS Data Protection Keychain, Windows Credential Manager semantics, source-free errors, and matching-host native CRUD evidence.                                                |
 | [GitHub Release Workflow](./github-release-workflow.md)                   | Tag-target formal identity (annotated or lightweight), no live-main freeze or prior push CI gate, registry-only Cargo cache, single DMG notarization with `notarytool info` polling, asset transaction, attestation, and public Release. |
 | [macOS Styled DMG Layout](./macos-dmg-layout.md)                          | Finder-free UDRW `.DS_Store` layout, V2 DMG background, `dmg-layout` uv group, and left-to-right Applications drag-install.                                                                                                              |

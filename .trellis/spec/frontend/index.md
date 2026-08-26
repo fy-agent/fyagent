@@ -12,9 +12,11 @@ below stay authoritative for that leftover renderer. They are not the
 production shell contract.
 
 Reuse is the default frontend preference for both V2 and leftover work. Search
-shared owners first. If a new component, helper, hook, or CSS recipe will be
-used by another current or later module, put it in the shared layer on the
-first commit. Do not wait for a third copy. The executable contract is
+shared owners and already-adopted primitives first. When neither fits, research
+maintained open-source components/modules before choosing a bespoke
+implementation. If a new component, helper, hook, or CSS recipe will be used by
+another current or later module, put it in the shared layer on the first
+commit. Do not wait for a third copy. The executable contract is
 [Frontend Reuse](./reuse.md).
 
 ## Pre-Development Checklist
@@ -30,9 +32,10 @@ Before changing renderer code:
 3. Locate the existing Tauri API facade, query hook, type, schema, shared UI,
    and test family before creating another one. Read the
    [Frontend Reuse Contract](./reuse.md). Reuse is the default: prefer
-   existing shared chrome; if a new component will be used by another module,
-   add it under `shared/` on the first commit. Do not wait until a third
-   page copies it.
+   existing shared chrome and adopted primitives; if neither fits, research
+   maintained open-source candidates before bespoke code. If a new component
+   will be used by another module, add it under `shared/` on the first commit.
+   Do not wait until a third page copies it.
 4. Classify state as local UI state, Context state, or backend/resource state.
 5. For leftover renderer text, locate the matching keys in all four registered
    locale files before adding a literal string. V2 pages use hardcoded Chinese
@@ -61,7 +64,7 @@ Before changing renderer code:
 
 | Guide                                                                      | Use it for                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| [Frontend Reuse Contract](./reuse.md)                                      | Default frontend preference: reuse existing owners; place chrome that other modules will use in `shared/` on first commit; do not wait for a third copy; port pre-V2 behavior without importing leftover UI.                                                                                                                                                                                                                                                                                           |
+| [Frontend Reuse Contract](./reuse.md)                                      | Default frontend preference: reuse existing owners/adopted primitives, research suitable open-source candidates before bespoke code, place chrome that other modules will use in `shared/` on first commit, and preserve V2/leftover boundaries.                                                                                                                                                                                                                                                     |
 | [Renderer Modular Boundaries](./modular-boundaries.md)                     | V2 / leftover / renderer-neutral ownership, Tauri facade boundaries, composition-root responsibilities, and executable architecture checks.                                                                                                                                                                                                                                                                                                                                                            |
 | [V2 Shell Contract](./v2-shell.md)                                         | Isolated V2 routes, styles, layer/platform boundaries, Overlay drag strip, lifecycle, and V2-only gates.                                                                                                                                                                                                                                                                                                                                                                                               |
 | [Main Window Layout](../backend/main-window-layout.md)                     | Host maximize/min-size invariants; Windows overflow is not a renderer chrome bug.                                                                                                                                                                                                                                                                                                                                                                                                                      |

@@ -109,8 +109,9 @@ ci_run_id / ci_run_attempt = null
 
 Every platform, evidence, attestation, and publication step consumes those
 outputs unchanged. A downstream step must not trim `GITHUB_REF_NAME`, reread a
-different version field, or substitute another source SHA. Preflight requires
-the source to equal the live remote `dev/laiyongjie` HEAD; it cannot publish.
+different version field, or substitute another source SHA. Preflight freezes
+an explicit candidate SHA while its trusted workflow/event identity remains on
+`main`; it cannot publish.
 Formal mode binds `source_sha` to the remote tag's target commit, annotated or
 lightweight, and does not require live `main` HEAD equality or a successful
 push CI. Formal mode may be entered by the normal tag push or by a
@@ -119,8 +120,8 @@ push CI. Formal mode may be entered by the normal tag push or by a
 `source_sha`. Both formal entry events therefore freeze the same version/tag/
 source/workflow identity and may be used to rerun the same tag/SHA without
 moving the tag. The eligibility engine and
-[GitHub Release Workflow](./github-release-workflow.md) own the branch split;
-do not treat `main` as the preflight authority.
+[GitHub Release Workflow](./github-release-workflow.md) own the preflight /
+formal trust split.
 
 The installer allowlist contains exactly three versioned files:
 
@@ -194,8 +195,8 @@ the seventh and final Release attachment and does not attest itself.
   and seven Release attachments.
 - Release tests assert frozen output consumption and that the download,
   build, signing, attestation, and publication stages use the same version,
-  source SHA, CI run, and attempt. They cover `dev/laiyongjie` preflight and
-  `main` formal authority-branch movement, annotated versus lightweight tags,
+  source SHA, CI run, and attempt. They cover preflight candidate/workflow SHA
+  separation, live `main` movement, annotated versus lightweight tags,
   tag-push versus tag-ref formal dispatch, same-tag concurrency identity, and
   exact frozen rechecks before publication. Formal dispatch metadata is valid
   only when `mode=formal` and its workflow ref remains the exact version tag.
@@ -229,7 +230,7 @@ package.json.version = "X.Y.Z"
 tauri.conf.json.version = "X.Y.Z"
 GITHUB_REF_NAME is stripped and reused as an installer version
 FyAgent-vX.Y.Z-Windows-setup.exe
-workflow_dispatch mode=formal from refs/heads/dev/laiyongjie with source_sha=<sha>
+workflow_dispatch mode=formal from refs/heads/feature/test with source_sha=<sha>
 move vX.Y.Z only to retrigger the same source SHA
 overwrite a published vX.Y.Z Release with new assets
 ```

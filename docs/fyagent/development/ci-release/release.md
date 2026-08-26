@@ -19,8 +19,11 @@ tag vX.Y.Z at the intended commit
 Formal mode binds the remote tag's target commit. Live `main` may move during
 the run. Exact-source push CI is not required; the Release compile is the
 proof. A dispatch preflight remains available for the current remote
-`dev/laiyongjie` HEAD, but it is an artifact-producing diagnostic rather than a
-release-closure prerequisite, and its publication condition is always false.
+candidate SHA: the workflow is dispatched from trusted `main`, while
+`source_sha` selects the immutable commit to diagnose. It is an
+artifact-producing diagnostic rather than a release-closure prerequisite, its
+publication condition is always false, and candidate code receives no release
+signing/notarization secrets.
 The shortest authoritative path is therefore a matching stable tag -> one
 formal build. A formal run refuses a tag whose target is not the frozen SHA,
 an existing draft or published GitHub Release, identity mismatch, partial
