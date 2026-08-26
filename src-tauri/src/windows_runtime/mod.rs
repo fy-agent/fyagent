@@ -561,6 +561,14 @@ pub(crate) fn system_executable_path(filename: &str) -> Option<PathBuf> {
     native::system_executable_path(filename)
 }
 
+/// Native 64-bit and 32-bit Program Files directories. Desktop-agent
+/// observation uses these as machine roots alongside Alice's
+/// `LocalAppData\Programs`.
+#[cfg(target_os = "windows")]
+pub(crate) fn machine_program_files_directories() -> Vec<PathBuf> {
+    native::machine_program_files_directories()
+}
+
 pub(crate) fn revalidate_interactive_user_context(
     expected: &WindowsInteractiveUserContext,
 ) -> bool {

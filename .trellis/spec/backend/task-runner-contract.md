@@ -34,8 +34,13 @@ Every public task has:
 - a non-empty `description`;
 - `env.FYAGENT_TASK_EFFECT` from the approved effect vocabulary;
 - a formal `usage` declaration whenever it accepts an argument or flag;
-- `interactive = true`, `raw = true`, or an explicit confirmation only when
-  its I/O contract requires that behavior.
+- `interactive = true` together with `raw = true`, or an explicit
+  confirmation, only when its I/O contract requires that behavior.
+  Interactive long-running tasks must set `raw` so the console owns Ctrl+C
+  and terminal close. The host-native `dev` runner then kills the POSIX
+  process group (`kill(-pid)`) or the Windows process tree
+  (`taskkill.exe /T /F`). That Windows helper belongs to the development
+  task runner; NSIS installers still must not use `taskkill`.
 
 The canonical required subset is generated from live task metadata into
 `docs/fyagent/development/mise-tasks.md`. Later requirements may add tasks when
@@ -63,7 +68,10 @@ it.
 
 `dev`, `build`, `build:binary`, and `build:debug` are fixed current-host
 operations and have no caller argument. `pnpm dev`/`pnpm build` and those mise
-tasks route through one shared Node wrapper. The wrapper validates the exact
+tasks route through one shared Node wrapper. `dev` is interactive and `raw`;
+the wrapper spawns Tauri in the foreground (`windowsHide: false`, POSIX new
+process group) and tears down the whole tree on SIGINT/SIGTERM/SIGHUP or
+Windows SIGBREAK. The wrapper validates the exact
 process OS/architecture against matching absolute `rustc`/`rustdoc` `-vV`
 identities. Before probing or launching a toolchain it rejects caller target,
 compiler, rustdoc, wrapper, or target-runner/linker controls case-insensitively and
@@ -98,6 +106,97 @@ install or activate a non-host Rust target as part of local execution.
 Linux x64/arm64 is a development host for `check` and other current-host
 tasks; it is not a shipped product platform and does not add a local
 cross-compile or Actions job.
+
+### Foreground interactive process ownership
+
+#### 1. Scope / Trigger
+
+`mise run dev` (and other `FYAGENT_TASK_EFFECT=interactive` tasks) must own
+Ctrl+C and terminal close on every development host. This is a cross-host
+process-control contract: macOS/Linux and Windows must be specified
+together, not inferred as “not Windows means POSIX”.
+
+#### 2. Signatures
+
+```text
+RAW_TASKS = dev | dev:renderer | test:unit:watch | test:v2:watch
+
+executeTauriTask({ operation: "dev", runForegroundCommand })
+  -> runForeground(pnpm, ["exec", "tauri", "dev", ...])
+
+killProcessTree(pid, platform)
+  win32  -> spawnSync("taskkill.exe", ["/pid", pid, "/t", "/f"])
+  darwin | linux -> process.kill(-pid, SIGTERM then SIGKILL)
+  other  -> throw Unsupported task host
+```
+
+#### 3. Contracts
+
+- `interactive = true` if and only if `raw = true`. `raw` makes the console
+  the process-group leader so Ctrl+C and closing the terminal reach the
+  child.
+- `dev` uses `runForeground` (`spawn`, `stdio: "inherit"`,
+  `windowsHide: false`). Other Tauri operations keep `run` /
+  `spawnSync` / `windowsHide: true`.
+- POSIX hosts (`darwin`, `linux`) start a new process group (`detached:
+  true`) and kill `-pid`. Windows stays attached (`detached: false`) and
+  uses `taskkill.exe /T /F`. That helper belongs to the development task
+  runner only.
+- NSIS installers must not use `taskkill`. JavaScript host branches must
+  be `win32` then `isPosixTaskHost` then throw; `platform !== "win32"` is
+  forbidden.
+
+#### 4. Validation & Error Matrix
+
+| Condition | Required result |
+| --- | --- |
+| `FYAGENT_TASK_EFFECT=interactive` without `raw=true` | `tasks:validate` fails |
+| `dev` uses `run` / `spawnSync` | `miseTaskContract` fails |
+| Windows tree kill uses POSIX `kill(-pid)` | Child GUI survives; contract test fails |
+| POSIX group kill uses `taskkill.exe` | Contract test fails |
+| `platform !== "win32"` fallback | `supported-platform:check` fails |
+| NSIS script contains `taskkill` | Windows installer contract fails |
+| Unsupported `process.platform` | Throw `Unsupported task host`; no silent POSIX |
+
+#### 5. Good/Base/Bad Cases
+
+- Good: `mise run dev` on macOS or Windows; Ctrl+C or closing the terminal
+  stops Tauri and its children.
+- Base: `mise run build` still uses the hidden `run()` helper.
+- Bad: only fix Darwin because the author is on a Mac; Windows keeps
+  `spawnSync` / `windowsHide: true`.
+
+#### 6. Tests Required
+
+- `RAW_TASKS` equals the four interactive tasks; every interactive task has
+  `raw=true`.
+- `executeTauriTask({ operation: "dev" })` calls `runForegroundCommand`,
+  not `run`.
+- `killProcessTree` on `win32` records `taskkill.exe /pid /t /f`; on
+  `darwin` and `linux` signals `-pid`; on any other host throws.
+- `supported-platform:check` rejects implicit non-Windows branches in
+  `scripts/tasks/lib.mjs`.
+
+#### 7. Wrong vs Correct
+
+#### Wrong
+
+```js
+if (platform !== "win32") process.kill(-pid, "SIGKILL");
+```
+
+#### Correct
+
+```js
+if (platform === "win32") {
+  runner("taskkill.exe", ["/pid", String(pid), "/t", "/f"], { windowsHide: true, stdio: "ignore" });
+} else if (isPosixTaskHost(platform)) {
+  posixKill(-pid, "SIGTERM");
+  posixKill(-pid, "SIGKILL");
+} else {
+  throw new Error(`Unsupported task host: ${platform}`);
+}
+```
 
 ## 4. Parameter Transport
 
@@ -305,6 +404,8 @@ does not turn them into contribution, build, CI, or release prerequisites.
 | Condition                                                             | Required result                                    |
 | --------------------------------------------------------------------- | -------------------------------------------------- |
 | Missing description/effect/usage                                      | `tasks:validate` fails                             |
+| Interactive task lacks `raw=true`                                     | `tasks:validate` fails                             |
+| `dev` does not spawn foreground / kill the host process tree          | `miseTaskContract` fails                           |
 | Missing task reference or DAG cycle                                   | mise/task contract fails                           |
 | `check` reaches a non-read-only effect                                | Fail closed                                        |
 | A parameter is interpolated into a shell command                      | Reject; spawn validated argv instead               |
@@ -385,6 +486,9 @@ does not turn them into contribution, build, CI, or release prerequisites.
 - `developmentEnvironment.test.ts`, `miseTaskContract.test.ts`,
   `taskDocs.test.ts`, `systemCheck.test.ts`, `windowsMsvcEnv.test.ts`, and
   `localBuildBoundary.test.ts`.
+- `miseTaskContract` must cover `dev` → `runForegroundCommand`,
+  `killProcessTree` on `win32` / `darwin` / `linux`, and unsupported-host
+  throw. Do not treat Darwin-only shutdown as sufficient Windows evidence.
 
 ## 9. Wrong vs Correct
 
@@ -392,10 +496,13 @@ Wrong: put every command back into one `mise.toml`, rely on Bash, infer safety
 from a task name, concatenate usage input, let check install/update, bypass the
 wrapper with a low-level local target command, hand-edit generated task rows,
 or add a Vitest that freezes README/spec prose by substring (the retired
-`currentDocsContract` pattern).
+`currentDocsContract` pattern). Interactive `dev` without `raw`, or
+`platform !== "win32"` process teardown, is the same class of drift: macOS
+appears fixed while Windows (or Linux) keeps a hidden unsunk child.
 
 Correct: domain TOMLs describe a stable API, Node wrappers validate boundaries,
 effects make composition auditable, guarded native wrappers verify and pin the
 current host, and executable tests prove both metadata and real argument flow.
-Generated `mise-tasks.md` identity is `tasks:docs:check` /
+Interactive tasks set `raw` and tear down the POSIX group or Windows tree
+explicitly. Generated `mise-tasks.md` identity is `tasks:docs:check` /
 `docs-contract-check.mjs` only.

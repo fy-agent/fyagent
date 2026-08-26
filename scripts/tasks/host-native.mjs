@@ -6,7 +6,15 @@ import path from "node:path";
 import process from "node:process";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { ROOT, capture, fail, isMain, isPosixTaskHost, run } from "./lib.mjs";
+import {
+  ROOT,
+  capture,
+  fail,
+  isMain,
+  isPosixTaskHost,
+  run,
+  runForeground,
+} from "./lib.mjs";
 import { parse as parseToml } from "smol-toml";
 import { resolveMsvcEnvironment as loadMsvcEnvironment } from "./windows-msvc-env.mjs";
 
@@ -885,6 +893,7 @@ export function executeTauriTask({
   architecture = process.arch,
   captureCommand = capture,
   runCommand = run,
+  runForegroundCommand = runForeground,
   resolveToolCommand = resolveToolExecutable,
   resolveMsvcEnvironment = loadMsvcEnvironment,
 }) {
@@ -924,7 +933,11 @@ export function executeTauriTask({
   } else {
     throw new Error(`Unsupported host platform: ${platform}`);
   }
-  runCommand(plan.command, plan.args, { env: commandEnvironment });
+  const start = operation === "dev" ? runForegroundCommand : runCommand;
+  start(plan.command, plan.args, {
+    env: commandEnvironment,
+    platform,
+  });
   return plan;
 }
 

@@ -377,6 +377,7 @@ describe("canonical mise task API", () => {
         expect(task.usage, name).toContain('flag "--apply"');
       }
       expect(task.interactive === true, name).toBe(effect === "interactive");
+      expect(task.raw === true, name).toBe(effect === "interactive");
     }
     expect(
       Object.entries(tasks)
@@ -388,6 +389,54 @@ describe("canonical mise task API", () => {
       confirm: { default: "no" },
       env: { FYAGENT_TASK_EFFECT: "git-state" },
     });
+  });
+
+  it("kills a POSIX process group and a Windows process tree", () => {
+    const killProcessTree = taskLibModule.killProcessTree as (
+      pid: number,
+      platform?: string,
+      runner?: (command: string, args: string[], options?: object) => unknown,
+      posixKill?: (pid: number, signal: string) => void,
+    ) => void;
+
+    const windowsCalls: Array<{ command: string; args: string[] }> = [];
+    killProcessTree(4242, "win32", (command, args) => {
+      windowsCalls.push({ command, args });
+    });
+    expect(windowsCalls).toEqual([
+      { command: "taskkill.exe", args: ["/pid", "4242", "/t", "/f"] },
+    ]);
+
+    for (const posix of ["darwin", "linux"]) {
+      const posixSignals: Array<{ pid: number; signal: string }> = [];
+      killProcessTree(
+        4242,
+        posix,
+        () => {
+          throw new Error(`${posix} shutdown must not call taskkill`);
+        },
+        (pid, signal) => {
+          posixSignals.push({ pid, signal });
+        },
+      );
+      expect(posixSignals, posix).toEqual([
+        { pid: -4242, signal: "SIGTERM" },
+        { pid: -4242, signal: "SIGKILL" },
+      ]);
+    }
+
+    expect(() =>
+      killProcessTree(
+        4242,
+        "freebsd",
+        () => {
+          throw new Error("unsupported host must not spawn taskkill");
+        },
+        () => {
+          throw new Error("unsupported host must not signal");
+        },
+      ),
+    ).toThrow(/Unsupported task host: freebsd/);
   });
 
   it("forwards a unit-test file filter through the real mise usage parser", () => {
@@ -600,6 +649,40 @@ describe("canonical mise task API", () => {
       RUSTDOCFLAGS: "",
       CARGO_ENCODED_RUSTDOCFLAGS: "",
     });
+
+    calls.length = 0;
+    let foregroundCalls = 0;
+    const tauriDev = hostNativeModule.executeTauriTask({
+      operation: "dev",
+      environment: {},
+      platform: process.platform,
+      architecture: process.arch,
+      captureCommand,
+      runCommand: () => {
+        throw new Error("dev must not use spawnSync run()");
+      },
+      runForegroundCommand: (
+        command: string,
+        args: string[],
+        options: { env: Record<string, string> },
+      ) => {
+        foregroundCalls += 1;
+        calls.push({ command, args, environment: options.env });
+      },
+      resolveToolCommand,
+      resolveMsvcEnvironment: () => ({}),
+    }) as { command: string; args: string[]; target: string };
+    expect(tauriDev).toMatchObject({
+      command: "pnpm",
+      args: ["tauri", "dev", "--target", target],
+      target,
+    });
+    expect(foregroundCalls).toBe(1);
+    expect(calls.map(({ command, args }) => ({ command, args }))).toEqual([
+      { command: rustcExecutable, args: ["-vV"] },
+      { command: rustdocExecutable, args: ["-vV"] },
+      { command: "pnpm", args: tauriDev.args },
+    ]);
 
     calls.length = 0;
     const cargo = hostNativeModule.executeCargoTask({
@@ -1256,6 +1339,7 @@ describe("canonical mise task API", () => {
             environment,
             captureCommand: forbiddenChild,
             runCommand: forbiddenChild,
+            runForegroundCommand: forbiddenChild,
           }),
         ).toThrow(/canonical local tasks (?:own|reject)/);
       }
@@ -1278,6 +1362,7 @@ describe("canonical mise task API", () => {
           environment: {},
           captureCommand: forbiddenChild,
           runCommand: forbiddenChild,
+          runForegroundCommand: forbiddenChild,
         }),
       ).toThrow("does not accept forwarded arguments");
     }

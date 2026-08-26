@@ -3,7 +3,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parse as parseToml } from "smol-toml";
@@ -61,6 +61,93 @@ export function run(command, args = [], options = {}) {
     stdout: (result.stdout ?? "").trim(),
     stderr: (result.stderr ?? "").trim(),
   };
+}
+
+const POSIX_SHUTDOWN_SIGNALS = ["SIGINT", "SIGTERM", "SIGHUP"];
+const WINDOWS_SHUTDOWN_SIGNALS = ["SIGINT", "SIGTERM", "SIGBREAK"];
+
+export function killProcessTree(
+  pid,
+  platform = process.platform,
+  runner = spawnSync,
+  posixKill = process.kill.bind(process),
+) {
+  if (!Number.isInteger(pid) || pid <= 0) {
+    return;
+  }
+  if (platform === "win32") {
+    runner("taskkill.exe", ["/pid", String(pid), "/t", "/f"], {
+      windowsHide: true,
+      stdio: "ignore",
+    });
+  } else if (isPosixTaskHost(platform)) {
+    for (const signal of ["SIGTERM", "SIGKILL"]) {
+      try {
+        posixKill(-pid, signal);
+      } catch {
+        try {
+          posixKill(pid, signal);
+        } catch {
+          // The process (group) is already gone.
+        }
+      }
+    }
+  } else {
+    throw new Error(`Unsupported task host: ${platform}`);
+  }
+}
+
+export function runForeground(command, args = [], options = {}) {
+  const platform = options.platform ?? process.platform;
+  let detached;
+  let signals;
+  if (platform === "win32") {
+    detached = false;
+    signals = WINDOWS_SHUTDOWN_SIGNALS;
+  } else if (isPosixTaskHost(platform)) {
+    detached = true;
+    signals = POSIX_SHUTDOWN_SIGNALS;
+  } else {
+    throw new Error(`Unsupported task host: ${platform}`);
+  }
+  const child = spawn(resolveTaskExecutable(command, platform), args, {
+    cwd: ROOT,
+    env: { ...process.env, ...(options.env ?? {}) },
+    stdio: "inherit",
+    windowsHide: false,
+    detached,
+    shell: false,
+  });
+  if (!Number.isInteger(child.pid) || child.pid <= 0) {
+    throw new Error(`${command} failed to start`);
+  }
+  const treePid = child.pid;
+  let shuttingDown = false;
+  const shutdown = () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    killProcessTree(treePid, platform, options.runner, options.posixKill);
+  };
+  for (const signal of signals) {
+    process.on(signal, shutdown);
+  }
+  process.on("exit", shutdown);
+  child.on("exit", (status, signal) => {
+    for (const name of signals) {
+      process.removeListener(name, shutdown);
+    }
+    process.removeListener("exit", shutdown);
+    if (signal) {
+      process.exitCode = 1;
+      return;
+    }
+    process.exitCode = status ?? 1;
+  });
+  child.on("error", () => {
+    shutdown();
+    process.exitCode = 1;
+  });
+  return child;
 }
 
 export function capture(command, args = [], options = {}) {

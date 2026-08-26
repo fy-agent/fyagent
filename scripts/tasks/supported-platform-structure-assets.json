@@ -15,15 +15,15 @@
     ],
     [
       "scripts/tasks/host-native.mjs",
-      "bbe171323a43a3b74802b43c97fe82dd67dc0ae0cf85e466260ba036b1cc4d48"
+      "a291a520daf992b4ed4ae558fd6a1db033b5e0b57b4336e74be7d9ccf83a3205"
     ],
     [
       "scripts/tasks/lib.mjs",
-      "f8872067c85c4a5f18467a42e2c731275bf09bb56f0674211230e1743b55d3be"
+      "bd11454b6b9540a42cb6eea5d15a15f1fbd18d6273dd85d7edb1106839d6e8f3"
     ],
     [
       "scripts/tasks/supported-platform-check.mjs",
-      "38ac681530a5d8d8a79e18ca7dddab45e38067b75a1f4569e6247fbd23def3e0"
+      "b471d82a59906675fbcd121906b342f5fc20292b19143b7618a4f1e44f032028"
     ],
     [
       "scripts/tasks/system-check.mjs",
@@ -47,11 +47,11 @@
     ],
     [
       "src-tauri/src/agent_install/desktop.rs",
-      "f8df667b2d3f724805eaf5e60f3ceb723ffe544b7c9419a79a5a141410726d10"
+      "3373bdab4946e8ff7d7e1d209d45115c2e272cd5792208b086e6bec88db5390d"
     ],
     [
       "src-tauri/src/agent_install/sources/mod.rs",
-      "3041b8a15e03d931ec23be46fc23be7e680fdd0bb8d0fe6f6716e2bdd8bbb572"
+      "1e1b28add69df79e330b7a9be5ebeccc8d350281a8b033bea5145396afe864ff"
     ],
     [
       "src-tauri/src/app_store.rs",
@@ -159,7 +159,7 @@
     ],
     [
       "src-tauri/src/platform/process_launch.rs",
-      "f1155a84f6214b2e5da17db09abf93e32a5644fdf34bb1bd4d213c6d5acef39d"
+      "c351acf9a4640c4e43a5d17e7d9e1361c384c9e9cc74ee40395d370a9e3e2717"
     ],
     [
       "src-tauri/src/proxy/providers/codex_oauth_auth.rs",
@@ -267,7 +267,7 @@
     ],
     [
       "src-tauri/src/windows_runtime/mod.rs",
-      "0010c70da00f0273f3dc6a095f00e681bc62f72dcaea31f55bcb41b6e2d07067"
+      "3520b8461a1de29c95ceeae3892108d45aefd82147aa6ab5b0bc5cd65a7afd0b"
     ],
     [
       "src-tauri/src/windows_runtime/registry.rs",
@@ -363,7 +363,7 @@
     ],
     [
       "tests/miseTaskContract.test.ts",
-      "3a5893904522de46fdb541b04601c0771769573a39d691423ba4d70d950dd2da"
+      "6b3c12e882fa12b1e926df79616cb5f18881d4efe99e6888f1cde333f2319a0c"
     ],
     [
       "tests/releaseWorkflow.test.ts",
@@ -371,7 +371,7 @@
     ],
     [
       "tests/remainingPlatformSurface.test.ts",
-      "993901e619c8a055aa98ec90be862ebd20cf6ba772e6a5f57fdfd90ce4f637cf"
+      "200df33fefd9aac78dd301efd1e6e6d0fd4f21f7f9906359b47ecaec99579fab"
     ],
     [
       "tests/singleInstanceActivationContract.test.ts",

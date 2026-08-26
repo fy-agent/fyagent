@@ -66,6 +66,10 @@ impl InteractiveUserLauncher for ExplorerInteractiveUserLauncher {
         launch_from_explorer(format!(r"shell:AppsFolder\{aumid}"))
     }
 
+    fn open_trusted_windows_exe(&self, executable: &Path) -> Result<(), ProcessLaunchError> {
+        launch_from_explorer(executable.to_string_lossy().to_string())
+    }
+
     fn launch_fyagent_user_helper(
         &self,
         job_id: &CanonicalJobId,

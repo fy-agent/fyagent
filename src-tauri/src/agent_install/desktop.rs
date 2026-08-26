@@ -3,6 +3,7 @@
 
 use std::{
     fs,
+    io::{Read, Seek, SeekFrom},
     path::{Path, PathBuf},
 };
 
@@ -11,19 +12,63 @@ use std::{io::Write, process::Command};
 
 use super::fetch::{fetch_artifact_bytes, fetch_metadata_bytes};
 use super::sources::{
-    current_host_target, parse_traework_latest, parse_workbuddy_update, resolve_qoderwork_source,
-    workbuddy_update_url, AgentArch, AgentPlatform, PackageFormat, ResolvedDesktopSource,
-    SourceResolveError, QODERWORK_REDIRECT_HOSTS, TRAEWORK_DOWNLOAD_HOSTS,
+    bounded_version, current_host_target, parse_qoderwork_latest, parse_traework_latest,
+    parse_workbuddy_update, qoderwork_latest_yml_url, workbuddy_update_url, AgentArch,
+    AgentPlatform, PackageFormat, ResolvedDesktopSource, SourceResolveError,
+    QODERWORK_METADATA_HOSTS, QODERWORK_REDIRECT_HOSTS, TRAEWORK_DOWNLOAD_HOSTS,
     TRAEWORK_METADATA_ENDPOINTS, TRAEWORK_METADATA_HOSTS, WORKBUDDY_DOWNLOAD_HOSTS,
     WORKBUDDY_METADATA_HOSTS,
 };
-use super::types::AgentReasonCode;
+use super::types::{AgentInstallState, AgentReasonCode};
 use crate::codex_desktop::cancellation::Cancellation;
 use crate::config::get_home_dir;
 use crate::services::external_agents::AgentCatalogId;
 
-const TRAE_BUNDLE_ID: &str = "cn.trae.solo.app";
 const MAX_PLIST_BYTES: usize = 64 * 1024;
+const MAX_TRAE_PRODUCT_JSON_BYTES: usize = 256 * 1024;
+const MAX_WINDOWS_IDENTITY_WINDOW: usize = 512 * 1024;
+const MAX_WINDOWS_IDENTITY_FILE: u64 = 512 * 1024 * 1024;
+
+struct DesktopProduct {
+    agent_id: AgentCatalogId,
+    macos_bundle_id: &'static str,
+    windows_product_names: &'static [&'static str],
+    windows_relative_exes: &'static [&'static str],
+}
+
+const DESKTOP_PRODUCTS: &[DesktopProduct] = &[
+    DesktopProduct {
+        agent_id: AgentCatalogId::WorkBuddy,
+        macos_bundle_id: "com.workbuddy.workbuddy",
+        windows_product_names: &["WorkBuddy"],
+        windows_relative_exes: &["WorkBuddy/WorkBuddy.exe"],
+    },
+    DesktopProduct {
+        agent_id: AgentCatalogId::QoderWork,
+        macos_bundle_id: "com.qoder.work.cn",
+        windows_product_names: &["QoderWork CN", "QoderWorkCN"],
+        windows_relative_exes: &[
+            "QoderWork CN/QoderWork CN.exe",
+            "QoderWorkCN/QoderWorkCN.exe",
+        ],
+    },
+    DesktopProduct {
+        agent_id: AgentCatalogId::TraeWork,
+        macos_bundle_id: "cn.trae.solo.app",
+        windows_product_names: &["TRAE SOLO CN", "Trae Work CN", "TraeWork_CN"],
+        windows_relative_exes: &[
+            "TRAE SOLO CN/TRAE SOLO CN.exe",
+            "Trae Work CN/Trae Work CN.exe",
+            "TraeWork_CN/TraeWork_CN.exe",
+        ],
+    },
+];
+
+fn desktop_product(agent_id: AgentCatalogId) -> Option<&'static DesktopProduct> {
+    DESKTOP_PRODUCTS
+        .iter()
+        .find(|product| product.agent_id == agent_id)
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DesktopObservation {
@@ -36,11 +81,20 @@ pub async fn resolve_desktop_source(
 ) -> Result<ResolvedDesktopSource, SourceResolveError> {
     let (platform, arch) = current_host_target().ok_or(SourceResolveError::PlatformUnsupported)?;
     match agent_id {
-        AgentCatalogId::QoderWork => resolve_qoderwork_source(platform, arch),
+        AgentCatalogId::QoderWork => resolve_qoderwork(platform, arch).await,
         AgentCatalogId::TraeWork => resolve_traework(platform, arch).await,
         AgentCatalogId::WorkBuddy => resolve_workbuddy(platform, arch).await,
         _ => Err(SourceResolveError::PlatformUnsupported),
     }
+}
+
+async fn resolve_qoderwork(
+    platform: AgentPlatform,
+    arch: AgentArch,
+) -> Result<ResolvedDesktopSource, SourceResolveError> {
+    let url = qoderwork_latest_yml_url(platform, arch)?;
+    let body = fetch_metadata_bytes(url, QODERWORK_METADATA_HOSTS).await?;
+    parse_qoderwork_latest(&body, platform, arch)
 }
 
 async fn resolve_traework(
@@ -212,9 +266,15 @@ fn detach_dmg(mount: &Path) -> Result<(), AgentReasonCode> {
 #[cfg(target_os = "macos")]
 fn install_from_mount(product: AgentCatalogId, mount: &Path) -> Result<(), AgentReasonCode> {
     let app = discover_single_app(mount)?;
-    if product == AgentCatalogId::TraeWork {
+    if product == AgentCatalogId::TraeWork
+        || product == AgentCatalogId::QoderWork
+        || product == AgentCatalogId::WorkBuddy
+    {
+        let expected = desktop_product(product)
+            .map(|item| item.macos_bundle_id)
+            .ok_or(AgentReasonCode::SourceNotVerified)?;
         let id = read_bundle_id(&app).ok_or(AgentReasonCode::SourceNotVerified)?;
-        if id != TRAE_BUNDLE_ID {
+        if id != expected {
             return Err(AgentReasonCode::SourceNotVerified);
         }
     }
@@ -232,9 +292,15 @@ fn install_from_mount(product: AgentCatalogId, mount: &Path) -> Result<(), Agent
     if !status.success() {
         return Err(AgentReasonCode::ExecutorNotImplemented);
     }
-    if product == AgentCatalogId::TraeWork {
+    if product == AgentCatalogId::TraeWork
+        || product == AgentCatalogId::QoderWork
+        || product == AgentCatalogId::WorkBuddy
+    {
+        let expected = desktop_product(product)
+            .map(|item| item.macos_bundle_id)
+            .ok_or(AgentReasonCode::SourceNotVerified)?;
         let installed_id = read_bundle_id(&dest).ok_or(AgentReasonCode::SourceNotVerified)?;
-        if installed_id != TRAE_BUNDLE_ID {
+        if installed_id != expected {
             return Err(AgentReasonCode::SourceNotVerified);
         }
     }
@@ -267,27 +333,127 @@ fn user_applications_dir() -> Result<PathBuf, AgentReasonCode> {
     Ok(get_home_dir().join("Applications"))
 }
 
-fn applications_roots() -> [PathBuf; 2] {
-    [
-        user_applications_dir().unwrap_or_else(|_| PathBuf::from("/Applications")),
-        PathBuf::from("/Applications"),
-    ]
-}
-
-pub fn observe_desktop(agent_id: AgentCatalogId) -> DesktopObservation {
-    match agent_id {
-        AgentCatalogId::TraeWork => observe_trae_bundle(),
-        AgentCatalogId::QoderWork | AgentCatalogId::WorkBuddy => DesktopObservation {
-            installed: false,
-            local_version: None,
-        },
-        _ => DesktopObservation {
-            installed: false,
-            local_version: None,
-        },
+fn isolation_home_override() -> Option<PathBuf> {
+    let home = std::env::var("FYAGENT_TEST_HOME").ok()?;
+    let trimmed = home.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(PathBuf::from(trimmed))
     }
 }
 
+#[allow(dead_code)]
+fn macos_application_roots() -> Vec<PathBuf> {
+    let home_apps = user_applications_dir().unwrap_or_else(|_| PathBuf::from("/Applications"));
+    if isolation_home_override().is_some() {
+        vec![home_apps]
+    } else {
+        vec![home_apps, PathBuf::from("/Applications")]
+    }
+}
+
+#[allow(dead_code)]
+fn windows_program_roots() -> Vec<PathBuf> {
+    if let Some(home) = isolation_home_override() {
+        return vec![
+            home.join("AppData").join("Local").join("Programs"),
+            home.join("Program Files"),
+            home.join("Program Files (x86)"),
+        ];
+    }
+    production_windows_program_roots()
+}
+
+#[cfg(target_os = "windows")]
+fn production_windows_program_roots() -> Vec<PathBuf> {
+    let mut roots = vec![crate::windows_runtime::user_local_app_data_dir().join("Programs")];
+    roots.extend(crate::windows_runtime::machine_program_files_directories());
+    roots
+}
+
+#[cfg(target_os = "macos")]
+fn production_windows_program_roots() -> Vec<PathBuf> {
+    Vec::new()
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+mod non_product_host {
+    use super::*;
+
+    pub(super) fn observe_on_host(_product: &DesktopProduct) -> DesktopObservation {
+        DesktopObservation {
+            installed: false,
+            local_version: None,
+        }
+    }
+
+    pub(super) fn launch_on_host(_product: &DesktopProduct) -> Result<(), AgentReasonCode> {
+        Err(AgentReasonCode::PlatformUnsupported)
+    }
+
+    pub(super) fn host_absent_desktop_install_state() -> AgentInstallState {
+        AgentInstallState::Unknown
+    }
+
+    pub(super) fn production_windows_program_roots() -> Vec<PathBuf> {
+        Vec::new()
+    }
+
+    pub(super) fn launch_macos_bundle(_path: &Path) -> Result<(), AgentReasonCode> {
+        Err(AgentReasonCode::PlatformUnsupported)
+    }
+
+    pub(super) fn launch_windows_exe(_path: &Path) -> Result<(), AgentReasonCode> {
+        Err(AgentReasonCode::PlatformUnsupported)
+    }
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+use non_product_host::{
+    host_absent_desktop_install_state, launch_macos_bundle, launch_on_host, launch_windows_exe,
+    observe_on_host, production_windows_program_roots,
+};
+
+pub fn observe_desktop(agent_id: AgentCatalogId) -> DesktopObservation {
+    let Some(product) = desktop_product(agent_id) else {
+        return DesktopObservation {
+            installed: false,
+            local_version: None,
+        };
+    };
+    observe_on_host(product)
+}
+
+#[cfg(target_os = "macos")]
+fn observe_on_host(product: &DesktopProduct) -> DesktopObservation {
+    observe_macos_product(product, &macos_application_roots())
+}
+
+#[cfg(target_os = "windows")]
+fn observe_on_host(product: &DesktopProduct) -> DesktopObservation {
+    observe_windows_product(product, &windows_program_roots())
+}
+
+pub fn install_state_from_observation(observed: &DesktopObservation) -> AgentInstallState {
+    if observed.installed {
+        AgentInstallState::Installed
+    } else {
+        host_absent_desktop_install_state()
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn host_absent_desktop_install_state() -> AgentInstallState {
+    AgentInstallState::NotInstalled
+}
+
+#[cfg(target_os = "windows")]
+fn host_absent_desktop_install_state() -> AgentInstallState {
+    AgentInstallState::NotInstalled
+}
+
+#[allow(dead_code)]
 fn is_regular_app_bundle(path: &Path) -> bool {
     if path.extension().and_then(|ext| ext.to_str()) != Some("app") {
         return false;
@@ -297,9 +463,17 @@ fn is_regular_app_bundle(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
-fn observe_trae_bundle() -> DesktopObservation {
-    for root in applications_roots() {
-        let Ok(entries) = fs::read_dir(&root) else {
+#[allow(dead_code)]
+fn is_regular_file(path: &Path) -> bool {
+    fs::symlink_metadata(path)
+        .map(|meta| !meta.file_type().is_symlink() && meta.is_file())
+        .unwrap_or(false)
+}
+
+#[allow(dead_code)]
+fn observe_macos_product(product: &DesktopProduct, roots: &[PathBuf]) -> DesktopObservation {
+    for root in roots {
+        let Ok(entries) = fs::read_dir(root) else {
             continue;
         };
         for entry in entries.flatten() {
@@ -307,12 +481,16 @@ fn observe_trae_bundle() -> DesktopObservation {
             if !is_regular_app_bundle(&path) {
                 continue;
             }
-            if read_bundle_id(&path).as_deref() == Some(TRAE_BUNDLE_ID) {
-                return DesktopObservation {
-                    installed: true,
-                    local_version: read_bundle_version(&path),
-                };
+            if read_bundle_id(&path).as_deref() != Some(product.macos_bundle_id) {
+                continue;
             }
+            if !path.starts_with(root) {
+                continue;
+            }
+            return DesktopObservation {
+                installed: true,
+                local_version: read_macos_local_version(product, &path),
+            };
         }
     }
     DesktopObservation {
@@ -321,9 +499,147 @@ fn observe_trae_bundle() -> DesktopObservation {
     }
 }
 
-pub fn launch_trae_if_present() -> Result<(), AgentReasonCode> {
-    for root in applications_roots() {
-        let Ok(entries) = fs::read_dir(&root) else {
+#[allow(dead_code)]
+fn observe_windows_product(product: &DesktopProduct, roots: &[PathBuf]) -> DesktopObservation {
+    for root in roots {
+        for relative in product.windows_relative_exes {
+            let path = root.join(Path::new(relative));
+            if !is_regular_file(&path) {
+                continue;
+            }
+            if !path.starts_with(root) {
+                continue;
+            }
+            let Some(identity) = read_windows_exe_identity(&path) else {
+                continue;
+            };
+            if !product
+                .windows_product_names
+                .iter()
+                .any(|name| identity.product_name == *name)
+            {
+                continue;
+            }
+            return DesktopObservation {
+                installed: true,
+                local_version: read_windows_local_version(product, &path, identity.product_version),
+            };
+        }
+    }
+    DesktopObservation {
+        installed: false,
+        local_version: None,
+    }
+}
+
+struct WindowsExeIdentity {
+    product_name: String,
+    product_version: Option<String>,
+}
+
+#[allow(dead_code)]
+fn read_windows_exe_identity(path: &Path) -> Option<WindowsExeIdentity> {
+    let bytes = read_windows_identity_window(path)?;
+    let product_name = utf16le_value_after_key(&bytes, "ProductName")
+        .or_else(|| utf16le_value_after_key(&bytes, "FileDescription"))?;
+    let product_version = utf16le_value_after_key(&bytes, "ProductVersion")
+        .or_else(|| utf16le_value_after_key(&bytes, "FileVersion"));
+    Some(WindowsExeIdentity {
+        product_name,
+        product_version,
+    })
+}
+
+#[allow(dead_code)]
+fn read_windows_identity_window(path: &Path) -> Option<Vec<u8>> {
+    let meta = fs::metadata(path).ok()?;
+    if meta.len() == 0 || meta.len() > MAX_WINDOWS_IDENTITY_FILE {
+        return None;
+    }
+    let mut file = fs::File::open(path).ok()?;
+    let len = meta.len() as usize;
+    if len <= MAX_WINDOWS_IDENTITY_WINDOW * 2 {
+        let mut bytes = vec![0_u8; len];
+        file.read_exact(&mut bytes).ok()?;
+        return Some(bytes);
+    }
+    let mut bytes = vec![0_u8; MAX_WINDOWS_IDENTITY_WINDOW * 2];
+    file.read_exact(&mut bytes[..MAX_WINDOWS_IDENTITY_WINDOW])
+        .ok()?;
+    file.seek(SeekFrom::End(-(MAX_WINDOWS_IDENTITY_WINDOW as i64)))
+        .ok()?;
+    file.read_exact(&mut bytes[MAX_WINDOWS_IDENTITY_WINDOW..])
+        .ok()?;
+    Some(bytes)
+}
+
+#[allow(dead_code)]
+fn utf16le_value_after_key(bytes: &[u8], key: &str) -> Option<String> {
+    let mut needle: Vec<u8> = key.encode_utf16().flat_map(u16::to_le_bytes).collect();
+    needle.extend_from_slice(&[0, 0]);
+    let mut offset = 0;
+    while offset + needle.len() + 2 <= bytes.len() {
+        if bytes[offset..].starts_with(&needle) {
+            let start = offset + needle.len();
+            if let Some(value) = read_utf16le_zstring(&bytes[start..]) {
+                return Some(value);
+            }
+            let aligned = (start + 3) & !3;
+            if aligned > start {
+                if let Some(value) = read_utf16le_zstring(bytes.get(aligned..)?) {
+                    return Some(value);
+                }
+            }
+        }
+        offset += 2;
+    }
+    None
+}
+
+#[allow(dead_code)]
+fn read_utf16le_zstring(bytes: &[u8]) -> Option<String> {
+    let units: Vec<u16> = bytes
+        .chunks_exact(2)
+        .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
+        .take_while(|unit| *unit != 0)
+        .take(128)
+        .collect();
+    if units.is_empty() {
+        return None;
+    }
+    let value = String::from_utf16(&units).ok()?;
+    let trimmed = value.trim();
+    if trimmed.is_empty() || trimmed.len() > 128 {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
+}
+
+pub fn launch_if_present(agent_id: AgentCatalogId) -> Result<(), AgentReasonCode> {
+    let Some(product) = desktop_product(agent_id) else {
+        return Err(AgentReasonCode::ExecutorNotImplemented);
+    };
+    launch_on_host(product)
+}
+
+#[cfg(target_os = "macos")]
+fn launch_on_host(product: &DesktopProduct) -> Result<(), AgentReasonCode> {
+    launch_macos_if_present(product, &macos_application_roots())
+}
+
+#[cfg(target_os = "windows")]
+fn launch_on_host(product: &DesktopProduct) -> Result<(), AgentReasonCode> {
+    launch_windows_if_present(product, &windows_program_roots())
+}
+
+#[allow(dead_code)]
+fn launch_macos_if_present(
+    product: &DesktopProduct,
+    roots: &[PathBuf],
+) -> Result<(), AgentReasonCode> {
+    for root in roots {
+        let Ok(entries) = fs::read_dir(root) else {
             continue;
         };
         for entry in entries.flatten() {
@@ -331,20 +647,47 @@ pub fn launch_trae_if_present() -> Result<(), AgentReasonCode> {
             if !is_regular_app_bundle(&path) {
                 continue;
             }
-            if read_bundle_id(&path).as_deref() != Some(TRAE_BUNDLE_ID) {
+            if read_bundle_id(&path).as_deref() != Some(product.macos_bundle_id) {
                 continue;
             }
-            if !path.starts_with(&root) {
+            if !path.starts_with(root) {
                 return Err(AgentReasonCode::SourceNotVerified);
             }
-            return launch_bundle(&path);
+            return launch_macos_bundle(&path);
+        }
+    }
+    Err(AgentReasonCode::InstalledNotRunnable)
+}
+
+#[allow(dead_code)]
+fn launch_windows_if_present(
+    product: &DesktopProduct,
+    roots: &[PathBuf],
+) -> Result<(), AgentReasonCode> {
+    for root in roots {
+        for relative in product.windows_relative_exes {
+            let path = root.join(Path::new(relative));
+            if !is_regular_file(&path) || !path.starts_with(root) {
+                continue;
+            }
+            let Some(identity) = read_windows_exe_identity(&path) else {
+                continue;
+            };
+            if !product
+                .windows_product_names
+                .iter()
+                .any(|name| identity.product_name == *name)
+            {
+                continue;
+            }
+            return launch_windows_exe(&path);
         }
     }
     Err(AgentReasonCode::InstalledNotRunnable)
 }
 
 #[cfg(target_os = "macos")]
-fn launch_bundle(path: &Path) -> Result<(), AgentReasonCode> {
+fn launch_macos_bundle(path: &Path) -> Result<(), AgentReasonCode> {
     let status = Command::new("open")
         .arg(path)
         .status()
@@ -357,18 +700,94 @@ fn launch_bundle(path: &Path) -> Result<(), AgentReasonCode> {
 }
 
 #[cfg(target_os = "windows")]
-fn launch_bundle(_path: &Path) -> Result<(), AgentReasonCode> {
+fn launch_windows_exe(path: &Path) -> Result<(), AgentReasonCode> {
+    crate::platform::process_launch::launch_trusted_windows_exe_as_user(path)
+        .map_err(|_| AgentReasonCode::InteractiveUserUnavailable)
+}
+
+#[cfg(target_os = "windows")]
+fn launch_macos_bundle(_path: &Path) -> Result<(), AgentReasonCode> {
     Err(AgentReasonCode::PlatformUnsupported)
 }
 
+#[cfg(target_os = "macos")]
+fn launch_windows_exe(_path: &Path) -> Result<(), AgentReasonCode> {
+    Err(AgentReasonCode::PlatformUnsupported)
+}
+
+#[allow(dead_code)]
+fn read_macos_local_version(product: &DesktopProduct, app: &Path) -> Option<String> {
+    if product.agent_id == AgentCatalogId::TraeWork {
+        if let Some(version) = trae_macos_product_json(app).and_then(read_trae_tron_build_version) {
+            return Some(version);
+        }
+    }
+    read_bundle_version(app)
+}
+
+#[allow(dead_code)]
+fn read_windows_local_version(
+    product: &DesktopProduct,
+    exe: &Path,
+    pe_version: Option<String>,
+) -> Option<String> {
+    if product.agent_id == AgentCatalogId::TraeWork {
+        if let Some(version) = trae_windows_product_json(exe).and_then(read_trae_tron_build_version)
+        {
+            return Some(version);
+        }
+    }
+    pe_version
+}
+
+#[allow(dead_code)]
+fn trae_macos_product_json(app: &Path) -> Option<PathBuf> {
+    let path = app
+        .join("Contents")
+        .join("Resources")
+        .join("app")
+        .join("product.json");
+    if path.starts_with(app) && is_regular_file(&path) {
+        Some(path)
+    } else {
+        None
+    }
+}
+
+#[allow(dead_code)]
+fn trae_windows_product_json(exe: &Path) -> Option<PathBuf> {
+    let dir = exe.parent()?;
+    let path = dir.join("resources").join("app").join("product.json");
+    if path.starts_with(dir) && is_regular_file(&path) {
+        Some(path)
+    } else {
+        None
+    }
+}
+
+#[allow(dead_code)]
+fn read_trae_tron_build_version(path: PathBuf) -> Option<String> {
+    let meta = fs::metadata(&path).ok()?;
+    if meta.len() == 0 || meta.len() > MAX_TRAE_PRODUCT_JSON_BYTES as u64 {
+        return None;
+    }
+    let bytes = fs::read(&path).ok()?;
+    let value: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
+    let version = value.get("tronBuildVersion")?.as_str()?;
+    bounded_version(version).map(str::to_string)
+}
+
+#[allow(dead_code)]
 fn read_bundle_id(app: &Path) -> Option<String> {
     plist_string(app, "CFBundleIdentifier")
 }
 
+#[allow(dead_code)]
 fn read_bundle_version(app: &Path) -> Option<String> {
     plist_string(app, "CFBundleShortVersionString").or_else(|| plist_string(app, "CFBundleVersion"))
 }
 
+#[allow(dead_code)]
 fn plist_string(app: &Path, key: &str) -> Option<String> {
     let bytes = fs::read(app.join("Contents/Info.plist")).ok()?;
     if bytes.len() > MAX_PLIST_BYTES {
@@ -482,6 +901,268 @@ mod tests {
         assert_eq!(
             readiness_source_codes(SourceResolveError::Cancelled),
             vec![AgentReasonCode::Cancelled]
+        );
+    }
+
+    fn write_fake_macos_app(root: &Path, name: &str, bundle_id: &str, version: &str) {
+        let app = root.join(format!("{name}.app"));
+        fs::create_dir_all(app.join("Contents")).expect("app contents");
+        fs::write(
+            app.join("Contents/Info.plist"),
+            format!(
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>{bundle_id}</string>
+    <key>CFBundleShortVersionString</key>
+    <string>{version}</string>
+</dict>
+</plist>
+"#
+            ),
+        )
+        .expect("plist");
+    }
+
+    fn utf16le_key_value(key: &str, value: &str) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        bytes.extend(key.encode_utf16().flat_map(u16::to_le_bytes));
+        bytes.extend_from_slice(&[0, 0]);
+        bytes.extend(value.encode_utf16().flat_map(u16::to_le_bytes));
+        bytes.extend_from_slice(&[0, 0]);
+        bytes
+    }
+
+    fn write_fake_windows_exe(path: &Path, product_name: &str, version: &str) {
+        fs::create_dir_all(path.parent().expect("exe parent")).expect("exe directory");
+        let mut bytes = b"MZ".to_vec();
+        bytes.extend_from_slice(&[0; 32]);
+        bytes.extend(utf16le_key_value("ProductName", product_name));
+        bytes.extend(utf16le_key_value("ProductVersion", version));
+        fs::write(path, bytes).expect("fake exe");
+    }
+
+    fn product(agent_id: AgentCatalogId) -> &'static DesktopProduct {
+        desktop_product(agent_id).expect("closed desktop product")
+    }
+
+    #[test]
+    fn macos_observation_keys_off_bundle_id_not_folder_name() {
+        let root = tempfile::tempdir().expect("temp");
+        let apps = root.path().join("Applications");
+        fs::create_dir_all(&apps).expect("applications");
+        write_fake_macos_app(
+            &apps,
+            "NotTheProductName",
+            "com.workbuddy.workbuddy",
+            "5.3.14",
+        );
+        write_fake_macos_app(&apps, "WorkBuddy", "com.evil.workbuddy", "9.9.9");
+        write_fake_macos_app(&apps, "QoderWork CN", "com.qoder.work.cn", "0.9.12");
+        write_fake_macos_app(&apps, "TRAE SOLO CN", "cn.trae.solo.app", "0.1.51");
+
+        let workbuddy = observe_macos_product(
+            product(AgentCatalogId::WorkBuddy),
+            std::slice::from_ref(&apps),
+        );
+        assert_eq!(
+            workbuddy,
+            DesktopObservation {
+                installed: true,
+                local_version: Some("5.3.14".into()),
+            }
+        );
+        assert_eq!(
+            observe_macos_product(
+                product(AgentCatalogId::QoderWork),
+                std::slice::from_ref(&apps)
+            ),
+            DesktopObservation {
+                installed: true,
+                local_version: Some("0.9.12".into()),
+            }
+        );
+        assert_eq!(
+            observe_macos_product(
+                product(AgentCatalogId::TraeWork),
+                std::slice::from_ref(&apps)
+            ),
+            DesktopObservation {
+                installed: true,
+                local_version: Some("0.1.51".into()),
+            }
+        );
+    }
+
+    fn write_trae_product_json(install_root: &Path, tron_build_version: &str) {
+        fs::create_dir_all(install_root).expect("product json dir");
+        fs::write(
+            install_root.join("product.json"),
+            format!(r#"{{"appVersion":"0.1.51","tronBuildVersion":"{tron_build_version}"}}"#),
+        )
+        .expect("product json");
+    }
+
+    #[test]
+    fn trae_local_version_uses_tron_build_not_electron_app_version() {
+        let root = tempfile::tempdir().expect("temp");
+        let apps = root.path().join("Applications");
+        fs::create_dir_all(&apps).expect("applications");
+        write_fake_macos_app(&apps, "TRAE SOLO CN", "cn.trae.solo.app", "0.1.51");
+        write_trae_product_json(
+            &apps
+                .join("TRAE SOLO CN.app")
+                .join("Contents")
+                .join("Resources")
+                .join("app"),
+            "2.3.71801",
+        );
+        assert_eq!(
+            observe_macos_product(
+                product(AgentCatalogId::TraeWork),
+                std::slice::from_ref(&apps)
+            ),
+            DesktopObservation {
+                installed: true,
+                local_version: Some("2.3.71801".into()),
+            }
+        );
+
+        let programs = root.path().join("Programs");
+        write_fake_windows_exe(
+            &programs.join("TRAE SOLO CN").join("TRAE SOLO CN.exe"),
+            "TRAE SOLO CN",
+            "0.1.51",
+        );
+        write_trae_product_json(
+            &programs.join("TRAE SOLO CN").join("resources").join("app"),
+            "2.3.71801",
+        );
+        assert_eq!(
+            observe_windows_product(
+                product(AgentCatalogId::TraeWork),
+                std::slice::from_ref(&programs)
+            ),
+            DesktopObservation {
+                installed: true,
+                local_version: Some("2.3.71801".into()),
+            }
+        );
+    }
+
+    #[test]
+    fn windows_observation_requires_closed_relative_exe_and_product_name() {
+        let root = tempfile::tempdir().expect("temp");
+        let programs = root.path().join("Programs");
+        write_fake_windows_exe(
+            &programs.join("WorkBuddy").join("WorkBuddy.exe"),
+            "WorkBuddy",
+            "5.3.14",
+        );
+        write_fake_windows_exe(
+            &programs.join("QoderWork CN").join("QoderWork CN.exe"),
+            "Not Qoder",
+            "0.9.12",
+        );
+        write_fake_windows_exe(
+            &programs.join("QoderWorkCN").join("QoderWorkCN.exe"),
+            "QoderWorkCN",
+            "0.9.12",
+        );
+        write_fake_windows_exe(
+            &programs.join("Other").join("WorkBuddy.exe"),
+            "WorkBuddy",
+            "5.3.14",
+        );
+
+        assert_eq!(
+            observe_windows_product(
+                product(AgentCatalogId::WorkBuddy),
+                std::slice::from_ref(&programs)
+            ),
+            DesktopObservation {
+                installed: true,
+                local_version: Some("5.3.14".into()),
+            }
+        );
+        assert_eq!(
+            observe_windows_product(
+                product(AgentCatalogId::QoderWork),
+                std::slice::from_ref(&programs)
+            ),
+            DesktopObservation {
+                installed: true,
+                local_version: Some("0.9.12".into()),
+            }
+        );
+        assert!(
+            !observe_windows_product(
+                product(AgentCatalogId::TraeWork),
+                std::slice::from_ref(&programs)
+            )
+            .installed
+        );
+    }
+
+    #[test]
+    fn vendor_config_directories_are_not_install_evidence() {
+        let root = tempfile::tempdir().expect("temp");
+        fs::create_dir_all(root.path().join(".workbuddy")).expect("workbuddy config");
+        fs::create_dir_all(root.path().join(".qoderwork")).expect("qoder config");
+        fs::create_dir_all(root.path().join(".trae")).expect("trae config");
+        let apps = root.path().join("Applications");
+        let programs = root.path().join("Programs");
+        fs::create_dir_all(&apps).expect("applications");
+        fs::create_dir_all(&programs).expect("programs");
+
+        for agent_id in [
+            AgentCatalogId::WorkBuddy,
+            AgentCatalogId::QoderWork,
+            AgentCatalogId::TraeWork,
+        ] {
+            let item = product(agent_id);
+            assert!(!observe_macos_product(item, std::slice::from_ref(&apps)).installed);
+            assert!(!observe_windows_product(item, std::slice::from_ref(&programs)).installed);
+            assert_eq!(
+                launch_macos_if_present(item, std::slice::from_ref(&apps)),
+                Err(AgentReasonCode::InstalledNotRunnable)
+            );
+            assert_eq!(
+                launch_windows_if_present(item, std::slice::from_ref(&programs)),
+                Err(AgentReasonCode::InstalledNotRunnable)
+            );
+        }
+    }
+
+    #[test]
+    fn absent_closed_identity_is_not_installed_on_shipped_hosts() {
+        let absent = DesktopObservation {
+            installed: false,
+            local_version: None,
+        };
+        let present = DesktopObservation {
+            installed: true,
+            local_version: Some("1.0.0".into()),
+        };
+        assert_eq!(
+            install_state_from_observation(&present),
+            AgentInstallState::Installed
+        );
+        assert_ne!(
+            install_state_from_observation(&absent),
+            AgentInstallState::Installed
+        );
+        #[cfg(target_os = "macos")]
+        assert_eq!(
+            install_state_from_observation(&absent),
+            AgentInstallState::NotInstalled
+        );
+        #[cfg(target_os = "windows")]
+        assert_eq!(
+            install_state_from_observation(&absent),
+            AgentInstallState::NotInstalled
         );
     }
 }

@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { AgentInstallReadinessSection } from "@/v2/pages/agents/AgentInstallReadinessSection";
@@ -90,5 +90,64 @@ describe("AgentInstallReadinessSection", () => {
         "当前无法读取安装准备度。此区域不会推断安装可用性。",
       ),
     ).toBeVisible();
+  });
+
+  it("shows native job stage and waits for succeeded instead of a 32s failure", async () => {
+    const available: AgentInstallReadiness = {
+      ...readiness("qoderwork"),
+      installState: "installed",
+      updateState: "update_available",
+      localVersion: "0.9.12",
+      remoteVersion: "0.9.15",
+      releaseId: `v1:${"a".repeat(64)}`,
+      allowedActions: ["update"],
+    };
+    const current: AgentInstallReadiness = {
+      ...available,
+      updateState: "up_to_date",
+      localVersion: "0.9.15",
+      allowedActions: ["launch", "auth_login"],
+    };
+    let stage: "downloading" | "succeeded" = "downloading";
+    const port: AgentInstallReadinessPort = {
+      get: vi.fn(async () =>
+        stage === "succeeded" ? current : available,
+      ),
+      startAction: vi.fn(async () => ({
+        contractVersion: 1,
+        agentId: "qoderwork",
+        action: "update",
+        jobId: "job-1",
+        stage: "checking",
+        reasonCode: null,
+      })),
+      cancelAction: vi.fn(),
+      getActionJob: vi.fn(async () => ({
+        contractVersion: 1,
+        jobId: "job-1",
+        agentId: "qoderwork",
+        action: "update",
+        stage,
+        cancellable: true,
+        reasonCode: null,
+      })),
+    };
+    render(<AgentInstallReadinessSection agentId="qoderwork" port={port} />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "更新到最新版" }),
+    );
+    expect(await screen.findByText("正在下载安装包")).toBeVisible();
+    stage = "succeeded";
+    await waitFor(
+      () => {
+        expect(
+          screen.getByText("操作已完成。下面是再次读取的状态，不是推断。"),
+        ).toBeVisible();
+      },
+      { timeout: 3000 },
+    );
+    expect(
+      screen.queryByText("操作未能完成。此区域不会推断安装成功。"),
+    ).not.toBeInTheDocument();
   });
 });

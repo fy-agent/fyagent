@@ -171,8 +171,10 @@ contract version is 4 and includes Grok Build (`https://x.ai/grok`).
   Codex install/update remain `managed_by_codex_desktop` and keep the dedicated
   Codex Desktop installer; this façade must not occupy that job slot.
 - QoderWork CN uses the fixed first-party `/qoder-work-cn/releases/latest/`
-  User-x64 / macOS ARM64 / macOS x64 aliases. Remote semver stays `unknown`;
-  do not invent a version from Last-Modified, ETag, or docs. TRAE Work CN
+  User-x64 / macOS ARM64 / macOS x64 aliases as the only install artifacts.
+  Remote `displayVersion` is the unindented `version:` from `latest.yml` /
+  `latest-mac.yml` on the same host; do not invent a version from
+  Last-Modified, ETag, docs, or the feed zip. TRAE Work CN
   resolves `data.solo` + `region=cn` from the official latest API and never
   reads `data.manifest` / TRAE Code. WorkBuddy uses `/v2/update` closed
   platform IDs and the official macOS `.zip -> .dmg` suffix rewrite. Source,
@@ -258,23 +260,40 @@ input.
   - `codex` install/update → `managed_by_codex_desktop`, empty
     `allowedActions`, no Agent job slot.
 - QoderWork CN: code-owned `https://static.qoder.com.cn/qoder-work-cn/releases/latest/`
-  User-x64 EXE / macOS ARM64 DMG / macOS x64 DMG. Redirect host allowlist is
-  `static.qoder.com.cn`. `remoteVersion` stays absent. Action means “current
-  latest alias”, not a claimed semver. Windows ARM64 is
-  `platform_unsupported`.
+  User-x64 EXE / macOS ARM64 DMG / macOS x64 DMG. These three archived
+  aliases are the only install artifacts; Windows ARM64 is
+  `platform_unsupported`. Redirect/metadata host allowlist is
+  `static.qoder.com.cn`. Remote `displayVersion` comes from the same host's
+  Electron-builder feed (`latest.yml` on Windows x64, `latest-mac.yml` on
+  both macOS arches). Parse only an unindented top-level `version:`; never
+  install the feed's `.zip` `files[].url`, and never use `sha512`. Artifact
+  URLs stay the three `/latest/` aliases. If the yml is missing or invalid,
+  fail closed to `source_not_verified` rather than inventing semver from
+  Last-Modified, ETag, or docs.
 - TRAE Work CN: metadata `https://api.trae.cn/icube/api/v1/native/version/trae/cn/latest`
   with same-schema fallback `api.trae.ai`. Select `data.solo` + `region=cn`.
   Download host `lf-cdn.trae.com.cn`, path prefix
   `/obj/trae-com-cn/pkg/app/releases/stable/`, filename
-  `TraeWork_CN-*`. Never `data.manifest` or `TraeCode_*`.
+  `TraeWork_CN-*`. Platforms are Windows x64, macOS ARM64, and macOS
+  Intel only. Never `data.manifest` or `TraeCode_*`. Local comparable
+  version is `product.json` `tronBuildVersion` inside an already-proven
+  bundle/exe (macOS
+  `Contents/Resources/app/product.json`, Windows
+  `resources/app/product.json`). Do not compare Electron
+  `CFBundleShortVersionString` / `appVersion` (`0.1.51`) with the
+  `stable/<version>` Work package id.
 - WorkBuddy: `https://www.workbuddy.cn/v2/update?platform=` one of
   `workbuddy-darwin-x64 | workbuddy-darwin-arm64 | workbuddy-win32-x64-user`.
   Download host `download.codebuddy.cn`. macOS rewrites the exact `.zip`
-  suffix to `.dmg` after allowlist validation.
-- `releaseId` is `v1:` plus SHA-256 hex of a canonical field list. TRAE and
-  WorkBuddy require `expectedReleaseId` to match a force-refreshed source.
-  Qoder may omit it; if present it must still match the refreshed alias
-  hash. Drift → `refresh_required`.
+  suffix to `.dmg` after allowlist validation. Local plist marketing
+  versions such as `5.3.14` are equivalent to a longer remote
+  `productVersion` that shares the same dotted prefix (`5.3.14.36279234`);
+  do not keep `update_available` solely because the segment counts differ.
+  A changed last segment of the same length (`0.9.12` vs `0.9.15`) remains
+  an update.
+- `releaseId` is `v1:` plus SHA-256 hex of a canonical field list. TRAE,
+  WorkBuddy, and Qoder require `expectedReleaseId` to match a
+  force-refreshed source. Drift → `refresh_required`.
 - Fetch: HTTPS only, no userinfo, **no explicit non-default port**, every
   redirect hop rechecked against the product host allowlist, hop cap inherited
   from the installer transport,
@@ -286,7 +305,15 @@ input.
 - Jobs: one in-process slot. Second non-terminal start →
   `operation_conflict`. Cancel is allowed until `installing`; after that
   `cancellable=false`. Download success is not installed; post-install
-  reread is required. Unknown bundle identity stays `unknown`.
+  reread is required. The V2 Agents page polls `get_agent_action_job`
+  until a terminal stage and displays that stage; a ~32s poll cap must
+  not be treated as failure while the job is still `downloading` /
+  `installing`. After a closed identity is bound (macOS
+  `CFBundleIdentifier` or Windows PE `ProductName` at a closed relative
+  `.exe` path under Alice `LocalAppData\Programs` and machine Program
+  Files), absence on macOS/Windows is `not_installed`. Linux development
+  hosts stay `unknown`. Do not infer install from vendor config
+  directories such as `~/.workbuddy`.
 - Windows EXE/NSIS is a recognized format that reports
   `interactive_user_unavailable` from elevated FyAgent. macOS DMG is the
   current closed deploy path.
@@ -295,9 +322,11 @@ input.
   `grok login/logout`; status stays `unknown` without a structured command.
   OpenCode launches the official CLI connect flow and, when detected, shows
   `provider_connection_required` rather than a global logged-in bool.
-  Qoder/WorkBuddy `auth_login` stays `auth_state_unknown` until a verified
-  bundle/login surface exists. TRAE `auth_login`/`launch` may open the
-  trusted TRAE app when present. Never read vendor token files or Keychain.
+  Qoder/TRAE/WorkBuddy `auth_login`/`launch` open the trusted desktop app
+  when that closed identity is present. Auth state remains `unknown`
+  without a vendor login surface. Windows launch uses Explorer
+  `ShellExecute` as Alice and never `CreateProcess`. Never read vendor
+  token files or Keychain.
 
 ##### 4. Validation & Error Matrix
 
@@ -306,14 +335,15 @@ input.
 | Unknown Agent ID, unknown action, or extra request field | Reject; no job |
 | Renderer supplies URL/path/command/token/hash/bypass | Reject; no job |
 | `expectedReleaseId` not `v1:`+64 hex | `refresh_required` |
-| TRAE/WorkBuddy missing or drifted `expectedReleaseId` | `refresh_required` |
-| Qoder provided `expectedReleaseId` that no longer matches the alias | `refresh_required` |
+| TRAE/WorkBuddy/Qoder missing or drifted `expectedReleaseId` | `refresh_required` |
 | Codex `install`/`update` through this façade | `managed_by_codex_desktop` |
 | Host/scheme/redirect/body/schema/artifact grammar fails | `source_not_verified` or `official_page_only`; no stale version URL |
 | Explicit non-default port on a metadata or artifact URL | `source_not_verified` + `official_page_only`; default HTTPS only |
 | Fetch/job is cancelled | `cancelled`; never remap cancel to `source_not_verified` |
 | Windows ARM64 desktop source, or unsupported arch | `platform_unsupported` |
 | Windows EXE from elevated FyAgent | `interactive_user_unavailable` |
+| Closed desktop identity absent on macOS/Windows | `not_installed` |
+| Vendor config directory without closed bundle/exe | `not_installed`; not treated as launchable |
 | Formal elevated Windows Claude/Grok/OpenCode CLI/auth | `interactive_user_unavailable` |
 | Second overlapping job, unknown `jobId`, or cancel after `installing` | `operation_conflict` |
 | TRAE `data.manifest` / `TraeCode_*` selected | `source_not_verified`; Work package not started |
@@ -327,8 +357,8 @@ input.
 - Good: WorkBuddy fixture parses `5.3.14.36279234` and the official
   `.zip → .dmg` rewrite. Those version strings are test fixtures, not
   production fallbacks.
-- Base: Qoder readiness has no `remoteVersion`. Install revalidates the
-  fixed `/latest/` alias and does not invent semver from Last-Modified/ETag.
+- Base: Qoder readiness has a yml `displayVersion` and still downloads the
+  archived `/latest/` DMG/User-x64 alias, never the feed zip.
 - Bad: start a job with a CDN URL, route Gemini through this façade, occupy
   the Codex Desktop job slot, or paint logged-in from `~/.claude` file
   existence.
@@ -337,9 +367,14 @@ input.
 
 - Closed enum/DTO: exact keys, `deny_unknown_fields`, forbidden-wire scan,
   opaque `releaseId` grammar, seven catalog IDs, no Pi.
-- Source parsers: Qoder three aliases + Windows ARM64 unsupported + no
-  invented semver; TRAE solo/CN vs manifest/Code; WorkBuddy three platform
+- Source parsers: Qoder three archived aliases + `latest.yml` /
+  `latest-mac.yml` unindented `version` + Windows ARM64 unsupported + no
+  zip/`sha512` admission; TRAE solo/CN vs manifest/Code; WorkBuddy three platform
   IDs + `.zip → .dmg`; host/scheme/userinfo/redirect/body-cap failures.
+  Desktop `updateState` treats a shorter local marketing version as
+  current when it is a dotted prefix of remote `productVersion`
+  (`5.3.14` / `5.3.14.36279234`) and still flags same-length last-segment
+  drift (`0.9.12` / `0.9.15`).
 - Jobs: single-flight, cancel-before-installing, refuse cancel after
   `installing`, unknown job id, Codex install/update reason code.
 - Tooling mapping only: Claude/Grok/OpenCode. Existing Gemini/OpenClaw/Hermes
@@ -348,7 +383,9 @@ input.
   auth bool; Claude status uses official JSON/exit-code when present.
 - ACL union includes `start_agent_action`, `cancel_agent_action`,
   `get_agent_action_job`. Renderer port parses at the adapter, never in
-  page-local casts.
+  page-local casts. The Agents install section polls native job stage
+  until terminal, shows that stage, and must not paint failure at a 32s
+  cap while `downloading`.
 - Native DMG/EXE/UAC HIL is residual risk, not a portable-test pass.
 
 ##### 7. Wrong vs Correct
@@ -388,29 +425,159 @@ fallback_url = "https://lf-cdn.trae.com.cn/.../2.3.76922/..."; // researched pin
 // TRAE/WorkBuddy failures return official_page_only, never a pinned version URL.
 ```
 
-### Design Decision: Qoder 不伪造远端 semver
+#### Scenario: Closed desktop identity on macOS and Windows
 
-**Context**: QoderWork CN only exposes versionless `/releases/latest/` aliases.
-Last-Modified/ETag/docs are not a semantic version.
+##### 1. Scope / Trigger
+
+- Trigger: Agents UI readiness must recognize already-installed WorkBuddy /
+  QoderWork CN / TRAE Work CN on both shipped hosts. Identity is a
+  cross-host closed table, not a macOS-only `.app` scan with Windows
+  inferred later.
+- Owner: `src-tauri/src/agent_install/desktop.rs` observation/launch, plus
+  Windows Explorer launch in
+  [Windows Runtime Security](./windows-runtime-security.md).
+- Catalog `app.detect` / `app.launch` stay `Unverified`. Windows EXE
+  *install* from elevated FyAgent stays `interactive_user_unavailable`.
+
+##### 2. Signatures
+
+```text
+observe_desktop(agentId) -> DesktopObservation { installed, local_version }
+install_state_from_observation(observed)
+  macos | windows, installed=false -> not_installed
+  linux development host, installed=false -> unknown
+launch_if_present(agentId) -> () | InstalledNotRunnable | InteractiveUserUnavailable
+```
+
+Closed identity table (folder name is not identity):
+
+```text
+WorkBuddy  macos CFBundleIdentifier = com.workbuddy.workbuddy
+           windows relative exe     = WorkBuddy/WorkBuddy.exe
+           windows ProductName      = WorkBuddy
+
+QoderWork  macos CFBundleIdentifier = com.qoder.work.cn
+           windows relative exe     = QoderWork CN/QoderWork CN.exe
+                                      QoderWorkCN/QoderWorkCN.exe
+           windows ProductName      = QoderWork CN | QoderWorkCN
+
+TraeWork   macos CFBundleIdentifier = cn.trae.solo.app
+           windows relative exe     = TRAE SOLO CN/TRAE SOLO CN.exe
+                                      Trae Work CN/Trae Work CN.exe
+                                      TraeWork_CN/TraeWork_CN.exe
+           windows ProductName      = TRAE SOLO CN | Trae Work CN | TraeWork_CN
+```
+
+##### 3. Contracts
+
+- macOS scans `~/Applications` and `/Applications` for a regular `.app`
+  whose `CFBundleIdentifier` matches. Qoder/WorkBuddy version is
+  `CFBundleShortVersionString` or `CFBundleVersion`. TRAE Work CN version
+  is `Contents/Resources/app/product.json` `tronBuildVersion` when present,
+  otherwise the plist fallback. Never treat Electron `appVersion` /
+  `0.1.51` as comparable to `releases/stable/<version>`.
+- Windows scans Alice `LocalAppData\Programs` and machine Program Files
+  (`FOLDERID_ProgramFiles` + `FOLDERID_ProgramFilesX86`, process token
+  `None`) for a closed relative `.exe`. Isolation tests may replace those
+  roots with `FYAGENT_TEST_HOME`. Identity is UTF-16LE `ProductName` (then
+  `FileDescription`) in the first/last 512KiB of the file, matched against
+  the closed ProductName list. Version is `ProductVersion` then
+  `FileVersion`, except TRAE Work CN which prefers sibling
+  `resources/app/product.json` `tronBuildVersion` after identity is proven.
+- Launch: macOS `open <bundle>`; Windows
+  `launch_trusted_windows_exe_as_user` (Explorer `ShellExecute` as Alice,
+  no arguments). Missing closed identity returns `installed_not_runnable`.
+- Do not infer install from `~/.workbuddy`, `~/.qoderwork`, `~/.trae`, or
+  any vendor config directory. Do not use `CreateProcess` for Windows
+  launch. Linux development hosts must not pretend to be a shipped desktop
+  product (`unknown`, not `not_installed`).
+
+##### 4. Validation & Error Matrix
+
+| Condition | Required result |
+| --- | --- |
+| Bundle id / ProductName matches closed table | `installed` + sanitized version |
+| Folder named WorkBuddy.app with the wrong bundle id | Not installed |
+| `.exe` at the closed relative path with the wrong ProductName | Not installed |
+| Matching ProductName at a different relative path | Not installed |
+| Vendor config directory exists, no bundle/exe | Not installed; launch `installed_not_runnable` |
+| Closed identity absent on macOS/Windows | `not_installed` |
+| Closed identity absent on Linux development host | `unknown` |
+| Windows launch path is relative, `..`, NUL, or not `.exe` | `external_launch_invalid_windows_exe`; no launcher |
+| Windows EXE *install* from elevated FyAgent | `interactive_user_unavailable` |
+| Catalog `app.detect` / `app.launch` | Remain `Unverified` |
+
+##### 5. Good/Base/Bad Cases
+
+- Good: WorkBuddy.app with `com.workbuddy.workbuddy` under a non-matching
+  folder name is installed on macOS; `WorkBuddy/WorkBuddy.exe` with
+  ProductName `WorkBuddy` under Alice Programs is installed on Windows.
+- Base: Grok/Claude/OpenCode catalog copy still says detection/launch
+  cannot be confirmed. Qoder/TRAE/WorkBuddy drop that sentence but keep
+  Unverified capability modes.
+- Bad: treat `~/.workbuddy` as proof, scan only `.app` on Windows, or
+  `CreateProcess` the Catalog EXE from Bob.
+
+##### 6. Tests Required
+
+- macOS: bundle-id match including folder-name mismatch; wrong bundle id
+  rejected. TRAE local version prefers `tronBuildVersion` over plist
+  `0.1.51`.
+- Windows: closed relative path plus ProductName; wrong ProductName and
+  wrong path rejected. Isolation uses `FYAGENT_TEST_HOME`, not the real
+  Alice profile. TRAE local version prefers `resources/app/product.json`.
+- Both hosts: vendor config directories are not install evidence; absent
+  launch is `installed_not_runnable`; shipped-host absence is
+  `not_installed`.
+- `process_launch` rejects relative / `..` / non-`.exe` before the fake
+  launcher. `supported-platform:check` requires explicit Windows and
+  macOS cfg plus a fail-closed Linux stub, not `cfg!(any(macos, windows))`.
+
+##### 7. Wrong vs Correct
+
+#### Wrong
+
+```rust
+installed = home.join(".workbuddy").is_dir();
+#[cfg(not(target_os = "macos"))]
+fn observe_on_host(_) -> DesktopObservation { /* Windows implied */ }
+```
+
+#### Correct
+
+```rust
+// macOS: CFBundleIdentifier == closed id
+// Windows: roots.join(closed_relative_exe) + PE ProductName in closed list
+// Linux: unknown, not a product host
+```
+
+### Design Decision: Qoder 远端版本来自 first-party yml，安装包仍是三条 archived alias
+
+**Context**: 2026-08-25 归档任务确认官网只有三条 `/releases/latest/` 安装包
+（Windows User-x64 EXE、macOS ARM64 DMG、macOS Intel DMG），当时
+`latest.yml` 返回 403，因此远端 semver 保持 unknown。2026-08-26 同一 host
+的 `latest.yml` / `latest-mac.yml` 已可读，且顶层 `version` 与本机
+`CFBundleShortVersionString` 同族（例如本地 `0.9.12`、yml `0.9.15`）。
 
 **Options Considered**:
 
-1. Invent `remoteVersion` from HTTP validators or research notes
-2. Keep remote semver unknown and install “current latest”
-3. Disable Qoder install until a version API exists
+1. 继续把远端版本留空，UI 永远「未确认」
+2. 从 Last-Modified / 更新日志猜 semver
+3. 读取 yml 的顶层 `version`，但安装仍只用归档的三条 alias（不用 yml 里的 zip）
 
-**Decision**: Option 2. TRAE/WorkBuddy keep strict `expectedReleaseId`
-coherence because their APIs expose a real version.
+**Decision**: Option 3. Windows ARM64 仍 `platform_unsupported`。yml 的
+`files[].url` / `sha512` 不是 admission。
 
 **Example**:
 
 ```text
-Qoder: versionless_latest = true, display_version = None
-TRAE/WorkBuddy: expectedReleaseId must match refreshed opaque releaseId
+Qoder artifact = QoderWorkCN-Setup-User-x64.exe | QoderWorkCN-arm64.dmg | QoderWorkCN-x64.dmg
+Qoder display_version = latest.yml / latest-mac.yml unindented version:
+TRAE local comparable = product.json tronBuildVersion, not appVersion 0.1.51
 ```
 
-**Extensibility**: If Qoder later publishes a first-party version endpoint,
-add it as a source adapter change; do not start guessing from headers.
+**Extensibility**: 若 yml 再次 403 或 schema 漂移，fail closed 到官网页；
+不要退回 Last-Modified。
 
 ### Common Mistake: 把调研时的版本 URL 当成 fallback
 
@@ -667,9 +834,10 @@ underscore IDE key.
 - **Good:** a TRAE probe validates a canonical request ID, approves and pins all
   resolved addresses, observes cancellation/deadline/body limits, then returns
   only `reachable` plus non-sensitive buckets.
-- **Base:** an external Agent has no trusted runtime identity. Catalog guidance
-  and official links remain available, while detection and launch stay
-  `unverified`.
+- **Base:** Claude/Grok/OpenCode still have no trusted desktop runtime
+  identity. Catalog `app.detect`/`app.launch` stay `unverified`.
+  Qoder/TRAE/WorkBuddy install readiness uses the closed bundle/PE
+  identity; catalog capability modes stay `unverified`.
 - **Good:** Agent detail reads one bounded readiness DTO and may start a closed
   `agentId + action` job. Codex install/update still delegate to the existing
   managed installer. Claude/Grok/OpenCode reuse Tooling. Qoder/TRAE/WorkBuddy
@@ -706,11 +874,15 @@ import/seed only),
 QoderWork `~/.qoderworkcn/mcp.json` skip/write, TRAE `User/mcp.json`
 skip/write, and MCP union/no-execute/redaction. Agent install/action coverage must include
 closed DTO/`deny_unknown_fields`/forbidden-wire scans, opaque `v1:` release-id
-grammar, Qoder versionless aliases, TRAE `data.solo`/CN vs `data.manifest`/Code,
+grammar, Qoder archived `/latest/` aliases plus yml `version`, TRAE `data.solo`/CN vs `data.manifest`/Code,
 WorkBuddy platform IDs and `.zip → .dmg`, redirect allowlist failures, job
 single-flight and post-`installing` cancel refusal, Codex
 `managed_by_codex_desktop` non-occupation, Claude/Grok/OpenCode Tooling mapping
-without rerouting Gemini/OpenClaw/Hermes, and auth-file non-reads. Renderer
+without rerouting Gemini/OpenClaw/Hermes, and auth-file non-reads. Desktop
+observation tests must cover macOS bundle-id matching (including folder-name
+mismatch), Windows relative-exe plus PE `ProductName` matching, wrong
+ProductName / wrong path rejection, and vendor config-directory non-inference
+on both hosts. Renderer
 tests must assert
 exact command/payload wires, V2 seven Skills and seven MCP targets in catalog
 order, leftover Gemini / Hermes backend flag round-trip, disk-observed

@@ -651,8 +651,7 @@ const AGENT_CATALOG: [AgentCatalogEntry; 7] = [
         id: AgentCatalogId::QoderWork,
         variant_id: AgentVariantId::QoderWorkCn,
         display_name: "QoderWork CN",
-        description:
-            "支持 Skills 同步与 MCP 直接分配；不支持第三方模型配置。本机识别和启动暂无法确认。",
+        description: "支持 Skills 同步与 MCP 直接分配；不支持第三方模型配置。",
         official_links: &QODERWORK_OFFICIAL_LINKS,
         capabilities: &QODERWORK_CAPABILITIES,
     },
@@ -661,7 +660,7 @@ const AGENT_CATALOG: [AgentCatalogEntry; 7] = [
         variant_id: AgentVariantId::TraeWorkCn,
         display_name: "TRAE Work CN",
         description:
-            "支持 Skills 同步与 MCP 直接分配；自定义模型需在 TRAE Work CN 中添加；不支持 Hooks。本机识别和启动暂无法确认。",
+            "支持 Skills 同步与 MCP 直接分配；自定义模型需在 TRAE Work CN 中添加；不支持 Hooks。",
         official_links: &TRAE_WORK_OFFICIAL_LINKS,
         capabilities: &TRAE_WORK_CAPABILITIES,
     },
@@ -669,8 +668,7 @@ const AGENT_CATALOG: [AgentCatalogEntry; 7] = [
         id: AgentCatalogId::WorkBuddy,
         variant_id: AgentVariantId::WorkBuddy,
         display_name: "WorkBuddy",
-        description:
-            "支持 Skills 同步、模型配置与 MCP 直接分配；不支持 Hooks。本机识别和启动暂无法确认。",
+        description: "支持 Skills 同步、模型配置与 MCP 直接分配；不支持 Hooks。",
         official_links: &WORKBUDDY_OFFICIAL_LINKS,
         capabilities: &WORKBUDDY_CAPABILITIES,
     },
@@ -999,6 +997,10 @@ mod tests {
         assert_eq!(workbuddy.capabilities[10].id, AgentCapabilityId::McpWrite);
         assert!(workbuddy.description.contains("支持 Skills 同步"));
         assert!(workbuddy.description.contains("MCP 直接分配"));
+        assert!(!qoder.description.contains("本机识别和启动暂无法确认"));
+        assert!(!trae.description.contains("本机识别和启动暂无法确认"));
+        assert!(!workbuddy.description.contains("本机识别和启动暂无法确认"));
+        assert!(grok.description.contains("本机识别和启动暂无法确认"));
         assert_eq!(grok.display_name, "Grok Build");
         assert_eq!(grok.official_links[0].label, "打开 Grok Build 官方页面");
         assert_eq!(grok.official_links[0].url, "https://x.ai/grok");

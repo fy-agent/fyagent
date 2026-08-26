@@ -104,11 +104,14 @@ mod tests {
 
     #[test]
     fn metadata_url_must_stay_on_the_product_allowlist() {
-        let ok = Url::parse(
+        let ok = Url::parse("https://static.qoder.com.cn/qoder-work-cn/releases/latest-mac.yml")
+            .unwrap();
+        assert!(https_url_on_allowlist(&ok, QODERWORK_REDIRECT_HOSTS).is_ok());
+        let alias = Url::parse(
             "https://static.qoder.com.cn/qoder-work-cn/releases/latest/QoderWorkCN-arm64.dmg",
         )
         .unwrap();
-        assert!(https_url_on_allowlist(&ok, QODERWORK_REDIRECT_HOSTS).is_ok());
+        assert!(https_url_on_allowlist(&alias, QODERWORK_REDIRECT_HOSTS).is_ok());
         let evil =
             Url::parse("https://evil.example/qoder-work-cn/releases/latest/QoderWorkCN-arm64.dmg")
                 .unwrap();

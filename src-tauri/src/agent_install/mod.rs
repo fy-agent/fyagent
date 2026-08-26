@@ -24,14 +24,27 @@ pub use types::{
 use auth_actions::{observe_auth_state, start_auth_action};
 use cli::{observe_cli, run_cli_lifecycle};
 use desktop::{
-    download_resolved_source, finish_macos_dmg_install, launch_trae_if_present, observe_desktop,
-    readiness_source_codes, resolve_desktop_source, source_reason, windows_exe_unavailable,
+    download_resolved_source, finish_macos_dmg_install, install_state_from_observation,
+    launch_if_present, observe_desktop, readiness_source_codes, resolve_desktop_source,
+    source_reason, windows_exe_unavailable,
 };
 use sources::PackageFormat;
 
 use crate::codex_desktop::types::LocalInstallStatus;
 use crate::services::external_agents::AgentCatalogId;
 use crate::store::AppState;
+
+fn desktop_versions_equivalent(local: &str, remote: &str) -> bool {
+    if local == remote {
+        return true;
+    }
+    let local_parts: Vec<&str> = local.split('.').collect();
+    let remote_parts: Vec<&str> = remote.split('.').collect();
+    let shared = local_parts.len().min(remote_parts.len());
+    shared > 0
+        && local_parts[..shared] == remote_parts[..shared]
+        && local_parts.len() != remote_parts.len()
+}
 
 pub async fn readiness_for(agent_id: AgentCatalogId, state: &AppState) -> AgentInstallReadinessDto {
     match agent_id {
@@ -187,20 +200,16 @@ async fn desktop_readiness(agent_id: AgentCatalogId) -> AgentInstallReadinessDto
     if source.as_ref().is_ok_and(windows_exe_unavailable) {
         reason_codes.push(AgentReasonCode::InteractiveUserUnavailable);
     }
-    let install_state = if observed.installed {
-        AgentInstallState::Installed
-    } else if agent_id == AgentCatalogId::TraeWork {
-        AgentInstallState::NotInstalled
-    } else {
-        AgentInstallState::Unknown
-    };
+    let install_state = install_state_from_observation(&observed);
     let update_state = if !source_ok {
         AgentUpdateState::Unavailable
     } else if remote_version.is_none() {
         AgentUpdateState::LatestUnknown
     } else if observed.installed {
         match (observed.local_version.as_deref(), remote_version.as_deref()) {
-            (Some(local), Some(remote)) if local == remote => AgentUpdateState::UpToDate,
+            (Some(local), Some(remote)) if desktop_versions_equivalent(local, remote) => {
+                AgentUpdateState::UpToDate
+            }
             _ => AgentUpdateState::UpdateAvailable,
         }
     } else {
@@ -213,7 +222,7 @@ async fn desktop_readiness(agent_id: AgentCatalogId) -> AgentInstallReadinessDto
             allowed_actions.push(AgentActionId::Update);
         }
     }
-    if observed.installed && agent_id == AgentCatalogId::TraeWork {
+    if observed.installed {
         allowed_actions.push(AgentActionId::Launch);
         allowed_actions.push(AgentActionId::AuthLogin);
     }
@@ -344,8 +353,11 @@ pub async fn start_agent_action(
             AgentCatalogId::QoderWork | AgentCatalogId::TraeWork | AgentCatalogId::WorkBuddy,
             AgentActionId::Install | AgentActionId::Update,
         ) => start_desktop_job(request, state).await,
-        (AgentCatalogId::TraeWork, AgentActionId::Launch) => {
-            launch_trae_if_present()?;
+        (
+            AgentCatalogId::QoderWork | AgentCatalogId::TraeWork | AgentCatalogId::WorkBuddy,
+            AgentActionId::Launch,
+        ) => {
+            launch_if_present(request.agent_id)?;
             Ok(immediate_result(
                 request.agent_id,
                 request.action,
@@ -362,9 +374,10 @@ fn start_desktop_or_cli_auth(
     action: AgentActionId,
 ) -> Result<(), AgentReasonCode> {
     match (agent_id, action) {
-        (AgentCatalogId::TraeWork, AgentActionId::AuthLogin | AgentActionId::Launch) => {
-            launch_trae_if_present()
-        }
+        (
+            AgentCatalogId::QoderWork | AgentCatalogId::TraeWork | AgentCatalogId::WorkBuddy,
+            AgentActionId::AuthLogin | AgentActionId::Launch,
+        ) => launch_if_present(agent_id),
         _ => start_auth_action(agent_id, action),
     }
 }
@@ -560,6 +573,16 @@ mod tests {
             "packageFormat",
             "managed_package",
         ]
+    }
+
+    #[test]
+    fn workbuddy_marketing_version_matches_longer_product_version() {
+        assert!(desktop_versions_equivalent("5.3.14", "5.3.14.36279234"));
+        assert!(desktop_versions_equivalent("5.3.14.36279234", "5.3.14"));
+        assert!(desktop_versions_equivalent("0.9.15", "0.9.15"));
+        assert!(!desktop_versions_equivalent("0.9.12", "0.9.15"));
+        assert!(!desktop_versions_equivalent("2.3.71801", "2.3.76122"));
+        assert!(!desktop_versions_equivalent("5.3.14", "5.3.15"));
     }
 
     #[test]
