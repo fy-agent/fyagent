@@ -1729,3 +1729,25 @@ Closed Agent Catalog install/auth façade (7 products, Pi excluded) plus Codex c
 ### Status
 
 [OK] **Completed**
+
+
+## Session 53: Reuse-first specs and release preflight decoupling
+
+**Date**: 2026-08-26
+**Task**: Reuse-first specs and release preflight decoupling
+**Branch**: `docs/reuse-first-spec`
+
+### Summary
+
+Codified reuse-first engineering across frontend/backend/guides; decoupled Release preflight from a personal development branch by using trusted main workflow identity plus explicit candidate SHA; kept preflight release secrets isolated and refreshed release contracts/tests.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `83724a38` | (see git log) |
+| `4db05412` | (see git log) |
+
+### Status
+
+[OK] **Completed**
