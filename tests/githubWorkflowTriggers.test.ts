@@ -170,6 +170,8 @@ describe("GitHub workflow trigger policy", () => {
         "  schedule:",
         '    - cron: "17 */3 * * *"',
         "  workflow_dispatch:",
+        "  watch:",
+        "    types: [started]",
       ].join("\n"),
     );
     expect(source).toContain("permissions:\n  contents: read");

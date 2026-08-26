@@ -148,8 +148,13 @@ Classification invariants:
   duplicate flags, and option injection fail closed.
 
 `star-history.yml` is repository automation rather than Required CI authority.
-Its scheduled refresh runs every three hours at minute 17, avoiding the
-top-of-hour scheduling peak while keeping the README chart reasonably fresh.
+New stars refresh the README chart through the `watch` `started` event, which
+runs the default-branch workflow when the repository is starred. GitHub's
+`schedule` trigger is best-effort and can skip slots, especially right after
+the workflow is added or its cron changes, so it is only the periodic
+reconciliation path (including unstars) rather than the freshness guarantee.
+The scheduled refresh still runs every three hours at minute 17, avoiding the
+top-of-hour scheduling peak. Manual `workflow_dispatch` remains available.
 GitHub's built-in `GITHUB_TOKEN` is not an owner/collaborator credential for the
 restricted stargazer timeline endpoint, so exact chart generation uses the
 repository secret `STAR_HISTORY_TOKEN`. Keep that credential out of the
