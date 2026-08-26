@@ -153,18 +153,24 @@
 }
 .fy-feature-definition {
   display: grid;
-  grid-template-columns: minmax(90px, max-content) minmax(0, 1fr);
+  grid-template-columns: minmax(0, max-content) minmax(0, 1fr);
   gap: 8px 12px;
   margin: 0;
   font-size: 12px;
 }
 .fy-feature-definition dt {
+  min-width: 0;
   color: var(--fy-text-secondary);
+  overflow-wrap: anywhere;
 }
 .fy-feature-definition dd {
   min-width: 0;
   margin: 0;
   overflow-wrap: anywhere;
+}
+.fy-feature-definition
+  dd:has(> .fy-feature-path:not(:has(.fy-feature-path-value))) {
+  min-width: min-content;
 }
 .fy-feature-code {
   font-family: ui-monospace, Consolas, monospace;

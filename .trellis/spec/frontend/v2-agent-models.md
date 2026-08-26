@@ -4,16 +4,23 @@
 > `SUPERSEDES_DIRECT_JUMPS_ONLY`: clauses below that restrict the Agent
 > directory to direct capability jumps, forbid a capability-item/configuration
 > surface, or require the previous master/detail-only information architecture
-> are superseded. `/agents` now owns software scan states plus a selected-Agent
-> configuration shell with four sections: `模型 / Skills / MCP / 提示词`, a
-> return-to-directory action, and entry points to the existing global management
-> routes. The capability matrix, native data owners, installer boundaries,
+> are superseded. `/agents` now owns a catalog-first software directory plus a
+> selected-Agent configuration shell with four sections:
+> `模型 / Skills / MCP / 提示词`, a return-to-directory action, and entry
+> points to the existing global management routes.
+> `SUPERSEDES_INSTALLED_ONLY_DIRECTORY`: clauses below that keep the idle
+> directory empty, require a manual first 「开始扫描」, or project only
+> installed cards are superseded. Catalog success shows all seven supported
+> agents immediately; first entry auto-scans readiness in the background;
+> scan/job state gates configure and install/update, not row existence.
+> The capability matrix, native data owners, installer boundaries,
 > unsupported/assisted semantics, browser-authority limits, official links and
 > vendor-specific write rules in this document remain fully authoritative.
 > In particular, V3 must not turn Qoder model writes or TRAE assisted model
 > setup into direct writes, and must not invent prompt writers for unsupported
-> Agent targets. Tests for the old direct-jump-only layout must be replaced by
-> scan/configure state, four-section navigation and capability-honesty tests.
+> Agent targets. Tests for the old direct-jump-only or installed-only layout
+> must be replaced by catalog-first scan/configure/lifecycle and
+> capability-honesty tests.
 
 ## 1. Scope / Trigger
 
@@ -38,8 +45,9 @@ its own capability workflow:
 - QoderWork CN, TRAE Work CN, WorkBuddy, and Grok Build each expose one
   catalog-owned product link; Claude Code exposes separate CLI and Desktop
   links; OpenCode exposes `product` then `cli`. `/agents` no longer uses the
-  old master/detail capability-jump directory. The page owns a scan directory
-  plus a selected-Agent configuration shell with four sections:
+  old master/detail capability-jump directory. The page owns a catalog-first
+  directory of all supported agents plus a selected-Agent configuration shell
+  with four sections:
   `模型 / Skills / MCP / 提示词`. Official product/cli/desktop links, Provider
   summaries, installer panels, Qoder Hooks editors, and MCP validation stay
   on their existing owners (`/models`, `/skills`, `/mcp`, or native
@@ -375,20 +383,43 @@ export type AgentSection = (typeof AGENT_SECTION_IDS)[number];
   Missing or invalid `section` is replaced with `models`. Returning to the
   directory clears both params. The last in-session configuration may be
   restored only when the Agents route becomes active again without a target.
+- Catalog success renders every catalog entry in the existing catalog /
+  `PRODUCT_DIRECTORY` order. Scan state does not decide whether a row exists.
+  Do not filter `not_installed`, `unknown`, `unavailable`, pending, or failed
+  reads out of the list. Do not replace missing software with skeleton cards.
 - Scan state lives in `useAgentDirectoryScan`. Status is
   `idle | scanning | complete`. `start()` is a no-op while `scanning`.
-  Each catalog id refetches `useAgentInstallReadiness`; a query error or
-  thrown refetch is a technical failure, not an install-state card.
-- Completed and in-progress lists project only
-  `installState === "installed" || installState === "installed_not_runnable"`.
-  `not_installed`, `unknown`, missing results, and failed reads never enter
-  the normal software cards. Filter in TypeScript; do not hide rows with CSS.
+  First directory entry on a mounted Agents page session auto-starts one
+  background scan (`autoStart: true`); returning to `/agents` while the
+  keep-alive page instance survives must not unconditionally rescan. Manual
+  「重新扫描」 remains. Each catalog id refetches `useAgentInstallReadiness`;
+  a query error or thrown refetch is a technical failure, never converted to
+  `not_installed`, and never drops the row.
+- Per-row overlay (`observeAgentDirectoryRow`) is pending until that id
+  settles. 「进行配置」 is enabled only when existence is proven:
+  `installState === "installed" || installState === "installed_not_runnable"`,
+  including a retained successful result while a later scan is refreshing.
+  Pending, `not_installed`, `unknown`, `unavailable`, read failure, and an
+  in-flight install/update keep configure disabled.
+- Lifecycle slot sits to the left of 「进行配置」. Generic agents use
+  `FeaturePorts.agentInstallReadiness` through `useAgentLifecycleAction`.
+  Visible 一键安装 / 一键更新 come only from `allowedActions` plus the
+  current install/updateState (install when `not_installed` and `install` is
+  allowed; update when existence is proven, `updateState === update_available`,
+  and `update` is allowed). Backend omission is not a fake button.
+  Generic jobs show the real stage and never invent a percent. After terminal
+  success/failure/cancel/timeout the UI rereads readiness (`applyReadiness`);
+  it must not set an optimistic installed flag.
+- Codex install/update stay on `useCodexDesktopInstaller` /
+  `FeaturePorts.codexDesktop`. Directory Codex cards project that view model
+  (`projectCodexDirectoryAction`) and may show the VM's real percent; they
+  must not start a generic Agent job or copy the downloader.
 - A complete scan with zero successful reads uses the error notice and keeps
   the previous successful result set when one exists. Partial read failures
-  use a warning and still show the successful installed cards.
-- Directory cards use catalog `displayName` plus `进行配置`. The
-  configuration shell header shows brand + display name + `返回`, then
-  `FeatureTabs` for `模型 / Skills / MCP / 提示词`.
+  use a warning; every catalog row remains visible.
+- Directory cards use catalog `displayName` plus the lifecycle slot and
+  「进行配置」. The configuration shell header shows brand + display name +
+  `返回`, then `FeatureTabs` for `模型 / Skills / MCP / 提示词`.
 - Models section is observation-only. It may list native/provider snapshots
   and link to `/models?target=<modelTarget>`. It must not write models,
   mount Provider quick setup, or turn Qoder `unsupported` / TRAE `assisted`
@@ -536,8 +567,11 @@ fetch/save controls.
 
 ### Writable Models disclosure and draft commit state
 
-- Provider Quick Setup, WorkBuddy, and OpenCode must show `ModelsWriteDisclosure`
-  before a local save can run. Every displayed target comes from a native DTO;
+- Provider Quick Setup, WorkBuddy, and OpenCode must show
+  `ModelsWriteConfirmDialog` after the user clicks save and before a local save
+  can run. The write-target disclosure is not laid out on the page. Cancel
+  closes the dialog and does not start the save; confirm proceeds with the
+  already-validated request. Every displayed target comes from a native DTO;
   React never constructs `~/.codex`, `.workbuddy`, `.config/opencode`, or a
   backup path. Each row visibly labels `将修改` and `备份位置`, and states that
   the single rolling backup is replaced by the immediately previous preimage.
@@ -776,6 +810,14 @@ fetch/save controls.
 | Native observation fails on Models                                                                                           | Show controlled unavailable/unknown; never infer absence                                                   |
 | Runtime value is unknown                                                                                                     | Preserve `null`/`unverified`; never display "not installed"                                                |
 | Agent directory mounts Hooks editor, MCP validation, observation, or unsupported lists                                       | Page test fails; those surfaces stay off the Agent directory                                               |
+| Agent directory hides not-installed/unknown/failed rows or waits for scan before showing catalog cards                       | Page/browser test fails; catalog success shows all seven rows immediately                                  |
+| First `/agents` entry requires a manual 「开始扫描」 before readiness reads                                                  | Page test fails; the mounted Agents page auto-starts one background scan                                   |
+| 「进行配置」 is enabled before `installed` / `installed_not_runnable` (including retained success)                           | Page test fails; pending/not-installed/unknown/unavailable/error stay gated                                |
+| Directory shows 一键安装/一键更新 the backend omitted from `allowedActions`                                                  | Page test fails; generic actions follow `allowedActions`, Codex follows the desktop installer VM           |
+| Generic Agent job UI invents a download percent                                                                              | Page/hook test fails; generic progress is stage-only                                                       |
+| Directory treats action success as installed without readiness/Codex reread                                                  | Page test fails; `applyReadiness` / installer refresh is the authority                                     |
+| Directory Codex row starts `start_agent_action` for install/update                                                           | Page test fails; Codex stays on `codexDesktop`                                                             |
+| Browser Provider/WorkBuddy/OpenCode save skips `保存前确认` / `确认保存`                                                    | Browser test fails; the dialog is the write-target disclosure, not optional chrome                         |
 | Non-Codex Agent detail omits 「产品介绍」 or Codex detail shows that region                                                  | Page test fails; intros are page-local copy, never catalog `description`                                   |
 | Agent directory intro or Codex installer copy names FyAgent                                                                  | Intro/page/installer test fails; Agent directory copy describes the third-party product only               |
 | QoderWork CN catalog description or Agent intro mentions Hooks                                                               | Catalog/intro test fails; Qoder user-facing copy must not name Hooks                                       |
@@ -822,6 +864,12 @@ fetch/save controls.
 
 ## 5. Good / Base / Bad Cases
 
+- Good: `/agents` catalog success shows all seven software cards immediately,
+  auto-starts one background readiness scan, enables 「进行配置」 only after
+  `installed` / `installed_not_runnable` (kept during rescan refresh), shows
+  一键安装/一键更新 only from `allowedActions` or the Codex desktop installer
+  projection, and rereads authority after an action instead of flipping an
+  optimistic installed flag.
 - Good: `/models` opens on QoderWork CN at the top, all seven local icons
   render, Qoder states 官方不支持第三方模型配置, does not render 「管理 MCP」
   or 「打开官方设置」 or 「测试连通」. TRAE Models has no
@@ -851,10 +899,10 @@ fetch/save controls.
   carries non-secret live-change state, plan risks remain request-attributed,
   the current draft's key is cleared at terminal handling, and a matching
   `currentId` reread is described only as fixed-ID activation confirmation.
-- Good: a writable Models panel shows native `将修改` / `备份位置` metadata,
-  saves revision N, and becomes clean only if no N+1 edit happened while the
-  request was pending. A successful save also invalidates probe feedback from
-  the old revision.
+- Good: a writable Models panel opens native `将修改` / `备份位置` metadata in
+  the save-confirm dialog, not as page layout, saves revision N, and becomes
+  clean only if no N+1 edit happened while the request was pending. A successful
+  save also invalidates probe feedback from the old revision.
 - Good: Codex/Grok Build probes use Responses, Claude uses Messages with
   Bearer (Quick Setup `ANTHROPIC_AUTH_TOKEN`) and `{base}/v1/messages`, and
   WorkBuddy/OpenCode use streaming Chat Completions (`stream: true`) with
@@ -915,6 +963,10 @@ Required focused coverage includes:
   full rollback, rollback-partial structured outcome, secret-free errors,
   native `writeTargets`, targeted live preservation for Claude/Codex/Grok
   fixtures, exact rolling backups, and backup-failure no-primary-write;
+  browser Provider/WorkBuddy/OpenCode saves click `确认保存` on
+  `保存前确认` before Change Plan `确认应用` or the atomic apply; they must
+  not click a CSS-class primary button inside the panel (the header, probe,
+  and installer can share that class);
   Codex image-extension derivation must write `experimental_bearer_token`
   when `requires_openai_auth` is false and must keep the key in `auth.json`
   only when image-extension is off;
@@ -933,6 +985,13 @@ Required focused coverage includes:
   target panels; the other primary routes keep the same in-session page.
   Secrets stay in component memory only. Immediate WorkBuddy
   existing-model delete after an unrecoverable-delete confirmation.
+- Agent directory catalog-first coverage: seven articles after catalog
+  success, first-entry auto-scan, per-row pending/scanning, configure only
+  when `installed` / `installed_not_runnable` (retained during rescan),
+  一键安装/一键更新 only from `allowedActions` or the Codex desktop
+  installer projection, generic jobs show stage not percent, action success
+  requires authoritative readback, and technical failure is not rendered as
+  not-installed or removed from the list.
 - Agent readiness exact seven-ID/exact-key/sensitive-field-negative coverage,
   closed `startAction`/`cancelAction`/`getActionJob` wires, opaque
   `expectedReleaseId` grammar, `allowedActions` as the only control source,
@@ -969,10 +1028,12 @@ Required focused coverage includes:
   Claude, Codex, and Grok Build all expose 「拉取模型」.
   Claude shows a warn-only explicit `/v1` pathname notice and a placeholder
   without `/v1`.
-  Agent directory tests prove only `direct` capability jumps, no capability-item
-  grid or catalog description, shared official
-  primary buttons, page-local 「产品介绍」 on non-Codex details, Codex without
-  that region, no FyAgent host copy on Agent directory surfaces, and the absence of observation/Hooks/MCP panels. Product
+  Agent directory tests prove catalog-first seven-row presence, auto-scan,
+  configure gating, honest install/update controls, four-section navigation,
+  capability honesty, shared official primary buttons on Models, page-local
+  「产品介绍」 on non-Codex details, Codex without that region, no FyAgent
+  host copy on Agent directory surfaces, and the absence of
+  observation/Hooks/MCP panels. Product
   pages have no outer h1/subtitle.
 
 Browser tests prove renderer/IPC wiring only. Rust tests prove service/command
@@ -1002,6 +1063,27 @@ await ports.agentInstallReadiness.startAction({
   agentId: "workbuddy",
   action: "install",
   expectedReleaseId: readiness.releaseId ?? undefined,
+});
+```
+
+Wrong: hide not-installed agents until scan completes, or mark a row
+installed from the action job without rereading readiness.
+
+```ts
+const cards = entries.filter((entry) =>
+  isInstalled(scan.results[entry.id]?.installState),
+);
+setInstalled(true); // after startAction succeeded, before get()
+```
+
+Correct: catalog entries always render; scan/job state is an overlay;
+configure and install/update follow authoritative readiness / Codex local
+status.
+
+```ts
+entries.map((entry) => {
+  const row = observeAgentDirectoryRow(entry.id, scan.state);
+  return <AgentDirectoryCard entry={entry} observation={row} />;
 });
 ```
 

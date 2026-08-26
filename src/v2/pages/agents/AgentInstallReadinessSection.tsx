@@ -1,25 +1,25 @@
 import { useEffect, useState } from "react";
 
-import {
-  AGENT_REASON_CODES,
-  type AgentActionId,
-  type AgentActionJobStage,
-  type AgentInstallReadiness,
-  type AgentInstallReadinessPort,
-  type AgentInstallState,
-  type AgentReasonCode,
-  type AgentUpdateState,
+import type {
+  AgentActionId,
+  AgentActionJobStage,
+  AgentInstallReadiness,
+  AgentInstallReadinessPort,
+  AgentInstallState,
+  AgentUpdateState,
 } from "../../shared/features/agent-install-readiness";
 import type { AgentCatalogId } from "../../shared/features/types";
 import { Button, InlineNotice, Spinner } from "../../shared/ui/primitives";
 
+import {
+  jobStageCopy,
+  reasonCopy,
+  useAgentLifecycleAction,
+} from "./useAgentLifecycleAction";
+
 type ReadinessPort = AgentInstallReadinessPort;
 
 const NATIVE_ONLY_COPY = "安装准备度仅在桌面应用接线后可读取";
-const JOB_POLL_MS = 800;
-const MAX_JOB_POLLS = 2250;
-const ACTION_INCOMPLETE_COPY = "操作未能完成。此区域不会推断安装成功。";
-const ACTION_SUCCEEDED_COPY = "操作已完成。下面是再次读取的状态，不是推断。";
 
 const unavailablePort: ReadinessPort = {
   get: async () => {
@@ -81,75 +81,6 @@ function actionLabel(action: AgentActionId): string {
     case "auth_connect_provider":
       return "连接 Provider";
   }
-}
-
-function reasonCopy(code: AgentReasonCode): string | null {
-  switch (code) {
-    case "managed_by_codex_desktop":
-      return "安装与更新由现有 Codex Desktop 安装器管理。";
-    case "interactive_user_unavailable":
-      return "当前 Windows 提升环境不会代为执行安装命令。";
-    case "platform_unsupported":
-      return "当前平台没有可用的官方安装包。";
-    case "source_not_verified":
-      return "官方来源当前不可用，请改用产品页面。";
-    case "official_page_only":
-      return "请改用官方产品下载页。不会使用固定的历史版本地址。";
-    case "provider_connection_required":
-      return "OpenCode 需要连接 Provider，而不是全局登录。";
-    case "auth_state_unknown":
-      return null;
-    case "operation_conflict":
-      return "已有安装任务进行中，请等待当前任务结束。";
-    case "refresh_required":
-      return "来源已变化，请刷新后再试。";
-    case "cancelled":
-      return "操作已取消。";
-    case "executor_not_implemented":
-      return "当前无法完成安装步骤。";
-    case "installed_not_runnable":
-      return "已写入安装位置，但还不能确认可以运行。";
-    default:
-      return null;
-  }
-}
-
-function jobStageCopy(stage: AgentActionJobStage): string {
-  switch (stage) {
-    case "checking":
-      return "正在检查来源";
-    case "downloading":
-      return "正在下载安装包";
-    case "installing":
-      return "正在安装";
-    case "verifying_installation":
-      return "正在确认安装结果";
-    case "succeeded":
-      return "正在读取安装结果";
-    case "failed":
-      return "操作失败";
-    case "cancelled":
-      return "操作已取消";
-  }
-}
-
-function isTerminalJobStage(stage: AgentActionJobStage): boolean {
-  return stage === "succeeded" || stage === "failed" || stage === "cancelled";
-}
-
-function failureCopy(code: AgentReasonCode | null): string {
-  return (code && reasonCopy(code)) || ACTION_INCOMPLETE_COPY;
-}
-
-function actionErrorReason(error: unknown): AgentReasonCode | null {
-  if (!error || typeof error !== "object" || !("reasonCode" in error)) {
-    return null;
-  }
-  const code = error.reasonCode;
-  return typeof code === "string" &&
-    (AGENT_REASON_CODES as readonly string[]).includes(code)
-    ? (code as AgentReasonCode)
-    : null;
 }
 
 function ReadinessSummary({
@@ -233,10 +164,14 @@ function AgentInstallReadinessContent({
     | { status: "ready"; data: AgentInstallReadiness }
     | { status: "unavailable" }
   >({ status: "loading" });
-  const [busy, setBusy] = useState(false);
-  const [jobStage, setJobStage] = useState<AgentActionJobStage | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
+  const lifecycle = useAgentLifecycleAction({
+    agentId,
+    port,
+    readiness: state.status === "ready" ? state.data : null,
+    onReadinessChange: (data) => {
+      setState({ status: "ready", data });
+    },
+  });
 
   useEffect(() => {
     let active = true;
@@ -252,54 +187,6 @@ function AgentInstallReadinessContent({
       active = false;
     };
   }, [agentId, port]);
-
-  const runAction = async (action: AgentActionId) => {
-    if (state.status !== "ready") return;
-    setBusy(true);
-    setJobStage("checking");
-    setError(null);
-    setSuccess(null);
-    try {
-      const result = await port.startAction({
-        agentId,
-        action,
-        expectedReleaseId: state.data.releaseId ?? undefined,
-      });
-      setJobStage(result.stage);
-      if (result.jobId) {
-        let snapshot = await port.getActionJob(result.jobId);
-        setJobStage(snapshot.stage);
-        for (let attempt = 0; attempt < MAX_JOB_POLLS; attempt += 1) {
-          if (isTerminalJobStage(snapshot.stage)) {
-            break;
-          }
-          await new Promise((resolve) =>
-            window.setTimeout(resolve, JOB_POLL_MS),
-          );
-          snapshot = await port.getActionJob(result.jobId);
-          setJobStage(snapshot.stage);
-        }
-        if (!isTerminalJobStage(snapshot.stage)) {
-          setError("安装仍在进行。超时不会被当成成功或失败。");
-        } else if (snapshot.stage === "succeeded") {
-          setSuccess(ACTION_SUCCEEDED_COPY);
-        } else {
-          setError(failureCopy(snapshot.reasonCode));
-        }
-      } else if (result.stage === "succeeded") {
-        setSuccess(ACTION_SUCCEEDED_COPY);
-      } else {
-        setError(failureCopy(result.reasonCode));
-      }
-      const data = await port.get(agentId);
-      setState({ status: "ready", data });
-    } catch (error) {
-      setError(failureCopy(actionErrorReason(error)));
-    } finally {
-      setBusy(false);
-      setJobStage(null);
-    }
-  };
 
   return (
     <section className="fy-agent-section" aria-label="安装方式">
@@ -317,11 +204,11 @@ function AgentInstallReadinessContent({
         ) : (
           <ReadinessSummary
             data={state.data}
-            busy={busy}
-            jobStage={jobStage}
-            error={error}
-            success={success}
-            onAction={(action) => void runAction(action)}
+            busy={lifecycle.busy}
+            jobStage={lifecycle.stage}
+            error={lifecycle.error}
+            success={lifecycle.success}
+            onAction={(action) => void lifecycle.run(action)}
           />
         )}
       </div>

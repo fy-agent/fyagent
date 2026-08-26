@@ -18,6 +18,7 @@ import {
 } from "../../shared/features/queries";
 import type {
   CodexProviderMutationWarning,
+  ModelWriteTarget,
   ProviderAppId,
   ProviderQuickSetupRequest,
 } from "../../shared/features/types";
@@ -67,10 +68,11 @@ import {
 import { ModelConnectivityTest } from "./ModelConnectivityTest";
 import {
   ModelsPanelHeader,
-  ModelsWriteDisclosure,
+  ModelsWriteConfirmDialog,
   NoApiKeyOption,
   NoticeView,
   useModelsDraftCommit,
+  useModelsWriteConfirm,
 } from "./modelsShared";
 import { OpenCodeModelsPanel } from "./OpenCodeModelsPanel";
 import { QoderModelsPanel } from "./QoderModelsPanel";
@@ -146,6 +148,12 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
   const { notices, show, clear, dismiss } =
     useFieldNotices<WorkBuddyNoticeField>();
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const writeConfirm = useModelsWriteConfirm<{
+    request: WorkBuddySaveRequest;
+    revision: number;
+    draftIds: string[];
+    targets: readonly ModelWriteTarget[];
+  }>();
   const [workBuddySaveRequest, setWorkBuddySaveRequest] =
     useState<WorkBuddySaveRequest | null>(null);
   const [workBuddySavePlan, setWorkBuddySavePlan] = useState<ChangePlan | null>(
@@ -343,7 +351,7 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
   };
 
   const startSave = () => {
-    if (writeLock.current) return;
+    if (writeLock.current || writeConfirm.open) return;
     const draftIds = collectDraftIds();
     const hasDraft = draftIds.length > 0;
     if (!hasDraft) {
@@ -355,6 +363,8 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
       return;
     }
     if (!validateConnection()) return;
+    const status = statusQuery.data;
+    if (!status) return;
     const submittedRevision = draftCommit.captureRevision();
     const request = buildSaveRequest(draftIds);
     const submittedApiKey = request.apiKey.trim();
@@ -373,11 +383,27 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
       focusControl(manualModelsInputRef.current);
       return;
     }
-    if (parseManualModelIds(manualDraft).length > 0) {
-      setDraftModelIds(draftIds);
-      setManualDraft("");
-    }
-    void createSavePlan(request, submittedRevision);
+    writeConfirm.requestConfirm({
+      request,
+      revision: submittedRevision,
+      draftIds,
+      targets: [
+        {
+          path: status.path,
+          backupPath: status.backupPath,
+          exists: status.exists,
+        },
+      ],
+    });
+  };
+
+  const confirmWrite = () => {
+    if (writeLock.current) return;
+    const pending = writeConfirm.takePending();
+    if (!pending) return;
+    setDraftModelIds(pending.draftIds);
+    setManualDraft("");
+    void createSavePlan(pending.request, pending.revision);
   };
 
   const createSavePlan = async (
@@ -589,17 +615,6 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
           暂时无法读取 WorkBuddy 配置，请重试。
         </InlineNotice>
       )}
-      {!loading && !readFailed && statusQuery.data ? (
-        <ModelsWriteDisclosure
-          targets={[
-            {
-              path: statusQuery.data.path,
-              backupPath: statusQuery.data.backupPath,
-              exists: statusQuery.data.exists,
-            },
-          ]}
-        />
-      ) : null}
       <section
         className="fy-models-existing"
         data-testid="workbuddy-model-ids"
@@ -870,6 +885,14 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
           </p>
         ) : null}
       </Dialog>
+      <ModelsWriteConfirmDialog
+        open={writeConfirm.open}
+        targets={writeConfirm.pending?.targets ?? []}
+        onConfirm={confirmWrite}
+        onCancel={() => {
+          writeConfirm.takePending();
+        }}
+      />
     </CatalogDetail>
   );
 }
@@ -945,6 +968,11 @@ function ProviderPanel({
     message?: string;
   } | null>(null);
   const writeLock = useRef(false);
+  const writeConfirm = useModelsWriteConfirm<{
+    request: ProviderQuickSetupRequest;
+    revision: number;
+    targets: readonly ModelWriteTarget[];
+  }>();
   const submittedRevisionRef = useRef(0);
   const mountedRef = useRef(true);
   const nameInputRef = useRef<HTMLInputElement>(null);
@@ -1049,8 +1077,8 @@ function ProviderPanel({
     return true;
   };
 
-  const submit = async () => {
-    if (writeLock.current || writesBlocked) return;
+  const requestSave = () => {
+    if (writeLock.current || writesBlocked || writeConfirm.open) return;
     const validated = validateQuickSetup(
       {
         name,
@@ -1074,18 +1102,36 @@ function ProviderPanel({
       if (firstInvalidField) fieldRefs[firstInvalidField].current?.focus();
       return;
     }
+    const targets = summaryQuery.data?.writeTargets ?? [];
+    if (targets.length === 0) return;
+    writeConfirm.requestConfirm({
+      request: buildQuickSetupRequest(
+        app,
+        validated.value,
+        app === "codex" ? { imageExtension, websockets } : undefined,
+      ),
+      revision: draftCommit.captureRevision(),
+      targets,
+    });
+  };
 
+  const confirmWrite = () => {
+    if (writeLock.current) return;
+    const pending = writeConfirm.takePending();
+    if (!pending) return;
+    void submit(pending.request, pending.revision);
+  };
+
+  const submit = async (
+    request: ProviderQuickSetupRequest,
+    submittedRevision: number,
+  ) => {
+    if (writeLock.current || writesBlocked) return;
     writeLock.current = true;
-    const submittedRevision = draftCommit.captureRevision();
     setBusy(true);
     setErrors({});
     setNotice(null);
     setWarningCodes([]);
-    const request = buildQuickSetupRequest(
-      app,
-      validated.value,
-      app === "codex" ? { imageExtension, websockets } : undefined,
-    );
     if (app === "codex") {
       submittedRevisionRef.current = submittedRevision;
       setCodexSavePreviewError(null);
@@ -1288,7 +1334,7 @@ function ProviderPanel({
             Boolean(codexSaveRequest || codexSavePlan) ||
             (summaryQuery.data?.writeTargets.length ?? 0) === 0
           }
-          onClick={() => void submit()}
+          onClick={requestSave}
         >
           {busy
             ? "配置中…"
@@ -1304,11 +1350,6 @@ function ProviderPanel({
           暂时无法读取当前配置，请稍后重试。
         </InlineNotice>
       )}
-      {!queryUnavailable && !queryPending ? (
-        <ModelsWriteDisclosure
-          targets={summaryQuery.data?.writeTargets ?? []}
-        />
-      ) : null}
       {!queryUnavailable && !queryPending && (
         <div
           className="fy-models-status-grid"
@@ -1575,6 +1616,14 @@ function ProviderPanel({
           </ul>
         </InlineNotice>
       )}
+      <ModelsWriteConfirmDialog
+        open={writeConfirm.open}
+        targets={writeConfirm.pending?.targets ?? []}
+        onConfirm={confirmWrite}
+        onCancel={() => {
+          writeConfirm.takePending();
+        }}
+      />
     </CatalogDetail>
   );
 }

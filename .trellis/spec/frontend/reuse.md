@@ -26,7 +26,7 @@ cleanup pass after duplication already shipped.
    architecture-fit review.
 4. Existing shared chrome that already matches the job is mandatory. Do not
    fork a page-local copy of `FeatureTabs`, `FeatureSearch`, `FeatureList`,
-   `FeaturePagination`, `AssignmentPanel`, `InstallTargetDialog`, `SelectionLens` / `SelectionLensGroup`, `SplitPanes`,
+   `FeaturePagination`, `AssignmentPanel`, `InstallTargetDialog`, `SelectionLens` / `SelectionLensGroup`, `fySpringTransition` / V2 `Collapsible`, `SplitPanes`,
    `CatalogMasterDetail`, `CatalogOfficialLinks`, `SecretInput`, `ExternalLinkButton`, FeaturePorts,
    or the TRAE/OpenCode `modelsShared` / `modelChips` helpers. Agent / Skills / MCP / Models / Prompts
    product order and display names come from `src/v2/shared/features/directory.ts`.
@@ -144,7 +144,9 @@ conflict with `--fy-*` tokens. Extend this owner with `Button` and
 Phosphor CSR carets.
 
 Related shared owners already in place: `SelectionLens` /
-`SelectionLensGroup` (nav, catalog, UI Lab), `AssignmentPanel` (Skills/MCP
+`SelectionLensGroup` (nav, catalog, UI Lab), `fySpringTransition` in
+`shared/ui/motion.ts` plus V2 `Collapsible` (side-nav 「配置管理」),
+`AssignmentPanel` (Skills/MCP
 switches plus Skills/MCP install/ZIP/restore radio), `InstallTargetDialog`
 (Skills and MCP discovery install), `SplitPanes`, `CatalogMasterDetail`, `CatalogOfficialLinks`,
 `SecretInput`, `ExternalLinkButton`, `CopyablePath`, FeaturePorts, and
@@ -277,6 +279,7 @@ already share `modelsShared`, `modelChips`, `ModelConnectivityTest`, and `feedba
 | A feature page hand-rolls `fy-feature-tab` instead of `FeatureTabs`                                  | Unit/architecture test fails; use `FeatureTabs`                          |
 | Management search is a raw `Input type="search"` on Skills/MCP/Memory/Prompts/Discovery              | Use `FeatureSearch`; leftover `ManagementListSearch` stays leftover-only |
 | V2 imports leftover `src/components` or `src/lib`                                                    | Architecture test fails                                                  |
+| V2 imports leftover `src/components/ui/collapsible.tsx` or `framer-motion` outside `motion.ts`       | Architecture test fails; use V2 `Collapsible` / `fySpringTransition`     |
 | Skills install picker is not `AssignmentPanel mode="radio"`                                          | Reuse test / page test fails; extend `AssignmentPanel`                   |
 | MCP discovery Agent picker is a checkbox grid or defaults to `DEFAULT_NEW_APPS`                      | Page test fails; reuse shared `InstallTargetDialog`                      |
 | Skill/MCP install writes on **安装到 {label}** without showing the destination                       | Page test fails; **下一步** then **确认安装** after `InstallPathPreview` |

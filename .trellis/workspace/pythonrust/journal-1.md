@@ -1751,3 +1751,25 @@ Codified reuse-first engineering across frontend/backend/guides; decoupled Relea
 ### Status
 
 [OK] **Completed**
+
+
+## Session 54: Agent directory lifecycle UX
+
+**Date**: 2026-08-26
+**Task**: Agent directory lifecycle UX
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Catalog-first Agent directory with auto scan, honest install/update progress, shared collapse spring, and Provider save-confirm browser tests; specs updated then task archived.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7725099b` | (see git log) |
+| `92d97cf7` | (see git log) |
+
+### Status
+
+[OK] **Completed**

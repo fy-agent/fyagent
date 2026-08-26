@@ -1,0 +1,4 @@
+{"file":".trellis/spec/frontend/reuse.md","reason":"检查是否新增重复组件、依赖或 page-local 轮子"}
+{"file":".trellis/spec/frontend/v2-shell.md","reason":"检查侧栏键盘/ARIA/Motion/reduced-motion 与架构测试"}
+{"file":".trellis/tasks/08-26-agent-directory-lifecycle-ux/research/execution-context.md","reason":"检查 7 项目录、readiness/action 真实性、配置门禁、Codex special owner 与安全边界"}
+{"file":".trellis/spec/backend/codex-desktop-installer.md","reason":"检查 Codex 没有被通用 Agent installer 吞并或复制下载链"}

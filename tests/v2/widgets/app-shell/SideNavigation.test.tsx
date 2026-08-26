@@ -115,9 +115,7 @@ describe("SideNavigation", () => {
 
     expect(modelsLink).toHaveAttribute("aria-current", "page");
     expect(within(navigation).getAllByTestId("selection-lens")).toHaveLength(1);
-    expect(within(navigation).getAllByTestId("liquid-glass-lens")).toHaveLength(
-      1,
-    );
+    expect(within(navigation).queryByTestId("liquid-glass-lens")).toBeNull();
 
     await user.click(toggle);
 
@@ -126,6 +124,128 @@ describe("SideNavigation", () => {
     expect(items).not.toBeVisible();
     expect(modelsLink).toHaveAttribute("aria-current", "page");
     expect(within(navigation).getAllByTestId("selection-lens")).toHaveLength(1);
-    expect(within(toggle).getByTestId("liquid-glass-lens")).toBeVisible();
+    expect(within(navigation).queryByTestId("liquid-glass-lens")).toBeNull();
+  });
+
+  it("keeps one memory lens after collapsing then expanding configuration", async () => {
+    const user = userEvent.setup();
+    renderNavigation("/memory");
+
+    const navigation = screen.getByRole("navigation", { name: "主导航" });
+    const toggle = within(navigation).getByRole("button", {
+      name: "配置管理",
+    });
+    const memory = within(navigation).getByRole("link", { name: "记忆模块" });
+
+    expect(memory).toHaveAttribute("aria-current", "page");
+    expect(within(navigation).getAllByTestId("selection-lens")).toHaveLength(1);
+
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(memory).toHaveAttribute("aria-current", "page");
+    expect(within(navigation).getAllByTestId("selection-lens")).toHaveLength(1);
+
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(memory).toHaveAttribute("aria-current", "page");
+    expect(within(navigation).getAllByTestId("selection-lens")).toHaveLength(1);
+    expect(memory.querySelector("[data-selection-lens-target]")).not.toBeNull();
+  });
+
+  it("supports expand, collapse, and vertical keyboard focus", async () => {
+    const user = userEvent.setup();
+    renderNavigation("/agents");
+
+    const navigation = screen.getByRole("navigation", { name: "主导航" });
+    const toggle = within(navigation).getByRole("button", { name: "配置管理" });
+    const items = screen.getByTestId("configuration-management-items");
+
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(items).toBeVisible();
+
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(items).not.toBeVisible();
+    expect(items).toHaveAttribute("hidden");
+    expect(
+      within(navigation).queryByRole("link", { name: "模型管理" }),
+    ).not.toBeInTheDocument();
+
+    toggle.focus();
+    await user.keyboard("{ArrowRight}");
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await user.keyboard("{ArrowRight}");
+    expect(
+      within(navigation).getByRole("link", { name: "模型管理" }),
+    ).toHaveFocus();
+    await user.keyboard("{ArrowDown}");
+    expect(
+      within(navigation).getByRole("link", { name: "Skills 管理" }),
+    ).toHaveFocus();
+    await user.keyboard("{Escape}");
+    expect(toggle).toHaveFocus();
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("omits closing and closed leaves from arrow and tab order", async () => {
+    const user = userEvent.setup();
+    renderNavigation("/agents");
+
+    const navigation = screen.getByRole("navigation", { name: "主导航" });
+    const toggle = within(navigation).getByRole("button", { name: "配置管理" });
+    const memory = within(navigation).getByRole("link", { name: "记忆模块" });
+    const agents = within(navigation).getByRole("link", { name: "AI软件配置" });
+
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+
+    toggle.focus();
+    await user.keyboard("{ArrowDown}");
+    expect(memory).toHaveFocus();
+    await user.keyboard("{ArrowUp}");
+    expect(toggle).toHaveFocus();
+    await user.keyboard("{Home}");
+    expect(agents).toHaveFocus();
+    await user.keyboard("{End}");
+    expect(memory).toHaveFocus();
+
+    toggle.focus();
+    await user.tab();
+    expect(memory).toHaveFocus();
+  });
+
+  it("collapses instantly when the user prefers reduced motion", async () => {
+    const originalMatchMedia = window.matchMedia;
+    window.matchMedia = ((query: string) => ({
+      matches: query.includes("prefers-reduced-motion"),
+      media: query,
+      onchange: null,
+      addEventListener() {},
+      removeEventListener() {},
+      addListener() {},
+      removeListener() {},
+      dispatchEvent() {
+        return false;
+      },
+    })) as typeof window.matchMedia;
+
+    try {
+      const user = userEvent.setup();
+      renderNavigation("/agents");
+
+      const toggle = screen.getByRole("button", { name: "配置管理" });
+      const items = screen.getByTestId("configuration-management-items");
+
+      await user.click(toggle);
+
+      expect(toggle).toHaveAttribute("aria-expanded", "false");
+      expect(items).not.toBeVisible();
+      expect(items).toHaveAttribute("hidden");
+      expect(
+        screen.queryByRole("link", { name: "模型管理" }),
+      ).not.toBeInTheDocument();
+    } finally {
+      window.matchMedia = originalMatchMedia;
+    }
   });
 });

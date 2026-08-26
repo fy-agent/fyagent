@@ -4,7 +4,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { classNames } from "../../shared/design-system/classNames";
 import { useFeatures } from "../../shared/features/provider";
 import { useOpenCodeModelSnapshot } from "../../shared/features/queries";
-import type { OpenCodeSaveModelsRequest } from "../../shared/features/types";
+import type {
+  ModelWriteTarget,
+  OpenCodeSaveModelsRequest,
+} from "../../shared/features/types";
 import { CatalogDetail } from "../../shared/ui/catalog";
 import {
   Button,
@@ -26,9 +29,10 @@ import { GroupedModelChips, ModelSearchField } from "./modelChips";
 import { ModelConnectivityTest } from "./ModelConnectivityTest";
 import {
   ModelsPanelHeader,
-  ModelsWriteDisclosure,
+  ModelsWriteConfirmDialog,
   NoApiKeyOption,
   useModelsDraftCommit,
+  useModelsWriteConfirm,
 } from "./modelsShared";
 import { isHttpUrl, parseManualModelIds } from "./quickSetup";
 import {
@@ -75,6 +79,12 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
     revision: number;
   } | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const writeConfirm = useModelsWriteConfirm<{
+    request: OpenCodeSaveModelsRequest;
+    revision: number;
+    draftIds: string[];
+    targets: readonly ModelWriteTarget[];
+  }>();
   const writeLock = useRef(false);
   const mountedRef = useRef(true);
   const baseUrlInputRef = useRef<HTMLInputElement>(null);
@@ -332,7 +342,7 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
   };
 
   const startSave = () => {
-    if (writeLock.current) return;
+    if (writeLock.current || writeConfirm.open) return;
     const draftIds = collectDraftIds();
     if (draftIds.length === 0) {
       show("draft", { tone: "error", title: "请至少添加一个模型 ID" });
@@ -340,12 +350,29 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
       return;
     }
     if (!validateConnection()) return;
-    const submittedRevision = draftCommit.captureRevision();
-    if (parseManualModelIds(manualDraft).length > 0) {
-      setDraftModelIds(draftIds);
-      setManualDraft("");
-    }
-    void saveRequest(buildSaveRequest(draftIds), submittedRevision);
+    const snapshot = snapshotQuery.data;
+    if (!snapshot) return;
+    writeConfirm.requestConfirm({
+      request: buildSaveRequest(draftIds),
+      revision: draftCommit.captureRevision(),
+      draftIds,
+      targets: [
+        {
+          path: snapshot.path,
+          backupPath: snapshot.backupPath,
+          exists: snapshot.exists,
+        },
+      ],
+    });
+  };
+
+  const confirmWrite = () => {
+    if (writeLock.current) return;
+    const pending = writeConfirm.takePending();
+    if (!pending) return;
+    setDraftModelIds(pending.draftIds);
+    setManualDraft("");
+    void saveRequest(pending.request, pending.revision);
   };
 
   const confirmOverwrite = () => {
@@ -446,17 +473,6 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
           暂时无法读取 OpenCode 配置，请重试。
         </InlineNotice>
       )}
-      {!loading && !readFailed && snapshotQuery.data ? (
-        <ModelsWriteDisclosure
-          targets={[
-            {
-              path: snapshotQuery.data.path,
-              backupPath: snapshotQuery.data.backupPath,
-              exists: snapshotQuery.data.exists,
-            },
-          ]}
-        />
-      ) : null}
 
       <section
         className="fy-models-existing"
@@ -770,6 +786,14 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
           </p>
         ) : null}
       </Dialog>
+      <ModelsWriteConfirmDialog
+        open={writeConfirm.open}
+        targets={writeConfirm.pending?.targets ?? []}
+        onConfirm={confirmWrite}
+        onCancel={() => {
+          writeConfirm.takePending();
+        }}
+      />
     </CatalogDetail>
   );
 }

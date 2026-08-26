@@ -130,6 +130,22 @@ describe("FeatureList", () => {
       /\.fy-feature-list\s*\{[^}]*display:\s*grid;/s,
     );
   });
+
+  it("keeps copy-only path actions inside compact info cards", () => {
+    const featuresCss = readFileSync(
+      path.resolve(process.cwd(), "src", "v2", "app", "styles", "features.css"),
+      "utf8",
+    );
+    const definitionBlock =
+      featuresCss.match(/\.fy-feature-definition\s*\{[^}]*\}/s)?.[0] ?? "";
+    expect(definitionBlock).toMatch(
+      /grid-template-columns:\s*minmax\(0,\s*max-content\)\s+minmax\(0,\s*1fr\)/,
+    );
+    expect(definitionBlock).not.toMatch(/minmax\(90px/);
+    expect(featuresCss).toMatch(
+      /\.fy-feature-definition\s+dd:has\(\s*>\s*\.fy-feature-path:not\(:has\(\.fy-feature-path-value\)\)\s*\)\s*\{[^}]*min-width:\s*min-content;/s,
+    );
+  });
 });
 
 describe("buildFeaturePaginationItems", () => {

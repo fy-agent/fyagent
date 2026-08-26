@@ -1,0 +1,15 @@
+.fy-collapsible-panel {
+  overflow: hidden;
+}
+
+.fy-collapsible-caret {
+  display: inline-flex;
+  transform-origin: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fy-collapsible-panel,
+  .fy-collapsible-caret {
+    transition: none;
+  }
+}

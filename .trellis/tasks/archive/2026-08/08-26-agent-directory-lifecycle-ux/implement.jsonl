@@ -1,0 +1,5 @@
+{"file":".trellis/spec/frontend/reuse.md","reason":"复用优先级、V2 shared owner 与禁止重复造轮子的执行边界"}
+{"file":".trellis/spec/frontend/v2-shell.md","reason":"SideNavigation、SelectionLens、Motion/reduced-motion 与 V2 架构边界"}
+{"file":".trellis/tasks/08-26-agent-directory-lifecycle-ux/research/execution-context.md","reason":"裁剪后的 Agent directory/readiness/action/Codex/motion 稳定执行边界，避免大型 owning spec 注入截断"}
+{"file":".trellis/spec/backend/codex-desktop-installer.md","reason":"Codex 专用 installer owner 与 Agent Catalog 复用边界"}
+{"file":".trellis/tasks/08-26-agent-directory-lifecycle-ux/research/planning-evidence.md","reason":"本任务已完成的本地/官方调研与架构结论，执行方默认直接复用"}

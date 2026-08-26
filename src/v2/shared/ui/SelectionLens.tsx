@@ -1,10 +1,4 @@
 import {
-  animate,
-  motion,
-  useMotionValue,
-  useReducedMotion,
-} from "framer-motion";
-import {
   createContext,
   useCallback,
   useContext,
@@ -15,15 +9,17 @@ import {
 } from "react";
 
 import { classNames } from "../design-system/classNames";
+import {
+  animate,
+  fySpringTransition,
+  motion,
+  useMotionValue,
+  useReducedMotion,
+} from "./motion";
 
 import "./selection-lens.css";
 
-export const selectionLensTransition = {
-  type: "spring",
-  stiffness: 520,
-  damping: 42,
-  mass: 0.62,
-} as const;
+export { fySpringTransition as selectionLensTransition };
 
 type LensBox = {
   x: number;
@@ -79,6 +75,61 @@ function observeHiddenAncestors(
     node = node.parentElement;
   }
   return () => observer.disconnect();
+}
+
+function isSelectionLensOverlay(node: Element): boolean {
+  return node.classList.contains("fy-selection-lens");
+}
+
+function observeLayoutSubtree(
+  root: HTMLElement,
+  observer: ResizeObserver,
+): () => void {
+  const observed = new Set<Element>();
+
+  const observeNode = (node: Element) => {
+    if (isSelectionLensOverlay(node)) {
+      return;
+    }
+    if (!observed.has(node)) {
+      observer.observe(node);
+      observed.add(node);
+    }
+    for (const child of node.children) {
+      observeNode(child);
+    }
+  };
+
+  observeNode(root);
+
+  const mutations = new MutationObserver((records) => {
+    for (const record of records) {
+      for (const added of record.addedNodes) {
+        if (added instanceof Element) {
+          observeNode(added);
+        }
+      }
+      for (const removed of record.removedNodes) {
+        if (removed instanceof Element) {
+          const forget = (node: Element) => {
+            observer.unobserve(node);
+            observed.delete(node);
+            for (const child of node.children) {
+              forget(child);
+            }
+          };
+          forget(removed);
+        }
+      }
+    }
+  });
+  mutations.observe(root, { childList: true, subtree: true });
+
+  return () => {
+    mutations.disconnect();
+    observer.disconnect();
+    observed.clear();
+  };
 }
 
 export function SelectionLensGroup({
@@ -183,14 +234,15 @@ export function SelectionLensGroup({
         : new ResizeObserver(() => {
             syncBox();
           });
-    observer?.observe(scope);
-    observer?.observe(host);
+    const stopLayoutWatch = observer
+      ? observeLayoutSubtree(scope, observer)
+      : () => undefined;
     window.addEventListener("resize", syncBox);
     const stopHiddenWatch = observeHiddenAncestors(scope, syncBox);
     syncBox();
 
     return () => {
-      observer?.disconnect();
+      stopLayoutWatch();
       window.removeEventListener("resize", syncBox);
       stopHiddenWatch();
     };
@@ -229,10 +281,10 @@ export function SelectionLensGroup({
     }
 
     const controls = [
-      animate(left, box.x, selectionLensTransition),
-      animate(top, box.y, selectionLensTransition),
-      animate(width, box.width, selectionLensTransition),
-      animate(height, box.height, selectionLensTransition),
+      animate(left, box.x, fySpringTransition),
+      animate(top, box.y, fySpringTransition),
+      animate(width, box.width, fySpringTransition),
+      animate(height, box.height, fySpringTransition),
     ];
     return () => {
       for (const control of controls) {

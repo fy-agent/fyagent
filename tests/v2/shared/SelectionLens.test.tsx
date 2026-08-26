@@ -1,8 +1,9 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
+import { fySpringTransition } from "@/v2/shared/ui/motion";
 import {
   SelectionLens,
   SelectionLensGroup,
@@ -13,6 +14,7 @@ import {
 
 describe("SelectionLens", () => {
   it("keeps the source L1 control spring", () => {
+    expect(selectionLensTransition).toBe(fySpringTransition);
     expect(selectionLensTransition).toEqual({
       type: "spring",
       stiffness: 520,
@@ -103,6 +105,118 @@ describe("SelectionLens", () => {
         "1",
       );
     });
+  });
+
+  it("observes in-scope descendants so sibling reflow can retarget the pill", () => {
+    const observed = new Set<Element>();
+
+    class RecordingResizeObserver {
+      observe(element: Element) {
+        observed.add(element);
+      }
+      unobserve(element: Element) {
+        observed.delete(element);
+      }
+      disconnect() {}
+    }
+
+    vi.stubGlobal("ResizeObserver", RecordingResizeObserver);
+
+    try {
+      render(
+        <SelectionLensGroup id="reflow-track" data-testid="reflow-scope">
+          <div data-testid="reflow-spacer" />
+          <button type="button" data-testid="reflow-host">
+            <SelectionLens active />
+            Current
+          </button>
+        </SelectionLensGroup>,
+      );
+
+      expect(observed.has(screen.getByTestId("reflow-scope"))).toBe(true);
+      expect(observed.has(screen.getByTestId("reflow-spacer"))).toBe(true);
+      expect(observed.has(screen.getByTestId("reflow-host"))).toBe(true);
+      expect(observed.has(screen.getByTestId("selection-lens"))).toBe(false);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("retargets the pill when a sibling resizes and the host translates", async () => {
+    const callbacks = new Set<ResizeObserverCallback>();
+
+    class FlushableResizeObserver {
+      constructor(callback: ResizeObserverCallback) {
+        callbacks.add(callback);
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {
+        callbacks.clear();
+      }
+    }
+
+    vi.stubGlobal("ResizeObserver", FlushableResizeObserver);
+
+    const mockBox = (
+      element: Element,
+      box: { x: number; y: number; width: number; height: number },
+    ) => {
+      vi.spyOn(element, "getBoundingClientRect").mockReturnValue({
+        x: box.x,
+        y: box.y,
+        top: box.y,
+        left: box.x,
+        bottom: box.y + box.height,
+        right: box.x + box.width,
+        width: box.width,
+        height: box.height,
+        toJSON() {
+          return {};
+        },
+      } as DOMRect);
+    };
+
+    try {
+      render(
+        <SelectionLensGroup id="translate-track" data-testid="translate-scope">
+          <div data-testid="translate-spacer" />
+          <button type="button" data-testid="translate-host">
+            <SelectionLens active />
+            Current
+          </button>
+        </SelectionLensGroup>,
+      );
+
+      const scope = screen.getByTestId("translate-scope");
+      const host = screen.getByTestId("translate-host");
+      const lens = screen.getByTestId("selection-lens");
+
+      mockBox(scope, { x: 0, y: 0, width: 200, height: 240 });
+      mockBox(host, { x: 8, y: 40, width: 184, height: 36 });
+      act(() => {
+        for (const callback of callbacks) {
+          callback([], {} as ResizeObserver);
+        }
+      });
+
+      await waitFor(() => {
+        expect(lens).toHaveStyle({ top: "40px" });
+      });
+
+      mockBox(host, { x: 8, y: 120, width: 184, height: 36 });
+      act(() => {
+        for (const callback of callbacks) {
+          callback([], {} as ResizeObserver);
+        }
+      });
+
+      await waitFor(() => {
+        expect(lens).toHaveStyle({ top: "120px" });
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("keeps the same overlay node when the active option changes", async () => {

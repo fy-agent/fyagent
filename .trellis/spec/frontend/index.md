@@ -87,9 +87,10 @@ Before changing renderer code:
 The integrated V2 shell has six non-empty product routes: Agents, Models,
 Skills, MCP, Prompts, and Memory. The V3 chrome presents them as three left
 groups (`AI软件配置`, expandable `配置管理`, `记忆模块`); `TopBar` keeps
-Brand and tools only. `/agents` owns the install-state scan projection and a
-four-section configuration shell that delegates writes to the existing
-Skills/MCP/Prompts owners and waits for authoritative readback. All six routes
+Brand and tools only. `/agents` owns a catalog-first directory (all seven
+supported agents, first-entry auto-scan, configure/install gated by
+readiness) and a four-section configuration shell that delegates writes to
+the existing Skills/MCP/Prompts owners and waits for authoritative readback. All six routes
 use bounded feature ports. Prompts manages the seven existing native prompt
 applications; Memory manages four fixed OpenClaw/Hermes long-term resources
 plus OpenClaw daily memory. Browser preview is explicitly native-only and

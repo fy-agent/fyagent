@@ -155,7 +155,7 @@ test("keeps the complete shell visible, separate, and overflow-free", async ({
     expect(box.y + box.height).toBeLessThanOrEqual(viewportSize!.height + 1);
   }
 
-  await expect(page.getByTestId("liquid-glass-lens")).toHaveCount(1);
+  await expect(page.getByTestId("liquid-glass-lens")).toHaveCount(0);
 
   const contentViewport = page.getByTestId("content-viewport");
   const contentBox = await requiredBox(contentViewport, "content viewport");
@@ -192,8 +192,8 @@ test("keeps hash, selected link, and aria-current aligned for every route", asyn
     await expect(selectedLinks).toHaveCount(1);
     await expect(selectedLinks).toHaveText(label);
     const lenses = page.getByTestId("liquid-glass-lens");
-    await expect(lenses).toHaveCount(1);
-    await expect(link.getByTestId("liquid-glass-lens")).toHaveCount(1);
+    await expect(lenses).toHaveCount(0);
+    await expect(link.getByTestId("liquid-glass-lens")).toHaveCount(0);
     await expect(link).toHaveClass(/fy-side-navigation-item-selected/);
     await expect(page.getByTestId("content-viewport")).not.toHaveText("");
 
@@ -229,6 +229,44 @@ test("keeps hash, selected link, and aria-current aligned for every route", asyn
       "Selected navigation must not use the retired underline pseudo-element",
     ).toContain(selectedTreatment.afterContent);
   }
+
+  await expectHealthyPage(page, health);
+});
+
+test("keeps the memory lens on the memory link after expanding configuration", async ({
+  page,
+}) => {
+  const health = monitorPageHealth(page);
+  await openV2Page(page, "/memory");
+
+  const navigation = page.getByRole("navigation", { name: "主导航" });
+  const toggle = navigation.getByRole("button", { name: "配置管理" });
+  const memory = routeLink(navigation, "记忆模块");
+  await expect(memory).toHaveAttribute("aria-current", "page");
+
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  await expect(
+    navigation.getByRole("link", { name: "模型管理" }),
+  ).toBeVisible();
+
+  const selectedLens = navigation.getByTestId("selection-lens");
+  await expect(selectedLens).toHaveCount(1);
+  await expect
+    .poll(async () => {
+      const memoryBox = await memory.boundingBox();
+      const lensBox = await selectedLens.boundingBox();
+      if (!memoryBox || !lensBox) {
+        return false;
+      }
+      return (
+        Math.abs(memoryBox.x - lensBox.x) < 4 &&
+        Math.abs(memoryBox.y - lensBox.y) < 4
+      );
+    })
+    .toBe(true);
 
   await expectHealthyPage(page, health);
 });

@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 53
+- **Total Sessions**: 54
 - **Last Active**: 2026-08-26
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1753 | Active |
+| `journal-1.md` | ~1775 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 54 | 2026-08-26 | Agent directory lifecycle UX | `7725099b`, `92d97cf7` | `dev/laiyongjie` |
 | 53 | 2026-08-26 | Reuse-first specs and release preflight decoupling | `83724a38`, `4db05412` | `docs/reuse-first-spec` |
 | 53 | 2026-08-25 | Agent one-click install and Codex multi-account auth | `2f468156`, `d9c582b5` | `feat/agent-install-auth` |
 | 52 | 2026-08-25 | Finalize CI scope and title policy | `7b9e4a29` | `ci/refine-change-classifier` |
