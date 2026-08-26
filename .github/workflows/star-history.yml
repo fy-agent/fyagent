@@ -17,7 +17,7 @@ concurrency:
 jobs:
   update:
     name: Update charts
-    runs-on: ubuntu-24.04
+    runs-on: macos-15
     timeout-minutes: 10
     permissions:
       contents: write
