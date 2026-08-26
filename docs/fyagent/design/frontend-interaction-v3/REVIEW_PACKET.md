@@ -2,9 +2,9 @@
 
 > 日期：2026-08-25
 >
-> 状态：`DESIGN_APPROVED__IMPLEMENTATION_PLANNING_GATE_PENDING_2026-08-26`
+> 状态：`DESIGN_APPROVED__IMAGES_NOT_COMMITTED_2026-08-26`
 >
-> 状态范围：本材料提供设计评审依据；实现与上线状态由当前 Trellis 任务卡判定。
+> 状态范围：本材料提供设计评审依据；实现与上线状态由当前 Trellis 任务卡判定。仓库不携带 01–11 原型图片。
 
 ## 1. 为什么做这轮改动
 
@@ -13,7 +13,7 @@ FyAgent 当前版本已经形成稳定的蓝色 liquid-glass 主题，本轮沿�
 1. 在某个 Agent 内选择它要使用的模型、Skills、MCP 和提示词。
 2. 在全局管理页维护这些资源，并决定它们分配给哪些 Agent。
 
-讨论原文与 10 页线框共同构成本轮事实基线。高保真原型在保留现有主题的前提下，把线框中的信息架构、按钮位置、返回路径和状态反馈落成一套连续页面。
+讨论原文与 10 页线框共同构成本轮事实基线。高保真原型在保留现有主题的前提下，把线框中的信息架构、按钮位置、返回路径和状态反馈落成一套连续页面。页面要求以文字留档，不以仓库内图片为准。
 
 ## 2. 已确认的产品方案
 
@@ -27,77 +27,57 @@ FyAgent 当前版本已经形成稳定的蓝色 liquid-glass 主题，本轮沿�
 - 线框第 5 页误写的“进入 Skills 管理”已纠正为“进入提示词管理”。
 - 原型内的 API Key 只显示掩码；记忆内容使用安全示例，不展示真实个人信息或密钥。
 
-## 3. 高保真页面
+## 3. 页面确认点
+
+下列编号对应已批准的 01–11 页面要求。仓库不再嵌入原型图。
 
 ### 01｜AI 软件扫描完成
-
-![AI 软件扫描完成](./01-ai-software-scan-complete.png)
 
 确认点：软件发现完成后的列表层级、每行“配置”入口、重新扫描和扫描结果反馈。
 
 ### 02｜AI 软件扫描中
 
-![AI 软件扫描中](./02-ai-software-scanning.png)
-
 确认点：扫描进行中的进度感、禁用态与用户是否清楚下一步需要等待。
 
 ### 03｜Agent 模型选配
-
-![Agent 模型选配](./03-agent-model-selection.png)
 
 确认点：四段页签、模型选择、已选状态、返回按钮和“进入模型管理”。
 
 ### 04｜Agent Skills 选配
 
-![Agent Skills 选配](./04-agent-skills-selection.png)
-
 确认点：搜索、单项开关、来源信息和“进入 Skills 管理”。
 
 ### 05｜Agent MCP 选配
-
-![Agent MCP 选配](./05-agent-mcp-selection.png)
 
 确认点：transport/source 信息、分配状态、单项开关和“进入 MCP 管理”。
 
 ### 06｜Agent 提示词选配
 
-![Agent 提示词选配](./06-agent-prompts-selection.png)
-
 确认点：提示词库与编辑器共存、导入/新建/保存/删除，以及“进入提示词管理”。
 
 ### 07｜模型管理
-
-![模型管理](./07-model-management.png)
 
 确认点：按应用管理连接设置、API Key 掩码、测试连通、拉取模型与保存并应用。
 
 ### 08｜Skills 管理
 
-![Skills 管理](./08-skills-management.png)
-
 确认点：已安装/发现、资源详情、安装来源、应用分配与全开/全关。
 
 ### 09｜MCP 管理
-
-![MCP 管理](./09-mcp-management.png)
 
 确认点：导入现有/添加 MCP、编辑/删除、transport 信息与应用分配。
 
 ### 10｜提示词管理
 
-![提示词管理](./10-prompts-management.png)
-
 确认点：应用维度筛选、提示词库、编辑器、启用状态和保存/删除。
 
 ### 11｜记忆模块
-
-![记忆模块](./11-memory-module.png)
 
 确认点：长期记忆/每日记忆、Agent/文件选择、复制/保存/打开工作区和编辑区域。
 
 ## 4. 评审结论
 
-人类已确认 11 张页面可以进入开发。后续反馈转入运行态缺陷流程，并继续按页面编号分级：
+人类已确认 01–11 页面要求可以进入开发。后续反馈转入运行态缺陷流程，并继续按页面编号分级：
 
 - `必须改`：信息架构、入口位置、动作缺失、状态逻辑或明显文案问题。
 - `建议改`：密度、层级、强调程度、尺寸或视觉细节。
@@ -115,7 +95,7 @@ FyAgent 当前版本已经形成稳定的蓝色 liquid-glass 主题，本轮沿�
 
 ## 5. 已批准的执行顺序
 
-1. 冻结 11 张图和交互决策，形成开发基线。
+1. 冻结 01–11 页面交互决策，形成开发基线。仓库不提交原型图片。
 2. 盘点现有前端路由、导航壳层、页面状态和可复用组件。
 3. Gemini 负责前端实现，Grok 负责强制门槛，Codex 负责调度、运行核验与证据口径。
 4. 先实现稳定壳层与返回路径，再实现各资源页和状态覆盖。
@@ -124,9 +104,8 @@ FyAgent 当前版本已经形成稳定的蓝色 liquid-glass 主题，本轮沿�
 
 ## 6. 当前交付边界
 
-- `design_approved`：11 张高保真图与本评审包，已获人类批准。
-- `implementation_task`：`.trellis/tasks/08-26-frontend-interaction-v3-1`。
-- `code_audit`：V3.1 逐页差异盘点进行中。
-- `runtime_screenshot`：等待 V3.1 表面冻结与 Grok 4.6 门槛。
-- `pixel_diff`：未设数值阈值。
-- `merge / release / production`：均未发生。
+- `design_approved`：01–11 页面要求与本评审包，已获人类批准；图片不进入仓库。
+- `implementation_commit`：`581869e3` 已进入 PR #159。
+- `historical_gates`：原计划 Gemini/Grok Gate 未形成完整执行闭环，不得补写为已执行。
+- `closure_evidence`：当前真实 diff + fresh checks / CI。
+- `merge / release / production`：由独立授权与 CI 状态决定，不以本文件宣称完成。

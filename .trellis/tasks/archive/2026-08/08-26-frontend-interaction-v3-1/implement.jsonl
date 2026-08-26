@@ -1,5 +1,4 @@
 {"file":".trellis/tasks/08-26-frontend-interaction-v3-1/source-feishu-verbatim.md","reason":"User-authoritative V3.1 product requirements, historical collaboration inputs, Grok gate and outbound copy prohibition; read in full without rewriting, then resolve executor routing through the current authority record."}
-{"file":"docs/fyagent/design/frontend-interaction-v3/REVIEW_PACKET.md","reason":"Maps the 11 approved prototype images to page responsibilities and interaction checkpoints."}
 {"file":".trellis/spec/frontend/v2-shell.md","reason":"Production V2 shell, route, keep-alive and page-structure contract for all affected renderer pages."}
 {"file":".trellis/spec/frontend/reuse.md","reason":"Reuse-first component ownership and narrow shared-variant rules."}
 {"file":".trellis/spec/frontend/v2-agent-models.md","reason":"Authoritative Agent readiness and model capability/data-owner contracts."}

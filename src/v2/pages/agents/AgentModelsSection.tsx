@@ -165,13 +165,9 @@ export function AgentModelsSection({
           当前模型状态无法读取，请检查网络或配置后重试。
         </InlineNotice>
       ) : mode === "unsupported" ? (
-        <EmptyState
-          title="当前官方能力不支持第三方模型配置"
-        />
+        <EmptyState title="当前官方能力不支持第三方模型配置" />
       ) : observations.length === 0 ? (
-        <EmptyState
-          title="尚未观察到模型"
-        />
+        <EmptyState title="尚未观察到模型" />
       ) : filtered.length === 0 ? (
         <EmptyState title="没有匹配的模型" description="请调整搜索关键词。" />
       ) : (

@@ -102,9 +102,7 @@ export function AgentSkillsSection({
         disabled={query.isPending}
       />
       {feedback ? (
-        <InlineNotice tone={feedback.tone}>
-          {feedback.text}
-        </InlineNotice>
+        <InlineNotice tone={feedback.tone}>{feedback.text}</InlineNotice>
       ) : null}
       {query.isError && query.data !== undefined ? (
         <InlineNotice tone="warning">
@@ -157,7 +155,9 @@ export function AgentSkillsSection({
                     checked={isAssigned}
                     disabled={isPending}
                     label={`${entry.displayName} Skill 分配`}
-                    onCheckedChange={(enabled) => void toggle(skill.id, enabled)}
+                    onCheckedChange={(enabled) =>
+                      void toggle(skill.id, enabled)
+                    }
                   />
                 </div>
               </article>
@@ -244,9 +244,7 @@ export function AgentMcpSection({
         disabled={query.isPending}
       />
       {feedback ? (
-        <InlineNotice tone={feedback.tone}>
-          {feedback.text}
-        </InlineNotice>
+        <InlineNotice tone={feedback.tone}>{feedback.text}</InlineNotice>
       ) : null}
       {query.isError && query.data !== undefined ? (
         <InlineNotice tone="warning">
@@ -299,7 +297,9 @@ export function AgentMcpSection({
                     checked={isAssigned}
                     disabled={isPending}
                     label={`${entry.displayName} MCP 分配`}
-                    onCheckedChange={(enabled) => void toggle(server.id, enabled)}
+                    onCheckedChange={(enabled) =>
+                      void toggle(server.id, enabled)
+                    }
                   />
                 </div>
               </article>

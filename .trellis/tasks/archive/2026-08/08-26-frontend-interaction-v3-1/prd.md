@@ -10,7 +10,7 @@
 
 1. 用户 2026-08-26 最新消息中明确给出的 Gemini 前端实施分工；
 2. [飞书原文逐字留档](./source-feishu-verbatim.md)及[当前执行主体权威](./research/executor-authority-latest-gemini-primary.md)；
-3. `docs/fyagent/design/frontend-interaction-v3/01-*.png` 至 `11-*.png`；
+3. 本任务中已留档的 01–11 页面交互要求与逐页差异合同；
 4. 当前真实业务端口、路由和数据契约；
 5. 当前 V3 代码与历史材料。
 
@@ -20,7 +20,7 @@
 
 - 旧任务 `.trellis/tasks/08-26-frontend-interaction-v3-e2e` 已标记 `SUPERSEDED_DO_NOT_EXECUTE`；旧 Windows 等待、证据收口、对外图文与 `0ad9a7e1` 候选口径已经停止。
 - 新分支从干净的旧 V3 HEAD 创建，`main` 未被切换或修改。
-- 仓库内 11 张 PNG 原型均可访问；核心目标视口为原型图的桌面横向布局。
+- 01–11 页面需求已在任务文本与逐页差异审计中留档；仓库不再携带原型图片资产。
 - `mise run env:check` fresh pass；原生 `mise run dev` 在清除注入的 `NODE_PATH` 后成功编译并启动 FyAgent v0.4.2。
 - 当前代码确实包含原型外的页面眉题、说明、状态提示、完整介绍入口、能力说明和额外披露区；扫描完成态会显示全部目录项，并显示 `unknown` / `not_installed` 文案。
 - 当前扫描状态源位于 `useAgentDirectoryScan.ts`，页面投影位于 `AgentDirectory.tsx`；现有底层端口无需新增 API 即可完成结果过滤和错误分流。

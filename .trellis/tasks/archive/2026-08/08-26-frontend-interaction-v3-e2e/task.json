@@ -3,7 +3,7 @@
   "name": "frontend-interaction-v3-e2e",
   "title": "SUPERSEDED — Frontend Interaction V3 End-to-End Implementation",
   "description": "SUPERSEDED_DO_NOT_EXECUTE. Historical V3 implementation and evidence task retained for traceability; all remaining closure, Windows and outbound work stopped on 2026-08-26.",
-  "status": "superseded",
+  "status": "completed",
   "dev_type": "feature",
   "scope": "frontend-v2-cross-layer",
   "package": "fyagent-desktop",
@@ -11,7 +11,7 @@
   "creator": "codex",
   "assignee": "codex",
   "createdAt": "2026-08-26",
-  "completedAt": null,
+  "completedAt": "2026-08-26",
   "branch": "codex/frontend-interaction-v3-20260825",
   "base_branch": "main",
   "worktree_path": "/Users/<username>/.codex/worktrees/frontend-interaction-v3/fyagent",
@@ -21,9 +21,6 @@
   "children": [],
   "parent": null,
   "relatedFiles": [
-    "docs/fyagent/design/frontend-interaction-v3/README.md",
-    "docs/fyagent/design/frontend-interaction-v3/REVIEW_PACKET.md",
-    "docs/fyagent/design/frontend-interaction-v3/PROMPTS_AND_WORKFLOW.md",
     ".trellis/tasks/08-26-frontend-interaction-v3-e2e/research/feishu-delivery.md",
     ".trellis/tasks/08-26-frontend-interaction-v3-e2e/research/feishu-m1-integration-uat.md",
     ".trellis/tasks/08-26-frontend-interaction-v3-e2e/research/windows-native-handoff.md",
@@ -38,7 +35,7 @@
     "src/v2/pages/prompts/Page.tsx",
     "src/v2/pages/memory/Page.tsx"
   ],
-  "notes": "SUPERSEDED_DO_NOT_EXECUTE as of 2026-08-26 by the user-directed V3.1 refactor. Stop old V3 evidence closure, Windows waiting, and external visual/report work. Commit 0ad9a7e1 and the former M1 package are historical inputs only and must not be treated as a completed or frozen candidate. Branch-only history is preserved; push, merge, release, and production remain excluded.",
+  "notes": "SUPERSEDED_DO_NOT_EXECUTE as of 2026-08-26 by the user-directed V3.1 refactor. Stop old V3 evidence closure, Windows waiting, and external visual/report work. Commit 0ad9a7e1 and the former M1 package are historical inputs only and must not be treated as a completed or frozen candidate. Remaining V3/V3.1 product work lives in 08-26-frontend-interaction-v3-1 and PR #159. This superseded task is archived for traceability only.",
   "meta": {
     "design_doc": "https://bcnntymbwnto.feishu.cn/docx/EbIdduAkloEUakxPbqYcYHsCnZg",
     "branch": "codex/frontend-interaction-v3-20260825",
@@ -56,16 +53,7 @@
     "feishu_m0_message": "om_x100b67e81d1ef4a0de2bfa46bfb3bbe",
     "feishu_m0_audit_message": "om_x100b67e811a83ca0defd6075efa841e",
     "feishu_m1_message": "om_x100b67eacbe674a8c4bc46958580860",
-    "feishu_m1_image_index_message": "om_x100b67eac87fa4a0c39b0a1520e30dc",
-    "feishu_m1_image_messages": [
-      "om_x100b67eac973aca0c2ac9215d4b343b",
-      "om_x100b67eac910dca0c44e456b9512229",
-      "om_x100b67eac93b2ca0dd86491ebf5c9b2",
-      "om_x100b67eac6c140a0ddba740d91c6c66",
-      "om_x100b67eac6aaa4a0de2d787b033b546"
-    ],
     "feishu_m5_windows_message": "om_x100b67eb4064f0a0c425b568f9ec461",
-    "feishu_m5_windows_image_message": "om_x100b67eb5c3838a0def6bf88aaf7f2b",
     "local_candidate_status": "STALE_SUPERSEDED_0ad9a7e1_2026-08-26",
     "windows_native_status": "STOPPED_SUPERSEDED_2026-08-26",
     "windows_validation_thread": "01a03a59-655c-7800-9f57-0d30943f42e8",

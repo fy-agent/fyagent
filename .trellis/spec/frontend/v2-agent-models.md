@@ -37,18 +37,13 @@ its own capability workflow:
 
 - QoderWork CN, TRAE Work CN, WorkBuddy, and Grok Build each expose one
   catalog-owned product link; Claude Code exposes separate CLI and Desktop
-  links; OpenCode exposes `product` then `cli`. Agent directory details render
-  only `mode === "direct"` capability jumps to `/models`, `/skills`, or
-  `/mcp`. They do not render the capability-item grid, catalog `description`,
-  or a page-level title. They do not mount application status, configuration overviews,
-  unsupported-capability lists, support counts, usage notes, Qoder Hooks
-  editors, or MCP validation panels. Non-Codex details mount a page-local
-  「产品介绍」 section from `src/v2/pages/agents/intros.ts` (hardcoded Chinese,
-  not the catalog `description` and not 「使用说明」). That copy describes the
-  third-party product only and must not mention FyAgent. Codex keeps the desktop
-  installer as its substantial body and does not require that intro. The
-  installer heading explains install/update/launch of Codex Desktop and must
-  not mention FyAgent.
+  links; OpenCode exposes `product` then `cli`. `/agents` no longer uses the
+  old master/detail capability-jump directory. The page owns a scan directory
+  plus a selected-Agent configuration shell with four sections:
+  `模型 / Skills / MCP / 提示词`. Official product/cli/desktop links, Provider
+  summaries, installer panels, Qoder Hooks editors, and MCP validation stay
+  on their existing owners (`/models`, `/skills`, `/mcp`, or native
+  commands). The configuration shell must not invent a second write path.
 - WorkBuddy and OpenCode each use a dedicated revision-checked
   model-configuration domain. WorkBuddy additionally exposes direct Skills
   copy and MCP `mcp.json` assignment. Grok Build Models uses the same Provider
@@ -365,59 +360,98 @@ and a revision, never `ak` / `sk` / `apiKey`.
   vendor endorsement, redistribution permission, or FyAgent application
   identity.
 
-### Agent directory
+### Agent directory and configuration shell
 
-- Render a keyboard-accessible left selector and right detail. The selected
-  button owns `aria-current`; initial selection follows native catalog order.
-- Both pages use the shared `CatalogMasterDetail` geometry, backed by the
-  shared `SplitPanes` chassis: default rail
-  `clamp(220px, 24vw, 268px)`, 14px separator gutter, 56px rows, 36px list
-  frames, 64px detail frames, stable scrollbar gutter, the 760px
-  master/detail stack (list becomes two columns; the separator is hidden),
-  and the 520px list collapse to one column. Page CSS must not redefine
-  catalog columns, brand-ID sizing, or another responsive rail.
-  `CatalogMasterDetail` keeps the catalog brand list and the separator name
-  `调整目录与详情的宽度`. Other product pages reuse `SplitPanes` without
-  catalog rail/list/brand classes.
+`/agents` has two views selected by non-secret search params:
+
+```ts
+export const AGENT_SECTION_IDS = ["models", "skills", "mcp", "prompts"] as const;
+export type AgentSection = (typeof AGENT_SECTION_IDS)[number];
+// URL: #/agents                → scan directory
+// URL: #/agents?target=<id>&section=<section>
+```
+
+- Missing `target` shows the scan directory. Unknown `target` is cleared.
+  Missing or invalid `section` is replaced with `models`. Returning to the
+  directory clears both params. The last in-session configuration may be
+  restored only when the Agents route becomes active again without a target.
+- Scan state lives in `useAgentDirectoryScan`. Status is
+  `idle | scanning | complete`. `start()` is a no-op while `scanning`.
+  Each catalog id refetches `useAgentInstallReadiness`; a query error or
+  thrown refetch is a technical failure, not an install-state card.
+- Completed and in-progress lists project only
+  `installState === "installed" || installState === "installed_not_runnable"`.
+  `not_installed`, `unknown`, missing results, and failed reads never enter
+  the normal software cards. Filter in TypeScript; do not hide rows with CSS.
+- A complete scan with zero successful reads uses the error notice and keeps
+  the previous successful result set when one exists. Partial read failures
+  use a warning and still show the successful installed cards.
+- Directory cards use catalog `displayName` plus `进行配置`. The
+  configuration shell header shows brand + display name + `返回`, then
+  `FeatureTabs` for `模型 / Skills / MCP / 提示词`.
+- Models section is observation-only. It may list native/provider snapshots
+  and link to `/models?target=<modelTarget>`. It must not write models,
+  mount Provider quick setup, or turn Qoder `unsupported` / TRAE `assisted`
+  into a local successful editor.
+- Skills and MCP sections delegate `toggleApp` to the existing ports, then
+  refetch and accept the write only when
+  `Boolean(authoritative.apps[assignmentId]) === enabled`. Prompt section
+  may call `ports.prompts.enable` only when `entry.promptAppId` exists, then
+  refetch and require `authoritative.enabled === true`. Failed or mismatched
+  readback must not keep an optimistic success state.
+- Management entries navigate to the existing global pages. Official
+  product/cli/desktop links, Codex installer, Qoder Hooks, and MCP
+  validation stay off this shell.
+
+### Models catalog geometry
+
+- Models still uses the shared `CatalogMasterDetail` geometry, backed by
+  `SplitPanes`: default rail `clamp(220px, 24vw, 268px)`, 14px separator
+  gutter, 56px rows, 36px list frames, 64px detail frames, stable scrollbar
+  gutter, the 760px master/detail stack (list becomes two columns; the
+  separator is hidden), and the 520px list collapse to one column. Page CSS
+  must not redefine catalog columns, brand-ID sizing, or another responsive
+  rail. `CatalogMasterDetail` keeps the catalog brand list and the separator
+  name `调整目录与详情的宽度`. Other product pages reuse `SplitPanes`
+  without catalog rail/list/brand classes.
 - Above 760px the two panes fill the remaining feature-page height and
   scroll independently. Split-pane children fill that pane (`height: 100%`,
   `overflow: auto`), matching the catalog rail. The detail panel is at least
-  the pane height and
-  grows with its content so its chrome does not clip overflowing cards.
-  Both catalog pages share the feature-page inset: 20px page padding. Agent
-  and Models have no page-level `.fy-feature-header`. `.fy-catalog-page`
-  sets `gap: 0`. Page CSS must not add another `gap` or `padding-top` on
-  `.fy-agents-page` / `.fy-models-page`.
-  A keyboard-accessible vertical separator resizes the
-  rail between 220px and min(420px, remaining width minus a 360px detail
-  floor). Width is session-local component state and never enters the URL or
-  storage. Double-click restores the default clamp.
-- QoderWork/TRAE/WorkBuddy/Grok Build/OpenCode and Claude link actions render
-  `CatalogOfficialLinks` → `ExternalLinkButton` with the catalog HTTPS URL.
-  That control is the only jump: `useOpenExternal` holds one FeatureProvider
-  lock and calls `settings.openExternal(link.url)`. Official product/cli/desktop
-  links live on the Agent directory, not the Models page. Models must not clone
-  those catalog links as 「打开官方设置」 or 「打开 TRAE 官方模型设置」.
-  These actions do not inspect login state, download packages, read
-  private config, persist notes, accept an API key, or emit configuration
-  success.
-- Official catalog links render in the Agent detail identity, top-right, as
-  `CatalogOfficialLinks` primary buttons. Display copy for labels that already
-  contain `官方` stays as catalog text; `cli`/`desktop` labels become
-  `打开 {catalog label} 官网`. The renderer does not rewrite Rust labels or
-  URLs.
-- FeatureProvider keeps one external-open lock and one pending URL. Agent
-  detail does not keep a second lock. A failure toasts fixed text without
-  echoing the URL. Codex renders no official link region and mounts the
-  managed installer panel only while Codex is selected, immediately below
-  the identity heading; leaving Codex releases its event subscription.
-- Agent directory does not lazy-read WorkBuddy status or Provider summaries.
-  Those observations belong on the Models page. External runtime status still
+  the pane height and grows with its content so its chrome does not clip
+  overflowing cards. Both catalog pages share the feature-page inset: 20px
+  page padding. Agent and Models have no page-level `.fy-feature-header`.
+  `.fy-catalog-page` sets `gap: 0`. Page CSS must not add another `gap` or
+  `padding-top` on `.fy-agents-page` / `.fy-models-page`. A
+  keyboard-accessible vertical separator resizes the rail between 220px and
+  min(420px, remaining width minus a 360px detail floor). Width is
+  session-local component state and never enters the URL or storage.
+  Double-click restores the default clamp.
+- QoderWork/TRAE/WorkBuddy/Grok Build/OpenCode and Claude link actions
+  render `CatalogOfficialLinks` → `ExternalLinkButton` with the catalog
+  HTTPS URL. That control is the only jump: `useOpenExternal` holds one
+  FeatureProvider lock and calls `settings.openExternal(link.url)`. Official
+  product/cli/desktop links live on the Models identity chrome or other
+  existing owners, not as a second Agent-directory write path. Models must
+  not clone those catalog links as 「打开官方设置」 or 「打开 TRAE 官方模型设置」.
+  These actions do not inspect login state, download packages, read private
+  config, persist notes, accept an API key, or emit configuration success.
+- Official catalog links render as `CatalogOfficialLinks` primary buttons.
+  Display copy for labels that already contain `官方` stays as catalog text;
+  `cli`/`desktop` labels become `打开 {catalog label} 官网`. The renderer
+  does not rewrite Rust labels or URLs.
+- FeatureProvider keeps one external-open lock and one pending URL. A
+  failure toasts fixed text without echoing the URL. Codex mounts the
+  managed installer panel only while Codex is selected; leaving Codex
+  releases its event subscription.
+- Agent directory scan cards do not lazy-read WorkBuddy status or Provider
+  summaries. Those observations belong on the Models page or the Agent
+  models section's existing query hooks. External runtime status still
   preserves `null` as unknown when a future launch control is added.
-- Qoder Hooks and Qoder/TRAE MCP validation remain native commands. The Agent
-  directory is not their host; Qoder Models states 官方不支持第三方模型配置
-  and does not jump to `/mcp`.
-- Configuration actions navigate only with a known non-secret `target` query.
+- Qoder Hooks and Qoder/TRAE MCP validation remain native commands. The
+  Agent directory is not their host; Qoder Models states
+  官方不支持第三方模型配置 and does not jump to `/mcp`.
+- Configuration actions navigate only with a known non-secret `target`
+  query.
 
 ### Models target selection
 

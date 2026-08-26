@@ -82,11 +82,16 @@ Before changing renderer code:
 | [WorkBuddy Configuration](../backend/workbuddy-configuration.md)           | Top-level navigation, query isolation, model selection, Change Plan save, immediate chip-remove overwrite confirmation, and credential lifetime.                                                                                                                                                                                                                                                                                                                                                          |
 
 The integrated V2 shell has six non-empty product routes: Agents, Models,
-Skills, MCP, Prompts, and Memory. All six use bounded feature ports. Prompts
-manages the seven existing native prompt applications; Memory manages four
-fixed OpenClaw/Hermes long-term resources plus OpenClaw daily memory. Browser
-preview is explicitly native-only and contains no seeded business data. A merge
-commit does not replace post-merge shell/browser validation.
+Skills, MCP, Prompts, and Memory. The V3 chrome presents them as three left
+groups (`AI软件配置`, expandable `配置管理`, `记忆模块`); `TopBar` keeps
+Brand and tools only. `/agents` owns the install-state scan projection and a
+four-section configuration shell that delegates writes to the existing
+Skills/MCP/Prompts owners and waits for authoritative readback. All six routes
+use bounded feature ports. Prompts manages the seven existing native prompt
+applications; Memory manages four fixed OpenClaw/Hermes long-term resources
+plus OpenClaw daily memory. Browser preview is explicitly native-only and
+contains no seeded business data. A merge commit does not replace post-merge
+shell/browser validation. Prototype screenshots are not repository assets.
 
 ## Quality Check
 

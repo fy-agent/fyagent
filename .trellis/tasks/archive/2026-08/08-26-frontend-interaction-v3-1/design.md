@@ -18,7 +18,7 @@
 ## 2. Source and Visual Direction
 
 - 产品 archetype：AI / Developer Tool 桌面控制中心。
-- 视觉基线：仓库 11 张高保真 PNG 与现有蓝色 liquid-glass token。
+- 视觉基线：任务中留档的 01–11 页面交互/层级要求与现有蓝色 liquid-glass token；仓库不携带原型图片资产。
 - token 继续使用当前 `--bg`、`--surface`、`--surface-2`、`--text`、`--text-muted`、`--accent`、`--border`、`--radius`、`--shadow` 体系；只增加有明确原型语义的局部 token。
 - 原型控制页面组成与层级，现有业务端口控制数据真实性。
 

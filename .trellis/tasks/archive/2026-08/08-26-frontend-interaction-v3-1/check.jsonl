@@ -1,5 +1,4 @@
 {"file":".trellis/tasks/08-26-frontend-interaction-v3-1/source-feishu-verbatim.md","reason":"Final review must cover every user-authored completion condition and prohibition."}
-{"file":"docs/fyagent/design/frontend-interaction-v3/REVIEW_PACKET.md","reason":"Page-by-page visual and interaction review baseline for all 11 prototype states."}
 {"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Fresh lint, typecheck, unit, browser and renderer-build expectations."}
 {"file":".trellis/spec/frontend/v2-shell.md","reason":"Verify six routes, keep-alive, shell layout and responsive behavior remain intact."}
 {"file":".trellis/spec/frontend/reuse.md","reason":"Reject duplicate components, global CSS patches and speculative shared abstractions."}

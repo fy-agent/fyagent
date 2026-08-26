@@ -486,10 +486,7 @@ export function PromptsPage() {
               当前编辑的提示词不在搜索结果中。
             </p>
           ) : null}
-          <FeatureList
-            id="prompts-list"
-            className="fy-prompts-library-list"
-          >
+          <FeatureList id="prompts-list" className="fy-prompts-library-list">
             {filtered.length === 0 ? (
               <p className="fy-feature-description">没有匹配的提示词</p>
             ) : null}
@@ -515,14 +512,11 @@ export function PromptsPage() {
             enabled={selected?.enabled ?? false}
             liveError={liveFileQuery.error}
             livePending={
-              liveFileQuery.isPending &&
-              liveFileQuery.data === undefined
+              liveFileQuery.isPending && liveFileQuery.data === undefined
             }
             liveValue={liveFileQuery.data}
             onCloseNew={requestEditorClose}
-            onDelete={
-              selected ? () => requestDelete(selected) : undefined
-            }
+            onDelete={selected ? () => requestDelete(selected) : undefined}
             onDraftChange={updateDraft}
             onSave={saveEditor}
             onToggle={

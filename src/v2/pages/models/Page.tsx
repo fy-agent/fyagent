@@ -553,10 +553,7 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
       className="fy-models-config-panel"
       ariaLabel="WorkBuddy 模型配置"
     >
-      <ModelsPanelHeader
-        title="WorkBuddy"
-        pending={draftCommit.pending}
-      >
+      <ModelsPanelHeader title="WorkBuddy" pending={draftCommit.pending}>
         <Button
           className="fy-control-button-primary fy-models-commit-button"
           disabled={
@@ -1279,10 +1276,7 @@ function ProviderPanel({
       className="fy-models-config-panel"
       ariaLabel={`${label} 模型配置`}
     >
-      <ModelsPanelHeader
-        title={label}
-        pending={draftCommit.pending}
-      >
+      <ModelsPanelHeader title={label} pending={draftCommit.pending}>
         <Button
           className="fy-control-button-primary fy-models-commit-button"
           disabled={

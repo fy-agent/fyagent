@@ -22,50 +22,6 @@
       "297dd57538eff8233c5c2243aa715cf81e9ebed9c81f99094673808ddd5aff3b"
     ],
     [
-      "docs/fyagent/design/frontend-interaction-v3/01-ai-software-scan-complete.png",
-      "d74e9031abb8b1c73abf845824c902629ed31114a013f35a74df9c94ee420025"
-    ],
-    [
-      "docs/fyagent/design/frontend-interaction-v3/02-ai-software-scanning.png",
-      "c27bd3bd42dfdc14a6c45f670fb92214d0566e6339258ed5486be9e6d33c9645"
-    ],
-    [
-      "docs/fyagent/design/frontend-interaction-v3/03-agent-model-selection.png",
-      "4fad687801977a3cf4468688b9467862ffb61bb35212f905685db49c7b84dfde"
-    ],
-    [
-      "docs/fyagent/design/frontend-interaction-v3/04-agent-skills-selection.png",
-      "8c9a049fa3af45234a8309aa1284189249577bdc1d3490bbb43ee0e5d8e6f265"
-    ],
-    [
-      "docs/fyagent/design/frontend-interaction-v3/05-agent-mcp-selection.png",
-      "63053e597f63cbbf2ea2859c2ee436fae6e4aa114af0407a511d0e2e096ff9cc"
-    ],
-    [
-      "docs/fyagent/design/frontend-interaction-v3/06-agent-prompts-selection.png",
-      "aa8e8def1db3aa073d6199f858dd76da2853f993d7a64f224e15e6d4edebcce0"
-    ],
-    [
-      "docs/fyagent/design/frontend-interaction-v3/07-model-management.png",
-      "7b159a3123af556d6a50805ceab43a3f7fdc2329b29536a54d6ae2435f110be3"
-    ],
-    [
-      "docs/fyagent/design/frontend-interaction-v3/08-skills-management.png",
-      "73f9c848f3693169b7d933a479dac19ec448be3ed62275a913200728dbee6844"
-    ],
-    [
-      "docs/fyagent/design/frontend-interaction-v3/09-mcp-management.png",
-      "4aff262657be47a6ff12f905f5958642059d208bf2aa986a41daf19d2e181fe0"
-    ],
-    [
-      "docs/fyagent/design/frontend-interaction-v3/10-prompts-management.png",
-      "42fe89a6b0d108bdc70a603b11e92cf63836052171e14d2654e56812679b53e9"
-    ],
-    [
-      "docs/fyagent/design/frontend-interaction-v3/11-memory-module.png",
-      "670785eecd531dd485fde080375a1802bf1e84d444172d4f6a1cd62e5868edd9"
-    ],
-    [
       "docs/fyagent/marketing/assets/samples/fyagent-tactile-orchestration-hero-v2.png",
       "4b3328e85352a61c579b403cf61703634213bb9c7e647c3d956dc45fbdbc5f40"
     ],

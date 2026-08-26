@@ -83,9 +83,7 @@ function SupportedPromptProjection({
         disabled={query.isPending}
       />
       {feedback ? (
-        <InlineNotice tone={feedback.tone}>
-          {feedback.text}
-        </InlineNotice>
+        <InlineNotice tone={feedback.tone}>{feedback.text}</InlineNotice>
       ) : null}
       {query.isError && query.data !== undefined ? (
         <InlineNotice tone="warning">
@@ -177,9 +175,7 @@ export function AgentPromptsSection({
           displayName={entry.displayName}
         />
       ) : (
-        <EmptyState
-          title="当前未接入提示词管理"
-        />
+        <EmptyState title="当前未接入提示词管理" />
       )}
     </section>
   );

@@ -1,8 +1,9 @@
-# 前端交互重构 v3 - 高保真原型集
+# 前端交互重构 v3 - 设计输入
 
 > 视觉方向：`CONFIRMED_BY_USER_2026-08-25`
 > 原型集状态：`APPROVED_FOR_IMPLEMENTATION_2026-08-26`
-> 状态范围：本目录提供高保真设计输入；实现、运行验收与发布状态由当前 Trellis 任务卡判定。
+> 资产规则：仓库不携带 01–11 原型图片；页面要求以本目录文字材料和任务留档为准。
+> 状态范围：本目录提供设计输入；实现、运行验收与发布状态由当前 Trellis 任务卡判定。
 
 ## 设计来源
 
@@ -22,17 +23,19 @@
 
 ## 页面清单
 
-1. [AI 软件扫描完成](./01-ai-software-scan-complete.png)
-2. [AI 软件扫描中](./02-ai-software-scanning.png)
-3. [Agent 模型选配](./03-agent-model-selection.png)
-4. [Agent Skills 选配](./04-agent-skills-selection.png)
-5. [Agent MCP 选配](./05-agent-mcp-selection.png)
-6. [Agent 提示词选配](./06-agent-prompts-selection.png)
-7. [模型管理](./07-model-management.png)
-8. [Skills 管理](./08-skills-management.png)
-9. [MCP 管理](./09-mcp-management.png)
-10. [提示词管理](./10-prompts-management.png)
-11. [记忆模块](./11-memory-module.png)
+仓库不提交原型截图。下列编号只表示已批准的页面要求，不指向图片文件。
+
+1. AI 软件扫描完成
+2. AI 软件扫描中
+3. Agent 模型选配
+4. Agent Skills 选配
+5. Agent MCP 选配
+6. Agent 提示词选配
+7. 模型管理
+8. Skills 管理
+9. MCP 管理
+10. 提示词管理
+11. 记忆模块
 
 ## 配套材料
 
@@ -41,10 +44,11 @@
 
 ## 当前边界
 
-- 当前状态：`V3_1_REFACTOR_PLANNING`。
+- 当前状态：`V3_1_IMPLEMENTATION_SHIPPED_IN_PR_159`。
+- 实现提交：`581869e3 feat(frontend): align v3.1 interaction pages`。
 - 当前任务：`.trellis/tasks/08-26-frontend-interaction-v3-1`。
-- 当前分支：`codex/frontend-interaction-v3-1-20260826`。
+- 当前分支 / PR：`codex/frontend-interaction-v3-20260825` → [#159](https://github.com/fy-agent/fyagent/pull/159)。
 - 历史状态：`0ad9a7e1` 与旧 M1 包均为 `STALE`，仅保留代码与审计历史。
 - 已停止：旧 V3 证据收口、Windows 等待、旧候选冻结与对外图文。
-- 当前门槛：Antigravity / Gemini 3.7 实施；Grok 4.6 评审通过；Codex 运行核验。
-- 授权边界：`main`、push、PR、merge、tag、Release、production 与对外发布保持关闭。
+- 收口口径：不以补写的历史 Gemini/Grok Gate 作为完成证据；以当前真实 diff 与 fresh checks / CI 作为 closure evidence。
+- 授权边界：本目录只记录设计输入；push / merge / 发布由独立授权决定。

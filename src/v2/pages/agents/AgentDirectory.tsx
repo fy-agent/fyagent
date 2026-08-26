@@ -95,9 +95,8 @@ export function AgentDirectory({
   const allFailed = complete && state.currentSuccessIds.length === 0;
   const hasTechnicalError = state.currentFailureIds.length > 0;
 
-  const installedEntries = complete || scanning
-    ? projectInstalledEntries(entries, state)
-    : [];
+  const installedEntries =
+    complete || scanning ? projectInstalledEntries(entries, state) : [];
 
   const remainingSkeletonCount = scanning
     ? Math.max(0, AGENT_CATALOG_IDS.length - state.settledIds.length)
@@ -144,16 +143,15 @@ export function AgentDirectory({
 
       {allFailed ? (
         <InlineNotice tone="error">
-          本次扫描未能读取任何软件状态。{hasSuccessfulResults ? "已保留上次成功结果，请重试。" : "请重试。"}
+          本次扫描未能读取任何软件状态。
+          {hasSuccessfulResults ? "已保留上次成功结果，请重试。" : "请重试。"}
         </InlineNotice>
       ) : hasTechnicalError && complete ? (
         <InlineNotice tone="warning">
           {state.currentFailureIds.length} 个软件状态读取失败，成功结果已更新。
         </InlineNotice>
       ) : complete && installedEntries.length === 0 ? (
-        <EmptyState
-          title="未发现已安装的 AI 软件"
-        />
+        <EmptyState title="未发现已安装的 AI 软件" />
       ) : null}
 
       <div className="fy-agent-directory-list">
@@ -166,7 +164,10 @@ export function AgentDirectory({
           />
         ))}
         {Array.from({ length: remainingSkeletonCount }).map((_, index) => (
-          <AgentDirectorySkeletonCard key={`skeleton-${index}`} keyIndex={index} />
+          <AgentDirectorySkeletonCard
+            key={`skeleton-${index}`}
+            keyIndex={index}
+          />
         ))}
       </div>
     </section>
