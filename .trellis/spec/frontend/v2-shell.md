@@ -154,7 +154,11 @@ reimplement this origin. Do not use Motion `layoutId` or `LayoutGroup` scale
 projection for this pill: non-uniform `scaleX` plus `backdrop-filter` smears
 the capsule and the label. `SelectionLens` only registers the active host; it
 is not the painted node. Do not import `framer-motion` outside
-`shared/ui/SelectionLens.tsx`. The lifecycle-ready
+`shared/ui/motion.ts`. That file owns `fySpringTransition`
+(`stiffness: 520`, `damping: 42`, `mass: 0.62`) and re-exports `animate` /
+`motion` / `useMotionValue` / `useReducedMotion`. `SelectionLens` and the V2
+`Collapsible` adapter both consume it; pages and widgets import the adapter,
+not Motion. The lifecycle-ready
 operation returns `Promise<void>` and owns a module-level promise guard. Its
 native side effect remains the existing payload-free `frontend-deeplink-ready`
 event.
@@ -256,8 +260,14 @@ input to `PersistentPrimaryOutlet`.
   left-navigation controls. `SideNavigation` owns `ArrowUp` / `ArrowDown` /
   `Home` / `End` among currently visible controls. The configuration toggle
   uses `ArrowRight` to expand or enter the leaf list, and `ArrowLeft` /
-  `Escape` to collapse and return focus to the toggle. Native caption
-  controls are outside the renderer and outside this tab-order contract.
+  `Escape` to collapse and return focus to the toggle. 「配置管理」
+  open/close uses the V2 `Collapsible` adapter (`@radix-ui/react-collapsible`
+  plus `fySpringTransition`); do not import leftover
+  `src/components/ui/collapsible.tsx` and do not invent a second cubic-bezier.
+  Closed or closing leaves are `hidden` / `inert` / `aria-hidden` and must
+  not enter Tab or arrow-key cycling, including during the close animation.
+  Native caption controls are outside the renderer and outside this tab-order
+  contract.
 
 ### Window chrome
 
@@ -350,9 +360,12 @@ L3 interactive glass       selected lens, tools, tooltip, and popover
   legacy `src/index.css`, dark-theme tokens, UI wrappers, or `src/i18n/**`.
 - Namespace V2 selectors. Do not use `transition: all`, animate the
   `backdrop-filter` property, globally hide scrollbars, or ignore
-  `prefers-reduced-motion`. `SelectionLens` is the only approved layout
-  animation; it springs overlay geometry and collapses to an instant swap when
-  the user prefers reduced motion. Never combine `layoutId` scale projection
+  `prefers-reduced-motion`. Approved layout motion lives in
+  `shared/ui/motion.ts`: `SelectionLens` springs overlay geometry and V2
+  `Collapsible` springs 「配置管理」 height/caret from the same
+  `fySpringTransition`. Both collapse to an instant or near-instant swap when
+  the user prefers reduced motion. Do not add another spring token or CSS
+  `ease` for that disclosure. Never combine `layoutId` scale projection
   with `backdrop-filter` on the same node. Fill-height master/detail columns
   use shared `SplitPanes` (`shared/ui/split`); do not copy catalog rail
   classes onto Skills, MCP, Prompts, or Memory. Split-pane children fill the
@@ -412,7 +425,7 @@ Agent/Models, Skills, and MCP ports do not by themselves make it Release-ready.
 | Condition                                                              | Required result                                                                    |
 | ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
 | Empty hash, root route, or unknown route                               | Redirect to `#/agents`; Agent directory alone has `aria-current="page"`            |
-| A `layoutId` pill uses non-uniform scale with `backdrop-filter`            | Architecture test fails; overlay must spring `left`/`top`/`width`/`height` and must not animate `transform: scale` |
+| V2 imports `framer-motion` outside `shared/ui/motion.ts`            | Architecture test fails; SelectionLens and Collapsible consume the motion owner |
 | Changing the active option remounts the overlay or restarts from `{width:0}` | Unit test fails; the same overlay node must keep identity and retarget from current geometry |
 | First show or show-after-`hidden` collapses to the track origin (`inset`, `inset`) | Unit and architecture tests fail; appear must use `selectionLensCollapsedOrigin` of the active host |
 | Any normal production route                                            | Exactly one active primary link and one nav `SelectionLens` overlay; no production `LiquidGlassLens`; other tracks may each have their own pill |
@@ -478,7 +491,9 @@ mise run build:renderer
   host top-left via `selectionLensCollapsedOrigin` (not the track origin), no
   lens outside a
   group, no `layoutId` / `LayoutGroup` on the pill adapter, left-navigation
-  group / leaf / expanded / collapsed / keyboard behavior, stable accessible
+  group / leaf / expanded / collapsed / keyboard behavior, `aria-expanded` on
+  「配置管理」, closed/closing leaves excluded from Tab/arrow cycling,
+  reduced-motion instant collapse, stable accessible
   names, inert tool clicks, absence of custom
   caption buttons, six non-empty product pages, and idempotent ready behavior.
   Browser/jsdom shells have no drag strip; native macOS may show one inert
@@ -486,9 +501,9 @@ mise run build:renderer
 - Architecture/static tests reject legacy dependencies, upward layer imports,
   direct Tauri imports outside `shared/platform/tauri`, and the retired
   window-frame contract. They keep `framer-motion` behind
-  `shared/ui/SelectionLens.tsx`, reject `layoutId` / `LayoutGroup` on that
-  adapter, reject collapsing the pill to `left.set(inset)` / `top.set(inset)`,
-  and keep `@samasante/liquid-glass` behind
+  `shared/ui/motion.ts`, reject `layoutId` / `LayoutGroup` on the
+  SelectionLens adapter, reject collapsing the pill to `left.set(inset)` /
+  `top.set(inset)`, and keep `@samasante/liquid-glass` behind
   `LiquidGlassLens`. They keep HTTP(S) jumps on `ExternalLinkButton` /
   `useOpenExternal`. They positively allow only the exact neutral Codex
   shared boundary and negatively prove that a neighboring shared path remains
@@ -559,6 +574,22 @@ the pill expands from that host's top-left, not from the track origin.
     )}
   </NavLink>
 </SelectionLensGroup>
+```
+
+Wrong: import `framer-motion` in a widget, or hide 「配置管理」 with only
+instant `hidden` and a separate CSS `ease` on the caret.
+
+```tsx
+import { motion } from "framer-motion";
+<ul hidden={!expanded}>{items}</ul>
+```
+
+Correct: pages/widgets import V2 `Collapsible`; only `shared/ui/motion.ts`
+imports Motion. Height and caret share `fySpringTransition`. Closed leaves
+stay out of keyboard cycling.
+
+```tsx
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../../shared/ui/Collapsible";
 ```
 
 Wrong: give split-pane children `height: 100%` with visible overflow, so
