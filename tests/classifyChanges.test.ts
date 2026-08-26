@@ -215,6 +215,15 @@ describe("repository change classifier", () => {
       domains("contracts"),
     ],
     [
+      "GitHub repository automation",
+      [
+        ".github/labeler.yml",
+        ".github/workflows/labeler.yml",
+        ".github/workflows/star-history.yml",
+      ],
+      domains("contracts"),
+    ],
+    [
       "developer governance",
       [
         ".codex/hooks.json",
