@@ -16,20 +16,28 @@ cleanup pass after duplication already shipped.
 
 1. Search existing shared owners first. Prefer reuse or a small extension over
    a new file.
-2. Existing shared chrome that already matches the job is mandatory. Do not
+2. Check the primitives already adopted by the repository (`React`, Radix,
+   TanStack, Zod, CodeMirror, dnd-kit, and the existing V2 shared layer) before
+   hand-writing an equivalent behavior or adding another package.
+3. If no current owner or adopted dependency fits, research maintained
+   open-source components/modules before implementing a bespoke replacement.
+   New dependencies are acceptable only after capability, license,
+   maintenance, security/provenance, platform, bundle/dependency cost, and
+   architecture-fit review.
+4. Existing shared chrome that already matches the job is mandatory. Do not
    fork a page-local copy of `FeatureTabs`, `FeatureSearch`, `FeatureList`,
    `FeaturePagination`, `AssignmentPanel`, `InstallTargetDialog`, `SelectionLens` / `SelectionLensGroup`, `SplitPanes`,
    `CatalogMasterDetail`, `CatalogOfficialLinks`, `SecretInput`, `ExternalLinkButton`, FeaturePorts,
    or the TRAE/OpenCode `modelsShared` / `modelChips` helpers. Agent / Skills / MCP / Models / Prompts
    product order and display names come from `src/v2/shared/features/directory.ts`.
-3. Before creating a **new** component, helper, hook, or CSS recipe, ask
+5. Before creating a **new** component, helper, hook, or CSS recipe, ask
    whether another current module, or a later sibling module, will use it.
    If yes or likely, put it in the shared layer on the **first commit**. Do
    not park it under `pages/<route>/` and wait for a second or third copy.
-4. The old "extract after three copies" rule is not the frontend default for
+6. The old "extract after three copies" rule is not the frontend default for
    chrome that sibling routes already have or will need. Waiting for a third
    copy is a spec miss.
-5. Keep a file page-local only when there is no plausible second consumer
+7. Keep a file page-local only when there is no plausible second consumer
    (a one-off form, a single dialog, a trivial `className` repeat).
 
 Pre-V2 product UI (the tree at `f424ceff`, parent of
@@ -160,12 +168,40 @@ Before writing a new component, helper, hook, CSS class, or parser:
 1. Search `src/v2/shared/ui`, `src/v2/shared/features`, and the nearest page.
 2. Search leftover `src/components/common` and `src/lib/api` for the pre-V2
    behavior and command names.
-3. Reuse or extend the existing owner. Do not copy the JSX.
+3. Check `package.json` and the current framework stack for a primitive that
+   already solves the capability without adding a parallel UI/domain owner.
+4. If the first three searches do not produce a suitable solution, research
+   maintained open-source candidates from primary project/package sources.
+5. Reuse or extend the chosen owner. Do not copy the JSX or reimplement a
+   mature primitive locally without a recorded reason.
 
 If the job is an exclusive option track, management-list search, a
 feature master list, or numbered feature pagination, the owner already exists:
 `FeatureTabs`, `FeatureSearch`, `FeatureList`, `FeaturePagination`. Use them.
 Do not add a second recipe.
+
+### Open-source candidate review
+
+"Prefer open source" means research before reinvention, not dependency
+accumulation. Before adding a new frontend package/component, verify:
+
+- the reviewed version supports the required behavior and React/runtime
+  versions used by FyAgent;
+- its license is compatible with repository distribution;
+- maintenance/release activity and ownership are credible for the capability;
+- known security/provenance risk is acceptable;
+- desktop/browser renderer support fits the existing Tauri + Vite runtime;
+- bundle size, transitive dependencies, build cost, and update burden are
+  proportionate to the capability;
+- it can use or be wrapped behind `--fy-*` tokens and existing accessibility
+  semantics without introducing a second design system;
+- one FyAgent shared owner can contain integration details so pages do not
+  depend directly on package-specific glue.
+
+Prefer an already-adopted primitive over a new package, and prefer a small
+shared wrapper over repeated direct package usage when FyAgent semantics are
+non-trivial. If no candidate passes review, a local implementation is allowed
+only with a concrete reason in the task/design/review record.
 
 ### New component placement
 
@@ -181,6 +217,8 @@ second consumer:
 
 "Expected next" includes the other five product routes, catalog vs feature
 lists, Skills vs MCP, Prompts vs Memory, and TRAE vs OpenCode model panels.
+When implementation reveals a reusable component that planning missed, promote
+or propose it at that shared owner immediately; do not wait for a cleanup task.
 
 ### Feature chrome
 
@@ -248,6 +286,10 @@ already share `modelsShared`, `modelChips`, `ModelConnectivityTest`, and `feedba
 | New chrome is parked in `pages/` because "only one consumer today" while a sibling route is expected | Put it in `shared/` on the first commit; do not wait for a third copy    |
 | A page forks FeatureTabs / FeatureSearch / FeatureList "just for this screen"                        | Reject; pass options/copy into the shared owner                          |
 | A page adds a pagination npm package or a second pager for prev/next / ellipsis                      | Reject; extend `FeaturePagination`                                       |
+| A bespoke component/helper is added without checking existing owners/adopted primitives             | Reject; perform the reuse search first                                   |
+| No local/adopted primitive fits and no open-source candidate review is recorded for non-trivial work | Reject or document why external reuse is inapplicable before bespoke code |
+| A new dependency duplicates a current framework/owner or brings a second design system for one primitive | Reject; reuse/extend the current stack                                |
+| A newly discovered component has a concrete second consumer but remains page-local                  | Move/propose it to the owning `shared/**` boundary before merge           |
 | Skills discovery dumps the full description onto `.fy-feature-card-body`                             | CSS/page test fails; clamp to 3 lines and open the 详情 dialog           |
 | Page invents a second Tauri invoke for an existing FeaturePort command                               | Use the port; leftover `src/lib/api` is the name reference only          |
 
@@ -270,6 +312,10 @@ already share `modelsShared`, `modelChips`, `ModelConnectivityTest`, and `feedba
 - **Bad:** A page copies 20 lines of `SelectionLensTrack` + tab buttons, adds
   `pages/skills/SearchField.tsx` that MCP will need next week, or waits for
   three copies before moving chrome that Prompts/Memory already need.
+- **Bad:** A page hand-writes a non-trivial primitive that an existing shared
+  owner or adopted dependency already provides, or adds a new UI framework
+  without reviewing license, maintenance, security, platform, footprint, and
+  design-system fit.
 
 ## 6. Tests Required
 
@@ -294,6 +340,10 @@ mise run test:v2
   that Skills/MCP/Memory do
   not contain `className="fy-feature-tab"` literals, and
   that V2 still cannot import leftover UI.
+- Review evidence for a new frontend dependency must identify the missing
+  existing capability, candidate(s) considered, and why the selected package
+  is preferable to a bespoke implementation. Existing dependency/security
+  tooling remains the executable authority; this SPEC does not waive it.
 
 ## 7. Wrong vs Correct
 
@@ -358,4 +408,23 @@ Correct: extend the shared owner; keep the existing props.
   ariaLabel="Skill 市场分页"
   onPageChange={setPage}
 />
+```
+
+Wrong: skip the current stack and hand-roll or import a parallel primitive by
+default.
+
+```tsx
+// No search for existing shared/React/Radix ownership, and every page now
+// depends on package-specific behavior directly.
+import { SomeTabs } from "another-ui-system";
+```
+
+Correct: use the current owner first; when a genuinely missing capability
+needs an external package, contain it behind one shared FyAgent component after
+review.
+
+```tsx
+import { FeatureTabs } from "@/v2/shared/ui/FeatureTabs";
+
+<FeatureTabs id="models-tabs" label="Models 视图" value={tab} onChange={setTab} options={options} />
 ```
