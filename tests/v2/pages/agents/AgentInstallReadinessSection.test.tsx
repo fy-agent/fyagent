@@ -1,10 +1,20 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { AgentInstallReadinessSection } from "@/v2/pages/agents/AgentInstallReadinessSection";
 import type {
+  AgentActionJobSnapshot,
+  AgentActionJobStage,
+  AgentActionResult,
   AgentInstallReadiness,
   AgentInstallReadinessPort,
+  StartAgentActionRequest,
 } from "@/v2/shared/features/agent-install-readiness";
 
 function readiness(agentId: "qoderwork" | "codex"): AgentInstallReadiness {
@@ -43,7 +53,9 @@ describe("AgentInstallReadinessSection", () => {
     render(<AgentInstallReadinessSection agentId="qoderwork" port={port} />);
 
     const region = screen.getByRole("region", { name: "安装方式" });
-    expect(await within(region).findByRole("button", { name: "安装" })).toBeVisible();
+    expect(
+      await within(region).findByRole("button", { name: "安装" }),
+    ).toBeVisible();
     expect(within(region).getByRole("button", { name: "登录" })).toBeVisible();
     expect(within(region).getAllByText("未确认").length).toBeGreaterThan(0);
     expect(port.get).toHaveBeenCalledWith("qoderwork");
@@ -108,29 +120,43 @@ describe("AgentInstallReadinessSection", () => {
       localVersion: "0.9.15",
       allowedActions: ["launch", "auth_login"],
     };
-    let stage: "downloading" | "succeeded" = "downloading";
+    let stage: AgentActionJobStage = "downloading";
     const port: AgentInstallReadinessPort = {
-      get: vi.fn(async () =>
-        stage === "succeeded" ? current : available,
+      get: vi.fn(async () => (stage === "succeeded" ? current : available)),
+      startAction: vi.fn(
+        async (
+          _request: StartAgentActionRequest,
+        ): Promise<AgentActionResult> => ({
+          contractVersion: 1,
+          agentId: "qoderwork",
+          action: "update",
+          jobId: "job-1",
+          stage: "checking",
+          reasonCode: null,
+        }),
       ),
-      startAction: vi.fn(async () => ({
-        contractVersion: 1,
-        agentId: "qoderwork",
-        action: "update",
-        jobId: "job-1",
-        stage: "checking",
-        reasonCode: null,
-      })),
-      cancelAction: vi.fn(),
-      getActionJob: vi.fn(async () => ({
-        contractVersion: 1,
-        jobId: "job-1",
-        agentId: "qoderwork",
-        action: "update",
-        stage,
-        cancellable: true,
-        reasonCode: null,
-      })),
+      cancelAction: vi.fn(
+        async (_jobId: string): Promise<AgentActionJobSnapshot> => ({
+          contractVersion: 1,
+          jobId: "job-1",
+          agentId: "qoderwork",
+          action: "update",
+          stage: "cancelled",
+          cancellable: false,
+          reasonCode: "cancelled",
+        }),
+      ),
+      getActionJob: vi.fn(
+        async (_jobId: string): Promise<AgentActionJobSnapshot> => ({
+          contractVersion: 1,
+          jobId: "job-1",
+          agentId: "qoderwork",
+          action: "update",
+          stage,
+          cancellable: true,
+          reasonCode: null,
+        }),
+      ),
     };
     render(<AgentInstallReadinessSection agentId="qoderwork" port={port} />);
     fireEvent.click(

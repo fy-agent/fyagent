@@ -273,7 +273,9 @@ function AgentInstallReadinessContent({
           if (isTerminalJobStage(snapshot.stage)) {
             break;
           }
-          await new Promise((resolve) => window.setTimeout(resolve, JOB_POLL_MS));
+          await new Promise((resolve) =>
+            window.setTimeout(resolve, JOB_POLL_MS),
+          );
           snapshot = await port.getActionJob(result.jobId);
           setJobStage(snapshot.stage);
         }
