@@ -147,6 +147,16 @@ Classification invariants:
 - missing revisions, non-commit objects, malformed diff output, unsafe paths,
   duplicate flags, and option injection fail closed.
 
+`star-history.yml` is repository automation rather than Required CI authority.
+GitHub's built-in `GITHUB_TOKEN` is not an owner/collaborator credential for the
+restricted stargazer timeline endpoint, so exact chart generation uses the
+repository secret `STAR_HISTORY_TOKEN`. Keep that credential out of the
+publishing job: generation is read-only at the workflow-permission layer, while
+the separate publisher uses only its job-local `contents: write` built-in token
+to refresh the unprotected `star-history` data branch. When the secret is not
+configured, the workflow preserves the existing chart and exits successfully
+with a warning rather than publishing partial or fabricated history.
+
 The classifier's `forceFull` is path-derived only. Event policy is applied by
 the Required workflow after classification:
 
