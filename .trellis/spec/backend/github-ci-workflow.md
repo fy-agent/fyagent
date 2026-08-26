@@ -148,21 +148,18 @@ Classification invariants:
   duplicate flags, and option injection fail closed.
 
 `star-history.yml` is repository automation rather than Required CI authority.
-New stars refresh the README chart through the `watch` `started` event, which
-runs the default-branch workflow when the repository is starred. GitHub's
-`schedule` trigger is best-effort and can skip slots, especially right after
-the workflow is added or its cron changes, so it is only the periodic
-reconciliation path (including unstars) rather than the freshness guarantee.
-The scheduled refresh still runs every three hours at minute 17, avoiding the
-top-of-hour scheduling peak. Manual `workflow_dispatch` remains available.
-GitHub's built-in `GITHUB_TOKEN` is not an owner/collaborator credential for the
-restricted stargazer timeline endpoint, so exact chart generation uses the
-repository secret `STAR_HISTORY_TOKEN`. Keep that credential out of the
-publishing job: generation is read-only at the workflow-permission layer, while
-the separate publisher uses only its job-local `contents: write` built-in token
-to refresh the unprotected `star-history` data branch. When the secret is not
-configured, the workflow preserves the existing chart and exits successfully
-with a warning rather than publishing partial or fabricated history.
+It calls the public SHA-pinned `xpzouying/star-history` Action instead of
+re-cloning that generator. Hosted `api.star-history.com` README embeds are not
+used: after GitHub's June 2026 stargazers restriction they render a placeholder
+rather than a live chart, and the official workaround puts an encrypted
+contents-write token in the public README. The Action publishes only the chart
+files to the unprotected `star-history` data branch. New stars refresh the
+chart through the `watch` `started` event. GitHub's `schedule` trigger is
+best-effort and can skip slots, so it remains the periodic reconciliation path
+(including unstars), every three hours at minute 17. Manual `workflow_dispatch`
+remains available. Chart generation prefers the repository secret
+`STAR_HISTORY_TOKEN` and falls back to `github.token`; the Action's git push
+still uses the job-local `contents: write` built-in token.
 
 The classifier's `forceFull` is path-derived only. Event policy is applied by
 the Required workflow after classification:

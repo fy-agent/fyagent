@@ -15,74 +15,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  generate:
-    name: Generate charts
-    runs-on: macos-15
+  update:
+    name: Update charts
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
-    permissions:
-      contents: read
-    outputs:
-      configured: ${{ steps.credential.outputs.configured }}
-    steps:
-      - name: Check star history credential
-        id: credential
-        env:
-          STAR_HISTORY_TOKEN: ${{ secrets.STAR_HISTORY_TOKEN }}
-        run: |
-          if [ -z "$STAR_HISTORY_TOKEN" ]; then
-            echo "configured=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::STAR_HISTORY_TOKEN is not configured; keeping the existing Star History chart."
-          else
-            echo "configured=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Set up Go
-        if: steps.credential.outputs.configured == 'true'
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version: "1.27.0"
-          cache: false
-
-      - name: Fetch reviewed star-history generator
-        if: steps.credential.outputs.configured == 'true'
-        env:
-          STAR_HISTORY_SOURCE_SHA: 8b1f26dc5e9a17caa75da9351b688509ef312811
-        run: |
-          source_dir="$RUNNER_TEMP/star-history-source"
-          git init --quiet "$source_dir"
-          git -C "$source_dir" remote add origin https://github.com/xpzouying/star-history.git
-          git -C "$source_dir" fetch --quiet --depth=1 origin "$STAR_HISTORY_SOURCE_SHA"
-          test "$(git -C "$source_dir" rev-parse FETCH_HEAD)" = "$STAR_HISTORY_SOURCE_SHA"
-          git -C "$source_dir" checkout --quiet --detach FETCH_HEAD
-
-      - name: Generate light and dark charts
-        if: steps.credential.outputs.configured == 'true'
-        env:
-          GITHUB_TOKEN: ${{ secrets.STAR_HISTORY_TOKEN }}
-        run: |
-          output_dir="$RUNNER_TEMP/star-history-output/assets"
-          mkdir -p "$output_dir"
-          cd "$RUNNER_TEMP/star-history-source"
-          go run ./cmd/star-history \
-            -repo "$GITHUB_REPOSITORY" \
-            -out-light "$output_dir/star-history.svg" \
-            -out-dark "$output_dir/star-history-dark.svg"
-
-      - name: Upload generated charts
-        if: steps.credential.outputs.configured == 'true'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: star-history-charts
-          path: ${{ runner.temp }}/star-history-output/assets/*.svg
-          if-no-files-found: error
-          retention-days: 1
-
-  publish:
-    name: Publish charts
-    needs: generate
-    if: needs.generate.outputs.configured == 'true'
-    runs-on: macos-15
-    timeout-minutes: 5
     permissions:
       contents: write
     steps:
@@ -91,37 +27,8 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Download generated charts
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - name: Publish star history charts
+        uses: xpzouying/star-history@8b1f26dc5e9a17caa75da9351b688509ef312811
         with:
-          name: star-history-charts
-          path: ${{ runner.temp }}/star-history-output/assets
-
-      - name: Publish dedicated data branch
-        run: |
-          output_dir="$RUNNER_TEMP/star-history-output/assets"
-          test -s "$output_dir/star-history.svg"
-          test -s "$output_dir/star-history-dark.svg"
-          grep -q '<svg' "$output_dir/star-history.svg"
-          grep -q '<svg' "$output_dir/star-history-dark.svg"
-
-          if git fetch --quiet --depth=1 origin star-history:refs/remotes/origin/star-history 2>/dev/null; then
-            git show origin/star-history:assets/star-history.svg > "$RUNNER_TEMP/existing-star-history.svg"
-            git show origin/star-history:assets/star-history-dark.svg > "$RUNNER_TEMP/existing-star-history-dark.svg"
-            if cmp -s "$RUNNER_TEMP/existing-star-history.svg" "$output_dir/star-history.svg" \
-              && cmp -s "$RUNNER_TEMP/existing-star-history-dark.svg" "$output_dir/star-history-dark.svg"; then
-              echo "Star history is unchanged; skipping publish."
-              exit 0
-            fi
-          fi
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git checkout --orphan __star_history_publish
-          git rm -rf .
-          mkdir -p assets
-          cp "$output_dir/star-history.svg" assets/star-history.svg
-          cp "$output_dir/star-history-dark.svg" assets/star-history-dark.svg
-          git add assets/star-history.svg assets/star-history-dark.svg
-          git commit -m "chore: update star history chart"
-          git push --force origin HEAD:refs/heads/star-history
+          branch: star-history
+          token: ${{ secrets.STAR_HISTORY_TOKEN || github.token }}
