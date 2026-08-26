@@ -267,6 +267,16 @@ describe("durable supported-platform surface contract", () => {
         expect.objectContaining({ rule: "retired-kernel" }),
       ]),
     );
+    const hostedRunner = `${checker.SURFACE_MARKERS.runnerFamily}-24.04`;
+    expect(
+      checker.scanText(
+        ".github/workflows/star-history.yml",
+        `    runs-on: ${hostedRunner}`,
+      ),
+    ).toEqual([]);
+    expect(
+      checker.scanText("src/notes.ts", checker.SURFACE_MARKERS.runnerFamily),
+    ).toEqual([]);
   });
 
   it("keeps the always-run checker import closure on Node builtins only", () => {
@@ -302,7 +312,6 @@ describe("durable supported-platform surface contract", () => {
       markers.kernel,
       `is${markers.kernel}`,
       `${markers.subsystem}.exe`,
-      markers.runnerFamily,
       ...markers.distributions,
       markers.imagePackage,
       markers.sandboxPackage,

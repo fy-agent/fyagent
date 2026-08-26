@@ -235,7 +235,9 @@ Repository tasks do not install non-host Rust targets or provision a
 cross-compilation environment. Adding a new shipped product platform requires a
 matching native Actions job and its evidence, not a local target flag or
 compatibility script. Adding a development host is not product support: it must
-not add Linux packaging, distribution, or CI/Release surfaces, and it must not
+not add Linux packaging or distribution, and it must not treat Linux as a
+shipped product or Required CI/Release evidence surface. GitHub-hosted Linux
+runners are allowed for repository automation. It must not
 `compile_error!` or otherwise refuse `mise run check` on that host.
 
 ## 6. Lock and Update Governance
@@ -391,7 +393,8 @@ support.
 - Environment: `mise.toml` `settings.lockfile_platforms` equals the six
   development hosts; Node/pnpm/uv lock artifacts exist for `linux-x64` and
   `linux-arm64`
-- Product CI/Release workflows remain Windows and macOS runners only
+- Required CI and Release workflows remain Windows and macOS runners only;
+  repository automation may use GitHub-hosted Linux runners
 
 ### 4. Validation & Error Matrix
 

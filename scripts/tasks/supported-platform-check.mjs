@@ -85,10 +85,6 @@ const CONTENT_RULES = Object.freeze([
     id: "subsystem-bridge",
     pattern: contains(SURFACE_MARKERS.subsystem),
   },
-  {
-    id: "runner-family",
-    pattern: contains(SURFACE_MARKERS.runnerFamily),
-  },
   ...SURFACE_MARKERS.distributions.map((value) => ({
     id: "distribution-family",
     pattern: whole(value),

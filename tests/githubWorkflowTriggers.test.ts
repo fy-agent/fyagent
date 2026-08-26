@@ -158,7 +158,7 @@ describe("GitHub workflow trigger policy", () => {
     ]);
   });
 
-  it("updates Star History through a dedicated data branch with split token privileges", () => {
+  it("updates Star History through the public self-hosted action and a dedicated data branch", () => {
     const source = readWorkflow("star-history.yml");
     const triggerSection = readHeaderBefore(source, "\npermissions:");
 
@@ -176,39 +176,29 @@ describe("GitHub workflow trigger policy", () => {
     );
     expect(source).toContain("permissions:\n  contents: read");
     expect(source).toContain(
-      "generate:\n    name: Generate charts\n    runs-on: macos-15",
+      "update:\n    name: Update charts\n    runs-on: ubuntu-24.04",
     );
     expect(source).toContain(
-      "generate:\n    name: Generate charts\n    runs-on: macos-15\n    timeout-minutes: 10\n    permissions:\n      contents: read\n    outputs:\n      configured: ${{ steps.credential.outputs.configured }}",
+      "update:\n    name: Update charts\n    runs-on: ubuntu-24.04\n    timeout-minutes: 10\n    permissions:\n      contents: write",
+    );
+    expect(source).toContain("branch: star-history");
+    expect(source).toContain(
+      "token: ${{ secrets.STAR_HISTORY_TOKEN || github.token }}",
     );
     expect(source).toContain(
-      "publish:\n    name: Publish charts\n    needs: generate\n    if: needs.generate.outputs.configured == 'true'\n    runs-on: macos-15\n    timeout-minutes: 5\n    permissions:\n      contents: write",
-    );
-    expect(source).toContain(
-      "STAR_HISTORY_TOKEN: ${{ secrets.STAR_HISTORY_TOKEN }}",
-    );
-    expect(source).toContain("GITHUB_TOKEN: ${{ secrets.STAR_HISTORY_TOKEN }}");
-    expect(source).not.toContain("GITHUB_TOKEN: ${{ github.token }}");
-    expect(source.match(/secrets\.STAR_HISTORY_TOKEN/g)).toHaveLength(2);
-    expect(source).toContain(
-      "STAR_HISTORY_SOURCE_SHA: 8b1f26dc5e9a17caa75da9351b688509ef312811",
-    );
-    expect(source).toContain(
-      "git push --force origin HEAD:refs/heads/star-history",
+      "uses: xpzouying/star-history@8b1f26dc5e9a17caa75da9351b688509ef312811",
     );
     expect(source).not.toMatch(/HEAD:refs\/heads\/main/);
-    const publishStart = source.indexOf("\n  publish:\n");
-    expect(publishStart).toBeGreaterThan(-1);
-    expect(source.slice(publishStart)).not.toContain("secrets.");
+    expect(source).not.toContain("actions/upload-artifact");
+    expect(source).not.toContain("STAR_HISTORY_SOURCE_SHA");
+    expect(source).not.toContain("go run ./cmd/star-history");
 
     const uses = [...source.matchAll(/^\s+uses:\s+(.+)$/gm)].map(
       (match) => match[1],
     );
     expect(uses).toEqual([
-      "actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0",
-      "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1",
       "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1",
-      "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1",
+      "xpzouying/star-history@8b1f26dc5e9a17caa75da9351b688509ef312811",
     ]);
   });
 
