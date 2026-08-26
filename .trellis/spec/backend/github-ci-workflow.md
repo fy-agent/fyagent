@@ -115,6 +115,9 @@ Classification invariants:
   frontend, desktop, backend, or Windows-native product jobs;
 - commit-message policy (`commit-convention-push.yml` and
   `verify-commit-messages.mjs`) reaches contracts without becoming Full CI;
+- repository-owned GitHub automation that does not schedule or aggregate
+  Required CI (`labeler.yml` and `star-history.yml`) reaches contracts without
+  becoming CI authority;
 - tracked GitHub metadata/templates, optional agent/editor/Trellis governance,
   and repository-governance helpers reach contracts plus docs/spec where they
   are documentation/governance surfaces rather than product code;

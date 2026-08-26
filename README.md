@@ -167,6 +167,13 @@ mise run build
 
 工具链与小范围检查命令见[开发文档](docs/fyagent/development/README.md)。
 
+## Star History
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/fy-agent/fyagent/star-history/assets/star-history-dark.svg">
+  <img src="https://raw.githubusercontent.com/fy-agent/fyagent/star-history/assets/star-history.svg" alt="FyAgent Star History">
+</picture>
+
 ## 项目沿革与授权
 
 FyAgent 的前身 VibeKey 曾设想把 AI 配置和操作权装进一块可以随身携带的实体键盘。项目继续推进后，我们发现真正需要随身带走的不是一块硬件，而是每个人自己的 AI 选择、习惯和工作方式。于是产品从硬件控制器转向跨平台桌面软件，也把名字改成了 **FyAgent（For You Agent）**。
