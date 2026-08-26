@@ -14,7 +14,6 @@ import type {
   AgentActionResult,
   AgentInstallReadiness,
   AgentInstallReadinessPort,
-  StartAgentActionRequest,
 } from "@/v2/shared/features/agent-install-readiness";
 
 function readiness(agentId: "qoderwork" | "codex"): AgentInstallReadiness {
@@ -123,40 +122,32 @@ describe("AgentInstallReadinessSection", () => {
     let stage: AgentActionJobStage = "downloading";
     const port: AgentInstallReadinessPort = {
       get: vi.fn(async () => (stage === "succeeded" ? current : available)),
-      startAction: vi.fn(
-        async (
-          _request: StartAgentActionRequest,
-        ): Promise<AgentActionResult> => ({
-          contractVersion: 1,
-          agentId: "qoderwork",
-          action: "update",
-          jobId: "job-1",
-          stage: "checking",
-          reasonCode: null,
-        }),
-      ),
-      cancelAction: vi.fn(
-        async (_jobId: string): Promise<AgentActionJobSnapshot> => ({
-          contractVersion: 1,
-          jobId: "job-1",
-          agentId: "qoderwork",
-          action: "update",
-          stage: "cancelled",
-          cancellable: false,
-          reasonCode: "cancelled",
-        }),
-      ),
-      getActionJob: vi.fn(
-        async (_jobId: string): Promise<AgentActionJobSnapshot> => ({
-          contractVersion: 1,
-          jobId: "job-1",
-          agentId: "qoderwork",
-          action: "update",
-          stage,
-          cancellable: true,
-          reasonCode: null,
-        }),
-      ),
+      startAction: vi.fn(async (): Promise<AgentActionResult> => ({
+        contractVersion: 1,
+        agentId: "qoderwork",
+        action: "update",
+        jobId: "job-1",
+        stage: "checking",
+        reasonCode: null,
+      })),
+      cancelAction: vi.fn(async (): Promise<AgentActionJobSnapshot> => ({
+        contractVersion: 1,
+        jobId: "job-1",
+        agentId: "qoderwork",
+        action: "update",
+        stage: "cancelled",
+        cancellable: false,
+        reasonCode: "cancelled",
+      })),
+      getActionJob: vi.fn(async (): Promise<AgentActionJobSnapshot> => ({
+        contractVersion: 1,
+        jobId: "job-1",
+        agentId: "qoderwork",
+        action: "update",
+        stage,
+        cancellable: true,
+        reasonCode: null,
+      })),
     };
     render(<AgentInstallReadinessSection agentId="qoderwork" port={port} />);
     fireEvent.click(

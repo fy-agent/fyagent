@@ -8,6 +8,12 @@ import {
 } from "../../shared/config/navigation";
 import { classNames } from "../../shared/design-system/classNames";
 import {
+  Collapsible,
+  CollapsibleCaret,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "../../shared/ui/Collapsible";
+import {
   SelectionLens,
   SelectionLensGroup,
 } from "../../shared/ui/SelectionLens";
@@ -50,12 +56,20 @@ function NavigationLink({
   );
 }
 
+function isExcludedFromKeyboard(control: HTMLElement): boolean {
+  return (
+    control.closest("[hidden]") !== null ||
+    control.closest("[inert]") !== null ||
+    control.closest('[aria-hidden="true"]') !== null
+  );
+}
+
 function visibleNavigationControls(navigation: HTMLElement): HTMLElement[] {
   return Array.from(
     navigation.querySelectorAll<HTMLElement>(
       'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
     ),
-  ).filter((control) => control.closest("[hidden]") === null);
+  ).filter((control) => !isExcludedFromKeyboard(control));
 }
 
 export function SideNavigation() {
@@ -160,60 +174,69 @@ export function SideNavigation() {
           const content = (
             <span className="fy-side-navigation-toggle-content">
               <span>{group.label}</span>
-              <CaretDownIcon
+              <CollapsibleCaret
+                open={configurationExpanded}
                 className="fy-side-navigation-caret"
-                size={16}
-                weight="bold"
-                aria-hidden
-                data-testid="configuration-management-caret"
-              />
+              >
+                <CaretDownIcon
+                  size={16}
+                  weight="bold"
+                  aria-hidden
+                  data-testid="configuration-management-caret"
+                />
+              </CollapsibleCaret>
             </span>
           );
           const visuallyActive = groupActive && !configurationExpanded;
 
           return (
-            <section
-              className="fy-side-navigation-group fy-side-navigation-group-collapsible"
-              aria-labelledby={groupLabelId}
-              data-navigation-group={group.id}
+            <Collapsible
+              asChild
+              open={configurationExpanded}
+              onOpenChange={setConfigurationExpanded}
               key={group.id}
             >
-              <button
-                ref={configurationToggleRef}
-                className={classNames(
-                  "fy-side-navigation-toggle",
-                  groupActive && "fy-side-navigation-toggle-active",
-                )}
-                id={groupLabelId}
-                type="button"
-                aria-expanded={configurationExpanded}
-                aria-controls={configurationItemsId}
-                data-active={groupActive || undefined}
-                data-testid="configuration-management-toggle"
-                onClick={() =>
-                  setConfigurationExpanded((expanded) => !expanded)
-                }
+              <section
+                className="fy-side-navigation-group fy-side-navigation-group-collapsible"
+                aria-labelledby={groupLabelId}
+                data-navigation-group={group.id}
               >
-                <SelectionLens active={visuallyActive} />
-                {content}
-              </button>
-              <ul
-                ref={configurationItemsRef}
-                className="fy-side-navigation-items"
-                id={configurationItemsId}
-                hidden={!configurationExpanded}
-                data-testid="configuration-management-items"
-              >
-                {group.items.map((item) => (
-                  <li key={item.id}>
-                    <NavigationLink
-                      item={item}
-                      visuallyAvailable={configurationExpanded}
-                    />
-                  </li>
-                ))}
-              </ul>
-            </section>
+                <CollapsibleTrigger asChild>
+                  <button
+                    ref={configurationToggleRef}
+                    className={classNames(
+                      "fy-side-navigation-toggle",
+                      groupActive && "fy-side-navigation-toggle-active",
+                    )}
+                    id={groupLabelId}
+                    type="button"
+                    data-active={groupActive || undefined}
+                    data-testid="configuration-management-toggle"
+                  >
+                    <SelectionLens active={visuallyActive} />
+                    {content}
+                  </button>
+                </CollapsibleTrigger>
+                <CollapsibleContent open={configurationExpanded}>
+                  <ul
+                    ref={configurationItemsRef}
+                    className="fy-side-navigation-items"
+                    id={configurationItemsId}
+                    hidden={!configurationExpanded}
+                    data-testid="configuration-management-items"
+                  >
+                    {group.items.map((item) => (
+                      <li key={item.id}>
+                        <NavigationLink
+                          item={item}
+                          visuallyAvailable={configurationExpanded}
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                </CollapsibleContent>
+              </section>
+            </Collapsible>
           );
         })}
       </SelectionLensGroup>

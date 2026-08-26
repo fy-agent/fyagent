@@ -55,6 +55,13 @@ function agentItem(
     .filter({ has: page.getByRole("heading", { name, exact: true }) });
 }
 
+async function confirmSaveDisclosure(page: Parameters<typeof openV2Page>[0]) {
+  const dialog = page.getByRole("dialog", { name: "保存前确认" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText("将修改")).toBeVisible();
+  await dialog.getByRole("button", { name: "确认保存" }).click();
+}
+
 test("Agent directory keeps exact native order and accessible configuration entry points", async ({
   page,
 }) => {
@@ -65,8 +72,7 @@ test("Agent directory keeps exact native order and accessible configuration entr
   await expect(page.getByTestId("agents-page")).toBeVisible();
   await expect(
     agentSelector(page).locator(".fy-agent-directory-card"),
-  ).toHaveCount(0);
-  await page.getByRole("button", { name: "开始扫描" }).click();
+  ).toHaveCount(7);
   await expect(page.getByRole("button", { name: "重新扫描" })).toBeEnabled();
 
   const items = agentSelector(page).locator(".fy-agent-directory-card");
@@ -137,13 +143,7 @@ test("Agent directory and Models keep their responsive 760px boundaries", async 
   const health = monitorPageHealth(page);
   await openV2Page(page, "/agents");
   const ensureScanned = async () => {
-    const scanBtn = page.getByRole("button", { name: /^(开始扫描|重新扫描)$/ });
-    if (await scanBtn.isVisible()) {
-      await scanBtn.click();
-      await expect(
-        page.getByRole("button", { name: "重新扫描" }),
-      ).toBeEnabled();
-    }
+    await expect(page.getByRole("button", { name: "重新扫描" })).toBeEnabled();
   };
 
   await ensureScanned();
@@ -236,7 +236,6 @@ test("Agent directory keeps cards clean with no prototype-violating links or dis
   await installRichTauriFeatureFixture(page);
   const health = monitorPageHealth(page);
   await openV2Page(page, "/agents");
-  await page.getByRole("button", { name: "开始扫描" }).click();
   await expect(page.getByRole("button", { name: "重新扫描" })).toBeEnabled();
 
   await expect(page.getByText("查看完整介绍")).toHaveCount(0);
@@ -287,7 +286,6 @@ test("Agent directory does not observe WorkBuddy or Provider summaries before co
   expect(commands).not.toContain("get_workbuddy_status");
   expect(commands).not.toContain("get_providers");
 
-  await page.getByRole("button", { name: "开始扫描" }).click();
   await expect(page.getByRole("button", { name: "重新扫描" })).toBeEnabled();
 
   commands = (await featureFixtureCalls(page)).map((call) => call.command);
@@ -600,11 +598,12 @@ test("Codex quick setup locks duplicate submission and sends exact provider payl
   await page.getByLabel("服务地址").fill("https://codex.example.test/v1");
   await page.getByLabel("API Key", { exact: true }).fill(apiKey);
   await page.getByLabel("模型 ID").fill("gpt-browser");
-  const providerPanel = page.getByRole("region", { name: "Codex 模型配置" });
-  const submit = providerPanel.locator("button.fy-control-button-primary");
+  const submit = page.getByRole("button", { name: "保存并设为当前配置" });
   await submit.click();
-  await expect(submit).toBeDisabled();
-  await submit.dispatchEvent("click");
+  await confirmSaveDisclosure(page);
+  const busySubmit = page.getByRole("button", { name: "配置中…" });
+  await expect(busySubmit).toBeDisabled();
+  await busySubmit.dispatchEvent("click");
   const saveWorkspace = page.getByRole("region", {
     name: "Change Plan Provider 保存",
   });
@@ -750,6 +749,7 @@ test("Claude quick setup updates its reserved row with exact settings and switch
   await page.getByLabel("API Key", { exact: true }).fill(apiKey);
   await page.getByLabel("模型 ID").fill("claude-browser");
   await page.getByRole("button", { name: "保存并设为当前配置" }).click();
+  await confirmSaveDisclosure(page);
   await expect(page.getByLabel("API Key", { exact: true })).toHaveValue("");
 
   await expect
@@ -794,6 +794,7 @@ test("Provider atomic failure reports rollback instead of a partial result", asy
   await page.getByLabel("API Key", { exact: true }).fill("partial-secret");
   await page.getByLabel("模型 ID").fill("partial-model");
   await page.getByRole("button", { name: "保存并设为当前配置" }).click();
+  await confirmSaveDisclosure(page);
   await page
     .getByRole("region", { name: "Change Plan Provider 保存" })
     .getByRole("button", { name: "确认应用" })

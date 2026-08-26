@@ -1,4 +1,4 @@
-import { useReducer } from "react";
+import { useCallback, useEffect, useReducer, useRef } from "react";
 
 import type { AgentInstallReadiness } from "../../shared/features/agent-install-readiness";
 import { useAgentInstallReadiness } from "../../shared/features/queries";
@@ -19,7 +19,7 @@ export type AgentDirectoryScanState = {
   lastSuccessfulScanAt: number | null;
 };
 
-type AgentDirectoryScanAction =
+export type AgentDirectoryScanAction =
   | { type: "start"; requestId: number }
   | {
       type: "settled";
@@ -27,7 +27,17 @@ type AgentDirectoryScanAction =
       agentId: AgentCatalogId;
       data?: AgentInstallReadiness;
     }
-  | { type: "finish"; requestId: number; finishedAt: number };
+  | { type: "finish"; requestId: number; finishedAt: number }
+  | {
+      type: "applyReadiness";
+      agentId: AgentCatalogId;
+      data: AgentInstallReadiness;
+    };
+
+export type UseAgentDirectoryScanOptions = {
+  /** AgentsPage must pass true. Default stays false for hook-level tests. */
+  autoStart?: boolean;
+};
 
 const initialScanState: AgentDirectoryScanState = {
   status: "idle",
@@ -43,7 +53,7 @@ function appendUnique<T>(items: readonly T[], item: T): T[] {
   return items.includes(item) ? [...items] : [...items, item];
 }
 
-function scanReducer(
+export function scanReducer(
   state: AgentDirectoryScanState,
   action: AgentDirectoryScanAction,
 ): AgentDirectoryScanState {
@@ -55,6 +65,12 @@ function scanReducer(
       settledIds: [],
       currentSuccessIds: [],
       currentFailureIds: [],
+    };
+  }
+  if (action.type === "applyReadiness") {
+    return {
+      ...state,
+      results: { ...state.results, [action.agentId]: action.data },
     };
   }
   if (action.requestId !== state.requestId) return state;
@@ -102,18 +118,34 @@ function useReadinessQueries() {
   };
 }
 
-export function useAgentDirectoryScan() {
+export function useAgentDirectoryScan(options?: UseAgentDirectoryScanOptions) {
+  const autoStart = options?.autoStart ?? false;
   const [state, dispatch] = useReducer(scanReducer, initialScanState);
   const queries = useReadinessQueries();
+  const queriesRef = useRef(queries);
+  const stateRef = useRef(state);
 
-  const start = () => {
-    if (state.status === "scanning") return;
-    const requestId = state.requestId + 1;
+  useEffect(() => {
+    queriesRef.current = queries;
+    stateRef.current = state;
+  });
+
+  const start = useCallback(() => {
+    if (stateRef.current.status === "scanning") return;
+    const requestId = stateRef.current.requestId + 1;
+    stateRef.current = {
+      ...stateRef.current,
+      status: "scanning",
+      requestId,
+      settledIds: [],
+      currentSuccessIds: [],
+      currentFailureIds: [],
+    };
     dispatch({ type: "start", requestId });
     void Promise.all(
       AGENT_CATALOG_IDS.map(async (agentId) => {
         try {
-          const result = await queries[agentId].refetch();
+          const result = await queriesRef.current[agentId].refetch();
           dispatch({
             type: "settled",
             requestId,
@@ -127,11 +159,33 @@ export function useAgentDirectoryScan() {
     ).then(() => {
       dispatch({ type: "finish", requestId, finishedAt: Date.now() });
     });
-  };
+  }, []);
 
-  return { state, start };
+  const applyReadiness = useCallback(
+    (agentId: AgentCatalogId, data: AgentInstallReadiness) => {
+      dispatch({ type: "applyReadiness", agentId, data });
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!autoStart) return;
+    start();
+  }, [autoStart, start]);
+
+  return { state, start, applyReadiness };
 }
 
 export type AgentDirectoryScanController = ReturnType<
   typeof useAgentDirectoryScan
 >;
+
+export {
+  isAgentExistenceProven,
+  observeAgentDirectoryRow,
+} from "./agentDirectoryScanProjection";
+export type {
+  AgentDirectoryRowKind,
+  AgentDirectoryRowObservation,
+  AgentDirectoryScanView,
+} from "./agentDirectoryScanProjection";

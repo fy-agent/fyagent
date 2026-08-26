@@ -1,10 +1,4 @@
 import {
-  animate,
-  motion,
-  useMotionValue,
-  useReducedMotion,
-} from "framer-motion";
-import {
   createContext,
   useCallback,
   useContext,
@@ -15,15 +9,17 @@ import {
 } from "react";
 
 import { classNames } from "../design-system/classNames";
+import {
+  animate,
+  fySpringTransition,
+  motion,
+  useMotionValue,
+  useReducedMotion,
+} from "./motion";
 
 import "./selection-lens.css";
 
-export const selectionLensTransition = {
-  type: "spring",
-  stiffness: 520,
-  damping: 42,
-  mass: 0.62,
-} as const;
+export { fySpringTransition as selectionLensTransition };
 
 type LensBox = {
   x: number;
@@ -229,10 +225,10 @@ export function SelectionLensGroup({
     }
 
     const controls = [
-      animate(left, box.x, selectionLensTransition),
-      animate(top, box.y, selectionLensTransition),
-      animate(width, box.width, selectionLensTransition),
-      animate(height, box.height, selectionLensTransition),
+      animate(left, box.x, fySpringTransition),
+      animate(top, box.y, fySpringTransition),
+      animate(width, box.width, fySpringTransition),
+      animate(height, box.height, fySpringTransition),
     ];
     return () => {
       for (const control of controls) {

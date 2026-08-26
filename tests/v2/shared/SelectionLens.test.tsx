@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it } from "vitest";
 
+import { fySpringTransition } from "@/v2/shared/ui/motion";
 import {
   SelectionLens,
   SelectionLensGroup,
@@ -13,6 +14,7 @@ import {
 
 describe("SelectionLens", () => {
   it("keeps the source L1 control spring", () => {
+    expect(selectionLensTransition).toBe(fySpringTransition);
     expect(selectionLensTransition).toEqual({
       type: "spring",
       stiffness: 520,

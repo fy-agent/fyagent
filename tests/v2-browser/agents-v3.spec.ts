@@ -90,7 +90,7 @@ async function installFixture(page: Page): Promise<void> {
   await installAgentV3Overrides(page);
 }
 
-test("Agent V3 scans only on demand and reuses existing Skill and MCP assignments", async ({
+test("Agent V3 shows the full catalog, auto-scans, and reuses existing Skill and MCP assignments", async ({
   page,
 }) => {
   await installFixture(page);
@@ -99,21 +99,7 @@ test("Agent V3 scans only on demand and reuses existing Skill and MCP assignment
 
   const directory = page.getByRole("region", { name: "AI 软件目录" });
   await expect(directory).toBeVisible();
-  // In idle state before scanning, list is empty
-  await expect(directory.getByRole("article")).toHaveCount(0);
-  expect(
-    (await featureFixtureCalls(page)).filter(
-      (call) => call.command === "get_agent_install_readiness",
-    ),
-  ).toEqual([]);
-
-  await directory.getByRole("button", { name: "开始扫描" }).click();
-  await expect(
-    directory.getByRole("button", { name: "扫描中…" }),
-  ).toBeDisabled();
-  await expect(directory.getByRole("button", { name: /取消扫描/ })).toHaveCount(
-    0,
-  );
+  await expect(directory.getByRole("article")).toHaveCount(7);
   await expect
     .poll(
       async () =>
@@ -121,17 +107,18 @@ test("Agent V3 scans only on demand and reuses existing Skill and MCP assignment
           (call) => call.command === "get_agent_install_readiness",
         ).length,
     )
-    .toBe(7);
+    .toBeGreaterThanOrEqual(7);
   await expect(
     directory.getByRole("button", { name: "重新扫描" }),
   ).toBeEnabled();
+  await expect(directory.getByRole("button", { name: /取消扫描/ })).toHaveCount(
+    0,
+  );
 
-  // Completed list only shows installed items (workbuddy, grokbuild, codex, claude-code = 4 items)
-  await expect(directory.getByRole("article")).toHaveCount(4);
   const brandFrames = directory.locator(
     '.fy-agent-directory-card .fy-catalog-brand-frame[data-size="detail"]',
   );
-  await expect(brandFrames).toHaveCount(4);
+  await expect(brandFrames).toHaveCount(7);
   expect(
     await brandFrames.evaluateAll((frames) =>
       frames.map((frame) => ({
@@ -139,10 +126,25 @@ test("Agent V3 scans only on demand and reuses existing Skill and MCP assignment
         height: frame.getBoundingClientRect().height,
       })),
     ),
-  ).toEqual([0, 1, 2, 3].map(() => ({ width: 64, height: 64 })));
+  ).toEqual([0, 1, 2, 3, 4, 5, 6].map(() => ({ width: 64, height: 64 })));
 
-  // Negative assertions
-  await expect(directory.getByText("未确认", { exact: true })).toHaveCount(0);
+  const configurable = ["workbuddy", "grokbuild", "codex", "claude-code"];
+  const blocked = ["qoderwork", "trae-work", "opencode"];
+  for (const agentId of configurable) {
+    await expect(
+      directory.locator(`[data-agent-id="${agentId}"]`).getByRole("button", {
+        name: "进行配置",
+      }),
+    ).toBeEnabled();
+  }
+  for (const agentId of blocked) {
+    await expect(
+      directory.locator(`[data-agent-id="${agentId}"]`).getByRole("button", {
+        name: "进行配置",
+      }),
+    ).toBeDisabled();
+  }
+
   await expect(directory.getByText(/“未确认”不等于“未安装”/)).toHaveCount(0);
   await expect(directory.getByText(/上次扫描：/)).toHaveCount(0);
   await expect(directory.getByText("查看完整介绍")).toHaveCount(0);

@@ -280,11 +280,12 @@ describe("FyAgent V2 architecture boundary", () => {
     ).toEqual([]);
   });
 
-  it("keeps framer-motion behind the selection-lens adapter", () => {
-    const adapterPath = "shared/ui/SelectionLens.tsx";
+  it("keeps framer-motion behind reviewed shared motion owners", () => {
+    const allowedOwners = new Set(["shared/ui/motion.ts"]);
     const violations = parsedModules.flatMap(({ references }) =>
       references.flatMap(({ file, line, specifier }) =>
-        specifier === "framer-motion" && relativeV2Path(file) !== adapterPath
+        specifier === "framer-motion" &&
+        !allowedOwners.has(relativeV2Path(file))
           ? [`${relativeV2Path(file)}:${line} imports ${specifier}`]
           : [],
       ),
@@ -292,7 +293,7 @@ describe("FyAgent V2 architecture boundary", () => {
 
     expect(
       violations,
-      `framer-motion escaped its V2 adapter:\n${violations.join("\n")}`,
+      `framer-motion escaped reviewed shared motion owners:\n${violations.join("\n")}`,
     ).toEqual([]);
   });
 

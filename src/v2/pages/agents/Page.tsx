@@ -25,7 +25,7 @@ export function AgentsPage() {
   const pageActive = pathname === "/agents";
   const [searchParams, setSearchParams] = useSearchParams();
   const catalogQuery = useAgentCatalog();
-  const scanController = useAgentDirectoryScan();
+  const scanController = useAgentDirectoryScan({ autoStart: true });
   const lastConfiguration = useRef<{
     target: (typeof PRODUCT_DIRECTORY)[number]["agentId"];
     section: AgentSection;

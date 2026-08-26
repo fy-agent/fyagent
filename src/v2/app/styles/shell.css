@@ -192,11 +192,6 @@
 .fy-side-navigation-caret {
   flex: 0 0 auto;
   color: var(--fy-text-tertiary);
-  transition: transform 160ms ease;
-}
-
-.fy-side-navigation-toggle[aria-expanded="true"] .fy-side-navigation-caret {
-  transform: rotate(180deg);
 }
 
 .fy-side-navigation-items {
