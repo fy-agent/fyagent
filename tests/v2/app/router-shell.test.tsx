@@ -93,7 +93,7 @@ describe("FyAgent V2 routing", () => {
       expect(
         screen.getByRole("link", { name: "AI软件配置", current: "page" }),
       ).toHaveAttribute("href", "/agents");
-      expect(screen.getAllByTestId("liquid-glass-lens")).toHaveLength(1);
+      expect(screen.queryByTestId("liquid-glass-lens")).not.toBeInTheDocument();
       expect(within(navigation).getAllByTestId("selection-lens")).toHaveLength(
         1,
       );
@@ -116,10 +116,10 @@ describe("FyAgent V2 routing", () => {
 
       expect(activeLink).toHaveAttribute("aria-current", "page");
       expect(selectedLinks).toEqual([activeLink]);
-      expect(within(activeLink).getByTestId("liquid-glass-lens")).toBeVisible();
+      expect(within(activeLink).queryByTestId("liquid-glass-lens")).toBeNull();
       expect(
-        within(navigation).getAllByTestId("liquid-glass-lens"),
-      ).toHaveLength(1);
+        within(navigation).queryByTestId("liquid-glass-lens"),
+      ).not.toBeInTheDocument();
       expect(within(navigation).getByTestId("selection-lens")).toBeVisible();
       expect(within(navigation).getAllByTestId("selection-lens")).toHaveLength(
         1,

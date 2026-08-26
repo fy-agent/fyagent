@@ -7,7 +7,13 @@ import { classNames } from "../../shared/design-system/classNames";
 import type { ModelWriteTarget } from "../../shared/features/types";
 import { CatalogDetail } from "../../shared/ui/catalog";
 import { CopyablePath } from "../../shared/ui/CopyablePath";
-import { Badge, Checkbox, Tooltip } from "../../shared/ui/primitives";
+import {
+  Badge,
+  Button,
+  Checkbox,
+  Dialog,
+  Tooltip,
+} from "../../shared/ui/primitives";
 import { FieldFeedback, type Notice } from "./feedback";
 import type {
   ModelProbeResult,
@@ -46,6 +52,30 @@ export function useModelsDraftCommit() {
   };
 }
 
+export function useModelsWriteConfirm<T>() {
+  const [pending, setPending] = useState<T | null>(null);
+  const pendingRef = useRef<T | null>(null);
+
+  const requestConfirm = useCallback((value: T) => {
+    pendingRef.current = value;
+    setPending(value);
+  }, []);
+
+  const takePending = useCallback((): T | null => {
+    const value = pendingRef.current;
+    pendingRef.current = null;
+    setPending(null);
+    return value;
+  }, []);
+
+  return {
+    open: pending !== null,
+    pending,
+    requestConfirm,
+    takePending,
+  };
+}
+
 export function ModelsWriteDisclosure({
   targets,
 }: {
@@ -53,11 +83,7 @@ export function ModelsWriteDisclosure({
 }) {
   if (targets.length === 0) return null;
   return (
-    <section className="fy-models-write-disclosure" aria-label="配置写入与备份">
-      <strong>保存前确认</strong>
-      <p>
-        本次只修改下列配置文件中的相关模型字段，并在写入前保留一份滚动备份。
-      </p>
+    <div className="fy-models-write-disclosure">
       <div className="fy-models-write-targets">
         {targets.map((target) => (
           <div className="fy-models-write-target" key={target.path}>
@@ -80,7 +106,42 @@ export function ModelsWriteDisclosure({
       <p className="fy-models-muted">
         每个文件只保留这一份备份；再次保存会用修改前的最新内容更新它。
       </p>
-    </section>
+    </div>
+  );
+}
+
+export function ModelsWriteConfirmDialog({
+  open,
+  targets,
+  onConfirm,
+  onCancel,
+}: {
+  open: boolean;
+  targets: readonly ModelWriteTarget[];
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) onCancel();
+      }}
+      title="保存前确认"
+      description="本次只修改下列配置文件中的相关模型字段，并在写入前保留一份滚动备份。"
+      actions={
+        <>
+          <Button autoFocus onClick={onCancel}>
+            取消
+          </Button>
+          <Button className="fy-control-button-primary" onClick={onConfirm}>
+            确认保存
+          </Button>
+        </>
+      }
+    >
+      <ModelsWriteDisclosure targets={targets} />
+    </Dialog>
   );
 }
 

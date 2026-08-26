@@ -536,8 +536,11 @@ fetch/save controls.
 
 ### Writable Models disclosure and draft commit state
 
-- Provider Quick Setup, WorkBuddy, and OpenCode must show `ModelsWriteDisclosure`
-  before a local save can run. Every displayed target comes from a native DTO;
+- Provider Quick Setup, WorkBuddy, and OpenCode must show
+  `ModelsWriteConfirmDialog` after the user clicks save and before a local save
+  can run. The write-target disclosure is not laid out on the page. Cancel
+  closes the dialog and does not start the save; confirm proceeds with the
+  already-validated request. Every displayed target comes from a native DTO;
   React never constructs `~/.codex`, `.workbuddy`, `.config/opencode`, or a
   backup path. Each row visibly labels `将修改` and `备份位置`, and states that
   the single rolling backup is replaced by the immediately previous preimage.
@@ -851,10 +854,10 @@ fetch/save controls.
   carries non-secret live-change state, plan risks remain request-attributed,
   the current draft's key is cleared at terminal handling, and a matching
   `currentId` reread is described only as fixed-ID activation confirmation.
-- Good: a writable Models panel shows native `将修改` / `备份位置` metadata,
-  saves revision N, and becomes clean only if no N+1 edit happened while the
-  request was pending. A successful save also invalidates probe feedback from
-  the old revision.
+- Good: a writable Models panel opens native `将修改` / `备份位置` metadata in
+  the save-confirm dialog, not as page layout, saves revision N, and becomes
+  clean only if no N+1 edit happened while the request was pending. A successful
+  save also invalidates probe feedback from the old revision.
 - Good: Codex/Grok Build probes use Responses, Claude uses Messages with
   Bearer (Quick Setup `ANTHROPIC_AUTH_TOKEN`) and `{base}/v1/messages`, and
   WorkBuddy/OpenCode use streaming Chat Completions (`stream: true`) with

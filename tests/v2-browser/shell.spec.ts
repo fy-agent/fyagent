@@ -155,7 +155,7 @@ test("keeps the complete shell visible, separate, and overflow-free", async ({
     expect(box.y + box.height).toBeLessThanOrEqual(viewportSize!.height + 1);
   }
 
-  await expect(page.getByTestId("liquid-glass-lens")).toHaveCount(1);
+  await expect(page.getByTestId("liquid-glass-lens")).toHaveCount(0);
 
   const contentViewport = page.getByTestId("content-viewport");
   const contentBox = await requiredBox(contentViewport, "content viewport");
@@ -192,8 +192,8 @@ test("keeps hash, selected link, and aria-current aligned for every route", asyn
     await expect(selectedLinks).toHaveCount(1);
     await expect(selectedLinks).toHaveText(label);
     const lenses = page.getByTestId("liquid-glass-lens");
-    await expect(lenses).toHaveCount(1);
-    await expect(link.getByTestId("liquid-glass-lens")).toHaveCount(1);
+    await expect(lenses).toHaveCount(0);
+    await expect(link.getByTestId("liquid-glass-lens")).toHaveCount(0);
     await expect(link).toHaveClass(/fy-side-navigation-item-selected/);
     await expect(page.getByTestId("content-viewport")).not.toHaveText("");
 

@@ -208,11 +208,8 @@
 
 .fy-models-write-disclosure {
   display: grid;
-  gap: 8px;
-  padding: 12px;
-  border: 1px solid var(--fy-border);
-  border-radius: 12px;
-  background: var(--fy-surface);
+  gap: 10px;
+  min-width: 0;
 }
 
 .fy-models-write-disclosure > p {

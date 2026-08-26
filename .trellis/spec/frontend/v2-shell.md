@@ -308,8 +308,10 @@ L3 interactive glass       selected lens, tools, tooltip, and popover
   glass edge, an inset highlight, and a depth shadow. Do not use an opaque
   white dashboard, selected underline, rainbow/chromatic effects, or fake
   native chrome.
-- Use `@samasante/liquid-glass` only behind `LiquidGlassLens`. Mount at most one
-  production instance, inside the active `NavLink`; do not stretch it across
+- Use `@samasante/liquid-glass` only behind `LiquidGlassLens`. Do not wrap
+  production navigation labels in `LiquidGlassLens`: SVG refraction smears the
+  selected text. Production selected state is the `SelectionLens` overlay plus
+  CSS. The UI Lab may mount one isolated specimen. Do not stretch a lens across
   the navigation track, tools, popovers, content plane, or background.
 - Use `SelectionLens` for interruptible exclusive option tracks: primary nav,
   catalog lists, feature tabs, feature lists, and UI Lab tabs. Feature pages
@@ -334,8 +336,9 @@ L3 interactive glass       selected lens, tools, tooltip, and popover
   collapse to the track origin (`inset`, `inset`). Do not give catalog rails a
   second slider. Do not interpolate size with `transform: scale`.
 - The `NavLink` owns hit area, focus, accessible name, and `aria-current`.
-  Refraction is decorative enhancement. Project CSS must independently express
-  tint, selected border/color/shadow, edge/highlight, and backdrop fallback.
+  Selected labels stay ordinary CSS text. Do not wrap them in `LiquidGlassLens`.
+  Project CSS must independently express tint, selected border/color/shadow,
+  edge/highlight, and backdrop fallback.
 - Keep broad structural glass in CSS. SVG filters are not a substitute for
   accessible state and must not be animated across layout or multiplied across
   controls. Do not put the SVG `Glass` node on the sliding pill, and do not
@@ -412,7 +415,7 @@ Agent/Models, Skills, and MCP ports do not by themselves make it Release-ready.
 | A `layoutId` pill uses non-uniform scale with `backdrop-filter`            | Architecture test fails; overlay must spring `left`/`top`/`width`/`height` and must not animate `transform: scale` |
 | Changing the active option remounts the overlay or restarts from `{width:0}` | Unit test fails; the same overlay node must keep identity and retarget from current geometry |
 | First show or show-after-`hidden` collapses to the track origin (`inset`, `inset`) | Unit and architecture tests fail; appear must use `selectionLensCollapsedOrigin` of the active host |
-| Any normal production route                                            | Exactly one active primary link, one production `LiquidGlassLens`, and one nav `SelectionLens` overlay; other tracks may each have their own pill |
+| Any normal production route                                            | Exactly one active primary link and one nav `SelectionLens` overlay; no production `LiquidGlassLens`; other tracks may each have their own pill |
 | UI Lab development route                                               | No primary link active; the lab may render one isolated lens specimen              |
 | SVG/backdrop filter unavailable                                        | CSS tint, edge, shadow, focus, and selected state remain readable                  |
 | React StrictMode or repeated ready calls                               | One native `frontend-deeplink-ready` emission per renderer lifetime                |
@@ -436,10 +439,10 @@ Agent/Models, Skills, and MCP ports do not by themselves make it Release-ready.
 ## 5. Good / Base / Bad Cases
 
 - **Good:** Clicking `AI软件配置` changes the hash to `#/agents`; that
-  `NavLink` alone owns `aria-current="page"`, contains the sole production
-  `LiquidGlassLens` for that leaf, remains keyboard-focusable, and the left
-  nav track keeps one overlay `SelectionLens` aligned to the active leaf or
-  the collapsed configuration toggle. A second click before the spring
+  `NavLink` alone owns `aria-current="page"`, keeps a sharp CSS label, remains
+  keyboard-focusable, and the left nav track keeps one overlay `SelectionLens`
+  aligned to the active leaf or the collapsed configuration toggle. Production
+  routes mount no `LiquidGlassLens`. A second click before the spring
   settles keeps the same overlay node and continues from its current box.
   Opening a page with a catalog or feature rail expands that page's pill
   from the selected row's top-left, not from the rail's parent origin.
@@ -469,8 +472,8 @@ mise run build:renderer
 ```
 
 - Unit tests assert default/wildcard redirects, six-route order, Router-owned
-  selection, `aria-current`, a sole production `LiquidGlassLens`, one nav
-  `SelectionLens` overlay on the track, the L1 control spring, stable overlay
+  selection, `aria-current`, no production `LiquidGlassLens` on nav labels, one
+  nav `SelectionLens` overlay on the track, the L1 control spring, stable overlay
   node identity when the active option changes, appear origin at the active
   host top-left via `selectionLensCollapsedOrigin` (not the track origin), no
   lens outside a
@@ -551,7 +554,7 @@ the pill expands from that host's top-left, not from the track origin.
     {({ isActive }) => (
       <>
         <SelectionLens active={isActive} />
-        {isActive ? <LiquidGlassLens>{item.label}</LiquidGlassLens> : item.label}
+        <span className="fy-side-navigation-item-label">{item.label}</span>
       </>
     )}
   </NavLink>
@@ -584,8 +587,8 @@ await getCurrentWindow().setDecorations(false);
 return <button aria-label="Close" onClick={closeWindow} />;
 ```
 
-Correct: let Router own the semantic link, wrap only its active label with the
-bounded internal lens, and keep caption buttons outside React. Overlay drag
+Correct: let Router own the semantic link, keep the selected label as CSS
+text, and keep caption buttons outside React. Overlay drag
 chrome stays in `TopBar.tsx`; `titleBarStyle: Overlay` and window geometry
 stay with the host.
 
@@ -594,7 +597,7 @@ stay with the host.
   {({ isActive }) => (
     <>
       <SelectionLens active={isActive} />
-      {isActive ? <LiquidGlassLens>{item.label}</LiquidGlassLens> : item.label}
+      <span className="fy-side-navigation-item-label">{item.label}</span>
     </>
   )}
 </NavLink>

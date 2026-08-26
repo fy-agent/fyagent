@@ -115,9 +115,7 @@ describe("SideNavigation", () => {
 
     expect(modelsLink).toHaveAttribute("aria-current", "page");
     expect(within(navigation).getAllByTestId("selection-lens")).toHaveLength(1);
-    expect(within(navigation).getAllByTestId("liquid-glass-lens")).toHaveLength(
-      1,
-    );
+    expect(within(navigation).queryByTestId("liquid-glass-lens")).toBeNull();
 
     await user.click(toggle);
 
@@ -126,6 +124,6 @@ describe("SideNavigation", () => {
     expect(items).not.toBeVisible();
     expect(modelsLink).toHaveAttribute("aria-current", "page");
     expect(within(navigation).getAllByTestId("selection-lens")).toHaveLength(1);
-    expect(within(toggle).getByTestId("liquid-glass-lens")).toBeVisible();
+    expect(within(navigation).queryByTestId("liquid-glass-lens")).toBeNull();
   });
 });

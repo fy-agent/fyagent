@@ -7,7 +7,6 @@ import {
   type NavigationItem,
 } from "../../shared/config/navigation";
 import { classNames } from "../../shared/design-system/classNames";
-import { LiquidGlassLens } from "../../shared/ui/LiquidGlassLens";
 import {
   SelectionLens,
   SelectionLensGroup,
@@ -43,13 +42,7 @@ function NavigationLink({
         return (
           <>
             <SelectionLens active={visuallyActive} />
-            {visuallyActive ? (
-              <LiquidGlassLens className="fy-side-navigation-liquid-lens">
-                {label}
-              </LiquidGlassLens>
-            ) : (
-              label
-            )}
+            {label}
           </>
         );
       }}
@@ -202,13 +195,7 @@ export function SideNavigation() {
                 }
               >
                 <SelectionLens active={visuallyActive} />
-                {visuallyActive ? (
-                  <LiquidGlassLens className="fy-side-navigation-liquid-lens">
-                    {content}
-                  </LiquidGlassLens>
-                ) : (
-                  content
-                )}
+                {content}
               </button>
               <ul
                 ref={configurationItemsRef}
