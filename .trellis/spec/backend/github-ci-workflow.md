@@ -159,7 +159,8 @@ best-effort and can skip slots, so it remains the periodic reconciliation path
 (including unstars), every three hours at minute 17. Manual `workflow_dispatch`
 remains available. Chart generation prefers the repository secret
 `STAR_HISTORY_TOKEN` and falls back to `github.token`; the Action's git push
-still uses the job-local `contents: write` built-in token.
+still uses the job-local `contents: write` built-in token. The job runs on
+`ubuntu-24.04`; that hosted runner label is not a shipped-product surface.
 
 The classifier's `forceFull` is path-derived only. Event policy is applied by
 the Required workflow after classification:
@@ -327,7 +328,10 @@ versions by scanning README or spec Markdown.
 The always-running Changes job executes the durable supported-platform surface
 checker directly after checkout and Node setup, alongside the change plan and
 before diagnostic aggregation. This makes every Required CI plan scan the complete checked-out current
-tree rather than relying on conditional domain jobs or checker unit tests. CI
+tree rather than relying on conditional domain jobs or checker unit tests.
+GitHub-hosted Linux runner labels are not a product surface: repository
+automation such as `star-history.yml` may use `ubuntu-24.04`. Required CI and
+Release jobs stay on `macos-15` and `windows-2025`. CI
 never receives the task-specific prearchive exclusion; after the lifecycle
 task is archived, the canonical archive boundary applies and any new
 first-party support surface fails Required CI. The Repository Contracts plan

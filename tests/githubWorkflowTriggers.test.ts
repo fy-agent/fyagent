@@ -176,10 +176,10 @@ describe("GitHub workflow trigger policy", () => {
     );
     expect(source).toContain("permissions:\n  contents: read");
     expect(source).toContain(
-      "update:\n    name: Update charts\n    runs-on: macos-15",
+      "update:\n    name: Update charts\n    runs-on: ubuntu-24.04",
     );
     expect(source).toContain(
-      "update:\n    name: Update charts\n    runs-on: macos-15\n    timeout-minutes: 10\n    permissions:\n      contents: write",
+      "update:\n    name: Update charts\n    runs-on: ubuntu-24.04\n    timeout-minutes: 10\n    permissions:\n      contents: write",
     );
     expect(source).toContain("branch: star-history");
     expect(source).toContain(

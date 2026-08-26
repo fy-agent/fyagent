@@ -23,7 +23,7 @@
     ],
     [
       "scripts/tasks/supported-platform-check.mjs",
-      "b471d82a59906675fbcd121906b342f5fc20292b19143b7618a4f1e44f032028"
+      "bd9d6cea6bff01740fb835a2d16a0d83819e29de6e9e36cb066388cb2a832f57"
     ],
     [
       "scripts/tasks/system-check.mjs",
@@ -371,7 +371,7 @@
     ],
     [
       "tests/remainingPlatformSurface.test.ts",
-      "200df33fefd9aac78dd301efd1e6e6d0fd4f21f7f9906359b47ecaec99579fab"
+      "3c698566944b954cbfff5baf60f9ffafe3d4be777cf2f1aa4472a583fb07f434"
     ],
     [
       "tests/singleInstanceActivationContract.test.ts",
