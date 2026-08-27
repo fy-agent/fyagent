@@ -898,6 +898,9 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init());
 
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    let builder = builder.plugin(crate::commands::shurufa::global_shortcut_plugin());
+
     #[cfg(target_os = "macos")]
     let builder = builder
         .plugin(tauri_plugin_store::Builder::new().build())
@@ -1837,6 +1840,8 @@ pub fn run() {
                 }
             }
 
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
+            crate::commands::shurufa::register_global_shortcut(app.handle());
 
             Ok(())
         })
@@ -2228,6 +2233,11 @@ pub fn run() {
             commands::codex_desktop_cancel_install,
             commands::codex_desktop_launch,
             commands::codex_desktop_open_log_directory,
+            commands::shurufa_get_snapshot,
+            commands::shurufa_set_prompt,
+            commands::shurufa_save_config,
+            commands::shurufa_clear_session,
+            commands::shurufa_run,
         ]);
 
     let context = tauri::generate_context!();

@@ -40,6 +40,7 @@ export const appRoutes: RouteObject[] = [
               { path: "mcp", element: null },
               { path: "prompts", element: null },
               { path: "memory", element: null },
+              { path: "shurufa", element: null },
               ...developmentRoutes,
               { path: "*", element: <Navigate to="/agents" replace /> },
             ],

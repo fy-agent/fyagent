@@ -1,0 +1,12 @@
+# 复制为 config.toml，放到二进制同目录（开发时也可放在当前工作目录）。
+# 程序按这个顺序找文件：二进制所在目录 → 当前工作目录。
+
+url = "https://api.openai.com/v1"
+model = "gpt-4o-mini"
+api_key = "sk-REPLACE_ME"
+
+# 注入给模型的历史摘要条数。上下文只起辅助作用，条数过多会拖慢请求。
+max_summaries = 8
+
+# OpenAI Responses 请求超时（秒）
+timeout_secs = 60
