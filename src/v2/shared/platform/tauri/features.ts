@@ -6,6 +6,7 @@ import { createCodexDesktopPort } from "./feature-ports/codexDesktop";
 import { createContentFeaturePorts } from "./feature-ports/content";
 import { createModelFeaturePorts } from "./feature-ports/models";
 import { createQoderTraeFeaturePorts } from "./feature-ports/qoderTrae";
+import { createShurufaPort } from "./feature-ports/shurufa";
 import { createSimpleFeaturePorts } from "./feature-ports/simple";
 
 export function createTauriFeaturePorts(): FeaturePorts {
@@ -18,5 +19,6 @@ export function createTauriFeaturePorts(): FeaturePorts {
     ...createModelFeaturePorts(),
     ...createSimpleFeaturePorts(),
     ...createContentFeaturePorts(),
+    shurufa: createShurufaPort(),
   };
 }

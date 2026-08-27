@@ -40,6 +40,7 @@ const navigationContract = [
   { path: "/mcp", label: "MCP 管理" },
   { path: "/prompts", label: "提示词管理" },
   { path: "/memory", label: "记忆模块" },
+  { path: "/shurufa", label: "输入法" },
 ] as const;
 
 const toolNames = ["搜索", "设置", "账户"] as const;
@@ -129,7 +130,7 @@ describe("FyAgent V2 routing", () => {
     },
   );
 
-  it("renders all six product workspaces", () => {
+  it("renders all product workspaces", () => {
     for (const path of navigationContract.map(({ path }) => path)) {
       const view = render(
         <RouterProvider
@@ -144,6 +145,9 @@ describe("FyAgent V2 routing", () => {
       }
       if (path === "/memory") {
         expect(screen.getByTestId("memory-page")).toBeVisible();
+      }
+      if (path === "/shurufa") {
+        expect(screen.getByTestId("shurufa-page")).toBeVisible();
       }
       view.unmount();
     }

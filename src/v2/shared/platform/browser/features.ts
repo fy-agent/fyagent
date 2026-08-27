@@ -160,5 +160,13 @@ export function createBrowserFeaturePorts(): FeaturePorts {
       save: rejectNativeOnly,
       openExternal: rejectNativeOnly,
     },
+    shurufa: {
+      getSnapshot: rejectNativeOnly,
+      setPrompt: rejectNativeOnly,
+      saveConfig: rejectNativeOnly,
+      clearSession: rejectNativeOnly,
+      run: rejectNativeOnly,
+      subscribe: rejectNativeOnly,
+    },
   };
 }

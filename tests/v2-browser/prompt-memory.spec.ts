@@ -18,6 +18,7 @@ const navigationContract = [
   { path: "/mcp", label: "MCP 管理" },
   { path: "/prompts", label: "提示词管理" },
   { path: "/memory", label: "记忆模块" },
+  { path: "/shurufa", label: "输入法" },
 ] as const;
 
 const retiredPrototypeCopy = [

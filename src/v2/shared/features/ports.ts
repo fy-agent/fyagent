@@ -237,6 +237,42 @@ export interface MemoryPort {
   openOpenClawDirectory(subdir: OpenClawDirectory): Promise<void>;
 }
 
+export type ShurufaConfig = {
+  url: string;
+  model: string;
+  apiKey: string;
+  maxSummaries: number;
+  timeoutSecs: number;
+  configured: boolean;
+};
+
+export type ShurufaSnapshot = {
+  prompt: string;
+  config: ShurufaConfig;
+  running: boolean;
+  lastOutput: string;
+  lastError: string | null;
+  shortcutLabel: string;
+  dataDir: string;
+};
+
+export type ShurufaEvent =
+  | { type: "started" }
+  | { type: "delta"; text: string }
+  | { type: "finished"; output: string }
+  | { type: "error"; message: string };
+
+export interface ShurufaPort {
+  getSnapshot(): Promise<ShurufaSnapshot>;
+  setPrompt(text: string): Promise<void>;
+  saveConfig(
+    config: Omit<ShurufaConfig, "configured">,
+  ): Promise<ShurufaConfig>;
+  clearSession(): Promise<number>;
+  run(): Promise<string>;
+  subscribe(onEvent: (event: ShurufaEvent) => void): Promise<() => void>;
+}
+
 export interface FeaturePorts {
   catalog: AgentCatalogPort;
   agentInstallReadiness: AgentInstallReadinessPort;
@@ -254,4 +290,5 @@ export interface FeaturePorts {
   prompts: PromptsPort;
   memory: MemoryPort;
   settings: SettingsPort;
+  shurufa: ShurufaPort;
 }

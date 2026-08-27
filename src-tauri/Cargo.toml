@@ -1,5 +1,5 @@
 [workspace]
-members = [".", "user-helper"]
+members = [".", "user-helper", "shurufacli"]
 resolver = "2"
 
 [workspace.package]
@@ -90,9 +90,12 @@ zeroize = "1.8"
 json5 = "0.4"
 json-five = "0.3.1"
 sys-locale = "0.3"
+shurufacli = { path = "shurufacli" }
 
 [target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
 tauri-plugin-single-instance = "2"
+tauri-plugin-global-shortcut = "2"
+enigo = "0.3"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 fyagent-user-helper = { path = "user-helper", default-features = false }
