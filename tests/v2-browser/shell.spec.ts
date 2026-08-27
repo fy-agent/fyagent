@@ -16,7 +16,6 @@ const navigationContract = [
   { path: "/mcp", label: "MCP 管理" },
   { path: "/prompts", label: "提示词管理" },
   { path: "/memory", label: "记忆模块" },
-  { path: "/shurufa", label: "输入法" },
 ] as const;
 
 const visibleControlTestIds = ["search", "settings", "avatar"] as const;
@@ -34,7 +33,6 @@ const primaryControlTestIds = [
   "#/mcp",
   "#/prompts",
   "#/memory",
-  "#/shurufa",
 ] as const;
 
 function routeLink(navigation: Locator, label: string): Locator {

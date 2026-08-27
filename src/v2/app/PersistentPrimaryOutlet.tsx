@@ -6,7 +6,6 @@ import { McpPage } from "../pages/mcp/Page";
 import { MemoryPage } from "../pages/memory/Page";
 import { ModelsPage } from "../pages/models/Page";
 import { PromptsPage } from "../pages/prompts/Page";
-import { ShurufaPage } from "../pages/shurufa/Page";
 import { SkillsPage } from "../pages/skills/Page";
 import {
   navigationItems,
@@ -21,7 +20,6 @@ const primaryPages: Record<NavigationItem["id"], ComponentType> = {
   mcp: McpPage,
   prompts: PromptsPage,
   memory: MemoryPage,
-  shurufa: ShurufaPage,
 };
 
 export function PersistentPrimaryOutlet() {

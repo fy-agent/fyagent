@@ -20,9 +20,6 @@
     "allow-qoderwork-hooks-write",
     "allow-external-agent-endpoint-probe",
     "allow-change-plan",
-    "allow-agent-install-readiness",
-    "global-shortcut:allow-is-registered",
-    "global-shortcut:allow-register",
-    "global-shortcut:allow-unregister"
+    "allow-agent-install-readiness"
   ]
 }

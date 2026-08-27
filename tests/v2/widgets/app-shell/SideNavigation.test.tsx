@@ -34,7 +34,7 @@ function renderNavigation(initialEntry = "/agents") {
 }
 
 describe("SideNavigation", () => {
-  it("derives the stable route leaves from typed groups", () => {
+  it("derives the stable six route leaves from three typed groups", () => {
     expect(
       navigationGroups.map(({ id, label, collapsible, items }) => ({
         id,
@@ -66,12 +66,6 @@ describe("SideNavigation", () => {
         collapsible: false,
         items: [{ id: "memory", label: "记忆模块" }],
       },
-      {
-        id: "shurufa",
-        label: "输入法",
-        collapsible: false,
-        items: [{ id: "shurufa", label: "输入法" }],
-      },
     ]);
     expect(navigationItems.map(({ id, path }) => ({ id, path }))).toEqual([
       { id: "agents", path: "/agents" },
@@ -80,11 +74,10 @@ describe("SideNavigation", () => {
       { id: "mcp", path: "/mcp" },
       { id: "prompts", path: "/prompts" },
       { id: "memory", path: "/memory" },
-      { id: "shurufa", path: "/shurufa" },
     ]);
   });
 
-  it("renders the approved top-level controls without duplicate copy", () => {
+  it("renders exactly three approved top-level controls without duplicate copy", () => {
     renderNavigation();
 
     const navigation = screen.getByRole("navigation", { name: "主导航" });
@@ -94,7 +87,7 @@ describe("SideNavigation", () => {
 
     expect(
       Array.from(topLevelControls, (control) => control.textContent?.trim()),
-    ).toEqual(["AI软件配置", "配置管理", "记忆模块", "输入法"]);
+    ).toEqual(["AI软件配置", "配置管理", "记忆模块"]);
     expect(
       within(navigation).getByRole("link", { name: "AI软件配置" }),
     ).toHaveAttribute("href", "/agents");
@@ -214,9 +207,7 @@ describe("SideNavigation", () => {
     await user.keyboard("{Home}");
     expect(agents).toHaveFocus();
     await user.keyboard("{End}");
-    expect(
-      within(navigation).getByRole("link", { name: "输入法" }),
-    ).toHaveFocus();
+    expect(memory).toHaveFocus();
 
     toggle.focus();
     await user.tab();

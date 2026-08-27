@@ -1,18 +1,11 @@
 export type NavigationItem = {
-  id: "agents" | "models" | "skills" | "mcp" | "prompts" | "memory" | "shurufa";
-  path:
-    | "/agents"
-    | "/models"
-    | "/skills"
-    | "/mcp"
-    | "/prompts"
-    | "/memory"
-    | "/shurufa";
+  id: "agents" | "models" | "skills" | "mcp" | "prompts" | "memory";
+  path: "/agents" | "/models" | "/skills" | "/mcp" | "/prompts" | "/memory";
   label: string;
 };
 
 export type NavigationGroup = {
-  id: "agent-configuration" | "configuration-management" | "memory" | "shurufa";
+  id: "agent-configuration" | "configuration-management" | "memory";
   label: string;
   collapsible: boolean;
   items: readonly NavigationItem[];
@@ -41,12 +34,6 @@ export const navigationGroups = [
     label: "记忆模块",
     collapsible: false,
     items: [{ id: "memory", path: "/memory", label: "记忆模块" }],
-  },
-  {
-    id: "shurufa",
-    label: "输入法",
-    collapsible: false,
-    items: [{ id: "shurufa", path: "/shurufa", label: "输入法" }],
   },
 ] as const satisfies readonly NavigationGroup[];
 

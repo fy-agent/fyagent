@@ -402,7 +402,6 @@ describe("V2 feature ports", () => {
     await expect(ports.memory.searchDailyFiles("release")).rejects.toThrow(
       NATIVE_ONLY_ERROR,
     );
-    await expect(ports.shurufa.getSnapshot()).rejects.toThrow(NATIVE_ONLY_ERROR);
     await expect(ports.settings.get()).resolves.toEqual({});
     await expect(
       ports.providers.applyQuickSetupWithResult(
