@@ -6,7 +6,7 @@ description = "Vibe coding 语音 Agent：输入本轮识别文本，输出可�
 
 [dependencies]
 anyhow = "1.0.104"
-async-openai = { version = "0.41.3", default-features = false, features = ["responses"] }
+async-openai = { version = "0.41.3", default-features = false, features = ["responses", "rustls"] }
 clap = { version = "4.6.6", features = ["derive"] }
 futures-util = "0.3.34"
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }

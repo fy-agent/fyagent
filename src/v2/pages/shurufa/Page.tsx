@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { errorMessage, isNativeOnlyError } from "../../shared/features/helpers";
 import { useFeatures } from "../../shared/features/provider";
@@ -36,6 +36,7 @@ export function ShurufaPage() {
   const [dataDir, setDataDir] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const outputRef = useRef("");
   const nativeUnavailable = isNativeOnlyError(error);
 
   useEffect(() => {
@@ -54,6 +55,7 @@ export function ShurufaPage() {
         });
         setConfigured(snapshot.config.configured);
         setRunning(snapshot.running);
+        outputRef.current = snapshot.lastOutput;
         setOutput(snapshot.lastOutput);
         setError(snapshot.lastError);
         setShortcutLabel(snapshot.shortcutLabel);
@@ -71,20 +73,25 @@ export function ShurufaPage() {
   }, [ports.shurufa]);
 
   useEffect(() => {
+    let cancelled = false;
     let unlisten = () => {};
     void ports.shurufa
       .subscribe((event) => {
+        if (cancelled) return;
         if (event.type === "started") {
+          outputRef.current = "";
           setRunning(true);
           setOutput("");
           setError(null);
           return;
         }
         if (event.type === "delta") {
-          setOutput((current) => current + event.text);
+          outputRef.current += event.text;
+          setOutput(outputRef.current);
           return;
         }
         if (event.type === "finished") {
+          outputRef.current = event.output;
           setRunning(false);
           setOutput(event.output);
           return;
@@ -93,12 +100,17 @@ export function ShurufaPage() {
         setError(event.message);
       })
       .then((stop) => {
+        if (cancelled) {
+          stop();
+          return;
+        }
         unlisten = stop;
       })
       .catch((cause) => {
         setError(errorMessage(cause));
       });
     return () => {
+      cancelled = true;
       unlisten();
     };
   }, [ports.shurufa]);

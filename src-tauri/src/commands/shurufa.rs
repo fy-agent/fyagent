@@ -287,7 +287,7 @@ pub async fn run_ingest<R: Runtime>(
             Ok(())
         })
         .await
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| format!("{error:#}"))?;
         {
             let store = Store::open(&paths.db).map_err(|error| error.to_string())?;
             store
