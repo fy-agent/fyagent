@@ -1,5 +1,6 @@
 [workspace]
-members = [".", "user-helper", "shurufacli"]
+members = [".", "user-helper"]
+exclude = ["shurufacli"]
 resolver = "2"
 
 [workspace.package]
@@ -90,7 +91,8 @@ zeroize = "1.8"
 json5 = "0.4"
 json-five = "0.3.1"
 sys-locale = "0.3"
-shurufacli = { path = "shurufacli" }
+async-openai = { version = "0.41.3", default-features = false, features = ["responses"] }
+futures-util = "0.3"
 
 [target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
 tauri-plugin-single-instance = "2"

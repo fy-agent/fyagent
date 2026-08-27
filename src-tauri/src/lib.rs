@@ -12,6 +12,8 @@ mod codex_history_migration;
 mod codex_state_db;
 mod commands;
 mod config;
+#[path = "../shurufacli/src/lib.rs"]
+mod shurufacli;
 mod database;
 mod deeplink;
 mod error;

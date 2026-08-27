@@ -4,10 +4,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Mutex, OnceLock};
 
 use serde::{Deserialize, Serialize};
-use shurufacli::config::Config;
-use shurufacli::db::Store;
-use shurufacli::llm::complete_turn;
-use shurufacli::paths::AppPaths;
+use crate::shurufacli::config::Config;
+use crate::shurufacli::db::Store;
+use crate::shurufacli::llm::complete_turn;
+use crate::shurufacli::paths::AppPaths;
 use tauri::{AppHandle, Emitter, Runtime};
 
 const EVENT_NAME: &str = "shurufa://event";
@@ -432,7 +432,7 @@ pub fn shurufa_save_config(input: ShurufaConfigInput) -> Result<ShurufaConfigSna
 #[tauri::command]
 pub fn shurufa_clear_session() -> Result<usize, String> {
     let store = Store::open(&paths().db).map_err(|error| error.to_string())?;
-    shurufacli::clear_session(&store).map_err(|error| error.to_string())
+    crate::shurufacli::clear_session(&store).map_err(|error| error.to_string())
 }
 
 #[tauri::command]

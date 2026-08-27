@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use anyhow::{Context, Result, bail};
 use async_openai::Client;
 use async_openai::config::OpenAIConfig;
@@ -9,7 +7,7 @@ use async_openai::types::responses::{
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 
-use crate::config::Config;
+use super::config::Config;
 
 /// 模型只输出优化后的提示词正文。stdout 按 Responses SSE 的 output_text.delta 原样转发到文本框。
 const SYSTEM_PROMPT: &str = r#"你是输入法上的 Vibe Coding 提示词优化器，不是编码 Agent。用户说完这句话后，原文会发给 Cursor 等编码 Agent，并由那边记录完整会话。你输出的内容会流式填进输入框，随后原样发出。
@@ -61,11 +59,7 @@ where
     let openai = OpenAIConfig::new()
         .with_api_base(&cfg.url)
         .with_api_key(&cfg.api_key);
-    let http = reqwest::Client::builder()
-        .timeout(Duration::from_secs(cfg.timeout_secs))
-        .build()
-        .context("创建 HTTP 客户端失败")?;
-    let client = Client::with_config(openai).with_http_client(http);
+    let client = Client::with_config(openai);
 
     let request = CreateResponseArgs::default()
         .model(cfg.model.clone())

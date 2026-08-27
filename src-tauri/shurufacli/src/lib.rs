@@ -5,9 +5,9 @@ pub mod paths;
 
 use anyhow::Result;
 
-use crate::config::Config;
-use crate::db::Store;
-use crate::llm::{TurnResult, complete_turn};
+use self::config::Config;
+use self::db::Store;
+use self::llm::{TurnResult, complete_turn};
 
 pub async fn ingest<F>(
     text: &str,
