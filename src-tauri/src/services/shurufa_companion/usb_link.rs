@@ -10,7 +10,9 @@ const HID_PAYLOAD_MAX: usize = 63;
 mod host {
     use hidapi::{HidApi, HidDevice};
 
-    use super::{hid_pack, hid_unpack, HID_PAYLOAD_MAX, HID_REPORT_LEN, USB_PID, USB_VID};
+    use super::{
+        hid_pack, hid_read_is_idle, hid_unpack, HID_PAYLOAD_MAX, HID_REPORT_LEN, USB_PID, USB_VID,
+    };
     use crate::services::shurufa_companion::serial::{
         AcceptAction, BoundedLineBuffer, EventSource, LinkDecoder, SerialError, SerialEvent,
     };
