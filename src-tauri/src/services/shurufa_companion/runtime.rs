@@ -89,10 +89,6 @@ impl InputDispatcher for WindowsInputDispatcher {
         // batched SendInput looks like every key went down together and apps
         // drop the chord.
         const KEY_HOLD_GAP_MS: u64 = 40;
-        #[link(name = "user32")]
-        unsafe extern "system" {
-            fn MapVirtualKeyW(code: u32, map_type: u32) -> u32;
-        }
         let keys = chord
             .0
             .iter()
