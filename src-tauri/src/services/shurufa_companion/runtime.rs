@@ -41,6 +41,7 @@ fn virtual_key(token: &str) -> Option<u16> {
         "SPACE" => Some(0x20),
         "[" => Some(0xdb),
         "]" => Some(0xdd),
+        "," => Some(0xbc),
         value if value.len() == 1 && value.as_bytes()[0].is_ascii_uppercase() => {
             Some(u16::from(value.as_bytes()[0]))
         }

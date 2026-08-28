@@ -22,6 +22,7 @@ const ALLOWED_PRIMARY = new Set([
   "SPACE",
   "[",
   "]",
+  ",",
 ]);
 
 const NAMED_PRIMARIES: Record<string, string> = {
@@ -32,6 +33,7 @@ const NAMED_PRIMARIES: Record<string, string> = {
   Space: "SPACE",
   BracketLeft: "[",
   BracketRight: "]",
+  Comma: ",",
 };
 
 export const USB_LINK_ID = "usb:ventured";
@@ -40,19 +42,19 @@ export const USB_LINK_BAUD = 115200;
 export const INPUT_LABELS: Record<CompanionInputId, string> = {
   ENCODER_CW: "顺时针旋转",
   ENCODER_CCW: "逆时针旋转",
-  ENCODER_PRESS: "GPIO8 外接确认/动作按钮",
+  ENCODER_PRESS: "GPIO8 上拉按键",
   BUTTON_A: "GPIO10 下拉按键",
   BUTTON_B: "GPIO11 下拉按键",
 };
 
 export const INITIAL_MAPPINGS: CompanionMapping[] = [
-  { input: "ENCODER_CW", displayName: "上一项", keys: ["CTRL", "TAB"] },
+  { input: "ENCODER_CW", displayName: "上一项", keys: ["CTRL", "SHIFT", "]"] },
   {
     input: "ENCODER_CCW",
     displayName: "下一项",
-    keys: ["CTRL", "SHIFT", "TAB"],
+    keys: ["CTRL", "SHIFT", "["],
   },
-  { input: "ENCODER_PRESS", displayName: "新建窗口", keys: ["CTRL", "SHIFT", "N"] },
+  { input: "ENCODER_PRESS", displayName: "新建窗口", keys: ["CTRL", ","] },
   { input: "BUTTON_A", displayName: "新建", keys: ["CTRL", "N"] },
   { input: "BUTTON_B", displayName: "确认动作", keys: ["ENTER"] },
 ];
@@ -277,6 +279,9 @@ export function primaryFromKeyboardEvent(
   }
   if (event.code === "BracketRight" || event.key === "]" || event.key === "}") {
     return "]";
+  }
+  if (event.code === "Comma" || event.key === "," || event.key === "<") {
+    return ",";
   }
   return NAMED_PRIMARIES[event.code] ?? NAMED_PRIMARIES[event.key] ?? null;
 }

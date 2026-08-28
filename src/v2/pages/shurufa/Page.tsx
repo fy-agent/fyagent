@@ -49,7 +49,6 @@ import {
   networkReasonLabel,
   recReasonLabel,
   recStateLabel,
-  RUNTIME_STATE_LABELS,
   SENSOR_HINT,
   ssidLooksFiveG,
   USB_LINK_BAUD,
@@ -72,14 +71,6 @@ const EMPTY_CONFIG: ConfigDraft = {
 };
 
 const COMPANION_POLL_MS = 400;
-
-function runtimeBadgeTone(
-  state: CompanionRuntime["state"],
-): "neutral" | "accent" | "warning" {
-  if (state === "LIVE") return "accent";
-  if (state === "DRY_RUN") return "warning";
-  return "neutral";
-}
 
 function networkBadgeTone(
   state: CompanionNetwork["state"],
@@ -505,9 +496,6 @@ export function ShurufaPage() {
           </p>
         </div>
         <div className="fy-feature-actions fy-shurufa-header-meta">
-          <Badge tone={runtimeBadgeTone(runtime.state)}>
-            {RUNTIME_STATE_LABELS[runtime.state]}
-          </Badge>
           <Badge tone={networkBadgeTone(runtime.network.state)}>
             {networkChip}
           </Badge>
@@ -544,10 +532,6 @@ export function ShurufaPage() {
             </div>
             <Badge tone={usbInserted ? "accent" : "neutral"}>
               {usbInserted ? "已插入" : "未插入"}
-            </Badge>
-            <Badge>波特率 {USB_LINK_BAUD}</Badge>
-            <Badge tone={runtimeBadgeTone(runtime.state)}>
-              {RUNTIME_STATE_LABELS[runtime.state]}
             </Badge>
           </section>
 

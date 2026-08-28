@@ -166,8 +166,9 @@ describe("Shurufa companion page", () => {
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
     expect(screen.queryByRole("option")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "刷新" })).not.toBeInTheDocument();
-    expect(screen.getByText("波特率 115200")).toBeInTheDocument();
-    expect(screen.getAllByText("已停止").length).toBeGreaterThan(0);
+    expect(screen.queryByText("波特率 115200")).not.toBeInTheDocument();
+    expect(screen.queryByText("已停止")).not.toBeInTheDocument();
+    expect(screen.getByText("GPIO8 上拉按键")).toBeInTheDocument();
     expect(screen.getByText("把按钮改成主色")).toBeInTheDocument();
     expect(screen.getAllByText("转写完成").length).toBeGreaterThan(0);
     expect(screen.getByText("GPIO10 下拉按键")).toBeInTheDocument();

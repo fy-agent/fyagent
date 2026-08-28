@@ -97,7 +97,7 @@ impl Chord {
 }
 
 fn primary_is_allowed(value: &str) -> bool {
-    matches!(value, "ENTER" | "TAB" | "ESC" | "SPACE" | "[" | "]")
+    matches!(value, "ENTER" | "TAB" | "ESC" | "SPACE" | "[" | "]" | ",")
         || (value.len() == 1 && value.as_bytes()[0].is_ascii_uppercase())
         || (value.len() == 1 && value.as_bytes()[0].is_ascii_digit())
         || value
@@ -132,6 +132,8 @@ mod tests {
         assert_eq!(multi.canonical(), "CTRL+TAB+1");
         let bracket = Chord::parse(&["ctrl".into(), "shift".into(), "[".into()]).unwrap();
         assert_eq!(bracket.canonical(), "CTRL+SHIFT+[");
+        let comma = Chord::parse(&["ctrl".into(), ",".into()]).unwrap();
+        assert_eq!(comma.canonical(), "CTRL+,");
         assert!(Chord::parse(&["CTRL".into(), "CTRL".into(), "A".into()]).is_err());
         assert!(Chord::parse(&["CTRL".into(), "ALT".into()]).is_err());
     }

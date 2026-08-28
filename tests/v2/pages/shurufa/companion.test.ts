@@ -62,10 +62,20 @@ describe("shurufa companion helpers", () => {
       port: USB_LINK_ID,
       baud: USB_LINK_BAUD,
     });
+    expect(INITIAL_MAPPINGS[0]).toEqual({
+      input: "ENCODER_CW",
+      displayName: "上一项",
+      keys: ["CTRL", "SHIFT", "]"],
+    });
+    expect(INITIAL_MAPPINGS[1]).toEqual({
+      input: "ENCODER_CCW",
+      displayName: "下一项",
+      keys: ["CTRL", "SHIFT", "["],
+    });
     expect(INITIAL_MAPPINGS[2]).toEqual({
       input: "ENCODER_PRESS",
       displayName: "新建窗口",
-      keys: ["CTRL", "SHIFT", "N"],
+      keys: ["CTRL", ","],
     });
     expect(INITIAL_MAPPINGS[3]).toEqual({
       input: "BUTTON_A",

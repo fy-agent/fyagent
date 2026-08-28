@@ -116,9 +116,10 @@ Windows hidapi 2.6.3
 - Default baud `115200`. Default device model
   `XingChenAGI/XingChenASR-V3.2-Ultra`.
 - Fresh / fallback shortcut defaults:
-  `ENCODER_CW=CTRL+TAB`, `ENCODER_CCW=CTRL+SHIFT+TAB`,
-  `ENCODER_PRESS=CTRL+SHIFT+N` 新建窗口, `BUTTON_A=CTRL+N` 新建,
-  `BUTTON_B=ENTER` 确认动作. Existing user mappings are not rewritten.
+  `ENCODER_CW=CTRL+SHIFT+]`, `ENCODER_CCW=CTRL+SHIFT+[`,
+  `ENCODER_PRESS=CTRL+,` 新建窗口, `BUTTON_A=CTRL+N` 新建,
+  `BUTTON_B=ENTER` 确认动作. `ENCODER_PRESS` UI label is `GPIO8 上拉按键`.
+  Existing user mappings are not rewritten.
 - hidapi is Windows-only. Non-Windows `UsbLinkSource` is fail-closed so Mac
   hosts can compile and run logic tests. That is not macOS Companion support.
 - New commands must land in all three places:
