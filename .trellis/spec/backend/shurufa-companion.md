@@ -64,9 +64,17 @@ serialport 4.8.1
 ```
 
 - One COM handle has exactly one native reader. Snapshot/status commands never
-  call `read()`.
+  call `read()` and never call `available_ports()`.
+- Snapshot must `try_lock` the pump mutex and fall back to the last published
+  snapshot. A hung COM read during Wi-Fi join must not freeze the UI thread.
+- `list_ports` is explicit refresh only (FY1111 behavior). It runs off the UI
+  thread via `spawn_blocking`.
+- `apply_device_config` pauses the pump, writes `VKEY_CONFIG/1`, then
+  `drain_while_stopped` like FY1111, and must not wait on the pump lock
+  forever (2s timeout).
 - React may poll `getCompanionSnapshot` (~400ms) for projection only. Page
-  lifecycle must not determine whether COM is consumed.
+  lifecycle must not determine whether COM is consumed. Polls must not overlap
+  and must not re-enumerate COM ports.
 - Agent trigger happens after Companion/runtime/serial locks are released.
 - Persistence: `<app-config>/shurufacli/companion/{profile,device}.json`.
   Do not write ASR text into `prompt.txt`.
@@ -100,6 +108,8 @@ serialport 4.8.1
 | Agent config missing | preserve raw ASR; Agent error; no typing |
 | Live target mismatch / dirty modifiers | zero shortcut dispatch |
 | Serial read error | clear live; close/invalidate source |
+| Snapshot while pump holds the COM mutex | return last snapshot; no `available_ports()` |
+| Apply while pump is mid-read | pause pump; 2s try-lock; then write + drain |
 | Stop | clear live; healthy source may stay attached |
 | Browser / non-Windows capture-restore-dispatch | fail closed; no fake hardware state |
 
@@ -111,7 +121,7 @@ serialport 4.8.1
   off after restart and is never persisted on.
 - Bad: React `setInterval` is the only thing that calls serial `read()`, or
   ASR is written to `prompt.txt` before ingest, or two COM readers share one
-  handle.
+  handle, or every snapshot enumerates Windows COM ports on the UI thread.
 
 ## 6. Tests Required
 

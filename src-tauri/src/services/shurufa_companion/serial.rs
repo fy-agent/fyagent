@@ -121,6 +121,9 @@ impl SerialPortSource {
 
 impl EventSource for SerialPortSource {
     fn poll_event(&mut self) -> Result<Option<SerialEvent>, SerialError> {
+        // One hardware read per tick so a noisy device or a hung COM reset
+        // cannot keep the companion mutex for the whole Wi-Fi join.
+        let mut did_read = false;
         loop {
             if let Some(line) = self.buffered.push(&[]) {
                 match self.accept_decoded(&line) {
@@ -129,17 +132,21 @@ impl EventSource for SerialPortSource {
                     AcceptAction::Continue => continue,
                 }
             }
+            if did_read {
+                return Ok(None);
+            }
+            did_read = true;
             let mut bytes = [0_u8; 128];
             match self.port.read(&mut bytes) {
                 Ok(0) => return Ok(None),
                 Ok(count) => {
                     let Some(line) = self.buffered.push(&bytes[..count]) else {
-                        continue;
+                        return Ok(None);
                     };
                     match self.accept_decoded(&line) {
                         AcceptAction::Input(event) => return Ok(Some(event)),
                         AcceptAction::Yield => return Ok(None),
-                        AcceptAction::Continue => {}
+                        AcceptAction::Continue => continue,
                     }
                 }
                 Err(error) if error.kind() == std::io::ErrorKind::TimedOut => return Ok(None),

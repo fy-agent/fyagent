@@ -8,8 +8,8 @@ mod target;
 mod windows_foreground_restore;
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard};
-use std::time::Duration;
+use std::sync::{Arc, Mutex, MutexGuard, TryLockError};
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
@@ -57,31 +57,74 @@ struct CompanionInner {
     last_asr_seq: Option<u32>,
     last_asr_admission: AsrAdmission,
     last_asr_error: Option<String>,
+    cached_ports: Vec<String>,
+    cached_profile: Option<ProfileDraft>,
+    cached_device: DeviceSettings,
+}
+
+#[derive(Clone)]
+pub struct CompanionIo {
+    inner: Arc<Mutex<CompanionInner>>,
+    pause_pump: Arc<AtomicBool>,
+    last_snapshot: Arc<Mutex<CompanionSnapshot>>,
 }
 
 pub struct CompanionState {
-    inner: Arc<Mutex<CompanionInner>>,
+    io: CompanionIo,
     stop: Arc<AtomicBool>,
 }
 
 impl CompanionState {
     pub fn new(app: AppHandle) -> Self {
-        let inner = Arc::new(Mutex::new(CompanionInner::default()));
+        let mut inner = CompanionInner {
+            cached_profile: load_profile_from_store(&profile_store()).ok().flatten(),
+            cached_device: load_device_from_store(&device_store()).unwrap_or_default(),
+            ..CompanionInner::default()
+        };
+        if let Some(profile) = inner.cached_profile.clone() {
+            let _ = inner.runtime.set_profile(profile);
+        }
+        let last_snapshot = snapshot_from_inner(&inner);
+        let io = CompanionIo {
+            inner: Arc::new(Mutex::new(inner)),
+            pause_pump: Arc::new(AtomicBool::new(false)),
+            last_snapshot: Arc::new(Mutex::new(last_snapshot)),
+        };
         let stop = Arc::new(AtomicBool::new(false));
-        spawn_pump(inner.clone(), stop.clone(), app);
-        Self { inner, stop }
+        spawn_pump(io.clone(), stop.clone(), app);
+        Self { io, stop }
     }
 
-    pub fn list_ports() -> Result<Vec<String>, String> {
-        SerialPortSource::available_ports().map_err(|_| "serial ports are unavailable".to_owned())
+    pub fn io(&self) -> CompanionIo {
+        self.io.clone()
     }
 
     pub fn snapshot(&self) -> Result<CompanionSnapshot, String> {
-        let ports = SerialPortSource::available_ports().unwrap_or_default();
-        let profile = load_profile_from_store(&profile_store())?;
-        let device = load_device_from_store(&device_store())?;
-        let inner = self.lock_inner()?;
-        Ok(build_snapshot(&inner, ports, profile, device))
+        self.io.snapshot()
+    }
+}
+
+impl CompanionIo {
+    pub fn list_ports(&self) -> Result<Vec<String>, String> {
+        let ports = SerialPortSource::available_ports()
+            .map_err(|_| "serial ports are unavailable".to_owned())?;
+        if let Ok(mut inner) = self.inner.lock() {
+            inner.cached_ports = ports.clone();
+            self.publish_snapshot(&inner);
+        }
+        Ok(ports)
+    }
+
+    pub fn snapshot(&self) -> Result<CompanionSnapshot, String> {
+        match self.inner.try_lock() {
+            Ok(inner) => Ok(self.publish_snapshot(&inner)),
+            Err(TryLockError::WouldBlock) => Ok(self
+                .last_snapshot
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .clone()),
+            Err(TryLockError::Poisoned(_)) => Err("runtime state is unavailable".to_owned()),
+        }
     }
 
     pub fn capture_target(&self) -> Result<CompanionTarget, String> {
@@ -117,6 +160,8 @@ impl CompanionState {
             .runtime
             .set_profile(saved.clone())
             .map_err(|error| error.to_string())?;
+        inner.cached_profile = Some(saved.clone());
+        self.publish_snapshot(&inner);
         Ok(saved)
     }
 
@@ -127,12 +172,15 @@ impl CompanionState {
             .ensure_stopped()
             .map_err(|error| error.to_string())?;
         let profile = load_profile_into_runtime(&profile_store(), &mut inner.runtime)?;
-        start_shortcut(
+        inner.cached_profile = Some(profile.clone());
+        let status = start_shortcut(
             &mut inner.runtime,
             &profile.serial.port,
             profile.serial.baud,
             RuntimeMode::DryRun,
-        )
+        )?;
+        self.publish_snapshot(&inner);
+        Ok(status)
     }
 
     pub fn enable_live(&self) -> Result<CompanionRuntime, String> {
@@ -142,24 +190,36 @@ impl CompanionState {
             .ensure_stopped()
             .map_err(|error| error.to_string())?;
         let profile = load_profile_into_runtime(&profile_store(), &mut inner.runtime)?;
-        start_shortcut(
+        inner.cached_profile = Some(profile.clone());
+        let status = start_shortcut(
             &mut inner.runtime,
             &profile.serial.port,
             profile.serial.baud,
             RuntimeMode::Live,
-        )
+        )?;
+        self.publish_snapshot(&inner);
+        Ok(status)
     }
 
     pub fn stop(&self) -> Result<CompanionRuntime, String> {
-        Ok(self.lock_inner()?.runtime.stop())
+        let mut inner = self.lock_inner()?;
+        let status = inner.runtime.stop();
+        self.publish_snapshot(&inner);
+        Ok(status)
     }
 
     pub fn save_device_settings(
+        &self,
         draft: CompanionDeviceSettings,
     ) -> Result<CompanionDeviceSettings, String> {
-        device_store()
+        let saved = device_store()
             .save(draft)
-            .map_err(|error| error.to_string())
+            .map_err(|error| error.to_string())?;
+        if let Ok(mut inner) = self.inner.lock() {
+            inner.cached_device = saved.clone();
+            self.publish_snapshot(&inner);
+        }
+        Ok(saved)
     }
 
     pub fn apply_device_config(
@@ -176,18 +236,56 @@ impl CompanionState {
         let saved = device_store()
             .save(request.settings)
             .map_err(|error| error.to_string())?;
-        let mut inner = self.lock_inner()?;
-        ensure_device_source(&mut inner.runtime, &request.port, request.baud)?;
-        inner
-            .runtime
-            .apply_config(&saved)
-            .map_err(|error| error.to_string())
+        self.pause_pump.store(true, Ordering::SeqCst);
+        let result = (|| {
+            let mut inner = self.lock_inner_timeout(Duration::from_secs(2))?;
+            inner.cached_device = saved.clone();
+            ensure_device_source(&mut inner.runtime, &request.port, request.baud)?;
+            let network = inner
+                .runtime
+                .apply_config(&saved)
+                .map_err(|error| error.to_string())?;
+            self.publish_snapshot(&inner);
+            Ok(network)
+        })();
+        self.pause_pump.store(false, Ordering::SeqCst);
+        result
     }
 
     fn lock_inner(&self) -> Result<MutexGuard<'_, CompanionInner>, String> {
         self.inner
             .lock()
             .map_err(|_| "runtime state is unavailable".to_owned())
+    }
+
+    fn lock_inner_timeout(
+        &self,
+        timeout: Duration,
+    ) -> Result<MutexGuard<'_, CompanionInner>, String> {
+        let started = Instant::now();
+        loop {
+            match self.inner.try_lock() {
+                Ok(guard) => return Ok(guard),
+                Err(TryLockError::WouldBlock) if started.elapsed() < timeout => {
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                Err(TryLockError::WouldBlock) => {
+                    return Err("serial pump is busy; retry apply".to_owned());
+                }
+                Err(TryLockError::Poisoned(_)) => {
+                    return Err("runtime state is unavailable".to_owned());
+                }
+            }
+        }
+    }
+
+    fn publish_snapshot(&self, inner: &CompanionInner) -> CompanionSnapshot {
+        let snapshot = snapshot_from_inner(inner);
+        *self
+            .last_snapshot
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = snapshot.clone();
+        snapshot
     }
 }
 
@@ -284,16 +382,11 @@ fn start_shortcut(
         .map_err(|error| error.to_string())
 }
 
-fn build_snapshot(
-    inner: &CompanionInner,
-    ports: Vec<String>,
-    profile: Option<ProfileDraft>,
-    device: DeviceSettings,
-) -> CompanionSnapshot {
+fn snapshot_from_inner(inner: &CompanionInner) -> CompanionSnapshot {
     CompanionSnapshot {
-        ports,
-        profile,
-        device,
+        ports: inner.cached_ports.clone(),
+        profile: inner.cached_profile.clone(),
+        device: inner.cached_device.clone(),
         runtime: inner.runtime.status(),
         last_asr_seq: inner.last_asr_seq,
         last_asr_admission: inner.last_asr_admission,
@@ -331,7 +424,7 @@ fn spawn_ingest(app: AppHandle, inner: Arc<Mutex<CompanionInner>>, done: AsrDone
     });
 }
 
-fn spawn_pump(inner: Arc<Mutex<CompanionInner>>, stop: Arc<AtomicBool>, app: AppHandle) {
+fn spawn_pump(io: CompanionIo, stop: Arc<AtomicBool>, app: AppHandle) {
     let _ = std::thread::Builder::new()
         .name("shurufa-companion-pump".into())
         .spawn(move || {
@@ -339,9 +432,13 @@ fn spawn_pump(inner: Arc<Mutex<CompanionInner>>, stop: Arc<AtomicBool>, app: App
             let restorer = WindowsForegroundTargetRestorer;
             let modifiers = WindowsModifierState;
             while !stop.load(Ordering::Relaxed) {
+                if io.pause_pump.load(Ordering::Relaxed) {
+                    std::thread::sleep(Duration::from_millis(10));
+                    continue;
+                }
                 let mut dispatcher = WindowsInputDispatcher;
                 let asr_done = {
-                    let mut guard = match inner.lock() {
+                    let mut guard = match io.inner.lock() {
                         Ok(guard) => guard,
                         Err(_) => break,
                     };
@@ -356,13 +453,14 @@ fn spawn_pump(inner: Arc<Mutex<CompanionInner>>, stop: Arc<AtomicBool>, app: App
                     {
                         Ok(outcome) => {
                             apply_asr_outcome(&mut guard, &outcome.asr);
+                            io.publish_snapshot(&guard);
                             outcome.asr.done
                         }
                         Err(_) => None,
                     }
                 };
                 if let Some(done) = asr_done {
-                    spawn_ingest(app.clone(), inner.clone(), done);
+                    spawn_ingest(app.clone(), io.inner.clone(), done);
                 }
             }
         });
@@ -443,6 +541,21 @@ mod tests {
     }
 
     #[test]
+    fn snapshot_does_not_block_when_runtime_lock_is_held() {
+        let mut inner = CompanionInner::default();
+        inner.cached_ports = vec!["COM3".into()];
+        let published = snapshot_from_inner(&inner);
+        let io = CompanionIo {
+            inner: Arc::new(Mutex::new(inner)),
+            pause_pump: Arc::new(AtomicBool::new(false)),
+            last_snapshot: Arc::new(Mutex::new(published)),
+        };
+        let _hold = io.inner.lock().unwrap();
+        let snapshot = io.snapshot().unwrap();
+        assert_eq!(snapshot.ports, vec!["COM3".to_owned()]);
+    }
+
+    #[test]
     fn snapshot_does_not_consume_serial() {
         let polls = Arc::new(AtomicU32::new(0));
         let mut inner = CompanionInner::default();
@@ -455,7 +568,8 @@ mod tests {
         );
         inner.last_asr_seq = Some(4);
         inner.last_asr_admission = AsrAdmission::Admitted;
-        let snapshot = build_snapshot(&inner, vec!["COM3".into()], None, DeviceSettings::default());
+        inner.cached_ports = vec!["COM3".into()];
+        let snapshot = snapshot_from_inner(&inner);
         assert_eq!(snapshot.ports, vec!["COM3".to_owned()]);
         assert_eq!(snapshot.last_asr_seq, Some(4));
         assert_eq!(snapshot.last_asr_admission, AsrAdmission::Admitted);
@@ -487,7 +601,7 @@ mod tests {
         );
         assert_eq!(inner.last_asr_seq, Some(2));
         assert_eq!(inner.last_asr_admission, AsrAdmission::Duplicate);
-        let snapshot = build_snapshot(&inner, Vec::new(), None, DeviceSettings::default());
+        let snapshot = snapshot_from_inner(&inner);
         assert_eq!(snapshot.last_asr_seq, Some(2));
         assert_eq!(snapshot.last_asr_admission, AsrAdmission::Duplicate);
     }

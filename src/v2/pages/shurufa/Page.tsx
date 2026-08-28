@@ -252,19 +252,24 @@ export function ShurufaPage() {
   useEffect(() => {
     if (!companionReady || nativeUnavailable) return undefined;
     let cancelled = false;
+    let inFlight = false;
     const poll = async () => {
+      if (inFlight || cancelled) return;
+      inFlight = true;
       try {
         const snapshot = await ports.shurufa.getCompanionSnapshot();
         if (!cancelled) {
-          setAvailablePorts(snapshot.ports);
           setRuntime(snapshot.runtime);
           setLastAsrAdmission(snapshot.lastAsrAdmission);
           setLastAsrError(snapshot.lastAsrError);
         }
       } catch {
         if (!cancelled) setNotice("状态刷新失败。");
+      } finally {
+        inFlight = false;
       }
     };
+    void poll();
     const timer = window.setInterval(() => {
       void poll();
     }, COMPANION_POLL_MS);

@@ -491,7 +491,43 @@ impl RuntimeController {
             reason: looks_5g.then(|| "BAND".to_owned()),
             ..NetworkStatus::default()
         };
+        if self.status.state == RuntimeMode::Stopped {
+            self.drain_while_stopped();
+        }
+        if looks_5g {
+            if let Some(network) = self
+                .source
+                .as_ref()
+                .and_then(|source| source.last_network_status())
+            {
+                if network.ssid == settings.ssid && network.state == NetworkState::Failed {
+                    self.status.network = network;
+                    if self.status.network.reason.is_none() {
+                        self.status.network.reason = Some("BAND".to_owned());
+                    }
+                }
+            }
+        } else {
+            self.refresh_network();
+        }
         Ok(self.status.network.clone())
+    }
+    fn drain_while_stopped(&mut self) {
+        let serial_failed = if let Some(source) = self.source.as_mut() {
+            loop {
+                match source.poll_event() {
+                    Ok(Some(_)) => continue,
+                    Ok(None) => break false,
+                    Err(_) => break true,
+                }
+            }
+        } else {
+            false
+        };
+        if serial_failed {
+            self.close_source();
+            self.status.network.state = NetworkState::Disconnected;
+        }
     }
     fn refresh_network(&mut self) {
         if let Some(source) = self.source.as_ref() {
