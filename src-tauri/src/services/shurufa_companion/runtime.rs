@@ -1,4 +1,5 @@
 use std::fmt::{Display, Formatter};
+#[cfg(target_os = "windows")]
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
@@ -59,10 +60,8 @@ fn virtual_key(token: &str) -> Option<u16> {
 #[cfg(target_os = "windows")]
 impl ModifierState for WindowsModifierState {
     fn all_keys_clear(&self, chord: &Chord) -> bool {
-        #[link(name = "user32")]
-        unsafe extern "system" {
-            fn GetAsyncKeyState(virtual_key: i32) -> i16;
-        }
+        use windows_sys::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
+
         keyboard_state_is_clear(chord, |key| unsafe {
             (GetAsyncKeyState(i32::from(key)) as u16 & 0x8000) != 0
         })
@@ -78,53 +77,14 @@ impl ModifierState for WindowsModifierState {
 #[cfg(target_os = "windows")]
 impl InputDispatcher for WindowsInputDispatcher {
     fn dispatch(&mut self, chord: &Chord) -> Result<(), RuntimeError> {
+        use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+            MapVirtualKeyW, SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP,
+            MAPVK_VK_TO_VSC,
+        };
+
         if !WindowsModifierState.all_keys_clear(chord) {
             return Err(RuntimeError::DirtyModifiers);
         }
-        #[repr(C)]
-        #[derive(Clone, Copy)]
-        struct KeyboardInput {
-            virtual_key: u16,
-            scan_code: u16,
-            flags: u32,
-            time: u32,
-            extra_info: usize,
-        }
-        #[repr(C)]
-        #[derive(Clone, Copy)]
-        struct MouseInput {
-            dx: i32,
-            dy: i32,
-            mouse_data: u32,
-            flags: u32,
-            time: u32,
-            extra_info: usize,
-        }
-        #[repr(C)]
-        #[derive(Clone, Copy)]
-        struct HardwareInput {
-            message: u32,
-            parameter_low: u16,
-            parameter_high: u16,
-        }
-        #[repr(C)]
-        union InputData {
-            mouse: MouseInput,
-            keyboard: KeyboardInput,
-            hardware: HardwareInput,
-        }
-        #[repr(C)]
-        struct Input {
-            input_type: u32,
-            data: InputData,
-        }
-        #[link(name = "user32")]
-        unsafe extern "system" {
-            fn SendInput(input_count: u32, inputs: *const Input, input_size: i32) -> u32;
-        }
-        const INPUT_KEYBOARD: u32 = 1;
-        const KEYEVENTF_KEYUP: u32 = 0x0002;
-        const MAPVK_VK_TO_VSC: u32 = 0;
         // Hold each earlier key, wait tens of ms, then press the next. A single
         // batched SendInput looks like every key went down together and apps
         // drop the chord.
@@ -141,21 +101,21 @@ impl InputDispatcher for WindowsInputDispatcher {
         let key_input = |virtual_key: u16, flags: u32| {
             let scan_code =
                 unsafe { MapVirtualKeyW(u32::from(virtual_key), MAPVK_VK_TO_VSC) } as u16;
-            Input {
-                input_type: INPUT_KEYBOARD,
-                data: InputData {
-                    keyboard: KeyboardInput {
-                        virtual_key,
-                        scan_code,
-                        flags,
+            INPUT {
+                r#type: INPUT_KEYBOARD,
+                Anonymous: INPUT_0 {
+                    ki: KEYBDINPUT {
+                        wVk: virtual_key,
+                        wScan: scan_code,
+                        dwFlags: flags,
                         time: 0,
-                        extra_info: 0,
+                        dwExtraInfo: 0,
                     },
                 },
             }
         };
-        let send_one = |input: Input| -> bool {
-            unsafe { SendInput(1, &input, std::mem::size_of::<Input>() as i32) == 1 }
+        let send_one = |input: INPUT| -> bool {
+            unsafe { SendInput(1, &input, std::mem::size_of::<INPUT>() as i32) == 1 }
         };
         for (index, key) in keys.iter().enumerate() {
             if index > 0 {

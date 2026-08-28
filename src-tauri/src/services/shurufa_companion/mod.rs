@@ -3,8 +3,10 @@ mod input;
 mod network;
 mod profile;
 mod runtime;
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
 mod serial;
 mod target;
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
 mod usb_link;
 mod windows_foreground_restore;
 

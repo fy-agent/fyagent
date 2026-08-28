@@ -94,12 +94,14 @@ pub(crate) struct LinkDecoder {
 
 /// The production COM source is retained for tests and leftover fixtures.
 /// Formal Board C traffic uses `UsbLinkSource` and this same `LinkDecoder`.
+#[allow(dead_code)]
 pub struct SerialPortSource {
     port: Box<dyn serialport::SerialPort>,
     buffered: BoundedLineBuffer,
     decoder: LinkDecoder,
 }
 
+#[allow(dead_code)]
 impl SerialPortSource {
     pub fn available_ports() -> Result<Vec<String>, SerialError> {
         serialport::available_ports()

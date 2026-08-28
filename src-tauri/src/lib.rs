@@ -34,6 +34,9 @@ mod proxy;
 mod services;
 mod session_manager;
 mod settings;
+// This standalone CLI library is embedded by the demo host through a subset of
+// its public API; CLI-only helpers remain intentionally unused in this crate.
+#[allow(dead_code)]
 #[path = "../shurufacli/src/lib.rs"]
 mod shurufacli;
 mod store;
