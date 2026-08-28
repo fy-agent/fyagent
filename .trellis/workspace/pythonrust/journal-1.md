@@ -1773,3 +1773,24 @@ Catalog-first Agent directory with auto scan, honest install/update progress, sh
 ### Status
 
 [OK] **Completed**
+
+
+## Session 55: Companion 串口迁移并接入输入法 Agent
+
+**Date**: 2026-08-28
+**Task**: Companion 串口迁移并接入输入法 Agent
+**Branch**: `demo/shurufa`
+
+### Summary
+
+把 FY1111 Companion 迁入 FyAgent：native 独占读串口、ASR 按 seq 只准入一次，并复用现有 shurufa Agent/enigo 写入当前焦点。/shurufa 用 V2 组件重组为操作台；设备转写与桌面 Agent 配置分开。Windows 实机 COM/快捷键/上屏仍待本机验收。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `dde99460` | (see git log) |
+
+### Status
+
+[OK] **Completed**
