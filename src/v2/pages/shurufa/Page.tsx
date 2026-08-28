@@ -51,6 +51,8 @@ import {
   RUNTIME_STATE_LABELS,
   SENSOR_HINT,
   ssidLooksFiveG,
+  USB_LINK_BAUD,
+  USB_LINK_ID,
   WIFI_BAND_HINT,
   WIFI_CONNECTING_STUCK_HINT,
   WIFI_FIVE_G_ALERT,
@@ -100,7 +102,7 @@ export function ShurufaPage() {
   const [saving, setSaving] = useState(false);
   const outputRef = useRef("");
 
-  const [availablePorts, setAvailablePorts] = useState<string[]>([]);
+  const [linkPorts, setLinkPorts] = useState<string[]>([]);
   const [draft, setDraft] = useState<CompanionProfile>(EMPTY_PROFILE);
   const [device, setDevice] = useState<CompanionDeviceSettings>(
     DEFAULT_DEVICE_SETTINGS,
@@ -113,7 +115,7 @@ export function ShurufaPage() {
   const [deviceOpen, setDeviceOpen] = useState(false);
   const [agentOpen, setAgentOpen] = useState(false);
   const [debugOpen, setDebugOpen] = useState(false);
-  const [notice, setNotice] = useState("尚未连接。请先选择设备串口。");
+  const [notice, setNotice] = useState("插入 Board C 即可连接，无需选择串口。");
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
   const nativeUnavailable = isNativeOnlyError(error);
@@ -123,25 +125,15 @@ export function ShurufaPage() {
   const fiveG = ssidLooksFiveG(device.ssid);
   const stopped = runtime.state === "STOPPED";
   const editable = companionReady && stopped && !busy && !nativeUnavailable;
-  const canSave =
-    editable &&
-    errors.size === 0 &&
-    Boolean(draft.serial.port.trim()) &&
-    draft.target !== null;
+  const usbInserted = linkPorts.includes(USB_LINK_ID);
+  const canSave = editable && errors.size === 0 && draft.target !== null;
   const canStart = canSave && !dirty && draft.revision !== null;
   const canApply =
     companionReady &&
     !busy &&
     !nativeUnavailable &&
-    Boolean(draft.serial.port.trim()) &&
+    usbInserted &&
     deviceError === null;
-  const visiblePorts = useMemo(
-    () =>
-      draft.serial.port && !availablePorts.includes(draft.serial.port)
-        ? [draft.serial.port, ...availablePorts]
-        : availablePorts,
-    [availablePorts, draft.serial.port],
-  );
   const networkChip = networkChipLabel(
     runtime.network.state,
     runtime.network.ip,
@@ -195,7 +187,7 @@ export function ShurufaPage() {
       try {
         const companion = await ports.shurufa.getCompanionSnapshot();
         if (cancelled) return;
-        setAvailablePorts(companion.ports);
+        setLinkPorts(companion.ports);
         setRuntime(companion.runtime);
         setLastAsrAdmission(companion.lastAsrAdmission);
         setLastAsrError(companion.lastAsrError);
@@ -206,7 +198,7 @@ export function ShurufaPage() {
         setNotice(
           companion.profile
             ? "已恢复保存的配置；实时权限保持关闭。"
-            : "尚未连接。请先选择设备串口。",
+            : "插入 Board C 即可连接，无需选择串口。",
         );
       } catch (cause) {
         if (cancelled) return;
@@ -274,6 +266,7 @@ export function ShurufaPage() {
       try {
         const snapshot = await ports.shurufa.getCompanionSnapshot();
         if (!cancelled) {
+          setLinkPorts(snapshot.ports);
           setRuntime(snapshot.runtime);
           setLastAsrAdmission(snapshot.lastAsrAdmission);
           setLastAsrError(snapshot.lastAsrError);
@@ -326,7 +319,7 @@ export function ShurufaPage() {
         tone: next.configured ? "success" : "info",
         title: next.configured ? "配置已保存" : "配置已写入，但仍不完整",
         description: next.configured
-          ? "串口 ASR 会使用这份桌面 Agent 配置"
+          ? "硬件 ASR 会使用这份桌面 Agent 配置"
           : "请检查 url、model 和 api_key 是否都已填好",
       });
     } catch (cause) {
@@ -355,19 +348,6 @@ export function ShurufaPage() {
       });
     } catch (cause) {
       setError(errorMessage(cause));
-    }
-  };
-
-  const refreshPorts = async () => {
-    if (!editable) return;
-    setBusy(true);
-    try {
-      setAvailablePorts(await ports.shurufa.listCompanionPorts());
-      setNotice("已刷新串口列表，未打开任何串口。");
-    } catch {
-      setNotice("刷新串口列表失败，未打开任何串口。");
-    } finally {
-      setBusy(false);
     }
   };
 
@@ -452,8 +432,8 @@ export function ShurufaPage() {
         model: device.model.trim() || DEFAULT_DEVICE_SETTINGS.model,
       };
       const network = await ports.shurufa.applyCompanionDeviceConfig({
-        port: draft.serial.port,
-        baud: draft.serial.baud,
+        port: USB_LINK_ID,
+        baud: USB_LINK_BAUD,
         settings,
       });
       setDevice(settings);
@@ -498,7 +478,7 @@ export function ShurufaPage() {
     try {
       setRuntime(await ports.shurufa.stopCompanion());
       setNotice(
-        "运行已停止，实时权限已清除。健康串口仍可继续接收网络/录音/转写。",
+        "运行已停止，实时权限已清除。健康 USB 连接仍可继续接收网络/录音/转写。",
       );
     } catch {
       setRuntime((current) => ({
@@ -517,7 +497,7 @@ export function ShurufaPage() {
         <div>
           <h1 className="fy-shurufa-page-title">输入法</h1>
           <p className="fy-feature-description">
-            正式演示输入来自串口 ASR：硬件录音后，native 会把转写交给输入法
+            正式演示输入来自硬件 ASR：Board C 录音后，native 会把转写交给输入法
             Agent，并流式写入当前焦点文本框。手工文本和 {shortcutLabel}{" "}
             只是无硬件时的调试后门。
           </p>
@@ -538,7 +518,7 @@ export function ShurufaPage() {
       {nativeUnavailable ? (
         <InlineNotice tone="warning">
           输入法 Demo 只在 FyAgent
-          桌面应用中可用。浏览器预览不会枚举串口或伪造硬件状态。
+          桌面应用中可用。浏览器预览不会探测 Board C USB 或伪造硬件状态。
         </InlineNotice>
       ) : null}
       {error && !nativeUnavailable ? (
@@ -552,36 +532,18 @@ export function ShurufaPage() {
       ) : (
         <div className="fy-shurufa-workspace">
           <section
-            className="fy-shurufa-panel fy-shurufa-serial"
-            aria-label="串口选择"
-            data-testid="companion-serial"
+            className="fy-shurufa-panel fy-shurufa-usb"
+            aria-label="设备连接"
+            data-testid="companion-usb"
           >
-            <label className="fy-control-field fy-shurufa-serial-field">
-              设备串口
-              <select
-                className="fy-control-select"
-                disabled={!editable}
-                value={draft.serial.port}
-                onChange={(event) => {
-                  setDraft((current) => ({
-                    ...current,
-                    serial: { ...current.serial, port: event.target.value },
-                  }));
-                  setDirty(true);
-                }}
-              >
-                <option value="">请选择串口</option>
-                {visiblePorts.map((port) => (
-                  <option key={port} value={port}>
-                    {port}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <Button disabled={!editable} onClick={() => void refreshPorts()}>
-              刷新
-            </Button>
-            <Badge>波特率 {draft.serial.baud}</Badge>
+            <div className="fy-shurufa-usb-copy">
+              <strong>Board C USB</strong>
+              <p>插入即可连接，无需选择串口</p>
+            </div>
+            <Badge tone={usbInserted ? "accent" : "neutral"}>
+              {usbInserted ? "已插入" : "未插入"}
+            </Badge>
+            <Badge>波特率 {USB_LINK_BAUD}</Badge>
             <Badge tone={runtimeBadgeTone(runtime.state)}>
               {RUNTIME_STATE_LABELS[runtime.state]}
             </Badge>
@@ -818,7 +780,7 @@ export function ShurufaPage() {
                 <dd>{sensorWarn ?? runtime.network.sensorState ?? "—"}</dd>
               </div>
               <div>
-                <dt>串口日志</dt>
+                <dt>设备日志</dt>
                 <dd>{runtime.network.lastLog || "—"}</dd>
               </div>
             </dl>
@@ -920,8 +882,8 @@ export function ShurufaPage() {
               <div>
                 <h2>最近转写与优化结果</h2>
                 <p className="fy-shurufa-hint">
-                  正式链路：串口 ASR → 输入法 Agent →
-                  当前焦点文本框。页面只投影状态，不驱动串口读取。
+                  正式链路：硬件 ASR → 输入法 Agent →
+                  当前焦点文本框。页面只投影状态，不驱动 USB 读取。
                 </p>
               </div>
               {running ? <Spinner label="正在生成" /> : null}
@@ -1089,7 +1051,7 @@ export function ShurufaPage() {
                 <span>
                   <strong>调试后门</strong>
                   <span className="fy-shurufa-collapse-hint">
-                    正式演示输入是串口 ASR，不是这张文本框
+                    正式演示输入是硬件 ASR，不是这张文本框
                   </span>
                 </span>
                 <CollapsibleCaret open={debugOpen}>
@@ -1103,9 +1065,9 @@ export function ShurufaPage() {
                 data-testid="companion-debug-fallback"
               >
                 <InlineNotice tone="warning">
-                  正式演示输入来自串口
+                  正式演示输入来自硬件
                   ASR。下面的文本框和预览生成只用于没有硬件时快速验证
-                  Agent，不会驱动自动串口链路。
+                  Agent，不会驱动自动 USB 链路。
                 </InlineNotice>
                 <label className="fy-control-field fy-shurufa-prompt-field">
                   调试文本

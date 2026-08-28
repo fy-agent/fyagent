@@ -81,16 +81,23 @@ impl Display for SerialError {
 }
 impl std::error::Error for SerialError {}
 
-/// The production source is constructed only after a later user command starts
-/// a runtime. Tests provide EventSource fakes and never open a COM device.
-pub struct SerialPortSource {
-    port: Box<dyn serialport::SerialPort>,
-    buffered: BoundedLineBuffer,
+/// Shared VKEY decoder for COM and Board C HID. Sequence + ASR admission live
+/// here so both transports cannot drift into a second decoder.
+#[derive(Default)]
+pub(crate) struct LinkDecoder {
     tracker: SequenceTracker,
     net_tracker: SequenceTracker,
     asr_tracker: SequenceTracker,
     last_network: Option<NetworkStatus>,
     last_asr: AsrOutcome,
+}
+
+/// The production COM source is retained for tests and leftover fixtures.
+/// Formal Board C traffic uses `UsbLinkSource` and this same `LinkDecoder`.
+pub struct SerialPortSource {
+    port: Box<dyn serialport::SerialPort>,
+    buffered: BoundedLineBuffer,
+    decoder: LinkDecoder,
 }
 
 impl SerialPortSource {
@@ -111,11 +118,7 @@ impl SerialPortSource {
         Ok(Self {
             port,
             buffered: BoundedLineBuffer::default(),
-            tracker: SequenceTracker::default(),
-            net_tracker: SequenceTracker::default(),
-            asr_tracker: SequenceTracker::default(),
-            last_network: None,
-            last_asr: AsrOutcome::default(),
+            decoder: LinkDecoder::default(),
         })
     }
 }
@@ -127,7 +130,7 @@ impl EventSource for SerialPortSource {
         let mut did_read = false;
         loop {
             if let Some(line) = self.buffered.push(&[]) {
-                match self.accept_decoded(&line) {
+                match self.decoder.accept_decoded(&line) {
                     AcceptAction::Input(event) => return Ok(Some(event)),
                     AcceptAction::Yield => return Ok(None),
                     AcceptAction::Continue => continue,
@@ -144,7 +147,7 @@ impl EventSource for SerialPortSource {
                     let Some(line) = self.buffered.push(&bytes[..count]) else {
                         return Ok(None);
                     };
-                    match self.accept_decoded(&line) {
+                    match self.decoder.accept_decoded(&line) {
                         AcceptAction::Input(event) => return Ok(Some(event)),
                         AcceptAction::Yield => return Ok(None),
                         AcceptAction::Continue => continue,
@@ -167,11 +170,11 @@ impl EventSource for SerialPortSource {
     }
 
     fn last_network_status(&self) -> Option<NetworkStatus> {
-        self.last_network.clone()
+        self.decoder.last_network_status()
     }
 
     fn take_asr_outcome(&mut self) -> AsrOutcome {
-        std::mem::take(&mut self.last_asr)
+        self.decoder.take_asr_outcome()
     }
 
     fn close(&mut self) {
@@ -180,14 +183,23 @@ impl EventSource for SerialPortSource {
     }
 }
 
-enum AcceptAction {
+#[derive(Debug)]
+pub(crate) enum AcceptAction {
     Input(SerialEvent),
     Yield,
     Continue,
 }
 
-impl SerialPortSource {
-    fn accept_decoded(&mut self, line: &[u8]) -> AcceptAction {
+impl LinkDecoder {
+    pub(crate) fn last_network_status(&self) -> Option<NetworkStatus> {
+        self.last_network.clone()
+    }
+
+    pub(crate) fn take_asr_outcome(&mut self) -> AsrOutcome {
+        std::mem::take(&mut self.last_asr)
+    }
+
+    pub(crate) fn accept_decoded(&mut self, line: &[u8]) -> AcceptAction {
         let Some(decoded) = decode_record(line) else {
             return AcceptAction::Continue;
         };

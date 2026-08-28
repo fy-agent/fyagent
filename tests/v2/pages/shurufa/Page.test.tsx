@@ -31,11 +31,11 @@ const agentSnapshot: ShurufaSnapshot = {
 };
 
 const companionSnapshot: CompanionSnapshot = {
-  ports: ["COM3"],
+  ports: ["usb:ventured"],
   profile: {
     version: 1,
     revision: "rev-1",
-    serial: { port: "COM3", baud: 115200 },
+    serial: { port: "usb:ventured", baud: 115200 },
     target: {
       processName: "notepad.exe",
       processPath: "C:\\\\Windows\\\\notepad.exe",
@@ -47,7 +47,7 @@ const companionSnapshot: CompanionSnapshot = {
         displayName: "下一项",
         keys: ["CTRL", "SHIFT", "TAB"],
       },
-      { input: "ENCODER_PRESS", displayName: "确认动作", keys: ["ENTER"] },
+      { input: "ENCODER_PRESS", displayName: "新建窗口", keys: ["CTRL", "SHIFT", "N"] },
     ],
   },
   device: {
@@ -107,7 +107,7 @@ function desktopPorts(): FeaturePorts {
   }));
   ports.shurufa.clearSession = vi.fn(async () => 0);
   ports.shurufa.run = vi.fn(async () => "ok");
-  ports.shurufa.listCompanionPorts = vi.fn(async () => ["COM3", "COM5"]);
+  ports.shurufa.listCompanionPorts = vi.fn(async () => ["usb:ventured"]);
   ports.shurufa.captureCompanionTarget = vi.fn(async () => ({
     processName: "code.exe",
     processPath: "C:\\\\App\\\\code.exe",
@@ -149,6 +149,7 @@ describe("Shurufa companion page", () => {
     expect(
       await screen.findByText(/只在 FyAgent 桌面应用中可用/),
     ).toBeInTheDocument();
+    expect(screen.queryByText("已插入")).not.toBeInTheDocument();
     expect(screen.queryByText("COM3")).not.toBeInTheDocument();
     expect(screen.queryByText("把按钮改成主色")).not.toBeInTheDocument();
   });
@@ -157,9 +158,14 @@ describe("Shurufa companion page", () => {
     const ports = desktopPorts();
     renderPage(ports);
 
-    const serial = await screen.findByTestId("companion-serial");
-    expect(serial).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "COM3" })).toBeInTheDocument();
+    const usb = await screen.findByTestId("companion-usb");
+    expect(usb).toBeInTheDocument();
+    expect(screen.getByText("Board C USB")).toBeInTheDocument();
+    expect(screen.getByText("插入即可连接，无需选择串口")).toBeInTheDocument();
+    expect(screen.getByText("已插入")).toBeInTheDocument();
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+    expect(screen.queryByRole("option")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "刷新" })).not.toBeInTheDocument();
     expect(screen.getByText("波特率 115200")).toBeInTheDocument();
     expect(screen.getAllByText("已停止").length).toBeGreaterThan(0);
     expect(screen.getByText("把按钮改成主色")).toBeInTheDocument();
@@ -171,7 +177,7 @@ describe("Shurufa companion page", () => {
     expect(screen.getByText(/19200 采样/)).toBeInTheDocument();
     expect(screen.getByText("优化后的提示词")).toBeInTheDocument();
     expect(
-      screen.getAllByText(/正式演示输入来自串口 ASR/).length,
+      screen.getAllByText(/正式演示输入来自硬件 ASR/).length,
     ).toBeGreaterThan(0);
 
     expect(screen.getByText("设备转写配置")).toBeInTheDocument();
@@ -190,7 +196,7 @@ describe("Shurufa companion page", () => {
     await userEvent.click(screen.getByTestId("companion-debug-toggle"));
     expect(
       await screen.findByTestId("companion-debug-fallback"),
-    ).toHaveTextContent("正式演示输入来自串口 ASR");
+    ).toHaveTextContent("正式演示输入来自硬件 ASR");
     expect(screen.getByLabelText("调试文本")).toHaveValue("调试文本");
 
     await waitFor(() => {
@@ -198,17 +204,16 @@ describe("Shurufa companion page", () => {
     });
   });
 
-  it("refreshes ports through the feature port, not a page-local invoke", async () => {
+  it("projects Board C USB absence from the native snapshot", async () => {
     const ports = desktopPorts();
+    ports.shurufa.getCompanionSnapshot = vi.fn(async () => ({
+      ...companionSnapshot,
+      ports: [],
+    }));
     renderPage(ports);
-    await screen.findByTestId("companion-serial");
-    await userEvent.click(screen.getByRole("button", { name: "刷新" }));
-    await waitFor(() => {
-      expect(ports.shurufa.listCompanionPorts).toHaveBeenCalledTimes(1);
-    });
-    expect(
-      await screen.findByRole("option", { name: "COM5" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("未插入")).toBeInTheDocument();
+    expect(screen.queryByText("已插入")).not.toBeInTheDocument();
+    expect(ports.shurufa.listCompanionPorts).not.toHaveBeenCalled();
   });
 
   it("does not call invoke from the shurufa page tree", () => {

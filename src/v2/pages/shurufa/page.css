@@ -42,7 +42,7 @@
   background: rgba(21, 47, 72, 0.28);
 }
 
-.fy-shurufa-serial,
+.fy-shurufa-usb,
 .fy-shurufa-target,
 .fy-shurufa-controls {
   display: flex;
@@ -51,8 +51,25 @@
   gap: 10px;
 }
 
-.fy-shurufa-serial-field {
+.fy-shurufa-usb {
+  align-items: center;
+}
+
+.fy-shurufa-usb-copy {
   flex: 1 1 220px;
+}
+
+.fy-shurufa-usb-copy strong {
+  display: block;
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.fy-shurufa-usb-copy p {
+  margin: 4px 0 0;
+  color: var(--fy-text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .fy-shurufa-target {

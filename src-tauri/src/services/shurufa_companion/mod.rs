@@ -5,6 +5,7 @@ mod profile;
 mod runtime;
 mod serial;
 mod target;
+mod usb_link;
 mod windows_foreground_restore;
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -20,8 +21,9 @@ use profile::{ProfileDraft, ProfileStore, ProfileTarget};
 use runtime::{
     RuntimeController, RuntimeMode, RuntimeStatus, WindowsInputDispatcher, WindowsModifierState,
 };
-use serial::{AsrAdmission, AsrDone, AsrOutcome, SerialPortSource};
+use serial::{AsrAdmission, AsrDone, AsrOutcome};
 use target::{ForegroundProbe, WindowsForegroundProbe};
+use usb_link::{UsbLinkSource, USB_LINK_BAUD, USB_LINK_ID};
 use windows_foreground_restore::WindowsForegroundTargetRestorer;
 
 pub type CompanionProfile = ProfileDraft;
@@ -81,7 +83,9 @@ impl CompanionState {
             cached_device: load_device_from_store(&device_store()).unwrap_or_default(),
             ..CompanionInner::default()
         };
-        if let Some(profile) = inner.cached_profile.clone() {
+        if let Some(mut profile) = inner.cached_profile.clone() {
+            normalize_link(&mut profile);
+            inner.cached_profile = Some(profile.clone());
             let _ = inner.runtime.set_profile(profile);
         }
         let last_snapshot = snapshot_from_inner(&inner);
@@ -106,8 +110,7 @@ impl CompanionState {
 
 impl CompanionIo {
     pub fn list_ports(&self) -> Result<Vec<String>, String> {
-        let ports = SerialPortSource::available_ports()
-            .map_err(|_| "serial ports are unavailable".to_owned())?;
+        let ports = usb_presence_ports();
         if let Ok(mut inner) = self.inner.lock() {
             inner.cached_ports = ports.clone();
             self.publish_snapshot(&inner);
@@ -149,12 +152,13 @@ impl CompanionIo {
         })
     }
 
-    pub fn save_profile(&self, draft: CompanionProfile) -> Result<CompanionProfile, String> {
+    pub fn save_profile(&self, mut draft: CompanionProfile) -> Result<CompanionProfile, String> {
         let mut inner = self.lock_inner()?;
         inner
             .runtime
             .ensure_stopped()
             .map_err(|error| error.to_string())?;
+        normalize_link(&mut draft);
         let saved = save_profile_to_store(&profile_store(), draft)?;
         inner
             .runtime
@@ -172,13 +176,11 @@ impl CompanionIo {
             .ensure_stopped()
             .map_err(|error| error.to_string())?;
         let profile = load_profile_into_runtime(&profile_store(), &mut inner.runtime)?;
-        inner.cached_profile = Some(profile.clone());
-        let status = start_shortcut(
-            &mut inner.runtime,
-            &profile.serial.port,
-            profile.serial.baud,
-            RuntimeMode::DryRun,
-        )?;
+        inner.cached_profile = Some(profile);
+        let status = start_shortcut(&mut inner.runtime, RuntimeMode::DryRun)?;
+        if inner.runtime.has_source() {
+            inner.cached_ports = vec![USB_LINK_ID.to_owned()];
+        }
         self.publish_snapshot(&inner);
         Ok(status)
     }
@@ -190,13 +192,11 @@ impl CompanionIo {
             .ensure_stopped()
             .map_err(|error| error.to_string())?;
         let profile = load_profile_into_runtime(&profile_store(), &mut inner.runtime)?;
-        inner.cached_profile = Some(profile.clone());
-        let status = start_shortcut(
-            &mut inner.runtime,
-            &profile.serial.port,
-            profile.serial.baud,
-            RuntimeMode::Live,
-        )?;
+        inner.cached_profile = Some(profile);
+        let status = start_shortcut(&mut inner.runtime, RuntimeMode::Live)?;
+        if inner.runtime.has_source() {
+            inner.cached_ports = vec![USB_LINK_ID.to_owned()];
+        }
         self.publish_snapshot(&inner);
         Ok(status)
     }
@@ -226,9 +226,6 @@ impl CompanionIo {
         &self,
         request: CompanionApplyDeviceConfig,
     ) -> Result<CompanionNetwork, String> {
-        if request.port.trim().is_empty() || request.baud == 0 {
-            return Err("a serial port is required".to_owned());
-        }
         request
             .settings
             .validate()
@@ -240,7 +237,8 @@ impl CompanionIo {
         let result = (|| {
             let mut inner = self.lock_inner_timeout(Duration::from_secs(2))?;
             inner.cached_device = saved.clone();
-            ensure_device_source(&mut inner.runtime, &request.port, request.baud)?;
+            ensure_device_source(&mut inner.runtime)?;
+            inner.cached_ports = vec![USB_LINK_ID.to_owned()];
             let network = inner
                 .runtime
                 .apply_config(&saved)
@@ -307,10 +305,27 @@ fn device_store() -> DeviceSettingsStore {
     DeviceSettingsStore::new(companion_dir().join("device.json"))
 }
 
+fn normalize_link(draft: &mut ProfileDraft) {
+    draft.serial.port = USB_LINK_ID.to_owned();
+    draft.serial.baud = USB_LINK_BAUD;
+}
+
+fn usb_presence_ports() -> Vec<String> {
+    if UsbLinkSource::present() {
+        vec![USB_LINK_ID.to_owned()]
+    } else {
+        Vec::new()
+    }
+}
+
 fn load_profile_from_store(store: &ProfileStore) -> Result<Option<ProfileDraft>, String> {
-    store
+    let mut profile = store
         .load()
-        .map_err(|_| "saved profile is invalid".to_owned())
+        .map_err(|_| "saved profile is invalid".to_owned())?;
+    if let Some(draft) = profile.as_mut() {
+        normalize_link(draft);
+    }
+    Ok(profile)
 }
 
 fn load_device_from_store(store: &DeviceSettingsStore) -> Result<DeviceSettings, String> {
@@ -334,52 +349,61 @@ fn load_profile_into_runtime(
     store: &ProfileStore,
     runtime: &mut RuntimeController,
 ) -> Result<ProfileDraft, String> {
-    let profile = store
+    let mut profile = store
         .load()
         .map_err(|_| "profile is unavailable".to_owned())?
         .ok_or_else(|| "a saved profile is required".to_owned())?;
+    normalize_link(&mut profile);
     runtime
         .set_profile(profile.clone())
         .map_err(|error| error.to_string())?;
     Ok(profile)
 }
 
-fn ensure_device_source(
-    runtime: &mut RuntimeController,
-    port: &str,
-    baud: u32,
-) -> Result<(), String> {
-    if runtime.source_matches(port, baud) {
+fn ensure_device_source(runtime: &mut RuntimeController) -> Result<(), String> {
+    if runtime.source_matches(USB_LINK_ID, USB_LINK_BAUD) {
         return Ok(());
     }
     runtime
         .ensure_stopped()
         .map_err(|error| error.to_string())?;
     runtime.close_source();
-    let source = SerialPortSource::open(port, baud)
-        .map_err(|_| "selected serial port could not be opened".to_owned())?;
-    runtime.attach_source(port.to_owned(), baud, Box::new(source));
+    let source = UsbLinkSource::open().map_err(|_| "未插入 Board C USB 设备".to_owned())?;
+    runtime.attach_source(USB_LINK_ID.to_owned(), USB_LINK_BAUD, Box::new(source));
     Ok(())
 }
 
 fn start_shortcut(
     runtime: &mut RuntimeController,
-    port: &str,
-    baud: u32,
     mode: RuntimeMode,
 ) -> Result<RuntimeStatus, String> {
-    if !runtime.source_matches(port, baud) {
-        runtime
-            .ensure_stopped()
-            .map_err(|error| error.to_string())?;
-        runtime.close_source();
-        let source = SerialPortSource::open(port, baud)
-            .map_err(|_| "selected serial port could not be opened".to_owned())?;
-        runtime.attach_source(port.to_owned(), baud, Box::new(source));
-    }
+    ensure_device_source(runtime)?;
     runtime
         .start_existing(mode)
         .map_err(|error| error.to_string())
+}
+
+fn try_attach_usb(inner: &mut CompanionInner) -> bool {
+    if inner.runtime.source_matches(USB_LINK_ID, USB_LINK_BAUD) {
+        inner.cached_ports = vec![USB_LINK_ID.to_owned()];
+        return true;
+    }
+    if inner.runtime.has_source() {
+        return true;
+    }
+    match UsbLinkSource::open() {
+        Ok(source) => {
+            inner
+                .runtime
+                .attach_source(USB_LINK_ID.to_owned(), USB_LINK_BAUD, Box::new(source));
+            inner.cached_ports = vec![USB_LINK_ID.to_owned()];
+            true
+        }
+        Err(_) => {
+            inner.cached_ports.clear();
+            false
+        }
+    }
 }
 
 fn snapshot_from_inner(inner: &CompanionInner) -> CompanionSnapshot {
@@ -442,9 +466,10 @@ fn spawn_pump(io: CompanionIo, stop: Arc<AtomicBool>, app: AppHandle) {
                         Ok(guard) => guard,
                         Err(_) => break,
                     };
-                    if !guard.runtime.has_source() {
+                    if !guard.runtime.has_source() && !try_attach_usb(&mut guard) {
+                        io.publish_snapshot(&guard);
                         drop(guard);
-                        std::thread::sleep(Duration::from_millis(100));
+                        std::thread::sleep(Duration::from_millis(500));
                         continue;
                     }
                     match guard
@@ -453,6 +478,11 @@ fn spawn_pump(io: CompanionIo, stop: Arc<AtomicBool>, app: AppHandle) {
                     {
                         Ok(outcome) => {
                             apply_asr_outcome(&mut guard, &outcome.asr);
+                            if !guard.runtime.has_source() {
+                                guard.cached_ports.clear();
+                            } else {
+                                guard.cached_ports = vec![USB_LINK_ID.to_owned()];
+                            }
                             io.publish_snapshot(&guard);
                             outcome.asr.done
                         }
@@ -476,6 +506,7 @@ mod tests {
     use crate::services::shurufa_companion::serial::EventSource;
     use crate::services::shurufa_companion::serial::SerialError;
     use crate::services::shurufa_companion::serial::SerialEvent;
+    use crate::services::shurufa_companion::usb_link::{USB_LINK_BAUD, USB_LINK_ID};
     use std::sync::atomic::AtomicU32;
     use tempfile::tempdir;
 
@@ -553,7 +584,7 @@ mod tests {
     #[test]
     fn snapshot_does_not_block_when_runtime_lock_is_held() {
         let mut inner = CompanionInner::default();
-        inner.cached_ports = vec!["COM3".into()];
+        inner.cached_ports = vec![USB_LINK_ID.into()];
         let published = snapshot_from_inner(&inner);
         let io = CompanionIo {
             inner: Arc::new(Mutex::new(inner)),
@@ -562,7 +593,7 @@ mod tests {
         };
         let _hold = io.inner.lock().unwrap();
         let snapshot = io.snapshot().unwrap();
-        assert_eq!(snapshot.ports, vec!["COM3".to_owned()]);
+        assert_eq!(snapshot.ports, vec![USB_LINK_ID.to_owned()]);
     }
 
     #[test]
@@ -578,9 +609,9 @@ mod tests {
         );
         inner.last_asr_seq = Some(4);
         inner.last_asr_admission = AsrAdmission::Admitted;
-        inner.cached_ports = vec!["COM3".into()];
+        inner.cached_ports = vec![USB_LINK_ID.into()];
         let snapshot = snapshot_from_inner(&inner);
-        assert_eq!(snapshot.ports, vec!["COM3".to_owned()]);
+        assert_eq!(snapshot.ports, vec![USB_LINK_ID.to_owned()]);
         assert_eq!(snapshot.last_asr_seq, Some(4));
         assert_eq!(snapshot.last_asr_admission, AsrAdmission::Admitted);
         assert_eq!(snapshot.runtime.state, RuntimeMode::Stopped);
@@ -654,10 +685,47 @@ mod tests {
         let store = ProfileStore::new(directory.path().join("profile.json"));
         let saved = save_profile_to_store(&store, draft()).unwrap();
         let loaded = load_profile_from_store(&store).unwrap().unwrap();
-        assert_eq!(loaded, saved);
+        assert_eq!(loaded.revision, saved.revision);
+        assert_eq!(loaded.mappings, saved.mappings);
+        assert_eq!(loaded.serial.port, USB_LINK_ID);
+        assert_eq!(loaded.serial.baud, USB_LINK_BAUD);
         let mut restarted = RuntimeController::default();
         restarted.set_profile(loaded).unwrap();
         assert_eq!(restarted.status().state, RuntimeMode::Stopped);
         assert!(!restarted.status().live_enabled);
+    }
+
+    #[test]
+    fn legacy_com_profile_hydrates_usb_and_save_upgrades_five_mappings() {
+        let directory = tempdir().unwrap();
+        let store = ProfileStore::new(directory.path().join("profile.json"));
+        let mut legacy = draft();
+        legacy.serial.port = "COM3".into();
+        legacy
+            .mappings
+            .retain(|mapping| InputId::LEGACY.contains(&mapping.input));
+        let legacy = legacy.with_computed_revision();
+        std::fs::write(store.path(), serde_json::to_vec(&legacy).unwrap()).unwrap();
+
+        let loaded = load_profile_from_store(&store).unwrap().unwrap();
+        assert_eq!(loaded.serial.port, USB_LINK_ID);
+        assert_eq!(loaded.serial.baud, USB_LINK_BAUD);
+        assert_eq!(loaded.revision, legacy.revision);
+        assert_eq!(loaded.mappings.len(), 3);
+
+        let mut upgraded = draft();
+        upgraded.revision = loaded.revision.clone();
+        normalize_link(&mut upgraded);
+        let saved = save_profile_to_store(&store, upgraded).unwrap();
+        assert_eq!(saved.serial.port, USB_LINK_ID);
+        assert_eq!(saved.serial.baud, USB_LINK_BAUD);
+        assert_eq!(saved.mappings.len(), 5);
+        assert_ne!(saved.revision, legacy.revision);
+        assert!(directory.path().join("profile.json.bak").exists());
+        let stale = draft();
+        assert_eq!(
+            save_profile_to_store(&store, stale).unwrap_err(),
+            "profile revision is stale"
+        );
     }
 }

@@ -9,10 +9,7 @@ import type {
   CompanionRuntimeState,
   CompanionSnapshot,
 } from "../../shared/features/ports";
-import {
-  DEFAULT_COMPANION_BAUD,
-  DEFAULT_COMPANION_DEVICE_MODEL,
-} from "../../shared/features/ports";
+import { DEFAULT_COMPANION_DEVICE_MODEL } from "../../shared/features/ports";
 
 const MODIFIERS = ["CTRL", "ALT", "SHIFT"] as const;
 const ALLOWED_PRIMARY = new Set([
@@ -37,6 +34,9 @@ const NAMED_PRIMARIES: Record<string, string> = {
   BracketRight: "]",
 };
 
+export const USB_LINK_ID = "usb:ventured";
+export const USB_LINK_BAUD = 115200;
+
 export const INPUT_LABELS: Record<CompanionInputId, string> = {
   ENCODER_CW: "顺时针旋转",
   ENCODER_CCW: "逆时针旋转",
@@ -52,9 +52,9 @@ export const INITIAL_MAPPINGS: CompanionMapping[] = [
     displayName: "下一项",
     keys: ["CTRL", "SHIFT", "TAB"],
   },
-  { input: "ENCODER_PRESS", displayName: "确认动作", keys: ["ENTER"] },
-  { input: "BUTTON_A", displayName: "按键 A", keys: ["CTRL", "1"] },
-  { input: "BUTTON_B", displayName: "按键 B", keys: ["CTRL", "2"] },
+  { input: "ENCODER_PRESS", displayName: "新建窗口", keys: ["CTRL", "SHIFT", "N"] },
+  { input: "BUTTON_A", displayName: "新建", keys: ["CTRL", "N"] },
+  { input: "BUTTON_B", displayName: "确认动作", keys: ["ENTER"] },
 ];
 
 export const RUNTIME_STATE_LABELS: Record<CompanionRuntimeState, string> = {
@@ -132,7 +132,7 @@ export const DEFAULT_DEVICE_SETTINGS: CompanionDeviceSettings = {
 export const EMPTY_PROFILE: CompanionProfile = {
   version: 1,
   revision: null,
-  serial: { port: "", baud: DEFAULT_COMPANION_BAUD },
+  serial: { port: USB_LINK_ID, baud: USB_LINK_BAUD },
   target: null,
   mappings: INITIAL_MAPPINGS,
 };
@@ -159,8 +159,8 @@ export function hydrateProfile(
   return {
     ...profile,
     serial: {
-      port: profile.serial.port,
-      baud: profile.serial.baud || DEFAULT_COMPANION_BAUD,
+      port: USB_LINK_ID,
+      baud: USB_LINK_BAUD,
     },
     mappings: INITIAL_MAPPINGS.map(
       (fallback) => byInput.get(fallback.input) ?? fallback,
@@ -426,7 +426,7 @@ const RUNTIME_PHRASES: ReadonlyArray<readonly [string, string]> = [
   ["a valid saved profile is required", "需要有效且已保存的配置"],
   ["input is unmapped", "输入未映射"],
   ["profile mapping is invalid", "映射配置无效"],
-  ["serial input stopped", "串口输入已停止"],
+  ["serial input stopped", "USB 输入已停止"],
   ["foreground target did not match", "前台目标不匹配"],
   ["foreground restore target is missing", "前台恢复目标不存在"],
   ["foreground restore was rejected", "前台恢复被拒绝"],

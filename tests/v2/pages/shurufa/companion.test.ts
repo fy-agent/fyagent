@@ -5,12 +5,15 @@ import {
   asrReasonLabel,
   canonicalChord,
   deviceSettingsError,
+  EMPTY_PROFILE,
   hydrateProfile,
   INITIAL_MAPPINGS,
   mappingErrors,
   networkChipLabel,
   recReasonLabel,
   ssidLooksFiveG,
+  USB_LINK_BAUD,
+  USB_LINK_ID,
 } from "@/v2/pages/shurufa/companion";
 
 describe("shurufa companion helpers", () => {
@@ -53,7 +56,29 @@ describe("shurufa companion helpers", () => {
     ).toBeNull();
   });
 
-  it("hydrates a legacy three-mapping profile without dropping user chords", () => {
+  it("uses the USB link id on a fresh profile and new default shortcuts", () => {
+    expect(EMPTY_PROFILE.serial).toEqual({
+      port: USB_LINK_ID,
+      baud: USB_LINK_BAUD,
+    });
+    expect(INITIAL_MAPPINGS[2]).toEqual({
+      input: "ENCODER_PRESS",
+      displayName: "新建窗口",
+      keys: ["CTRL", "SHIFT", "N"],
+    });
+    expect(INITIAL_MAPPINGS[3]).toEqual({
+      input: "BUTTON_A",
+      displayName: "新建",
+      keys: ["CTRL", "N"],
+    });
+    expect(INITIAL_MAPPINGS[4]).toEqual({
+      input: "BUTTON_B",
+      displayName: "确认动作",
+      keys: ["ENTER"],
+    });
+  });
+
+  it("hydrates a legacy three-mapping COM profile without dropping user chords", () => {
     const hydrated = hydrateProfile({
       version: 1,
       revision: "rev-old",
@@ -76,10 +101,17 @@ describe("shurufa companion helpers", () => {
         { input: "ENCODER_PRESS", displayName: "自定义确认", keys: ["ENTER"] },
       ],
     });
+    expect(hydrated.serial).toEqual({
+      port: USB_LINK_ID,
+      baud: USB_LINK_BAUD,
+    });
+    expect(hydrated.revision).toBe("rev-old");
     expect(hydrated.mappings.map((mapping) => mapping.input)).toEqual(
       INITIAL_MAPPINGS.map((mapping) => mapping.input),
     );
     expect(hydrated.mappings[0]?.displayName).toBe("自定义上一项");
+    expect(hydrated.mappings[2]?.displayName).toBe("自定义确认");
+    expect(hydrated.mappings[2]?.keys).toEqual(["ENTER"]);
     expect(hydrated.mappings[3]).toEqual(INITIAL_MAPPINGS[3]);
     expect(hydrated.mappings[4]).toEqual(INITIAL_MAPPINGS[4]);
   });
@@ -94,13 +126,17 @@ describe("shurufa companion helpers", () => {
         processPath: "C:\\\\Windows\\\\notepad.exe",
       },
       mappings: [
-        { input: "ENCODER_CW", displayName: "上一项", keys: ["CTRL", "1"] },
+        { input: "ENCODER_CW", displayName: "上一项", keys: ["CTRL", "N"] },
         {
           input: "ENCODER_CCW",
           displayName: "下一项",
           keys: ["CTRL", "SHIFT", "TAB"],
         },
-        { input: "ENCODER_PRESS", displayName: "确认动作", keys: ["ENTER"] },
+        {
+          input: "ENCODER_PRESS",
+          displayName: "新建窗口",
+          keys: ["CTRL", "SHIFT", "N"],
+        },
       ],
     });
     const errors = mappingErrors(hydrated.mappings);
