@@ -131,12 +131,17 @@ impl CompanionIo {
     }
 
     pub fn capture_target(&self) -> Result<CompanionTarget, String> {
-        self.lock_inner()?
-            .runtime
-            .ensure_stopped()
-            .map_err(|error| error.to_string())?;
+        {
+            let inner =
+                self.lock_inner_timeout(Duration::from_secs(2), "foreground capture timed out")?;
+            inner
+                .runtime
+                .ensure_stopped()
+                .map_err(|error| error.to_string())?;
+        }
         std::thread::sleep(Duration::from_secs(3));
-        let runtime_guard = self.lock_inner()?;
+        let runtime_guard =
+            self.lock_inner_timeout(Duration::from_secs(2), "foreground capture timed out")?;
         runtime_guard
             .runtime
             .ensure_stopped()
@@ -235,7 +240,8 @@ impl CompanionIo {
             .map_err(|error| error.to_string())?;
         self.pause_pump.store(true, Ordering::SeqCst);
         let result = (|| {
-            let mut inner = self.lock_inner_timeout(Duration::from_secs(2))?;
+            let mut inner = self
+                .lock_inner_timeout(Duration::from_secs(2), "serial pump is busy; retry apply")?;
             inner.cached_device = saved.clone();
             ensure_device_source(&mut inner.runtime)?;
             inner.cached_ports = vec![USB_LINK_ID.to_owned()];
@@ -259,6 +265,7 @@ impl CompanionIo {
     fn lock_inner_timeout(
         &self,
         timeout: Duration,
+        busy: &str,
     ) -> Result<MutexGuard<'_, CompanionInner>, String> {
         let started = Instant::now();
         loop {
@@ -268,7 +275,7 @@ impl CompanionIo {
                     std::thread::sleep(Duration::from_millis(10));
                 }
                 Err(TryLockError::WouldBlock) => {
-                    return Err("serial pump is busy; retry apply".to_owned());
+                    return Err(busy.to_owned());
                 }
                 Err(TryLockError::Poisoned(_)) => {
                     return Err("runtime state is unavailable".to_owned());

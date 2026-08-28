@@ -79,7 +79,10 @@ Windows hidapi 2.6.3
 - Formal Board C traffic uses `UsbLinkSource` + the same `LinkDecoder` as the
   leftover `SerialPortSource`. Do not copy a second USB decoder.
 - One HID source has exactly one native reader. Snapshot/status commands never
-  call `read()` and never enumerate COM ports.
+  call `read()` and never enumerate COM ports. `UsbLinkSource::poll_event`
+  takes one HID read per pump tick, matching `SerialPortSource`. Timeout,
+  would-block, empty, and generic `hidapi error` reads are idle (`Ok(None)`),
+  not disconnect. Only an explicit device-gone / access error is `SerialError::Read`.
 - USB auto-discover/reconnect belongs to `spawn_pump`. About every 500ms, if
   runtime has no source, the pump tries `UsbLinkSource::open()`. Success
   attaches `usb:ventured / 115200` and projects `ports = ["usb:ventured"]`.
@@ -107,7 +110,9 @@ Windows hidapi 2.6.3
   revision. Next save upgrades to five mappings + USB link, writes `.bak`,
   and uses the old revision for optimistic concurrency.
 - `validate_loaded()` still accepts a three-mapping profile. UI hydrate fills
-  BUTTON_A/B defaults. Save still requires five mappings.
+  BUTTON_A/B defaults, but a missing-button fallback must not reuse a chord
+  already present on a saved mapping (shift to `CTRL+1`…`CTRL+5`). Save still
+  requires five mappings. User-saved collisions stay visible as errors.
 - Default baud `115200`. Default device model
   `XingChenAGI/XingChenASR-V3.2-Ultra`.
 - Fresh / fallback shortcut defaults:
@@ -137,7 +142,7 @@ Windows hidapi 2.6.3
 | ASR START / FAIL | status only (`start` / `fail`); keep previous `asrText` |
 | ASR FAIL reason=CANCEL | status only; never admit Agent |
 | `VKEY_SENSOR/1` | merge `pir` / `tofMm` / `sensorState`; no shortcut or Agent |
-| Saved 3-mapping COM profile | load + runtime still valid; memory USB normalize; UI hydrates BUTTON_A/B; next save requires 5 + `usb:ventured` |
+| Saved 3-mapping COM profile | load + runtime still valid; memory USB normalize; UI hydrates BUTTON_A/B without inventing a colliding fallback; next save requires 5 + `usb:ventured` |
 | ASR DONE + empty/whitespace text | `empty`; no Agent |
 | ASR DONE + new seq + non-empty text | `admitted` + one `run_ingest_text` |
 | Same ASR text, new seq | second admission (do not dedupe by text) |
@@ -173,7 +178,8 @@ Windows hidapi 2.6.3
   source; Stopped DONE admits without shortcut dispatch; busy projection uses
   the exact Chinese string; old 3-mapping COM profile hydrates USB in memory
   and save upgrades to five mappings + `usb:ventured` without breaking stale
-  revision / `.bak`.
+  revision / `.bak`; hydrate of `ENCODER_PRESS=ENTER` does not leave
+  `BUTTON_B=ENTER`; idle HID read errors do not emit `serial input stopped`.
 - Rust `commands::shurufa`: first `run_ingest_text` admission succeeds; second
   concurrent call returns `正在生成中，请稍后再试`.
 - V2: `featurePorts` freezes command names/parser shape; browser methods

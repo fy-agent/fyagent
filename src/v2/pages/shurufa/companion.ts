@@ -149,6 +149,28 @@ export function emptyCompanionSnapshot(): CompanionSnapshot {
   };
 }
 
+const FALLBACK_CHORD_ALTERNATES: readonly string[][] = [
+  ["CTRL", "1"],
+  ["CTRL", "2"],
+  ["CTRL", "3"],
+  ["CTRL", "4"],
+  ["CTRL", "5"],
+];
+
+function unusedFallbackKeys(
+  preferred: readonly string[],
+  used: Set<string>,
+): string[] {
+  for (const keys of [preferred, ...FALLBACK_CHORD_ALTERNATES]) {
+    const identity = chordIdentity(keys);
+    if (identity && !used.has(identity)) {
+      used.add(identity);
+      return [...keys];
+    }
+  }
+  return [...preferred];
+}
+
 export function hydrateProfile(
   profile: CompanionProfile | null,
 ): CompanionProfile {
@@ -156,16 +178,43 @@ export function hydrateProfile(
   const byInput = new Map(
     profile.mappings.map((mapping) => [mapping.input, mapping]),
   );
+  const used = new Set<string>();
+  for (const mapping of byInput.values()) {
+    const identity = chordIdentity(mapping.keys);
+    if (identity) used.add(identity);
+  }
   return {
     ...profile,
     serial: {
       port: USB_LINK_ID,
       baud: USB_LINK_BAUD,
     },
-    mappings: INITIAL_MAPPINGS.map(
-      (fallback) => byInput.get(fallback.input) ?? fallback,
-    ),
+    mappings: INITIAL_MAPPINGS.map((fallback) => {
+      const existing = byInput.get(fallback.input);
+      if (existing) return existing;
+      return { ...fallback, keys: unusedFallbackKeys(fallback.keys, used) };
+    }),
   };
+}
+
+export function hydrateNeedsSave(
+  original: CompanionProfile | null,
+  hydrated: CompanionProfile,
+): boolean {
+  if (!original) return false;
+  const byInput = new Map(
+    original.mappings.map((mapping) => [mapping.input, mapping]),
+  );
+  return hydrated.mappings.some((mapping) => {
+    if (byInput.has(mapping.input)) return false;
+    const fallback = INITIAL_MAPPINGS.find(
+      (candidate) => candidate.input === mapping.input,
+    );
+    return (
+      !fallback ||
+      chordIdentity(fallback.keys) !== chordIdentity(mapping.keys)
+    );
+  });
 }
 
 interface ParsedChord {

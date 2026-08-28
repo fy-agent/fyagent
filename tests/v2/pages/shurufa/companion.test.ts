@@ -6,6 +6,7 @@ import {
   canonicalChord,
   deviceSettingsError,
   EMPTY_PROFILE,
+  hydrateNeedsSave,
   hydrateProfile,
   INITIAL_MAPPINGS,
   mappingErrors,
@@ -79,8 +80,8 @@ describe("shurufa companion helpers", () => {
   });
 
   it("hydrates a legacy three-mapping COM profile without dropping user chords", () => {
-    const hydrated = hydrateProfile({
-      version: 1,
+    const legacyThreeMapping = {
+      version: 1 as const,
       revision: "rev-old",
       serial: { port: "COM3", baud: 115200 },
       target: {
@@ -89,18 +90,23 @@ describe("shurufa companion helpers", () => {
       },
       mappings: [
         {
-          input: "ENCODER_CW",
+          input: "ENCODER_CW" as const,
           displayName: "自定义上一项",
           keys: ["CTRL", "TAB"],
         },
         {
-          input: "ENCODER_CCW",
+          input: "ENCODER_CCW" as const,
           displayName: "自定义下一项",
           keys: ["CTRL", "SHIFT", "TAB"],
         },
-        { input: "ENCODER_PRESS", displayName: "自定义确认", keys: ["ENTER"] },
+        {
+          input: "ENCODER_PRESS" as const,
+          displayName: "自定义确认",
+          keys: ["ENTER"],
+        },
       ],
-    });
+    };
+    const hydrated = hydrateProfile(legacyThreeMapping);
     expect(hydrated.serial).toEqual({
       port: USB_LINK_ID,
       baud: USB_LINK_BAUD,
@@ -113,10 +119,39 @@ describe("shurufa companion helpers", () => {
     expect(hydrated.mappings[2]?.displayName).toBe("自定义确认");
     expect(hydrated.mappings[2]?.keys).toEqual(["ENTER"]);
     expect(hydrated.mappings[3]).toEqual(INITIAL_MAPPINGS[3]);
-    expect(hydrated.mappings[4]).toEqual(INITIAL_MAPPINGS[4]);
+    expect(hydrated.mappings[4]?.displayName).toBe("确认动作");
+    expect(hydrated.mappings[4]?.keys).toEqual(["CTRL", "1"]);
+    expect(mappingErrors(hydrated.mappings).size).toBe(0);
+    expect(hydrateNeedsSave(legacyThreeMapping, hydrated)).toBe(true);
   });
 
-  it("exposes default button chords that collide with an existing user mapping", () => {
+  it("keeps two saved colliding mappings visible as errors", () => {
+    const hydrated = hydrateProfile({
+      version: 1,
+      revision: "rev-old",
+      serial: { port: "COM3", baud: 115200 },
+      target: {
+        processName: "notepad.exe",
+        processPath: "C:\\\\Windows\\\\notepad.exe",
+      },
+      mappings: [
+        { input: "ENCODER_CW", displayName: "上一项", keys: ["CTRL", "TAB"] },
+        {
+          input: "ENCODER_CCW",
+          displayName: "下一项",
+          keys: ["CTRL", "SHIFT", "TAB"],
+        },
+        { input: "ENCODER_PRESS", displayName: "确认动作", keys: ["ENTER"] },
+        { input: "BUTTON_A", displayName: "新建", keys: ["CTRL", "N"] },
+        { input: "BUTTON_B", displayName: "确认动作", keys: ["ENTER"] },
+      ],
+    });
+    const errors = mappingErrors(hydrated.mappings);
+    expect(errors.get("ENCODER_PRESS")).toMatch(/重复/);
+    expect(errors.get("BUTTON_B")).toMatch(/重复/);
+  });
+
+  it("shifts a missing-button fallback when the new default already exists", () => {
     const hydrated = hydrateProfile({
       version: 1,
       revision: "rev-old",
@@ -139,9 +174,65 @@ describe("shurufa companion helpers", () => {
         },
       ],
     });
-    const errors = mappingErrors(hydrated.mappings);
-    expect(errors.get("ENCODER_CW")).toMatch(/重复/);
-    expect(errors.get("BUTTON_A")).toMatch(/重复/);
+    expect(hydrated.mappings[3]?.keys).toEqual(["CTRL", "1"]);
+    expect(mappingErrors(hydrated.mappings).size).toBe(0);
+    expect(
+      hydrateNeedsSave(
+        {
+          version: 1,
+          revision: "rev-old",
+          serial: { port: "COM3", baud: 115200 },
+          target: {
+            processName: "notepad.exe",
+            processPath: "C:\\\\Windows\\\\notepad.exe",
+          },
+          mappings: [
+            { input: "ENCODER_CW", displayName: "上一项", keys: ["CTRL", "N"] },
+            {
+              input: "ENCODER_CCW",
+              displayName: "下一项",
+              keys: ["CTRL", "SHIFT", "TAB"],
+            },
+            {
+              input: "ENCODER_PRESS",
+              displayName: "新建窗口",
+              keys: ["CTRL", "SHIFT", "N"],
+            },
+          ],
+        },
+        hydrated,
+      ),
+    ).toBe(true);
+  });
+
+  it("does not mark a collision-free three-mapping hydrate as needing save", () => {
+    const original = {
+      version: 1 as const,
+      revision: "rev-old",
+      serial: { port: "COM3", baud: 115200 },
+      target: {
+        processName: "notepad.exe",
+        processPath: "C:\\\\Windows\\\\notepad.exe",
+      },
+      mappings: [
+        { input: "ENCODER_CW" as const, displayName: "上一项", keys: ["CTRL", "TAB"] },
+        {
+          input: "ENCODER_CCW" as const,
+          displayName: "下一项",
+          keys: ["CTRL", "SHIFT", "TAB"],
+        },
+        {
+          input: "ENCODER_PRESS" as const,
+          displayName: "新建窗口",
+          keys: ["CTRL", "SHIFT", "N"],
+        },
+      ],
+    };
+    const hydrated = hydrateProfile(original);
+    expect(hydrated.mappings[3]?.keys).toEqual(["CTRL", "N"]);
+    expect(hydrated.mappings[4]?.keys).toEqual(["ENTER"]);
+    expect(hydrateNeedsSave(original, hydrated)).toBe(false);
+    expect(hydrateNeedsSave(null, EMPTY_PROFILE)).toBe(false);
   });
 
   it("projects ASR and REC failure reasons into Chinese headlines", () => {

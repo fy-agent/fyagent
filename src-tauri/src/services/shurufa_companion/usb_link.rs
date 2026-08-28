@@ -51,6 +51,9 @@ mod host {
 
     impl EventSource for UsbLinkSource {
         fn poll_event(&mut self) -> Result<Option<SerialEvent>, SerialError> {
+            // One HID read per tick so an idle/noisy device cannot hold the
+            // companion mutex through capture, save, or Apply.
+            let mut did_read = false;
             loop {
                 if let Some(line) = self.buffered.push(&[]) {
                     match self.decoder.accept_decoded(&line) {
@@ -59,6 +62,10 @@ mod host {
                         AcceptAction::Continue => continue,
                     }
                 }
+                if did_read {
+                    return Ok(None);
+                }
+                did_read = true;
                 let mut report = [0_u8; HID_REPORT_LEN + 1];
                 match self.device.read_timeout(&mut report, 10) {
                     Ok(0) => return Ok(None),
@@ -66,10 +73,10 @@ mod host {
                         let mut payload = [0_u8; HID_PAYLOAD_MAX];
                         let n = hid_unpack(&report[..count], &mut payload);
                         if n == 0 {
-                            continue;
+                            return Ok(None);
                         }
                         let Some(line) = self.buffered.push(&payload[..n]) else {
-                            continue;
+                            return Ok(None);
                         };
                         match self.decoder.accept_decoded(&line) {
                             AcceptAction::Input(event) => return Ok(Some(event)),
@@ -77,6 +84,7 @@ mod host {
                             AcceptAction::Continue => continue,
                         }
                     }
+                    Err(error) if hid_read_is_idle(&error.to_string()) => return Ok(None),
                     Err(_) => return Err(SerialError::Read),
                 }
             }
@@ -155,6 +163,34 @@ mod host {
 }
 
 pub use host::UsbLinkSource;
+
+#[allow(dead_code)]
+fn hid_read_is_disconnect(message: &str) -> bool {
+    message.contains("not connected")
+        || message.contains("device not found")
+        || message.contains("no such device")
+        || message.contains("access denied")
+        || message.contains("permission")
+        || message.contains("broken pipe")
+        || message.contains("device has been removed")
+        || message.contains("device disconnected")
+}
+
+#[allow(dead_code)]
+fn hid_read_is_idle(message: &str) -> bool {
+    let message = message.trim().to_ascii_lowercase();
+    if hid_read_is_disconnect(&message) {
+        return false;
+    }
+    message.is_empty()
+        || message.contains("hid error")
+        || message.contains("hidapi error")
+        || message.contains("could not get error message")
+        || message.contains("timed out")
+        || message.contains("timeout")
+        || message.contains("would block")
+        || message.contains("overlapped")
+}
 
 fn hid_pack(report: &mut [u8; HID_REPORT_LEN], src: &[u8]) -> usize {
     if src.is_empty() {
@@ -241,6 +277,22 @@ mod tests {
         assert_eq!(hid_unpack(&prefixed, &mut out), src.len());
         assert_eq!(&out[..src.len()], src);
         assert_eq!(hid_unpack(&[0, 3, b'a'], &mut out), 0);
+    }
+
+    #[test]
+    fn hid_idle_read_errors_do_not_drop_the_link() {
+        assert!(hid_read_is_idle(""));
+        assert!(hid_read_is_idle("Hid error"));
+        assert!(hid_read_is_idle(
+            "hidapi error: (could not get error message)",
+        ));
+        assert!(hid_read_is_idle("Operation timed out"));
+        assert!(hid_read_is_idle("Would block"));
+        assert!(!hid_read_is_idle("device not connected"));
+        assert!(!hid_read_is_idle(
+            "hidapi error: The device has been removed.",
+        ));
+        assert!(!hid_read_is_idle("Access denied"));
     }
 
     #[test]

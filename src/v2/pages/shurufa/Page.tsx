@@ -40,6 +40,7 @@ import {
   EMPTY_PROFILE,
   EMPTY_RUNTIME,
   formatRuntimeText,
+  hydrateNeedsSave,
   hydrateProfile,
   INPUT_LABELS,
   mappingErrors,
@@ -191,9 +192,10 @@ export function ShurufaPage() {
         setRuntime(companion.runtime);
         setLastAsrAdmission(companion.lastAsrAdmission);
         setLastAsrError(companion.lastAsrError);
-        setDraft(hydrateProfile(companion.profile));
+        const hydrated = hydrateProfile(companion.profile);
+        setDraft(hydrated);
         setDevice(companion.device);
-        setDirty(false);
+        setDirty(hydrateNeedsSave(companion.profile, hydrated));
         setCompanionReady(true);
         setNotice(
           companion.profile
