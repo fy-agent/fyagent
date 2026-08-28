@@ -3,14 +3,16 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Mutex, OnceLock};
 
-use serde::{Deserialize, Serialize};
 use crate::shurufacli::config::Config;
 use crate::shurufacli::db::Store;
 use crate::shurufacli::llm::complete_turn;
 use crate::shurufacli::paths::AppPaths;
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Runtime};
 
 const EVENT_NAME: &str = "shurufa://event";
+const BUSY_ERROR: &str = "正在生成中，请稍后再试";
+const EMPTY_TEXT_ERROR: &str = "请先在输入法页面填写文本";
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
@@ -123,8 +125,7 @@ fn load_prompt_file() -> String {
 fn persist_prompt(prompt: &str) -> Result<(), String> {
     let dir = data_dir();
     fs::create_dir_all(&dir).map_err(|error| format!("无法创建输入法目录: {error}"))?;
-    fs::write(dir.join("prompt.txt"), prompt)
-        .map_err(|error| format!("无法保存输入文本: {error}"))
+    fs::write(dir.join("prompt.txt"), prompt).map_err(|error| format!("无法保存输入文本: {error}"))
 }
 
 fn current_prompt() -> String {
@@ -183,6 +184,14 @@ fn emit_event<R: Runtime>(app: &AppHandle<R>, event: ShurufaEvent) {
     }
 }
 
+fn acquire_running() -> Result<(), String> {
+    runtime()
+        .running
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .map(|_| ())
+        .map_err(|_| BUSY_ERROR.into())
+}
+
 fn start_typer() -> Option<mpsc::Sender<String>> {
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     {
@@ -220,25 +229,33 @@ pub async fn run_ingest<R: Runtime>(
     app: AppHandle<R>,
     type_into_focus: bool,
 ) -> Result<String, String> {
+    run_ingest_text(app, current_prompt(), type_into_focus).await
+}
+
+pub async fn run_ingest_text<R: Runtime>(
+    app: AppHandle<R>,
+    text: String,
+    type_into_focus: bool,
+) -> Result<String, String> {
     let runtime = runtime();
-    if runtime
-        .running
-        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-        .is_err()
-    {
-        return Err("正在生成中，请稍后再试".into());
+    if let Err(message) = acquire_running() {
+        return Err(message);
     }
 
-    let prompt = current_prompt();
-    let prompt = prompt.trim().to_string();
+    let prompt = text.trim().to_string();
     if prompt.is_empty() {
         runtime.running.store(false, Ordering::SeqCst);
-        let message = "请先在输入法页面填写文本".to_string();
+        let message = EMPTY_TEXT_ERROR.to_string();
         *runtime
             .last_error
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(message.clone());
-        emit_event(&app, ShurufaEvent::Error { message: message.clone() });
+        emit_event(
+            &app,
+            ShurufaEvent::Error {
+                message: message.clone(),
+            },
+        );
         return Err(message);
     }
 
@@ -253,11 +270,7 @@ pub async fn run_ingest<R: Runtime>(
     emit_event(&app, ShurufaEvent::Started);
 
     let app_for_stream = app.clone();
-    let typer = if type_into_focus {
-        start_typer()
-    } else {
-        None
-    };
+    let typer = if type_into_focus { start_typer() } else { None };
 
     let result = async {
         let paths = paths();
@@ -305,8 +318,7 @@ pub async fn run_ingest<R: Runtime>(
             *runtime
                 .last_output
                 .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner()) =
-                turn.optimized_prompt.clone();
+                .unwrap_or_else(|poisoned| poisoned.into_inner()) = turn.optimized_prompt.clone();
             runtime.running.store(false, Ordering::SeqCst);
             emit_event(
                 &app,
@@ -322,7 +334,12 @@ pub async fn run_ingest<R: Runtime>(
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(message.clone());
             runtime.running.store(false, Ordering::SeqCst);
-            emit_event(&app, ShurufaEvent::Error { message: message.clone() });
+            emit_event(
+                &app,
+                ShurufaEvent::Error {
+                    message: message.clone(),
+                },
+            );
             Err(message)
         }
     }
@@ -438,4 +455,24 @@ pub fn shurufa_clear_session() -> Result<usize, String> {
 #[tauri::command]
 pub async fn shurufa_run(app: AppHandle) -> Result<String, String> {
     run_ingest(app, false).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn reset_running() {
+        runtime().running.store(false, Ordering::SeqCst);
+    }
+
+    #[test]
+    fn first_admission_succeeds_second_returns_exact_busy_string() {
+        reset_running();
+        assert_eq!(acquire_running(), Ok(()));
+        let second = std::thread::scope(|scope| scope.spawn(acquire_running).join().unwrap());
+        assert_eq!(second, Err("正在生成中，请稍后再试".into()));
+        reset_running();
+        assert_eq!(acquire_running(), Ok(()));
+        reset_running();
+    }
 }

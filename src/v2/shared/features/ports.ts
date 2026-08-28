@@ -262,6 +262,120 @@ export type ShurufaEvent =
   | { type: "finished"; output: string }
   | { type: "error"; message: string };
 
+export const COMPANION_INPUT_IDS = [
+  "ENCODER_CW",
+  "ENCODER_CCW",
+  "ENCODER_PRESS",
+] as const;
+export type CompanionInputId = (typeof COMPANION_INPUT_IDS)[number];
+
+export const COMPANION_RUNTIME_STATES = [
+  "STOPPED",
+  "DRY_RUN",
+  "LIVE",
+] as const;
+export type CompanionRuntimeState = (typeof COMPANION_RUNTIME_STATES)[number];
+
+export const COMPANION_NETWORK_STATES = [
+  "UNKNOWN",
+  "DISCONNECTED",
+  "CONNECTING",
+  "CONNECTED",
+  "FAILED",
+] as const;
+export type CompanionNetworkState = (typeof COMPANION_NETWORK_STATES)[number];
+
+export const COMPANION_ASR_ADMISSIONS = [
+  "none",
+  "start",
+  "fail",
+  "empty",
+  "admitted",
+  "duplicate",
+  "busy",
+] as const;
+export type CompanionAsrAdmission = (typeof COMPANION_ASR_ADMISSIONS)[number];
+
+export const DEFAULT_COMPANION_BAUD = 115200;
+export const DEFAULT_COMPANION_DEVICE_MODEL =
+  "XingChenAGI/XingChenASR-V3.2-Ultra";
+
+export type CompanionTarget = {
+  processName: string;
+  processPath: string;
+};
+
+export type CompanionMapping = {
+  input: CompanionInputId;
+  displayName: string;
+  keys: string[];
+};
+
+export type CompanionProfile = {
+  version: 1;
+  revision: string | null;
+  serial: { port: string; baud: number };
+  target: CompanionTarget | null;
+  mappings: CompanionMapping[];
+};
+
+export type CompanionDeviceSettings = {
+  version: 1;
+  ssid: string;
+  password: string;
+  apiKey: string;
+  model: string;
+};
+
+export type CompanionApplyDeviceConfig = {
+  port: string;
+  baud: number;
+  settings: CompanionDeviceSettings;
+};
+
+export type CompanionNetwork = {
+  state: CompanionNetworkState;
+  ssid: string;
+  ip: string;
+  rssi: number | null;
+  reason: string | null;
+  pingHost: string | null;
+  pingOk: boolean | null;
+  pingMs: number | null;
+  pingLost: number | null;
+  pingSent: number | null;
+  lastLog: string | null;
+  beats: number | null;
+  recState: string | null;
+  recMs: number | null;
+  recSamples: number | null;
+  recRms: number | null;
+  recPeak: number | null;
+  recSilence: boolean | null;
+  recReason: string | null;
+  asrState: string | null;
+  asrText: string | null;
+  asrReason: string | null;
+};
+
+export type CompanionRuntime = {
+  state: CompanionRuntimeState;
+  liveEnabled: boolean;
+  lastEvent: string;
+  gapMissed: number | null;
+  network: CompanionNetwork;
+};
+
+export type CompanionSnapshot = {
+  ports: string[];
+  profile: CompanionProfile | null;
+  device: CompanionDeviceSettings;
+  runtime: CompanionRuntime;
+  lastAsrSeq: number | null;
+  lastAsrAdmission: CompanionAsrAdmission;
+  lastAsrError: string | null;
+};
+
 export interface ShurufaPort {
   getSnapshot(): Promise<ShurufaSnapshot>;
   setPrompt(text: string): Promise<void>;
@@ -271,6 +385,19 @@ export interface ShurufaPort {
   clearSession(): Promise<number>;
   run(): Promise<string>;
   subscribe(onEvent: (event: ShurufaEvent) => void): Promise<() => void>;
+  listCompanionPorts(): Promise<string[]>;
+  captureCompanionTarget(): Promise<CompanionTarget>;
+  getCompanionSnapshot(): Promise<CompanionSnapshot>;
+  saveCompanionProfile(draft: CompanionProfile): Promise<CompanionProfile>;
+  startCompanionDryRun(): Promise<CompanionRuntime>;
+  enableCompanionLive(): Promise<CompanionRuntime>;
+  stopCompanion(): Promise<CompanionRuntime>;
+  saveCompanionDeviceSettings(
+    draft: CompanionDeviceSettings,
+  ): Promise<CompanionDeviceSettings>;
+  applyCompanionDeviceConfig(
+    request: CompanionApplyDeviceConfig,
+  ): Promise<CompanionNetwork>;
 }
 
 export interface FeaturePorts {

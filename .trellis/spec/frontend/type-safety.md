@@ -64,6 +64,11 @@ forbidden-wire scan are part of that owner. See
 [External Agent P0 Safety](../backend/external-agent-p0.md) and
 [V2 Agent and Models](./v2-agent-models.md).
 
+Companion /shurufa wire is parsed once in
+`src/v2/shared/platform/tauri/feature-ports/shurufa.ts`. Pages poll
+`getCompanionSnapshot` only; they must not `invoke()` or own serial
+read. See [Shurufa Companion](../backend/shurufa-companion.md).
+
 ```rust
 // src-tauri/src/provider.rs
 #[serde(rename = "settingsConfig")]

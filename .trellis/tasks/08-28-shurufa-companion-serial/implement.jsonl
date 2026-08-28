@@ -1,0 +1,8 @@
+{"file":".trellis/spec/backend/reuse.md","reason":"Rust/Tauri reuse-first dependency and shared-owner contract; prevents duplicate serial/platform/Agent implementations"}
+{"file":".trellis/spec/backend/modular-boundaries.md","reason":"Companion must live behind a private service/facade with thin commands rather than growing commands/shurufa.rs"}
+{"file":".trellis/spec/frontend/reuse.md","reason":"FY1111 UI layout must be recomposed from FyAgent V2 primitives instead of copied components/CSS"}
+{"file":".trellis/tasks/08-28-shurufa-companion-serial/research/execution-context.md","reason":"Compact task-specific backend/V2/data-flow boundaries; avoids truncating the large V2 shell spec during sub-agent injection"}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Tauri Companion DTOs must be parsed once at the V2 feature-port boundary"}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Serial -> native state -> Tauri wire -> React and ASR -> Agent -> OS focus is a cross-layer data flow"}
+{"file":".trellis/tasks/08-28-shurufa-companion-serial/research/planning-evidence.md","reason":"Source mapping, open-source research, and four-round planning review decisions for fast implementation"}
+{"file": ".trellis/tasks/08-28-shurufa-companion-serial/research/wire-contract.md", "reason": "Locked command/DTO/port contract for parallel implement agents"}

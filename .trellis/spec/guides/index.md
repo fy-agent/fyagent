@@ -48,6 +48,9 @@ These guides help you **ask the right questions before coding**.
 - [ ] An interactive `mise run` task or `scripts/tasks/` process spawn is
       changing (interactive requires `raw`; POSIX `kill(-pid)` and Windows
       `taskkill /T /F` must be specified together)
+- [ ] A hardware serial / ASR / focus-typing path is changing (native owns
+      the COM reader; React only reads snapshots; device SiliconFlow and
+      desktop Agent configs stay separate)
 
 → Read [Cross-Layer Thinking Guide](./cross-layer-thinking-guide.md).
   For V2 routes or shell chrome, read the

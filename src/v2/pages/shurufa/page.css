@@ -6,11 +6,19 @@
 }
 
 .fy-shurufa-page .fy-feature-description {
-  max-width: 720px;
+  max-width: 760px;
   margin: 8px 0 0;
   color: var(--fy-text-secondary);
   font-size: 13px;
   line-height: 1.5;
+}
+
+.fy-shurufa-header-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .fy-shurufa-loading {
@@ -21,16 +29,11 @@
 
 .fy-shurufa-workspace {
   display: grid;
-  gap: 16px;
+  gap: 12px;
 }
 
-.fy-shurufa-prompt {
-  min-height: 180px;
-  resize: vertical;
-}
-
-.fy-shurufa-output,
-.fy-shurufa-config {
+.fy-shurufa-panel,
+.fy-shurufa-output {
   display: grid;
   gap: 12px;
   padding: 14px;
@@ -39,30 +42,152 @@
   background: rgba(21, 47, 72, 0.28);
 }
 
-.fy-shurufa-output-head,
-.fy-shurufa-config-head {
+.fy-shurufa-serial,
+.fy-shurufa-target,
+.fy-shurufa-controls {
   display: flex;
-  align-items: flex-start;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.fy-shurufa-serial-field {
+  flex: 1 1 220px;
+}
+
+.fy-shurufa-target {
   justify-content: space-between;
-  gap: 12px;
+  align-items: center;
 }
 
-.fy-shurufa-output h2,
-.fy-shurufa-config h2 {
-  margin: 0;
-  font-size: 15px;
-  font-weight: 650;
-}
-
-.fy-shurufa-config p {
+.fy-shurufa-target p,
+.fy-shurufa-event,
+.fy-shurufa-hint {
   margin: 6px 0 0;
   color: var(--fy-text-secondary);
   font-size: 12px;
   line-height: 1.5;
 }
 
+.fy-shurufa-event {
+  margin: 0;
+  color: var(--fy-text);
+}
+
+.fy-shurufa-collapse-trigger {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0;
+  border: 0;
+  color: inherit;
+  text-align: left;
+  background: transparent;
+  cursor: pointer;
+}
+
+.fy-shurufa-collapse-trigger strong {
+  display: block;
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.fy-shurufa-collapse-hint {
+  display: block;
+  margin-top: 4px;
+  color: var(--fy-text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.fy-shurufa-collapse-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fy-shurufa-collapse-body {
+  display: grid;
+  gap: 12px;
+  padding-top: 12px;
+}
+
+.fy-shurufa-status-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 16px;
+  margin: 0;
+}
+
+.fy-shurufa-status-grid dt {
+  color: var(--fy-text-secondary);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.fy-shurufa-status-grid dd {
+  margin: 4px 0 0;
+  color: var(--fy-text);
+  font-size: 13px;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.fy-shurufa-mappings {
+  gap: 10px;
+}
+
+.fy-shurufa-mapping {
+  display: grid;
+  grid-template-columns: minmax(140px, 0.7fr) minmax(120px, 1fr) minmax(140px, 1fr) minmax(120px, 0.7fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.fy-shurufa-canonical {
+  color: var(--fy-text-secondary);
+  font-size: 12px;
+}
+
+.fy-shurufa-chord {
+  justify-content: flex-start;
+  min-width: 0;
+}
+
+.fy-shurufa-chord-listening {
+  border-color: var(--fy-selected-border);
+  background: var(--fy-selected);
+}
+
+.fy-shurufa-inline-actions,
+.fy-shurufa-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.fy-shurufa-prompt {
+  min-height: 140px;
+  resize: vertical;
+}
+
+.fy-shurufa-output-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.fy-shurufa-output h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 650;
+}
+
 .fy-shurufa-output-body {
-  min-height: 120px;
+  min-height: 96px;
   margin: 0;
   padding: 12px;
   overflow: auto;
@@ -85,7 +210,13 @@
   grid-column: 1 / -1;
 }
 
-@media (max-width: 720px) {
+.fy-shurufa-debug {
+  opacity: 0.96;
+}
+
+@media (max-width: 860px) {
+  .fy-shurufa-mapping,
+  .fy-shurufa-status-grid,
   .fy-shurufa-config-grid {
     grid-template-columns: 1fr;
   }

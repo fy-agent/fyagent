@@ -58,6 +58,9 @@ mod tests {
 
 - `commands/**` owns Tauri transport; domain behavior belongs in its service or
   config owner. Do not recreate `commands/misc.rs`.
+- Shurufa Companion serial/runtime/ASR admission belongs in
+  `services/shurufa_companion`; `commands/shurufa_companion.rs` stays thin.
+  See [Shurufa Companion Serial and Agent Bridge](./shurufa-companion.md).
 - Lifecycle/system utility commands belong in `commands/system.rs`; CLI/tool
   install/probe/terminal command **wrappers** belong in `commands/tooling.rs`.
   `commands/tooling.rs` must stay limited to the four reviewed wire commands

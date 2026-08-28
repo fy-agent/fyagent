@@ -12,8 +12,6 @@ mod codex_history_migration;
 mod codex_state_db;
 mod commands;
 mod config;
-#[path = "../shurufacli/src/lib.rs"]
-mod shurufacli;
 mod database;
 mod deeplink;
 mod error;
@@ -36,6 +34,8 @@ mod proxy;
 mod services;
 mod session_manager;
 mod settings;
+#[path = "../shurufacli/src/lib.rs"]
+mod shurufacli;
 mod store;
 
 mod tray;
@@ -1640,6 +1640,9 @@ pub fn run() {
             // 初始化 SkillService
             let skill_service = SkillService::new();
             app.manage(commands::skill::SkillServiceState(Arc::new(skill_service)));
+            app.manage(crate::services::shurufa_companion::CompanionState::new(
+                app.handle().clone(),
+            ));
             app.manage(services::qoderwork::QoderHooksState::new());
             app.manage(services::traework::TraeEndpointProbeState::default());
 
@@ -2240,6 +2243,15 @@ pub fn run() {
             commands::shurufa_save_config,
             commands::shurufa_clear_session,
             commands::shurufa_run,
+            commands::shurufa_companion_list_ports,
+            commands::shurufa_companion_capture_target,
+            commands::shurufa_companion_get_snapshot,
+            commands::shurufa_companion_save_profile,
+            commands::shurufa_companion_start_dry_run,
+            commands::shurufa_companion_enable_live,
+            commands::shurufa_companion_stop,
+            commands::shurufa_companion_save_device_settings,
+            commands::shurufa_companion_apply_device_config,
         ]);
 
     let context = tauri::generate_context!();

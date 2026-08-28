@@ -1,0 +1,6 @@
+{"file":".trellis/spec/backend/reuse.md","reason":"Check that only the reviewed serialport dependency is added and existing Agent/enigo/windows owners are reused"}
+{"file":".trellis/spec/backend/modular-boundaries.md","reason":"Check native Companion domain logic did not leak into command transport or widen visibility"}
+{"file":".trellis/spec/frontend/reuse.md","reason":"Check /shurufa uses existing V2 primitives and does not copy a second FY1111 UI system"}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Check Companion command/event payloads are normalized in one typed adapter"}
+{"file":".trellis/tasks/08-28-shurufa-companion-serial/research/planning-evidence.md","reason":"Final completeness audit against every FY1111 Companion capability and reviewed ASR bridge boundary"}
+{"file": ".trellis/tasks/08-28-shurufa-companion-serial/research/wire-contract.md", "reason": "Verify command names, DTO fields, and port methods match the locked contract"}

@@ -40,6 +40,7 @@ For each arrow, ask:
 | IPC ↔ renderer port or API facade    | Each consumer re-parses the same payload           |
 | Renderer ↔ React                     | Props/state ownership, event-listener lifetime     |
 | Native window geometry ↔ renderer chrome | Treating host overflow and Overlay drag as one layer |
+| Serial device ↔ React page               | Page timer becomes the only COM reader; hidden UI stops ASR |
 
 ### Step 3: Define Contracts
 
@@ -115,6 +116,9 @@ After implementation:
       than inventing a second one
 - [ ] Put concrete signatures, DTO fields, validation matrices, and test
       requirements in the owning backend/frontend code-spec, not this guide
+- [ ] If a serial/ASR path exists, checked that native owns `read()` and the
+      page only consumes a typed snapshot (see
+      [Shurufa Companion](../backend/shurufa-companion.md))
 
 For a Tauri command, event, or serialized payload, read
 [Frontend Type Safety](../frontend/type-safety.md) and the owning backend

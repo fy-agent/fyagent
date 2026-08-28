@@ -167,6 +167,15 @@ export function createBrowserFeaturePorts(): FeaturePorts {
       clearSession: rejectNativeOnly,
       run: rejectNativeOnly,
       subscribe: rejectNativeOnly,
+      listCompanionPorts: rejectNativeOnly,
+      captureCompanionTarget: rejectNativeOnly,
+      getCompanionSnapshot: rejectNativeOnly,
+      saveCompanionProfile: rejectNativeOnly,
+      startCompanionDryRun: rejectNativeOnly,
+      enableCompanionLive: rejectNativeOnly,
+      stopCompanion: rejectNativeOnly,
+      saveCompanionDeviceSettings: rejectNativeOnly,
+      applyCompanionDeviceConfig: rejectNativeOnly,
     },
   };
 }

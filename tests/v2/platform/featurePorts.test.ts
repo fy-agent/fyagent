@@ -403,6 +403,74 @@ describe("V2 feature ports", () => {
       NATIVE_ONLY_ERROR,
     );
     await expect(ports.shurufa.getSnapshot()).rejects.toThrow(NATIVE_ONLY_ERROR);
+    await expect(ports.shurufa.setPrompt("text")).rejects.toThrow(
+      NATIVE_ONLY_ERROR,
+    );
+    await expect(
+      ports.shurufa.saveConfig({
+        url: "https://api.openai.com/v1",
+        model: "gpt-4o-mini",
+        apiKey: "",
+        maxSummaries: 8,
+        timeoutSecs: 60,
+      }),
+    ).rejects.toThrow(NATIVE_ONLY_ERROR);
+    await expect(ports.shurufa.clearSession()).rejects.toThrow(
+      NATIVE_ONLY_ERROR,
+    );
+    await expect(ports.shurufa.run()).rejects.toThrow(NATIVE_ONLY_ERROR);
+    await expect(ports.shurufa.subscribe(vi.fn())).rejects.toThrow(
+      NATIVE_ONLY_ERROR,
+    );
+    await expect(ports.shurufa.listCompanionPorts()).rejects.toThrow(
+      NATIVE_ONLY_ERROR,
+    );
+    await expect(ports.shurufa.captureCompanionTarget()).rejects.toThrow(
+      NATIVE_ONLY_ERROR,
+    );
+    await expect(ports.shurufa.getCompanionSnapshot()).rejects.toThrow(
+      NATIVE_ONLY_ERROR,
+    );
+    await expect(
+      ports.shurufa.saveCompanionProfile({
+        version: 1,
+        revision: null,
+        serial: { port: "COM3", baud: 115200 },
+        target: null,
+        mappings: [],
+      }),
+    ).rejects.toThrow(NATIVE_ONLY_ERROR);
+    await expect(ports.shurufa.startCompanionDryRun()).rejects.toThrow(
+      NATIVE_ONLY_ERROR,
+    );
+    await expect(ports.shurufa.enableCompanionLive()).rejects.toThrow(
+      NATIVE_ONLY_ERROR,
+    );
+    await expect(ports.shurufa.stopCompanion()).rejects.toThrow(
+      NATIVE_ONLY_ERROR,
+    );
+    await expect(
+      ports.shurufa.saveCompanionDeviceSettings({
+        version: 1,
+        ssid: "lab",
+        password: "",
+        apiKey: "",
+        model: "XingChenAGI/XingChenASR-V3.2-Ultra",
+      }),
+    ).rejects.toThrow(NATIVE_ONLY_ERROR);
+    await expect(
+      ports.shurufa.applyCompanionDeviceConfig({
+        port: "COM3",
+        baud: 115200,
+        settings: {
+          version: 1,
+          ssid: "lab",
+          password: "",
+          apiKey: "",
+          model: "XingChenAGI/XingChenASR-V3.2-Ultra",
+        },
+      }),
+    ).rejects.toThrow(NATIVE_ONLY_ERROR);
     await expect(ports.settings.get()).resolves.toEqual({});
     await expect(
       ports.providers.applyQuickSetupWithResult(
@@ -1625,5 +1693,161 @@ describe("V2 feature ports", () => {
     expect(invoke).toHaveBeenCalledWith("open_external", {
       url: "https://qoder.com.cn/qoderwork",
     });
+  });
+
+  it("uses exact Companion commands and parses closed snapshot types", async () => {
+    const { createTauriFeaturePorts } = await import(
+      "@/v2/shared/platform/tauri/features"
+    );
+    const profile = {
+      version: 1 as const,
+      revision: "rev-1",
+      serial: { port: "COM3", baud: 115200 },
+      target: { processName: "notepad.exe", processPath: "C:\\\\Windows\\\\notepad.exe" },
+      mappings: [
+        {
+          input: "ENCODER_CW" as const,
+          displayName: "上一项",
+          keys: ["CTRL", "TAB"],
+        },
+        {
+          input: "ENCODER_CCW" as const,
+          displayName: "下一项",
+          keys: ["CTRL", "SHIFT", "TAB"],
+        },
+        {
+          input: "ENCODER_PRESS" as const,
+          displayName: "确认动作",
+          keys: ["ENTER"],
+        },
+      ],
+    };
+    const device = {
+      version: 1 as const,
+      ssid: "lab-24g",
+      password: "wifi-secret",
+      apiKey: "sf-secret",
+      model: "XingChenAGI/XingChenASR-V3.2-Ultra",
+    };
+    const network = {
+      state: "CONNECTED",
+      ssid: "lab-24g",
+      ip: "10.0.0.8",
+      rssi: -40,
+      reason: null,
+      pingHost: "8.8.8.8",
+      pingOk: true,
+      pingMs: 18,
+      pingLost: 0,
+      pingSent: 3,
+      lastLog: "sta got ip",
+      beats: 1,
+      recState: "DONE",
+      recMs: 1200,
+      recSamples: 16000,
+      recRms: 0.2,
+      recPeak: 0.8,
+      recSilence: false,
+      recReason: null,
+      asrState: "DONE",
+      asrText: "把按钮改成主色",
+      asrReason: null,
+    };
+    const runtime = {
+      state: "STOPPED",
+      liveEnabled: false,
+      lastEvent: "尚无事件。",
+      gapMissed: null,
+      network,
+    };
+    const snapshot = {
+      ports: ["COM3", "COM4"],
+      profile,
+      device,
+      runtime,
+      lastAsrSeq: 4,
+      lastAsrAdmission: "admitted",
+      lastAsrError: null,
+    };
+    invoke.mockImplementation(async (command: string) => {
+      switch (command) {
+        case "shurufa_companion_list_ports":
+          return ["COM3", "COM4", 12];
+        case "shurufa_companion_capture_target":
+          return profile.target;
+        case "shurufa_companion_get_snapshot":
+          return {
+            ...snapshot,
+            lastAsrAdmission: "queue",
+            runtime: {
+              ...runtime,
+              state: "PAUSED",
+              network: { ...network, state: "WIFI", extra: true },
+            },
+          };
+        case "shurufa_companion_save_profile":
+          return profile;
+        case "shurufa_companion_start_dry_run":
+          return { ...runtime, state: "DRY_RUN" };
+        case "shurufa_companion_enable_live":
+          return { ...runtime, state: "LIVE", liveEnabled: true };
+        case "shurufa_companion_stop":
+          return runtime;
+        case "shurufa_companion_save_device_settings":
+          return device;
+        case "shurufa_companion_apply_device_config":
+          return network;
+        default:
+          throw new Error(`unexpected command ${command}`);
+      }
+    });
+
+    const ports = createTauriFeaturePorts();
+    await expect(ports.shurufa.listCompanionPorts()).resolves.toEqual([
+      "COM3",
+      "COM4",
+    ]);
+    await expect(ports.shurufa.captureCompanionTarget()).resolves.toEqual(
+      profile.target,
+    );
+    await expect(ports.shurufa.getCompanionSnapshot()).resolves.toEqual({
+      ...snapshot,
+      lastAsrAdmission: "none",
+      runtime: {
+        ...runtime,
+        state: "STOPPED",
+        network: { ...network, state: "UNKNOWN" },
+      },
+    });
+    await expect(ports.shurufa.saveCompanionProfile(profile)).resolves.toEqual(
+      profile,
+    );
+    await expect(ports.shurufa.startCompanionDryRun()).resolves.toMatchObject({
+      state: "DRY_RUN",
+    });
+    await expect(ports.shurufa.enableCompanionLive()).resolves.toMatchObject({
+      state: "LIVE",
+      liveEnabled: true,
+    });
+    await expect(ports.shurufa.stopCompanion()).resolves.toEqual(runtime);
+    await expect(ports.shurufa.saveCompanionDeviceSettings(device)).resolves.toEqual(
+      device,
+    );
+    const request = { port: "COM3", baud: 115200, settings: device };
+    await expect(
+      ports.shurufa.applyCompanionDeviceConfig(request),
+    ).resolves.toEqual(network);
+
+    expect(invoke.mock.calls).toEqual([
+      ["shurufa_companion_list_ports"],
+      ["shurufa_companion_capture_target"],
+      ["shurufa_companion_get_snapshot"],
+      ["shurufa_companion_save_profile", { draft: profile }],
+      ["shurufa_companion_start_dry_run"],
+      ["shurufa_companion_enable_live"],
+      ["shurufa_companion_stop"],
+      ["shurufa_companion_save_device_settings", { draft: device }],
+      ["shurufa_companion_apply_device_config", { request }],
+    ]);
   });
 });
