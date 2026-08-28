@@ -65,7 +65,10 @@ pub async fn shurufa_companion_enable_live(
 pub async fn shurufa_companion_stop(
     state: tauri::State<'_, CompanionState>,
 ) -> Result<CompanionRuntime, String> {
-    state.io().stop()
+    let io = state.io();
+    tauri::async_runtime::spawn_blocking(move || io.stop())
+        .await
+        .map_err(|_| "stop was cancelled".to_owned())?
 }
 
 #[tauri::command]

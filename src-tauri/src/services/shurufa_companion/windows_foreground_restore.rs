@@ -134,6 +134,9 @@ fn focus_window(target: windows_sys::Win32::Foundation::HWND) -> ForegroundResto
         }
     }
 
+    // HID/UART is not a Windows input event. A dummy KEYUP lets this process
+    // claim foreground rights the same way VentureD's UI-thread poll does.
+    claim_foreground_input();
     let mut accepted = unsafe { SetForegroundWindow(target) } != 0;
     if !accepted {
         let foreground = unsafe { GetForegroundWindow() };
@@ -168,6 +171,60 @@ fn focus_window(target: windows_sys::Win32::Foundation::HWND) -> ForegroundResto
             return ForegroundRestoreOutcome::Rejected;
         }
         std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn claim_foreground_input() {
+    #[repr(C)]
+    #[derive(Clone, Copy)]
+    struct KeyboardInput {
+        virtual_key: u16,
+        scan_code: u16,
+        flags: u32,
+        time: u32,
+        extra_info: usize,
+    }
+    #[repr(C)]
+    #[derive(Clone, Copy)]
+    struct MouseInput {
+        dx: i32,
+        dy: i32,
+        mouse_data: u32,
+        flags: u32,
+        time: u32,
+        extra_info: usize,
+    }
+    #[repr(C)]
+    union InputData {
+        mouse: MouseInput,
+        keyboard: KeyboardInput,
+    }
+    #[repr(C)]
+    struct Input {
+        input_type: u32,
+        data: InputData,
+    }
+    #[link(name = "user32")]
+    unsafe extern "system" {
+        fn SendInput(input_count: u32, inputs: *const Input, input_size: i32) -> u32;
+    }
+    const INPUT_KEYBOARD: u32 = 1;
+    const KEYEVENTF_KEYUP: u32 = 0x0002;
+    let input = Input {
+        input_type: INPUT_KEYBOARD,
+        data: InputData {
+            keyboard: KeyboardInput {
+                virtual_key: 0,
+                scan_code: 0,
+                flags: KEYEVENTF_KEYUP,
+                time: 0,
+                extra_info: 0,
+            },
+        },
+    };
+    unsafe {
+        let _ = SendInput(1, &input, std::mem::size_of::<Input>() as i32);
     }
 }
 

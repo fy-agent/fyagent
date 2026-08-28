@@ -53,9 +53,11 @@ mod host {
 
     impl EventSource for UsbLinkSource {
         fn poll_event(&mut self) -> Result<Option<SerialEvent>, SerialError> {
-            // One HID read per tick so an idle/noisy device cannot hold the
-            // companion mutex through capture, save, or Apply.
-            let mut did_read = false;
+            // Drain a bounded burst like VentureD so split VKEY_PING/REC/INPUT
+            // frames are not dropped, but stop after 24 reads so Apply/capture
+            // can still take the companion mutex.
+            const MAX_READS: u8 = 24;
+            let mut reads = 0_u8;
             loop {
                 if let Some(line) = self.buffered.push(&[]) {
                     match self.decoder.accept_decoded(&line) {
@@ -64,10 +66,10 @@ mod host {
                         AcceptAction::Continue => continue,
                     }
                 }
-                if did_read {
+                if reads >= MAX_READS {
                     return Ok(None);
                 }
-                did_read = true;
+                reads += 1;
                 let mut report = [0_u8; HID_REPORT_LEN + 1];
                 match self.device.read_timeout(&mut report, 10) {
                     Ok(0) => return Ok(None),
@@ -75,10 +77,10 @@ mod host {
                         let mut payload = [0_u8; HID_PAYLOAD_MAX];
                         let n = hid_unpack(&report[..count], &mut payload);
                         if n == 0 {
-                            return Ok(None);
+                            continue;
                         }
                         let Some(line) = self.buffered.push(&payload[..n]) else {
-                            return Ok(None);
+                            continue;
                         };
                         match self.decoder.accept_decoded(&line) {
                             AcceptAction::Input(event) => return Ok(Some(event)),
@@ -176,6 +178,10 @@ fn hid_read_is_disconnect(message: &str) -> bool {
         || message.contains("broken pipe")
         || message.contains("device has been removed")
         || message.contains("device disconnected")
+        || message.contains("0x0000048f")
+        || message.contains("0x48f")
+        || message.contains("设备没有连接")
+        || message.contains("设备未连接")
 }
 
 #[allow(dead_code)]
@@ -295,6 +301,9 @@ mod tests {
             "hidapi error: The device has been removed.",
         ));
         assert!(!hid_read_is_idle("Access denied"));
+        assert!(!hid_read_is_idle(
+            "hidapi error: ReadFile: (0x0000048F) 设备没有连接。",
+        ));
     }
 
     #[test]

@@ -1,4 +1,5 @@
 use std::fmt::{Display, Formatter};
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
@@ -122,53 +123,57 @@ impl InputDispatcher for WindowsInputDispatcher {
         }
         const INPUT_KEYBOARD: u32 = 1;
         const KEYEVENTF_KEYUP: u32 = 0x0002;
+        const MAPVK_VK_TO_VSC: u32 = 0;
+        // Hold each earlier key, wait tens of ms, then press the next. A single
+        // batched SendInput looks like every key went down together and apps
+        // drop the chord.
+        const KEY_HOLD_GAP_MS: u64 = 40;
+        #[link(name = "user32")]
+        unsafe extern "system" {
+            fn MapVirtualKeyW(code: u32, map_type: u32) -> u32;
+        }
         let keys = chord
             .0
             .iter()
             .map(|token| virtual_key(token).ok_or(RuntimeError::DispatchRejected))
             .collect::<Result<Vec<_>, _>>()?;
-        let mut inputs = Vec::with_capacity(keys.len() * 2);
-        for key in &keys {
-            inputs.push(Input {
+        let key_input = |virtual_key: u16, flags: u32| {
+            let scan_code =
+                unsafe { MapVirtualKeyW(u32::from(virtual_key), MAPVK_VK_TO_VSC) } as u16;
+            Input {
                 input_type: INPUT_KEYBOARD,
                 data: InputData {
                     keyboard: KeyboardInput {
-                        virtual_key: *key,
-                        scan_code: 0,
-                        flags: 0,
+                        virtual_key,
+                        scan_code,
+                        flags,
                         time: 0,
                         extra_info: 0,
                     },
                 },
-            });
-        }
-        for key in keys.iter().rev() {
-            inputs.push(Input {
-                input_type: INPUT_KEYBOARD,
-                data: InputData {
-                    keyboard: KeyboardInput {
-                        virtual_key: *key,
-                        scan_code: 0,
-                        flags: KEYEVENTF_KEYUP,
-                        time: 0,
-                        extra_info: 0,
-                    },
-                },
-            });
-        }
-        let expected = inputs.len() as u32;
-        let sent = unsafe {
-            SendInput(
-                expected,
-                inputs.as_ptr(),
-                std::mem::size_of::<Input>() as i32,
-            )
+            }
         };
-        if sent == expected {
-            Ok(())
-        } else {
-            Err(RuntimeError::DispatchRejected)
+        let send_one = |input: Input| -> bool {
+            unsafe { SendInput(1, &input, std::mem::size_of::<Input>() as i32) == 1 }
+        };
+        for (index, key) in keys.iter().enumerate() {
+            if index > 0 {
+                std::thread::sleep(Duration::from_millis(KEY_HOLD_GAP_MS));
+            }
+            if !send_one(key_input(*key, 0)) {
+                return Err(RuntimeError::DispatchRejected);
+            }
         }
+        std::thread::sleep(Duration::from_millis(KEY_HOLD_GAP_MS));
+        for (index, key) in keys.iter().rev().enumerate() {
+            if index > 0 {
+                std::thread::sleep(Duration::from_millis(KEY_HOLD_GAP_MS));
+            }
+            if !send_one(key_input(*key, KEYEVENTF_KEYUP)) {
+                return Err(RuntimeError::DispatchRejected);
+            }
+        }
+        Ok(())
     }
 }
 
@@ -266,6 +271,12 @@ impl RuntimeController {
         }
         self.source = None;
         self.open_port = None;
+    }
+
+    pub fn clear_transient_serial_event(&mut self) {
+        if self.status.last_event == RuntimeError::Serial.to_string() {
+            self.status.last_event = RuntimeStatus::default().last_event;
+        }
     }
 
     pub fn start_existing(&mut self, mode: RuntimeMode) -> Result<RuntimeStatus, RuntimeError> {
@@ -457,7 +468,8 @@ impl RuntimeController {
     }
     fn stop_with_last_event(&mut self, last_event: String) -> RuntimeStatus {
         self.close_source();
-        self.stop();
+        self.status = RuntimeStatus::default();
+        self.status.network.state = NetworkState::Disconnected;
         self.status.last_event = last_event;
         self.status.clone()
     }
@@ -1189,6 +1201,7 @@ mod tests {
         assert_eq!(outcome.status.state, RuntimeMode::Stopped);
         assert!(!outcome.status.live_enabled);
         assert_eq!(outcome.status.last_event, "serial input stopped");
+        assert_eq!(outcome.status.network.state, NetworkState::Disconnected);
         assert!(!runtime.has_source());
         assert_eq!(dispatcher.0.get(), 0);
     }

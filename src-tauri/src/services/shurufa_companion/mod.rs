@@ -131,86 +131,119 @@ impl CompanionIo {
     }
 
     pub fn capture_target(&self) -> Result<CompanionTarget, String> {
-        {
-            let inner =
-                self.lock_inner_timeout(Duration::from_secs(2), "foreground capture timed out")?;
+        self.pause_pump.store(true, Ordering::SeqCst);
+        let result = (|| {
+            {
+                let inner = self
+                    .lock_inner_timeout(Duration::from_secs(2), "foreground capture timed out")?;
+                inner
+                    .runtime
+                    .ensure_stopped()
+                    .map_err(|error| error.to_string())?;
+            }
+            // Keep HID polled during the 3s wait. A paused pump lets Windows
+            // drop the open handle (ReadFile 0x48F).
+            self.pause_pump.store(false, Ordering::SeqCst);
+            std::thread::sleep(Duration::from_secs(3));
+            self.pause_pump.store(true, Ordering::SeqCst);
+            let runtime_guard = self
+                .lock_inner_timeout(Duration::from_secs(2), "foreground capture timed out")?;
+            runtime_guard
+                .runtime
+                .ensure_stopped()
+                .map_err(|error| error.to_string())?;
+            let identity = match WindowsForegroundProbe.foreground_identity() {
+                Ok(Some(identity)) => identity,
+                Ok(None) => return Err("no foreground target is available".to_owned()),
+                Err(_) => return Err("foreground target is unavailable".to_owned()),
+            };
+            drop(runtime_guard);
+            Ok(CompanionTarget {
+                process_name: identity.process_name,
+                process_path: identity.process_path,
+            })
+        })();
+        self.pause_pump.store(false, Ordering::SeqCst);
+        result
+    }
+
+    pub fn save_profile(&self, mut draft: CompanionProfile) -> Result<CompanionProfile, String> {
+        self.pause_pump.store(true, Ordering::SeqCst);
+        let result = (|| {
+            let mut inner = self.lock_inner()?;
             inner
                 .runtime
                 .ensure_stopped()
                 .map_err(|error| error.to_string())?;
-        }
-        std::thread::sleep(Duration::from_secs(3));
-        let runtime_guard =
-            self.lock_inner_timeout(Duration::from_secs(2), "foreground capture timed out")?;
-        runtime_guard
-            .runtime
-            .ensure_stopped()
-            .map_err(|error| error.to_string())?;
-        let identity = WindowsForegroundProbe
-            .foreground_identity()
-            .map_err(|_| "foreground target is unavailable".to_owned())?
-            .ok_or_else(|| "no foreground target is available".to_owned())?;
-        drop(runtime_guard);
-        Ok(CompanionTarget {
-            process_name: identity.process_name,
-            process_path: identity.process_path,
-        })
-    }
-
-    pub fn save_profile(&self, mut draft: CompanionProfile) -> Result<CompanionProfile, String> {
-        let mut inner = self.lock_inner()?;
-        inner
-            .runtime
-            .ensure_stopped()
-            .map_err(|error| error.to_string())?;
-        normalize_link(&mut draft);
-        let saved = save_profile_to_store(&profile_store(), draft)?;
-        inner
-            .runtime
-            .set_profile(saved.clone())
-            .map_err(|error| error.to_string())?;
-        inner.cached_profile = Some(saved.clone());
-        self.publish_snapshot(&inner);
-        Ok(saved)
+            normalize_link(&mut draft);
+            let saved = save_profile_to_store(&profile_store(), draft)?;
+            inner
+                .runtime
+                .set_profile(saved.clone())
+                .map_err(|error| error.to_string())?;
+            inner.cached_profile = Some(saved.clone());
+            self.publish_snapshot(&inner);
+            Ok(saved)
+        })();
+        self.pause_pump.store(false, Ordering::SeqCst);
+        result
     }
 
     pub fn start_dry_run(&self) -> Result<CompanionRuntime, String> {
-        let mut inner = self.lock_inner()?;
-        inner
-            .runtime
-            .ensure_stopped()
-            .map_err(|error| error.to_string())?;
-        let profile = load_profile_into_runtime(&profile_store(), &mut inner.runtime)?;
-        inner.cached_profile = Some(profile);
-        let status = start_shortcut(&mut inner.runtime, RuntimeMode::DryRun)?;
-        if inner.runtime.has_source() {
-            inner.cached_ports = vec![USB_LINK_ID.to_owned()];
-        }
-        self.publish_snapshot(&inner);
-        Ok(status)
+        self.pause_pump.store(true, Ordering::SeqCst);
+        let result = (|| {
+            let mut inner = self.lock_inner()?;
+            inner
+                .runtime
+                .ensure_stopped()
+                .map_err(|error| error.to_string())?;
+            let profile = load_profile_into_runtime(&profile_store(), &mut inner.runtime)?;
+            inner.cached_profile = Some(profile);
+            let status = start_shortcut(&mut inner.runtime, RuntimeMode::DryRun)?;
+            if inner.runtime.has_source() {
+                inner.cached_ports = vec![USB_LINK_ID.to_owned()];
+            }
+            self.publish_snapshot(&inner);
+            Ok(status)
+        })();
+        self.pause_pump.store(false, Ordering::SeqCst);
+        result
     }
 
     pub fn enable_live(&self) -> Result<CompanionRuntime, String> {
-        let mut inner = self.lock_inner()?;
-        inner
-            .runtime
-            .ensure_stopped()
-            .map_err(|error| error.to_string())?;
-        let profile = load_profile_into_runtime(&profile_store(), &mut inner.runtime)?;
-        inner.cached_profile = Some(profile);
-        let status = start_shortcut(&mut inner.runtime, RuntimeMode::Live)?;
-        if inner.runtime.has_source() {
-            inner.cached_ports = vec![USB_LINK_ID.to_owned()];
-        }
-        self.publish_snapshot(&inner);
-        Ok(status)
+        self.pause_pump.store(true, Ordering::SeqCst);
+        let result = (|| {
+            let mut inner = self.lock_inner()?;
+            inner
+                .runtime
+                .ensure_stopped()
+                .map_err(|error| error.to_string())?;
+            let profile = load_profile_into_runtime(&profile_store(), &mut inner.runtime)?;
+            inner.cached_profile = Some(profile);
+            let status = start_shortcut(&mut inner.runtime, RuntimeMode::Live)?;
+            if inner.runtime.has_source() {
+                inner.cached_ports = vec![USB_LINK_ID.to_owned()];
+            }
+            self.publish_snapshot(&inner);
+            Ok(status)
+        })();
+        self.pause_pump.store(false, Ordering::SeqCst);
+        result
     }
 
     pub fn stop(&self) -> Result<CompanionRuntime, String> {
-        let mut inner = self.lock_inner()?;
-        let status = inner.runtime.stop();
-        self.publish_snapshot(&inner);
-        Ok(status)
+        self.pause_pump.store(true, Ordering::SeqCst);
+        let result = (|| {
+            let mut inner = self.lock_inner_timeout(
+                Duration::from_secs(2),
+                "serial pump is busy; retry stop",
+            )?;
+            let status = inner.runtime.stop();
+            self.publish_snapshot(&inner);
+            Ok(status)
+        })();
+        self.pause_pump.store(false, Ordering::SeqCst);
+        result
     }
 
     pub fn save_device_settings(
@@ -368,7 +401,7 @@ fn load_profile_into_runtime(
 }
 
 fn ensure_device_source(runtime: &mut RuntimeController) -> Result<(), String> {
-    if runtime.source_matches(USB_LINK_ID, USB_LINK_BAUD) {
+    if runtime.has_source() {
         return Ok(());
     }
     runtime
@@ -404,6 +437,7 @@ fn try_attach_usb(inner: &mut CompanionInner) -> bool {
                 .runtime
                 .attach_source(USB_LINK_ID.to_owned(), USB_LINK_BAUD, Box::new(source));
             inner.cached_ports = vec![USB_LINK_ID.to_owned()];
+            inner.runtime.clear_transient_serial_event();
             true
         }
         Err(_) => {
@@ -489,6 +523,7 @@ fn spawn_pump(io: CompanionIo, stop: Arc<AtomicBool>, app: AppHandle) {
                                 guard.cached_ports.clear();
                             } else {
                                 guard.cached_ports = vec![USB_LINK_ID.to_owned()];
+                                guard.runtime.clear_transient_serial_event();
                             }
                             io.publish_snapshot(&guard);
                             outcome.asr.done
