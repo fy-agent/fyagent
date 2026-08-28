@@ -41,12 +41,20 @@ export const INPUT_LABELS: Record<CompanionInputId, string> = {
   ENCODER_CW: "顺时针旋转",
   ENCODER_CCW: "逆时针旋转",
   ENCODER_PRESS: "GPIO8 外接确认/动作按钮",
+  BUTTON_A: "GPIO10 下拉按键",
+  BUTTON_B: "GPIO11 下拉按键",
 };
 
 export const INITIAL_MAPPINGS: CompanionMapping[] = [
   { input: "ENCODER_CW", displayName: "上一项", keys: ["CTRL", "TAB"] },
-  { input: "ENCODER_CCW", displayName: "下一项", keys: ["CTRL", "SHIFT", "TAB"] },
+  {
+    input: "ENCODER_CCW",
+    displayName: "下一项",
+    keys: ["CTRL", "SHIFT", "TAB"],
+  },
   { input: "ENCODER_PRESS", displayName: "确认动作", keys: ["ENTER"] },
+  { input: "BUTTON_A", displayName: "按键 A", keys: ["CTRL", "1"] },
+  { input: "BUTTON_B", displayName: "按键 B", keys: ["CTRL", "2"] },
 ];
 
 export const RUNTIME_STATE_LABELS: Record<CompanionRuntimeState, string> = {
@@ -70,7 +78,9 @@ export const WIFI_FIVE_G_ALERT =
 export const WIFI_CONNECTING_STUCK_HINT =
   "仍在连接中：若这是 5G 热点，开发板搜不到，请改用 2.4GHz 名称。";
 export const MIC_REC_HINT =
-  "按住 GPIO9 录音，松开结束。已联网且填写设备 Key 后，板端会把转写回传到这里，再自动交给输入法 Agent。";
+  "未联网时不能录音。手从远(~200mm)收到近(80-120mm)开始录音，从近收到远结束。GPIO9 仍可按住录音。转写中再按 GPIO9 或再做一次远→近会停止转写。开关有短缓冲，避免测距抖动连开连关。已联网且填写设备 Key 后，板端会把转写回传到这里，再自动交给输入法 Agent。";
+export const SENSOR_HINT =
+  "GPIO16 人体感应只判断座位是否有人，响应较慢。VL53L0X（SDA=GPIO4、SCL=GPIO5）用手势控录音：朝天 20-70mm 视为无效，远→近开，近→远关。";
 export const CLOUD_OPTIONAL_HINT =
   "SiliconFlow API Key 可留空只测 Wi-Fi。转写默认 XingChenAGI/XingChenASR-V3.2-Ultra，也可自行填写其他模型。";
 export const CLOUD_MODELS = [DEFAULT_COMPANION_DEVICE_MODEL] as const;
@@ -98,6 +108,9 @@ export const EMPTY_NETWORK: CompanionNetwork = {
   asrState: null,
   asrText: null,
   asrReason: null,
+  pir: null,
+  tofMm: null,
+  sensorState: null,
 };
 
 export const EMPTY_RUNTIME: CompanionRuntime = {
@@ -136,9 +149,13 @@ export function emptyCompanionSnapshot(): CompanionSnapshot {
   };
 }
 
-export function hydrateProfile(profile: CompanionProfile | null): CompanionProfile {
+export function hydrateProfile(
+  profile: CompanionProfile | null,
+): CompanionProfile {
   if (!profile) return EMPTY_PROFILE;
-  const byInput = new Map(profile.mappings.map((mapping) => [mapping.input, mapping]));
+  const byInput = new Map(
+    profile.mappings.map((mapping) => [mapping.input, mapping]),
+  );
   return {
     ...profile,
     serial: {
@@ -156,7 +173,9 @@ interface ParsedChord {
   primaries: string[];
 }
 
-export function parseChordTokens(tokens: readonly string[]): ParsedChord | null {
+export function parseChordTokens(
+  tokens: readonly string[],
+): ParsedChord | null {
   const normalized = tokens.map((token) => token.trim().toUpperCase());
   if (
     normalized.length === 0 ||
@@ -172,7 +191,10 @@ export function parseChordTokens(tokens: readonly string[]): ParsedChord | null 
   const primaries = normalized.filter(
     (token) => !MODIFIERS.includes(token as (typeof MODIFIERS)[number]),
   );
-  if (primaries.length === 0 || primaries.some((token) => !ALLOWED_PRIMARY.has(token))) {
+  if (
+    primaries.length === 0 ||
+    primaries.some((token) => !ALLOWED_PRIMARY.has(token))
+  ) {
     return null;
   }
   return { modifiers: selectedModifiers, primaries };
@@ -286,6 +308,61 @@ export function ssidLooksFiveG(ssid: string): boolean {
   return /5\s*g(?:hz)?(?![0-9a-z])/i.test(ssid);
 }
 
+export function asrReasonLabel(reason: string | null): string | null {
+  switch (reason) {
+    case "CANCEL":
+      return "已取消";
+    case "BUSY":
+      return "转写进行中";
+    case "WIFI":
+      return "未联网";
+    case "KEY":
+      return "缺少 Key 或模型";
+    case "AUTH":
+      return "鉴权失败";
+    case "FORMAT":
+      return "音频格式被拒";
+    case "HTTP":
+      return "上传失败";
+    case "MEM":
+      return "内存不足";
+    case "I2S":
+      return "麦克风未就绪";
+    default:
+      return null;
+  }
+}
+
+export function asrHeadline(
+  asrState: string | null,
+  asrReason: string | null,
+  recState: string | null = null,
+): string {
+  if (asrState === "START") return "正在转写…";
+  if (asrState === "FAIL" && asrReason === "CANCEL") return "转写已停止";
+  if (asrState === "FAIL") {
+    const label = asrReasonLabel(asrReason);
+    return label ? `转写失败 · ${label}` : "转写失败";
+  }
+  if (asrState === "DONE") return "转写完成";
+  if (recState === "START" || recState === "ACTIVE") return "录音中";
+  if (recState === "FAIL") return "录音失败";
+  return "可录音";
+}
+
+export function recReasonLabel(reason: string | null): string | null {
+  switch (reason) {
+    case "WIFI":
+      return "未联网";
+    case "I2S":
+      return "麦克风未就绪";
+    case "BUSY":
+      return "转写进行中";
+    default:
+      return null;
+  }
+}
+
 export function recStateLabel(state: string | null): string | null {
   switch (state) {
     case "START":
@@ -323,7 +400,8 @@ export function networkChipLabel(
   reason: string | null,
   looksFiveG: boolean,
 ): string {
-  if (state === "CONNECTED" && ip) return `${NETWORK_STATE_LABELS[state]} ${ip}`;
+  if (state === "CONNECTED" && ip)
+    return `${NETWORK_STATE_LABELS[state]} ${ip}`;
   if (reason === "BAND" || (looksFiveG && state === "FAILED")) {
     return "失败 · 仅2.4G";
   }
@@ -334,11 +412,17 @@ export function networkChipLabel(
 }
 
 const RUNTIME_PHRASES: ReadonlyArray<readonly [string, string]> = [
-  ["Dry-run started. No dispatcher constructed.", "已启动演练模式；未创建输入派发器。"],
+  [
+    "Dry-run started. No dispatcher constructed.",
+    "已启动演练模式；未创建输入派发器。",
+  ],
   ["Live enabled for this process only.", "仅为当前进程启用实时权限。"],
   ["No event yet.", "尚无事件。"],
   ["runtime is stopped", "运行已停止"],
-  ["stop the active runtime before changing configuration", "请先停止当前运行，再修改配置"],
+  [
+    "stop the active runtime before changing configuration",
+    "请先停止当前运行，再修改配置",
+  ],
   ["a valid saved profile is required", "需要有效且已保存的配置"],
   ["input is unmapped", "输入未映射"],
   ["profile mapping is invalid", "映射配置无效"],

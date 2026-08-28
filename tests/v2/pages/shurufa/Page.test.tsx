@@ -36,10 +36,17 @@ const companionSnapshot: CompanionSnapshot = {
     version: 1,
     revision: "rev-1",
     serial: { port: "COM3", baud: 115200 },
-    target: { processName: "notepad.exe", processPath: "C:\\\\Windows\\\\notepad.exe" },
+    target: {
+      processName: "notepad.exe",
+      processPath: "C:\\\\Windows\\\\notepad.exe",
+    },
     mappings: [
       { input: "ENCODER_CW", displayName: "上一项", keys: ["CTRL", "TAB"] },
-      { input: "ENCODER_CCW", displayName: "下一项", keys: ["CTRL", "SHIFT", "TAB"] },
+      {
+        input: "ENCODER_CCW",
+        displayName: "下一项",
+        keys: ["CTRL", "SHIFT", "TAB"],
+      },
       { input: "ENCODER_PRESS", displayName: "确认动作", keys: ["ENTER"] },
     ],
   },
@@ -78,6 +85,9 @@ const companionSnapshot: CompanionSnapshot = {
       asrState: "DONE",
       asrText: "把按钮改成主色",
       asrReason: null,
+      pir: true,
+      tofMm: 312,
+      sensorState: "OK",
     },
   },
   lastAsrSeq: 2,
@@ -153,6 +163,11 @@ describe("Shurufa companion page", () => {
     expect(screen.getByText("波特率 115200")).toBeInTheDocument();
     expect(screen.getAllByText("已停止").length).toBeGreaterThan(0);
     expect(screen.getByText("把按钮改成主色")).toBeInTheDocument();
+    expect(screen.getAllByText("转写完成").length).toBeGreaterThan(0);
+    expect(screen.getByText("GPIO10 下拉按键")).toBeInTheDocument();
+    expect(screen.getByText("GPIO11 下拉按键")).toBeInTheDocument();
+    expect(screen.getByText("有人")).toBeInTheDocument();
+    expect(screen.getByText("312 mm")).toBeInTheDocument();
     expect(screen.getByText(/19200 采样/)).toBeInTheDocument();
     expect(screen.getByText("优化后的提示词")).toBeInTheDocument();
     expect(
@@ -161,19 +176,21 @@ describe("Shurufa companion page", () => {
 
     expect(screen.getByText("设备转写配置")).toBeInTheDocument();
     await userEvent.click(screen.getByTestId("companion-device-toggle"));
-    expect(await screen.findByLabelText("SiliconFlow API Key")).toBeInTheDocument();
+    expect(
+      await screen.findByLabelText("SiliconFlow API Key"),
+    ).toBeInTheDocument();
     expect(screen.getByLabelText("转写模型")).toBeInTheDocument();
 
     await userEvent.click(screen.getByTestId("companion-agent-toggle"));
-    expect(await screen.findByTestId("companion-agent-config")).toHaveTextContent(
-      "不要和上面的 SiliconFlow",
-    );
+    expect(
+      await screen.findByTestId("companion-agent-config"),
+    ).toHaveTextContent("不要和上面的 SiliconFlow");
     expect(screen.getByLabelText("API 地址")).toBeInTheDocument();
 
     await userEvent.click(screen.getByTestId("companion-debug-toggle"));
-    expect(await screen.findByTestId("companion-debug-fallback")).toHaveTextContent(
-      "正式演示输入来自串口 ASR",
-    );
+    expect(
+      await screen.findByTestId("companion-debug-fallback"),
+    ).toHaveTextContent("正式演示输入来自串口 ASR");
     expect(screen.getByLabelText("调试文本")).toHaveValue("调试文本");
 
     await waitFor(() => {
@@ -189,16 +206,14 @@ describe("Shurufa companion page", () => {
     await waitFor(() => {
       expect(ports.shurufa.listCompanionPorts).toHaveBeenCalledTimes(1);
     });
-    expect(await screen.findByRole("option", { name: "COM5" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("option", { name: "COM5" }),
+    ).toBeInTheDocument();
   });
 
   it("does not call invoke from the shurufa page tree", () => {
     const pageDir = join(process.cwd(), "src/v2/pages/shurufa");
-    const source = [
-      "Page.tsx",
-      "ChordField.tsx",
-      "companion.ts",
-    ]
+    const source = ["Page.tsx", "ChordField.tsx", "companion.ts"]
       .map((name) => readFileSync(join(pageDir, name), "utf8"))
       .join("\n");
     expect(source).not.toMatch(/\binvoke\s*\(/);

@@ -9,10 +9,19 @@ pub enum InputId {
     EncoderCw,
     EncoderCcw,
     EncoderPress,
+    ButtonA,
+    ButtonB,
 }
 
 impl InputId {
-    pub const ALL: [Self; 3] = [Self::EncoderCw, Self::EncoderCcw, Self::EncoderPress];
+    pub const LEGACY: [Self; 3] = [Self::EncoderCw, Self::EncoderCcw, Self::EncoderPress];
+    pub const ALL: [Self; 5] = [
+        Self::EncoderCw,
+        Self::EncoderCcw,
+        Self::EncoderPress,
+        Self::ButtonA,
+        Self::ButtonB,
+    ];
 }
 
 impl Display for InputId {
@@ -21,6 +30,8 @@ impl Display for InputId {
             Self::EncoderCw => "ENCODER_CW",
             Self::EncoderCcw => "ENCODER_CCW",
             Self::EncoderPress => "ENCODER_PRESS",
+            Self::ButtonA => "BUTTON_A",
+            Self::ButtonB => "BUTTON_B",
         };
         formatter.write_str(token)
     }
@@ -33,6 +44,8 @@ impl FromStr for InputId {
             "ENCODER_CW" => Ok(Self::EncoderCw),
             "ENCODER_CCW" => Ok(Self::EncoderCcw),
             "ENCODER_PRESS" => Ok(Self::EncoderPress),
+            "BUTTON_A" => Ok(Self::ButtonA),
+            "BUTTON_B" => Ok(Self::ButtonB),
             _ => Err(InputError::UnknownInput),
         }
     }

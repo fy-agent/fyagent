@@ -518,6 +518,16 @@ mod tests {
                     display_name: "Confirm".into(),
                     keys: vec!["ENTER".into()],
                 },
+                MappingDraft {
+                    input: InputId::ButtonA,
+                    display_name: "Key A".into(),
+                    keys: vec!["CTRL".into(), "1".into()],
+                },
+                MappingDraft {
+                    input: InputId::ButtonB,
+                    display_name: "Key B".into(),
+                    keys: vec!["CTRL".into(), "2".into()],
+                },
             ],
         }
     }

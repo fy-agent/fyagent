@@ -402,7 +402,9 @@ describe("V2 feature ports", () => {
     await expect(ports.memory.searchDailyFiles("release")).rejects.toThrow(
       NATIVE_ONLY_ERROR,
     );
-    await expect(ports.shurufa.getSnapshot()).rejects.toThrow(NATIVE_ONLY_ERROR);
+    await expect(ports.shurufa.getSnapshot()).rejects.toThrow(
+      NATIVE_ONLY_ERROR,
+    );
     await expect(ports.shurufa.setPrompt("text")).rejects.toThrow(
       NATIVE_ONLY_ERROR,
     );
@@ -1703,7 +1705,10 @@ describe("V2 feature ports", () => {
       version: 1 as const,
       revision: "rev-1",
       serial: { port: "COM3", baud: 115200 },
-      target: { processName: "notepad.exe", processPath: "C:\\\\Windows\\\\notepad.exe" },
+      target: {
+        processName: "notepad.exe",
+        processPath: "C:\\\\Windows\\\\notepad.exe",
+      },
       mappings: [
         {
           input: "ENCODER_CW" as const,
@@ -1752,6 +1757,9 @@ describe("V2 feature ports", () => {
       asrState: "DONE",
       asrText: "把按钮改成主色",
       asrReason: null,
+      pir: true,
+      tofMm: 312,
+      sensorState: "OK",
     };
     const runtime = {
       state: "STOPPED",
@@ -1830,9 +1838,9 @@ describe("V2 feature ports", () => {
       liveEnabled: true,
     });
     await expect(ports.shurufa.stopCompanion()).resolves.toEqual(runtime);
-    await expect(ports.shurufa.saveCompanionDeviceSettings(device)).resolves.toEqual(
-      device,
-    );
+    await expect(
+      ports.shurufa.saveCompanionDeviceSettings(device),
+    ).resolves.toEqual(device);
     const request = { port: "COM3", baud: 115200, settings: device };
     await expect(
       ports.shurufa.applyCompanionDeviceConfig(request),

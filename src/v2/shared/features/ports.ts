@@ -266,14 +266,12 @@ export const COMPANION_INPUT_IDS = [
   "ENCODER_CW",
   "ENCODER_CCW",
   "ENCODER_PRESS",
+  "BUTTON_A",
+  "BUTTON_B",
 ] as const;
 export type CompanionInputId = (typeof COMPANION_INPUT_IDS)[number];
 
-export const COMPANION_RUNTIME_STATES = [
-  "STOPPED",
-  "DRY_RUN",
-  "LIVE",
-] as const;
+export const COMPANION_RUNTIME_STATES = ["STOPPED", "DRY_RUN", "LIVE"] as const;
 export type CompanionRuntimeState = (typeof COMPANION_RUNTIME_STATES)[number];
 
 export const COMPANION_NETWORK_STATES = [
@@ -356,6 +354,9 @@ export type CompanionNetwork = {
   asrState: string | null;
   asrText: string | null;
   asrReason: string | null;
+  pir: boolean | null;
+  tofMm: number | null;
+  sensorState: string | null;
 };
 
 export type CompanionRuntime = {
@@ -379,9 +380,7 @@ export type CompanionSnapshot = {
 export interface ShurufaPort {
   getSnapshot(): Promise<ShurufaSnapshot>;
   setPrompt(text: string): Promise<void>;
-  saveConfig(
-    config: Omit<ShurufaConfig, "configured">,
-  ): Promise<ShurufaConfig>;
+  saveConfig(config: Omit<ShurufaConfig, "configured">): Promise<ShurufaConfig>;
   clearSession(): Promise<number>;
   run(): Promise<string>;
   subscribe(onEvent: (event: ShurufaEvent) => void): Promise<() => void>;

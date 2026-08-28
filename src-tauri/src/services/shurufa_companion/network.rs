@@ -59,6 +59,12 @@ pub struct NetworkStatus {
     pub asr_text: Option<String>,
     #[serde(default)]
     pub asr_reason: Option<String>,
+    #[serde(default)]
+    pub pir: Option<bool>,
+    #[serde(default)]
+    pub tof_mm: Option<u32>,
+    #[serde(default)]
+    pub sensor_state: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

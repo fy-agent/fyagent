@@ -56,8 +56,10 @@ serialport 4.8.1
   -> native pump (only reader of the COM handle)
   -> VKEY decoder
        INPUT: DryRun report / Live restore+verify+SendInput
-       NET/LOG/PING/REC: status only
+              (ENCODER_CW/CCW/PRESS + BUTTON_A/B)
+       NET/LOG/PING/REC/SENSOR: status only
        ASR DONE(seq, trimmed text): exactly-once admission
+       ASR START/FAIL without text: keep previous asrText
   -> run_ingest_text(text, type_into_focus=true)
   -> existing shurufacli Config/Store/complete_turn
   -> existing enigo typer -> current OS focus
@@ -100,7 +102,10 @@ serialport 4.8.1
 | `VKEY_INPUT` duplicate/backward seq | drop |
 | `VKEY_INPUT` forward gap | accept current + `gapMissed` |
 | `VKEY_ASR` duplicate/backward seq | `lastAsrAdmission=duplicate`; no Agent |
-| ASR START / FAIL | status only (`start` / `fail`) |
+| ASR START / FAIL | status only (`start` / `fail`); keep previous `asrText` |
+| ASR FAIL reason=CANCEL | status only; never admit Agent |
+| `VKEY_SENSOR/1` | merge `pir` / `tofMm` / `sensorState`; no shortcut or Agent |
+| Saved 3-mapping profile | load + runtime still valid; UI hydrates BUTTON_A/B defaults; next save requires 5 |
 | ASR DONE + empty/whitespace text | `empty`; no Agent |
 | ASR DONE + new seq + non-empty text | `admitted` + one `run_ingest_text` |
 | Same ASR text, new seq | second admission (do not dedupe by text) |

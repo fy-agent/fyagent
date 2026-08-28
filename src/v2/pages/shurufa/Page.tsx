@@ -31,6 +31,7 @@ import {
 import { ChordField } from "./ChordField";
 import {
   asrAdmissionLabel,
+  asrHeadline,
   canonicalChord,
   CLOUD_MODELS,
   CLOUD_OPTIONAL_HINT,
@@ -45,8 +46,10 @@ import {
   MIC_REC_HINT,
   networkChipLabel,
   networkReasonLabel,
+  recReasonLabel,
   recStateLabel,
   RUNTIME_STATE_LABELS,
+  SENSOR_HINT,
   ssidLooksFiveG,
   WIFI_BAND_HINT,
   WIFI_CONNECTING_STUCK_HINT,
@@ -146,8 +149,20 @@ export function ShurufaPage() {
     fiveG,
   );
   const recLabel = recStateLabel(runtime.network.recState);
+  const recReason = recReasonLabel(runtime.network.recReason);
   const reasonLabel = networkReasonLabel(runtime.network.reason);
   const admissionLabel = asrAdmissionLabel(lastAsrAdmission);
+  const voiceHeadline = asrHeadline(
+    runtime.network.asrState,
+    runtime.network.asrReason,
+    runtime.network.recState,
+  );
+  const sensorWarn =
+    runtime.network.sensorState === "TOF"
+      ? "TOF 未就绪"
+      : runtime.network.sensorState === "I2C"
+        ? "I2C 未就绪"
+        : null;
 
   useEffect(() => {
     let cancelled = false;
@@ -482,7 +497,9 @@ export function ShurufaPage() {
     setBusy(true);
     try {
       setRuntime(await ports.shurufa.stopCompanion());
-      setNotice("运行已停止，实时权限已清除。健康串口仍可继续接收网络/录音/转写。");
+      setNotice(
+        "运行已停止，实时权限已清除。健康串口仍可继续接收网络/录音/转写。",
+      );
     } catch {
       setRuntime((current) => ({
         ...current,
@@ -520,7 +537,8 @@ export function ShurufaPage() {
 
       {nativeUnavailable ? (
         <InlineNotice tone="warning">
-          输入法 Demo 只在 FyAgent 桌面应用中可用。浏览器预览不会枚举串口或伪造硬件状态。
+          输入法 Demo 只在 FyAgent
+          桌面应用中可用。浏览器预览不会枚举串口或伪造硬件状态。
         </InlineNotice>
       ) : null}
       {error && !nativeUnavailable ? (
@@ -669,6 +687,7 @@ export function ShurufaPage() {
                 </div>
                 <p className="fy-shurufa-hint">{CLOUD_OPTIONAL_HINT}</p>
                 <p className="fy-shurufa-hint">{MIC_REC_HINT}</p>
+                <p className="fy-shurufa-hint">{SENSOR_HINT}</p>
                 <div className="fy-shurufa-inline-actions">
                   <Button
                     disabled={
@@ -690,7 +709,9 @@ export function ShurufaPage() {
                   </Button>
                 </div>
                 {fiveG ? (
-                  <InlineNotice tone="warning">{WIFI_FIVE_G_ALERT}</InlineNotice>
+                  <InlineNotice tone="warning">
+                    {WIFI_FIVE_G_ALERT}
+                  </InlineNotice>
                 ) : null}
                 {deviceOpen && deviceError ? (
                   <p className="fy-control-field-error" role="alert">
@@ -746,7 +767,7 @@ export function ShurufaPage() {
                 <dt>录音</dt>
                 <dd>
                   {recLabel
-                    ? `${recLabel}                      ${
+                    ? `${recLabel}${
                         runtime.network.recMs != null
                           ? ` · ${runtime.network.recMs} ms`
                           : ""
@@ -764,7 +785,7 @@ export function ShurufaPage() {
                           : ""
                       }${runtime.network.recSilence ? " · 静音" : ""}${
                         runtime.network.recReason
-                          ? ` · ${runtime.network.recReason}`
+                          ? ` · ${recReason ?? runtime.network.recReason}`
                           : ""
                       }`
                     : "—"}
@@ -772,13 +793,29 @@ export function ShurufaPage() {
               </div>
               <div>
                 <dt>转写</dt>
+                <dd>{voiceHeadline}</dd>
+              </div>
+              <div>
+                <dt>座位</dt>
                 <dd>
-                  {runtime.network.asrState === "START"
-                    ? "正在转写…"
-                    : runtime.network.asrState === "FAIL"
-                      ? `失败${runtime.network.asrReason ? ` · ${runtime.network.asrReason}` : ""}`
-                      : (admissionLabel ?? runtime.network.asrState ?? "—")}
+                  {runtime.network.pir == null
+                    ? "—"
+                    : runtime.network.pir
+                      ? "有人"
+                      : "无人"}
                 </dd>
+              </div>
+              <div>
+                <dt>激光测距</dt>
+                <dd>
+                  {runtime.network.tofMm != null
+                    ? `${runtime.network.tofMm} mm`
+                    : "—"}
+                </dd>
+              </div>
+              <div>
+                <dt>传感器</dt>
+                <dd>{sensorWarn ?? runtime.network.sensorState ?? "—"}</dd>
               </div>
               <div>
                 <dt>串口日志</dt>
@@ -883,12 +920,17 @@ export function ShurufaPage() {
               <div>
                 <h2>最近转写与优化结果</h2>
                 <p className="fy-shurufa-hint">
-                  正式链路：串口 ASR → 输入法 Agent → 当前焦点文本框。页面只投影状态，不驱动串口读取。
+                  正式链路：串口 ASR → 输入法 Agent →
+                  当前焦点文本框。页面只投影状态，不驱动串口读取。
                 </p>
               </div>
               {running ? <Spinner label="正在生成" /> : null}
             </div>
             <dl className="fy-shurufa-status-grid">
+              <div>
+                <dt>录音与转写</dt>
+                <dd>{voiceHeadline}</dd>
+              </div>
               <div>
                 <dt>最近原始 ASR</dt>
                 <dd>{runtime.network.asrText || "还没有转写文本"}</dd>
@@ -898,7 +940,8 @@ export function ShurufaPage() {
                 <dd>
                   {running
                     ? "生成中"
-                    : admissionLabel || (configured ? "空闲" : "桌面 Agent 尚未配置")}
+                    : admissionLabel ||
+                      (configured ? "空闲" : "桌面 Agent 尚未配置")}
                   {lastAsrError ? ` · ${lastAsrError}` : ""}
                 </dd>
               </div>
@@ -941,8 +984,9 @@ export function ShurufaPage() {
                 data-testid="companion-agent-config"
               >
                 <p className="fy-shurufa-hint">
-                  与 CLI 的 config.toml 相同：url、model、api_key、历史摘要条数、超时。
-                  不要和上面的 SiliconFlow 设备转写字段混用。
+                  与 CLI 的 config.toml
+                  相同：url、model、api_key、历史摘要条数、超时。 不要和上面的
+                  SiliconFlow 设备转写字段混用。
                 </p>
                 <div className="fy-shurufa-config-grid">
                   <label className="fy-control-field">
@@ -1059,7 +1103,8 @@ export function ShurufaPage() {
                 data-testid="companion-debug-fallback"
               >
                 <InlineNotice tone="warning">
-                  正式演示输入来自串口 ASR。下面的文本框和预览生成只用于没有硬件时快速验证
+                  正式演示输入来自串口
+                  ASR。下面的文本框和预览生成只用于没有硬件时快速验证
                   Agent，不会驱动自动串口链路。
                 </InlineNotice>
                 <label className="fy-control-field fy-shurufa-prompt-field">

@@ -148,6 +148,9 @@ function parseNetwork(value: unknown): CompanionNetwork {
     asrState: asNullableString(record.asrState),
     asrText: asNullableString(record.asrText),
     asrReason: asNullableString(record.asrReason),
+    pir: asNullableBoolean(record.pir),
+    tofMm: asNullableNumber(record.tofMm),
+    sensorState: asNullableString(record.sensorState),
   };
 }
 
@@ -206,14 +209,16 @@ function asClosed<T extends string>(
   value: unknown,
   allowed: readonly T[],
 ): T | null {
-  return typeof value === "string" && (allowed as readonly string[]).includes(value)
+  return typeof value === "string" &&
+    (allowed as readonly string[]).includes(value)
     ? (value as T)
     : null;
 }
 
 export function createShurufaPort(): ShurufaPort {
   return {
-    getSnapshot: async () => parseSnapshot(await invoke("shurufa_get_snapshot")),
+    getSnapshot: async () =>
+      parseSnapshot(await invoke("shurufa_get_snapshot")),
     setPrompt: (text) => invoke("shurufa_set_prompt", { text }),
     saveConfig: async (config) =>
       parseConfig(

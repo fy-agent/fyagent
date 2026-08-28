@@ -15,6 +15,7 @@ const LOG_PREFIX: &str = "VKEY_LOG/1 ";
 const PING_PREFIX: &str = "VKEY_PING/1 ";
 const REC_PREFIX: &str = "VKEY_REC/1 ";
 const ASR_PREFIX: &str = "VKEY_ASR/1 ";
+const SENSOR_PREFIX: &str = "VKEY_SENSOR/1 ";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SerialEvent {
@@ -264,17 +265,28 @@ impl SerialPortSource {
                     admit_asr_record(&mut self.asr_tracker, sequence, &state, text.clone());
                 self.last_asr = outcome.clone();
                 if outcome.admission != AsrAdmission::Duplicate {
-                    let mut status = self.last_network.clone().unwrap_or_default();
-                    status.asr_state = Some(state);
-                    status.asr_text = text;
-                    status.asr_reason = reason;
-                    self.last_network = Some(status);
+                    self.last_network =
+                        Some(apply_asr(self.last_network.clone(), state, text, reason));
                 }
                 if outcome.done.is_some() {
                     AcceptAction::Yield
                 } else {
                     AcceptAction::Continue
                 }
+            }
+            DecodedLine::Sensor {
+                pir,
+                dist_mm,
+                state,
+            } => {
+                let mut status = self.last_network.clone().unwrap_or_default();
+                status.pir = Some(pir);
+                if dist_mm.is_some() {
+                    status.tof_mm = dist_mm;
+                }
+                status.sensor_state = Some(state);
+                self.last_network = Some(status);
+                AcceptAction::Continue
             }
         }
     }
@@ -403,6 +415,17 @@ struct AsrRecord {
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct SensorRecord {
+    #[allow(dead_code)]
+    seq: u32,
+    pir: bool,
+    #[serde(default)]
+    dist_mm: Option<u32>,
+    state: String,
+}
+
+#[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RecRecord {
     #[allow(dead_code)]
@@ -450,6 +473,11 @@ pub enum DecodedLine {
         text: Option<String>,
         reason: Option<String>,
     },
+    Sensor {
+        pir: bool,
+        dist_mm: Option<u32>,
+        state: String,
+    },
 }
 
 fn merge_network(previous: Option<&NetworkStatus>, mut status: NetworkStatus) -> NetworkStatus {
@@ -470,6 +498,9 @@ fn merge_network(previous: Option<&NetworkStatus>, mut status: NetworkStatus) ->
         status.asr_state = previous.asr_state.clone();
         status.asr_text = previous.asr_text.clone();
         status.asr_reason = previous.asr_reason.clone();
+        status.pir = previous.pir;
+        status.tof_mm = previous.tof_mm;
+        status.sensor_state = previous.sensor_state.clone();
         let extra = u32::from(status.state == NetworkState::Connected);
         status.beats = Some(previous.beats.unwrap_or(0).saturating_add(extra));
     } else if status.state == NetworkState::Connected {
@@ -547,7 +578,30 @@ pub fn decode_record(raw: &[u8]) -> Option<DecodedLine> {
             reason: record.reason.filter(|reason| !reason.is_empty()),
         });
     }
+    if let Some(json) = line.strip_prefix(SENSOR_PREFIX) {
+        let record = serde_json::from_str::<SensorRecord>(json).ok()?;
+        return Some(DecodedLine::Sensor {
+            pir: record.pir,
+            dist_mm: record.dist_mm,
+            state: record.state,
+        });
+    }
     None
+}
+
+fn apply_asr(
+    previous: Option<NetworkStatus>,
+    state: String,
+    text: Option<String>,
+    reason: Option<String>,
+) -> NetworkStatus {
+    let mut status = previous.unwrap_or_default();
+    status.asr_state = Some(state);
+    if text.is_some() {
+        status.asr_text = text;
+    }
+    status.asr_reason = reason;
+    status
 }
 
 pub fn admit_asr_record(
@@ -605,7 +659,8 @@ pub fn decode_line(raw: &[u8]) -> Option<SerialEvent> {
         | DecodedLine::Log { .. }
         | DecodedLine::Ping { .. }
         | DecodedLine::Rec { .. }
-        | DecodedLine::Asr { .. } => None,
+        | DecodedLine::Asr { .. }
+        | DecodedLine::Sensor { .. } => None,
     }
 }
 
@@ -619,6 +674,18 @@ mod tests {
                 .unwrap()
                 .input,
             InputId::EncoderCw
+        );
+        assert_eq!(
+            decode_line(br#"VKEY_INPUT/1 {"seq":4,"input":"BUTTON_A"}"#)
+                .unwrap()
+                .input,
+            InputId::ButtonA
+        );
+        assert_eq!(
+            decode_line(br#"VKEY_INPUT/1 {"seq":5,"input":"BUTTON_B"}"#)
+                .unwrap()
+                .input,
+            InputId::ButtonB
         );
         assert!(
             decode_line(br#"VKEY_INPUT/1 {"seq":1,"input":"ENCODER_CW","extra":true}"#).is_none()
@@ -682,6 +749,64 @@ mod tests {
         };
         assert_eq!(state, "DONE");
         assert_eq!(text.as_deref(), Some("hello asr"));
+        let DecodedLine::Asr { state, reason, .. } =
+            decode_record(r#"VKEY_ASR/1 {"seq":3,"state":"FAIL","reason":"CANCEL"}"#.as_bytes())
+                .unwrap()
+        else {
+            panic!("expected asr cancel");
+        };
+        assert_eq!(state, "FAIL");
+        assert_eq!(reason.as_deref(), Some("CANCEL"));
+        let DecodedLine::Sensor {
+            pir,
+            dist_mm,
+            state,
+        } = decode_record(br#"VKEY_SENSOR/1 {"seq":1,"pir":true,"state":"OK","distMm":312}"#)
+            .unwrap()
+        else {
+            panic!("expected sensor record");
+        };
+        assert!(pir);
+        assert_eq!(dist_mm, Some(312));
+        assert_eq!(state, "OK");
+        assert!(decode_line(br#"VKEY_SENSOR/1 {"seq":1,"pir":false,"state":"TOF"}"#).is_none());
+    }
+
+    #[test]
+    fn asr_start_and_cancel_keep_previous_text() {
+        let done = apply_asr(None, "DONE".into(), Some("今天天气不错".into()), None);
+        assert_eq!(done.asr_text.as_deref(), Some("今天天气不错"));
+        let start = apply_asr(Some(done), "START".into(), None, None);
+        assert_eq!(start.asr_state.as_deref(), Some("START"));
+        assert_eq!(start.asr_text.as_deref(), Some("今天天气不错"));
+        let fail = apply_asr(Some(start), "FAIL".into(), None, Some("CANCEL".into()));
+        assert_eq!(fail.asr_state.as_deref(), Some("FAIL"));
+        assert_eq!(fail.asr_reason.as_deref(), Some("CANCEL"));
+        assert_eq!(fail.asr_text.as_deref(), Some("今天天气不错"));
+    }
+
+    #[test]
+    fn merge_network_preserves_sensor_telemetry() {
+        let previous = NetworkStatus {
+            pir: Some(true),
+            tof_mm: Some(312),
+            sensor_state: Some("OK".into()),
+            asr_text: Some("keep me".into()),
+            ..NetworkStatus::default()
+        };
+        let merged = merge_network(
+            Some(&previous),
+            NetworkStatus {
+                state: NetworkState::Connected,
+                ssid: "cafe".into(),
+                ip: "10.0.0.8".into(),
+                ..NetworkStatus::default()
+            },
+        );
+        assert_eq!(merged.pir, Some(true));
+        assert_eq!(merged.tof_mm, Some(312));
+        assert_eq!(merged.sensor_state.as_deref(), Some("OK"));
+        assert_eq!(merged.asr_text.as_deref(), Some("keep me"));
     }
     #[test]
     fn tracker_reports_gaps_and_rejects_duplicates() {
@@ -771,6 +896,9 @@ mod tests {
             admit_asr_record(&mut tracker, 5, "DONE", Some("   \t".into())).admission,
             AsrAdmission::Empty
         );
+        let cancel = admit_asr_record(&mut tracker, 6, "FAIL", Some("CANCEL".into()));
+        assert_eq!(cancel.admission, AsrAdmission::Fail);
+        assert!(cancel.done.is_none());
     }
 
     #[test]

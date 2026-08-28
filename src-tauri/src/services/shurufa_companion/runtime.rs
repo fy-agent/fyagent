@@ -275,7 +275,7 @@ impl RuntimeController {
     pub fn set_profile(&mut self, profile: ProfileDraft) -> Result<(), RuntimeError> {
         self.ensure_stopped()?;
         profile
-            .validate()
+            .validate_loaded()
             .map_err(|_| RuntimeError::InvalidProfile)?;
         if profile.revision.is_none() {
             return Err(RuntimeError::InvalidProfile);
@@ -719,12 +719,12 @@ mod tests {
                 .map(|input| MappingDraft {
                     input,
                     display_name: input.to_string(),
-                    keys: if input == InputId::EncoderCw {
-                        vec!["CTRL".into(), "TAB".into()]
-                    } else if input == InputId::EncoderCcw {
-                        vec!["CTRL".into(), "SHIFT".into(), "TAB".into()]
-                    } else {
-                        vec!["ENTER".into()]
+                    keys: match input {
+                        InputId::EncoderCw => vec!["CTRL".into(), "TAB".into()],
+                        InputId::EncoderCcw => vec!["CTRL".into(), "SHIFT".into(), "TAB".into()],
+                        InputId::EncoderPress => vec!["ENTER".into()],
+                        InputId::ButtonA => vec!["CTRL".into(), "1".into()],
+                        InputId::ButtonB => vec!["CTRL".into(), "2".into()],
                     },
                 })
                 .collect(),
@@ -738,6 +738,18 @@ mod tests {
             gap_missed: None,
         }))])))
     }
+    #[test]
+    fn legacy_three_mapping_profile_can_still_be_set() {
+        let mut legacy = profile();
+        legacy
+            .mappings
+            .retain(|mapping| InputId::LEGACY.contains(&mapping.input));
+        legacy = legacy.with_computed_revision();
+        let mut runtime = RuntimeController::default();
+        runtime.set_profile(legacy).unwrap();
+        assert_eq!(runtime.status().state, RuntimeMode::Stopped);
+    }
+
     #[test]
     fn live_cannot_start_without_a_valid_saved_profile() {
         let mut runtime = RuntimeController::default();

@@ -43,11 +43,23 @@ pub struct MappingDraft {
 }
 impl ProfileDraft {
     pub fn validate(&self) -> Result<(), ProfileError> {
+        self.validate_required(&InputId::ALL)
+    }
+
+    pub fn validate_loaded(&self) -> Result<(), ProfileError> {
+        if self.mappings.len() == InputId::LEGACY.len() {
+            self.validate_required(&InputId::LEGACY)
+        } else {
+            self.validate()
+        }
+    }
+
+    fn validate_required(&self, required: &[InputId]) -> Result<(), ProfileError> {
         if self.version != PROFILE_VERSION
             || self.serial.port.trim().is_empty()
             || self.serial.baud == 0
             || self.target.is_none()
-            || self.mappings.len() != InputId::ALL.len()
+            || self.mappings.len() != required.len()
         {
             return Err(ProfileError::Invalid);
         }
@@ -59,7 +71,10 @@ impl ProfileDraft {
         let mut inputs = HashSet::new();
         let mut chords = HashSet::new();
         for mapping in &self.mappings {
-            if !inputs.insert(mapping.input) || name_invalid(&mapping.display_name) {
+            if !required.contains(&mapping.input)
+                || !inputs.insert(mapping.input)
+                || name_invalid(&mapping.display_name)
+            {
                 return Err(ProfileError::Invalid);
             }
             let chord = Chord::parse(&mapping.keys).map_err(|_| ProfileError::Invalid)?;
@@ -67,7 +82,7 @@ impl ProfileDraft {
                 return Err(ProfileError::DuplicateChord);
             }
         }
-        if inputs.len() != InputId::ALL.len() {
+        if inputs.len() != required.len() {
             return Err(ProfileError::Invalid);
         }
         Ok(())
@@ -126,7 +141,7 @@ impl ProfileStore {
             &fs::read(&self.path).map_err(|_| ProfileError::Invalid)?,
         )
         .map_err(|_| ProfileError::Invalid)?;
-        profile.validate()?;
+        profile.validate_loaded()?;
         if profile.revision.is_none()
             || profile.clone().with_computed_revision().revision != profile.revision
         {
@@ -206,8 +221,26 @@ mod tests {
                     display_name: "Confirm".into(),
                     keys: vec!["ENTER".into()],
                 },
+                MappingDraft {
+                    input: InputId::ButtonA,
+                    display_name: "Key A".into(),
+                    keys: vec!["CTRL".into(), "1".into()],
+                },
+                MappingDraft {
+                    input: InputId::ButtonB,
+                    display_name: "Key B".into(),
+                    keys: vec!["CTRL".into(), "2".into()],
+                },
             ],
         }
+    }
+
+    fn legacy_three_draft() -> ProfileDraft {
+        let mut profile = draft();
+        profile
+            .mappings
+            .retain(|mapping| InputId::LEGACY.contains(&mapping.input));
+        profile
     }
     #[test]
     fn save_is_revision_aware_and_keeps_backup_on_change() {
@@ -267,6 +300,34 @@ mod tests {
         unknown_serial["serial"]["extra"] = serde_json::json!(true);
         fs::write(store.path(), serde_json::to_vec(&unknown_serial).unwrap()).unwrap();
         assert_eq!(store.load(), Err(ProfileError::Invalid));
+    }
+
+    #[test]
+    fn load_accepts_legacy_three_mappings_and_save_requires_five() {
+        let directory = tempdir().unwrap();
+        let store = ProfileStore::new(directory.path().join("profile.json"));
+        let legacy = legacy_three_draft().with_computed_revision();
+        assert_eq!(legacy.validate(), Err(ProfileError::Invalid));
+        assert!(legacy.validate_loaded().is_ok());
+        fs::write(store.path(), serde_json::to_vec(&legacy).unwrap()).unwrap();
+        let loaded = store.load().unwrap().unwrap();
+        assert_eq!(loaded.mappings.len(), 3);
+        assert_eq!(loaded.revision, legacy.revision);
+        assert_eq!(
+            loaded
+                .mappings
+                .iter()
+                .map(|mapping| mapping.input)
+                .collect::<Vec<_>>(),
+            vec![
+                InputId::EncoderCw,
+                InputId::EncoderCcw,
+                InputId::EncoderPress
+            ]
+        );
+        let upgraded = store.save(draft(), loaded.revision.as_deref()).unwrap();
+        assert_eq!(upgraded.mappings.len(), 5);
+        assert_eq!(store.load().unwrap().unwrap().mappings.len(), 5);
     }
 
     #[test]
