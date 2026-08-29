@@ -1,0 +1,6 @@
+{"file":".trellis/spec/backend/modular-boundaries.md","reason":"Check one inventory owner and thin command/platform adapters."}
+{"file":".trellis/spec/backend/reuse.md","reason":"Reject duplicate candidate/security/selection primitives."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Check strict wire parsing and no page-local casts."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Check target picker accessibility, responsive states and actionable errors."}
+{"file":".trellis/tasks/08-29-agent-install-target-authority/research/current-contract-and-reuse.md","reason":"Verify the design closes every current target-authority gap without regressing Codex."}
+{"file":".trellis/tasks/08-29-agent-install-target-authority/research/issue-requirements.md","reason":"Verify issue acceptance requirements remain traceable."}

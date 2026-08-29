@@ -1,0 +1,6 @@
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Check end-to-end ownership and authoritative-readback consistency."}
+{"file":".trellis/spec/backend/reuse.md","reason":"Reject duplicate backend policy owners and speculative shared APIs."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Check responsive, accessibility, interaction and warning-free evidence."}
+{"file":".trellis/spec/frontend/modular-boundaries.md","reason":"Check V2 dependency direction and page/shared ownership."}
+{"file":".trellis/tasks/08-29-agent-lifecycle-reliability-program/research/current-main-gap-review.md","reason":"Verify every identified gap is fixed, deferred with ownership, or explicitly out of scope."}
+{"file":".trellis/tasks/08-29-agent-lifecycle-reliability-program/research/official-and-issue-evidence.md","reason":"Check implementations against official platform and library contracts."}

@@ -1,0 +1,30 @@
+{
+  "id": "frontend-reliability-architecture",
+  "name": "frontend-reliability-architecture",
+  "title": "Stage 5: harden frontend interaction and state architecture",
+  "description": "Repair selected-state reliability, remove misleading controls, reuse mature primitives, reduce keep-alive and observer costs, and fix same-domain defects found during testing.",
+  "status": "planning",
+  "dev_type": null,
+  "scope": "frontend-v2-reliability",
+  "package": null,
+  "priority": "P1",
+  "creator": "pythonrust",
+  "assignee": "pythonrust",
+  "createdAt": "2026-08-29",
+  "completedAt": null,
+  "branch": "dev/laiyongjie",
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "08-29-agent-lifecycle-reliability-program",
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {
+    "sequence": "5",
+    "depends_on": "independent-slices;stage1-and-stage4-for-final-agent-ui",
+    "related_issues": "#141"
+  }
+}

@@ -1,0 +1,7 @@
+{"file":".trellis/spec/frontend/state-management.md","reason":"Check no blanket keep-alive/global store and explicit state ownership."}
+{"file":".trellis/spec/frontend/reuse.md","reason":"Reject page-local duplicate Tabs/selection/assignment recipes and unnecessary packages."}
+{"file":".trellis/spec/frontend/modular-boundaries.md","reason":"Check route/shared ownership and no direct Tauri/page dependency inversion."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Check warning-free tests, browser/native evidence and accessibility."}
+{"file":".trellis/tasks/08-29-frontend-reliability-architecture/research/current-frontend-architecture-gaps.md","reason":"Verify every current structural finding is fixed, measured or explicitly deferred."}
+{"file":".trellis/tasks/08-29-frontend-reliability-architecture/research/official-primitive-and-performance-evidence.md","reason":"Check adopted primitives are used without inventing a parallel framework."}
+{"file":".trellis/tasks/08-29-frontend-reliability-architecture/research/uat-current-main-mapping.md","reason":"Check every in-scope #141 row receives exact latest-main evidence."}

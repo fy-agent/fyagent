@@ -1,0 +1,37 @@
+{
+  "id": "agent-lifecycle-reliability-program",
+  "name": "agent-lifecycle-reliability-program",
+  "title": "Agent install, Auth, and frontend reliability program",
+  "description": "Plan and execute stages 1-5: installation target authority, macOS in-place update, Windows discovery/install, verified Auth flows, and frontend reliability architecture.",
+  "status": "planning",
+  "dev_type": null,
+  "scope": "full-stack-architecture",
+  "package": null,
+  "priority": "P0",
+  "creator": "pythonrust",
+  "assignee": "pythonrust",
+  "createdAt": "2026-08-29",
+  "completedAt": null,
+  "branch": "dev/laiyongjie",
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "08-29-agent-install-target-authority",
+    "08-29-macos-agent-in-place-update",
+    "08-29-windows-agent-discovery-install",
+    "08-29-agent-auth-verification-state-machine",
+    "08-29-frontend-reliability-architecture"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {
+    "source_baseline": "4e47aab51b272f819da31773b348a2ea0ed8dee2",
+    "execution_shape": "dependency-gated-with-independent-slices",
+    "issue_ledger": "#31,#47,#101,#141",
+    "implementation_status": "planning-only"
+  }
+}

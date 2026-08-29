@@ -1,0 +1,7 @@
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Coordinate backend authority, IPC and frontend state without duplicating owners."}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Require existing-owner and open-source reuse review before new abstractions."}
+{"file":".trellis/spec/backend/codex-desktop-installer.md","reason":"Reuse the established executable installer policy and transaction invariants."}
+{"file":".trellis/spec/backend/modular-boundaries.md","reason":"Keep new Rust owners private with thin facades in the modular monolith."}
+{"file":".trellis/spec/frontend/reuse.md","reason":"Reuse shared V2 UI and adopted dependencies before page-local implementations."}
+{"file":".trellis/tasks/08-29-agent-lifecycle-reliability-program/research/current-main-gap-review.md","reason":"Use the exact current-main implementation gaps and reuse candidates."}
+{"file":".trellis/tasks/08-29-agent-lifecycle-reliability-program/research/official-and-issue-evidence.md","reason":"Use official platform/library sources and repository issue requirements."}

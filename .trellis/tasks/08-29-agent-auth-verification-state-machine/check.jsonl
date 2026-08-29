@@ -1,0 +1,6 @@
+{"file":".trellis/spec/backend/secretref-backend.md","reason":"Check DTO/log/parser paths never expose credentials or account identifiers."}
+{"file":".trellis/spec/backend/windows-runtime-security.md","reason":"Check interactive-user and no-fallback terminal execution."}
+{"file":".trellis/spec/backend/modular-boundaries.md","reason":"Check Auth coordinator/adapters do not leak into commands or install state."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Check copy, keyboard, retry, timeout and handoff-only UX."}
+{"file":".trellis/tasks/08-29-agent-auth-verification-state-machine/research/current-auth-gap.md","reason":"Verify all immediate-success paths are migrated or explicitly disabled."}
+{"file":".trellis/tasks/08-29-agent-auth-verification-state-machine/research/official-auth-surfaces.md","reason":"Check every verified claim is supported by the product's official surface."}

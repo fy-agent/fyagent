@@ -1,0 +1,7 @@
+{"file":".trellis/spec/backend/secretref-backend.md","reason":"Keep auth observations and sessions credential-free and owner-scoped."}
+{"file":".trellis/spec/backend/windows-runtime-security.md","reason":"Run Windows CLI/terminal handoffs as the frozen interactive user."}
+{"file":".trellis/spec/backend/modular-boundaries.md","reason":"Add one private Auth coordinator and small product adapters behind thin commands."}
+{"file":".trellis/spec/backend/reuse.md","reason":"Reuse Tooling/Auth Center and avoid direct credential-file parsing."}
+{"file":".trellis/spec/frontend/reuse.md","reason":"Use one shared Auth status/session surface across Agent entry points."}
+{"file":".trellis/tasks/08-29-agent-auth-verification-state-machine/research/current-auth-gap.md","reason":"Use current immediate-success behavior and existing owner boundaries."}
+{"file":".trellis/tasks/08-29-agent-auth-verification-state-machine/research/official-auth-surfaces.md","reason":"Implement only official per-product commands and verification capabilities."}

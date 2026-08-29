@@ -1,0 +1,5 @@
+{"file":".trellis/spec/backend/codex-desktop-installer.md","reason":"Check download capability, staging, cancellation, rollback and verification invariants."}
+{"file":".trellis/spec/backend/modular-boundaries.md","reason":"Check transaction/product/inventory responsibilities remain one-way."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Check progress, permission, cancellation and recovery UX across viewports."}
+{"file":".trellis/tasks/08-29-macos-agent-in-place-update/research/current-macos-gap-and-reuse.md","reason":"Verify the original cross-scope update path is eliminated for all products."}
+{"file":".trellis/tasks/08-29-macos-agent-in-place-update/research/apple-replacement-and-authorization.md","reason":"Check implementation does not invent an unsafe privilege path."}

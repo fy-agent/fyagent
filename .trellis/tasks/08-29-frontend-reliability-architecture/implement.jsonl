@@ -1,0 +1,8 @@
+{"file":".trellis/spec/frontend/state-management.md","reason":"Define router/query/draft/transient/secret ownership and inactive behavior."}
+{"file":".trellis/spec/frontend/reuse.md","reason":"Reuse FeatureTabs/Radix and promote selected/assignment owners at the first real second consumer."}
+{"file":".trellis/spec/frontend/modular-boundaries.md","reason":"Preserve V2/leftover/neutral boundaries while splitting route modules."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Add warning-free interaction, accessibility, responsive and build evidence."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Keep FeaturePorts/strict DTO ownership during route/Auth/install UI changes."}
+{"file":".trellis/tasks/08-29-frontend-reliability-architecture/research/current-frontend-architecture-gaps.md","reason":"Use current code-level selection, state, control, size and warning findings."}
+{"file":".trellis/tasks/08-29-frontend-reliability-architecture/research/official-primitive-and-performance-evidence.md","reason":"Ground Radix, React lazy/purity, Query and accessibility choices in primary docs."}
+{"file":".trellis/tasks/08-29-frontend-reliability-architecture/research/uat-current-main-mapping.md","reason":"Revalidate and close current-main frontend findings from #141."}

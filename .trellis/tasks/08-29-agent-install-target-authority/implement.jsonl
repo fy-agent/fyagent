@@ -1,0 +1,6 @@
+{"file":".trellis/spec/backend/codex-desktop-installer.md","reason":"Reuse trusted candidate and prepared-package concepts while preserving installer safety."}
+{"file":".trellis/spec/backend/modular-boundaries.md","reason":"Place inventory/domain/platform adapters behind one private facade."}
+{"file":".trellis/spec/backend/reuse.md","reason":"Evaluate existing Codex/platform owners before creating new primitives."}
+{"file":".trellis/spec/frontend/reuse.md","reason":"Add one shared target picker and FeaturePort/query owner rather than page-local copies."}
+{"file":".trellis/tasks/08-29-agent-install-target-authority/research/current-contract-and-reuse.md","reason":"Use current DTO/observation gaps and concrete Codex/shared reuse candidates."}
+{"file":".trellis/tasks/08-29-agent-install-target-authority/research/issue-requirements.md","reason":"Map #31/#47/#101/#141 requirements into the target contract."}

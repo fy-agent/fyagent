@@ -1,0 +1,30 @@
+{
+  "id": "agent-install-target-authority",
+  "name": "agent-install-target-authority",
+  "title": "Stage 1: establish authoritative installation target contracts",
+  "description": "Introduce closed installation candidate authority, scope ownership, target selection, and shared verification contracts without exposing arbitrary paths.",
+  "status": "planning",
+  "dev_type": null,
+  "scope": "agent-install-domain",
+  "package": null,
+  "priority": "P0",
+  "creator": "pythonrust",
+  "assignee": "pythonrust",
+  "createdAt": "2026-08-29",
+  "completedAt": null,
+  "branch": "dev/laiyongjie",
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "08-29-agent-lifecycle-reliability-program",
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {
+    "sequence": "1",
+    "depends_on": "none",
+    "related_issues": "#31,#47,#101,#141"
+  }
+}
