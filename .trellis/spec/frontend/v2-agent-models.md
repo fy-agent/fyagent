@@ -439,9 +439,16 @@ export type AgentSection = (typeof AGENT_SECTION_IDS)[number];
   multi-install launch/auth binds the selected candidate. The renderer sends
   only the opaque inventory/target/revision triplet and never reconstructs a
   path from `locationLabel`.
-  Generic jobs show the real stage and never invent a percent. After terminal
-  success/failure/cancel/timeout the UI rereads readiness and inventory;
-  it must not set an optimistic installed flag or keep a stale target ID.
+  Generic jobs show the real stage and never invent a percent. `staging`
+  visibly means the mounted/staged macOS app is being prepared and remains
+  cancellable; `installing` is the non-cancellable commit boundary. System
+  targets disabled by native policy remain visible with
+  `authorization_required`; the UI must not silently select or relabel a
+  user-scope destination. `rollback_restored` states that the original app was
+  restored after verification failure, while `recovery_required` is a
+  non-green stop-and-inspect state. After terminal
+  success/failure/cancel/timeout the UI rereads readiness and inventory; it
+  must not set an optimistic installed flag or keep a stale target ID.
 - Codex install/update stay on `useCodexDesktopInstaller` /
   `FeaturePorts.codexDesktop`. Directory Codex cards project that view model
   (`projectCodexDirectoryAction`) and may show the VM's real percent; they
@@ -774,6 +781,13 @@ fetch/save controls.
   Install/update and multi-install launch/auth also pass the complete opaque
   inventory target binding. A target-free legacy launch is used only when
   backend readiness says selection is unnecessary.
+- Job-stage/reason copy is closed and outcome-specific. `staging` is distinct
+  from download and install; `authorization_required` explains that the
+  selected system target cannot be automated and will not move scopes;
+  `application_running` asks the user to quit the app;
+  `rollback_restored` confirms only restoration, not update success; and
+  `recovery_required` instructs the user to stop retrying because native
+  authority is unknown. None of these states is rendered as installed success.
 - Auth copy follows `authOwnership` / `authState`: OpenCode is a provider
   connection, not a global logged-in badge. Unknown stays unknown.
 - Codex Models consumes `FeaturePorts.changePlans` through exact unknown-input
@@ -854,6 +868,10 @@ fetch/save controls.
 | Inventory query fails or target revision changes                                                                                  | Show controlled unavailable/refresh copy; never fall back to a guessed path                                           |
 | Renderer persists a raw location or constructs `targetId`/revision                                                                | Security/contract test fails; all target capabilities originate in the backend inventory                              |
 | Generic Agent job UI invents a download percent                                                                                   | Page/hook test fails; generic progress is stage-only                                                                  |
+| Generic Agent job omits `staging` or treats it as non-cancellable                                                                 | Parser/hook test fails; staging remains cancellable until the native commit transition                                |
+| Disabled `/Applications` target is hidden or silently replaced by `~/Applications`                                                | Picker/page test fails; show `authorization_required` and preserve the selected scope                                 |
+| Native result is `rollback_restored`                                                                                               | Show failed-update/restored-original copy; never show install success                                                 |
+| Native result is `recovery_required`                                                                                               | Show non-green stop-and-inspect copy; disable optimistic retry/success claims                                         |
 | Directory treats action success as installed without readiness/Codex reread                                                       | Page test fails; `applyReadiness` / installer refresh is the authority                                                |
 | Directory Codex row starts `start_agent_action` for install/update                                                                | Page test fails; Codex stays on `codexDesktop`                                                                        |
 | Browser Provider/WorkBuddy/OpenCode save skips `保存前确认` / `确认保存`                                                          | Browser test fails; the dialog is the write-target disclosure, not optional chrome                                    |
@@ -1034,6 +1052,10 @@ Required focused coverage includes:
 - Agent readiness exact seven-ID/exact-key/sensitive-field-negative coverage,
   closed `startAction`/`cancelAction`/`getActionJob` wires, opaque
   `expectedReleaseId` grammar, `allowedActions` as the only control source,
+  `staging` parser/progress copy and cancellation semantics,
+  `authorization_required` no-scope-fallback copy,
+  `application_running`, `rollback_restored`, and `recovery_required`
+  outcome copy,
   Codex installer non-regression, OpenCode provider-connection copy, browser
   native-only behavior, and no Pi. Change Plan coverage includes
   strict v2 descriptor/five-phase/partial/cancel/event parsing,

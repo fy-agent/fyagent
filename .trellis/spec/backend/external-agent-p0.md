@@ -218,12 +218,16 @@ single | multiple | unsupported | unknown` plus
   schema, allowlist, or probe failure surfaces `source_not_verified` /
   official-page fallback; never pin a researched version URL.
 - Windows EXE artifacts are not installed from elevated FyAgent. macOS DMG
-  install is the current closed package-format path. The Catalog desktop
-  path currently uses a bounded `hdiutil`/`ditto` deploy, not the full Codex
-  Desktop atomic replace/rollback/job-directory adapter. That gap is
-  residual risk, not a license to add a second downloader. Formal elevated
-  Windows CLI/auth automation stays unavailable unless a later authenticated
-  ordinary-user helper with closed enums is proven.
+  install reuses the Codex-tested read-only mount, exact single-bundle
+  discovery, same-volume staging, compensating replacement/rollback, and
+  bounded cleanup transaction through one managed-Agent policy adapter. An
+  existing current-user installation is updated at its exact selected path and
+  basename; it is never silently copied to another Applications scope. The
+  unreviewed privileged helper path remains disabled, so `/Applications`
+  targets are visible but non-executable with `authorization_required` rather
+  than falling back to `~/Applications`. Formal elevated Windows CLI/auth
+  automation stays unavailable unless a later authenticated ordinary-user
+  helper with closed enums is proven.
 - Fail dominates and unknown never upgrades to green. Readiness creates no
   plan snapshot. Auth ownership is `fyagent_managed` (Codex Auth Center),
   `agent_owned` (Claude/Grok/desktop apps), or `provider_owned` (OpenCode
@@ -274,7 +278,7 @@ updateState  = unavailable | unknown | up_to_date | update_available | latest_un
 authOwnership = fyagent_managed | agent_owned | provider_owned | unavailable
 authState     = unknown | logged_in | logged_out | provider_connection_required | unavailable
 sourceKind    = cli_tooling | managed_desktop | codex_desktop
-stage         = checking | downloading | installing | verifying_installation
+stage         = checking | downloading | staging | installing | verifying_installation
                 | succeeded | failed | cancelled
 reasonCode    = official_page_only | source_not_verified | platform_unsupported
                 | interactive_user_unavailable | installed_not_runnable
@@ -285,6 +289,9 @@ reasonCode    = official_page_only | source_not_verified | platform_unsupported
                 | refresh_required | target_selection_required | target_changed
                 | target_not_executable | target_scope_unsupported
                 | inventory_expired | candidate_conflict
+                | authorization_required | permission_denied
+                | application_running | installation_verification_failed
+                | rollback_restored | recovery_required
                 | executor_not_implemented
 ```
 
@@ -357,12 +364,19 @@ input.
   a researched version URL such as TRAE `2.3.76922` or WorkBuddy
   `5.3.14.36279234`.
 - Jobs: one in-process slot. Second non-terminal start →
-  `operation_conflict`. Cancel is allowed until `installing`; after that
-  `cancellable=false`. Download success is not installed; post-install
-  reread is required. The V2 Agents page polls `get_agent_action_job`
-  until a terminal stage and displays that stage; a ~32s poll cap must
-  not be treated as failure while the job is still `downloading` /
-  `installing`. After a closed identity is bound (macOS
+  `operation_conflict`. `staging` means the DMG source and same-volume staged
+  app are being inspected before the old target is moved. Cancellation remains
+  available through `staging`; the backend atomically crosses the commit
+  boundary by changing to `installing`, after which `cancellable=false`.
+  Download or copy success is not installed. The post-commit verifier must
+  re-enumerate the closed identity and prove the exact selected canonical path,
+  scope and product-comparable local version, while rejecting a newly created
+  undeclared cross-scope copy. Verification failure restores and re-verifies
+  the prior bundle when possible (`rollback_restored`); uncertain restore is
+  `recovery_required`, never green. The V2 Agents page polls
+  `get_agent_action_job` until a terminal stage and displays that stage; a
+  poll cap must not be treated as failure while the job is still
+  `downloading` / `staging` / `installing`. After a closed identity is bound (macOS
   `CFBundleIdentifier` or Windows PE `ProductName` at a closed relative
   `.exe` path under Alice `LocalAppData\Programs` and machine Program
   Files), absence on macOS/Windows is `not_installed`. Linux development
@@ -370,7 +384,11 @@ input.
   directories such as `~/.workbuddy`.
 - Windows EXE/NSIS is a recognized format that reports
   `interactive_user_unavailable` from elevated FyAgent. macOS DMG is the
-  current closed deploy path.
+  current closed deploy path. Qoder compares the mounted app to the exact yml
+  version, TRAE uses bounded non-symlink `product.json.tronBuildVersion`, and
+  WorkBuddy permits only the reviewed dotted marketing-version prefix against
+  the remote product version. Source/staging/installed copies must still match
+  each other exactly.
 - Auth: Claude may run official `claude auth login/logout` and parse
   official `claude auth status` JSON/exit-code only. Grok launches official
   `grok login/logout`; status stays `unknown` without a structured command.
@@ -398,6 +416,10 @@ input.
 | Host/scheme/redirect/body/schema/artifact grammar fails                      | `source_not_verified` or `official_page_only`; no stale version URL |
 | Explicit non-default port on a metadata or artifact URL                      | `source_not_verified` + `official_page_only`; default HTTPS only    |
 | Fetch/job is cancelled                                                       | `cancelled`; never remap cancel to `source_not_verified`            |
+| Selected macOS target is `/Applications` without a reviewed authorization adapter | `authorization_required`; zero download/write and no user-scope fallback |
+| Selected macOS application is still running                                  | `application_running`; zero staging/replace write                    |
+| macOS staging or target permission is denied                                 | `permission_denied`; preserve the original target                    |
+| Post-install readback rejects path/scope/version or sees a new duplicate      | restore and reverify old target; `rollback_restored` or `recovery_required` |
 | Windows ARM64 desktop source, or unsupported arch                            | `platform_unsupported`                                              |
 | Windows EXE from elevated FyAgent                                            | `interactive_user_unavailable`                                      |
 | Closed desktop identity absent on macOS/Windows                              | `not_installed`                                                     |
@@ -438,7 +460,12 @@ input.
   current when it is a dotted prefix of remote `productVersion`
   (`5.3.14` / `5.3.14.36279234`) and still flags same-length last-segment
   drift (`0.9.12` / `0.9.15`).
-- Jobs: single-flight, cancel-before-installing, refuse cancel after
+- macOS transaction: exact selected-path update, no scope fallback, bounded
+  source/staging/installed identity checks, running-app zero-write, staging
+  cleanup, cancellation before commit, non-cancellable commit, rollback plus
+  restored-identity reread, duplicate-scope rejection, Qoder exact version,
+  TRAE `tronBuildVersion`, and WorkBuddy dotted-prefix release comparison.
+- Jobs: single-flight, `staging` remains cancellable, refuse cancel after
   `installing`, unknown job id, Codex install/update reason code.
 - Tooling mapping only: Claude/Grok/OpenCode. Existing Gemini/OpenClaw/Hermes
   lifecycle tests remain green and unrouted.
@@ -447,8 +474,8 @@ input.
 - ACL union includes `get_agent_installation_inventory`, `start_agent_action`,
   `cancel_agent_action`, `get_agent_action_job`. Renderer ports parse at the
   adapter, never in page-local casts. The Agents install section polls native job stage
-  until terminal, shows that stage, and must not paint failure at a 32s
-  cap while `downloading`.
+  until terminal, shows that stage, and must not paint failure at a poll cap
+  while `downloading`, `staging`, or `installing`.
 - Native DMG/EXE/UAC HIL is residual risk, not a portable-test pass.
 
 ##### 7. Wrong vs Correct

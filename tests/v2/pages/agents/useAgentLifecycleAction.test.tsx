@@ -17,6 +17,8 @@ import {
   AGENT_LIFECYCLE_SUCCEEDED_COPY,
   AGENT_LIFECYCLE_TIMEOUT_COPY,
   deriveAgentLifecyclePrimaryAction,
+  jobStageCopy,
+  reasonCopy,
   useAgentLifecycleAction,
 } from "@/v2/pages/agents/useAgentLifecycleAction";
 
@@ -53,7 +55,8 @@ function jobSnapshot(
     agentId: "qoderwork",
     action: "install",
     stage,
-    cancellable: stage === "downloading" || stage === "checking",
+    cancellable:
+      stage === "checking" || stage === "downloading" || stage === "staging",
     reasonCode: null,
     ...overrides,
   };
@@ -183,6 +186,16 @@ describe("deriveAgentLifecyclePrimaryAction", () => {
         }),
       ),
     ).toBeNull();
+  });
+});
+
+describe("macOS lifecycle state copy", () => {
+  it("distinguishes staging, authorization, restored rollback, and unknown recovery", () => {
+    expect(jobStageCopy("staging")).toBe("正在准备并验证应用");
+    expect(reasonCopy("authorization_required")).toContain("需要授权");
+    expect(reasonCopy("authorization_required")).toContain("不会自动改装");
+    expect(reasonCopy("rollback_restored")).toContain("已恢复原应用");
+    expect(reasonCopy("recovery_required")).toContain("停止重试");
   });
 });
 
@@ -576,6 +589,7 @@ describe("useAgentLifecycleAction", () => {
     const stages: AgentActionJobStage[] = [
       "checking",
       "downloading",
+      "staging",
       "installing",
       "verifying_installation",
       "succeeded",

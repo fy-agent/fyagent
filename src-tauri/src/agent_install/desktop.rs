@@ -8,7 +8,7 @@ use std::{
 };
 
 #[cfg(target_os = "macos")]
-use std::{io::Write, process::Command};
+use std::process::Command;
 
 use super::fetch::{fetch_artifact_bytes, fetch_metadata_bytes};
 use super::sources::{
@@ -71,6 +71,10 @@ fn desktop_product(agent_id: AgentCatalogId) -> Option<&'static DesktopProduct> 
         .find(|product| product.agent_id == agent_id)
 }
 
+pub(super) fn macos_bundle_id_for(agent_id: AgentCatalogId) -> Option<&'static str> {
+    desktop_product(agent_id).map(|product| product.macos_bundle_id)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DesktopObservation {
     pub installed: bool,
@@ -84,6 +88,11 @@ pub(super) struct DesktopInstallationEvidence {
     pub scope: InstallationScope,
     pub package_kind: InstallationPackageKind,
     pub local_version: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct DesktopInstallationBaseline {
+    installations: Vec<(PathBuf, InstallationScope)>,
 }
 
 pub async fn resolve_desktop_source(
@@ -154,18 +163,6 @@ pub fn windows_exe_unavailable(source: &ResolvedDesktopSource) -> bool {
     source.platform == AgentPlatform::Windows && source.format == PackageFormat::Exe
 }
 
-#[allow(dead_code)]
-pub async fn install_resolved_source(
-    source: &ResolvedDesktopSource,
-    cancellation: &dyn Cancellation,
-) -> Result<(), AgentReasonCode> {
-    let bytes = download_resolved_source(source, cancellation).await?;
-    if cancellation.is_cancelled() {
-        return Err(AgentReasonCode::Cancelled);
-    }
-    install_macos_dmg(source.product, &bytes)
-}
-
 pub async fn download_resolved_source(
     source: &ResolvedDesktopSource,
     cancellation: &dyn Cancellation,
@@ -185,13 +182,6 @@ pub async fn download_resolved_source(
         .map_err(source_reason)
 }
 
-pub fn finish_macos_dmg_install(
-    product: AgentCatalogId,
-    bytes: &[u8],
-) -> Result<(), AgentReasonCode> {
-    install_macos_dmg(product, bytes)
-}
-
 fn download_hosts(product: AgentCatalogId) -> Result<&'static [&'static str], AgentReasonCode> {
     match product {
         AgentCatalogId::QoderWork => Ok(QODERWORK_REDIRECT_HOSTS),
@@ -201,145 +191,7 @@ fn download_hosts(product: AgentCatalogId) -> Result<&'static [&'static str], Ag
     }
 }
 
-#[cfg(target_os = "windows")]
-fn install_macos_dmg(_product: AgentCatalogId, _bytes: &[u8]) -> Result<(), AgentReasonCode> {
-    Err(AgentReasonCode::PlatformUnsupported)
-}
-
-#[cfg(target_os = "macos")]
-fn install_macos_dmg(product: AgentCatalogId, bytes: &[u8]) -> Result<(), AgentReasonCode> {
-    let job_dir = job_temp_dir()?;
-    let dmg_path = job_dir.join("installer.dmg");
-    write_exclusive(&dmg_path, bytes)?;
-    let mounted = mount_dmg(&dmg_path);
-    let result = mounted.and_then(|mount| {
-        let outcome = install_from_mount(product, &mount);
-        let _ = detach_dmg(&mount);
-        outcome
-    });
-    let _ = fs::remove_dir_all(&job_dir);
-    result
-}
-
-#[cfg(target_os = "macos")]
-fn job_temp_dir() -> Result<PathBuf, AgentReasonCode> {
-    let root = crate::config::get_user_temp_dir().join("fyagent-agent-installer");
-    fs::create_dir_all(&root).map_err(|_| AgentReasonCode::ExecutorNotImplemented)?;
-    let dir = root.join(uuid::Uuid::new_v4().to_string());
-    fs::create_dir(&dir).map_err(|_| AgentReasonCode::ExecutorNotImplemented)?;
-    Ok(dir)
-}
-
-#[cfg(target_os = "macos")]
-fn write_exclusive(path: &Path, bytes: &[u8]) -> Result<(), AgentReasonCode> {
-    let mut file = fs::OpenOptions::new()
-        .create_new(true)
-        .write(true)
-        .open(path)
-        .map_err(|_| AgentReasonCode::ExecutorNotImplemented)?;
-    file.write_all(bytes)
-        .map_err(|_| AgentReasonCode::ExecutorNotImplemented)?;
-    file.flush()
-        .map_err(|_| AgentReasonCode::ExecutorNotImplemented)?;
-    file.sync_all()
-        .map_err(|_| AgentReasonCode::ExecutorNotImplemented)?;
-    Ok(())
-}
-
-#[cfg(target_os = "macos")]
-fn mount_dmg(path: &Path) -> Result<PathBuf, AgentReasonCode> {
-    let output = Command::new("hdiutil")
-        .args(["attach", "-nobrowse", "-readonly", "-plist"])
-        .arg(path)
-        .output()
-        .map_err(|_| AgentReasonCode::ExecutorNotImplemented)?;
-    if !output.status.success() {
-        return Err(AgentReasonCode::ExecutorNotImplemented);
-    }
-    parse_mount_point(&output.stdout).ok_or(AgentReasonCode::ExecutorNotImplemented)
-}
-
-#[cfg(target_os = "macos")]
-fn detach_dmg(mount: &Path) -> Result<(), AgentReasonCode> {
-    let status = Command::new("hdiutil")
-        .args(["detach", "-quiet"])
-        .arg(mount)
-        .status()
-        .map_err(|_| AgentReasonCode::ExecutorNotImplemented)?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(AgentReasonCode::ExecutorNotImplemented)
-    }
-}
-
-#[cfg(target_os = "macos")]
-fn install_from_mount(product: AgentCatalogId, mount: &Path) -> Result<(), AgentReasonCode> {
-    let app = discover_single_app(mount)?;
-    if product == AgentCatalogId::TraeWork
-        || product == AgentCatalogId::QoderWork
-        || product == AgentCatalogId::WorkBuddy
-    {
-        let expected = desktop_product(product)
-            .map(|item| item.macos_bundle_id)
-            .ok_or(AgentReasonCode::SourceNotVerified)?;
-        let id = read_bundle_id(&app).ok_or(AgentReasonCode::SourceNotVerified)?;
-        if id != expected {
-            return Err(AgentReasonCode::SourceNotVerified);
-        }
-    }
-    let dest_parent = user_applications_dir()?;
-    fs::create_dir_all(&dest_parent).map_err(|_| AgentReasonCode::ExecutorNotImplemented)?;
-    let dest = dest_parent.join(
-        app.file_name()
-            .ok_or(AgentReasonCode::ExecutorNotImplemented)?,
-    );
-    let status = Command::new("ditto")
-        .arg(&app)
-        .arg(&dest)
-        .status()
-        .map_err(|_| AgentReasonCode::ExecutorNotImplemented)?;
-    if !status.success() {
-        return Err(AgentReasonCode::ExecutorNotImplemented);
-    }
-    if product == AgentCatalogId::TraeWork
-        || product == AgentCatalogId::QoderWork
-        || product == AgentCatalogId::WorkBuddy
-    {
-        let expected = desktop_product(product)
-            .map(|item| item.macos_bundle_id)
-            .ok_or(AgentReasonCode::SourceNotVerified)?;
-        let installed_id = read_bundle_id(&dest).ok_or(AgentReasonCode::SourceNotVerified)?;
-        if installed_id != expected {
-            return Err(AgentReasonCode::SourceNotVerified);
-        }
-    }
-    Ok(())
-}
-
-#[cfg(target_os = "macos")]
-fn discover_single_app(mount: &Path) -> Result<PathBuf, AgentReasonCode> {
-    let mut found = None;
-    for entry in fs::read_dir(mount).map_err(|_| AgentReasonCode::ExecutorNotImplemented)? {
-        let entry = entry.map_err(|_| AgentReasonCode::ExecutorNotImplemented)?;
-        let path = entry.path();
-        let meta =
-            fs::symlink_metadata(&path).map_err(|_| AgentReasonCode::ExecutorNotImplemented)?;
-        if path.extension().and_then(|ext| ext.to_str()) != Some("app") {
-            continue;
-        }
-        if meta.file_type().is_symlink() || !meta.is_dir() {
-            return Err(AgentReasonCode::SourceNotVerified);
-        }
-        if found.is_some() {
-            return Err(AgentReasonCode::SourceNotVerified);
-        }
-        found = Some(path);
-    }
-    found.ok_or(AgentReasonCode::SourceNotVerified)
-}
-
-fn user_applications_dir() -> Result<PathBuf, AgentReasonCode> {
+pub(super) fn user_applications_dir() -> Result<PathBuf, AgentReasonCode> {
     Ok(get_home_dir().join("Applications"))
 }
 
@@ -466,6 +318,74 @@ pub(super) fn discover_desktop_installations(
         return Vec::new();
     };
     discover_desktop_installations_on_host(product)
+}
+
+pub(super) fn capture_desktop_installation_baseline(
+    agent_id: AgentCatalogId,
+) -> DesktopInstallationBaseline {
+    DesktopInstallationBaseline {
+        installations: discover_desktop_installations(agent_id)
+            .into_iter()
+            .map(|candidate| {
+                (
+                    fs::canonicalize(&candidate.path).unwrap_or(candidate.path),
+                    candidate.scope,
+                )
+            })
+            .collect(),
+    }
+}
+
+pub(super) fn verify_desktop_deployment(
+    agent_id: AgentCatalogId,
+    baseline: &DesktopInstallationBaseline,
+    target_path: &Path,
+    expected_scope: InstallationScope,
+    expected_local_version: &str,
+) -> Result<(), AgentReasonCode> {
+    verify_desktop_deployment_candidates(
+        baseline,
+        discover_desktop_installations(agent_id),
+        target_path,
+        expected_scope,
+        expected_local_version,
+    )
+}
+
+fn verify_desktop_deployment_candidates(
+    baseline: &DesktopInstallationBaseline,
+    after: Vec<DesktopInstallationEvidence>,
+    target_path: &Path,
+    expected_scope: InstallationScope,
+    expected_local_version: &str,
+) -> Result<(), AgentReasonCode> {
+    let target = fs::canonicalize(target_path)
+        .map_err(|_| AgentReasonCode::InstallationVerificationFailed)?;
+    let selected = after
+        .iter()
+        .find(|candidate| {
+            candidate.scope == expected_scope
+                && candidate.package_kind == InstallationPackageKind::AppBundle
+                && fs::canonicalize(&candidate.path)
+                    .map(|path| path == target)
+                    .unwrap_or(false)
+        })
+        .ok_or(AgentReasonCode::InstallationVerificationFailed)?;
+    if selected.local_version.as_deref() != Some(expected_local_version) {
+        return Err(AgentReasonCode::InstallationVerificationFailed);
+    }
+    for candidate in after {
+        let canonical = fs::canonicalize(&candidate.path)
+            .map_err(|_| AgentReasonCode::InstallationVerificationFailed)?;
+        let existed_before = baseline
+            .installations
+            .iter()
+            .any(|(path, scope)| *path == canonical && *scope == candidate.scope);
+        if canonical != target && !existed_before {
+            return Err(AgentReasonCode::InstallationVerificationFailed);
+        }
+    }
+    Ok(())
 }
 
 #[cfg(target_os = "macos")]
@@ -936,22 +856,6 @@ fn plist_string(app: &Path, key: &str) -> Option<String> {
     Some(value.to_string())
 }
 
-#[cfg(any(target_os = "macos", test))]
-fn parse_mount_point(plist: &[u8]) -> Option<PathBuf> {
-    let text = String::from_utf8_lossy(plist);
-    let key = "<key>mount-point</key>";
-    let start = text.find(key)? + key.len();
-    let rest = text[start..].trim_start();
-    let rest = rest.strip_prefix("<string>")?;
-    let end = rest.find("</string>")?;
-    let value = rest[..end].trim();
-    if value.starts_with('/') {
-        Some(PathBuf::from(value))
-    } else {
-        None
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -994,21 +898,10 @@ mod tests {
             official_page: "https://qoder.com.cn/download",
         };
         assert_eq!(
-            install_resolved_source(&source, &crate::codex_desktop::cancellation::NeverCancelled,)
+            download_resolved_source(&source, &crate::codex_desktop::cancellation::NeverCancelled,)
                 .await,
             Err(AgentReasonCode::InteractiveUserUnavailable)
         );
-    }
-
-    #[test]
-    fn mount_plist_requires_an_absolute_path() {
-        let plist =
-            br#"<plist><dict><key>mount-point</key><string>/Volumes/App</string></dict></plist>"#;
-        assert_eq!(
-            parse_mount_point(plist),
-            Some(PathBuf::from("/Volumes/App"))
-        );
-        assert_eq!(parse_mount_point(b"<plist></plist>"), None);
     }
 
     #[test]
@@ -1264,6 +1157,98 @@ mod tests {
                 Err(AgentReasonCode::InstalledNotRunnable)
             );
         }
+    }
+
+    fn deployment_evidence(
+        path: PathBuf,
+        scope: InstallationScope,
+        version: &str,
+    ) -> DesktopInstallationEvidence {
+        DesktopInstallationEvidence {
+            stable_key: format!("test:{}", path.display()),
+            path,
+            scope,
+            package_kind: InstallationPackageKind::AppBundle,
+            local_version: Some(version.to_string()),
+        }
+    }
+
+    #[test]
+    fn deployment_readback_requires_the_exact_selected_path_scope_and_version() {
+        let root = tempfile::tempdir().expect("temp");
+        let user = root.path().join("User Applications");
+        let system = root.path().join("System Applications");
+        let selected = user.join("Product.app");
+        let existing_system = system.join("Product.app");
+        fs::create_dir_all(&selected).expect("selected bundle");
+        fs::create_dir_all(&existing_system).expect("existing system bundle");
+        let selected = fs::canonicalize(selected).expect("selected canonical");
+        let existing_system = fs::canonicalize(existing_system).expect("system canonical");
+        let baseline = DesktopInstallationBaseline {
+            installations: vec![(existing_system.clone(), InstallationScope::AllUsers)],
+        };
+        let after = vec![
+            deployment_evidence(selected.clone(), InstallationScope::CurrentUser, "2.0.0"),
+            deployment_evidence(existing_system, InstallationScope::AllUsers, "1.0.0"),
+        ];
+
+        assert_eq!(
+            verify_desktop_deployment_candidates(
+                &baseline,
+                after.clone(),
+                &selected,
+                InstallationScope::CurrentUser,
+                "2.0.0",
+            ),
+            Ok(())
+        );
+        assert_eq!(
+            verify_desktop_deployment_candidates(
+                &baseline,
+                after.clone(),
+                &selected,
+                InstallationScope::AllUsers,
+                "2.0.0",
+            ),
+            Err(AgentReasonCode::InstallationVerificationFailed)
+        );
+        assert_eq!(
+            verify_desktop_deployment_candidates(
+                &baseline,
+                after,
+                &selected,
+                InstallationScope::CurrentUser,
+                "2.0.1",
+            ),
+            Err(AgentReasonCode::InstallationVerificationFailed)
+        );
+    }
+
+    #[test]
+    fn deployment_readback_rejects_an_undeclared_cross_scope_copy() {
+        let root = tempfile::tempdir().expect("temp");
+        let selected = root.path().join("User Applications/Product.app");
+        let duplicate = root.path().join("System Applications/Product.app");
+        fs::create_dir_all(&selected).expect("selected bundle");
+        fs::create_dir_all(&duplicate).expect("duplicate bundle");
+        let selected = fs::canonicalize(selected).expect("selected canonical");
+        let duplicate = fs::canonicalize(duplicate).expect("duplicate canonical");
+
+        assert_eq!(
+            verify_desktop_deployment_candidates(
+                &DesktopInstallationBaseline {
+                    installations: Vec::new(),
+                },
+                vec![
+                    deployment_evidence(selected.clone(), InstallationScope::CurrentUser, "2.0.0",),
+                    deployment_evidence(duplicate, InstallationScope::AllUsers, "2.0.0",),
+                ],
+                &selected,
+                InstallationScope::CurrentUser,
+                "2.0.0",
+            ),
+            Err(AgentReasonCode::InstallationVerificationFailed)
+        );
     }
 
     #[test]

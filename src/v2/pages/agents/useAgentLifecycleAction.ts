@@ -96,6 +96,18 @@ export function reasonCopy(code: AgentReasonCode): string | null {
       return "当前操作不支持所选安装范围。";
     case "candidate_conflict":
       return "检测到相互冲突的安装证据，已停止自动操作。";
+    case "authorization_required":
+      return "所选系统安装位置需要授权。当前不会自动改装到用户目录。";
+    case "permission_denied":
+      return "没有权限更新所选位置。原应用保持不变。";
+    case "application_running":
+      return "应用仍在运行。请先完全退出，再重新执行。";
+    case "installation_verification_failed":
+      return "安装后验证未通过，未确认新版本可用。";
+    case "rollback_restored":
+      return "新版本验证未通过，已恢复原应用。";
+    case "recovery_required":
+      return "安装恢复无法确认完成。请停止重试并检查应用安装状态。";
     case "cancelled":
       return "操作已取消。";
     case "executor_not_implemented":
@@ -113,6 +125,8 @@ export function jobStageCopy(stage: AgentActionJobStage): string {
       return "正在检查来源";
     case "downloading":
       return "正在下载安装包";
+    case "staging":
+      return "正在准备并验证应用";
     case "installing":
       return "正在安装";
     case "verifying_installation":

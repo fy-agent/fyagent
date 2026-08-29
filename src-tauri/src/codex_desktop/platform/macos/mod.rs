@@ -5,8 +5,8 @@
 //! mounting a disk image or touching a real Applications directory. Platform
 //! root code chooses whether this adapter is available for the current target.
 
-mod bundle;
-mod dmg;
+pub(crate) mod bundle;
+pub(crate) mod dmg;
 
 use std::{
     collections::HashMap,
@@ -229,6 +229,12 @@ impl MacosFilesystemError {
 pub trait MacosFilesystem: Send + Sync {
     fn read_dir(&self, path: &Path) -> Result<Vec<PathBuf>, MacosFilesystemError>;
 
+    fn read_file_bounded(
+        &self,
+        path: &Path,
+        max_bytes: u64,
+    ) -> Result<Vec<u8>, MacosFilesystemError>;
+
     fn canonicalize(&self, path: &Path) -> Result<PathBuf, MacosFilesystemError>;
 
     fn file_kind(&self, path: &Path) -> Result<MacosFileKind, MacosFilesystemError>;
@@ -255,6 +261,20 @@ impl MacosFilesystem for StdMacosFilesystem {
                     .map_err(macos_filesystem_error_from_io)
             })
             .collect()
+    }
+
+    fn read_file_bounded(
+        &self,
+        path: &Path,
+        max_bytes: u64,
+    ) -> Result<Vec<u8>, MacosFilesystemError> {
+        let metadata = fs::symlink_metadata(path).map_err(macos_filesystem_error_from_io)?;
+        if metadata.file_type().is_symlink() || !metadata.is_file() || metadata.len() > max_bytes {
+            return Err(MacosFilesystemError {
+                kind: MacosFilesystemErrorKind::Invalid,
+            });
+        }
+        fs::read(path).map_err(macos_filesystem_error_from_io)
     }
 
     fn canonicalize(&self, path: &Path) -> Result<PathBuf, MacosFilesystemError> {
@@ -816,6 +836,7 @@ pub(super) mod test_support {
     struct FakeEntry {
         kind: MacosFileKind,
         canonical: PathBuf,
+        contents: Vec<u8>,
     }
 
     #[derive(Default)]
@@ -842,6 +863,10 @@ pub(super) mod test_support {
         }
 
         pub fn add_file(&self, path: impl AsRef<Path>) {
+            self.add_file_with_contents(path, Vec::new());
+        }
+
+        pub fn add_file_with_contents(&self, path: impl AsRef<Path>, contents: impl Into<Vec<u8>>) {
             let path = path.as_ref().to_path_buf();
             let mut state = self.lock();
             if let Some(parent) = path.parent() {
@@ -852,6 +877,7 @@ pub(super) mod test_support {
                 FakeEntry {
                     kind: MacosFileKind::File,
                     canonical: path,
+                    contents: contents.into(),
                 },
             );
         }
@@ -867,6 +893,7 @@ pub(super) mod test_support {
                 FakeEntry {
                     kind: MacosFileKind::Symlink,
                     canonical: canonical_target.as_ref().to_path_buf(),
+                    contents: Vec::new(),
                 },
             );
         }
@@ -921,6 +948,22 @@ pub(super) mod test_support {
                 .filter(|candidate| candidate.parent() == Some(path))
                 .cloned()
                 .collect())
+        }
+
+        fn read_file_bounded(
+            &self,
+            path: &Path,
+            max_bytes: u64,
+        ) -> Result<Vec<u8>, MacosFilesystemError> {
+            let state = self.lock();
+            let entry = state
+                .entries
+                .get(path)
+                .ok_or_else(|| filesystem_error(MacosFilesystemErrorKind::NotFound))?;
+            if entry.kind != MacosFileKind::File || entry.contents.len() as u64 > max_bytes {
+                return Err(filesystem_error(MacosFilesystemErrorKind::Invalid));
+            }
+            Ok(entry.contents.clone())
         }
 
         fn canonicalize(&self, path: &Path) -> Result<PathBuf, MacosFilesystemError> {
@@ -987,6 +1030,7 @@ pub(super) mod test_support {
                 .or_insert_with(|| FakeEntry {
                     kind: MacosFileKind::Directory,
                     canonical: ancestor.to_path_buf(),
+                    contents: Vec::new(),
                 });
         }
     }

@@ -143,6 +143,12 @@ pub enum AgentReasonCode {
     TargetScopeUnsupported,
     InventoryExpired,
     CandidateConflict,
+    AuthorizationRequired,
+    PermissionDenied,
+    ApplicationRunning,
+    InstallationVerificationFailed,
+    RollbackRestored,
+    RecoveryRequired,
     ExecutorNotImplemented,
 }
 
@@ -151,6 +157,7 @@ pub enum AgentReasonCode {
 pub enum AgentActionJobStage {
     Checking,
     Downloading,
+    Staging,
     Installing,
     VerifyingInstallation,
     Succeeded,

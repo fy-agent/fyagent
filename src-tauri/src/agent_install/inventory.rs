@@ -64,6 +64,16 @@ pub(super) enum ValidatedActionTarget {
     None,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum DesktopDeploymentTarget {
+    Existing {
+        path: PathBuf,
+        scope: InstallationScope,
+        package_kind: InstallationPackageKind,
+    },
+    Fresh(FreshDestinationCapability),
+}
+
 impl ValidatedActionTarget {
     pub(super) fn desktop_path(&self) -> Option<&PathBuf> {
         match self {
@@ -75,6 +85,22 @@ impl ValidatedActionTarget {
     pub(super) fn fresh_destination(&self) -> Option<FreshDestinationCapability> {
         match self {
             Self::Fresh(destination) => Some(*destination),
+            _ => None,
+        }
+    }
+
+    pub(super) fn into_desktop_deployment_target(self) -> Option<DesktopDeploymentTarget> {
+        match self {
+            Self::Existing(InstallationTargetCapability::Desktop {
+                path,
+                scope,
+                package_kind,
+            }) => Some(DesktopDeploymentTarget::Existing {
+                path,
+                scope,
+                package_kind,
+            }),
+            Self::Fresh(destination) => Some(DesktopDeploymentTarget::Fresh(destination)),
             _ => None,
         }
     }
@@ -150,6 +176,7 @@ struct SnapshotCandidate {
     revision: String,
     launch_eligible: bool,
     update_eligible: bool,
+    update_block_reason: Option<AgentReasonCode>,
 }
 
 #[derive(Clone)]
@@ -157,6 +184,7 @@ struct SnapshotDestination {
     stable_key: String,
     revision: String,
     eligible: bool,
+    block_reason: Option<AgentReasonCode>,
 }
 
 struct InventorySnapshot {
@@ -366,7 +394,9 @@ fn validate_snapshot_target(
                 return Err(AgentReasonCode::TargetNotExecutable);
             }
             if action == AgentActionId::Update && !snapshot.update_eligible {
-                return Err(AgentReasonCode::TargetScopeUnsupported);
+                return Err(snapshot
+                    .update_block_reason
+                    .unwrap_or(AgentReasonCode::TargetScopeUnsupported));
             }
             let candidate = current
                 .candidates
@@ -380,7 +410,9 @@ fn validate_snapshot_target(
         }
         SnapshotTarget::Destination(snapshot) => {
             if action != AgentActionId::Install || !snapshot.eligible {
-                return Err(AgentReasonCode::TargetScopeUnsupported);
+                return Err(snapshot
+                    .block_reason
+                    .unwrap_or(AgentReasonCode::TargetScopeUnsupported));
             }
             let destination = current
                 .destinations
@@ -413,6 +445,13 @@ fn project_and_store(
                 revision: candidate.revision.clone(),
                 launch_eligible: candidate.launch_eligible,
                 update_eligible: candidate.update_eligible,
+                update_block_reason: candidate.reason_codes.iter().copied().find(|reason| {
+                    matches!(
+                        reason,
+                        AgentReasonCode::AuthorizationRequired
+                            | AgentReasonCode::TargetScopeUnsupported
+                    )
+                }),
             },
         );
         candidates.push(InstallationCandidateDto {
@@ -441,6 +480,13 @@ fn project_and_store(
                 stable_key: destination.stable_key,
                 revision: destination.revision.clone(),
                 eligible: destination.eligible,
+                block_reason: destination.reason_codes.iter().copied().find(|reason| {
+                    matches!(
+                        reason,
+                        AgentReasonCode::AuthorizationRequired
+                            | AgentReasonCode::TargetScopeUnsupported
+                    )
+                }),
             },
         );
         fresh_destinations.push(FreshInstallDestinationDto {
@@ -499,6 +545,8 @@ fn probe_desktop(agent_id: AgentCatalogId) -> InventoryProbe {
     }
     let mut candidates = Vec::new();
     for evidence in discover_desktop_installations(agent_id) {
+        let update_requires_authorization =
+            cfg!(target_os = "macos") && evidence.scope == InstallationScope::AllUsers;
         let location_label =
             desktop_location_label(agent_id, evidence.scope, evidence.package_kind);
         let mut candidate = ProbeCandidate {
@@ -510,8 +558,12 @@ fn probe_desktop(agent_id: AgentCatalogId) -> InventoryProbe {
             local_version: evidence.local_version,
             launch_eligible: true,
             install_eligible: false,
-            update_eligible: true,
-            reason_codes: Vec::new(),
+            update_eligible: !update_requires_authorization,
+            reason_codes: if update_requires_authorization {
+                vec![AgentReasonCode::AuthorizationRequired]
+            } else {
+                Vec::new()
+            },
             evidence_codes: match evidence.package_kind {
                 InstallationPackageKind::AppBundle => {
                     vec![InstallationEvidenceCode::BundleIdentity]
@@ -769,6 +821,16 @@ fn desktop_destinations(_agent_id: AgentCatalogId) -> Vec<ProbeDestination> {
     #[cfg(target_os = "macos")]
     {
         let user_writable = super::desktop::user_applications_writable();
+        let mut system = destination(
+            "mac:system-applications",
+            InstallationScope::AllUsers,
+            InstallationPackageKind::AppBundle,
+            true,
+            false,
+            "/Applications",
+            FreshDestinationCapability::MacSystemApplications,
+        );
+        system.reason_codes = vec![AgentReasonCode::AuthorizationRequired];
         return vec![
             destination(
                 "mac:user-applications",
@@ -779,15 +841,7 @@ fn desktop_destinations(_agent_id: AgentCatalogId) -> Vec<ProbeDestination> {
                 "~/Applications",
                 FreshDestinationCapability::MacUserApplications,
             ),
-            destination(
-                "mac:system-applications",
-                InstallationScope::AllUsers,
-                InstallationPackageKind::AppBundle,
-                true,
-                true,
-                "/Applications",
-                FreshDestinationCapability::MacSystemApplications,
-            ),
+            system,
         ];
     }
     #[cfg(target_os = "windows")]
@@ -1045,6 +1099,97 @@ mod tests {
                 InstallationPackageKind::Exe,
             ),
             "%LOCALAPPDATA%\\Programs\\WorkBuddy"
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn system_destination_is_visible_but_requires_authorization() {
+        let store = AgentInstallationInventoryStore::new();
+        let probe = InventoryProbe {
+            state_override: Some(InstallationInventoryState::NotObserved),
+            candidates: Vec::new(),
+            destinations: desktop_destinations(AgentCatalogId::QoderWork),
+            reason_codes: Vec::new(),
+        };
+        let dto = project_and_store(AgentCatalogId::QoderWork, probe, &store);
+        let system = dto
+            .fresh_destinations
+            .iter()
+            .find(|destination| destination.scope == InstallationScope::AllUsers)
+            .expect("system destination remains user-visible");
+
+        assert!(!system.eligible);
+        assert!(system.requires_elevation);
+        assert_eq!(
+            system.reason_codes,
+            vec![AgentReasonCode::AuthorizationRequired]
+        );
+        let snapshot = store
+            .snapshot_target(
+                &dto.inventory_id,
+                AgentCatalogId::QoderWork,
+                &system.destination_id,
+                &system.destination_revision,
+            )
+            .unwrap();
+        assert_eq!(
+            validate_snapshot_target(
+                AgentActionId::Install,
+                snapshot,
+                InventoryProbe {
+                    state_override: Some(InstallationInventoryState::NotObserved),
+                    candidates: Vec::new(),
+                    destinations: desktop_destinations(AgentCatalogId::QoderWork),
+                    reason_codes: Vec::new(),
+                },
+            ),
+            Err(AgentReasonCode::AuthorizationRequired)
+        );
+    }
+
+    #[test]
+    fn blocked_update_preserves_its_closed_reason() {
+        let store = AgentInstallationInventoryStore::new();
+        let mut blocked = candidate("system", InstallationEvidenceCode::BundleIdentity);
+        blocked.scope = InstallationScope::AllUsers;
+        blocked.update_eligible = false;
+        blocked.reason_codes = vec![AgentReasonCode::AuthorizationRequired];
+        blocked.capability = InstallationTargetCapability::Desktop {
+            path: PathBuf::from("/Applications/App.app"),
+            scope: InstallationScope::AllUsers,
+            package_kind: InstallationPackageKind::AppBundle,
+        };
+        refresh_candidate_revision(&mut blocked);
+        let probe = InventoryProbe {
+            state_override: None,
+            candidates: vec![blocked.clone()],
+            destinations: Vec::new(),
+            reason_codes: Vec::new(),
+        };
+        let dto = project_and_store(AgentCatalogId::WorkBuddy, probe, &store);
+        let projected = dto.candidates.first().expect("candidate projection");
+        let snapshot = store
+            .snapshot_target(
+                &dto.inventory_id,
+                AgentCatalogId::WorkBuddy,
+                &projected.candidate_id,
+                &projected.candidate_revision,
+            )
+            .unwrap();
+
+        assert_eq!(
+            validate_snapshot_target(
+                AgentActionId::Update,
+                snapshot,
+                InventoryProbe {
+                    state_override: None,
+                    candidates: vec![blocked],
+                    destinations: Vec::new(),
+                    reason_codes: Vec::new(),
+                },
+            ),
+            Err(AgentReasonCode::AuthorizationRequired)
         );
     }
 }

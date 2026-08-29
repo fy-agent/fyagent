@@ -170,4 +170,20 @@ mod tests {
         );
         assert!(!flag.load(Ordering::Acquire));
     }
+
+    #[test]
+    fn staging_remains_cancellable_until_the_commit_boundary() {
+        let store = AgentActionJobStore::new();
+        let (job, flag) = store
+            .start(AgentCatalogId::WorkBuddy, AgentActionId::Update)
+            .unwrap();
+        let staging = store
+            .transition(&job.job_id, AgentActionJobStage::Staging, None)
+            .unwrap();
+        assert!(staging.cancellable);
+
+        let cancelled = store.request_cancel(&job.job_id).unwrap();
+        assert!(!cancelled.cancellable);
+        assert!(flag.load(Ordering::Acquire));
+    }
 }

@@ -127,6 +127,12 @@ export const AGENT_REASON_CODES = [
   "target_scope_unsupported",
   "inventory_expired",
   "candidate_conflict",
+  "authorization_required",
+  "permission_denied",
+  "application_running",
+  "installation_verification_failed",
+  "rollback_restored",
+  "recovery_required",
   "executor_not_implemented",
 ] as const;
 export type AgentReasonCode = (typeof AGENT_REASON_CODES)[number];
@@ -134,6 +140,7 @@ export type AgentReasonCode = (typeof AGENT_REASON_CODES)[number];
 export const AGENT_ACTION_JOB_STAGES = [
   "checking",
   "downloading",
+  "staging",
   "installing",
   "verifying_installation",
   "succeeded",

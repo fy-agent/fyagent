@@ -7,6 +7,7 @@ mod desktop;
 mod fetch;
 mod inventory;
 mod jobs;
+mod macos;
 mod sources;
 mod types;
 
@@ -27,11 +28,12 @@ pub use types::{
 use auth_actions::{observe_auth_state, start_auth_action};
 use cli::{observe_cli, run_cli_lifecycle};
 use desktop::{
-    download_resolved_source, finish_macos_dmg_install, install_state_from_observation,
-    launch_desktop_installation, launch_if_present, observe_desktop, readiness_source_codes,
-    resolve_desktop_source, source_reason, windows_exe_unavailable,
+    download_resolved_source, install_state_from_observation, launch_desktop_installation,
+    launch_if_present, observe_desktop, readiness_source_codes, resolve_desktop_source,
+    source_reason, windows_exe_unavailable,
 };
 use inventory::{inventory_summary, validate_action_target, ValidatedActionTarget};
+use macos::deploy_macos_dmg;
 use sources::PackageFormat;
 
 use crate::codex_desktop::types::LocalInstallStatus;
@@ -443,6 +445,9 @@ async fn start_desktop_job(
         }
         _ => {}
     }
+    let deployment_target = target
+        .into_desktop_deployment_target()
+        .ok_or(AgentReasonCode::TargetSelectionRequired)?;
     let source = resolve_desktop_source(request.agent_id)
         .await
         .map_err(source_reason)?;
@@ -468,7 +473,7 @@ async fn start_desktop_job(
     let job_id = snapshot.job_id.clone();
     let jobs = Arc::clone(&state.agent_action_jobs);
     tokio::spawn(async move {
-        run_desktop_install_job(jobs, job_id, source, cancel).await;
+        run_desktop_install_job(jobs, job_id, source, deployment_target, cancel).await;
     });
     Ok(AgentActionResult {
         contract_version: AGENT_ACTION_CONTRACT_VERSION,
@@ -484,6 +489,7 @@ async fn run_desktop_install_job(
     jobs: Arc<AgentActionJobStore>,
     job_id: String,
     source: sources::ResolvedDesktopSource,
+    target: inventory::DesktopDeploymentTarget,
     cancel: Arc<AtomicBool>,
 ) {
     if jobs.is_cancelled(&cancel) {
@@ -526,31 +532,60 @@ async fn run_desktop_install_job(
         );
         return;
     }
-    let _ = jobs.transition(&job_id, AgentActionJobStage::Installing, None);
-    match finish_macos_dmg_install(source.product, &bytes) {
-        Ok(()) => {
-            let _ = jobs.transition(&job_id, AgentActionJobStage::VerifyingInstallation, None);
-            if source.product == AgentCatalogId::TraeWork
-                && !observe_desktop(source.product).installed
-            {
-                let _ = jobs.transition(
-                    &job_id,
-                    AgentActionJobStage::Failed,
-                    Some(AgentReasonCode::InstalledNotRunnable),
-                );
-            } else {
-                let _ = jobs.transition(&job_id, AgentActionJobStage::Succeeded, None);
-            }
+    let _ = jobs.transition(&job_id, AgentActionJobStage::Staging, None);
+    let jobs_for_commit = Arc::clone(&jobs);
+    let jobs_for_verify = Arc::clone(&jobs);
+    let commit_job_id = job_id.clone();
+    let verify_job_id = job_id.clone();
+    let cancel_for_commit = Arc::clone(&cancel);
+    let product = source.product;
+    let expected_release_version = source.display_version.clone();
+    let deployment = tokio::task::spawn_blocking(move || {
+        deploy_macos_dmg(
+            product,
+            &bytes,
+            target,
+            expected_release_version,
+            || {
+                if jobs_for_commit.is_cancelled(&cancel_for_commit) {
+                    return Err(AgentReasonCode::Cancelled);
+                }
+                jobs_for_commit
+                    .transition(&commit_job_id, AgentActionJobStage::Installing, None)
+                    .map(|_| ())
+            },
+            || {
+                jobs_for_verify
+                    .transition(
+                        &verify_job_id,
+                        AgentActionJobStage::VerifyingInstallation,
+                        None,
+                    )
+                    .map(|_| ())
+            },
+        )
+    })
+    .await;
+    match deployment {
+        Ok(Ok(_)) => {
+            let _ = jobs.transition(&job_id, AgentActionJobStage::Succeeded, None);
         }
-        Err(AgentReasonCode::Cancelled) => {
+        Ok(Err(AgentReasonCode::Cancelled)) => {
             let _ = jobs.transition(
                 &job_id,
                 AgentActionJobStage::Cancelled,
                 Some(AgentReasonCode::Cancelled),
             );
         }
-        Err(reason) => {
+        Ok(Err(reason)) => {
             let _ = jobs.transition(&job_id, AgentActionJobStage::Failed, Some(reason));
+        }
+        Err(_) => {
+            let _ = jobs.transition(
+                &job_id,
+                AgentActionJobStage::Failed,
+                Some(AgentReasonCode::ExecutorNotImplemented),
+            );
         }
     }
 }

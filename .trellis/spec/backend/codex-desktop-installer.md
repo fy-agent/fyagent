@@ -23,6 +23,16 @@ fields or maintained constants. Prohibited admission comparisons include:
 - package architecture or minimum operating-system fields;
 - upstream signature, notarization, or Gatekeeper fields.
 
+The managed-Agent DMG adapter has one narrower, product-routing safety gate:
+after a fixed first-party endpoint is mounted, QoderWork CN, TRAE Work CN, and
+WorkBuddy require the closed local bundle identity already owned by the Agent
+catalog and the reviewed local version source for that product. These values
+are backend policy, not renderer or remote-manifest input. They prevent a
+managed-Agent action from replacing the selected product with another app;
+they do not reintroduce remote checksum, signer, Team ID, notarization,
+Gatekeeper, architecture, or minimum-OS admission. Codex keeps its existing
+publication-agnostic downloaded-bundle behavior.
+
 The native operating-system installer remains authoritative for package format,
 signature/trust, dependencies, compatibility, and deployment result. After a
 native install, FyAgent still verifies that one operational result exists and
@@ -248,6 +258,28 @@ already installed Stable application. It is not a downloaded-content gate.
 System/user Applications targeting, permission fallback, running-app checks,
 path containment, atomic replacement, and rollback remain unchanged.
 
+The shared transaction also exposes a crate-private managed-Agent entry point.
+It reuses the same controlled mount, direct-child discovery, executable
+containment, generated same-volume staging/backup paths, exact-copy checks,
+replacement, rollback, cleanup, and bounded detach logic; it does not fork a
+second DMG deployer. The product adapter supplies only:
+
+- the closed expected bundle ID;
+- `Info.plist` or bounded non-symlink TRAE `product.json.tronBuildVersion` as
+  the local comparable version source;
+- exact or reviewed WorkBuddy dotted-prefix comparison against the resolved
+  release display version;
+- an exact existing target path or one backend-projected fresh parent;
+- commit and post-install readback callbacks.
+
+For managed-Agent updates, source/staging/installed copies must match exactly,
+the selected existing canonical path and basename are retained, and no
+permission failure may redirect an update to another Applications scope. A
+system `/Applications` target is disabled with `authorization_required` until
+a separately reviewed authorization adapter exists. Fresh user-scope install
+may target `~/Applications`; it is never an implicit fallback from a selected
+system target.
+
 ### Lifecycle and post-install verification
 
 Before install, the service force-refreshes metadata and requires the checked
@@ -264,6 +296,11 @@ publication fields.
 
 Cancellation remains allowed before the non-cancellable `installing` boundary.
 The process-lifecycle claim and restart capability rules remain unchanged.
+Managed-Agent jobs expose `staging` before that boundary. Their post-commit
+callback re-enumerates the closed product identity and proves exact target
+path, scope, product-comparable version, and no newly introduced cross-scope
+copy. A failed update verification restores and re-verifies the old bundle;
+an unproven restore is recovery-required rather than success.
 
 ## 4. Validation & Error Matrix
 
@@ -290,6 +327,10 @@ required or rejected.
 | Windows post-install inventory has exactly one changed record | Select that dynamic record after operational shape validation, without comparing it to maintained publication constants. |
 | Windows post-install inventory has multiple changed records or no unique usable result | Fail with structured ambiguity/installation verification error; never guess. |
 | macOS mount has no unique direct top-level `.app`, escapes containment, or staged/installed local identity changes | Fail with the corresponding local mount/path/transaction error and run the bounded detach/rollback path. |
+| Managed-Agent DMG resolves another product identity or the reviewed local version does not match the selected release | `source_not_verified`; do not move the selected target. |
+| Managed-Agent update targets `/Applications` without a reviewed authorization adapter | `authorization_required`; do not fall back to `~/Applications`. |
+| Managed-Agent app is running or the selected target drifts before commit | `application_running` / `target_changed`; no replacement write. |
+| Managed-Agent post-install path/scope/version/duplicate readback fails | restore and reverify the prior bundle; report `rollback_restored` or `recovery_required`. |
 | Native installer rejects signature, dependencies, OS compatibility, or deployment | Surface the native structured result; FyAgent must not reinterpret it as an upstream-field mismatch. |
 | Renderer/helper request contains URL, path, hash, identity, scope, or bypass input | Contract/static test fails; no installation side effect is allowed. |
 
@@ -331,6 +372,11 @@ Tests must prove:
   quarantine, and cleanup protections remain covered;
 - macOS mount discovery, executable containment, generated path safety, atomic
   replacement, exact expected cleanup, rollback, and detach remain covered;
+- managed-Agent exact selected-path update, no scope fallback, bundle identity,
+  Qoder exact/WorkBuddy dotted-prefix/TRAE `tronBuildVersion` release checks,
+  `staging` cancellation boundary, running-app zero-write, authoritative
+  path/scope/version/duplicate readback, and restored-backup reread remain
+  covered by the same macOS transaction tests;
 - DTO/parser/fixture/UI/i18n contracts omit download verification stage and
   obsolete content-admission errors;
 - generic CLI install/update flows are unchanged and contain no new validator.
@@ -398,8 +444,19 @@ Rust-only field and is never on the Agent DTO.
 ### 3. Contracts
 
 - Reuse the orchestration policy (fixed product source, HTTPS/redirect,
-  cancel, temp ownership, post-install reread). Reuse a concrete DMG/MSIX
-  deployer only when the vendor artifact format matches.
+  cancel, temp ownership, post-install reread). QoderWork CN, TRAE Work CN,
+  and WorkBuddy DMGs reuse the same macOS transaction through a narrow product
+  policy adapter; do not duplicate mount, staging, replacement, rollback, or
+  generated-path cleanup.
+- A managed update binds the inventory-selected existing path and keeps that
+  exact path/basename. A fresh install binds one backend-projected destination.
+  The transaction never guesses another scope. Because no reviewed privileged
+  helper is present, system targets remain visible but blocked with
+  `authorization_required`.
+- The shared transaction invokes the Agent commit gate after staging validation
+  and before the old target moves. It invokes the Agent inventory readback
+  after the new target is locally verified and before the backup is deleted.
+  Readback failure restores/reverifies the backup or reports recovery required.
 - Windows EXE/NSIS for Catalog desktop agents is a closed recognized format
   that currently returns `interactive_user_unavailable` from elevated
   FyAgent. Do not route it through Codex PackageBridge/MSIX, and do not add
@@ -421,6 +478,8 @@ Rust-only field and is never on the Agent DTO.
 | Catalog desktop EXE on elevated Windows | `interactive_user_unavailable`; no PackageBridge |
 | Renderer supplies a download URL to either installer | Contract/static test fails |
 | A second downloader module is added for Qoder/TRAE/WorkBuddy | Architecture regression |
+| Managed macOS update writes a different path/scope than the selected candidate | Transaction/readback failure; restore the original target |
+| System target lacks reviewed authorization | `authorization_required`; zero write, no user-scope fallback |
 
 ### 5. Good/Base/Bad Cases
 

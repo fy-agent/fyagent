@@ -1078,10 +1078,12 @@ export async function installRichTauriFeatureFixture(
               agentId,
             );
             return {
-              contractVersion: 2,
+              contractVersion: 3,
               agentId,
-              reviewedAt: "2026-08-26",
+              reviewedAt: "2026-08-29",
               installState: "installed",
+              inventoryState: "single",
+              requiresTargetSelection: false,
               updateState: "up_to_date",
               releaseId: null,
               localVersion: "1.0.0",
