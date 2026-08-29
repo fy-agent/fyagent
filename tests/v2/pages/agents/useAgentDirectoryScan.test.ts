@@ -29,10 +29,12 @@ function readiness(
   installState: AgentInstallReadiness["installState"],
 ): AgentInstallReadiness {
   return {
-    contractVersion: 2,
+    contractVersion: 3,
     agentId,
-    reviewedAt: "2026-08-26",
+    reviewedAt: "2026-08-29",
     installState,
+    inventoryState: installState === "installed" ? "single" : "not_observed",
+    requiresTargetSelection: false,
     updateState: installState === "installed" ? "up_to_date" : "unknown",
     releaseId: null,
     localVersion: installState === "installed" ? "1.0.0" : null,

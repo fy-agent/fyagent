@@ -6,7 +6,8 @@ use crate::{
     agent_install::{
         cancel_agent_action as cancel_job, get_agent_action_job as job_snapshot, readiness_for,
         start_agent_action as start_job, AgentActionErrorDto, AgentActionJobSnapshot,
-        AgentActionResult, AgentInstallReadinessDto, StartAgentActionRequest,
+        AgentActionResult, AgentInstallReadinessDto, AgentInstallationInventoryDto,
+        StartAgentActionRequest,
     },
     services::external_agents::AgentCatalogId,
     store::AppState,
@@ -18,6 +19,14 @@ pub async fn get_agent_install_readiness(
     state: State<'_, AppState>,
 ) -> Result<AgentInstallReadinessDto, String> {
     Ok(readiness_for(agent_id, &state).await)
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub async fn get_agent_installation_inventory(
+    agent_id: AgentCatalogId,
+    state: State<'_, AppState>,
+) -> Result<AgentInstallationInventoryDto, String> {
+    Ok(crate::agent_install::inventory_for(agent_id, &state).await)
 }
 
 #[tauri::command(rename_all = "camelCase")]

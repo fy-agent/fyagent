@@ -3,7 +3,7 @@
   "name": "agent-install-target-authority",
   "title": "Stage 1: establish authoritative installation target contracts",
   "description": "Introduce closed installation candidate authority, scope ownership, target selection, and shared verification contracts without exposing arbitrary paths.",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": "agent-install-domain",
   "package": null,

@@ -4,6 +4,7 @@ import {
   assertAgentInstallReadinessId,
   parseAgentActionJobSnapshot,
   parseAgentActionResult,
+  parseAgentInstallationInventory,
   parseAgentInstallReadiness,
   type AgentInstallReadinessPort,
   type StartAgentActionRequest,
@@ -20,6 +21,15 @@ export function createAgentInstallReadinessPort(): AgentInstallReadinessPort {
         safeAgentId,
       );
     },
+    getInventory: async (agentId) => {
+      const safeAgentId = assertAgentInstallReadinessId(agentId);
+      return parseAgentInstallationInventory(
+        await invoke<unknown>("get_agent_installation_inventory", {
+          agentId: safeAgentId,
+        }),
+        safeAgentId,
+      );
+    },
     startAction: async (request: StartAgentActionRequest) => {
       const safeAgentId = assertAgentInstallReadinessId(request.agentId);
       return parseAgentActionResult(
@@ -29,6 +39,13 @@ export function createAgentInstallReadinessPort(): AgentInstallReadinessPort {
             action: request.action,
             ...(request.expectedReleaseId
               ? { expectedReleaseId: request.expectedReleaseId }
+              : {}),
+            ...(request.inventoryId
+              ? { inventoryId: request.inventoryId }
+              : {}),
+            ...(request.targetId ? { targetId: request.targetId } : {}),
+            ...(request.expectedTargetRevision
+              ? { expectedTargetRevision: request.expectedTargetRevision }
               : {}),
           },
         }),

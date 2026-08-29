@@ -5,6 +5,7 @@ mod auth_actions;
 mod cli;
 mod desktop;
 mod fetch;
+mod inventory;
 mod jobs;
 mod sources;
 mod types;
@@ -12,22 +13,25 @@ mod types;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
+pub use inventory::{inventory_for, AgentInstallationInventoryStore};
 pub use jobs::AgentActionJobStore;
 pub use types::{
     validate_opaque_release_id, AgentActionErrorDto, AgentActionId, AgentActionJobSnapshot,
     AgentActionJobStage, AgentActionResult, AgentAuthOwnership, AgentAuthState,
-    AgentInstallReadinessDto, AgentInstallState, AgentReasonCode, AgentSourceKind,
-    AgentUpdateState, StartAgentActionRequest, AGENT_ACTION_CONTRACT_VERSION,
-    AGENT_INSTALL_READINESS_CONTRACT_VERSION, AGENT_INSTALL_READINESS_REVIEWED_AT,
+    AgentInstallReadinessDto, AgentInstallState, AgentInstallationInventoryDto, AgentReasonCode,
+    AgentSourceKind, AgentUpdateState, InstallationInventoryState, StartAgentActionRequest,
+    AGENT_ACTION_CONTRACT_VERSION, AGENT_INSTALL_READINESS_CONTRACT_VERSION,
+    AGENT_INSTALL_READINESS_REVIEWED_AT,
 };
 
 use auth_actions::{observe_auth_state, start_auth_action};
 use cli::{observe_cli, run_cli_lifecycle};
 use desktop::{
     download_resolved_source, finish_macos_dmg_install, install_state_from_observation,
-    launch_if_present, observe_desktop, readiness_source_codes, resolve_desktop_source,
-    source_reason, windows_exe_unavailable,
+    launch_desktop_installation, launch_if_present, observe_desktop, readiness_source_codes,
+    resolve_desktop_source, source_reason, windows_exe_unavailable,
 };
+use inventory::{inventory_summary, validate_action_target, ValidatedActionTarget};
 use sources::PackageFormat;
 
 use crate::codex_desktop::types::LocalInstallStatus;
@@ -47,7 +51,8 @@ fn desktop_versions_equivalent(local: &str, remote: &str) -> bool {
 }
 
 pub async fn readiness_for(agent_id: AgentCatalogId, state: &AppState) -> AgentInstallReadinessDto {
-    match agent_id {
+    let inventory_state = inventory_summary(agent_id, state).await;
+    let mut readiness = match agent_id {
         AgentCatalogId::Codex => codex_readiness(state).await,
         AgentCatalogId::ClaudeCode | AgentCatalogId::GrokBuild | AgentCatalogId::OpenCode => {
             cli_readiness(agent_id).await
@@ -55,7 +60,31 @@ pub async fn readiness_for(agent_id: AgentCatalogId, state: &AppState) -> AgentI
         AgentCatalogId::QoderWork | AgentCatalogId::TraeWork | AgentCatalogId::WorkBuddy => {
             desktop_readiness(agent_id).await
         }
+    };
+    readiness.inventory_state = inventory_state;
+    readiness.requires_target_selection =
+        matches!(inventory_state, InstallationInventoryState::Multiple);
+    if matches!(
+        inventory_state,
+        InstallationInventoryState::Multiple | InstallationInventoryState::Unknown
+    ) && matches!(
+        readiness.install_state,
+        AgentInstallState::Installed | AgentInstallState::InstalledNotRunnable
+    ) {
+        readiness.install_state = AgentInstallState::Unknown;
+        readiness.local_version = None;
+        readiness.update_state = AgentUpdateState::Unknown;
     }
+    if readiness.requires_target_selection
+        && !readiness
+            .reason_codes
+            .contains(&AgentReasonCode::TargetSelectionRequired)
+    {
+        readiness
+            .reason_codes
+            .push(AgentReasonCode::TargetSelectionRequired);
+    }
+    readiness
 }
 
 async fn cli_readiness(agent_id: AgentCatalogId) -> AgentInstallReadinessDto {
@@ -146,6 +175,8 @@ async fn cli_readiness(agent_id: AgentCatalogId) -> AgentInstallReadinessDto {
         agent_id,
         reviewed_at: AGENT_INSTALL_READINESS_REVIEWED_AT,
         install_state,
+        inventory_state: InstallationInventoryState::Unknown,
+        requires_target_selection: false,
         update_state,
         release_id: None,
         local_version,
@@ -235,6 +266,8 @@ async fn desktop_readiness(agent_id: AgentCatalogId) -> AgentInstallReadinessDto
         agent_id,
         reviewed_at: AGENT_INSTALL_READINESS_REVIEWED_AT,
         install_state,
+        inventory_state: InstallationInventoryState::Unknown,
+        requires_target_selection: false,
         update_state,
         release_id,
         local_version: observed.local_version,
@@ -282,6 +315,8 @@ async fn codex_readiness(state: &AppState) -> AgentInstallReadinessDto {
         agent_id: AgentCatalogId::Codex,
         reviewed_at: AGENT_INSTALL_READINESS_REVIEWED_AT,
         install_state,
+        inventory_state: InstallationInventoryState::Unknown,
+        requires_target_selection: false,
         update_state,
         release_id,
         local_version,
@@ -306,6 +341,7 @@ pub async fn start_agent_action(
             return Err(AgentReasonCode::RefreshRequired);
         }
     }
+    let target = validate_action_target(&request, state).await?;
     match (request.agent_id, request.action) {
         (AgentCatalogId::Codex, AgentActionId::Install | AgentActionId::Update) => {
             Err(AgentReasonCode::ManagedByCodexDesktop)
@@ -329,7 +365,7 @@ pub async fn start_agent_action(
             | AgentActionId::AuthLogout
             | AgentActionId::AuthConnectProvider,
         ) => {
-            start_desktop_or_cli_auth(request.agent_id, request.action)?;
+            start_desktop_or_cli_auth(request.agent_id, request.action, &target)?;
             Ok(immediate_result(
                 request.agent_id,
                 request.action,
@@ -352,12 +388,16 @@ pub async fn start_agent_action(
         (
             AgentCatalogId::QoderWork | AgentCatalogId::TraeWork | AgentCatalogId::WorkBuddy,
             AgentActionId::Install | AgentActionId::Update,
-        ) => start_desktop_job(request, state).await,
+        ) => start_desktop_job(request, state, target).await,
         (
             AgentCatalogId::QoderWork | AgentCatalogId::TraeWork | AgentCatalogId::WorkBuddy,
             AgentActionId::Launch,
         ) => {
-            launch_if_present(request.agent_id)?;
+            if let Some(path) = target.desktop_path() {
+                launch_desktop_installation(request.agent_id, path)?;
+            } else {
+                launch_if_present(request.agent_id)?;
+            }
             Ok(immediate_result(
                 request.agent_id,
                 request.action,
@@ -372,12 +412,19 @@ pub async fn start_agent_action(
 fn start_desktop_or_cli_auth(
     agent_id: AgentCatalogId,
     action: AgentActionId,
+    target: &ValidatedActionTarget,
 ) -> Result<(), AgentReasonCode> {
     match (agent_id, action) {
         (
             AgentCatalogId::QoderWork | AgentCatalogId::TraeWork | AgentCatalogId::WorkBuddy,
             AgentActionId::AuthLogin | AgentActionId::Launch,
-        ) => launch_if_present(agent_id),
+        ) => {
+            if let Some(path) = target.desktop_path() {
+                launch_desktop_installation(agent_id, path)
+            } else {
+                launch_if_present(agent_id)
+            }
+        }
         _ => start_auth_action(agent_id, action),
     }
 }
@@ -385,7 +432,17 @@ fn start_desktop_or_cli_auth(
 async fn start_desktop_job(
     request: StartAgentActionRequest,
     state: &AppState,
+    target: ValidatedActionTarget,
 ) -> Result<AgentActionResult, AgentReasonCode> {
+    match request.action {
+        AgentActionId::Install if target.fresh_destination().is_none() => {
+            return Err(AgentReasonCode::TargetSelectionRequired);
+        }
+        AgentActionId::Update if target.desktop_path().is_none() => {
+            return Err(AgentReasonCode::TargetSelectionRequired);
+        }
+        _ => {}
+    }
     let source = resolve_desktop_source(request.agent_id)
         .await
         .map_err(source_reason)?;
@@ -550,10 +607,12 @@ mod tests {
             "authState",
             "contractVersion",
             "installState",
+            "inventoryState",
             "localVersion",
             "reasonCodes",
             "releaseId",
             "remoteVersion",
+            "requiresTargetSelection",
             "reviewedAt",
             "sourceKind",
             "updateState",
@@ -650,6 +709,8 @@ mod tests {
             agent_id: AgentCatalogId::QoderWork,
             reviewed_at: AGENT_INSTALL_READINESS_REVIEWED_AT,
             install_state: AgentInstallState::Unknown,
+            inventory_state: InstallationInventoryState::Unknown,
+            requires_target_selection: false,
             update_state: AgentUpdateState::LatestUnknown,
             release_id: Some(
                 "v1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string(),
@@ -681,7 +742,7 @@ mod tests {
                 "forbidden {needle} in {encoded}"
             );
         }
-        assert_eq!(value["contractVersion"], 2);
+        assert_eq!(value["contractVersion"], 3);
         assert!(value.get("automation").is_none());
         assert!(value.get("plan").is_none());
         assert!(value.get("integrity").is_none());

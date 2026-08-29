@@ -13,9 +13,10 @@ commands.allow = [
 
 [[permission]]
 identifier = "allow-agent-install-readiness"
-description = "Allows the main local webview to read Agent install readiness and start closed Agent actions."
+description = "Allows the main local webview to read Agent install readiness/inventory and start closed Agent actions."
 commands.allow = [
   "get_agent_install_readiness",
+  "get_agent_installation_inventory",
   "start_agent_action",
   "cancel_agent_action",
   "get_agent_action_job",

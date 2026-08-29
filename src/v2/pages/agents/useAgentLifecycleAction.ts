@@ -4,6 +4,8 @@ import {
   AGENT_REASON_CODES,
   type AgentActionId,
   type AgentActionJobStage,
+  type AgentInstallationInventory,
+  type AgentInstallationTarget,
   type AgentInstallReadiness,
   type AgentInstallReadinessPort,
   type AgentReasonCode,
@@ -31,7 +33,10 @@ export type AgentLifecycleActionView = {
   success: string | null;
   canCancel: boolean;
   canRetry: boolean;
-  run: (action: AgentActionId) => Promise<void>;
+  run: (
+    action: AgentActionId,
+    targetOverride?: AgentInstallationTarget | null,
+  ) => Promise<void>;
   runPrimary: () => Promise<void>;
   retry: () => Promise<void>;
   cancel: () => Promise<void>;
@@ -80,6 +85,17 @@ export function reasonCopy(code: AgentReasonCode): string | null {
       return "已有安装任务进行中，请等待当前任务结束。";
     case "refresh_required":
       return "来源已变化，请刷新后再试。";
+    case "target_selection_required":
+      return "请选择本次要管理的安装目标。";
+    case "target_changed":
+    case "inventory_expired":
+      return "安装目标已变化，请刷新安装清单后再试。";
+    case "target_not_executable":
+      return "所选安装当前不可启动。";
+    case "target_scope_unsupported":
+      return "当前操作不支持所选安装范围。";
+    case "candidate_conflict":
+      return "检测到相互冲突的安装证据，已停止自动操作。";
     case "cancelled":
       return "操作已取消。";
     case "executor_not_implemented":
@@ -137,14 +153,18 @@ export function useAgentLifecycleAction({
   agentId,
   port,
   readiness,
+  target,
   onReadinessChange,
+  onInventoryChange,
   pollIntervalMs = AGENT_LIFECYCLE_JOB_POLL_MS,
   maxPolls = AGENT_LIFECYCLE_MAX_JOB_POLLS,
 }: {
   agentId: AgentCatalogId;
   port: AgentInstallReadinessPort;
   readiness: AgentInstallReadiness | null;
+  target?: AgentInstallationTarget | null;
   onReadinessChange?: (data: AgentInstallReadiness) => void;
+  onInventoryChange?: (data: AgentInstallationInventory) => void;
   pollIntervalMs?: number;
   maxPolls?: number;
 }): AgentLifecycleActionView {
@@ -160,7 +180,9 @@ export function useAgentLifecycleAction({
   const runningRef = useRef(false);
   const lastActionRef = useRef<AgentActionId | null>(null);
   const readinessRef = useRef(readiness);
+  const targetRef = useRef(target);
   const onReadinessChangeRef = useRef(onReadinessChange);
+  const onInventoryChangeRef = useRef(onInventoryChange);
   const portRef = useRef(port);
   const agentIdRef = useRef(agentId);
   const pollIntervalMsRef = useRef(pollIntervalMs);
@@ -168,7 +190,9 @@ export function useAgentLifecycleAction({
 
   useEffect(() => {
     readinessRef.current = readiness;
+    targetRef.current = target;
     onReadinessChangeRef.current = onReadinessChange;
+    onInventoryChangeRef.current = onInventoryChange;
     portRef.current = port;
     agentIdRef.current = agentId;
     pollIntervalMsRef.current = pollIntervalMs;
@@ -189,9 +213,13 @@ export function useAgentLifecycleAction({
 
   const reread = useCallback(async (generation: number): Promise<boolean> => {
     try {
-      const data = await portRef.current.get(agentIdRef.current);
+      const [data, inventory] = await Promise.all([
+        portRef.current.get(agentIdRef.current),
+        portRef.current.getInventory(agentIdRef.current),
+      ]);
       if (generationRef.current !== generation) return false;
       onReadinessChangeRef.current?.(data);
+      onInventoryChangeRef.current?.(inventory);
       return true;
     } catch {
       return false;
@@ -199,10 +227,27 @@ export function useAgentLifecycleAction({
   }, []);
 
   const run = useCallback(
-    async (action: AgentActionId) => {
+    async (
+      action: AgentActionId,
+      targetOverride?: AgentInstallationTarget | null,
+    ) => {
       const current = readinessRef.current;
       if (!current || runningRef.current) return;
       if (!current.allowedActions.includes(action)) return;
+      const selectedTarget = targetOverride ?? targetRef.current;
+      const targetRequired =
+        action === "install" ||
+        action === "update" ||
+        (current.requiresTargetSelection &&
+          (action === "launch" || action === "auth_login"));
+      if (
+        targetRequired &&
+        (!selectedTarget || !selectedTarget.eligibleActions.includes(action))
+      ) {
+        setReasonCode("target_selection_required");
+        setError(reasonCopy("target_selection_required"));
+        return;
+      }
 
       const generation = generationRef.current + 1;
       generationRef.current = generation;
@@ -224,6 +269,13 @@ export function useAgentLifecycleAction({
           agentId: agentIdRef.current,
           action,
           expectedReleaseId: current.releaseId ?? undefined,
+          ...(selectedTarget?.eligibleActions.includes(action)
+            ? {
+                inventoryId: selectedTarget.inventoryId,
+                targetId: selectedTarget.targetId,
+                expectedTargetRevision: selectedTarget.expectedTargetRevision,
+              }
+            : {}),
         });
         if (generationRef.current !== generation) return;
         setStage(result.stage);

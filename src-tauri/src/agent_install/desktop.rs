@@ -20,6 +20,7 @@ use super::sources::{
     WORKBUDDY_METADATA_HOSTS,
 };
 use super::types::{AgentInstallState, AgentReasonCode};
+use super::types::{InstallationPackageKind, InstallationScope};
 use crate::codex_desktop::cancellation::Cancellation;
 use crate::config::get_home_dir;
 use crate::services::external_agents::AgentCatalogId;
@@ -73,6 +74,15 @@ fn desktop_product(agent_id: AgentCatalogId) -> Option<&'static DesktopProduct> 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DesktopObservation {
     pub installed: bool,
+    pub local_version: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct DesktopInstallationEvidence {
+    pub stable_key: String,
+    pub path: PathBuf,
+    pub scope: InstallationScope,
+    pub package_kind: InstallationPackageKind,
     pub local_version: Option<String>,
 }
 
@@ -333,6 +343,30 @@ fn user_applications_dir() -> Result<PathBuf, AgentReasonCode> {
     Ok(get_home_dir().join("Applications"))
 }
 
+#[cfg(target_os = "macos")]
+pub(super) fn user_applications_writable() -> bool {
+    use std::{ffi::CString, os::unix::ffi::OsStrExt};
+
+    let applications = match user_applications_dir() {
+        Ok(path) => path,
+        Err(_) => return false,
+    };
+    let probe = if applications.exists() {
+        applications
+    } else {
+        match applications.parent() {
+            Some(parent) => parent.to_path_buf(),
+            None => return false,
+        }
+    };
+    let Ok(path) = CString::new(probe.as_os_str().as_bytes()) else {
+        return false;
+    };
+    // Read-only capability projection: do not create probe files while the UI
+    // merely asks for an inventory snapshot.
+    unsafe { libc::access(path.as_ptr(), libc::W_OK) == 0 }
+}
+
 fn isolation_home_override() -> Option<PathBuf> {
     let home = std::env::var("FYAGENT_TEST_HOME").ok()?;
     let trimmed = home.trim();
@@ -425,6 +459,36 @@ pub fn observe_desktop(agent_id: AgentCatalogId) -> DesktopObservation {
     observe_on_host(product)
 }
 
+pub(super) fn discover_desktop_installations(
+    agent_id: AgentCatalogId,
+) -> Vec<DesktopInstallationEvidence> {
+    let Some(product) = desktop_product(agent_id) else {
+        return Vec::new();
+    };
+    discover_desktop_installations_on_host(product)
+}
+
+#[cfg(target_os = "macos")]
+fn discover_desktop_installations_on_host(
+    product: &DesktopProduct,
+) -> Vec<DesktopInstallationEvidence> {
+    discover_macos_installations(product, &macos_application_roots())
+}
+
+#[cfg(target_os = "windows")]
+fn discover_desktop_installations_on_host(
+    product: &DesktopProduct,
+) -> Vec<DesktopInstallationEvidence> {
+    discover_windows_installations(product, &windows_program_roots())
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+fn discover_desktop_installations_on_host(
+    _product: &DesktopProduct,
+) -> Vec<DesktopInstallationEvidence> {
+    Vec::new()
+}
+
 #[cfg(target_os = "macos")]
 fn observe_on_host(product: &DesktopProduct) -> DesktopObservation {
     observe_macos_product(product, &macos_application_roots())
@@ -472,26 +536,14 @@ fn is_regular_file(path: &Path) -> bool {
 
 #[allow(dead_code)]
 fn observe_macos_product(product: &DesktopProduct, roots: &[PathBuf]) -> DesktopObservation {
-    for root in roots {
-        let Ok(entries) = fs::read_dir(root) else {
-            continue;
+    if let Some(candidate) = discover_macos_installations(product, roots)
+        .into_iter()
+        .next()
+    {
+        return DesktopObservation {
+            installed: true,
+            local_version: candidate.local_version,
         };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if !is_regular_app_bundle(&path) {
-                continue;
-            }
-            if read_bundle_id(&path).as_deref() != Some(product.macos_bundle_id) {
-                continue;
-            }
-            if !path.starts_with(root) {
-                continue;
-            }
-            return DesktopObservation {
-                installed: true,
-                local_version: read_macos_local_version(product, &path),
-            };
-        }
     }
     DesktopObservation {
         installed: false,
@@ -500,14 +552,71 @@ fn observe_macos_product(product: &DesktopProduct, roots: &[PathBuf]) -> Desktop
 }
 
 #[allow(dead_code)]
-fn observe_windows_product(product: &DesktopProduct, roots: &[PathBuf]) -> DesktopObservation {
+fn discover_macos_installations(
+    product: &DesktopProduct,
+    roots: &[PathBuf],
+) -> Vec<DesktopInstallationEvidence> {
+    let user_root = user_applications_dir().ok();
+    let mut found = Vec::new();
     for root in roots {
-        for relative in product.windows_relative_exes {
-            let path = root.join(Path::new(relative));
-            if !is_regular_file(&path) {
+        let Ok(entries) = fs::read_dir(root) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !is_regular_app_bundle(&path)
+                || read_bundle_id(&path).as_deref() != Some(product.macos_bundle_id)
+                || !path.starts_with(root)
+            {
                 continue;
             }
-            if !path.starts_with(root) {
+            let canonical = fs::canonicalize(&path).unwrap_or_else(|_| path.clone());
+            let scope = if user_root.as_ref().is_some_and(|value| root == value) {
+                InstallationScope::CurrentUser
+            } else if root == Path::new("/Applications") {
+                InstallationScope::AllUsers
+            } else {
+                InstallationScope::Custom
+            };
+            found.push(DesktopInstallationEvidence {
+                stable_key: format!("{}:{}", product.macos_bundle_id, canonical.display()),
+                path,
+                scope,
+                package_kind: InstallationPackageKind::AppBundle,
+                local_version: read_macos_local_version(product, &canonical),
+            });
+        }
+    }
+    found
+}
+
+#[allow(dead_code)]
+fn observe_windows_product(product: &DesktopProduct, roots: &[PathBuf]) -> DesktopObservation {
+    if let Some(candidate) = discover_windows_installations(product, roots)
+        .into_iter()
+        .next()
+    {
+        return DesktopObservation {
+            installed: true,
+            local_version: candidate.local_version,
+        };
+    }
+    DesktopObservation {
+        installed: false,
+        local_version: None,
+    }
+}
+
+#[allow(dead_code)]
+fn discover_windows_installations(
+    product: &DesktopProduct,
+    roots: &[PathBuf],
+) -> Vec<DesktopInstallationEvidence> {
+    let mut found = Vec::new();
+    for (root_index, root) in roots.iter().enumerate() {
+        for relative in product.windows_relative_exes {
+            let path = root.join(Path::new(relative));
+            if !is_regular_file(&path) || !path.starts_with(root) {
                 continue;
             }
             let Some(identity) = read_windows_exe_identity(&path) else {
@@ -520,16 +629,21 @@ fn observe_windows_product(product: &DesktopProduct, roots: &[PathBuf]) -> Deskt
             {
                 continue;
             }
-            return DesktopObservation {
-                installed: true,
+            let canonical = fs::canonicalize(&path).unwrap_or_else(|_| path.clone());
+            found.push(DesktopInstallationEvidence {
+                stable_key: format!("{}:{}", identity.product_name, canonical.display()),
+                path: path.clone(),
+                scope: if root_index == 0 {
+                    InstallationScope::CurrentUser
+                } else {
+                    InstallationScope::AllUsers
+                },
+                package_kind: InstallationPackageKind::Exe,
                 local_version: read_windows_local_version(product, &path, identity.product_version),
-            };
+            });
         }
     }
-    DesktopObservation {
-        installed: false,
-        local_version: None,
-    }
+    found
 }
 
 struct WindowsExeIdentity {
@@ -621,6 +735,22 @@ pub fn launch_if_present(agent_id: AgentCatalogId) -> Result<(), AgentReasonCode
         return Err(AgentReasonCode::ExecutorNotImplemented);
     };
     launch_on_host(product)
+}
+
+pub(super) fn launch_desktop_installation(
+    agent_id: AgentCatalogId,
+    selected_path: &Path,
+) -> Result<(), AgentReasonCode> {
+    let candidates = discover_desktop_installations(agent_id);
+    let selected = candidates
+        .into_iter()
+        .find(|candidate| candidate.path == selected_path)
+        .ok_or(AgentReasonCode::TargetChanged)?;
+    match selected.package_kind {
+        InstallationPackageKind::AppBundle => launch_macos_bundle(&selected.path),
+        InstallationPackageKind::Exe => launch_windows_exe(&selected.path),
+        _ => Err(AgentReasonCode::TargetNotExecutable),
+    }
 }
 
 #[cfg(target_os = "macos")]

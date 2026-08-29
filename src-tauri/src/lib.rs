@@ -1843,6 +1843,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::get_agent_catalog,
             commands::get_agent_install_readiness,
+            commands::get_agent_installation_inventory,
             commands::start_agent_action,
             commands::cancel_agent_action,
             commands::get_agent_action_job,

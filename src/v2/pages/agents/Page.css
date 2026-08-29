@@ -605,6 +605,79 @@
   font-size: 12px;
 }
 
+.fy-agent-target-picker {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.fy-agent-target-picker legend {
+  margin-bottom: 7px;
+  color: var(--fy-text-secondary);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.fy-agent-target-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 7px;
+}
+
+.fy-agent-target-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--fy-border);
+  border-radius: 10px;
+  background: rgba(9, 29, 48, 0.13);
+  cursor: pointer;
+}
+
+.fy-agent-target-option[data-selected="true"] {
+  border-color: color-mix(in srgb, var(--fy-accent) 52%, var(--fy-border));
+  background: color-mix(in srgb, var(--fy-accent) 11%, transparent);
+}
+
+.fy-agent-target-option[data-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.fy-agent-target-option input {
+  margin: 2px 0 0;
+  accent-color: var(--fy-accent);
+}
+
+.fy-agent-target-option-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.fy-agent-target-option-copy strong {
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+
+.fy-agent-target-option-copy small {
+  color: var(--fy-text-secondary);
+  font-size: 10px;
+}
+
+.fy-agent-target-picker-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--fy-text-secondary);
+  font-size: 12px;
+}
+
 .fy-agent-section-heading {
   display: flex;
   flex-wrap: wrap;

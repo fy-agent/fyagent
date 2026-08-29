@@ -149,12 +149,13 @@ launch_external_agent({
 }) -> { agentId, destination, state, reasonCode }
 ```
 
-Agent install/action is a second native port. The page may submit only
-closed IDs previously returned by readiness:
+Agent install/inventory/action is a second native port. The page may submit
+only closed IDs previously returned by readiness/inventory:
 
 ```ts
 type AgentInstallReadinessPort = {
   get(agentId: AgentCatalogId): Promise<AgentInstallReadiness>;
+  getInventory(agentId: AgentCatalogId): Promise<AgentInstallationInventory>;
   startAction(request: {
     agentId: AgentCatalogId;
     action:
@@ -165,15 +166,19 @@ type AgentInstallReadinessPort = {
       | "auth_logout"
       | "auth_connect_provider";
     expectedReleaseId?: string; // opaque v1:+64 hex from readiness.releaseId
+    inventoryId?: string; // opaque i1:+32 hex, complete triplet only
+    targetId?: string; // opaque c1:/d1:+32 hex
+    expectedTargetRevision?: string; // opaque r1:+64 hex
   }): Promise<AgentActionResult>;
   cancelAction(jobId: string): Promise<AgentActionJobSnapshot>;
   getActionJob(jobId: string): Promise<AgentActionJobSnapshot>;
 };
 
-get_agent_install_readiness({ agentId })
-start_agent_action({ request })
-cancel_agent_action({ jobId })
-get_agent_action_job({ jobId })
+get_agent_install_readiness({ agentId });
+get_agent_installation_inventory({ agentId });
+start_agent_action({ request });
+cancel_agent_action({ jobId });
+get_agent_action_job({ jobId });
 ```
 
 V2 reads a non-secret Provider projection in one native snapshot:
@@ -229,6 +234,17 @@ type ProviderMutationResult<T> = {
   warningCodes?: Array<
     "CODEX_WEBSOCKET_NON_GPT_MODEL" | "CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED"
   >;
+};
+
+type AgentInstallationTarget = {
+  kind: "candidate" | "fresh_destination";
+  inventoryId: string;
+  targetId: string;
+  expectedTargetRevision: string;
+  label: string; // backend-projected symbolic label, never a raw path
+  scope: "current_user" | "all_users" | "custom" | "unknown";
+  eligibleActions: AgentActionId[];
+  reasonCodes: AgentReasonCode[];
 };
 ```
 
@@ -373,7 +389,12 @@ and a revision, never `ak` / `sk` / `apiKey`.
 `/agents` has two views selected by non-secret search params:
 
 ```ts
-export const AGENT_SECTION_IDS = ["models", "skills", "mcp", "prompts"] as const;
+export const AGENT_SECTION_IDS = [
+  "models",
+  "skills",
+  "mcp",
+  "prompts",
+] as const;
 export type AgentSection = (typeof AGENT_SECTION_IDS)[number];
 // URL: #/agents                → scan directory
 // URL: #/agents?target=<id>&section=<section>
@@ -406,10 +427,21 @@ export type AgentSection = (typeof AGENT_SECTION_IDS)[number];
   Visible 一键安装 / 一键更新 come only from `allowedActions` plus the
   current install/updateState (install when `not_installed` and `install` is
   allowed; update when existence is proven, `updateState === update_available`,
-  and `update` is allowed). Backend omission is not a fake button.
+  and `update` is allowed). Backend omission is not a fake button. The shared
+  query owner is `featureKeys.agentInstallationInventory(agentId)` /
+  `useAgentInstallationInventory`; pages do not call the Tauri command or
+  choose a winner themselves. Directory one-click remains available only when
+  exactly one action-eligible backend target exists. Zero/multiple targets
+  route to the detail picker instead of selecting the first installation.
+  `LifecycleTargetPicker` owns typed candidate/fresh-destination radio
+  semantics, disabled/loading/error/refresh UI, and no install business logic.
+  Install binds a fresh destination; update binds an existing candidate;
+  multi-install launch/auth binds the selected candidate. The renderer sends
+  only the opaque inventory/target/revision triplet and never reconstructs a
+  path from `locationLabel`.
   Generic jobs show the real stage and never invent a percent. After terminal
-  success/failure/cancel/timeout the UI rereads readiness (`applyReadiness`);
-  it must not set an optimistic installed flag.
+  success/failure/cancel/timeout the UI rereads readiness and inventory;
+  it must not set an optimistic installed flag or keep a stale target ID.
 - Codex install/update stay on `useCodexDesktopInstaller` /
   `FeaturePorts.codexDesktop`. Directory Codex cards project that view model
   (`projectCodexDirectoryAction`) and may show the VM's real percent; they
@@ -728,16 +760,20 @@ fetch/save controls.
 - The normal browser adapter returns native-only unavailability. Rich fixtures
   live only in focused tests and are always labelled/non-authoritative.
 
-### Agent readiness, closed actions, and Codex Change Plan UI
+### Agent readiness, target inventory, closed actions, and Codex Change Plan UI
 
 - Agent detail mounts 「安装方式」 from `FeaturePorts.agentInstallReadiness`.
-  The port parses unknown IPC at the adapter with exact keys and a
-  forbidden-wire scan. React never reconstructs URL, command, hash, or
-  `packageFormat` policy. Browser ports stay native-only.
+  The port parses readiness and installation inventory unknown IPC at the
+  adapter with exact keys/versions and a forbidden-wire scan. React never
+  reconstructs URL, raw path, identity, command, hash, or `packageFormat`
+  policy. Browser ports stay native-only.
 - Visible actions are exactly `allowedActions` from the backend DTO.
   Codex install/update remain the dedicated desktop installer; this region
   must not start a Codex Agent job. Qoder has no claimed remote semver.
   TRAE/WorkBuddy pass the opaque `releaseId` back as `expectedReleaseId`.
+  Install/update and multi-install launch/auth also pass the complete opaque
+  inventory target binding. A target-free legacy launch is used only when
+  backend readiness says selection is unnecessary.
 - Auth copy follows `authOwnership` / `authState`: OpenCode is a provider
   connection, not a global logged-in badge. Unknown stays unknown.
 - Codex Models consumes `FeaturePorts.changePlans` through exact unknown-input
@@ -791,76 +827,79 @@ fetch/save controls.
 
 ## 4. Validation & Error Matrix
 
-| Condition                                                                                                                    | Required result                                                                                            |
-| ---------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| Catalog version/order/ID/link/capability/evidence state drifts                                                               | Exact Rust/V2 contract test fails                                                                          |
-| V1 `officialUrl`, catalog v2/future, unknown enum, duplicate ID, non-HTTPS URL, or Codex link arrives                        | Runtime parse fails; catalog is unavailable                                                                |
-| Codex is selected                                                                                                            | Show the managed installer below the identity heading and no official-link button                          |
-| A non-Codex entry is selected                                                                                                | Do not read or subscribe to the Codex installer                                                            |
-| Native external open fails                                                                                                   | Show fixed controlled failure text; do not install or configure                                            |
-| QoderWork/TRAE selected                                                                                                      | Only catalog-declared and native-port capabilities are available; vendor-private writes remain unavailable |
-| Models Qoder/TRAE shows 「打开官方设置」 or 「打开 TRAE 官方模型设置」                                                       | Component test fails; Qoder has no 「管理 MCP」; TRAE stays guidance-only                                  |
-| Models Qoder/TRAE shows 「测试连通」                                                                                         | Component test fails; model probe belongs on WorkBuddy, Claude, Codex, Grok Build, and OpenCode only       |
-| Models 「测试连通」 renders before any selectable model ID                                                                   | Component test fails; the button is owned by `ModelConnectivityTest` and hidden when `modelIds` is empty   |
-| `stream_check_url` is empty, not HTTP(S), `file://`, missing a host, or has userinfo/query/fragment                          | Command error `服务地址无效` or `base_url 为空`; no network probe and no API key                           |
-| Models 「测试连通」 calls `checkReachability` / `stream_check_url` or `stream_check_provider`                                | Port/page test fails; model probe is `checkModel` → `stream_check_model` only                              |
-| `stream_check_model` is empty, not HTTP(S), `file://`, missing a host, has userinfo/query/fragment, or has an empty model ID | Command error `服务地址无效` / `base_url 为空` / `模型 ID 为空`; no model request                          |
-| Model probe failure hides the upstream body behind generic network copy                                                      | Component test fails; `message` from `checkModel` is shown to the user                                     |
-| Claude Base URL pathname contains a `v1` segment                                                                             | Warn-only FieldFeedback; save remains enabled                                                              |
-| Native observation fails on Models                                                                                           | Show controlled unavailable/unknown; never infer absence                                                   |
-| Runtime value is unknown                                                                                                     | Preserve `null`/`unverified`; never display "not installed"                                                |
-| Agent directory mounts Hooks editor, MCP validation, observation, or unsupported lists                                       | Page test fails; those surfaces stay off the Agent directory                                               |
-| Agent directory hides not-installed/unknown/failed rows or waits for scan before showing catalog cards                       | Page/browser test fails; catalog success shows all seven rows immediately                                  |
-| First `/agents` entry requires a manual 「开始扫描」 before readiness reads                                                  | Page test fails; the mounted Agents page auto-starts one background scan                                   |
-| 「进行配置」 is enabled before `installed` / `installed_not_runnable` (including retained success)                           | Page test fails; pending/not-installed/unknown/unavailable/error stay gated                                |
-| Directory shows 一键安装/一键更新 the backend omitted from `allowedActions`                                                  | Page test fails; generic actions follow `allowedActions`, Codex follows the desktop installer VM           |
-| Generic Agent job UI invents a download percent                                                                              | Page/hook test fails; generic progress is stage-only                                                       |
-| Directory treats action success as installed without readiness/Codex reread                                                  | Page test fails; `applyReadiness` / installer refresh is the authority                                     |
-| Directory Codex row starts `start_agent_action` for install/update                                                           | Page test fails; Codex stays on `codexDesktop`                                                             |
-| Browser Provider/WorkBuddy/OpenCode save skips `保存前确认` / `确认保存`                                                    | Browser test fails; the dialog is the write-target disclosure, not optional chrome                         |
-| Non-Codex Agent detail omits 「产品介绍」 or Codex detail shows that region                                                  | Page test fails; intros are page-local copy, never catalog `description`                                   |
-| Agent directory intro or Codex installer copy names FyAgent                                                                  | Intro/page/installer test fails; Agent directory copy describes the third-party product only               |
-| QoderWork CN catalog description or Agent intro mentions Hooks                                                               | Catalog/intro test fails; Qoder user-facing copy must not name Hooks                                       |
-| TRAE Models attempts sqlite save or fetch-and-apply                                                                          | Forbidden; GET observation and catalog guidance only, never 请回 TRAE 保存                                 |
-| TRAE/OpenCode GET snapshot or Debug/log contains `ak`/`sk`/`apiKey`                                                          | Security regression test fails                                                                             |
-| External MCP result contains an original env/header value                                                                    | Reject the result and expose no copy action                                                                |
-| Models target missing or unknown                                                                                             | Select QoderWork CN; issue no write                                                                        |
-| OpenCode is the Models target                                                                                                | Mount `opencodeModels` CRUD; do not call Provider quick setup or the Codex installer                       |
-| A displayed model ID has no local vendor icon resolver                                                                       | Asset mapping test fails; never load `https?://` icons                                                     |
-| Any selector lacks a local icon                                                                                              | Asset mapping/unit/browser gate fails                                                                      |
-| WorkBuddy remote/local ID contains a complete API key                                                                        | Generic fail-closed error before DTO/cache/DOM/write                                                       |
-| WorkBuddy revision or overwrite token drifts                                                                                 | Write nothing; reread before claiming state                                                                |
-| Writable Models path/backup metadata is unavailable or malformed                                                             | Disable the save; do not let React guess a filesystem path                                                 |
-| Existing local config cannot be parsed or the required backup cannot be created                                              | Write nothing to the primary file; never replace it with a minimal Quick Setup template                    |
-| A save succeeds for revision N after the user already edited revision N+1                                                    | Commit only N; keep `待保存` and preserve the N+1 credential/draft                                         |
-| Draft/save revision changes after a probe result was created                                                                 | Hide that stale result; an old async completion must not become the current configuration status           |
-| Provider Base URL has userinfo/query/fragment or a credential component                                                      | Reject before DB/current/live mutation                                                                     |
-| Provider request is empty, generic, wrong-ID, or has public/secret collision                                                 | Reject in Rust; no state mutation                                                                          |
-| Apply is repeated by StrictMode/double click or carries fields beyond ID/digest                                              | Same plan/digest converges to one execution; widened request is rejected before product use                |
-| Ready-plan preview omits a four-section block or invents wire fields                                                         | Component/SPEC test fails; preview stays a projector of the closed `ChangePlan` DTO                        |
-| A `running` job is left as a one-shot snapshot                                                                               | `ChangePlanWorkspace` must keep polling `getChangeJob` until terminal/close/retarget                       |
-| Models Apply shows a cancel control or client-owned cancel busy state                                                        | Page/source test fails; `cancelChangeJob` stays a bounded port without Models UI                           |
-| Change Plan descriptor, phase/resource enum, execution/idempotency identity, event sequence, partial result, or cancel DTO drifts | Exact v2 parser fails closed; React never locally guesses the new shape                                |
-| A job is `cancelled_before_write`, `interrupted_before_write`, or `recovered_target_reached`                                 | Render the corresponding confirmed cancellation/interruption/recovered-warning copy; never synthesize generic success |
-| Apply readback is mixed/unavailable or recovery-required                                                                     | Render non-green recovery copy and never synthesize success                                                |
-| Writer failed and the original baseline is authoritatively restored                                                          | Render failed/danger with confirmed-baseline copy; target mismatches are expected, not unknown authority   |
-| Codex `imageExtension: true` omits `experimental_bearer_token` while `requires_openai_auth` is false                         | Host derivation/test fails; current Codex would not send `auth.json`'s key                                 |
-| Codex model probe adds an output-token limit solely for connectivity                                                         | Wire test fails; send the bounded Responses probe without that compatibility-breaking field                |
-| WorkBuddy/OpenCode Chat probe adds `max_tokens` solely for connectivity                                                      | Wire test fails; o-series and strict gateways reject that deprecated field                                 |
-| Claude model probe sends `x-api-key` while Quick Setup writes `ANTHROPIC_AUTH_TOKEN`                                         | Wire/contract test fails; Claude Code sends `Authorization: Bearer`                                        |
-| Model probe guesses a second URL after HTTP 400/404                                                                          | Wire test fails; each app has one determined client URL and returns the truncated body                     |
-| Grok Build probe uses Chat Completions while Quick Setup writes `api_backend = "responses"`                                  | Wire test fails; use the Responses endpoint                                                                |
-| Concurrent Provider/live writer                                                                                              | Serialize or detect conflict; never return a split DB/current/live state                                   |
-| Required atomic step fails and compensation succeeds                                                                         | Return `APPLY_FAILED_ROLLED_BACK`; UI may say rollback confirmed                                           |
-| Compensation is incomplete                                                                                                   | Return `ROLLBACK_PARTIAL_STATE_UNKNOWN`; stop writes and state that authority is unknown                   |
-| Mutation succeeds but sanitized reread fails/mismatches                                                                      | Show the atomic apply result as unconfirmed; never claim fixed-ID activation                               |
-| Mutation succeeds and another serialized request replaces the reserved row                                                   | Keep this request's guard-time warnings; reread may confirm only fixed-ID activation, never exact bytes    |
-| Browser preview calls authoritative read/write                                                                               | Return native-only unavailable; never return production-looking fake state                                 |
-| API key appears in URL/storage/query/log/error/DOM/snapshot                                                                  | Security regression test fails                                                                             |
-| Agent install IPC contains URL/path/token/`packageFormat`, or the page builds a download locator                             | Port/page test fails; only `agentId + action + optional expectedReleaseId`                                 |
-| Agent detail starts Codex install/update through `start_agent_action`                                                        | Page test fails; Codex keeps the dedicated installer                                                       |
-| Agent detail shows a global OpenCode logged-in bool or invents Qoder remote semver                                           | Component test fails                                                                                       |
-| Pi appears in Agent install UI or tests                                                                                      | Contract test fails                                                                                        |
+| Condition                                                                                                                         | Required result                                                                                                       |
+| --------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Catalog version/order/ID/link/capability/evidence state drifts                                                                    | Exact Rust/V2 contract test fails                                                                                     |
+| V1 `officialUrl`, catalog v2/future, unknown enum, duplicate ID, non-HTTPS URL, or Codex link arrives                             | Runtime parse fails; catalog is unavailable                                                                           |
+| Codex is selected                                                                                                                 | Show the managed installer below the identity heading and no official-link button                                     |
+| A non-Codex entry is selected                                                                                                     | Do not read or subscribe to the Codex installer                                                                       |
+| Native external open fails                                                                                                        | Show fixed controlled failure text; do not install or configure                                                       |
+| QoderWork/TRAE selected                                                                                                           | Only catalog-declared and native-port capabilities are available; vendor-private writes remain unavailable            |
+| Models Qoder/TRAE shows 「打开官方设置」 or 「打开 TRAE 官方模型设置」                                                            | Component test fails; Qoder has no 「管理 MCP」; TRAE stays guidance-only                                             |
+| Models Qoder/TRAE shows 「测试连通」                                                                                              | Component test fails; model probe belongs on WorkBuddy, Claude, Codex, Grok Build, and OpenCode only                  |
+| Models 「测试连通」 renders before any selectable model ID                                                                        | Component test fails; the button is owned by `ModelConnectivityTest` and hidden when `modelIds` is empty              |
+| `stream_check_url` is empty, not HTTP(S), `file://`, missing a host, or has userinfo/query/fragment                               | Command error `服务地址无效` or `base_url 为空`; no network probe and no API key                                      |
+| Models 「测试连通」 calls `checkReachability` / `stream_check_url` or `stream_check_provider`                                     | Port/page test fails; model probe is `checkModel` → `stream_check_model` only                                         |
+| `stream_check_model` is empty, not HTTP(S), `file://`, missing a host, has userinfo/query/fragment, or has an empty model ID      | Command error `服务地址无效` / `base_url 为空` / `模型 ID 为空`; no model request                                     |
+| Model probe failure hides the upstream body behind generic network copy                                                           | Component test fails; `message` from `checkModel` is shown to the user                                                |
+| Claude Base URL pathname contains a `v1` segment                                                                                  | Warn-only FieldFeedback; save remains enabled                                                                         |
+| Native observation fails on Models                                                                                                | Show controlled unavailable/unknown; never infer absence                                                              |
+| Runtime value is unknown                                                                                                          | Preserve `null`/`unverified`; never display "not installed"                                                           |
+| Agent directory mounts Hooks editor, MCP validation, observation, or unsupported lists                                            | Page test fails; those surfaces stay off the Agent directory                                                          |
+| Agent directory hides not-installed/unknown/failed rows or waits for scan before showing catalog cards                            | Page/browser test fails; catalog success shows all seven rows immediately                                             |
+| First `/agents` entry requires a manual 「开始扫描」 before readiness reads                                                       | Page test fails; the mounted Agents page auto-starts one background scan                                              |
+| 「进行配置」 is enabled before `installed` / `installed_not_runnable` (including retained success)                                | Page test fails; pending/not-installed/unknown/unavailable/error stay gated                                           |
+| Directory shows 一键安装/一键更新 the backend omitted from `allowedActions`                                                       | Page test fails; generic actions follow `allowedActions`, Codex follows the desktop installer VM                      |
+| Directory has zero or multiple action-eligible install targets but still shows direct 一键安装/更新                               | Page test fails; open target selection and never choose the first item                                                |
+| Inventory query fails or target revision changes                                                                                  | Show controlled unavailable/refresh copy; never fall back to a guessed path                                           |
+| Renderer persists a raw location or constructs `targetId`/revision                                                                | Security/contract test fails; all target capabilities originate in the backend inventory                              |
+| Generic Agent job UI invents a download percent                                                                                   | Page/hook test fails; generic progress is stage-only                                                                  |
+| Directory treats action success as installed without readiness/Codex reread                                                       | Page test fails; `applyReadiness` / installer refresh is the authority                                                |
+| Directory Codex row starts `start_agent_action` for install/update                                                                | Page test fails; Codex stays on `codexDesktop`                                                                        |
+| Browser Provider/WorkBuddy/OpenCode save skips `保存前确认` / `确认保存`                                                          | Browser test fails; the dialog is the write-target disclosure, not optional chrome                                    |
+| Non-Codex Agent detail omits 「产品介绍」 or Codex detail shows that region                                                       | Page test fails; intros are page-local copy, never catalog `description`                                              |
+| Agent directory intro or Codex installer copy names FyAgent                                                                       | Intro/page/installer test fails; Agent directory copy describes the third-party product only                          |
+| QoderWork CN catalog description or Agent intro mentions Hooks                                                                    | Catalog/intro test fails; Qoder user-facing copy must not name Hooks                                                  |
+| TRAE Models attempts sqlite save or fetch-and-apply                                                                               | Forbidden; GET observation and catalog guidance only, never 请回 TRAE 保存                                            |
+| TRAE/OpenCode GET snapshot or Debug/log contains `ak`/`sk`/`apiKey`                                                               | Security regression test fails                                                                                        |
+| External MCP result contains an original env/header value                                                                         | Reject the result and expose no copy action                                                                           |
+| Models target missing or unknown                                                                                                  | Select QoderWork CN; issue no write                                                                                   |
+| OpenCode is the Models target                                                                                                     | Mount `opencodeModels` CRUD; do not call Provider quick setup or the Codex installer                                  |
+| A displayed model ID has no local vendor icon resolver                                                                            | Asset mapping test fails; never load `https?://` icons                                                                |
+| Any selector lacks a local icon                                                                                                   | Asset mapping/unit/browser gate fails                                                                                 |
+| WorkBuddy remote/local ID contains a complete API key                                                                             | Generic fail-closed error before DTO/cache/DOM/write                                                                  |
+| WorkBuddy revision or overwrite token drifts                                                                                      | Write nothing; reread before claiming state                                                                           |
+| Writable Models path/backup metadata is unavailable or malformed                                                                  | Disable the save; do not let React guess a filesystem path                                                            |
+| Existing local config cannot be parsed or the required backup cannot be created                                                   | Write nothing to the primary file; never replace it with a minimal Quick Setup template                               |
+| A save succeeds for revision N after the user already edited revision N+1                                                         | Commit only N; keep `待保存` and preserve the N+1 credential/draft                                                    |
+| Draft/save revision changes after a probe result was created                                                                      | Hide that stale result; an old async completion must not become the current configuration status                      |
+| Provider Base URL has userinfo/query/fragment or a credential component                                                           | Reject before DB/current/live mutation                                                                                |
+| Provider request is empty, generic, wrong-ID, or has public/secret collision                                                      | Reject in Rust; no state mutation                                                                                     |
+| Apply is repeated by StrictMode/double click or carries fields beyond ID/digest                                                   | Same plan/digest converges to one execution; widened request is rejected before product use                           |
+| Ready-plan preview omits a four-section block or invents wire fields                                                              | Component/SPEC test fails; preview stays a projector of the closed `ChangePlan` DTO                                   |
+| A `running` job is left as a one-shot snapshot                                                                                    | `ChangePlanWorkspace` must keep polling `getChangeJob` until terminal/close/retarget                                  |
+| Models Apply shows a cancel control or client-owned cancel busy state                                                             | Page/source test fails; `cancelChangeJob` stays a bounded port without Models UI                                      |
+| Change Plan descriptor, phase/resource enum, execution/idempotency identity, event sequence, partial result, or cancel DTO drifts | Exact v2 parser fails closed; React never locally guesses the new shape                                               |
+| A job is `cancelled_before_write`, `interrupted_before_write`, or `recovered_target_reached`                                      | Render the corresponding confirmed cancellation/interruption/recovered-warning copy; never synthesize generic success |
+| Apply readback is mixed/unavailable or recovery-required                                                                          | Render non-green recovery copy and never synthesize success                                                           |
+| Writer failed and the original baseline is authoritatively restored                                                               | Render failed/danger with confirmed-baseline copy; target mismatches are expected, not unknown authority              |
+| Codex `imageExtension: true` omits `experimental_bearer_token` while `requires_openai_auth` is false                              | Host derivation/test fails; current Codex would not send `auth.json`'s key                                            |
+| Codex model probe adds an output-token limit solely for connectivity                                                              | Wire test fails; send the bounded Responses probe without that compatibility-breaking field                           |
+| WorkBuddy/OpenCode Chat probe adds `max_tokens` solely for connectivity                                                           | Wire test fails; o-series and strict gateways reject that deprecated field                                            |
+| Claude model probe sends `x-api-key` while Quick Setup writes `ANTHROPIC_AUTH_TOKEN`                                              | Wire/contract test fails; Claude Code sends `Authorization: Bearer`                                                   |
+| Model probe guesses a second URL after HTTP 400/404                                                                               | Wire test fails; each app has one determined client URL and returns the truncated body                                |
+| Grok Build probe uses Chat Completions while Quick Setup writes `api_backend = "responses"`                                       | Wire test fails; use the Responses endpoint                                                                           |
+| Concurrent Provider/live writer                                                                                                   | Serialize or detect conflict; never return a split DB/current/live state                                              |
+| Required atomic step fails and compensation succeeds                                                                              | Return `APPLY_FAILED_ROLLED_BACK`; UI may say rollback confirmed                                                      |
+| Compensation is incomplete                                                                                                        | Return `ROLLBACK_PARTIAL_STATE_UNKNOWN`; stop writes and state that authority is unknown                              |
+| Mutation succeeds but sanitized reread fails/mismatches                                                                           | Show the atomic apply result as unconfirmed; never claim fixed-ID activation                                          |
+| Mutation succeeds and another serialized request replaces the reserved row                                                        | Keep this request's guard-time warnings; reread may confirm only fixed-ID activation, never exact bytes               |
+| Browser preview calls authoritative read/write                                                                                    | Return native-only unavailable; never return production-looking fake state                                            |
+| API key appears in URL/storage/query/log/error/DOM/snapshot                                                                       | Security regression test fails                                                                                        |
+| Agent install IPC contains URL/path/token/`packageFormat`, or the page builds a download locator                                  | Port/page test fails; only closed action plus opaque release/target capabilities                                      |
+| Agent detail starts Codex install/update through `start_agent_action`                                                             | Page test fails; Codex keeps the dedicated installer                                                                  |
+| Agent detail shows a global OpenCode logged-in bool or invents Qoder remote semver                                                | Component test fails                                                                                                  |
+| Pi appears in Agent install UI or tests                                                                                           | Contract test fails                                                                                                   |
 
 ## 5. Good / Base / Bad Cases
 
@@ -1054,15 +1093,24 @@ await invoke("start_agent_action", {
 setOpenCodeLoggedIn(Boolean(authJsonOnDisk));
 ```
 
-Correct: submit only catalog ID, closed action, and the opaque backend
-release id; render `allowedActions` and `authState` as returned.
+Correct: submit only catalog ID, closed action, and opaque capabilities
+returned by the backend; render `allowedActions`, inventory eligibility, and
+`authState` as returned.
 
 ```ts
 const readiness = await ports.agentInstallReadiness.get("workbuddy");
+const inventory = await ports.agentInstallReadiness.getInventory("workbuddy");
+const destination = installationTargetsForAction(inventory, "install").find(
+  (target) => target.eligibleActions.includes("install"),
+);
+if (!destination) throw new Error("No verified install target");
 await ports.agentInstallReadiness.startAction({
   agentId: "workbuddy",
   action: "install",
   expectedReleaseId: readiness.releaseId ?? undefined,
+  inventoryId: destination.inventoryId,
+  targetId: destination.targetId,
+  expectedTargetRevision: destination.expectedTargetRevision,
 });
 ```
 

@@ -8,12 +8,16 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke }));
 function wire(agentId = "qoderwork") {
   const codex = agentId === "codex";
   const cli =
-    agentId === "claude-code" || agentId === "grokbuild" || agentId === "opencode";
+    agentId === "claude-code" ||
+    agentId === "grokbuild" ||
+    agentId === "opencode";
   return {
-    contractVersion: 2,
+    contractVersion: 3,
     agentId,
-    reviewedAt: "2026-08-25",
+    reviewedAt: "2026-08-29",
     installState: "unknown",
+    inventoryState: "unknown",
+    requiresTargetSelection: false,
     updateState: "unknown",
     releaseId: null,
     localVersion: null,
@@ -24,9 +28,38 @@ function wire(agentId = "qoderwork") {
         ? "provider_owned"
         : "agent_owned",
     authState: "unknown",
-    sourceKind: codex ? "codex_desktop" : cli ? "cli_tooling" : "managed_desktop",
+    sourceKind: codex
+      ? "codex_desktop"
+      : cli
+        ? "cli_tooling"
+        : "managed_desktop",
     allowedActions: [],
     reasonCodes: ["auth_state_unknown"],
+  };
+}
+
+function inventoryWire(agentId = "qoderwork") {
+  return {
+    contractVersion: 1,
+    inventoryId: `i1:${"a".repeat(32)}`,
+    agentId,
+    state: "not_observed",
+    candidates: [],
+    freshDestinations: [
+      {
+        destinationId: `d1:${"b".repeat(32)}`,
+        destinationRevision: `r1:${"c".repeat(64)}`,
+        scope: "current_user",
+        owner: "vendor_installer",
+        packageKind: "app_bundle",
+        requiresElevation: false,
+        writable: true,
+        eligible: true,
+        reasonCodes: [],
+        locationLabel: "~/Applications",
+      },
+    ],
+    reasonCodes: [],
   };
 }
 
@@ -45,8 +78,16 @@ describe("Tauri Agent install readiness port", () => {
       agentId: "codex",
     });
 
+    invoke.mockResolvedValue(inventoryWire());
+    await expect(
+      createAgentInstallReadinessPort().getInventory("qoderwork"),
+    ).resolves.toEqual(inventoryWire());
+    expect(invoke).toHaveBeenCalledWith("get_agent_installation_inventory", {
+      agentId: "qoderwork",
+    });
+
     invoke.mockResolvedValue({
-      contractVersion: 1,
+      contractVersion: 2,
       agentId: "qoderwork",
       action: "install",
       jobId: "job-1",
@@ -59,6 +100,9 @@ describe("Tauri Agent install readiness port", () => {
         action: "install",
         expectedReleaseId:
           "v1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        inventoryId: `i1:${"a".repeat(32)}`,
+        targetId: `d1:${"b".repeat(32)}`,
+        expectedTargetRevision: `r1:${"c".repeat(64)}`,
       }),
     ).resolves.toMatchObject({ jobId: "job-1" });
     expect(invoke).toHaveBeenCalledWith("start_agent_action", {
@@ -67,6 +111,9 @@ describe("Tauri Agent install readiness port", () => {
         action: "install",
         expectedReleaseId:
           "v1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        inventoryId: `i1:${"a".repeat(32)}`,
+        targetId: `d1:${"b".repeat(32)}`,
+        expectedTargetRevision: `r1:${"c".repeat(64)}`,
       },
     });
   });
