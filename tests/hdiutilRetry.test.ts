@@ -11,6 +11,7 @@ const temporaryRoots: string[] = [];
 function resolveBashExecutable(): string {
   switch (process.platform) {
     case "darwin":
+    case "linux":
       return "bash";
     case "win32":
       break;

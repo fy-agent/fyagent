@@ -62,7 +62,7 @@ export interface DownloadManifest {
 }
 
 export interface PlatformBuildTargetMetadata {
-  schema: "fyagent-platform-build/v2";
+  schema: "fyagent-platform-build/v3";
   targetGroup: ReleaseTargetGroup;
   platform: ReleasePlatform;
   architecture: ReleaseArchitecture;
@@ -78,6 +78,10 @@ export interface PlatformBuildTargetMetadata {
     pnpm: string;
     rustc: string;
   };
+  nativeToolchain: {
+    visualStudio: string;
+    msvc: string;
+  } | null;
 }
 
 export interface PlatformBuildMetadataRecord

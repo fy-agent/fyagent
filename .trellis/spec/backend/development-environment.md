@@ -335,7 +335,7 @@ the standard version file and `mise.lock` captured before the attempt.
   `taskDocs.test.ts`, `systemCheck.test.ts`, `windowsMsvcEnv.test.ts`, and
   `localBuildBoundary.test.ts`.
 - In Required CI, run the locked uv/Python preparation on both `windows-2025`
-  x64 and `windows-11-arm` ARM64. Require an explicit uv full managed-Python
+  x64 and `windows-11-vs2026-arm` ARM64. Require an explicit uv full managed-Python
   request for each matrix architecture and Python `sysconfig.get_platform()`
   to match `win-amd64`/`win-arm64`; a version-only request can select
   Windows-on-ARM x64 emulation and therefore does not prove a native
@@ -393,8 +393,13 @@ support.
 - Environment: `mise.toml` `settings.lockfile_platforms` equals the six
   development hosts; Node/pnpm/uv lock artifacts exist for `linux-x64` and
   `linux-arm64`
-- Required CI and Release workflows remain Windows and macOS runners only;
-  repository automation may use GitHub-hosted Linux runners
+- Portable Required CI and Release control-plane jobs may use the pinned
+  GitHub-hosted Linux runner, while shipped-product compile/runtime/package,
+  signing, notarization, and native-contract evidence remains on matching
+  Windows and macOS runners
+- Fake-tool and static contract owners may join
+  `DEVELOPMENT_HOST_ADMISSION_PATHS` when their Linux execution proves only
+  portable parsing/orchestration and never claims native product evidence
 
 ### 4. Validation & Error Matrix
 

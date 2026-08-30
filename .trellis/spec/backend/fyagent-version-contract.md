@@ -142,9 +142,12 @@ platform, architecture, format, size, SHA-256, and URL. It rejects missing,
 extra, nested, empty, symlinked, wrong-version, or malformed files.
 
 Exactly three platform metadata records use schema
-`fyagent-platform-build/v2`: `macos-universal.json`,
+`fyagent-platform-build/v3`: `macos-universal.json`,
 `windows-x64.json`, and `windows-arm64.json`. Each binds its requested and
-observed native environment, actual toolchain, source SHA, and output inventory.
+observed native environment, common toolchain, target-specific native
+toolchain, source SHA, and output inventory. Windows records bind the selected
+Visual Studio 2022/2026 installation version and MSVC toolset version; the
+macOS record requires an explicit null native-toolchain shape.
 
 `build-metadata.json` uses schema `fyagent-build-metadata/v2` and independently
 binds those three platform records, repository/workflow identity, source SHA,

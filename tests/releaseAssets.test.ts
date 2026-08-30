@@ -75,6 +75,8 @@ const identity: ReleaseIdentity = {
   ciRunId: "987654",
   ciRunAttempt: "3",
 };
+const visualStudioVersion = "18.0.10623.179";
+const msvcVersion = "14.50.35717";
 
 function temporaryDirectory(): string {
   const root = mkdtempSync(path.join(tmpdir(), "fyagent-release-assets-"));
@@ -87,7 +89,7 @@ function platformMetadataRecord(
   metadataIdentity: ReleaseIdentity = identity,
 ): PlatformBuildMetadataRecord {
   return {
-    schema: "fyagent-platform-build/v2",
+    schema: "fyagent-platform-build/v3",
     targetGroup: expected.targetGroup,
     platform: expected.platform,
     architecture: expected.architecture,
@@ -103,6 +105,13 @@ function platformMetadataRecord(
       pnpm: "10.12.3",
       rustc: "rustc 1.97.1 (reviewed 2026-08-08)",
     },
+    nativeToolchain:
+      expected.platform === "windows"
+        ? {
+            visualStudio: visualStudioVersion,
+            msvc: msvcVersion,
+          }
+        : null,
     identity: metadataIdentity,
   };
 }
@@ -199,7 +208,7 @@ describe("release asset and metadata contract", () => {
         targetGroup: "windows-arm64",
         platform: "windows",
         architecture: "arm64",
-        requestedRunnerLabel: "windows-11-arm",
+        requestedRunnerLabel: "windows-11-vs2026-arm",
         expectedRunnerOs: "Windows",
         expectedRunnerArch: "ARM64",
       },
@@ -398,6 +407,7 @@ describe("release asset and metadata contract", () => {
           "architecture",
           "runner",
           "toolchain",
+          "nativeToolchain",
         ].sort(),
       );
       expect("identity" in target).toBe(false);
@@ -538,6 +548,11 @@ describe("release asset and metadata contract", () => {
         (nestedRecord(record, "toolchain").unexpected = true),
     ],
     [
+      "native toolchain",
+      (record: MutableRecord) =>
+        (nestedRecord(record, "nativeToolchain").unexpected = true),
+    ],
+    [
       "identity",
       (record: MutableRecord) =>
         (nestedRecord(record, "identity").unexpected = true),
@@ -587,6 +602,18 @@ describe("release asset and metadata contract", () => {
         (nestedRecord(record, "toolchain").node = "v0.0.0"),
       /Node version drifted/,
     ],
+    [
+      "Visual Studio version drift",
+      (record: MutableRecord) =>
+        (nestedRecord(record, "nativeToolchain").visualStudio = "19.0.1"),
+      /outside the supported 2022\/2026 range/,
+    ],
+    [
+      "MSVC version drift",
+      (record: MutableRecord) =>
+        (nestedRecord(record, "nativeToolchain").msvc = "latest"),
+      /MSVC version is malformed/,
+    ],
   ])("rejects %s", (_label, mutate, error) => {
     const directory = temporaryDirectory();
     writePlatformMetadata(directory);
@@ -598,6 +625,42 @@ describe("release asset and metadata contract", () => {
         generatedAt: "2026-08-08T00:00:00.000Z",
       }),
     ).toThrow(error);
+  });
+
+  it("requires target-specific native toolchain shapes", () => {
+    const windowsDirectory = temporaryDirectory();
+    writePlatformMetadata(windowsDirectory);
+    mutatePlatformRecord(
+      windowsDirectory,
+      "windows-x64",
+      (record) => (record.nativeToolchain = null),
+    );
+    expect(() =>
+      buildBuildMetadata({
+        metadataDirectory: windowsDirectory,
+        identity,
+        generatedAt: "2026-08-08T00:00:00.000Z",
+      }),
+    ).toThrow(/nativeToolchain must be an object/);
+
+    const macosDirectory = temporaryDirectory();
+    writePlatformMetadata(macosDirectory);
+    mutatePlatformRecord(
+      macosDirectory,
+      "macos-universal",
+      (record) =>
+        (record.nativeToolchain = {
+          visualStudio: visualStudioVersion,
+          msvc: msvcVersion,
+        }),
+    );
+    expect(() =>
+      buildBuildMetadata({
+        metadataDirectory: macosDirectory,
+        identity,
+        generatedAt: "2026-08-08T00:00:00.000Z",
+      }),
+    ).toThrow(/nativeToolchain must be null/);
   });
 
   it("assembles exactly seven attachments and verifies re-downloaded bytes", async () => {

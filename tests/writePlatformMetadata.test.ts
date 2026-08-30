@@ -20,6 +20,8 @@ const writerPath = path.join(
 );
 const sourceSha = "b".repeat(40);
 const workflowSha = "c".repeat(40);
+const visualStudioVersion = "18.0.10623.179";
+const msvcVersion = "14.50.35717";
 const temporaryRoots: string[] = [];
 
 function temporaryDirectory(): string {
@@ -56,7 +58,7 @@ function writerEnvironment(
   mode: "preflight" | "formal" = "preflight",
 ): NodeJS.ProcessEnv {
   const identity = releaseIdentity(mode);
-  return {
+  const environment: NodeJS.ProcessEnv = {
     TARGET_GROUP: expected.targetGroup,
     TARGET_PLATFORM: expected.platform,
     TARGET_ARCHITECTURE: expected.architecture,
@@ -80,6 +82,11 @@ function writerEnvironment(
     EXPECTED_CI_RUN_ID: identity.ciRunId ?? undefined,
     EXPECTED_CI_RUN_ATTEMPT: identity.ciRunAttempt ?? undefined,
   };
+  if (expected.platform === "windows") {
+    environment.ACTUAL_VISUAL_STUDIO_VERSION = visualStudioVersion;
+    environment.ACTUAL_MSVC_VERSION = msvcVersion;
+  }
+  return environment;
 }
 
 function expectedRecord(
@@ -87,7 +94,7 @@ function expectedRecord(
   mode: "preflight" | "formal" = "preflight",
 ): PlatformBuildMetadataRecord {
   return {
-    schema: "fyagent-platform-build/v2",
+    schema: "fyagent-platform-build/v3",
     targetGroup: expected.targetGroup,
     platform: expected.platform,
     architecture: expected.architecture,
@@ -103,6 +110,13 @@ function expectedRecord(
       pnpm: "10.12.3",
       rustc: "rustc 1.97.1 (reviewed 2026-08-08)",
     },
+    nativeToolchain:
+      expected.platform === "windows"
+        ? {
+            visualStudio: visualStudioVersion,
+            msvc: msvcVersion,
+          }
+        : null,
     identity: releaseIdentity(mode),
   };
 }
@@ -201,7 +215,7 @@ describe("write-platform-metadata CLI", () => {
     ],
     [
       "requested-label contradiction",
-      setEnvironmentVariable("REQUESTED_RUNNER_LABEL", "windows-11-arm"),
+      setEnvironmentVariable("REQUESTED_RUNNER_LABEL", "windows-2025"),
       /REQUESTED_RUNNER_LABEL/,
     ],
     [
@@ -237,6 +251,40 @@ describe("write-platform-metadata CLI", () => {
       );
     },
   );
+
+  it.each(["ACTUAL_VISUAL_STUDIO_VERSION", "ACTUAL_MSVC_VERSION"])(
+    "rejects Windows metadata with missing %s",
+    (variable) => {
+      expectWriterFailure(
+        EXPECTED_TARGETS[1],
+        (environment) => delete environment[variable],
+        new RegExp(variable),
+      );
+    },
+  );
+
+  it.each([
+    ["Visual Studio 2019", "ACTUAL_VISUAL_STUDIO_VERSION", "16.11.1"],
+    ["future Visual Studio", "ACTUAL_VISUAL_STUDIO_VERSION", "19.0.1"],
+    ["malformed MSVC", "ACTUAL_MSVC_VERSION", "latest"],
+  ] as const)("rejects %s native toolchain metadata", (_label, name, value) => {
+    expectWriterFailure(
+      EXPECTED_TARGETS[1],
+      setEnvironmentVariable(name, value),
+      new RegExp(name),
+    );
+  });
+
+  it("rejects Windows-only native toolchain inputs on macOS metadata", () => {
+    expectWriterFailure(
+      EXPECTED_TARGETS[0],
+      (environment) => {
+        environment.ACTUAL_VISUAL_STUDIO_VERSION = visualStudioVersion;
+        environment.ACTUAL_MSVC_VERSION = msvcVersion;
+      },
+      /must not define Windows native toolchain inputs/,
+    );
+  });
 
   it("preserves formal Required-CI identity", () => {
     const expected = EXPECTED_TARGETS[1];

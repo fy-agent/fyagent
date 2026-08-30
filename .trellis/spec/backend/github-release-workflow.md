@@ -267,14 +267,24 @@ on `src-tauri/Cargo.lock` plus runner OS/arch. They never cache
 `src-tauri/target`. Repository Cargo config must not set `RUSTC_WRAPPER` or
 sccache.
 
+Platform-neutral Release control-plane jobs—eligibility, immutable build-input
+pinning, exact asset/evidence aggregation, attestation, and publication—run on
+the pinned `ubuntu-24.04` hosted runner. They do not compile, execute, sign, or
+package a shipped target. Native build, Windows proof/sign/seal, and macOS
+Developer ID/notarization jobs remain on matching platform runners.
+
 | Target          | Runner/build environment         | Exact installer output              |
 | --------------- | -------------------------------- | ----------------------------------- |
 | Windows x64     | `windows-2025`, native `X64`     | x64 NSIS setup EXE                  |
-| Windows ARM64   | `windows-11-arm`, native `ARM64` | ARM64 NSIS setup EXE                |
+| Windows ARM64   | `windows-11-vs2026-arm`, native `ARM64` | ARM64 NSIS setup EXE          |
 | macOS universal | `macos-15`, both Apple targets   | one UDZO DMG from the universal app |
 
 Each target verifies documented `runner.os`/`runner.arch`, the requested
-runner label, source HEAD, Node 24.19.0, pnpm 10.12.3, and Rust 1.97.1. There is
+runner label, source HEAD, Node 24.19.0, pnpm 10.12.3, and Rust 1.97.1. Windows
+builders additionally resolve a bounded Visual Studio 2022/2026 installation
+through `vswhere`, require the host-architecture VC tools component, load the
+matching `VsDevCmd` environment, and record the selected Visual Studio
+installation and `VCToolsVersion`. There is
 no emulator, architecture impersonation,
 opposite-architecture toolchain, or reduced-target fallback. ARM runner
 unavailability blocks acceptance.
@@ -395,9 +405,13 @@ version, tag, source SHA, and publication instant. Its download URL uses the
 canonical `https://github.com/fy-agent/fyagent/releases/download/` prefix;
 redirecting pre-transfer URLs are not emitted as current metadata.
 
-Three `fyagent-platform-build/v2` records—`macos-universal.json`,
-`windows-x64.json`, and `windows-arm64.json`—bind target/runner, toolchain,
-repository/workflow/run, source, and release mode. `build-metadata.json`
+Three `fyagent-platform-build/v3` records—`macos-universal.json`,
+`windows-x64.json`, and `windows-arm64.json`—bind target/runner, common
+toolchain, platform-specific native toolchain, repository/workflow/run, source,
+and release mode. Windows records contain exact `visualStudio` and `msvc`
+versions; the macOS record requires `nativeToolchain: null`. Hosted-image
+implementation variables such as `ImageOS` and `ImageVersion` are not accepted
+as provenance. `build-metadata.json`
 schema `fyagent-build-metadata/v2` reconstructs those records through exact key
 allowlists and emits `requiredCi` as null when frozen eligibility has no CI
 run.
@@ -600,8 +614,10 @@ run for any explicitly frozen repository candidate SHA to produce and attest
 diagnostic installers, but formal closure neither requires nor infers success
 from it.
 
-`windows-11-arm` remains public preview and may block the run. Unsigned Windows
-installers may trigger trust prompts; disclosure, SHA-256, and attestation make
+`windows-11-vs2026-arm` is the explicit GA Visual Studio 2026 image; the
+workflow does not use the migrating ARM alias. Native runner
+unavailability may still block the run. Unsigned Windows installers may trigger
+trust prompts; disclosure, SHA-256, and attestation make
 the origin auditable but are not equivalent to Authenticode. The repository's
 administrative branch-protection and provenance-workflow settings remain
 outside runtime eligibility and are not represented as release guarantees.

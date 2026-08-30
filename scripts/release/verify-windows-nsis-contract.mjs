@@ -97,6 +97,7 @@ function assertPowerShell51LoaderContract(loader, loaderPath, chunkCount) {
   );
   switch (process.platform) {
     case "darwin":
+    case "linux":
       return;
     case "win32":
       break;

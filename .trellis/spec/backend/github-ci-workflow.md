@@ -329,10 +329,14 @@ The always-running Changes job executes the durable supported-platform surface
 checker directly after checkout and Node setup, alongside the change plan and
 before diagnostic aggregation. This makes every Required CI plan scan the complete checked-out current
 tree rather than relying on conditional domain jobs or checker unit tests.
-GitHub-hosted Linux runner labels are not a product surface: repository
-automation such as `star-history.yml` may use `ubuntu-24.04`. Required CI and
-Release jobs stay on `macos-15` and `windows-2025`. CI
-never receives the task-specific prearchive exclusion; after the lifecycle
+GitHub-hosted Linux runner labels are not a product surface. Portable
+control-plane and contract jobs—including commit policy, change
+classification, repository contracts, frontend checks, mock-only desktop
+acceptance, the Required aggregate, Labeler, and Star History—use the pinned
+`ubuntu-24.04` label. Native product evidence remains on `windows-2025`,
+`windows-11-vs2026-arm`, and `macos-15`; a portable job never substitutes for
+matching-host compile/runtime/package evidence. CI never receives the
+task-specific prearchive exclusion; after the lifecycle
 task is archived, the canonical archive boundary applies and any new
 first-party support surface fails Required CI. The Repository Contracts plan
 also runs the same checker through `release-check.mjs --ci` as defense in
@@ -413,7 +417,7 @@ independent later diagnostic.
 | Runner           | GitHub architecture | Rust host                 | Managed Python platform |
 | ---------------- | ------------------- | ------------------------- | ----------------------- |
 | `windows-2025`   | `X64`               | `x86_64-pc-windows-msvc`  | `win-amd64`             |
-| `windows-11-arm` | `ARM64`             | `aarch64-pc-windows-msvc` | `win-arm64`             |
+| `windows-11-vs2026-arm` | `ARM64`       | `aarch64-pc-windows-msvc` | `win-arm64`             |
 
 Before Cargo compilation, each child requires exact `RUNNER_ARCH`, exactly one
 `rustc -vV` host line, and equality with the matrix host. After that check and
@@ -480,7 +484,8 @@ They do not prove a hosted runner exists or that native code executed. A
 successful PR/merge-group `CI / Required` remains hosted proof for the domains
 requested by that exact comparison; when Windows-native is requested it
 includes the x64 and ARM64 matrix children. It is not a formal Release
-eligibility gate. `windows-11-arm` is public preview;
+eligibility gate. `windows-11-vs2026-arm` is the explicit GA Visual Studio
+2026 image rather than the migrating ARM alias. Runner
 unavailability blocks that CI job and is never converted into a reduced or
 cross-built run.
 

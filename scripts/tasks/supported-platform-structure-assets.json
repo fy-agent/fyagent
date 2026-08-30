@@ -7,7 +7,7 @@
     ],
     [
       "scripts/release/verify-windows-nsis-contract.mjs",
-      "7c60e5c16868b369ba63373d9cfa2313f4fd0c4db07910c90db481169fcf8cba"
+      "f95247f7cb56592238ebc756a7eaf6c42d6390e785be1763edd5b7f70139a78a"
     ],
     [
       "scripts/release/windows-signing.mjs",
@@ -23,11 +23,11 @@
     ],
     [
       "scripts/tasks/supported-platform-check.mjs",
-      "bd9d6cea6bff01740fb835a2d16a0d83819e29de6e9e36cb066388cb2a832f57"
+      "6228466c920d2799c457a1318f419cff0e53d868bd5e1dd1812190ce32dbb505"
     ],
     [
       "scripts/tasks/system-check.mjs",
-      "e093cfe8dbd27ed0b51729f4d33b22555f353ed46ec112a9e7897e318552bedc"
+      "266ede8818e0a5cd735b59ba184ed85a94e653912c15fe12b08c7c7ab057ccc0"
     ],
     [
       "scripts/tasks/toolchain-check.mjs",
@@ -35,7 +35,7 @@
     ],
     [
       "scripts/tasks/windows-msvc-env.mjs",
-      "148e7aef298cb96962a107cc41268186f935237b86537707c300473b12a697fd"
+      "bfa22b5d5e5370b49bc82488d28c8d183f6df0129e415aff0b48e61c371f08e1"
     ],
     [
       "src-tauri/build.rs",
@@ -351,11 +351,11 @@
     ],
     [
       "tests/codexWindowsUserScopeContract.test.ts",
-      "ad322cbfcbc0fc4b90f86594fbbcbc980b97a19645a3fed07f74ca221638da1c"
+      "b79c230943e383aaefcb84cdb9573b43744997db151e8f4c022288b03fa70b46"
     ],
     [
       "tests/hdiutilRetry.test.ts",
-      "ea4752854960a989248dd1f4487dcad14ad20dcc61521bea0cf6085debd99ea5"
+      "521f2d76d61be5273260fcdb755bef75fed78f83ca322ab0a2293dd717b5b2b5"
     ],
     [
       "tests/lib/platform.test.ts",
@@ -367,7 +367,7 @@
     ],
     [
       "tests/releaseWorkflow.test.ts",
-      "31972737125019796afb44cad87c9cf6d1bbe9d2c91a94bea72265c56c4d1a45"
+      "8dddb745b2af94795287465ad6344142f1e7103b57570049fba025a4c2d3aa27"
     ],
     [
       "tests/remainingPlatformSurface.test.ts",
