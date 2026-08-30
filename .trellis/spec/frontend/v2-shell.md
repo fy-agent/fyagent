@@ -1,14 +1,16 @@
 # V2 Shell Contract
 
-> **Frontend Interaction V3 override — 2026-08-26**
+> **Frontend Interaction V3 reliability override — 2026-08-30**
 > `SUPERSEDES_TOP_PRIMARY_NAV_ONLY`: the six first-level routes and
-> `PersistentPrimaryOutlet` stay authoritative, but clauses below that require
+> the hash-router leaf registry stay authoritative, but clauses below that require
 > all six links inside the top chrome row are superseded. The approved V3 shell
 > renders three labelled groups in a persistent left navigation:
 > `AI软件配置`, expandable `配置管理` (Models/Skills/MCP/Prompts), and
 > `记忆模块`. `TopBar` retains Brand and ToolCluster. Existing route order,
-> redirects, keep-alive, platform boundaries and no-overflow requirements still
-> apply. Tests that assert "six top links", "Brand/Nav/Tools" or a nine-stop
+> redirects, platform boundaries and no-overflow requirements still apply.
+> Blanket visited-page keep-alive and Lens-owned semantic selection are
+> superseded: primary route modules are lazy and active-route-only, while each
+> selected host paints its own CSS/ARIA state. Tests that assert "six top links", "Brand/Nav/Tools" or a nine-stop
 > top-bar lens must be replaced by equivalent left-navigation group, leaf,
 > active, keyboard and responsive assertions in the V3 task.
 
@@ -86,7 +88,10 @@ Router-owned, and the leaf list derived from the tree is the sole input to
 `PersistentPrimaryOutlet`.
 
 The selected-lens adapter is V2-internal and does not expose the dependency's
-props or types:
+props or types. It is a best-effort decorative enhancement only: the active
+host remains visibly selected through its own CSS plus `aria-current`,
+`aria-selected`, or Radix `data-state` even when the Lens, observers, motion,
+or backdrop filtering are unavailable:
 
 ```ts
 interface LiquidGlassLensProps {
@@ -142,7 +147,7 @@ do not add a page-local variant "just for this screen".
 `LiquidGlassLens` wraps `@samasante/liquid-glass@0.1.1` with balanced optics
 plus `dispersion: 0`, `live={false}`, and `filterResolution={1}`. The sliding
 selection pill is a separate V2 adapter, `SelectionLens`. `SelectionLensGroup`
-owns one overlay pill and springs `left` / `top` / `width` / `height` with
+owns at most one `pointer-events: none` overlay pill and springs `left` / `top` / `width` / `height` with
 `selectionLensTransition`. Drive those values with Motion values so a later
 click retargets from the live geometry. Do not unmount or `key=` the overlay
 when the active host changes: that restarts the appear spring instead of
@@ -153,7 +158,9 @@ flies the pill from the parent top-left on every page mount. Callers must not
 reimplement this origin. Do not use Motion `layoutId` or `LayoutGroup` scale
 projection for this pill: non-uniform `scaleX` plus `backdrop-filter` smears
 the capsule and the label. `SelectionLens` only registers the active host; it
-is not the painted node. Do not import `framer-motion` outside
+is not the semantic or sole painted state. Geometry observation is bounded to
+the active host and its track/container; do not recursively observe the layout
+subtree or attach a child-list MutationObserver. Do not import `framer-motion` outside
 `shared/ui/motion.ts`. That file owns `fySpringTransition`
 (`stiffness: 520`, `damping: 42`, `mass: 0.62`) and re-exports `animate` /
 `motion` / `useMotionValue` / `useReducedMotion`. `SelectionLens` and the V2
@@ -241,14 +248,15 @@ input to `PersistentPrimaryOutlet`.
   `/agents`; the stable default URL is `#/agents`.
 - Derive selected state only from router location. The active link has
   `aria-current="page"`; do not maintain a second `currentView` state.
-- After a primary route is first visited, keep that page mounted for the rest of
-  the renderer session. Switching to another primary route hides the previous
-  page with `hidden` and `inert` instead of unmounting it, so in-session
-  selection and form content are not lost. Secrets still must not enter the
-  hash, URL query, localStorage, sessionStorage, or query cache.
-  `PersistentPrimaryOutlet` lives in `app/` because widgets must not import
-  pages. Keep-alive can mount several pages at once, so the app shell owns
-  one router blocker; hidden pages must not call `useBlocker`.
+- Primary route modules use route-level lazy loading and the active route is the
+  only primary route tree mounted by default. `PersistentPrimaryOutlet` must
+  not keep a visited set or update state during render. Backend resources
+  recover through TanStack Query/backend authority; URL-safe selection remains
+  in the hash query; transient visual state may reset. A route may add a narrow,
+  reviewed draft owner or keep-alive policy only when unsaved non-secret state
+  must survive navigation and that lifecycle has explicit tests. Secrets still
+  must not enter the hash, URL query, localStorage, sessionStorage, or query
+  cache.
 - Put each production page element below its matching `pages/<route>/` folder.
   All six routes render their approved business surfaces. Prompts and Memory
   use bounded native feature ports and must not widen the existing command,
@@ -256,6 +264,10 @@ input to `PersistentPrimaryOutlet`.
   as native-only and never seeds business data.
 - Register the UI Lab only when `import.meta.env.DEV` is true. Production must
   not expose `#/__dev/ui-lab`.
+- Hidden and unvisited routes must not create page queries, polling,
+  subscriptions, observers, timers, or pending visual work. Cross-route
+  install/Auth/change-plan jobs live in backend/query owners and are reread on
+  remount; a hidden React tree is not a job daemon.
 - React tab order is Brand and ToolCluster in `TopBar`, then the visible
   left-navigation controls. `SideNavigation` owns `ArrowUp` / `ArrowDown` /
   `Home` / `End` among currently visible controls. The configuration toggle

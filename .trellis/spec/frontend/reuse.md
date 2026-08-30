@@ -60,6 +60,8 @@ export function FeatureTabs<T extends string>({
   value,
   onChange,
   options,
+  children,
+  activationMode = "automatic",
   className,
 }: {
   id: string;
@@ -67,6 +69,8 @@ export function FeatureTabs<T extends string>({
   value: T;
   onChange: (value: T) => void;
   options: ReadonlyArray<{ id: T; label: ReactNode }>;
+  children?: (option: { id: T; label: ReactNode }) => ReactNode;
+  activationMode?: "automatic" | "manual";
   className?: string;
 }): JSX.Element;
 
@@ -152,6 +156,15 @@ switches plus Skills/MCP install/ZIP/restore radio), `InstallTargetDialog`
 `SecretInput`, `ExternalLinkButton`, `CopyablePath`, FeaturePorts, and
 `PRODUCT_DIRECTORY` in `shared/features/directory.ts`.
 
+`FeatureTabs` is the sole FyAgent wrapper around
+`@radix-ui/react-tabs`. Pages do not import Radix Tabs directly. The wrapper
+owns roving focus, Arrow/Home/End behavior, stable trigger/panel IDs,
+`aria-controls`/`aria-labelledby`, selected host CSS, optional decorative
+Lens, and the explicit automatic/manual activation policy. When `children` is
+provided it renders the matching `Tabs.Content`; a caller that needs a
+different mounting policy must keep the panel contract in the same wrapper
+rather than hand-writing a second tablist.
+
 Placement:
 
 ```text
@@ -232,6 +245,9 @@ or propose it at that shared owner immediately; do not wait for a cleanup task.
   (`pathForTarget` + **下一步** / **确认安装**).
   Do not
   hand-roll `SelectionLensTrack` + `fy-feature-tab` on those pages.
+- Selected navigation, tab and catalog hosts paint a stable CSS state from
+  shared `--fy-selected-*` tokens. `SelectionLens` is decorative and may be
+  absent; transparent selected hosts are a contract failure.
 - Management-list search uses `FeatureSearch` (`role="search"`, Escape and
   clear button, Phosphor icons). That is the V2 port of pre-V2
   `ManagementListSearch`. Do not add a second raw `type="search"` Input for
