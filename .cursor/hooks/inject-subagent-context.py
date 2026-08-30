@@ -248,9 +248,33 @@ class _Budget:
         self.used += size
 
 
+def _real_path_contained(base_real: str, target_real: str) -> bool:
+    """Whether an already-realpath'd target sits under an already-realpath'd base.
+
+    ValueError on Windows when the two sit on different drives; that is
+    outside the base by definition, so it fails closed.
+    """
+    try:
+        return os.path.commonpath([base_real, target_real]) == base_real
+    except ValueError:
+        return False
+
+
 def _read_file_bytes(base_path: str, file_path: str) -> bytes | None:
     """Read raw file bytes, return None if file doesn't exist."""
     full_path = os.path.join(base_path, file_path)
+    try:
+        root_real = os.path.realpath(base_path)
+        # `.trellis` may itself be a symlink into a store outside the repo
+        # (#567); its real location is a second legitimate containment base.
+        workflow_real = os.path.realpath(os.path.join(base_path, ".trellis"))
+        full_real = os.path.realpath(full_path)
+        if not _real_path_contained(root_real, full_real) and not (
+            _real_path_contained(workflow_real, full_real)
+        ):
+            return None
+    except OSError:
+        return None
     if os.path.exists(full_path) and os.path.isfile(full_path):
         try:
             with open(full_path, "rb") as f:
@@ -375,12 +399,12 @@ def read_jsonl_entries(base_path: str, jsonl_path: str) -> list[dict]:
     Schema:
         {"file": "path/to/file.md", "reason": "..."}
         {"file": "path/to/dir/", "type": "directory", "reason": "..."}
-        {"_example": "..."}          # seed row — skipped (no `file` field)
+        {"_example": "..."}          # legacy placeholder — skipped (no `file` field)
 
-    Rows without a ``file`` field (e.g. the self-describing seed line written
-    by ``task.py create`` before the agent has curated entries) are skipped
-    silently. If the resulting entry list is empty, a stderr warning is
-    emitted so the operator can debug missing context.
+    Rows without a ``file`` field (e.g. the placeholder line older Trellis
+    versions wrote at ``task.py create`` time) are skipped silently. If the
+    resulting entry list is empty, a stderr warning is emitted so the operator
+    can debug missing context.
 
     Returns:
         [{"file": path, "type": "file" | "directory", "reason": reason}, ...]
@@ -469,6 +493,17 @@ def get_agent_context(
     """
     agent_jsonl = f"{task_dir}/{agent_type}.jsonl"
     blocks = _materialize_jsonl_entries(repo_root, agent_jsonl, limits, budget)
+    if not blocks:
+        # Zero curated context reaches the model silently otherwise — the
+        # stderr WARN above never enters any session (#573). Put the fact in
+        # the prompt itself so the sub-agent compensates instead of assuming
+        # the spec context was complete.
+        return (
+            f"[Trellis] {agent_jsonl} has no curated entries, so no spec/research "
+            "context was injected. Before working, read the guidelines relevant "
+            "to the code you will touch under .trellis/spec/, and treat the task "
+            "artifacts below as the only prepared context."
+        )
     return "\n\n".join(blocks)
 
 
@@ -1101,12 +1136,15 @@ def main():
         # task's prd.md/design.md reach the model prompt, so it checks again.
         try:
             root_real = os.path.realpath(repo_root)
+            # `.trellis` may itself be a symlink into a store outside the
+            # repo (#567); its real location is a second legitimate base.
+            workflow_real = os.path.realpath(os.path.join(repo_root, ".trellis"))
             task_dir_full = os.path.realpath(os.path.join(repo_root, task_dir))
-            # ValueError on Windows when the two sit on different drives; that
-            # is outside the repo by definition, so it fails closed below.
-            if os.path.commonpath([root_real, task_dir_full]) != root_real:
+            if not _real_path_contained(root_real, task_dir_full) and not (
+                _real_path_contained(workflow_real, task_dir_full)
+            ):
                 sys.exit(0)
-        except (OSError, ValueError):
+        except OSError:
             sys.exit(0)
         if not os.path.exists(task_dir_full):
             sys.exit(0)
