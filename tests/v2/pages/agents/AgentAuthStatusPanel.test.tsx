@@ -93,11 +93,11 @@ describe("AgentAuthStatusPanel", () => {
     };
     renderPanel("claude-code", port);
 
-    expect(await screen.findByText("已验证退出")).toBeVisible();
+    expect(await screen.findByText("未登录")).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "登录" }));
     expect(await screen.findByText("等待你完成官方认证")).toBeVisible();
     expect(
-      await screen.findByText("认证结果已验证", {}, { timeout: 2500 }),
+      await screen.findByText("登录状态已更新", {}, { timeout: 2500 }),
     ).toBeVisible();
     expect(port.startSession).toHaveBeenCalledWith({
       agentId: "claude-code",
@@ -107,9 +107,9 @@ describe("AgentAuthStatusPanel", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "刷新状态" }));
     await waitFor(() =>
-      expect(screen.queryByText("认证结果已验证")).not.toBeInTheDocument(),
+      expect(screen.queryByText("登录状态已更新")).not.toBeInTheDocument(),
     );
-    expect(screen.getByText("已验证退出")).toBeVisible();
+    expect(screen.getByText("未登录")).toBeVisible();
   });
 
   it("disconnects one OpenCode provider instead of claiming a global logout", async () => {
@@ -155,7 +155,7 @@ describe("AgentAuthStatusPanel", () => {
         providerId: PROVIDER_ID,
       }),
     );
-    expect(await screen.findByText("认证结果已验证")).toBeVisible();
+    expect(await screen.findByText("登录状态已更新")).toBeVisible();
   });
 
   it("renders Grok as handoff-only and never as verified", async () => {
@@ -186,7 +186,7 @@ describe("AgentAuthStatusPanel", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "登录" }));
     expect(await screen.findByText("已交给官方认证入口")).toBeVisible();
-    expect(screen.queryByText("认证结果已验证")).not.toBeInTheDocument();
+    expect(screen.queryByText("登录状态已更新")).not.toBeInTheDocument();
   });
 
   it("keeps Codex delegated to the existing Auth Center", async () => {
@@ -209,7 +209,7 @@ describe("AgentAuthStatusPanel", () => {
       stopWaiting: vi.fn(),
     });
 
-    expect(await screen.findByText("由 FyAgent 认证中心管理")).toBeVisible();
+    expect(await screen.findByText("请在 FyAgent 认证中心管理")).toBeVisible();
     expect(
       screen.queryByRole("button", { name: "登录" }),
     ).not.toBeInTheDocument();
@@ -242,7 +242,7 @@ describe("AgentAuthStatusPanel", () => {
 
     expect(await screen.findByText("等待你完成官方认证")).toBeVisible();
     expect(
-      await screen.findByText("认证结果已验证", {}, { timeout: 2500 }),
+      await screen.findByText("登录状态已更新", {}, { timeout: 2500 }),
     ).toBeVisible();
     expect(getActiveSession).toHaveBeenCalledWith("claude-code");
     expect(getSession).toHaveBeenCalledWith(SESSION_ID);

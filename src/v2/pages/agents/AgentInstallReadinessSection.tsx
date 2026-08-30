@@ -23,7 +23,7 @@ import {
 
 type ReadinessPort = AgentInstallReadinessPort;
 
-const NATIVE_ONLY_COPY = "安装准备度仅在桌面应用接线后可读取";
+const NATIVE_ONLY_COPY = "安装状态仅可在 FyAgent 桌面应用中读取";
 
 const unavailablePort: ReadinessPort = {
   get: async () => {
@@ -54,7 +54,7 @@ function installStateCopy(state: AgentInstallState): string {
     case "unavailable":
       return "当前环境不可用";
     case "unknown":
-      return "未确认";
+      return "暂时无法确认";
   }
 }
 
@@ -65,11 +65,11 @@ function updateStateCopy(state: AgentUpdateState): string {
     case "update_available":
       return "可更新";
     case "latest_unknown":
-      return "远端版本未知";
+      return "暂时无法检查";
     case "unavailable":
       return "更新不可用";
     case "unknown":
-      return "未确认";
+      return "暂时无法确认";
   }
 }
 
@@ -78,15 +78,15 @@ function inventoryStateCopy(
 ): string {
   switch (state) {
     case "not_observed":
-      return "未发现";
+      return "未发现安装";
     case "single":
-      return "单一安装";
+      return "找到 1 个安装";
     case "multiple":
-      return "多份安装";
+      return "找到多个安装";
     case "unsupported":
       return "当前平台未支持";
     case "unknown":
-      return "未确认";
+      return "暂时无法确认";
   }
 }
 
@@ -149,7 +149,7 @@ function ReadinessSummary({
           <dd>{updateStateCopy(data.updateState)}</dd>
         </div>
         <div>
-          <dt>安装清单</dt>
+          <dt>发现的安装</dt>
           <dd>{inventoryStateCopy(data.inventoryState)}</dd>
         </div>
         <div>
@@ -157,7 +157,7 @@ function ReadinessSummary({
           <dd>{data.localVersion ?? "未确认"}</dd>
         </div>
         <div>
-          <dt>远端版本</dt>
+          <dt>最新版本</dt>
           <dd>{data.remoteVersion ?? "未确认"}</dd>
         </div>
       </dl>
@@ -316,7 +316,7 @@ function AgentInstallReadinessContent({
         loading={inventoryState.status === "loading"}
         error={
           inventoryState.status === "unavailable"
-            ? "当前无法读取安装目标。不会退回到路径猜测。"
+            ? "暂时无法读取安装位置。请刷新后重试。"
             : null
         }
         disabled={lifecycle.busy}
@@ -331,17 +331,17 @@ function AgentInstallReadinessContent({
   ) : null;
 
   return (
-    <section className="fy-agent-section" aria-label="安装方式">
-      <h3>安装方式</h3>
+    <section className="fy-agent-section" aria-label="安装与更新">
+      <h3>安装与更新</h3>
       <div className="fy-agent-install-readiness">
         {state.status === "loading" ? (
           <div className="fy-agent-install-readiness-loading">
-            <Spinner label="正在读取安装准备度" />
-            <span>正在读取安装准备度</span>
+            <Spinner label="正在检查安装状态" />
+            <span>正在检查安装状态</span>
           </div>
         ) : state.status === "unavailable" ? (
           <InlineNotice tone="warning">
-            当前无法读取安装准备度。此区域不会推断安装可用性。
+            暂时无法检查安装状态。请重新打开此页面。
           </InlineNotice>
         ) : (
           <ReadinessSummary

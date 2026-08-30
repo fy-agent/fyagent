@@ -15,11 +15,10 @@ import type { AgentCatalogId } from "../../shared/features/types";
 export const AGENT_LIFECYCLE_JOB_POLL_MS = 800;
 export const AGENT_LIFECYCLE_MAX_JOB_POLLS = 2250;
 export const AGENT_LIFECYCLE_INCOMPLETE_COPY =
-  "操作未能完成。此区域不会推断安装成功。";
-export const AGENT_LIFECYCLE_SUCCEEDED_COPY =
-  "操作已完成。下面是再次读取的状态，不是推断。";
+  "无法确认操作结果。请刷新安装状态后再试。";
+export const AGENT_LIFECYCLE_SUCCEEDED_COPY = "操作已完成，安装状态已更新。";
 export const AGENT_LIFECYCLE_TIMEOUT_COPY =
-  "安装仍在进行。超时不会被当成成功或失败。";
+  "安装仍在进行。可稍后刷新安装状态。";
 
 export type AgentLifecyclePrimaryAction = "install" | "update";
 
@@ -73,62 +72,62 @@ export function deriveAgentLifecyclePrimaryAction(
 export function reasonCopy(code: AgentReasonCode): string | null {
   switch (code) {
     case "managed_by_codex_desktop":
-      return "安装与更新由现有 Codex Desktop 安装器管理。";
+      return "Codex Desktop 的安装和更新请在现有安装器中完成。";
     case "interactive_user_unavailable":
-      return "当前 Windows 提升环境不会代为执行安装命令。";
+      return "当前无法显示 Windows 管理员确认窗口。请回到桌面后重试。";
     case "platform_unsupported":
-      return "当前平台没有可用的官方安装包。";
+      return "当前系统没有可用的官方安装包。";
     case "source_not_verified":
-      return "官方来源当前不可用，请改用产品页面。";
+      return "暂时无法访问官方下载来源。请打开产品官网下载安装。";
     case "official_page_only":
-      return "请改用官方产品下载页。不会使用固定的历史版本地址。";
+      return "请从产品官网下载安装。";
     case "provider_connection_required":
-      return "OpenCode 需要连接 Provider，而不是全局登录。";
+      return "请先为 OpenCode 连接 Provider。";
     case "auth_state_unknown":
       return null;
     case "operation_conflict":
-      return "已有安装任务进行中，请等待当前任务结束。";
+      return "另一个安装任务正在进行，请完成后再试。";
     case "refresh_required":
-      return "来源已变化，请刷新后再试。";
+      return "下载信息已更新，请刷新后重试。";
     case "target_selection_required":
-      return "请选择本次要管理的安装目标。";
+      return "请选择要安装或更新的应用。";
     case "target_changed":
     case "inventory_expired":
-      return "安装目标已变化，请刷新安装清单后再试。";
+      return "安装位置已变化，请刷新后重新选择。";
     case "target_not_executable":
-      return "所选安装当前不可启动。";
+      return "所选应用无法启动。请检查安装位置或重新安装。";
     case "target_scope_unsupported":
-      return "当前操作不支持所选安装范围。";
+      return "无法在所选安装位置执行此操作。";
     case "candidate_conflict":
-      return "检测到相互冲突的安装证据，已停止自动操作。";
+      return "检测到互相冲突的安装信息。请检查安装位置后再试。";
     case "authorization_required":
-      return "所选系统安装位置需要授权。当前不会自动改装到用户目录。";
+      return "所选系统安装位置需要管理员授权。FyAgent 不会改装到其他目录。";
     case "permission_denied":
-      return "没有权限更新所选位置。原应用保持不变。";
+      return "没有权限更新所选位置，原应用未改动。";
     case "application_running":
       return "应用仍在运行。请先完全退出，再重新执行。";
     case "installer_artifact_unavailable":
-      return "安装包下载后的本地暂存或安全校验失败，请重试并检查磁盘空间与文件权限。";
+      return "安装包准备失败。请检查磁盘空间和文件权限后重试。";
     case "installation_verification_failed":
-      return "安装后验证未通过，未确认新版本可用。";
+      return "无法确认新版本已正确安装。请检查安装位置。";
     case "installer_user_cancelled":
       return "你取消了 Windows 安装向导或 UAC 请求。";
     case "installer_process_unobservable":
-      return "安装向导已打开，但 Windows 未提供可跟踪的安装进程。请检查应用是否已完成安装。";
+      return "安装向导已打开，但 FyAgent 无法读取其进度。完成向导后请刷新安装状态。";
     case "installer_timed_out":
-      return "安装向导长时间未结束。FyAgent 已停止等待，但不会强制关闭安装器。";
+      return "安装向导仍未结束。请完成或关闭向导后刷新安装状态。";
     case "installer_exited_nonzero":
-      return "Windows 安装向导以失败状态退出，且安装后验证未通过。";
+      return "Windows 安装向导未能完成。请检查向导中的错误后重试。";
     case "rollback_restored":
-      return "新版本验证未通过，已恢复原应用。";
+      return "新版本无法使用，已恢复之前的应用。";
     case "recovery_required":
-      return "安装恢复无法确认完成。请停止重试并检查应用安装状态。";
+      return "无法确认应用是否已恢复。请停止重试并检查安装位置。";
     case "cancelled":
       return "操作已取消。";
     case "executor_not_implemented":
-      return "当前无法完成安装步骤。";
+      return "FyAgent 暂时无法在当前环境中完成安装。";
     case "installed_not_runnable":
-      return "已写入安装位置，但还不能确认可以运行。";
+      return "应用已安装，但暂时无法启动。请检查安装位置或重新安装。";
     default:
       return null;
   }
@@ -141,7 +140,7 @@ export function jobStageCopy(stage: AgentActionJobStage): string {
     case "downloading":
       return "正在下载安装包";
     case "staging":
-      return "正在准备并验证应用";
+      return "正在准备安装包";
     case "launching_installer":
       return "正在打开 Windows 安装向导";
     case "awaiting_user":
@@ -151,13 +150,13 @@ export function jobStageCopy(stage: AgentActionJobStage): string {
     case "verifying_installation":
       return "正在确认安装结果";
     case "succeeded":
-      return "正在读取安装结果";
+      return "正在更新安装状态";
     case "failed":
       return "操作失败";
     case "cancelled":
       return "操作已取消";
     case "incomplete":
-      return "安装结果尚未确认";
+      return "安装结果待检查";
   }
 }
 

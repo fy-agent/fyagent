@@ -59,13 +59,13 @@ function SupportedPromptProjection({
       setFeedback({
         promptId,
         tone: "info",
-        text: `已从真实配置回读：${displayName} 当前使用此提示词。`,
+        text: `已在 ${displayName} 中启用此提示词。`,
       });
     } catch {
       setFeedback({
         promptId,
         tone: "warning",
-        text: "提示词启用未能完成或回读不一致；当前页面不会保留乐观成功状态。",
+        text: "无法确认提示词是否已启用。请刷新后重试。",
       });
       await query.refetch();
     } finally {
@@ -79,7 +79,7 @@ function SupportedPromptProjection({
         value={search}
         onValueChange={setSearch}
         placeholder="搜索名称、描述、内容或 ID"
-        ariaLabel="搜索 Agent 提示词"
+        ariaLabel={`搜索 ${displayName} 的提示词`}
         disabled={query.isPending}
       />
       {feedback ? (
@@ -98,13 +98,13 @@ function SupportedPromptProjection({
       ) : query.isError && query.data === undefined ? (
         <EmptyState
           title="无法读取提示词"
-          description="当前没有可验证的提示词结果。"
+          description="暂时无法读取提示词。请重试。"
           actions={<Button onClick={() => void query.refetch()}>重试</Button>}
         />
       ) : prompts.length === 0 ? (
         <EmptyState
-          title="提示词库为空"
-          description={`当前 ${displayName} 没有已管理提示词。`}
+          title="还没有可用的提示词"
+          description={`请先为 ${displayName} 添加提示词。`}
         />
       ) : filtered.length === 0 ? (
         <EmptyState title="没有匹配的提示词" description="请调整搜索关键词。" />
@@ -134,7 +134,7 @@ function SupportedPromptProjection({
                   <div className="fy-feature-detail-title">
                     <h3>{selected.name}</h3>
                   </div>
-                  <p>{selected.description ?? "此提示词暂无补充说明。"}</p>
+                  <p>{selected.description ?? "暂无说明。"}</p>
                 </div>
                 <Button
                   className={
@@ -143,7 +143,7 @@ function SupportedPromptProjection({
                   disabled={selected.enabled || pendingId === selected.id}
                   onClick={() => void enable(selected.id)}
                 >
-                  {selected.enabled ? "当前已启用" : "设为启用"}
+                  {selected.enabled ? "当前已启用" : "启用"}
                 </Button>
               </div>
               <pre className="fy-agent-prompt-preview">{selected.content}</pre>
@@ -163,10 +163,13 @@ export function AgentPromptsSection({
   onOpenManagement: () => void;
 }) {
   return (
-    <section className="fy-agent-config-section" aria-label="Agent 提示词配置">
+    <section
+      className="fy-agent-config-section"
+      aria-label={`${entry.displayName} 提示词设置`}
+    >
       <AgentSectionHeader
         title="当前提示词"
-        actionLabel="进入提示词管理"
+        actionLabel="管理提示词"
         onAction={onOpenManagement}
       />
       {entry.promptAppId ? (
@@ -175,7 +178,7 @@ export function AgentPromptsSection({
           displayName={entry.displayName}
         />
       ) : (
-        <EmptyState title="当前未接入提示词管理" />
+        <EmptyState title="此应用暂不支持提示词管理" />
       )}
     </section>
   );

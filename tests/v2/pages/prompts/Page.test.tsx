@@ -600,7 +600,9 @@ describe("PromptsPage native business management", () => {
     const nativePorts = createBrowserFeaturePorts();
     renderPrompts(nativePorts);
     expect(
-      await screen.findByText("桌面能力不可用", undefined, { timeout: 5_000 }),
+      await screen.findByText("请使用 FyAgent 桌面应用", undefined, {
+        timeout: 5_000,
+      }),
     ).toBeVisible();
     expect(screen.queryByText(/Claude rule|示例/)).not.toBeInTheDocument();
     cleanup();

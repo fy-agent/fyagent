@@ -1423,6 +1423,7 @@
   },
   "codexOauth": {
     "authStatus": "驗證狀態",
+    "nativeProjectionUnavailable": "Codex 目前不使用 auth.json 儲存憑證。請在 Codex 中登入；這裡的帳號只用於 FyAgent 路由。",
     "notAuthenticated": "未驗證",
     "loginWithChatGPT": "使用 ChatGPT 登入",
     "loginRequired": "請先登入 ChatGPT 帳號",
@@ -3154,17 +3155,17 @@
       "sisyphusJunior": "委派任務執行器"
     },
     "agentTooltip": {
-      "sisyphus": "主協調器，負責任務規劃、委派與並行執行，使用擴充思考（32k 預算），透過 TODO 驅動工作流程確保任務完成。",
-      "atlas": "主協調器（持有 TODO 清單），負責執行階段的任務分發與協調，不直接完成所有工作而是委派給專業代理。",
-      "prometheus": "戰略規劃師，透過訪談模式收集需求並制定詳細工作計畫，僅能在 .sisyphus/ 目錄讀寫 Markdown 檔案，從不直接寫程式碼。",
-      "hephaestus": "自主深度工作者（「合法工匠」），受 AmpCode 深度模式啟發，目標導向執行，行動前會並行啟動 2-5 個探索 / 圖書管理員代理進行研究。",
-      "oracle": "架構決策與除錯顧問，唯讀諮詢代理，提供出色的邏輯推理和深度分析，不能寫檔案或委派任務。",
-      "librarian": "多儲存庫分析與文件檢索專家，深度理解程式碼庫並提供基於證據的答案，擅長尋找官方文件和開源實作範例。",
-      "explore": "快速程式碼庫探索與上下文 grep 專家，使用輕量級模型進行高速搜尋，是理解程式碼結構的先鋒。",
-      "multimodalLooker": "視覺內容專家，分析 PDF、圖片、圖表等非文字媒體，提取其中的資訊與洞見。",
-      "metis": "計畫顧問，在規劃前進行預先分析，識別隱藏意圖、模糊點和 AI 失敗點，防止過度工程化。",
-      "momus": "計畫審查員，高精度驗證計畫的清晰度、可驗證性和完整性，拒絕並要求修訂直到計畫完美。",
-      "sisyphusJunior": "類別產生的執行器，由 category 參數自動產生，專注於執行分配的任務且不能再委派，防止無限委派迴圈。"
+      "sisyphus": "規劃任務、分配工作並協調平行執行；使用 32k 擴充思考和 TODO 清單。",
+      "atlas": "在執行階段維護 TODO 清單並分配任務；主要負責協調，不直接完成全部工作。",
+      "prometheus": "透過問答收集需求並編寫計畫；只能讀寫 .sisyphus/ 下的 Markdown，不寫程式碼。",
+      "hephaestus": "自主執行複雜任務；開始前會平行呼叫 2-5 個 Explore 或 Librarian 進行調研。",
+      "oracle": "唯讀的架構與除錯顧問；不能寫入檔案或分配任務。",
+      "librarian": "跨儲存庫查找程式碼和文件，並引用官方文件或開源實作。",
+      "explore": "快速搜尋程式碼庫、檔案和上下文，適合定位結構與實作。",
+      "multimodalLooker": "讀取 PDF、圖片和圖表等非文字內容。",
+      "metis": "在規劃前檢查隱含目標、歧義和過度設計風險。",
+      "momus": "檢查計畫是否清楚、可驗證且完整；有缺口時要求修訂。",
+      "sisyphusJunior": "執行分類任務，不能繼續委派，避免循環分配。"
     },
     "categoryDesc": {
       "visualEngineering": "視覺 / 前端工程",
@@ -3177,14 +3178,14 @@
       "writing": "寫作"
     },
     "categoryTooltip": {
-      "visualEngineering": "前端與視覺工程類別，專注於 UI/UX 設計、樣式、動畫和介面實作，預設使用 Gemini 3.6 Flash 模型。",
-      "ultrabrain": "深度邏輯推理類別，用於需要廣泛分析的複雜架構決策，預設使用 GPT-5.3 Codex 的超高推理變體。",
-      "deep": "深度自主問題解決類別，目標導向執行，行動前進行徹底研究，適用於需要深度理解的棘手問題。",
-      "artistry": "高度創意與藝術性任務類別，激發新穎想法和創造性解決方案，預設使用 Gemini 3.6 Flash 的高推理變體。",
-      "quick": "輕量任務類別，用於單檔案修改、錯別字修復、簡單調整等瑣碎工作，預設使用 Claude Haiku 4.5 快速模型。",
-      "unspecifiedLow": "未分類低工作量任務類別，適用於不適合其他類別且工作量較小的任務，預設使用 Claude Sonnet 4.5。",
-      "unspecifiedHigh": "未分類高工作量任務類別，適用於不適合其他類別且工作量較大的任務，預設使用 Claude Opus 5 的最大變體。",
-      "writing": "寫作類別，專注於文件、散文和技術寫作，預設使用 Kimi K2.5 模型。"
+      "visualEngineering": "用於 UI/UX、樣式、動畫和介面實作；預設使用 Gemini 3.6 Flash。",
+      "ultrabrain": "用於複雜架構和高強度推理；預設使用 GPT-5.3 Codex 超高推理。",
+      "deep": "先調研，再自主處理複雜問題。",
+      "artistry": "用於原創構思或視覺表達；預設使用 Gemini 3.6 Flash 高推理。",
+      "quick": "用於單一檔案修改、錯別字和小幅調整；預設使用 Claude Haiku 4.5。",
+      "unspecifiedLow": "用於未分類的小型任務；預設使用 Claude Sonnet 4.5。",
+      "unspecifiedHigh": "用於未分類的大型任務；預設使用 Claude Opus 5 max。",
+      "writing": "用於文件、散文和技術寫作；預設使用 Kimi K2.5。"
     },
     "slimAgentDesc": {
       "orchestrator": "協調器",

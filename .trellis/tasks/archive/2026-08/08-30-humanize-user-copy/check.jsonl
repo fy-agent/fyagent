@@ -1,0 +1,4 @@
+{"file":".trellis/spec/frontend/index.md","reason":"Verify the change respects production V2 and leftover renderer boundaries."}
+{"file":".trellis/spec/frontend/v2-shell.md","reason":"Verify user-visible copy changes do not alter shell, accessibility, or behavior contracts."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Use the documented frontend validation and accessibility gates."}
+{"file":".trellis/tasks/08-30-humanize-user-copy/research/ux-writing-and-ai-style.md","reason":"Check rewrites against the evidence-based clarity rules rather than a superficial phrase blacklist."}

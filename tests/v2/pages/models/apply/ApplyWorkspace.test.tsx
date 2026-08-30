@@ -175,7 +175,7 @@ describe("Apply view model", () => {
         { busy: false, error: null },
       );
 
-      expect(view.usageEvidenceCopy).toContain("尚无真实使用证据");
+      expect(view.usageEvidenceCopy).toContain("尚未在目标应用中测试");
     },
   );
 
@@ -234,7 +234,7 @@ describe("Apply view model", () => {
 
     expect(view.mode).toBe("failed");
     expect(view.tone).toBe("danger");
-    expect(view.title).toContain("原基线已确认");
+    expect(view.title).toBe("配置未应用");
   });
 
   it("renders pre-write cancellation and interruption without inventing recovery uncertainty", () => {
@@ -269,7 +269,7 @@ describe("Apply view model", () => {
       { busy: false, error: null },
     );
     expect(interrupted.mode).toBe("failed");
-    expect(interrupted.title).toContain("写入前中断");
+    expect(interrupted.title).toBe("未修改配置");
   });
 
   it("renders recovered target and compensation from authoritative job fields", () => {
@@ -284,7 +284,7 @@ describe("Apply view model", () => {
       { busy: false, error: null },
     );
     expect(recovered.mode).toBe("warning");
-    expect(recovered.title).toContain("恢复回读确认");
+    expect(recovered.title).toBe("配置已生效");
 
     const compensated = createApplyViewModel(
       plan,
@@ -305,7 +305,7 @@ describe("Apply view model", () => {
     );
     expect(
       compensated.steps.find((step) => step.key.startsWith("managed_write")),
-    ).toMatchObject({ detail: "已补偿", status: "succeeded" });
+    ).toMatchObject({ detail: "已恢复原设置", status: "succeeded" });
   });
 
   it.each(["expired", "stale", "consumed", "invalid_digest"])(
@@ -341,7 +341,7 @@ describe("ApplyWorkspace", () => {
     render(<ApplyWorkspace {...baseProps} onConfirm={onConfirm} />);
 
     expect(onConfirm).not.toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: "确认应用" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "应用更改" })).toBeEnabled();
   });
 
   it("submits only planId and planDigest once under StrictMode and repeat clicks", () => {
@@ -355,7 +355,7 @@ describe("ApplyWorkspace", () => {
       </StrictMode>,
     );
 
-    const confirm = screen.getByRole("button", { name: "确认应用" });
+    const confirm = screen.getByRole("button", { name: "应用更改" });
     fireEvent.click(confirm);
     fireEvent.click(confirm);
 
@@ -374,9 +374,9 @@ describe("ApplyWorkspace", () => {
     render(<ApplyWorkspace {...baseProps} error={{ code: "stale" }} />);
 
     expect(
-      screen.queryByRole("button", { name: "确认应用" }),
+      screen.queryByRole("button", { name: "应用更改" }),
     ).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "重新生成计划" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "重新生成预览" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "关闭" })).toBeEnabled();
   });
 
@@ -399,33 +399,29 @@ describe("ApplyWorkspace", () => {
     );
 
     expect(
-      screen.getByText("尚无真实使用证据。", { exact: false }),
+      screen.getByText("尚未在目标应用中测试", { exact: false }),
     ).toBeVisible();
     expect(
-      screen.getByText("需留意", { selector: ".fy-apply-live" }),
+      screen.getByText("需要操作", { selector: ".fy-apply-live" }),
     ).toHaveAttribute("aria-live", "polite");
   });
 
   it("renders four preview sections from the closed plan DTO", () => {
     render(<ApplyWorkspace {...baseProps} />);
 
-    expect(screen.getByRole("heading", { name: "语义变化" })).toBeVisible();
-    expect(screen.getByRole("heading", { name: "风险与重启" })).toBeVisible();
-    expect(
-      screen.getByRole("heading", { name: "前置条件与范围" }),
-    ).toBeVisible();
-    expect(screen.getByRole("heading", { name: "恢复方式" })).toBeVisible();
-    expect(screen.getByText("无额外风险项")).toBeVisible();
-    expect(
-      screen.getAllByText(plan.currentProviderCode).length,
-    ).toBeGreaterThan(0);
-    expect(screen.getByText("只读回读", { exact: false })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "将要更改" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "需要注意" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "影响范围" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "失败或中断时" })).toBeVisible();
+    expect(screen.getByText("没有其他需要确认的事项")).toBeVisible();
+    expect(screen.queryByText(plan.currentProviderCode)).not.toBeInTheDocument();
+    expect(screen.getByText("不会自动再次修改", { exact: false })).toBeVisible();
     expect(
       screen.queryByRole("button", { name: "取消" }),
     ).not.toBeInTheDocument();
   });
 
-  it("renders partial truth and backend event sequence from the job DTO", () => {
+  it("renders actionable partial results without backend diagnostics", () => {
     render(
       <ApplyWorkspace
         {...baseProps}
@@ -442,11 +438,11 @@ describe("ApplyWorkspace", () => {
       />,
     );
 
-    expect(screen.getByText("后端事件序号 7")).toBeVisible();
+    expect(screen.queryByText(/后端事件序号/)).not.toBeInTheDocument();
     expect(screen.getByText("2")).toBeVisible();
-    expect(screen.getByText("重新回读")).toBeVisible();
+    expect(screen.getByText("重新检查当前配置")).toBeVisible();
     expect(
-      screen.getAllByText("数据库当前 Provider").length,
+      screen.getAllByText("FyAgent 当前 Provider").length,
     ).toBeGreaterThan(0);
   });
 

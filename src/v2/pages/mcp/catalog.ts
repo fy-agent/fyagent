@@ -499,7 +499,7 @@ export const MCP_CATALOG: readonly McpCatalogItem[] = [
     requirements: ["node"],
     authLabel: "无",
     privilege: "write",
-    risk: "可访问网页、会话状态并执行页面操作；MCP 本身不是安全边界。",
+    risk: "可访问网页、会话状态并操作页面。仅连接你信任的服务器，并限制可访问范围。",
     fields: [],
     buildSpec: (_values, platform) =>
       npxSpec("@playwright/mcp@latest", platform),

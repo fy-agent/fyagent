@@ -1,0 +1,4 @@
+{"file":".trellis/spec/frontend/index.md","reason":"Production V2 boundary, leftover i18n rules, and required frontend pre-development checks."}
+{"file":".trellis/spec/frontend/v2-shell.md","reason":"Production renderer ownership, accessible labels, external links, and V2-only presentation constraints."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Applicable test, accessibility, and repository quality gates."}
+{"file":".trellis/tasks/08-30-humanize-user-copy/research/ux-writing-and-ai-style.md","reason":"Evidence synthesis for plain-language UI copy and contextual anti-patterns commonly associated with generic AI prose."}

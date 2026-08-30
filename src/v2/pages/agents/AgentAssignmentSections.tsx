@@ -70,39 +70,40 @@ export function AgentSkillsSection({
         itemId: skillId,
         tone: "info",
         text: enabled
-          ? `已从真实配置回读：${entry.displayName} 已启用此 Skill。`
-          : `已从真实配置回读：${entry.displayName} 已停用此 Skill。`,
+          ? `已在 ${entry.displayName} 中启用此 Skill。`
+          : `已在 ${entry.displayName} 中停用此 Skill。`,
       });
     } else if (outcome.status === "rejected") {
       setFeedback({
         itemId: skillId,
         tone: "warning",
-        text: "Skill 分配未能完成或回读不一致；当前页面不会保留乐观成功状态。",
+        text: "无法确认 Skill 设置是否已更新。请刷新后重试。",
       });
     }
   };
 
   return (
-    <section className="fy-agent-config-section" aria-label="Agent Skills 配置">
+    <section
+      className="fy-agent-config-section"
+      aria-label={`${entry.displayName} Skills 设置`}
+    >
       <AgentSectionHeader
         title="当前 Skills"
-        actionLabel="进入 Skills 管理"
+        actionLabel="管理 Skills"
         onAction={onOpenManagement}
       />
       <FeatureSearch
         value={search}
         onValueChange={setSearch}
         placeholder="搜索名称、说明或仓库"
-        ariaLabel="搜索 Agent Skills"
+        ariaLabel={`搜索 ${entry.displayName} 的 Skills`}
         disabled={query.isPending}
       />
       {feedback ? (
         <InlineNotice tone={feedback.tone}>{feedback.text}</InlineNotice>
       ) : null}
       {assignment.busy ? (
-        <InlineNotice tone="info">
-          正在保存 Skill 分配并回读真实配置…
-        </InlineNotice>
+        <InlineNotice tone="info">正在保存 Skill 设置…</InlineNotice>
       ) : null}
       {query.isError && query.data !== undefined ? (
         <InlineNotice tone="warning">
@@ -117,14 +118,14 @@ export function AgentSkillsSection({
       ) : query.isError && query.data === undefined ? (
         <EmptyState
           title="无法读取 Skills"
-          description="当前没有可验证的 Skills assignment 结果。"
+          description="暂时无法读取已安装的 Skills。请重试。"
           actions={<Button onClick={() => void query.refetch()}>重试</Button>}
         />
       ) : skills.length === 0 ? (
         <EmptyState
-          title="尚无已安装 Skills"
-          description="请先进入 Skills 管理发现或安装资源。"
-          actions={<Button onClick={onOpenManagement}>进入 Skills 管理</Button>}
+          title="还没有可用的 Skill"
+          description="请先到 Skills 页面安装或导入 Skill。"
+          actions={<Button onClick={onOpenManagement}>管理 Skills</Button>}
         />
       ) : filtered.length === 0 ? (
         <EmptyState title="没有匹配的 Skill" description="请调整搜索关键词。" />
@@ -161,7 +162,7 @@ export function AgentSkillsSection({
                   <Switch
                     checked={isAssigned}
                     disabled={assignment.busy}
-                    label={`${entry.displayName} Skill 分配`}
+                    label={`在 ${entry.displayName} 中使用 ${skill.name}`}
                     onCheckedChange={(enabled) =>
                       void toggle(skill.id, enabled)
                     }
@@ -218,8 +219,8 @@ export function AgentMcpSection({
         itemId: serverId,
         tone: "info",
         text: enabled
-          ? `已从真实配置回读：${entry.displayName} 已分配此 MCP。`
-          : `已从真实配置回读：${entry.displayName} 已取消此 MCP 分配。`,
+          ? `已在 ${entry.displayName} 中启用此 MCP。`
+          : `已在 ${entry.displayName} 中停用此 MCP。`,
       });
       if (entry.assignmentId === "workbuddy" && enabled) {
         setWorkbuddyTrustOpen(true);
@@ -228,32 +229,33 @@ export function AgentMcpSection({
       setFeedback({
         itemId: serverId,
         tone: "warning",
-        text: "MCP 分配未能完成或回读不一致；当前页面不会保留乐观成功状态。",
+        text: "无法确认 MCP 设置是否已更新。请刷新后重试。",
       });
     }
   };
 
   return (
-    <section className="fy-agent-config-section" aria-label="Agent MCP 配置">
+    <section
+      className="fy-agent-config-section"
+      aria-label={`${entry.displayName} MCP 设置`}
+    >
       <AgentSectionHeader
         title="当前 MCP"
-        actionLabel="进入 MCP 管理"
+        actionLabel="管理 MCP"
         onAction={onOpenManagement}
       />
       <FeatureSearch
         value={search}
         onValueChange={setSearch}
         placeholder="搜索名称、命令、标签或来源"
-        ariaLabel="搜索 Agent MCP"
+        ariaLabel={`搜索 ${entry.displayName} 的 MCP`}
         disabled={query.isPending}
       />
       {feedback ? (
         <InlineNotice tone={feedback.tone}>{feedback.text}</InlineNotice>
       ) : null}
       {assignment.busy ? (
-        <InlineNotice tone="info">
-          正在保存 MCP 分配并回读真实配置…
-        </InlineNotice>
+        <InlineNotice tone="info">正在保存 MCP 设置…</InlineNotice>
       ) : null}
       {query.isError && query.data !== undefined ? (
         <InlineNotice tone="warning">
@@ -268,14 +270,14 @@ export function AgentMcpSection({
       ) : query.isError && query.data === undefined ? (
         <EmptyState
           title="无法读取 MCP"
-          description="当前没有可验证的 MCP assignment 结果。"
+          description="暂时无法读取 MCP 设置。请重试。"
           actions={<Button onClick={() => void query.refetch()}>重试</Button>}
         />
       ) : servers.length === 0 ? (
         <EmptyState
-          title="尚无 MCP"
-          description="请先进入 MCP 管理导入或添加服务器。"
-          actions={<Button onClick={onOpenManagement}>进入 MCP 管理</Button>}
+          title="还没有可用的 MCP"
+          description="请先到 MCP 页面导入或添加服务器。"
+          actions={<Button onClick={onOpenManagement}>管理 MCP</Button>}
         />
       ) : filtered.length === 0 ? (
         <EmptyState title="没有匹配的 MCP" description="请调整搜索关键词。" />
@@ -312,7 +314,7 @@ export function AgentMcpSection({
                   <Switch
                     checked={isAssigned}
                     disabled={assignment.busy}
-                    label={`${entry.displayName} MCP 分配`}
+                    label={`在 ${entry.displayName} 中使用 ${server.name}`}
                     onCheckedChange={(enabled) =>
                       void toggle(server.id, enabled)
                     }

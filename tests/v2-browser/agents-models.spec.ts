@@ -256,7 +256,7 @@ test("Codex configuration loads safely without unsolicited mutation", async ({
   await expect(page.getByRole("region", { name: "Codex 配置" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "当前模型" })).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "进入模型管理" }),
+    page.getByRole("button", { name: "管理模型" }),
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "返回" })).toBeVisible();
   await expect(page.getByText("单 Agent 配置")).toHaveCount(0);
@@ -478,7 +478,7 @@ test("WorkBuddy save preview uses Change Plan and does not expose overwrite toke
   await expect(page.getByText("将修改")).toBeVisible();
   await page.getByRole("button", { name: "确认保存" }).click();
 
-  await expect(page.getByRole("button", { name: "确认应用" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "应用更改" })).toBeVisible();
   await expect(
     page.getByRole("dialog", { name: "确认覆盖已有模型" }),
   ).toHaveCount(0);
@@ -486,7 +486,7 @@ test("WorkBuddy save preview uses Change Plan and does not expose overwrite toke
   await expect(page.locator("body")).not.toContainText(apiKey);
   await expect(page.getByLabel("API Key", { exact: true })).toHaveValue(apiKey);
 
-  await page.getByRole("button", { name: "确认应用" }).click();
+  await page.getByRole("button", { name: "应用更改" }).click();
   await expect(page.getByLabel("API Key", { exact: true })).toHaveValue("");
   await expect(page.locator("body")).toContainText("WorkBuddy 模型配置已保存");
 
@@ -533,7 +533,7 @@ test("WorkBuddy write failures stay redacted and clear the submitted credential"
   await page.getByLabel("自定义模型 ID").fill("failure-model");
   await page.getByRole("button", { name: "保存并应用" }).click();
   await page.getByRole("button", { name: "确认保存" }).click();
-  await page.getByRole("button", { name: "确认应用" }).click();
+  await page.getByRole("button", { name: "应用更改" }).click();
 
   await expect(page.locator("body")).toContainText("保存失败，已恢复原配置");
   await expect(page.locator("body")).not.toContainText(apiKey);
@@ -568,9 +568,9 @@ test("WorkBuddy concurrent modification rereads authority instead of claiming su
   await page.getByLabel("自定义模型 ID").fill("conflict-model");
   await page.getByRole("button", { name: "保存并应用" }).click();
   await page.getByRole("button", { name: "确认保存" }).click();
-  await page.getByRole("button", { name: "确认应用" }).click();
+  await page.getByRole("button", { name: "应用更改" }).click();
 
-  await expect(page.locator("body")).toContainText("计划已失效");
+  await expect(page.locator("body")).toContainText("预览已过期");
   await expect(page.locator("body")).not.toContainText(
     "WorkBuddy 模型配置已保存",
   );
@@ -613,9 +613,9 @@ test("Codex quick setup locks duplicate submission and sends exact provider payl
   await expect(busySubmit).toBeDisabled();
   await busySubmit.dispatchEvent("click");
   const saveWorkspace = page.getByRole("region", {
-    name: "Change Plan Provider 保存",
+    name: "保存 Codex Provider",
   });
-  const confirm = saveWorkspace.getByRole("button", { name: "确认应用" });
+  const confirm = saveWorkspace.getByRole("button", { name: "应用更改" });
   await expect(confirm).toBeEnabled();
   await expect(page.getByLabel("API Key", { exact: true })).toHaveValue(apiKey);
 
@@ -804,8 +804,8 @@ test("Provider atomic failure reports rollback instead of a partial result", asy
   await page.getByRole("button", { name: "保存并设为当前配置" }).click();
   await confirmSaveDisclosure(page);
   await page
-    .getByRole("region", { name: "Change Plan Provider 保存" })
-    .getByRole("button", { name: "确认应用" })
+    .getByRole("region", { name: "保存 Codex Provider" })
+    .getByRole("button", { name: "应用更改" })
     .click();
 
   await expect(page.locator("body")).toContainText(

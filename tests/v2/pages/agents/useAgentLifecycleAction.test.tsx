@@ -192,10 +192,10 @@ describe("deriveAgentLifecyclePrimaryAction", () => {
 
 describe("macOS lifecycle state copy", () => {
   it("distinguishes staging, authorization, restored rollback, and unknown recovery", () => {
-    expect(jobStageCopy("staging")).toBe("正在准备并验证应用");
-    expect(reasonCopy("authorization_required")).toContain("需要授权");
-    expect(reasonCopy("authorization_required")).toContain("不会自动改装");
-    expect(reasonCopy("rollback_restored")).toContain("已恢复原应用");
+    expect(jobStageCopy("staging")).toBe("正在准备安装包");
+    expect(reasonCopy("authorization_required")).toContain("管理员授权");
+    expect(reasonCopy("authorization_required")).toContain("不会改装到其他目录");
+    expect(reasonCopy("rollback_restored")).toContain("已恢复之前的应用");
     expect(reasonCopy("recovery_required")).toContain("停止重试");
   });
 });
@@ -204,12 +204,12 @@ describe("Windows external-installer state copy", () => {
   it("distinguishes launch, user interaction, incomplete observation, and terminal reasons", () => {
     expect(jobStageCopy("launching_installer")).toContain("打开 Windows 安装向导");
     expect(jobStageCopy("awaiting_user")).toContain("请在 Windows 中完成安装");
-    expect(jobStageCopy("incomplete")).toBe("安装结果尚未确认");
+    expect(jobStageCopy("incomplete")).toBe("安装结果待检查");
     expect(reasonCopy("installer_user_cancelled")).toContain("取消");
-    expect(reasonCopy("installer_artifact_unavailable")).toContain("本地暂存");
-    expect(reasonCopy("installer_process_unobservable")).toContain("未提供可跟踪");
-    expect(reasonCopy("installer_timed_out")).toContain("不会强制关闭");
-    expect(reasonCopy("installer_exited_nonzero")).toContain("失败状态退出");
+    expect(reasonCopy("installer_artifact_unavailable")).toContain("磁盘空间");
+    expect(reasonCopy("installer_process_unobservable")).toContain("无法读取其进度");
+    expect(reasonCopy("installer_timed_out")).toContain("完成或关闭向导");
+    expect(reasonCopy("installer_exited_nonzero")).toContain("未能完成");
     expect(isTerminalAgentJobStage("incomplete")).toBe(true);
     expect(isTerminalAgentJobStage("awaiting_user")).toBe(false);
   });
@@ -359,7 +359,7 @@ describe("useAgentLifecycleAction", () => {
     });
 
     expect(result.current.error).toBe(
-      "已有安装任务进行中，请等待当前任务结束。",
+      "另一个安装任务正在进行，请完成后再试。",
     );
     expect(result.current.reasonCode).toBe("operation_conflict");
     expect(result.current.success).toBeNull();
@@ -392,7 +392,7 @@ describe("useAgentLifecycleAction", () => {
       await result.current.run("install");
     });
 
-    expect(result.current.error).toBe("来源已变化，请刷新后再试。");
+    expect(result.current.error).toBe("下载信息已更新，请刷新后重试。");
     expect(result.current.reasonCode).toBe("refresh_required");
     expect(result.current.success).toBeNull();
     expect(port.get).toHaveBeenCalled();

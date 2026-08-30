@@ -106,14 +106,16 @@ describe("AgentInstallReadinessSection", () => {
     const port = portFor(readiness("qoderwork"));
     render(<AgentInstallReadinessSection agentId="qoderwork" port={port} />);
 
-    const region = screen.getByRole("region", { name: "安装方式" });
+    const region = screen.getByRole("region", { name: "安装与更新" });
     expect(
       await within(region).findByRole("button", { name: "安装" }),
     ).toBeVisible();
     expect(
       within(region).queryByRole("button", { name: "登录" }),
     ).not.toBeInTheDocument();
-    expect(within(region).getAllByText("未确认").length).toBeGreaterThan(0);
+    expect(within(region).getAllByText("暂时无法确认").length).toBeGreaterThan(
+      0,
+    );
     expect(port.get).toHaveBeenCalledWith("qoderwork");
   });
 
@@ -124,10 +126,10 @@ describe("AgentInstallReadinessSection", () => {
         port={portFor(readiness("codex"))}
       />,
     );
-    const region = screen.getByRole("region", { name: "安装方式" });
+    const region = screen.getByRole("region", { name: "安装与更新" });
     expect(
       await within(region).findByText(
-        "安装与更新由现有 Codex Desktop 安装器管理。",
+        "Codex Desktop 的安装和更新请在现有安装器中完成。",
       ),
     ).toBeVisible();
     expect(within(region).queryByRole("button")).not.toBeInTheDocument();
@@ -157,9 +159,7 @@ describe("AgentInstallReadinessSection", () => {
       />,
     );
     expect(
-      await screen.findByText(
-        "当前无法读取安装准备度。此区域不会推断安装可用性。",
-      ),
+      await screen.findByText("暂时无法检查安装状态。请重新打开此页面。"),
     ).toBeVisible();
   });
 
@@ -224,14 +224,12 @@ describe("AgentInstallReadinessSection", () => {
     stage = "succeeded";
     await waitFor(
       () => {
-        expect(
-          screen.getByText("操作已完成。下面是再次读取的状态，不是推断。"),
-        ).toBeVisible();
+        expect(screen.getByText("操作已完成，安装状态已更新。")).toBeVisible();
       },
       { timeout: 3000 },
     );
     expect(
-      screen.queryByText("操作未能完成。此区域不会推断安装成功。"),
+      screen.queryByText("无法确认操作结果。请刷新安装状态后再试。"),
     ).not.toBeInTheDocument();
   });
 });

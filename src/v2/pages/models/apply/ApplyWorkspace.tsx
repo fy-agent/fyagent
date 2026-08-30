@@ -84,7 +84,7 @@ export function ApplyWorkspace({
     >
       <header className="fy-apply-header">
         <div>
-          <p className="fy-apply-eyebrow">Change Plan</p>
+          <p className="fy-apply-eyebrow">配置确认</p>
           <h2 id="fy-apply-title">{view.title}</h2>
           <p>{view.description}</p>
         </div>
@@ -94,12 +94,12 @@ export function ApplyWorkspace({
       </header>
 
       {view.preview ? (
-        <div className="fy-apply-preview" aria-label="变更计划预览">
+        <div className="fy-apply-preview" aria-label="配置更改预览">
           <section
             className="fy-apply-pane"
             aria-labelledby="fy-apply-semantic-title"
           >
-            <h3 id="fy-apply-semantic-title">语义变化</h3>
+            <h3 id="fy-apply-semantic-title">将要更改</h3>
             <p>{view.preview.semantic.summary}</p>
             <dl className="fy-apply-plan-details">
               <div>
@@ -107,19 +107,12 @@ export function ApplyWorkspace({
                 <dd>{view.preview.semantic.operationLabel}</dd>
               </div>
               <div>
-                <dt>当前 Provider</dt>
-                <dd>{view.preview.semantic.currentCode}</dd>
+                <dt>目标</dt>
+                <dd>{view.preview.semantic.targetName}</dd>
               </div>
               <div>
-                <dt>目标 Provider</dt>
-                <dd>
-                  {view.preview.semantic.targetName}（
-                  {view.preview.semantic.targetCode}）
-                </dd>
-              </div>
-              <div>
-                <dt>计划状态</dt>
-                <dd>{view.preview.semantic.planStatusLabel}</dd>
+                <dt>确认状态</dt>
+                <dd>{view.preview.semantic.confirmationLabel}</dd>
               </div>
             </dl>
           </section>
@@ -127,20 +120,20 @@ export function ApplyWorkspace({
             className="fy-apply-pane"
             aria-labelledby="fy-apply-risk-title"
           >
-            <h3 id="fy-apply-risk-title">风险与重启</h3>
+            <h3 id="fy-apply-risk-title">需要注意</h3>
             <dl className="fy-apply-plan-details">
               <div>
-                <dt>重启预期</dt>
+                <dt>应用后</dt>
                 <dd>{view.preview.risk.restartLabel}</dd>
               </div>
             </dl>
             {view.preview.risk.empty ? (
-              <p className="fy-apply-empty">无额外风险项</p>
+              <p className="fy-apply-empty">没有其他需要确认的事项</p>
             ) : (
               <ul className="fy-apply-risk-list">
                 {view.preview.risk.items.map((item) => (
-                  <li key={item.code}>
-                    {item.code}（{item.severity}）
+                  <li key={item.key}>
+                    {item.label}（{item.levelLabel}）
                   </li>
                 ))}
               </ul>
@@ -150,30 +143,22 @@ export function ApplyWorkspace({
             className="fy-apply-pane"
             aria-labelledby="fy-apply-scope-title"
           >
-            <h3 id="fy-apply-scope-title">前置条件与范围</h3>
+            <h3 id="fy-apply-scope-title">影响范围</h3>
             <dl className="fy-apply-plan-details">
               <div>
-                <dt>读取范围</dt>
+                <dt>会检查</dt>
                 <dd>{view.preview.scope.readLabels.join("、")}</dd>
               </div>
               <div>
-                <dt>写入范围</dt>
+                <dt>会修改</dt>
                 <dd>{view.preview.scope.writeLabels.join("、")}</dd>
               </div>
               <div>
-                <dt>凭据条件</dt>
+                <dt>登录凭据</dt>
                 <dd>{view.preview.scope.secretLabel}</dd>
               </div>
               <div>
-                <dt>数据库基线</dt>
-                <dd>{view.preview.scope.dbBaselineLabel}</dd>
-              </div>
-              <div>
-                <dt>设备基线</dt>
-                <dd>{view.preview.scope.deviceBaselineLabel}</dd>
-              </div>
-              <div>
-                <dt>过期时间</dt>
+                <dt>预览有效期</dt>
                 <dd>{view.preview.scope.expiresLabel}</dd>
               </div>
             </dl>
@@ -182,25 +167,21 @@ export function ApplyWorkspace({
             className="fy-apply-pane"
             aria-labelledby="fy-apply-recovery-title"
           >
-            <h3 id="fy-apply-recovery-title">恢复方式</h3>
+            <h3 id="fy-apply-recovery-title">失败或中断时</h3>
             <dl className="fy-apply-plan-details">
               <div>
-                <dt>证据</dt>
-                <dd>{view.preview.recovery.evidenceLabel}</dd>
+                <dt>保存失败</dt>
+                <dd>{view.preview.recovery.rollbackLabel}</dd>
               </div>
               <div>
-                <dt>补偿</dt>
-                <dd>{view.preview.recovery.compensationLabel}</dd>
-              </div>
-              <div>
-                <dt>回读</dt>
-                <dd>{view.preview.recovery.readbackLabel}</dd>
+                <dt>操作中断</dt>
+                <dd>{view.preview.recovery.interruptionLabel}</dd>
               </div>
             </dl>
           </section>
         </div>
       ) : (
-        <p className="fy-apply-empty">尚未生成可应用的计划。</p>
+        <p className="fy-apply-empty">还没有可确认的配置预览。</p>
       )}
 
       <div className="fy-apply-grid">
@@ -210,13 +191,13 @@ export function ApplyWorkspace({
         >
           <h3 id="fy-apply-progress-title">执行进度</h3>
           {view.steps.length > 0 ? (
-            <ol className="fy-apply-step-list" aria-label="Change Job 执行步骤">
+            <ol className="fy-apply-step-list" aria-label="配置应用步骤">
               {view.steps.map((step) => (
                 <ApplyStep key={step.key} step={step} />
               ))}
             </ol>
           ) : (
-            <p className="fy-apply-empty">确认前不会执行任何配置写入。</p>
+            <p className="fy-apply-empty">确认前不会修改配置。</p>
           )}
         </section>
 
@@ -224,13 +205,10 @@ export function ApplyWorkspace({
           className="fy-apply-pane fy-apply-result"
           aria-labelledby="fy-apply-result-title"
         >
-          <h3 id="fy-apply-result-title">回读结果</h3>
+          <h3 id="fy-apply-result-title">应用结果</h3>
           <p className="fy-apply-live" aria-live="polite">
             {view.statusLabel}
           </p>
-          {view.eventSeq !== null ? (
-            <p className="fy-apply-event-seq">后端事件序号 {view.eventSeq}</p>
-          ) : null}
           {view.resources.length > 0 ? (
             <ul className="fy-apply-resource-list">
               {view.resources.map((resource) => (
@@ -241,36 +219,36 @@ export function ApplyWorkspace({
               ))}
             </ul>
           ) : (
-            <p className="fy-apply-empty">尚无真实回读结果。</p>
+            <p className="fy-apply-empty">应用后会在这里显示检查结果。</p>
           )}
           {view.partialTruth ? (
-            <dl className="fy-apply-partial" aria-label="部分执行结果">
+            <dl className="fy-apply-partial" aria-label="部分应用结果">
               <div>
-                <dt>已成功步骤</dt>
+                <dt>已完成</dt>
                 <dd>{view.partialTruth.succeededCount}</dd>
               </div>
               <div>
-                <dt>已补偿步骤</dt>
+                <dt>已恢复</dt>
                 <dd>{view.partialTruth.compensatedCount}</dd>
               </div>
               <div>
-                <dt>未确认步骤</dt>
+                <dt>尚未确认</dt>
                 <dd>{view.partialTruth.unverifiedCount}</dd>
               </div>
               <div>
-                <dt>剩余效果</dt>
+                <dt>仍有更改</dt>
                 <dd>
                   {view.partialTruth.remainingEffects.length > 0
                     ? view.partialTruth.remainingEffects.join("、")
-                    : "无剩余写入效果"}
+                    : "没有检测到残留更改"}
                 </dd>
               </div>
               <div>
-                <dt>人工动作</dt>
+                <dt>建议操作</dt>
                 <dd>
                   {view.partialTruth.manualActions.length > 0
                     ? view.partialTruth.manualActions.join("、")
-                    : "无需额外人工动作"}
+                    : "无需额外操作"}
                 </dd>
               </div>
             </dl>
@@ -287,7 +265,7 @@ export function ApplyWorkspace({
         </Button>
         {view.canRegenerate ? (
           <Button className="fy-control-button-primary" onClick={onRegenerate}>
-            重新生成计划
+            重新生成预览
           </Button>
         ) : null}
         {!job && !view.canRegenerate ? (

@@ -116,8 +116,9 @@ describe("CodexOAuthSection", () => {
     });
     render(<CodexOAuthSection />);
     expect(
-      screen.getByText(/当前 Codex 凭据存储不是 file 模式/u),
+      screen.getByText(/Codex 当前不使用 auth\.json 保存凭据/u),
     ).toBeVisible();
+    expect(screen.getByText(/这里的账号只用于 FyAgent 路由/u)).toBeVisible();
     expect(screen.getByText(/工作区路由 ID/u)).toBeVisible();
     expect(screen.getByText(/ws-shared/u)).toBeVisible();
   });

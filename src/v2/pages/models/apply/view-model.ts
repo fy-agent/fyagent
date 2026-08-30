@@ -41,32 +41,33 @@ export type ApplyResourcePresentation = {
   readonly tone: ApplyTone;
 };
 
+export type ApplyRiskPresentation = {
+  readonly key: string;
+  readonly label: string;
+  readonly levelLabel: string;
+};
+
 export type ApplyPreviewModel = {
   readonly semantic: {
     readonly summary: string;
-    readonly currentCode: string;
-    readonly targetCode: string;
     readonly targetName: string;
     readonly operationLabel: string;
-    readonly planStatusLabel: string;
+    readonly confirmationLabel: string;
   };
   readonly risk: {
     readonly restartLabel: string;
-    readonly items: ChangePlan["risks"];
+    readonly items: readonly ApplyRiskPresentation[];
     readonly empty: boolean;
   };
   readonly scope: {
     readonly readLabels: readonly string[];
     readonly writeLabels: readonly string[];
     readonly secretLabel: string;
-    readonly dbBaselineLabel: string;
-    readonly deviceBaselineLabel: string;
     readonly expiresLabel: string;
   };
   readonly recovery: {
-    readonly evidenceLabel: string;
-    readonly compensationLabel: string;
-    readonly readbackLabel: string;
+    readonly rollbackLabel: string;
+    readonly interruptionLabel: string;
   };
 };
 
@@ -88,7 +89,6 @@ export type ApplyPresentation = {
   readonly plan: ChangePlan | null;
   readonly preview: ApplyPreviewModel | null;
   readonly partialTruth: ApplyPartialTruth | null;
-  readonly eventSeq: number | null;
   readonly steps: readonly ApplyStepPresentation[];
   readonly resources: readonly ApplyResourcePresentation[];
   readonly canConfirm: boolean;
@@ -111,11 +111,11 @@ const REGENERATE_ERRORS = new Set([
 ]);
 
 const STEP_LABELS = {
-  precheck: "核对计划",
-  snapshot: "冻结执行快照",
-  managed_write: "应用配置",
-  readback: "回读核对",
-  finalize: "确认最终状态",
+  precheck: "检查当前配置",
+  snapshot: "准备恢复信息",
+  managed_write: "写入配置",
+  readback: "确认保存结果",
+  finalize: "完成",
 } as const satisfies Record<ChangeJobSnapshot["steps"][number]["kind"], string>;
 
 const STEP_STATUS_LABELS = {
@@ -123,8 +123,8 @@ const STEP_STATUS_LABELS = {
   running: "进行中",
   succeeded: "已完成",
   failed: "失败",
-  compensating: "正在补偿",
-  compensated: "已补偿",
+  compensating: "正在恢复原设置",
+  compensated: "已恢复原设置",
   skipped: "已跳过",
 } as const satisfies Record<
   ChangeJobSnapshot["steps"][number]["status"],
@@ -132,19 +132,19 @@ const STEP_STATUS_LABELS = {
 >;
 
 const RESOURCE_LABELS = {
-  provider_db_current: "数据库当前 Provider",
-  device_current: "设备当前 Provider",
-  target_definition: "目标 Provider 定义",
-  codex_live_projection: "Codex 实时配置投影",
-  work_buddy_models_config: "WorkBuddy 模型配置",
-  work_buddy_backup: "WorkBuddy 备份",
+  provider_db_current: "FyAgent 当前 Provider",
+  device_current: "Codex 当前 Provider",
+  target_definition: "目标 Provider 设置",
+  codex_live_projection: "Codex 配置文件",
+  work_buddy_models_config: "WorkBuddy 模型设置",
+  work_buddy_backup: "WorkBuddy 配置备份",
 } as const satisfies Record<
   ChangeJobSnapshot["resources"][number]["kind"],
   string
 >;
 
 const MANUAL_ACTION_LABELS = {
-  retry_readback: "重新回读",
+  retry_readback: "重新检查当前配置",
   review_configuration: "检查配置",
 } as const satisfies Record<
   NonNullable<ChangeJobSnapshot["partialResult"]>["manualActions"][number],
@@ -173,62 +173,88 @@ function restartExpectationLabel(
 function secretCapabilityLabel(value: ChangePlan["secretCapability"]): string {
   switch (value) {
     case "no_new_credential_material":
-      return "不写入新的凭据材料";
+      return "不会新增或更改登录凭据";
     case "secret_dependency_unavailable":
-      return "缺少可用凭据依赖，无法安全应用";
+      return "缺少可用凭据，请先返回补充";
     default:
       return assertNever(value);
   }
 }
 
-function evidenceNoteLabel(note: string): string {
-  return note === "usage_not_observed"
-    ? "本次不把真实使用观察当作成功证据。"
-    : "仅采用计划内证据说明，不把未观察的使用当成成功。";
+function riskLabel(code: string): string {
+  switch (code) {
+    case "local_configuration_write":
+      return "将修改本机配置文件";
+    case "save_provider_then_set_current":
+      return "保存后会设为当前 Provider";
+    case "existing_model_ids_will_be_updated":
+      return "同名模型会更新现有设置";
+    default:
+      return "存在需要留意的配置变化";
+  }
+}
+
+function riskLevelLabel(severity: string): string {
+  switch (severity) {
+    case "warning":
+      return "注意";
+    case "danger":
+    case "error":
+      return "高风险";
+    default:
+      return "提示";
+  }
+}
+
+function previewValidityLabel(plan: ChangePlan): string {
+  const seconds = Math.max(0, plan.expiresAt - plan.createdAt);
+  const minutes = Math.max(1, Math.ceil(seconds / 60));
+  return `${String(minutes)} 分钟内有效`;
 }
 
 function createPreviewModel(plan: ChangePlan): ApplyPreviewModel {
   const semantic =
     plan.operation === "workbuddy_models_save"
       ? {
-          summary: `保存 WorkBuddy 模型配置 ${plan.targetProviderName}（${plan.targetProviderCode}）。`,
-          operationLabel: "WorkBuddy 模型保存并应用",
+          summary: `保存 WorkBuddy 模型设置，服务地址为 ${plan.targetProviderName}。`,
+          operationLabel: "保存 WorkBuddy 模型设置",
         }
       : plan.operation === "codex_provider_upsert_and_switch"
         ? {
-            summary: `保存 Codex Provider ${plan.targetProviderName}（${plan.targetProviderCode}）并设为当前配置。`,
-            operationLabel: "Codex Provider 保存并设为当前",
+            summary: `保存 ${plan.targetProviderName} 并设为 Codex 当前 Provider。`,
+            operationLabel: "保存并启用 Codex Provider",
           }
         : {
-            summary: `将 Codex 当前 Provider ${plan.currentProviderCode} 切换到 ${plan.targetProviderName}（${plan.targetProviderCode}）。`,
-            operationLabel: "Codex Provider 切换",
+            summary: `将 Codex 当前 Provider 切换为 ${plan.targetProviderName}。`,
+            operationLabel: "切换 Codex Provider",
           };
   return {
     semantic: {
       summary: semantic.summary,
-      currentCode: plan.currentProviderCode,
-      targetCode: plan.targetProviderCode,
       targetName: plan.targetProviderName,
       operationLabel: semantic.operationLabel,
-      planStatusLabel: plan.status === "ready" ? "可确认" : "不可再次使用",
+      confirmationLabel:
+        plan.status === "ready" ? "等待确认" : "请重新生成预览",
     },
     risk: {
       restartLabel: restartExpectationLabel(plan.restartExpectation),
-      items: plan.risks,
+      items: plan.risks.map((risk, index) => ({
+        key: `${risk.code}-${String(index)}`,
+        label: riskLabel(risk.code),
+        levelLabel: riskLevelLabel(risk.severity),
+      })),
       empty: plan.risks.length === 0,
     },
     scope: {
       readLabels: plan.adapter.readSet.map((kind) => RESOURCE_LABELS[kind]),
       writeLabels: plan.adapter.writeSet.map((kind) => RESOURCE_LABELS[kind]),
       secretLabel: secretCapabilityLabel(plan.secretCapability),
-      dbBaselineLabel: plan.dbBaselineProviderId ?? "无数据库基线",
-      deviceBaselineLabel: plan.deviceBaselineProviderId ?? "无设备基线",
-      expiresLabel: new Date(plan.expiresAt * 1000).toISOString(),
+      expiresLabel: previewValidityLabel(plan),
     },
     recovery: {
-      evidenceLabel: evidenceNoteLabel(plan.evidenceNote),
-      compensationLabel: "失败时由写入方回滚到原基线，而不是另一套撤销引擎。",
-      readbackLabel: "中断后只做只读回读，不重放写入。",
+      rollbackLabel: "保存失败时会恢复修改前的设置。",
+      interruptionLabel:
+        "如果操作中断，FyAgent 只检查当前设置，不会自动再次修改。",
     },
   };
 }
@@ -278,28 +304,28 @@ function resourcePresentation(
       return {
         key: `${resource.kind}-${String(index)}`,
         label: RESOURCE_LABELS[resource.kind],
-        statusLabel: "回读一致",
+        statusLabel: "已确认",
         tone: "success",
       };
     case "pending":
       return {
         key: `${resource.kind}-${String(index)}`,
         label: RESOURCE_LABELS[resource.kind],
-        statusLabel: "等待回读",
+        statusLabel: "等待确认",
         tone: "neutral",
       };
     case "mismatched":
       return {
         key: `${resource.kind}-${String(index)}`,
         label: RESOURCE_LABELS[resource.kind],
-        statusLabel: "回读不一致",
+        statusLabel: "与预期不一致",
         tone: "danger",
       };
     case "unavailable":
       return {
         key: `${resource.kind}-${String(index)}`,
         label: RESOURCE_LABELS[resource.kind],
-        statusLabel: "状态无法确认",
+        statusLabel: "无法确认",
         tone: "unknown",
       };
     default:
@@ -334,9 +360,10 @@ function terminalPresentation(
     return {
       mode: "recovery",
       tone: "unknown",
-      title: "配置结果需要人工确认",
-      description: "回读无法建立单一可信状态。系统不会自动重复写入。",
-      statusLabel: "需要恢复确认",
+      title: "无法确认配置结果",
+      description:
+        "当前设置与预期不一致。为避免覆盖已有配置，FyAgent 已停止继续修改。请重新打开页面并检查当前设置。",
+      statusLabel: "需要检查",
     };
   }
 
@@ -345,16 +372,16 @@ function terminalPresentation(
       return {
         mode: "running",
         tone: "neutral",
-        title: "应用任务已创建",
-        description: "正在等待真实任务开始执行。",
-        statusLabel: "已计划",
+        title: "准备应用配置",
+        description: "即将开始修改本机设置。",
+        statusLabel: "等待开始",
       };
     case "running":
       return {
         mode: "running",
         tone: "neutral",
         title: "正在应用配置",
-        description: "以下进度来自真实 Change Job 事件与回读。",
+        description: "请勿关闭 FyAgent，完成后会显示结果。",
         statusLabel: "进行中",
       };
     case "succeeded":
@@ -364,7 +391,7 @@ function terminalPresentation(
             mode: "succeeded",
             tone: "success",
             title: "配置已应用",
-            description: "本机配置写入与回读已完成。",
+            description: "设置已保存，并已确认当前配置。",
             statusLabel: "已完成",
           };
         case "applied_restart_recommended":
@@ -372,9 +399,9 @@ function terminalPresentation(
           return {
             mode: "warning",
             tone: "warning",
-            title: "配置已应用，但仍需留意",
-            description: "请按提示完成后续操作，再验证真实使用情况。",
-            statusLabel: "需留意",
+            title: "配置已应用，请完成后续操作",
+            description: "请按提示重启或重新打开目标应用。",
+            statusLabel: "需要操作",
           };
         case "recovered_target_reached":
         case "cancelled_before_write":
@@ -390,7 +417,7 @@ function terminalPresentation(
             mode: "unknown",
             tone: "unknown",
             title: "配置结果无法确认",
-            description: "任务状态与结果不一致，不能视为成功。",
+            description: "请重新打开页面并检查当前配置。",
             statusLabel: "状态未知",
           };
         default:
@@ -401,26 +428,26 @@ function terminalPresentation(
         return {
           mode: "warning",
           tone: "warning",
-          title: "配置已通过恢复回读确认",
-          description: "进程中断后已从真实目标确认配置生效；系统没有重放写入。",
-          statusLabel: "恢复后已确认",
+          title: "配置已生效",
+          description: "操作中断后已确认目标设置。请重新打开目标应用检查。",
+          statusLabel: "已确认",
         };
       }
       return {
         mode: "warning",
         tone: "warning",
-        title: "配置已应用，但仍需留意",
-        description: "存在明确警告，请完成提示的后续检查。",
-        statusLabel: "需留意",
+        title: "配置已应用，请完成后续操作",
+        description: "请按页面提示检查当前设置。",
+        statusLabel: "需要操作",
       };
     case "failed":
       if (job.resultCode === "interrupted_before_write") {
         return {
           mode: "failed",
           tone: "danger",
-          title: "执行在写入前中断",
-          description: "回读已确认未进入托管写入，系统没有重放配置写入。",
-          statusLabel: "未执行写入",
+          title: "未修改配置",
+          description: "操作在保存前中断，原设置未变。",
+          statusLabel: "未保存",
         };
       }
       return {
@@ -438,24 +465,24 @@ function terminalPresentation(
             : "unknown",
         title:
           job.resultCode === "writer_failed_baseline_restored"
-            ? "配置应用失败，原基线已确认"
-            : "配置结果需要人工确认",
+            ? "配置未应用"
+            : "无法确认配置结果",
         description:
           job.resultCode === "writer_failed_baseline_restored"
-            ? "写入失败，回读已确认仍处于原基线。"
-            : "当前权威状态不明确，系统不会自动重复写入。",
+            ? "保存失败，已恢复修改前的设置。"
+            : "为避免覆盖现有设置，FyAgent 已停止继续修改。请重新打开页面并检查。",
         statusLabel:
           job.resultCode === "writer_failed_baseline_restored"
             ? "失败"
-            : "需要恢复确认",
+            : "需要检查",
       };
     case "cancelled":
       return {
         mode: "failed",
         tone: "neutral",
-        title: "执行已取消",
-        description: "取消发生在托管写入提交点之前，没有执行配置写入。",
-        statusLabel: "写入前已取消",
+        title: "已取消",
+        description: "配置尚未写入。",
+        statusLabel: "未保存",
       };
     default:
       return assertNever(job.status);
@@ -480,33 +507,31 @@ export function createApplyViewModel(
       ? {
           mode: "blocked" as const,
           tone: "warning" as const,
-          title: "无法安全生成变更计划",
-          description:
-            "目标配置需要新的凭据材料，当前 Apply 不会接收或写入该凭据。",
-          statusLabel: "凭据条件不满足",
+          title: "缺少可用凭据",
+          description: "请返回连接设置补充 API Key 或登录信息，然后重试。",
+          statusLabel: "需要补充凭据",
         }
       : mustRegenerate
         ? {
             mode: "regenerate" as const,
             tone: "warning" as const,
-            title: "计划已失效",
-            description: "请重新生成计划；当前计划不会被应用。",
-            statusLabel: "需要重新生成",
+            title: "预览已过期",
+            description: "请重新生成预览后再确认。",
+            statusLabel: "需要更新预览",
           }
         : error
           ? {
               mode: "unknown" as const,
               tone: "unknown" as const,
-              title: "无法确认 Apply 状态",
-              description: error.message ?? "发生受控错误，未建立成功证据。",
-              statusLabel: "状态未知",
+              title: "暂时无法继续",
+              description: "请刷新页面后重试。",
+              statusLabel: "暂时不可用",
             }
           : {
               mode: "preview" as const,
               tone: "neutral" as const,
-              title: "确认配置变更",
-              description:
-                "预览仅用于核对；点击确认后才会提交真实 Change Plan。",
+              title: "确认配置更改",
+              description: "确认前不会修改配置。请检查以下内容。",
               statusLabel: "待确认",
             };
 
@@ -534,16 +559,15 @@ export function createApplyViewModel(
       job &&
       (job.status === "succeeded" || job.status === "warning") &&
       job.usageEvidence === "not_observed"
-        ? "配置结果已记录，尚无真实使用证据。"
+        ? "配置已保存，但尚未在目标应用中测试。请新建会话检查。"
         : null,
     plan,
     preview: plan ? createPreviewModel(plan) : null,
     partialTruth: projectPartialTruth(job?.partialResult ?? null),
-    eventSeq: job?.eventSeq ?? null,
     steps,
     resources,
     canConfirm,
     canRegenerate: !job && (mustRegenerate || secretBlocked),
-    confirmLabel: busy ? "正在提交…" : "确认应用",
+    confirmLabel: busy ? "正在应用…" : "应用更改",
   };
 }

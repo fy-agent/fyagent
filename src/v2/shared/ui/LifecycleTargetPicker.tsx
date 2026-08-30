@@ -13,7 +13,7 @@ function scopeCopy(scope: AgentInstallationTarget["scope"]): string {
     case "custom":
       return "自定义位置";
     case "unknown":
-      return "范围未确认";
+      return "位置类型未知";
   }
 }
 
@@ -41,8 +41,8 @@ export function LifecycleTargetPicker({
   if (loading) {
     return (
       <div className="fy-agent-target-picker-status">
-        <Spinner label="正在读取安装目标" />
-        <span>正在读取安装目标</span>
+        <Spinner label="正在读取安装位置" />
+        <span>正在读取安装位置</span>
       </div>
     );
   }
@@ -53,7 +53,7 @@ export function LifecycleTargetPicker({
         <span>{error}</span>
         {onRefresh ? (
           <Button type="button" onClick={onRefresh} disabled={disabled}>
-            重新读取
+            刷新
           </Button>
         ) : null}
       </InlineNotice>
@@ -63,7 +63,7 @@ export function LifecycleTargetPicker({
   if (targets.length === 0) {
     return (
       <InlineNotice tone="warning">
-        当前没有经过验证、可用于此操作的安装目标。
+        没有找到可用于此操作的安装。请刷新或手动安装。
       </InlineNotice>
     );
   }
@@ -71,10 +71,10 @@ export function LifecycleTargetPicker({
   return (
     <fieldset
       className="fy-agent-target-picker"
-      aria-label="安装目标"
+      aria-label="选择安装位置"
       disabled={disabled}
     >
-      <legend>本次操作目标</legend>
+      <legend>选择安装位置</legend>
       <div className="fy-agent-target-options">
         {targets.map((target) => {
           const eligible = target.eligibleActions.includes(action);

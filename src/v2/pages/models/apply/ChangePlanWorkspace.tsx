@@ -134,24 +134,21 @@ export function ChangePlanWorkspace({
   }, [busy, ports.changePlans, visibleJob?.jobId, visibleJob?.status]);
 
   return (
-    <section
-      className="fy-models-section"
-      aria-label="Change Plan Provider 切换"
-    >
-      <h3>切换已保存的 Provider</h3>
+    <section className="fy-models-section" aria-label="切换 Provider">
+      <h3>切换 Provider</h3>
       <p className="fy-models-muted">
-        先生成零写入预览，再单次确认应用。当前 Provider 不会列为目标。
+        选择目标 Provider。生成预览不会修改配置，确认后才会切换。
       </p>
       {(recoverableJobs.data?.length ?? 0) > 0 ? (
         <InlineNotice tone="warning">
-          检测到 {recoverableJobs.data?.length ?? 0} 个可恢复 Change
-          Job，已执行只读回读；不会重放写入。
+          上次有 {recoverableJobs.data?.length ?? 0} 个配置操作未完成。FyAgent
+          已检查当前设置，不会自动重复修改。
         </InlineNotice>
       ) : null}
       {targets.length > 0 ? (
         <div className="fy-models-inline-fields">
           <label className="fy-control-field">
-            <span>目标 Provider</span>
+            <span>切换到</span>
             <select
               value={effectiveTargetId}
               onChange={(event) => selectTarget(event.target.value)}
@@ -168,7 +165,7 @@ export function ChangePlanWorkspace({
             disabled={!effectiveTargetId || busy}
             onClick={() => void createPlan()}
           >
-            {busy && !visiblePlan ? "正在生成…" : "生成切换计划"}
+            {busy && !visiblePlan ? "正在生成预览…" : "预览更改"}
           </Button>
         </div>
       ) : (

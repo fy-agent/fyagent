@@ -79,10 +79,10 @@ describe("WorkBuddy save Change Plan workspace", () => {
       </FeatureProvider>,
     );
 
-    expect(screen.getByText("WorkBuddy 模型保存并应用")).toBeVisible();
+    expect(screen.getByText("保存 WorkBuddy 模型设置")).toBeVisible();
     expect(screen.queryByRole("button", { name: "取消" })).toBeNull();
     expect(document.body).not.toHaveTextContent("secret");
-    fireEvent.click(screen.getByRole("button", { name: "确认应用" }));
+    fireEvent.click(screen.getByRole("button", { name: "应用更改" }));
     await waitFor(() => expect(apply).toHaveBeenCalledTimes(1));
     expect(apply).toHaveBeenCalledWith({
       planId: changePlanWorkBuddyWire.planId,

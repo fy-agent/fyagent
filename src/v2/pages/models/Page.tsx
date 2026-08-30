@@ -457,10 +457,10 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
         writeLock.current = true;
         show("save", {
           tone: "warning",
-          title: "配置结果需要人工确认",
+          title: "无法确认当前配置",
           description: rereadConfirmed
-            ? "已刷新当前设置，请检查后再次确认。"
-            : "暂时无法刷新当前设置，请刷新后再次提交。",
+            ? "已刷新当前设置，请检查后再保存。"
+            : "请重新打开页面并检查当前设置后再保存。",
         });
         return;
       }
@@ -469,8 +469,8 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
           tone: "info",
           title: "WorkBuddy 模型配置已保存",
           description: rereadConfirmed
-            ? "本机配置写入与回读已完成。"
-            : "暂时无法刷新当前设置，请刷新后确认。",
+            ? "当前设置已更新。请在 WorkBuddy 中检查模型列表。"
+            : "设置已保存，但暂时无法刷新页面。请重新打开后检查。",
         });
         writeLock.current = false;
         return;
@@ -486,7 +486,7 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
             : "保存未完成",
         description: rereadConfirmed
           ? "已刷新当前设置，请检查后重试。"
-          : "暂时无法刷新当前设置，请刷新后再次提交。",
+          : "请重新打开页面并检查当前设置后重试。",
       });
       writeLock.current = false;
     })();
@@ -662,7 +662,9 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
                 setPendingDeleteId(modelId);
               }}
               emptyLabel={
-                existingSearch.trim() ? "没有匹配的模型 ID" : "未观察到模型 ID"
+                existingSearch.trim()
+                  ? "没有匹配的模型 ID"
+                  : "还没有找到已配置的模型 ID"
               }
             />
             <FieldFeedback

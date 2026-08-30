@@ -552,7 +552,7 @@ describe("V2 Models page", () => {
     await user.click(screen.getByRole("button", { name: "保存并应用" }));
     await confirmWriteDisclosure(user);
 
-    expect(await screen.findByText("WorkBuddy 模型保存并应用")).toBeVisible();
+    expect(await screen.findByText("保存 WorkBuddy 模型设置")).toBeVisible();
     expect(screen.queryByRole("button", { name: "确认覆盖" })).toBeNull();
     expect(screen.queryByRole("button", { name: "取消" })).toBeNull();
     expect(document.body).not.toHaveTextContent("first-secret");
@@ -569,7 +569,7 @@ describe("V2 Models page", () => {
       expectedRevision: "revision-1",
     });
 
-    await user.click(screen.getByRole("button", { name: "确认应用" }));
+    await user.click(screen.getByRole("button", { name: "应用更改" }));
     await screen.findByText("WorkBuddy 模型配置已保存");
     expect(ports.changePlans.applyChangePlan).toHaveBeenCalledWith({
       planId: changePlanWorkBuddyWire.planId,
@@ -711,10 +711,12 @@ describe("V2 Models page", () => {
     await user.type(screen.getByLabelText("自定义模型 ID"), "conflict-model");
     await user.click(screen.getByRole("button", { name: "保存并应用" }));
     await confirmWriteDisclosure(user);
-    await user.click(await screen.findByRole("button", { name: "确认应用" }));
+    await user.click(await screen.findByRole("button", { name: "应用更改" }));
 
     expect(
-      await screen.findByText("暂时无法刷新当前设置，请刷新后确认。"),
+      await screen.findByText(
+        "设置已保存，但暂时无法刷新页面。请重新打开后检查。",
+      ),
     ).toBeVisible();
     expect(document.body).not.toHaveTextContent("权威状态");
     expect(screen.getByLabelText("API Key")).toHaveValue("");
@@ -740,10 +742,10 @@ describe("V2 Models page", () => {
     await user.type(screen.getByLabelText("自定义模型 ID"), "expired-model");
     await user.click(screen.getByRole("button", { name: "保存并应用" }));
     await confirmWriteDisclosure(user);
-    await user.click(await screen.findByRole("button", { name: "确认应用" }));
+    await user.click(await screen.findByRole("button", { name: "应用更改" }));
 
-    expect(await screen.findByText("计划已失效")).toBeVisible();
-    expect(screen.getByRole("button", { name: "重新生成计划" })).toBeVisible();
+    expect(await screen.findByText("预览已过期")).toBeVisible();
+    expect(screen.getByRole("button", { name: "重新生成预览" })).toBeVisible();
     expect(screen.queryByRole("button", { name: "确认覆盖" })).toBeNull();
     expect(ports.workbuddy.saveModels).not.toHaveBeenCalled();
     expect(screen.getByLabelText("API Key")).toHaveValue("expired-secret");
@@ -981,7 +983,7 @@ describe("V2 Models page", () => {
     );
     await user.click(screen.getByRole("button", { name: "保存并应用" }));
     await confirmWriteDisclosure(user);
-    await user.click(await screen.findByRole("button", { name: "确认应用" }));
+    await user.click(await screen.findByRole("button", { name: "应用更改" }));
 
     await screen.findByText("WorkBuddy 模型配置已保存");
     expect(ports.changePlans.createWorkBuddySavePlan).toHaveBeenCalledWith({
@@ -1083,7 +1085,7 @@ describe("V2 Models page", () => {
     });
 
     expect(
-      await screen.findByRole("button", { name: "确认应用" }),
+      await screen.findByRole("button", { name: "应用更改" }),
     ).toBeEnabled();
     expect(
       screen.getByText("当前网络代理可能影响连接，请确认后使用。"),
@@ -1097,7 +1099,7 @@ describe("V2 Models page", () => {
       modelId: "gpt-5",
       codexFeatures: { imageExtension: false, websockets: false },
     });
-    await user.click(screen.getByRole("button", { name: "确认应用" }));
+    await user.click(screen.getByRole("button", { name: "应用更改" }));
     await screen.findByText("模型设置已保存并设为当前配置");
     expect(ports.changePlans.applyChangePlan).toHaveBeenCalledWith({
       planId: changePlanUpsertWire.planId,
@@ -1296,7 +1298,7 @@ describe("V2 Models page", () => {
       screen.getByRole("button", { name: "保存并设为当前配置" }),
     );
     await confirmWriteDisclosure(user);
-    await user.click(await screen.findByRole("button", { name: "确认应用" }));
+    await user.click(await screen.findByRole("button", { name: "应用更改" }));
 
     await screen.findByText("无法确认当前设置");
     expect(document.body).not.toHaveTextContent("partial-secret");
@@ -1381,7 +1383,7 @@ describe("V2 Models page", () => {
     expect(
       ports.changePlans.createCodexProviderUpsertPlan,
     ).toHaveBeenCalledTimes(1);
-    await user.click(await screen.findByRole("button", { name: "确认应用" }));
+    await user.click(await screen.findByRole("button", { name: "应用更改" }));
 
     expect(
       await screen.findByText("未能保存设置，已还原之前的状态"),
@@ -1435,7 +1437,7 @@ describe("V2 Models page", () => {
     expect(
       await screen.findByText("当前模型可能与此连接方式不兼容，请确认后使用。"),
     ).toBeVisible();
-    await user.click(screen.getByRole("button", { name: "确认应用" }));
+    await user.click(screen.getByRole("button", { name: "应用更改" }));
 
     await screen.findByText("模型设置已保存并设为当前配置");
     expect(screen.getByText(/部分设置仍需确认/)).toBeVisible();
@@ -1467,7 +1469,7 @@ describe("V2 Models page", () => {
       screen.getByRole("button", { name: "保存并设为当前配置" }),
     );
     await confirmWriteDisclosure(user);
-    await user.click(await screen.findByRole("button", { name: "确认应用" }));
+    await user.click(await screen.findByRole("button", { name: "应用更改" }));
 
     expect(await screen.findByText("模型设置已保存，待确认")).toBeVisible();
     expect(
@@ -1555,7 +1557,7 @@ describe("V2 Models page", () => {
     await user.type(url, "https://gateway.example/v1");
     expect(
       screen.getByText(
-        "最终 claude 需要访问的完整端点将会是：/v1/v1/XXXX，请确认是否需要添加 v1，通常路径一般为 /v1/XXXX.",
+        "服务地址已包含 /v1。Claude 会继续追加版本路径，可能请求到 /v1/v1/…。通常应填写不含末尾 /v1 的地址；请按服务商文档确认。",
       ),
     ).toBeVisible();
     expect(

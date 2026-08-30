@@ -119,7 +119,7 @@ export const CodexOAuthSection: React.FC<CodexOAuthSectionProps> = ({
         <p className="text-xs text-muted-foreground">
           {t(
             "codexOauth.nativeProjectionUnavailable",
-            "这些账号可用于 FyAgent 路由；当前 Codex 凭据存储不是 file 模式，因此无法写入原生 auth.json。请在 Codex 中自行登录。",
+            "Codex 当前不使用 auth.json 保存凭据。请在 Codex 中登录；这里的账号只用于 FyAgent 路由。",
           )}
         </p>
       ) : null}

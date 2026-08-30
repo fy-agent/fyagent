@@ -80,9 +80,11 @@ async function expectPromptNativeOnly(page: Page): Promise<void> {
   await expect(promptPage).toHaveClass(/\bfy-feature-page\b/);
   await expect(promptPage).toHaveClass(/\bfy-prompts-page\b/);
   await expect(promptPage).toHaveAttribute("data-data-source", "native");
-  await expect(page.getByText("桌面能力不可用", { exact: true })).toBeVisible();
   await expect(
-    page.getByText("提示词管理仅在 FyAgent 桌面应用中可用。", {
+    page.getByText("请使用 FyAgent 桌面应用", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("网页版不能管理提示词。", {
       exact: true,
     }),
   ).toBeVisible();
@@ -209,7 +211,7 @@ test("switches all six routes and keeps Prompt and Memory controls reachable", a
     page.getByRole("searchbox", { name: "搜索提示词" }),
     page.getByRole("button", { name: "从文件导入" }),
     page.getByRole("button", { name: "新建提示词" }),
-    page.getByText("桌面能力不可用", { exact: true }),
+    page.getByText("请使用 FyAgent 桌面应用", { exact: true }),
   ]) {
     await expectReachable(control);
   }

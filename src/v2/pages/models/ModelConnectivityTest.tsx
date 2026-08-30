@@ -114,7 +114,7 @@ export function ModelConnectivityTest({
         onOpenChange={closeDialog}
         large
         title="选择要测试的模型"
-        description="连通测试会向所选模型发送一次真实请求，并显示上游返回的结果或错误。"
+        description="测试会向所选模型发送一条简短请求，可能产生少量用量。完成后会显示响应或错误。"
         actions={
           <>
             <Button disabled={probing} onClick={() => closeDialog(false)}>

@@ -75,9 +75,9 @@ describe("Codex save Change Plan workspace", () => {
       </FeatureProvider>,
     );
 
-    expect(screen.getByText("Codex Provider 保存并设为当前")).toBeVisible();
+    expect(screen.getByText("保存并启用 Codex Provider")).toBeVisible();
     expect(screen.queryByRole("button", { name: "取消" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "确认应用" }));
+    fireEvent.click(screen.getByRole("button", { name: "应用更改" }));
     await waitFor(() => expect(apply).toHaveBeenCalledTimes(1));
     expect(apply).toHaveBeenCalledWith({
       planId: changePlanUpsertWire.planId,
@@ -131,11 +131,11 @@ describe("Codex save Change Plan workspace", () => {
       </FeatureProvider>,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "确认应用" }));
+    fireEvent.click(screen.getByRole("button", { name: "应用更改" }));
     expect(
-      await screen.findByRole("button", { name: "重新生成计划" }),
+      await screen.findByRole("button", { name: "重新生成预览" }),
     ).toBeVisible();
-    fireEvent.click(screen.getByRole("button", { name: "重新生成计划" }));
+    fireEvent.click(screen.getByRole("button", { name: "重新生成预览" }));
     await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
     expect(onPlanChange).toHaveBeenCalledWith(regenerated);
     expect(apply).toHaveBeenCalledTimes(1);
