@@ -3,7 +3,7 @@
   "name": "agent-lifecycle-reliability-program",
   "title": "Agent install, Auth, and frontend reliability program",
   "description": "Plan and execute stages 1-5: installation target authority, macOS in-place update, Windows discovery/install, verified Auth flows, and frontend reliability architecture.",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": "full-stack-architecture",
   "package": null,
@@ -32,6 +32,9 @@
     "source_baseline": "4e47aab51b272f819da31773b348a2ea0ed8dee2",
     "execution_shape": "dependency-gated-with-independent-slices",
     "issue_ledger": "#31,#47,#101,#141",
-    "implementation_status": "planning-only"
+    "implementation_status": "engineering-complete-native-hil-residuals",
+    "reviewed_integration_head": "1f308459cf5782afeefafccfeff1e8fc092d3e7c",
+    "reviewed_full_ci_run": "33310186138",
+    "native_hil_status": "pending-release-gate"
   }
 }
