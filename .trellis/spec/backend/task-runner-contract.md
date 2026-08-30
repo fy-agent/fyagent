@@ -138,25 +138,30 @@ killProcessTree(pid, platform)
 - `dev` uses `runForeground` (`spawn`, `stdio: "inherit"`,
   `windowsHide: false`). Other Tauri operations keep `run` /
   `spawnSync` / `windowsHide: true`.
-- POSIX hosts (`darwin`, `linux`) start a new process group (`detached:
-  true`) and kill `-pid`. Windows stays attached (`detached: false`) and
+- POSIX hosts (`darwin`, `linux`) start a new process group with
+  `detached: true` and kill `-pid`. Windows stays attached
+  (`detached: false`) and
   uses `taskkill.exe /T /F`. That helper belongs to the development task
   runner only.
 - NSIS installers must not use `taskkill`. JavaScript host branches must
   be `win32` then `isPosixTaskHost` then throw; `platform !== "win32"` is
   forbidden.
+- `scripts/tasks/platform.mjs` is the zero-dependency owner of the closed
+  POSIX-host predicate. `scripts/tasks/lib.mjs` re-exports it for ordinary task
+  callers, while bootstrap/CI helpers that run before dependency installation
+  import the owner directly.
 
 #### 4. Validation & Error Matrix
 
-| Condition | Required result |
-| --- | --- |
-| `FYAGENT_TASK_EFFECT=interactive` without `raw=true` | `tasks:validate` fails |
-| `dev` uses `run` / `spawnSync` | `miseTaskContract` fails |
-| Windows tree kill uses POSIX `kill(-pid)` | Child GUI survives; contract test fails |
-| POSIX group kill uses `taskkill.exe` | Contract test fails |
-| `platform !== "win32"` fallback | `supported-platform:check` fails |
-| NSIS script contains `taskkill` | Windows installer contract fails |
-| Unsupported `process.platform` | Throw `Unsupported task host`; no silent POSIX |
+| Condition                                            | Required result                                |
+| ---------------------------------------------------- | ---------------------------------------------- |
+| `FYAGENT_TASK_EFFECT=interactive` without `raw=true` | `tasks:validate` fails                         |
+| `dev` uses `run` / `spawnSync`                       | `miseTaskContract` fails                       |
+| Windows tree kill uses POSIX `kill(-pid)`            | Child GUI survives; contract test fails        |
+| POSIX group kill uses `taskkill.exe`                 | Contract test fails                            |
+| `platform !== "win32"` fallback                      | `supported-platform:check` fails               |
+| NSIS script contains `taskkill`                      | Windows installer contract fails               |
+| Unsupported `process.platform`                       | Throw `Unsupported task host`; no silent POSIX |
 
 #### 5. Good/Base/Bad Cases
 
@@ -189,7 +194,10 @@ if (platform !== "win32") process.kill(-pid, "SIGKILL");
 
 ```js
 if (platform === "win32") {
-  runner("taskkill.exe", ["/pid", String(pid), "/t", "/f"], { windowsHide: true, stdio: "ignore" });
+  runner("taskkill.exe", ["/pid", String(pid), "/t", "/f"], {
+    windowsHide: true,
+    stdio: "ignore",
+  });
 } else if (isPosixTaskHost(platform)) {
   posixKill(-pid, "SIGTERM");
   posixKill(-pid, "SIGKILL");
@@ -315,19 +323,24 @@ quoting. Non-Windows commands remain direct. This local mise boundary is
 distinct from GitHub Actions, which does not install mise and uses its own
 reviewed `pnpm.cmd` batch-shim bridge in the CI toolchain verifier.
 
-On Windows only, the guarded native wrapper resolves the Visual Studio 2022
+On Windows only, the guarded native wrapper resolves a bounded Visual Studio
+2022 or Visual Studio 2026
 MSVC/SDK environment for the child process immediately before the final
 `cargo`/`pnpm tauri` compile. This is the single controlled exception to the
 "no `cmd.exe`" rule: Visual Studio's only supported loading mechanism is
-`cmd.exe` + `VsDevCmd.bat`. `scripts/tasks/windows-msvc-env.mjs` locates VS 2022
-(including Build Tools) through the official `vswhere.exe` and verifies the
-`Microsoft.VisualStudio.Component.VC.Tools.x86.x64` component, then spawns
+`cmd.exe` + `VsDevCmd.bat`. `scripts/tasks/windows-msvc-env.mjs` locates the
+latest complete instance inside `[17.0,19.0)` (including Build Tools) through
+the official `vswhere.exe`, requests UTF-8 JSON, and verifies the native-host
+component: `Microsoft.VisualStudio.Component.VC.Tools.x86.x64` on x64 or
+`Microsoft.VisualStudio.Component.VC.Tools.ARM64` on ARM64. It then spawns
 `cmd.exe` directly (not `shell: true`) with the argv array
 `["/d", "/s", "/c", "<command>"]` and `windowsVerbatimArguments: true`, where
 `<command>` is manually built as
 `call "<VsDevCmd>" -no_logo -arch=<arch> -host_arch=<hostArch> >nul && "<node>" -e "process.stdout.write(JSON.stringify(process.env))"`.
 The child dumps `process.env` as JSON to avoid `set` text encoding/quoting
-ambiguity; the result is parsed and validated for `INCLUDE`/`LIB`. The loaded
+ambiguity; the result is parsed and validated for `INCLUDE`/`LIB`, a numeric
+`VCToolsVersion`, and a Visual Studio environment major matching the selected
+17.x/18.x installation. The loaded
 environment merges only into the child env and never mutates `process.env`,
 writes the system/user environment, or touches the registry.
 `-arch`/`-host_arch` derive from `process.arch` (x64/x64 or arm64/arm64) and are
@@ -401,38 +414,38 @@ does not turn them into contribution, build, CI, or release prerequisites.
 
 ## 7. Validation / Error Matrix
 
-| Condition                                                             | Required result                                    |
-| --------------------------------------------------------------------- | -------------------------------------------------- |
-| Missing description/effect/usage                                      | `tasks:validate` fails                             |
-| Interactive task lacks `raw=true`                                     | `tasks:validate` fails                             |
-| `dev` does not spawn foreground / kill the host process tree          | `miseTaskContract` fails                           |
-| Missing task reference or DAG cycle                                   | mise/task contract fails                           |
-| `check` reaches a non-read-only effect                                | Fail closed                                        |
-| A parameter is interpolated into a shell command                      | Reject; spawn validated argv instead               |
-| A Windows task forces a pnpm batch shim instead of locked `pnpm.exe`  | Task-runner and DEP0040 contracts fail             |
-| Windows VS 2022 / VC tools component is missing                       | Fail with a `vswhere` hint naming "Desktop development with C++"; never elevate |
-| MSVC env load mutates `process.env` or the user/system environment    | Reject; the loader is child-env-only and additive only |
-| `-arch`/`-host_arch` is hard-coded or an unsupported architecture     | Reject; derive from `process.arch` (x64/arm64 only) |
-| A Rust filter begins with `-` or contains `--target`                  | Reject before rustc or Cargo starts                |
-| A fixed native operation receives forwarded argv                      | Reject before rustc or Tauri starts                |
-| Caller compiler/wrapper/runner/linker/target env redirects a task     | Reject before rustc/rustdoc starts                 |
-| Any Rust/rustdoc flag env contains a target token                     | Reject before rustc/rustdoc starts                 |
-| Target-specific flags or process-loader/runtime injection are set     | Reject before rustc/rustdoc starts                 |
-| Absolute rustc/rustdoc identity and process host disagree             | Reject before Cargo/Tauri starts                   |
-| User Cargo config selects target/compiler/wrapper/flags/runner/linker | Reject before the toolchain starts                 |
-| A standard task selects a non-host OS/architecture                    | Reject before any toolchain starts                 |
-| A local wrapper bridges to a foreign executable/emulator              | Reject; require a native Actions job               |
-| Mutation task has neither preview default nor explicit confirmation   | Reject                                             |
-| Clean path resolves outside the repository                            | Reject without deletion                            |
-| Upstream safety/remotes/worktree do not match                         | Reject before fetch/merge                          |
-| Generated task reference differs by one byte                          | `tasks:docs:check` fails                           |
-| New active doc uses a legacy entrypoint                               | `docs-contract-check.mjs` fails                    |
-| Standalone setup order or manual trust guidance disappears            | `docs-contract-check.mjs` fails                    |
-| `format:files` receives an option, directory, symlink, or escape      | Reject before Prettier or JSONL writes             |
-| A reviewed `.jsonl` target is not valid UTF-8                         | Identify the file; no Prettier or JSONL write      |
-| A nonblank reviewed `.jsonl` record is invalid JSON                   | Identify file and line; no Prettier or JSONL write |
-| A changed JSONL target no longer matches its preflight bytes          | Preserve the newer bytes and fail                  |
-| A formatted JSONL file violates a consumer-specific schema            | The consumer's executable validation still fails   |
+| Condition                                                              | Required result                                                                         |
+| ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| Missing description/effect/usage                                       | `tasks:validate` fails                                                                  |
+| Interactive task lacks `raw=true`                                      | `tasks:validate` fails                                                                  |
+| `dev` does not spawn foreground / kill the host process tree           | `miseTaskContract` fails                                                                |
+| Missing task reference or DAG cycle                                    | mise/task contract fails                                                                |
+| `check` reaches a non-read-only effect                                 | Fail closed                                                                             |
+| A parameter is interpolated into a shell command                       | Reject; spawn validated argv instead                                                    |
+| A Windows task forces a pnpm batch shim instead of locked `pnpm.exe`   | Task-runner and DEP0040 contracts fail                                                  |
+| Supported Windows VS 2022/2026 or native VC tools component is missing | Fail with a bounded `vswhere` hint naming "Desktop development with C++"; never elevate |
+| MSVC env load mutates `process.env` or the user/system environment     | Reject; the loader is child-env-only and additive only                                  |
+| `-arch`/`-host_arch` is hard-coded or an unsupported architecture      | Reject; derive from `process.arch` (x64/arm64 only)                                     |
+| A Rust filter begins with `-` or contains `--target`                   | Reject before rustc or Cargo starts                                                     |
+| A fixed native operation receives forwarded argv                       | Reject before rustc or Tauri starts                                                     |
+| Caller compiler/wrapper/runner/linker/target env redirects a task      | Reject before rustc/rustdoc starts                                                      |
+| Any Rust/rustdoc flag env contains a target token                      | Reject before rustc/rustdoc starts                                                      |
+| Target-specific flags or process-loader/runtime injection are set      | Reject before rustc/rustdoc starts                                                      |
+| Absolute rustc/rustdoc identity and process host disagree              | Reject before Cargo/Tauri starts                                                        |
+| User Cargo config selects target/compiler/wrapper/flags/runner/linker  | Reject before the toolchain starts                                                      |
+| A standard task selects a non-host OS/architecture                     | Reject before any toolchain starts                                                      |
+| A local wrapper bridges to a foreign executable/emulator               | Reject; require a native Actions job                                                    |
+| Mutation task has neither preview default nor explicit confirmation    | Reject                                                                                  |
+| Clean path resolves outside the repository                             | Reject without deletion                                                                 |
+| Upstream safety/remotes/worktree do not match                          | Reject before fetch/merge                                                               |
+| Generated task reference differs by one byte                           | `tasks:docs:check` fails                                                                |
+| New active doc uses a legacy entrypoint                                | `docs-contract-check.mjs` fails                                                         |
+| Standalone setup order or manual trust guidance disappears             | `docs-contract-check.mjs` fails                                                         |
+| `format:files` receives an option, directory, symlink, or escape       | Reject before Prettier or JSONL writes                                                  |
+| A reviewed `.jsonl` target is not valid UTF-8                          | Identify the file; no Prettier or JSONL write                                           |
+| A nonblank reviewed `.jsonl` record is invalid JSON                    | Identify file and line; no Prettier or JSONL write                                      |
+| A changed JSONL target no longer matches its preflight bytes           | Preserve the newer bytes and fail                                                       |
+| A formatted JSONL file violates a consumer-specific schema             | The consumer's executable validation still fails                                        |
 
 ## 8. Tests Required
 

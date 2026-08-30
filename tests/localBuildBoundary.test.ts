@@ -448,7 +448,7 @@ describe("local build boundary", () => {
     for (const contract of [
       "runner: windows-2025",
       "target_group: windows-x64",
-      "runner: windows-11-arm",
+      "runner: windows-11-vs2026-arm",
       "target_group: windows-arm64",
       "runs-on: macos-15",
       "TARGET_GROUP: macos-universal",

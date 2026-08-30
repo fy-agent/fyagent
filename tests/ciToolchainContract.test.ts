@@ -92,6 +92,21 @@ describe("CI toolchain contract", () => {
     }
   });
 
+  it("keeps early CI platform admission on a dependency-free helper", () => {
+    const verifier = fs.readFileSync(
+      path.join(ROOT, "scripts", "ci", "verify-toolchain.mjs"),
+      "utf8",
+    );
+    const platformHelper = fs.readFileSync(
+      path.join(ROOT, "scripts", "tasks", "platform.mjs"),
+      "utf8",
+    );
+
+    expect(verifier).toContain('from "../tasks/platform.mjs"');
+    expect(verifier).not.toContain('from "../tasks/lib.mjs"');
+    expect(platformHelper).not.toMatch(/^\s*import\s/mu);
+  });
+
   it("fails closed when the uv lock selection is duplicated or malformed", () => {
     const root = temporaryContract({
       miseLock:
@@ -139,11 +154,22 @@ describe("CI toolchain contract", () => {
     ).toBe("cmd.exe");
   });
 
-  it("leaves non-Windows tool invocation unchanged", () => {
-    expect(resolveToolInvocation("pnpm", ["--version"], "darwin", {})).toEqual({
-      command: "pnpm",
-      args: ["--version"],
-    });
+  it.each(["darwin", "linux"] as const)(
+    "leaves approved POSIX tool invocation unchanged on %s",
+    (platform) => {
+      expect(
+        resolveToolInvocation("pnpm", ["--version"], platform, {}),
+      ).toEqual({
+        command: "pnpm",
+        args: ["--version"],
+      });
+    },
+  );
+
+  it("rejects an unknown CI runner platform before launching a tool", () => {
+    expect(() =>
+      resolveToolInvocation("pnpm", ["--version"], "freebsd", {}),
+    ).toThrow("Unsupported CI runner platform: freebsd");
   });
 
   it.each([

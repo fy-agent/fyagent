@@ -3,6 +3,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
+// @ts-expect-error The task helper is dependency-free JavaScript used by runtime scripts.
+import { isPosixTaskHost } from "../scripts/tasks/platform.mjs";
 import {
   EXPECTED_INSTALLERS_BY_TARGET,
   EXPECTED_TARGETS,
@@ -154,30 +156,27 @@ function read(file: string): string {
 }
 
 function resolveBashExecutable(): string {
-  switch (process.platform) {
-    case "darwin":
-      return "bash";
-    case "win32":
-      break;
-    default:
-      throw new Error(`Unsupported test host: ${process.platform}`);
+  if (isPosixTaskHost(process.platform)) return "bash";
+
+  if (process.platform === "win32") {
+    const gitExecPath = spawnSync("git", ["--exec-path"], {
+      encoding: "utf8",
+      windowsHide: true,
+    });
+    if (gitExecPath.status !== 0) {
+      throw new Error(`git --exec-path failed: ${gitExecPath.stderr}`);
+    }
+    const gitRoot = path.resolve(gitExecPath.stdout.trim(), "..", "..", "..");
+    for (const candidate of [
+      path.join(gitRoot, "bin", "bash.exe"),
+      path.join(gitRoot, "usr", "bin", "bash.exe"),
+    ]) {
+      if (fs.existsSync(candidate)) return candidate;
+    }
+    throw new Error(`Git Bash was not found below ${gitRoot}`);
   }
 
-  const gitExecPath = spawnSync("git", ["--exec-path"], {
-    encoding: "utf8",
-    windowsHide: true,
-  });
-  if (gitExecPath.status !== 0) {
-    throw new Error(`git --exec-path failed: ${gitExecPath.stderr}`);
-  }
-  const gitRoot = path.resolve(gitExecPath.stdout.trim(), "..", "..", "..");
-  for (const candidate of [
-    path.join(gitRoot, "bin", "bash.exe"),
-    path.join(gitRoot, "usr", "bin", "bash.exe"),
-  ]) {
-    if (fs.existsSync(candidate)) return candidate;
-  }
-  throw new Error(`Git Bash was not found below ${gitRoot}`);
+  throw new Error(`Unsupported test host: ${process.platform}`);
 }
 
 function trackedMode(file: string): string {
@@ -241,7 +240,7 @@ const WINDOWS_RELEASE_MATRIX_CONTRACTS = [
         rust_target: "x86_64-pc-windows-msvc",
       },
       {
-        runner: "windows-11-arm",
+        runner: "windows-11-vs2026-arm",
         target_group: "windows-arm64",
         architecture: "arm64",
         rust_target: "aarch64-pc-windows-msvc",
@@ -258,7 +257,7 @@ const WINDOWS_RELEASE_MATRIX_CONTRACTS = [
         architecture: "x64",
       },
       {
-        runner: "windows-11-arm",
+        runner: "windows-11-vs2026-arm",
         target_group: "windows-arm64",
         architecture: "arm64",
       },
@@ -274,7 +273,7 @@ const WINDOWS_RELEASE_MATRIX_CONTRACTS = [
         architecture: "x64",
       },
       {
-        runner: "windows-11-arm",
+        runner: "windows-11-vs2026-arm",
         target_group: "windows-arm64",
         architecture: "arm64",
       },
@@ -290,7 +289,7 @@ const WINDOWS_RELEASE_MATRIX_CONTRACTS = [
         architecture: "x64",
       },
       {
-        runner: "windows-11-arm",
+        runner: "windows-11-vs2026-arm",
         target_group: "windows-arm64",
         architecture: "arm64",
       },
@@ -1220,7 +1219,12 @@ describe("FyAgent release workflow", () => {
     for (const reference of actionRefs) {
       expect(reference).toMatch(/^[\w.-]+\/[\w.-]+@[0-9a-f]{40}$/);
     }
-    for (const runner of ["windows-2025", "windows-11-arm", "macos-15"]) {
+    for (const runner of [
+      "ubuntu-24.04",
+      "windows-2025",
+      "windows-11-vs2026-arm",
+      "macos-15",
+    ]) {
       expect(source).toContain(runner);
     }
     for (const [job, nextJob] of [
@@ -1231,12 +1235,12 @@ describe("FyAgent release workflow", () => {
     ] as const) {
       expectExactLine(
         workflowJobBlock(source, job, nextJob),
-        "    runs-on: macos-15",
+        "    runs-on: ubuntu-24.04",
       );
     }
     expectExactLine(
       source.slice(source.indexOf("\n  publish:\n")),
-      "    runs-on: macos-15",
+      "    runs-on: ubuntu-24.04",
     );
     expect(source).not.toContain("windows-2022");
     expect(source).not.toMatch(/runs-on:\s*[^\n]*-latest/);
@@ -1257,7 +1261,7 @@ describe("FyAgent release workflow", () => {
       {
         name: `${contract.job} runner swap`,
         workflow: mutateReleaseJob(source, contract, (job) =>
-          swapFirstPair(job, "windows-2025", "windows-11-arm"),
+          swapFirstPair(job, "windows-2025", "windows-11-vs2026-arm"),
         ),
       },
       {
@@ -1442,6 +1446,19 @@ describe("FyAgent release workflow", () => {
       windowsMetadataStep,
       "          REQUESTED_RUNNER_LABEL: ${{ matrix.runner }}",
     );
+    expect(windowsMetadataStep).toContain(
+      "node scripts/tasks/windows-msvc-env.mjs --json",
+    );
+    expect(windowsMetadataStep).toContain(
+      "$env:ACTUAL_VISUAL_STUDIO_VERSION = [string]$nativeToolchain.visualStudio",
+    );
+    expect(windowsMetadataStep).toContain(
+      "$env:ACTUAL_MSVC_VERSION = [string]$nativeToolchain.msvc",
+    );
+    expect(macosMetadataStep).not.toContain("ACTUAL_VISUAL_STUDIO_VERSION");
+    expect(macosMetadataStep).not.toContain("ACTUAL_MSVC_VERSION");
+    expect(platformMetadataWriter).toContain("nativeToolchain");
+    expect(releaseContract).toContain("WINDOWS_NATIVE_TOOLCHAIN_KEYS");
     for (const ambientVariable of [
       '"RUNNER_OS"',
       '"RUNNER_ARCH"',
@@ -1455,7 +1472,7 @@ describe("FyAgent release workflow", () => {
       expect(releaseContract).not.toContain(retiredField);
       expect(releaseContractTypes).not.toContain(retiredField);
     }
-    expect(releaseContract).toContain('schema: "fyagent-platform-build/v2"');
+    expect(releaseContract).toContain('schema: "fyagent-platform-build/v3"');
     expect(releaseContract).toContain('schema: "fyagent-build-metadata/v2"');
     expect(releaseContract).toContain('schema: "fyagent-download-manifest/v3"');
   });
@@ -1469,7 +1486,7 @@ describe("FyAgent release workflow", () => {
     expect(windowsBuild).toContain("runner: windows-2025");
     expect(windowsBuild).toContain("target_group: windows-x64");
     expect(windowsBuild).toContain("rust_target: x86_64-pc-windows-msvc");
-    expect(windowsBuild).toContain("runner: windows-11-arm");
+    expect(windowsBuild).toContain("runner: windows-11-vs2026-arm");
     expect(windowsBuild).toContain("target_group: windows-arm64");
     expect(windowsBuild).toContain("rust_target: aarch64-pc-windows-msvc");
     expect(
@@ -1586,7 +1603,7 @@ describe("FyAgent release workflow", () => {
       "    needs: [eligibility, pin-release-build-inputs]",
     );
     expect(preflight).toContain("runner: windows-2025");
-    expect(preflight).toContain("runner: windows-11-arm");
+    expect(preflight).toContain("runner: windows-11-vs2026-arm");
     expect(preflight).toContain("permissions:\n      contents: read");
     expect(preflight).not.toContain("id-token:");
     expect(preflight).not.toContain("${{ secrets.");
@@ -1656,7 +1673,7 @@ describe("FyAgent release workflow", () => {
       "    needs: [eligibility, pin-release-build-inputs]",
     );
     expect(formal).toContain("runner: windows-2025");
-    expect(formal).toContain("runner: windows-11-arm");
+    expect(formal).toContain("runner: windows-11-vs2026-arm");
     expect(formal).toContain("permissions:\n      contents: read");
     expect(formal).not.toContain("id-token:");
     expect(formal).not.toContain("verify-windows-nsis-lifecycle.ps1");
@@ -1732,7 +1749,7 @@ describe("FyAgent release workflow", () => {
       "    needs: [eligibility, pin-release-build-inputs, sign-windows-formal]",
     );
     expect(sealer).toContain("runner: windows-2025");
-    expect(sealer).toContain("runner: windows-11-arm");
+    expect(sealer).toContain("runner: windows-11-vs2026-arm");
     expect(sealer).toContain("permissions:\n      contents: read");
     expect(sealer).not.toContain("${{ secrets.");
     expect(sealer).not.toContain("SIGNER_ADAPTER");
@@ -1789,7 +1806,7 @@ describe("FyAgent release workflow", () => {
     expect(verify).toContain("pattern: installers-windows-*");
     expect(verify).toContain("pattern: signing-*");
     expect(verify).toContain("windows-signing.mjs aggregate");
-    expectExactLine(verify, "    runs-on: macos-15");
+    expectExactLine(verify, "    runs-on: ubuntu-24.04");
   });
 
   it("parses every legal GitHub Actions job ID shape used by the topology guard", () => {
@@ -1960,7 +1977,7 @@ jobs:
       pin,
       "    needs: [eligibility, build-windows, build-macos]",
     );
-    expectExactLine(pin, "    runs-on: macos-15");
+    expectExactLine(pin, "    runs-on: ubuntu-24.04");
     expect(pin).toContain(
       "artifact_id: ${{ steps.upload.outputs.artifact-id }}",
     );
@@ -2015,7 +2032,7 @@ jobs:
 
     const attest = workflowJobBlock(source, "attest", "publish");
     expectExactLine(attest, "    needs: [eligibility, verify-assets]");
-    expectExactLine(attest, "    runs-on: macos-15");
+    expectExactLine(attest, "    runs-on: ubuntu-24.04");
     expect(attest).toContain(
       "actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6",
     );
@@ -2026,7 +2043,7 @@ jobs:
 
     const publish = source.slice(source.indexOf("\n  publish:\n"));
     expectExactLine(publish, "    needs: [eligibility, attest]");
-    expectExactLine(publish, "    runs-on: macos-15");
+    expectExactLine(publish, "    runs-on: ubuntu-24.04");
     expect(publish).toContain("fyagent-windows-signing-status/v1");
     expect(publish).toContain("## Windows installer signing status");
     expect(publish).toContain(".signature.status");

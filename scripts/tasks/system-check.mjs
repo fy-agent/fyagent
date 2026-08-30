@@ -3,9 +3,10 @@
 import process from "node:process";
 import { run, usageBoolean } from "./lib.mjs";
 import {
-  VCTOOLS_COMPONENT,
+  SUPPORTED_VISUAL_STUDIO_VERSION_RANGE,
   findVsInstallation,
   msvcRequirementHint,
+  msvcToolsComponent,
 } from "./windows-msvc-env.mjs";
 
 export const REQUIREMENTS = Object.freeze({
@@ -24,13 +25,14 @@ export const REQUIREMENTS = Object.freeze({
         [
           "-latest",
           "-version",
-          "[17.0,18.0)",
+          SUPPORTED_VISUAL_STUDIO_VERSION_RANGE,
           "-products",
           "*",
           "-requires",
-          VCTOOLS_COMPONENT,
-          "-property",
-          "installationPath",
+          msvcToolsComponent(process.arch),
+          "-format",
+          "json",
+          "-utf8",
         ],
         msvcRequirementHint(),
       ],

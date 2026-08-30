@@ -15,7 +15,7 @@ concurrency:
 jobs:
   commit-convention-push:
     name: Commit Convention / Push
-    runs-on: macos-15
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - name: Checkout complete comparison history
