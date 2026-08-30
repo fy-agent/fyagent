@@ -14,6 +14,7 @@ type SpawnResult = {
 };
 
 type WindowsMsvcEnvModule = {
+  SUPPORTED_VISUAL_STUDIO_VERSION_RANGE: string;
   VCTOOLS_COMPONENT: string;
   msvcArchitecture(architecture: string): { arch: string; hostArch: string };
   vswhereCandidates(): string[];
@@ -83,17 +84,28 @@ describe("windows-msvc-env module", () => {
       "Desktop development with C++",
     );
     expect(msvc.msvcRequirementHint()).toContain("Visual Studio 2022");
+    expect(msvc.msvcRequirementHint()).toContain("2026");
+  });
+
+  it("admits reviewed Visual Studio 2022 and 2026 majors only", () => {
+    expect(msvc.SUPPORTED_VISUAL_STUDIO_VERSION_RANGE).toBe("[17.0,19.0)");
   });
 
   it("locates a VS installation that satisfies the VC tools component", () => {
     const vswhere = fakeVswhereFile();
-    const spawn = (command: string) =>
-      command.endsWith("vswhere.exe")
+    const calls: Array<{ command: string; args: string[] }> = [];
+    const spawn = (command: string, args: string[]) => {
+      calls.push({ command, args });
+      return command.endsWith("vswhere.exe")
         ? vswhereSpawn(`${FAKE_INSTALLATION}\n`)
         : vswhereSpawn("");
+    };
     const result = msvc.findVsInstallation({ spawn, candidates: [vswhere] });
     expect(result.installationPath).toBe(FAKE_INSTALLATION);
     expect(result.vswhere).toBe(vswhere);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.args).toContain("[17.0,19.0)");
+    expect(calls[0]?.args).toContain(msvc.VCTOOLS_COMPONENT);
     fs.rmSync(path.dirname(vswhere), { recursive: true, force: true });
   });
 

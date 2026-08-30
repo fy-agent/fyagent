@@ -283,7 +283,7 @@ the standard version file and `mise.lock` captured before the attempt.
 | `src-tauri` uses `compile_error!` to reject a non-shipping OS         | Fail; compile through the existing unsupported adapter instead                          |
 | A non-host result is offered as native acceptance evidence            | Keep the gate pending and require the matching native Actions runner                    |
 | Host native libraries are missing                                     | `system:check` fails with a non-elevating installation hint                             |
-| Windows VS 2022 / VC tools component is missing                       | `system:check` reports a `vswhere` FAIL naming "Desktop development with C++"; never elevate |
+| Windows VS 2022/2026 or VC tools component is missing                 | `system:check` reports a `vswhere` FAIL naming "Desktop development with C++"; never elevate |
 | MSVC environment parse fails or lacks `INCLUDE`/`LIB`                 | Fail before the compile child; never fall back to a bare PATH                           |
 | A prerequisite command is absent or cannot be launched                | Record a failed check with its installation hint and finish the machine-readable report |
 
@@ -335,7 +335,7 @@ the standard version file and `mise.lock` captured before the attempt.
   `taskDocs.test.ts`, `systemCheck.test.ts`, `windowsMsvcEnv.test.ts`, and
   `localBuildBoundary.test.ts`.
 - In Required CI, run the locked uv/Python preparation on both `windows-2025`
-  x64 and `windows-11-arm` ARM64. Require an explicit uv full managed-Python
+  x64 and `windows-11-vs2026-arm` ARM64. Require an explicit uv full managed-Python
   request for each matrix architecture and Python `sysconfig.get_platform()`
   to match `win-amd64`/`win-arm64`; a version-only request can select
   Windows-on-ARM x64 emulation and therefore does not prove a native

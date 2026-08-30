@@ -152,7 +152,7 @@ describe("automatic CI workflow", () => {
     const required = jobBlock("required");
     expect(required).toContain("name: CI / Required");
     expect(required).toContain("if: always()");
-    expect(required).toContain("runs-on: macos-15");
+    expect(required).toContain("runs-on: ubuntu-24.04");
     expect(required).toContain("REQUIRED_RESULTS: ${{ toJSON(needs) }}");
     expect(required).toContain("node scripts/ci/required-gate.mjs");
     expect(required).toContain("actions: read");
@@ -175,20 +175,19 @@ describe("automatic CI workflow", () => {
     expect(source).not.toMatch(/runs-on:\s*[^\n]*-latest/);
     expect(source).not.toMatch(/(?:^|\s)paths(?:-ignore)?:/m);
 
-    expect(jobBlock("contracts")).toContain("runs-on: macos-15");
-    expect(jobBlock("frontend")).toContain("runs-on: macos-15");
+    expect(jobBlock("contracts")).toContain("runs-on: ubuntu-24.04");
+    expect(jobBlock("frontend")).toContain("runs-on: ubuntu-24.04");
     expect(jobBlock("desktop-acceptance-contract")).toContain(
-      "runs-on: macos-15",
+      "runs-on: ubuntu-24.04",
     );
-    expect(jobBlock("changes")).toContain("runs-on: macos-15");
-    expect(jobBlock("commit-convention")).toContain("runs-on: macos-15");
+    expect(jobBlock("changes")).toContain("runs-on: ubuntu-24.04");
+    expect(jobBlock("commit-convention")).toContain("runs-on: ubuntu-24.04");
     expect(jobBlock("backend-windows")).toContain("runs-on: windows-2025");
     expect(jobBlock("windows-native-contracts")).toContain(
       "runs-on: ${{ matrix.runner }}",
     );
     expect(jobBlock("backend-macos")).toContain("runs-on: macos-15");
-    expect(jobBlock("required")).toContain("runs-on: macos-15");
-    expect(source).not.toContain(["ubu", "ntu-"].join(""));
+    expect(jobBlock("required")).toContain("runs-on: ubuntu-24.04");
   });
 
   it("pins every third-party Action to an reviewed full commit", () => {
@@ -557,7 +556,7 @@ describe("automatic CI workflow", () => {
             rust_host: x86_64-pc-windows-msvc
             python_architecture: x86_64
             python_platform: win-amd64
-          - runner: windows-11-arm
+          - runner: windows-11-vs2026-arm
             architecture: ARM64
             rust_host: aarch64-pc-windows-msvc
             python_architecture: aarch64

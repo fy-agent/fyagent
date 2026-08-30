@@ -16,7 +16,7 @@ concurrency:
 jobs:
   commit-convention:
     name: Commit Convention
-    runs-on: macos-15
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - name: Checkout complete comparison history
@@ -84,7 +84,7 @@ jobs:
   changes:
     name: Classify Changes
     needs: commit-convention
-    runs-on: macos-15
+    runs-on: ubuntu-24.04
     outputs:
       plan: ${{ steps.plan.outputs.plan }}
       contracts: ${{ steps.plan.outputs.contracts }}
@@ -202,7 +202,7 @@ jobs:
     name: Repository Contracts
     needs: changes
     if: ${{ !cancelled() && (needs.changes.result == 'failure' || (needs.changes.result == 'success' && (needs.changes.outputs.contracts == 'true' || needs.changes.outputs.docs_spec == 'true'))) }}
-    runs-on: macos-15
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
         id: checkout
@@ -279,7 +279,7 @@ jobs:
     name: Frontend Checks
     needs: changes
     if: ${{ !cancelled() && (needs.changes.result == 'failure' || (needs.changes.result == 'success' && needs.changes.outputs.frontend == 'true')) }}
-    runs-on: macos-15
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
         id: checkout
@@ -376,7 +376,7 @@ jobs:
     name: Desktop Acceptance Contract
     needs: changes
     if: ${{ !cancelled() && (needs.changes.result == 'failure' || (needs.changes.result == 'success' && needs.changes.outputs.desktop == 'true')) }}
-    runs-on: macos-15
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
         id: checkout
@@ -559,7 +559,7 @@ jobs:
             rust_host: x86_64-pc-windows-msvc
             python_architecture: x86_64
             python_platform: win-amd64
-          - runner: windows-11-arm
+          - runner: windows-11-vs2026-arm
             architecture: ARM64
             rust_host: aarch64-pc-windows-msvc
             python_architecture: aarch64
@@ -784,7 +784,7 @@ jobs:
       - backend-windows
       - windows-native-contracts
       - backend-macos
-    runs-on: macos-15
+    runs-on: ubuntu-24.04
     permissions:
       actions: read
       contents: read

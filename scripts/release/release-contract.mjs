@@ -73,7 +73,7 @@ export const EXPECTED_TARGETS = Object.freeze([
     targetGroup: "windows-arm64",
     platform: "windows",
     architecture: "arm64",
-    requestedRunnerLabel: "windows-11-arm",
+    requestedRunnerLabel: "windows-11-vs2026-arm",
     expectedRunnerOs: "Windows",
     expectedRunnerArch: "ARM64",
   },

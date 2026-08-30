@@ -3,6 +3,7 @@
 import process from "node:process";
 import { run, usageBoolean } from "./lib.mjs";
 import {
+  SUPPORTED_VISUAL_STUDIO_VERSION_RANGE,
   VCTOOLS_COMPONENT,
   findVsInstallation,
   msvcRequirementHint,
@@ -24,7 +25,7 @@ export const REQUIREMENTS = Object.freeze({
         [
           "-latest",
           "-version",
-          "[17.0,18.0)",
+          SUPPORTED_VISUAL_STUDIO_VERSION_RANGE,
           "-products",
           "*",
           "-requires",

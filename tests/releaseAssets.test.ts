@@ -199,7 +199,7 @@ describe("release asset and metadata contract", () => {
         targetGroup: "windows-arm64",
         platform: "windows",
         architecture: "arm64",
-        requestedRunnerLabel: "windows-11-arm",
+        requestedRunnerLabel: "windows-11-vs2026-arm",
         expectedRunnerOs: "Windows",
         expectedRunnerArch: "ARM64",
       },

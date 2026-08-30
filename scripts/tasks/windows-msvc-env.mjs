@@ -7,6 +7,7 @@ import { spawnSync } from "node:child_process";
 
 export const VCTOOLS_COMPONENT =
   "Microsoft.VisualStudio.Component.VC.Tools.x86.x64";
+export const SUPPORTED_VISUAL_STUDIO_VERSION_RANGE = "[17.0,19.0)";
 
 export function msvcArchitecture(architecture) {
   switch (architecture) {
@@ -27,7 +28,7 @@ export function vswhereCandidates() {
 }
 
 export function msvcRequirementHint() {
-  return 'Install Visual Studio 2022 Build Tools with the "Desktop development with C++" workload (MSVC x64/x86 build tools and the Windows SDK).';
+  return 'Install Visual Studio 2022 or 2026 Build Tools with the "Desktop development with C++" workload (MSVC x64/x86 build tools and the Windows SDK).';
 }
 
 function resolveVswhere(candidates) {
@@ -56,7 +57,7 @@ export function findVsInstallation({
     [
       "-latest",
       "-version",
-      "[17.0,18.0)",
+      SUPPORTED_VISUAL_STUDIO_VERSION_RANGE,
       "-products",
       "*",
       "-requires",

@@ -33,7 +33,7 @@ concurrency:
 jobs:
   eligibility:
     name: Freeze source and release eligibility
-    runs-on: macos-15
+    runs-on: ubuntu-24.04
     env:
       GITHUB_WORKFLOW_SHA: ${{ github.workflow_sha }}
     permissions:
@@ -326,7 +326,7 @@ jobs:
             target_group: windows-x64
             architecture: x64
             rust_target: x86_64-pc-windows-msvc
-          - runner: windows-11-arm
+          - runner: windows-11-vs2026-arm
             target_group: windows-arm64
             architecture: arm64
             rust_target: aarch64-pc-windows-msvc
@@ -606,7 +606,7 @@ jobs:
           - runner: windows-2025
             target_group: windows-x64
             architecture: x64
-          - runner: windows-11-arm
+          - runner: windows-11-vs2026-arm
             target_group: windows-arm64
             architecture: arm64
     env:
@@ -759,7 +759,7 @@ jobs:
           - runner: windows-2025
             target_group: windows-x64
             architecture: x64
-          - runner: windows-11-arm
+          - runner: windows-11-vs2026-arm
             target_group: windows-arm64
             architecture: arm64
     env:
@@ -991,7 +991,7 @@ jobs:
           - runner: windows-2025
             target_group: windows-x64
             architecture: x64
-          - runner: windows-11-arm
+          - runner: windows-11-vs2026-arm
             target_group: windows-arm64
             architecture: arm64
     env:
@@ -1412,7 +1412,7 @@ jobs:
   pin-release-build-inputs:
     name: Pin immutable pre-signer build inputs
     needs: [eligibility, build-windows, build-macos]
-    runs-on: macos-15
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     outputs:
@@ -1487,7 +1487,7 @@ jobs:
         sign-windows-formal,
         seal-windows-formal,
       ]
-    runs-on: macos-15
+    runs-on: ubuntu-24.04
     env:
       APP_VERSION: ${{ needs.eligibility.outputs.app_version }}
       RELEASE_TAG: ${{ needs.eligibility.outputs.release_tag }}
@@ -1584,7 +1584,7 @@ jobs:
     name: Attest three installers and three evidence files
     if: ${{ !cancelled() }}
     needs: [eligibility, verify-assets]
-    runs-on: macos-15
+    runs-on: ubuntu-24.04
     permissions:
       artifact-metadata: write
       attestations: write
@@ -1656,7 +1656,7 @@ jobs:
     name: Publish stable GitHub Release
     if: ${{ !cancelled() && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.eligibility.result == 'success' && needs.eligibility.outputs.release_mode == 'formal' && needs.attest.result == 'success' }}
     needs: [eligibility, attest]
-    runs-on: macos-15
+    runs-on: ubuntu-24.04
     permissions:
       actions: read
       checks: read

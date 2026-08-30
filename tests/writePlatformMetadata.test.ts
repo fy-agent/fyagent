@@ -201,7 +201,7 @@ describe("write-platform-metadata CLI", () => {
     ],
     [
       "requested-label contradiction",
-      setEnvironmentVariable("REQUESTED_RUNNER_LABEL", "windows-11-arm"),
+      setEnvironmentVariable("REQUESTED_RUNNER_LABEL", "windows-11-vs2026-arm"),
       /REQUESTED_RUNNER_LABEL/,
     ],
     [

@@ -235,6 +235,14 @@ The requested job mapping is exact:
 | `windows-native-contracts`    | `windowsNative`              |
 | `backend-macos`               | `backend`                    |
 
+Portable control-plane and mock/static jobs use `ubuntu-24.04`:
+`commit-convention`, `changes`, `contracts`, `frontend`,
+`desktop-acceptance-contract`, `CI / Required`, and the separate branch-push
+commit policy. Native evidence remains on its owning platform:
+`backend-windows` uses `windows-2025`, `backend-macos` uses `macos-15`, and the
+Windows native matrix uses the exact x64/ARM64 labels below. A Linux control
+job is not Linux product support and cannot replace a native platform gate.
+
 Every domain job needs `changes` and may run only after classifier success.
 `changes` needs `commit-convention` and may run only after commit validation
 success. Docs/spec-only changes therefore execute the repository contracts gate
@@ -327,16 +335,25 @@ versions by scanning README or spec Markdown.
 
 The always-running Changes job executes the durable supported-platform surface
 checker directly after checkout and Node setup, alongside the change plan and
-before diagnostic aggregation. This makes every Required CI plan scan the complete checked-out current
-tree rather than relying on conditional domain jobs or checker unit tests.
-GitHub-hosted Linux runner labels are not a product surface: repository
-automation such as `star-history.yml` may use `ubuntu-24.04`. Required CI and
-Release jobs stay on `macos-15` and `windows-2025`. CI
-never receives the task-specific prearchive exclusion; after the lifecycle
-task is archived, the canonical archive boundary applies and any new
-first-party support surface fails Required CI. The Repository Contracts plan
-also runs the same checker through `release-check.mjs --ci` as defense in
-depth when that domain is selected.
+before diagnostic aggregation. This makes every Required CI plan scan the
+complete checked-out current tree rather than relying on conditional domain
+jobs or checker unit tests. GitHub-hosted Linux runner labels are not a product
+surface: portable Required CI control jobs and repository automation such as
+`star-history.yml` use `ubuntu-24.04`, while shipped-product compile/runtime
+evidence remains on matching Windows/macOS runners. CI never receives the
+task-specific prearchive exclusion; after the lifecycle task is archived, the
+canonical archive boundary applies and any new first-party support surface
+fails Required CI. The Repository Contracts plan also runs the same checker
+through `release-check.mjs --ci` as defense in depth when that domain is
+selected.
+
+The Release/CI contract suites executed by `contracts` and the frontend unit
+discovery must retain their portable behavior on Ubuntu. Bash retry fixtures
+use the host's native Bash on macOS/Linux (and Git Bash on Windows). The NSIS
+contract verifier always performs its dependency-free static checks; only the
+additional system Windows PowerShell 5.1 parser/execution proof is Windows
+native. Moving a job to Ubuntu must not be implemented by excluding an
+otherwise portable suite.
 
 Backend jobs run locked Cargo check, Clippy with warnings denied, and tests on
 Windows and macOS. macOS additionally owns `cargo fmt --check`. The Windows
@@ -410,10 +427,10 @@ independent later diagnostic.
 
 `windows-native-contracts` is a fail-fast-disabled two-entry matrix:
 
-| Runner           | GitHub architecture | Rust host                 | Managed Python platform |
-| ---------------- | ------------------- | ------------------------- | ----------------------- |
-| `windows-2025`   | `X64`               | `x86_64-pc-windows-msvc`  | `win-amd64`             |
-| `windows-11-arm` | `ARM64`             | `aarch64-pc-windows-msvc` | `win-arm64`             |
+| Runner                  | GitHub architecture | Rust host                 | Managed Python platform |
+| ----------------------- | ------------------- | ------------------------- | ----------------------- |
+| `windows-2025`          | `X64`               | `x86_64-pc-windows-msvc`  | `win-amd64`             |
+| `windows-11-vs2026-arm` | `ARM64`             | `aarch64-pc-windows-msvc` | `win-arm64`             |
 
 Before Cargo compilation, each child requires exact `RUNNER_ARCH`, exactly one
 `rustc -vV` host line, and equality with the matrix host. After that check and
@@ -421,7 +438,10 @@ before the explicit-SID test builds the desktop crate, the child invokes the
 same dependency-free helper preparation script with `matrix.rust_host` and the
 debug profile. The native job does not install pnpm or frontend dependencies.
 Cargo receives that host through explicit `--target`; an x64 compatibility
-process cannot satisfy the ARM64 contract. The exact test name is:
+process cannot satisfy the ARM64 contract. The explicit VS2026 ARM label keeps
+the image choice deterministic rather than relying on the legacy
+`windows-11-arm` label during its announced migration window. The exact test
+name is:
 
 ```text
 codex_desktop::platform::windows::deployment::tests::native_explicit_sid_main_query_smoke
@@ -433,7 +453,7 @@ without Store, network, a real Codex package, or a multi-account VM.
 
 The same matrix installs the exact managed Python implementation/platform and
 proves the native Python platform through the locked uv environment. Zero
-tests, wrong architecture, missing managed Python, timeout, or preview runner
+tests, wrong architecture, missing managed Python, timeout, or hosted runner
 unavailability fails the matrix. Cross-compilation and structural inspection
 are not substitutes for either native runner.
 
@@ -446,7 +466,8 @@ not start a native window or claim hardware-in-the-loop evidence.
 `.github/workflows/labeler.yml` remains a separate trusted-base workflow. It
 uses `pull_request_target` plus numeric manual replay, does not checkout or run
 pull-request code, and has only `contents: read` and `pull-requests: write`.
-Labeler is not a CI dependency and cannot satisfy `CI / Required`.
+It runs on `ubuntu-24.04`; Labeler is not a CI dependency and cannot satisfy
+`CI / Required`.
 The `frontend` label owns frontend source/tooling and concrete frontend test
 directories; it must not use a blanket `tests/**` rule that labels release or
 CI-contract-only PRs as frontend.
@@ -480,9 +501,8 @@ They do not prove a hosted runner exists or that native code executed. A
 successful PR/merge-group `CI / Required` remains hosted proof for the domains
 requested by that exact comparison; when Windows-native is requested it
 includes the x64 and ARM64 matrix children. It is not a formal Release
-eligibility gate. `windows-11-arm` is public preview;
-unavailability blocks that CI job and is never converted into a reduced or
-cross-built run.
+eligibility gate. `windows-11-vs2026-arm` unavailability blocks that CI job and
+is never converted into a reduced or cross-built run.
 
 ## 11. Wrong and correct patterns
 

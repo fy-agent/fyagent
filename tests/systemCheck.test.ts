@@ -57,6 +57,22 @@ describe("read-only host prerequisite checks", () => {
     expect(result.stderr).toContain(`Unknown platform: ${platform}`);
   });
 
+  it("describes the shared Visual Studio 2022/2026 admission range", () => {
+    const result = nodeScript(SCRIPT, "--describe-platform", "win32");
+    expect(result.status, result.stderr).toBe(0);
+    const report = JSON.parse(result.stdout) as {
+      requirements: {
+        commands: Array<[string, string[], string]>;
+      };
+    };
+    const vswhere = report.requirements.commands.find(
+      ([command]) => command === "vswhere.exe",
+    );
+    expect(vswhere).toBeDefined();
+    expect(vswhere?.[1]).toContain("[17.0,19.0)");
+    expect(vswhere?.[2]).toContain("Visual Studio 2022 or 2026");
+  });
+
   it("reports the current host as JSON and makes failures visible", () => {
     const result = spawnSync("mise", ["run", "system:check", "--json"], {
       cwd: ROOT,

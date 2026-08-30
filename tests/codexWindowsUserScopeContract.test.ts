@@ -471,7 +471,7 @@ describe("Codex Windows interactive-user contract", () => {
 
   it("runs the one native adapter smoke on both matching Windows architectures", () => {
     expect(ci).toContain("windows-2025");
-    expect(ci).toContain("windows-11-arm");
+    expect(ci).toContain("windows-11-vs2026-arm");
     expect(ci).toContain("rust_host: x86_64-pc-windows-msvc");
     expect(ci).toContain("rust_host: aarch64-pc-windows-msvc");
     expect(ci).toContain("$env:RUNNER_ARCH -cne '${{ matrix.architecture }}'");

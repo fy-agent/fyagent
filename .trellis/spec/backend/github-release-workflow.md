@@ -267,17 +267,27 @@ on `src-tauri/Cargo.lock` plus runner OS/arch. They never cache
 `src-tauri/target`. Repository Cargo config must not set `RUSTC_WRAPPER` or
 sccache.
 
-| Target          | Runner/build environment         | Exact installer output              |
-| --------------- | -------------------------------- | ----------------------------------- |
-| Windows x64     | `windows-2025`, native `X64`     | x64 NSIS setup EXE                  |
-| Windows ARM64   | `windows-11-arm`, native `ARM64` | ARM64 NSIS setup EXE                |
-| macOS universal | `macos-15`, both Apple targets   | one UDZO DMG from the universal app |
+Portable Release control-plane jobs—`eligibility`,
+`pin-release-build-inputs`, `verify-assets`, `attest`, and `publish`—run on
+`ubuntu-24.04`. They own identity, artifact collation, evidence, attestation,
+and GitHub API transactions, not platform build acceptance. Windows
+build/proof/sign/seal jobs and macOS build/sign/notarize/package work remain on
+matching native runners. No job container or cross-platform substitute is part
+of this contract.
+
+| Target          | Runner/build environment                | Exact installer output              |
+| --------------- | --------------------------------------- | ----------------------------------- |
+| Windows x64     | `windows-2025`, native `X64`            | x64 NSIS setup EXE                  |
+| Windows ARM64   | `windows-11-vs2026-arm`, native `ARM64` | ARM64 NSIS setup EXE                |
+| macOS universal | `macos-15`, both Apple targets          | one UDZO DMG from the universal app |
 
 Each target verifies documented `runner.os`/`runner.arch`, the requested
 runner label, source HEAD, Node 24.19.0, pnpm 10.12.3, and Rust 1.97.1. There is
 no emulator, architecture impersonation,
 opposite-architecture toolchain, or reduced-target fallback. ARM runner
-unavailability blocks acceptance.
+unavailability blocks acceptance. The explicit Windows ARM64 VS2026 label is
+part of the frozen target map; the legacy `windows-11-arm` routing label is not
+accepted as an equivalent substitute.
 
 ## 6. Platform build, package, and security gates
 
@@ -400,7 +410,11 @@ Three `fyagent-platform-build/v2` records—`macos-universal.json`,
 repository/workflow/run, source, and release mode. `build-metadata.json`
 schema `fyagent-build-metadata/v2` reconstructs those records through exact key
 allowlists and emits `requiredCi` as null when frozen eligibility has no CI
-run.
+run. `runner.requestedLabel` records reviewed workflow routing while
+`runner.context` records only the documented runner OS/architecture context.
+Undocumented hosted-image implementation variables such as `ImageOS` and
+`ImageVersion` are not Release metadata and must not be restored as image
+identity or provenance.
 
 The two private Windows fragments are normalized into public
 `signing-status.json`. Release notes generate their Windows table only from
@@ -600,11 +614,12 @@ run for any explicitly frozen repository candidate SHA to produce and attest
 diagnostic installers, but formal closure neither requires nor infers success
 from it.
 
-`windows-11-arm` remains public preview and may block the run. Unsigned Windows
-installers may trigger trust prompts; disclosure, SHA-256, and attestation make
-the origin auditable but are not equivalent to Authenticode. The repository's
-administrative branch-protection and provenance-workflow settings remain
-outside runtime eligibility and are not represented as release guarantees.
+`windows-11-vs2026-arm` availability remains a hard native acceptance
+dependency and may block the run. Unsigned Windows installers may trigger
+trust prompts; disclosure, SHA-256, and attestation make the origin auditable
+but are not equivalent to Authenticode. The repository's administrative
+branch-protection and provenance-workflow settings remain outside runtime
+eligibility and are not represented as release guarantees.
 
 ## 11. Wrong vs Correct
 

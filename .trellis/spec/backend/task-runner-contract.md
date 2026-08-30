@@ -315,12 +315,13 @@ quoting. Non-Windows commands remain direct. This local mise boundary is
 distinct from GitHub Actions, which does not install mise and uses its own
 reviewed `pnpm.cmd` batch-shim bridge in the CI toolchain verifier.
 
-On Windows only, the guarded native wrapper resolves the Visual Studio 2022
-MSVC/SDK environment for the child process immediately before the final
+On Windows only, the guarded native wrapper resolves the Visual Studio 2022 or
+2026 MSVC/SDK environment for the child process immediately before the final
 `cargo`/`pnpm tauri` compile. This is the single controlled exception to the
 "no `cmd.exe`" rule: Visual Studio's only supported loading mechanism is
-`cmd.exe` + `VsDevCmd.bat`. `scripts/tasks/windows-msvc-env.mjs` locates VS 2022
-(including Build Tools) through the official `vswhere.exe` and verifies the
+`cmd.exe` + `VsDevCmd.bat`. `scripts/tasks/windows-msvc-env.mjs` locates VS
+2022/2026 (including Build Tools) through the official `vswhere.exe`, admits
+only the reviewed `[17.0,19.0)` installation range, and verifies the
 `Microsoft.VisualStudio.Component.VC.Tools.x86.x64` component, then spawns
 `cmd.exe` directly (not `shell: true`) with the argv array
 `["/d", "/s", "/c", "<command>"]` and `windowsVerbatimArguments: true`, where
@@ -410,7 +411,7 @@ does not turn them into contribution, build, CI, or release prerequisites.
 | `check` reaches a non-read-only effect                                | Fail closed                                        |
 | A parameter is interpolated into a shell command                      | Reject; spawn validated argv instead               |
 | A Windows task forces a pnpm batch shim instead of locked `pnpm.exe`  | Task-runner and DEP0040 contracts fail             |
-| Windows VS 2022 / VC tools component is missing                       | Fail with a `vswhere` hint naming "Desktop development with C++"; never elevate |
+| Windows VS 2022/2026 or VC tools component is missing                 | Fail with a `vswhere` hint naming "Desktop development with C++"; never elevate |
 | MSVC env load mutates `process.env` or the user/system environment    | Reject; the loader is child-env-only and additive only |
 | `-arch`/`-host_arch` is hard-coded or an unsupported architecture     | Reject; derive from `process.arch` (x64/arm64 only) |
 | A Rust filter begins with `-` or contains `--target`                  | Reject before rustc or Cargo starts                |
