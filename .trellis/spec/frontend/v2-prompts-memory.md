@@ -1,16 +1,5 @@
 # V2 Prompts and Memory Native Business Contract
 
-> **Frontend Interaction V3 integration note — 2026-08-26**
-> `/agents?section=prompts` may show the selected Agent's existing prompt
-> library and an enable action, then link to `/prompts`. The supported
-> `PromptAppId` set and native `PromptsPort` remain authoritative. If
-> `entry.promptAppId` is absent, render `当前未接入提示词管理` and do not
-> invent a writer. Enable must call `ports.prompts.enable`, refetch, and
-> accept success only when the reread row has `enabled === true`. Failed or
-> mismatched readback must not keep an optimistic success state.
-> `/memory` receives the V3 left shell and visual hierarchy only; its data
-> ownership, persistence and native directory behavior do not change.
-
 ## 1. Scope / Trigger
 
 Read this contract before changing the V2 Prompts or Memory pages, their
@@ -26,6 +15,15 @@ directly; all effects cross `FeaturePorts` and the existing
 Memory share `FeatureSearch`, `FeatureList`, and Memory type `FeatureTabs`.
 New chrome that the other page will need goes in `src/v2/shared/ui` on the
 first commit. See [Frontend Reuse](./reuse.md).
+
+The selected-Agent `提示词` section may present the existing prompt library,
+enable one entry, and link to `/prompts`, but it remains a consumer of this
+same `PromptsPort`. It calls `enable`, rereads the selected app, and accepts
+success only when the authoritative row is enabled. When `promptAppId` is
+absent it renders `此应用暂不支持提示词管理` and never invents a writer.
+Failed or mismatched readback remains non-optimistic. `/memory` uses the common
+shell only; its native data, persistence, limits, and directory behavior remain
+owned here.
 
 ## 2. Signatures
 

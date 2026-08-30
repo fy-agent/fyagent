@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 55
+- **Total Sessions**: 56
 - **Last Active**: 2026-08-31
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1796 | Active |
+| `journal-1.md` | ~1817 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 56 | 2026-08-31 | 精简并校准全部 Trellis spec | `2391e2aa` | `dev/laiyongjie` |
 | 55 | 2026-08-31 | Humanize user-facing copy and persist copy SPEC | `40a844c796b1dcd92f7d215d3e6bf77dd14676a2` | `dev/laiyongjie` |
 | 54 | 2026-08-26 | Agent directory lifecycle UX | `7725099b`, `92d97cf7` | `dev/laiyongjie` |
 | 53 | 2026-08-26 | Reuse-first specs and release preflight decoupling | `83724a38`, `4db05412` | `docs/reuse-first-spec` |

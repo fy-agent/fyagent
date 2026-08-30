@@ -8,7 +8,7 @@ markers, synchronization namespaces, autostart registration, release artifact
 names, or public installation instructions. These values form one cross-layer
 identity and must move together.
 
-The 2026 FyAgent identity change is an intentional clean break from the former
+The FyAgent identity transition is an intentional clean break from the former
 application identity. It does not migrate, alias, discover, import, or clean up
 the former application's local state. This boundary prevents an incomplete
 compatibility layer from making old and new state appear interchangeable.

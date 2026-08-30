@@ -155,14 +155,13 @@ exact-source push CI does not fail eligibility.
 
 ### Repository owner-transfer boundary
 
-Before the 2026-08-10 owner transfer, the factual repository URL was
-`https://github.com/NongHua123/fyagent`. GitHub now redirects that URL with
-HTTP 301 to `https://github.com/fy-agent/fyagent`, and both locations resolve
-to numeric repository ID `1313497021`. That continuity preserves historical
-run and source evidence only. It is not an eligibility alias: current
-collection and evaluation require the exact canonical name
-`fy-agent/fyagent`, and a payload, workflow reference, metadata URL, or
-head-repository name that still presents the former owner fails closed.
+The former-owner repository URL was
+`https://github.com/NongHua123/fyagent`. Redirect continuity and historical
+source references preserve old run/source evidence only; they are not
+eligibility aliases. Current collection and evaluation require the exact
+canonical name `fy-agent/fyagent` and numeric repository ID `1313497021`; a
+payload, workflow reference, metadata URL, or head-repository name that still
+presents the former owner fails closed.
 
 Initial eligibility freezes the decision before any build. Formal publication
 then performs two independent live rechecks with the same collector and exact
@@ -280,7 +279,8 @@ Developer ID/notarization jobs remain on matching platform runners.
 | macOS universal | `macos-15`, both Apple targets   | one UDZO DMG from the universal app |
 
 Each target verifies documented `runner.os`/`runner.arch`, the requested
-runner label, source HEAD, Node 24.19.0, pnpm 10.12.3, and Rust 1.97.1. Windows
+runner label, source HEAD, and the exact Node, pnpm, and Rust selections from
+`.node-version`, `package.json#packageManager`, and `rust-toolchain.toml`. Windows
 builders additionally resolve a bounded Visual Studio 2022/2026 installation
 through `vswhere`, require the host-architecture VC tools component, load the
 matching `VsDevCmd` environment, and record the selected Visual Studio
@@ -381,7 +381,8 @@ unavailability blocks acceptance.
   original `hdiutil` status immediately. The workflow does not pipe
   `hdiutil`, force-detach images, or kill disk-image helpers.
 - `build-macos` installs the same pinned `astral-sh/setup-uv` and managed
-  Python 3.14.7 as CI, then `uv sync --locked --group dmg-layout`. Default
+  Python selected by `.python-version` as CI, then
+  `uv sync --locked --group dmg-layout`. Default
   `uv sync --locked` on Linux/Windows must not install that group.
 
 ## 7. Assets, metadata, signing disclosure, and attestation

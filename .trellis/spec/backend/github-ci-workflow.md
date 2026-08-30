@@ -149,11 +149,9 @@ Classification invariants:
 
 `star-history.yml` is repository automation rather than Required CI authority.
 It calls the public SHA-pinned `xpzouying/star-history` Action instead of
-re-cloning that generator. Hosted `api.star-history.com` README embeds are not
-used: after GitHub's June 2026 stargazers restriction they render a placeholder
-rather than a live chart, and the official workaround puts an encrypted
-contents-write token in the public README. The Action publishes only the chart
-files to the unprotected `star-history` data branch. New stars refresh the
+re-cloning that generator. The README does not depend on a mutable hosted chart
+or token-bearing embed URL; the Action publishes only the generated chart files
+to the unprotected `star-history` data branch. New stars refresh the
 chart through the `watch` `started` event. GitHub's `schedule` trigger is
 best-effort and can skip slots, so it remains the periodic reconciliation path
 (including unstars), every three hours at minute 17. Manual `workflow_dispatch`

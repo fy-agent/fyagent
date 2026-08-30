@@ -1,21 +1,5 @@
 # V2 Shell Contract
 
-> **Frontend Interaction V3 reliability override — 2026-08-30**
-> `SUPERSEDES_TOP_PRIMARY_NAV_ONLY`: the six first-level routes and
-> the hash-router leaf registry stay authoritative, but clauses below that require
-> all six links inside the top chrome row are superseded. The approved V3 shell
-> renders three labelled groups in a persistent left navigation:
-> `AI软件配置`, expandable `配置管理` (Models/Skills/MCP/Prompts), and
-> `记忆模块`. `TopBar` retains Brand only; Search, Settings, and Account do
-> not render until they have real product owners. Existing route order,
-> redirects, platform boundaries and no-overflow requirements still apply.
-> Blanket visited-page keep-alive and Lens-owned semantic selection are
-> superseded: primary route modules are lazy and active-route-only, while each
-> selected host paints its own CSS/ARIA state. Tests that assert "six top links",
-> "Brand/Nav/Tools", or a nine-stop top-bar lens must be replaced by equivalent
-> left-navigation group, leaf, active, keyboard, responsive, and no-focusable-
-> noop assertions in the V3 task.
-
 ## 1. Scope / Trigger
 
 Read this contract before changing `src/v2/**`, the V2-only test/configuration
@@ -606,7 +590,7 @@ show-after-`hidden` replay `selectionLensCollapsedOrigin(activeHostBox)` so
 the pill expands from that host's top-left, not from the track origin.
 
 ```tsx
-<SelectionLensGroup id="primary-nav" inset={1}>
+<SelectionLensGroup id="side-navigation" inset={1}>
   <NavLink to={item.path}>
     {({ isActive }) => (
       <>
