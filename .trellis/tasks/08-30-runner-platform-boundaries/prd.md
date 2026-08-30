@@ -112,7 +112,7 @@ compatibility do not drift from the workflows.
       release metadata and its types/contracts.
 - [x] Targeted workflow/toolchain tests, repository Release checks, typecheck,
       formatting, and Trellis validation pass locally.
-- [ ] The branch is pushed and a pull request targeting `main` is created.
+- [x] The branch is pushed and a pull request targeting `main` is created.
 
 ## Out of Scope
 

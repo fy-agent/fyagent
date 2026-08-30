@@ -110,3 +110,13 @@ These local checks prove workflow structure, pure contracts, and the portable
 test paths. They do not prove GitHub's Ubuntu image or the native
 `windows-11-vs2026-arm` image executed successfully. The pull-request Actions
 run is the authoritative hosted evidence for those runner assignments.
+
+## Delivery
+
+- Work branch: `ci/runner-platform-boundaries`
+- Implementation commit: `aff8d57f`
+- Pull request: `fy-agent/fyagent#166`
+- Base branch: `main`
+
+The pull-request checks remain the authoritative hosted evidence for the
+migrated Ubuntu control plane and the explicit Windows ARM64 VS2026 runner.
