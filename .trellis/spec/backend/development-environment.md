@@ -261,31 +261,31 @@ the standard version file and `mise.lock` captured before the attempt.
 
 ## 7. Validation / Error Matrix
 
-| Condition                                                             | Required result                                                                         |
-| --------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| mise is missing or older than 2026.8.6                                | Stop before dependency preparation                                                      |
-| Ordinary task is started with a missing tool                          | Fail and direct the developer to `bootstrap`; never auto-trust                          |
-| A standard version differs from the actual executable                 | `env:check` fails                                                                       |
-| `mise.toml` repeats Node/pnpm/Rust/Python                             | Lock and environment contracts fail                                                     |
-| Python resolves outside uv management or `.venv` is absent            | Python/environment checks fail                                                          |
-| Lock platform URL names another architecture                          | Fail, even when checksum and URL are otherwise valid                                    |
-| Rust lock has no platform assets                                      | Record exact version/options plus native rustup evidence; never invent an asset claim   |
-| A script changes mise trust or private mise/Cargo/rustup homes        | Reject the change                                                                       |
-| A fixed native operation receives any forwarded argument              | Reject before probing rustc or starting Cargo/Tauri                                     |
-| Caller sets either target environment variable                        | Reject before probing rustc or starting Cargo/Tauri                                     |
-| Caller sets compiler/rustdoc/wrapper or any target runner env         | Reject case-insensitively before probing rustc/rustdoc                                  |
-| Any supported Rust/rustdoc flag env contains `--target`               | Reject before probing rustc/rustdoc or starting Cargo/Tauri                             |
-| `rustc`/`rustdoc` identity differs from host or each other            | Reject before Cargo/Tauri execution                                                     |
-| User Cargo config selects target/compiler/wrapper/flags/runner/linker | Reject the effective config before rustc/rustdoc/Cargo/Tauri starts                     |
-| A Windows helper preparation fails or selects another target/profile  | Stop before the main workspace Cargo command                                            |
-| A local command selects another OS/architecture by any route          | Reject before compilation, packaging, or verification                                   |
-| A Linux development host is refused by task or toolchain wrappers     | Fail the environment contract; `mise run check` must admit the current host             |
-| `src-tauri` uses `compile_error!` to reject a non-shipping OS         | Fail; compile through the existing unsupported adapter instead                          |
-| A non-host result is offered as native acceptance evidence            | Keep the gate pending and require the matching native Actions runner                    |
-| Host native libraries are missing                                     | `system:check` fails with a non-elevating installation hint                             |
+| Condition                                                             | Required result                                                                              |
+| --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| mise is missing or older than 2026.8.6                                | Stop before dependency preparation                                                           |
+| Ordinary task is started with a missing tool                          | Fail and direct the developer to `bootstrap`; never auto-trust                               |
+| A standard version differs from the actual executable                 | `env:check` fails                                                                            |
+| `mise.toml` repeats Node/pnpm/Rust/Python                             | Lock and environment contracts fail                                                          |
+| Python resolves outside uv management or `.venv` is absent            | Python/environment checks fail                                                               |
+| Lock platform URL names another architecture                          | Fail, even when checksum and URL are otherwise valid                                         |
+| Rust lock has no platform assets                                      | Record exact version/options plus native rustup evidence; never invent an asset claim        |
+| A script changes mise trust or private mise/Cargo/rustup homes        | Reject the change                                                                            |
+| A fixed native operation receives any forwarded argument              | Reject before probing rustc or starting Cargo/Tauri                                          |
+| Caller sets either target environment variable                        | Reject before probing rustc or starting Cargo/Tauri                                          |
+| Caller sets compiler/rustdoc/wrapper or any target runner env         | Reject case-insensitively before probing rustc/rustdoc                                       |
+| Any supported Rust/rustdoc flag env contains `--target`               | Reject before probing rustc/rustdoc or starting Cargo/Tauri                                  |
+| `rustc`/`rustdoc` identity differs from host or each other            | Reject before Cargo/Tauri execution                                                          |
+| User Cargo config selects target/compiler/wrapper/flags/runner/linker | Reject the effective config before rustc/rustdoc/Cargo/Tauri starts                          |
+| A Windows helper preparation fails or selects another target/profile  | Stop before the main workspace Cargo command                                                 |
+| A local command selects another OS/architecture by any route          | Reject before compilation, packaging, or verification                                        |
+| A Linux development host is refused by task or toolchain wrappers     | Fail the environment contract; `mise run check` must admit the current host                  |
+| `src-tauri` uses `compile_error!` to reject a non-shipping OS         | Fail; compile through the existing unsupported adapter instead                               |
+| A non-host result is offered as native acceptance evidence            | Keep the gate pending and require the matching native Actions runner                         |
+| Host native libraries are missing                                     | `system:check` fails with a non-elevating installation hint                                  |
 | Windows VS 2022 / VC tools component is missing                       | `system:check` reports a `vswhere` FAIL naming "Desktop development with C++"; never elevate |
-| MSVC environment parse fails or lacks `INCLUDE`/`LIB`                 | Fail before the compile child; never fall back to a bare PATH                           |
-| A prerequisite command is absent or cannot be launched                | Record a failed check with its installation hint and finish the machine-readable report |
+| MSVC environment parse fails or lacks `INCLUDE`/`LIB`                 | Fail before the compile child; never fall back to a bare PATH                                |
+| A prerequisite command is absent or cannot be launched                | Record a failed check with its installation hint and finish the machine-readable report      |
 
 ## 8. Tests Required
 
@@ -375,8 +375,10 @@ support.
 
 ### 2. Signatures
 
+- `platform.mjs`: dependency-free `isPosixTaskHost(platform)` owner
 - `lib.mjs`: `PRODUCT_PLATFORMS`, `DEVELOPMENT_HOSTS`/`SUPPORTED_PLATFORMS`,
-  `isPosixTaskHost(platform)`, `resolveTaskExecutable(command, platform)`
+  the `isPosixTaskHost` re-export, and
+  `resolveTaskExecutable(command, platform)`
 - `host-native.mjs`: `HOST_RUST_TARGETS` includes
   `linux-x64` → `x86_64-unknown-linux-gnu` and
   `linux-arm64` → `aarch64-unknown-linux-gnu`

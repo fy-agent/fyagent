@@ -3,37 +3,35 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+// @ts-expect-error The task helper is dependency-free JavaScript used by runtime scripts.
+import { isPosixTaskHost } from "../scripts/tasks/platform.mjs";
 
 const ROOT = path.resolve(__dirname, "..");
 const RETRY_HDIUTIL = path.join(ROOT, "scripts", "release", "retry-hdiutil.sh");
 const temporaryRoots: string[] = [];
 
 function resolveBashExecutable(): string {
-  switch (process.platform) {
-    case "darwin":
-    case "linux":
-      return "bash";
-    case "win32":
-      break;
-    default:
-      throw new Error(`Unsupported test host: ${process.platform}`);
+  if (isPosixTaskHost(process.platform)) return "bash";
+
+  if (process.platform === "win32") {
+    const gitExecPath = spawnSync("git", ["--exec-path"], {
+      encoding: "utf8",
+      windowsHide: true,
+    });
+    if (gitExecPath.status !== 0) {
+      throw new Error(`git --exec-path failed: ${gitExecPath.stderr}`);
+    }
+    const gitRoot = path.resolve(gitExecPath.stdout.trim(), "..", "..", "..");
+    for (const candidate of [
+      path.join(gitRoot, "bin", "bash.exe"),
+      path.join(gitRoot, "usr", "bin", "bash.exe"),
+    ]) {
+      if (fs.existsSync(candidate)) return candidate;
+    }
+    throw new Error(`Git Bash was not found below ${gitRoot}`);
   }
 
-  const gitExecPath = spawnSync("git", ["--exec-path"], {
-    encoding: "utf8",
-    windowsHide: true,
-  });
-  if (gitExecPath.status !== 0) {
-    throw new Error(`git --exec-path failed: ${gitExecPath.stderr}`);
-  }
-  const gitRoot = path.resolve(gitExecPath.stdout.trim(), "..", "..", "..");
-  for (const candidate of [
-    path.join(gitRoot, "bin", "bash.exe"),
-    path.join(gitRoot, "usr", "bin", "bash.exe"),
-  ]) {
-    if (fs.existsSync(candidate)) return candidate;
-  }
-  throw new Error(`Git Bash was not found below ${gitRoot}`);
+  throw new Error(`Unsupported test host: ${process.platform}`);
 }
 
 const BASH_RUNNER = `

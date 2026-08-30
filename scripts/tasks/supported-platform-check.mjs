@@ -245,6 +245,7 @@ export const DEVELOPMENT_HOST_ADMISSION_PATHS = Object.freeze([
   "scripts/tasks/host-native.mjs",
   "scripts/tasks/lib.mjs",
   "scripts/tasks/lockfile-check.mjs",
+  "scripts/tasks/platform.mjs",
   "scripts/tasks/system-check.mjs",
   "scripts/tasks/toolchain-check.mjs",
   "scripts/tasks/windows-msvc-env.mjs",

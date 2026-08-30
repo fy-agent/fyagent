@@ -310,11 +310,15 @@ repository files through the repository-owned verifier:
 - `.python-version` for managed Python.
 
 The verifier executes ordinary tool commands directly on the admitted POSIX
-CI hosts (`darwin` and `linux`). On Windows, only pnpm's batch shim is routed
-through the selected `ComSpec` with a closed token grammar; native executables
-still run directly. Any other host platform fails closed. The verifier and its
-unit test are explicit development-host surfaces in the supported-platform
-inventory and do not declare a shipped Linux product target.
+CI hosts (`darwin` and `linux`). It imports that closed host predicate from the
+dependency-free `scripts/tasks/platform.mjs` bootstrap owner rather than from
+the package-dependent task library, because several native CI jobs resolve
+toolchain facts before `pnpm install`. On Windows, only pnpm's batch shim is
+routed through the selected `ComSpec` with a closed token grammar; native
+executables still run directly. Any other host platform fails closed. The
+verifier and its unit test are explicit development-host surfaces in the
+supported-platform inventory and do not declare a shipped Linux product
+target.
 
 The workflow does not duplicate literal Node, pnpm, Rust, uv, Python, or
 application versions. Rust setup disables its implicit cache. Backend and

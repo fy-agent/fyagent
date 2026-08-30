@@ -3,6 +3,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
+// @ts-expect-error The task helper is dependency-free JavaScript used by runtime scripts.
+import { isPosixTaskHost } from "../scripts/tasks/platform.mjs";
 import {
   EXPECTED_INSTALLERS_BY_TARGET,
   EXPECTED_TARGETS,
@@ -154,31 +156,27 @@ function read(file: string): string {
 }
 
 function resolveBashExecutable(): string {
-  switch (process.platform) {
-    case "darwin":
-    case "linux":
-      return "bash";
-    case "win32":
-      break;
-    default:
-      throw new Error(`Unsupported test host: ${process.platform}`);
+  if (isPosixTaskHost(process.platform)) return "bash";
+
+  if (process.platform === "win32") {
+    const gitExecPath = spawnSync("git", ["--exec-path"], {
+      encoding: "utf8",
+      windowsHide: true,
+    });
+    if (gitExecPath.status !== 0) {
+      throw new Error(`git --exec-path failed: ${gitExecPath.stderr}`);
+    }
+    const gitRoot = path.resolve(gitExecPath.stdout.trim(), "..", "..", "..");
+    for (const candidate of [
+      path.join(gitRoot, "bin", "bash.exe"),
+      path.join(gitRoot, "usr", "bin", "bash.exe"),
+    ]) {
+      if (fs.existsSync(candidate)) return candidate;
+    }
+    throw new Error(`Git Bash was not found below ${gitRoot}`);
   }
 
-  const gitExecPath = spawnSync("git", ["--exec-path"], {
-    encoding: "utf8",
-    windowsHide: true,
-  });
-  if (gitExecPath.status !== 0) {
-    throw new Error(`git --exec-path failed: ${gitExecPath.stderr}`);
-  }
-  const gitRoot = path.resolve(gitExecPath.stdout.trim(), "..", "..", "..");
-  for (const candidate of [
-    path.join(gitRoot, "bin", "bash.exe"),
-    path.join(gitRoot, "usr", "bin", "bash.exe"),
-  ]) {
-    if (fs.existsSync(candidate)) return candidate;
-  }
-  throw new Error(`Git Bash was not found below ${gitRoot}`);
+  throw new Error(`Unsupported test host: ${process.platform}`);
 }
 
 function trackedMode(file: string): string {
