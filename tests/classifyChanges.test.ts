@@ -185,6 +185,7 @@ describe("repository change classifier", () => {
     "scripts/ci/evaluate-step-outcomes.mjs",
     "scripts/ci/verify-toolchain.mjs",
     "scripts/tasks/lib.mjs",
+    "scripts/tasks/platform.mjs",
     "scripts/tasks/supported-platform-check.mjs",
     "scripts/tasks/toolchain-check.mjs",
     "rust-toolchain.toml",

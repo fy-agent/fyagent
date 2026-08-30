@@ -16,10 +16,19 @@ if (!output) {
   process.exit(1);
 }
 
+const VISUAL_STUDIO_VERSION = /^(?:17|18)(?:\.\d+){1,3}$/u;
+const MSVC_VERSION = /^\d+(?:\.\d+){1,3}$/u;
+
 function required(name) {
   const value = process.env[name];
   if (!value?.trim())
     throw new Error(`Required environment variable is missing: ${name}`);
+  return value.trim();
+}
+
+function optional(name) {
+  const value = process.env[name];
+  if (value === undefined || value.trim() === "") return null;
   return value.trim();
 }
 
@@ -98,8 +107,29 @@ try {
       "EXPECTED_CI_RUN_ID and EXPECTED_CI_RUN_ATTEMPT must both be absent or both be positive decimals",
     );
   }
+  const visualStudio = optional("ACTUAL_VISUAL_STUDIO_VERSION");
+  const msvc = optional("ACTUAL_MSVC_VERSION");
+  let nativeToolchain;
+  if (platform === "windows") {
+    if (!visualStudio || !VISUAL_STUDIO_VERSION.test(visualStudio)) {
+      throw new Error(
+        "ACTUAL_VISUAL_STUDIO_VERSION must identify Visual Studio 2022 or 2026",
+      );
+    }
+    if (!msvc || !MSVC_VERSION.test(msvc)) {
+      throw new Error("ACTUAL_MSVC_VERSION must be a dotted numeric version");
+    }
+    nativeToolchain = { visualStudio, msvc };
+  } else {
+    if (visualStudio !== null || msvc !== null) {
+      throw new Error(
+        "macOS platform metadata must not define Windows native toolchain inputs",
+      );
+    }
+    nativeToolchain = null;
+  }
   const metadata = {
-    schema: "fyagent-platform-build/v2",
+    schema: "fyagent-platform-build/v3",
     targetGroup,
     platform,
     architecture,
@@ -115,6 +145,7 @@ try {
       pnpm: required("ACTUAL_PNPM_VERSION"),
       rustc: required("ACTUAL_RUST_VERSION"),
     },
+    nativeToolchain,
     identity: {
       productVersion: required("APP_VERSION"),
       tag: required("RELEASE_TAG"),

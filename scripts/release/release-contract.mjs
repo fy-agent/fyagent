@@ -22,6 +22,8 @@ export const ATTESTATION_BUNDLE_NAME = "artifact-attestation.sigstore.json";
 
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
 const STABLE_VERSION_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+const VISUAL_STUDIO_VERSION_PATTERN = /^(?:17|18)(?:\.\d+){1,3}$/u;
+const MSVC_VERSION_PATTERN = /^\d+(?:\.\d+){1,3}$/u;
 const WINDOWS_VERSION_COMPONENT_MAX = 65535n;
 
 export const GITHUB_RUNNER_ARCHITECTURES = Object.freeze([
@@ -73,7 +75,7 @@ export const EXPECTED_TARGETS = Object.freeze([
     targetGroup: "windows-arm64",
     platform: "windows",
     architecture: "arm64",
-    requestedRunnerLabel: "windows-11-arm",
+    requestedRunnerLabel: "windows-11-vs2026-arm",
     expectedRunnerOs: "Windows",
     expectedRunnerArch: "ARM64",
   },
@@ -344,11 +346,13 @@ const PLATFORM_METADATA_KEYS = Object.freeze([
   "architecture",
   "runner",
   "toolchain",
+  "nativeToolchain",
   "identity",
 ]);
 const RUNNER_KEYS = Object.freeze(["requestedLabel", "context"]);
 const RUNNER_CONTEXT_KEYS = Object.freeze(["os", "arch"]);
 const TOOLCHAIN_KEYS = Object.freeze(["node", "pnpm", "rustc"]);
+const WINDOWS_NATIVE_TOOLCHAIN_KEYS = Object.freeze(["visualStudio", "msvc"]);
 const IDENTITY_KEYS = Object.freeze([
   "productVersion",
   "tag",
@@ -388,7 +392,7 @@ function validatePlatformMetadata(metadata, expected, identity) {
     `${expected.targetGroup} platform metadata`,
   );
   assert(
-    metadata.schema === "fyagent-platform-build/v2",
+    metadata.schema === "fyagent-platform-build/v3",
     `Invalid platform metadata schema for ${expected.targetGroup}`,
   );
   for (const key of ["targetGroup", "platform", "architecture"]) {
@@ -469,8 +473,45 @@ function validatePlatformMetadata(metadata, expected, identity) {
     `${expected.targetGroup} Rust version drifted`,
   );
 
+  let nativeToolchain;
+  if (expected.platform === "windows") {
+    assertExactKeys(
+      metadata.nativeToolchain,
+      WINDOWS_NATIVE_TOOLCHAIN_KEYS,
+      `${expected.targetGroup} nativeToolchain`,
+    );
+    requireNonEmptyString(
+      metadata.nativeToolchain.visualStudio,
+      `${expected.targetGroup} nativeToolchain.visualStudio`,
+    );
+    requireNonEmptyString(
+      metadata.nativeToolchain.msvc,
+      `${expected.targetGroup} nativeToolchain.msvc`,
+    );
+    assert(
+      VISUAL_STUDIO_VERSION_PATTERN.test(
+        metadata.nativeToolchain.visualStudio,
+      ),
+      `${expected.targetGroup} Visual Studio version is outside the supported 2022/2026 range`,
+    );
+    assert(
+      MSVC_VERSION_PATTERN.test(metadata.nativeToolchain.msvc),
+      `${expected.targetGroup} MSVC version is malformed`,
+    );
+    nativeToolchain = {
+      visualStudio: metadata.nativeToolchain.visualStudio,
+      msvc: metadata.nativeToolchain.msvc,
+    };
+  } else {
+    assert(
+      metadata.nativeToolchain === null,
+      `${expected.targetGroup} nativeToolchain must be null`,
+    );
+    nativeToolchain = null;
+  }
+
   return {
-    schema: "fyagent-platform-build/v2",
+    schema: "fyagent-platform-build/v3",
     targetGroup: expected.targetGroup,
     platform: expected.platform,
     architecture: expected.architecture,
@@ -486,6 +527,7 @@ function validatePlatformMetadata(metadata, expected, identity) {
       pnpm: metadata.toolchain.pnpm,
       rustc: metadata.toolchain.rustc,
     },
+    nativeToolchain,
   };
 }
 

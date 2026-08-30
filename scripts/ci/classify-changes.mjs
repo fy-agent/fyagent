@@ -119,6 +119,7 @@ const TASK_BACKEND_FILES = new Set([
 
 const TASK_GLOBAL_AUTHORITY_FILES = new Set([
   "scripts/tasks/lib.mjs",
+  "scripts/tasks/platform.mjs",
   "scripts/tasks/supported-platform-check.mjs",
   "scripts/tasks/toolchain-check.mjs",
 ]);

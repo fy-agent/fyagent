@@ -7,6 +7,9 @@ import { spawn, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parse as parseToml } from "smol-toml";
+import { isPosixTaskHost } from "./platform.mjs";
+
+export { isPosixTaskHost };
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 
@@ -24,10 +27,6 @@ export const DEVELOPMENT_HOSTS = Object.freeze([
 ]);
 export const SUPPORTED_PLATFORMS = DEVELOPMENT_HOSTS;
 export const STABLE_SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
-
-export function isPosixTaskHost(platform) {
-  return platform === "darwin" || platform === "linux";
-}
 
 export function resolveTaskExecutable(command, platform = process.platform) {
   if (platform === "win32") {

@@ -6,6 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { gunzipSync, gzipSync } from "node:zlib";
+import { isPosixTaskHost } from "../tasks/platform.mjs";
 import { assertWindowsBundleVersion } from "./release-contract.mjs";
 
 export const TAURI_NSIS_UPSTREAM = Object.freeze({
@@ -95,15 +96,13 @@ function assertPowerShell51LoaderContract(loader, loaderPath, chunkCount) {
       loader.includes("&([ScriptBlock]::Create("),
     "WebView2 loader must not use module-resolved or unconstrained indirect commands",
   );
-  switch (process.platform) {
-    case "darwin":
-      return;
-    case "win32":
-      break;
-    default:
-      throw new Error(
-        `Unsupported release verification host: ${process.platform}`,
-      );
+  if (isPosixTaskHost(process.platform)) return;
+  if (process.platform === "win32") {
+    // Native validation continues below.
+  } else {
+    throw new Error(
+      `Unsupported release verification host: ${process.platform}`,
+    );
   }
 
   const loaderDigest = createHash("sha256").update(loader).digest("hex");

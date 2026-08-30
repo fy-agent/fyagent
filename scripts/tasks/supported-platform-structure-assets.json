@@ -3,11 +3,11 @@
   "assets": [
     [
       "scripts/ci/verify-toolchain.mjs",
-      "3af8a1a6cd959ddf33a0494b6b1f3fe12defe1eeb74a247974ae98533635dcec"
+      "3bc61c60970c1d0ccd34d4dd089cb4dad16ca84ab73976b316d3d461708b246c"
     ],
     [
       "scripts/release/verify-windows-nsis-contract.mjs",
-      "7c60e5c16868b369ba63373d9cfa2313f4fd0c4db07910c90db481169fcf8cba"
+      "5b1b3cfdf819a19edf7334a8f8da2f354a013d549fefcfc6a726762ba20f97c3"
     ],
     [
       "scripts/release/windows-signing.mjs",
@@ -19,15 +19,15 @@
     ],
     [
       "scripts/tasks/lib.mjs",
-      "bd11454b6b9540a42cb6eea5d15a15f1fbd18d6273dd85d7edb1106839d6e8f3"
+      "6c39036ff571f97e5f58db2cce0cedf05db27eb8d9aabcb1045cfd59aab2b0cb"
     ],
     [
       "scripts/tasks/supported-platform-check.mjs",
-      "7d757297e8a7c589547bab4fe10737662e5a68adbb3b69497367e4f6b67a742a"
+      "54df128d47c4477de2ea7f75908f77b2e932afe79c39495bb02cb88bfef94ae1"
     ],
     [
       "scripts/tasks/system-check.mjs",
-      "e093cfe8dbd27ed0b51729f4d33b22555f353ed46ec112a9e7897e318552bedc"
+      "266ede8818e0a5cd735b59ba184ed85a94e653912c15fe12b08c7c7ab057ccc0"
     ],
     [
       "scripts/tasks/toolchain-check.mjs",
@@ -35,7 +35,7 @@
     ],
     [
       "scripts/tasks/windows-msvc-env.mjs",
-      "148e7aef298cb96962a107cc41268186f935237b86537707c300473b12a697fd"
+      "bfa22b5d5e5370b49bc82488d28c8d183f6df0129e415aff0b48e61c371f08e1"
     ],
     [
       "src-tauri/build.rs",
@@ -371,11 +371,11 @@
     ],
     [
       "tests/codexWindowsUserScopeContract.test.ts",
-      "aa5a88ede337acbc8825584f5bcdee5b420b4cf421572da3ad96ca0c7f5b755b"
+      "e4e120372e13ce0b34728f14506fc0b6d4629a53265aec16ec73fa4b27e58559"
     ],
     [
       "tests/hdiutilRetry.test.ts",
-      "ea4752854960a989248dd1f4487dcad14ad20dcc61521bea0cf6085debd99ea5"
+      "c03244446296c5fe98b7d8a66bebc2646a6830dca1f1a35431ae05bd839127ea"
     ],
     [
       "tests/lib/platform.test.ts",
@@ -387,7 +387,7 @@
     ],
     [
       "tests/releaseWorkflow.test.ts",
-      "31972737125019796afb44cad87c9cf6d1bbe9d2c91a94bea72265c56c4d1a45"
+      "5782861d52d716a6187814f8b8a9518fcb60c4e1b2fafd25c9529171174c252c"
     ],
     [
       "tests/remainingPlatformSurface.test.ts",

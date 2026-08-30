@@ -240,14 +240,21 @@ export const ACTIVE_TASK_ENV = "FYAGENT_SUPPORTED_PLATFORM_ACTIVE_TASK";
 export const DEVELOPMENT_HOST_ADMISSION_PATHS = Object.freeze([
   "mise.lock",
   "mise.toml",
+  "scripts/ci/verify-toolchain.mjs",
+  "scripts/release/verify-windows-nsis-contract.mjs",
   "scripts/tasks/host-native.mjs",
   "scripts/tasks/lib.mjs",
   "scripts/tasks/lockfile-check.mjs",
+  "scripts/tasks/platform.mjs",
   "scripts/tasks/system-check.mjs",
   "scripts/tasks/toolchain-check.mjs",
+  "scripts/tasks/windows-msvc-env.mjs",
+  "tests/ciToolchainContract.test.ts",
   "tests/developmentEnvironment.test.ts",
+  "tests/hdiutilRetry.test.ts",
   "tests/localBuildBoundary.test.ts",
   "tests/miseTaskContract.test.ts",
+  "tests/releaseWorkflow.test.ts",
   "tests/systemCheck.test.ts",
 ]);
 const DEVELOPMENT_HOST_CONTENT_RULE_IDS = new Set([

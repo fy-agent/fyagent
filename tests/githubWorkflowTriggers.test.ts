@@ -77,6 +77,7 @@ describe("GitHub workflow trigger policy", () => {
   it("keeps the branch-push policy read-only and pins its actions", () => {
     const source = readWorkflow("commit-convention-push.yml");
 
+    expect(source).toContain("runs-on: ubuntu-24.04");
     expect(source).toContain("permissions:\n  contents: read");
     expect(source).not.toMatch(
       /^\s+(?:actions|checks|pull-requests|id-token):\s+write/m,
@@ -138,7 +139,7 @@ describe("GitHub workflow trigger policy", () => {
   it("does not execute pull-request code or broaden Labeler permissions", () => {
     const source = readWorkflow("labeler.yml");
 
-    expect(source).toContain("runs-on: macos-15");
+    expect(source).toContain("runs-on: ubuntu-24.04");
     expect(source).toContain(
       "permissions:\n  contents: read\n  pull-requests: write",
     );

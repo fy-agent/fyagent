@@ -5,6 +5,7 @@ import path from "node:path";
 import process from "node:process";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { isPosixTaskHost } from "../tasks/platform.mjs";
 
 const ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -99,9 +100,9 @@ export function resolveToolInvocation(
   platform = process.platform,
   env = process.env,
 ) {
+  if (isPosixTaskHost(platform)) return { command, args };
+
   switch (platform) {
-    case "darwin":
-      return { command, args };
     case "win32":
       if (command !== "pnpm") return { command, args };
       break;
