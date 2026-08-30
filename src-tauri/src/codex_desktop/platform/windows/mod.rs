@@ -51,6 +51,7 @@ pub use deployment::SystemWindowsDiskSpaceProbe;
 #[cfg(target_os = "windows")]
 pub use deployment::SystemWindowsPackageManager;
 #[cfg(target_os = "windows")]
+#[cfg_attr(test, allow(unused_imports))]
 pub(crate) use helper::run_verified_agent_exe_installer;
 
 trait WindowsVerifiedFilePin: Send {
