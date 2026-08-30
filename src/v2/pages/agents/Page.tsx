@@ -1,8 +1,7 @@
-import { useEffect, useRef } from "react";
-import { useLocation, useSearchParams } from "react-router-dom";
+import { useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import { PRODUCT_DIRECTORY } from "../../shared/features/directory";
-import { useAgentReturnNavigation } from "../../shared/features/agent-navigation-context";
 import { useAgentCatalog } from "../../shared/features/queries";
 import {
   Button,
@@ -22,20 +21,12 @@ function agentSection(value: string | null): AgentSection | null {
 }
 
 export function AgentsPage() {
-  const { pathname } = useLocation();
-  const pageActive = pathname === "/agents";
   const [searchParams, setSearchParams] = useSearchParams();
   const catalogQuery = useAgentCatalog();
-  const agentReturnNavigation = useAgentReturnNavigation();
   const scanController = useAgentDirectoryScan({ autoStart: true });
-  const lastConfiguration = useRef<{
-    target: (typeof PRODUCT_DIRECTORY)[number]["agentId"];
-    section: AgentSection;
-  } | null>(null);
-  const wasPageActive = useRef(pageActive);
   const entries = catalogQuery.data?.agents ?? [];
-  const rawTarget = pageActive ? searchParams.get("target") : null;
-  const rawSection = pageActive ? searchParams.get("section") : null;
+  const rawTarget = searchParams.get("target");
+  const rawSection = searchParams.get("section");
   const directoryEntry = PRODUCT_DIRECTORY.find(
     (entry) => entry.agentId === rawTarget,
   );
@@ -46,22 +37,8 @@ export function AgentsPage() {
     : undefined;
 
   useEffect(() => {
-    const becameActive = pageActive && !wasPageActive.current;
-    wasPageActive.current = pageActive;
-    if (!pageActive) return;
-    if (directoryEntry && requestedSection) {
-      lastConfiguration.current = {
-        target: directoryEntry.agentId,
-        section: requestedSection,
-      };
-    }
     if (!rawTarget) {
-      if (becameActive && lastConfiguration.current) {
-        setSearchParams(lastConfiguration.current, { replace: true });
-      } else {
-        lastConfiguration.current = null;
-        if (rawSection) setSearchParams({}, { replace: true });
-      }
+      if (rawSection) setSearchParams({}, { replace: true });
       return;
     }
     if (!directoryEntry) {
@@ -76,7 +53,6 @@ export function AgentsPage() {
     }
   }, [
     directoryEntry,
-    pageActive,
     rawSection,
     rawTarget,
     requestedSection,
@@ -85,8 +61,6 @@ export function AgentsPage() {
 
   const showDirectory = !directoryEntry;
   const returnToDirectory = () => {
-    agentReturnNavigation.clear();
-    lastConfiguration.current = null;
     setSearchParams({});
   };
 

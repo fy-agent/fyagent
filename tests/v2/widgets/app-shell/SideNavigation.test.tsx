@@ -1,6 +1,6 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, useNavigate } from "react-router-dom";
+import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@samasante/liquid-glass", () => ({
@@ -23,11 +23,6 @@ import {
   navigationGroups,
   navigationItems,
 } from "@/v2/shared/config/navigation";
-import { createAgentReturnLocationState } from "@/v2/shared/features/agent-navigation";
-import {
-  AgentReturnNavigationProvider,
-  useAgentReturnNavigation,
-} from "@/v2/shared/features/agent-navigation-context";
 import { SideNavigation } from "@/v2/widgets/app-shell/SideNavigation";
 
 function renderNavigation(initialEntry = "/agents") {
@@ -35,25 +30,6 @@ function renderNavigation(initialEntry = "/agents") {
     <MemoryRouter initialEntries={[initialEntry]}>
       <SideNavigation />
     </MemoryRouter>,
-  );
-}
-
-function AgentReturnNavigationHarness() {
-  const navigate = useNavigate();
-  const agentReturnNavigation = useAgentReturnNavigation();
-  return (
-    <>
-      <button
-        type="button"
-        onClick={() => {
-          agentReturnNavigation.remember("workbuddy", "mcp");
-          void navigate("/mcp", { state: { replacedByMcpPage: true } });
-        }}
-      >
-        进入 MCP 管理测试
-      </button>
-      <SideNavigation />
-    </>
   );
 }
 
@@ -126,15 +102,12 @@ describe("SideNavigation", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("derives the Agent return URL from closed primary-route state", async () => {
+  it("derives the Agent return URL from a closed management query", async () => {
     const user = userEvent.setup();
     render(
       <MemoryRouter
         initialEntries={[
-          {
-            pathname: "/models",
-            state: createAgentReturnLocationState("workbuddy", "mcp"),
-          },
+          "/models?agentReturn=workbuddy&agentSection=mcp",
         ]}
       >
         <SideNavigation />
@@ -159,13 +132,11 @@ describe("SideNavigation", () => {
     expect(agents).toHaveAttribute("aria-current", "page");
   });
 
-  it("retains a validated Agents query after a primary-route state replacement", async () => {
+  it("retains a validated Agents query after navigating to another primary route", async () => {
     const user = userEvent.setup();
     render(
       <MemoryRouter initialEntries={["/agents?target=workbuddy&section=mcp"]}>
-        <AgentReturnNavigationProvider>
-          <AgentReturnNavigationHarness />
-        </AgentReturnNavigationProvider>
+        <SideNavigation />
       </MemoryRouter>,
     );
 
@@ -174,18 +145,19 @@ describe("SideNavigation", () => {
       name: "AI软件配置",
     });
 
-    expect(agents).toHaveAttribute(
-      "href",
-      "/agents?target=workbuddy&section=mcp",
-    );
-    await user.click(
-      screen.getByRole("button", { name: "进入 MCP 管理测试" }),
-    );
+    expect(agents).toHaveAttribute("href", "/agents");
     const mcp = within(navigation).getByRole("link", { name: "MCP 管理" });
-    expect(mcp).toHaveAttribute("aria-current", "page");
-    expect(agents).toHaveAttribute(
+    expect(mcp).toHaveAttribute(
       "href",
-      "/agents?target=workbuddy&section=mcp",
+      "/mcp?agentReturn=workbuddy&agentSection=mcp",
+    );
+    await user.click(mcp);
+    expect(mcp).toHaveAttribute("aria-current", "page");
+    await waitFor(() =>
+      expect(agents).toHaveAttribute(
+        "href",
+        "/agents?target=workbuddy&section=mcp",
+      ),
     );
   });
 

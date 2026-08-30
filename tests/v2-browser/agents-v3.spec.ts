@@ -216,8 +216,18 @@ test("Agent V3 shows the full catalog, auto-scans, and reuses existing Skill and
   ]);
 
   await configuration.getByRole("button", { name: "进入 MCP 管理" }).click();
-  await expect(page).toHaveURL(/#\/mcp$/);
-  await page.getByRole("link", { name: "AI软件配置", exact: true }).click();
+  await expect(page).toHaveURL(
+    /#\/mcp\?agentReturn=workbuddy&agentSection=mcp$/,
+  );
+  const agentsLink = page.getByRole("link", {
+    name: "AI软件配置",
+    exact: true,
+  });
+  await expect(agentsLink).toHaveAttribute(
+    "href",
+    "#/agents?target=workbuddy&section=mcp",
+  );
+  await agentsLink.click();
   await expect(page).toHaveURL(/#\/agents\?target=workbuddy&section=mcp$/);
   await expect(configuration).toBeVisible();
 

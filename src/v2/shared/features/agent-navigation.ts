@@ -9,18 +9,13 @@ export const AGENT_SECTION_IDS = [
 
 export type AgentSection = (typeof AGENT_SECTION_IDS)[number];
 
-const AGENT_RETURN_STATE_KEY = "fyagentAgentReturn";
+const AGENT_RETURN_ID_PARAM = "agentReturn";
+const AGENT_RETURN_SECTION_PARAM = "agentSection";
 
-export type AgentReturnLocationState = Readonly<{
-  [AGENT_RETURN_STATE_KEY]: Readonly<{
-    agentId: AgentCatalogId;
-    section: AgentSection;
-  }>;
+export type AgentReturnDescriptor = Readonly<{
+  agentId: AgentCatalogId;
+  section: AgentSection;
 }>;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function isAgentCatalogId(value: unknown): value is AgentCatalogId {
   return (
@@ -36,7 +31,13 @@ function isAgentSection(value: unknown): value is AgentSection {
   );
 }
 
-export function agentReturnPathFromSearch(search: string): string | null {
+export function agentReturnPath(descriptor: AgentReturnDescriptor): string {
+  return `/agents?target=${encodeURIComponent(descriptor.agentId)}&section=${encodeURIComponent(descriptor.section)}`;
+}
+
+export function agentReturnDescriptorFromSearch(
+  search: string,
+): AgentReturnDescriptor | null {
   const params = new URLSearchParams(search);
   const keys = [...params.keys()];
   if (
@@ -52,33 +53,45 @@ export function agentReturnPathFromSearch(search: string): string | null {
   if (!isAgentCatalogId(agentId) || !isAgentSection(section)) {
     return null;
   }
-  return `/agents?target=${encodeURIComponent(agentId)}&section=${encodeURIComponent(section)}`;
+  return { agentId, section };
 }
 
-export function createAgentReturnLocationState(
-  agentId: AgentCatalogId,
-  section: AgentSection,
-): AgentReturnLocationState {
-  return {
-    [AGENT_RETURN_STATE_KEY]: { agentId, section },
-  };
+export function agentReturnPathFromSearch(search: string): string | null {
+  const descriptor = agentReturnDescriptorFromSearch(search);
+  return descriptor ? agentReturnPath(descriptor) : null;
+}
+
+export function agentReturnDescriptorFromManagementSearch(
+  search: string,
+): AgentReturnDescriptor | null {
+  const params = new URLSearchParams(search);
+  const agentIds = params.getAll(AGENT_RETURN_ID_PARAM);
+  const sections = params.getAll(AGENT_RETURN_SECTION_PARAM);
+  if (agentIds.length !== 1 || sections.length !== 1) {
+    return null;
+  }
+  const agentId = agentIds[0];
+  const section = sections[0];
+  if (!isAgentCatalogId(agentId) || !isAgentSection(section)) {
+    return null;
+  }
+  return { agentId, section };
 }
 
 /**
- * Derives the return URL from a closed, non-secret tuple. Router state never
- * supplies an arbitrary path or command string.
+ * Carries only the closed, non-secret Agent/section tuple into another
+ * internal management route. Existing route-owned query fields are retained;
+ * no caller-provided return path is accepted.
  */
-export function agentReturnPathFromLocationState(
-  value: unknown,
-): string | null {
-  if (!isRecord(value)) return null;
-  const descriptor = value[AGENT_RETURN_STATE_KEY];
-  if (!isRecord(descriptor)) return null;
-  if (
-    !isAgentCatalogId(descriptor.agentId) ||
-    !isAgentSection(descriptor.section)
-  ) {
-    return null;
-  }
-  return `/agents?target=${encodeURIComponent(descriptor.agentId)}&section=${encodeURIComponent(descriptor.section)}`;
+export function appendAgentReturnToPath(
+  path: string,
+  descriptor: AgentReturnDescriptor,
+): string {
+  const queryIndex = path.indexOf("?");
+  const pathname = queryIndex < 0 ? path : path.slice(0, queryIndex);
+  const search = queryIndex < 0 ? "" : path.slice(queryIndex + 1);
+  const params = new URLSearchParams(search);
+  params.set(AGENT_RETURN_ID_PARAM, descriptor.agentId);
+  params.set(AGENT_RETURN_SECTION_PARAM, descriptor.section);
+  return `${pathname}?${params.toString()}`;
 }

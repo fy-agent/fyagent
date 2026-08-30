@@ -1,7 +1,6 @@
 import { useEffect } from "react";
 
 import { classNames } from "../../shared/design-system/classNames";
-import { AgentReturnNavigationProvider } from "../../shared/features/agent-navigation-context";
 import {
   shouldShowMacOverlayDragStrip,
   signalFrontendReady,
@@ -31,14 +30,12 @@ export function AppShell() {
         data-testid="app-shell"
       >
         <TopBar />
-        <AgentReturnNavigationProvider>
-          <PrimaryBlockerProvider>
-            <div className="fy-shell-body">
-              <SideNavigation />
-              <ContentViewport />
-            </div>
-          </PrimaryBlockerProvider>
-        </AgentReturnNavigationProvider>
+        <PrimaryBlockerProvider>
+          <div className="fy-shell-body">
+            <SideNavigation />
+            <ContentViewport />
+          </div>
+        </PrimaryBlockerProvider>
       </div>
     </TooltipProvider>
   );

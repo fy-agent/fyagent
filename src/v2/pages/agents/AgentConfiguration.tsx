@@ -1,8 +1,10 @@
 import { useNavigate } from "react-router-dom";
 
 import { getAgentBrand } from "../../shared/assets/agents";
-import { createAgentReturnLocationState } from "../../shared/features/agent-navigation";
-import { useAgentReturnNavigation } from "../../shared/features/agent-navigation-context";
+import {
+  appendAgentReturnToPath,
+  type AgentReturnDescriptor,
+} from "../../shared/features/agent-navigation";
 import type { ProductDirectoryEntry } from "../../shared/features/directory";
 import type { AgentCatalogEntry } from "../../shared/features/types";
 import { FeatureTabPanel, FeatureTabs } from "../../shared/ui/FeatureTabs";
@@ -36,22 +38,28 @@ export function AgentConfiguration({
   onBack: () => void;
 }) {
   const navigate = useNavigate();
-  const agentReturnNavigation = useAgentReturnNavigation();
   const openManagement = () => {
-    agentReturnNavigation.remember(entry.agentId, section);
-    const state = createAgentReturnLocationState(entry.agentId, section);
+    const returnDescriptor = {
+      agentId: entry.agentId,
+      section,
+    } satisfies AgentReturnDescriptor;
     switch (section) {
       case "models":
-        navigate(`/models?target=${entry.modelTarget}`, { state });
+        navigate(
+          appendAgentReturnToPath(
+            `/models?target=${encodeURIComponent(entry.modelTarget)}`,
+            returnDescriptor,
+          ),
+        );
         break;
       case "skills":
-        navigate("/skills", { state });
+        navigate(appendAgentReturnToPath("/skills", returnDescriptor));
         break;
       case "mcp":
-        navigate("/mcp", { state });
+        navigate(appendAgentReturnToPath("/mcp", returnDescriptor));
         break;
       case "prompts":
-        navigate("/prompts", { state });
+        navigate(appendAgentReturnToPath("/prompts", returnDescriptor));
         break;
     }
   };

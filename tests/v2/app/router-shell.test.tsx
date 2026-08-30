@@ -359,8 +359,12 @@ describe("FyAgent V2 primary route lifecycle", () => {
 
       await user.click(screen.getByRole("link", { name: "AI软件配置" }));
       await expectPath(router, "/agents");
-      expect(await screen.findByRole("heading", { name: "我的 AI 软件" })).toBeVisible();
-      expect(router.state.location.search).toBe("");
+      expect(
+        await screen.findByRole("heading", { name: "Claude Code" }),
+      ).toBeVisible();
+      expect(router.state.location.search).toBe(
+        "?target=claude-code&section=models",
+      );
     } finally {
       createPorts.mockRestore();
     }

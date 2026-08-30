@@ -8,10 +8,11 @@ import {
 } from "../../shared/config/navigation";
 import { classNames } from "../../shared/design-system/classNames";
 import {
-  agentReturnPathFromLocationState,
-  agentReturnPathFromSearch,
+  appendAgentReturnToPath,
+  agentReturnDescriptorFromManagementSearch,
+  agentReturnDescriptorFromSearch,
+  agentReturnPath,
 } from "../../shared/features/agent-navigation";
-import { useAgentReturnNavigation } from "../../shared/features/agent-navigation-context";
 import {
   Collapsible,
   CollapsibleCaret,
@@ -80,20 +81,27 @@ function visibleNavigationControls(navigation: HTMLElement): HTMLElement[] {
 }
 
 export function SideNavigation() {
-  const { pathname, search, state } = useLocation();
+  const { pathname, search } = useLocation();
   const navigationRef = useRef<HTMLElement>(null);
   const configurationToggleRef = useRef<HTMLButtonElement>(null);
   const configurationItemsRef = useRef<HTMLUListElement>(null);
   const [configurationExpanded, setConfigurationExpanded] = useState(true);
-  const agentReturnNavigation = useAgentReturnNavigation();
-  const explicitAgentReturnPath = agentReturnPathFromLocationState(state);
-  const currentAgentReturnPath =
-    pathname === "/agents" ? agentReturnPathFromSearch(search) : null;
+  const agentReturnDescriptor =
+    pathname === "/agents"
+      ? agentReturnDescriptorFromSearch(search)
+      : agentReturnDescriptorFromManagementSearch(search);
   const agentDestination =
-    currentAgentReturnPath ??
-    explicitAgentReturnPath ??
-    agentReturnNavigation.returnPath ??
-    "/agents";
+    pathname !== "/agents" && agentReturnDescriptor
+      ? agentReturnPath(agentReturnDescriptor)
+      : "/agents";
+  const navigationDestination = (item: NavigationItem) => {
+    if (item.path === "/agents") {
+      return agentDestination;
+    }
+    return agentReturnDescriptor
+      ? appendAgentReturnToPath(item.path, agentReturnDescriptor)
+      : item.path;
+  };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     const target = event.target;
@@ -180,9 +188,7 @@ export function SideNavigation() {
                 {group.items.map((item) => (
                   <NavigationLink
                     item={item}
-                    destination={
-                      item.path === "/agents" ? agentDestination : item.path
-                    }
+                    destination={navigationDestination(item)}
                     key={item.id}
                   />
                 ))}
@@ -252,6 +258,7 @@ export function SideNavigation() {
                       <li key={item.id}>
                         <NavigationLink
                           item={item}
+                          destination={navigationDestination(item)}
                           visuallyAvailable={configurationExpanded}
                         />
                       </li>

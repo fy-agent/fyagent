@@ -829,7 +829,9 @@ describe("V3 Agent directory and configuration shell", () => {
     await user.click(
       await screen.findByRole("button", { name: "进入 MCP 管理" }),
     );
-    expect(screen.getByTestId("location")).toHaveTextContent(/^\/mcp$/);
+    expect(screen.getByTestId("location")).toHaveTextContent(
+      /^\/mcp\?agentReturn=workbuddy&agentSection=mcp$/,
+    );
   });
 
   it("writes Skills and MCP only through their existing assignment owners and authoritative readback", async () => {

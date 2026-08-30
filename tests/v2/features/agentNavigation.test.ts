@@ -1,20 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  agentReturnPathFromLocationState,
+  agentReturnDescriptorFromManagementSearch,
   agentReturnPathFromSearch,
-  createAgentReturnLocationState,
+  appendAgentReturnToPath,
 } from "@/v2/shared/features/agent-navigation";
 
 describe("Agent return navigation", () => {
-  it("derives a return URL from the closed Agent and section tuple", () => {
-    expect(
-      agentReturnPathFromLocationState(
-        createAgentReturnLocationState("workbuddy", "mcp"),
-      ),
-    ).toBe("/agents?target=workbuddy&section=mcp");
-  });
-
   it("derives the same closed return URL from an exact Agents query", () => {
     expect(agentReturnPathFromSearch("?target=workbuddy&section=mcp")).toBe(
       "/agents?target=workbuddy&section=mcp",
@@ -35,14 +27,33 @@ describe("Agent return navigation", () => {
     expect(agentReturnPathFromSearch(search)).toBeNull();
   });
 
+  it("reads a closed return tuple from a management query with route-owned fields", () => {
+    expect(
+      agentReturnDescriptorFromManagementSearch(
+        "?target=claude-code&agentReturn=workbuddy&agentSection=mcp",
+      ),
+    ).toEqual({ agentId: "workbuddy", section: "mcp" });
+  });
+
   it.each([
-    null,
-    {},
-    { fyagentAgentReturn: { agentId: "unknown", section: "mcp" } },
-    { fyagentAgentReturn: { agentId: "workbuddy", section: "settings" } },
-    { fyagentAgentReturn: "/agents?target=workbuddy&section=mcp" },
-    { path: "/agents?target=workbuddy&section=mcp" },
-  ])("rejects arbitrary or malformed location state", (state) => {
-    expect(agentReturnPathFromLocationState(state)).toBeNull();
+    "",
+    "?agentReturn=workbuddy",
+    "?agentReturn=unknown&agentSection=mcp",
+    "?agentReturn=workbuddy&agentSection=settings",
+    "?agentReturn=workbuddy&agentReturn=codex&agentSection=mcp",
+    "?agentReturn=workbuddy&agentSection=mcp&agentSection=models",
+  ])("rejects malformed management return queries", (search) => {
+    expect(agentReturnDescriptorFromManagementSearch(search)).toBeNull();
+  });
+
+  it("appends the return tuple without dropping a route-owned query", () => {
+    expect(
+      appendAgentReturnToPath("/models?target=claude-code", {
+        agentId: "workbuddy",
+        section: "mcp",
+      }),
+    ).toBe(
+      "/models?target=claude-code&agentReturn=workbuddy&agentSection=mcp",
+    );
   });
 });
