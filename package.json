@@ -13,7 +13,7 @@
     "version:set": "node scripts/version.mjs set",
     "version:bump": "node scripts/version.mjs bump",
     "dev:renderer": "vite",
-    "build:renderer": "vite build && node scripts/build-v2-preview.mjs",
+    "build:renderer": "vite build && node scripts/verify-v2-route-chunks.mjs && node scripts/build-v2-preview.mjs",
     "build:preview": "pnpm build:renderer",
     "typecheck": "tsc --noEmit",
     "lint:v2": "eslint --config eslint.v2.config.mjs src/v2 tests/v2 tests/v2-browser",

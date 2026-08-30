@@ -41,7 +41,7 @@ import { CopyablePath } from "../../shared/ui/CopyablePath";
 import { ExternalLinkButton } from "../../shared/ui/ExternalLinkButton";
 import { FeatureList, FeatureListItem } from "../../shared/ui/FeatureList";
 import { FeatureSearch } from "../../shared/ui/FeatureSearch";
-import { FeatureTabs } from "../../shared/ui/FeatureTabs";
+import { FeatureTabPanel, FeatureTabs } from "../../shared/ui/FeatureTabs";
 import { SplitPanes } from "../../shared/ui/split";
 import { WorkBuddyTrustDialog } from "../../shared/ui/WorkBuddyTrustDialog";
 import { findCatalogItem, MCP_PROVENANCE_LABEL } from "./catalog";
@@ -403,8 +403,13 @@ export function McpPage() {
           刷新失败，正在显示上一次成功数据：{errorMessage(query.error)}
         </InlineNotice>
       )}
-      {tab === "discovery" ? (
-        query.isLoading ? (
+      <FeatureTabPanel
+        tabsId="mcp-view-tabs"
+        value="discovery"
+        active={tab === "discovery"}
+        unmountOnExit
+      >
+        {query.isLoading ? (
           <EmptyState title="正在加载 MCP" description="正在读取安装状态">
             <Spinner />
           </EmptyState>
@@ -433,125 +438,135 @@ export function McpPage() {
               }}
             />
           </div>
-        )
-      ) : query.isLoading ? (
-        <EmptyState title="正在加载 MCP" description="正在读取 MCP 服务">
-          <Spinner />
-        </EmptyState>
-      ) : query.error && query.data === undefined ? (
-        <EmptyState
-          title="无法加载 MCP"
-          description={errorMessage(query.error)}
-          actions={<Button onClick={() => void query.refetch()}>重试</Button>}
-        />
-      ) : servers.length === 0 ? (
-        <EmptyState
-          title="还没有 MCP 服务"
-          description="添加新的 MCP，从现有 Agent 配置导入，或到发现页浏览精选"
-          actions={
-            <>
-              <Button onClick={() => void importExisting()}>导入现有</Button>{" "}
-              <Button
-                className="fy-control-button-primary"
-                onClick={() => setEditing("new")}
-              >
-                添加 MCP
-              </Button>{" "}
-              <Button onClick={() => setTab("discovery")}>浏览发现</Button>
-            </>
-          }
-        />
-      ) : (
-        <div className="fy-feature-workspace">
-          <div className="fy-feature-toolbar">
-            <FeatureSearch
-              ariaLabel="搜索 MCP"
-              placeholder="搜索名称、命令、标签或来源"
-              value={search}
-              onValueChange={setSearch}
-            />
-          </div>
-          {filtered.length === 0 ? (
-            <EmptyState
-              title="没有匹配的 MCP"
-              description="为保护敏感信息，密钥和请求头不会参与搜索。"
-            />
-          ) : (
-            <SplitPanes separatorLabels={INSTALLED_SPLIT_LABELS}>
-              <section
-                className="fy-feature-panel fy-feature-list-panel"
-                aria-label="MCP 列表"
-              >
-                <h2>已安装 · {servers.length}</h2>
-                <FeatureList id="mcp-server-list">
-                  {filtered.map((server) => (
-                    <FeatureListItem
-                      key={server.id}
-                      selected={server.id === selected?.id}
-                      title={server.name}
-                      onSelect={() => setSelectedId(server.id)}
-                    >
-                      <span>
-                        {server.description ||
-                          server.tags?.join(" · ") ||
-                          "暂无说明"}{" "}
-                        · {transportOf(server)} ·{" "}
-                        {
-                          MCP_TARGETS.filter((app) => server.apps[app.id])
-                            .length
-                        }{" "}
-                        Agent
-                      </span>
-                    </FeatureListItem>
-                  ))}
-                </FeatureList>
-              </section>
-              {selected && (
-                <ServerDetail
-                  server={selected}
-                  busy={busy}
-                  onToggle={(app, enabled) => toggle(selected, app, enabled)}
-                  onEdit={() => setEditing(selected)}
-                  onDelete={() => setDeleteTarget(selected)}
-                  showAssignment={!wideLayout}
-                />
-              )}
-              {selected && wideLayout && (
-                <section className="fy-feature-panel fy-feature-assign-scroll">
-                  <AssignmentPanel
-                    apps={selected.apps}
-                    disabled={busy}
-                    labelSuffix="MCP 分配"
-                    onToggle={(app, enabled) => toggle(selected, app, enabled)}
-                    targets={MCP_TARGETS}
-                  />
-                  <hr />
-                  <h3>全量分配</h3>
-                  {MCP_TARGETS.map((app) => (
-                    <div key={app.id} className="fy-feature-assignment">
-                      <span>{app.label}</span>
-                      <span>
-                        <Button
-                          disabled={busy}
-                          onClick={() => bulkAssign(app.id, true)}
-                        >
-                          全开
-                        </Button>{" "}
-                        <Button
-                          disabled={busy}
-                          onClick={() => bulkAssign(app.id, false)}
-                        >
-                          全关
-                        </Button>
-                      </span>
-                    </div>
-                  ))}
+        )}
+      </FeatureTabPanel>
+      <FeatureTabPanel
+        tabsId="mcp-view-tabs"
+        value="installed"
+        active={tab === "installed"}
+        unmountOnExit
+      >
+        {query.isLoading ? (
+          <EmptyState title="正在加载 MCP" description="正在读取 MCP 服务">
+            <Spinner />
+          </EmptyState>
+        ) : query.error && query.data === undefined ? (
+          <EmptyState
+            title="无法加载 MCP"
+            description={errorMessage(query.error)}
+            actions={<Button onClick={() => void query.refetch()}>重试</Button>}
+          />
+        ) : servers.length === 0 ? (
+          <EmptyState
+            title="还没有 MCP 服务"
+            description="添加新的 MCP，从现有 Agent 配置导入，或到发现页浏览精选"
+            actions={
+              <>
+                <Button onClick={() => void importExisting()}>导入现有</Button>{" "}
+                <Button
+                  className="fy-control-button-primary"
+                  onClick={() => setEditing("new")}
+                >
+                  添加 MCP
+                </Button>{" "}
+                <Button onClick={() => setTab("discovery")}>浏览发现</Button>
+              </>
+            }
+          />
+        ) : (
+          <div className="fy-feature-workspace">
+            <div className="fy-feature-toolbar">
+              <FeatureSearch
+                ariaLabel="搜索 MCP"
+                placeholder="搜索名称、命令、标签或来源"
+                value={search}
+                onValueChange={setSearch}
+              />
+            </div>
+            {filtered.length === 0 ? (
+              <EmptyState
+                title="没有匹配的 MCP"
+                description="为保护敏感信息，密钥和请求头不会参与搜索。"
+              />
+            ) : (
+              <SplitPanes separatorLabels={INSTALLED_SPLIT_LABELS}>
+                <section
+                  className="fy-feature-panel fy-feature-list-panel"
+                  aria-label="MCP 列表"
+                >
+                  <h2>已安装 · {servers.length}</h2>
+                  <FeatureList id="mcp-server-list">
+                    {filtered.map((server) => (
+                      <FeatureListItem
+                        key={server.id}
+                        selected={server.id === selected?.id}
+                        title={server.name}
+                        onSelect={() => setSelectedId(server.id)}
+                      >
+                        <span>
+                          {server.description ||
+                            server.tags?.join(" · ") ||
+                            "暂无说明"}{" "}
+                          · {transportOf(server)} ·{" "}
+                          {
+                            MCP_TARGETS.filter((app) => server.apps[app.id])
+                              .length
+                          }{" "}
+                          Agent
+                        </span>
+                      </FeatureListItem>
+                    ))}
+                  </FeatureList>
                 </section>
-              )}
-            </SplitPanes>
-          )}
-        </div>
-      )}
+                {selected && (
+                  <ServerDetail
+                    server={selected}
+                    busy={busy}
+                    onToggle={(app, enabled) => toggle(selected, app, enabled)}
+                    onEdit={() => setEditing(selected)}
+                    onDelete={() => setDeleteTarget(selected)}
+                    showAssignment={!wideLayout}
+                  />
+                )}
+                {selected && wideLayout && (
+                  <section className="fy-feature-panel fy-feature-assign-scroll">
+                    <AssignmentPanel
+                      apps={selected.apps}
+                      disabled={busy}
+                      labelSuffix="MCP 分配"
+                      onToggle={(app, enabled) =>
+                        toggle(selected, app, enabled)
+                      }
+                      targets={MCP_TARGETS}
+                    />
+                    <hr />
+                    <h3>全量分配</h3>
+                    {MCP_TARGETS.map((app) => (
+                      <div key={app.id} className="fy-feature-assignment">
+                        <span>{app.label}</span>
+                        <span>
+                          <Button
+                            disabled={busy}
+                            onClick={() => bulkAssign(app.id, true)}
+                          >
+                            全开
+                          </Button>{" "}
+                          <Button
+                            disabled={busy}
+                            onClick={() => bulkAssign(app.id, false)}
+                          >
+                            全关
+                          </Button>
+                        </span>
+                      </div>
+                    ))}
+                  </section>
+                )}
+              </SplitPanes>
+            )}
+          </div>
+        )}
+      </FeatureTabPanel>
       {editing !== null && (
         <McpEditor
           key={editing === "new" ? "new" : editing.id}
@@ -882,7 +897,13 @@ function McpEditor({
             { id: "advanced", label: "JSON 编辑" },
           ]}
         />
-        {mode === "quick" ? (
+        <FeatureTabPanel
+          tabsId="mcp-editor-mode-tabs"
+          value="quick"
+          active={mode === "quick"}
+          unmountOnExit
+          className="fy-feature-form-tab-panel"
+        >
           <>
             <label className="fy-control-field">
               传输类型
@@ -954,7 +975,14 @@ function McpEditor({
               </>
             )}
           </>
-        ) : (
+        </FeatureTabPanel>
+        <FeatureTabPanel
+          tabsId="mcp-editor-mode-tabs"
+          value="advanced"
+          active={mode === "advanced"}
+          unmountOnExit
+          className="fy-feature-form-tab-panel"
+        >
           <label className="fy-control-field fy-feature-form-span">
             单个服务配置（JSON）
             <textarea
@@ -965,7 +993,7 @@ function McpEditor({
               spellCheck={false}
             />
           </label>
-        )}
+        </FeatureTabPanel>
         <div className="fy-feature-form-span">
           <AssignmentPanel
             apps={apps}

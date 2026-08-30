@@ -329,6 +329,27 @@ export const RUST_ALLOWANCE_CONTRACT = Object.freeze([
     condition: UNSUPPORTED_CFG,
     next: "use non_product_host::{",
   }),
+  Object.freeze({
+    id: "desktop-non-product-inventory",
+    file: "src-tauri/src/agent_install/desktop.rs",
+    condition: UNSUPPORTED_CFG,
+    next: "fn discover_desktop_installation_inventory_on_host(",
+    nextPrefix: true,
+  }),
+  Object.freeze({
+    id: "macos-deployer-non-macos-rejection",
+    file: "src-tauri/src/agent_install/macos.rs",
+    condition: '#[cfg(not(target_os = "macos"))]',
+    next: "pub(super) fn deploy_macos_dmg<BeforeCommit, BeforeVerify>(",
+    nextPrefix: true,
+  }),
+  Object.freeze({
+    id: "windows-inventory-test-host-fallback",
+    file: "src-tauri/src/agent_install/windows.rs",
+    condition: '#[cfg(not(target_os = "windows"))]',
+    next: "pub(super) fn discover_windows_installations(",
+    nextPrefix: true,
+  }),
 ]);
 const RUST_CFG_MACRO_CONTRACT = Object.freeze(
   [
@@ -441,6 +462,38 @@ const RUST_CFG_MACRO_CONTRACT = Object.freeze(
       1,
       [
         'let architecture = if cfg!(target_arch = "aarch64") { AgentArch::Aarch64 } else if cfg!(target_arch = "x86_64") { AgentArch::X86_64 } else { return None; };',
+      ],
+    ],
+    [
+      "src-tauri/src/agent_install/inventory.rs",
+      '!cfg!(any(target_os="macos",target_os="windows"))',
+      1,
+      [
+        'if !cfg!(any(target_os = "macos", target_os = "windows")) { return InventoryProbe { state_override: Some(InstallationInventoryState::Unsupported), candidates: Vec::new(), destinations: Vec::new(), reason_codes: vec![AgentReasonCode::PlatformUnsupported], }; }',
+      ],
+    ],
+    [
+      "src-tauri/src/agent_install/inventory.rs",
+      'cfg!(target_os="macos")',
+      1,
+      [
+        'let update_requires_authorization = cfg!(target_os = "macos") && evidence.scope == InstallationScope::AllUsers;',
+      ],
+    ],
+    [
+      "src-tauri/src/agent_install/mod.rs",
+      'cfg!(target_os="macos")',
+      1,
+      [
+        'let installable = (cfg!(target_os = "macos") && resolved.format == PackageFormat::Dmg && resolved.platform == sources::AgentPlatform::Macos) || (cfg!(target_os = "windows") && resolved.format == PackageFormat::Exe && resolved.platform == sources::AgentPlatform::Windows);',
+      ],
+    ],
+    [
+      "src-tauri/src/agent_install/mod.rs",
+      'cfg!(target_os="windows")',
+      1,
+      [
+        'let installable = (cfg!(target_os = "macos") && resolved.format == PackageFormat::Dmg && resolved.platform == sources::AgentPlatform::Macos) || (cfg!(target_os = "windows") && resolved.format == PackageFormat::Exe && resolved.platform == sources::AgentPlatform::Windows);',
       ],
     ],
   ].map(([file, expression, count, anchors]) =>

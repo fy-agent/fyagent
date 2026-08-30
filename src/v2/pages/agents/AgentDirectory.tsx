@@ -2,7 +2,12 @@ import { useCallback, type ReactNode } from "react";
 
 import { getAgentBrand } from "../../shared/assets/agents";
 import { useCodexDesktopInstaller } from "../../shared/codex-desktop/useCodexDesktopInstaller";
-import type { AgentInstallReadiness } from "../../shared/features/agent-install-readiness";
+import {
+  installationTargetsForAction,
+  type AgentInstallationTarget,
+  type AgentInstallReadiness,
+} from "../../shared/features/agent-install-readiness";
+import { useAgentInstallationInventory } from "../../shared/features/queries";
 import { useFeatures } from "../../shared/features/provider";
 import {
   AGENT_CATALOG_IDS,
@@ -22,10 +27,12 @@ import {
 } from "./codexDirectoryActionProjection";
 import type { AgentDirectoryScanController } from "./useAgentDirectoryScan";
 import {
+  deriveAgentLifecyclePrimaryAction,
   jobStageCopy,
   useAgentLifecycleAction,
   type AgentLifecycleActionView,
 } from "./useAgentLifecycleAction";
+import { AgentAuthStatusPanel } from "./AgentAuthStatusPanel";
 
 function isInstalledReadiness(
   data: AgentInstallReadiness | undefined,
@@ -91,12 +98,14 @@ function DirectoryCardShell({
   observation,
   lifecycleBusy,
   lifecycleSlot,
+  authSlot,
   onConfigure,
 }: {
   entry: AgentCatalogEntry;
   observation: AgentDirectoryRowObservation;
   lifecycleBusy: boolean;
   lifecycleSlot: ReactNode;
+  authSlot: ReactNode;
   onConfigure: (agentId: AgentCatalogId) => void;
 }) {
   const kindCopy = rowKindCopy(observation);
@@ -128,6 +137,7 @@ function DirectoryCardShell({
           ) : null}
         </div>
         <p className="fy-agent-directory-description">{entry.description}</p>
+        {authSlot}
       </div>
       <div className="fy-agent-directory-card-actions">
         {lifecycleSlot}
@@ -178,10 +188,26 @@ function GenericDirectoryCard({
   onReadinessChange: (data: AgentInstallReadiness) => void;
 }) {
   const { ports } = useFeatures();
+  const primaryAction = deriveAgentLifecyclePrimaryAction(
+    observation.readiness ?? null,
+  );
+  const inventory = useAgentInstallationInventory(
+    entry.id,
+    primaryAction !== null,
+  );
+  const eligibleTargets =
+    primaryAction && inventory.data
+      ? installationTargetsForAction(inventory.data, primaryAction).filter(
+          (target) => target.eligibleActions.includes(primaryAction),
+        )
+      : [];
+  const primaryTarget: AgentInstallationTarget | null =
+    eligibleTargets.length === 1 ? eligibleTargets[0] : null;
   const lifecycle = useAgentLifecycleAction({
     agentId: entry.id,
     port: ports.agentInstallReadiness,
     readiness: observation.readiness ?? null,
+    target: primaryTarget,
     onReadinessChange,
   });
   const scanningCopy = directoryBusyCopy(observation);
@@ -190,6 +216,13 @@ function GenericDirectoryCard({
       entry={entry}
       observation={observation}
       lifecycleBusy={lifecycle.busy}
+      authSlot={
+        <AgentAuthStatusPanel
+          agentId={entry.id}
+          mode="compact"
+          enabled={observation.configurable}
+        />
+      }
       onConfigure={onConfigure}
       lifecycleSlot={
         <>
@@ -197,6 +230,18 @@ function GenericDirectoryCard({
             observation={observation}
             scanningCopy={scanningCopy}
             lifecycle={lifecycle}
+            targetStatus={
+              primaryAction === null
+                ? "not_needed"
+                : inventory.isPending
+                  ? "loading"
+                  : inventory.isError
+                    ? "unavailable"
+                    : eligibleTargets.length === 1
+                      ? "single"
+                      : "selection_required"
+            }
+            onConfigure={() => onConfigure(entry.id)}
           />
           <DirectoryActionFeedback error={lifecycle.error} />
         </>
@@ -209,10 +254,19 @@ function GenericLifecycleSlot({
   observation,
   scanningCopy,
   lifecycle,
+  targetStatus,
+  onConfigure,
 }: {
   observation: AgentDirectoryRowObservation;
   scanningCopy: string | null;
   lifecycle: AgentLifecycleActionView;
+  targetStatus:
+    | "not_needed"
+    | "loading"
+    | "unavailable"
+    | "single"
+    | "selection_required";
+  onConfigure: () => void;
 }) {
   if (lifecycle.busy) {
     return (
@@ -225,6 +279,12 @@ function GenericLifecycleSlot({
     return <ScanningSlot label={scanningCopy} />;
   }
   if (lifecycle.primaryAction) {
+    if (targetStatus === "loading") {
+      return <ScanningSlot label="正在读取安装目标" />;
+    }
+    if (targetStatus !== "single") {
+      return <Button onClick={onConfigure}>选择安装目标</Button>;
+    }
     return (
       <Button onClick={() => void lifecycle.runPrimary()}>
         {primaryActionLabel(lifecycle.primaryAction)}
@@ -263,6 +323,13 @@ function CodexDirectoryCard({
       entry={entry}
       observation={observation}
       lifecycleBusy={projection.busy}
+      authSlot={
+        <AgentAuthStatusPanel
+          agentId={entry.id}
+          mode="compact"
+          enabled={observation.configurable}
+        />
+      }
       onConfigure={onConfigure}
       lifecycleSlot={
         <>

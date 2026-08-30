@@ -1,13 +1,18 @@
 import { useNavigate } from "react-router-dom";
 
 import { getAgentBrand } from "../../shared/assets/agents";
+import {
+  appendAgentReturnToPath,
+  type AgentReturnDescriptor,
+} from "../../shared/features/agent-navigation";
 import type { ProductDirectoryEntry } from "../../shared/features/directory";
 import type { AgentCatalogEntry } from "../../shared/features/types";
-import { FeatureTabs } from "../../shared/ui/FeatureTabs";
+import { FeatureTabPanel, FeatureTabs } from "../../shared/ui/FeatureTabs";
 import { BrandIconFrame } from "../../shared/ui/catalog";
 import { Button } from "../../shared/ui/primitives";
 
 import { AgentMcpSection, AgentSkillsSection } from "./AgentAssignmentSections";
+import { AgentAuthStatusPanel } from "./AgentAuthStatusPanel";
 import { AgentModelsSection } from "./AgentModelsSection";
 import { AgentPromptsSection } from "./AgentPromptsSection";
 import type { AgentSection } from "./agentSections";
@@ -34,18 +39,27 @@ export function AgentConfiguration({
 }) {
   const navigate = useNavigate();
   const openManagement = () => {
+    const returnDescriptor = {
+      agentId: entry.agentId,
+      section,
+    } satisfies AgentReturnDescriptor;
     switch (section) {
       case "models":
-        navigate(`/models?target=${entry.modelTarget}`);
+        navigate(
+          appendAgentReturnToPath(
+            `/models?target=${encodeURIComponent(entry.modelTarget)}`,
+            returnDescriptor,
+          ),
+        );
         break;
       case "skills":
-        navigate("/skills");
+        navigate(appendAgentReturnToPath("/skills", returnDescriptor));
         break;
       case "mcp":
-        navigate("/mcp");
+        navigate(appendAgentReturnToPath("/mcp", returnDescriptor));
         break;
       case "prompts":
-        navigate("/prompts");
+        navigate(appendAgentReturnToPath("/prompts", returnDescriptor));
         break;
     }
   };
@@ -72,7 +86,13 @@ export function AgentConfiguration({
         className="fy-agent-config-tabs"
       />
 
-      <div className="fy-agent-config-body">
+      <FeatureTabPanel
+        tabsId="agent-configuration-sections"
+        value={section}
+        active
+        className="fy-agent-config-body"
+      >
+        <AgentAuthStatusPanel agentId={entry.agentId} />
         {section === "models" ? (
           <AgentModelsSection
             entry={entry}
@@ -89,7 +109,7 @@ export function AgentConfiguration({
             onOpenManagement={openManagement}
           />
         )}
-      </div>
+      </FeatureTabPanel>
     </section>
   );
 }

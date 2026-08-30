@@ -78,6 +78,42 @@ pub(crate) fn run_detected_tool_command_with_timeout(
     extra_env: &[(&str, String)],
     working_dir: &Path,
 ) -> Result<std::process::Output, String> {
+    run_detected_tool_command_with_timeout_impl(tool, args, timeout, None, extra_env, working_dir)
+}
+
+/// Executes one closed Tooling command while retaining at most `output_limit`
+/// bytes from each output stream. The child streams are still drained so an
+/// overlong diagnostic cannot deadlock the process; overflow fails with one
+/// stable, path-free error instead of returning truncated data to a parser.
+pub(crate) fn run_detected_tool_command_with_timeout_and_output_limit(
+    tool: &str,
+    args: &[&str],
+    timeout: Option<std::time::Duration>,
+    output_limit: usize,
+    extra_env: &[(&str, String)],
+    working_dir: &Path,
+) -> Result<std::process::Output, String> {
+    if output_limit == 0 {
+        return Err("Command output limit is invalid".to_string());
+    }
+    run_detected_tool_command_with_timeout_impl(
+        tool,
+        args,
+        timeout,
+        Some(output_limit),
+        extra_env,
+        working_dir,
+    )
+}
+
+fn run_detected_tool_command_with_timeout_impl(
+    tool: &str,
+    args: &[&str],
+    timeout: Option<std::time::Duration>,
+    output_limit: Option<usize>,
+    extra_env: &[(&str, String)],
+    working_dir: &Path,
+) -> Result<std::process::Output, String> {
     #[cfg(target_os = "windows")]
     detected_tool_execution_boundary_for(crate::windows_runtime::formal_windows_build())
         .map_err(str::to_owned)?;
@@ -107,7 +143,15 @@ pub(crate) fn run_detected_tool_command_with_timeout(
 
     #[cfg(target_os = "windows")]
     {
-        run_windows_tool_command_capture(&tool_path, dir, args, deadline, extra_env, working_dir)
+        run_windows_tool_command_capture(
+            &tool_path,
+            dir,
+            args,
+            deadline,
+            output_limit,
+            extra_env,
+            working_dir,
+        )
     }
 
     #[cfg(target_os = "macos")]
@@ -125,6 +169,6 @@ pub(crate) fn run_detected_tool_command_with_timeout(
         let child = cmd
             .spawn()
             .map_err(|e| format!("Failed to run {tool}: {e}"))?;
-        wait_child_output(child, deadline)
+        wait_child_output_with_limit(child, deadline, output_limit)
     }
 }

@@ -5,6 +5,8 @@ import type {
   AgentActionJobSnapshot,
   AgentActionJobStage,
   AgentActionResult,
+  AgentInstallationInventory,
+  AgentInstallationTarget,
   AgentInstallReadiness,
   AgentInstallReadinessPort,
   AgentInstallState,
@@ -15,6 +17,9 @@ import {
   AGENT_LIFECYCLE_SUCCEEDED_COPY,
   AGENT_LIFECYCLE_TIMEOUT_COPY,
   deriveAgentLifecyclePrimaryAction,
+  isTerminalAgentJobStage,
+  jobStageCopy,
+  reasonCopy,
   useAgentLifecycleAction,
 } from "@/v2/pages/agents/useAgentLifecycleAction";
 
@@ -22,10 +27,12 @@ function readiness(
   overrides: Partial<AgentInstallReadiness> = {},
 ): AgentInstallReadiness {
   return {
-    contractVersion: 2,
+    contractVersion: 3,
     agentId: "qoderwork",
-    reviewedAt: "2026-08-25",
+    reviewedAt: "2026-08-29",
     installState: "not_installed",
+    inventoryState: "not_observed",
+    requiresTargetSelection: false,
     updateState: "latest_unknown",
     releaseId: `v1:${"a".repeat(64)}`,
     localVersion: null,
@@ -44,12 +51,13 @@ function jobSnapshot(
   overrides: Partial<AgentActionJobSnapshot> = {},
 ): AgentActionJobSnapshot {
   return {
-    contractVersion: 1,
+    contractVersion: 2,
     jobId: "job-1",
     agentId: "qoderwork",
     action: "install",
     stage,
-    cancellable: stage === "downloading" || stage === "checking",
+    cancellable:
+      stage === "checking" || stage === "downloading" || stage === "staging",
     reasonCode: null,
     ...overrides,
   };
@@ -59,7 +67,7 @@ function actionResult(
   overrides: Partial<AgentActionResult> = {},
 ): AgentActionResult {
   return {
-    contractVersion: 1,
+    contractVersion: 2,
     agentId: "qoderwork",
     action: "install",
     jobId: "job-1",
@@ -69,11 +77,39 @@ function actionResult(
   };
 }
 
+function installationInventory(): AgentInstallationInventory {
+  return {
+    contractVersion: 1,
+    inventoryId: `i1:${"a".repeat(32)}`,
+    agentId: "qoderwork",
+    state: "not_observed",
+    candidates: [],
+    freshDestinations: [],
+    reasonCodes: [],
+  };
+}
+
+function lifecycleTarget(
+  action: "install" | "update" = "install",
+): AgentInstallationTarget {
+  return {
+    kind: action === "install" ? "fresh_destination" : "candidate",
+    inventoryId: `i1:${"a".repeat(32)}`,
+    targetId: `${action === "install" ? "d1" : "c1"}:${"b".repeat(32)}`,
+    expectedTargetRevision: `r1:${"c".repeat(64)}`,
+    label: "测试目标",
+    scope: "current_user",
+    eligibleActions: [action],
+    reasonCodes: [],
+  };
+}
+
 function createPort(
   overrides: Partial<AgentInstallReadinessPort> = {},
 ): AgentInstallReadinessPort {
   return {
     get: vi.fn(async () => readiness()),
+    getInventory: vi.fn(async () => installationInventory()),
     startAction: vi.fn(),
     cancelAction: vi.fn(),
     getActionJob: vi.fn(),
@@ -154,6 +190,31 @@ describe("deriveAgentLifecyclePrimaryAction", () => {
   });
 });
 
+describe("macOS lifecycle state copy", () => {
+  it("distinguishes staging, authorization, restored rollback, and unknown recovery", () => {
+    expect(jobStageCopy("staging")).toBe("正在准备并验证应用");
+    expect(reasonCopy("authorization_required")).toContain("需要授权");
+    expect(reasonCopy("authorization_required")).toContain("不会自动改装");
+    expect(reasonCopy("rollback_restored")).toContain("已恢复原应用");
+    expect(reasonCopy("recovery_required")).toContain("停止重试");
+  });
+});
+
+describe("Windows external-installer state copy", () => {
+  it("distinguishes launch, user interaction, incomplete observation, and terminal reasons", () => {
+    expect(jobStageCopy("launching_installer")).toContain("打开 Windows 安装向导");
+    expect(jobStageCopy("awaiting_user")).toContain("请在 Windows 中完成安装");
+    expect(jobStageCopy("incomplete")).toBe("安装结果尚未确认");
+    expect(reasonCopy("installer_user_cancelled")).toContain("取消");
+    expect(reasonCopy("installer_artifact_unavailable")).toContain("本地暂存");
+    expect(reasonCopy("installer_process_unobservable")).toContain("未提供可跟踪");
+    expect(reasonCopy("installer_timed_out")).toContain("不会强制关闭");
+    expect(reasonCopy("installer_exited_nonzero")).toContain("失败状态退出");
+    expect(isTerminalAgentJobStage("incomplete")).toBe(true);
+    expect(isTerminalAgentJobStage("awaiting_user")).toBe(false);
+  });
+});
+
 describe("useAgentLifecycleAction", () => {
   it("shows real job stages and only applies the reread readiness", async () => {
     const stages: AgentActionJobStage[] = [
@@ -179,6 +240,7 @@ describe("useAgentLifecycleAction", () => {
         agentId: "qoderwork",
         port,
         readiness: readiness(),
+        target: lifecycleTarget(),
         onReadinessChange,
         pollIntervalMs: 5,
       }),
@@ -195,6 +257,9 @@ describe("useAgentLifecycleAction", () => {
       agentId: "qoderwork",
       action: "install",
       expectedReleaseId: readiness().releaseId,
+      inventoryId: `i1:${"a".repeat(32)}`,
+      targetId: `d1:${"b".repeat(32)}`,
+      expectedTargetRevision: `r1:${"c".repeat(64)}`,
     });
     expect(port.getActionJob).toHaveBeenCalled();
     expect(port.get).toHaveBeenCalledWith("qoderwork");
@@ -221,6 +286,7 @@ describe("useAgentLifecycleAction", () => {
         agentId: "qoderwork",
         port,
         readiness: readiness(),
+        target: lifecycleTarget(),
         onReadinessChange: (data) => {
           observed.push(data.installState);
         },
@@ -253,6 +319,7 @@ describe("useAgentLifecycleAction", () => {
         agentId: "qoderwork",
         port,
         readiness: readiness(),
+        target: lifecycleTarget(),
         pollIntervalMs: 5,
       }),
     );
@@ -283,6 +350,7 @@ describe("useAgentLifecycleAction", () => {
         agentId: "qoderwork",
         port,
         readiness: readiness(),
+        target: lifecycleTarget(),
       }),
     );
 
@@ -315,6 +383,7 @@ describe("useAgentLifecycleAction", () => {
         agentId: "qoderwork",
         port,
         readiness: readiness(),
+        target: lifecycleTarget(),
         pollIntervalMs: 5,
       }),
     );
@@ -340,6 +409,7 @@ describe("useAgentLifecycleAction", () => {
         agentId: "qoderwork",
         port,
         readiness: readiness(),
+        target: lifecycleTarget(),
         pollIntervalMs: 1,
         maxPolls: 1,
       }),
@@ -371,6 +441,7 @@ describe("useAgentLifecycleAction", () => {
         agentId: "qoderwork",
         port,
         readiness: readiness(),
+        target: lifecycleTarget(),
         onReadinessChange,
       }),
     );
@@ -391,6 +462,7 @@ describe("useAgentLifecycleAction", () => {
         agentId: "qoderwork",
         port,
         readiness: readiness({ allowedActions: ["launch"] }),
+        target: lifecycleTarget(),
       }),
     );
 
@@ -419,6 +491,7 @@ describe("useAgentLifecycleAction", () => {
         agentId: "qoderwork",
         port,
         readiness: installed,
+        target: lifecycleTarget("update"),
       }),
     );
 
@@ -430,6 +503,9 @@ describe("useAgentLifecycleAction", () => {
       agentId: "qoderwork",
       action: "update",
       expectedReleaseId: installed.releaseId,
+      inventoryId: `i1:${"a".repeat(32)}`,
+      targetId: `c1:${"b".repeat(32)}`,
+      expectedTargetRevision: `r1:${"c".repeat(64)}`,
     });
   });
 
@@ -451,6 +527,7 @@ describe("useAgentLifecycleAction", () => {
         agentId: "qoderwork",
         port,
         readiness: readiness(),
+        target: lifecycleTarget(),
       }),
     );
 
@@ -492,6 +569,7 @@ describe("useAgentLifecycleAction", () => {
         agentId: "qoderwork",
         port,
         readiness: readiness(),
+        target: lifecycleTarget(),
         pollIntervalMs: 10,
         maxPolls: 20,
       }),
@@ -527,6 +605,7 @@ describe("useAgentLifecycleAction", () => {
     const stages: AgentActionJobStage[] = [
       "checking",
       "downloading",
+      "staging",
       "installing",
       "verifying_installation",
       "succeeded",
@@ -543,6 +622,7 @@ describe("useAgentLifecycleAction", () => {
         agentId: "qoderwork",
         port,
         readiness: readiness(),
+        target: lifecycleTarget(),
         pollIntervalMs: 5,
       });
       seen.push(view.percent);

@@ -7,6 +7,7 @@ import { AgentsPage } from "@/v2/pages/agents/Page";
 import type {
   AgentActionJobSnapshot,
   AgentActionResult,
+  AgentInstallationInventory,
   AgentInstallReadiness,
   AgentInstallState,
 } from "@/v2/shared/features/agent-install-readiness";
@@ -126,8 +127,10 @@ function readiness(
   overrides: Partial<AgentInstallReadiness> = {},
 ): AgentInstallReadiness {
   return {
-    contractVersion: 2,
-    reviewedAt: "2026-08-26",
+    contractVersion: 3,
+    reviewedAt: "2026-08-29",
+    inventoryState: "single",
+    requiresTargetSelection: false,
     updateState: installState === "installed" ? "up_to_date" : "unknown",
     releaseId: null,
     localVersion:
@@ -146,6 +149,49 @@ function readiness(
   };
 }
 
+function installationInventory(
+  agentId: AgentCatalogId,
+): AgentInstallationInventory {
+  return {
+    contractVersion: 1,
+    inventoryId: `i1:${"a".repeat(32)}`,
+    agentId,
+    state: "single",
+    candidates: [
+      {
+        candidateId: `c1:${"b".repeat(32)}`,
+        candidateRevision: `r1:${"c".repeat(64)}`,
+        agentId,
+        scope: "current_user",
+        owner: "vendor_installer",
+        packageKind: "app_bundle",
+        localVersion: "1.0.0",
+        launchEligible: true,
+        installEligible: false,
+        updateEligible: true,
+        reasonCodes: [],
+        evidenceCodes: ["bundle_identity"],
+        locationLabel: "当前用户安装",
+      },
+    ],
+    freshDestinations: [
+      {
+        destinationId: `d1:${"d".repeat(32)}`,
+        destinationRevision: `r1:${"e".repeat(64)}`,
+        scope: "current_user",
+        owner: "vendor_installer",
+        packageKind: "app_bundle",
+        requiresElevation: false,
+        writable: true,
+        eligible: true,
+        reasonCodes: [],
+        locationLabel: "当前用户应用目录",
+      },
+    ],
+    reasonCodes: [],
+  };
+}
+
 function promptStores(): Record<PromptAppId, ManagedPrompt[]> {
   const stores = {} as Record<PromptAppId, ManagedPrompt[]>;
   for (const app of PROMPT_APP_IDS) {
@@ -159,6 +205,9 @@ function configuredPorts(): FeaturePorts {
   ports.catalog.get = vi.fn(async () => catalog());
   ports.agentInstallReadiness.get = vi.fn(async (agentId) =>
     readiness(agentId),
+  );
+  ports.agentInstallReadiness.getInventory = vi.fn(async (agentId) =>
+    installationInventory(agentId),
   );
   ports.agentInstallReadiness.startAction = vi.fn();
   ports.agentInstallReadiness.cancelAction = vi.fn();
@@ -514,7 +563,7 @@ describe("V3 Agent directory and configuration shell", () => {
     });
     ports.agentInstallReadiness.startAction = vi.fn(
       async (): Promise<AgentActionResult> => ({
-        contractVersion: 1,
+        contractVersion: 2,
         agentId: "qoderwork",
         action: "install",
         jobId: "job-1",
@@ -556,10 +605,13 @@ describe("V3 Agent directory and configuration shell", () => {
       agentId: "qoderwork",
       action: "install",
       expectedReleaseId: `v1:${"a".repeat(64)}`,
+      inventoryId: `i1:${"a".repeat(32)}`,
+      targetId: `d1:${"d".repeat(32)}`,
+      expectedTargetRevision: `r1:${"e".repeat(64)}`,
     });
 
     actionJob.resolve({
-      contractVersion: 1,
+      contractVersion: 2,
       jobId: "job-1",
       agentId: "qoderwork",
       action: "install",
@@ -603,7 +655,7 @@ describe("V3 Agent directory and configuration shell", () => {
     });
     ports.agentInstallReadiness.startAction = vi.fn(
       async (): Promise<AgentActionResult> => ({
-        contractVersion: 1,
+        contractVersion: 2,
         agentId: "qoderwork",
         action: "install",
         jobId: "job-2",
@@ -613,7 +665,7 @@ describe("V3 Agent directory and configuration shell", () => {
     );
     ports.agentInstallReadiness.getActionJob = vi.fn(
       async (): Promise<AgentActionJobSnapshot> => ({
-        contractVersion: 1,
+        contractVersion: 2,
         jobId: "job-2",
         agentId: "qoderwork",
         action: "install",
@@ -777,7 +829,9 @@ describe("V3 Agent directory and configuration shell", () => {
     await user.click(
       await screen.findByRole("button", { name: "进入 MCP 管理" }),
     );
-    expect(screen.getByTestId("location")).toHaveTextContent(/^\/mcp$/);
+    expect(screen.getByTestId("location")).toHaveTextContent(
+      /^\/mcp\?agentReturn=workbuddy&agentSection=mcp$/,
+    );
   });
 
   it("writes Skills and MCP only through their existing assignment owners and authoritative readback", async () => {

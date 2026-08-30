@@ -8,7 +8,7 @@ mod platform {
     pub(crate) mod process_launch {
         use std::path::PathBuf;
 
-        use fyagent_user_helper::{CanonicalJobId, PipeNonce};
+        use fyagent_user_helper::{CanonicalJobId, PipeNonce, UserHelperAction};
 
         #[allow(dead_code)]
         #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -31,6 +31,7 @@ mod platform {
         }
 
         pub(crate) fn launch_fyagent_user_helper_as_user(
+            _action: UserHelperAction,
             _job_id: &CanonicalJobId,
             _pipe_nonce: &PipeNonce,
         ) -> UserHelperLaunchOutcome {

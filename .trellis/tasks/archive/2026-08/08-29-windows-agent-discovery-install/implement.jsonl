@@ -1,0 +1,7 @@
+{"file":".trellis/spec/backend/windows-runtime-security.md","reason":"Preserve frozen interactive-user, registry and helper security boundaries."}
+{"file":".trellis/spec/backend/codex-desktop-installer.md","reason":"Reuse streaming download, prepared package, PackageManager and helper concepts."}
+{"file":".trellis/spec/backend/modular-boundaries.md","reason":"Create one Windows inventory owner with private evidence adapters and one closed runner."}
+{"file":".trellis/spec/backend/reuse.md","reason":"Avoid duplicate registry/version/signature/download/helper implementations."}
+{"file":".trellis/spec/frontend/reuse.md","reason":"Reuse target picker and lifecycle status instead of product-specific UI copies."}
+{"file":".trellis/tasks/08-29-windows-agent-discovery-install/research/current-windows-gap.md","reason":"Use the exact current detector/executor gaps and existing security owners."}
+{"file":".trellis/tasks/08-29-windows-agent-discovery-install/research/official-windows-evidence.md","reason":"Ground registry, version, signature, UAC and vendor policies in official sources."}

@@ -152,7 +152,7 @@ describe("V2 Codex Desktop installer panel", () => {
     renderPanel(port);
     await waitFor(() => expect(listener).toBeDefined());
 
-    act(() => {
+    await act(async () => {
       listener?.(
         snapshot({
           sequence: 1,
@@ -236,8 +236,11 @@ describe("V2 Codex Desktop installer panel", () => {
     });
     renderPanel(port);
     await waitFor(() => expect(listener).toBeDefined());
+    expect(
+      await screen.findByRole("button", { name: "安装 Codex Desktop" }),
+    ).toBeVisible();
 
-    act(() => {
+    await act(async () => {
       listener?.(
         snapshot({
           sequence: 1,
@@ -262,6 +265,7 @@ describe("V2 Codex Desktop installer panel", () => {
           cancellable: true,
         }),
       );
+      await Promise.resolve();
     });
 
     expect(screen.getByText("正在下载 Codex Desktop。")).toBeVisible();
@@ -269,7 +273,7 @@ describe("V2 Codex Desktop installer panel", () => {
       screen.queryByRole("button", { name: "打开日志目录" }),
     ).not.toBeInTheDocument();
 
-    act(() => {
+    await act(async () => {
       listener?.(
         snapshot({
           sequence: 3,
@@ -282,6 +286,7 @@ describe("V2 Codex Desktop installer panel", () => {
           cancellable: true,
         }),
       );
+      await Promise.resolve();
     });
 
     expect(screen.getByText("下载已完成，正在校验并准备安装。")).toBeVisible();
@@ -298,7 +303,7 @@ describe("V2 Codex Desktop installer panel", () => {
       screen.queryByRole("button", { name: "打开日志目录" }),
     ).not.toBeInTheDocument();
 
-    act(() => {
+    await act(async () => {
       listener?.(
         snapshot({
           sequence: 4,
@@ -321,6 +326,7 @@ describe("V2 Codex Desktop installer panel", () => {
           },
         }),
       );
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
     });
 
     expect(screen.getByRole("button", { name: "打开日志目录" })).toBeVisible();

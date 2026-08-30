@@ -360,12 +360,19 @@ describe("Codex desktop version field states", () => {
       await Promise.resolve();
     });
 
-    await waitFor(() => {
-      expect(result.current.remoteVersion).toEqual({
-        kind: "refreshing",
-        version: remote.displayVersion,
-      });
-    });
+    await waitFor(
+      () => expect(mocks.api.checkLatest).toHaveBeenCalledWith(true),
+      { timeout: 5_000 },
+    );
+    await waitFor(
+      () => {
+        expect(result.current.remoteVersion).toEqual({
+          kind: "refreshing",
+          version: remote.displayVersion,
+        });
+      },
+      { timeout: 5_000 },
+    );
     expect(result.current.statusMessageKey).toBe(
       "codexDesktop.version.refreshing",
     );

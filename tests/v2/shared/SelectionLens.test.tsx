@@ -107,7 +107,7 @@ describe("SelectionLens", () => {
     });
   });
 
-  it("observes in-scope descendants so sibling reflow can retarget the pill", () => {
+  it("observes only the active host and track instead of the layout subtree", () => {
     const observed = new Set<Element>();
 
     class RecordingResizeObserver {
@@ -134,7 +134,7 @@ describe("SelectionLens", () => {
       );
 
       expect(observed.has(screen.getByTestId("reflow-scope"))).toBe(true);
-      expect(observed.has(screen.getByTestId("reflow-spacer"))).toBe(true);
+      expect(observed.has(screen.getByTestId("reflow-spacer"))).toBe(false);
       expect(observed.has(screen.getByTestId("reflow-host"))).toBe(true);
       expect(observed.has(screen.getByTestId("selection-lens"))).toBe(false);
     } finally {

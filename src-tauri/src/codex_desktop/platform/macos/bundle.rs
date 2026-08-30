@@ -124,6 +124,10 @@ impl BundleInfo {
     pub(crate) fn platform_version(&self) -> &PlatformVersion {
         &self.platform_version
     }
+
+    pub(crate) fn display_version(&self) -> Option<&str> {
+        self.display_version.as_deref()
+    }
 }
 
 #[derive(Debug, Deserialize)]

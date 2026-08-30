@@ -368,13 +368,12 @@ impl DownloadedArtifact {
             .open_final_artifact_for_read(self.artifact_kind)
     }
 
-    fn from_completed_download(
+    pub(crate) fn from_completed_download_for_kind(
         job_directory: &JobTempDir,
-        release: &ReleaseDescriptor,
+        artifact_kind: ArtifactKind,
         size: u64,
         sha256: String,
     ) -> Result<Self, InstallerError> {
-        let artifact_kind = artifact_kind_for_endpoint(release.download_endpoint)?;
         let path = job_directory.final_path(artifact_kind);
         job_directory.validate_existing_artifact(&path)?;
         let job_id = job_directory
@@ -411,7 +410,8 @@ impl DownloadedArtifact {
             .len();
         let file = job_directory.open_final_artifact_for_read(artifact_kind)?;
         let sha256 = super::verify::fingerprint_reader(file)?.sha256;
-        let artifact = Self::from_completed_download(job_directory, release, size, sha256)?;
+        let artifact =
+            Self::from_completed_download_for_kind(job_directory, artifact_kind, size, sha256)?;
         artifact.revalidate()?;
         Ok(artifact)
     }
@@ -422,6 +422,13 @@ struct DownloadAttemptError {
     error: InstallerError,
     retryable: bool,
     retry_after: Option<Duration>,
+}
+
+#[derive(Debug)]
+pub(crate) enum PersistDownloadError {
+    Cancelled,
+    Transport(TransportError),
+    Installer(InstallerError),
 }
 
 impl DownloadAttemptError {
@@ -491,7 +498,6 @@ pub(crate) async fn download_release(
             release,
             job_directory,
             &part_path,
-            &final_path,
             cancellation,
             progress,
             attempt,
@@ -536,7 +542,6 @@ async fn download_attempt(
     release: &ReleaseDescriptor,
     job_directory: &JobTempDir,
     part_path: &Path,
-    final_path: &Path,
     cancellation: &dyn Cancellation,
     progress: &dyn DownloadProgressSink,
     attempt: u8,
@@ -549,12 +554,8 @@ async fn download_attempt(
     job_directory
         .validate_artifact_path(part_path)
         .map_err(DownloadAttemptError::terminal)?;
-    let mut output = job_directory.create_part_file(artifact_kind).map_err(|_| {
-        DownloadAttemptError::terminal(
-            InstallerError::new(InstallerErrorCode::DownloadFailed)
-                .with_diagnostic_message("installer partial file could not be created"),
-        )
-    })?;
+    let output = prepare_transport_download(job_directory, artifact_kind)
+        .map_err(DownloadAttemptError::terminal)?;
 
     let response = match get_with_redirects(transport, initial_url.clone(), cancellation).await {
         Ok(response) => response,
@@ -583,13 +584,75 @@ async fn download_attempt(
         };
     }
 
+    persist_transport_response(
+        response,
+        output,
+        job_directory,
+        artifact_kind,
+        MAX_ARTIFACT_BYTES,
+        cancellation,
+        progress,
+        attempt,
+        MAX_DOWNLOAD_ATTEMPTS,
+        release.download_size_hint,
+    )
+    .await
+    .map_err(|error| match error {
+        PersistDownloadError::Cancelled => DownloadAttemptError::terminal(cancelled_error()),
+        PersistDownloadError::Transport(error) => transport_attempt_error(error),
+        PersistDownloadError::Installer(error) => DownloadAttemptError::terminal(error),
+    })
+}
+
+pub(crate) fn prepare_transport_download(
+    job_directory: &JobTempDir,
+    artifact_kind: ArtifactKind,
+) -> Result<std::fs::File, InstallerError> {
+    let part_path = job_directory.part_path(artifact_kind);
+    let final_path = job_directory.final_path(artifact_kind);
+    job_directory
+        .validate_artifact_path(&part_path)
+        .and_then(|_| job_directory.validate_artifact_path(&final_path))
+        .and_then(|_| job_directory.ensure_final_artifact_absent(artifact_kind))?;
+    job_directory.create_part_file(artifact_kind).map_err(|_| {
+        InstallerError::new(InstallerErrorCode::DownloadFailed)
+            .with_diagnostic_message("installer partial file could not be created")
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn persist_transport_response(
+    response: TransportResponse,
+    mut output: std::fs::File,
+    job_directory: &JobTempDir,
+    artifact_kind: ArtifactKind,
+    max_artifact_bytes: u64,
+    cancellation: &dyn Cancellation,
+    progress: &dyn DownloadProgressSink,
+    attempt: u8,
+    max_attempts: u8,
+    size_hint: Option<u64>,
+) -> Result<DownloadedArtifact, PersistDownloadError> {
+    if cancellation.is_cancelled() {
+        return Err(PersistDownloadError::Cancelled);
+    }
+    if max_artifact_bytes == 0 {
+        return Err(PersistDownloadError::Installer(
+            InstallerError::new(InstallerErrorCode::InternalError)
+                .with_diagnostic_message("installer artifact limit was invalid"),
+        ));
+    }
+    let part_path = job_directory.part_path(artifact_kind);
+    let final_path = job_directory.final_path(artifact_kind);
+    job_directory
+        .validate_artifact_path(&part_path)
+        .and_then(|_| job_directory.validate_artifact_path(&final_path))
+        .map_err(PersistDownloadError::Installer)?;
+
+    let progress_total = response.content_length.or(size_hint).unwrap_or(0);
     let mut body = response.body;
     let mut completed_bytes = 0_u64;
     let mut hasher = Sha256::new();
-    let progress_total = response
-        .content_length
-        .or(release.download_size_hint)
-        .unwrap_or(0);
     let mut last_progress_emit = Instant::now();
     let mut last_progress_bytes = 0_u64;
 
@@ -597,26 +660,26 @@ async fn download_attempt(
         let chunk = match race_with_cancellation(body.next(), cancellation).await {
             Ok(Some(chunk)) => chunk,
             Ok(None) => break,
-            Err(_) => return Err(DownloadAttemptError::terminal(cancelled_error())),
+            Err(_) => return Err(PersistDownloadError::Cancelled),
         };
-        let chunk = chunk.map_err(transport_attempt_error)?;
+        let chunk = chunk.map_err(PersistDownloadError::Transport)?;
         completed_bytes = completed_bytes
             .checked_add(chunk.len() as u64)
             .ok_or_else(|| {
-                DownloadAttemptError::terminal(
+                PersistDownloadError::Installer(
                     InstallerError::new(InstallerErrorCode::DownloadFailed)
                         .with_diagnostic_message("download exceeded supported size range"),
                 )
             })?;
-        if completed_bytes > MAX_ARTIFACT_BYTES {
-            return Err(DownloadAttemptError::terminal(
+        if completed_bytes > max_artifact_bytes {
+            return Err(PersistDownloadError::Installer(
                 InstallerError::new(InstallerErrorCode::DownloadFailed)
                     .with_diagnostic_message("download exceeded the installer safety limit"),
             ));
         }
 
         output.write_all(&chunk).map_err(|_| {
-            DownloadAttemptError::terminal(
+            PersistDownloadError::Installer(
                 InstallerError::new(InstallerErrorCode::DownloadFailed)
                     .with_diagnostic_message("installer partial file could not be written"),
             )
@@ -631,7 +694,7 @@ async fn download_attempt(
             progress.emit(DownloadProgressUpdate {
                 phase: ProgressPhase::Download,
                 attempt,
-                max_attempts: MAX_DOWNLOAD_ATTEMPTS,
+                max_attempts,
                 completed_bytes,
                 total_bytes: progress_total,
             });
@@ -641,53 +704,64 @@ async fn download_attempt(
     }
 
     if cancellation.is_cancelled() {
-        return Err(DownloadAttemptError::terminal(cancelled_error()));
+        return Err(PersistDownloadError::Cancelled);
     }
     if completed_bytes == 0 {
-        return Err(DownloadAttemptError::terminal(
+        return Err(PersistDownloadError::Installer(
             InstallerError::new(InstallerErrorCode::DownloadFailed)
                 .with_diagnostic_message("download endpoint returned an empty artifact"),
         ));
     }
 
     output.flush().map_err(|_| {
-        DownloadAttemptError::terminal(
+        PersistDownloadError::Installer(
             InstallerError::new(InstallerErrorCode::DownloadFailed)
                 .with_diagnostic_message("installer partial file could not be flushed"),
         )
     })?;
     output.sync_all().map_err(|_| {
-        DownloadAttemptError::terminal(
+        PersistDownloadError::Installer(
             InstallerError::new(InstallerErrorCode::DownloadFailed)
                 .with_diagnostic_message("installer partial file could not be synchronized"),
         )
     })?;
     job_directory
-        .validate_artifact_path(part_path)
-        .and_then(|_| job_directory.validate_artifact_path(final_path))
-        .map_err(DownloadAttemptError::terminal)?;
+        .validate_artifact_path(&part_path)
+        .and_then(|_| job_directory.validate_artifact_path(&final_path))
+        .map_err(PersistDownloadError::Installer)?;
     job_directory
         .finalize_part_file(artifact_kind, output)
-        .map_err(finalize_download_error)?;
+        .map_err(finalize_download_installer_error)
+        .map_err(PersistDownloadError::Installer)?;
 
     if cancellation.is_cancelled() {
-        return Err(DownloadAttemptError::terminal(cancelled_error()));
+        return Err(PersistDownloadError::Cancelled);
     }
     // Streaming SHA-256 is the local identity for PackageBridge hash-while-copy.
     // Installers must not reread the finished artifact to compare SHA-256.
     let sha256 = format!("{:x}", hasher.finalize());
-    DownloadedArtifact::from_completed_download(job_directory, release, completed_bytes, sha256)
-        .map_err(DownloadAttemptError::terminal)
+    DownloadedArtifact::from_completed_download_for_kind(
+        job_directory,
+        artifact_kind,
+        completed_bytes,
+        sha256,
+    )
+    .map_err(PersistDownloadError::Installer)
 }
 
+#[cfg(test)]
 fn finalize_download_error(source: InstallerError) -> DownloadAttemptError {
+    DownloadAttemptError::terminal(finalize_download_installer_error(source))
+}
+
+fn finalize_download_installer_error(source: InstallerError) -> InstallerError {
     let platform_error_code = source.to_dto().details.platform_error_code;
     let mut error = InstallerError::new(InstallerErrorCode::DownloadFailed)
         .with_diagnostic_message("installer partial file could not be finalized");
     if let Some(platform_error_code) = platform_error_code {
         error = error.with_platform_error_code(platform_error_code);
     }
-    DownloadAttemptError::terminal(error)
+    error
 }
 
 fn artifact_kind_for_endpoint(

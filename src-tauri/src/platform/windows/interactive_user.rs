@@ -39,7 +39,7 @@ use windows::{
 use crate::platform::process_launch::{
     InteractiveUserLauncher, ProcessLaunchError, UserHelperLaunchOutcome,
 };
-use fyagent_user_helper::{CanonicalJobId, PipeNonce, INSTALL_ACTION};
+use fyagent_user_helper::{CanonicalJobId, PipeNonce, UserHelperAction};
 
 const USER_HELPER_LAUNCH_TIMEOUT: Duration = Duration::from_secs(30);
 static USER_HELPER_LAUNCH_IN_FLIGHT: AtomicBool = AtomicBool::new(false);
@@ -72,10 +72,11 @@ impl InteractiveUserLauncher for ExplorerInteractiveUserLauncher {
 
     fn launch_fyagent_user_helper(
         &self,
+        action: UserHelperAction,
         job_id: &CanonicalJobId,
         pipe_nonce: &PipeNonce,
     ) -> Result<(), ProcessLaunchError> {
-        match self.begin_fyagent_user_helper_launch(job_id, pipe_nonce) {
+        match self.begin_fyagent_user_helper_launch(action, job_id, pipe_nonce) {
             UserHelperLaunchOutcome::Confirmed => Ok(()),
             UserHelperLaunchOutcome::MayHaveLaunched => {
                 Err(ProcessLaunchError::InteractiveUserUnavailable)
@@ -86,6 +87,7 @@ impl InteractiveUserLauncher for ExplorerInteractiveUserLauncher {
 
     fn begin_fyagent_user_helper_launch(
         &self,
+        action: UserHelperAction,
         job_id: &CanonicalJobId,
         pipe_nonce: &PipeNonce,
     ) -> UserHelperLaunchOutcome {
@@ -93,10 +95,7 @@ impl InteractiveUserLauncher for ExplorerInteractiveUserLauncher {
             Ok(helper) => helper,
             Err(error) => return UserHelperLaunchOutcome::NotInvoked(error),
         };
-        let arguments = format!(
-            "{INSTALL_ACTION} --job-id {job_id} --pipe {}",
-            pipe_nonce.as_str()
-        );
+        let arguments = action.command_line(job_id, pipe_nonce);
         launch_path_from_explorer_with_arguments(helper, arguments)
     }
 }

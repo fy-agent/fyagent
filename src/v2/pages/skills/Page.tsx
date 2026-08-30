@@ -56,7 +56,7 @@ import { ExternalLinkButton } from "../../shared/ui/ExternalLinkButton";
 import { FeatureList, FeatureListItem } from "../../shared/ui/FeatureList";
 import { FeaturePagination } from "../../shared/ui/FeaturePagination";
 import { FeatureSearch } from "../../shared/ui/FeatureSearch";
-import { FeatureTabs } from "../../shared/ui/FeatureTabs";
+import { FeatureTabPanel, FeatureTabs } from "../../shared/ui/FeatureTabs";
 import { SplitPanes } from "../../shared/ui/split";
 
 import "./page.css";
@@ -556,7 +556,12 @@ export function SkillsPage() {
           </p>
         </>
       )}
-      {tab === "installed" ? (
+      <FeatureTabPanel
+        tabsId="skills-view-tabs"
+        value="installed"
+        active={tab === "installed"}
+        unmountOnExit
+      >
         <>
           {installedQuery.error && installedQuery.data !== undefined && (
             <InlineNotice tone="error">
@@ -688,7 +693,13 @@ export function SkillsPage() {
             </div>
           )}
         </>
-      ) : (
+      </FeatureTabPanel>
+      <FeatureTabPanel
+        tabsId="skills-view-tabs"
+        value="discovery"
+        active={tab === "discovery"}
+        unmountOnExit
+      >
         <Discovery
           busy={busy}
           defaultTarget={installTarget}
@@ -700,7 +711,7 @@ export function SkillsPage() {
             });
           }}
         />
-      )}
+      </FeatureTabPanel>
       {pendingZipPath ? (
         <InstallTargetDialog
           title="从 ZIP 安装"

@@ -53,6 +53,27 @@ Component tests use React Testing Library (`render`, `screen`, events, and
 role-based queries). Hook tests use `renderHook` and `act`. Tests that need
 TanStack Query create a client with retries disabled so failures are immediate.
 
+### V2 Warning and Lifecycle Evidence
+
+Targeted V2 interaction suites must fail on unexpected React warnings rather
+than filtering stderr or globally mocking `console.error`. Async state changes
+are awaited through Testing Library async helpers, `act`, or controlled fake
+timers. A dependency warning may be allowlisted only by one exact message and
+reviewed version, with an upstream reference and removal condition; broad
+regular-expression suppression is prohibited.
+
+Route/lifecycle tests prove both sides of lazy ownership: an unvisited route
+module is not requested and does not create queries/observers, while a remount
+recovers backend-owned resources/jobs from authoritative state. Browser tests
+also exercise semantic selected state with the decorative Lens disabled,
+missing/delayed `ResizeObserver`, reduced motion, and right-side interaction.
+
+Production builds must emit separately identifiable primary-route chunks. A
+build contract inspects the generated manifest/chunk graph and an app-owned
+initial-chunk budget; do not raise Vite's warning threshold to hide a
+monolithic entry. Vendor budgets must name their source and remain separate
+from the app route budget.
+
 ```tsx
 // tests/utils/testQueryClient.ts
 export const createTestQueryClient = () =>

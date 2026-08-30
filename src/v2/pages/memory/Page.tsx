@@ -31,7 +31,7 @@ import {
 import { usePrimaryBlocker } from "../../shared/ui/PrimaryBlocker";
 import { FeatureList, FeatureListItem } from "../../shared/ui/FeatureList";
 import { FeatureSearch } from "../../shared/ui/FeatureSearch";
-import { FeatureTabs } from "../../shared/ui/FeatureTabs";
+import { FeatureTabPanel, FeatureTabs } from "../../shared/ui/FeatureTabs";
 import { CopyablePath } from "../../shared/ui/CopyablePath";
 import { SplitPanes } from "../../shared/ui/split";
 
@@ -210,7 +210,12 @@ export function MemoryPage() {
           { id: "daily", label: "每日记忆" },
         ]}
       />
-      <div className="fy-feature-workspace">
+      <FeatureTabPanel
+        tabsId="memory-type-tabs"
+        value={activeTab}
+        active
+        className="fy-feature-workspace"
+      >
         {activeTab === "long-term" ? (
           <LongTermView
             onDirtyChange={setDirty}
@@ -222,7 +227,7 @@ export function MemoryPage() {
             requestTransition={requestTransition}
           />
         )}
-      </div>
+      </FeatureTabPanel>
       <ConfirmDialog
         open={activeDiscardIntent !== null}
         title="放弃未保存的更改？"

@@ -1,0 +1,30 @@
+{
+  "id": "agent-auth-verification-state-machine",
+  "name": "agent-auth-verification-state-machine",
+  "title": "Stage 4: replace Auth launch success with verified session state machines",
+  "description": "Model Agent-owned and provider-owned login as cancellable, observable sessions with authoritative verification instead of immediate success.",
+  "status": "completed",
+  "dev_type": null,
+  "scope": "agent-auth",
+  "package": null,
+  "priority": "P0",
+  "creator": "pythonrust",
+  "assignee": "pythonrust",
+  "createdAt": "2026-08-29",
+  "completedAt": "2026-08-30",
+  "branch": "dev/laiyongjie",
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "08-29-agent-lifecycle-reliability-program",
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {
+    "sequence": "4",
+    "depends_on": "08-29-agent-install-target-authority-for-desktop-targets",
+    "related_issues": "#101,#141"
+  }
+}

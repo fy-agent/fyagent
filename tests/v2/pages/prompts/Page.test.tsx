@@ -1,5 +1,4 @@
 import {
-  act,
   fireEvent,
   cleanup,
   render,
@@ -8,7 +7,11 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { createMemoryRouter, RouterProvider } from "react-router-dom";
+import {
+  createMemoryRouter,
+  RouterProvider,
+  useNavigate,
+} from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
 import { PromptsPage } from "@/v2/pages/prompts/Page";
@@ -102,15 +105,41 @@ function statefulPorts(
   return { ports, stores, liveFiles };
 }
 
-function renderPrompts(ports: FeaturePorts) {
+function PromptsRouteFixture({
+  showNavigationControl,
+}: {
+  showNavigationControl: boolean;
+}) {
+  const navigate = useNavigate();
+  return (
+    <PrimaryBlockerProvider>
+      {showNavigationControl ? (
+        <button
+          type="button"
+          aria-label="打开记忆测试目标"
+          style={{ position: "absolute", width: 1, height: 1, overflow: "hidden" }}
+          onClick={() => void navigate("/memory")}
+        >
+          打开记忆测试目标
+        </button>
+      ) : null}
+      <PromptsPage />
+    </PrimaryBlockerProvider>
+  );
+}
+
+function renderPrompts(
+  ports: FeaturePorts,
+  { showNavigationControl = false } = {},
+) {
   const router = createMemoryRouter(
     [
       {
         path: "/prompts",
         element: (
-          <PrimaryBlockerProvider>
-            <PromptsPage />
-          </PrimaryBlockerProvider>
+          <PromptsRouteFixture
+            showNavigationControl={showNavigationControl}
+          />
         ),
       },
       { path: "/memory", element: <h1>记忆目标页</h1> },
@@ -538,35 +567,33 @@ describe("PromptsPage native business management", () => {
     const { ports } = statefulPorts({
       claude: [prompt("existing", "Existing")],
     });
-    const router = renderPrompts(ports);
+    const router = renderPrompts(ports, { showNavigationControl: true });
     const user = userEvent.setup();
     await screen.findByRole("heading", { name: "Existing" });
     await user.type(screen.getByRole("textbox", { name: "内容" }), " dirty");
 
-    await act(async () => {
-      await router.navigate("/memory");
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    });
+    await user.click(
+      screen.getByRole("button", { name: "打开记忆测试目标" }),
+    );
     const confirm = await screen.findByRole("dialog", {
       name: "放弃未保存的提示词更改",
     });
     await user.click(within(confirm).getByRole("button", { name: "取消" }));
+    await waitFor(() => expect(confirm).not.toBeInTheDocument());
     expect(router.state.location.pathname).toBe("/prompts");
-    await act(async () => {
-      await router.navigate("/memory");
-      await new Promise((resolve) => setTimeout(resolve, 0));
+    await user.click(
+      screen.getByRole("button", { name: "打开记忆测试目标" }),
+    );
+    const secondConfirm = await screen.findByRole("dialog", {
+      name: "放弃未保存的提示词更改",
     });
     await user.click(
-      within(
-        await screen.findByRole("dialog", { name: "放弃未保存的提示词更改" }),
-      ).getByRole("button", { name: "确认" }),
+      within(secondConfirm).getByRole("button", { name: "确认" }),
     );
     expect(
       await screen.findByRole("heading", { name: "记忆目标页" }),
     ).toBeVisible();
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    });
+    await waitFor(() => expect(secondConfirm).not.toBeInTheDocument());
   });
 
   it("distinguishes browser native-only, real empty data, and read errors", async () => {

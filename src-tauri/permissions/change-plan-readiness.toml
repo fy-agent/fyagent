@@ -13,10 +13,22 @@ commands.allow = [
 
 [[permission]]
 identifier = "allow-agent-install-readiness"
-description = "Allows the main local webview to read Agent install readiness and start closed Agent actions."
+description = "Allows the main local webview to read Agent install readiness/inventory and start closed Agent actions."
 commands.allow = [
   "get_agent_install_readiness",
+  "get_agent_installation_inventory",
   "start_agent_action",
   "cancel_agent_action",
   "get_agent_action_job",
+]
+
+[[permission]]
+identifier = "allow-agent-auth"
+description = "Allows the main local webview to read bounded Agent auth observations and monitor closed auth sessions."
+commands.allow = [
+  "get_agent_auth_observation",
+  "start_agent_auth_session",
+  "get_agent_auth_session",
+  "get_active_agent_auth_session",
+  "stop_waiting_for_agent_auth",
 ]

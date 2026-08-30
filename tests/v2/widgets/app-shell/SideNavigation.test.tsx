@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
@@ -100,6 +100,65 @@ describe("SideNavigation", () => {
     expect(
       within(navigation).queryByRole("link", { name: /^记忆$/ }),
     ).not.toBeInTheDocument();
+  });
+
+  it("derives the Agent return URL from a closed management query", async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter
+        initialEntries={[
+          "/models?agentReturn=workbuddy&agentSection=mcp",
+        ]}
+      >
+        <SideNavigation />
+      </MemoryRouter>,
+    );
+
+    const navigation = screen.getByRole("navigation", { name: "主导航" });
+    const agents = within(navigation).getByRole("link", {
+      name: "AI软件配置",
+    });
+    const models = within(navigation).getByRole("link", {
+      name: "模型管理",
+    });
+
+    expect(models).toHaveAttribute("aria-current", "page");
+    expect(agents).toHaveAttribute(
+      "href",
+      "/agents?target=workbuddy&section=mcp",
+    );
+
+    await user.click(agents);
+    expect(agents).toHaveAttribute("aria-current", "page");
+  });
+
+  it("retains a validated Agents query after navigating to another primary route", async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={["/agents?target=workbuddy&section=mcp"]}>
+        <SideNavigation />
+      </MemoryRouter>,
+    );
+
+    const navigation = screen.getByRole("navigation", { name: "主导航" });
+    const agents = within(navigation).getByRole("link", {
+      name: "AI软件配置",
+    });
+
+    expect(agents).toHaveAttribute("href", "/agents");
+    const mcp = within(navigation).getByRole("link", { name: "MCP 管理" });
+    expect(mcp).toHaveAttribute(
+      "href",
+      "/mcp?agentReturn=workbuddy&agentSection=mcp",
+    );
+    await user.click(mcp);
+    expect(mcp).toHaveAttribute("aria-current", "page");
+    await waitFor(() =>
+      expect(agents).toHaveAttribute(
+        "href",
+        "/agents?target=workbuddy&section=mcp",
+      ),
+    );
   });
 
   it("keeps one active lens when an active configuration group collapses", async () => {

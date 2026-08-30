@@ -10,6 +10,7 @@ import { PopoverPrimitive, TabsPrimitive } from "../shared/ui/vendor";
 
 export function UiLabPage() {
   const [tab, setTab] = useState("one");
+  const [popoverOpen, setPopoverOpen] = useState(false);
 
   return (
     <section className="fy-ui-lab" aria-labelledby="fy-ui-lab-title">
@@ -36,7 +37,10 @@ export function UiLabPage() {
               </IconButton>
             </Tooltip>
 
-            <PopoverPrimitive.Root>
+            <PopoverPrimitive.Root
+              open={popoverOpen}
+              onOpenChange={setPopoverOpen}
+            >
               <PopoverPrimitive.Trigger asChild>
                 <GlassButton
                   aria-label="查看功能说明"
@@ -50,6 +54,12 @@ export function UiLabPage() {
                   className="fy-popover"
                   sideOffset={10}
                   data-testid="ui-lab-popover-content"
+                  onEscapeKeyDown={() => setPopoverOpen(false)}
+                  onKeyDownCapture={(event) => {
+                    if (event.key === "Escape") {
+                      setPopoverOpen(false);
+                    }
+                  }}
                 >
                   在此查看当前功能的使用说明。
                   <PopoverPrimitive.Arrow className="fy-popover-arrow" />

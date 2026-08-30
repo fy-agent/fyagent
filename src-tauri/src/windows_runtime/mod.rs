@@ -20,8 +20,10 @@ mod registry;
 
 #[cfg(target_os = "windows")]
 pub(crate) use registry::{
-    create_or_open_shell_user_environment_update, open_shell_user_environment_read,
-    open_shell_user_environment_update, open_shell_user_run_update,
+    create_or_open_shell_user_environment_update, open_inventory_child_read,
+    open_machine_inventory_parent, open_shell_user_environment_read,
+    open_shell_user_environment_update, open_shell_user_inventory_parent,
+    open_shell_user_run_update, MachineRegistryLocation, RegistryView, ShellUserRegistryLocation,
 };
 
 pub(crate) const MAX_SINGLE_INSTANCE_ARGUMENTS: usize = 8;

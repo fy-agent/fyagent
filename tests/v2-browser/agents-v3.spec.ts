@@ -62,10 +62,13 @@ async function installAgentV3Overrides(page: Page): Promise<void> {
         agentId,
       );
       return {
-        contractVersion: 2,
+        contractVersion: 3,
         agentId,
-        reviewedAt: "2026-08-26",
+        reviewedAt: "2026-08-29",
         installState,
+        inventoryState:
+          installState === "installed" ? "single" : "not_observed",
+        requiresTargetSelection: false,
         updateState: installState === "installed" ? "up_to_date" : "unknown",
         releaseId: null,
         localVersion: installState === "installed" ? "1.0.0" : null,
@@ -213,8 +216,18 @@ test("Agent V3 shows the full catalog, auto-scans, and reuses existing Skill and
   ]);
 
   await configuration.getByRole("button", { name: "进入 MCP 管理" }).click();
-  await expect(page).toHaveURL(/#\/mcp$/);
-  await page.getByRole("link", { name: "AI软件配置", exact: true }).click();
+  await expect(page).toHaveURL(
+    /#\/mcp\?agentReturn=workbuddy&agentSection=mcp$/,
+  );
+  const agentsLink = page.getByRole("link", {
+    name: "AI软件配置",
+    exact: true,
+  });
+  await expect(agentsLink).toHaveAttribute(
+    "href",
+    "#/agents?target=workbuddy&section=mcp",
+  );
+  await agentsLink.click();
   await expect(page).toHaveURL(/#\/agents\?target=workbuddy&section=mcp$/);
   await expect(configuration).toBeVisible();
 
@@ -254,6 +267,60 @@ test("Agent V3 restores deep links and keeps model and prompt capability boundar
   await expect(trae.getByText(/TRAE Work CN 已观测模型/)).toBeVisible();
   await expect(trae.getByText("fixture-model", { exact: true })).toHaveCount(1);
   await expect(trae.getByRole("switch")).toHaveCount(0);
+  await expectNoHorizontalOverflow(page);
+  await expectHealthyPage(page, health);
+});
+
+test("Agent Auth distinguishes verified sessions, handoff-only flows, and Auth Center ownership", async ({
+  page,
+}) => {
+  await installFixture(page);
+  const health = monitorPageHealth(page);
+
+  await openV2Page(page, "/agents?target=claude-code&section=models");
+  const claude = page.getByRole("region", { name: "Claude Code 配置" });
+  await expect(claude.getByText("已验证退出")).toBeVisible();
+  await claude.getByRole("button", { name: "登录", exact: true }).click();
+  await expect(claude.getByText("等待你完成官方认证")).toBeVisible();
+  await expect(claude.getByText("认证结果已验证")).toBeVisible();
+  await expect(claude.getByText("已验证登录")).toBeVisible();
+
+  await openV2Page(page, "/agents?target=grokbuild&section=models");
+  const grok = page.getByRole("region", { name: "Grok Build 配置" });
+  await grok.getByRole("button", { name: "登录", exact: true }).click();
+  await expect(grok.getByText("已交给官方认证入口")).toBeVisible();
+  await expect(grok.getByText("认证结果已验证")).toHaveCount(0);
+
+  await openV2Page(page, "/agents?target=codex&section=models");
+  const codex = page.getByRole("region", { name: "Codex 配置" });
+  await expect(codex.getByText("由 FyAgent 认证中心管理")).toBeVisible();
+  await expect(
+    codex.getByRole("button", { name: "登录", exact: true }),
+  ).toHaveCount(0);
+
+  const calls = await featureFixtureCalls(page);
+  expect(
+    calls.some(
+      (call) =>
+        call.command === "start_agent_auth_session" &&
+        (call.payload.request as { agentId?: string }).agentId ===
+          "claude-code",
+    ),
+  ).toBe(true);
+  expect(
+    calls.some(
+      (call) =>
+        call.command === "start_agent_auth_session" &&
+        (call.payload.request as { agentId?: string }).agentId === "grokbuild",
+    ),
+  ).toBe(true);
+  expect(
+    calls.some(
+      (call) =>
+        call.command === "start_agent_auth_session" &&
+        (call.payload.request as { agentId?: string }).agentId === "codex",
+    ),
+  ).toBe(false);
   await expectNoHorizontalOverflow(page);
   await expectHealthyPage(page, health);
 });

@@ -329,7 +329,8 @@ describe("V2 standalone preview builder", () => {
       {
         "index.js":
           'const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["./main.js","./main.css"])))=>i.map(i=>d[i]); preload(()=>import("./main.js"),__vite__mapDeps([0,1]),import.meta.url);',
-        "main.js": 'import "./chunk.js"; window.mainLoaded = true;',
+        "main.js":
+          'window.mainLoaded = true; void import("./chunk.js");',
         "main.css": "body { color: black; }",
         "chunk.js": "window.chunkLoaded = true;",
       },

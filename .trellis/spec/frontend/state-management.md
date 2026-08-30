@@ -9,6 +9,35 @@ The leftover renderer uses React local state and Context for UI state, plus
 TanStack React Query for data read from or written to the Tauri backend. There
 is no Zustand or Jotai dependency in `package.json`.
 
+## V2 Route and Resource Lifecycle
+
+Production V2 mounts only the active primary route by default. Route modules
+are lazy loaded, so a route that has not been visited must not create its DOM,
+queries, observers, timers, subscriptions, or effects. A cross-route native
+job remains backend-owned and is recovered by an authoritative query/session
+lookup when the route remounts; a hidden React tree is not a lifecycle owner.
+
+V2 classifies state before choosing persistence:
+
+| State | Owner | Route-leave behavior |
+| --- | --- | --- |
+| current route, target or shareable tab | hash router/query parameter | restored from URL |
+| backend resource | TanStack Query + FeaturePort/backend | cached/reread authoritatively |
+| install/Auth/change-plan job | backend job/session + query | continues without page mount |
+| unsaved non-secret business draft | route/domain draft controller | explicit save/discard/block policy |
+| transient visual state | local component | may reset on unmount |
+| secret input | narrow local state | clear according to the owning security contract |
+
+Do not synchronize a derived router value with `setState` during render. Use a
+derived value directly, or an effect only when a deliberately separate draft
+must reconcile with route authority. Blanket “visited page” keep-alive is not
+a state-management mechanism.
+
+Every V2 query or polling hook that can remain mounted behind a conditional
+surface accepts/derives an `enabled`/`active` condition. Disabling a query must
+also stop its automatic fetch/refetch/poll behavior; explicit user refetch may
+remain available only when the owning surface is active.
+
 ## State Categories
 
 - **Local UI state:** leftover components and feature hooks use `useState`,

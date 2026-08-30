@@ -1,6 +1,8 @@
 use std::{fmt, mem::size_of};
 
-pub const PROTOCOL_VERSION: u8 = 2;
+use crate::cli::UserHelperAction;
+
+pub const PROTOCOL_VERSION: u8 = 3;
 pub const FRAME_LENGTH_BYTES: usize = 4;
 pub const MAX_ERROR_MESSAGE_BYTES: usize = 256;
 pub const MAX_PAYLOAD_BYTES: usize = 2 + 1 + 2 + MAX_ERROR_MESSAGE_BYTES;
@@ -66,10 +68,15 @@ pub enum HelperErrorCode {
     ParentCancelled = 13,
     DeploymentTimedOut = 14,
     PackageDowngrade = 15,
+    InstallerLaunchFailed = 16,
+    InstallerCancelled = 17,
+    InstallerTimedOut = 18,
+    InstallerProcessUnobservable = 19,
+    InstallerExitedNonzero = 20,
 }
 
 impl HelperErrorCode {
-    pub const ALL: [Self; 15] = [
+    pub const ALL: [Self; 20] = [
         Self::InstallLayoutInvalid,
         Self::WinRtInitializationFailed,
         Self::PackageUriInvalid,
@@ -85,6 +92,11 @@ impl HelperErrorCode {
         Self::ParentCancelled,
         Self::DeploymentTimedOut,
         Self::PackageDowngrade,
+        Self::InstallerLaunchFailed,
+        Self::InstallerCancelled,
+        Self::InstallerTimedOut,
+        Self::InstallerProcessUnobservable,
+        Self::InstallerExitedNonzero,
     ];
 
     pub const fn wire_code(self) -> u8 {
@@ -110,6 +122,13 @@ impl HelperErrorCode {
             Self::ParentCancelled => "FyAgent cancelled the package installation",
             Self::DeploymentTimedOut => "Windows package installation timed out",
             Self::PackageDowngrade => "Windows rejected an older package version",
+            Self::InstallerLaunchFailed => "Windows could not start the verified installer",
+            Self::InstallerCancelled => "The user cancelled the Windows installer launch",
+            Self::InstallerTimedOut => "The Windows installer did not finish before the deadline",
+            Self::InstallerProcessUnobservable => {
+                "Windows did not return an observable installer process"
+            }
+            Self::InstallerExitedNonzero => "The Windows installer exited with a failure status",
         }
     }
 
@@ -123,7 +142,9 @@ impl HelperErrorCode {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum HelperMessage {
-    Hello,
+    Hello {
+        action: UserHelperAction,
+    },
     Started {
         package: PinnedPackageIdentity,
     },
@@ -212,7 +233,10 @@ pub fn encode_frame(message: &HelperMessage) -> Result<Vec<u8>, ProtocolError> {
     payload.push(PROTOCOL_VERSION);
 
     match message {
-        HelperMessage::Hello => payload.push(HELLO_KIND),
+        HelperMessage::Hello { action } => {
+            payload.push(HELLO_KIND);
+            payload.push(action.wire_code());
+        }
         HelperMessage::Started { package } => {
             payload.push(STARTED_KIND);
             payload.extend_from_slice(&package.volume_serial().to_le_bytes());
@@ -278,7 +302,11 @@ pub fn decode_frame(frame: &[u8]) -> Result<HelperMessage, ProtocolError> {
     }
 
     match payload[1] {
-        HELLO_KIND if payload.len() == 2 => Ok(HelperMessage::Hello),
+        HELLO_KIND if payload.len() == 3 => {
+            let action =
+                UserHelperAction::from_wire(payload[2]).ok_or(ProtocolError::UnknownMessageKind)?;
+            Ok(HelperMessage::Hello { action })
+        }
         STARTED_KIND if payload.len() == 2 + STARTED_IDENTITY_BYTES => {
             let mut field = [0_u8; size_of::<u64>()];
             field.copy_from_slice(&payload[2..10]);
@@ -349,7 +377,7 @@ pub enum HelperProtocolTerminal {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HelperProtocolAction {
-    Hello,
+    Hello(UserHelperAction),
     Started(PinnedPackageIdentity),
     Progress(u8),
     Success,
@@ -419,9 +447,9 @@ impl HelperProtocolSequence {
         self.message_count += 1;
 
         match (self.phase, message) {
-            (ProtocolPhase::AwaitingHello, HelperMessage::Hello) => {
+            (ProtocolPhase::AwaitingHello, HelperMessage::Hello { action }) => {
                 self.phase = ProtocolPhase::AwaitingControl;
-                Ok(HelperProtocolAction::Hello)
+                Ok(HelperProtocolAction::Hello(action))
             }
             (ProtocolPhase::AwaitingStarted, HelperMessage::Started { package }) => {
                 self.phase = ProtocolPhase::AwaitingAdmission;
@@ -481,6 +509,7 @@ impl HelperProtocolSequence {
 mod tests {
     use super::*;
 
+    const HELLO_ACTION: UserHelperAction = UserHelperAction::CodexMsixInstall;
     const PINNED_PACKAGE: PinnedPackageIdentity = PinnedPackageIdentity::new(
         0x0102_0304_0506_0708,
         0x1112_1314_1516_1718,
@@ -489,39 +518,51 @@ mod tests {
 
     #[test]
     fn exact_wire_codes_are_stable_and_unique() {
-        assert_eq!(PROTOCOL_VERSION, 2);
+        assert_eq!(PROTOCOL_VERSION, 3);
         assert_eq!(
             HelperErrorCode::ALL.map(HelperErrorCode::wire_code),
-            [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+            [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,]
         );
-        assert_eq!(
-            encode_frame(&HelperMessage::Hello).unwrap(),
-            [2, 0, 0, 0, 2, 5]
-        );
+        assert_eq!(encode_frame(&hello()).unwrap(), [3, 0, 0, 0, 3, 5, 1]);
         assert_eq!(
             encode_frame(&HelperMessage::Started {
                 package: PINNED_PACKAGE,
             })
             .unwrap(),
             [
-                26, 0, 0, 0, 2, 1, 8, 7, 6, 5, 4, 3, 2, 1, 24, 23, 22, 21, 20, 19, 18, 17, 40, 39,
+                26, 0, 0, 0, 3, 1, 8, 7, 6, 5, 4, 3, 2, 1, 24, 23, 22, 21, 20, 19, 18, 17, 40, 39,
                 38, 37, 36, 35, 34, 33,
             ]
         );
         assert_eq!(
             encode_frame(&HelperMessage::Progress { completed: 42 }).unwrap(),
-            [3, 0, 0, 0, 2, 2, 42]
+            [3, 0, 0, 0, 3, 2, 42]
         );
         assert_eq!(
             encode_frame(&HelperMessage::Success).unwrap(),
-            [2, 0, 0, 0, 2, 3]
+            [2, 0, 0, 0, 3, 3]
         );
     }
 
     #[test]
     fn every_message_and_error_enum_round_trips() {
         let mut messages = vec![
-            HelperMessage::Hello,
+            hello(),
+            HelperMessage::Hello {
+                action: UserHelperAction::AgentExeInstall(
+                    crate::cli::AgentInstallerProduct::QoderWork,
+                ),
+            },
+            HelperMessage::Hello {
+                action: UserHelperAction::AgentExeInstall(
+                    crate::cli::AgentInstallerProduct::TraeWork,
+                ),
+            },
+            HelperMessage::Hello {
+                action: UserHelperAction::AgentExeInstall(
+                    crate::cli::AgentInstallerProduct::WorkBuddy,
+                ),
+            },
             HelperMessage::Started {
                 package: PINNED_PACKAGE,
             },
@@ -676,8 +717,12 @@ mod tests {
     #[test]
     fn rejects_wrong_lengths_and_malformed_utf8() {
         assert_eq!(
-            decode_frame(&[3, 0, 0, 0, PROTOCOL_VERSION, HELLO_KIND, 0]).unwrap_err(),
+            decode_frame(&[2, 0, 0, 0, PROTOCOL_VERSION, HELLO_KIND]).unwrap_err(),
             ProtocolError::InvalidMessageLength
+        );
+        assert_eq!(
+            decode_frame(&[3, 0, 0, 0, PROTOCOL_VERSION, HELLO_KIND, 0]).unwrap_err(),
+            ProtocolError::UnknownMessageKind
         );
         assert_eq!(
             decode_frame(&[3, 0, 0, 0, PROTOCOL_VERSION, STARTED_KIND, 0]).unwrap_err(),
@@ -779,10 +824,16 @@ mod tests {
         }
     }
 
+    fn hello() -> HelperMessage {
+        HelperMessage::Hello {
+            action: HELLO_ACTION,
+        }
+    }
+
     fn admit(sequence: &mut HelperProtocolSequence) {
         assert_eq!(
-            sequence.accept(HelperMessage::Hello),
-            Ok(HelperProtocolAction::Hello)
+            sequence.accept(hello()),
+            Ok(HelperProtocolAction::Hello(HELLO_ACTION))
         );
         sequence
             .mark_control_sent()
@@ -814,11 +865,11 @@ mod tests {
             Err(ProtocolSequenceError::AdmissionOutOfOrder)
         );
         assert_eq!(
-            sequence.accept(HelperMessage::Hello),
-            Ok(HelperProtocolAction::Hello)
+            sequence.accept(hello()),
+            Ok(HelperProtocolAction::Hello(HELLO_ACTION))
         );
         assert_eq!(
-            sequence.accept(HelperMessage::Hello),
+            sequence.accept(hello()),
             Err(ProtocolSequenceError::UnexpectedMessage)
         );
         assert_eq!(
@@ -845,7 +896,7 @@ mod tests {
     fn sequence_allows_only_canonical_failure_before_started_or_admission() {
         for after_started in [false, true] {
             let mut sequence = HelperProtocolSequence::default();
-            sequence.accept(HelperMessage::Hello).unwrap();
+            sequence.accept(hello()).unwrap();
             sequence.mark_control_sent().unwrap();
             if after_started {
                 sequence.accept(started()).unwrap();
@@ -865,14 +916,14 @@ mod tests {
         }
 
         let mut before_control = HelperProtocolSequence::default();
-        before_control.accept(HelperMessage::Hello).unwrap();
+        before_control.accept(hello()).unwrap();
         assert_eq!(
             before_control.accept(HelperMessage::error(HelperErrorCode::PackageInvalid)),
             Err(ProtocolSequenceError::UnexpectedMessage)
         );
 
         let mut noncanonical = HelperProtocolSequence::default();
-        noncanonical.accept(HelperMessage::Hello).unwrap();
+        noncanonical.accept(hello()).unwrap();
         noncanonical.mark_control_sent().unwrap();
         assert_eq!(
             noncanonical.accept(HelperMessage::Error {

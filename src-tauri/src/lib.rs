@@ -1842,7 +1842,13 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_agent_catalog,
+            commands::get_agent_auth_observation,
+            commands::start_agent_auth_session,
+            commands::get_agent_auth_session,
+            commands::get_active_agent_auth_session,
+            commands::stop_waiting_for_agent_auth,
             commands::get_agent_install_readiness,
+            commands::get_agent_installation_inventory,
             commands::start_agent_action,
             commands::cancel_agent_action,
             commands::get_agent_action_job,

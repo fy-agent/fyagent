@@ -109,8 +109,10 @@ test("exercises UI Lab overlays, focus treatment, long labels, and glass fallbac
 
   const tooltipTrigger = page.getByTestId("ui-lab-tooltip-trigger");
   await tooltipTrigger.hover();
-  await expect(page.getByTestId("ui-lab-tooltip-content")).toBeVisible();
+  const tooltipContent = page.getByTestId("ui-lab-tooltip-content");
+  await expect(tooltipContent).toBeVisible();
   await page.keyboard.press("Escape");
+  await expect(tooltipContent).toHaveCount(0);
 
   const popoverTrigger = page.getByTestId("ui-lab-popover-trigger");
   await popoverTrigger.click();
@@ -140,6 +142,8 @@ test("exercises UI Lab overlays, focus treatment, long labels, and glass fallbac
     "Popover content must be portaled outside the clipping content surface",
   ).toBe(true);
   await page.keyboard.press("Escape");
+  await expect(popoverContent).toHaveCount(0);
+  await expect(popoverTrigger).toBeFocused();
 
   await tabToTestId(page, "ui-lab-focus-target");
   const focusTarget = page.getByTestId("ui-lab-focus-target");

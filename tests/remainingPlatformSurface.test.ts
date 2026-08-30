@@ -726,7 +726,7 @@ describe("durable supported-platform surface contract", () => {
 
   it("freezes every fail-closed Rust allowance by file, condition, and adjacent structure", () => {
     const entries = permittedRustEntries();
-    expect(checker.RUST_ALLOWANCE_CONTRACT).toHaveLength(10);
+    expect(checker.RUST_ALLOWANCE_CONTRACT).toHaveLength(13);
     expect(checker.scanRustImplicitPredicates(entries)).toEqual([]);
 
     const first = checker.RUST_ALLOWANCE_CONTRACT[0];

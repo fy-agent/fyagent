@@ -8,6 +8,12 @@ import {
 } from "../../shared/config/navigation";
 import { classNames } from "../../shared/design-system/classNames";
 import {
+  appendAgentReturnToPath,
+  agentReturnDescriptorFromManagementSearch,
+  agentReturnDescriptorFromSearch,
+  agentReturnPath,
+} from "../../shared/features/agent-navigation";
+import {
   Collapsible,
   CollapsibleCaret,
   CollapsibleContent,
@@ -22,14 +28,16 @@ const configurationItemsId = "fy-side-navigation-configuration-items";
 
 function NavigationLink({
   item,
+  destination = item.path,
   visuallyAvailable = true,
 }: {
   item: NavigationItem;
+  destination?: string;
   visuallyAvailable?: boolean;
 }) {
   return (
     <NavLink
-      to={item.path}
+      to={destination}
       end
       className={({ isActive, isPending }) =>
         classNames(
@@ -73,11 +81,27 @@ function visibleNavigationControls(navigation: HTMLElement): HTMLElement[] {
 }
 
 export function SideNavigation() {
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
   const navigationRef = useRef<HTMLElement>(null);
   const configurationToggleRef = useRef<HTMLButtonElement>(null);
   const configurationItemsRef = useRef<HTMLUListElement>(null);
   const [configurationExpanded, setConfigurationExpanded] = useState(true);
+  const agentReturnDescriptor =
+    pathname === "/agents"
+      ? agentReturnDescriptorFromSearch(search)
+      : agentReturnDescriptorFromManagementSearch(search);
+  const agentDestination =
+    pathname !== "/agents" && agentReturnDescriptor
+      ? agentReturnPath(agentReturnDescriptor)
+      : "/agents";
+  const navigationDestination = (item: NavigationItem) => {
+    if (item.path === "/agents") {
+      return agentDestination;
+    }
+    return agentReturnDescriptor
+      ? appendAgentReturnToPath(item.path, agentReturnDescriptor)
+      : item.path;
+  };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     const target = event.target;
@@ -149,6 +173,7 @@ export function SideNavigation() {
     >
       <SelectionLensGroup
         id="side-navigation"
+        layoutKey={configurationExpanded}
         className="fy-side-navigation-track"
         inset={1}
       >
@@ -161,7 +186,11 @@ export function SideNavigation() {
                 key={group.id}
               >
                 {group.items.map((item) => (
-                  <NavigationLink item={item} key={item.id} />
+                  <NavigationLink
+                    item={item}
+                    destination={navigationDestination(item)}
+                    key={item.id}
+                  />
                 ))}
               </section>
             );
@@ -229,6 +258,7 @@ export function SideNavigation() {
                       <li key={item.id}>
                         <NavigationLink
                           item={item}
+                          destination={navigationDestination(item)}
                           visuallyAvailable={configurationExpanded}
                         />
                       </li>

@@ -3,6 +3,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -65,14 +66,23 @@ export function FeatureProvider({
   const [queryClient] = useState(createFeatureQueryClient);
   const [installTarget, setInstallTarget] = useState<SkillTargetId>("claude");
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const toastTimers = useRef(new Set<number>());
   const notify = useCallback((message: Omit<ToastMessage, "id">) => {
     const id = Date.now() + Math.random();
     setToasts((current) => [...current, { ...message, id }]);
-    window.setTimeout(
-      () => setToasts((current) => current.filter((toast) => toast.id !== id)),
-      4200,
-    );
+    const timer = window.setTimeout(() => {
+      toastTimers.current.delete(timer);
+      setToasts((current) => current.filter((toast) => toast.id !== id));
+    }, 4200);
+    toastTimers.current.add(timer);
   }, []);
+  useEffect(
+    () => () => {
+      for (const timer of toastTimers.current) window.clearTimeout(timer);
+      toastTimers.current.clear();
+    },
+    [],
+  );
   const value = useMemo(
     () => ({ ports, installTarget, setInstallTarget, notify }),
     [installTarget, notify, ports],

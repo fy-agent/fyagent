@@ -9,6 +9,8 @@ pub const CACHE_DIRECTORY: &str = "cache";
 pub const CODEX_INSTALLER_DIRECTORY: &str = "codex-installer";
 pub const INSTALLER_FILE_NAME: &str = "installer.msix";
 pub const PACKAGE_BRIDGE_PART_FILE_NAME: &str = "installer.msix.part";
+pub const AGENT_INSTALLER_FILE_NAME: &str = "installer.exe";
+pub const AGENT_PACKAGE_BRIDGE_PART_FILE_NAME: &str = "installer.exe.part";
 pub const PACKAGE_BRIDGE_ROOT_DIRECTORY: &str =
     "FyAgent.PackageBridge-{96F39D37-0F42-486F-8C86-3631C12171C5}";
 pub const PACKAGE_BRIDGE_VERSION_DIRECTORY: &str = "v1";
@@ -28,6 +30,28 @@ pub const USER_HELPER_CONTROL_EVENT_ACCESS_MASK: u32 = 0x0012_0000;
 /// `FILE_GENERIC_WRITE` is intentionally not used because its append-data bit
 /// aliases `FILE_CREATE_PIPE_INSTANCE` for named pipes.
 pub const USER_HELPER_PIPE_CLIENT_ACCESS_MASK: u32 = 0x0012_008B;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PackageBridgeArtifactKind {
+    Msix,
+    Exe,
+}
+
+impl PackageBridgeArtifactKind {
+    pub const fn final_file_name(self) -> &'static str {
+        match self {
+            Self::Msix => INSTALLER_FILE_NAME,
+            Self::Exe => AGENT_INSTALLER_FILE_NAME,
+        }
+    }
+
+    pub const fn part_file_name(self) -> &'static str {
+        match self {
+            Self::Msix => PACKAGE_BRIDGE_PART_FILE_NAME,
+            Self::Exe => AGENT_PACKAGE_BRIDGE_PART_FILE_NAME,
+        }
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct InstallLayout {
@@ -182,10 +206,22 @@ mod tests {
         );
         assert_eq!(PACKAGE_BRIDGE_VERSION_DIRECTORY, "v1");
         assert_eq!(PACKAGE_BRIDGE_PART_FILE_NAME, "installer.msix.part");
+        assert_eq!(AGENT_INSTALLER_FILE_NAME, "installer.exe");
+        assert_eq!(AGENT_PACKAGE_BRIDGE_PART_FILE_NAME, "installer.exe.part");
         assert_single_normal_component(PACKAGE_BRIDGE_ROOT_DIRECTORY);
         assert_single_normal_component(PACKAGE_BRIDGE_VERSION_DIRECTORY);
         assert_single_normal_component(INSTALLER_FILE_NAME);
         assert_single_normal_component(PACKAGE_BRIDGE_PART_FILE_NAME);
+        assert_single_normal_component(AGENT_INSTALLER_FILE_NAME);
+        assert_single_normal_component(AGENT_PACKAGE_BRIDGE_PART_FILE_NAME);
+        assert_eq!(
+            PackageBridgeArtifactKind::Msix.final_file_name(),
+            INSTALLER_FILE_NAME
+        );
+        assert_eq!(
+            PackageBridgeArtifactKind::Exe.final_file_name(),
+            AGENT_INSTALLER_FILE_NAME
+        );
     }
 
     #[test]

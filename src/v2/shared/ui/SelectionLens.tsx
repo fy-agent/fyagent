@@ -29,6 +29,8 @@ type LensBox = {
   borderRadius: string;
 };
 
+const layoutSettleFrameCount = 48;
+
 export function selectionLensCollapsedOrigin(box: Pick<LensBox, "x" | "y">): {
   x: number;
   y: number;
@@ -65,6 +67,9 @@ function observeHiddenAncestors(
   start: HTMLElement,
   onChange: () => void,
 ): () => void {
+  if (typeof MutationObserver === "undefined") {
+    return () => undefined;
+  }
   const observer = new MutationObserver(onChange);
   let node: HTMLElement | null = start;
   while (node) {
@@ -77,74 +82,24 @@ function observeHiddenAncestors(
   return () => observer.disconnect();
 }
 
-function isSelectionLensOverlay(node: Element): boolean {
-  return node.classList.contains("fy-selection-lens");
-}
-
-function observeLayoutSubtree(
-  root: HTMLElement,
-  observer: ResizeObserver,
-): () => void {
-  const observed = new Set<Element>();
-
-  const observeNode = (node: Element) => {
-    if (isSelectionLensOverlay(node)) {
-      return;
-    }
-    if (!observed.has(node)) {
-      observer.observe(node);
-      observed.add(node);
-    }
-    for (const child of node.children) {
-      observeNode(child);
-    }
-  };
-
-  observeNode(root);
-
-  const mutations = new MutationObserver((records) => {
-    for (const record of records) {
-      for (const added of record.addedNodes) {
-        if (added instanceof Element) {
-          observeNode(added);
-        }
-      }
-      for (const removed of record.removedNodes) {
-        if (removed instanceof Element) {
-          const forget = (node: Element) => {
-            observer.unobserve(node);
-            observed.delete(node);
-            for (const child of node.children) {
-              forget(child);
-            }
-          };
-          forget(removed);
-        }
-      }
-    }
-  });
-  mutations.observe(root, { childList: true, subtree: true });
-
-  return () => {
-    mutations.disconnect();
-    observer.disconnect();
-    observed.clear();
-  };
-}
-
 export function SelectionLensGroup({
   id,
   inset = 0,
+  layoutKey,
   className,
   children,
   ...props
 }: Omit<HTMLAttributes<HTMLDivElement>, "id"> & {
   id: string;
   inset?: number;
+  layoutKey?: string | number | boolean;
 }) {
   const scopeRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef<HTMLElement | null>(null);
   const hostGenerationRef = useRef(0);
+  const frameRef = useRef<number | null>(null);
+  const layoutSettleFrameRef = useRef<number | null>(null);
+  const previousLayoutKeyRef = useRef(layoutKey);
   const hiddenRef = useRef(false);
   const positionedRef = useRef(false);
   const revealSeenRef = useRef(0);
@@ -194,6 +149,16 @@ export function SelectionLensGroup({
     );
   }, [inset]);
 
+  const scheduleSync = useCallback(() => {
+    if (frameRef.current !== null) {
+      return;
+    }
+    frameRef.current = window.requestAnimationFrame(() => {
+      frameRef.current = null;
+      syncBox();
+    });
+  }, [syncBox]);
+
   const register = useCallback((nextHost: HTMLElement | null) => {
     hostGenerationRef.current += 1;
     hostRef.current = nextHost;
@@ -223,6 +188,33 @@ export function SelectionLensGroup({
   });
 
   useLayoutEffect(() => {
+    const layoutChanged = previousLayoutKeyRef.current !== layoutKey;
+    previousLayoutKeyRef.current = layoutKey;
+    if (!layoutChanged) {
+      scheduleSync();
+      return;
+    }
+
+    let remainingFrames = reduceMotion ? 1 : layoutSettleFrameCount;
+    const settle = () => {
+      layoutSettleFrameRef.current = null;
+      syncBox();
+      remainingFrames -= 1;
+      if (remainingFrames > 0) {
+        layoutSettleFrameRef.current = window.requestAnimationFrame(settle);
+      }
+    };
+    layoutSettleFrameRef.current = window.requestAnimationFrame(settle);
+
+    return () => {
+      if (layoutSettleFrameRef.current !== null) {
+        window.cancelAnimationFrame(layoutSettleFrameRef.current);
+        layoutSettleFrameRef.current = null;
+      }
+    };
+  }, [layoutKey, reduceMotion, scheduleSync, syncBox]);
+
+  useLayoutEffect(() => {
     const scope = scopeRef.current;
     if (!scope || !host) {
       return;
@@ -232,21 +224,26 @@ export function SelectionLensGroup({
       typeof ResizeObserver === "undefined"
         ? null
         : new ResizeObserver(() => {
-            syncBox();
+            scheduleSync();
           });
-    const stopLayoutWatch = observer
-      ? observeLayoutSubtree(scope, observer)
-      : () => undefined;
-    window.addEventListener("resize", syncBox);
-    const stopHiddenWatch = observeHiddenAncestors(scope, syncBox);
+    observer?.observe(scope);
+    observer?.observe(host);
+    window.addEventListener("resize", scheduleSync);
+    scope.addEventListener("scroll", scheduleSync, true);
+    const stopHiddenWatch = observeHiddenAncestors(scope, scheduleSync);
     syncBox();
 
     return () => {
-      stopLayoutWatch();
-      window.removeEventListener("resize", syncBox);
+      observer?.disconnect();
+      window.removeEventListener("resize", scheduleSync);
+      scope.removeEventListener("scroll", scheduleSync, true);
       stopHiddenWatch();
+      if (frameRef.current !== null) {
+        window.cancelAnimationFrame(frameRef.current);
+        frameRef.current = null;
+      }
     };
-  }, [host, syncBox]);
+  }, [host, scheduleSync, syncBox]);
 
   useLayoutEffect(() => {
     if (!box) {
@@ -322,12 +319,7 @@ export function SelectionLensGroup({
   );
 }
 
-export function SelectionLens({
-  active,
-}: {
-  active: boolean;
-  className?: string;
-}) {
+export function SelectionLens({ active }: { active: boolean }) {
   const ctx = useContext(SelectionLensContext);
   const markerRef = useRef<HTMLSpanElement>(null);
 
@@ -361,12 +353,21 @@ export function SelectionLens({
 
 export function SelectionLensTrack({
   id,
+  layoutKey,
   className,
   children,
   ...props
-}: Omit<HTMLAttributes<HTMLDivElement>, "id"> & { id: string }) {
+}: Omit<HTMLAttributes<HTMLDivElement>, "id"> & {
+  id: string;
+  layoutKey?: string | number | boolean;
+}) {
   return (
-    <SelectionLensGroup id={id} className={className} {...props}>
+    <SelectionLensGroup
+      id={id}
+      layoutKey={layoutKey}
+      className={className}
+      {...props}
+    >
       {children}
     </SelectionLensGroup>
   );

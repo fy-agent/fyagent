@@ -39,6 +39,10 @@ Tooling business policy lives behind crate-scoped `services/tooling.rs`; its
 private `versions`, `lifecycle`, `discovery`, and `terminal` modules own the
 corresponding application/domain responsibilities while the Tauri command
 module remains only the transport facade.
+Agent lifecycle authority lives behind crate-scoped `agent_install`; its
+private `inventory`, `desktop`, `windows`, `cli`, `auth`, `source`, `fetch`, and `jobs`
+modules own domain policy while `commands/agent_install_readiness.rs` remains
+transport-only.
 
 Target-exclusive parent imports and private-owner tests must carry the same
 target boundary as their production consumer:
@@ -58,6 +62,24 @@ mod tests {
 
 - `commands/**` owns Tauri transport; domain behavior belongs in its service or
   config owner. Do not recreate `commands/misc.rs`.
+- `agent_install/inventory.rs` is the single owner of installation candidate
+  normalization, provenance merge, opaque snapshot/target/revision
+  capabilities, expiry, stale revalidation, and implicit-selection policy.
+  `desktop.rs`, Tooling/CLI adapters, Codex Desktop, and later registry/MSIX
+  adapters emit evidence or expose a narrow trusted-status adapter; they do not
+  choose a winner, mint renderer IDs, or implement separate dedup/revision
+  algorithms. The command layer must never expose backend paths/registry
+  identities or accept a renderer path. Product execution modules receive a
+  validated backend capability only after inventory re-enumeration.
+- `agent_install/windows.rs` owns Windows desktop evidence normalization,
+  registry/App Paths adapters, Win32 version/file/signature inspection, and
+  the three closed Agent EXE product policies. It does not own a downloader,
+  ProgramData bridge, helper executable, renderer command, or arbitrary
+  ShellExecute surface. Those reusable executable-installer primitives remain
+  in the existing Codex Desktop/`fyagent-user-helper` owner and are exposed to
+  Agent install only through crate-private closed action/product APIs. Codex
+  PackageManager policy and the Agent job slot remain separate consumers of
+  those primitives.
 - Lifecycle/system utility commands belong in `commands/system.rs`; CLI/tool
   install/probe/terminal command **wrappers** belong in `commands/tooling.rs`.
   `commands/tooling.rs` must stay limited to the four reviewed wire commands

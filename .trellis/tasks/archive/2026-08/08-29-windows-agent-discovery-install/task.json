@@ -1,0 +1,30 @@
+{
+  "id": "windows-agent-discovery-install",
+  "name": "windows-agent-discovery-install",
+  "title": "Stage 3: implement Windows Agent discovery and one-click installation",
+  "description": "Build multi-source Windows installation inventory and closed vendor-EXE execution through the interactive-user security boundary while preserving Codex as the existing MSIX owner.",
+  "status": "completed",
+  "dev_type": null,
+  "scope": "windows-agent-install",
+  "package": null,
+  "priority": "P0",
+  "creator": "pythonrust",
+  "assignee": "pythonrust",
+  "createdAt": "2026-08-29",
+  "completedAt": "2026-08-30",
+  "branch": "dev/laiyongjie",
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "08-29-agent-lifecycle-reliability-program",
+  "relatedFiles": [],
+  "notes": "Portable, macOS-hosted, Windows-hosted, x64 and ARM64 contract checks passed for 1b321e77. Real disposable Windows x64 vendor-installer HIL remains unexecuted and is retained as an explicit residual risk; no native-runtime compatibility claim is made from CI alone.",
+  "meta": {
+    "sequence": "3",
+    "depends_on": "08-29-agent-install-target-authority",
+    "related_issues": "#31,#47,#68,#101,#141"
+  }
+}

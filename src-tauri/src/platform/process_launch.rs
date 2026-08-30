@@ -15,7 +15,9 @@ use tauri::AppHandle;
 use url::Url;
 
 #[cfg(target_os = "windows")]
-use fyagent_user_helper::{layout::USER_HELPER_EXECUTABLE_FILE_NAME, CanonicalJobId, PipeNonce};
+use fyagent_user_helper::{
+    layout::USER_HELPER_EXECUTABLE_FILE_NAME, CanonicalJobId, PipeNonce, UserHelperAction,
+};
 
 #[cfg(target_os = "macos")]
 use tauri_plugin_opener::OpenerExt;
@@ -96,6 +98,7 @@ pub(crate) trait InteractiveUserLauncher: Send + Sync {
     #[cfg(target_os = "windows")]
     fn launch_fyagent_user_helper(
         &self,
+        action: UserHelperAction,
         job_id: &CanonicalJobId,
         pipe_nonce: &PipeNonce,
     ) -> Result<(), ProcessLaunchError>;
@@ -106,10 +109,11 @@ pub(crate) trait InteractiveUserLauncher: Send + Sync {
     #[cfg(target_os = "windows")]
     fn begin_fyagent_user_helper_launch(
         &self,
+        action: UserHelperAction,
         job_id: &CanonicalJobId,
         pipe_nonce: &PipeNonce,
     ) -> UserHelperLaunchOutcome {
-        match self.launch_fyagent_user_helper(job_id, pipe_nonce) {
+        match self.launch_fyagent_user_helper(action, job_id, pipe_nonce) {
             Ok(()) => UserHelperLaunchOutcome::Confirmed,
             Err(error) => UserHelperLaunchOutcome::NotInvoked(error),
         }
@@ -186,11 +190,12 @@ where
     #[cfg(target_os = "windows")]
     fn begin_fyagent_user_helper_launch(
         &self,
+        action: UserHelperAction,
         job_id: &CanonicalJobId,
         pipe_nonce: &PipeNonce,
     ) -> UserHelperLaunchOutcome {
         self.launcher
-            .begin_fyagent_user_helper_launch(job_id, pipe_nonce)
+            .begin_fyagent_user_helper_launch(action, job_id, pipe_nonce)
     }
 }
 
@@ -280,13 +285,14 @@ pub(crate) fn fixed_user_helper_path() -> Result<PathBuf, ProcessLaunchError> {
 /// selector is supplied by an IPC caller.
 #[cfg(target_os = "windows")]
 pub(crate) fn launch_fyagent_user_helper_as_user(
+    action: UserHelperAction,
     job_id: &CanonicalJobId,
     pipe_nonce: &PipeNonce,
 ) -> UserHelperLaunchOutcome {
     ProcessLaunchService::new(
         crate::platform::windows::interactive_user::ExplorerInteractiveUserLauncher,
     )
-    .begin_fyagent_user_helper_launch(job_id, pipe_nonce)
+    .begin_fyagent_user_helper_launch(action, job_id, pipe_nonce)
 }
 
 /// Opens an HTTP(S) URL through the interactive user's shell.
@@ -541,7 +547,7 @@ mod tests {
     };
 
     #[cfg(target_os = "windows")]
-    use fyagent_user_helper::{CanonicalJobId, PipeNonce};
+    use fyagent_user_helper::{CanonicalJobId, PipeNonce, UserHelperAction};
 
     use super::{InteractiveUserLauncher, ProcessLaunchError, ProcessLaunchService};
 
@@ -554,6 +560,7 @@ mod tests {
         WindowsExe(String),
         #[cfg(target_os = "windows")]
         FyAgentUserHelper {
+            action: UserHelperAction,
             job_id: String,
             pipe_nonce: String,
         },
@@ -622,6 +629,7 @@ mod tests {
         #[cfg(target_os = "windows")]
         fn launch_fyagent_user_helper(
             &self,
+            action: UserHelperAction,
             job_id: &CanonicalJobId,
             pipe_nonce: &PipeNonce,
         ) -> Result<(), ProcessLaunchError> {
@@ -629,6 +637,7 @@ mod tests {
                 .lock()
                 .expect("fake lock")
                 .push(RecordedLaunch::FyAgentUserHelper {
+                    action,
                     job_id: job_id.as_str().to_owned(),
                     pipe_nonce: pipe_nonce.as_str().to_owned(),
                 });
@@ -829,12 +838,13 @@ mod tests {
                 .expect("canonical pipe nonce");
 
         launcher
-            .launch_fyagent_user_helper(&job_id, &pipe_nonce)
+            .launch_fyagent_user_helper(UserHelperAction::CodexMsixInstall, &job_id, &pipe_nonce)
             .expect("typed helper launch");
 
         assert_eq!(
             launcher.recorded_calls(),
             vec![RecordedLaunch::FyAgentUserHelper {
+                action: UserHelperAction::CodexMsixInstall,
                 job_id: job_id.as_str().to_owned(),
                 pipe_nonce: pipe_nonce.as_str().to_owned(),
             }]

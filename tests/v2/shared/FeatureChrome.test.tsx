@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { useState } from "react";
@@ -10,10 +11,11 @@ import {
   FeaturePagination,
 } from "@/v2/shared/ui/FeaturePagination";
 import { FeatureSearch } from "@/v2/shared/ui/FeatureSearch";
-import { FeatureTabs } from "@/v2/shared/ui/FeatureTabs";
+import { FeatureTabPanel, FeatureTabs } from "@/v2/shared/ui/FeatureTabs";
 
 describe("FeatureTabs", () => {
   it("keeps one selected tab and reports the next id", async () => {
+    const user = userEvent.setup();
     const onChange = vi.fn();
     render(
       <FeatureTabs
@@ -32,8 +34,67 @@ describe("FeatureTabs", () => {
       "aria-selected",
       "true",
     );
-    fireEvent.click(screen.getByRole("tab", { name: "发现" }));
+    await user.click(screen.getByRole("tab", { name: "发现" }));
     expect(onChange).toHaveBeenCalledWith("two");
+  });
+
+  it("uses Radix roving focus and stable tab-panel relationships", async () => {
+    const user = userEvent.setup();
+
+    function Demo() {
+      const [value, setValue] = useState<"one" | "two" | "three">("one");
+      const options = [
+        { id: "one" as const, label: "One" },
+        { id: "two" as const, label: "Two" },
+        { id: "three" as const, label: "Three" },
+      ];
+      return (
+        <>
+          <FeatureTabs
+            id="keyboard-tabs"
+            label="Keyboard tabs"
+            value={value}
+            onChange={setValue}
+            options={options}
+          />
+          {options.map((option) => (
+            <FeatureTabPanel
+              key={option.id}
+              tabsId="keyboard-tabs"
+              value={option.id}
+              active={value === option.id}
+            >
+              {option.label} panel
+            </FeatureTabPanel>
+          ))}
+        </>
+      );
+    }
+
+    render(<Demo />);
+    const one = screen.getByRole("tab", { name: "One" });
+    const two = screen.getByRole("tab", { name: "Two" });
+    const three = screen.getByRole("tab", { name: "Three" });
+
+    expect(one).toHaveAttribute("aria-controls", "keyboard-tabs-panel-one");
+    expect(screen.getByRole("tabpanel")).toHaveAttribute(
+      "aria-labelledby",
+      "keyboard-tabs-trigger-one",
+    );
+
+    await user.click(one);
+    await user.keyboard("{ArrowRight}");
+    expect(two).toHaveFocus();
+    expect(two).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tabpanel")).toHaveTextContent("Two panel");
+
+    await user.keyboard("{End}");
+    expect(three).toHaveFocus();
+    expect(three).toHaveAttribute("aria-selected", "true");
+
+    await user.keyboard("{Home}");
+    expect(one).toHaveFocus();
+    expect(one).toHaveAttribute("aria-selected", "true");
   });
 });
 

@@ -1,6 +1,8 @@
 use std::{ffi::OsString, fmt};
 
 pub const INSTALL_ACTION: &str = "codex-msix-install";
+pub const AGENT_EXE_INSTALL_ACTION: &str = "agent-exe-install";
+const PRODUCT_FLAG: &str = "--product";
 const JOB_ID_FLAG: &str = "--job-id";
 const PIPE_FLAG: &str = "--pipe";
 const JOB_ID_BYTES: usize = 36;
@@ -58,17 +60,101 @@ impl fmt::Debug for PipeNonce {
 }
 
 pub struct InstallRequest {
+    action: UserHelperAction,
     job_id: CanonicalJobId,
     pipe_nonce: PipeNonce,
 }
 
 impl InstallRequest {
+    pub const fn action(&self) -> UserHelperAction {
+        self.action
+    }
+
     pub fn job_id(&self) -> &CanonicalJobId {
         &self.job_id
     }
 
     pub fn pipe_nonce(&self) -> &PipeNonce {
         &self.pipe_nonce
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AgentInstallerProduct {
+    QoderWork,
+    TraeWork,
+    WorkBuddy,
+}
+
+impl AgentInstallerProduct {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::QoderWork => "qoderwork",
+            Self::TraeWork => "trae-work",
+            Self::WorkBuddy => "workbuddy",
+        }
+    }
+
+    fn parse(value: &str) -> Result<Self, CliError> {
+        match value {
+            "qoderwork" => Ok(Self::QoderWork),
+            "trae-work" => Ok(Self::TraeWork),
+            "workbuddy" => Ok(Self::WorkBuddy),
+            _ => Err(CliError::InvalidProduct),
+        }
+    }
+}
+
+impl fmt::Display for AgentInstallerProduct {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum UserHelperAction {
+    CodexMsixInstall,
+    AgentExeInstall(AgentInstallerProduct),
+}
+
+impl UserHelperAction {
+    pub const fn wire_code(self) -> u8 {
+        match self {
+            Self::CodexMsixInstall => 1,
+            Self::AgentExeInstall(AgentInstallerProduct::QoderWork) => 2,
+            Self::AgentExeInstall(AgentInstallerProduct::TraeWork) => 3,
+            Self::AgentExeInstall(AgentInstallerProduct::WorkBuddy) => 4,
+        }
+    }
+
+    pub const fn from_wire(value: u8) -> Option<Self> {
+        match value {
+            1 => Some(Self::CodexMsixInstall),
+            2 => Some(Self::AgentExeInstall(AgentInstallerProduct::QoderWork)),
+            3 => Some(Self::AgentExeInstall(AgentInstallerProduct::TraeWork)),
+            4 => Some(Self::AgentExeInstall(AgentInstallerProduct::WorkBuddy)),
+            _ => None,
+        }
+    }
+
+    pub const fn artifact_kind(self) -> crate::layout::PackageBridgeArtifactKind {
+        match self {
+            Self::CodexMsixInstall => crate::layout::PackageBridgeArtifactKind::Msix,
+            Self::AgentExeInstall(_) => crate::layout::PackageBridgeArtifactKind::Exe,
+        }
+    }
+
+    pub fn command_line(self, job_id: &CanonicalJobId, pipe_nonce: &PipeNonce) -> String {
+        match self {
+            Self::CodexMsixInstall => format!(
+                "{INSTALL_ACTION} --job-id {job_id} --pipe {}",
+                pipe_nonce.as_str()
+            ),
+            Self::AgentExeInstall(product) => format!(
+                "{AGENT_EXE_INSTALL_ACTION} --product {product} --job-id {job_id} --pipe {}",
+                pipe_nonce.as_str()
+            ),
+        }
     }
 }
 
@@ -87,6 +173,8 @@ pub enum CliError {
     WrongArgumentCount,
     NonUnicodeArgument,
     UnknownAction,
+    ExpectedProductFlag,
+    InvalidProduct,
     ExpectedJobIdFlag,
     InvalidJobId,
     ExpectedPipeFlag,
@@ -96,9 +184,13 @@ pub enum CliError {
 impl fmt::Display for CliError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let message = match self {
-            Self::WrongArgumentCount => "the helper requires exactly five arguments",
+            Self::WrongArgumentCount => {
+                "the helper arguments do not match a supported action shape"
+            }
             Self::NonUnicodeArgument => "helper arguments must be valid Unicode",
             Self::UnknownAction => "the helper action is not supported",
+            Self::ExpectedProductFlag => "--product must immediately follow the Agent EXE action",
+            Self::InvalidProduct => "the Agent installer product is not supported",
             Self::ExpectedJobIdFlag => "--job-id must immediately follow the action",
             Self::InvalidJobId => "job ID must be a canonical lowercase UUID",
             Self::ExpectedPipeFlag => "--pipe must immediately follow the job ID",
@@ -122,35 +214,47 @@ where
     I: IntoIterator<Item = T>,
     T: Into<OsString>,
 {
-    let mut iterator = args.into_iter();
-    let mut raw = Vec::with_capacity(5);
-    for _ in 0..5 {
-        raw.push(
-            iterator
-                .next()
-                .ok_or(CliError::WrongArgumentCount)?
+    let raw = args
+        .into_iter()
+        .map(|argument| {
+            argument
                 .into()
                 .into_string()
-                .map_err(|_| CliError::NonUnicodeArgument)?,
-        );
-    }
-    if iterator.next().is_some() {
-        return Err(CliError::WrongArgumentCount);
-    }
+                .map_err(|_| CliError::NonUnicodeArgument)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
 
-    if raw[0] != INSTALL_ACTION {
-        return Err(CliError::UnknownAction);
-    }
-    if raw[1] != JOB_ID_FLAG {
+    let (action, job_flag_index) = match raw.first().map(String::as_str) {
+        Some(INSTALL_ACTION) if raw.len() == 5 => (UserHelperAction::CodexMsixInstall, 1),
+        Some(AGENT_EXE_INSTALL_ACTION) if raw.len() == 7 => {
+            if raw[1] != PRODUCT_FLAG {
+                return Err(CliError::ExpectedProductFlag);
+            }
+            (
+                UserHelperAction::AgentExeInstall(AgentInstallerProduct::parse(&raw[2])?),
+                3,
+            )
+        }
+        Some(INSTALL_ACTION | AGENT_EXE_INSTALL_ACTION) => {
+            return Err(CliError::WrongArgumentCount)
+        }
+        Some(_) => return Err(CliError::UnknownAction),
+        None => return Err(CliError::WrongArgumentCount),
+    };
+    if raw[job_flag_index] != JOB_ID_FLAG {
         return Err(CliError::ExpectedJobIdFlag);
     }
-    let job_id = CanonicalJobId::parse(&raw[2])?;
-    if raw[3] != PIPE_FLAG {
+    let job_id = CanonicalJobId::parse(&raw[job_flag_index + 1])?;
+    if raw[job_flag_index + 2] != PIPE_FLAG {
         return Err(CliError::ExpectedPipeFlag);
     }
-    let pipe_nonce = PipeNonce::parse(&raw[4])?;
+    let pipe_nonce = PipeNonce::parse(&raw[job_flag_index + 3])?;
 
-    Ok(InstallRequest { job_id, pipe_nonce })
+    Ok(InstallRequest {
+        action,
+        job_id,
+        pipe_nonce,
+    })
 }
 
 fn is_canonical_lowercase_uuid(value: &[u8]) -> bool {
@@ -181,8 +285,43 @@ mod tests {
     #[test]
     fn accepts_only_the_exact_cli_shape() {
         let request = parse_cli_args(valid_args()).expect("the exact helper CLI must parse");
+        assert_eq!(request.action(), UserHelperAction::CodexMsixInstall);
         assert_eq!(request.job_id().as_str(), JOB_ID);
         assert_eq!(request.pipe_nonce().as_str(), NONCE);
+    }
+
+    #[test]
+    fn accepts_only_closed_agent_exe_products() {
+        for (value, product) in [
+            ("qoderwork", AgentInstallerProduct::QoderWork),
+            ("trae-work", AgentInstallerProduct::TraeWork),
+            ("workbuddy", AgentInstallerProduct::WorkBuddy),
+        ] {
+            let request = parse_cli_args([
+                AGENT_EXE_INSTALL_ACTION,
+                PRODUCT_FLAG,
+                value,
+                JOB_ID_FLAG,
+                JOB_ID,
+                PIPE_FLAG,
+                NONCE,
+            ])
+            .expect("closed Agent EXE action");
+            assert_eq!(request.action(), UserHelperAction::AgentExeInstall(product));
+        }
+        assert_eq!(
+            parse_cli_args([
+                AGENT_EXE_INSTALL_ACTION,
+                PRODUCT_FLAG,
+                "unknown",
+                JOB_ID_FLAG,
+                JOB_ID,
+                PIPE_FLAG,
+                NONCE,
+            ])
+            .unwrap_err(),
+            CliError::InvalidProduct
+        );
     }
 
     #[test]
@@ -217,6 +356,50 @@ mod tests {
                 CliError::ExpectedJobIdFlag
             );
         }
+    }
+
+    #[test]
+    fn agent_action_rejects_path_command_and_scope_fields() {
+        for option in ["--path", "--program", "--command", "--uri", "--scope"] {
+            let args = [
+                AGENT_EXE_INSTALL_ACTION,
+                option,
+                "qoderwork",
+                JOB_ID_FLAG,
+                JOB_ID,
+                PIPE_FLAG,
+                NONCE,
+            ];
+            assert_eq!(
+                parse_cli_args(args).unwrap_err(),
+                CliError::ExpectedProductFlag
+            );
+        }
+    }
+
+    #[test]
+    fn helper_action_builds_only_fixed_argument_shapes() {
+        let job_id = CanonicalJobId::parse(JOB_ID).unwrap();
+        let nonce = PipeNonce::parse(NONCE).unwrap();
+        assert_eq!(
+            UserHelperAction::CodexMsixInstall.command_line(&job_id, &nonce),
+            format!("{INSTALL_ACTION} --job-id {JOB_ID} --pipe {NONCE}")
+        );
+        assert_eq!(
+            UserHelperAction::AgentExeInstall(AgentInstallerProduct::WorkBuddy)
+                .command_line(&job_id, &nonce),
+            format!(
+                "{AGENT_EXE_INSTALL_ACTION} --product workbuddy --job-id {JOB_ID} --pipe {NONCE}"
+            )
+        );
+        assert_eq!(UserHelperAction::CodexMsixInstall.wire_code(), 1);
+        assert_eq!(
+            UserHelperAction::from_wire(4),
+            Some(UserHelperAction::AgentExeInstall(
+                AgentInstallerProduct::WorkBuddy
+            ))
+        );
+        assert_eq!(UserHelperAction::from_wire(0), None);
     }
 
     #[test]

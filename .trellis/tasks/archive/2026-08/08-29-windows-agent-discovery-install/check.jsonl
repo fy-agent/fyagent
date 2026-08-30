@@ -1,0 +1,6 @@
+{"file":".trellis/spec/backend/windows-runtime-security.md","reason":"Check interactive-user, fixed helper, registry link and no-fallback invariants."}
+{"file":".trellis/spec/backend/codex-desktop-installer.md","reason":"Check retained package, PackageManager/helper and post-install verification parity."}
+{"file":".trellis/spec/backend/modular-boundaries.md","reason":"Check inventory/evidence/runner responsibilities and target cfg ownership."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Check UAC/vendor UI/progress/error states and Windows responsive accessibility."}
+{"file":".trellis/tasks/08-29-windows-agent-discovery-install/research/current-windows-gap.md","reason":"Verify fixed-root/PE-string-only production detection and EXE fail-closed path are replaced safely."}
+{"file":".trellis/tasks/08-29-windows-agent-discovery-install/research/official-windows-evidence.md","reason":"Check no unsupported scope/silent/architecture claims were introduced."}

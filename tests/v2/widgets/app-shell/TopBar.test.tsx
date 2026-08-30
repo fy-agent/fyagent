@@ -36,7 +36,10 @@ describe("TopBar macOS Overlay drag strip", () => {
     ).not.toBeInTheDocument();
     expect(document.querySelector("[data-tauri-drag-region]")).toBeNull();
     expect(screen.getByTestId("brand")).toBeVisible();
-    expect(screen.getByTestId("tool-cluster")).toBeVisible();
+    expect(screen.queryByTestId("tool-cluster")).not.toBeInTheDocument();
+    for (const name of ["搜索", "设置", "账户"]) {
+      expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
+    }
     expect(screen.queryByRole("navigation")).not.toBeInTheDocument();
     expect(
       Array.from(
@@ -46,7 +49,7 @@ describe("TopBar macOS Overlay drag strip", () => {
             '[data-testid="brand"], [data-testid="tool-cluster"]',
           ),
       ).map((element) => element.getAttribute("data-testid")),
-    ).toEqual(["brand", "tool-cluster"]);
+    ).toEqual(["brand"]);
   });
 
   it("places an inert drag strip above the chrome row on native macOS", () => {

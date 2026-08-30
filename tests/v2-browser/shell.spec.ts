@@ -18,9 +18,9 @@ const navigationContract = [
   { path: "/memory", label: "记忆模块" },
 ] as const;
 
-const visibleControlTestIds = ["search", "settings", "avatar"] as const;
+const visibleControlTestIds = [] as const;
 
-const shellRegionTestIds = ["brand", "tool-cluster"] as const;
+const shellRegionTestIds = ["brand"] as const;
 
 const windowControlNames = ["最小化", "最大化/还原", "关闭"] as const;
 
@@ -64,7 +64,7 @@ test("keeps the complete shell visible, separate, and overflow-free", async ({
         ),
       ).map((region) => region.getAttribute("data-testid")),
     ),
-    "TopBar must expose only Brand and Tools",
+    "TopBar must expose only the real Brand surface",
   ).toEqual([...shellRegionTestIds]);
   await expect(topBar.getByRole("navigation")).toHaveCount(0);
 

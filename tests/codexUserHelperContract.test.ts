@@ -127,20 +127,39 @@ describe("Codex current-user helper static contract", () => {
     );
   });
 
-  it("accepts only the fixed action, canonical job ID, and pipe nonce", () => {
+  it("accepts only the two fixed installer actions and closed Agent products", () => {
     expect(cli).toContain('INSTALL_ACTION: &str = "codex-msix-install"');
+    expect(cli).toContain(
+      'AGENT_EXE_INSTALL_ACTION: &str = "agent-exe-install"',
+    );
+    expect(cli).toContain('PRODUCT_FLAG: &str = "--product"');
     expect(cli).toContain('JOB_ID_FLAG: &str = "--job-id"');
     expect(cli).toContain('PIPE_FLAG: &str = "--pipe"');
     expect(cli).toMatch(/PIPE_NONCE_BYTES:\s*usize\s*=\s*64\s*;/u);
     expect(cli).toMatch(/JOB_ID_BYTES:\s*usize\s*=\s*36\s*;/u);
-    expect(cli).toContain("Vec::with_capacity(5)");
-    expect(cli).toMatch(/if raw\[0\] != INSTALL_ACTION/u);
-    expect(cli).toMatch(/if raw\[1\] != JOB_ID_FLAG/u);
-    expect(cli).toMatch(/if raw\[3\] != PIPE_FLAG/u);
+    expect(cli).toMatch(/Some\(INSTALL_ACTION\) if raw\.len\(\) == 5/u);
+    expect(cli).toMatch(
+      /Some\(AGENT_EXE_INSTALL_ACTION\) if raw\.len\(\) == 7/u,
+    );
+    expect(cli).toContain(
+      "UserHelperAction::AgentExeInstall(AgentInstallerProduct::parse(&raw[2])?)",
+    );
+    for (const product of ["qoderwork", "trae-work", "workbuddy"])
+      expect(cli).toContain(`"${product}"`);
+    expect(cli).toContain("UserHelperAction::CodexMsixInstall");
+    expect(cli).toContain("UserHelperAction::AgentExeInstall");
+    expect(cli).toContain("pub const fn artifact_kind");
+    expect(cli).toContain("pub fn command_line");
+    expect(cli).toContain("Self::CodexMsixInstall => format!(");
+    expect(cli).toContain("Self::AgentExeInstall(product) => format!(");
 
-    expect(cli.match(/"--[a-z-]+"/gu)).toEqual(['"--job-id"', '"--pipe"']);
+    expect(cli.match(/"--[a-z-]+"/gu)).toEqual([
+      '"--product"',
+      '"--job-id"',
+      '"--pipe"',
+    ]);
     expect(cli).not.toMatch(
-      /--(?:path|uri|root|operation|mode|port|scope)|current_dir|temp_dir|std::env::var/u,
+      /--(?:path|uri|root|operation|mode|port|scope|command|args|cwd)|current_dir|temp_dir|std::env::var/u,
     );
   });
 
@@ -148,6 +167,8 @@ describe("Codex current-user helper static contract", () => {
     for (const contract of [
       'INSTALLER_FILE_NAME: &str = "installer.msix"',
       'PACKAGE_BRIDGE_PART_FILE_NAME: &str = "installer.msix.part"',
+      'AGENT_INSTALLER_FILE_NAME: &str = "installer.exe"',
+      'AGENT_PACKAGE_BRIDGE_PART_FILE_NAME: &str = "installer.exe.part"',
       `PACKAGE_BRIDGE_ROOT_DIRECTORY: &str =\n    "${PACKAGE_BRIDGE_ROOT}"`,
       'PACKAGE_BRIDGE_VERSION_DIRECTORY: &str = "v1"',
       String.raw`USER_HELPER_PIPE_PREFIX: &str = r"\\.\pipe\LOCAL\FyAgent.UserHelper.v2."`,
@@ -162,21 +183,25 @@ describe("Codex current-user helper static contract", () => {
       PACKAGE_BRIDGE_ROOT,
       '"installer.msix.part"',
       '"installer.msix"',
+      '"installer.exe.part"',
+      '"installer.exe"',
     ]) {
       expect(count(fixedSources, literal), literal).toBe(1);
     }
     expect(packageBridge).toContain("PACKAGE_BRIDGE_ROOT_DIRECTORY");
     expect(packageBridge).toContain("PACKAGE_BRIDGE_VERSION_DIRECTORY");
     expect(packageBridge).toContain("PACKAGE_BRIDGE_PART_FILE_NAME");
-    expect(packageBridge).toContain("INSTALLER_FILE_NAME");
+    expect(packageBridge).toContain("artifact_kind.final_file_name()");
+    expect(packageBridge).toContain("artifact_kind.part_file_name()");
     expect(runtime).toContain("PACKAGE_BRIDGE_ROOT_DIRECTORY");
     expect(runtime).toContain("PACKAGE_BRIDGE_VERSION_DIRECTORY");
-    expect(runtime).toContain("INSTALLER_FILE_NAME");
+    expect(runtime).toContain("artifact_kind.final_file_name()");
+    expect(runtime).toContain("action.artifact_kind()");
     expect(runtime).not.toContain("derive_install_layout(");
   });
 
-  it("pins protocol v2 and the explicit Hello-control-Started-admission state machine", () => {
-    expect(protocol).toMatch(/PROTOCOL_VERSION:\s*u8\s*=\s*2\s*;/u);
+  it("pins protocol v3 and binds Hello to the closed installer action", () => {
+    expect(protocol).toMatch(/PROTOCOL_VERSION:\s*u8\s*=\s*3\s*;/u);
     expect(protocol).toMatch(/FRAME_LENGTH_BYTES:\s*usize\s*=\s*4\s*;/u);
     expect(protocol).toMatch(/MAX_PROTOCOL_MESSAGES:\s*usize\s*=\s*104\s*;/u);
     expect(protocol).toMatch(/MAX_ERROR_MESSAGE_BYTES:\s*usize\s*=\s*256\s*;/u);
@@ -185,7 +210,9 @@ describe("Codex current-user helper static contract", () => {
       /pub enum HelperMessage\s*\{([\s\S]*?)\n\}/u,
     )?.[1];
     expect(messageEnum).toBeDefined();
-    expect(messageEnum).toMatch(/\bHello\b/u);
+    expect(messageEnum).toMatch(
+      /\bHello\b[\s\S]*action:\s*UserHelperAction/u,
+    );
     expect(messageEnum).toMatch(
       /\bStarted\b[\s\S]*package:\s*PinnedPackageIdentity/u,
     );
@@ -195,6 +222,8 @@ describe("Codex current-user helper static contract", () => {
       /\bError\b[\s\S]*code:\s*HelperErrorCode[\s\S]*message:\s*String/u,
     );
     expect(messageEnum).not.toMatch(/Path|Command|Uri|Scope|OperationId/iu);
+    expect(protocol).toContain("UserHelperAction::from_wire(payload[2])");
+    expect(protocol).toContain("HelperProtocolAction::Hello(action)");
 
     const phases = protocol.match(
       /enum ProtocolPhase\s*\{([\s\S]*?)\n\}/u,
@@ -215,7 +244,7 @@ describe("Codex current-user helper static contract", () => {
       protocol.indexOf("impl HelperProtocolSequence"),
     );
     expect(sequence).toMatch(
-      /AwaitingHello, HelperMessage::Hello[\s\S]+?AwaitingControl/u,
+      /AwaitingHello, HelperMessage::Hello \{ action \}[\s\S]+?AwaitingControl/u,
     );
     expect(sequence).toMatch(
       /fn mark_control_sent[\s\S]+?AwaitingControl[\s\S]+?AwaitingStarted/u,
@@ -234,7 +263,7 @@ describe("Codex current-user helper static contract", () => {
     );
 
     const mutations = [
-      protocol.replace("PROTOCOL_VERSION: u8 = 2", "PROTOCOL_VERSION: u8 = 1"),
+      protocol.replace("PROTOCOL_VERSION: u8 = 3", "PROTOCOL_VERSION: u8 = 2"),
       protocol.replace(
         "self.phase = ProtocolPhase::AwaitingControl;",
         "self.phase = ProtocolPhase::AwaitingStarted;",
@@ -244,17 +273,19 @@ describe("Codex current-user helper static contract", () => {
         "self.phase = ProtocolPhase::Running;",
       ),
     ];
-    const hasV2Ordering = (source: string) =>
-      source.includes("PROTOCOL_VERSION: u8 = 2") &&
+    const hasV3Ordering = (source: string) =>
+      source.includes("PROTOCOL_VERSION: u8 = 3") &&
+      source.includes("HelperMessage::Hello { action }") &&
+      source.includes("HelperProtocolAction::Hello(action)") &&
       source.includes("fn mark_control_sent") &&
       source.includes("self.phase = ProtocolPhase::AwaitingControl;") &&
       source.includes("self.phase = ProtocolPhase::AwaitingStarted;") &&
       source.includes("fn mark_admitted") &&
       source.includes("self.phase = ProtocolPhase::AwaitingAdmission;") &&
       source.includes("self.phase = ProtocolPhase::Running;");
-    expect(hasV2Ordering(protocol)).toBe(true);
+    expect(hasV3Ordering(protocol)).toBe(true);
     for (const mutation of mutations)
-      expect(hasV2Ordering(mutation)).toBe(false);
+      expect(hasV3Ordering(mutation)).toBe(false);
   });
 
   it("does not misclassify a package downgrade as a package-in-use failure", () => {
@@ -369,15 +400,14 @@ describe("Codex current-user helper static contract", () => {
       [
         "ParentControls::open",
         "PipeChannel::connect",
-        "channel.send_hello()",
+        "channel.send_hello(action)",
         "channel.read_bridge_control",
-        "PinnedPackageFile::open(bridge_control)",
+        "PinnedPackageFile::open(bridge_control, action.artifact_kind())",
         "package_pin.recheck_for_helper()",
         "channel.send_started",
         "controls.wait_for_admission",
         "channel.mark_admitted()",
-        "channel.send_progress(0)",
-        "deploy_fixed_package",
+        "let result = match action",
       ],
       "helper admission ordering",
     );
@@ -396,7 +426,7 @@ describe("Codex current-user helper static contract", () => {
       expect(runtime).toMatch(new RegExp(`\\b${state}\\b`, "u"));
     }
     expect(channel).toMatch(
-      /fn send_hello[\s\S]+?ChannelState::Initial[\s\S]+?HelperMessage::Hello[\s\S]+?ChannelState::HelloSent/u,
+      /fn send_hello[\s\S]+?action:\s*UserHelperAction[\s\S]+?ChannelState::Initial[\s\S]+?HelperMessage::Hello \{ action \}[\s\S]+?ChannelState::HelloSent/u,
     );
     expect(channel).toMatch(
       /fn read_bridge_control[\s\S]+?ChannelState::HelloSent[\s\S]+?PackageBridgeControl::decode[\s\S]+?ChannelState::ControlReceived/u,
@@ -407,6 +437,15 @@ describe("Codex current-user helper static contract", () => {
     expect(channel).toMatch(/fn send_progress[\s\S]+?admitted: true/u);
     expect(channel).toMatch(
       /fn send_prestart_error[\s\S]+?HelloSent \| ChannelState::ControlReceived/u,
+    );
+    expect(runInstall).toMatch(
+      /UserHelperAction::CodexMsixInstall\s*=>[\s\S]*deploy_fixed_package/u,
+    );
+    expect(runInstall).toMatch(
+      /UserHelperAction::AgentExeInstall\(product\)\s*=>[\s\S]*run_verified_exe_installer/u,
+    );
+    expect(runInstall).toMatch(
+      /if action == UserHelperAction::CodexMsixInstall[\s\S]*channel\.send_progress\(0\)/u,
     );
   });
 
@@ -450,7 +489,7 @@ describe("Codex current-user helper static contract", () => {
       "PACKAGE_BRIDGE_ROOT_DIRECTORY",
       "PACKAGE_BRIDGE_VERSION_DIRECTORY",
       "control.operation_id().directory_name()",
-      "INSTALLER_FILE_NAME",
+      "artifact_kind.final_file_name()",
     ]) {
       expect(packagePin).toContain(fixedComponent);
     }
@@ -460,6 +499,14 @@ describe("Codex current-user helper static contract", () => {
     expect(packagePin).toContain("BRIDGE_FILE_DANGEROUS_ACCESS");
     expect(packagePin).toContain("native_identity(control.package())");
     expect(packagePin).toContain("uri_reopen");
+    expect(packagePin).toContain("artifact_kind: PackageBridgeArtifactKind");
+    expect(packagePin).toContain("exact_leaf_acl(artifact_kind)");
+    expect(packagePin).toContain(
+      "self.artifact_kind != PackageBridgeArtifactKind::Msix",
+    );
+    expect(packagePin).toContain(
+      "self.artifact_kind != PackageBridgeArtifactKind::Exe",
+    );
     expect(packagePin).not.toMatch(
       /CACHE_DIRECTORY|CODEX_INSTALLER_DIRECTORY|job_id|sha256|verify_reader|expected_sha/iu,
     );
@@ -497,7 +544,7 @@ describe("Codex current-user helper static contract", () => {
     expect(runtime).not.toMatch(/SetSecurityInfo|SetKernelObjectSecurity/u);
   });
 
-  it("round-trips one local DOS file URI and exposes only AddPackage", () => {
+  it("keeps PackageManager on MSIX and ShellExecuteEx on the closed EXE action", () => {
     const uriRoundtrip = section(
       runtime,
       "fn local_file_uri_roundtrip",
@@ -517,11 +564,33 @@ describe("Codex current-user helper static contract", () => {
       /!host\.is_empty\(\)[\s\S]+?!query\.is_empty\(\)[\s\S]+?!fragment\.is_empty\(\)/u,
     );
     expect(runtime.match(/\.AddPackageByUriAsync\s*\(/gu)).toHaveLength(1);
+    expect(runtime.match(/ShellExecuteExW\s*\(/gu)).toHaveLength(1);
+    const exeRunner = section(
+      runtime,
+      "fn run_verified_exe_installer",
+      "\nfn validate_deployment_result",
+    );
+    for (const boundary of [
+      "SHELLEXECUTEINFOW",
+      "SEE_MASK_NOCLOSEPROCESS",
+      "ShellExecuteExW",
+      "ERROR_CANCELLED",
+      "InstallerProcessUnobservable",
+      "WaitForSingleObject",
+      "GetExitCodeProcess",
+      "InstallerTimedOut",
+      "InstallerExitedNonzero",
+    ]) {
+      expect(exeRunner, boundary).toContain(boundary);
+    }
+    expect(exeRunner).not.toMatch(
+      /lpParameters|lpDirectory|runas|TerminateProcess|Command::new|CreateProcess/iu,
+    );
     expect(runtime).not.toMatch(
       /StagePackage|RegisterPackage|ProvisionPackage|RequestAddPackage|PackageVolume/iu,
     );
     expect(runtime).not.toMatch(
-      /std::process::Command|Command::new|CreateProcess|ShellExecute|cmd\.exe|powershell|tauri/iu,
+      /std::process::Command|Command::new|CreateProcess|cmd\.exe|powershell|tauri/iu,
     );
 
     const helperBridgeSource = `${runtime}\n${helperLibrary}`;
@@ -699,7 +768,7 @@ describe("Codex current-user helper static contract", () => {
       "pub(super) fn cleanup",
       "#[derive(Clone, Copy, Debug, PartialEq, Eq)]\nenum NativeObjectKind",
     );
-    expect(cleanup).toContain("INSTALLER_FILE_NAME");
+    expect(cleanup).toContain("self.artifact_kind.final_file_name()");
     expect(cleanup).toContain("open_relative(");
     expect(cleanup).toContain("mark_handle_for_deletion");
     expect(cleanup).toContain("self.operation.file");
@@ -736,7 +805,8 @@ describe("Codex current-user helper static contract", () => {
         "read_frame(first_frame_timeout)",
         "validate_client",
         "decode_protocol_frame",
-        "HelperProtocolAction::Hello",
+        "HelperProtocolAction::Hello(received_action)",
+        "received_action == action",
         "bridge().recheck()",
         ".send_bridge_control(",
         "sequence.mark_control_sent()",
@@ -751,6 +821,9 @@ describe("Codex current-user helper static contract", () => {
         "consume_protocol",
       ],
       "parent helper admission ordering",
+    );
+    expect(runner).toContain(
+      "the user-helper action did not match the admitted request",
     );
     expect(runner).not.toMatch(/ParentPackageSource|source_control|WinSock/iu);
 
@@ -884,7 +957,7 @@ describe("Codex current-user helper static contract", () => {
     const artifactOpen = section(
       downloadedArtifact,
       "pub(crate) fn open_for_read",
-      "\n    fn from_completed_download",
+      "\n    pub(crate) fn from_completed_download_for_kind",
     );
     expect(artifactOpen).toContain(
       ".open_final_artifact_for_read(self.artifact_kind)",
@@ -1000,10 +1073,7 @@ describe("Codex current-user helper static contract", () => {
       "\n}\n\n/// Runs the COM automation call",
     );
     expect(helperLauncher).toContain("fixed_user_helper_path()");
-    expect(helperLauncher).toContain(
-      '"{INSTALL_ACTION} --job-id {job_id} --pipe {}"',
-    );
-    expect(helperLauncher).toContain("pipe_nonce.as_str()");
+    expect(helperLauncher).toContain("action.command_line(job_id, pipe_nonce)");
     expect(helperLauncher).toContain(
       "launch_path_from_explorer_with_arguments",
     );
@@ -1012,7 +1082,7 @@ describe("Codex current-user helper static contract", () => {
     );
   });
 
-  it("keeps AddPackage only in the helper and ships no A2 runtime branch", () => {
+  it("keeps PackageManager and vendor EXE launch inside the fixed helper", () => {
     expect(runtime.match(/\.AddPackageByUriAsync\s*\(/gu)).toHaveLength(1);
     for (const source of [
       windowsAdapter,
@@ -1028,6 +1098,10 @@ describe("Codex current-user helper static contract", () => {
     );
     expect(windowsAdapter).toContain("install_dependencies.helper_runner.run(");
     expect(windowsAdapter).toContain("install_dependencies.deadlines");
+    expect(runtime.match(/ShellExecuteExW\s*\(/gu)).toHaveLength(1);
+    expect(activeWindowsInstaller).not.toMatch(
+      /std::process::Command|Command::new|CreateProcessW|--(?:path|url|command|scope|args)/iu,
+    );
   });
 
   it("treats Cancel as a request and exits only after true terminal observation", () => {

@@ -7,9 +7,11 @@
 
 #[cfg(any(target_os = "windows", test))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ShellUserRegistryLocation {
+pub(crate) enum ShellUserRegistryLocation {
     Environment,
     Run,
+    Uninstall,
+    AppPaths,
 }
 
 #[cfg(any(target_os = "windows", test))]
@@ -25,8 +27,61 @@ impl ShellUserRegistryLocation {
                 "CurrentVersion",
                 "Run",
             ],
+            Self::Uninstall => vec![
+                canonical_sid,
+                "Software",
+                "Microsoft",
+                "Windows",
+                "CurrentVersion",
+                "Uninstall",
+            ],
+            Self::AppPaths => vec![
+                canonical_sid,
+                "Software",
+                "Microsoft",
+                "Windows",
+                "CurrentVersion",
+                "App Paths",
+            ],
         }
     }
+}
+
+#[cfg(any(target_os = "windows", test))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum MachineRegistryLocation {
+    Uninstall,
+    AppPaths,
+}
+
+#[cfg(any(target_os = "windows", test))]
+impl MachineRegistryLocation {
+    fn components(self) -> &'static [&'static str] {
+        match self {
+            Self::Uninstall => &[
+                "Software",
+                "Microsoft",
+                "Windows",
+                "CurrentVersion",
+                "Uninstall",
+            ],
+            Self::AppPaths => &[
+                "Software",
+                "Microsoft",
+                "Windows",
+                "CurrentVersion",
+                "App Paths",
+            ],
+        }
+    }
+}
+
+#[cfg(any(target_os = "windows", test))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum RegistryView {
+    Native,
+    Registry32,
+    Registry64,
 }
 
 #[cfg(any(target_os = "windows", test))]
@@ -191,30 +246,39 @@ mod windows {
 
     use winreg::{
         enums::{
-            HKEY_USERS, KEY_CREATE_SUB_KEY, KEY_ENUMERATE_SUB_KEYS, KEY_QUERY_VALUE, KEY_SET_VALUE,
-            REG_CREATED_NEW_KEY, REG_LINK, REG_OPENED_EXISTING_KEY, REG_OPTION_NON_VOLATILE,
-            REG_OPTION_OPEN_LINK,
+            HKEY_LOCAL_MACHINE, HKEY_USERS, KEY_CREATE_SUB_KEY, KEY_ENUMERATE_SUB_KEYS,
+            KEY_QUERY_VALUE, KEY_SET_VALUE, KEY_WOW64_32KEY, KEY_WOW64_64KEY, REG_CREATED_NEW_KEY,
+            REG_LINK, REG_OPENED_EXISTING_KEY, REG_OPTION_NON_VOLATILE, REG_OPTION_OPEN_LINK,
         },
         RegKey, HKEY,
     };
 
     use super::{
-        open_known_location, CreateDisposition, RegistryBackend, RegistryRights,
-        RegistryTraversalError, ShellUserRegistryLocation,
+        open_known_location, traverse_components, CreateDisposition, MachineRegistryLocation,
+        RegistryBackend, RegistryRights, RegistryTraversalError, RegistryView,
+        ShellUserRegistryLocation,
     };
 
     struct WindowsRegistryBackend {
         root: HKEY,
+        view: RegistryView,
     }
 
     impl WindowsRegistryBackend {
         const fn new(root: HKEY) -> Self {
-            Self { root }
+            Self {
+                root,
+                view: RegistryView::Native,
+            }
+        }
+
+        const fn with_view(root: HKEY, view: RegistryView) -> Self {
+            Self { root, view }
         }
     }
 
     impl RegistryRights {
-        fn windows_mask(self) -> u32 {
+        fn windows_mask(self, view: RegistryView) -> u32 {
             let mut mask = 0;
             if self.query_value {
                 mask |= KEY_QUERY_VALUE;
@@ -228,7 +292,11 @@ mod windows {
             if self.set_value {
                 mask |= KEY_SET_VALUE;
             }
-            mask
+            mask | match view {
+                RegistryView::Native => 0,
+                RegistryView::Registry32 => KEY_WOW64_32KEY,
+                RegistryView::Registry64 => KEY_WOW64_64KEY,
+            }
         }
     }
 
@@ -249,7 +317,7 @@ mod windows {
             parent.open_subkey_with_options_flags(
                 component,
                 REG_OPTION_OPEN_LINK,
-                rights.windows_mask(),
+                rights.windows_mask(self.view),
             )
         }
 
@@ -262,7 +330,7 @@ mod windows {
             let (handle, disposition) = parent.create_subkey_with_options_flags(
                 component,
                 REG_OPTION_NON_VOLATILE,
-                rights.windows_mask(),
+                rights.windows_mask(self.view),
             )?;
             let disposition = match disposition {
                 REG_CREATED_NEW_KEY => CreateDisposition::CreatedNew,
@@ -334,6 +402,72 @@ mod windows {
             RegistryRights::UPDATE_VALUES,
             false,
         )
+    }
+
+    pub(crate) fn open_shell_user_inventory_parent(
+        location: ShellUserRegistryLocation,
+        view: RegistryView,
+    ) -> io::Result<RegKey> {
+        if !matches!(
+            location,
+            ShellUserRegistryLocation::Uninstall | ShellUserRegistryLocation::AppPaths
+        ) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "registry location is not an inventory parent",
+            ));
+        }
+        let canonical_sid = super::super::require_interactive_user_context().canonical_sid();
+        let mut backend = WindowsRegistryBackend::with_view(HKEY_USERS, view);
+        open_known_location(
+            &mut backend,
+            canonical_sid,
+            location,
+            RegistryRights::READ_VALUES,
+            false,
+        )
+        .map_err(map_security_error)
+    }
+
+    pub(crate) fn open_machine_inventory_parent(
+        location: MachineRegistryLocation,
+        view: RegistryView,
+    ) -> io::Result<RegKey> {
+        let mut backend = WindowsRegistryBackend::with_view(HKEY_LOCAL_MACHINE, view);
+        traverse_components(
+            &mut backend,
+            location.components(),
+            RegistryRights::READ_VALUES,
+            false,
+        )
+        .map_err(map_security_error)
+    }
+
+    pub(crate) fn open_inventory_child_read(
+        parent: &RegKey,
+        component: &str,
+        view: RegistryView,
+    ) -> io::Result<RegKey> {
+        if component.is_empty()
+            || component.len() > 512
+            || component.contains(['\\', '/', '\0'])
+            || component.chars().any(char::is_control)
+        {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "registry child is not one bounded component",
+            ));
+        }
+        let mut backend = WindowsRegistryBackend::with_view(parent.raw_handle(), view);
+        let child = backend.open_link(parent, component, RegistryRights::READ_VALUES)?;
+        match backend.has_symbolic_link_value(&child) {
+            Ok(false) => Ok(child),
+            Ok(true) => Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "registry symbolic-link component rejected",
+            )),
+            Err(error) => Err(error),
+        }
     }
 
     #[cfg(test)]
@@ -631,8 +765,10 @@ mod windows {
 
 #[cfg(target_os = "windows")]
 pub(crate) use windows::{
-    create_or_open_shell_user_environment_update, open_shell_user_environment_read,
-    open_shell_user_environment_update, open_shell_user_run_update,
+    create_or_open_shell_user_environment_update, open_inventory_child_read,
+    open_machine_inventory_parent, open_shell_user_environment_read,
+    open_shell_user_environment_update, open_shell_user_inventory_parent,
+    open_shell_user_run_update,
 };
 
 #[cfg(test)]
@@ -762,6 +898,59 @@ mod tests {
                 .filter(|event| matches!(event, Event::Inspect(_)))
                 .count(),
             6
+        );
+    }
+
+    #[test]
+    fn inventory_locations_are_fixed_component_chains_not_caller_paths() {
+        for (location, expected) in [
+            (
+                ShellUserRegistryLocation::Uninstall,
+                format!(r"HKEY_USERS\{SID}\Software\Microsoft\Windows\CurrentVersion\Uninstall"),
+            ),
+            (
+                ShellUserRegistryLocation::AppPaths,
+                format!(r"HKEY_USERS\{SID}\Software\Microsoft\Windows\CurrentVersion\App Paths"),
+            ),
+        ] {
+            let mut backend = FakeBackend::default();
+            let handle = open_known_location(
+                &mut backend,
+                SID,
+                location,
+                RegistryRights::READ_VALUES,
+                false,
+            )
+            .expect("fixed inventory parent should open");
+            assert_eq!(handle, expected);
+            assert!(backend.events.iter().all(|event| match event {
+                Event::Open { rights, .. } => {
+                    *rights == RegistryRights::TRAVERSE || *rights == RegistryRights::READ_VALUES
+                }
+                Event::Inspect(_) => true,
+                Event::Create { .. } => false,
+            }));
+        }
+
+        assert_eq!(
+            MachineRegistryLocation::Uninstall.components(),
+            [
+                "Software",
+                "Microsoft",
+                "Windows",
+                "CurrentVersion",
+                "Uninstall",
+            ]
+        );
+        assert_eq!(
+            MachineRegistryLocation::AppPaths.components(),
+            [
+                "Software",
+                "Microsoft",
+                "Windows",
+                "CurrentVersion",
+                "App Paths",
+            ]
         );
     }
 

@@ -15,8 +15,12 @@ import type { ProviderAppId } from "./types";
 
 export const featureKeys = {
   agentCatalog: ["v2", "agents", "catalog"] as const,
+  agentAuthObservation: (agentId: AgentCatalogId) =>
+    ["v2", "agents", agentId, "auth-observation"] as const,
   agentInstallReadiness: (agentId: AgentCatalogId) =>
     ["v2", "agents", agentId, "install-readiness"] as const,
+  agentInstallationInventory: (agentId: AgentCatalogId) =>
+    ["v2", "agents", agentId, "installation-inventory"] as const,
   recoverableChangeJobs: ["v2", "change-plans", "recoverable"] as const,
   providerSummary: (app: ProviderAppId) =>
     ["v2", "providers", app, "summary"] as const,
@@ -61,6 +65,30 @@ export function useAgentInstallReadiness(
   return useQuery({
     queryKey: featureKeys.agentInstallReadiness(agentId),
     queryFn: () => ports.agentInstallReadiness.get(agentId),
+    enabled,
+  });
+}
+
+export function useAgentAuthObservation(
+  agentId: AgentCatalogId,
+  enabled = true,
+) {
+  const { ports } = useFeatures();
+  return useQuery({
+    queryKey: featureKeys.agentAuthObservation(agentId),
+    queryFn: () => ports.agentAuth.getObservation(agentId),
+    enabled,
+  });
+}
+
+export function useAgentInstallationInventory(
+  agentId: AgentCatalogId,
+  enabled = true,
+) {
+  const { ports } = useFeatures();
+  return useQuery({
+    queryKey: featureKeys.agentInstallationInventory(agentId),
+    queryFn: () => ports.agentInstallReadiness.getInventory(agentId),
     enabled,
   });
 }

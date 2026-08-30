@@ -1,0 +1,6 @@
+{"file":".trellis/spec/backend/codex-desktop-installer.md","reason":"Reuse same-volume staging, backup, rollback and post-install verification."}
+{"file":".trellis/spec/backend/modular-boundaries.md","reason":"Keep one transaction owner and product-specific policy adapters private."}
+{"file":".trellis/spec/backend/reuse.md","reason":"Prevent a second mount/copy/rollback implementation."}
+{"file":".trellis/spec/frontend/reuse.md","reason":"Reuse the Stage 1 target picker and existing lifecycle status primitives."}
+{"file":".trellis/tasks/08-29-macos-agent-in-place-update/research/current-macos-gap-and-reuse.md","reason":"Use the confirmed user-directory bug and Codex transaction reuse evidence."}
+{"file":".trellis/tasks/08-29-macos-agent-in-place-update/research/apple-replacement-and-authorization.md","reason":"Ground replacement and privilege decisions in official Apple contracts."}

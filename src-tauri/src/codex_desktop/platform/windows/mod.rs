@@ -50,6 +50,9 @@ use crate::windows_runtime::InteractiveUserContext;
 pub use deployment::SystemWindowsDiskSpaceProbe;
 #[cfg(target_os = "windows")]
 pub use deployment::SystemWindowsPackageManager;
+#[cfg(target_os = "windows")]
+#[cfg_attr(test, allow(unused_imports))]
+pub(crate) use helper::run_verified_agent_exe_installer;
 
 trait WindowsVerifiedFilePin: Send {
     fn recheck(&self) -> Result<(), InstallerError>;
@@ -99,6 +102,12 @@ impl WindowsHelperDeadlines {
     const PRODUCTION: Self = Self {
         connect: Duration::from_secs(30),
         operation: Duration::from_secs(10 * 60),
+        terminal_close: Duration::from_secs(5),
+    };
+
+    const AGENT_EXE_INSTALL: Self = Self {
+        connect: Duration::from_secs(30),
+        operation: Duration::from_secs(31 * 60),
         terminal_close: Duration::from_secs(5),
     };
 }

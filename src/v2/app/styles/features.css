@@ -5,6 +5,13 @@
   min-height: 100%;
   padding: 20px;
 }
+
+.fy-feature-route-loading {
+  display: grid;
+  min-height: 12rem;
+  place-items: center;
+  color: var(--fy-text-secondary);
+}
 .fy-feature-page:has(.fy-feature-workspace) {
   flex: 1 1 auto;
   height: 100%;
@@ -34,6 +41,9 @@
 .fy-feature-header > .fy-feature-tabs {
   margin-bottom: 0;
 }
+.fy-feature-header > .fy-feature-tabs-root > .fy-feature-tabs {
+  margin-bottom: 0;
+}
 .fy-feature-toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -53,15 +63,30 @@
   flex: 0 1 auto;
   margin-bottom: 0;
 }
+.fy-feature-toolbar > .fy-feature-tabs-root {
+  flex: 0 1 auto;
+}
+.fy-feature-toolbar > .fy-feature-tabs-root > .fy-feature-tabs {
+  margin-bottom: 0;
+}
+.fy-feature-tabs-root {
+  width: max-content;
+  max-width: 100%;
+}
 .fy-feature-tabs {
-  display: flex;
-  gap: 4px;
   margin-bottom: 14px;
   padding: 4px;
   border: 1px solid var(--fy-border);
   border-radius: 12px;
   background: var(--fy-surface-soft);
   width: max-content;
+}
+.fy-feature-tabs-list {
+  display: flex;
+  gap: 4px;
+}
+.fy-feature-tabs-list-semantic {
+  display: contents;
 }
 .fy-feature-tab {
   min-height: 34px;
@@ -71,10 +96,13 @@
   color: var(--fy-text-secondary);
   background: transparent;
 }
-.fy-feature-tab[aria-selected="true"] {
+.fy-feature-tab[aria-selected="true"],
+.fy-feature-tab[data-state="active"] {
+  border-color: var(--fy-selected-border);
   color: var(--fy-accent-text);
   font-weight: 650;
-  background: transparent;
+  background-color: var(--fy-selected-bg);
+  box-shadow: var(--fy-selected-shadow);
 }
 .fy-feature-master {
   display: grid;
@@ -121,8 +149,9 @@
 }
 .fy-feature-list-item[aria-current="true"],
 .fy-feature-list-item[aria-current="true"]:hover {
-  border-color: transparent;
-  background: transparent;
+  border-color: var(--fy-selected-border);
+  background-color: var(--fy-selected-bg);
+  box-shadow: var(--fy-selected-shadow);
 }
 .fy-feature-list-item strong,
 .fy-feature-list-item span {
@@ -505,6 +534,13 @@
 .fy-feature-form-span {
   grid-column: 1/-1;
 }
+.fy-feature-form-tab-panel {
+  display: grid;
+  grid-column: 1/-1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 13px;
+  min-width: 0;
+}
 .fy-feature-check-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -540,7 +576,8 @@
     grid-template-columns: minmax(0, 1fr);
   }
   .fy-feature-grid,
-  .fy-feature-form-grid {
+  .fy-feature-form-grid,
+  .fy-feature-form-tab-panel {
     grid-template-columns: minmax(0, 1fr);
   }
   .fy-feature-form-span {

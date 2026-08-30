@@ -337,6 +337,92 @@ export async function installRichTauriFeatureFixture(
     });
     const calls: FeatureFixtureCall[] = [];
     let nextCallbackId = 1;
+    const authAccountStates = new Map<string, "logged_in" | "logged_out">([
+      ["claude-code", "logged_out"],
+    ]);
+    const authProviders = new Map<
+      string,
+      Array<{ providerId: string; label: string }>
+    >([
+      [
+        "opencode",
+        [
+          {
+            providerId: `p1:${"a".repeat(32)}`,
+            label: "OpenAI",
+          },
+        ],
+      ],
+    ]);
+    const authSessions = new Map<
+      string,
+      {
+        snapshot: Record<string, unknown>;
+        polls: number;
+      }
+    >();
+    const authObservation = (agentId: string): Record<string, unknown> => {
+      const base = {
+        contractVersion: 1,
+        agentId,
+        checkedAt: "2026-08-30T00:00:00Z",
+      };
+      if (agentId === "claude-code") {
+        return {
+          kind: "account",
+          ...base,
+          ownership: "agent_owned",
+          authority: "verified",
+          state: authAccountStates.get(agentId) ?? "logged_out",
+          allowedIntents: ["login", "logout"],
+          reasonCodes: [],
+        };
+      }
+      if (agentId === "opencode") {
+        const providers = authProviders.get(agentId) ?? [];
+        return {
+          kind: "provider_connections",
+          ...base,
+          ownership: "provider_owned",
+          authority: "verified",
+          state: providers.length === 0 ? "empty" : "configured",
+          providers: structuredClone(providers),
+          allowedIntents: ["connect_provider", "logout"],
+          reasonCodes: [],
+        };
+      }
+      if (agentId === "codex") {
+        return {
+          kind: "fyagent_managed",
+          ...base,
+          ownership: "fyagent_managed",
+          authority: "verified",
+          destination: "auth_center",
+          allowedIntents: [],
+          reasonCodes: ["managed_by_auth_center"],
+        };
+      }
+      if (
+        ["grokbuild", "qoderwork", "trae-work", "workbuddy"].includes(agentId)
+      ) {
+        return {
+          kind: "handoff_only",
+          ...base,
+          ownership: "agent_owned",
+          authority: "unverified",
+          allowedIntents: ["login", "logout"],
+          reasonCodes: ["handoff_only"],
+        };
+      }
+      return {
+        kind: "unavailable",
+        ...base,
+        ownership: "unavailable",
+        authority: "unavailable",
+        allowedIntents: [],
+        reasonCodes: ["auth_observer_unavailable"],
+      };
+    };
 
     const delay = async (milliseconds = 0) => {
       if (milliseconds <= 0) return;
@@ -350,13 +436,7 @@ export async function installRichTauriFeatureFixture(
       adapterId: "codex_provider_upsert_and_switch",
       adapterVersion: "1",
       operationType: "codex_provider_upsert_and_switch",
-      phases: [
-        "precheck",
-        "snapshot",
-        "managed_write",
-        "readback",
-        "finalize",
-      ],
+      phases: ["precheck", "snapshot", "managed_write", "readback", "finalize"],
       readSet: [
         "provider_db_current",
         "device_current",
@@ -410,13 +490,7 @@ export async function installRichTauriFeatureFixture(
       adapterId: "workbuddy_models_save",
       adapterVersion: "1",
       operationType: "workbuddy_models_save",
-      phases: [
-        "precheck",
-        "snapshot",
-        "managed_write",
-        "readback",
-        "finalize",
-      ],
+      phases: ["precheck", "snapshot", "managed_write", "readback", "finalize"],
       readSet: ["work_buddy_models_config", "work_buddy_backup"],
       writeSet: ["work_buddy_models_config", "work_buddy_backup"],
       idempotencyScope: "plan",
@@ -935,10 +1009,7 @@ export async function installRichTauriFeatureFixture(
             return structuredClone(workBuddyPlan);
           }
           case "apply_change_plan": {
-            if (
-              workBuddyPlan &&
-              payload.planId === workBuddyPlan.planId
-            ) {
+            if (workBuddyPlan && payload.planId === workBuddyPlan.planId) {
               if (payload.planDigest !== workBuddyPlan.planDigest) {
                 return { kind: "rejected", errorCode: "stale" };
               }
@@ -1078,10 +1149,12 @@ export async function installRichTauriFeatureFixture(
               agentId,
             );
             return {
-              contractVersion: 2,
+              contractVersion: 3,
               agentId,
-              reviewedAt: "2026-08-26",
+              reviewedAt: "2026-08-29",
               installState: "installed",
+              inventoryState: "single",
+              requiresTargetSelection: false,
               updateState: "up_to_date",
               releaseId: null,
               localVersion: "1.0.0",
@@ -1098,6 +1171,127 @@ export async function installRichTauriFeatureFixture(
               allowedActions: [],
               reasonCodes: ["auth_state_unknown"],
             };
+          }
+          case "get_agent_auth_observation":
+            return structuredClone(authObservation(String(payload.agentId)));
+          case "get_active_agent_auth_session": {
+            const agentId = String(payload.agentId);
+            const record = [...authSessions.values()].find(
+              ({ snapshot }) =>
+                snapshot.agentId === agentId &&
+                ![
+                  "verified",
+                  "handoff_complete",
+                  "failed",
+                  "cancelled",
+                  "timed_out",
+                ].includes(String(snapshot.stage)),
+            );
+            return record ? structuredClone(record.snapshot) : null;
+          }
+          case "start_agent_auth_session": {
+            const request = payload.request as {
+              agentId: string;
+              intent: "login" | "logout" | "connect_provider";
+              providerId?: string;
+            };
+            const sessionId = crypto.randomUUID();
+            if (request.agentId === "codex") {
+              throw { reasonCode: "managed_by_auth_center" };
+            }
+            if (request.agentId === "opencode") {
+              const providers = authProviders.get("opencode") ?? [];
+              if (request.intent === "logout" && request.providerId) {
+                authProviders.set(
+                  "opencode",
+                  providers.filter(
+                    (provider) => provider.providerId !== request.providerId,
+                  ),
+                );
+              } else if (request.intent === "connect_provider") {
+                authProviders.set("opencode", [
+                  ...providers,
+                  {
+                    providerId: `p1:${"b".repeat(32)}`,
+                    label: "Anthropic",
+                  },
+                ]);
+              }
+              return {
+                contractVersion: 1,
+                sessionId,
+                agentId: request.agentId,
+                intent: request.intent,
+                stage: "verified",
+                canStopWaiting: false,
+                outcome: "verified_provider_change",
+                observation: authObservation(request.agentId),
+                reasonCode: null,
+              };
+            }
+            if (request.agentId !== "claude-code") {
+              return {
+                contractVersion: 1,
+                sessionId,
+                agentId: request.agentId,
+                intent: request.intent,
+                stage: "handoff_complete",
+                canStopWaiting: false,
+                outcome: "handoff_only",
+                observation: authObservation(request.agentId),
+                reasonCode: "handoff_only",
+              };
+            }
+            const snapshot = {
+              contractVersion: 1,
+              sessionId,
+              agentId: request.agentId,
+              intent: request.intent,
+              stage: "awaiting_user",
+              canStopWaiting: true,
+              outcome: null,
+              observation: authObservation(request.agentId),
+              reasonCode: null,
+            };
+            authSessions.set(sessionId, { snapshot, polls: 0 });
+            return structuredClone(snapshot);
+          }
+          case "get_agent_auth_session": {
+            const sessionId = String(payload.sessionId);
+            const record = authSessions.get(sessionId);
+            if (!record) throw { reasonCode: "operation_conflict" };
+            record.polls += 1;
+            if (record.polls >= 1) {
+              const intent = String(record.snapshot.intent);
+              authAccountStates.set(
+                "claude-code",
+                intent === "logout" ? "logged_out" : "logged_in",
+              );
+              record.snapshot = {
+                ...record.snapshot,
+                stage: "verified",
+                canStopWaiting: false,
+                outcome:
+                  intent === "logout"
+                    ? "verified_logged_out"
+                    : "verified_logged_in",
+                observation: authObservation("claude-code"),
+              };
+            }
+            return structuredClone(record.snapshot);
+          }
+          case "stop_waiting_for_agent_auth": {
+            const sessionId = String(payload.sessionId);
+            const record = authSessions.get(sessionId);
+            if (!record) throw { reasonCode: "operation_conflict" };
+            record.snapshot = {
+              ...record.snapshot,
+              stage: "cancelled",
+              canStopWaiting: false,
+              outcome: "cancelled",
+              reasonCode: "monitoring_stopped",
+            };
+            return structuredClone(record.snapshot);
           }
           case "get_settings":
             return { skillSyncMethod: "auto", skillStorageLocation: "fyagent" };

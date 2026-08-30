@@ -281,12 +281,20 @@ test("Agent directory does not observe WorkBuddy or Provider summaries before co
   const health = monitorPageHealth(page);
   await openV2Page(page, "/agents");
 
+  await expect(page.getByRole("button", { name: "重新扫描" })).toBeEnabled();
+  await expect
+    .poll(
+      async () =>
+        (await featureFixtureCalls(page)).filter(
+          (call) => call.command === "get_agent_catalog",
+        ).length,
+    )
+    .toBeGreaterThanOrEqual(1);
+
   let commands = (await featureFixtureCalls(page)).map((call) => call.command);
   expect(commands).toContain("get_agent_catalog");
   expect(commands).not.toContain("get_workbuddy_status");
   expect(commands).not.toContain("get_providers");
-
-  await expect(page.getByRole("button", { name: "重新扫描" })).toBeEnabled();
 
   commands = (await featureFixtureCalls(page)).map((call) => call.command);
   expect(commands).not.toContain("get_workbuddy_status");

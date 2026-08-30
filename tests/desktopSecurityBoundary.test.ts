@@ -185,7 +185,7 @@ describe("desktop IPC capability and CSP boundary", () => {
       "pub async fn probe_tool_installations",
     );
     const detectedCommand = discovery.indexOf(
-      "pub(crate) fn run_detected_tool_command_with_timeout",
+      "fn run_detected_tool_command_with_timeout_impl",
     );
 
     expect(source).toContain("ELEVATED_WINDOWS_CLI_BOUNDARY_MESSAGE");
@@ -208,6 +208,10 @@ describe("desktop IPC capability and CSP boundary", () => {
     expect(discovery.slice(detectedCommand, detectedCommand + 1200)).toContain(
       "detected_tool_execution_boundary_for(crate::windows_runtime::formal_windows_build())",
     );
+    expect(discovery).toContain(
+      "run_detected_tool_command_with_timeout_impl(tool, args, timeout, None, extra_env, working_dir)",
+    );
+    expect(discovery).toContain("Some(output_limit)");
     expect(source).toContain(
       "Do not let a release build reach build_tool_lifecycle_command",
     );

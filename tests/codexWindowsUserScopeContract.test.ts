@@ -219,12 +219,18 @@ describe("Codex Windows interactive-user contract", () => {
       "frozen.revalidate()",
       "derive_install_layout",
       "ensure_current_executable_staging_root()",
-      "ArtifactPolicy::WindowsMsixOnly",
+      "ArtifactPolicy::WindowsInstaller",
       "relative_installer != helper_relative",
       "Some(INSTALLER_FILE_NAME)",
     ]) {
       expect(windowsJob).toContain(invariant);
     }
+    expect(tempRoot).toContain("ArtifactKind::Exe");
+    expect(tempRoot).toContain('"installer.exe"');
+    expect(tempRoot).toContain('"installer.exe.part"');
+    expect(tempRoot).toMatch(
+      /WindowsInstaller[\s\S]+?installer\.msix[\s\S]+?installer\.exe/u,
+    );
     expect(desktopRuntime).not.toContain("std::env::temp_dir");
     expect(adapter).not.toContain('PathBuf::from("C:\\\\")');
   });

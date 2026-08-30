@@ -478,7 +478,7 @@ Correct:
 ```text
 standard NSIS path selection -> actual Windows write result
 legacy ProgramData runtime -> no-follow known-name best-effort cleanup only
-Codex PackageBridge -> application-owned settlement/orphan cleanup; NSIS untouched
+Executable PackageBridge -> application-owned settlement/orphan cleanup; NSIS untouched
 raw strict unsigned -> optional provider transform -> fresh independent seal
 delete allowlisted installer-owned children -> remove only empty owned ancestors
 ```
