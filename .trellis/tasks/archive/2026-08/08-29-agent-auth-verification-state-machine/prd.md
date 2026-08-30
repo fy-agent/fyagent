@@ -143,7 +143,7 @@ During testing, fix same-domain defects in command selection, terminal launch, o
 - [x] 所有 DTO、errors、logs、DOM snapshots 和 tests 均不包含 token、Authorization、device code、raw auth file path 或完整 raw output。
 - [x] Agent directory/detail 使用同一个 shared Auth status surface，无复制状态机。
 - [x] Component/Playwright tests 覆盖 awaiting-user、verified、handoff-only、Provider scoped logout、Auth Center delegation 和 unsupported action absence。
-- [ ] 完整 renderer reload 自动恢复：当前后端会话可按已返回的 session ID 查询，但 renderer 丢失该 ID 后不会凭空猜测或持久化路径/命令。
+- [x] 完整 renderer reload 自动恢复：renderer 通过 canonical Agent ID 查询 process-local active session，恢复 polling；不持久化 session ID、路径、URL 或命令。
 - [ ] Native macOS/Windows HIL 分别验证 Claude、OpenCode、Grok 和至少一个桌面 handoff；当前只证明 portable/contract/browser 行为，未支持 observer 的产品明确为 handoff-only。
 
 ## Dependency
