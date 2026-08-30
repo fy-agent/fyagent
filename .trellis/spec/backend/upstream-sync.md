@@ -3,20 +3,18 @@
 ## 1. Scope / Trigger
 
 Read this contract before fetching, auditing, merging, or documenting a CC
-Switch upstream release. It governs Git remote identity, immutable tag
-verification, merge ancestry, semantic conflict resolution, FyAgent identity,
-licensing provenance, and the boundary between an upstream merge and later
-FyAgent modernization commits.
+Switch upstream release. It owns remote roles, immutable source verification,
+ancestry-preserving integration, semantic conflict precedence, FyAgent
+identity/licensing/data invariants, and the boundary between an upstream merge
+and later downstream modernization.
 
-FyAgent product versions are independent from CC Switch versions. The current
-application version comes only from
-[Application Version and Installer Assets](./fyagent-version-contract.md);
-merging CC Switch `v3.19.2` must not set any FyAgent package or artifact
-version to `3.19.2`.
+FyAgent versions are independent from upstream versions. The application
+version comes only from
+[Application Version and Installer Assets](./fyagent-version-contract.md).
 
-## 2. Signatures
+## 2. Authorities and signatures
 
-The verified integration topology is:
+Remote roles are fixed:
 
 ```text
 origin fetch/push = https://github.com/fy-agent/fyagent.git
@@ -24,191 +22,185 @@ upstream fetch    = https://github.com/farion1231/cc-switch.git
 upstream push     = DISABLED
 ```
 
-The pre-transfer origin remains valid only in dated repository evidence and
-currently redirects to the canonical origin with the same numeric repository
-ID. Configure `origin` with the canonical URL above. Redirect continuity does
-not make a former owner name acceptable to current release eligibility.
+The exact canonical URLs are repository/governance inputs and must match the
+current GitHub identity used by CI/Release. A redirect from a former owner is
+historical continuity, not current authority.
 
-The reviewed `v3.19.2` synchronization evidence is:
+Each approved integration has a provenance ledger under `docs/upstream/**`
+that records at least:
 
-| Field                     | Verified value                             |
-| ------------------------- | ------------------------------------------ |
-| FyAgent source baseline   | `55173d2b32c4acf182b6ec504d7ad326ade2bb9b` |
-| Upstream tag object       | `f6882b69f0a30968dcc6dbb1153b6b12b50e6b1a` |
-| Upstream peeled commit    | `43eaf07355af145aebfee301801779e824d4c221` |
-| Merge base                | `28529620f438b2ed25c812f6364825d846a4a9d6` |
-| Reviewed two-parent merge | `f4462765e9b3a2efd1deb13aabf3ce349166a058` |
+```text
+upstream repository URL
+annotated tag name
+full tag-object SHA
+full peeled commit SHA
+FyAgent baseline and merge base
+resulting two-parent merge commit and parent order
+```
 
-The canonical mechanical sequence is:
+The existing CC Switch import ledger is
+[`docs/upstream/cc-switch-v3.19.2.md`](../../../docs/upstream/cc-switch-v3.19.2.md).
+That ledger, CHANGELOG, and Git history own the one-time values; this contract
+defines how every integration is verified.
+
+Canonical preparation is parameterized by the approved tag:
 
 ```bash
 git remote get-url origin
 git remote get-url upstream
 git remote get-url --push upstream
-git ls-remote --tags upstream refs/tags/v3.19.2 'refs/tags/v3.19.2^{}'
-git fetch --no-tags upstream refs/tags/v3.19.2:refs/tags/v3.19.2
-git merge-base <fyagent-head> refs/tags/v3.19.2
-git merge --no-ff --no-commit refs/tags/v3.19.2
+git ls-remote --tags upstream "refs/tags/$TAG" "refs/tags/$TAG^{}"
+git fetch --no-tags upstream "refs/tags/$TAG:refs/tags/$TAG"
+git merge-base "$FYAGENT_HEAD" "refs/tags/$TAG"
+git merge --no-ff --no-commit "refs/tags/$TAG"
 ```
 
-Future `mise run upstream:*` wrappers must enforce the same inputs and failure
-conditions. `upstream:merge:prepare` may stop only in an uncommitted merge
-state; it must not resolve conflicts, create a commit, tag, or push.
+Repository `upstream:*` tasks may validate/fetch an approved tag and prepare an
+uncommitted merge. They never choose conflict resolutions, commit, tag, push,
+or change remotes.
 
 ## 3. Contracts
 
 ### Remote and immutable-source boundary
 
 - `origin` is the only normal push target. `upstream` must have no usable push
-  URL, and automation must never repair or replace that disabled push setting.
-- Audit a stable annotated tag by both tag-object SHA and peeled commit SHA.
-  A matching tag name or short SHA is insufficient.
-- Never merge a mutable upstream branch when an approved immutable tag exists.
-  Emergency commit picks require a separate recorded decision.
-- Create a read-only recovery ref before the first integration mutation. Do not
-  use destructive reset or overwrite unrelated working-tree changes.
+  URL; automation must not silently repair or broaden it.
+- Verify an annotated tag by full tag-object and peeled-commit identity against
+  the approved provenance/task decision. A name, short SHA, release page, or
+  mutable branch is insufficient.
+- Fetch only the approved ref. Emergency commit picks require a separate
+  recorded decision and are not treated as a tagged release integration.
+- Require a clean/non-overlapping worktree and create a read-only recovery ref
+  before mutation. Never reset, stash, or overwrite unrelated work implicitly.
 
 ### Merge and conflict boundary
 
-- The upstream integration commit is an explicit two-parent merge. Do not
-  squash, rebase, or reconstruct the upstream history.
-- The merge commit contains upstream files and only the conflict resolutions
-  needed to make that upstream state a valid FyAgent state. Product version
-  changes, local build retirement, mise/uv, CI/Release, dependency cleanup,
-  and documentation modernization belong to later commits.
-- Resolve conflicts in this order:
-  1. preserve FyAgent identity, data, licensing, and security boundaries;
-  2. follow shared upstream correctness, compatibility, security, and
-     performance behavior;
-  3. leave FyAgent engineering-governance modernization to its owning task;
-  4. retain FyAgent-only product behavior unless an explicit decision removes
-     it.
-
-- Never apply repository-wide `ours` or `theirs`. Record semantic conflicts
-  and test the combined result.
+- The integration commit is an explicit two-parent merge. Do not squash,
+  rebase, replay, or reconstruct upstream history.
+- That merge contains upstream content plus only semantic conflict resolutions
+  needed to make the upstream state a valid FyAgent state. Tooling, CI/Release,
+  dependency cleanup, product-version changes, and broad modernization belong
+  in later, independently reviewable commits.
+- Resolve each conflict in this order:
+  1. preserve FyAgent identity, user data, licensing, and security boundaries;
+  2. retain shared upstream correctness/security/compatibility/performance fixes;
+  3. keep FyAgent-only behavior unless an explicit product decision removes it;
+  4. leave unrelated engineering modernization to its owning task.
+- Repository-wide `ours`/`theirs` is forbidden. Record meaningful conflict
+  decisions and test the combined behavior.
 
 ### FyAgent invariants
 
-- Preserve `FyAgent`, `fyagent`, `com.fyagent.desktop`, `fyagent://`,
-  `~/.fyagent`, `fyagent.db`, `FYAGENT_*`, the FyAgent SQL export header, and
-  schema version `17` (`SCHEMA_VERSION` in `src-tauri/src/database/mod.rs`).
-  The reviewed v3.19.2 merge left schema at `16`; the later approved P0
-  Skills migration added default-false `enabled_qoderwork` and
-  `enabled_trae_work` columns. A future upstream merge must not silently
-  revert, skip, or bump that version.
-- Preserve the mixed licensing model. CC Switch-derived code and attribution
-  remain MIT provenance; FyAgent-owned code remains under the repository's
-  stated licensing boundary.
-- Do not import sponsorship, partner flags, affiliate/tracking parameters, or
-  upstream distribution-channel claims. They are neither product behavior nor
-  required provenance.
-- Product-runtime discovery for external CLI tools managed by mise remains
-  optional compatibility. FyAgent installation, startup, and core behavior
-  must not require mise.
-- Upstream release-note files may enter the ancestry-preserving merge commit.
-  A later documentation commit removes their product-facing bodies and records
-  concise provenance; never rebrand them as FyAgent release notes.
+- Preserve the product/bundle/protocol/data/environment identities owned by
+  [Application Identity](./application-identity.md) and
+  [Application Version and Installer Assets](./fyagent-version-contract.md).
+- Preserve the current database authority (`SCHEMA_VERSION` and migrations) as
+  implemented in the database owner. An upstream merge must not silently
+  revert, skip, or bump it; a schema change requires a separate migration
+  decision and tests.
+- Preserve the repository's mixed licensing/provenance model. Upstream-derived
+  code and attribution retain their upstream license; FyAgent-owned changes
+  retain the repository's stated license boundary.
+- Do not import sponsorship, partner, affiliate/tracking, or upstream
+  distribution-channel product claims. Required factual attribution and
+  historical source links are preserved.
+- External tool compatibility may remain optional, but FyAgent installation,
+  startup, and core runtime must not depend on development tooling such as mise.
+- Upstream release-note files may enter the ancestry merge. Product-facing
+  release notes are cleaned in a later documentation commit and must not be
+  rebranded as FyAgent releases.
 
 ### Maintained Native Fetch delta
 
-FyAgent removes upstream's test-only `cross-fetch` dependency and
-`cross-fetch/polyfill` import after the reviewed v3.19.2 merge. This is an
-intentional, independently revertible downstream delta, not a conflict
-resolution inside the two-parent merge. It relies on the exact Node version in
-`.node-version`, which must provide unmarked native `fetch`, `Headers`,
-`Request`, and `Response` globals.
+FyAgent intentionally removes the upstream test-only `cross-fetch` layer and
+uses the Node runtime selected by `.node-version` for Fetch globals. This is a
+downstream modernization commit, not a conflict resolution inside the
+two-parent merge.
 
-The delta remains valid only while the Native Fetch → MSW → Tauri mock
-behavior suite covers JSON success, non-2xx text errors, empty responses, and
-cross-realm jsdom Headers, and while the dependency report proves that
-`cross-fetch → node-fetch@2 → whatwg-url@5 → tr46@0.0.3 → built-in punycode`
-is absent. Userland `punycode@2.3.1` is not the DEP0040 root cause only on two
-reviewed reverse origins: the existing jsdom chain through `whatwg-url@14` and
-`tr46@5`, or the exact contiguous suffix
-`eslint@10.8.1 → ajv@6.15.0 → uri-js@4.4.1`. Wrappers may precede ESLint,
-but version drift, an intermediate package, missing ancestors, and unknown
-origins remain fail-closed. Both the pnpm lock and `pnpm why --json` must
-explain the same watched URL and punycode package versions; the exact ESLint,
-Ajv, and URI-JS ancestor suffix is proved by the why graph. Adding or upgrading
-either origin requires a new reverse-path review; this is not a general
-allowance for every `punycode@2` path.
+The delta remains valid only while:
 
-Node 24.19.0's pending-deprecation probe does not reliably surface every warning
-originating under dependencies, so it supplements rather than replaces the
-lock and reverse-graph checks. Re-evaluate and preferably remove this delta
-when a future reviewed upstream release removes the compatibility dependency;
-if upstream adopts another Fetch layer, retain FyAgent's native-only boundary
-unless its real behavior and deprecation evidence justify a new decision.
+- the native Fetch -> MSW -> Tauri mock suite covers JSON success, non-2xx text
+  errors, empty responses, and cross-realm Headers behavior;
+- `cross-fetch`, its obsolete `node-fetch`/URL chain, warning suppression, and
+  unknown DEP0040 reverse paths are absent;
+- `scripts/tasks/dep0040-check.mjs`, its focused tests, `pnpm-lock.yaml`, and
+  `pnpm why --json` agree on the reviewed remaining dependency origins.
+
+The executable checker/tests own exact package versions and ancestor suffixes;
+the prose contract does not duplicate those volatile values. A dependency
+update that changes the watched graph requires a new reverse-path review. A
+pending-deprecation probe supplements but never replaces lock/graph analysis.
+Prefer removing this downstream delta when a reviewed future upstream no longer
+needs the compatibility dependency.
+
+### Provenance handoff
+
+After a successful integration, update the per-release ledger with the exact
+source identities, ancestry, conflict summary, validation, and merge commit.
+The spec may link that ledger but must not copy its one-time SHAs into the
+long-term contract.
 
 ## 4. Validation & Error Matrix
 
-| Condition                                                                            | Required result                                                                       |
-| ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
-| `upstream` has a usable push URL                                                     | Stop before fetch/merge; restore the reviewed disabled-push configuration explicitly. |
-| `origin` still uses the pre-transfer owner URL                                       | Replace it with the canonical origin; do not treat the redirect as current authority. |
-| Tag object or peeled commit differs from the approved full SHA                       | Stop as a source-identity failure; do not merge a similarly named tag.                |
-| Unrecognized dirty files overlap the merge                                           | Stop and preserve them; do not stash, reset, or overwrite them implicitly.            |
-| Merge result changes FyAgent to the upstream product/version/data root               | Reject the resolution and restore the FyAgent invariant before testing.               |
-| Upstream introduces a real security/correctness fix behind an identity conflict      | Port the shared behavior under FyAgent names and add or retain its regression tests.  |
-| Conflict markers or unmerged index entries remain                                    | Do not commit.                                                                        |
-| Merge commit is not two-parent or the verified tag is not its ancestor               | Reject the integration; do not proceed to modernization.                              |
-| Schema leaves `17`, skips the 16-to-17 Skills flags, or user data paths change without an approved migration | NO-GO; require a separate data decision and migration plan.                           |
-| Partner, sponsorship, affiliate, or tracking metadata enters active product surfaces | Remove it and rerun promotion-boundary tests.                                         |
-| Only local/static tests exist for platform artifacts                                 | Report platform release evidence as pending; do not infer native acceptance.          |
+| Condition | Required result |
+| --- | --- |
+| `upstream` has a usable push URL | Stop before fetch/merge and restore the reviewed read-only role explicitly. |
+| `origin` is a former-owner redirect instead of canonical authority | Correct it before integration; redirect continuity is not current authority. |
+| Tag object or peeled commit differs from the approved full identity | Stop; do not merge a similarly named tag. |
+| Worktree changes overlap the integration | Stop and preserve them; no implicit stash/reset. |
+| Merge changes FyAgent product/version/data/license identity | Reject the resolution. |
+| Upstream security/correctness fix conflicts with naming | Port the behavior under FyAgent identity and retain regression coverage. |
+| Conflict markers or unmerged index entries remain | Do not commit. |
+| Result is not a two-parent merge or approved source is not its ancestor | Reject the integration and do not modernize on top. |
+| Database authority drifts without an approved migration | NO-GO; separate migration/design required. |
+| Partner/sponsorship/tracking metadata enters active product surfaces | Remove it and rerun identity/promotion tests. |
+| Only local/static tests exist for native artifacts | Report native evidence as pending. |
 
 ## 5. Good / Base / Bad Cases
 
-- Good: the reviewed tag is verified by full object identities, merged in a
-  two-parent commit, shared fixes work under FyAgent identity, schema remains
-  `17`, the canonical FyAgent origin is used, and later modernization remains
-  independently reviewable.
-- Base: an upstream file contains historical `CC Switch` issue URLs or license
-  attribution. Preserve those factual references while keeping current-product
-  UI, runtime errors, paths, and comments FyAgent-specific.
-- Bad: accept a short SHA, enable upstream pushes, choose one side of every
-  conflict globally, rename FyAgent to `3.19.2`, copy partner promotion, or
-  squash the merge into a linear implementation commit.
+- **Good:** full immutable identities match the ledger; one two-parent merge
+  preserves upstream ancestry and FyAgent invariants; later modernization is
+  separate and reviewable.
+- **Base:** historical upstream names, issue links, copyrights, and license
+  notices remain factual source/provenance evidence while current product
+  surfaces use FyAgent identity.
+- **Bad:** merge a branch, accept a short SHA, enable upstream push, choose one
+  conflict side globally, copy upstream version/partner copy, or squash the
+  ancestry into a feature commit.
 
 ## 6. Tests Required
 
-- Verify the exact canonical origin fetch/push URL, upstream's disabled push
-  URL, local tag object, peeled commit, merge base, parent count, parent order,
-  and `git merge-base --is-ancestor`.
-- Run conflict-marker and unmerged-index scans before committing.
-- Run the application-identity audit and promotion-boundary tests; classify
-  historical/source/negative-fixture exceptions explicitly.
-- Run version consistency, JSON/TOML parsing, renderer format/type/unit tests,
-  Rust fmt/check/clippy/tests, and the security tests affected by conflict
-  resolution.
-- Run the DEP0040 JSON report and focused pending-deprecation Native
-  Fetch/MSW/Tauri behavior probe while the maintained downstream Fetch delta
-  exists.
-- Assert schema `17`, FyAgent test-home isolation, database/export-header
-  behavior, proxy error mapping, package identity, and Tauri identity.
-- Record native/platform/Release evidence separately; a successful local-host
-  merge check does not prove another supported platform, architecture, or
-  formal release artifact.
+- Verify remote fetch/push roles, full tag/peeled identities from the approved
+  ledger, merge base, parent count/order, and ancestor relation.
+- Scan the index/worktree for unresolved conflicts before commit.
+- Run application identity, licensing/promotion, version, database/migration,
+  renderer, Rust, and security tests affected by conflict resolutions.
+- Run the DEP0040 checker plus focused native Fetch/MSW/Tauri behavior suite
+  while the maintained downstream delta exists.
+- Record local portable validation separately from matching native platform,
+  architecture, installer, and Release evidence.
+- Validate that the provenance ledger matches the fetched immutable tag
+  identity and resulting Git graph after the merge, and is the only long-term
+  document containing that integration's exact SHAs.
 
 ## 7. Wrong vs Correct
 
-### Wrong
+Wrong:
 
 ```bash
-# A mutable branch, globally chosen conflict side, and squash erase the audit
-# boundary and can silently replace FyAgent identity.
 git merge upstream/main
 git checkout --theirs .
 git commit
 git rebase -i main
 ```
 
-### Correct
+Correct:
 
 ```bash
-git ls-remote --tags upstream refs/tags/v3.19.2 'refs/tags/v3.19.2^{}'
-git fetch --no-tags upstream refs/tags/v3.19.2:refs/tags/v3.19.2
-git merge --no-ff --no-commit refs/tags/v3.19.2
-# Resolve and test every semantic conflict, then create one two-parent commit.
-git commit -m "merge(upstream): merge CC Switch v3.19.2"
-git merge-base --is-ancestor refs/tags/v3.19.2 HEAD
+git ls-remote --tags upstream "refs/tags/$TAG" "refs/tags/$TAG^{}"
+git fetch --no-tags upstream "refs/tags/$TAG:refs/tags/$TAG"
+git merge --no-ff --no-commit "refs/tags/$TAG"
+# Resolve and test each semantic conflict.
+git commit -m "merge(upstream): merge CC Switch $TAG"
+git merge-base --is-ancestor "refs/tags/$TAG" HEAD
 ```

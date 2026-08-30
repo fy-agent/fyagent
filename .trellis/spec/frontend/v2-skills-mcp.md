@@ -1,18 +1,5 @@
 # V2 Skills and MCP Feature Contract
 
-> **Frontend Interaction V3 integration note — 2026-08-26**
-> The existing Skills/MCP stores, ports, discovery/install flows and per-Agent
-> assignment contracts remain the sole authorities. The `/agents`
-> configuration shell may present a filtered search/toggle view for the selected
-> Agent and link to `/skills` or `/mcp`, but every mutation must go through
-> `ports.skills.toggleApp` / `ports.mcp.toggleApp` and then an authoritative
-> refetch. The switch stays pending until
-> `Boolean(readback.apps[entry.assignmentId]) === enabled`. A rejected write
-> or readback mismatch shows a warning and refetches; the page must not keep
-> an optimistic success state or a second assignment store. Browser fixtures
-> are not desktop writes. WorkBuddy MCP enable may open the existing trust
-> dialog only after a successful readback.
-
 ## 1. Scope / Trigger
 
 Read this contract before changing the V2 Skills or MCP pages, their shared
@@ -21,6 +8,16 @@ defines the renderer boundary over the native Skills/MCP commands. Native
 target, persistence, and security rules are authoritative in
 [External Agent P0 Safety](../backend/external-agent-p0.md); this page does not
 authorize widening the outer V2 shell or unrelated feature domains.
+
+The selected-Agent configuration shell is an additional consumer of these
+same ports and stores, not a second assignment domain. It may show a filtered
+search/toggle view and link to `/skills` or `/mcp`. Every mutation still uses
+`ports.skills.toggleApp` / `ports.mcp.toggleApp`, then rereads authority and
+accepts success only when
+`Boolean(readback.apps[entry.assignmentId]) === enabled`. Rejection or mismatch
+stays non-optimistic. WorkBuddy's trust dialog may open only after a successful
+MCP readback. The shell/navigation composition is owned by
+[V2 Agent and Models](./v2-agent-models.md).
 
 Production V2 feature code is limited to these boundaries:
 
@@ -741,10 +738,10 @@ git diff --check
   backend Gemini / Hermes flag round-trip, disk-observed installed Skills, and
   leftover `discover_available_skills_page` kept for leftover V1 rather than
   the leftover full-list command.
-  Adding `search_skillhub` / `install_skillhub` increments the host
-  invoke-handler freeze
-  in `application_acl_covers_every_registered_command_without_remote_access`
-  (currently 336). Rust unit tests cover SkillHub slug/URL pinning, Chinese
+  Adding `search_skillhub` / `install_skillhub` must update the exact registered
+  command/ACL freeze in
+  `application_acl_covers_every_registered_command_without_remote_access`.
+  Rust unit tests cover SkillHub slug/URL pinning, Chinese
   description mapping, official `/api/skills` query (`keyword` / `category` /
   `page` / `pageSize` / `sortBy`), dropping illegal category keys, mapping
   `data.total`, and page-size clamp `0 → 21` / `>50 → 50`.

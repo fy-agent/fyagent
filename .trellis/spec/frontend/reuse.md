@@ -2,462 +2,209 @@
 
 ## 1. Scope / Trigger
 
-Read this contract before adding any frontend component, helper, hook, CSS
-recipe, or page-local chrome. It applies to all renderer work under
-`src/v2/**` and, when those trees still change, leftover
-`src/components/**` / `src/lib/**`. It does not authorize importing leftover
-UI into V2.
+Read this contract before adding a renderer component, hook, feature helper,
+platform adapter, dependency, page-local UI pattern, or repeated state/DTO
+logic. Reuse means preserving one semantic owner and adapting at explicit
+boundaries; it does not mean bypassing V2/leftover, renderer/native, secret, or
+platform separation.
 
-Reuse is the default frontend preference. It applies to every page, widget,
-shared module, leftover surface, and follow-up change — not only to a
-cleanup pass after duplication already shipped.
+Binding placement and import rules also live in
+[Directory Structure](./directory-structure.md) and
+[Renderer Modular Boundaries](./modular-boundaries.md). Backend reuse is owned
+by [Backend Reuse](../backend/reuse.md). The short preparation checklist is
+[Code Reuse Thinking Guide](../guides/code-reuse-thinking-guide.md).
 
-### Development preference
+## 2. Owner and placement signatures
 
-1. Search existing shared owners first. Prefer reuse or a small extension over
-   a new file.
-2. Check the primitives already adopted by the repository (`React`, Radix,
-   TanStack, Zod, CodeMirror, dnd-kit, and the existing V2 shared layer) before
-   hand-writing an equivalent behavior or adding another package.
-3. If no current owner or adopted dependency fits, research maintained
-   open-source components/modules before implementing a bespoke replacement.
-   New dependencies are acceptable only after capability, license,
-   maintenance, security/provenance, platform, bundle/dependency cost, and
-   architecture-fit review.
-4. Existing shared chrome that already matches the job is mandatory. Do not
-   fork a page-local copy of `FeatureTabs`, `FeatureSearch`, `FeatureList`,
-   `FeaturePagination`, `AssignmentPanel`, `InstallTargetDialog`, `SelectionLens` / `SelectionLensGroup`, `fySpringTransition` / V2 `Collapsible`, `SplitPanes`,
-   `CatalogMasterDetail`, `CatalogOfficialLinks`, `SecretInput`, `ExternalLinkButton`, FeaturePorts,
-   or the TRAE/OpenCode `modelsShared` / `modelChips` helpers. Agent / Skills / MCP / Models / Prompts
-   product order and display names come from `src/v2/shared/features/directory.ts`.
-5. Before creating a **new** component, helper, hook, or CSS recipe, ask
-   whether another current module, or a later sibling module, will use it.
-   If yes or likely, put it in the shared layer on the **first commit**. Do
-   not park it under `pages/<route>/` and wait for a second or third copy.
-6. The old "extract after three copies" rule is not the frontend default for
-   chrome that sibling routes already have or will need. Waiting for a third
-   copy is a spec miss.
-7. Keep a file page-local only when there is no plausible second consumer
-   (a one-off form, a single dialog, a trivial `className` repeat).
-
-Pre-V2 product UI (the tree at `f424ceff`, parent of
-`82ea583a feat(frontend): add v2 visual shell`) is a **reference**, not a
-runtime import. That snapshot already shared `ManagementListSearch`,
-`AppToggleGroup`, `AppCountBar`, and `ListItemRow` across Skills, MCP, and
-Prompts. V2 keeps the current glass / `SelectionLens` design, and ports those
-behaviors into `src/v2/shared/ui`. Leftover `src/lib/api/**` remains the
-command-name reference for FeaturePorts; V2 must not import `src/components`,
-`src/hooks`, `src/lib`, or `src/i18n`.
-
-## 2. Signatures
-
-Shared feature chrome lives under `src/v2/shared/ui/`:
-
-```ts
-export function FeatureTabs<T extends string>({
-  id,
-  label,
-  value,
-  onChange,
-  options,
-  activationMode = "automatic",
-  className,
-}: {
-  id: string;
-  label: string;
-  value: T;
-  onChange: (value: T) => void;
-  options: ReadonlyArray<{ id: T; label: ReactNode }>;
-  activationMode?: "automatic" | "manual";
-  className?: string;
-}): JSX.Element;
-
-export function FeatureTabPanel<T extends string>({
-  tabsId,
-  value,
-  active,
-  unmountOnExit = false,
-  className,
-  children,
-}: {
-  tabsId: string;
-  value: T;
-  active: boolean;
-  unmountOnExit?: boolean;
-  className?: string;
-  children: ReactNode;
-}): JSX.Element | null;
-
-export function FeatureSearch({
-  value,
-  onValueChange,
-  placeholder,
-  ariaLabel,
-  clearLabel = "清除搜索",
-  className,
-  disabled,
-  id,
-}: {
-  value: string;
-  onValueChange: (value: string) => void;
-  placeholder: string;
-  ariaLabel: string;
-  clearLabel?: string;
-  className?: string;
-  disabled?: boolean;
-  id?: string;
-}): JSX.Element;
-
-export function FeatureList({
-  id,
-  className,
-  children,
-  ...props
-}: Omit<HTMLAttributes<HTMLDivElement>, "id"> & { id: string }): JSX.Element;
-
-export function FeatureListItem({
-  selected,
-  onSelect,
-  title,
-  children,
-  ariaLabel,
-}: {
-  selected: boolean;
-  onSelect: () => void;
-  title: ReactNode;
-  children?: ReactNode;
-  ariaLabel?: string;
-}): JSX.Element;
-
-export type FeaturePaginationItem =
-  | { type: "page"; page: number }
-  | { type: "ellipsis"; id: "start" | "end" };
-
-export function buildFeaturePaginationItems(
-  page: number,
-  totalPages: number,
-): FeaturePaginationItem[];
-
-export function FeaturePagination({
-  page,
-  totalPages,
-  onPageChange,
-  ariaLabel,
-}: {
-  page: number;
-  totalPages: number;
-  onPageChange: (page: number) => void;
-  ariaLabel: string;
-}): JSX.Element | null;
-```
-
-`FeaturePagination` is the only numbered pager. It hides when
-`totalPages <= 1`. Visible chrome is a live status (`第 x / n 页`),
-上一页 / 下一页 (disabled at the ends), numbered page buttons with
-`aria-current="page"` on the current page, and `…` ellipsis when
-`totalPages > 7` (`1 … current±1 … last`). Do not add a pagination npm
-package: Radix primitives have no Pagination (closed `not_planned`);
-shadcn Pagination is a copy recipe, not a dependency; MUI / Ant Design
-conflict with `--fy-*` tokens. Extend this owner with `Button` and
-Phosphor CSR carets.
-
-Related shared owners already in place: `SelectionLens` /
-`SelectionLensGroup` (nav, catalog, UI Lab), `fySpringTransition` in
-`shared/ui/motion.ts` plus V2 `Collapsible` (side-nav 「配置管理」),
-`AssignmentPanel` (Skills/MCP
-switches plus Skills/MCP install/ZIP/restore radio), `InstallTargetDialog`
-(Skills and MCP discovery install), `SplitPanes`, `CatalogMasterDetail`, `CatalogOfficialLinks`,
-`SecretInput`, `ExternalLinkButton`, `CopyablePath`, FeaturePorts, and
-`PRODUCT_DIRECTORY` in `shared/features/directory.ts`.
-
-`FeatureTabs` is the sole FyAgent wrapper around
-`@radix-ui/react-tabs`. Pages do not import Radix Tabs directly. The wrapper
-owns roving focus, Arrow/Home/End behavior, stable trigger/panel IDs,
-`aria-controls`/`aria-labelledby`, selected host CSS, optional decorative
-Lens, and the explicit automatic/manual activation policy. Matching content
-uses `FeatureTabPanel`; `unmountOnExit` is the reviewed lifecycle switch for
-tabs whose inactive business tree must stop queries/effects. Callers must not
-hand-write a second tablist or tabpanel ID scheme.
-
-Placement:
+Use this order:
 
 ```text
-src/v2/shared/ui/**          # chrome used by 2+ routes, or likely to be
-src/v2/shared/features/**    # ports, types, helpers, queries
-src/v2/pages/<route>/**      # route-owned copy, one-off forms, page CSS
-src/components/common/**     # leftover-only shared chrome; not a V2 import
+existing FyAgent owner
+  -> already-adopted framework/dependency primitive
+  -> reviewed maintained open-source primitive
+  -> one shared FyAgent adapter/composition
+  -> justified local implementation
 ```
+
+V2 placement roles are:
+
+| Location | Owner |
+| --- | --- |
+| `src/v2/shared/ui/**` | Reusable visual/interaction primitives with no page business authority. |
+| `src/v2/shared/features/**` | Shared feature types, ports, query keys/hooks, projections, and reusable feature workflows. |
+| `src/v2/shared/platform/**` | Browser/Tauri adapters and `unknown` wire parsing; only approved Tauri adapters import `@tauri-apps/**`. |
+| `src/v2/widgets/**` | App-shell or multi-page composition whose owner is above one route. |
+| `src/v2/pages/<route>/**` | Route composition and genuinely route-specific presentation. |
+| `src/shared/**` | Explicit renderer-neutral bridge approved by an owning feature/backend contract. |
+| Leftover `src/components/common/**`, `src/hooks/**`, `src/lib/**` | Reuse within leftover V1 only, following [Directory Structure](./directory-structure.md); never a direct V2 dependency. |
+
+Leftover work reuses the existing leftover owner rather than creating another
+local copy. That tree may provide behavior evidence for V2, but it is not a V2
+component library. V2 must not import leftover components, hooks, state, i18n,
+or Tauri façades unless an owning contract names a narrow bridge.
+
+Current shared owner families include:
+
+- feature controls and lists: `FeatureTabs`, `FeatureSearch`, `FeatureList`,
+  `FeaturePagination`;
+- assignment/install flows: `AssignmentPanel`, `InstallTargetDialog`, shared
+  confirmation/dialog primitives;
+- layouts: `SplitPanes`, `CatalogMasterDetail`, feature page/panel chrome;
+- external and secret controls: `ExternalLinkButton`, `SecretInput`;
+- shell motion/selection primitives owned under `shared/ui`.
+
+Their exact behavior belongs in the feature/shell specs that use them:
+[V2 Shell](./v2-shell.md),
+[V2 Agent and Models](./v2-agent-models.md),
+[V2 Skills and MCP](./v2-skills-mcp.md), and
+[V2 Prompts and Memory](./v2-prompts-memory.md). This list is an owner map, not
+a duplicate API contract.
 
 ## 3. Contracts
 
-### Search first
+### Search and extend before creating
 
-Before writing a new component, helper, hook, CSS class, or parser:
+- Search source, tests, types, styles, query keys, ports, and manifests for the
+  semantic capability before choosing a new owner.
+- Prefer a small compatible extension to the existing owner over a page-local
+  near-copy. Keep optional props/variants closed and meaningful; do not turn a
+  shared primitive into a page switchboard.
+- Reuse an adopted dependency through the existing project boundary. Do not
+  import a package directly from every page when one adapter can contain it.
 
-1. Search `src/v2/shared/ui`, `src/v2/shared/features`, and the nearest page.
-2. Search leftover `src/components/common` and `src/lib/api` for the pre-V2
-   behavior and command names.
-3. Check `package.json` and the current framework stack for a primitive that
-   already solves the capability without adding a parallel UI/domain owner.
-4. If the first three searches do not produce a suitable solution, research
-   maintained open-source candidates from primary project/package sources.
-5. Reuse or extend the chosen owner. Do not copy the JSX or reimplement a
-   mature primitive locally without a recorded reason.
+### Review new dependencies
 
-If the job is an exclusive option track, management-list search, a
-feature master list, or numbered feature pagination, the owner already exists:
-`FeatureTabs`, `FeatureSearch`, `FeatureList`, `FeaturePagination`. Use them.
-Do not add a second recipe.
+Before adding a package, verify from primary sources that the reviewed version
+supports the requirement and has acceptable license, maintenance, provenance,
+advisories, browser/Tauri support, bundle/build cost, and transitive footprint.
+A component package must fit the existing token, accessibility, state, and
+platform architecture rather than introduce a second UI/state framework.
 
-### Open-source candidate review
+### Promote a concrete shared owner early
 
-"Prefer open source" means research before reinvention, not dependency
-accumulation. Before adding a new frontend package/component, verify:
+- Put a new capability in `shared/**` on the first implementation when an
+  existing or concrete near-term second consumer is known.
+- Keep a one-off page detail local when sharing would require speculative
+  options or leak page business rules.
+- A second consumer should import the same owner; copying and “cleaning up
+  later” is not an accepted staging strategy.
+- Shared does not mean globally public. Export the minimum surface and keep
+  feature/platform internals private to their owner.
 
-- the reviewed version supports the required behavior and React/runtime
-  versions used by FyAgent;
-- its license is compatible with repository distribution;
-- maintenance/release activity and ownership are credible for the capability;
-- known security/provenance risk is acceptable;
-- desktop/browser renderer support fits the existing Tauri + Vite runtime;
-- bundle size, transitive dependencies, build cost, and update burden are
-  proportionate to the capability;
-- it can use or be wrapped behind `--fy-*` tokens and existing accessibility
-  semantics without introducing a second design system;
-- one FyAgent shared owner can contain integration details so pages do not
-  depend directly on package-specific glue.
+### Keep business and wire authority out of visual primitives
 
-Prefer an already-adopted primitive over a new package, and prefer a small
-shared wrapper over repeated direct package usage when FyAgent semantics are
-non-trivial. If no candidate passes review, a local implementation is allowed
-only with a concrete reason in the task/design/review record.
+- Shared UI receives typed values and callbacks. It does not invoke Tauri,
+  construct native paths/URLs/commands, own query caches, or infer capability.
+- Decode Tauri/events/config once at the owning platform/feature boundary.
+  Pages must not repeat `as` casts or private wire parsers.
+- Server state remains authoritative. Shared interaction components may expose
+  pending/selection state but must not manufacture a successful write.
+- Secrets remain in the narrow component/mutation lifetime defined by the
+  feature contract and never become a convenience shared store.
 
-### New component placement
+### Preserve dependency direction
 
-Ask, before the file is created. "Later" and "expected next" count as a
-second consumer:
+```text
+pages/widgets -> shared/features + shared/ui
+shared/features -> shared/platform + shared/ui
+shared/platform -> native/browser APIs
+shared/ui -> tokens and UI-only helpers
+```
 
-| Will this be used by...                                      | Put it in                                   |
-| ------------------------------------------------------------ | ------------------------------------------- |
-| Two or more current V2 routes or shared widgets              | `src/v2/shared/ui` or `shared/features` now |
-| One route today, but a sibling route/module is expected next | `shared/**` now; do not park it in `pages/` |
-| Only this page, with no plausible second consumer            | `pages/<route>/`                            |
-| Leftover V1 surfaces only                                    | `src/components/` or `src/lib/`; never V2   |
+Lower layers must not import pages/widgets. A reuse attempt that creates a
+cycle or imports business authority into `shared/ui` is a boundary violation,
+not successful deduplication.
 
-"Expected next" includes the other five product routes, catalog vs feature
-lists, Skills vs MCP, Prompts vs Memory, and TRAE vs OpenCode model panels.
-When implementation reveals a reusable component that planning missed, promote
-or propose it at that shared owner immediately; do not wait for a cleanup task.
+### Avoid fake abstraction
 
-### Feature chrome
-
-- Exclusive in-page option tracks (installed/discovery, memory types, MCP
-  editor mode, Skills discovery first-level categories, MCP discover
-  install-kind) use `FeatureTabs`. Skills install, restore, and ZIP targets
-  are `AssignmentPanel mode="radio"` in a Dialog, not header tabs. MCP
-  discovery one-click install uses the same shared `InstallTargetDialog`
-  (`pathForTarget` + **下一步** / **确认安装**).
-  Do not
-  hand-roll `SelectionLensTrack` + `fy-feature-tab` on those pages.
-- Selected navigation, tab and catalog hosts paint a stable CSS state from
-  shared `--fy-selected-*` tokens. `SelectionLens` is decorative and may be
-  absent; transparent selected hosts are a contract failure.
-- Management-list search uses `FeatureSearch` (`role="search"`, Escape and
-  clear button, Phosphor icons). That is the V2 port of pre-V2
-  `ManagementListSearch`. Do not add a second raw `type="search"` Input for
-  the same job.
-- Feature master lists use `FeatureList` / `FeatureListItem`. Catalog agent
-  rails stay on `CatalogList` / `CatalogListItem`. Primary nav stays on
-  `SelectionLensGroup` with `inset={1}`.
-- Skills discovery (Skill 市场) uses `FeaturePagination`. Do not
-  hand-roll a second page-number window, and do not add a pagination UI
-  library for prev/next or ellipsis.
-- Skills/MCP assignment stays on `AssignmentPanel` (V2 switch rows), not a
-  second AppToggleGroup clone. Skills discovery install, ZIP install, MCP
-  discovery install, and
-  backup restore use the same `AssignmentPanel` with `mode="radio"`. Skills
-  unmanaged import and new-MCP editor assignment use the same component in
-  switch mode. Do not add
-  `InstallTargetPicker`, a page-local checkbox grid, or another catalog-target
-  list on the Skills or MCP pages. MCP recipe field checkboxes may keep
-  `fy-feature-check-grid`; Agent targets may not.
-
-### Pre-V2 and leftover business
-
-- Do not import leftover UI into V2. Architecture tests fail if `src/v2`
-  imports `src/components`, `src/hooks`, `src/lib`, or `src/i18n`.
-- Do reuse leftover **command names, DTO fields, and parsers** through
-  FeaturePorts / `shared/platform/tauri`. Pages must not invent a second
-  invoke wrapper.
-- When pre-V2 UX is still the better interaction (search clear/Escape, bulk
-  assignment, confirm), port it into V2 shared chrome and restyle with
-  `--fy-*` tokens. Current V2 visual language wins over leftover Tailwind /
-  lucide / i18n.
-
-### Do not abstract
-
-Do not create a shared component for a one-off form, a single dialog, or a
-trivial `className` repeat. Do not merge TRAE and OpenCode model panels: they
-already share `modelsShared`, `modelChips`, `ModelConnectivityTest`, and `feedback`. Do not add
-`react-paginate`, `react-headless-pagination`, MUI Pagination, Ant
-`rc-pagination`, or a shadcn Pagination copy for feature lists.
+Do not extract a wrapper that only renames one line, combine unrelated feature
+rules because their markup looks similar, or add a universal component with
+boolean flags for every current page. Prefer shared chassis plus feature-owned
+content/ports.
 
 ## 4. Validation & Error Matrix
 
-| Condition                                                                                            | Required result                                                          |
-| ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| A feature page hand-rolls `fy-feature-tab` instead of `FeatureTabs`                                  | Unit/architecture test fails; use `FeatureTabs`                          |
-| Management search is a raw `Input type="search"` on Skills/MCP/Memory/Prompts/Discovery              | Use `FeatureSearch`; leftover `ManagementListSearch` stays leftover-only |
-| V2 imports leftover `src/components` or `src/lib`                                                    | Architecture test fails                                                  |
-| V2 imports leftover `src/components/ui/collapsible.tsx` or `framer-motion` outside `motion.ts`       | Architecture test fails; use V2 `Collapsible` / `fySpringTransition`     |
-| Skills install picker is not `AssignmentPanel mode="radio"`                                          | Reuse test / page test fails; extend `AssignmentPanel`                   |
-| MCP discovery Agent picker is a checkbox grid or defaults to `DEFAULT_NEW_APPS`                      | Page test fails; reuse shared `InstallTargetDialog`                      |
-| Skill/MCP install writes on **安装到 {label}** without showing the destination                       | Page test fails; **下一步** then **确认安装** after `InstallPathPreview` |
-| Skills import assignment is a page-local checkbox grid                                               | Reuse test fails; use `AssignmentPanel` switch rows                      |
-| A page-local Agent/Skills/MCP/Models/Prompts order table                                             | Reject; extend `PRODUCT_DIRECTORY`                                       |
-| New chrome used by two routes is added under `pages/<route>/`                                        | Move it to `shared/ui` before merge                                      |
-| New chrome is parked in `pages/` because "only one consumer today" while a sibling route is expected | Put it in `shared/` on the first commit; do not wait for a third copy    |
-| A page forks FeatureTabs / FeatureSearch / FeatureList "just for this screen"                        | Reject; pass options/copy into the shared owner                          |
-| A page adds a pagination npm package or a second pager for prev/next / ellipsis                      | Reject; extend `FeaturePagination`                                       |
-| A bespoke component/helper is added without checking existing owners/adopted primitives             | Reject; perform the reuse search first                                   |
-| No local/adopted primitive fits and no open-source candidate review is recorded for non-trivial work | Reject or document why external reuse is inapplicable before bespoke code |
-| A new dependency duplicates a current framework/owner or brings a second design system for one primitive | Reject; reuse/extend the current stack                                |
-| A newly discovered component has a concrete second consumer but remains page-local                  | Move/propose it to the owning `shared/**` boundary before merge           |
-| Skills discovery dumps the full description onto `.fy-feature-card-body`                             | CSS/page test fails; clamp to 3 lines and open the 详情 dialog           |
-| Page invents a second Tauri invoke for an existing FeaturePort command                               | Use the port; leftover `src/lib/api` is the name reference only          |
+| Condition | Required result |
+| --- | --- |
+| A shared owner already provides the capability | Extend/reuse it or document why its contract is unsuitable. |
+| Two pages create near-identical controls or reducers | Promote one owner before merging the second copy. |
+| A page directly imports Tauri or parses a shared raw payload | Move the boundary to the approved platform/feature owner. |
+| V2 imports leftover UI/hook/state without an explicit bridge | Architecture test fails; use V2 owners/ports. |
+| A new package duplicates an adopted primitive | Reject unless the task records a concrete capability gap and review. |
+| A dependency fails license/security/platform/footprint review | Do not adopt it. |
+| Sharing needs speculative flags for one consumer | Keep the implementation local and revisit with a concrete second use. |
+| Shared UI begins owning filesystem, network, query, secret, or capability policy | Split authority back into the feature/platform owner. |
+| A reusable component changes accessible name/order/keyboard behavior per page | Define one semantic API and test every supported variant. |
 
 ## 5. Good / Base / Bad Cases
 
-- **Good:** Skills, MCP, Prompts, and Memory all import `FeatureSearch` /
-  `FeatureList`. Skills/MCP/Memory import `FeatureTabs`. Skills discovery
-  uses `FeaturePagination` (`ariaLabel="Skill 市场分页"`) and one category
-  `FeatureTabs` (`label="分类筛选"`, 全部 plus the 12 official SkillHub names).
-  Skills install, ZIP, restore, and assignment all use `AssignmentPanel`
-  (radio vs switch). MCP discovery one-click uses shared
-  `InstallTargetDialog` and confirms the destination path before writing.
-  Unmanaged Skill import and new-MCP editor use the
-  same switch panel, not a
-  checkbox grid.
-  A later filter track adds one `FeatureTabs` options array, not a new tab
-  component.
-- **Base:** Primary nav and catalog rails keep `SelectionLensGroup` /
-  `CatalogListItem` because their geometry differs (`inset={1}`, brand frames).
-- **Bad:** A page copies 20 lines of `SelectionLensTrack` + tab buttons, adds
-  `pages/skills/SearchField.tsx` that MCP will need next week, or waits for
-  three copies before moving chrome that Prompts/Memory already need.
-- **Bad:** A page hand-writes a non-trivial primitive that an existing shared
-  owner or adopted dependency already provides, or adds a new UI framework
-  without reviewing license, maintenance, security, platform, footprint, and
-  design-system fit.
+- **Good:** Skills and MCP use one assignment/picker owner while their native
+  ports keep distinct business mutations.
+- **Good:** Agents and Models reuse catalog/split-pane geometry but retain
+  separate lifecycle and model workflows.
+- **Good:** Prompts and Memory share search/list/tabs primitives without
+  merging their native data models.
+- **Base:** one route-specific form stays under its page because no second
+  consumer exists and extracting it would add speculative parameters.
+- **Bad:** copy a component, CSS block, target-order table, payload decoder, or
+  query reducer into another page because changing the shared owner seems
+  slower.
+- **Bad:** move native capability logic into a generic visual component so two
+  pages can call it.
 
 ## 6. Tests Required
 
-```bash
-mise run lint:v2
-mise run typecheck:v2
-mise run test:v2
-```
-
-- Unit tests cover `FeatureTabs` selection, `FeatureSearch` change / clear /
-  Escape (same assertions as leftover `ManagementListSearch`),
-  `FeatureListItem` `aria-current`, `buildFeaturePaginationItems` windows
-  (full set when `totalPages <= 7`; first/last plus ellipsis otherwise),
-  `FeaturePagination` current-page `aria-current`, 上一页 / 下一页 disabled
-  at the ends, status copy `第 x / n 页`, discovery card preview clamp
-  (`-webkit-line-clamp: 3`), and the discovery-scroll CSS contract.
-- Architecture tests prove Skills/MCP/Memory/Prompts/Discovery/model search
-  import `FeatureTabs` / `FeatureSearch` / `FeatureList` as required, that
-  Skills/MCP import `AssignmentPanel`, that Skills does not contain
-  `InstallTargetPicker` or `fy-feature-check-grid`, that MCP discovery
-  imports `InstallTargetDialog` and does not contain `fy-feature-check-grid`,
-  that Skills/MCP/Memory do
-  not contain `className="fy-feature-tab"` literals, and
-  that V2 still cannot import leftover UI.
-- Review evidence for a new frontend dependency must identify the missing
-  existing capability, candidate(s) considered, and why the selected package
-  is preferable to a bespoke implementation. Existing dependency/security
-  tooling remains the executable authority; this SPEC does not waive it.
+- Import-boundary tests keep V2, leftover, pages/widgets, shared features/UI,
+  and platform adapters in the approved direction.
+- Shared owner tests cover semantic variants, keyboard/focus/accessibility,
+  pending/disabled behavior, and maintained responsive viewports where
+  applicable.
+- Feature tests prove every consumer invokes the same shared component/helper
+  while the owning feature port still controls the mutation/readback.
+- Type tests keep ID/order maps exhaustive and prevent page-local fallback
+  tables.
+- Dependency changes update lockfiles and pass repository dependency, license,
+  provenance, type, lint, unit, browser, and build gates appropriate to the
+  changed surface.
+- Negative scans reject page-local clones of named shared owners, direct Tauri
+  imports outside adapters, and repeated unsafe raw payload casts.
 
 ## 7. Wrong vs Correct
 
-Wrong: park reusable chrome in a page, wait for a third copy, or import leftover UI.
+Wrong: duplicate a shared interaction and native boundary inside a page.
 
 ```tsx
-// pages/skills/SearchField.tsx  — MCP will copy this next
-// import { ManagementListSearch } from "@/components/common/ManagementListSearch";
-<SelectionLensTrack className="fy-feature-tabs" role="tablist">
-  <button className="fy-feature-tab" role="tab">
-    ...
-  </button>
-</SelectionLensTrack>
+function PageInstallTargetPicker() {
+  return targets.map((target) => (
+    <button onClick={() => invoke("install", { path: target.path })}>
+      {target.label}
+    </button>
+  ));
+}
 ```
 
-Correct: shared V2 chrome; leftover is a behavior reference.
+Correct: reuse the shared interaction; the feature port accepts only its
+reviewed typed request and owns native authority.
 
 ```tsx
-<FeatureTabs id="skills-view-tabs" label="Skills 视图" value={tab} onChange={setTab} options={...} />
-<FeatureSearch ariaLabel="搜索已安装 Skills" placeholder="..." value={search} onValueChange={setSearch} />
-<FeatureList id="skills-installed-list">{items}</FeatureList>
-<FeaturePagination page={page} totalPages={totalPages} ariaLabel="Skill 市场分页" onPageChange={setPage} />
-<AssignmentPanel mode="radio" ariaLabel="安装目标" targets={SKILL_TARGETS} value={target} onChange={setTarget} />
-<InstallTargetDialog title={`安装 ${name}`} busy={busy} defaultTarget={target} pathForTarget={pathForTarget} onCancel={onCancel} onConfirm={onConfirm} />
-```
-
-Wrong: a Skills-page checkbox grid or `InstallTargetPicker` for catalog targets.
-
-```tsx
-<div className="fy-feature-check-grid">
-  {SKILL_TARGETS.map((app) => (
-    <label key={app.id}>
-      <Checkbox label={app.label} />
-    </label>
-  ))}
-</div>
-```
-
-Correct: the same `AssignmentPanel` switch rows used by installed assignment.
-
-```tsx
-<AssignmentPanel
-  apps={apps}
-  onToggle={onToggle}
-  labelSuffix="Skill 分配"
-  targets={SKILL_TARGETS}
+<InstallTargetDialog
+  defaultTarget={selectedTarget}
+  pathForTarget={projectDisplayDestination}
+  onConfirm={(target) => featurePort.install(target)}
 />
 ```
 
-Wrong: add a pagination library because Radix has no primitive.
-
-```ts
-import { Pagination } from "react-headless-pagination";
-```
-
-Correct: extend the shared owner; keep the existing props.
+Wrong: extract unrelated page behavior into one flag-driven component.
 
 ```tsx
-<FeaturePagination
-  page={page}
-  totalPages={totalPages}
-  ariaLabel="Skill 市场分页"
-  onPageChange={setPage}
-/>
+<UniversalPanel isAgent isModel isMcp useLegacyFallback />
 ```
 
-Wrong: skip the current stack and hand-roll or import a parallel primitive by
-default.
+Correct: share the chassis and keep feature content/ports at their owner.
 
 ```tsx
-// No search for existing shared/React/Radix ownership, and every page now
-// depends on package-specific behavior directly.
-import { SomeTabs } from "another-ui-system";
-```
-
-Correct: use the current owner first; when a genuinely missing capability
-needs an external package, contain it behind one shared FyAgent component after
-review.
-
-```tsx
-import { FeatureTabs } from "@/v2/shared/ui/FeatureTabs";
-
-<FeatureTabs id="models-tabs" label="Models 视图" value={tab} onChange={setTab} options={options} />
+<SplitPanes>
+  <FeatureOwnedList />
+  <FeatureOwnedDetail />
+</SplitPanes>
 ```

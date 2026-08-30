@@ -205,9 +205,9 @@ FILE_SHARE_DELETE` but never `FILE_SHARE_WRITE`, records its identity and
   mounts only its status/configuration surface and performs no Provider,
   current-provider, MCP, Skills, profile, usage, environment/migration, or proxy
   query. The API key is never refilled from disk. V2 discovery fetch keeps the
-  in-memory key; save terminal outcomes still clear it. The V2 Models page keeps
-  that key while it stays mounted across sidebar navigation and target switches.
-  Actual unmount of the persistent Models page still clears it.
+  in-memory key while the active WorkBuddy panel remains mounted; save terminal
+  outcomes clear it. Switching Models target or leaving the Models route
+  unmounts the panel and clears unsaved component-memory credentials.
 - A truncated-fetch warning remains visible until a later successful,
   non-truncated fetch replaces it. Failed or stale requests do not silently
   convert the warning into a complete result.
@@ -234,7 +234,7 @@ FILE_SHARE_DELETE` but never `FILE_SHARE_WRITE`, records its identity and
 | A removal-only save commits with a valid token                                                                  | Delete matching entries and prune populated `availableModels`; URL/key are not required.                                        |
 | Token is malformed, expired, mismatched, or reused                                                              | Consume/reject it, expose no credential or target contents, and write nothing.                                                  |
 | A save updates an existing target                                                                               | Preserve entry position, unknown fields, and unrelated entries; update only documented fields.                                  |
-| WorkBuddy view unmounts                                                                                         | Clear the in-memory API key and cancel/isolate its queries from other app domains. V2 Models keep-alive hide is not an unmount. |
+| WorkBuddy panel unmounts after a target switch or route exit                                                    | Clear the in-memory API key and cancel/isolate its UI work from other app domains.                                               |
 | Renderer cannot obtain valid status/path metadata                                                               | Disable the write UI; never guess `.workbuddy` or a backup path in React.                                                       |
 
 ## 5. Good / Base / Bad Cases

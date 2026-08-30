@@ -110,21 +110,17 @@ mise run test:unit
 mise run release:check
 ```
 
-The focused pending probe is deliberately supplemental. Node 24.19.0 may not
-surface a pending deprecation originating below every `node_modules` path, so
-dependency proof is owned by `scripts/tasks/dep0040-check.mjs`: it parses the
+The focused pending probe is deliberately supplemental. The Node runtime
+selected by `.node-version` may not surface a pending deprecation originating
+below every `node_modules` path, so dependency proof is owned by
+`scripts/tasks/dep0040-check.mjs` and its contract tests. They parse the
 manifest, active module specifiers, the versioned pnpm lock, and argv-based
-`pnpm why --json` reverse paths. The obsolete chain is
-`cross-fetch → node-fetch@2 → whatwg-url@5 → tr46@0.0.3`. Userland
-`punycode@2.3.1` is permitted from only two reviewed reverse origins: the
-existing jsdom chain through `whatwg-url@14` and `tr46@5`, or the exact
-contiguous suffix `eslint@10.8.1 → ajv@6.15.0 → uri-js@4.4.1`. Wrappers
-may precede ESLint, but no version drift or intermediate package is allowed,
-and the why graph must explain that exact ancestor suffix. Lock/why
-reconciliation separately proves the same versions for the watched URL and
-punycode packages. Adding or upgrading either origin requires a new
-reverse-path review; this is not a general allowance for every `punycode@2`
-path.
+`pnpm why --json` reverse paths; reject the obsolete `cross-fetch` chain; and
+admit only the explicit, versioned remaining origins encoded in that executable
+allowlist. This spec does not duplicate the package versions or ancestor
+suffixes. Adding or upgrading a watched origin requires a new reverse-path
+review and matching checker/test change; it is not a general allowance for
+every userland `punycode` path.
 
 The report fails closed on malformed active modules, non-canonical watched
 lock entries, package/snapshot disagreement, unexplained aliases, and watched

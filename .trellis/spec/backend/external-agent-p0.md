@@ -811,38 +811,30 @@ fn observe_on_host(_) -> DesktopObservation { /* Windows implied */ }
 // Linux: unknown, not a product host
 ```
 
-### Design Decision: Qoder 远端版本来自 first-party yml，安装包仍是三条 archived alias
+### Qoder remote version and archived installer aliases
 
-**Context**: 2026-08-25 归档任务确认官网只有三条 `/releases/latest/` 安装包
-（Windows User-x64 EXE、macOS ARM64 DMG、macOS Intel DMG），当时
-`latest.yml` 返回 403，因此远端 semver 保持 unknown。2026-08-26 同一 host
-的 `latest.yml` / `latest-mac.yml` 已可读，且顶层 `version` 与本机
-`CFBundleShortVersionString` 同族（例如本地 `0.9.12`、yml `0.9.15`）。
-
-**Options Considered**:
-
-1. 继续把远端版本留空，UI 永远「未确认」
-2. 从 Last-Modified / 更新日志猜 semver
-3. 读取 yml 的顶层 `version`，但安装仍只用归档的三条 alias（不用 yml 里的 zip）
-
-**Decision**: Option 3. Windows ARM64 仍 `platform_unsupported`。yml 的
-`files[].url` / `sha512` 不是 admission。
-
-**Example**:
+- Display version may come only from the unindented top-level `version` in a
+  bounded, schema-valid first-party `latest.yml` / `latest-mac.yml` response.
+  Do not infer semver from Last-Modified, release prose, a filename, or another
+  host.
+- Installer admission remains the closed archived-alias set below. The yml
+  `files[].url` / `sha512` values are metadata, not admitted package sources.
+- Windows ARM64 remains `platform_unsupported` until a separately reviewed
+  first-party artifact contract is added.
 
 ```text
 Qoder artifact = QoderWorkCN-Setup-User-x64.exe | QoderWorkCN-arm64.dmg | QoderWorkCN-x64.dmg
 Qoder display_version = latest.yml / latest-mac.yml unindented version:
-TRAE local comparable = product.json tronBuildVersion, not appVersion 0.1.51
+TRAE local comparable = product.json tronBuildVersion, not appVersion
 ```
 
-**Extensibility**: 若 yml 再次 403 或 schema 漂移，fail closed 到官网页；
-不要退回 Last-Modified。
+If the yml becomes unavailable or its schema drifts, fail closed to unknown
+version and official-page guidance; never fall back to Last-Modified.
 
-### Common Mistake: 把调研时的版本 URL 当成 fallback
+### Common Mistake: treating a researched version URL as a fallback
 
-**Symptom**: TRAE/WorkBuddy API fails and the installer still downloads
-`2.3.76922` / `5.3.14.36279234`.
+**Symptom**: a vendor API fails and the installer still downloads a package URL
+copied from an earlier investigation.
 
 **Cause**: Treating a research fixture as a stale-recovery package.
 
@@ -924,8 +916,8 @@ constants.
 
 ### TRAE model observation
 
-TRAE Work CN is the catalog product name. After v0.1.18 the desktop app is
-the renamed TRAE SOLO; the live store on this host is still TRAE SOLO CN
+TRAE Work CN is the catalog product name. The desktop app is the renamed TRAE
+SOLO; the live store on this host is still TRAE SOLO CN
 `User/globalStorage/state.vscdb` (macOS
 `~/Library/Application Support/TRAE SOLO CN/...`). There is no separate
 `Application Support/TRAE Work CN` folder. Bundle id remains

@@ -1,27 +1,5 @@
 # V2 Agent Directory and Models Quick-Setup Contract
 
-> **Frontend Interaction V3 override — 2026-08-26**
-> `SUPERSEDES_DIRECT_JUMPS_ONLY`: clauses below that restrict the Agent
-> directory to direct capability jumps, forbid a capability-item/configuration
-> surface, or require the previous master/detail-only information architecture
-> are superseded. `/agents` now owns a catalog-first software directory plus a
-> selected-Agent configuration shell with four sections:
-> `模型 / Skills / MCP / 提示词`, a return-to-directory action, and entry
-> points to the existing global management routes.
-> `SUPERSEDES_INSTALLED_ONLY_DIRECTORY`: clauses below that keep the idle
-> directory empty, require a manual first 「开始扫描」, or project only
-> installed cards are superseded. Catalog success shows all seven supported
-> agents immediately; first entry auto-scans readiness in the background;
-> scan/job state gates configure and install/update, not row existence.
-> The capability matrix, native data owners, installer boundaries,
-> unsupported/assisted semantics, browser-authority limits, official links and
-> vendor-specific write rules in this document remain fully authoritative.
-> In particular, V3 must not turn Qoder model writes or TRAE assisted model
-> setup into direct writes, and must not invent prompt writers for unsupported
-> Agent targets. Tests for the old direct-jump-only or installed-only layout
-> must be replaced by catalog-first scan/configure/lifecycle and
-> capability-honesty tests.
-
 ## 1. Scope / Trigger
 
 Read this contract before changing the V2 Agent directory, Models quick setup,
@@ -391,17 +369,15 @@ and a revision, never `ak` / `sk` / `apiKey`.
   mode, evidence, variant, or runtime values fail closed in the
   Tauri adapter. The renderer never guesses a legacy shape or carries a second
   URL table.
-- The UI renders catalog capability mode/reason/evidence and the separate
-  runtime capability state; it does not derive
-  capability from the display name, icon, URL, installed files, or a duplicate
-  frontend matrix. Agent details render only `mode === "direct"` capabilities
-  and the matching jumps (`/models?target=` when `models.write` is `direct`,
-  `/skills` when Skills read/write is `direct`, `/mcp` when `mcp.write` is
-  `direct`). They omit the capability-item grid, catalog `description`,
-  application status, configuration overviews,
-  unsupported lists, support counts, usage notes, Qoder Hooks editors, and
-  MCP validation panels. Official catalog links render through
-  `CatalogOfficialLinks`.
+- The renderer never derives capability from the display name, icon, URL,
+  installed files, or a duplicate frontend matrix. The directory omits a
+  generic capability-item grid, unsupported list, support count, Qoder Hooks
+  editor, and MCP validation panel. The selected-Agent configuration shell is
+  the fixed `模型 / Skills / MCP / 提示词` surface defined below; each section
+  consumes only its existing feature port and preserves the catalog's
+  `direct` / `assisted` / `unsupported` semantics. Official catalog links stay
+  on the directory through `CatalogOfficialLinks`, not as a second writer in
+  the configuration shell.
 - Every entry resolves through `src/v2/shared/assets/agents`. QoderWork CN uses
   the reviewed official 256x256 PNG extracted from QoderWork CN.app; TRAE uses
   the reviewed official 48x48 PNG without recoloring or runtime upscaling
@@ -437,10 +413,11 @@ export type AgentSection = (typeof AGENT_SECTION_IDS)[number];
   reads out of the list. Do not replace missing software with skeleton cards.
 - Scan state lives in `useAgentDirectoryScan`. Status is
   `idle | scanning | complete`. `start()` is a no-op while `scanning`.
-  First directory entry on a mounted Agents page session auto-starts one
-  background scan (`autoStart: true`); returning to `/agents` while the
-  keep-alive page instance survives must not unconditionally rescan. Manual
-  「重新扫描」 remains. Each catalog id refetches `useAgentInstallReadiness`;
+  First directory entry on a mounted Agents route session auto-starts one
+  background scan (`autoStart: true`); moving between the directory and one
+  Agent configuration inside that mounted route must not unconditionally
+  rescan. Manual 「重新扫描」 remains. Each catalog id refetches
+  `useAgentInstallReadiness`;
   a query error or thrown refetch is a technical failure, never converted to
   `not_installed`, and never drops the row.
 - Per-row overlay (`observeAgentDirectoryRow`) is pending until that id
@@ -575,28 +552,27 @@ export type AgentSection = (typeof AGENT_SECTION_IDS)[number];
   在 OpenCode 中完成模型设置.
 - All seven selectors use the same reviewed local Agent asset map. No selector
   image is loaded from a remote URL.
-- Target state is component-local. API keys and form content never enter the
-  hash, URL query, local/session storage, or cross-target state. The Models
-  page stays mounted after its first visit: leaving for another primary route
-  hides it (`hidden`/`inert`) instead of unmounting, so in-session form
-  content including API keys remains until a write's terminal outcome or the
-  persistent page actually unmounts. The other five primary routes keep the same
-  in-session page. Target panels that have been opened stay
-  mounted and hidden the same way. Process reload still starts empty.
+- The selected target is the closed non-secret `target` hash-search value.
+  Missing or unknown values resolve to QoderWork CN. Unsaved form fields and
+  API keys remain component-local and never enter the hash, local/session
+  storage, query cache, or cross-target state; sanitized authoritative status
+  and model-ID snapshots may use their owning scoped queries. Only the selected
+  target panel is mounted. Changing target or leaving the Models route unmounts
+  the panel, clears its unsaved local draft/credential state, and cancels its
+  owned in-flight UI work. Revisiting a target or reloading starts from its
+  default local view and authoritative query data.
 - TRAE Work CN custom models are owned by TRAE cloud `model` / `model_list`.
-  Catalog label TRAE Work CN is not a second Application Support folder; after
-  v0.1.18 it is the renamed TRAE SOLO desktop app whose store is still TRAE
-  SOLO CN. FyAgent `get_traework_model_ids` may read the TRAE SOLO CN
+  Catalog label TRAE Work CN is not a second Application Support folder; it
+  maps to the renamed TRAE SOLO desktop app whose store is still TRAE SOLO CN.
+  FyAgent `get_traework_model_ids` may read the TRAE SOLO CN
   `state.vscdb` colon key `{userId}:AI.agent.model.model_list_map` as a
   secret-free observation of currently cached custom IDs. FyAgent must not
   fetch-and-save into that sqlite document: TRAE launch refreshes it from
   cloud `model_list` and drops local-only rows. The Models panel states that
   custom models must be added in TRAE Work CN and never claims sqlite writes
-  will appear in the Work CN UI. Never 请回 TRAE 保存. Switching Models targets
-  or hiding the page for another primary route does not clear other targets'
-  in-session forms; those values still never enter query cache, URL, or
-  storage. Actual unmount of the persistent Models page still clears keys and
-  cancels an in-flight probe.
+  will appear in the Work CN UI. Never 请回 TRAE 保存. Switching targets or
+  leaving the route unmounts the TRAE panel and cancels its owned in-flight
+  observation/probe; there is no hidden cross-target form retained in memory.
 
 ### Design Decision: TRAE Work CN 自定义模型不写本地库
 
@@ -684,11 +660,11 @@ fetch/save controls.
 - Cache only sanitized status and model-ID DTOs. The API key lives in component
   memory and native discovery/save requests. A successful or failed fetch keeps
   the key so the user can review the draft and save without re-entering it.
-  Save terminal outcomes still clear the key. Switching Models targets, hiding
-  the page behind another primary route, and in-session keep-alive do not.
-  Actual unmount of the persistent Models page still clears it. A visibility
-  toggle may reveal the value in the input only; it never enters query cache,
-  URL, storage, notices, or logs.
+  Save terminal outcomes clear the key. Switching Models targets or leaving the
+  Models route unmounts the active panel and clears unsaved component-memory
+  credentials; revisiting a target starts from a fresh local draft. A
+  visibility toggle may reveal the value in the input only; it never enters
+  query cache, URL, storage, notices, or logs.
 - Existing third-party model IDs are grouped by model family and start
   collapsed. Clicking a chip remove asks for confirmation that the model
   configuration will be deleted and cannot be recovered; confirming writes
@@ -1116,9 +1092,9 @@ Required focused coverage includes:
   Query/DOM secret-negative scans;
 - StrictMode replay, repeat-click locks, no API
   key in DOM/hash/localStorage/sessionStorage/query cache or logged fixtures.
-  Models page keep-alive across primary-route switches and previously opened
-  target panels; the other primary routes keep the same in-session page.
-  Secrets stay in component memory only. Immediate WorkBuddy
+  Models target switches and primary-route navigation unmount inactive panels,
+  clear unsaved route-local fields and credentials, and restore each revisited
+  target's default local view. Secrets stay in component memory only. Immediate WorkBuddy
   existing-model delete after an unrecoverable-delete confirmation.
 - Agent directory catalog-first coverage: seven articles after catalog
   success, first-entry auto-scan, per-row pending/scanning, configure only

@@ -71,7 +71,7 @@ src-tauri/icons/tray/macos/statusbar_template_3x.png 3x template
 - Do not change `src-tauri/icons/dmg-background.png`, third-party provider
   artwork, screenshots, the established FyAgent `identifier`, deep-link
   schemes, data directories, internal package names, or `LICENSE` as part of a
-  future icon-only update. The 2026 clean-break rename is an application
+  future icon-only update. The clean-break identity transition is an application
   identity change, not an icon-generation rule. The DMG background is owned by
   the macOS installer packaging path: generate it with
   `node scripts/release/render-dmg-background.mjs --apply`, keep it
