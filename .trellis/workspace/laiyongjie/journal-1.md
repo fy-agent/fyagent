@@ -26,3 +26,24 @@ Moved portable CI and Release control-plane jobs to Ubuntu, routed Windows ARM64
 ### Status
 
 [OK] **Completed**
+
+
+## Session 2: Fix hosted Linux CI toolchain admission
+
+**Date**: 2026-08-30
+**Task**: Fix hosted Linux CI toolchain admission
+**Branch**: `ci/runner-platform-boundaries`
+
+### Summary
+
+Admitted hosted Linux through a dependency-free POSIX helper, preserved Windows and unknown-platform fail-closed behavior, and verified PR #166 locally and in GitHub Actions run 33295990452.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `287b9c0d` | (see git log) |
+
+### Status
+
+[OK] **Completed**
