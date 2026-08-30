@@ -1,5 +1,8 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 
+import { requestOpenAuthCenter } from "../../shared/features/auth-center-handoff";
+import { appendAgentReturnToPath } from "../../shared/features/agent-navigation";
 import type { ProductDirectoryEntry } from "../../shared/features/directory";
 import {
   useOpenCodeModelSnapshot,
@@ -13,7 +16,12 @@ import type {
   ProviderSummaryQueryData,
 } from "../../shared/features/types";
 import { FeatureSearch } from "../../shared/ui/FeatureSearch";
-import { EmptyState, InlineNotice, Spinner } from "../../shared/ui/primitives";
+import {
+  Button,
+  EmptyState,
+  InlineNotice,
+  Spinner,
+} from "../../shared/ui/primitives";
 
 import { AgentSectionHeader } from "./AgentSectionHeader";
 
@@ -52,6 +60,7 @@ export function AgentModelsSection({
   catalogEntry: AgentCatalogEntry;
   onOpenManagement: () => void;
 }) {
+  const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const workBuddyStatus = useWorkBuddyStatus(entry.agentId === "workbuddy");
   const workBuddyModels = useWorkBuddyModelIds(entry.agentId === "workbuddy");
@@ -139,13 +148,68 @@ export function AgentModelsSection({
       .includes(normalizedSearch),
   );
 
+  const openSuperGrokModels = (target: "codex" | "claude" | "workbuddy") => {
+    navigate(
+      appendAgentReturnToPath(`/models?target=${target}`, {
+        agentId: entry.agentId,
+        section: "models",
+      }),
+    );
+  };
+
   return (
     <section className="fy-agent-config-section" aria-label="Agent 模型配置">
       <AgentSectionHeader
         title="当前模型"
-        actionLabel="进入模型管理"
+        description={
+          entry.agentId === "grokbuild"
+            ? "官方 grok login 只给 Grok Build 自己用。终端里自己跑也可以。"
+            : entry.agentId === "codex"
+              ? "SuperGrok 扫码在认证中心。绑定入口在模型管理，不是 grok login。"
+              : undefined
+        }
+        actionLabel={
+          entry.agentId === "grokbuild" ? "配置 API 钥匙" : "进入模型管理"
+        }
         onAction={onOpenManagement}
       />
+      {entry.agentId === "grokbuild" ? (
+        <>
+          <InlineNotice tone="info">
+            {
+              "官方登录不会写进 Codex / Claude / WorkBuddy。要用 SuperGrok，先去认证中心扫码，再进对应软件的模型管理绑定。「配置 API 钥匙」是第三条路，不是登录的下一步。"
+            }
+          </InlineNotice>
+          <div className="fy-agent-action-row">
+            <Button onClick={() => requestOpenAuthCenter()}>
+              打开认证中心扫 SuperGrok
+            </Button>
+            <Button onClick={() => openSuperGrokModels("codex")}>
+              去 Codex 绑定 SuperGrok
+            </Button>
+            <Button onClick={() => openSuperGrokModels("claude")}>
+              去 Claude 绑定 SuperGrok
+            </Button>
+            <Button onClick={() => openSuperGrokModels("workbuddy")}>
+              去 WorkBuddy 用 SuperGrok
+            </Button>
+          </div>
+        </>
+      ) : null}
+      {entry.agentId === "codex" ? (
+        <>
+          <InlineNotice tone="info">
+            {
+              "Grok Build 里的 grok login 进不了 Codex。要先在认证中心扫 SuperGrok，再进入模型管理创建 Provider。"
+            }
+          </InlineNotice>
+          <div className="fy-agent-action-row">
+            <Button onClick={() => requestOpenAuthCenter()}>
+              打开认证中心扫 SuperGrok
+            </Button>
+          </div>
+        </>
+      ) : null}
       {mode !== "unsupported" ? (
         <FeatureSearch
           value={search}

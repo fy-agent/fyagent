@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/backend/reuse.md", "reason": "Reject a second executor"}
+{"file": ".trellis/spec/backend/change-plan-executor.md", "reason": "Reject a fourth adapter or secrets in the plan"}
+{"file": ".trellis/spec/frontend/reuse.md", "reason": "Reject importing AuthCenterPanel into src/v2"}
+{"file": ".trellis/tasks/08-31-grok-supergrok-to-codex/research/current-supergrok-codex-path.md", "reason": "Claude Desktop stays on V1 bind; Codex needs a narrow admission only"}
+{"file": ".trellis/tasks/08-31-grok-first-class-iteration/research/hil-matrix.md", "reason": "H5-H7 and H9 on both machines; do not mark H8"}
+{"file": ".trellis/tasks/08-31-grok-first-class-iteration/summary.md", "reason": "One target per plan; failure must not claim other tools"}

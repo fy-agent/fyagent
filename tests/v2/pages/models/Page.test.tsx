@@ -23,6 +23,7 @@ import {
   changeJobWire,
   changeJobWorkBuddyWire,
   changePlanUpsertWire,
+  changePlanWire,
   changePlanWorkBuddyWire,
 } from "../../fixtures/changePlans";
 
@@ -232,6 +233,15 @@ function workBuddyPorts(): FeaturePorts {
       revision: "revision-1",
     }),
   );
+  ports.workbuddy.getXaiManagedSummary = vi.fn(async () => ({
+    authenticated: false,
+    defaultAccountId: null,
+    accounts: [],
+  }));
+  ports.workbuddy.fetchXaiManagedModels = vi.fn(async () => ({
+    models: [],
+    truncated: false,
+  }));
   return ports;
 }
 
@@ -614,6 +624,41 @@ describe("V2 Models page", () => {
     expect(screen.getByText("model-a")).toBeVisible();
     expect(screen.getByLabelText("API Key")).toHaveValue("fetch-secret");
     expect(document.body).not.toHaveTextContent("fetch-secret");
+  });
+
+  it("fills WorkBuddy drafts from a logged-in SuperGrok account without copying the refresh token", async () => {
+    const user = userEvent.setup();
+    const ports = workBuddyPorts();
+    ports.workbuddy.getXaiManagedSummary = vi.fn(async () => ({
+      authenticated: true,
+      defaultAccountId: "acct-xai",
+      accounts: [
+        {
+          id: "acct-xai",
+          label: "fixture-login",
+          requiresReauth: false,
+        },
+      ],
+    }));
+    ports.workbuddy.fetchXaiManagedModels = vi.fn(async () => ({
+      models: ["grok-4.5"],
+      truncated: false,
+    }));
+    renderPage(ports, "workbuddy");
+
+    expect(
+      await screen.findByText(/已看到认证中心里的 SuperGrok 账号/),
+    ).toBeVisible();
+    await user.click(
+      screen.getByRole("button", { name: "用 SuperGrok 拉名单" }),
+    );
+    expect(await screen.findByText("已用 SuperGrok 读取 1 个模型")).toBeVisible();
+    expect(ports.workbuddy.fetchXaiManagedModels).toHaveBeenCalledWith(
+      "acct-xai",
+    );
+    expect(screen.getByText("grok-4.5")).toBeVisible();
+    expect(screen.getByLabelText("服务地址")).toHaveValue("https://api.x.ai/v1");
+    expect(document.body).not.toHaveTextContent("refresh");
   });
 
   it("redacts WorkBuddy fetch failures and keeps the submitted key", async () => {
@@ -1690,5 +1735,173 @@ describe("V2 Models page", () => {
       apiKey: "oc-key",
       modelId: "gpt-test",
     });
+  });
+
+  it("binds a logged-in SuperGrok account to Claude Code and Claude Desktop without copying the refresh token", async () => {
+    const user = userEvent.setup();
+    const ports = createBrowserFeaturePorts();
+    let currentClaudeId = "";
+    ports.providers.getSummary = vi.fn(async () => ({
+      providers: currentClaudeId
+        ? {
+            [currentClaudeId]: {
+              id: currentClaudeId,
+              name: "xAI (Grok)",
+            },
+          }
+        : {},
+      currentId: currentClaudeId,
+      writeTargets: [...TEST_PROVIDER_WRITE_TARGETS],
+    }));
+    ports.workbuddy.getXaiManagedSummary = vi.fn(async () => ({
+      authenticated: true,
+      defaultAccountId: "acct-xai",
+      accounts: [
+        {
+          id: "acct-xai",
+          label: "fixture-login",
+          requiresReauth: false,
+        },
+      ],
+    }));
+    ports.providers.bindXaiManaged = vi.fn(async (request) => {
+      currentClaudeId =
+        request.app === "claude-desktop"
+          ? "fyagent-v2-xai-oauth-claude-desktop"
+          : "fyagent-v2-xai-oauth-claude";
+      return {
+        providerId: currentClaudeId,
+        providerName: "xAI (Grok)",
+        app: request.app,
+        alreadyBound: false,
+        activated: true,
+      };
+    });
+    renderPage(ports, "claude");
+
+    expect(
+      await screen.findByText(/已登录 SuperGrok（fixture-login）/),
+    ).toBeVisible();
+    await user.click(
+      screen.getByRole("button", { name: "绑定到 Claude Code" }),
+    );
+    const codeDialog = await screen.findByRole("dialog", {
+      name: "绑定 SuperGrok 到 Claude Code",
+    });
+    await user.click(
+      within(codeDialog).getByRole("button", { name: "确认绑定" }),
+    );
+    expect(await screen.findByText("已绑定 SuperGrok 到 Claude Code")).toBeVisible();
+    expect(screen.getByText(/没有改 Codex 或 WorkBuddy/)).toBeVisible();
+    expect(ports.providers.bindXaiManaged).toHaveBeenCalledWith({
+      app: "claude",
+      accountId: "acct-xai",
+    });
+
+    await user.click(
+      screen.getByRole("button", { name: "绑定到 Claude Desktop" }),
+    );
+    const desktopDialog = await screen.findByRole("dialog", {
+      name: "绑定 SuperGrok 到 Claude Desktop",
+    });
+    await user.click(
+      within(desktopDialog).getByRole("button", { name: "确认绑定" }),
+    );
+    expect(
+      await screen.findByText("已绑定 SuperGrok 到 Claude Desktop"),
+    ).toBeVisible();
+    expect(ports.providers.bindXaiManaged).toHaveBeenLastCalledWith({
+      app: "claude-desktop",
+      accountId: "acct-xai",
+    });
+    expect(document.body).not.toHaveTextContent("refresh");
+  });
+
+  it("creates a Codex SuperGrok Provider and leaves activation to the existing switch plan", async () => {
+    const user = userEvent.setup();
+    const ports = createBrowserFeaturePorts();
+    let currentCodexProviders: Record<string, { id: string; name: string }> =
+      {};
+    ports.providers.getSummary = vi.fn(async () => ({
+      providers: { ...currentCodexProviders },
+      currentId: "current-codex",
+      writeTargets: [...TEST_PROVIDER_WRITE_TARGETS],
+    }));
+    ports.workbuddy.getXaiManagedSummary = vi.fn(async () => ({
+      authenticated: true,
+      defaultAccountId: "acct-xai",
+      accounts: [
+        {
+          id: "acct-xai",
+          label: "fixture-login",
+          requiresReauth: false,
+        },
+      ],
+    }));
+    ports.providers.applyQuickSetupWithResult = vi.fn();
+    ports.changePlans.createCodexProviderSwitchPlan = vi.fn(async () => ({
+      ...changePlanWire,
+      targetProviderId: "fyagent-v2-xai-oauth-codex",
+      targetProviderName: "xAI (Grok) OAuth",
+    }));
+    ports.providers.bindXaiManaged = vi.fn(async () => {
+      currentCodexProviders = {
+        "fyagent-v2-xai-oauth-codex": {
+          id: "fyagent-v2-xai-oauth-codex",
+          name: "xAI (Grok) OAuth",
+        },
+      };
+      return {
+        providerId: "fyagent-v2-xai-oauth-codex",
+        providerName: "xAI (Grok) OAuth",
+        app: "codex",
+        alreadyBound: false,
+        activated: false,
+      };
+    });
+    renderPage(ports, "codex");
+
+    expect(
+      await screen.findByText(/可创建 xAI \(Grok\) OAuth/),
+    ).toBeVisible();
+    await user.click(
+      screen.getByRole("button", { name: "创建 SuperGrok Provider" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "创建 SuperGrok Provider",
+    });
+    await user.click(within(dialog).getByRole("button", { name: "确认绑定" }));
+    expect(await screen.findByText("已创建 xAI (Grok) OAuth")).toBeVisible();
+    expect(screen.getByText(/没有改 Claude 或 WorkBuddy/)).toBeVisible();
+    expect(ports.providers.bindXaiManaged).toHaveBeenCalledWith({
+      app: "codex",
+      accountId: "acct-xai",
+    });
+    await waitFor(() =>
+      expect(ports.changePlans.createCodexProviderSwitchPlan).toHaveBeenCalledWith(
+        "fyagent-v2-xai-oauth-codex",
+      ),
+    );
+    expect(ports.providers.applyQuickSetupWithResult).not.toHaveBeenCalled();
+    expect(document.body).not.toHaveTextContent("refresh");
+  });
+
+  it("keeps an empty Grok Build draft silent and free of grok login copy", async () => {
+    const ports = createBrowserFeaturePorts();
+    ports.providers.getSummary = vi.fn(async () => ({
+      providers: {},
+      currentId: "",
+      writeTargets: [...TEST_PROVIDER_WRITE_TARGETS],
+    }));
+    renderPage(ports, "grokbuild");
+
+    await screen.findByTestId("provider-status");
+    expect(screen.getByLabelText("API Key")).toBeVisible();
+    expect(screen.queryByText(/grok login/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(document.querySelector(".fy-control-field-error")).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "绑定到 Claude Code" }),
+    ).not.toBeInTheDocument();
   });
 });

@@ -19,6 +19,8 @@ import type { AgentCatalogId } from "../../shared/features/types";
 import { LifecycleTargetPicker } from "../../shared/ui/LifecycleTargetPicker";
 import { Button, InlineNotice, Spinner } from "../../shared/ui/primitives";
 
+import { requestOpenAuthCenter } from "../../shared/features/auth-center-handoff";
+
 import {
   isAgentAuthSessionTerminal,
   useAgentAuthSession,
@@ -44,7 +46,9 @@ function observationSummary(observation: AgentAuthObservation): string {
         ? "尚未连接 Provider"
         : `已连接 ${observation.providers.length} 个 Provider`;
     case "handoff_only":
-      return "仅支持打开官方认证入口";
+      return observation.agentId === "grokbuild"
+        ? "仅支持打开官方认证入口（终端 grok login）"
+        : "仅支持打开官方认证入口";
     case "fyagent_managed":
       return "由 FyAgent 认证中心管理";
     case "unavailable":
@@ -61,9 +65,11 @@ function observationDescription(observation: AgentAuthObservation): string {
     case "provider_connections":
       return "OpenCode 按 Provider 管理连接，不提供全局登录布尔值。";
     case "handoff_only":
-      return "FyAgent 只能把操作交给官方应用或 CLI，无法验证最终账号状态。";
+      return observation.agentId === "grokbuild"
+        ? "软件只能开门，不能验证是否已经登录，所以这里不会出现已登录。终端里自己运行 grok login / grok logout 也可以。这条路只给 Grok Build 自己用，不会写进 Codex。SuperGrok 扫码请去认证中心。"
+        : "FyAgent 只能把操作交给官方应用或 CLI，无法验证最终账号状态。";
     case "fyagent_managed":
-      return "Codex 托管账号继续由现有认证中心负责，不在此处复制 OAuth 流程。";
+      return "Codex 托管账号请去认证中心管理。SuperGrok 扫码也在认证中心，不要在这里登录，也不要去终端跑 grok login。";
     case "unavailable":
       return "认证观察器不可用；不会读取厂商凭据文件或推断登录状态。";
   }
@@ -103,7 +109,10 @@ function stageCopy(snapshot: AgentAuthSessionSnapshot): string {
   }
 }
 
-function reasonCopy(reason: AgentAuthReasonCode | null): string | null {
+function reasonCopy(
+  reason: AgentAuthReasonCode | null,
+  agentId?: AgentCatalogId,
+): string | null {
   switch (reason) {
     case null:
       return null;
@@ -126,9 +135,11 @@ function reasonCopy(reason: AgentAuthReasonCode | null): string | null {
     case "timed_out":
       return "在限定时间内没有获得可验证结果。";
     case "handoff_only":
-      return "已完成入口交接，但没有权威状态可验证。";
+      return agentId === "grokbuild"
+        ? "已打开终端入口。请完成 grok login 或 grok logout。没有权威状态可验证，不会显示已登录。"
+        : "已完成入口交接，但没有权威状态可验证。";
     case "managed_by_auth_center":
-      return "请在现有认证中心管理此账号。";
+      return "请在现有认证中心管理此账号。SuperGrok 扫码也在那里，不是 grok login。";
     case "target_selection_required":
       return "检测到多份安装，请选择认证目标。";
     case "target_changed":
@@ -145,16 +156,25 @@ function reasonCopy(reason: AgentAuthReasonCode | null): string | null {
   }
 }
 
-function errorReason(error: unknown): string {
+function errorReason(error: unknown, agentId?: AgentCatalogId): string {
   if (typeof error === "object" && error !== null && "reasonCode" in error) {
     const reason = (error as { reasonCode?: AgentAuthReasonCode }).reasonCode;
-    if (reason) return reasonCopy(reason) ?? "认证操作未完成。";
+    if (reason) return reasonCopy(reason, agentId) ?? "认证操作未完成。";
   }
   return "认证操作未完成，请刷新状态后重试。";
 }
 
 function terminalTone(snapshot: AgentAuthSessionSnapshot): "info" | "warning" {
-  return snapshot.stage === "verified" ? "info" : "warning";
+  return snapshot.stage === "verified" || snapshot.stage === "handoff_complete"
+    ? "info"
+    : "warning";
+}
+
+function canRefreshObservation(observation: AgentAuthObservation): boolean {
+  return (
+    observation.kind === "account" ||
+    observation.kind === "provider_connections"
+  );
 }
 
 export function AgentAuthStatusPanel(props: {
@@ -306,12 +326,23 @@ function AgentAuthStatusPanelInner({
           <h3>认证状态</h3>
           <p>{observationDescription(observation)}</p>
         </div>
-        <Button
-          disabled={session.busy}
-          onClick={() => void refreshObservation()}
-        >
-          刷新状态
-        </Button>
+        <div className="fy-agent-action-row">
+          {observation.agentId === "grokbuild" ||
+          observation.agentId === "workbuddy" ||
+          observation.kind === "fyagent_managed" ? (
+            <Button onClick={() => requestOpenAuthCenter()}>
+              打开认证中心
+            </Button>
+          ) : null}
+          {canRefreshObservation(observation) ? (
+            <Button
+              disabled={session.busy}
+              onClick={() => void refreshObservation()}
+            >
+              刷新状态
+            </Button>
+          ) : null}
+        </div>
       </div>
       <div className="fy-agent-auth-panel" data-auth-kind={observation.kind}>
         <strong>{observationSummary(observation)}</strong>
@@ -390,12 +421,12 @@ function AgentAuthStatusPanelInner({
         ) : null}
         {session.snapshot?.reasonCode ? (
           <p className="fy-agent-auth-reason">
-            {reasonCopy(session.snapshot.reasonCode)}
+            {reasonCopy(session.snapshot.reasonCode, agentId)}
           </p>
         ) : null}
         {session.error ? (
           <InlineNotice tone="warning">
-            {errorReason(session.error)}
+            {errorReason(session.error, agentId)}
           </InlineNotice>
         ) : null}
       </div>

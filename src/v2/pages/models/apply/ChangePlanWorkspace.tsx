@@ -20,10 +20,14 @@ export function ChangePlanWorkspace({
   active,
   providers,
   currentId,
+  preferredTargetId,
+  autoCreatePreferred = false,
 }: {
   active: boolean;
   providers: ProviderSummaryMap;
   currentId: string;
+  preferredTargetId?: string;
+  autoCreatePreferred?: boolean;
 }) {
   const { ports } = useFeatures();
   const targets = useMemo(
@@ -31,7 +35,7 @@ export function ChangePlanWorkspace({
       Object.values(providers).filter((provider) => provider.id !== currentId),
     [currentId, providers],
   );
-  const [targetId, setTargetId] = useState("");
+  const [targetId, setTargetId] = useState(preferredTargetId ?? "");
   const [plan, setPlan] = useState<ChangePlan | null>(null);
   const [job, setJob] = useState<ChangeJobSnapshot | null>(null);
   const [error, setError] = useState<{
@@ -40,6 +44,7 @@ export function ChangePlanWorkspace({
   } | null>(null);
   const [busy, setBusy] = useState(false);
   const requestRevision = useRef(0);
+  const autoCreatedFor = useRef("");
   const recoverableJobs = useRecoverableChangeJobs(active);
   const effectiveTargetId = targets.some((target) => target.id === targetId)
     ? targetId
@@ -47,6 +52,19 @@ export function ChangePlanWorkspace({
   const visiblePlan =
     plan?.targetProviderId === effectiveTargetId ? plan : null;
   const visibleJob = job?.targetProviderId === effectiveTargetId ? job : null;
+
+  useEffect(() => {
+    if (
+      preferredTargetId &&
+      preferredTargetId !== targetId &&
+      Object.values(providers).some(
+        (provider) =>
+          provider.id === preferredTargetId && provider.id !== currentId,
+      )
+    ) {
+      setTargetId(preferredTargetId);
+    }
+  }, [currentId, preferredTargetId, providers, targetId]);
 
   const selectTarget = (nextTargetId: string) => {
     requestRevision.current += 1;
@@ -76,6 +94,20 @@ export function ChangePlanWorkspace({
       if (requestRevision.current === revision) setBusy(false);
     }
   };
+
+  useEffect(() => {
+    if (
+      !autoCreatePreferred ||
+      !preferredTargetId ||
+      effectiveTargetId !== preferredTargetId ||
+      autoCreatedFor.current === preferredTargetId ||
+      busy
+    ) {
+      return;
+    }
+    autoCreatedFor.current = preferredTargetId;
+    void createPlan();
+  }, [autoCreatePreferred, busy, effectiveTargetId, preferredTargetId]);
 
   const applyPlan = async (input: {
     readonly planId: string;
@@ -140,7 +172,9 @@ export function ChangePlanWorkspace({
     >
       <h3>切换已保存的 Provider</h3>
       <p className="fy-models-muted">
-        先生成零写入预览，再单次确认应用。当前 Provider 不会列为目标。
+        先生成零写入预览，再单次确认应用。当前 Provider 不会列为目标。SuperGrok
+        扫码请先去认证中心；登录后才能切换已绑定的 xAI (Grok) OAuth
+        Provider。不要在这里填 grok login，也不要另开一套登录。
       </p>
       {(recoverableJobs.data?.length ?? 0) > 0 ? (
         <InlineNotice tone="warning">

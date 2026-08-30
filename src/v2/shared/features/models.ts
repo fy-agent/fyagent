@@ -79,6 +79,33 @@ export interface WorkBuddyFetchModelsResult {
   truncated: boolean;
 }
 
+export interface XaiManagedAccountRef {
+  id: string;
+  label: string;
+  requiresReauth: boolean;
+}
+
+export interface XaiManagedSummary {
+  authenticated: boolean;
+  defaultAccountId: string | null;
+  accounts: XaiManagedAccountRef[];
+}
+
+export type XaiManagedBindApp = "claude" | "claude-desktop" | "codex";
+
+export interface BindXaiManagedRequest {
+  app: XaiManagedBindApp;
+  accountId?: string | null;
+}
+
+export interface BindXaiManagedResult {
+  providerId: string;
+  providerName: string;
+  app: string;
+  alreadyBound: boolean;
+  activated: boolean;
+}
+
 export interface WorkBuddySaveModelsRequest
   extends WorkBuddyFetchModelsRequest {
   selectedModelIds: string[];

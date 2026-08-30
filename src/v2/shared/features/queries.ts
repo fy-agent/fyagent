@@ -26,6 +26,7 @@ export const featureKeys = {
     ["v2", "providers", app, "summary"] as const,
   workbuddyStatus: ["v2", "workbuddy", "status"] as const,
   workbuddyModelIds: ["v2", "workbuddy", "model-ids"] as const,
+  xaiManagedSummary: ["v2", "xai-managed", "summary"] as const,
   traeWorkModelIds: ["v2", "trae-work", "model-ids"] as const,
   openCodeModelSnapshot: ["v2", "opencode", "model-snapshot"] as const,
   skills: ["v2", "skills", "installed"] as const,
@@ -126,6 +127,16 @@ export function useWorkBuddyModelIds(enabled = true) {
     queryKey: featureKeys.workbuddyModelIds,
     queryFn: ports.workbuddy.getModelIds,
     enabled,
+  });
+}
+
+export function useXaiManagedSummary(enabled = true) {
+  const { ports } = useFeatures();
+  return useQuery({
+    queryKey: featureKeys.xaiManagedSummary,
+    queryFn: ports.workbuddy.getXaiManagedSummary,
+    enabled,
+    retry: false,
   });
 }
 

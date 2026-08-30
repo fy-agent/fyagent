@@ -164,6 +164,9 @@ test("Agent V3 shows the full catalog, auto-scans, and reuses existing Skill and
 
   await configuration.getByRole("tab", { name: "Skills" }).click();
   await expect(page).toHaveURL(/#\/agents\?target=workbuddy&section=skills$/);
+  await expect(
+    configuration.getByRole("region", { name: "认证状态" }),
+  ).toHaveCount(0);
   const skillSwitch = configuration
     .getByRole("switch", {
       name: "WorkBuddy Skill 分配",
@@ -178,6 +181,9 @@ test("Agent V3 shows the full catalog, auto-scans, and reuses existing Skill and
 
   await configuration.getByRole("tab", { name: "MCP" }).click();
   await expect(page).toHaveURL(/#\/agents\?target=workbuddy&section=mcp$/);
+  await expect(
+    configuration.getByRole("region", { name: "认证状态" }),
+  ).toHaveCount(0);
   const mcpSwitch = configuration
     .getByRole("switch", {
       name: "WorkBuddy MCP 分配",
@@ -287,16 +293,31 @@ test("Agent Auth distinguishes verified sessions, handoff-only flows, and Auth C
 
   await openV2Page(page, "/agents?target=grokbuild&section=models");
   const grok = page.getByRole("region", { name: "Grok Build 配置" });
+  await expect(grok.getByText(/grok login/)).toBeVisible();
+  await expect(grok.getByRole("button", { name: "刷新状态" })).toHaveCount(0);
+  await expect(
+    grok.getByRole("button", { name: "配置 API 钥匙" }),
+  ).toBeVisible();
+  await expect(
+    grok.getByRole("button", { name: "打开认证中心扫 SuperGrok" }),
+  ).toBeVisible();
+  await expect(
+    grok.getByRole("button", { name: "去 Codex 绑定 SuperGrok" }),
+  ).toBeVisible();
   await grok.getByRole("button", { name: "登录", exact: true }).click();
   await expect(grok.getByText("已交给官方认证入口")).toBeVisible();
   await expect(grok.getByText("认证结果已验证")).toHaveCount(0);
+  await grok.getByRole("tab", { name: "Skills" }).click();
+  await expect(grok.getByRole("region", { name: "认证状态" })).toHaveCount(0);
 
   await openV2Page(page, "/agents?target=codex&section=models");
   const codex = page.getByRole("region", { name: "Codex 配置" });
   await expect(codex.getByText("由 FyAgent 认证中心管理")).toBeVisible();
+  await expect(codex.getByText(/grok login 进不了 Codex/)).toBeVisible();
   await expect(
     codex.getByRole("button", { name: "登录", exact: true }),
   ).toHaveCount(0);
+  await expect(codex.getByRole("button", { name: "刷新状态" })).toHaveCount(0);
 
   const calls = await featureFixtureCalls(page);
   expect(

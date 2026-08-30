@@ -482,7 +482,7 @@ export function createApplyViewModel(
           tone: "warning" as const,
           title: "无法安全生成变更计划",
           description:
-            "目标配置需要新的凭据材料，当前 Apply 不会接收或写入该凭据。",
+            "目标还缺可用凭据。如果这是 SuperGrok，请先去认证中心扫码，再生成切换计划。Apply 不会接收或写入钥匙。",
           statusLabel: "凭据条件不满足",
         }
       : mustRegenerate

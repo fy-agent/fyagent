@@ -10,17 +10,22 @@ import type {
   ChangePlanErrorCode,
 } from "../../shared/features/change-plans";
 import type { FeaturePorts } from "../../shared/features/ports";
+import { requestOpenAuthCenter } from "../../shared/features/auth-center-handoff";
 import { useFeatures } from "../../shared/features/provider";
 import {
   useProviderSummary,
   useWorkBuddyModelIds,
   useWorkBuddyStatus,
+  useXaiManagedSummary,
 } from "../../shared/features/queries";
 import type {
+  BindXaiManagedResult,
   CodexProviderMutationWarning,
   ModelWriteTarget,
   ProviderAppId,
   ProviderQuickSetupRequest,
+  XaiManagedBindApp,
+  XaiManagedSummary,
 } from "../../shared/features/types";
 import {
   Button,
@@ -94,6 +99,60 @@ type WorkBuddySaveRequest = Parameters<
   FeaturePorts["workbuddy"]["saveModels"]
 >[0];
 
+const XAI_WORKBUDDY_BASE_URL = "https://api.x.ai/v1";
+
+const XAI_BIND_LABELS: Record<XaiManagedBindApp, string> = {
+  claude: "Claude Code",
+  "claude-desktop": "Claude Desktop",
+  codex: "Codex",
+};
+
+const XAI_MANAGED_PROVIDER_IDS: Record<XaiManagedBindApp, string> = {
+  claude: "fyagent-v2-xai-oauth-claude",
+  "claude-desktop": "fyagent-v2-xai-oauth-claude-desktop",
+  codex: "fyagent-v2-xai-oauth-codex",
+};
+
+function usableXaiAccount(summary: XaiManagedSummary | undefined) {
+  if (!summary?.authenticated) return null;
+  return (
+    summary.accounts.find(
+      (account) =>
+        !account.requiresReauth && account.id === summary.defaultAccountId,
+    ) ?? summary.accounts.find((account) => !account.requiresReauth) ?? null
+  );
+}
+
+function SuperGrokPlacementNotice({
+  kind,
+  summary,
+}: {
+  kind: "workbuddy" | "claude" | "codex";
+  summary?: XaiManagedSummary;
+}) {
+  const account = usableXaiAccount(summary);
+  const notice = (
+    <InlineNotice tone={account ? "info" : "warning"}>
+      {kind === "workbuddy"
+        ? account
+          ? `已看到认证中心里的 SuperGrok 账号（${account.label}）。可用它拉模型名单。WorkBuddy 自己的文件不能存扫码令牌；运行时若还要钥匙，请另填 API 钥匙，不要贴刷新令牌。`
+          : "还没在认证中心登录 SuperGrok。登录后再用「用 SuperGrok 拉名单」。不要把刷新令牌填进钥匙框。"
+        : account
+          ? kind === "codex"
+            ? `已登录 SuperGrok（${account.label}）。可创建 xAI (Grok) OAuth 再走现有切换计划。下面 Quick Setup 仍只收 API 钥匙。`
+            : `已登录 SuperGrok（${account.label}）。可分别绑到 Claude Code 和 Claude Desktop。下面 Quick Setup 仍只收 API 钥匙。`
+          : "SuperGrok 扫码请去认证中心。这里的 Quick Setup 只收 API 钥匙，不会替你完成扫码绑定。"}
+    </InlineNotice>
+  );
+  if (account) return notice;
+  return (
+    <>
+      {notice}
+      <Button onClick={() => requestOpenAuthCenter()}>打开认证中心</Button>
+    </>
+  );
+}
+
 const EMPTY_MODEL_IDS: readonly string[] = [];
 
 const TARGET_LABELS: Record<ModelTarget, string> = {
@@ -128,6 +187,7 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
   const { ports } = useFeatures();
   const statusQuery = useWorkBuddyStatus(active);
   const modelIdsQuery = useWorkBuddyModelIds(active);
+  const xaiSummaryQuery = useXaiManagedSummary(active);
   const [baseUrl, setBaseUrl] = useState("");
   const [apiKey, setApiKeyState] = useState("");
   const apiKeyRef = useRef("");
@@ -243,6 +303,45 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
       }
     }
     return true;
+  };
+
+  const fetchXaiManagedModels = async () => {
+    if (writeLock.current) return;
+    const account = usableXaiAccount(xaiSummaryQuery.data);
+    writeLock.current = true;
+    setBusy("fetch");
+    clear();
+    try {
+      const result = await ports.workbuddy.fetchXaiManagedModels(
+        account?.id ?? xaiSummaryQuery.data?.defaultAccountId ?? null,
+      );
+      if (!mountedRef.current) return;
+      setDraftModelIds((current) => addUniqueModelIds(current, result.models));
+      draftCommit.markDirty();
+      setFetchedSourceIds(new Set(result.models));
+      setTruncated(result.truncated);
+      if (!baseUrl.trim()) setBaseUrl(XAI_WORKBUDDY_BASE_URL);
+      setAllowNoApiKey(true);
+      show("fetch", {
+        tone: result.models.length === 0 ? "warning" : "info",
+        title:
+          result.models.length === 0
+            ? "SuperGrok 没有返回模型"
+            : `已用 SuperGrok 读取 ${result.models.length} 个模型`,
+        description:
+          "名单来自已登录账号。保存仍走 WorkBuddy 自己的预览；不会把刷新令牌写进 models.json。",
+      });
+    } catch {
+      if (mountedRef.current)
+        show("fetch", {
+          tone: "error",
+          title: "无法用 SuperGrok 拉名单",
+          description: "请先去认证中心登录，或检查账号是否需要重新扫码。",
+        });
+    } finally {
+      if (mountedRef.current) setBusy(null);
+      writeLock.current = false;
+    }
   };
 
   const fetchModels = async () => {
@@ -596,6 +695,10 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
           {busy === "save" ? "保存中…" : "保存并应用"}
         </Button>
       </ModelsPanelHeader>
+      <SuperGrokPlacementNotice
+        kind="workbuddy"
+        summary={xaiSummaryQuery.data}
+      />
       <FieldFeedback id="workbuddy-save-error" notice={notices.save} />
       <WorkBuddySavePlanWorkspace
         key={workBuddySavePlan?.planId ?? "workbuddy-save-preview"}
@@ -802,6 +905,12 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
               {busy === "fetch" ? "读取中…" : "拉取模型"}
             </Button>
             <Button
+              disabled={busy !== null}
+              onClick={() => void fetchXaiManagedModels()}
+            >
+              {busy === "fetch" ? "读取中…" : "用 SuperGrok 拉名单"}
+            </Button>
+            <Button
               className="fy-control-button-danger"
               disabled={busy !== null || draftModelIds.length === 0}
               onClick={clearDraftModels}
@@ -942,6 +1051,9 @@ function ProviderPanel({
 }) {
   const { ports } = useFeatures();
   const summaryQuery = useProviderSummary(app, active);
+  const xaiSummaryQuery = useXaiManagedSummary(
+    active && (app === "claude" || app === "codex"),
+  );
   const [name, setName] = useState(PROVIDER_DEFAULT_NAMES[app]);
   const [baseUrl, setBaseUrl] = useState("");
   const [apiKey, setApiKeyState] = useState("");
@@ -966,6 +1078,11 @@ function ProviderPanel({
     code: ChangePlanErrorCode;
     message?: string;
   } | null>(null);
+  const [pendingXaiBind, setPendingXaiBind] = useState<XaiManagedBindApp | null>(
+    null,
+  );
+  const [xaiBindBusy, setXaiBindBusy] = useState(false);
+  const [preferredCodexSwitchId, setPreferredCodexSwitchId] = useState("");
   const writeLock = useRef(false);
   const writeConfirm = useModelsWriteConfirm<{
     request: ProviderQuickSetupRequest;
@@ -1225,6 +1342,81 @@ function ProviderPanel({
     }
   };
 
+  const xaiAccount = usableXaiAccount(xaiSummaryQuery.data);
+
+  const confirmXaiBind = async () => {
+    const target = pendingXaiBind;
+    if (!target || !xaiAccount || xaiBindBusy || writesBlocked) return;
+    setXaiBindBusy(true);
+    setNotice(null);
+    try {
+      const result: BindXaiManagedResult = await ports.providers.bindXaiManaged({
+        app: target,
+        accountId: xaiAccount.id,
+      });
+      if (!mountedRef.current) return;
+      setPendingXaiBind(null);
+      if (target === "codex") {
+        setPreferredCodexSwitchId(result.providerId);
+      }
+      let refreshed: Awaited<ReturnType<typeof summaryQuery.refetch>> | null =
+        null;
+      try {
+        refreshed = await summaryQuery.refetch();
+      } catch {
+        refreshed = null;
+      }
+      if (!mountedRef.current) return;
+      const label = XAI_BIND_LABELS[target];
+      const expectedId = XAI_MANAGED_PROVIDER_IDS[target];
+      const currentConfirmed =
+        refreshed !== null &&
+        !refreshed.isError &&
+        refreshed.data?.currentId === expectedId;
+      const createdVisible =
+        refreshed !== null &&
+        !refreshed.isError &&
+        Boolean(refreshed.data?.providers[result.providerId]);
+      if (result.activated && !currentConfirmed) {
+        setNotice({
+          tone: "warning",
+          title: `已绑定 SuperGrok 到 ${label}，待确认`,
+          description:
+            "令牌仍留在认证中心。请刷新状态后确认当前配置。没有改 Codex 或 WorkBuddy。",
+        });
+        return;
+      }
+      if (!result.activated && !createdVisible) {
+        setNotice({
+          tone: "warning",
+          title: `已创建 ${result.providerName}，待确认`,
+          description:
+            "令牌仍留在认证中心。请刷新后生成切换计划。没有改 Claude 或 WorkBuddy。",
+        });
+        return;
+      }
+      setNotice({
+        tone: "info",
+        title: result.activated
+          ? `已绑定 SuperGrok 到 ${label}`
+          : `已创建 ${result.providerName}`,
+        description: result.activated
+          ? "令牌仍留在认证中心。请在应用中刷新或新建会话后查看更改。没有改 Codex 或 WorkBuddy。"
+          : "令牌仍留在认证中心。已生成切换预览，确认后才会改当前 Codex。没有改 Claude 或 WorkBuddy。",
+      });
+    } catch {
+      if (mountedRef.current) {
+        setNotice({
+          tone: "error",
+          title: "未能绑定 SuperGrok",
+          description: "请确认认证中心仍有可用账号后重试。不要粘贴刷新令牌。",
+        });
+      }
+    } finally {
+      if (mountedRef.current) setXaiBindBusy(false);
+    }
+  };
+
   const handleCodexSaveDismiss = useCallback(() => {
     setCodexSaveRequest(null);
     setCodexSavePlan(null);
@@ -1342,6 +1534,85 @@ function ProviderPanel({
               : "保存并设为当前配置"}
         </Button>
       </ModelsPanelHeader>
+      {app === "claude" || app === "codex" ? (
+        <SuperGrokPlacementNotice
+          kind={app}
+          summary={xaiSummaryQuery.data}
+        />
+      ) : null}
+      {app === "claude" || app === "codex" ? (
+        <div className="fy-models-inline-fields">
+          {app === "claude" ? (
+            <>
+              <Button
+                disabled={!xaiAccount || xaiBindBusy || writesBlocked}
+                onClick={() => setPendingXaiBind("claude")}
+              >
+                绑定到 Claude Code
+              </Button>
+              <Button
+                disabled={!xaiAccount || xaiBindBusy || writesBlocked}
+                onClick={() => setPendingXaiBind("claude-desktop")}
+              >
+                绑定到 Claude Desktop
+              </Button>
+            </>
+          ) : (
+            <Button
+              disabled={!xaiAccount || xaiBindBusy || writesBlocked}
+              onClick={() => setPendingXaiBind("codex")}
+            >
+              创建 SuperGrok Provider
+            </Button>
+          )}
+        </div>
+      ) : null}
+      <Dialog
+        open={pendingXaiBind !== null}
+        onOpenChange={(open) => {
+          if (!open && !xaiBindBusy) setPendingXaiBind(null);
+        }}
+        title={
+          pendingXaiBind
+            ? pendingXaiBind === "codex"
+              ? "创建 SuperGrok Provider"
+              : `绑定 SuperGrok 到 ${XAI_BIND_LABELS[pendingXaiBind]}`
+            : "绑定 SuperGrok"
+        }
+        description="先看将写入的绑定，再确认。不会复制刷新令牌。"
+        actions={
+          <>
+            <Button
+              disabled={xaiBindBusy}
+              onClick={() => setPendingXaiBind(null)}
+            >
+              取消
+            </Button>
+            <Button
+              className="fy-control-button-primary"
+              disabled={xaiBindBusy || !xaiAccount}
+              onClick={() => void confirmXaiBind()}
+            >
+              {xaiBindBusy ? "绑定中…" : "确认绑定"}
+            </Button>
+          </>
+        }
+      >
+        {pendingXaiBind ? (
+          <div className="fy-models-muted">
+            <p>
+              账号：{xaiAccount?.label ?? "已登录 SuperGrok"}。写入{" "}
+              {XAI_BIND_LABELS[pendingXaiBind]} 的 Provider 绑定，id 为{" "}
+              {XAI_MANAGED_PROVIDER_IDS[pendingXaiBind]}。
+            </p>
+            <p>
+              {pendingXaiBind === "codex"
+                ? "创建后会生成现有切换预览；确认应用前不会改当前 Codex。"
+                : "确认后会激活该绑定。不会改 Codex 或 WorkBuddy。"}
+            </p>
+          </div>
+        ) : null}
+      </Dialog>
 
       {queryPending && <Spinner label={`正在读取 ${label} 配置`} />}
       {queryUnavailable && (
@@ -1381,6 +1652,8 @@ function ProviderPanel({
             active={active}
             providers={summaryQuery.data.providers}
             currentId={summaryQuery.data.currentId}
+            preferredTargetId={preferredCodexSwitchId}
+            autoCreatePreferred={Boolean(preferredCodexSwitchId)}
           />
         </>
       ) : null}

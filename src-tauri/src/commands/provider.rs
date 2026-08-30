@@ -460,6 +460,161 @@ pub fn add_provider_with_result(
     Ok(result)
 }
 
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BindXaiManagedRequest {
+    pub app: String,
+    pub account_id: Option<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BindXaiManagedResult {
+    pub provider_id: String,
+    pub provider_name: String,
+    pub app: String,
+    pub already_bound: bool,
+    pub activated: bool,
+}
+
+fn parse_xai_bind_app(app: &str) -> Result<AppType, String> {
+    match app.trim() {
+        "claude" => Ok(AppType::Claude),
+        "claude-desktop" => Ok(AppType::ClaudeDesktop),
+        "codex" => Ok(AppType::Codex),
+        _ => Err("SuperGrok bind supports only claude, claude-desktop, or codex".to_string()),
+    }
+}
+
+fn xai_managed_provider_id(app_type: &AppType) -> &'static str {
+    match app_type {
+        AppType::Claude => "fyagent-v2-xai-oauth-claude",
+        AppType::ClaudeDesktop => "fyagent-v2-xai-oauth-claude-desktop",
+        AppType::Codex => "fyagent-v2-xai-oauth-codex",
+        _ => "fyagent-v2-xai-oauth",
+    }
+}
+
+fn build_xai_managed_provider(app_type: &AppType, account_id: &str) -> Provider {
+    let name = match app_type {
+        AppType::Codex => "xAI (Grok) OAuth".to_string(),
+        _ => "xAI (Grok)".to_string(),
+    };
+    let settings_config = match app_type {
+        AppType::Codex => serde_json::json!({
+            "auth": {},
+            "config": "model_provider = \"xai\"\nmodel = \"grok-4.5\"\n\n[model_providers.xai]\nname = \"xAI (Grok) OAuth\"\nbase_url = \"https://api.x.ai/v1\"\nwire_api = \"responses\"\n"
+        }),
+        _ => serde_json::json!({
+            "env": {
+                "ANTHROPIC_BASE_URL": "https://api.x.ai/v1",
+                "ANTHROPIC_MODEL": "grok-4.5",
+                "ANTHROPIC_DEFAULT_HAIKU_MODEL": "grok-4.5",
+                "ANTHROPIC_DEFAULT_SONNET_MODEL": "grok-4.5",
+                "ANTHROPIC_DEFAULT_OPUS_MODEL": "grok-4.5"
+            }
+        }),
+    };
+    let mut provider = Provider::with_id(
+        xai_managed_provider_id(app_type).to_string(),
+        name,
+        settings_config,
+        Some("https://x.ai/grok".to_string()),
+    );
+    provider.category = Some("third_party".to_string());
+    provider.icon = Some("xai".to_string());
+    let mut meta = crate::provider::ProviderMeta {
+        provider_type: Some("xai_oauth".to_string()),
+        auth_binding: Some(crate::provider::AuthBinding {
+            source: crate::provider::AuthBindingSource::ManagedAccount,
+            auth_provider: Some("xai_oauth".to_string()),
+            account_id: Some(account_id.to_string()),
+        }),
+        ..Default::default()
+    };
+    if *app_type == AppType::ClaudeDesktop {
+        if let Some(routes) = suggested_claude_desktop_routes(&provider) {
+            meta.claude_desktop_mode = Some(crate::provider::ClaudeDesktopMode::Proxy);
+            meta.claude_desktop_model_routes = routes;
+        }
+    }
+    provider.meta = Some(meta);
+    provider
+}
+
+/// Bind a logged-in SuperGrok account to Claude Code, Claude Desktop, or Codex.
+/// Tokens stay in `xai_oauth_auth.json`. Codex is stored only; activation uses
+/// the existing Change Plan switch.
+#[tauri::command(rename_all = "camelCase")]
+pub async fn bind_xai_managed_provider(
+    request: BindXaiManagedRequest,
+    app_handle: tauri::AppHandle,
+    xai_state: State<'_, XaiOAuthState>,
+) -> Result<BindXaiManagedResult, String> {
+    let app_type = parse_xai_bind_app(&request.app)?;
+    let manager = xai_state.0.read().await;
+    let account_id = match request
+        .account_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|id| !id.is_empty())
+    {
+        Some(id) => id.to_string(),
+        None => manager
+            .default_account_id()
+            .await
+            .ok_or_else(|| "No usable xAI account available".to_string())?,
+    };
+    if !crate::proxy::providers::xai_oauth_auth::XaiOAuthManager::stored_account_is_usable(
+        &account_id,
+    ) {
+        return Err("No usable xAI account available".to_string());
+    }
+    drop(manager);
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app_handle
+            .try_state::<AppState>()
+            .ok_or_else(|| "Provider state is unavailable".to_string())?;
+        let provider = build_xai_managed_provider(&app_type, &account_id);
+        let provider_id = provider.id.clone();
+        let provider_name = provider.name.clone();
+        let already_bound = state
+            .db
+            .get_provider_by_id(&provider_id, app_type.as_str())
+            .ok()
+            .flatten()
+            .is_some();
+        let activate = !matches!(app_type, AppType::Codex);
+        if already_bound {
+            state
+                .db
+                .save_provider(app_type.as_str(), &provider)
+                .map_err(|error| error.to_string())?;
+            if activate {
+                ProviderService::switch(state.inner(), app_type.clone(), &provider_id)
+                    .map_err(|error| error.to_string())?;
+            }
+        } else if activate {
+            ProviderService::add(state.inner(), app_type.clone(), provider, true)
+                .map_err(|error| error.to_string())?;
+        } else {
+            ProviderService::add_draft(state.inner(), app_type.clone(), provider)
+                .map_err(|error| error.to_string())?;
+        }
+
+        Ok(BindXaiManagedResult {
+            provider_id,
+            provider_name,
+            app: app_type.as_str().to_string(),
+            already_bound,
+            activated: activate,
+        })
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
 fn parse_provider_draft_app(app: &str) -> Result<AppType, String> {
     let app_type = AppType::from_str(app).map_err(|e| e.to_string())?;
     if !matches!(
@@ -1559,6 +1714,53 @@ mod provider_draft_command_tests {
                 .count(),
             1
         );
+        assert_eq!(
+            library_source
+                .matches("commands::bind_xai_managed_provider")
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn xai_managed_bind_allows_only_claude_desktop_and_codex() {
+        use super::{build_xai_managed_provider, parse_xai_bind_app};
+
+        assert!(matches!(parse_xai_bind_app("claude"), Ok(AppType::Claude)));
+        assert!(matches!(
+            parse_xai_bind_app("claude-desktop"),
+            Ok(AppType::ClaudeDesktop)
+        ));
+        assert!(matches!(parse_xai_bind_app("codex"), Ok(AppType::Codex)));
+        for unsupported in ["grokbuild", "gemini", "workbuddy", "qoder"] {
+            assert!(
+                parse_xai_bind_app(unsupported).is_err(),
+                "{unsupported} must not enter SuperGrok bind"
+            );
+        }
+
+        let claude = build_xai_managed_provider(&AppType::Claude, "acct-xai");
+        let desktop = build_xai_managed_provider(&AppType::ClaudeDesktop, "acct-xai");
+        let codex = build_xai_managed_provider(&AppType::Codex, "acct-xai");
+        assert_eq!(claude.id, "fyagent-v2-xai-oauth-claude");
+        assert_eq!(desktop.id, "fyagent-v2-xai-oauth-claude-desktop");
+        assert_eq!(codex.id, "fyagent-v2-xai-oauth-codex");
+        assert_eq!(claude.name, "xAI (Grok)");
+        assert_eq!(codex.name, "xAI (Grok) OAuth");
+        let payload = serde_json::to_string(&claude).unwrap()
+            + &serde_json::to_string(&desktop).unwrap()
+            + &serde_json::to_string(&codex).unwrap();
+        assert!(payload.contains("xai_oauth"));
+        assert!(payload.contains("acct-xai"));
+        assert!(!payload.contains("refresh"));
+        assert!(!payload.contains("ANTHROPIC_AUTH_TOKEN"));
+        assert!(!payload.contains("OPENAI_API_KEY"));
+        let desktop_meta = desktop.meta.as_ref().expect("desktop meta");
+        assert_eq!(
+            desktop_meta.claude_desktop_mode,
+            Some(crate::provider::ClaudeDesktopMode::Proxy)
+        );
+        assert!(!desktop_meta.claude_desktop_model_routes.is_empty());
     }
 
     #[test]
