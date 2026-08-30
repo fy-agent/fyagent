@@ -11,8 +11,6 @@ use std::path::PathBuf;
 #[cfg(any(target_os = "windows", test))]
 use std::path::Path;
 
-#[cfg(not(target_os = "windows"))]
-use super::desktop::discover_windows_known_path_installations;
 use super::desktop::{DesktopInstallationEvidence, DesktopProduct};
 
 #[cfg(any(target_os = "windows", test))]
@@ -128,7 +126,7 @@ pub(super) fn discover_windows_installations(
 ) -> Vec<DesktopInstallationEvidence> {
     // Platform-neutral tests keep their existing fake-PE fixture. The shipped
     // Windows build never uses the UTF-16 window scanner.
-    discover_windows_known_path_installations(product, roots)
+    super::desktop::discover_windows_known_path_installations(product, roots)
 }
 
 #[cfg(target_os = "windows")]
@@ -750,15 +748,17 @@ mod native {
         let query = wide_string("\\VarFileInfo\\Translation");
         let mut pointer = ptr::null_mut();
         let mut length = 0_u32;
-        unsafe {
+        let queried = unsafe {
             VerQueryValueW(
                 bytes.as_ptr().cast(),
                 PCWSTR(query.as_ptr()),
                 &mut pointer,
                 &mut length,
             )
+        };
+        if !queried.as_bool() {
+            return None;
         }
-        .ok()?;
         if pointer.is_null() || length < 4 || length > 256 || length % 4 != 0 {
             return None;
         }
@@ -784,15 +784,17 @@ mod native {
             ));
             let mut pointer = ptr::null_mut();
             let mut length = 0_u32;
-            unsafe {
+            let queried = unsafe {
                 VerQueryValueW(
                     bytes.as_ptr().cast(),
                     PCWSTR(query.as_ptr()),
                     &mut pointer,
                     &mut length,
                 )
+            };
+            if !queried.as_bool() {
+                return None;
             }
-            .ok()?;
             if pointer.is_null() || length == 0 || length > 1024 {
                 return None;
             }

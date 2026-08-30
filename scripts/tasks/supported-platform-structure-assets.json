@@ -43,7 +43,7 @@
     ],
     [
       "src-tauri/Cargo.toml",
-      "31978190655e37679a0014cac0fc9464a6aeed63b27a4edda3c0b46b30bf5344"
+      "e663c1a44ac393abf2369b7e3dd232ffb1d74704ac2a40c3800fd982a572a47e"
     ],
     [
       "src-tauri/src/agent_install/desktop.rs",
@@ -59,7 +59,7 @@
     ],
     [
       "src-tauri/src/agent_install/macos.rs",
-      "824024e68e0b62a476220895bfa7ee474c71bb3d4c128d58c6330be7e83be1f4"
+      "d56613d7560c3703e66b662becd9f3bbdf390cc035decc79059f836cd40bb51c"
     ],
     [
       "src-tauri/src/agent_install/mod.rs",
@@ -71,7 +71,7 @@
     ],
     [
       "src-tauri/src/agent_install/windows.rs",
-      "38da71854a57627fe2b5c89c01781a9057a62e9190b3d334b648df79f32753d7"
+      "cca4851dacc5f80bd472c74aa01074b3552b75889272d3554110f82085010c04"
     ],
     [
       "src-tauri/src/app_store.rs",
