@@ -1,7 +1,8 @@
 <div align="center">
   <img src="assets/brand/github/for-you-gate.svg" width="104" alt="FyAgent For You Gate">
   <h1>FyAgent</h1>
-  <p>Manage models, Skills, MCP servers, prompts, and memory files for AI software from one local desktop app.</p>
+  <p><strong>Own your AI.</strong></p>
+  <p>A personal desktop control center that keeps you in charge of the AI Workers and Agents you use.</p>
   <p><a href="README.md">简体中文</a> · <a href="README_JA.md">日本語</a></p>
   <p>
     <a href="https://github.com/fy-agent/fyagent/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/fy-agent/fyagent?style=flat-square&label=release&color=0B66FF"></a>
@@ -17,13 +18,13 @@
   </p>
 </div>
 
-## What FyAgent is
+## A personal control center for the AI era
 
-FyAgent is a local desktop configuration tool. It brings commonly used settings from multiple AI applications into one interface and shows the affected files and settings before a write.
+FyAgent is for people who use AI Agents, AI Workers, and assistants. It brings the choices that shape an AI—where its models come from, which tools it can reach, what skills it has, which instructions it follows, and how it is configured—into one local desktop app.
 
-The current production interface has six areas: AI software configuration, Models, Skills, MCP, Prompts, and Memory. Each application exposes a different set of controls; FyAgent shows only the actions supported by its current integration.
+You do not need to begin with terms such as Provider, MCP, or Prompt. To a person using the product, they are an AI's source of intelligence, its tool connections, and its working instructions. FyAgent makes those choices visible, editable, and easier to carry between tools.
 
-> **Current status:** FyAgent is under active development. Back up important configuration before an upgrade and read the release notes for the version you install.
+> **Release status:** FyAgent is under active development. Back up important configuration before upgrading, and review the trust information for each release before installing it.
 
 ## Current features
 

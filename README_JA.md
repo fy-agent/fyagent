@@ -1,7 +1,8 @@
 <div align="center">
   <img src="assets/brand/github/for-you-gate.svg" width="104" alt="FyAgent For You Gate">
   <h1>FyAgent</h1>
-  <p>AI ソフトウェアのモデル、Skills、MCP、プロンプト、メモリーファイルを、ローカルのデスクトップアプリで管理します。</p>
+  <p><strong>自分の AI を、自分のものに。</strong></p>
+  <p>AI Worker と AI Agent を自分で管理するための、パーソナル・デスクトップコントロールセンター。</p>
   <p><a href="README_EN.md">English</a> · <a href="README.md">简体中文</a></p>
   <p>
     <a href="https://github.com/fy-agent/fyagent/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/fy-agent/fyagent?style=flat-square&label=release&color=0B66FF"></a>
@@ -17,13 +18,13 @@
   </p>
 </div>
 
-## FyAgent とは
+## AI 時代のパーソナルコントロールセンター
 
-FyAgent は、ローカルで動作するデスクトップ設定ツールです。複数の AI アプリに分散している設定をひとつの画面にまとめ、書き込み前に変更対象を表示します。
+FyAgent は、AI Agent、AI Worker、AI アシスタントを利用する人のためのアプリです。モデルの入手先、接続できるツール、利用するスキル、従う指示、各種設定といった AI を形づくる選択を、ローカルのデスクトップアプリにまとめます。
 
-現在の画面は、AI ソフトウェア設定、モデル管理、Skills 管理、MCP 管理、プロンプト管理、メモリーモジュールの 6 つで構成されています。アプリごとに利用できる操作が異なるため、FyAgent は現在の連携で対応している操作だけを表示します。
+Provider、MCP、Prompt といった用語を先に理解する必要はありません。利用者にとっては、AI の知能の供給元、ツールとの接続、仕事の指示に当たります。FyAgent は、分散して見えにくかった選択を、確認・変更しやすい形にします。
 
-> **現在の状況:** FyAgent は開発中です。更新前に重要な設定をバックアップし、インストールするバージョンのリリースノートを確認してください。
+> **リリース状況:** FyAgent は現在も継続的に開発されています。更新前に大切な設定をバックアップし、インストール前に各リリースの信頼情報を確認してください。
 
 ## 現在の機能
 
