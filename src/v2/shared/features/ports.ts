@@ -34,6 +34,9 @@ import type {
   WorkBuddySaveModelsRequest,
   WorkBuddySaveModelsResult,
   WorkBuddyStatus,
+  XaiManagedSummary,
+  BindXaiManagedRequest,
+  BindXaiManagedResult,
   ExternalAgentLaunchDestination,
   ExternalAgentLaunchResult,
   ExternalAgentRuntimeStatus,
@@ -129,6 +132,7 @@ export interface ProvidersPort {
   fetchModels(baseUrl: string, apiKey: string): Promise<FetchedModelRef[]>;
   checkReachability(baseUrl: string): Promise<ReachabilityResult>;
   checkModel(request: ModelProbeRequest): Promise<ModelProbeResult>;
+  bindXaiManaged(request: BindXaiManagedRequest): Promise<BindXaiManagedResult>;
 }
 
 export interface WorkBuddyPort {
@@ -136,6 +140,10 @@ export interface WorkBuddyPort {
   getModelIds(): Promise<WorkBuddyModelIdsResult>;
   fetchModels(
     request: WorkBuddyFetchModelsRequest,
+  ): Promise<WorkBuddyFetchModelsResult>;
+  getXaiManagedSummary(): Promise<XaiManagedSummary>;
+  fetchXaiManagedModels(
+    accountId?: string | null,
   ): Promise<WorkBuddyFetchModelsResult>;
   saveModels(
     request: WorkBuddySaveModelsRequest,

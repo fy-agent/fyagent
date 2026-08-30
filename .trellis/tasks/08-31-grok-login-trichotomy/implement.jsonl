@@ -1,0 +1,7 @@
+{"file": ".trellis/tasks/08-31-grok-first-class-iteration/summary.md", "reason": "Shared plain-language plan"}
+{"file": ".trellis/spec/backend/external-agent-p0.md", "reason": "Grok remains handoff_only"}
+{"file": ".trellis/spec/frontend/reuse.md", "reason": "Edit AgentAuthStatusPanel, do not fork"}
+{"file": ".trellis/spec/frontend/v2-agent-models.md", "reason": "Models Quick Setup is API key only; do not add login"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Reuse current auth owners"}
+{"file": ".trellis/tasks/08-31-grok-login-trichotomy/research/current-login-surfaces.md", "reason": "Current login surfaces and copy"}
+{"file": ".trellis/tasks/08-31-grok-first-class-iteration/research/hil-matrix.md", "reason": "AT1-AT5 H1-H4 belong to this window"}

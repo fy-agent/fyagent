@@ -217,6 +217,23 @@ impl XaiOAuthManager {
         manager
     }
 
+    /// Process-local, token-free admission: whether `account_id` is present
+    /// and not marked `requires_reauth` in the on-disk store.
+    pub fn stored_account_is_usable(account_id: &str) -> bool {
+        let trimmed = account_id.trim();
+        if trimmed.is_empty() {
+            return false;
+        }
+        Self::new(crate::config::get_app_config_dir()).has_usable_account_sync(trimmed)
+    }
+
+    fn has_usable_account_sync(&self, account_id: &str) -> bool {
+        self.accounts
+            .try_read()
+            .ok()
+            .is_some_and(|accounts| Self::is_usable_account(&accounts, account_id))
+    }
+
     pub async fn start_device_flow(&self) -> Result<GitHubDeviceCodeResponse, XaiOAuthError> {
         let endpoints = self.discover_endpoints().await?;
         let response = crate::proxy::http_client::get()

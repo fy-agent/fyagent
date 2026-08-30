@@ -1,0 +1,9 @@
+{"file": ".trellis/tasks/08-31-grok-first-class-iteration/summary.md", "reason": "Shared plain-language plan"}
+{"file": ".trellis/spec/backend/workbuddy-configuration.md", "reason": "WorkBuddy save, revision, credential isolation; not AppType"}
+{"file": ".trellis/spec/backend/change-plan-executor.md", "reason": "Reuse workbuddy_models_save; no fourth adapter"}
+{"file": ".trellis/spec/backend/reuse.md", "reason": "Reuse existing WorkBuddy and xAI owners"}
+{"file": ".trellis/spec/frontend/reuse.md", "reason": "Extend WorkBuddySavePlanWorkspace; do not fork"}
+{"file": ".trellis/spec/frontend/v2-agent-models.md", "reason": "WorkBuddy models stay dedicated native contract"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Force reuse before any new save path"}
+{"file": ".trellis/tasks/08-31-grok-supergrok-to-workbuddy/research/current-workbuddy-save-path.md", "reason": "Current save request and no-token-copy rule"}
+{"file": ".trellis/tasks/08-31-grok-first-class-iteration/research/hil-matrix.md", "reason": "AT9 H8 H9 live cases"}

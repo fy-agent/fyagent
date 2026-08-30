@@ -1,0 +1,6 @@
+{"file": ".trellis/tasks/08-31-grok-first-class-iteration/summary.md", "reason": "Reject WorkBuddy work that drifts from the shared plan"}
+{"file": ".trellis/spec/backend/workbuddy-configuration.md", "reason": "Reject AppType conversion or secret echo"}
+{"file": ".trellis/spec/backend/change-plan-executor.md", "reason": "Reject a Codex upsert or fourth adapter"}
+{"file": ".trellis/spec/frontend/reuse.md", "reason": "Reject a forked WorkBuddy save chrome"}
+{"file": ".trellis/tasks/08-31-grok-supergrok-to-workbuddy/research/current-workbuddy-save-path.md", "reason": "Reject copying refresh tokens into models.json"}
+{"file": ".trellis/tasks/08-31-grok-first-class-iteration/research/hil-matrix.md", "reason": "H8 must pass on both machines"}

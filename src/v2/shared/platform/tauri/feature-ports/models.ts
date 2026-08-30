@@ -14,6 +14,9 @@ import type {
   ProviderSummaryQueryData,
   ReachabilityResult,
   WorkBuddySaveModelsResult,
+  XaiManagedSummary,
+  BindXaiManagedRequest,
+  BindXaiManagedResult,
 } from "../../../features/types";
 import {
   hasExactKeys,
@@ -414,6 +417,106 @@ function assertQuickSetupRequest(
   return request;
 }
 
+function parseXaiManagedSummary(value: unknown): XaiManagedSummary {
+  if (!isRecord(value)) throw new Error("xAI managed summary is unavailable");
+  const authenticated =
+    value.authenticated === true || value.authenticated === false
+      ? value.authenticated
+      : null;
+  const defaultAccountId =
+    value.defaultAccountId === null || typeof value.defaultAccountId === "string"
+      ? value.defaultAccountId
+      : value.default_account_id === null ||
+          typeof value.default_account_id === "string"
+        ? value.default_account_id
+        : undefined;
+  const rawAccounts = Array.isArray(value.accounts) ? value.accounts : null;
+  if (authenticated === null || defaultAccountId === undefined || !rawAccounts)
+    throw new Error("xAI managed summary is unavailable");
+  const accounts = rawAccounts.map((account) => {
+    if (!isRecord(account) || typeof account.id !== "string")
+      throw new Error("xAI managed summary is unavailable");
+    const label =
+      typeof account.login === "string" && account.login.trim()
+        ? account.login
+        : typeof account.label === "string" && account.label.trim()
+          ? account.label
+          : "已登录账号";
+    return {
+      id: account.id,
+      label,
+      requiresReauth:
+        account.requiresReauth === true || account.requires_reauth === true,
+    };
+  });
+  return {
+    authenticated,
+    defaultAccountId,
+    accounts,
+  };
+}
+
+function assertBindXaiManagedRequest(
+  request: BindXaiManagedRequest,
+): BindXaiManagedRequest {
+  if (
+    !isRecord(request) ||
+    !isOneOf(request.app, ["claude", "claude-desktop", "codex"]) ||
+    (request.accountId !== undefined &&
+      request.accountId !== null &&
+      typeof request.accountId !== "string")
+  )
+    throw new Error("SuperGrok bind request is invalid");
+  return {
+    app: request.app,
+    accountId: request.accountId ?? null,
+  };
+}
+
+function parseBindXaiManagedResult(value: unknown): BindXaiManagedResult {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, [
+      "providerId",
+      "providerName",
+      "app",
+      "alreadyBound",
+      "activated",
+    ]) ||
+    typeof value.providerId !== "string" ||
+    typeof value.providerName !== "string" ||
+    typeof value.app !== "string" ||
+    typeof value.alreadyBound !== "boolean" ||
+    typeof value.activated !== "boolean"
+  )
+    throw new Error("SuperGrok bind result is unavailable");
+  return {
+    providerId: value.providerId,
+    providerName: value.providerName,
+    app: value.app,
+    alreadyBound: value.alreadyBound,
+    activated: value.activated,
+  };
+}
+
+function parseXaiManagedModels(value: unknown): {
+  models: string[];
+  truncated: boolean;
+} {
+  if (!Array.isArray(value)) throw new Error("xAI models are unavailable");
+  const models: string[] = [];
+  for (const entry of value) {
+    if (typeof entry === "string" && entry.trim()) {
+      models.push(entry.trim());
+      continue;
+    }
+    if (isRecord(entry) && typeof entry.id === "string" && entry.id.trim()) {
+      models.push(entry.id.trim());
+    }
+  }
+  return { models, truncated: false };
+}
+
 export function createModelFeaturePorts(): Pick<
   FeaturePorts,
   "providers" | "workbuddy" | "opencodeModels"
@@ -436,11 +539,29 @@ export function createModelFeaturePorts(): Pick<
         ),
       checkReachability: invokeReachability,
       checkModel: invokeModelProbe,
+      bindXaiManaged: async (request) =>
+        parseBindXaiManagedResult(
+          await invoke<unknown>("bind_xai_managed_provider", {
+            request: assertBindXaiManagedRequest(request),
+          }),
+        ),
     },
     workbuddy: {
       getStatus: () => invoke("get_workbuddy_status"),
       getModelIds: () => invoke("get_workbuddy_model_ids"),
       fetchModels: (request) => invoke("fetch_workbuddy_models", { request }),
+      getXaiManagedSummary: async () =>
+        parseXaiManagedSummary(
+          await invoke<unknown>("auth_get_status", {
+            authProvider: "xai_oauth",
+          }),
+        ),
+      fetchXaiManagedModels: async (accountId) =>
+        parseXaiManagedModels(
+          await invoke<unknown>("get_xai_oauth_models", {
+            accountId: accountId ?? null,
+          }),
+        ),
       saveModels: (request) => invoke("save_workbuddy_models", { request }),
       checkReachability: invokeReachability,
       checkModel: invokeModelProbe,

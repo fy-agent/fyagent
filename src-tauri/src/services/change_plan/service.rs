@@ -1594,6 +1594,9 @@ fn prove_codex_target_credential_capability(
     inspection: &CodexSwitchInspection,
 ) -> SecretCapabilityResult {
     let provider = &inspection.target;
+    if xai_oauth_managed_account_is_ready(provider) {
+        return prove_xai_oauth_switch_shape(provider);
+    }
     if provider
         .meta
         .as_ref()
@@ -1650,6 +1653,43 @@ fn prove_codex_target_credential_capability(
     } else {
         SecretCapabilityResult::SecretDependencyUnavailable
     }
+}
+
+fn xai_oauth_managed_account_is_ready(provider: &Provider) -> bool {
+    if !provider.is_xai_oauth() {
+        return false;
+    }
+    let Some(binding) = provider
+        .meta
+        .as_ref()
+        .and_then(|meta| meta.auth_binding.as_ref())
+    else {
+        return false;
+    };
+    if binding.source != crate::provider::AuthBindingSource::ManagedAccount {
+        return false;
+    }
+    if binding.auth_provider.as_deref() != Some("xai_oauth") {
+        return false;
+    }
+    binding.account_id.as_deref().is_some_and(|account_id| {
+        crate::proxy::providers::xai_oauth_auth::XaiOAuthManager::stored_account_is_usable(
+            account_id,
+        )
+    })
+}
+
+fn prove_xai_oauth_switch_shape(provider: &Provider) -> SecretCapabilityResult {
+    let Some(settings) = provider.settings_config.as_object() else {
+        return SecretCapabilityResult::SecretDependencyUnavailable;
+    };
+    let Some(config_text) = settings.get("config").and_then(Value::as_str) else {
+        return SecretCapabilityResult::SecretDependencyUnavailable;
+    };
+    if config_text.parse::<toml::Table>().is_err() {
+        return SecretCapabilityResult::SecretDependencyUnavailable;
+    }
+    SecretCapabilityResult::NoNewCredentialMaterial
 }
 
 fn validate_optional_provider_id(
@@ -2414,6 +2454,48 @@ mod tests {
         db.save_provider(AppType::Codex.as_str(), &unknown).unwrap();
         assert_eq!(
             ChangePlanService::plan_codex_switch_at(&state, &unknown.id, 103),
+            Err(ChangePlanErrorCode::SecretDependencyUnavailable)
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn credential_capability_admits_usable_xai_oauth_managed_account() {
+        let (home, _guard, db, state, _current, target) = setup_switch_state();
+        let store_dir = home.path().join(".fyagent");
+        std::fs::create_dir_all(&store_dir).unwrap();
+        std::fs::write(
+            store_dir.join("xai_oauth_auth.json"),
+            r#"{"version":1,"default_account_id":"acct-xai","accounts":{"acct-xai":{"account_id":"acct-xai","login":"fixture","refresh_token":"fixture-refresh","authenticated_at":1,"requires_reauth":false}}}"#,
+        )
+        .unwrap();
+
+        let mut xai = target.clone();
+        xai.id = "xai-oauth-target".to_string();
+        xai.meta = Some(crate::provider::ProviderMeta {
+            provider_type: Some("xai_oauth".to_string()),
+            auth_binding: Some(crate::provider::AuthBinding {
+                source: crate::provider::AuthBindingSource::ManagedAccount,
+                auth_provider: Some("xai_oauth".to_string()),
+                account_id: Some("acct-xai".to_string()),
+            }),
+            ..Default::default()
+        });
+        db.save_provider(AppType::Codex.as_str(), &xai).unwrap();
+        let plan = ChangePlanService::plan_codex_switch_at(&state, &xai.id, 300).unwrap();
+        assert_eq!(
+            plan.secret_capability,
+            SecretCapabilityResult::NoNewCredentialMaterial
+        );
+        let persisted = serde_json::to_string(&plan).unwrap();
+        assert!(!persisted.contains("fixture-refresh"));
+        assert!(!persisted.contains("acct-xai"));
+
+        xai.meta.as_mut().unwrap().auth_binding.as_mut().unwrap().account_id =
+            Some("missing-account".to_string());
+        db.save_provider(AppType::Codex.as_str(), &xai).unwrap();
+        assert_eq!(
+            ChangePlanService::plan_codex_switch_at(&state, &xai.id, 301),
             Err(ChangePlanErrorCode::SecretDependencyUnavailable)
         );
     }

@@ -184,9 +184,29 @@ describe("AgentAuthStatusPanel", () => {
       stopWaiting: vi.fn(),
     });
 
-    fireEvent.click(await screen.findByRole("button", { name: "登录" }));
-    expect(await screen.findByText("已交给官方认证入口")).toBeVisible();
+    expect(
+      await screen.findByText("仅支持打开官方认证入口（终端 grok login）"),
+    ).toBeVisible();
+    expect(screen.getByText(/终端里自己运行 grok login/)).toBeVisible();
+    expect(screen.getByText(/不会写进 Codex/)).toBeVisible();
+    expect(screen.getByText(/SuperGrok 扫码请去认证中心/)).toBeVisible();
     expect(screen.queryByText("认证结果已验证")).not.toBeInTheDocument();
+    expect(screen.queryByText("已登录", { exact: true })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "刷新状态" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "打开认证中心" }),
+    ).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: "登录" }));
+    expect(await screen.findByText("已交给官方认证入口")).toBeVisible();
+    expect(screen.getByText(/请完成 grok login/)).toBeVisible();
+    expect(screen.queryByText("认证结果已验证")).not.toBeInTheDocument();
+    expect(screen.queryByText("已登录", { exact: true })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "刷新状态" }),
+    ).not.toBeInTheDocument();
   });
 
   it("keeps Codex delegated to the existing Auth Center", async () => {
@@ -210,6 +230,14 @@ describe("AgentAuthStatusPanel", () => {
     });
 
     expect(await screen.findByText("由 FyAgent 认证中心管理")).toBeVisible();
+    expect(screen.getByText(/SuperGrok 扫码也在认证中心/)).toBeVisible();
+    expect(screen.getByText(/不要去终端跑 grok login/)).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "打开认证中心" }),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "刷新状态" }),
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "登录" }),
     ).not.toBeInTheDocument();

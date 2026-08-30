@@ -1,0 +1,12 @@
+{"file": ".trellis/spec/backend/external-agent-p0.md", "reason": "Grok handoff-only auth contract and no vendor-token inference"}
+{"file": ".trellis/spec/backend/reuse.md", "reason": "Reuse Auth Center and Change Plan; no second OAuth or executor"}
+{"file": ".trellis/spec/frontend/reuse.md", "reason": "Extend AgentAuthStatusPanel and existing chrome instead of forking"}
+{"file": ".trellis/spec/frontend/v2-agent-models.md", "reason": "Grok Build Models remain Quick Setup; login is not this page"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Force reuse of current owners before any new surface"}
+{"file": ".trellis/tasks/08-31-grok-login-trichotomy/research/current-login-surfaces.md", "reason": "Three-road start surfaces and copy after PR 167"}
+{"file": ".trellis/tasks/08-31-grok-first-class-iteration/summary.md", "reason": "Shared plain-language plan; all windows must match this"}
+{"file": ".trellis/tasks/08-31-grok-first-class-iteration/research/hil-matrix.md", "reason": "Dual-machine live acceptance cases"}
+{"file": ".trellis/spec/backend/change-plan-executor.md", "reason": "Reuse closed Codex adapters; no fourth operation"}
+{"file": ".trellis/tasks/08-31-grok-supergrok-to-codex/research/current-supergrok-codex-path.md", "reason": "Change Plan rejects xai_oauth today; V2 does not observe accounts"}
+{"file": ".trellis/spec/backend/workbuddy-configuration.md", "reason": "WorkBuddy save is a separate closed path"}
+{"file": ".trellis/tasks/08-31-grok-supergrok-to-workbuddy/research/current-workbuddy-save-path.md", "reason": "WorkBuddy must not copy refresh tokens or use Codex upsert"}

@@ -421,6 +421,12 @@ describe("V2 feature ports", () => {
         allowNoApiKey: false,
       }),
     ).rejects.toThrow(NATIVE_ONLY_ERROR);
+    await expect(ports.workbuddy.getXaiManagedSummary()).rejects.toThrow(
+      NATIVE_ONLY_ERROR,
+    );
+    await expect(ports.workbuddy.fetchXaiManagedModels()).rejects.toThrow(
+      NATIVE_ONLY_ERROR,
+    );
     await expect(ports.mcp.importFromApps()).rejects.toThrow(NATIVE_ONLY_ERROR);
     await expect(
       ports.providers.checkReachability("https://example.test"),
@@ -438,6 +444,9 @@ describe("V2 feature ports", () => {
         apiKey: "key",
         modelId: "model",
       }),
+    ).rejects.toThrow(NATIVE_ONLY_ERROR);
+    await expect(
+      ports.providers.bindXaiManaged({ app: "claude", accountId: "acct-xai" }),
     ).rejects.toThrow(NATIVE_ONLY_ERROR);
   });
 
@@ -482,6 +491,32 @@ describe("V2 feature ports", () => {
       }
       if (command === "fetch_workbuddy_models") {
         return { models: ["model-a"], truncated: false };
+      }
+      if (command === "auth_get_status") {
+        return {
+          provider: "xai_oauth",
+          authenticated: true,
+          default_account_id: "acct-xai",
+          accounts: [
+            {
+              id: "acct-xai",
+              login: "fixture-login",
+              requires_reauth: false,
+            },
+          ],
+        };
+      }
+      if (command === "get_xai_oauth_models") {
+        return [{ id: "grok-4.5", owned_by: "xai" }];
+      }
+      if (command === "bind_xai_managed_provider") {
+        return {
+          providerId: "fyagent-v2-xai-oauth-codex",
+          providerName: "xAI (Grok) OAuth",
+          app: "codex",
+          alreadyBound: false,
+          activated: false,
+        };
       }
       if (command === "save_workbuddy_models") {
         return {
@@ -547,9 +582,36 @@ describe("V2 feature ports", () => {
     await ports.catalog.get();
     const summary = await ports.providers.getSummary("codex");
     await ports.providers.applyQuickSetupWithResult(request, "codex");
+    await expect(
+      ports.providers.bindXaiManaged({
+        app: "codex",
+        accountId: "acct-xai",
+      }),
+    ).resolves.toEqual({
+      providerId: "fyagent-v2-xai-oauth-codex",
+      providerName: "xAI (Grok) OAuth",
+      app: "codex",
+      alreadyBound: false,
+      activated: false,
+    });
     await ports.workbuddy.getStatus();
     await ports.workbuddy.getModelIds();
     await ports.workbuddy.fetchModels(fetchRequest);
+    await expect(ports.workbuddy.getXaiManagedSummary()).resolves.toEqual({
+      authenticated: true,
+      defaultAccountId: "acct-xai",
+      accounts: [
+        {
+          id: "acct-xai",
+          label: "fixture-login",
+          requiresReauth: false,
+        },
+      ],
+    });
+    await expect(ports.workbuddy.fetchXaiManagedModels("acct-xai")).resolves.toEqual({
+      models: ["grok-4.5"],
+      truncated: false,
+    });
     await ports.workbuddy.saveModels(saveRequest);
     await expect(
       ports.providers.checkReachability("https://example.test/v1"),
@@ -591,9 +653,15 @@ describe("V2 feature ports", () => {
       ["get_agent_catalog"],
       ["get_provider_summary", { app: "codex" }],
       ["apply_provider_quick_setup_with_result", { request, app: "codex" }],
+      [
+        "bind_xai_managed_provider",
+        { request: { app: "codex", accountId: "acct-xai" } },
+      ],
       ["get_workbuddy_status"],
       ["get_workbuddy_model_ids"],
       ["fetch_workbuddy_models", { request: fetchRequest }],
+      ["auth_get_status", { authProvider: "xai_oauth" }],
+      ["get_xai_oauth_models", { accountId: "acct-xai" }],
       ["save_workbuddy_models", { request: saveRequest }],
       ["stream_check_url", { baseUrl: "https://example.test/v1" }],
       [
@@ -603,6 +671,7 @@ describe("V2 feature ports", () => {
           baseUrl: "https://example.test/v1",
           apiKey: "mutation-only-key",
           modelId: "model-a",
+          codexImageExtension: undefined,
         },
       ],
     ]);

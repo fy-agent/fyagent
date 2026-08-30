@@ -1,0 +1,30 @@
+{
+  "id": "grok-first-class-iteration",
+  "name": "grok-first-class-iteration",
+  "title": "Finish Grok login and SuperGrok placement into supported tools",
+  "description": "",
+  "status": "planning",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "codex",
+  "assignee": "codex",
+  "createdAt": "2026-08-31",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "08-31-grok-login-trichotomy",
+    "08-31-grok-supergrok-to-codex",
+    "08-31-grok-supergrok-to-workbuddy"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

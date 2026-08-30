@@ -679,3 +679,61 @@
     transition: none;
   }
 }
+
+#legacy-auth-root {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(4, 8, 14, 0.62);
+}
+
+#legacy-auth-root .legacy-auth-host {
+  display: grid;
+  gap: 16px;
+  width: min(760px, 100%);
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  padding: 20px;
+  border: 1px solid var(--fy-border);
+  border-radius: 16px;
+  background: var(--fy-surface);
+  color: var(--fy-text);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.35);
+}
+
+#legacy-auth-root .legacy-auth-host-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+#legacy-auth-root h1,
+#legacy-auth-root h3,
+#legacy-auth-root h4 {
+  margin: 0 0 6px;
+}
+
+#legacy-auth-root p,
+#legacy-auth-root label {
+  margin: 0;
+  color: var(--fy-text-secondary);
+  line-height: 1.55;
+}
+
+#legacy-auth-root button {
+  min-height: 32px;
+  padding: 6px 12px;
+  border: 1px solid var(--fy-border);
+  border-radius: 8px;
+  background: rgba(226, 243, 255, 0.08);
+  color: var(--fy-text);
+}
+
+#legacy-auth-root button:disabled {
+  opacity: 0.55;
+}

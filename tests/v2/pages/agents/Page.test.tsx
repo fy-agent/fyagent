@@ -11,6 +11,7 @@ import type {
   AgentInstallReadiness,
   AgentInstallState,
 } from "@/v2/shared/features/agent-install-readiness";
+import type { AgentAuthObservation } from "@/v2/shared/features/agent-auth";
 import type {
   CodexDesktopPort,
   FeaturePorts,
@@ -927,6 +928,9 @@ describe("V3 Agent directory and configuration shell", () => {
     expect(screen.queryByRole("switch")).not.toBeInTheDocument();
     await user.click(screen.getByRole("tab", { name: "提示词" }));
     expect(await screen.findByText(/当前未接入提示词管理/)).toBeVisible();
+    expect(
+      screen.queryByRole("region", { name: "认证状态" }),
+    ).not.toBeInTheDocument();
     expect(ports.prompts.getAll).not.toHaveBeenCalled();
 
     qoder.unmount();
@@ -942,6 +946,65 @@ describe("V3 Agent directory and configuration shell", () => {
     expect(ports.prompts.enable).toHaveBeenCalledWith("codex", "review");
     expect(
       await screen.findByText(/已从真实配置回读：Codex 当前使用此提示词/),
+    ).toBeVisible();
+  });
+
+  it("keeps Grok auth on the models section and does not treat official login as Codex setup", async () => {
+    const user = userEvent.setup();
+    const ports = configuredPorts();
+    const observation: AgentAuthObservation = {
+      kind: "handoff_only",
+      contractVersion: 1,
+      agentId: "grokbuild",
+      ownership: "agent_owned",
+      authority: "unverified",
+      allowedIntents: ["login", "logout"],
+      checkedAt: "2026-08-30T00:00:00Z",
+      reasonCodes: ["handoff_only"],
+    };
+    ports.agentAuth.getObservation = vi.fn(async () => observation);
+    ports.agentAuth.getActiveSession = vi.fn(async () => null);
+    renderPage(ports, "/agents?target=grokbuild&section=models");
+
+    const configuration = await screen.findByRole("region", {
+      name: "Grok Build 配置",
+    });
+    expect(within(configuration).getByRole("region", { name: "认证状态" })).toBeVisible();
+    expect(
+      within(configuration).getByRole("button", { name: "配置 API 钥匙" }),
+    ).toBeVisible();
+    expect(
+      within(configuration).getByRole("button", {
+        name: "打开认证中心扫 SuperGrok",
+      }),
+    ).toBeVisible();
+    expect(
+      within(configuration).getByRole("button", {
+        name: "去 Codex 绑定 SuperGrok",
+      }),
+    ).toBeVisible();
+    expect(
+      within(configuration).queryByRole("button", { name: "进入模型管理" }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(configuration).queryByRole("button", { name: "刷新状态" }),
+    ).not.toBeInTheDocument();
+
+    await user.click(
+      within(configuration).getByRole("tab", { name: "Skills" }),
+    );
+    expect(
+      within(configuration).queryByRole("region", { name: "认证状态" }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(configuration).queryByRole("button", { name: "刷新状态" }),
+    ).not.toBeInTheDocument();
+
+    await user.click(within(configuration).getByRole("tab", { name: "模型" }));
+    expect(
+      within(configuration).getByRole("button", {
+        name: "去 Codex 绑定 SuperGrok",
+      }),
     ).toBeVisible();
   });
 

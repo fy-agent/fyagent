@@ -1,0 +1,8 @@
+{"file": ".trellis/tasks/08-31-grok-first-class-iteration/summary.md", "reason": "Reject work that drifts from the shared plain plan"}
+{"file": ".trellis/spec/backend/external-agent-p0.md", "reason": "Reject verified Grok login or auth.json inference"}
+{"file": ".trellis/spec/frontend/v2-agent-models.md", "reason": "Reject login controls on Models Quick Setup"}
+{"file": ".trellis/spec/frontend/reuse.md", "reason": "Reject page-local OAuth or Settings rewrite"}
+{"file": ".trellis/tasks/08-31-grok-first-class-iteration/research/hil-matrix.md", "reason": "Both machines and all live cases required"}
+{"file": ".trellis/tasks/08-31-grok-login-trichotomy/research/current-login-surfaces.md", "reason": "Three roads must stay on their current owners"}
+{"file": ".trellis/spec/backend/workbuddy-configuration.md", "reason": "Reject treating WorkBuddy as a Provider write"}
+{"file": ".trellis/tasks/08-31-grok-supergrok-to-workbuddy/research/current-workbuddy-save-path.md", "reason": "Reject refresh-token copy into models.json"}

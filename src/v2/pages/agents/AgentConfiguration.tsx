@@ -92,13 +92,15 @@ export function AgentConfiguration({
         active
         className="fy-agent-config-body"
       >
-        <AgentAuthStatusPanel agentId={entry.agentId} />
         {section === "models" ? (
-          <AgentModelsSection
-            entry={entry}
-            catalogEntry={catalogEntry}
-            onOpenManagement={openManagement}
-          />
+          <>
+            <AgentAuthStatusPanel agentId={entry.agentId} />
+            <AgentModelsSection
+              entry={entry}
+              catalogEntry={catalogEntry}
+              onOpenManagement={openManagement}
+            />
+          </>
         ) : section === "skills" ? (
           <AgentSkillsSection entry={entry} onOpenManagement={openManagement} />
         ) : section === "mcp" ? (
