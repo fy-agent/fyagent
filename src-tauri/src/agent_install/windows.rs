@@ -11,9 +11,9 @@ use std::path::PathBuf;
 #[cfg(any(target_os = "windows", test))]
 use std::path::Path;
 
-use super::desktop::{
-    discover_windows_known_path_installations, DesktopInstallationEvidence, DesktopProduct,
-};
+#[cfg(not(target_os = "windows"))]
+use super::desktop::discover_windows_known_path_installations;
+use super::desktop::{DesktopInstallationEvidence, DesktopProduct};
 
 #[cfg(any(target_os = "windows", test))]
 use super::types::{
@@ -311,21 +311,18 @@ mod native {
                     WinVerifyTrust, WINTRUST_ACTION_GENERIC_VERIFY_V2, WINTRUST_DATA,
                     WINTRUST_DATA_0, WINTRUST_FILE_INFO, WTD_CHOICE_FILE,
                     WTD_REVOCATION_CHECK_CHAIN_EXCLUDE_ROOT, WTD_REVOKE_WHOLECHAIN,
-                    WTD_STATEACTION_CLOSE, WTD_STATEACTION_VERIFY, WTD_UI_NONE,
+                    WTD_STATEACTION_CLOSE, WTD_STATEACTION_VERIFY, WTD_UICONTEXT_EXECUTE,
+                    WTD_UI_NONE,
                 },
             },
             Storage::FileSystem::{
-                CreateFileW, GetFileInformationByHandle, FILE_ATTRIBUTE_NORMAL,
-                FILE_ATTRIBUTE_REPARSE_POINT, FILE_FLAG_OPEN_REPARSE_POINT, FILE_READ_ATTRIBUTES,
-                FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
+                CreateFileW, GetFileInformationByHandle, GetFileVersionInfoSizeW,
+                GetFileVersionInfoW, VerQueryValueW, BY_HANDLE_FILE_INFORMATION,
+                FILE_ATTRIBUTE_NORMAL, FILE_ATTRIBUTE_REPARSE_POINT, FILE_FLAG_OPEN_REPARSE_POINT,
+                FILE_READ_ATTRIBUTES, FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE,
+                OPEN_EXISTING,
             },
-            System::{
-                Diagnostics::Debug::{
-                    GetFileVersionInfoSizeW, GetFileVersionInfoW, VerQueryValueW,
-                },
-                SystemInformation::{IMAGE_FILE_MACHINE_AMD64, IMAGE_FILE_MACHINE_ARM64},
-                IO::BY_HANDLE_FILE_INFORMATION,
-            },
+            System::SystemInformation::{IMAGE_FILE_MACHINE_AMD64, IMAGE_FILE_MACHINE_ARM64},
         },
     };
     use winreg::RegKey;
@@ -336,11 +333,7 @@ mod native {
         WindowsInstallationDiscovery, WindowsPathHint, WindowsProductPolicy, MAX_REGISTRY_CHILDREN,
     };
     use crate::{
-        agent_install::{
-            desktop::{DesktopInstallationEvidence, DesktopProduct},
-            sources::AgentArch,
-            types::InstallationScope,
-        },
+        agent_install::{desktop::DesktopProduct, sources::AgentArch, types::InstallationScope},
         windows_runtime::{
             open_inventory_child_read, open_machine_inventory_parent,
             open_shell_user_inventory_parent, require_interactive_user_context,
@@ -357,7 +350,7 @@ mod native {
         let mut hints = known_path_hints(product, roots);
         let (registry_hints, registry_complete) = registry_hints(product);
         hints.extend(registry_hints);
-        if revalidate_interactive_user_context(context).is_err() {
+        if !revalidate_interactive_user_context(context) {
             return WindowsInstallationDiscovery {
                 installations: Vec::new(),
                 complete: false,
@@ -856,7 +849,7 @@ mod native {
             hWVTStateData: HANDLE::default(),
             pwszURLReference: PWSTR::null(),
             dwProvFlags: WTD_REVOCATION_CHECK_CHAIN_EXCLUDE_ROOT,
-            dwUIContext: 0,
+            dwUIContext: WTD_UICONTEXT_EXECUTE,
             pSignatureSettings: ptr::null_mut(),
         };
         let mut action: GUID = WINTRUST_ACTION_GENERIC_VERIFY_V2;

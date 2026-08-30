@@ -123,7 +123,6 @@ windows = { version = "0.61", features = [
   "Win32_Storage_Packaging_Appx",
   "Win32_System_Com",
   "Win32_System_Diagnostics_ToolHelp",
-  "Win32_System_Diagnostics_Debug",
   "Win32_System_Environment",
   "Win32_System_IO",
   "Win32_System_Ole",

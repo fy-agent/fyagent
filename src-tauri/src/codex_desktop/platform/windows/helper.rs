@@ -22,9 +22,8 @@ use std::{
 use fyagent_user_helper::{
     admission_event_name, cancel_event_name, decode_frame, layout::pipe_name,
     AgentInstallerProduct, CanonicalJobId, HelperErrorCode, HelperMessage, HelperProtocolAction,
-    HelperProtocolSequence, HelperProtocolTerminal, PackageBridgeArtifactKind,
-    PackageBridgeControl, PinnedPackageIdentity, PipeNonce, UserHelperAction, BRIDGE_CONTROL_BYTES,
-    MAX_FRAME_BYTES,
+    HelperProtocolSequence, HelperProtocolTerminal, PackageBridgeControl, PinnedPackageIdentity,
+    PipeNonce, UserHelperAction, BRIDGE_CONTROL_BYTES, MAX_FRAME_BYTES,
 };
 use windows::{
     core::{HRESULT, PCWSTR, PWSTR},

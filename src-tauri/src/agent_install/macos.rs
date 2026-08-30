@@ -6,10 +6,9 @@
 
 use std::path::PathBuf;
 
-use super::{
-    inventory::DesktopDeploymentTarget,
-    types::{AgentReasonCode, InstallationPackageKind, InstallationScope},
-};
+#[cfg(target_os = "macos")]
+use super::types::{InstallationPackageKind, InstallationScope};
+use super::{inventory::DesktopDeploymentTarget, types::AgentReasonCode};
 use crate::services::external_agents::AgentCatalogId;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
