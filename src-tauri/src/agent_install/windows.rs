@@ -497,13 +497,11 @@ mod native {
         hints: &mut Vec<WindowsPathHint>,
     ) -> bool {
         let mut complete = true;
-        let mut count = 0_usize;
-        for name in parent.enum_keys() {
-            if count == MAX_REGISTRY_CHILDREN {
+        for (count, name) in parent.enum_keys().enumerate() {
+            if count >= MAX_REGISTRY_CHILDREN {
                 complete = false;
                 break;
             }
-            count += 1;
             let name = match name {
                 Ok(name) => name,
                 Err(_) => {
@@ -759,7 +757,7 @@ mod native {
         if !queried.as_bool() {
             return None;
         }
-        if pointer.is_null() || length < 4 || length > 256 || length % 4 != 0 {
+        if pointer.is_null() || !(4..=256).contains(&length) || length % 4 != 0 {
             return None;
         }
         let pairs =

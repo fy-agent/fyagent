@@ -47,7 +47,7 @@
     ],
     [
       "src-tauri/src/agent_install/desktop.rs",
-      "3c83b1f8c7d77e0dce46b95db555ddfe24163d9d74d7955190b59420053deee9"
+      "5e780f7b47c707d30ed9fb5a25c8944d9c481971900d18066d8b4c8fb3a46e80"
     ],
     [
       "src-tauri/src/agent_install/fetch.rs",
@@ -71,7 +71,7 @@
     ],
     [
       "src-tauri/src/agent_install/windows.rs",
-      "cca4851dacc5f80bd472c74aa01074b3552b75889272d3554110f82085010c04"
+      "3772dd9e81692b77902ae5e98b082ac4a11de15719d4472e1fef4e20729df903"
     ],
     [
       "src-tauri/src/app_store.rs",

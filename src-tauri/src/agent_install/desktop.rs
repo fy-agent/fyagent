@@ -77,6 +77,7 @@ pub(super) fn desktop_product(agent_id: AgentCatalogId) -> Option<&'static Deskt
         .find(|product| product.agent_id == agent_id)
 }
 
+#[cfg(target_os = "macos")]
 pub(super) fn macos_bundle_id_for(agent_id: AgentCatalogId) -> Option<&'static str> {
     desktop_product(agent_id).map(|product| product.macos_bundle_id)
 }
@@ -390,6 +391,7 @@ pub(super) fn capture_desktop_installation_baseline(
     }
 }
 
+#[cfg(target_os = "macos")]
 pub(super) fn verify_desktop_deployment(
     agent_id: AgentCatalogId,
     baseline: &DesktopInstallationBaseline,
@@ -406,6 +408,7 @@ pub(super) fn verify_desktop_deployment(
     )
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn verify_desktop_deployment_candidates(
     baseline: &DesktopInstallationBaseline,
     after: Vec<DesktopInstallationEvidence>,
@@ -1029,6 +1032,7 @@ mod tests {
         );
     }
 
+    #[cfg(target_os = "macos")]
     fn write_fake_macos_app(root: &Path, name: &str, bundle_id: &str, version: &str) {
         let app = root.join(format!("{name}.app"));
         fs::create_dir_all(app.join("Contents")).expect("app contents");
@@ -1073,6 +1077,7 @@ mod tests {
         desktop_product(agent_id).expect("closed desktop product")
     }
 
+    #[cfg(target_os = "macos")]
     #[test]
     fn macos_observation_keys_off_bundle_id_not_folder_name() {
         let root = tempfile::tempdir().expect("temp");
@@ -1119,8 +1124,9 @@ mod tests {
         .expect("product json");
     }
 
+    #[cfg(target_os = "macos")]
     #[test]
-    fn trae_local_version_uses_tron_build_not_electron_app_version() {
+    fn trae_macos_local_version_uses_tron_build_not_electron_app_version() {
         let root = tempfile::tempdir().expect("temp");
         let apps = root.path().join("Applications");
         fs::create_dir_all(&apps).expect("applications");
@@ -1139,7 +1145,11 @@ mod tests {
         );
         assert_eq!(macos.len(), 1);
         assert_eq!(macos[0].local_version.as_deref(), Some("2.3.71801"));
+    }
 
+    #[test]
+    fn trae_windows_local_version_uses_tron_build_not_electron_app_version() {
+        let root = tempfile::tempdir().expect("temp");
         let programs = root.path().join("Programs");
         write_fake_windows_exe(
             &programs.join("TRAE SOLO CN").join("TRAE SOLO CN.exe"),
@@ -1204,16 +1214,15 @@ mod tests {
         .is_empty());
     }
 
+    #[cfg(target_os = "macos")]
     #[test]
-    fn vendor_config_directories_are_not_install_evidence() {
+    fn vendor_config_directories_are_not_macos_install_evidence() {
         let root = tempfile::tempdir().expect("temp");
         fs::create_dir_all(root.path().join(".workbuddy")).expect("workbuddy config");
         fs::create_dir_all(root.path().join(".qoderwork")).expect("qoder config");
         fs::create_dir_all(root.path().join(".trae")).expect("trae config");
         let apps = root.path().join("Applications");
-        let programs = root.path().join("Programs");
         fs::create_dir_all(&apps).expect("applications");
-        fs::create_dir_all(&programs).expect("programs");
 
         for agent_id in [
             AgentCatalogId::WorkBuddy,
@@ -1222,19 +1231,32 @@ mod tests {
         ] {
             let item = product(agent_id);
             assert!(discover_macos_installations(item, std::slice::from_ref(&apps)).is_empty());
-            assert!(discover_windows_known_path_installations(
-                item,
-                std::slice::from_ref(&programs),
-            )
-            .is_empty());
             assert_eq!(
                 launch_macos_if_present(item, std::slice::from_ref(&apps)),
                 Err(AgentReasonCode::InstalledNotRunnable)
             );
-            assert_eq!(
-                launch_windows_if_present(item, std::slice::from_ref(&programs)),
-                Err(AgentReasonCode::InstalledNotRunnable)
-            );
+        }
+    }
+
+    #[test]
+    fn vendor_config_directories_are_not_windows_known_path_evidence() {
+        let root = tempfile::tempdir().expect("temp");
+        fs::create_dir_all(root.path().join(".workbuddy")).expect("workbuddy config");
+        fs::create_dir_all(root.path().join(".qoderwork")).expect("qoder config");
+        fs::create_dir_all(root.path().join(".trae")).expect("trae config");
+        let programs = root.path().join("Programs");
+        fs::create_dir_all(&programs).expect("programs");
+
+        for agent_id in [
+            AgentCatalogId::WorkBuddy,
+            AgentCatalogId::QoderWork,
+            AgentCatalogId::TraeWork,
+        ] {
+            assert!(discover_windows_known_path_installations(
+                product(agent_id),
+                std::slice::from_ref(&programs),
+            )
+            .is_empty());
         }
     }
 
