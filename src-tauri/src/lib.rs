@@ -1845,6 +1845,7 @@ pub fn run() {
             commands::get_agent_auth_observation,
             commands::start_agent_auth_session,
             commands::get_agent_auth_session,
+            commands::get_active_agent_auth_session,
             commands::stop_waiting_for_agent_auth,
             commands::get_agent_install_readiness,
             commands::get_agent_installation_inventory,

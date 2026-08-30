@@ -16,6 +16,7 @@ export function createBrowserFeaturePorts(): FeaturePorts {
     },
     agentAuth: {
       getObservation: rejectNativeOnly,
+      getActiveSession: rejectNativeOnly,
       startSession: rejectNativeOnly,
       getSession: rejectNativeOnly,
       stopWaiting: rejectNativeOnly,

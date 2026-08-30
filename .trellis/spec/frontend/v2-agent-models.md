@@ -197,12 +197,14 @@ type AgentAuthPort = {
     expectedTargetRevision?: string;
   }): Promise<AgentAuthSessionSnapshot>;
   getSession(sessionId: string): Promise<AgentAuthSessionSnapshot>;
+  getActiveSession(agentId: AgentCatalogId): Promise<AgentAuthSessionSnapshot | null>;
   stopWaiting(sessionId: string): Promise<AgentAuthSessionSnapshot>;
 };
 
 get_agent_auth_observation({ agentId });
 start_agent_auth_session({ request });
 get_agent_auth_session({ sessionId });
+get_active_agent_auth_session({ agentId });
 stop_waiting_for_agent_auth({ sessionId });
 ```
 

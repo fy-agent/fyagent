@@ -124,7 +124,7 @@ describe("V2 native ACL contract", () => {
     const allowed = activeAclCommands();
 
     expect(renderer.dynamicInvokes).toEqual([]);
-    expect(renderer.commands.size).toBe(91);
+    expect(renderer.commands.size).toBe(92);
     expect(
       [...renderer.commands].filter((command) => !registered.has(command)),
     ).toEqual([]);
@@ -156,6 +156,7 @@ describe("V2 native ACL contract", () => {
       "get_agent_auth_observation",
       "start_agent_auth_session",
       "get_agent_auth_session",
+      "get_active_agent_auth_session",
       "stop_waiting_for_agent_auth",
     ];
     expect(expected.filter((command) => !registered.has(command))).toEqual([]);

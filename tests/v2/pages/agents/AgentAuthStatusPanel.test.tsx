@@ -49,14 +49,25 @@ function session(
 function renderPanel(
   agentId: AgentAuthObservation["agentId"],
   port: AgentAuthPort,
+  enabled = true,
 ) {
   const ports: FeaturePorts = createBrowserFeaturePorts();
   ports.agentAuth = port;
-  return render(
+  const result = render(
     <FeatureProvider ports={ports}>
-      <AgentAuthStatusPanel agentId={agentId} />
+      <AgentAuthStatusPanel agentId={agentId} enabled={enabled} />
     </FeatureProvider>,
   );
+  return {
+    ...result,
+    rerenderPanel(nextEnabled: boolean) {
+      result.rerender(
+        <FeatureProvider ports={ports}>
+          <AgentAuthStatusPanel agentId={agentId} enabled={nextEnabled} />
+        </FeatureProvider>,
+      );
+    },
+  };
 }
 
 describe("AgentAuthStatusPanel", () => {
@@ -65,6 +76,7 @@ describe("AgentAuthStatusPanel", () => {
     const verified = account("logged_in");
     const port: AgentAuthPort = {
       getObservation: vi.fn(async () => before),
+      getActiveSession: vi.fn(async () => null),
       startSession: vi.fn(async () =>
         session(before, {
           stage: "awaiting_user",
@@ -128,6 +140,7 @@ describe("AgentAuthStatusPanel", () => {
     );
     renderPanel("opencode", {
       getObservation: vi.fn(async () => before),
+      getActiveSession: vi.fn(async () => null),
       startSession,
       getSession: vi.fn(),
       stopWaiting: vi.fn(),
@@ -158,6 +171,7 @@ describe("AgentAuthStatusPanel", () => {
     };
     renderPanel("grokbuild", {
       getObservation: vi.fn(async () => observation),
+      getActiveSession: vi.fn(async () => null),
       startSession: vi.fn(async () =>
         session(observation, {
           agentId: "grokbuild",
@@ -189,6 +203,7 @@ describe("AgentAuthStatusPanel", () => {
     };
     renderPanel("codex", {
       getObservation: vi.fn(async () => observation),
+      getActiveSession: vi.fn(async () => null),
       startSession: vi.fn(),
       getSession: vi.fn(),
       stopWaiting: vi.fn(),
@@ -201,5 +216,58 @@ describe("AgentAuthStatusPanel", () => {
     expect(
       screen.queryByRole("button", { name: "连接 Provider" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("recovers an active backend session after the renderer remounts", async () => {
+    const before = account("logged_out");
+    const verified = account("logged_in");
+    const active = session(before, {
+      stage: "awaiting_user",
+      canStopWaiting: true,
+    });
+    const getActiveSession = vi.fn(async () => active);
+    const getSession = vi.fn(async () =>
+      session(verified, {
+        stage: "verified",
+        outcome: "verified_logged_in",
+      }),
+    );
+    renderPanel("claude-code", {
+      getObservation: vi.fn(async () => before),
+      getActiveSession,
+      startSession: vi.fn(),
+      getSession,
+      stopWaiting: vi.fn(),
+    });
+
+    expect(await screen.findByText("等待你完成官方认证")).toBeVisible();
+    expect(
+      await screen.findByText("认证结果已验证", {}, { timeout: 2500 }),
+    ).toBeVisible();
+    expect(getActiveSession).toHaveBeenCalledWith("claude-code");
+    expect(getSession).toHaveBeenCalledWith(SESSION_ID);
+  });
+
+  it("starts recovery when directory authority becomes enabled", async () => {
+    const before = account("logged_out");
+    const getActiveSession = vi.fn(async () => null);
+    const view = renderPanel(
+      "claude-code",
+      {
+        getObservation: vi.fn(async () => before),
+        getActiveSession,
+        startSession: vi.fn(),
+        getSession: vi.fn(),
+        stopWaiting: vi.fn(),
+      },
+      false,
+    );
+
+    expect(getActiveSession).not.toHaveBeenCalled();
+    view.rerenderPanel(true);
+
+    await waitFor(() =>
+      expect(getActiveSession).toHaveBeenCalledWith("claude-code"),
+    );
   });
 });

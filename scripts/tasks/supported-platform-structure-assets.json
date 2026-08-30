@@ -63,7 +63,7 @@
     ],
     [
       "src-tauri/src/agent_install/mod.rs",
-      "9a72aa6a1ad04bcfacdbfb6497b574679bacdc927567173a9036210129c079d4"
+      "867dd586c8fe284721b16cab742f82fcee903b388a009612dd9b7972754bed8d"
     ],
     [
       "src-tauri/src/agent_install/sources/mod.rs",
@@ -151,7 +151,7 @@
     ],
     [
       "src-tauri/src/lib.rs",
-      "640e276bdef8be889c77639baff3a77ae561df21aa165fe2210f6c78a4a417d2"
+      "ec9af143fba0c5dc57bb85b99a2fdbe7283918c4fab2e98ea85d9314cc3845a6"
     ],
     [
       "src-tauri/src/lightweight.rs",
@@ -239,7 +239,7 @@
     ],
     [
       "src-tauri/src/services/tooling.rs",
-      "061e49357c63163823c8a3b2bab71957298cd1a9bebfd1513a8abacac456cfbf"
+      "3ccae387688de5ea774d69de8489bf2019d7c70012f034c79fc4cd5163f7c3b5"
     ],
     [
       "src-tauri/src/services/tooling/discovery.rs",

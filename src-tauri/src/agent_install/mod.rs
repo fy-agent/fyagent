@@ -19,8 +19,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 pub use auth_sessions::{
-    auth_observation_for, get_agent_auth_session, start_agent_auth_session,
-    stop_waiting_for_agent_auth, AgentAuthSessionStore,
+    auth_observation_for, get_active_agent_auth_session, get_agent_auth_session,
+    start_agent_auth_session, stop_waiting_for_agent_auth, AgentAuthSessionStore,
 };
 pub use inventory::{inventory_for, AgentInstallationInventoryStore};
 pub use jobs::AgentActionJobStore;

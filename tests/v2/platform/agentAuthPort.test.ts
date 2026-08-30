@@ -38,7 +38,7 @@ function session() {
 describe("Tauri Agent auth port", () => {
   beforeEach(() => invoke.mockReset());
 
-  it("uses only the four closed commands and bounded payload fields", async () => {
+  it("uses only the five closed commands and bounded payload fields", async () => {
     invoke.mockResolvedValueOnce(observation());
     await expect(
       createAgentAuthPort().getObservation("claude-code"),
@@ -46,6 +46,19 @@ describe("Tauri Agent auth port", () => {
     expect(invoke).toHaveBeenLastCalledWith("get_agent_auth_observation", {
       agentId: "claude-code",
     });
+
+    invoke.mockResolvedValueOnce(session());
+    await expect(
+      createAgentAuthPort().getActiveSession("claude-code"),
+    ).resolves.toMatchObject({ sessionId: SESSION_ID });
+    expect(invoke).toHaveBeenLastCalledWith("get_active_agent_auth_session", {
+      agentId: "claude-code",
+    });
+
+    invoke.mockResolvedValueOnce(null);
+    await expect(
+      createAgentAuthPort().getActiveSession("claude-code"),
+    ).resolves.toBeNull();
 
     invoke.mockResolvedValueOnce(session());
     await createAgentAuthPort().startSession({
@@ -86,6 +99,11 @@ describe("Tauri Agent auth port", () => {
   it("rejects unknown IDs before IPC and rejects excess response fields", async () => {
     await expect(
       createAgentAuthPort().getObservation("claude" as "claude-code"),
+    ).rejects.toThrow("Agent auth request is invalid");
+    expect(invoke).not.toHaveBeenCalled();
+
+    await expect(
+      createAgentAuthPort().getActiveSession("claude" as "claude-code"),
     ).rejects.toThrow("Agent auth request is invalid");
     expect(invoke).not.toHaveBeenCalled();
 

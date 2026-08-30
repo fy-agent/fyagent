@@ -24,22 +24,48 @@ export function isAgentAuthSessionTerminal(
 }
 
 export function useAgentAuthSession({
+  agentId,
   port,
+  enabled = true,
   onTerminal,
 }: {
+  agentId: StartAgentAuthSessionRequest["agentId"];
   port: AgentAuthPort;
+  enabled?: boolean;
   onTerminal?: (snapshot: AgentAuthSessionSnapshot) => void;
 }) {
   const [snapshot, setSnapshot] = useState<AgentAuthSessionSnapshot | null>(
     null,
   );
   const [submitting, setSubmitting] = useState(false);
+  const [recovering, setRecovering] = useState(enabled);
   const [error, setError] = useState<unknown>(null);
   const terminalCallback = useRef(onTerminal);
 
   useEffect(() => {
     terminalCallback.current = onTerminal;
   }, [onTerminal]);
+
+  useEffect(() => {
+    if (!enabled) return;
+    let active = true;
+    void port.getActiveSession(agentId).then(
+      (next) => {
+        if (!active) return;
+        setSnapshot(next);
+        setError(null);
+        setRecovering(false);
+      },
+      (nextError) => {
+        if (!active) return;
+        setError(nextError);
+        setRecovering(false);
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [agentId, enabled, port]);
 
   useEffect(() => {
     if (!snapshot || isAgentAuthSessionTerminal(snapshot)) return;
@@ -115,7 +141,9 @@ export function useAgentAuthSession({
     snapshot,
     error,
     submitting,
+    recovering,
     busy:
+      (enabled && recovering) ||
       submitting ||
       (snapshot !== null && !isAgentAuthSessionTerminal(snapshot)),
     start,

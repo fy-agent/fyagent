@@ -40,7 +40,7 @@
 - [x] Windows formal interactive-user fail-closed and platform launch-failure contracts.
 - [x] UI copy/loading/handoff/provider-list behavior in component tests and four Playwright viewports.
 - [x] Regression tests for existing Agent install readiness and Auth Center delegation.
-- [ ] Automatic recovery after a full renderer process reload when the renderer no longer possesses the session ID; no path/URL/storage persistence was added merely to hide this gap.
+- [x] Automatic recovery after a full renderer process reload through the process-local active-session lookup keyed only by canonical Agent ID; no path/URL/secret persistence was added.
 - [ ] Real-account/native macOS and Windows HIL; portable tests do not prove browser, terminal, Explorer-user, or vendor-account behavior.
 
 ## Validation
@@ -60,10 +60,12 @@ Native HIL must use disposable/test accounts where permitted and record only sta
 ## Verification evidence
 
 - `mise run typecheck:v2` and `mise run lint:v2` passed under the locked Node 24.19.0 runtime.
-- `mise run test:v2` passed 55 files / 391 tests.
-- Auth-specific Rust tests and the full Agent-install suite passed; the final full Rust run passed 2944 tests with 5 ignored platform fixtures.
+- `mise run test:v2` passed 55 files / 393 tests.
+- Auth-specific Rust tests and the full Agent-install suite passed; the final full Rust run passed 2945 tests with 5 ignored platform fixtures.
 - `mise run test:v2:browser` passed 140 tests, including the dedicated Auth scenario across all four configured Chromium viewports.
 - `mise run rust:fmt:check`, `mise run rust:clippy`, and `mise run supported-platform:check` passed; the platform manifest covered 2306 current files.
+- The renderer remount regression test proves that an active process-local session is recovered by canonical Agent ID and polling resumes without persisting a session ID in browser storage.
+- `TRELLIS_CONTEXT_ID=chatgpt-stage4-20260830 mise run check:prearchive --exclude-active-task .trellis/tasks/08-29-agent-auth-verification-state-machine` passed after the recovery command, ACL, structure manifest, and command-count contracts were updated.
 
 ## Rollback point
 

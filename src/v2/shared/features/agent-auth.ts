@@ -156,6 +156,9 @@ export interface AgentAuthSessionSnapshot {
 
 export interface AgentAuthPort {
   getObservation(agentId: AgentCatalogId): Promise<AgentAuthObservation>;
+  getActiveSession(
+    agentId: AgentCatalogId,
+  ): Promise<AgentAuthSessionSnapshot | null>;
   startSession(
     request: StartAgentAuthSessionRequest,
   ): Promise<AgentAuthSessionSnapshot>;

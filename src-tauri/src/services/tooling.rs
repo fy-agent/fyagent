@@ -1956,6 +1956,7 @@ fn capture_child_pipe(mut pipe: impl std::io::Read, limit: Option<usize>) -> Cap
     CapturedPipe { bytes, overflowed }
 }
 
+#[cfg(target_os = "macos")]
 fn wait_child_output(
     child: std::process::Child,
     deadline: Option<CommandDeadline>,

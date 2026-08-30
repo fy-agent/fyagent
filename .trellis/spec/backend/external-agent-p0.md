@@ -84,6 +84,9 @@ start_agent_auth_session({ request })
 get_agent_auth_session({ sessionId })
   -> AgentAuthSessionSnapshot | AgentAuthErrorDto
 
+get_active_agent_auth_session({ agentId })
+  -> AgentAuthSessionSnapshot | null
+
 stop_waiting_for_agent_auth({ sessionId })
   -> AgentAuthSessionSnapshot | AgentAuthErrorDto
 ```
@@ -316,6 +319,9 @@ start_agent_auth_session(StartAgentAuthSessionRequest)
 
 get_agent_auth_session(sessionId: String)
   -> Result<AgentAuthSessionSnapshot, AgentAuthErrorDto>
+
+get_active_agent_auth_session(agentId: AgentCatalogId)
+  -> Result<Option<AgentAuthSessionSnapshot>, String>
 
 stop_waiting_for_agent_auth(sessionId: String)
   -> Result<AgentAuthSessionSnapshot, AgentAuthErrorDto>
@@ -620,7 +626,8 @@ input.
 - ACL union includes `get_agent_installation_inventory`, `start_agent_action`,
   `cancel_agent_action`, `get_agent_action_job`,
   `get_agent_auth_observation`, `start_agent_auth_session`,
-  `get_agent_auth_session`, and `stop_waiting_for_agent_auth`. Renderer ports parse at the
+  `get_agent_auth_session`, `get_active_agent_auth_session`, and
+  `stop_waiting_for_agent_auth`. Renderer ports parse at the
   adapter, never in page-local casts. The Agents install section polls native job stage
   until terminal, shows that stage, and must not paint failure at a poll cap
   while `downloading`, `staging`, `launching_installer`, `awaiting_user`, or

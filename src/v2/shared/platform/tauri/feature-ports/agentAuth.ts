@@ -19,6 +19,18 @@ export function createAgentAuthPort(): AgentAuthPort {
         safeAgentId,
       );
     },
+    getActiveSession: async (agentId) => {
+      const safeAgentId = assertAgentAuthId(agentId);
+      const value = await invoke<unknown>("get_active_agent_auth_session", {
+        agentId: safeAgentId,
+      });
+      if (value === null) return null;
+      const snapshot = parseAgentAuthSessionSnapshot(value);
+      if (snapshot.agentId !== safeAgentId) {
+        throw new Error("Agent auth session is unavailable");
+      }
+      return snapshot;
+    },
     startSession: async (request: StartAgentAuthSessionRequest) => {
       const safeAgentId = assertAgentAuthId(request.agentId);
       return parseAgentAuthSessionSnapshot(

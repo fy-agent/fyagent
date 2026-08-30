@@ -118,6 +118,19 @@ impl AgentAuthSessionStore {
             .ok_or(AgentAuthReasonCode::OperationConflict)
     }
 
+    pub fn active_for_agent(&self, agent_id: AgentCatalogId) -> Option<AgentAuthSessionSnapshot> {
+        let cache = self
+            .inner
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let session_id = cache.active_by_agent.get(&agent_id)?;
+        cache
+            .records
+            .get(session_id)
+            .filter(|record| !is_terminal(record.snapshot.stage))
+            .map(|record| record.snapshot.clone())
+    }
+
     pub fn stop_waiting(
         &self,
         session_id: &str,
@@ -349,6 +362,13 @@ pub fn get_agent_auth_session(
     state: &AppState,
 ) -> Result<AgentAuthSessionSnapshot, AgentAuthReasonCode> {
     state.agent_auth_sessions.get(session_id)
+}
+
+pub fn get_active_agent_auth_session(
+    agent_id: AgentCatalogId,
+    state: &AppState,
+) -> Option<AgentAuthSessionSnapshot> {
+    state.agent_auth_sessions.active_for_agent(agent_id)
 }
 
 pub fn stop_waiting_for_agent_auth(
@@ -756,6 +776,36 @@ mod tests {
                 account(AgentAuthAccountState::LoggedOut),
             )
             .is_ok());
+    }
+
+    #[test]
+    fn active_session_can_be_recovered_by_agent_until_it_becomes_terminal() {
+        let store = AgentAuthSessionStore::new();
+        let (snapshot, _) = store
+            .start(
+                AgentCatalogId::ClaudeCode,
+                AgentAuthIntent::Login,
+                account(AgentAuthAccountState::LoggedOut),
+            )
+            .unwrap();
+        assert_eq!(
+            store
+                .active_for_agent(AgentCatalogId::ClaudeCode)
+                .map(|current| current.session_id),
+            Some(snapshot.session_id.clone())
+        );
+        assert!(store.active_for_agent(AgentCatalogId::OpenCode).is_none());
+
+        store
+            .transition(
+                &snapshot.session_id,
+                AgentAuthSessionStage::Failed,
+                account(AgentAuthAccountState::LoggedOut),
+                Some(AgentAuthSessionOutcome::Failed),
+                Some(AgentAuthReasonCode::CommandFailed),
+            )
+            .unwrap();
+        assert!(store.active_for_agent(AgentCatalogId::ClaudeCode).is_none());
     }
 
     #[test]

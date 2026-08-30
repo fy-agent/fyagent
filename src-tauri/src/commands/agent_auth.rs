@@ -4,10 +4,10 @@ use tauri::State;
 
 use crate::{
     agent_install::{
-        auth_observation_for, get_agent_auth_session as session_snapshot,
-        start_agent_auth_session as start_session, stop_waiting_for_agent_auth as stop_waiting,
-        AgentAuthErrorDto, AgentAuthObservationDto, AgentAuthSessionSnapshot,
-        StartAgentAuthSessionRequest,
+        auth_observation_for, get_active_agent_auth_session as active_session_snapshot,
+        get_agent_auth_session as session_snapshot, start_agent_auth_session as start_session,
+        stop_waiting_for_agent_auth as stop_waiting, AgentAuthErrorDto, AgentAuthObservationDto,
+        AgentAuthSessionSnapshot, StartAgentAuthSessionRequest,
     },
     services::external_agents::AgentCatalogId,
     store::AppState,
@@ -36,6 +36,14 @@ pub fn get_agent_auth_session(
     state: State<'_, AppState>,
 ) -> Result<AgentAuthSessionSnapshot, AgentAuthErrorDto> {
     session_snapshot(&session_id, &state).map_err(AgentAuthErrorDto::from)
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub fn get_active_agent_auth_session(
+    agent_id: AgentCatalogId,
+    state: State<'_, AppState>,
+) -> Result<Option<AgentAuthSessionSnapshot>, String> {
+    Ok(active_session_snapshot(agent_id, &state))
 }
 
 #[tauri::command(rename_all = "camelCase")]

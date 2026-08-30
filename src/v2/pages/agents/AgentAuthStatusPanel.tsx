@@ -162,7 +162,12 @@ export function AgentAuthStatusPanel(props: {
   mode?: "compact" | "detail";
   enabled?: boolean;
 }) {
-  return <AgentAuthStatusPanelInner key={props.agentId} {...props} />;
+  return (
+    <AgentAuthStatusPanelInner
+      key={`${props.agentId}:${props.enabled !== false ? "enabled" : "disabled"}`}
+      {...props}
+    />
+  );
 }
 
 function AgentAuthStatusPanelInner({
@@ -186,7 +191,9 @@ function AgentAuthStatusPanelInner({
   const [selectionError, setSelectionError] = useState<string | null>(null);
   const lastTerminalSession = useRef<string | null>(null);
   const session = useAgentAuthSession({
+    agentId,
     port: ports.agentAuth,
+    enabled,
     onTerminal: (snapshot) => {
       if (lastTerminalSession.current === snapshot.sessionId) return;
       lastTerminalSession.current = snapshot.sessionId;

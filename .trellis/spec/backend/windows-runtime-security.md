@@ -497,6 +497,7 @@ start_agent_action({ agentId: claude-code|grokbuild|opencode, action: install|up
 
 get_agent_auth_observation({ agentId: claude-code|grokbuild|opencode })
 start_agent_auth_session({ agentId, intent })
+get_active_agent_auth_session({ agentId })
   -> unavailable / interactive_user_unavailable // no user tool is inspected or launched
 
 fyagent-user-helper.exe

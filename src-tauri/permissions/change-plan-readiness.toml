@@ -29,5 +29,6 @@ commands.allow = [
   "get_agent_auth_observation",
   "start_agent_auth_session",
   "get_agent_auth_session",
+  "get_active_agent_auth_session",
   "stop_waiting_for_agent_auth",
 ]

@@ -1174,6 +1174,21 @@ export async function installRichTauriFeatureFixture(
           }
           case "get_agent_auth_observation":
             return structuredClone(authObservation(String(payload.agentId)));
+          case "get_active_agent_auth_session": {
+            const agentId = String(payload.agentId);
+            const record = [...authSessions.values()].find(
+              ({ snapshot }) =>
+                snapshot.agentId === agentId &&
+                ![
+                  "verified",
+                  "handoff_complete",
+                  "failed",
+                  "cancelled",
+                  "timed_out",
+                ].includes(String(snapshot.stage)),
+            );
+            return record ? structuredClone(record.snapshot) : null;
+          }
           case "start_agent_auth_session": {
             const request = payload.request as {
               agentId: string;
