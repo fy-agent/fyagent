@@ -98,7 +98,9 @@
 - [x] Codex PackageManager/Helper and Windows runtime security regressions pass
   locally; the Helper crate also type-checks for `x86_64-pc-windows-msvc`
   using a resource-embedding-only RC shim.
-- [ ] Hosted Windows backend checks for the committed SHA.
+- [x] Hosted Windows backend checks for committed SHA `1b321e77`（CI run
+  `33293527563`）；Windows backend、x64/ARM64 native contracts and aggregate
+  `CI / Required` all passed.
 
 ## Validation
 

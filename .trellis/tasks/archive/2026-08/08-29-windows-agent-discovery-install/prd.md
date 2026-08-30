@@ -98,22 +98,22 @@
 
 ## Acceptance Criteria
 
-- [ ] Inventory 覆盖 interactive-user/machine Uninstall、32/64 registry views、App Paths 和 known paths，并保留来源与 partial-failure 状态；当前三款 EXE 明确记录 PackageManager 不适用，Codex MSIX 回归保持绿色。
-- [ ] Elevated FyAgent 仍读取 Explorer 用户的 per-user 安装，不误读管理员进程 HKCU。
-- [ ] Registry symbolic link、oversized/unexpected values、控制字符和非绝对路径 fail closed。
-- [ ] 同一 EXE 的 registry + App Paths + known-path 证据合并；不同 scope/custom path 候选不合并。
-- [ ] Stale registry、missing executable、product mismatch、version resource malformed 和 signer mismatch 都不可执行。
-- [ ] Production identity 使用 Win32 version/signature API，不依赖 PE UTF-16 字符串窗口扫描。
-- [ ] Qoder User installer 不显示为 system installer；unsupported architecture 明确 disabled。
-- [ ] 下载使用 retained file capability，替换同路径文件/符号链接/bridge drift 会在执行前拒绝。
-- [ ] Authenticode trust/publisher 不匹配零执行，错误输出不泄露用户路径或证书原始信息。
-- [ ] Installer 由冻结 interactive user 启动；上下文漂移、UAC cancel、helper identity mismatch 和无 process handle 使用不同 closed reason。
-- [ ] Vendor UI 模式显示 awaiting-user/external-process-running，不在启动瞬间 success。
-- [ ] Exit 0 后必须 inventory readback；未发现、版本不符、多个新候选或 scope 漂移不报告成功。
-- [ ] User/system/custom 与 parallel install fixtures 都要求显式目标选择。
+- [x] Inventory 覆盖 interactive-user/machine Uninstall、32/64 registry views、App Paths 和 known paths，并保留来源与 partial-failure 状态；当前三款 EXE 明确记录 PackageManager 不适用，Codex MSIX 回归保持绿色。
+- [x] Elevated FyAgent 仍读取 Explorer 用户的 per-user 安装，不误读管理员进程 HKCU。
+- [x] Registry symbolic link、oversized/unexpected values、控制字符和非绝对路径 fail closed。
+- [x] 同一 EXE 的 registry + App Paths + known-path 证据合并；不同 scope/custom path 候选不合并。
+- [x] Stale registry、missing executable、product mismatch、version resource malformed 和 signer mismatch 都不可执行。
+- [x] Production identity 使用 Win32 version/signature API，不依赖 PE UTF-16 字符串窗口扫描。
+- [x] Qoder User installer 不显示为 system installer；unsupported architecture 明确 disabled。
+- [x] 下载使用 retained file capability，替换同路径文件/符号链接/bridge drift 会在执行前拒绝。
+- [x] Authenticode trust/publisher 不匹配零执行，错误输出不泄露用户路径或证书原始信息。
+- [x] Installer 由冻结 interactive user 启动；上下文漂移、UAC cancel、helper identity mismatch 和无 process handle 使用不同 closed reason。
+- [x] Vendor UI 模式显示 awaiting-user/external-process-running，不在启动瞬间 success。
+- [x] Exit 0 后必须 inventory readback；未发现、版本不符、多个新候选或 scope 漂移不报告成功。
+- [x] User/system/custom 与 parallel install fixtures 都要求显式目标选择。
 - [ ] Windows x64 HIL 覆盖 QoderWork、TRAE Work、WorkBuddy 的未安装、已有安装、更新、取消、UAC 拒绝、自定义目录、stale registry 和卸载后残留。
-- [ ] 对每个产品/architecture 给出 `managed | assisted | manual | unsupported` 结论，不以另一个产品的证据代替。
-- [ ] Stage 1、Codex Desktop Windows、interactive-user、registry 和 helper 安全回归全部通过。
+- [x] 对每个产品/architecture 给出 `managed | assisted | manual | unsupported` 结论，不以另一个产品的证据代替。
+- [x] Stage 1、Codex Desktop Windows、interactive-user、registry 和 helper 安全回归全部通过。
 
 ## Dependencies
 
