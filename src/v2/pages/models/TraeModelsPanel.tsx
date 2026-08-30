@@ -61,7 +61,7 @@ export function TraeModelsPanel({ active }: { active: boolean }) {
           emptyLabel={
             existingSearch.trim()
               ? "没有匹配的模型 ID"
-              : "未观察到第三方模型 ID。请在 TRAE Work CN 中添加。"
+              : "还没有找到第三方模型 ID。请在 TRAE Work CN 中添加。"
           }
         />
       </ModelsExistingSection>

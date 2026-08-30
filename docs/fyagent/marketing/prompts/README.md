@@ -11,30 +11,30 @@ source: visual-asset-plan.md and verified product contracts
 
 这些提示词用于 ChatGPT 内置生图，目标是生产概念底图和讲解插图，不是伪造 FyAgent 界面。实际使用时保留“Constraints”和“Avoid”，只替换任务卡明确允许的变量。
 
-## 1. 统一管理 Hero
+## 1. 配置概览 Hero
 
 适用：官网 / README 首屏无字底图。当前样例见 [v3](../visual-direction-sample-v3.md)。
 
 ```text
 Use case: ads-marketing
 Asset type: FyAgent website hero background, wide 16:9 landscape
-Primary request: visualize one calm personal AI control center bringing scattered model choices, tool connections, skills, and working instructions into an understandable, deliberate workflow. Several abstract flat configuration tokens enter from the right, converge through clean luminous data lanes into one central software selector, and leave as coordinated AI-tool states. Convey human control without showing a literal steering wheel.
+Primary request: visualize one desktop configuration workspace receiving separate model, provider, Skill, MCP, and prompt settings, reviewing them in a central software layer, and routing the approved settings to several generic AI applications. Several abstract flat configuration tokens enter from the right, converge through clean data lanes into one central software selector, and leave as updated application states. Show deliberate review before apply without using a literal steering wheel.
 Scene/backdrop: deep graphite technical space with a very subtle precision grid and large quiet negative space.
 Composition/framing: reserve the left 38 percent as empty, high-contrast copy space. Keep the focal object in the right 58 percent and inside the central 80 percent safe zone. Add one completely blank recessed octagonal badge plate for later deterministic placement of the original FyAgent logo.
-Style/medium: premium precise 3D-and-vector hybrid for a serious personal desktop AI product; satin dark surfaces, restrained translucent layers, crisp geometry, minimal depth.
+Style/medium: precise 3D-and-vector hybrid for a desktop configuration application; satin dark surfaces, restrained translucent layers, crisp geometry, minimal depth.
 Color palette: graphite #0B0D10, warm white #F5F2EC, signal blue #0B66FF, clear cyan #18D3C5, one small safety amber #FFAA2B accent, restrained green healthy-state signal.
 Constraints: no text, no letters, no numbers, no logos, no brand names, no third-party icons, no application UI, no keyboard, no keycaps, no screen, no laptop, no physical cable, no USB device, no people, no watermark. The blank badge plate must contain no symbol.
 Avoid: hardware product photography, USB hub silhouettes, purple SaaS gradients, neon cyberpunk, glassmorphism overload, random floating cards, fake dashboard microcopy.
 ```
 
-## 2. 多工具统一管理讲解图
+## 2. 多应用配置讲解图
 
 适用：产品介绍、演示文稿和手册总览。准确标签后期用 SVG/HTML 添加。
 
 ```text
 Use case: infographic-diagram
 Asset type: FyAgent multi-tool configuration explainer, 16:9
-Primary request: create a clear left-to-right visual system with three semantic zones: several scattered AI choices, one central FyAgent control layer, and several coordinated AI-tool outcomes. Every route must visibly pass through the center, and one route should show an active healthy state.
+Primary request: create a clear left-to-right visual system with three semantic zones: separate application settings, one central FyAgent review and configuration layer, and several updated application states. Every route must visibly pass through the center, and one route should show a completed healthy state.
 Style/medium: flat vector structure with restrained 3D depth, precise spacing, calm engineering clarity.
 Composition/framing: three aligned zones, generous label space below each zone, no decorative nodes that do not carry meaning.
 Color palette: off-white or graphite base, cyan and blue routes, green healthy state, one orange attention state.
@@ -50,7 +50,7 @@ Avoid: radial mind maps, dense network diagrams, decorative arrows, invented UI,
 Use case: stylized-concept
 Asset type: FyAgent Agent-tool lifecycle illustration, 3:2 landscape
 Primary request: show one compact desktop software module inspecting several generic command-line tool nodes, updating a subset in sequence, and flagging two overlapping installation paths as a conflict. The sequence should read as detect, act, verify, diagnose without text.
-Style/medium: precise vector-and-3D hybrid, restrained personal AI product aesthetic, clean status signals.
+Style/medium: precise vector-and-3D hybrid for a desktop configuration application, with clear status signals.
 Composition/framing: one central module, a short ordered path, and a clearly separated conflict branch. Leave open space below four stages for deterministic labels.
 Color palette: graphite, off-white, cyan, electric blue, green success, small orange conflict signal.
 Constraints: no terminal commands, no package-manager logos, no tool logos, no exact numbers rendered in the image, no fake application UI, no text, no watermark. Do not imply that every detected tool can be installed or updated.

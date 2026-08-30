@@ -33,20 +33,20 @@ const DESKTOP_HANDOFF_AGENTS = new Set<AgentCatalogId>([
 function observationSummary(observation: AgentAuthObservation): string {
   switch (observation.kind) {
     case "account":
-      if (observation.authority !== "verified") return "账号状态尚未验证";
-      if (observation.state === "logged_in") return "已验证登录";
-      if (observation.state === "logged_out") return "已验证退出";
-      return "账号状态未知";
+      if (observation.authority !== "verified") return "登录状态待确认";
+      if (observation.state === "logged_in") return "已登录";
+      if (observation.state === "logged_out") return "未登录";
+      return "暂时无法确认登录状态";
     case "provider_connections":
       if (observation.authority !== "verified")
-        return "Provider 连接状态尚未验证";
+        return "Provider 连接状态待确认";
       return observation.providers.length === 0
         ? "尚未连接 Provider"
         : `已连接 ${observation.providers.length} 个 Provider`;
     case "handoff_only":
-      return "仅支持打开官方认证入口";
+      return "请在官方应用中登录";
     case "fyagent_managed":
-      return "由 FyAgent 认证中心管理";
+      return "请在 FyAgent 认证中心管理";
     case "unavailable":
       return "当前无法读取认证状态";
   }
@@ -56,16 +56,16 @@ function observationDescription(observation: AgentAuthObservation): string {
   switch (observation.kind) {
     case "account":
       return observation.authority === "verified"
-        ? "状态来自官方结构化命令的回读。"
-        : "没有可确认的官方状态；不会把打开登录入口当作成功。";
+        ? "这是官方应用当前返回的登录状态。"
+        : "暂时无法确认登录结果。完成登录后请刷新状态。";
     case "provider_connections":
-      return "OpenCode 按 Provider 管理连接，不提供全局登录布尔值。";
+      return "OpenCode 分别连接各个 Provider，没有统一登录状态。";
     case "handoff_only":
-      return "FyAgent 只能把操作交给官方应用或 CLI，无法验证最终账号状态。";
+      return "FyAgent 会打开官方应用或 CLI。完成登录后请返回并刷新状态。";
     case "fyagent_managed":
-      return "Codex 托管账号继续由现有认证中心负责，不在此处复制 OAuth 流程。";
+      return "Codex 账号请在现有认证中心管理。";
     case "unavailable":
-      return "认证观察器不可用；不会读取厂商凭据文件或推断登录状态。";
+      return "暂时无法检查登录状态。FyAgent 不会读取厂商保存的凭据。";
   }
 }
 
@@ -89,9 +89,9 @@ function stageCopy(snapshot: AgentAuthSessionSnapshot): string {
     case "awaiting_user":
       return "等待你完成官方认证";
     case "verifying":
-      return "正在回读认证状态";
+      return "正在检查登录状态";
     case "verified":
-      return "认证结果已验证";
+      return "登录状态已更新";
     case "handoff_complete":
       return "已交给官方认证入口";
     case "failed":
@@ -99,7 +99,7 @@ function stageCopy(snapshot: AgentAuthSessionSnapshot): string {
     case "cancelled":
       return "已停止等待认证结果";
     case "timed_out":
-      return "认证验证等待超时";
+      return "等待登录结果超时";
   }
 }
 
@@ -108,40 +108,40 @@ function reasonCopy(reason: AgentAuthReasonCode | null): string | null {
     case null:
       return null;
     case "auth_state_unknown":
-      return "官方认证状态仍未知。";
+      return "暂时无法确认登录状态。请刷新后重试。";
     case "auth_observer_unavailable":
-      return "当前无法运行官方认证状态命令。";
+      return "暂时无法检查登录状态。";
     case "auth_output_invalid":
-      return "官方状态输出无法安全解析。";
+      return "无法识别官方应用返回的登录状态。请更新应用或重试。";
     case "interactive_user_unavailable":
-      return "当前无法以交互用户身份打开认证入口。";
+      return "当前无法打开登录窗口。请回到桌面后重试。";
     case "operation_conflict":
-      return "此软件已有认证会话正在进行。";
+      return "此应用已有登录操作正在进行。";
     case "provider_selection_required":
       return "请选择要断开的 Provider。";
     case "provider_changed":
       return "Provider 列表已变化，请刷新后重试。";
     case "monitoring_stopped":
-      return "已停止等待；官方认证窗口不会因此被关闭。";
+      return "已停止等待；已打开的登录窗口仍会保留。";
     case "timed_out":
-      return "在限定时间内没有获得可验证结果。";
+      return "等待登录结果超时。完成登录后请刷新状态。";
     case "handoff_only":
-      return "已完成入口交接，但没有权威状态可验证。";
+      return "登录入口已打开。完成后请刷新状态。";
     case "managed_by_auth_center":
       return "请在现有认证中心管理此账号。";
     case "target_selection_required":
-      return "检测到多份安装，请选择认证目标。";
+      return "检测到多个安装，请选择要登录的应用。";
     case "target_changed":
     case "inventory_expired":
-      return "安装目标已变化，请刷新后重试。";
+      return "安装位置已变化，请刷新后重新选择。";
     case "target_not_executable":
-      return "所选安装当前不可启动。";
+      return "所选应用无法启动。请检查安装位置或重新安装。";
     case "command_failed":
-      return "官方认证命令未成功完成。";
+      return "登录操作未能完成。请检查官方应用后重试。";
     case "cancelled":
       return "认证会话已取消。";
     case "executor_not_implemented":
-      return "当前认证动作尚不可执行。";
+      return "FyAgent 暂时无法在当前环境中完成登录。";
   }
 }
 
@@ -241,11 +241,9 @@ function AgentAuthStatusPanelInner({
       <section className="fy-agent-section" aria-label="认证状态">
         <h3>认证状态</h3>
         <InlineNotice tone="warning">
-          当前无法读取认证状态，不会推断为已登录。
+          暂时无法检查登录状态。请重试。
         </InlineNotice>
-        <Button onClick={() => void observationQuery.refetch()}>
-          重新读取
-        </Button>
+        <Button onClick={() => void observationQuery.refetch()}>重试</Button>
       </section>
     );
   }
@@ -273,7 +271,7 @@ function AgentAuthStatusPanelInner({
               ) ?? null)
             : null;
       if (!target) {
-        setSelectionError("请选择要打开认证入口的安装目标。");
+        setSelectionError("请选择要登录的应用。");
         return;
       }
     }
@@ -341,7 +339,7 @@ function AgentAuthStatusPanelInner({
             loading={inventoryQuery.isPending}
             error={
               inventoryQuery.isError
-                ? "当前无法读取安装目标；不会猜测要打开哪一份安装。"
+                ? "暂时无法读取安装位置。请刷新后重试。"
                 : null
             }
             disabled={session.busy}

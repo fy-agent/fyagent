@@ -52,26 +52,26 @@ describe("Models Change Plan connection", () => {
       </FeatureProvider>,
     );
 
-    const target = screen.getByRole("combobox", { name: "目标 Provider" });
+    const target = screen.getByRole("combobox", { name: "切换到" });
     expect(target).not.toHaveTextContent("Current");
-    fireEvent.click(screen.getByRole("button", { name: "生成切换计划" }));
+    fireEvent.click(screen.getByRole("button", { name: "预览更改" }));
     expect(
-      await screen.findByRole("button", { name: "确认应用" }),
+      await screen.findByRole("button", { name: "应用更改" }),
     ).toBeEnabled();
     expect(create).toHaveBeenLastCalledWith("targetA");
 
     fireEvent.change(target, { target: { value: "targetB" } });
-    expect(screen.queryByRole("button", { name: "确认应用" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "生成切换计划" }));
+    expect(screen.queryByRole("button", { name: "应用更改" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "预览更改" }));
     expect(
-      await screen.findByRole("button", { name: "确认应用" }),
+      await screen.findByRole("button", { name: "应用更改" }),
     ).toBeEnabled();
     expect(create).toHaveBeenLastCalledWith("targetB");
 
-    fireEvent.click(screen.getByRole("button", { name: "确认应用" }));
+    fireEvent.click(screen.getByRole("button", { name: "应用更改" }));
     await waitFor(() => expect(get).toHaveBeenCalledWith("job-1"));
-    expect(screen.getByText("不可再次使用")).toBeVisible();
-    expect(screen.queryByText("可确认")).toBeNull();
+    expect(screen.getByText("请重新生成预览")).toBeVisible();
+    expect(screen.queryByText("等待确认")).toBeNull();
     expect(apply).toHaveBeenCalledWith({
       planId: "plan-targetB",
       planDigest: changePlanWire.planDigest,
@@ -132,9 +132,9 @@ describe("Models Change Plan connection", () => {
       </FeatureProvider>,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "生成切换计划" }));
+    fireEvent.click(screen.getByRole("button", { name: "预览更改" }));
     fireEvent.click(
-      await screen.findByRole("button", { name: "确认应用" }),
+      await screen.findByRole("button", { name: "应用更改" }),
     );
     await waitFor(() => expect(get).toHaveBeenCalledTimes(1));
     expect(screen.getAllByText("进行中").length).toBeGreaterThan(0);
@@ -148,7 +148,7 @@ describe("Models Change Plan connection", () => {
       await vi.advanceTimersByTimeAsync(1000);
     });
     await waitFor(() => expect(get).toHaveBeenCalledTimes(3));
-    expect(await screen.findByText("后端事件序号 9")).toBeVisible();
+    expect(screen.queryByText(/后端事件序号/)).not.toBeInTheDocument();
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1000);

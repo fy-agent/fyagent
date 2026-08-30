@@ -81,7 +81,7 @@ export function AgentModelsSection({
       observations = (traeModels.data?.modelIds ?? []).map((modelId) => ({
         id: modelId,
         label: modelId,
-        detail: "TRAE Work CN 已观测模型 · 供应商界面负责写入",
+        detail: "已在 TRAE Work CN 中配置；请在 TRAE Work CN 中修改",
       }));
       pending = traeModels.isPending;
       failed = traeModels.isError;
@@ -123,7 +123,7 @@ export function AgentModelsSection({
                 {
                   id: `provider:${provider.id}`,
                   label: provider.name,
-                  detail: "OpenCode Provider 已配置，尚未观察到模型 ID",
+                  detail: "Provider 已连接，但未返回模型 ID",
                 },
               ],
       );
@@ -140,10 +140,13 @@ export function AgentModelsSection({
   );
 
   return (
-    <section className="fy-agent-config-section" aria-label="Agent 模型配置">
+    <section
+      className="fy-agent-config-section"
+      aria-label={`${entry.displayName} 模型设置`}
+    >
       <AgentSectionHeader
         title="当前模型"
-        actionLabel="进入模型管理"
+        actionLabel="管理模型"
         onAction={onOpenManagement}
       />
       {mode !== "unsupported" ? (
@@ -151,7 +154,7 @@ export function AgentModelsSection({
           value={search}
           onValueChange={setSearch}
           placeholder="搜索模型或 Provider"
-          ariaLabel="搜索 Agent 模型"
+          ariaLabel={`搜索 ${entry.displayName} 的模型`}
           disabled={pending}
         />
       ) : null}
@@ -165,9 +168,9 @@ export function AgentModelsSection({
           当前模型状态无法读取，请检查网络或配置后重试。
         </InlineNotice>
       ) : mode === "unsupported" ? (
-        <EmptyState title="当前官方能力不支持第三方模型配置" />
+        <EmptyState title="此应用不支持在 FyAgent 中配置第三方模型" />
       ) : observations.length === 0 ? (
-        <EmptyState title="尚未观察到模型" />
+        <EmptyState title="还没有找到已配置的模型" />
       ) : filtered.length === 0 ? (
         <EmptyState title="没有匹配的模型" description="请调整搜索关键词。" />
       ) : (

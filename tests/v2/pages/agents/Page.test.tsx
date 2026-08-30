@@ -621,7 +621,7 @@ describe("V3 Agent directory and configuration shell", () => {
     });
     expect(
       await within(directoryArticle("QoderWork CN")).findByText(
-        "正在读取安装结果",
+        "正在更新安装状态",
       ),
     ).toBeVisible();
     expect(configureButton("QoderWork CN")).toBeDisabled();
@@ -687,7 +687,7 @@ describe("V3 Agent directory and configuration shell", () => {
     );
     expect(
       await within(directoryArticle("QoderWork CN")).findByText(
-        "正在读取安装结果",
+        "正在更新安装状态",
       ),
     ).toBeVisible();
     expect(configureButton("QoderWork CN")).toBeDisabled();
@@ -826,9 +826,7 @@ describe("V3 Agent directory and configuration shell", () => {
 
     view.unmount();
     renderPage(ports, "/agents?target=workbuddy&section=mcp");
-    await user.click(
-      await screen.findByRole("button", { name: "进入 MCP 管理" }),
-    );
+    await user.click(await screen.findByRole("button", { name: "管理 MCP" }));
     expect(screen.getByTestId("location")).toHaveTextContent(
       /^\/mcp\?agentReturn=workbuddy&agentSection=mcp$/,
     );
@@ -840,7 +838,7 @@ describe("V3 Agent directory and configuration shell", () => {
     renderPage(ports, "/agents?target=workbuddy&section=skills");
 
     const skillSwitches = await screen.findAllByRole("switch", {
-      name: "WorkBuddy Skill 分配",
+      name: /^在 WorkBuddy 中使用 /,
     });
     const skillSwitch = skillSwitches[0];
     expect(skillSwitch).not.toBeChecked();
@@ -852,12 +850,12 @@ describe("V3 Agent directory and configuration shell", () => {
       true,
     );
     expect(
-      await screen.findByText(/已从真实配置回读：WorkBuddy 已启用此 Skill/),
+      await screen.findByText("已在 WorkBuddy 中启用此 Skill。"),
     ).toBeVisible();
 
     await user.click(screen.getByRole("tab", { name: "MCP" }));
     const mcpSwitches = await screen.findAllByRole("switch", {
-      name: "WorkBuddy MCP 分配",
+      name: /^在 WorkBuddy 中使用 /,
     });
     const mcpSwitch = mcpSwitches[0];
     expect(mcpSwitch).not.toBeChecked();
@@ -869,7 +867,7 @@ describe("V3 Agent directory and configuration shell", () => {
       true,
     );
     expect(
-      await screen.findByText(/已从真实配置回读：WorkBuddy 已分配此 MCP/),
+      await screen.findByText("已在 WorkBuddy 中启用此 MCP。"),
     ).toBeVisible();
     const trustDialog = await screen.findByRole("dialog", {
       name: "需要在 WorkBuddy 中信任 MCP",
@@ -895,23 +893,23 @@ describe("V3 Agent directory and configuration shell", () => {
     renderPage(ports, "/agents?target=workbuddy&section=skills");
 
     const skillSwitches = await screen.findAllByRole("switch", {
-      name: "WorkBuddy Skill 分配",
+      name: /^在 WorkBuddy 中使用 /,
     });
     const skillSwitch = skillSwitches[0];
     await user.click(skillSwitch);
     expect(
-      await screen.findByText(/Skill 分配未能完成或回读不一致/),
+      await screen.findByText("无法确认 Skill 设置是否已更新。请刷新后重试。"),
     ).toBeVisible();
     expect(skillSwitch).not.toBeChecked();
 
     await user.click(screen.getByRole("tab", { name: "MCP" }));
     const mcpSwitches = await screen.findAllByRole("switch", {
-      name: "WorkBuddy MCP 分配",
+      name: /^在 WorkBuddy 中使用 /,
     });
     const mcpSwitch = mcpSwitches[0];
     await user.click(mcpSwitch);
     expect(
-      await screen.findByText(/MCP 分配未能完成或回读不一致/),
+      await screen.findByText("无法确认 MCP 设置是否已更新。请刷新后重试。"),
     ).toBeVisible();
     expect(mcpSwitch).not.toBeChecked();
   });
@@ -922,26 +920,26 @@ describe("V3 Agent directory and configuration shell", () => {
     const qoder = renderPage(ports, "/agents?target=qoderwork&section=models");
 
     expect(
-      await screen.findByText(/当前官方能力不支持第三方模型配置/),
+      await screen.findByText(/此应用不支持在 FyAgent 中配置第三方模型/),
     ).toBeVisible();
     expect(screen.queryByRole("switch")).not.toBeInTheDocument();
     await user.click(screen.getByRole("tab", { name: "提示词" }));
-    expect(await screen.findByText(/当前未接入提示词管理/)).toBeVisible();
+    expect(await screen.findByText(/此应用暂不支持提示词管理/)).toBeVisible();
     expect(ports.prompts.getAll).not.toHaveBeenCalled();
 
     qoder.unmount();
     const trae = renderPage(ports, "/agents?target=trae-work&section=models");
-    expect(await screen.findByText(/TRAE Work CN 已观测模型/)).toBeVisible();
+    expect(await screen.findByText(/已在 TRAE Work CN 中配置/)).toBeVisible();
     expect(await screen.findAllByText("trae-observed-model")).toHaveLength(1);
     expect(screen.queryByRole("switch")).not.toBeInTheDocument();
 
     trae.unmount();
     renderPage(ports, "/agents?target=codex&section=prompts");
     await user.click(await screen.findByText("Review prompt"));
-    await user.click(screen.getByRole("button", { name: "设为启用" }));
+    await user.click(screen.getByRole("button", { name: "启用" }));
     expect(ports.prompts.enable).toHaveBeenCalledWith("codex", "review");
     expect(
-      await screen.findByText(/已从真实配置回读：Codex 当前使用此提示词/),
+      await screen.findByText("已在 Codex 中启用此提示词。"),
     ).toBeVisible();
   });
 

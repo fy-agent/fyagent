@@ -521,7 +521,9 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
                 setPendingDeleteId(modelId);
               }}
               emptyLabel={
-                existingSearch.trim() ? "没有匹配的模型 ID" : "未观察到模型 ID"
+                existingSearch.trim()
+                  ? "没有匹配的模型 ID"
+                  : "还没有找到已配置的模型 ID"
               }
             />
             <FieldFeedback

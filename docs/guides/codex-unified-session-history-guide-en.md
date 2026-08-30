@@ -1,4 +1,4 @@
-# Unified Codex Session History: Feature Overview and Usage Guide (FyAgent)
+# Unified Codex Session History: Use and Troubleshooting
 
 > Applies to FyAgent v3.16.x and later. This guide is based on the current code; every command and path can be verified by hand. Examples use de-identified data and contain no real session content or API keys.
 
@@ -15,9 +15,9 @@ Codex classifies sessions by a "provider tag" (a field called `model_provider`),
 
 The two drawers can't see each other. If you **switch frequently between official and third-party**, you'll hit this kind of fragmentation: "the session I was just chatting in with the official account disappeared from the history list after I switched to a third-party provider"—it isn't actually gone, it's just been sorted into the other drawer. This split both makes it easy to believe a session was lost, and makes it inconvenient to review and resume all your sessions in one place.
 
-**This switch exists to eliminate that fragmentation**: it makes the official subscription run under the `custom` tag too, so official and third-party sessions merge into one list and everything is easy to find and resume in a single place.
+When this switch is enabled, the official subscription also uses the `custom` tag, so official and third-party sessions appear in the same history list.
 
-> ✅ **One important premise that runs through this whole guide, please remember it first**: this feature (unify / migrate / restore) **only ever rewrites that one classification tag `model_provider` in your session records, and it automatically makes a backup of the original file before every rewrite**. It never deletes, clears, or overwrites a single line of your conversations. So whenever this guide later mentions "some sessions are no longer visible," it almost always means "they've been sorted into the other drawer," not "the data is gone." If you're truly worried, jump straight to the [symptom reference table](#i-feel-like-my-sessions-are-gone-symptom-reference-table) and [verify the files are still there by hand](#verify-by-hand-your-session-files-are-still-on-disk-the-most-important-section).
+> **Change boundary:** This feature adjusts the `model_provider` classification tag and creates a backup before rewriting it. Migration and restore do not use deletion of conversation content as a step. If the history list does not match your expectation, use the [symptom table](#sessions-are-missing-from-the-list-symptom-table), then follow the [read-only checks](#check-session-files-and-backups). Keep a separate backup of important sessions.
 
 ## How it works (one-line version)
 
@@ -25,22 +25,22 @@ Think of it as **two drawers + automatic backup**:
 
 - By default, official sessions live in the `openai` drawer and third-party sessions live in the `custom` drawer, invisible to each other;
 - The switch makes **the official side use the `custom` drawer too**, merging the two drawers into one shared list;
-- You can optionally choose to "move" your **existing official sessions** into the shared drawer as well (this step is called **migration**; it's optional and requires you to opt in by checking a box), and **before anything is moved a backup copy is made first**, so the whole process is **reversible**;
-- **Authentication is completely unaffected**—your official subscription still uses your ChatGPT login and still goes through the official backend; only the session's classification tag changes.
+- You can optionally migrate **existing official sessions** into the shared list. FyAgent creates a backup first; when disabling the feature, it can restore the sessions recorded in that backup;
+- The official subscription continues to use its existing ChatGPT login and official backend; this switch changes session classification.
 
-For the full mechanism (what gets injected, why it's reversible, how migration / restore guarantee no data loss) see [The core mental model](#the-core-mental-model-two-drawers--automatic-backup) and the [Advanced mechanism appendix](#advanced-mechanism-appendix-for-users-who-want-to-truly-understand-how-it-works) at the end.
+For implementation details and recovery boundaries, see [Two drawers and automatic backup](#two-drawers-and-automatic-backup) and the [technical appendix](#technical-appendix).
 
 ## How to use it (at a glance)
 
 1. **Enable**: Settings -> General -> Codex App Enhancements -> turn on "Unified Codex session history" -> in the dialog decide whether to check "Also migrate existing official session history" (check it if you want your **earlier** official sessions merged into the unified list too; leave it unchecked if you only want unification from now on) -> confirm. See [What happens when you enable it](#what-happens-when-you-enable-it-step-by-step).
 2. **Disable**: turn the same switch off -> in the dialog keep "restore exactly from backup" checked (it's checked by default) -> confirm, and the official sessions you migrated in will be precisely flipped back to the official list. See [What happens when you disable it](#what-happens-when-you-disable-it-step-by-step).
-3. **Feel like a session is gone?** Don't panic—jump to the [symptom reference table](#i-feel-like-my-sessions-are-gone-symptom-reference-table) to locate it by symptom, and use the commands in the [verify by hand](#verify-by-hand-your-session-files-are-still-on-disk-the-most-important-section) section to see for yourself that the files are all there.
+3. **Sessions are missing from the list**: use the [symptom table](#sessions-are-missing-from-the-list-symptom-table), then follow the [read-only checks](#check-session-files-and-backups) to inspect session files, the index, and backups.
 
 ---
 
-## The core mental model: two drawers + automatic backup
+## Two drawers and automatic backup
 
-To understand this feature, you only need to remember two things: **drawers** and **backups**.
+This feature involves session classification and pre-write backups. This guide uses “drawer” as a plain-language name for a `model_provider` classification.
 
 ### Drawers: how Codex classifies sessions
 
@@ -85,7 +85,7 @@ After the unified switch is on:
 
 This backup is the sole basis for "restore exactly from backup" later. It makes the whole process **reversible**: at any time you can turn off the switch and precisely flip the official sessions you migrated in back to the `openai` drawer.
 
-Remember these two words—**drawer** (a session just gets reclassified) and **backup** (a copy is always made before a change)—and everything that follows will be easy to understand.
+Restore applies only to migrated sessions recorded in the backup ledger. Sessions created while the switch is enabled are not in that ledger.
 
 ---
 
@@ -148,10 +148,10 @@ For each official (openai tag) session file:
 ```
 
 - **Backup location**: `~/.fyagent/backups/codex-official-history-unify-v1/<timestamp>/`. Each migration produces one timestamped "generation directory," containing `jsonl/` (session copies), `state/` (index DB copy), and `meta.json` (recording which Codex directory this migration belongs to).
-- **What's changed**: only the value of the single field `model_provider`. Your conversation content, reasoning content, and all body text are **kept exactly as is**.
-- **What's deleted**: **nothing**. The backup is a "copy," the rewrite is an "atomic replacement of the same file," and at no point is any session or index deleted. The file is complete at every moment (either the old content or the new content, never empty or half-written).
+- **What's changed**: the migration code updates `model_provider` and does not rewrite conversation entries.
+- **Deletion behavior**: the migration path has no step that deletes sessions or index rows. It copies the backup, writes a temporary file, and then replaces the original to reduce the risk of leaving a partial file.
 
-After a successful migration, these existing official sessions show up in the unified list. **At this moment your data is**: ① the original copy in the backup directory; ② in the active file, only the classification tag changed, the content intact.
+After a successful migration, the existing official sessions appear in the unified list. The backup directory contains the pre-write copies, and the active files use the new classification tag.
 
 > **Note**: enabling and migration themselves **do not pop a success toast**. Migration runs as a side task on the backend during save; in the UI you'll only see the switch turn on. So "I didn't see a migration-success popup" is normal and does not mean failure.
 
@@ -204,30 +204,30 @@ Only the "disable + check restore" path pops a result toast. The toasts you may 
 | **No restorable migration backup for the current Codex directory** | Nothing to restore (**does not mean data is lost**, see scenario E in the reference table) |
 | **Unified session history was re-enabled; restore skipped** | You turned the switch back on while restore was queued, so the system deliberately abandoned the restore (see scenario F) |
 | **Failed to restore official session history, please try again** | The restore process errored; just retry, the data is not corrupted |
-| **Save failed, please try again** | The disable save itself failed; in this case **restore is never triggered** and the switch flips back to its original position |
+| **Save failed, please try again** | The disabled state was not saved, so restore does not run and the switch returns to its previous position |
 
-> **A thoughtful safety design**: if the "disable the switch" save fails, FyAgent **never runs the restore**. Otherwise you'd end up in a torn state of "switch still on, but sessions flipped back to the openai bucket." When the save fails, the switch **automatically flips back to its original position**, so you won't be stuck in a fake state of "looks off but didn't actually save."
+> **If saving the disabled state fails:** FyAgent does not run restore and returns the switch to its previous state, avoiding a mismatch between configuration and session classification.
 
 ---
 
-## "I feel like my sessions are gone?" symptom reference table
+## Sessions are missing from the list: symptom table
 
-The six scenarios below are the situations where users most easily believe "sessions are gone." **The truth in every one is: the data is intact, it just moved drawers or is temporarily out of sight.** Use this table to locate your symptom first, then read the detailed explanation below.
+The table below maps common symptoms to likely causes and actions. Check the active provider and classification first; use the read-only checks when you need to inspect files.
 
-| Scenario | What you see | The data truth | One-line fix |
+| Scenario | What you see | Likely cause | Action |
 |---|---|---|---|
-| **A** Didn't check migration | Old official sessions not in the unified list | All present, still carry the `openai` tag | Re-enable and check migration, or turn off the switch |
-| **B** Cross-provider resume fails | Can't resume / errors out | Files intact, the ciphertext just can't be decrypted across backends | Resume on the original provider; to only read content, read the jsonl directly |
-| **C** Proxy takeover / injection refused | No migration and no restore | Migration was safely skipped, files untouched | Exit takeover -> restart and retry; or just turn off the switch |
+| **A** Didn't check migration | Old official sessions not in the unified list | Existing sessions still carry the `openai` tag | Re-enable and check migration, or turn off the switch |
+| **B** Cross-provider resume fails | Can't resume / errors out | Files remain in place; the current backend cannot decrypt the ciphertext | Resume on the original provider; to only read content, read the jsonl directly |
+| **C** Proxy takeover / injection refused | No migration and no restore | Migration was skipped; session files were not rewritten | Exit takeover -> restart and retry; or just turn off the switch |
 | **D** New sessions didn't return to official after restore | New sessions from the unified period aren't on the official side | They're in the `custom` drawer, untouched by design | Switch to a third-party provider to see them |
 | **E** Toast "no restorable backup" | Restore "failed" | Usually nothing was ever migrated, sessions are in the original drawer | Turn off the switch and the official sessions reappear automatically |
-| **F** Toast "switch was re-enabled, restore skipped" | Restore refused | Prevents a torn data state, nothing was changed | Fully turn off the switch first, then restore |
+| **F** Toast "switch was re-enabled, restore skipped" | Restore refused | This restore did not run, avoiding a classification conflict | Fully turn off the switch first, then restore |
 
 ### Scenario A: You enabled the switch but didn't check migration -> old official sessions "disappear"
 
 **Symptom**: you turned on the unified switch, but didn't check "Also migrate existing official session history" in the enable dialog (it's unchecked by default). After enabling, your earlier official sessions seem to be gone from the list.
 
-**The truth**: 100% of your data is present, not a single line moved. The switch only takes effect on official sessions "created after enabling"; your official sessions from **before** enabling still carry the `openai` tag and sit untouched in `~/.codex/sessions/`. You're now on the `custom` drawer, so naturally you can't see the old sessions left in the `openai` drawer—that's the entire reason for the "apparent disappearance."
+**Cause**: The existing sessions were not migrated. The switch only takes effect on official sessions "created after enabling"; your official sessions from **before** enabling still carry the `openai` tag and sit untouched in `~/.codex/sessions/`. You're now on the `custom` drawer, so naturally you can't see the old sessions left in the `openai` drawer—that's the entire reason for the "apparent disappearance."
 
 **What to do** (pick either):
 1. **Re-enable the switch and check "Also migrate existing official session history,"** which moves the old sessions to the `custom` drawer and they immediately appear in the unified list (automatic backup before the rewrite).
@@ -237,9 +237,9 @@ The six scenarios below are the situations where users most easily believe "sess
 
 **Symptom**: after unification, the list shows an old session chatted with "another provider." You switch to your current provider and click "Resume," but it errors out or can't connect.
 
-**The truth**: the session file is intact; what's lost is not data, it's "cross-backend decryption ability." A Codex session stores an encrypted block of reasoning content `encrypted_content`, and **this ciphertext can only be decrypted by the backend that originally generated it**. Using provider B to resume a session generated by provider A means B can't decrypt A's ciphertext -> resume fails. This is **a design limitation of upstream Codex (by design)** and has nothing to do with whether FyAgent touched the file. The text content of the session is readable at any time.
+**Cause**: the session file remains in place; the failure occurs during cross-backend decryption. A Codex session stores an encrypted block of reasoning content `encrypted_content`, and **this ciphertext can only be decrypted by the backend that originally generated it**. Using provider B to resume a session generated by provider A means B can't decrypt A's ciphertext -> resume fails. This is **a design limitation of upstream Codex (by design)** and has nothing to do with whether FyAgent touched the file. You can inspect the readable content in the `.jsonl` file.
 
-> This is the **only "looks like a real problem" genuine exception** in this whole guide—but note: it just means **you can't resume (can't generate a new turn)**, and **the original file is still fully present**, the conversation text readable at any time.
+> This error affects generation of a new turn. Retry with the provider that created the session and confirm that the original `.jsonl` file is still present.
 
 **What to do**:
 - **Resume with "the provider that originally created this session,"** so it can decrypt normally and connect.
@@ -250,23 +250,23 @@ The six scenarios below are the situations where users most easily believe "sess
 
 **Symptom**: you enabled the switch and checked migration, but the old official sessions neither entered the unified list nor could be restored when you turned the switch off (or the restore checkbox didn't even appear in the disable dialog, see scenario E). You suspect migration lost the sessions during the process.
 
-**The truth**: migration **never ran**, so it couldn't have lost anything—not a single character of your sessions was changed. FyAgent has a safety gate before migration: it checks whether Codex's live config (`~/.codex/config.toml`) is **actually** routed to the shared `custom` drawer right now, and only migrates if the routing truly went there. The following two situations are judged "not yet unified" (internal reason code `live_not_unified`), so FyAgent **deliberately skips the migration, preserves your switch and migration intent, and migrates later once the conditions are met**:
+**Cause**: migration did not run, so the session files were not rewritten. Before migration, FyAgent checks whether Codex's live config (`~/.codex/config.toml`) is routed to the shared `custom` classification, and migrates only after that condition is met. In the following two situations FyAgent treats unification as incomplete, skips migration, and keeps the migration request for a later retry:
 
 - **During proxy takeover**: FyAgent's proxy has taken over the live config, and the live config during takeover doesn't carry the unified routing marker.
 - **Injection refused**: your `config.toml` already has a manually specified `model_provider`, or there's already a differently-shaped `[model_providers.custom]` table (possibly with a third-party address). To avoid incorrectly routing official traffic to a third-party backend, FyAgent would rather not inject and not migrate.
 
-Skipping migration = touching no session files. **No migration means nothing moved, so there's nothing to lose.** This is "safe deferral," not "failure with data loss."
+Skipping migration does not rewrite session files. Resolve the conflict and restart FyAgent, or disable the feature.
 
 **What to do**:
 - Exit proxy takeover -> **restart FyAgent**: on startup it automatically retries migration (your migration intent is preserved the whole time).
 - Check `~/.codex/config.toml`: if there's a conflicting route you wrote by hand, clean up the conflict before enabling the switch.
-- If you'd rather not bother: just turn off the switch, the official sessions still display normally on the `openai` drawer, completely intact.
+- If you no longer need this feature, turn off the switch; official sessions that were not migrated still display under the `openai` classification.
 
 ### Scenario D: You turned off the switch and restored, but "the new sessions chatted during the unified period" didn't return to official -> you think "the new sessions are gone"
 
 **Symptom**: during the unified period, you chatted a few more new sessions with the official account. Later you turned off the switch, checked restore, and after restoring you find those new sessions didn't return to the official drawer.
 
-**The truth**: this is **intentional** design; the new sessions are perfectly fine in the `custom` drawer, visible and resumable. Restore is based on "the backup ledger from migration time"—**only sessions that were originally migrated in from the `openai` drawer** are recorded in the backup and get precisely flipped back to `openai`. The sessions you **created during the unified period** are in no backup ledger; and after unification both official and third-party use the `custom` tag, so **FyAgent can't tell whether a new session was chatted with the official account or a third-party**. To avoid wrongly stuffing third-party sessions into the official history, the product decision is: these new sessions all stay in the `custom` (third-party) history and are never moved automatically. The disable dialog's text says this explicitly too—"Sessions created while it was on cannot be attributed to a provider, so they stay in the third-party history."
+**Cause**: sessions created while the switch was enabled remain in the `custom` classification. Restore is based on "the backup ledger from migration time"—**only sessions that were originally migrated in from the `openai` drawer** are recorded in the backup and get precisely flipped back to `openai`. The sessions you **created during the unified period** are in no backup ledger; and after unification both official and third-party use the `custom` tag, so **FyAgent can't tell whether a new session was chatted with the official account or a third-party**. To avoid wrongly stuffing third-party sessions into the official history, the product decision is: these new sessions all stay in the `custom` (third-party) history and are not moved automatically. The disable dialog's text says this explicitly too—"Sessions created while it was on cannot be attributed to a provider, so they stay in the third-party history."
 
 **What to do**:
 - Switch to any third-party provider (the `custom` drawer) to see these sessions in the history list.
@@ -275,33 +275,33 @@ Skipping migration = touching no session files. **No migration means nothing mov
 
 ### Scenario E: Restore toast "No restorable migration backup for the current Codex directory" -> you think "restore failed = data is gone"
 
-**Symptom**: you checked restore when turning off the switch, and got the toast "No restorable migration backup for the current Codex directory." You panic: restore failed, is the data completely gone?
+**Symptom**: you checked restore when turning off the switch, and got the toast "No restorable migration backup for the current Codex directory." This means the current directory has no migration record that can be used for this restore.
 
-**The truth**: "nothing to restore" ≠ "data is lost." On the contrary, it's usually because **there was no migration that needed restoring**. Common reasons:
+**Cause**: Usually, the current directory has no migration that needs to be restored. Common reasons:
 
 - **You never checked "migrate existing official sessions" in the first place**: with no migration, there's naturally no migration backup and no sessions to flip back. Your old official sessions have been in the `openai` drawer all along and reappear after you turn off the switch (same as scenario A). (In this case, the disable dialog may **not even show the restore checkbox**—because the system can't find any backup.)
 - **You've already restored once**: the session tags have all been flipped back to `openai`, so clicking again naturally finds "no targets still in custom to restore"—this is **idempotent protection, not failure**.
 - **You switched Codex directories**: restore only recognizes the backup ledger belonging to the **current** directory; switch directories and it can't find the old directory's ledger. Just switch the directory back.
 
-In all three cases, no session was deleted.
+None of these three paths runs the session-deletion operation.
 
-**What to do**: use the end-of-guide commands to count the total session files in `~/.codex/sessions/` and confirm the files are all there; then check whether `~/.fyagent/backups/` contains a `codex-official-history-unify-v1` directory—if even this directory is absent, you never triggered a migration and the sessions have been in their original drawer all along.
+**What to do**: use the commands at the end of the guide to record the total number and recent modification times of session files in `~/.codex/sessions/`, then check whether `~/.fyagent/backups/` contains a `codex-official-history-unify-v1` directory. If it is absent, the current Codex directory usually has no generated migration backup.
 
 ### Scenario F: Restore refused, toast "Unified session history was re-enabled; restore skipped"
 
 **Symptom**: you turned off the switch -> checked restore -> but you were quick and immediately turned the switch back on, then saw the toast "Unified session history was re-enabled; restore skipped."
 
-**The truth**: this is a safeguard against putting your data into a "torn" state, and again no sessions are lost. The restore action is "flip session tags from `custom` back to `openai`," but if the switch is on again at this moment, the live config is routing to `custom`—flipping history back to `openai` on one side while new sessions land in `custom` on the other would artificially tear sessions in two. So when FyAgent detects "the switch is on again," it **deliberately abandons this restore and changes nothing**. Sessions stay as they are, with no deletion or corruption.
+**Cause**: restore changes session classification from `custom` to `openai`. If the switch has already been re-enabled, live routes to `custom` again, so continuing restore would make the configuration and classification disagree. FyAgent therefore skips this restore and leaves the session classifications unchanged.
 
-**What to do**: to truly restore, **turn the switch off and keep it off** (don't immediately turn it back on), then do disable + check restore; to keep things unified, don't restore, and let the sessions stay in the `custom` shared drawer for normal use.
+**What to do**: to restore, turn the switch off and wait for the setting to save before selecting restore. To keep the unified list, do not run restore.
 
-**The overriding principle: FyAgent's unify / migrate / restore only ever changes a single tag field in a session, and automatically backs up before every rewrite. It never deletes your conversations. Out of sight ≠ gone—look in the other drawer, or use the commands below to confirm with your own eyes.**
+**Troubleshooting order: check the active provider and session classification, then inspect session files, the index, and backups. Make a separate backup before manual edits.**
 
 ---
 
-## Verify by hand: your session files are still on disk (the most important section)
+## Check session files and backups
 
-No amount of text beats seeing it for yourself. Below are the **real paths** (taken from the FyAgent source) and how to view session files and backup directories on different systems. **The whole process is read-only and changes nothing; you're strongly encouraged to try it by hand.**
+The following checks read session files, the index, and backup directories without modifying them. Record the total file count and recent modification times before checking classifications.
 
 ### The simplest way: open it directly in a file manager (no command line at all)
 
@@ -324,10 +324,10 @@ No amount of text beats seeing it for yourself. Below are the **real paths** (ta
 
 ### macOS commands
 
-**1. Count the total number of session files (this is the hard evidence of "nothing lost")**
+**1. Record the total number and recent modification times of session files**
 
 ```bash
-# Count the total number of session files -- as long as this number matches your expectation, the data is all there
+# Count session files and compare the result with a pre-change record or backup
 find ~/.codex/sessions ~/.codex/archived_sessions -name '*.jsonl' 2>/dev/null | wc -l
 
 # Show the 10 most recently modified session files
@@ -348,7 +348,7 @@ grep -rlE '"model_provider"[[:space:]]*:[[:space:]]*"custom"' ~/.codex/sessions 
 grep -rhoE '"model_provider"[[:space:]]*:[[:space:]]*"[^"]*"' ~/.codex/sessions 2>/dev/null | sort | uniq -c
 ```
 
-> **Important note, don't let this step scare you**: **early versions of Codex did not write the `model_provider` field into the `.jsonl`**, so these old official sessions **can't be counted** by the grep above—but they're still classified as `openai` in the index database `state_5.sqlite` and still show up in the resume list. So **judge "nothing lost" by the total file count from step 1**—the per-drawer grep is only there to help you understand the classification, and counting fewer than the total file count is **completely normal** and never means "a batch was lost."
+> **Counting note:** Early Codex sessions may not include `model_provider` in their `.jsonl` file, so a tag-based grep can return fewer entries than the total file count. Record the total in step 1, then use `state_5.sqlite` to inspect the classification of older sessions.
 
 **3. (Advanced) Query the index database `state_5.sqlite`—the classification the resume list actually reads**
 
@@ -382,7 +382,7 @@ ls -la ~/.fyagent/backups/codex-official-history-unify-restore-v1/ 2>/dev/null
 The session directory is usually at `C:\Users\<your username>\.codex\`, and backups at `C:\Users\<your username>\.fyagent\backups\`.
 
 ```powershell
-# 1. Total number of session files (hard evidence of "nothing lost")
+# 1. Total session files, for comparison with a pre-change record or backup
 (Get-ChildItem "$env:USERPROFILE\.codex\sessions","$env:USERPROFILE\.codex\archived_sessions" -Recurse -Filter *.jsonl -ErrorAction SilentlyContinue).Count
 
 # 2. The 10 most recently modified sessions
@@ -404,7 +404,7 @@ Get-ChildItem "$env:USERPROFILE\.fyagent\backups\codex-official-history-unify-re
 
 ---
 
-## Advanced mechanism appendix (for users who want to truly understand how it works)
+## Technical appendix
 
 ### 1. The bucketing mechanism (the essence of the drawers)
 
@@ -426,7 +426,7 @@ wire_api = "responses"
 
 Every field has a purpose: `requires_openai_auth = true` keeps authentication going through the ChatGPT login in `auth.json`, with the base_url defaulting back to the official Codex backend; `name = "OpenAI"` lets Codex's official feature gates (web search, remote compaction, etc.) keep matching; `supports_websockets = true` restores the capability that custom entries lose by default; `wire_api = "responses"` uses the official responses protocol. **The net effect is: authentication is unchanged, only the bucket name changed.**
 
-**Key invariant: this injection can only exist in the live `config.toml`, and is never written into the database's stored configuration.** When you switch away from the official provider and write live back to the database, FyAgent strips this injection precisely (it strips only when the shape exactly matches the injected artifact; a third-party-customized `custom` table is kept as is). Precisely because of this, "turning off the switch + switching once" fully restores live, and the database always holds your original clean official configuration—this is the cornerstone of the whole switch's reversibility.
+**Storage boundary: this injection is written to the live `config.toml`, not the provider configuration stored in the database.** When switching away from the official provider and writing live back, FyAgent removes the section only when its shape matches the injected artifact; a third-party-customized `custom` table remains. After disabling the switch and completing one provider switch, live is regenerated from the stored configuration.
 
 ### 3. The two refusal gates for injection (corresponding to scenario C)
 
@@ -438,21 +438,21 @@ When injection is refused, live is not unified, and the migration gate (checking
 ### 4. The three session classes (which determine the migration / restore boundary)
 
 - **Class A**: existing official sessions migrated in at enable time—the backup is the ledger, and they can be precisely restored back to `openai`;
-- **Class B**: created during the unified period—in no backup, and official / third-party can't be distinguished, so they're **never moved automatically** (stay `custom`);
-- **Class C**: pure third-party history from before enabling—never touched.
+- **Class B**: created during the unified period—not recorded in a migration backup and not distinguishable as official or third-party, so FyAgent does not move them automatically (they stay `custom`);
+- **Class C**: third-party history from before enabling—outside the migration and restore scope.
 
-### 5. The safety of migration / restore (data is never truly deleted; where the guarantee comes from)
+### 5. Migration and restore protections
 
-Four layers of design jointly guarantee that under **all paths, normal and abnormal**, the original session data is never truly deleted.
+The implementation uses the following protections to reduce the risk of failed writes, concurrent changes, and incorrect restore targets:
 
-- **Only change the field, never the body**: migration / restore only switch the `model_provider` value in session metadata between `openai` and `custom`; conversation content, `response_item`, and `encrypted_content` are all kept exactly as is.
-- **Always copy a backup before a rewrite**: jsonl uses file copy, the state DB uses a full SQLite copy, both stored in a timestamped generation directory. Migration backups live in `codex-official-history-unify-v1/`, restore backups in the separate `codex-official-history-unify-restore-v1/`—the two are kept apart to keep the ledger clean.
-- **Only move, never delete + atomic writes**: all jsonl rewrites go through "temp file + whole-file replacement," and the state DB goes through a transactional `UPDATE`, with no deletion of any session or index at any point. The file is complete at every moment.
+- **Change the classification field, not conversation entries**: migration and restore switch `model_provider` between `openai` and `custom`; their implementation does not rewrite `response_item` entries or conversation text.
+- **Copy a backup before writing**: jsonl uses file copy and the state DB uses a SQLite copy, both stored in a timestamped generation directory. Migration backups live in `codex-official-history-unify-v1/`, restore backups in the separate `codex-official-history-unify-restore-v1/`—the two are kept apart to keep the ledger clean.
+- **No session deletion in migration/restore + whole-file replacement**: jsonl rewrites use a temporary file followed by whole-file replacement, and the state DB uses a transactional `UPDATE`; these paths do not call session or index deletion.
 - **Pessimistic skip + idempotent and retryable**: when buckets are inconsistent (`live_not_unified`), it would rather not migrate; a single process lock serializes migration and restore to avoid "startup retry / post-save background task / disable-time restore" concurrently rewriting the same batch of files in both directions; the completion marker is bound to the Codex directory and written conditionally to prevent missed migrations; restore uses the "in the ledger + currently still custom" dual condition to prevent wrong changes. Restore scans the union of all backup generations, so even after many switch cycles it can still restore early-migrated sessions; a repeated restore returns `nothing_to_restore`, which is idempotent protection rather than failure.
 
 ### 6. Cross-backend encrypted_content (corresponding to scenario B)
 
-The reasoning ciphertext inside a session can only be decrypted by the backend that generated it; upstream Codex by design does not support cross-backend decryption. This is the root cause of "resume failure" and has nothing to do with file integrity—the session `.jsonl` sits fully on disk and `encrypted_content` is intact too. Switching back to the original provider to resume, or starting a new session, both work fine.
+When resuming across providers, the current backend may be unable to decrypt the session's `encrypted_content`, causing resume to fail. Switch back to the provider that created the session or start a new session, and use the read-only checks above to inspect the original `.jsonl` file.
 
 ---
 
@@ -464,4 +464,4 @@ The reasoning ciphertext inside a session can only be decrypted by the backend t
 
 ---
 
-**One last word for you**: what you see as "sessions disappeared / resume failed" is essentially **the session being moved to another history list (drawer), or the other backend being unable to decrypt the old reasoning content**; the files always sit untouched in `~/.codex/sessions/` (and `state_5.sqlite`). Checking "restore from backup" when you turn off the switch precisely flips the official sessions you migrated in back to the official list; and even if you don't restore, both the original `.jsonl` files and the backup copies under `~/.fyagent/backups/codex-official-history-unify-*/` are all still there—**the data is never truly lost.**
+**Troubleshooting summary:** If sessions are missing from the list, switch back to the provider that created them, then inspect `~/.codex/sessions/`, `state_5.sqlite`, and `~/.fyagent/backups/`. To undo migration of existing official sessions, disable the switch and restore from the recorded backup.

@@ -55,7 +55,7 @@ export const isHttpUrl = (value: string): boolean => {
 };
 
 export const CLAUDE_EXPLICIT_V1_WARNING =
-  "最终 claude 需要访问的完整端点将会是：/v1/v1/XXXX，请确认是否需要添加 v1，通常路径一般为 /v1/XXXX.";
+  "服务地址已包含 /v1。Claude 会继续追加版本路径，可能请求到 /v1/v1/…。通常应填写不含末尾 /v1 的地址；请按服务商文档确认。";
 
 export function claudeBaseUrlHasExplicitV1Path(value: string): boolean {
   try {

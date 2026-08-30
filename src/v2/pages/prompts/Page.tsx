@@ -421,8 +421,8 @@ export function PromptsPage() {
 
   const workspaceBody = nativeUnavailable ? (
     <EmptyState
-      title="桌面能力不可用"
-      description="提示词管理仅在 FyAgent 桌面应用中可用。"
+      title="请使用 FyAgent 桌面应用"
+      description="网页版不能管理提示词。"
     />
   ) : promptsQuery.isPending && promptsQuery.data === undefined ? (
     <EmptyState

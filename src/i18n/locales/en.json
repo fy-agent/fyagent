@@ -1329,6 +1329,7 @@
   },
   "codexOauth": {
     "authStatus": "Auth status",
+    "nativeProjectionUnavailable": "Codex is not using auth.json to store credentials. Sign in from Codex; accounts shown here are only used for FyAgent routing.",
     "notAuthenticated": "Not authenticated",
     "loginWithChatGPT": "Sign in with ChatGPT",
     "loginRequired": "Please sign in to ChatGPT first",
@@ -3060,17 +3061,17 @@
       "sisyphusJunior": "Delegated task executor"
     },
     "agentTooltip": {
-      "sisyphus": "Main orchestrator responsible for task planning, delegation and parallel execution. Uses extended thinking (32k budget) and drives workflows through TODO lists to ensure task completion.",
-      "atlas": "Main orchestrator (holds TODO list) responsible for task distribution and coordination during execution phase. Delegates to specialized agents rather than completing all work directly.",
-      "prometheus": "Strategic planner that collects requirements through interview mode and creates detailed work plans. Can only read/write Markdown files in .sisyphus/ directory, never writes code directly.",
-      "hephaestus": "Autonomous deep worker (\"legitimate craftsman\") inspired by AmpCode deep mode. Goal-oriented execution that launches 2-5 explore/librarian agents in parallel for research before taking action.",
-      "oracle": "Architecture decision and debugging advisor. Read-only consulting agent providing excellent logical reasoning and deep analysis. Cannot write files or delegate tasks.",
-      "librarian": "Multi-repository analysis and documentation retrieval expert. Deeply understands codebases and provides evidence-based answers. Excels at finding official documentation and open-source implementation examples.",
-      "explore": "Fast codebase exploration and context grep expert. Uses lightweight models for high-speed search. The scout for understanding code structure.",
-      "multimodalLooker": "Visual content expert that analyzes PDFs, images, charts and other non-text media, extracting information and insights from them.",
-      "metis": "Plan consultant that performs pre-analysis before planning. Identifies hidden intents, ambiguities and AI failure points to prevent over-engineering.",
-      "momus": "Plan reviewer that validates plan clarity, verifiability and completeness with high precision. Rejects and requests revisions until plans are perfect.",
-      "sisyphusJunior": "Category-generated executor, automatically created via category parameters. Focuses on executing assigned tasks and cannot re-delegate, preventing infinite delegation loops."
+      "sisyphus": "Plans work, delegates tasks, and coordinates parallel execution. Uses a 32k extended-thinking budget and a TODO list.",
+      "atlas": "Maintains the TODO list and assigns work during execution. Coordinates specialists instead of doing every task directly.",
+      "prometheus": "Collects requirements through questions and writes a work plan. Can edit Markdown only under .sisyphus/ and does not write code.",
+      "hephaestus": "Works through complex tasks autonomously. Starts 2-5 Explore or Librarian agents for research before acting.",
+      "oracle": "Read-only architecture and debugging adviser. Cannot write files or delegate tasks.",
+      "librarian": "Searches code and documentation across repositories, with links to official docs or open-source examples.",
+      "explore": "Quickly searches code, files, and nearby context to locate structure and implementation.",
+      "multimodalLooker": "Reads non-text content such as PDFs, images, and charts.",
+      "metis": "Checks for hidden goals, ambiguity, and over-engineering risk before planning.",
+      "momus": "Checks whether a plan is clear, testable, and complete, and requests revisions when needed.",
+      "sisyphusJunior": "Runs category tasks without further delegation, preventing assignment loops."
     },
     "categoryDesc": {
       "visualEngineering": "Visual/frontend engineering",
@@ -3083,14 +3084,14 @@
       "writing": "Writing"
     },
     "categoryTooltip": {
-      "visualEngineering": "Frontend and visual engineering category for UI/UX design, styling, animation and interface implementation. Defaults to Gemini 3.6 Flash model.",
-      "ultrabrain": "Deep logical reasoning category for complex architectural decisions requiring extensive analysis. Defaults to GPT-5.3 Codex ultra-high reasoning variant.",
-      "deep": "Deep autonomous problem-solving category with goal-oriented execution. Conducts thorough research before action, suitable for difficult problems requiring deep understanding.",
-      "artistry": "Highly creative and artistic task category that inspires novel ideas and creative solutions. Defaults to Gemini 3.6 Flash high variant.",
-      "quick": "Lightweight task category for single-file modifications, typo fixes, and simple adjustments. Defaults to Claude Haiku 4.5 fast model.",
-      "unspecifiedLow": "Uncategorized low-effort task category for tasks that don't fit other categories with small workload. Defaults to Claude Sonnet 4.5.",
-      "unspecifiedHigh": "Uncategorized high-effort task category for tasks that don't fit other categories with large workload. Defaults to Claude Opus 5 max variant.",
-      "writing": "Writing category for documentation, prose and technical writing. Defaults to Kimi K2.5 model."
+      "visualEngineering": "For UI/UX, styling, animation, and interface work. Defaults to Gemini 3.6 Flash.",
+      "ultrabrain": "For complex architecture and intensive reasoning. Defaults to GPT-5.3 Codex ultra-high reasoning.",
+      "deep": "Researches first, then works through complex problems autonomously.",
+      "artistry": "For original concepts and visual work. Defaults to Gemini 3.6 Flash high reasoning.",
+      "quick": "For single-file edits, typo fixes, and small changes. Defaults to Claude Haiku 4.5.",
+      "unspecifiedLow": "For small tasks that do not fit another category. Defaults to Claude Sonnet 4.5.",
+      "unspecifiedHigh": "For large tasks that do not fit another category. Defaults to Claude Opus 5 max.",
+      "writing": "For documentation, prose, and technical writing. Defaults to Kimi K2.5."
     },
     "slimAgentDesc": {
       "orchestrator": "Orchestrator",

@@ -166,21 +166,21 @@ test("Agent V3 shows the full catalog, auto-scans, and reuses existing Skill and
   await expect(page).toHaveURL(/#\/agents\?target=workbuddy&section=skills$/);
   const skillSwitch = configuration
     .getByRole("switch", {
-      name: "WorkBuddy Skill 分配",
+      name: /^在 WorkBuddy 中使用 /,
     })
     .first();
   await expect(skillSwitch).not.toBeChecked();
   await skillSwitch.click();
   await expect(skillSwitch).toBeChecked();
   await expect(
-    configuration.getByText(/已从真实配置回读：WorkBuddy 已启用此 Skill/),
+    configuration.getByText("已在 WorkBuddy 中启用此 Skill。"),
   ).toBeVisible();
 
   await configuration.getByRole("tab", { name: "MCP" }).click();
   await expect(page).toHaveURL(/#\/agents\?target=workbuddy&section=mcp$/);
   const mcpSwitch = configuration
     .getByRole("switch", {
-      name: "WorkBuddy MCP 分配",
+      name: /^在 WorkBuddy 中使用 /,
     })
     .first();
   await expect(mcpSwitch).not.toBeChecked();
@@ -194,7 +194,7 @@ test("Agent V3 shows the full catalog, auto-scans, and reuses existing Skill and
   await expect(trustDialog).toHaveCount(0);
   await expect(mcpSwitch).toBeChecked();
   await expect(
-    configuration.getByText(/已从真实配置回读：WorkBuddy 已分配此 MCP/),
+    configuration.getByText("已在 WorkBuddy 中启用此 MCP。"),
   ).toBeVisible();
 
   const calls = await featureFixtureCalls(page);
@@ -215,7 +215,7 @@ test("Agent V3 shows the full catalog, auto-scans, and reuses existing Skill and
     },
   ]);
 
-  await configuration.getByRole("button", { name: "进入 MCP 管理" }).click();
+  await configuration.getByRole("button", { name: "管理 MCP" }).click();
   await expect(page).toHaveURL(
     /#\/mcp\?agentReturn=workbuddy&agentSection=mcp$/,
   );
@@ -249,13 +249,13 @@ test("Agent V3 restores deep links and keeps model and prompt capability boundar
   await expect(qoder).toBeVisible();
   await expect(page).toHaveURL(/#\/agents\?target=qoderwork&section=models$/);
   await expect(
-    qoder.getByText(/当前官方能力不支持第三方模型配置/),
+    qoder.getByText(/此应用不支持在 FyAgent 中配置第三方模型/),
   ).toBeVisible();
   await expect(qoder.getByRole("switch")).toHaveCount(0);
 
   await qoder.getByRole("tab", { name: "提示词" }).click();
   await expect(page).toHaveURL(/#\/agents\?target=qoderwork&section=prompts$/);
-  await expect(qoder.getByText(/当前未接入提示词管理/)).toBeVisible();
+  await expect(qoder.getByText(/此应用暂不支持提示词管理/)).toBeVisible();
   expect(
     (await featureFixtureCalls(page)).some(
       (call) => call.command === "get_prompts",
@@ -264,7 +264,7 @@ test("Agent V3 restores deep links and keeps model and prompt capability boundar
 
   await openV2Page(page, "/agents?target=trae-work&section=models");
   const trae = page.getByRole("region", { name: "TRAE Work CN 配置" });
-  await expect(trae.getByText(/TRAE Work CN 已观测模型/)).toBeVisible();
+  await expect(trae.getByText(/已在 TRAE Work CN 中配置/)).toBeVisible();
   await expect(trae.getByText("fixture-model", { exact: true })).toHaveCount(1);
   await expect(trae.getByRole("switch")).toHaveCount(0);
   await expectNoHorizontalOverflow(page);
@@ -279,21 +279,21 @@ test("Agent Auth distinguishes verified sessions, handoff-only flows, and Auth C
 
   await openV2Page(page, "/agents?target=claude-code&section=models");
   const claude = page.getByRole("region", { name: "Claude Code 配置" });
-  await expect(claude.getByText("已验证退出")).toBeVisible();
+  await expect(claude.getByText("未登录")).toBeVisible();
   await claude.getByRole("button", { name: "登录", exact: true }).click();
   await expect(claude.getByText("等待你完成官方认证")).toBeVisible();
-  await expect(claude.getByText("认证结果已验证")).toBeVisible();
-  await expect(claude.getByText("已验证登录")).toBeVisible();
+  await expect(claude.getByText("登录状态已更新")).toBeVisible();
+  await expect(claude.getByText("已登录")).toBeVisible();
 
   await openV2Page(page, "/agents?target=grokbuild&section=models");
   const grok = page.getByRole("region", { name: "Grok Build 配置" });
   await grok.getByRole("button", { name: "登录", exact: true }).click();
   await expect(grok.getByText("已交给官方认证入口")).toBeVisible();
-  await expect(grok.getByText("认证结果已验证")).toHaveCount(0);
+  await expect(grok.getByText("登录状态已更新")).toHaveCount(0);
 
   await openV2Page(page, "/agents?target=codex&section=models");
   const codex = page.getByRole("region", { name: "Codex 配置" });
-  await expect(codex.getByText("由 FyAgent 认证中心管理")).toBeVisible();
+  await expect(codex.getByText("请在 FyAgent 认证中心管理")).toBeVisible();
   await expect(
     codex.getByRole("button", { name: "登录", exact: true }),
   ).toHaveCount(0);

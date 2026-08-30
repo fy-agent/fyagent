@@ -135,13 +135,10 @@ export function CodexSavePlanWorkspace({
   if (!active || (!request && !plan && !displayError)) return null;
 
   return (
-    <section
-      className="fy-models-section"
-      aria-label="Change Plan Provider 保存"
-    >
+    <section className="fy-models-section" aria-label="保存 Codex Provider">
       <h3>保存并设为当前配置</h3>
       <p className="fy-models-muted">
-        先生成零写入预览，再单次确认。确认只发送计划身份，不会再次提交密钥。
+        请先检查更改内容。只有确认后才会保存并启用此 Provider。
       </p>
       {plan || job || displayError ? (
         <ApplyWorkspace
