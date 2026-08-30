@@ -3,7 +3,7 @@
   "assets": [
     [
       "scripts/ci/verify-toolchain.mjs",
-      "3af8a1a6cd959ddf33a0494b6b1f3fe12defe1eeb74a247974ae98533635dcec"
+      "6318d7dd3db34c07ee4619d5e1ec1f18d54e453177ace152679c22b94c3f90e3"
     ],
     [
       "scripts/release/verify-windows-nsis-contract.mjs",
@@ -23,7 +23,7 @@
     ],
     [
       "scripts/tasks/supported-platform-check.mjs",
-      "6228466c920d2799c457a1318f419cff0e53d868bd5e1dd1812190ce32dbb505"
+      "dffa72ee6fa00e2bcb2c4098e3444b7b052ba32142e28fe6bcc07d6e605ca6f8"
     ],
     [
       "scripts/tasks/system-check.mjs",

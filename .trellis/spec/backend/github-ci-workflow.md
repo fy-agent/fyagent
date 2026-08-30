@@ -309,6 +309,13 @@ repository files through the repository-owned verifier:
 - `mise.lock` for the reviewed uv lock value;
 - `.python-version` for managed Python.
 
+The verifier executes ordinary tool commands directly on the admitted POSIX
+CI hosts (`darwin` and `linux`). On Windows, only pnpm's batch shim is routed
+through the selected `ComSpec` with a closed token grammar; native executables
+still run directly. Any other host platform fails closed. The verifier and its
+unit test are explicit development-host surfaces in the supported-platform
+inventory and do not declare a shipped Linux product target.
+
 The workflow does not duplicate literal Node, pnpm, Rust, uv, Python, or
 application versions. Rust setup disables its implicit cache. Backend and
 Windows-native jobs may restore a lockfile-keyed `~/.cargo/registry` and
@@ -414,10 +421,10 @@ independent later diagnostic.
 
 `windows-native-contracts` is a fail-fast-disabled two-entry matrix:
 
-| Runner           | GitHub architecture | Rust host                 | Managed Python platform |
-| ---------------- | ------------------- | ------------------------- | ----------------------- |
-| `windows-2025`   | `X64`               | `x86_64-pc-windows-msvc`  | `win-amd64`             |
-| `windows-11-vs2026-arm` | `ARM64`       | `aarch64-pc-windows-msvc` | `win-arm64`             |
+| Runner                  | GitHub architecture | Rust host                 | Managed Python platform |
+| ----------------------- | ------------------- | ------------------------- | ----------------------- |
+| `windows-2025`          | `X64`               | `x86_64-pc-windows-msvc`  | `win-amd64`             |
+| `windows-11-vs2026-arm` | `ARM64`             | `aarch64-pc-windows-msvc` | `win-arm64`             |
 
 Before Cargo compilation, each child requires exact `RUNNER_ARCH`, exactly one
 `rustc -vV` host line, and equality with the matrix host. After that check and

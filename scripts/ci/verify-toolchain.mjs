@@ -101,6 +101,7 @@ export function resolveToolInvocation(
 ) {
   switch (platform) {
     case "darwin":
+    case "linux":
       return { command, args };
     case "win32":
       if (command !== "pnpm") return { command, args };

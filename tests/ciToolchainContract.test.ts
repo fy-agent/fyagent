@@ -139,11 +139,22 @@ describe("CI toolchain contract", () => {
     ).toBe("cmd.exe");
   });
 
-  it("leaves non-Windows tool invocation unchanged", () => {
-    expect(resolveToolInvocation("pnpm", ["--version"], "darwin", {})).toEqual({
-      command: "pnpm",
-      args: ["--version"],
-    });
+  it.each(["darwin", "linux"] as const)(
+    "leaves %s tool invocation unchanged",
+    (platform) => {
+      expect(
+        resolveToolInvocation("pnpm", ["--version"], platform, {}),
+      ).toEqual({
+        command: "pnpm",
+        args: ["--version"],
+      });
+    },
+  );
+
+  it("rejects an unsupported CI runner platform", () => {
+    expect(() =>
+      resolveToolInvocation("pnpm", ["--version"], "freebsd", {}),
+    ).toThrow("Unsupported CI runner platform: freebsd");
   });
 
   it.each([
