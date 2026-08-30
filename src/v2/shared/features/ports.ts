@@ -66,6 +66,7 @@ import type {
   PromptAppId,
 } from "./types";
 import type { AgentInstallReadinessPort } from "./agent-install-readiness";
+import type { AgentAuthPort } from "./agent-auth";
 import type { ChangePlansPort } from "./change-plans";
 
 export interface AgentCatalogPort {
@@ -239,6 +240,7 @@ export interface MemoryPort {
 
 export interface FeaturePorts {
   catalog: AgentCatalogPort;
+  agentAuth: AgentAuthPort;
   agentInstallReadiness: AgentInstallReadinessPort;
   changePlans: ChangePlansPort;
   externalAgents: ExternalAgentsPort;

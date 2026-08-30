@@ -1,5 +1,6 @@
 #![allow(non_snake_case)]
 
+mod agent_auth;
 mod agent_catalog;
 mod auth;
 mod balance;
@@ -46,6 +47,7 @@ mod webdav_sync;
 mod workbuddy;
 mod workspace;
 
+pub use agent_auth::*;
 pub use agent_catalog::*;
 pub use auth::*;
 pub use balance::*;

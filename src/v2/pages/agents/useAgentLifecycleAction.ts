@@ -268,13 +268,15 @@ export function useAgentLifecycleAction({
     ) => {
       const current = readinessRef.current;
       if (!current || runningRef.current) return;
+      if (action !== "install" && action !== "update" && action !== "launch") {
+        return;
+      }
       if (!current.allowedActions.includes(action)) return;
       const selectedTarget = targetOverride ?? targetRef.current;
       const targetRequired =
         action === "install" ||
         action === "update" ||
-        (current.requiresTargetSelection &&
-          (action === "launch" || action === "auth_login"));
+        (current.requiresTargetSelection && action === "launch");
       if (
         targetRequired &&
         (!selectedTarget || !selectedTarget.eligibleActions.includes(action))

@@ -158,13 +158,7 @@ type AgentInstallReadinessPort = {
   getInventory(agentId: AgentCatalogId): Promise<AgentInstallationInventory>;
   startAction(request: {
     agentId: AgentCatalogId;
-    action:
-      | "install"
-      | "update"
-      | "launch"
-      | "auth_login"
-      | "auth_logout"
-      | "auth_connect_provider";
+    action: "install" | "update" | "launch";
     expectedReleaseId?: string; // opaque v1:+64 hex from readiness.releaseId
     inventoryId?: string; // opaque i1:+32 hex, complete triplet only
     targetId?: string; // opaque c1:/d1:+32 hex
@@ -179,6 +173,37 @@ get_agent_installation_inventory({ agentId });
 start_agent_action({ request });
 cancel_agent_action({ jobId });
 get_agent_action_job({ jobId });
+```
+
+Auth observation/session is a separate native port. It does not reuse an
+installer job result as proof of login:
+
+```ts
+type AgentAuthObservation =
+  | AccountObservation
+  | ProviderConnectionsObservation
+  | HandoffOnlyObservation
+  | FyagentManagedObservation
+  | UnavailableObservation;
+
+type AgentAuthPort = {
+  getObservation(agentId: AgentCatalogId): Promise<AgentAuthObservation>;
+  startSession(request: {
+    agentId: AgentCatalogId;
+    intent: "login" | "logout" | "connect_provider";
+    providerId?: string; // opaque p1:+32 hex; OpenCode logout only
+    inventoryId?: string;
+    targetId?: string;
+    expectedTargetRevision?: string;
+  }): Promise<AgentAuthSessionSnapshot>;
+  getSession(sessionId: string): Promise<AgentAuthSessionSnapshot>;
+  stopWaiting(sessionId: string): Promise<AgentAuthSessionSnapshot>;
+};
+
+get_agent_auth_observation({ agentId });
+start_agent_auth_session({ request });
+get_agent_auth_session({ sessionId });
+stop_waiting_for_agent_auth({ sessionId });
 ```
 
 V2 reads a non-secret Provider projection in one native snapshot:
@@ -790,13 +815,15 @@ fetch/save controls.
   adapter with exact keys/versions and a forbidden-wire scan. React never
   reconstructs URL, raw path, identity, command, hash, or `packageFormat`
   policy. Browser ports stay native-only.
-- Visible actions are exactly `allowedActions` from the backend DTO.
+- Visible lifecycle actions are the `install | update | launch` subset of
+  `allowedActions` from the backend DTO. Legacy Auth action values are never
+  rendered or submitted through `AgentInstallReadinessPort`.
   Codex install/update remain the dedicated desktop installer; this region
   must not start a Codex Agent job. Qoder has no claimed remote semver.
   TRAE/WorkBuddy pass the opaque `releaseId` back as `expectedReleaseId`.
-  Install/update and multi-install launch/auth also pass the complete opaque
-  inventory target binding. A target-free legacy launch is used only when
-  backend readiness says selection is unnecessary.
+  Install/update and multi-install launch pass the complete opaque inventory
+  target binding. A target-free legacy launch is used only when backend
+  readiness says selection is unnecessary.
 - Job-stage/reason copy is closed and outcome-specific. `staging` is distinct
   from download and install; `launching_installer` / `awaiting_user` expose
   Windows vendor ownership without inventing a percent, `incomplete` is a
@@ -807,8 +834,25 @@ fetch/save controls.
   `rollback_restored` confirms only restoration, not update success; and
   `recovery_required` instructs the user to stop retrying because native
   authority is unknown. None of these states is rendered as installed success.
-- Auth copy follows `authOwnership` / `authState`: OpenCode is a provider
-  connection, not a global logged-in badge. Unknown stays unknown.
+- Agent directory/configuration consume `FeaturePorts.agentAuth`, whose adapter
+  parses exact tagged observation/session DTOs before query or React state.
+  Directory copy is compact and read-only; the configuration panel owns
+  actions and monitoring. The five kinds remain distinct: Claude account
+  status, OpenCode provider connections, Grok/desktop handoff-only, Codex
+  Auth-Center-managed, and unavailable. Unknown/unverified never becomes a
+  logged-in badge.
+- Claude login/logout stays `awaiting_user`/`verifying` until an official
+  status reread proves the requested target. OpenCode renders each sanitized
+  provider separately and sends only its opaque provider ID for disconnect;
+  connect/logout succeeds only after a provider-set delta. Grok and desktop
+  applications end in 「已交给官方认证入口」, never 「认证结果已验证」.
+  Codex renders no duplicate login button and delegates to the existing Auth
+  Center.
+- Desktop Auth login reuses `LifecycleTargetPicker` and the same complete
+  opaque inventory binding as launch. Stop waiting is available only while
+  awaiting/verifying and explicitly stops FyAgent monitoring, not the external
+  CLI/browser/app. Session stage/outcome pairings are exact and terminal
+  snapshots are not optimistically rewritten. Browser ports remain native-only.
 - Codex Models consumes `FeaturePorts.changePlans` through exact unknown-input
   parsers. Switch uses `createCodexProviderSwitchPlan(targetProviderId)`.
   Codex Quick Setup save uses `createCodexProviderUpsertPlan(request)` and
@@ -888,15 +932,22 @@ fetch/save controls.
 | Renderer persists a raw location or constructs `targetId`/revision                                                                | Security/contract test fails; all target capabilities originate in the backend inventory                              |
 | Generic Agent job UI invents a download percent                                                                                   | Page/hook test fails; generic progress is stage-only                                                                  |
 | Generic Agent job omits `staging` or treats it as non-cancellable                                                                 | Parser/hook test fails; staging remains cancellable until the native commit transition                                |
-| Windows Agent job omits `launching_installer` / `awaiting_user` or still offers cancel after launch                              | Parser/hook test fails; vendor UI launch is the non-cancellable side-effect boundary                                  |
+| Windows Agent job omits `launching_installer` / `awaiting_user` or still offers cancel after launch                               | Parser/hook test fails; vendor UI launch is the non-cancellable side-effect boundary                                  |
 | Native result is `incomplete`                                                                                                     | Stop polling, reread readiness/inventory, and show non-green unconfirmed-result copy                                  |
 | Windows result is user-cancelled, unobservable, timed out, or nonzero-exit                                                        | Render its distinct closed reason; do not collapse to generic success/failure or claim the installer was killed       |
-| Windows artifact staging/capability fails                                                                                         | Show local artifact/permission guidance; never label the executor unimplemented                                      |
+| Windows artifact staging/capability fails                                                                                         | Show local artifact/permission guidance; never label the executor unimplemented                                       |
 | Disabled `/Applications` target is hidden or silently replaced by `~/Applications`                                                | Picker/page test fails; show `authorization_required` and preserve the selected scope                                 |
-| Native result is `rollback_restored`                                                                                               | Show failed-update/restored-original copy; never show install success                                                 |
-| Native result is `recovery_required`                                                                                               | Show non-green stop-and-inspect copy; disable optimistic retry/success claims                                         |
+| Native result is `rollback_restored`                                                                                              | Show failed-update/restored-original copy; never show install success                                                 |
+| Native result is `recovery_required`                                                                                              | Show non-green stop-and-inspect copy; disable optimistic retry/success claims                                         |
 | Directory treats action success as installed without readiness/Codex reread                                                       | Page test fails; `applyReadiness` / installer refresh is the authority                                                |
 | Directory Codex row starts `start_agent_action` for install/update                                                                | Page test fails; Codex stays on `codexDesktop`                                                                        |
+| Readiness contains a legacy Auth action and the install UI renders/submits it                                                     | Page/hook test fails; Auth uses `FeaturePorts.agentAuth` only                                                         |
+| Claude entry opens login/logout but no official status reread reaches the requested state                                         | Keep awaiting/verifying, then timeout; never show verified                                                            |
+| OpenCode renders one global login/logout control                                                                                  | Component test fails; render provider connections and disconnect by opaque provider ID                                |
+| Grok or desktop Auth handoff is rendered as verified                                                                              | Component test fails; show 「已交给官方认证入口」 only                                                                |
+| Codex configuration renders a second login/OAuth control                                                                          | Component test fails; delegate to the existing Auth Center                                                            |
+| Stop waiting claims the external CLI/browser/app was cancelled                                                                    | Copy/session test fails; only FyAgent monitoring stops                                                                |
+| Auth observation/session carries URL/path/command/token/env or excess fields                                                      | Strict port parser rejects before query/React state                                                                   |
 | Browser Provider/WorkBuddy/OpenCode save skips `保存前确认` / `确认保存`                                                          | Browser test fails; the dialog is the write-target disclosure, not optional chrome                                    |
 | Non-Codex Agent detail omits 「产品介绍」 or Codex detail shows that region                                                       | Page test fails; intros are page-local copy, never catalog `description`                                              |
 | Agent directory intro or Codex installer copy names FyAgent                                                                       | Intro/page/installer test fails; Agent directory copy describes the third-party product only                          |
@@ -957,10 +1008,12 @@ fetch/save controls.
   Provider quick setup. After a model ID exists, WorkBuddy/Claude/Codex/Grok
   Build/OpenCode 「测试连通」 opens a searchable grouped picker and
   `checkModel` shows the upstream error body on failure.
-- Good: Agent detail renders install/auth controls only from backend
+- Good: Agent detail renders install controls only from lifecycle
   `allowedActions`, starts TRAE/WorkBuddy jobs with the opaque `releaseId`,
-  leaves Codex on the dedicated installer, and never shows a global OpenCode
-  logged-in badge.
+  and leaves Codex on the dedicated installer. Auth is independently projected
+  by `AgentAuthObservation`: Claude verifies through official reread, OpenCode
+  lists Provider connections, Grok/desktop remain handoff-only, and Codex stays
+  on the existing Auth Center.
 - Good: OpenCode's Models panel lists existing sanitized provider/model IDs,
   fetches, adds, deletes, and saves through `opencodeModels`; it never submits
   Provider quick setup.

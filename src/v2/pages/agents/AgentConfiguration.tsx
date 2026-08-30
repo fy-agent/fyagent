@@ -8,6 +8,7 @@ import { BrandIconFrame } from "../../shared/ui/catalog";
 import { Button } from "../../shared/ui/primitives";
 
 import { AgentMcpSection, AgentSkillsSection } from "./AgentAssignmentSections";
+import { AgentAuthStatusPanel } from "./AgentAuthStatusPanel";
 import { AgentModelsSection } from "./AgentModelsSection";
 import { AgentPromptsSection } from "./AgentPromptsSection";
 import type { AgentSection } from "./agentSections";
@@ -73,6 +74,7 @@ export function AgentConfiguration({
       />
 
       <div className="fy-agent-config-body">
+        <AgentAuthStatusPanel agentId={entry.agentId} />
         {section === "models" ? (
           <AgentModelsSection
             entry={entry}

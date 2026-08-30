@@ -31,8 +31,10 @@ use versions::{
 use discovery::is_conflicting;
 #[cfg(test)]
 use discovery::plan_command_for;
-pub(crate) use discovery::run_detected_tool_command_with_timeout;
 pub use discovery::{probe_tool_installations, ToolInstallationReport};
+pub(crate) use discovery::{
+    run_detected_tool_command_with_timeout, run_detected_tool_command_with_timeout_and_output_limit,
+};
 pub(crate) use terminal::launch_terminal_running;
 #[cfg(test)]
 use terminal::resolve_launch_cwd;
@@ -1924,29 +1926,55 @@ fn isolate_child_process_group(cmd: &mut std::process::Command) {
     cmd.process_group(0);
 }
 
+#[derive(Default)]
+struct CapturedPipe {
+    bytes: Vec<u8>,
+    overflowed: bool,
+}
+
+fn capture_child_pipe(mut pipe: impl std::io::Read, limit: Option<usize>) -> CapturedPipe {
+    let mut bytes = Vec::new();
+    let mut overflowed = false;
+    let mut chunk = [0_u8; 8 * 1024];
+    loop {
+        let read = match pipe.read(&mut chunk) {
+            Ok(0) | Err(_) => break,
+            Ok(read) => read,
+        };
+        match limit {
+            None => bytes.extend_from_slice(&chunk[..read]),
+            Some(limit) => {
+                let remaining = limit.saturating_sub(bytes.len());
+                let retained = remaining.min(read);
+                bytes.extend_from_slice(&chunk[..retained]);
+                if retained != read {
+                    overflowed = true;
+                }
+            }
+        }
+    }
+    CapturedPipe { bytes, overflowed }
+}
+
 fn wait_child_output(
-    mut child: std::process::Child,
+    child: std::process::Child,
     deadline: Option<CommandDeadline>,
 ) -> Result<std::process::Output, String> {
-    use std::io::Read;
+    wait_child_output_with_limit(child, deadline, None)
+}
 
+fn wait_child_output_with_limit(
+    mut child: std::process::Child,
+    deadline: Option<CommandDeadline>,
+    output_limit: Option<usize>,
+) -> Result<std::process::Output, String> {
     let stdout_pipe = child.stdout.take();
-    let stderr_pipe = child.stderr.take();
+    let stdout_handle =
+        stdout_pipe.map(|pipe| std::thread::spawn(move || capture_child_pipe(pipe, output_limit)));
 
-    let stdout_handle = stdout_pipe.map(|mut pipe| {
-        std::thread::spawn(move || {
-            let mut buf = Vec::new();
-            let _ = pipe.read_to_end(&mut buf);
-            buf
-        })
-    });
-    let stderr_handle = stderr_pipe.map(|mut pipe| {
-        std::thread::spawn(move || {
-            let mut buf = Vec::new();
-            let _ = pipe.read_to_end(&mut buf);
-            buf
-        })
-    });
+    let stderr_pipe = child.stderr.take();
+    let stderr_handle =
+        stderr_pipe.map(|pipe| std::thread::spawn(move || capture_child_pipe(pipe, output_limit)));
 
     let status = match deadline {
         None => child
@@ -2012,15 +2040,25 @@ fn wait_child_output(
 
     let stdout = stdout_handle
         .map(|handle| handle.join().unwrap_or_default())
-        .unwrap_or_default();
+        .unwrap_or(CapturedPipe {
+            bytes: Vec::new(),
+            overflowed: false,
+        });
     let stderr = stderr_handle
         .map(|handle| handle.join().unwrap_or_default())
-        .unwrap_or_default();
+        .unwrap_or(CapturedPipe {
+            bytes: Vec::new(),
+            overflowed: false,
+        });
+
+    if stdout.overflowed || stderr.overflowed {
+        return Err("Command output exceeded the configured limit".to_string());
+    }
 
     Ok(std::process::Output {
         status,
-        stdout,
-        stderr,
+        stdout: stdout.bytes,
+        stderr: stderr.bytes,
     })
 }
 
@@ -2064,6 +2102,7 @@ fn run_windows_tool_command_capture(
     tool_dir: &Path,
     args: &[&str],
     deadline: Option<CommandDeadline>,
+    output_limit: Option<usize>,
     extra_env: &[(&str, String)],
     working_dir: &Path,
 ) -> Result<std::process::Output, String> {
@@ -2113,7 +2152,7 @@ fn run_windows_tool_command_capture(
     let child = cmd
         .spawn()
         .map_err(|e| format!("Failed to run tool: {e}"))?;
-    wait_child_output(child, deadline)
+    wait_child_output_with_limit(child, deadline, output_limit)
 }
 
 /// 基于已枚举的安装列表生成锚定升级命令（复用 enumerate 结果，避免二次探测）。

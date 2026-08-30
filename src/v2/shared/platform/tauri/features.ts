@@ -1,4 +1,5 @@
 import type { FeaturePorts } from "../../features/ports";
+import { createAgentAuthPort } from "./feature-ports/agentAuth";
 import { createAgentFeaturePorts } from "./feature-ports/agents";
 import { createAgentInstallReadinessPort } from "./feature-ports/agentInstallReadiness";
 import { createChangePlansPort } from "./feature-ports/changePlans";
@@ -10,6 +11,7 @@ import { createSimpleFeaturePorts } from "./feature-ports/simple";
 
 export function createTauriFeaturePorts(): FeaturePorts {
   return {
+    agentAuth: createAgentAuthPort(),
     agentInstallReadiness: createAgentInstallReadinessPort(),
     changePlans: createChangePlansPort(),
     ...createAgentFeaturePorts(),

@@ -157,3 +157,20 @@ The panel is reused by Agent directory/details. Auth Center gets a navigation ac
 ## 10. Relationship to install state
 
 Install state, Auth observation and model connectivity remain three independent resources. A product can be installed but Auth unknown, logged in but model request unavailable, or Provider-configured without a global account. No reducer derives one from another.
+
+## 11. Implemented boundary notes
+
+- The implementation keeps one crate-scoped dispatcher in `auth_actions` plus
+  one session coordinator in `auth_sessions` rather than introducing a trait
+  object hierarchy with only one production dispatcher. Product-specific
+  parsing and command selection remain private and closed.
+- The old install-action Auth variants remain protocol values for compatibility
+  but `start_agent_action` rejects them and the renderer never displays or
+  submits them. Auth uses the four dedicated Tauri commands and a separate ACL.
+- Session storage is process-local and bounded to 64 snapshots. A returned
+  session ID can be queried after route/page reconstruction while the process
+  survives. A full renderer reload that loses the ID has no automatic lookup;
+  no persistence surface was added because it would require a separately
+  reviewed recovery contract.
+- Claude and OpenCode are the only verified adapters. Grok and desktop agents
+  are deliberately handoff-only. Codex remains delegated to Auth Center.

@@ -209,9 +209,11 @@ command-level check.
 It no longer selects a machine runtime or requires the process SID to equal the
 Shell SID. Legacy Run-value cleanup is known-name-only, runs after primary
 instance admission, and is best-effort; its failure must not block startup.
-Agent Catalog CLI/auth actions (Claude/Grok/OpenCode) reuse the same Tooling
-gate: a formal elevated Windows build reports `interactive_user_unavailable`
-rather than routing user tools through the executable installer helper. The
+Agent Catalog CLI lifecycle and the separate Auth-session façade
+(Claude/Grok/OpenCode) reuse the same Tooling gate: a formal elevated Windows
+build reports `interactive_user_unavailable` before probing, observation, or
+launch rather than routing user tools through the executable installer helper.
+The
 ordinary-user helper has only two installer action families: Codex MSIX and
 Agent EXE with the closed product enum `qoderwork | trae-work | workbuddy`.
 It accepts no CLI tool, command, URL, package path, working directory, verb,
@@ -249,30 +251,30 @@ IShellFolderViewDual.Application -> IShellDispatch2`.
 
 ## 4. Validation & Error Matrix
 
-| Condition                                                                                        | Required result                                                                                                                                                            |
-| ------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Shell window/process/token/session/SID is unavailable                                            | Exit before panic logging, CLI parsing, Tauri, or user-path access with `WIN_INTERACTIVE_USER_UNAVAILABLE`.                                                                |
-| Shell Profile, LocalAppData, or RoamingAppData is unavailable/non-absolute                       | Exit with the matching stable path code; never use Bob, SYSTEM, cwd, environment, or a drive fallback.                                                                     |
-| Alice environment block is unavailable, PATH is absent, or strict PATH filtering leaves no entry | Exit with `WIN_INTERACTIVE_ENVIRONMENT_UNAVAILABLE`; never read or merge Bob's process PATH.                                                                               |
-| Process is Bob and Shell is Alice                                                                | Continue with Alice SID and all three Alice directory projections; report process/Shell mismatch only as telemetry.                                                        |
-| Frozen Shell session/SID drifts before a protected side effect                                   | Stop that side effect; do not mutate the context or select another user.                                                                                                   |
-| Alice Store/window-state JSON is missing, corrupt, or oversized                                  | Use safe defaults at the same Alice path; do not consult or create Bob's app-data directories or allocate beyond the fixed read limit.                                     |
-| Any fixed Alice HKU path component is a registry symbolic link                                   | Reject that operation before reading, deleting, or writing a value; never reopen the key by an unverified full string path.                                                |
-| Legacy Alice Run value is absent, inaccessible, or cleanup fails                                 | Continue startup and emit only a bounded diagnostic after first-instance admission.                                                                                        |
+| Condition                                                                                        | Required result                                                                                                                                                              |
+| ------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Shell window/process/token/session/SID is unavailable                                            | Exit before panic logging, CLI parsing, Tauri, or user-path access with `WIN_INTERACTIVE_USER_UNAVAILABLE`.                                                                  |
+| Shell Profile, LocalAppData, or RoamingAppData is unavailable/non-absolute                       | Exit with the matching stable path code; never use Bob, SYSTEM, cwd, environment, or a drive fallback.                                                                       |
+| Alice environment block is unavailable, PATH is absent, or strict PATH filtering leaves no entry | Exit with `WIN_INTERACTIVE_ENVIRONMENT_UNAVAILABLE`; never read or merge Bob's process PATH.                                                                                 |
+| Process is Bob and Shell is Alice                                                                | Continue with Alice SID and all three Alice directory projections; report process/Shell mismatch only as telemetry.                                                          |
+| Frozen Shell session/SID drifts before a protected side effect                                   | Stop that side effect; do not mutate the context or select another user.                                                                                                     |
+| Alice Store/window-state JSON is missing, corrupt, or oversized                                  | Use safe defaults at the same Alice path; do not consult or create Bob's app-data directories or allocate beyond the fixed read limit.                                       |
+| Any fixed Alice HKU path component is a registry symbolic link                                   | Reject that operation before reading, deleting, or writing a value; never reopen the key by an unverified full string path.                                                  |
+| Legacy Alice Run value is absent, inaccessible, or cleanup fails                                 | Continue startup and emit only a bounded diagnostic after first-instance admission.                                                                                          |
 | A protected installer PackageBridge orphan exists                                                | Do not use it for startup, activation, identity, or user-path selection; only the executable-installer bridge owner may inspect it during the next elevated bridge creation. |
-| Single-instance envelope is oversized, contains controls, or has an invalid deep link            | Reject before lightweight/focus/event behavior; never log the raw payload.                                                                                                 |
-| Valid envelope has no actionable deep link                                                       | Restore/focus the existing window only.                                                                                                                                    |
-| No File Explorer folder window is open                                                           | Desktop-view Explorer chain still launches the validated URL; never enumerate only `SWC_EXPLORER`.                                                                         |
-| Desktop background object is requested directly as `IShellFolderViewDual`                        | Treat as a contract regression; request `IDispatch` first and cast explicitly.                                                                                             |
-| External link is accepted but browser would remain backgrounded                                  | Pass fixed `SW_SHOWNORMAL` for ordinary external links; helper show semantics remain unchanged.                                                                            |
-| Explorer COM acquisition or `ShellExecute` fails                                                 | Return controlled `INTERACTIVE_USER_UNAVAILABLE`; do not try a command, direct shell, renderer, or elevated-user fallback.                                                 |
-| Closed desktop-agent `.exe` is relative, contains `..` or NUL, or is not `.exe`                  | `external_launch_invalid_windows_exe`; Explorer is not invoked.                                                                                                            |
-| Closed desktop-agent `.exe` is observer-proven under Alice Programs or machine Program Files     | Explorer `ShellExecute` as Alice; never `CreateProcess` / `ShellExecuteW` from Bob.                                                                                        |
-| Formal elevated Windows Agent Catalog CLI/auth (Claude/Grok/OpenCode)                            | Return `interactive_user_unavailable`; do not inspect or launch the user tool.                                                                                             |
-| The installer helper accepts URL, path, shell string, scope, silent switch, or raw child stdout   | Contract/static test fails; only exact Codex MSIX or Agent EXE product actions are registered.                                                                              |
-| Helper `Hello(action)` differs from the parent-selected action/product                            | Reject before bridge control/admission; zero installer launch.                                                                                                              |
-| Agent EXE helper receives no process handle after ShellExecuteEx                                  | Closed `installer_process_unobservable`; authoritative inventory reread, never immediate success.                                                                           |
-| Non-Windows platform                                                                             | Preserve its existing path resolver, Store/window-state plugin, and single-instance behavior.                                                                              |
+| Single-instance envelope is oversized, contains controls, or has an invalid deep link            | Reject before lightweight/focus/event behavior; never log the raw payload.                                                                                                   |
+| Valid envelope has no actionable deep link                                                       | Restore/focus the existing window only.                                                                                                                                      |
+| No File Explorer folder window is open                                                           | Desktop-view Explorer chain still launches the validated URL; never enumerate only `SWC_EXPLORER`.                                                                           |
+| Desktop background object is requested directly as `IShellFolderViewDual`                        | Treat as a contract regression; request `IDispatch` first and cast explicitly.                                                                                               |
+| External link is accepted but browser would remain backgrounded                                  | Pass fixed `SW_SHOWNORMAL` for ordinary external links; helper show semantics remain unchanged.                                                                              |
+| Explorer COM acquisition or `ShellExecute` fails                                                 | Return controlled `INTERACTIVE_USER_UNAVAILABLE`; do not try a command, direct shell, renderer, or elevated-user fallback.                                                   |
+| Closed desktop-agent `.exe` is relative, contains `..` or NUL, or is not `.exe`                  | `external_launch_invalid_windows_exe`; Explorer is not invoked.                                                                                                              |
+| Closed desktop-agent `.exe` is observer-proven under Alice Programs or machine Program Files     | Explorer `ShellExecute` as Alice; never `CreateProcess` / `ShellExecuteW` from Bob.                                                                                          |
+| Formal elevated Windows Agent Catalog CLI/Auth session (Claude/Grok/OpenCode)                    | Return `interactive_user_unavailable`; do not inspect, observe, or launch the user tool.                                                                                     |
+| The installer helper accepts URL, path, shell string, scope, silent switch, or raw child stdout  | Contract/static test fails; only exact Codex MSIX or Agent EXE product actions are registered.                                                                               |
+| Helper `Hello(action)` differs from the parent-selected action/product                           | Reject before bridge control/admission; zero installer launch.                                                                                                               |
+| Agent EXE helper receives no process handle after ShellExecuteEx                                 | Closed `installer_process_unobservable`; authoritative inventory reread, never immediate success.                                                                            |
+| Non-Windows platform                                                                             | Preserve its existing path resolver, Store/window-state plugin, and single-instance behavior.                                                                                |
 
 ## 5. Good / Base / Bad Cases
 
@@ -336,7 +338,7 @@ IShellFolderViewDual.Application -> IShellDispatch2`.
   must click a real Tauri catalog action and observe the target in the
   interactive user's foreground browser; process creation or a successful
   HRESULT alone is insufficient.
-- Agent Catalog CLI/auth tests must map formal elevated Windows to
+- Agent Catalog CLI/Auth-session tests must map formal elevated Windows to
   `interactive_user_unavailable` and must not register a generic command
   helper. Installer-helper tests must prove exact action/product CLI, v3
   Hello-action binding, fixed bridge artifact kind, and no tool/URL/path argv.
@@ -434,12 +436,12 @@ Public error: `ProcessLaunchError::InvalidWindowsExe` →
 
 ### 4. Validation & Error Matrix
 
-| Condition | Required result |
-| --- | --- |
-| Relative, `..`, NUL, or non-`.exe` | `external_launch_invalid_windows_exe`; no Explorer |
-| Shape-valid absolute `.exe` | Explorer `ShellExecute` as Alice |
-| Explorer COM unavailable | `INTERACTIVE_USER_UNAVAILABLE`; no `CreateProcess` |
-| macOS / Linux call the EXE opener | `InteractiveUserUnavailable` / `PlatformUnsupported` |
+| Condition                                                            | Required result                                                          |
+| -------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Relative, `..`, NUL, or non-`.exe`                                   | `external_launch_invalid_windows_exe`; no Explorer                       |
+| Shape-valid absolute `.exe`                                          | Explorer `ShellExecute` as Alice                                         |
+| Explorer COM unavailable                                             | `INTERACTIVE_USER_UNAVAILABLE`; no `CreateProcess`                       |
+| macOS / Linux call the EXE opener                                    | `InteractiveUserUnavailable` / `PlatformUnsupported`                     |
 | Downloaded installer EXE is submitted to ordinary trusted-EXE launch | Reject; install requires retained package + closed helper product action |
 
 ### 5. Good/Base/Bad Cases
@@ -475,13 +477,14 @@ crate::platform::process_launch::launch_trusted_windows_exe_as_user(exe)
     .map_err(|_| AgentReasonCode::InteractiveUserUnavailable)?;
 ```
 
-## Scenario: Agent Catalog CLI/auth on formal elevated Windows
+## Scenario: Agent Catalog CLI and Auth sessions on formal elevated Windows
 
 ### 1. Scope / Trigger
 
-- Trigger: Agent Catalog now starts Claude/Grok/OpenCode install/update/auth
-  through Tooling. Formal elevated Windows already forbids user-CLI
-  execution. This must not grow a generic command/path helper.
+- Trigger: Agent Catalog starts Claude/Grok/OpenCode install/update through
+  Tooling and observes/starts Auth through the separate Auth-session façade.
+  Formal elevated Windows already forbids user-CLI execution. Neither surface
+  may grow a generic command/path helper.
 
 ### 2. Signatures
 
@@ -489,8 +492,12 @@ No generic Windows command helper is registered. The existing installer helper
 has closed MSIX/Agent-EXE actions only and is not available to CLI/auth.
 
 ```text
-start_agent_action({ agentId: claude-code|grokbuild|opencode, action })
+start_agent_action({ agentId: claude-code|grokbuild|opencode, action: install|update })
   -> interactive_user_unavailable   // formal elevated Windows
+
+get_agent_auth_observation({ agentId: claude-code|grokbuild|opencode })
+start_agent_auth_session({ agentId, intent })
+  -> unavailable / interactive_user_unavailable // no user tool is inspected or launched
 
 fyagent-user-helper.exe
   codex-msix-install --job-id <uuid> --pipe <nonce>
@@ -504,8 +511,9 @@ closed states plus sanitized reason codes.
 
 ### 3. Contracts
 
-- Catalog CLI/auth reuses `services/tooling` detected-tool execution. The
-  formal-build gate runs before inspecting or launching a user tool.
+- Catalog CLI lifecycle and Auth observation/session reuse `services/tooling`
+  detected-tool execution. The formal-build gate runs before inspecting,
+  observing, or launching a user tool.
 - Updating Claude's official Windows `install.ps1` / WinGet fact does not
   remove the elevated boundary.
 - Helper stdout/stderr, environment, browser URL, device code, executable
@@ -519,12 +527,12 @@ closed states plus sanitized reason codes.
 
 ### 4. Validation & Error Matrix
 
-| Condition | Required result |
-| --- | --- |
-| Formal elevated Windows Catalog CLI/auth | `interactive_user_unavailable`; no child process |
-| Helper argv contains URL/path/shell string/tool action | Contract test fails; no child process |
-| Installer helper gains Claude/Grok/OpenCode tool verbs | Architecture regression |
-| Non-formal/non-Windows Tooling lifecycle | Existing Tooling behavior unchanged |
+| Condition                                              | Required result                                           |
+| ------------------------------------------------------ | --------------------------------------------------------- |
+| Formal elevated Windows Catalog CLI/Auth session       | `interactive_user_unavailable`; no probe or child process |
+| Helper argv contains URL/path/shell string/tool action | Contract test fails; no child process                     |
+| Installer helper gains Claude/Grok/OpenCode tool verbs | Architecture regression                                   |
+| Non-formal/non-Windows Tooling lifecycle               | Existing Tooling behavior unchanged                       |
 
 ### 5. Good/Base/Bad Cases
 
@@ -537,9 +545,9 @@ closed states plus sanitized reason codes.
 
 - Existing `formal_windows_cli_boundary_is_fail_closed_without_a_native_runtime`
   remains green.
-- Agent CLI/auth paths map elevated failures to
+- Agent CLI/Auth-session paths map elevated failures to
   `interactive_user_unavailable`.
-- Negative scan: no CLI/auth helper verb, no path/URL argv, no raw stdout DTO.
+- Negative scan: no CLI/Auth helper verb, no path/URL argv, no raw stdout DTO.
 - Bob/Alice/UAC HIL remains unverified residual risk.
 
 ### 7. Wrong vs Correct

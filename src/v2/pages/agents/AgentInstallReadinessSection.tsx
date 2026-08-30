@@ -125,6 +125,10 @@ function ReadinessSummary({
   onAction: (action: AgentActionId) => void;
 }) {
   const managedByCodex = data.reasonCodes.includes("managed_by_codex_desktop");
+  const lifecycleActions = data.allowedActions.filter(
+    (action) =>
+      action === "install" || action === "update" || action === "launch",
+  );
   const notices = data.reasonCodes
     .map(reasonCopy)
     .filter((text): text is string => Boolean(text));
@@ -166,9 +170,9 @@ function ReadinessSummary({
       {error ? <InlineNotice tone="warning">{error}</InlineNotice> : null}
       {success ? <InlineNotice tone="info">{success}</InlineNotice> : null}
       {targetPicker}
-      {!managedByCodex && data.allowedActions.length > 0 ? (
+      {!managedByCodex && lifecycleActions.length > 0 ? (
         <div className="fy-agent-action-row">
-          {data.allowedActions.map((action) => (
+          {lifecycleActions.map((action) => (
             <Button
               key={action}
               disabled={busy}
@@ -269,11 +273,13 @@ function AgentInstallReadinessContent({
 
   const handleAction = (action: AgentActionId) => {
     if (state.status !== "ready") return;
+    if (action !== "install" && action !== "update" && action !== "launch") {
+      return;
+    }
     const needsTarget =
       action === "install" ||
       action === "update" ||
-      (state.data.requiresTargetSelection &&
-        (action === "launch" || action === "auth_login"));
+      (state.data.requiresTargetSelection && action === "launch");
     if (!needsTarget) {
       void lifecycle.run(action, null);
       return;

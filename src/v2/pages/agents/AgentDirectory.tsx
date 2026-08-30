@@ -32,6 +32,7 @@ import {
   useAgentLifecycleAction,
   type AgentLifecycleActionView,
 } from "./useAgentLifecycleAction";
+import { AgentAuthStatusPanel } from "./AgentAuthStatusPanel";
 
 function isInstalledReadiness(
   data: AgentInstallReadiness | undefined,
@@ -97,12 +98,14 @@ function DirectoryCardShell({
   observation,
   lifecycleBusy,
   lifecycleSlot,
+  authSlot,
   onConfigure,
 }: {
   entry: AgentCatalogEntry;
   observation: AgentDirectoryRowObservation;
   lifecycleBusy: boolean;
   lifecycleSlot: ReactNode;
+  authSlot: ReactNode;
   onConfigure: (agentId: AgentCatalogId) => void;
 }) {
   const kindCopy = rowKindCopy(observation);
@@ -134,6 +137,7 @@ function DirectoryCardShell({
           ) : null}
         </div>
         <p className="fy-agent-directory-description">{entry.description}</p>
+        {authSlot}
       </div>
       <div className="fy-agent-directory-card-actions">
         {lifecycleSlot}
@@ -212,6 +216,13 @@ function GenericDirectoryCard({
       entry={entry}
       observation={observation}
       lifecycleBusy={lifecycle.busy}
+      authSlot={
+        <AgentAuthStatusPanel
+          agentId={entry.id}
+          mode="compact"
+          enabled={observation.configurable}
+        />
+      }
       onConfigure={onConfigure}
       lifecycleSlot={
         <>
@@ -312,6 +323,13 @@ function CodexDirectoryCard({
       entry={entry}
       observation={observation}
       lifecycleBusy={projection.busy}
+      authSlot={
+        <AgentAuthStatusPanel
+          agentId={entry.id}
+          mode="compact"
+          enabled={observation.configurable}
+        />
+      }
       onConfigure={onConfigure}
       lifecycleSlot={
         <>

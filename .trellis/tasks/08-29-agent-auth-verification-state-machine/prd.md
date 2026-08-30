@@ -128,22 +128,23 @@ During testing, fix same-domain defects in command selection, terminal launch, o
 
 ## Acceptance Criteria
 
-- [ ] Auth 有独立 contract version、stage/outcome/observation union 和 strict Rust/TS parser。
-- [ ] 启动 terminal/browser/app 不再返回 `verified/succeeded` 登录状态。
-- [ ] Claude `auth status` exit 0/1 + JSON 分别映射 verified logged-in/logged-out；malformed/secret-bearing/timeout 输出为 unknown。
-- [ ] Claude login 只有在后续 status 改为 logged-in 时进入 verified；未变化会 awaiting-user/timeout/handoff，不伪造成功。
-- [ ] Claude logout 后必须 status 回读 logged-out 才 verified。
-- [ ] OpenCode UI 显示 Provider connections；一个 Provider 的存在不生成 global logged-in。
-- [ ] OpenCode connect/logout 通过 `auth list` 的 bounded before/after set 验证；不读取 `auth.json`。
-- [ ] Grok login/logout 仅报告 official command handoff/command completion；没有 status observer 时 auth observation 保持 unknown。
-- [ ] Desktop Agents 只显示打开登录入口/重新检查，不显示登录成功。
-- [ ] Codex 只导航/委托 Auth Center，无第二套 OAuth command 或 storage。
-- [ ] Per-agent single-flight、deadline、stop-waiting、reload recovery 和 terminal immutability 有测试。
-- [ ] Windows elevated host 仍以 frozen Explorer user 启动 CLI/terminal；interactive context drift fail closed。
-- [ ] 所有 DTO、errors、logs、DOM snapshots 和 tests 均不包含 token、Authorization、device code、raw auth file path 或完整 raw output。
-- [ ] Agent directory/detail 使用同一个 shared Auth status surface 或一个已证明职责更合适的共享 owner，无复制状态机。
-- [ ] Browser tests 覆盖 keyboard、awaiting-user、verified、handoff-only、timeout、retry 和 disabled unsupported actions。
-- [ ] Native macOS/Windows HIL 分别验证 Claude、OpenCode、Grok 和至少一个桌面 handoff；未支持 observer 的产品明确记录为 handoff-only。
+- [x] Auth 有独立 contract version、stage/outcome/observation union 和 strict Rust/TS parser。
+- [x] 启动 terminal/browser/app 不再返回 `verified/succeeded` 登录状态。
+- [x] Claude `auth status` exit 0/1 + JSON 分别映射 verified logged-in/logged-out；malformed/secret-bearing/timeout 输出为 unknown。
+- [x] Claude login 只有在后续 status 改为 logged-in 时进入 verified；未变化会 awaiting-user/timeout，不伪造成功。
+- [x] Claude logout 后必须 status 回读 logged-out 才 verified。
+- [x] OpenCode UI 显示 Provider connections；一个 Provider 的存在不生成 global logged-in。
+- [x] OpenCode connect/logout 通过 `auth list` 的 bounded before/after set 验证；不读取 `auth.json`。
+- [x] Grok login/logout 仅报告 official command handoff/command completion；没有 status observer 时 auth observation 保持 handoff-only/unverified。
+- [x] Desktop Agents 只显示打开登录入口/重新检查，不显示登录成功。
+- [x] Codex 只委托 Auth Center，无第二套 OAuth command 或 storage。
+- [x] Per-agent single-flight、deadline、stop-waiting、按 session ID 恢复查询和 terminal immutability 有测试。
+- [x] Windows elevated host 的 Tooling/Auth 路径在 frozen Explorer user 不可用时 fail closed，且不复用 installer helper 执行 CLI。
+- [x] 所有 DTO、errors、logs、DOM snapshots 和 tests 均不包含 token、Authorization、device code、raw auth file path 或完整 raw output。
+- [x] Agent directory/detail 使用同一个 shared Auth status surface，无复制状态机。
+- [x] Component/Playwright tests 覆盖 awaiting-user、verified、handoff-only、Provider scoped logout、Auth Center delegation 和 unsupported action absence。
+- [ ] 完整 renderer reload 自动恢复：当前后端会话可按已返回的 session ID 查询，但 renderer 丢失该 ID 后不会凭空猜测或持久化路径/命令。
+- [ ] Native macOS/Windows HIL 分别验证 Claude、OpenCode、Grok 和至少一个桌面 handoff；当前只证明 portable/contract/browser 行为，未支持 observer 的产品明确为 handoff-only。
 
 ## Dependency
 

@@ -124,7 +124,7 @@ describe("V2 native ACL contract", () => {
     const allowed = activeAclCommands();
 
     expect(renderer.dynamicInvokes).toEqual([]);
-    expect(renderer.commands.size).toBe(87);
+    expect(renderer.commands.size).toBe(91);
     expect(
       [...renderer.commands].filter((command) => !registered.has(command)),
     ).toEqual([]);
@@ -139,7 +139,7 @@ describe("V2 native ACL contract", () => {
     );
   });
 
-  it("registers Change Plan commands and Agent action commands", () => {
+  it("registers Change Plan, Agent action, and Agent auth commands", () => {
     const registered = registeredCommands();
     const expected = [
       "create_codex_provider_switch_plan",
@@ -153,6 +153,10 @@ describe("V2 native ACL contract", () => {
       "start_agent_action",
       "cancel_agent_action",
       "get_agent_action_job",
+      "get_agent_auth_observation",
+      "start_agent_auth_session",
+      "get_agent_auth_session",
+      "stop_waiting_for_agent_auth",
     ];
     expect(expected.filter((command) => !registered.has(command))).toEqual([]);
 

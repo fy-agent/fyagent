@@ -14,6 +14,12 @@ export function createBrowserFeaturePorts(): FeaturePorts {
     catalog: {
       get: rejectNativeOnly,
     },
+    agentAuth: {
+      getObservation: rejectNativeOnly,
+      startSession: rejectNativeOnly,
+      getSession: rejectNativeOnly,
+      stopWaiting: rejectNativeOnly,
+    },
     agentInstallReadiness: {
       get: rejectNativeOnly,
       getInventory: rejectNativeOnly,

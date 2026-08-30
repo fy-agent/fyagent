@@ -12,6 +12,7 @@ pub struct AppState {
     /// package I/O is performed while constructing ordinary application state.
     pub codex_desktop_service: Arc<CodexDesktopService>,
     pub agent_action_jobs: Arc<crate::agent_install::AgentActionJobStore>,
+    pub agent_auth_sessions: Arc<crate::agent_install::AgentAuthSessionStore>,
     pub agent_installation_inventory: Arc<crate::agent_install::AgentInstallationInventoryStore>,
 }
 
@@ -26,6 +27,7 @@ impl AppState {
             usage_cache: Arc::new(UsageCache::new()),
             codex_desktop_service: Arc::new(production_service()),
             agent_action_jobs: Arc::new(crate::agent_install::AgentActionJobStore::new()),
+            agent_auth_sessions: Arc::new(crate::agent_install::AgentAuthSessionStore::new()),
             agent_installation_inventory: Arc::new(
                 crate::agent_install::AgentInstallationInventoryStore::new(),
             ),

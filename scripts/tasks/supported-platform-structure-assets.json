@@ -63,7 +63,7 @@
     ],
     [
       "src-tauri/src/agent_install/mod.rs",
-      "701965c378a52f4c6044acfadf16fc9d87f6a579ae6701f3d3f8b12b80a5d1a2"
+      "9a72aa6a1ad04bcfacdbfb6497b574679bacdc927567173a9036210129c079d4"
     ],
     [
       "src-tauri/src/agent_install/sources/mod.rs",
@@ -151,7 +151,7 @@
     ],
     [
       "src-tauri/src/lib.rs",
-      "af8603a7bef0c13143c7cb1c050fdb14e7e60b13ba8d97a9eec1f4decd806bee"
+      "640e276bdef8be889c77639baff3a77ae561df21aa165fe2210f6c78a4a417d2"
     ],
     [
       "src-tauri/src/lightweight.rs",
@@ -239,11 +239,11 @@
     ],
     [
       "src-tauri/src/services/tooling.rs",
-      "e41adad17bb48f149367cf72adf14d1a2f80e400dcf39b5dbe00669f8e7b54cb"
+      "061e49357c63163823c8a3b2bab71957298cd1a9bebfd1513a8abacac456cfbf"
     ],
     [
       "src-tauri/src/services/tooling/discovery.rs",
-      "d8a921d13aee20a634a748e58e4a80db52e9ee3acf7454e9b234bfec08901279"
+      "bd1dc697fd7ed9732db7132e5ce57a8a902418d2f80da0e2c8b56eceea90cae5"
     ],
     [
       "src-tauri/src/services/tooling/lifecycle.rs",

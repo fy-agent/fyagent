@@ -102,7 +102,7 @@ function portFor(data: AgentInstallReadiness): AgentInstallReadinessPort {
 }
 
 describe("AgentInstallReadinessSection", () => {
-  it("renders backend-allowed actions without reconstructing URLs", async () => {
+  it("renders lifecycle actions without reusing legacy auth actions", async () => {
     const port = portFor(readiness("qoderwork"));
     render(<AgentInstallReadinessSection agentId="qoderwork" port={port} />);
 
@@ -110,7 +110,9 @@ describe("AgentInstallReadinessSection", () => {
     expect(
       await within(region).findByRole("button", { name: "安装" }),
     ).toBeVisible();
-    expect(within(region).getByRole("button", { name: "登录" })).toBeVisible();
+    expect(
+      within(region).queryByRole("button", { name: "登录" }),
+    ).not.toBeInTheDocument();
     expect(within(region).getAllByText("未确认").length).toBeGreaterThan(0);
     expect(port.get).toHaveBeenCalledWith("qoderwork");
   });

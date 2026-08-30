@@ -605,6 +605,59 @@
   font-size: 12px;
 }
 
+.fy-agent-auth-compact {
+  display: block;
+  margin-top: 6px;
+  color: var(--fy-text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.fy-agent-auth-panel {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--fy-border);
+  border-radius: 14px;
+  background: var(--fy-surface-soft);
+}
+
+.fy-agent-auth-panel-loading,
+.fy-agent-auth-session-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fy-agent-auth-provider-list {
+  display: grid;
+  gap: 8px;
+}
+
+.fy-agent-auth-provider-list > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--fy-border);
+  border-radius: 10px;
+}
+
+.fy-agent-auth-provider-list span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fy-agent-auth-reason {
+  margin: 0;
+  color: var(--fy-text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .fy-agent-target-picker {
   display: grid;
   gap: 8px;

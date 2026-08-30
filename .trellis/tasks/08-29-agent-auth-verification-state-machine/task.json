@@ -3,7 +3,7 @@
   "name": "agent-auth-verification-state-machine",
   "title": "Stage 4: replace Auth launch success with verified session state machines",
   "description": "Model Agent-owned and provider-owned login as cancellable, observable sessions with authoritative verification instead of immediate success.",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": "agent-auth",
   "package": null,

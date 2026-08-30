@@ -2,6 +2,7 @@
 //! `agentId + action` plus an optional opaque backend-generated release ID.
 
 mod auth_actions;
+mod auth_sessions;
 mod cli;
 mod desktop;
 mod fetch;
@@ -17,18 +18,23 @@ use std::sync::Arc;
 #[cfg(target_os = "windows")]
 use std::time::Duration;
 
+pub use auth_sessions::{
+    auth_observation_for, get_agent_auth_session, start_agent_auth_session,
+    stop_waiting_for_agent_auth, AgentAuthSessionStore,
+};
 pub use inventory::{inventory_for, AgentInstallationInventoryStore};
 pub use jobs::AgentActionJobStore;
 pub use types::{
     validate_opaque_release_id, AgentActionErrorDto, AgentActionId, AgentActionJobSnapshot,
-    AgentActionJobStage, AgentActionResult, AgentAuthOwnership, AgentAuthState,
-    AgentInstallReadinessDto, AgentInstallState, AgentInstallationInventoryDto, AgentReasonCode,
-    AgentSourceKind, AgentUpdateState, InstallationInventoryState, StartAgentActionRequest,
-    AGENT_ACTION_CONTRACT_VERSION, AGENT_INSTALL_READINESS_CONTRACT_VERSION,
-    AGENT_INSTALL_READINESS_REVIEWED_AT,
+    AgentActionJobStage, AgentActionResult, AgentAuthErrorDto, AgentAuthObservationDto,
+    AgentAuthOwnership, AgentAuthSessionSnapshot, AgentAuthState, AgentInstallReadinessDto,
+    AgentInstallState, AgentInstallationInventoryDto, AgentReasonCode, AgentSourceKind,
+    AgentUpdateState, InstallationInventoryState, StartAgentActionRequest,
+    StartAgentAuthSessionRequest, AGENT_ACTION_CONTRACT_VERSION,
+    AGENT_INSTALL_READINESS_CONTRACT_VERSION, AGENT_INSTALL_READINESS_REVIEWED_AT,
 };
 
-use auth_actions::{observe_auth_state, start_auth_action};
+use auth_actions::observe_auth_state;
 use cli::{observe_cli, run_cli_lifecycle};
 #[cfg(target_os = "windows")]
 use desktop::{
@@ -177,18 +183,6 @@ async fn cli_readiness(agent_id: AgentCatalogId) -> AgentInstallReadinessDto {
         {
             // first install uses Install, not Update
         }
-        if observation.as_ref().is_some_and(|value| value.detected) {
-            match agent_id {
-                AgentCatalogId::OpenCode => {
-                    allowed_actions.push(AgentActionId::AuthConnectProvider)
-                }
-                AgentCatalogId::ClaudeCode | AgentCatalogId::GrokBuild => {
-                    allowed_actions.push(AgentActionId::AuthLogin);
-                    allowed_actions.push(AgentActionId::AuthLogout);
-                }
-                _ => {}
-            }
-        }
     }
     if install_state == AgentInstallState::InstalledNotRunnable {
         reason_codes.push(AgentReasonCode::InstalledNotRunnable);
@@ -284,7 +278,6 @@ async fn desktop_readiness(
     }
     if inventory.state == InstallationInventoryState::Single && inventory.single_launch_eligible {
         allowed_actions.push(AgentActionId::Launch);
-        allowed_actions.push(AgentActionId::AuthLogin);
     }
     if install_state == AgentInstallState::InstalledNotRunnable {
         reason_codes.push(AgentReasonCode::InstalledNotRunnable);
@@ -422,6 +415,12 @@ pub async fn start_agent_action(
             return Err(AgentReasonCode::RefreshRequired);
         }
     }
+    if matches!(
+        request.action,
+        AgentActionId::AuthLogin | AgentActionId::AuthLogout | AgentActionId::AuthConnectProvider
+    ) {
+        return Err(AgentReasonCode::ExecutorNotImplemented);
+    }
     let target = validate_action_target(&request, state).await?;
     match (request.agent_id, request.action) {
         (AgentCatalogId::Codex, AgentActionId::Install | AgentActionId::Update) => {
@@ -433,20 +432,6 @@ pub async fn start_agent_action(
                 .launch()
                 .await
                 .map_err(|_| AgentReasonCode::InteractiveUserUnavailable)?;
-            Ok(immediate_result(
-                request.agent_id,
-                request.action,
-                AgentActionJobStage::Succeeded,
-                None,
-            ))
-        }
-        (
-            _,
-            AgentActionId::AuthLogin
-            | AgentActionId::AuthLogout
-            | AgentActionId::AuthConnectProvider,
-        ) => {
-            start_desktop_or_cli_auth(request.agent_id, request.action, &target)?;
             Ok(immediate_result(
                 request.agent_id,
                 request.action,
@@ -487,26 +472,6 @@ pub async fn start_agent_action(
             ))
         }
         _ => Err(AgentReasonCode::ExecutorNotImplemented),
-    }
-}
-
-fn start_desktop_or_cli_auth(
-    agent_id: AgentCatalogId,
-    action: AgentActionId,
-    target: &ValidatedActionTarget,
-) -> Result<(), AgentReasonCode> {
-    match (agent_id, action) {
-        (
-            AgentCatalogId::QoderWork | AgentCatalogId::TraeWork | AgentCatalogId::WorkBuddy,
-            AgentActionId::AuthLogin | AgentActionId::Launch,
-        ) => {
-            if let Some(path) = target.desktop_path() {
-                launch_desktop_installation(agent_id, path)
-            } else {
-                launch_if_present(agent_id)
-            }
-        }
-        _ => start_auth_action(agent_id, action),
     }
 }
 

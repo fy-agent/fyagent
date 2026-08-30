@@ -15,6 +15,8 @@ import type { ProviderAppId } from "./types";
 
 export const featureKeys = {
   agentCatalog: ["v2", "agents", "catalog"] as const,
+  agentAuthObservation: (agentId: AgentCatalogId) =>
+    ["v2", "agents", agentId, "auth-observation"] as const,
   agentInstallReadiness: (agentId: AgentCatalogId) =>
     ["v2", "agents", agentId, "install-readiness"] as const,
   agentInstallationInventory: (agentId: AgentCatalogId) =>
@@ -63,6 +65,18 @@ export function useAgentInstallReadiness(
   return useQuery({
     queryKey: featureKeys.agentInstallReadiness(agentId),
     queryFn: () => ports.agentInstallReadiness.get(agentId),
+    enabled,
+  });
+}
+
+export function useAgentAuthObservation(
+  agentId: AgentCatalogId,
+  enabled = true,
+) {
+  const { ports } = useFeatures();
+  return useQuery({
+    queryKey: featureKeys.agentAuthObservation(agentId),
+    queryFn: () => ports.agentAuth.getObservation(agentId),
     enabled,
   });
 }
