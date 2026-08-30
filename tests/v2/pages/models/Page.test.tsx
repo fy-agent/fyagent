@@ -1476,7 +1476,7 @@ describe("V2 Models page", () => {
     expect(screen.getByLabelText("API Key")).toHaveValue("");
   });
 
-  it("keeps WorkBuddy form content when switching to another Models target", async () => {
+  it("clears unsaved WorkBuddy fields when the target panel unmounts", async () => {
     const user = userEvent.setup();
     const ports = workBuddyPorts();
     renderPage(ports, "workbuddy");
@@ -1494,15 +1494,13 @@ describe("V2 Models page", () => {
     expect(document.body).not.toHaveTextContent("keep-secret");
 
     await user.click(screen.getByTestId("model-target-workbuddy"));
-    expect(screen.getByLabelText("服务地址")).toHaveValue(
-      "https://keep.example/v1",
-    );
-    expect(screen.getByLabelText("API Key")).toHaveValue("keep-secret");
+    expect(screen.getByLabelText("服务地址")).toHaveValue("");
+    expect(screen.getByLabelText("API Key")).toHaveValue("");
     expect(JSON.stringify(localStorage)).not.toContain("keep-secret");
     expect(JSON.stringify(sessionStorage)).not.toContain("keep-secret");
   });
 
-  it("keeps the TRAE observation panel mounted when switching targets", async () => {
+  it("remounts the TRAE observation panel from authoritative data", async () => {
     const user = userEvent.setup();
     const ports = createBrowserFeaturePorts();
     ports.catalog.get = vi.fn(async () => catalog());

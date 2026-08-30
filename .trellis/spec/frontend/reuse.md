@@ -60,7 +60,6 @@ export function FeatureTabs<T extends string>({
   value,
   onChange,
   options,
-  children,
   activationMode = "automatic",
   className,
 }: {
@@ -69,10 +68,25 @@ export function FeatureTabs<T extends string>({
   value: T;
   onChange: (value: T) => void;
   options: ReadonlyArray<{ id: T; label: ReactNode }>;
-  children?: (option: { id: T; label: ReactNode }) => ReactNode;
   activationMode?: "automatic" | "manual";
   className?: string;
 }): JSX.Element;
+
+export function FeatureTabPanel<T extends string>({
+  tabsId,
+  value,
+  active,
+  unmountOnExit = false,
+  className,
+  children,
+}: {
+  tabsId: string;
+  value: T;
+  active: boolean;
+  unmountOnExit?: boolean;
+  className?: string;
+  children: ReactNode;
+}): JSX.Element | null;
 
 export function FeatureSearch({
   value,
@@ -160,10 +174,10 @@ switches plus Skills/MCP install/ZIP/restore radio), `InstallTargetDialog`
 `@radix-ui/react-tabs`. Pages do not import Radix Tabs directly. The wrapper
 owns roving focus, Arrow/Home/End behavior, stable trigger/panel IDs,
 `aria-controls`/`aria-labelledby`, selected host CSS, optional decorative
-Lens, and the explicit automatic/manual activation policy. When `children` is
-provided it renders the matching `Tabs.Content`; a caller that needs a
-different mounting policy must keep the panel contract in the same wrapper
-rather than hand-writing a second tablist.
+Lens, and the explicit automatic/manual activation policy. Matching content
+uses `FeatureTabPanel`; `unmountOnExit` is the reviewed lifecycle switch for
+tabs whose inactive business tree must stop queries/effects. Callers must not
+hand-write a second tablist or tabpanel ID scheme.
 
 Placement:
 

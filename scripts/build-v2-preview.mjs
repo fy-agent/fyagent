@@ -1,4 +1,11 @@
-import { readFile, realpath, writeFile } from "node:fs/promises";
+import {
+  mkdtemp,
+  readFile,
+  realpath,
+  rm,
+  writeFile,
+} from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -118,12 +125,10 @@ export function parseViteBootstrapEntries(content) {
   const dynamicImports = [
     ...content.matchAll(/\bimport\s*\(\s*(["'])([^"']+)\1\s*\)/g),
   ].map((match) => match[2]);
-  const scriptSources = dependencySources.filter((source) =>
-    /\.m?js(?:[?#].*)?$/i.test(source),
-  );
   const stylesheetSources = dependencySources.filter((source) =>
     /\.css(?:[?#].*)?$/i.test(source),
   );
+  const scriptSource = dynamicImports[0];
 
   if (
     dependencySources.some(
@@ -132,17 +137,16 @@ export function parseViteBootstrapEntries(content) {
         !/\.(?:m?js|css)(?:[?#].*)?$/i.test(source),
     ) ||
     dynamicImports.length !== 1 ||
-    scriptSources.length !== 1 ||
-    dynamicImports[0] !== scriptSources[0] ||
-    !dependencySources.includes(dynamicImports[0])
+    !/\.m?js(?:[?#].*)?$/i.test(scriptSource) ||
+    !dependencySources.includes(scriptSource)
   ) {
     throw new Error(
-      "Unsupported Vite bootstrap graph; expected one mapped local JS entry and its CSS dependencies.",
+      "Unsupported Vite bootstrap graph; expected one mapped local JS entry and local preload dependencies.",
     );
   }
 
   return {
-    scriptSource: scriptSources[0],
+    scriptSource,
     stylesheetSources,
   };
 }
@@ -456,10 +460,7 @@ async function inlineKnownViteBootstrap(
     inlinedScriptContent,
     bootstrap.scriptSource,
   );
-  const script = renderInlineEntry(
-    "script",
-    inlinedScriptContent,
-  );
+  const script = renderInlineEntry("script", inlinedScriptContent);
 
   return [...styles, script].join("\n");
 }
@@ -640,11 +641,39 @@ export async function buildV2Preview({
   };
 }
 
+export async function buildStandaloneV2Preview({
+  outputPath = defaultOutputPath,
+} = {}) {
+  const { build: viteBuild } = await import("vite");
+  const temporaryDistributionDirectory = await mkdtemp(
+    path.join(os.tmpdir(), "fyagent-v2-standalone-"),
+  );
+  try {
+    await viteBuild({
+      configFile: path.join(repositoryRoot, "vite.config.ts"),
+      mode: "standalone-preview",
+      build: {
+        outDir: temporaryDistributionDirectory,
+        emptyOutDir: true,
+      },
+    });
+    return await buildV2Preview({
+      distributionDirectory: temporaryDistributionDirectory,
+      outputPath,
+    });
+  } finally {
+    await rm(temporaryDistributionDirectory, {
+      recursive: true,
+      force: true,
+    });
+  }
+}
+
 const isDirectExecution =
   process.argv[1] !== undefined && path.resolve(process.argv[1]) === scriptPath;
 
 if (isDirectExecution) {
-  buildV2Preview()
+  buildStandaloneV2Preview()
     .then(({ outputPath }) => {
       console.log(`Standalone preview written to ${outputPath}`);
     })

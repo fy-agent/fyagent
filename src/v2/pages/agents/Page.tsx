@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { useLocation, useSearchParams } from "react-router-dom";
 
 import { PRODUCT_DIRECTORY } from "../../shared/features/directory";
+import { useAgentReturnNavigation } from "../../shared/features/agent-navigation-context";
 import { useAgentCatalog } from "../../shared/features/queries";
 import {
   Button,
@@ -25,6 +26,7 @@ export function AgentsPage() {
   const pageActive = pathname === "/agents";
   const [searchParams, setSearchParams] = useSearchParams();
   const catalogQuery = useAgentCatalog();
+  const agentReturnNavigation = useAgentReturnNavigation();
   const scanController = useAgentDirectoryScan({ autoStart: true });
   const lastConfiguration = useRef<{
     target: (typeof PRODUCT_DIRECTORY)[number]["agentId"];
@@ -83,6 +85,7 @@ export function AgentsPage() {
 
   const showDirectory = !directoryEntry;
   const returnToDirectory = () => {
+    agentReturnNavigation.clear();
     lastConfiguration.current = null;
     setSearchParams({});
   };

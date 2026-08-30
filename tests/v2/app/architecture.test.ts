@@ -416,6 +416,43 @@ describe("FyAgent V2 architecture boundary", () => {
     ).toEqual([]);
   });
 
+  it("loads exactly six primary product pages through literal dynamic imports", () => {
+    const router = fs.readFileSync(path.join(v2Root, "app/router.tsx"), "utf8");
+    const routeModules = [
+      "agents",
+      "models",
+      "skills",
+      "mcp",
+      "prompts",
+      "memory",
+    ];
+
+    for (const route of routeModules) {
+      expect(router).toContain(`import("../pages/${route}/Page")`);
+      expect(router).not.toMatch(
+        new RegExp(`^import[^\\n]+pages/${route}/Page`, "mu"),
+      );
+    }
+  });
+
+  it("keeps the primary outlet stateless and removes unimplemented top-bar tools", () => {
+    const outlet = fs.readFileSync(
+      path.join(v2Root, "app/PersistentPrimaryOutlet.tsx"),
+      "utf8",
+    );
+    const topBar = fs.readFileSync(
+      path.join(v2Root, "widgets/app-shell/TopBar.tsx"),
+      "utf8",
+    );
+
+    expect(outlet).toContain("<Outlet />");
+    expect(outlet).not.toMatch(/useState|useEffect|visited|PersistentSurface/u);
+    expect(topBar).not.toContain("ToolCluster");
+    expect(
+      fs.existsSync(path.join(v2Root, "widgets/app-shell/ToolCluster.tsx")),
+    ).toBe(false);
+  });
+
   it("does not create a second currentView state source", () => {
     const violations: string[] = [];
 
@@ -546,11 +583,14 @@ describe("FyAgent V2 architecture boundary", () => {
 
     for (const owner of domainOwners) {
       const ownerPath = path.join(featuresRoot, `${owner}.ts`);
-      expect(fs.existsSync(ownerPath), `${owner}.ts must remain a domain owner`).toBe(
-        true,
-      );
+      expect(
+        fs.existsSync(ownerPath),
+        `${owner}.ts must remain a domain owner`,
+      ).toBe(true);
       expect(facade).toContain(`from "./${owner}"`);
-      expect(fs.readFileSync(ownerPath, "utf8")).not.toContain('from "./types"');
+      expect(fs.readFileSync(ownerPath, "utf8")).not.toContain(
+        'from "./types"',
+      );
     }
   });
 });

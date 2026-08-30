@@ -7,7 +7,11 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { createMemoryRouter, RouterProvider } from "react-router-dom";
+import {
+  createMemoryRouter,
+  RouterProvider,
+  useNavigate,
+} from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
 import { MemoryPage } from "@/v2/pages/memory/Page";
@@ -112,15 +116,39 @@ function statefulMemoryPorts(
   return { ports, stores };
 }
 
-function renderMemory(ports: FeaturePorts) {
+function MemoryRouteFixture({
+  showNavigationControl,
+}: {
+  showNavigationControl: boolean;
+}) {
+  const navigate = useNavigate();
+  return (
+    <PrimaryBlockerProvider>
+      {showNavigationControl ? (
+        <button
+          type="button"
+          aria-label="打开其他测试页面"
+          style={{ position: "absolute", width: 1, height: 1, overflow: "hidden" }}
+          onClick={() => void navigate("/other")}
+        >
+          打开其他测试页面
+        </button>
+      ) : null}
+      <MemoryPage />
+    </PrimaryBlockerProvider>
+  );
+}
+
+function renderMemory(
+  ports: FeaturePorts,
+  { showNavigationControl = false } = {},
+) {
   const router = createMemoryRouter(
     [
       {
         path: "/memory",
         element: (
-          <PrimaryBlockerProvider>
-            <MemoryPage />
-          </PrimaryBlockerProvider>
+          <MemoryRouteFixture showNavigationControl={showNavigationControl} />
         ),
       },
       { path: "/other", element: <main>其他页面</main> },
@@ -144,35 +172,35 @@ function localTodayFilename(): string {
 }
 
 async function confirmDialog(
-  user: ReturnType<typeof userEvent.setup>,
+  _user: ReturnType<typeof userEvent.setup>,
   title: string | RegExp,
 ) {
   const dialog = await screen.findByRole("dialog", { name: title });
-  await user.click(within(dialog).getByRole("button", { name: "确认" }));
+  await act(async () => {
+    fireEvent.click(within(dialog).getByRole("button", { name: "确认" }));
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+  });
   await waitFor(() =>
     expect(
       screen.queryByRole("dialog", { name: title }),
     ).not.toBeInTheDocument(),
   );
-  await act(async () => {
-    await new Promise((resolve) => window.setTimeout(resolve, 0));
-  });
 }
 
 async function cancelDialog(
-  user: ReturnType<typeof userEvent.setup>,
+  _user: ReturnType<typeof userEvent.setup>,
   title: string | RegExp,
 ) {
   const dialog = await screen.findByRole("dialog", { name: title });
-  await user.click(within(dialog).getByRole("button", { name: "取消" }));
+  await act(async () => {
+    fireEvent.click(within(dialog).getByRole("button", { name: "取消" }));
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+  });
   await waitFor(() =>
     expect(
       screen.queryByRole("dialog", { name: title }),
     ).not.toBeInTheDocument(),
   );
-  await act(async () => {
-    await new Promise((resolve) => window.setTimeout(resolve, 0));
-  });
 }
 
 describe("MemoryPage native business management", () => {
@@ -570,27 +598,43 @@ describe("MemoryPage native business management", () => {
     await user.type(editor, " dirty");
 
     let resources = screen.getByRole("region", { name: "长期记忆资源" });
-    await user.click(
-      within(resources).getByRole("button", { name: /OpenClaw · USER\.md/ }),
-    );
+    await act(async () => {
+      await user.click(
+        within(resources).getByRole("button", { name: /OpenClaw · USER\.md/ }),
+      );
+      await Promise.resolve();
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+    });
     await cancelDialog(user, "放弃未保存的更改？");
     expect(editor).toHaveValue("memory dirty");
 
     resources = screen.getByRole("region", { name: "长期记忆资源" });
-    await user.click(
-      within(resources).getByRole("button", { name: /OpenClaw · USER\.md/ }),
-    );
+    await act(async () => {
+      await user.click(
+        within(resources).getByRole("button", { name: /OpenClaw · USER\.md/ }),
+      );
+      await Promise.resolve();
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+    });
     await confirmDialog(user, "放弃未保存的更改？");
     const userEditor = await screen.findByRole("textbox", { name: "记忆内容" });
     expect(userEditor).toHaveValue("user");
 
     await user.type(userEditor, " dirty");
-    await user.click(screen.getByRole("tab", { name: "每日记忆" }));
+    await act(async () => {
+      await user.click(screen.getByRole("tab", { name: "每日记忆" }));
+      await Promise.resolve();
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+    });
     await cancelDialog(user, "放弃未保存的更改？");
     expect(
       screen.getByRole("tab", { name: "长期记忆", selected: true }),
     ).toBeVisible();
-    await user.click(screen.getByRole("tab", { name: "每日记忆" }));
+    await act(async () => {
+      await user.click(screen.getByRole("tab", { name: "每日记忆" }));
+      await Promise.resolve();
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+    });
     await confirmDialog(user, "放弃未保存的更改？");
     expect(
       await screen.findByRole("tab", { name: "每日记忆", selected: true }),
@@ -635,19 +679,14 @@ describe("MemoryPage native business management", () => {
       "openclaw-memory": "memory",
     });
     const user = userEvent.setup();
-    const router = renderMemory(ports);
+    const router = renderMemory(ports, { showNavigationControl: true });
     const editor = await screen.findByRole("textbox", { name: "记忆内容" });
     await user.type(editor, " dirty");
 
-    await act(async () => {
-      await router.navigate("/other");
-      await new Promise((resolve) => window.setTimeout(resolve, 0));
-    });
-    const routeDialog = await screen.findByRole("dialog", {
-      name: "放弃未保存的更改？",
-    });
-    await user.click(within(routeDialog).getByRole("button", { name: "取消" }));
-    await waitFor(() => expect(routeDialog).not.toBeInTheDocument());
+    await user.click(
+      screen.getByRole("button", { name: "打开其他测试页面" }),
+    );
+    await cancelDialog(user, "放弃未保存的更改？");
     expect(router.state.location.pathname).toBe("/memory");
   });
 
@@ -656,23 +695,16 @@ describe("MemoryPage native business management", () => {
       "openclaw-memory": "memory",
     });
     const user = userEvent.setup();
-    const router = renderMemory(ports);
+    const router = renderMemory(ports, { showNavigationControl: true });
     const editor = await screen.findByRole("textbox", { name: "记忆内容" });
     await user.type(editor, " dirty");
 
-    await act(async () => {
-      await router.navigate("/other");
-      await new Promise((resolve) => window.setTimeout(resolve, 0));
-    });
-    const routeDialog = await screen.findByRole("dialog", {
-      name: "放弃未保存的更改？",
-    });
-    await user.click(within(routeDialog).getByRole("button", { name: "确认" }));
+    await user.click(
+      screen.getByRole("button", { name: "打开其他测试页面" }),
+    );
+    await confirmDialog(user, "放弃未保存的更改？");
     expect(await screen.findByText("其他页面")).toBeVisible();
     expect(router.state.location.pathname).toBe("/other");
-    await act(async () => {
-      await new Promise((resolve) => window.setTimeout(resolve, 0));
-    });
   });
 
   it("renders a truthful browser native-only state without seeded memory", async () => {

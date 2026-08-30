@@ -6,13 +6,15 @@
 > all six links inside the top chrome row are superseded. The approved V3 shell
 > renders three labelled groups in a persistent left navigation:
 > `AI软件配置`, expandable `配置管理` (Models/Skills/MCP/Prompts), and
-> `记忆模块`. `TopBar` retains Brand and ToolCluster. Existing route order,
+> `记忆模块`. `TopBar` retains Brand only; Search, Settings, and Account do
+> not render until they have real product owners. Existing route order,
 > redirects, platform boundaries and no-overflow requirements still apply.
 > Blanket visited-page keep-alive and Lens-owned semantic selection are
 > superseded: primary route modules are lazy and active-route-only, while each
-> selected host paints its own CSS/ARIA state. Tests that assert "six top links", "Brand/Nav/Tools" or a nine-stop
-> top-bar lens must be replaced by equivalent left-navigation group, leaf,
-> active, keyboard and responsive assertions in the V3 task.
+> selected host paints its own CSS/ARIA state. Tests that assert "six top links",
+> "Brand/Nav/Tools", or a nine-stop top-bar lens must be replaced by equivalent
+> left-navigation group, leaf, active, keyboard, responsive, and no-focusable-
+> noop assertions in the V3 task.
 
 ## 1. Scope / Trigger
 
@@ -84,8 +86,9 @@ export type NavigationGroup = {
 ```
 
 The configuration group owns expandable UI state. Leaf route selection stays
-Router-owned, and the leaf list derived from the tree is the sole input to
-`PersistentPrimaryOutlet`.
+Router-owned. The flattened leaf list derived from the tree is the sole input
+to the six primary route definitions; `PersistentPrimaryOutlet` is only an
+active-route `Outlet` composition boundary and owns no registry or state.
 
 The selected-lens adapter is V2-internal and does not expose the dependency's
 props or types. It is a best-effort decorative enhancement only: the active
@@ -102,28 +105,31 @@ interface LiquidGlassLensProps {
 export function SelectionLensGroup({
   id,
   inset = 0,
+  layoutKey,
   className,
   children,
   ...props
 }: Omit<HTMLAttributes<HTMLDivElement>, "id"> & {
   id: string;
   inset?: number;
+  layoutKey?: string | number | boolean;
 }): JSX.Element;
 
 export function SelectionLens({
   active,
 }: {
   active: boolean;
-  className?: string;
 }): JSX.Element | null;
 
 export function SelectionLensTrack({
   id,
+  layoutKey,
   className,
   children,
   ...props
 }: Omit<HTMLAttributes<HTMLDivElement>, "id"> & {
   id: string;
+  layoutKey?: string | number | boolean;
 }): JSX.Element;
 
 export const selectionLensTransition = {
@@ -242,7 +248,8 @@ change; visible labels and grouping do:
 
 `configuration-management` owns expand/collapse UI state only. Leaf selection
 stays Router-owned. The flattened `navigationItems` list remains the sole
-input to `PersistentPrimaryOutlet`.
+input to the six primary route definitions; `PersistentPrimaryOutlet` only
+renders the active child route.
 
 - Use a hash data router. The index route and every unknown route redirect to
   `/agents`; the stable default URL is `#/agents`.
@@ -268,8 +275,9 @@ input to `PersistentPrimaryOutlet`.
   subscriptions, observers, timers, or pending visual work. Cross-route
   install/Auth/change-plan jobs live in backend/query owners and are reread on
   remount; a hidden React tree is not a job daemon.
-- React tab order is Brand and ToolCluster in `TopBar`, then the visible
-  left-navigation controls. `SideNavigation` owns `ArrowUp` / `ArrowDown` /
+- Brand is non-interactive. React tab order starts with the visible
+  left-navigation controls; `TopBar` contributes no keyboard stop until a real
+  shell action is implemented. `SideNavigation` owns `ArrowUp` / `ArrowDown` /
   `Home` / `End` among currently visible controls. The configuration toggle
   uses `ArrowRight` to expand or enter the leaf list, and `ArrowLeft` /
   `Escape` to collapse and return focus to the toggle. 「配置管理」
@@ -283,9 +291,10 @@ input to `PersistentPrimaryOutlet`.
 
 ### Window chrome
 
-- The React top bar has exactly two web regions in its chrome row: Brand and
-  Tools. Primary navigation lives in `SideNavigation`, not `TopBar`. The top
-  bar contains no minimize, maximize, close, or traffic-light controls.
+- The React top bar has exactly one web region in its chrome row: Brand.
+  Primary navigation lives in `SideNavigation`, not `TopBar`. Search,
+  Settings, and Account are absent rather than focusable placeholders. The
+  top bar contains no minimize, maximize, close, or traffic-light controls.
 - Overlay React chrome is V2-owned window chrome in `TopBar.tsx` under
   `src/v2/widgets/app-shell/`. It is not a feature route and is not outside
   the V2 React tree. On native macOS `TopBar` renders one inert 28px
@@ -296,7 +305,7 @@ input to `PersistentPrimaryOutlet`.
 - Gate that strip with `shouldShowMacOverlayDragStrip()`. The left
   `--fy-titlebar-traffic-light-width` (78px) spacer uses `pointer-events:
   none` so traffic lights stay clickable; only the remaining surface is the
-  drag region. Brand, nav, and tools sit in the 68px chrome row below the
+  drag region. Brand sits in the 68px chrome row below the
   strip (`--fy-titlebar-drag-height` + `--fy-top-bar-height` = 96px).
 - Windows Visible chrome keeps the 68px row and no drag strip. Reports that
   maximize sends UI off-screen are host geometry; follow
@@ -320,7 +329,7 @@ The V2 shell owns one Blue Ambient / Clear Glass appearance:
 L0 ambient background      blue-gray gradients and controlled light fields
 L1 content plane           route-owned, translucent, and low-boundary
 L2 structural glass        primary navigation track
-L3 interactive glass       selected lens, tools, tooltip, and popover
+L3 interactive glass       selected lens, tooltip, and popover
 ```
 
 - Every semantic token starts with `--fy-`. Material-fill opacity increases
@@ -332,9 +341,10 @@ L3 interactive glass       selected lens, tools, tooltip, and popover
   native chrome.
 - Use `@samasante/liquid-glass` only behind `LiquidGlassLens`. Do not wrap
   production navigation labels in `LiquidGlassLens`: SVG refraction smears the
-  selected text. Production selected state is the `SelectionLens` overlay plus
-  CSS. The UI Lab may mount one isolated specimen. Do not stretch a lens across
-  the navigation track, tools, popovers, content plane, or background.
+  selected text. Production selected state is host-owned CSS plus an optional
+  `SelectionLens` overlay. The UI Lab may mount one isolated specimen. Do not
+  stretch a lens across the navigation track, popovers, content plane, or
+  background.
 - Use `SelectionLens` for interruptible exclusive option tracks: primary nav,
   catalog lists, feature tabs, feature lists, and UI Lab tabs. Feature pages
   must go through `FeatureTabs` / `FeatureList` / `FeaturePagination` rather
@@ -346,23 +356,25 @@ L3 interactive glass       selected lens, tools, tooltip, and popover
   pagination, or independent tool buttons. Management-list search uses
   `FeatureSearch`. See [Frontend Reuse](./reuse.md).
 - The pill is CSS interactive glass (`--fy-glass-interactive`,
-  `--fy-shadow-control`, inset highlight, backdrop fallback). Host selected
-  backgrounds must not also paint a static fill, or the next item will flash
-  before the pill arrives. Motion uses `selectionLensTransition` on a single
+  `--fy-shadow-control`, inset highlight, backdrop fallback). Every selected
+  host must independently paint the shared `--fy-selected-*` background,
+  border, text, and shadow state so selection remains visible before, during,
+  or without the decorative pill. Motion uses `selectionLensTransition` on a single
   overlay's `left` / `top` / `width` / `height`. A new click retargets that
   spring from the overlay's current geometry, not from the previous host's
   rest box, and must not remount the overlay. When a group first appears, or
-  is shown again after an ancestor `hidden` (including a keep-alive primary
-  surface), the same overlay uses `selectionLensCollapsedOrigin` of the active
+  is shown again after an ancestor `hidden`, the same overlay uses
+  `selectionLensCollapsedOrigin` of the active
   host (that host's top-left, size 0) and springs open in place. Do not
   collapse to the track origin (`inset`, `inset`). Do not give catalog rails a
   second slider. Do not interpolate size with `transform: scale`.
   `SelectionLensGroup` must retarget that overlay when in-scope layout moves
-  the host, including sibling reflow from V2 `Collapsible` height. Observing
-  only the host and the track box is not enough: neither resizes when
-  「配置管理」 expands and 「记忆模块」 translates down inside a
-  `min-height: 100%` track. Observe in-scope descendants (skip the overlay
-  node). Do not use `layoutId` to chase that translation.
+  the host. Observation is bounded to the active host and track/container.
+  Known sibling-layout changes that do not resize either observed box, such as
+  expanding 「配置管理」 while 「记忆模块」 is selected, must change the
+  group's explicit `layoutKey` (or schedule an equivalent owner-triggered
+  remeasurement). Do not recursively observe descendants, attach a child-list
+  `MutationObserver`, or use `layoutId` to chase that translation.
 - The `NavLink` owns hit area, focus, accessible name, and `aria-current`.
   Selected labels stay ordinary CSS text. Do not wrap them in `LiquidGlassLens`.
   Project CSS must independently express tint, selected border/color/shadow,
@@ -399,7 +411,7 @@ L3 interactive glass       selected lens, tools, tooltip, and popover
   underline links, or a second lock. Memory directory open stays on
   `openOpenClawDirectory`.
 - Keep the chrome row near 68px, brand mark 28px, brand text 19px, navigation
-  track 46px, and navigation/tool targets 38px. V2 Overlay chrome adds a
+  track 46px, and interactive navigation targets 38px. V2 Overlay chrome adds a
   28px inert drag strip above that chrome row so the window can be dragged and
   double-clicked. At 900px, reduce CSS gaps and
   padding without hiding any label or tool or using JavaScript viewport state.
@@ -446,7 +458,7 @@ Agent/Models, Skills, and MCP ports do not by themselves make it Release-ready.
 | V2 imports `framer-motion` outside `shared/ui/motion.ts`            | Architecture test fails; SelectionLens and Collapsible consume the motion owner |
 | Changing the active option remounts the overlay or restarts from `{width:0}` | Unit test fails; the same overlay node must keep identity and retarget from current geometry |
 | First show or show-after-`hidden` collapses to the track origin (`inset`, `inset`) | Unit and architecture tests fail; appear must use `selectionLensCollapsedOrigin` of the active host |
-| 「记忆模块」 is selected, then 「配置管理」 expands | Overlay follows the memory host; unit tests observe in-scope descendants and retarget on sibling resize; Playwright keeps the pill on the memory link |
+| 「记忆模块」 is selected, then 「配置管理」 expands | Overlay follows the memory host; the disclosure changes the group's explicit `layoutKey`, bounded host/track measurement retargets, and Playwright keeps the pill on the memory link |
 | Any normal production route                                            | Exactly one active primary link and one nav `SelectionLens` overlay; no production `LiquidGlassLens`; other tracks may each have their own pill |
 | UI Lab development route                                               | No primary link active; the lab may render one isolated lens specimen              |
 | SVG/backdrop filter unavailable                                        | CSS tint, edge, shadow, focus, and selected state remain readable                  |
@@ -482,8 +494,8 @@ Agent/Models, Skills, and MCP ports do not by themselves make it Release-ready.
   Models, Skills, MCP, Prompts, and Memory render only their approved
   bounded feature surfaces.
 - **Base:** Opening without a route lands on `#/agents`, with the three left
-  groups and TopBar tools visible. Browser preview has no system or
-  simulated controls.
+  groups and Brand visible. Browser preview has no system, simulated, or
+  focusable placeholder controls.
 - **Fallback:** If refraction cannot render, the selected item remains visibly
   distinct through its CSS material, text, border, shadow, and focus ring.
 - **Bad:** React disables decorations, stores `currentView`, renders caption
@@ -513,7 +525,7 @@ mise run build:renderer
   group / leaf / expanded / collapsed / keyboard behavior, `aria-expanded` on
   「配置管理」, closed/closing leaves excluded from Tab/arrow cycling,
   reduced-motion instant collapse, stable accessible
-  names, inert tool clicks, absence of custom
+  names, absence of Search/Settings/Account keyboard stops, absence of custom
   caption buttons, six non-empty product pages, and idempotent ready behavior.
   Browser/jsdom shells have no drag strip; native macOS may show one inert
   V2 `TopBar` Overlay strip above the chrome row.
@@ -533,9 +545,9 @@ mise run build:renderer
 - Vitest may mock the third-party filter surface to isolate router and semantic
   behavior. Playwright must load the real production dependency.
 - Playwright runs at `900x600`, `1152x640`, `1232x700`, and `1440x900`. At each
-  viewport assert no document/top-bar overflow; no Brand/Tools overlap with
-  the left navigation; the three navigation groups and TopBar tools are
-  reachable; all six product pages non-empty;
+  viewport assert no document/top-bar overflow; no Brand overlap with the left
+  navigation; the three navigation groups are keyboard reachable and Brand is
+  visible; all six product pages are non-empty;
   hash/selected/ARIA/lens agreement;
   left-navigation keyboard order on the default shell route; memory selected
   then 「配置管理」 expanded keeps the nav overlay on the memory link;
@@ -600,20 +612,22 @@ the pill expands from that host's top-left, not from the track origin.
 </SelectionLensGroup>
 ```
 
-Wrong: observe only the overlay host and the track box. Expanding
-「配置管理」 translates 「记忆模块」 without resizing either node, so the
-pill stays between 模型管理 and Skills 管理.
+Wrong: recursively observe the complete track subtree to discover every
+possible sibling-layout change. That makes observer count and layout reads
+scale with unrelated descendants.
+
+```ts
+observeLayoutSubtree(scope, observer);
+```
+
+Correct: observe only the active host and track/container. The owner of a
+known layout transition changes `layoutKey`, which schedules one bounded
+remeasurement and springs the same overlay to the host's new box.
 
 ```ts
 observer.observe(scope);
 observer.observe(host);
-```
-
-Correct: observe in-scope descendants except the overlay, then spring the
-same overlay to the host's new box.
-
-```ts
-observeLayoutSubtree(scope, observer);
+<SelectionLensGroup layoutKey={configurationExpanded}>…</SelectionLensGroup>
 ```
 
 Wrong: import `framer-motion` in a widget, or hide 「配置管理」 with only

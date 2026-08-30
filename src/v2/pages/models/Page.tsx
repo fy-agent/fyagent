@@ -1,6 +1,6 @@
 import { CaretDownIcon } from "@phosphor-icons/react/dist/csr/CaretDown";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useLocation, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 
 import { getAgentBrand, type AgentIconId } from "../../shared/assets/agents";
 import { classNames } from "../../shared/design-system/classNames";
@@ -22,7 +22,6 @@ import type {
   ProviderAppId,
   ProviderQuickSetupRequest,
 } from "../../shared/features/types";
-import { PersistentSurface } from "../../shared/ui/PersistentSurface";
 import {
   Button,
   Checkbox,
@@ -1658,41 +1657,13 @@ function renderTargetPanel(
 }
 
 export function ModelsPage() {
-  const { pathname } = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
-  const pageActive = pathname === "/models";
   const [blockedProviderWrites, setBlockedProviderWrites] = useState<
     Partial<Record<ProviderAppId, boolean>>
   >({});
   const rawTarget = searchParams.get("target");
-  const [sessionTarget, setSessionTarget] = useState(() =>
-    parseModelTarget(rawTarget),
-  );
-  if (pageActive && rawTarget !== null) {
-    const parsed = parseModelTarget(rawTarget);
-    if (parsed !== sessionTarget) setSessionTarget(parsed);
-  }
-  const target =
-    pageActive && rawTarget !== null
-      ? parseModelTarget(rawTarget)
-      : sessionTarget;
-  const [visitedTargets, setVisitedTargets] = useState(
-    () => new Set<ModelTarget>([target]),
-  );
+  const target = parseModelTarget(rawTarget);
   const targets = useMemo(() => MODEL_TARGETS, []);
-
-  if (!visitedTargets.has(target)) {
-    const next = new Set(visitedTargets);
-    next.add(target);
-    setVisitedTargets(next);
-  }
-
-  useEffect(() => {
-    if (!pageActive) return;
-    if (searchParams.get("target") !== null) return;
-    if (sessionTarget === "qoderwork") return;
-    setSearchParams({ target: sessionTarget }, { replace: true });
-  }, [pageActive, searchParams, sessionTarget, setSearchParams]);
 
   const blockProviderWrites = (app: ProviderAppId) => {
     setBlockedProviderWrites((current) => ({
@@ -1728,21 +1699,12 @@ export function ModelsPage() {
           </CatalogList>
         </CatalogRail>
         <div className="fy-models-target-stack">
-          {MODEL_TARGETS.filter((candidate) =>
-            visitedTargets.has(candidate),
-          ).map((candidate) => (
-            <PersistentSurface
-              key={candidate}
-              active={pageActive && candidate === target}
-            >
-              {renderTargetPanel(
-                candidate,
-                pageActive && candidate === target,
-                blockedProviderWrites,
-                blockProviderWrites,
-              )}
-            </PersistentSurface>
-          ))}
+          {renderTargetPanel(
+            target,
+            true,
+            blockedProviderWrites,
+            blockProviderWrites,
+          )}
         </div>
       </CatalogMasterDetail>
     </div>

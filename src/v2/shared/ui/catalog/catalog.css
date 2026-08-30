@@ -67,7 +67,9 @@
 
 .fy-catalog-list-item[aria-current="true"],
 .fy-catalog-list-item[aria-current="true"]:hover:not(:disabled) {
-  background: transparent;
+  border-color: var(--fy-selected-border);
+  background-color: var(--fy-selected-bg);
+  box-shadow: var(--fy-selected-shadow);
 }
 
 .fy-catalog-list-item:focus-visible {

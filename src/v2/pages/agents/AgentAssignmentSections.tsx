@@ -5,6 +5,7 @@ import {
   buildMcpSearchText,
   buildSkillSearchText,
 } from "../../shared/features/helpers";
+import { useAuthoritativeAssignmentMutation } from "../../shared/features/authoritative-assignment";
 import {
   useInstalledSkills,
   useMcpServers,
@@ -39,7 +40,6 @@ export function AgentSkillsSection({
   const { ports } = useFeatures();
   const query = useInstalledSkills();
   const [search, setSearch] = useState("");
-  const [pendingId, setPendingId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const skills = query.data ?? [];
   const normalizedSearch = search.trim().toLocaleLowerCase();
@@ -47,27 +47,25 @@ export function AgentSkillsSection({
     buildSkillSearchText(skill).toLocaleLowerCase().includes(normalizedSearch),
   );
 
-  const toggle = async (skillId: string, enabled: boolean) => {
-    if (pendingId) return;
-    setPendingId(skillId);
-    setFeedback(null);
-    try {
-      const accepted = await ports.skills.toggleApp(
-        skillId,
-        entry.assignmentId,
-        enabled,
-      );
-      if (!accepted) throw new Error("assignment rejected");
+  const assignment = useAuthoritativeAssignmentMutation({
+    mutate: (skillId: string, enabled: boolean) =>
+      ports.skills.toggleApp(skillId, entry.assignmentId, enabled),
+    reread: async () => {
       const readback = await query.refetch();
-      const authoritative = readback.data?.find(
-        (skill) => skill.id === skillId,
-      );
-      if (
-        readback.error ||
-        Boolean(authoritative?.apps[entry.assignmentId]) !== enabled
-      ) {
-        throw new Error("assignment readback mismatch");
-      }
+      return { data: readback.data, error: readback.error };
+    },
+    readValue: (snapshot, skillId: string) =>
+      Boolean(
+        snapshot?.find((skill) => skill.id === skillId)?.apps[
+          entry.assignmentId
+        ],
+      ),
+  });
+
+  const toggle = async (skillId: string, enabled: boolean) => {
+    setFeedback(null);
+    const outcome = await assignment.run(skillId, enabled);
+    if (outcome.status === "confirmed") {
       setFeedback({
         itemId: skillId,
         tone: "info",
@@ -75,15 +73,12 @@ export function AgentSkillsSection({
           ? `已从真实配置回读：${entry.displayName} 已启用此 Skill。`
           : `已从真实配置回读：${entry.displayName} 已停用此 Skill。`,
       });
-    } catch {
+    } else if (outcome.status === "rejected") {
       setFeedback({
         itemId: skillId,
         tone: "warning",
         text: "Skill 分配未能完成或回读不一致；当前页面不会保留乐观成功状态。",
       });
-      await query.refetch();
-    } finally {
-      setPendingId(null);
     }
   };
 
@@ -103,6 +98,11 @@ export function AgentSkillsSection({
       />
       {feedback ? (
         <InlineNotice tone={feedback.tone}>{feedback.text}</InlineNotice>
+      ) : null}
+      {assignment.busy ? (
+        <InlineNotice tone="info">
+          正在保存 Skill 分配并回读真实配置…
+        </InlineNotice>
       ) : null}
       {query.isError && query.data !== undefined ? (
         <InlineNotice tone="warning">
@@ -129,16 +129,23 @@ export function AgentSkillsSection({
       ) : filtered.length === 0 ? (
         <EmptyState title="没有匹配的 Skill" description="请调整搜索关键词。" />
       ) : (
-        <div className="fy-agent-resource-full-list">
+        <div
+          className="fy-agent-resource-full-list"
+          aria-busy={assignment.busy}
+        >
           {filtered.map((skill) => {
             const isAssigned = Boolean(skill.apps[entry.assignmentId]);
-            const isPending = pendingId === skill.id;
+            const isPending = assignment.pendingId === skill.id;
             const sourceText =
               skill.repoOwner && skill.repoName
                 ? `${skill.repoOwner}/${skill.repoName}`
                 : skill.directory;
             return (
-              <article key={skill.id} className="fy-agent-assignment-card">
+              <article
+                key={skill.id}
+                className="fy-agent-assignment-card"
+                data-pending={isPending || undefined}
+              >
                 <div className="fy-agent-assignment-card-copy">
                   <div className="fy-agent-assignment-card-title">
                     <h3>{skill.name}</h3>
@@ -153,7 +160,7 @@ export function AgentSkillsSection({
                 <div className="fy-agent-assignment-card-action">
                   <Switch
                     checked={isAssigned}
-                    disabled={isPending}
+                    disabled={assignment.busy}
                     label={`${entry.displayName} Skill 分配`}
                     onCheckedChange={(enabled) =>
                       void toggle(skill.id, enabled)
@@ -184,7 +191,6 @@ export function AgentMcpSection({
   const { ports } = useFeatures();
   const query = useMcpServers();
   const [search, setSearch] = useState("");
-  const [pendingId, setPendingId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [workbuddyTrustOpen, setWorkbuddyTrustOpen] = useState(false);
   const servers = Object.values(query.data ?? {});
@@ -193,20 +199,21 @@ export function AgentMcpSection({
     buildMcpSearchText(server).toLocaleLowerCase().includes(normalizedSearch),
   );
 
-  const toggle = async (serverId: string, enabled: boolean) => {
-    if (pendingId) return;
-    setPendingId(serverId);
-    setFeedback(null);
-    try {
-      await ports.mcp.toggleApp(serverId, entry.assignmentId, enabled);
+  const assignment = useAuthoritativeAssignmentMutation({
+    mutate: (serverId: string, enabled: boolean) =>
+      ports.mcp.toggleApp(serverId, entry.assignmentId, enabled),
+    reread: async () => {
       const readback = await query.refetch();
-      const authoritative = readback.data?.[serverId];
-      if (
-        readback.error ||
-        Boolean(authoritative?.apps[entry.assignmentId]) !== enabled
-      ) {
-        throw new Error("assignment readback mismatch");
-      }
+      return { data: readback.data, error: readback.error };
+    },
+    readValue: (snapshot, serverId: string) =>
+      Boolean(snapshot?.[serverId]?.apps[entry.assignmentId]),
+  });
+
+  const toggle = async (serverId: string, enabled: boolean) => {
+    setFeedback(null);
+    const outcome = await assignment.run(serverId, enabled);
+    if (outcome.status === "confirmed") {
       setFeedback({
         itemId: serverId,
         tone: "info",
@@ -217,15 +224,12 @@ export function AgentMcpSection({
       if (entry.assignmentId === "workbuddy" && enabled) {
         setWorkbuddyTrustOpen(true);
       }
-    } catch {
+    } else if (outcome.status === "rejected") {
       setFeedback({
         itemId: serverId,
         tone: "warning",
         text: "MCP 分配未能完成或回读不一致；当前页面不会保留乐观成功状态。",
       });
-      await query.refetch();
-    } finally {
-      setPendingId(null);
     }
   };
 
@@ -245,6 +249,11 @@ export function AgentMcpSection({
       />
       {feedback ? (
         <InlineNotice tone={feedback.tone}>{feedback.text}</InlineNotice>
+      ) : null}
+      {assignment.busy ? (
+        <InlineNotice tone="info">
+          正在保存 MCP 分配并回读真实配置…
+        </InlineNotice>
       ) : null}
       {query.isError && query.data !== undefined ? (
         <InlineNotice tone="warning">
@@ -271,13 +280,20 @@ export function AgentMcpSection({
       ) : filtered.length === 0 ? (
         <EmptyState title="没有匹配的 MCP" description="请调整搜索关键词。" />
       ) : (
-        <div className="fy-agent-resource-full-list">
+        <div
+          className="fy-agent-resource-full-list"
+          aria-busy={assignment.busy}
+        >
           {filtered.map((server) => {
             const isAssigned = Boolean(server.apps[entry.assignmentId]);
-            const isPending = pendingId === server.id;
+            const isPending = assignment.pendingId === server.id;
             const transport = mcpTransport(server);
             return (
-              <article key={server.id} className="fy-agent-assignment-card">
+              <article
+                key={server.id}
+                className="fy-agent-assignment-card"
+                data-pending={isPending || undefined}
+              >
                 <div className="fy-agent-assignment-card-copy">
                   <div className="fy-agent-assignment-card-title">
                     <h3>{server.name}</h3>
@@ -295,7 +311,7 @@ export function AgentMcpSection({
                 <div className="fy-agent-assignment-card-action">
                   <Switch
                     checked={isAssigned}
-                    disabled={isPending}
+                    disabled={assignment.busy}
                     label={`${entry.displayName} MCP 分配`}
                     onCheckedChange={(enabled) =>
                       void toggle(server.id, enabled)

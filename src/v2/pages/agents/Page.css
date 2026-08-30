@@ -365,7 +365,7 @@
   margin-bottom: 0;
 }
 
-.fy-agent-config-tabs > .fy-feature-tab {
+.fy-agent-config-tabs .fy-feature-tab {
   flex: 1 1 0;
 }
 

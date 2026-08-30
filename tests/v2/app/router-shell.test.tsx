@@ -1,6 +1,5 @@
 import type { CSSProperties, ReactNode } from "react";
 import {
-  fireEvent,
   render,
   screen,
   waitFor,
@@ -42,7 +41,6 @@ const navigationContract = [
   { path: "/memory", label: "记忆模块" },
 ] as const;
 
-const toolNames = ["搜索", "设置", "账户"] as const;
 const windowControlNames = ["最小化", "最大化/还原", "关闭"] as const;
 
 type TestRouter = ReturnType<typeof createMemoryRouter>;
@@ -71,7 +69,11 @@ function expectSystemOwnedChrome(): void {
         '[data-testid="brand"], [data-testid="tool-cluster"]',
       ),
     ).map((element) => element.getAttribute("data-testid")),
-  ).toEqual(["brand", "tool-cluster"]);
+  ).toEqual(["brand"]);
+  expect(screen.queryByTestId("tool-cluster")).not.toBeInTheDocument();
+  for (const name of ["搜索", "设置", "账户"]) {
+    expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
+  }
   expect(topBar.querySelector('[data-testid="side-navigation"]')).toBeNull();
   expect(screen.getByTestId("side-navigation")).toBeVisible();
   expect(document.querySelector("[data-tauri-drag-region]")).toBeNull();
@@ -129,22 +131,28 @@ describe("FyAgent V2 routing", () => {
     },
   );
 
-  it("renders all six product workspaces", () => {
+  it("renders all six product workspaces", async () => {
+    const pageTestIds = new Map([
+      ["/agents", "agents-page"],
+      ["/models", "models-page"],
+      ["/skills", "skills-page"],
+      ["/mcp", "mcp-page"],
+      ["/prompts", "prompts-page"],
+      ["/memory", "memory-page"],
+    ]);
+
     for (const path of navigationContract.map(({ path }) => path)) {
       const view = render(
         <RouterProvider
           router={createMemoryRouter(appRoutes, { initialEntries: [path] })}
         />,
       );
+      const pageTestId = pageTestIds.get(path);
+      expect(pageTestId).toBeDefined();
+      expect(await screen.findByTestId(pageTestId!)).toBeVisible();
       expect(
         screen.getByRole("main", { name: "内容" }),
       ).not.toBeEmptyDOMElement();
-      if (path === "/prompts") {
-        expect(screen.getByTestId("prompts-page")).toBeVisible();
-      }
-      if (path === "/memory") {
-        expect(screen.getByTestId("memory-page")).toBeVisible();
-      }
       view.unmount();
     }
   });
@@ -196,9 +204,6 @@ describe("FyAgent V2 shell accessibility", () => {
     const brand = screen.getByTestId("brand");
     const navigation = screen.getByRole("navigation", { name: "主导航" });
     const routeLinks = within(navigation).getAllByRole("link");
-    const toolButtons = toolNames.map((name) =>
-      screen.getByRole("button", { name }),
-    );
     const configurationToggle = within(navigation).getByRole("button", {
       name: "配置管理",
     });
@@ -211,7 +216,6 @@ describe("FyAgent V2 shell accessibility", () => {
     expectSystemOwnedChrome();
 
     const expectedTabOrder = [
-      ...toolButtons,
       routeLinks[0],
       configurationToggle,
       ...routeLinks.slice(1),
@@ -274,25 +278,19 @@ describe("FyAgent V2 shell accessibility", () => {
     expect(configurationToggle).toHaveAttribute("aria-expanded", "false");
   });
 
-  it("keeps inert shell tools safely clickable", () => {
+  it("does not expose unimplemented shell tools as clickable controls", () => {
     renderRoute("/models");
 
-    const buttons = toolNames.map((name) =>
-      screen.getByRole("button", { name }),
-    );
-
-    for (const button of buttons) {
-      expect(button).toBeEnabled();
-      expect(button).toHaveAccessibleName();
-      expect(() => fireEvent.click(button)).not.toThrow();
+    for (const name of ["搜索", "设置", "账户"]) {
+      expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
     }
 
     expectSystemOwnedChrome();
   });
 });
 
-describe("FyAgent V2 primary page persistence", () => {
-  it("keeps Models page form content after visiting another primary route", async () => {
+describe("FyAgent V2 primary route lifecycle", () => {
+  it("unmounts Models and discards unsaved route-local form state", async () => {
     const user = userEvent.setup();
     const router = renderRoute("/models?target=workbuddy");
 
@@ -300,17 +298,16 @@ describe("FyAgent V2 primary page persistence", () => {
     await user.type(url, "https://keep.example/v1");
     await user.click(screen.getByRole("link", { name: "AI软件配置" }));
     await expectPath(router, "/agents");
-    expect(screen.getByTestId("models-page")).not.toBeVisible();
+    expect(screen.queryByTestId("models-page")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("link", { name: "模型管理" }));
     await expectPath(router, "/models");
-    expect(await screen.findByLabelText("服务地址")).toHaveValue(
-      "https://keep.example/v1",
-    );
-    expect(screen.getByRole("heading", { name: "WorkBuddy" })).toBeVisible();
+    expect(await screen.findByTestId("models-page")).toBeVisible();
+    expect(screen.queryByLabelText("服务地址")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "QoderWork CN" })).toBeVisible();
   });
 
-  it("keeps Agent catalog selection after visiting another primary route", async () => {
+  it("derives Agent configuration from the current URL after remount", async () => {
     const user = userEvent.setup();
     const ports = createBrowserFeaturePorts();
     ports.catalog.get = vi.fn(async () => ({
@@ -358,67 +355,63 @@ describe("FyAgent V2 primary page persistence", () => {
       ).toBeVisible();
       await user.click(screen.getByRole("link", { name: "模型管理" }));
       await expectPath(router, "/models");
-      expect(screen.getByTestId("agents-page")).not.toBeVisible();
+      expect(screen.queryByTestId("agents-page")).not.toBeInTheDocument();
 
       await user.click(screen.getByRole("link", { name: "AI软件配置" }));
       await expectPath(router, "/agents");
-      expect(
-        await screen.findByRole("heading", { name: "Claude Code" }),
-      ).toBeVisible();
-      expect(router.state.location.search).toBe(
-        "?target=claude-code&section=models",
-      );
+      expect(await screen.findByRole("heading", { name: "我的 AI 软件" })).toBeVisible();
+      expect(router.state.location.search).toBe("");
     } finally {
       createPorts.mockRestore();
     }
   });
 
-  it("keeps Skills, Prompts, Memory, and MCP after leaving", async () => {
+  it("unmounts inactive product pages and restores their default local view", async () => {
     const user = userEvent.setup();
     const router = renderRoute("/skills");
 
-    await user.click(screen.getByRole("tab", { name: "发现" }));
+    await user.click(await screen.findByRole("tab", { name: "发现" }));
     expect(screen.getByRole("tab", { name: "发现" })).toHaveAttribute(
       "aria-selected",
       "true",
     );
     await user.click(screen.getByRole("link", { name: "提示词管理" }));
     await expectPath(router, "/prompts");
-    expect(screen.getByTestId("skills-page")).not.toBeVisible();
+    expect(screen.queryByTestId("skills-page")).not.toBeInTheDocument();
 
-    await user.click(screen.getByTestId("prompt-app-gemini"));
+    await user.click(await screen.findByTestId("prompt-app-gemini"));
     expect(screen.getByTestId("prompt-app-gemini")).toHaveAttribute(
       "aria-current",
       "true",
     );
     await user.click(screen.getByRole("link", { name: "记忆模块" }));
     await expectPath(router, "/memory");
-    expect(screen.getByTestId("prompts-page")).not.toBeVisible();
+    expect(screen.queryByTestId("prompts-page")).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("tab", { name: "每日记忆" }));
+    await user.click(await screen.findByRole("tab", { name: "每日记忆" }));
     expect(screen.getByRole("tab", { name: "每日记忆" })).toHaveAttribute(
       "aria-selected",
       "true",
     );
     await user.click(screen.getByRole("link", { name: "MCP 管理" }));
     await expectPath(router, "/mcp");
-    expect(screen.getByTestId("memory-page")).not.toBeVisible();
-    expect(screen.getByTestId("mcp-page")).toBeVisible();
+    expect(screen.queryByTestId("memory-page")).not.toBeInTheDocument();
+    expect(await screen.findByTestId("mcp-page")).toBeVisible();
 
     await user.click(screen.getByRole("link", { name: "Skills 管理" }));
     await expectPath(router, "/skills");
-    expect(screen.getByTestId("mcp-page")).not.toBeVisible();
-    expect(screen.getByRole("tab", { name: "发现" })).toHaveAttribute(
+    expect(screen.queryByTestId("mcp-page")).not.toBeInTheDocument();
+    expect(await screen.findByRole("tab", { name: "已安装" })).toHaveAttribute(
       "aria-selected",
       "true",
     );
     await user.click(screen.getByRole("link", { name: "提示词管理" }));
-    expect(screen.getByTestId("prompt-app-gemini")).toHaveAttribute(
+    expect(await screen.findByTestId("prompt-app-claude")).toHaveAttribute(
       "aria-current",
       "true",
     );
     await user.click(screen.getByRole("link", { name: "记忆模块" }));
-    expect(screen.getByRole("tab", { name: "每日记忆" })).toHaveAttribute(
+    expect(await screen.findByRole("tab", { name: "长期记忆" })).toHaveAttribute(
       "aria-selected",
       "true",
     );

@@ -1,9 +1,11 @@
 import { useNavigate } from "react-router-dom";
 
 import { getAgentBrand } from "../../shared/assets/agents";
+import { createAgentReturnLocationState } from "../../shared/features/agent-navigation";
+import { useAgentReturnNavigation } from "../../shared/features/agent-navigation-context";
 import type { ProductDirectoryEntry } from "../../shared/features/directory";
 import type { AgentCatalogEntry } from "../../shared/features/types";
-import { FeatureTabs } from "../../shared/ui/FeatureTabs";
+import { FeatureTabPanel, FeatureTabs } from "../../shared/ui/FeatureTabs";
 import { BrandIconFrame } from "../../shared/ui/catalog";
 import { Button } from "../../shared/ui/primitives";
 
@@ -34,19 +36,22 @@ export function AgentConfiguration({
   onBack: () => void;
 }) {
   const navigate = useNavigate();
+  const agentReturnNavigation = useAgentReturnNavigation();
   const openManagement = () => {
+    agentReturnNavigation.remember(entry.agentId, section);
+    const state = createAgentReturnLocationState(entry.agentId, section);
     switch (section) {
       case "models":
-        navigate(`/models?target=${entry.modelTarget}`);
+        navigate(`/models?target=${entry.modelTarget}`, { state });
         break;
       case "skills":
-        navigate("/skills");
+        navigate("/skills", { state });
         break;
       case "mcp":
-        navigate("/mcp");
+        navigate("/mcp", { state });
         break;
       case "prompts":
-        navigate("/prompts");
+        navigate("/prompts", { state });
         break;
     }
   };
@@ -73,7 +78,12 @@ export function AgentConfiguration({
         className="fy-agent-config-tabs"
       />
 
-      <div className="fy-agent-config-body">
+      <FeatureTabPanel
+        tabsId="agent-configuration-sections"
+        value={section}
+        active
+        className="fy-agent-config-body"
+      >
         <AgentAuthStatusPanel agentId={entry.agentId} />
         {section === "models" ? (
           <AgentModelsSection
@@ -91,7 +101,7 @@ export function AgentConfiguration({
             onOpenManagement={openManagement}
           />
         )}
-      </div>
+      </FeatureTabPanel>
     </section>
   );
 }
