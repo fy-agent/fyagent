@@ -264,6 +264,12 @@ renders the active child route.
   must survive navigation and that lifecycle has explicit tests. Secrets still
   must not enter the hash, URL query, localStorage, sessionStorage, or query
   cache.
+- Leaving an Agent configuration for Models, Skills, MCP or Prompts appends
+  only the validated non-secret `agentReturn` / `agentSection` tuple. The
+  management navigation propagates that tuple and derives the return Agent URL
+  from its closed Agent/section enums; it never accepts an arbitrary return
+  path. Clicking `AI软件配置` while already on the Agent route still returns the
+  directory. No Context, local storage or hidden Agent tree owns this state.
 - Put each production page element below its matching `pages/<route>/` folder.
   All six routes render their approved business surfaces. Prompts and Memory
   use bounded native feature ports and must not widen the existing command,

@@ -178,23 +178,23 @@
 
 ## Acceptance Criteria
 
-- [ ] 前端 SPEC 不再要求 blanket keep-alive，也不把 Lens 作为唯一 selected-state owner。
-- [ ] SideNavigation/FeatureTabs/Catalog selected host 在 Lens 完全移除时仍有清晰、可访问、对比稳定的状态。
-- [ ] 点击任意右侧按钮、输入框、dialog 或 route content 后，左侧选中项不会变暗、丢失或定位到旧项。
-- [ ] `ResizeObserver`/MutationObserver 不可用或延迟、reduced-motion、hidden reveal 和 backdrop-filter fallback 均通过测试。
-- [ ] SelectionLens 不再递归观察整个 layout subtree；observer 数量与活动 host/track 有界。
-- [ ] `FeatureTabs` 内部使用 Radix Tabs，支持 Arrow/Home/End、roving focus 和 TabPanel ARIA；页面没有第二套 Tabs recipe。
-- [ ] Production 一级 routes 使用 lazy chunks；初始 route 不加载其余五个页面模块。
-- [ ] `PersistentPrimaryOutlet`、ModelsPage 和其他 route roots 不在 render 阶段 set state。
-- [ ] 非活动页面不继续自动 query/poll/observer；需要跨 route 的 backend job 不依赖隐藏 React tree 生存。
-- [ ] 未保存草稿、URL selection、backend resource 和 secret 的生命周期分别有明确 owner/测试。
-- [ ] Search/Settings/Account 不存在 focusable clickable noop；每个可见控件有真实结果。
-- [ ] Skills/MCP 忙碌期间没有静默吞点击；disabled/per-item/queue 语义和 authoritative reread 均可见、可测试。
-- [ ] Authoritative assignment 共享 owner 在两个真实消费者中复用，或评审记录证明它们的并发/回读语义不同而保持两个窄 owner。
-- [ ] 大型模块拆分有职责/测试/lazy-load依据，不以行数作为唯一验收。
-- [ ] 生产构建消除当前 app main chunk >500 KB warning，或形成可解释的 vendor/app chunk budget且 app route chunk 已分离；不提高 warning limit 掩盖。
-- [ ] Targeted V2 unit/browser suites无未经允许的 React warning；不使用 suppression。
-- [ ] #141 当前前端 finding 完成 latest-main 分类和证据回链。
+- [x] 前端 SPEC 不再要求 blanket keep-alive，也不把 Lens 作为唯一 selected-state owner。
+- [x] SideNavigation/FeatureTabs/Catalog selected host 在 Lens 完全移除时仍有清晰、可访问、对比稳定的状态。
+- [x] 点击右侧按钮、输入框、dialog 或 route content 后，左侧选中项不会变暗、丢失或定位到旧项。
+- [x] `ResizeObserver`/MutationObserver 不可用或延迟、reduced-motion、hidden reveal 和 backdrop-filter fallback 均通过测试。
+- [x] SelectionLens 不再递归观察整个 layout subtree；observer 数量与活动 host/track 有界。
+- [x] `FeatureTabs` 内部使用 Radix Tabs，支持 Arrow/Home/End、roving focus 和 TabPanel ARIA；页面没有第二套 Tabs recipe。
+- [x] Production 一级 routes 使用 lazy chunks；初始 route 不加载其余五个页面模块。
+- [x] `PersistentPrimaryOutlet`、ModelsPage 和其他 route roots 不在 render 阶段 set state。
+- [x] 非活动页面不继续自动 query/poll/observer；需要跨 route 的 backend job 不依赖隐藏 React tree 生存。
+- [x] 未保存草稿、URL selection、backend resource 和 secret 的生命周期分别有明确 owner/测试。
+- [x] Search/Settings/Account 不存在 focusable clickable noop；每个可见控件有真实结果。
+- [x] Skills/MCP 忙碌期间没有静默吞点击；disabled/busy 语义和 authoritative reread 均可见、可测试。
+- [x] Authoritative assignment 共享 owner 在 Skills/MCP 两个真实消费者中复用。
+- [x] 大型模块拆分有职责/测试/lazy-load依据，不以行数作为唯一验收。
+- [x] 生产构建消除 app main chunk >500 KB warning，形成可解释的 vendor/app/route budget；不提高 warning limit掩盖。
+- [x] Targeted V2 unit/browser suites 无未经允许的 React warning；不使用 suppression。
+- [x] #141 当前前端 finding 完成 latest-main 分类和证据回链。
 - [ ] macOS Tauri WebView 与 Windows WebView2 installed-app UAT 验证 selected state、route switching、minimum window、keyboard、reduced motion 和长内容滚动。
 
 ## Dependencies
