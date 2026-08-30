@@ -29,6 +29,7 @@ const HASH_READ_BUFFER_SIZE: usize = 64 * 1024;
 pub enum ArtifactKind {
     Msix,
     Dmg,
+    Exe,
 }
 
 impl ArtifactKind {
@@ -37,6 +38,7 @@ impl ArtifactKind {
         match self {
             Self::Msix => "installer.msix",
             Self::Dmg => "installer.dmg",
+            Self::Exe => "installer.exe",
         }
     }
 
@@ -45,6 +47,7 @@ impl ArtifactKind {
         match self {
             Self::Msix => "installer.msix.part",
             Self::Dmg => "installer.dmg.part",
+            Self::Exe => "installer.exe.part",
         }
     }
 }
@@ -473,6 +476,7 @@ mod tests {
     #[test]
     fn artifact_kinds_expose_only_fixed_local_names() {
         assert_eq!(ArtifactKind::Msix.fixed_local_file_name(), "installer.msix");
+        assert_eq!(ArtifactKind::Exe.fixed_local_file_name(), "installer.exe");
         assert_eq!(
             ArtifactKind::Dmg.fixed_part_file_name(),
             "installer.dmg.part"

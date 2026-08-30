@@ -11,7 +11,7 @@ use fyagent_user_helper::SETTLED_FAILURE_EXIT_CODE;
 #[cfg(target_os = "windows")]
 mod windows;
 
-const USAGE: &str = "usage: fyagent-user-helper.exe codex-msix-install --job-id <lowercase-uuid> --pipe <64-lowercase-hex>";
+const USAGE: &str = "usage: fyagent-user-helper.exe codex-msix-install --job-id <lowercase-uuid> --pipe <64-lowercase-hex>\n       fyagent-user-helper.exe agent-exe-install --product <qoderwork|trae-work|workbuddy> --job-id <lowercase-uuid> --pipe <64-lowercase-hex>";
 
 fn main() -> ExitCode {
     let request = match parse_cli_args(std::env::args_os().skip(1)) {

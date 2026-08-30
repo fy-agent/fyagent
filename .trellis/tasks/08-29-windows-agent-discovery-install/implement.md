@@ -2,58 +2,103 @@
 
 ## 1. Preflight
 
-- [ ] Verify Stage 1 contract is merged and Windows current behavior still matches the research baseline.
-- [ ] Capture official source/scope/architecture/signer evidence for each product before enabling execution.
-- [ ] Update specs for Windows inventory, installer descriptor, helper protocol and assisted-vs-managed semantics.
+- [x] Verify Stage 1 contract is present (`0a048728`) and archived
+  (`abb16eed`), then compare the pre-Stage-3 Windows behavior with
+  `research/current-windows-gap.md`.
+- [x] Capture official source/scope/architecture plus bounded PE ProductName,
+  version-resource and signer-leaf evidence for QoderWork CN, TRAE Work CN and
+  WorkBuddy. Production continues to resolve latest endpoints; research
+  versions/URLs are not pinned.
+- [x] Update the backend/frontend/module specs for Windows inventory, closed
+  installer descriptors, Helper protocol v3, authoritative readback and
+  assisted-vs-managed semantics.
 
 ## 2. Inventory owner
 
-- [ ] Extend link-safe registry traversal with closed Uninstall/App Paths locations and WOW64 views.
-- [ ] Bind per-user reads to the frozen Explorer SID.
-- [ ] Add PackageManager and known-path evidence adapters.
-- [ ] Replace production PE byte scanning with Win32 version-resource APIs.
-- [ ] Add canonical file/package identity, dedup, conflicts and partial-failure projection into Stage 1.
+- [x] Extend link-safe registry traversal with closed Uninstall/App Paths
+  locations and explicit 32/64 WOW64 views.
+- [x] Bind per-user reads to the frozen Explorer SID under
+  `HKEY_USERS\\<SID>`; never use elevated-process HKCU.
+- [x] Add product-known-path evidence and retain Codex PackageManager
+  regression coverage. The three reviewed products are EXE-only and have no
+  proven PFN/AUMID, so no speculative PackageManager adapter is shipped.
+- [x] Replace production PE byte scanning with Win32 version-resource APIs;
+  the byte-window parser remains test-host compatibility only.
+- [x] Add stable file identity, provenance merge, custom-scope projection,
+  stale/conflicting observations and partial-failure projection. Incomplete
+  inventory remains `unknown` and disables fresh destinations.
 
 ## 3. Product/source policy
 
-- [ ] Add installer scope, interaction mode, supported architecture and signer/install identity policy.
-- [ ] Keep Qoder User x64 distinct from any future System installer.
-- [ ] Mark WorkBuddy vendor-choice destination honestly.
-- [ ] Keep unsupported/unknown combinations disabled/manual.
+- [x] Add closed installer scope, vendor-UI interaction, supported
+  architecture, ProductName and signer-leaf policy.
+- [x] Keep Qoder User x64 distinct from any future System installer.
+- [x] Mark TRAE/WorkBuddy as vendor-choice/unknown-scope; WorkBuddy's official
+  guide explicitly exposes location choice.
+- [x] Keep Windows ARM64 and every unproven source/scope/silent-mode
+  combination disabled/manual.
 
 ## 4. Download, signature and helper
 
-- [ ] Reuse streaming download/temp/prepared-package capability.
-- [ ] Implement WinVerifyTrust admission and bounded expected-signer policy.
-- [ ] Extend the fixed user-helper/bridge protocol with one closed installer operation.
-- [ ] Revalidate helper image, interactive context and package pin before side effects.
-- [ ] Launch vendor UI with observable process handle and map UAC cancellation separately.
-- [ ] Add `awaiting_user/incomplete` job states and truthful cancellation semantics.
+- [x] Reuse the existing streaming downloader, fixed job directory, retained
+  artifact, pin factory and PackageBridge; no second downloader was added.
+- [x] Implement WinVerifyTrust admission, exactly-one-signer validation and
+  actual signer-leaf resolution through `CryptMsgGetAndVerifySigner`.
+- [x] Extend the fixed Helper/bridge protocol with the exact
+  `agent-exe-install + product enum` operation. Protocol v3 binds the action in
+  `Hello(action)` before bridge control/admission.
+- [x] Revalidate Helper image, frozen interactive context, retained package
+  pin, bridge identity and action/product before side effects.
+- [x] Launch vendor UI with `ShellExecuteExW + SEE_MASK_NOCLOSEPROCESS`, map
+  UAC/user cancellation separately, require an observable process handle and
+  inspect its exit status without killing the installer.
+- [x] Add `launching_installer`, `awaiting_user` and terminal `incomplete`
+  states. Cancellation closes at the external-launch boundary; timeout means
+  “stop waiting”, not “cancel installation”.
 
 ## 5. Post-install readback
 
-- [ ] Capture pre/post Stage 1 inventory snapshots.
-- [ ] Poll within bounded deadlines after installer termination/hand-off.
-- [ ] Require trusted product/version/scope result; do not accept exit code alone.
-- [ ] Classify duplicate, no-result, version drift and scope drift explicitly.
-- [ ] Keep vendor-assisted operations distinct from managed rollback-capable operations.
+- [x] Capture complete pre/post normalized inventory snapshots; an incomplete
+  baseline or final readback can never authorize success.
+- [x] Poll within a bounded post-installer deadline.
+- [x] Require one trusted ProductName/signer/file-identity/version/scope result;
+  process launch and exit code are hints only.
+- [x] Classify duplicate, no-result, unchanged update, version drift, scope
+  drift, unobservable process, timeout and nonzero exit explicitly.
+- [x] Keep Windows vendor-assisted operations distinct from the macOS managed
+  rollback-capable transaction.
 
 ## 6. Frontend
 
-- [ ] Reuse shared target/destination picker.
-- [ ] Reuse/extend one lifecycle status surface for package verification, UAC, waiting and post-readback.
-- [ ] Show product/arch/scope capability honestly; do not show unsupported buttons.
-- [ ] Prevent double submission and keep the selected target stable during the job.
+- [x] Reuse the Stage 1 target/destination picker and authoritative inventory
+  query; readiness no longer has a second known-path-only observer.
+- [x] Extend the shared lifecycle status surface for launch, vendor UI wait,
+  incomplete result and distinct Windows installer reasons.
+- [x] Show product/architecture/scope capability honestly and omit unsupported
+  actions.
+- [x] Preserve existing single-flight/double-submit protection and bind every
+  job to the selected inventory/target revision.
 
 ## 7. Tests and HIL
 
-- [ ] Fake registry backends for HKU/HKLM, WOW64, links, malformed/bounded values and access denied.
-- [ ] Dedup fixtures combining registry/App Paths/known path/package records.
-- [ ] File version and signer fixtures; replacement-after-verify rejection.
-- [ ] Helper nonce/SID/image/bridge/context drift and process-handle tests.
-- [ ] UAC cancelled, process nonzero, process zero/no candidate, duplicate candidate, custom path and stale registry tests.
+- [x] Portable registry/static contracts cover fixed HKU/HKLM locations,
+  explicit WOW64 views, link rejection, bounded child/value rules and partial
+  access/error projection.
+- [x] Evidence fixtures cover Registry/App Paths/known-path provenance merge,
+  stable-file dedup, custom paths, stale registrations and conflicts. Current
+  products have no package records; Codex remains the PackageManager fixture.
+- [x] File-version/ProductName/signer policy fixtures plus retained-file and
+  replacement/drift rejection are covered.
+- [x] Existing and extended Helper suites cover nonce/SID/image/bridge/context,
+  Hello-action binding, process-handle requirements and settlement/quarantine.
+- [x] Closed-state/readback tests cover UAC/user cancellation mapping, nonzero
+  exit, exit-zero/no candidate, duplicate candidate, custom path, stale
+  registration and incomplete inventory.
 - [ ] Qoder/TRAE/WorkBuddy x64 disposable Windows HIL; record unsupported architectures separately.
-- [ ] Codex PackageManager/helper and Windows runtime security regressions.
+- [x] Codex PackageManager/Helper and Windows runtime security regressions pass
+  locally; the Helper crate also type-checks for `x86_64-pc-windows-msvc`
+  using a resource-embedding-only RC shim.
+- [ ] Hosted Windows backend checks for the committed SHA.
 
 ## Validation
 
@@ -67,6 +112,25 @@ mise run test:v2:browser
 ```
 
 Hosted Windows backend checks and native HIL are mandatory; macOS/local portable tests do not prove Windows registry/helper/UAC behavior.
+
+### Local validation evidence — 2026-08-30
+
+- `mise run supported-platform:check` — passed; platform-sensitive paths and
+  SHA-256 manifest updated without widening exclusions.
+- `mise run rust:fmt:check` — passed.
+- `mise run rust:clippy` — passed with warnings denied.
+- `mise run rust:test` — passed: 2,934 core tests (5 ignored), 114 Codex
+  installer-domain tests, 43 Helper tests, and the remaining integration
+  suites.
+- `mise run test:unit` — passed: 1,536 tests in 172 files; one existing test
+  skipped.
+- `mise run typecheck:v2` / `mise run lint:v2` / `mise run test:v2` — passed;
+  382 V2 tests.
+- `mise run test:v2:browser` — passed; 136 Playwright tests across all
+  configured viewports.
+- Real Windows WinVerifyTrust, Alice/Bob Shell identity, UAC interaction,
+  vendor installer hand-off, Registry views and post-install HIL remain
+  unverified until explicitly run on a disposable Windows x64 host.
 
 ## Rollback point
 

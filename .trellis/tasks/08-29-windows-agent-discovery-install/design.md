@@ -8,14 +8,18 @@ WindowsInstalledAppInventory
   +-- MachineUninstallAdapter (32/64 views)
   +-- ShellUserAppPathsAdapter
   +-- MachineAppPathsAdapter (32/64 views)
-  +-- PackageManagerAdapter
   +-- ProductKnownPathAdapter
   `-- WindowsFileIdentityAdapter
 
 evidence[] -> Stage 1 CandidateNormalizer -> inventory snapshot
+          -> the sole readiness summary (installState/localVersion/actions)
 ```
 
 Adapters return bounded evidence records; they do not construct public DTOs or choose a winner. The normalizer canonicalizes paths/package identity, opens the target as a regular file/package, reads product/version identity and merges records referring to the same installation.
+
+The directory readiness DTO is projected from the same normalized probe. The
+legacy known-root observer is removed so a custom/registered installation
+cannot be `single` in inventory but `not_installed` on the card.
 
 ## 2. Registry boundary
 
@@ -44,7 +48,10 @@ For unpackaged apps, a trusted candidate requires:
 
 Registry DisplayVersion is evidence; executable version is the runtime candidate version. Conflicts are retained. UninstallString is metadata only and never a launch target.
 
-Packaged apps reuse PackageManager package identity/version/AUMID rules from Codex Desktop where applicable.
+Packaged apps would reuse PackageManager package identity/version/AUMID rules
+from Codex Desktop where applicable. The current Qoder/TRAE/WorkBuddy sources
+are reviewed EXEs and have no proven PFN/AUMID, so Stage 3 ships no speculative
+PackageManager adapter for them. Codex remains the MSIX regression consumer.
 
 ## 4. Product install descriptor
 
@@ -77,7 +84,9 @@ Admission sequence:
 1. revalidate release/source descriptor;
 2. revalidate retained artifact identity;
 3. inspect PE format/architecture with bounded platform APIs;
-4. verify Authenticode chain and expected signer policy with WinVerifyTrust;
+4. verify Authenticode chain with WinVerifyTrust, require one signer, resolve
+   the actual signer leaf with CryptMsgGetAndVerifySigner, and compare its
+   bounded subject with the closed product policy;
 5. freeze interactive-user context;
 6. create a protected bridge to the fixed user helper/runner;
 7. admit the helper only after image, SID, nonce and bridge checks.
@@ -89,15 +98,17 @@ Never reopen an arbitrary renderer path after validation.
 Preferred design is an extension of the fixed FyAgent user-helper protocol:
 
 ```text
-RunVerifiedInstaller {
-  job capability,
-  product enum,
-  package format enum,
-  interaction mode enum
-}
+codex-msix-install --job-id <uuid> --pipe <nonce>
+agent-exe-install --product <qoderwork|trae-work|workbuddy>
+                  --job-id <uuid> --pipe <nonce>
 ```
 
-The bridge conveys a protected file capability/identity, not a free path. The helper performs one closed launch operation as the interactive user. For EXE vendor UI it uses a reviewed ShellExecuteEx path with `SEE_MASK_NOCLOSEPROCESS` so process termination can be observed. UAC is OS-owned.
+The bridge conveys a protected file capability/identity, not a free path. The
+helper's protocol v3 repeats the closed action/product in `Hello`; the parent
+must match it before bridge control/admission. The helper performs one closed
+launch operation as the interactive user. For EXE vendor UI it uses
+ShellExecuteExW with `SEE_MASK_NOCLOSEPROCESS` so process termination can be
+observed. UAC is OS-owned.
 
 If the vendor bootstrapper exits after spawning another process, the runner records that process result only as a hint and relies on bounded inventory polling. It must not follow arbitrary child process trees by display name.
 
@@ -108,7 +119,7 @@ Install lifecycle may require stages beyond the current generic list:
 ```text
 checking
 downloading
-verifying_package
+staging
 launching_installer
 awaiting_user
 verifying_installation
@@ -118,13 +129,19 @@ cancelled
 incomplete
 ```
 
-`awaiting_user` means the vendor installer owns interaction. Once an external installer may have side effects, FyAgent does not offer a misleading “cancel installation” unless the adapter has a real cancellation handle. It may offer “stop waiting” with distinct semantics.
+`launching_installer` is the non-cancellable side-effect boundary.
+`awaiting_user` means the vendor installer owns interaction. Missing process
+handle and bounded wait timeout terminate as `incomplete`; FyAgent never calls
+TerminateProcess on the vendor installer. User/UAC cancel, unobservable
+process, timeout, and nonzero exit retain distinct closed reasons.
 
 ## 8. Post-install comparison
 
 Capture a pre-inventory and fresh post-inventory. Compare by trusted identity:
 
-- fresh install: expected new candidate appears;
+- Qoder fresh install: exactly one expected current-user candidate appears;
+- TRAE/WorkBuddy fresh install: exactly one new trusted candidate appears in
+  the vendor-selected scope;
 - update: selected candidate remains or an explicitly reviewed identity migration occurs;
 - vendor-choice destination: result may be any one newly trusted candidate, but the UI must disclose that the vendor owns location choice;
 - duplicate/ambiguous result: incomplete, user must choose/clean up;
@@ -142,5 +159,5 @@ Use Stage 1 target/destination picker. Add one shared typed status renderer for 
 - no execution of UninstallString/App Paths registry data;
 - no full-disk scan;
 - no fallback launcher after interactive-user/helper failure;
-- no success from launch or exit code alone;
+- no success from launch, process handle, or exit code alone;
 - no secret/path/certificate dump in renderer errors or task evidence.

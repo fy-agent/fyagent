@@ -4,8 +4,8 @@
 
 Read this note before changing Windows process startup, Explorer/Shell identity
 resolution, per-user paths or registry access, WebView/window-state persistence,
-single-instance callbacks, or the elevated command boundary. The Codex package
-helper and installer staging boundary are covered separately by
+single-instance callbacks, or the elevated command boundary. The executable
+package helper and installer staging boundary are covered separately by
 [Codex Desktop Installer](./codex-desktop-installer.md); NSIS ownership and
 legacy cleanup are covered by [Windows Installer](./windows-installer.md).
 
@@ -16,8 +16,10 @@ or written. `%ProgramData%\FyAgent\runtime`, the former state/lease files, and
 the authenticated activation pipe are retired and must not be recreated. The
 one-operation
 `%ProgramData%\FyAgent.PackageBridge-{96F39D37-0F42-486F-8C86-3631C12171C5}\v1`
-package bridge is a separate Codex installer object with no state, lease, HMAC,
-activation, or startup-admission role. Its application bridge module owns
+package bridge is a separate executable-installer object with no state, lease,
+HMAC, activation, or startup-admission role. Codex MSIX and the three reviewed
+Agent EXE products reuse it through separate closed helper actions. Its
+application bridge module owns
 normal settlement and next-elevated-creation orphan cleanup; neither this
 runtime nor NSIS may reinterpret it as the former runtime tree.
 
@@ -209,8 +211,11 @@ Shell SID. Legacy Run-value cleanup is known-name-only, runs after primary
 instance admission, and is best-effort; its failure must not block startup.
 Agent Catalog CLI/auth actions (Claude/Grok/OpenCode) reuse the same Tooling
 gate: a formal elevated Windows build reports `interactive_user_unavailable`
-rather than introducing a generic command/path helper. A later ordinary-user
-helper may accept only a closed `{tool, action}` enum.
+rather than routing user tools through the executable installer helper. The
+ordinary-user helper has only two installer action families: Codex MSIX and
+Agent EXE with the closed product enum `qoderwork | trae-work | workbuddy`.
+It accepts no CLI tool, command, URL, package path, working directory, verb,
+scope, silent switch, or raw argument vector.
 
 ### Open validated links through the interactive Explorer shell
 
@@ -230,8 +235,8 @@ IShellFolderViewDual.Application -> IShellDispatch2`.
   on an open File Explorer folder window and makes an otherwise valid link fail.
 - Ordinary external-link launch passes `SW_SHOWNORMAL` to
   `IShellDispatch2::ShellExecute`, so the system browser receives a foreground-
-  eligible normal-show request. The fixed Codex user-helper launch retains its
-  separate empty show argument and fixed target/arguments contract.
+  eligible normal-show request. The fixed installer-helper launch retains its
+  separate empty show argument and action-owned exact argument contract.
 - Closed desktop-agent `.exe` paths (WorkBuddy / QoderWork CN / TRAE Work CN)
   use the same Explorer `ShellExecute` route after the observer proves PE
   `ProductName` at a closed relative path. The launch boundary accepts only an
@@ -254,7 +259,7 @@ IShellFolderViewDual.Application -> IShellDispatch2`.
 | Alice Store/window-state JSON is missing, corrupt, or oversized                                  | Use safe defaults at the same Alice path; do not consult or create Bob's app-data directories or allocate beyond the fixed read limit.                                     |
 | Any fixed Alice HKU path component is a registry symbolic link                                   | Reject that operation before reading, deleting, or writing a value; never reopen the key by an unverified full string path.                                                |
 | Legacy Alice Run value is absent, inaccessible, or cleanup fails                                 | Continue startup and emit only a bounded diagnostic after first-instance admission.                                                                                        |
-| A protected Codex PackageBridge orphan exists                                                    | Do not use it for startup, activation, identity, or user-path selection; only the Codex application bridge module may inspect it during the next elevated bridge creation. |
+| A protected installer PackageBridge orphan exists                                                | Do not use it for startup, activation, identity, or user-path selection; only the executable-installer bridge owner may inspect it during the next elevated bridge creation. |
 | Single-instance envelope is oversized, contains controls, or has an invalid deep link            | Reject before lightweight/focus/event behavior; never log the raw payload.                                                                                                 |
 | Valid envelope has no actionable deep link                                                       | Restore/focus the existing window only.                                                                                                                                    |
 | No File Explorer folder window is open                                                           | Desktop-view Explorer chain still launches the validated URL; never enumerate only `SWC_EXPLORER`.                                                                         |
@@ -264,7 +269,9 @@ IShellFolderViewDual.Application -> IShellDispatch2`.
 | Closed desktop-agent `.exe` is relative, contains `..` or NUL, or is not `.exe`                  | `external_launch_invalid_windows_exe`; Explorer is not invoked.                                                                                                            |
 | Closed desktop-agent `.exe` is observer-proven under Alice Programs or machine Program Files     | Explorer `ShellExecute` as Alice; never `CreateProcess` / `ShellExecuteW` from Bob.                                                                                        |
 | Formal elevated Windows Agent Catalog CLI/auth (Claude/Grok/OpenCode)                            | Return `interactive_user_unavailable`; do not inspect or launch the user tool.                                                                                             |
-| A Catalog/user helper accepts URL, path, shell string, or returns raw child stdout               | Contract/static test fails; no such helper is registered in this iteration.                                                                                                |
+| The installer helper accepts URL, path, shell string, scope, silent switch, or raw child stdout   | Contract/static test fails; only exact Codex MSIX or Agent EXE product actions are registered.                                                                              |
+| Helper `Hello(action)` differs from the parent-selected action/product                            | Reject before bridge control/admission; zero installer launch.                                                                                                              |
+| Agent EXE helper receives no process handle after ShellExecuteEx                                  | Closed `installer_process_unobservable`; authoritative inventory reread, never immediate success.                                                                           |
 | Non-Windows platform                                                                             | Preserve its existing path resolver, Store/window-state plugin, and single-instance behavior.                                                                              |
 
 ## 5. Good / Base / Bad Cases
@@ -298,7 +305,8 @@ IShellFolderViewDual.Application -> IShellDispatch2`.
   redacted debug output, and stable error codes.
 - Contract tests assert initialization precedes panic/CLI/Tauri, the formal
   process/Shell equality gate and machine-runtime implementation are absent,
-  the fixed PackageBridge is referenced only from the Codex installer boundary,
+  the fixed PackageBridge is referenced only from the shared executable
+  installer boundary,
   and Windows production paths do not consult ambient home/app-data or
   user-tool path environment variables.
 - Renderer tests prove directory defaults and resets use the backend Shell home
@@ -330,8 +338,10 @@ IShellFolderViewDual.Application -> IShellDispatch2`.
   HRESULT alone is insufficient.
 - Agent Catalog CLI/auth tests must map formal elevated Windows to
   `interactive_user_unavailable` and must not register a generic command
-  helper. Existing Tooling formal-build fail-closed tests remain
-  authoritative. Bob/Alice/UAC installer HIL remains unverified.
+  helper. Installer-helper tests must prove exact action/product CLI, v3
+  Hello-action binding, fixed bridge artifact kind, and no tool/URL/path argv.
+  Existing Tooling formal-build fail-closed tests remain authoritative.
+  Bob/Alice/UAC installer HIL remains unverified.
 - A real current-host Tauri click may prove only the external-link path it
   exercises. It does not establish Windows 10/11 coverage, ARM64, elevated
   Bob/Alice, startup admission, WebView path ownership, Shell-token freezing,
@@ -430,7 +440,7 @@ Public error: `ProcessLaunchError::InvalidWindowsExe` →
 | Shape-valid absolute `.exe` | Explorer `ShellExecute` as Alice |
 | Explorer COM unavailable | `INTERACTIVE_USER_UNAVAILABLE`; no `CreateProcess` |
 | macOS / Linux call the EXE opener | `InteractiveUserUnavailable` / `PlatformUnsupported` |
-| Downloaded installer EXE, no closed identity | Install stays `interactive_user_unavailable` |
+| Downloaded installer EXE is submitted to ordinary trusted-EXE launch | Reject; install requires retained package + closed helper product action |
 
 ### 5. Good/Base/Bad Cases
 
@@ -475,14 +485,17 @@ crate::platform::process_launch::launch_trusted_windows_exe_as_user(exe)
 
 ### 2. Signatures
 
-No new Windows helper command is registered in this iteration.
+No generic Windows command helper is registered. The existing installer helper
+has closed MSIX/Agent-EXE actions only and is not available to CLI/auth.
 
 ```text
 start_agent_action({ agentId: claude-code|grokbuild|opencode, action })
   -> interactive_user_unavailable   // formal elevated Windows
 
-fyagent-user-helper.exe  // still Codex MSIX only:
+fyagent-user-helper.exe
   codex-msix-install --job-id <uuid> --pipe <nonce>
+  agent-exe-install --product qoderwork|trae-work|workbuddy
+                    --job-id <uuid> --pipe <nonce>
 ```
 
 A future ordinary-user helper, if added, may accept only
@@ -498,8 +511,9 @@ closed states plus sanitized reason codes.
 - Helper stdout/stderr, environment, browser URL, device code, executable
   path, and command line must never return to the elevated parent or
   renderer.
-- Catalog desktop EXE *install* is the same fail-closed class: no generic
-  `ShellExecute` of a downloaded path from Bob. Launch of an
+- Catalog desktop EXE install uses the separate protected package bridge and
+  closed product action; this does not authorize CLI tools. There is no generic
+  `ShellExecute` of a renderer/download path from Bob. Launch of an
   observer-proven closed identity uses
   `launch_trusted_windows_exe_as_user` and is not an install bypass.
 
@@ -508,8 +522,8 @@ closed states plus sanitized reason codes.
 | Condition | Required result |
 | --- | --- |
 | Formal elevated Windows Catalog CLI/auth | `interactive_user_unavailable`; no child process |
-| Helper argv contains URL/path/shell string | Contract test fails; helper is not this iteration |
-| Codex MSIX helper argv gains a Catalog tool verb | Architecture regression |
+| Helper argv contains URL/path/shell string/tool action | Contract test fails; no child process |
+| Installer helper gains Claude/Grok/OpenCode tool verbs | Architecture regression |
 | Non-formal/non-Windows Tooling lifecycle | Existing Tooling behavior unchanged |
 
 ### 5. Good/Base/Bad Cases
@@ -525,7 +539,7 @@ closed states plus sanitized reason codes.
   remains green.
 - Agent CLI/auth paths map elevated failures to
   `interactive_user_unavailable`.
-- Negative scan: no new helper verb, no path/URL argv, no raw stdout DTO.
+- Negative scan: no CLI/auth helper verb, no path/URL argv, no raw stdout DTO.
 - Bob/Alice/UAC HIL remains unverified residual risk.
 
 ### 7. Wrong vs Correct
@@ -541,6 +555,6 @@ helper -> raw child stdout back to renderer
 
 ```text
 formal elevated Windows -> interactive_user_unavailable
-future helper (if any) -> closed {tool, action} in, closed state out
-Codex helper argv remains exactly codex-msix-install --job-id --pipe
+installer helper -> exact Codex MSIX or Agent EXE product action only
+CLI/auth -> no helper action; closed interactive_user_unavailable
 ```

@@ -146,7 +146,12 @@ pub enum AgentReasonCode {
     AuthorizationRequired,
     PermissionDenied,
     ApplicationRunning,
+    InstallerArtifactUnavailable,
     InstallationVerificationFailed,
+    InstallerUserCancelled,
+    InstallerProcessUnobservable,
+    InstallerTimedOut,
+    InstallerExitedNonzero,
     RollbackRestored,
     RecoveryRequired,
     ExecutorNotImplemented,
@@ -158,11 +163,14 @@ pub enum AgentActionJobStage {
     Checking,
     Downloading,
     Staging,
+    LaunchingInstaller,
+    AwaitingUser,
     Installing,
     VerifyingInstallation,
     Succeeded,
     Failed,
     Cancelled,
+    Incomplete,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

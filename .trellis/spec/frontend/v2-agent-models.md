@@ -422,6 +422,11 @@ export type AgentSection = (typeof AGENT_SECTION_IDS)[number];
   including a retained successful result while a later scan is refreshing.
   Pending, `not_installed`, `unknown`, `unavailable`, read failure, and an
   in-flight install/update keep configure disabled.
+- Managed-desktop readiness and the target picker consume one backend inventory
+  authority. The renderer must not infer `not_installed` from a missing
+  known-path observation when inventory returned one trusted Registry/App
+  Paths/custom-location candidate. `single` may prove existence; `multiple`,
+  incomplete, conflicting, or stale-only inventory remains non-green.
 - Lifecycle slot sits to the left of 「进行配置」. Generic agents use
   `FeaturePorts.agentInstallReadiness` through `useAgentLifecycleAction`.
   Visible 一键安装 / 一键更新 come only from `allowedActions` plus the
@@ -440,14 +445,25 @@ export type AgentSection = (typeof AGENT_SECTION_IDS)[number];
   only the opaque inventory/target/revision triplet and never reconstructs a
   path from `locationLabel`.
   Generic jobs show the real stage and never invent a percent. `staging`
-  visibly means the mounted/staged macOS app is being prepared and remains
-  cancellable; `installing` is the non-cancellable commit boundary. System
+  visibly means the native package/app is being prepared and remains
+  cancellable. On macOS, `installing` is the non-cancellable commit boundary.
+  On Windows, `launching_installer` is the non-cancellable side-effect boundary
+  and `awaiting_user` tells the user to complete the vendor UI/UAC flow.
+  `incomplete` is terminal and non-green: the installer may still be running or
+  no unique authoritative result could be read. It never becomes success from
+  process launch or exit code alone. System
   targets disabled by native policy remain visible with
   `authorization_required`; the UI must not silently select or relabel a
-  user-scope destination. `rollback_restored` states that the original app was
+  user-scope destination. `installer_user_cancelled`,
+  `installer_process_unobservable`, `installer_timed_out`,
+  `installer_exited_nonzero`, and `installer_artifact_unavailable` retain
+  distinct copy; timeout/unobservable copy
+  explicitly says FyAgent stopped waiting and did not kill the vendor
+  installer. `rollback_restored` states that the original app was
   restored after verification failure, while `recovery_required` is a
   non-green stop-and-inspect state. After terminal
-  success/failure/cancel/timeout the UI rereads readiness and inventory; it
+  success/failure/cancel/incomplete or a client poll timeout, the UI rereads
+  readiness and inventory; it
   must not set an optimistic installed flag or keep a stale target ID.
 - Codex install/update stay on `useCodexDesktopInstaller` /
   `FeaturePorts.codexDesktop`. Directory Codex cards project that view model
@@ -782,7 +798,10 @@ fetch/save controls.
   inventory target binding. A target-free legacy launch is used only when
   backend readiness says selection is unnecessary.
 - Job-stage/reason copy is closed and outcome-specific. `staging` is distinct
-  from download and install; `authorization_required` explains that the
+  from download and install; `launching_installer` / `awaiting_user` expose
+  Windows vendor ownership without inventing a percent, `incomplete` is a
+  terminal non-success, and the four Windows installer reason codes remain
+  distinguishable. `authorization_required` explains that the
   selected system target cannot be automated and will not move scopes;
   `application_running` asks the user to quit the app;
   `rollback_restored` confirms only restoration, not update success; and
@@ -869,6 +888,10 @@ fetch/save controls.
 | Renderer persists a raw location or constructs `targetId`/revision                                                                | Security/contract test fails; all target capabilities originate in the backend inventory                              |
 | Generic Agent job UI invents a download percent                                                                                   | Page/hook test fails; generic progress is stage-only                                                                  |
 | Generic Agent job omits `staging` or treats it as non-cancellable                                                                 | Parser/hook test fails; staging remains cancellable until the native commit transition                                |
+| Windows Agent job omits `launching_installer` / `awaiting_user` or still offers cancel after launch                              | Parser/hook test fails; vendor UI launch is the non-cancellable side-effect boundary                                  |
+| Native result is `incomplete`                                                                                                     | Stop polling, reread readiness/inventory, and show non-green unconfirmed-result copy                                  |
+| Windows result is user-cancelled, unobservable, timed out, or nonzero-exit                                                        | Render its distinct closed reason; do not collapse to generic success/failure or claim the installer was killed       |
+| Windows artifact staging/capability fails                                                                                         | Show local artifact/permission guidance; never label the executor unimplemented                                      |
 | Disabled `/Applications` target is hidden or silently replaced by `~/Applications`                                                | Picker/page test fails; show `authorization_required` and preserve the selected scope                                 |
 | Native result is `rollback_restored`                                                                                               | Show failed-update/restored-original copy; never show install success                                                 |
 | Native result is `recovery_required`                                                                                               | Show non-green stop-and-inspect copy; disable optimistic retry/success claims                                         |
@@ -1053,6 +1076,9 @@ Required focused coverage includes:
   closed `startAction`/`cancelAction`/`getActionJob` wires, opaque
   `expectedReleaseId` grammar, `allowedActions` as the only control source,
   `staging` parser/progress copy and cancellation semantics,
+  `launching_installer` / `awaiting_user` non-cancellable vendor-UI copy,
+  terminal `incomplete` semantics, distinct installer cancellation/
+  unobservable/timeout/nonzero-exit copy,
   `authorization_required` no-scope-fallback copy,
   `application_running`, `rollback_restored`, and `recovery_required`
   outcome copy,

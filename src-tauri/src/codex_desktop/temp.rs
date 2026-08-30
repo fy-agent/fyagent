@@ -309,7 +309,7 @@ enum ArtifactPolicy {
     #[cfg(any(target_os = "macos", test))]
     CrossPlatform,
     #[cfg(any(target_os = "windows", test))]
-    WindowsMsixOnly,
+    WindowsInstaller,
 }
 
 impl ArtifactPolicy {
@@ -318,19 +318,27 @@ impl ArtifactPolicy {
             #[cfg(any(target_os = "macos", test))]
             Self::CrossPlatform => matches!(
                 file_name,
-                "installer.msix" | "installer.msix.part" | "installer.dmg" | "installer.dmg.part"
+                "installer.msix"
+                    | "installer.msix.part"
+                    | "installer.dmg"
+                    | "installer.dmg.part"
+                    | "installer.exe"
+                    | "installer.exe.part"
             ),
             #[cfg(any(target_os = "windows", test))]
-            Self::WindowsMsixOnly => matches!(file_name, "installer.msix" | "installer.msix.part"),
+            Self::WindowsInstaller => matches!(
+                file_name,
+                "installer.msix" | "installer.msix.part" | "installer.exe" | "installer.exe.part"
+            ),
         }
     }
 
     fn cleanup_kinds(self) -> &'static [ArtifactKind] {
         match self {
             #[cfg(any(target_os = "macos", test))]
-            Self::CrossPlatform => &[ArtifactKind::Msix, ArtifactKind::Dmg],
+            Self::CrossPlatform => &[ArtifactKind::Msix, ArtifactKind::Dmg, ArtifactKind::Exe],
             #[cfg(any(target_os = "windows", test))]
-            Self::WindowsMsixOnly => &[ArtifactKind::Msix],
+            Self::WindowsInstaller => &[ArtifactKind::Msix, ArtifactKind::Exe],
         }
     }
 }
@@ -357,7 +365,7 @@ impl JobTempDir {
             };
             Self::cleanup_stale_with_ancestors(
                 ancestors,
-                ArtifactPolicy::WindowsMsixOnly,
+                ArtifactPolicy::WindowsInstaller,
                 STALE_JOB_DIRECTORY_AGE,
                 SystemTime::now(),
             )
@@ -1012,7 +1020,7 @@ fn create_current_executable_job(job_id: &str) -> Result<JobTempDir, InstallerEr
     let directory = JobTempDir::create_with_ancestors(
         ensure_current_executable_staging_root()?,
         canonical_job_id.as_str(),
-        ArtifactPolicy::WindowsMsixOnly,
+        ArtifactPolicy::WindowsInstaller,
     )?;
     let relative_installer = directory
         .final_path(ArtifactKind::Msix)
@@ -1739,7 +1747,7 @@ mod tests {
         let job_directory = JobTempDir::create_with_ancestors(
             vec![trusted_root],
             &Uuid::new_v4().hyphenated().to_string(),
-            ArtifactPolicy::WindowsMsixOnly,
+            ArtifactPolicy::WindowsInstaller,
         )
         .unwrap();
         let msix = job_directory.final_path(ArtifactKind::Msix);
@@ -1932,7 +1940,7 @@ mod tests {
         let directory = JobTempDir::create_with_ancestors(
             vec![frozen.install_root.clone(), cache, installer],
             job_id.as_str(),
-            ArtifactPolicy::WindowsMsixOnly,
+            ArtifactPolicy::WindowsInstaller,
         )
         .unwrap();
         let helper_layout = derive_install_layout(&executable, &job_id).unwrap();

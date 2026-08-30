@@ -10,9 +10,12 @@ mod jobs;
 mod macos;
 mod sources;
 mod types;
+mod windows;
 
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
+#[cfg(target_os = "windows")]
+use std::time::Duration;
 
 pub use inventory::{inventory_for, AgentInstallationInventoryStore};
 pub use jobs::AgentActionJobStore;
@@ -27,18 +30,34 @@ pub use types::{
 
 use auth_actions::{observe_auth_state, start_auth_action};
 use cli::{observe_cli, run_cli_lifecycle};
+#[cfg(target_os = "windows")]
 use desktop::{
-    download_resolved_source, install_state_from_observation, launch_desktop_installation,
-    launch_if_present, observe_desktop, readiness_source_codes, resolve_desktop_source,
-    source_reason, windows_exe_unavailable,
+    capture_desktop_installation_baseline, download_windows_exe_to_job, verify_windows_deployment,
+    verify_windows_exe_source, WindowsDeploymentExpectation,
 };
-use inventory::{inventory_summary, validate_action_target, ValidatedActionTarget};
+use desktop::{
+    download_macos_dmg_bytes, launch_desktop_installation, launch_if_present,
+    readiness_source_codes, resolve_desktop_source, source_reason,
+};
+use inventory::{
+    inventory_readiness_projection, validate_action_target, InventoryReadinessProjection,
+    ValidatedActionTarget,
+};
 use macos::deploy_macos_dmg;
 use sources::PackageFormat;
 
+#[cfg(any(target_os = "windows", test))]
+use crate::codex_desktop::error::InstallerErrorCode;
 use crate::codex_desktop::types::LocalInstallStatus;
+#[cfg(target_os = "windows")]
+use crate::codex_desktop::{
+    platform::{windows::run_verified_agent_exe_installer, PlatformProgressSink},
+    temp::JobTempRoot,
+};
 use crate::services::external_agents::AgentCatalogId;
 use crate::store::AppState;
+#[cfg(target_os = "windows")]
+use fyagent_user_helper::AgentInstallerProduct;
 
 fn desktop_versions_equivalent(local: &str, remote: &str) -> bool {
     if local == remote {
@@ -53,29 +72,37 @@ fn desktop_versions_equivalent(local: &str, remote: &str) -> bool {
 }
 
 pub async fn readiness_for(agent_id: AgentCatalogId, state: &AppState) -> AgentInstallReadinessDto {
-    let inventory_state = inventory_summary(agent_id, state).await;
+    let inventory = inventory_readiness_projection(agent_id, state).await;
     let mut readiness = match agent_id {
         AgentCatalogId::Codex => codex_readiness(state).await,
         AgentCatalogId::ClaudeCode | AgentCatalogId::GrokBuild | AgentCatalogId::OpenCode => {
             cli_readiness(agent_id).await
         }
         AgentCatalogId::QoderWork | AgentCatalogId::TraeWork | AgentCatalogId::WorkBuddy => {
-            desktop_readiness(agent_id).await
+            desktop_readiness(agent_id, &inventory).await
         }
     };
-    readiness.inventory_state = inventory_state;
+    readiness.inventory_state = inventory.state;
     readiness.requires_target_selection =
-        matches!(inventory_state, InstallationInventoryState::Multiple);
-    if matches!(
-        inventory_state,
-        InstallationInventoryState::Multiple | InstallationInventoryState::Unknown
-    ) && matches!(
-        readiness.install_state,
-        AgentInstallState::Installed | AgentInstallState::InstalledNotRunnable
-    ) {
+        matches!(inventory.state, InstallationInventoryState::Multiple);
+    if readiness.source_kind != AgentSourceKind::ManagedDesktop
+        && matches!(
+            inventory.state,
+            InstallationInventoryState::Multiple | InstallationInventoryState::Unknown
+        )
+        && matches!(
+            readiness.install_state,
+            AgentInstallState::Installed | AgentInstallState::InstalledNotRunnable
+        )
+    {
         readiness.install_state = AgentInstallState::Unknown;
         readiness.local_version = None;
         readiness.update_state = AgentUpdateState::Unknown;
+    }
+    for reason in inventory.reason_codes {
+        if !readiness.reason_codes.contains(&reason) {
+            readiness.reason_codes.push(reason);
+        }
     }
     if readiness.requires_target_selection
         && !readiness
@@ -208,21 +235,26 @@ fn cli_update_state(
     }
 }
 
-async fn desktop_readiness(agent_id: AgentCatalogId) -> AgentInstallReadinessDto {
-    let observed = observe_desktop(agent_id);
+async fn desktop_readiness(
+    agent_id: AgentCatalogId,
+    inventory: &InventoryReadinessProjection,
+) -> AgentInstallReadinessDto {
     let source = resolve_desktop_source(agent_id).await;
     let mut reason_codes = Vec::new();
     let mut allowed_actions = Vec::new();
-    let (release_id, remote_version, source_ok, dmg_installable) = match &source {
+    let (release_id, remote_version, source_ok, package_installable) = match &source {
         Ok(resolved) => {
-            let dmg = resolved.format == PackageFormat::Dmg
-                && resolved.platform == sources::AgentPlatform::Macos
-                && !windows_exe_unavailable(resolved);
+            let installable = (cfg!(target_os = "macos")
+                && resolved.format == PackageFormat::Dmg
+                && resolved.platform == sources::AgentPlatform::Macos)
+                || (cfg!(target_os = "windows")
+                    && resolved.format == PackageFormat::Exe
+                    && resolved.platform == sources::AgentPlatform::Windows);
             (
                 Some(resolved.release_id.clone()),
                 resolved.display_version.clone(),
                 true,
-                dmg,
+                installable,
             )
         }
         Err(error) => {
@@ -230,34 +262,32 @@ async fn desktop_readiness(agent_id: AgentCatalogId) -> AgentInstallReadinessDto
             (None, None, false, false)
         }
     };
-    if source.as_ref().is_ok_and(windows_exe_unavailable) {
-        reason_codes.push(AgentReasonCode::InteractiveUserUnavailable);
-    }
-    let install_state = install_state_from_observation(&observed);
-    let update_state = if !source_ok {
-        AgentUpdateState::Unavailable
-    } else if remote_version.is_none() {
-        AgentUpdateState::LatestUnknown
-    } else if observed.installed {
-        match (observed.local_version.as_deref(), remote_version.as_deref()) {
-            (Some(local), Some(remote)) if desktop_versions_equivalent(local, remote) => {
-                AgentUpdateState::UpToDate
+    let install_state = desktop_install_state_from_inventory(inventory);
+    let local_version = inventory.single_local_version.clone();
+    let update_state = desktop_update_state(
+        source_ok,
+        install_state,
+        local_version.as_deref(),
+        remote_version.as_deref(),
+    );
+    if package_installable {
+        match inventory.state {
+            InstallationInventoryState::NotObserved => allowed_actions.push(AgentActionId::Install),
+            InstallationInventoryState::Single
+                if inventory.single_update_eligible
+                    && update_state != AgentUpdateState::UpToDate =>
+            {
+                allowed_actions.push(AgentActionId::Update)
             }
-            _ => AgentUpdateState::UpdateAvailable,
-        }
-    } else {
-        AgentUpdateState::UpdateAvailable
-    };
-    if dmg_installable {
-        if install_state != AgentInstallState::Installed {
-            allowed_actions.push(AgentActionId::Install);
-        } else if update_state != AgentUpdateState::UpToDate {
-            allowed_actions.push(AgentActionId::Update);
+            _ => {}
         }
     }
-    if observed.installed {
+    if inventory.state == InstallationInventoryState::Single && inventory.single_launch_eligible {
         allowed_actions.push(AgentActionId::Launch);
         allowed_actions.push(AgentActionId::AuthLogin);
+    }
+    if install_state == AgentInstallState::InstalledNotRunnable {
+        reason_codes.push(AgentReasonCode::InstalledNotRunnable);
     }
     let auth_state = observe_auth_state(agent_id, false, false);
     if auth_state == AgentAuthState::Unknown {
@@ -272,13 +302,62 @@ async fn desktop_readiness(agent_id: AgentCatalogId) -> AgentInstallReadinessDto
         requires_target_selection: false,
         update_state,
         release_id,
-        local_version: observed.local_version,
+        local_version,
         remote_version,
         auth_ownership: AgentAuthOwnership::AgentOwned,
         auth_state,
         source_kind: AgentSourceKind::ManagedDesktop,
         allowed_actions,
         reason_codes,
+    }
+}
+
+fn desktop_install_state_from_inventory(
+    inventory: &InventoryReadinessProjection,
+) -> AgentInstallState {
+    match inventory.state {
+        InstallationInventoryState::NotObserved => AgentInstallState::NotInstalled,
+        InstallationInventoryState::Single if inventory.single_launch_eligible => {
+            AgentInstallState::Installed
+        }
+        InstallationInventoryState::Single if inventory.single_update_eligible => {
+            AgentInstallState::InstalledNotRunnable
+        }
+        InstallationInventoryState::Single
+        | InstallationInventoryState::Multiple
+        | InstallationInventoryState::Unknown => AgentInstallState::Unknown,
+        InstallationInventoryState::Unsupported => AgentInstallState::Unavailable,
+    }
+}
+
+fn desktop_update_state(
+    source_ok: bool,
+    install_state: AgentInstallState,
+    local: Option<&str>,
+    remote: Option<&str>,
+) -> AgentUpdateState {
+    if !source_ok || install_state == AgentInstallState::Unavailable {
+        return AgentUpdateState::Unavailable;
+    }
+    match install_state {
+        AgentInstallState::Unknown => AgentUpdateState::Unknown,
+        AgentInstallState::NotInstalled => {
+            if remote.is_some() {
+                AgentUpdateState::UpdateAvailable
+            } else {
+                AgentUpdateState::LatestUnknown
+            }
+        }
+        AgentInstallState::Installed | AgentInstallState::InstalledNotRunnable => {
+            match (local, remote) {
+                (Some(local), Some(remote)) if desktop_versions_equivalent(local, remote) => {
+                    AgentUpdateState::UpToDate
+                }
+                (_, Some(_)) => AgentUpdateState::UpdateAvailable,
+                (_, None) => AgentUpdateState::LatestUnknown,
+            }
+        }
+        AgentInstallState::Unavailable => AgentUpdateState::Unavailable,
     }
 }
 
@@ -451,9 +530,6 @@ async fn start_desktop_job(
     let source = resolve_desktop_source(request.agent_id)
         .await
         .map_err(source_reason)?;
-    if windows_exe_unavailable(&source) {
-        return Err(AgentReasonCode::InteractiveUserUnavailable);
-    }
     if !source.versionless_latest {
         let expected = request
             .expected_release_id
@@ -492,6 +568,12 @@ async fn run_desktop_install_job(
     target: inventory::DesktopDeploymentTarget,
     cancel: Arc<AtomicBool>,
 ) {
+    #[cfg(target_os = "windows")]
+    if source.platform == sources::AgentPlatform::Windows {
+        run_windows_desktop_install_job(jobs, job_id, source, target, cancel).await;
+        return;
+    }
+
     if jobs.is_cancelled(&cancel) {
         let _ = jobs.transition(
             &job_id,
@@ -509,7 +591,7 @@ async fn run_desktop_install_job(
         );
         return;
     }
-    let bytes = match download_resolved_source(&source, cancel.as_ref()).await {
+    let bytes = match download_macos_dmg_bytes(&source, cancel.as_ref()).await {
         Ok(bytes) => bytes,
         Err(AgentReasonCode::Cancelled) => {
             let _ = jobs.transition(
@@ -584,10 +666,319 @@ async fn run_desktop_install_job(
             let _ = jobs.transition(
                 &job_id,
                 AgentActionJobStage::Failed,
-                Some(AgentReasonCode::ExecutorNotImplemented),
+                Some(AgentReasonCode::RecoveryRequired),
             );
         }
     }
+}
+
+#[cfg(target_os = "windows")]
+enum WindowsInstallerOutcome {
+    Rejected(AgentReasonCode),
+    CancelledBeforeCommit,
+    Invoked(Result<(), AgentReasonCode>),
+}
+
+#[cfg(target_os = "windows")]
+async fn run_windows_desktop_install_job(
+    jobs: Arc<AgentActionJobStore>,
+    job_id: String,
+    source: sources::ResolvedDesktopSource,
+    target: inventory::DesktopDeploymentTarget,
+    cancel: Arc<AtomicBool>,
+) {
+    let expectation = match windows_deployment_expectation(target) {
+        Ok(expectation) => expectation,
+        Err(reason) => {
+            let _ = jobs.transition(&job_id, AgentActionJobStage::Failed, Some(reason));
+            return;
+        }
+    };
+    let baseline = capture_desktop_installation_baseline(source.product);
+    if !baseline.complete() {
+        let _ = jobs.transition(
+            &job_id,
+            AgentActionJobStage::Failed,
+            Some(AgentReasonCode::NativeProjectionUnavailable),
+        );
+        return;
+    }
+    let job_directory = match JobTempRoot::for_current_process().create_job(&job_id) {
+        Ok(directory) => directory,
+        Err(_) => {
+            let _ = jobs.transition(
+                &job_id,
+                AgentActionJobStage::Failed,
+                Some(AgentReasonCode::InstallerArtifactUnavailable),
+            );
+            return;
+        }
+    };
+
+    if jobs.is_cancelled(&cancel) {
+        let _ = job_directory.cleanup();
+        let _ = jobs.transition(
+            &job_id,
+            AgentActionJobStage::Cancelled,
+            Some(AgentReasonCode::Cancelled),
+        );
+        return;
+    }
+    let _ = jobs.transition(&job_id, AgentActionJobStage::Downloading, None);
+    let artifact = match download_windows_exe_to_job(&source, &job_directory, cancel.as_ref()).await
+    {
+        Ok(artifact) => artifact,
+        Err(AgentReasonCode::Cancelled) => {
+            let _ = job_directory.cleanup();
+            let _ = jobs.transition(
+                &job_id,
+                AgentActionJobStage::Cancelled,
+                Some(AgentReasonCode::Cancelled),
+            );
+            return;
+        }
+        Err(reason) => {
+            let _ = job_directory.cleanup();
+            let _ = jobs.transition(&job_id, AgentActionJobStage::Failed, Some(reason));
+            return;
+        }
+    };
+
+    let _ = jobs.transition(&job_id, AgentActionJobStage::Staging, None);
+    let helper_product = match agent_helper_product(source.product) {
+        Ok(product) => product,
+        Err(reason) => {
+            drop(artifact);
+            let _ = job_directory.cleanup();
+            let _ = jobs.transition(&job_id, AgentActionJobStage::Failed, Some(reason));
+            return;
+        }
+    };
+    let jobs_for_install = Arc::clone(&jobs);
+    let install_job_id = job_id.clone();
+    let source_for_install = source.clone();
+    let cancel_for_install = Arc::clone(&cancel);
+    let outcome = tokio::task::spawn_blocking(move || {
+        if let Err(reason) = verify_windows_exe_source(&source_for_install, &artifact) {
+            return WindowsInstallerOutcome::Rejected(reason);
+        }
+        if jobs_for_install.is_cancelled(&cancel_for_install) {
+            return WindowsInstallerOutcome::CancelledBeforeCommit;
+        }
+        if jobs_for_install
+            .transition(
+                &install_job_id,
+                AgentActionJobStage::LaunchingInstaller,
+                None,
+            )
+            .is_err()
+        {
+            return WindowsInstallerOutcome::Rejected(AgentReasonCode::OperationConflict);
+        }
+        let Some(context) = crate::windows_runtime::interactive_user_context() else {
+            return WindowsInstallerOutcome::Rejected(AgentReasonCode::InteractiveUserUnavailable);
+        };
+        let progress_jobs = Arc::clone(&jobs_for_install);
+        let progress_job_id = install_job_id.clone();
+        let progress: PlatformProgressSink = Arc::new(move |_| {
+            let _ =
+                progress_jobs.transition(&progress_job_id, AgentActionJobStage::AwaitingUser, None);
+        });
+        WindowsInstallerOutcome::Invoked(
+            run_verified_agent_exe_installer(
+                context,
+                helper_product,
+                &install_job_id,
+                &artifact,
+                progress,
+            )
+            .map_err(map_windows_installer_error),
+        )
+    })
+    .await;
+
+    let outcome = match outcome {
+        Ok(outcome) => outcome,
+        Err(_) => {
+            let _ = job_directory.cleanup();
+            let _ = jobs.transition(
+                &job_id,
+                AgentActionJobStage::Incomplete,
+                Some(AgentReasonCode::RecoveryRequired),
+            );
+            return;
+        }
+    };
+    if job_directory.cleanup().is_err() {
+        let stage = if matches!(&outcome, WindowsInstallerOutcome::Invoked(_)) {
+            AgentActionJobStage::Incomplete
+        } else {
+            AgentActionJobStage::Failed
+        };
+        let _ = jobs.transition(&job_id, stage, Some(AgentReasonCode::RecoveryRequired));
+        return;
+    }
+    match outcome {
+        WindowsInstallerOutcome::Rejected(reason) => {
+            let _ = jobs.transition(&job_id, AgentActionJobStage::Failed, Some(reason));
+        }
+        WindowsInstallerOutcome::CancelledBeforeCommit => {
+            let _ = jobs.transition(
+                &job_id,
+                AgentActionJobStage::Cancelled,
+                Some(AgentReasonCode::Cancelled),
+            );
+        }
+        WindowsInstallerOutcome::Invoked(helper_result) => {
+            let _ = jobs.transition(&job_id, AgentActionJobStage::VerifyingInstallation, None);
+            let verified = wait_for_windows_deployment(
+                source.product,
+                &baseline,
+                &expectation,
+                source.display_version.as_deref(),
+            )
+            .await;
+            if verified.is_ok() {
+                let _ = jobs.transition(&job_id, AgentActionJobStage::Succeeded, None);
+                return;
+            }
+            let verification_reason = verified
+                .err()
+                .unwrap_or(AgentReasonCode::InstallationVerificationFailed);
+            match helper_result {
+                Err(AgentReasonCode::InstallerUserCancelled) => {
+                    let _ = jobs.transition(
+                        &job_id,
+                        AgentActionJobStage::Cancelled,
+                        Some(AgentReasonCode::InstallerUserCancelled),
+                    );
+                }
+                Err(
+                    reason @ (AgentReasonCode::InstallerProcessUnobservable
+                    | AgentReasonCode::InstallerTimedOut),
+                ) => {
+                    let _ = jobs.transition(&job_id, AgentActionJobStage::Incomplete, Some(reason));
+                }
+                Err(reason) => {
+                    let _ = jobs.transition(&job_id, AgentActionJobStage::Failed, Some(reason));
+                }
+                Ok(()) => {
+                    let _ = jobs.transition(
+                        &job_id,
+                        AgentActionJobStage::Incomplete,
+                        Some(verification_reason),
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn windows_deployment_expectation(
+    target: inventory::DesktopDeploymentTarget,
+) -> Result<WindowsDeploymentExpectation, AgentReasonCode> {
+    match target {
+        inventory::DesktopDeploymentTarget::Existing {
+            path,
+            scope,
+            package_kind: types::InstallationPackageKind::Exe,
+        } => Ok(WindowsDeploymentExpectation::Existing { path, scope }),
+        inventory::DesktopDeploymentTarget::Fresh(
+            inventory::FreshDestinationCapability::WindowsCurrentUser,
+        ) => Ok(WindowsDeploymentExpectation::FreshCurrentUser),
+        inventory::DesktopDeploymentTarget::Fresh(
+            inventory::FreshDestinationCapability::VendorInstallerChoice,
+        ) => Ok(WindowsDeploymentExpectation::FreshVendorChoice),
+        _ => Err(AgentReasonCode::TargetScopeUnsupported),
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn agent_helper_product(
+    agent_id: AgentCatalogId,
+) -> Result<AgentInstallerProduct, AgentReasonCode> {
+    match agent_id {
+        AgentCatalogId::QoderWork => Ok(AgentInstallerProduct::QoderWork),
+        AgentCatalogId::TraeWork => Ok(AgentInstallerProduct::TraeWork),
+        AgentCatalogId::WorkBuddy => Ok(AgentInstallerProduct::WorkBuddy),
+        _ => Err(AgentReasonCode::ExecutorNotImplemented),
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn map_windows_installer_error(
+    error: crate::codex_desktop::error::InstallerError,
+) -> AgentReasonCode {
+    let platform_error_code = error.to_dto().details.platform_error_code;
+    map_windows_installer_error_parts(error.code(), platform_error_code.as_deref())
+}
+
+#[cfg(any(target_os = "windows", test))]
+fn map_windows_installer_error_parts(
+    code: InstallerErrorCode,
+    platform_error_code: Option<&str>,
+) -> AgentReasonCode {
+    match platform_error_code {
+        Some("agent_installer_user_cancelled") => return AgentReasonCode::InstallerUserCancelled,
+        Some("agent_installer_process_unobservable") => {
+            return AgentReasonCode::InstallerProcessUnobservable
+        }
+        Some("agent_installer_timed_out") => return AgentReasonCode::InstallerTimedOut,
+        Some("agent_installer_exited_nonzero") => return AgentReasonCode::InstallerExitedNonzero,
+        _ => {}
+    }
+    match code {
+        InstallerErrorCode::DownloadCancelled => AgentReasonCode::Cancelled,
+        InstallerErrorCode::DownloadFailed
+        | InstallerErrorCode::DownloadTimeout
+        | InstallerErrorCode::InsufficientDiskSpace
+        | InstallerErrorCode::PackageParseFailed
+        | InstallerErrorCode::PackageIdentityMismatch
+        | InstallerErrorCode::ChecksumMismatch => AgentReasonCode::InstallerArtifactUnavailable,
+        InstallerErrorCode::PackageArchitectureMismatch
+        | InstallerErrorCode::ArchitectureUnsupported => AgentReasonCode::PlatformUnsupported,
+        InstallerErrorCode::SourceUnavailable
+        | InstallerErrorCode::ReleaseMetadataInvalid
+        | InstallerErrorCode::ReleaseNotAvailable
+        | InstallerErrorCode::RedirectRejected
+        | InstallerErrorCode::PackageSignatureInvalid => AgentReasonCode::SourceNotVerified,
+        InstallerErrorCode::MetadataChanged => AgentReasonCode::RefreshRequired,
+        InstallerErrorCode::WindowsPackageInUse => AgentReasonCode::ApplicationRunning,
+        InstallerErrorCode::WindowsDeploymentBlocked
+        | InstallerErrorCode::WindowsDependencyMissing => AgentReasonCode::AuthorizationRequired,
+        InstallerErrorCode::WindowsDeploymentFailed
+        | InstallerErrorCode::LaunchFailed
+        | InstallerErrorCode::InternalError => AgentReasonCode::InteractiveUserUnavailable,
+        InstallerErrorCode::MultipleInstallations
+        | InstallerErrorCode::InstallationVerifyFailed => {
+            AgentReasonCode::InstallationVerificationFailed
+        }
+        InstallerErrorCode::JobAlreadyRunning | InstallerErrorCode::JobNotFound => {
+            AgentReasonCode::OperationConflict
+        }
+        _ => AgentReasonCode::ExecutorNotImplemented,
+    }
+}
+
+#[cfg(target_os = "windows")]
+async fn wait_for_windows_deployment(
+    agent_id: AgentCatalogId,
+    baseline: &desktop::DesktopInstallationBaseline,
+    expectation: &WindowsDeploymentExpectation,
+    expected_local_version: Option<&str>,
+) -> Result<(), AgentReasonCode> {
+    let mut last_reason = AgentReasonCode::InstallationVerificationFailed;
+    for attempt in 0..=90_u8 {
+        match verify_windows_deployment(agent_id, baseline, expectation, expected_local_version) {
+            Ok(()) => return Ok(()),
+            Err(reason) => last_reason = reason,
+        }
+        if attempt < 90 {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+        }
+    }
+    Err(last_reason)
 }
 
 fn immediate_result(
@@ -677,6 +1068,94 @@ mod tests {
         assert!(!desktop_versions_equivalent("0.9.12", "0.9.15"));
         assert!(!desktop_versions_equivalent("2.3.71801", "2.3.76122"));
         assert!(!desktop_versions_equivalent("5.3.14", "5.3.15"));
+    }
+
+    fn inventory_projection(
+        state: InstallationInventoryState,
+        local_version: Option<&str>,
+        launch_eligible: bool,
+        update_eligible: bool,
+    ) -> InventoryReadinessProjection {
+        InventoryReadinessProjection {
+            state,
+            single_local_version: local_version.map(str::to_string),
+            single_launch_eligible: launch_eligible,
+            single_update_eligible: update_eligible,
+            reason_codes: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn desktop_readiness_uses_inventory_as_the_only_local_install_authority() {
+        let custom = inventory_projection(
+            InstallationInventoryState::Single,
+            Some("5.3.14"),
+            true,
+            true,
+        );
+        assert_eq!(
+            desktop_install_state_from_inventory(&custom),
+            AgentInstallState::Installed
+        );
+        assert_eq!(
+            desktop_update_state(
+                true,
+                AgentInstallState::Installed,
+                custom.single_local_version.as_deref(),
+                Some("5.3.14.36279234"),
+            ),
+            AgentUpdateState::UpToDate
+        );
+
+        let absent =
+            inventory_projection(InstallationInventoryState::NotObserved, None, false, false);
+        assert_eq!(
+            desktop_install_state_from_inventory(&absent),
+            AgentInstallState::NotInstalled
+        );
+
+        for state in [
+            InstallationInventoryState::Multiple,
+            InstallationInventoryState::Unknown,
+        ] {
+            let ambiguous = inventory_projection(state, Some("9.9.9"), true, true);
+            assert_eq!(
+                desktop_install_state_from_inventory(&ambiguous),
+                AgentInstallState::Unknown
+            );
+            assert_eq!(
+                desktop_update_state(
+                    true,
+                    AgentInstallState::Unknown,
+                    ambiguous.single_local_version.as_deref(),
+                    Some("10.0.0"),
+                ),
+                AgentUpdateState::Unknown
+            );
+        }
+    }
+
+    #[test]
+    fn windows_installer_errors_never_mislabel_known_failures_as_unimplemented() {
+        assert_eq!(
+            map_windows_installer_error_parts(
+                InstallerErrorCode::WindowsDeploymentFailed,
+                Some("agent_installer_process_unobservable"),
+            ),
+            AgentReasonCode::InstallerProcessUnobservable
+        );
+        assert_eq!(
+            map_windows_installer_error_parts(InstallerErrorCode::DownloadFailed, None),
+            AgentReasonCode::InstallerArtifactUnavailable
+        );
+        assert_eq!(
+            map_windows_installer_error_parts(InstallerErrorCode::InstallationVerifyFailed, None,),
+            AgentReasonCode::InstallationVerificationFailed
+        );
+        assert_eq!(
+            map_windows_installer_error_parts(InstallerErrorCode::JobAlreadyRunning, None),
+            AgentReasonCode::OperationConflict
+        );
     }
 
     #[test]

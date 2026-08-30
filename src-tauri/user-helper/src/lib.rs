@@ -15,10 +15,12 @@ pub use bridge_control::{
     BRIDGE_CONTROL_VERSION, BRIDGE_OPERATION_ID_BYTES,
 };
 pub use cli::{
-    parse_cli_args, CanonicalJobId, CliError, InstallRequest, PipeNonce, INSTALL_ACTION,
+    parse_cli_args, AgentInstallerProduct, CanonicalJobId, CliError, InstallRequest, PipeNonce,
+    UserHelperAction, AGENT_EXE_INSTALL_ACTION, INSTALL_ACTION,
 };
 pub use layout::{
     admission_event_name, cancel_event_name, derive_install_layout, InstallLayout, LayoutError,
+    PackageBridgeArtifactKind, AGENT_INSTALLER_FILE_NAME, AGENT_PACKAGE_BRIDGE_PART_FILE_NAME,
     INSTALLER_FILE_NAME, PACKAGE_BRIDGE_PART_FILE_NAME, PACKAGE_BRIDGE_ROOT_DIRECTORY,
     PACKAGE_BRIDGE_VERSION_DIRECTORY,
 };

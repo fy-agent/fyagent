@@ -18,7 +18,8 @@ use std::{
 };
 
 use fyagent_user_helper::{
-    BridgeOperationId, PackageBridgeControl, PinnedPackageIdentity, BRIDGE_OPERATION_ID_BYTES,
+    BridgeOperationId, PackageBridgeArtifactKind, PackageBridgeControl, PinnedPackageIdentity,
+    AGENT_INSTALLER_FILE_NAME, AGENT_PACKAGE_BRIDGE_PART_FILE_NAME, BRIDGE_OPERATION_ID_BYTES,
     INSTALLER_FILE_NAME, PACKAGE_BRIDGE_PART_FILE_NAME, PACKAGE_BRIDGE_ROOT_DIRECTORY,
     PACKAGE_BRIDGE_VERSION_DIRECTORY,
 };
@@ -94,6 +95,7 @@ const ADMINISTRATORS_FULL_MASK: u32 = 0x001f_01ff;
 const DIRECTORY_READ_TRAVERSE_MASK: u32 = 0x0012_00a9;
 const DIRECTORY_TRAVERSE_ONLY_MASK: u32 = 0x0012_00a0;
 const FILE_READ_MASK: u32 = 0x0012_0089;
+const FILE_READ_EXECUTE_MASK: u32 = 0x0012_00a9;
 const ACCESS_ALLOWED_ACE_TYPE_VALUE: u8 = 0;
 const SECURITY_DESCRIPTOR_REVISION_VALUE: u32 = 1;
 const FILE_PERSISTENT_ACLS_FLAG: u32 = 0x0000_0008;
@@ -111,6 +113,7 @@ enum DescriptorKind {
     StableDirectory,
     OperationDirectory,
     PackageLeaf,
+    ExecutableLeaf,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -172,13 +175,36 @@ const PACKAGE_LEAF_ACES: [ExpectedAce; 3] = [
     },
 ];
 
+const EXECUTABLE_LEAF_ACES: [ExpectedAce; 3] = [
+    ExpectedAce {
+        principal: ExpectedPrincipal::Administrators,
+        mask: ADMINISTRATORS_FULL_MASK,
+    },
+    ExpectedAce {
+        principal: ExpectedPrincipal::System,
+        mask: FILE_READ_MASK,
+    },
+    ExpectedAce {
+        principal: ExpectedPrincipal::ShellUser,
+        mask: FILE_READ_EXECUTE_MASK,
+    },
+];
+
 impl DescriptorKind {
     const fn expected_aces(self) -> &'static [ExpectedAce] {
         match self {
             Self::StableDirectory => &STABLE_DIRECTORY_ACES,
             Self::OperationDirectory => &OPERATION_DIRECTORY_ACES,
             Self::PackageLeaf => &PACKAGE_LEAF_ACES,
+            Self::ExecutableLeaf => &EXECUTABLE_LEAF_ACES,
         }
+    }
+}
+
+fn leaf_descriptor_kind(artifact_kind: PackageBridgeArtifactKind) -> DescriptorKind {
+    match artifact_kind {
+        PackageBridgeArtifactKind::Msix => DescriptorKind::PackageLeaf,
+        PackageBridgeArtifactKind::Exe => DescriptorKind::ExecutableLeaf,
     }
 }
 
@@ -202,6 +228,7 @@ pub(super) struct ProtectedPackageBridge {
     final_file: Option<File>,
     final_identity: NativeFileIdentity,
     control: PackageBridgeControl,
+    artifact_kind: PackageBridgeArtifactKind,
 }
 
 impl ProtectedPackageBridge {
@@ -210,6 +237,7 @@ impl ProtectedPackageBridge {
         source_file: &mut File,
         expected_size: u64,
         expected_sha256: &str,
+        artifact_kind: PackageBridgeArtifactKind,
     ) -> Result<Self, InstallerError> {
         if expected_size == 0 || !is_canonical_sid(shell_sid) {
             return Err(bridge_integrity_error(
@@ -233,8 +261,8 @@ impl ProtectedPackageBridge {
             OwnedSecurityDescriptor::for_kind(DescriptorKind::StableDirectory, shell_sid)?;
         let operation_descriptor =
             OwnedSecurityDescriptor::for_kind(DescriptorKind::OperationDirectory, shell_sid)?;
-        let leaf_descriptor =
-            OwnedSecurityDescriptor::for_kind(DescriptorKind::PackageLeaf, shell_sid)?;
+        let leaf_kind = leaf_descriptor_kind(artifact_kind);
+        let leaf_descriptor = OwnedSecurityDescriptor::for_kind(leaf_kind, shell_sid)?;
 
         let root = create_or_open_directory(
             anchor.program_data_file(),
@@ -281,14 +309,10 @@ impl ProtectedPackageBridge {
 
         let part = create_package_leaf(
             &operation.file,
-            PACKAGE_BRIDGE_PART_FILE_NAME,
+            artifact_kind.part_file_name(),
             &leaf_descriptor,
         )?;
-        verify_exact_descriptor(
-            &part,
-            DescriptorKind::PackageLeaf,
-            shell_sid_binary.as_sid(),
-        )?;
+        verify_exact_descriptor(&part, leaf_kind, shell_sid_binary.as_sid())?;
 
         let copied_sha256 = copy_exact_from_source(source_file, &part, expected_size)?;
         if copied_sha256 != expected_sha256 {
@@ -305,7 +329,7 @@ impl ProtectedPackageBridge {
                 "the package bridge partial file identity was invalid",
             ));
         }
-        rename_leaf_without_replacement(&part, INSTALLER_FILE_NAME)?;
+        rename_leaf_without_replacement(&part, artifact_kind.final_file_name())?;
         if native_file_identity(&part, NativeObjectKind::RegularFile)? != part_identity {
             return Err(bridge_integrity_error(
                 "the package bridge file identity changed during finalization",
@@ -313,7 +337,7 @@ impl ProtectedPackageBridge {
         }
         drop(part);
 
-        let final_file = open_final_package_leaf(&operation.file)?;
+        let final_file = open_final_package_leaf(&operation.file, artifact_kind)?;
         let final_identity = native_file_identity(&final_file, NativeObjectKind::RegularFile)?;
         if final_identity != part_identity
             || final_identity.volume_serial != anchor.volume_serial
@@ -324,11 +348,7 @@ impl ProtectedPackageBridge {
                 "the sealed package bridge identity was invalid",
             ));
         }
-        verify_exact_descriptor(
-            &final_file,
-            DescriptorKind::PackageLeaf,
-            shell_sid_binary.as_sid(),
-        )?;
+        verify_exact_descriptor(&final_file, leaf_kind, shell_sid_binary.as_sid())?;
 
         let source_after = native_file_identity(source_file, NativeObjectKind::RegularFile)?;
         if source_after != source_before {
@@ -353,6 +373,7 @@ impl ProtectedPackageBridge {
             final_file: Some(final_file),
             final_identity,
             control,
+            artifact_kind,
         };
         bridge.recheck()?;
         Ok(bridge)
@@ -407,7 +428,7 @@ impl ProtectedPackageBridge {
         }
         verify_exact_descriptor(
             final_file,
-            DescriptorKind::PackageLeaf,
+            leaf_descriptor_kind(self.artifact_kind),
             shell_sid_binary.as_sid(),
         )?;
         if self.identity()
@@ -433,7 +454,7 @@ impl ProtectedPackageBridge {
 
         let delete_file = open_relative(
             &self.operation.file,
-            INSTALLER_FILE_NAME,
+            self.artifact_kind.final_file_name(),
             (DELETE | READ_CONTROL | FILE_READ_ATTRIBUTES | SYNCHRONIZE).0,
             FILE_SHARE_READ.0,
             RelativeDisposition::Open,
@@ -449,7 +470,7 @@ impl ProtectedPackageBridge {
         }
         verify_exact_descriptor(
             &delete_file,
-            DescriptorKind::PackageLeaf,
+            leaf_descriptor_kind(self.artifact_kind),
             shell_sid_binary.as_sid(),
         )?;
         mark_handle_for_deletion(&delete_file)?;
@@ -876,10 +897,13 @@ fn create_package_leaf(
     Ok(file)
 }
 
-fn open_final_package_leaf(operation: &File) -> Result<File, InstallerError> {
+fn open_final_package_leaf(
+    operation: &File,
+    artifact_kind: PackageBridgeArtifactKind,
+) -> Result<File, InstallerError> {
     let file = open_relative(
         operation,
-        INSTALLER_FILE_NAME,
+        artifact_kind.final_file_name(),
         FILE_GENERIC_READ.0,
         FILE_SHARE_READ.0,
         RelativeDisposition::Open,
@@ -1119,22 +1143,33 @@ fn cleanup_one_orphan(
         MAX_OPERATION_ENUMERATION_BATCHES,
     )?;
     let mut leaves = Vec::with_capacity(2);
-    let mut saw_part = false;
-    let mut saw_final = false;
+    let mut saw_msix_part = false;
+    let mut saw_msix_final = false;
+    let mut saw_exe_part = false;
+    let mut saw_exe_final = false;
     for name in names {
         let name_ref = name.as_os_str();
         if name_ref == OsStr::new(".") || name_ref == OsStr::new("..") {
             continue;
         }
-        let is_part = name_ref == OsStr::new(PACKAGE_BRIDGE_PART_FILE_NAME);
-        let is_final = name_ref == OsStr::new(INSTALLER_FILE_NAME);
-        if (!is_part && !is_final) || (is_part && saw_part) || (is_final && saw_final) {
+        let is_msix_part = name_ref == OsStr::new(PACKAGE_BRIDGE_PART_FILE_NAME);
+        let is_msix_final = name_ref == OsStr::new(INSTALLER_FILE_NAME);
+        let is_exe_part = name_ref == OsStr::new(AGENT_PACKAGE_BRIDGE_PART_FILE_NAME);
+        let is_exe_final = name_ref == OsStr::new(AGENT_INSTALLER_FILE_NAME);
+        if (!is_msix_part && !is_msix_final && !is_exe_part && !is_exe_final)
+            || (is_msix_part && saw_msix_part)
+            || (is_msix_final && saw_msix_final)
+            || (is_exe_part && saw_exe_part)
+            || (is_exe_final && saw_exe_final)
+        {
             return Err(bridge_integrity_error(
                 "an orphan package bridge directory contained unknown content",
             ));
         }
-        saw_part |= is_part;
-        saw_final |= is_final;
+        saw_msix_part |= is_msix_part;
+        saw_msix_final |= is_msix_final;
+        saw_exe_part |= is_exe_part;
+        saw_exe_final |= is_exe_final;
         let leaf = open_relative(
             &operation,
             name_ref,
@@ -1151,7 +1186,12 @@ fn cleanup_one_orphan(
                 "an orphan package bridge leaf had multiple links",
             ));
         }
-        verify_exact_descriptor(&leaf, DescriptorKind::PackageLeaf, shell_sid)?;
+        let descriptor_kind = if is_exe_part || is_exe_final {
+            DescriptorKind::ExecutableLeaf
+        } else {
+            DescriptorKind::PackageLeaf
+        };
+        verify_exact_descriptor(&leaf, descriptor_kind, shell_sid)?;
         leaves.push(leaf);
     }
 
@@ -1314,6 +1354,9 @@ impl OwnedSecurityDescriptor {
             ),
             DescriptorKind::PackageLeaf => format!(
                 "O:BAG:BAD:P(A;;0x{ADMINISTRATORS_FULL_MASK:08x};;;BA)(A;;0x{FILE_READ_MASK:08x};;;SY)(A;;0x{FILE_READ_MASK:08x};;;{shell_sid})"
+            ),
+            DescriptorKind::ExecutableLeaf => format!(
+                "O:BAG:BAD:P(A;;0x{ADMINISTRATORS_FULL_MASK:08x};;;BA)(A;;0x{FILE_READ_MASK:08x};;;SY)(A;;0x{FILE_READ_EXECUTE_MASK:08x};;;{shell_sid})"
             ),
         };
         let sddl = wide_null(OsStr::new(&sddl))?;
@@ -1845,6 +1888,7 @@ mod tests {
             DescriptorKind::StableDirectory,
             DescriptorKind::OperationDirectory,
             DescriptorKind::PackageLeaf,
+            DescriptorKind::ExecutableLeaf,
         ] {
             let aces = kind.expected_aces();
             assert_eq!(aces.len(), 3);
@@ -1862,6 +1906,11 @@ mod tests {
             | WRITE_OWNER.0;
         assert_eq!(OPERATION_DIRECTORY_ACES[2].mask & forbidden_mutation, 0);
         assert_eq!(PACKAGE_LEAF_ACES[2].mask & forbidden_mutation, 0);
+        assert_eq!(EXECUTABLE_LEAF_ACES[2].mask & forbidden_mutation, 0);
+        assert_ne!(
+            EXECUTABLE_LEAF_ACES[2].mask & windows::Win32::Storage::FileSystem::FILE_EXECUTE.0,
+            0
+        );
     }
 
     #[test]

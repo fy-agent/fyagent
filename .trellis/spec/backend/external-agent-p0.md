@@ -193,6 +193,13 @@ single | multiple | unsupported | unknown` plus
 - Candidate normalization, provenance union, snapshot expiry, revision
   comparison, and target-selection policy live in
   `agent_install/inventory.rs`. Platform adapters emit evidence only. The
+  managed-desktop card summary is projected from this same normalized probe:
+  `installState`, `localVersion`, update comparison, and closed actions must
+  not consult a second known-path-only observer. One trusted Registry/App
+  Paths/custom-location candidate is installed even when no product-known root
+  contains it; multiple, incomplete, conflicting, or stale-only evidence stays
+  non-green.
+  The
   action owner re-enumerates immediately before launch/write; a missing,
   expired, scope-changed, owner-changed, identity-changed, or revision-changed
   target authorizes zero side effects and returns a closed refresh/target
@@ -217,7 +224,14 @@ single | multiple | unsupported | unknown` plus
   platform IDs and the official macOS `.zip -> .dmg` suffix rewrite. Source,
   schema, allowlist, or probe failure surfaces `source_not_verified` /
   official-page fallback; never pin a researched version URL.
-- Windows EXE artifacts are not installed from elevated FyAgent. macOS DMG
+- Windows EXE artifacts reuse the Codex-tested streaming downloader, retained
+  job capability, protected PackageBridge, authenticated Alice-owned pipe, and
+  fixed sibling `fyagent-user-helper.exe`. The helper accepts only
+  `agent-exe-install --product <qoderwork|trae-work|workbuddy> --job-id <uuid> --pipe <nonce>`;
+  the protocol `Hello` repeats the closed action and product before bridge
+  admission. The parent rejects an action mismatch before the helper can run
+  the installer. There is no renderer/helper path, URL, verb, working
+  directory, free argument vector, or silent-switch input. macOS DMG
   install reuses the Codex-tested read-only mount, exact single-bundle
   discovery, same-volume staging, compensating replacement/rollback, and
   bounded cleanup transaction through one managed-Agent policy adapter. An
@@ -278,8 +292,9 @@ updateState  = unavailable | unknown | up_to_date | update_available | latest_un
 authOwnership = fyagent_managed | agent_owned | provider_owned | unavailable
 authState     = unknown | logged_in | logged_out | provider_connection_required | unavailable
 sourceKind    = cli_tooling | managed_desktop | codex_desktop
-stage         = checking | downloading | staging | installing | verifying_installation
-                | succeeded | failed | cancelled
+stage         = checking | downloading | staging | launching_installer
+                | awaiting_user | installing | verifying_installation
+                | succeeded | failed | cancelled | incomplete
 reasonCode    = official_page_only | source_not_verified | platform_unsupported
                 | interactive_user_unavailable | installed_not_runnable
                 | auth_state_unknown | provider_connection_required
@@ -290,7 +305,10 @@ reasonCode    = official_page_only | source_not_verified | platform_unsupported
                 | target_not_executable | target_scope_unsupported
                 | inventory_expired | candidate_conflict
                 | authorization_required | permission_denied
-                | application_running | installation_verification_failed
+                | application_running | installer_artifact_unavailable
+                | installation_verification_failed
+                | installer_user_cancelled | installer_process_unobservable
+                | installer_timed_out | installer_exited_nonzero
                 | rollback_restored | recovery_required
                 | executor_not_implemented
 ```
@@ -363,6 +381,19 @@ input.
   fetch is `cancelled`, not a source/schema failure. Never pin
   a researched version URL such as TRAE `2.3.76922` or WorkBuddy
   `5.3.14.36279234`.
+- Windows inventory combines Alice `HKEY_USERS` and machine Uninstall/App
+  Paths in explicit 32/64 registry views with product-known roots. Registry
+  parents and children are opened component-by-component with link rejection;
+  registry paths, `UninstallString`, and App Paths values are evidence only and
+  are never executed. The production EXE inspector uses Win32 version-resource
+  APIs, stable file identity, architecture, `WinVerifyTrust`, exactly one
+  top-level signer, and `CryptMsgGetAndVerifySigner` for the signer leaf.
+  Stale/mismatched records remain visible but non-actionable. Any inaccessible
+  view, unsafe child, enumeration error/bound, or frozen Shell-context drift
+  makes the inventory `unknown`, adds `native_projection_unavailable`, and
+  disables fresh destinations; it must not become a false `not_installed`.
+  These three reviewed products are EXE-only and have no guessed PFN/AUMID or
+  PackageManager identity. Codex keeps its separate MSIX owner.
 - Jobs: one in-process slot. Second non-terminal start →
   `operation_conflict`. `staging` means the DMG source and same-volume staged
   app are being inspected before the old target is moved. Cancellation remains
@@ -376,15 +407,28 @@ input.
   `recovery_required`, never green. The V2 Agents page polls
   `get_agent_action_job` until a terminal stage and displays that stage; a
   poll cap must not be treated as failure while the job is still
-  `downloading` / `staging` / `installing`. After a closed identity is bound (macOS
+  `downloading` / `staging` / `launching_installer` / `awaiting_user` /
+  `installing`. On Windows, `launching_installer` is the side-effect boundary
+  and immediately makes the job non-cancellable; `awaiting_user` means the
+  vendor UI/UAC owns interaction. A missing process handle or wait timeout is
+  `incomplete`, not success; FyAgent stops waiting without killing the vendor
+  installer. User/UAC cancellation is a distinct cancelled reason and a
+  nonzero process exit is only a failure hint. Every helper outcome is followed
+  by a fresh inventory readback: exactly one expected trusted candidate must
+  appear/change, otherwise success is forbidden. After a closed identity is bound (macOS
   `CFBundleIdentifier` or Windows PE `ProductName` at a closed relative
   `.exe` path under Alice `LocalAppData\Programs` and machine Program
   Files), absence on macOS/Windows is `not_installed`. Linux development
   hosts stay `unknown`. Do not infer install from vendor config
   directories such as `~/.workbuddy`.
-- Windows EXE/NSIS is a recognized format that reports
-  `interactive_user_unavailable` from elevated FyAgent. macOS DMG is the
-  current closed deploy path. Qoder compares the mounted app to the exact yml
+- Windows EXE/NSIS uses vendor UI only. Qoder's reviewed User-x64 artifact
+  binds the current-user destination; TRAE and WorkBuddy remain
+  vendor-choice/unknown-scope because no stable silent/scope contract is
+  documented. Unsupported architecture remains disabled. Installer admission
+  requires the reviewed closed ProductName and actual signer leaf for the
+  selected product; it never treats registry `Publisher` or the CDN host as a
+  signer. No silent switches are inferred. macOS DMG remains the managed
+  rollback-capable path. Qoder compares the mounted app to the exact yml
   version, TRAE uses bounded non-symlink `product.json.tronBuildVersion`, and
   WorkBuddy permits only the reviewed dotted marketing-version prefix against
   the remote product version. Source/staging/installed copies must still match
@@ -421,7 +465,15 @@ input.
 | macOS staging or target permission is denied                                 | `permission_denied`; preserve the original target                    |
 | Post-install readback rejects path/scope/version or sees a new duplicate      | restore and reverify old target; `rollback_restored` or `recovery_required` |
 | Windows ARM64 desktop source, or unsupported arch                            | `platform_unsupported`                                              |
-| Windows EXE from elevated FyAgent                                            | `interactive_user_unavailable`                                      |
+| Windows inventory has an inaccessible/erroring registry view or Shell-context drift | `unknown` + `native_projection_unavailable`; disable fresh destinations |
+| Windows installer signature/trust/signer/product/architecture admission fails | `source_not_verified` / `platform_unsupported`; zero helper launch   |
+| Windows artifact cannot be staged/reopened through the retained capability     | `installer_artifact_unavailable`; zero helper launch                 |
+| Helper image/SID/pipe/bridge/action binding drifts                           | Fail before admission; zero installer launch                        |
+| User cancels UAC/vendor installer launch                                     | `cancelled` + `installer_user_cancelled`                             |
+| Windows returns no observable process handle                                | `incomplete` + `installer_process_unobservable`; still reread inventory |
+| Vendor installer wait reaches its bound                                     | `incomplete` + `installer_timed_out`; do not kill the installer      |
+| Installer exits nonzero and readback has no expected trusted result          | `failed` + `installer_exited_nonzero`                                |
+| Installer exits/returns success but readback is absent/ambiguous/drifted      | `incomplete` / `installation_verification_failed`; never optimistic success |
 | Closed desktop identity absent on macOS/Windows                              | `not_installed`                                                     |
 | Vendor config directory without closed bundle/exe                            | `not_installed`; not treated as launchable                          |
 | Formal elevated Windows Claude/Grok/OpenCode CLI/auth                        | `interactive_user_unavailable`                                      |
@@ -452,6 +504,9 @@ input.
   duplicate evidence for one stable identity merges provenance; conflicting or
   stale evidence remains non-executable; symbolic labels never expose a user
   profile. Missing/expired/drifted target bindings authorize zero side effects.
+  Windows tests cover Alice/machine Uninstall and App Paths, both WOW64 views,
+  bounded/symbolic-link-safe children, stale records, partial view failure, and
+  fresh-destination blocking when inventory is incomplete.
 - Source parsers: Qoder three archived aliases + `latest.yml` /
   `latest-mac.yml` unindented `version` + Windows ARM64 unsupported + no
   zip/`sha512` admission; TRAE solo/CN vs manifest/Code; WorkBuddy three platform
@@ -465,8 +520,18 @@ input.
   cleanup, cancellation before commit, non-cancellable commit, rollback plus
   restored-identity reread, duplicate-scope rejection, Qoder exact version,
   TRAE `tronBuildVersion`, and WorkBuddy dotted-prefix release comparison.
+- Windows executable admission and runner: Win32 version resources (not PE
+  string-window scanning), file identity/reparse rejection, exact ProductName,
+  `WinVerifyTrust`, one signer leaf, reviewed signer subject, x64-only product
+  policies, retained package capability, PackageBridge hash-while-copy,
+  fixed action/product helper CLI, Hello-action binding, Alice SID/image/nonce/
+  pipe/control checks, UAC cancel, missing process handle, timeout, nonzero exit,
+  and authoritative post-install candidate comparison. No MSIX identity or
+  silent switch is guessed for the three EXE products.
 - Jobs: single-flight, `staging` remains cancellable, refuse cancel after
-  `installing`, unknown job id, Codex install/update reason code.
+  `launching_installer` or `installing`, `awaiting_user` remains non-cancellable,
+  `incomplete` is terminal and releases the slot, unknown job id, Codex
+  install/update reason code.
 - Tooling mapping only: Claude/Grok/OpenCode. Existing Gemini/OpenClaw/Hermes
   lifecycle tests remain green and unrouted.
 - Auth negatives: no vendor credential-file reads; OpenCode is not a global
@@ -475,7 +540,8 @@ input.
   `cancel_agent_action`, `get_agent_action_job`. Renderer ports parse at the
   adapter, never in page-local casts. The Agents install section polls native job stage
   until terminal, shows that stage, and must not paint failure at a poll cap
-  while `downloading`, `staging`, or `installing`.
+  while `downloading`, `staging`, `launching_installer`, `awaiting_user`, or
+  `installing`.
 - Native DMG/EXE/UAC HIL is residual risk, not a portable-test pass.
 
 ##### 7. Wrong vs Correct
@@ -532,8 +598,9 @@ fallback_url = "https://lf-cdn.trae.com.cn/.../2.3.76922/..."; // researched pin
 - Owner: `src-tauri/src/agent_install/desktop.rs` observation/launch, plus
   Windows Explorer launch in
   [Windows Runtime Security](./windows-runtime-security.md).
-- Catalog `app.detect` / `app.launch` stay `Unverified`. Windows EXE
-  _install_ from elevated FyAgent stays `interactive_user_unavailable`.
+- Catalog `app.detect` / `app.launch` stay `Unverified`. Windows EXE install
+  is owned by the closed Agent installer/helper contract above, never by the
+  ordinary trusted-EXE launch action.
 
 ##### 2. Signatures
 
@@ -561,7 +628,8 @@ TraeWork   macos CFBundleIdentifier = cn.trae.solo.app
            windows relative exe     = TRAE SOLO CN/TRAE SOLO CN.exe
                                       Trae Work CN/Trae Work CN.exe
                                       TraeWork_CN/TraeWork_CN.exe
-           windows ProductName      = TRAE SOLO CN | Trae Work CN | TraeWork_CN
+           windows ProductName      = TRAE SOLO CN | Trae Work CN
+                                      | TraeWork CN | TraeWork_CN
 ```
 
 ##### 3. Contracts
@@ -572,14 +640,18 @@ TraeWork   macos CFBundleIdentifier = cn.trae.solo.app
   is `Contents/Resources/app/product.json` `tronBuildVersion` when present,
   otherwise the plist fallback. Never treat Electron `appVersion` /
   `0.1.51` as comparable to `releases/stable/<version>`.
-- Windows scans Alice `LocalAppData\Programs` and machine Program Files
+- Windows combines Alice/machine Uninstall and App Paths in both 32/64 views
+  with Alice `LocalAppData\Programs` and machine Program Files
   (`FOLDERID_ProgramFiles` + `FOLDERID_ProgramFilesX86`, process token
-  `None`) for a closed relative `.exe`. Isolation tests may replace those
-  roots with `FYAGENT_TEST_HOME`. Identity is UTF-16LE `ProductName` (then
-  `FileDescription`) in the first/last 512KiB of the file, matched against
-  the closed ProductName list. Version is `ProductVersion` then
-  `FileVersion`, except TRAE Work CN which prefers sibling
-  `resources/app/product.json` `tronBuildVersion` after identity is proven.
+  `None`). Isolation tests may replace known roots with `FYAGENT_TEST_HOME`.
+  Registry values are hints only. A candidate becomes actionable only after a
+  regular no-reparse file is opened, stable file identity is captured, Win32
+  version resources match the closed ProductName list, architecture is
+  supported, `WinVerifyTrust` succeeds, and the actual signer leaf matches the
+  reviewed subject. Version is `ProductVersion` then `FileVersion`, except
+  TRAE Work CN which prefers sibling `resources/app/product.json`
+  `tronBuildVersion` after identity is proven. The first/last UTF-16 PE scan is
+  test-host compatibility only and is never the Windows production authority.
 - Launch: macOS `open <bundle>`; Windows
   `launch_trusted_windows_exe_as_user` (Explorer `ShellExecute` as Alice,
   no arguments). Missing closed identity returns `installed_not_runnable`.
@@ -600,7 +672,7 @@ TraeWork   macos CFBundleIdentifier = cn.trae.solo.app
 | Closed identity absent on macOS/Windows                       | `not_installed`                                    |
 | Closed identity absent on Linux development host              | `unknown`                                          |
 | Windows launch path is relative, `..`, NUL, or not `.exe`     | `external_launch_invalid_windows_exe`; no launcher |
-| Windows EXE _install_ from elevated FyAgent                   | `interactive_user_unavailable`                     |
+| Downloaded EXE is submitted through ordinary trusted-EXE launch | Reject; installer requires the protected helper contract |
 | Catalog `app.detect` / `app.launch`                           | Remain `Unverified`                                |
 
 ##### 5. Good/Base/Bad Cases
@@ -619,9 +691,11 @@ TraeWork   macos CFBundleIdentifier = cn.trae.solo.app
 - macOS: bundle-id match including folder-name mismatch; wrong bundle id
   rejected. TRAE local version prefers `tronBuildVersion` over plist
   `0.1.51`.
-- Windows: closed relative path plus ProductName; wrong ProductName and
-  wrong path rejected. Isolation uses `FYAGENT_TEST_HOME`, not the real
-  Alice profile. TRAE local version prefers `resources/app/product.json`.
+- Windows: Registry/App Paths/known roots plus Win32 ProductName, stable file
+  identity, trusted signer leaf, and supported architecture; stale/wrong
+  ProductName/wrong signer/wrong path/reparse entries are non-actionable.
+  Isolation uses `FYAGENT_TEST_HOME`, not the real Alice profile. TRAE local
+  version prefers `resources/app/product.json`.
 - Both hosts: vendor config directories are not install evidence; absent
   launch is `installed_not_runnable`; shipped-host absence is
   `not_installed`.
@@ -643,7 +717,7 @@ fn observe_on_host(_) -> DesktopObservation { /* Windows implied */ }
 
 ```rust
 // macOS: CFBundleIdentifier == closed id
-// Windows: roots.join(closed_relative_exe) + PE ProductName in closed list
+// Windows: bounded registry/known-root hints + Win32 ProductName + signer/file identity
 // Linux: unknown, not a product host
 ```
 
@@ -919,8 +993,9 @@ underscore IDE key.
 | TRAE resolver selects `data.manifest` or a `TraeCode_*` URL                                 | Fail closed; Work package is not started                                                   |
 | Codex install/update is started on the Agent job slot                                       | `managed_by_codex_desktop`; Codex Desktop installer remains the owner                      |
 | Gemini CLI / OpenClaw / Hermes is routed through the Agent façade                           | Contract regression; those Tooling surfaces stay independent                               |
-| Formal elevated Windows CLI/auth or Windows EXE deploy is attempted from FyAgent            | `interactive_user_unavailable`; no generic path/shell helper                               |
-| A second non-terminal Agent job starts, or cancel is requested after `installing`           | `operation_conflict`                                                                       |
+| Formal elevated Windows CLI/auth is attempted from FyAgent                                  | `interactive_user_unavailable`; do not route user tools through the EXE installer helper   |
+| Windows EXE deploy bypasses the closed product/helper/bridge contract                       | Reject; no generic path/shell helper or ordinary trusted-EXE launch                        |
+| A second non-terminal Agent job starts, or cancel is requested after `launching_installer` / `installing` | `operation_conflict`                                                        |
 
 ## 5. Good / Base / Bad Cases
 

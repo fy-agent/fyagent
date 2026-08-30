@@ -20,10 +20,11 @@ use std::{
 };
 
 use fyagent_user_helper::{
-    admission_event_name, cancel_event_name, decode_frame, layout::pipe_name, CanonicalJobId,
-    HelperErrorCode, HelperMessage, HelperProtocolAction, HelperProtocolSequence,
-    HelperProtocolTerminal, PackageBridgeControl, PinnedPackageIdentity, PipeNonce,
-    BRIDGE_CONTROL_BYTES, MAX_FRAME_BYTES,
+    admission_event_name, cancel_event_name, decode_frame, layout::pipe_name,
+    AgentInstallerProduct, CanonicalJobId, HelperErrorCode, HelperMessage, HelperProtocolAction,
+    HelperProtocolSequence, HelperProtocolTerminal, PackageBridgeArtifactKind,
+    PackageBridgeControl, PinnedPackageIdentity, PipeNonce, UserHelperAction, BRIDGE_CONTROL_BYTES,
+    MAX_FRAME_BYTES,
 };
 use windows::{
     core::{HRESULT, PCWSTR, PWSTR},
@@ -71,6 +72,7 @@ use super::{
 };
 use crate::{
     codex_desktop::{
+        download::DownloadedArtifact,
         error::{InstallerError, InstallerErrorCode},
         types::{JobProgress, ProgressPhase},
     },
@@ -113,7 +115,14 @@ impl WindowsUserHelperRunner for SystemWindowsUserHelperRunner {
         deadlines: WindowsHelperDeadlines,
     ) -> Result<(), InstallerError> {
         let job_id = CanonicalJobId::parse(job_id).map_err(|_| helper_identity_error())?;
-        run_pinned_user_helper(context, &job_id, pin, progress, deadlines)
+        run_pinned_user_helper(
+            context,
+            UserHelperAction::CodexMsixInstall,
+            &job_id,
+            pin,
+            progress,
+            deadlines,
+        )
     }
 }
 
@@ -135,6 +144,38 @@ impl VerifiedFilePin {
             expected_sha256: package.local_sha256().to_owned(),
         })
     }
+
+    fn open_downloaded_artifact(artifact: &DownloadedArtifact) -> Result<Self, InstallerError> {
+        let file = artifact.open_for_read()?;
+        let identity = checked_file_identity(HANDLE(file.as_raw_handle()), artifact.actual_size())?;
+        Ok(Self {
+            file: Mutex::new(file),
+            identity,
+            expected_size: artifact.actual_size(),
+            expected_sha256: artifact.local_sha256().to_owned(),
+        })
+    }
+}
+
+pub(crate) fn run_verified_agent_exe_installer(
+    context: &InteractiveUserContext,
+    product: AgentInstallerProduct,
+    job_id: &str,
+    artifact: &DownloadedArtifact,
+    progress: PlatformProgressSink,
+) -> Result<(), InstallerError> {
+    let job_id = CanonicalJobId::parse(job_id).map_err(|_| helper_identity_error())?;
+    artifact.revalidate()?;
+    let pin = VerifiedFilePin::open_downloaded_artifact(artifact)?;
+    pin.recheck()?;
+    run_pinned_user_helper(
+        context,
+        UserHelperAction::AgentExeInstall(product),
+        &job_id,
+        Box::new(pin),
+        progress,
+        WindowsHelperDeadlines::AGENT_EXE_INSTALL,
+    )
 }
 
 impl WindowsVerifiedFilePin for VerifiedFilePin {
@@ -176,6 +217,7 @@ impl WindowsVerifiedFilePin for VerifiedFilePin {
 /// and helper-image handles until PackageManager has a proven terminal outcome.
 fn run_pinned_user_helper(
     context: &InteractiveUserContext,
+    action: UserHelperAction,
     job_id: &CanonicalJobId,
     pin: Box<dyn WindowsVerifiedFilePin>,
     progress: PlatformProgressSink,
@@ -202,6 +244,7 @@ fn run_pinned_user_helper(
         &mut source_file,
         expected_size,
         pin.expected_sha256(),
+        action.artifact_kind(),
     );
     drop(source_file);
     let bridge = bridge?;
@@ -224,7 +267,7 @@ fn run_pinned_user_helper(
     };
     let mut lifetime = HelperLifetime::new(pin, bridge, helper_image, controls, server);
 
-    match launch_fyagent_user_helper_as_user(job_id, &nonce) {
+    match launch_fyagent_user_helper_as_user(action, job_id, &nonce) {
         UserHelperLaunchOutcome::Confirmed => {}
         UserHelperLaunchOutcome::MayHaveLaunched => {
             return fail_before_admission(gate, lifetime, helper_launch_pending_error());
@@ -276,12 +319,12 @@ fn run_pinned_user_helper(
     };
     let mut sequence = HelperProtocolSequence::default();
     match sequence.accept(first_message) {
-        Ok(HelperProtocolAction::Hello) => {}
+        Ok(HelperProtocolAction::Hello(received_action)) if received_action == action => {}
         _ => {
             return fail_before_admission(
                 gate,
                 lifetime,
-                helper_pipe_error("the user-helper did not begin with Hello"),
+                helper_pipe_error("the user-helper action did not match the admitted request"),
             )
         }
     }
@@ -943,7 +986,7 @@ fn consume_protocol(
             }
         };
         match accept_protocol_message(sequence, message)? {
-            HelperProtocolAction::Hello | HelperProtocolAction::Started(_) => {
+            HelperProtocolAction::Hello(_) | HelperProtocolAction::Started(_) => {
                 return Err(helper_pipe_error(
                     "the user-helper repeated its handshake after admission",
                 ))
@@ -1060,6 +1103,23 @@ fn map_helper_error(code: HelperErrorCode) -> InstallerError {
         HelperErrorCode::SignatureInvalid => InstallerErrorCode::PackageSignatureInvalid,
         HelperErrorCode::PackageInvalid => InstallerErrorCode::PackageParseFailed,
         HelperErrorCode::PackageDowngrade => InstallerErrorCode::MetadataChanged,
+        HelperErrorCode::InstallerLaunchFailed => InstallerErrorCode::LaunchFailed,
+        HelperErrorCode::InstallerCancelled => {
+            return InstallerError::new(InstallerErrorCode::DownloadCancelled)
+                .with_platform_error_code("agent_installer_user_cancelled")
+        }
+        HelperErrorCode::InstallerTimedOut => {
+            return InstallerError::new(InstallerErrorCode::WindowsDeploymentFailed)
+                .with_platform_error_code("agent_installer_timed_out")
+        }
+        HelperErrorCode::InstallerProcessUnobservable => {
+            return InstallerError::new(InstallerErrorCode::WindowsDeploymentFailed)
+                .with_platform_error_code("agent_installer_process_unobservable")
+        }
+        HelperErrorCode::InstallerExitedNonzero => {
+            return InstallerError::new(InstallerErrorCode::WindowsDeploymentFailed)
+                .with_platform_error_code("agent_installer_exited_nonzero")
+        }
         HelperErrorCode::InstallLayoutInvalid
         | HelperErrorCode::WinRtInitializationFailed
         | HelperErrorCode::PackageUriInvalid
@@ -1513,9 +1573,12 @@ mod tests {
     #[test]
     fn parent_sequence_requires_hello_control_started_admission_and_terminal() {
         let mut sequence = HelperProtocolSequence::default();
+        let action = UserHelperAction::CodexMsixInstall;
         assert!(matches!(
-            sequence.accept(HelperMessage::Hello).unwrap(),
-            HelperProtocolAction::Hello
+            sequence
+                .accept(HelperMessage::Hello { action })
+                .unwrap(),
+            HelperProtocolAction::Hello(received) if received == action
         ));
         sequence.mark_control_sent().unwrap();
         assert!(matches!(

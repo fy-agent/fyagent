@@ -111,7 +111,14 @@ impl AgentActionJobStore {
         }
         job.snapshot.stage = stage;
         job.snapshot.reason_code = reason_code;
-        if is_terminal(stage) || stage == AgentActionJobStage::Installing {
+        if is_terminal(stage)
+            || matches!(
+                stage,
+                AgentActionJobStage::LaunchingInstaller
+                    | AgentActionJobStage::AwaitingUser
+                    | AgentActionJobStage::Installing
+            )
+        {
             job.snapshot.cancellable = false;
         }
         Ok(job.snapshot.clone())
@@ -128,6 +135,7 @@ fn is_terminal(stage: AgentActionJobStage) -> bool {
         AgentActionJobStage::Succeeded
             | AgentActionJobStage::Failed
             | AgentActionJobStage::Cancelled
+            | AgentActionJobStage::Incomplete
     )
 }
 
@@ -169,6 +177,44 @@ mod tests {
             Err(AgentReasonCode::OperationConflict)
         );
         assert!(!flag.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn external_installer_launch_is_the_non_cancellable_boundary() {
+        for stage in [
+            AgentActionJobStage::LaunchingInstaller,
+            AgentActionJobStage::AwaitingUser,
+        ] {
+            let store = AgentActionJobStore::new();
+            let (job, flag) = store
+                .start(AgentCatalogId::WorkBuddy, AgentActionId::Install)
+                .unwrap();
+            let snapshot = store.transition(&job.job_id, stage, None).unwrap();
+            assert!(!snapshot.cancellable);
+            assert_eq!(
+                store.request_cancel(&job.job_id),
+                Err(AgentReasonCode::OperationConflict)
+            );
+            assert!(!flag.load(Ordering::Acquire));
+        }
+    }
+
+    #[test]
+    fn incomplete_is_terminal_and_allows_a_new_job() {
+        let store = AgentActionJobStore::new();
+        let (job, _) = store
+            .start(AgentCatalogId::TraeWork, AgentActionId::Install)
+            .unwrap();
+        store
+            .transition(
+                &job.job_id,
+                AgentActionJobStage::Incomplete,
+                Some(AgentReasonCode::InstallerProcessUnobservable),
+            )
+            .unwrap();
+        assert!(store
+            .start(AgentCatalogId::QoderWork, AgentActionId::Install)
+            .is_ok());
     }
 
     #[test]

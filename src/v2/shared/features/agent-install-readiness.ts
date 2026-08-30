@@ -130,7 +130,12 @@ export const AGENT_REASON_CODES = [
   "authorization_required",
   "permission_denied",
   "application_running",
+  "installer_artifact_unavailable",
   "installation_verification_failed",
+  "installer_user_cancelled",
+  "installer_process_unobservable",
+  "installer_timed_out",
+  "installer_exited_nonzero",
   "rollback_restored",
   "recovery_required",
   "executor_not_implemented",
@@ -141,11 +146,14 @@ export const AGENT_ACTION_JOB_STAGES = [
   "checking",
   "downloading",
   "staging",
+  "launching_installer",
+  "awaiting_user",
   "installing",
   "verifying_installation",
   "succeeded",
   "failed",
   "cancelled",
+  "incomplete",
 ] as const;
 export type AgentActionJobStage = (typeof AGENT_ACTION_JOB_STAGES)[number];
 

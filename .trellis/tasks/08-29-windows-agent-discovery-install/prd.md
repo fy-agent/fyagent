@@ -30,7 +30,10 @@
 - Registry location 是代码内闭集，沿用/扩展 `windows_runtime::registry` 的 component-by-component、symbolic-link-safe 只读遍历；不得让 renderer 或 registry 内容提供下一段任意 key path。
 - 明确访问 WOW64 32/64 view；一个 view 失败不能把另一个 view 的结果误写为完整 inventory。
 - App Paths 和 Uninstall 记录是证据，不是唯一真相。缺失文件、错误 product identity、错误 signer 或 stale record 返回 non-actionable observation。
-- MSIX 使用 PackageManager 的 package identity/version/install location；权限不足或当前用户上下文不可用是 `unknown/unavailable`，不是 `not_installed`。
+- MSIX 仅在产品存在受审查的 package identity 时使用 PackageManager。
+  2026-08-30 的三款当前来源均为 EXE，未发现可绑定的 PFN/AUMID，因此
+  不得为了“覆盖 MSIX”而猜测 PackageManager 身份；Codex 现有 MSIX
+  inventory/helper 回归保持独立绿色。未来产品出现真实 MSIX 来源时再接入。
 - Known paths 是最后一层受控证据，不进行全盘扫描、WMI 产品枚举或递归搜索所有驱动器。
 - EXE identity/version 使用 Windows Version APIs（GetFileVersionInfo/VerQueryValue 或现有可信封装），不继续把 PE 首尾 UTF-16 字符串扫描作为生产权威。
 - 多来源指向同一 canonical executable/package 时合并；多份真实安装全部保留。
@@ -95,7 +98,7 @@
 
 ## Acceptance Criteria
 
-- [ ] Inventory 覆盖 interactive-user/machine Uninstall、32/64 registry views、App Paths、PackageManager 和 known paths，并保留来源与 partial-failure 状态。
+- [ ] Inventory 覆盖 interactive-user/machine Uninstall、32/64 registry views、App Paths 和 known paths，并保留来源与 partial-failure 状态；当前三款 EXE 明确记录 PackageManager 不适用，Codex MSIX 回归保持绿色。
 - [ ] Elevated FyAgent 仍读取 Explorer 用户的 per-user 安装，不误读管理员进程 HKCU。
 - [ ] Registry symbolic link、oversized/unexpected values、控制字符和非绝对路径 fail closed。
 - [ ] 同一 EXE 的 registry + App Paths + known-path 证据合并；不同 scope/custom path 候选不合并。

@@ -43,7 +43,12 @@ export type AgentLifecycleActionView = {
 };
 
 export function isTerminalAgentJobStage(stage: AgentActionJobStage): boolean {
-  return stage === "succeeded" || stage === "failed" || stage === "cancelled";
+  return (
+    stage === "succeeded" ||
+    stage === "failed" ||
+    stage === "cancelled" ||
+    stage === "incomplete"
+  );
 }
 
 export function deriveAgentLifecyclePrimaryAction(
@@ -102,8 +107,18 @@ export function reasonCopy(code: AgentReasonCode): string | null {
       return "没有权限更新所选位置。原应用保持不变。";
     case "application_running":
       return "应用仍在运行。请先完全退出，再重新执行。";
+    case "installer_artifact_unavailable":
+      return "安装包下载后的本地暂存或安全校验失败，请重试并检查磁盘空间与文件权限。";
     case "installation_verification_failed":
       return "安装后验证未通过，未确认新版本可用。";
+    case "installer_user_cancelled":
+      return "你取消了 Windows 安装向导或 UAC 请求。";
+    case "installer_process_unobservable":
+      return "安装向导已打开，但 Windows 未提供可跟踪的安装进程。请检查应用是否已完成安装。";
+    case "installer_timed_out":
+      return "安装向导长时间未结束。FyAgent 已停止等待，但不会强制关闭安装器。";
+    case "installer_exited_nonzero":
+      return "Windows 安装向导以失败状态退出，且安装后验证未通过。";
     case "rollback_restored":
       return "新版本验证未通过，已恢复原应用。";
     case "recovery_required":
@@ -127,6 +142,10 @@ export function jobStageCopy(stage: AgentActionJobStage): string {
       return "正在下载安装包";
     case "staging":
       return "正在准备并验证应用";
+    case "launching_installer":
+      return "正在打开 Windows 安装向导";
+    case "awaiting_user":
+      return "安装向导已打开，请在 Windows 中完成安装";
     case "installing":
       return "正在安装";
     case "verifying_installation":
@@ -137,6 +156,8 @@ export function jobStageCopy(stage: AgentActionJobStage): string {
       return "操作失败";
     case "cancelled":
       return "操作已取消";
+    case "incomplete":
+      return "安装结果尚未确认";
   }
 }
 

@@ -1,4 +1,8 @@
-# Current Windows gap review
+# Pre-implementation Windows gap review
+
+This note records the baseline observed before Stage 3 implementation. The
+completed design and current executable contracts supersede the gaps below;
+do not use the former `windows_exe_unavailable` behavior as current authority.
 
 ## Required full-contract reads
 

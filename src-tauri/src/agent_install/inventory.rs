@@ -14,7 +14,7 @@ use sha2::{Digest, Sha256};
 
 use super::{
     cli::{observe_cli, tooling_id_for},
-    desktop::discover_desktop_installations,
+    desktop::{discover_desktop_installation_inventory, DesktopInstallationDiscovery},
     types::{
         validate_opaque_inventory_id, validate_opaque_target_id, validate_opaque_target_revision,
         AgentActionId, AgentInstallationInventoryDto, AgentReasonCode, FreshInstallDestinationDto,
@@ -50,8 +50,6 @@ pub(super) enum FreshDestinationCapability {
     MacSystemApplications,
     #[cfg(target_os = "windows")]
     WindowsCurrentUser,
-    #[cfg(target_os = "windows")]
-    WindowsAllUsers,
     #[cfg(target_os = "windows")]
     VendorInstallerChoice,
     CliPackageManager,
@@ -149,6 +147,15 @@ struct InventoryProbe {
     candidates: Vec<ProbeCandidate>,
     destinations: Vec<ProbeDestination>,
     reason_codes: Vec<AgentReasonCode>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct InventoryReadinessProjection {
+    pub(super) state: InstallationInventoryState,
+    pub(super) single_local_version: Option<String>,
+    pub(super) single_launch_eligible: bool,
+    pub(super) single_update_eligible: bool,
+    pub(super) reason_codes: Vec<AgentReasonCode>,
 }
 
 impl InventoryProbe {
@@ -291,11 +298,30 @@ pub async fn inventory_for(
     project_and_store(agent_id, probe, &state.agent_installation_inventory)
 }
 
-pub async fn inventory_summary(
+pub async fn inventory_readiness_projection(
     agent_id: AgentCatalogId,
     state: &AppState,
-) -> InstallationInventoryState {
-    probe_inventory(agent_id, state).await.state()
+) -> InventoryReadinessProjection {
+    project_readiness(probe_inventory(agent_id, state).await)
+}
+
+fn project_readiness(probe: InventoryProbe) -> InventoryReadinessProjection {
+    let state = probe.state();
+    let single = if state == InstallationInventoryState::Single {
+        probe
+            .candidates
+            .iter()
+            .find(|candidate| candidate.trusted())
+    } else {
+        None
+    };
+    InventoryReadinessProjection {
+        state,
+        single_local_version: single.and_then(|candidate| candidate.local_version.clone()),
+        single_launch_eligible: single.is_some_and(|candidate| candidate.launch_eligible),
+        single_update_eligible: single.is_some_and(|candidate| candidate.update_eligible),
+        reason_codes: probe.reason_codes,
+    }
 }
 
 pub async fn validate_action_target(
@@ -543,52 +569,72 @@ fn probe_desktop(agent_id: AgentCatalogId) -> InventoryProbe {
             reason_codes: vec![AgentReasonCode::PlatformUnsupported],
         };
     }
+    let discovery = discover_desktop_installation_inventory(agent_id);
+    project_desktop_discovery(agent_id, discovery)
+}
+
+fn project_desktop_discovery(
+    agent_id: AgentCatalogId,
+    discovery: DesktopInstallationDiscovery,
+) -> InventoryProbe {
+    let complete = discovery.complete;
     let mut candidates = Vec::new();
-    for evidence in discover_desktop_installations(agent_id) {
+    for evidence in discovery.installations {
         let update_requires_authorization =
             cfg!(target_os = "macos") && evidence.scope == InstallationScope::AllUsers;
         let location_label =
             desktop_location_label(agent_id, evidence.scope, evidence.package_kind);
+        let mut reason_codes = evidence.reason_codes;
+        if update_requires_authorization
+            && !reason_codes.contains(&AgentReasonCode::AuthorizationRequired)
+        {
+            reason_codes.push(AgentReasonCode::AuthorizationRequired);
+        }
+        let capability = InstallationTargetCapability::Desktop {
+            path: evidence.path,
+            scope: evidence.scope,
+            package_kind: evidence.package_kind,
+        };
         let mut candidate = ProbeCandidate {
             stable_key: evidence.stable_key,
             revision: String::new(),
             scope: evidence.scope,
-            owner: InstallationOwner::VendorInstaller,
+            owner: evidence.owner,
             package_kind: evidence.package_kind,
             local_version: evidence.local_version,
-            launch_eligible: true,
+            launch_eligible: evidence.launch_eligible,
             install_eligible: false,
-            update_eligible: !update_requires_authorization,
-            reason_codes: if update_requires_authorization {
-                vec![AgentReasonCode::AuthorizationRequired]
-            } else {
-                Vec::new()
-            },
-            evidence_codes: match evidence.package_kind {
-                InstallationPackageKind::AppBundle => {
-                    vec![InstallationEvidenceCode::BundleIdentity]
-                }
-                InstallationPackageKind::Exe => vec![
-                    InstallationEvidenceCode::KnownPath,
-                    InstallationEvidenceCode::FileIdentity,
-                ],
-                _ => vec![InstallationEvidenceCode::FileIdentity],
-            },
+            update_eligible: evidence.update_eligible && !update_requires_authorization,
+            reason_codes,
+            evidence_codes: evidence.evidence_codes,
             location_label,
-            capability: InstallationTargetCapability::Desktop {
-                path: evidence.path,
-                scope: evidence.scope,
-                package_kind: evidence.package_kind,
-            },
+            capability,
         };
         refresh_candidate_revision(&mut candidate);
         candidates.push(candidate);
     }
+    let mut destinations = desktop_destinations(agent_id);
+    let mut reason_codes = Vec::new();
+    if !complete {
+        reason_codes.push(AgentReasonCode::NativeProjectionUnavailable);
+        for destination in &mut destinations {
+            destination.eligible = false;
+            if !destination
+                .reason_codes
+                .contains(&AgentReasonCode::NativeProjectionUnavailable)
+            {
+                destination
+                    .reason_codes
+                    .push(AgentReasonCode::NativeProjectionUnavailable);
+            }
+            refresh_destination_revision(destination);
+        }
+    }
     InventoryProbe {
-        state_override: None,
+        state_override: (!complete).then_some(InstallationInventoryState::Unknown),
         candidates: normalize_candidates(candidates),
-        destinations: desktop_destinations(agent_id),
-        reason_codes: Vec::new(),
+        destinations,
+        reason_codes,
     }
 }
 
@@ -848,35 +894,27 @@ fn desktop_destinations(_agent_id: AgentCatalogId) -> Vec<ProbeDestination> {
     {
         let agent_id = _agent_id;
         let name = agent_display_name(agent_id);
-        return vec![
-            destination(
+        return match agent_id {
+            AgentCatalogId::QoderWork => vec![destination(
                 &format!("windows:{agent_id:?}:current-user"),
                 InstallationScope::CurrentUser,
                 InstallationPackageKind::Exe,
                 false,
                 true,
-                &format!("%LOCALAPPDATA%\\Programs\\{name}"),
+                &format!("当前用户安装（默认位于 %LOCALAPPDATA%\\Programs\\{name}）"),
                 FreshDestinationCapability::WindowsCurrentUser,
-            ),
-            destination(
-                &format!("windows:{agent_id:?}:all-users"),
-                InstallationScope::AllUsers,
-                InstallationPackageKind::Exe,
-                true,
-                true,
-                &format!("%PROGRAMFILES%\\{name}"),
-                FreshDestinationCapability::WindowsAllUsers,
-            ),
-            destination(
+            )],
+            AgentCatalogId::TraeWork | AgentCatalogId::WorkBuddy => vec![destination(
                 &format!("windows:{agent_id:?}:vendor-choice"),
                 InstallationScope::Unknown,
                 InstallationPackageKind::Exe,
                 true,
                 true,
-                "Vendor installer choice",
+                "由安装向导选择安装位置（可能触发 UAC）",
                 FreshDestinationCapability::VendorInstallerChoice,
-            ),
-        ];
+            )],
+            _ => Vec::new(),
+        };
     }
     #[allow(unreachable_code)]
     Vec::new()
@@ -891,19 +929,9 @@ fn destination(
     location_label: &str,
     capability: FreshDestinationCapability,
 ) -> ProbeDestination {
-    ProbeDestination {
+    let mut destination = ProbeDestination {
         stable_key: stable_key.to_string(),
-        revision: revision_for(&[
-            stable_key,
-            scope_key(scope),
-            package_key(package_kind),
-            if requires_elevation {
-                "elevated"
-            } else {
-                "user"
-            },
-            if writable { "writable" } else { "not-writable" },
-        ]),
+        revision: String::new(),
         scope,
         owner: InstallationOwner::VendorInstaller,
         package_kind,
@@ -917,7 +945,40 @@ fn destination(
         },
         location_label: location_label.to_string(),
         capability,
-    }
+    };
+    refresh_destination_revision(&mut destination);
+    destination
+}
+
+fn refresh_destination_revision(destination: &mut ProbeDestination) {
+    let mut reasons = destination
+        .reason_codes
+        .iter()
+        .map(|code| format!("{code:?}"))
+        .collect::<Vec<_>>();
+    reasons.sort();
+    let reasons = reasons.join(",");
+    destination.revision = revision_for(&[
+        &destination.stable_key,
+        scope_key(destination.scope),
+        package_key(destination.package_kind),
+        if destination.requires_elevation {
+            "elevated"
+        } else {
+            "user"
+        },
+        if destination.writable {
+            "writable"
+        } else {
+            "not-writable"
+        },
+        if destination.eligible {
+            "eligible"
+        } else {
+            "ineligible"
+        },
+        &reasons,
+    ]);
 }
 
 fn desktop_location_label(
@@ -939,7 +1000,7 @@ fn desktop_location_label(
         (InstallationScope::AllUsers, InstallationPackageKind::Exe) => {
             format!("%PROGRAMFILES%\\{name}")
         }
-        _ => format!("Custom location ({name})"),
+        _ => format!("自定义位置（{name}）"),
     }
 }
 
@@ -1100,6 +1161,42 @@ mod tests {
             ),
             "%LOCALAPPDATA%\\Programs\\WorkBuddy"
         );
+        assert_eq!(
+            desktop_location_label(
+                AgentCatalogId::WorkBuddy,
+                InstallationScope::Custom,
+                InstallationPackageKind::Exe,
+            ),
+            "自定义位置（WorkBuddy）"
+        );
+    }
+
+    #[test]
+    fn incomplete_desktop_discovery_disables_fresh_destinations_and_stays_unknown() {
+        let probe = project_desktop_discovery(
+            AgentCatalogId::QoderWork,
+            DesktopInstallationDiscovery {
+                installations: Vec::new(),
+                complete: false,
+            },
+        );
+
+        assert_eq!(
+            probe.state_override,
+            Some(InstallationInventoryState::Unknown)
+        );
+        assert_eq!(
+            probe.reason_codes,
+            vec![AgentReasonCode::NativeProjectionUnavailable]
+        );
+        assert!(!probe.destinations.is_empty());
+        assert!(probe.destinations.iter().all(|destination| {
+            !destination.eligible
+                && destination
+                    .reason_codes
+                    .contains(&AgentReasonCode::NativeProjectionUnavailable)
+                && validate_opaque_target_revision(&destination.revision)
+        }));
     }
 
     #[cfg(target_os = "macos")]

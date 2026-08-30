@@ -29,8 +29,9 @@ use windows::{
     },
     Win32::{
         Foundation::{
-            ERROR_IO_PENDING, HANDLE, HLOCAL, INVALID_HANDLE_VALUE, OBJ_CASE_INSENSITIVE,
-            OBJ_DONT_REPARSE, UNICODE_STRING, WAIT_FAILED, WAIT_OBJECT_0, WAIT_TIMEOUT,
+            GetLastError, ERROR_CANCELLED, ERROR_IO_PENDING, HANDLE, HLOCAL, INVALID_HANDLE_VALUE,
+            OBJ_CASE_INSENSITIVE, OBJ_DONT_REPARSE, UNICODE_STRING, WAIT_FAILED, WAIT_OBJECT_0,
+            WAIT_TIMEOUT,
         },
         Security::{
             AccessCheck, AclSizeInformation,
@@ -64,8 +65,9 @@ use windows::{
             Com::CoTaskMemFree,
             SystemServices::{ACCESS_ALLOWED_ACE_TYPE, FILE_PERSISTENT_ACLS, MAXIMUM_ALLOWED},
             Threading::{
-                CreateEventW, GetCurrentProcess, OpenEventW, OpenProcessToken, SetEvent,
-                WaitForMultipleObjects, WaitForSingleObject, SYNCHRONIZATION_ACCESS_RIGHTS,
+                CreateEventW, GetCurrentProcess, GetExitCodeProcess, OpenEventW, OpenProcessToken,
+                SetEvent, WaitForMultipleObjects, WaitForSingleObject,
+                SYNCHRONIZATION_ACCESS_RIGHTS,
             },
             WinRT::{RoInitialize, RoUninitialize, RO_INIT_MULTITHREADED},
             WindowsProgramming::DRIVE_FIXED,
@@ -74,9 +76,10 @@ use windows::{
             },
         },
         UI::Shell::{
-            FOLDERID_ProgramData, PathCreateFromUrlW, SHGetKnownFolderPath, UrlCreateFromPathW,
-            KF_FLAG_DEFAULT,
+            FOLDERID_ProgramData, PathCreateFromUrlW, SHGetKnownFolderPath, ShellExecuteExW,
+            UrlCreateFromPathW, KF_FLAG_DEFAULT, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW,
         },
+        UI::WindowsAndMessaging::SW_SHOWNORMAL,
     },
 };
 use windows_future::{
@@ -91,21 +94,23 @@ use fyagent_user_helper::{
         pipe_name, USER_HELPER_CONTROL_EVENT_ACCESS_MASK, USER_HELPER_EXECUTABLE_FILE_NAME,
         USER_HELPER_PIPE_CLIENT_ACCESS_MASK,
     },
-    BridgeOperationId, HelperErrorCode, HelperMessage, InstallRequest, PackageBridgeControl,
-    PinnedPackageIdentity, BRIDGE_CONTROL_BYTES, INSTALLER_FILE_NAME,
-    PACKAGE_BRIDGE_ROOT_DIRECTORY, PACKAGE_BRIDGE_VERSION_DIRECTORY,
+    AgentInstallerProduct, BridgeOperationId, HelperErrorCode, HelperMessage, InstallRequest,
+    PackageBridgeArtifactKind, PackageBridgeControl, PinnedPackageIdentity, UserHelperAction,
+    BRIDGE_CONTROL_BYTES, PACKAGE_BRIDGE_ROOT_DIRECTORY, PACKAGE_BRIDGE_VERSION_DIRECTORY,
 };
 
 // Covers the parent's 30-second Explorer COM launch wait, pipe connection,
 // raw-first-frame identity admission, and a bounded authentication margin.
 const ADMISSION_TIMEOUT: Duration = Duration::from_secs(75);
 const DEPLOYMENT_TIMEOUT: Duration = Duration::from_secs(9 * 60);
+const EXE_INSTALLER_TIMEOUT: Duration = Duration::from_secs(30 * 60);
 const WAIT_SLICE: Duration = Duration::from_millis(250);
 const PIPE_IO_TIMEOUT: Duration = Duration::from_secs(5);
 const BA_FULL_MASK: u32 = 0x001f_01ff;
 const DIRECTORY_READ_MASK: u32 = 0x0012_00a9;
 const DIRECTORY_TRAVERSE_MASK: u32 = 0x0012_00a0;
 const FILE_READ_MASK: u32 = 0x0012_0089;
+const FILE_READ_EXECUTE_MASK: u32 = 0x0012_00a9;
 const ANCESTOR_DANGEROUS_ACCESS: u32 = DELETE.0
     | FILE_DELETE_CHILD.0
     | FILE_WRITE_EA.0
@@ -147,6 +152,7 @@ impl std::fmt::Display for HelperRunError {
 impl std::error::Error for HelperRunError {}
 
 pub(crate) fn run_install(request: &InstallRequest) -> Result<(), HelperRunError> {
+    let action = request.action();
     let executable = std::env::current_exe()
         .map_err(|_| HelperRunError::OperationFailed(HelperErrorCode::InstallLayoutInvalid))?;
     if executable.file_name().is_none_or(|name| {
@@ -165,7 +171,7 @@ pub(crate) fn run_install(request: &InstallRequest) -> Result<(), HelperRunError
     let controls = ParentControls::open(request)?;
     let channel = PipeChannel::connect(&pipe_name(request.pipe_nonce()))?;
     let channel = Arc::new(channel);
-    channel.send_hello()?;
+    channel.send_hello(action)?;
 
     let bridge_control = match channel.read_bridge_control(ADMISSION_TIMEOUT) {
         Ok(control) => control,
@@ -174,7 +180,7 @@ pub(crate) fn run_install(request: &InstallRequest) -> Result<(), HelperRunError
             return Err(error);
         }
     };
-    let package_pin = match PinnedPackageFile::open(bridge_control) {
+    let package_pin = match PinnedPackageFile::open(bridge_control, action.artifact_kind()) {
         Ok(package_pin) => package_pin,
         Err(error) => {
             let code = match error {
@@ -196,9 +202,20 @@ pub(crate) fn run_install(request: &InstallRequest) -> Result<(), HelperRunError
         return Err(HelperRunError::OperationFailed(code));
     }
     channel.mark_admitted()?;
-    channel.send_progress(0)?;
+    if action == UserHelperAction::CodexMsixInstall {
+        channel.send_progress(0)?;
+    }
 
-    match deploy_fixed_package(&package_pin, &channel, &controls) {
+    let result = match action {
+        UserHelperAction::CodexMsixInstall => {
+            deploy_fixed_package(&package_pin, &channel, &controls)
+        }
+        UserHelperAction::AgentExeInstall(product) => {
+            run_verified_exe_installer(&package_pin, product, &channel)
+        }
+    };
+
+    match result {
         Ok(()) => {
             channel.send_progress(100)?;
             channel.send_terminal(HelperMessage::Success)
@@ -298,6 +315,97 @@ fn deploy_fixed_package(
     };
 
     finish_terminal(&operation, terminal)
+}
+
+fn run_verified_exe_installer(
+    package_pin: &PinnedPackageFile,
+    product: AgentInstallerProduct,
+    channel: &PipeChannel,
+) -> Result<(), DeploymentFailure> {
+    // The product is deliberately a closed semantic selector. It never
+    // becomes an executable name, argument vector, verb, or working directory.
+    match product {
+        AgentInstallerProduct::QoderWork
+        | AgentInstallerProduct::TraeWork
+        | AgentInstallerProduct::WorkBuddy => {}
+    }
+
+    let path = package_pin.executable_path()?;
+    if path
+        .extension()
+        .is_none_or(|extension| !extension.to_string_lossy().eq_ignore_ascii_case("exe"))
+    {
+        return Err(DeploymentFailure::Operation(
+            HelperErrorCode::PackageInvalid,
+        ));
+    }
+    let wide_path = path
+        .as_os_str()
+        .encode_wide()
+        .chain(Some(0))
+        .collect::<Vec<_>>();
+    let mut execute = SHELLEXECUTEINFOW {
+        cbSize: size_of::<SHELLEXECUTEINFOW>() as u32,
+        fMask: SEE_MASK_NOCLOSEPROCESS,
+        lpFile: PCWSTR(wide_path.as_ptr()),
+        nShow: SW_SHOWNORMAL.0,
+        ..Default::default()
+    };
+    if unsafe { ShellExecuteExW(&mut execute) }.is_err() {
+        let code = unsafe { GetLastError() };
+        return Err(DeploymentFailure::Operation(if code == ERROR_CANCELLED {
+            HelperErrorCode::InstallerCancelled
+        } else {
+            HelperErrorCode::InstallerLaunchFailed
+        }));
+    }
+
+    channel
+        .send_progress(10)
+        .map_err(|_| DeploymentFailure::Pipe)?;
+    if execute.hProcess.is_invalid() || execute.hProcess.0.is_null() {
+        return Err(DeploymentFailure::Operation(
+            HelperErrorCode::InstallerProcessUnobservable,
+        ));
+    }
+    let process = OwnedKernelHandle::new(execute.hProcess)
+        .map_err(|_| DeploymentFailure::Operation(HelperErrorCode::InstallerLaunchFailed))?;
+    let deadline = Instant::now() + EXE_INSTALLER_TIMEOUT;
+    loop {
+        let Some(remaining) = deadline.checked_duration_since(Instant::now()) else {
+            return Err(DeploymentFailure::Operation(
+                HelperErrorCode::InstallerTimedOut,
+            ));
+        };
+        let wait = remaining.min(WAIT_SLICE);
+        let result = unsafe { WaitForSingleObject(process.raw(), duration_millis(wait)) };
+        if result == WAIT_OBJECT_0 {
+            let mut exit_code = u32::MAX;
+            unsafe { GetExitCodeProcess(process.raw(), &mut exit_code) }.map_err(|_| {
+                DeploymentFailure::Operation(HelperErrorCode::InstallerProcessUnobservable)
+            })?;
+            channel
+                .send_progress(90)
+                .map_err(|_| DeploymentFailure::Pipe)?;
+            return if exit_code == 0 {
+                Ok(())
+            } else {
+                Err(DeploymentFailure::Operation(
+                    HelperErrorCode::InstallerExitedNonzero,
+                ))
+            };
+        }
+        if result == WAIT_FAILED {
+            return Err(DeploymentFailure::Operation(
+                HelperErrorCode::InstallerLaunchFailed,
+            ));
+        }
+        if result != WAIT_TIMEOUT {
+            return Err(DeploymentFailure::Operation(
+                HelperErrorCode::InstallerLaunchFailed,
+            ));
+        }
+    }
 }
 
 fn validate_deployment_result(result: DeploymentResult) -> Result<(), DeploymentFailure> {
@@ -493,13 +601,18 @@ struct PinnedPackageFile {
     package_file: File,
     uri_reopen: File,
     identity: NativeFileIdentity,
+    artifact_kind: PackageBridgeArtifactKind,
+    package_path: PathBuf,
     package_uri: String,
     user: FrozenUser,
     program_data_directory_count: usize,
 }
 
 impl PinnedPackageFile {
-    fn open(control: PackageBridgeControl) -> Result<Self, HelperRunError> {
+    fn open(
+        control: PackageBridgeControl,
+        artifact_kind: PackageBridgeArtifactKind,
+    ) -> Result<Self, HelperRunError> {
         let user = FrozenUser::capture()?;
         let program_data = known_program_data_path()?;
         validate_ordinary_dos_path(&program_data)?;
@@ -561,30 +674,31 @@ impl PinnedPackageFile {
             .expect("the operation directory is retained");
         let package_file = open_relative_no_follow(
             operation_directory,
-            OsStr::new(INSTALLER_FILE_NAME),
+            OsStr::new(artifact_kind.final_file_name()),
             NativeObjectKind::RegularFile,
             FILE_SHARE_READ,
         )?;
-        verify_exact_bridge_acl(&package_file, &user, ExactBridgeAcl::PackageFile)?;
+        verify_exact_bridge_acl(&package_file, &user, exact_leaf_acl(artifact_kind))?;
         verify_effective_access(&package_file, &user, BRIDGE_FILE_DANGEROUS_ACCESS)?;
         let identity = native_file_identity(&package_file, NativeObjectKind::RegularFile)?;
         if identity.size == 0 || identity != native_identity(control.package()) {
             return Err(package_pin_error());
         }
 
-        let dos_path = bridge_path_for_program_data(&program_data, control.operation_id());
+        let dos_path =
+            bridge_path_for_program_data(&program_data, control.operation_id(), artifact_kind);
         validate_ordinary_dos_path(&dos_path)?;
         let package_uri = local_file_uri_roundtrip(&dos_path)?;
         let uri_reopen = open_relative_no_follow(
             operation_directory,
-            OsStr::new(INSTALLER_FILE_NAME),
+            OsStr::new(artifact_kind.final_file_name()),
             NativeObjectKind::RegularFile,
             FILE_SHARE_READ,
         )?;
         if native_file_identity(&uri_reopen, NativeObjectKind::RegularFile)? != identity {
             return Err(package_pin_error());
         }
-        verify_exact_bridge_acl(&uri_reopen, &user, ExactBridgeAcl::PackageFile)?;
+        verify_exact_bridge_acl(&uri_reopen, &user, exact_leaf_acl(artifact_kind))?;
         verify_effective_access(&uri_reopen, &user, BRIDGE_FILE_DANGEROUS_ACCESS)?;
 
         let package = Self {
@@ -592,6 +706,8 @@ impl PinnedPackageFile {
             package_file,
             uri_reopen,
             identity,
+            artifact_kind,
+            package_path: dos_path,
             package_uri,
             user,
             program_data_directory_count,
@@ -631,7 +747,7 @@ impl PinnedPackageFile {
             if identity != self.identity {
                 return Err(package_pin_error());
             }
-            verify_exact_bridge_acl(file, &self.user, ExactBridgeAcl::PackageFile)?;
+            verify_exact_bridge_acl(file, &self.user, exact_leaf_acl(self.artifact_kind))?;
             verify_effective_access(file, &self.user, BRIDGE_FILE_DANGEROUS_ACCESS)?;
         }
         Ok(())
@@ -643,6 +759,11 @@ impl PinnedPackageFile {
     }
 
     fn package_uri(&self) -> Result<Uri, DeploymentFailure> {
+        if self.artifact_kind != PackageBridgeArtifactKind::Msix {
+            return Err(DeploymentFailure::Operation(
+                HelperErrorCode::PackageUriInvalid,
+            ));
+        }
         if !has_local_file_uri_shape(&self.package_uri.encode_utf16().collect::<Vec<_>>()) {
             return Err(DeploymentFailure::Operation(
                 HelperErrorCode::PackageUriInvalid,
@@ -669,6 +790,16 @@ impl PinnedPackageFile {
         }
         Ok(uri)
     }
+
+    fn executable_path(&self) -> Result<&Path, DeploymentFailure> {
+        if self.artifact_kind != PackageBridgeArtifactKind::Exe {
+            return Err(DeploymentFailure::Operation(
+                HelperErrorCode::PackageInvalid,
+            ));
+        }
+        self.recheck()?;
+        Ok(&self.package_path)
+    }
 }
 
 fn native_identity(identity: PinnedPackageIdentity) -> NativeFileIdentity {
@@ -679,12 +810,16 @@ fn native_identity(identity: PinnedPackageIdentity) -> NativeFileIdentity {
     }
 }
 
-fn bridge_path_for_program_data(program_data: &Path, operation_id: BridgeOperationId) -> PathBuf {
+fn bridge_path_for_program_data(
+    program_data: &Path,
+    operation_id: BridgeOperationId,
+    artifact_kind: PackageBridgeArtifactKind,
+) -> PathBuf {
     program_data
         .join(PACKAGE_BRIDGE_ROOT_DIRECTORY)
         .join(PACKAGE_BRIDGE_VERSION_DIRECTORY)
         .join(operation_id.directory_name())
-        .join(INSTALLER_FILE_NAME)
+        .join(artifact_kind.final_file_name())
 }
 
 struct CoTaskPath(PWSTR);
@@ -1105,6 +1240,14 @@ enum ExactBridgeAcl {
     StableDirectory,
     OperationDirectory,
     PackageFile,
+    ExecutableFile,
+}
+
+fn exact_leaf_acl(artifact_kind: PackageBridgeArtifactKind) -> ExactBridgeAcl {
+    match artifact_kind {
+        PackageBridgeArtifactKind::Msix => ExactBridgeAcl::PackageFile,
+        PackageBridgeArtifactKind::Exe => ExactBridgeAcl::ExecutableFile,
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -1157,6 +1300,11 @@ fn verify_exact_bridge_acl(
             (ExpectedTrustee::Administrators, BA_FULL_MASK),
             (ExpectedTrustee::System, FILE_READ_MASK),
             (ExpectedTrustee::Alice, FILE_READ_MASK),
+        ],
+        ExactBridgeAcl::ExecutableFile => [
+            (ExpectedTrustee::Administrators, BA_FULL_MASK),
+            (ExpectedTrustee::System, FILE_READ_MASK),
+            (ExpectedTrustee::Alice, FILE_READ_EXECUTE_MASK),
         ],
     };
     let mut information = ACL_SIZE_INFORMATION::default();
@@ -1547,12 +1695,12 @@ impl PipeChannel {
         })
     }
 
-    fn send_hello(&self) -> Result<(), HelperRunError> {
+    fn send_hello(&self, action: UserHelperAction) -> Result<(), HelperRunError> {
         let mut state = self.lock_state()?;
         if state.state != ChannelState::Initial {
             return self.fail_write();
         }
-        write_message(&state.handle, &HelperMessage::Hello).map_err(|_| {
+        write_message(&state.handle, &HelperMessage::Hello { action }).map_err(|_| {
             self.write_failed.store(true, Ordering::Release);
             HelperRunError::PipeWriteFailed
         })?;
@@ -1803,16 +1951,22 @@ mod tests {
 
     #[test]
     fn bridge_path_is_fixed_and_operation_scoped() {
-        let path = bridge_path_for_program_data(Path::new(r"C:\ProgramData"), operation_id());
+        for kind in [
+            PackageBridgeArtifactKind::Msix,
+            PackageBridgeArtifactKind::Exe,
+        ] {
+            let path =
+                bridge_path_for_program_data(Path::new(r"C:\ProgramData"), operation_id(), kind);
 
-        assert_eq!(
-            path,
-            Path::new(r"C:\ProgramData")
-                .join(PACKAGE_BRIDGE_ROOT_DIRECTORY)
-                .join(PACKAGE_BRIDGE_VERSION_DIRECTORY)
-                .join("abababababababababababababababababababababababababababababababab")
-                .join(INSTALLER_FILE_NAME)
-        );
+            assert_eq!(
+                path,
+                Path::new(r"C:\ProgramData")
+                    .join(PACKAGE_BRIDGE_ROOT_DIRECTORY)
+                    .join(PACKAGE_BRIDGE_VERSION_DIRECTORY)
+                    .join("abababababababababababababababababababababababababababababababab")
+                    .join(kind.final_file_name())
+            );
+        }
     }
 
     #[test]
