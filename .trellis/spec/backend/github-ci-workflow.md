@@ -333,6 +333,12 @@ and standalone setup belong to `docs-contract-check.mjs` on the local
 `tasks:validate` path. Neither CI job freezes protocol names or toolchain
 versions by scanning README or spec Markdown.
 
+The CI verifier reuses the repository's reviewed, dependency-free POSIX-host
+predicate for direct tool invocation on macOS/Linux, retains the Windows-only
+`pnpm.cmd`/`ComSpec` adapter, and fails closed for every unknown runtime
+platform before launching a tool. The shared predicate must not import package
+dependencies because native CI invokes the verifier before `pnpm install`.
+
 The always-running Changes job executes the durable supported-platform surface
 checker directly after checkout and Node setup, alongside the change plan and
 before diagnostic aggregation. This makes every Required CI plan scan the

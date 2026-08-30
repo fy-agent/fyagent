@@ -6,7 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { gunzipSync, gzipSync } from "node:zlib";
-import { isPosixTaskHost } from "../tasks/lib.mjs";
+import { isPosixTaskHost } from "../tasks/platform.mjs";
 import { assertWindowsBundleVersion } from "./release-contract.mjs";
 
 export const TAURI_NSIS_UPSTREAM = Object.freeze({

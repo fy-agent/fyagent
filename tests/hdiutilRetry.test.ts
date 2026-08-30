@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 // @ts-expect-error The task helper is dependency-free JavaScript used by runtime scripts.
-import { isPosixTaskHost } from "../scripts/tasks/lib.mjs";
+import { isPosixTaskHost } from "../scripts/tasks/platform.mjs";
 
 const ROOT = path.resolve(__dirname, "..");
 const RETRY_HDIUTIL = path.join(ROOT, "scripts", "release", "retry-hdiutil.sh");

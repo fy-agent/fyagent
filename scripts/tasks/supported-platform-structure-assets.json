@@ -3,11 +3,11 @@
   "assets": [
     [
       "scripts/ci/verify-toolchain.mjs",
-      "3af8a1a6cd959ddf33a0494b6b1f3fe12defe1eeb74a247974ae98533635dcec"
+      "3bc61c60970c1d0ccd34d4dd089cb4dad16ca84ab73976b316d3d461708b246c"
     ],
     [
       "scripts/release/verify-windows-nsis-contract.mjs",
-      "00494324fe43733b784c3a9420b9d9ecdc04c38d60bba21aa0741ba1e392a268"
+      "5b1b3cfdf819a19edf7334a8f8da2f354a013d549fefcfc6a726762ba20f97c3"
     ],
     [
       "scripts/release/windows-signing.mjs",
@@ -19,11 +19,11 @@
     ],
     [
       "scripts/tasks/lib.mjs",
-      "bd11454b6b9540a42cb6eea5d15a15f1fbd18d6273dd85d7edb1106839d6e8f3"
+      "6c39036ff571f97e5f58db2cce0cedf05db27eb8d9aabcb1045cfd59aab2b0cb"
     ],
     [
       "scripts/tasks/supported-platform-check.mjs",
-      "bd9d6cea6bff01740fb835a2d16a0d83819e29de6e9e36cb066388cb2a832f57"
+      "b2bce70430ff060b24e26ba04a09ed8ac8d0264b13f9b6d1f7039496566afdf5"
     ],
     [
       "scripts/tasks/system-check.mjs",
@@ -355,7 +355,7 @@
     ],
     [
       "tests/hdiutilRetry.test.ts",
-      "c693b7ac8c633ca1b73d288b8169941918d6a7a6deeeb213af856192db538fd2"
+      "c03244446296c5fe98b7d8a66bebc2646a6830dca1f1a35431ae05bd839127ea"
     ],
     [
       "tests/lib/platform.test.ts",
@@ -367,7 +367,7 @@
     ],
     [
       "tests/releaseWorkflow.test.ts",
-      "713bc2506d58b4ae4d40880aa47e2a0461aeb20a56102c98bdcd66b07860ffb9"
+      "f846232b7c5069e14abe5c8085691d71816a94a71b250bbab6f9c0656c375b17"
     ],
     [
       "tests/remainingPlatformSurface.test.ts",
