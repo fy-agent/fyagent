@@ -94,6 +94,8 @@ describe("repository change classifier", () => {
         "eslint.v2.config.mjs",
         "playwright.v2.config.ts",
         "scripts/build-v2-preview.mjs",
+        "scripts/verify-v2-route-chunks.d.mts",
+        "scripts/verify-v2-route-chunks.mjs",
         "tsconfig.v2.json",
         "vitest.v2.config.ts",
       ],

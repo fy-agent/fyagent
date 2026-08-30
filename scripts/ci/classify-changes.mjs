@@ -151,6 +151,8 @@ const FRONTEND_ROOT_FILES = new Set([
   "playwright.v2.config.ts",
   "postcss.config.cjs",
   "scripts/build-v2-preview.mjs",
+  "scripts/verify-v2-route-chunks.d.mts",
+  "scripts/verify-v2-route-chunks.mjs",
   "tailwind.config.cjs",
   "tsconfig.json",
   "tsconfig.node.json",
