@@ -18,6 +18,7 @@ import {
 import { BrandIconFrame } from "../../shared/ui/catalog";
 import { Button, InlineNotice, Spinner } from "../../shared/ui/primitives";
 
+import { applyCommittedAgentDirectoryOrder } from "./agentDirectoryOrder";
 import {
   observeAgentDirectoryRow,
   type AgentDirectoryRowObservation,
@@ -217,7 +218,6 @@ function GenericDirectoryCard({
     readiness: observation.readiness ?? null,
     target: primaryTarget,
     onReadinessChange,
-    surface: entry.id === "opencode" ? "cli" : undefined,
   });
   const scanningCopy = directoryBusyCopy(observation);
   return (
@@ -398,6 +398,10 @@ export function AgentDirectory({
   const { state, start, applyReadiness } = scanController;
   const scanning = state.status === "scanning";
   const complete = state.status === "complete";
+  const visibleEntries = applyCommittedAgentDirectoryOrder(
+    entries,
+    state.committedOrderIds,
+  );
   const hasSuccessfulResults = Object.keys(state.results).length > 0;
   const currentReadiness = state.currentSuccessIds
     .map((id) => state.results[id])
@@ -465,7 +469,7 @@ export function AgentDirectory({
       ) : null}
 
       <div className="fy-agent-directory-list">
-        {entries.map((entry) => {
+        {visibleEntries.map((entry) => {
           const observation = observeAgentDirectoryRow(entry.id, state);
           if (entry.id === "codex") {
             return (

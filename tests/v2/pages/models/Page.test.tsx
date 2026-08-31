@@ -173,7 +173,7 @@ function catalog(): AgentCatalogResult {
     evidenceIds: ["p0_scope"],
   }));
   return {
-    contractVersion: 4,
+    contractVersion: 5,
     reviewedAt: "2026-08-20",
     agents: [
       {

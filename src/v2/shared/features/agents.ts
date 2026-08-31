@@ -91,7 +91,7 @@ export interface AgentCatalogEntry {
   capabilities: DeclaredAgentCapability[];
 }
 
-export const AGENT_CATALOG_CONTRACT_VERSION = 4;
+export const AGENT_CATALOG_CONTRACT_VERSION = 5;
 export interface AgentCatalogResult {
   contractVersion: typeof AGENT_CATALOG_CONTRACT_VERSION;
   reviewedAt: string;

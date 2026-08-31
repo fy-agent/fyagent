@@ -6,12 +6,12 @@ import { describe, expect, it, vi } from "vitest";
 import { AgentsPage } from "@/v2/pages/agents/Page";
 import {
   AGENT_ACTION_CONTRACT_VERSION,
+  AGENT_INSTALL_READINESS_CONTRACT_VERSION,
   type AgentActionJobSnapshot,
   type AgentActionResult,
   type AgentInstallationInventory,
   type AgentInstallReadiness,
   type AgentInstallState,
-  type AgentSurfaceReadiness,
 } from "@/v2/shared/features/agent-install-readiness";
 import type {
   CodexDesktopPort,
@@ -19,6 +19,9 @@ import type {
 } from "@/v2/shared/features/ports";
 import { FeatureProvider } from "@/v2/shared/features/provider";
 import {
+  AGENT_CATALOG_CONTRACT_VERSION,
+  AGENT_CATALOG_IDS,
+  PROMPT_APP_IDS,
   createMcpAssignments,
   createSkillAssignments,
   type AgentCapabilityId,
@@ -28,7 +31,6 @@ import {
   type ManagedPrompt,
   type PromptAppId,
 } from "@/v2/shared/features/types";
-import { AGENT_CATALOG_IDS, PROMPT_APP_IDS } from "@/v2/shared/features/types";
 import { createBrowserFeaturePorts } from "@/v2/shared/platform/browser/features";
 
 const capabilityIds: readonly AgentCapabilityId[] = [
@@ -59,13 +61,34 @@ function entry(id: AgentCatalogId, displayName: string): AgentCatalogEntry {
   const officialLinks: AgentCatalogEntry["officialLinks"] =
     id === "codex"
       ? []
-      : [
-          {
-            id: "product",
-            label: `打开 ${displayName} 官方页面`,
-            url: `https://example.test/${id}`,
-          },
-        ];
+      : id === "claude-code"
+        ? [
+            {
+              id: "desktop",
+              label: "Claude Desktop",
+              url: "https://example.test/claude-code",
+            },
+          ]
+        : id === "opencode"
+          ? [
+              {
+                id: "product",
+                label: "打开 OpenCode 官方页面",
+                url: "https://example.test/opencode",
+              },
+              {
+                id: "desktop",
+                label: "打开 OpenCode 官方下载页",
+                url: "https://example.test/opencode-desktop",
+              },
+            ]
+          : [
+              {
+                id: "product",
+                label: `打开 ${displayName} 官方页面`,
+                url: `https://example.test/${id}`,
+              },
+            ];
   return {
     id,
     variantId: variantById[id],
@@ -109,7 +132,7 @@ function entry(id: AgentCatalogId, displayName: string): AgentCatalogEntry {
 
 function catalog(): AgentCatalogResult {
   return {
-    contractVersion: 4,
+    contractVersion: AGENT_CATALOG_CONTRACT_VERSION,
     reviewedAt: "2026-08-26",
     agents: [
       entry("qoderwork", "QoderWork CN"),
@@ -129,7 +152,7 @@ function readiness(
   overrides: Partial<AgentInstallReadiness> = {},
 ): AgentInstallReadiness {
   return {
-    contractVersion: 3,
+    contractVersion: AGENT_INSTALL_READINESS_CONTRACT_VERSION,
     reviewedAt: "2026-08-29",
     inventoryState: "single",
     requiresTargetSelection: false,
@@ -845,42 +868,14 @@ describe("V3 Agent directory and configuration shell", () => {
     );
   });
 
-  it("shows the install region on configuration and keeps OpenCode CLI/Desktop sections separate", async () => {
+  it("shows the install region on configuration as one OpenCode desktop component", async () => {
     const ports = configuredPorts();
-    const cliSurface = {
-      surface: "cli",
-      installState: "installed",
-      inventoryState: "single",
-      requiresTargetSelection: false,
-      updateState: "up_to_date",
-      releaseId: null,
-      localVersion: "1.0.0",
-      remoteVersion: null,
-      sourceKind: "cli_tooling",
-      allowedActions: ["install", "update"],
-      reasonCodes: ["auth_state_unknown"],
-    } satisfies AgentSurfaceReadiness;
-    const desktopSurface = {
-      surface: "desktop",
-      installState: "installed",
-      inventoryState: "single",
-      requiresTargetSelection: false,
-      updateState: "up_to_date",
-      releaseId: null,
-      localVersion: "1.18.19",
-      remoteVersion: null,
-      sourceKind: "managed_desktop",
-      allowedActions: ["launch"],
-      reasonCodes: [],
-    } satisfies AgentSurfaceReadiness;
     ports.agentInstallReadiness.get = vi.fn(async (agentId) =>
       readiness(agentId, "installed", {
-        sourceKind: agentId === "opencode" ? "cli_tooling" : "managed_desktop",
+        sourceKind:
+          agentId === "grokbuild" ? "cli_tooling" : "managed_desktop",
         allowedActions:
-          agentId === "opencode" ? ["install", "update"] : ["update", "launch"],
-        ...(agentId === "opencode"
-          ? { surfaces: [cliSurface, desktopSurface] }
-          : {}),
+          agentId === "opencode" ? ["launch"] : ["update", "launch"],
       }),
     );
     renderPage(ports, "/agents?target=opencode&section=models");
@@ -890,19 +885,14 @@ describe("V3 Agent directory and configuration shell", () => {
     const install = within(configuration).getByRole("region", {
       name: "安装与更新",
     });
-    expect(within(install).getByRole("heading", { name: "命令行" })).toBeVisible();
     expect(
-      within(install).getByRole("heading", { name: "桌面应用" }),
-    ).toBeVisible();
+      within(install).queryByRole("heading", { name: "命令行" }),
+    ).not.toBeInTheDocument();
     expect(
       within(install).getByRole("button", { name: "打开软件" }),
     ).toBeVisible();
-    expect(
-      within(install.querySelector('[data-surface="cli"]') as HTMLElement).queryByRole(
-        "button",
-        { name: "打开软件" },
-      ),
-    ).not.toBeInTheDocument();
+    expect(install.querySelector('[data-surface="cli"]')).toBeNull();
+    expect(install.querySelector('[data-surface="desktop"]')).not.toBeNull();
   });
 
   it("uses the dedicated Codex installer on the configuration page", async () => {

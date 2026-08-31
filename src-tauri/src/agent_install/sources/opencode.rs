@@ -1,14 +1,15 @@
-//! Official OpenCode Desktop DMG source. Version is not frozen from research
-//! constants; the stable architecture-specific endpoints are versionless
-//! latest aliases owned by OpenCode.
+//! Official OpenCode Desktop DMG source. Artifact URLs stay on the fixed
+//! stable aliases; latest tag/version is frozen from the shared GitHub owner.
+//! FyAgent does not invoke OpenCode's Electron updater.
 
 use url::Url;
 
 use super::{
-    https_url_on_allowlist, opaque_release_id, AgentArch, AgentPlatform, PackageFormat,
-    ResolvedDesktopSource, SourceResolveError,
+    bounded_version, https_url_on_allowlist, opaque_release_id, AgentArch, AgentPlatform,
+    PackageFormat, ResolvedDesktopSource, SourceResolveError,
 };
 use crate::services::external_agents::AgentCatalogId;
+use crate::services::tooling::{self, FIXED_GITHUB_OPENCODE_REPO};
 
 pub const OPENCODE_DOWNLOAD_HOSTS: &[&str] = &[
     "opencode.ai",
@@ -23,9 +24,38 @@ pub const OPENCODE_DARWIN_AARCH64_DMG: &str =
     "https://opencode.ai/download/stable/darwin-aarch64-dmg";
 pub const OPENCODE_DARWIN_X64_DMG: &str = "https://opencode.ai/download/stable/darwin-x64-dmg";
 
+#[cfg(test)]
 pub fn resolve_opencode_desktop(
     platform: AgentPlatform,
     architecture: AgentArch,
+) -> Result<ResolvedDesktopSource, SourceResolveError> {
+    resolve_opencode_desktop_inner(platform, architecture, None)
+}
+
+pub fn resolve_opencode_desktop_with_version(
+    platform: AgentPlatform,
+    architecture: AgentArch,
+    display_version: &str,
+) -> Result<ResolvedDesktopSource, SourceResolveError> {
+    let version = bounded_version(display_version).ok_or(SourceResolveError::SchemaInvalid)?;
+    resolve_opencode_desktop_inner(platform, architecture, Some(version))
+}
+
+pub async fn resolve_opencode_desktop_latest(
+    platform: AgentPlatform,
+    architecture: AgentArch,
+) -> Result<ResolvedDesktopSource, SourceResolveError> {
+    let client = crate::proxy::http_client::get();
+    let version = tooling::fetch_github_latest_version(&client, FIXED_GITHUB_OPENCODE_REPO)
+        .await
+        .ok_or(SourceResolveError::SchemaInvalid)?;
+    resolve_opencode_desktop_with_version(platform, architecture, &version)
+}
+
+fn resolve_opencode_desktop_inner(
+    platform: AgentPlatform,
+    architecture: AgentArch,
+    display_version: Option<&str>,
 ) -> Result<ResolvedDesktopSource, SourceResolveError> {
     let (endpoint_kind, url) = match (platform, architecture) {
         (AgentPlatform::Macos, AgentArch::Aarch64) => {
@@ -42,23 +72,28 @@ pub fn resolve_opencode_desktop(
         return Err(SourceResolveError::ArtifactRejected);
     }
 
+    let mut fields = vec![
+        ("product", "opencode"),
+        ("surface", "desktop"),
+        ("platform", platform.as_str()),
+        ("architecture", architecture.as_str()),
+        ("format", PackageFormat::Dmg.as_str()),
+        ("alias", "stable"),
+        ("endpoint", endpoint_kind),
+    ];
+    if let Some(version) = display_version {
+        fields.push(("version", version));
+    }
+
     Ok(ResolvedDesktopSource {
         product: AgentCatalogId::OpenCode,
         platform,
         architecture,
         format: PackageFormat::Dmg,
-        release_id: opaque_release_id(&[
-            ("product", "opencode"),
-            ("surface", "desktop"),
-            ("platform", platform.as_str()),
-            ("architecture", architecture.as_str()),
-            ("format", PackageFormat::Dmg.as_str()),
-            ("alias", "stable"),
-            ("endpoint", endpoint_kind),
-        ]),
-        display_version: None,
+        release_id: opaque_release_id(&fields),
+        display_version: display_version.map(str::to_string),
         download_url,
-        versionless_latest: true,
+        versionless_latest: display_version.is_none(),
         official_page: OPENCODE_OFFICIAL_PAGE,
     })
 }
@@ -91,6 +126,67 @@ mod tests {
         assert_ne!(arm.release_id, intel.release_id);
         assert!(arm.release_id.starts_with("v1:"));
         assert!(!arm.release_id.contains("http"));
+    }
+
+    #[test]
+    fn frozen_github_latest_version_binds_display_version_not_artifact_url() {
+        let arm = resolve_opencode_desktop_with_version(
+            AgentPlatform::Macos,
+            AgentArch::Aarch64,
+            "1.2.3",
+        )
+        .unwrap();
+        assert!(!arm.versionless_latest);
+        assert_eq!(arm.display_version.as_deref(), Some("1.2.3"));
+        assert_eq!(arm.download_url.as_str(), OPENCODE_DARWIN_AARCH64_DMG);
+        assert!(!arm.release_id.contains("http"));
+        assert!(!arm.release_id.contains("1.2.3"));
+
+        let versionless =
+            resolve_opencode_desktop(AgentPlatform::Macos, AgentArch::Aarch64).unwrap();
+        assert_ne!(arm.release_id, versionless.release_id);
+
+        assert_eq!(
+            resolve_opencode_desktop_with_version(
+                AgentPlatform::Macos,
+                AgentArch::Aarch64,
+                "1.2.3-beta"
+            ),
+            Err(SourceResolveError::SchemaInvalid)
+        );
+        assert_eq!(
+            resolve_opencode_desktop_with_version(
+                AgentPlatform::Windows,
+                AgentArch::X86_64,
+                "1.2.3"
+            ),
+            Err(SourceResolveError::PlatformUnsupported)
+        );
+    }
+
+    #[test]
+    fn github_latest_parser_rejects_draft_prerelease_and_foreign_repos() {
+        let stable = br#"{"tag_name":"v1.2.3","draft":false,"prerelease":false}"#;
+        assert_eq!(
+            tooling::parse_github_latest_release_tag(stable).as_deref(),
+            Some("1.2.3")
+        );
+        assert_eq!(
+            tooling::parse_github_latest_release_tag(
+                br#"{"tag_name":"v1.2.3","draft":true,"prerelease":false}"#
+            ),
+            None
+        );
+        assert_eq!(
+            tooling::parse_github_latest_release_tag(
+                br#"{"tag_name":"v1.2.3","draft":false,"prerelease":true}"#
+            ),
+            None
+        );
+        assert_eq!(tooling::FIXED_GITHUB_OPENCODE_REPO, "anomalyco/opencode");
+        assert!(tooling::github_latest_release_url("anomalyco/opencode").is_some());
+        assert_eq!(tooling::github_latest_release_url("evil/other"), None);
+        assert!(!format!("{stable:?}").contains("electron-updater"));
     }
 
     #[test]

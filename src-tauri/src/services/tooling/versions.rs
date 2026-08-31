@@ -221,26 +221,52 @@ async fn fetch_npm_latest_for_tool(
     pick_latest_version(&dist_tags, npm_prerelease_tags(tool), local_version)
 }
 
-async fn fetch_github_latest_version(client: &reqwest::Client, repo: &str) -> Option<String> {
-    let url = format!("https://api.github.com/repos/{repo}/releases/latest");
-    match client
+pub(crate) const FIXED_GITHUB_OPENCODE_REPO: &str = "anomalyco/opencode";
+const MAX_GITHUB_LATEST_BYTES: usize = 1024 * 1024;
+
+pub(crate) fn github_latest_release_url(repo: &str) -> Option<String> {
+    if repo != FIXED_GITHUB_OPENCODE_REPO {
+        return None;
+    }
+    Some(format!(
+        "https://api.github.com/repos/{repo}/releases/latest"
+    ))
+}
+
+pub(crate) fn parse_github_latest_release_tag(body: &[u8]) -> Option<String> {
+    if body.is_empty() || body.len() > MAX_GITHUB_LATEST_BYTES {
+        return None;
+    }
+    let json: serde_json::Value = serde_json::from_slice(body).ok()?;
+    if json.get("draft").and_then(|value| value.as_bool()) == Some(true)
+        || json.get("prerelease").and_then(|value| value.as_bool()) == Some(true)
+    {
+        return None;
+    }
+    let tag = json.get("tag_name")?.as_str()?;
+    if tag.is_empty() || tag.len() > 64 {
+        return None;
+    }
+    Some(tag.strip_prefix('v').unwrap_or(tag).to_string())
+}
+
+pub(crate) async fn fetch_github_latest_version(
+    client: &reqwest::Client,
+    repo: &str,
+) -> Option<String> {
+    let url = github_latest_release_url(repo)?;
+    let resp = client
         .get(&url)
         .header("User-Agent", "fyagent")
         .header("Accept", "application/vnd.github+json")
         .send()
         .await
-    {
-        Ok(resp) => {
-            if let Ok(json) = resp.json::<serde_json::Value>().await {
-                json.get("tag_name")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.strip_prefix('v').unwrap_or(s).to_string())
-            } else {
-                None
-            }
-        }
-        Err(_) => None,
+        .ok()?;
+    if !resp.status().is_success() {
+        return None;
     }
+    let bytes = resp.bytes().await.ok()?;
+    parse_github_latest_release_tag(&bytes)
 }
 
 async fn fetch_pypi_latest_version(client: &reqwest::Client, package: &str) -> Option<String> {
@@ -268,4 +294,39 @@ pub(super) fn extract_version(raw: &str) -> String {
         .find(raw)
         .map(|m| m.as_str().to_string())
         .unwrap_or_else(|| raw.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn github_latest_tag_parser_is_fixed_repo_and_rejects_drafts() {
+        assert_eq!(
+            parse_github_latest_release_tag(br#"{"tag_name":"v1.2.3"}"#).as_deref(),
+            Some("1.2.3")
+        );
+        assert_eq!(
+            parse_github_latest_release_tag(br#"{"tag_name":"1.2.3"}"#).as_deref(),
+            Some("1.2.3")
+        );
+        assert_eq!(
+            parse_github_latest_release_tag(br#"{"tag_name":"v1.2.3","draft":true}"#),
+            None
+        );
+        assert_eq!(
+            parse_github_latest_release_tag(br#"{"tag_name":"v1.2.3","prerelease":true}"#),
+            None
+        );
+        assert_eq!(parse_github_latest_release_tag(&[]), None);
+        assert_eq!(
+            parse_github_latest_release_tag(&vec![b'{'; MAX_GITHUB_LATEST_BYTES + 1]),
+            None
+        );
+        assert_eq!(
+            github_latest_release_url(FIXED_GITHUB_OPENCODE_REPO).as_deref(),
+            Some("https://api.github.com/repos/anomalyco/opencode/releases/latest")
+        );
+        assert_eq!(github_latest_release_url("some/other"), None);
+    }
 }

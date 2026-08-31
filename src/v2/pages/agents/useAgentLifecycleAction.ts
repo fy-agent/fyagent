@@ -183,6 +183,31 @@ export function reasonCopy(code: AgentReasonCode): string | null {
       return "无法打开该软件。请确认应用仍在安装位置后再试。";
     case "surface_not_supported":
       return "当前安装方式不可用。";
+    case "action_not_supported":
+      return "当前产品不支持此操作。";
+    case "helper_not_packaged":
+    case "helper_signature_invalid":
+      return "系统文件夹一键安装当前不可用，不会改到其他目录。";
+    case "helper_install_authorization_cancelled":
+    case "operation_authorization_cancelled":
+      return "你取消了管理员授权，未更改现有应用。";
+    case "helper_install_failed":
+    case "helper_peer_rejected":
+    case "helper_protocol_incompatible":
+      return "无法完成系统级安装组件准备。";
+    case "helper_update_required":
+      return "需要更新 FyAgent 后才能继续。";
+    case "helper_downgrade_rejected":
+      return "当前系统组件版本更新，请升级 FyAgent。";
+    case "operation_authorization_invalid":
+      return "管理员授权无效或已过期，未更改现有应用。";
+    case "source_capability_invalid":
+    case "source_changed":
+      return "安装包在提交前已变化，未更改现有应用。";
+    case "target_slot_invalid":
+      return "无法在该系统位置安装此应用。";
+    case "helper_removal_failed":
+      return "无法移除系统安装组件。";
     default:
       return null;
   }

@@ -33,8 +33,8 @@ const EXPECTED_AGENT_LINK_IDS = {
   workbuddy: ["product"],
   grokbuild: ["product"],
   codex: [],
-  "claude-code": ["cli", "desktop"],
-  opencode: ["product", "cli"],
+  "claude-code": ["desktop"],
+  opencode: ["product", "desktop"],
 } as const satisfies Readonly<
   Record<AgentCatalogId, readonly AgentOfficialLinkId[]>
 >;

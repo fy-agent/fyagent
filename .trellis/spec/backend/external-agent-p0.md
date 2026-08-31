@@ -25,7 +25,7 @@ The static catalog is deterministic, non-networking, and exact-versioned:
 
 ```text
 get_agent_catalog() -> {
-  contractVersion: 3,
+  contractVersion: 5,
   reviewedAt,
   agents: [{
     id, variantId, displayName, description,
@@ -108,19 +108,20 @@ inventoryId = "i1:" + 32 lowercase hex         // snapshot capability
 targetId = ("c1:" | "d1:") + 32 lowercase hex // candidate or destination
 expectedTargetRevision = "r1:" + 64 lowercase hex
 
-Legal surfaces: opencode = cli+desktop; claude-code/grokbuild = cli;
-qoderwork/trae-work/workbuddy/codex = desktop. Omit `surface` on startAction
-to use that product's default (OpenCode default is CLI). Illegal combo →
-`surface_not_supported`.
+Legal surfaces: grokbuild = cli; qoderwork/trae-work/workbuddy/codex/
+claude-code/opencode = desktop. Omit `surface` on startAction to use that
+product's default (OpenCode and Claude default to desktop). Illegal combo →
+`surface_not_supported`. A legal surface with a product-disabled action →
+`action_not_supported` (before network, download, or file mutation).
 
 AgentInstallReadinessDto {
-  contractVersion: 3,
+  contractVersion: 4,
   agentId, reviewedAt,                 // reviewedAt = YYYY-MM-DD
   installState, inventoryState, requiresTargetSelection, updateState,
   releaseId?, localVersion?, remoteVersion?,
   authOwnership, authState, sourceKind,
   allowedActions, reasonCodes,
-  surfaces?: AgentSurfaceReadinessDto[]  // OpenCode: both; compact products omit
+  surfaces?: AgentSurfaceReadinessDto[]  // omit when the product has one surface
 }
 
 AgentSurfaceReadinessDto {
@@ -135,11 +136,11 @@ AgentInstallationInventoryDto {
   candidates: InstallationCandidateDto[],
   freshDestinations: FreshInstallDestinationDto[],
   reasonCodes,
-  surface?   // required for opencode; forbidden for every other agentId
+  surface?   // present only when the product has more than one legal surface
 }
 
 AgentActionResult {
-  contractVersion: 3,
+  contractVersion: 4,
   agentId, action, jobId?, stage, reasonCode?, surface
 }
 
@@ -149,7 +150,7 @@ AgentActionTransferSnapshot {
 }
 
 AgentActionJobSnapshot {
-  contractVersion: 3,
+  contractVersion: 4,
   jobId, agentId, action, stage, cancellable, reasonCode?,
   transfer?, surface
 }
@@ -192,7 +193,11 @@ six AppType values plus the same three Skills/MCP-domain IDs. Direct V2
 assignment uses catalog order
 `qoderwork | trae-work | workbuddy | grokbuild | codex | claude | opencode`.
 QoderWork, TRAE Work, and WorkBuddy never convert to `AppType`. Catalog
-contract version is 4 and includes Grok Build (`https://x.ai/grok`).
+contract version is 5. Claude catalog official links are desktop-only
+(`https://claude.com/download`); OpenCode catalog links are `product` then
+`desktop` (`https://opencode.ai`, `https://opencode.ai/download`). Neither
+catalog entry exposes a CLI install link. Grok Build product URL remains
+`https://x.ai/grok`.
 `get_all_installed` may observe disk skills under every native
 `SkillTargetId` without writing SQLite or SSOT.
 
@@ -200,7 +205,7 @@ contract version is 4 and includes Grok Build (`https://x.ai/grok`).
 
 ### Catalog, runtime, and permissions
 
-- Catalog v2, future versions, unknown enums, excess fields, duplicate IDs,
+- Catalog v4 and earlier, future versions, unknown enums, excess fields, duplicate IDs,
   invalid order, and invalid official links fail closed in Rust and TypeScript.
 - Static capability declarations never read local state. Runtime observation
   never converts unknown to false or infers installation from a settings path.
@@ -230,8 +235,8 @@ contract version is 4 and includes Grok Build (`https://x.ai/grok`).
   a complete optional opaque target-binding triplet, and an optional opaque
   backend-generated `expectedReleaseId`. URL, path, command, token, hash, and
   bypass fields are rejected. A partial target triplet also fails closed.
-- Readiness contract version is 3, inventory contract version is 1, and action
-  contract version is 2. Readiness adds `inventoryState = not_observed |
+- Readiness contract version is 4, inventory contract version is 1, and action
+  contract version is 4. Readiness adds `inventoryState = not_observed |
 single | multiple | unsupported | unknown` plus
   `requiresTargetSelection`; it must not collapse multiple/ambiguous evidence
   into one installed version. Inventory contains backend-generated snapshot,
@@ -260,13 +265,23 @@ single | multiple | unsupported | unknown` plus
   `target_selection_required`. Desktop Auth handoff uses the separate Auth
   session façade and the same complete opaque target triplet. Target selection
   is per operation; no renderer path or permanent path preference is stored.
-- Claude Code and Grok Build install/update reuse Tooling (`claude` / `grok`).
-  OpenCode **CLI** reuses Tooling `opencode`; OpenCode **Desktop** uses this
-  façade (`sourceKind=managed_desktop`, bundle ID `ai.opencode.desktop`).
-  Gemini CLI, OpenClaw, and Hermes stay on their existing Tooling surfaces and
-  must not be routed through this façade. Codex install/update remain
+- Claude Code Agent lifecycle is desktop-only (`sourceKind=managed_desktop`,
+  bundle ID `com.anthropic.claudefordesktop`, UI title 「Claude Desktop」).
+  Grok Build install/update still reuse Tooling (`grok`). OpenCode Agent
+  lifecycle is desktop-only (`sourceKind=managed_desktop`, bundle ID
+  `ai.opencode.desktop`). Tooling CLI installers for `claude` / `opencode`
+  remain on existing Tooling surfaces and must not be routed through this
+  Agent façade. Gemini CLI, OpenClaw, and Hermes stay on their existing
+  Tooling surfaces. Codex install/update remain
   `managed_by_codex_desktop` and keep the dedicated Codex Desktop installer;
   this façade must not occupy that job slot.
+- `agent_install/lifecycle_policy.rs` is the only product/surface/action
+  owner. QoderWork / TRAE Work / WorkBuddy admit `install` and `launch`, never
+  FyAgent `update`. Claude Desktop and OpenCode Desktop admit
+  `install` / `update` / `launch`. A disabled action returns
+  `action_not_supported` before target revalidation, network, download, or
+  file mutation. Installed domestic products must not resolve remote source
+  metadata solely to compare updates.
 - QoderWork CN uses the fixed first-party `/qoder-work-cn/releases/latest/`
   User-x64 / macOS ARM64 / macOS x64 aliases as the only install artifacts.
   Remote `displayVersion` is the unindented `version:` from `latest.yml` /
@@ -290,11 +305,12 @@ single | multiple | unsupported | unknown` plus
   bounded cleanup transaction through one managed-Agent policy adapter. An
   existing current-user installation is updated at its exact selected path and
   basename; it is never silently copied to another Applications scope. The
-  unreviewed privileged helper path remains disabled, so `/Applications`
+  production privileged helper remains disabled, so `/Applications`
   targets are visible but non-executable with `authorization_required` rather
-  than falling back to `~/Applications`. Formal elevated Windows CLI/auth
-  automation stays unavailable unless a later authenticated ordinary-user
-  helper with closed enums is proven.
+  than falling back to `~/Applications`. See
+  [macOS Privileged System-Commit Helper](./macos-system-commit.md).
+  Formal elevated Windows CLI/auth automation stays unavailable unless a later
+  authenticated ordinary-user helper with closed enums is proven.
 - Fail dominates and unknown never upgrades to green. Readiness creates no
   plan snapshot. Auth ownership is `fyagent_managed` (Codex Auth Center),
   `agent_owned` (Claude/Grok/desktop apps), or `provider_owned` (OpenCode
@@ -381,7 +397,14 @@ reasonCode    = official_page_only | source_not_verified | platform_unsupported
                 | installer_timed_out | installer_exited_nonzero
                 | rollback_restored | recovery_required
                 | executor_not_implemented | surface_not_supported
-                | application_launch_failed
+                | action_not_supported | application_launch_failed
+                | helper_not_packaged | helper_signature_invalid
+                | helper_install_authorization_cancelled | helper_install_failed
+                | helper_update_required | helper_downgrade_rejected
+                | helper_protocol_incompatible | helper_peer_rejected
+                | operation_authorization_cancelled | operation_authorization_invalid
+                | source_capability_invalid | source_changed | target_slot_invalid
+                | helper_removal_failed
 
 authAuthority = verified | unverified | unavailable
 authIntent    = login | logout | connect_provider
@@ -410,17 +433,25 @@ input.
   storage keys. Action validation compares the selected snapshot entry against
   a fresh platform probe before dispatch.
 - Mapping:
-  - `claude-code` / `grokbuild` → Tooling `claude` / `grok`
-    (`sourceKind=cli_tooling`). Gemini CLI, OpenClaw, Hermes stay
-    on existing Tooling surfaces.
-  - `opencode` remains one catalog product with two closed surfaces:
-    `cli` (Tooling `opencode`, `sourceKind=cli_tooling`) and `desktop`
-    (managed registry, bundle ID `ai.opencode.desktop`,
-    `sourceKind=managed_desktop`). Surfaces are independent; CLI-only
-    readiness never implies Desktop. Compact single-surface products omit
-    `surfaces` on the wire. OpenCode readiness v3 includes both surfaces.
+  - `grokbuild` → Tooling `grok` (`sourceKind=cli_tooling`). Gemini CLI,
+    OpenClaw, Hermes stay on existing Tooling surfaces.
+  - `claude-code` → managed desktop (`sourceKind=managed_desktop`, bundle ID
+    `com.anthropic.claudefordesktop`). Compact: omit `surfaces` on the wire.
+    Artifact host is the reviewed constant
+    `https://claudeapp.agentsmirror.com/latest/mac`; manifest
+    `https://claudeapp.agentsmirror.com/latest/manifest` may supply version
+    metadata only. Remote `url` / hash / filename are never download
+    authority. Official page remains `https://claude.com/download`.
+  - `opencode` → managed desktop (`sourceKind=managed_desktop`, bundle ID
+    `ai.opencode.desktop`). Compact: omit `surfaces`. Display version comes
+    from `tooling::fetch_github_latest_version(..., "anomalyco/opencode")`.
+    Artifact URLs stay the two official stable DMG aliases. Compact products
+    omit `surfaces`; inventory `surface` is present only when a product has
+    more than one legal surface.
     Fresh Desktop install remains user Applications (`~/Applications`);
-    `/Applications` discovery still works, writes stay `authorization_required`.
+    `/Applications` discovery still works, writes stay `authorization_required`
+    while [macOS Privileged System-Commit Helper](./macos-system-commit.md)
+    keeps `production_enabled() == false`.
   - `qoderwork` / `trae-work` / `workbuddy` → first-party managed-desktop
     adapters (`sourceKind=managed_desktop`).
   - `codex` install/update → `managed_by_codex_desktop`, empty
@@ -556,8 +587,9 @@ input.
 | ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
 | Unknown Agent ID, unknown action, unknown surface, or extra request field           | Reject; no job                                                              |
 | Renderer supplies URL/path/command/token/hash/bypass                                | Reject; no job                                                              |
-| OpenCode desktop install/update/launch omits `surface: desktop`                     | Defaults to CLI; desktop job must send `desktop`                            |
-| Compact product inventory includes `surface`, or OpenCode inventory omits it        | Strict parser reject                                                        |
+| OpenCode or Claude Agent action sends `surface: cli`                    | `surface_not_supported`; no job                                                              |
+| Compact product inventory includes `surface`                            | Strict parser reject                                                                        |
+| QoderWork / TRAE Work / WorkBuddy `update`                              | `action_not_supported`; zero network/download/write                                         |
 | Target binding is partial or has an invalid opaque grammar                          | `refresh_required`; no launch/write                                         |
 | `install` omits a fresh destination or `update` omits an existing candidate         | `target_selection_required`; no write                                       |
 | Inventory expired, candidate disappeared, or revision/identity/scope changed        | `inventory_expired` / `target_changed`; no launch/write                     |
@@ -575,7 +607,7 @@ input.
 | Host/scheme/redirect/body/schema/artifact grammar fails                             | `source_not_verified` or `official_page_only`; no stale version URL         |
 | Explicit non-default port on a metadata or artifact URL                             | `source_not_verified` + `official_page_only`; default HTTPS only            |
 | Fetch/job is cancelled                                                              | `cancelled`; never remap cancel to `source_not_verified`                    |
-| Selected macOS target is `/Applications` (fresh or update)                          | `authorization_required`; helper deferred; zero write; no user-scope fake   |
+| Selected macOS target is `/Applications` (fresh or update)                          | `authorization_required`; helper production gate closed; zero write; no user-scope fake |
 | Selected macOS application is still running                                         | `application_running`; zero staging/replace write                           |
 | macOS staging or target permission is denied                                        | `permission_denied`; preserve the original target                           |
 | Post-install readback rejects path/scope/version or sees a new duplicate            | restore and reverify old target; `rollback_restored` or `recovery_required` |
@@ -711,24 +743,26 @@ fallback_url = "https://lf-cdn.trae.com.cn/.../2.3.76922/..."; // researched pin
 // TRAE/WorkBuddy failures return official_page_only, never a pinned version URL.
 ```
 
-#### Scenario: OpenCode surfaces, job transfer v3, and deferred `/Applications` commit
+#### Scenario: Desktop-only Agent lifecycle, job transfer, and disabled `/Applications` commit
 
 ##### 1. Scope / Trigger
 
-- Trigger: readiness/inventory/action gained a closed `surface`, job snapshots
-  gained raw transfer bytes (contract v3), and macOS system Applications
-  writes remain unimplemented pending a later privileged-helper task.
-- Owner: `src-tauri/src/agent_install/` plus V2
-  `agent-install-readiness.ts`. Shared download/plist/DMG stay on
-  [Codex Desktop Installer](./codex-desktop-installer.md). Launch stays on
-  `platform::process_launch`. Helper/system-commit is **not** this contract.
+- Trigger: Agent catalog/readiness/action contract versions moved to catalog
+  v5 and readiness/action v4; OpenCode and Claude Agent surfaces are desktop
+  only; job snapshots keep raw transfer bytes; macOS system Applications
+  writes stay disabled behind `macos_system_commit::production_enabled()`.
+- Owner: `src-tauri/src/agent_install/` (`lifecycle_policy.rs`, sources,
+  inventory) plus V2 `agent-install-readiness.ts`. Shared download/plist/DMG
+  stay on [Codex Desktop Installer](./codex-desktop-installer.md). Launch
+  stays on `platform::process_launch`. Helper ABI is
+  [macOS Privileged System-Commit Helper](./macos-system-commit.md).
 
 ##### 2. Signatures
 
 ```text
 get_agent_installation_inventory(agentId, surface?)
 start_agent_action({ agentId, action, surface?, ...opaque target... })
-AgentActionJobSnapshot.contractVersion = 3
+AgentActionJobSnapshot.contractVersion = 4
 AgentActionJobSnapshot.transfer?: {
   phase: "download",
   completedBytes: u64,
@@ -740,61 +774,69 @@ AgentActionJobSnapshot.transfer?: {
 }
 ```
 
-OpenCode official Desktop DMGs (no version constants):
+OpenCode official Desktop DMGs (no version constants in the URL):
 
 ```text
 https://opencode.ai/download/stable/darwin-aarch64-dmg
 https://opencode.ai/download/stable/darwin-x64-dmg
 ```
 
-Fresh Desktop target: `~/Applications/OpenCode.app`. Discovery roots remain
-`/Applications` and `~/Applications` direct-child `.app`. Bundle ID
-`ai.opencode.desktop`.
+Claude Desktop (code-owned; remote url/hash are not download authority):
+
+```text
+https://claudeapp.agentsmirror.com/latest/manifest
+https://claudeapp.agentsmirror.com/latest/mac
+https://claude.com/download
+```
+
+Fresh Desktop target: `~/Applications/<KnownName>.app`. Discovery roots remain
+`/Applications` and `~/Applications` direct-child `.app`.
 
 ##### 3. Contracts
 
-- Compact products omit `surfaces`. OpenCode readiness v3 includes `cli` and
-  `desktop`; **top-level** OpenCode fields are the CLI projection.
-- OpenCode inventory **must** include `surface`; other products **must not**.
-- Desktop launch requires a unique/selected `launchEligible` candidate and
-  `surface: "desktop"`. CLI never allows `launch`. Install/update/check never
-  auto-launch.
+- Compact products omit `surfaces`. OpenCode and Claude are compact desktop.
+  Grok remains compact CLI. Inventory `surface` is present only when
+  `legal_surfaces(agentId).len() > 1`.
+- Desktop launch requires a unique/selected `launchEligible` candidate.
+  Install/update/check never auto-launch.
 - Transfer: completedBytes is monotonic per attempt; unknown total keeps
   `totalBytes` null (no invented percent). Speed is a renderer projection from
-  byte delta + monotonic time, not a backend field. Terminal snapshots may keep
-  final bytes but not stale speed.
+  byte delta + monotonic time, not a backend field.
 - macOS Agent DMG streams through Codex `persist_transport_response` into a
   job-local `installer.dmg`. No second full copy. Plist reads go through the
   Codex `plutil → JSON → typed fields` owner.
-- System `/Applications` commit (native privileged-file-operations or Blessed
-  helper) is deferred. Production returns `authorization_required`. Forbidden:
-  sudo, AppleScript admin, generic root XPC, labeling `~/Applications` success
-  as a system install.
+- System `/Applications` commit is implemented as a crate-private port and
+  nested helper, but production returns `authorization_required` until
+  `production_enabled()` is true. Forbidden: sudo, AppleScript admin, generic
+  root XPC, labeling `~/Applications` success as a system install.
 
 ##### 4. Validation & Error Matrix
 
 | Condition | Required result |
 | --- | --- |
 | `surface` illegal for `agentId` | `surface_not_supported` |
-| OpenCode inventory without `surface` | TS/Rust parser reject |
+| Compact product inventory includes `surface` | TS/Rust parser reject |
+| Domestic `update` | `action_not_supported` before network |
 | Desktop launch without opaque `desktop_path()` | no Launch Services guess; fail closed |
 | `/Applications` write requested | `authorization_required`; zero write |
 | Missing/ambiguous OpenCode arch DMG | `source_not_verified` / fail closed |
+| Claude manifest `url` used as artifact | Fail closed; artifact is the code constant |
 | Launch NSWorkspace completion failure | `application_launch_failed` |
 
 ##### 5. Good/Base/Bad Cases
 
 - Good: `/Applications/OpenCode.app` with `ai.opencode.desktop` is discovered
   and can 「打开软件」; fresh install still writes `~/Applications`.
-- Base: Qoder/TRAE/WorkBuddy stay compact (no `surfaces` array).
-- Bad: treating top-level OpenCode readiness as Desktop; auto `grok update \|\|
-  npm`; enabling system one-click without the helper task.
+- Base: Qoder/TRAE/WorkBuddy/Claude/OpenCode stay compact (no `surfaces`
+  array). Domestic installed cards omit FyAgent update.
+- Bad: routing Agent OpenCode/Claude to Tooling CLI installers; enabling
+  system one-click while `production_enabled()` is false.
 
 ##### 6. Tests Required
 
-- CLI-only / Desktop-only / both / neither parser and UI.
+- Desktop-only parser and UI; reject Claude/OpenCode `surface: cli`.
 - Binary + XML plist; wrong bundle ID; symlink `.app` rejected.
-- Job v3 `transfer` monotonicity, unknown total, no `fetch_artifact_bytes`
+- Job v4 `transfer` monotonicity, unknown total, no `fetch_artifact_bytes`
   production path.
 - Negative: no `Command::new("open")` in `agent_install`; no Launch Services
   global scanner.
@@ -806,7 +848,8 @@ Fresh Desktop target: `~/Applications/OpenCode.app`. Discovery roots remain
 ```ts
 await ports.agentInstallReadiness.startAction({
   agentId: "opencode",
-  action: "launch", // defaults to CLI; CLI forbids launch
+  action: "install",
+  surface: "cli",
 });
 ```
 
@@ -816,7 +859,6 @@ await ports.agentInstallReadiness.startAction({
 await ports.agentInstallReadiness.startAction({
   agentId: "opencode",
   action: "launch",
-  surface: "desktop",
   inventoryId,
   targetId,
   expectedTargetRevision,
@@ -936,6 +978,12 @@ TraeWork   macos CFBundleIdentifier = cn.trae.solo.app
                                       TraeWork_CN/TraeWork_CN.exe
            windows ProductName      = TRAE SOLO CN | Trae Work CN
                                       | TraeWork CN | TraeWork_CN
+
+OpenCode   macos CFBundleIdentifier = ai.opencode.desktop
+           windows desktop install  = not in this Agent façade
+
+Claude     macos CFBundleIdentifier = com.anthropic.claudefordesktop
+           windows desktop install  = not in this Agent façade
 ```
 
 ##### 3. Contracts
@@ -1347,9 +1395,9 @@ closed DTO/`deny_unknown_fields`/forbidden-wire scans, opaque `v1:` release-id
 grammar, Qoder archived `/latest/` aliases plus yml `version`, TRAE `data.solo`/CN vs `data.manifest`/Code,
 WorkBuddy platform IDs and `.zip → .dmg`, redirect allowlist failures, job
 single-flight and post-`installing` cancel refusal, Codex
-`managed_by_codex_desktop` non-occupation, Claude/Grok Tooling mapping plus
-OpenCode CLI Tooling and Desktop façade `surface`, job v3 `transfer`,
-`surface_not_supported`, no production `fetch_artifact_bytes`, and auth-file
+`managed_by_codex_desktop` non-occupation, Claude/OpenCode desktop-only Agent
+surfaces (no Agent CLI installer), job v4 `transfer`,
+`surface_not_supported`, `action_not_supported`, no production `fetch_artifact_bytes`, and auth-file
 non-reads. Desktop
 observation tests must cover macOS bundle-id matching (including folder-name
 mismatch), Windows relative-exe plus PE `ProductName` matching, wrong

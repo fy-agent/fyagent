@@ -10,6 +10,7 @@ import { describe, expect, it, vi } from "vitest";
 import { AgentInstallReadinessSection } from "@/v2/pages/agents/AgentInstallReadinessSection";
 import {
   AGENT_ACTION_CONTRACT_VERSION,
+  AGENT_INSTALL_READINESS_CONTRACT_VERSION,
   type AgentActionJobSnapshot,
   type AgentActionJobStage,
   type AgentActionResult,
@@ -23,12 +24,9 @@ function readiness(
   agentId: "qoderwork" | "codex" | "opencode" | "grokbuild" | "claude-code",
 ): AgentInstallReadiness {
   const codex = agentId === "codex";
-  const cli =
-    agentId === "opencode" ||
-    agentId === "grokbuild" ||
-    agentId === "claude-code";
+  const grok = agentId === "grokbuild";
   return {
-    contractVersion: 3,
+    contractVersion: AGENT_INSTALL_READINESS_CONTRACT_VERSION,
     agentId,
     reviewedAt: "2026-08-29",
     installState: "unknown",
@@ -44,7 +42,11 @@ function readiness(
         ? "provider_owned"
         : "agent_owned",
     authState: "unknown",
-    sourceKind: codex ? "codex_desktop" : cli ? "cli_tooling" : "managed_desktop",
+    sourceKind: codex
+      ? "codex_desktop"
+      : grok
+        ? "cli_tooling"
+        : "managed_desktop",
     allowedActions: codex ? [] : ["install", "auth_login"],
     reasonCodes: codex
       ? ["managed_by_codex_desktop", "auth_state_unknown"]
@@ -121,35 +123,32 @@ function surfaceReadiness(
   };
 }
 
-function openCodeReadiness(overrides?: {
-  cli?: Partial<AgentSurfaceReadiness>;
-  desktop?: Partial<AgentSurfaceReadiness>;
-}): AgentInstallReadiness {
-  const cli = surfaceReadiness("cli", overrides?.cli);
-  const desktop = surfaceReadiness("desktop", overrides?.desktop);
+function desktopReadiness(
+  agentId: "opencode" | "claude-code",
+  overrides: Partial<AgentSurfaceReadiness> = {},
+): AgentInstallReadiness {
+  const desktop = surfaceReadiness("desktop", overrides);
   return {
-    ...readiness("opencode"),
-    installState: cli.installState,
-    inventoryState: cli.inventoryState,
-    requiresTargetSelection: cli.requiresTargetSelection,
-    updateState: cli.updateState,
-    releaseId: cli.releaseId,
-    localVersion: cli.localVersion,
-    remoteVersion: cli.remoteVersion,
-    sourceKind: "cli_tooling",
-    allowedActions: cli.allowedActions.filter((action) => action !== "launch"),
-    reasonCodes: cli.reasonCodes,
-    surfaces: [cli, desktop],
+    ...readiness(agentId),
+    installState: desktop.installState,
+    inventoryState: desktop.inventoryState,
+    requiresTargetSelection: desktop.requiresTargetSelection,
+    updateState: desktop.updateState,
+    releaseId: desktop.releaseId,
+    localVersion: desktop.localVersion,
+    remoteVersion: desktop.remoteVersion,
+    sourceKind: "managed_desktop",
+    allowedActions: desktop.allowedActions,
+    reasonCodes: desktop.reasonCodes,
   };
 }
 
 function portFor(data: AgentInstallReadiness): AgentInstallReadinessPort {
   return {
     get: vi.fn(async () => data),
-    getInventory: vi.fn(async (agentId, surface) => {
-      const base = inventory(agentId as "qoderwork" | "codex" | "opencode");
-      return surface ? { ...base, surface } : base;
-    }),
+    getInventory: vi.fn(async (agentId) =>
+      inventory(agentId as "qoderwork" | "codex" | "opencode"),
+    ),
     startAction: vi.fn(),
     cancelAction: vi.fn(),
     getActionJob: vi.fn(),
@@ -298,33 +297,19 @@ describe("AgentInstallReadinessSection", () => {
     expect(screen.getByRole("button", { name: "打开软件" })).toBeVisible();
   });
 
-  it("labels desktop launch exactly 打开软件 and keeps CLI without that button", async () => {
-    const data = openCodeReadiness({
-      cli: {
-        installState: "installed",
-        inventoryState: "single",
-        updateState: "up_to_date",
-        localVersion: "1.18.19",
-        allowedActions: ["install", "update"],
-      },
-      desktop: {
-        installState: "installed",
-        inventoryState: "single",
-        updateState: "up_to_date",
-        localVersion: "1.18.19",
-        allowedActions: ["launch"],
-      },
+  it("labels desktop launch exactly 打开软件 on a single OpenCode desktop component", async () => {
+    const data = desktopReadiness("opencode", {
+      installState: "installed",
+      inventoryState: "single",
+      updateState: "up_to_date",
+      localVersion: "1.18.19",
+      allowedActions: ["launch"],
     });
     const desktopInventory = inventory("opencode", true);
     desktopInventory.candidates[0].localVersion = "1.18.19";
-    desktopInventory.surface = "desktop";
     const port: AgentInstallReadinessPort = {
       get: vi.fn(async () => data),
-      getInventory: vi.fn(async (_agentId, surface) =>
-        surface === "desktop"
-          ? desktopInventory
-          : { ...inventory("opencode"), surface: "cli" as const },
-      ),
+      getInventory: vi.fn(async () => desktopInventory),
       startAction: vi.fn(
         async (): Promise<AgentActionResult> => ({
           contractVersion: AGENT_ACTION_CONTRACT_VERSION,
@@ -333,7 +318,6 @@ describe("AgentInstallReadinessSection", () => {
           jobId: null,
           stage: "succeeded",
           reasonCode: null,
-          surface: "desktop",
         }),
       ),
       cancelAction: vi.fn(),
@@ -342,121 +326,91 @@ describe("AgentInstallReadinessSection", () => {
     render(<AgentInstallReadinessSection agentId="opencode" port={port} />);
 
     const region = await screen.findByRole("region", { name: "安装与更新" });
-    expect(within(region).getByRole("heading", { name: "命令行" })).toBeVisible();
     expect(
-      within(region).getByRole("heading", { name: "桌面应用" }),
-    ).toBeVisible();
-    const launch = within(region).getAllByRole("button", { name: "打开软件" });
-    expect(launch).toHaveLength(1);
-    const desktop = region.querySelector('[data-surface="desktop"]');
-    const cli = region.querySelector('[data-surface="cli"]');
-    expect(desktop).not.toBeNull();
-    expect(cli).not.toBeNull();
-    expect(
-      within(desktop as HTMLElement).getByRole("button", { name: "打开软件" }),
-    ).toBeVisible();
-    expect(
-      within(cli as HTMLElement).queryByRole("button", { name: "打开软件" }),
+      within(region).queryByRole("heading", { name: "命令行" }),
     ).not.toBeInTheDocument();
     expect(
-      within(cli as HTMLElement).getByRole("button", { name: "安装" }),
-    ).toBeVisible();
-    expect(
-      within(cli as HTMLElement).getByRole("button", { name: "更新到最新版" }),
-    ).toBeVisible();
-    fireEvent.click(launch[0]);
+      within(region).queryByRole("heading", { name: "桌面应用" }),
+    ).not.toBeInTheDocument();
+    const launch = within(region).getByRole("button", { name: "打开软件" });
+    expect(launch).toBeVisible();
+    expect(region.querySelector('[data-surface="cli"]')).toBeNull();
+    expect(region.querySelector('[data-surface="desktop"]')).not.toBeNull();
+    fireEvent.click(launch);
     await waitFor(() =>
       expect(port.startAction).toHaveBeenCalledWith(
         expect.objectContaining({
           agentId: "opencode",
           action: "launch",
-          surface: "desktop",
         }),
       ),
     );
     expect(port.startAction).not.toHaveBeenCalledWith(
       expect.objectContaining({ action: "install" }),
     );
-    expect(port.getInventory).toHaveBeenCalledWith("opencode", "cli");
-    expect(port.getInventory).toHaveBeenCalledWith("opencode", "desktop");
+    expect(port.startAction).not.toHaveBeenCalledWith(
+      expect.objectContaining({ surface: "cli" }),
+    );
+    expect(port.getInventory).toHaveBeenCalledWith("opencode");
+    expect(port.getInventory).not.toHaveBeenCalledWith("opencode", "cli");
+  });
+
+  it("labels the Claude physical component Claude Desktop", async () => {
+    const port = portFor(
+      desktopReadiness("claude-code", {
+        installState: "not_installed",
+        allowedActions: ["install"],
+      }),
+    );
+    render(<AgentInstallReadinessSection agentId="claude-code" port={port} />);
+    const region = await screen.findByRole("region", { name: "安装与更新" });
+    expect(
+      within(region).getByRole("heading", { name: "Claude Desktop" }),
+    ).toBeVisible();
+    expect(
+      within(region).queryByRole("heading", { name: "命令行" }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(region).getByRole("button", { name: "安装" }),
+    ).toBeVisible();
   });
 
   it.each([
     {
-      name: "neither installed",
-      cli: {
-        installState: "not_installed" as const,
-        allowedActions: ["install" as const],
-      },
-      desktop: {
-        installState: "not_installed" as const,
-        allowedActions: ["install" as const],
-      },
+      name: "not installed",
+      installState: "not_installed" as const,
+      allowedActions: ["install" as const],
       expectLaunch: false,
     },
     {
-      name: "CLI only",
-      cli: {
-        installState: "installed" as const,
-        inventoryState: "single" as const,
-        updateState: "up_to_date" as const,
-        localVersion: "1.0.0",
-        allowedActions: ["update" as const],
-      },
-      desktop: {
-        installState: "not_installed" as const,
-        allowedActions: ["install" as const],
-      },
-      expectLaunch: false,
-    },
-    {
-      name: "Desktop only",
-      cli: {
-        installState: "not_installed" as const,
-        allowedActions: ["install" as const],
-      },
-      desktop: {
-        installState: "installed" as const,
-        inventoryState: "single" as const,
-        updateState: "up_to_date" as const,
-        localVersion: "1.18.19",
-        allowedActions: ["launch" as const],
-      },
+      name: "installed",
+      installState: "installed" as const,
+      inventoryState: "single" as const,
+      updateState: "up_to_date" as const,
+      localVersion: "1.18.19",
+      allowedActions: ["launch" as const],
       expectLaunch: true,
     },
-    {
-      name: "both installed",
-      cli: {
-        installState: "installed" as const,
-        inventoryState: "single" as const,
-        updateState: "up_to_date" as const,
-        localVersion: "1.0.0",
-        allowedActions: ["update" as const],
-      },
-      desktop: {
-        installState: "installed" as const,
-        inventoryState: "single" as const,
-        updateState: "up_to_date" as const,
-        localVersion: "1.18.19",
-        allowedActions: ["update" as const, "launch" as const],
-      },
-      expectLaunch: true,
-    },
-  ])("keeps OpenCode CLI and Desktop independent when $name", async (fixture) => {
-    const port = portFor(openCodeReadiness(fixture));
+  ])("keeps OpenCode on one desktop row when $name", async (fixture) => {
+    const port = portFor(
+      desktopReadiness("opencode", {
+        installState: fixture.installState,
+        inventoryState: fixture.inventoryState,
+        updateState: fixture.updateState,
+        localVersion: fixture.localVersion,
+        allowedActions: fixture.allowedActions,
+      }),
+    );
     render(<AgentInstallReadinessSection agentId="opencode" port={port} />);
     const region = await screen.findByRole("region", { name: "安装与更新" });
-    expect(within(region).getByRole("heading", { name: "命令行" })).toBeVisible();
     expect(
-      within(region).getByRole("heading", { name: "桌面应用" }),
-    ).toBeVisible();
-    const cli = region.querySelector('[data-surface="cli"]') as HTMLElement;
+      within(region).queryByRole("heading", { name: "命令行" }),
+    ).not.toBeInTheDocument();
+    expect(region.querySelector('[data-surface="cli"]')).toBeNull();
     const desktop = region.querySelector(
       '[data-surface="desktop"]',
     ) as HTMLElement;
-    expect(
-      within(cli).queryByRole("button", { name: "打开软件" }),
-    ).not.toBeInTheDocument();
+    expect(desktop).not.toBeNull();
     if (fixture.expectLaunch) {
       expect(
         within(desktop).getByRole("button", { name: "打开软件" }),

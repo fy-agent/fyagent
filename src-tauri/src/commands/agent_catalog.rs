@@ -6,8 +6,8 @@ use crate::services::external_agents::{
     ExternalAgentRuntimeService, ExternalAgentRuntimeStatus,
 };
 
-const AGENT_CATALOG_CONTRACT_VERSION: u16 = 4;
-const AGENT_CATALOG_REVIEWED_AT: &str = "2026-08-21";
+const AGENT_CATALOG_CONTRACT_VERSION: u16 = 5;
+const AGENT_CATALOG_REVIEWED_AT: &str = "2026-08-31";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -99,18 +99,11 @@ const GROKBUILD_OFFICIAL_LINKS: [AgentOfficialLink; 1] = [official_link(
     "https://x.ai/grok",
 )];
 
-const CLAUDE_OFFICIAL_LINKS: [AgentOfficialLink; 2] = [
-    official_link(
-        AgentOfficialLinkId::Cli,
-        "Claude Code CLI",
-        "https://docs.anthropic.com/en/docs/claude-code/getting-started",
-    ),
-    official_link(
-        AgentOfficialLinkId::Desktop,
-        "Claude Desktop",
-        "https://claude.com/download",
-    ),
-];
+const CLAUDE_OFFICIAL_LINKS: [AgentOfficialLink; 1] = [official_link(
+    AgentOfficialLinkId::Desktop,
+    "Claude Desktop",
+    "https://claude.com/download",
+)];
 
 const OPENCODE_OFFICIAL_LINKS: [AgentOfficialLink; 2] = [
     official_link(
@@ -119,9 +112,9 @@ const OPENCODE_OFFICIAL_LINKS: [AgentOfficialLink; 2] = [
         "https://opencode.ai",
     ),
     official_link(
-        AgentOfficialLinkId::Cli,
-        "OpenCode CLI",
-        "https://opencode.ai/docs/cli",
+        AgentOfficialLinkId::Desktop,
+        "打开 OpenCode 官方下载页",
+        "https://opencode.ai/download",
     ),
 ];
 
@@ -765,11 +758,11 @@ mod tests {
     }
 
     #[test]
-    fn agent_catalog_freezes_v4_order_variants_links_and_capability_matrix() {
+    fn agent_catalog_freezes_v5_order_variants_links_and_capability_matrix() {
         let catalog = get_agent_catalog();
 
-        assert_eq!(catalog.contract_version, 4);
-        assert_eq!(catalog.reviewed_at, "2026-08-21");
+        assert_eq!(catalog.contract_version, 5);
+        assert_eq!(catalog.reviewed_at, "2026-08-31");
         assert_eq!(
             catalog
                 .agents
@@ -1050,6 +1043,50 @@ mod tests {
                 CODEX_EVIDENCE,
             )
         );
+        let claude = &catalog.agents[5];
+        let opencode = &catalog.agents[6];
+        assert_eq!(claude.display_name, "Claude Code");
+        assert_eq!(
+            claude
+                .official_links
+                .iter()
+                .map(|link| (link.id, link.label, link.url))
+                .collect::<Vec<_>>(),
+            [(
+                AgentOfficialLinkId::Desktop,
+                "Claude Desktop",
+                "https://claude.com/download",
+            )]
+        );
+        assert_eq!(
+            opencode
+                .official_links
+                .iter()
+                .map(|link| (link.id, link.label, link.url))
+                .collect::<Vec<_>>(),
+            [
+                (
+                    AgentOfficialLinkId::Product,
+                    "打开 OpenCode 官方页面",
+                    "https://opencode.ai",
+                ),
+                (
+                    AgentOfficialLinkId::Desktop,
+                    "打开 OpenCode 官方下载页",
+                    "https://opencode.ai/download",
+                ),
+            ]
+        );
+        for entry in &catalog.agents {
+            assert!(
+                entry
+                    .official_links
+                    .iter()
+                    .all(|link| link.id != AgentOfficialLinkId::Cli),
+                "{} must not advertise an Agent Catalog CLI install link",
+                entry.display_name
+            );
+        }
     }
 
     #[test]
@@ -1085,11 +1122,11 @@ mod tests {
     }
 
     #[test]
-    fn agent_catalog_wire_is_exact_v4_and_contains_no_legacy_or_sensitive_fields() {
+    fn agent_catalog_wire_is_exact_v5_and_contains_no_legacy_or_sensitive_fields() {
         let value = serde_json::to_value(get_agent_catalog()).expect("catalog serializes");
 
-        assert_eq!(value["contractVersion"], 4);
-        assert_eq!(value["reviewedAt"], "2026-08-21");
+        assert_eq!(value["contractVersion"], 5);
+        assert_eq!(value["reviewedAt"], "2026-08-31");
         assert_eq!(
             sorted_object_keys(&value),
             ["agents", "contractVersion", "reviewedAt"]
@@ -1140,6 +1177,10 @@ mod tests {
             "c:\\\\",
             "/users/",
             "~/.",
+            "docs/cli",
+            "claude-code/getting-started",
+            "claude code cli",
+            "opencode cli",
         ] {
             assert!(!serialized.contains(prohibited));
         }

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   AGENT_ACTION_CONTRACT_VERSION,
+  AGENT_INSTALL_READINESS_CONTRACT_VERSION,
   type AgentActionJobSnapshot,
   type AgentActionJobStage,
   type AgentActionResult,
@@ -28,7 +29,7 @@ function readiness(
   overrides: Partial<AgentInstallReadiness> = {},
 ): AgentInstallReadiness {
   return {
-    contractVersion: 3,
+    contractVersion: AGENT_INSTALL_READINESS_CONTRACT_VERSION,
     agentId: "qoderwork",
     reviewedAt: "2026-08-29",
     installState: "not_installed",
@@ -199,6 +200,46 @@ describe("macOS lifecycle state copy", () => {
     expect(reasonCopy("authorization_required")).toContain("不会改装到其他目录");
     expect(reasonCopy("rollback_restored")).toContain("已恢复之前的应用");
     expect(reasonCopy("recovery_required")).toContain("停止重试");
+  });
+
+  it("projects helper-specific reasons without paths or internal names", () => {
+    const codes: AgentReasonCode[] = [
+      "helper_not_packaged",
+      "helper_signature_invalid",
+      "helper_install_authorization_cancelled",
+      "helper_install_failed",
+      "helper_update_required",
+      "helper_downgrade_rejected",
+      "helper_protocol_incompatible",
+      "helper_peer_rejected",
+      "operation_authorization_cancelled",
+      "operation_authorization_invalid",
+      "source_capability_invalid",
+      "source_changed",
+      "target_slot_invalid",
+      "helper_removal_failed",
+    ];
+    for (const code of codes) {
+      const copy = reasonCopy(code);
+      expect(copy).toBeTruthy();
+      expect(copy).not.toMatch(/\/Applications/u);
+      expect(copy).not.toContain("~/");
+      expect(copy?.toLowerCase()).not.toContain("helper");
+      expect(copy).not.toContain("SMJobBless");
+      expect(copy).not.toContain("XPC");
+      expect(copy).not.toContain("com.fyagent.desktop.system-commit-helper");
+    }
+    expect(reasonCopy("helper_not_packaged")).toContain("系统文件夹");
+    expect(reasonCopy("helper_not_packaged")).toContain("不会改到其他目录");
+    expect(reasonCopy("operation_authorization_cancelled")).toContain(
+      "取消了管理员授权",
+    );
+    expect(reasonCopy("authorization_required")).toContain(
+      "系统应用程序文件夹",
+    );
+    expect(reasonCopy("action_not_supported")).toBe("当前产品不支持此操作。");
+    expect(reasonCopy("action_not_supported")).not.toMatch(/https?:\/\//u);
+    expect(reasonCopy("action_not_supported")).not.toContain("~/");
   });
 });
 
@@ -696,48 +737,25 @@ describe("useAgentLifecycleAction", () => {
     expect(result.current.success).toBe(AGENT_LIFECYCLE_SUCCEEDED_COPY);
   });
 
-  it("uses OpenCode desktop surface allowedActions instead of CLI top-level fields", async () => {
+  it("uses OpenCode desktop allowedActions without a dual CLI surface", async () => {
     const desktopRelease = `v1:${"d".repeat(64)}`;
     const current = readiness({
       agentId: "opencode",
-      sourceKind: "cli_tooling",
-      allowedActions: ["install"],
-      releaseId: `v1:${"c".repeat(64)}`,
-      surfaces: [
-        {
-          surface: "cli",
-          installState: "not_installed",
-          inventoryState: "not_observed",
-          requiresTargetSelection: false,
-          updateState: "latest_unknown",
-          releaseId: `v1:${"c".repeat(64)}`,
-          localVersion: null,
-          remoteVersion: null,
-          sourceKind: "cli_tooling",
-          allowedActions: ["install"],
-          reasonCodes: [],
-        },
-        {
-          surface: "desktop",
-          installState: "installed",
-          inventoryState: "single",
-          requiresTargetSelection: false,
-          updateState: "up_to_date",
-          releaseId: desktopRelease,
-          localVersion: "1.18.19",
-          remoteVersion: "1.18.19",
-          sourceKind: "managed_desktop",
-          allowedActions: ["launch"],
-          reasonCodes: [],
-        },
-      ],
+      sourceKind: "managed_desktop",
+      authOwnership: "provider_owned",
+      allowedActions: ["launch"],
+      releaseId: desktopRelease,
+      installState: "installed",
+      inventoryState: "single",
+      updateState: "up_to_date",
+      localVersion: "1.18.19",
+      remoteVersion: "1.18.19",
     });
     const port = createPort({
       get: vi.fn(async () => current),
       getInventory: vi.fn(async () => ({
         ...installationInventory(),
         agentId: "opencode" as const,
-        surface: "desktop" as const,
       })),
       startAction: vi.fn(async () =>
         actionResult({
@@ -745,7 +763,6 @@ describe("useAgentLifecycleAction", () => {
           action: "launch",
           jobId: null,
           stage: "succeeded",
-          surface: "desktop",
         }),
       ),
     });
@@ -758,17 +775,18 @@ describe("useAgentLifecycleAction", () => {
     );
 
     await act(async () => {
-      await result.current.run("launch", undefined, "desktop");
+      await result.current.run("launch");
     });
 
     expect(port.startAction).toHaveBeenCalledWith({
       agentId: "opencode",
       action: "launch",
       expectedReleaseId: desktopRelease,
-      surface: "desktop",
     });
-    expect(port.getInventory).toHaveBeenCalledWith("opencode", "desktop");
-    expect(result.current.activeSurface).toBe("desktop");
+    expect(port.startAction).not.toHaveBeenCalledWith(
+      expect.objectContaining({ surface: "cli" }),
+    );
+    expect(port.getInventory).toHaveBeenCalledWith("opencode", undefined);
     expect(result.current.success).toBe(AGENT_LIFECYCLE_SUCCEEDED_COPY);
   });
 

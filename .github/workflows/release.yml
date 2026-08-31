@@ -1234,6 +1234,23 @@ jobs:
       - name: Build universal macOS app
         run: pnpm tauri build --target universal-apple-darwin --bundles app
 
+      - name: Build and embed nested privileged helper
+        shell: bash
+        env:
+          FYAGENT_REQUIRE_PRIVILEGED_HELPER: "1"
+        run: |
+          set -euo pipefail
+          scripts/release/build-macos-privileged-helper.sh
+          bundle_root='src-tauri/target/universal-apple-darwin/release/bundle/macos'
+          shopt -s nullglob
+          app_paths=("$bundle_root"/*.app)
+          [ "${#app_paths[@]}" -eq 1 ] && [ -d "${app_paths[0]}" ] && [ "$(basename "${app_paths[0]}")" = 'FyAgent.app' ] || {
+            echo "Expected exactly one raw universal FyAgent.app before embedding the privileged helper" >&2
+            exit 1
+          }
+          scripts/release/embed-macos-privileged-helper.sh "${app_paths[0]}"
+          scripts/release/verify-macos-privileged-helper.sh --structure-only "${app_paths[0]}"
+
       - name: Seal and verify the Developer ID app
         id: app
         if: needs.eligibility.outputs.release_mode == 'formal'

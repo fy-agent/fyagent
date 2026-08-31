@@ -5,10 +5,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::services::external_agents::AgentCatalogId;
 
-pub const AGENT_INSTALL_READINESS_CONTRACT_VERSION: u16 = 3;
-pub const AGENT_INSTALL_READINESS_REVIEWED_AT: &str = "2026-08-29";
+pub const AGENT_INSTALL_READINESS_CONTRACT_VERSION: u16 = 4;
+pub const AGENT_INSTALL_READINESS_REVIEWED_AT: &str = "2026-08-31";
 pub const AGENT_INSTALLATION_INVENTORY_CONTRACT_VERSION: u16 = 1;
-pub const AGENT_ACTION_CONTRACT_VERSION: u16 = 3;
+pub const AGENT_ACTION_CONTRACT_VERSION: u16 = 4;
 pub const AGENT_AUTH_CONTRACT_VERSION: u16 = 1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -30,18 +30,11 @@ pub enum AgentSurface {
 }
 
 pub fn legal_surfaces(agent_id: AgentCatalogId) -> &'static [AgentSurface] {
-    match agent_id {
-        AgentCatalogId::OpenCode => &[AgentSurface::Cli, AgentSurface::Desktop],
-        AgentCatalogId::ClaudeCode | AgentCatalogId::GrokBuild => &[AgentSurface::Cli],
-        AgentCatalogId::QoderWork
-        | AgentCatalogId::TraeWork
-        | AgentCatalogId::WorkBuddy
-        | AgentCatalogId::Codex => &[AgentSurface::Desktop],
-    }
+    super::lifecycle_policy::legal_surfaces(agent_id)
 }
 
 pub fn default_surface(agent_id: AgentCatalogId) -> AgentSurface {
-    legal_surfaces(agent_id)[0]
+    super::lifecycle_policy::default_surface(agent_id)
 }
 
 pub fn surface_is_legal(agent_id: AgentCatalogId, surface: AgentSurface) -> bool {
@@ -406,7 +399,22 @@ pub enum AgentReasonCode {
     RecoveryRequired,
     ExecutorNotImplemented,
     SurfaceNotSupported,
+    ActionNotSupported,
     ApplicationLaunchFailed,
+    HelperNotPackaged,
+    HelperSignatureInvalid,
+    HelperInstallAuthorizationCancelled,
+    HelperInstallFailed,
+    HelperUpdateRequired,
+    HelperDowngradeRejected,
+    HelperProtocolIncompatible,
+    HelperPeerRejected,
+    OperationAuthorizationCancelled,
+    OperationAuthorizationInvalid,
+    SourceCapabilityInvalid,
+    SourceChanged,
+    TargetSlotInvalid,
+    HelperRemovalFailed,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -866,11 +874,18 @@ mod tests {
         assert!(serde_json::from_value::<AgentSurface>(json!("web")).is_err());
         assert_eq!(
             legal_surfaces(AgentCatalogId::OpenCode),
-            &[AgentSurface::Cli, AgentSurface::Desktop]
+            &[AgentSurface::Desktop]
         );
-        assert_eq!(default_surface(AgentCatalogId::OpenCode), AgentSurface::Cli);
+        assert_eq!(
+            default_surface(AgentCatalogId::OpenCode),
+            AgentSurface::Desktop
+        );
         assert_eq!(
             default_surface(AgentCatalogId::QoderWork),
+            AgentSurface::Desktop
+        );
+        assert_eq!(
+            default_surface(AgentCatalogId::ClaudeCode),
             AgentSurface::Desktop
         );
         assert!(!surface_is_legal(
@@ -879,11 +894,19 @@ mod tests {
         ));
         assert!(!surface_is_legal(
             AgentCatalogId::ClaudeCode,
+            AgentSurface::Cli
+        ));
+        assert!(surface_is_legal(
+            AgentCatalogId::ClaudeCode,
             AgentSurface::Desktop
         ));
         assert_eq!(
             resolve_requested_surface(AgentCatalogId::OpenCode, None),
-            Ok(AgentSurface::Cli)
+            Ok(AgentSurface::Desktop)
+        );
+        assert_eq!(
+            resolve_requested_surface(AgentCatalogId::ClaudeCode, Some(AgentSurface::Cli)),
+            Err(AgentReasonCode::SurfaceNotSupported)
         );
         assert_eq!(
             resolve_requested_surface(AgentCatalogId::QoderWork, Some(AgentSurface::Cli)),
@@ -907,6 +930,75 @@ mod tests {
             "bundleId": "ai.opencode.desktop"
         }))
         .is_err());
+    }
+
+    #[test]
+    fn helper_reason_codes_round_trip_as_snake_case_wire_values() {
+        let cases = [
+            (AgentReasonCode::HelperNotPackaged, "helper_not_packaged"),
+            (
+                AgentReasonCode::HelperSignatureInvalid,
+                "helper_signature_invalid",
+            ),
+            (
+                AgentReasonCode::HelperInstallAuthorizationCancelled,
+                "helper_install_authorization_cancelled",
+            ),
+            (
+                AgentReasonCode::HelperInstallFailed,
+                "helper_install_failed",
+            ),
+            (
+                AgentReasonCode::HelperUpdateRequired,
+                "helper_update_required",
+            ),
+            (
+                AgentReasonCode::HelperDowngradeRejected,
+                "helper_downgrade_rejected",
+            ),
+            (
+                AgentReasonCode::HelperProtocolIncompatible,
+                "helper_protocol_incompatible",
+            ),
+            (AgentReasonCode::HelperPeerRejected, "helper_peer_rejected"),
+            (
+                AgentReasonCode::OperationAuthorizationCancelled,
+                "operation_authorization_cancelled",
+            ),
+            (
+                AgentReasonCode::OperationAuthorizationInvalid,
+                "operation_authorization_invalid",
+            ),
+            (
+                AgentReasonCode::SourceCapabilityInvalid,
+                "source_capability_invalid",
+            ),
+            (AgentReasonCode::SourceChanged, "source_changed"),
+            (AgentReasonCode::TargetSlotInvalid, "target_slot_invalid"),
+            (
+                AgentReasonCode::HelperRemovalFailed,
+                "helper_removal_failed",
+            ),
+        ];
+        for (code, expected) in cases {
+            assert_eq!(serde_json::to_value(code).unwrap(), json!(expected));
+            assert_eq!(
+                serde_json::from_value::<AgentReasonCode>(json!(expected)).unwrap(),
+                code
+            );
+        }
+        assert_eq!(
+            serde_json::to_value(AgentReasonCode::ActionNotSupported).unwrap(),
+            json!("action_not_supported")
+        );
+        assert_eq!(
+            serde_json::from_value::<AgentReasonCode>(json!("action_not_supported")).unwrap(),
+            AgentReasonCode::ActionNotSupported
+        );
+        assert!(serde_json::from_value::<AgentReasonCode>(json!("smjobbless")).is_err());
+        assert_eq!(AGENT_ACTION_CONTRACT_VERSION, 4);
+        assert_eq!(AGENT_INSTALL_READINESS_CONTRACT_VERSION, 4);
+        assert_eq!(AGENT_INSTALL_READINESS_REVIEWED_AT, "2026-08-31");
     }
 
     fn sorted_keys(value: &Value) -> Vec<&str> {

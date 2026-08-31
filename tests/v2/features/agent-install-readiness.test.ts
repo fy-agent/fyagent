@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   AGENT_ACTION_CONTRACT_VERSION,
+  AGENT_INSTALL_READINESS_CONTRACT_VERSION,
+  AGENT_REASON_CODES,
   assertAgentInstallReadinessId,
   installationTargetsForAction,
   isLegalAgentSurface,
@@ -44,18 +46,11 @@ function surfaceRow(
 
 function readiness(
   agentId: (typeof AGENT_CATALOG_IDS)[number] = "qoderwork",
-  combo: { cli: AgentInstallState; desktop: AgentInstallState } = {
-    cli: "not_installed",
-    desktop: "not_installed",
-  },
 ): AgentInstallReadiness {
   const codex = agentId === "codex";
-  const cli =
-    agentId === "claude-code" ||
-    agentId === "grokbuild" ||
-    agentId === "opencode";
-  const base: AgentInstallReadiness = {
-    contractVersion: 3,
+  const grok = agentId === "grokbuild";
+  return {
+    contractVersion: AGENT_INSTALL_READINESS_CONTRACT_VERSION,
     agentId,
     reviewedAt: "2026-08-29",
     installState: "unknown",
@@ -74,7 +69,7 @@ function readiness(
       agentId === "opencode" ? "provider_connection_required" : "unknown",
     sourceKind: codex
       ? "codex_desktop"
-      : cli
+      : grok
         ? "cli_tooling"
         : "managed_desktop",
     allowedActions: [],
@@ -84,21 +79,6 @@ function readiness(
         ? ["provider_connection_required"]
         : ["auth_state_unknown"],
   };
-  if (agentId === "opencode") {
-    const cliSurface = surfaceRow("cli", combo.cli);
-    const desktopSurface = surfaceRow("desktop", combo.desktop);
-    return {
-      ...base,
-      installState: cliSurface.installState,
-      inventoryState: cliSurface.inventoryState,
-      updateState: cliSurface.updateState,
-      localVersion: cliSurface.localVersion,
-      remoteVersion: cliSurface.remoteVersion,
-      allowedActions: cliSurface.allowedActions,
-      surfaces: [cliSurface, desktopSurface],
-    };
-  }
-  return base;
 }
 
 function inventory() {
@@ -197,6 +177,12 @@ describe("Agent install readiness wire contract", () => {
     expect(() =>
       parseAgentInstallReadiness(readiness("codex"), "qoderwork"),
     ).toThrow("Agent install readiness is unavailable");
+    expect(() =>
+      parseAgentInstallReadiness(
+        { ...readiness(), contractVersion: 3 },
+        "qoderwork",
+      ),
+    ).toThrow("Agent install readiness is unavailable");
     expect(
       parseAgentInstallReadiness(
         {
@@ -293,6 +279,9 @@ describe("Agent install readiness wire contract", () => {
     ).toBeNull();
 
     expect(() =>
+      parseAgentActionJobSnapshot({ ...snapshot, contractVersion: 3 }),
+    ).toThrow("Agent action job is unavailable");
+    expect(() =>
       parseAgentActionJobSnapshot({ ...snapshot, contractVersion: 2 }),
     ).toThrow("Agent action job is unavailable");
     expect(() =>
@@ -315,35 +304,60 @@ describe("Agent install readiness wire contract", () => {
     ).toThrow("Agent action job is unavailable");
   });
 
-  it("parses OpenCode CLI-only, desktop-only, both, and neither as independent surfaces", () => {
-    expect(surfacesForAgent("opencode")).toEqual(["cli", "desktop"]);
+  it("maps desktop-only Agent lifecycle surfaces except Grok CLI", () => {
+    expect(AGENT_CATALOG_IDS.map(surfacesForAgent)).toEqual([
+      ["desktop"],
+      ["desktop"],
+      ["desktop"],
+      ["cli"],
+      ["desktop"],
+      ["desktop"],
+      ["desktop"],
+    ]);
     expect(isLegalAgentSurface("qoderwork", "cli")).toBe(false);
-    expect(isLegalAgentSurface("claude-code", "desktop")).toBe(false);
-
-    const combos = [
-      { cli: "not_installed", desktop: "not_installed" },
-      { cli: "installed", desktop: "not_installed" },
-      { cli: "not_installed", desktop: "installed" },
-      { cli: "installed", desktop: "installed" },
-    ] as const;
-    for (const combo of combos) {
-      const parsed = parseAgentInstallReadiness(
-        readiness("opencode", combo),
-        "opencode",
-      );
-      expect(parsed.surfaces).toHaveLength(2);
-      expect(parsed.surfaces?.[0]?.surface).toBe("cli");
-      expect(parsed.surfaces?.[0]?.installState).toBe(combo.cli);
-      expect(parsed.surfaces?.[0]?.allowedActions).not.toContain("launch");
-      expect(parsed.surfaces?.[1]?.surface).toBe("desktop");
-      expect(parsed.surfaces?.[1]?.installState).toBe(combo.desktop);
-      if (combo.desktop === "installed") {
-        expect(parsed.surfaces?.[1]?.allowedActions).toContain("launch");
-      }
-    }
+    expect(isLegalAgentSurface("claude-code", "cli")).toBe(false);
+    expect(isLegalAgentSurface("opencode", "cli")).toBe(false);
+    expect(isLegalAgentSurface("claude-code", "desktop")).toBe(true);
+    expect(isLegalAgentSurface("opencode", "desktop")).toBe(true);
+    expect(isLegalAgentSurface("grokbuild", "desktop")).toBe(false);
+    expect(isLegalAgentSurface("grokbuild", "cli")).toBe(true);
   });
 
-  it("rejects unknown surfaces, illegal product pairs, and CLI launch", () => {
+  it("parses compact Claude and OpenCode desktop readiness without dual-surface aggregation", () => {
+    const claude = parseAgentInstallReadiness(
+      readiness("claude-code"),
+      "claude-code",
+    );
+    expect(claude.sourceKind).toBe("managed_desktop");
+    expect(claude.surfaces).toBeUndefined();
+
+    const openCode = parseAgentInstallReadiness(
+      {
+        ...readiness("opencode"),
+        installState: "installed",
+        inventoryState: "single",
+        updateState: "up_to_date",
+        localVersion: "1.18.19",
+        remoteVersion: "1.18.19",
+        allowedActions: ["launch"],
+        surfaces: [surfaceRow("desktop", "installed")],
+      },
+      "opencode",
+    );
+    expect(openCode.sourceKind).toBe("managed_desktop");
+    expect(openCode.surfaces).toHaveLength(1);
+    expect(openCode.surfaces?.[0]?.surface).toBe("desktop");
+    expect(openCode.surfaces?.[0]?.allowedActions).toContain("launch");
+
+    expect(
+      parseAgentInstallReadiness(
+        { ...readiness("opencode"), surfaces: undefined },
+        "opencode",
+      ).surfaces,
+    ).toBeUndefined();
+  });
+
+  it("rejects unknown surfaces, removed CLI pairs, and CLI launch", () => {
     expect(() =>
       parseAgentInstallReadiness(
         {
@@ -355,21 +369,78 @@ describe("Agent install readiness wire contract", () => {
     ).toThrow("Agent install readiness is unavailable");
     expect(() =>
       parseAgentInstallReadiness(
-        { ...readiness("opencode"), surfaces: undefined },
+        {
+          ...readiness("claude-code"),
+          surfaces: [surfaceRow("cli", "installed")],
+        },
+        "claude-code",
+      ),
+    ).toThrow("Agent install readiness is unavailable");
+    expect(() =>
+      parseAgentInstallReadiness(
+        {
+          ...readiness("opencode"),
+          surfaces: [
+            surfaceRow("cli", "not_installed"),
+            surfaceRow("desktop", "installed"),
+          ],
+        },
         "opencode",
       ),
     ).toThrow("Agent install readiness is unavailable");
-    const withLaunchOnCli = readiness("opencode");
-    withLaunchOnCli.surfaces = [
-      { ...surfaceRow("cli", "installed"), allowedActions: ["launch"] },
-      surfaceRow("desktop", "not_installed"),
-    ];
     expect(() =>
-      parseAgentInstallReadiness(withLaunchOnCli, "opencode"),
+      parseAgentInstallReadiness(
+        {
+          ...readiness("opencode"),
+          sourceKind: "cli_tooling",
+        },
+        "opencode",
+      ),
     ).toThrow("Agent install readiness is unavailable");
+    const grokWithLaunch = {
+      ...readiness("grokbuild"),
+      surfaces: [
+        { ...surfaceRow("cli", "installed"), allowedActions: ["launch"] },
+      ],
+    };
+    expect(() =>
+      parseAgentInstallReadiness(grokWithLaunch, "grokbuild"),
+    ).toThrow("Agent install readiness is unavailable");
+    expect(
+      parseAgentInstallationInventory(
+        {
+          ...inventory(),
+          agentId: "opencode",
+          state: "not_observed",
+          candidates: [],
+          freshDestinations: [],
+        },
+        "opencode",
+      ).agentId,
+    ).toBe("opencode");
     expect(() =>
       parseAgentInstallationInventory(
-        { ...inventory(), agentId: "opencode" },
+        {
+          ...inventory(),
+          agentId: "opencode",
+          state: "not_observed",
+          candidates: [],
+          freshDestinations: [],
+          surface: "desktop",
+        },
+        "opencode",
+      ),
+    ).toThrow("Agent installation inventory is unavailable");
+    expect(() =>
+      parseAgentInstallationInventory(
+        {
+          ...inventory(),
+          agentId: "opencode",
+          state: "not_observed",
+          candidates: [],
+          freshDestinations: [],
+          surface: "cli",
+        },
         "opencode",
       ),
     ).toThrow("Agent installation inventory is unavailable");
@@ -386,5 +457,44 @@ describe("Agent install readiness wire contract", () => {
         surface: "cli",
       }),
     ).toThrow("Agent action job is unavailable");
+    expect(() =>
+      parseAgentActionJobSnapshot({
+        contractVersion: AGENT_ACTION_CONTRACT_VERSION,
+        jobId: "job-1",
+        agentId: "claude-code",
+        action: "install",
+        stage: "checking",
+        cancellable: true,
+        reasonCode: null,
+        transfer: null,
+        surface: "cli",
+      }),
+    ).toThrow("Agent action job is unavailable");
+    expect(() =>
+      parseAgentActionJobSnapshot({
+        contractVersion: AGENT_ACTION_CONTRACT_VERSION,
+        jobId: "job-1",
+        agentId: "opencode",
+        action: "install",
+        stage: "checking",
+        cancellable: true,
+        reasonCode: null,
+        transfer: null,
+        surface: "cli",
+      }),
+    ).toThrow("Agent action job is unavailable");
+  });
+
+  it("accepts action_not_supported as a closed reason code", () => {
+    expect(AGENT_REASON_CODES).toContain("action_not_supported");
+    expect(
+      parseAgentInstallReadiness(
+        {
+          ...readiness("qoderwork"),
+          reasonCodes: ["action_not_supported"],
+        },
+        "qoderwork",
+      ).reasonCodes,
+    ).toEqual(["action_not_supported"]);
   });
 });

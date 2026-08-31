@@ -9,7 +9,6 @@ import type {
   AgentInstallReadinessPort,
   AgentInstallState,
   AgentReasonCode,
-  AgentSurface,
   AgentSurfaceReadiness,
   AgentUpdateState,
 } from "../../shared/features/agent-install-readiness";
@@ -63,6 +62,7 @@ type InventorySlot =
 type SurfaceProjection = {
   surface: SurfaceKind;
   title: string;
+  showTitle: boolean;
   localVersion: string | null;
   remoteVersion: string | null;
   installState: AgentInstallState;
@@ -161,10 +161,28 @@ function orderedLifecycleActions(
   });
 }
 
-function projectionFromSurface(item: AgentSurfaceReadiness): SurfaceProjection {
+function componentTitle(
+  agentId: AgentCatalogId,
+  surface: SurfaceKind,
+): { title: string; showTitle: boolean } {
+  if (agentId === "claude-code") {
+    return { title: "Claude Desktop", showTitle: true };
+  }
+  return {
+    title: surface === "cli" ? "命令行" : "桌面应用",
+    showTitle: false,
+  };
+}
+
+function projectionFromSurface(
+  agentId: AgentCatalogId,
+  item: AgentSurfaceReadiness,
+): SurfaceProjection {
+  const { title, showTitle } = componentTitle(agentId, item.surface);
   return {
     surface: item.surface,
-    title: item.surface === "cli" ? "命令行" : "桌面应用",
+    title,
+    showTitle,
     localVersion: item.localVersion,
     remoteVersion: item.remoteVersion,
     installState: item.installState,
@@ -187,73 +205,18 @@ function projectionFromSurface(item: AgentSurfaceReadiness): SurfaceProjection {
 }
 
 function detectSurfaces(
+  agentId: AgentCatalogId,
   data: AgentInstallReadiness,
 ): SurfaceProjection[] | null {
   if (!data.surfaces || data.surfaces.length === 0) return null;
-  return data.surfaces.map(projectionFromSurface);
-}
-
-function openCodeFallbackSurfaces(
-  data: AgentInstallReadiness,
-): SurfaceProjection[] {
-  return [
-    {
-      surface: "cli",
-      title: "命令行",
-      localVersion: data.localVersion,
-      remoteVersion: data.remoteVersion,
-      installState: data.installState,
-      updateState: data.updateState,
-      inventoryState: data.inventoryState,
-      allowedActions: data.allowedActions.filter(
-        (action) => action !== "launch",
-      ),
-      reasonCodes: data.reasonCodes,
-      requiresTargetSelection: data.requiresTargetSelection,
-      releaseId: data.releaseId,
-      sourceKind: data.sourceKind,
-      hideLaunch: true,
-      emptyNote: null,
-    },
-    {
-      surface: "desktop",
-      title: "桌面应用",
-      localVersion: null,
-      remoteVersion: null,
-      installState: "unknown",
-      updateState: "unknown",
-      inventoryState: "unknown",
-      allowedActions: [],
-      reasonCodes: [],
-      requiresTargetSelection: false,
-      releaseId: null,
-      sourceKind: "managed_desktop",
-      hideLaunch: false,
-      emptyNote: "暂时无法确认桌面应用状态",
-    },
-  ];
+  return data.surfaces.map((item) => projectionFromSurface(agentId, item));
 }
 
 function surfacesForProduct(
   agentId: AgentCatalogId,
   data: AgentInstallReadiness,
 ): SurfaceProjection[] {
-  const detected = detectSurfaces(data);
-  if (agentId === "opencode") {
-    if (
-      detected &&
-      detected.some((item) => item.surface === "cli") &&
-      detected.some((item) => item.surface === "desktop")
-    ) {
-      return detected;
-    }
-    if (detected) {
-      const bySurface = new Map(detected.map((item) => [item.surface, item]));
-      const fallback = openCodeFallbackSurfaces(data);
-      return fallback.map((item) => bySurface.get(item.surface) ?? item);
-    }
-    return openCodeFallbackSurfaces(data);
-  }
+  const detected = detectSurfaces(agentId, data);
   const hideLaunch =
     data.sourceKind === "cli_tooling" ||
     (detected?.[0]?.surface ?? "desktop") === "cli";
@@ -262,10 +225,13 @@ function surfacesForProduct(
       { ...detected[0], hideLaunch: detected[0].hideLaunch || hideLaunch },
     ];
   }
+  const surface: SurfaceKind = hideLaunch ? "cli" : "desktop";
+  const { title, showTitle } = componentTitle(agentId, surface);
   return [
     {
-      surface: hideLaunch ? "cli" : "desktop",
-      title: hideLaunch ? "命令行" : "桌面应用",
+      surface,
+      title,
+      showTitle,
       localVersion: data.localVersion,
       remoteVersion: data.remoteVersion,
       installState: data.installState,
@@ -280,18 +246,6 @@ function surfacesForProduct(
       emptyNote: null,
     },
   ];
-}
-
-function inventorySlotFor(
-  agentId: AgentCatalogId,
-  surface: SurfaceKind | "product",
-  compact: InventorySlot,
-  bySurface: Partial<Record<AgentSurface, InventorySlot>>,
-): InventorySlot {
-  if (agentId === "opencode" && surface !== "product") {
-    return bySurface[surface] ?? { status: "loading" };
-  }
-  return compact;
 }
 
 function LifecycleProgress({
@@ -320,7 +274,6 @@ function LifecycleProgress({
 
 function ReadinessSummary({
   projection,
-  dual,
   busy,
   jobStage,
   progressLabel,
@@ -334,7 +287,6 @@ function ReadinessSummary({
   showJobProgress = true,
 }: {
   projection: SurfaceProjection;
-  dual: boolean;
   busy: boolean;
   jobStage: AgentActionJobStage | null;
   progressLabel: string | null;
@@ -358,11 +310,8 @@ function ReadinessSummary({
     .map(reasonCopy)
     .filter((text): text is string => Boolean(text));
   return (
-    <div
-      className={dual ? "fy-agent-install-surface" : undefined}
-      data-surface={projection.surface}
-    >
-      {dual ? <h4>{projection.title}</h4> : null}
+    <div data-surface={projection.surface}>
+      {projection.showTitle ? <h4>{projection.title}</h4> : null}
       {notices.map((text) => (
         <p key={text} className="fy-agent-install-readiness-summary">
           {text}
@@ -558,9 +507,6 @@ function AgentInstallReadinessContent({
   const [inventoryState, setInventoryState] = useState<InventorySlot>({
     status: "loading",
   });
-  const [inventoryBySurface, setInventoryBySurface] = useState<
-    Partial<Record<AgentSurface, InventorySlot>>
-  >({});
   const [targetAction, setTargetAction] = useState<{
     action: AgentActionId;
     surface: SurfaceKind | "product";
@@ -568,21 +514,12 @@ function AgentInstallReadinessContent({
   const [selectedTarget, setSelectedTarget] =
     useState<AgentInstallationTarget | null>(null);
 
-  const activeInventory = inventorySlotFor(
-    agentId,
-    targetAction?.surface ?? "product",
-    inventoryState,
-    inventoryBySurface,
-  );
   const targetOptions = useMemo(
     () =>
-      targetAction && activeInventory.status === "ready"
-        ? installationTargetsForAction(
-            activeInventory.data,
-            targetAction.action,
-          )
+      targetAction && inventoryState.status === "ready"
+        ? installationTargetsForAction(inventoryState.data, targetAction.action)
         : [],
-    [activeInventory, targetAction],
+    [inventoryState, targetAction],
   );
 
   const lifecycle = useAgentLifecycleAction({
@@ -594,17 +531,7 @@ function AgentInstallReadinessContent({
       setState({ status: "ready", data });
     },
     onInventoryChange: (data) => {
-      if (
-        agentId === "opencode" &&
-        (data.surface === "cli" || data.surface === "desktop")
-      ) {
-        setInventoryBySurface((current) => ({
-          ...current,
-          [data.surface as AgentSurface]: { status: "ready", data },
-        }));
-      } else {
-        setInventoryState({ status: "ready", data });
-      }
+      setInventoryState({ status: "ready", data });
       setSelectedTarget((current) =>
         current?.inventoryId === data.inventoryId ? current : null,
       );
@@ -628,31 +555,6 @@ function AgentInstallReadinessContent({
 
   useEffect(() => {
     let active = true;
-    if (agentId === "opencode") {
-      for (const surface of ["cli", "desktop"] as const) {
-        void port.getInventory(agentId, surface).then(
-          (data) => {
-            if (active) {
-              setInventoryBySurface((current) => ({
-                ...current,
-                [surface]: { status: "ready", data },
-              }));
-            }
-          },
-          () => {
-            if (active) {
-              setInventoryBySurface((current) => ({
-                ...current,
-                [surface]: { status: "unavailable" },
-              }));
-            }
-          },
-        );
-      }
-      return () => {
-        active = false;
-      };
-    }
     void port.getInventory(agentId).then(
       (data) => {
         if (active) setInventoryState({ status: "ready", data });
@@ -666,27 +568,8 @@ function AgentInstallReadinessContent({
     };
   }, [agentId, port]);
 
-  const refreshInventory = (surface: SurfaceKind | "product") => {
+  const refreshInventory = () => {
     setSelectedTarget(null);
-    if (agentId === "opencode" && surface !== "product") {
-      setInventoryBySurface((current) => ({
-        ...current,
-        [surface]: { status: "loading" },
-      }));
-      void port.getInventory(agentId, surface).then(
-        (data) =>
-          setInventoryBySurface((current) => ({
-            ...current,
-            [surface]: { status: "ready", data },
-          })),
-        () =>
-          setInventoryBySurface((current) => ({
-            ...current,
-            [surface]: { status: "unavailable" },
-          })),
-      );
-      return;
-    }
     setInventoryState({ status: "loading" });
     void port.getInventory(agentId).then(
       (data) => setInventoryState({ status: "ready", data }),
@@ -701,19 +584,11 @@ function AgentInstallReadinessContent({
     if (state.status !== "ready") return;
     if (!isLifecycleAction(action)) return;
     if (projection.hideLaunch && action === "launch") return;
-    const resolvedSurface: AgentSurface | undefined =
-      agentId === "opencode" ? projection.surface : undefined;
-    const inventory = inventorySlotFor(
-      agentId,
-      projection.surface,
-      inventoryState,
-      inventoryBySurface,
-    );
     const cliBound =
       projection.surface === "cli" || projection.sourceKind === "cli_tooling";
     const launchEligibleCount =
-      inventory.status === "ready"
-        ? inventory.data.candidates.filter(
+      inventoryState.status === "ready"
+        ? inventoryState.data.candidates.filter(
             (candidate) => candidate.launchEligible,
           ).length
         : 0;
@@ -724,12 +599,12 @@ function AgentInstallReadinessContent({
         (action === "install" || action === "update" || action === "launch")) ||
       (action === "launch" && launchEligibleCount > 1);
     if (!needsTarget) {
-      void lifecycle.run(action, null, resolvedSurface);
+      void lifecycle.run(action, null);
       return;
     }
     setTargetAction({ action, surface: projection.surface });
-    if (inventory.status !== "ready") return;
-    const options = installationTargetsForAction(inventory.data, action);
+    if (inventoryState.status !== "ready") return;
+    const options = installationTargetsForAction(inventoryState.data, action);
     const eligible = options.filter((target) =>
       target.eligibleActions.includes(action),
     );
@@ -740,12 +615,12 @@ function AgentInstallReadinessContent({
       ? eligible.find((target) => target.targetId === selectedTarget.targetId)
       : undefined;
     if (current) {
-      void lifecycle.run(action, current, resolvedSurface);
+      void lifecycle.run(action, current);
       return;
     }
     if (eligible.length === 1 && !hasDisabledSystem) {
       setSelectedTarget(eligible[0]);
-      void lifecycle.run(action, eligible[0], resolvedSurface);
+      void lifecycle.run(action, eligible[0]);
       return;
     }
     setSelectedTarget(null);
@@ -760,14 +635,14 @@ function AgentInstallReadinessContent({
           targets={targetOptions}
           value={selectedTarget?.targetId ?? null}
           onChange={setSelectedTarget}
-          loading={activeInventory.status === "loading"}
+          loading={inventoryState.status === "loading"}
           error={
-            activeInventory.status === "unavailable"
+            inventoryState.status === "unavailable"
               ? "暂时无法读取安装位置。请刷新后重试。"
               : null
           }
           disabled={lifecycle.busy}
-          onRefresh={() => refreshInventory(surface)}
+          onRefresh={() => refreshInventory()}
         />
         {targetOptions.some((target) =>
           target.reasonCodes.includes("authorization_required"),
@@ -789,7 +664,6 @@ function AgentInstallReadinessContent({
       </>
     ) : null;
 
-  const dual = agentId === "opencode" && state.status === "ready";
   const projections =
     state.status === "ready" ? surfacesForProduct(agentId, state.data) : [];
 
@@ -806,33 +680,9 @@ function AgentInstallReadinessContent({
           <InlineNotice tone="warning">
             暂时无法检查安装状态。请重新打开此页面。
           </InlineNotice>
-        ) : dual ? (
-          <div className="fy-agent-install-surfaces">
-            {projections.map((projection) => {
-              const active = lifecycle.activeSurface === projection.surface;
-              return (
-                <ReadinessSummary
-                  key={projection.surface}
-                  projection={projection}
-                  dual
-                  busy={lifecycle.busy}
-                  jobStage={active ? lifecycle.stage : null}
-                  progressLabel={active ? lifecycle.progressLabel : null}
-                  error={active ? lifecycle.error : null}
-                  success={active ? lifecycle.success : null}
-                  canCancel={lifecycle.canCancel && active}
-                  showJobProgress={lifecycle.busy && active}
-                  targetPicker={targetPicker(projection.surface)}
-                  onAction={(action) => handleAction(action, projection)}
-                  onCancel={() => void lifecycle.cancel()}
-                />
-              );
-            })}
-          </div>
-        ) : (
+        ) : projections[0] ? (
           <ReadinessSummary
             projection={projections[0]}
-            dual={false}
             busy={lifecycle.busy}
             jobStage={lifecycle.stage}
             progressLabel={lifecycle.progressLabel}
@@ -855,7 +705,7 @@ function AgentInstallReadinessContent({
               ) : null
             }
           />
-        )}
+        ) : null}
       </div>
     </section>
   );

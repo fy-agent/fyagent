@@ -27,6 +27,9 @@ use lifecycle::{
 use versions::{
     elevated_windows_tool_version_unavailable, extract_version, get_single_tool_version_impl,
 };
+pub(crate) use versions::{fetch_github_latest_version, FIXED_GITHUB_OPENCODE_REPO};
+#[cfg(test)]
+pub(crate) use versions::{github_latest_release_url, parse_github_latest_release_tag};
 
 #[cfg(all(test, target_os = "macos"))]
 use discovery::is_conflicting;

@@ -1,0 +1,49 @@
+{
+  "pins" : [
+    {
+      "identity" : "authorized",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/trilemma-dev/Authorized.git",
+      "state" : {
+        "revision" : "e490b9d3f4a0e8b17a8b39b5a9750b8e0be7548a",
+        "version" : "1.0.0"
+      }
+    },
+    {
+      "identity" : "blessed",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/trilemma-dev/Blessed.git",
+      "state" : {
+        "revision" : "e7c730ea4bcd2df7b61f022dbd38c5cdc2c875de",
+        "version" : "0.6.0"
+      }
+    },
+    {
+      "identity" : "embeddedpropertylist",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/trilemma-dev/EmbeddedPropertyList.git",
+      "state" : {
+        "revision" : "21bd832e28a9a66ecdb7b4c21910bb0487a22fe5",
+        "version" : "2.0.2"
+      }
+    },
+    {
+      "identity" : "required",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/trilemma-dev/Required.git",
+      "state" : {
+        "revision" : "82a4fbd388346ca40b1bbe815014dc45a75d503c",
+        "version" : "0.1.1"
+      }
+    },
+    {
+      "identity" : "securexpc",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/trilemma-dev/SecureXPC.git",
+      "state" : {
+        "revision" : "1cece54562c7626d042f007d2f38cfe325565850"
+      }
+    }
+  ],
+  "version" : 2
+}

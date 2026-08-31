@@ -39,7 +39,7 @@
     ],
     [
       "src-tauri/build.rs",
-      "ad356bc888f11ca1eed3d4ab6ae597c922c3bff25ce7c657aa36ac46bb854ef0"
+      "ef38c7d734249a1eeec60fd4ad1d31b20f662b467013cf13541a6fbe0f8ec933"
     ],
     [
       "src-tauri/Cargo.toml",
@@ -47,23 +47,23 @@
     ],
     [
       "src-tauri/src/agent_install/desktop.rs",
-      "5c4ca968f4868b483c418d00fd0de1c339f85dc7807b2cb81c930e34fc9cd1bc"
+      "f5641b04d479dab4fec59c5bd4d48665194d6a281c5a85b4041a934349de7e1b"
     ],
     [
       "src-tauri/src/agent_install/inventory.rs",
-      "45c34506eabe92d8f492af3f7be35b6f236df91b22e51a3e6e07d0820e13348d"
+      "53b40f1326f45a3f1d999403d09540d43bcd63b91db7b28420d23669509d6396"
     ],
     [
       "src-tauri/src/agent_install/macos.rs",
-      "b541e2f043bf382b8245cd45a0e28f6b43ddb8d8f0b7a3062bcf2ad798c687d1"
+      "39242394c02244d3d1b7ad11422ee96911e759c38dafa982d44b2685185793f8"
     ],
     [
       "src-tauri/src/agent_install/mod.rs",
-      "6616790a198b7a616403f6a30a14df49e344cb7cd3db4339f9dfa5e796f68b4c"
+      "0cca87c30192bc53934f478d300eead4b6e2c90dab77e5c84aed0099ea3ae20a"
     ],
     [
       "src-tauri/src/agent_install/sources/mod.rs",
-      "630acb3a257e2a63cf3538dc3ca5b21fc5a8d534369ebc8334cc70064317c1ab"
+      "3aa3aebb7b33196ce19afcab0193a3cdf020331621f3b2ed4d9e3c7465ab8848"
     ],
     [
       "src-tauri/src/agent_install/windows.rs",
@@ -151,7 +151,7 @@
     ],
     [
       "src-tauri/src/lib.rs",
-      "ec9af143fba0c5dc57bb85b99a2fdbe7283918c4fab2e98ea85d9314cc3845a6"
+      "765834a1957e82ffd11c136b0414b6b2dca403274dfd6b461281aacddf4e3d8a"
     ],
     [
       "src-tauri/src/lightweight.rs",
@@ -239,7 +239,7 @@
     ],
     [
       "src-tauri/src/services/tooling.rs",
-      "3d42e5d643addb0d7385984bc7dcb31fe01d7933c0bb0c34d4a53f540f7a82f6"
+      "bf628dbe25ee51973966587463c639a81d59deb628b3816c0ab9f220d6f5d381"
     ],
     [
       "src-tauri/src/services/tooling/discovery.rs",
@@ -259,7 +259,7 @@
     ],
     [
       "src-tauri/src/services/tooling/versions.rs",
-      "cec4b24005e3282b9ca7b3d247e20fb4370fb1b1ebfd8848db95abedc91217b1"
+      "a76692d6b3b5b22542e2bba61e6041f6a810f3170311315eab11ef05123d0564"
     ],
     [
       "src-tauri/src/services/traework_models.rs",
@@ -391,7 +391,7 @@
     ],
     [
       "tests/releaseWorkflow.test.ts",
-      "5782861d52d716a6187814f8b8a9518fcb60c4e1b2fafd25c9529171174c252c"
+      "af65fa6444ef72260fb86f549c86b017ea0d88dc53b0e75e03c29487dc0714df"
     ],
     [
       "tests/remainingPlatformSurface.test.ts",

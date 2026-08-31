@@ -84,3 +84,17 @@ if [ "$require_ticket" -eq 1 ] && ! xcrun stapler validate "$app_path" >/dev/nul
   echo "Developer ID application is missing a notarization ticket: $app_path" >&2
   exit 1
 fi
+
+# Formal verification requires the nested privileged helper. Unsigned trees and
+# --signature-only preflight-style calls may omit it: set
+# FYAGENT_REQUIRE_PRIVILEGED_HELPER=0, or pass --signature-only when the helper
+# path is absent. When the helper is present it is always verified.
+helper_path="$app_path/$EXPECTED_PRIVILEGED_HELPER_RELPATH"
+if [ -e "$helper_path" ]; then
+  "$SCRIPT_DIR/verify-macos-privileged-helper.sh" "$app_path"
+elif [ "${FYAGENT_REQUIRE_PRIVILEGED_HELPER:-1}" = "0" ] || [ "$require_ticket" -eq 0 ]; then
+  echo "nested privileged helper is absent; skipping nested helper verification" >&2
+else
+  echo "formal Developer ID verification requires the nested privileged helper" >&2
+  exit 1
+fi

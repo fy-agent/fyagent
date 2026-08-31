@@ -32,6 +32,10 @@ src/
 ```
 
 - One folder per first-level route under `pages/<route>/`.
+  Agent directory scan-driven order lives in
+  `pages/agents/agentDirectoryOrder.ts` plus `useAgentDirectoryScan.ts`.
+  Domestic priority is `PRODUCT_DIRECTORY[].directoryPriority` in
+  `shared/features/directory.ts`, not a page-local `Set`.
 - Overlay chrome (macOS drag strip) lives in `widgets/app-shell` (`TopBar`
   inside `AppShell`). It is window chrome, not a feature route.
 - Feature pages talk to native code only through `shared/features` ports and

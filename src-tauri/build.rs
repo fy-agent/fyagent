@@ -18,6 +18,7 @@ impl WindowsManifest {
 
 fn main() {
     println!("cargo:rustc-check-cfg=cfg(fyagent_windows_release)");
+    emit_optional_privileged_client_link_search();
 
     let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
 
@@ -48,6 +49,41 @@ fn main() {
 
     tauri_build::try_build(attributes).expect("failed to embed the FyAgent Windows manifest");
     embed_test_manifest();
+}
+
+/// Emit a link search path when the Swift client dylib already exists.
+/// Missing artifacts are ignored so portable crate builds still succeed.
+fn emit_optional_privileged_client_link_search() {
+    println!("cargo:rerun-if-env-changed=FYAGENT_PRIVILEGED_CLIENT_DYLIB");
+
+    let manifest_dir = std::path::PathBuf::from(
+        std::env::var("CARGO_MANIFEST_DIR").expect("missing CARGO_MANIFEST_DIR"),
+    );
+    let mut candidates = Vec::new();
+    if let Ok(explicit) = std::env::var("FYAGENT_PRIVILEGED_CLIENT_DYLIB") {
+        if !explicit.is_empty() {
+            candidates.push(std::path::PathBuf::from(explicit));
+        }
+    }
+    candidates
+        .push(manifest_dir.join("macos-privileged-helper/dist/libFyAgentPrivilegedClient.dylib"));
+    candidates.push(manifest_dir.join(
+        "macos-privileged-helper/.build/apple/Products/Release/libFyAgentPrivilegedClient.dylib",
+    ));
+    candidates.push(
+        manifest_dir
+            .join("macos-privileged-helper/.build/release/libFyAgentPrivilegedClient.dylib"),
+    );
+
+    for candidate in candidates {
+        println!("cargo:rerun-if-changed={}", candidate.display());
+        if candidate.is_file() {
+            if let Some(parent) = candidate.parent() {
+                println!("cargo:rustc-link-search=native={}", parent.display());
+            }
+            return;
+        }
+    }
 }
 
 /// Cargo's test-only link arguments do not reach the library unit-test harness.

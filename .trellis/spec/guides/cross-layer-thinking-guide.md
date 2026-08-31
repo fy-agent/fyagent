@@ -68,10 +68,12 @@ semantics. Do not put those details into this guide.
   inferred from portable tests.
 - Verify version/path/history facts come from their owning configuration,
   provenance ledger, or Git history rather than a parallel guide matrix.
-- For Agent install/update/launch: OpenCode Desktop must send `surface`;
-  job snapshots are contract v3 with optional `transfer`; do not invent percent
-  in the page. System `/Applications` writes stay `authorization_required`
-  until a later helper task.
+- For Agent install/update/launch: OpenCode and Claude Agent surfaces are
+  desktop-only compact DTOs; job snapshots are contract v4 with optional
+  `transfer`; do not invent percent in the page. System `/Applications`
+  writes stay `authorization_required` while
+  `macos_system_commit::production_enabled()` is false. Helper code may exist
+  without claiming a delivered system one-click.
 
 ## Common failures
 

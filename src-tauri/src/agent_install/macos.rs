@@ -19,6 +19,39 @@ pub(super) struct MacosDeploymentResult {
 }
 
 #[cfg(target_os = "macos")]
+fn managed_dmg_product_policy(
+    product: AgentCatalogId,
+    bundle_id: &'static str,
+) -> Result<crate::codex_desktop::platform::macos::dmg::ManagedDmgProductPolicy, AgentReasonCode> {
+    use crate::codex_desktop::platform::macos::dmg::{
+        ManagedBundleVersionSource, ManagedDmgProductPolicy, ManagedVersionEquivalence,
+    };
+    match product {
+        AgentCatalogId::QoderWork => Ok(ManagedDmgProductPolicy {
+            expected_bundle_id: bundle_id,
+            version_source: ManagedBundleVersionSource::InfoPlist,
+            version_equivalence: ManagedVersionEquivalence::Exact,
+        }),
+        AgentCatalogId::TraeWork => Ok(ManagedDmgProductPolicy {
+            expected_bundle_id: bundle_id,
+            version_source: ManagedBundleVersionSource::TraeProductJson,
+            version_equivalence: ManagedVersionEquivalence::Exact,
+        }),
+        AgentCatalogId::WorkBuddy => Ok(ManagedDmgProductPolicy {
+            expected_bundle_id: bundle_id,
+            version_source: ManagedBundleVersionSource::InfoPlist,
+            version_equivalence: ManagedVersionEquivalence::DottedPrefix,
+        }),
+        AgentCatalogId::OpenCode | AgentCatalogId::ClaudeCode => Ok(ManagedDmgProductPolicy {
+            expected_bundle_id: bundle_id,
+            version_source: ManagedBundleVersionSource::InfoPlist,
+            version_equivalence: ManagedVersionEquivalence::Exact,
+        }),
+        _ => Err(AgentReasonCode::ExecutorNotImplemented),
+    }
+}
+
+#[cfg(target_os = "macos")]
 pub(super) fn deploy_macos_dmg<BeforeCommit, BeforeVerify>(
     product: AgentCatalogId,
     artifact: &DownloadedArtifact,
@@ -35,9 +68,8 @@ where
         error::{InstallerError, InstallerErrorCode},
         platform::macos::{
             dmg::{
-                install_managed_exact, ManagedBundleVersionSource, ManagedDmgFailureKind,
-                ManagedDmgInstallIntent, ManagedDmgInstallRequest, ManagedDmgProductPolicy,
-                ManagedVersionEquivalence,
+                install_managed_exact, ManagedDmgFailureKind, ManagedDmgInstallIntent,
+                ManagedDmgInstallRequest,
             },
             StdMacosFilesystem, SystemCommandRunner,
         },
@@ -79,29 +111,7 @@ where
     }
 
     let bundle_id = macos_bundle_id_for(product).ok_or(AgentReasonCode::SourceNotVerified)?;
-    let product_policy = match product {
-        AgentCatalogId::QoderWork => ManagedDmgProductPolicy {
-            expected_bundle_id: bundle_id,
-            version_source: ManagedBundleVersionSource::InfoPlist,
-            version_equivalence: ManagedVersionEquivalence::Exact,
-        },
-        AgentCatalogId::TraeWork => ManagedDmgProductPolicy {
-            expected_bundle_id: bundle_id,
-            version_source: ManagedBundleVersionSource::TraeProductJson,
-            version_equivalence: ManagedVersionEquivalence::Exact,
-        },
-        AgentCatalogId::WorkBuddy => ManagedDmgProductPolicy {
-            expected_bundle_id: bundle_id,
-            version_source: ManagedBundleVersionSource::InfoPlist,
-            version_equivalence: ManagedVersionEquivalence::DottedPrefix,
-        },
-        AgentCatalogId::OpenCode => ManagedDmgProductPolicy {
-            expected_bundle_id: bundle_id,
-            version_source: ManagedBundleVersionSource::InfoPlist,
-            version_equivalence: ManagedVersionEquivalence::Exact,
-        },
-        _ => return Err(AgentReasonCode::ExecutorNotImplemented),
-    };
+    let product_policy = managed_dmg_product_policy(product, bundle_id)?;
     let (intent, expected_scope) = match target {
         DesktopDeploymentTarget::Existing {
             path,
@@ -114,7 +124,11 @@ where
         DesktopDeploymentTarget::Existing {
             scope: InstallationScope::AllUsers,
             ..
-        } => return Err(AgentReasonCode::AuthorizationRequired),
+        } => {
+            // MacSystemCommitPort owns privileged /Applications commit.
+            // production_enabled() is false until signed/notarized HIL.
+            return Err(crate::macos_system_commit::system_scope_rejection());
+        }
         DesktopDeploymentTarget::Existing { .. } => {
             return Err(AgentReasonCode::TargetScopeUnsupported)
         }
@@ -126,7 +140,7 @@ where
                 InstallationScope::CurrentUser,
             ),
             super::inventory::FreshDestinationCapability::MacSystemApplications => {
-                return Err(AgentReasonCode::AuthorizationRequired)
+                return Err(crate::macos_system_commit::system_scope_rejection());
             }
             _ => return Err(AgentReasonCode::TargetScopeUnsupported),
         },
@@ -180,4 +194,86 @@ where
     BeforeVerify: FnMut() -> Result<(), AgentReasonCode>,
 {
     Err(AgentReasonCode::PlatformUnsupported)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::types::AgentReasonCode;
+
+    #[test]
+    fn production_system_scope_stays_authorization_required() {
+        assert!(!crate::macos_system_commit::production_enabled());
+        assert_eq!(
+            crate::macos_system_commit::system_scope_rejection(),
+            AgentReasonCode::AuthorizationRequired
+        );
+        assert!(crate::macos_system_commit::resolve_slot(
+            crate::macos_system_commit::KnownSystemProduct::QoderWork,
+            1,
+        )
+        .is_ok());
+    }
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod policy_drift_tests {
+    use super::super::desktop::macos_bundle_id_for;
+    use crate::macos_system_commit::{resolve_slot, KnownSystemProduct};
+    use crate::services::external_agents::AgentCatalogId;
+
+    #[test]
+    fn helper_policy_bundle_ids_match_macos_bundle_id_for() {
+        let pairs = [
+            (
+                KnownSystemProduct::OpenCodeDesktop,
+                AgentCatalogId::OpenCode,
+            ),
+            (KnownSystemProduct::QoderWork, AgentCatalogId::QoderWork),
+            (KnownSystemProduct::TraeWork, AgentCatalogId::TraeWork),
+            (KnownSystemProduct::WorkBuddy, AgentCatalogId::WorkBuddy),
+        ];
+        for (product, agent) in pairs {
+            assert_eq!(
+                resolve_slot(product, 1).expect("slot").bundle_id,
+                macos_bundle_id_for(agent).expect("bundle id")
+            );
+        }
+    }
+
+    #[test]
+    fn claude_desktop_uses_info_plist_exact_like_opencode() {
+        use crate::codex_desktop::platform::macos::dmg::{
+            ManagedBundleVersionSource, ManagedVersionEquivalence,
+        };
+
+        let claude = super::managed_dmg_product_policy(
+            AgentCatalogId::ClaudeCode,
+            "com.anthropic.claudefordesktop",
+        )
+        .expect("claude desktop policy");
+        let opencode =
+            super::managed_dmg_product_policy(AgentCatalogId::OpenCode, "ai.opencode.desktop")
+                .expect("opencode desktop policy");
+        assert!(matches!(
+            claude.version_source,
+            ManagedBundleVersionSource::InfoPlist
+        ));
+        assert!(matches!(
+            claude.version_equivalence,
+            ManagedVersionEquivalence::Exact
+        ));
+        assert!(matches!(
+            opencode.version_source,
+            ManagedBundleVersionSource::InfoPlist
+        ));
+        assert!(matches!(
+            opencode.version_equivalence,
+            ManagedVersionEquivalence::Exact
+        ));
+        assert_eq!(
+            super::managed_dmg_product_policy(AgentCatalogId::GrokBuild, "unused")
+                .expect_err("unknown products stay unimplemented"),
+            crate::agent_install::AgentReasonCode::ExecutorNotImplemented
+        );
+    }
 }

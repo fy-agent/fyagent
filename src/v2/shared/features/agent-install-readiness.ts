@@ -1,8 +1,8 @@
 import { AGENT_CATALOG_IDS, type AgentCatalogId } from "./directory";
 
-export const AGENT_INSTALL_READINESS_CONTRACT_VERSION = 3 as const;
+export const AGENT_INSTALL_READINESS_CONTRACT_VERSION = 4 as const;
 export const AGENT_INSTALLATION_INVENTORY_CONTRACT_VERSION = 1 as const;
-export const AGENT_ACTION_CONTRACT_VERSION = 3 as const;
+export const AGENT_ACTION_CONTRACT_VERSION = 4 as const;
 
 export const AGENT_INSTALL_STATES = [
   "not_installed",
@@ -109,10 +109,7 @@ export const AGENT_SURFACES = ["cli", "desktop"] as const;
 export type AgentSurface = (typeof AGENT_SURFACES)[number];
 
 export function surfacesForAgent(agentId: AgentCatalogId): AgentSurface[] {
-  if (agentId === "opencode") {
-    return ["cli", "desktop"];
-  }
-  if (agentId === "claude-code" || agentId === "grokbuild") {
+  if (agentId === "grokbuild") {
     return ["cli"];
   }
   return ["desktop"];
@@ -164,7 +161,22 @@ export const AGENT_REASON_CODES = [
   "recovery_required",
   "executor_not_implemented",
   "surface_not_supported",
+  "action_not_supported",
   "application_launch_failed",
+  "helper_not_packaged",
+  "helper_signature_invalid",
+  "helper_install_authorization_cancelled",
+  "helper_install_failed",
+  "helper_update_required",
+  "helper_downgrade_rejected",
+  "helper_protocol_incompatible",
+  "helper_peer_rejected",
+  "operation_authorization_cancelled",
+  "operation_authorization_invalid",
+  "source_capability_invalid",
+  "source_changed",
+  "target_slot_invalid",
+  "helper_removal_failed",
 ] as const;
 export type AgentReasonCode = (typeof AGENT_REASON_CODES)[number];
 
@@ -471,9 +483,7 @@ export function parseAgentInstallReadiness(
     expectedAgentId === "codex"
       ? value.sourceKind === "codex_desktop" &&
         value.authOwnership === "fyagent_managed"
-      : expectedAgentId === "opencode" ||
-          expectedAgentId === "claude-code" ||
-          expectedAgentId === "grokbuild"
+      : expectedAgentId === "grokbuild"
         ? value.sourceKind === "cli_tooling"
         : value.sourceKind === "managed_desktop";
   if (!matchesKind) {
@@ -761,19 +771,7 @@ export function parseAgentInstallationInventory(
   ) {
     throw new Error("Agent installation inventory is unavailable");
   }
-  if (value.surface !== undefined && !isOneOf(value.surface, AGENT_SURFACES)) {
-    throw new Error("Agent installation inventory is unavailable");
-  }
-  if (
-    value.surface !== undefined &&
-    !isLegalAgentSurface(expectedAgentId, value.surface)
-  ) {
-    throw new Error("Agent installation inventory is unavailable");
-  }
-  if (expectedAgentId === "opencode" && value.surface === undefined) {
-    throw new Error("Agent installation inventory is unavailable");
-  }
-  if (expectedAgentId !== "opencode" && value.surface !== undefined) {
+  if (value.surface !== undefined) {
     throw new Error("Agent installation inventory is unavailable");
   }
   const candidates = value.candidates.map((candidate) =>

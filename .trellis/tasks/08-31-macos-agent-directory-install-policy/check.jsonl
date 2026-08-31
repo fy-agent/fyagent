@@ -1,0 +1,10 @@
+{"file":".trellis/spec/backend/reuse.md","reason":"检查没有形成第二套 HTTP、GitHub client、downloader、DMG transaction、updater、helper 或宽泛 public facade"}
+{"file":".trellis/spec/frontend/reuse.md","reason":"检查国产优先 metadata 和排序只有一个 owner，React 页面没有 product-specific update 隐藏轮子"}
+{"file":".trellis/tasks/08-31-macos-agent-directory-install-policy/research/spec-constraints.md","reason":"检查 large owning specs 的 surface/wire/source/DMG/helper/V2 约束均完整执行且 live spec 已重读"}
+{"file":".trellis/tasks/08-31-macos-agent-directory-install-policy/research/sorting-policy.md","reason":"检查所有 bucket、stale result、初扫/重扫、post-action reorder、canonical ties、focus 与输入不变性"}
+{"file":".trellis/tasks/08-31-macos-agent-directory-install-policy/research/reuse-decision.md","reason":"检查开源/现有能力复用结论、零新依赖与全部负向扫描"}
+{"file":".trellis/tasks/08-31-macos-agent-directory-install-policy/research/acceptance-evidence.md","reason":"检查 G1-G8 单测、集成、macOS HIL、helper signed HIL 和 Windows deferral 证据边界"}
+{"file":".trellis/tasks/08-31-macos-agent-directory-install-policy/research/review-rounds.md","reason":"检查五轮产品、架构、来源、安全、UX、兼容性评审结论均已兑现且无范围漂移"}
+{"file":".trellis/tasks/08-31-macos-privileged-application-commit-helper/research/security-threat-model.md","reason":"检查 /Applications 仍经封闭 helper、无 renderer path/URL/command、无 sudo/AppleScript 和无静默 user-scope fallback"}
+
+{"file": ".trellis/tasks/08-31-macos-agent-directory-install-policy/research/parallel-with-helper.md", "reason": "检查未覆盖 helper 独占文件，且未提前启用 /Applications。"}

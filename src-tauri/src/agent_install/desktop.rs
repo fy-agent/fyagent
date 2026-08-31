@@ -10,18 +10,20 @@ use std::{
 use super::fetch::fetch_metadata_bytes;
 #[cfg(target_os = "windows")]
 use super::fetch::{artifact_download_hosts, fetch_artifact_to_job};
+use super::lifecycle_policy::{lifecycle_policy, ManagedDesktopSourceId};
 #[cfg(target_os = "windows")]
 use super::sources::PackageFormat;
 use super::sources::{
-    bounded_version, current_host_target, parse_qoderwork_latest, parse_traework_latest,
-    parse_workbuddy_update, qoderwork_latest_yml_url, resolve_opencode_desktop,
-    workbuddy_update_url, AgentArch, AgentPlatform, ResolvedDesktopSource, SourceResolveError,
+    bounded_version, claude_manifest_url, current_host_target, parse_claude_desktop_manifest,
+    parse_qoderwork_latest, parse_traework_latest, parse_workbuddy_update,
+    qoderwork_latest_yml_url, resolve_opencode_desktop_latest, workbuddy_update_url, AgentArch,
+    AgentPlatform, ResolvedDesktopSource, SourceResolveError, CLAUDE_METADATA_HOSTS,
     QODERWORK_METADATA_HOSTS, TRAEWORK_METADATA_ENDPOINTS, TRAEWORK_METADATA_HOSTS,
     WORKBUDDY_METADATA_HOSTS,
 };
 use super::types::{
-    AgentReasonCode, InstallationEvidenceCode, InstallationOwner, InstallationPackageKind,
-    InstallationScope,
+    AgentReasonCode, AgentSurface, InstallationEvidenceCode, InstallationOwner,
+    InstallationPackageKind, InstallationScope,
 };
 #[cfg(target_os = "windows")]
 use crate::codex_desktop::cancellation::Cancellation;
@@ -77,12 +79,30 @@ const DESKTOP_PRODUCTS: &[DesktopProduct] = &[
         windows_product_names: &[],
         windows_relative_exes: &[],
     },
+    DesktopProduct {
+        agent_id: AgentCatalogId::ClaudeCode,
+        macos_bundle_id: "com.anthropic.claudefordesktop",
+        windows_product_names: &[],
+        windows_relative_exes: &[],
+    },
 ];
 
 pub(super) fn desktop_product(agent_id: AgentCatalogId) -> Option<&'static DesktopProduct> {
     DESKTOP_PRODUCTS
         .iter()
         .find(|product| product.agent_id == agent_id)
+}
+
+/// Platform evidence stays on the struct for install verification; this AND
+/// is the inventory-facing update eligibility for a discovered desktop app.
+/// Windows discovery keeps the raw evidence `true` and applies the same AND
+/// at inventory projection so post-install readback still sees a trusted EXE.
+pub(super) fn discovered_update_eligible(
+    agent_id: AgentCatalogId,
+    evidence_eligible: bool,
+) -> bool {
+    evidence_eligible
+        && lifecycle_policy(agent_id, AgentSurface::Desktop).is_ok_and(|policy| policy.update)
 }
 
 #[cfg(target_os = "macos")]
@@ -145,12 +165,19 @@ pub async fn resolve_desktop_source(
     agent_id: AgentCatalogId,
 ) -> Result<ResolvedDesktopSource, SourceResolveError> {
     let (platform, arch) = current_host_target().ok_or(SourceResolveError::PlatformUnsupported)?;
-    match agent_id {
-        AgentCatalogId::QoderWork => resolve_qoderwork(platform, arch).await,
-        AgentCatalogId::TraeWork => resolve_traework(platform, arch).await,
-        AgentCatalogId::WorkBuddy => resolve_workbuddy(platform, arch).await,
-        AgentCatalogId::OpenCode => resolve_opencode_desktop(platform, arch),
-        _ => Err(SourceResolveError::PlatformUnsupported),
+    let policy = lifecycle_policy(agent_id, AgentSurface::Desktop)
+        .map_err(|_| SourceResolveError::PlatformUnsupported)?;
+    match policy.managed_desktop_source {
+        Some(ManagedDesktopSourceId::QoderWork) => resolve_qoderwork(platform, arch).await,
+        Some(ManagedDesktopSourceId::TraeWork) => resolve_traework(platform, arch).await,
+        Some(ManagedDesktopSourceId::WorkBuddy) => resolve_workbuddy(platform, arch).await,
+        Some(ManagedDesktopSourceId::OpenCodeDesktop) => {
+            resolve_opencode_desktop_latest(platform, arch).await
+        }
+        Some(ManagedDesktopSourceId::ClaudeDesktop) => resolve_claude_desktop(platform, arch).await,
+        Some(ManagedDesktopSourceId::CodexDesktopDedicated)
+        | Some(ManagedDesktopSourceId::GrokCliTooling)
+        | None => Err(SourceResolveError::PlatformUnsupported),
     }
 }
 
@@ -185,6 +212,15 @@ async fn resolve_workbuddy(
     let url = workbuddy_update_url(platform, arch)?;
     let body = fetch_metadata_bytes(url, WORKBUDDY_METADATA_HOSTS).await?;
     parse_workbuddy_update(&body, platform, arch)
+}
+
+async fn resolve_claude_desktop(
+    platform: AgentPlatform,
+    arch: AgentArch,
+) -> Result<ResolvedDesktopSource, SourceResolveError> {
+    let url = claude_manifest_url()?;
+    let body = fetch_metadata_bytes(url, CLAUDE_METADATA_HOSTS).await?;
+    parse_claude_desktop_manifest(&body, platform, arch)
 }
 
 pub fn source_reason(error: SourceResolveError) -> AgentReasonCode {
@@ -633,7 +669,7 @@ fn discover_macos_installations(
                 local_version: read_macos_local_version(product, &canonical),
                 owner: InstallationOwner::VendorInstaller,
                 launch_eligible: true,
-                update_eligible: true,
+                update_eligible: discovered_update_eligible(product.agent_id, true),
                 reason_codes: Vec::new(),
                 evidence_codes: vec![InstallationEvidenceCode::BundleIdentity],
             });
@@ -975,6 +1011,18 @@ fn bounded_plist_string(value: Option<String>) -> Option<String> {
 mod tests {
     use super::*;
 
+    #[tokio::test]
+    async fn grok_and_codex_do_not_resolve_managed_desktop_sources() {
+        assert_eq!(
+            resolve_desktop_source(AgentCatalogId::GrokBuild).await,
+            Err(SourceResolveError::PlatformUnsupported)
+        );
+        assert_eq!(
+            resolve_desktop_source(AgentCatalogId::Codex).await,
+            Err(SourceResolveError::PlatformUnsupported)
+        );
+    }
+
     #[test]
     fn source_failure_surfaces_official_page_fallback_not_cancel() {
         assert_eq!(
@@ -1086,7 +1134,27 @@ mod tests {
         let item = product(AgentCatalogId::OpenCode);
         assert_eq!(item.macos_bundle_id, "ai.opencode.desktop");
         assert!(item.windows_product_names.is_empty());
-        assert!(desktop_product(AgentCatalogId::ClaudeCode).is_none());
+        assert!(item.windows_relative_exes.is_empty());
+    }
+
+    #[test]
+    fn claude_is_a_managed_desktop_product_with_official_bundle_id() {
+        let item = product(AgentCatalogId::ClaudeCode);
+        assert_eq!(item.macos_bundle_id, "com.anthropic.claudefordesktop");
+        assert!(item.windows_product_names.is_empty());
+        assert!(item.windows_relative_exes.is_empty());
+        assert!(desktop_product(AgentCatalogId::GrokBuild).is_none());
+    }
+
+    #[test]
+    fn discovered_update_eligibility_ands_product_policy() {
+        assert!(!discovered_update_eligible(AgentCatalogId::QoderWork, true));
+        assert!(!discovered_update_eligible(AgentCatalogId::TraeWork, true));
+        assert!(!discovered_update_eligible(AgentCatalogId::WorkBuddy, true));
+        assert!(discovered_update_eligible(AgentCatalogId::OpenCode, true));
+        assert!(discovered_update_eligible(AgentCatalogId::ClaudeCode, true));
+        assert!(!discovered_update_eligible(AgentCatalogId::OpenCode, false));
+        assert!(!discovered_update_eligible(AgentCatalogId::GrokBuild, true));
     }
 
     #[test]
@@ -1177,6 +1245,28 @@ mod tests {
             std::slice::from_ref(&user),
         );
         assert!(after_corrupt.is_empty());
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn claude_desktop_discovery_keys_off_bundle_id_and_info_plist_version() {
+        let root = tempfile::tempdir().expect("temp");
+        let apps = root.path().join("Applications");
+        fs::create_dir_all(&apps).expect("applications");
+        write_fake_macos_app(&apps, "Claude", "com.anthropic.claudefordesktop", "1.2.3");
+        write_fake_macos_app(&apps, "Claude Fake", "com.anthropic.imposter", "9.9.9");
+
+        let found = discover_macos_installations(
+            product(AgentCatalogId::ClaudeCode),
+            std::slice::from_ref(&apps),
+        );
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].local_version.as_deref(), Some("1.2.3"));
+        assert_eq!(found[0].package_kind, InstallationPackageKind::AppBundle);
+        assert!(found[0]
+            .path
+            .file_name()
+            .is_some_and(|name| name == "Claude.app"));
     }
 
     fn write_trae_product_json(install_root: &Path, tron_build_version: &str) {

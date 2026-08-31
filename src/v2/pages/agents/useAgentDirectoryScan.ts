@@ -7,6 +7,8 @@ import {
   type AgentCatalogId,
 } from "../../shared/features/types";
 
+import { committedAgentDirectoryOrderIds } from "./agentDirectoryOrder";
+
 type ScanStatus = "idle" | "scanning" | "complete";
 
 export type AgentDirectoryScanState = {
@@ -17,6 +19,7 @@ export type AgentDirectoryScanState = {
   currentFailureIds: AgentCatalogId[];
   results: Partial<Record<AgentCatalogId, AgentInstallReadiness>>;
   lastSuccessfulScanAt: number | null;
+  committedOrderIds?: AgentCatalogId[] | null;
 };
 
 export type AgentDirectoryScanAction =
@@ -47,6 +50,7 @@ const initialScanState: AgentDirectoryScanState = {
   currentFailureIds: [],
   results: {},
   lastSuccessfulScanAt: null,
+  committedOrderIds: null,
 };
 
 function appendUnique<T>(items: readonly T[], item: T): T[] {
@@ -68,9 +72,26 @@ export function scanReducer(
     };
   }
   if (action.type === "applyReadiness") {
-    return {
+    const results = { ...state.results, [action.agentId]: action.data };
+    if (state.status !== "complete") {
+      return { ...state, results };
+    }
+    const currentFailureIds = state.currentFailureIds.filter(
+      (id) => id !== action.agentId,
+    );
+    const currentSuccessIds = appendUnique(
+      state.currentSuccessIds,
+      action.agentId,
+    );
+    const next = {
       ...state,
-      results: { ...state.results, [action.agentId]: action.data },
+      results,
+      currentFailureIds,
+      currentSuccessIds,
+    };
+    return {
+      ...next,
+      committedOrderIds: committedAgentDirectoryOrderIds(next),
     };
   }
   if (action.requestId !== state.requestId) return state;
@@ -96,13 +117,17 @@ export function scanReducer(
       currentFailureIds: appendUnique(state.currentFailureIds, action.agentId),
     };
   }
-  return {
+  const completed = {
     ...state,
-    status: "complete",
+    status: "complete" as const,
     lastSuccessfulScanAt:
       state.currentSuccessIds.length > 0
         ? action.finishedAt
         : state.lastSuccessfulScanAt,
+  };
+  return {
+    ...completed,
+    committedOrderIds: committedAgentDirectoryOrderIds(completed),
   };
 }
 

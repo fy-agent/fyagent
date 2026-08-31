@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import {
+  AGENT_ACTION_CONTRACT_VERSION,
+  AGENT_INSTALL_READINESS_CONTRACT_VERSION,
+} from "@/v2/shared/features/agent-install-readiness";
 import { createAgentInstallReadinessPort } from "@/v2/shared/platform/tauri/feature-ports/agentInstallReadiness";
 
 const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));
@@ -7,12 +11,9 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke }));
 
 function wire(agentId = "qoderwork") {
   const codex = agentId === "codex";
-  const cli =
-    agentId === "claude-code" ||
-    agentId === "grokbuild" ||
-    agentId === "opencode";
+  const grok = agentId === "grokbuild";
   return {
-    contractVersion: 3,
+    contractVersion: AGENT_INSTALL_READINESS_CONTRACT_VERSION,
     agentId,
     reviewedAt: "2026-08-29",
     installState: "unknown",
@@ -30,7 +31,7 @@ function wire(agentId = "qoderwork") {
     authState: "unknown",
     sourceKind: codex
       ? "codex_desktop"
-      : cli
+      : grok
         ? "cli_tooling"
         : "managed_desktop",
     allowedActions: [],
@@ -86,20 +87,16 @@ describe("Tauri Agent install readiness port", () => {
       agentId: "qoderwork",
     });
 
-    invoke.mockResolvedValue({
-      ...inventoryWire("opencode"),
-      surface: "desktop",
-    });
+    invoke.mockResolvedValue(inventoryWire("opencode"));
     await expect(
-      createAgentInstallReadinessPort().getInventory("opencode", "desktop"),
-    ).resolves.toMatchObject({ agentId: "opencode", surface: "desktop" });
+      createAgentInstallReadinessPort().getInventory("opencode"),
+    ).resolves.toMatchObject({ agentId: "opencode" });
     expect(invoke).toHaveBeenCalledWith("get_agent_installation_inventory", {
       agentId: "opencode",
-      surface: "desktop",
     });
 
     invoke.mockResolvedValue({
-      contractVersion: 3,
+      contractVersion: AGENT_ACTION_CONTRACT_VERSION,
       agentId: "qoderwork",
       action: "install",
       jobId: "job-1",

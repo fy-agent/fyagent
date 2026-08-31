@@ -8,6 +8,7 @@ mod desktop;
 mod fetch;
 mod inventory;
 mod jobs;
+mod lifecycle_policy;
 mod macos;
 mod sources;
 mod types;
@@ -29,10 +30,9 @@ pub use types::{
     AgentActionJobSnapshot, AgentActionJobStage, AgentActionResult, AgentAuthErrorDto,
     AgentAuthObservationDto, AgentAuthOwnership, AgentAuthSessionSnapshot, AgentAuthState,
     AgentInstallReadinessDto, AgentInstallState, AgentInstallationInventoryDto, AgentReasonCode,
-    AgentSourceKind, AgentSurface, AgentSurfaceReadinessDto, AgentUpdateState,
-    InstallationInventoryState, StartAgentActionRequest, StartAgentAuthSessionRequest,
-    AGENT_ACTION_CONTRACT_VERSION, AGENT_INSTALL_READINESS_CONTRACT_VERSION,
-    AGENT_INSTALL_READINESS_REVIEWED_AT,
+    AgentSourceKind, AgentSurface, AgentUpdateState, InstallationInventoryState,
+    StartAgentActionRequest, StartAgentAuthSessionRequest, AGENT_ACTION_CONTRACT_VERSION,
+    AGENT_INSTALL_READINESS_CONTRACT_VERSION, AGENT_INSTALL_READINESS_REVIEWED_AT,
 };
 
 use auth_actions::observe_auth_state;
@@ -47,10 +47,11 @@ use desktop::{
 };
 use fetch::download_macos_dmg_to_job;
 use inventory::{
-    inventory_readiness_projection, inventory_readiness_projection_for, validate_action_target,
-    InventoryReadinessProjection, ValidatedActionTarget,
+    inventory_readiness_projection, validate_action_target, InventoryReadinessProjection,
+    ValidatedActionTarget,
 };
 use jobs::download_progress_sink;
+use lifecycle_policy::{admit_action, should_resolve_desktop_source, AgentLifecyclePolicy};
 use macos::deploy_macos_dmg;
 use sources::PackageFormat;
 
@@ -80,17 +81,15 @@ fn desktop_versions_equivalent(local: &str, remote: &str) -> bool {
 }
 
 pub async fn readiness_for(agent_id: AgentCatalogId, state: &AppState) -> AgentInstallReadinessDto {
-    if agent_id == AgentCatalogId::OpenCode {
-        return opencode_readiness(state).await;
-    }
     let inventory = inventory_readiness_projection(agent_id, state).await;
     let mut readiness = match agent_id {
         AgentCatalogId::Codex => codex_readiness(state).await,
-        AgentCatalogId::ClaudeCode | AgentCatalogId::GrokBuild => cli_readiness(agent_id).await,
-        AgentCatalogId::QoderWork | AgentCatalogId::TraeWork | AgentCatalogId::WorkBuddy => {
-            desktop_readiness(agent_id, &inventory).await
-        }
-        AgentCatalogId::OpenCode => unreachable!("OpenCode uses the dual-surface owner"),
+        AgentCatalogId::GrokBuild => cli_readiness(agent_id).await,
+        AgentCatalogId::ClaudeCode
+        | AgentCatalogId::OpenCode
+        | AgentCatalogId::QoderWork
+        | AgentCatalogId::TraeWork
+        | AgentCatalogId::WorkBuddy => desktop_readiness(agent_id, &inventory).await,
     };
     apply_inventory_overlay(&mut readiness, &inventory);
     readiness
@@ -131,43 +130,6 @@ fn apply_inventory_overlay(
             .reason_codes
             .push(AgentReasonCode::TargetSelectionRequired);
     }
-}
-
-fn surface_from_readiness(
-    surface: AgentSurface,
-    readiness: &AgentInstallReadinessDto,
-) -> AgentSurfaceReadinessDto {
-    AgentSurfaceReadinessDto {
-        surface,
-        install_state: readiness.install_state,
-        inventory_state: readiness.inventory_state,
-        requires_target_selection: readiness.requires_target_selection,
-        update_state: readiness.update_state,
-        release_id: readiness.release_id.clone(),
-        local_version: readiness.local_version.clone(),
-        remote_version: readiness.remote_version.clone(),
-        source_kind: readiness.source_kind,
-        allowed_actions: readiness.allowed_actions.clone(),
-        reason_codes: readiness.reason_codes.clone(),
-    }
-}
-
-async fn opencode_readiness(state: &AppState) -> AgentInstallReadinessDto {
-    let cli_inventory =
-        inventory_readiness_projection_for(AgentCatalogId::OpenCode, AgentSurface::Cli, state)
-            .await;
-    let desktop_inventory =
-        inventory_readiness_projection_for(AgentCatalogId::OpenCode, AgentSurface::Desktop, state)
-            .await;
-    let mut cli = cli_readiness(AgentCatalogId::OpenCode).await;
-    apply_inventory_overlay(&mut cli, &cli_inventory);
-    let mut desktop = desktop_readiness(AgentCatalogId::OpenCode, &desktop_inventory).await;
-    apply_inventory_overlay(&mut desktop, &desktop_inventory);
-    cli.surfaces = vec![
-        surface_from_readiness(AgentSurface::Cli, &cli),
-        surface_from_readiness(AgentSurface::Desktop, &desktop),
-    ];
-    cli
 }
 
 async fn cli_readiness(agent_id: AgentCatalogId) -> AgentInstallReadinessDto {
@@ -282,42 +244,75 @@ async fn desktop_readiness(
     agent_id: AgentCatalogId,
     inventory: &InventoryReadinessProjection,
 ) -> AgentInstallReadinessDto {
-    let source = resolve_desktop_source(agent_id).await;
     let mut reason_codes = Vec::new();
     let mut allowed_actions = Vec::new();
-    let (release_id, remote_version, source_ok, package_installable) = match &source {
-        Ok(resolved) => {
-            let installable = (cfg!(target_os = "macos")
-                && resolved.format == PackageFormat::Dmg
-                && resolved.platform == sources::AgentPlatform::Macos)
-                || (cfg!(target_os = "windows")
-                    && resolved.format == PackageFormat::Exe
-                    && resolved.platform == sources::AgentPlatform::Windows);
-            (
-                Some(resolved.release_id.clone()),
-                resolved.display_version.clone(),
-                true,
-                installable,
-            )
-        }
-        Err(error) => {
-            reason_codes.extend(readiness_source_codes(*error));
-            (None, None, false, false)
+    let install_state = desktop_install_state_from_inventory(inventory);
+    let policy = match lifecycle_policy::lifecycle_policy(agent_id, AgentSurface::Desktop) {
+        Ok(policy) => policy,
+        Err(reason) => {
+            reason_codes.push(reason);
+            return AgentInstallReadinessDto {
+                contract_version: AGENT_INSTALL_READINESS_CONTRACT_VERSION,
+                agent_id,
+                reviewed_at: AGENT_INSTALL_READINESS_REVIEWED_AT,
+                install_state: AgentInstallState::Unavailable,
+                inventory_state: InstallationInventoryState::Unknown,
+                requires_target_selection: false,
+                update_state: AgentUpdateState::Unavailable,
+                release_id: None,
+                local_version: None,
+                remote_version: None,
+                auth_ownership: desktop_auth_ownership(agent_id),
+                auth_state: AgentAuthState::Unavailable,
+                source_kind: AgentSourceKind::ManagedDesktop,
+                allowed_actions,
+                reason_codes,
+                surfaces: Vec::new(),
+            };
         }
     };
-    let install_state = desktop_install_state_from_inventory(inventory);
+    let (release_id, remote_version, source_ok, package_installable) =
+        if should_resolve_desktop_source(policy, install_state) {
+            match resolve_desktop_source(agent_id).await {
+                Ok(resolved) => {
+                    let installable = (cfg!(target_os = "macos")
+                        && resolved.format == PackageFormat::Dmg
+                        && resolved.platform == sources::AgentPlatform::Macos)
+                        || (cfg!(target_os = "windows")
+                            && resolved.format == PackageFormat::Exe
+                            && resolved.platform == sources::AgentPlatform::Windows);
+                    (
+                        Some(resolved.release_id.clone()),
+                        resolved.display_version.clone(),
+                        true,
+                        installable,
+                    )
+                }
+                Err(error) => {
+                    reason_codes.extend(readiness_source_codes(error));
+                    (None, None, false, false)
+                }
+            }
+        } else {
+            (None, None, false, false)
+        };
     let local_version = inventory.single_local_version.clone();
-    let update_state = desktop_update_state(
-        source_ok,
-        install_state,
-        local_version.as_deref(),
-        remote_version.as_deref(),
-    );
-    if package_installable {
+    let update_state = if should_resolve_desktop_source(policy, install_state) {
+        desktop_update_state(
+            source_ok,
+            install_state,
+            local_version.as_deref(),
+            remote_version.as_deref(),
+        )
+    } else {
+        skipped_desktop_source_update_state(policy, install_state)
+    };
+    if package_installable && policy.install {
         match inventory.state {
             InstallationInventoryState::NotObserved => allowed_actions.push(AgentActionId::Install),
             InstallationInventoryState::Single
-                if inventory.single_update_eligible
+                if policy.update
+                    && inventory.single_update_eligible
                     && update_state != AgentUpdateState::UpToDate =>
             {
                 allowed_actions.push(AgentActionId::Update)
@@ -325,7 +320,10 @@ async fn desktop_readiness(
             _ => {}
         }
     }
-    if inventory.state == InstallationInventoryState::Single && inventory.single_launch_eligible {
+    if inventory.state == InstallationInventoryState::Single
+        && inventory.single_launch_eligible
+        && policy.launch
+    {
         allowed_actions.push(AgentActionId::Launch);
     }
     if install_state == AgentInstallState::InstalledNotRunnable {
@@ -346,12 +344,35 @@ async fn desktop_readiness(
         release_id,
         local_version,
         remote_version,
-        auth_ownership: AgentAuthOwnership::AgentOwned,
+        auth_ownership: desktop_auth_ownership(agent_id),
         auth_state,
         source_kind: AgentSourceKind::ManagedDesktop,
         allowed_actions,
         reason_codes,
         surfaces: Vec::new(),
+    }
+}
+
+fn desktop_auth_ownership(agent_id: AgentCatalogId) -> AgentAuthOwnership {
+    if agent_id == AgentCatalogId::OpenCode {
+        AgentAuthOwnership::ProviderOwned
+    } else {
+        AgentAuthOwnership::AgentOwned
+    }
+}
+
+fn skipped_desktop_source_update_state(
+    policy: &AgentLifecyclePolicy,
+    install_state: AgentInstallState,
+) -> AgentUpdateState {
+    let install_only_skip = matches!(
+        install_state,
+        AgentInstallState::Installed | AgentInstallState::InstalledNotRunnable
+    ) && !policy.update;
+    if install_only_skip || install_state == AgentInstallState::Unavailable {
+        AgentUpdateState::Unavailable
+    } else {
+        AgentUpdateState::Unknown
     }
 }
 
@@ -363,12 +384,10 @@ fn desktop_install_state_from_inventory(
         InstallationInventoryState::Single if inventory.single_launch_eligible => {
             AgentInstallState::Installed
         }
-        InstallationInventoryState::Single if inventory.single_update_eligible => {
-            AgentInstallState::InstalledNotRunnable
+        InstallationInventoryState::Single => AgentInstallState::InstalledNotRunnable,
+        InstallationInventoryState::Multiple | InstallationInventoryState::Unknown => {
+            AgentInstallState::Unknown
         }
-        InstallationInventoryState::Single
-        | InstallationInventoryState::Multiple
-        | InstallationInventoryState::Unknown => AgentInstallState::Unknown,
         InstallationInventoryState::Unsupported => AgentInstallState::Unavailable,
     }
 }
@@ -462,16 +481,18 @@ pub async fn start_agent_action(
     state: &AppState,
 ) -> Result<AgentActionResult, AgentReasonCode> {
     let surface = resolve_requested_surface(request.agent_id, request.surface)?;
-    if let Some(release_id) = request.expected_release_id.as_deref() {
-        if !validate_opaque_release_id(release_id) {
-            return Err(AgentReasonCode::RefreshRequired);
-        }
-    }
+    lifecycle_policy::lifecycle_policy(request.agent_id, surface)?;
     if matches!(
         request.action,
         AgentActionId::AuthLogin | AgentActionId::AuthLogout | AgentActionId::AuthConnectProvider
     ) {
         return Err(AgentReasonCode::ExecutorNotImplemented);
+    }
+    admit_action(request.agent_id, surface, request.action)?;
+    if let Some(release_id) = request.expected_release_id.as_deref() {
+        if !validate_opaque_release_id(release_id) {
+            return Err(AgentReasonCode::RefreshRequired);
+        }
     }
     let target = validate_action_target(&request, state).await?;
     match (request.agent_id, surface, request.action) {
@@ -495,7 +516,7 @@ pub async fn start_agent_action(
             ))
         }
         (
-            AgentCatalogId::ClaudeCode | AgentCatalogId::GrokBuild | AgentCatalogId::OpenCode,
+            AgentCatalogId::GrokBuild,
             AgentSurface::Cli,
             AgentActionId::Install | AgentActionId::Update,
         ) => {
@@ -512,7 +533,8 @@ pub async fn start_agent_action(
             AgentCatalogId::QoderWork
             | AgentCatalogId::TraeWork
             | AgentCatalogId::WorkBuddy
-            | AgentCatalogId::OpenCode,
+            | AgentCatalogId::OpenCode
+            | AgentCatalogId::ClaudeCode,
             AgentSurface::Desktop,
             AgentActionId::Install | AgentActionId::Update,
         ) => start_desktop_job(request, surface, state, target).await,
@@ -520,7 +542,8 @@ pub async fn start_agent_action(
             AgentCatalogId::QoderWork
             | AgentCatalogId::TraeWork
             | AgentCatalogId::WorkBuddy
-            | AgentCatalogId::OpenCode,
+            | AgentCatalogId::OpenCode
+            | AgentCatalogId::ClaudeCode,
             AgentSurface::Desktop,
             AgentActionId::Launch,
         ) => {
@@ -1196,6 +1219,17 @@ mod tests {
             AgentUpdateState::UpToDate
         );
 
+        let not_runnable = inventory_projection(
+            InstallationInventoryState::Single,
+            Some("1.0.0"),
+            false,
+            false,
+        );
+        assert_eq!(
+            desktop_install_state_from_inventory(&not_runnable),
+            AgentInstallState::InstalledNotRunnable
+        );
+
         let absent =
             inventory_projection(InstallationInventoryState::NotObserved, None, false, false);
         assert_eq!(
@@ -1346,7 +1380,10 @@ mod tests {
                 "forbidden {needle} in {encoded}"
             );
         }
-        assert_eq!(value["contractVersion"], 3);
+        assert_eq!(
+            value["contractVersion"],
+            AGENT_INSTALL_READINESS_CONTRACT_VERSION
+        );
         assert!(value.get("automation").is_none());
         assert!(value.get("plan").is_none());
         assert!(value.get("integrity").is_none());
@@ -1354,64 +1391,36 @@ mod tests {
     }
 
     #[test]
-    fn opencode_readiness_wire_carries_independent_cli_and_desktop_surfaces() {
-        let mut dto = AgentInstallReadinessDto {
+    fn opencode_readiness_wire_is_compact_desktop_only() {
+        let dto = AgentInstallReadinessDto {
             contract_version: AGENT_INSTALL_READINESS_CONTRACT_VERSION,
             agent_id: AgentCatalogId::OpenCode,
             reviewed_at: AGENT_INSTALL_READINESS_REVIEWED_AT,
-            install_state: AgentInstallState::Installed,
-            inventory_state: InstallationInventoryState::Single,
+            install_state: AgentInstallState::NotInstalled,
+            inventory_state: InstallationInventoryState::NotObserved,
             requires_target_selection: false,
-            update_state: AgentUpdateState::UpToDate,
-            release_id: None,
-            local_version: Some("1.0.0".into()),
-            remote_version: Some("1.0.0".into()),
+            update_state: AgentUpdateState::LatestUnknown,
+            release_id: Some(
+                "v1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string(),
+            ),
+            local_version: None,
+            remote_version: None,
             auth_ownership: AgentAuthOwnership::ProviderOwned,
-            auth_state: AgentAuthState::ProviderConnectionRequired,
-            source_kind: AgentSourceKind::CliTooling,
-            allowed_actions: Vec::new(),
-            reason_codes: vec![AgentReasonCode::ProviderConnectionRequired],
+            auth_state: AgentAuthState::Unknown,
+            source_kind: AgentSourceKind::ManagedDesktop,
+            allowed_actions: vec![AgentActionId::Install],
+            reason_codes: vec![AgentReasonCode::AuthStateUnknown],
             surfaces: Vec::new(),
         };
-        dto.surfaces = vec![
-            surface_from_readiness(AgentSurface::Cli, &dto),
-            AgentSurfaceReadinessDto {
-                surface: AgentSurface::Desktop,
-                install_state: AgentInstallState::NotInstalled,
-                inventory_state: InstallationInventoryState::NotObserved,
-                requires_target_selection: false,
-                update_state: AgentUpdateState::LatestUnknown,
-                release_id: Some(
-                    "v1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-                        .to_string(),
-                ),
-                local_version: None,
-                remote_version: None,
-                source_kind: AgentSourceKind::ManagedDesktop,
-                allowed_actions: vec![AgentActionId::Install],
-                reason_codes: Vec::new(),
-            },
-        ];
         let value = serde_json::to_value(&dto).unwrap();
-        assert!(value.get("surfaces").is_some());
-        let surfaces = value["surfaces"].as_array().unwrap();
-        assert_eq!(surfaces.len(), 2);
-        assert_eq!(surfaces[0]["surface"], "cli");
-        assert_eq!(surfaces[0]["sourceKind"], "cli_tooling");
-        assert_eq!(surfaces[1]["surface"], "desktop");
-        assert_eq!(surfaces[1]["sourceKind"], "managed_desktop");
-        assert_eq!(
-            surfaces[1]["allowedActions"],
-            serde_json::json!(["install"])
-        );
-        assert!(!surfaces[0]["allowedActions"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|action| action == "launch"));
+        assert!(value.get("surfaces").is_none());
+        assert_eq!(value["sourceKind"], "managed_desktop");
+        assert_eq!(value["authOwnership"], "provider_owned");
+        assert_eq!(value["allowedActions"], serde_json::json!(["install"]));
         let encoded = value.to_string();
         assert!(!encoded.contains("https://"));
         assert!(!encoded.contains("ai.opencode.desktop"));
+        assert!(!encoded.contains("cli_tooling"));
     }
 
     #[test]
@@ -1439,6 +1448,153 @@ mod tests {
         assert_eq!(
             super::cli::tooling_id_for(AgentCatalogId::OpenCode),
             Some("opencode")
+        );
+    }
+
+    fn start_request(
+        agent_id: AgentCatalogId,
+        action: AgentActionId,
+        surface: Option<AgentSurface>,
+    ) -> StartAgentActionRequest {
+        StartAgentActionRequest {
+            agent_id,
+            action,
+            expected_release_id: None,
+            inventory_id: None,
+            target_id: None,
+            expected_target_revision: None,
+            surface,
+        }
+    }
+
+    fn test_app_state() -> AppState {
+        let db = crate::database::Database::memory().expect("memory db");
+        AppState::new(std::sync::Arc::new(db))
+    }
+
+    #[tokio::test]
+    async fn installed_domestic_readiness_skips_source_and_omits_update() {
+        let installed = inventory_projection(
+            InstallationInventoryState::Single,
+            Some("1.0.0"),
+            true,
+            true,
+        );
+        for agent_id in [
+            AgentCatalogId::QoderWork,
+            AgentCatalogId::TraeWork,
+            AgentCatalogId::WorkBuddy,
+        ] {
+            let dto = desktop_readiness(agent_id, &installed).await;
+            assert_eq!(dto.install_state, AgentInstallState::Installed);
+            assert_eq!(dto.update_state, AgentUpdateState::Unavailable);
+            assert!(dto.release_id.is_none());
+            assert!(dto.remote_version.is_none());
+            assert_eq!(dto.allowed_actions, vec![AgentActionId::Launch]);
+            assert!(!dto
+                .reason_codes
+                .contains(&AgentReasonCode::OfficialPageOnly));
+        }
+    }
+
+    #[tokio::test]
+    async fn unknown_desktop_inventory_does_not_resolve_source() {
+        let ambiguous = inventory_projection(
+            InstallationInventoryState::Multiple,
+            Some("1.0.0"),
+            true,
+            true,
+        );
+        let dto = desktop_readiness(AgentCatalogId::OpenCode, &ambiguous).await;
+        assert_eq!(dto.install_state, AgentInstallState::Unknown);
+        assert_eq!(dto.update_state, AgentUpdateState::Unknown);
+        assert!(dto.release_id.is_none());
+        assert_eq!(dto.auth_ownership, AgentAuthOwnership::ProviderOwned);
+        assert!(!dto.allowed_actions.contains(&AgentActionId::Update));
+        assert!(!dto.allowed_actions.contains(&AgentActionId::Install));
+    }
+
+    #[tokio::test]
+    async fn domestic_update_is_rejected_before_target_selection() {
+        let state = test_app_state();
+        for agent_id in [
+            AgentCatalogId::QoderWork,
+            AgentCatalogId::TraeWork,
+            AgentCatalogId::WorkBuddy,
+        ] {
+            let result =
+                start_agent_action(start_request(agent_id, AgentActionId::Update, None), &state)
+                    .await;
+            assert_eq!(
+                result,
+                Err(AgentReasonCode::ActionNotSupported),
+                "{agent_id:?} update must fail closed before target lookup"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn claude_and_opencode_cli_requests_are_surface_not_supported() {
+        let state = test_app_state();
+        for agent_id in [AgentCatalogId::ClaudeCode, AgentCatalogId::OpenCode] {
+            let result = start_agent_action(
+                start_request(agent_id, AgentActionId::Install, Some(AgentSurface::Cli)),
+                &state,
+            )
+            .await;
+            assert_eq!(
+                result,
+                Err(AgentReasonCode::SurfaceNotSupported),
+                "{agent_id:?} CLI must not reach a CLI executor"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn grok_cli_install_still_reaches_target_selection() {
+        let state = test_app_state();
+        let result = start_agent_action(
+            start_request(
+                AgentCatalogId::GrokBuild,
+                AgentActionId::Install,
+                Some(AgentSurface::Cli),
+            ),
+            &state,
+        )
+        .await;
+        assert_eq!(result, Err(AgentReasonCode::TargetSelectionRequired));
+    }
+
+    #[tokio::test]
+    async fn claude_desktop_install_without_target_is_target_selection_not_unimplemented() {
+        let state = test_app_state();
+        let result = start_agent_action(
+            start_request(
+                AgentCatalogId::ClaudeCode,
+                AgentActionId::Install,
+                Some(AgentSurface::Desktop),
+            ),
+            &state,
+        )
+        .await;
+        assert_eq!(result, Err(AgentReasonCode::TargetSelectionRequired));
+    }
+
+    #[tokio::test]
+    async fn skipped_source_update_state_is_unavailable_only_for_install_only_products() {
+        let domestic =
+            lifecycle_policy::lifecycle_policy(AgentCatalogId::QoderWork, AgentSurface::Desktop)
+                .unwrap();
+        assert_eq!(
+            skipped_desktop_source_update_state(domestic, AgentInstallState::Installed),
+            AgentUpdateState::Unavailable
+        );
+        let opencode =
+            lifecycle_policy::lifecycle_policy(AgentCatalogId::OpenCode, AgentSurface::Desktop)
+                .unwrap();
+        assert_eq!(
+            skipped_desktop_source_update_state(opencode, AgentInstallState::Unknown),
+            AgentUpdateState::Unknown
         );
     }
 

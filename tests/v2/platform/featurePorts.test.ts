@@ -11,7 +11,10 @@ import {
   createBrowserFeaturePorts,
   NATIVE_ONLY_ERROR,
 } from "@/v2/shared/platform/browser/features";
-import { PROMPT_APP_IDS } from "@/v2/shared/features/types";
+import {
+  AGENT_CATALOG_CONTRACT_VERSION,
+  PROMPT_APP_IDS,
+} from "@/v2/shared/features/types";
 import type {
   AgentCapabilityId,
   AgentCatalogEntry,
@@ -143,7 +146,7 @@ function catalogEntry(
 
 function catalogFixture(): AgentCatalogResult {
   return {
-    contractVersion: 4,
+    contractVersion: AGENT_CATALOG_CONTRACT_VERSION,
     reviewedAt: "2026-08-18",
     agents: [
       catalogEntry("qoderwork", "QoderWork CN", [
@@ -177,11 +180,6 @@ function catalogFixture(): AgentCatalogResult {
       catalogEntry("codex", "Codex", []),
       catalogEntry("claude-code", "Claude Code", [
         {
-          id: "cli",
-          label: "Claude Code CLI",
-          url: "https://docs.anthropic.com/en/docs/claude-code/getting-started",
-        },
-        {
           id: "desktop",
           label: "Claude Desktop",
           url: "https://claude.com/download",
@@ -194,9 +192,9 @@ function catalogFixture(): AgentCatalogResult {
           url: "https://opencode.ai",
         },
         {
-          id: "cli",
-          label: "OpenCode CLI",
-          url: "https://opencode.ai/docs/cli",
+          id: "desktop",
+          label: "打开 OpenCode 官方下载页",
+          url: "https://opencode.ai/download",
         },
       ]),
     ],
@@ -772,7 +770,7 @@ describe("V2 feature ports", () => {
     ).rejects.toThrow("Provider public summary is unavailable");
   });
 
-  it("decodes only the exact Agent catalog v3 wire contract", async () => {
+  it("decodes only the exact Agent catalog v5 wire contract", async () => {
     const { createTauriFeaturePorts } = await import(
       "@/v2/shared/platform/tauri/features"
     );
@@ -784,11 +782,13 @@ describe("V2 feature ports", () => {
     const invalidPayloads: unknown[] = [];
 
     const legacy = structuredClone(expected);
-    Object.assign(legacy, { contractVersion: 2 });
+    Object.assign(legacy, { contractVersion: 4 });
     invalidPayloads.push(legacy);
 
     const future = structuredClone(expected);
-    Object.assign(future, { contractVersion: 5 });
+    Object.assign(future, {
+      contractVersion: AGENT_CATALOG_CONTRACT_VERSION + 1,
+    });
     invalidPayloads.push(future);
 
     const invalidDate = structuredClone(expected);
@@ -871,9 +871,39 @@ describe("V2 feature ports", () => {
     });
     invalidPayloads.push(codexExternalLink);
 
-    const reversedClaudeLinks = structuredClone(expected);
-    reversedClaudeLinks.agents[5].officialLinks.reverse();
-    invalidPayloads.push(reversedClaudeLinks);
+    const reversedOpenCodeLinks = structuredClone(expected);
+    reversedOpenCodeLinks.agents[6].officialLinks.reverse();
+    invalidPayloads.push(reversedOpenCodeLinks);
+
+    const legacyClaudeCliLinks = structuredClone(expected);
+    legacyClaudeCliLinks.agents[5].officialLinks = [
+      {
+        id: "cli",
+        label: "Claude Code CLI",
+        url: "https://docs.anthropic.com/en/docs/claude-code/getting-started",
+      },
+      {
+        id: "desktop",
+        label: "Claude Desktop",
+        url: "https://claude.com/download",
+      },
+    ];
+    invalidPayloads.push(legacyClaudeCliLinks);
+
+    const legacyOpenCodeCliLinks = structuredClone(expected);
+    legacyOpenCodeCliLinks.agents[6].officialLinks = [
+      {
+        id: "product",
+        label: "打开 OpenCode 官方页面",
+        url: "https://opencode.ai",
+      },
+      {
+        id: "cli",
+        label: "OpenCode CLI",
+        url: "https://opencode.ai/docs/cli",
+      },
+    ];
+    invalidPayloads.push(legacyOpenCodeCliLinks);
 
     for (const payload of invalidPayloads) {
       invoke.mockResolvedValueOnce(payload);

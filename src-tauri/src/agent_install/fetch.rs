@@ -8,7 +8,7 @@ use url::Url;
 
 use super::sources::{
     https_url_on_allowlist, AgentPlatform, PackageFormat, ResolvedDesktopSource,
-    SourceResolveError, MAX_SOURCE_METADATA_BYTES, OPENCODE_DOWNLOAD_HOSTS,
+    SourceResolveError, CLAUDE_DOWNLOAD_HOSTS, MAX_SOURCE_METADATA_BYTES, OPENCODE_DOWNLOAD_HOSTS,
     QODERWORK_REDIRECT_HOSTS, TRAEWORK_DOWNLOAD_HOSTS, WORKBUDDY_DOWNLOAD_HOSTS,
 };
 use super::types::AgentReasonCode;
@@ -43,6 +43,7 @@ pub(super) fn artifact_download_hosts(
         AgentCatalogId::TraeWork => Ok(TRAEWORK_DOWNLOAD_HOSTS),
         AgentCatalogId::WorkBuddy => Ok(WORKBUDDY_DOWNLOAD_HOSTS),
         AgentCatalogId::OpenCode => Ok(OPENCODE_DOWNLOAD_HOSTS),
+        AgentCatalogId::ClaudeCode => Ok(CLAUDE_DOWNLOAD_HOSTS),
         _ => Err(AgentReasonCode::ExecutorNotImplemented),
     }
 }
@@ -417,5 +418,27 @@ mod tests {
                 None
             );
         }
+    }
+
+    #[test]
+    fn claude_artifact_hosts_are_the_fixed_mirror_only() {
+        assert_eq!(
+            artifact_download_hosts(AgentCatalogId::ClaudeCode),
+            Ok(CLAUDE_DOWNLOAD_HOSTS)
+        );
+        let mirror = Url::parse("https://claudeapp.agentsmirror.com/latest/mac").unwrap();
+        assert!(https_url_on_allowlist(&mirror, CLAUDE_DOWNLOAD_HOSTS).is_ok());
+        let official = Url::parse(
+            "https://api.anthropic.com/api/desktop/darwin/universal/dmg/latest/redirect",
+        )
+        .unwrap();
+        assert_eq!(
+            https_url_on_allowlist(&official, CLAUDE_DOWNLOAD_HOSTS),
+            Err(SourceResolveError::HostRejected)
+        );
+        assert_eq!(
+            artifact_download_hosts(AgentCatalogId::GrokBuild),
+            Err(AgentReasonCode::ExecutorNotImplemented)
+        );
     }
 }
