@@ -21,7 +21,6 @@ import {
   projectInstallerProgress,
   shouldAcceptJobSnapshot,
   updateDownloadSpeedState,
-  updateDownloadSpeedFromSample,
   type JobSnapshot,
   type LocalInstallStatus,
   type RemoteReleaseStatus,
