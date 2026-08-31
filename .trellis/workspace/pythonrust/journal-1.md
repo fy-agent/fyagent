@@ -1855,3 +1855,42 @@ Rewrote audited frontend and public-documentation copy, added an indexed user-fa
 ### Next Steps
 
 - 系统 /Applications 特权提交仍保持 OPEN，由后续独立 helper 任务承接；本会话未提交未跟踪的 helper 规划目录
+
+
+## Session 58: macOS 特权 Helper 与 Agent 目录安装策略
+<!-- trellis-session: v=2 fp=6e6869253475af29 -->
+
+**Date**: 2026-08-31
+**Task**: macOS 特权 Helper 与 Agent 目录安装策略
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+并行交付封闭 macOS 特权提交 helper（生产 /Applications 仍禁用）以及 Agent 目录四桶排序、国产仅安装、Claude/OpenCode desktop-only 生命周期；已回写长期 spec 并归档两个任务。
+
+### Main Changes
+
+- 新增 Blessed/SMJobBless Swift helper、C ABI 与 crate-private MacSystemCommitPort；production_enabled 保持 false
+- Agent 目录按扫描结果四桶排序；QoderWork/TRAE Work/WorkBuddy 禁止 FyAgent 更新
+- Claude Desktop 固定镜像 source；OpenCode 复用 GitHub latest + 固定 stable DMG；Catalog v5
+- 发布流程在 sign-app 前 embed 并 inside-out 签名 nested helper；owning spec 已对齐
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `bf30861826a3095203802340c4a359ab807d3aa6` | feat: add macOS privileged helper and Agent directory install policy |
+
+### Testing
+
+- [OK] mise run check:prearchive --exclude-active-task .trellis/tasks/08-31-macos-agent-directory-install-policy 通过
+- [OK] cargo test --lib agent_install macos_system_commit、pnpm test:v2、swift PrivilegedHelperTests 已在实施/检查阶段通过
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 正式 Developer ID 签名、公证与真机 /Applications HIL 之后才能打开 production_enabled
+- Claude Desktop 尚未进入 helper KnownSystemProduct 表；Windows 桌面安装器仍推迟
