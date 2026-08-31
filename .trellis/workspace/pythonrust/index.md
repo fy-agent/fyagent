@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 56
+- **Total Sessions**: 57
 - **Last Active**: 2026-08-31
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1817 | Active |
+| `journal-1.md` | ~1857 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 57 | 2026-08-31 | 完善 macOS Agent 安装更新与启动体验 | `1b6e2aab95fd4ca4947a6aa356644a56747e88f0`, `2405b0ecd5f91268ab807fc8c5fe25adde8ad90c`, `14ee2290a9c5d6efe08a15be70b0bc382ab6c010`, `ccbf7520ed237601ecc2c8fc08f82f5cb5edbd39` | `dev/laiyongjie` |
 | 56 | 2026-08-31 | 精简并校准全部 Trellis spec | `2391e2aa` | `dev/laiyongjie` |
 | 55 | 2026-08-31 | Humanize user-facing copy and persist copy SPEC | `40a844c796b1dcd92f7d215d3e6bf77dd14676a2` | `dev/laiyongjie` |
 | 54 | 2026-08-26 | Agent directory lifecycle UX | `7725099b`, `92d97cf7` | `dev/laiyongjie` |
