@@ -84,14 +84,18 @@ export function CodexDesktopInstallerCard() {
 
   const isWorking = state.startsWith("job_");
   const progressPercent =
-    progress?.percent == null ? null : Math.max(0, Math.min(100, progress.percent));
+    progress?.percent == null
+      ? null
+      : Math.max(0, Math.min(100, progress.percent));
   const progressPercentLabel =
     progressPercent == null ? null : formatTransferPercent(progressPercent);
   const showDownloadBytes = state === "job_downloading";
   const completedText = showDownloadBytes
     ? formatTransferBytes(progress?.current)
     : null;
-  const totalText = showDownloadBytes ? formatTransferBytes(progress?.total) : null;
+  const totalText = showDownloadBytes
+    ? formatTransferBytes(progress?.total)
+    : null;
   const speedText = showDownloadBytes
     ? formatTransferSpeed(progress?.bytesPerSecond)
     : null;

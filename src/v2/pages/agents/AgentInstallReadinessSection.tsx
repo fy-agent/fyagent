@@ -161,9 +161,7 @@ function orderedLifecycleActions(
   });
 }
 
-function projectionFromSurface(
-  item: AgentSurfaceReadiness,
-): SurfaceProjection {
+function projectionFromSurface(item: AgentSurfaceReadiness): SurfaceProjection {
   return {
     surface: item.surface,
     title: item.surface === "cli" ? "命令行" : "桌面应用",
@@ -188,7 +186,9 @@ function projectionFromSurface(
   };
 }
 
-function detectSurfaces(data: AgentInstallReadiness): SurfaceProjection[] | null {
+function detectSurfaces(
+  data: AgentInstallReadiness,
+): SurfaceProjection[] | null {
   if (!data.surfaces || data.surfaces.length === 0) return null;
   return data.surfaces.map(projectionFromSurface);
 }
@@ -205,7 +205,9 @@ function openCodeFallbackSurfaces(
       installState: data.installState,
       updateState: data.updateState,
       inventoryState: data.inventoryState,
-      allowedActions: data.allowedActions.filter((action) => action !== "launch"),
+      allowedActions: data.allowedActions.filter(
+        (action) => action !== "launch",
+      ),
       reasonCodes: data.reasonCodes,
       requiresTargetSelection: data.requiresTargetSelection,
       releaseId: data.releaseId,
@@ -238,8 +240,11 @@ function surfacesForProduct(
 ): SurfaceProjection[] {
   const detected = detectSurfaces(data);
   if (agentId === "opencode") {
-    if (detected && detected.some((item) => item.surface === "cli") &&
-      detected.some((item) => item.surface === "desktop")) {
+    if (
+      detected &&
+      detected.some((item) => item.surface === "cli") &&
+      detected.some((item) => item.surface === "desktop")
+    ) {
       return detected;
     }
     if (detected) {
@@ -253,7 +258,9 @@ function surfacesForProduct(
     data.sourceKind === "cli_tooling" ||
     (detected?.[0]?.surface ?? "desktop") === "cli";
   if (detected?.length === 1) {
-    return [{ ...detected[0], hideLaunch: detected[0].hideLaunch || hideLaunch }];
+    return [
+      { ...detected[0], hideLaunch: detected[0].hideLaunch || hideLaunch },
+    ];
   }
   return [
     {
@@ -306,9 +313,7 @@ function LifecycleProgress({
     <div className="fy-agent-install-readiness-loading">
       <Spinner label={label} />
       <span className="fy-agent-transfer-progress">{label}</span>
-      {canCancel ? (
-        <Button onClick={onCancel}>取消</Button>
-      ) : null}
+      {canCancel ? <Button onClick={onCancel}>取消</Button> : null}
     </div>
   );
 }
@@ -364,7 +369,9 @@ function ReadinessSummary({
         </p>
       ))}
       {projection.emptyNote ? (
-        <p className="fy-agent-install-readiness-note">{projection.emptyNote}</p>
+        <p className="fy-agent-install-readiness-note">
+          {projection.emptyNote}
+        </p>
       ) : null}
       <dl className="fy-agent-install-readiness-grid">
         <div>
@@ -485,7 +492,8 @@ function GrokOwnerPanel({
   }
   if (!snapshot) return null;
 
-  const notInstalled = snapshot.localVersion === null && !snapshot.installedButBroken;
+  const notInstalled =
+    snapshot.localVersion === null && !snapshot.installedButBroken;
   const showNpmChoice =
     notInstalled ||
     (nativeFailed && snapshot.distributionOwner !== "official_npm");
@@ -508,7 +516,8 @@ function GrokOwnerPanel({
       </dl>
       {notInstalled ? (
         <p className="fy-agent-install-readiness-note">
-          首次安装建议使用官方命令行。也可改用官方 npm 包，两种方式不会自动切换。
+          首次安装建议使用官方命令行。也可改用官方 npm
+          包，两种方式不会自动切换。
         </p>
       ) : null}
       {busy ? (
@@ -568,7 +577,10 @@ function AgentInstallReadinessContent({
   const targetOptions = useMemo(
     () =>
       targetAction && activeInventory.status === "ready"
-        ? installationTargetsForAction(activeInventory.data, targetAction.action)
+        ? installationTargetsForAction(
+            activeInventory.data,
+            targetAction.action,
+          )
         : [],
     [activeInventory, targetAction],
   );
@@ -582,7 +594,10 @@ function AgentInstallReadinessContent({
       setState({ status: "ready", data });
     },
     onInventoryChange: (data) => {
-      if (agentId === "opencode" && (data.surface === "cli" || data.surface === "desktop")) {
+      if (
+        agentId === "opencode" &&
+        (data.surface === "cli" || data.surface === "desktop")
+      ) {
         setInventoryBySurface((current) => ({
           ...current,
           [data.surface as AgentSurface]: { status: "ready", data },
@@ -704,9 +719,7 @@ function AgentInstallReadinessContent({
         : 0;
     const needsTarget =
       (!cliBound &&
-        (action === "install" ||
-          action === "update" ||
-          action === "launch")) ||
+        (action === "install" || action === "update" || action === "launch")) ||
       (projection.requiresTargetSelection &&
         (action === "install" || action === "update" || action === "launch")) ||
       (action === "launch" && launchEligibleCount > 1);
@@ -778,9 +791,7 @@ function AgentInstallReadinessContent({
 
   const dual = agentId === "opencode" && state.status === "ready";
   const projections =
-    state.status === "ready"
-      ? surfacesForProduct(agentId, state.data)
-      : [];
+    state.status === "ready" ? surfacesForProduct(agentId, state.data) : [];
 
   return (
     <section className="fy-agent-section" aria-label="安装与更新">
@@ -830,9 +841,7 @@ function AgentInstallReadinessContent({
             canCancel={lifecycle.canCancel}
             targetPicker={targetPicker(projections[0]?.surface ?? "product")}
             onAction={(action) =>
-              projections[0]
-                ? handleAction(action, projections[0])
-                : undefined
+              projections[0] ? handleAction(action, projections[0]) : undefined
             }
             onCancel={() => void lifecycle.cancel()}
             extra={
@@ -840,8 +849,7 @@ function AgentInstallReadinessContent({
                 <GrokOwnerPanel
                   port={grokTooling}
                   nativeFailed={Boolean(
-                    lifecycle.error &&
-                      lifecycle.reasonCode !== "cancelled",
+                    lifecycle.error && lifecycle.reasonCode !== "cancelled",
                   )}
                 />
               ) : null

@@ -84,11 +84,7 @@ export function parseGrokToolSnapshot(value: unknown): GrokToolSnapshot {
     "error",
     "installed_but_broken",
   ];
-  const allowed = new Set([
-    ...required,
-    "distribution_owner",
-    "latest_source",
-  ]);
+  const allowed = new Set([...required, "distribution_owner", "latest_source"]);
   if (
     !required.every((key) => Object.prototype.hasOwnProperty.call(grok, key)) ||
     Object.keys(grok).some((key) => !allowed.has(key)) ||

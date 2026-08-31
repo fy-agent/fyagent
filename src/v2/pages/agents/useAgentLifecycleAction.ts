@@ -519,7 +519,11 @@ export function useAgentLifecycleAction({
     }
   }, [applyJobSnapshot, cancellable, jobId]);
 
-  const transferView = projectAgentJobTransfer(stage, jobSnapshot, downloadSpeed);
+  const transferView = projectAgentJobTransfer(
+    stage,
+    jobSnapshot,
+    downloadSpeed,
+  );
 
   return {
     primaryAction,

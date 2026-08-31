@@ -903,30 +903,32 @@ export function AboutSection({
                   ) : (
                     <>
                       {action ? (
-                    <Button
-                      size="sm"
-                      variant={action === "install" ? "outline" : "default"}
-                      className="h-7 gap-1.5 text-xs"
-                      onClick={() => handleRunToolAction([toolName], action)}
-                      disabled={isToolVersionLoading || isAnyBusy}
-                    >
-                      {runningAction ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : action === "install" ? (
-                        <Download className="h-3.5 w-3.5" />
-                      ) : (
-                        <ArrowUpCircle className="h-3.5 w-3.5" />
-                      )}
-                      {/* loading 时文案保持不变、仅图标切换为 spinner，
+                        <Button
+                          size="sm"
+                          variant={action === "install" ? "outline" : "default"}
+                          className="h-7 gap-1.5 text-xs"
+                          onClick={() =>
+                            handleRunToolAction([toolName], action)
+                          }
+                          disabled={isToolVersionLoading || isAnyBusy}
+                        >
+                          {runningAction ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : action === "install" ? (
+                            <Download className="h-3.5 w-3.5" />
+                          ) : (
+                            <ArrowUpCircle className="h-3.5 w-3.5" />
+                          )}
+                          {/* loading 时文案保持不变、仅图标切换为 spinner，
                           按钮宽度恒定，避免"升级"→"升级中…"导致的抖动。 */}
-                      {action === "install"
-                        ? t("settings.toolInstall")
-                        : t("settings.toolUpdate")}
-                    </Button>
+                          {action === "install"
+                            ? t("settings.toolInstall")
+                            : t("settings.toolUpdate")}
+                        </Button>
                       ) : (
-                    <span className="text-xs text-muted-foreground">
-                      {t("settings.toolReady")}
-                    </span>
+                        <span className="text-xs text-muted-foreground">
+                          {t("settings.toolReady")}
+                        </span>
                       )}
                       {toolName === "grok" &&
                       tool?.distribution_owner !== "official_npm" &&

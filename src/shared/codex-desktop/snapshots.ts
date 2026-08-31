@@ -276,7 +276,9 @@ export function formatTransferPercent(percent: number): string {
   return Number.isInteger(rounded) ? `${rounded}%` : `${rounded.toFixed(1)}%`;
 }
 
-export function formatTransferBytes(value: number | null | undefined): string | null {
+export function formatTransferBytes(
+  value: number | null | undefined,
+): string | null {
   if (value == null || !Number.isFinite(value) || value < 0) return null;
   const units = ["B", "KB", "MB", "GB", "TB"] as const;
   let amount = value;

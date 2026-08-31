@@ -278,9 +278,7 @@ function GenericLifecycleSlot({
   onConfigure: () => void;
 }) {
   if (lifecycle.busy) {
-    return (
-      <BusySlot label={genericBusyCopy(lifecycle)} />
-    );
+    return <BusySlot label={genericBusyCopy(lifecycle)} />;
   }
   if (scanningCopy && !lifecycle.primaryAction) {
     return <ScanningSlot label={scanningCopy} />;

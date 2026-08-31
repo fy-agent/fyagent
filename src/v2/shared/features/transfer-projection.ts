@@ -36,7 +36,8 @@ export function agentJobToSpeedSample(
     jobId: `${snapshot.jobId}:${snapshot.transfer.attempt}`,
     sequence: snapshot.transfer.sequence,
     downloading:
-      snapshot.stage === "downloading" && snapshot.transfer.phase === "download",
+      snapshot.stage === "downloading" &&
+      snapshot.transfer.phase === "download",
     downloadPhase: snapshot.transfer.phase === "download",
     completedBytes: snapshot.transfer.completedBytes,
     updatedAtMs: Number.isFinite(observedAtMs) ? observedAtMs : Number.NaN,
