@@ -23,6 +23,11 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useCodexDesktopInstaller } from "@/hooks/useCodexDesktopInstaller";
 import type { InstallerPrimaryAction } from "@/types/codexDesktop";
+import {
+  formatTransferBytes,
+  formatTransferPercent,
+  formatTransferSpeed,
+} from "@/shared/codex-desktop";
 
 const versionStatusDefaultValues: Record<string, string> = {
   "codexDesktop.version.localLoading": "正在检测本地版本",
@@ -46,24 +51,6 @@ const primaryActionKeys: Record<
   retry: "codexDesktop.actions.retry",
   refresh: "codexDesktop.actions.refresh",
 };
-
-function formatBytes(value: number | null | undefined): string | null {
-  if (value == null || !Number.isFinite(value) || value < 0) return null;
-  const units = ["B", "KB", "MB", "GB"];
-  let unitIndex = 0;
-  let amount = value;
-  while (amount >= 1024 && unitIndex < units.length - 1) {
-    amount /= 1024;
-    unitIndex += 1;
-  }
-  return (
-    amount.toLocaleString(undefined, {
-      maximumFractionDigits: unitIndex === 0 ? 0 : 1,
-    }) +
-    " " +
-    units[unitIndex]
-  );
-}
 
 function PrimaryActionIcon({
   action,
@@ -97,16 +84,16 @@ export function CodexDesktopInstallerCard() {
 
   const isWorking = state.startsWith("job_");
   const progressPercent =
-    progress?.percent == null
-      ? null
-      : Math.max(0, Math.min(100, Math.round(progress.percent)));
+    progress?.percent == null ? null : Math.max(0, Math.min(100, progress.percent));
+  const progressPercentLabel =
+    progressPercent == null ? null : formatTransferPercent(progressPercent);
   const showDownloadBytes = state === "job_downloading";
   const completedText = showDownloadBytes
-    ? formatBytes(progress?.current)
+    ? formatTransferBytes(progress?.current)
     : null;
-  const totalText = showDownloadBytes ? formatBytes(progress?.total) : null;
+  const totalText = showDownloadBytes ? formatTransferBytes(progress?.total) : null;
   const speedText = showDownloadBytes
-    ? formatBytes(progress?.bytesPerSecond)
+    ? formatTransferSpeed(progress?.bytesPerSecond)
     : null;
   const primaryPending = installer.isActing && Boolean(primaryAction);
   const remoteDisplayVersion =
@@ -272,11 +259,11 @@ export function CodexDesktopInstallerCard() {
             <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
               <span>{t("codexDesktop.details.progress")}</span>
               <span className="shrink-0 tabular-nums">
-                {progressPercent == null ? null : progressPercent + "%"}
+                {progressPercentLabel}
                 {completedText
                   ? " · " + completedText + (totalText ? " / " + totalText : "")
                   : null}
-                {speedText ? " · " + speedText + "/s" : null}
+                {speedText ? " · " + speedText : null}
               </span>
             </div>
             <div

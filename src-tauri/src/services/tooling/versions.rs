@@ -27,13 +27,20 @@ pub(super) async fn get_single_tool_version_impl(tool: &str) -> ToolVersion {
     };
 
     let local = local_version.as_deref();
+    let mut distribution_owner = None;
+    let mut latest_source = None;
     let latest_version = match tool {
         "claude" => {
             fetch_npm_latest_for_tool(&client, "@anthropic-ai/claude-code", tool, local).await
         }
         "codex" => fetch_npm_latest_for_tool(&client, "@openai/codex", tool, local).await,
         "gemini" => fetch_npm_latest_for_tool(&client, "@google/gemini-cli", tool, local).await,
-        "grok" => fetch_npm_latest_for_tool(&client, "@xai-official/grok", tool, local).await,
+        "grok" => {
+            let (latest, owner) = fetch_grok_latest_with_owner(&client, local).await;
+            distribution_owner = owner.clone();
+            latest_source = owner;
+            latest
+        }
         "opencode" => {
             if let Some(version) =
                 fetch_npm_latest_for_tool(&client, "opencode-ai", tool, local).await
@@ -52,8 +59,43 @@ pub(super) async fn get_single_tool_version_impl(tool: &str) -> ToolVersion {
         name: tool.to_string(),
         version: local_version,
         latest_version,
-        error: local_error,
+        error: if tool == "grok" {
+            super::grok::last_grok_lifecycle_error().or(local_error)
+        } else {
+            local_error
+        },
         installed_but_broken,
+        distribution_owner,
+        latest_source,
+    }
+}
+
+async fn fetch_grok_latest_with_owner(
+    client: &reqwest::Client,
+    local: Option<&str>,
+) -> (Option<String>, Option<String>) {
+    #[cfg(target_os = "macos")]
+    {
+        let observation = super::grok::observe_installed_grok_owner();
+        let owner = super::grok::owner_observation_wire(observation).map(str::to_string);
+        let latest = match observation {
+            super::grok::GrokOwnerObservation::NativeInternal => {
+                super::grok::native_latest_from_update_check(local)
+            }
+            super::grok::GrokOwnerObservation::OfficialNpm => {
+                fetch_npm_latest_for_tool(client, "@xai-official/grok", "grok", local).await
+            }
+            super::grok::GrokOwnerObservation::Ambiguous
+            | super::grok::GrokOwnerObservation::Absent => None,
+        };
+        (latest, owner)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        (
+            fetch_npm_latest_for_tool(client, "@xai-official/grok", "grok", local).await,
+            None,
+        )
     }
 }
 
@@ -64,6 +106,8 @@ pub(super) fn elevated_windows_tool_version_unavailable(tool: &str) -> ToolVersi
         latest_version: None,
         error: Some(ELEVATED_WINDOWS_CLI_BOUNDARY_MESSAGE.to_string()),
         installed_but_broken: false,
+        distribution_owner: None,
+        latest_source: None,
     }
 }
 
@@ -157,6 +201,14 @@ async fn fetch_npm_dist_tags(
     let resp = client.get(&url).send().await.ok()?;
     let json = resp.json::<serde_json::Value>().await.ok()?;
     json.get("dist-tags")?.as_object().cloned()
+}
+
+#[allow(dead_code)]
+pub(super) async fn fetch_npm_latest_for_package(
+    client: &reqwest::Client,
+    package: &str,
+) -> Option<String> {
+    fetch_npm_latest_for_tool(client, package, "", None).await
 }
 
 async fn fetch_npm_latest_for_tool(

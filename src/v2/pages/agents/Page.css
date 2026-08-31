@@ -596,13 +596,31 @@
   font-weight: 650;
 }
 
-.fy-agent-install-readiness-loading {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  min-height: 36px;
+.fy-agent-install-surfaces {
+  display: grid;
+  gap: 14px;
+}
+
+.fy-agent-install-surface {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.fy-agent-install-surface h4 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.fy-agent-transfer-progress {
   color: var(--fy-text-secondary);
-  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.fy-agent-grok-owner {
+  display: grid;
+  gap: 10px;
 }
 
 .fy-agent-auth-compact {

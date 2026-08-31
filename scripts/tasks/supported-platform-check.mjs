@@ -344,6 +344,30 @@ export const RUST_ALLOWANCE_CONTRACT = Object.freeze([
     nextPrefix: true,
   }),
   Object.freeze({
+    id: "desktop-plist-non-macos-stub",
+    file: "src-tauri/src/agent_install/desktop.rs",
+    condition: '#[cfg(not(any(target_os = "macos", test)))]',
+    next: "{",
+  }),
+  Object.freeze({
+    id: "codex-bundle-plist-non-macos-stub",
+    file: "src-tauri/src/codex_desktop/platform/macos/bundle.rs",
+    condition: '#[cfg(not(target_os = "macos"))]',
+    next: "{",
+  }),
+  Object.freeze({
+    id: "codex-bundle-launch-test-or-non-macos",
+    file: "src-tauri/src/codex_desktop/platform/macos/bundle.rs",
+    condition: '#[cfg(any(not(target_os = "macos"), test))]',
+    next: "{",
+  }),
+  Object.freeze({
+    id: "grok-latest-non-macos-npm",
+    file: "src-tauri/src/services/tooling/versions.rs",
+    condition: '#[cfg(not(target_os = "macos"))]',
+    next: "{",
+  }),
+  Object.freeze({
     id: "windows-inventory-test-host-fallback",
     file: "src-tauri/src/agent_install/windows.rs",
     condition: '#[cfg(not(target_os = "windows"))]',

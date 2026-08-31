@@ -14,10 +14,11 @@ pub(super) fn normalize_requested_tools(tools: &[String]) -> Vec<&'static str> {
         .collect()
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum ToolLifecycleAction {
     Install,
     Update,
+    InstallOfficialNpm,
 }
 
 impl FromStr for ToolLifecycleAction {
@@ -27,6 +28,7 @@ impl FromStr for ToolLifecycleAction {
         match value {
             "install" => Ok(Self::Install),
             "update" => Ok(Self::Update),
+            "install_official_npm" => Ok(Self::InstallOfficialNpm),
             _ => Err(format!("Unsupported tool action: {value}")),
         }
     }
@@ -226,6 +228,7 @@ pub(super) fn tool_action_shell_command_for_shell(
             match (action, shell) {
                 (ToolLifecycleAction::Install, LifecycleCommandShell::Posix) => HERMES_INSTALL_UNIX,
                 (ToolLifecycleAction::Update, LifecycleCommandShell::Posix) => HERMES_UPDATE_UNIX,
+                (ToolLifecycleAction::InstallOfficialNpm, _) => return None,
                 #[cfg(target_os = "windows")]
                 (ToolLifecycleAction::Install, LifecycleCommandShell::WindowsBatch) => {
                     return Some(hermes_install_windows_command());
@@ -244,6 +247,13 @@ pub(super) fn tool_action_shell_command_for_shell(
     let install = npm_install_command_for(tool)?;
     match action {
         ToolLifecycleAction::Install => Some(install.to_string()),
+        ToolLifecycleAction::InstallOfficialNpm => {
+            if tool == "grok" {
+                Some(install.to_string())
+            } else {
+                None
+            }
+        }
         ToolLifecycleAction::Update => match prefers_official_update(tool, shell)
             .then(|| bare_official_update_command(tool))
             .flatten()
@@ -263,6 +273,15 @@ pub(super) fn tool_action_shell_command(tool: &str, action: ToolLifecycleAction)
     tool_action_shell_command_for_shell(tool, action, shell)
 }
 
+fn grok_official_npm_command(tool: &str) -> Result<String, String> {
+    if tool != "grok" {
+        return Err("install_official_npm is only valid for Grok Build".to_string());
+    }
+    npm_install_command_for("grok")
+        .map(str::to_string)
+        .ok_or_else(|| "Official npm install is unavailable for Grok Build".to_string())
+}
+
 fn build_tool_action_line(tool: &str, action: ToolLifecycleAction) -> Result<String, String> {
     #[cfg(target_os = "windows")]
     {
@@ -275,6 +294,7 @@ fn build_tool_action_line(tool: &str, action: ToolLifecycleAction) -> Result<Str
             ToolLifecycleAction::Install => {
                 static_fallback_command_for(tool, ToolLifecycleAction::Install)
             }
+            ToolLifecycleAction::InstallOfficialNpm => grok_official_npm_command(tool)?,
         };
         if command.is_empty() {
             return Err(format!("Unsupported tool action target: {tool}"));
@@ -291,6 +311,7 @@ fn build_tool_action_line(tool: &str, action: ToolLifecycleAction) -> Result<Str
                     .unwrap_or_else(|| static_fallback_command(tool))
             }
             ToolLifecycleAction::Install => install_command_for(tool),
+            ToolLifecycleAction::InstallOfficialNpm => grok_official_npm_command(tool)?,
         };
         if command.is_empty() {
             return Err(format!("Unsupported tool action target: {tool}"));

@@ -87,7 +87,19 @@ describe("Tauri Agent install readiness port", () => {
     });
 
     invoke.mockResolvedValue({
-      contractVersion: 2,
+      ...inventoryWire("opencode"),
+      surface: "desktop",
+    });
+    await expect(
+      createAgentInstallReadinessPort().getInventory("opencode", "desktop"),
+    ).resolves.toMatchObject({ agentId: "opencode", surface: "desktop" });
+    expect(invoke).toHaveBeenCalledWith("get_agent_installation_inventory", {
+      agentId: "opencode",
+      surface: "desktop",
+    });
+
+    invoke.mockResolvedValue({
+      contractVersion: 3,
       agentId: "qoderwork",
       action: "install",
       jobId: "job-1",

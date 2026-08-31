@@ -9,6 +9,7 @@ use std::path::PathBuf;
 #[cfg(target_os = "macos")]
 use super::types::{InstallationPackageKind, InstallationScope};
 use super::{inventory::DesktopDeploymentTarget, types::AgentReasonCode};
+use crate::codex_desktop::download::DownloadedArtifact;
 use crate::services::external_agents::AgentCatalogId;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -20,7 +21,7 @@ pub(super) struct MacosDeploymentResult {
 #[cfg(target_os = "macos")]
 pub(super) fn deploy_macos_dmg<BeforeCommit, BeforeVerify>(
     product: AgentCatalogId,
-    bytes: &[u8],
+    artifact: &DownloadedArtifact,
     target: DesktopDeploymentTarget,
     expected_release_version: Option<String>,
     mut before_commit: BeforeCommit,
@@ -30,77 +31,22 @@ where
     BeforeCommit: FnMut() -> Result<(), AgentReasonCode>,
     BeforeVerify: FnMut() -> Result<(), AgentReasonCode>,
 {
-    use std::{fs, io::Write};
-
-    use crate::{
-        codex_desktop::{
-            error::{InstallerError, InstallerErrorCode},
-            platform::macos::{
-                dmg::{
-                    install_managed_exact, ManagedBundleVersionSource, ManagedDmgFailureKind,
-                    ManagedDmgInstallIntent, ManagedDmgInstallRequest, ManagedDmgProductPolicy,
-                    ManagedVersionEquivalence,
-                },
-                StdMacosFilesystem, SystemCommandRunner,
+    use crate::codex_desktop::{
+        error::{InstallerError, InstallerErrorCode},
+        platform::macos::{
+            dmg::{
+                install_managed_exact, ManagedBundleVersionSource, ManagedDmgFailureKind,
+                ManagedDmgInstallIntent, ManagedDmgInstallRequest, ManagedDmgProductPolicy,
+                ManagedVersionEquivalence,
             },
+            StdMacosFilesystem, SystemCommandRunner,
         },
-        config::get_user_temp_dir,
     };
 
     use super::desktop::{
         capture_desktop_installation_baseline, macos_bundle_id_for, user_applications_dir,
         verify_desktop_deployment,
     };
-
-    struct ManagedArtifact {
-        root: PathBuf,
-        directory: PathBuf,
-        path: PathBuf,
-    }
-
-    impl ManagedArtifact {
-        fn create(bytes: &[u8]) -> Result<Self, AgentReasonCode> {
-            let root = get_user_temp_dir().join("fyagent-agent-installer");
-            fs::create_dir_all(&root).map_err(|_| AgentReasonCode::ExecutorNotImplemented)?;
-            let root_meta =
-                fs::symlink_metadata(&root).map_err(|_| AgentReasonCode::ExecutorNotImplemented)?;
-            if root_meta.file_type().is_symlink() || !root_meta.is_dir() {
-                return Err(AgentReasonCode::ExecutorNotImplemented);
-            }
-            let root =
-                fs::canonicalize(root).map_err(|_| AgentReasonCode::ExecutorNotImplemented)?;
-            let directory = root.join(uuid::Uuid::new_v4().hyphenated().to_string());
-            fs::create_dir(&directory).map_err(|_| AgentReasonCode::ExecutorNotImplemented)?;
-            let path = directory.join("installer.dmg");
-            let mut file = fs::OpenOptions::new()
-                .create_new(true)
-                .write(true)
-                .open(&path)
-                .map_err(|_| AgentReasonCode::ExecutorNotImplemented)?;
-            file.write_all(bytes)
-                .and_then(|_| file.flush())
-                .and_then(|_| file.sync_all())
-                .map_err(|_| AgentReasonCode::ExecutorNotImplemented)?;
-            Ok(Self {
-                root,
-                directory,
-                path,
-            })
-        }
-    }
-
-    impl Drop for ManagedArtifact {
-        fn drop(&mut self) {
-            let safe_name = self
-                .directory
-                .file_name()
-                .and_then(|name| name.to_str())
-                .is_some_and(|name| uuid::Uuid::parse_str(name).is_ok());
-            if safe_name && self.directory.parent() == Some(self.root.as_path()) {
-                let _ = fs::remove_dir_all(&self.directory);
-            }
-        }
-    }
 
     fn callback_error(reason: AgentReasonCode) -> InstallerError {
         let code = if reason == AgentReasonCode::Cancelled {
@@ -149,6 +95,11 @@ where
             version_source: ManagedBundleVersionSource::InfoPlist,
             version_equivalence: ManagedVersionEquivalence::DottedPrefix,
         },
+        AgentCatalogId::OpenCode => ManagedDmgProductPolicy {
+            expected_bundle_id: bundle_id,
+            version_source: ManagedBundleVersionSource::InfoPlist,
+            version_equivalence: ManagedVersionEquivalence::Exact,
+        },
         _ => return Err(AgentReasonCode::ExecutorNotImplemented),
     };
     let (intent, expected_scope) = match target {
@@ -181,14 +132,16 @@ where
         },
     };
     let baseline = capture_desktop_installation_baseline(product);
-    let artifact = ManagedArtifact::create(bytes)?;
+    artifact
+        .revalidate()
+        .map_err(|_| AgentReasonCode::InstallerArtifactUnavailable)?;
     let runner = SystemCommandRunner;
     let filesystem = StdMacosFilesystem;
     let installed = install_managed_exact(
         &runner,
         &filesystem,
         ManagedDmgInstallRequest {
-            artifact_path: &artifact.path,
+            artifact_path: artifact.path(),
             intent,
             product: &product_policy,
             expected_release_version: expected_release_version.as_deref(),
@@ -216,7 +169,7 @@ where
 #[cfg(not(target_os = "macos"))]
 pub(super) fn deploy_macos_dmg<BeforeCommit, BeforeVerify>(
     _product: AgentCatalogId,
-    _bytes: &[u8],
+    _artifact: &DownloadedArtifact,
     _target: DesktopDeploymentTarget,
     _expected_release_version: Option<String>,
     _before_commit: BeforeCommit,

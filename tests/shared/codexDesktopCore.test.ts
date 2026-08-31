@@ -21,6 +21,7 @@ import {
   projectInstallerProgress,
   shouldAcceptJobSnapshot,
   updateDownloadSpeedState,
+  updateDownloadSpeedFromSample,
   type JobSnapshot,
   type LocalInstallStatus,
   type RemoteReleaseStatus,
@@ -298,5 +299,83 @@ describe("neutral Codex Desktop core", () => {
       percent: 50,
       bytesPerSecond: null,
     });
+  });
+});
+
+describe("shared transfer projector", () => {
+  it("formats percent with at most one decimal and hides unknown or zero speed", async () => {
+    const {
+      formatTransferPercent,
+      formatTransferSpeed,
+      projectTransferPresentation,
+      selectDownloadBytesPerSecondFromSample,
+      updateDownloadSpeedFromSample,
+    } = await import("@/shared/codex-desktop");
+
+    expect(formatTransferPercent(37.44)).toBe("37.4%");
+    expect(formatTransferPercent(50)).toBe("50%");
+    expect(formatTransferPercent(100.9)).toBe("100%");
+    expect(formatTransferSpeed(0)).toBeNull();
+    expect(formatTransferSpeed(null)).toBeNull();
+
+    const known = projectTransferPresentation({
+      downloading: true,
+      terminal: false,
+      completedBytes: 3744,
+      totalBytes: 10_000,
+      percent: null,
+      bytesPerSecond: 8.3 * 1024 * 1024,
+    });
+    expect(known.percentLabel).toBe("37.4%");
+    expect(known.downloadLine).toBe("下载中 37.4% · 8.3 MB/s");
+
+    const unknownTotal = projectTransferPresentation({
+      downloading: true,
+      terminal: false,
+      completedBytes: 126 * 1024 * 1024,
+      totalBytes: null,
+      percent: null,
+      bytesPerSecond: 8.3 * 1024 * 1024,
+    });
+    expect(unknownTotal.percent).toBeNull();
+    expect(unknownTotal.indeterminate).toBe(true);
+    expect(unknownTotal.downloadLine).toBe("已下载 126 MB · 8.3 MB/s");
+
+    const terminal = projectTransferPresentation({
+      downloading: false,
+      terminal: true,
+      completedBytes: 4096,
+      totalBytes: 4096,
+      percent: 100,
+      bytesPerSecond: 1024,
+    });
+    expect(terminal.speedLabel).toBeNull();
+    expect(terminal.downloadLine).toBeNull();
+    expect(terminal.percent).toBeNull();
+
+    let speed = createDownloadSpeedState();
+    const first = {
+      jobId: "job-1:1",
+      sequence: 1,
+      downloading: true,
+      downloadPhase: true,
+      completedBytes: 1024,
+      updatedAtMs: Date.parse("2026-08-14T00:00:01.000Z"),
+    };
+    const second = {
+      ...first,
+      sequence: 2,
+      completedBytes: 2048,
+      updatedAtMs: Date.parse("2026-08-14T00:00:02.000Z"),
+    };
+    speed = updateDownloadSpeedFromSample(speed, first);
+    speed = updateDownloadSpeedFromSample(speed, second);
+    expect(selectDownloadBytesPerSecondFromSample(speed, second)).toBe(1024);
+    expect(
+      selectDownloadBytesPerSecondFromSample(speed, {
+        ...second,
+        downloading: false,
+      }),
+    ).toBeNull();
   });
 });

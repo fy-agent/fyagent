@@ -2,7 +2,7 @@ import { AGENT_CATALOG_IDS, type AgentCatalogId } from "./directory";
 
 export const AGENT_INSTALL_READINESS_CONTRACT_VERSION = 3 as const;
 export const AGENT_INSTALLATION_INVENTORY_CONTRACT_VERSION = 1 as const;
-export const AGENT_ACTION_CONTRACT_VERSION = 2 as const;
+export const AGENT_ACTION_CONTRACT_VERSION = 3 as const;
 
 export const AGENT_INSTALL_STATES = [
   "not_installed",
@@ -105,6 +105,30 @@ export const AGENT_ACTION_IDS = [
 ] as const;
 export type AgentActionId = (typeof AGENT_ACTION_IDS)[number];
 
+export const AGENT_SURFACES = ["cli", "desktop"] as const;
+export type AgentSurface = (typeof AGENT_SURFACES)[number];
+
+export function surfacesForAgent(agentId: AgentCatalogId): AgentSurface[] {
+  if (agentId === "opencode") {
+    return ["cli", "desktop"];
+  }
+  if (agentId === "claude-code" || agentId === "grokbuild") {
+    return ["cli"];
+  }
+  return ["desktop"];
+}
+
+export function defaultSurfaceForAgent(agentId: AgentCatalogId): AgentSurface {
+  return surfacesForAgent(agentId)[0] ?? "desktop";
+}
+
+export function isLegalAgentSurface(
+  agentId: AgentCatalogId,
+  surface: AgentSurface,
+): boolean {
+  return surfacesForAgent(agentId).includes(surface);
+}
+
 export const AGENT_REASON_CODES = [
   "official_page_only",
   "source_not_verified",
@@ -139,6 +163,8 @@ export const AGENT_REASON_CODES = [
   "rollback_restored",
   "recovery_required",
   "executor_not_implemented",
+  "surface_not_supported",
+  "application_launch_failed",
 ] as const;
 export type AgentReasonCode = (typeof AGENT_REASON_CODES)[number];
 
@@ -157,6 +183,34 @@ export const AGENT_ACTION_JOB_STAGES = [
 ] as const;
 export type AgentActionJobStage = (typeof AGENT_ACTION_JOB_STAGES)[number];
 
+export const AGENT_ACTION_TRANSFER_PHASES = ["download"] as const;
+export type AgentActionTransferPhase =
+  (typeof AGENT_ACTION_TRANSFER_PHASES)[number];
+
+export interface AgentActionTransferSnapshot {
+  phase: AgentActionTransferPhase;
+  completedBytes: number;
+  totalBytes: number | null;
+  attempt: number;
+  maxAttempts: number;
+  sequence: number;
+  observedAt: string;
+}
+
+export interface AgentSurfaceReadiness {
+  surface: AgentSurface;
+  installState: AgentInstallState;
+  inventoryState: InstallationInventoryState;
+  requiresTargetSelection: boolean;
+  updateState: AgentUpdateState;
+  releaseId: string | null;
+  localVersion: string | null;
+  remoteVersion: string | null;
+  sourceKind: AgentSourceKind;
+  allowedActions: AgentActionId[];
+  reasonCodes: AgentReasonCode[];
+}
+
 export interface AgentInstallReadiness {
   contractVersion: typeof AGENT_INSTALL_READINESS_CONTRACT_VERSION;
   agentId: AgentCatalogId;
@@ -173,6 +227,7 @@ export interface AgentInstallReadiness {
   sourceKind: AgentSourceKind;
   allowedActions: AgentActionId[];
   reasonCodes: AgentReasonCode[];
+  surfaces?: AgentSurfaceReadiness[];
 }
 
 export interface InstallationCandidate {
@@ -212,6 +267,7 @@ export interface AgentInstallationInventory {
   candidates: InstallationCandidate[];
   freshDestinations: FreshInstallDestination[];
   reasonCodes: AgentReasonCode[];
+  surface?: AgentSurface;
 }
 
 export type AgentInstallationTarget =
@@ -243,6 +299,7 @@ export interface StartAgentActionRequest {
   inventoryId?: string;
   targetId?: string;
   expectedTargetRevision?: string;
+  surface?: AgentSurface;
 }
 
 export interface AgentActionResult {
@@ -252,6 +309,7 @@ export interface AgentActionResult {
   jobId: string | null;
   stage: AgentActionJobStage;
   reasonCode: AgentReasonCode | null;
+  surface?: AgentSurface;
 }
 
 export interface AgentActionJobSnapshot {
@@ -262,11 +320,16 @@ export interface AgentActionJobSnapshot {
   stage: AgentActionJobStage;
   cancellable: boolean;
   reasonCode: AgentReasonCode | null;
+  transfer: AgentActionTransferSnapshot | null;
+  surface?: AgentSurface;
 }
 
 export interface AgentInstallReadinessPort {
   get(agentId: AgentCatalogId): Promise<AgentInstallReadiness>;
-  getInventory(agentId: AgentCatalogId): Promise<AgentInstallationInventory>;
+  getInventory(
+    agentId: AgentCatalogId,
+    surface?: AgentSurface,
+  ): Promise<AgentInstallationInventory>;
   startAction(request: StartAgentActionRequest): Promise<AgentActionResult>;
   cancelAction(jobId: string): Promise<AgentActionJobSnapshot>;
   getActionJob(jobId: string): Promise<AgentActionJobSnapshot>;
@@ -285,6 +348,19 @@ function hasExactKeys(
   return (
     actual.length === expected.length &&
     actual.every((key, index) => key === expected[index])
+  );
+}
+
+function hasRequiredKeysWithOptional(
+  value: Record<string, unknown>,
+  required: readonly string[],
+  optional: readonly string[],
+): boolean {
+  const allowed = new Set([...required, ...optional]);
+  const actual = Object.keys(value);
+  return (
+    required.every((key) => Object.prototype.hasOwnProperty.call(value, key)) &&
+    actual.every((key) => allowed.has(key))
   );
 }
 
@@ -328,6 +404,20 @@ const READINESS_KEYS = [
   "reasonCodes",
 ] as const;
 
+const SURFACE_READINESS_KEYS = [
+  "surface",
+  "installState",
+  "inventoryState",
+  "requiresTargetSelection",
+  "updateState",
+  "releaseId",
+  "localVersion",
+  "remoteVersion",
+  "sourceKind",
+  "allowedActions",
+  "reasonCodes",
+] as const;
+
 const FORBIDDEN_WIRE = [
   "http://",
   "https://",
@@ -353,7 +443,7 @@ export function parseAgentInstallReadiness(
   }
   if (
     !isRecord(value) ||
-    !hasExactKeys(value, READINESS_KEYS) ||
+    !hasRequiredKeysWithOptional(value, READINESS_KEYS, ["surfaces"]) ||
     value.contractVersion !== AGENT_INSTALL_READINESS_CONTRACT_VERSION ||
     value.agentId !== expectedAgentId ||
     typeof value.reviewedAt !== "string" ||
@@ -389,7 +479,8 @@ export function parseAgentInstallReadiness(
   if (!matchesKind) {
     throw new Error("Agent install readiness is unavailable");
   }
-  return {
+  const surfaces = parseAgentSurfaces(value.surfaces, expectedAgentId);
+  const parsed: AgentInstallReadiness = {
     contractVersion: AGENT_INSTALL_READINESS_CONTRACT_VERSION,
     agentId: expectedAgentId,
     reviewedAt: value.reviewedAt,
@@ -404,6 +495,111 @@ export function parseAgentInstallReadiness(
     authState: value.authState,
     sourceKind: value.sourceKind,
     allowedActions: parseStringList(value.allowedActions, AGENT_ACTION_IDS),
+    reasonCodes: parseStringList(value.reasonCodes, AGENT_REASON_CODES),
+  };
+  if (surfaces) {
+    parsed.surfaces = surfaces;
+  }
+  return parsed;
+}
+
+function parseAgentSurfaces(
+  value: unknown,
+  expectedAgentId: AgentCatalogId,
+): AgentSurfaceReadiness[] | undefined {
+  const required = surfacesForAgent(expectedAgentId).length > 1;
+  if (value === undefined) {
+    if (required) {
+      throw new Error("Agent install readiness is unavailable");
+    }
+    return undefined;
+  }
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new Error("Agent install readiness is unavailable");
+  }
+  const surfaces = value.map((item) =>
+    parseAgentSurfaceReadiness(item, expectedAgentId),
+  );
+  const seen = new Set<AgentSurface>();
+  for (const surface of surfaces) {
+    if (
+      seen.has(surface.surface) ||
+      !isLegalAgentSurface(expectedAgentId, surface.surface)
+    ) {
+      throw new Error("Agent install readiness is unavailable");
+    }
+    seen.add(surface.surface);
+  }
+  if (required) {
+    const expected = surfacesForAgent(expectedAgentId);
+    if (
+      surfaces.length !== expected.length ||
+      !expected.every((surface) => seen.has(surface))
+    ) {
+      throw new Error("Agent install readiness is unavailable");
+    }
+  } else if (
+    surfaces.length !== 1 ||
+    surfaces[0]?.surface !== defaultSurfaceForAgent(expectedAgentId)
+  ) {
+    throw new Error("Agent install readiness is unavailable");
+  }
+  return surfaces;
+}
+
+function parseAgentSurfaceReadiness(
+  value: unknown,
+  expectedAgentId: AgentCatalogId,
+): AgentSurfaceReadiness {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, SURFACE_READINESS_KEYS) ||
+    !isOneOf(value.surface, AGENT_SURFACES) ||
+    !isLegalAgentSurface(expectedAgentId, value.surface) ||
+    !isOneOf(value.installState, AGENT_INSTALL_STATES) ||
+    !isOneOf(value.inventoryState, INSTALLATION_INVENTORY_STATES) ||
+    typeof value.requiresTargetSelection !== "boolean" ||
+    !isOneOf(value.updateState, AGENT_UPDATE_STATES) ||
+    (value.releaseId !== null && typeof value.releaseId !== "string") ||
+    (value.localVersion !== null && typeof value.localVersion !== "string") ||
+    (value.remoteVersion !== null && typeof value.remoteVersion !== "string") ||
+    !isOneOf(value.sourceKind, AGENT_SOURCE_KINDS)
+  ) {
+    throw new Error("Agent install readiness is unavailable");
+  }
+  if (
+    typeof value.releaseId === "string" &&
+    !/^v1:[0-9a-f]{64}$/u.test(value.releaseId)
+  ) {
+    throw new Error("Agent install readiness is unavailable");
+  }
+  const expectedKind =
+    value.surface === "cli"
+      ? "cli_tooling"
+      : expectedAgentId === "codex"
+        ? "codex_desktop"
+        : "managed_desktop";
+  if (value.sourceKind !== expectedKind) {
+    throw new Error("Agent install readiness is unavailable");
+  }
+  const allowedActions = parseStringList(
+    value.allowedActions,
+    AGENT_ACTION_IDS,
+  );
+  if (value.surface === "cli" && allowedActions.includes("launch")) {
+    throw new Error("Agent install readiness is unavailable");
+  }
+  return {
+    surface: value.surface,
+    installState: value.installState,
+    inventoryState: value.inventoryState,
+    requiresTargetSelection: value.requiresTargetSelection,
+    updateState: value.updateState,
+    releaseId: value.releaseId,
+    localVersion: value.localVersion,
+    remoteVersion: value.remoteVersion,
+    sourceKind: value.sourceKind,
+    allowedActions,
     reasonCodes: parseStringList(value.reasonCodes, AGENT_REASON_CODES),
   };
 }
@@ -555,7 +751,7 @@ export function parseAgentInstallationInventory(
   }
   if (
     !isRecord(value) ||
-    !hasExactKeys(value, INVENTORY_KEYS) ||
+    !hasRequiredKeysWithOptional(value, INVENTORY_KEYS, ["surface"]) ||
     value.contractVersion !== AGENT_INSTALLATION_INVENTORY_CONTRACT_VERSION ||
     !isOpaqueInventoryId(value.inventoryId) ||
     value.agentId !== expectedAgentId ||
@@ -563,6 +759,21 @@ export function parseAgentInstallationInventory(
     !Array.isArray(value.candidates) ||
     !Array.isArray(value.freshDestinations)
   ) {
+    throw new Error("Agent installation inventory is unavailable");
+  }
+  if (value.surface !== undefined && !isOneOf(value.surface, AGENT_SURFACES)) {
+    throw new Error("Agent installation inventory is unavailable");
+  }
+  if (
+    value.surface !== undefined &&
+    !isLegalAgentSurface(expectedAgentId, value.surface)
+  ) {
+    throw new Error("Agent installation inventory is unavailable");
+  }
+  if (expectedAgentId === "opencode" && value.surface === undefined) {
+    throw new Error("Agent installation inventory is unavailable");
+  }
+  if (expectedAgentId !== "opencode" && value.surface !== undefined) {
     throw new Error("Agent installation inventory is unavailable");
   }
   const candidates = value.candidates.map((candidate) =>
@@ -595,6 +806,9 @@ export function parseAgentInstallationInventory(
     candidates,
     freshDestinations,
     reasonCodes: parseStringList(value.reasonCodes, AGENT_REASON_CODES),
+    ...(isOneOf(value.surface, AGENT_SURFACES)
+      ? { surface: value.surface }
+      : {}),
   };
 }
 
@@ -642,14 +856,11 @@ export function parseAgentActionResult(
 ): AgentActionResult {
   if (
     !isRecord(value) ||
-    !hasExactKeys(value, [
-      "contractVersion",
-      "agentId",
-      "action",
-      "jobId",
-      "stage",
-      "reasonCode",
-    ]) ||
+    !hasRequiredKeysWithOptional(
+      value,
+      ["contractVersion", "agentId", "action", "jobId", "stage", "reasonCode"],
+      ["surface"],
+    ) ||
     value.contractVersion !== AGENT_ACTION_CONTRACT_VERSION ||
     value.agentId !== expectedAgentId ||
     value.action !== expectedAction ||
@@ -660,6 +871,15 @@ export function parseAgentActionResult(
   ) {
     throw new Error("Agent action is unavailable");
   }
+  if (value.surface !== undefined && !isOneOf(value.surface, AGENT_SURFACES)) {
+    throw new Error("Agent action is unavailable");
+  }
+  if (
+    value.surface !== undefined &&
+    !isLegalAgentSurface(expectedAgentId, value.surface)
+  ) {
+    throw new Error("Agent action is unavailable");
+  }
   return {
     contractVersion: AGENT_ACTION_CONTRACT_VERSION,
     agentId: expectedAgentId,
@@ -667,6 +887,9 @@ export function parseAgentActionResult(
     jobId: value.jobId,
     stage: value.stage,
     reasonCode: value.reasonCode,
+    ...(isOneOf(value.surface, AGENT_SURFACES)
+      ? { surface: value.surface }
+      : {}),
   };
 }
 
@@ -675,15 +898,20 @@ export function parseAgentActionJobSnapshot(
 ): AgentActionJobSnapshot {
   if (
     !isRecord(value) ||
-    !hasExactKeys(value, [
-      "contractVersion",
-      "jobId",
-      "agentId",
-      "action",
-      "stage",
-      "cancellable",
-      "reasonCode",
-    ]) ||
+    !hasRequiredKeysWithOptional(
+      value,
+      [
+        "contractVersion",
+        "jobId",
+        "agentId",
+        "action",
+        "stage",
+        "cancellable",
+        "reasonCode",
+        "transfer",
+      ],
+      ["surface"],
+    ) ||
     value.contractVersion !== AGENT_ACTION_CONTRACT_VERSION ||
     typeof value.jobId !== "string" ||
     !isOneOf(value.agentId, AGENT_CATALOG_IDS) ||
@@ -695,6 +923,15 @@ export function parseAgentActionJobSnapshot(
   ) {
     throw new Error("Agent action job is unavailable");
   }
+  if (value.surface !== undefined && !isOneOf(value.surface, AGENT_SURFACES)) {
+    throw new Error("Agent action job is unavailable");
+  }
+  if (
+    value.surface !== undefined &&
+    !isLegalAgentSurface(value.agentId, value.surface)
+  ) {
+    throw new Error("Agent action job is unavailable");
+  }
   return {
     contractVersion: AGENT_ACTION_CONTRACT_VERSION,
     jobId: value.jobId,
@@ -703,7 +940,80 @@ export function parseAgentActionJobSnapshot(
     stage: value.stage,
     cancellable: value.cancellable,
     reasonCode: value.reasonCode,
+    transfer: parseAgentActionTransfer(value.transfer),
+    ...(isOneOf(value.surface, AGENT_SURFACES)
+      ? { surface: value.surface }
+      : {}),
   };
+}
+
+function parseAgentActionTransfer(
+  value: unknown,
+): AgentActionTransferSnapshot | null {
+  if (value === null) {
+    return null;
+  }
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, [
+      "phase",
+      "completedBytes",
+      "totalBytes",
+      "attempt",
+      "maxAttempts",
+      "sequence",
+      "observedAt",
+    ]) ||
+    !isOneOf(value.phase, AGENT_ACTION_TRANSFER_PHASES) ||
+    !isSafeNonNegativeInteger(value.completedBytes) ||
+    (value.totalBytes !== null &&
+      !(
+        isSafeNonNegativeInteger(value.totalBytes) &&
+        value.totalBytes >= 1 &&
+        value.totalBytes >= value.completedBytes
+      )) ||
+    !isBoundedPositiveInteger(value.attempt, 255) ||
+    !isBoundedPositiveInteger(value.maxAttempts, 255) ||
+    value.maxAttempts < value.attempt ||
+    !isSafeNonNegativeInteger(value.sequence) ||
+    value.sequence < 1 ||
+    !isObservedAt(value.observedAt)
+  ) {
+    throw new Error("Agent action job is unavailable");
+  }
+  return {
+    phase: value.phase,
+    completedBytes: value.completedBytes,
+    totalBytes: value.totalBytes,
+    attempt: value.attempt,
+    maxAttempts: value.maxAttempts,
+    sequence: value.sequence,
+    observedAt: value.observedAt,
+  };
+}
+
+function isSafeNonNegativeInteger(value: unknown): value is number {
+  return (
+    typeof value === "number" &&
+    Number.isInteger(value) &&
+    Number.isSafeInteger(value) &&
+    value >= 0
+  );
+}
+
+function isBoundedPositiveInteger(
+  value: unknown,
+  maximum: number,
+): value is number {
+  return isSafeNonNegativeInteger(value) && value >= 1 && value <= maximum;
+}
+
+function isObservedAt(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value.length <= 40 &&
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/u.test(value)
+  );
 }
 
 export function assertAgentInstallReadinessId(

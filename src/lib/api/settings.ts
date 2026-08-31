@@ -48,6 +48,8 @@ export interface ToolVersion {
   latest_version: string | null;
   error: string | null;
   installed_but_broken: boolean;
+  distribution_owner?: "native_internal" | "official_npm" | null;
+  latest_source?: "native_internal" | "official_npm" | null;
 }
 
 export const settingsApi = {
@@ -259,7 +261,7 @@ export const settingsApi = {
 
   async runToolLifecycleAction(
     tools: string[],
-    action: "install" | "update",
+    action: "install" | "update" | "install_official_npm",
   ): Promise<void> {
     await invoke("run_tool_lifecycle_action", { tools, action });
   },

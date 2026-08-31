@@ -68,6 +68,7 @@ import type {
 import type { AgentInstallReadinessPort } from "./agent-install-readiness";
 import type { AgentAuthPort } from "./agent-auth";
 import type { ChangePlansPort } from "./change-plans";
+import type { GrokToolingPort } from "./grok-tooling";
 
 export interface AgentCatalogPort {
   get(): Promise<AgentCatalogResult>;
@@ -256,4 +257,5 @@ export interface FeaturePorts {
   prompts: PromptsPort;
   memory: MemoryPort;
   settings: SettingsPort;
+  tooling: GrokToolingPort;
 }

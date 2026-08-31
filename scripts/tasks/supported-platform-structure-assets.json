@@ -23,7 +23,7 @@
     ],
     [
       "scripts/tasks/supported-platform-check.mjs",
-      "54df128d47c4477de2ea7f75908f77b2e932afe79c39495bb02cb88bfef94ae1"
+      "c9609ecfc3a763ffcfa8843b9a3eaefe4844b1b652d9044b9d471180fc8237d2"
     ],
     [
       "scripts/tasks/system-check.mjs",
@@ -43,31 +43,27 @@
     ],
     [
       "src-tauri/Cargo.toml",
-      "e663c1a44ac393abf2369b7e3dd232ffb1d74704ac2a40c3800fd982a572a47e"
+      "8e6a481706b3f70494621f4b463c409a5aa2666811b59dbf76cbebdb3e843c4c"
     ],
     [
       "src-tauri/src/agent_install/desktop.rs",
-      "5e780f7b47c707d30ed9fb5a25c8944d9c481971900d18066d8b4c8fb3a46e80"
-    ],
-    [
-      "src-tauri/src/agent_install/fetch.rs",
-      "c1028fd6f3c786f1605e6be15117227a19f495d4f8e6eb2c1d3d8841ebebd33f"
+      "5c4ca968f4868b483c418d00fd0de1c339f85dc7807b2cb81c930e34fc9cd1bc"
     ],
     [
       "src-tauri/src/agent_install/inventory.rs",
-      "e95202c0ce68a38c805a9b677572c8d482d53d92e1f36e7fbd635a6ce739d92b"
+      "45c34506eabe92d8f492af3f7be35b6f236df91b22e51a3e6e07d0820e13348d"
     ],
     [
       "src-tauri/src/agent_install/macos.rs",
-      "d56613d7560c3703e66b662becd9f3bbdf390cc035decc79059f836cd40bb51c"
+      "b541e2f043bf382b8245cd45a0e28f6b43ddb8d8f0b7a3062bcf2ad798c687d1"
     ],
     [
       "src-tauri/src/agent_install/mod.rs",
-      "867dd586c8fe284721b16cab742f82fcee903b388a009612dd9b7972754bed8d"
+      "6616790a198b7a616403f6a30a14df49e344cb7cd3db4339f9dfa5e796f68b4c"
     ],
     [
       "src-tauri/src/agent_install/sources/mod.rs",
-      "1e1b28add69df79e330b7a9be5ebeccc8d350281a8b033bea5145396afe864ff"
+      "630acb3a257e2a63cf3538dc3ca5b21fc5a8d534369ebc8334cc70064317c1ab"
     ],
     [
       "src-tauri/src/agent_install/windows.rs",
@@ -108,6 +104,10 @@
     [
       "src-tauri/src/codex_desktop/platform.rs",
       "cd186cbd8f045110c046d0fc50a950f381f289e36e257f84eeb5976d39cd4664"
+    ],
+    [
+      "src-tauri/src/codex_desktop/platform/macos/bundle.rs",
+      "4335ef291995966be827dc7912c77982634ca8ac4f81a5da912466592c236f2f"
     ],
     [
       "src-tauri/src/codex_desktop/platform/macos/mod.rs",
@@ -179,7 +179,7 @@
     ],
     [
       "src-tauri/src/platform/process_launch.rs",
-      "6aeef4822b0df5caab223fafe17d6a716da01d42dd500e483a17199722b3f7b2"
+      "1ca580892134df4fdaf1dec6e06a67c4c319783361d1b75070f419ef677c7661"
     ],
     [
       "src-tauri/src/proxy/providers/codex_oauth_auth.rs",
@@ -239,15 +239,19 @@
     ],
     [
       "src-tauri/src/services/tooling.rs",
-      "3ccae387688de5ea774d69de8489bf2019d7c70012f034c79fc4cd5163f7c3b5"
+      "3d42e5d643addb0d7385984bc7dcb31fe01d7933c0bb0c34d4a53f540f7a82f6"
     ],
     [
       "src-tauri/src/services/tooling/discovery.rs",
-      "bd1dc697fd7ed9732db7132e5ce57a8a902418d2f80da0e2c8b56eceea90cae5"
+      "bcef0a0d3f33add4d4be909f10bb5ba97913ab5edd1f0497824fd294aafbd789"
+    ],
+    [
+      "src-tauri/src/services/tooling/grok.rs",
+      "258c84c03041b83d41324e24990c9ff88012b3a1814ec534092fc396a7e76fa5"
     ],
     [
       "src-tauri/src/services/tooling/lifecycle.rs",
-      "799a08441400b101a94cfae66e074c4a3ab35f36acda360e75bd6e8c8ed65634"
+      "9d641dab66075362b54150cbab4072bfd381d0d72752c170536b76317cd3efc9"
     ],
     [
       "src-tauri/src/services/tooling/terminal.rs",
@@ -255,7 +259,7 @@
     ],
     [
       "src-tauri/src/services/tooling/versions.rs",
-      "52e88a23ec796504504c8516c5429bb6dffb697efc592625967cb51a6e97e763"
+      "cec4b24005e3282b9ca7b3d247e20fb4370fb1b1ebfd8848db95abedc91217b1"
     ],
     [
       "src-tauri/src/services/traework_models.rs",
@@ -351,7 +355,7 @@
     ],
     [
       "src/components/settings/AboutSection.tsx",
-      "708d3b5417c8a62a905306ffcd4157cdfa7532fd984732ae37f6a76d54eaaadc"
+      "952b351b8694c75c45bae0df4d50d9d9984157c23e92f916c63da5b75367ccbe"
     ],
     [
       "src/components/settings/TerminalSettings.tsx",
@@ -391,7 +395,7 @@
     ],
     [
       "tests/remainingPlatformSurface.test.ts",
-      "355b5dc04de23a7e17192bcc87e221286626e75a01f4244c65a04f7a946d3e0f"
+      "aa3639068d63b117bdd9826868af2e741c93f20e2bdc279b5be7e45b5d23adb9"
     ],
     [
       "tests/singleInstanceActivationContract.test.ts",

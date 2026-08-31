@@ -1,8 +1,11 @@
-import type {
-  InstallerPrimaryAction,
-  InstallerViewState,
-  LocalVersionState,
-  RemoteVersionState,
+import {
+  formatTransferBytes,
+  formatTransferPercent,
+  formatTransferSpeed,
+  type InstallerPrimaryAction,
+  type InstallerViewState,
+  type LocalVersionState,
+  type RemoteVersionState,
 } from "@/shared/codex-desktop";
 import { Button, InlineNotice, Spinner } from "../ui/primitives";
 import { useCodexDesktopInstaller } from "./useCodexDesktopInstaller";
@@ -73,25 +76,12 @@ function actionLabel(
     case "update":
       return "更新 Codex Desktop";
     case "launch":
-      return "启动 Codex Desktop";
+      return "打开软件";
     case "refresh":
       return "刷新版本";
     case "retry":
       return state === "failed" ? "重试安装" : "重试读取";
   }
-}
-
-function formatBytes(value: number | null): string | null {
-  if (value === null || !Number.isFinite(value) || value < 0) return null;
-  const units = ["B", "KB", "MB", "GB", "TB"] as const;
-  let amount = value;
-  let unit = 0;
-  while (amount >= 1024 && unit < units.length - 1) {
-    amount /= 1024;
-    unit += 1;
-  }
-  const digits = amount >= 100 || unit === 0 ? 0 : amount >= 10 ? 1 : 2;
-  return `${amount.toFixed(digits)} ${units[unit]}`;
 }
 
 export function CodexDesktopInstallerPanel() {
@@ -104,19 +94,21 @@ export function CodexDesktopInstallerPanel() {
   const showDownloadBytes = installer.state === "job_downloading";
   const jobBusy = installer.state.startsWith("job_");
   const currentBytes = showDownloadBytes
-    ? formatBytes(installer.progress?.current ?? null)
+    ? formatTransferBytes(installer.progress?.current ?? null)
     : null;
   const totalBytes = showDownloadBytes
-    ? formatBytes(installer.progress?.total ?? null)
+    ? formatTransferBytes(installer.progress?.total ?? null)
     : null;
   const speed = showDownloadBytes
-    ? formatBytes(installer.progress?.bytesPerSecond ?? null)
+    ? formatTransferSpeed(installer.progress?.bytesPerSecond ?? null)
     : null;
   const percent = installer.progress?.percent;
   const validPercent =
     percent !== null && percent !== undefined && Number.isFinite(percent)
       ? Math.max(0, Math.min(100, percent))
       : null;
+  const percentLabel =
+    validPercent === null ? null : formatTransferPercent(validPercent);
   const downloadComplete =
     showDownloadBytes && validPercent !== null && validPercent >= 100;
   const statusText = installer.authorityUnavailable
@@ -182,7 +174,7 @@ export function CodexDesktopInstallerPanel() {
             >
               <span style={{ width: `${validPercent}%` }} />
             </div>
-            <span>{Math.round(validPercent)}%</span>
+            <span>{percentLabel}</span>
           </div>
         )}
 
@@ -191,7 +183,7 @@ export function CodexDesktopInstallerPanel() {
             {downloadComplete
               ? `已下载 ${currentBytes ?? "—"} / ${totalBytes ?? "—"}。文件较大，校验可能需要一点时间。`
               : `已下载 ${currentBytes ?? "—"} / ${totalBytes ?? "—"}`}
-            {!downloadComplete && speed ? ` · ${speed}/s` : ""}
+            {!downloadComplete && speed ? ` · ${speed}` : ""}
           </p>
         )}
 

@@ -8,7 +8,7 @@ use crate::services::external_agents::AgentCatalogId;
 pub const AGENT_INSTALL_READINESS_CONTRACT_VERSION: u16 = 3;
 pub const AGENT_INSTALL_READINESS_REVIEWED_AT: &str = "2026-08-29";
 pub const AGENT_INSTALLATION_INVENTORY_CONTRACT_VERSION: u16 = 1;
-pub const AGENT_ACTION_CONTRACT_VERSION: u16 = 2;
+pub const AGENT_ACTION_CONTRACT_VERSION: u16 = 3;
 pub const AGENT_AUTH_CONTRACT_VERSION: u16 = 1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -20,6 +20,44 @@ pub enum AgentActionId {
     AuthLogin,
     AuthLogout,
     AuthConnectProvider,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentSurface {
+    Cli,
+    Desktop,
+}
+
+pub fn legal_surfaces(agent_id: AgentCatalogId) -> &'static [AgentSurface] {
+    match agent_id {
+        AgentCatalogId::OpenCode => &[AgentSurface::Cli, AgentSurface::Desktop],
+        AgentCatalogId::ClaudeCode | AgentCatalogId::GrokBuild => &[AgentSurface::Cli],
+        AgentCatalogId::QoderWork
+        | AgentCatalogId::TraeWork
+        | AgentCatalogId::WorkBuddy
+        | AgentCatalogId::Codex => &[AgentSurface::Desktop],
+    }
+}
+
+pub fn default_surface(agent_id: AgentCatalogId) -> AgentSurface {
+    legal_surfaces(agent_id)[0]
+}
+
+pub fn surface_is_legal(agent_id: AgentCatalogId, surface: AgentSurface) -> bool {
+    legal_surfaces(agent_id).contains(&surface)
+}
+
+pub fn resolve_requested_surface(
+    agent_id: AgentCatalogId,
+    surface: Option<AgentSurface>,
+) -> Result<AgentSurface, AgentReasonCode> {
+    let surface = surface.unwrap_or_else(|| default_surface(agent_id));
+    if surface_is_legal(agent_id, surface) {
+        Ok(surface)
+    } else {
+        Err(AgentReasonCode::SurfaceNotSupported)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -367,6 +405,8 @@ pub enum AgentReasonCode {
     RollbackRestored,
     RecoveryRequired,
     ExecutorNotImplemented,
+    SurfaceNotSupported,
+    ApplicationLaunchFailed,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -387,6 +427,22 @@ pub enum AgentActionJobStage {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct AgentSurfaceReadinessDto {
+    pub surface: AgentSurface,
+    pub install_state: AgentInstallState,
+    pub inventory_state: InstallationInventoryState,
+    pub requires_target_selection: bool,
+    pub update_state: AgentUpdateState,
+    pub release_id: Option<String>,
+    pub local_version: Option<String>,
+    pub remote_version: Option<String>,
+    pub source_kind: AgentSourceKind,
+    pub allowed_actions: Vec<AgentActionId>,
+    pub reason_codes: Vec<AgentReasonCode>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AgentInstallReadinessDto {
     pub contract_version: u16,
     pub agent_id: AgentCatalogId,
@@ -403,6 +459,8 @@ pub struct AgentInstallReadinessDto {
     pub source_kind: AgentSourceKind,
     pub allowed_actions: Vec<AgentActionId>,
     pub reason_codes: Vec<AgentReasonCode>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub surfaces: Vec<AgentSurfaceReadinessDto>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -448,6 +506,8 @@ pub struct AgentInstallationInventoryDto {
     pub candidates: Vec<InstallationCandidateDto>,
     pub fresh_destinations: Vec<FreshInstallDestinationDto>,
     pub reason_codes: Vec<AgentReasonCode>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub surface: Option<AgentSurface>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -463,6 +523,8 @@ pub struct StartAgentActionRequest {
     pub target_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expected_target_revision: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub surface: Option<AgentSurface>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -474,6 +536,55 @@ pub struct AgentActionResult {
     pub job_id: Option<String>,
     pub stage: AgentActionJobStage,
     pub reason_code: Option<AgentReasonCode>,
+    pub surface: AgentSurface,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentActionTransferPhase {
+    Download,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AgentActionTransferSample {
+    pub completed_bytes: u64,
+    pub total_bytes: Option<u64>,
+    pub attempt: u8,
+    pub max_attempts: u8,
+}
+
+impl AgentActionTransferSample {
+    pub fn from_progress_bytes(
+        completed_bytes: u64,
+        total_bytes: u64,
+        attempt: u8,
+        max_attempts: u8,
+    ) -> Self {
+        let total_bytes =
+            (total_bytes > 0 && total_bytes >= completed_bytes).then_some(total_bytes);
+        Self {
+            completed_bytes,
+            total_bytes,
+            attempt,
+            max_attempts,
+        }
+    }
+
+    pub(crate) fn is_well_formed(self) -> bool {
+        self.attempt >= 1 && self.max_attempts >= self.attempt
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentActionTransferSnapshot {
+    pub phase: AgentActionTransferPhase,
+    pub completed_bytes: u64,
+    pub total_bytes: Option<u64>,
+    pub attempt: u8,
+    pub max_attempts: u8,
+    pub sequence: u64,
+    pub observed_at: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -486,6 +597,8 @@ pub struct AgentActionJobSnapshot {
     pub stage: AgentActionJobStage,
     pub cancellable: bool,
     pub reason_code: Option<AgentReasonCode>,
+    pub transfer: Option<AgentActionTransferSnapshot>,
+    pub surface: AgentSurface,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -674,6 +787,126 @@ mod tests {
         assert!(!validate_auth_session_id(
             "123E4567-E89B-12D3-A456-426614174000"
         ));
+    }
+
+    #[test]
+    fn action_job_snapshot_carries_closed_transfer_telemetry() {
+        let snapshot = AgentActionJobSnapshot {
+            contract_version: AGENT_ACTION_CONTRACT_VERSION,
+            job_id: "123e4567-e89b-12d3-a456-426614174000".into(),
+            agent_id: AgentCatalogId::QoderWork,
+            action: AgentActionId::Install,
+            stage: AgentActionJobStage::Downloading,
+            cancellable: true,
+            reason_code: None,
+            transfer: Some(AgentActionTransferSnapshot {
+                phase: AgentActionTransferPhase::Download,
+                completed_bytes: 1_048_576,
+                total_bytes: Some(2_097_152),
+                attempt: 1,
+                max_attempts: 1,
+                sequence: 2,
+                observed_at: "2026-08-31T00:00:00Z".into(),
+            }),
+            surface: AgentSurface::Desktop,
+        };
+        let value = serde_json::to_value(&snapshot).unwrap();
+        assert_eq!(
+            sorted_keys(&value),
+            [
+                "action",
+                "agentId",
+                "cancellable",
+                "contractVersion",
+                "jobId",
+                "reasonCode",
+                "stage",
+                "surface",
+                "transfer",
+            ]
+        );
+        let transfer = value.get("transfer").and_then(Value::as_object).unwrap();
+        assert_eq!(
+            sorted_keys(&Value::Object(transfer.clone())),
+            [
+                "attempt",
+                "completedBytes",
+                "maxAttempts",
+                "observedAt",
+                "phase",
+                "sequence",
+                "totalBytes",
+            ]
+        );
+        let wire = value.to_string();
+        for forbidden in [
+            "http://",
+            "https://",
+            "path",
+            "url",
+            "bytesPerSecond",
+            "speed",
+        ] {
+            assert!(!wire.contains(forbidden), "wire leaked {forbidden}");
+        }
+        assert_eq!(
+            AgentActionTransferSample::from_progress_bytes(8, 0, 1, 1).total_bytes,
+            None
+        );
+        assert_eq!(
+            AgentActionTransferSample::from_progress_bytes(12, 8, 1, 1).total_bytes,
+            None
+        );
+    }
+
+    #[test]
+    fn surface_contract_rejects_unknown_values_and_illegal_product_pairs() {
+        assert!(serde_json::from_value::<AgentSurface>(json!("cli")).is_ok());
+        assert!(serde_json::from_value::<AgentSurface>(json!("desktop")).is_ok());
+        assert!(serde_json::from_value::<AgentSurface>(json!("web")).is_err());
+        assert_eq!(
+            legal_surfaces(AgentCatalogId::OpenCode),
+            &[AgentSurface::Cli, AgentSurface::Desktop]
+        );
+        assert_eq!(default_surface(AgentCatalogId::OpenCode), AgentSurface::Cli);
+        assert_eq!(
+            default_surface(AgentCatalogId::QoderWork),
+            AgentSurface::Desktop
+        );
+        assert!(!surface_is_legal(
+            AgentCatalogId::QoderWork,
+            AgentSurface::Cli
+        ));
+        assert!(!surface_is_legal(
+            AgentCatalogId::ClaudeCode,
+            AgentSurface::Desktop
+        ));
+        assert_eq!(
+            resolve_requested_surface(AgentCatalogId::OpenCode, None),
+            Ok(AgentSurface::Cli)
+        );
+        assert_eq!(
+            resolve_requested_surface(AgentCatalogId::QoderWork, Some(AgentSurface::Cli)),
+            Err(AgentReasonCode::SurfaceNotSupported)
+        );
+        assert!(serde_json::from_value::<StartAgentActionRequest>(json!({
+            "agentId": "opencode",
+            "action": "install",
+            "surface": "desktop"
+        }))
+        .is_ok());
+        assert!(serde_json::from_value::<StartAgentActionRequest>(json!({
+            "agentId": "opencode",
+            "action": "install",
+            "surface": "web"
+        }))
+        .is_err());
+        assert!(serde_json::from_value::<StartAgentActionRequest>(json!({
+            "agentId": "qoderwork",
+            "action": "launch",
+            "bundleId": "ai.opencode.desktop"
+        }))
+        .is_err());
     }
 
     fn sorted_keys(value: &Value) -> Vec<&str> {

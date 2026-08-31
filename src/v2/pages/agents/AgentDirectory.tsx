@@ -9,6 +9,7 @@ import {
 } from "../../shared/features/agent-install-readiness";
 import { useAgentInstallationInventory } from "../../shared/features/queries";
 import { useFeatures } from "../../shared/features/provider";
+import { formatTransferPercent } from "../../shared/features/transfer-projection";
 import {
   AGENT_CATALOG_IDS,
   type AgentCatalogEntry,
@@ -73,9 +74,16 @@ function directoryBusyCopy(
   return null;
 }
 
+function genericBusyCopy(lifecycle: AgentLifecycleActionView): string {
+  return (
+    lifecycle.progressLabel ??
+    (lifecycle.stage ? jobStageCopy(lifecycle.stage) : "处理中…")
+  );
+}
+
 function codexBusyCopy(projection: CodexDirectoryActionProjection): string {
   if (projection.state === "job_downloading" && projection.percent !== null) {
-    return `正在下载 ${projection.percent}%`;
+    return `正在下载 ${formatTransferPercent(projection.percent)}`;
   }
   switch (projection.state) {
     case "job_checking":
@@ -209,6 +217,7 @@ function GenericDirectoryCard({
     readiness: observation.readiness ?? null,
     target: primaryTarget,
     onReadinessChange,
+    surface: entry.id === "opencode" ? "cli" : undefined,
   });
   const scanningCopy = directoryBusyCopy(observation);
   return (
@@ -270,9 +279,7 @@ function GenericLifecycleSlot({
 }) {
   if (lifecycle.busy) {
     return (
-      <BusySlot
-        label={lifecycle.stage ? jobStageCopy(lifecycle.stage) : "处理中…"}
-      />
+      <BusySlot label={genericBusyCopy(lifecycle)} />
     );
   }
   if (scanningCopy && !lifecycle.primaryAction) {

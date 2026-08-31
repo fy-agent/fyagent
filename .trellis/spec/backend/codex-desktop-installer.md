@@ -4,10 +4,12 @@
 
 This contract owns every current and future FyAgent one-click install or upgrade
 flow for executable software, regardless of product or platform. Codex Desktop
-is the first implementation, not a policy exception. QoderWork CN, TRAE Work CN,
-and WorkBuddy reuse the same source/download/job/cancel/temp/post-install
-orchestration policy through the Agent install façade; they must not grow a
-second downloader. Codex remains the golden MSIX/DMG regression fixture.
+is the first implementation, not a policy exception. QoderWork CN, TRAE Work CN, WorkBuddy, and OpenCode Desktop reuse the same
+source/download/job/cancel/temp/post-install orchestration policy through the
+Agent install façade; they must not grow a second downloader. OpenCode remains
+one catalog product: CLI stays on Tooling, Desktop uses this managed path.
+Bounded `Info.plist` reads go through the Codex `plutil -> JSON -> typed fields`
+owner (binary and XML). Codex remains the golden MSIX/DMG regression fixture.
 Windows EXE/NSIS artifacts in this iteration are not deployed from elevated
 FyAgent directly. They reuse the authenticated ordinary-user helper through a
 second closed action, while Codex remains the only PackageManager/MSIX action.
@@ -354,10 +356,17 @@ second DMG deployer. The product adapter supplies only:
 For managed-Agent updates, source/staging/installed copies must match exactly,
 the selected existing canonical path and basename are retained, and no
 permission failure may redirect an update to another Applications scope. A
-system `/Applications` target is disabled with `authorization_required` until
-a separately reviewed authorization adapter exists. Fresh user-scope install
+system `/Applications` target is disabled with `authorization_required`. A
+privileged helper / native `privileged-file-operations` adapter is a **later
+task**, not a production owner in this contract. Fresh user-scope install
 may target `~/Applications`; it is never an implicit fallback from a selected
-system target.
+system target and must never be labeled as a system Applications install.
+
+macOS Agent DMG download reuses the Codex streaming persist path
+(`prepare_transport_download` / `persist_transport_response`, `.part`,
+job-local `installer.dmg`). It must not buffer the full artifact as `Vec<u8>`
+or write a second complete DMG. Bounded `Info.plist` reads use the Codex
+`plutil → JSON → typed fields` owner (binary and XML).
 
 ### Lifecycle and post-install verification
 
@@ -380,6 +389,14 @@ callback re-enumerates the closed product identity and proves exact target
 path, scope, product-comparable version, and no newly introduced cross-scope
 copy. A failed update verification restores and re-verifies the old bundle;
 an unproven restore is recovery-required rather than success.
+
+Equal-or-newer Codex Desktop (local ≥ selected release) is `AlreadyCurrent`:
+inventory readback only. Install, update, check, and already-current **must
+not** call `platform.launch`. Explicit launch and restart remain on
+`CodexDesktopService::launch` / `platform::process_launch`. macOS application
+open uses NSWorkspace completion inside that owner, not `/usr/bin/open`.
+Managed-Agent desktop launch calls `launch_trusted_macos_application_as_user`
+with a backend-validated `.app` path.
 
 ## 4. Validation & Error Matrix
 

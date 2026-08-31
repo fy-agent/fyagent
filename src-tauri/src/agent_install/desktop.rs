@@ -7,31 +7,33 @@ use std::{
     path::{Path, PathBuf},
 };
 
-#[cfg(target_os = "macos")]
-use std::process::Command;
-
+use super::fetch::fetch_metadata_bytes;
 #[cfg(target_os = "windows")]
-use super::fetch::fetch_artifact_to_job;
-use super::fetch::{fetch_artifact_bytes, fetch_metadata_bytes};
+use super::fetch::{artifact_download_hosts, fetch_artifact_to_job};
+#[cfg(target_os = "windows")]
+use super::sources::PackageFormat;
 use super::sources::{
     bounded_version, current_host_target, parse_qoderwork_latest, parse_traework_latest,
-    parse_workbuddy_update, qoderwork_latest_yml_url, workbuddy_update_url, AgentArch,
-    AgentPlatform, PackageFormat, ResolvedDesktopSource, SourceResolveError,
-    QODERWORK_METADATA_HOSTS, QODERWORK_REDIRECT_HOSTS, TRAEWORK_DOWNLOAD_HOSTS,
-    TRAEWORK_METADATA_ENDPOINTS, TRAEWORK_METADATA_HOSTS, WORKBUDDY_DOWNLOAD_HOSTS,
+    parse_workbuddy_update, qoderwork_latest_yml_url, resolve_opencode_desktop,
+    workbuddy_update_url, AgentArch, AgentPlatform, ResolvedDesktopSource, SourceResolveError,
+    QODERWORK_METADATA_HOSTS, TRAEWORK_METADATA_ENDPOINTS, TRAEWORK_METADATA_HOSTS,
     WORKBUDDY_METADATA_HOSTS,
 };
 use super::types::{
     AgentReasonCode, InstallationEvidenceCode, InstallationOwner, InstallationPackageKind,
     InstallationScope,
 };
+#[cfg(target_os = "windows")]
 use crate::codex_desktop::cancellation::Cancellation;
 #[cfg(target_os = "windows")]
-use crate::codex_desktop::{download::DownloadedArtifact, temp::JobTempDir};
+use crate::codex_desktop::{
+    download::{DownloadProgressSink, DownloadedArtifact},
+    temp::JobTempDir,
+    verify::ArtifactKind,
+};
 use crate::config::get_home_dir;
 use crate::services::external_agents::AgentCatalogId;
 
-const MAX_PLIST_BYTES: usize = 64 * 1024;
 const MAX_TRAE_PRODUCT_JSON_BYTES: usize = 256 * 1024;
 const MAX_WINDOWS_IDENTITY_WINDOW: usize = 512 * 1024;
 const MAX_WINDOWS_IDENTITY_FILE: u64 = 512 * 1024 * 1024;
@@ -68,6 +70,12 @@ const DESKTOP_PRODUCTS: &[DesktopProduct] = &[
             "Trae Work CN/Trae Work CN.exe",
             "TraeWork_CN/TraeWork_CN.exe",
         ],
+    },
+    DesktopProduct {
+        agent_id: AgentCatalogId::OpenCode,
+        macos_bundle_id: "ai.opencode.desktop",
+        windows_product_names: &[],
+        windows_relative_exes: &[],
     },
 ];
 
@@ -141,6 +149,7 @@ pub async fn resolve_desktop_source(
         AgentCatalogId::QoderWork => resolve_qoderwork(platform, arch).await,
         AgentCatalogId::TraeWork => resolve_traework(platform, arch).await,
         AgentCatalogId::WorkBuddy => resolve_workbuddy(platform, arch).await,
+        AgentCatalogId::OpenCode => resolve_opencode_desktop(platform, arch),
         _ => Err(SourceResolveError::PlatformUnsupported),
     }
 }
@@ -197,37 +206,24 @@ pub(super) fn readiness_source_codes(error: SourceResolveError) -> Vec<AgentReas
     codes
 }
 
-pub async fn download_macos_dmg_bytes(
-    source: &ResolvedDesktopSource,
-    cancellation: &dyn Cancellation,
-) -> Result<Vec<u8>, AgentReasonCode> {
-    if cancellation.is_cancelled() {
-        return Err(AgentReasonCode::Cancelled);
-    }
-    if source.format != PackageFormat::Dmg || source.platform != AgentPlatform::Macos {
-        return Err(AgentReasonCode::PlatformUnsupported);
-    }
-    let hosts = download_hosts(source.product)?;
-    fetch_artifact_bytes(source.download_url.clone(), hosts, cancellation)
-        .await
-        .map_err(source_reason)
-}
-
 #[cfg(target_os = "windows")]
 pub async fn download_windows_exe_to_job(
     source: &ResolvedDesktopSource,
     job_directory: &JobTempDir,
     cancellation: &dyn Cancellation,
+    progress: &dyn DownloadProgressSink,
 ) -> Result<DownloadedArtifact, AgentReasonCode> {
     if source.platform != AgentPlatform::Windows || source.format != PackageFormat::Exe {
         return Err(AgentReasonCode::PlatformUnsupported);
     }
-    let hosts = download_hosts(source.product)?;
+    let hosts = artifact_download_hosts(source.product)?;
     fetch_artifact_to_job(
         source.download_url.clone(),
         hosts,
         job_directory,
+        ArtifactKind::Exe,
         cancellation,
+        progress,
     )
     .await
 }
@@ -245,15 +241,6 @@ pub fn verify_windows_exe_source(
     artifact
         .revalidate()
         .map_err(|_| AgentReasonCode::SourceNotVerified)
-}
-
-fn download_hosts(product: AgentCatalogId) -> Result<&'static [&'static str], AgentReasonCode> {
-    match product {
-        AgentCatalogId::QoderWork => Ok(QODERWORK_REDIRECT_HOSTS),
-        AgentCatalogId::TraeWork => Ok(TRAEWORK_DOWNLOAD_HOSTS),
-        AgentCatalogId::WorkBuddy => Ok(WORKBUDDY_DOWNLOAD_HOSTS),
-        _ => Err(AgentReasonCode::ExecutorNotImplemented),
-    }
 }
 
 pub(super) fn user_applications_dir() -> Result<PathBuf, AgentReasonCode> {
@@ -786,13 +773,6 @@ fn read_utf16le_zstring(bytes: &[u8]) -> Option<String> {
     }
 }
 
-pub fn launch_if_present(agent_id: AgentCatalogId) -> Result<(), AgentReasonCode> {
-    let Some(product) = desktop_product(agent_id) else {
-        return Err(AgentReasonCode::ExecutorNotImplemented);
-    };
-    launch_on_host(product)
-}
-
 pub(super) fn launch_desktop_installation(
     agent_id: AgentCatalogId,
     selected_path: &Path,
@@ -807,16 +787,6 @@ pub(super) fn launch_desktop_installation(
         InstallationPackageKind::Exe => launch_windows_exe(&selected.path),
         _ => Err(AgentReasonCode::TargetNotExecutable),
     }
-}
-
-#[cfg(target_os = "macos")]
-fn launch_on_host(product: &DesktopProduct) -> Result<(), AgentReasonCode> {
-    launch_macos_if_present(product, &macos_application_roots())
-}
-
-#[cfg(target_os = "windows")]
-fn launch_on_host(product: &DesktopProduct) -> Result<(), AgentReasonCode> {
-    launch_windows_if_present(product, &windows_program_roots())
 }
 
 #[allow(dead_code)]
@@ -863,15 +833,15 @@ fn launch_windows_if_present(
 
 #[cfg(target_os = "macos")]
 fn launch_macos_bundle(path: &Path) -> Result<(), AgentReasonCode> {
-    let status = Command::new("open")
-        .arg(path)
-        .status()
-        .map_err(|_| AgentReasonCode::InteractiveUserUnavailable)?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(AgentReasonCode::InteractiveUserUnavailable)
-    }
+    crate::platform::process_launch::launch_trusted_macos_application_as_user(path).map_err(
+        |public_code| {
+            if public_code == "external_launch_invalid_macos_application" {
+                AgentReasonCode::TargetNotExecutable
+            } else {
+                AgentReasonCode::ApplicationLaunchFailed
+            }
+        },
+    )
 }
 
 #[cfg(target_os = "windows")]
@@ -952,62 +922,58 @@ fn read_trae_tron_build_version(path: PathBuf) -> Option<String> {
     bounded_version(version).map(str::to_string)
 }
 
+struct StructuredBundlePlist {
+    bundle_identifier: Option<String>,
+    short_version: Option<String>,
+    bundle_version: Option<String>,
+}
+
 #[allow(dead_code)]
 fn read_bundle_id(app: &Path) -> Option<String> {
-    plist_string(app, "CFBundleIdentifier")
+    bounded_plist_string(read_structured_plist(app)?.bundle_identifier)
 }
 
 #[allow(dead_code)]
 fn read_bundle_version(app: &Path) -> Option<String> {
-    plist_string(app, "CFBundleShortVersionString").or_else(|| plist_string(app, "CFBundleVersion"))
+    let raw = read_structured_plist(app)?;
+    bounded_plist_string(raw.short_version).or_else(|| bounded_plist_string(raw.bundle_version))
 }
 
 #[allow(dead_code)]
-fn plist_string(app: &Path, key: &str) -> Option<String> {
-    let bytes = fs::read(app.join("Contents/Info.plist")).ok()?;
-    if bytes.len() > MAX_PLIST_BYTES {
-        return None;
+fn read_structured_plist(app: &Path) -> Option<StructuredBundlePlist> {
+    #[cfg(any(target_os = "macos", test))]
+    {
+        let raw = crate::codex_desktop::platform::macos::bundle::read_structured_bundle_plist(app)?;
+        Some(StructuredBundlePlist {
+            bundle_identifier: raw.bundle_identifier,
+            short_version: raw.short_version,
+            bundle_version: raw.bundle_version,
+        })
     }
-    let text = String::from_utf8_lossy(&bytes);
-    let needle = format!("<key>{key}</key>");
-    let start = text.find(&needle)? + needle.len();
-    let rest = text[start..].trim_start();
-    let rest = rest.strip_prefix("<string>")?;
-    let end = rest.find("</string>")?;
-    let value = rest[..end].trim();
-    if value.is_empty() || value.len() > 128 {
-        return None;
+    #[cfg(not(any(target_os = "macos", test)))]
+    {
+        let _ = app;
+        None
     }
-    Some(value.to_string())
+}
+
+#[allow(dead_code)]
+fn bounded_plist_string(value: Option<String>) -> Option<String> {
+    let value = value?;
+    if value.is_empty()
+        || value.trim() != value
+        || value.len() > 128
+        || value.chars().any(char::is_control)
+    {
+        None
+    } else {
+        Some(value)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[tokio::test]
-    async fn macos_in_memory_download_path_rejects_windows_exe_sources() {
-        let source = ResolvedDesktopSource {
-            product: AgentCatalogId::QoderWork,
-            platform: AgentPlatform::Windows,
-            architecture: AgentArch::X86_64,
-            format: PackageFormat::Exe,
-            release_id: "v1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-                .to_string(),
-            display_version: None,
-            download_url: url::Url::parse(
-                "https://static.qoder.com.cn/qoder-work-cn/releases/latest/QoderWorkCN-Setup-User-x64.exe",
-            )
-            .unwrap(),
-            versionless_latest: true,
-            official_page: "https://qoder.com.cn/download",
-        };
-        assert_eq!(
-            download_macos_dmg_bytes(&source, &crate::codex_desktop::cancellation::NeverCancelled,)
-                .await,
-            Err(AgentReasonCode::PlatformUnsupported)
-        );
-    }
 
     #[test]
     fn source_failure_surfaces_official_page_fallback_not_cancel() {
@@ -1113,6 +1079,104 @@ mod tests {
         );
         assert_eq!(trae.len(), 1);
         assert_eq!(trae[0].local_version.as_deref(), Some("0.1.51"));
+    }
+
+    #[test]
+    fn opencode_is_a_managed_desktop_product_with_official_bundle_id() {
+        let item = product(AgentCatalogId::OpenCode);
+        assert_eq!(item.macos_bundle_id, "ai.opencode.desktop");
+        assert!(item.windows_product_names.is_empty());
+        assert!(desktop_product(AgentCatalogId::ClaudeCode).is_none());
+    }
+
+    #[test]
+    fn managed_desktop_launch_delegates_to_process_launch_and_does_not_scan_launch_services() {
+        let source = include_str!("desktop.rs");
+        let production = source
+            .split("#[cfg(test)]")
+            .next()
+            .expect("production source");
+        assert!(production.contains("launch_trusted_macos_application_as_user"));
+        assert!(production.contains("read_structured_bundle_plist"));
+        assert!(!production.contains("Command::new(\"open\")"));
+        for needle in [
+            "mdfind",
+            "lsregister",
+            "NSWorkspace",
+            "MDQuery",
+            "LaunchServices",
+        ] {
+            assert!(
+                !production.contains(needle),
+                "managed discovery must not grow a Launch Services scanner: {needle}"
+            );
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    fn convert_plist_to_binary(app: &Path) {
+        let plist = app.join("Contents/Info.plist");
+        let status = std::process::Command::new("plutil")
+            .args(["-convert", "binary1"])
+            .arg(&plist)
+            .status()
+            .expect("plutil");
+        assert!(status.success());
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn opencode_desktop_discovery_covers_zero_one_many_binary_wrong_id_symlink_and_nested() {
+        let root = tempfile::tempdir().expect("temp");
+        let user = root.path().join("UserApps");
+        let system = root.path().join("SystemApps");
+        fs::create_dir_all(&user).expect("user apps");
+        fs::create_dir_all(&system).expect("system apps");
+
+        assert!(discover_macos_installations(
+            product(AgentCatalogId::OpenCode),
+            &[user.clone(), system.clone()],
+        )
+        .is_empty());
+
+        write_fake_macos_app(&user, "OpenCode", "ai.opencode.desktop", "1.2.3");
+        write_fake_macos_app(&system, "OpenCode", "ai.opencode.desktop", "1.4.0");
+        write_fake_macos_app(&user, "OpenCode Fake", "ai.opencode.imposter", "9.9.9");
+        let nested = user.join("Nested");
+        fs::create_dir_all(&nested).expect("nested");
+        write_fake_macos_app(&nested, "OpenCode", "ai.opencode.desktop", "0.0.1");
+        convert_plist_to_binary(&system.join("OpenCode.app"));
+
+        let symlink_app = user.join("OpenCode Link.app");
+        std::os::unix::fs::symlink(user.join("OpenCode.app"), &symlink_app).expect("symlink");
+
+        let found = discover_macos_installations(
+            product(AgentCatalogId::OpenCode),
+            &[user.clone(), system.clone()],
+        );
+        assert_eq!(found.len(), 2);
+        assert!(found.iter().all(|item| item
+            .evidence_codes
+            .contains(&InstallationEvidenceCode::BundleIdentity)));
+        assert!(found
+            .iter()
+            .any(|item| item.local_version.as_deref() == Some("1.2.3")));
+        assert!(found
+            .iter()
+            .any(|item| item.local_version.as_deref() == Some("1.4.0")));
+        assert!(!found.iter().any(|item| item.path == symlink_app));
+        assert!(!found.iter().any(|item| item.path.starts_with(&nested)));
+
+        fs::write(
+            user.join("OpenCode.app/Contents/Info.plist"),
+            b"not a plist",
+        )
+        .expect("corrupt");
+        let after_corrupt = discover_macos_installations(
+            product(AgentCatalogId::OpenCode),
+            std::slice::from_ref(&user),
+        );
+        assert!(after_corrupt.is_empty());
     }
 
     fn write_trae_product_json(install_root: &Path, tron_build_version: &str) {

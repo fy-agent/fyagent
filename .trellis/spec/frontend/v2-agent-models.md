@@ -131,9 +131,14 @@ Agent install/inventory/action is a second native port. The page may submit
 only closed IDs previously returned by readiness/inventory:
 
 ```ts
+type AgentSurface = "cli" | "desktop";
+
 type AgentInstallReadinessPort = {
   get(agentId: AgentCatalogId): Promise<AgentInstallReadiness>;
-  getInventory(agentId: AgentCatalogId): Promise<AgentInstallationInventory>;
+  getInventory(
+    agentId: AgentCatalogId,
+    surface?: AgentSurface,
+  ): Promise<AgentInstallationInventory>;
   startAction(request: {
     agentId: AgentCatalogId;
     action: "install" | "update" | "launch";
@@ -141,13 +146,14 @@ type AgentInstallReadinessPort = {
     inventoryId?: string; // opaque i1:+32 hex, complete triplet only
     targetId?: string; // opaque c1:/d1:+32 hex
     expectedTargetRevision?: string; // opaque r1:+64 hex
+    surface?: AgentSurface; // required for OpenCode desktop; omit elsewhere
   }): Promise<AgentActionResult>;
   cancelAction(jobId: string): Promise<AgentActionJobSnapshot>;
   getActionJob(jobId: string): Promise<AgentActionJobSnapshot>;
 };
 
 get_agent_install_readiness({ agentId });
-get_agent_installation_inventory({ agentId });
+get_agent_installation_inventory({ agentId, surface? });
 start_agent_action({ request });
 cancel_agent_action({ jobId });
 get_agent_action_job({ jobId });
@@ -426,6 +432,11 @@ export type AgentSection = (typeof AGENT_SECTION_IDS)[number];
   including a retained successful result while a later scan is refreshing.
   Pending, `not_installed`, `unknown`, `unavailable`, read failure, and an
   in-flight install/update keep configure disabled.
+- OpenCode remains one catalog product. Readiness v3 projects two independent
+  `surfaces` (`cli` + `desktop`); compact single-surface products omit
+  `surfaces`. OpenCode inventory and desktop install/update/launch must send
+  `surface`. CLI never exposes `launch`. Top-level OpenCode fields stay the
+  CLI projection and must not be treated as Desktop state.
 - Managed-desktop readiness and the target picker consume one backend inventory
   authority. The renderer must not infer `not_installed` from a missing
   known-path observation when inventory returned one trusted Registry/App
@@ -795,7 +806,9 @@ fetch/save controls.
   policy. Browser ports stay native-only.
 - Visible lifecycle actions are the `install | update | launch` subset of
   `allowedActions` from the backend DTO. Legacy Auth action values are never
-  rendered or submitted through `AgentInstallReadinessPort`.
+  rendered or submitted through `AgentInstallReadinessPort`. The launch
+  control copy is exactly **「打开软件」**. CLI surfaces never show it.
+  Install/update success must not auto-invoke launch.
   Codex install/update remain the dedicated desktop installer; this region
   must not start a Codex Agent job. Qoder has no claimed remote semver.
   TRAE/WorkBuddy pass the opaque `releaseId` back as `expectedReleaseId`.
@@ -812,6 +825,17 @@ fetch/save controls.
   `rollback_restored` confirms only restoration, not update success; and
   `recovery_required` instructs the user to stop retrying because native
   authority is unknown. None of these states is rendered as installed success.
+- Download UX consumes one shared projector
+  (`src/shared/codex-desktop/snapshots.ts` via
+  `src/v2/shared/features/transfer-projection.ts`). Job `transfer` supplies
+  raw bytes; the page must not `toFixed` a local percent. Known total: at most
+  one decimal, clamped `0..100`. Unknown total: indeterminate + transferred
+  bytes, no invented percent. Hide stale/zero/unknown/terminal speed. Official
+  Grok installer has no byte protocol: stage copy only.
+- Grok Build CLI keeps `native_internal` and `official_npm`. The UI may offer
+  「使用官方 npm 方式」 / 「改用官方 npm 方式」 only as an explicit
+  `run_tool_lifecycle_action(tools, "install_official_npm")`. Native failure
+  must not auto-switch. Do not display one owner's latest as the other's.
 - Agent directory/configuration consume `FeaturePorts.agentAuth`, whose adapter
   parses exact tagged observation/session DTOs before query or React state.
   Directory copy is compact and read-only; the configuration panel owns
@@ -1100,8 +1124,10 @@ Required focused coverage includes:
   success, first-entry auto-scan, per-row pending/scanning, configure only
   when `installed` / `installed_not_runnable` (retained during rescan),
   一键安装/一键更新 only from `allowedActions` or the Codex desktop
-  installer projection, generic jobs show stage not percent, action success
-  requires authoritative readback, and technical failure is not rendered as
+  installer projection, generic jobs project percent/speed only from shared
+  `transfer` telemetry (no page-local `toFixed`), launch copy is 「打开软件」,
+  OpenCode renders independent CLI/Desktop sections from `surfaces[]`,
+  action success requires authoritative readback, and technical failure is not rendered as
   not-installed or removed from the list.
 - Agent readiness exact seven-ID/exact-key/sensitive-field-negative coverage,
   closed `startAction`/`cancelAction`/`getActionJob` wires, opaque
@@ -1179,6 +1205,7 @@ returned by the backend; render `allowedActions`, inventory eligibility, and
 ```ts
 const readiness = await ports.agentInstallReadiness.get("workbuddy");
 const inventory = await ports.agentInstallReadiness.getInventory("workbuddy");
+// OpenCode Desktop: getInventory("opencode", "desktop") and startAction({ surface: "desktop" })
 const destination = installationTargetsForAction(inventory, "install").find(
   (target) => target.eligibleActions.includes("install"),
 );

@@ -478,6 +478,7 @@ async fn validate_auth_target(
         inventory_id: request.inventory_id.clone(),
         target_id: request.target_id.clone(),
         expected_target_revision: request.expected_target_revision.clone(),
+        surface: None,
     };
     let target = validate_action_target(&compatibility, state)
         .await

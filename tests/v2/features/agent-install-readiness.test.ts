@@ -1,23 +1,60 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  AGENT_ACTION_CONTRACT_VERSION,
   assertAgentInstallReadinessId,
   installationTargetsForAction,
+  isLegalAgentSurface,
+  parseAgentActionJobSnapshot,
   parseAgentInstallationInventory,
   parseAgentInstallReadiness,
+  surfacesForAgent,
   type AgentInstallReadiness,
+  type AgentInstallState,
+  type AgentSurfaceReadiness,
 } from "@/v2/shared/features/agent-install-readiness";
 import { AGENT_CATALOG_IDS } from "@/v2/shared/features/directory";
 
+function surfaceRow(
+  surface: "cli" | "desktop",
+  installState: AgentInstallState,
+): AgentSurfaceReadiness {
+  const cli = surface === "cli";
+  const installed = installState === "installed";
+  return {
+    surface,
+    installState,
+    inventoryState: installed ? "single" : "not_observed",
+    requiresTargetSelection: false,
+    updateState: installed ? "up_to_date" : "latest_unknown",
+    releaseId: cli
+      ? null
+      : "v1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    localVersion: installed ? "1.0.0" : null,
+    remoteVersion: installed || !cli ? "1.0.0" : null,
+    sourceKind: cli ? "cli_tooling" : "managed_desktop",
+    allowedActions: installed
+      ? surface === "desktop"
+        ? ["launch"]
+        : []
+      : ["install"],
+    reasonCodes: [],
+  };
+}
+
 function readiness(
   agentId: (typeof AGENT_CATALOG_IDS)[number] = "qoderwork",
+  combo: { cli: AgentInstallState; desktop: AgentInstallState } = {
+    cli: "not_installed",
+    desktop: "not_installed",
+  },
 ): AgentInstallReadiness {
   const codex = agentId === "codex";
   const cli =
     agentId === "claude-code" ||
     agentId === "grokbuild" ||
     agentId === "opencode";
-  return {
+  const base: AgentInstallReadiness = {
     contractVersion: 3,
     agentId,
     reviewedAt: "2026-08-29",
@@ -47,6 +84,21 @@ function readiness(
         ? ["provider_connection_required"]
         : ["auth_state_unknown"],
   };
+  if (agentId === "opencode") {
+    const cliSurface = surfaceRow("cli", combo.cli);
+    const desktopSurface = surfaceRow("desktop", combo.desktop);
+    return {
+      ...base,
+      installState: cliSurface.installState,
+      inventoryState: cliSurface.inventoryState,
+      updateState: cliSurface.updateState,
+      localVersion: cliSurface.localVersion,
+      remoteVersion: cliSurface.remoteVersion,
+      allowedActions: cliSurface.allowedActions,
+      surfaces: [cliSurface, desktopSurface],
+    };
+  }
+  return base;
 }
 
 function inventory() {
@@ -206,5 +258,133 @@ describe("Agent install readiness wire contract", () => {
         "qoderwork",
       ),
     ).toThrow("Agent installation inventory is unavailable");
+  });
+
+  it("parses action job transfer telemetry and rejects v2 or locator fields", () => {
+    const snapshot = {
+      contractVersion: AGENT_ACTION_CONTRACT_VERSION,
+      jobId: "job-1",
+      agentId: "qoderwork",
+      action: "install",
+      stage: "downloading",
+      cancellable: true,
+      reasonCode: null,
+      transfer: {
+        phase: "download",
+        completedBytes: 1048576,
+        totalBytes: 2097152,
+        attempt: 1,
+        maxAttempts: 1,
+        sequence: 2,
+        observedAt: "2026-08-31T00:00:00Z",
+      },
+    };
+    expect(parseAgentActionJobSnapshot(snapshot).transfer).toEqual(
+      snapshot.transfer,
+    );
+    expect(
+      parseAgentActionJobSnapshot({ ...snapshot, transfer: null }).transfer,
+    ).toBeNull();
+    expect(
+      parseAgentActionJobSnapshot({
+        ...snapshot,
+        transfer: { ...snapshot.transfer, totalBytes: null },
+      }).transfer?.totalBytes,
+    ).toBeNull();
+
+    expect(() =>
+      parseAgentActionJobSnapshot({ ...snapshot, contractVersion: 2 }),
+    ).toThrow("Agent action job is unavailable");
+    expect(() =>
+      parseAgentActionJobSnapshot({
+        ...snapshot,
+        transfer: { ...snapshot.transfer, percent: 50 },
+      }),
+    ).toThrow("Agent action job is unavailable");
+    expect(() =>
+      parseAgentActionJobSnapshot({
+        ...snapshot,
+        transfer: { ...snapshot.transfer, path: "/tmp/installer.dmg" },
+      }),
+    ).toThrow("Agent action job is unavailable");
+    expect(() =>
+      parseAgentActionJobSnapshot({
+        ...snapshot,
+        transfer: { ...snapshot.transfer, totalBytes: 8 },
+      }),
+    ).toThrow("Agent action job is unavailable");
+  });
+
+  it("parses OpenCode CLI-only, desktop-only, both, and neither as independent surfaces", () => {
+    expect(surfacesForAgent("opencode")).toEqual(["cli", "desktop"]);
+    expect(isLegalAgentSurface("qoderwork", "cli")).toBe(false);
+    expect(isLegalAgentSurface("claude-code", "desktop")).toBe(false);
+
+    const combos = [
+      { cli: "not_installed", desktop: "not_installed" },
+      { cli: "installed", desktop: "not_installed" },
+      { cli: "not_installed", desktop: "installed" },
+      { cli: "installed", desktop: "installed" },
+    ] as const;
+    for (const combo of combos) {
+      const parsed = parseAgentInstallReadiness(
+        readiness("opencode", combo),
+        "opencode",
+      );
+      expect(parsed.surfaces).toHaveLength(2);
+      expect(parsed.surfaces?.[0]?.surface).toBe("cli");
+      expect(parsed.surfaces?.[0]?.installState).toBe(combo.cli);
+      expect(parsed.surfaces?.[0]?.allowedActions).not.toContain("launch");
+      expect(parsed.surfaces?.[1]?.surface).toBe("desktop");
+      expect(parsed.surfaces?.[1]?.installState).toBe(combo.desktop);
+      if (combo.desktop === "installed") {
+        expect(parsed.surfaces?.[1]?.allowedActions).toContain("launch");
+      }
+    }
+  });
+
+  it("rejects unknown surfaces, illegal product pairs, and CLI launch", () => {
+    expect(() =>
+      parseAgentInstallReadiness(
+        {
+          ...readiness("qoderwork"),
+          surfaces: [surfaceRow("cli", "installed")],
+        },
+        "qoderwork",
+      ),
+    ).toThrow("Agent install readiness is unavailable");
+    expect(() =>
+      parseAgentInstallReadiness(
+        { ...readiness("opencode"), surfaces: undefined },
+        "opencode",
+      ),
+    ).toThrow("Agent install readiness is unavailable");
+    const withLaunchOnCli = readiness("opencode");
+    withLaunchOnCli.surfaces = [
+      { ...surfaceRow("cli", "installed"), allowedActions: ["launch"] },
+      surfaceRow("desktop", "not_installed"),
+    ];
+    expect(() =>
+      parseAgentInstallReadiness(withLaunchOnCli, "opencode"),
+    ).toThrow("Agent install readiness is unavailable");
+    expect(() =>
+      parseAgentInstallationInventory(
+        { ...inventory(), agentId: "opencode" },
+        "opencode",
+      ),
+    ).toThrow("Agent installation inventory is unavailable");
+    expect(() =>
+      parseAgentActionJobSnapshot({
+        contractVersion: AGENT_ACTION_CONTRACT_VERSION,
+        jobId: "job-1",
+        agentId: "qoderwork",
+        action: "install",
+        stage: "checking",
+        cancellable: true,
+        reasonCode: null,
+        transfer: null,
+        surface: "cli",
+      }),
+    ).toThrow("Agent action job is unavailable");
   });
 });

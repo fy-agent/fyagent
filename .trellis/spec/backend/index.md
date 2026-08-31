@@ -41,7 +41,7 @@ belong in the linked owning spec.
 | [Codex Provider Configuration](./codex-provider-configuration.md) | Codex provider/auth projection, writer serialization, backup, rollback, and readback. |
 | [One-click Executable Software Installer](./codex-desktop-installer.md) | Codex desktop discovery/install/update, PackageBridge/helper, signing, and transaction safety. |
 | [WorkBuddy Configuration](./workbuddy-configuration.md) | Revisioned WorkBuddy model/config writes, overwrite capabilities, backup, and reread. |
-| [External Agent P0 Safety](./external-agent-p0.md) | Agent catalog, runtime observation, install/inventory/actions, Auth, Skills/MCP, and vendor boundaries. |
+| [External Agent P0 Safety](./external-agent-p0.md) | Agent catalog, runtime observation, install/inventory/actions (including OpenCode `cli\|desktop` surfaces, job v3 transfer, deferred `/Applications` commit), Auth, Skills/MCP, and vendor boundaries. |
 
 ## Native platforms and distribution
 

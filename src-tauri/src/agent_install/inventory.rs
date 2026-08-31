@@ -16,11 +16,12 @@ use super::{
     cli::{observe_cli, tooling_id_for},
     desktop::{discover_desktop_installation_inventory, DesktopInstallationDiscovery},
     types::{
+        default_surface, legal_surfaces, resolve_requested_surface, surface_is_legal,
         validate_opaque_inventory_id, validate_opaque_target_id, validate_opaque_target_revision,
-        AgentActionId, AgentInstallationInventoryDto, AgentReasonCode, FreshInstallDestinationDto,
-        InstallationCandidateDto, InstallationEvidenceCode, InstallationInventoryState,
-        InstallationOwner, InstallationPackageKind, InstallationScope, StartAgentActionRequest,
-        AGENT_INSTALLATION_INVENTORY_CONTRACT_VERSION,
+        AgentActionId, AgentInstallationInventoryDto, AgentReasonCode, AgentSurface,
+        FreshInstallDestinationDto, InstallationCandidateDto, InstallationEvidenceCode,
+        InstallationInventoryState, InstallationOwner, InstallationPackageKind, InstallationScope,
+        StartAgentActionRequest, AGENT_INSTALLATION_INVENTORY_CONTRACT_VERSION,
     },
 };
 use crate::{
@@ -293,16 +294,31 @@ fn prune_expired(cache: &mut InventoryCache) {
 pub async fn inventory_for(
     agent_id: AgentCatalogId,
     state: &AppState,
+    surface: Option<AgentSurface>,
 ) -> AgentInstallationInventoryDto {
-    let probe = probe_inventory(agent_id, state).await;
-    project_and_store(agent_id, probe, &state.agent_installation_inventory)
+    let surface = surface.unwrap_or_else(|| default_surface(agent_id));
+    let probe = probe_inventory(agent_id, surface, state).await;
+    project_and_store(
+        agent_id,
+        surface,
+        probe,
+        &state.agent_installation_inventory,
+    )
 }
 
 pub async fn inventory_readiness_projection(
     agent_id: AgentCatalogId,
     state: &AppState,
 ) -> InventoryReadinessProjection {
-    project_readiness(probe_inventory(agent_id, state).await)
+    inventory_readiness_projection_for(agent_id, default_surface(agent_id), state).await
+}
+
+pub async fn inventory_readiness_projection_for(
+    agent_id: AgentCatalogId,
+    surface: AgentSurface,
+    state: &AppState,
+) -> InventoryReadinessProjection {
+    project_readiness(probe_inventory(agent_id, surface, state).await)
 }
 
 fn project_readiness(probe: InventoryProbe) -> InventoryReadinessProjection {
@@ -328,6 +344,7 @@ pub async fn validate_action_target(
     request: &StartAgentActionRequest,
     state: &AppState,
 ) -> Result<ValidatedActionTarget, AgentReasonCode> {
+    let surface = resolve_requested_surface(request.agent_id, request.surface)?;
     let binding = match (
         request.inventory_id.as_deref(),
         request.target_id.as_deref(),
@@ -359,7 +376,7 @@ pub async fn validate_action_target(
             target_id,
             revision,
         )?;
-        let current = probe_inventory(request.agent_id, state).await;
+        let current = probe_inventory(request.agent_id, surface, state).await;
         return validate_snapshot_target(request.action, snapshot_target, current);
     }
 
@@ -374,10 +391,13 @@ pub async fn validate_action_target(
         AgentActionId::Launch | AgentActionId::AuthLogin
             if matches!(
                 request.agent_id,
-                AgentCatalogId::QoderWork | AgentCatalogId::TraeWork | AgentCatalogId::WorkBuddy
-            ) =>
+                AgentCatalogId::QoderWork
+                    | AgentCatalogId::TraeWork
+                    | AgentCatalogId::WorkBuddy
+                    | AgentCatalogId::OpenCode
+            ) && surface == AgentSurface::Desktop =>
         {
-            unique_legacy_candidate(request.agent_id, state).await
+            unique_legacy_candidate(request.agent_id, surface, state).await
         }
         AgentActionId::Launch if request.agent_id == AgentCatalogId::Codex => {
             Ok(ValidatedActionTarget::None)
@@ -388,9 +408,10 @@ pub async fn validate_action_target(
 
 async fn unique_legacy_candidate(
     agent_id: AgentCatalogId,
+    surface: AgentSurface,
     state: &AppState,
 ) -> Result<ValidatedActionTarget, AgentReasonCode> {
-    let mut eligible = probe_inventory(agent_id, state)
+    let mut eligible = probe_inventory(agent_id, surface, state)
         .await
         .candidates
         .into_iter()
@@ -455,6 +476,7 @@ fn validate_snapshot_target(
 
 fn project_and_store(
     agent_id: AgentCatalogId,
+    surface: AgentSurface,
     probe: InventoryProbe,
     store: &AgentInstallationInventoryStore,
 ) -> AgentInstallationInventoryDto {
@@ -545,18 +567,42 @@ fn project_and_store(
         candidates,
         fresh_destinations,
         reason_codes: probe.reason_codes,
+        surface: (legal_surfaces(agent_id).len() > 1).then_some(surface),
     }
 }
 
-async fn probe_inventory(agent_id: AgentCatalogId, state: &AppState) -> InventoryProbe {
-    match agent_id {
-        AgentCatalogId::QoderWork | AgentCatalogId::TraeWork | AgentCatalogId::WorkBuddy => {
-            probe_desktop(agent_id)
-        }
-        AgentCatalogId::ClaudeCode | AgentCatalogId::GrokBuild | AgentCatalogId::OpenCode => {
-            probe_cli(agent_id).await
-        }
-        AgentCatalogId::Codex => probe_codex(state).await,
+async fn probe_inventory(
+    agent_id: AgentCatalogId,
+    surface: AgentSurface,
+    state: &AppState,
+) -> InventoryProbe {
+    if !surface_is_legal(agent_id, surface) {
+        return InventoryProbe {
+            state_override: Some(InstallationInventoryState::Unsupported),
+            candidates: Vec::new(),
+            destinations: Vec::new(),
+            reason_codes: vec![AgentReasonCode::SurfaceNotSupported],
+        };
+    }
+    match (agent_id, surface) {
+        (
+            AgentCatalogId::QoderWork
+            | AgentCatalogId::TraeWork
+            | AgentCatalogId::WorkBuddy
+            | AgentCatalogId::OpenCode,
+            AgentSurface::Desktop,
+        ) => probe_desktop(agent_id),
+        (
+            AgentCatalogId::ClaudeCode | AgentCatalogId::GrokBuild | AgentCatalogId::OpenCode,
+            AgentSurface::Cli,
+        ) => probe_cli(agent_id).await,
+        (AgentCatalogId::Codex, AgentSurface::Desktop) => probe_codex(state).await,
+        _ => InventoryProbe {
+            state_override: Some(InstallationInventoryState::Unsupported),
+            candidates: Vec::new(),
+            destinations: Vec::new(),
+            reason_codes: vec![AgentReasonCode::SurfaceNotSupported],
+        },
     }
 }
 
@@ -1209,7 +1255,12 @@ mod tests {
             destinations: desktop_destinations(AgentCatalogId::QoderWork),
             reason_codes: Vec::new(),
         };
-        let dto = project_and_store(AgentCatalogId::QoderWork, probe, &store);
+        let dto = project_and_store(
+            AgentCatalogId::QoderWork,
+            AgentSurface::Desktop,
+            probe,
+            &store,
+        );
         let system = dto
             .fresh_destinations
             .iter()
@@ -1264,7 +1315,12 @@ mod tests {
             destinations: Vec::new(),
             reason_codes: Vec::new(),
         };
-        let dto = project_and_store(AgentCatalogId::WorkBuddy, probe, &store);
+        let dto = project_and_store(
+            AgentCatalogId::WorkBuddy,
+            AgentSurface::Desktop,
+            probe,
+            &store,
+        );
         let projected = dto.candidates.first().expect("candidate projection");
         let snapshot = store
             .snapshot_target(
