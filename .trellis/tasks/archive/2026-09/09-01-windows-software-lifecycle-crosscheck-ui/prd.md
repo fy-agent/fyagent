@@ -70,5 +70,5 @@
 - [x] bootstrap advisory 成功报告缺项；strict/Clippy 维持严格边界。
 - [x] SideNavigation 单层 lens 与 position-only geometry 有 unit/browser contract。
 - [x] focused/full prearchive gates 通过。
-- [ ] owning SPEC、任务归档与 journal 提交完成。
+- [x] owning SPEC、任务归档与 journal 提交完成。
 - [ ] Windows 原生 HIL 作为后续 release evidence：真实已安装/未安装、UAC/vendor UI、自定义路径和启动。

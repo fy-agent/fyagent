@@ -1948,10 +1948,13 @@ Rewrote audited frontend and public-documentation copy, added an indexed user-fa
 | `b975bfc3` | docs(spec): enable verified managed desktop updates |
 | `a5fac9d8` | docs(task): align lifecycle task with verified update policy |
 | `cd96bdd0` | fix(dev): seal Windows MSVC cross advisory for platform scanners |
+| `c4512808` | chore(task): archive 09-01-windows-software-lifecycle-crosscheck-ui |
+| `047622dc` | docs(spec): skip Windows-MSVC advisory through the host map |
 
 ### Testing
 
 - [OK] mise run check:prearchive -- --exclude-active-task .trellis/tasks/09-01-windows-software-lifecycle-crosscheck-ui
+- [OK] 归档后在最终 HEAD 复跑 mise run check：前端、3033 项 Rust 测试、52 项 user-helper 测试、任务/文档/平台与 Release 合同全部通过
 
 ### Status
 

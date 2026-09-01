@@ -41,6 +41,6 @@
 
 ## Phase 7：归档
 
-- [ ] 提交最终实现与 SPEC。
-- [ ] Trellis archive。
-- [ ] 写 journal 并确认 work → archive → journal 顺序。
+- [x] 提交最终实现与 SPEC。
+- [x] Trellis archive。
+- [x] 写 journal；归档后审计产生的 SPEC 修正与最终 full check 已补充记录。
