@@ -63,7 +63,7 @@
     ],
     [
       "src-tauri/src/agent_install/mod.rs",
-      "49fde1e34b30fdf82ac910ae614afee952ccff9e5de00c634f6ba6ac208bd274"
+      "1d9d3dee4568cf668eb320d154e62febdb6fdaa925d25dabb2088a4efcd878d5"
     ],
     [
       "src-tauri/src/agent_install/sources/mod.rs",
@@ -166,6 +166,10 @@
       "264b4413bf1804276a7ad2edd7e138b4f5b3de0e1e6452b0e0da9cc094a779d3"
     ],
     [
+      "src-tauri/src/macos_system_commit/mod.rs",
+      "75c7a04647036cd2b01b673d3a6e8f04a50799e5a5fbe51cae02a4b221727278"
+    ],
+    [
       "src-tauri/src/main.rs",
       "89be46db55626e460b0832ced587c517beed6c22969022888d1f0f0a09d3d623"
     ],
@@ -251,11 +255,11 @@
     ],
     [
       "src-tauri/src/services/tooling/discovery.rs",
-      "bcef0a0d3f33add4d4be909f10bb5ba97913ab5edd1f0497824fd294aafbd789"
+      "bfeb914870ced452019ea60d582abc41955f2d26ac31d7ca3341cca030a3d40b"
     ],
     [
       "src-tauri/src/services/tooling/grok.rs",
-      "258c84c03041b83d41324e24990c9ff88012b3a1814ec534092fc396a7e76fa5"
+      "d220e108aac8dfba8c8e882a92d90db3490fb6c7fb410c5fa55909313ab86f5b"
     ],
     [
       "src-tauri/src/services/tooling/lifecycle.rs",

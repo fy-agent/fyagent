@@ -17,13 +17,18 @@ mod types;
 #[cfg(test)]
 mod fake;
 
-pub(crate) use policy::{product_for_agent, resolve_slot};
-pub(crate) use port::{
-    production_enabled, production_port, system_scope_rejection, MacSystemCommitPort,
-};
-pub(crate) use types::{
-    AuthorizedSystemCommit, SystemCommitAction, SystemCommitOutcome, UserIntent,
-};
+pub(crate) use policy::product_for_agent;
+#[cfg(any(target_os = "macos", test))]
+pub(crate) use policy::resolve_slot;
+pub(crate) use port::production_enabled;
+#[cfg(any(target_os = "macos", test))]
+pub(crate) use port::system_scope_rejection;
+#[cfg(target_os = "macos")]
+pub(crate) use port::{production_port, MacSystemCommitPort};
+#[cfg(any(target_os = "macos", test))]
+pub(crate) use types::SystemCommitAction;
+#[cfg(target_os = "macos")]
+pub(crate) use types::{AuthorizedSystemCommit, SystemCommitOutcome, UserIntent};
 
 #[cfg(test)]
 pub(crate) use policy::KnownSystemProduct;

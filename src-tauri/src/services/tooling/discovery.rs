@@ -58,12 +58,13 @@ pub async fn probe_tool_installations(
                 let installs = enumerate_tool_installations(tool);
                 let (command, needs_confirmation, anchored) = plan_command_for(tool, &installs);
                 let is_conflict = is_conflicting(&installs);
-                let mut distribution_owner = None;
                 #[cfg(target_os = "macos")]
-                if tool == "grok" {
-                    distribution_owner =
-                        super::grok::grok_owner_wire_from_disk(&installs).map(str::to_string);
-                }
+                let distribution_owner = (tool == "grok")
+                    .then(|| super::grok::grok_owner_wire_from_disk(&installs))
+                    .flatten()
+                    .map(str::to_string);
+                #[cfg(target_os = "windows")]
+                let distribution_owner = None;
                 ToolInstallationReport {
                     tool: tool.to_string(),
                     installs,

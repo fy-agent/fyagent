@@ -4,7 +4,9 @@
 //! composes `grok update || installer || npm` as one job. Windows command
 //! composition is owned by `lifecycle.rs` and is not changed here.
 
+#[cfg(any(target_os = "macos", test))]
 use super::ToolLifecycleAction;
+#[cfg(any(target_os = "macos", test))]
 use super::*;
 #[cfg(target_os = "macos")]
 use std::path::Path;
@@ -12,7 +14,9 @@ use std::sync::Mutex;
 #[cfg(target_os = "macos")]
 use std::time::Duration;
 
+#[cfg(any(target_os = "macos", test))]
 pub(super) const GROK_DISTRIBUTION_NATIVE: &str = "native_internal";
+#[cfg(any(target_os = "macos", test))]
 pub(super) const GROK_DISTRIBUTION_NPM: &str = "official_npm";
 
 #[cfg(target_os = "macos")]
@@ -29,14 +33,17 @@ const GROK_UPDATE_TIMEOUT: Duration = Duration::from_secs(300);
 const GROK_INSTALLER_TIMEOUT: Duration = Duration::from_secs(300);
 #[cfg(target_os = "macos")]
 const GROK_OUTPUT_LIMIT: usize = 32 * 1024;
+#[cfg(any(target_os = "macos", test))]
 const GROK_LOG_LINES: usize = 12;
 
+#[cfg(any(target_os = "macos", test))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(super) enum GrokDistributionOwner {
     NativeInternal,
     OfficialNpm,
 }
 
+#[cfg(any(target_os = "macos", test))]
 impl GrokDistributionOwner {
     pub(super) fn as_str(self) -> &'static str {
         match self {
@@ -46,6 +53,7 @@ impl GrokDistributionOwner {
     }
 }
 
+#[cfg(any(target_os = "macos", test))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum GrokOwnerObservation {
     NativeInternal,
@@ -54,6 +62,7 @@ pub(super) enum GrokOwnerObservation {
     Absent,
 }
 
+#[cfg(target_os = "macos")]
 impl GrokOwnerObservation {
     fn owner(self) -> Option<GrokDistributionOwner> {
         match self {
@@ -68,15 +77,20 @@ impl GrokOwnerObservation {
     }
 }
 
+#[cfg(target_os = "macos")]
 pub(super) fn owner_observation_wire(observation: GrokOwnerObservation) -> Option<&'static str> {
     observation.wire()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum GrokLifecycleStage {
+    #[cfg(target_os = "macos")]
     Checking,
+    #[cfg(target_os = "macos")]
     Preflight,
+    #[cfg(target_os = "macos")]
     Executing,
+    #[cfg(target_os = "macos")]
     Verifying,
     Succeeded,
     Failed,
@@ -84,11 +98,16 @@ pub(super) enum GrokLifecycleStage {
 }
 
 impl GrokLifecycleStage {
+    #[cfg(any(target_os = "macos", test))]
     fn as_str(self) -> &'static str {
         match self {
+            #[cfg(target_os = "macos")]
             Self::Checking => "checking",
+            #[cfg(target_os = "macos")]
             Self::Preflight => "preflight",
+            #[cfg(target_os = "macos")]
             Self::Executing => "executing",
+            #[cfg(target_os = "macos")]
             Self::Verifying => "verifying",
             Self::Succeeded => "succeeded",
             Self::Failed => "failed",
@@ -167,12 +186,14 @@ pub(crate) fn last_grok_lifecycle_snapshot() -> Option<GrokLifecycleSnapshot> {
     LAST_GROK_JOB.lock().ok().and_then(|guard| guard.clone())
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn store_grok_snapshot(snapshot: GrokLifecycleSnapshot) {
     if let Ok(mut guard) = LAST_GROK_JOB.lock() {
         *guard = Some(snapshot);
     }
 }
 
+#[cfg(any(target_os = "macos", test))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum GrokPlan {
     NativeFresh,
@@ -180,6 +201,7 @@ pub(super) enum GrokPlan {
     OfficialNpm { bin_path: Option<String> },
 }
 
+#[cfg(any(target_os = "macos", test))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct GrokPlanError {
     reason: &'static str,
@@ -187,6 +209,7 @@ pub(super) struct GrokPlanError {
     detail: String,
 }
 
+#[cfg(any(target_os = "macos", test))]
 impl GrokPlanError {
     fn new(
         reason: &'static str,
@@ -201,12 +224,14 @@ impl GrokPlanError {
     }
 }
 
+#[cfg(any(target_os = "macos", test))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum GrokCheckResult {
     AlreadyCurrent { version: String },
     UpdateAvailable { version: String },
 }
 
+#[cfg(any(target_os = "macos", test))]
 pub(super) fn parse_grok_cli_installer(config_toml: &str) -> Option<GrokDistributionOwner> {
     let document: toml::Value = config_toml.parse().ok()?;
     let installer = document.get("cli")?.get("installer")?.as_str()?.trim();
@@ -217,6 +242,7 @@ pub(super) fn parse_grok_cli_installer(config_toml: &str) -> Option<GrokDistribu
     }
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn owner_from_install(
     bin_path: &str,
     real_target: &str,
@@ -239,6 +265,7 @@ fn owner_from_install(
     }
 }
 
+#[cfg(any(target_os = "macos", test))]
 pub(super) fn observe_grok_owner(
     installs: &[ToolInstallation],
     config_toml: Option<&str>,
@@ -266,6 +293,7 @@ pub(super) fn observe_grok_owner(
     }
 }
 
+#[cfg(target_os = "macos")]
 pub(super) fn grok_owner_wire_label(
     installs: &[ToolInstallation],
     config_toml: Option<&str>,
@@ -273,10 +301,12 @@ pub(super) fn grok_owner_wire_label(
     observe_grok_owner(installs, config_toml).wire()
 }
 
+#[cfg(target_os = "macos")]
 pub(super) fn grok_owner_wire_from_disk(installs: &[ToolInstallation]) -> Option<&'static str> {
     grok_owner_wire_label(installs, read_grok_config_toml().as_deref())
 }
 
+#[cfg(target_os = "macos")]
 fn read_grok_config_toml() -> Option<String> {
     let path = crate::grok_config::get_grok_config_path();
     let bytes = std::fs::read(&path).ok()?;
@@ -286,6 +316,7 @@ fn read_grok_config_toml() -> Option<String> {
     String::from_utf8(bytes).ok()
 }
 
+#[cfg(target_os = "macos")]
 pub(super) fn observe_installed_grok_owner() -> GrokOwnerObservation {
     let installs = enumerate_tool_installations("grok");
     observe_grok_owner(&installs, read_grok_config_toml().as_deref())
@@ -311,6 +342,7 @@ pub(super) fn native_latest_from_update_check(local: Option<&str>) -> Option<Str
     }
 }
 
+#[cfg(any(target_os = "macos", test))]
 pub(super) fn grok_plan_from_installs(
     action: ToolLifecycleAction,
     installs: &[ToolInstallation],
@@ -375,6 +407,7 @@ pub(super) fn grok_plan_from_installs(
     }
 }
 
+#[cfg(any(target_os = "macos", test))]
 pub(super) fn parse_grok_update_check(
     output: &str,
     local_version: Option<&str>,
@@ -419,6 +452,7 @@ pub(super) fn parse_grok_update_check(
     Err("official_source_unreachable")
 }
 
+#[cfg(any(target_os = "macos", test))]
 pub(super) fn grok_installer_url_is_allowed(url: &url::Url) -> bool {
     if url.scheme() != "https" || url.username() != "" || url.password().is_some() {
         return false;
@@ -430,6 +464,7 @@ pub(super) fn grok_installer_url_is_allowed(url: &url::Url) -> bool {
     }
 }
 
+#[cfg(any(target_os = "macos", test))]
 pub(super) fn redact_grok_lifecycle_text(raw: &str) -> String {
     let home = crate::config::get_home_dir();
     let temp = crate::config::get_user_temp_dir();
@@ -447,6 +482,7 @@ pub(super) fn redact_grok_lifecycle_text(raw: &str) -> String {
     last_lines(text.trim(), GROK_LOG_LINES)
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn redact_url_queries(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     for (index, part) in text.split("https://").enumerate() {
@@ -466,6 +502,7 @@ fn redact_url_queries(text: &str) -> String {
     out
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn redact_secret_tokens(text: &str) -> String {
     let mut out = text.to_string();
     for prefix in ["npm_", "ghp_", "gho_", "github_pat_"] {
@@ -481,6 +518,7 @@ fn redact_secret_tokens(text: &str) -> String {
     out
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn action_wire(action: ToolLifecycleAction) -> String {
     match action {
         ToolLifecycleAction::Install => "install".to_string(),
@@ -502,6 +540,7 @@ fn grok_fail_copy(reason: &str) -> &'static str {
     }
 }
 
+#[cfg(target_os = "macos")]
 fn store_stage(
     stage: GrokLifecycleStage,
     action: ToolLifecycleAction,
@@ -520,6 +559,7 @@ fn store_stage(
     });
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn fail_job(
     action: ToolLifecycleAction,
     owner: Option<GrokDistributionOwner>,
@@ -548,6 +588,7 @@ fn fail_job(
     }
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn succeed_job(
     action: ToolLifecycleAction,
     owner: GrokDistributionOwner,
@@ -872,12 +913,14 @@ fn execute_official_npm(
     result
 }
 
+#[cfg(target_os = "macos")]
 struct GrokObservation {
     version: Option<String>,
     owner: GrokOwnerObservation,
     runnable: bool,
 }
 
+#[cfg(target_os = "macos")]
 fn grok_post_observe() -> Result<GrokObservation, String> {
     let installs = enumerate_tool_installations("grok");
     let owner = observe_grok_owner(&installs, read_grok_config_toml().as_deref());
@@ -941,6 +984,7 @@ fn finish_native_command(
     }
 }
 
+#[cfg(target_os = "macos")]
 fn verify_after_action(
     action: ToolLifecycleAction,
     expected_owner: GrokDistributionOwner,

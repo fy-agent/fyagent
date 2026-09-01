@@ -1476,6 +1476,16 @@ mod tests {
     }
 
     fn test_app_state() -> AppState {
+        #[cfg(target_os = "windows")]
+        // AppState construction creates the production Codex service, whose log
+        // root normally assumes startup already froze the Explorer-user context.
+        // These tests stop before user-path I/O, so bind only the test log root;
+        // do not initialize or weaken the production Windows user context.
+        crate::panic_hook::init_app_config_dir(
+            std::env::temp_dir()
+                .join("fyagent-agent-install-tests")
+                .join(".fyagent"),
+        );
         let db = crate::database::Database::memory().expect("memory db");
         AppState::new(std::sync::Arc::new(db))
     }
