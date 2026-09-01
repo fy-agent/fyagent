@@ -1,0 +1,16 @@
+{"file": ".trellis/spec/backend/reuse.md", "reason": "实施必须遵守 existing-owner、依赖评审与禁止重复 downloader/job/helper/process owner 的顺序。"}
+{"file": ".trellis/spec/backend/modular-boundaries.md", "reason": "检查 Agent、Codex packaged capability、platform adapter 与 command 层的 crate-private 依赖方向。"}
+{"file": ".trellis/spec/frontend/reuse.md", "reason": "前端复用共享产品元数据/组件，禁止页面维护第二套产品动作表。"}
+{"file": ".trellis/tasks/09-01-windows-agent-parity-log-hygiene/research/current-implementation-audit.md", "reason": "当前 lifecycle、Windows owner、Claude/OpenCode 缺口、旧 Tooling CLI 安装面和依赖基线。"}
+{"file": ".trellis/tasks/09-01-windows-agent-parity-log-hygiene/research/reuse-and-upstream-evidence.md", "reason": "Windows PackageManager/WinGet/App Paths 与各产品第一方发行证据、复用/拒绝结论。"}
+{"file": ".trellis/tasks/09-01-windows-agent-parity-log-hygiene/research/windows-product-matrix.md", "reason": "七项产品的目标 surface、Windows 策略、现有能力和 artifact/HIL 阻塞门禁。"}
+{"file": ".trellis/tasks/09-01-windows-agent-parity-log-hygiene/research/codex-sync-log-root-cause.md", "reason": "Retryable pending 删除导致重复 WARN、每轮 INFO 放大与正确重试/游标不变量。"}
+{"file": ".trellis/tasks/09-01-windows-agent-parity-log-hygiene/research/hil-and-release-gates.md", "reason": "Windows x64/ARM64 原生 HIL、逐产品证据模板与 release gates。"}
+{"file": ".trellis/tasks/09-01-windows-agent-parity-log-hygiene/research/execution-context.md", "reason": "执行方需要的精简任务目标、复用决策、顺序、stop conditions 和 acceptance shorthand。"}
+{"file": ".trellis/tasks/09-01-windows-agent-parity-log-hygiene/research/spec-constraints.md", "reason": "必须完整重读的 backend/frontend owning spec 约束与任务新增合同摘要。"}
+{"file": ".trellis/spec/backend/windows-runtime-security.md", "reason": "Formal Windows 只允许闭集 helper action，禁止 elevated CLI fallback。"}
+{"file": ".trellis/spec/backend/external-agent-p0.md", "reason": "七产品 surface/action owner、Windows inventory 与 Desktop-only Claude/OpenCode 合同。"}
+{"file": ".trellis/spec/backend/codex-desktop-installer.md", "reason": "Codex PackageManager/exact identity；ChatGPT 迁移必须精确。"}
+{"file": ".trellis/spec/frontend/v2-agent-models.md", "reason": "Agent DTO/readiness/action 投影与 reason parity。"}
+{"file": ".trellis/spec/frontend/user-facing-copy.md", "reason": "文案不得泄露路径/SID/package identity/installer output。"}
+{"file": ".trellis/tasks/09-01-windows-agent-parity-log-hygiene/research/decision-record.md", "reason": "已冻结决策与仍需 HIL 的开放门。"}

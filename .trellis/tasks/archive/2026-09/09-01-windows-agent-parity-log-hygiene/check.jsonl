@@ -1,0 +1,14 @@
+{"file": ".trellis/tasks/09-01-windows-agent-parity-log-hygiene/prd.md", "reason": "检查完整需求、产品矩阵、非目标、验收与规划门禁均兑现。"}
+{"file": ".trellis/tasks/09-01-windows-agent-parity-log-hygiene/design.md", "reason": "检查一个跨平台 policy、按包类型复用 owner、exact identity 和日志状态设计未漂移。"}
+{"file": ".trellis/spec/backend/reuse.md", "reason": "负向检查没有第二套 downloader/job/PackageManager/EXE runner/helper/launcher 或通用 WinGet/shell 安装器。"}
+{"file": ".trellis/spec/backend/modular-boundaries.md", "reason": "检查 packaged capability 抽取仍为窄 facade，command/platform/service 依赖方向正确。"}
+{"file": ".trellis/spec/frontend/user-facing-copy.md", "reason": "检查 UI/日志不泄露完整路径、URL、SID、证书或原始安装器诊断。"}
+{"file": ".trellis/tasks/09-01-windows-agent-parity-log-hygiene/research/reuse-and-upstream-evidence.md", "reason": "检查第一方来源、WinGet 可选边界、Grok Build/Grok Bot 区分和零新依赖结论。"}
+{"file": ".trellis/tasks/09-01-windows-agent-parity-log-hygiene/research/windows-product-matrix.md", "reason": "检查逐产品 strategy、architecture、scope、update policy 和缺失证据没有被猜测填充。"}
+{"file": ".trellis/tasks/09-01-windows-agent-parity-log-hygiene/research/codex-sync-log-root-cause.md", "reason": "检查重复日志根因真正修复且 parent retry、cursor、replay prefix、dedup/token 正确性未牺牲。"}
+{"file": ".trellis/tasks/09-01-windows-agent-parity-log-hygiene/research/hil-and-release-gates.md", "reason": "检查 Windows x64 native HIL、条件 ARM64 HIL、Codex 迁移、日志长跑和 macOS 回归证据完整。"}
+{"file": ".trellis/spec/backend/windows-runtime-security.md", "reason": "检查 helper 闭集、无 elevated fallback、无通用命令。"}
+{"file": ".trellis/spec/backend/external-agent-p0.md", "reason": "检查产品矩阵与 Windows capability 未漂移。"}
+{"file": ".trellis/spec/backend/codex-desktop-installer.md", "reason": "检查 Codex exact identity 未被显示名匹配替换。"}
+{"file": ".trellis/spec/frontend/v2-agent-models.md", "reason": "检查 reason/action 四语言与 DTO parity。"}
+{"file": ".trellis/spec/frontend/reuse.md", "reason": "检查前端未另建产品动作表。"}
