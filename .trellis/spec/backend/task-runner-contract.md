@@ -640,10 +640,16 @@ script. Do not copy that literal into this spec or into generic docs.
 
 ### 3. Contracts
 
-- `advisory` is read-only bootstrap reporting. On non-macOS it prints SKIP and
-  exits 0 without probing. On macOS it prints the same complete report as
-  `check`; missing tools add an `ADVISORY` line and still exit 0. It never
-  starts Clippy, downloads CRT/SDK, or fails `bootstrap`.
+- `advisory` is read-only bootstrap reporting. Unsupported hosts print SKIP
+  and exit 0 without probing. Detect that skip by catching
+  `expectedWindowsMsvcCrossTarget(process.platform, process.arch)` against
+  `WINDOWS_MSVC_CROSS_HOST_TARGETS`. Do not write
+  `process.platform !== "darwin"` or `platform !== "darwin"`: the
+  `js:implicit-target` scanner treats a negated Darwin predicate as an
+  implicit non-macOS branch and fails `supported-platform:check`. On a
+  reviewed macOS host it prints the same complete report as `check`; missing
+  tools add an `ADVISORY` line and still exit 0. It never starts Clippy,
+  downloads CRT/SDK, or fails `bootstrap`.
 - `check` is the explicit strict preflight: probe every bounded prerequisite
   and print the complete report. Incomplete or unsupported-host results exit 1.
   It never installs, downloads, caches CRT/SDK, accepts a license, or starts
@@ -675,6 +681,7 @@ script. Do not copy that literal into this spec or into generic docs.
 | Condition | Required result |
 | --- | --- |
 | Advisory on non-macOS | Print SKIP; exit 0; no tool probe |
+| Advisory skip uses `process.platform !== "darwin"` | `js:implicit-target` / `supported-platform:check` fails |
 | Advisory on macOS with missing tools | Print complete report + `ADVISORY`; exit 0; bootstrap continues |
 | Strict preflight host is not macOS x64/arm64 | `ok=false`, `checks=[{id:supported-host}]`; exit 1; no tool probe |
 | Caller env/Cargo-config override is set | `ok=false`, `checks=[{id:caller-environment}]`; no Cargo |
@@ -695,9 +702,9 @@ script. Do not copy that literal into this spec or into generic docs.
   strict preflight on those hosts exits 1 with `supported-host`. Native
   Windows CI/HIL remains the authority.
 - **Bad:** let advisory exit 1, put strict preflight or Clippy in bootstrap,
-  accept forwarded `--target`, pin a second cargo-xwin version in a
-  spec/workflow, or treat a green report as Windows installer/registry
-  evidence.
+  skip hosts with `process.platform !== "darwin"`, accept forwarded
+  `--target`, pin a second cargo-xwin version in a spec/workflow, or treat a
+  green report as Windows installer/registry evidence.
 
 ### 6. Tests Required
 
@@ -706,6 +713,9 @@ script. Do not copy that literal into this spec or into generic docs.
   frozen argv, default-no metadata, no package-manager/elevation command,
   live `--json` preflight shape, advisory in bootstrap with exit 0, and
   strict preflight/Clippy absent from bootstrap/check.
+- `supported-platform:check` / `tests/remainingPlatformSurface.test.ts`: the
+  owner has no negated Darwin/`!== "win32"` fallback; advisory skip is the
+  reviewed host-map throw, not an implicit-target branch.
 - `tests/localBuildBoundary.test.ts` and `miseTaskContract`: the three named
   tasks exist with the signatures above; standard entrypoints still reject
   other cross-target markers.
@@ -720,6 +730,7 @@ script. Do not copy that literal into this spec or into generic docs.
 bootstrap -> system:check:windows-msvc-cross   # exit 1 blocks onboarding
 check -> rust:clippy:windows-msvc-cross
 cite macOS cargo-xwin as Windows HIL
+if (process.platform !== "darwin") { SKIP; return }
 ```
 
 #### Correct
@@ -729,6 +740,8 @@ bootstrap -> system:check:windows-msvc-cross:advisory   # never fails
 mise run system:check:windows-msvc-cross --json         # explicit, may fail
 mise run rust:clippy:windows-msvc-cross                 # default-no, frozen argv
 native Windows CI/HIL                                   # remaining acceptance
+try { expectedWindowsMsvcCrossTarget(process.platform, process.arch) }
+catch { print SKIP; return }
 ```
 
 ## macOS signed development runner
