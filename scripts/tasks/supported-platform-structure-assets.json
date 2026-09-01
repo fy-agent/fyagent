@@ -47,7 +47,7 @@
     ],
     [
       "src-tauri/Cargo.toml",
-      "63988629e3587cd5cf104ffb6bf282ccea71a696aa69564ea93104b0eccc391b"
+      "0edb3fa1c68c63bd6ab3428a34f6cb615fe7a5cb2a638665dd03a87f307b315b"
     ],
     [
       "src-tauri/src/agent_install/desktop.rs",
@@ -123,7 +123,7 @@
     ],
     [
       "src-tauri/src/codex_desktop/platform/windows/mod.rs",
-      "ac8aafc6fdbeab4306cc0a73ce173b9164b6ba89f0b6d4ce0a3a67d01c53566b"
+      "d5d36df9f89eeb1bb7c1d5aeca1cc7b2e1ce6b7d20a53349c845d349be950aca"
     ],
     [
       "src-tauri/src/codex_desktop/temp.rs",
@@ -235,7 +235,7 @@
     ],
     [
       "src-tauri/src/services/session_usage_codex.rs",
-      "57a37f57356d47f7bcdcbf39a178c23ee670c7810e49d9a20a575531a377d27e"
+      "6fdfb0a6b01ae5841401622eaa856646d0c0ea262aaafc08aa39563f318dd5c9"
     ],
     [
       "src-tauri/src/services/session_usage_grokbuild.rs",
@@ -251,19 +251,19 @@
     ],
     [
       "src-tauri/src/services/tooling.rs",
-      "bf628dbe25ee51973966587463c639a81d59deb628b3816c0ab9f220d6f5d381"
+      "d558705db0a746f7b15b172b8aa6b812897b02b843c0fa36c6a10f6b9ec59bfb"
     ],
     [
       "src-tauri/src/services/tooling/discovery.rs",
-      "bfeb914870ced452019ea60d582abc41955f2d26ac31d7ca3341cca030a3d40b"
+      "5a21aa858566373dddfaf5972391ea0b93746e140d5c557793c5ab277e0250fa"
     ],
     [
       "src-tauri/src/services/tooling/grok.rs",
-      "d220e108aac8dfba8c8e882a92d90db3490fb6c7fb410c5fa55909313ab86f5b"
+      "2e038c1b85e80a1cbf0bc302f009c954cd8f497777ad1c56918e0ec1c7acb469"
     ],
     [
       "src-tauri/src/services/tooling/lifecycle.rs",
-      "9d641dab66075362b54150cbab4072bfd381d0d72752c170536b76317cd3efc9"
+      "0a9dab81117c15eab7fe93e01aff862aaff955c9577e94d1f44e09d7a002d298"
     ],
     [
       "src-tauri/src/services/tooling/terminal.rs",
@@ -271,7 +271,7 @@
     ],
     [
       "src-tauri/src/services/tooling/versions.rs",
-      "a76692d6b3b5b22542e2bba61e6041f6a810f3170311315eab11ef05123d0564"
+      "c8f0ae3fb9d6af8e260b146180f9a3c0ddb4d0718252cca9ab64fc2a70db035b"
     ],
     [
       "src-tauri/src/services/traework_models.rs",
@@ -339,11 +339,11 @@
     ],
     [
       "src-tauri/user-helper/Cargo.toml",
-      "cbc960b80171619d4eef7ef634fc11b1aae7e9821dccdb08e158f35937178945"
+      "b544b13a47f5a5069211d117e1671f49d635846a9c0e89c42dbc952728a3e51f"
     ],
     [
       "src-tauri/user-helper/src/cli.rs",
-      "5a3221f5d397469f8d30a41bc1f6179751b41db6bd067facb903f5ec7379ed7a"
+      "39189b99cda90507f3fa4c1cdb6a5d489a4b3c8c1a5f713f4f507fa753c607b9"
     ],
     [
       "src-tauri/user-helper/src/layout.rs",
@@ -351,7 +351,7 @@
     ],
     [
       "src-tauri/user-helper/src/main.rs",
-      "c2c50d7f263313b1f2f48222a62ff6ec0e537d855fddf3a5c0aff7918351bb71"
+      "b5caa84fc3a58fdb58dd88cbdd0cc78981bc0fccb0bcf43d743e7c8cc9205fc1"
     ],
     [
       "src/App.tsx",
@@ -366,10 +366,6 @@
       "b5137154ad5d561569b5c6e2fae3b67dc9386f05605b0417b6fbf137abf0e478"
     ],
     [
-      "src/components/settings/AboutSection.tsx",
-      "3506d5ab469e41d72a5be7fb4683de37451a33b1e977b83f5671834852702dc6"
-    ],
-    [
       "src/components/settings/TerminalSettings.tsx",
       "6da3eabff63b75d4c061e18c3bff6b3d9911c9923362b1022102355da51835e9"
     ],
@@ -379,11 +375,11 @@
     ],
     [
       "tests/architecture/rustModuleBoundaries.test.ts",
-      "ed0cafcbda2daf9bad8fff1bb9f609a4520f3cf7596e2fbb67c8406cae23ea8b"
+      "338f69cd6a294aa955735fd0f075116a01c6195546bf022fb39ecbeba4ebf2aa"
     ],
     [
       "tests/codexUserHelperContract.test.ts",
-      "133c822842f6f317efa3e0a346335208a77469edca41433886cb85b68b5d6ce0"
+      "b57714c5acd42413ebf8c62cef246d234cedaa32b4b6eaa020efa49a8db245bb"
     ],
     [
       "tests/codexWindowsUserScopeContract.test.ts",

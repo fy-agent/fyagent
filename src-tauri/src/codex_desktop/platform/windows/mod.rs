@@ -52,7 +52,7 @@ pub use deployment::SystemWindowsDiskSpaceProbe;
 pub use deployment::SystemWindowsPackageManager;
 #[cfg(target_os = "windows")]
 #[cfg_attr(test, allow(unused_imports))]
-pub(crate) use helper::run_verified_agent_exe_installer;
+pub(crate) use helper::{run_grok_tool_operation, run_verified_agent_exe_installer};
 
 trait WindowsVerifiedFilePin: Send {
     fn recheck(&self) -> Result<(), InstallerError>;
@@ -108,6 +108,12 @@ impl WindowsHelperDeadlines {
     const AGENT_EXE_INSTALL: Self = Self {
         connect: Duration::from_secs(30),
         operation: Duration::from_secs(31 * 60),
+        terminal_close: Duration::from_secs(5),
+    };
+
+    const GROK_TOOL: Self = Self {
+        connect: Duration::from_secs(30),
+        operation: Duration::from_secs(6 * 60),
         terminal_close: Duration::from_secs(5),
     };
 }

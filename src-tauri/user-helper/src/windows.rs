@@ -1,16 +1,20 @@
 use std::{
     ffi::{OsStr, OsString},
     fs::File,
+    io::Read,
     mem::{offset_of, size_of},
     os::windows::{
         ffi::{OsStrExt, OsStringExt},
         io::{AsRawHandle, FromRawHandle, OwnedHandle},
+        process::CommandExt,
     },
     path::{Component, Path, PathBuf, Prefix},
+    process::{Command, Stdio},
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, Mutex,
     },
+    thread,
     time::{Duration, Instant},
 };
 
@@ -63,6 +67,7 @@ use windows::{
         },
         System::{
             Com::CoTaskMemFree,
+            Environment::GetEnvironmentVariableW,
             SystemServices::{ACCESS_ALLOWED_ACE_TYPE, FILE_PERSISTENT_ACLS, MAXIMUM_ALLOWED},
             Threading::{
                 CreateEventW, GetCurrentProcess, GetExitCodeProcess, OpenEventW, OpenProcessToken,
@@ -76,7 +81,8 @@ use windows::{
             },
         },
         UI::Shell::{
-            FOLDERID_ProgramData, PathCreateFromUrlW, SHGetKnownFolderPath, ShellExecuteExW,
+            FOLDERID_LocalAppData, FOLDERID_Profile, FOLDERID_ProgramData, FOLDERID_RoamingAppData,
+            FOLDERID_System, PathCreateFromUrlW, SHGetKnownFolderPath, ShellExecuteExW,
             UrlCreateFromPathW, KF_FLAG_DEFAULT, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW,
         },
         UI::WindowsAndMessaging::SW_SHOWNORMAL,
@@ -89,13 +95,22 @@ use windows_future::{
 
 use fyagent_user_helper::{
     admission_event_name, cancel_event_name, encode_frame,
+    grok::{
+        grok_native_windows_powershell_command, grok_windows_executable_names, infer_source_marker,
+        observe_owner_from_candidates, owner_from_install_paths, parse_cli_installer_hint,
+        parse_normalized_version, plan_grok_operation, GROK_LIFECYCLE_TIMEOUT_SECS,
+        GROK_LOCAL_APP_DATA_BIN_SEGMENTS, GROK_NPM_INSTALL_SPEC, GROK_OUTPUT_LIMIT,
+        GROK_PROFILE_BIN_SEGMENTS, GROK_ROAMING_APP_DATA_BIN_SEGMENTS, GROK_VERSION_TIMEOUT_SECS,
+        TOOL_OPERATION_STARTED_IDENTITY,
+    },
     helper_error_code_for_deployment_hresult,
     layout::{
         pipe_name, USER_HELPER_CONTROL_EVENT_ACCESS_MASK, USER_HELPER_EXECUTABLE_FILE_NAME,
         USER_HELPER_PIPE_CLIENT_ACCESS_MASK,
     },
-    AgentInstallerProduct, BridgeOperationId, HelperErrorCode, HelperMessage, InstallRequest,
-    PackageBridgeArtifactKind, PackageBridgeControl, PinnedPackageIdentity, UserHelperAction,
+    AgentInstallerProduct, BridgeOperationId, GrokOwner, GrokPlanFailure, GrokPlanKind,
+    GrokToolAction, HelperErrorCode, HelperMessage, InstallRequest, PackageBridgeArtifactKind,
+    PackageBridgeControl, PinnedPackageIdentity, ToolOperationResult, UserHelperAction,
     BRIDGE_CONTROL_BYTES, PACKAGE_BRIDGE_ROOT_DIRECTORY, PACKAGE_BRIDGE_VERSION_DIRECTORY,
 };
 
@@ -130,6 +145,8 @@ const BRIDGE_FILE_DANGEROUS_ACCESS: u32 = DELETE.0
     | WRITE_DAC.0
     | WRITE_OWNER.0;
 const MAX_DOS_PATH_U16: usize = 32_768;
+const CREATE_NO_WINDOW: u32 = 0x08000000;
+const GROK_CONFIG_MAX_BYTES: usize = 256 * 1024;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum HelperRunError {
@@ -172,6 +189,9 @@ pub(crate) fn run_install(request: &InstallRequest) -> Result<(), HelperRunError
     let channel = PipeChannel::connect(&pipe_name(request.pipe_nonce()))?;
     let channel = Arc::new(channel);
     channel.send_hello(action)?;
+    if matches!(action, UserHelperAction::GrokTool { .. }) {
+        return run_grok_tool_session(&controls, channel, action);
+    }
 
     let bridge_control = match channel.read_bridge_control(ADMISSION_TIMEOUT) {
         Ok(control) => control,
@@ -213,6 +233,9 @@ pub(crate) fn run_install(request: &InstallRequest) -> Result<(), HelperRunError
         UserHelperAction::AgentExeInstall(product) => {
             run_verified_exe_installer(&package_pin, product, &channel)
         }
+        UserHelperAction::GrokTool { .. } => Err(DeploymentFailure::Operation(
+            HelperErrorCode::InstallLayoutInvalid,
+        )),
     };
 
     match result {
@@ -226,6 +249,457 @@ pub(crate) fn run_install(request: &InstallRequest) -> Result<(), HelperRunError
             Err(HelperRunError::OperationFailed(code))
         }
     }
+}
+
+fn run_grok_tool_session(
+    controls: &ParentControls,
+    channel: Arc<PipeChannel>,
+    action: UserHelperAction,
+) -> Result<(), HelperRunError> {
+    let UserHelperAction::GrokTool {
+        action: tool_action,
+        expected_owner,
+    } = action
+    else {
+        return Err(HelperRunError::OperationFailed(
+            HelperErrorCode::InstallLayoutInvalid,
+        ));
+    };
+    if let Err(error) = channel.acknowledge_tool_control() {
+        let _ = channel.send_prestart_error(HelperErrorCode::ParentAdmissionFailed);
+        return Err(error);
+    }
+    channel.send_started(TOOL_OPERATION_STARTED_IDENTITY)?;
+    if let Err(code) = controls.wait_for_admission(ADMISSION_TIMEOUT) {
+        channel.send_terminal(HelperMessage::error(code))?;
+        return Err(HelperRunError::OperationFailed(code));
+    }
+    channel.mark_admitted()?;
+    match execute_grok_tool(tool_action, expected_owner) {
+        Ok(result) => {
+            let _ = channel.send_progress(100);
+            channel.send_terminal(HelperMessage::ToolResult(result))
+        }
+        Err(code) => {
+            channel.send_terminal(HelperMessage::error(code))?;
+            Err(HelperRunError::OperationFailed(code))
+        }
+    }
+}
+
+struct GrokCandidate {
+    path: PathBuf,
+    owner: GrokOwner,
+}
+
+fn execute_grok_tool(
+    action: GrokToolAction,
+    expected_owner: Option<GrokOwner>,
+) -> Result<ToolOperationResult, HelperErrorCode> {
+    let (observation, candidates) = discover_grok_candidates()?;
+    let plan =
+        plan_grok_operation(action, observation, expected_owner).map_err(
+            |failure| match failure {
+                GrokPlanFailure::OwnerMismatch => HelperErrorCode::ToolOwnerMismatch,
+                GrokPlanFailure::NotDetected => HelperErrorCode::ToolNotDetected,
+            },
+        )?;
+    match plan {
+        GrokPlanKind::Observe => Ok(observe_grok_result(&candidates, observation)),
+        GrokPlanKind::NativeFresh => {
+            run_native_fresh_install()?;
+            finalize_after_mutation(GrokToolAction::Install, expected_owner)
+        }
+        GrokPlanKind::NativeUpdate => {
+            let binary = preferred_candidate(&candidates, GrokOwner::Native)
+                .ok_or(HelperErrorCode::ToolNotDetected)?;
+            run_grok_binary(&binary.path, &["update"], grok_lifecycle_timeout())?;
+            finalize_after_mutation(GrokToolAction::Update, expected_owner)
+        }
+        GrokPlanKind::OfficialNpm => {
+            run_official_npm_install()?;
+            finalize_after_mutation(action, expected_owner)
+        }
+    }
+}
+
+fn finalize_after_mutation(
+    action: GrokToolAction,
+    expected_owner: Option<GrokOwner>,
+) -> Result<ToolOperationResult, HelperErrorCode> {
+    let (observation, candidates) = discover_grok_candidates()?;
+    match observation {
+        fyagent_user_helper::GrokOwnerObservation::Absent => Err(HelperErrorCode::ToolNotDetected),
+        fyagent_user_helper::GrokOwnerObservation::Ambiguous => {
+            Err(HelperErrorCode::ToolOwnerMismatch)
+        }
+        _ => {
+            if let Some(expected) = expected_owner {
+                if observation.owner() != Some(expected) {
+                    return Err(HelperErrorCode::ToolOwnerMismatch);
+                }
+            }
+            let mut result = observe_grok_result(&candidates, observation);
+            result.outcome = match action {
+                GrokToolAction::Install => fyagent_user_helper::GrokOutcome::Installed,
+                GrokToolAction::Update => fyagent_user_helper::GrokOutcome::Updated,
+                GrokToolAction::Observe => fyagent_user_helper::GrokOutcome::Observed,
+            };
+            Ok(result)
+        }
+    }
+}
+
+fn observe_grok_result(
+    candidates: &[GrokCandidate],
+    observation: fyagent_user_helper::GrokOwnerObservation,
+) -> ToolOperationResult {
+    let owner = observation.owner();
+    let version = owner.and_then(|wanted| {
+        preferred_candidate(candidates, wanted).and_then(|candidate| {
+            run_grok_binary(&candidate.path, &["--version"], grok_version_timeout())
+                .ok()
+                .and_then(|(output, _)| parse_normalized_version(&output))
+        })
+    });
+    ToolOperationResult::observed(
+        !matches!(
+            observation,
+            fyagent_user_helper::GrokOwnerObservation::Absent
+        ),
+        owner,
+        version,
+    )
+}
+
+fn preferred_candidate(candidates: &[GrokCandidate], owner: GrokOwner) -> Option<&GrokCandidate> {
+    candidates.iter().find(|candidate| candidate.owner == owner)
+}
+
+fn discover_grok_candidates() -> Result<
+    (
+        fyagent_user_helper::GrokOwnerObservation,
+        Vec<GrokCandidate>,
+    ),
+    HelperErrorCode,
+> {
+    let profile = known_user_folder(&FOLDERID_Profile)?;
+    let local = known_user_folder(&FOLDERID_LocalAppData)?;
+    let roaming = known_user_folder(&FOLDERID_RoamingAppData)?;
+    let config_owner = read_grok_config_owner(&profile);
+    let mut paths = Vec::new();
+    collect_segment_binaries(&profile, GROK_PROFILE_BIN_SEGMENTS, &mut paths);
+    collect_segment_binaries(&local, GROK_LOCAL_APP_DATA_BIN_SEGMENTS, &mut paths);
+    collect_segment_binaries(&roaming, GROK_ROAMING_APP_DATA_BIN_SEGMENTS, &mut paths);
+    collect_path_binaries(&mut paths)?;
+
+    let mut unique = Vec::new();
+    for path in paths {
+        let display = path.to_string_lossy();
+        let source = infer_source_marker(&display);
+        let owner = owner_from_install_paths(&display, &display, source, config_owner);
+        if unique
+            .iter()
+            .any(|existing: &GrokCandidate| existing.path == path)
+        {
+            continue;
+        }
+        unique.push(GrokCandidate { path, owner });
+    }
+    let observation = observe_owner_from_candidates(unique.iter().map(|candidate| candidate.owner));
+    Ok((observation, unique))
+}
+
+fn collect_segment_binaries(root: &Path, segments: &[&[&str]], into: &mut Vec<PathBuf>) {
+    for segments in segments {
+        let mut directory = root.to_path_buf();
+        for segment in *segments {
+            directory.push(segment);
+        }
+        push_grok_executables(&directory, into);
+    }
+}
+
+fn collect_path_binaries(into: &mut Vec<PathBuf>) -> Result<(), HelperErrorCode> {
+    for directory in interactive_path_directories()? {
+        if directory
+            .to_string_lossy()
+            .to_ascii_lowercase()
+            .contains("windowsapps")
+        {
+            continue;
+        }
+        push_grok_executables(&directory, into);
+    }
+    Ok(())
+}
+
+fn push_grok_executables(directory: &Path, into: &mut Vec<PathBuf>) {
+    for name in grok_windows_executable_names() {
+        let candidate = directory.join(name);
+        if candidate.is_file() {
+            into.push(candidate);
+        }
+    }
+}
+
+fn read_grok_config_owner(profile: &Path) -> Option<GrokOwner> {
+    let path = profile.join(".grok").join("config.toml");
+    let bytes = std::fs::read(&path).ok()?;
+    if bytes.len() > GROK_CONFIG_MAX_BYTES {
+        return None;
+    }
+    let text = String::from_utf8(bytes).ok()?;
+    parse_cli_installer_hint(&text)
+}
+
+fn run_native_fresh_install() -> Result<(), HelperErrorCode> {
+    let powershell = system_powershell()?;
+    let encoded = grok_native_windows_powershell_command();
+    let Some(encoded) =
+        encoded.strip_prefix("powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand ")
+    else {
+        return Err(HelperErrorCode::ToolExecutionFailed);
+    };
+    run_program(
+        &powershell,
+        &[
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-EncodedCommand",
+            encoded,
+        ],
+        grok_lifecycle_timeout(),
+    )
+    .map(|_| ())
+}
+
+fn run_official_npm_install() -> Result<(), HelperErrorCode> {
+    let npm = find_path_program(&["npm.cmd", "npm.exe"]).ok_or(HelperErrorCode::ToolHostMissing)?;
+    run_grok_binary(
+        &npm,
+        &["i", "-g", GROK_NPM_INSTALL_SPEC],
+        grok_lifecycle_timeout(),
+    )
+    .map(|_| ())
+}
+
+fn run_grok_binary(
+    program: &Path,
+    args: &[&str],
+    timeout: Duration,
+) -> Result<(String, i32), HelperErrorCode> {
+    let extension = program
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or("")
+        .eq_ignore_ascii_case("cmd");
+    if extension {
+        let cmd = system_command_processor()?;
+        let command_line = format!("{} {}", quote_windows_path(program), args.join(" "));
+        run_program(&cmd, &["/D", "/S", "/C", &command_line], timeout)
+    } else {
+        run_program(program, args, timeout)
+    }
+}
+
+fn run_program(
+    program: &Path,
+    args: &[&str],
+    timeout: Duration,
+) -> Result<(String, i32), HelperErrorCode> {
+    let mut command = Command::new(program);
+    command
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .creation_flags(CREATE_NO_WINDOW);
+    let mut child = command
+        .spawn()
+        .map_err(|_| HelperErrorCode::ToolHostMissing)?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or(HelperErrorCode::ToolExecutionFailed)?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or(HelperErrorCode::ToolExecutionFailed)?;
+    let captured = Arc::new(Mutex::new(Vec::new()));
+    let overflow = Arc::new(AtomicBool::new(false));
+    let stdout_thread = spawn_bounded_reader(stdout, captured.clone(), overflow.clone());
+    let stderr_thread = spawn_bounded_reader(stderr, captured.clone(), overflow.clone());
+    let deadline = Instant::now() + timeout;
+    loop {
+        if overflow.load(Ordering::Acquire) {
+            return terminate_child(
+                &mut child,
+                stdout_thread,
+                stderr_thread,
+                HelperErrorCode::ToolOutputLimit,
+            );
+        }
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return terminate_child(
+                &mut child,
+                stdout_thread,
+                stderr_thread,
+                HelperErrorCode::ToolTimedOut,
+            );
+        }
+        let wait = remaining.min(WAIT_SLICE);
+        let result =
+            unsafe { WaitForSingleObject(HANDLE(child.as_raw_handle()), duration_millis(wait)) };
+        if result == WAIT_OBJECT_0 {
+            let _ = stdout_thread.join();
+            let _ = stderr_thread.join();
+            if overflow.load(Ordering::Acquire) {
+                return Err(HelperErrorCode::ToolOutputLimit);
+            }
+            let mut code = 1_u32;
+            unsafe {
+                GetExitCodeProcess(HANDLE(child.as_raw_handle()), &mut code)
+                    .map_err(|_| HelperErrorCode::ToolExecutionFailed)?;
+            }
+            drop(child);
+            if code != 0 {
+                return Err(HelperErrorCode::ToolExecutionFailed);
+            }
+            let output = captured
+                .lock()
+                .map_err(|_| HelperErrorCode::ToolExecutionFailed)?;
+            return Ok((String::from_utf8_lossy(&output).into_owned(), code as i32));
+        }
+        if result == WAIT_FAILED || result != WAIT_TIMEOUT {
+            return terminate_child(
+                &mut child,
+                stdout_thread,
+                stderr_thread,
+                HelperErrorCode::ToolExecutionFailed,
+            );
+        }
+    }
+}
+
+fn terminate_child(
+    child: &mut std::process::Child,
+    stdout_thread: thread::JoinHandle<()>,
+    stderr_thread: thread::JoinHandle<()>,
+    code: HelperErrorCode,
+) -> Result<(String, i32), HelperErrorCode> {
+    let _ = child.kill();
+    let _ = child.wait();
+    let _ = stdout_thread.join();
+    let _ = stderr_thread.join();
+    Err(code)
+}
+
+fn spawn_bounded_reader(
+    mut pipe: impl Read + Send + 'static,
+    captured: Arc<Mutex<Vec<u8>>>,
+    overflow: Arc<AtomicBool>,
+) -> thread::JoinHandle<()> {
+    thread::spawn(move || {
+        let mut buffer = [0_u8; 4096];
+        loop {
+            match pipe.read(&mut buffer) {
+                Ok(0) => break,
+                Ok(read) => {
+                    let Ok(mut guard) = captured.lock() else {
+                        break;
+                    };
+                    if guard.len().saturating_add(read) > GROK_OUTPUT_LIMIT {
+                        overflow.store(true, Ordering::Release);
+                        break;
+                    }
+                    guard.extend_from_slice(&buffer[..read]);
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+                Err(_) => break,
+            }
+        }
+    })
+}
+
+fn grok_lifecycle_timeout() -> Duration {
+    Duration::from_secs(GROK_LIFECYCLE_TIMEOUT_SECS)
+}
+
+fn grok_version_timeout() -> Duration {
+    Duration::from_secs(GROK_VERSION_TIMEOUT_SECS)
+}
+
+fn known_user_folder(folder: &windows::core::GUID) -> Result<PathBuf, HelperErrorCode> {
+    let raw = unsafe { SHGetKnownFolderPath(folder, KF_FLAG_DEFAULT, None) }
+        .map_err(|_| HelperErrorCode::ToolHostMissing)?;
+    if raw.0.is_null() {
+        return Err(HelperErrorCode::ToolHostMissing);
+    }
+    let raw = CoTaskPath(raw);
+    let mut length = 0_usize;
+    while length < MAX_DOS_PATH_U16 && unsafe { *raw.0 .0.add(length) } != 0 {
+        length += 1;
+    }
+    if length == 0 || length == MAX_DOS_PATH_U16 {
+        return Err(HelperErrorCode::ToolHostMissing);
+    }
+    let path = unsafe { std::slice::from_raw_parts(raw.0 .0, length) };
+    Ok(PathBuf::from(OsString::from_wide(path)))
+}
+
+fn interactive_path_directories() -> Result<Vec<PathBuf>, HelperErrorCode> {
+    let mut buffer = vec![0_u16; 32_768];
+    let written = unsafe { GetEnvironmentVariableW(windows::core::w!("PATH"), Some(&mut buffer)) };
+    if written == 0 || written as usize >= buffer.len() {
+        return Err(HelperErrorCode::ToolHostMissing);
+    }
+    let text = OsString::from_wide(&buffer[..written as usize]);
+    Ok(std::env::split_paths(&text)
+        .filter(|path| path.is_absolute())
+        .collect())
+}
+
+fn find_path_program(names: &[&str]) -> Option<PathBuf> {
+    let directories = interactive_path_directories().ok()?;
+    for directory in directories {
+        for name in names {
+            let candidate = directory.join(name);
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+    }
+    None
+}
+
+fn system_powershell() -> Result<PathBuf, HelperErrorCode> {
+    let system = known_user_folder(&FOLDERID_System)?;
+    let powershell = system
+        .join("WindowsPowerShell")
+        .join("v1.0")
+        .join("powershell.exe");
+    if powershell.is_file() {
+        Ok(powershell)
+    } else {
+        Err(HelperErrorCode::ToolHostMissing)
+    }
+}
+
+fn system_command_processor() -> Result<PathBuf, HelperErrorCode> {
+    let system = known_user_folder(&FOLDERID_System)?;
+    let cmd = system.join("cmd.exe");
+    if cmd.is_file() {
+        Ok(cmd)
+    } else {
+        Err(HelperErrorCode::ToolHostMissing)
+    }
+}
+
+fn quote_windows_path(path: &Path) -> String {
+    format!("\"{}\"", path.to_string_lossy().replace('"', "\"\""))
 }
 
 fn deploy_fixed_package(
@@ -1726,6 +2200,15 @@ impl PipeChannel {
         Ok(control)
     }
 
+    fn acknowledge_tool_control(&self) -> Result<(), HelperRunError> {
+        let mut state = self.lock_state()?;
+        if state.state != ChannelState::HelloSent {
+            return self.fail_write();
+        }
+        state.state = ChannelState::ControlReceived;
+        Ok(())
+    }
+
     fn send_started(&self, package: PinnedPackageIdentity) -> Result<(), HelperRunError> {
         let mut state = self.lock_state()?;
         if state.state != ChannelState::ControlReceived {
@@ -1801,7 +2284,7 @@ impl PipeChannel {
     fn send_terminal(&self, message: HelperMessage) -> Result<(), HelperRunError> {
         if !matches!(
             message,
-            HelperMessage::Success | HelperMessage::Error { .. }
+            HelperMessage::Success | HelperMessage::ToolResult(_) | HelperMessage::Error { .. }
         ) {
             return self.fail_write();
         }

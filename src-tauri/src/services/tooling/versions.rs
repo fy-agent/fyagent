@@ -70,7 +70,7 @@ pub(super) async fn get_single_tool_version_impl(tool: &str) -> ToolVersion {
     }
 }
 
-async fn fetch_grok_latest_with_owner(
+pub(super) async fn fetch_grok_latest_with_owner(
     client: &reqwest::Client,
     local: Option<&str>,
 ) -> (Option<String>, Option<String>) {

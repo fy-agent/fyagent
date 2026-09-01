@@ -4,7 +4,7 @@
 //! composes `grok update || installer || npm` as one job. Windows command
 //! composition is owned by `lifecycle.rs` and is not changed here.
 
-#[cfg(any(target_os = "macos", test))]
+#[cfg(all(target_os = "windows", not(test)))]
 use super::ToolLifecycleAction;
 #[cfg(any(target_os = "macos", test))]
 use super::*;
@@ -49,6 +49,38 @@ impl GrokDistributionOwner {
         match self {
             Self::NativeInternal => GROK_DISTRIBUTION_NATIVE,
             Self::OfficialNpm => GROK_DISTRIBUTION_NPM,
+        }
+    }
+}
+
+#[cfg(any(target_os = "macos", test))]
+impl From<GrokDistributionOwner> for fyagent_user_helper::GrokOwner {
+    fn from(owner: GrokDistributionOwner) -> Self {
+        match owner {
+            GrokDistributionOwner::NativeInternal => Self::Native,
+            GrokDistributionOwner::OfficialNpm => Self::Npm,
+        }
+    }
+}
+
+#[cfg(any(target_os = "macos", test))]
+impl From<fyagent_user_helper::GrokOwner> for GrokDistributionOwner {
+    fn from(owner: fyagent_user_helper::GrokOwner) -> Self {
+        match owner {
+            fyagent_user_helper::GrokOwner::Native => Self::NativeInternal,
+            fyagent_user_helper::GrokOwner::Npm => Self::OfficialNpm,
+        }
+    }
+}
+
+#[cfg(any(target_os = "macos", test))]
+impl From<GrokOwnerObservation> for fyagent_user_helper::GrokOwnerObservation {
+    fn from(observation: GrokOwnerObservation) -> Self {
+        match observation {
+            GrokOwnerObservation::NativeInternal => Self::Native,
+            GrokOwnerObservation::OfficialNpm => Self::Npm,
+            GrokOwnerObservation::Ambiguous => Self::Ambiguous,
+            GrokOwnerObservation::Absent => Self::Absent,
         }
     }
 }
@@ -234,12 +266,8 @@ pub(super) enum GrokCheckResult {
 #[cfg(any(target_os = "macos", test))]
 pub(super) fn parse_grok_cli_installer(config_toml: &str) -> Option<GrokDistributionOwner> {
     let document: toml::Value = config_toml.parse().ok()?;
-    let installer = document.get("cli")?.get("installer")?.as_str()?.trim();
-    match installer {
-        "internal" | "gh-release" => Some(GrokDistributionOwner::NativeInternal),
-        "npm" => Some(GrokDistributionOwner::OfficialNpm),
-        _ => None,
-    }
+    let installer = document.get("cli")?.get("installer")?.as_str()?;
+    fyagent_user_helper::grok::owner_from_installer_value(installer).map(Into::into)
 }
 
 #[cfg(any(target_os = "macos", test))]
@@ -249,20 +277,13 @@ fn owner_from_install(
     install_source: &str,
     config_owner: Option<GrokDistributionOwner>,
 ) -> GrokDistributionOwner {
-    if is_grok_native_install(bin_path, real_target) {
-        return config_owner.unwrap_or(GrokDistributionOwner::NativeInternal);
-    }
-    match install_source {
-        "nvm" | "fnm" | "volta" | "mise" | "bun" | "pnpm" => GrokDistributionOwner::OfficialNpm,
-        _ => {
-            let combined = format!("{bin_path}\n{real_target}").replace('\\', "/");
-            if combined.contains("/node_modules/") || combined.contains("/.nvm/") {
-                GrokDistributionOwner::OfficialNpm
-            } else {
-                config_owner.unwrap_or(GrokDistributionOwner::OfficialNpm)
-            }
-        }
-    }
+    fyagent_user_helper::grok::owner_from_install_paths(
+        bin_path,
+        real_target,
+        install_source,
+        config_owner.map(Into::into),
+    )
+    .into()
 }
 
 #[cfg(any(target_os = "macos", test))]
@@ -349,61 +370,54 @@ pub(super) fn grok_plan_from_installs(
     config_toml: Option<&str>,
 ) -> Result<GrokPlan, GrokPlanError> {
     let observation = observe_grok_owner(installs, config_toml);
-    match action {
-        ToolLifecycleAction::InstallOfficialNpm => match observation {
-            GrokOwnerObservation::Ambiguous => Err(GrokPlanError::new(
-                "distribution_owner_mismatch",
-                None,
-                "Grok Build 安装来源不一致，需要先选择目标",
-            )),
-            GrokOwnerObservation::NativeInternal
-            | GrokOwnerObservation::OfficialNpm
-            | GrokOwnerObservation::Absent => Ok(GrokPlan::OfficialNpm {
-                bin_path: default_install(installs).map(|install| install.path.clone()),
-            }),
-        },
-        ToolLifecycleAction::Install => match observation {
-            GrokOwnerObservation::OfficialNpm => Err(GrokPlanError::new(
-                "distribution_owner_mismatch",
-                Some(GrokDistributionOwner::OfficialNpm),
-                "当前是官方 npm 安装，不会改用官方命令行安装",
-            )),
-            GrokOwnerObservation::Ambiguous => Err(GrokPlanError::new(
-                "distribution_owner_mismatch",
-                None,
-                "Grok Build 安装来源不一致，需要先选择目标",
-            )),
-            GrokOwnerObservation::NativeInternal | GrokOwnerObservation::Absent => {
-                Ok(GrokPlan::NativeFresh)
-            }
-        },
-        ToolLifecycleAction::Update => match observation {
-            GrokOwnerObservation::Absent => Err(GrokPlanError::new(
-                "post_install_not_observed",
-                None,
-                "未发现可更新的 Grok Build 安装",
-            )),
-            GrokOwnerObservation::Ambiguous => Err(GrokPlanError::new(
-                "distribution_owner_mismatch",
-                None,
-                "Grok Build 安装来源不一致，不能自动选择更新方式",
-            )),
-            GrokOwnerObservation::NativeInternal => {
-                let install = default_install(installs).ok_or_else(|| {
-                    GrokPlanError::new(
-                        "distribution_owner_mismatch",
-                        Some(GrokDistributionOwner::NativeInternal),
-                        "未找到可锚定的 Grok Build 安装",
-                    )
-                })?;
-                Ok(GrokPlan::NativeUpdate {
-                    bin_path: install.path.clone(),
-                })
-            }
-            GrokOwnerObservation::OfficialNpm => Ok(GrokPlan::OfficialNpm {
-                bin_path: default_install(installs).map(|install| install.path.clone()),
-            }),
-        },
+    let (tool_action, expected_owner) = match action {
+        ToolLifecycleAction::Install => (fyagent_user_helper::GrokToolAction::Install, None),
+        ToolLifecycleAction::InstallOfficialNpm => (
+            fyagent_user_helper::GrokToolAction::Install,
+            Some(fyagent_user_helper::GrokOwner::Npm),
+        ),
+        ToolLifecycleAction::Update => (fyagent_user_helper::GrokToolAction::Update, None),
+    };
+    match fyagent_user_helper::grok::plan_grok_operation(
+        tool_action,
+        observation.into(),
+        expected_owner,
+    ) {
+        Ok(fyagent_user_helper::GrokPlanKind::NativeFresh) => Ok(GrokPlan::NativeFresh),
+        Ok(fyagent_user_helper::GrokPlanKind::NativeUpdate) => {
+            let install = default_install(installs).ok_or_else(|| {
+                GrokPlanError::new(
+                    "distribution_owner_mismatch",
+                    Some(GrokDistributionOwner::NativeInternal),
+                    "未找到可锚定的 Grok Build 安装",
+                )
+            })?;
+            Ok(GrokPlan::NativeUpdate {
+                bin_path: install.path.clone(),
+            })
+        }
+        Ok(fyagent_user_helper::GrokPlanKind::OfficialNpm) => Ok(GrokPlan::OfficialNpm {
+            bin_path: default_install(installs).map(|install| install.path.clone()),
+        }),
+        Ok(fyagent_user_helper::GrokPlanKind::Observe) => Err(GrokPlanError::new(
+            "distribution_owner_mismatch",
+            None,
+            "Grok Build 安装来源不一致，需要先选择目标",
+        )),
+        Err(fyagent_user_helper::GrokPlanFailure::OwnerMismatch) => Err(GrokPlanError::new(
+            "distribution_owner_mismatch",
+            observation.owner(),
+            match observation {
+                GrokOwnerObservation::OfficialNpm => "当前是官方 npm 安装，不会改用官方命令行安装",
+                GrokOwnerObservation::Ambiguous => "Grok Build 安装来源不一致，需要先选择目标",
+                _ => "Grok Build 安装来源不一致，不能自动选择更新方式",
+            },
+        )),
+        Err(fyagent_user_helper::GrokPlanFailure::NotDetected) => Err(GrokPlanError::new(
+            "post_install_not_observed",
+            None,
+            "未发现可更新的 Grok Build 安装",
+        )),
     }
 }
 
@@ -1157,6 +1171,75 @@ fn run_login_bash(command: &str, timeout: Duration) -> Result<std::process::Outp
         CommandDeadline::from_timeout(Some(timeout)),
         Some(GROK_OUTPUT_LIMIT),
     )
+}
+
+#[cfg(target_os = "windows")]
+pub(super) async fn run_windows_grok_helper_lifecycle(
+    action: ToolLifecycleAction,
+) -> Result<(), String> {
+    let (tool_action, expected_owner) = grok_helper_request(action);
+    tokio::task::spawn_blocking(move || {
+        let context = crate::windows_runtime::require_interactive_user_context();
+        crate::codex_desktop::platform::windows::run_grok_tool_operation(
+            context,
+            tool_action,
+            expected_owner,
+        )
+        .map_err(map_grok_helper_error)?;
+        Ok(())
+    })
+    .await
+    .map_err(|error| format!("tool lifecycle task join error: {error}"))?
+}
+
+#[cfg(target_os = "windows")]
+pub(super) async fn observe_windows_grok_via_helper(
+) -> Result<fyagent_user_helper::ToolOperationResult, String> {
+    tokio::task::spawn_blocking(|| {
+        let context = crate::windows_runtime::require_interactive_user_context();
+        crate::codex_desktop::platform::windows::run_grok_tool_operation(
+            context,
+            fyagent_user_helper::GrokToolAction::Observe,
+            None,
+        )
+        .map_err(map_grok_helper_error)
+    })
+    .await
+    .map_err(|error| format!("tool observe task join error: {error}"))?
+}
+
+#[cfg(target_os = "windows")]
+fn grok_helper_request(
+    action: ToolLifecycleAction,
+) -> (
+    fyagent_user_helper::GrokToolAction,
+    Option<fyagent_user_helper::GrokOwner>,
+) {
+    match action {
+        ToolLifecycleAction::Install => (fyagent_user_helper::GrokToolAction::Install, None),
+        ToolLifecycleAction::InstallOfficialNpm => (
+            fyagent_user_helper::GrokToolAction::Install,
+            Some(fyagent_user_helper::GrokOwner::Npm),
+        ),
+        ToolLifecycleAction::Update => (fyagent_user_helper::GrokToolAction::Update, None),
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn map_grok_helper_error(error: crate::codex_desktop::error::InstallerError) -> String {
+    use fyagent_user_helper::HelperErrorCode;
+    match error.to_dto().details.platform_error_code.as_deref() {
+        Some("grok_tool_host_missing") => HelperErrorCode::ToolHostMissing.redacted_message(),
+        Some("grok_tool_timed_out") => HelperErrorCode::ToolTimedOut.redacted_message(),
+        Some("grok_tool_output_limit") => HelperErrorCode::ToolOutputLimit.redacted_message(),
+        Some("grok_tool_owner_mismatch") => HelperErrorCode::ToolOwnerMismatch.redacted_message(),
+        Some("grok_tool_not_detected") => HelperErrorCode::ToolNotDetected.redacted_message(),
+        Some("grok_tool_execution_failed") => {
+            HelperErrorCode::ToolExecutionFailed.redacted_message()
+        }
+        _ => "Grok Build is unavailable for the current Windows user.",
+    }
+    .to_owned()
 }
 
 #[cfg(test)]

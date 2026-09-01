@@ -1,6 +1,6 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AboutSection } from "@/components/settings/AboutSection";
 
 const mocks = vi.hoisted(() => ({
@@ -25,11 +25,6 @@ vi.mock("@/lib/api", () => ({
   },
 }));
 
-vi.mock("@/lib/platform", () => ({
-  isWindows: () => false,
-  isMac: () => true,
-}));
-
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
@@ -47,6 +42,15 @@ vi.mock("@/components/settings/ToolUpgradeConfirmDialog", () => ({
   ToolUpgradeConfirmDialog: () => null,
 }));
 
+const READ_ONLY_TOOL_LABELS = [
+  "Claude Code",
+  "Codex CLI",
+  "Gemini CLI",
+  "OpenCode",
+  "OpenClaw",
+  "Hermes",
+] as const;
+
 const toolVersion = (name: string) => ({
   name,
   version: name === "claude" || name === "codex" ? "1.0.0" : "2.0.0",
@@ -55,8 +59,27 @@ const toolVersion = (name: string) => ({
   installed_but_broken: false,
 });
 
+function toolCard(label: string): HTMLElement {
+  const heading = screen
+    .getAllByText(label)
+    .find(
+      (node) =>
+        node instanceof HTMLElement &&
+        node.className.includes("truncate text-sm font-medium"),
+    );
+  expect(heading).toBeDefined();
+  const card = heading?.closest("div[class*='min-h']");
+  expect(card).not.toBeNull();
+  return card as HTMLElement;
+}
+
 describe("AboutSection", () => {
+  let dateNow: ReturnType<typeof vi.spyOn>;
+  let clock = 1_700_000_000_000;
+
   beforeEach(() => {
+    clock += 11 * 60 * 1000;
+    dateNow = vi.spyOn(Date, "now").mockReturnValue(clock);
     mocks.getVersion.mockResolvedValue("0.1.0");
     mocks.getToolVersions.mockImplementation(async (tools: string[]) =>
       tools.map(toolVersion),
@@ -65,23 +88,23 @@ describe("AboutSection", () => {
     mocks.runToolLifecycleAction.mockResolvedValue(undefined);
   });
 
-  it("keeps Codex CLI read-only while preserving versions and other tool actions", async () => {
-    const user = userEvent.setup();
+  afterEach(() => {
+    dateNow.mockRestore();
+  });
 
+  it("keeps non-Grok tools read-only and does not offer copy-command installers", async () => {
     render(<AboutSection isPortable={false} />);
 
     expect(
-      screen.queryByRole("button", { name: "settings.checkForUpdates" }),
+      screen.queryByRole("button", { name: "settings.manualInstallCommands" }),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "settings.releaseNotes" }),
+      screen.queryByRole("button", { name: "settings.updateAllTools" }),
     ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "settings.officialWebsite" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "settings.github" }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/npm i -g/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/install\.sh/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/install\.ps1/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/winget/i)).not.toBeInTheDocument();
 
     await waitFor(() => {
       expect(
@@ -94,65 +117,80 @@ describe("AboutSection", () => {
       ).toBe(true);
     });
 
-    const codexCard = screen
-      .getByText("Codex CLI")
-      .closest("div[class*='min-h']");
-    expect(codexCard).not.toBeNull();
-    await waitFor(() => {
+    for (const label of READ_ONLY_TOOL_LABELS) {
+      const card = toolCard(label);
+      await waitFor(() => {
+        expect(
+          within(card).queryByText("common.loading"),
+        ).not.toBeInTheDocument();
+      });
       expect(
-        within(codexCard as HTMLElement).getByText("1.0.0"),
-      ).toBeInTheDocument();
+        within(card).queryByRole("button", { name: "settings.toolInstall" }),
+      ).not.toBeInTheDocument();
+      expect(
+        within(card).queryByRole("button", { name: "settings.toolUpdate" }),
+      ).not.toBeInTheDocument();
+      expect(
+        within(card).queryByRole("button", {
+          name: "settings.grokUseOfficialNpm",
+        }),
+      ).not.toBeInTheDocument();
+    }
+
+    const claudeCard = toolCard("Claude Code");
+    await waitFor(() => {
+      expect(within(claudeCard).getByText("1.0.0")).toBeInTheDocument();
     });
     expect(
-      within(codexCard as HTMLElement).queryByRole("button", {
-        name: "settings.toolInstall",
-      }),
-    ).not.toBeInTheDocument();
-    expect(
-      within(codexCard as HTMLElement).queryByRole("button", {
-        name: "settings.toolUpdate",
-      }),
+      within(claudeCard).queryByText("settings.updateAvailableShort"),
     ).not.toBeInTheDocument();
 
-    const claudeCard = screen
-      .getByText("Claude Code")
-      .closest("div[class*='min-h']");
-    expect(claudeCard).not.toBeNull();
+    expect(mocks.runToolLifecycleAction).not.toHaveBeenCalled();
+  });
+
+  it("lets Grok Build keep its CLI install and update actions", async () => {
+    const user = userEvent.setup();
+    mocks.getToolVersions.mockImplementation(async (tools: string[]) =>
+      tools.map((name) =>
+        name === "grok"
+          ? {
+              name,
+              version: "1.0.0",
+              latest_version: "2.0.0",
+              error: null,
+              installed_but_broken: false,
+              distribution_owner: "official_npm",
+            }
+          : toolVersion(name),
+      ),
+    );
+
+    render(<AboutSection isPortable={false} />);
+    const card = toolCard("Grok Build");
     await waitFor(() => {
       expect(
-        within(claudeCard as HTMLElement).getByRole("button", {
-          name: "settings.toolUpdate",
-        }),
+        within(card).getByRole("button", { name: "settings.toolUpdate" }),
       ).toBeEnabled();
     });
 
     await user.click(
-      screen.getByRole("button", { name: "settings.manualInstallCommands" }),
+      within(card).getByRole("button", { name: "settings.toolUpdate" }),
     );
-    const commands = screen.getByText(/# Claude Code/).closest("pre");
-    expect(commands?.textContent).not.toContain("@openai/codex");
-    expect(commands?.textContent).not.toContain("# Codex");
-
-    const updateAll = screen.getByRole("button", {
-      name: "settings.updateAllTools",
-    });
-    await waitFor(() => expect(updateAll).toBeEnabled());
-    await user.click(updateAll);
 
     await waitFor(() => {
-      expect(mocks.probeToolInstallations).toHaveBeenCalledWith(["claude"]);
+      expect(mocks.probeToolInstallations).toHaveBeenCalledWith(["grok"]);
       expect(mocks.runToolLifecycleAction).toHaveBeenCalledWith(
-        ["claude"],
+        ["grok"],
         "update",
       );
     });
+    expect(mocks.runToolLifecycleAction.mock.calls).toEqual([
+      [["grok"], "update"],
+    ]);
   });
 
   it("installs Grok via official npm only when the user chooses that action", async () => {
     const user = userEvent.setup();
-    const dateNow = vi
-      .spyOn(Date, "now")
-      .mockReturnValue(Date.now() + 11 * 60 * 1000);
     mocks.getToolVersions.mockImplementation(async (tools: string[]) =>
       tools.map((name) =>
         name === "grok"
@@ -168,38 +206,80 @@ describe("AboutSection", () => {
           : toolVersion(name),
       ),
     );
-    try {
-      render(<AboutSection isPortable={false} />);
-      const grokCard = await screen.findByText("Grok Build");
-      const card = grokCard.closest("div[class*='min-h']") as HTMLElement;
-      await waitFor(() => {
-        expect(
-          within(card).getByRole("button", {
-            name: "settings.grokUseOfficialNpm",
-          }),
-        ).toBeEnabled();
-      });
-      await user.click(
+    render(<AboutSection isPortable={false} />);
+    const card = toolCard("Grok Build");
+    await waitFor(() => {
+      expect(
         within(card).getByRole("button", {
           name: "settings.grokUseOfficialNpm",
         }),
-      );
-      await waitFor(() => {
-        expect(mocks.runToolLifecycleAction).toHaveBeenCalledWith(
-          ["grok"],
-          "install_official_npm",
-        );
-      });
-      expect(mocks.runToolLifecycleAction).not.toHaveBeenCalledWith(
+      ).toBeEnabled();
+      expect(
+        within(card).getByRole("button", { name: "settings.toolInstall" }),
+      ).toBeEnabled();
+    });
+    await user.click(
+      within(card).getByRole("button", {
+        name: "settings.grokUseOfficialNpm",
+      }),
+    );
+    await waitFor(() => {
+      expect(mocks.runToolLifecycleAction).toHaveBeenCalledWith(
         ["grok"],
-        "install",
+        "install_official_npm",
       );
-    } finally {
-      dateNow.mockRestore();
-    }
+    });
+    expect(mocks.runToolLifecycleAction).not.toHaveBeenCalledWith(
+      ["grok"],
+      "install",
+    );
   });
 
-  it("shows the Windows administrator runtime status only in About", () => {
+  it("does not render absolute paths when diagnosing Grok conflicts", async () => {
+    const user = userEvent.setup();
+    const leakedPath = "C:\\Users\\alice\\AppData\\Roaming\\npm\\grok.cmd";
+    mocks.probeToolInstallations.mockResolvedValue([
+      {
+        tool: "grok",
+        is_conflict: true,
+        needs_confirmation: false,
+        command: "npm i -g @xai-official/grok@latest",
+        anchored: true,
+        installs: [
+          {
+            path: leakedPath,
+            version: "1.0.0",
+            runnable: true,
+            error: null,
+            source: "npm",
+            is_path_default: true,
+          },
+        ],
+      },
+    ]);
+
+    render(<AboutSection isPortable={false} />);
+    const grokCard = toolCard("Grok Build");
+    await waitFor(() => {
+      expect(
+        within(grokCard).queryByText("common.loading"),
+      ).not.toBeInTheDocument();
+    });
+    await user.click(
+      screen.getByRole("button", { name: "settings.toolDiagnose" }),
+    );
+    await waitFor(() => {
+      expect(
+        within(grokCard).getByText("settings.toolConflictTitle"),
+      ).toBeInTheDocument();
+    });
+    expect(within(grokCard).getByText("npm")).toBeInTheDocument();
+    expect(within(grokCard).getByText("1.0.0")).toBeInTheDocument();
+    expect(within(grokCard).queryByText(leakedPath)).not.toBeInTheDocument();
+    expect(screen.queryByText(/npm i -g/)).not.toBeInTheDocument();
+  });
+
+  it("shows the Windows administrator runtime status only in About", async () => {
     render(
       <AboutSection
         isPortable={false}
@@ -216,5 +296,8 @@ describe("AboutSection", () => {
     expect(
       screen.getByText("settings.runtimePrivilegeAdministrator"),
     ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(mocks.getVersion).toHaveBeenCalled();
+    });
   });
 });

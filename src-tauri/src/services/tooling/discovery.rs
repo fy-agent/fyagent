@@ -42,13 +42,19 @@ pub(super) fn is_conflicting(installs: &[ToolInstallation]) -> bool {
 pub async fn probe_tool_installations(
     tools: Vec<String>,
 ) -> Result<Vec<ToolInstallationReport>, String> {
-    if elevated_windows_cli_boundary_active() {
-        return Err(ELEVATED_WINDOWS_CLI_BOUNDARY_MESSAGE.to_string());
-    }
-
     let requested = normalize_requested_tools(&tools);
     if requested.is_empty() {
         return Err("No supported tools selected".to_string());
+    }
+
+    #[cfg(target_os = "windows")]
+    if elevated_windows_cli_boundary_active() {
+        return probe_formal_windows_installations(requested).await;
+    }
+
+    #[cfg(target_os = "macos")]
+    if elevated_windows_cli_boundary_active() {
+        return Err(ELEVATED_WINDOWS_CLI_BOUNDARY_MESSAGE.to_string());
     }
 
     tokio::task::spawn_blocking(move || {
@@ -56,7 +62,8 @@ pub async fn probe_tool_installations(
             .into_iter()
             .map(|tool| {
                 let installs = enumerate_tool_installations(tool);
-                let (command, needs_confirmation, anchored) = plan_command_for(tool, &installs);
+                let (_planned_command, needs_confirmation, anchored) =
+                    plan_command_for(tool, &installs);
                 let is_conflict = is_conflicting(&installs);
                 #[cfg(target_os = "macos")]
                 let distribution_owner = (tool == "grok")
@@ -70,7 +77,7 @@ pub async fn probe_tool_installations(
                     installs,
                     is_conflict,
                     needs_confirmation,
-                    command,
+                    command: String::new(),
                     anchored,
                     distribution_owner,
                 }
@@ -79,6 +86,38 @@ pub async fn probe_tool_installations(
     })
     .await
     .map_err(|e| format!("probe task join error: {e}"))
+}
+
+#[cfg(target_os = "windows")]
+async fn probe_formal_windows_installations(
+    requested: Vec<&'static str>,
+) -> Result<Vec<ToolInstallationReport>, String> {
+    let mut reports = Vec::new();
+    for tool in requested {
+        if tool != "grok" {
+            reports.push(ToolInstallationReport {
+                tool: tool.to_string(),
+                installs: Vec::new(),
+                is_conflict: false,
+                needs_confirmation: false,
+                command: String::new(),
+                anchored: false,
+                distribution_owner: None,
+            });
+            continue;
+        }
+        let observation = super::grok::observe_windows_grok_via_helper().await?;
+        reports.push(ToolInstallationReport {
+            tool: tool.to_string(),
+            installs: Vec::new(),
+            is_conflict: false,
+            needs_confirmation: false,
+            command: String::new(),
+            anchored: false,
+            distribution_owner: observation.owner.map(|owner| owner.as_str().to_string()),
+        });
+    }
+    Ok(reports)
 }
 
 pub(crate) fn run_detected_tool_command_with_timeout(

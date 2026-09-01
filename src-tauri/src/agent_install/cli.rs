@@ -68,9 +68,13 @@ pub async fn run_cli_lifecycle(
     tooling::run_tool_lifecycle_action(vec![tool.to_string()], lifecycle.to_string())
         .await
         .map_err(|error| {
-            if error.contains("elevated Windows") {
+            if error.contains("elevated Windows")
+                || error.contains("unavailable for the current Windows user")
+            {
                 super::types::AgentReasonCode::InteractiveUserUnavailable
-            } else if error.contains("Codex CLI lifecycle") {
+            } else if error.contains("Codex CLI lifecycle")
+                || error.contains("only available for Grok Build")
+            {
                 super::types::AgentReasonCode::ExecutorNotImplemented
             } else {
                 super::types::AgentReasonCode::SourceNotVerified
