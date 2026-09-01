@@ -82,7 +82,8 @@ mise run dev
 - No repository task runs `mise trust` or `mise untrust`.
 - `bootstrap` is the only high-level environment-preparation task. It consumes
   existing locks, installs repository tools/dependencies, synchronizes the
-  locked uv environment, and validates task metadata. It must not install
+  locked uv environment, validates task metadata, and runs the read-only,
+  non-failing Windows-MSVC advisory. It must not install
   system packages, change Git/remotes, refresh locks, build, sign, tag, upload,
   or publish.
 - `env:check` is strict and read-only. It compares every authority with the
@@ -91,14 +92,18 @@ mise run dev
 - `system:check` is strict and read-only. It diagnoses current-host native
   prerequisites and prints official, non-elevating installation guidance; it
   never invokes `sudo`, a package manager, or an installer.
-- macOS developers who explicitly need early Windows-MSVC compile diagnostics
-  run `mise run system:check:windows-msvc-cross`. It checks the reviewed
+- `bootstrap` runs `system:check:windows-msvc-cross:advisory`. On macOS it
+  checks the reviewed
   cargo-xwin version, Clippy, installed Windows x64 Rust standard library,
-  clang-cl/LLD/llvm-lib, CMake, and Ninja without installing anything. After a
-  successful report they may explicitly run
+  clang-cl/LLD/llvm-lib, CMake, and Ninja without installing anything. Missing
+  optional tools are reported but do not invalidate normal bootstrap. On other
+  hosts it prints an explicit macOS-only skip. Developers who require a strict
+  result run `mise run system:check:windows-msvc-cross`; after a successful
+  strict report they may explicitly run
   `mise run rust:clippy:windows-msvc-cross`; that task is default-no and may
   download/cache Microsoft CRT/SDK content under the license linked by
-  cargo-xwin. It is not part of bootstrap or the default check gate.
+  cargo-xwin. Strict preflight and Clippy stay outside bootstrap, and no member
+  of the diagnostic family enters the default check gate.
 - Maintained local project operations use `mise run <task>`. Supported package
   aliases route through the same guarded implementation. A hand-written
   low-level Cargo/Tauri command is not a canonical entrypoint or acceptance
@@ -179,25 +184,27 @@ open a PR, or publish.
 | Linux x64/ARM64 is refused as a development host | Fail the environment contract. |
 | A local/portable result is presented as another platform's native evidence | Keep that native gate pending. |
 | Host native libraries are missing | `system:check` fails with non-elevating official guidance. |
-| Optional Windows-MSVC tools are missing on macOS | `system:check:windows-msvc-cross` lists every missing item and hint; default bootstrap/check still retain their own result. |
+| Optional Windows-MSVC tools are missing on macOS | `system:check:windows-msvc-cross` lists every missing item and hint and exits 1; `system:check:windows-msvc-cross:advisory` prints `ADVISORY` and exits 0; default bootstrap/check still retain their own result. |
 | Optional cross Clippy is invoked without explicit confirmation | Do not run or download/cache the SDK. |
 | Optional cross task receives target/compiler/linker/CMake/xwin/Cargo-config overrides | Reject before any toolchain child. |
 | Cross Clippy passes but Windows native evidence is absent | Report only diagnostics; keep Windows acceptance pending. |
 
 ## 5. Good / Base / Bad Cases
 
-- **Good:** one authority per ecosystem; locked bootstrap; exact executable,
-  lock, and workflow agreement; current-host-only local execution except the
-  named macOS Windows-MSVC diagnostic; Linux development-host admission
+- **Good:** one authority per ecosystem; locked bootstrap with a read-only
+  cross-MSVC advisory; exact executable, lock, and workflow agreement;
+  current-host-only local execution except the named macOS Windows-MSVC
+  diagnostic; Linux development-host admission
   without a Linux product claim; matching native Actions evidence for shipped
   platforms.
 - **Base:** a portable policy/parser test runs on the current host and reports
   only that bounded result. Missing native platform evidence remains pending.
-  Optional `system:check:windows-msvc-cross` failure does not fail
-  `bootstrap` or `check`.
+  Advisory gaps do not fail bootstrap; strict preflight fails independently
+  and does not affect `check`.
 - **Bad:** duplicate literal versions, automatic trust/system installation,
   system-Python fallback, hand-edited lock artifacts, a foreign `--target`,
-  putting cargo-xwin into bootstrap, or portable/local/cross-Clippy output
+  putting strict cross Clippy or cargo-xwin installation into bootstrap, or
+  portable/local/cross-Clippy output
   presented as another platform's native acceptance.
 
 ## 6. Tests Required
@@ -214,9 +221,10 @@ open a PR, or publish.
   `system:check`, including complete failure reporting when prerequisites are
   absent.
 - Exercise `system:check:windows-msvc-cross --json` on the real host plus pure
-  fixtures for every prerequisite; prove the Clippy task is macOS-only,
-  fixed-version/fixed-target/fixed-argv, default-no, non-installing, and absent
-  from bootstrap/check DAGs.
+  fixtures for every prerequisite; prove Clippy is macOS-only,
+  fixed-version/fixed-target/fixed-argv, default-no, and non-installing;
+  prove advisory is in bootstrap with exit 0; prove strict preflight and
+  Clippy are absent from bootstrap/check DAGs.
 - Exercise real task argument/flag transport and the host-native guard's
   positive and negative OS/architecture mappings, including Linux x64/ARM64.
 - Test absolute compiler/rustdoc identity, environment/Cargo-config rejection,
@@ -241,7 +249,7 @@ copy exact versions into mise, specs, and workflows
 fall back to system Python
 let ordinary tasks install/trust/update automatically
 run cargo/tauri with a foreign --target and cite it as acceptance
-add cargo-xwin to bootstrap/check
+add cargo-xwin to check or let advisory fail bootstrap
 treat Linux development-host admission as a Linux release target
 ```
 
@@ -251,7 +259,7 @@ Correct:
 one ecosystem authority -> exact executable/workflow/lock comparison
 mise orchestration -> committed multi-host lock -> uv-owned Python
 canonical task -> verified current host -> direct native child
-named macOS Windows-MSVC diagnostic -> compile diagnostics only
+named macOS Windows-MSVC diagnostic -> advisory in bootstrap, strict/clippy explicit
 matching native Actions runner -> shipped-platform evidence
 Linux local check -> development evidence only
 ```
