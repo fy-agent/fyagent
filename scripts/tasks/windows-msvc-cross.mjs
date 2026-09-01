@@ -340,11 +340,15 @@ function main() {
   if (!new Set(["advisory", "check", "clippy"]).has(mode)) {
     throw new Error(`Unknown Windows MSVC cross task mode: ${mode ?? ""}`);
   }
-  if (mode === "advisory" && process.platform !== "darwin") {
-    console.log(
-      `Windows MSVC cross prerequisites (${process.platform}): SKIP optional macOS-only diagnostic`,
-    );
-    return;
+  if (mode === "advisory") {
+    try {
+      expectedWindowsMsvcCrossTarget(process.platform, process.arch);
+    } catch {
+      console.log(
+        `Windows MSVC cross prerequisites (${process.platform}): SKIP optional macOS-only diagnostic`,
+      );
+      return;
+    }
   }
   const report = inspectWindowsMsvcCross();
   const json = usageBoolean("json") || process.argv.includes("--json");

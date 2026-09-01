@@ -39,7 +39,7 @@
     ],
     [
       "scripts/tasks/windows-msvc-cross.mjs",
-      "c90ede3175a2a91179c65ff62e73c6ae7cbc293645007659b735905924a5dfac"
+      "e462027d47004cb0e260a95954f6d05f6709f3ae0dccc866dd78887381130618"
     ],
     [
       "scripts/tasks/windows-msvc-env.mjs",
@@ -55,11 +55,11 @@
     ],
     [
       "src-tauri/src/agent_install/desktop.rs",
-      "f5641b04d479dab4fec59c5bd4d48665194d6a281c5a85b4041a934349de7e1b"
+      "079c3a0904856e14c284b77a2ced615864cbbc02ab456487eaaec6c5f73bfa33"
     ],
     [
       "src-tauri/src/agent_install/inventory.rs",
-      "b242f7cce1ff8a6ac6659b144803021cca4e0e2b0ccebc1c5c028005547d73e3"
+      "bff2a7ac5f48cd855ffbcf9f1eeb441802c45f74a425938e51e75634ec71f150"
     ],
     [
       "src-tauri/src/agent_install/macos.rs",
@@ -67,7 +67,7 @@
     ],
     [
       "src-tauri/src/agent_install/mod.rs",
-      "1d9d3dee4568cf668eb320d154e62febdb6fdaa925d25dabb2088a4efcd878d5"
+      "26089f7e54135c34780262c5cd740721ede9acd67bdb12efb018d725a2310189"
     ],
     [
       "src-tauri/src/agent_install/sources/mod.rs",
@@ -427,7 +427,7 @@
     ],
     [
       "tests/windowsMsvcCross.test.ts",
-      "0839e0ffaa8bac4114b922f05bf4e8b1a1a899206c9e755cbb11ab991f687fc0"
+      "03e26dc63c18929887a964286e3ed1af6ca4d404c92e5e3394cedba8f3f96285"
     ]
   ]
 }

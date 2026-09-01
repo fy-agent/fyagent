@@ -12,20 +12,21 @@ the approved `uv = latest` resolution is pinned in `mise.lock`.
 
 ## Setup and Checks
 
-| Task                              | Description                                                                                  | Usage                        | Effect                 |
-| --------------------------------- | -------------------------------------------------------------------------------------------- | ---------------------------- | ---------------------- |
-| `bootstrap`                       | Install locked repository tools and dependencies, then run strict environment checks         | —                            | dependency-environment |
-| `check`                           | Run the complete current-host environment, frontend, backend, and contract gate              | —                            | read-only              |
-| `check:backend`                   | Run Rust formatting, check, Clippy, and tests in fail-fast order                             | —                            | read-only              |
-| `check:contracts`                 | Run task, docs, Python lock, version, and release contract checks                            | —                            | read-only              |
-| `check:contracts:prearchive`      | Run contract checks with this change task's exact Trellis record excluded before archival    | --exclude-active-task <path> | read-only              |
-| `check:frontend`                  | Run frontend type, formatting, unit, i18n, desktop mock, and visual preflight checks         | —                            | read-only              |
-| `check:prearchive`                | Run the complete check with this change task's exact Trellis record excluded before archival | --exclude-active-task <path> | read-only              |
-| `deps:install`                    | Install frozen pnpm dependencies and synchronize the locked uv environment                   | —                            | dependency-environment |
-| `env:check`                       | Verify exact tools, ownership, lockfiles, Python environment, and task metadata              | --json                       | read-only              |
-| `supported-platform:check`        | Reject unsupported first-party platform surfaces and implicit native target admission        | --exclude-active-task <path> | read-only              |
-| `system:check`                    | Check current-host Tauri prerequisites without installing or elevating anything              | --json                       | read-only              |
-| `system:check:windows-msvc-cross` | Check optional macOS prerequisites for the bounded Windows MSVC cross-Clippy diagnostic      | --json                       | read-only              |
+| Task                                       | Description                                                                                  | Usage                        | Effect                 |
+| ------------------------------------------ | -------------------------------------------------------------------------------------------- | ---------------------------- | ---------------------- |
+| `bootstrap`                                | Install locked repository tools and dependencies, then run strict environment checks         | —                            | dependency-environment |
+| `check`                                    | Run the complete current-host environment, frontend, backend, and contract gate              | —                            | read-only              |
+| `check:backend`                            | Run Rust formatting, check, Clippy, and tests in fail-fast order                             | —                            | read-only              |
+| `check:contracts`                          | Run task, docs, Python lock, version, and release contract checks                            | —                            | read-only              |
+| `check:contracts:prearchive`               | Run contract checks with this change task's exact Trellis record excluded before archival    | --exclude-active-task <path> | read-only              |
+| `check:frontend`                           | Run frontend type, formatting, unit, i18n, desktop mock, and visual preflight checks         | —                            | read-only              |
+| `check:prearchive`                         | Run the complete check with this change task's exact Trellis record excluded before archival | --exclude-active-task <path> | read-only              |
+| `deps:install`                             | Install frozen pnpm dependencies and synchronize the locked uv environment                   | —                            | dependency-environment |
+| `env:check`                                | Verify exact tools, ownership, lockfiles, Python environment, and task metadata              | --json                       | read-only              |
+| `supported-platform:check`                 | Reject unsupported first-party platform surfaces and implicit native target admission        | --exclude-active-task <path> | read-only              |
+| `system:check`                             | Check current-host Tauri prerequisites without installing or elevating anything              | --json                       | read-only              |
+| `system:check:windows-msvc-cross`          | Check optional macOS prerequisites for the bounded Windows MSVC cross-Clippy diagnostic      | --json                       | read-only              |
+| `system:check:windows-msvc-cross:advisory` | Report optional macOS Windows MSVC cross-Clippy prerequisites without failing bootstrap      | —                            | read-only              |
 
 ## Development and Native Build
 

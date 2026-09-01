@@ -114,6 +114,7 @@ const TASK_FRONTEND_FILES = new Set([
 
 const TASK_BACKEND_FILES = new Set([
   "scripts/tasks/rust.mjs",
+  "scripts/tasks/windows-msvc-cross.mjs",
   "scripts/tasks/windows-msvc-env.mjs",
 ]);
 
