@@ -271,6 +271,45 @@ public struct KnownApplicationCommitResult: Codable, Equatable {
             throw ProtocolError.reservedNonzero
         }
     }
+
+    public func validate(expectedOperationId: UUID) throws {
+        if protocolVersion != PrivilegedIdentifiers.protocolVersion {
+            throw ProtocolError.protocolIncompatible
+        }
+        if operationId != expectedOperationId {
+            throw ProtocolError.invalidOperationId
+        }
+        if reserved != 0 {
+            throw ProtocolError.reservedNonzero
+        }
+        switch (outcome, reason) {
+        case (.committed, .none),
+             (.rollbackRestored, .rollbackRestored),
+             (.recoveryRequired, .recoveryRequired):
+            return
+        case (.failed, let failureReason) where Self.allowedFailureReasons.contains(failureReason):
+            return
+        case (.ready, _),
+             (.committed, _),
+             (.rollbackRestored, _),
+             (.recoveryRequired, _),
+             (.failed, _):
+            throw ProtocolError.protocolIncompatible
+        }
+    }
+
+    private static let allowedFailureReasons: Set<HelperReason> = [
+        .helperProtocolIncompatible,
+        .sourceCapabilityInvalid,
+        .sourceChanged,
+        .targetSlotInvalid,
+        .targetChanged,
+        .applicationRunning,
+        .permissionDenied,
+        .commitFailed,
+        .unexpectedField,
+        .reservedNonzero,
+    ]
 }
 
 public struct RemoveHelperRequest: Codable, Equatable {
@@ -355,6 +394,30 @@ public struct RemoveHelperResult: Codable, Equatable {
         reserved = try container.decode(UInt32.self, forKey: .reserved)
         if reserved != 0 {
             throw ProtocolError.reservedNonzero
+        }
+    }
+
+    public func validate(expectedOperationId: UUID) throws {
+        if protocolVersion != PrivilegedIdentifiers.protocolVersion {
+            throw ProtocolError.protocolIncompatible
+        }
+        if operationId != expectedOperationId {
+            throw ProtocolError.invalidOperationId
+        }
+        if reserved != 0 {
+            throw ProtocolError.reservedNonzero
+        }
+        switch (outcome, reason) {
+        case (.ready, .none),
+             (.recoveryRequired, .recoveryRequired),
+             (.failed, .helperRemovalFailed):
+            return
+        case (.committed, _),
+             (.rollbackRestored, _),
+             (.recoveryRequired, _),
+             (.ready, _),
+             (.failed, _):
+            throw ProtocolError.protocolIncompatible
         }
     }
 }

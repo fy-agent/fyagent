@@ -669,15 +669,18 @@ fn project_desktop_discovery(
     let complete = discovery.complete;
     let mut candidates = Vec::new();
     for evidence in discovery.installations {
-        let update_requires_authorization =
-            cfg!(target_os = "macos") && evidence.scope == InstallationScope::AllUsers;
+        let (system_update_enabled, system_update_block_reason) = macos_system_update_gate(
+            agent_id,
+            evidence.scope,
+            crate::macos_system_commit::production_enabled(),
+        );
         let location_label =
             desktop_location_label(agent_id, evidence.scope, evidence.package_kind);
         let mut reason_codes = evidence.reason_codes;
-        if update_requires_authorization
-            && !reason_codes.contains(&AgentReasonCode::AuthorizationRequired)
-        {
-            reason_codes.push(AgentReasonCode::AuthorizationRequired);
+        if let Some(reason) = system_update_block_reason {
+            if !reason_codes.contains(&reason) {
+                reason_codes.push(reason);
+            }
         }
         let capability = InstallationTargetCapability::Desktop {
             path: evidence.path,
@@ -695,7 +698,7 @@ fn project_desktop_discovery(
             install_eligible: false,
             update_eligible: discovered_update_eligible(
                 agent_id,
-                evidence.update_eligible && !update_requires_authorization,
+                evidence.update_eligible && system_update_enabled,
             ),
             reason_codes,
             evidence_codes: evidence.evidence_codes,
@@ -728,6 +731,23 @@ fn project_desktop_discovery(
         destinations,
         reason_codes,
     }
+}
+
+fn macos_system_update_gate(
+    agent_id: AgentCatalogId,
+    scope: InstallationScope,
+    runtime_enabled: bool,
+) -> (bool, Option<AgentReasonCode>) {
+    if !cfg!(target_os = "macos") || scope != InstallationScope::AllUsers {
+        return (true, None);
+    }
+    if crate::macos_system_commit::product_for_agent(agent_id).is_err() {
+        return (false, Some(AgentReasonCode::TargetScopeUnsupported));
+    }
+    if !runtime_enabled {
+        return (false, Some(AgentReasonCode::AuthorizationRequired));
+    }
+    (true, None)
 }
 
 fn normalize_candidates(candidates: Vec<ProbeCandidate>) -> Vec<ProbeCandidate> {
@@ -959,16 +979,26 @@ fn desktop_destinations(_agent_id: AgentCatalogId) -> Vec<ProbeDestination> {
     #[cfg(target_os = "macos")]
     {
         let user_writable = super::desktop::user_applications_writable();
+        let system_supported = crate::macos_system_commit::product_for_agent(_agent_id).is_ok();
+        let system_enabled = system_supported && crate::macos_system_commit::production_enabled();
         let mut system = destination(
             "mac:system-applications",
             InstallationScope::AllUsers,
             InstallationPackageKind::AppBundle,
             true,
-            false,
+            system_enabled,
             "/Applications",
             FreshDestinationCapability::MacSystemApplications,
         );
-        system.reason_codes = vec![AgentReasonCode::AuthorizationRequired];
+        system.eligible = system_enabled;
+        system.reason_codes = if system_enabled {
+            Vec::new()
+        } else if system_supported {
+            vec![AgentReasonCode::AuthorizationRequired]
+        } else {
+            vec![AgentReasonCode::TargetScopeUnsupported]
+        };
+        refresh_destination_revision(&mut system);
         return vec![
             destination(
                 "mac:user-applications",
@@ -1289,6 +1319,35 @@ mod tests {
                     .contains(&AgentReasonCode::NativeProjectionUnavailable)
                 && validate_opaque_target_revision(&destination.revision)
         }));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn system_update_gate_tracks_runtime_and_fixed_product_policy() {
+        assert_eq!(
+            macos_system_update_gate(AgentCatalogId::OpenCode, InstallationScope::AllUsers, false,),
+            (false, Some(AgentReasonCode::AuthorizationRequired))
+        );
+        assert_eq!(
+            macos_system_update_gate(AgentCatalogId::OpenCode, InstallationScope::AllUsers, true,),
+            (true, None)
+        );
+        assert_eq!(
+            macos_system_update_gate(
+                AgentCatalogId::ClaudeCode,
+                InstallationScope::AllUsers,
+                true,
+            ),
+            (false, Some(AgentReasonCode::TargetScopeUnsupported))
+        );
+        assert_eq!(
+            macos_system_update_gate(
+                AgentCatalogId::OpenCode,
+                InstallationScope::CurrentUser,
+                false,
+            ),
+            (true, None)
+        );
     }
 
     #[cfg(target_os = "macos")]

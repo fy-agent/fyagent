@@ -1,5 +1,5 @@
 import CFyAgentPrivilegedBridge
-import FyAgentPrivilegedClient
+@testable import FyAgentPrivilegedClient
 import FyAgentPrivilegedProtocol
 
 struct BridgeABITests {
@@ -70,5 +70,41 @@ struct BridgeABITests {
         expect(fyagent_privileged_invoke(&request, &reply) == 0)
         expect(reply.helper_state == UInt32(FYAGENT_PRIVILEGED_HELPER_STATE_MISSING))
         expect(reply.reason == UInt32(FYAGENT_PRIVILEGED_REASON_HELPER_NOT_PACKAGED))
+    }
+
+    static func xpcWaitPolicyIsOperationSpecific() {
+        expect(HelperXPCOperation.status.timeoutMilliseconds == 5_000)
+        expect(HelperXPCOperation.remove.timeoutMilliseconds == 60_000)
+        expect(HelperXPCOperation.commit.timeoutMilliseconds == 30 * 60 * 1_000)
+        expect(
+            HelperXPCOperation.status.timeoutMilliseconds
+                < HelperXPCOperation.remove.timeoutMilliseconds
+        )
+        expect(
+            HelperXPCOperation.remove.timeoutMilliseconds
+                < HelperXPCOperation.commit.timeoutMilliseconds
+        )
+    }
+
+    static func mutatingTimeoutsRequireRecoveryInsteadOfRetry() {
+        expect(HelperXPCOperation.status.timeoutFailure == .helperUnavailable)
+        expect(HelperXPCOperation.commit.timeoutFailure == .operationOutcomeUnknown)
+        expect(HelperXPCOperation.remove.timeoutFailure == .operationOutcomeUnknown)
+    }
+
+    static func mutatingTransportLossRequiresRecoveryExceptPeerRejection() {
+        expect(
+            HelperXPCOperation.commit.responseFailureHasUnknownOutcome(.connectionInterrupted)
+        )
+        expect(
+            HelperXPCOperation.commit.responseFailureHasUnknownOutcome(
+                .decodingError(description: "bad reply")
+            )
+        )
+        expect(
+            HelperXPCOperation.remove.responseFailureHasUnknownOutcome(.connectionInvalid)
+        )
+        expect(!HelperXPCOperation.commit.responseFailureHasUnknownOutcome(.insecure))
+        expect(!HelperXPCOperation.status.responseFailureHasUnknownOutcome(.connectionInterrupted))
     }
 }

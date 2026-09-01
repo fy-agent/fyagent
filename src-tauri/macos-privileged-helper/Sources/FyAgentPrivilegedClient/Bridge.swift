@@ -44,7 +44,7 @@ public func fyagent_privileged_invoke(
         let operation = try PrivilegedOperation(validating: request.pointee.operation)
         switch operation {
         case .status:
-            output = try performStatus(request.pointee, template: output)
+            output = try performStatus(template: output)
         case .ensureHelper:
             output = try performEnsureHelper(template: output)
         case .commit:
@@ -65,44 +65,81 @@ public func fyagent_privileged_invoke(
     return 0
 }
 
-private func performStatus(
-    _ request: FyAgentPrivilegedRequest,
-    template: FyAgentPrivilegedReply
-) throws -> FyAgentPrivilegedReply {
+private func performStatus(template: FyAgentPrivilegedReply) throws -> FyAgentPrivilegedReply {
     var output = template
-    let statusRequest = try HelperStatusRequest()
+    let bundled: BundledHelperDescriptor
+    let clientVersion: HelperBundleVersion
     do {
-        let reply = try HelperXPCClient.send(statusRequest, to: PrivilegedRoutes.status)
-        output.outcome = UInt32(FYAGENT_PRIVILEGED_OUTCOME_READY)
-        output.reason = reply.reason.rawValue
-        output.helper_state = reply.state.rawValue
-        if reply.state == .recoveryRequired {
-            output.outcome = UInt32(FYAGENT_PRIVILEGED_OUTCOME_RECOVERY_REQUIRED)
-        }
-        return output
+        bundled = try HelperLifecycle.bundledHelper()
+        clientVersion = try HelperLifecycle.clientVersion()
+    } catch let error as HelperLifecycleError {
+        return lifecyclePackagingFailure(error, template: output)
+    }
+    do {
+        let status = try queryHelperStatus()
+        return lifecycleReply(
+            HelperLifecycle.decide(
+                status: status,
+                bundledVersion: bundled.version,
+                clientVersion: clientVersion
+            ),
+            template: output
+        )
     } catch {
-        output.outcome = UInt32(FYAGENT_PRIVILEGED_OUTCOME_FAILED)
-        output.reason = UInt32(FYAGENT_PRIVILEGED_REASON_HELPER_NOT_PACKAGED)
-        output.helper_state = UInt32(FYAGENT_PRIVILEGED_HELPER_STATE_MISSING)
-        return output
+        return transportFailureReply(error, template: output)
     }
 }
 
 private func performEnsureHelper(template: FyAgentPrivilegedReply) throws -> FyAgentPrivilegedReply {
     var output = template
     guard let executables = Bundle.main.infoDictionary?["SMPrivilegedExecutables"] as? [String: String],
-          executables.count == 1 else {
+          executables.count == 1,
+          executables[PrivilegedIdentifiers.helperIdentifier] != nil else {
         output.outcome = UInt32(FYAGENT_PRIVILEGED_OUTCOME_FAILED)
         output.reason = UInt32(FYAGENT_PRIVILEGED_REASON_HELPER_NOT_PACKAGED)
         output.helper_state = UInt32(FYAGENT_PRIVILEGED_HELPER_STATE_MISSING)
         return output
     }
+    let bundled: BundledHelperDescriptor
+    let clientVersion: HelperBundleVersion
+    do {
+        bundled = try HelperLifecycle.bundledHelper()
+        clientVersion = try HelperLifecycle.clientVersion()
+    } catch let error as HelperLifecycleError {
+        return lifecyclePackagingFailure(error, template: output)
+    }
+
+    do {
+        let status = try queryHelperStatus()
+        let decision = HelperLifecycle.decide(
+            status: status,
+            bundledVersion: bundled.version,
+            clientVersion: clientVersion
+        )
+        switch decision {
+        case .ready:
+            return lifecycleReply(decision, template: output)
+        case .installOrUpdate:
+            break
+        case .failed:
+            return lifecycleReply(decision, template: output)
+        }
+    } catch let error as XPCError {
+        switch error {
+        case .connectionInvalid:
+            // A non-installed Mach service is the only status failure that
+            // authorizes installation. Other transport/protocol failures may
+            // describe an existing helper and must not trigger overwrite.
+            break
+        default:
+            return transportFailureReply(error, template: output)
+        }
+    } catch {
+        return transportFailureReply(error, template: output)
+    }
+
     do {
         try PrivilegedHelperManager.shared.authorizeAndBless()
-        output.outcome = UInt32(FYAGENT_PRIVILEGED_OUTCOME_READY)
-        output.reason = UInt32(FYAGENT_PRIVILEGED_REASON_NONE)
-        output.helper_state = UInt32(FYAGENT_PRIVILEGED_HELPER_STATE_READY)
-        return output
     } catch let error as AuthorizationError {
         output.outcome = UInt32(FYAGENT_PRIVILEGED_OUTCOME_FAILED)
         output.helper_state = UInt32(FYAGENT_PRIVILEGED_HELPER_STATE_MISSING)
@@ -113,11 +150,134 @@ private func performEnsureHelper(template: FyAgentPrivilegedReply) throws -> FyA
         }
         return output
     } catch {
+        // A launchd cold-start race or an equal-version helper can make Bless
+        // report failure after a usable trusted helper becomes reachable.
+        if let status = try? queryHelperStatus() {
+            let decision = HelperLifecycle.decide(
+                status: status,
+                bundledVersion: bundled.version,
+                clientVersion: clientVersion
+            )
+            if decision == .ready {
+                return lifecycleReply(decision, template: output)
+            }
+        }
         output.outcome = UInt32(FYAGENT_PRIVILEGED_OUTCOME_FAILED)
         output.reason = UInt32(FYAGENT_PRIVILEGED_REASON_HELPER_INSTALL_FAILED)
         output.helper_state = UInt32(FYAGENT_PRIVILEGED_HELPER_STATE_MISSING)
         return output
     }
+
+    do {
+        let status = try queryHelperStatusAfterBless()
+        return lifecycleReply(
+            HelperLifecycle.decide(
+                status: status,
+                bundledVersion: bundled.version,
+                clientVersion: clientVersion
+            ),
+            template: output
+        )
+    } catch {
+        return transportFailureReply(error, template: output)
+    }
+}
+
+private func queryHelperStatus() throws -> HelperStatusReply {
+    try HelperXPCClient.send(
+        HelperStatusRequest(),
+        to: PrivilegedRoutes.status,
+        operation: .status
+    )
+}
+
+private func queryHelperStatusAfterBless() throws -> HelperStatusReply {
+    var lastError: Error = BridgeFailure.helperUnavailable
+    for attempt in 0 ..< 10 {
+        do {
+            return try queryHelperStatus()
+        } catch let error as XPCError {
+            switch error {
+            case .connectionInvalid, .connectionInterrupted, .terminationImminent:
+                lastError = error
+            default:
+                throw error
+            }
+        } catch {
+            throw error
+        }
+        if attempt < 9 {
+            usleep(100_000)
+        }
+    }
+    throw lastError
+}
+
+private func lifecycleReply(
+    _ decision: HelperLifecycleDecision,
+    template: FyAgentPrivilegedReply
+) -> FyAgentPrivilegedReply {
+    var output = template
+    switch decision {
+    case .ready:
+        output.outcome = UInt32(FYAGENT_PRIVILEGED_OUTCOME_READY)
+        output.reason = UInt32(FYAGENT_PRIVILEGED_REASON_NONE)
+        output.helper_state = UInt32(FYAGENT_PRIVILEGED_HELPER_STATE_READY)
+    case .installOrUpdate:
+        output.outcome = UInt32(FYAGENT_PRIVILEGED_OUTCOME_FAILED)
+        output.reason = UInt32(FYAGENT_PRIVILEGED_REASON_HELPER_UPDATE_REQUIRED)
+        output.helper_state = UInt32(FYAGENT_PRIVILEGED_HELPER_STATE_UPDATE_REQUIRED)
+    case .failed(let state, let reason):
+        output.outcome = state == .recoveryRequired
+            ? UInt32(FYAGENT_PRIVILEGED_OUTCOME_RECOVERY_REQUIRED)
+            : UInt32(FYAGENT_PRIVILEGED_OUTCOME_FAILED)
+        output.reason = reason.rawValue
+        output.helper_state = state.rawValue
+    }
+    return output
+}
+
+private func lifecyclePackagingFailure(
+    _ error: HelperLifecycleError,
+    template: FyAgentPrivilegedReply
+) -> FyAgentPrivilegedReply {
+    var output = template
+    output.outcome = UInt32(FYAGENT_PRIVILEGED_OUTCOME_FAILED)
+    output.helper_state = UInt32(FYAGENT_PRIVILEGED_HELPER_STATE_MISSING)
+    switch error {
+    case .helperMissing:
+        output.reason = UInt32(FYAGENT_PRIVILEGED_REASON_HELPER_NOT_PACKAGED)
+    case .appIdentityInvalid, .helperNotRegular, .helperMetadataInvalid:
+        output.reason = UInt32(FYAGENT_PRIVILEGED_REASON_HELPER_SIGNATURE_INVALID)
+    }
+    return output
+}
+
+private func protocolFailureReply(
+    template: FyAgentPrivilegedReply
+) -> FyAgentPrivilegedReply {
+    var output = template
+    output.outcome = UInt32(FYAGENT_PRIVILEGED_OUTCOME_FAILED)
+    output.reason = UInt32(FYAGENT_PRIVILEGED_REASON_HELPER_PROTOCOL_INCOMPATIBLE)
+    output.helper_state = UInt32(FYAGENT_PRIVILEGED_HELPER_STATE_INCOMPATIBLE)
+    return output
+}
+
+private func transportFailureReply(
+    _ error: Error,
+    template: FyAgentPrivilegedReply
+) -> FyAgentPrivilegedReply {
+    var output = template
+    let reason = mapTransportReason(error)
+    output.outcome = UInt32(FYAGENT_PRIVILEGED_OUTCOME_FAILED)
+    output.reason = reason.rawValue
+    switch reason {
+    case .helperPeerRejected, .helperProtocolIncompatible, .helperSignatureInvalid:
+        output.helper_state = UInt32(FYAGENT_PRIVILEGED_HELPER_STATE_INCOMPATIBLE)
+    default:
+        output.helper_state = UInt32(FYAGENT_PRIVILEGED_HELPER_STATE_MISSING)
+    }
+    return output
 }
 
 private func performCommit(
@@ -177,16 +337,27 @@ private func performCommit(
     )
     defer { try? authorization.destroyRights() }
     do {
-        let result = try HelperXPCClient.send(message, to: PrivilegedRoutes.commit)
+        let result = try HelperXPCClient.send(
+            message,
+            to: PrivilegedRoutes.commit,
+            operation: .commit
+        )
+        do {
+            try result.validate(expectedOperationId: operationId)
+        } catch {
+            return protocolFailureReply(template: output)
+        }
         output.outcome = result.outcome.rawValue
         output.reason = result.reason.rawValue
         output.helper_state = UInt32(FYAGENT_PRIVILEGED_HELPER_STATE_READY)
         return output
-    } catch {
-        output.outcome = UInt32(FYAGENT_PRIVILEGED_OUTCOME_FAILED)
-        output.reason = UInt32(mapTransportReason(error).rawValue)
-        output.helper_state = UInt32(FYAGENT_PRIVILEGED_HELPER_STATE_MISSING)
+    } catch BridgeFailure.operationOutcomeUnknown {
+        output.outcome = UInt32(FYAGENT_PRIVILEGED_OUTCOME_RECOVERY_REQUIRED)
+        output.reason = UInt32(FYAGENT_PRIVILEGED_REASON_RECOVERY_REQUIRED)
+        output.helper_state = UInt32(FYAGENT_PRIVILEGED_HELPER_STATE_RECOVERY_REQUIRED)
         return output
+    } catch {
+        return transportFailureReply(error, template: output)
     }
 }
 
@@ -213,14 +384,24 @@ private func performRemove(
     defer { try? authorization.destroyRights() }
     let message = AuthorizedRemoveHelperRequest(request: removeRequest, authorization: authorization)
     do {
-        let result = try HelperXPCClient.send(message, to: PrivilegedRoutes.remove)
+        let result = try HelperXPCClient.send(
+            message,
+            to: PrivilegedRoutes.remove,
+            operation: .remove
+        )
+        do {
+            try result.validate(expectedOperationId: operationId)
+        } catch {
+            return protocolFailureReply(template: output)
+        }
         output.outcome = result.outcome.rawValue
         output.reason = result.reason.rawValue
-        output.helper_state = UInt32(
-            result.outcome == .ready
-                ? FYAGENT_PRIVILEGED_HELPER_STATE_MISSING
-                : FYAGENT_PRIVILEGED_HELPER_STATE_MISSING
-        )
+        output.helper_state = UInt32(FYAGENT_PRIVILEGED_HELPER_STATE_MISSING)
+        return output
+    } catch BridgeFailure.operationOutcomeUnknown {
+        output.outcome = UInt32(FYAGENT_PRIVILEGED_OUTCOME_RECOVERY_REQUIRED)
+        output.reason = UInt32(FYAGENT_PRIVILEGED_REASON_RECOVERY_REQUIRED)
+        output.helper_state = UInt32(FYAGENT_PRIVILEGED_HELPER_STATE_RECOVERY_REQUIRED)
         return output
     } catch {
         output.outcome = UInt32(FYAGENT_PRIVILEGED_OUTCOME_FAILED)
@@ -253,6 +434,8 @@ private func mapTransportReason(_ error: Error) -> HelperReason {
         switch error {
         case .insecure:
             return .helperPeerRejected
+        case .decodingError, .routeNotRegistered, .routeMismatch, .handlerError:
+            return .helperProtocolIncompatible
         default:
             return .helperNotPackaged
         }

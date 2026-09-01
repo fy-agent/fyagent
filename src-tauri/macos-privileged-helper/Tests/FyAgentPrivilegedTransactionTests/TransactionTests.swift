@@ -318,6 +318,31 @@ struct RecoveryTests {
         try runPhase(.readyToCommit, expectTargetVersion: "1.0.0", expectStageGone: true)
     }
 
+    static func testFreshReadyToCommitKeepsVerifiedRenamedTarget() throws {
+        let env = try makeEnv()
+        defer { try? FileManager.default.removeItem(at: env.root) }
+        let operationId = UUID()
+        let installed = try FakeApp.make(
+            in: env.apps,
+            basename: "OpenCode.app",
+            bundleId: "ai.opencode.desktop",
+            version: "2.0.0",
+            executable: "OpenCode"
+        )
+        let identity = try readIdentity(installed, product: .openCodeDesktop)
+        try writeReceipt(
+            env: env,
+            operationId: operationId,
+            action: .freshInstall,
+            phase: .readyToCommit,
+            source: identity.revision,
+            target: nil
+        )
+        let status = try SystemCommit.recover(environment: env.transaction)
+        expect(status == .recovered)
+        expect(try readIdentity(installed, product: .openCodeDesktop).version == "2.0.0")
+    }
+
     static func testBackupCreatedRestoresBackupWhenTargetAbsent() throws {
         let env = try makeEnv()
         defer { try? FileManager.default.removeItem(at: env.root) }
@@ -341,6 +366,7 @@ struct RecoveryTests {
         try writeReceipt(
             env: env,
             operationId: operationId,
+            action: .updateExisting,
             phase: .backupCreated,
             source: stageIdentity.revision,
             target: oldIdentity.revision
@@ -350,6 +376,40 @@ struct RecoveryTests {
         expect(FileManager.default.fileExists(atPath: env.apps.appendingPathComponent("OpenCode.app").path))
         expect(try readIdentity(env.apps.appendingPathComponent("OpenCode.app"), product: .openCodeDesktop).version == "1.0.0")
         expect(!(FileManager.default.fileExists(atPath: stage.path)))
+    }
+
+    static func testBackupCreatedKeepsVerifiedReplacementAfterRenameWindow() throws {
+        let env = try makeEnv()
+        defer { try? FileManager.default.removeItem(at: env.root) }
+        let operationId = UUID()
+        let installed = try FakeApp.make(
+            in: env.apps,
+            basename: "OpenCode.app",
+            bundleId: "ai.opencode.desktop",
+            version: "2.0.0",
+            executable: "OpenCode"
+        )
+        let installedIdentity = try readIdentity(installed, product: .openCodeDesktop)
+        let backup = try FakeApp.make(
+            in: env.apps,
+            basename: GeneratedNames.backupName(for: operationId),
+            bundleId: "ai.opencode.desktop",
+            version: "1.0.0",
+            executable: "OpenCode"
+        )
+        let backupIdentity = try readIdentity(backup, product: .openCodeDesktop)
+        try writeReceipt(
+            env: env,
+            operationId: operationId,
+            action: .updateExisting,
+            phase: .backupCreated,
+            source: installedIdentity.revision,
+            target: backupIdentity.revision
+        )
+        let status = try SystemCommit.recover(environment: env.transaction)
+        expect(status == .recovered)
+        expect(try readIdentity(installed, product: .openCodeDesktop).version == "2.0.0")
+        expect(!FileManager.default.fileExists(atPath: backup.path))
     }
 
     static func testReplacementCommittedKeepsValidTarget() throws {
@@ -375,6 +435,7 @@ struct RecoveryTests {
         try writeReceipt(
             env: env,
             operationId: operationId,
+            action: .updateExisting,
             phase: .replacementCommitted,
             source: newIdentity.revision,
             target: oldIdentity.revision
@@ -404,12 +465,14 @@ struct RecoveryTests {
             executable: "OpenCode"
         )
         let sourceIdentity = try readIdentity(stage, product: .openCodeDesktop)
+        let targetIdentity = try readIdentity(target, product: .openCodeDesktop)
         try writeReceipt(
             env: env,
             operationId: operationId,
+            action: .updateExisting,
             phase: phase,
             source: sourceIdentity.revision,
-            target: nil
+            target: targetIdentity.revision
         )
         let status = try SystemCommit.recover(environment: env.transaction)
         expect(status == .recovered)
@@ -456,6 +519,7 @@ func readIdentity(_ url: URL, product: KnownProduct) throws -> BundleIdentity {
 func writeReceipt(
     env: TestEnv,
     operationId: UUID,
+    action: CommitAction,
     phase: ReceiptPhase,
     source: Data,
     target: Data?
@@ -464,9 +528,10 @@ func writeReceipt(
         operationId: operationId,
         product: KnownProduct.openCodeDesktop.rawValue,
         targetSlot: 1,
+        action: action,
         phase: phase,
         stageName: GeneratedNames.stageName(for: operationId),
-        backupName: phase == .preparing || phase == .readyToCommit ? nil : GeneratedNames.backupName(for: operationId),
+        backupName: action == .updateExisting ? GeneratedNames.backupName(for: operationId) : nil,
         sourceRevision: source,
         targetRevision: target
     )

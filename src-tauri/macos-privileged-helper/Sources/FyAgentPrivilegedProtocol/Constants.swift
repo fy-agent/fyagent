@@ -1,16 +1,27 @@
 import Foundation
 
 public enum PrivilegedIdentifiers {
+    #if FYAGENT_PRIVILEGED_DEVELOPMENT
+    public static let appIdentifier = "com.fyagent.desktop.dev"
+    public static let helperIdentifier = "com.fyagent.desktop.dev.system-commit-helper"
+    public static let machService = "com.fyagent.desktop.dev.system-commit-helper"
+    public static let commitRightName = "com.fyagent.desktop.dev.system-application.commit"
+    public static let removeRightName = "com.fyagent.desktop.dev.privileged-helper.remove"
+    public static let productionReceiptDirectory = "/Library/Application Support/FyAgent/DevelopmentSystemCommit/v1"
+    #else
     public static let appIdentifier = "com.fyagent.desktop"
     public static let helperIdentifier = "com.fyagent.desktop.system-commit-helper"
     public static let machService = "com.fyagent.desktop.system-commit-helper"
-    public static let teamIdentifier = "HY446996QX"
     public static let commitRightName = "com.fyagent.desktop.system-application.commit"
     public static let removeRightName = "com.fyagent.desktop.privileged-helper.remove"
-    public static let productionApplicationsParent = "/Applications"
     public static let productionReceiptDirectory = "/Library/Application Support/FyAgent/SystemCommit/v1"
+    #endif
+    public static let teamIdentifier = "HY446996QX"
+    public static let productionApplicationsParent = "/Applications"
     public static let protocolVersion: UInt32 = 1
-    public static let helperBundleVersion = "0.4.2"
+    public static var helperBundleVersion: String {
+        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? minimumClientVersion
+    }
     public static let minimumClientVersion = "0.4.2"
 }
 

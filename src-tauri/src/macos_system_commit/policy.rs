@@ -8,6 +8,7 @@
 //!   (`macos_bundle_id_for`)
 
 use crate::agent_install::AgentReasonCode;
+use crate::services::external_agents::AgentCatalogId;
 
 /// Protocol product integers. Unknown values are rejected before mutation.
 #[repr(u32)]
@@ -56,6 +57,16 @@ impl KnownSystemProduct {
             5 => Ok(Self::WorkBuddy),
             _ => Err(AgentReasonCode::TargetSlotInvalid),
         }
+    }
+}
+
+pub fn product_for_agent(agent_id: AgentCatalogId) -> Result<KnownSystemProduct, AgentReasonCode> {
+    match agent_id {
+        AgentCatalogId::OpenCode => Ok(KnownSystemProduct::OpenCodeDesktop),
+        AgentCatalogId::QoderWork => Ok(KnownSystemProduct::QoderWork),
+        AgentCatalogId::TraeWork => Ok(KnownSystemProduct::TraeWork),
+        AgentCatalogId::WorkBuddy => Ok(KnownSystemProduct::WorkBuddy),
+        _ => Err(AgentReasonCode::TargetScopeUnsupported),
     }
 }
 
@@ -215,5 +226,21 @@ mod tests {
             assert!(!debug.contains('/'), "product debug leaked a path: {debug}");
             assert!(!debug.contains("Applications"));
         }
+    }
+
+    #[test]
+    fn agent_mapping_is_closed_and_excludes_unsupported_products() {
+        assert_eq!(
+            product_for_agent(AgentCatalogId::OpenCode),
+            Ok(KnownSystemProduct::OpenCodeDesktop)
+        );
+        assert_eq!(
+            product_for_agent(AgentCatalogId::ClaudeCode),
+            Err(AgentReasonCode::TargetScopeUnsupported)
+        );
+        assert_eq!(
+            product_for_agent(AgentCatalogId::GrokBuild),
+            Err(AgentReasonCode::TargetScopeUnsupported)
+        );
     }
 }

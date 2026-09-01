@@ -13,6 +13,7 @@ public struct TransactionReceipt: Codable, Equatable {
     public var operationId: UUID
     public var product: UInt32
     public var targetSlot: UInt32
+    public var action: CommitAction
     public var phase: ReceiptPhase
     public var stageName: String
     public var backupName: String?
@@ -24,6 +25,7 @@ public struct TransactionReceipt: Codable, Equatable {
         case operationId
         case product
         case targetSlot
+        case action
         case phase
         case stageName
         case backupName
@@ -32,10 +34,11 @@ public struct TransactionReceipt: Codable, Equatable {
     }
 
     public init(
-        version: UInt32 = 1,
+        version: UInt32 = 2,
         operationId: UUID,
         product: UInt32,
         targetSlot: UInt32,
+        action: CommitAction,
         phase: ReceiptPhase,
         stageName: String,
         backupName: String? = nil,
@@ -46,6 +49,7 @@ public struct TransactionReceipt: Codable, Equatable {
         self.operationId = operationId
         self.product = product
         self.targetSlot = targetSlot
+        self.action = action
         self.phase = phase
         self.stageName = stageName
         self.backupName = backupName
@@ -56,15 +60,46 @@ public struct TransactionReceipt: Codable, Equatable {
     public init(from decoder: Decoder) throws {
         try StrictDecoder.rejectUnknownKeys(decoder, allowed: CodingKeys.self)
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        version = try container.decode(UInt32.self, forKey: .version)
-        operationId = try container.decode(UUID.self, forKey: .operationId)
-        product = try container.decode(UInt32.self, forKey: .product)
-        targetSlot = try container.decode(UInt32.self, forKey: .targetSlot)
-        phase = try container.decode(ReceiptPhase.self, forKey: .phase)
-        stageName = try container.decode(String.self, forKey: .stageName)
-        backupName = try container.decodeIfPresent(String.self, forKey: .backupName)
-        sourceRevision = try container.decode(Data.self, forKey: .sourceRevision)
-        targetRevision = try container.decodeIfPresent(Data.self, forKey: .targetRevision)
+        let decodedVersion = try container.decode(UInt32.self, forKey: .version)
+        let decodedOperationId = try container.decode(UUID.self, forKey: .operationId)
+        let decodedProduct = try container.decode(UInt32.self, forKey: .product)
+        let decodedTargetSlot = try container.decode(UInt32.self, forKey: .targetSlot)
+        let decodedPhase = try container.decode(ReceiptPhase.self, forKey: .phase)
+        let decodedStageName = try container.decode(String.self, forKey: .stageName)
+        let decodedBackupName = try container.decodeIfPresent(String.self, forKey: .backupName)
+        let decodedSourceRevision = try container.decode(Data.self, forKey: .sourceRevision)
+        let decodedTargetRevision = try container.decodeIfPresent(Data.self, forKey: .targetRevision)
+        let decodedAction = try container.decodeIfPresent(CommitAction.self, forKey: .action)
+
+        let resolvedAction: CommitAction
+        if let decodedAction {
+            resolvedAction = decodedAction
+        } else if decodedVersion == 1 {
+            // Version 1 receipts predate the explicit action field. The writer
+            // always emitted both update-only fields together, so migration is
+            // deterministic and does not guess from the live filesystem.
+            switch (decodedBackupName, decodedTargetRevision) {
+            case (nil, nil):
+                resolvedAction = .freshInstall
+            case (.some, .some):
+                resolvedAction = .updateExisting
+            default:
+                throw TransactionError.recoveryRequired
+            }
+        } else {
+            throw TransactionError.recoveryRequired
+        }
+
+        version = decodedVersion
+        operationId = decodedOperationId
+        product = decodedProduct
+        targetSlot = decodedTargetSlot
+        action = resolvedAction
+        phase = decodedPhase
+        stageName = decodedStageName
+        backupName = decodedBackupName
+        sourceRevision = decodedSourceRevision
+        targetRevision = decodedTargetRevision
     }
 
     var fileName: String {
@@ -91,7 +126,7 @@ public enum GeneratedNames {
 }
 
 public enum ReceiptStore {
-    static let currentVersion: UInt32 = 1
+    static let currentVersion: UInt32 = 2
     static let maxReceipts = 8
 
     static func ensureDirectory(_ url: URL) throws {
@@ -104,6 +139,7 @@ public enum ReceiptStore {
         if receipt.version != currentVersion {
             throw TransactionError.recoveryRequired
         }
+        try validate(receipt)
         try ensureDirectory(directory)
         let data = try JSONEncoder().encode(receipt)
         let url = directory.appendingPathComponent(receipt.fileName)
@@ -142,16 +178,34 @@ public enum ReceiptStore {
         return try receiptURLs.map { url in
             let data = try Data(contentsOf: url)
             let receipt = try JSONDecoder().decode(TransactionReceipt.self, from: data)
-            if receipt.version != currentVersion {
+            if receipt.version == 0 || receipt.version > currentVersion {
                 throw TransactionError.recoveryRequired
             }
-            if !GeneratedNames.isGeneratedStage(receipt.stageName) {
-                throw TransactionError.recoveryRequired
-            }
-            if let backup = receipt.backupName, !GeneratedNames.isGeneratedBackup(backup) {
-                throw TransactionError.recoveryRequired
-            }
+            try validate(receipt)
             return receipt
+        }
+    }
+
+    private static func validate(_ receipt: TransactionReceipt) throws {
+        guard receipt.sourceRevision.count == 32,
+              receipt.stageName == GeneratedNames.stageName(for: receipt.operationId) else {
+            throw TransactionError.recoveryRequired
+        }
+        let expectedBackup = GeneratedNames.backupName(for: receipt.operationId)
+        switch receipt.action {
+        case .freshInstall:
+            guard receipt.backupName == nil,
+                  receipt.targetRevision == nil,
+                  receipt.phase != .backupCreated else {
+                throw TransactionError.recoveryRequired
+            }
+        case .updateExisting:
+            guard receipt.backupName == expectedBackup,
+                  receipt.targetRevision?.count == 32 else {
+                throw TransactionError.recoveryRequired
+            }
+        case .none:
+            throw TransactionError.recoveryRequired
         }
     }
 }

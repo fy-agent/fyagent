@@ -38,6 +38,42 @@ const CARGO_OPERATIONS = new Set(["check", "clippy", "test"]);
 const RUST_TEST_FEATURE = "fyagent/test-hooks";
 const WINDOWS_USER_HELPER_PREPARE_SCRIPT =
   "scripts/prepare-windows-user-helper.mjs";
+const MACOS_SIGNED_DEV_CARGO_RUNNER = path.join(
+  ROOT,
+  "scripts",
+  "tasks",
+  "macos-signed-dev-cargo.mjs",
+);
+const MACOS_SIGNED_DEV_APP_RUNNER = path.join(
+  ROOT,
+  "scripts",
+  "tasks",
+  "macos-signed-dev.mjs",
+);
+const MACOS_PRIVILEGED_BUILD_SCRIPT = path.join(
+  ROOT,
+  "scripts",
+  "release",
+  "build-macos-privileged-helper.sh",
+);
+const MACOS_PRIVILEGED_DEVELOPMENT_ROOT = path.join(
+  ROOT,
+  "src-tauri",
+  "macos-privileged-helper",
+  "dist",
+  "development",
+);
+const MACOS_XCODE_DEVELOPER_DIR = "/Applications/Xcode.app/Contents/Developer";
+const SIGNED_DEV_OWNED_ENVIRONMENT = Object.freeze([
+  "DEVELOPER_DIR",
+  "FYAGENT_MACOS_SYSTEM_COMMIT_MODE",
+  "FYAGENT_PRIVILEGED_CLIENT_DYLIB",
+  "FYAGENT_PRIVILEGED_MANIFEST",
+  "FYAGENT_SIGNED_DEV_APP_RUNNER",
+  "FYAGENT_SIGNED_DEV_CARGO",
+  "FYAGENT_SIGNED_DEV_NODE",
+  "FYAGENT_SIGNED_DEV_TARGET",
+]);
 const OWNED_TOOLCHAIN_ENVIRONMENT = Object.freeze([
   "CARGO_BUILD_TARGET",
   "TAURI_ENV_TARGET_TRIPLE",
@@ -182,6 +218,7 @@ export function containsRustTargetOverride(value, encoded = false) {
 
 export function assertNoCallerTargetOverride(environment) {
   const owned = new Set(OWNED_TOOLCHAIN_ENVIRONMENT);
+  const signedDevOwned = new Set(SIGNED_DEV_OWNED_ENVIRONMENT);
   const processInjection = new Set(PROCESS_INJECTION_ENVIRONMENT);
   const rustFlags = new Set(RUST_FLAG_ENVIRONMENT);
   const rustdocFlags = new Set(RUSTDOC_FLAG_ENVIRONMENT);
@@ -190,6 +227,11 @@ export function assertNoCallerTargetOverride(environment) {
     if (owned.has(normalizedName)) {
       throw new Error(
         `${name} must not be set; canonical local tasks own the current-host compiler, wrappers, and target`,
+      );
+    }
+    if (signedDevOwned.has(normalizedName)) {
+      throw new Error(
+        `${name} must not be set; canonical local tasks own signed macOS development`,
       );
     }
     if (processInjection.has(normalizedName)) {
@@ -755,6 +797,9 @@ export function planTauriTask({
   rustdocVerboseVersion,
   rustcExecutable,
   rustdocExecutable,
+  nodeExecutable = process.execPath,
+  signedDevCargoRunner = MACOS_SIGNED_DEV_CARGO_RUNNER,
+  signedDevAppRunner = MACOS_SIGNED_DEV_APP_RUNNER,
 }) {
   assertTauriRequest({ operation, forwardedArguments, environment });
   const target = assertCurrentToolchain({
@@ -764,16 +809,97 @@ export function planTauriTask({
     rustdocVerboseVersion,
   });
   const [subcommand, ...fixedArguments] = TAURI_OPERATIONS[operation];
+  const signedMacosDevelopment = operation === "dev" && platform === "darwin";
+  const cargoExecutable = path.join(path.dirname(rustcExecutable), "cargo");
+  const args = ["tauri", subcommand, "--target", target, ...fixedArguments];
+  const environmentOverrides = {};
+  if (signedMacosDevelopment) {
+    for (const [label, executable] of [
+      ["Node", nodeExecutable],
+      ["Cargo", cargoExecutable],
+      ["signed development Cargo runner", signedDevCargoRunner],
+      ["signed development app runner", signedDevAppRunner],
+    ]) {
+      if (
+        typeof executable !== "string" ||
+        !path.posix.isAbsolute(executable)
+      ) {
+        throw new Error(`${label} must be an absolute path`);
+      }
+    }
+    args.push(
+      "--runner",
+      signedDevCargoRunner,
+      "--features",
+      "macos-privileged-client",
+      "--config",
+      JSON.stringify({
+        productName: "FyAgent Dev",
+        identifier: "com.fyagent.desktop.dev",
+      }),
+    );
+    Object.assign(environmentOverrides, {
+      DEVELOPER_DIR: MACOS_XCODE_DEVELOPER_DIR,
+      FYAGENT_MACOS_SYSTEM_COMMIT_MODE: "development",
+      FYAGENT_PRIVILEGED_CLIENT_DYLIB: path.join(
+        MACOS_PRIVILEGED_DEVELOPMENT_ROOT,
+        "libFyAgentPrivilegedClient.dylib",
+      ),
+      FYAGENT_PRIVILEGED_MANIFEST: path.join(
+        MACOS_PRIVILEGED_DEVELOPMENT_ROOT,
+        "manifest.json",
+      ),
+      FYAGENT_SIGNED_DEV_APP_RUNNER: signedDevAppRunner,
+      FYAGENT_SIGNED_DEV_CARGO: cargoExecutable,
+      FYAGENT_SIGNED_DEV_NODE: nodeExecutable,
+      FYAGENT_SIGNED_DEV_TARGET: target,
+    });
+  }
   return {
     command: "pnpm",
-    args: ["tauri", subcommand, "--target", target, ...fixedArguments],
+    args,
     target,
-    environment: ownedCargoEnvironment({
-      rustcExecutable,
-      rustdocExecutable,
-      platform,
-    }),
+    environment: {
+      ...ownedCargoEnvironment({
+        rustcExecutable,
+        rustdocExecutable,
+        platform,
+      }),
+      ...environmentOverrides,
+    },
   };
+}
+
+export function prepareMacosSignedDevelopment({
+  runCommand = run,
+  nodeExecutable = process.execPath,
+  environment,
+}) {
+  const signedEnvironment = {
+    ...(environment ?? {}),
+    DEVELOPER_DIR: MACOS_XCODE_DEVELOPER_DIR,
+  };
+  runCommand(
+    nodeExecutable,
+    [MACOS_SIGNED_DEV_APP_RUNNER, "machine-preflight"],
+    {
+      env: signedEnvironment,
+    },
+  );
+  runCommand(
+    "/bin/bash",
+    [MACOS_PRIVILEGED_BUILD_SCRIPT, "--variant", "development"],
+    {
+      env: signedEnvironment,
+    },
+  );
+  runCommand(
+    nodeExecutable,
+    [MACOS_SIGNED_DEV_APP_RUNNER, "verify-artifacts"],
+    {
+      env: signedEnvironment,
+    },
+  );
 }
 
 export function assertCargoRequest({
@@ -894,6 +1020,7 @@ export function executeTauriTask({
   captureCommand = capture,
   runCommand = run,
   runForegroundCommand = runForeground,
+  runSetupCommand = run,
   resolveToolCommand = resolveToolExecutable,
   resolveMsvcEnvironment = loadMsvcEnvironment,
 }) {
@@ -921,6 +1048,7 @@ export function executeTauriTask({
     rustdocVerboseVersion,
     rustcExecutable,
     rustdocExecutable,
+    nodeExecutable: process.execPath,
   });
   let commandEnvironment;
   if (platform === "win32") {
@@ -934,6 +1062,14 @@ export function executeTauriTask({
     throw new Error(`Unsupported host platform: ${platform}`);
   }
   const start = operation === "dev" ? runForegroundCommand : runCommand;
+  const signedMacosDevelopment = operation === "dev" && platform === "darwin";
+  if (signedMacosDevelopment) {
+    prepareMacosSignedDevelopment({
+      runCommand: runSetupCommand,
+      nodeExecutable: process.execPath,
+      environment: commandEnvironment,
+    });
+  }
   start(plan.command, plan.args, {
     env: commandEnvironment,
     platform,

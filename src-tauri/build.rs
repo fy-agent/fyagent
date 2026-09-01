@@ -18,7 +18,10 @@ impl WindowsManifest {
 
 fn main() {
     println!("cargo:rustc-check-cfg=cfg(fyagent_windows_release)");
-    emit_optional_privileged_client_link_search();
+    println!(
+        "cargo:rustc-check-cfg=cfg(fyagent_macos_system_commit_mode, values(\"development\", \"formal\"))"
+    );
+    emit_privileged_client_link();
 
     let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
 
@@ -51,10 +54,28 @@ fn main() {
     embed_test_manifest();
 }
 
-/// Emit a link search path when the Swift client dylib already exists.
-/// Missing artifacts are ignored so portable crate builds still succeed.
-fn emit_optional_privileged_client_link_search() {
+/// Link the Swift client for explicitly featured macOS bundles. Runtime
+/// admission is a separate compile-time decision: production Release bundles
+/// can carry and sign the helper/client while keeping system commit disabled
+/// until a dedicated HIL candidate opts into the formal mode.
+fn emit_privileged_client_link() {
     println!("cargo:rerun-if-env-changed=FYAGENT_PRIVILEGED_CLIENT_DYLIB");
+    println!("cargo:rerun-if-env-changed=FYAGENT_MACOS_SYSTEM_COMMIT_MODE");
+
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("macos")
+        || std::env::var_os("CARGO_FEATURE_MACOS_PRIVILEGED_CLIENT").is_none()
+    {
+        return;
+    }
+
+    let mode = match std::env::var("FYAGENT_MACOS_SYSTEM_COMMIT_MODE") {
+        Ok(value) if value == "development" || value == "formal" => Some(value),
+        Ok(value) => panic!(
+            "invalid FYAGENT_MACOS_SYSTEM_COMMIT_MODE={value:?}; expected development or formal"
+        ),
+        Err(std::env::VarError::NotPresent) => None,
+        Err(error) => panic!("failed to read FYAGENT_MACOS_SYSTEM_COMMIT_MODE: {error}"),
+    };
 
     let manifest_dir = std::path::PathBuf::from(
         std::env::var("CARGO_MANIFEST_DIR").expect("missing CARGO_MANIFEST_DIR"),
@@ -67,6 +88,10 @@ fn emit_optional_privileged_client_link_search() {
     }
     candidates
         .push(manifest_dir.join("macos-privileged-helper/dist/libFyAgentPrivilegedClient.dylib"));
+    candidates.push(
+        manifest_dir
+            .join("macos-privileged-helper/dist/development/libFyAgentPrivilegedClient.dylib"),
+    );
     candidates.push(manifest_dir.join(
         "macos-privileged-helper/.build/apple/Products/Release/libFyAgentPrivilegedClient.dylib",
     ));
@@ -75,15 +100,30 @@ fn emit_optional_privileged_client_link_search() {
             .join("macos-privileged-helper/.build/release/libFyAgentPrivilegedClient.dylib"),
     );
 
+    let mut selected = None;
     for candidate in candidates {
         println!("cargo:rerun-if-changed={}", candidate.display());
-        if candidate.is_file() {
-            if let Some(parent) = candidate.parent() {
-                println!("cargo:rustc-link-search=native={}", parent.display());
-            }
-            return;
+        let Ok(metadata) = std::fs::symlink_metadata(&candidate) else {
+            continue;
+        };
+        if metadata.is_file() && !metadata.file_type().is_symlink() {
+            selected = Some(candidate);
+            break;
         }
     }
+
+    let selected = selected.unwrap_or_else(|| {
+        panic!("macOS privileged client feature is enabled, but libFyAgentPrivilegedClient.dylib is missing")
+    });
+    let parent = selected
+        .parent()
+        .expect("privileged client dylib must have a parent directory");
+    if let Some(mode) = mode {
+        println!("cargo:rustc-cfg=fyagent_macos_system_commit_mode=\"{mode}\"");
+    }
+    println!("cargo:rustc-link-search=native={}", parent.display());
+    println!("cargo:rustc-link-lib=dylib=FyAgentPrivilegedClient");
+    println!("cargo:rustc-link-arg=-Wl,-rpath,@executable_path/../Frameworks");
 }
 
 /// Cargo's test-only link arguments do not reach the library unit-test harness.

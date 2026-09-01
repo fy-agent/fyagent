@@ -15,15 +15,19 @@
     ],
     [
       "scripts/tasks/host-native.mjs",
-      "a291a520daf992b4ed4ae558fd6a1db033b5e0b57b4336e74be7d9ccf83a3205"
+      "f9e987c889d59619d72ad7d4d44c080e1857fa94ca88e75794b23a77776c26e1"
     ],
     [
       "scripts/tasks/lib.mjs",
       "6c39036ff571f97e5f58db2cce0cedf05db27eb8d9aabcb1045cfd59aab2b0cb"
     ],
     [
+      "scripts/tasks/macos-signed-dev-cargo.mjs",
+      "fd2cf17f206ab71865ee5e4d8eaa9c22ece0bc52378dd1bc18964b150c11f029"
+    ],
+    [
       "scripts/tasks/supported-platform-check.mjs",
-      "c9609ecfc3a763ffcfa8843b9a3eaefe4844b1b652d9044b9d471180fc8237d2"
+      "fe593bb315088f3a3c922d163216a13c04e9c5972a2b139afc787aec09b21547"
     ],
     [
       "scripts/tasks/system-check.mjs",
@@ -39,11 +43,11 @@
     ],
     [
       "src-tauri/build.rs",
-      "ef38c7d734249a1eeec60fd4ad1d31b20f662b467013cf13541a6fbe0f8ec933"
+      "d40118fd0a4de5e3b2001f9d0c9b764099c6f12cc6060b855969d6a8bc8eddfb"
     ],
     [
       "src-tauri/Cargo.toml",
-      "8e6a481706b3f70494621f4b463c409a5aa2666811b59dbf76cbebdb3e843c4c"
+      "63988629e3587cd5cf104ffb6bf282ccea71a696aa69564ea93104b0eccc391b"
     ],
     [
       "src-tauri/src/agent_install/desktop.rs",
@@ -51,15 +55,15 @@
     ],
     [
       "src-tauri/src/agent_install/inventory.rs",
-      "53b40f1326f45a3f1d999403d09540d43bcd63b91db7b28420d23669509d6396"
+      "f4246cd02da2b8066de7e9ad03dbff755f4c41f07314669411ac0ab787aeea62"
     ],
     [
       "src-tauri/src/agent_install/macos.rs",
-      "39242394c02244d3d1b7ad11422ee96911e759c38dafa982d44b2685185793f8"
+      "32d627e713b8862096afa90b707eee22ced12210b083e6ea617f39f68b470deb"
     ],
     [
       "src-tauri/src/agent_install/mod.rs",
-      "0cca87c30192bc53934f478d300eead4b6e2c90dab77e5c84aed0099ea3ae20a"
+      "49fde1e34b30fdf82ac910ae614afee952ccff9e5de00c634f6ba6ac208bd274"
     ],
     [
       "src-tauri/src/agent_install/sources/mod.rs",
@@ -107,7 +111,7 @@
     ],
     [
       "src-tauri/src/codex_desktop/platform/macos/bundle.rs",
-      "4335ef291995966be827dc7912c77982634ca8ac4f81a5da912466592c236f2f"
+      "88e89814f65e30a38bcf00b5a3d362aaa6c045733b62847eefae12d3212d6807"
     ],
     [
       "src-tauri/src/codex_desktop/platform/macos/mod.rs",
@@ -156,6 +160,10 @@
     [
       "src-tauri/src/lightweight.rs",
       "5533e695fc4a3164f6e4d193771fb8ced39bc1e18e71d197b1924f38dd0175c3"
+    ],
+    [
+      "src-tauri/src/macos_system_commit/ffi.rs",
+      "264b4413bf1804276a7ad2edd7e138b4f5b3de0e1e6452b0e0da9cc094a779d3"
     ],
     [
       "src-tauri/src/main.rs",
@@ -387,15 +395,15 @@
     ],
     [
       "tests/miseTaskContract.test.ts",
-      "6b3c12e882fa12b1e926df79616cb5f18881d4efe99e6888f1cde333f2319a0c"
+      "a1368b08078c2e730838c727ee057f081941fe114cd57076819b67970b927cd6"
     ],
     [
       "tests/releaseWorkflow.test.ts",
-      "af65fa6444ef72260fb86f549c86b017ea0d88dc53b0e75e03c29487dc0714df"
+      "484fa8314983b19a9f977669fc0890caa6a6f9598e491c88a7f9dff3f46b2d18"
     ],
     [
       "tests/remainingPlatformSurface.test.ts",
-      "aa3639068d63b117bdd9826868af2e741c93f20e2bdc279b5be7e45b5d23adb9"
+      "124f9ebe041a2ce6c6052ba325e0b938268762c885958e2791b1a3c3c915aa8a"
     ],
     [
       "tests/singleInstanceActivationContract.test.ts",

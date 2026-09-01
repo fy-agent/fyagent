@@ -101,6 +101,72 @@ struct ProtocolTests {
         let decoded = try JSONDecoder().decode(ClosedCommitFields.self, from: data)
         expect(decoded == fields)
     }
+
+    static func commitReplyEnvelopeAndOutcomeAreBoundToTheRequest() throws {
+        let operationId = UUID()
+        let valid = KnownApplicationCommitResult(
+            operationId: operationId,
+            outcome: .committed,
+            reason: .none
+        )
+        try valid.validate(expectedOperationId: operationId)
+
+        expectThrows(ProtocolError.invalidOperationId) {
+            try valid.validate(expectedOperationId: UUID())
+        }
+        expectThrows(ProtocolError.protocolIncompatible) {
+            try KnownApplicationCommitResult(
+                operationId: operationId,
+                outcome: .committed,
+                reason: .commitFailed
+            ).validate(expectedOperationId: operationId)
+        }
+        expectThrows(ProtocolError.protocolIncompatible) {
+            try KnownApplicationCommitResult(
+                operationId: operationId,
+                outcome: .ready,
+                reason: .none
+            ).validate(expectedOperationId: operationId)
+        }
+        try KnownApplicationCommitResult(
+            operationId: operationId,
+            outcome: .failed,
+            reason: .sourceChanged
+        ).validate(expectedOperationId: operationId)
+    }
+
+    static func removeReplyAcceptsOnlyClosedTerminalPairs() throws {
+        let operationId = UUID()
+        try RemoveHelperResult(
+            operationId: operationId,
+            outcome: .ready,
+            reason: .none
+        ).validate(expectedOperationId: operationId)
+        try RemoveHelperResult(
+            operationId: operationId,
+            outcome: .recoveryRequired,
+            reason: .recoveryRequired
+        ).validate(expectedOperationId: operationId)
+        try RemoveHelperResult(
+            operationId: operationId,
+            outcome: .failed,
+            reason: .helperRemovalFailed
+        ).validate(expectedOperationId: operationId)
+        expectThrows(ProtocolError.protocolIncompatible) {
+            try RemoveHelperResult(
+                operationId: operationId,
+                outcome: .committed,
+                reason: .none
+            ).validate(expectedOperationId: operationId)
+        }
+        expectThrows(ProtocolError.protocolIncompatible) {
+            try RemoveHelperResult(
+                operationId: operationId,
+                outcome: .failed,
+                reason: .commitFailed
+            ).validate(expectedOperationId: operationId)
+        }
+    }
 }
 
 private func validFields() throws -> ClosedCommitFields {

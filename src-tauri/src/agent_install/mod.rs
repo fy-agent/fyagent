@@ -716,12 +716,20 @@ async fn run_desktop_install_job(
             &artifact,
             target,
             expected_release_version,
-            || {
+            |awaiting_user| {
                 if jobs_for_commit.is_cancelled(&cancel_for_commit) {
                     return Err(AgentReasonCode::Cancelled);
                 }
                 jobs_for_commit
-                    .transition(&commit_job_id, AgentActionJobStage::Installing, None)
+                    .transition(
+                        &commit_job_id,
+                        if awaiting_user {
+                            AgentActionJobStage::AwaitingUser
+                        } else {
+                            AgentActionJobStage::Installing
+                        },
+                        None,
+                    )
                     .map(|_| ())
             },
             || {

@@ -109,8 +109,7 @@ const PRIVILEGED_HELPER_RELPATH =
   "Contents/Library/LaunchServices/com.fyagent.desktop.system-commit-helper";
 const PRIVILEGED_CLIENT_RELPATH =
   "Contents/Frameworks/libFyAgentPrivilegedClient.dylib";
-const PRIVILEGED_HELPER_IDENTIFIER =
-  "com.fyagent.desktop.system-commit-helper";
+const PRIVILEGED_HELPER_IDENTIFIER = "com.fyagent.desktop.system-commit-helper";
 const MACOS_DEVELOPER_ID = path.join(
   ROOT,
   "scripts",
@@ -898,7 +897,51 @@ exit 2
 `,
     { mode: 0o755 },
   );
+  fs.writeFileSync(
+    path.join(binRoot, "otool"),
+    `#!/usr/bin/env bash
+set -euo pipefail
+case "\${1:-}" in
+  -L)
+    printf '%s\\n' \\
+      "\${2}:" \\
+      $'\\t@rpath/libFyAgentPrivilegedClient.dylib (compatibility version 1.0.0, current version 1.0.0)'
+    ;;
+  -l)
+    printf '%s\\n' \\
+      'Load command 1' \\
+      '          cmd LC_RPATH' \\
+      '      cmdsize 48' \\
+      '         path @executable_path/../Frameworks (offset 12)'
+    ;;
+  *) exit 2 ;;
+esac
+`,
+    { mode: 0o755 },
+  );
   return binRoot;
+}
+
+function plantMacAppLayout(appPath: string) {
+  const contents = path.join(appPath, "Contents");
+  const macos = path.join(contents, "MacOS");
+  fs.mkdirSync(macos, { recursive: true });
+  fs.writeFileSync(
+    path.join(contents, "Info.plist"),
+    `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleExecutable</key><string>FyAgent</string>
+  <key>CFBundleIdentifier</key><string>com.fyagent.desktop</string>
+<key>CFBundleExecutable</key><string>fyagent</string>
+  <key>CFBundleShortVersionString</key><string>0.4.2</string>
+  <key>CFBundleVersion</key><string>0.4.2</string>
+</dict>
+</plist>
+`,
+  );
+  fs.writeFileSync(path.join(macos, "FyAgent"), "fake-main-executable");
 }
 
 function plantPrivilegedHelper(
@@ -917,7 +960,10 @@ function plantPrivilegedHelper(
       ? "fake-helper-without-mach-service"
       : `fake-helper ${PRIVILEGED_HELPER_IDENTIFIER} MachServices`;
   fs.writeFileSync(path.join(appPath, PRIVILEGED_HELPER_RELPATH), helperBody);
-  fs.writeFileSync(path.join(appPath, PRIVILEGED_CLIENT_RELPATH), "fake-client");
+  fs.writeFileSync(
+    path.join(appPath, PRIVILEGED_CLIENT_RELPATH),
+    "fake-client",
+  );
   if (state === "extra-helper") {
     fs.writeFileSync(
       path.join(
@@ -946,6 +992,7 @@ function runMacSignedAppVerifier(
   const callLog = path.join(root, "codesign.log");
   const binRoot = writeFakeCodesignTools(root);
   fs.mkdirSync(appPath);
+  plantMacAppLayout(appPath);
   plantPrivilegedHelper(appPath, options.helper ?? "present");
   const result = spawnSync(
     resolveBashExecutable(),
@@ -981,6 +1028,7 @@ function runMacPrivilegedHelperVerifier(
   const callLog = path.join(root, "codesign.log");
   const binRoot = writeFakeCodesignTools(root);
   fs.mkdirSync(appPath);
+  plantMacAppLayout(appPath);
   plantPrivilegedHelper(appPath, options.helper ?? "present");
   const result = spawnSync(
     resolveBashExecutable(),
@@ -2266,7 +2314,9 @@ jobs:
         };
       };
     };
-    expect(source).toContain("--target universal-apple-darwin --bundles app");
+    expect(source).toContain("--target universal-apple-darwin");
+    expect(source).toContain("--bundles app");
+    expect(source).toContain("--features macos-privileged-client");
     expect(source).toContain("lipo -archs");
     expect(source).toContain("CFBundleShortVersionString");
     expect(source).toContain("com.fyagent.desktop");
@@ -2280,7 +2330,7 @@ jobs:
     );
     expect(
       macJob.indexOf("scripts/release/build-macos-privileged-helper.sh"),
-    ).toBeGreaterThan(macJob.indexOf("Build universal macOS app"));
+    ).toBeLessThan(macJob.indexOf("Build universal macOS app"));
     expect(
       macJob.indexOf("scripts/release/embed-macos-privileged-helper.sh"),
     ).toBeGreaterThan(
@@ -2505,7 +2555,9 @@ jobs:
     expect(macPrivilegedHelperEmbed).not.toContain("notarytool");
     expect(macPrivilegedHelperEmbed).not.toContain("codesign");
     expect(macPrivilegedHelperBuild).toContain("--arch arm64 --arch x86_64");
-    expect(macPrivilegedHelperBuild).toContain("--disable-automatic-resolution");
+    expect(macPrivilegedHelperBuild).toContain(
+      "--disable-automatic-resolution",
+    );
     expect(macPrivilegedHelperBuild).toContain(
       'MACOSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-12.0}"',
     );
@@ -2530,18 +2582,20 @@ jobs:
       "<string>com.fyagent.desktop.system-commit-helper</string>",
     );
     expect(macHelperInfoPlist).toContain("<string>0.4.2</string>");
-    expect(read(BUILD_RS)).toContain(
-      "emit_optional_privileged_client_link_search",
-    );
+    expect(read(BUILD_RS)).toContain("emit_privileged_client_link");
     expect(read(BUILD_RS)).toContain(
       "macos-privileged-helper/dist/libFyAgentPrivilegedClient.dylib",
     );
     expect(
-      namedStepBlock(macJob, "Build and embed nested privileged helper"),
+      namedStepBlock(macJob, "Build nested privileged helper and client"),
     ).toContain('FYAGENT_REQUIRE_PRIVILEGED_HELPER: "1"');
-    expect(
-      namedStepBlock(macJob, "Build and embed nested privileged helper"),
-    ).toContain("verify-macos-privileged-helper.sh --structure-only");
+    expect(namedStepBlock(macJob, "Embed nested privileged helper")).toContain(
+      "verify-macos-privileged-helper.sh --structure-only",
+    );
+    expect(macJob).not.toContain("FYAGENT_MACOS_SYSTEM_COMMIT_MODE: formal");
+    expect(macJob).toContain(
+      "production runtime remains compile-time disabled until a dedicated",
+    );
     expect(macSignedDmgVerifier).toContain("Authority=$EXPECTED_AUTHORITY");
     expect(macSignedDmgVerifier).toContain("xcrun stapler validate");
     expect(macJob).not.toContain("unexpectedly has a code signature");

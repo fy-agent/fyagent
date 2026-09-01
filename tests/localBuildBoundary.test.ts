@@ -315,9 +315,29 @@ describe("local build boundary", () => {
         'target.x86_64-apple-darwin.runner=["/usr/bin/node","/repo/scripts/tasks/host-native.mjs","native-runner","x86_64-apple-darwin"]',
     };
     const dev = hostNative.planTauriTask({ ...base, operation: "dev" });
+    const signedDevCargoRunner = path.join(
+      ROOT,
+      "scripts",
+      "tasks",
+      "macos-signed-dev-cargo.mjs",
+    );
     expect(dev).toMatchObject({
       command: "pnpm",
-      args: ["tauri", "dev", "--target", "x86_64-apple-darwin"],
+      args: [
+        "tauri",
+        "dev",
+        "--target",
+        "x86_64-apple-darwin",
+        "--runner",
+        signedDevCargoRunner,
+        "--features",
+        "macos-privileged-client",
+        "--config",
+        JSON.stringify({
+          productName: "FyAgent Dev",
+          identifier: "com.fyagent.desktop.dev",
+        }),
+      ],
       target: "x86_64-apple-darwin",
     });
     expect(dev.environment).toMatchObject({
@@ -458,9 +478,9 @@ describe("local build boundary", () => {
 
     expect(release).toContain("aarch64-pc-windows-msvc");
     expect(release).toContain("pnpm tauri build --no-bundle");
-    expect(release).toContain(
-      "pnpm tauri build --target universal-apple-darwin",
-    );
+    expect(release).toContain("pnpm tauri build \\");
+    expect(release).toContain("--target universal-apple-darwin \\");
+    expect(release).toContain("--features macos-privileged-client");
     expect(release).toContain("FYAGENT_WINDOWS_MANIFEST: release");
   });
 });

@@ -105,6 +105,7 @@ pub(crate) struct BundleInfo {
     bundle_path: PathBuf,
     bundle_name: OsString,
     bundle_identifier: String,
+    executable: String,
     platform_version: PlatformVersion,
     display_version: Option<String>,
     display_name: Option<String>,
@@ -121,6 +122,10 @@ impl BundleInfo {
 
     pub(crate) fn bundle_identifier(&self) -> &str {
         &self.bundle_identifier
+    }
+
+    pub(crate) fn executable(&self) -> &str {
+        &self.executable
     }
 
     pub(crate) fn platform_version(&self) -> &PlatformVersion {
@@ -413,7 +418,7 @@ pub(crate) fn read_bundle_info(
     let executable_path = canonical_bundle_path
         .join("Contents")
         .join("MacOS")
-        .join(executable);
+        .join(&executable);
     if filesystem.file_kind(&executable_path) != Ok(MacosFileKind::File) {
         return Err(error(
             InstallerErrorCode::PackageParseFailed,
@@ -437,6 +442,7 @@ pub(crate) fn read_bundle_info(
         bundle_path: canonical_bundle_path.to_path_buf(),
         bundle_name,
         bundle_identifier,
+        executable,
         platform_version,
         display_version: short_version,
         display_name,

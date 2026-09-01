@@ -131,6 +131,14 @@ impl HelperStatus {
     pub fn claims_success(&self) -> bool {
         matches!(self.state, HelperState::Ready) && self.reason.is_none()
     }
+
+    pub fn from_parts(state: HelperState, reason: Option<AgentReasonCode>) -> Self {
+        Self {
+            protocol_version: PROTOCOL_VERSION,
+            state,
+            reason,
+        }
+    }
 }
 
 #[cfg(test)]

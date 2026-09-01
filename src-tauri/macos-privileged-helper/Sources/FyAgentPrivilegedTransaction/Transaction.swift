@@ -163,6 +163,7 @@ public enum SystemCommit {
             operationId: fields.operationId,
             product: fields.product.rawValue,
             targetSlot: fields.targetSlot,
+            action: fields.action,
             phase: .preparing,
             stageName: stageName,
             backupName: fields.action == .updateExisting ? backupName : nil,

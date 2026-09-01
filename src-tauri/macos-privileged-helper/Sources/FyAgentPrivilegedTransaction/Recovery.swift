@@ -42,7 +42,24 @@ enum Recovery {
 
         switch receipt.phase {
         case .preparing, .readyToCommit:
-            try cleanupOwnedStage(receipt: receipt, parentFD: parentFD, policy: policy)
+            switch receipt.action {
+            case .freshInstall:
+                try recoverFreshBeforeCommit(
+                    receipt: receipt,
+                    parentFD: parentFD,
+                    policy: policy,
+                    slot: slot
+                )
+            case .updateExisting:
+                try recoverUpdateBeforeBackup(
+                    receipt: receipt,
+                    parentFD: parentFD,
+                    policy: policy,
+                    slot: slot
+                )
+            case .none:
+                throw TransactionError.recoveryRequired
+            }
             try ReceiptStore.remove(receipt, in: environment.receiptDirectory)
             return .recovered
         case .backupCreated:
@@ -64,6 +81,53 @@ enum Recovery {
             try ReceiptStore.remove(receipt, in: environment.receiptDirectory)
             return .recovered
         }
+    }
+
+    private static func recoverFreshBeforeCommit(
+        receipt: TransactionReceipt,
+        parentFD: Int32,
+        policy: KnownApplicationPolicy,
+        slot: TargetSlotPolicy
+    ) throws {
+        let stageExists = try DirectoryFD.exists(parentFD, receipt.stageName)
+        let targetExists = try DirectoryFD.exists(parentFD, slot.basename)
+        if stageExists, targetExists {
+            throw TransactionError.recoveryRequired
+        }
+        if targetExists {
+            try requireRevision(
+                parentFD: parentFD,
+                name: slot.basename,
+                policy: policy,
+                expectedRevision: receipt.sourceRevision
+            )
+            return
+        }
+        if stageExists {
+            try cleanupOwnedStage(receipt: receipt, parentFD: parentFD, policy: policy)
+        }
+    }
+
+    private static func recoverUpdateBeforeBackup(
+        receipt: TransactionReceipt,
+        parentFD: Int32,
+        policy: KnownApplicationPolicy,
+        slot: TargetSlotPolicy
+    ) throws {
+        guard try DirectoryFD.exists(parentFD, slot.basename),
+              let targetRevision = receipt.targetRevision else {
+            throw TransactionError.recoveryRequired
+        }
+        try requireRevision(
+            parentFD: parentFD,
+            name: slot.basename,
+            policy: policy,
+            expectedRevision: targetRevision
+        )
+        if let backup = receipt.backupName, try DirectoryFD.exists(parentFD, backup) {
+            throw TransactionError.recoveryRequired
+        }
+        try cleanupOwnedStage(receipt: receipt, parentFD: parentFD, policy: policy)
     }
 
     private static func cleanupOwnedStage(
@@ -98,11 +162,26 @@ enum Recovery {
         let targetExists = try DirectoryFD.exists(parentFD, slot.basename)
         let backupName = receipt.backupName
         let backupExists = try backupName.map { try DirectoryFD.exists(parentFD, $0) } ?? false
-        if targetExists {
-            throw TransactionError.recoveryRequired
-        }
         guard let backupName, backupExists else {
             throw TransactionError.recoveryRequired
+        }
+        if targetExists {
+            if try DirectoryFD.exists(parentFD, receipt.stageName) {
+                throw TransactionError.recoveryRequired
+            }
+            try requireRevision(
+                parentFD: parentFD,
+                name: slot.basename,
+                policy: policy,
+                expectedRevision: receipt.sourceRevision
+            )
+            try removeOwnedBackup(
+                parentFD: parentFD,
+                backupName: backupName,
+                policy: policy,
+                expectedRevision: receipt.targetRevision
+            )
+            return
         }
         try cleanupOwnedStage(receipt: receipt, parentFD: parentFD, policy: policy)
         try restoreBackup(
@@ -112,6 +191,26 @@ enum Recovery {
             policy: policy,
             expectedRevision: receipt.targetRevision
         )
+    }
+
+    private static func requireRevision(
+        parentFD: Int32,
+        name: String,
+        policy: KnownApplicationPolicy,
+        expectedRevision: Data
+    ) throws {
+        let fd = try DirectoryFD.openAtDirectory(parentFD, name)
+        let identity: BundleIdentity
+        do {
+            identity = try BundleIdentityReader.read(fromBundleFD: fd, policy: policy)
+        } catch {
+            DirectoryFD.close(fd)
+            throw error
+        }
+        DirectoryFD.close(fd)
+        if identity.revision != expectedRevision {
+            throw TransactionError.recoveryRequired
+        }
     }
 
     private static func recoverReplacementCommitted(

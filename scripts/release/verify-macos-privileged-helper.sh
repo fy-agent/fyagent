@@ -46,6 +46,8 @@ fi
 helper_path="$app_path/$EXPECTED_PRIVILEGED_HELPER_RELPATH"
 client_path="$app_path/$EXPECTED_PRIVILEGED_CLIENT_RELPATH"
 launch_services="$(dirname "$helper_path")"
+app_executable="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app_path/Contents/Info.plist")"
+main_path="$app_path/Contents/MacOS/$app_executable"
 
 require_regular_nested_file() {
   local path="$1"
@@ -94,6 +96,21 @@ require_mach_service_label() {
     echo "nested privileged helper does not contain the expected Mach service label" >&2
     exit 1
   fi
+}
+
+require_client_linkage() {
+  local linked load_commands
+  require_regular_nested_file "$main_path" "FyAgent main executable"
+  linked="$(otool -L "$main_path")"
+  grep -Fq '@rpath/libFyAgentPrivilegedClient.dylib' <<<"$linked" || {
+    echo "FyAgent main executable is not linked to the privileged client" >&2
+    exit 1
+  }
+  load_commands="$(otool -l "$main_path")"
+  grep -Fq 'path @executable_path/../Frameworks' <<<"$load_commands" || {
+    echo "FyAgent main executable is missing the privileged client Frameworks rpath" >&2
+    exit 1
+  }
 }
 
 require_developer_id_signature() {
@@ -154,6 +171,7 @@ require_exact_launch_services
 require_universal_slices "$helper_path" "nested privileged helper"
 require_universal_slices "$client_path" "nested privileged client"
 require_mach_service_label
+require_client_linkage
 
 if [ "$structure_only" -eq 1 ]; then
   exit 0

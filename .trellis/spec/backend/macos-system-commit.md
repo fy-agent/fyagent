@@ -90,13 +90,13 @@ pub fn system_scope_rejection() -> AgentReasonCode; // AuthorizationRequired whi
 
 Product integers (C ABI / XPC; display names never travel):
 
-| value | product         | expected bundle ID           | fresh `/Applications` basename | extra existing-only slots |
-| ----- | --------------- | ---------------------------- | ------------------------------ | ------------------------- |
-| 1     | CodexDesktop    | `com.openai.codex`           | `ChatGPT.app`                  | `Codex.app`               |
-| 2     | OpenCodeDesktop | `ai.opencode.desktop`        | `OpenCode.app`                 | none                      |
-| 3     | QoderWork       | `com.qoder.work.cn`          | `QoderWork CN.app`             | none                      |
-| 4     | TraeWork        | `cn.trae.solo.app`           | `TRAE SOLO CN.app`             | none                      |
-| 5     | WorkBuddy       | `com.workbuddy.workbuddy`    | `WorkBuddy.app`                | none                      |
+| value | product         | expected bundle ID        | fresh `/Applications` basename | extra existing-only slots |
+| ----- | --------------- | ------------------------- | ------------------------------ | ------------------------- |
+| 1     | CodexDesktop    | `com.openai.codex`        | `ChatGPT.app`                  | `Codex.app`               |
+| 2     | OpenCodeDesktop | `ai.opencode.desktop`     | `OpenCode.app`                 | none                      |
+| 3     | QoderWork       | `com.qoder.work.cn`       | `QoderWork CN.app`             | none                      |
+| 4     | TraeWork        | `cn.trae.solo.app`        | `TRAE SOLO CN.app`             | none                      |
+| 5     | WorkBuddy       | `com.workbuddy.workbuddy` | `WorkBuddy.app`                | none                      |
 
 Codex slots: `1` = ChatGPT.app (fresh default), `2` = Codex.app (existing
 only). Every other product uses slot `1` as its single fresh-default basename.
@@ -140,23 +140,23 @@ this table; user-scope Claude install stays on the Agent desktop path.
 
 ## 4. Validation & Error Matrix
 
-| Condition | Required result |
-| --- | --- |
-| `production_enabled() == false` and a system target is selected | `authorization_required`; zero `/Applications` write; no `~/Applications` relabel |
-| Helper binary or client dylib missing in production invoke | `helper_not_packaged` for ensure/remove; commit still `authorization_required` while disabled |
-| Unknown product integer or slot | `target_slot_invalid`; zero mutation |
-| User cancels Bless or commit Authorization | `helper_install_authorization_cancelled` / `operation_authorization_cancelled`; existing app unchanged |
-| Invalid or expired Authorization | `operation_authorization_invalid` |
-| Helper signature, peer, or protocol mismatch | `helper_signature_invalid` / `helper_peer_rejected` / `helper_protocol_incompatible` |
-| Installed helper is older than the bundled requirement | `helper_update_required` |
-| Installed helper is newer than this app | `helper_downgrade_rejected` |
-| Source capability drifted before commit | `source_capability_invalid` / `source_changed` |
-| Commit fails after backup and restore succeeds | `rollback_restored` |
-| Commit fails and authority of the slot is unknown | `recovery_required` |
-| Renderer sends path/URL/command/Authorization bytes | Reject at Agent/Codex IPC; helper never sees it |
-| Swift package added as a Cargo workspace member | `version:check` / workspace contract fails |
-| Formal `sign-app` without both nested binaries | Fail; do not sign an app-only bundle |
-| `sudo`, AppleScript admin, `AuthorizationExecuteWithPrivileges`, or setuid | Forbidden; tests and review reject |
+| Condition                                                                  | Required result                                                                                        |
+| -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `production_enabled() == false` and a system target is selected            | `authorization_required`; zero `/Applications` write; no `~/Applications` relabel                      |
+| Helper binary or client dylib missing in production invoke                 | `helper_not_packaged` for ensure/remove; commit still `authorization_required` while disabled          |
+| Unknown product integer or slot                                            | `target_slot_invalid`; zero mutation                                                                   |
+| User cancels Bless or commit Authorization                                 | `helper_install_authorization_cancelled` / `operation_authorization_cancelled`; existing app unchanged |
+| Invalid or expired Authorization                                           | `operation_authorization_invalid`                                                                      |
+| Helper signature, peer, or protocol mismatch                               | `helper_signature_invalid` / `helper_peer_rejected` / `helper_protocol_incompatible`                   |
+| Installed helper is older than the bundled requirement                     | `helper_update_required`                                                                               |
+| Installed helper is newer than this app                                    | `helper_downgrade_rejected`                                                                            |
+| Source capability drifted before commit                                    | `source_capability_invalid` / `source_changed`                                                         |
+| Commit fails after backup and restore succeeds                             | `rollback_restored`                                                                                    |
+| Commit fails and authority of the slot is unknown                          | `recovery_required`                                                                                    |
+| Renderer sends path/URL/command/Authorization bytes                        | Reject at Agent/Codex IPC; helper never sees it                                                        |
+| Swift package added as a Cargo workspace member                            | `version:check` / workspace contract fails                                                             |
+| Formal `sign-app` without both nested binaries                             | Fail; do not sign an app-only bundle                                                                   |
+| `sudo`, AppleScript admin, `AuthorizationExecuteWithPrivileges`, or setuid | Forbidden; tests and review reject                                                                     |
 
 ## 5. Good / Base / Bad Cases
 
@@ -219,3 +219,50 @@ typedef struct {
 uint32_t product;
 uint32_t target_slot;
 ```
+
+## Signed development runtime and formal admission
+
+The privileged transaction implementation is shared by development and formal
+packages. It has three backend-selected runtime modes:
+
+- `Disabled`: an unsigned or unlinked build. `/Applications` remains
+  ineligible and returns `authorization_required`; it must not fall back to a
+  per-user destination.
+- `DevelopmentSigned`: `mise run dev` builds the existing Swift helper/client,
+  links the client C ABI into the Rust executable, assembles a real
+  `com.fyagent.desktop.dev` app bundle, and signs every nested executable
+  inside-out with the existing
+  `Developer ID Application: William Wang (HY446996QX)` identity. The local
+  task extracts the configured PKCS#12 into a 0700 per-run directory, converts
+  the same private key to traditional RSA PEM for macOS Keychain import, and
+  imports that key plus the leaf, pinned Developer ID G2, and Apple Root public
+  certificates only into an ephemeral keychain. It signs by the resolved
+  identity hash, restores the original keychain search list, and deletes every
+  extracted key/certificate file together with the temporary keychain. The
+  repository contains neither the PKCS#12 path nor its password; a
+  permission-restricted user-local configuration points to those files.
+  Development signing does not notarize or staple the app.
+- `FormalRelease`: the production helper/client can be linked and packaged, but
+  transaction admission remains closed until a Developer ID, notarized HIL
+  candidate passes Bless, root XPC, fresh install, update, rollback, recovery,
+  and helper removal/upgrade acceptance.
+
+Development uses the separate helper, Mach service, authorization-right, and
+receipt namespaces rooted at
+`com.fyagent.desktop.dev.system-commit-helper`. Production retains
+`com.fyagent.desktop.system-commit-helper`. Both flavors are generated from the
+same Blessed, Authorized, SecureXPC, policy, protocol, and transaction sources;
+there is no second helper implementation.
+
+Runtime admission is a Rust compile-time capability plus the linked client
+artifact. Renderer input and process runtime environment variables cannot turn
+it on. The signed development task owns `DEVELOPER_DIR`, compiler/linker/runner
+variables, helper artifact paths, and the Tauri target; caller overrides are
+rejected.
+
+XPC waiting is operation-specific. Read-only status uses a short bounded wait.
+Mutating commit/remove operations use their own bounded waits. A mutating wait
+expiry means the root operation may still be running and therefore maps to
+`recovery_required` and an `Incomplete` job, never to an ordinary
+`helper_unavailable` or `Failed` result. Recovery and authoritative inventory
+re-read remain mandatory before another mutation.

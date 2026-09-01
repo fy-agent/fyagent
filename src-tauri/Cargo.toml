@@ -26,6 +26,7 @@ doctest = false
 [features]
 default = []
 test-hooks = []
+macos-privileged-client = []
 
 [build-dependencies]
 tauri-build = { version = "2.4.0", features = [] }

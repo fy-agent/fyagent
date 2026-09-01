@@ -279,8 +279,12 @@ and structure scanners.
 
 The source inventory is recomputed bidirectionally from all tracked Cargo
 manifests and build scripts plus executable/configuration files containing
-platform selectors. The candidate set, canonical paths, Git index mode
-`100644`, regular non-symlink file type, and SHA-256 digest must match exactly.
+platform selectors. The candidate set, canonical paths, reviewed Git index
+mode, regular non-symlink file type, and SHA-256 digest must match exactly.
+Platform-sensitive source is `100644` except the single Tauri Cargo runner
+`scripts/tasks/macos-signed-dev-cargo.mjs`, which is deliberately `100755`
+because Tauri invokes `--runner` directly as `<runner> run ...`; making that
+file non-executable is a runtime failure, not a hardening improvement.
 Adding, removing, renaming, moving, changing, or changing the mode of a
 candidate fails until the source diff is reviewed and the identity inventory
 is deliberately updated. A digest-only update is not evidence that a platform
@@ -519,3 +523,38 @@ current host, and executable tests prove both metadata and real argument flow.
 Interactive tasks set `raw` and tear down the POSIX group or Windows tree
 explicitly. Generated `mise-tasks.md` identity is `tasks:docs:check` /
 `docs-contract-check.mjs` only.
+
+## macOS signed development runner
+
+On macOS, the canonical `dev` task remains current-host-only, interactive, and
+raw. It keeps Tauri dev/HMR, but supplies a fixed Cargo runner chain that wraps
+the emitted debug executable in a real development app bundle before launch.
+The chain performs, in order:
+
+1. fixed-path full-Xcode plus user-local Developer ID PKCS#12 preflight through
+   an ephemeral keychain; the task extracts the same certificate/private key
+   into a per-run 0700 directory, imports the leaf and traditional RSA private
+   key separately alongside the pinned Apple Root and Developer ID G2 public
+   certificates, never permanently installs the release private key, restores
+   the user's keychain search list, and deletes the complete per-run directory;
+2. development-flavor universal privileged helper/client build and embedded
+   plist verification;
+3. Tauri dev compilation with the privileged-client Cargo feature;
+4. app bundle assembly, client/helper embedding, inside-out signing with the
+   frozen `Developer ID Application: William Wang (HY446996QX)` identity,
+   strict signature/link/rpath verification, and direct bundle executable
+   launch. Development does not notarize or staple the app.
+
+The runner accepts only Tauri/Cargo's fixed protocol arguments and rejects
+forwarded application arguments. The task owns and sanitizes
+`DEVELOPER_DIR`, Cargo/rustc runner settings, privileged artifact variables,
+`DYLD_*`, `RUSTFLAGS`, `NODE_OPTIONS`, and related injection surfaces. Ctrl+C
+continues to terminate the complete child process group. Linux and Windows keep
+their previous native task behavior.
+
+The repository does not contain a developer-machine PKCS#12 path or password.
+`scripts/tasks/macos-signed-dev.mjs configure` writes a mode-0600 configuration
+under the user's FyAgent Application Support directory that references a local
+PKCS#12 and credentials file. `mise run dev` consumes only that fixed local
+configuration; callers cannot override signing paths or credentials through
+task arguments or environment variables.

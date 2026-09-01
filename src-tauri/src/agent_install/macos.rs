@@ -7,6 +7,9 @@
 use std::path::PathBuf;
 
 #[cfg(target_os = "macos")]
+use std::{fs::File, os::fd::AsRawFd};
+
+#[cfg(target_os = "macos")]
 use super::types::{InstallationPackageKind, InstallationScope};
 use super::{inventory::DesktopDeploymentTarget, types::AgentReasonCode};
 use crate::codex_desktop::download::DownloadedArtifact;
@@ -16,6 +19,44 @@ use crate::services::external_agents::AgentCatalogId;
 pub(super) struct MacosDeploymentResult {
     pub target_path: PathBuf,
     pub local_version: String,
+}
+
+#[cfg(target_os = "macos")]
+fn callback_error(reason: AgentReasonCode) -> crate::codex_desktop::error::InstallerError {
+    use crate::codex_desktop::error::{InstallerError, InstallerErrorCode};
+    let code = if reason == AgentReasonCode::Cancelled {
+        InstallerErrorCode::DownloadCancelled
+    } else {
+        InstallerErrorCode::InternalError
+    };
+    InstallerError::new(code)
+        .with_diagnostic_message("managed Agent commit gate rejected the transaction")
+}
+
+#[cfg(target_os = "macos")]
+fn verification_error() -> crate::codex_desktop::error::InstallerError {
+    use crate::codex_desktop::error::{InstallerError, InstallerErrorCode};
+    InstallerError::new(InstallerErrorCode::InstallationVerifyFailed)
+        .with_diagnostic_message("managed Agent inventory readback rejected the installation")
+}
+
+#[cfg(target_os = "macos")]
+fn map_failure(
+    kind: crate::codex_desktop::platform::macos::dmg::ManagedDmgFailureKind,
+) -> AgentReasonCode {
+    use crate::codex_desktop::platform::macos::dmg::ManagedDmgFailureKind;
+    match kind {
+        ManagedDmgFailureKind::Cancelled => AgentReasonCode::Cancelled,
+        ManagedDmgFailureKind::ApplicationRunning => AgentReasonCode::ApplicationRunning,
+        ManagedDmgFailureKind::PermissionDenied => AgentReasonCode::PermissionDenied,
+        ManagedDmgFailureKind::SourceInvalid => AgentReasonCode::SourceNotVerified,
+        ManagedDmgFailureKind::TargetChanged => AgentReasonCode::TargetChanged,
+        ManagedDmgFailureKind::VerificationFailedRestored => AgentReasonCode::RollbackRestored,
+        ManagedDmgFailureKind::RecoveryRequired => AgentReasonCode::RecoveryRequired,
+        ManagedDmgFailureKind::MountFailed
+        | ManagedDmgFailureKind::DetachFailed
+        | ManagedDmgFailureKind::Failed => AgentReasonCode::ExecutorNotImplemented,
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -52,27 +93,21 @@ fn managed_dmg_product_policy(
 }
 
 #[cfg(target_os = "macos")]
-pub(super) fn deploy_macos_dmg<BeforeCommit, BeforeVerify>(
+pub(super) fn deploy_macos_dmg<CommitStage, BeforeVerify>(
     product: AgentCatalogId,
     artifact: &DownloadedArtifact,
     target: DesktopDeploymentTarget,
     expected_release_version: Option<String>,
-    mut before_commit: BeforeCommit,
+    mut commit_stage: CommitStage,
     mut before_verify: BeforeVerify,
 ) -> Result<MacosDeploymentResult, AgentReasonCode>
 where
-    BeforeCommit: FnMut() -> Result<(), AgentReasonCode>,
+    CommitStage: FnMut(bool) -> Result<(), AgentReasonCode>,
     BeforeVerify: FnMut() -> Result<(), AgentReasonCode>,
 {
-    use crate::codex_desktop::{
-        error::{InstallerError, InstallerErrorCode},
-        platform::macos::{
-            dmg::{
-                install_managed_exact, ManagedDmgFailureKind, ManagedDmgInstallIntent,
-                ManagedDmgInstallRequest,
-            },
-            StdMacosFilesystem, SystemCommandRunner,
-        },
+    use crate::codex_desktop::platform::macos::{
+        dmg::{install_managed_exact, ManagedDmgInstallIntent, ManagedDmgInstallRequest},
+        StdMacosFilesystem, SystemCommandRunner,
     };
 
     use super::desktop::{
@@ -80,38 +115,28 @@ where
         verify_desktop_deployment,
     };
 
-    fn callback_error(reason: AgentReasonCode) -> InstallerError {
-        let code = if reason == AgentReasonCode::Cancelled {
-            InstallerErrorCode::DownloadCancelled
-        } else {
-            InstallerErrorCode::InternalError
-        };
-        InstallerError::new(code)
-            .with_diagnostic_message("managed Agent commit gate rejected the transaction")
-    }
-
-    fn verification_error() -> InstallerError {
-        InstallerError::new(InstallerErrorCode::InstallationVerifyFailed)
-            .with_diagnostic_message("managed Agent inventory readback rejected the installation")
-    }
-
-    fn map_failure(kind: ManagedDmgFailureKind) -> AgentReasonCode {
-        match kind {
-            ManagedDmgFailureKind::Cancelled => AgentReasonCode::Cancelled,
-            ManagedDmgFailureKind::ApplicationRunning => AgentReasonCode::ApplicationRunning,
-            ManagedDmgFailureKind::PermissionDenied => AgentReasonCode::PermissionDenied,
-            ManagedDmgFailureKind::SourceInvalid => AgentReasonCode::SourceNotVerified,
-            ManagedDmgFailureKind::TargetChanged => AgentReasonCode::TargetChanged,
-            ManagedDmgFailureKind::VerificationFailedRestored => AgentReasonCode::RollbackRestored,
-            ManagedDmgFailureKind::RecoveryRequired => AgentReasonCode::RecoveryRequired,
-            ManagedDmgFailureKind::MountFailed
-            | ManagedDmgFailureKind::DetachFailed
-            | ManagedDmgFailureKind::Failed => AgentReasonCode::ExecutorNotImplemented,
-        }
-    }
-
     let bundle_id = macos_bundle_id_for(product).ok_or(AgentReasonCode::SourceNotVerified)?;
     let product_policy = managed_dmg_product_policy(product, bundle_id)?;
+    let system_target = matches!(
+        target,
+        DesktopDeploymentTarget::Existing {
+            scope: InstallationScope::AllUsers,
+            ..
+        } | DesktopDeploymentTarget::Fresh(
+            super::inventory::FreshDestinationCapability::MacSystemApplications
+        )
+    );
+    if system_target {
+        return deploy_macos_system_dmg(
+            product,
+            artifact,
+            target,
+            expected_release_version,
+            &product_policy,
+            &mut commit_stage,
+            &mut before_verify,
+        );
+    }
     let (intent, expected_scope) = match target {
         DesktopDeploymentTarget::Existing {
             path,
@@ -121,14 +146,6 @@ where
             ManagedDmgInstallIntent::Update { target: path },
             InstallationScope::CurrentUser,
         ),
-        DesktopDeploymentTarget::Existing {
-            scope: InstallationScope::AllUsers,
-            ..
-        } => {
-            // MacSystemCommitPort owns privileged /Applications commit.
-            // production_enabled() is false until signed/notarized HIL.
-            return Err(crate::macos_system_commit::system_scope_rejection());
-        }
         DesktopDeploymentTarget::Existing { .. } => {
             return Err(AgentReasonCode::TargetScopeUnsupported)
         }
@@ -139,9 +156,7 @@ where
                 },
                 InstallationScope::CurrentUser,
             ),
-            super::inventory::FreshDestinationCapability::MacSystemApplications => {
-                return Err(crate::macos_system_commit::system_scope_rejection());
-            }
+            super::inventory::FreshDestinationCapability::MacSystemApplications => unreachable!(),
             _ => return Err(AgentReasonCode::TargetScopeUnsupported),
         },
     };
@@ -160,7 +175,7 @@ where
             product: &product_policy,
             expected_release_version: expected_release_version.as_deref(),
         },
-        || before_commit().map_err(callback_error),
+        || commit_stage(false).map_err(callback_error),
         |result| {
             before_verify().map_err(callback_error)?;
             verify_desktop_deployment(
@@ -180,17 +195,135 @@ where
     })
 }
 
+#[cfg(target_os = "macos")]
+fn deploy_macos_system_dmg<CommitStage, BeforeVerify>(
+    product: AgentCatalogId,
+    artifact: &DownloadedArtifact,
+    target: DesktopDeploymentTarget,
+    expected_release_version: Option<String>,
+    product_policy: &crate::codex_desktop::platform::macos::dmg::ManagedDmgProductPolicy,
+    commit_stage: &mut CommitStage,
+    before_verify: &mut BeforeVerify,
+) -> Result<MacosDeploymentResult, AgentReasonCode>
+where
+    CommitStage: FnMut(bool) -> Result<(), AgentReasonCode>,
+    BeforeVerify: FnMut() -> Result<(), AgentReasonCode>,
+{
+    use crate::codex_desktop::platform::macos::{
+        dmg::{
+            install_managed_system_exact, ManagedDmgSystemCommitRequest, ManagedDmgSystemFailure,
+            ManagedDmgSystemIntent,
+        },
+        StdMacosFilesystem, SystemCommandRunner,
+    };
+    use crate::macos_system_commit::{
+        product_for_agent, production_enabled, production_port, resolve_slot,
+        AuthorizedSystemCommit, MacSystemCommitPort, SystemCommitAction, SystemCommitOutcome,
+        UserIntent,
+    };
+
+    use super::desktop::{capture_desktop_installation_baseline, verify_desktop_deployment};
+
+    if !production_enabled() {
+        return Err(crate::macos_system_commit::system_scope_rejection());
+    }
+    let system_product = product_for_agent(product)?;
+    let slot = resolve_slot(system_product, 1)?;
+    let fixed_target = PathBuf::from("/Applications").join(slot.basename);
+    let (intent, action) = match target {
+        DesktopDeploymentTarget::Fresh(
+            super::inventory::FreshDestinationCapability::MacSystemApplications,
+        ) => (
+            ManagedDmgSystemIntent::Fresh,
+            SystemCommitAction::FreshInstall,
+        ),
+        DesktopDeploymentTarget::Existing {
+            path,
+            scope: InstallationScope::AllUsers,
+            package_kind: InstallationPackageKind::AppBundle,
+        } if path == fixed_target => (
+            ManagedDmgSystemIntent::Update,
+            SystemCommitAction::UpdateExisting,
+        ),
+        _ => return Err(AgentReasonCode::TargetChanged),
+    };
+
+    let baseline = capture_desktop_installation_baseline(product);
+    artifact
+        .revalidate()
+        .map_err(|_| AgentReasonCode::InstallerArtifactUnavailable)?;
+    let runner = SystemCommandRunner;
+    let filesystem = StdMacosFilesystem;
+    let installed = install_managed_system_exact(
+        &runner,
+        &filesystem,
+        ManagedDmgSystemCommitRequest {
+            artifact_path: artifact.path(),
+            target_path: &fixed_target,
+            intent,
+            product: product_policy,
+            expected_release_version: expected_release_version.as_deref(),
+        },
+        |source| {
+            commit_stage(true)?;
+            let source_directory = File::open(&source.bundle_path)
+                .map_err(|_| AgentReasonCode::SourceCapabilityInvalid)?;
+            if !source_directory
+                .metadata()
+                .map_err(|_| AgentReasonCode::SourceCapabilityInvalid)?
+                .is_dir()
+            {
+                return Err(AgentReasonCode::SourceCapabilityInvalid);
+            }
+            let port = production_port();
+            port.ensure_helper_ready(UserIntent::attested())?;
+            commit_stage(false)?;
+            let request = AuthorizedSystemCommit::new(
+                system_product,
+                1,
+                action,
+                *uuid::Uuid::new_v4().as_bytes(),
+                source.source_revision,
+                source.target_revision,
+                source_directory.as_raw_fd(),
+            )?;
+            match port.commit_known_application(request)? {
+                SystemCommitOutcome::Committed => Ok(()),
+                SystemCommitOutcome::RollbackRestored => Err(AgentReasonCode::RollbackRestored),
+                SystemCommitOutcome::RecoveryRequired => Err(AgentReasonCode::RecoveryRequired),
+            }
+        },
+    )
+    .map_err(|error| match error {
+        ManagedDmgSystemFailure::Package(kind) => map_failure(kind),
+        ManagedDmgSystemFailure::Commit(reason) => reason,
+    })?;
+
+    before_verify()?;
+    verify_desktop_deployment(
+        product,
+        &baseline,
+        &installed.target_path,
+        InstallationScope::AllUsers,
+        &installed.local_version,
+    )?;
+    Ok(MacosDeploymentResult {
+        target_path: installed.target_path,
+        local_version: installed.local_version,
+    })
+}
+
 #[cfg(not(target_os = "macos"))]
-pub(super) fn deploy_macos_dmg<BeforeCommit, BeforeVerify>(
+pub(super) fn deploy_macos_dmg<CommitStage, BeforeVerify>(
     _product: AgentCatalogId,
     _artifact: &DownloadedArtifact,
     _target: DesktopDeploymentTarget,
     _expected_release_version: Option<String>,
-    _before_commit: BeforeCommit,
+    _commit_stage: CommitStage,
     _before_verify: BeforeVerify,
 ) -> Result<MacosDeploymentResult, AgentReasonCode>
 where
-    BeforeCommit: FnMut() -> Result<(), AgentReasonCode>,
+    CommitStage: FnMut(bool) -> Result<(), AgentReasonCode>,
     BeforeVerify: FnMut() -> Result<(), AgentReasonCode>,
 {
     Err(AgentReasonCode::PlatformUnsupported)

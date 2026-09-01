@@ -1231,16 +1231,33 @@ jobs:
       - name: Install locked frontend dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build universal macOS app
-        run: pnpm tauri build --target universal-apple-darwin --bundles app
-
-      - name: Build and embed nested privileged helper
+      - name: Build nested privileged helper and client
         shell: bash
         env:
           FYAGENT_REQUIRE_PRIVILEGED_HELPER: "1"
         run: |
           set -euo pipefail
           scripts/release/build-macos-privileged-helper.sh
+
+      - name: Build universal macOS app with privileged client linkage
+        env:
+          FYAGENT_PRIVILEGED_CLIENT_DYLIB: ${{ github.workspace }}/src-tauri/macos-privileged-helper/dist/libFyAgentPrivilegedClient.dylib
+        run: |
+          set -euo pipefail
+          # The helper/client are sealed into formal artifacts now, but the
+          # production runtime remains compile-time disabled until a dedicated
+          # notarized HIL candidate proves Bless/XPC/rollback on real hardware.
+          pnpm tauri build \
+            --target universal-apple-darwin \
+            --bundles app \
+            --features macos-privileged-client
+
+      - name: Embed nested privileged helper
+        shell: bash
+        env:
+          FYAGENT_REQUIRE_PRIVILEGED_HELPER: "1"
+        run: |
+          set -euo pipefail
           bundle_root='src-tauri/target/universal-apple-darwin/release/bundle/macos'
           shopt -s nullglob
           app_paths=("$bundle_root"/*.app)

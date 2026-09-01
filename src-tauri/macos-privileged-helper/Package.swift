@@ -1,10 +1,19 @@
 // swift-tools-version: 5.9
 
+import Foundation
 import PackageDescription
 
 let packageDirectory = Context.packageDirectory
-let helperInfoPlist = "\(packageDirectory)/Resources/helper-info.plist"
-let helperLaunchdPlist = "\(packageDirectory)/Resources/helper-launchd.plist"
+let environment = ProcessInfo.processInfo.environment
+let privilegedVariant = environment["FYAGENT_PRIVILEGED_VARIANT"] ?? "production"
+let isDevelopmentVariant = privilegedVariant == "development"
+let helperInfoPlist = environment["FYAGENT_PRIVILEGED_HELPER_INFO_PLIST"]
+    ?? "\(packageDirectory)/Resources/helper-info.plist"
+let helperLaunchdPlist = environment["FYAGENT_PRIVILEGED_HELPER_LAUNCHD_PLIST"]
+    ?? "\(packageDirectory)/Resources/helper-launchd.plist"
+let privilegedVariantSettings: [SwiftSetting] = isDevelopmentVariant
+    ? [.define("FYAGENT_PRIVILEGED_DEVELOPMENT")]
+    : []
 
 let package = Package(
     name: "FyAgentPrivilegedHelper",
@@ -42,12 +51,14 @@ let package = Package(
                 .product(name: "Authorized", package: "Authorized"),
                 .product(name: "SecureXPC", package: "SecureXPC"),
             ],
-            path: "Sources/FyAgentPrivilegedProtocol"
+            path: "Sources/FyAgentPrivilegedProtocol",
+            swiftSettings: privilegedVariantSettings
         ),
         .target(
             name: "FyAgentPrivilegedTransaction",
             dependencies: ["FyAgentPrivilegedProtocol"],
-            path: "Sources/FyAgentPrivilegedTransaction"
+            path: "Sources/FyAgentPrivilegedTransaction",
+            swiftSettings: privilegedVariantSettings
         ),
         .target(
             name: "FyAgentPrivilegedClient",
@@ -61,7 +72,8 @@ let package = Package(
                 .product(name: "Required", package: "Required"),
                 .product(name: "SecureXPC", package: "SecureXPC"),
             ],
-            path: "Sources/FyAgentPrivilegedClient"
+            path: "Sources/FyAgentPrivilegedClient",
+            swiftSettings: privilegedVariantSettings
         ),
         .executableTarget(
             name: "FyAgentPrivilegedHelper",
@@ -72,6 +84,7 @@ let package = Package(
                 .product(name: "SecureXPC", package: "SecureXPC"),
             ],
             path: "Sources/FyAgentPrivilegedHelper",
+            swiftSettings: privilegedVariantSettings,
             linkerSettings: [
                 .unsafeFlags([
                     "-Xlinker", "-sectcreate",
