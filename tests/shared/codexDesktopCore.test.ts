@@ -376,5 +376,19 @@ describe("shared transfer projector", () => {
         downloading: false,
       }),
     ).toBeNull();
+
+    let sameSecond = createDownloadSpeedState();
+    const laterSameSecond = {
+      ...second,
+      sequence: 3,
+      completedBytes: 3072,
+      updatedAtMs: Date.parse("2026-08-14T00:00:02.000Z"),
+    };
+    sameSecond = updateDownloadSpeedFromSample(sameSecond, first);
+    sameSecond = updateDownloadSpeedFromSample(sameSecond, second);
+    sameSecond = updateDownloadSpeedFromSample(sameSecond, laterSameSecond);
+    expect(selectDownloadBytesPerSecondFromSample(sameSecond, laterSameSecond)).toBe(
+      1024,
+    );
   });
 });

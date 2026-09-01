@@ -482,7 +482,7 @@ fn probe_bundle_identifier(
                 info_plist.into_os_string(),
             ],
         ))
-        .map_err(|_| {
+        .map_err(|_runner_error| {
             error(
                 InstallerErrorCode::PackageParseFailed,
                 "application Info.plist could not be parsed",

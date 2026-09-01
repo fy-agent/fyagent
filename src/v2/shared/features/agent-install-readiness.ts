@@ -1010,7 +1010,7 @@ function isObservedAt(value: unknown): value is string {
   return (
     typeof value === "string" &&
     value.length <= 40 &&
-    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/u.test(value)
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/u.test(value)
   );
 }
 

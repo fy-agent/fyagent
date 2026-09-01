@@ -59,7 +59,7 @@
     ],
     [
       "src-tauri/src/agent_install/macos.rs",
-      "32d627e713b8862096afa90b707eee22ced12210b083e6ea617f39f68b470deb"
+      "d856f269698760b2853bd4292d754de79c41957716f5d268008c2cf35da6c859"
     ],
     [
       "src-tauri/src/agent_install/mod.rs",
@@ -111,11 +111,11 @@
     ],
     [
       "src-tauri/src/codex_desktop/platform/macos/bundle.rs",
-      "88e89814f65e30a38bcf00b5a3d362aaa6c045733b62847eefae12d3212d6807"
+      "2d30564af5c4bc593da33df7d99ca18cef73cc69cf19f14f03872c0747fe5519"
     ],
     [
       "src-tauri/src/codex_desktop/platform/macos/mod.rs",
-      "b6c234c89d9b76e846ba9ade94c25da0923e2117fa52d8cb2ff82d736d0180e1"
+      "80c7618dab9319da17f04933d43355a77886a577f445b8876a294669c8f128da"
     ],
     [
       "src-tauri/src/codex_desktop/platform/windows/deployment.rs",
@@ -395,7 +395,7 @@
     ],
     [
       "tests/miseTaskContract.test.ts",
-      "a1368b08078c2e730838c727ee057f081941fe114cd57076819b67970b927cd6"
+      "9ba620e8d8eeb8dc1b443676800d67966291e3fc2e8acc3f68f71230249629f8"
     ],
     [
       "tests/releaseWorkflow.test.ts",

@@ -170,7 +170,7 @@ impl AgentActionJobStore {
             attempt: sample.attempt,
             max_attempts: sample.max_attempts,
             sequence,
-            observed_at: Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true),
+            observed_at: Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true),
         });
         Ok(job.snapshot.clone())
     }
@@ -378,6 +378,11 @@ mod tests {
         assert_eq!(transfer.sequence, 1);
         assert_eq!(transfer.phase, AgentActionTransferPhase::Download);
         assert!(transfer.observed_at.ends_with('Z'));
+        assert!(
+            transfer.observed_at.contains('.'),
+            "download speed samples need sub-second timestamps: {}",
+            transfer.observed_at
+        );
 
         let ignored = store
             .record_transfer(&job.job_id, sample(50, Some(400), 1))

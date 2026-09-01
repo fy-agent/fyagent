@@ -266,28 +266,31 @@ where
         },
         |source| {
             commit_stage(true)?;
-            let source_directory = File::open(&source.bundle_path)
-                .map_err(|_| AgentReasonCode::SourceCapabilityInvalid)?;
-            if !source_directory
-                .metadata()
-                .map_err(|_| AgentReasonCode::SourceCapabilityInvalid)?
-                .is_dir()
-            {
-                return Err(AgentReasonCode::SourceCapabilityInvalid);
-            }
-            let port = production_port();
-            port.ensure_helper_ready(UserIntent::attested())?;
-            commit_stage(false)?;
-            let request = AuthorizedSystemCommit::new(
-                system_product,
-                1,
-                action,
-                *uuid::Uuid::new_v4().as_bytes(),
-                source.source_revision,
-                source.target_revision,
-                source_directory.as_raw_fd(),
-            )?;
-            match port.commit_known_application(request)? {
+            let committed = {
+                let source_directory = File::open(&source.bundle_path)
+                    .map_err(|_| AgentReasonCode::SourceCapabilityInvalid)?;
+                if !source_directory
+                    .metadata()
+                    .map_err(|_| AgentReasonCode::SourceCapabilityInvalid)?
+                    .is_dir()
+                {
+                    return Err(AgentReasonCode::SourceCapabilityInvalid);
+                }
+                let port = production_port();
+                port.ensure_helper_ready(UserIntent::attested())?;
+                commit_stage(false)?;
+                let request = AuthorizedSystemCommit::new(
+                    system_product,
+                    1,
+                    action,
+                    *uuid::Uuid::new_v4().as_bytes(),
+                    source.source_revision,
+                    source.target_revision,
+                    source_directory.as_raw_fd(),
+                )?;
+                port.commit_known_application(request)?
+            };
+            match committed {
                 SystemCommitOutcome::Committed => Ok(()),
                 SystemCommitOutcome::RollbackRestored => Err(AgentReasonCode::RollbackRestored),
                 SystemCommitOutcome::RecoveryRequired => Err(AgentReasonCode::RecoveryRequired),

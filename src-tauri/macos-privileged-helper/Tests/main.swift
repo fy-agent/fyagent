@@ -38,6 +38,7 @@ let cases: [(String, () throws -> Void)] = [
     ("abi.ensureMissing", BridgeABITests.ensureHelperWithoutPackagingReportsMissing),
     ("abi.xpcWaitPolicy", BridgeABITests.xpcWaitPolicyIsOperationSpecific),
     ("abi.mutatingTimeoutRecovery", BridgeABITests.mutatingTimeoutsRequireRecoveryInsteadOfRetry),
+    ("abi.clientPreauthorize", BridgeABITests.clientCommitRightsPreauthorizeHelperRecheck),
     ("abi.mutatingTransportRecovery", BridgeABITests.mutatingTransportLossRequiresRecoveryExceptPeerRejection),
     ("lifecycle.version", HelperLifecycleTests.bundleVersionParsingIsStrictAndComparable),
     ("lifecycle.ready", HelperLifecycleTests.readyInstalledHelperAvoidsEqualVersionBless),

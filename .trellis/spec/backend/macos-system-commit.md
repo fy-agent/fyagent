@@ -127,6 +127,20 @@ this table; user-scope Claude install stays on the Agent desktop path.
   `helper_not_packaged`.
 - Job stages stay the existing Agent/Codex set. Do not add helper-specific
   stages. Reuse `awaiting_user` for Authorization UI.
+- Client `AuthorizationCopyRights` for commit/remove uses
+  `interactionAllowed | extendRights | preAuthorize` and is requested on the
+  application main thread (the C ABI runs on a Tokio blocking pool). The
+  helper rechecks with `extendRights` only. Commit/remove rights are a `user` /
+  `admin` rule with `shared` credentials and a 300-second timeout. Do not
+  leave them as canned `authenticateAsAdmin` (timeout 0): the app can then
+  succeed off a shared Bless credential in milliseconds while the daemon
+  recheck fails with `errAuthorizationInteractionNotAllowed`.   Recheck runs
+  before any slot mutation, so that failure is `operation_authorization_invalid`
+  (or cancelled), never `helper_protocol_incompatible` or `recovery_required`.
+  `KnownApplicationCommitResult` failed pairs include those authorization
+  reasons. After a successful helper copy, the helper must close the transferred
+  source directory FD before the app detaches the DMG; a busy mount is a detach
+  failure after success, not `executor_not_implemented`.
 - Formal `build-macos` builds the SPM package, embeds the helper and client at
   the frozen paths, runs `verify-macos-privileged-helper.sh --structure-only`,
   then `macos-developer-id.sh sign-app`. Signing is inside-out: client dylib,
@@ -220,6 +234,24 @@ uint32_t product;
 uint32_t target_slot;
 ```
 
+#### Wrong
+
+```swift
+if try !commit.isDefined() {
+    try commit.createOrUpdateDefinition(
+        rules: [CannedAuthorizationRightRules.authenticateAsAdmin],
+        ...
+    )
+}
+```
+
+#### Correct
+
+```swift
+// user/admin, shared, timeout 300; update timeout-0 leftovers
+try defineUserAdminRight(commit, authorization: authorization, ...)
+```
+
 ## Signed development runtime and formal admission
 
 The privileged transaction implementation is shared by development and formal
@@ -233,13 +265,17 @@ packages. It has three backend-selected runtime modes:
   `com.fyagent.desktop.dev` app bundle, and signs every nested executable
   inside-out with the existing
   `Developer ID Application: William Wang (HY446996QX)` identity. The local
-  task extracts the configured PKCS#12 into a 0700 per-run directory, converts
+  task extracts the configured PKCS#12 into a 0700 extract directory, converts
   the same private key to traditional RSA PEM for macOS Keychain import, and
   imports that key plus the leaf, pinned Developer ID G2, and Apple Root public
-  certificates only into an ephemeral keychain. It signs by the resolved
-  identity hash, restores the original keychain search list, and deletes every
-  extracted key/certificate file together with the temporary keychain. The
-  repository contains neither the PKCS#12 path nor its password; a
+  certificates only into a 0700 cache keychain under
+  `~/Library/Caches/FyAgent/DevelopmentSigning`. It signs by the resolved
+  identity hash, sets that cache keychain as the user default for the sign, then
+  restores the original default and search list. It does not call
+  `security delete-keychain` on a used identity: on macOS 26 that makes the next
+  `codesign` of the same certificate fail with `errSecInternalComponent`.
+  Extracted PEM files are deleted after import. The repository contains neither
+  the PKCS#12 path nor its password; a
   permission-restricted user-local configuration points to those files.
   Development signing does not notarize or staple the app.
 - `FormalRelease`: the production helper/client can be linked and packaged, but

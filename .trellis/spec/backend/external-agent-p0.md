@@ -770,7 +770,7 @@ AgentActionJobSnapshot.transfer?: {
   attempt: u8,
   maxAttempts: u8,
   sequence: u64,
-  observedAt: RFC3339
+  observedAt: RFC3339 UTC Z, optional millisecond fraction (.sssZ)
 }
 ```
 

@@ -532,11 +532,17 @@ the emitted debug executable in a real development app bundle before launch.
 The chain performs, in order:
 
 1. fixed-path full-Xcode plus user-local Developer ID PKCS#12 preflight through
-   an ephemeral keychain; the task extracts the same certificate/private key
-   into a per-run 0700 directory, imports the leaf and traditional RSA private
-   key separately alongside the pinned Apple Root and Developer ID G2 public
-   certificates, never permanently installs the release private key, restores
-   the user's keychain search list, and deletes the complete per-run directory;
+   a reusable 0700 cache keychain; the task extracts the same certificate/private
+   key into a temporary 0700 directory, imports the leaf and traditional RSA
+   private key separately alongside the pinned Apple Root and Developer ID G2
+   public certificates, never permanently installs the release private key into
+   the login keychain, sets the cache keychain as the user default while signing
+   (matching the formal Developer ID script), restores the user's default and
+   search list, and deletes the extracted PEM files. It must not
+   `security delete-keychain` a keychain that just signed this identity: macOS 26
+   then fails the next `codesign` with `errSecInternalComponent`. Preflight also
+   smoke-signs a copy of `/usr/bin/true` so a broken chain fails before the Swift
+   helper build;
 2. development-flavor universal privileged helper/client build and embedded
    plist verification;
 3. Tauri dev compilation with the privileged-client Cargo feature;

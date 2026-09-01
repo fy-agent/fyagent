@@ -300,6 +300,8 @@ public struct KnownApplicationCommitResult: Codable, Equatable {
 
     private static let allowedFailureReasons: Set<HelperReason> = [
         .helperProtocolIncompatible,
+        .operationAuthorizationCancelled,
+        .operationAuthorizationInvalid,
         .sourceCapabilityInvalid,
         .sourceChanged,
         .targetSlotInvalid,
@@ -410,7 +412,9 @@ public struct RemoveHelperResult: Codable, Equatable {
         switch (outcome, reason) {
         case (.ready, .none),
              (.recoveryRequired, .recoveryRequired),
-             (.failed, .helperRemovalFailed):
+             (.failed, .helperRemovalFailed),
+             (.failed, .operationAuthorizationCancelled),
+             (.failed, .operationAuthorizationInvalid):
             return
         case (.committed, _),
              (.rollbackRestored, _),

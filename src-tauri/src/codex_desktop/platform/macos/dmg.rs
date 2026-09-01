@@ -41,6 +41,7 @@ if (!expectedBundleIdentifier || !expectedBundlePath) {
   $.exit(2);
 }
 const applications = $.NSWorkspace.sharedWorkspace.runningApplications;
+let result = 'not_running';
 for (let index = 0; index < applications.count; index += 1) {
   const application = applications.objectAtIndex(index);
   if (!application.bundleIdentifier || !application.bundleURL) {
@@ -49,11 +50,11 @@ for (let index = 0; index < applications.count; index += 1) {
   const bundleIdentifier = ObjC.unwrap(application.bundleIdentifier);
   const bundlePath = ObjC.unwrap(application.bundleURL.path);
   if (bundleIdentifier === expectedBundleIdentifier && bundlePath === expectedBundlePath) {
-    console.log('running');
-    $.exit(0);
+    result = 'running';
+    break;
   }
 }
-console.log('not_running');
+result;
 "#;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -893,15 +894,18 @@ fn ensure_managed_bundle_not_running(
                 "managed application runtime state could not be determined",
             )
         })?;
+    let stdout = std::str::from_utf8(output.stdout())
+        .ok()
+        .map(str::trim);
     if !output.is_success() {
         return Err(error(
             InstallerErrorCode::MacAppRunning,
             "managed application runtime state could not be determined",
         ));
     }
-    match std::str::from_utf8(output.stdout()).map(str::trim) {
-        Ok("not_running") => Ok(()),
-        Ok("running") => Err(error(
+    match stdout {
+        Some("not_running") => Ok(()),
+        Some("running") => Err(error(
             InstallerErrorCode::MacAppRunning,
             "the selected managed application is running",
         )),
@@ -1784,6 +1788,13 @@ mod tests {
     const USER_APPLICATIONS: &str = "/Users/test/Applications";
     const MOUNT_POINT: &str = "/Volumes/FyAgent Codex";
     const ARTIFACT: &str = "/tmp/fyagent-job/installer.dmg";
+
+    #[test]
+    fn managed_running_probe_uses_jxa_completion_value_not_console_log() {
+        assert!(!MANAGED_RUNNING_APPLICATION_JXA.contains("console.log"));
+        assert!(MANAGED_RUNNING_APPLICATION_JXA.contains("let result = 'not_running'"));
+        assert!(MANAGED_RUNNING_APPLICATION_JXA.contains("result;"));
+    }
 
     fn host() -> MacosHost {
         MacosHost::new(

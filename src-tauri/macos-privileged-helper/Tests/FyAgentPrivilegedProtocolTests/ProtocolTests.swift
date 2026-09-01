@@ -133,6 +133,16 @@ struct ProtocolTests {
             outcome: .failed,
             reason: .sourceChanged
         ).validate(expectedOperationId: operationId)
+        try KnownApplicationCommitResult(
+            operationId: operationId,
+            outcome: .failed,
+            reason: .operationAuthorizationInvalid
+        ).validate(expectedOperationId: operationId)
+        try KnownApplicationCommitResult(
+            operationId: operationId,
+            outcome: .failed,
+            reason: .operationAuthorizationCancelled
+        ).validate(expectedOperationId: operationId)
     }
 
     static func removeReplyAcceptsOnlyClosedTerminalPairs() throws {

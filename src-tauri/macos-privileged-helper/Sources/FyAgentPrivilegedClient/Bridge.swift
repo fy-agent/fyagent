@@ -66,7 +66,7 @@ public func fyagent_privileged_invoke(
 }
 
 private func performStatus(template: FyAgentPrivilegedReply) throws -> FyAgentPrivilegedReply {
-    var output = template
+    let output = template
     let bundled: BundledHelperDescriptor
     let clientVersion: HelperBundleVersion
     do {
@@ -139,7 +139,9 @@ private func performEnsureHelper(template: FyAgentPrivilegedReply) throws -> FyA
     }
 
     do {
-        try PrivilegedHelperManager.shared.authorizeAndBless()
+        try PrivilegedRights.runOnAppMain {
+            try PrivilegedHelperManager.shared.authorizeAndBless()
+        }
     } catch let error as AuthorizationError {
         output.outcome = UInt32(FYAGENT_PRIVILEGED_OUTCOME_FAILED)
         output.helper_state = UInt32(FYAGENT_PRIVILEGED_HELPER_STATE_MISSING)
@@ -335,7 +337,9 @@ private func performCommit(
         sourceDirectory: source,
         authorization: authorization
     )
-    defer { try? authorization.destroyRights() }
+    // Authorized.deinit already AuthorizationFree's the ref. destroyRights()
+    // does the same (trilemma-dev/Authorized 1.0.0), which aborted fyagent after
+    // the admin prompt. Let deinit own the lifetime.
     do {
         let result = try HelperXPCClient.send(
             message,
@@ -381,7 +385,6 @@ private func performRemove(
         }
         return output
     }
-    defer { try? authorization.destroyRights() }
     let message = AuthorizedRemoveHelperRequest(request: removeRequest, authorization: authorization)
     do {
         let result = try HelperXPCClient.send(

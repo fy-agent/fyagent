@@ -846,7 +846,9 @@ fetch/save controls.
 - Download UX consumes one shared projector
   (`src/shared/codex-desktop/snapshots.ts` via
   `src/v2/shared/features/transfer-projection.ts`). Job `transfer` supplies
-  raw bytes; the page must not `toFixed` a local percent. Known total: at most
+  raw bytes; `observedAt` is RFC3339 UTC `Z` with optional milliseconds
+  (`.sssZ`) matching host download samples. The page must not `toFixed` a
+  local percent. Known total: at most
   one decimal, clamped `0..100`. Unknown total: indeterminate + transferred
   bytes, no invented percent. Hide stale/zero/unknown/terminal speed. Official
   Grok installer has no byte protocol: stage copy only.

@@ -28,6 +28,18 @@ const SIGNING_CONFIG_PATH = path.join(
   "DevelopmentSigning",
   "config.json",
 );
+const SIGNING_CACHE = path.join(
+  os.homedir(),
+  "Library",
+  "Caches",
+  "FyAgent",
+  "DevelopmentSigning",
+);
+const SESSION_KEYCHAIN = path.join(SIGNING_CACHE, "signing.keychain-db");
+const SESSION_KEYCHAIN_PASSWORD = path.join(
+  SIGNING_CACHE,
+  "keychain.password",
+);
 const DEVELOPER_ID_INTERMEDIATE = path.join(
   ROOT,
   "scripts",
@@ -212,32 +224,7 @@ function parseDeveloperIdIdentity(output) {
   return identities[0];
 }
 
-function prepareTemporarySigningIdentity() {
-  const config = loadSigningConfig();
-  const { password: p12Password } = parseSigningCredentials(
-    config.credentialsFile,
-  );
-  const appleRoot = regularFile(APPLE_ROOT_CA, "Apple Root CA certificate");
-  const intermediate = regularFile(
-    DEVELOPER_ID_INTERMEDIATE,
-    "Apple Developer ID G2 intermediate certificate",
-  );
-  const signingCache = path.join(
-    os.homedir(),
-    "Library",
-    "Caches",
-    "FyAgent",
-    "DevelopmentSigning",
-  );
-  fs.mkdirSync(signingCache, { recursive: true, mode: 0o700 });
-  fs.chmodSync(signingCache, 0o700);
-  const state = fs.mkdtempSync(path.join(signingCache, "run-"));
-  fs.chmodSync(state, 0o700);
-  const leafCertificate = path.join(state, "developer-id-leaf.pem");
-  const extractedPrivateKey = path.join(state, "developer-id-key.pem");
-  const rsaPrivateKey = path.join(state, "developer-id-rsa.pem");
-  const keychain = path.join(state, "signing.keychain-db");
-  const keychainPassword = crypto.randomBytes(32).toString("base64url");
+function captureUserKeychains() {
   const originalKeychains = run("/usr/bin/security", [
     "list-keychains",
     "-d",
@@ -245,34 +232,85 @@ function prepareTemporarySigningIdentity() {
   ])
     .stdout.split(/\r?\n/)
     .map((value) => value.trim().replace(/^"|"$/g, ""))
-    .filter(Boolean);
-  const originalDefaultKeychain = run("/usr/bin/security", [
+    .filter(Boolean)
+    .filter((value) => value !== SESSION_KEYCHAIN);
+  let originalDefaultKeychain = run("/usr/bin/security", [
     "default-keychain",
     "-d",
     "user",
   ])
     .stdout.trim()
     .replace(/^"|"$/g, "");
+  if (!originalDefaultKeychain || originalDefaultKeychain === SESSION_KEYCHAIN) {
+    originalDefaultKeychain =
+      originalKeychains[0] ??
+      path.join(os.homedir(), "Library", "Keychains", "login.keychain-db");
+  }
   if (!originalDefaultKeychain) {
     fail("user default keychain could not be resolved");
   }
-  const restoreKeychains =
-    originalKeychains.length > 0
-      ? originalKeychains
-      : [originalDefaultKeychain];
-  const cleanup = () => {
-    spawnSync(
-      "/usr/bin/security",
-      ["list-keychains", "-d", "user", "-s", ...restoreKeychains],
-      { stdio: "ignore", windowsHide: true },
-    );
-    spawnSync("/usr/bin/security", ["delete-keychain", keychain], {
-      stdio: "ignore",
-      windowsHide: true,
-    });
-    fs.rmSync(state, { recursive: true, force: true });
+  return {
+    originalKeychains,
+    originalDefaultKeychain,
+    restoreKeychains:
+      originalKeychains.length > 0
+        ? originalKeychains
+        : [originalDefaultKeychain],
   };
+}
 
+function restoreUserKeychains(session) {
+  spawnSync(
+    "/usr/bin/security",
+    ["default-keychain", "-d", "user", "-s", session.originalDefaultKeychain],
+    { stdio: "ignore", windowsHide: true },
+  );
+  spawnSync(
+    "/usr/bin/security",
+    ["list-keychains", "-d", "user", "-s", ...session.restoreKeychains],
+    { stdio: "ignore", windowsHide: true },
+  );
+}
+
+function sessionKeychainPassword() {
+  if (fs.existsSync(SESSION_KEYCHAIN_PASSWORD)) {
+    const value = fs.readFileSync(SESSION_KEYCHAIN_PASSWORD, "utf8").trim();
+    if (!value) fail("cached signing keychain password file is empty");
+    return value;
+  }
+  const password = crypto.randomBytes(32).toString("base64url");
+  fs.writeFileSync(SESSION_KEYCHAIN_PASSWORD, `${password}\n`, { mode: 0o600 });
+  fs.chmodSync(SESSION_KEYCHAIN_PASSWORD, 0o600);
+  return password;
+}
+
+function unlockSessionKeychain(keychain, password) {
+  const unlocked = spawnSync(
+    "/usr/bin/security",
+    ["unlock-keychain", "-p", password, keychain],
+    { encoding: "utf8", windowsHide: true },
+  );
+  if (unlocked.status !== 0) return false;
+  run("/usr/bin/security", [
+    "set-keychain-settings",
+    "-lut",
+    "21600",
+    keychain,
+  ]);
+  return true;
+}
+
+function importDeveloperIdMaterial(keychain, password, config, p12Password) {
+  const appleRoot = regularFile(APPLE_ROOT_CA, "Apple Root CA certificate");
+  const intermediate = regularFile(
+    DEVELOPER_ID_INTERMEDIATE,
+    "Apple Developer ID G2 intermediate certificate",
+  );
+  const extract = fs.mkdtempSync(path.join(SIGNING_CACHE, "extract-"));
+  fs.chmodSync(extract, 0o700);
+  const leafCertificate = path.join(extract, "developer-id-leaf.pem");
+  const extractedPrivateKey = path.join(extract, "developer-id-key.pem");
+  const rsaPrivateKey = path.join(extract, "developer-id-rsa.pem");
   try {
     const opensslEnvironment = {
       FYAGENT_SIGNED_DEV_P12_PASSWORD: p12Password,
@@ -280,8 +318,8 @@ function prepareTemporarySigningIdentity() {
     // macOS 26 can import this legacy RC2/3DES PKCS#12 without error while
     // still failing to expose a usable SecIdentity to codesign. Re-express
     // the same certificate/key pair as PEM and import those items separately.
-    // The unencrypted key exists only inside this 0700 per-run directory and
-    // is removed together with the temporary keychain after signing.
+    // Extracted PEM lives only in this 0700 directory and is deleted after
+    // import; the session keychain keeps the imported SecIdentity.
     run(
       "/usr/bin/openssl",
       [
@@ -329,24 +367,6 @@ function prepareTemporarySigningIdentity() {
         0o600,
       );
     }
-    run("/usr/bin/security", [
-      "create-keychain",
-      "-p",
-      keychainPassword,
-      keychain,
-    ]);
-    run("/usr/bin/security", [
-      "set-keychain-settings",
-      "-lut",
-      "600",
-      keychain,
-    ]);
-    run("/usr/bin/security", [
-      "unlock-keychain",
-      "-p",
-      keychainPassword,
-      keychain,
-    ]);
     run("/usr/bin/security", [
       "import",
       appleRoot,
@@ -397,17 +417,96 @@ function prepareTemporarySigningIdentity() {
       "apple-tool:,apple:,codesign:",
       "-s",
       "-k",
+      password,
+      keychain,
+    ]);
+    run("/usr/bin/security", ["unlock-keychain", "-p", password, keychain]);
+  } finally {
+    fs.rmSync(extract, { recursive: true, force: true });
+  }
+}
+
+function activateSessionKeychain(keychain, session) {
+  run("/usr/bin/security", [
+    "list-keychains",
+    "-d",
+    "user",
+    "-s",
+    keychain,
+    ...session.originalKeychains,
+  ]);
+  run("/usr/bin/security", [
+    "default-keychain",
+    "-d",
+    "user",
+    "-s",
+    keychain,
+  ]);
+}
+
+function discardUnusedSessionKeychain(keychain, session) {
+  // Removing the file without `security delete-keychain` avoids the macOS 26
+  // codesign poison: deleting a keychain that just signed with this identity
+  // makes the next import of the same certificate fail with
+  // errSecInternalComponent / "unable to build chain to self-signed root".
+  restoreUserKeychains(session);
+  fs.rmSync(keychain, { force: true });
+}
+
+function prepareTemporarySigningIdentity() {
+  const config = loadSigningConfig();
+  const { password: p12Password } = parseSigningCredentials(
+    config.credentialsFile,
+  );
+  fs.mkdirSync(SIGNING_CACHE, { recursive: true, mode: 0o700 });
+  fs.chmodSync(SIGNING_CACHE, 0o700);
+  const keychain = SESSION_KEYCHAIN;
+  const keychainPassword = sessionKeychainPassword();
+  const session = captureUserKeychains();
+  const cleanup = () => {
+    restoreUserKeychains(session);
+  };
+
+  try {
+    if (fs.existsSync(keychain)) {
+      if (unlockSessionKeychain(keychain, keychainPassword)) {
+        fs.chmodSync(keychain, 0o600);
+        activateSessionKeychain(keychain, session);
+        try {
+          const identity = parseDeveloperIdIdentity(
+            run("/usr/bin/security", [
+              "find-identity",
+              "-v",
+              "-p",
+              "codesigning",
+            ]).stdout,
+          );
+          return { ...identity, keychain, cleanup };
+        } catch {
+          discardUnusedSessionKeychain(keychain, session);
+        }
+      } else {
+        fs.rmSync(keychain, { force: true });
+      }
+    }
+
+    run("/usr/bin/security", [
+      "create-keychain",
+      "-p",
       keychainPassword,
       keychain,
     ]);
-    run("/usr/bin/security", [
-      "list-keychains",
-      "-d",
-      "user",
-      "-s",
+    fs.chmodSync(keychain, 0o600);
+    if (!unlockSessionKeychain(keychain, keychainPassword)) {
+      fail("cached signing keychain could not be unlocked after create");
+    }
+    importDeveloperIdMaterial(
       keychain,
-      ...originalKeychains,
-    ]);
+      keychainPassword,
+      config,
+      p12Password,
+    );
+    activateSessionKeychain(keychain, session);
     const identity = parseDeveloperIdIdentity(
       run("/usr/bin/security", ["find-identity", "-v", "-p", "codesigning"])
         .stdout,
@@ -539,6 +638,8 @@ function sign(pathname, identity, identifier, entitlements) {
     "--force",
     "--sign",
     identity.hash,
+    "--keychain",
+    identity.keychain,
     "--identifier",
     identifier,
     "--options",
@@ -547,7 +648,17 @@ function sign(pathname, identity, identifier, entitlements) {
   ];
   if (entitlements) args.push("--entitlements", entitlements);
   args.push(pathname);
-  run("/usr/bin/codesign", args);
+  const result = spawnSync("/usr/bin/codesign", args, {
+    encoding: "utf8",
+    windowsHide: true,
+  });
+  const stderr = `${result.stderr ?? ""}${result.stdout ?? ""}`.trim();
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    fail(
+      `codesign exited with ${result.status}${stderr ? `: ${stderr}` : ""}`,
+    );
+  }
 }
 
 function verifySignature(pathname, identifier) {
@@ -688,9 +799,22 @@ function buildSignedApp(target, executable) {
   return path.join(finalApp, "Contents", "MacOS", executableName);
 }
 
+function smokeSignIdentity(identity) {
+  const smokeDir = fs.mkdtempSync(path.join(SIGNING_CACHE, "smoke-"));
+  const target = path.join(smokeDir, "fyagent-codesign-smoke");
+  try {
+    fs.copyFileSync("/usr/bin/true", target);
+    fs.chmodSync(target, 0o755);
+    sign(target, identity, "com.fyagent.desktop.dev.codesign-smoke");
+  } finally {
+    fs.rmSync(smokeDir, { recursive: true, force: true });
+  }
+}
+
 function machinePreflight() {
   assertFullXcode();
   withSigningIdentity((identity) => {
+    smokeSignIdentity(identity);
     process.stdout.write(
       `Signed macOS development identity ready: ${identity.authority} [${identity.hash}]\n`,
     );

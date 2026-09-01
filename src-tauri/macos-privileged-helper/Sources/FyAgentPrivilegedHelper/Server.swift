@@ -33,10 +33,27 @@ enum HelperServer {
     }
 
     private static func handleCommit(_ request: KnownApplicationCommitRequest) throws -> KnownApplicationCommitResult {
-        try recheck(request.authorization, rightName: PrivilegedIdentifiers.commitRightName)
-        defer { try? request.authorization.destroyRights() }
+        do {
+            try recheck(request.authorization, rightName: PrivilegedIdentifiers.commitRightName)
+        } catch let error as AuthorizationError {
+            // Recheck runs before any slot mutation. A daemon cannot show
+            // Security UI; interactionNotAllowed here is an invalid/expired
+            // Authorization, not an unknown commit outcome.
+            return KnownApplicationCommitResult(
+                operationId: request.fields.operationId,
+                outcome: .failed,
+                reason: authorizationFailureReason(error)
+            )
+        }
+        // Authorized.deinit already frees the AuthorizationRef. Calling
+        // destroyRights() here would AuthorizationFree the same pointer twice.
 
-        let sourceFD = request.sourceDirectory.wrappedValue.fileDescriptor
+        let sourceHandle = request.sourceDirectory.wrappedValue
+        // Close the transferred mount FD before returning so the app can
+        // detach the DMG. Leaving it open makes hdiutil detach fail, and that
+        // was mapped to executor_not_implemented after a successful commit.
+        defer { closeTransferredSource(sourceHandle) }
+        let sourceFD = sourceHandle.fileDescriptor
         let commit = CommitRequest(
             operationId: request.fields.operationId,
             action: request.fields.action,
@@ -72,8 +89,15 @@ enum HelperServer {
 
     private static func handleRemove(_ request: AuthorizedRemoveHelperRequest) throws -> RemoveHelperResult {
         try request.request.validate()
-        try recheck(request.authorization, rightName: PrivilegedIdentifiers.removeRightName)
-        defer { try? request.authorization.destroyRights() }
+        do {
+            try recheck(request.authorization, rightName: PrivilegedIdentifiers.removeRightName)
+        } catch let error as AuthorizationError {
+            return RemoveHelperResult(
+                operationId: request.request.operationId,
+                outcome: .failed,
+                reason: authorizationFailureReason(error)
+            )
+        }
 
         do {
             let recovery = try SystemCommit.recover(environment: .production)
@@ -114,6 +138,21 @@ enum HelperServer {
             environment: [],
             options: [.extendRights]
         )
+    }
+
+    private static func closeTransferredSource(_ handle: FileHandle) {
+        if #available(macOS 10.15, *) {
+            try? handle.close()
+        } else {
+            handle.closeFile()
+        }
+    }
+
+    private static func authorizationFailureReason(_ error: AuthorizationError) -> HelperReason {
+        if case .canceled = error {
+            return .operationAuthorizationCancelled
+        }
+        return .operationAuthorizationInvalid
     }
 
     private static func removeOwnedHelperArtifacts() throws {

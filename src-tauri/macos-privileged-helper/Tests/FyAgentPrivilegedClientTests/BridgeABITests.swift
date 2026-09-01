@@ -92,6 +92,16 @@ struct BridgeABITests {
         expect(HelperXPCOperation.remove.timeoutFailure == .operationOutcomeUnknown)
     }
 
+    static func clientCommitRightsPreauthorizeHelperRecheck() {
+        expect(PrivilegedRights.clientRequestOptions.contains(.preAuthorize))
+        expect(PrivilegedRights.clientRequestOptions.contains(.interactionAllowed))
+        expect(PrivilegedRights.clientRequestOptions.contains(.extendRights))
+        expect(PrivilegedRights.helperRecheckOptions.contains(.extendRights))
+        expect(!PrivilegedRights.helperRecheckOptions.contains(.interactionAllowed))
+        expect(!PrivilegedRights.helperRecheckOptions.contains(.preAuthorize))
+        expect(PrivilegedRights.cachedCredentialTimeoutSeconds >= 1)
+    }
+
     static func mutatingTransportLossRequiresRecoveryExceptPeerRejection() {
         expect(
             HelperXPCOperation.commit.responseFailureHasUnknownOutcome(.connectionInterrupted)

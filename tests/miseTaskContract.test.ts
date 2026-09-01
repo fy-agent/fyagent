@@ -877,7 +877,9 @@ describe("canonical mise task API", () => {
     expect(appRunner).toContain('"pemseq"');
     expect(appRunner).toContain('"openssl"');
     expect(appRunner).toContain('"create-keychain"');
-    expect(appRunner).toContain('"delete-keychain"');
+    expect(appRunner).not.toContain('"delete-keychain"');
+    expect(appRunner).toContain('"default-keychain"');
+    expect(appRunner).toContain("signing.keychain-db");
     expect(appRunner).toContain('"set-key-partition-list"');
     expect(appRunner).toContain('"p12_password"');
     expect(appRunner).not.toMatch(/\/Users\/[^/"']+\/Documents(?:\/|["'])/u);

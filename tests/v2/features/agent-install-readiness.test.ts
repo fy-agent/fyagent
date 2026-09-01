@@ -262,12 +262,18 @@ describe("Agent install readiness wire contract", () => {
         attempt: 1,
         maxAttempts: 1,
         sequence: 2,
-        observedAt: "2026-08-31T00:00:00Z",
+        observedAt: "2026-08-31T00:00:00.123Z",
       },
     };
     expect(parseAgentActionJobSnapshot(snapshot).transfer).toEqual(
       snapshot.transfer,
     );
+    expect(
+      parseAgentActionJobSnapshot({
+        ...snapshot,
+        transfer: { ...snapshot.transfer, observedAt: "2026-08-31T00:00:00Z" },
+      }).transfer?.observedAt,
+    ).toBe("2026-08-31T00:00:00Z");
     expect(
       parseAgentActionJobSnapshot({ ...snapshot, transfer: null }).transfer,
     ).toBeNull();
@@ -300,6 +306,24 @@ describe("Agent install readiness wire contract", () => {
       parseAgentActionJobSnapshot({
         ...snapshot,
         transfer: { ...snapshot.transfer, totalBytes: 8 },
+      }),
+    ).toThrow("Agent action job is unavailable");
+    expect(() =>
+      parseAgentActionJobSnapshot({
+        ...snapshot,
+        transfer: {
+          ...snapshot.transfer,
+          observedAt: "2026-08-31T00:00:00.12Z",
+        },
+      }),
+    ).toThrow("Agent action job is unavailable");
+    expect(() =>
+      parseAgentActionJobSnapshot({
+        ...snapshot,
+        transfer: {
+          ...snapshot.transfer,
+          observedAt: "2026-08-31T00:00:00.123456Z",
+        },
       }),
     ).toThrow("Agent action job is unavailable");
   });

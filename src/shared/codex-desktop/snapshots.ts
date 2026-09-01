@@ -165,15 +165,7 @@ export function updateDownloadSpeedFromSample(
       measurement: null,
     };
   }
-  if (elapsedFromPrevious === 0 && deltaFromPrevious > 0) {
-    return {
-      snapshot: identity,
-      origin: null,
-      sample: null,
-      measurement: null,
-    };
-  }
-  if (deltaFromPrevious === 0) {
+  if (elapsedFromPrevious === 0 || deltaFromPrevious === 0) {
     return {
       snapshot: identity,
       origin: current.origin,
