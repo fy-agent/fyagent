@@ -279,12 +279,14 @@ single | multiple | unsupported | unknown` plus
   `managed_by_codex_desktop` and keep the dedicated Codex Desktop installer;
   this façade must not occupy that job slot.
 - `agent_install/lifecycle_policy.rs` is the only product/surface/action
-  owner. QoderWork / TRAE Work / WorkBuddy admit `install` and `launch`, never
-  FyAgent `update`. Claude Desktop and OpenCode Desktop admit
-  `install` / `update` / `launch`. A disabled action returns
+  owner. QoderWork / TRAE Work / WorkBuddy, Claude Desktop, and OpenCode
+  Desktop admit `install` / `update` / `launch` on their legal Desktop surface
+  when the current host has a reviewed source and closed identity. A disabled action returns
   `action_not_supported` before target revalidation, network, download, or
-  file mutation. Installed domestic products must not resolve remote source
-  metadata solely to compare updates.
+  file mutation. Installed managed-desktop products resolve remote source
+  metadata only after inventory proves one usable installation state; unknown
+  or multiple inventory never performs a source lookup merely to guess update
+  availability.
 - QoderWork CN uses the fixed first-party `/qoder-work-cn/releases/latest/`
   User-x64 / macOS ARM64 / macOS x64 aliases as the only install artifacts.
   Remote `displayVersion` is the unindented `version:` from `latest.yml` /
@@ -307,7 +309,12 @@ single | multiple | unsupported | unknown` plus
   discovery, same-volume staging, compensating replacement/rollback, and
   bounded cleanup transaction through one managed-Agent policy adapter. An
   existing current-user installation is updated at its exact selected path and
-  basename; it is never silently copied to another Applications scope. The
+  basename; it is never silently copied to another Applications scope.
+  Windows update reuses the same verified vendor EXE/helper operation as
+  install, but binds one existing opaque target and requires the exact selected
+  path/scope to change to the expected trusted product version during fresh
+  inventory readback. No silent installer switch or alternate update command
+  is inferred. The
   production privileged helper remains disabled, so `/Applications`
   targets are visible but non-executable with `authorization_required` rather
   than falling back to `~/Applications`. See
@@ -603,7 +610,7 @@ input.
 | Renderer supplies URL/path/command/token/hash/bypass                                | Reject; no job                                                              |
 | OpenCode or Claude Agent action sends `surface: cli`                    | `surface_not_supported`; no job                                                              |
 | Compact product inventory includes `surface`                            | Strict parser reject                                                                        |
-| QoderWork / TRAE Work / WorkBuddy `update`                              | `action_not_supported`; zero network/download/write                                         |
+| Managed-desktop update is up-to-date, inventory is non-single, or candidate is not update-eligible | Omit `update` from `allowedActions`; zero update job                         |
 | Target binding is partial or has an invalid opaque grammar                          | `refresh_required`; no launch/write                                         |
 | `install` omits a fresh destination or `update` omits an existing candidate         | `target_selection_required`; no write                                       |
 | Inventory expired, candidate disappeared, or revision/identity/scope changed        | `inventory_expired` / `target_changed`; no launch/write                     |
@@ -832,7 +839,7 @@ Fresh Desktop target: `~/Applications/<KnownName>.app`. Discovery roots remain
 | --- | --- |
 | `surface` illegal for `agentId` | `surface_not_supported` |
 | Compact product inventory includes `surface` | TS/Rust parser reject |
-| Domestic `update` | `action_not_supported` before network |
+| Managed-desktop update lacks one opaque existing target | `target_selection_required`; no network/write |
 | Desktop launch without opaque `desktop_path()` | no Launch Services guess; fail closed |
 | `/Applications` write requested | `authorization_required`; zero write |
 | Missing/ambiguous OpenCode arch DMG | `source_not_verified` / fail closed |
@@ -844,7 +851,8 @@ Fresh Desktop target: `~/Applications/<KnownName>.app`. Discovery roots remain
 - Good: `/Applications/OpenCode.app` with `ai.opencode.desktop` is discovered
   and can 「打开软件」; fresh install still writes `~/Applications`.
 - Base: Qoder/TRAE/WorkBuddy/Claude/OpenCode stay compact (no `surfaces`
-  array). Domestic installed cards omit FyAgent update.
+  array). Installed cards expose update only when backend inventory, source,
+  version comparison, and product policy all admit it.
 - Bad: routing Agent OpenCode/Claude to Tooling CLI installers; enabling
   system one-click while `production_enabled()` is false.
 

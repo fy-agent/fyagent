@@ -461,10 +461,11 @@ export type AgentSection = (typeof AGENT_SECTION_IDS)[number];
   Visible 一键安装 / 一键更新 come only from `allowedActions` plus the
   current install/updateState (install when `not_installed` and `install` is
   allowed; update when existence is proven, `updateState === update_available`,
-  and `update` is allowed). QoderWork / TRAE Work / WorkBuddy never show
-  FyAgent 一键更新, 「检查更新」, 「有新版本」, or 「已是最新」; backend
-  `updateState` is `unavailable` and `update` is absent from `allowedActions`.
-  Backend omission is not a fake button. The shared
+  and `update` is allowed). QoderWork / TRAE Work / WorkBuddy use the same
+  rule: they show 一键更新 only for one backend-proven update-eligible
+  installation with a newer reviewed source. Up-to-date, unknown, multiple,
+  source-failed, or non-actionable inventory omits the action; the renderer
+  never manufactures a disabled/fake update button. The shared
   query owner is `featureKeys.agentInstallationInventory(agentId)` /
   `useAgentInstallationInventory`; pages do not call the Tauri command or
   choose a winner themselves. Directory one-click remains available only when
