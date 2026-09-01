@@ -2591,7 +2591,7 @@ jobs:
     expect(macHelperInfoPlist).toContain(
       "<string>com.fyagent.desktop.system-commit-helper</string>",
     );
-    expect(macHelperInfoPlist).toContain("<string>0.5.0</string>");
+    expect(macHelperInfoPlist).toContain("<string>0.4.3</string>");
     expect(read(BUILD_RS)).toContain("emit_privileged_client_link");
     expect(read(BUILD_RS)).toContain(
       "macos-privileged-helper/dist/libFyAgentPrivilegedClient.dylib",

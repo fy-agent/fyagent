@@ -8,9 +8,9 @@ records.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.5.0] - 2026-09-01
+## [0.4.3] - 2026-09-01
 
-FyAgent 0.5.0 advances the desktop Agent control plane with safer configuration
+FyAgent 0.4.3 advances the desktop Agent control plane with safer configuration
 transactions, a unified software lifecycle model, and the native foundations
 needed for managed Windows and macOS application installs.
 
@@ -48,7 +48,7 @@ needed for managed Windows and macOS application installs.
   bound to the exact `vX.Y.Z` tag target, with native Windows x64/ARM64 and
   universal macOS builds producing the existing seven-attachment release
   transaction.
-- Application version authority moves to `0.5.0`; the bundled macOS privileged
+- Application version authority moves to `0.4.3`; the bundled macOS privileged
   helper `CFBundleVersion` and the app-side helper requirement move with it.
 
 ## [0.4.2] - 2026-08-21

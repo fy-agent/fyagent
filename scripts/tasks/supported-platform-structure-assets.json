@@ -51,7 +51,7 @@
     ],
     [
       "src-tauri/Cargo.toml",
-      "c075c67245e4ad220e2bb79418c26617af344da5631cc30cdc2bab0ce4245174"
+      "c2d48f37a636890730134808855b0724b6998b36d1488f5cb9937fea6804532f"
     ],
     [
       "src-tauri/src/agent_install/desktop.rs",
@@ -403,7 +403,7 @@
     ],
     [
       "tests/releaseWorkflow.test.ts",
-      "5d11a3ecb4fa89ce423f12ead7345cc1ee7cfd7e759d13180defa7b35833c1c8"
+      "b2970dce7d1cbb9fcf461c1f1ab547db37d548c419d620d5c7034ec7149b93a7"
     ],
     [
       "tests/remainingPlatformSurface.test.ts",

@@ -1777,7 +1777,7 @@ dependencies = [
 
 [[package]]
 name = "fyagent"
-version = "0.5.0"
+version = "0.4.3"
 dependencies = [
  "anyhow",
  "arboard",
@@ -1858,7 +1858,7 @@ dependencies = [
 
 [[package]]
 name = "fyagent-user-helper"
-version = "0.5.0"
+version = "0.4.3"
 dependencies = [
  "embed-resource",
  "windows",

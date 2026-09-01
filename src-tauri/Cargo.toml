@@ -3,7 +3,7 @@ members = [".", "user-helper"]
 resolver = "2"
 
 [workspace.package]
-version = "0.5.0"
+version = "0.4.3"
 
 [package]
 name = "fyagent"
