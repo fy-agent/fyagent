@@ -7,7 +7,7 @@
 	<key>CFBundleName</key>
 	<string>FyAgent System Commit Helper</string>
 	<key>CFBundleVersion</key>
-	<string>0.4.2</string>
+	<string>0.5.0</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>SMAuthorizedClients</key>

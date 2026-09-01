@@ -17,7 +17,7 @@
   <key>SMPrivilegedExecutables</key>
   <dict>
     <key>com.fyagent.desktop.system-commit-helper</key>
-    <string>anchor apple generic and identifier "com.fyagent.desktop.system-commit-helper" and info[CFBundleVersion] &gt;= "0.4.2" and certificate leaf[subject.OU] = "HY446996QX"</string>
+    <string>anchor apple generic and identifier "com.fyagent.desktop.system-commit-helper" and info[CFBundleVersion] &gt;= "0.5.0" and certificate leaf[subject.OU] = "HY446996QX"</string>
   </dict>
 </dict>
 </plist>
