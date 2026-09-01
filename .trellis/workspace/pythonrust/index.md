@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 59
+- **Total Sessions**: 60
 - **Last Active**: 2026-09-01
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1920 | Active |
+| `journal-1.md` | ~1962 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 60 | 2026-09-01 | 跨平台 AI 软件生命周期与开发检查 | `cbd01281`, `c9e3e571`, `37fb36b7`, `b975bfc3`, `a5fac9d8`, `cd96bdd0` | `dev/laiyongjie` |
 | 59 | 2026-09-01 | Windows Agent 安装面统一与 Codex 日志治理 | `40eeaa6f`, `f32787da`, `4dd7668e` | `dev/laiyongjie` |
 | 58 | 2026-08-31 | macOS 特权 Helper 与 Agent 目录安装策略 | `bf30861826a3095203802340c4a359ab807d3aa6` | `dev/laiyongjie` |
 | 57 | 2026-08-31 | 完善 macOS Agent 安装更新与启动体验 | `1b6e2aab95fd4ca4947a6aa356644a56747e88f0`, `2405b0ecd5f91268ab807fc8c5fe25adde8ad90c`, `14ee2290a9c5d6efe08a15be70b0bc382ab6c010`, `ccbf7520ed237601ecc2c8fc08f82f5cb5edbd39` | `dev/laiyongjie` |

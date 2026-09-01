@@ -1918,3 +1918,45 @@ Rewrote audited frontend and public-documentation copy, added an indexed user-fa
 ### Status
 
 [OK] **Completed**
+
+
+## Session 60: 跨平台 AI 软件生命周期与开发检查
+<!-- trellis-session: v=2 fp=1f3157b9067996ff -->
+
+**Date**: 2026-09-01
+**Task**: 跨平台 AI 软件生命周期与开发检查
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+补齐 Windows inventory 父键枚举权限、bootstrap 不失败的 Windows-MSVC advisory 与显式 Clippy 诊断、侧栏 position-only Lens，并更新 owning spec。Qoder/TRAE/WorkBuddy 走既有精确目标 verified update；Windows 原生 HIL 仍未执行，未宣称已验收。
+
+### Main Changes
+
+- 修复 Uninstall/App Paths 父键 query+enumerate，complete/empty 投影为 not_installed
+- bootstrap advisory 退出 0；strict preflight/Clippy 保持显式且不进 check/CI
+- SelectionLens geometry=position，折叠活动组只保留一层 frame
+- 把 registry/task-runner/dev-env/v2-shell 合同写成可执行签名、错误矩阵和 Wrong vs Correct
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `cbd01281` | feat(agent): complete managed desktop lifecycle diagnostics |
+| `c9e3e571` | docs(spec): define bootstrap cross-msvc advisory |
+| `37fb36b7` | docs(spec): separate advisory and strict cross diagnostics |
+| `b975bfc3` | docs(spec): enable verified managed desktop updates |
+| `a5fac9d8` | docs(task): align lifecycle task with verified update policy |
+| `cd96bdd0` | fix(dev): seal Windows MSVC cross advisory for platform scanners |
+
+### Testing
+
+- [OK] mise run check:prearchive -- --exclude-active-task .trellis/tasks/09-01-windows-software-lifecycle-crosscheck-ui
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- Windows 原生 HIL：真实已安装/未安装、UAC/vendor UI、自定义路径和桌面启动
