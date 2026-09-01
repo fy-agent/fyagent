@@ -2,37 +2,48 @@
 
 ## 产品策略
 
-| Product | Surface | Windows owner | Allowed actions | 本任务 |
+| Product | Surface | Inventory owner | Allowed lifecycle | Update target |
 | --- | --- | --- | --- | --- |
-| QoderWork | Desktop | signed EXE + Registry/App Paths/known roots | install, launch | 修复 inventory 完整度 |
-| TRAE Work | Desktop | signed EXE + Registry/App Paths/known roots | install, launch | 修复 inventory 完整度 |
-| WorkBuddy | Desktop | signed EXE + Registry/App Paths/known roots | install, launch | 修复 inventory 完整度 |
-| Codex | Desktop | PackageManager/MSIX dedicated owner | dedicated owner | 不改路由 |
-| Claude Desktop | Desktop | Windows identity 未闭合 | fail-closed | 不猜测身份 |
-| OpenCode Desktop | Desktop | Windows identity 未闭合 | fail-closed | 不猜测身份 |
-| Grok Build | CLI | Tooling/helper owner | install, update | 不受影响 |
+| QoderWork | Desktop | signed bundle/EXE + closed identity + Registry/App Paths/known roots | install, update, launch | one exact existing trusted candidate |
+| TRAE Work | Desktop | signed bundle/EXE + closed identity + Registry/App Paths/known roots | install, update, launch | one exact existing trusted candidate |
+| WorkBuddy | Desktop | signed bundle/EXE + closed identity + Registry/App Paths/known roots | install, update, launch | one exact existing trusted candidate |
+| Codex | Desktop | dedicated Codex PackageManager/Desktop owner | dedicated owner | never uses Agent job slot |
+| Claude Desktop | Desktop | closed macOS identity; Windows fail-closed | lifecycle where source/identity supported | exact existing trusted candidate |
+| OpenCode Desktop | Desktop | closed macOS identity; Windows fail-closed | lifecycle where source/identity supported | exact existing trusted candidate |
+| Grok Build | CLI | existing Tooling/helper owner | install, update | observed distribution owner |
 
 ## 状态投影
 
 ```text
-optional registry parents absent/successfully enumerated
+optional registry parents absent or safely enumerated
 + known roots absent
 + Shell context stable
-=> complete inventory, no candidate
-=> not_installed + reviewed fresh destination
+=> complete/no candidate => not_installed + reviewed fresh destination
 
-access/enumeration/link/bound/context error
-=> incomplete inventory
-=> unknown + native_projection_unavailable
-=> no executable fresh destination
+access/enum/link/bound/context error
+=> incomplete => unknown + native_projection_unavailable
 
-one exact trusted executable
-=> single/installed
+one exact trusted executable/bundle
+=> installed/single => launch eligible
+=> update eligible only when evidence, scope and policy agree
 
 stale, signer/product mismatch, or multiple candidates
 => visible non-green evidence; never silently pick a target
 ```
 
-## 证据声明
+## 更新准入
 
-Portable tests 和 macOS cargo-xwin 可以证明解析、策略、编译合同和 UI 行为；不能证明 Explorer SID、真实 registry、vendor installer/UAC、当前制品 Authenticode、custom path 或桌面启动。这些仍属于 Windows native HIL。
+```text
+single trusted candidate
++ candidate update-eligible
++ reviewed source resolves a different comparable version
++ opaque inventory/target/revision and release capability match fresh reads
+=> reuse existing platform update transaction
+
+missing/changed/expired/ambiguous target or unsupported source
+=> fail before download/write
+```
+
+- macOS 只更新 exact selected bundle，保留 rollback/scope gate。
+- Windows 复用 verified vendor EXE 与 closed helper selector，不猜 silent switch；成功要求 fresh inventory 证明所选 path/scope 达到预期可信版本且无额外候选。
+- cargo-xwin 是诊断证据，不是 Registry/UAC/vendor installer/launch HIL。

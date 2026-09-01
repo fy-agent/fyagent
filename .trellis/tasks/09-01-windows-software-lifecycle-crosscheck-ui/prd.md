@@ -1,84 +1,74 @@
 # 完善跨平台 AI 软件生命周期与开发检查
 
-## 0. 状态与范围
+## 0. 范围
 
 - 优先级：P0
 - 类型：fullstack / developer-experience
-- 主问题：Windows 桌面 Agent inventory 的注册表父键权限不足，可能把完整的未安装状态错误降级为 `unknown`；macOS 缺少受控的 Windows MSVC Clippy 早期诊断；左侧导航折叠与 Agent 扫描期间存在重复选中材质和尺寸拖影。
-- 证据边界：Windows 原生 CI/HIL 仍是 Windows 注册表、安装器、UAC、启动和发布行为的权威。macOS cargo-xwin 只提供编译诊断。
-- 产品边界：QoderWork、TRAE Work、WorkBuddy 保持 `install + launch`，不开放 FyAgent `update`；Codex 保持专用桌面 owner；Claude/OpenCode Windows 身份没有闭合证据时继续 fail-closed。
+- 产品平台：Windows 与 macOS；Linux 仅作为开发宿主。
+- 本任务处理 AI 软件生命周期，不处理 FyAgent 自身安装或更新。
+- Windows 原生 CI/HIL 仍是 Registry、UAC、vendor installer、签名、启动和自定义安装路径的最终证据；macOS cargo-xwin 只提供早期编译诊断。
 
-## 1. 需求
+## 1. 已确认问题
 
-### R1. Windows inventory 最小权限修复
+1. Windows App Paths/Uninstall inventory parent 以 query-only 权限打开后执行子键枚举，真实环境会失败并把完整状态降为 `unknown`。
+2. QoderWork、TRAE Work、WorkBuddy 已有官方 source、下载、制品验证、精确目标、平台事务和后置回读，但 `lifecycle_policy.rs` 错误设置 `update=false`。
+3. macOS 开发者缺少初始化阶段可见、但不污染普通 bootstrap 的 Windows-MSVC 前置检查。
+4. 左侧导航 host 与 SelectionLens 同时绘制 active frame，折叠时形成双层外框；扫描重排时 width/height spring 造成边缘闪烁。
 
-- Uninstall/App Paths 父键使用只读 query + enumerate 权限，不得获得 create/set 权限。
-- 枚举后的子键继续 query-only，并保持逐组件 registry-link 拒绝。
-- 可选父键不存在属于“无记录”；访问、枚举、边界或 Shell 用户上下文错误仍使 aggregate incomplete/`unknown`，不能伪报未安装。
-- 完整且无可信候选时投影 `not_installed`，并保留现有 fresh-install destination。
-- 不新增扫描器、包管理器、下载器、签名器或安装状态机。
+## 2. 需求
 
-### R2. 显式 Windows MSVC 交叉诊断
+### R1. Windows inventory
 
-- 新增只读 `system:check:windows-msvc-cross`，仅在 macOS x64/arm64 上检查固定前置条件。
-- 新增 default-no、`dependency-environment` 的 `rust:clippy:windows-msvc-cross`。
-- target 固定 `x86_64-pc-windows-msvc`；cargo-xwin 固定评审版本；最终 argv 固定 workspace/all-targets/locked manifest 与 `-D warnings`。
-- 拒绝任意透传参数以及 caller Rust/C/CMake/xwin/Cargo-config 覆盖。
-- preflight 不安装或下载任何内容；Clippy 只在显式确认后允许 cargo-xwin 下载/cache CRT/SDK。
-- 两个任务都不进入 bootstrap、`check`、`check:backend`、CI 或 Release gate。
+- inventory parent 使用 query-value + enumerate-subkeys 的最小只读权限。
+- 中间组件 traversal-only，枚举 child query-value-only；不得获得 create/set/delete/security-write。
+- optional parent 缺失表示无记录；访问、枚举、链接、边界或 Shell-context 错误保持 incomplete/`unknown`。
+- complete + no trusted candidate 投影为 `not_installed` 并恢复 reviewed fresh destination。
+- 不新增 WinGet、PowerShell、进程名检测、全盘扫描或第二套 inventory owner。
 
-### R3. 左侧导航稳定性
+### R2. AI 桌面软件一键安装与更新
 
-- 展开状态保留配置组的上下文选中材质。
-- 活动配置叶折叠后，toggle 清除自身 border/background/shadow，只保留一枚共享 SelectionLens；文字与 caret 使用更弱色阶。
-- SideNavigation 使用 position-only geometry：`left/top` 保持可中断 spring，`width/height` 直接同步。
-- 其他 SelectionLens 调用方默认 full geometry 行为不变。
-- Router、ARIA、键盘、reduced-motion、overlay identity 不回退。
+- QoderWork、TRAE Work、WorkBuddy Desktop 支持 `install | update | launch`。
+- update 只在唯一可信候选、candidate update-eligible、官方 source 可解析、远程版本不同、opaque target/release capability 完整时暴露。
+- install 绑定 fresh destination；update 必须绑定 existing candidate。缺失、过期、变化或歧义目标在下载/写入前失败。
+- macOS 复用 exact-path DMG staging/rollback；Windows 复用 verified EXE、closed helper selector、vendor UI/UAC 与 fresh inventory readback。
+- 不猜 silent installer switch，不新增 vendor updater，不让 renderer 提供 URL、路径、命令、hash 或 bypass。
 
-### R4. SPEC 与诚实状态
+### R3. macOS Windows-MSVC 诊断
 
-- 更新 task-runner、development-environment、external-agent、V2 shell owning specs。
-- 归档记录区分自动化验证与未执行的真实 Windows HIL。
-- 不扩展产品身份或更新策略。
+- `bootstrap` 运行 read-only `system:check:windows-msvc-cross:advisory`；缺少可选工具时报告全部问题但退出 0，非 macOS 明确 SKIP。
+- strict `system:check:windows-msvc-cross` 缺项时退出非零且不安装任何内容。
+- `rust:clippy:windows-msvc-cross` default-no，固定 cargo-xwin 版本、Windows x64 target、clang-cl、xwin toolset、workspace/all-targets/locked manifest 与 `-D warnings`。
+- strict/Clippy 不进入 bootstrap；整个 family 不进入 default check、CI 或 Release gate。
 
-## 2. 非目标
+### R4. 左侧导航
 
-- 不启用 QoderWork、TRAE Work、WorkBuddy 的 FyAgent update。
-- 不为 Claude/OpenCode 猜测 Windows ProductName、signer、PFN/AUMID 或安装路径。
-- 不把 CRT/SDK 或系统工具安装放进 bootstrap/default check。
-- 不修改 Codex PackageManager/MSIX owner。
-- 不用 WinGet、PowerShell、全盘扫描或第二枚 slider 掩盖根因。
+- 展开状态保留活动语义；折叠活动组只显示一层共享 SelectionLens。
+- collapsed hover/active 不恢复 host frame；focus、ARIA、Router、键盘和 reduced-motion 不变。
+- SideNavigation 使用 position-only geometry：位置 spring，尺寸立即同步；其他调用方默认完整 geometry 不变。
+- 不新增第二个 lens、动画库或页面本地状态机。
 
-## 3. 验收标准
+### R5. 复用与规范
 
-### A. Windows inventory
+- 修复既有 Registry、Agent lifecycle、平台 transaction、SelectionLens 和 mise owner。
+- 不新增生产依赖。
+- 归档前更新 owning SPEC，并诚实记录 Windows native HIL 尚属 release evidence。
 
-- [x] 父键精确 query + enumerate，无 create/set。
-- [x] 子键 query-only，registry-link 安全合同保持。
-- [x] 单元测试覆盖 enumerable parent、complete/no-candidate 与 incomplete/unknown。
-- [x] 三款国内产品 update policy 保持关闭。
+## 3. 非目标
 
-### B. 交叉诊断
+- 不猜 Claude/OpenCode Windows identity、source、PFN/AUMID 或安装路径。
+- 不修改 Codex 专用 Desktop/PackageManager owner。
+- 不自动安装 LLVM、CMake、Ninja、Rust target、cargo-xwin 或系统包。
+- 不把 cargo-xwin 成功描述为 Windows 原生验收。
+- 不新增 WinGet/Chocolatey/Docker MSVC image/Zig GNU ABI/本地 SDK downloader。
 
-- [x] strict preflight 覆盖 cargo-xwin、Clippy、Rust target、LLVM/LLD/llvm-lib、CMake、Ninja。
-- [x] 固定 host/target/version/argv；拒绝参数、环境和 Cargo-config 覆盖。
-- [x] preflight 无安装/下载；Clippy default-no 并提示许可边界。
-- [x] bootstrap/default check DAG 不包含 cross tasks。
+## 4. 验收
 
-### C. 前端
-
-- [x] collapsed active toggle 只有一枚 frame owner。
-- [x] SideNavigation 使用 position-only geometry，宽高直接同步。
-- [x] unit/V2/browser 测试覆盖展开、折叠、ARIA、键盘、reduced-motion 与扫描几何稳定性。
-
-### D. 质量与归档
-
-- [ ] 完整 prearchive gate 通过。
-- [x] owning SPEC 已更新。
-- [x] task context JSONL 校验通过。
-- [ ] work commit → archive commit → journal commit 顺序完成。
-
-## 4. 未执行的原生证据
-
-- 本机未执行真实 Windows x64/ARM64 安装器、UAC、注册表和桌面启动 HIL。
-- macOS cargo-xwin 结果不得描述为 Windows 原生支持证明。
+- [x] Registry parent query+enumerate、child query-only、无 write capability。
+- [x] complete/no candidate → `not_installed` + fresh destination；incomplete → `unknown`。
+- [x] 三款 managed desktop policy 允许 install/update/launch。
+- [x] newer source + single update-eligible target 才暴露 update；缺目标在下载前失败。
+- [x] bootstrap advisory 成功报告缺项；strict/Clippy 维持严格边界。
+- [x] SideNavigation 单层 lens 与 position-only geometry 有 unit/browser contract。
+- [ ] focused/full prearchive gates 通过。
+- [ ] owning SPEC、任务归档与 journal 提交完成。
+- [ ] Windows 原生 HIL 作为后续 release evidence：真实已安装/未安装、UAC/vendor UI、自定义路径和启动。

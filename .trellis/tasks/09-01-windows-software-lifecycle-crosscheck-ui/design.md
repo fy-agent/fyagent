@@ -1,84 +1,79 @@
-# 技术设计：可枚举 Registry 父键、显式 cargo-xwin 诊断与单层导航 Lens
+# 技术设计
 
-## 1. 设计结论
+## 1. 原则
 
-1. 修复现有 owner，而不是新建扫描器或安装器。
-2. cross Clippy 是显式、非验收诊断，不进入 bootstrap/default check。
-3. SelectionLens 继续作为唯一共享动画 owner；SideNavigation 只窄化尺寸动画。
-4. 不扩大 QoderWork、TRAE Work、WorkBuddy 的 update policy。
+1. 修 owner，不换 owner。
+2. install/update 共享 source、download、artifact verification、job、helper/DMG commit 与 post-readback。
+3. Renderer 不获得 URL、路径、命令、hash、silent switch 或 bypass。
+4. bootstrap 只提示；strict preflight 与可能写缓存的 Clippy 分离。
+5. host 保留 Router/ARIA/focus，唯一共享 lens 绘制 frame。
 
-## 2. Windows inventory
-
-调用链：
+## 2. Registry inventory
 
 ```text
-probe_desktop
-  -> discover_windows_inventory
-  -> registry_hints
-  -> open_*_inventory_parent
-  -> enum_keys
-  -> complete / incomplete projection
+TRAVERSE              = fixed intermediate component traversal
+READ_VALUES           = enumerated child query-value
+INVENTORY_PARENT_READ = leaf query-value + enumerate-subkeys
 ```
 
-权限语义：
+- 所有 capability 均无 create/set/delete/security-write。
+- optional parent NotFound 保持 complete；权限、link、enum、bound、Shell drift 保持 incomplete。
+- Registry/App Paths 只是证据，可信 executable 仍由 fixed relative path、ProductName、architecture、stable identity、WinVerifyTrust 与 signer subject 决定。
+
+## 3. Managed desktop lifecycle
 
 ```text
-TRAVERSE              = query + enumerate
-INVENTORY_PARENT_READ = query + enumerate, no create/set
-READ_VALUES           = query only
+not_observed + package installable + policy.install
+  => Install
+
+single trusted candidate
++ candidate.update_eligible
++ package installable
++ update_state != up_to_date
++ policy.update
+  => Update
+
+single trusted candidate + launch_eligible + policy.launch
+  => Launch
 ```
 
-- 中间固定组件使用 `TRAVERSE`。
-- inventory parent leaf 使用 `INVENTORY_PARENT_READ`。
-- caller-controlled child component 经长度/字符验证后使用 `READ_VALUES`。
-- NotFound 的可选 parent 不降低完整度；权限、枚举、link、边界或用户漂移保持 fail-closed。
+- `lifecycle_policy.rs` 是 product/surface/action 唯一 owner。
+- `desktop_allowed_actions` 统一 readiness 投影，UI 不自行推断。
+- start 时重查 inventory/target/revision/identity/scope，并重解析 opaque release capability。
+- macOS 只替换 exact selected path，保留 same-volume staging、rollback 与 system-scope gate。
+- Windows 使用同一 verified vendor EXE/helper 路径；成功要求 exact selected path/scope 权威变化到预期可信版本，额外候选或歧义均失败。
 
-## 3. Windows MSVC 交叉诊断
-
-复用 `cargo-xwin`，由一个薄 Node owner 提供：
+## 4. Windows-MSVC tasks
 
 ```text
+system:check:windows-msvc-cross:advisory
+  read-only; bootstrap child; optional gaps => report + exit 0
+
 system:check:windows-msvc-cross
-  -> read-only preflight
+  read-only; missing/unsupported => exit nonzero
 
 rust:clippy:windows-msvc-cross
-  -> default-no confirmation
-  -> same preflight
-  -> fixed cargo xwin clippy argv
+  dependency-environment; default-no; strict preflight + fixed cargo-xwin argv
 ```
 
-边界：
+- host 固定 darwin x64/arm64，target 固定 `x86_64-pc-windows-msvc`。
+- probes：cargo-xwin、Clippy、Rust target、clang-cl、lld-link、llvm-lib、CMake、Ninja。
+- 拒绝 caller target/Rust/C/CMake/xwin/Cargo-config 覆盖；无 shell、sudo、包管理器或自动安装。
+- advisory 进入 bootstrap；strict/Clippy 不进入 bootstrap；整个 family 不进入 default check。
 
-- host 仅 `darwin-x64` / `darwin-arm64`；target 固定 Windows x64 MSVC。
-- 精确解析 cargo-xwin 版本。
-- 完整报告缺失前置，不在第一个失败处停止。
-- 复用现有 caller override 与 Cargo-config 审计，并额外拒绝 C/CMake/xwin/native dependency 覆盖。
-- 使用 argv 和 `shell:false`；脚本不调用包管理器、安装器或环境持久化。
-- 不进入 bootstrap、check、CI、Release。
-
-## 4. SelectionLens
-
-API：
+## 5. SelectionLens
 
 ```ts
 type SelectionLensGeometry = "size-and-position" | "position";
 ```
 
-- 默认模式：位置和尺寸均使用现有 `fySpringTransition`。
-- position 模式：位置 spring；尺寸直接 set 到目标 host。
-- overlay 不因 active host 变化而 key/unmount。
-- SideNavigation 通过显式 `data-collapsed-active` 清除重复 host frame。
-- expanded group 的 context frame 与 leaf Lens 不重叠；collapsed group 由 Lens 单独绘制 frame。
+- 默认完整几何 spring 不变。
+- position 模式只 spring left/top，width/height 立即同步。
+- SideNavigation active leaf/collapsed host 清除重复 frame，focus/ARIA/keyboard/reduced-motion 不变。
 
-## 5. 验证
+## 6. 风险与验证
 
-- Rust：Registry rights 事件测试、complete/incomplete inventory projection、既有 lifecycle policy 回归。
-- Task runner：host/version/prerequisite/fixed argv/override/DAG/无副作用测试。
-- Frontend：SelectionLens geometry、SideNavigation material owner、V2 unit 与 Playwright 扫描稳定性。
-- Contract：task metadata、generated docs、CI change classifier、supported-platform structure baseline。
-
-## 6. 风险
-
-- Windows vendor identity 漂移继续 fail-closed，必须通过原生 HIL 更新闭集证据。
-- cargo-xwin 可能发现仅原生 Windows 才暴露的 build-script 问题；诊断失败不能通过伪造 cfg 绕过。
-- position-only 尺寸变化是直接同步，这是为消除玻璃边缘拉伸而做的局部保守取舍。
+- source/schema/signer/ProductName 漂移 fail-closed。
+- vendor EXE scope 不猜测；post-readback 决定成功。
+- cargo-xwin 只提供诊断，不伪造 Windows runtime/HIL。
+- 覆盖 Registry fake backend、Agent lifecycle/inventory/transaction、frontend primary action/job/Page、SelectionLens/SideNavigation、Chromium geometry、task contracts 与完整 prearchive gate。

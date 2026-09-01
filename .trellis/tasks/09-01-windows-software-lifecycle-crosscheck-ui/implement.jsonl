@@ -1,8 +1,13 @@
-{"file":".trellis/spec/backend/reuse.md","reason":"优先复用既有 registry、inventory、installer、task runner owner，禁止新增重复基础设施。"}
-{"file":".trellis/spec/backend/task-runner-contract.md","reason":"新增 mise 任务必须保持 fixed argv、read-only、非默认 gate 与 current-host 边界。"}
-{"file":".trellis/spec/backend/development-environment.md","reason":"交叉 Clippy 只作为显式诊断，不改变默认工具链和原生验收。"}
-{"file":".trellis/spec/backend/external-agent-p0.md","reason":"Windows inventory 完整度、产品 policy、签名身份与安装动作权威。"}
-{"file":".trellis/spec/backend/windows-runtime-security.md","reason":"RegistryRights 能力位、INVENTORY_PARENT_READ 与 HKU 打开合同。"}
-{"file":".trellis/spec/frontend/v2-shell.md","reason":"SideNavigation 与 SelectionLens 的唯一 overlay、motion、fallback 和可访问性合同。"}
-{"file":".trellis/tasks/09-01-windows-software-lifecycle-crosscheck-ui/research/root-cause-and-reuse-review.md","reason":"确认 Registry 枚举权限根因、cargo-xwin 复用与拒绝方案。"}
-{"file":".trellis/tasks/09-01-windows-software-lifecycle-crosscheck-ui/research/support-matrix.md","reason":"冻结各产品 surface/action 与原生 HIL 声明边界。"}
+{"file":"src-tauri/src/windows_runtime/registry.rs","reason":"实现 inventory parent query+enumerate 最小只读 capability。"}
+{"file":"src-tauri/src/agent_install/inventory.rs","reason":"保持 complete/incomplete 投影、fresh destination 与 update eligibility。"}
+{"file":"src-tauri/src/agent_install/lifecycle_policy.rs","reason":"作为 product/surface/action owner 启用三款桌面软件 update。"}
+{"file":"src-tauri/src/agent_install/mod.rs","reason":"统一 readiness 的 install/update/launch action 投影与目标准入。"}
+{"file":"src-tauri/src/agent_install/desktop.rs","reason":"复用现有 macOS/Windows exact-target update 与 post-readback。"}
+{"file":"scripts/tasks/windows-msvc-cross.mjs","reason":"实现 advisory、strict preflight 与 fixed cargo-xwin Clippy plan。"}
+{"file":".mise/tasks/core.toml","reason":"bootstrap 只接入 read-only non-failing advisory。"}
+{"file":".mise/tasks/rust.toml","reason":"cross Clippy 保持 dependency-environment 与 default-no。"}
+{"file":"src/v2/shared/ui/SelectionLens.tsx","reason":"增加默认兼容的 position-only geometry mode。"}
+{"file":"src/v2/widgets/app-shell/SideNavigation.tsx","reason":"复用单一 lens 并输出 collapsed material 状态。"}
+{"file":"src/v2/app/styles/shell.css","reason":"移除重复 active frame 并降低折叠状态色阶。"}
+{"file":"tests/windowsMsvcCross.test.ts","reason":"覆盖工具、版本、DAG、override、argv、advisory 与无副作用。"}
+{"file":"tests/v2-browser/agents-v3.spec.ts","reason":"覆盖扫描期间导航 lens 几何稳定性。"}
