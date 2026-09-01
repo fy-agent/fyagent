@@ -91,6 +91,14 @@ mise run dev
 - `system:check` is strict and read-only. It diagnoses current-host native
   prerequisites and prints official, non-elevating installation guidance; it
   never invokes `sudo`, a package manager, or an installer.
+- macOS developers who explicitly need early Windows-MSVC compile diagnostics
+  run `mise run system:check:windows-msvc-cross`. It checks the reviewed
+  cargo-xwin version, Clippy, installed Windows x64 Rust standard library,
+  clang-cl/LLD/llvm-lib, CMake, and Ninja without installing anything. After a
+  successful report they may explicitly run
+  `mise run rust:clippy:windows-msvc-cross`; that task is default-no and may
+  download/cache Microsoft CRT/SDK content under the license linked by
+  cargo-xwin. It is not part of bootstrap or the default check gate.
 - Maintained local project operations use `mise run <task>`. Supported package
   aliases route through the same guarded implementation. A hand-written
   low-level Cargo/Tauri command is not a canonical entrypoint or acceptance
@@ -132,6 +140,11 @@ for another OS/architecture. Portable tests may validate policy and parsing,
 but they do not prove native installer execution, platform APIs, signing,
 notarization, packaging, or shipped runtime behavior.
 
+The bounded macOS Windows-MSVC Clippy task is the sole local foreign-target
+exception and does not change that evidence rule. It has no packaging,
+execution, installer, registry, PackageManager, WebView2, UAC, signing, or HIL
+claim. Standard local tasks remain current-host-only.
+
 ### Lock and update governance
 
 Ordinary bootstrap/install consumes committed locks and never updates them.
@@ -166,18 +179,26 @@ open a PR, or publish.
 | Linux x64/ARM64 is refused as a development host | Fail the environment contract. |
 | A local/portable result is presented as another platform's native evidence | Keep that native gate pending. |
 | Host native libraries are missing | `system:check` fails with non-elevating official guidance. |
+| Optional Windows-MSVC tools are missing on macOS | `system:check:windows-msvc-cross` lists every missing item and hint; default bootstrap/check still retain their own result. |
+| Optional cross Clippy is invoked without explicit confirmation | Do not run or download/cache the SDK. |
+| Optional cross task receives target/compiler/linker/CMake/xwin/Cargo-config overrides | Reject before any toolchain child. |
+| Cross Clippy passes but Windows native evidence is absent | Report only diagnostics; keep Windows acceptance pending. |
 
 ## 5. Good / Base / Bad Cases
 
 - **Good:** one authority per ecosystem; locked bootstrap; exact executable,
-  lock, and workflow agreement; current-host-only local execution; Linux
-  development-host admission without a Linux product claim; matching native
-  Actions evidence for shipped platforms.
+  lock, and workflow agreement; current-host-only local execution except the
+  named macOS Windows-MSVC diagnostic; Linux development-host admission
+  without a Linux product claim; matching native Actions evidence for shipped
+  platforms.
 - **Base:** a portable policy/parser test runs on the current host and reports
   only that bounded result. Missing native platform evidence remains pending.
+  Optional `system:check:windows-msvc-cross` failure does not fail
+  `bootstrap` or `check`.
 - **Bad:** duplicate literal versions, automatic trust/system installation,
-  system-Python fallback, hand-edited lock artifacts, a foreign `--target`, or
-  portable/local output presented as another platform's native acceptance.
+  system-Python fallback, hand-edited lock artifacts, a foreign `--target`,
+  putting cargo-xwin into bootstrap, or portable/local/cross-Clippy output
+  presented as another platform's native acceptance.
 
 ## 6. Tests Required
 
@@ -192,15 +213,21 @@ open a PR, or publish.
 - Run mise config/task metadata, `env:check --json`, and current-host
   `system:check`, including complete failure reporting when prerequisites are
   absent.
+- Exercise `system:check:windows-msvc-cross --json` on the real host plus pure
+  fixtures for every prerequisite; prove the Clippy task is macOS-only,
+  fixed-version/fixed-target/fixed-argv, default-no, non-installing, and absent
+  from bootstrap/check DAGs.
 - Exercise real task argument/flag transport and the host-native guard's
   positive and negative OS/architecture mappings, including Linux x64/ARM64.
 - Test absolute compiler/rustdoc identity, environment/Cargo-config rejection,
   native test-binary format, no-shell argv transport, Windows helper ordering,
   and Windows MSVC child-only environment behavior through the task-runner
   suites.
-- Scan active local entrypoints for cross-target flags, emulators, subsystem
-  bridges, foreign build tools, and retired cross-build paths. Native workflow
-  targets are outside that negative local-entrypoint scan.
+- Scan standard local entrypoints for cross-target flags, emulators, subsystem
+  bridges, foreign build tools, and retired cross-build paths. Validate the
+  exact optional Windows-MSVC diagnostic separately rather than weakening the
+  standard-entrypoint scan. Native workflow targets stay outside that negative
+  set.
 - Require matching Windows/macOS native runner evidence before claiming shipped
   product platform verification. Linux check success remains development-host
   evidence only.
@@ -214,6 +241,7 @@ copy exact versions into mise, specs, and workflows
 fall back to system Python
 let ordinary tasks install/trust/update automatically
 run cargo/tauri with a foreign --target and cite it as acceptance
+add cargo-xwin to bootstrap/check
 treat Linux development-host admission as a Linux release target
 ```
 
@@ -223,6 +251,7 @@ Correct:
 one ecosystem authority -> exact executable/workflow/lock comparison
 mise orchestration -> committed multi-host lock -> uv-owned Python
 canonical task -> verified current host -> direct native child
+named macOS Windows-MSVC diagnostic -> compile diagnostics only
 matching native Actions runner -> shipped-platform evidence
 Linux local check -> development evidence only
 ```

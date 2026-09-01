@@ -5,6 +5,7 @@ run = [
   "mise install",
   { task = "deps:install" },
   { task = "env:check" },
+  { task = "system:check:windows-msvc-cross:advisory" },
   { task = "tasks:validate" },
 ]
 
@@ -33,6 +34,21 @@ flag "--json" help="Emit one machine-readable JSON document"
 env = { FYAGENT_TASK_EFFECT = "read-only" }
 quiet = true
 run = "node scripts/tasks/system-check.mjs"
+
+["system:check:windows-msvc-cross"]
+description = "Check optional macOS prerequisites for the bounded Windows MSVC cross-Clippy diagnostic"
+usage = '''
+flag "--json" help="Emit one machine-readable JSON document"
+'''
+env = { FYAGENT_TASK_EFFECT = "read-only" }
+quiet = true
+run = "node scripts/tasks/windows-msvc-cross.mjs check"
+
+["system:check:windows-msvc-cross:advisory"]
+description = "Report optional macOS Windows MSVC cross-Clippy prerequisites without failing bootstrap"
+env = { FYAGENT_TASK_EFFECT = "read-only" }
+quiet = true
+run = "node scripts/tasks/windows-msvc-cross.mjs advisory"
 
 [dev]
 description = "Start native Tauri development on the current host"

@@ -29,7 +29,7 @@ pub(crate) struct AgentLifecyclePolicy {
 const QODERWORK: AgentLifecyclePolicy = AgentLifecyclePolicy {
     surfaces: &[AgentSurface::Desktop],
     install: true,
-    update: false,
+    update: true,
     launch: true,
     managed_desktop_source: Some(ManagedDesktopSourceId::QoderWork),
 };
@@ -37,7 +37,7 @@ const QODERWORK: AgentLifecyclePolicy = AgentLifecyclePolicy {
 const TRAEWORK: AgentLifecyclePolicy = AgentLifecyclePolicy {
     surfaces: &[AgentSurface::Desktop],
     install: true,
-    update: false,
+    update: true,
     launch: true,
     managed_desktop_source: Some(ManagedDesktopSourceId::TraeWork),
 };
@@ -45,7 +45,7 @@ const TRAEWORK: AgentLifecyclePolicy = AgentLifecyclePolicy {
 const WORKBUDDY: AgentLifecyclePolicy = AgentLifecyclePolicy {
     surfaces: &[AgentSurface::Desktop],
     install: true,
-    update: false,
+    update: true,
     launch: true,
     managed_desktop_source: Some(ManagedDesktopSourceId::WorkBuddy),
 };
@@ -194,21 +194,21 @@ mod tests {
             AgentCatalogId::QoderWork => (
                 &[AgentSurface::Desktop],
                 true,
-                false,
+                true,
                 true,
                 ManagedDesktopSourceId::QoderWork,
             ),
             AgentCatalogId::TraeWork => (
                 &[AgentSurface::Desktop],
                 true,
-                false,
+                true,
                 true,
                 ManagedDesktopSourceId::TraeWork,
             ),
             AgentCatalogId::WorkBuddy => (
                 &[AgentSurface::Desktop],
                 true,
-                false,
+                true,
                 true,
                 ManagedDesktopSourceId::WorkBuddy,
             ),
@@ -293,7 +293,7 @@ mod tests {
     }
 
     #[test]
-    fn domestic_products_disable_update_on_the_legal_desktop_surface() {
+    fn managed_desktop_products_admit_install_update_and_launch_on_desktop_only() {
         for agent_id in [
             AgentCatalogId::QoderWork,
             AgentCatalogId::TraeWork,
@@ -301,11 +301,11 @@ mod tests {
         ] {
             assert_eq!(
                 action_supported(agent_id, AgentSurface::Desktop, AgentActionId::Update),
-                Ok(false)
+                Ok(true)
             );
             assert_eq!(
                 admit_action(agent_id, AgentSurface::Desktop, AgentActionId::Update),
-                Err(AgentReasonCode::ActionNotSupported)
+                Ok(())
             );
             assert_eq!(
                 action_supported(agent_id, AgentSurface::Desktop, AgentActionId::Install),
@@ -389,11 +389,11 @@ mod tests {
             domestic,
             AgentInstallState::NotInstalled
         ));
-        assert!(!should_resolve_desktop_source(
+        assert!(should_resolve_desktop_source(
             domestic,
             AgentInstallState::Installed
         ));
-        assert!(!should_resolve_desktop_source(
+        assert!(should_resolve_desktop_source(
             domestic,
             AgentInstallState::InstalledNotRunnable
         ));

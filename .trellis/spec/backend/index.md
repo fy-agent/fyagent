@@ -23,9 +23,9 @@ belong in the linked owning spec.
 | --- | --- |
 | [Rust Host Modular Boundaries](./modular-boundaries.md) | Module responsibilities, dependency direction, command/service/platform separation. |
 | [Backend Reuse](./reuse.md) | Existing-owner, adopted-dependency, open-source, adapter, and bespoke implementation order. |
-| [Development Environment](./development-environment.md) | Toolchain authority, bootstrap, host support, locks, and environment verification. |
+| [Development Environment](./development-environment.md) | Toolchain authority, bootstrap, host support, locks, optional macOS Windows-MSVC diagnostic isolation, and environment verification. |
 | [Optional Codex Development Hooks](./development-hooks.md) | Optional Codex hook files and Trellis-version ownership. |
-| [Repository Task Runner](./task-runner-contract.md) | Public `mise run` API, effects, parameter transport, host guards, and mutation policy. |
+| [Repository Task Runner](./task-runner-contract.md) | Public `mise run` API, effects, parameter transport, host guards, mutation policy, and the named macOS Windows-MSVC diagnostic. |
 | [Application Identity](./application-identity.md) | Product names, identifiers, license/provenance identity, and migration boundaries. |
 | [Application Brand Assets](./application-brand-assets.md) | Canonical icons, asset derivation, platform packaging, and byte-level validation. |
 | [Application Version and Installer Assets](./fyagent-version-contract.md) | Canonical version source, package versions, and installer filename contract. |
@@ -48,7 +48,7 @@ belong in the linked owning spec.
 
 | Contract | Owns |
 | --- | --- |
-| [Windows Shell-user Runtime](./windows-runtime-security.md) | Explorer-user authority, per-user paths/HKU, single-instance input, COM launch, and helper boundary. |
+| [Windows Shell-user Runtime](./windows-runtime-security.md) | Explorer-user authority, per-user paths/HKU, registry access masks, single-instance input, COM launch, and helper boundary. |
 | [Windows Installer](./windows-installer.md) | NSIS mechanics, bounded cleanup, signing evidence, uninstall ownership, and native diagnostics. |
 | [macOS Privileged System-Commit Helper](./macos-system-commit.md) | Nested Blessed helper, C ABI, product/slot integers, `MacSystemCommitPort`, and the production `/Applications` enablement gate. |
 | [macOS Styled DMG Layout](./macos-dmg-layout.md) | DMG contents, Finder metadata, retries, byte preservation, and layout verification. |

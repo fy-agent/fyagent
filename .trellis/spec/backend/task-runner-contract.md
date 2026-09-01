@@ -102,7 +102,29 @@ such a command cannot provide project acceptance evidence.
 Portable policy tests can run on the current host, but their result remains a
 portable contract result. Windows, macOS, ARM64, and any other non-host native
 gate runs only on its matching GitHub Actions runner. Repository tasks never
-install or activate a non-host Rust target as part of local execution.
+install or activate a non-host Rust target as part of the standard local
+execution path.
+
+There is one explicit non-acceptance exception for early diagnostics on macOS:
+`system:check:windows-msvc-cross` and
+`rust:clippy:windows-msvc-cross`. The first task is read-only and reports the
+complete bounded prerequisite set. The second is
+`FYAGENT_TASK_EFFECT=dependency-environment`, requires a default-no
+confirmation because cargo-xwin may download/cache Microsoft CRT/SDK content,
+and runs only after the same preflight passes. Both tasks fix cargo-xwin to the
+reviewed version, target only `x86_64-pc-windows-msvc`, use the clang-cl
+backend and reviewed xwin toolset, accept no forwarded argument, reject caller
+Rust/C/CMake/xwin controls and effective Cargo target/toolchain config, and
+invoke a fixed workspace/all-targets/locked Clippy argv with `-D warnings`.
+They never install the Rust target, LLVM, CMake, Ninja, a system package, or
+accept a license on the developer's behalf. Neither task is reachable from
+`bootstrap`, `check`, `check:backend`, CI release gates, or a standard
+dev/build/test alias. Its result is cross-compilation diagnostics only; native
+Windows CI/HIL remains the authority for registry, PackageManager, WebView2,
+installer, UAC, launch, runtime, signing, packaging, and release behavior.
+The executable signatures, JSON report, frozen argv, and override matrix for
+this exception live in **Scenario: Optional macOS Windows-MSVC Clippy
+diagnostic** below.
 Linux x64/arm64 is a development host for `check` and other current-host
 tasks; it is not a shipped product platform and does not add a local
 cross-compile or Actions job.
@@ -377,9 +399,12 @@ values reach the wrapper.
   conflicts, commit, tag, or push.
 - `release:check` is read-only; no local task signs, uploads, creates, edits, or
   deletes a GitHub Release.
-- No local task compiles, packages, or verifies a non-host OS/architecture.
-  Release helpers may be referenced by matching native Actions jobs, but no
-  local alias or wrapper turns them into a cross-platform acceptance path.
+- No standard local task compiles, packages, or verifies a non-host
+  OS/architecture. The exact macOS Windows-MSVC Clippy exception above is
+  diagnostics-only, cannot package/run/accept Windows, and remains outside the
+  default task DAG. Release helpers may be referenced by matching native
+  Actions jobs, but no local alias or wrapper turns them into a cross-platform
+  acceptance path.
 
 ## 6. Generated Documentation
 
@@ -438,6 +463,11 @@ does not turn them into contribution, build, CI, or release prerequisites.
 | Absolute rustc/rustdoc identity and process host disagree              | Reject before Cargo/Tauri starts                                                        |
 | User Cargo config selects target/compiler/wrapper/flags/runner/linker  | Reject before the toolchain starts                                                      |
 | A standard task selects a non-host OS/architecture                     | Reject before any toolchain starts                                                      |
+| Optional Windows-MSVC preflight is run off macOS                       | Fail before probing any tool                                                            |
+| Optional cross prerequisite/version is missing                         | Report every bounded failure with a non-mutating hint; start no Clippy                  |
+| Optional cross Clippy receives argv/env/Cargo-config override          | Reject before Cargo/cargo-xwin starts                                                   |
+| Optional cross task becomes reachable from `bootstrap` or `check`      | Task-contract failure                                                                   |
+| Optional cross result is cited as native Windows acceptance            | Keep the native gate pending                                                            |
 | A local wrapper bridges to a foreign executable/emulator               | Reject; require a native Actions job                                                    |
 | Mutation task has neither preview default nor explicit confirmation    | Reject                                                                                  |
 | Clean path resolves outside the repository                             | Reject without deletion                                                                 |
@@ -488,10 +518,16 @@ does not turn them into contribution, build, CI, or release prerequisites.
 - Require the aggregate `check` task to begin with the subprocess-free
   host-native guard before `env:check`, so caller compiler/runner/target
   controls cannot reach its rustc toolchain probe.
-- Active local-entrypoint scans must cover package scripts and all included
-  task TOMLs, reject cross-target/cross-tool execution markers, and leave
-  `.github/workflows/**` outside that negative set so native runner targets
-  remain required and testable.
+- Active standard-entrypoint scans must cover package scripts and the exact
+  dev/build/check/current-host Rust tasks, reject cross-target/cross-tool
+  execution markers there, and validate the two named optional cross tasks
+  separately for fixed metadata, argv, confirmation, host and DAG isolation.
+  `.github/workflows/**` stays outside the negative local set so native runner
+  targets remain required and testable.
+- Cross-diagnostic tests cover exact cargo-xwin version parsing, complete
+  prerequisite reporting, unsupported-host/override rejection before child
+  process launch, fixed x64 clang-cl argv, default-no metadata, no package
+  manager/elevation command, and real JSON preflight output.
 - Clean preview tests proving canonical repository-only targets and zero writes.
 - Docs generation/check tests including a description containing `|` to prove
   table escaping. Live committed-file identity belongs to `tasks:docs:check`
@@ -523,6 +559,146 @@ current host, and executable tests prove both metadata and real argument flow.
 Interactive tasks set `raw` and tear down the POSIX group or Windows tree
 explicitly. Generated `mise-tasks.md` identity is `tasks:docs:check` /
 `docs-contract-check.mjs` only.
+
+## Scenario: Optional macOS Windows-MSVC Clippy diagnostic
+
+### 1. Scope / Trigger
+
+- Trigger: new public `mise run` names, a foreign-target argv, a
+  `dependency-environment` confirmation, and a JSON report that must not be
+  confused with Windows native acceptance. Code-spec depth is mandatory.
+- Owner: `scripts/tasks/windows-msvc-cross.mjs` plus the two mise task tables.
+  Host-native override rejection is reused from `host-native.mjs`; this owner
+  adds C/CMake/xwin/native-dependency prefixes. Semantic Windows runtime
+  evidence stays in [Windows Shell-user Runtime](./windows-runtime-security.md)
+  and native CI/Release.
+
+### 2. Signatures
+
+```text
+mise run system:check:windows-msvc-cross [--json]
+  env.FYAGENT_TASK_EFFECT = read-only
+  run = node scripts/tasks/windows-msvc-cross.mjs check
+
+mise run rust:clippy:windows-msvc-cross
+  env.FYAGENT_TASK_EFFECT = dependency-environment
+  confirm.default = no
+  run = node scripts/tasks/windows-msvc-cross.mjs clippy
+
+CARGO_XWIN_VERSION            # exact string in windows-msvc-cross.mjs
+WINDOWS_MSVC_CROSS_TARGET     = x86_64-pc-windows-msvc
+WINDOWS_MSVC_CROSS_HOST_TARGETS = darwin-x64 | darwin-arm64 -> that target
+```
+
+JSON report (`--json` or `usageBoolean("json")`):
+
+```text
+{
+  ok: boolean,
+  platform: Node process.platform,
+  target: "x86_64-pc-windows-msvc",
+  checks: [{
+    id: "supported-host" | "caller-environment" | "cargo-xwin" | "clippy"
+        | "rust-target" | "clang-cl" | "lld-link" | "llvm-lib"
+        | "cmake" | "ninja",
+    name: string,
+    ok: boolean,
+    hint?: string,
+    detail?: string   # first captured line, truncated to 240 chars
+  }]
+}
+```
+
+Frozen Clippy plan from `planWindowsMsvcCrossClippy` (`shell: false`):
+
+```text
+cargo xwin clippy
+  --cross-compiler clang-cl
+  --xwin-version 17
+  --target x86_64-pc-windows-msvc
+  --workspace --all-targets --locked
+  --manifest-path src-tauri/Cargo.toml
+  -- -D warnings
+```
+
+Exact cargo-xwin version equality is against `CARGO_XWIN_VERSION` in the
+script. Do not copy that literal into this spec or into generic docs.
+
+### 3. Contracts
+
+- `check` is read-only preflight: probe every bounded prerequisite and print
+  the complete report. It never installs, downloads, caches CRT/SDK, accepts a
+  license, or starts Clippy.
+- `clippy` runs only after the same preflight is fully green. Mise owns the
+  default-no confirmation because cargo-xwin may download/cache Microsoft
+  CRT/SDK. The Node owner still prints the license note, then runs the frozen
+  argv. It does not prompt a second time.
+- Hosts other than `darwin-x64` / `darwin-arm64` fail before probing tools,
+  with a single `supported-host` check. Windows developers use native CI/HIL.
+- Caller overrides are rejected before any toolchain child: reuse the
+  host-native Rust target/compiler/wrapper/runner/linker/Cargo-config scan,
+  plus exact names `AR`, `CC`, `CXX`, `CFLAGS`, `CXXFLAGS`, `LDFLAGS`,
+  `CMAKE`, `CMAKE_GENERATOR`, `CMAKE_PREFIX_PATH`, `CMAKE_TOOLCHAIN_FILE`,
+  `RUSTFLAGS`, `RUSTDOCFLAGS`, and prefixes `CARGO_XWIN_`, `XWIN_`, `CMAKE_`,
+  `CC_`, `CXX_`, `AWS_LC_`, `RING_`.
+- No forwarded arguments. `clippy` with extra argv fails before Cargo.
+- Neither task is in the `bootstrap`, `check`, `check:backend`,
+  `check:frontend`, `check:contracts`, `dev`, `build`, or CI/Release DAG.
+- Passing Clippy is compile diagnostics only. It does not claim registry,
+  PackageManager, WebView2, installer, UAC, launch, signing, packaging, or
+  HIL.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+| --- | --- |
+| Host is not macOS x64/arm64 | `ok=false`, `checks=[{id:supported-host}]`; no tool probe |
+| Caller env/Cargo-config override is set | `ok=false`, `checks=[{id:caller-environment}]`; no Cargo |
+| Any bounded prerequisite missing or cargo-xwin version ≠ owner constant | Report every remaining check; `ok=false`; no Clippy |
+| `clippy` invoked without mise confirmation | Mise does not start the task; no download/cache |
+| Forwarded Clippy argv | Throw before `cargo`; no child |
+| Task referenced from `bootstrap` / `check` / CI | Task-contract failure |
+| Result cited as native Windows acceptance | Keep the native gate pending |
+
+### 5. Good / Base / Bad Cases
+
+- **Good:** macOS developer runs `system:check:windows-msvc-cross --json`,
+  sees every prerequisite, then explicitly confirms
+  `rust:clippy:windows-msvc-cross`. Default `check` is unchanged.
+- **Base:** Windows or Linux host runs the check task and receives only
+  `supported-host` failure. Native Windows CI/HIL remains the authority.
+- **Bad:** add the tasks to `bootstrap`, accept forwarded `--target`, pin a
+  second cargo-xwin version in a spec/workflow, or treat a green report as
+  Windows installer/registry evidence.
+
+### 6. Tests Required
+
+- `tests/windowsMsvcCross.test.ts`: exact version parse, complete missing-
+  tool reporting, unsupported-host and override rejection before spawn,
+  frozen argv, default-no metadata, no package-manager/elevation command,
+  and live `--json` preflight shape.
+- `tests/localBuildBoundary.test.ts` and `miseTaskContract`: the two named
+  tasks exist with the signatures above and are absent from bootstrap/check
+  DAGs; standard entrypoints still reject other cross-target markers.
+- `tests/classifyChanges.test.ts`: the new script is classified with other
+  task-runner sources, not as a native Windows acceptance path.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```text
+bootstrap/check -> cargo xwin clippy --target aarch64-pc-windows-msvc
+cite macOS cargo-xwin as Windows HIL
+```
+
+#### Correct
+
+```text
+mise run system:check:windows-msvc-cross --json   # read-only, complete report
+mise run rust:clippy:windows-msvc-cross           # default-no, frozen argv
+native Windows CI/HIL                             # remaining acceptance
+```
 
 ## macOS signed development runner
 

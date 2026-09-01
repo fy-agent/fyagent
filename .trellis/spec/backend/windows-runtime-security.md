@@ -135,14 +135,19 @@ expose the Shell SID or paths and does not decide which user owns state.
   Alice's PATH default.
 - Shell-user registry state uses `HKEY_USERS\<canonical Shell SID>`. `HKCU`
   would address the elevated process account and is forbidden for per-user
-  FyAgent policy on Windows. The only supported locations are the fixed
-  `Environment` and `Software\Microsoft\Windows\CurrentVersion\Run` keys.
+  FyAgent policy on Windows. The only writable FyAgent-policy locations are
+  the fixed `Environment` and `Software\Microsoft\Windows\CurrentVersion\Run`
+  keys. Agent inventory additionally opens Alice Uninstall/App Paths and the
+  matching machine Uninstall/App Paths as read-only parents; that capability
+  is `RegistryRights::INVENTORY_PARENT_READ` and does not expand the writable
+  policy set. Semantic inventory projection belongs to
+  [External Agent P0 Safety](./external-agent-p0.md).
   Each component is opened relative to an already pinned parent with
   `REG_OPTION_OPEN_LINK`; any `SymbolicLinkValue` marker is rejected. An
   existing key returned by create-or-open is discarded and reopened with the
   no-follow option before mutation, while a newly created key is verified on
-  its returned handle. Callers receive only the minimum query/set rights and
-  cannot supply an arbitrary root or relative registry path.
+  its returned handle. Callers receive only the minimum rights for that
+  capability and cannot supply an arbitrary root or relative registry path.
 - Credentials and non-path process settings are separate contracts. This rule
   does not turn the Shell context into a general environment-variable ban.
 
@@ -271,6 +276,8 @@ IShellFolderViewDual.Application -> IShellDispatch2`.
 | Frozen Shell session/SID drifts before a protected side effect                                   | Stop that side effect; do not mutate the context or select another user.                                                                                                     |
 | Alice Store/window-state JSON is missing, corrupt, or oversized                                  | Use safe defaults at the same Alice path; do not consult or create Bob's app-data directories or allocate beyond the fixed read limit.                                       |
 | Any fixed Alice HKU path component is a registry symbolic link                                   | Reject that operation before reading, deleting, or writing a value; never reopen the key by an unverified full string path.                                                  |
+| Inventory Uninstall/App Paths parent is opened query-value-only, then subkeys are enumerated     | Real views fail; supported products collapse to `unknown`. Open the parent with `INVENTORY_PARENT_READ`.                                                                     |
+| Inventory parent or enumerated child receives create/set rights                                  | Contract test fails; inventory is read-only.                                                                                                                                 |
 | Legacy Alice Run value is absent, inaccessible, or cleanup fails                                 | Continue startup and emit only a bounded diagnostic after first-instance admission.                                                                                          |
 | A protected installer PackageBridge orphan exists                                                | Do not use it for startup, activation, identity, or user-path selection; only the executable-installer bridge owner may inspect it during the next elevated bridge creation. |
 | Single-instance envelope is oversized, contains controls, or has an invalid deep link            | Reject before lightweight/focus/event behavior; never log the raw payload.                                                                                                   |
@@ -331,7 +338,11 @@ IShellFolderViewDual.Application -> IShellDispatch2`.
   and both initial/lightweight WebViews use Alice's explicit data path.
 - Registry tests cover regular/missing/link components, an intermediate link,
   a final link, newly created keys, and the required no-follow reopen after an
-  existing create result. Native registry-link HIL remains unexecuted. Any
+  existing create result. Inventory-parent tests prove Uninstall/App Paths
+  leaves use `INVENTORY_PARENT_READ` (`KEY_QUERY_VALUE |
+  KEY_ENUMERATE_SUB_KEYS`, no create/set), that the constant stays distinct
+  from `TRAVERSE` even when the current mask is identical, and that enumerated
+  children stay `READ_VALUES`. Native registry-link HIL remains unexecuted. Any
   future, separately authorized runtime validation must use only disposable
   HKCU test keys when checking intermediate and final link rejection.
 - Single-instance tests cover count, item, aggregate, control-character,
@@ -601,4 +612,99 @@ formal elevated Windows Claude/OpenCode CLI and Auth -> interactive_user_unavail
 installer helper -> exact Codex MSIX, Agent EXE product, or Grok tool action
 Grok Build lifecycle -> grok-tool helper; no elevated fallback
 Claude/OpenCode helper verbs and generic command argv remain forbidden
+```
+
+## Scenario: Inventory parent registry enumeration rights
+
+### 1. Scope / Trigger
+
+- Trigger: Windows Agent inventory enumerates Uninstall/App Paths children.
+  Opening those parents query-value-only and then calling subkey enumeration
+  fails on real hives and collapses supported products to `unknown`. Access-
+  mask ownership is `windows_runtime/registry.rs`; install-state projection
+  is [External Agent P0 Safety](./external-agent-p0.md).
+
+### 2. Signatures
+
+```text
+RegistryRights { query_value, enumerate_subkeys, create_subkey, set_value }
+
+READ_VALUES           = query                         # enumerated children
+UPDATE_VALUES         = query + set                   # FyAgent Environment/Run writes
+TRAVERSE              = query + enumerate             # intermediate fixed components
+INVENTORY_PARENT_READ = query + enumerate, no create/set
+                        # Uninstall / App Paths parent leaves
+
+open_shell_user(Uninstall | AppPaths) -> INVENTORY_PARENT_READ
+open_machine(Uninstall | AppPaths, Registry32 | Registry64) -> INVENTORY_PARENT_READ
+enum_keys(parent) -> child names
+open_child(validated name) -> READ_VALUES
+```
+
+Win32 mask for `INVENTORY_PARENT_READ`: `KEY_QUERY_VALUE |
+KEY_ENUMERATE_SUB_KEYS` plus the requested `KEY_WOW64_*` view. Never
+`KEY_CREATE_SUB_KEY` or `KEY_SET_VALUE` on this path.
+
+Keep `TRAVERSE` and `INVENTORY_PARENT_READ` as separate constants even if
+the current bit mask is identical, so a later query-only change cannot
+silently downgrade the inventory leaf.
+
+### 3. Contracts
+
+- Intermediate fixed components use `TRAVERSE`. Inventory parent leaves use
+  `INVENTORY_PARENT_READ`. Caller-controlled child names are length/charset
+  validated, then opened `READ_VALUES`.
+- Optional parent `NotFound` is absence and does not mark the aggregate
+  incomplete. Access, enumeration, registry-link, bound, or frozen
+  Shell-context errors keep the aggregate incomplete.
+- Registry values remain hints. They are never executed. Link rejection and
+  no-follow reopen are unchanged.
+- This capability does not add WinGet, PowerShell, a second scanner, or
+  writable Uninstall/App Paths.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+| --- | --- |
+| Parent opened `READ_VALUES` then `enum_keys` | Real hive access fails; inventory `unknown` |
+| Optional parent missing | Absence; remaining views may still be complete |
+| Parent/child access, link, bound, or Shell drift | Incomplete aggregate; no false `not_installed` |
+| Child name fails length/charset validation | Skip/reject that child; do not open by raw string |
+| Parent or child granted create/set | Contract failure |
+
+### 5. Good/Base/Bad Cases
+
+- **Good:** Alice HKU and machine 32/64 Uninstall/App Paths open with
+  query+enumerate, children stay query-only, complete empty views project
+  `not_installed`.
+- **Base:** Environment/Run keep their existing query/set FyAgent-policy
+  rights; inventory does not reuse `UPDATE_VALUES`.
+- **Bad:** `KEY_READ` convenience, WinGet, or treating a permission error as
+  “no software installed”.
+
+### 6. Tests Required
+
+- `registry.rs`: parent leaf records `INVENTORY_PARENT_READ`; mask has
+  enumerate without create/set; children stay `READ_VALUES`.
+- `inventory.rs`: complete/no-candidate keeps fresh destinations;
+  incomplete discovery is `Unknown` + `native_projection_unavailable` with
+  ineligible destinations.
+- Native Alice HKU / Wow6432Node HIL remains unexecuted residual evidence.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```rust
+open(parent, READ_VALUES)?;
+enum_keys(parent)?; // ACCESS DENIED on real Uninstall/App Paths
+```
+
+#### Correct
+
+```rust
+open(parent, INVENTORY_PARENT_READ)?;
+for name in enum_keys(parent)? {
+    open_child(validate(name), READ_VALUES)?;
+}
 ```

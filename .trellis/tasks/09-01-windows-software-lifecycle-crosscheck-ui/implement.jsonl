@@ -1,0 +1,8 @@
+{"file":".trellis/spec/backend/reuse.md","reason":"优先复用既有 registry、inventory、installer、task runner owner，禁止新增重复基础设施。"}
+{"file":".trellis/spec/backend/task-runner-contract.md","reason":"新增 mise 任务必须保持 fixed argv、read-only、非默认 gate 与 current-host 边界。"}
+{"file":".trellis/spec/backend/development-environment.md","reason":"交叉 Clippy 只作为显式诊断，不改变默认工具链和原生验收。"}
+{"file":".trellis/spec/backend/external-agent-p0.md","reason":"Windows inventory 完整度、产品 policy、签名身份与安装动作权威。"}
+{"file":".trellis/spec/backend/windows-runtime-security.md","reason":"RegistryRights 能力位、INVENTORY_PARENT_READ 与 HKU 打开合同。"}
+{"file":".trellis/spec/frontend/v2-shell.md","reason":"SideNavigation 与 SelectionLens 的唯一 overlay、motion、fallback 和可访问性合同。"}
+{"file":".trellis/tasks/09-01-windows-software-lifecycle-crosscheck-ui/research/root-cause-and-reuse-review.md","reason":"确认 Registry 枚举权限根因、cargo-xwin 复用与拒绝方案。"}
+{"file":".trellis/tasks/09-01-windows-software-lifecycle-crosscheck-ui/research/support-matrix.md","reason":"冻结各产品 surface/action 与原生 HIL 声明边界。"}

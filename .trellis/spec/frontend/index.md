@@ -36,7 +36,7 @@ linked spec.
 
 | Contract | Owns |
 | --- | --- |
-| [V2 Shell](./v2-shell.md) | Route registry, persistent left navigation, native title-bar chrome, layout, motion owner, and route lifecycle. |
+| [V2 Shell](./v2-shell.md) | Route registry, persistent left navigation, SelectionLens geometry modes, native title-bar chrome, layout, motion owner, and route lifecycle. |
 | [V2 Agent Directory and Models](./v2-agent-models.md) | Agent catalog v5, scan-driven directory order, desktop-only Claude/OpenCode lifecycle projections, Auth, Models setup, write confirmation, and Change Plan UI. |
 | [V2 Skills and MCP](./v2-skills-mcp.md) | Skills/MCP ports, discovery, assignment, shared feature UI, secret-safe configuration, and authoritative reread. |
 | [V2 Prompts and Memory](./v2-prompts-memory.md) | Prompt/native memory ports, CRUD/enable flows, directory operations, and Agent prompt delegation. |

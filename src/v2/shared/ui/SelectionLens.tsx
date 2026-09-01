@@ -29,6 +29,8 @@ type LensBox = {
   borderRadius: string;
 };
 
+export type SelectionLensGeometry = "size-and-position" | "position";
+
 const layoutSettleFrameCount = 48;
 
 export function selectionLensCollapsedOrigin(box: Pick<LensBox, "x" | "y">): {
@@ -85,6 +87,7 @@ function observeHiddenAncestors(
 export function SelectionLensGroup({
   id,
   inset = 0,
+  geometry = "size-and-position",
   layoutKey,
   className,
   children,
@@ -92,6 +95,7 @@ export function SelectionLensGroup({
 }: Omit<HTMLAttributes<HTMLDivElement>, "id"> & {
   id: string;
   inset?: number;
+  geometry?: SelectionLensGeometry;
   layoutKey?: string | number | boolean;
 }) {
   const scopeRef = useRef<HTMLDivElement>(null);
@@ -254,8 +258,8 @@ export function SelectionLensGroup({
       const origin = selectionLensCollapsedOrigin(box);
       left.set(origin.x);
       top.set(origin.y);
-      width.set(origin.width);
-      height.set(origin.height);
+      width.set(geometry === "position" ? box.width : origin.width);
+      height.set(geometry === "position" ? box.height : origin.height);
     };
 
     if (reduceMotion === true) {
@@ -277,18 +281,27 @@ export function SelectionLensGroup({
       positionedRef.current = true;
     }
 
+    if (geometry === "position") {
+      width.set(box.width);
+      height.set(box.height);
+    }
+
     const controls = [
       animate(left, box.x, fySpringTransition),
       animate(top, box.y, fySpringTransition),
-      animate(width, box.width, fySpringTransition),
-      animate(height, box.height, fySpringTransition),
     ];
+    if (geometry === "size-and-position") {
+      controls.push(
+        animate(width, box.width, fySpringTransition),
+        animate(height, box.height, fySpringTransition),
+      );
+    }
     return () => {
       for (const control of controls) {
         control.stop();
       }
     };
-  }, [box, height, left, reduceMotion, revealKey, top, width]);
+  }, [box, geometry, height, left, reduceMotion, revealKey, top, width]);
 
   return (
     <SelectionLensContext.Provider value={{ register, unregister }}>
@@ -311,6 +324,8 @@ export function SelectionLensGroup({
             }}
             aria-hidden
             data-testid="selection-lens"
+            data-selection-lens-geometry={geometry}
+            data-selection-material="frame"
             data-selection-lens-reveal={revealKey}
           />
         ) : null}
@@ -353,17 +368,20 @@ export function SelectionLens({ active }: { active: boolean }) {
 
 export function SelectionLensTrack({
   id,
+  geometry,
   layoutKey,
   className,
   children,
   ...props
 }: Omit<HTMLAttributes<HTMLDivElement>, "id"> & {
   id: string;
+  geometry?: SelectionLensGeometry;
   layoutKey?: string | number | boolean;
 }) {
   return (
     <SelectionLensGroup
       id={id}
+      geometry={geometry}
       layoutKey={layoutKey}
       className={className}
       {...props}

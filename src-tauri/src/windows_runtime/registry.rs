@@ -116,6 +116,16 @@ impl RegistryRights {
         set_value: false,
     };
 
+    /// Read-only access for an inventory parent whose direct children must be
+    /// enumerated. Keep this semantic capability separate from traversal so a
+    /// caller cannot accidentally downgrade the leaf to query-only access.
+    const INVENTORY_PARENT_READ: Self = Self {
+        query_value: true,
+        enumerate_subkeys: true,
+        create_subkey: false,
+        set_value: false,
+    };
+
     const fn with_create_subkey(mut self) -> Self {
         self.create_subkey = true;
         self
@@ -423,7 +433,7 @@ mod windows {
             &mut backend,
             canonical_sid,
             location,
-            RegistryRights::READ_VALUES,
+            RegistryRights::INVENTORY_PARENT_READ,
             false,
         )
         .map_err(map_security_error)
@@ -437,7 +447,7 @@ mod windows {
         traverse_components(
             &mut backend,
             location.components(),
-            RegistryRights::READ_VALUES,
+            RegistryRights::INVENTORY_PARENT_READ,
             false,
         )
         .map_err(map_security_error)
@@ -918,18 +928,30 @@ mod tests {
                 &mut backend,
                 SID,
                 location,
-                RegistryRights::READ_VALUES,
+                RegistryRights::INVENTORY_PARENT_READ,
                 false,
             )
             .expect("fixed inventory parent should open");
             assert_eq!(handle, expected);
-            assert!(backend.events.iter().all(|event| match event {
-                Event::Open { rights, .. } => {
-                    *rights == RegistryRights::TRAVERSE || *rights == RegistryRights::READ_VALUES
-                }
-                Event::Inspect(_) => true,
-                Event::Create { .. } => false,
-            }));
+            let opens: Vec<_> = backend
+                .events
+                .iter()
+                .filter_map(|event| match event {
+                    Event::Open { path, rights } => Some((path, rights)),
+                    Event::Inspect(_) => None,
+                    Event::Create { .. } => panic!("inventory traversal must stay read-only"),
+                })
+                .collect();
+            let (leaf_path, leaf_rights) = opens.last().expect("inventory leaf must open");
+            assert_eq!(leaf_path.as_str(), expected);
+            assert_eq!(**leaf_rights, RegistryRights::INVENTORY_PARENT_READ);
+            assert!(leaf_rights.query_value);
+            assert!(leaf_rights.enumerate_subkeys);
+            assert!(!leaf_rights.create_subkey);
+            assert!(!leaf_rights.set_value);
+            assert!(opens[..opens.len() - 1]
+                .iter()
+                .all(|(_, rights)| **rights == RegistryRights::TRAVERSE));
         }
 
         assert_eq!(

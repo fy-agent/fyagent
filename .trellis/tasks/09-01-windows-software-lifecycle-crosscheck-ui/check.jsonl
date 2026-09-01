@@ -1,0 +1,8 @@
+{"file":".trellis/spec/backend/reuse.md","reason":"检查实现是否复用既有 registry、inventory、task-runner 与 UI owner。"}
+{"file":".trellis/spec/backend/task-runner-contract.md","reason":"检查严格 preflight、default-no cross Clippy、固定 argv 与默认 gate 隔离。"}
+{"file":".trellis/spec/backend/development-environment.md","reason":"检查可选跨目标诊断没有进入 bootstrap 或冒充 Windows 原生验收。"}
+{"file":".trellis/spec/backend/external-agent-p0.md","reason":"检查 Windows inventory 完整度与三款国内产品 update=false 合同。"}
+{"file":".trellis/spec/backend/windows-runtime-security.md","reason":"检查 inventory parent 的 query+enumerate 只读能力，禁止 create/set。"}
+{"file":".trellis/spec/frontend/v2-shell.md","reason":"检查侧栏单层选中材质、position-only lens、ARIA 与 reduced-motion。"}
+{"file":".trellis/tasks/09-01-windows-software-lifecycle-crosscheck-ui/research/root-cause-and-reuse-review.md","reason":"复核已确认根因、开源复用与拒绝方案。"}
+{"file":".trellis/tasks/09-01-windows-software-lifecycle-crosscheck-ui/research/support-matrix.md","reason":"复核产品、平台、动作和原生 HIL 边界。"}

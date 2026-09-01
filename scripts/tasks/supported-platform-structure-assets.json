@@ -38,6 +38,10 @@
       "4714948980c3c66742912d0f7da86fac7bb2e3dcbe067860b5f9db9fd77fc679"
     ],
     [
+      "scripts/tasks/windows-msvc-cross.mjs",
+      "c90ede3175a2a91179c65ff62e73c6ae7cbc293645007659b735905924a5dfac"
+    ],
+    [
       "scripts/tasks/windows-msvc-env.mjs",
       "bfa22b5d5e5370b49bc82488d28c8d183f6df0129e415aff0b48e61c371f08e1"
     ],
@@ -55,7 +59,7 @@
     ],
     [
       "src-tauri/src/agent_install/inventory.rs",
-      "f4246cd02da2b8066de7e9ad03dbff755f4c41f07314669411ac0ab787aeea62"
+      "b242f7cce1ff8a6ac6659b144803021cca4e0e2b0ccebc1c5c028005547d73e3"
     ],
     [
       "src-tauri/src/agent_install/macos.rs",
@@ -307,7 +311,7 @@
     ],
     [
       "src-tauri/src/windows_runtime/registry.rs",
-      "473422c263ec2e46f960b45e0e47da4d5f468104cea9d18fa54b4976945a1ca3"
+      "7b2d081bf5ea9bd4a49578f386cdb813448eedfb7be0eb78c5d88d0ac1489d66"
     ],
     [
       "src-tauri/src/windows_window_state.rs",
@@ -420,6 +424,10 @@
     [
       "tests/v2/scripts/build-v2-preview.test.ts",
       "1d1b61b3d187323bb7117cedb96d34dd6da028950aff470cc552285e6f457fec"
+    ],
+    [
+      "tests/windowsMsvcCross.test.ts",
+      "0839e0ffaa8bac4114b922f05bf4e8b1a1a899206c9e755cbb11ab991f687fc0"
     ]
   ]
 }

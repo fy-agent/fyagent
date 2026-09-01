@@ -508,6 +508,10 @@ input.
 - Windows inventory combines Alice `HKEY_USERS` and machine Uninstall/App
   Paths in explicit 32/64 registry views with product-known roots. Registry
   parents and children are opened component-by-component with link rejection;
+  an inventory parent is read-only but has query-value plus
+  enumerate-subkeys rights, while each opened child remains query-value-only.
+  Do not use a query-only parent and then call subkey enumeration: that makes
+  every real view fail and collapses supported products to `unknown`.
   registry paths, `UninstallString`, and App Paths values are evidence only and
   are never executed. The production EXE inspector uses Win32 version-resource
   APIs, stable file identity, architecture, `WinVerifyTrust`, exactly one
@@ -516,6 +520,10 @@ input.
   view, unsafe child, enumeration error/bound, or frozen Shell-context drift
   makes the inventory `unknown`, adds `native_projection_unavailable`, and
   disables fresh destinations; it must not become a false `not_installed`.
+  Conversely, when every optional parent is absent or enumerates successfully,
+  the Shell context remains stable, known roots are checked, and no trusted
+  candidate exists, the complete result is `not_installed` and may expose the
+  already-reviewed fresh install destination for QoderWork/TRAE Work/WorkBuddy.
   These three reviewed products are EXE-only and have no guessed PFN/AUMID or
   PackageManager identity. Codex keeps its separate MSIX owner.
 - Jobs: one in-process slot. Second non-terminal start →
@@ -990,6 +998,16 @@ install_state_from_observation(observed)
   macos | windows, installed=false -> not_installed
   linux development host, installed=false -> unknown
 launch_if_present(agentId) -> () | InstalledNotRunnable | InteractiveUserUnavailable
+
+Windows inventory completeness (access masks owned by
+[Windows Shell-user Runtime](./windows-runtime-security.md)):
+
+open inventory parent -> RegistryRights::INVENTORY_PARENT_READ
+open enumerated child -> RegistryRights::READ_VALUES
+complete + no trusted candidate -> InstallationInventoryState::NotObserved
+  -> install_state not_installed + reviewed fresh destination
+incomplete view -> InstallationInventoryState::Unknown
+  + native_projection_unavailable; destinations ineligible
 ```
 
 Closed identity table (folder name is not identity):
@@ -1034,6 +1052,11 @@ Claude     macos CFBundleIdentifier = com.anthropic.claudefordesktop
   with Alice `LocalAppData\Programs` and machine Program Files
   (`FOLDERID_ProgramFiles` + `FOLDERID_ProgramFilesX86`, process token
   `None`). Isolation tests may replace known roots with `FYAGENT_TEST_HOME`.
+  The fixed registry traversal opens intermediate keys read-only, the inventory
+  parent with query+enumerate and no create/set rights, and each enumerated
+  child query-only. Missing optional parents are absence, while access,
+  enumeration, link, bound, or Shell-context errors make the aggregate
+  incomplete.
   Registry values are hints only. A candidate becomes actionable only after a
   regular no-reparse file is opened, stable file identity is captured, Win32
   version resources match the closed ProductName list, architecture is
@@ -1060,6 +1083,8 @@ Claude     macos CFBundleIdentifier = com.anthropic.claudefordesktop
 | Matching ProductName at a different relative path               | Not installed                                            |
 | Vendor config directory exists, no bundle/exe                   | Not installed; launch `installed_not_runnable`           |
 | Closed identity absent on macOS/Windows                         | `not_installed`                                          |
+| Complete Windows inventory has no trusted candidate             | `not_installed`; existing fresh install destination may be offered |
+| Windows parent lacks query+enumerate or any view cannot be safely enumerated | `unknown` + `native_projection_unavailable`; no fresh destination |
 | Closed identity absent on Linux development host                | `unknown`                                                |
 | Windows launch path is relative, `..`, NUL, or not `.exe`       | `external_launch_invalid_windows_exe`; no launcher       |
 | Downloaded EXE is submitted through ordinary trusted-EXE launch | Reject; installer requires the protected helper contract |
@@ -1085,7 +1110,10 @@ Claude     macos CFBundleIdentifier = com.anthropic.claudefordesktop
   identity, trusted signer leaf, and supported architecture; stale/wrong
   ProductName/wrong signer/wrong path/reparse entries are non-actionable.
   Isolation uses `FYAGENT_TEST_HOME`, not the real Alice profile. TRAE local
-  version prefers `resources/app/product.json`.
+  version prefers `resources/app/product.json`. Prove inventory-parent
+  query+enumerate separately from child query-only; complete/no-candidate
+  stays `NotObserved` with eligible fresh destinations, while incomplete
+  discovery stays `Unknown` and must not become `not_installed`.
 - Both hosts: vendor config directories are not install evidence; absent
   launch is `installed_not_runnable`; shipped-host absence is
   `not_installed`.
@@ -1101,13 +1129,17 @@ Claude     macos CFBundleIdentifier = com.anthropic.claudefordesktop
 installed = home.join(".workbuddy").is_dir();
 #[cfg(not(target_os = "macos"))]
 fn observe_on_host(_) -> DesktopObservation { /* Windows implied */ }
+open(uninstall_parent, READ_VALUES)?;
+enum_keys(uninstall_parent)?; // ACCESS DENIED -> unknown for every product
 ```
 
 #### Correct
 
 ```rust
 // macOS: CFBundleIdentifier == closed id
-// Windows: bounded registry/known-root hints + Win32 ProductName + signer/file identity
+// Windows: INVENTORY_PARENT_READ parents + READ_VALUES children
+//          + Win32 ProductName + signer/file identity
+// complete empty views -> not_installed, not unknown
 // Linux: unknown, not a product host
 ```
 

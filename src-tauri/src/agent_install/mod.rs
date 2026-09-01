@@ -307,25 +307,7 @@ async fn desktop_readiness(
     } else {
         skipped_desktop_source_update_state(policy, install_state)
     };
-    if package_installable && policy.install {
-        match inventory.state {
-            InstallationInventoryState::NotObserved => allowed_actions.push(AgentActionId::Install),
-            InstallationInventoryState::Single
-                if policy.update
-                    && inventory.single_update_eligible
-                    && update_state != AgentUpdateState::UpToDate =>
-            {
-                allowed_actions.push(AgentActionId::Update)
-            }
-            _ => {}
-        }
-    }
-    if inventory.state == InstallationInventoryState::Single
-        && inventory.single_launch_eligible
-        && policy.launch
-    {
-        allowed_actions.push(AgentActionId::Launch);
-    }
+    allowed_actions = desktop_allowed_actions(policy, inventory, update_state, package_installable);
     if install_state == AgentInstallState::InstalledNotRunnable {
         reason_codes.push(AgentReasonCode::InstalledNotRunnable);
     }
@@ -351,6 +333,37 @@ async fn desktop_readiness(
         reason_codes,
         surfaces: Vec::new(),
     }
+}
+
+fn desktop_allowed_actions(
+    policy: &AgentLifecyclePolicy,
+    inventory: &InventoryReadinessProjection,
+    update_state: AgentUpdateState,
+    package_installable: bool,
+) -> Vec<AgentActionId> {
+    let mut allowed_actions = Vec::new();
+    if package_installable {
+        match inventory.state {
+            InstallationInventoryState::NotObserved if policy.install => {
+                allowed_actions.push(AgentActionId::Install)
+            }
+            InstallationInventoryState::Single
+                if policy.update
+                    && inventory.single_update_eligible
+                    && update_state != AgentUpdateState::UpToDate =>
+            {
+                allowed_actions.push(AgentActionId::Update)
+            }
+            _ => {}
+        }
+    }
+    if inventory.state == InstallationInventoryState::Single
+        && inventory.single_launch_eligible
+        && policy.launch
+    {
+        allowed_actions.push(AgentActionId::Launch);
+    }
+    allowed_actions
 }
 
 fn desktop_auth_ownership(agent_id: AgentCatalogId) -> AgentAuthOwnership {
@@ -1490,8 +1503,8 @@ mod tests {
         AppState::new(std::sync::Arc::new(db))
     }
 
-    #[tokio::test]
-    async fn installed_domestic_readiness_skips_source_and_omits_update() {
+    #[test]
+    fn managed_desktop_update_projection_exposes_update_only_when_needed() {
         let installed = inventory_projection(
             InstallationInventoryState::Single,
             Some("1.0.0"),
@@ -1503,15 +1516,23 @@ mod tests {
             AgentCatalogId::TraeWork,
             AgentCatalogId::WorkBuddy,
         ] {
-            let dto = desktop_readiness(agent_id, &installed).await;
-            assert_eq!(dto.install_state, AgentInstallState::Installed);
-            assert_eq!(dto.update_state, AgentUpdateState::Unavailable);
-            assert!(dto.release_id.is_none());
-            assert!(dto.remote_version.is_none());
-            assert_eq!(dto.allowed_actions, vec![AgentActionId::Launch]);
-            assert!(!dto
-                .reason_codes
-                .contains(&AgentReasonCode::OfficialPageOnly));
+            let policy = lifecycle_policy::lifecycle_policy(agent_id, AgentSurface::Desktop)
+                .expect("managed desktop policy");
+            let update_state = desktop_update_state(
+                true,
+                AgentInstallState::Installed,
+                installed.single_local_version.as_deref(),
+                Some("2.0.0"),
+            );
+            assert_eq!(update_state, AgentUpdateState::UpdateAvailable);
+            assert_eq!(
+                desktop_allowed_actions(policy, &installed, update_state, true),
+                vec![AgentActionId::Update, AgentActionId::Launch]
+            );
+            assert_eq!(
+                desktop_allowed_actions(policy, &installed, AgentUpdateState::UpToDate, true,),
+                vec![AgentActionId::Launch]
+            );
         }
     }
 
@@ -1533,7 +1554,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn domestic_update_is_rejected_before_target_selection() {
+    async fn managed_desktop_update_requires_a_bound_existing_target() {
         let state = test_app_state();
         for agent_id in [
             AgentCatalogId::QoderWork,
@@ -1545,8 +1566,8 @@ mod tests {
                     .await;
             assert_eq!(
                 result,
-                Err(AgentReasonCode::ActionNotSupported),
-                "{agent_id:?} update must fail closed before target lookup"
+                Err(AgentReasonCode::TargetSelectionRequired),
+                "{agent_id:?} update must be admitted but require an inventory-bound target"
             );
         }
     }
@@ -1600,11 +1621,15 @@ mod tests {
 
     #[tokio::test]
     async fn skipped_source_update_state_is_unavailable_only_for_install_only_products() {
-        let domestic =
-            lifecycle_policy::lifecycle_policy(AgentCatalogId::QoderWork, AgentSurface::Desktop)
-                .unwrap();
+        let install_only = AgentLifecyclePolicy {
+            surfaces: &[AgentSurface::Desktop],
+            install: true,
+            update: false,
+            launch: true,
+            managed_desktop_source: None,
+        };
         assert_eq!(
-            skipped_desktop_source_update_state(domestic, AgentInstallState::Installed),
+            skipped_desktop_source_update_state(&install_only, AgentInstallState::Installed),
             AgentUpdateState::Unavailable
         );
         let opencode =

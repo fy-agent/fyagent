@@ -239,10 +239,17 @@
   transform: translateY(1px) scale(0.99);
 }
 
-.fy-side-navigation-toggle-active,
-.fy-side-navigation-toggle-active:hover,
 .fy-side-navigation-item-selected,
 .fy-side-navigation-item-selected:hover {
+  border-color: transparent;
+  color: var(--fy-accent-text);
+  background: transparent;
+  box-shadow: none;
+  font-weight: 620;
+}
+
+.fy-side-navigation-toggle-active,
+.fy-side-navigation-toggle-active:hover {
   border-color: var(--fy-selected-border);
   color: var(--fy-accent-text);
   background-color: var(--fy-selected-bg);
@@ -252,6 +259,20 @@
     rgba(180, 226, 251, 0.025)
   );
   box-shadow: var(--fy-selected-shadow);
+}
+
+.fy-side-navigation-toggle[data-collapsed-active="true"],
+.fy-side-navigation-toggle[data-collapsed-active="true"]:hover,
+.fy-side-navigation-toggle[data-collapsed-active="true"]:active {
+  border-color: transparent;
+  color: var(--fy-text-secondary);
+  background: transparent;
+  box-shadow: none;
+}
+
+.fy-side-navigation-toggle[data-collapsed-active="true"]
+  .fy-side-navigation-caret {
+  color: var(--fy-text-tertiary);
 }
 
 .fy-liquid-glass-lens {

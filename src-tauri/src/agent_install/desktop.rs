@@ -1148,11 +1148,15 @@ mod tests {
 
     #[test]
     fn discovered_update_eligibility_ands_product_policy() {
-        assert!(!discovered_update_eligible(AgentCatalogId::QoderWork, true));
-        assert!(!discovered_update_eligible(AgentCatalogId::TraeWork, true));
-        assert!(!discovered_update_eligible(AgentCatalogId::WorkBuddy, true));
+        assert!(discovered_update_eligible(AgentCatalogId::QoderWork, true));
+        assert!(discovered_update_eligible(AgentCatalogId::TraeWork, true));
+        assert!(discovered_update_eligible(AgentCatalogId::WorkBuddy, true));
         assert!(discovered_update_eligible(AgentCatalogId::OpenCode, true));
         assert!(discovered_update_eligible(AgentCatalogId::ClaudeCode, true));
+        assert!(!discovered_update_eligible(
+            AgentCatalogId::WorkBuddy,
+            false
+        ));
         assert!(!discovered_update_eligible(AgentCatalogId::OpenCode, false));
         assert!(!discovered_update_eligible(AgentCatalogId::GrokBuild, true));
     }

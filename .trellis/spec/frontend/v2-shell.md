@@ -89,6 +89,7 @@ interface LiquidGlassLensProps {
 export function SelectionLensGroup({
   id,
   inset = 0,
+  geometry = "size-and-position",
   layoutKey,
   className,
   children,
@@ -96,6 +97,7 @@ export function SelectionLensGroup({
 }: Omit<HTMLAttributes<HTMLDivElement>, "id"> & {
   id: string;
   inset?: number;
+  geometry?: "size-and-position" | "position";
   layoutKey?: string | number | boolean;
 }): JSX.Element;
 
@@ -107,12 +109,14 @@ export function SelectionLens({
 
 export function SelectionLensTrack({
   id,
+  geometry,
   layoutKey,
   className,
   children,
   ...props
 }: Omit<HTMLAttributes<HTMLDivElement>, "id"> & {
   id: string;
+  geometry?: "size-and-position" | "position";
   layoutKey?: string | number | boolean;
 }): JSX.Element;
 
@@ -123,10 +127,12 @@ export const selectionLensTransition = {
   mass: 0.62,
 } as const;
 
-export function selectionLensCollapsedOrigin(box: {
+export function selectionLensCollapsedOrigin(box: { x: number; y: number }): {
   x: number;
   y: number;
-}): { x: number; y: number; width: number; height: number };
+  width: number;
+  height: number;
+};
 ```
 
 Feature-page exclusive tracks, management search, and feature lists must
@@ -137,18 +143,26 @@ do not add a page-local variant "just for this screen".
 `LiquidGlassLens` wraps `@samasante/liquid-glass@0.1.1` with balanced optics
 plus `dispersion: 0`, `live={false}`, and `filterResolution={1}`. The sliding
 selection pill is a separate V2 adapter, `SelectionLens`. `SelectionLensGroup`
-owns at most one `pointer-events: none` overlay pill and springs `left` / `top` / `width` / `height` with
-`selectionLensTransition`. Drive those values with Motion values so a later
+owns at most one `pointer-events: none` overlay pill. The default
+`size-and-position` mode springs `left` / `top` / `width` / `height` with
+`selectionLensTransition`. The narrow `position` mode springs only `left` /
+`top` and synchronizes `width` / `height` directly to the active host; it is
+used by the fixed-size primary navigation so scan/layout repaint cannot stretch
+the pill's right edge. Drive animated values with Motion values so a later
 click retargets from the live geometry. Do not unmount or `key=` the overlay
-when the active host changes: that restarts the appear spring instead of
-interrupting. Appear and show-after-`hidden` collapse through
-`selectionLensCollapsedOrigin` to the active host's top-left with size 0, then
-spring open there. Do not collapse to the track origin (`inset`, `inset`): that
-flies the pill from the parent top-left on every page mount. Callers must not
-reimplement this origin. Do not use Motion `layoutId` or `LayoutGroup` scale
+when the active host changes: that restarts the appear transition instead of
+interrupting. In the default `size-and-position` mode, appear and
+show-after-`hidden` collapse through `selectionLensCollapsedOrigin` to the
+active host's top-left with size 0, then spring open there. In `position` mode,
+the same origin owns `left` / `top`, while `width` / `height` are synchronized
+to the active host before position animation so the primary-nav frame never
+grows from zero or stretches during scan repaint. Do not collapse to the track
+origin (`inset`, `inset`): that flies the pill from the parent top-left on every
+page mount. Callers must not reimplement this origin. Do not use Motion
+`layoutId` or `LayoutGroup` scale
 projection for this pill: non-uniform `scaleX` plus `backdrop-filter` smears
 the capsule and the label. `SelectionLens` only registers the active host; it
-is not the semantic or sole painted state. Geometry observation is bounded to
+is not the semantic state. Geometry observation is bounded to
 the active host and its track/container; do not recursively observe the layout
 subtree or attach a child-list MutationObserver. Do not import `framer-motion` outside
 `shared/ui/motion.ts`. That file owns `fySpringTransition`
@@ -204,7 +218,10 @@ export function ExternalLinkButton({
   children: ReactNode;
   errorTitle?: string;
   busyLabel?: string;
-} & Omit<ButtonHTMLAttributes<HTMLButtonElement>, "children" | "onClick" | "type">): JSX.Element;
+} & Omit<
+  ButtonHTMLAttributes<HTMLButtonElement>,
+  "children" | "onClick" | "type"
+>): JSX.Element;
 ```
 
 `useOpenExternal` keeps one in-flight URL. A second click is ignored until
@@ -221,14 +238,14 @@ The navigation source remains the six leaf routes, presented as three
 left-navigation groups from `navigationGroups`. Leaf IDs and paths do not
 change; visible labels and grouping do:
 
-| ID        | Path       | Group                    | Visible label  |
-| --------- | ---------- | ------------------------ | -------------- |
-| `agents`  | `/agents`  | `AI软件配置`             | `AI软件配置`   |
-| `models`  | `/models`  | `配置管理` (collapsible) | `模型管理`     |
-| `skills`  | `/skills`  | `配置管理` (collapsible) | `Skills 管理`  |
-| `mcp`     | `/mcp`     | `配置管理` (collapsible) | `MCP 管理`     |
-| `prompts` | `/prompts` | `配置管理` (collapsible) | `提示词管理`   |
-| `memory`  | `/memory`  | `记忆模块`               | `记忆模块`     |
+| ID        | Path       | Group                    | Visible label |
+| --------- | ---------- | ------------------------ | ------------- |
+| `agents`  | `/agents`  | `AI软件配置`             | `AI软件配置`  |
+| `models`  | `/models`  | `配置管理` (collapsible) | `模型管理`    |
+| `skills`  | `/skills`  | `配置管理` (collapsible) | `Skills 管理` |
+| `mcp`     | `/mcp`     | `配置管理` (collapsible) | `MCP 管理`    |
+| `prompts` | `/prompts` | `配置管理` (collapsible) | `提示词管理`  |
+| `memory`  | `/memory`  | `记忆模块`               | `记忆模块`    |
 
 `configuration-management` owns expand/collapse UI state only. Leaf selection
 stays Router-owned. The flattened `navigationItems` list remains the sole
@@ -294,7 +311,7 @@ renders the active child route.
   maximize, min-size, or work-area geometry.
 - Gate that strip with `shouldShowMacOverlayDragStrip()`. The left
   `--fy-titlebar-traffic-light-width` (78px) spacer uses `pointer-events:
-  none` so traffic lights stay clickable; only the remaining surface is the
+none` so traffic lights stay clickable; only the remaining surface is the
   drag region. Brand sits in the 68px chrome row below the
   strip (`--fy-titlebar-drag-height` + `--fy-top-bar-height` = 96px).
 - Windows Visible chrome keeps the 68px row and no drag strip. Reports that
@@ -347,10 +364,17 @@ L3 interactive glass       selected lens, tooltip, and popover
   `FeatureSearch`. See [Frontend Reuse](./reuse.md).
 - The pill is CSS interactive glass (`--fy-glass-interactive`,
   `--fy-shadow-control`, inset highlight, backdrop fallback). Every selected
-  host must independently paint the shared `--fy-selected-*` background,
-  border, text, and shadow state so selection remains visible before, during,
-  or without the decorative pill. Motion uses `selectionLensTransition` on a single
-  overlay's `left` / `top` / `width` / `height`. A new click retargets that
+  host must independently retain semantic state, focus, and readable selected
+  text. Tracks other than primary navigation keep the shared
+  `--fy-selected-*` background/border/shadow fallback. Primary navigation is a
+  deliberate single-frame owner: the shared Lens alone paints the glass frame,
+  while the active `NavLink` paints text/weight/focus only. The expanded
+  configuration toggle may keep a non-overlapping context frame; once
+  collapsed onto the active leaf it clears that frame and uses the lighter
+  secondary/tertiary text tokens. This prevents two coincident glass borders
+  and shadows from producing a dragged edge during Agent scanning.
+  Motion uses `selectionLensTransition` on one overlay's position and, in the
+  default mode, size. A new click retargets that
   spring from the overlay's current geometry, not from the previous host's
   rest box, and must not remount the overlay. When a group first appears, or
   is shown again after an ancestor `hidden`, the same overlay uses
@@ -442,33 +466,35 @@ Agent/Models, Skills, and MCP ports do not by themselves make it Release-ready.
 
 ## 4. Validation & Error Matrix
 
-| Condition                                                              | Required result                                                                    |
-| ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| Empty hash, root route, or unknown route                               | Redirect to `#/agents`; Agent directory alone has `aria-current="page"`            |
-| V2 imports `framer-motion` outside `shared/ui/motion.ts`            | Architecture test fails; SelectionLens and Collapsible consume the motion owner |
-| Changing the active option remounts the overlay or restarts from `{width:0}` | Unit test fails; the same overlay node must keep identity and retarget from current geometry |
-| First show or show-after-`hidden` collapses to the track origin (`inset`, `inset`) | Unit and architecture tests fail; appear must use `selectionLensCollapsedOrigin` of the active host |
-| 「记忆模块」 is selected, then 「配置管理」 expands | Overlay follows the memory host; the disclosure changes the group's explicit `layoutKey`, bounded host/track measurement retargets, and Playwright keeps the pill on the memory link |
-| Any normal production route                                            | Exactly one active primary link and one nav `SelectionLens` overlay; no production `LiquidGlassLens`; other tracks may each have their own pill |
-| UI Lab development route                                               | No primary link active; the lab may render one isolated lens specimen              |
-| SVG/backdrop filter unavailable                                        | CSS tint, edge, shadow, focus, and selected state remain readable                  |
-| React StrictMode or repeated ready calls                               | One native `frontend-deeplink-ready` emission per renderer lifetime                |
-| Production requests the UI Lab path                                    | Route is absent and wildcard fallback selects `#/agents`                           |
-| Custom caption buttons or `setDecorations(false)` appear                | Unit, architecture, or browser negative assertion fails                            |
-| A drag region appears outside the V2 `TopBar` Overlay chrome            | Architecture test fails; browser preview still has no drag strip                   |
-| Drag strip is gated on userAgent instead of `detectRuntime()`           | Mac-host Playwright/jsdom can show a false strip; runtime tests must fail          |
-| Windows maximize overflow is “fixed” by shrinking V2 chrome             | Wrong layer; host must skip `set_min_size` while maximized                         |
-| V2 calls `setDecorations(false)`                                       | Static contract search and V2 tests fail                                           |
-| V2 imports legacy/upward code, or Tauri outside the platform boundary  | ESLint and executable architecture test fail                                       |
-| V2 imports neutral code outside `@/shared/codex-desktop`               | Architecture test fails; no broader shared-root allowlist                          |
-| Neutral Codex shared code imports React, Tauri, platform, or legacy UI | Architecture test fails; move the side effect behind the V2 port                   |
-| A route's rendered state disagrees with its dedicated feature contract | Shell/content test fails                                                           |
-| Prompts or Memory becomes empty after integration                      | Final task acceptance fails; validate the resolved tree rather than merge messages |
-| Browser Prompts/Memory exposes seeded or private records               | Native-only/preview contract test fails                                             |
-| A supported viewport overflows or overlaps                             | Playwright geometry gate fails                                                     |
-| A page opens HTTP(S) with `<a>`, `window.open`, or a local wrapper     | Unit/architecture test fails; use `ExternalLinkButton`                             |
-| A second HTTP(S) jump starts while one is in flight                    | Ignored; only the in-flight button shows `正在打开…`                               |
-| `settings.openExternal` rejects                                        | Toast fixed title plus `errorMessage`; the URL is not echoed                       |
+| Condition                                                                          | Required result                                                                                                                                                                      |
+| ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Empty hash, root route, or unknown route                                           | Redirect to `#/agents`; Agent directory alone has `aria-current="page"`                                                                                                              |
+| V2 imports `framer-motion` outside `shared/ui/motion.ts`                           | Architecture test fails; SelectionLens and Collapsible consume the motion owner                                                                                                      |
+| Changing the active option remounts the overlay or restarts from `{width:0}`       | Unit test fails; the same overlay node must keep identity and retarget from current geometry                                                                                         |
+| First show or show-after-`hidden` collapses to the track origin (`inset`, `inset`) | Unit and architecture tests fail; appear must use `selectionLensCollapsedOrigin` of the active host                                                                                  |
+| 「记忆模块」 is selected, then 「配置管理」 expands                                | Overlay follows the memory host; the disclosure changes the group's explicit `layoutKey`, bounded host/track measurement retargets, and Playwright keeps the pill on the memory link |
+| Agent scan repaints while primary navigation is selected                           | One `position`-geometry Lens remains; width/height/right stay stable and the selected host has no duplicate background/border/shadow                                                 |
+| Active configuration leaf is collapsed into its group toggle                       | Toggle keeps `aria-expanded=false` and selected semantics, clears its context frame, uses lighter text/caret, and the one Lens owns the frame                                        |
+| Any normal production route                                                        | Exactly one active primary link and one nav `SelectionLens` overlay; no production `LiquidGlassLens`; other tracks may each have their own pill                                      |
+| UI Lab development route                                                           | No primary link active; the lab may render one isolated lens specimen                                                                                                                |
+| SVG/backdrop filter unavailable                                                    | CSS tint, edge, shadow, focus, and selected state remain readable                                                                                                                    |
+| React StrictMode or repeated ready calls                                           | One native `frontend-deeplink-ready` emission per renderer lifetime                                                                                                                  |
+| Production requests the UI Lab path                                                | Route is absent and wildcard fallback selects `#/agents`                                                                                                                             |
+| Custom caption buttons or `setDecorations(false)` appear                           | Unit, architecture, or browser negative assertion fails                                                                                                                              |
+| A drag region appears outside the V2 `TopBar` Overlay chrome                       | Architecture test fails; browser preview still has no drag strip                                                                                                                     |
+| Drag strip is gated on userAgent instead of `detectRuntime()`                      | Mac-host Playwright/jsdom can show a false strip; runtime tests must fail                                                                                                            |
+| Windows maximize overflow is “fixed” by shrinking V2 chrome                        | Wrong layer; host must skip `set_min_size` while maximized                                                                                                                           |
+| V2 calls `setDecorations(false)`                                                   | Static contract search and V2 tests fail                                                                                                                                             |
+| V2 imports legacy/upward code, or Tauri outside the platform boundary              | ESLint and executable architecture test fail                                                                                                                                         |
+| V2 imports neutral code outside `@/shared/codex-desktop`                           | Architecture test fails; no broader shared-root allowlist                                                                                                                            |
+| Neutral Codex shared code imports React, Tauri, platform, or legacy UI             | Architecture test fails; move the side effect behind the V2 port                                                                                                                     |
+| A route's rendered state disagrees with its dedicated feature contract             | Shell/content test fails                                                                                                                                                             |
+| Prompts or Memory becomes empty after integration                                  | Final task acceptance fails; validate the resolved tree rather than merge messages                                                                                                   |
+| Browser Prompts/Memory exposes seeded or private records                           | Native-only/preview contract test fails                                                                                                                                              |
+| A supported viewport overflows or overlaps                                         | Playwright geometry gate fails                                                                                                                                                       |
+| A page opens HTTP(S) with `<a>`, `window.open`, or a local wrapper                 | Unit/architecture test fails; use `ExternalLinkButton`                                                                                                                               |
+| A second HTTP(S) jump starts while one is in flight                                | Ignored; only the in-flight button shows `正在打开…`                                                                                                                                 |
+| `settings.openExternal` rejects                                                    | Toast fixed title plus `errorMessage`; the URL is not echoed                                                                                                                         |
 
 ## 5. Good / Base / Bad Cases
 
@@ -486,8 +512,10 @@ Agent/Models, Skills, and MCP ports do not by themselves make it Release-ready.
 - **Base:** Opening without a route lands on `#/agents`, with the three left
   groups and Brand visible. Browser preview has no system, simulated, or
   focusable placeholder controls.
-- **Fallback:** If refraction cannot render, the selected item remains visibly
-  distinct through its CSS material, text, border, shadow, and focus ring.
+- **Fallback:** If refraction cannot render, every selected item remains
+  semantically exposed and readable through selected text/weight/focus. Tracks
+  other than primary navigation also keep their CSS material, border and
+  shadow fallback; primary navigation deliberately avoids a second frame.
 - **Bad:** React disables decorations, stores `currentView`, renders caption
   buttons/traffic lights, spreads drag regions across interactive chrome,
   stretches one SVG lens across a wide bar, mounts a
@@ -521,7 +549,11 @@ mise run build:renderer
   V2 `TopBar` Overlay strip above the chrome row.
   Side-navigation tests cover collapsing 「配置管理」 while a configuration
   leaf is active, and expanding it while 「记忆模块」 is active so the overlay
-  stays on the memory host instead of the pre-expand coordinate.
+  stays on the memory host instead of the pre-expand coordinate. They also
+  assert one frame material owner and the position-only geometry mode.
+  Browser coverage samples the nav Lens across Agent auto-scan frames and
+  requires stable width/height/right plus a transparent selected-host
+  background/border/shadow.
 - Architecture/static tests reject legacy dependencies, upward layer imports,
   direct Tauri imports outside `shared/platform/tauri`, and the retired
   window-frame contract. They keep `framer-motion` behind
@@ -582,15 +614,22 @@ width.set(0);
 height.set(0);
 ```
 
-Correct: one overlay pill per exclusive track; spring `left` / `top` /
-`width` / `height` from the current overlay values so a later click
-interrupts without scale and without remounting. Catalog rails, feature
-lists, tabs, and primary nav all use this adapter. First show and
-show-after-`hidden` replay `selectionLensCollapsedOrigin(activeHostBox)` so
-the pill expands from that host's top-left, not from the track origin.
+Correct: one overlay pill per exclusive track. Catalog rails, feature lists,
+and tabs keep the default `size-and-position` mode and spring `left` / `top` /
+`width` / `height` from the current overlay values. Primary navigation is the
+narrow exception: `geometry="position"` springs only `left` / `top` and
+assigns `width` / `height` directly so Agent scan repaint cannot stretch the
+glass edge. First show and show-after-`hidden` replay
+`selectionLensCollapsedOrigin(activeHostBox)` for position; in `position`
+mode, size is synchronized to the host before that animation.
 
 ```tsx
-<SelectionLensGroup id="side-navigation" inset={1}>
+<SelectionLensGroup
+  id="side-navigation"
+  geometry="position"
+  layoutKey={configurationExpanded}
+  inset={1}
+>
   <NavLink to={item.path}>
     {({ isActive }) => (
       <>
@@ -600,6 +639,29 @@ the pill expands from that host's top-left, not from the track origin.
     )}
   </NavLink>
 </SelectionLensGroup>
+```
+
+Wrong: keep `--fy-selected-*` background/border/shadow on a collapsed
+active configuration toggle, or let SideNavigation use the default size
+spring. Two coincident frames plus width interpolation produce a dragged
+glass edge while Agent scan repaints.
+
+```tsx
+<SelectionLensGroup id="side-navigation" inset={1}>
+  <button className="fy-side-navigation-item is-active" aria-expanded={false} />
+</SelectionLensGroup>
+```
+
+Correct: the expanded configuration toggle may keep a non-overlapping
+context frame. Once collapsed onto the active leaf, set
+`data-collapsed-active` so CSS clears the host frame and weakens text/caret;
+the one Lens remains the only frame owner.
+
+```tsx
+<button
+  data-collapsed-active={visuallyActive ? "true" : undefined}
+  aria-expanded={false}
+/>
 ```
 
 Wrong: recursively observe the complete track subtree to discover every
@@ -625,7 +687,7 @@ instant `hidden` and a separate CSS `ease` on the caret.
 
 ```tsx
 import { motion } from "framer-motion";
-<ul hidden={!expanded}>{items}</ul>
+<ul hidden={!expanded}>{items}</ul>;
 ```
 
 Correct: pages/widgets import V2 `Collapsible`; only `shared/ui/motion.ts`
@@ -633,14 +695,20 @@ imports Motion. Height and caret share `fySpringTransition`. Closed leaves
 stay out of keyboard cycling.
 
 ```tsx
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../../shared/ui/Collapsible";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "../../shared/ui/Collapsible";
 ```
 
 Wrong: give split-pane children `height: 100%` with visible overflow, so
 assignment controls paint past the panel.
 
 ```css
-.fy-split-pane > * { height: 100%; }
+.fy-split-pane > * {
+  height: 100%;
+}
 ```
 
 Correct: fill the pane and scroll inside it, the same way catalog rails do.

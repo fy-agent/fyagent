@@ -1321,6 +1321,39 @@ mod tests {
         }));
     }
 
+    #[test]
+    fn complete_desktop_discovery_without_candidates_is_not_observed_and_keeps_fresh_destinations()
+    {
+        for agent_id in [
+            AgentCatalogId::QoderWork,
+            AgentCatalogId::TraeWork,
+            AgentCatalogId::WorkBuddy,
+        ] {
+            let probe = project_desktop_discovery(
+                agent_id,
+                DesktopInstallationDiscovery {
+                    installations: Vec::new(),
+                    complete: true,
+                },
+            );
+
+            assert_eq!(probe.state(), InstallationInventoryState::NotObserved);
+            assert!(probe.reason_codes.is_empty());
+            assert!(!probe.destinations.is_empty());
+            assert!(probe.destinations.iter().all(|destination| {
+                !destination
+                    .reason_codes
+                    .contains(&AgentReasonCode::NativeProjectionUnavailable)
+            }));
+
+            #[cfg(target_os = "windows")]
+            assert!(probe
+                .destinations
+                .iter()
+                .all(|destination| destination.eligible));
+        }
+    }
+
     #[cfg(target_os = "macos")]
     #[test]
     fn system_update_gate_tracks_runtime_and_fixed_product_policy() {
@@ -1452,7 +1485,7 @@ mod tests {
     }
 
     #[test]
-    fn domestic_inventory_projection_disables_update_without_dropping_launch() {
+    fn managed_desktop_inventory_preserves_update_and_launch_eligibility() {
         let store = AgentInstallationInventoryStore::new();
         let mut installed = candidate("app", InstallationEvidenceCode::BundleIdentity);
         installed.update_eligible = true;
@@ -1472,7 +1505,7 @@ mod tests {
         );
         let projected = dto.candidates.first().expect("candidate");
         assert!(projected.launch_eligible);
-        assert!(!projected.update_eligible);
+        assert!(projected.update_eligible);
         assert!(!projected.install_eligible);
 
         let readiness = project_readiness(
@@ -1486,7 +1519,7 @@ mod tests {
             },
         );
         assert!(readiness.single_launch_eligible);
-        assert!(!readiness.single_update_eligible);
+        assert!(readiness.single_update_eligible);
     }
 
     #[test]
