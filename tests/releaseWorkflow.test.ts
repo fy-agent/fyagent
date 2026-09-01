@@ -919,6 +919,16 @@ esac
 `,
     { mode: 0o755 },
   );
+  fs.writeFileSync(
+    path.join(binRoot, "PlistBuddy"),
+    `#!/usr/bin/env bash
+set -euo pipefail
+[ "\${1:-}" = '-c' ] || exit 2
+[ "\${2:-}" = 'Print :CFBundleExecutable' ] || exit 2
+printf 'FyAgent\\n'
+`,
+    { mode: 0o755 },
+  );
   return binRoot;
 }
 

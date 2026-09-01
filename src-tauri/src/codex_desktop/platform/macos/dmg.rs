@@ -894,9 +894,7 @@ fn ensure_managed_bundle_not_running(
                 "managed application runtime state could not be determined",
             )
         })?;
-    let stdout = std::str::from_utf8(output.stdout())
-        .ok()
-        .map(str::trim);
+    let stdout = std::str::from_utf8(output.stdout()).ok().map(str::trim);
     if !output.is_success() {
         return Err(error(
             InstallerErrorCode::MacAppRunning,

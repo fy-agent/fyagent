@@ -63,6 +63,7 @@ type CheckerModule = {
   RUST_ALLOWANCE_CONTRACT: readonly RustAllowance[];
   RASTER_ASSET_CONTRACT: readonly { path: string; digest: string }[];
   STRUCTURE_ASSET_CONTRACT: readonly { path: string; digest: string }[];
+  STRUCTURE_ASSET_EXECUTABLES: readonly string[];
   SURFACE_MARKERS: SurfaceMarkers;
   inspectRepository(options?: Record<string, unknown>): {
     findings: Finding[];

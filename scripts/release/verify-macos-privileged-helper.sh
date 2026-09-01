@@ -46,7 +46,21 @@ fi
 helper_path="$app_path/$EXPECTED_PRIVILEGED_HELPER_RELPATH"
 client_path="$app_path/$EXPECTED_PRIVILEGED_CLIENT_RELPATH"
 launch_services="$(dirname "$helper_path")"
-app_executable="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app_path/Contents/Info.plist")"
+
+read_bundle_executable() {
+  local plist_path="$1"
+  local plist_buddy='/usr/libexec/PlistBuddy'
+  if [ ! -x "$plist_buddy" ]; then
+    plist_buddy="$(command -v PlistBuddy || true)"
+  fi
+  if [ -z "$plist_buddy" ]; then
+    echo "unable to locate PlistBuddy for nested helper verification" >&2
+    exit 1
+  fi
+  "$plist_buddy" -c 'Print :CFBundleExecutable' "$plist_path"
+}
+
+app_executable="$(read_bundle_executable "$app_path/Contents/Info.plist")"
 main_path="$app_path/Contents/MacOS/$app_executable"
 
 require_regular_nested_file() {

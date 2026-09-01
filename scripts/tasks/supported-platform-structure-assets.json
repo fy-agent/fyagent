@@ -399,11 +399,11 @@
     ],
     [
       "tests/releaseWorkflow.test.ts",
-      "484fa8314983b19a9f977669fc0890caa6a6f9598e491c88a7f9dff3f46b2d18"
+      "4458894bc429dd12224fb8e56e121ab8117247e8c779a4568157b22a903668ae"
     ],
     [
       "tests/remainingPlatformSurface.test.ts",
-      "124f9ebe041a2ce6c6052ba325e0b938268762c885958e2791b1a3c3c915aa8a"
+      "5c22ee4f526ca9915d2974d78e833495e683be88ec253e279609a6fa2a058241"
     ],
     [
       "tests/singleInstanceActivationContract.test.ts",
