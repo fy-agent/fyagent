@@ -2842,6 +2842,22 @@ jobs:
     expect(publish).toContain(
       "prepare-release-publication.mjs verify-downloads",
     );
+    expect(publish).toContain("for download_attempt in 1 2 3 4; do");
+    expect(publish).toContain("sleep 5");
+    expect(publish).toContain("downloads_verified=true");
+    const assetDownloadStart = publish.indexOf('download_status="$(curl --silent');
+    const assetDownloadEnd = publish.indexOf(
+      'if [ "$download_status" != 200 ]',
+      assetDownloadStart,
+    );
+    const assetDownload = publish.slice(assetDownloadStart, assetDownloadEnd);
+    expect(assetDownload).toContain("Accept: application/octet-stream");
+    expect(assetDownload).toContain("Authorization: Bearer $GH_TOKEN");
+    expect(assetDownload).not.toContain("${api_headers[@]}");
+    expect(assetDownload).not.toContain("Accept: application/vnd.github+json");
+    expect(publish).toContain(
+      "Re-downloaded Release attachments did not converge to the verified local payload",
+    );
     expect(publish).toContain("draft:false,prerelease:false");
     expect(publish).toContain('make_latest:"true"');
     expect(publish).toContain("releases/latest");

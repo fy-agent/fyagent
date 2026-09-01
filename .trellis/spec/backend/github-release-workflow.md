@@ -164,7 +164,15 @@ payload, workflow reference, metadata URL, or head-repository name that still
 presents the former owner fails closed.
 
 Initial eligibility freezes the decision before any build. Formal publication
-then performs two independent live rechecks with the same collector and exact
+re-downloads every private-draft attachment and requires the complete remote
+set to match the verified local payload byte-for-byte before publication.
+Because GitHub Release asset reads can be briefly inconsistent immediately
+after upload, this re-download proof may retry the complete set a small bounded
+number of times with a fixed delay. Every attempt still uses the same exact
+asset IDs and the same byte-level verifier; exhaustion is a hard failure and
+never weakens or skips the publication gate.
+
+Formal publication then performs two independent live rechecks with the same collector and exact
 frozen value:
 
 - once when the publish job begins, before creating a draft;
