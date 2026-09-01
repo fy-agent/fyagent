@@ -1894,3 +1894,27 @@ Rewrote audited frontend and public-documentation copy, added an indexed user-fa
 
 - 正式 Developer ID 签名、公证与真机 /Applications HIL 之后才能打开 production_enabled
 - Claude Desktop 尚未进入 helper KnownSystemProduct 表；Windows 桌面安装器仍推迟
+
+
+## Session 59: Windows Agent 安装面统一与 Codex 日志治理
+<!-- trellis-session: v=2 fp=e4d3d60a6ba19457 -->
+
+**Date**: 2026-09-01
+**Task**: Windows Agent 安装面统一与 Codex 日志治理
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+并行完成 Grok-only Tooling 退场、正式 Windows Grok 闭集 helper、Codex deferred 日志预算，并更新 spec。Claude/OpenCode Windows 身份与正式包 HIL 仍 fail-closed，未宣称已支持。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `40eeaa6f` | feat: retire non-Grok CLI installers and route formal Windows Grok through the closed user helper |
+| `f32787da` | fix(codex): stop repeating expected deferred usage-sync logs |
+| `4dd7668e` | docs(spec): record Grok-only Tooling, closed helper protocol, and Codex log budget |
+
+### Status
+
+[OK] **Completed**
