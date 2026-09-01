@@ -11,6 +11,7 @@ use std::{
 };
 
 use serde::Deserialize;
+use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use super::{
@@ -40,6 +41,7 @@ if (!expectedBundleIdentifier || !expectedBundlePath) {
   $.exit(2);
 }
 const applications = $.NSWorkspace.sharedWorkspace.runningApplications;
+let result = 'not_running';
 for (let index = 0; index < applications.count; index += 1) {
   const application = applications.objectAtIndex(index);
   if (!application.bundleIdentifier || !application.bundleURL) {
@@ -48,11 +50,11 @@ for (let index = 0; index < applications.count; index += 1) {
   const bundleIdentifier = ObjC.unwrap(application.bundleIdentifier);
   const bundlePath = ObjC.unwrap(application.bundleURL.path);
   if (bundleIdentifier === expectedBundleIdentifier && bundlePath === expectedBundlePath) {
-    console.log('running');
-    $.exit(0);
+    result = 'running';
+    break;
   }
 }
-console.log('not_running');
+result;
 "#;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -91,6 +93,34 @@ pub(crate) struct ManagedDmgInstallRequest<'a> {
 pub(crate) struct ManagedDmgInstallResult {
     pub(crate) target_path: PathBuf,
     pub(crate) local_version: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ManagedDmgSystemIntent {
+    Fresh,
+    Update,
+}
+
+pub(crate) struct ManagedDmgSystemCommitRequest<'a> {
+    pub(crate) artifact_path: &'a Path,
+    pub(crate) target_path: &'a Path,
+    pub(crate) intent: ManagedDmgSystemIntent,
+    pub(crate) product: &'a ManagedDmgProductPolicy,
+    pub(crate) expected_release_version: Option<&'a str>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ManagedDmgSystemSource {
+    pub(crate) bundle_path: PathBuf,
+    pub(crate) source_revision: [u8; 32],
+    pub(crate) target_revision: [u8; 32],
+    pub(crate) local_version: String,
+}
+
+#[derive(Debug)]
+pub(crate) enum ManagedDmgSystemFailure<E> {
+    Package(ManagedDmgFailureKind),
+    Commit(E),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -356,6 +386,128 @@ where
         }),
         (Err(error), _) => Err(error),
     }
+}
+
+/// Mount and validate a managed DMG, then hand one already-verified source
+/// bundle capability to the single privileged system-commit owner. This
+/// function performs no privileged filesystem mutation itself.
+pub(crate) fn install_managed_system_exact<Commit, CommitError>(
+    runner: &dyn CommandRunner,
+    filesystem: &dyn MacosFilesystem,
+    request: ManagedDmgSystemCommitRequest<'_>,
+    mut commit: Commit,
+) -> Result<ManagedDmgInstallResult, ManagedDmgSystemFailure<CommitError>>
+where
+    Commit: FnMut(ManagedDmgSystemSource) -> Result<(), CommitError>,
+{
+    validate_downloaded_dmg(filesystem, request.artifact_path).map_err(|error| {
+        ManagedDmgSystemFailure::Package(managed_failure_kind_from_error(&error))
+    })?;
+    let mut mounted = mount_dmg(runner, filesystem, request.artifact_path).map_err(|error| {
+        ManagedDmgSystemFailure::Package(managed_failure_kind_from_error(&error))
+    })?;
+    let policy = BundleTransactionPolicy::Managed(request.product);
+    let result = (|| {
+        let source = discover_single_bundle(runner, filesystem, mounted.mount_point())
+            .and_then(|bundle| policy.inspect_source_info(filesystem, bundle))
+            .map_err(|error| {
+                ManagedDmgSystemFailure::Package(managed_failure_kind_from_error(&error))
+            })?;
+        if request
+            .expected_release_version
+            .is_some_and(|expected| !policy.matches_release(&source, expected))
+        {
+            return Err(ManagedDmgSystemFailure::Package(
+                ManagedDmgFailureKind::SourceInvalid,
+            ));
+        }
+
+        let target_revision = match request.intent {
+            ManagedDmgSystemIntent::Fresh => match filesystem.file_kind(request.target_path) {
+                Err(error) if is_not_found(error) => [0; 32],
+                _ => {
+                    return Err(ManagedDmgSystemFailure::Package(
+                        ManagedDmgFailureKind::TargetChanged,
+                    ))
+                }
+            },
+            ManagedDmgSystemIntent::Update => {
+                let canonical = filesystem.canonicalize(request.target_path).map_err(|_| {
+                    ManagedDmgSystemFailure::Package(ManagedDmgFailureKind::TargetChanged)
+                })?;
+                if canonical != request.target_path
+                    || filesystem.file_kind(&canonical) != Ok(MacosFileKind::Directory)
+                {
+                    return Err(ManagedDmgSystemFailure::Package(
+                        ManagedDmgFailureKind::TargetChanged,
+                    ));
+                }
+                let existing = policy
+                    .inspect_existing(runner, filesystem, &canonical)
+                    .map_err(|error| {
+                        ManagedDmgSystemFailure::Package(managed_failure_kind_from_error(&error))
+                    })?;
+                policy
+                    .ensure_not_running(runner, filesystem, &canonical)
+                    .map_err(|error| {
+                        ManagedDmgSystemFailure::Package(managed_failure_kind_from_error(&error))
+                    })?;
+                helper_bundle_revision(&existing)
+            }
+        };
+
+        let source_revision = helper_bundle_revision(&source);
+        commit(ManagedDmgSystemSource {
+            bundle_path: source.info.bundle_path().to_path_buf(),
+            source_revision,
+            target_revision,
+            local_version: source.comparison_version.clone(),
+        })
+        .map_err(ManagedDmgSystemFailure::Commit)?;
+
+        let canonical_target = filesystem.canonicalize(request.target_path).map_err(|_| {
+            ManagedDmgSystemFailure::Package(ManagedDmgFailureKind::RecoveryRequired)
+        })?;
+        if canonical_target != request.target_path
+            || filesystem.file_kind(&canonical_target) != Ok(MacosFileKind::Directory)
+        {
+            return Err(ManagedDmgSystemFailure::Package(
+                ManagedDmgFailureKind::RecoveryRequired,
+            ));
+        }
+        let installed = policy
+            .inspect_existing(runner, filesystem, &canonical_target)
+            .map_err(|_| {
+                ManagedDmgSystemFailure::Package(ManagedDmgFailureKind::RecoveryRequired)
+            })?;
+        if !policy.copies_are_equivalent(&source, &installed) {
+            return Err(ManagedDmgSystemFailure::Package(
+                ManagedDmgFailureKind::RecoveryRequired,
+            ));
+        }
+        Ok(ManagedDmgInstallResult {
+            target_path: canonical_target,
+            local_version: installed.comparison_version,
+        })
+    })();
+    let detach = mounted.detach();
+    match (result, detach) {
+        (Ok(installed), Ok(())) => Ok(installed),
+        (Ok(_), Err(_)) => Err(ManagedDmgSystemFailure::Package(
+            ManagedDmgFailureKind::DetachFailed,
+        )),
+        (Err(error), _) => Err(error),
+    }
+}
+
+fn helper_bundle_revision(bundle: &VerifiedBundle) -> [u8; 32] {
+    let canonical = format!(
+        "bundleId={}\nversion={}\nexecutable={}\n",
+        bundle.info.bundle_identifier(),
+        bundle.comparison_version,
+        bundle.info.executable(),
+    );
+    Sha256::digest(canonical.as_bytes()).into()
 }
 
 fn managed_failure_from_transaction(error: TransactionFailure) -> ManagedDmgFailure {
@@ -742,15 +894,16 @@ fn ensure_managed_bundle_not_running(
                 "managed application runtime state could not be determined",
             )
         })?;
+    let stdout = std::str::from_utf8(output.stdout()).ok().map(str::trim);
     if !output.is_success() {
         return Err(error(
             InstallerErrorCode::MacAppRunning,
             "managed application runtime state could not be determined",
         ));
     }
-    match std::str::from_utf8(output.stdout()).map(str::trim) {
-        Ok("not_running") => Ok(()),
-        Ok("running") => Err(error(
+    match stdout {
+        Some("not_running") => Ok(()),
+        Some("running") => Err(error(
             InstallerErrorCode::MacAppRunning,
             "the selected managed application is running",
         )),
@@ -1634,6 +1787,13 @@ mod tests {
     const MOUNT_POINT: &str = "/Volumes/FyAgent Codex";
     const ARTIFACT: &str = "/tmp/fyagent-job/installer.dmg";
 
+    #[test]
+    fn managed_running_probe_uses_jxa_completion_value_not_console_log() {
+        assert!(!MANAGED_RUNNING_APPLICATION_JXA.contains("console.log"));
+        assert!(MANAGED_RUNNING_APPLICATION_JXA.contains("let result = 'not_running'"));
+        assert!(MANAGED_RUNNING_APPLICATION_JXA.contains("result;"));
+    }
+
     fn host() -> MacosHost {
         MacosHost::new(
             CpuArchitecture::Aarch64,
@@ -2136,6 +2296,278 @@ mod tests {
 
         assert!(filesystem.contains(Path::new(USER_APPLICATIONS).join("ChatGPT.app")));
         assert!(!filesystem.contains(Path::new(SYSTEM_APPLICATIONS).join("ChatGPT.app")));
+        runner.assert_drained();
+    }
+
+    #[test]
+    fn managed_system_fresh_install_hands_only_verified_revisions_to_commit_owner() {
+        const BUNDLE_ID: &str = "ai.opencode.desktop";
+        let (filesystem, source_bundle) = fixture_filesystem();
+        let target = Path::new(SYSTEM_APPLICATIONS).join("OpenCode.app");
+        let runner = FakeRunner::new();
+        runner.queue_success("hdiutil", mount_plist(MOUNT_POINT));
+        queue_managed_read(&runner, BUNDLE_ID, "1.2.3", "1.2.3");
+        queue_managed_read(&runner, BUNDLE_ID, "1.2.3", "1.2.3");
+        runner.queue_success("hdiutil", Vec::<u8>::new());
+        let policy = managed_policy(
+            BUNDLE_ID,
+            ManagedBundleVersionSource::InfoPlist,
+            ManagedVersionEquivalence::Exact,
+        );
+        let commits = Arc::new(Mutex::new(Vec::new()));
+        let commits_for_callback = Arc::clone(&commits);
+        let filesystem_for_callback = Arc::clone(&filesystem);
+        let source_for_callback = source_bundle.clone();
+        let target_for_callback = target.clone();
+
+        let installed = install_managed_system_exact(
+            &runner,
+            filesystem.as_ref(),
+            ManagedDmgSystemCommitRequest {
+                artifact_path: Path::new(ARTIFACT),
+                target_path: &target,
+                intent: ManagedDmgSystemIntent::Fresh,
+                product: &policy,
+                expected_release_version: Some("1.2.3"),
+            },
+            move |source| {
+                commits_for_callback
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner())
+                    .push((
+                        source.bundle_path.clone(),
+                        source.source_revision,
+                        source.target_revision,
+                    ));
+                filesystem_for_callback
+                    .copy_tree(source_for_callback.clone(), target_for_callback.clone())
+                    .unwrap();
+                Ok::<(), ()>(())
+            },
+        )
+        .unwrap();
+
+        assert_eq!(installed.target_path, target);
+        assert_eq!(installed.local_version, "1.2.3");
+        let recorded = commits
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        assert_eq!(recorded.len(), 1);
+        assert_eq!(recorded[0].0, source_bundle);
+        assert_ne!(recorded[0].1, [0; 32]);
+        assert_eq!(recorded[0].2, [0; 32]);
+        assert!(runner
+            .invocations()
+            .iter()
+            .all(|invocation| invocation.program() != "ditto"));
+        runner.assert_drained();
+    }
+
+    #[test]
+    fn managed_system_update_rechecks_target_and_running_state_before_commit() {
+        const BUNDLE_ID: &str = "ai.opencode.desktop";
+        let (filesystem, source_bundle) = fixture_filesystem();
+        let target = Path::new(SYSTEM_APPLICATIONS).join("OpenCode.app");
+        add_bundle(filesystem.as_ref(), &target);
+        let runner = FakeRunner::new();
+        runner.queue_success("hdiutil", mount_plist(MOUNT_POINT));
+        queue_managed_read(&runner, BUNDLE_ID, "1.2.3", "1.2.3");
+        queue_managed_read(&runner, BUNDLE_ID, "1.2.2", "1.2.2");
+        runner.queue_success("osascript", b"not_running\n".to_vec());
+        queue_managed_read(&runner, BUNDLE_ID, "1.2.3", "1.2.3");
+        runner.queue_success("hdiutil", Vec::<u8>::new());
+        let policy = managed_policy(
+            BUNDLE_ID,
+            ManagedBundleVersionSource::InfoPlist,
+            ManagedVersionEquivalence::Exact,
+        );
+        let filesystem_for_callback = Arc::clone(&filesystem);
+        let source_for_callback = source_bundle.clone();
+        let target_for_callback = target.clone();
+        let captured_target_revision = Arc::new(Mutex::new(None));
+        let captured_for_callback = Arc::clone(&captured_target_revision);
+
+        let installed = install_managed_system_exact(
+            &runner,
+            filesystem.as_ref(),
+            ManagedDmgSystemCommitRequest {
+                artifact_path: Path::new(ARTIFACT),
+                target_path: &target,
+                intent: ManagedDmgSystemIntent::Update,
+                product: &policy,
+                expected_release_version: Some("1.2.3"),
+            },
+            move |source| {
+                *captured_for_callback
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner()) =
+                    Some(source.target_revision);
+                filesystem_for_callback
+                    .remove_dir_all(&target_for_callback)
+                    .unwrap();
+                filesystem_for_callback
+                    .copy_tree(source_for_callback.clone(), target_for_callback.clone())
+                    .unwrap();
+                Ok::<(), ()>(())
+            },
+        )
+        .unwrap();
+
+        assert_eq!(installed.local_version, "1.2.3");
+        assert_ne!(
+            captured_target_revision
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .expect("update commit must carry the target revision"),
+            [0; 32]
+        );
+        assert_eq!(
+            runner
+                .invocations()
+                .iter()
+                .filter(|invocation| invocation.program() == "osascript")
+                .count(),
+            1
+        );
+        runner.assert_drained();
+    }
+
+    #[test]
+    fn managed_system_running_application_blocks_before_commit() {
+        const BUNDLE_ID: &str = "ai.opencode.desktop";
+        let (filesystem, _) = fixture_filesystem();
+        let target = Path::new(SYSTEM_APPLICATIONS).join("OpenCode.app");
+        add_bundle(filesystem.as_ref(), &target);
+        let runner = FakeRunner::new();
+        runner.queue_success("hdiutil", mount_plist(MOUNT_POINT));
+        queue_managed_read(&runner, BUNDLE_ID, "1.2.3", "1.2.3");
+        queue_managed_read(&runner, BUNDLE_ID, "1.2.2", "1.2.2");
+        runner.queue_success("osascript", b"running\n".to_vec());
+        runner.queue_success("hdiutil", Vec::<u8>::new());
+        let policy = managed_policy(
+            BUNDLE_ID,
+            ManagedBundleVersionSource::InfoPlist,
+            ManagedVersionEquivalence::Exact,
+        );
+        let commit_called = Arc::new(Mutex::new(false));
+        let commit_called_for_callback = Arc::clone(&commit_called);
+
+        let failure = install_managed_system_exact(
+            &runner,
+            filesystem.as_ref(),
+            ManagedDmgSystemCommitRequest {
+                artifact_path: Path::new(ARTIFACT),
+                target_path: &target,
+                intent: ManagedDmgSystemIntent::Update,
+                product: &policy,
+                expected_release_version: Some("1.2.3"),
+            },
+            move |_| {
+                *commit_called_for_callback
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner()) = true;
+                Ok::<(), ()>(())
+            },
+        )
+        .unwrap_err();
+
+        assert!(matches!(
+            failure,
+            ManagedDmgSystemFailure::Package(ManagedDmgFailureKind::ApplicationRunning)
+        ));
+        assert!(!*commit_called
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()));
+        runner.assert_drained();
+    }
+
+    #[test]
+    fn managed_system_unknown_commit_outcome_preserves_package_error_and_detaches() {
+        const BUNDLE_ID: &str = "ai.opencode.desktop";
+        let (filesystem, _) = fixture_filesystem();
+        let target = Path::new(SYSTEM_APPLICATIONS).join("OpenCode.app");
+        let runner = FakeRunner::new();
+        runner.queue_success("hdiutil", mount_plist(MOUNT_POINT));
+        queue_managed_read(&runner, BUNDLE_ID, "1.2.3", "1.2.3");
+        runner.queue_success("hdiutil", Vec::<u8>::new());
+        let policy = managed_policy(
+            BUNDLE_ID,
+            ManagedBundleVersionSource::InfoPlist,
+            ManagedVersionEquivalence::Exact,
+        );
+
+        let failure = install_managed_system_exact(
+            &runner,
+            filesystem.as_ref(),
+            ManagedDmgSystemCommitRequest {
+                artifact_path: Path::new(ARTIFACT),
+                target_path: &target,
+                intent: ManagedDmgSystemIntent::Fresh,
+                product: &policy,
+                expected_release_version: Some("1.2.3"),
+            },
+            |_| Err::<(), _>("outcome-unknown"),
+        )
+        .unwrap_err();
+
+        assert!(matches!(
+            failure,
+            ManagedDmgSystemFailure::Commit("outcome-unknown")
+        ));
+        assert!(!filesystem.contains(target));
+        assert_eq!(
+            runner
+                .invocations()
+                .iter()
+                .filter(|invocation| invocation.program() == "hdiutil")
+                .count(),
+            2
+        );
+        runner.assert_drained();
+    }
+
+    #[test]
+    fn managed_system_post_commit_identity_mismatch_requires_recovery() {
+        const BUNDLE_ID: &str = "ai.opencode.desktop";
+        let (filesystem, source_bundle) = fixture_filesystem();
+        let target = Path::new(SYSTEM_APPLICATIONS).join("OpenCode.app");
+        let runner = FakeRunner::new();
+        runner.queue_success("hdiutil", mount_plist(MOUNT_POINT));
+        queue_managed_read(&runner, BUNDLE_ID, "1.2.3", "1.2.3");
+        queue_managed_read(&runner, BUNDLE_ID, "1.2.2", "1.2.2");
+        runner.queue_success("hdiutil", Vec::<u8>::new());
+        let policy = managed_policy(
+            BUNDLE_ID,
+            ManagedBundleVersionSource::InfoPlist,
+            ManagedVersionEquivalence::Exact,
+        );
+        let filesystem_for_callback = Arc::clone(&filesystem);
+        let source_for_callback = source_bundle.clone();
+        let target_for_callback = target.clone();
+
+        let failure = install_managed_system_exact(
+            &runner,
+            filesystem.as_ref(),
+            ManagedDmgSystemCommitRequest {
+                artifact_path: Path::new(ARTIFACT),
+                target_path: &target,
+                intent: ManagedDmgSystemIntent::Fresh,
+                product: &policy,
+                expected_release_version: Some("1.2.3"),
+            },
+            move |_| {
+                filesystem_for_callback
+                    .copy_tree(source_for_callback.clone(), target_for_callback.clone())
+                    .unwrap();
+                Ok::<(), ()>(())
+            },
+        )
+        .unwrap_err();
+
+        assert!(matches!(
+            failure,
+            ManagedDmgSystemFailure::Package(ManagedDmgFailureKind::RecoveryRequired)
+        ));
         runner.assert_drained();
     }
 

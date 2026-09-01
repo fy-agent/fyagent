@@ -1,7 +1,10 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { AgentInstallReadiness } from "@/v2/shared/features/agent-install-readiness";
+import {
+  AGENT_INSTALL_READINESS_CONTRACT_VERSION,
+  type AgentInstallReadiness,
+} from "@/v2/shared/features/agent-install-readiness";
 import { useAgentInstallReadiness } from "@/v2/shared/features/queries";
 import {
   AGENT_CATALOG_IDS,
@@ -29,7 +32,7 @@ function readiness(
   installState: AgentInstallReadiness["installState"],
 ): AgentInstallReadiness {
   return {
-    contractVersion: 3,
+    contractVersion: AGENT_INSTALL_READINESS_CONTRACT_VERSION,
     agentId,
     reviewedAt: "2026-08-29",
     installState,

@@ -85,6 +85,12 @@ database access, platform/runtime orchestration, and Skill filesystem safety.
 Do not create parallel protocol, archive, path-safety, or transaction logic
 merely because a new feature is implemented in another service.
 
+macOS privileged helper Bless / Authorization / XPC wrapping reuses the
+pinned Swift packages Blessed `0.6.0`, Authorized `1.0.0`, and SecureXPC at
+revision `1cece54562c7626d042f007d2f38cfe325565850`. Do not rewrite
+`SMJobBless`, invent a generic XPC RPC, or add a second helper per product.
+See [macOS Privileged System-Commit Helper](./macos-system-commit.md).
+
 ### Research open-source candidates before bespoke code
 
 If no current owner or adopted crate solves a non-trivial capability, research

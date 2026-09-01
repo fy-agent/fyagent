@@ -330,13 +330,24 @@ unavailability blocks acceptance.
   version, bundle identifier, both architectures, DMG layout, and byte
   preservation, but does not claim Developer ID signature or notarization;
 - formal-mode Apple Developer ID secrets exist only in the guarded signing /
-  notarization steps inside `build-macos`. Those steps import a
+  notarization steps inside `build-macos`. Before `sign-app`, the job builds
+  the Swift privileged helper, embeds it at the frozen LaunchServices and
+  Frameworks paths, and runs
+  `verify-macos-privileged-helper.sh --structure-only`. `sign-app` then signs
+  inside-out: `libFyAgentPrivilegedClient.dylib`, then
+  `com.fyagent.desktop.system-commit-helper`, then `FyAgent.app`. Do not use
+  `--deep` for nested helper code. Formal signing requires both nested
+  binaries; `FYAGENT_ALLOW_APP_ONLY_SIGN=1` is local/diagnostic only. Helper
+  identity and the production enablement gate are owned by
+  [macOS Privileged System-Commit Helper](./macos-system-commit.md). Those
+  steps import a
   temporary keychain, re-seals the complete app with
   `Developer ID Application: William Wang (HY446996QX)` / team `HY446996QX`,
   the hardened runtime, a secure timestamp, and the checked-in entitlements,
   then verifies that identity without requiring a stapler ticket yet. The job
   packages a signed DMG from that app and submits only the DMG to Apple
-  notarization. The helper submits without `--wait`, then polls
+  notarization. The nested privileged helper is not a second Apple
+  submission. The notarization step submits without `--wait`, then polls
   `notarytool info` until `Accepted` / `Invalid` or a multi-hour budget;
   `notarytool wait --timeout` is not used because it exits 124 with JSON on
   stderr while Apple may still be In Progress. After Apple accepts that one
@@ -550,6 +561,7 @@ until the Release is again provably an owned private draft.
 | Preflight reaches a publish path or Windows provider secret                                                             | Static/remote gate fails.                                                                            |
 | Native runner, architecture, toolchain, or source drifts                                                                | Fail that target; no fallback.                                                                       |
 | Pinned build input ID/digest/manifest/file set drifts                                                                   | Fail before provider or trusted consumption.                                                         |
+| Formal `sign-app` is missing the nested helper, the client dylib, or structure-only helper verification                 | Fail before Developer ID; do not sign an app-only bundle.                                            |
 | Signer configuration is partial/invalid, Apple notarization is denied, or fresh signature proof fails                   | Fail; do not downgrade to unsigned.                                                                  |
 | `notarytool wait --timeout` exits 124 or writes JSON only to stderr                                                     | Must not fail the job; poll `notarytool info` on the same submission id.                             |
 | Apple status remains `In Progress` / `UNKNOWN` inside `FYAGENT_NOTARY_WAIT_SECONDS`                                     | Continue polling; log at least every `FYAGENT_NOTARY_HEARTBEAT_SECONDS`.                             |
@@ -588,6 +600,10 @@ submission, `FYAGENT_NOTARY_WAIT_SECONDS`, `build-macos`
 root `.DS_Store`, `create-macos-dmg.sh`, `write-dmg-layout.py`, `dmg-layout`
 uv group, changelog heading contract, and the
 absence of a macOS ZIP installer.
+
+`tests/releaseWorkflow.test.ts` must keep `build-macos-privileged-helper.sh`,
+`embed-macos-privileged-helper.sh`, and
+`verify-macos-privileged-helper.sh --structure-only` before `sign-app`.
 
 Local execution cannot establish another platform's PowerShell/NSIS/
 Authenticode, native build/package output, macOS bundle, GitHub attestation, or

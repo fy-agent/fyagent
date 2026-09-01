@@ -148,6 +148,57 @@ describe("AboutSection", () => {
     });
   });
 
+  it("installs Grok via official npm only when the user chooses that action", async () => {
+    const user = userEvent.setup();
+    const dateNow = vi
+      .spyOn(Date, "now")
+      .mockReturnValue(Date.now() + 11 * 60 * 1000);
+    mocks.getToolVersions.mockImplementation(async (tools: string[]) =>
+      tools.map((name) =>
+        name === "grok"
+          ? {
+              name,
+              version: null,
+              latest_version: "1.0.6",
+              error: null,
+              installed_but_broken: false,
+              distribution_owner: null,
+              latest_source: "native_internal",
+            }
+          : toolVersion(name),
+      ),
+    );
+    try {
+      render(<AboutSection isPortable={false} />);
+      const grokCard = await screen.findByText("Grok Build");
+      const card = grokCard.closest("div[class*='min-h']") as HTMLElement;
+      await waitFor(() => {
+        expect(
+          within(card).getByRole("button", {
+            name: "settings.grokUseOfficialNpm",
+          }),
+        ).toBeEnabled();
+      });
+      await user.click(
+        within(card).getByRole("button", {
+          name: "settings.grokUseOfficialNpm",
+        }),
+      );
+      await waitFor(() => {
+        expect(mocks.runToolLifecycleAction).toHaveBeenCalledWith(
+          ["grok"],
+          "install_official_npm",
+        );
+      });
+      expect(mocks.runToolLifecycleAction).not.toHaveBeenCalledWith(
+        ["grok"],
+        "install",
+      );
+    } finally {
+      dateNow.mockRestore();
+    }
+  });
+
   it("shows the Windows administrator runtime status only in About", () => {
     render(
       <AboutSection

@@ -2,6 +2,8 @@
 //! capabilities; parsers accept only closed platform/arch branches and
 //! product-owned HTTPS allowlists.
 
+mod claude;
+mod opencode;
 mod qoderwork;
 mod traework;
 mod workbuddy;
@@ -11,6 +13,11 @@ use url::Url;
 
 use crate::services::external_agents::AgentCatalogId;
 
+pub use claude::{
+    claude_manifest_url, parse_claude_desktop_manifest, CLAUDE_DOWNLOAD_HOSTS,
+    CLAUDE_METADATA_HOSTS,
+};
+pub use opencode::{resolve_opencode_desktop_latest, OPENCODE_DOWNLOAD_HOSTS};
 pub use qoderwork::{
     parse_qoderwork_latest, qoderwork_latest_yml_url, QODERWORK_METADATA_HOSTS,
     QODERWORK_REDIRECT_HOSTS,

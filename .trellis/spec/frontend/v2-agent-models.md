@@ -21,8 +21,9 @@ The product boundary is deliberately asymmetric. Agents and Models share one
 its own capability workflow:
 
 - QoderWork CN, TRAE Work CN, WorkBuddy, and Grok Build each expose one
-  catalog-owned product link; Claude Code exposes separate CLI and Desktop
-  links; OpenCode exposes `product` then `cli`. `/agents` no longer uses the
+  catalog-owned product link; Claude Code exposes one `desktop` link
+  (`https://claude.com/download`); OpenCode exposes `product` then `desktop`
+  (`https://opencode.ai`, `https://opencode.ai/download`). `/agents` no longer uses the
   old master/detail capability-jump directory. The page owns a catalog-first
   directory of all supported agents plus a selected-Agent configuration shell
   with four sections:
@@ -73,7 +74,7 @@ type AgentOfficialLink = {
 };
 
 type AgentCatalogResult = {
-  contractVersion: 4;
+  contractVersion: 5;
   reviewedAt: string;
   agents: Array<{
     id: AgentCatalogId;
@@ -131,9 +132,14 @@ Agent install/inventory/action is a second native port. The page may submit
 only closed IDs previously returned by readiness/inventory:
 
 ```ts
+type AgentSurface = "cli" | "desktop";
+
 type AgentInstallReadinessPort = {
   get(agentId: AgentCatalogId): Promise<AgentInstallReadiness>;
-  getInventory(agentId: AgentCatalogId): Promise<AgentInstallationInventory>;
+  getInventory(
+    agentId: AgentCatalogId,
+    surface?: AgentSurface,
+  ): Promise<AgentInstallationInventory>;
   startAction(request: {
     agentId: AgentCatalogId;
     action: "install" | "update" | "launch";
@@ -141,13 +147,14 @@ type AgentInstallReadinessPort = {
     inventoryId?: string; // opaque i1:+32 hex, complete triplet only
     targetId?: string; // opaque c1:/d1:+32 hex
     expectedTargetRevision?: string; // opaque r1:+64 hex
+    surface?: AgentSurface; // omit for compact single-surface products
   }): Promise<AgentActionResult>;
   cancelAction(jobId: string): Promise<AgentActionJobSnapshot>;
   getActionJob(jobId: string): Promise<AgentActionJobSnapshot>;
 };
 
 get_agent_install_readiness({ agentId });
-get_agent_installation_inventory({ agentId });
+get_agent_installation_inventory({ agentId, surface? });
 start_agent_action({ request });
 cancel_agent_action({ jobId });
 get_agent_action_job({ jobId });
@@ -357,15 +364,16 @@ and a revision, never `ak` / `sk` / `apiKey`.
   Hooks.
   QoderWork CN and TRAE Work CN describe MCP as 直接分配; their `mcp.write`
   mode is `direct` with `dedicated_native_contract`.
-- The v4 link matrix is exact: QoderWork CN, TRAE Work CN, WorkBuddy, and
-  Grok Build each own one `product` link; Claude Code owns `cli` then
-  `desktop`; OpenCode owns `product` then `cli`; Codex owns an empty list and
-  keeps its dedicated managed installer outside generic launch. Link IDs are
-  unique per entry, labels are nonempty, and URLs are absolute HTTPS values
-  owned by Rust. Official buttons on the Agent directory use shared
+- The v5 link matrix is exact: QoderWork CN, TRAE Work CN, WorkBuddy, and
+  Grok Build each own one `product` link; Claude Code owns `desktop`
+  (`https://claude.com/download`); OpenCode owns `product` then `desktop`
+  (`https://opencode.ai`, `https://opencode.ai/download`); Codex owns an empty
+  list and keeps its dedicated managed installer outside generic launch. Link
+  IDs are unique per entry, labels are nonempty, and URLs are absolute HTTPS
+  values owned by Rust. Official buttons on the Agent directory use shared
   `CatalogOfficialLinks` with `fy-control-button-primary`. Labels that already
   contain `官方` stay as catalog text.
-- V1 `officialUrl`, catalog v2, future catalog versions, and unknown capability,
+- V1 `officialUrl`, catalog v2/v3/v4, future catalog versions, and unknown capability,
   mode, evidence, variant, or runtime values fail closed in the
   Tauri adapter. The renderer never guesses a legacy shape or carries a second
   URL table.
@@ -407,10 +415,21 @@ export type AgentSection = (typeof AGENT_SECTION_IDS)[number];
   Missing or invalid `section` is replaced with `models`. Returning to the
   directory clears both params. The last in-session configuration may be
   restored only when the Agents route becomes active again without a target.
-- Catalog success renders every catalog entry in the existing catalog /
-  `PRODUCT_DIRECTORY` order. Scan state does not decide whether a row exists.
-  Do not filter `not_installed`, `unknown`, `unavailable`, pending, or failed
+- Catalog success renders every catalog entry. Initial scan uses
+  `PRODUCT_DIRECTORY` / catalog canonical order so cards do not jump as rows
+  settle. After the first complete scan, `orderAgentDirectoryEntries` commits
+  four buckets: installed domestic (`directoryPriority: "domestic"` =
+  qoderwork / trae-work / workbuddy), other installed, unresolved
+  (`unknown` / `unavailable` / technical error), then confirmed
+  `not_installed`. `installed_not_runnable` counts as installed. A later
+  rescan freezes the last committed order until that scan completes. Lifecycle
+  success may re-project immediately when no scan is in flight. Each bucket
+  keeps canonical order; domestic identity never promotes an uninstalled row.
+  Cards use `key={entry.id}`. Do not filter
+  `not_installed`, `unknown`, `unavailable`, pending, or failed
   reads out of the list. Do not replace missing software with skeleton cards.
+  Do not keep a page-local domestic `Set`; `directoryPriority` lives on
+  `PRODUCT_DIRECTORY`.
 - Scan state lives in `useAgentDirectoryScan`. Status is
   `idle | scanning | complete`. `start()` is a no-op while `scanning`.
   First directory entry on a mounted Agents route session auto-starts one
@@ -426,6 +445,12 @@ export type AgentSection = (typeof AGENT_SECTION_IDS)[number];
   including a retained successful result while a later scan is refreshing.
   Pending, `not_installed`, `unknown`, `unavailable`, read failure, and an
   in-flight install/update keep configure disabled.
+- OpenCode and Claude Code are compact desktop products. Readiness omits
+  `surfaces`. `surfacesForAgent` returns `["desktop"]` (Grok remains
+  `["cli"]`). The parser rejects `surface: "cli"` for those two IDs.
+  Claude's install-region title is exactly **「Claude Desktop」**. Removing
+  Agent CLI install surfaces must not delete Provider, Skills, MCP, or
+  session identity for those products.
 - Managed-desktop readiness and the target picker consume one backend inventory
   authority. The renderer must not infer `not_installed` from a missing
   known-path observation when inventory returned one trusted Registry/App
@@ -436,7 +461,10 @@ export type AgentSection = (typeof AGENT_SECTION_IDS)[number];
   Visible 一键安装 / 一键更新 come only from `allowedActions` plus the
   current install/updateState (install when `not_installed` and `install` is
   allowed; update when existence is proven, `updateState === update_available`,
-  and `update` is allowed). Backend omission is not a fake button. The shared
+  and `update` is allowed). QoderWork / TRAE Work / WorkBuddy never show
+  FyAgent 一键更新, 「检查更新」, 「有新版本」, or 「已是最新」; backend
+  `updateState` is `unavailable` and `update` is absent from `allowedActions`.
+  Backend omission is not a fake button. The shared
   query owner is `featureKeys.agentInstallationInventory(agentId)` /
   `useAgentInstallationInventory`; pages do not call the Tauri command or
   choose a winner themselves. Directory one-click remains available only when
@@ -795,7 +823,9 @@ fetch/save controls.
   policy. Browser ports stay native-only.
 - Visible lifecycle actions are the `install | update | launch` subset of
   `allowedActions` from the backend DTO. Legacy Auth action values are never
-  rendered or submitted through `AgentInstallReadinessPort`.
+  rendered or submitted through `AgentInstallReadinessPort`. The launch
+  control copy is exactly **「打开软件」**. CLI surfaces never show it.
+  Install/update success must not auto-invoke launch.
   Codex install/update remain the dedicated desktop installer; this region
   must not start a Codex Agent job. Qoder has no claimed remote semver.
   TRAE/WorkBuddy pass the opaque `releaseId` back as `expectedReleaseId`.
@@ -806,12 +836,26 @@ fetch/save controls.
   from download and install; `launching_installer` / `awaiting_user` expose
   Windows vendor ownership without inventing a percent, `incomplete` is a
   terminal non-success, and the four Windows installer reason codes remain
-  distinguishable. `authorization_required` explains that the
-  selected system target cannot be automated and will not move scopes;
-  `application_running` asks the user to quit the app;
+  distinguishable. `authorization_required` and helper-not-ready codes explain
+  that the selected system target cannot be automated and will not move
+  scopes; `action_not_supported` explains that this product does not offer
+  that lifecycle action. `application_running` asks the user to quit the app;
   `rollback_restored` confirms only restoration, not update success; and
   `recovery_required` instructs the user to stop retrying because native
   authority is unknown. None of these states is rendered as installed success.
+- Download UX consumes one shared projector
+  (`src/shared/codex-desktop/snapshots.ts` via
+  `src/v2/shared/features/transfer-projection.ts`). Job `transfer` supplies
+  raw bytes; `observedAt` is RFC3339 UTC `Z` with optional milliseconds
+  (`.sssZ`) matching host download samples. The page must not `toFixed` a
+  local percent. Known total: at most
+  one decimal, clamped `0..100`. Unknown total: indeterminate + transferred
+  bytes, no invented percent. Hide stale/zero/unknown/terminal speed. Official
+  Grok installer has no byte protocol: stage copy only.
+- Grok Build CLI keeps `native_internal` and `official_npm`. The UI may offer
+  「使用官方 npm 方式」 / 「改用官方 npm 方式」 only as an explicit
+  `run_tool_lifecycle_action(tools, "install_official_npm")`. Native failure
+  must not auto-switch. Do not display one owner's latest as the other's.
 - Agent directory/configuration consume `FeaturePorts.agentAuth`, whose adapter
   parses exact tagged observation/session DTOs before query or React state.
   Directory copy is compact and read-only; the configuration panel owns
@@ -1046,10 +1090,10 @@ mise run rust:test
 
 Required focused coverage includes:
 
-- exact catalog v4 version/order/variant/capability/mode/reason/evidence/link
-  ID/label/HTTPS matrix and v2/v3/future/unknown/excess fail-closed cases,
-  Grok Build product URL, Claude CLI/Desktop order, OpenCode product/CLI order,
-  Codex zero-link behavior, and command registration;
+- exact catalog v5 version/order/variant/capability/mode/reason/evidence/link
+  ID/label/HTTPS matrix and v2/v3/v4/future/unknown/excess fail-closed cases,
+  Grok Build product URL, Claude desktop-only official link, OpenCode
+  product/desktop order, Codex zero-link behavior, and command registration;
 - seven local Agent assets, official Qoder PNG / TRAE PNG digests, Qoder default,
   exact Models order including Grok Build, master/detail keyboard/ARIA, four
   maintained viewports; displayed model IDs resolve only bundled vendor SVGs;
@@ -1100,8 +1144,11 @@ Required focused coverage includes:
   success, first-entry auto-scan, per-row pending/scanning, configure only
   when `installed` / `installed_not_runnable` (retained during rescan),
   一键安装/一键更新 only from `allowedActions` or the Codex desktop
-  installer projection, generic jobs show stage not percent, action success
-  requires authoritative readback, and technical failure is not rendered as
+  installer projection, generic jobs project percent/speed only from shared
+  `transfer` telemetry (no page-local `toFixed`), launch copy is 「打开软件」,
+  OpenCode and Claude render one desktop install region (Claude titled
+  「Claude Desktop」), directory order follows the four scan buckets,
+  action success requires authoritative readback, and technical failure is not rendered as
   not-installed or removed from the list.
 - Agent readiness exact seven-ID/exact-key/sensitive-field-negative coverage,
   closed `startAction`/`cancelAction`/`getActionJob` wires, opaque
@@ -1179,6 +1226,7 @@ returned by the backend; render `allowedActions`, inventory eligibility, and
 ```ts
 const readiness = await ports.agentInstallReadiness.get("workbuddy");
 const inventory = await ports.agentInstallReadiness.getInventory("workbuddy");
+// OpenCode/Claude are compact desktop: omit surface, never send "cli"
 const destination = installationTargetsForAction(inventory, "install").find(
   (target) => target.eligibleActions.includes("install"),
 );

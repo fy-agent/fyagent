@@ -1,16 +1,18 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import type {
-  AgentActionJobSnapshot,
-  AgentActionJobStage,
-  AgentActionResult,
-  AgentInstallationInventory,
-  AgentInstallationTarget,
-  AgentInstallReadiness,
-  AgentInstallReadinessPort,
-  AgentInstallState,
-  AgentReasonCode,
+import {
+  AGENT_ACTION_CONTRACT_VERSION,
+  AGENT_INSTALL_READINESS_CONTRACT_VERSION,
+  type AgentActionJobSnapshot,
+  type AgentActionJobStage,
+  type AgentActionResult,
+  type AgentInstallationInventory,
+  type AgentInstallationTarget,
+  type AgentInstallReadiness,
+  type AgentInstallReadinessPort,
+  type AgentInstallState,
+  type AgentReasonCode,
 } from "@/v2/shared/features/agent-install-readiness";
 import {
   AGENT_LIFECYCLE_INCOMPLETE_COPY,
@@ -27,7 +29,7 @@ function readiness(
   overrides: Partial<AgentInstallReadiness> = {},
 ): AgentInstallReadiness {
   return {
-    contractVersion: 3,
+    contractVersion: AGENT_INSTALL_READINESS_CONTRACT_VERSION,
     agentId: "qoderwork",
     reviewedAt: "2026-08-29",
     installState: "not_installed",
@@ -51,7 +53,7 @@ function jobSnapshot(
   overrides: Partial<AgentActionJobSnapshot> = {},
 ): AgentActionJobSnapshot {
   return {
-    contractVersion: 2,
+    contractVersion: AGENT_ACTION_CONTRACT_VERSION,
     jobId: "job-1",
     agentId: "qoderwork",
     action: "install",
@@ -59,6 +61,7 @@ function jobSnapshot(
     cancellable:
       stage === "checking" || stage === "downloading" || stage === "staging",
     reasonCode: null,
+    transfer: null,
     ...overrides,
   };
 }
@@ -67,7 +70,7 @@ function actionResult(
   overrides: Partial<AgentActionResult> = {},
 ): AgentActionResult {
   return {
-    contractVersion: 2,
+    contractVersion: AGENT_ACTION_CONTRACT_VERSION,
     agentId: "qoderwork",
     action: "install",
     jobId: "job-1",
@@ -193,10 +196,50 @@ describe("deriveAgentLifecyclePrimaryAction", () => {
 describe("macOS lifecycle state copy", () => {
   it("distinguishes staging, authorization, restored rollback, and unknown recovery", () => {
     expect(jobStageCopy("staging")).toBe("正在准备安装包");
-    expect(reasonCopy("authorization_required")).toContain("管理员授权");
+    expect(reasonCopy("authorization_required")).toContain("不可用于一键安装");
     expect(reasonCopy("authorization_required")).toContain("不会改装到其他目录");
     expect(reasonCopy("rollback_restored")).toContain("已恢复之前的应用");
     expect(reasonCopy("recovery_required")).toContain("停止重试");
+  });
+
+  it("projects helper-specific reasons without paths or internal names", () => {
+    const codes: AgentReasonCode[] = [
+      "helper_not_packaged",
+      "helper_signature_invalid",
+      "helper_install_authorization_cancelled",
+      "helper_install_failed",
+      "helper_update_required",
+      "helper_downgrade_rejected",
+      "helper_protocol_incompatible",
+      "helper_peer_rejected",
+      "operation_authorization_cancelled",
+      "operation_authorization_invalid",
+      "source_capability_invalid",
+      "source_changed",
+      "target_slot_invalid",
+      "helper_removal_failed",
+    ];
+    for (const code of codes) {
+      const copy = reasonCopy(code);
+      expect(copy).toBeTruthy();
+      expect(copy).not.toMatch(/\/Applications/u);
+      expect(copy).not.toContain("~/");
+      expect(copy?.toLowerCase()).not.toContain("helper");
+      expect(copy).not.toContain("SMJobBless");
+      expect(copy).not.toContain("XPC");
+      expect(copy).not.toContain("com.fyagent.desktop.system-commit-helper");
+    }
+    expect(reasonCopy("helper_not_packaged")).toContain("系统文件夹");
+    expect(reasonCopy("helper_not_packaged")).toContain("不会改到其他目录");
+    expect(reasonCopy("operation_authorization_cancelled")).toContain(
+      "取消了管理员授权",
+    );
+    expect(reasonCopy("authorization_required")).toContain(
+      "系统应用程序文件夹",
+    );
+    expect(reasonCopy("action_not_supported")).toBe("当前产品不支持此操作。");
+    expect(reasonCopy("action_not_supported")).not.toMatch(/https?:\/\//u);
+    expect(reasonCopy("action_not_supported")).not.toContain("~/");
   });
 });
 
@@ -600,7 +643,7 @@ describe("useAgentLifecycleAction", () => {
     expect(port.get).toHaveBeenCalled();
   });
 
-  it("keeps percent null through every generic job stage", async () => {
+  it("keeps percent null through generic job stages without transfer telemetry", async () => {
     const seen: Array<number | null> = [];
     const stages: AgentActionJobStage[] = [
       "checking",
@@ -635,5 +678,190 @@ describe("useAgentLifecycleAction", () => {
 
     expect(seen.length).toBeGreaterThan(1);
     expect(seen.every((value) => value === null)).toBe(true);
+  });
+
+  it("projects one-decimal download progress from job transfer telemetry", async () => {
+    let release = false;
+    const downloading = jobSnapshot("downloading", {
+      transfer: {
+        phase: "download",
+        completedBytes: 3744,
+        totalBytes: 10_000,
+        attempt: 1,
+        maxAttempts: 3,
+        sequence: 1,
+        observedAt: "2026-08-14T00:00:01.000Z",
+      },
+    });
+    const port = createPort({
+      get: vi.fn(async () =>
+        readiness({
+          installState: "installed",
+          updateState: "up_to_date",
+          allowedActions: ["launch"],
+        }),
+      ),
+      startAction: vi.fn(async () => actionResult()),
+      getActionJob: vi.fn(async () =>
+        release ? jobSnapshot("succeeded") : downloading,
+      ),
+    });
+    const { result } = renderHook(() =>
+      useAgentLifecycleAction({
+        agentId: "qoderwork",
+        port,
+        readiness: readiness({
+          allowedActions: ["install"],
+        }),
+        target: lifecycleTarget(),
+        pollIntervalMs: 5,
+        maxPolls: 20,
+      }),
+    );
+
+    let finished: Promise<void> | undefined;
+    act(() => {
+      finished = result.current.run("install");
+    });
+    await waitFor(() => {
+      expect(result.current.stage).toBe("downloading");
+      expect(result.current.percent).toBeCloseTo(37.44, 5);
+      expect(result.current.progressLabel).toBe("下载中 37.4%");
+    });
+    release = true;
+    await act(async () => {
+      await finished;
+    });
+    expect(result.current.percent).toBeNull();
+    expect(result.current.progressLabel).toBeNull();
+    expect(result.current.success).toBe(AGENT_LIFECYCLE_SUCCEEDED_COPY);
+  });
+
+  it("uses OpenCode desktop allowedActions without a dual CLI surface", async () => {
+    const desktopRelease = `v1:${"d".repeat(64)}`;
+    const current = readiness({
+      agentId: "opencode",
+      sourceKind: "managed_desktop",
+      authOwnership: "provider_owned",
+      allowedActions: ["launch"],
+      releaseId: desktopRelease,
+      installState: "installed",
+      inventoryState: "single",
+      updateState: "up_to_date",
+      localVersion: "1.18.19",
+      remoteVersion: "1.18.19",
+    });
+    const port = createPort({
+      get: vi.fn(async () => current),
+      getInventory: vi.fn(async () => ({
+        ...installationInventory(),
+        agentId: "opencode" as const,
+      })),
+      startAction: vi.fn(async () =>
+        actionResult({
+          agentId: "opencode",
+          action: "launch",
+          jobId: null,
+          stage: "succeeded",
+        }),
+      ),
+    });
+    const { result } = renderHook(() =>
+      useAgentLifecycleAction({
+        agentId: "opencode",
+        port,
+        readiness: current,
+      }),
+    );
+
+    await act(async () => {
+      await result.current.run("launch");
+    });
+
+    expect(port.startAction).toHaveBeenCalledWith({
+      agentId: "opencode",
+      action: "launch",
+      expectedReleaseId: desktopRelease,
+    });
+    expect(port.startAction).not.toHaveBeenCalledWith(
+      expect.objectContaining({ surface: "cli" }),
+    );
+    expect(port.getInventory).toHaveBeenCalledWith("opencode", undefined);
+    expect(result.current.success).toBe(AGENT_LIFECYCLE_SUCCEEDED_COPY);
+  });
+
+  it("runs a CLI install without an inventory target", async () => {
+    const current = readiness({
+      agentId: "grokbuild",
+      sourceKind: "cli_tooling",
+      allowedActions: ["install"],
+    });
+    const port = createPort({
+      get: vi.fn(async () => current),
+      startAction: vi.fn(async () =>
+        actionResult({
+          agentId: "grokbuild",
+          action: "install",
+          jobId: null,
+          stage: "succeeded",
+        }),
+      ),
+    });
+    const { result } = renderHook(() =>
+      useAgentLifecycleAction({
+        agentId: "grokbuild",
+        port,
+        readiness: current,
+      }),
+    );
+
+    await act(async () => {
+      await result.current.run("install");
+    });
+
+    expect(port.startAction).toHaveBeenCalledWith({
+      agentId: "grokbuild",
+      action: "install",
+      expectedReleaseId: current.releaseId,
+    });
+    expect(result.current.success).toBe(AGENT_LIFECYCLE_SUCCEEDED_COPY);
+  });
+
+  it("does not invent percent when Content-Length is unknown", async () => {
+    const port = createPort({
+      startAction: vi.fn(async () => actionResult()),
+      getActionJob: vi.fn(async () =>
+        jobSnapshot("downloading", {
+          transfer: {
+            phase: "download",
+            completedBytes: 126 * 1024 * 1024,
+            totalBytes: null,
+            attempt: 1,
+            maxAttempts: 3,
+            sequence: 1,
+            observedAt: "2026-08-14T00:00:01.000Z",
+          },
+        }),
+      ),
+    });
+    const { result } = renderHook(() =>
+      useAgentLifecycleAction({
+        agentId: "qoderwork",
+        port,
+        readiness: readiness(),
+        target: lifecycleTarget(),
+        pollIntervalMs: 5,
+        maxPolls: 20,
+      }),
+    );
+
+    act(() => {
+      void result.current.run("install");
+    });
+    await waitFor(() => {
+      expect(result.current.stage).toBe("downloading");
+      expect(result.current.progressLabel).toBe("已下载 126 MB");
+      expect(result.current.percent).toBeNull();
+    });
   });
 });

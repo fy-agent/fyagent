@@ -58,11 +58,9 @@ async function installAgentV3Overrides(page: Page): Promise<void> {
           : agentId === "qoderwork" || agentId === "opencode"
             ? "not_installed"
             : "installed";
-      const cliAgent = ["grokbuild", "claude-code", "opencode"].includes(
-        agentId,
-      );
+      const grokCli = agentId === "grokbuild";
       return {
-        contractVersion: 3,
+        contractVersion: 4,
         agentId,
         reviewedAt: "2026-08-29",
         installState,
@@ -78,7 +76,7 @@ async function installAgentV3Overrides(page: Page): Promise<void> {
         sourceKind:
           agentId === "codex"
             ? "codex_desktop"
-            : cliAgent
+            : grokCli
               ? "cli_tooling"
               : "managed_desktop",
         allowedActions: [],

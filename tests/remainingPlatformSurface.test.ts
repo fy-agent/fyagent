@@ -63,6 +63,7 @@ type CheckerModule = {
   RUST_ALLOWANCE_CONTRACT: readonly RustAllowance[];
   RASTER_ASSET_CONTRACT: readonly { path: string; digest: string }[];
   STRUCTURE_ASSET_CONTRACT: readonly { path: string; digest: string }[];
+  STRUCTURE_ASSET_EXECUTABLES: readonly string[];
   SURFACE_MARKERS: SurfaceMarkers;
   inspectRepository(options?: Record<string, unknown>): {
     findings: Finding[];
@@ -726,7 +727,7 @@ describe("durable supported-platform surface contract", () => {
 
   it("freezes every fail-closed Rust allowance by file, condition, and adjacent structure", () => {
     const entries = permittedRustEntries();
-    expect(checker.RUST_ALLOWANCE_CONTRACT).toHaveLength(13);
+    expect(checker.RUST_ALLOWANCE_CONTRACT).toHaveLength(18);
     expect(checker.scanRustImplicitPredicates(entries)).toEqual([]);
 
     const first = checker.RUST_ALLOWANCE_CONTRACT[0];
@@ -1337,6 +1338,9 @@ describe("durable supported-platform surface contract", () => {
     };
 
     expect(checker.STRUCTURE_ASSET_CONTRACT.length).toBeGreaterThan(50);
+    expect(checker.STRUCTURE_ASSET_EXECUTABLES).toEqual([
+      "scripts/tasks/macos-signed-dev-cargo.mjs",
+    ]);
     expect(validate()).toEqual(
       checker.STRUCTURE_ASSET_CONTRACT.map(({ path: assetPath }) => assetPath),
     );
@@ -1399,6 +1403,14 @@ describe("durable supported-platform surface contract", () => {
         root: ROOT,
       }),
     ).toThrow(/mode 100644/iu);
+
+    const runnerModes = new Map(indexModes);
+    runnerModes.set("scripts/tasks/macos-signed-dev-cargo.mjs", "100644");
+    expect(() =>
+      checker.validateStructureAssetInventory(currentPaths, runnerModes, {
+        root: ROOT,
+      }),
+    ).toThrow(/mode 100755/iu);
 
     const added = "src/new-platform-probe.ts";
     const addedAbsolute = path.join(ROOT, ...added.split("/"));

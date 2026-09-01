@@ -35,5 +35,19 @@ describe("V2 shared product directory", () => {
       "claude-code",
       "opencode",
     ]);
+    expect(
+      PRODUCT_DIRECTORY.map((entry) => [
+        entry.agentId,
+        entry.directoryPriority,
+      ]),
+    ).toEqual([
+      ["qoderwork", "domestic"],
+      ["trae-work", "domestic"],
+      ["workbuddy", "domestic"],
+      ["grokbuild", "standard"],
+      ["codex", "standard"],
+      ["claude-code", "standard"],
+      ["opencode", "standard"],
+    ]);
   });
 });

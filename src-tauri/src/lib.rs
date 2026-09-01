@@ -21,6 +21,7 @@ mod grok_config;
 pub mod hermes_config;
 mod init_status;
 mod lightweight;
+mod macos_system_commit;
 mod mcp;
 mod model_capabilities;
 mod openclaw_config;

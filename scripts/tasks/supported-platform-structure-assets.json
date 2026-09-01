@@ -15,15 +15,19 @@
     ],
     [
       "scripts/tasks/host-native.mjs",
-      "a291a520daf992b4ed4ae558fd6a1db033b5e0b57b4336e74be7d9ccf83a3205"
+      "f9e987c889d59619d72ad7d4d44c080e1857fa94ca88e75794b23a77776c26e1"
     ],
     [
       "scripts/tasks/lib.mjs",
       "6c39036ff571f97e5f58db2cce0cedf05db27eb8d9aabcb1045cfd59aab2b0cb"
     ],
     [
+      "scripts/tasks/macos-signed-dev-cargo.mjs",
+      "fd2cf17f206ab71865ee5e4d8eaa9c22ece0bc52378dd1bc18964b150c11f029"
+    ],
+    [
       "scripts/tasks/supported-platform-check.mjs",
-      "54df128d47c4477de2ea7f75908f77b2e932afe79c39495bb02cb88bfef94ae1"
+      "fe593bb315088f3a3c922d163216a13c04e9c5972a2b139afc787aec09b21547"
     ],
     [
       "scripts/tasks/system-check.mjs",
@@ -39,35 +43,31 @@
     ],
     [
       "src-tauri/build.rs",
-      "ad356bc888f11ca1eed3d4ab6ae597c922c3bff25ce7c657aa36ac46bb854ef0"
+      "d40118fd0a4de5e3b2001f9d0c9b764099c6f12cc6060b855969d6a8bc8eddfb"
     ],
     [
       "src-tauri/Cargo.toml",
-      "e663c1a44ac393abf2369b7e3dd232ffb1d74704ac2a40c3800fd982a572a47e"
+      "63988629e3587cd5cf104ffb6bf282ccea71a696aa69564ea93104b0eccc391b"
     ],
     [
       "src-tauri/src/agent_install/desktop.rs",
-      "5e780f7b47c707d30ed9fb5a25c8944d9c481971900d18066d8b4c8fb3a46e80"
-    ],
-    [
-      "src-tauri/src/agent_install/fetch.rs",
-      "c1028fd6f3c786f1605e6be15117227a19f495d4f8e6eb2c1d3d8841ebebd33f"
+      "f5641b04d479dab4fec59c5bd4d48665194d6a281c5a85b4041a934349de7e1b"
     ],
     [
       "src-tauri/src/agent_install/inventory.rs",
-      "e95202c0ce68a38c805a9b677572c8d482d53d92e1f36e7fbd635a6ce739d92b"
+      "f4246cd02da2b8066de7e9ad03dbff755f4c41f07314669411ac0ab787aeea62"
     ],
     [
       "src-tauri/src/agent_install/macos.rs",
-      "d56613d7560c3703e66b662becd9f3bbdf390cc035decc79059f836cd40bb51c"
+      "d856f269698760b2853bd4292d754de79c41957716f5d268008c2cf35da6c859"
     ],
     [
       "src-tauri/src/agent_install/mod.rs",
-      "867dd586c8fe284721b16cab742f82fcee903b388a009612dd9b7972754bed8d"
+      "1d9d3dee4568cf668eb320d154e62febdb6fdaa925d25dabb2088a4efcd878d5"
     ],
     [
       "src-tauri/src/agent_install/sources/mod.rs",
-      "1e1b28add69df79e330b7a9be5ebeccc8d350281a8b033bea5145396afe864ff"
+      "3aa3aebb7b33196ce19afcab0193a3cdf020331621f3b2ed4d9e3c7465ab8848"
     ],
     [
       "src-tauri/src/agent_install/windows.rs",
@@ -110,8 +110,12 @@
       "cd186cbd8f045110c046d0fc50a950f381f289e36e257f84eeb5976d39cd4664"
     ],
     [
+      "src-tauri/src/codex_desktop/platform/macos/bundle.rs",
+      "2d30564af5c4bc593da33df7d99ca18cef73cc69cf19f14f03872c0747fe5519"
+    ],
+    [
       "src-tauri/src/codex_desktop/platform/macos/mod.rs",
-      "b6c234c89d9b76e846ba9ade94c25da0923e2117fa52d8cb2ff82d736d0180e1"
+      "80c7618dab9319da17f04933d43355a77886a577f445b8876a294669c8f128da"
     ],
     [
       "src-tauri/src/codex_desktop/platform/windows/deployment.rs",
@@ -151,11 +155,19 @@
     ],
     [
       "src-tauri/src/lib.rs",
-      "ec9af143fba0c5dc57bb85b99a2fdbe7283918c4fab2e98ea85d9314cc3845a6"
+      "765834a1957e82ffd11c136b0414b6b2dca403274dfd6b461281aacddf4e3d8a"
     ],
     [
       "src-tauri/src/lightweight.rs",
       "5533e695fc4a3164f6e4d193771fb8ced39bc1e18e71d197b1924f38dd0175c3"
+    ],
+    [
+      "src-tauri/src/macos_system_commit/ffi.rs",
+      "264b4413bf1804276a7ad2edd7e138b4f5b3de0e1e6452b0e0da9cc094a779d3"
+    ],
+    [
+      "src-tauri/src/macos_system_commit/mod.rs",
+      "75c7a04647036cd2b01b673d3a6e8f04a50799e5a5fbe51cae02a4b221727278"
     ],
     [
       "src-tauri/src/main.rs",
@@ -179,7 +191,7 @@
     ],
     [
       "src-tauri/src/platform/process_launch.rs",
-      "6aeef4822b0df5caab223fafe17d6a716da01d42dd500e483a17199722b3f7b2"
+      "1ca580892134df4fdaf1dec6e06a67c4c319783361d1b75070f419ef677c7661"
     ],
     [
       "src-tauri/src/proxy/providers/codex_oauth_auth.rs",
@@ -239,15 +251,19 @@
     ],
     [
       "src-tauri/src/services/tooling.rs",
-      "3ccae387688de5ea774d69de8489bf2019d7c70012f034c79fc4cd5163f7c3b5"
+      "bf628dbe25ee51973966587463c639a81d59deb628b3816c0ab9f220d6f5d381"
     ],
     [
       "src-tauri/src/services/tooling/discovery.rs",
-      "bd1dc697fd7ed9732db7132e5ce57a8a902418d2f80da0e2c8b56eceea90cae5"
+      "bfeb914870ced452019ea60d582abc41955f2d26ac31d7ca3341cca030a3d40b"
+    ],
+    [
+      "src-tauri/src/services/tooling/grok.rs",
+      "d220e108aac8dfba8c8e882a92d90db3490fb6c7fb410c5fa55909313ab86f5b"
     ],
     [
       "src-tauri/src/services/tooling/lifecycle.rs",
-      "799a08441400b101a94cfae66e074c4a3ab35f36acda360e75bd6e8c8ed65634"
+      "9d641dab66075362b54150cbab4072bfd381d0d72752c170536b76317cd3efc9"
     ],
     [
       "src-tauri/src/services/tooling/terminal.rs",
@@ -255,7 +271,7 @@
     ],
     [
       "src-tauri/src/services/tooling/versions.rs",
-      "52e88a23ec796504504c8516c5429bb6dffb697efc592625967cb51a6e97e763"
+      "a76692d6b3b5b22542e2bba61e6041f6a810f3170311315eab11ef05123d0564"
     ],
     [
       "src-tauri/src/services/traework_models.rs",
@@ -351,7 +367,7 @@
     ],
     [
       "src/components/settings/AboutSection.tsx",
-      "708d3b5417c8a62a905306ffcd4157cdfa7532fd984732ae37f6a76d54eaaadc"
+      "3506d5ab469e41d72a5be7fb4683de37451a33b1e977b83f5671834852702dc6"
     ],
     [
       "src/components/settings/TerminalSettings.tsx",
@@ -383,15 +399,15 @@
     ],
     [
       "tests/miseTaskContract.test.ts",
-      "6b3c12e882fa12b1e926df79616cb5f18881d4efe99e6888f1cde333f2319a0c"
+      "9ba620e8d8eeb8dc1b443676800d67966291e3fc2e8acc3f68f71230249629f8"
     ],
     [
       "tests/releaseWorkflow.test.ts",
-      "5782861d52d716a6187814f8b8a9518fcb60c4e1b2fafd25c9529171174c252c"
+      "4458894bc429dd12224fb8e56e121ab8117247e8c779a4568157b22a903668ae"
     ],
     [
       "tests/remainingPlatformSurface.test.ts",
-      "355b5dc04de23a7e17192bcc87e221286626e75a01f4244c65a04f7a946d3e0f"
+      "5c22ee4f526ca9915d2974d78e833495e683be88ec253e279609a6fa2a058241"
     ],
     [
       "tests/singleInstanceActivationContract.test.ts",

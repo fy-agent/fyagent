@@ -1,0 +1,14 @@
+{"file":".trellis/spec/backend/reuse.md","reason":"后端 existing-owner、adopted dependency、开源评审与禁止重复下载/事务/协议 owner 的强制顺序"}
+{"file":".trellis/spec/backend/modular-boundaries.md","reason":"Agent install inventory、source、job、command/service/platform 依赖方向和 crate-private facade 边界"}
+{"file":".trellis/spec/frontend/reuse.md","reason":"Agent Directory shared metadata/projection placement、禁止 page-local 产品表和 backend allowedActions 权威"}
+{"file":".trellis/tasks/08-31-macos-agent-directory-install-policy/research/spec-constraints.md","reason":"大体积 Agent/installer/V2 owning specs 的经核对非截断约束；Phase 0 仍须重读 live spec"}
+{"file":".trellis/tasks/08-31-macos-agent-directory-install-policy/research/current-implementation-audit.md","reason":"当前固定排序、surface、readiness/action/source 和共享安装 owner 的只读基线；实施 Phase 0 必须重新核对"}
+{"file":".trellis/tasks/08-31-macos-agent-directory-install-policy/research/upstream-source-evidence.md","reason":"Claude 官方产品/地区边界、固定镜像 manifest/DMG 证据与 OpenCode 官方 release/source 结论"}
+{"file":".trellis/tasks/08-31-macos-agent-directory-install-policy/research/reuse-decision.md","reason":"逐能力复用/扩展/拒绝决策、零新依赖和负向扫描要求"}
+{"file":".trellis/tasks/08-31-macos-agent-directory-install-policy/research/sorting-policy.md","reason":"扫描完成后四 bucket 稳定排序、stale failure、rescan freeze、focus 和测试矩阵"}
+{"file":".trellis/tasks/08-31-macos-agent-directory-install-policy/research/execution-context.md","reason":"执行方需要的精简产品矩阵、source、顺序、依赖、stop conditions 和串行阶段"}
+{"file":".trellis/tasks/08-31-macos-privileged-application-commit-helper/research/execution-context.md","reason":"系统 /Applications 提交由独立 closed helper owner 负责；本任务只能通过其稳定 port 集成"}
+
+{"file": ".trellis/tasks/08-31-macos-agent-directory-install-policy/research/parallel-with-helper.md", "reason": "与 helper 任务并行时的文件所有权和禁止碰撞清单。"}
+{"file": ".trellis/spec/backend/external-agent-p0.md", "reason": "Agent catalog/surface/action 与 deferred /Applications 的 owning spec。"}
+{"file": ".trellis/spec/frontend/v2-agent-models.md", "reason": "Agent Directory 与 lifecycle UI 合同。"}

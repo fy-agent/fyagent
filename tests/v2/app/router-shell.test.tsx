@@ -311,7 +311,7 @@ describe("FyAgent V2 primary route lifecycle", () => {
     const user = userEvent.setup();
     const ports = createBrowserFeaturePorts();
     ports.catalog.get = vi.fn(async () => ({
-      contractVersion: 4 as const,
+      contractVersion: 5 as const,
       reviewedAt: "2026-08-18",
       agents: [
         {
@@ -335,9 +335,9 @@ describe("FyAgent V2 primary route lifecycle", () => {
           description: "Claude Code",
           officialLinks: [
             {
-              id: "cli" as const,
-              label: "Claude Code CLI",
-              url: "https://docs.anthropic.com/en/docs/claude-code/getting-started",
+              id: "desktop" as const,
+              label: "Claude Desktop",
+              url: "https://claude.com/download",
             },
           ],
           capabilities: [],

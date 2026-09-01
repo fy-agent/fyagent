@@ -1815,3 +1815,82 @@ Rewrote audited frontend and public-documentation copy, added an indexed user-fa
 ### Status
 
 [OK] **Completed**
+
+
+## Session 57: 完善 macOS Agent 安装更新与启动体验
+<!-- trellis-session: v=2 fp=6a3ab1aa71401896 -->
+
+**Date**: 2026-08-31
+**Task**: 完善 macOS Agent 安装更新与启动体验
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+复用 Codex 流式下载、plist 与 NSWorkspace 启动，补齐 OpenCode cli/desktop surfaces、Grok owner 显式 npm，以及 job v3 transfer 进度；系统 /Applications 提交延期。完成 spec 对齐、prearchive 与归档。
+
+### Main Changes
+
+- Agent job 合同升到 v3，下载走 Codex persist 流并投影 transfer 进度
+- OpenCode 保持单一产品，CLI 与 Desktop 独立 surface；桌面动作用 opaque path + NSWorkspace
+- Grok macOS 禁止 installer||npm 自动回退，官方 npm 需显式 install_official_npm
+- owning spec 写明 surfaces、job v3 transfer，以及系统 /Applications 提交延期
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `1b6e2aab95fd4ca4947a6aa356644a56747e88f0` | feat: unify macOS Agent install, OpenCode surfaces, and Grok owners |
+| `2405b0ecd5f91268ab807fc8c5fe25adde8ad90c` | fix: drop unused Codex desktop test import |
+| `14ee2290a9c5d6efe08a15be70b0bc382ab6c010` | style: format Agent install and Grok owner UI files |
+| `ccbf7520ed237601ecc2c8fc08f82f5cb5edbd39` | fix: refresh About structure digest and isolate Grok npm test |
+
+### Testing
+
+- [OK] mise run check:prearchive --exclude-active-task .trellis/tasks/08-31-macos-agent-install-update-experience 通过
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 系统 /Applications 特权提交仍保持 OPEN，由后续独立 helper 任务承接；本会话未提交未跟踪的 helper 规划目录
+
+
+## Session 58: macOS 特权 Helper 与 Agent 目录安装策略
+<!-- trellis-session: v=2 fp=6e6869253475af29 -->
+
+**Date**: 2026-08-31
+**Task**: macOS 特权 Helper 与 Agent 目录安装策略
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+并行交付封闭 macOS 特权提交 helper（生产 /Applications 仍禁用）以及 Agent 目录四桶排序、国产仅安装、Claude/OpenCode desktop-only 生命周期；已回写长期 spec 并归档两个任务。
+
+### Main Changes
+
+- 新增 Blessed/SMJobBless Swift helper、C ABI 与 crate-private MacSystemCommitPort；production_enabled 保持 false
+- Agent 目录按扫描结果四桶排序；QoderWork/TRAE Work/WorkBuddy 禁止 FyAgent 更新
+- Claude Desktop 固定镜像 source；OpenCode 复用 GitHub latest + 固定 stable DMG；Catalog v5
+- 发布流程在 sign-app 前 embed 并 inside-out 签名 nested helper；owning spec 已对齐
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `bf30861826a3095203802340c4a359ab807d3aa6` | feat: add macOS privileged helper and Agent directory install policy |
+
+### Testing
+
+- [OK] mise run check:prearchive --exclude-active-task .trellis/tasks/08-31-macos-agent-directory-install-policy 通过
+- [OK] cargo test --lib agent_install macos_system_commit、pnpm test:v2、swift PrivilegedHelperTests 已在实施/检查阶段通过
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 正式 Developer ID 签名、公证与真机 /Applications HIL 之后才能打开 production_enabled
+- Claude Desktop 尚未进入 helper KnownSystemProduct 表；Windows 桌面安装器仍推迟

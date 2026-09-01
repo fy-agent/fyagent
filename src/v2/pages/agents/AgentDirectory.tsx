@@ -9,6 +9,7 @@ import {
 } from "../../shared/features/agent-install-readiness";
 import { useAgentInstallationInventory } from "../../shared/features/queries";
 import { useFeatures } from "../../shared/features/provider";
+import { formatTransferPercent } from "../../shared/features/transfer-projection";
 import {
   AGENT_CATALOG_IDS,
   type AgentCatalogEntry,
@@ -17,6 +18,7 @@ import {
 import { BrandIconFrame } from "../../shared/ui/catalog";
 import { Button, InlineNotice, Spinner } from "../../shared/ui/primitives";
 
+import { applyCommittedAgentDirectoryOrder } from "./agentDirectoryOrder";
 import {
   observeAgentDirectoryRow,
   type AgentDirectoryRowObservation,
@@ -73,9 +75,16 @@ function directoryBusyCopy(
   return null;
 }
 
+function genericBusyCopy(lifecycle: AgentLifecycleActionView): string {
+  return (
+    lifecycle.progressLabel ??
+    (lifecycle.stage ? jobStageCopy(lifecycle.stage) : "处理中…")
+  );
+}
+
 function codexBusyCopy(projection: CodexDirectoryActionProjection): string {
   if (projection.state === "job_downloading" && projection.percent !== null) {
-    return `正在下载 ${projection.percent}%`;
+    return `正在下载 ${formatTransferPercent(projection.percent)}`;
   }
   switch (projection.state) {
     case "job_checking":
@@ -269,11 +278,7 @@ function GenericLifecycleSlot({
   onConfigure: () => void;
 }) {
   if (lifecycle.busy) {
-    return (
-      <BusySlot
-        label={lifecycle.stage ? jobStageCopy(lifecycle.stage) : "处理中…"}
-      />
-    );
+    return <BusySlot label={genericBusyCopy(lifecycle)} />;
   }
   if (scanningCopy && !lifecycle.primaryAction) {
     return <ScanningSlot label={scanningCopy} />;
@@ -393,6 +398,10 @@ export function AgentDirectory({
   const { state, start, applyReadiness } = scanController;
   const scanning = state.status === "scanning";
   const complete = state.status === "complete";
+  const visibleEntries = applyCommittedAgentDirectoryOrder(
+    entries,
+    state.committedOrderIds,
+  );
   const hasSuccessfulResults = Object.keys(state.results).length > 0;
   const currentReadiness = state.currentSuccessIds
     .map((id) => state.results[id])
@@ -460,7 +469,7 @@ export function AgentDirectory({
       ) : null}
 
       <div className="fy-agent-directory-list">
-        {entries.map((entry) => {
+        {visibleEntries.map((entry) => {
           const observation = observeAgentDirectoryRow(entry.id, state);
           if (entry.id === "codex") {
             return (

@@ -1,0 +1,14 @@
+{"file":".trellis/spec/backend/reuse.md","reason":"检查是否复用了现有 owner 与成熟组件，并拒绝第二套 downloader、DMG transaction、RPC、授权包装和产品表。"}
+{"file":".trellis/spec/backend/modular-boundaries.md","reason":"检查 renderer、Tauri、Rust backend、Swift bridge 与 root helper 的 authority/依赖边界。"}
+{"file":".trellis/tasks/08-31-macos-privileged-application-commit-helper/research/execution-context.md","reason":"执行最终 hard-negative checklist，并核对 owning specs、现有任务依赖和所需证据。"}
+{"file":".trellis/tasks/08-31-macos-privileged-application-commit-helper/research/open-source-reuse-review.md","reason":"检查依赖 exact pin、许可证、维护性、供应链与样例代码复用边界。"}
+{"file":".trellis/tasks/08-31-macos-privileged-application-commit-helper/research/security-threat-model.md","reason":"从对抗视角检查协议、peer identity、Authorization、source FD、filesystem transaction、receipt 和 replay 防线。"}
+{"file":".trellis/tasks/08-31-macos-privileged-application-commit-helper/research/release-signing-hil.md","reason":"检查 nested universal artifacts、inside-out signing、notarization、release verifier 与正式 HIL 证据。"}
+{"file":".trellis/tasks/08-31-macos-privileged-application-commit-helper/research/review-rounds.md","reason":"核对规划中各轮 finding 是否在实现与验收证据中被落实，且没有扩大范围或提前启用系统目标。"}
+
+{"file": ".trellis/spec/backend/external-agent-p0.md", "reason": "检查系统目标仍禁用、无 sudo/path IPC、无第二套 installer。"}
+{"file": ".trellis/spec/backend/codex-desktop-installer.md", "reason": "检查 DMG/transaction owner 未被复制，system target 未提前启用。"}
+{"file": ".trellis/spec/backend/github-release-workflow.md", "reason": "检查 nested helper 签名走现有单 DMG 公证链。"}
+{"file": ".trellis/spec/frontend/v2-agent-models.md", "reason": "检查新增 reason 有严格 parser 与用户文案，无路径泄漏。"}
+{"file": ".trellis/tasks/08-31-macos-privileged-application-commit-helper/research/sibling-boundary.md", "reason": "检查未侵入后续 install-policy 的产品面。"}
+{"file": ".trellis/tasks/08-31-macos-privileged-application-commit-helper/research/implementation-seam.md", "reason": "检查 ABI、产品枚举和负向字段未被破坏。"}

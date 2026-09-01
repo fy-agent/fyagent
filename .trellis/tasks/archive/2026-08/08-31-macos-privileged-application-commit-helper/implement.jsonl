@@ -1,0 +1,20 @@
+{"file":".trellis/spec/backend/reuse.md","reason":"实现 helper、Swift bridge、协议与依赖前必须遵守现有 owner 优先、成熟依赖评审和禁止重复造轮子的后端复用合同。"}
+{"file":".trellis/spec/backend/modular-boundaries.md","reason":"约束 Rust/Tauri、平台适配、helper、IPC 与业务 authority 的依赖方向，防止特权能力泄漏到 renderer 或通用服务。"}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"在抽取 macOS system commit seam、选择 Apple API 与开源组件时执行仓库统一的复用决策检查。"}
+{"file":".trellis/tasks/08-31-macos-privileged-application-commit-helper/research/execution-context.md","reason":"提供大型 owning specs 的裁剪执行合同、硬性负向边界和与现有 macOS lifecycle 任务的依赖关系。"}
+{"file":".trellis/tasks/08-31-macos-privileged-application-commit-helper/research/local-integration-audit.md","reason":"说明现有下载、DMG transaction、target authority、产品身份、job 与 release owner，避免实现时建立第二套链路。"}
+{"file":".trellis/tasks/08-31-macos-privileged-application-commit-helper/research/apple-platform-evidence.md","reason":"冻结 SMJobBless、SMAppService、Authorization Services、XPC peer requirement 与最低 macOS 12 的平台决策证据。"}
+{"file":".trellis/tasks/08-31-macos-privileged-application-commit-helper/research/open-source-reuse-review.md","reason":"记录 Blessed、SecureXPC、Authorized、样例与 Mist 的精确复用范围、版本候选、许可证和禁止复制部分。"}
+{"file":".trellis/tasks/08-31-macos-privileged-application-commit-helper/research/security-threat-model.md","reason":"实现 root helper 前必须加载同用户攻击、renderer 注入、TOCTOU、降级、重放、崩溃恢复和供应链威胁模型。"}
+{"file":".trellis/tasks/08-31-macos-privileged-application-commit-helper/research/release-signing-hil.md","reason":"定义 universal Swift 构建、inside-out 签名、公证、nested verifier 和正式 HIL 启用门禁。"}
+{"file":".trellis/tasks/08-31-macos-privileged-application-commit-helper/research/review-rounds.md","reason":"保留多轮架构、安全、依赖、发布和范围评审结论，以及实施前剩余阻断项。"}
+
+{"file": ".trellis/spec/backend/external-agent-p0.md", "reason": "Agent inventory/action/reason 合同与 deferred /Applications 语义的 owning spec。"}
+{"file": ".trellis/spec/backend/codex-desktop-installer.md", "reason": "现有 DMG transaction、system target disabled 与 nested signing 边界。"}
+{"file": ".trellis/spec/backend/application-identity.md", "reason": "FyAgent bundle ID、Team 与 helper identifier 必须与应用身份一致。"}
+{"file": ".trellis/spec/backend/github-release-workflow.md", "reason": "inside-out 签名、单 DMG 公证与 nested verifier 必须扩展现有 release owner。"}
+{"file": ".trellis/spec/backend/fyagent-version-contract.md", "reason": "helper 版本绑定 workspace Cargo version；禁止新增 Cargo workspace member。"}
+{"file": ".trellis/spec/frontend/v2-agent-models.md", "reason": "reason/copy 必须走现有 Agent lifecycle parser，不得新增 renderer helper API。"}
+{"file": ".trellis/tasks/08-31-macos-privileged-application-commit-helper/research/sibling-boundary.md", "reason": "与后续 install-policy 任务的产品面边界，避免重复实现。"}
+{"file": ".trellis/tasks/08-31-macos-privileged-application-commit-helper/research/implementation-seam.md", "reason": "并行实现共享的 ABI、产品枚举、路径和文件所有权。"}
+{"file": ".trellis/tasks/08-31-macos-privileged-application-commit-helper/research/phase0-baseline.md", "reason": "实施起点的仓库 SHA 与已稳定 helper-facing owner。"}

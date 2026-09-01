@@ -117,6 +117,12 @@ const TASK_BACKEND_FILES = new Set([
   "scripts/tasks/windows-msvc-env.mjs",
 ]);
 
+const TASK_HOST_NATIVE_FILES = new Set([
+  "scripts/tasks/host-native.mjs",
+  "scripts/tasks/macos-signed-dev-cargo.mjs",
+  "scripts/tasks/macos-signed-dev.mjs",
+]);
+
 const TASK_GLOBAL_AUTHORITY_FILES = new Set([
   "scripts/tasks/lib.mjs",
   "scripts/tasks/platform.mjs",
@@ -334,7 +340,7 @@ function classifyPath(path, domains) {
     );
   }
 
-  if (path === "scripts/tasks/host-native.mjs") {
+  if (TASK_HOST_NATIVE_FILES.has(path)) {
     return matchDomains(
       domains,
       ["contracts", "frontend", "backend", "windowsNative"],

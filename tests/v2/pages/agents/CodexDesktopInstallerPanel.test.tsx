@@ -179,9 +179,7 @@ describe("V2 Codex Desktop installer panel", () => {
       );
     });
 
-    expect(screen.getByText(/已下载 2\.00 KB \/ 4\.00 KB/)).toHaveTextContent(
-      "1.00 KB/s",
-    );
+    expect(screen.getByText(/已下载 2 KB \/ 4 KB/)).toHaveTextContent("1 KB/s");
     expect(screen.getByRole("progressbar")).toHaveAttribute(
       "aria-valuenow",
       "50",
@@ -295,7 +293,7 @@ describe("V2 Codex Desktop installer panel", () => {
         name: "正在校验并准备安装 Codex Desktop",
       }),
     ).toBeVisible();
-    expect(screen.getByText(/已下载 4\.00 KB \/ 4\.00 KB/)).toHaveTextContent(
+    expect(screen.getByText(/已下载 4 KB \/ 4 KB/)).toHaveTextContent(
       "文件较大，校验可能需要一点时间。",
     );
     expect(document.body).not.toHaveTextContent("/s");
@@ -402,6 +400,27 @@ describe("V2 Codex Desktop installer panel", () => {
     expect(document.body).not.toHaveTextContent("C:/private");
     expect(screen.getByText("无法确认")).toBeVisible();
     expect(document.body).not.toHaveTextContent("已安装");
+  });
+
+  it("offers 打开软件 for an already-current install and does not start another install", async () => {
+    const installed: LocalInstallStatus = {
+      state: "installed",
+      application: {
+        stableIdentity: "OpenAI.Codex",
+        displayName: "ChatGPT",
+        displayVersion: "1.2.3.4",
+        platformVersion: release.platformVersion,
+        architecture: "x86_64",
+      },
+    };
+    const port = createInstallerPort({
+      getLocalStatus: vi.fn(async () => installed),
+    });
+    renderPanel(port);
+    const launch = await screen.findByRole("button", { name: "打开软件" });
+    fireEvent.click(launch);
+    await waitFor(() => expect(port.launch).toHaveBeenCalledTimes(1));
+    expect(port.startInstall).not.toHaveBeenCalled();
   });
 
   it("keeps one active listener in StrictMode and releases it on unmount", async () => {

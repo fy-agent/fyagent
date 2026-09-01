@@ -5,6 +5,8 @@
 //! still be named `Codex.app`; the fixed bundle ID is used only to find an
 //! already installed Stable application, not to admit downloaded content.
 
+#[cfg(target_os = "macos")]
+use std::process::Command;
 use std::{
     ffi::{OsStr, OsString},
     path::{Path, PathBuf},
@@ -103,6 +105,7 @@ pub(crate) struct BundleInfo {
     bundle_path: PathBuf,
     bundle_name: OsString,
     bundle_identifier: String,
+    executable: String,
     platform_version: PlatformVersion,
     display_version: Option<String>,
     display_name: Option<String>,
@@ -121,6 +124,10 @@ impl BundleInfo {
         &self.bundle_identifier
     }
 
+    pub(crate) fn executable(&self) -> &str {
+        &self.executable
+    }
+
     pub(crate) fn platform_version(&self) -> &PlatformVersion {
         &self.platform_version
     }
@@ -130,21 +137,66 @@ impl BundleInfo {
     }
 }
 
+const MAX_STRUCTURED_PLIST_JSON_BYTES: usize = 16 * 1024;
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct RawInfoPlist {
+pub(crate) struct RawInfoPlist {
     #[serde(rename = "CFBundleIdentifier")]
-    bundle_identifier: Option<String>,
+    pub(crate) bundle_identifier: Option<String>,
     #[serde(rename = "CFBundleVersion")]
-    bundle_version: Option<String>,
+    pub(crate) bundle_version: Option<String>,
     #[serde(rename = "CFBundleShortVersionString")]
-    short_version: Option<String>,
+    pub(crate) short_version: Option<String>,
     #[serde(rename = "CFBundleExecutable")]
-    executable: Option<String>,
+    pub(crate) executable: Option<String>,
     #[serde(rename = "CFBundleDisplayName")]
     display_name: Option<String>,
     #[serde(rename = "CFBundleName")]
     bundle_name: Option<String>,
+}
+
+pub(crate) fn parse_structured_info_plist_json(bytes: &[u8]) -> Option<RawInfoPlist> {
+    if bytes.is_empty() || bytes.len() > MAX_STRUCTURED_PLIST_JSON_BYTES {
+        return None;
+    }
+    serde_json::from_slice(bytes).ok()
+}
+
+/// Bounded `plutil -> JSON -> typed fields` reader for managed desktop
+/// discovery. Codex install/verify continues to use `CommandRunner` so tests
+/// can fake plutil without spawning the host tool.
+pub(crate) fn read_structured_bundle_plist(bundle_path: &Path) -> Option<RawInfoPlist> {
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = bundle_path;
+        None
+    }
+    #[cfg(target_os = "macos")]
+    {
+        read_structured_bundle_plist_on_macos(bundle_path)
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn read_structured_bundle_plist_on_macos(bundle_path: &Path) -> Option<RawInfoPlist> {
+    let info_plist = bundle_path.join("Contents").join("Info.plist");
+    let meta = std::fs::symlink_metadata(&info_plist).ok()?;
+    if meta.file_type().is_symlink() || !meta.is_file() {
+        return None;
+    }
+    if meta.len() == 0 || meta.len() > MAX_STRUCTURED_PLIST_JSON_BYTES as u64 * 4 {
+        return None;
+    }
+    let output = Command::new("plutil")
+        .args(["-convert", "json", "-o", "-", "--"])
+        .arg(&info_plist)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    parse_structured_info_plist_json(&output.stdout)
 }
 
 #[derive(Debug, Deserialize)]
@@ -366,7 +418,7 @@ pub(crate) fn read_bundle_info(
     let executable_path = canonical_bundle_path
         .join("Contents")
         .join("MacOS")
-        .join(executable);
+        .join(&executable);
     if filesystem.file_kind(&executable_path) != Ok(MacosFileKind::File) {
         return Err(error(
             InstallerErrorCode::PackageParseFailed,
@@ -390,6 +442,7 @@ pub(crate) fn read_bundle_info(
         bundle_path: canonical_bundle_path.to_path_buf(),
         bundle_name,
         bundle_identifier,
+        executable,
         platform_version,
         display_version: short_version,
         display_name,
@@ -429,7 +482,7 @@ fn probe_bundle_identifier(
                 info_plist.into_os_string(),
             ],
         ))
-        .map_err(|_| {
+        .map_err(|_runner_error| {
             error(
                 InstallerErrorCode::PackageParseFailed,
                 "application Info.plist could not be parsed",
@@ -482,7 +535,7 @@ fn read_raw_info_plist(
             "application Info.plist could not be parsed",
         ));
     }
-    serde_json::from_slice::<RawInfoPlist>(output.stdout()).map_err(|_| {
+    parse_structured_info_plist_json(output.stdout()).ok_or_else(|| {
         error(
             InstallerErrorCode::PackageParseFailed,
             "application Info.plist did not produce valid JSON metadata",
@@ -862,21 +915,39 @@ pub(crate) fn launch_verified(
             "the Stable application changed after launch was requested",
         ));
     }
-    let output = runner
-        .run(&command("open", vec![requested_path.into_os_string()]))
-        .map_err(|_| {
-            error(
-                InstallerErrorCode::LaunchFailed,
-                "application launch could not be started",
-            )
-        })?;
-    if !output.is_success() {
-        return Err(error(
-            InstallerErrorCode::LaunchFailed,
-            "application launch was rejected by macOS",
-        ));
+
+    #[cfg(all(target_os = "macos", not(test)))]
+    {
+        crate::platform::process_launch::launch_trusted_macos_application_as_user(&requested_path)
+            .map_err(|public_code| {
+                let diagnostic = if public_code == "external_launch_invalid_macos_application" {
+                    "the verified Stable application path is not a launchable macOS application"
+                } else {
+                    "application launch was rejected by macOS"
+                };
+                error(InstallerErrorCode::LaunchFailed, diagnostic)
+            })
     }
-    Ok(())
+
+    #[cfg(any(not(target_os = "macos"), test))]
+    {
+        let output = runner
+            .run(&command("open", vec![requested_path.into_os_string()]))
+            .map_err(|_| {
+                error(
+                    InstallerErrorCode::LaunchFailed,
+                    "application launch could not be started",
+                )
+            })?;
+        if output.is_success() {
+            Ok(())
+        } else {
+            Err(error(
+                InstallerErrorCode::LaunchFailed,
+                "application launch was rejected by macOS",
+            ))
+        }
+    }
 }
 
 pub(crate) fn installed_application(bundle: &BundleInfo) -> InstalledApplication {
@@ -1050,6 +1121,23 @@ mod tests {
                     .iter()
                     .any(|argument| argument == "--force")
         }));
+    }
+
+    #[test]
+    fn structured_plist_json_parser_accepts_typed_fields_and_rejects_garbage() {
+        let xml_shaped = br#"{"CFBundleIdentifier":"ai.opencode.desktop","CFBundleShortVersionString":"1.2.3","CFBundleVersion":"123","CFBundleExecutable":"OpenCode"}"#;
+        let parsed = parse_structured_info_plist_json(xml_shaped).expect("typed json");
+        assert_eq!(
+            parsed.bundle_identifier.as_deref(),
+            Some("ai.opencode.desktop")
+        );
+        assert_eq!(parsed.short_version.as_deref(), Some("1.2.3"));
+        assert!(parse_structured_info_plist_json(b"not-json").is_none());
+        assert!(parse_structured_info_plist_json(b"").is_none());
+        assert!(
+            parse_structured_info_plist_json(&vec![b'x'; MAX_STRUCTURED_PLIST_JSON_BYTES + 1])
+                .is_none()
+        );
     }
 
     #[test]

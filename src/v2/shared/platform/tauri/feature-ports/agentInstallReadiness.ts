@@ -21,11 +21,12 @@ export function createAgentInstallReadinessPort(): AgentInstallReadinessPort {
         safeAgentId,
       );
     },
-    getInventory: async (agentId) => {
+    getInventory: async (agentId, surface) => {
       const safeAgentId = assertAgentInstallReadinessId(agentId);
       return parseAgentInstallationInventory(
         await invoke<unknown>("get_agent_installation_inventory", {
           agentId: safeAgentId,
+          ...(surface ? { surface } : {}),
         }),
         safeAgentId,
       );
@@ -47,6 +48,7 @@ export function createAgentInstallReadinessPort(): AgentInstallReadinessPort {
             ...(request.expectedTargetRevision
               ? { expectedTargetRevision: request.expectedTargetRevision }
               : {}),
+            ...(request.surface ? { surface: request.surface } : {}),
           },
         }),
         safeAgentId,

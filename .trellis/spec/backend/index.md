@@ -41,7 +41,7 @@ belong in the linked owning spec.
 | [Codex Provider Configuration](./codex-provider-configuration.md) | Codex provider/auth projection, writer serialization, backup, rollback, and readback. |
 | [One-click Executable Software Installer](./codex-desktop-installer.md) | Codex desktop discovery/install/update, PackageBridge/helper, signing, and transaction safety. |
 | [WorkBuddy Configuration](./workbuddy-configuration.md) | Revisioned WorkBuddy model/config writes, overwrite capabilities, backup, and reread. |
-| [External Agent P0 Safety](./external-agent-p0.md) | Agent catalog, runtime observation, install/inventory/actions, Auth, Skills/MCP, and vendor boundaries. |
+| [External Agent P0 Safety](./external-agent-p0.md) | Agent catalog, runtime observation, install/inventory/actions (desktop-only Claude/OpenCode Agent surfaces, catalog v5 links, job transfer, product lifecycle policy), Auth, Skills/MCP, and vendor boundaries. |
 
 ## Native platforms and distribution
 
@@ -49,6 +49,7 @@ belong in the linked owning spec.
 | --- | --- |
 | [Windows Shell-user Runtime](./windows-runtime-security.md) | Explorer-user authority, per-user paths/HKU, single-instance input, COM launch, and helper boundary. |
 | [Windows Installer](./windows-installer.md) | NSIS mechanics, bounded cleanup, signing evidence, uninstall ownership, and native diagnostics. |
+| [macOS Privileged System-Commit Helper](./macos-system-commit.md) | Nested Blessed helper, C ABI, product/slot integers, `MacSystemCommitPort`, and the production `/Applications` enablement gate. |
 | [macOS Styled DMG Layout](./macos-dmg-layout.md) | DMG contents, Finder metadata, retries, byte preservation, and layout verification. |
 | [GitHub CI Workflow](./github-ci-workflow.md) | Change classification, domain jobs, required aggregation, runner/toolchain evidence, and failure semantics. |
 | [GitHub Release Workflow](./github-release-workflow.md) | Release identity, native builds, signing/notarization, assets, attestation, draft recovery, and publication. |

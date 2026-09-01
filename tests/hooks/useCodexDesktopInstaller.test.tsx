@@ -651,11 +651,6 @@ describe("useCodexDesktopInstaller", () => {
         makeDownloadJob(3, Number.NaN, "2026-07-29T00:00:03.000Z"),
     },
     {
-      caseName: "time does not advance",
-      snapshot: () =>
-        makeDownloadJob(3, 4 * 1024 * 1024, "2026-07-29T00:00:02.000Z"),
-    },
-    {
       caseName: "the byte count moves backwards",
       snapshot: () =>
         makeDownloadJob(3, 512 * 1024, "2026-07-29T00:00:03.000Z"),
@@ -731,6 +726,39 @@ describe("useCodexDesktopInstaller", () => {
 
     await waitFor(() =>
       expect(result.current.progress?.bytesPerSecond ?? null).toBeNull(),
+    );
+  });
+
+  it("keeps the last download speed when the clock does not advance", async () => {
+    const mebibyte = 1024 * 1024;
+    const { wrapper } = createWrapper();
+    const { result } = renderHook(() => useCodexDesktopInstaller(), {
+      wrapper,
+    });
+
+    await waitFor(() => expect(mocks.listeners.size).toBe(1));
+    await act(async () => {
+      emitJob(makeDownloadJob(1, mebibyte, "2026-07-29T00:00:01.000Z"));
+    });
+    await waitFor(() =>
+      expect(result.current.progress?.bytesPerSecond).toBeNull(),
+    );
+
+    await act(async () => {
+      emitJob(makeDownloadJob(2, 3 * mebibyte, "2026-07-29T00:00:02.000Z"));
+    });
+    await waitFor(() =>
+      expect(result.current.progress?.bytesPerSecond).toBe(2 * mebibyte),
+    );
+
+    await act(async () => {
+      emitJob(
+        makeDownloadJob(3, 4 * mebibyte, "2026-07-29T00:00:02.000Z"),
+      );
+    });
+
+    await waitFor(() =>
+      expect(result.current.progress?.bytesPerSecond).toBe(2 * mebibyte),
     );
   });
 

@@ -14,13 +14,17 @@ use sha2::{Digest, Sha256};
 
 use super::{
     cli::{observe_cli, tooling_id_for},
-    desktop::{discover_desktop_installation_inventory, DesktopInstallationDiscovery},
+    desktop::{
+        discover_desktop_installation_inventory, discovered_update_eligible,
+        DesktopInstallationDiscovery,
+    },
     types::{
+        default_surface, legal_surfaces, resolve_requested_surface, surface_is_legal,
         validate_opaque_inventory_id, validate_opaque_target_id, validate_opaque_target_revision,
-        AgentActionId, AgentInstallationInventoryDto, AgentReasonCode, FreshInstallDestinationDto,
-        InstallationCandidateDto, InstallationEvidenceCode, InstallationInventoryState,
-        InstallationOwner, InstallationPackageKind, InstallationScope, StartAgentActionRequest,
-        AGENT_INSTALLATION_INVENTORY_CONTRACT_VERSION,
+        AgentActionId, AgentInstallationInventoryDto, AgentReasonCode, AgentSurface,
+        FreshInstallDestinationDto, InstallationCandidateDto, InstallationEvidenceCode,
+        InstallationInventoryState, InstallationOwner, InstallationPackageKind, InstallationScope,
+        StartAgentActionRequest, AGENT_INSTALLATION_INVENTORY_CONTRACT_VERSION,
     },
 };
 use crate::{
@@ -293,19 +297,42 @@ fn prune_expired(cache: &mut InventoryCache) {
 pub async fn inventory_for(
     agent_id: AgentCatalogId,
     state: &AppState,
+    surface: Option<AgentSurface>,
 ) -> AgentInstallationInventoryDto {
-    let probe = probe_inventory(agent_id, state).await;
-    project_and_store(agent_id, probe, &state.agent_installation_inventory)
+    let surface = surface.unwrap_or_else(|| default_surface(agent_id));
+    let probe = probe_inventory(agent_id, surface, state).await;
+    project_and_store(
+        agent_id,
+        surface,
+        probe,
+        &state.agent_installation_inventory,
+    )
 }
 
 pub async fn inventory_readiness_projection(
     agent_id: AgentCatalogId,
     state: &AppState,
 ) -> InventoryReadinessProjection {
-    project_readiness(probe_inventory(agent_id, state).await)
+    inventory_readiness_projection_for(agent_id, default_surface(agent_id), state).await
 }
 
-fn project_readiness(probe: InventoryProbe) -> InventoryReadinessProjection {
+pub async fn inventory_readiness_projection_for(
+    agent_id: AgentCatalogId,
+    surface: AgentSurface,
+    state: &AppState,
+) -> InventoryReadinessProjection {
+    project_readiness(
+        agent_id,
+        surface,
+        probe_inventory(agent_id, surface, state).await,
+    )
+}
+
+fn project_readiness(
+    agent_id: AgentCatalogId,
+    surface: AgentSurface,
+    probe: InventoryProbe,
+) -> InventoryReadinessProjection {
     let state = probe.state();
     let single = if state == InstallationInventoryState::Single {
         probe
@@ -315,12 +342,36 @@ fn project_readiness(probe: InventoryProbe) -> InventoryReadinessProjection {
     } else {
         None
     };
+    let (_, update_eligible, launch_eligible) = with_policy_eligibility(
+        agent_id,
+        surface,
+        single.is_some_and(|candidate| candidate.install_eligible),
+        single.is_some_and(|candidate| candidate.update_eligible),
+        single.is_some_and(|candidate| candidate.launch_eligible),
+    );
     InventoryReadinessProjection {
         state,
         single_local_version: single.and_then(|candidate| candidate.local_version.clone()),
-        single_launch_eligible: single.is_some_and(|candidate| candidate.launch_eligible),
-        single_update_eligible: single.is_some_and(|candidate| candidate.update_eligible),
+        single_launch_eligible: launch_eligible,
+        single_update_eligible: update_eligible,
         reason_codes: probe.reason_codes,
+    }
+}
+
+fn with_policy_eligibility(
+    agent_id: AgentCatalogId,
+    surface: AgentSurface,
+    install: bool,
+    update: bool,
+    launch: bool,
+) -> (bool, bool, bool) {
+    match super::lifecycle_policy::lifecycle_policy(agent_id, surface) {
+        Ok(policy) => (
+            install && policy.install,
+            update && policy.update,
+            launch && policy.launch,
+        ),
+        Err(_) => (false, false, false),
     }
 }
 
@@ -328,6 +379,7 @@ pub async fn validate_action_target(
     request: &StartAgentActionRequest,
     state: &AppState,
 ) -> Result<ValidatedActionTarget, AgentReasonCode> {
+    let surface = resolve_requested_surface(request.agent_id, request.surface)?;
     let binding = match (
         request.inventory_id.as_deref(),
         request.target_id.as_deref(),
@@ -359,7 +411,7 @@ pub async fn validate_action_target(
             target_id,
             revision,
         )?;
-        let current = probe_inventory(request.agent_id, state).await;
+        let current = probe_inventory(request.agent_id, surface, state).await;
         return validate_snapshot_target(request.action, snapshot_target, current);
     }
 
@@ -374,10 +426,14 @@ pub async fn validate_action_target(
         AgentActionId::Launch | AgentActionId::AuthLogin
             if matches!(
                 request.agent_id,
-                AgentCatalogId::QoderWork | AgentCatalogId::TraeWork | AgentCatalogId::WorkBuddy
-            ) =>
+                AgentCatalogId::QoderWork
+                    | AgentCatalogId::TraeWork
+                    | AgentCatalogId::WorkBuddy
+                    | AgentCatalogId::OpenCode
+                    | AgentCatalogId::ClaudeCode
+            ) && surface == AgentSurface::Desktop =>
         {
-            unique_legacy_candidate(request.agent_id, state).await
+            unique_legacy_candidate(request.agent_id, surface, state).await
         }
         AgentActionId::Launch if request.agent_id == AgentCatalogId::Codex => {
             Ok(ValidatedActionTarget::None)
@@ -388,9 +444,10 @@ pub async fn validate_action_target(
 
 async fn unique_legacy_candidate(
     agent_id: AgentCatalogId,
+    surface: AgentSurface,
     state: &AppState,
 ) -> Result<ValidatedActionTarget, AgentReasonCode> {
-    let mut eligible = probe_inventory(agent_id, state)
+    let mut eligible = probe_inventory(agent_id, surface, state)
         .await
         .candidates
         .into_iter()
@@ -455,6 +512,7 @@ fn validate_snapshot_target(
 
 fn project_and_store(
     agent_id: AgentCatalogId,
+    surface: AgentSurface,
     probe: InventoryProbe,
     store: &AgentInstallationInventoryStore,
 ) -> AgentInstallationInventoryDto {
@@ -463,14 +521,21 @@ fn project_and_store(
     let mut snapshot_candidates = HashMap::new();
     let mut candidates = Vec::with_capacity(probe.candidates.len());
     for candidate in probe.candidates {
+        let (install_eligible, update_eligible, launch_eligible) = with_policy_eligibility(
+            agent_id,
+            surface,
+            candidate.install_eligible,
+            candidate.update_eligible,
+            candidate.launch_eligible,
+        );
         let candidate_id = opaque_id("c1:");
         snapshot_candidates.insert(
             candidate_id.clone(),
             SnapshotCandidate {
                 stable_key: candidate.stable_key,
                 revision: candidate.revision.clone(),
-                launch_eligible: candidate.launch_eligible,
-                update_eligible: candidate.update_eligible,
+                launch_eligible,
+                update_eligible,
                 update_block_reason: candidate.reason_codes.iter().copied().find(|reason| {
                     matches!(
                         reason,
@@ -488,9 +553,9 @@ fn project_and_store(
             owner: candidate.owner,
             package_kind: candidate.package_kind,
             local_version: candidate.local_version,
-            launch_eligible: candidate.launch_eligible,
-            install_eligible: candidate.install_eligible,
-            update_eligible: candidate.update_eligible,
+            launch_eligible,
+            install_eligible,
+            update_eligible,
             reason_codes: candidate.reason_codes,
             evidence_codes: candidate.evidence_codes,
             location_label: candidate.location_label,
@@ -499,13 +564,15 @@ fn project_and_store(
     let mut snapshot_destinations = HashMap::new();
     let mut fresh_destinations = Vec::with_capacity(probe.destinations.len());
     for destination in probe.destinations {
+        let (install_eligible, _, _) =
+            with_policy_eligibility(agent_id, surface, destination.eligible, false, false);
         let destination_id = opaque_id("d1:");
         snapshot_destinations.insert(
             destination_id.clone(),
             SnapshotDestination {
                 stable_key: destination.stable_key,
                 revision: destination.revision.clone(),
-                eligible: destination.eligible,
+                eligible: install_eligible,
                 block_reason: destination.reason_codes.iter().copied().find(|reason| {
                     matches!(
                         reason,
@@ -523,7 +590,7 @@ fn project_and_store(
             package_kind: destination.package_kind,
             requires_elevation: destination.requires_elevation,
             writable: destination.writable,
-            eligible: destination.eligible,
+            eligible: install_eligible,
             reason_codes: destination.reason_codes,
             location_label: destination.location_label,
         });
@@ -545,18 +612,40 @@ fn project_and_store(
         candidates,
         fresh_destinations,
         reason_codes: probe.reason_codes,
+        surface: (legal_surfaces(agent_id).len() > 1).then_some(surface),
     }
 }
 
-async fn probe_inventory(agent_id: AgentCatalogId, state: &AppState) -> InventoryProbe {
-    match agent_id {
-        AgentCatalogId::QoderWork | AgentCatalogId::TraeWork | AgentCatalogId::WorkBuddy => {
-            probe_desktop(agent_id)
-        }
-        AgentCatalogId::ClaudeCode | AgentCatalogId::GrokBuild | AgentCatalogId::OpenCode => {
-            probe_cli(agent_id).await
-        }
-        AgentCatalogId::Codex => probe_codex(state).await,
+async fn probe_inventory(
+    agent_id: AgentCatalogId,
+    surface: AgentSurface,
+    state: &AppState,
+) -> InventoryProbe {
+    if !surface_is_legal(agent_id, surface) {
+        return InventoryProbe {
+            state_override: Some(InstallationInventoryState::Unsupported),
+            candidates: Vec::new(),
+            destinations: Vec::new(),
+            reason_codes: vec![AgentReasonCode::SurfaceNotSupported],
+        };
+    }
+    match (agent_id, surface) {
+        (
+            AgentCatalogId::QoderWork
+            | AgentCatalogId::TraeWork
+            | AgentCatalogId::WorkBuddy
+            | AgentCatalogId::OpenCode
+            | AgentCatalogId::ClaudeCode,
+            AgentSurface::Desktop,
+        ) => probe_desktop(agent_id),
+        (AgentCatalogId::GrokBuild, AgentSurface::Cli) => probe_cli(agent_id).await,
+        (AgentCatalogId::Codex, AgentSurface::Desktop) => probe_codex(state).await,
+        _ => InventoryProbe {
+            state_override: Some(InstallationInventoryState::Unsupported),
+            candidates: Vec::new(),
+            destinations: Vec::new(),
+            reason_codes: vec![AgentReasonCode::SurfaceNotSupported],
+        },
     }
 }
 
@@ -580,15 +669,18 @@ fn project_desktop_discovery(
     let complete = discovery.complete;
     let mut candidates = Vec::new();
     for evidence in discovery.installations {
-        let update_requires_authorization =
-            cfg!(target_os = "macos") && evidence.scope == InstallationScope::AllUsers;
+        let (system_update_enabled, system_update_block_reason) = macos_system_update_gate(
+            agent_id,
+            evidence.scope,
+            crate::macos_system_commit::production_enabled(),
+        );
         let location_label =
             desktop_location_label(agent_id, evidence.scope, evidence.package_kind);
         let mut reason_codes = evidence.reason_codes;
-        if update_requires_authorization
-            && !reason_codes.contains(&AgentReasonCode::AuthorizationRequired)
-        {
-            reason_codes.push(AgentReasonCode::AuthorizationRequired);
+        if let Some(reason) = system_update_block_reason {
+            if !reason_codes.contains(&reason) {
+                reason_codes.push(reason);
+            }
         }
         let capability = InstallationTargetCapability::Desktop {
             path: evidence.path,
@@ -604,7 +696,10 @@ fn project_desktop_discovery(
             local_version: evidence.local_version,
             launch_eligible: evidence.launch_eligible,
             install_eligible: false,
-            update_eligible: evidence.update_eligible && !update_requires_authorization,
+            update_eligible: discovered_update_eligible(
+                agent_id,
+                evidence.update_eligible && system_update_enabled,
+            ),
             reason_codes,
             evidence_codes: evidence.evidence_codes,
             location_label,
@@ -636,6 +731,23 @@ fn project_desktop_discovery(
         destinations,
         reason_codes,
     }
+}
+
+fn macos_system_update_gate(
+    agent_id: AgentCatalogId,
+    scope: InstallationScope,
+    runtime_enabled: bool,
+) -> (bool, Option<AgentReasonCode>) {
+    if !cfg!(target_os = "macos") || scope != InstallationScope::AllUsers {
+        return (true, None);
+    }
+    if crate::macos_system_commit::product_for_agent(agent_id).is_err() {
+        return (false, Some(AgentReasonCode::TargetScopeUnsupported));
+    }
+    if !runtime_enabled {
+        return (false, Some(AgentReasonCode::AuthorizationRequired));
+    }
+    (true, None)
 }
 
 fn normalize_candidates(candidates: Vec<ProbeCandidate>) -> Vec<ProbeCandidate> {
@@ -867,16 +979,26 @@ fn desktop_destinations(_agent_id: AgentCatalogId) -> Vec<ProbeDestination> {
     #[cfg(target_os = "macos")]
     {
         let user_writable = super::desktop::user_applications_writable();
+        let system_supported = crate::macos_system_commit::product_for_agent(_agent_id).is_ok();
+        let system_enabled = system_supported && crate::macos_system_commit::production_enabled();
         let mut system = destination(
             "mac:system-applications",
             InstallationScope::AllUsers,
             InstallationPackageKind::AppBundle,
             true,
-            false,
+            system_enabled,
             "/Applications",
             FreshDestinationCapability::MacSystemApplications,
         );
-        system.reason_codes = vec![AgentReasonCode::AuthorizationRequired];
+        system.eligible = system_enabled;
+        system.reason_codes = if system_enabled {
+            Vec::new()
+        } else if system_supported {
+            vec![AgentReasonCode::AuthorizationRequired]
+        } else {
+            vec![AgentReasonCode::TargetScopeUnsupported]
+        };
+        refresh_destination_revision(&mut system);
         return vec![
             destination(
                 "mac:user-applications",
@@ -1201,6 +1323,35 @@ mod tests {
 
     #[cfg(target_os = "macos")]
     #[test]
+    fn system_update_gate_tracks_runtime_and_fixed_product_policy() {
+        assert_eq!(
+            macos_system_update_gate(AgentCatalogId::OpenCode, InstallationScope::AllUsers, false,),
+            (false, Some(AgentReasonCode::AuthorizationRequired))
+        );
+        assert_eq!(
+            macos_system_update_gate(AgentCatalogId::OpenCode, InstallationScope::AllUsers, true,),
+            (true, None)
+        );
+        assert_eq!(
+            macos_system_update_gate(
+                AgentCatalogId::ClaudeCode,
+                InstallationScope::AllUsers,
+                true,
+            ),
+            (false, Some(AgentReasonCode::TargetScopeUnsupported))
+        );
+        assert_eq!(
+            macos_system_update_gate(
+                AgentCatalogId::OpenCode,
+                InstallationScope::CurrentUser,
+                false,
+            ),
+            (true, None)
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
     fn system_destination_is_visible_but_requires_authorization() {
         let store = AgentInstallationInventoryStore::new();
         let probe = InventoryProbe {
@@ -1209,7 +1360,12 @@ mod tests {
             destinations: desktop_destinations(AgentCatalogId::QoderWork),
             reason_codes: Vec::new(),
         };
-        let dto = project_and_store(AgentCatalogId::QoderWork, probe, &store);
+        let dto = project_and_store(
+            AgentCatalogId::QoderWork,
+            AgentSurface::Desktop,
+            probe,
+            &store,
+        );
         let system = dto
             .fresh_destinations
             .iter()
@@ -1264,7 +1420,12 @@ mod tests {
             destinations: Vec::new(),
             reason_codes: Vec::new(),
         };
-        let dto = project_and_store(AgentCatalogId::WorkBuddy, probe, &store);
+        let dto = project_and_store(
+            AgentCatalogId::WorkBuddy,
+            AgentSurface::Desktop,
+            probe,
+            &store,
+        );
         let projected = dto.candidates.first().expect("candidate projection");
         let snapshot = store
             .snapshot_target(
@@ -1288,5 +1449,69 @@ mod tests {
             ),
             Err(AgentReasonCode::AuthorizationRequired)
         );
+    }
+
+    #[test]
+    fn domestic_inventory_projection_disables_update_without_dropping_launch() {
+        let store = AgentInstallationInventoryStore::new();
+        let mut installed = candidate("app", InstallationEvidenceCode::BundleIdentity);
+        installed.update_eligible = true;
+        installed.launch_eligible = true;
+        refresh_candidate_revision(&mut installed);
+        let probe = InventoryProbe {
+            state_override: None,
+            candidates: vec![installed],
+            destinations: Vec::new(),
+            reason_codes: Vec::new(),
+        };
+        let dto = project_and_store(
+            AgentCatalogId::QoderWork,
+            AgentSurface::Desktop,
+            probe,
+            &store,
+        );
+        let projected = dto.candidates.first().expect("candidate");
+        assert!(projected.launch_eligible);
+        assert!(!projected.update_eligible);
+        assert!(!projected.install_eligible);
+
+        let readiness = project_readiness(
+            AgentCatalogId::TraeWork,
+            AgentSurface::Desktop,
+            InventoryProbe {
+                state_override: None,
+                candidates: vec![candidate("app", InstallationEvidenceCode::BundleIdentity)],
+                destinations: Vec::new(),
+                reason_codes: Vec::new(),
+            },
+        );
+        assert!(readiness.single_launch_eligible);
+        assert!(!readiness.single_update_eligible);
+    }
+
+    #[test]
+    fn opencode_and_claude_keep_update_eligibility_when_evidence_allows_it() {
+        let store = AgentInstallationInventoryStore::new();
+        for agent_id in [AgentCatalogId::OpenCode, AgentCatalogId::ClaudeCode] {
+            let mut installed = candidate("app", InstallationEvidenceCode::BundleIdentity);
+            installed.update_eligible = true;
+            refresh_candidate_revision(&mut installed);
+            let dto = project_and_store(
+                agent_id,
+                AgentSurface::Desktop,
+                InventoryProbe {
+                    state_override: None,
+                    candidates: vec![installed],
+                    destinations: Vec::new(),
+                    reason_codes: Vec::new(),
+                },
+                &store,
+            );
+            assert!(
+                dto.candidates[0].update_eligible,
+                "{agent_id:?} should keep update eligibility"
+            );
+            assert!(dto.surface.is_none());
+        }
     }
 }

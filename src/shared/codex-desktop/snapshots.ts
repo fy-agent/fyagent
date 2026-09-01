@@ -7,6 +7,24 @@ export interface CodexDesktopProgress {
   bytesPerSecond: number | null;
 }
 
+export interface TransferSpeedSampleInput {
+  jobId: string;
+  sequence: number;
+  downloading: boolean;
+  downloadPhase: boolean;
+  completedBytes: number | null;
+  updatedAtMs: number;
+}
+
+export interface TransferPresentation {
+  percent: number | null;
+  percentLabel: string | null;
+  transferredLabel: string | null;
+  speedLabel: string | null;
+  indeterminate: boolean;
+  downloadLine: string | null;
+}
+
 export interface DownloadSpeedSample {
   jobId: string;
   completedBytes: number;
@@ -39,11 +57,26 @@ const MIN_AVERAGE_ELAPSED_MS = 1000;
 
 function retainMeasurement(
   measurement: DownloadSpeedMeasurement | null,
-  job: JobSnapshot,
+  jobId: string,
+  sequence: number,
 ): DownloadSpeedMeasurement | null {
-  return measurement && measurement.jobId === job.jobId
-    ? { ...measurement, sequence: job.sequence }
+  return measurement && measurement.jobId === jobId
+    ? { ...measurement, sequence }
     : null;
+}
+
+function jobToSpeedSample(
+  job: JobSnapshot | null | undefined,
+): TransferSpeedSampleInput | null {
+  if (!job) return null;
+  return {
+    jobId: job.jobId,
+    sequence: job.sequence,
+    downloading: job.stage === "downloading",
+    downloadPhase: job.progress?.phase === "download",
+    completedBytes: job.progress?.completedBytes ?? null,
+    updatedAtMs: Date.parse(job.updatedAt),
+  };
 }
 
 /**
@@ -78,11 +111,13 @@ export function shouldAcceptJobSnapshot(
  * Records one already-accepted snapshot. Speed is the job-lifetime average
  * from the first valid sample, so 100ms progress hops do not flicker.
  */
-export function updateDownloadSpeedState(
+export function updateDownloadSpeedFromSample(
   current: DownloadSpeedState,
-  job: JobSnapshot | null | undefined,
+  input: TransferSpeedSampleInput | null | undefined,
 ): DownloadSpeedState {
-  const identity = job ? { jobId: job.jobId, sequence: job.sequence } : null;
+  const identity = input
+    ? { jobId: input.jobId, sequence: input.sequence }
+    : null;
   if (
     identity &&
     current.snapshot &&
@@ -92,11 +127,11 @@ export function updateDownloadSpeedState(
     return current;
   }
 
-  const completedBytes = job?.progress?.completedBytes;
-  const updatedAtMs = job ? Date.parse(job.updatedAt) : Number.NaN;
+  const completedBytes = input?.completedBytes;
+  const updatedAtMs = input?.updatedAtMs ?? Number.NaN;
   if (
-    job?.stage !== "downloading" ||
-    job.progress?.phase !== "download" ||
+    !input?.downloading ||
+    !input.downloadPhase ||
     completedBytes == null ||
     !Number.isFinite(completedBytes) ||
     completedBytes < 0 ||
@@ -110,7 +145,7 @@ export function updateDownloadSpeedState(
     };
   }
 
-  const sample = { jobId: job.jobId, completedBytes, updatedAtMs };
+  const sample = { jobId: input.jobId, completedBytes, updatedAtMs };
   if (!current.origin || current.origin.jobId !== sample.jobId) {
     return { snapshot: identity, origin: sample, sample, measurement: null };
   }
@@ -130,20 +165,16 @@ export function updateDownloadSpeedState(
       measurement: null,
     };
   }
-  if (elapsedFromPrevious === 0 && deltaFromPrevious > 0) {
-    return {
-      snapshot: identity,
-      origin: null,
-      sample: null,
-      measurement: null,
-    };
-  }
-  if (deltaFromPrevious === 0) {
+  if (elapsedFromPrevious === 0 || deltaFromPrevious === 0) {
     return {
       snapshot: identity,
       origin: current.origin,
       sample,
-      measurement: retainMeasurement(current.measurement, job),
+      measurement: retainMeasurement(
+        current.measurement,
+        input.jobId,
+        input.sequence,
+      ),
     };
   }
 
@@ -154,7 +185,11 @@ export function updateDownloadSpeedState(
       snapshot: identity,
       origin: current.origin,
       sample,
-      measurement: retainMeasurement(current.measurement, job),
+      measurement: retainMeasurement(
+        current.measurement,
+        input.jobId,
+        input.sequence,
+      ),
     };
   }
 
@@ -165,21 +200,153 @@ export function updateDownloadSpeedState(
     sample,
     measurement:
       Number.isFinite(bytesPerSecond) && bytesPerSecond >= 0
-        ? { jobId: job.jobId, sequence: job.sequence, bytesPerSecond }
+        ? { jobId: input.jobId, sequence: input.sequence, bytesPerSecond }
         : null,
   };
+}
+
+export function updateDownloadSpeedState(
+  current: DownloadSpeedState,
+  job: JobSnapshot | null | undefined,
+): DownloadSpeedState {
+  return updateDownloadSpeedFromSample(current, jobToSpeedSample(job));
+}
+
+export function selectDownloadBytesPerSecondFromSample(
+  state: DownloadSpeedState,
+  input: TransferSpeedSampleInput | null | undefined,
+): number | null {
+  if (
+    !input?.downloading ||
+    !input.downloadPhase ||
+    state.measurement?.jobId !== input.jobId ||
+    state.measurement.sequence !== input.sequence
+  ) {
+    return null;
+  }
+  const bytesPerSecond = state.measurement.bytesPerSecond;
+  return Number.isFinite(bytesPerSecond) && bytesPerSecond > 0
+    ? bytesPerSecond
+    : null;
 }
 
 export function selectDownloadBytesPerSecond(
   state: DownloadSpeedState,
   job: JobSnapshot | null | undefined,
 ): number | null {
-  return job?.stage === "downloading" &&
-    job.progress?.phase === "download" &&
-    state.measurement?.jobId === job.jobId &&
-    state.measurement.sequence === job.sequence
-    ? state.measurement.bytesPerSecond
-    : null;
+  return selectDownloadBytesPerSecondFromSample(state, jobToSpeedSample(job));
+}
+
+export function clampTransferPercent(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.min(100, Math.max(0, value));
+}
+
+export function computeTransferPercent(
+  completedBytes: number | null | undefined,
+  totalBytes: number | null | undefined,
+  backendPercent?: number | null,
+): number | null {
+  if (typeof backendPercent === "number" && Number.isFinite(backendPercent)) {
+    return clampTransferPercent(backendPercent);
+  }
+  if (
+    typeof completedBytes !== "number" ||
+    typeof totalBytes !== "number" ||
+    !Number.isFinite(completedBytes) ||
+    !Number.isFinite(totalBytes) ||
+    totalBytes <= 0
+  ) {
+    return null;
+  }
+  return clampTransferPercent((completedBytes / totalBytes) * 100);
+}
+
+export function formatTransferPercent(percent: number): string {
+  const clamped = clampTransferPercent(percent);
+  const rounded = Math.round(clamped * 10) / 10;
+  return Number.isInteger(rounded) ? `${rounded}%` : `${rounded.toFixed(1)}%`;
+}
+
+export function formatTransferBytes(
+  value: number | null | undefined,
+): string | null {
+  if (value == null || !Number.isFinite(value) || value < 0) return null;
+  const units = ["B", "KB", "MB", "GB", "TB"] as const;
+  let amount = value;
+  let unit = 0;
+  while (amount >= 1024 && unit < units.length - 1) {
+    amount /= 1024;
+    unit += 1;
+  }
+  if (unit === 0) return `${Math.round(amount)} B`;
+  const digits = amount >= 100 ? 0 : 1;
+  const label = amount.toFixed(digits).replace(/\.0$/, "");
+  return `${label} ${units[unit]}`;
+}
+
+export function formatTransferSpeed(
+  bytesPerSecond: number | null | undefined,
+): string | null {
+  if (
+    bytesPerSecond == null ||
+    !Number.isFinite(bytesPerSecond) ||
+    bytesPerSecond <= 0
+  ) {
+    return null;
+  }
+  const bytes = formatTransferBytes(bytesPerSecond);
+  return bytes ? `${bytes}/s` : null;
+}
+
+export function projectTransferPresentation({
+  downloading,
+  terminal,
+  completedBytes,
+  totalBytes,
+  percent,
+  bytesPerSecond,
+}: {
+  downloading: boolean;
+  terminal: boolean;
+  completedBytes: number | null;
+  totalBytes: number | null;
+  percent: number | null;
+  bytesPerSecond: number | null;
+}): TransferPresentation {
+  const resolvedPercent = computeTransferPercent(
+    completedBytes,
+    totalBytes,
+    percent,
+  );
+  const indeterminate = resolvedPercent === null;
+  const transferredLabel = formatTransferBytes(completedBytes);
+  const speedLabel =
+    downloading && !terminal ? formatTransferSpeed(bytesPerSecond) : null;
+  const percentLabel =
+    downloading && !indeterminate && resolvedPercent !== null
+      ? formatTransferPercent(resolvedPercent)
+      : null;
+  let downloadLine: string | null = null;
+  if (downloading) {
+    if (percentLabel) {
+      downloadLine = speedLabel
+        ? `下载中 ${percentLabel} · ${speedLabel}`
+        : `下载中 ${percentLabel}`;
+    } else if (transferredLabel) {
+      downloadLine = speedLabel
+        ? `已下载 ${transferredLabel} · ${speedLabel}`
+        : `已下载 ${transferredLabel}`;
+    }
+  }
+  return {
+    percent: downloading ? resolvedPercent : null,
+    percentLabel: downloading ? percentLabel : null,
+    transferredLabel: downloading ? transferredLabel : null,
+    speedLabel,
+    indeterminate: downloading && indeterminate,
+    downloadLine,
+  };
 }
 
 export function projectInstallerProgress(
@@ -190,7 +357,11 @@ export function projectInstallerProgress(
   return {
     current: job.progress.completedBytes,
     total: job.progress.totalBytes,
-    percent: job.progress.percent,
+    percent: computeTransferPercent(
+      job.progress.completedBytes,
+      job.progress.totalBytes,
+      job.progress.percent,
+    ),
     bytesPerSecond: selectDownloadBytesPerSecond(downloadSpeed, job),
   };
 }

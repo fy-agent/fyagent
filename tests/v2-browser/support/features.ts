@@ -151,7 +151,7 @@ export async function installRichTauriFeatureFixture(
         evidenceIds: ["p0_scope"],
       }));
     const catalog = {
-      contractVersion: 4,
+      contractVersion: 5,
       reviewedAt: "2026-08-20",
       agents: [
         {
@@ -228,11 +228,6 @@ export async function installRichTauriFeatureFixture(
           description: "支持 Skills、模型配置与 MCP；不支持 Hooks。",
           officialLinks: [
             {
-              id: "cli",
-              label: "Claude Code CLI",
-              url: "https://docs.anthropic.com/en/docs/claude-code/getting-started",
-            },
-            {
               id: "desktop",
               label: "Claude Desktop",
               url: "https://claude.com/download",
@@ -252,9 +247,9 @@ export async function installRichTauriFeatureFixture(
               url: "https://opencode.ai",
             },
             {
-              id: "cli",
-              label: "OpenCode CLI",
-              url: "https://opencode.ai/docs/cli",
+              id: "desktop",
+              label: "打开 OpenCode 官方下载页",
+              url: "https://opencode.ai/download",
             },
           ],
           capabilities: catalogCapabilities("opencode"),
@@ -1145,11 +1140,9 @@ export async function installRichTauriFeatureFixture(
             return [];
           case "get_agent_install_readiness": {
             const agentId = String(payload.agentId);
-            const cliAgent = ["grokbuild", "claude-code", "opencode"].includes(
-              agentId,
-            );
+            const grokCli = agentId === "grokbuild";
             return {
-              contractVersion: 3,
+              contractVersion: 4,
               agentId,
               reviewedAt: "2026-08-29",
               installState: "installed",
@@ -1165,7 +1158,7 @@ export async function installRichTauriFeatureFixture(
               sourceKind:
                 agentId === "codex"
                   ? "codex_desktop"
-                  : cliAgent
+                  : grokCli
                     ? "cli_tooling"
                     : "managed_desktop",
               allowedActions: [],

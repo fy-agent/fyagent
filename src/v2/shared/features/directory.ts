@@ -1,3 +1,5 @@
+export type AgentDirectoryPriority = "domestic" | "standard";
+
 export const PRODUCT_DIRECTORY = [
   {
     agentId: "qoderwork",
@@ -5,6 +7,7 @@ export const PRODUCT_DIRECTORY = [
     modelTarget: "qoderwork",
     promptAppId: null,
     displayName: "QoderWork CN",
+    directoryPriority: "domestic",
   },
   {
     agentId: "trae-work",
@@ -12,6 +15,7 @@ export const PRODUCT_DIRECTORY = [
     modelTarget: "trae",
     promptAppId: null,
     displayName: "TRAE Work CN",
+    directoryPriority: "domestic",
   },
   {
     agentId: "workbuddy",
@@ -19,6 +23,7 @@ export const PRODUCT_DIRECTORY = [
     modelTarget: "workbuddy",
     promptAppId: null,
     displayName: "WorkBuddy",
+    directoryPriority: "domestic",
   },
   {
     agentId: "grokbuild",
@@ -26,6 +31,7 @@ export const PRODUCT_DIRECTORY = [
     modelTarget: "grokbuild",
     promptAppId: "grokbuild",
     displayName: "Grok Build",
+    directoryPriority: "standard",
   },
   {
     agentId: "codex",
@@ -33,6 +39,7 @@ export const PRODUCT_DIRECTORY = [
     modelTarget: "codex",
     promptAppId: "codex",
     displayName: "Codex",
+    directoryPriority: "standard",
   },
   {
     agentId: "claude-code",
@@ -40,6 +47,7 @@ export const PRODUCT_DIRECTORY = [
     modelTarget: "claude",
     promptAppId: "claude",
     displayName: "Claude Code",
+    directoryPriority: "standard",
   },
   {
     agentId: "opencode",
@@ -47,6 +55,7 @@ export const PRODUCT_DIRECTORY = [
     modelTarget: "opencode",
     promptAppId: "opencode",
     displayName: "OpenCode",
+    directoryPriority: "standard",
   },
 ] as const;
 
@@ -98,6 +107,14 @@ export const PROMPT_APP_IDS = [
 
 export type ProductDirectoryEntry = (typeof PRODUCT_DIRECTORY)[number];
 export type AgentCatalogId = (typeof AGENT_CATALOG_IDS)[number];
+
+export function agentDirectoryPriority(
+  agentId: AgentCatalogId,
+): AgentDirectoryPriority {
+  const entry = PRODUCT_DIRECTORY.find((item) => item.agentId === agentId);
+  return entry?.directoryPriority ?? "standard";
+}
+
 export type McpTargetId = (typeof MCP_TARGET_IDS)[number];
 export type SkillTargetId = McpTargetId;
 export type ModelDirectoryId = (typeof MODEL_DIRECTORY_IDS)[number];

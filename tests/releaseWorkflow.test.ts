@@ -73,12 +73,43 @@ const MACOS_SIGNED_APP_VERIFIER = path.join(
   "release",
   "verify-macos-signed-app.sh",
 );
+const MACOS_PRIVILEGED_HELPER_VERIFIER = path.join(
+  ROOT,
+  "scripts",
+  "release",
+  "verify-macos-privileged-helper.sh",
+);
+const MACOS_PRIVILEGED_HELPER_EMBED = path.join(
+  ROOT,
+  "scripts",
+  "release",
+  "embed-macos-privileged-helper.sh",
+);
+const MACOS_PRIVILEGED_HELPER_BUILD = path.join(
+  ROOT,
+  "scripts",
+  "release",
+  "build-macos-privileged-helper.sh",
+);
+const MACOS_INFO_PLIST = path.join(ROOT, "src-tauri", "Info.plist");
+const MACOS_HELPER_INFO_PLIST = path.join(
+  ROOT,
+  "src-tauri",
+  "macos-privileged-helper",
+  "Resources",
+  "helper-info.plist",
+);
 const MACOS_SIGNED_DMG_VERIFIER = path.join(
   ROOT,
   "scripts",
   "release",
   "verify-macos-signed-dmg.sh",
 );
+const PRIVILEGED_HELPER_RELPATH =
+  "Contents/Library/LaunchServices/com.fyagent.desktop.system-commit-helper";
+const PRIVILEGED_CLIENT_RELPATH =
+  "Contents/Frameworks/libFyAgentPrivilegedClient.dylib";
+const PRIVILEGED_HELPER_IDENTIFIER = "com.fyagent.desktop.system-commit-helper";
 const MACOS_DEVELOPER_ID = path.join(
   ROOT,
   "scripts",
@@ -739,12 +770,29 @@ function writeFakeCodesignTools(root: string) {
     `#!/usr/bin/env bash
 set -euo pipefail
 printf '%s\\n' "$*" >> "$FYAGENT_FAKE_CODESIGN_LOG"
+target=""
+for target in "$@"; do
+  :
+done
+if [[ "$target" == *system-commit-helper* ]]; then
+  mode="\${FYAGENT_FAKE_HELPER_MODE:-accepted}"
+  identifier='com.fyagent.desktop.system-commit-helper'
+  executable='com.fyagent.desktop.system-commit-helper'
+elif [[ "$target" == *libFyAgentPrivilegedClient* ]]; then
+  mode="\${FYAGENT_FAKE_CLIENT_MODE:-\${FYAGENT_FAKE_HELPER_MODE:-accepted}}"
+  identifier='libFyAgentPrivilegedClient.dylib'
+  executable='libFyAgentPrivilegedClient.dylib'
+else
+  mode="$FYAGENT_FAKE_MODE"
+  identifier='com.fyagent.desktop'
+  executable='FyAgent'
+fi
 if [ "$1" = '--display' ]; then
-  case "$FYAGENT_FAKE_MODE" in
+  case "$mode" in
     adhoc)
       printf '%s\\n' \\
-        'Executable=FyAgent' \\
-        'Identifier=com.fyagent.desktop' \\
+        "Executable=$executable" \\
+        "Identifier=$identifier" \\
         'CodeDirectory v=20400 size=1 flags=0x2(adhoc) hashes=1+0 location=embedded' \\
         'Signature=adhoc' \\
         'TeamIdentifier=not set' \\
@@ -752,8 +800,8 @@ if [ "$1" = '--display' ]; then
       ;;
     linker)
       printf '%s\\n' \\
-        'Executable=FyAgent' \\
-        'Identifier=com.fyagent.desktop' \\
+        "Executable=$executable" \\
+        "Identifier=$identifier" \\
         'CodeDirectory v=20500 size=1 flags=0x12000(runtime,linker-signed) hashes=1+0 location=embedded' \\
         'Authority=Developer ID Application: William Wang (HY446996QX)' \\
         'TeamIdentifier=HY446996QX' \\
@@ -762,8 +810,8 @@ if [ "$1" = '--display' ]; then
       ;;
     team)
       printf '%s\\n' \\
-        'Executable=FyAgent' \\
-        'Identifier=com.fyagent.desktop' \\
+        "Executable=$executable" \\
+        "Identifier=$identifier" \\
         'CodeDirectory v=20500 size=1 flags=0x10000(runtime) hashes=1+0 location=embedded' \\
         'Authority=Developer ID Application: William Wang (HY446996QX)' \\
         'TeamIdentifier=ABCDE12345' \\
@@ -772,8 +820,8 @@ if [ "$1" = '--display' ]; then
       ;;
     timestamp)
       printf '%s\\n' \\
-        'Executable=FyAgent' \\
-        'Identifier=com.fyagent.desktop' \\
+        "Executable=$executable" \\
+        "Identifier=$identifier" \\
         'CodeDirectory v=20500 size=1 flags=0x10000(runtime) hashes=1+0 location=embedded' \\
         'Authority=Developer ID Application: William Wang (HY446996QX)' \\
         'TeamIdentifier=HY446996QX' \\
@@ -782,8 +830,8 @@ if [ "$1" = '--display' ]; then
       ;;
     unsealed)
       printf '%s\\n' \\
-        'Executable=FyAgent' \\
-        'Identifier=com.fyagent.desktop' \\
+        "Executable=$executable" \\
+        "Identifier=$identifier" \\
         'CodeDirectory v=20500 size=1 flags=0x10000(runtime) hashes=1+0 location=embedded' \\
         'Authority=Developer ID Application: William Wang (HY446996QX)' \\
         'TeamIdentifier=HY446996QX' \\
@@ -792,8 +840,8 @@ if [ "$1" = '--display' ]; then
       ;;
     authority)
       printf '%s\\n' \\
-        'Executable=FyAgent' \\
-        'Identifier=com.fyagent.desktop' \\
+        "Executable=$executable" \\
+        "Identifier=$identifier" \\
         'CodeDirectory v=20500 size=1 flags=0x10000(runtime) hashes=1+0 location=embedded' \\
         'Authority=Apple Development: Example' \\
         'TeamIdentifier=HY446996QX' \\
@@ -802,8 +850,8 @@ if [ "$1" = '--display' ]; then
       ;;
     *)
       printf '%s\\n' \\
-        'Executable=FyAgent' \\
-        'Identifier=com.fyagent.desktop' \\
+        "Executable=$executable" \\
+        "Identifier=$identifier" \\
         'CodeDirectory v=20500 size=1 flags=0x10000(runtime) hashes=1+0 location=embedded' \\
         'Authority=Developer ID Application: William Wang (HY446996QX)' \\
         'Authority=Developer ID Certification Authority' \\
@@ -816,7 +864,11 @@ if [ "$1" = '--display' ]; then
   exit 0
 fi
 if [ "$1" = '--verify' ]; then
-  [ "$FYAGENT_FAKE_MODE" != verify-fail ]
+  if [[ "$target" == *system-commit-helper* ]] || [[ "$target" == *libFyAgentPrivilegedClient* ]]; then
+    [ "\${FYAGENT_FAKE_HELPER_MODE:-accepted}" != verify-fail ]
+  else
+    [ "$FYAGENT_FAKE_MODE" != verify-fail ]
+  fi
   exit
 fi
 exit 2
@@ -830,16 +882,128 @@ exit 2
 `,
     { mode: 0o755 },
   );
+  fs.writeFileSync(
+    path.join(binRoot, "lipo"),
+    `#!/usr/bin/env bash
+set -euo pipefail
+if [ "\${1:-}" = '-archs' ]; then
+  case "\${FYAGENT_FAKE_LIPO_MODE:-universal}" in
+    arm64-only) printf 'arm64\\n' ;;
+    *) printf 'arm64 x86_64\\n' ;;
+  esac
+  exit 0
+fi
+exit 2
+`,
+    { mode: 0o755 },
+  );
+  fs.writeFileSync(
+    path.join(binRoot, "otool"),
+    `#!/usr/bin/env bash
+set -euo pipefail
+case "\${1:-}" in
+  -L)
+    printf '%s\\n' \\
+      "\${2}:" \\
+      $'\\t@rpath/libFyAgentPrivilegedClient.dylib (compatibility version 1.0.0, current version 1.0.0)'
+    ;;
+  -l)
+    printf '%s\\n' \\
+      'Load command 1' \\
+      '          cmd LC_RPATH' \\
+      '      cmdsize 48' \\
+      '         path @executable_path/../Frameworks (offset 12)'
+    ;;
+  *) exit 2 ;;
+esac
+`,
+    { mode: 0o755 },
+  );
+  fs.writeFileSync(
+    path.join(binRoot, "PlistBuddy"),
+    `#!/usr/bin/env bash
+set -euo pipefail
+[ "\${1:-}" = '-c' ] || exit 2
+[ "\${2:-}" = 'Print :CFBundleExecutable' ] || exit 2
+printf 'FyAgent\\n'
+`,
+    { mode: 0o755 },
+  );
   return binRoot;
 }
 
-function runMacSignedAppVerifier(mode: string, extraArgs: string[] = []) {
+function plantMacAppLayout(appPath: string) {
+  const contents = path.join(appPath, "Contents");
+  const macos = path.join(contents, "MacOS");
+  fs.mkdirSync(macos, { recursive: true });
+  fs.writeFileSync(
+    path.join(contents, "Info.plist"),
+    `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleExecutable</key><string>FyAgent</string>
+  <key>CFBundleIdentifier</key><string>com.fyagent.desktop</string>
+<key>CFBundleExecutable</key><string>fyagent</string>
+  <key>CFBundleShortVersionString</key><string>0.4.2</string>
+  <key>CFBundleVersion</key><string>0.4.2</string>
+</dict>
+</plist>
+`,
+  );
+  fs.writeFileSync(path.join(macos, "FyAgent"), "fake-main-executable");
+}
+
+function plantPrivilegedHelper(
+  appPath: string,
+  state: "present" | "absent" | "no-label" | "extra-helper" = "present",
+) {
+  if (state === "absent") return;
+  fs.mkdirSync(path.join(appPath, "Contents", "Library", "LaunchServices"), {
+    recursive: true,
+  });
+  fs.mkdirSync(path.join(appPath, "Contents", "Frameworks"), {
+    recursive: true,
+  });
+  const helperBody =
+    state === "no-label"
+      ? "fake-helper-without-mach-service"
+      : `fake-helper ${PRIVILEGED_HELPER_IDENTIFIER} MachServices`;
+  fs.writeFileSync(path.join(appPath, PRIVILEGED_HELPER_RELPATH), helperBody);
+  fs.writeFileSync(
+    path.join(appPath, PRIVILEGED_CLIENT_RELPATH),
+    "fake-client",
+  );
+  if (state === "extra-helper") {
+    fs.writeFileSync(
+      path.join(
+        appPath,
+        "Contents",
+        "Library",
+        "LaunchServices",
+        "unexpected-helper",
+      ),
+      "unexpected",
+    );
+  }
+}
+
+function runMacSignedAppVerifier(
+  mode: string,
+  extraArgs: string[] = [],
+  options: {
+    helper?: "present" | "absent" | "no-label" | "extra-helper";
+    env?: NodeJS.ProcessEnv;
+  } = {},
+) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "fyagent-macos-signed-"));
   temporaryRoots.push(root);
   const appPath = path.join(root, "FyAgent.app");
   const callLog = path.join(root, "codesign.log");
   const binRoot = writeFakeCodesignTools(root);
   fs.mkdirSync(appPath);
+  plantMacAppLayout(appPath);
+  plantPrivilegedHelper(appPath, options.helper ?? "present");
   const result = spawnSync(
     resolveBashExecutable(),
     [MACOS_SIGNED_APP_VERIFIER, ...extraArgs, appPath],
@@ -850,6 +1014,43 @@ function runMacSignedAppVerifier(mode: string, extraArgs: string[] = []) {
         FYAGENT_FAKE_CODESIGN_LOG: callLog,
         FYAGENT_FAKE_MODE: mode,
         PATH: `${binRoot}:${process.env.PATH ?? ""}`,
+        ...options.env,
+      },
+    },
+  );
+  return {
+    ...result,
+    stderr: result.stderr,
+    calls: fs.existsSync(callLog) ? read(callLog).trim().split("\n") : [],
+  };
+}
+
+function runMacPrivilegedHelperVerifier(
+  extraArgs: string[] = [],
+  options: {
+    helper?: "present" | "absent" | "no-label" | "extra-helper";
+    env?: NodeJS.ProcessEnv;
+  } = {},
+) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "fyagent-macos-helper-"));
+  temporaryRoots.push(root);
+  const appPath = path.join(root, "FyAgent.app");
+  const callLog = path.join(root, "codesign.log");
+  const binRoot = writeFakeCodesignTools(root);
+  fs.mkdirSync(appPath);
+  plantMacAppLayout(appPath);
+  plantPrivilegedHelper(appPath, options.helper ?? "present");
+  const result = spawnSync(
+    resolveBashExecutable(),
+    [MACOS_PRIVILEGED_HELPER_VERIFIER, ...extraArgs, appPath],
+    {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        FYAGENT_FAKE_CODESIGN_LOG: callLog,
+        FYAGENT_FAKE_MODE: "accepted",
+        PATH: `${binRoot}:${process.env.PATH ?? ""}`,
+        ...options.env,
       },
     },
   );
@@ -857,6 +1058,33 @@ function runMacSignedAppVerifier(mode: string, extraArgs: string[] = []) {
     ...result,
     calls: fs.existsSync(callLog) ? read(callLog).trim().split("\n") : [],
   };
+}
+
+function runEmbedPrivilegedHelper(
+  env: NodeJS.ProcessEnv = {},
+  appExists = true,
+) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "fyagent-macos-embed-"));
+  temporaryRoots.push(root);
+  const appPath = path.join(root, "FyAgent.app");
+  const artifactRoot = path.join(root, "artifacts");
+  fs.mkdirSync(artifactRoot, { recursive: true });
+  if (appExists) {
+    fs.mkdirSync(path.join(appPath, "Contents"), { recursive: true });
+  }
+  const result = spawnSync(
+    resolveBashExecutable(),
+    [MACOS_PRIVILEGED_HELPER_EMBED, appPath],
+    {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        FYAGENT_PRIVILEGED_ARTIFACT_ROOT: artifactRoot,
+        ...env,
+      },
+    },
+  );
+  return { ...result, root, appPath };
 }
 
 function runMacSignedDmgVerifier(mode: string) {
@@ -2070,9 +2298,23 @@ jobs:
     const createDmg = read(MACOS_CREATE_DMG);
     const dmgLayout = read(MACOS_DMG_LAYOUT);
     const dmgBackground = read(MACOS_DMG_BACKGROUND_RENDERER);
+    const macPrivilegedHelperVerifier = read(MACOS_PRIVILEGED_HELPER_VERIFIER);
+    const macPrivilegedHelperEmbed = read(MACOS_PRIVILEGED_HELPER_EMBED);
+    const macPrivilegedHelperBuild = read(MACOS_PRIVILEGED_HELPER_BUILD);
+    const macInfoPlist = read(MACOS_INFO_PLIST);
+    const macHelperInfoPlist = read(MACOS_HELPER_INFO_PLIST);
     expect(trackedMode(MACOS_SIGNED_APP_VERIFIER)).toBe("100755");
     expect(trackedMode(MACOS_SIGNED_DMG_VERIFIER)).toBe("100755");
     expect(trackedMode(MACOS_DEVELOPER_ID)).toBe("100755");
+    expect(
+      (fs.statSync(MACOS_PRIVILEGED_HELPER_VERIFIER).mode & 0o111) !== 0,
+    ).toBe(true);
+    expect(
+      (fs.statSync(MACOS_PRIVILEGED_HELPER_EMBED).mode & 0o111) !== 0,
+    ).toBe(true);
+    expect(
+      (fs.statSync(MACOS_PRIVILEGED_HELPER_BUILD).mode & 0o111) !== 0,
+    ).toBe(true);
     const tauriConfig = JSON.parse(read(TAURI_CONFIG)) as {
       bundle?: {
         macOS?: {
@@ -2082,12 +2324,38 @@ jobs:
         };
       };
     };
-    expect(source).toContain("--target universal-apple-darwin --bundles app");
+    expect(source).toContain("--target universal-apple-darwin");
+    expect(source).toContain("--bundles app");
+    expect(source).toContain("--features macos-privileged-client");
     expect(source).toContain("lipo -archs");
     expect(source).toContain("CFBundleShortVersionString");
     expect(source).toContain("com.fyagent.desktop");
     expect(macJob).toContain("scripts/release/macos-developer-id.sh prepare");
     expect(macJob).toContain("scripts/release/macos-developer-id.sh sign-app");
+    expect(macJob).toContain(
+      "scripts/release/build-macos-privileged-helper.sh",
+    );
+    expect(macJob).toContain(
+      "scripts/release/embed-macos-privileged-helper.sh",
+    );
+    expect(
+      macJob.indexOf("scripts/release/build-macos-privileged-helper.sh"),
+    ).toBeLessThan(macJob.indexOf("Build universal macOS app"));
+    expect(
+      macJob.indexOf("scripts/release/embed-macos-privileged-helper.sh"),
+    ).toBeGreaterThan(
+      macJob.indexOf("scripts/release/build-macos-privileged-helper.sh"),
+    );
+    expect(
+      macJob.indexOf("scripts/release/macos-developer-id.sh sign-app"),
+    ).toBeGreaterThan(
+      macJob.indexOf("scripts/release/embed-macos-privileged-helper.sh"),
+    );
+    expect(
+      macJob.indexOf("scripts/release/macos-developer-id.sh sign-app"),
+    ).toBeGreaterThan(
+      macJob.indexOf("verify-macos-privileged-helper.sh --structure-only"),
+    );
     expect(macJob).not.toContain(
       "scripts/release/macos-developer-id.sh notarize-app",
     );
@@ -2191,6 +2459,9 @@ jobs:
       "Developer ID Application: William Wang (HY446996QX)",
     );
     expect(macSigningPolicy).toContain("HY446996QX");
+    expect(macSigningPolicy).toContain(PRIVILEGED_HELPER_IDENTIFIER);
+    expect(macSigningPolicy).toContain(PRIVILEGED_HELPER_RELPATH);
+    expect(macSigningPolicy).toContain(PRIVILEGED_CLIENT_RELPATH);
     expect(source).toContain("hdiutil attach");
     expect(source).toContain("-readonly");
     expect(createDmg).toContain('RETRY_HDIUTIL="$SCRIPT_DIR/retry-hdiutil.sh"');
@@ -2238,8 +2509,102 @@ jobs:
       "codesign --verify --deep --strict --verbose=4",
     );
     expect(macSignedAppVerifier).toContain("xcrun stapler validate");
+    expect(macSignedAppVerifier).toContain(
+      'verify-macos-privileged-helper.sh" "$app_path"',
+    );
+    expect(macSignedAppVerifier).toContain(
+      "formal Developer ID verification requires the nested privileged helper",
+    );
+    expect(macSignedAppVerifier).toContain(
+      "nested privileged helper is absent; skipping nested helper verification",
+    );
     expect(macSignedAppVerifier).not.toMatch(
       /codesign\s+--force[^\n]*--deep/gu,
+    );
+    expect(macDeveloperId).toContain("sign_nested_privileged_code");
+    expect(macDeveloperId).toContain("EXPECTED_PRIVILEGED_CLIENT_RELPATH");
+    expect(macDeveloperId).toContain("EXPECTED_PRIVILEGED_HELPER_RELPATH");
+    expect(macDeveloperId).toContain("FYAGENT_ALLOW_APP_ONLY_SIGN:-0");
+    expect(macDeveloperId.lastIndexOf('"$client_path"')).toBeGreaterThan(0);
+    expect(macDeveloperId.lastIndexOf('"$helper_path"')).toBeGreaterThan(
+      macDeveloperId.lastIndexOf('"$client_path"'),
+    );
+    expect(
+      macDeveloperId.indexOf('--entitlements "$ENTITLEMENTS"'),
+    ).toBeGreaterThan(macDeveloperId.lastIndexOf('"$helper_path"'));
+    expect(macDeveloperId).not.toMatch(/^\s*codesign\s+[^\n]*--deep/mu);
+    expect(macPrivilegedHelperVerifier).toContain("--structure-only");
+    expect(macPrivilegedHelperVerifier).toContain(
+      "for architecture in arm64 x86_64; do",
+    );
+    expect(macPrivilegedHelperVerifier).toContain(
+      "Identifier=$expected_identifier",
+    );
+    expect(macPrivilegedHelperVerifier).toContain("Signature=adhoc");
+    expect(macPrivilegedHelperVerifier).toContain("flags=.*runtime");
+    expect(macPrivilegedHelperVerifier).toContain(
+      "TeamIdentifier=$EXPECTED_TEAM_ID",
+    );
+    expect(macPrivilegedHelperVerifier).toContain("lipo -archs");
+    expect(macPrivilegedHelperVerifier).not.toContain("notarytool");
+    expect(macPrivilegedHelperVerifier).not.toMatch(
+      /codesign\s+--force[^\n]*--deep/gu,
+    );
+    expect(macPrivilegedHelperEmbed).toContain(
+      "privileged helper artifacts are absent; leaving $EXPECTED_BUNDLE_NAME unchanged",
+    );
+    expect(macPrivilegedHelperEmbed).toContain(
+      "formal privileged helper artifacts are required before embedding",
+    );
+    expect(macPrivilegedHelperEmbed).toContain(
+      "FYAGENT_REQUIRE_PRIVILEGED_HELPER:-0",
+    );
+    expect(macPrivilegedHelperEmbed).toContain(
+      "FYAGENT_PRIVILEGED_ARTIFACT_ROOT:-$REPO_ROOT/src-tauri/macos-privileged-helper",
+    );
+    expect(macPrivilegedHelperEmbed).not.toContain("notarytool");
+    expect(macPrivilegedHelperEmbed).not.toContain("codesign");
+    expect(macPrivilegedHelperBuild).toContain("--arch arm64 --arch x86_64");
+    expect(macPrivilegedHelperBuild).toContain(
+      "--disable-automatic-resolution",
+    );
+    expect(macPrivilegedHelperBuild).toContain(
+      'MACOSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-12.0}"',
+    );
+    expect(macPrivilegedHelperBuild).toContain(
+      "src-tauri/macos-privileged-helper",
+    );
+    expect(macPrivilegedHelperBuild).toContain(PRIVILEGED_HELPER_IDENTIFIER);
+    expect(macPrivilegedHelperBuild).toContain(
+      "libFyAgentPrivilegedClient.dylib",
+    );
+    expect(macPrivilegedHelperBuild).toContain("lipo -create");
+    expect(macPrivilegedHelperBuild).not.toContain("notarytool");
+    expect(macPrivilegedHelperBuild).not.toContain("codesign");
+    expect(macPrivilegedHelperBuild).not.toMatch(/branch:\s*["']main["']/u);
+    expect(macInfoPlist).toContain("CFBundleURLTypes");
+    expect(macInfoPlist).toContain("<string>fyagent</string>");
+    expect(macInfoPlist).toContain("SMPrivilegedExecutables");
+    expect(macInfoPlist).toContain(PRIVILEGED_HELPER_IDENTIFIER);
+    expect(macInfoPlist).toContain("anchor apple generic");
+    expect(macInfoPlist).toContain("HY446996QX");
+    expect(macHelperInfoPlist).toContain(
+      "<string>com.fyagent.desktop.system-commit-helper</string>",
+    );
+    expect(macHelperInfoPlist).toContain("<string>0.4.2</string>");
+    expect(read(BUILD_RS)).toContain("emit_privileged_client_link");
+    expect(read(BUILD_RS)).toContain(
+      "macos-privileged-helper/dist/libFyAgentPrivilegedClient.dylib",
+    );
+    expect(
+      namedStepBlock(macJob, "Build nested privileged helper and client"),
+    ).toContain('FYAGENT_REQUIRE_PRIVILEGED_HELPER: "1"');
+    expect(namedStepBlock(macJob, "Embed nested privileged helper")).toContain(
+      "verify-macos-privileged-helper.sh --structure-only",
+    );
+    expect(macJob).not.toContain("FYAGENT_MACOS_SYSTEM_COMMIT_MODE: formal");
+    expect(macJob).toContain(
+      "production runtime remains compile-time disabled until a dedicated",
     );
     expect(macSignedDmgVerifier).toContain("Authority=$EXPECTED_AUTHORITY");
     expect(macSignedDmgVerifier).toContain("xcrun stapler validate");
@@ -2276,12 +2641,21 @@ jobs:
   it("executes the Developer ID verifiers for both slices and fails closed on trust drift", () => {
     const accepted = runMacSignedAppVerifier("accepted");
     expect(accepted.status, accepted.stderr).toBe(0);
-    expect(
-      accepted.calls.filter((call) => call.startsWith("--display ")),
-    ).toEqual([
+    const displayCalls = accepted.calls.filter((call) =>
+      call.startsWith("--display "),
+    );
+    expect(displayCalls.slice(0, 2)).toEqual([
       expect.stringContaining("--architecture arm64"),
       expect.stringContaining("--architecture x86_64"),
     ]);
+    expect(
+      displayCalls.filter((call) => call.includes("system-commit-helper")),
+    ).toHaveLength(2);
+    expect(
+      displayCalls.filter((call) =>
+        call.includes("libFyAgentPrivilegedClient"),
+      ),
+    ).toHaveLength(2);
     expect(accepted.calls).toContainEqual(
       expect.stringContaining("--verify --deep --strict"),
     );
@@ -2313,6 +2687,130 @@ jobs:
       const result = runMacSignedDmgVerifier(rejected);
       expect(result.status, `dmg ${rejected}: ${result.stderr}`).not.toBe(0);
     }
+  });
+
+  it("requires nested privileged helper signatures after the main app checks", () => {
+    const missingFormal = runMacSignedAppVerifier("accepted", [], {
+      helper: "absent",
+    });
+    expect(missingFormal.status, missingFormal.stderr).not.toBe(0);
+    expect(missingFormal.stderr).toContain(
+      "formal Developer ID verification requires the nested privileged helper",
+    );
+
+    const missingSignatureOnly = runMacSignedAppVerifier(
+      "accepted",
+      ["--signature-only"],
+      { helper: "absent" },
+    );
+    expect(missingSignatureOnly.status, missingSignatureOnly.stderr).toBe(0);
+    expect(missingSignatureOnly.stderr).toContain(
+      "nested privileged helper is absent; skipping nested helper verification",
+    );
+
+    const missingSkipEnv = runMacSignedAppVerifier("accepted", [], {
+      helper: "absent",
+      env: { FYAGENT_REQUIRE_PRIVILEGED_HELPER: "0" },
+    });
+    expect(missingSkipEnv.status, missingSkipEnv.stderr).toBe(0);
+    expect(missingSkipEnv.stderr).toContain(
+      "nested privileged helper is absent; skipping nested helper verification",
+    );
+
+    const helperAdhoc = runMacSignedAppVerifier("accepted", [], {
+      env: { FYAGENT_FAKE_HELPER_MODE: "adhoc" },
+    });
+    expect(helperAdhoc.status, helperAdhoc.stderr).not.toBe(0);
+    expect(helperAdhoc.stderr).toContain("ad-hoc");
+
+    const helperThin = runMacSignedAppVerifier("accepted", [], {
+      env: { FYAGENT_FAKE_LIPO_MODE: "arm64-only" },
+    });
+    expect(helperThin.status, helperThin.stderr).not.toBe(0);
+    expect(helperThin.stderr).toContain("universal");
+
+    const structureOnly = runMacPrivilegedHelperVerifier(["--structure-only"], {
+      env: { FYAGENT_FAKE_HELPER_MODE: "adhoc" },
+    });
+    expect(structureOnly.status, structureOnly.stderr).toBe(0);
+    expect(
+      structureOnly.calls.some((call) => call.startsWith("--display ")),
+    ).toBe(false);
+
+    const missingLabel = runMacPrivilegedHelperVerifier([], {
+      helper: "no-label",
+    });
+    expect(missingLabel.status, missingLabel.stderr).not.toBe(0);
+    expect(missingLabel.stderr).toContain("Mach service label");
+
+    const extraHelper = runMacPrivilegedHelperVerifier(["--structure-only"], {
+      helper: "extra-helper",
+    });
+    expect(extraHelper.status, extraHelper.stderr).not.toBe(0);
+    expect(extraHelper.stderr).toContain("exactly one privileged helper");
+
+    const acceptedHelper = runMacPrivilegedHelperVerifier();
+    expect(acceptedHelper.status, acceptedHelper.stderr).toBe(0);
+    expect(
+      acceptedHelper.calls.filter((call) => call.startsWith("--display ")),
+    ).toHaveLength(4);
+
+    const missingArtifacts = runEmbedPrivilegedHelper();
+    expect(missingArtifacts.status, missingArtifacts.stderr).toBe(0);
+    expect(missingArtifacts.stderr).toContain("leaving FyAgent.app unchanged");
+    expect(
+      fs.existsSync(
+        path.join(missingArtifacts.appPath, PRIVILEGED_HELPER_RELPATH),
+      ),
+    ).toBe(false);
+
+    const requiredMissing = runEmbedPrivilegedHelper({
+      FYAGENT_REQUIRE_PRIVILEGED_HELPER: "1",
+    });
+    expect(requiredMissing.status, requiredMissing.stderr).not.toBe(0);
+    expect(requiredMissing.stderr).toContain(
+      "formal privileged helper artifacts are required before embedding",
+    );
+    expect(
+      fs.existsSync(
+        path.join(requiredMissing.appPath, PRIVILEGED_HELPER_RELPATH),
+      ),
+    ).toBe(false);
+
+    const sourceRoot = fs.mkdtempSync(
+      path.join(os.tmpdir(), "fyagent-helper-src-"),
+    );
+    temporaryRoots.push(sourceRoot);
+    const helperSrc = path.join(sourceRoot, "helper-bin");
+    const clientSrc = path.join(sourceRoot, "client.dylib");
+    fs.writeFileSync(helperSrc, "helper-bytes");
+    fs.writeFileSync(clientSrc, "client-bytes");
+    const embedded = runEmbedPrivilegedHelper({
+      FYAGENT_PRIVILEGED_HELPER_BIN: helperSrc,
+      FYAGENT_PRIVILEGED_CLIENT_DYLIB: clientSrc,
+    });
+    expect(embedded.status, embedded.stderr).toBe(0);
+    expect(
+      fs.readFileSync(
+        path.join(embedded.appPath, PRIVILEGED_HELPER_RELPATH),
+        "utf8",
+      ),
+    ).toBe("helper-bytes");
+    expect(
+      fs.readFileSync(
+        path.join(embedded.appPath, PRIVILEGED_CLIENT_RELPATH),
+        "utf8",
+      ),
+    ).toBe("client-bytes");
+
+    const partial = runEmbedPrivilegedHelper({
+      FYAGENT_PRIVILEGED_HELPER_BIN: helperSrc,
+    });
+    expect(partial.status, partial.stderr).not.toBe(0);
+    expect(fs.existsSync(partial.appPath)).toBe(true);
+    expect(
+      fs.existsSync(path.join(partial.appPath, PRIVILEGED_HELPER_RELPATH)),
+    ).toBe(false);
   });
 
   it("recovers only an owned failed draft, then publishes once through a fresh verified transaction", () => {

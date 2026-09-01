@@ -4,12 +4,14 @@ import { MemoryRouter, useLocation } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
 import { AgentsPage } from "@/v2/pages/agents/Page";
-import type {
-  AgentActionJobSnapshot,
-  AgentActionResult,
-  AgentInstallationInventory,
-  AgentInstallReadiness,
-  AgentInstallState,
+import {
+  AGENT_ACTION_CONTRACT_VERSION,
+  AGENT_INSTALL_READINESS_CONTRACT_VERSION,
+  type AgentActionJobSnapshot,
+  type AgentActionResult,
+  type AgentInstallationInventory,
+  type AgentInstallReadiness,
+  type AgentInstallState,
 } from "@/v2/shared/features/agent-install-readiness";
 import type {
   CodexDesktopPort,
@@ -17,6 +19,9 @@ import type {
 } from "@/v2/shared/features/ports";
 import { FeatureProvider } from "@/v2/shared/features/provider";
 import {
+  AGENT_CATALOG_CONTRACT_VERSION,
+  AGENT_CATALOG_IDS,
+  PROMPT_APP_IDS,
   createMcpAssignments,
   createSkillAssignments,
   type AgentCapabilityId,
@@ -26,7 +31,6 @@ import {
   type ManagedPrompt,
   type PromptAppId,
 } from "@/v2/shared/features/types";
-import { AGENT_CATALOG_IDS, PROMPT_APP_IDS } from "@/v2/shared/features/types";
 import { createBrowserFeaturePorts } from "@/v2/shared/platform/browser/features";
 
 const capabilityIds: readonly AgentCapabilityId[] = [
@@ -57,13 +61,34 @@ function entry(id: AgentCatalogId, displayName: string): AgentCatalogEntry {
   const officialLinks: AgentCatalogEntry["officialLinks"] =
     id === "codex"
       ? []
-      : [
-          {
-            id: "product",
-            label: `打开 ${displayName} 官方页面`,
-            url: `https://example.test/${id}`,
-          },
-        ];
+      : id === "claude-code"
+        ? [
+            {
+              id: "desktop",
+              label: "Claude Desktop",
+              url: "https://example.test/claude-code",
+            },
+          ]
+        : id === "opencode"
+          ? [
+              {
+                id: "product",
+                label: "打开 OpenCode 官方页面",
+                url: "https://example.test/opencode",
+              },
+              {
+                id: "desktop",
+                label: "打开 OpenCode 官方下载页",
+                url: "https://example.test/opencode-desktop",
+              },
+            ]
+          : [
+              {
+                id: "product",
+                label: `打开 ${displayName} 官方页面`,
+                url: `https://example.test/${id}`,
+              },
+            ];
   return {
     id,
     variantId: variantById[id],
@@ -107,7 +132,7 @@ function entry(id: AgentCatalogId, displayName: string): AgentCatalogEntry {
 
 function catalog(): AgentCatalogResult {
   return {
-    contractVersion: 4,
+    contractVersion: AGENT_CATALOG_CONTRACT_VERSION,
     reviewedAt: "2026-08-26",
     agents: [
       entry("qoderwork", "QoderWork CN"),
@@ -127,7 +152,7 @@ function readiness(
   overrides: Partial<AgentInstallReadiness> = {},
 ): AgentInstallReadiness {
   return {
-    contractVersion: 3,
+    contractVersion: AGENT_INSTALL_READINESS_CONTRACT_VERSION,
     reviewedAt: "2026-08-29",
     inventoryState: "single",
     requiresTargetSelection: false,
@@ -212,6 +237,15 @@ function configuredPorts(): FeaturePorts {
   ports.agentInstallReadiness.startAction = vi.fn();
   ports.agentInstallReadiness.cancelAction = vi.fn();
   ports.agentInstallReadiness.getActionJob = vi.fn();
+  ports.tooling.getSnapshot = vi.fn(async () => ({
+    localVersion: "1.0.5",
+    latestVersion: "1.0.6",
+    distributionOwner: "native_internal" as const,
+    latestSource: "native_internal" as const,
+    installedButBroken: false,
+    error: null,
+  }));
+  ports.tooling.installOfficialNpm = vi.fn();
 
   const skills = [
     {
@@ -563,7 +597,7 @@ describe("V3 Agent directory and configuration shell", () => {
     });
     ports.agentInstallReadiness.startAction = vi.fn(
       async (): Promise<AgentActionResult> => ({
-        contractVersion: 2,
+        contractVersion: AGENT_ACTION_CONTRACT_VERSION,
         agentId: "qoderwork",
         action: "install",
         jobId: "job-1",
@@ -611,13 +645,14 @@ describe("V3 Agent directory and configuration shell", () => {
     });
 
     actionJob.resolve({
-      contractVersion: 2,
+      contractVersion: AGENT_ACTION_CONTRACT_VERSION,
       jobId: "job-1",
       agentId: "qoderwork",
       action: "install",
       stage: "succeeded",
       cancellable: false,
       reasonCode: null,
+      transfer: null,
     });
     expect(
       await within(directoryArticle("QoderWork CN")).findByText(
@@ -655,7 +690,7 @@ describe("V3 Agent directory and configuration shell", () => {
     });
     ports.agentInstallReadiness.startAction = vi.fn(
       async (): Promise<AgentActionResult> => ({
-        contractVersion: 2,
+        contractVersion: AGENT_ACTION_CONTRACT_VERSION,
         agentId: "qoderwork",
         action: "install",
         jobId: "job-2",
@@ -665,13 +700,14 @@ describe("V3 Agent directory and configuration shell", () => {
     );
     ports.agentInstallReadiness.getActionJob = vi.fn(
       async (): Promise<AgentActionJobSnapshot> => ({
-        contractVersion: 2,
+        contractVersion: AGENT_ACTION_CONTRACT_VERSION,
         jobId: "job-2",
         agentId: "qoderwork",
         action: "install",
         stage: "succeeded",
         cancellable: false,
         reasonCode: null,
+        transfer: null,
       }),
     );
     renderPage(ports);
@@ -830,6 +866,47 @@ describe("V3 Agent directory and configuration shell", () => {
     expect(screen.getByTestId("location")).toHaveTextContent(
       /^\/mcp\?agentReturn=workbuddy&agentSection=mcp$/,
     );
+  });
+
+  it("shows the install region on configuration as one OpenCode desktop component", async () => {
+    const ports = configuredPorts();
+    ports.agentInstallReadiness.get = vi.fn(async (agentId) =>
+      readiness(agentId, "installed", {
+        sourceKind:
+          agentId === "grokbuild" ? "cli_tooling" : "managed_desktop",
+        allowedActions:
+          agentId === "opencode" ? ["launch"] : ["update", "launch"],
+      }),
+    );
+    renderPage(ports, "/agents?target=opencode&section=models");
+    const configuration = await screen.findByRole("region", {
+      name: "OpenCode 配置",
+    });
+    const install = within(configuration).getByRole("region", {
+      name: "安装与更新",
+    });
+    expect(
+      within(install).queryByRole("heading", { name: "命令行" }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(install).getByRole("button", { name: "打开软件" }),
+    ).toBeVisible();
+    expect(install.querySelector('[data-surface="cli"]')).toBeNull();
+    expect(install.querySelector('[data-surface="desktop"]')).not.toBeNull();
+  });
+
+  it("uses the dedicated Codex installer on the configuration page", async () => {
+    const ports = configuredPorts();
+    renderPage(ports, "/agents?target=codex&section=models");
+    const configuration = await screen.findByRole("region", {
+      name: "Codex 配置",
+    });
+    expect(
+      within(configuration).getByRole("region", { name: "Codex Desktop 安装器" }),
+    ).toBeVisible();
+    expect(
+      within(configuration).queryByRole("region", { name: "安装与更新" }),
+    ).not.toBeInTheDocument();
   });
 
   it("writes Skills and MCP only through their existing assignment owners and authoritative readback", async () => {

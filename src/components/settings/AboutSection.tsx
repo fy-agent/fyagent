@@ -48,7 +48,7 @@ const TOOL_NAMES = [
   "hermes",
 ] as const;
 type ToolName = (typeof TOOL_NAMES)[number];
-type ToolLifecycleAction = "install" | "update";
+type ToolLifecycleAction = "install" | "update" | "install_official_npm";
 
 const isLifecycleWritableTool = (toolName: ToolName): boolean =>
   toolName !== "codex";
@@ -584,7 +584,7 @@ export function AboutSection({
         return next;
       });
       try {
-        if (action === "install") {
+        if (action === "install" || action === "install_official_npm") {
           await executeRun(toolNames, action);
           return;
         }
@@ -850,6 +850,20 @@ export function AboutSection({
                         : tool?.latest_version || t("common.unknown")}
                     </span>
                   </div>
+                  {toolName === "grok" && !isToolVersionLoading ? (
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-muted-foreground">
+                        {t("settings.grokDistribution")}
+                      </span>
+                      <span className="min-w-0 truncate text-foreground">
+                        {tool?.distribution_owner === "official_npm"
+                          ? t("settings.grokDistributionNpm")
+                          : tool?.distribution_owner === "native_internal"
+                            ? t("settings.grokDistributionNative")
+                            : t("settings.grokDistributionUnknown")}
+                      </span>
+                    </div>
+                  ) : null}
                   {!isToolVersionLoading && !tool?.version && tool?.error && (
                     <div className="truncate text-[11px] text-muted-foreground">
                       {tool.error}
@@ -876,7 +890,7 @@ export function AboutSection({
                   </div>
                 )}
 
-                <div className="mt-auto flex items-center justify-end">
+                <div className="mt-auto flex flex-wrap items-center justify-end gap-2">
                   {isToolVersionLoading ? (
                     <span className="text-xs text-muted-foreground">
                       {t("common.loading")}
@@ -886,31 +900,60 @@ export function AboutSection({
                     <span className="text-xs text-yellow-600 dark:text-yellow-400">
                       {t("settings.toolCheckEnv")}
                     </span>
-                  ) : action ? (
-                    <Button
-                      size="sm"
-                      variant={action === "install" ? "outline" : "default"}
-                      className="h-7 gap-1.5 text-xs"
-                      onClick={() => handleRunToolAction([toolName], action)}
-                      disabled={isToolVersionLoading || isAnyBusy}
-                    >
-                      {runningAction ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : action === "install" ? (
-                        <Download className="h-3.5 w-3.5" />
-                      ) : (
-                        <ArrowUpCircle className="h-3.5 w-3.5" />
-                      )}
-                      {/* loading 时文案保持不变、仅图标切换为 spinner，
-                          按钮宽度恒定，避免"升级"→"升级中…"导致的抖动。 */}
-                      {action === "install"
-                        ? t("settings.toolInstall")
-                        : t("settings.toolUpdate")}
-                    </Button>
                   ) : (
-                    <span className="text-xs text-muted-foreground">
-                      {t("settings.toolReady")}
-                    </span>
+                    <>
+                      {action ? (
+                        <Button
+                          size="sm"
+                          variant={action === "install" ? "outline" : "default"}
+                          className="h-7 gap-1.5 text-xs"
+                          onClick={() =>
+                            handleRunToolAction([toolName], action)
+                          }
+                          disabled={isToolVersionLoading || isAnyBusy}
+                        >
+                          {runningAction ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : action === "install" ? (
+                            <Download className="h-3.5 w-3.5" />
+                          ) : (
+                            <ArrowUpCircle className="h-3.5 w-3.5" />
+                          )}
+                          {/* loading 时文案保持不变、仅图标切换为 spinner，
+                          按钮宽度恒定，避免"升级"→"升级中…"导致的抖动。 */}
+                          {action === "install"
+                            ? t("settings.toolInstall")
+                            : t("settings.toolUpdate")}
+                        </Button>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">
+                          {t("settings.toolReady")}
+                        </span>
+                      )}
+                      {toolName === "grok" &&
+                      tool?.distribution_owner !== "official_npm" &&
+                      (!tool?.version || Boolean(tool.error)) ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 gap-1.5 text-xs"
+                          onClick={() =>
+                            handleRunToolAction(
+                              ["grok"],
+                              "install_official_npm",
+                            )
+                          }
+                          disabled={isAnyBusy}
+                        >
+                          {runningAction === "install_official_npm" ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : null}
+                          {!tool?.version
+                            ? t("settings.grokUseOfficialNpm")
+                            : t("settings.grokSwitchToOfficialNpm")}
+                        </Button>
+                      ) : null}
+                    </>
                   )}
                 </div>
               </motion.div>

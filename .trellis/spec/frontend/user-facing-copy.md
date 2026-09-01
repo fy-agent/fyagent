@@ -56,6 +56,9 @@ Keep product terms when users must identify or act on them:
 - a named application;
 - a configuration file or backup when its path or existence matters.
 
+Desktop lifecycle launch is **「打开软件」**, not 「打开应用」 and not a
+helper/XPC/transaction label.
+
 Do not expose internal-only concepts as interface labels:
 
 - Change Plan / Change Job identifiers;

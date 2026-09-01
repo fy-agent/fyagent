@@ -40,9 +40,14 @@ private `versions`, `lifecycle`, `discovery`, and `terminal` modules own the
 corresponding application/domain responsibilities while the Tauri command
 module remains only the transport facade.
 Agent lifecycle authority lives behind crate-scoped `agent_install`; its
-private `inventory`, `desktop`, `windows`, `cli`, `auth`, `source`, `fetch`, and `jobs`
-modules own domain policy while `commands/agent_install_readiness.rs` remains
-transport-only.
+private `inventory`, `desktop`, `windows`, `cli`, `auth`, `source`, `fetch`,
+`jobs`, and `lifecycle_policy` modules own domain policy while
+`commands/agent_install_readiness.rs` remains transport-only.
+macOS `/Applications` last-write authority lives behind crate-scoped
+`macos_system_commit` (`MacSystemCommitPort`, product/slot policy, C ABI).
+That module is not a Tauri command owner and must not grow a renderer
+path/URL/command surface. See
+[macOS Privileged System-Commit Helper](./macos-system-commit.md).
 
 Target-exclusive parent imports and private-owner tests must carry the same
 target boundary as their production consumer:
@@ -71,6 +76,16 @@ mod tests {
   algorithms. The command layer must never expose backend paths/registry
   identities or accept a renderer path. Product execution modules receive a
   validated backend capability only after inventory re-enumeration.
+- `agent_install/lifecycle_policy.rs` is the single owner of legal surfaces,
+  default surface, and whether `install` / `update` / `launch` is admitted for
+  a catalog product. Readiness, inventory, and `start_agent_action` consult it
+  before source fetch or file mutation. Do not keep a second product-action
+  matrix in the renderer, catalog copy, or a page-local `Set`.
+- `macos_system_commit` owns the frozen helper product/slot table, C ABI
+  request, and production-disabled `MacSystemCommitPort`. `agent_install` and
+  Codex call `system_scope_rejection()` for system targets while
+  `production_enabled()` is false. Do not open XPC from the command layer or
+  from the renderer.
 - `agent_install/windows.rs` owns Windows desktop evidence normalization,
   registry/App Paths adapters, Win32 version/file/signature inspection, and
   the three closed Agent EXE product policies. It does not own a downloader,
@@ -180,6 +195,8 @@ mod tests {
 | Skill assignment/migration module starts duplicating archive/vendor/symlink safety primitives      | Reject; those modules orchestrate through the single filesystem-safety owner                                                                                                           |
 | Pure Provider common-config module starts owning DB/locks/scrub sequencing                         | Reject; transaction/rollback order remains in `ProviderService`                                                                                                                        |
 | Codex catalog module starts owning provider/live/proxy/session transaction ordering                | Reject; catalog owns catalog policy/I/O only and delegates live coordination through the parent facade                                                                                 |
+| `macos_system_commit` grows a Tauri command or accepts a renderer path/URL                         | Reject; keep crate-private port + closed Agent/Codex actions                                                                                                                           |
+| A second legal-surface or install/update matrix appears outside `lifecycle_policy.rs`              | Reject; one product/surface/action owner                                                                                                                                               |
 | Codex config write fails after auth write                                                          | Restore previous auth bytes or delete newly created auth; return error                                                                                                                 |
 | Universal projection sees unknown nested settings                                                  | Preserve them while applying overrides                                                                                                                                                 |
 | Discovery cache mutex is poisoned                                                                  | Recover inner value; do not panic                                                                                                                                                      |

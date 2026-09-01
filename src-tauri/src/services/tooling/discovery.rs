@@ -11,6 +11,8 @@ pub struct ToolInstallationReport {
     needs_confirmation: bool,
     command: String,
     anchored: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    distribution_owner: Option<String>,
 }
 
 pub(super) fn plan_command_for(tool: &str, installs: &[ToolInstallation]) -> (String, bool, bool) {
@@ -56,6 +58,13 @@ pub async fn probe_tool_installations(
                 let installs = enumerate_tool_installations(tool);
                 let (command, needs_confirmation, anchored) = plan_command_for(tool, &installs);
                 let is_conflict = is_conflicting(&installs);
+                #[cfg(target_os = "macos")]
+                let distribution_owner = (tool == "grok")
+                    .then(|| super::grok::grok_owner_wire_from_disk(&installs))
+                    .flatten()
+                    .map(str::to_string);
+                #[cfg(target_os = "windows")]
+                let distribution_owner = None;
                 ToolInstallationReport {
                     tool: tool.to_string(),
                     installs,
@@ -63,6 +72,7 @@ pub async fn probe_tool_installations(
                     needs_confirmation,
                     command,
                     anchored,
+                    distribution_owner,
                 }
             })
             .collect()

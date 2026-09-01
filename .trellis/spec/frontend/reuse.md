@@ -49,6 +49,9 @@ Current shared owner families include:
   `FeaturePagination`;
 - assignment/install flows: `AssignmentPanel`, `InstallTargetDialog`, shared
   confirmation/dialog primitives;
+- download/progress projection: Codex + Agent job transfer share
+  `projectTransferPresentation` in `src/shared/codex-desktop/snapshots.ts`
+  (Agent adapter: `src/v2/shared/features/transfer-projection.ts`);
 - layouts: `SplitPanes`, `CatalogMasterDetail`, feature page/panel chrome;
 - external and secret controls: `ExternalLinkButton`, `SecretInput`;
 - shell motion/selection primitives owned under `shared/ui`.

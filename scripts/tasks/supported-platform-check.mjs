@@ -340,8 +340,39 @@ export const RUST_ALLOWANCE_CONTRACT = Object.freeze([
     id: "macos-deployer-non-macos-rejection",
     file: "src-tauri/src/agent_install/macos.rs",
     condition: '#[cfg(not(target_os = "macos"))]',
-    next: "pub(super) fn deploy_macos_dmg<BeforeCommit, BeforeVerify>(",
+    next: "pub(super) fn deploy_macos_dmg<CommitStage, BeforeVerify>(",
     nextPrefix: true,
+  }),
+  Object.freeze({
+    id: "macos-system-commit-unlinked-fallback",
+    file: "src-tauri/src/macos_system_commit/ffi.rs",
+    condition:
+      '#[cfg(not(all( target_os = "macos", feature = "macos-privileged-client", any( fyagent_macos_system_commit_mode = "development", fyagent_macos_system_commit_mode = "formal" ) )))]',
+    next: 'target_os = "macos",',
+  }),
+  Object.freeze({
+    id: "desktop-plist-non-macos-stub",
+    file: "src-tauri/src/agent_install/desktop.rs",
+    condition: '#[cfg(not(any(target_os = "macos", test)))]',
+    next: "{",
+  }),
+  Object.freeze({
+    id: "codex-bundle-plist-non-macos-stub",
+    file: "src-tauri/src/codex_desktop/platform/macos/bundle.rs",
+    condition: '#[cfg(not(target_os = "macos"))]',
+    next: "{",
+  }),
+  Object.freeze({
+    id: "codex-bundle-launch-test-or-non-macos",
+    file: "src-tauri/src/codex_desktop/platform/macos/bundle.rs",
+    condition: '#[cfg(any(not(target_os = "macos"), test))]',
+    next: "{",
+  }),
+  Object.freeze({
+    id: "grok-latest-non-macos-npm",
+    file: "src-tauri/src/services/tooling/versions.rs",
+    condition: '#[cfg(not(target_os = "macos"))]',
+    next: "{",
   }),
   Object.freeze({
     id: "windows-inventory-test-host-fallback",
@@ -474,10 +505,18 @@ const RUST_CFG_MACRO_CONTRACT = Object.freeze(
     ],
     [
       "src-tauri/src/agent_install/inventory.rs",
-      'cfg!(target_os="macos")',
+      '!cfg!(target_os="macos")',
       1,
       [
-        'let update_requires_authorization = cfg!(target_os = "macos") && evidence.scope == InstallationScope::AllUsers;',
+        'if !cfg!(target_os = "macos") || scope != InstallationScope::AllUsers { return (true, None); }',
+      ],
+    ],
+    [
+      "src-tauri/src/macos_system_commit/ffi.rs",
+      'cfg!(all(target_os="macos",feature="macos-privileged-client",any(fyagent_macos_system_commit_mode="development",fyagent_macos_system_commit_mode="formal")))',
+      1,
+      [
+        'pub const fn linked() -> bool { cfg!(all( target_os = "macos", feature = "macos-privileged-client", any( fyagent_macos_system_commit_mode = "development", fyagent_macos_system_commit_mode = "formal" ) )) }',
       ],
     ],
     [
@@ -544,7 +583,7 @@ const MANUAL_TARGET_MARKER = combine("CARGO_CFG_TARGET_", "OS");
 export const RUST_MANUAL_TARGET_CONTRACT = Object.freeze([
   Object.freeze({
     file: "src-tauri/build.rs",
-    count: 1,
+    count: 2,
     snippet: `
       let target_os = std::env::var("${MANUAL_TARGET_MARKER}").unwrap_or_default();
       match target_os.as_str() {
@@ -1085,6 +1124,14 @@ export const STRUCTURE_ASSET_CONTRACT = loadStructureAssetManifest();
 const STRUCTURE_ASSET_DIGESTS = new Map(
   STRUCTURE_ASSET_CONTRACT.map((asset) => [asset.path, asset.digest]),
 );
+export const STRUCTURE_ASSET_EXECUTABLES = Object.freeze([
+  "scripts/tasks/macos-signed-dev-cargo.mjs",
+]);
+const STRUCTURE_ASSET_EXECUTABLE_SET = new Set(STRUCTURE_ASSET_EXECUTABLES);
+
+function expectedStructureAssetMode(relativePath) {
+  return STRUCTURE_ASSET_EXECUTABLE_SET.has(relativePath) ? "100755" : "100644";
+}
 
 function structureSourceCandidate(relativePath, source) {
   const basename = path.posix.basename(relativePath);
@@ -1143,9 +1190,10 @@ export function validateStructureAssetInventory(
     throw new Error("Supported-platform structure candidate inventory drifted");
   }
   for (const relativePath of candidates) {
-    if (indexModes.get(relativePath) !== "100644") {
+    const expectedMode = expectedStructureAssetMode(relativePath);
+    if (indexModes.get(relativePath) !== expectedMode) {
       throw new Error(
-        `Structure asset must have Git index mode 100644: ${relativePath}`,
+        `Structure asset must have Git index mode ${expectedMode}: ${relativePath}`,
       );
     }
     const digest = createHash("sha256")

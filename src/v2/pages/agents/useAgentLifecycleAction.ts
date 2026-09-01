@@ -3,13 +3,22 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AGENT_REASON_CODES,
   type AgentActionId,
+  type AgentActionJobSnapshot,
   type AgentActionJobStage,
   type AgentInstallationInventory,
   type AgentInstallationTarget,
   type AgentInstallReadiness,
   type AgentInstallReadinessPort,
   type AgentReasonCode,
+  type AgentSourceKind,
+  type AgentSurface,
 } from "../../shared/features/agent-install-readiness";
+import {
+  agentJobToSpeedSample,
+  createDownloadSpeedState,
+  projectAgentJobTransfer,
+  updateDownloadSpeedFromSample,
+} from "../../shared/features/transfer-projection";
 import type { AgentCatalogId } from "../../shared/features/types";
 
 export const AGENT_LIFECYCLE_JOB_POLL_MS = 800;
@@ -27,14 +36,17 @@ export type AgentLifecycleActionView = {
   busy: boolean;
   stage: AgentActionJobStage | null;
   percent: number | null;
+  progressLabel: string | null;
   error: string | null;
   reasonCode: AgentReasonCode | null;
   success: string | null;
+  activeSurface: AgentSurface | null;
   canCancel: boolean;
   canRetry: boolean;
   run: (
     action: AgentActionId,
     targetOverride?: AgentInstallationTarget | null,
+    surface?: AgentSurface,
   ) => Promise<void>;
   runPrimary: () => Promise<void>;
   retry: () => Promise<void>;
@@ -48,6 +60,47 @@ export function isTerminalAgentJobStage(stage: AgentActionJobStage): boolean {
     stage === "cancelled" ||
     stage === "incomplete"
   );
+}
+
+export function resolveLifecycleReadiness(
+  readiness: AgentInstallReadiness,
+  surface?: AgentSurface,
+): {
+  allowedActions: readonly AgentActionId[];
+  releaseId: string | null;
+  requiresTargetSelection: boolean;
+  sourceKind: AgentSourceKind;
+} {
+  if (surface && readiness.surfaces && readiness.surfaces.length > 0) {
+    const item = readiness.surfaces.find((entry) => entry.surface === surface);
+    if (!item) {
+      return {
+        allowedActions: [],
+        releaseId: null,
+        requiresTargetSelection: false,
+        sourceKind: "managed_desktop",
+      };
+    }
+    return {
+      allowedActions: item.allowedActions,
+      releaseId: item.releaseId,
+      requiresTargetSelection: item.requiresTargetSelection,
+      sourceKind: item.sourceKind,
+    };
+  }
+  return {
+    allowedActions: readiness.allowedActions,
+    releaseId: readiness.releaseId,
+    requiresTargetSelection: readiness.requiresTargetSelection,
+    sourceKind: readiness.sourceKind,
+  };
+}
+
+function isCliBound(
+  surface: AgentSurface | undefined,
+  sourceKind: AgentSourceKind,
+): boolean {
+  return surface === "cli" || sourceKind === "cli_tooling";
 }
 
 export function deriveAgentLifecyclePrimaryAction(
@@ -101,7 +154,7 @@ export function reasonCopy(code: AgentReasonCode): string | null {
     case "candidate_conflict":
       return "检测到互相冲突的安装信息。请检查安装位置后再试。";
     case "authorization_required":
-      return "所选系统安装位置需要管理员授权。FyAgent 不会改装到其他目录。";
+      return "系统应用程序文件夹目前不可用于一键安装。请使用当前用户的应用程序目录，不会改装到其他目录。";
     case "permission_denied":
       return "没有权限更新所选位置，原应用未改动。";
     case "application_running":
@@ -126,8 +179,35 @@ export function reasonCopy(code: AgentReasonCode): string | null {
       return "操作已取消。";
     case "executor_not_implemented":
       return "FyAgent 暂时无法在当前环境中完成安装。";
-    case "installed_not_runnable":
-      return "应用已安装，但暂时无法启动。请检查安装位置或重新安装。";
+    case "application_launch_failed":
+      return "无法打开该软件。请确认应用仍在安装位置后再试。";
+    case "surface_not_supported":
+      return "当前安装方式不可用。";
+    case "action_not_supported":
+      return "当前产品不支持此操作。";
+    case "helper_not_packaged":
+    case "helper_signature_invalid":
+      return "系统文件夹一键安装当前不可用，不会改到其他目录。";
+    case "helper_install_authorization_cancelled":
+    case "operation_authorization_cancelled":
+      return "你取消了管理员授权，未更改现有应用。";
+    case "helper_install_failed":
+    case "helper_peer_rejected":
+    case "helper_protocol_incompatible":
+      return "无法完成系统级安装组件准备。";
+    case "helper_update_required":
+      return "需要更新 FyAgent 后才能继续。";
+    case "helper_downgrade_rejected":
+      return "当前系统组件版本更新，请升级 FyAgent。";
+    case "operation_authorization_invalid":
+      return "管理员授权无效或已过期，未更改现有应用。";
+    case "source_capability_invalid":
+    case "source_changed":
+      return "安装包在提交前已变化，未更改现有应用。";
+    case "target_slot_invalid":
+      return "无法在该系统位置安装此应用。";
+    case "helper_removal_failed":
+      return "无法移除系统安装组件。";
     default:
       return null;
   }
@@ -192,6 +272,7 @@ export function useAgentLifecycleAction({
   onInventoryChange,
   pollIntervalMs = AGENT_LIFECYCLE_JOB_POLL_MS,
   maxPolls = AGENT_LIFECYCLE_MAX_JOB_POLLS,
+  surface,
 }: {
   agentId: AgentCatalogId;
   port: AgentInstallReadinessPort;
@@ -201,6 +282,7 @@ export function useAgentLifecycleAction({
   onInventoryChange?: (data: AgentInstallationInventory) => void;
   pollIntervalMs?: number;
   maxPolls?: number;
+  surface?: AgentSurface;
 }): AgentLifecycleActionView {
   const [busy, setBusy] = useState(false);
   const [stage, setStage] = useState<AgentActionJobStage | null>(null);
@@ -209,12 +291,20 @@ export function useAgentLifecycleAction({
   const [success, setSuccess] = useState<string | null>(null);
   const [cancellable, setCancellable] = useState(false);
   const [jobId, setJobId] = useState<string | null>(null);
+  const [jobSnapshot, setJobSnapshot] = useState<AgentActionJobSnapshot | null>(
+    null,
+  );
+  const [activeSurface, setActiveSurface] = useState<AgentSurface | null>(null);
+  const [downloadSpeed, setDownloadSpeed] = useState(createDownloadSpeedState);
 
   const generationRef = useRef(0);
   const runningRef = useRef(false);
   const lastActionRef = useRef<AgentActionId | null>(null);
+  const lastSurfaceRef = useRef<AgentSurface | undefined>(undefined);
+  const speedRef = useRef(createDownloadSpeedState());
   const readinessRef = useRef(readiness);
   const targetRef = useRef(target);
+  const surfaceRef = useRef(surface);
   const onReadinessChangeRef = useRef(onReadinessChange);
   const onInventoryChangeRef = useRef(onInventoryChange);
   const portRef = useRef(port);
@@ -231,6 +321,7 @@ export function useAgentLifecycleAction({
     agentIdRef.current = agentId;
     pollIntervalMsRef.current = pollIntervalMs;
     maxPollsRef.current = maxPolls;
+    surfaceRef.current = surface;
   });
 
   useEffect(() => {
@@ -249,7 +340,10 @@ export function useAgentLifecycleAction({
     try {
       const [data, inventory] = await Promise.all([
         portRef.current.get(agentIdRef.current),
-        portRef.current.getInventory(agentIdRef.current),
+        portRef.current.getInventory(
+          agentIdRef.current,
+          lastSurfaceRef.current ?? surfaceRef.current,
+        ),
       ]);
       if (generationRef.current !== generation) return false;
       onReadinessChangeRef.current?.(data);
@@ -260,22 +354,44 @@ export function useAgentLifecycleAction({
     }
   }, []);
 
+  const resetTransfer = useCallback(() => {
+    speedRef.current = createDownloadSpeedState();
+    setDownloadSpeed(speedRef.current);
+    setJobSnapshot(null);
+  }, []);
+
+  const applyJobSnapshot = useCallback((snapshot: AgentActionJobSnapshot) => {
+    setStage(snapshot.stage);
+    setCancellable(snapshot.cancellable);
+    setJobSnapshot(snapshot);
+    const nextSpeed = updateDownloadSpeedFromSample(
+      speedRef.current,
+      agentJobToSpeedSample(snapshot),
+    );
+    speedRef.current = nextSpeed;
+    setDownloadSpeed(nextSpeed);
+  }, []);
+
   const run = useCallback(
     async (
       action: AgentActionId,
       targetOverride?: AgentInstallationTarget | null,
+      nextSurface?: AgentSurface,
     ) => {
       const current = readinessRef.current;
       if (!current || runningRef.current) return;
       if (action !== "install" && action !== "update" && action !== "launch") {
         return;
       }
-      if (!current.allowedActions.includes(action)) return;
+      const resolvedSurface = nextSurface ?? surfaceRef.current;
+      const gate = resolveLifecycleReadiness(current, resolvedSurface);
+      if (!gate.allowedActions.includes(action)) return;
       const selectedTarget = targetOverride ?? targetRef.current;
+      const cliBound = isCliBound(resolvedSurface, gate.sourceKind);
       const targetRequired =
-        action === "install" ||
-        action === "update" ||
-        (current.requiresTargetSelection && action === "launch");
+        action === "install" || action === "update"
+          ? !cliBound || gate.requiresTargetSelection
+          : gate.requiresTargetSelection && action === "launch";
       if (
         targetRequired &&
         (!selectedTarget || !selectedTarget.eligibleActions.includes(action))
@@ -289,6 +405,8 @@ export function useAgentLifecycleAction({
       generationRef.current = generation;
       runningRef.current = true;
       lastActionRef.current = action;
+      lastSurfaceRef.current = resolvedSurface;
+      setActiveSurface(resolvedSurface ?? null);
       setJobId(null);
       setBusy(true);
       setStage("checking");
@@ -296,6 +414,7 @@ export function useAgentLifecycleAction({
       setError(null);
       setReasonCode(null);
       setSuccess(null);
+      resetTransfer();
 
       let outcome: "succeeded" | "failed" | "cancelled" | "timeout" | "error";
       let outcomeReason: AgentReasonCode | null;
@@ -304,13 +423,16 @@ export function useAgentLifecycleAction({
         const result = await portRef.current.startAction({
           agentId: agentIdRef.current,
           action,
-          expectedReleaseId: current.releaseId ?? undefined,
+          expectedReleaseId: gate.releaseId ?? undefined,
           ...(selectedTarget?.eligibleActions.includes(action)
             ? {
                 inventoryId: selectedTarget.inventoryId,
                 targetId: selectedTarget.targetId,
                 expectedTargetRevision: selectedTarget.expectedTargetRevision,
               }
+            : {}),
+          ...(lastSurfaceRef.current
+            ? { surface: lastSurfaceRef.current }
             : {}),
         });
         if (generationRef.current !== generation) return;
@@ -320,8 +442,7 @@ export function useAgentLifecycleAction({
           setJobId(result.jobId);
           let snapshot = await portRef.current.getActionJob(result.jobId);
           if (generationRef.current !== generation) return;
-          setStage(snapshot.stage);
-          setCancellable(snapshot.cancellable);
+          applyJobSnapshot(snapshot);
 
           for (let attempt = 0; attempt < maxPollsRef.current; attempt += 1) {
             if (isTerminalAgentJobStage(snapshot.stage)) {
@@ -331,8 +452,7 @@ export function useAgentLifecycleAction({
             if (generationRef.current !== generation) return;
             snapshot = await portRef.current.getActionJob(result.jobId);
             if (generationRef.current !== generation) return;
-            setStage(snapshot.stage);
-            setCancellable(snapshot.cancellable);
+            applyJobSnapshot(snapshot);
           }
 
           if (!isTerminalAgentJobStage(snapshot.stage)) {
@@ -383,8 +503,9 @@ export function useAgentLifecycleAction({
       setStage(null);
       setCancellable(false);
       setJobId(null);
+      resetTransfer();
     },
-    [reread],
+    [applyJobSnapshot, reread, resetTransfer],
   );
 
   const runPrimary = useCallback(async () => {
@@ -395,8 +516,14 @@ export function useAgentLifecycleAction({
 
   const retry = useCallback(async () => {
     const last = lastActionRef.current;
-    if (last && readinessRef.current?.allowedActions.includes(last)) {
-      await run(last);
+    const current = readinessRef.current;
+    if (!last || !current) {
+      await runPrimary();
+      return;
+    }
+    const gate = resolveLifecycleReadiness(current, lastSurfaceRef.current);
+    if (gate.allowedActions.includes(last)) {
+      await run(last, undefined, lastSurfaceRef.current);
       return;
     }
     await runPrimary();
@@ -409,23 +536,30 @@ export function useAgentLifecycleAction({
     try {
       const snapshot = await portRef.current.cancelAction(requestedJobId);
       if (generationRef.current !== generation) return;
-      setStage(snapshot.stage);
-      setCancellable(snapshot.cancellable);
+      applyJobSnapshot(snapshot);
     } catch (caught) {
       if (generationRef.current !== generation) return;
       setReasonCode(actionErrorReason(caught));
       setError(agentLifecycleFailureCopy(actionErrorReason(caught)));
     }
-  }, [cancellable, jobId]);
+  }, [applyJobSnapshot, cancellable, jobId]);
+
+  const transferView = projectAgentJobTransfer(
+    stage,
+    jobSnapshot,
+    downloadSpeed,
+  );
 
   return {
     primaryAction,
     busy,
     stage,
-    percent: null,
+    percent: transferView.percent,
+    progressLabel: transferView.downloadLine,
     error,
     reasonCode,
     success,
+    activeSurface,
     canCancel: busy && jobId !== null && cancellable,
     canRetry: !busy && error !== null,
     run,

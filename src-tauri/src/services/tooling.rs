@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 mod discovery;
+mod grok;
 mod lifecycle;
 mod terminal;
 mod versions;
@@ -26,6 +27,9 @@ use lifecycle::{
 use versions::{
     elevated_windows_tool_version_unavailable, extract_version, get_single_tool_version_impl,
 };
+pub(crate) use versions::{fetch_github_latest_version, FIXED_GITHUB_OPENCODE_REPO};
+#[cfg(test)]
+pub(crate) use versions::{github_latest_release_url, parse_github_latest_release_tag};
 
 #[cfg(all(test, target_os = "macos"))]
 use discovery::is_conflicting;
@@ -35,6 +39,8 @@ pub use discovery::{probe_tool_installations, ToolInstallationReport};
 pub(crate) use discovery::{
     run_detected_tool_command_with_timeout, run_detected_tool_command_with_timeout_and_output_limit,
 };
+#[allow(unused_imports)]
+pub(crate) use grok::{last_grok_lifecycle_snapshot, GrokLifecycleSnapshot};
 pub(crate) use terminal::launch_terminal_running;
 #[cfg(test)]
 use terminal::resolve_launch_cwd;
@@ -57,6 +63,10 @@ pub struct ToolVersion {
     /// 已定位到可执行文件、但 `--version` 报错退出（装了却跑不起来，如 Node 版本不达标）。
     /// 供前端区分"未安装"与"已安装·无法运行"，无需匹配 error 文案反推语义。
     installed_but_broken: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    distribution_owner: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    latest_source: Option<String>,
 }
 
 impl ToolVersion {
@@ -82,6 +92,16 @@ impl ToolVersion {
 
     pub(crate) fn is_detected(&self) -> bool {
         self.version.is_some() || self.installed_but_broken
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn distribution_owner(&self) -> Option<&str> {
+        self.distribution_owner.as_deref()
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn latest_source(&self) -> Option<&str> {
+        self.latest_source.as_deref()
     }
 }
 
@@ -178,7 +198,7 @@ pub async fn run_tool_lifecycle_action(tools: Vec<String>, action: String) -> Re
     }
 
     let label = match action {
-        ToolLifecycleAction::Install => "tool_install",
+        ToolLifecycleAction::Install | ToolLifecycleAction::InstallOfficialNpm => "tool_install",
         ToolLifecycleAction::Update => "tool_update",
     };
 
@@ -188,6 +208,32 @@ pub async fn run_tool_lifecycle_action(tools: Vec<String>, action: String) -> Re
     // this discovery/execution path.
     // build 阶段含锚定探测（对每个工具跑 `--version` 定位命令行实际命中那处），
     // 与执行一并放进 blocking 线程，避免阻塞 async runtime。
+    #[cfg(target_os = "macos")]
+    if requested.contains(&"grok") {
+        if matches!(action, ToolLifecycleAction::InstallOfficialNpm)
+            && requested.iter().any(|tool| *tool != "grok")
+        {
+            return Err("install_official_npm is only valid for Grok Build".to_string());
+        }
+        grok::run_macos_grok_lifecycle(action).await?;
+        let others: Vec<String> = requested
+            .iter()
+            .copied()
+            .filter(|tool| *tool != "grok")
+            .map(str::to_string)
+            .collect();
+        if others.is_empty() || matches!(action, ToolLifecycleAction::InstallOfficialNpm) {
+            return Ok(());
+        }
+        return tokio::task::spawn_blocking(move || {
+            let refs: Vec<&str> = others.iter().map(String::as_str).collect();
+            let command_line = build_tool_lifecycle_command(&refs, action)?;
+            run_elevated_cli_lifecycle_whitelist(&command_line, label)
+        })
+        .await
+        .map_err(|e| format!("tool lifecycle task join error: {e}"))?;
+    }
+
     tokio::task::spawn_blocking(move || {
         let command_line = build_tool_lifecycle_command(&requested, action)?;
         run_elevated_cli_lifecycle_whitelist(&command_line, label)
@@ -1555,53 +1601,12 @@ fn anchored_official_update_command(tool: &str, bin_path: &str) -> Option<String
     official_update_args(tool).map(|args| format!("{} {args}", win_quote_path_for_batch(bin_path)))
 }
 
-/// Grok Build 原生安装的升级命令 = `<bin 绝对> update || <官方 installer>`。
-///
-/// **为什么唯独 native Grok 的 self-update 需要 fallback**（claude native / hermes 都没有）：
-/// `grok update` 虽然是自包含 Rust 二进制的子命令，**却把 npm 当成自己的分发管道**——
-/// 先 spawn `npm view @xai-official/grok version --json` 查最新版，再 spawn
-/// `npm i -g @xai-official/grok@<version>` 安装，由该包的 `postinstall.js` 从平台 optional
-/// 依赖里解出二进制、安置成 `~/.grok/bin/grok-<version>` 并 relink `grok`。而 `npm` 自身是
-/// `#!/usr/bin/env node` 脚本 → **native 安装也隐式硬依赖 PATH 里同时有 `npm` + `node`**。
-/// GUI 进程 PATH 由 launchd 给、`run_elevated_cli_lifecycle_whitelist` 又是非登录 `bash -c`，
-/// nvm/homebrew 下的 node+npm 均不可见 → grok 内部 spawn 得到 ENOENT，只向用户抛出
-/// 费解的 `Error: No such file or directory (os error 2)`（实测复现）。
-///
-/// **这是上游换了机制**：0.2.111 及更早版本自更新是直接下载二进制到 `~/.grok/downloads/`
-/// （彼时 `is_grok_native_install` 假设的 "native = 不碰 npm" 成立），0.2.112 起改走上述 npm
-/// 管道（落点随之从 `downloads/` 变为 `bin/`）。**副作用**：npm 全局包那一处安装是
-/// `grok update` 自己装出来的，非用户手动所为，故 native 用户也会被 enumerate 到两处；
-/// 两处由同一次 postinstall 同步，版本恒等。
-///
-/// 这正是 `anchored_command_from_paths` 那条"绝对路径 + 必要时把解释器目录放 PATH 首位"
-/// 不变量没覆盖的第三类：**执行体自身既不需要解释器、也已用绝对路径，却在内部再 spawn
-/// 第三方 CLI**。`login_shell_path` 的 PATH 注入已让绝大多数机器上的 primary 直接成功；
-/// 这条 fallback 覆盖的是"这台机器根本没装 node"——用官方 installer 装的用户完全可能如此。
-///
-/// **fallback 必须是官方 installer，不能是 `npm i -g`**：后者与 primary **同源**——primary
-/// 失败的两种现实原因（本机无 node；npm registry 指向未同步该 tarball 的镜像，见
-/// npmmirror dist-tag 事故）都会让 npm fallback 一并失败，`||` 形同虚设。官方 installer
-/// 是唯一 node-free 的独立路径（只需 `curl`，在 `/usr/bin`，窄 PATH 下可用），且落点同为
-/// `~/.grok/bin`，锚定语义分毫不动 —— 真正的降级冗余要求 fallback 与 primary **失败模式不相关**。
-///
-/// **这条 fallback 还兼具第三重作用：修复上游锚点（勿在重构时丢掉）**。
-/// grok 的更新路径由 `~/.grok/config.toml` 的 `[cli] installer` 决定（`npm` / `internal` /
-/// `gh-release`），而官方 install.sh 会**无条件把该字段覆写为 `internal`**（其 awk 段落先插入
-/// `installer = "internal"`、再跳过 `[cli]` 段里已有的 `installer`/`channel` 行）。于是：
-/// 用户一旦因 install 端的 npm fallback 被切进 npm 模式（postinstall.js 会写 `installer = "npm"`
-/// 并在每次 npm 更新时重写，自我巩固），只要 npm 路径出任何问题，这里的 `||` 就会把他拉回
-/// node-free 的 internal 模式，并顺带修好 npm 模式漏更新的 `~/.grok/bin/agent` launcher。
-/// **实测验证**（2026-07-30，窄 PATH + `installer = "npm"`）：primary 抛 `os error 2` → fallback
-/// 接管 → 装上最新版 → config 写回 `internal` → agent 对齐 → `.zshrc` 幂等更新不重复。
-/// ⇒ install 端保留 npm fallback 是安全的（它是 x.ai 不可达时的唯一退路，防火墙场景需要），
-/// 其副作用由本链自愈；**把这里换成 npm fallback 会同时废掉降级冗余和这条自愈路径**。
+/// Grok Build 原生安装的升级命令。macOS 只锚定官方 `grok update --check`；
+/// 冻结版本与 `--version` 由 owner-bound executor 执行，不再 `||` 官方 installer
+/// 或 npm。Windows 仍保留 `update ||` 官方 PowerShell installer（本任务不改 Windows）。
 #[cfg(target_os = "macos")]
 fn grok_native_update_command(update: String) -> String {
-    chain_update_commands(
-        update,
-        GROK_INSTALL_UNIX.to_string(),
-        LifecycleCommandShell::Posix,
-    )
+    format!("{update} --check")
 }
 
 /// Windows 版同上，fallback 换成官方 PowerShell installer。
@@ -2177,6 +2182,16 @@ fn installs_anchored_command(tool: &str, installs: &[ToolInstallation]) -> Optio
 /// 官方 installer）。锚定探不到默认安装时回退到它；npm fallback 仍等同于
 /// "装到 PATH 第一个 npm"的旧行为。
 fn static_fallback_command_for(tool: &str, action: ToolLifecycleAction) -> String {
+    #[cfg(target_os = "macos")]
+    if tool == "grok" {
+        return match action {
+            ToolLifecycleAction::Install => GROK_INSTALL_UNIX.to_string(),
+            ToolLifecycleAction::InstallOfficialNpm => npm_install_command_for("grok")
+                .unwrap_or_default()
+                .to_string(),
+            ToolLifecycleAction::Update => String::new(),
+        };
+    }
     tool_action_shell_command(tool, action).unwrap_or_default()
 }
 
@@ -2218,12 +2233,9 @@ fn installer_with_npm_fallback(installer: &str, tool: &str) -> String {
 fn posix_install_command_for(tool: &str) -> String {
     match tool {
         "claude" => installer_with_npm_fallback(CLAUDE_INSTALL_UNIX, tool),
-        // Grok 的 npm fallback **会切换用户的分发模式**（该包 postinstall 把
-        // `~/.grok/config.toml` 的 `[cli] installer` 写成 `npm`，此后 `grok update` 一律走
-        // npm、隐式依赖 node）。仍然保留它：官方 installer 不可达（防火墙 / x.ai 被拦）时
-        // 这是唯一退路，而副作用可自愈——`grok_native_update_command` 的 `||` 官方 installer
-        // 会在 npm 路径出问题时把 `installer` 覆写回 `internal`（见该函数 doc 的实测记录）。
-        "grok" => installer_with_npm_fallback(GROK_INSTALL_UNIX, tool),
+        // macOS Grok 首次安装只走官方 installer。官方 npm 是独立动作
+        // `install_official_npm`，不得作为 native 失败后的自动 fallback。
+        "grok" => GROK_INSTALL_UNIX.to_string(),
         "opencode" => installer_with_npm_fallback(OPENCODE_INSTALL_UNIX, tool),
         "hermes" => HERMES_INSTALL_UNIX.to_string(),
         _ => static_fallback_command_for(tool, ToolLifecycleAction::Install),
@@ -2825,6 +2837,15 @@ mod tests {
                 Some("npm i -g @xai-official/grok@latest")
             );
         }
+        assert_eq!(
+            tool_action_shell_command_for_shell(
+                "grok",
+                ToolLifecycleAction::InstallOfficialNpm,
+                LifecycleCommandShell::Posix
+            )
+            .as_deref(),
+            Some("npm i -g @xai-official/grok@latest")
+        );
 
         // Static update remains package-manager based. Only a path positively
         // identified as xAI's native install may run `grok update`.
@@ -3474,7 +3495,7 @@ mod tests {
         }
 
         #[test]
-        fn grok_native_installer_uses_self_update_with_installer_fallback() {
+        fn grok_native_installer_uses_self_update_without_cross_owner_fallback() {
             // ~/.grok/bin/grok is a launcher symlink into ~/.grok/downloads.
             // Updating it through npm would create or mutate a different install.
             let cmd = anchored_command_from_paths(
@@ -3484,23 +3505,25 @@ mod tests {
             );
             assert_eq!(
                 cmd.as_deref(),
-                Some(format!("/Users/me/.grok/bin/grok update || {GROK_INSTALL_UNIX}").as_str())
+                Some("/Users/me/.grok/bin/grok update --check")
             );
         }
 
         #[test]
-        fn grok_native_update_falls_back_to_installer_not_npm() {
-            // 反向锁定:`grok update` 内部靠 `npm view` + `npm i -g` 完成升级,GUI 的窄
-            // PATH 下会 ENOENT。fallback 必须是官方 installer —— 换成 `npm i -g` 就与
-            // primary 同源(无 node / 镜像缺 tarball 时一起失败),`||` 形同虚设。
+        fn grok_native_update_does_not_fallback_to_installer_or_npm() {
             let cmd = anchored_command_from_paths(
                 "grok",
                 "/Users/me/.grok/bin/grok",
                 "/Users/me/.grok/downloads/grok-macos-aarch64",
             )
             .expect("native grok should anchor");
-            assert!(cmd.contains("x.ai/cli/install.sh"), "{cmd}");
+            assert!(cmd.contains("update --check"), "{cmd}");
+            assert!(!cmd.contains("||"), "must not compose fallbacks: {cmd}");
             assert!(!cmd.contains("npm"), "npm must not be the fallback: {cmd}");
+            assert!(
+                !cmd.contains("install.sh"),
+                "installer is not an update fallback: {cmd}"
+            );
         }
 
         #[test]
@@ -3510,10 +3533,7 @@ mod tests {
                 "/Users/me/bin/grok",
                 "/Users/me/.grok/downloads/grok-macos-aarch64",
             );
-            assert_eq!(
-                cmd.as_deref(),
-                Some(format!("/Users/me/bin/grok update || {GROK_INSTALL_UNIX}").as_str())
-            );
+            assert_eq!(cmd.as_deref(), Some("/Users/me/bin/grok update --check"));
         }
 
         #[test]
@@ -4001,24 +4021,43 @@ mod tests {
         }
 
         #[test]
-        fn grok_install_prefers_native_with_npm_fallback() {
+        fn grok_install_uses_official_installer_without_npm_fallback() {
             let cmd = install_command_for("grok");
             assert!(
                 cmd.contains("https://x.ai/cli/install.sh"),
                 "should include official installer URL: {cmd}"
             );
             assert!(
-                cmd.contains("@xai-official/grok@latest"),
-                "should keep npm package as fallback: {cmd}"
+                !cmd.contains("||"),
+                "must not auto-fallback across owners: {cmd}"
             );
-            let parts: Vec<&str> = cmd.split("||").collect();
-            assert_eq!(parts.len(), 2, "should be a two-step short-circuit chain");
-            assert!(parts[0].contains("install.sh"), "native first: {cmd}");
             assert!(
-                !parts[0].contains('|'),
-                "native installer should avoid pipe: {cmd}"
+                !cmd.contains("@xai-official/grok"),
+                "npm is an explicit separate action: {cmd}"
             );
-            assert!(parts[1].contains("npm i -g"), "npm second: {cmd}");
+        }
+
+        #[test]
+        fn grok_lifecycle_command_does_not_compose_npm_fallback() {
+            let install = build_tool_lifecycle_command(&["grok"], ToolLifecycleAction::Install)
+                .expect("grok install plan");
+            assert!(install.contains("https://x.ai/cli/install.sh"), "{install}");
+            assert!(!install.contains("||"), "{install}");
+            assert!(!install.contains("@xai-official/grok"), "{install}");
+        }
+
+        #[test]
+        fn grok_explicit_npm_install_is_a_separate_action() {
+            let cmd = static_fallback_command_for("grok", ToolLifecycleAction::InstallOfficialNpm);
+            assert_eq!(cmd, "npm i -g @xai-official/grok@latest");
+            let built =
+                build_tool_lifecycle_command(&["grok"], ToolLifecycleAction::InstallOfficialNpm)
+                    .expect("explicit npm plan");
+            assert!(
+                built.contains("npm i -g @xai-official/grok@latest"),
+                "{built}"
+            );
+            assert!(!built.contains("install.sh"), "{built}");
         }
 
         #[test]
@@ -4038,11 +4077,9 @@ mod tests {
                 "npm i -g @google/gemini-cli@latest"
             );
             assert!(!static_fallback_command("gemini").contains("gemini update"));
-            assert_eq!(
-                static_fallback_command("grok"),
-                "npm i -g @xai-official/grok@latest"
-            );
+            assert_eq!(static_fallback_command("grok"), "");
             assert!(!static_fallback_command("grok").contains("grok update"));
+            assert!(!static_fallback_command("grok").contains("npm"));
             assert_eq!(
                 static_fallback_command("opencode"),
                 "opencode upgrade || npm i -g opencode-ai@latest"

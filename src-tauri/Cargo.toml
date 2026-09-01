@@ -26,6 +26,7 @@ doctest = false
 [features]
 default = []
 test-hooks = []
+macos-privileged-client = []
 
 [build-dependencies]
 tauri-build = { version = "2.4.0", features = [] }
@@ -148,7 +149,14 @@ rquickjs = { version = "0.8", features = ["bindgen"] }
 auto-launch = "0.5"
 libc = "0.2"
 objc2 = "0.5"
-objc2-app-kit = { version = "0.2", features = ["NSColor"] }
+objc2-app-kit = { version = "0.2", features = [
+    "NSColor",
+    "NSRunningApplication",
+    "NSWorkspace",
+    "block2",
+] }
+objc2-foundation = { version = "0.2", features = ["NSError", "NSString", "NSURL"] }
+block2 = "0.5"
 
 # Optimize release binary size for desktop packages.
 [profile.release]

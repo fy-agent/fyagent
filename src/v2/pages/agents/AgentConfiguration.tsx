@@ -5,14 +5,17 @@ import {
   appendAgentReturnToPath,
   type AgentReturnDescriptor,
 } from "../../shared/features/agent-navigation";
+import { useFeatures } from "../../shared/features/provider";
 import type { ProductDirectoryEntry } from "../../shared/features/directory";
 import type { AgentCatalogEntry } from "../../shared/features/types";
+import { CodexDesktopInstallerPanel } from "../../shared/codex-desktop/CodexDesktopInstallerPanel";
 import { FeatureTabPanel, FeatureTabs } from "../../shared/ui/FeatureTabs";
 import { BrandIconFrame } from "../../shared/ui/catalog";
 import { Button } from "../../shared/ui/primitives";
 
 import { AgentMcpSection, AgentSkillsSection } from "./AgentAssignmentSections";
 import { AgentAuthStatusPanel } from "./AgentAuthStatusPanel";
+import { AgentInstallReadinessSection } from "./AgentInstallReadinessSection";
 import { AgentModelsSection } from "./AgentModelsSection";
 import { AgentPromptsSection } from "./AgentPromptsSection";
 import type { AgentSection } from "./agentSections";
@@ -38,6 +41,7 @@ export function AgentConfiguration({
   onBack: () => void;
 }) {
   const navigate = useNavigate();
+  const { ports } = useFeatures();
   const openManagement = () => {
     const returnDescriptor = {
       agentId: entry.agentId,
@@ -92,6 +96,17 @@ export function AgentConfiguration({
         active
         className="fy-agent-config-body"
       >
+        {entry.agentId === "codex" ? (
+          <CodexDesktopInstallerPanel />
+        ) : (
+          <AgentInstallReadinessSection
+            agentId={entry.agentId}
+            port={ports.agentInstallReadiness}
+            grokTooling={
+              entry.agentId === "grokbuild" ? ports.tooling : undefined
+            }
+          />
+        )}
         <AgentAuthStatusPanel agentId={entry.agentId} />
         {section === "models" ? (
           <AgentModelsSection

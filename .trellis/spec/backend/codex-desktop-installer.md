@@ -5,9 +5,15 @@
 This contract owns every current and future FyAgent one-click install or upgrade
 flow for executable software, regardless of product or platform. Codex Desktop
 is the first implementation, not a policy exception. QoderWork CN, TRAE Work CN,
-and WorkBuddy reuse the same source/download/job/cancel/temp/post-install
-orchestration policy through the Agent install façade; they must not grow a
-second downloader. Codex remains the golden MSIX/DMG regression fixture.
+WorkBuddy, OpenCode Desktop, and Claude Desktop reuse the same
+source/download/job/cancel/temp/post-install orchestration policy through the
+Agent install façade; they must not grow a second downloader. OpenCode and
+Claude Agent lifecycle surfaces are desktop-only; Tooling CLI installers are
+not an Agent directory one-click path. `/Applications` last write is owned by
+[macOS Privileged System-Commit Helper](./macos-system-commit.md) and stays
+disabled until that contract's production gate is flipped.
+Bounded `Info.plist` reads go through the Codex `plutil -> JSON -> typed fields`
+owner (binary and XML). Codex remains the golden MSIX/DMG regression fixture.
 Windows EXE/NSIS artifacts in this iteration are not deployed from elevated
 FyAgent directly. They reuse the authenticated ordinary-user helper through a
 second closed action, while Codex remains the only PackageManager/MSIX action.
@@ -354,10 +360,19 @@ second DMG deployer. The product adapter supplies only:
 For managed-Agent updates, source/staging/installed copies must match exactly,
 the selected existing canonical path and basename are retained, and no
 permission failure may redirect an update to another Applications scope. A
-system `/Applications` target is disabled with `authorization_required` until
-a separately reviewed authorization adapter exists. Fresh user-scope install
+system `/Applications` target is disabled with `authorization_required` while
+`macos_system_commit::production_enabled()` is false. The privileged helper
+exists as code and nested packaging, but it is not a production commit owner
+until signed/notarized HIL flips that gate. Fresh user-scope install
 may target `~/Applications`; it is never an implicit fallback from a selected
-system target.
+system target and must never be labeled as a system Applications install.
+See [macOS Privileged System-Commit Helper](./macos-system-commit.md).
+
+macOS Agent DMG download reuses the Codex streaming persist path
+(`prepare_transport_download` / `persist_transport_response`, `.part`,
+job-local `installer.dmg`). It must not buffer the full artifact as `Vec<u8>`
+or write a second complete DMG. Bounded `Info.plist` reads use the Codex
+`plutil → JSON → typed fields` owner (binary and XML).
 
 ### Lifecycle and post-install verification
 
@@ -380,6 +395,14 @@ callback re-enumerates the closed product identity and proves exact target
 path, scope, product-comparable version, and no newly introduced cross-scope
 copy. A failed update verification restores and re-verifies the old bundle;
 an unproven restore is recovery-required rather than success.
+
+Equal-or-newer Codex Desktop (local ≥ selected release) is `AlreadyCurrent`:
+inventory readback only. Install, update, check, and already-current **must
+not** call `platform.launch`. Explicit launch and restart remain on
+`CodexDesktopService::launch` / `platform::process_launch`. macOS application
+open uses NSWorkspace completion inside that owner, not `/usr/bin/open`.
+Managed-Agent desktop launch calls `launch_trusted_macos_application_as_user`
+with a backend-validated `.app` path.
 
 ## 4. Validation & Error Matrix
 
@@ -545,9 +568,11 @@ Rust-only field and is never on the Agent DTO.
   settlement, and cleanup owners through a closed Agent product action.
 - A managed update binds the inventory-selected existing path and keeps that
   exact path/basename. A fresh install binds one backend-projected destination.
-  The transaction never guesses another scope. Because no reviewed privileged
-  helper is present, system targets remain visible but blocked with
-  `authorization_required`.
+  The transaction never guesses another scope. The reviewed helper is present
+  as packaging and a crate-private port, but production system commits stay
+  blocked with `authorization_required` until
+  [macOS Privileged System-Commit Helper](./macos-system-commit.md) enables
+  `production_enabled()`.
 - The shared transaction invokes the Agent commit gate after staging validation
   and before the old target moves. It invokes the Agent inventory readback
   after the new target is locally verified and before the backup is deleted.
@@ -577,7 +602,7 @@ Rust-only field and is never on the Agent DTO.
 | Renderer supplies a download URL to either installer | Contract/static test fails |
 | A second downloader module is added for Qoder/TRAE/WorkBuddy | Architecture regression |
 | Managed macOS update writes a different path/scope than the selected candidate | Transaction/readback failure; restore the original target |
-| System target lacks reviewed authorization | `authorization_required`; zero write, no user-scope fallback |
+| System target is selected while `production_enabled()` is false | `authorization_required`; zero write, no user-scope fallback |
 
 ### 5. Good/Base/Bad Cases
 
