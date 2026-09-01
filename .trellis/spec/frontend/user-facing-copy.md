@@ -82,6 +82,18 @@ not user copy.
 - Do not expose raw backend errors unless the contract explicitly marks them as
   safe, actionable display text.
 
+### Settings and user-manual installer copy
+
+- Settings/Tooling may show install/update controls only for Grok Build.
+  Claude, Gemini, OpenCode, OpenClaw, Hermes, and Codex must not present
+  npm, Shell, PowerShell, WinGet, copy-all, or remote-script install bundles.
+- Conflict and upgrade dialogs may show source/version/default, never an
+  absolute path, SID, package family, or the command that will run.
+- Public `docs/user-manual/**` must match that policy. Agent Desktop products
+  are installed from the Agent directory, not from a Settings command table.
+  Optional Node/Homebrew notes in getting-started remain environment setup,
+  not FyAgent Agent installers.
+
 Examples:
 
 ```text
@@ -186,6 +198,8 @@ Before merging user-visible text, verify:
 - [ ] Errors and uncertain states include a safe next step.
 - [ ] Copy does not reveal an opaque token, event sequence, adapter, projection,
       baseline, internal state machine, or implementation proof mechanism.
+- [ ] Settings/user-manual copy does not restore non-Grok CLI install/update
+      command tables or display absolute install paths.
 - [ ] The text does not claim a capability, platform, signing state, or
       successful result beyond available evidence.
 - [ ] A README/document section serves a reader task rather than explaining the

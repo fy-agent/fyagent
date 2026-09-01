@@ -856,6 +856,8 @@ fetch/save controls.
   「使用官方 npm 方式」 / 「改用官方 npm 方式」 only as an explicit
   `run_tool_lifecycle_action(tools, "install_official_npm")`. Native failure
   must not auto-switch. Do not display one owner's latest as the other's.
+  Settings/Tooling is the Grok CLI lifecycle surface; Claude/OpenCode remain
+  desktop-only in this directory and must not regain CLI install buttons.
 - Agent directory/configuration consume `FeaturePorts.agentAuth`, whose adapter
   parses exact tagged observation/session DTOs before query or React state.
   Directory copy is compact and read-only; the configuration panel owns

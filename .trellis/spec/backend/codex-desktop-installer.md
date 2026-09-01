@@ -8,8 +8,9 @@ is the first implementation, not a policy exception. QoderWork CN, TRAE Work CN,
 WorkBuddy, OpenCode Desktop, and Claude Desktop reuse the same
 source/download/job/cancel/temp/post-install orchestration policy through the
 Agent install façade; they must not grow a second downloader. OpenCode and
-Claude Agent lifecycle surfaces are desktop-only; Tooling CLI installers are
-not an Agent directory one-click path. `/Applications` last write is owned by
+Claude Agent lifecycle surfaces are desktop-only; public Tooling CLI
+install/update/copy-command surfaces exist only for Grok Build and are not an
+Agent directory one-click path. `/Applications` last write is owned by
 [macOS Privileged System-Commit Helper](./macos-system-commit.md) and stays
 disabled until that contract's production gate is flipped.
 Bounded `Info.plist` reads go through the Codex `plutil -> JSON -> typed fields`
@@ -51,9 +52,9 @@ does not apply to Skills, plugins, MCP packages, configuration packs, or other
 extension/configuration data; their independently owned validation rules remain
 unchanged.
 
-Existing generic CLI install/update flows remain operational and MUST NOT gain
+Existing Grok-only CLI install/update flows remain operational and MUST NOT gain
 hash, identity, publication-field, or package-content admission validation as a
-side effect of this contract.
+side effect of this contract. Non-Grok Tooling installers are retired.
 
 ### Preserved security and reliability boundaries
 
@@ -240,6 +241,13 @@ guess.
 Fixed Stable identity remains allowed only for discovery and lifecycle actions
 against an already installed known product. Launch/restart still re-enumerates
 the same frozen context and proves the selected local record/AUMID did not drift.
+
+New ChatGPT Desktop (Codex-in-ChatGPT) and ChatGPT Classic may coexist. Any
+migration set must be a small first-party exact package name/publisher/family/
+application ID/AUMID list proven by native HIL of clean install, official Codex
+upgrade, and Classic coexistence. Display names, window titles, and process
+names are not identity. Until that HIL exists, keep the current exact Codex
+owner and fail closed on ambiguity.
 
 ### Windows vendor EXE installation (Agent Catalog)
 
@@ -493,11 +501,14 @@ Tests must prove:
   covered by the same macOS transaction tests;
 - DTO/parser/fixture/UI/i18n contracts omit download verification stage and
   obsolete content-admission errors;
-- generic CLI install/update flows are unchanged and contain no new validator.
+- generic CLI install/update other than Grok Build are retired and contain no
+  new validator. Grok Build remains the only writable Tooling lifecycle.
 - Agent Catalog desktop adapters reuse this policy without a second downloader
   and without occupying the Codex job slot. Windows EXE uses the closed Agent
-  helper action; formal elevated Claude/Grok/OpenCode CLI/auth remains
-  `interactive_user_unavailable` and is not routed through that helper.
+  helper action. Formal elevated Claude/OpenCode CLI/auth remains
+  `interactive_user_unavailable` / `executor_not_implemented` and is not
+  routed through that helper. Formal elevated Grok Build uses the closed
+  `grok-tool` helper action on the same executable, without PackageBridge.
 
 Portable tests and Windows-host compilation do not establish real Windows or
 macOS native compatibility. Unless native HIL is actually run, report

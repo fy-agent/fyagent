@@ -40,6 +40,7 @@ belong in the linked owning spec.
 | [Change Plan Typed Executor](./change-plan-executor.md) | Typed plans, idempotency, execution phases, compensation, and partial results. |
 | [Codex Provider Configuration](./codex-provider-configuration.md) | Codex provider/auth projection, writer serialization, backup, rollback, and readback. |
 | [One-click Executable Software Installer](./codex-desktop-installer.md) | Codex desktop discovery/install/update, PackageBridge/helper, signing, and transaction safety. |
+| [Codex Session Usage Sync](./codex-session-usage.md) | Codex JSONL usage import, typed deferred reasons, retry/fingerprint separation, and `[CODEX-SYNC]` log budget. |
 | [WorkBuddy Configuration](./workbuddy-configuration.md) | Revisioned WorkBuddy model/config writes, overwrite capabilities, backup, and reread. |
 | [External Agent P0 Safety](./external-agent-p0.md) | Agent catalog, runtime observation, install/inventory/actions (desktop-only Claude/OpenCode Agent surfaces, catalog v5 links, job transfer, product lifecycle policy), Auth, Skills/MCP, and vendor boundaries. |
 

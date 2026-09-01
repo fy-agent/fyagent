@@ -30,7 +30,7 @@ linked spec.
 | [Component Guidelines](./component-guidelines.md) | Component APIs, semantics, accessibility, composition, and presentation ownership. |
 | [Hook Guidelines](./hook-guidelines.md) | Hook responsibilities, lifecycle, query/effect ownership, and stable return shapes. |
 | [Quality Guidelines](./quality-guidelines.md) | Loading/error/empty states, test levels, deterministic behavior, and acceptance evidence. |
-| [User-Facing Copy](./user-facing-copy.md) | Human-readable copy, evidence strength, errors, labels, and prohibition on internal/GPT-style narration. |
+| [User-Facing Copy](./user-facing-copy.md) | Human-readable copy, evidence strength, errors, labels, Settings/Grok-only installer copy, and prohibition on internal/GPT-style narration. |
 
 ## V2 contracts
 

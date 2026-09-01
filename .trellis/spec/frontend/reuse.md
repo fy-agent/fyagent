@@ -105,6 +105,14 @@ platform architecture rather than introduce a second UI/state framework.
 - Secrets remain in the narrow component/mutation lifetime defined by the
   feature contract and never become a convenience shared store.
 
+### Settings CLI lifecycle owner
+
+- Leftover Settings (`AboutSection` / `ToolInstallRow`) must not keep a
+  page-local npm/Shell/PowerShell command table. Writable lifecycle buttons
+  exist only for Grok Build and call the existing Tooling action port.
+- Do not duplicate Grok install/update in a second Agent CLI card. Desktop
+  products stay on the Agent directory owner.
+
 ### Preserve dependency direction
 
 ```text

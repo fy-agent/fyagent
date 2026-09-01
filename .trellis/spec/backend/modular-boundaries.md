@@ -105,7 +105,12 @@ mod tests {
   owner. Within that owner:
   - `tooling/versions.rs` owns local/remote version projection, npm/GitHub/PyPI
     latest-version policy and semver/pre-release selection;
-  - `tooling/lifecycle.rs` owns install/update allowlists and command policy;
+  - `tooling/lifecycle.rs` owns the Grok-only install/update allowlist and
+    command policy; non-Grok writable actions fail closed here;
+  - `fyagent-user-helper` portable `grok` module owns shared Grok owner,
+    version, and Windows candidate rules consumed by both the host crate and
+    the unelevated helper. The UI host depends on that crate with
+    `default-features = false` and must never enable `helper-runtime`;
   - `tooling/discovery.rs` owns installation-distribution reports, conflict/
     confirmation projection and the constrained detected-tool execution entry;
   - `tooling/terminal.rs` owns provider-terminal orchestration, environment

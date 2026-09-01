@@ -269,10 +269,13 @@ single | multiple | unsupported | unknown` plus
   bundle ID `com.anthropic.claudefordesktop`, UI title 「Claude Desktop」).
   Grok Build install/update still reuse Tooling (`grok`). OpenCode Agent
   lifecycle is desktop-only (`sourceKind=managed_desktop`, bundle ID
-  `ai.opencode.desktop`). Tooling CLI installers for `claude` / `opencode`
-  remain on existing Tooling surfaces and must not be routed through this
-  Agent façade. Gemini CLI, OpenClaw, and Hermes stay on their existing
-  Tooling surfaces. Codex install/update remain
+  `ai.opencode.desktop`). Public Tooling `install` / `update` /
+  `install_official_npm` / copy-command / remote-script surfaces exist only
+  for Grok Build. Stale Claude / Gemini / OpenCode / OpenClaw / Hermes
+  lifecycle IPC is rejected before network, filesystem, helper, or process
+  side effects. Gemini CLI, OpenClaw, and Hermes may keep read-only
+  version/path/config discovery when another feature consumes it; they are
+  not Agent products and must not regain a public installer. Codex install/update remain
   `managed_by_codex_desktop` and keep the dedicated Codex Desktop installer;
   this façade must not occupy that job slot.
 - `agent_install/lifecycle_policy.rs` is the only product/surface/action
@@ -309,8 +312,10 @@ single | multiple | unsupported | unknown` plus
   targets are visible but non-executable with `authorization_required` rather
   than falling back to `~/Applications`. See
   [macOS Privileged System-Commit Helper](./macos-system-commit.md).
-  Formal elevated Windows CLI/auth automation stays unavailable unless a later
-  authenticated ordinary-user helper with closed enums is proven.
+  Formal elevated Windows Claude/OpenCode CLI and Auth automation stay
+  unavailable. Grok Build observe/install/update on a formal elevated build
+  uses the existing ordinary-user helper's closed `grok-tool` action; helper
+  failure must not fall back to elevated CLI execution.
 - Fail dominates and unknown never upgrades to green. Readiness creates no
   plan snapshot. Auth ownership is `fyagent_managed` (Codex Auth Center),
   `agent_owned` (Claude/Grok/desktop apps), or `provider_owned` (OpenCode
@@ -434,7 +439,8 @@ input.
   a fresh platform probe before dispatch.
 - Mapping:
   - `grokbuild` → Tooling `grok` (`sourceKind=cli_tooling`). Gemini CLI,
-    OpenClaw, Hermes stay on existing Tooling surfaces.
+    OpenClaw, and Hermes stay on Tooling only as read-only discovery/config
+    consumers; they have no public install/update/manual-command action.
   - `claude-code` → managed desktop (`sourceKind=managed_desktop`, bundle ID
     `com.anthropic.claudefordesktop`). Compact: omit `surfaces` on the wire.
     Artifact host is the reviewed constant
@@ -623,7 +629,8 @@ input.
 | Installer exits/returns success but readback is absent/ambiguous/drifted            | `incomplete` / `installation_verification_failed`; never optimistic success |
 | Closed desktop identity absent on macOS/Windows                                     | `not_installed`                                                             |
 | Vendor config directory without closed bundle/exe                                   | `not_installed`; not treated as launchable                                  |
-| Formal elevated Windows Claude/Grok/OpenCode CLI/auth                               | `interactive_user_unavailable`                                              |
+| Formal elevated Windows Claude/OpenCode CLI/auth                                    | `interactive_user_unavailable` / `executor_not_implemented`                 |
+| Formal elevated Windows Grok Build observe/install/update                           | Closed `grok-tool` helper; no elevated fallback                             |
 | Second overlapping job, unknown `jobId`, or cancel after `installing`               | `operation_conflict`                                                        |
 | TRAE `data.manifest` / `TraeCode_*` selected                                        | `source_not_verified`; Work package not started                             |
 | Secret/token/URL appears in DTO, error, log, or DOM                                 | Security regression                                                         |
@@ -679,8 +686,9 @@ input.
   `launching_installer` or `installing`, `awaiting_user` remains non-cancellable,
   `incomplete` is terminal and releases the slot, unknown job id, Codex
   install/update reason code.
-- Tooling mapping only: Claude/Grok/OpenCode. Existing Gemini/OpenClaw/Hermes
-  lifecycle tests remain green and unrouted.
+- Tooling mapping only: Grok Build is the writable CLI. Claude/OpenCode
+  Agent CLI installers are retired; Gemini/OpenClaw/Hermes keep read-only
+  discovery tests and must not regain public install/update actions.
 - Auth contracts: exact tagged observation/session keys and v1 version,
   `deny_unknown_fields`, closed intents/stages/outcomes/reasons, canonical UUID
   session IDs and opaque provider IDs, per-Agent single-flight, immutable
@@ -865,37 +873,55 @@ await ports.agentInstallReadiness.startAction({
 });
 ```
 
-#### Scenario: Grok Build distribution owners (macOS)
+#### Scenario: Grok Build distribution owners
 
 ##### 1. Scope / Trigger
 
-- Trigger: macOS Grok install/update must not compose
-  `installer || npm` or `grok update || installer`. Cross-owner switch is a
-  new explicit action, not a fallback.
-- Owner: `src-tauri/src/services/tooling/grok.rs`. Windows command composition
-  is unchanged. No fifth Tauri tooling command.
+- Trigger: Grok install/update must not compose `installer || npm` or
+  `grok update || installer`. Cross-owner switch is a new explicit action,
+  not a fallback. Formal elevated Windows must not execute the user Grok
+  CLI from the parent.
+- Owner: Tooling `grok.rs` / `lifecycle.rs` plus the portable
+  `fyagent-user-helper` `grok` module. No fifth Tauri tooling command.
 
 ##### 2. Signatures
 
 ```text
 run_tool_lifecycle_action(tools, action)
   action = install | update | install_official_npm
+  writable tool = grok only
 probe_tool_installations(tools) -> distribution_owner?: native_internal | official_npm
 get_tool_versions(tools) -> latest sourced per observed owner
+
+fyagent-user-helper grok-tool
+  --action observe|install|update
+  [--owner native|npm]
+  --job-id <uuid> --pipe <nonce>
+  -> ToolResult { detected, normalized_version?, owner?, outcome }
 ```
 
 ##### 3. Contracts
 
 - Owners: `native_internal` (xAI installer / anchored `grok update --check` /
   `--version <frozen>`) and `official_npm` (`@xai-official/grok@<frozen>`).
-- Native installer: fetch `https://x.ai/cli/install.sh` to a protected temp
-  file, then execute. Not `curl | bash` as the job owner. x.ai → GCS fallback
-  stays inside the official script.
+- Native installer on macOS: fetch `https://x.ai/cli/install.sh` to a
+  protected temp file, then execute. Not `curl | bash` as the job owner.
+- Formal Windows observe/install/update uses the existing ordinary-user
+  helper. Shared PATH markers, owner classification, and version
+  normalization live in `user-helper/src/grok.rs`. Do not keep a second
+  candidate table in the host crate.
+- Installed Grok updates preserve the observed official owner. Fresh install
+  defaults to native; npm is only `install_official_npm` / `--owner npm`.
+- Helper IPC is closed: no command, args, URL, cwd, path, or environment
+  fields. Result bytes are detected/owner/outcome plus a bounded version;
+  raw stdout/stderr and absolute paths never cross the pipe.
+- Helper failure must not fall back to elevated CLI execution.
 - Success requires rediscovery + bounded `grok --version`. Exit 0 is not enough.
 - Official installer has no byte protocol: indeterminate stage + redacted log,
   never fake percent/speed.
 - `install_official_npm` is only valid for Grok. Native failure may expose that
   action; it must not run inside the failed job.
+- Non-Grok `run_tool_lifecycle_action` is rejected before any side effect.
 
 ##### 4. Validation & Error Matrix
 
@@ -903,21 +929,26 @@ get_tool_versions(tools) -> latest sourced per observed owner
 | --- | --- |
 | macOS native job auto-invokes npm | Forbidden |
 | `install_official_npm` on a non-Grok tool | Error; no install |
+| `install` / `update` on Claude/Gemini/OpenCode/OpenClaw/Hermes/Codex | Error before network/fs/helper/process |
 | Mixed native+npm layout | `distribution_owner_mismatch`; do not guess |
 | Non-`x.ai` installer URL | Reject |
-| Windows Grok `\|\| npm` composition | Unchanged |
+| Formal Windows Grok via elevated `CreateProcess` | Forbidden; helper only |
+| Helper failure then admin CLI fallback | Forbidden |
+| Windows Grok `\|\| npm` composition | Forbidden |
 
 ##### 5. Good/Base/Bad Cases
 
 - Good: native update uses anchored `grok` only; user later chooses npm.
-- Base: Windows PowerShell install still documents `|| npm` in tests.
-- Bad: one owner's latest shown as the other's.
+- Base: Settings/Tooling shows install/update only for Grok Build.
+- Bad: one owner's latest shown as the other's; npm command tables for
+  Claude/OpenCode; `irm ... | iex || npm` as the job owner.
 
 ##### 6. Tests Required
 
 - macOS no `grok update ||` / `installer || npm` in production.
-- Windows `grok_windows_install_prefers_powershell_with_npm_fallback` still
-  passes.
+- `is_lifecycle_writable` is true only for `grok`.
+- Helper parser rejects unknown action/owner/extra args; wire codes 5–13.
+- Formal Windows Grok uses `OrdinaryUserHelper`; no elevated fallback.
 - Redaction, timeout mapping, owner-bound plans.
 
 ##### 7. Wrong vs Correct
@@ -933,6 +964,7 @@ grok update || curl -fsSL https://x.ai/cli/install.sh | bash || npm i -g @xai-of
 ```text
 job A: native installer or anchored grok update → terminal failure keeps owner
 job B: only after explicit install_official_npm
+formal Windows: elevated coordinator -> grok-tool helper -> structured ToolResult
 ```
 
 #### Scenario: Closed desktop identity on macOS and Windows
@@ -980,10 +1012,14 @@ TraeWork   macos CFBundleIdentifier = cn.trae.solo.app
                                       | TraeWork CN | TraeWork_CN
 
 OpenCode   macos CFBundleIdentifier = ai.opencode.desktop
-           windows desktop install  = not in this Agent façade
+           windows desktop install  = fail-closed until current first-party
+                                      Windows artifact + native HIL freeze
+                                      ProductName/signer/path; do not guess
 
 Claude     macos CFBundleIdentifier = com.anthropic.claudefordesktop
-           windows desktop install  = not in this Agent façade
+           windows desktop install  = fail-closed until current first-party
+                                      Windows artifact + native HIL freeze
+                                      package/AUMID or PE identity; do not guess
 ```
 
 ##### 3. Contracts
@@ -1339,7 +1375,9 @@ underscore IDE key.
 | TRAE resolver selects `data.manifest` or a `TraeCode_*` URL                                               | Fail closed; Work package is not started                                                   |
 | Codex install/update is started on the Agent job slot                                                     | `managed_by_codex_desktop`; Codex Desktop installer remains the owner                      |
 | Gemini CLI / OpenClaw / Hermes is routed through the Agent façade                                         | Contract regression; those Tooling surfaces stay independent                               |
-| Formal elevated Windows CLI/auth is attempted from FyAgent                                                | `interactive_user_unavailable`; do not route user tools through the EXE installer helper   |
+| Formal elevated Windows Claude/OpenCode CLI/auth is attempted from FyAgent                                | `interactive_user_unavailable` / `executor_not_implemented`; do not add a generic helper    |
+| Formal elevated Windows Grok Build lifecycle is attempted from FyAgent                                    | Closed `grok-tool` helper only; no elevated CLI fallback and no EXE-installer reuse        |
+| Non-Grok Tooling `install` / `update` / `install_official_npm` / copy-command is requested                | Reject before network, filesystem, helper, or process; Grok is the only writable CLI       |
 | Windows EXE deploy bypasses the closed product/helper/bridge contract                                     | Reject; no generic path/shell helper or ordinary trusted-EXE launch                        |
 | A second non-terminal Agent job starts, or cancel is requested after `launching_installer` / `installing` | `operation_conflict`                                                                       |
 
@@ -1358,7 +1396,8 @@ underscore IDE key.
 - **Good:** Agent detail reads one bounded readiness DTO and may start a closed
   `agentId + action` job. OpenCode Desktop uses this façade with `surface`.
   Codex install/update still delegate to the existing managed installer.
-  Claude/Grok/OpenCode CLI reuse Tooling. Qoder/TRAE/WorkBuddy use first-party
+  Grok Build CLI reuses Tooling as the only writable CLI lifecycle.
+  Claude/OpenCode Agent CLI installers are retired. Qoder/TRAE/WorkBuddy use first-party
   source adapters.
 - **Bad:** infer installation from `.qoderwork`, accept a renderer executable,
   route Qoder/TRAE through `AppType`, fall back around a proxy pin failure,
