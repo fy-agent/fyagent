@@ -35,9 +35,9 @@
 ## Phase 6：SPEC、评审与验证
 
 - [x] 更新 development-environment/task-runner/windows-runtime/external-agent/v2-agent-models/v2-shell owning specs。
-- [ ] 评审权限、source、target、helper 与 post-readback 安全边界。
-- [ ] 评审复用、跨平台 policy、默认开发体验、UI/accessibility 与证据声明。
-- [ ] focused gates 与完整 prearchive gate。
+- [x] 评审权限、source、target、helper 与 post-readback 安全边界。
+- [x] 评审复用、跨平台 policy、默认开发体验、UI/accessibility 与证据声明。
+- [x] focused gates 与完整 prearchive gate。
 
 ## Phase 7：归档
 
