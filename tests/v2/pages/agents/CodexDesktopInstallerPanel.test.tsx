@@ -179,7 +179,9 @@ describe("V2 Codex Desktop installer panel", () => {
       );
     });
 
-    expect(screen.getByText(/已下载 2 KB \/ 4 KB/)).toHaveTextContent("1 KB/s");
+    expect(screen.getByText(/已下载 2 KB \/ 4 KB/)).toHaveTextContent(
+      "1.0 KB/s",
+    );
     expect(screen.getByRole("progressbar")).toHaveAttribute(
       "aria-valuenow",
       "50",

@@ -280,7 +280,7 @@ describe("AgentInstallReadinessSection", () => {
     stage = "succeeded";
     await waitFor(
       () => {
-        expect(screen.getByText("操作已完成，安装状态已更新。")).toBeVisible();
+        expect(screen.getByText("操作已完成。")).toBeVisible();
       },
       { timeout: 3000 },
     );

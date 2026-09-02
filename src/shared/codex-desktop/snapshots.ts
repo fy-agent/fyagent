@@ -268,8 +268,9 @@ export function formatTransferPercent(percent: number): string {
   return Number.isInteger(rounded) ? `${rounded}%` : `${rounded.toFixed(1)}%`;
 }
 
-export function formatTransferBytes(
+function formatTransferAmount(
   value: number | null | undefined,
+  keepWholeTenth: boolean,
 ): string | null {
   if (value == null || !Number.isFinite(value) || value < 0) return null;
   const units = ["B", "KB", "MB", "GB", "TB"] as const;
@@ -281,8 +282,17 @@ export function formatTransferBytes(
   }
   if (unit === 0) return `${Math.round(amount)} B`;
   const digits = amount >= 100 ? 0 : 1;
-  const label = amount.toFixed(digits).replace(/\.0$/, "");
+  let label = amount.toFixed(digits);
+  if (!keepWholeTenth) {
+    label = label.replace(/\.0$/, "");
+  }
   return `${label} ${units[unit]}`;
+}
+
+export function formatTransferBytes(
+  value: number | null | undefined,
+): string | null {
+  return formatTransferAmount(value, false);
 }
 
 export function formatTransferSpeed(
@@ -295,7 +305,7 @@ export function formatTransferSpeed(
   ) {
     return null;
   }
-  const bytes = formatTransferBytes(bytesPerSecond);
+  const bytes = formatTransferAmount(bytesPerSecond, true);
   return bytes ? `${bytes}/s` : null;
 }
 

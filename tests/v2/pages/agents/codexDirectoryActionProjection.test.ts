@@ -153,8 +153,27 @@ describe("projectCodexDirectoryAction", () => {
     ).toMatchObject({
       busy: true,
       percent: 25,
+      speedLabel: "3 B/s",
       canCancel: true,
       state: "job_downloading",
+    });
+    expect(
+      projectCodexDirectoryAction(
+        source({
+          state: "job_downloading",
+          progress: {
+            current: 10,
+            total: 40,
+            percent: 25,
+            bytesPerSecond: 4 * 1024 * 1024,
+          },
+          canCancel: true,
+        }),
+      ),
+    ).toMatchObject({
+      busy: true,
+      percent: 25,
+      speedLabel: "4.0 MB/s",
     });
     expect(
       projectCodexDirectoryAction(

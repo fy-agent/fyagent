@@ -1,5 +1,7 @@
 import { useCallback, type ReactNode } from "react";
 
+import { useQueryClient } from "@tanstack/react-query";
+
 import { getAgentBrand } from "../../shared/assets/agents";
 import { useCodexDesktopInstaller } from "../../shared/codex-desktop/useCodexDesktopInstaller";
 import {
@@ -7,7 +9,10 @@ import {
   type AgentInstallationTarget,
   type AgentInstallReadiness,
 } from "../../shared/features/agent-install-readiness";
-import { useAgentInstallationInventory } from "../../shared/features/queries";
+import {
+  featureKeys,
+  useAgentInstallationInventory,
+} from "../../shared/features/queries";
 import { useFeatures } from "../../shared/features/provider";
 import { formatTransferPercent } from "../../shared/features/transfer-projection";
 import {
@@ -87,16 +92,23 @@ function genericBusyCopy(lifecycle: AgentLifecycleActionView): string {
 }
 
 function codexBusyCopy(projection: CodexDirectoryActionProjection): string {
-  if (projection.state === "job_downloading" && projection.percent !== null) {
-    return `正在下载 ${formatTransferPercent(projection.percent)}`;
+  if (projection.state === "job_downloading") {
+    const percentLabel =
+      projection.percent !== null
+        ? formatTransferPercent(projection.percent)
+        : null;
+    if (percentLabel && projection.speedLabel) {
+      return `正在下载 ${percentLabel} · ${projection.speedLabel}`;
+    }
+    if (percentLabel) return `正在下载 ${percentLabel}`;
+    if (projection.speedLabel) return `正在下载 ${projection.speedLabel}`;
+    return "正在下载";
   }
   switch (projection.state) {
     case "job_checking":
       return "正在检查来源";
     case "job_preflight":
       return "正在执行安装前检查";
-    case "job_downloading":
-      return "正在下载";
     case "job_installing":
       return "正在安装";
     case "job_verifying_installation":
@@ -112,6 +124,8 @@ function DirectoryCardShell({
   lifecycleBusy,
   lifecycleSlot,
   authSlot,
+  error,
+  success,
   onConfigure,
 }: {
   entry: AgentCatalogEntry;
@@ -119,6 +133,8 @@ function DirectoryCardShell({
   lifecycleBusy: boolean;
   lifecycleSlot: ReactNode;
   authSlot: ReactNode;
+  error: string | null;
+  success?: string | null;
   onConfigure: (agentId: AgentCatalogId) => void;
 }) {
   const kindCopy = rowKindCopy(observation);
@@ -151,6 +167,7 @@ function DirectoryCardShell({
         </div>
         <p className="fy-agent-directory-description">{entry.description}</p>
         {authSlot}
+        <DirectoryActionFeedback error={error} success={success ?? null} />
       </div>
       <div className="fy-agent-directory-card-actions">
         {lifecycleSlot}
@@ -162,9 +179,24 @@ function DirectoryCardShell({
   );
 }
 
-function DirectoryActionFeedback({ error }: { error: string | null }) {
-  if (!error) return null;
-  return <p className="fy-agent-directory-card-feedback">{error}</p>;
+function DirectoryActionFeedback({
+  error,
+  success,
+}: {
+  error: string | null;
+  success: string | null;
+}) {
+  const text = error ?? success;
+  if (!text) return null;
+  return (
+    <p
+      className="fy-agent-directory-card-feedback"
+      data-tone={error ? "error" : "info"}
+      role="status"
+    >
+      {text}
+    </p>
+  );
 }
 
 function GenericDirectoryCard({
@@ -179,6 +211,7 @@ function GenericDirectoryCard({
   onReadinessChange: (data: AgentInstallReadiness) => void;
 }) {
   const { ports } = useFeatures();
+  const queryClient = useQueryClient();
   const primaryAction = deriveAgentLifecyclePrimaryAction(
     entry.id,
     observation.readiness ?? null,
@@ -201,13 +234,31 @@ function GenericDirectoryCard({
     readiness: observation.readiness ?? null,
     target: primaryTarget,
     onReadinessChange,
+    onInventoryChange: (data) => {
+      queryClient.setQueryData(
+        featureKeys.agentInstallationInventory(entry.id),
+        data,
+      );
+    },
   });
   const scanningCopy = directoryBusyCopy(observation);
+  const targetStatus =
+    primaryAction === null
+      ? "not_needed"
+      : inventory.isPending
+        ? "loading"
+        : inventory.isError
+          ? "unavailable"
+          : eligibleTargets.length === 1
+            ? "single"
+            : "selection_required";
   return (
     <DirectoryCardShell
       entry={entry}
       observation={observation}
       lifecycleBusy={lifecycle.busy}
+      error={lifecycle.error}
+      success={lifecycle.success}
       authSlot={
         <AgentAuthStatusPanel
           agentId={entry.id}
@@ -217,26 +268,13 @@ function GenericDirectoryCard({
       }
       onConfigure={onConfigure}
       lifecycleSlot={
-        <>
-          <GenericLifecycleSlot
-            observation={observation}
-            scanningCopy={scanningCopy}
-            lifecycle={lifecycle}
-            targetStatus={
-              primaryAction === null
-                ? "not_needed"
-                : inventory.isPending
-                  ? "loading"
-                  : inventory.isError
-                    ? "unavailable"
-                    : eligibleTargets.length === 1
-                      ? "single"
-                      : "selection_required"
-            }
-            onConfigure={() => onConfigure(entry.id)}
-          />
-          <DirectoryActionFeedback error={lifecycle.error} />
-        </>
+        <GenericLifecycleSlot
+          observation={observation}
+          scanningCopy={scanningCopy}
+          lifecycle={lifecycle}
+          targetStatus={targetStatus}
+          onConfigure={() => onConfigure(entry.id)}
+        />
       }
     />
   );
@@ -336,6 +374,7 @@ function CodexDirectoryCard({
       entry={entry}
       observation={observation}
       lifecycleBusy={projection.busy}
+      error={error}
       authSlot={
         <AgentAuthStatusPanel
           agentId={entry.id}
@@ -345,15 +384,12 @@ function CodexDirectoryCard({
       }
       onConfigure={onConfigure}
       lifecycleSlot={
-        <>
-          <CodexLifecycleSlot
-            scanningCopy={scanningCopy}
-            observation={observation}
-            projection={projection}
-            onRun={onRun}
-          />
-          <DirectoryActionFeedback error={error} />
-        </>
+        <CodexLifecycleSlot
+          scanningCopy={scanningCopy}
+          observation={observation}
+          projection={projection}
+          onRun={onRun}
+        />
       }
     />
   );

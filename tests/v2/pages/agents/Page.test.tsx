@@ -4,6 +4,7 @@ import { MemoryRouter, useLocation } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
 import { AgentsPage } from "@/v2/pages/agents/Page";
+import { AGENT_LIFECYCLE_VENDOR_HANDOFF_COPY } from "@/v2/pages/agents/useAgentLifecycleAction";
 import {
   AGENT_ACTION_CONTRACT_VERSION,
   AGENT_INSTALL_READINESS_CONTRACT_VERSION,
@@ -739,6 +740,76 @@ describe("V3 Agent directory and configuration shell", () => {
       ).toBeVisible(),
     );
     expect(configureButton("QoderWork CN")).toBeDisabled();
+  });
+
+  it("keeps official-installer window copy on the directory card after Windows handoff", async () => {
+    const user = userEvent.setup();
+    const ports = configuredPorts();
+    const postActionRead = deferred<AgentInstallReadiness>();
+    let scanComplete = false;
+    ports.agentInstallReadiness.get = vi.fn(async (agentId: AgentCatalogId) => {
+      if (scanComplete && agentId === "qoderwork")
+        return postActionRead.promise;
+      if (agentId === "qoderwork") {
+        return readiness("qoderwork", "not_installed", {
+          allowedActions: ["install"],
+          releaseId: `v1:${"c".repeat(64)}`,
+        });
+      }
+      return readiness(agentId, "installed");
+    });
+    ports.agentInstallReadiness.startAction = vi.fn(
+      async (): Promise<AgentActionResult> => ({
+        contractVersion: AGENT_ACTION_CONTRACT_VERSION,
+        agentId: "qoderwork",
+        action: "install",
+        jobId: "job-vendor",
+        stage: "launching_installer",
+        reasonCode: null,
+      }),
+    );
+    ports.agentInstallReadiness.getActionJob = vi.fn(
+      async (): Promise<AgentActionJobSnapshot> => ({
+        contractVersion: AGENT_ACTION_CONTRACT_VERSION,
+        jobId: "job-vendor",
+        agentId: "qoderwork",
+        action: "install",
+        stage: "succeeded",
+        cancellable: false,
+        reasonCode: null,
+        transfer: null,
+      }),
+    );
+    renderPage(ports);
+    expect(
+      await screen.findByRole("button", { name: "重新扫描" }),
+    ).toBeEnabled();
+    scanComplete = true;
+
+    await user.click(
+      within(directoryArticle("QoderWork CN")).getByRole("button", {
+        name: "一键安装",
+      }),
+    );
+    expect(
+      await within(directoryArticle("QoderWork CN")).findByText(
+        "正在更新安装状态",
+      ),
+    ).toBeVisible();
+
+    postActionRead.resolve(
+      readiness("qoderwork", "not_installed", { allowedActions: ["install"] }),
+    );
+    expect(
+      await within(directoryArticle("QoderWork CN")).findByText(
+        AGENT_LIFECYCLE_VENDOR_HANDOFF_COPY,
+      ),
+    ).toBeVisible();
+    expect(
+      within(directoryArticle("QoderWork CN")).getByRole("button", {
+        name: "一键安装",
+      }),
+    ).toBeVisible();
   });
 
   it("offers 一键更新 only when the product allows it, installed, update_available, and backend allows it", async () => {
