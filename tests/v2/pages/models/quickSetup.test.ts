@@ -4,6 +4,7 @@ import {
   MODEL_TARGETS,
   parseManualModelIds,
   parseModelTarget,
+  parseExplicitModelTarget,
   QUICK_SETUP_PROVIDER_IDS,
   validateQuickSetup,
 } from "@/v2/pages/models/quickSetup";
@@ -23,6 +24,9 @@ describe("models quick setup helpers", () => {
     expect(parseModelTarget("trae")).toBe("trae");
     expect(parseModelTarget("unknown")).toBe("qoderwork");
     expect(parseModelTarget(null)).toBe("qoderwork");
+    expect(parseExplicitModelTarget("workbuddy")).toBe("workbuddy");
+    expect(parseExplicitModelTarget("unknown")).toBeNull();
+    expect(parseExplicitModelTarget(null)).toBeNull();
   });
 
   it("normalizes and validates every provider field", () => {

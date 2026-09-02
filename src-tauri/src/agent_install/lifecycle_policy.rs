@@ -29,7 +29,7 @@ pub(crate) struct AgentLifecyclePolicy {
 const QODERWORK: AgentLifecyclePolicy = AgentLifecyclePolicy {
     surfaces: &[AgentSurface::Desktop],
     install: true,
-    update: true,
+    update: false,
     launch: true,
     managed_desktop_source: Some(ManagedDesktopSourceId::QoderWork),
 };
@@ -37,7 +37,7 @@ const QODERWORK: AgentLifecyclePolicy = AgentLifecyclePolicy {
 const TRAEWORK: AgentLifecyclePolicy = AgentLifecyclePolicy {
     surfaces: &[AgentSurface::Desktop],
     install: true,
-    update: true,
+    update: false,
     launch: true,
     managed_desktop_source: Some(ManagedDesktopSourceId::TraeWork),
 };
@@ -45,7 +45,7 @@ const TRAEWORK: AgentLifecyclePolicy = AgentLifecyclePolicy {
 const WORKBUDDY: AgentLifecyclePolicy = AgentLifecyclePolicy {
     surfaces: &[AgentSurface::Desktop],
     install: true,
-    update: true,
+    update: false,
     launch: true,
     managed_desktop_source: Some(ManagedDesktopSourceId::WorkBuddy),
 };
@@ -194,21 +194,21 @@ mod tests {
             AgentCatalogId::QoderWork => (
                 &[AgentSurface::Desktop],
                 true,
-                true,
+                false,
                 true,
                 ManagedDesktopSourceId::QoderWork,
             ),
             AgentCatalogId::TraeWork => (
                 &[AgentSurface::Desktop],
                 true,
-                true,
+                false,
                 true,
                 ManagedDesktopSourceId::TraeWork,
             ),
             AgentCatalogId::WorkBuddy => (
                 &[AgentSurface::Desktop],
                 true,
-                true,
+                false,
                 true,
                 ManagedDesktopSourceId::WorkBuddy,
             ),
@@ -301,11 +301,11 @@ mod tests {
         ] {
             assert_eq!(
                 action_supported(agent_id, AgentSurface::Desktop, AgentActionId::Update),
-                Ok(true)
+                Ok(false)
             );
             assert_eq!(
                 admit_action(agent_id, AgentSurface::Desktop, AgentActionId::Update),
-                Ok(())
+                Err(AgentReasonCode::ActionNotSupported)
             );
             assert_eq!(
                 action_supported(agent_id, AgentSurface::Desktop, AgentActionId::Install),
@@ -389,11 +389,11 @@ mod tests {
             domestic,
             AgentInstallState::NotInstalled
         ));
-        assert!(should_resolve_desktop_source(
+        assert!(!should_resolve_desktop_source(
             domestic,
             AgentInstallState::Installed
         ));
-        assert!(should_resolve_desktop_source(
+        assert!(!should_resolve_desktop_source(
             domestic,
             AgentInstallState::InstalledNotRunnable
         ));

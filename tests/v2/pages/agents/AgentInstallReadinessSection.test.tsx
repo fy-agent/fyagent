@@ -219,7 +219,7 @@ describe("AgentInstallReadinessSection", () => {
 
   it("shows native job stage and waits for succeeded instead of a 32s failure", async () => {
     const available: AgentInstallReadiness = {
-      ...readiness("qoderwork"),
+      ...readiness("opencode"),
       installState: "installed",
       updateState: "update_available",
       localVersion: "0.9.12",
@@ -236,11 +236,11 @@ describe("AgentInstallReadinessSection", () => {
     let stage: AgentActionJobStage = "downloading";
     const port: AgentInstallReadinessPort = {
       get: vi.fn(async () => (stage === "succeeded" ? current : available)),
-      getInventory: vi.fn(async () => inventory("qoderwork", true)),
+      getInventory: vi.fn(async () => inventory("opencode", true)),
       startAction: vi.fn(
         async (): Promise<AgentActionResult> => ({
           contractVersion: AGENT_ACTION_CONTRACT_VERSION,
-          agentId: "qoderwork",
+          agentId: "opencode",
           action: "update",
           jobId: "job-1",
           stage: "checking",
@@ -251,7 +251,7 @@ describe("AgentInstallReadinessSection", () => {
         async (): Promise<AgentActionJobSnapshot> => ({
           contractVersion: AGENT_ACTION_CONTRACT_VERSION,
           jobId: "job-1",
-          agentId: "qoderwork",
+          agentId: "opencode",
           action: "update",
           stage: "cancelled",
           cancellable: false,
@@ -263,7 +263,7 @@ describe("AgentInstallReadinessSection", () => {
         async (): Promise<AgentActionJobSnapshot> => ({
           contractVersion: AGENT_ACTION_CONTRACT_VERSION,
           jobId: "job-1",
-          agentId: "qoderwork",
+          agentId: "opencode",
           action: "update",
           stage,
           cancellable: true,
@@ -272,7 +272,7 @@ describe("AgentInstallReadinessSection", () => {
         }),
       ),
     };
-    render(<AgentInstallReadinessSection agentId="qoderwork" port={port} />);
+    render(<AgentInstallReadinessSection agentId="opencode" port={port} />);
     fireEvent.click(
       await screen.findByRole("button", { name: "更新当前位置" }),
     );
@@ -370,9 +370,7 @@ describe("AgentInstallReadinessSection", () => {
     expect(
       within(region).queryByRole("heading", { name: "命令行" }),
     ).not.toBeInTheDocument();
-    expect(
-      within(region).getByRole("button", { name: "安装" }),
-    ).toBeVisible();
+    expect(within(region).getByRole("button", { name: "安装" })).toBeVisible();
   });
 
   it.each([
@@ -588,7 +586,9 @@ describe("AgentInstallReadinessSection", () => {
     expect(
       screen.queryByRole("button", { name: "改用官方 npm 方式" }),
     ).not.toBeInTheDocument();
-    fireEvent.click(await screen.findByRole("button", { name: "更新到最新版" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "更新到最新版" }),
+    );
     expect(
       await screen.findByRole("button", { name: "改用官方 npm 方式" }),
     ).toBeVisible();

@@ -71,8 +71,9 @@ export type NavigationGroup = {
 
 The configuration group owns expandable UI state. Leaf route selection stays
 Router-owned. The flattened leaf list derived from the tree is the sole input
-to the six primary route definitions; `PersistentPrimaryOutlet` is only an
-active-route `Outlet` composition boundary and owns no registry or state.
+to the six primary route definitions; `PersistentPrimaryOutlet` mounts each
+visited primary page behind `PersistentSurface` and does not keep a React
+`useEffect` visited setter. Unvisited primary routes stay lazy.
 
 The selected-lens adapter is V2-internal and does not expose the dependency's
 props or types. It is a best-effort decorative enhancement only: the active
@@ -148,7 +149,12 @@ owns at most one `pointer-events: none` overlay pill. The default
 `selectionLensTransition`. The narrow `position` mode springs only `left` /
 `top` and synchronizes `width` / `height` directly to the active host; it is
 used by the fixed-size primary navigation so scan/layout repaint cannot stretch
-the pill's right edge. Drive animated values with Motion values so a later
+the pill's right edge. The primary-nav lens (`.fy-side-navigation-track >
+.fy-selection-lens`) must set `backdrop-filter: none`: an extra blur samples
+the content-plane scan bar across the shell gap and paints a 1px highlight on
+the selected capsule's top-right corner. Round overlay geometry to device
+pixels; clip the track with `isolation: isolate` and `overflow: hidden`. Do
+not run `getBoundingClientRect` on every unrelated Group render. Drive animated values with Motion values so a later
 click retargets from the live geometry. Do not unmount or `key=` the overlay
 when the active host changes: that restarts the appear transition instead of
 interrupting. In the default `size-and-position` mode, appear and
@@ -249,28 +255,31 @@ change; visible labels and grouping do:
 
 `configuration-management` owns expand/collapse UI state only. Leaf selection
 stays Router-owned. The flattened `navigationItems` list remains the sole
-input to the six primary route definitions; `PersistentPrimaryOutlet` only
-renders the active child route.
+input to the six primary route definitions; `PersistentPrimaryOutlet` keeps
+each visited primary route mounted behind `PersistentSurface`
+(`hidden` / `inert` / `aria-hidden` when inactive).
 
 - Use a hash data router. The index route and every unknown route redirect to
   `/agents`; the stable default URL is `#/agents`.
 - Derive selected state only from router location. The active link has
   `aria-current="page"`; do not maintain a second `currentView` state.
-- Primary route modules use route-level lazy loading and the active route is the
-  only primary route tree mounted by default. `PersistentPrimaryOutlet` must
-  not keep a visited set or update state during render. Backend resources
-  recover through TanStack Query/backend authority; URL-safe selection remains
-  in the hash query; transient visual state may reset. A route may add a narrow,
-  reviewed draft owner or keep-alive policy only when unsaved non-secret state
-  must survive navigation and that lifecycle has explicit tests. Secrets still
-  must not enter the hash, URL query, localStorage, sessionStorage, or query
-  cache.
+- Primary route modules use literal dynamic `import("../pages/<route>/Page")`
+  from `app/primaryPages.tsx`. `main.tsx` calls `prefetchPrimaryRoutes()` so
+  the first visit to a configuration page does not flash 「正在加载页面」.
+  `PersistentPrimaryOutlet` registers a newly visited primary path with the
+  React-allowed during-render state adjustment (no `useEffect` visited setter).
+  Unvisited routes stay unmounted. Hidden visited trees pause page queries
+  through `usePersistentVisibility` in `queries.ts`, freeze route-owned search
+  with `usePersistentSearchParams`, and must not rewrite the active route's
+  query. Native jobs stay backend/query-owned. Secrets still must not enter the
+  hash, URL query, localStorage, sessionStorage, or query cache.
 - Leaving an Agent configuration for Models, Skills, MCP or Prompts appends
   only the validated non-secret `agentReturn` / `agentSection` tuple. The
   management navigation propagates that tuple and derives the return Agent URL
   from its closed Agent/section enums; it never accepts an arbitrary return
   path. Clicking `AI软件配置` while already on the Agent route still returns the
-  directory. No Context, local storage or hidden Agent tree owns this state.
+  directory. The hidden Agents tree may keep its last visible search snapshot;
+  it must not own or write the return path.
 - Put each production page element below its matching `pages/<route>/` folder.
   All six routes render their approved business surfaces. Prompts and Memory
   use bounded native feature ports and must not widen the existing command,
@@ -278,10 +287,11 @@ renders the active child route.
   as native-only and never seeds business data.
 - Register the UI Lab only when `import.meta.env.DEV` is true. Production must
   not expose `#/__dev/ui-lab`.
-- Hidden and unvisited routes must not create page queries, polling,
-  subscriptions, observers, timers, or pending visual work. Cross-route
-  install/Auth/change-plan jobs live in backend/query owners and are reread on
-  remount; a hidden React tree is not a job daemon.
+- Hidden visited primary routes must not create new page queries, polling,
+  subscriptions, or scan UI dispatch. Unvisited routes stay lazy. Cross-route
+  install/Auth/change-plan jobs live in backend/query owners; a hidden React
+  tree is not a job daemon. `NavLink` pending opacity applies only when the
+  destination is not already the active page.
 - Brand is non-interactive. React tab order starts with the visible
   left-navigation controls; `TopBar` contributes no keyboard stop until a real
   shell action is implemented. `SideNavigation` owns `ArrowUp` / `ArrowDown` /
@@ -473,7 +483,8 @@ Agent/Models, Skills, and MCP ports do not by themselves make it Release-ready.
 | Changing the active option remounts the overlay or restarts from `{width:0}`       | Unit test fails; the same overlay node must keep identity and retarget from current geometry                                                                                         |
 | First show or show-after-`hidden` collapses to the track origin (`inset`, `inset`) | Unit and architecture tests fail; appear must use `selectionLensCollapsedOrigin` of the active host                                                                                  |
 | 「记忆模块」 is selected, then 「配置管理」 expands                                | Overlay follows the memory host; the disclosure changes the group's explicit `layoutKey`, bounded host/track measurement retargets, and Playwright keeps the pill on the memory link |
-| Agent scan repaints while primary navigation is selected                           | One `position`-geometry Lens remains; width/height/right stay stable and the selected host has no duplicate background/border/shadow                                                 |
+| Agent scan repaints while primary navigation is selected                           | One `position`-geometry Lens remains; width/height/right stay stable, `backdrop-filter` is `none`, lens right does not exceed the selected host, and the selected host has no duplicate background/border/shadow |
+| From `#/agents` open 模型管理 / Skills / MCP / 提示词                              | Agents tree stays mounted and hidden; destination is visible without 「正在加载页面」; hidden Agents must not rewrite the destination query |
 | Active configuration leaf is collapsed into its group toggle                       | Toggle keeps `aria-expanded=false` and selected semantics, clears its context frame, uses lighter text/caret, and the one Lens owns the frame                                        |
 | Any normal production route                                                        | Exactly one active primary link and one nav `SelectionLens` overlay; no production `LiquidGlassLens`; other tracks may each have their own pill                                      |
 | UI Lab development route                                                           | No primary link active; the lab may render one isolated lens specimen                                                                                                                |
@@ -552,11 +563,16 @@ mise run build:renderer
   stays on the memory host instead of the pre-expand coordinate. They also
   assert one frame material owner and the position-only geometry mode.
   Browser coverage samples the nav Lens across Agent auto-scan frames and
-  requires stable width/height/right plus a transparent selected-host
-  background/border/shadow.
+  requires stable width/height/right, `backdrop-filter: none`, lens right not
+  exceeding the selected host, plus a transparent selected-host
+  background/border/shadow. Route-lifecycle tests keep visited primary pages
+  mounted and hidden, forbid a hidden Agents tree from rewriting Models search,
+  and require opening 模型管理 from `#/agents` without 「正在加载页面」.
 - Architecture/static tests reject legacy dependencies, upward layer imports,
   direct Tauri imports outside `shared/platform/tauri`, and the retired
-  window-frame contract. They keep `framer-motion` behind
+  window-frame contract. They keep visited primary routes behind
+  `PersistentSurface` in `PersistentPrimaryOutlet`, require
+  `prefetchPrimaryRoutes()` from `main.tsx`, keep `framer-motion` behind
   `shared/ui/motion.ts`, reject `layoutId` / `LayoutGroup` on the
   SelectionLens adapter, reject collapsing the pill to `left.set(inset)` /
   `top.set(inset)`, and keep `@samasante/liquid-glass` behind

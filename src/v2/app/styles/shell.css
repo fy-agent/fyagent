@@ -127,6 +127,8 @@
   flex-direction: column;
   gap: 10px;
   min-height: 100%;
+  isolation: isolate;
+  overflow: hidden;
 }
 
 .fy-side-navigation-group {

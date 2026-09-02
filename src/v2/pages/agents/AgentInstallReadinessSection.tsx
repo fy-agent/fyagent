@@ -19,6 +19,7 @@ import {
   type GrokToolSnapshot,
   type GrokToolingPort,
 } from "../../shared/features/grok-tooling";
+import { visibleAllowedActions } from "../../shared/features/agent-lifecycle-capabilities";
 import type { AgentCatalogId } from "../../shared/features/types";
 import { LifecycleTargetPicker } from "../../shared/ui/LifecycleTargetPicker";
 import { Button, InlineNotice, Spinner } from "../../shared/ui/primitives";
@@ -188,7 +189,7 @@ function projectionFromSurface(
     installState: item.installState,
     updateState: item.updateState,
     inventoryState: item.inventoryState,
-    allowedActions: item.allowedActions,
+    allowedActions: visibleAllowedActions(agentId, item.allowedActions),
     reasonCodes: item.reasonCodes,
     requiresTargetSelection: item.requiresTargetSelection,
     releaseId: item.releaseId,
@@ -237,7 +238,7 @@ function surfacesForProduct(
       installState: data.installState,
       updateState: data.updateState,
       inventoryState: data.inventoryState,
-      allowedActions: data.allowedActions,
+      allowedActions: visibleAllowedActions(agentId, data.allowedActions),
       reasonCodes: data.reasonCodes,
       requiresTargetSelection: data.requiresTargetSelection,
       releaseId: data.releaseId,

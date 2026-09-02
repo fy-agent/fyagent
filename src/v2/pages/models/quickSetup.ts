@@ -68,10 +68,16 @@ export function claudeBaseUrlHasExplicitV1Path(value: string): boolean {
   }
 }
 
-export function parseModelTarget(value: string | null): ModelTarget {
+export function parseExplicitModelTarget(
+  value: string | null,
+): ModelTarget | null {
   return MODEL_TARGETS.includes(value as ModelTarget)
     ? (value as ModelTarget)
-    : "qoderwork";
+    : null;
+}
+
+export function parseModelTarget(value: string | null): ModelTarget {
+  return parseExplicitModelTarget(value) ?? "qoderwork";
 }
 
 export function validateQuickSetup(

@@ -164,6 +164,15 @@ test("Agent V3 shows the full catalog, auto-scans, and reuses existing Skill and
   expect(new Set(scanGeometry.map(({ height }) => height)).size).toBe(1);
   expect(new Set(scanGeometry.map(({ right }) => right)).size).toBe(1);
 
+  await expect(navigationLens).toHaveCSS("backdrop-filter", "none");
+  const hostBox = await activeNavigation.boundingBox();
+  const lensBox = await navigationLens.boundingBox();
+  expect(hostBox).not.toBeNull();
+  expect(lensBox).not.toBeNull();
+  expect(lensBox!.x + lensBox!.width).toBeLessThanOrEqual(
+    hostBox!.x + hostBox!.width + 0.5,
+  );
+
   const directory = page.getByRole("region", { name: "AI 软件目录" });
   await expect(directory).toBeVisible();
   await expect(directory.getByRole("article")).toHaveCount(7);

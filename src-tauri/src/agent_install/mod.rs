@@ -1527,11 +1527,25 @@ mod tests {
             assert_eq!(update_state, AgentUpdateState::UpdateAvailable);
             assert_eq!(
                 desktop_allowed_actions(policy, &installed, update_state, true),
-                vec![AgentActionId::Update, AgentActionId::Launch]
+                vec![AgentActionId::Launch]
             );
             assert_eq!(
                 desktop_allowed_actions(policy, &installed, AgentUpdateState::UpToDate, true,),
                 vec![AgentActionId::Launch]
+            );
+        }
+        for agent_id in [AgentCatalogId::ClaudeCode, AgentCatalogId::OpenCode] {
+            let policy = lifecycle_policy::lifecycle_policy(agent_id, AgentSurface::Desktop)
+                .expect("updatable desktop policy");
+            let update_state = desktop_update_state(
+                true,
+                AgentInstallState::Installed,
+                installed.single_local_version.as_deref(),
+                Some("2.0.0"),
+            );
+            assert_eq!(
+                desktop_allowed_actions(policy, &installed, update_state, true),
+                vec![AgentActionId::Update, AgentActionId::Launch]
             );
         }
     }
@@ -1561,6 +1575,16 @@ mod tests {
             AgentCatalogId::TraeWork,
             AgentCatalogId::WorkBuddy,
         ] {
+            let result =
+                start_agent_action(start_request(agent_id, AgentActionId::Update, None), &state)
+                    .await;
+            assert_eq!(
+                result,
+                Err(AgentReasonCode::ActionNotSupported),
+                "{agent_id:?} must not admit FyAgent one-click update"
+            );
+        }
+        for agent_id in [AgentCatalogId::ClaudeCode, AgentCatalogId::OpenCode] {
             let result =
                 start_agent_action(start_request(agent_id, AgentActionId::Update, None), &state)
                     .await;

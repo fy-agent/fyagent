@@ -1,8 +1,8 @@
 import { useEffect } from "react";
-import { useSearchParams } from "react-router-dom";
 
 import { PRODUCT_DIRECTORY } from "../../shared/features/directory";
 import { useAgentCatalog } from "../../shared/features/queries";
+import { usePersistentSearchParams } from "../../shared/ui/usePersistentSearchParams";
 import {
   Button,
   EmptyState,
@@ -21,9 +21,13 @@ function agentSection(value: string | null): AgentSection | null {
 }
 
 export function AgentsPage() {
-  const [searchParams, setSearchParams] = useSearchParams();
+  const { visible, searchParams, setSearchParams } =
+    usePersistentSearchParams();
   const catalogQuery = useAgentCatalog();
-  const scanController = useAgentDirectoryScan({ autoStart: true });
+  const scanController = useAgentDirectoryScan({
+    autoStart: true,
+    active: visible,
+  });
   const entries = catalogQuery.data?.agents ?? [];
   const rawTarget = searchParams.get("target");
   const rawSection = searchParams.get("section");
@@ -37,6 +41,7 @@ export function AgentsPage() {
     : undefined;
 
   useEffect(() => {
+    if (!visible) return;
     if (!rawTarget) {
       if (rawSection) setSearchParams({}, { replace: true });
       return;
@@ -57,6 +62,7 @@ export function AgentsPage() {
     rawTarget,
     requestedSection,
     setSearchParams,
+    visible,
   ]);
 
   const showDirectory = !directoryEntry;

@@ -279,14 +279,18 @@ single | multiple | unsupported | unknown` plus
   `managed_by_codex_desktop` and keep the dedicated Codex Desktop installer;
   this façade must not occupy that job slot.
 - `agent_install/lifecycle_policy.rs` is the only product/surface/action
-  owner. QoderWork / TRAE Work / WorkBuddy, Claude Desktop, and OpenCode
-  Desktop admit `install` / `update` / `launch` on their legal Desktop surface
-  when the current host has a reviewed source and closed identity. A disabled action returns
+  owner. QoderWork / TRAE Work / WorkBuddy admit `install` / `launch` on Desktop
+  and reject FyAgent `update` (`action_not_supported`) even when vendor latest
+  metadata exists for first install. Claude Desktop and OpenCode Desktop admit
+  `install` / `update` / `launch` on Desktop when the current host has a reviewed
+  source and closed identity. A disabled action returns
   `action_not_supported` before target revalidation, network, download, or
   file mutation. Installed managed-desktop products resolve remote source
-  metadata only after inventory proves one usable installation state; unknown
+  metadata only when `lifecycle_policy.update` is true and inventory proves one
+  usable installation state; unknown
   or multiple inventory never performs a source lookup merely to guess update
-  availability.
+  availability. QoderWork / TRAE Work / WorkBuddy skip remote latest while
+  installed.
 - QoderWork CN uses the fixed first-party `/qoder-work-cn/releases/latest/`
   User-x64 / macOS ARM64 / macOS x64 aliases as the only install artifacts.
   Remote `displayVersion` is the unindented `version:` from `latest.yml` /
@@ -611,6 +615,7 @@ input.
 | OpenCode or Claude Agent action sends `surface: cli`                    | `surface_not_supported`; no job                                                              |
 | Compact product inventory includes `surface`                            | Strict parser reject                                                                        |
 | Managed-desktop update is up-to-date, inventory is non-single, or candidate is not update-eligible | Omit `update` from `allowedActions`; zero update job                         |
+| QoderWork / TRAE Work / WorkBuddy `start_agent_action(update)`                      | `action_not_supported`; `allowedActions` omit `update`; skip installed remote latest |
 | Target binding is partial or has an invalid opaque grammar                          | `refresh_required`; no launch/write                                         |
 | `install` omits a fresh destination or `update` omits an existing candidate         | `target_selection_required`; no write                                       |
 | Inventory expired, candidate disappeared, or revision/identity/scope changed        | `inventory_expired` / `target_changed`; no launch/write                     |

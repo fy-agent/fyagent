@@ -16,8 +16,12 @@ import {
   type AgentCatalogId,
 } from "../../shared/features/types";
 import { BrandIconFrame } from "../../shared/ui/catalog";
-import { Button, InlineNotice, Spinner } from "../../shared/ui/primitives";
+import { Button, InlineNotice } from "../../shared/ui/primitives";
 
+import {
+  AgentLifecycleActionSlot,
+  type AgentLifecycleActionSlotView,
+} from "./AgentLifecycleActionSlot";
 import { applyCommittedAgentDirectoryOrder } from "./agentDirectoryOrder";
 import {
   observeAgentDirectoryRow,
@@ -163,28 +167,6 @@ function DirectoryActionFeedback({ error }: { error: string | null }) {
   return <p className="fy-agent-directory-card-feedback">{error}</p>;
 }
 
-function ScanningSlot({ label }: { label: string }) {
-  return (
-    <span className="fy-agent-directory-lifecycle-status" role="status">
-      <Spinner label={label} />
-      {label}
-    </span>
-  );
-}
-
-function BusySlot({ label }: { label: string }) {
-  return (
-    <span className="fy-agent-directory-lifecycle-status" role="status">
-      <Spinner label={label} />
-      {label}
-    </span>
-  );
-}
-
-function primaryActionLabel(action: "install" | "update"): string {
-  return action === "install" ? "一键安装" : "一键更新";
-}
-
 function GenericDirectoryCard({
   entry,
   observation,
@@ -198,6 +180,7 @@ function GenericDirectoryCard({
 }) {
   const { ports } = useFeatures();
   const primaryAction = deriveAgentLifecyclePrimaryAction(
+    entry.id,
     observation.readiness ?? null,
   );
   const inventory = useAgentInstallationInventory(
@@ -259,6 +242,49 @@ function GenericDirectoryCard({
   );
 }
 
+function genericLifecycleSlotView(
+  observation: AgentDirectoryRowObservation,
+  scanningCopy: string | null,
+  lifecycle: AgentLifecycleActionView,
+  targetStatus:
+    | "not_needed"
+    | "loading"
+    | "unavailable"
+    | "single"
+    | "selection_required",
+  onConfigure: () => void,
+): AgentLifecycleActionSlotView {
+  if (lifecycle.busy) {
+    return { kind: "status", label: genericBusyCopy(lifecycle) };
+  }
+  if (scanningCopy && !lifecycle.primaryAction) {
+    return { kind: "status", label: scanningCopy };
+  }
+  if (lifecycle.primaryAction) {
+    if (targetStatus === "loading") {
+      return { kind: "status", label: "正在读取安装目标" };
+    }
+    if (targetStatus !== "single") {
+      return { kind: "select_target", onClick: onConfigure };
+    }
+    return {
+      kind: "primary",
+      action: lifecycle.primaryAction,
+      onClick: () => void lifecycle.runPrimary(),
+    };
+  }
+  if (lifecycle.canRetry) {
+    return { kind: "retry", onClick: () => void lifecycle.retry() };
+  }
+  if (scanningCopy) {
+    return { kind: "status", label: scanningCopy };
+  }
+  if (observation.kind === "pending") {
+    return { kind: "status", label: "正在扫描" };
+  }
+  return { kind: "empty" };
+}
+
 function GenericLifecycleSlot({
   observation,
   scanningCopy,
@@ -277,35 +303,17 @@ function GenericLifecycleSlot({
     | "selection_required";
   onConfigure: () => void;
 }) {
-  if (lifecycle.busy) {
-    return <BusySlot label={genericBusyCopy(lifecycle)} />;
-  }
-  if (scanningCopy && !lifecycle.primaryAction) {
-    return <ScanningSlot label={scanningCopy} />;
-  }
-  if (lifecycle.primaryAction) {
-    if (targetStatus === "loading") {
-      return <ScanningSlot label="正在读取安装目标" />;
-    }
-    if (targetStatus !== "single") {
-      return <Button onClick={onConfigure}>选择安装目标</Button>;
-    }
-    return (
-      <Button onClick={() => void lifecycle.runPrimary()}>
-        {primaryActionLabel(lifecycle.primaryAction)}
-      </Button>
-    );
-  }
-  if (lifecycle.canRetry) {
-    return <Button onClick={() => void lifecycle.retry()}>重试</Button>;
-  }
-  if (scanningCopy) {
-    return <ScanningSlot label={scanningCopy} />;
-  }
-  if (observation.kind === "pending") {
-    return <ScanningSlot label="正在扫描" />;
-  }
-  return null;
+  return (
+    <AgentLifecycleActionSlot
+      view={genericLifecycleSlotView(
+        observation,
+        scanningCopy,
+        lifecycle,
+        targetStatus,
+        onConfigure,
+      )}
+    />
+  );
 }
 
 function CodexDirectoryCard({
@@ -351,6 +359,34 @@ function CodexDirectoryCard({
   );
 }
 
+function codexLifecycleSlotView(
+  scanningCopy: string | null,
+  observation: AgentDirectoryRowObservation,
+  projection: CodexDirectoryActionProjection,
+  onRun: () => Promise<void>,
+): AgentLifecycleActionSlotView {
+  if (projection.busy) {
+    return { kind: "status", label: codexBusyCopy(projection) };
+  }
+  if (observation.kind === "pending" && !observation.refreshing) {
+    return { kind: "status", label: "正在扫描" };
+  }
+  if (projection.canRun && projection.primaryAction) {
+    return {
+      kind: "primary",
+      action: projection.primaryAction,
+      onClick: () => void onRun(),
+    };
+  }
+  if (projection.canRetry) {
+    return { kind: "retry", onClick: () => void onRun() };
+  }
+  if (scanningCopy) {
+    return { kind: "status", label: scanningCopy };
+  }
+  return { kind: "empty" };
+}
+
 function CodexLifecycleSlot({
   scanningCopy,
   observation,
@@ -362,26 +398,16 @@ function CodexLifecycleSlot({
   projection: CodexDirectoryActionProjection;
   onRun: () => Promise<void>;
 }) {
-  if (projection.busy) {
-    return <BusySlot label={codexBusyCopy(projection)} />;
-  }
-  if (observation.kind === "pending" && !observation.refreshing) {
-    return <ScanningSlot label="正在扫描" />;
-  }
-  if (projection.canRun && projection.primaryAction) {
-    return (
-      <Button onClick={() => void onRun()}>
-        {primaryActionLabel(projection.primaryAction)}
-      </Button>
-    );
-  }
-  if (projection.canRetry) {
-    return <Button onClick={() => void onRun()}>重试</Button>;
-  }
-  if (scanningCopy) {
-    return <ScanningSlot label={scanningCopy} />;
-  }
-  return null;
+  return (
+    <AgentLifecycleActionSlot
+      view={codexLifecycleSlotView(
+        scanningCopy,
+        observation,
+        projection,
+        onRun,
+      )}
+    />
+  );
 }
 
 export function AgentDirectory({

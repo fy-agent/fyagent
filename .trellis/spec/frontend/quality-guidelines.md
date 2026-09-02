@@ -63,10 +63,13 @@ reviewed version, with an upstream reference and removal condition; broad
 regular-expression suppression is prohibited.
 
 Route/lifecycle tests prove both sides of lazy ownership: an unvisited route
-module is not requested and does not create queries/observers, while a remount
-recovers backend-owned resources/jobs from authoritative state. Browser tests
+module is not requested and does not create queries/observers; a visited
+primary route stays mounted behind `PersistentSurface` with queries disabled
+while hidden; returning to it must not flash 「正在加载页面」. Browser tests
 also exercise semantic selected state with the decorative Lens disabled,
 missing/delayed `ResizeObserver`, reduced motion, and right-side interaction.
+Primary-nav lens tests during Agent directory scan require
+`backdrop-filter: none` and `lens.right <= host.right + 0.5`.
 
 Production builds must emit separately identifiable primary-route chunks. A
 build contract inspects the generated manifest/chunk graph and an app-owned

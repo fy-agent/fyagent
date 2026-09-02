@@ -19,6 +19,7 @@ import {
   projectAgentJobTransfer,
   updateDownloadSpeedFromSample,
 } from "../../shared/features/transfer-projection";
+import { canOfferDirectoryUpdate } from "../../shared/features/agent-lifecycle-capabilities";
 import type { AgentCatalogId } from "../../shared/features/types";
 
 export const AGENT_LIFECYCLE_JOB_POLL_MS = 800;
@@ -104,6 +105,7 @@ function isCliBound(
 }
 
 export function deriveAgentLifecyclePrimaryAction(
+  agentId: AgentCatalogId,
   readiness: AgentInstallReadiness | null,
 ): AgentLifecyclePrimaryAction | null {
   if (!readiness) return null;
@@ -111,12 +113,7 @@ export function deriveAgentLifecyclePrimaryAction(
   if (readiness.installState === "not_installed" && allowed.has("install")) {
     return "install";
   }
-  if (
-    (readiness.installState === "installed" ||
-      readiness.installState === "installed_not_runnable") &&
-    readiness.updateState === "update_available" &&
-    allowed.has("update")
-  ) {
+  if (canOfferDirectoryUpdate(agentId, readiness)) {
     return "update";
   }
   return null;
@@ -332,8 +329,8 @@ export function useAgentLifecycleAction({
   }, []);
 
   const primaryAction = useMemo(
-    () => deriveAgentLifecyclePrimaryAction(readiness),
-    [readiness],
+    () => deriveAgentLifecyclePrimaryAction(agentId, readiness),
+    [agentId, readiness],
   );
 
   const reread = useCallback(async (generation: number): Promise<boolean> => {
@@ -509,7 +506,10 @@ export function useAgentLifecycleAction({
   );
 
   const runPrimary = useCallback(async () => {
-    const next = deriveAgentLifecyclePrimaryAction(readinessRef.current);
+    const next = deriveAgentLifecyclePrimaryAction(
+      agentIdRef.current,
+      readinessRef.current,
+    );
     if (!next) return;
     await run(next);
   }, [run]);

@@ -458,15 +458,21 @@ export type AgentSection = (typeof AGENT_SECTION_IDS)[number];
   incomplete, conflicting, or stale-only inventory remains non-green.
 - Lifecycle slot sits to the left of 「进行配置」. Generic agents use
   `FeaturePorts.agentInstallReadiness` through `useAgentLifecycleAction`.
-  Visible 一键安装 / 一键更新 come only from `allowedActions` plus the
-  current install/updateState (install when `not_installed` and `install` is
-  allowed; update when existence is proven, `updateState === update_available`,
-  and `update` is allowed). QoderWork / TRAE Work / WorkBuddy use the same
-  rule: they show 一键更新 only for one backend-proven update-eligible
-  installation with a newer reviewed source. Up-to-date, unknown, multiple,
-  source-failed, or non-actionable inventory omits the action; the renderer
-  never manufactures a disabled/fake update button. The shared
-  query owner is `featureKeys.agentInstallationInventory(agentId)` /
+  Visible 一键安装 / 一键更新 come from `allowedActions` plus the
+  current install/updateState, filtered by the closed renderer projection
+  `AGENT_DIRECTORY_UPDATE_UI` in `agent-lifecycle-capabilities.ts`
+  (`none` | `generic` | `codex_desktop`). QoderWork / TRAE Work / WorkBuddy are
+  `none`: the directory and detail must not render 一键更新 even when a fixture
+  lists `update` in `allowedActions`. Native `lifecycle_policy.rs` is still the
+  admit owner (`update: false` → omit `update`, `start_agent_action(update)` is
+  `action_not_supported`). Grok / Claude Desktop / OpenCode Desktop stay
+  `generic` (install when `not_installed` and `install` is allowed; update when
+  existence is proven, `updateState === update_available`, and `update` is
+  allowed). Codex stays `codex_desktop`. Generic and Codex directory cards share
+  `AgentLifecycleActionSlot`; pages must not copy per-`agentId` button JSX.
+  Up-to-date, unknown, multiple, source-failed, or non-actionable inventory
+  omits the action; the renderer never manufactures a disabled/fake update
+  button. The shared query owner is `featureKeys.agentInstallationInventory(agentId)` /
   `useAgentInstallationInventory`; pages do not call the Tauri command or
   choose a winner themselves. Directory one-click remains available only when
   exactly one action-eligible backend target exists. Zero/multiple targets
@@ -951,7 +957,8 @@ fetch/save controls.
 | Agent directory hides not-installed/unknown/failed rows or waits for scan before showing catalog cards                            | Page/browser test fails; catalog success shows all seven rows immediately                                             |
 | First `/agents` entry requires a manual 「开始扫描」 before readiness reads                                                       | Page test fails; the mounted Agents page auto-starts one background scan                                              |
 | 「进行配置」 is enabled before `installed` / `installed_not_runnable` (including retained success)                                | Page test fails; pending/not-installed/unknown/unavailable/error stay gated                                           |
-| Directory shows 一键安装/一键更新 the backend omitted from `allowedActions`                                                       | Page test fails; generic actions follow `allowedActions`, Codex follows the desktop installer VM                      |
+| Directory shows 一键安装/一键更新 the backend omitted from `allowedActions`                                                       | Page test fails; generic actions follow `allowedActions` plus `AGENT_DIRECTORY_UPDATE_UI`, Codex follows the desktop installer VM |
+| Directory shows 一键更新 for QoderWork / TRAE Work / WorkBuddy                                                                    | Page test fails; those IDs are `none` even if a fixture lists `update`                                                |
 | Directory has zero or multiple action-eligible install targets but still shows direct 一键安装/更新                               | Page test fails; open target selection and never choose the first item                                                |
 | Inventory query fails or target revision changes                                                                                  | Show controlled unavailable/refresh copy; never fall back to a guessed path                                           |
 | Renderer persists a raw location or constructs `targetId`/revision                                                                | Security/contract test fails; all target capabilities originate in the backend inventory                              |
@@ -1023,8 +1030,10 @@ fetch/save controls.
 - Good: `/agents` catalog success shows all seven software cards immediately,
   auto-starts one background readiness scan, enables 「进行配置」 only after
   `installed` / `installed_not_runnable` (kept during rescan refresh), shows
-  一键安装/一键更新 only from `allowedActions` or the Codex desktop installer
-  projection, and rereads authority after an action instead of flipping an
+  一键安装 from `allowedActions`, shows 一键更新 only when
+  `AGENT_DIRECTORY_UPDATE_UI` is `generic` and the backend also allows it (or
+  the Codex desktop installer projection), never shows 一键更新 for QoderWork /
+  TRAE Work / WorkBuddy, and rereads authority after an action instead of flipping an
   optimistic installed flag.
 - Good: `/models` opens on QoderWork CN at the top, all seven local icons
   render, Qoder states 官方不支持第三方模型配置, does not render 「管理 MCP」
@@ -1139,15 +1148,18 @@ Required focused coverage includes:
   Query/DOM secret-negative scans;
 - StrictMode replay, repeat-click locks, no API
   key in DOM/hash/localStorage/sessionStorage/query cache or logged fixtures.
-  Models target switches and primary-route navigation unmount inactive panels,
-  clear unsaved route-local fields and credentials, and restore each revisited
-  target's default local view. Secrets stay in component memory only. Immediate WorkBuddy
+  Models target switches inside `/models` unmount inactive panels, clear
+  unsaved route-local fields and credentials, and restore that target's default
+  local view. Primary-route keep-alive must not unmount a visited Models page
+  or reset its last explicit target merely because another route reused
+  `target` in the hash. Secrets stay in component memory only. Immediate WorkBuddy
   existing-model delete after an unrecoverable-delete confirmation.
 - Agent directory catalog-first coverage: seven articles after catalog
   success, first-entry auto-scan, per-row pending/scanning, configure only
   when `installed` / `installed_not_runnable` (retained during rescan),
-  一键安装/一键更新 only from `allowedActions` or the Codex desktop
-  installer projection, generic jobs project percent/speed only from shared
+  一键安装 from `allowedActions`, 一键更新 only from
+  `AGENT_DIRECTORY_UPDATE_UI` plus `allowedActions` or the Codex desktop
+  installer projection (QoderWork / TRAE Work / WorkBuddy never offer it), generic jobs project percent/speed only from shared
   `transfer` telemetry (no page-local `toFixed`), launch copy is 「打开软件」,
   OpenCode and Claude render one desktop install region (Claude titled
   「Claude Desktop」), directory order follows the four scan buckets,
@@ -1155,7 +1167,8 @@ Required focused coverage includes:
   not-installed or removed from the list.
 - Agent readiness exact seven-ID/exact-key/sensitive-field-negative coverage,
   closed `startAction`/`cancelAction`/`getActionJob` wires, opaque
-  `expectedReleaseId` grammar, `allowedActions` as the only control source,
+  `expectedReleaseId` grammar, `allowedActions` plus `AGENT_DIRECTORY_UPDATE_UI`
+  as the display control source,
   `staging` parser/progress copy and cancellation semantics,
   `launching_installer` / `awaiting_user` non-cancellable vendor-UI copy,
   terminal `incomplete` semantics, distinct installer cancellation/

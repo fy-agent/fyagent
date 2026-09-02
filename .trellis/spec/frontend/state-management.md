@@ -11,27 +11,30 @@ is no Zustand or Jotai dependency in `package.json`.
 
 ## V2 Route and Resource Lifecycle
 
-Production V2 mounts only the active primary route by default. Route modules
-are lazy loaded, so a route that has not been visited must not create its DOM,
-queries, observers, timers, subscriptions, or effects. A cross-route native
-job remains backend-owned and is recovered by an authoritative query/session
-lookup when the route remounts; a hidden React tree is not a lifecycle owner.
+Production V2 lazy-loads an unvisited primary route so it does not create DOM,
+queries, observers, timers, subscriptions, or effects until first visit.
+After a primary route has been visited, `PersistentPrimaryOutlet` keeps that
+tree mounted behind `PersistentSurface`. Hidden trees are not job daemons:
+`queries.ts` ANDs `usePersistentVisibility()`, scan UI dispatch pauses, and
+`usePersistentSearchParams` freezes route-owned search so a hidden page cannot
+rewrite the active URL. A cross-route native job remains backend-owned.
 
 V2 classifies state before choosing persistence:
 
 | State | Owner | Route-leave behavior |
 | --- | --- | --- |
-| current route, target or shareable tab | hash router/query parameter | restored from URL |
-| backend resource | TanStack Query + FeaturePort/backend | cached/reread authoritatively |
-| install/Auth/change-plan job | backend job/session + query | continues without page mount |
-| unsaved non-secret business draft | route/domain draft controller | explicit save/discard/block policy |
+| current route, target or shareable tab | hash router/query parameter | restored from URL when the page is visible; hidden pages freeze their last search |
+| backend resource | TanStack Query + FeaturePort/backend | cached/reread authoritatively; queries disabled while hidden |
+| install/Auth/change-plan job | backend job/session + query | continues without the page being visible |
+| unsaved non-secret business draft | route/domain draft controller | keep-alive may retain it on a visited primary route; in-page target switches still unmount |
 | transient visual state | local component | may reset on unmount |
 | secret input | narrow local state | clear according to the owning security contract |
 
-Do not synchronize a derived router value with `setState` during render. Use a
-derived value directly, or an effect only when a deliberately separate draft
-must reconcile with route authority. Blanket “visited page” keep-alive is not
-a state-management mechanism.
+Do not synchronize a derived router value with `setState` during render except
+the reviewed keep-alive path registration and hidden-search snapshot in
+`PersistentPrimaryOutlet` / `usePersistentSearchParams`. Use a derived value
+directly when possible. Visited-route keep-alive is an explicit shell policy
+with visibility gating; it is not a second `currentView` store.
 
 Every V2 query or polling hook that can remain mounted behind a conditional
 surface accepts/derives an `enabled`/`active` condition. Disabling a query must

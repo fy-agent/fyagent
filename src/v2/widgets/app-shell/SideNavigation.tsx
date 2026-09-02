@@ -44,7 +44,7 @@ function NavigationLink({
         classNames(
           "fy-side-navigation-item",
           isActive && "fy-side-navigation-item-selected",
-          isPending && "fy-side-navigation-item-pending",
+          isPending && !isActive && "fy-side-navigation-item-pending",
         )
       }
     >

@@ -1,0 +1,8 @@
+{"file": ".trellis/spec/frontend/v2-shell.md", "reason": "Route keep-alive, SelectionLens, primary nav overflow"}
+{"file": ".trellis/spec/frontend/v2-agent-models.md", "reason": "Directory lifecycle slot and allowedActions"}
+{"file": ".trellis/spec/frontend/reuse.md", "reason": "Shared slot and capability projection placement"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Hidden query pause and keep-alive rules"}
+{"file": ".trellis/spec/backend/external-agent-p0.md", "reason": "lifecycle_policy is the only action owner"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Extract shared owners on first use"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Update admit stays native"}
+{"file": ".trellis/tasks/09-02-nav-jank-and-update-capability/design.md", "reason": "Keep-alive and capability design"}

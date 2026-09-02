@@ -55,11 +55,11 @@
     ],
     [
       "src-tauri/src/agent_install/desktop.rs",
-      "079c3a0904856e14c284b77a2ced615864cbbc02ab456487eaaec6c5f73bfa33"
+      "ce7aaa4e0724365161b69b1ea1c86955341410f25f30060983c4300a1402ace5"
     ],
     [
       "src-tauri/src/agent_install/inventory.rs",
-      "bff2a7ac5f48cd855ffbcf9f1eeb441802c45f74a425938e51e75634ec71f150"
+      "1bfdb80f92b1c00448116d45b806ac952023be159af47d8210a79246f55fddd2"
     ],
     [
       "src-tauri/src/agent_install/macos.rs",
@@ -67,7 +67,7 @@
     ],
     [
       "src-tauri/src/agent_install/mod.rs",
-      "26089f7e54135c34780262c5cd740721ede9acd67bdb12efb018d725a2310189"
+      "c3038c7e655050e33ead07fc420d6c051997f5bbc6ad304587beda2ca2f68eb6"
     ],
     [
       "src-tauri/src/agent_install/sources/mod.rs",

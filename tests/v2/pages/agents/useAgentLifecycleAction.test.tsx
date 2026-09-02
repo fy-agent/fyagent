@@ -124,6 +124,7 @@ describe("deriveAgentLifecyclePrimaryAction", () => {
   it("offers install only when scan confirmed not_installed and backend allows it", () => {
     expect(
       deriveAgentLifecyclePrimaryAction(
+        "qoderwork",
         readiness({
           installState: "not_installed",
           allowedActions: ["install"],
@@ -132,6 +133,7 @@ describe("deriveAgentLifecyclePrimaryAction", () => {
     ).toBe("install");
     expect(
       deriveAgentLifecyclePrimaryAction(
+        "qoderwork",
         readiness({
           installState: "not_installed",
           allowedActions: ["launch"],
@@ -140,11 +142,13 @@ describe("deriveAgentLifecyclePrimaryAction", () => {
     ).toBeNull();
     expect(
       deriveAgentLifecyclePrimaryAction(
+        "qoderwork",
         readiness({ installState: "unknown", allowedActions: ["install"] }),
       ),
     ).toBeNull();
     expect(
       deriveAgentLifecyclePrimaryAction(
+        "qoderwork",
         readiness({
           installState: "unavailable",
           allowedActions: ["install"],
@@ -153,10 +157,12 @@ describe("deriveAgentLifecyclePrimaryAction", () => {
     ).toBeNull();
   });
 
-  it("offers update only when installed, update_available, and backend allows it", () => {
+  it("offers update only when the product allows it, installed, update_available, and backend allows it", () => {
     expect(
       deriveAgentLifecyclePrimaryAction(
+        "opencode",
         readiness({
+          agentId: "opencode",
           installState: "installed",
           updateState: "update_available",
           allowedActions: ["update", "launch"],
@@ -165,7 +171,9 @@ describe("deriveAgentLifecyclePrimaryAction", () => {
     ).toBe("update");
     expect(
       deriveAgentLifecyclePrimaryAction(
+        "claude-code",
         readiness({
+          agentId: "claude-code",
           installState: "installed_not_runnable",
           updateState: "update_available",
           allowedActions: ["update"],
@@ -174,7 +182,9 @@ describe("deriveAgentLifecyclePrimaryAction", () => {
     ).toBe("update");
     expect(
       deriveAgentLifecyclePrimaryAction(
+        "opencode",
         readiness({
+          agentId: "opencode",
           installState: "installed",
           updateState: "up_to_date",
           allowedActions: ["install", "launch"],
@@ -183,10 +193,33 @@ describe("deriveAgentLifecyclePrimaryAction", () => {
     ).toBeNull();
     expect(
       deriveAgentLifecyclePrimaryAction(
+        "opencode",
         readiness({
+          agentId: "opencode",
           installState: "installed",
           updateState: "update_available",
           allowedActions: ["launch"],
+        }),
+      ),
+    ).toBeNull();
+    expect(
+      deriveAgentLifecyclePrimaryAction(
+        "qoderwork",
+        readiness({
+          installState: "installed",
+          updateState: "update_available",
+          allowedActions: ["update", "launch"],
+        }),
+      ),
+    ).toBeNull();
+    expect(
+      deriveAgentLifecyclePrimaryAction(
+        "workbuddy",
+        readiness({
+          agentId: "workbuddy",
+          installState: "installed",
+          updateState: "update_available",
+          allowedActions: ["update"],
         }),
       ),
     ).toBeNull();
@@ -197,7 +230,9 @@ describe("macOS lifecycle state copy", () => {
   it("distinguishes staging, authorization, restored rollback, and unknown recovery", () => {
     expect(jobStageCopy("staging")).toBe("正在准备安装包");
     expect(reasonCopy("authorization_required")).toContain("不可用于一键安装");
-    expect(reasonCopy("authorization_required")).toContain("不会改装到其他目录");
+    expect(reasonCopy("authorization_required")).toContain(
+      "不会改装到其他目录",
+    );
     expect(reasonCopy("rollback_restored")).toContain("已恢复之前的应用");
     expect(reasonCopy("recovery_required")).toContain("停止重试");
   });
@@ -245,12 +280,16 @@ describe("macOS lifecycle state copy", () => {
 
 describe("Windows external-installer state copy", () => {
   it("distinguishes launch, user interaction, incomplete observation, and terminal reasons", () => {
-    expect(jobStageCopy("launching_installer")).toContain("打开 Windows 安装向导");
+    expect(jobStageCopy("launching_installer")).toContain(
+      "打开 Windows 安装向导",
+    );
     expect(jobStageCopy("awaiting_user")).toContain("请在 Windows 中完成安装");
     expect(jobStageCopy("incomplete")).toBe("安装结果待检查");
     expect(reasonCopy("installer_user_cancelled")).toContain("取消");
     expect(reasonCopy("installer_artifact_unavailable")).toContain("磁盘空间");
-    expect(reasonCopy("installer_process_unobservable")).toContain("无法读取其进度");
+    expect(reasonCopy("installer_process_unobservable")).toContain(
+      "无法读取其进度",
+    );
     expect(reasonCopy("installer_timed_out")).toContain("完成或关闭向导");
     expect(reasonCopy("installer_exited_nonzero")).toContain("未能完成");
     expect(isTerminalAgentJobStage("incomplete")).toBe(true);
@@ -401,9 +440,7 @@ describe("useAgentLifecycleAction", () => {
       await result.current.run("install");
     });
 
-    expect(result.current.error).toBe(
-      "另一个安装任务正在进行，请完成后再试。",
-    );
+    expect(result.current.error).toBe("另一个安装任务正在进行，请完成后再试。");
     expect(result.current.reasonCode).toBe("operation_conflict");
     expect(result.current.success).toBeNull();
     expect(port.get).toHaveBeenCalledWith("qoderwork");
@@ -519,6 +556,7 @@ describe("useAgentLifecycleAction", () => {
 
   it("runs update when that is the derived primary action", async () => {
     const installed = readiness({
+      agentId: "opencode",
       installState: "installed",
       updateState: "update_available",
       allowedActions: ["update"],
@@ -526,12 +564,17 @@ describe("useAgentLifecycleAction", () => {
     const port = createPort({
       get: vi.fn(async () => installed),
       startAction: vi.fn(async () =>
-        actionResult({ action: "update", jobId: null, stage: "succeeded" }),
+        actionResult({
+          agentId: "opencode",
+          action: "update",
+          jobId: null,
+          stage: "succeeded",
+        }),
       ),
     });
     const { result } = renderHook(() =>
       useAgentLifecycleAction({
-        agentId: "qoderwork",
+        agentId: "opencode",
         port,
         readiness: installed,
         target: lifecycleTarget("update"),
@@ -543,7 +586,7 @@ describe("useAgentLifecycleAction", () => {
       await result.current.runPrimary();
     });
     expect(port.startAction).toHaveBeenCalledWith({
-      agentId: "qoderwork",
+      agentId: "opencode",
       action: "update",
       expectedReleaseId: installed.releaseId,
       inventoryId: `i1:${"a".repeat(32)}`,

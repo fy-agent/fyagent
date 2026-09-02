@@ -56,6 +56,21 @@ const SelectionLensContext = createContext<SelectionLensContextValue | null>(
   null,
 );
 
+function roundBox(box: LensBox): LensBox {
+  const dpr =
+    typeof window === "undefined" || window.devicePixelRatio === 0
+      ? 1
+      : window.devicePixelRatio;
+  const snap = (value: number) => Math.round(value * dpr) / dpr;
+  return {
+    x: snap(box.x),
+    y: snap(box.y),
+    width: snap(box.width),
+    height: snap(box.height),
+    borderRadius: box.borderRadius,
+  };
+}
+
 function isHiddenFromLayout(element: HTMLElement): boolean {
   let node: HTMLElement | null = element;
   while (node) {
@@ -134,13 +149,13 @@ export function SelectionLensGroup({
       hiddenRef.current = false;
       setRevealKey((key) => key + 1);
     }
-    const nextBox = {
+    const nextBox = roundBox({
       x: hostRect.left - scopeRect.left + inset,
       y: hostRect.top - scopeRect.top + inset,
       width: Math.max(0, hostRect.width - inset * 2),
       height: Math.max(0, hostRect.height - inset * 2),
       borderRadius: getComputedStyle(nextHost).borderRadius,
-    };
+    });
     setBox((current) =>
       current &&
       current.x === nextBox.x &&
@@ -154,6 +169,10 @@ export function SelectionLensGroup({
   }, [inset]);
 
   const scheduleSync = useCallback(() => {
+    const scope = scopeRef.current;
+    if (scope && isHiddenFromLayout(scope)) {
+      hiddenRef.current = true;
+    }
     if (frameRef.current !== null) {
       return;
     }
@@ -188,7 +207,17 @@ export function SelectionLensGroup({
   }, []);
 
   useLayoutEffect(() => {
-    syncBox();
+    const scope = scopeRef.current;
+    if (!scope) {
+      return;
+    }
+    if (isHiddenFromLayout(scope)) {
+      hiddenRef.current = true;
+      return;
+    }
+    if (hiddenRef.current) {
+      scheduleSync();
+    }
   });
 
   useLayoutEffect(() => {

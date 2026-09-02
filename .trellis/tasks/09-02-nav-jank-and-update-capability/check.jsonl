@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/frontend/v2-shell.md", "reason": "Nav lens and outlet architecture tests"}
+{"file": ".trellis/spec/frontend/v2-agent-models.md", "reason": "Directory update chrome acceptance"}
+{"file": ".trellis/spec/frontend/reuse.md", "reason": "No page-local lifecycle slot clone"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Hidden routes must not fetch"}
+{"file": ".trellis/spec/backend/external-agent-p0.md", "reason": "Domestic update admission"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "V2 test gates"}

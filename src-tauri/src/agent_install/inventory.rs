@@ -1505,7 +1505,7 @@ mod tests {
         );
         let projected = dto.candidates.first().expect("candidate");
         assert!(projected.launch_eligible);
-        assert!(projected.update_eligible);
+        assert!(!projected.update_eligible);
         assert!(!projected.install_eligible);
 
         let readiness = project_readiness(
@@ -1519,7 +1519,7 @@ mod tests {
             },
         );
         assert!(readiness.single_launch_eligible);
-        assert!(readiness.single_update_eligible);
+        assert!(!readiness.single_update_eligible);
     }
 
     #[test]
