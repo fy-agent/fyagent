@@ -106,9 +106,7 @@ describe("SideNavigation", () => {
     const user = userEvent.setup();
     render(
       <MemoryRouter
-        initialEntries={[
-          "/models?agentReturn=workbuddy&agentSection=mcp",
-        ]}
+        initialEntries={["/models?agentReturn=workbuddy&agentSection=mcp"]}
       >
         <SideNavigation />
       </MemoryRouter>,
@@ -173,6 +171,7 @@ describe("SideNavigation", () => {
     const modelsLink = within(items).getByText("模型管理").closest("a");
 
     expect(modelsLink).toHaveAttribute("aria-current", "page");
+    expect(toggle).toHaveAttribute("data-selection-material", "context-frame");
     expect(within(navigation).getAllByTestId("selection-lens")).toHaveLength(1);
     expect(within(navigation).queryByTestId("liquid-glass-lens")).toBeNull();
 
@@ -180,10 +179,28 @@ describe("SideNavigation", () => {
 
     expect(toggle).toHaveAttribute("aria-expanded", "false");
     expect(toggle).toHaveClass("fy-side-navigation-toggle-active");
+    expect(toggle).toHaveAttribute("data-collapsed-active", "true");
+    expect(toggle).toHaveAttribute("data-selection-material", "text-only");
     expect(items).not.toBeVisible();
     expect(modelsLink).toHaveAttribute("aria-current", "page");
     expect(within(navigation).getAllByTestId("selection-lens")).toHaveLength(1);
     expect(within(navigation).queryByTestId("liquid-glass-lens")).toBeNull();
+  });
+
+  it("keeps selected navigation hosts semantic while the shared lens owns the only frame", () => {
+    renderNavigation("/agents");
+
+    const navigation = screen.getByRole("navigation", { name: "主导航" });
+    const agents = within(navigation).getByRole("link", {
+      name: "AI软件配置",
+    });
+    const lens = within(navigation).getByTestId("selection-lens");
+
+    expect(agents).toHaveAttribute("aria-current", "page");
+    expect(agents).toHaveAttribute("data-selection-material", "text-only");
+    expect(lens).toHaveAttribute("data-selection-material", "frame");
+    expect(lens).toHaveAttribute("data-selection-lens-geometry", "position");
+    expect(within(navigation).getAllByTestId("selection-lens")).toHaveLength(1);
   });
 
   it("keeps one memory lens after collapsing then expanding configuration", async () => {

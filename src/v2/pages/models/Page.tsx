@@ -1,6 +1,5 @@
 import { CaretDownIcon } from "@phosphor-icons/react/dist/csr/CaretDown";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
 
 import { getAgentBrand, type AgentIconId } from "../../shared/assets/agents";
 import { classNames } from "../../shared/design-system/classNames";
@@ -39,6 +38,10 @@ import {
   CatalogRail,
 } from "../../shared/ui/catalog";
 import {
+  usePersistentSearchParams,
+  useStickyVisibleValue,
+} from "../../shared/ui/usePersistentSearchParams";
+import {
   FieldFeedback,
   focusControl,
   isErrorNotice,
@@ -52,8 +55,8 @@ import {
   claudeBaseUrlHasExplicitV1Path,
   isHttpUrl,
   MODEL_TARGETS,
+  parseExplicitModelTarget,
   parseManualModelIds,
-  parseModelTarget,
   QUICK_SETUP_PROVIDER_IDS,
   validateQuickSetup,
   type ModelTarget,
@@ -1659,12 +1662,17 @@ function renderTargetPanel(
 }
 
 export function ModelsPage() {
-  const [searchParams, setSearchParams] = useSearchParams();
+  const { visible, searchParams, setSearchParams } =
+    usePersistentSearchParams();
   const [blockedProviderWrites, setBlockedProviderWrites] = useState<
     Partial<Record<ProviderAppId, boolean>>
   >({});
   const rawTarget = searchParams.get("target");
-  const target = parseModelTarget(rawTarget);
+  const target = useStickyVisibleValue(
+    visible,
+    parseExplicitModelTarget(rawTarget),
+    "qoderwork",
+  );
   const targets = useMemo(() => MODEL_TARGETS, []);
 
   const blockProviderWrites = (app: ProviderAppId) => {
@@ -1694,7 +1702,14 @@ export function ModelsPage() {
                 selected={candidate === target}
                 testId={`model-target-${candidate}`}
                 onSelect={() =>
-                  setSearchParams({ target: candidate }, { replace: true })
+                  setSearchParams(
+                    (current) => {
+                      const next = new URLSearchParams(current);
+                      next.set("target", candidate);
+                      return next;
+                    },
+                    { replace: true },
+                  )
                 }
               />
             ))}
@@ -1703,7 +1718,7 @@ export function ModelsPage() {
         <div className="fy-models-target-stack">
           {renderTargetPanel(
             target,
-            true,
+            visible,
             blockedProviderWrites,
             blockProviderWrites,
           )}

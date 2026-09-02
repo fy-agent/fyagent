@@ -1,12 +1,18 @@
 use std::{ffi::OsString, fmt};
 
+use crate::grok::{GrokOwner, GrokToolAction};
+
 pub const INSTALL_ACTION: &str = "codex-msix-install";
 pub const AGENT_EXE_INSTALL_ACTION: &str = "agent-exe-install";
+pub const GROK_TOOL_ACTION: &str = "grok-tool";
 const PRODUCT_FLAG: &str = "--product";
+const ACTION_FLAG: &str = "--action";
+const OWNER_FLAG: &str = "--owner";
 const JOB_ID_FLAG: &str = "--job-id";
 const PIPE_FLAG: &str = "--pipe";
 const JOB_ID_BYTES: usize = 36;
 const PIPE_NONCE_BYTES: usize = 64;
+const GROK_TOOL_WIRE_BASE: u8 = 5;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CanonicalJobId(String);
@@ -115,6 +121,10 @@ impl fmt::Display for AgentInstallerProduct {
 pub enum UserHelperAction {
     CodexMsixInstall,
     AgentExeInstall(AgentInstallerProduct),
+    GrokTool {
+        action: GrokToolAction,
+        expected_owner: Option<GrokOwner>,
+    },
 }
 
 impl UserHelperAction {
@@ -124,6 +134,10 @@ impl UserHelperAction {
             Self::AgentExeInstall(AgentInstallerProduct::QoderWork) => 2,
             Self::AgentExeInstall(AgentInstallerProduct::TraeWork) => 3,
             Self::AgentExeInstall(AgentInstallerProduct::WorkBuddy) => 4,
+            Self::GrokTool {
+                action,
+                expected_owner,
+            } => grok_tool_wire_code(action, expected_owner),
         }
     }
 
@@ -133,14 +147,21 @@ impl UserHelperAction {
             2 => Some(Self::AgentExeInstall(AgentInstallerProduct::QoderWork)),
             3 => Some(Self::AgentExeInstall(AgentInstallerProduct::TraeWork)),
             4 => Some(Self::AgentExeInstall(AgentInstallerProduct::WorkBuddy)),
+            5..=13 => grok_tool_from_wire(value),
             _ => None,
         }
+    }
+
+    pub const fn requires_package_bridge(self) -> bool {
+        !matches!(self, Self::GrokTool { .. })
     }
 
     pub const fn artifact_kind(self) -> crate::layout::PackageBridgeArtifactKind {
         match self {
             Self::CodexMsixInstall => crate::layout::PackageBridgeArtifactKind::Msix,
-            Self::AgentExeInstall(_) => crate::layout::PackageBridgeArtifactKind::Exe,
+            Self::AgentExeInstall(_) | Self::GrokTool { .. } => {
+                crate::layout::PackageBridgeArtifactKind::Exe
+            }
         }
     }
 
@@ -154,8 +175,62 @@ impl UserHelperAction {
                 "{AGENT_EXE_INSTALL_ACTION} --product {product} --job-id {job_id} --pipe {}",
                 pipe_nonce.as_str()
             ),
+            Self::GrokTool {
+                action,
+                expected_owner: None,
+            } => format!(
+                "{GROK_TOOL_ACTION} --action {} --job-id {job_id} --pipe {}",
+                action.as_str(),
+                pipe_nonce.as_str()
+            ),
+            Self::GrokTool {
+                action,
+                expected_owner: Some(owner),
+            } => format!(
+                "{GROK_TOOL_ACTION} --action {} --owner {} --job-id {job_id} --pipe {}",
+                action.as_str(),
+                owner.cli_token(),
+                pipe_nonce.as_str()
+            ),
         }
     }
+}
+
+const fn grok_tool_wire_code(action: GrokToolAction, expected_owner: Option<GrokOwner>) -> u8 {
+    let action_offset = match action {
+        GrokToolAction::Observe => 0,
+        GrokToolAction::Install => 3,
+        GrokToolAction::Update => 6,
+    };
+    let owner_offset = match expected_owner {
+        None => 0,
+        Some(GrokOwner::Native) => 1,
+        Some(GrokOwner::Npm) => 2,
+    };
+    GROK_TOOL_WIRE_BASE + action_offset + owner_offset
+}
+
+const fn grok_tool_from_wire(value: u8) -> Option<UserHelperAction> {
+    if value < GROK_TOOL_WIRE_BASE || value > 13 {
+        return None;
+    }
+    let offset = value - GROK_TOOL_WIRE_BASE;
+    let action = match offset / 3 {
+        0 => GrokToolAction::Observe,
+        1 => GrokToolAction::Install,
+        2 => GrokToolAction::Update,
+        _ => return None,
+    };
+    let expected_owner = match offset % 3 {
+        0 => None,
+        1 => Some(GrokOwner::Native),
+        2 => Some(GrokOwner::Npm),
+        _ => return None,
+    };
+    Some(UserHelperAction::GrokTool {
+        action,
+        expected_owner,
+    })
 }
 
 impl fmt::Debug for InstallRequest {
@@ -175,6 +250,10 @@ pub enum CliError {
     UnknownAction,
     ExpectedProductFlag,
     InvalidProduct,
+    ExpectedActionFlag,
+    InvalidToolAction,
+    ExpectedOwnerFlag,
+    InvalidOwner,
     ExpectedJobIdFlag,
     InvalidJobId,
     ExpectedPipeFlag,
@@ -191,6 +270,10 @@ impl fmt::Display for CliError {
             Self::UnknownAction => "the helper action is not supported",
             Self::ExpectedProductFlag => "--product must immediately follow the Agent EXE action",
             Self::InvalidProduct => "the Agent installer product is not supported",
+            Self::ExpectedActionFlag => "--action must immediately follow the Grok tool action",
+            Self::InvalidToolAction => "the helper tool action is not supported",
+            Self::ExpectedOwnerFlag => "--owner must immediately follow the Grok tool action",
+            Self::InvalidOwner => "the Grok distribution owner is not supported",
             Self::ExpectedJobIdFlag => "--job-id must immediately follow the action",
             Self::InvalidJobId => "job ID must be a canonical lowercase UUID",
             Self::ExpectedPipeFlag => "--pipe must immediately follow the job ID",
@@ -235,7 +318,38 @@ where
                 3,
             )
         }
-        Some(INSTALL_ACTION | AGENT_EXE_INSTALL_ACTION) => {
+        Some(GROK_TOOL_ACTION)
+            if raw.len() == 9 && raw.get(3).map(String::as_str) != Some(OWNER_FLAG) =>
+        {
+            if raw[3] == JOB_ID_FLAG {
+                return Err(CliError::WrongArgumentCount);
+            }
+            return Err(CliError::ExpectedOwnerFlag);
+        }
+        Some(GROK_TOOL_ACTION) if raw.len() == 7 || raw.len() == 9 => {
+            if raw[1] != ACTION_FLAG {
+                return Err(CliError::ExpectedActionFlag);
+            }
+            let grok_action =
+                GrokToolAction::parse_cli(&raw[2]).ok_or(CliError::InvalidToolAction)?;
+            let (expected_owner, job_index) = if raw.len() == 7 {
+                (None, 3)
+            } else {
+                let owner = match raw[4].as_str() {
+                    "none" => None,
+                    other => Some(GrokOwner::parse_cli(other).ok_or(CliError::InvalidOwner)?),
+                };
+                (owner, 5)
+            };
+            (
+                UserHelperAction::GrokTool {
+                    action: grok_action,
+                    expected_owner,
+                },
+                job_index,
+            )
+        }
+        Some(INSTALL_ACTION | AGENT_EXE_INSTALL_ACTION | GROK_TOOL_ACTION) => {
             return Err(CliError::WrongArgumentCount)
         }
         Some(_) => return Err(CliError::UnknownAction),
@@ -400,6 +514,36 @@ mod tests {
             ))
         );
         assert_eq!(UserHelperAction::from_wire(0), None);
+        assert_eq!(
+            UserHelperAction::from_wire(5),
+            Some(UserHelperAction::GrokTool {
+                action: GrokToolAction::Observe,
+                expected_owner: None,
+            })
+        );
+        assert_eq!(
+            UserHelperAction::from_wire(13),
+            Some(UserHelperAction::GrokTool {
+                action: GrokToolAction::Update,
+                expected_owner: Some(GrokOwner::Npm),
+            })
+        );
+        assert_eq!(UserHelperAction::from_wire(14), None);
+        assert_eq!(
+            UserHelperAction::GrokTool {
+                action: GrokToolAction::Install,
+                expected_owner: Some(GrokOwner::Native),
+            }
+            .command_line(&job_id, &nonce),
+            format!(
+                "{GROK_TOOL_ACTION} --action install --owner native --job-id {JOB_ID} --pipe {NONCE}"
+            )
+        );
+        assert!(!UserHelperAction::GrokTool {
+            action: GrokToolAction::Observe,
+            expected_owner: None,
+        }
+        .requires_package_bridge());
     }
 
     #[test]
@@ -480,6 +624,137 @@ mod tests {
         assert_eq!(
             parse_cli_args(args).unwrap_err(),
             CliError::NonUnicodeArgument
+        );
+    }
+
+    #[test]
+    fn accepts_closed_grok_tool_shapes_and_rejects_unknown_owner_or_action() {
+        let observe = parse_cli_args([
+            GROK_TOOL_ACTION,
+            ACTION_FLAG,
+            "observe",
+            JOB_ID_FLAG,
+            JOB_ID,
+            PIPE_FLAG,
+            NONCE,
+        ])
+        .expect("grok observe");
+        assert_eq!(
+            observe.action(),
+            UserHelperAction::GrokTool {
+                action: GrokToolAction::Observe,
+                expected_owner: None,
+            }
+        );
+
+        let update = parse_cli_args([
+            GROK_TOOL_ACTION,
+            ACTION_FLAG,
+            "update",
+            OWNER_FLAG,
+            "native",
+            JOB_ID_FLAG,
+            JOB_ID,
+            PIPE_FLAG,
+            NONCE,
+        ])
+        .expect("grok update native");
+        assert_eq!(
+            update.action(),
+            UserHelperAction::GrokTool {
+                action: GrokToolAction::Update,
+                expected_owner: Some(GrokOwner::Native),
+            }
+        );
+
+        assert_eq!(
+            parse_cli_args([
+                GROK_TOOL_ACTION,
+                ACTION_FLAG,
+                "install",
+                OWNER_FLAG,
+                "none",
+                JOB_ID_FLAG,
+                JOB_ID,
+                PIPE_FLAG,
+                NONCE,
+            ])
+            .expect("explicit none owner")
+            .action(),
+            UserHelperAction::GrokTool {
+                action: GrokToolAction::Install,
+                expected_owner: None,
+            }
+        );
+
+        assert_eq!(
+            parse_cli_args([
+                GROK_TOOL_ACTION,
+                ACTION_FLAG,
+                "repair",
+                JOB_ID_FLAG,
+                JOB_ID,
+                PIPE_FLAG,
+                NONCE,
+            ])
+            .unwrap_err(),
+            CliError::InvalidToolAction
+        );
+        assert_eq!(
+            parse_cli_args([
+                GROK_TOOL_ACTION,
+                ACTION_FLAG,
+                "install",
+                OWNER_FLAG,
+                "winget",
+                JOB_ID_FLAG,
+                JOB_ID,
+                PIPE_FLAG,
+                NONCE,
+            ])
+            .unwrap_err(),
+            CliError::InvalidOwner
+        );
+        assert_eq!(
+            parse_cli_args([
+                GROK_TOOL_ACTION,
+                "--command",
+                "observe",
+                JOB_ID_FLAG,
+                JOB_ID,
+                PIPE_FLAG,
+                NONCE,
+            ])
+            .unwrap_err(),
+            CliError::ExpectedActionFlag
+        );
+        assert_eq!(
+            parse_cli_args([
+                GROK_TOOL_ACTION,
+                ACTION_FLAG,
+                "observe",
+                "--cwd",
+                JOB_ID,
+                PIPE_FLAG,
+                NONCE,
+            ])
+            .unwrap_err(),
+            CliError::ExpectedJobIdFlag
+        );
+        let mut extra = vec![
+            GROK_TOOL_ACTION,
+            ACTION_FLAG,
+            "observe",
+            JOB_ID_FLAG,
+            JOB_ID,
+            PIPE_FLAG,
+            NONCE,
+            "unexpected",
+        ];
+        extra.push("/tmp/script.ps1");
+        assert_eq!(
+            parse_cli_args(extra).unwrap_err(),
+            CliError::WrongArgumentCount
         );
     }
 }

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   AGENT_REASON_CODES,
+  installationTargetsForAction,
   type AgentActionId,
   type AgentActionJobSnapshot,
   type AgentActionJobStage,
@@ -19,13 +20,16 @@ import {
   projectAgentJobTransfer,
   updateDownloadSpeedFromSample,
 } from "../../shared/features/transfer-projection";
+import { canOfferDirectoryUpdate } from "../../shared/features/agent-lifecycle-capabilities";
 import type { AgentCatalogId } from "../../shared/features/types";
 
 export const AGENT_LIFECYCLE_JOB_POLL_MS = 800;
 export const AGENT_LIFECYCLE_MAX_JOB_POLLS = 2250;
 export const AGENT_LIFECYCLE_INCOMPLETE_COPY =
   "无法确认操作结果。请刷新安装状态后再试。";
-export const AGENT_LIFECYCLE_SUCCEEDED_COPY = "操作已完成，安装状态已更新。";
+export const AGENT_LIFECYCLE_SUCCEEDED_COPY = "操作已完成。";
+export const AGENT_LIFECYCLE_VENDOR_HANDOFF_COPY =
+  "官方安装窗口已打开，请在该窗口中完成安装。";
 export const AGENT_LIFECYCLE_TIMEOUT_COPY =
   "安装仍在进行。可稍后刷新安装状态。";
 
@@ -103,7 +107,28 @@ function isCliBound(
   return surface === "cli" || sourceKind === "cli_tooling";
 }
 
+export function bindLiveInventoryTarget(
+  inventory: AgentInstallationInventory,
+  action: AgentActionId,
+  previous: AgentInstallationTarget | null,
+): AgentInstallationTarget | null {
+  const eligible = installationTargetsForAction(inventory, action).filter(
+    (target) => target.eligibleActions.includes(action),
+  );
+  if (eligible.length === 1) return eligible[0];
+  if (!previous) return null;
+  return (
+    eligible.find(
+      (target) =>
+        target.kind === previous.kind &&
+        target.scope === previous.scope &&
+        target.label === previous.label,
+    ) ?? null
+  );
+}
+
 export function deriveAgentLifecyclePrimaryAction(
+  agentId: AgentCatalogId,
   readiness: AgentInstallReadiness | null,
 ): AgentLifecyclePrimaryAction | null {
   if (!readiness) return null;
@@ -111,12 +136,7 @@ export function deriveAgentLifecyclePrimaryAction(
   if (readiness.installState === "not_installed" && allowed.has("install")) {
     return "install";
   }
-  if (
-    (readiness.installState === "installed" ||
-      readiness.installState === "installed_not_runnable") &&
-    readiness.updateState === "update_available" &&
-    allowed.has("update")
-  ) {
+  if (canOfferDirectoryUpdate(agentId, readiness)) {
     return "update";
   }
   return null;
@@ -222,9 +242,9 @@ export function jobStageCopy(stage: AgentActionJobStage): string {
     case "staging":
       return "正在准备安装包";
     case "launching_installer":
-      return "正在打开 Windows 安装向导";
+      return "正在打开官方安装窗口，请在该窗口中完成安装";
     case "awaiting_user":
-      return "安装向导已打开，请在 Windows 中完成安装";
+      return "请在弹出的官方安装窗口中完成安装";
     case "installing":
       return "正在安装";
     case "verifying_installation":
@@ -238,6 +258,18 @@ export function jobStageCopy(stage: AgentActionJobStage): string {
     case "incomplete":
       return "安装结果待检查";
   }
+}
+
+export function isVendorInstallerHandoffStage(
+  stage: AgentActionJobStage,
+): boolean {
+  return stage === "launching_installer" || stage === "awaiting_user";
+}
+
+export function lifecycleSuccessCopy(vendorHandoff: boolean): string {
+  return vendorHandoff
+    ? AGENT_LIFECYCLE_VENDOR_HANDOFF_COPY
+    : AGENT_LIFECYCLE_SUCCEEDED_COPY;
 }
 
 export function agentLifecycleFailureCopy(
@@ -301,6 +333,7 @@ export function useAgentLifecycleAction({
   const runningRef = useRef(false);
   const lastActionRef = useRef<AgentActionId | null>(null);
   const lastSurfaceRef = useRef<AgentSurface | undefined>(undefined);
+  const vendorHandoffRef = useRef(false);
   const speedRef = useRef(createDownloadSpeedState());
   const readinessRef = useRef(readiness);
   const targetRef = useRef(target);
@@ -332,8 +365,8 @@ export function useAgentLifecycleAction({
   }, []);
 
   const primaryAction = useMemo(
-    () => deriveAgentLifecyclePrimaryAction(readiness),
-    [readiness],
+    () => deriveAgentLifecyclePrimaryAction(agentId, readiness),
+    [agentId, readiness],
   );
 
   const reread = useCallback(async (generation: number): Promise<boolean> => {
@@ -361,6 +394,9 @@ export function useAgentLifecycleAction({
   }, []);
 
   const applyJobSnapshot = useCallback((snapshot: AgentActionJobSnapshot) => {
+    if (isVendorInstallerHandoffStage(snapshot.stage)) {
+      vendorHandoffRef.current = true;
+    }
     setStage(snapshot.stage);
     setCancellable(snapshot.cancellable);
     setJobSnapshot(snapshot);
@@ -379,27 +415,27 @@ export function useAgentLifecycleAction({
       nextSurface?: AgentSurface,
     ) => {
       const current = readinessRef.current;
-      if (!current || runningRef.current) return;
+      if (!current || runningRef.current) {
+        return;
+      }
       if (action !== "install" && action !== "update" && action !== "launch") {
         return;
       }
       const resolvedSurface = nextSurface ?? surfaceRef.current;
       const gate = resolveLifecycleReadiness(current, resolvedSurface);
-      if (!gate.allowedActions.includes(action)) return;
-      const selectedTarget = targetOverride ?? targetRef.current;
+      if (!gate.allowedActions.includes(action)) {
+        return;
+      }
+      const previousTarget = targetOverride ?? targetRef.current ?? null;
       const cliBound = isCliBound(resolvedSurface, gate.sourceKind);
       const targetRequired =
         action === "install" || action === "update"
           ? !cliBound || gate.requiresTargetSelection
           : gate.requiresTargetSelection && action === "launch";
-      if (
-        targetRequired &&
-        (!selectedTarget || !selectedTarget.eligibleActions.includes(action))
-      ) {
-        setReasonCode("target_selection_required");
-        setError(reasonCopy("target_selection_required"));
-        return;
-      }
+      const shouldRefreshBinding =
+        action === "install" ||
+        action === "update" ||
+        (action === "launch" && (targetRequired || previousTarget !== null));
 
       const generation = generationRef.current + 1;
       generationRef.current = generation;
@@ -414,7 +450,51 @@ export function useAgentLifecycleAction({
       setError(null);
       setReasonCode(null);
       setSuccess(null);
+      vendorHandoffRef.current = false;
       resetTransfer();
+
+      let selectedTarget = previousTarget;
+      if (shouldRefreshBinding) {
+        try {
+          const inventory = await portRef.current.getInventory(
+            agentIdRef.current,
+            resolvedSurface,
+          );
+          if (generationRef.current !== generation) return;
+          if (inventory.agentId === agentIdRef.current) {
+            onInventoryChangeRef.current?.(inventory);
+            selectedTarget = bindLiveInventoryTarget(
+              inventory,
+              action,
+              previousTarget,
+            );
+          } else {
+            selectedTarget = null;
+          }
+          targetRef.current = selectedTarget;
+        } catch (caught) {
+          if (generationRef.current !== generation) return;
+          runningRef.current = false;
+          setBusy(false);
+          setStage(null);
+          const reason = actionErrorReason(caught) ?? "inventory_expired";
+          setReasonCode(reason);
+          setError(agentLifecycleFailureCopy(reason));
+          return;
+        }
+      }
+
+      if (
+        targetRequired &&
+        (!selectedTarget || !selectedTarget.eligibleActions.includes(action))
+      ) {
+        runningRef.current = false;
+        setBusy(false);
+        setStage(null);
+        setReasonCode("target_selection_required");
+        setError(reasonCopy("target_selection_required"));
+        return;
+      }
 
       let outcome: "succeeded" | "failed" | "cancelled" | "timeout" | "error";
       let outcomeReason: AgentReasonCode | null;
@@ -437,6 +517,9 @@ export function useAgentLifecycleAction({
         });
         if (generationRef.current !== generation) return;
         setStage(result.stage);
+        if (isVendorInstallerHandoffStage(result.stage)) {
+          vendorHandoffRef.current = true;
+        }
 
         if (result.jobId) {
           setJobId(result.jobId);
@@ -489,7 +572,8 @@ export function useAgentLifecycleAction({
 
       setReasonCode(outcomeReason);
       if (outcome === "succeeded" && readbackOk) {
-        setSuccess(AGENT_LIFECYCLE_SUCCEEDED_COPY);
+        const successCopy = lifecycleSuccessCopy(vendorHandoffRef.current);
+        setSuccess(successCopy);
         setError(null);
       } else if (outcome === "timeout") {
         setSuccess(null);
@@ -509,7 +593,10 @@ export function useAgentLifecycleAction({
   );
 
   const runPrimary = useCallback(async () => {
-    const next = deriveAgentLifecyclePrimaryAction(readinessRef.current);
+    const next = deriveAgentLifecyclePrimaryAction(
+      agentIdRef.current,
+      readinessRef.current,
+    );
     if (!next) return;
     await run(next);
   }, [run]);

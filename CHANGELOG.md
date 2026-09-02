@@ -8,6 +8,49 @@ records.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.3] - 2026-09-01
+
+FyAgent 0.4.3 advances the desktop Agent control plane with safer configuration
+transactions, a unified software lifecycle model, and the native foundations
+needed for managed Windows and macOS application installs.
+
+### Added
+
+- Added SecretRef-backed configuration boundaries and typed change-plan
+  execution so provider and WorkBuddy mutations can keep credentials out of
+  renderer-visible payloads while preserving staged validation, rollback, and
+  readback semantics.
+- Added a macOS privileged-helper architecture for known `/Applications`
+  targets, including nested helper/client packaging and Developer ID signing
+  integration. Production system-scope commits remain fail-closed until their
+  dedicated signed/notarized HIL gate is satisfied.
+- Added Windows user-helper support for the managed Grok Build lifecycle and a
+  dedicated macOS-to-Windows MSVC cross-development diagnostic so optional
+  cross-platform Clippy prerequisites can be inspected without weakening the
+  ordinary host bootstrap contract.
+
+### Changed
+
+- Unified Agent install/update ownership around desktop applications; Grok
+  Build remains the only supported CLI-managed Agent surface, while other
+  supported Agent products use their desktop lifecycle paths.
+- Expanded Agent inventory, readiness, update, and authentication behavior so
+  managed desktop products share clearer lifecycle states and fail-closed
+  platform boundaries.
+- Reduced repeated expected Codex usage-sync diagnostics so deferred states no
+  longer flood normal logs.
+- Refined the desktop interaction shell and settings surfaces while preserving
+  the existing V2 information architecture and native-authority boundaries.
+
+### CI and release contract
+
+- Stabilized Windows backend/release checks and kept the formal release source
+  bound to the exact `vX.Y.Z` tag target, with native Windows x64/ARM64 and
+  universal macOS builds producing the existing seven-attachment release
+  transaction.
+- Application version authority moves to `0.4.3`; the bundled macOS privileged
+  helper `CFBundleVersion` and the app-side helper requirement move with it.
+
 ## [0.4.2] - 2026-08-21
 
 FyAgent 0.4.2 completes the macOS Developer ID publication path opened in

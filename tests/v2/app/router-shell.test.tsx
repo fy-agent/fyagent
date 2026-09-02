@@ -1,16 +1,12 @@
 import type { CSSProperties, ReactNode } from "react";
-import {
-  render,
-  screen,
-  waitFor,
-  within,
-} from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import type { RouteObject } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
 import { appRoutes } from "@/v2/app/router";
+import { prefetchPrimaryRoutes } from "@/v2/app/primaryPages";
 import { createBrowserFeaturePorts } from "@/v2/shared/platform/browser/features";
 import * as featureFactory from "@/v2/shared/platform/features";
 
@@ -46,6 +42,7 @@ const windowControlNames = ["最小化", "最大化/还原", "关闭"] as const;
 type TestRouter = ReturnType<typeof createMemoryRouter>;
 
 function renderRoute(initialEntry: string): TestRouter {
+  prefetchPrimaryRoutes();
   const router = createMemoryRouter(appRoutes, {
     initialEntries: [initialEntry],
   });
@@ -290,7 +287,7 @@ describe("FyAgent V2 shell accessibility", () => {
 });
 
 describe("FyAgent V2 primary route lifecycle", () => {
-  it("unmounts Models and discards unsaved route-local form state", async () => {
+  it("keeps Models mounted and hidden without flashing a loading route", async () => {
     const user = userEvent.setup();
     const router = renderRoute("/models?target=workbuddy");
 
@@ -298,16 +295,24 @@ describe("FyAgent V2 primary route lifecycle", () => {
     await user.type(url, "https://keep.example/v1");
     await user.click(screen.getByRole("link", { name: "AI软件配置" }));
     await expectPath(router, "/agents");
-    expect(screen.queryByTestId("models-page")).not.toBeInTheDocument();
+    const modelsPage = screen.getByTestId("models-page");
+    expect(modelsPage).not.toBeVisible();
+    expect(modelsPage.closest("[hidden]")).not.toBeNull();
+    expect(
+      screen.queryByText("正在加载页面", {
+        selector: ".fy-feature-route-loading",
+      }),
+    ).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("link", { name: "模型管理" }));
     await expectPath(router, "/models");
     expect(await screen.findByTestId("models-page")).toBeVisible();
-    expect(screen.queryByLabelText("服务地址")).not.toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "QoderWork CN" })).toBeVisible();
+    expect(screen.getByLabelText("服务地址")).toHaveValue(
+      "https://keep.example/v1",
+    );
   });
 
-  it("derives Agent configuration from the current URL after remount", async () => {
+  it("keeps Agent configuration mounted after opening Models", async () => {
     const user = userEvent.setup();
     const ports = createBrowserFeaturePorts();
     ports.catalog.get = vi.fn(async () => ({
@@ -355,7 +360,9 @@ describe("FyAgent V2 primary route lifecycle", () => {
       ).toBeVisible();
       await user.click(screen.getByRole("link", { name: "模型管理" }));
       await expectPath(router, "/models");
-      expect(screen.queryByTestId("agents-page")).not.toBeInTheDocument();
+      const agentsPage = screen.getByTestId("agents-page");
+      expect(agentsPage).not.toBeVisible();
+      expect(agentsPage.closest("[hidden]")).not.toBeNull();
 
       await user.click(screen.getByRole("link", { name: "AI软件配置" }));
       await expectPath(router, "/agents");
@@ -370,7 +377,7 @@ describe("FyAgent V2 primary route lifecycle", () => {
     }
   });
 
-  it("unmounts inactive product pages and restores their default local view", async () => {
+  it("keeps visited product pages mounted and preserves their local view", async () => {
     const user = userEvent.setup();
     const router = renderRoute("/skills");
 
@@ -381,7 +388,9 @@ describe("FyAgent V2 primary route lifecycle", () => {
     );
     await user.click(screen.getByRole("link", { name: "提示词管理" }));
     await expectPath(router, "/prompts");
-    expect(screen.queryByTestId("skills-page")).not.toBeInTheDocument();
+    const skillsPage = screen.getByTestId("skills-page");
+    expect(skillsPage).not.toBeVisible();
+    expect(skillsPage.closest("[hidden]")).not.toBeNull();
 
     await user.click(await screen.findByTestId("prompt-app-gemini"));
     expect(screen.getByTestId("prompt-app-gemini")).toHaveAttribute(
@@ -390,7 +399,9 @@ describe("FyAgent V2 primary route lifecycle", () => {
     );
     await user.click(screen.getByRole("link", { name: "记忆模块" }));
     await expectPath(router, "/memory");
-    expect(screen.queryByTestId("prompts-page")).not.toBeInTheDocument();
+    const promptsPage = screen.getByTestId("prompts-page");
+    expect(promptsPage).not.toBeVisible();
+    expect(promptsPage.closest("[hidden]")).not.toBeNull();
 
     await user.click(await screen.findByRole("tab", { name: "每日记忆" }));
     expect(screen.getByRole("tab", { name: "每日记忆" })).toHaveAttribute(
@@ -399,27 +410,46 @@ describe("FyAgent V2 primary route lifecycle", () => {
     );
     await user.click(screen.getByRole("link", { name: "MCP 管理" }));
     await expectPath(router, "/mcp");
-    expect(screen.queryByTestId("memory-page")).not.toBeInTheDocument();
+    const memoryPage = screen.getByTestId("memory-page");
+    expect(memoryPage).not.toBeVisible();
     expect(await screen.findByTestId("mcp-page")).toBeVisible();
 
     await user.click(screen.getByRole("link", { name: "Skills 管理" }));
     await expectPath(router, "/skills");
-    expect(screen.queryByTestId("mcp-page")).not.toBeInTheDocument();
-    expect(await screen.findByRole("tab", { name: "已安装" })).toHaveAttribute(
+    expect(screen.getByTestId("mcp-page").closest("[hidden]")).not.toBeNull();
+    expect(await screen.findByRole("tab", { name: "发现" })).toHaveAttribute(
       "aria-selected",
       "true",
     );
     await user.click(screen.getByRole("link", { name: "提示词管理" }));
-    expect(await screen.findByTestId("prompt-app-claude")).toHaveAttribute(
+    expect(await screen.findByTestId("prompt-app-gemini")).toHaveAttribute(
       "aria-current",
       "true",
     );
     await user.click(screen.getByRole("link", { name: "记忆模块" }));
-    expect(await screen.findByRole("tab", { name: "长期记忆" })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
+    expect(
+      await screen.findByRole("tab", { name: "每日记忆" }),
+    ).toHaveAttribute("aria-selected", "true");
     await user.click(screen.getByRole("link", { name: "MCP 管理" }));
     expect(screen.getByTestId("mcp-page")).toBeVisible();
+  });
+
+  it("does not let a hidden Agents tree rewrite Models search params", async () => {
+    const user = userEvent.setup();
+    const router = renderRoute("/agents");
+
+    await screen.findByTestId("agents-page");
+    await user.click(screen.getByRole("link", { name: "模型管理" }));
+    await expectPath(router, "/models");
+    expect(await screen.findByTestId("models-page")).toBeVisible();
+    expect(router.state.location.search).not.toMatch(/section=/);
+    await user.click(await screen.findByTestId("model-target-workbuddy"));
+    await waitFor(() => {
+      expect(router.state.location.search).toMatch(/target=workbuddy/);
+    });
+    expect(router.state.location.search).not.toMatch(/section=/);
+    expect(
+      screen.getByTestId("agents-page").closest("[hidden]"),
+    ).not.toBeNull();
   });
 });

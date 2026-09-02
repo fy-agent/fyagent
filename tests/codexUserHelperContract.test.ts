@@ -45,6 +45,26 @@ function count(source: string, literal: string): number {
   return source.split(literal).length - 1;
 }
 
+function grokHelperRuntime(runtimeSource: string): string {
+  const grokStart = runtimeSource.indexOf("fn run_grok_tool_session");
+  const grokEnd = runtimeSource.indexOf("\nfn deploy_fixed_package");
+  expect(grokStart).toBeGreaterThan(0);
+  expect(grokEnd).toBeGreaterThan(grokStart);
+  return runtimeSource.slice(grokStart, grokEnd);
+}
+
+function installerHelperRuntime(runtimeSource: string): string {
+  const grokStart = runtimeSource.indexOf("fn run_grok_tool_session");
+  const grokEnd = runtimeSource.indexOf("\nfn deploy_fixed_package");
+  const installStart = runtimeSource.indexOf("pub(crate) fn run_install");
+  expect(grokStart).toBeGreaterThan(0);
+  expect(grokEnd).toBeGreaterThan(grokStart);
+  expect(installStart).toBeGreaterThanOrEqual(0);
+  return (
+    runtimeSource.slice(installStart, grokStart) + runtimeSource.slice(grokEnd)
+  );
+}
+
 const manifest = parseToml(read(`${HELPER_ROOT}/Cargo.toml`)) as Record<
   string,
   any
@@ -127,12 +147,28 @@ describe("Codex current-user helper static contract", () => {
     );
   });
 
-  it("accepts only the two fixed installer actions and closed Agent products", () => {
+  it("lets the UI host depend on the portable helper library without helper-runtime", () => {
+    const hostManifest = read("src-tauri/Cargo.toml");
+    expect(hostManifest).toContain(
+      'fyagent-user-helper = { path = "user-helper", default-features = false }',
+    );
+    expect(hostManifest).not.toMatch(
+      /\[target\.'cfg\(target_os = "windows"\)'\.dependencies\][\s\S]*fyagent-user-helper/u,
+    );
+    expect(hostManifest).not.toMatch(
+      /fyagent-user-helper[^\n]*helper-runtime/u,
+    );
+  });
+
+  it("accepts the closed installer actions and the Grok tool operation", () => {
     expect(cli).toContain('INSTALL_ACTION: &str = "codex-msix-install"');
     expect(cli).toContain(
       'AGENT_EXE_INSTALL_ACTION: &str = "agent-exe-install"',
     );
+    expect(cli).toContain('GROK_TOOL_ACTION: &str = "grok-tool"');
     expect(cli).toContain('PRODUCT_FLAG: &str = "--product"');
+    expect(cli).toContain('ACTION_FLAG: &str = "--action"');
+    expect(cli).toContain('OWNER_FLAG: &str = "--owner"');
     expect(cli).toContain('JOB_ID_FLAG: &str = "--job-id"');
     expect(cli).toContain('PIPE_FLAG: &str = "--pipe"');
     expect(cli).toMatch(/PIPE_NONCE_BYTES:\s*usize\s*=\s*64\s*;/u);
@@ -141,6 +177,9 @@ describe("Codex current-user helper static contract", () => {
     expect(cli).toMatch(
       /Some\(AGENT_EXE_INSTALL_ACTION\) if raw\.len\(\) == 7/u,
     );
+    expect(cli).toMatch(
+      /Some\(GROK_TOOL_ACTION\) if raw\.len\(\) == 7 \|\| raw\.len\(\) == 9/u,
+    );
     expect(cli).toContain(
       "UserHelperAction::AgentExeInstall(AgentInstallerProduct::parse(&raw[2])?)",
     );
@@ -148,13 +187,17 @@ describe("Codex current-user helper static contract", () => {
       expect(cli).toContain(`"${product}"`);
     expect(cli).toContain("UserHelperAction::CodexMsixInstall");
     expect(cli).toContain("UserHelperAction::AgentExeInstall");
+    expect(cli).toContain("UserHelperAction::GrokTool");
     expect(cli).toContain("pub const fn artifact_kind");
+    expect(cli).toContain("pub const fn requires_package_bridge");
     expect(cli).toContain("pub fn command_line");
     expect(cli).toContain("Self::CodexMsixInstall => format!(");
     expect(cli).toContain("Self::AgentExeInstall(product) => format!(");
 
     expect(cli.match(/"--[a-z-]+"/gu)).toEqual([
       '"--product"',
+      '"--action"',
+      '"--owner"',
       '"--job-id"',
       '"--pipe"',
     ]);
@@ -218,6 +261,7 @@ describe("Codex current-user helper static contract", () => {
     );
     expect(messageEnum).toMatch(/\bProgress\b[\s\S]*completed:\s*u8/u);
     expect(messageEnum).toMatch(/\bSuccess\b/u);
+    expect(messageEnum).toMatch(/\bToolResult\b/u);
     expect(messageEnum).toMatch(
       /\bError\b[\s\S]*code:\s*HelperErrorCode[\s\S]*message:\s*String/u,
     );
@@ -401,6 +445,8 @@ describe("Codex current-user helper static contract", () => {
         "ParentControls::open",
         "PipeChannel::connect",
         "channel.send_hello(action)",
+        "UserHelperAction::GrokTool",
+        "run_grok_tool_session",
         "channel.read_bridge_control",
         "PinnedPackageFile::open(bridge_control, action.artifact_kind())",
         "package_pin.recheck_for_helper()",
@@ -447,6 +493,18 @@ describe("Codex current-user helper static contract", () => {
     expect(runInstall).toMatch(
       /if action == UserHelperAction::CodexMsixInstall[\s\S]*channel\.send_progress\(0\)/u,
     );
+    expect(runInstall).toMatch(
+      /if matches!\(action, UserHelperAction::GrokTool \{ \.\. \}\)[\s\S]*run_grok_tool_session/u,
+    );
+    const grokSession = section(
+      runtime,
+      "fn run_grok_tool_session",
+      "\nfn execute_grok_tool",
+    );
+    expect(grokSession).toContain("acknowledge_tool_control");
+    expect(grokSession).toContain("TOOL_OPERATION_STARTED_IDENTITY");
+    expect(grokSession).not.toContain("PinnedPackageFile");
+    expect(grokSession).not.toContain("read_bridge_control");
   });
 
   it("resolves and pins only the fixed protected ProgramData file", () => {
@@ -573,23 +631,30 @@ describe("Codex current-user helper static contract", () => {
     for (const boundary of [
       "SHELLEXECUTEINFOW",
       "SEE_MASK_NOCLOSEPROCESS",
+      "SEE_MASK_NO_CONSOLE",
+      'OsStr::new("open")',
+      "lpVerb",
       "ShellExecuteExW",
       "ERROR_CANCELLED",
-      "InstallerProcessUnobservable",
-      "WaitForSingleObject",
-      "GetExitCodeProcess",
-      "InstallerTimedOut",
-      "InstallerExitedNonzero",
+      "send_progress(10)",
     ]) {
       expect(exeRunner, boundary).toContain(boundary);
     }
+    expect(exeRunner).not.toMatch(
+      /WaitForSingleObject|GetExitCodeProcess|InstallerTimedOut|InstallerExitedNonzero|InstallerProcessUnobservable/u,
+    );
     expect(exeRunner).not.toMatch(
       /lpParameters|lpDirectory|runas|TerminateProcess|Command::new|CreateProcess/iu,
     );
     expect(runtime).not.toMatch(
       /StagePackage|RegisterPackage|ProvisionPackage|RequestAddPackage|PackageVolume/iu,
     );
-    expect(runtime).not.toMatch(
+    const grokRuntime = grokHelperRuntime(runtime);
+    const installerRuntime = installerHelperRuntime(runtime);
+    expect(grokRuntime).toContain("Command::new");
+    expect(grokRuntime).toContain("powershell.exe");
+    expect(grokRuntime).not.toContain("std::env::var");
+    expect(installerRuntime).not.toMatch(
       /std::process::Command|Command::new|CreateProcess|cmd\.exe|powershell|tauri/iu,
     );
 
@@ -876,7 +941,7 @@ describe("Codex current-user helper static contract", () => {
     );
     expect(consume).toContain("wait_for_clean_terminal_close");
     expect(consume).toMatch(
-      /HelperProtocolAction::Success[\s\S]+?HelperProtocolAction::Failure/u,
+      /HelperProtocolAction::Success[\s\S]+?HelperProtocolAction::ToolResult[\s\S]+?HelperProtocolAction::Failure/u,
     );
     const close = section(
       parentHelper,
@@ -1092,7 +1157,8 @@ describe("Codex current-user helper static contract", () => {
     ]) {
       expect(source).not.toContain("AddPackageByUriAsync");
     }
-    const activeWindowsInstaller = `${windowsAdapter}\n${windowsDeployment}\n${parentHelper}\n${packageBridge}\n${runtime}`;
+    const installerRuntime = installerHelperRuntime(runtime);
+    const activeWindowsInstaller = `${windowsAdapter}\n${windowsDeployment}\n${parentHelper}\n${packageBridge}\n${installerRuntime}`;
     expect(activeWindowsInstaller).not.toMatch(
       /StagePackage(?:ByUri)?Async|RegisterPackagesByFullNameAsync|ProvisionPackage|RemoveForAllUsers/iu,
     );

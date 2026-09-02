@@ -556,6 +556,7 @@ pub(super) fn verify_windows_deployment_candidates(
 }
 
 #[cfg(target_os = "windows")]
+#[allow(dead_code)]
 pub(super) fn verify_windows_deployment(
     agent_id: AgentCatalogId,
     baseline: &DesktopInstallationBaseline,
@@ -1153,6 +1154,10 @@ mod tests {
         assert!(!discovered_update_eligible(AgentCatalogId::WorkBuddy, true));
         assert!(discovered_update_eligible(AgentCatalogId::OpenCode, true));
         assert!(discovered_update_eligible(AgentCatalogId::ClaudeCode, true));
+        assert!(!discovered_update_eligible(
+            AgentCatalogId::WorkBuddy,
+            false
+        ));
         assert!(!discovered_update_eligible(AgentCatalogId::OpenCode, false));
         assert!(!discovered_update_eligible(AgentCatalogId::GrokBuild, true));
     }

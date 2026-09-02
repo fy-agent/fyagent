@@ -50,10 +50,13 @@ export const REQUIRED_TASKS = Object.freeze([
   "release:check",
   "rust:check",
   "rust:clippy",
+  "rust:clippy:windows-msvc-cross",
   "rust:fmt",
   "rust:fmt:check",
   "rust:test",
   "system:check",
+  "system:check:windows-msvc-cross",
+  "system:check:windows-msvc-cross:advisory",
   "supported-platform:check",
   "tasks:docs:check",
   "tasks:docs:generate",
@@ -105,6 +108,7 @@ export const PARAMETERIZED_TASKS = Object.freeze([
   "python:with",
   "rust:test",
   "system:check",
+  "system:check:windows-msvc-cross",
   "supported-platform:check",
   "tasks:docs:generate",
   "test:desktop:visual:update",
@@ -340,6 +344,36 @@ export function validateTaskContract() {
     );
   }
 
+  const crossPreflight = tasks["system:check:windows-msvc-cross"];
+  if (
+    crossPreflight.env.FYAGENT_TASK_EFFECT !== "read-only" ||
+    crossPreflight.run !== "node scripts/tasks/windows-msvc-cross.mjs check"
+  ) {
+    throw new Error(
+      "system:check:windows-msvc-cross must remain a read-only explicit preflight",
+    );
+  }
+  const crossAdvisory = tasks["system:check:windows-msvc-cross:advisory"];
+  if (
+    crossAdvisory.env.FYAGENT_TASK_EFFECT !== "read-only" ||
+    crossAdvisory.run !== "node scripts/tasks/windows-msvc-cross.mjs advisory"
+  ) {
+    throw new Error(
+      "system:check:windows-msvc-cross:advisory must remain a read-only bootstrap diagnostic",
+    );
+  }
+  const crossClippy = tasks["rust:clippy:windows-msvc-cross"];
+  if (
+    crossClippy.env.FYAGENT_TASK_EFFECT !== "dependency-environment" ||
+    crossClippy.run !== "node scripts/tasks/windows-msvc-cross.mjs clippy" ||
+    crossClippy.confirm?.default !== "no" ||
+    typeof crossClippy.confirm?.message !== "string"
+  ) {
+    throw new Error(
+      "rust:clippy:windows-msvc-cross must remain explicit, default-no, and dependency-environment scoped",
+    );
+  }
+
   const loaded = JSON.parse(
     capture("mise", ["tasks", "ls", "--local", "--json"]),
   );
@@ -357,6 +391,35 @@ export function validateTaskContract() {
     for (const dependency of taskReferences(tasks[name])) visit(dependency);
   };
   visit("check");
+  for (const optional of [
+    "system:check:windows-msvc-cross",
+    "system:check:windows-msvc-cross:advisory",
+    "rust:clippy:windows-msvc-cross",
+  ]) {
+    if (closure.has(optional)) {
+      throw new Error(`${optional} must not enter the default check DAG`);
+    }
+  }
+  const bootstrapClosure = new Set();
+  const visitBootstrap = (name) => {
+    if (bootstrapClosure.has(name)) return;
+    bootstrapClosure.add(name);
+    for (const dependency of taskReferences(tasks[name])) {
+      visitBootstrap(dependency);
+    }
+  };
+  visitBootstrap("bootstrap");
+  if (!bootstrapClosure.has("system:check:windows-msvc-cross:advisory")) {
+    throw new Error("bootstrap must report the optional Windows-MSVC advisory");
+  }
+  for (const forbidden of [
+    "system:check:windows-msvc-cross",
+    "rust:clippy:windows-msvc-cross",
+  ]) {
+    if (bootstrapClosure.has(forbidden)) {
+      throw new Error(`${forbidden} must not enter the bootstrap DAG`);
+    }
+  }
   for (const name of closure) {
     if (tasks[name].env.FYAGENT_TASK_EFFECT !== "read-only") {
       throw new Error(`check DAG reaches non-read-only task ${name}`);

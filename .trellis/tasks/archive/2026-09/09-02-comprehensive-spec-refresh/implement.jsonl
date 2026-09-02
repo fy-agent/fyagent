@@ -1,0 +1,23 @@
+{"file":".agents/skills/trellis-update-spec/SKILL.md","reason":"按可执行合同、七段式结构和 Spec/Guide 边界实施。"}
+{"file":".agents/skills/trellis-spec-bootstrap/references/spec-writing.md","reason":"按真实所有权拆分、删除模板并保留源码/测试证据。"}
+{"file":".trellis/spec/backend/index.md","reason":"更新后端导航和新 owner 注入入口。"}
+{"file":".trellis/spec/backend/modular-boundaries.md","reason":"修正 Rust 模块、transport command 和可见性事实。"}
+{"file":".trellis/spec/backend/external-agent-p0.md","reason":"将跨域巨型合同迁移到聚焦 owner，并保留兼容路由。"}
+{"file":"src-tauri/src/agent_install/mod.rs","reason":"Agent lifecycle/readiness/inventory/jobs 的当前入口和模块边界。"}
+{"file":"src-tauri/src/commands/agent_catalog.rs","reason":"Catalog/runtime Tauri transport 签名。"}
+{"file":"src-tauri/src/commands/agent_auth.rs","reason":"Auth session Tauri transport 签名。"}
+{"file":"src-tauri/src/database/mod.rs","reason":"Database 初始化、版本、备份和 change-hook 合同。"}
+{"file":"src-tauri/src/database/schema.rs","reason":"Schema v20、SAVEPOINT 迁移和兼容 helper 合同。"}
+{"file":"src-tauri/src/services/proxy.rs","reason":"ProxyService 生命周期、验证、live sync 与补偿顺序。"}
+{"file":"src-tauri/src/proxy/server.rs","reason":"Listener、认证、连接限制、shutdown 和 request boundary。"}
+{"file":".trellis/spec/frontend/index.md","reason":"更新前端导航和聚焦 feature owner。"}
+{"file":".trellis/spec/frontend/v2-agent-models.md","reason":"拆分 Agent Directory、Auth 和 Models 合同。"}
+{"file":".trellis/spec/frontend/v2-skills-mcp.md","reason":"拆分 Assignment、Skills 和 MCP 合同。"}
+{"file":"src/v2/shared/features/agent-install-readiness.ts","reason":"前端严格 readiness/inventory/action DTO 和 ports。"}
+{"file":"src/v2/shared/features/agent-auth.ts","reason":"前端 Auth DTO/ports。"}
+{"file":"src/v2/shared/features/models.ts","reason":"Models DTO/ports。"}
+{"file":"src/v2/shared/features/skills.ts","reason":"Skills DTO/ports。"}
+{"file":"src/v2/shared/features/mcp.ts","reason":"MCP DTO/ports。"}
+{"file":"src/v2/shared/features/assignments.ts","reason":"共享 assignment target/state 合同。"}
+{"file":"src/i18n/index.ts","reason":"支持语言、初始语言和 fallback 事实。"}
+{"file":"tests/config/localeKeyParity.test.ts","reason":"Locale key parity 与 leaf-value schema 断言。"}

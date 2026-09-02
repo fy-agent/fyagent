@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/external-agent-p0.md", "reason": "Windows handoff success must not claim installed identity"}
+{"file": ".trellis/spec/frontend/v2-agent-models.md", "reason": "launching_installer/awaiting_user remain distinct from installed"}
+{"file": ".trellis/spec/backend/codex-desktop-installer.md", "reason": "Windows EXE helper is no-wait vendor-wizard handoff; retain PackageBridge EXE leaf"}
+{"file": ".trellis/spec/backend/windows-runtime-security.md", "reason": "Agent EXE ShellExecute success is handoff; do not wait, kill, or delete the EXE leaf"}

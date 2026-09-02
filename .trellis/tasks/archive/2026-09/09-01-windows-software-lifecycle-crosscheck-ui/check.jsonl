@@ -1,0 +1,9 @@
+{"file":".trellis/spec/backend/reuse.md","reason":"检查实现是否复用既有 registry、inventory、source、installer、helper、task-runner 与 UI owner。"}
+{"file":".trellis/spec/backend/development-environment.md","reason":"检查 bootstrap advisory、strict preflight 与 Windows 原生证据边界。"}
+{"file":".trellis/spec/backend/task-runner-contract.md","reason":"检查 fixed argv、default-no、DAG 隔离与无自动安装合同。"}
+{"file":".trellis/spec/backend/windows-runtime-security.md","reason":"检查 INVENTORY_PARENT_READ 最小权限、HKU/machine view 与 child query-only。"}
+{"file":".trellis/spec/backend/external-agent-p0.md","reason":"检查三款桌面软件 install/update/launch、opaque target、可信制品与后置验证。"}
+{"file":".trellis/spec/frontend/v2-agent-models.md","reason":"检查一键安装/更新只由 backend allowedActions 与 updateState 驱动。"}
+{"file":".trellis/spec/frontend/v2-shell.md","reason":"检查 SideNavigation 单层材质、position-only lens、ARIA 与 reduced-motion。"}
+{"file":".trellis/tasks/09-01-windows-software-lifecycle-crosscheck-ui/research/root-cause-and-reuse-review.md","reason":"复核根因、官方来源、开源复用与拒绝方案。"}
+{"file":".trellis/tasks/09-01-windows-software-lifecycle-crosscheck-ui/research/support-matrix.md","reason":"复核产品、平台、动作、目标选择和原生 HIL 边界。"}

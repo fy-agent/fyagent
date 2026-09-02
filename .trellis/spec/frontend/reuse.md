@@ -54,7 +54,13 @@ Current shared owner families include:
   (Agent adapter: `src/v2/shared/features/transfer-projection.ts`);
 - layouts: `SplitPanes`, `CatalogMasterDetail`, feature page/panel chrome;
 - external and secret controls: `ExternalLinkButton`, `SecretInput`;
-- shell motion/selection primitives owned under `shared/ui`.
+- shell motion/selection primitives owned under `shared/ui`;
+- visited-route visibility: `PersistentSurface`, `usePersistentSearchParams`,
+  `useStickyVisibleValue`;
+- Agent directory lifecycle chrome: `AgentLifecycleActionSlot` plus closed
+  `AGENT_DIRECTORY_UPDATE_UI` in `agent-lifecycle-capabilities.ts`;
+- primary-route module table: `prefetchPrimaryRoutes` / `primaryPages` in
+  `app/primaryPages.tsx`.
 
 Their exact behavior belongs in the feature/shell specs that use them:
 [V2 Shell](./v2-shell.md),
@@ -104,6 +110,14 @@ platform architecture rather than introduce a second UI/state framework.
   pending/selection state but must not manufacture a successful write.
 - Secrets remain in the narrow component/mutation lifetime defined by the
   feature contract and never become a convenience shared store.
+
+### Settings CLI lifecycle owner
+
+- Leftover Settings (`AboutSection` / `ToolInstallRow`) must not keep a
+  page-local npm/Shell/PowerShell command table. Writable lifecycle buttons
+  exist only for Grok Build and call the existing Tooling action port.
+- Do not duplicate Grok install/update in a second Agent CLI card. Desktop
+  products stay on the Agent directory owner.
 
 ### Preserve dependency direction
 

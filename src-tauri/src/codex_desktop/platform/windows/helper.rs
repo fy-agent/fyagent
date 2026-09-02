@@ -15,15 +15,17 @@ use std::{
         io::{AsRawHandle, FromRawHandle, OwnedHandle},
     },
     path::{Path, PathBuf},
-    sync::{Mutex, OnceLock},
+    sync::{Arc, Mutex, OnceLock},
     time::{Duration, Instant},
 };
 
 use fyagent_user_helper::{
     admission_event_name, cancel_event_name, decode_frame, layout::pipe_name,
-    AgentInstallerProduct, CanonicalJobId, HelperErrorCode, HelperMessage, HelperProtocolAction,
-    HelperProtocolSequence, HelperProtocolTerminal, PackageBridgeControl, PinnedPackageIdentity,
-    PipeNonce, UserHelperAction, BRIDGE_CONTROL_BYTES, MAX_FRAME_BYTES,
+    AgentInstallerProduct, CanonicalJobId, GrokOwner, GrokToolAction, HelperErrorCode,
+    HelperMessage, HelperProtocolAction, HelperProtocolSequence, HelperProtocolTerminal,
+    PackageBridgeArtifactKind, PackageBridgeControl, PinnedPackageIdentity, PipeNonce,
+    ToolOperationResult, UserHelperAction, BRIDGE_CONTROL_BYTES, MAX_FRAME_BYTES,
+    TOOL_OPERATION_STARTED_IDENTITY,
 };
 use windows::{
     core::{HRESULT, PCWSTR, PWSTR},
@@ -175,6 +177,205 @@ pub(crate) fn run_verified_agent_exe_installer(
         progress,
         WindowsHelperDeadlines::AGENT_EXE_INSTALL,
     )
+}
+
+pub(crate) fn run_grok_tool_operation(
+    context: &InteractiveUserContext,
+    action: GrokToolAction,
+    expected_owner: Option<GrokOwner>,
+) -> Result<ToolOperationResult, InstallerError> {
+    let job_id = CanonicalJobId::parse(&uuid::Uuid::new_v4().to_string())
+        .map_err(|_| helper_identity_error())?;
+    run_unpinned_tool_helper(
+        context,
+        UserHelperAction::GrokTool {
+            action,
+            expected_owner,
+        },
+        &job_id,
+        Arc::new(|_: JobProgress| {}),
+        WindowsHelperDeadlines::GROK_TOOL,
+    )
+}
+
+fn run_unpinned_tool_helper(
+    context: &InteractiveUserContext,
+    action: UserHelperAction,
+    job_id: &CanonicalJobId,
+    progress: PlatformProgressSink,
+    deadlines: WindowsHelperDeadlines,
+) -> Result<ToolOperationResult, InstallerError> {
+    if action.requires_package_bridge() {
+        return Err(helper_pipe_error(
+            "the user-helper tool action required a package bridge",
+        ));
+    }
+    let gate = HelperGateLease::acquire()?;
+    let setup = (|| {
+        let nonce = generate_nonce()?;
+        let controls = ParentControlEvents::create(context.canonical_sid(), &nonce)?;
+        let server = OneShotPipeServer::create(context.canonical_sid(), &nonce)?;
+        let helper_path = fixed_user_helper_path().map_err(|_| helper_launch_error())?;
+        let helper_image = PinnedHelperImage::open(&helper_path)?;
+        Ok::<_, InstallerError>((nonce, controls, server, helper_image))
+    })();
+    let (nonce, controls, server, helper_image) = match setup {
+        Ok(setup) => setup,
+        Err(error) => {
+            gate.finish();
+            return Err(error);
+        }
+    };
+    let mut lifetime = HelperLifetime::without_package(helper_image, controls, server);
+
+    match launch_fyagent_user_helper_as_user(action, job_id, &nonce) {
+        UserHelperLaunchOutcome::Confirmed => {}
+        UserHelperLaunchOutcome::MayHaveLaunched => {
+            return fail_before_admission(gate, lifetime, helper_launch_pending_error())
+                .map(|_| unreachable!());
+        }
+        UserHelperLaunchOutcome::NotInvoked(_) => {
+            return fail_before_admission(gate, lifetime, helper_launch_error())
+                .map(|_| unreachable!());
+        }
+    }
+    if lifetime.server().connect(deadlines.connect).is_err() {
+        return fail_before_admission(
+            gate,
+            lifetime,
+            helper_pipe_error("the user-helper did not connect before its deadline"),
+        )
+        .map(|_| unreachable!());
+    }
+    let operation_deadline = Instant::now() + deadlines.operation;
+    let first_frame_timeout = match remaining_until(operation_deadline) {
+        Ok(remaining) => remaining.min(deadlines.connect),
+        Err(error) => return fail_before_admission(gate, lifetime, error).map(|_| unreachable!()),
+    };
+    let first_frame = match lifetime.server().read_frame(first_frame_timeout) {
+        Err(error) => return fail_before_admission(gate, lifetime, error).map(|_| unreachable!()),
+        Ok(PipeFrameRead::Frame(frame)) => frame,
+        Ok(PipeFrameRead::Closed) => {
+            return fail_before_admission(
+                gate,
+                lifetime,
+                helper_pipe_error("the user-helper pipe closed before its identity was admitted"),
+            )
+            .map(|_| unreachable!())
+        }
+    };
+    let process = match lifetime.server().validate_client(
+        context,
+        lifetime
+            .helper_image
+            .as_ref()
+            .expect("helper lifetime always owns helper image"),
+    ) {
+        Ok(process) => process,
+        Err(error) => return fail_before_admission(gate, lifetime, error).map(|_| unreachable!()),
+    };
+    lifetime.set_process(process);
+    let first_message = match decode_protocol_frame(&first_frame) {
+        Ok(message) => message,
+        Err(error) => return fail_before_admission(gate, lifetime, error).map(|_| unreachable!()),
+    };
+    let mut sequence = HelperProtocolSequence::default();
+    match sequence.accept(first_message) {
+        Ok(HelperProtocolAction::Hello(received_action)) if received_action == action => {}
+        _ => {
+            return fail_before_admission(
+                gate,
+                lifetime,
+                helper_pipe_error("the user-helper action did not match the admitted request"),
+            )
+            .map(|_| unreachable!())
+        }
+    }
+    if !crate::windows_runtime::revalidate_interactive_user_context(context) {
+        return fail_before_admission(gate, lifetime, helper_context_error())
+            .map(|_| unreachable!());
+    }
+    if sequence.mark_control_sent().is_err() {
+        return fail_before_admission(
+            gate,
+            lifetime,
+            helper_pipe_error("the helper tool control transition was invalid"),
+        )
+        .map(|_| unreachable!());
+    }
+
+    let started_timeout = match remaining_until(operation_deadline) {
+        Ok(remaining) => remaining.min(deadlines.connect),
+        Err(error) => return fail_before_admission(gate, lifetime, error).map(|_| unreachable!()),
+    };
+    let started_message = match lifetime.server().read_message(started_timeout) {
+        Ok(PipeMessageRead::Message(message)) => message,
+        Ok(PipeMessageRead::Closed) => {
+            return fail_before_admission(
+                gate,
+                lifetime,
+                helper_pipe_error("the user-helper pipe closed before tool admission"),
+            )
+            .map(|_| unreachable!())
+        }
+        Err(error) => return fail_before_admission(gate, lifetime, error).map(|_| unreachable!()),
+    };
+    let helper_identity = match sequence.accept(started_message) {
+        Ok(HelperProtocolAction::Started(identity)) => identity,
+        Ok(HelperProtocolAction::Failure(code)) => {
+            let terminal = HelperProtocolTerminal::Failure(code);
+            if let Err(error) = wait_for_clean_terminal_close(
+                lifetime.server(),
+                &mut sequence,
+                operation_deadline,
+                deadlines.terminal_close,
+            ) {
+                return fail_before_admission(gate, lifetime, error).map(|_| unreachable!());
+            }
+            return finish_settled_tool(gate, lifetime, terminal);
+        }
+        _ => {
+            return fail_before_admission(
+                gate,
+                lifetime,
+                helper_pipe_error("the user-helper did not confirm the tool operation"),
+            )
+            .map(|_| unreachable!())
+        }
+    };
+    if helper_identity != TOOL_OPERATION_STARTED_IDENTITY {
+        return fail_before_admission(gate, lifetime, package_pin_error()).map(|_| unreachable!());
+    }
+    if !crate::windows_runtime::revalidate_interactive_user_context(context) {
+        return fail_before_admission(gate, lifetime, helper_context_error())
+            .map(|_| unreachable!());
+    }
+    if lifetime.controls().admit().is_err() {
+        return fail_before_admission(
+            gate,
+            lifetime,
+            helper_pipe_error("the helper admission event could not be signaled"),
+        )
+        .map(|_| unreachable!());
+    }
+    lifetime.mark_admitted();
+    if sequence.mark_admitted().is_err() {
+        gate.quarantine(
+            lifetime,
+            helper_pipe_error("the helper admission transition was invalid"),
+        );
+    }
+
+    match consume_protocol(
+        lifetime.server(),
+        &mut sequence,
+        progress,
+        operation_deadline,
+        deadlines.terminal_close,
+    ) {
+        Ok(terminal) => finish_settled_tool(gate, lifetime, terminal),
+        Err(error) => cancel_and_quarantine(gate, lifetime, error),
+    }
 }
 
 impl WindowsVerifiedFilePin for VerifiedFilePin {
@@ -556,6 +757,23 @@ impl HelperLifetime {
         Self {
             pin: Some(pin),
             bridge: Some(bridge),
+            helper_image: Some(helper_image),
+            controls: Some(controls),
+            server: Some(server),
+            process: None,
+            admitted: false,
+            settled: false,
+        }
+    }
+
+    fn without_package(
+        helper_image: PinnedHelperImage,
+        controls: ParentControlEvents,
+        server: OneShotPipeServer,
+    ) -> Self {
+        Self {
+            pin: None,
+            bridge: None,
             helper_image: Some(helper_image),
             controls: Some(controls),
             server: Some(server),
@@ -998,6 +1216,9 @@ fn consume_protocol(
                 ));
             }
             HelperProtocolAction::Success => break HelperProtocolTerminal::Success,
+            HelperProtocolAction::ToolResult(result) => {
+                break HelperProtocolTerminal::ToolSuccess(result)
+            }
             HelperProtocolAction::Failure(code) => break HelperProtocolTerminal::Failure(code),
         }
     };
@@ -1033,6 +1254,13 @@ fn accept_protocol_message(
         .map_err(|_| helper_pipe_error("the user-helper message sequence was invalid"))
 }
 
+fn retain_package_bridge_after_settlement(
+    helper_ok: bool,
+    artifact_kind: Option<PackageBridgeArtifactKind>,
+) -> bool {
+    helper_ok && matches!(artifact_kind, Some(PackageBridgeArtifactKind::Exe))
+}
+
 fn finish_settled(
     gate: HelperGateLease,
     mut lifetime: HelperLifetime,
@@ -1040,7 +1268,18 @@ fn finish_settled(
 ) -> Result<(), InstallerError> {
     lifetime.mark_settled();
     let result = protocol_terminal_result(terminal);
-    lifetime.cleanup_bridge();
+    let retain_vendor_exe = retain_package_bridge_after_settlement(
+        result.is_ok(),
+        lifetime
+            .bridge
+            .as_ref()
+            .map(ProtectedPackageBridge::artifact_kind),
+    );
+    if retain_vendor_exe {
+        drop(lifetime);
+    } else {
+        lifetime.cleanup_bridge();
+    }
     gate.finish();
     result
 }
@@ -1087,9 +1326,36 @@ fn bridge_identity_matches(
     helper_identity == bridge_identity
 }
 
+fn finish_settled_tool(
+    gate: HelperGateLease,
+    mut lifetime: HelperLifetime,
+    terminal: HelperProtocolTerminal,
+) -> Result<ToolOperationResult, InstallerError> {
+    lifetime.mark_settled();
+    let result = protocol_tool_result(terminal);
+    lifetime.cleanup_bridge();
+    gate.finish();
+    result
+}
+
 fn protocol_terminal_result(terminal: HelperProtocolTerminal) -> Result<(), InstallerError> {
     match terminal {
         HelperProtocolTerminal::Success => Ok(()),
+        HelperProtocolTerminal::ToolSuccess(_) => Err(helper_pipe_error(
+            "the user-helper sent a tool result on a package action",
+        )),
+        HelperProtocolTerminal::Failure(code) => Err(map_helper_error(code)),
+    }
+}
+
+fn protocol_tool_result(
+    terminal: HelperProtocolTerminal,
+) -> Result<ToolOperationResult, InstallerError> {
+    match terminal {
+        HelperProtocolTerminal::ToolSuccess(result) => Ok(result),
+        HelperProtocolTerminal::Success => {
+            Err(helper_pipe_error("the user-helper omitted the tool result"))
+        }
         HelperProtocolTerminal::Failure(code) => Err(map_helper_error(code)),
     }
 }
@@ -1118,6 +1384,30 @@ fn map_helper_error(code: HelperErrorCode) -> InstallerError {
         HelperErrorCode::InstallerExitedNonzero => {
             return InstallerError::new(InstallerErrorCode::WindowsDeploymentFailed)
                 .with_platform_error_code("agent_installer_exited_nonzero")
+        }
+        HelperErrorCode::ToolHostMissing => {
+            return InstallerError::new(InstallerErrorCode::WindowsDeploymentFailed)
+                .with_platform_error_code("grok_tool_host_missing")
+        }
+        HelperErrorCode::ToolTimedOut => {
+            return InstallerError::new(InstallerErrorCode::WindowsDeploymentFailed)
+                .with_platform_error_code("grok_tool_timed_out")
+        }
+        HelperErrorCode::ToolOutputLimit => {
+            return InstallerError::new(InstallerErrorCode::WindowsDeploymentFailed)
+                .with_platform_error_code("grok_tool_output_limit")
+        }
+        HelperErrorCode::ToolOwnerMismatch => {
+            return InstallerError::new(InstallerErrorCode::WindowsDeploymentFailed)
+                .with_platform_error_code("grok_tool_owner_mismatch")
+        }
+        HelperErrorCode::ToolNotDetected => {
+            return InstallerError::new(InstallerErrorCode::WindowsDeploymentFailed)
+                .with_platform_error_code("grok_tool_not_detected")
+        }
+        HelperErrorCode::ToolExecutionFailed => {
+            return InstallerError::new(InstallerErrorCode::WindowsDeploymentFailed)
+                .with_platform_error_code("grok_tool_execution_failed")
         }
         HelperErrorCode::InstallLayoutInvalid
         | HelperErrorCode::WinRtInitializationFailed
@@ -1565,6 +1855,16 @@ mod tests {
             .0
     }
 
+    fn pinned_runner_source() -> &'static str {
+        production_source()
+            .split_once("fn run_pinned_user_helper(")
+            .expect("the pinned helper runner must exist")
+            .1
+            .split_once("\nfn generate_nonce(")
+            .expect("the pinned helper runner must end before nonce generation")
+            .0
+    }
+
     fn started(identity: PinnedPackageIdentity) -> HelperMessage {
         HelperMessage::Started { package: identity }
     }
@@ -1615,6 +1915,26 @@ mod tests {
     }
 
     #[test]
+    fn vendor_exe_success_retains_package_bridge_leaf() {
+        assert!(retain_package_bridge_after_settlement(
+            true,
+            Some(PackageBridgeArtifactKind::Exe),
+        ));
+        assert!(!retain_package_bridge_after_settlement(
+            false,
+            Some(PackageBridgeArtifactKind::Exe),
+        ));
+        assert!(!retain_package_bridge_after_settlement(
+            true,
+            Some(PackageBridgeArtifactKind::Msix),
+        ));
+        assert!(!retain_package_bridge_after_settlement(true, None));
+        let source = production_source();
+        assert!(source.contains("retain_package_bridge_after_settlement("));
+        assert!(source.contains("if retain_vendor_exe"));
+    }
+
+    #[test]
     fn native_package_downgrade_result_remains_structured() {
         let error = map_helper_error(HelperErrorCode::PackageDowngrade);
         let dto = error.to_dto();
@@ -1627,7 +1947,7 @@ mod tests {
 
     #[test]
     fn parent_runner_orders_authenticated_hello_before_control_and_admission() {
-        let source = production_source();
+        let source = pinned_runner_source();
         let raw_read = source.find("read_frame(first_frame_timeout)").unwrap();
         let client_validation = source.find("validate_client(").unwrap();
         let hello_acceptance = source.find("sequence.accept(first_message)").unwrap();

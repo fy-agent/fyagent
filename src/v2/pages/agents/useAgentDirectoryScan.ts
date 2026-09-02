@@ -40,6 +40,8 @@ export type AgentDirectoryScanAction =
 export type UseAgentDirectoryScanOptions = {
   /** AgentsPage must pass true. Default stays false for hook-level tests. */
   autoStart?: boolean;
+  /** Pause UI dispatch while the Agents surface is hidden. */
+  active?: boolean;
 };
 
 const initialScanState: AgentDirectoryScanState = {
@@ -143,21 +145,39 @@ function useReadinessQueries() {
   };
 }
 
+type PendingScanWork = {
+  requestId: number;
+  settled: Array<{
+    agentId: AgentCatalogId;
+    data?: AgentInstallReadiness;
+  }>;
+  finishedAt: number | null;
+};
+
 export function useAgentDirectoryScan(options?: UseAgentDirectoryScanOptions) {
   const autoStart = options?.autoStart ?? false;
+  const active = options?.active ?? true;
   const [state, dispatch] = useReducer(scanReducer, initialScanState);
   const queries = useReadinessQueries();
   const queriesRef = useRef(queries);
   const stateRef = useRef(state);
+  const activeRef = useRef(active);
+  const pendingRef = useRef<PendingScanWork>({
+    requestId: 0,
+    settled: [],
+    finishedAt: null,
+  });
 
   useEffect(() => {
     queriesRef.current = queries;
     stateRef.current = state;
+    activeRef.current = active;
   });
 
   const start = useCallback(() => {
     if (stateRef.current.status === "scanning") return;
     const requestId = stateRef.current.requestId + 1;
+    pendingRef.current = { requestId, settled: [], finishedAt: null };
     stateRef.current = {
       ...stateRef.current,
       status: "scanning",
@@ -171,17 +191,36 @@ export function useAgentDirectoryScan(options?: UseAgentDirectoryScanOptions) {
       AGENT_CATALOG_IDS.map(async (agentId) => {
         try {
           const result = await queriesRef.current[agentId].refetch();
+          const data = result.error ? undefined : result.data;
+          if (!activeRef.current) {
+            if (pendingRef.current.requestId === requestId) {
+              pendingRef.current.settled.push({ agentId, data });
+            }
+            return;
+          }
           dispatch({
             type: "settled",
             requestId,
             agentId,
-            data: result.error ? undefined : result.data,
+            data,
           });
         } catch {
+          if (!activeRef.current) {
+            if (pendingRef.current.requestId === requestId) {
+              pendingRef.current.settled.push({ agentId });
+            }
+            return;
+          }
           dispatch({ type: "settled", requestId, agentId });
         }
       }),
     ).then(() => {
+      if (!activeRef.current) {
+        if (pendingRef.current.requestId === requestId) {
+          pendingRef.current.finishedAt = Date.now();
+        }
+        return;
+      }
       dispatch({ type: "finish", requestId, finishedAt: Date.now() });
     });
   }, []);
@@ -194,9 +233,34 @@ export function useAgentDirectoryScan(options?: UseAgentDirectoryScanOptions) {
   );
 
   useEffect(() => {
-    if (!autoStart) return;
+    if (!active) return;
+    const pending = pendingRef.current;
+    const requestId = pending.requestId;
+    if (requestId === 0) return;
+    for (const item of pending.settled) {
+      dispatch({
+        type: "settled",
+        requestId,
+        agentId: item.agentId,
+        data: item.data,
+      });
+    }
+    pending.settled = [];
+    if (pending.finishedAt !== null) {
+      dispatch({
+        type: "finish",
+        requestId,
+        finishedAt: pending.finishedAt,
+      });
+      pending.finishedAt = null;
+    }
+  }, [active]);
+
+  useEffect(() => {
+    if (!autoStart || !active) return;
+    if (stateRef.current.status !== "idle") return;
     start();
-  }, [autoStart, start]);
+  }, [autoStart, active, start]);
 
   return { state, start, applyReadiness };
 }

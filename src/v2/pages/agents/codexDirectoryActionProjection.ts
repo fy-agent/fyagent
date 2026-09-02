@@ -1,8 +1,9 @@
-import type {
-  CodexDesktopProgress,
-  InstallerErrorDto,
-  InstallerPrimaryAction,
-  InstallerViewState,
+import {
+  formatTransferSpeed,
+  type CodexDesktopProgress,
+  type InstallerErrorDto,
+  type InstallerPrimaryAction,
+  type InstallerViewState,
 } from "@/shared/codex-desktop";
 
 import type { AgentLifecyclePrimaryAction } from "./useAgentLifecycleAction";
@@ -22,6 +23,7 @@ export type CodexDirectoryActionProjection = {
   primaryAction: AgentLifecyclePrimaryAction | null;
   busy: boolean;
   percent: number | null;
+  speedLabel: string | null;
   state: InstallerViewState;
   error: InstallerErrorDto | null;
   canRun: boolean;
@@ -49,10 +51,14 @@ export function projectCodexDirectoryAction(
 ): CodexDirectoryActionProjection {
   const primaryAction = projectPrimaryAction(source.primaryAction);
   const busy = source.isActing || source.state.startsWith("job_");
+  const downloading = source.state === "job_downloading";
   return {
     primaryAction,
     busy,
     percent: projectPercent(source.progress),
+    speedLabel: downloading
+      ? formatTransferSpeed(source.progress?.bytesPerSecond)
+      : null,
     state: source.state,
     error: source.error,
     canRun: primaryAction !== null && !source.primaryDisabled && !busy,

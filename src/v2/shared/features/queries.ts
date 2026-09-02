@@ -1,5 +1,6 @@
 import { keepPreviousData, useQueries, useQuery } from "@tanstack/react-query";
 
+import { usePersistentVisibility } from "../ui/PersistentSurface";
 import { useFeatures } from "./provider";
 import {
   PROMPT_APP_IDS,
@@ -12,6 +13,11 @@ import {
   type SkillHubCategoryFilter,
 } from "./types";
 import type { ProviderAppId } from "./types";
+
+function useVisibleEnabled(enabled = true): boolean {
+  const visible = usePersistentVisibility();
+  return enabled && visible;
+}
 
 export const featureKeys = {
   agentCatalog: ["v2", "agents", "catalog"] as const,
@@ -53,7 +59,7 @@ export function useAgentCatalog(enabled = true) {
   return useQuery({
     queryKey: featureKeys.agentCatalog,
     queryFn: ports.catalog.get,
-    enabled,
+    enabled: useVisibleEnabled(enabled),
   });
 }
 
@@ -65,7 +71,7 @@ export function useAgentInstallReadiness(
   return useQuery({
     queryKey: featureKeys.agentInstallReadiness(agentId),
     queryFn: () => ports.agentInstallReadiness.get(agentId),
-    enabled,
+    enabled: useVisibleEnabled(enabled),
   });
 }
 
@@ -77,7 +83,7 @@ export function useAgentAuthObservation(
   return useQuery({
     queryKey: featureKeys.agentAuthObservation(agentId),
     queryFn: () => ports.agentAuth.getObservation(agentId),
-    enabled,
+    enabled: useVisibleEnabled(enabled),
   });
 }
 
@@ -89,7 +95,7 @@ export function useAgentInstallationInventory(
   return useQuery({
     queryKey: featureKeys.agentInstallationInventory(agentId),
     queryFn: () => ports.agentInstallReadiness.getInventory(agentId),
-    enabled,
+    enabled: useVisibleEnabled(enabled),
   });
 }
 
@@ -98,7 +104,7 @@ export function useRecoverableChangeJobs(enabled = true) {
   return useQuery({
     queryKey: featureKeys.recoverableChangeJobs,
     queryFn: ports.changePlans.listRecoverableChangeJobs,
-    enabled,
+    enabled: useVisibleEnabled(enabled),
   });
 }
 
@@ -107,7 +113,7 @@ export function useProviderSummary(app: ProviderAppId, enabled = true) {
   return useQuery({
     queryKey: featureKeys.providerSummary(app),
     queryFn: () => ports.providers.getSummary(app),
-    enabled,
+    enabled: useVisibleEnabled(enabled),
   });
 }
 
@@ -116,7 +122,7 @@ export function useWorkBuddyStatus(enabled = true) {
   return useQuery({
     queryKey: featureKeys.workbuddyStatus,
     queryFn: ports.workbuddy.getStatus,
-    enabled,
+    enabled: useVisibleEnabled(enabled),
   });
 }
 
@@ -125,7 +131,7 @@ export function useWorkBuddyModelIds(enabled = true) {
   return useQuery({
     queryKey: featureKeys.workbuddyModelIds,
     queryFn: ports.workbuddy.getModelIds,
-    enabled,
+    enabled: useVisibleEnabled(enabled),
   });
 }
 
@@ -134,7 +140,7 @@ export function useTraeWorkModelIds(enabled = true) {
   return useQuery({
     queryKey: featureKeys.traeWorkModelIds,
     queryFn: ports.traeWork.getModelIds,
-    enabled,
+    enabled: useVisibleEnabled(enabled),
   });
 }
 
@@ -143,7 +149,7 @@ export function useOpenCodeModelSnapshot(enabled = true) {
   return useQuery({
     queryKey: featureKeys.openCodeModelSnapshot,
     queryFn: ports.opencodeModels.getSnapshot,
-    enabled,
+    enabled: useVisibleEnabled(enabled),
   });
 }
 
@@ -152,6 +158,7 @@ export function useInstalledSkills() {
   return useQuery({
     queryKey: featureKeys.skills,
     queryFn: ports.skills.getInstalled,
+    enabled: useVisibleEnabled(),
   });
 }
 export function useSkillBackups(enabled = true) {
@@ -159,7 +166,7 @@ export function useSkillBackups(enabled = true) {
   return useQuery({
     queryKey: featureKeys.skillBackups,
     queryFn: ports.skills.getBackups,
-    enabled,
+    enabled: useVisibleEnabled(enabled),
   });
 }
 export function useSkillDiscoveryPage(
@@ -188,7 +195,7 @@ export function useSkillDiscoveryPage(
         limit,
         offset,
       }),
-    enabled,
+    enabled: useVisibleEnabled(enabled),
     placeholderData: keepPreviousData,
   });
 }
@@ -197,7 +204,7 @@ export function useUnmanagedSkills(enabled = false) {
   return useQuery({
     queryKey: featureKeys.skillUnmanaged,
     queryFn: ports.skills.scanUnmanaged,
-    enabled,
+    enabled: useVisibleEnabled(enabled),
   });
 }
 export function useSkillUpdates(enabled = false) {
@@ -205,7 +212,7 @@ export function useSkillUpdates(enabled = false) {
   return useQuery({
     queryKey: featureKeys.skillUpdates,
     queryFn: ports.skills.checkUpdates,
-    enabled,
+    enabled: useVisibleEnabled(enabled),
   });
 }
 export function useSkillHubSearch(
@@ -238,27 +245,34 @@ export function useSkillHubSearch(
       if (page <= 1 || page <= totalPages) return result;
       return load(totalPages);
     },
-    enabled,
+    enabled: useVisibleEnabled(enabled),
     placeholderData: keepPreviousData,
   });
 }
 export function useMcpServers() {
   const { ports } = useFeatures();
-  return useQuery({ queryKey: featureKeys.mcp, queryFn: ports.mcp.getAll });
+  return useQuery({
+    queryKey: featureKeys.mcp,
+    queryFn: ports.mcp.getAll,
+    enabled: useVisibleEnabled(),
+  });
 }
 export function usePrompts(app: PromptAppId) {
   const { ports } = useFeatures();
   return useQuery({
     queryKey: featureKeys.prompts(app),
     queryFn: () => ports.prompts.getAll(app),
+    enabled: useVisibleEnabled(),
   });
 }
 export function usePromptLibraries() {
   const { ports } = useFeatures();
+  const enabled = useVisibleEnabled();
   return useQueries({
     queries: PROMPT_APP_IDS.map((app) => ({
       queryKey: featureKeys.prompts(app),
       queryFn: () => ports.prompts.getAll(app),
+      enabled,
     })),
   });
 }
@@ -267,6 +281,7 @@ export function usePromptLiveFile(app: PromptAppId) {
   return useQuery({
     queryKey: featureKeys.promptLiveFile(app),
     queryFn: () => ports.prompts.getCurrentFileContent(app),
+    enabled: useVisibleEnabled(),
   });
 }
 export function useMemoryDocument(id: MemoryDocumentId) {
@@ -274,6 +289,7 @@ export function useMemoryDocument(id: MemoryDocumentId) {
   return useQuery({
     queryKey: featureKeys.memoryDocument(id),
     queryFn: () => ports.memory.readDocument(id),
+    enabled: useVisibleEnabled(),
   });
 }
 export function useHermesMemoryLimits() {
@@ -281,6 +297,7 @@ export function useHermesMemoryLimits() {
   return useQuery({
     queryKey: featureKeys.hermesMemoryLimits,
     queryFn: ports.memory.getHermesLimits,
+    enabled: useVisibleEnabled(),
   });
 }
 export function useDailyMemoryFiles() {
@@ -288,6 +305,7 @@ export function useDailyMemoryFiles() {
   return useQuery({
     queryKey: featureKeys.dailyMemoryFiles,
     queryFn: ports.memory.listDailyFiles,
+    enabled: useVisibleEnabled(),
   });
 }
 export function useDailyMemoryFile(filename: string | null) {
@@ -295,7 +313,7 @@ export function useDailyMemoryFile(filename: string | null) {
   return useQuery({
     queryKey: featureKeys.dailyMemoryFile(filename ?? ""),
     queryFn: () => ports.memory.readDailyFile(filename ?? ""),
-    enabled: filename !== null,
+    enabled: useVisibleEnabled(filename !== null),
   });
 }
 export function useDailyMemorySearch(query: string) {
@@ -303,7 +321,7 @@ export function useDailyMemorySearch(query: string) {
   return useQuery({
     queryKey: featureKeys.dailyMemorySearch(query),
     queryFn: () => ports.memory.searchDailyFiles(query),
-    enabled: query.length > 0,
+    enabled: useVisibleEnabled(query.length > 0),
   });
 }
 export function useFeatureSettings(enabled = false) {
@@ -311,6 +329,6 @@ export function useFeatureSettings(enabled = false) {
   return useQuery({
     queryKey: featureKeys.settings,
     queryFn: ports.settings.get,
-    enabled,
+    enabled: useVisibleEnabled(enabled),
   });
 }

@@ -27,6 +27,7 @@ const LOCAL_MISE_TESTS = [
   "tests/miseTaskContract.test.ts",
   "tests/systemCheck.test.ts",
   "tests/taskDocs.test.ts",
+  "tests/windowsMsvcCross.test.ts",
 ] as const;
 
 const ACTION_PINS = new Map([

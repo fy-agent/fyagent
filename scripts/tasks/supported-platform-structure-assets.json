@@ -38,6 +38,10 @@
       "4714948980c3c66742912d0f7da86fac7bb2e3dcbe067860b5f9db9fd77fc679"
     ],
     [
+      "scripts/tasks/windows-msvc-cross.mjs",
+      "e462027d47004cb0e260a95954f6d05f6709f3ae0dccc866dd78887381130618"
+    ],
+    [
       "scripts/tasks/windows-msvc-env.mjs",
       "bfa22b5d5e5370b49bc82488d28c8d183f6df0129e415aff0b48e61c371f08e1"
     ],
@@ -47,15 +51,15 @@
     ],
     [
       "src-tauri/Cargo.toml",
-      "63988629e3587cd5cf104ffb6bf282ccea71a696aa69564ea93104b0eccc391b"
+      "c2d48f37a636890730134808855b0724b6998b36d1488f5cb9937fea6804532f"
     ],
     [
       "src-tauri/src/agent_install/desktop.rs",
-      "f5641b04d479dab4fec59c5bd4d48665194d6a281c5a85b4041a934349de7e1b"
+      "06dbd60c5c5fe4651158f507b5659e97bbbbdbe5a72cad6d5ff5bfd656d542ad"
     ],
     [
       "src-tauri/src/agent_install/inventory.rs",
-      "f4246cd02da2b8066de7e9ad03dbff755f4c41f07314669411ac0ab787aeea62"
+      "1bfdb80f92b1c00448116d45b806ac952023be159af47d8210a79246f55fddd2"
     ],
     [
       "src-tauri/src/agent_install/macos.rs",
@@ -63,7 +67,7 @@
     ],
     [
       "src-tauri/src/agent_install/mod.rs",
-      "1d9d3dee4568cf668eb320d154e62febdb6fdaa925d25dabb2088a4efcd878d5"
+      "fad09f6182705f6b0dd84d4f629121ad94208bf5a0372028207d4c6696afcaad"
     ],
     [
       "src-tauri/src/agent_install/sources/mod.rs",
@@ -71,7 +75,7 @@
     ],
     [
       "src-tauri/src/agent_install/windows.rs",
-      "3772dd9e81692b77902ae5e98b082ac4a11de15719d4472e1fef4e20729df903"
+      "66944a0420409638e1fc0e22f8da07d13e471c9f154d4122065df9b80a582dc1"
     ],
     [
       "src-tauri/src/app_store.rs",
@@ -123,7 +127,7 @@
     ],
     [
       "src-tauri/src/codex_desktop/platform/windows/mod.rs",
-      "ac8aafc6fdbeab4306cc0a73ce173b9164b6ba89f0b6d4ce0a3a67d01c53566b"
+      "cd9f9515361f100c4cbc32a38fbd4ea8b22b5f034754236ae148d510789bce21"
     ],
     [
       "src-tauri/src/codex_desktop/temp.rs",
@@ -235,7 +239,7 @@
     ],
     [
       "src-tauri/src/services/session_usage_codex.rs",
-      "57a37f57356d47f7bcdcbf39a178c23ee670c7810e49d9a20a575531a377d27e"
+      "6fdfb0a6b01ae5841401622eaa856646d0c0ea262aaafc08aa39563f318dd5c9"
     ],
     [
       "src-tauri/src/services/session_usage_grokbuild.rs",
@@ -251,19 +255,19 @@
     ],
     [
       "src-tauri/src/services/tooling.rs",
-      "bf628dbe25ee51973966587463c639a81d59deb628b3816c0ab9f220d6f5d381"
+      "d558705db0a746f7b15b172b8aa6b812897b02b843c0fa36c6a10f6b9ec59bfb"
     ],
     [
       "src-tauri/src/services/tooling/discovery.rs",
-      "bfeb914870ced452019ea60d582abc41955f2d26ac31d7ca3341cca030a3d40b"
+      "5a21aa858566373dddfaf5972391ea0b93746e140d5c557793c5ab277e0250fa"
     ],
     [
       "src-tauri/src/services/tooling/grok.rs",
-      "d220e108aac8dfba8c8e882a92d90db3490fb6c7fb410c5fa55909313ab86f5b"
+      "dc79a13a4358035d41105f5f79196fa1c26e53558a9c6b5e4f31a8f8f79a9497"
     ],
     [
       "src-tauri/src/services/tooling/lifecycle.rs",
-      "9d641dab66075362b54150cbab4072bfd381d0d72752c170536b76317cd3efc9"
+      "0a9dab81117c15eab7fe93e01aff862aaff955c9577e94d1f44e09d7a002d298"
     ],
     [
       "src-tauri/src/services/tooling/terminal.rs",
@@ -271,7 +275,7 @@
     ],
     [
       "src-tauri/src/services/tooling/versions.rs",
-      "a76692d6b3b5b22542e2bba61e6041f6a810f3170311315eab11ef05123d0564"
+      "c8f0ae3fb9d6af8e260b146180f9a3c0ddb4d0718252cca9ab64fc2a70db035b"
     ],
     [
       "src-tauri/src/services/traework_models.rs",
@@ -303,11 +307,11 @@
     ],
     [
       "src-tauri/src/windows_runtime/mod.rs",
-      "9ba92cbc89aa61c968880a18e6a099ffcba3ad43d7ce6b05ac21feca0d521505"
+      "6387a30c7442aba7710b4232ccffd2516dee6ba9590471ab493fd5a5b12f1dca"
     ],
     [
       "src-tauri/src/windows_runtime/registry.rs",
-      "473422c263ec2e46f960b45e0e47da4d5f468104cea9d18fa54b4976945a1ca3"
+      "16fe7d8526f1913366afb35386896c36430029ceca216a26ccd11f1cfa3ee03e"
     ],
     [
       "src-tauri/src/windows_window_state.rs",
@@ -339,11 +343,11 @@
     ],
     [
       "src-tauri/user-helper/Cargo.toml",
-      "cbc960b80171619d4eef7ef634fc11b1aae7e9821dccdb08e158f35937178945"
+      "b544b13a47f5a5069211d117e1671f49d635846a9c0e89c42dbc952728a3e51f"
     ],
     [
       "src-tauri/user-helper/src/cli.rs",
-      "5a3221f5d397469f8d30a41bc1f6179751b41db6bd067facb903f5ec7379ed7a"
+      "39189b99cda90507f3fa4c1cdb6a5d489a4b3c8c1a5f713f4f507fa753c607b9"
     ],
     [
       "src-tauri/user-helper/src/layout.rs",
@@ -351,7 +355,7 @@
     ],
     [
       "src-tauri/user-helper/src/main.rs",
-      "c2c50d7f263313b1f2f48222a62ff6ec0e537d855fddf3a5c0aff7918351bb71"
+      "b5caa84fc3a58fdb58dd88cbdd0cc78981bc0fccb0bcf43d743e7c8cc9205fc1"
     ],
     [
       "src/App.tsx",
@@ -366,10 +370,6 @@
       "b5137154ad5d561569b5c6e2fae3b67dc9386f05605b0417b6fbf137abf0e478"
     ],
     [
-      "src/components/settings/AboutSection.tsx",
-      "3506d5ab469e41d72a5be7fb4683de37451a33b1e977b83f5671834852702dc6"
-    ],
-    [
       "src/components/settings/TerminalSettings.tsx",
       "6da3eabff63b75d4c061e18c3bff6b3d9911c9923362b1022102355da51835e9"
     ],
@@ -379,11 +379,11 @@
     ],
     [
       "tests/architecture/rustModuleBoundaries.test.ts",
-      "ed0cafcbda2daf9bad8fff1bb9f609a4520f3cf7596e2fbb67c8406cae23ea8b"
+      "338f69cd6a294aa955735fd0f075116a01c6195546bf022fb39ecbeba4ebf2aa"
     ],
     [
       "tests/codexUserHelperContract.test.ts",
-      "133c822842f6f317efa3e0a346335208a77469edca41433886cb85b68b5d6ce0"
+      "51b4cd4af87df936598d5be77f4f5354807272d32ff8a9fdc1f15ee170e3368d"
     ],
     [
       "tests/codexWindowsUserScopeContract.test.ts",
@@ -403,7 +403,7 @@
     ],
     [
       "tests/releaseWorkflow.test.ts",
-      "4458894bc429dd12224fb8e56e121ab8117247e8c779a4568157b22a903668ae"
+      "b2970dce7d1cbb9fcf461c1f1ab547db37d548c419d620d5c7034ec7149b93a7"
     ],
     [
       "tests/remainingPlatformSurface.test.ts",
@@ -424,6 +424,10 @@
     [
       "tests/v2/scripts/build-v2-preview.test.ts",
       "1d1b61b3d187323bb7117cedb96d34dd6da028950aff470cc552285e6f457fec"
+    ],
+    [
+      "tests/windowsMsvcCross.test.ts",
+      "03e26dc63c18929887a964286e3ed1af6ca4d404c92e5e3394cedba8f3f96285"
     ]
   ]
 }

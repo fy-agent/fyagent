@@ -7,9 +7,9 @@
 ## Current Status
 
 <!-- @@@auto:current-status -->
-- **Active File**: `journal-1.md`
-- **Total Sessions**: 58
-- **Last Active**: 2026-08-31
+- **Active File**: `journal-2.md`
+- **Total Sessions**: 64
+- **Last Active**: 2026-09-02
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,8 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1896 | Active |
+| `journal-2.md` | ~99 | Active |
+| `journal-1.md` | ~1987 | Archived |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +30,12 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 64 | 2026-09-02 | 全面刷新并校准 Trellis Spec | `f0479ac1` | `dev/laiyongjie` |
+| 63 | 2026-09-02 | Comprehensive Trellis Spec refresh | `c3899e1282882ea09aa3e64ccea788ea0bb9ab8c` | `dev/laiyongjie` |
+| 62 | 2026-09-02 | Windows vendor installer handoff | `780b5eb8`, `d1152999`, `e533e848` | `dev/laiyongjie` |
+| 61 | 2026-09-02 | Nav jank and domestic update | `34359cae` | `dev/laiyongjie` |
+| 60 | 2026-09-01 | 跨平台 AI 软件生命周期与开发检查 | `cbd01281`, `c9e3e571`, `37fb36b7`, `b975bfc3`, `a5fac9d8`, `cd96bdd0` | `dev/laiyongjie` |
+| 59 | 2026-09-01 | Windows Agent 安装面统一与 Codex 日志治理 | `40eeaa6f`, `f32787da`, `4dd7668e` | `dev/laiyongjie` |
 | 58 | 2026-08-31 | macOS 特权 Helper 与 Agent 目录安装策略 | `bf30861826a3095203802340c4a359ab807d3aa6` | `dev/laiyongjie` |
 | 57 | 2026-08-31 | 完善 macOS Agent 安装更新与启动体验 | `1b6e2aab95fd4ca4947a6aa356644a56747e88f0`, `2405b0ecd5f91268ab807fc8c5fe25adde8ad90c`, `14ee2290a9c5d6efe08a15be70b0bc382ab6c010`, `ccbf7520ed237601ecc2c8fc08f82f5cb5edbd39` | `dev/laiyongjie` |
 | 56 | 2026-08-31 | 精简并校准全部 Trellis spec | `2391e2aa` | `dev/laiyongjie` |

@@ -21,9 +21,9 @@ interface ToolUpgradeConfirmDialogProps {
 }
 
 /**
- * 升级前的「多处安装确认」。仅当某工具检测到 ≥2 处安装时弹出：展示命令行实际命中
- * 哪处（标「默认」= 升级目标）、各处版本，以及锚定后将执行的命令，让用户在
- * 「升级只动其中一处、其余不动」这件事上知情后再确认。单处安装不会走到这里。
+ * 升级前的「多处安装确认」。仅当 Grok 检测到 ≥2 处安装时弹出：展示命令行实际命中
+ * 哪处（标「默认」= 升级目标）与各处版本，让用户在「升级只动其中一处、其余不动」
+ * 这件事上知情后再确认。单处安装不会走到这里。
  */
 export function ToolUpgradeConfirmDialog({
   isOpen,
@@ -67,23 +67,12 @@ export function ToolUpgradeConfirmDialog({
                 </div>
               )}
               <ul className="space-y-1">
-                {plan.installs.map((inst) => (
-                  <li key={inst.path}>
+                {plan.installs.map((inst, index) => (
+                  <li key={`${plan.tool}-${inst.source}-${index}`}>
                     <ToolInstallRow inst={inst} />
                   </li>
                 ))}
               </ul>
-              <div className="space-y-0.5">
-                <div className="text-[10px] text-muted-foreground">
-                  {t("settings.toolUpgradeWillRun")}
-                </div>
-                <code
-                  className="block truncate rounded bg-background/80 px-1.5 py-0.5 font-mono text-[10px] text-foreground"
-                  title={plan.command}
-                >
-                  {plan.command}
-                </code>
-              </div>
             </div>
           ))}
         </div>

@@ -18,7 +18,9 @@ one-operation
 `%ProgramData%\FyAgent.PackageBridge-{96F39D37-0F42-486F-8C86-3631C12171C5}\v1`
 package bridge is a separate executable-installer object with no state, lease,
 HMAC, activation, or startup-admission role. Codex MSIX and the three reviewed
-Agent EXE products reuse it through separate closed helper actions. Its
+Agent EXE products reuse it through separate closed helper actions. Grok
+Build observe/install/update reuses the same helper executable and pipe
+handshake but does not use PackageBridge. The
 application bridge module owns
 normal settlement and next-elevated-creation orphan cleanup; neither this
 runtime nor NSIS may reinterpret it as the former runtime tree.
@@ -133,14 +135,19 @@ expose the Shell SID or paths and does not decide which user owns state.
   Alice's PATH default.
 - Shell-user registry state uses `HKEY_USERS\<canonical Shell SID>`. `HKCU`
   would address the elevated process account and is forbidden for per-user
-  FyAgent policy on Windows. The only supported locations are the fixed
-  `Environment` and `Software\Microsoft\Windows\CurrentVersion\Run` keys.
+  FyAgent policy on Windows. The only writable FyAgent-policy locations are
+  the fixed `Environment` and `Software\Microsoft\Windows\CurrentVersion\Run`
+  keys. Agent inventory additionally opens Alice Uninstall/App Paths and the
+  matching machine Uninstall/App Paths as read-only parents; that capability
+  is `RegistryRights::INVENTORY_PARENT_READ` and does not expand the writable
+  policy set. Semantic inventory projection belongs to
+  [External Agent P0 Safety](./external-agent-p0.md).
   Each component is opened relative to an already pinned parent with
   `REG_OPTION_OPEN_LINK`; any `SymbolicLinkValue` marker is rejected. An
   existing key returned by create-or-open is discarded and reopened with the
   no-follow option before mutation, while a newly created key is verified on
-  its returned handle. Callers receive only the minimum query/set rights and
-  cannot supply an arbitrary root or relative registry path.
+  its returned handle. Callers receive only the minimum rights for that
+  capability and cannot supply an arbitrary root or relative registry path.
 - Credentials and non-path process settings are separate contracts. This rule
   does not turn the Shell context into a general environment-variable ban.
 
@@ -195,8 +202,10 @@ expose the Shell SID or paths and does not decide which user owns state.
 ### Preserve the narrow elevated-command boundary
 
 `formal_windows_build` remains a compile-time manifest fact. In a formal
-elevated build, user CLI probing/execution stops before a user tool is launched.
-The Codex model-catalog CLI fallback is skipped completely. A non-formal build
+elevated build, the elevated parent does not probe or execute a user CLI.
+Grok Build observe/install/update is the only policy-legal exception and uses
+the closed ordinary-user helper; helper failure must not fall back to elevated
+CLI execution. The Codex model-catalog CLI fallback is skipped completely. A non-formal build
 may execute Alice's discovered Codex entry only after clearing the inherited
 environment and rebuilding a narrow environment from the frozen Alice paths
 and OS-resolved constants. The shared child-environment builder clears inherited
@@ -209,15 +218,22 @@ command-level check.
 It no longer selects a machine runtime or requires the process SID to equal the
 Shell SID. Legacy Run-value cleanup is known-name-only, runs after primary
 instance admission, and is best-effort; its failure must not block startup.
-Agent Catalog CLI lifecycle and the separate Auth-session façade
-(Claude/Grok/OpenCode) reuse the same Tooling gate: a formal elevated Windows
-build reports `interactive_user_unavailable` before probing, observation, or
-launch rather than routing user tools through the executable installer helper.
-The
-ordinary-user helper has only two installer action families: Codex MSIX and
-Agent EXE with the closed product enum `qoderwork | trae-work | workbuddy`.
-It accepts no CLI tool, command, URL, package path, working directory, verb,
-scope, silent switch, or raw argument vector.
+Agent Catalog CLI lifecycle and the separate Auth-session façade still reuse
+the Tooling gate. Claude and OpenCode Agent CLI surfaces remain unavailable on
+a formal elevated Windows build (`interactive_user_unavailable` /
+`executor_not_implemented`) and must not inspect or launch a user CLI from the
+elevated parent. Grok Build observe/install/update is the sole policy-legal
+CLI lifecycle: the elevated coordinator asks the existing ordinary-user helper
+for the closed `grok-tool` action and must not fall back to elevated CLI
+execution when the helper fails. Auth observation/session is unchanged and
+still does not gain a helper verb.
+The ordinary-user helper has three closed action families: Codex MSIX, Agent
+EXE with the product enum `qoderwork | trae-work | workbuddy`, and Grok tool
+with `observe | install | update` plus optional `none | native | npm` owner.
+It accepts no free CLI tool name, command, URL, package path, working
+directory, verb, scope, silent switch, environment block, or raw argument
+vector. Helper stdout/stderr is discarded after local bounded parsing and never
+crosses the pipe.
 
 ### Open validated links through the interactive Explorer shell
 
@@ -260,6 +276,8 @@ IShellFolderViewDual.Application -> IShellDispatch2`.
 | Frozen Shell session/SID drifts before a protected side effect                                   | Stop that side effect; do not mutate the context or select another user.                                                                                                     |
 | Alice Store/window-state JSON is missing, corrupt, or oversized                                  | Use safe defaults at the same Alice path; do not consult or create Bob's app-data directories or allocate beyond the fixed read limit.                                       |
 | Any fixed Alice HKU path component is a registry symbolic link                                   | Reject that operation before reading, deleting, or writing a value; never reopen the key by an unverified full string path.                                                  |
+| Inventory Uninstall/App Paths parent is opened query-value-only, then subkeys are enumerated     | Real views fail; supported products collapse to `unknown`. Open the parent with `INVENTORY_PARENT_READ`.                                                                     |
+| Inventory parent or enumerated child receives create/set rights                                  | Contract test fails; inventory is read-only.                                                                                                                                 |
 | Legacy Alice Run value is absent, inaccessible, or cleanup fails                                 | Continue startup and emit only a bounded diagnostic after first-instance admission.                                                                                          |
 | A protected installer PackageBridge orphan exists                                                | Do not use it for startup, activation, identity, or user-path selection; only the executable-installer bridge owner may inspect it during the next elevated bridge creation. |
 | Single-instance envelope is oversized, contains controls, or has an invalid deep link            | Reject before lightweight/focus/event behavior; never log the raw payload.                                                                                                   |
@@ -270,10 +288,12 @@ IShellFolderViewDual.Application -> IShellDispatch2`.
 | Explorer COM acquisition or `ShellExecute` fails                                                 | Return controlled `INTERACTIVE_USER_UNAVAILABLE`; do not try a command, direct shell, renderer, or elevated-user fallback.                                                   |
 | Closed desktop-agent `.exe` is relative, contains `..` or NUL, or is not `.exe`                  | `external_launch_invalid_windows_exe`; Explorer is not invoked.                                                                                                              |
 | Closed desktop-agent `.exe` is observer-proven under Alice Programs or machine Program Files     | Explorer `ShellExecute` as Alice; never `CreateProcess` / `ShellExecuteW` from Bob.                                                                                          |
-| Formal elevated Windows Agent Catalog CLI/Auth session (Claude/Grok/OpenCode)                    | Return `interactive_user_unavailable`; do not inspect, observe, or launch the user tool.                                                                                     |
-| The installer helper accepts URL, path, shell string, scope, silent switch, or raw child stdout  | Contract/static test fails; only exact Codex MSIX or Agent EXE product actions are registered.                                                                               |
+| Formal elevated Windows Claude/OpenCode CLI or any Auth session                                  | Return `interactive_user_unavailable` / `executor_not_implemented`; do not inspect, observe, or launch the user tool.                                                        |
+| Formal elevated Windows Grok Build observe/install/update                                        | Closed `grok-tool` helper action under the frozen Explorer user; helper failure must not fall back to elevated CLI.                                                          |
+| The installer helper accepts URL, path, shell string, scope, silent switch, or raw child stdout  | Contract/static test fails; only exact Codex MSIX, Agent EXE product, or Grok tool actions are registered.                                                                   |
 | Helper `Hello(action)` differs from the parent-selected action/product                           | Reject before bridge control/admission; zero installer launch.                                                                                                               |
-| Agent EXE helper receives no process handle after ShellExecuteEx                                 | Closed `installer_process_unobservable`; authoritative inventory reread, never immediate success.                                                                            |
+| Agent EXE helper `ShellExecuteEx` succeeds, including a missing process handle | Job `succeeded` (vendor-wizard handoff); do not wait, kill, or delete the PackageBridge EXE leaf. |
+| Agent EXE helper launch uses a null verb or inherits the helper console          | Contract/static test fails; fMask is `SEE_MASK_NOCLOSEPROCESS` plus `SEE_MASK_NO_CONSOLE` and `lpVerb` is `open`. |
 | Non-Windows platform                                                                             | Preserve its existing path resolver, Store/window-state plugin, and single-instance behavior.                                                                                |
 
 ## 5. Good / Base / Bad Cases
@@ -296,9 +316,9 @@ IShellFolderViewDual.Application -> IShellDispatch2`.
   let a second-instance argument invoke helper/package/filesystem side effects.
 - Good: observer-proven `WorkBuddy.exe` (absolute, `.exe`, no `..`) opens
   through the same Explorer `ShellExecute` chain as catalog HTTPS links.
-- Bad: start Claude/Grok/OpenCode CLI or a Catalog EXE from the elevated
-  parent with `CreateProcess`, or add a helper that accepts a renderer
-  command string.
+- Bad: start Claude/OpenCode CLI or a Catalog EXE from the elevated
+  parent with `CreateProcess`, run Grok from the elevated parent instead of
+  the helper, or add a helper that accepts a renderer command string.
 
 ## 6. Tests Required
 
@@ -319,7 +339,11 @@ IShellFolderViewDual.Application -> IShellDispatch2`.
   and both initial/lightweight WebViews use Alice's explicit data path.
 - Registry tests cover regular/missing/link components, an intermediate link,
   a final link, newly created keys, and the required no-follow reopen after an
-  existing create result. Native registry-link HIL remains unexecuted. Any
+  existing create result. Inventory-parent tests prove Uninstall/App Paths
+  leaves use `INVENTORY_PARENT_READ` (`KEY_QUERY_VALUE |
+  KEY_ENUMERATE_SUB_KEYS`, no create/set), that the constant stays distinct
+  from `TRAVERSE` even when the current mask is identical, and that enumerated
+  children stay `READ_VALUES`. Native registry-link HIL remains unexecuted. Any
   future, separately authorized runtime validation must use only disposable
   HKCU test keys when checking intermediate and final link rejection.
 - Single-instance tests cover count, item, aggregate, control-character,
@@ -338,11 +362,17 @@ IShellFolderViewDual.Application -> IShellDispatch2`.
   must click a real Tauri catalog action and observe the target in the
   interactive user's foreground browser; process creation or a successful
   HRESULT alone is insufficient.
-- Agent Catalog CLI/Auth-session tests must map formal elevated Windows to
-  `interactive_user_unavailable` and must not register a generic command
-  helper. Installer-helper tests must prove exact action/product CLI, v3
-  Hello-action binding, fixed bridge artifact kind, and no tool/URL/path argv.
-  Existing Tooling formal-build fail-closed tests remain authoritative.
+- Agent Catalog CLI/Auth-session tests must map formal elevated Windows Claude
+  and OpenCode to `interactive_user_unavailable` / `executor_not_implemented`
+  and must not register a generic command helper. Grok Build tests must prove
+  the closed `grok-tool` helper path and the absence of elevated fallback.
+  Installer-helper tests must prove exact action/product CLI, v3 Hello-action
+  binding, Grok wire codes 5–13, fixed bridge artifact kind, and no
+  tool/URL/path argv. Agent EXE helper tests must prove
+  `SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NO_CONSOLE` plus fixed `open`, no
+  wait/`GetExitCodeProcess`, and that helper success retains the PackageBridge
+  EXE leaf. Existing Tooling formal-build fail-closed tests remain
+  authoritative.
   Bob/Alice/UAC installer HIL remains unverified.
 - A real current-host Tauri click may prove only the external-link path it
   exercises. It does not establish Windows 10/11 coverage, ARM64, elevated
@@ -481,42 +511,55 @@ crate::platform::process_launch::launch_trusted_windows_exe_as_user(exe)
 
 ### 1. Scope / Trigger
 
-- Trigger: Agent Catalog starts Claude/Grok/OpenCode install/update through
-  Tooling and observes/starts Auth through the separate Auth-session façade.
-  Formal elevated Windows already forbids user-CLI execution. Neither surface
-  may grow a generic command/path helper.
+- Trigger: Agent Catalog starts Claude/OpenCode Desktop install through the
+  Agent façade, Grok Build install/update through Tooling, and Auth through
+  the separate Auth-session façade.
+  Formal elevated Windows still forbids launching a user CLI from the elevated
+  parent. Grok Build is the only policy-legal CLI lifecycle and must use the
+  closed ordinary-user helper. Neither surface may grow a generic command/path
+  helper.
 
 ### 2. Signatures
 
 No generic Windows command helper is registered. The existing installer helper
-has closed MSIX/Agent-EXE actions only and is not available to CLI/auth.
+keeps closed MSIX and Agent-EXE actions and adds one Grok-only tool family.
+Claude/OpenCode Agent CLI and every Auth session remain unavailable on formal
+elevated Windows.
 
 ```text
-start_agent_action({ agentId: claude-code|grokbuild|opencode, action: install|update })
-  -> interactive_user_unavailable   // formal elevated Windows
+start_agent_action({ agentId: claude-code|opencode, surface: cli, ... })
+  -> surface_not_supported
+
+run_tool_lifecycle_action(tools=["claude"|"opencode"|...], action)
+  -> error before any side effect unless tool == "grok"
+
+run_tool_lifecycle_action(tools=["grok"], action=install|update|install_official_npm)
+  formal Windows -> grok-tool helper; no elevated fallback
+  development Windows / macOS -> existing Tooling owner, same Grok rules
 
 get_agent_auth_observation({ agentId: claude-code|grokbuild|opencode })
 start_agent_auth_session({ agentId, intent })
 get_active_agent_auth_session({ agentId })
-  -> unavailable / interactive_user_unavailable // no user tool is inspected or launched
+  -> unavailable / interactive_user_unavailable on formal Windows
+     // Auth does not gain a helper verb
 
 fyagent-user-helper.exe
   codex-msix-install --job-id <uuid> --pipe <nonce>
   agent-exe-install --product qoderwork|trae-work|workbuddy
                     --job-id <uuid> --pipe <nonce>
+  grok-tool --action observe|install|update [--owner native|npm]
+            --job-id <uuid> --pipe <nonce>
 ```
 
-A future ordinary-user helper, if added, may accept only
-`{ tool: claude|grok|opencode, action: closed enum }` and may return only
-closed states plus sanitized reason codes.
 
 ### 3. Contracts
 
-- Catalog CLI lifecycle and Auth observation/session reuse `services/tooling`
-  detected-tool execution. The formal-build gate runs before inspecting,
-  observing, or launching a user tool.
+- Catalog CLI lifecycle and Auth observation/session reuse `services/tooling`.
+  The formal-build gate still stops elevated inspection of Claude/OpenCode and
+  of every Auth session before a user tool is launched. Grok Build
+  observe/install/update go through the closed helper, not the elevated parent.
 - Updating Claude's official Windows `install.ps1` / WinGet fact does not
-  remove the elevated boundary.
+  remove the elevated boundary or add a Claude helper verb.
 - Helper stdout/stderr, environment, browser URL, device code, executable
   path, and command line must never return to the elevated parent or
   renderer.
@@ -530,25 +573,31 @@ closed states plus sanitized reason codes.
 
 | Condition                                              | Required result                                           |
 | ------------------------------------------------------ | --------------------------------------------------------- |
-| Formal elevated Windows Catalog CLI/Auth session       | `interactive_user_unavailable`; no probe or child process |
-| Helper argv contains URL/path/shell string/tool action | Contract test fails; no child process                     |
-| Installer helper gains Claude/Grok/OpenCode tool verbs | Architecture regression                                   |
-| Non-formal/non-Windows Tooling lifecycle               | Existing Tooling behavior unchanged                       |
+| Formal elevated Windows Claude/OpenCode CLI or Auth session | `interactive_user_unavailable` / `executor_not_implemented`; no probe or child process |
+| Formal elevated Windows Grok Build lifecycle                | Closed `grok-tool` helper; no elevated fallback                                        |
+| Helper argv contains URL/path/shell string/free tool name   | Contract test fails; no child process                                                  |
+| Installer helper gains Claude/OpenCode tool verbs           | Architecture regression                                                                |
+| Non-formal/non-Windows Tooling lifecycle                    | Existing Tooling behavior unchanged; Grok remains the only writable CLI                |
 
 ### 5. Good/Base/Bad Cases
 
-- Good: macOS/non-formal Windows Claude install still uses Tooling.
-- Base: formal Windows Agent detail shows unavailable CLI actions and keeps
-  official-page fallback.
+- Good: macOS Grok install still uses the Tooling owner; Claude/OpenCode Agent
+  surfaces stay Desktop-only.
+- Base: formal Windows Agent detail shows unavailable Claude/OpenCode CLI
+  actions and keeps official-page fallback; Grok Build can observe/install/
+  update through the helper when the Explorer user is available.
 - Bad: `fyagent-user-helper.exe run --cmd <renderer string>`.
 
 ### 6. Tests Required
 
 - Existing `formal_windows_cli_boundary_is_fail_closed_without_a_native_runtime`
-  remains green.
-- Agent CLI/Auth-session paths map elevated failures to
-  `interactive_user_unavailable`.
-- Negative scan: no CLI/Auth helper verb, no path/URL argv, no raw stdout DTO.
+  remains green: non-Grok tools stay fail-closed; Grok uses
+  `OrdinaryUserHelper` on formal Windows and `LocalProcess` only on
+  development builds.
+- Agent Claude/OpenCode CLI and Auth-session paths map elevated failures to
+  `interactive_user_unavailable` / `executor_not_implemented`.
+- Negative scan: no generic CLI/Auth helper verb, no path/URL argv, no raw
+  stdout DTO. Closed `grok-tool` is the only Tooling helper action.
 - Bob/Alice/UAC HIL remains unverified residual risk.
 
 ### 7. Wrong vs Correct
@@ -563,7 +612,110 @@ helper -> raw child stdout back to renderer
 #### Correct
 
 ```text
-formal elevated Windows -> interactive_user_unavailable
-installer helper -> exact Codex MSIX or Agent EXE product action only
-CLI/auth -> no helper action; closed interactive_user_unavailable
+formal elevated Windows Claude/OpenCode CLI and Auth -> interactive_user_unavailable
+installer helper -> exact Codex MSIX, Agent EXE product, or Grok tool action
+Grok Build lifecycle -> grok-tool helper; no elevated fallback
+Claude/OpenCode helper verbs and generic command argv remain forbidden
+```
+
+## Scenario: Inventory parent registry enumeration rights
+
+### 1. Scope / Trigger
+
+- Trigger: Windows Agent inventory enumerates Uninstall/App Paths children.
+  Opening those parents query-value-only and then calling subkey enumeration
+  fails on real hives and collapses supported products to `unknown`. Access-
+  mask ownership is `windows_runtime/registry.rs`; install-state projection
+  is [External Agent P0 Safety](./external-agent-p0.md).
+
+### 2. Signatures
+
+```text
+RegistryRights { query_value, enumerate_subkeys, create_subkey, set_value }
+
+READ_VALUES           = query                         # enumerated children
+UPDATE_VALUES         = query + set                   # FyAgent Environment/Run writes
+TRAVERSE              = query + enumerate             # intermediate fixed components
+INVENTORY_PARENT_READ = query + enumerate, no create/set
+                        # Uninstall / App Paths parent leaves
+
+open_shell_user(Uninstall | AppPaths) -> INVENTORY_PARENT_READ
+open_machine(Uninstall | AppPaths, Registry32 | Registry64) -> INVENTORY_PARENT_READ
+enum_keys(parent) -> child names
+open_child(validated name) -> READ_VALUES
+```
+
+Win32 mask for `INVENTORY_PARENT_READ`: `KEY_QUERY_VALUE |
+KEY_ENUMERATE_SUB_KEYS` plus the requested `KEY_WOW64_*` view. Never
+`KEY_CREATE_SUB_KEY` or `KEY_SET_VALUE` on this path.
+
+Keep `TRAVERSE` and `INVENTORY_PARENT_READ` as separate constants even if
+the current bit mask is identical, so a later query-only change cannot
+silently downgrade the inventory leaf.
+
+### 3. Contracts
+
+- Intermediate fixed components use `TRAVERSE`. Inventory parent leaves use
+  `INVENTORY_PARENT_READ`. Caller-controlled child names are length/charset
+  validated, then opened `READ_VALUES`.
+- Optional parent `NotFound` is absence and does not mark the aggregate
+  incomplete. A rejected registry-link on an optional parent is also absence:
+  WOW64 shared keys such as machine `App Paths` open as `SymbolicLinkValue`
+  under `REG_OPTION_OPEN_LINK` in the 32-bit view, which is the same location
+  already enumerated in the 64-bit view. The link is never followed. Access
+  (including raw OS access-denied), enumeration, bound, or frozen
+  Shell-context errors keep the aggregate incomplete.
+- Registry values remain hints. They are never executed. Link rejection and
+  no-follow reopen are unchanged.
+- This capability does not add WinGet, PowerShell, a second scanner, or
+  writable Uninstall/App Paths.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required result |
+| --- | --- |
+| Parent opened `READ_VALUES` then `enum_keys` | Real hive access fails; inventory `unknown` |
+| Optional parent missing | Absence; remaining views may still be complete |
+| Optional parent is a rejected WOW64 shared-key link | Absence; the 64-bit view still enumerates that location; link is not followed |
+| Parent/child access, bound, or Shell drift | Incomplete aggregate; no false `not_installed` |
+| Child name fails length/charset validation | Skip/reject that child; do not open by raw string |
+| Parent or child granted create/set | Contract failure |
+
+### 5. Good/Base/Bad Cases
+
+- **Good:** Alice HKU and machine 32/64 Uninstall/App Paths open with
+  query+enumerate, children stay query-only, complete empty views project
+  `not_installed`.
+- **Base:** Environment/Run keep their existing query/set FyAgent-policy
+  rights; inventory does not reuse `UPDATE_VALUES`.
+- **Bad:** `KEY_READ` convenience, WinGet, or treating a raw OS access-denied
+  as “no software installed”.
+
+### 6. Tests Required
+
+- `registry.rs`: parent leaf records `INVENTORY_PARENT_READ`; mask has
+  enumerate without create/set; children stay `READ_VALUES`. Rejected WOW64
+  shared-key `SymbolicLinkValue` is classified separately from raw OS
+  access-denied.
+- `inventory.rs`: complete/no-candidate keeps fresh destinations;
+  incomplete discovery is `Unknown` + `native_projection_unavailable` with
+  ineligible destinations.
+- Native Alice HKU / Wow6432Node HIL remains unexecuted residual evidence.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```rust
+open(parent, READ_VALUES)?;
+enum_keys(parent)?; // ACCESS DENIED on real Uninstall/App Paths
+```
+
+#### Correct
+
+```rust
+open(parent, INVENTORY_PARENT_READ)?;
+for name in enum_keys(parent)? {
+    open_child(validate(name), READ_VALUES)?;
+}
 ```

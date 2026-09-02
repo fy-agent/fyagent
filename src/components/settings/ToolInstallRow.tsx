@@ -2,8 +2,8 @@ import { useTranslation } from "react-i18next";
 import type { ToolInstallation } from "@/lib/api/settings";
 
 /**
- * 单处工具安装的信息行：来源徽章 + 路径 + 版本（或「无法运行」）+「默认」标记。
- * 冲突诊断列表与升级确认对话框共用，确保两处的视觉与「默认」判定始终一致。
+ * 单处工具安装的信息行：来源徽章 + 版本（或「无法运行」）+「默认」标记。
+ * 冲突诊断列表与升级确认对话框共用。不展示绝对路径。
  */
 export function ToolInstallRow({ inst }: { inst: ToolInstallation }) {
   const { t } = useTranslation();
@@ -13,16 +13,10 @@ export function ToolInstallRow({ inst }: { inst: ToolInstallation }) {
         {inst.source}
       </span>
       <span
-        className="min-w-0 flex-1 truncate font-mono text-muted-foreground"
-        title={inst.path}
-      >
-        {inst.path}
-      </span>
-      <span
         className={
           inst.runnable
-            ? "shrink-0 font-mono text-foreground"
-            : "shrink-0 text-yellow-600 dark:text-yellow-400"
+            ? "min-w-0 flex-1 truncate font-mono text-foreground"
+            : "min-w-0 flex-1 truncate text-yellow-600 dark:text-yellow-400"
         }
       >
         {inst.runnable ? inst.version : t("settings.toolConflictNotRunnable")}

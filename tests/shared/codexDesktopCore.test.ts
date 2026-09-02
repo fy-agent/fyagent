@@ -316,6 +316,8 @@ describe("shared transfer projector", () => {
     expect(formatTransferPercent(100.9)).toBe("100%");
     expect(formatTransferSpeed(0)).toBeNull();
     expect(formatTransferSpeed(null)).toBeNull();
+    expect(formatTransferSpeed(4 * 1024 * 1024)).toBe("4.0 MB/s");
+    expect(formatTransferSpeed(1024)).toBe("1.0 KB/s");
 
     const known = projectTransferPresentation({
       downloading: true,
@@ -387,8 +389,8 @@ describe("shared transfer projector", () => {
     sameSecond = updateDownloadSpeedFromSample(sameSecond, first);
     sameSecond = updateDownloadSpeedFromSample(sameSecond, second);
     sameSecond = updateDownloadSpeedFromSample(sameSecond, laterSameSecond);
-    expect(selectDownloadBytesPerSecondFromSample(sameSecond, laterSameSecond)).toBe(
-      1024,
-    );
+    expect(
+      selectDownloadBytesPerSecondFromSample(sameSecond, laterSameSecond),
+    ).toBe(1024);
   });
 });

@@ -57,6 +57,26 @@ describe("SelectionLens", () => {
       "aria-hidden",
       "true",
     );
+    expect(screen.getByTestId("selection-lens")).toHaveAttribute(
+      "data-selection-lens-geometry",
+      "size-and-position",
+    );
+  });
+
+  it("exposes the position-only geometry used by size-stable navigation tracks", () => {
+    render(
+      <SelectionLensTrack id="position-track" geometry="position">
+        <button type="button">
+          <SelectionLens active />
+          Current
+        </button>
+      </SelectionLensTrack>,
+    );
+
+    expect(screen.getByTestId("selection-lens")).toHaveAttribute(
+      "data-selection-lens-geometry",
+      "position",
+    );
   });
 
   it("does not render outside a group", () => {

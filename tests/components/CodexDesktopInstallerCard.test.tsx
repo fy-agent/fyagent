@@ -203,7 +203,7 @@ describe("CodexDesktopInstallerCard", () => {
         name: "codexDesktop.details.progress",
       }),
     ).toHaveAttribute("aria-valuenow", "50");
-    expect(screen.getByText("50% · 512 B / 1 KB · 2 MB/s")).toBeVisible();
+    expect(screen.getByText("50% · 512 B / 1 KB · 2.0 MB/s")).toBeVisible();
     const cancelButton = screen.getByRole("button", {
       name: "codexDesktop.actions.cancel",
     });

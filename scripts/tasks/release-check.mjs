@@ -39,6 +39,7 @@ const LOCAL_MISE_TESTS = Object.freeze([
   "tests/miseTaskContract.test.ts",
   "tests/taskDocs.test.ts",
   "tests/systemCheck.test.ts",
+  "tests/windowsMsvcCross.test.ts",
 ]);
 
 export function parseReleaseCheckMode(args) {

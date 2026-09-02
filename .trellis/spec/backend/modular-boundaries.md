@@ -1,299 +1,261 @@
-# Rust Host Modular Boundaries
+# Rust and Tauri Modular Boundary Contract
 
 ## 1. Scope / Trigger
 
-Read this before adding a Tauri command, growing a backend service, moving code
-between `commands`, `services`, Provider/Proxy/config owners, or creating a new
-Rust crate. FyAgent is a modular monolith: prefer private Rust submodules plus
-an explicit facade before considering a Cargo package split.
+Read this contract before adding a Rust module, changing `pub`/`pub(crate)`
+visibility, registering a Tauri command, moving SQL or filesystem/network/
+process logic, exposing a Proxy/Agent submodule, or introducing a second
+business implementation path.
 
-## 2. Signatures
+The authoritative structure is the current `src-tauri/src/**` module tree plus
+`tests/architecture/rustModuleBoundaries.test.ts`. This file describes the
+rules; it does not override a tested allowlist with a blanket style slogan.
 
-Transport functions keep stable wire signatures while delegating:
+Related owners:
 
-```rust
-#[tauri::command]
-pub async fn command_name(/* wire DTO/state */) -> Result<WireResult, String> {
-    // translate / validate / delegate
-}
+- [Frontend Modular Boundaries](../frontend/modular-boundaries.md)
+- [Reuse](./reuse.md)
+- [Database Persistence](./database-persistence.md)
+- [Local Proxy Runtime](./proxy-runtime.md)
+- [External Agent Lifecycle](./external-agent-lifecycle.md)
+
+## 2. Signatures and Layer Map
+
+The default native call path is:
+
+```text
+renderer typed port
+  -> invoke/adapter
+  -> registered Tauri command
+  -> service/domain owner
+  -> DAO / filesystem / network / process / native adapter
 ```
 
-Service implementations are crate-scoped and selected facades are re-exported:
+### Command layer
 
-```rust
-pub(crate) mod provider;
-pub(crate) mod proxy;
-pub(crate) mod skill;
+- `src-tauri/src/commands/mod.rs` declares transport modules and re-exports the
+  command functions consumed by `generate_handler!`.
+- Command modules are private by default. A module may be `pub`/`pub(crate)`
+  only when a current cross-module/test owner needs that surface and the
+  architecture test admits it. `commands::skill` is an intentional current
+  exception; it is not precedent for publishing all command modules.
+- Registration, Rust export and Tauri permission are three separate changes.
+  A command is not callable merely because its function is `pub`.
 
-pub use provider::ProviderService;
-pub use proxy::ProxyService;
-pub use skill::SkillService;
+### Service/domain layer
+
+- Services own orchestration, validation, transaction order, compensation and
+  mapping from domain errors to command results.
+- Commands parse/validate the wire request, obtain state, call one owner and
+  serialize the result. They do not implement SQL, arbitrary path handling,
+  HTTP clients, installer logic or provider document mutation.
+- Reusable pure helpers belong in a domain/service module, not in a command
+  file solely because the first caller is a command.
+
+### Agent modules
+
+The current `agent_install` family is intentionally split by responsibility:
+
+```text
+auth_actions.rs
+auth_sessions.rs
+cli.rs
+desktop.rs
+fetch.rs
+inventory.rs
+jobs.rs
+lifecycle_policy.rs
+macos.rs
+sources/**
+types.rs
+windows.rs
 ```
 
-Private implementation subdomains include `provider/universal.rs`,
-`provider/common_config.rs`, `skill/assignment.rs`, `skill/discovery.rs`,
-`skill/marketplace.rs`, `skill/migration.rs`, `skill/repository.rs`,
-`proxy/takeover.rs`, `codex_config/auth.rs`, `codex_config/catalog.rs`,
-`codex_config/features.rs`, and `codex_config/storage.rs`.
-Tooling business policy lives behind crate-scoped `services/tooling.rs`; its
-private `versions`, `lifecycle`, `discovery`, and `terminal` modules own the
-corresponding application/domain responsibilities while the Tauri command
-module remains only the transport facade.
-Agent lifecycle authority lives behind crate-scoped `agent_install`; its
-private `inventory`, `desktop`, `windows`, `cli`, `auth`, `source`, `fetch`,
-`jobs`, and `lifecycle_policy` modules own domain policy while
-`commands/agent_install_readiness.rs` remains transport-only.
-macOS `/Applications` last-write authority lives behind crate-scoped
-`macos_system_commit` (`MacSystemCommitPort`, product/slot policy, C ABI).
-That module is not a Tauri command owner and must not grow a renderer
-path/URL/command surface. See
-[macOS Privileged System-Commit Helper](./macos-system-commit.md).
+Do not refer to retired generic names such as `auth` or `source`. Transport is
+also split deliberately:
 
-Target-exclusive parent imports and private-owner tests must carry the same
-target boundary as their production consumer:
-
-```rust
-#[cfg(target_os = "macos")]
-use lifecycle::npm_install_command_for;
-
-// services/tooling/lifecycle.rs
-#[cfg(all(test, target_os = "windows"))]
-mod tests {
-    use super::*;
-}
+```text
+commands/agent_catalog.rs
+commands/agent_auth.rs
+commands/agent_install_readiness.rs
 ```
+
+Catalog/runtime, Auth sessions and lifecycle/jobs have separate Spec owners
+and command façades. New work must extend the owning module instead of
+recombining them into an `agent_install.rs` monolith.
+
+### Proxy modules
+
+`src-tauri/src/proxy/mod.rs` currently exposes several submodules publicly so
+the crate's services, commands, providers and integration tests can share
+types/routers/handlers. That visibility is intentional but bounded:
+
+- `pub mod` inside this application crate is not a renderer API and does not
+  authorize a generic Tauri command;
+- external authority remains the registered command/permission set;
+- moving a private Proxy implementation module to public requires a concrete
+  in-crate owner and architecture-test update;
+- command/service code still delegates listener/routing/protocol work to the
+  Proxy owner described in [Local Proxy Runtime](./proxy-runtime.md).
+
+### Database modules
+
+- `database/mod.rs` owns connection lifecycle and shared helpers;
+  `database/schema.rs` owns schema/migrations; `database/dao/**` owns SQL by
+  feature.
+- Services may compose DAO calls into transactions. Commands and renderer
+  adapters do not lock `Database::conn` or issue SQL directly.
+- A DAO module is not a second feature service: it maps rows and persistence
+  errors; business legality remains in the service/domain owner.
 
 ## 3. Contracts
 
-- `commands/**` owns Tauri transport; domain behavior belongs in its service or
-  config owner. Do not recreate `commands/misc.rs`.
-- `agent_install/inventory.rs` is the single owner of installation candidate
-  normalization, provenance merge, opaque snapshot/target/revision
-  capabilities, expiry, stale revalidation, and implicit-selection policy.
-  `desktop.rs`, Tooling/CLI adapters, Codex Desktop, and later registry/MSIX
-  adapters emit evidence or expose a narrow trusted-status adapter; they do not
-  choose a winner, mint renderer IDs, or implement separate dedup/revision
-  algorithms. The command layer must never expose backend paths/registry
-  identities or accept a renderer path. Product execution modules receive a
-  validated backend capability only after inventory re-enumeration.
-- `agent_install/lifecycle_policy.rs` is the single owner of legal surfaces,
-  default surface, and whether `install` / `update` / `launch` is admitted for
-  a catalog product. Readiness, inventory, and `start_agent_action` consult it
-  before source fetch or file mutation. Do not keep a second product-action
-  matrix in the renderer, catalog copy, or a page-local `Set`.
-- `macos_system_commit` owns the frozen helper product/slot table, C ABI
-  request, and production-disabled `MacSystemCommitPort`. `agent_install` and
-  Codex call `system_scope_rejection()` for system targets while
-  `production_enabled()` is false. Do not open XPC from the command layer or
-  from the renderer.
-- `agent_install/windows.rs` owns Windows desktop evidence normalization,
-  registry/App Paths adapters, Win32 version/file/signature inspection, and
-  the three closed Agent EXE product policies. It does not own a downloader,
-  ProgramData bridge, helper executable, renderer command, or arbitrary
-  ShellExecute surface. Those reusable executable-installer primitives remain
-  in the existing Codex Desktop/`fyagent-user-helper` owner and are exposed to
-  Agent install only through crate-private closed action/product APIs. Codex
-  PackageManager policy and the Agent job slot remain separate consumers of
-  those primitives.
-- Lifecycle/system utility commands belong in `commands/system.rs`; CLI/tool
-  install/probe/terminal command **wrappers** belong in `commands/tooling.rs`.
-  `commands/tooling.rs` must stay limited to the four reviewed wire commands
-  (`get_tool_versions`, `run_tool_lifecycle_action`,
-  `probe_tool_installations`, `open_provider_terminal`). Version probing,
-  installation discovery, lifecycle command planning/execution, Windows
-  fail-closed policy and terminal launch behavior belong to the Tooling service
-  owner. Within that owner:
-  - `tooling/versions.rs` owns local/remote version projection, npm/GitHub/PyPI
-    latest-version policy and semver/pre-release selection;
-  - `tooling/lifecycle.rs` owns install/update allowlists and command policy;
-  - `tooling/discovery.rs` owns installation-distribution reports, conflict/
-    confirmation projection and the constrained detected-tool execution entry;
-  - `tooling/terminal.rs` owns provider-terminal orchestration, environment
-    projection, launch-directory validation and interactive terminal command
-    launch.
-    Parent `use` declarations must be gated by the targets where parent
-    production code actually consumes the symbol. A test-only child consumer or
-    a broad `#[cfg(test)] use lifecycle::*` does not justify an unconditional
-    parent import. Windows-only lifecycle policy tests stay in
-    `tooling/lifecycle.rs` under `#[cfg(all(test, target_os = "windows"))]` so
-    private helpers remain private; do not hoist those tests into `tooling.rs` or
-    widen helper visibility merely to make another target compile.
-    Cross-capability shell/path/platform primitives may remain in the parent
-    service when they are genuinely shared. Do not duplicate them only to make
-    every child module self-contained. Backend siblings call the service owner,
-    never command internals.
-- `services/mod.rs` modules are `pub(crate)`; stable caller APIs are explicit
-  re-exports.
-- `services/secret` is a crate-scoped native security owner. Its standalone
-  core remains unregistered while integration tests/native HIL compile it;
-  add the `services/mod.rs` registration with the first production consumer
-  instead of suppressing dead-code warnings for a dormant module.
-- Provider/Skill/Proxy/Codex implementation subdomains are private `mod` and
-  the parent remains the compatibility facade.
-- `codex_config/storage.rs` owns path/file/atomic-write behavior.
-  `write_codex_live_atomic` validates TOML before mutation and restores old
-  `auth.json` bytes if the config write fails.
-- `provider/universal.rs` preserves unknown nested settings unless projection
-  overrides the same field.
-- `provider/common_config.rs` owns the **pure** common-config policy: sensitive
-  credential-key classification and per-application extraction for Claude,
-  Codex, Gemini, OpenCode and OpenClaw. Database writes, mutation guards and
-  the ordered Gemini credential-scrub transaction remain in `ProviderService`;
-  that order is a safety property and must not be fragmented for file size.
-- `skill/discovery.rs` owns discovery filtering/pagination/cache; ZIP, symlink,
-  copy, backup, and vendor safety stay outside it.
-- `skill/marketplace.rs` owns skills.sh / SkillHub HTTP DTOs, slug/category/URL
-  validation and response mapping. Marketplace install delegates back to the
-  existing bounded download/archive installation primitives; do not create a
-  second ZIP extraction or archive-budget implementation in marketplace code.
-- `skill/repository.rs` owns `.agents` lock parsing, repository coordinate /
-  branch derivation, repository metadata persistence and repo-list CRUD.
-- `skill/migration.rs` owns the first-start SSOT migration application flow;
-  it reuses the parent service's validated copy/hash/path primitives rather
-  than creating a second filesystem-safety implementation.
-- `skill/assignment.rs` owns target enable/disable and database-to-target
-  synchronization orchestration. It delegates materialization/removal to the
-  existing safety primitives. Archive extraction, symlink/traversal/resource
-  budgets, vendor copy, backup-before-delete and materialization ordering stay
-  under one cohesive Skill filesystem/transaction owner.
-- `proxy/takeover.rs` owns pure takeover URL/config matching; state transitions
-  and live I/O stay in `ProxyService` unless separately justified.
-- `codex_config/auth.rs` owns Codex login-material classification, OAuth/API-key
-  policy, stale third-party auth residue detection/cleanup and token-backfill
-  policy. `codex_config` remains the stable facade and re-exports only the
-  functions current callers actually require; test-only/private predicates do
-  not become public merely because they moved files.
-- `codex_config/features.rs` owns native capability state, diagnostics, draft
-  patching, save validation/defaulting and non-sensitive warning projection.
-- `codex_config/catalog.rs` owns the model-catalog domain end-to-end: tool
-  profile selection, provider model-spec projection, template/cache/CLI
-  fallback, vendor-official catalog projection, parser-required backfill,
-  `model_catalog_json` / owned `web_search` projection, bounded catalog
-  readback and path/symlink confinement. The parent `codex_config` module stays
-  the stable facade and owns live/provider/proxy/session/MCP transaction
-  coordination; do not move those ordered mutations into the catalog module.
-- `proxy/handlers.rs`, `RequestForwarder`, Provider mutation/rollback
-  coordination, and Skill archive/materialization safety may intentionally
-  remain physically large. Their streaming/failover/rollback/filesystem order
-  is stronger evidence than line count; split them only when a one-way pure or
-  independently testable seam is proven.
-- Module moves preserve serialized DTOs, registration, persistent paths,
-  validation order, security checks, and error semantics.
+### Visibility is the minimum tested surface
+
+- Prefer private modules/functions. Use `pub(crate)` for genuine crate-wide
+  use and `pub` only for an intentional Rust public surface required by the
+  current binary/integration-test architecture.
+- Do not mechanically change every module to private: current Proxy and select
+  command surfaces have real consumers. Conversely, one public module does not
+  justify publishing siblings.
+- Architecture tests are an allowlist/constraint, not generated documentation.
+  Update the test only after the design identifies the new owner and why a
+  narrower route is insufficient.
+
+### One command, one owner
+
+- Every renderer-callable operation has one registered command name and one
+  typed frontend adapter.
+- Avoid catch-all commands with operation strings, raw JSON, script names,
+  filesystem paths, URLs or provider-specific arbitrary payloads.
+- If multiple commands share a transaction, extract a service method; do not
+  call one Tauri command from another.
+- Error translation is deterministic. Do not collapse security, validation,
+  conflict, cancellation and uncertain/rollback outcomes into one generic
+  success/failure boolean.
+
+### Side-effect ownership
+
+| Side effect | Required owner |
+| --- | --- |
+| SQLite schema/version/SQL | `database/schema.rs` and owning DAO/service |
+| Filesystem document transaction | owning service/native adapter with trusted paths |
+| HTTP/vendor source | owning source/provider service with closed policy |
+| Process/installer/native launch | reviewed native/lifecycle adapter |
+| Secret resolution | native SecretService/SecretRef boundary |
+| Proxy socket/protocol/failover | `proxy/**` + `services/proxy.rs` |
+| Tauri state/event/window | command/app shell adapter, not domain core |
+
+Pure domain functions receive values/traits and can be tested without
+`AppHandle`, global state, network, filesystem or process execution.
+
+### Registration and permission closure
+
+- Adding/removing/renaming a command requires synchronized updates to:
+  1. command implementation/export;
+  2. `generate_handler!` registration;
+  3. generated permission identifier;
+  4. active application capability manifest;
+  5. frontend adapter/parser and contract tests.
+- The union of active application capability permissions equals the complete
+  registered handler set. Feature-local permission additions must not silently
+  remove unrelated commands.
+- Remote origins remain absent unless a separately reviewed threat model and
+  capability manifest explicitly admits them.
+
+### No parallel legacy implementation
+
+- V2 routes may coexist with leftover routes, but both must delegate to the
+  same backend/service authority. Do not fork database, provider, Skill, MCP,
+  Agent or Proxy behavior to make one UI easier.
+- Compatibility exports/routes are thin adapters or routers. They do not retain
+  a second transaction, schema, catalog or policy table.
+- Delete unused private code after its callers move; do not expose it merely to
+  avoid the move.
 
 ## 4. Validation & Error Matrix
 
-| Condition                                                                                          | Required result                                                                                                                                                                        |
-| -------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Bare `pub mod` under `services/mod.rs`                                                             | Architecture test fails; use `pub(crate)` and explicit re-export                                                                                                                       |
-| `commands/misc.rs` reintroduced                                                                    | Architecture test fails; choose an owning command module                                                                                                                               |
-| Tooling implementation markers return to `commands/tooling.rs`                                     | Architecture test fails; keep four thin wrappers and move policy to `services/tooling.rs`                                                                                              |
-| Tooling version/lifecycle/discovery/terminal orchestration regrows in the parent service           | Architecture test fails for reviewed markers; move the responsibility back to its private owner while keeping genuinely shared primitives centralized                                  |
-| Parent imports a target-exclusive Tooling child API without the matching `cfg`                     | Matching-target `cargo clippy --all-targets -- -D warnings` fails on an unused import or a target-only symbol leaks into the wrong build; gate the import with the production consumer |
-| Platform-only lifecycle tests are hoisted to `tooling.rs` or a private helper is widened for tests | Reject; colocate the tests in `tooling/lifecycle.rs` with `#[cfg(all(test, target_os = "<target>"))]`                                                                                  |
-| Provider/Skill/Proxy/Codex subdomain made public                                                   | Architecture test fails unless a reviewed external contract requires it                                                                                                                |
-| Marketplace code starts implementing its own ZIP/archive safety path                               | Reject; delegate to the existing Skill archive/install owner                                                                                                                           |
-| Skill assignment/migration module starts duplicating archive/vendor/symlink safety primitives      | Reject; those modules orchestrate through the single filesystem-safety owner                                                                                                           |
-| Pure Provider common-config module starts owning DB/locks/scrub sequencing                         | Reject; transaction/rollback order remains in `ProviderService`                                                                                                                        |
-| Codex catalog module starts owning provider/live/proxy/session transaction ordering                | Reject; catalog owns catalog policy/I/O only and delegates live coordination through the parent facade                                                                                 |
-| `macos_system_commit` grows a Tauri command or accepts a renderer path/URL                         | Reject; keep crate-private port + closed Agent/Codex actions                                                                                                                           |
-| A second legal-surface or install/update matrix appears outside `lifecycle_policy.rs`              | Reject; one product/surface/action owner                                                                                                                                               |
-| Codex config write fails after auth write                                                          | Restore previous auth bytes or delete newly created auth; return error                                                                                                                 |
-| Universal projection sees unknown nested settings                                                  | Preserve them while applying overrides                                                                                                                                                 |
-| Discovery cache mutex is poisoned                                                                  | Recover inner value; do not panic                                                                                                                                                      |
-| Invalid discovery status is parsed                                                                 | Return error; never silently widen to `all`                                                                                                                                            |
-| Placeholder cleanup sees HTTPS/non-loopback URL                                                    | Do not classify it as local proxy URL                                                                                                                                                  |
+| Condition | Required result |
+| --- | --- |
+| Renderer feature needs native operation | Add/reuse one typed command and service owner; no raw generic bridge. |
+| Command contains SQL, vendor HTTP, archive extraction or process launch | Move side effect into DAO/service/native adapter. |
+| New module is marked `pub` without an actual cross-module consumer | Keep private or `pub(crate)`; architecture review fails. |
+| Existing Proxy/select command module is public | Preserve only the tested intentional surface; do not privatize mechanically. |
+| New Agent code uses `auth`/`source` old owner names | Reject; use current `auth_actions`, `auth_sessions`, `sources` and correct command façade. |
+| Command registered but permission/adapter missing | Contract failure; feature is incomplete. |
+| Permission added but handler not registered | Contract failure; dead/wrong authority. |
+| Capability manifest union drops unrelated handler | Reject even if the new feature works locally. |
+| One Tauri command invokes another | Extract/call the shared service method instead. |
+| V2 and leftover paths implement separate writes | Consolidate under one backend/service owner. |
+| Domain helper requires `AppHandle` only to read config/emit UI event | Pass a narrow value/trait or move shell behavior to adapter. |
 
 ## 5. Good / Base / Bad Cases
 
-- **Good:** extract one cohesive rule set with tests into a private submodule,
-  retain the parent service facade, then tighten visibility.
-- **Good:** keep Windows user-scope/fail-closed contracts intact while moving
-  command ownership.
-- **Good:** keep a stable facade while private modules own Tooling policy,
-  Skill assignment/repository/migration, marketplace transport, Codex auth /
-  features / catalog policy, or Provider common-config rules.
-- **Good:** keep Windows-only lifecycle helper tests beside the private helper
-  and gate a macOS-only parent import with `#[cfg(target_os = "macos")]`.
-- **Base:** a large file may remain large if the remaining code is a tightly
-  coupled state machine whose sequence is itself a safety property.
-- **Base:** a child function may compile on both platforms while only one
-  platform's parent production path imports it; the parent import still follows
-  the narrower consumer boundary.
-- **Base:** `proxy/handlers.rs`, `RequestForwarder`, Skill archive safety or a
-  Provider mutation coordinator may remain large after audit when extracting
-  them would create peer owners for one protocol/transaction.
-- **Bad:** create many crates without reducing coupling or public surface.
-- **Bad:** weaken a platform scanner or sealed-structure test merely to make a
-  sensitive file move pass.
-- **Bad:** leave a child API imported unconditionally because tests use a glob,
-  or move target-only tests to the parent to avoid a private-module test block.
+- **Good:** add a typed command in the relevant command module, parse the
+  request, call one service method, register/permit it and add a strict
+  frontend port.
+- **Good:** keep `proxy::types` visible because several in-crate owners share
+  it, while retaining listener and routing behavior inside `proxy/**`.
+- **Base:** a command module is `pub(crate)` for integration wiring. This is
+  narrower than a public API and still requires no renderer authority beyond
+  registered commands.
+- **Bad:** mark every service/proxy module public, put `rusqlite` or `reqwest`
+  logic in a command, expose `{ operation, payload }`, or create a V2-only
+  native implementation parallel to the existing owner.
 
 ## 6. Tests Required
 
 ```bash
+mise run typecheck:v2
+mise run test:unit -- tests/architecture/rustModuleBoundaries.test.ts
 mise run rust:fmt:check
 mise run rust:clippy
 mise run rust:test
-mise run test:unit -- tests/architecture/rustModuleBoundaries.test.ts
-mise run test:unit -- tests/remainingPlatformSurface.test.ts
+mise run check:contracts
 ```
 
-Focused iteration should also cover Codex atomic write/rollback, Provider
-live/takeover/common-config, all `services::skill::tests`, Proxy
-takeover/OAuth restore, Tooling lifecycle/platform boundaries, Windows
-user-scope, and desktop security contracts.
+Required assertions:
 
-For Tooling target-gating changes, the architecture test must assert that
-platform-private policy remains in `tooling/lifecycle.rs` and that the parent
-imports `npm_install_command_for` only inside its macOS-gated import. Local
-host-native checks do not prove the opposite target. The pushed SHA therefore
-also requires the matching `Backend Checks (Windows)` job, whose all-target
-check, Clippy with warnings denied, and Rust tests catch target-only import and
-test-compilation regressions.
+- `tests/architecture/rustModuleBoundaries.test.ts` reflects actual current
+  private/`pub(crate)`/public surfaces and rejects unreviewed widening;
+- command modules remain thin and no forbidden SQL/network/process imports
+  move into transport owners;
+- Agent module/path assertions use `auth_actions`, `auth_sessions`, `sources`
+  and all three Agent command owners;
+- handler registration, generated permissions and active capability manifests
+  remain a complete disjoint union;
+- integration tests call the public Rust surface intentionally rather than
+  requiring accidental publication of unrelated internals;
+- feature tests prove both V2 and leftover routes share the same native owner
+  when both remain supported.
 
 ## 7. Wrong vs Correct
 
 Wrong:
 
 ```rust
-pub mod giant_feature;
-crate::services::giant_feature::internal::helper();
+pub mod everything;
+
+#[tauri::command]
+async fn execute(operation: String, payload: serde_json::Value) -> Result<Value, String> {
+    // SQL, HTTP, filesystem and process branching here.
+}
 ```
 
 Correct:
 
 ```rust
-pub(crate) mod giant_feature;
-pub use giant_feature::FeatureService;
+mod agent_auth;
+pub use agent_auth::{get_agent_auth_observation, start_agent_auth_session};
 
-// giant_feature/mod.rs
-mod internal;
-```
-
-Do not create a crate because a file crossed an arbitrary line-count limit.
-First prove a private module/API boundary; promote it only when package-level
-isolation has a concrete build, dependency, or reuse benefit.
-
-For a target-exclusive child API, this is also wrong:
-
-```rust
-// Imported in every production build even though only macOS parent code uses it.
-use lifecycle::npm_install_command_for;
-
-// Hoisted only to reach lifecycle-private Windows helpers.
-#[cfg(all(test, target_os = "windows"))]
-mod windows_lifecycle_tests;
-```
-
-Keep the import and tests at their actual ownership boundaries:
-
-```rust
-#[cfg(target_os = "macos")]
-use lifecycle::npm_install_command_for;
-
-// services/tooling/lifecycle.rs
-#[cfg(all(test, target_os = "windows"))]
-mod tests {
-    use super::*;
+#[tauri::command]
+pub async fn start_agent_auth_session(
+    request: AgentAuthRequest,
+    state: State<'_, AppState>,
+) -> Result<AgentAuthSessionSnapshot, AgentAuthErrorDto> {
+    state.agent_auth.start(request).await
 }
 ```
+
+The command owns wire/state adaptation; the service/domain owner owns legality,
+side effects, transaction and compensation.

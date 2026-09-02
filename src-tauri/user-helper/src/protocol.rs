@@ -1,6 +1,7 @@
 use std::{fmt, mem::size_of};
 
 use crate::cli::UserHelperAction;
+use crate::grok::{GrokOutcome, GrokOwner, ToolOperationResult};
 
 pub const PROTOCOL_VERSION: u8 = 3;
 pub const FRAME_LENGTH_BYTES: usize = 4;
@@ -14,7 +15,10 @@ const PROGRESS_KIND: u8 = 2;
 const SUCCESS_KIND: u8 = 3;
 const ERROR_KIND: u8 = 4;
 const HELLO_KIND: u8 = 5;
+const TOOL_RESULT_KIND: u8 = 6;
 const STARTED_IDENTITY_BYTES: usize = 3 * size_of::<u64>();
+const TOOL_RESULT_FIXED_BYTES: usize = 4;
+const MAX_TOOL_VERSION_BYTES: usize = crate::grok::MAX_NORMALIZED_VERSION_BYTES;
 
 /// Opaque identity for the helper's no-follow, handle-relative MSIX pin.
 ///
@@ -73,10 +77,16 @@ pub enum HelperErrorCode {
     InstallerTimedOut = 18,
     InstallerProcessUnobservable = 19,
     InstallerExitedNonzero = 20,
+    ToolHostMissing = 21,
+    ToolTimedOut = 22,
+    ToolOutputLimit = 23,
+    ToolOwnerMismatch = 24,
+    ToolNotDetected = 25,
+    ToolExecutionFailed = 26,
 }
 
 impl HelperErrorCode {
-    pub const ALL: [Self; 20] = [
+    pub const ALL: [Self; 26] = [
         Self::InstallLayoutInvalid,
         Self::WinRtInitializationFailed,
         Self::PackageUriInvalid,
@@ -97,6 +107,12 @@ impl HelperErrorCode {
         Self::InstallerTimedOut,
         Self::InstallerProcessUnobservable,
         Self::InstallerExitedNonzero,
+        Self::ToolHostMissing,
+        Self::ToolTimedOut,
+        Self::ToolOutputLimit,
+        Self::ToolOwnerMismatch,
+        Self::ToolNotDetected,
+        Self::ToolExecutionFailed,
     ];
 
     pub const fn wire_code(self) -> u8 {
@@ -129,6 +145,12 @@ impl HelperErrorCode {
                 "Windows did not return an observable installer process"
             }
             Self::InstallerExitedNonzero => "The Windows installer exited with a failure status",
+            Self::ToolHostMissing => "The official Grok Build host is unavailable",
+            Self::ToolTimedOut => "The Grok Build operation did not finish before the deadline",
+            Self::ToolOutputLimit => "The Grok Build operation exceeded its output limit",
+            Self::ToolOwnerMismatch => "The Grok Build installation owner does not match",
+            Self::ToolNotDetected => "Grok Build is not installed for the current user",
+            Self::ToolExecutionFailed => "The Grok Build operation failed",
         }
     }
 
@@ -152,6 +174,7 @@ pub enum HelperMessage {
         completed: u8,
     },
     Success,
+    ToolResult(ToolOperationResult),
     Error {
         code: HelperErrorCode,
         message: String,
@@ -251,6 +274,9 @@ pub fn encode_frame(message: &HelperMessage) -> Result<Vec<u8>, ProtocolError> {
             payload.push(*completed);
         }
         HelperMessage::Success => payload.push(SUCCESS_KIND),
+        HelperMessage::ToolResult(result) => {
+            encode_tool_result(&mut payload, result)?;
+        }
         HelperMessage::Error { code, message } => {
             validate_error_message(message)?;
             payload.push(ERROR_KIND);
@@ -328,12 +354,74 @@ pub fn decode_frame(frame: &[u8]) -> Result<HelperMessage, ProtocolError> {
             }
         }
         SUCCESS_KIND if payload.len() == 2 => Ok(HelperMessage::Success),
+        TOOL_RESULT_KIND => decode_tool_result_payload(payload),
         ERROR_KIND => decode_error_payload(payload),
         HELLO_KIND | STARTED_KIND | PROGRESS_KIND | SUCCESS_KIND => {
             Err(ProtocolError::InvalidMessageLength)
         }
         _ => Err(ProtocolError::UnknownMessageKind),
     }
+}
+
+fn encode_tool_result(
+    payload: &mut Vec<u8>,
+    result: &ToolOperationResult,
+) -> Result<(), ProtocolError> {
+    let version = result.normalized_version.as_deref().unwrap_or("");
+    if version.len() > MAX_TOOL_VERSION_BYTES {
+        return Err(ProtocolError::ErrorMessageTooLong);
+    }
+    if !version
+        .bytes()
+        .all(|byte| byte.is_ascii() && !byte.is_ascii_control())
+    {
+        return Err(ProtocolError::ErrorMessageContainsControl);
+    }
+    payload.push(TOOL_RESULT_KIND);
+    payload.push(u8::from(result.detected));
+    payload.push(result.owner.map(GrokOwner::wire).unwrap_or(0));
+    payload.push(result.outcome.wire());
+    payload.push(version.len() as u8);
+    payload.extend_from_slice(version.as_bytes());
+    Ok(())
+}
+
+fn decode_tool_result_payload(payload: &[u8]) -> Result<HelperMessage, ProtocolError> {
+    if payload.len() < 2 + TOOL_RESULT_FIXED_BYTES {
+        return Err(ProtocolError::InvalidMessageLength);
+    }
+    let version_len = payload[5] as usize;
+    if version_len > MAX_TOOL_VERSION_BYTES {
+        return Err(ProtocolError::ErrorMessageTooLong);
+    }
+    if payload.len() != 2 + TOOL_RESULT_FIXED_BYTES + version_len {
+        return Err(ProtocolError::InvalidMessageLength);
+    }
+    let detected = match payload[2] {
+        0 => false,
+        1 => true,
+        _ => return Err(ProtocolError::InvalidMessageLength),
+    };
+    let owner = match payload[3] {
+        0 => None,
+        value => Some(GrokOwner::from_wire(value).ok_or(ProtocolError::UnknownMessageKind)?),
+    };
+    let outcome = GrokOutcome::from_wire(payload[4]).ok_or(ProtocolError::UnknownMessageKind)?;
+    let version = if version_len == 0 {
+        None
+    } else {
+        let text = std::str::from_utf8(&payload[6..]).map_err(|_| ProtocolError::InvalidUtf8)?;
+        if text.chars().any(char::is_control) {
+            return Err(ProtocolError::ErrorMessageContainsControl);
+        }
+        Some(text.to_owned())
+    };
+    Ok(HelperMessage::ToolResult(ToolOperationResult {
+        detected,
+        normalized_version: version,
+        owner,
+        outcome,
+    }))
 }
 
 fn decode_error_payload(payload: &[u8]) -> Result<HelperMessage, ProtocolError> {
@@ -369,18 +457,20 @@ fn validate_error_message(message: &str) -> Result<(), ProtocolError> {
     Ok(())
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum HelperProtocolTerminal {
     Success,
+    ToolSuccess(ToolOperationResult),
     Failure(HelperErrorCode),
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum HelperProtocolAction {
     Hello(UserHelperAction),
     Started(PinnedPackageIdentity),
     Progress(u8),
     Success,
+    ToolResult(ToolOperationResult),
     Failure(HelperErrorCode),
 }
 
@@ -480,6 +570,11 @@ impl HelperProtocolSequence {
                 self.terminal = Some(HelperProtocolTerminal::Success);
                 Ok(HelperProtocolAction::Success)
             }
+            (ProtocolPhase::Running, HelperMessage::ToolResult(result)) => {
+                self.phase = ProtocolPhase::Terminal;
+                self.terminal = Some(HelperProtocolTerminal::ToolSuccess(result.clone()));
+                Ok(HelperProtocolAction::ToolResult(result))
+            }
             _ => Err(ProtocolSequenceError::UnexpectedMessage),
         }
     }
@@ -500,8 +595,8 @@ impl HelperProtocolSequence {
         Ok(())
     }
 
-    pub const fn terminal(&self) -> Option<HelperProtocolTerminal> {
-        self.terminal
+    pub fn terminal(&self) -> Option<HelperProtocolTerminal> {
+        self.terminal.clone()
     }
 }
 
@@ -521,7 +616,10 @@ mod tests {
         assert_eq!(PROTOCOL_VERSION, 3);
         assert_eq!(
             HelperErrorCode::ALL.map(HelperErrorCode::wire_code),
-            [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,]
+            [
+                1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
+                24, 25, 26,
+            ]
         );
         assert_eq!(encode_frame(&hello()).unwrap(), [3, 0, 0, 0, 3, 5, 1]);
         assert_eq!(
@@ -570,6 +668,18 @@ mod tests {
             HelperMessage::Progress { completed: 50 },
             HelperMessage::Progress { completed: 100 },
             HelperMessage::Success,
+            HelperMessage::Hello {
+                action: UserHelperAction::GrokTool {
+                    action: crate::grok::GrokToolAction::Observe,
+                    expected_owner: None,
+                },
+            },
+            HelperMessage::ToolResult(ToolOperationResult {
+                detected: true,
+                normalized_version: Some("1.2.3".to_owned()),
+                owner: Some(crate::grok::GrokOwner::Native),
+                outcome: crate::grok::GrokOutcome::Observed,
+            }),
         ];
         messages.extend(HelperErrorCode::ALL.map(HelperMessage::error));
 
@@ -955,6 +1065,45 @@ mod tests {
             Ok(HelperProtocolAction::Success)
         );
         assert_eq!(sequence.terminal(), Some(HelperProtocolTerminal::Success));
+        assert_eq!(
+            sequence.accept(HelperMessage::Success),
+            Err(ProtocolSequenceError::UnexpectedMessage)
+        );
+    }
+
+    #[test]
+    fn grok_tool_result_is_a_distinct_terminal_from_empty_success() {
+        let mut sequence = HelperProtocolSequence::default();
+        sequence
+            .accept(HelperMessage::Hello {
+                action: UserHelperAction::GrokTool {
+                    action: crate::grok::GrokToolAction::Observe,
+                    expected_owner: None,
+                },
+            })
+            .unwrap();
+        sequence.mark_control_sent().unwrap();
+        let started = sequence
+            .accept(HelperMessage::Started {
+                package: crate::grok::TOOL_OPERATION_STARTED_IDENTITY,
+            })
+            .unwrap();
+        assert!(matches!(started, HelperProtocolAction::Started(_)));
+        sequence.mark_admitted().unwrap();
+        let result = ToolOperationResult {
+            detected: false,
+            normalized_version: None,
+            owner: None,
+            outcome: crate::grok::GrokOutcome::Observed,
+        };
+        assert_eq!(
+            sequence.accept(HelperMessage::ToolResult(result.clone())),
+            Ok(HelperProtocolAction::ToolResult(result.clone()))
+        );
+        assert_eq!(
+            sequence.terminal(),
+            Some(HelperProtocolTerminal::ToolSuccess(result))
+        );
         assert_eq!(
             sequence.accept(HelperMessage::Success),
             Err(ProtocolSequenceError::UnexpectedMessage)

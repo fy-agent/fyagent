@@ -29,6 +29,8 @@ type LensBox = {
   borderRadius: string;
 };
 
+export type SelectionLensGeometry = "size-and-position" | "position";
+
 const layoutSettleFrameCount = 48;
 
 export function selectionLensCollapsedOrigin(box: Pick<LensBox, "x" | "y">): {
@@ -53,6 +55,21 @@ type SelectionLensContextValue = {
 const SelectionLensContext = createContext<SelectionLensContextValue | null>(
   null,
 );
+
+function roundBox(box: LensBox): LensBox {
+  const dpr =
+    typeof window === "undefined" || window.devicePixelRatio === 0
+      ? 1
+      : window.devicePixelRatio;
+  const snap = (value: number) => Math.round(value * dpr) / dpr;
+  return {
+    x: snap(box.x),
+    y: snap(box.y),
+    width: snap(box.width),
+    height: snap(box.height),
+    borderRadius: box.borderRadius,
+  };
+}
 
 function isHiddenFromLayout(element: HTMLElement): boolean {
   let node: HTMLElement | null = element;
@@ -85,6 +102,7 @@ function observeHiddenAncestors(
 export function SelectionLensGroup({
   id,
   inset = 0,
+  geometry = "size-and-position",
   layoutKey,
   className,
   children,
@@ -92,6 +110,7 @@ export function SelectionLensGroup({
 }: Omit<HTMLAttributes<HTMLDivElement>, "id"> & {
   id: string;
   inset?: number;
+  geometry?: SelectionLensGeometry;
   layoutKey?: string | number | boolean;
 }) {
   const scopeRef = useRef<HTMLDivElement>(null);
@@ -130,13 +149,13 @@ export function SelectionLensGroup({
       hiddenRef.current = false;
       setRevealKey((key) => key + 1);
     }
-    const nextBox = {
+    const nextBox = roundBox({
       x: hostRect.left - scopeRect.left + inset,
       y: hostRect.top - scopeRect.top + inset,
       width: Math.max(0, hostRect.width - inset * 2),
       height: Math.max(0, hostRect.height - inset * 2),
       borderRadius: getComputedStyle(nextHost).borderRadius,
-    };
+    });
     setBox((current) =>
       current &&
       current.x === nextBox.x &&
@@ -150,6 +169,10 @@ export function SelectionLensGroup({
   }, [inset]);
 
   const scheduleSync = useCallback(() => {
+    const scope = scopeRef.current;
+    if (scope && isHiddenFromLayout(scope)) {
+      hiddenRef.current = true;
+    }
     if (frameRef.current !== null) {
       return;
     }
@@ -184,7 +207,17 @@ export function SelectionLensGroup({
   }, []);
 
   useLayoutEffect(() => {
-    syncBox();
+    const scope = scopeRef.current;
+    if (!scope) {
+      return;
+    }
+    if (isHiddenFromLayout(scope)) {
+      hiddenRef.current = true;
+      return;
+    }
+    if (hiddenRef.current) {
+      scheduleSync();
+    }
   });
 
   useLayoutEffect(() => {
@@ -254,8 +287,8 @@ export function SelectionLensGroup({
       const origin = selectionLensCollapsedOrigin(box);
       left.set(origin.x);
       top.set(origin.y);
-      width.set(origin.width);
-      height.set(origin.height);
+      width.set(geometry === "position" ? box.width : origin.width);
+      height.set(geometry === "position" ? box.height : origin.height);
     };
 
     if (reduceMotion === true) {
@@ -277,18 +310,27 @@ export function SelectionLensGroup({
       positionedRef.current = true;
     }
 
+    if (geometry === "position") {
+      width.set(box.width);
+      height.set(box.height);
+    }
+
     const controls = [
       animate(left, box.x, fySpringTransition),
       animate(top, box.y, fySpringTransition),
-      animate(width, box.width, fySpringTransition),
-      animate(height, box.height, fySpringTransition),
     ];
+    if (geometry === "size-and-position") {
+      controls.push(
+        animate(width, box.width, fySpringTransition),
+        animate(height, box.height, fySpringTransition),
+      );
+    }
     return () => {
       for (const control of controls) {
         control.stop();
       }
     };
-  }, [box, height, left, reduceMotion, revealKey, top, width]);
+  }, [box, geometry, height, left, reduceMotion, revealKey, top, width]);
 
   return (
     <SelectionLensContext.Provider value={{ register, unregister }}>
@@ -311,6 +353,8 @@ export function SelectionLensGroup({
             }}
             aria-hidden
             data-testid="selection-lens"
+            data-selection-lens-geometry={geometry}
+            data-selection-material="frame"
             data-selection-lens-reveal={revealKey}
           />
         ) : null}
@@ -353,17 +397,20 @@ export function SelectionLens({ active }: { active: boolean }) {
 
 export function SelectionLensTrack({
   id,
+  geometry,
   layoutKey,
   className,
   children,
   ...props
 }: Omit<HTMLAttributes<HTMLDivElement>, "id"> & {
   id: string;
+  geometry?: SelectionLensGeometry;
   layoutKey?: string | number | boolean;
 }) {
   return (
     <SelectionLensGroup
       id={id}
+      geometry={geometry}
       layoutKey={layoutKey}
       className={className}
       {...props}

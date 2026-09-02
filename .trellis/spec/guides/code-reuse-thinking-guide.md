@@ -19,7 +19,10 @@ live in [Backend Reuse](../backend/reuse.md).
 
 This order is not permission to add a large dependency for a small helper.
 Architecture, security, secret, native-platform, and licensing constraints are
-stronger than reuse convenience.
+stronger than reuse convenience. If host and a sidecar helper need the same
+product rules, put the pure logic in one portable module (see
+[Rust Host Modular Boundaries](../backend/modular-boundaries.md)); do not copy
+candidate tables.
 
 ## Search before design
 

@@ -356,3 +356,26 @@ test("supports expand, collapse, focus movement, and reduced motion", async ({
 
   await expectHealthyPage(page, health);
 });
+
+test("keeps the Agents page mounted and skips the loading flash when opening Models", async ({
+  page,
+}) => {
+  const health = monitorPageHealth(page);
+  await openV2Page(page, "/agents");
+
+  const navigation = page.getByRole("navigation", { name: "主导航" });
+  await routeLink(navigation, "模型管理").click();
+
+  await expect(page).toHaveURL(/#\/models/);
+  await expect(page.getByTestId("models-page")).toBeVisible();
+  await expect(page.locator(".fy-feature-route-loading")).toHaveCount(0);
+  await expect(page.getByTestId("agents-page")).toBeHidden();
+
+  await routeLink(navigation, "AI软件配置").click();
+  await expect(page).toHaveURL(/#\/agents/);
+  await expect(page.getByTestId("agents-page")).toBeVisible();
+  await expect(page.getByTestId("models-page")).toBeHidden();
+  await expect(page.locator(".fy-feature-route-loading")).toHaveCount(0);
+
+  await expectHealthyPage(page, health);
+});

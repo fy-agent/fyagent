@@ -1894,3 +1894,94 @@ Rewrote audited frontend and public-documentation copy, added an indexed user-fa
 
 - 正式 Developer ID 签名、公证与真机 /Applications HIL 之后才能打开 production_enabled
 - Claude Desktop 尚未进入 helper KnownSystemProduct 表；Windows 桌面安装器仍推迟
+
+
+## Session 59: Windows Agent 安装面统一与 Codex 日志治理
+<!-- trellis-session: v=2 fp=e4d3d60a6ba19457 -->
+
+**Date**: 2026-09-01
+**Task**: Windows Agent 安装面统一与 Codex 日志治理
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+并行完成 Grok-only Tooling 退场、正式 Windows Grok 闭集 helper、Codex deferred 日志预算，并更新 spec。Claude/OpenCode Windows 身份与正式包 HIL 仍 fail-closed，未宣称已支持。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `40eeaa6f` | feat: retire non-Grok CLI installers and route formal Windows Grok through the closed user helper |
+| `f32787da` | fix(codex): stop repeating expected deferred usage-sync logs |
+| `4dd7668e` | docs(spec): record Grok-only Tooling, closed helper protocol, and Codex log budget |
+
+### Status
+
+[OK] **Completed**
+
+
+## Session 60: 跨平台 AI 软件生命周期与开发检查
+<!-- trellis-session: v=2 fp=1f3157b9067996ff -->
+
+**Date**: 2026-09-01
+**Task**: 跨平台 AI 软件生命周期与开发检查
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+补齐 Windows inventory 父键枚举权限、bootstrap 不失败的 Windows-MSVC advisory 与显式 Clippy 诊断、侧栏 position-only Lens，并更新 owning spec。Qoder/TRAE/WorkBuddy 走既有精确目标 verified update；Windows 原生 HIL 仍未执行，未宣称已验收。
+
+### Main Changes
+
+- 修复 Uninstall/App Paths 父键 query+enumerate，complete/empty 投影为 not_installed
+- bootstrap advisory 退出 0；strict preflight/Clippy 保持显式且不进 check/CI
+- SelectionLens geometry=position，折叠活动组只保留一层 frame
+- 把 registry/task-runner/dev-env/v2-shell 合同写成可执行签名、错误矩阵和 Wrong vs Correct
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `cbd01281` | feat(agent): complete managed desktop lifecycle diagnostics |
+| `c9e3e571` | docs(spec): define bootstrap cross-msvc advisory |
+| `37fb36b7` | docs(spec): separate advisory and strict cross diagnostics |
+| `b975bfc3` | docs(spec): enable verified managed desktop updates |
+| `a5fac9d8` | docs(task): align lifecycle task with verified update policy |
+| `cd96bdd0` | fix(dev): seal Windows MSVC cross advisory for platform scanners |
+| `c4512808` | chore(task): archive 09-01-windows-software-lifecycle-crosscheck-ui |
+| `047622dc` | docs(spec): skip Windows-MSVC advisory through the host map |
+
+### Testing
+
+- [OK] mise run check:prearchive -- --exclude-active-task .trellis/tasks/09-01-windows-software-lifecycle-crosscheck-ui
+- [OK] 归档后在最终 HEAD 复跑 mise run check：前端、3033 项 Rust 测试、52 项 user-helper 测试、任务/文档/平台与 Release 合同全部通过
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- Windows 原生 HIL：真实已安装/未安装、UAC/vendor UI、自定义路径和桌面启动
+
+
+## Session 61: Nav jank and domestic update
+<!-- trellis-session: v=2 fp=c58e7c1ab93cd3d5 -->
+
+**Date**: 2026-09-02
+**Task**: Nav jank and domestic update
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Visited primary routes stay mounted with visibility-gated queries so leaving AI software config no longer hitch-unloads the scan tree. Primary-nav lens no longer paints a scan-time highlight. Qoder/TRAE/WorkBuddy FyAgent one-click update is closed in lifecycle_policy plus a shared directory capability slot.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `34359cae` | fix(v2): keep visited config pages alive and close domestic one-click update |
+
+### Status
+
+[OK] **Completed**

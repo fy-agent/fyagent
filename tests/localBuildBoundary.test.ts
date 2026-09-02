@@ -2,6 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
+// @ts-expect-error The task runner executes this JavaScript helper directly.
+import * as taskContractModule from "../scripts/tasks/task-contract-check.mjs";
 
 const ROOT = path.resolve(__dirname, "..");
 const read = (relative: string) =>
@@ -57,6 +59,18 @@ type HostNativeModule = {
 };
 
 let hostNative: HostNativeModule;
+
+type TaskDefinition = {
+  run?: string | Array<string | { task: string }>;
+  env?: Record<string, string>;
+  confirm?: { default?: string; message?: string };
+};
+
+const loadTaskDefinitions =
+  taskContractModule.loadTaskDefinitions as () => Record<
+    string,
+    TaskDefinition
+  >;
 
 beforeAll(async () => {
   hostNative = (await import(
@@ -200,10 +214,50 @@ describe("local build boundary", () => {
       );
     }
 
-    const localEntryPoints = localTaskConfiguration();
+    const taskDefinitions = loadTaskDefinitions();
+    const standardTaskNames = [
+      "dev",
+      "build",
+      "build:binary",
+      "build:debug",
+      "check",
+      "check:backend",
+      "rust:check",
+      "rust:clippy",
+      "rust:test",
+    ];
+    const localEntryPoints = JSON.stringify({
+      packageScripts: {
+        dev: packageJson.scripts.dev,
+        build: packageJson.scripts.build,
+        tauri: packageJson.scripts.tauri,
+      },
+      tasks: Object.fromEntries(
+        standardTaskNames.map((name) => [name, taskDefinitions[name]]),
+      ),
+    });
     for (const marker of LOCAL_CROSS_EXECUTION_MARKERS) {
       expect(localEntryPoints, marker).not.toContain(marker);
     }
+
+    expect(taskDefinitions["system:check:windows-msvc-cross"]).toMatchObject({
+      run: "node scripts/tasks/windows-msvc-cross.mjs check",
+      env: { FYAGENT_TASK_EFFECT: "read-only" },
+    });
+    expect(
+      taskDefinitions["system:check:windows-msvc-cross:advisory"],
+    ).toMatchObject({
+      run: "node scripts/tasks/windows-msvc-cross.mjs advisory",
+      env: { FYAGENT_TASK_EFFECT: "read-only" },
+    });
+    expect(JSON.stringify(taskDefinitions.bootstrap)).toContain(
+      "system:check:windows-msvc-cross:advisory",
+    );
+    expect(taskDefinitions["rust:clippy:windows-msvc-cross"]).toMatchObject({
+      run: "node scripts/tasks/windows-msvc-cross.mjs clippy",
+      env: { FYAGENT_TASK_EFFECT: "dependency-environment" },
+      confirm: { default: "no" },
+    });
 
     for (const document of CURRENT_DOCUMENTS.slice(0, 4)) {
       const content = read(document);

@@ -18,6 +18,12 @@ description = "Run locked current-host Clippy for the workspace and deny every w
 env = { FYAGENT_TASK_EFFECT = "read-only", FYAGENT_WINDOWS_MANIFEST = "test" }
 run = "node scripts/tasks/rust.mjs clippy"
 
+["rust:clippy:windows-msvc-cross"]
+description = "Run the optional macOS-to-Windows MSVC cargo-xwin Clippy diagnostic"
+env = { FYAGENT_TASK_EFFECT = "dependency-environment", FYAGENT_WINDOWS_MANIFEST = "test" }
+confirm = { message = "cargo-xwin may download/cache Microsoft CRT and Windows SDK files; using it accepts the linked Microsoft license. Continue?", default = "no" }
+run = "node scripts/tasks/windows-msvc-cross.mjs clippy"
+
 ["rust:test"]
 description = "Run locked current-host Cargo tests with optional controlled filters"
 usage = '''

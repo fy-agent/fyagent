@@ -98,6 +98,81 @@ test("Agent V3 shows the full catalog, auto-scans, and reuses existing Skill and
   const health = monitorPageHealth(page);
   await openV2Page(page, "/agents");
 
+  const navigation = page.getByRole("navigation", { name: "主导航" });
+  const activeNavigation = navigation.getByRole("link", {
+    name: "AI软件配置",
+    exact: true,
+  });
+  const navigationLens = navigation.getByTestId("selection-lens");
+  await expect(activeNavigation).toHaveAttribute("aria-current", "page");
+  await expect(navigationLens).toHaveCount(1);
+  await expect(navigationLens).toHaveAttribute(
+    "data-selection-lens-geometry",
+    "position",
+  );
+  const navigationMaterial = await activeNavigation.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      backgroundImage: style.backgroundImage,
+      borderColor: style.borderColor,
+      boxShadow: style.boxShadow,
+    };
+  });
+  expect(navigationMaterial).toEqual({
+    backgroundImage: "none",
+    borderColor: "rgba(0, 0, 0, 0)",
+    boxShadow: "none",
+  });
+  const scanGeometry = await navigationLens.evaluate(async (element) => {
+    let previous: { width: number; height: number; right: number } | null =
+      null;
+    let stableFrames = 0;
+    for (let index = 0; index < 90 && stableFrames < 3; index += 1) {
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => resolve()),
+      );
+      const rect = element.getBoundingClientRect();
+      const current = {
+        width: Number(rect.width.toFixed(2)),
+        height: Number(rect.height.toFixed(2)),
+        right: Number(rect.right.toFixed(2)),
+      };
+      stableFrames =
+        previous &&
+        previous.width === current.width &&
+        previous.height === current.height &&
+        previous.right === current.right
+          ? stableFrames + 1
+          : 0;
+      previous = current;
+    }
+    const samples: Array<{ width: number; height: number; right: number }> = [];
+    for (let index = 0; index < 20; index += 1) {
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => resolve()),
+      );
+      const rect = element.getBoundingClientRect();
+      samples.push({
+        width: Number(rect.width.toFixed(2)),
+        height: Number(rect.height.toFixed(2)),
+        right: Number(rect.right.toFixed(2)),
+      });
+    }
+    return samples;
+  });
+  expect(new Set(scanGeometry.map(({ width }) => width)).size).toBe(1);
+  expect(new Set(scanGeometry.map(({ height }) => height)).size).toBe(1);
+  expect(new Set(scanGeometry.map(({ right }) => right)).size).toBe(1);
+
+  await expect(navigationLens).toHaveCSS("backdrop-filter", "none");
+  const hostBox = await activeNavigation.boundingBox();
+  const lensBox = await navigationLens.boundingBox();
+  expect(hostBox).not.toBeNull();
+  expect(lensBox).not.toBeNull();
+  expect(lensBox!.x + lensBox!.width).toBeLessThanOrEqual(
+    hostBox!.x + hostBox!.width + 0.5,
+  );
+
   const directory = page.getByRole("region", { name: "AI 软件目录" });
   await expect(directory).toBeVisible();
   await expect(directory.getByRole("article")).toHaveCount(7);

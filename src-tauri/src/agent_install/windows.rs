@@ -14,6 +14,8 @@ use std::path::Path;
 use super::desktop::{DesktopInstallationEvidence, DesktopProduct};
 
 #[cfg(any(target_os = "windows", test))]
+use super::sources::AgentArch;
+#[cfg(any(target_os = "windows", test))]
 use super::types::{
     AgentReasonCode, InstallationEvidenceCode, InstallationOwner, InstallationPackageKind,
     InstallationScope,
@@ -250,6 +252,29 @@ fn inspection_reason(failure: WindowsInspectionFailure) -> AgentReasonCode {
     }
 }
 
+/// NSIS / electron-builder setup stubs are PE32 i386 even when the payload is
+/// x64 or ARM64. Installed applications stay AMD64/ARM64 only so a 32-bit
+/// uninstaller cannot become launchable.
+#[cfg(any(target_os = "windows", test))]
+const PE_MACHINE_I386: u16 = 0x014c;
+#[cfg(any(target_os = "windows", test))]
+const PE_MACHINE_AMD64: u16 = 0x8664;
+#[cfg(any(target_os = "windows", test))]
+const PE_MACHINE_ARM64: u16 = 0xaa64;
+
+#[cfg(any(target_os = "windows", test))]
+fn installed_application_machine_admitted(machine: u16) -> bool {
+    machine == PE_MACHINE_AMD64 || machine == PE_MACHINE_ARM64
+}
+
+#[cfg(any(target_os = "windows", test))]
+fn vendor_installer_machine_admitted(host: AgentArch, machine: u16) -> bool {
+    match host {
+        AgentArch::X86_64 => machine == PE_MACHINE_I386 || machine == PE_MACHINE_AMD64,
+        AgentArch::Aarch64 => machine == PE_MACHINE_I386 || machine == PE_MACHINE_ARM64,
+    }
+}
+
 #[cfg(any(target_os = "windows", test))]
 fn bounded_registry_string(value: String) -> Option<String> {
     let trimmed = value.trim().trim_matches('"').trim();
@@ -280,6 +305,19 @@ fn display_icon_path(value: &str) -> Option<PathBuf> {
         trimmed
     };
     bounded_registry_string(raw.to_string()).map(PathBuf::from)
+}
+
+/// Parent of a registered file path. ARP `UninstallString` / `DisplayIcon` are
+/// NSIS `$INSTDIR\file` evidence and must never be executed.
+#[cfg(target_os = "windows")]
+fn install_dir_from_registered_path_value(value: &str) -> Option<PathBuf> {
+    let path = display_icon_path(value)?;
+    let parent = path.parent()?;
+    if parent.as_os_str().is_empty() || !parent.is_absolute() {
+        None
+    } else {
+        Some(parent.to_path_buf())
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -320,15 +358,15 @@ mod native {
                 FILE_READ_ATTRIBUTES, FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE,
                 OPEN_EXISTING,
             },
-            System::SystemInformation::{IMAGE_FILE_MACHINE_AMD64, IMAGE_FILE_MACHINE_ARM64},
         },
     };
     use winreg::RegKey;
 
     use super::{
-        bounded_registry_string, display_icon_path, normalize_hints, InspectedWindowsExecutable,
-        WindowsEvidenceSource, WindowsExecutableInspector, WindowsInspectionFailure,
-        WindowsInstallationDiscovery, WindowsPathHint, WindowsProductPolicy, MAX_REGISTRY_CHILDREN,
+        bounded_registry_string, display_icon_path, install_dir_from_registered_path_value,
+        normalize_hints, InspectedWindowsExecutable, WindowsEvidenceSource,
+        WindowsExecutableInspector, WindowsInspectionFailure, WindowsInstallationDiscovery,
+        WindowsPathHint, WindowsProductPolicy, MAX_REGISTRY_CHILDREN,
     };
     use crate::{
         agent_install::{desktop::DesktopProduct, sources::AgentArch, types::InstallationScope},
@@ -348,14 +386,16 @@ mod native {
         let mut hints = known_path_hints(product, roots);
         let (registry_hints, registry_complete) = registry_hints(product);
         hints.extend(registry_hints);
-        if !revalidate_interactive_user_context(context) {
+        let context_ok = revalidate_interactive_user_context(context);
+        if !context_ok {
             return WindowsInstallationDiscovery {
                 installations: Vec::new(),
                 complete: false,
             };
         }
+        let installations = normalize_hints(product, roots, hints, &NativeInspector);
         WindowsInstallationDiscovery {
-            installations: normalize_hints(product, roots, hints, &NativeInspector),
+            installations,
             complete: registry_complete,
         }
     }
@@ -443,6 +483,9 @@ mod native {
         match parent {
             Ok(parent) => collect(&parent),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => true,
+            Err(error) if crate::windows_runtime::is_rejected_symbolic_link_component(&error) => {
+                true
+            }
             Err(_) => false,
         }
     }
@@ -523,53 +566,99 @@ mod native {
             let Some(display_name) = bounded_registry_string(display_name) else {
                 continue;
             };
-            if !product
+            let matched = product
                 .windows_product_names
                 .iter()
-                .any(|expected| display_name.eq_ignore_ascii_case(expected))
-            {
+                .any(|expected| display_name.eq_ignore_ascii_case(expected));
+            if !matched {
                 continue;
             }
             let version = key
                 .get_value::<String, _>("DisplayVersion")
                 .ok()
                 .and_then(bounded_registry_string);
-            if let Ok(icon) = key.get_value::<String, _>("DisplayIcon") {
-                if let Some(path) = display_icon_path(&icon).and_then(validate_executable_path) {
+            let icon_raw = key.get_value::<String, _>("DisplayIcon").ok();
+            let location_raw = key.get_value::<String, _>("InstallLocation").ok();
+            let uninstall_raw = key.get_value::<String, _>("UninstallString").ok();
+            let icon_path = icon_raw
+                .as_deref()
+                .and_then(display_icon_path)
+                .and_then(validate_executable_path);
+            if let Some(path) = icon_path.clone() {
+                hints.push(WindowsPathHint {
+                    path,
+                    source: WindowsEvidenceSource::Uninstall,
+                    registration_scope: scope,
+                    registration_version: version.clone(),
+                });
+            }
+            if let Some(location) = location_raw
+                .clone()
+                .and_then(bounded_registry_string)
+                .map(PathBuf::from)
+            {
+                push_uninstall_location_hints(
+                    &location,
+                    product,
+                    scope,
+                    version.as_deref(),
+                    true,
+                    hints,
+                );
+            }
+            let mut derived_dirs = Vec::new();
+            for value in [uninstall_raw.as_deref(), icon_raw.as_deref()]
+                .into_iter()
+                .flatten()
+            {
+                if let Some(dir) = install_dir_from_registered_path_value(value) {
+                    if !derived_dirs.contains(&dir) {
+                        derived_dirs.push(dir);
+                    }
+                }
+            }
+            for location in &derived_dirs {
+                push_uninstall_location_hints(
+                    location,
+                    product,
+                    scope,
+                    version.as_deref(),
+                    false,
+                    hints,
+                );
+            }
+        }
+        complete
+    }
+
+    fn push_uninstall_location_hints(
+        location: &Path,
+        product: &DesktopProduct,
+        scope: InstallationScope,
+        version: Option<&str>,
+        include_closed_relative: bool,
+        hints: &mut Vec<WindowsPathHint>,
+    ) {
+        for relative in product.windows_relative_exes {
+            let relative = Path::new(relative);
+            let mut candidates = Vec::new();
+            if let Some(name) = relative.file_name() {
+                candidates.push(location.join(name));
+            }
+            if include_closed_relative {
+                candidates.push(location.join(relative));
+            }
+            for candidate in candidates {
+                if let Some(path) = validate_executable_path(candidate) {
                     hints.push(WindowsPathHint {
                         path,
                         source: WindowsEvidenceSource::Uninstall,
                         registration_scope: scope,
-                        registration_version: version.clone(),
+                        registration_version: version.map(str::to_string),
                     });
                 }
             }
-            if let Ok(location) = key.get_value::<String, _>("InstallLocation") {
-                let Some(location) = bounded_registry_string(location).map(PathBuf::from) else {
-                    continue;
-                };
-                for relative in product.windows_relative_exes {
-                    let relative = Path::new(relative);
-                    for candidate in [
-                        relative.file_name().map(|name| location.join(name)),
-                        Some(location.join(relative)),
-                    ]
-                    .into_iter()
-                    .flatten()
-                    {
-                        if let Some(path) = validate_executable_path(candidate) {
-                            hints.push(WindowsPathHint {
-                                path,
-                                source: WindowsEvidenceSource::Uninstall,
-                                registration_scope: scope,
-                                registration_version: version.clone(),
-                            });
-                        }
-                    }
-                }
-            }
         }
-        complete
     }
 
     fn executable_registry_path(value: &str) -> Option<PathBuf> {
@@ -599,7 +688,7 @@ mod native {
             path: &Path,
             policy: &WindowsProductPolicy,
         ) -> Result<InspectedWindowsExecutable, WindowsInspectionFailure> {
-            inspect_executable(path, policy)
+            inspect_installed_application(path, policy)
         }
     }
 
@@ -617,9 +706,6 @@ mod native {
             return Err(WindowsInspectionFailure::ProductIdentityMismatch);
         }
         let machine = pe_machine(path)?;
-        if machine != IMAGE_FILE_MACHINE_AMD64.0 && machine != IMAGE_FILE_MACHINE_ARM64.0 {
-            return Err(WindowsInspectionFailure::ArchitectureUnsupported);
-        }
         let wide = wide_path(path)?;
         if !verify_authenticode(&wide) {
             return Err(WindowsInspectionFailure::SignatureInvalid);
@@ -646,17 +732,24 @@ mod native {
         })
     }
 
+    fn inspect_installed_application(
+        path: &Path,
+        policy: &WindowsProductPolicy,
+    ) -> Result<InspectedWindowsExecutable, WindowsInspectionFailure> {
+        let inspection = inspect_executable(path, policy)?;
+        if !super::installed_application_machine_admitted(inspection.machine) {
+            return Err(WindowsInspectionFailure::ArchitectureUnsupported);
+        }
+        Ok(inspection)
+    }
+
     pub(super) fn verify_installer(
         path: &Path,
         policy: &WindowsProductPolicy,
         architecture: AgentArch,
     ) -> Result<InspectedWindowsExecutable, WindowsInspectionFailure> {
         let inspection = inspect_executable(path, policy)?;
-        let expected_machine = match architecture {
-            AgentArch::X86_64 => IMAGE_FILE_MACHINE_AMD64.0,
-            AgentArch::Aarch64 => IMAGE_FILE_MACHINE_ARM64.0,
-        };
-        if inspection.machine != expected_machine {
+        if !super::vendor_installer_machine_admitted(architecture, inspection.machine) {
             return Err(WindowsInspectionFailure::ArchitectureUnsupported);
         }
         Ok(inspection)
@@ -1183,6 +1276,29 @@ mod tests {
         assert!(display_icon_path("\"C:\\Apps\\WorkBuddy.exe -flag").is_none());
     }
 
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn nsis_uninstall_string_parent_is_install_dir() {
+        assert_eq!(
+            install_dir_from_registered_path_value(
+                r#""C:\Program Files\QoderWork CN\QoderWork CN\Uninstall QoderWork CN.exe" /allusers"#
+            ),
+            Some(PathBuf::from(r"C:\Program Files\QoderWork CN\QoderWork CN"))
+        );
+        assert_eq!(
+            install_dir_from_registered_path_value(
+                r"C:\Program Files\QoderWork CN\QoderWork CN\uninstallerIcon.ico"
+            ),
+            Some(PathBuf::from(r"C:\Program Files\QoderWork CN\QoderWork CN"))
+        );
+        assert_eq!(
+            install_dir_from_registered_path_value(
+                r#""C:\Program Files\WorkBuddy\Uninstall WorkBuddy.exe" /allusers"#
+            ),
+            Some(PathBuf::from(r"C:\Program Files\WorkBuddy"))
+        );
+    }
+
     #[test]
     fn current_products_have_reviewed_signer_subjects() {
         for agent_id in [
@@ -1199,5 +1315,36 @@ mod tests {
                 assert!(policy.product_names.contains(&"TraeWork CN"));
             }
         }
+    }
+
+    #[test]
+    fn nsis_pe32_stub_is_admitted_only_as_vendor_installer() {
+        assert!(vendor_installer_machine_admitted(
+            AgentArch::X86_64,
+            PE_MACHINE_I386
+        ));
+        assert!(vendor_installer_machine_admitted(
+            AgentArch::X86_64,
+            PE_MACHINE_AMD64
+        ));
+        assert!(!vendor_installer_machine_admitted(
+            AgentArch::X86_64,
+            PE_MACHINE_ARM64
+        ));
+        assert!(vendor_installer_machine_admitted(
+            AgentArch::Aarch64,
+            PE_MACHINE_I386
+        ));
+        assert!(vendor_installer_machine_admitted(
+            AgentArch::Aarch64,
+            PE_MACHINE_ARM64
+        ));
+        assert!(!vendor_installer_machine_admitted(
+            AgentArch::Aarch64,
+            PE_MACHINE_AMD64
+        ));
+        assert!(!installed_application_machine_admitted(PE_MACHINE_I386));
+        assert!(installed_application_machine_admitted(PE_MACHINE_AMD64));
+        assert!(installed_application_machine_admitted(PE_MACHINE_ARM64));
     }
 }

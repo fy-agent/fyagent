@@ -417,7 +417,10 @@ describe("FyAgent V2 architecture boundary", () => {
   });
 
   it("loads exactly six primary product pages through literal dynamic imports", () => {
-    const router = fs.readFileSync(path.join(v2Root, "app/router.tsx"), "utf8");
+    const pages = fs.readFileSync(
+      path.join(v2Root, "app/primaryPages.tsx"),
+      "utf8",
+    );
     const routeModules = [
       "agents",
       "models",
@@ -428,14 +431,14 @@ describe("FyAgent V2 architecture boundary", () => {
     ];
 
     for (const route of routeModules) {
-      expect(router).toContain(`import("../pages/${route}/Page")`);
-      expect(router).not.toMatch(
+      expect(pages).toContain(`import("../pages/${route}/Page")`);
+      expect(pages).not.toMatch(
         new RegExp(`^import[^\\n]+pages/${route}/Page`, "mu"),
       );
     }
   });
 
-  it("keeps the primary outlet stateless and removes unimplemented top-bar tools", () => {
+  it("keeps visited primary routes behind PersistentSurface without render-phase state", () => {
     const outlet = fs.readFileSync(
       path.join(v2Root, "app/PersistentPrimaryOutlet.tsx"),
       "utf8",
@@ -446,11 +449,17 @@ describe("FyAgent V2 architecture boundary", () => {
     );
 
     expect(outlet).toContain("<Outlet />");
-    expect(outlet).not.toMatch(/useState|useEffect|visited|PersistentSurface/u);
+    expect(outlet).toContain("PersistentSurface");
+    expect(outlet).toContain("useState");
+    expect(outlet).not.toMatch(/\buseEffect\b/);
+    expect(outlet).not.toMatch(/\bsetVisited\b/);
     expect(topBar).not.toContain("ToolCluster");
     expect(
       fs.existsSync(path.join(v2Root, "widgets/app-shell/ToolCluster.tsx")),
     ).toBe(false);
+    expect(fs.readFileSync(path.join(v2Root, "main.tsx"), "utf8")).toContain(
+      "prefetchPrimaryRoutes",
+    );
   });
 
   it("does not create a second currentView state source", () => {

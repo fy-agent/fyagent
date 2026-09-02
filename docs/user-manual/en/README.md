@@ -8,7 +8,7 @@ This manual is organized around real tasks. Follow Chapter 1 if you are new, or 
 
 - FyAgent is not installed yet: read [Installation](./1-getting-started/1.2-installation.md).
 - You want one provider working first: follow the [Quick Start](./1-getting-started/1.4-quickstart.md).
-- You need to install or update tools such as Claude Code: use [Tool installation](./2-agent-tools/2.1-install.md) and [Conflict diagnostics](./2-agent-tools/2.2-update-diagnose.md).
+- You need to check CLI versions or install **Grok Build**: use [Tool installation](./2-agent-tools/2.1-install.md) and [Conflict diagnostics](./2-agent-tools/2.2-update-diagnose.md). Claude Desktop, Codex Desktop, and OpenCode Desktop are managed from the Agent page.
 - You want to manage endpoints and models: start with [Add Provider](./3-providers/3.1-add.md).
 - You need MCP, Prompts, or Skills: go to [Extensions](#4-extensions).
 - You need to write a WorkBuddy model list: read [WorkBuddy configuration](./4-extensions/4.6-workbuddy.md).

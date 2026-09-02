@@ -17,11 +17,13 @@ import {
 import {
   AGENT_LIFECYCLE_INCOMPLETE_COPY,
   AGENT_LIFECYCLE_SUCCEEDED_COPY,
+  AGENT_LIFECYCLE_VENDOR_HANDOFF_COPY,
   AGENT_LIFECYCLE_TIMEOUT_COPY,
   deriveAgentLifecyclePrimaryAction,
   isTerminalAgentJobStage,
   jobStageCopy,
   reasonCopy,
+  bindLiveInventoryTarget,
   useAgentLifecycleAction,
 } from "@/v2/pages/agents/useAgentLifecycleAction";
 
@@ -80,14 +82,45 @@ function actionResult(
   };
 }
 
-function installationInventory(): AgentInstallationInventory {
+function installationInventory(
+  agentId: AgentInstallReadiness["agentId"] = "qoderwork",
+): AgentInstallationInventory {
   return {
     contractVersion: 1,
     inventoryId: `i1:${"a".repeat(32)}`,
-    agentId: "qoderwork",
+    agentId,
     state: "not_observed",
-    candidates: [],
-    freshDestinations: [],
+    candidates: [
+      {
+        candidateId: `c1:${"b".repeat(32)}`,
+        candidateRevision: `r1:${"c".repeat(64)}`,
+        agentId,
+        scope: "current_user",
+        owner: "unknown",
+        packageKind: "unknown",
+        localVersion: "1.0.0",
+        launchEligible: true,
+        installEligible: false,
+        updateEligible: true,
+        reasonCodes: [],
+        evidenceCodes: ["path_lookup"],
+        locationLabel: "测试目标",
+      },
+    ],
+    freshDestinations: [
+      {
+        destinationId: `d1:${"b".repeat(32)}`,
+        destinationRevision: `r1:${"c".repeat(64)}`,
+        scope: "current_user",
+        owner: "unknown",
+        packageKind: "exe",
+        requiresElevation: false,
+        writable: true,
+        eligible: true,
+        reasonCodes: [],
+        locationLabel: "测试目标",
+      },
+    ],
     reasonCodes: [],
   };
 }
@@ -112,7 +145,7 @@ function createPort(
 ): AgentInstallReadinessPort {
   return {
     get: vi.fn(async () => readiness()),
-    getInventory: vi.fn(async () => installationInventory()),
+    getInventory: vi.fn(async (agentId) => installationInventory(agentId)),
     startAction: vi.fn(),
     cancelAction: vi.fn(),
     getActionJob: vi.fn(),
@@ -124,6 +157,7 @@ describe("deriveAgentLifecyclePrimaryAction", () => {
   it("offers install only when scan confirmed not_installed and backend allows it", () => {
     expect(
       deriveAgentLifecyclePrimaryAction(
+        "qoderwork",
         readiness({
           installState: "not_installed",
           allowedActions: ["install"],
@@ -132,6 +166,7 @@ describe("deriveAgentLifecyclePrimaryAction", () => {
     ).toBe("install");
     expect(
       deriveAgentLifecyclePrimaryAction(
+        "qoderwork",
         readiness({
           installState: "not_installed",
           allowedActions: ["launch"],
@@ -140,11 +175,13 @@ describe("deriveAgentLifecyclePrimaryAction", () => {
     ).toBeNull();
     expect(
       deriveAgentLifecyclePrimaryAction(
+        "qoderwork",
         readiness({ installState: "unknown", allowedActions: ["install"] }),
       ),
     ).toBeNull();
     expect(
       deriveAgentLifecyclePrimaryAction(
+        "qoderwork",
         readiness({
           installState: "unavailable",
           allowedActions: ["install"],
@@ -153,10 +190,12 @@ describe("deriveAgentLifecyclePrimaryAction", () => {
     ).toBeNull();
   });
 
-  it("offers update only when installed, update_available, and backend allows it", () => {
+  it("offers update only when the product allows it, installed, update_available, and backend allows it", () => {
     expect(
       deriveAgentLifecyclePrimaryAction(
+        "opencode",
         readiness({
+          agentId: "opencode",
           installState: "installed",
           updateState: "update_available",
           allowedActions: ["update", "launch"],
@@ -165,7 +204,9 @@ describe("deriveAgentLifecyclePrimaryAction", () => {
     ).toBe("update");
     expect(
       deriveAgentLifecyclePrimaryAction(
+        "claude-code",
         readiness({
+          agentId: "claude-code",
           installState: "installed_not_runnable",
           updateState: "update_available",
           allowedActions: ["update"],
@@ -174,7 +215,9 @@ describe("deriveAgentLifecyclePrimaryAction", () => {
     ).toBe("update");
     expect(
       deriveAgentLifecyclePrimaryAction(
+        "opencode",
         readiness({
+          agentId: "opencode",
           installState: "installed",
           updateState: "up_to_date",
           allowedActions: ["install", "launch"],
@@ -183,10 +226,33 @@ describe("deriveAgentLifecyclePrimaryAction", () => {
     ).toBeNull();
     expect(
       deriveAgentLifecyclePrimaryAction(
+        "opencode",
         readiness({
+          agentId: "opencode",
           installState: "installed",
           updateState: "update_available",
           allowedActions: ["launch"],
+        }),
+      ),
+    ).toBeNull();
+    expect(
+      deriveAgentLifecyclePrimaryAction(
+        "qoderwork",
+        readiness({
+          installState: "installed",
+          updateState: "update_available",
+          allowedActions: ["update", "launch"],
+        }),
+      ),
+    ).toBeNull();
+    expect(
+      deriveAgentLifecyclePrimaryAction(
+        "workbuddy",
+        readiness({
+          agentId: "workbuddy",
+          installState: "installed",
+          updateState: "update_available",
+          allowedActions: ["update"],
         }),
       ),
     ).toBeNull();
@@ -197,7 +263,9 @@ describe("macOS lifecycle state copy", () => {
   it("distinguishes staging, authorization, restored rollback, and unknown recovery", () => {
     expect(jobStageCopy("staging")).toBe("正在准备安装包");
     expect(reasonCopy("authorization_required")).toContain("不可用于一键安装");
-    expect(reasonCopy("authorization_required")).toContain("不会改装到其他目录");
+    expect(reasonCopy("authorization_required")).toContain(
+      "不会改装到其他目录",
+    );
     expect(reasonCopy("rollback_restored")).toContain("已恢复之前的应用");
     expect(reasonCopy("recovery_required")).toContain("停止重试");
   });
@@ -245,16 +313,43 @@ describe("macOS lifecycle state copy", () => {
 
 describe("Windows external-installer state copy", () => {
   it("distinguishes launch, user interaction, incomplete observation, and terminal reasons", () => {
-    expect(jobStageCopy("launching_installer")).toContain("打开 Windows 安装向导");
-    expect(jobStageCopy("awaiting_user")).toContain("请在 Windows 中完成安装");
+    expect(jobStageCopy("launching_installer")).toContain("官方安装窗口");
+    expect(jobStageCopy("awaiting_user")).toContain(
+      "请在弹出的官方安装窗口中完成安装",
+    );
     expect(jobStageCopy("incomplete")).toBe("安装结果待检查");
     expect(reasonCopy("installer_user_cancelled")).toContain("取消");
     expect(reasonCopy("installer_artifact_unavailable")).toContain("磁盘空间");
-    expect(reasonCopy("installer_process_unobservable")).toContain("无法读取其进度");
+    expect(reasonCopy("installer_process_unobservable")).toContain(
+      "无法读取其进度",
+    );
     expect(reasonCopy("installer_timed_out")).toContain("完成或关闭向导");
     expect(reasonCopy("installer_exited_nonzero")).toContain("未能完成");
     expect(isTerminalAgentJobStage("incomplete")).toBe(true);
     expect(isTerminalAgentJobStage("awaiting_user")).toBe(false);
+  });
+});
+
+describe("bindLiveInventoryTarget", () => {
+  it("prefers the unique eligible destination over a stale triplet", () => {
+    const stale = lifecycleTarget();
+    const live = installationInventory("qoderwork");
+    live.inventoryId = `i1:${"f".repeat(32)}`;
+    live.freshDestinations[0] = {
+      ...live.freshDestinations[0],
+      destinationId: `d1:${"e".repeat(32)}`,
+      destinationRevision: `r1:${"d".repeat(64)}`,
+    };
+    expect(bindLiveInventoryTarget(live, "install", stale)).toEqual({
+      kind: "fresh_destination",
+      inventoryId: `i1:${"f".repeat(32)}`,
+      targetId: `d1:${"e".repeat(32)}`,
+      expectedTargetRevision: `r1:${"d".repeat(64)}`,
+      label: "测试目标",
+      scope: "current_user",
+      eligibleActions: ["install"],
+      reasonCodes: [],
+    });
   });
 });
 
@@ -312,6 +407,41 @@ describe("useAgentLifecycleAction", () => {
     expect(result.current.stage).toBeNull();
     expect(result.current.percent).toBeNull();
     expect(result.current.primaryAction).toBe("install");
+  });
+
+  it("uses vendor-window copy after launching the official installer", async () => {
+    const stages: AgentActionJobStage[] = [
+      "launching_installer",
+      "awaiting_user",
+      "succeeded",
+    ];
+    const after = readiness();
+    const port = createPort({
+      get: vi.fn(async () => after),
+      startAction: vi.fn(async () =>
+        actionResult({ stage: "launching_installer" }),
+      ),
+      getActionJob: vi.fn(async () =>
+        jobSnapshot(stages.shift() ?? "succeeded"),
+      ),
+    });
+    const { result } = renderHook(() =>
+      useAgentLifecycleAction({
+        agentId: "qoderwork",
+        port,
+        readiness: readiness(),
+        target: lifecycleTarget(),
+        pollIntervalMs: 5,
+      }),
+    );
+
+    await act(async () => {
+      await result.current.run("install");
+    });
+
+    expect(result.current.success).toBe(AGENT_LIFECYCLE_VENDOR_HANDOFF_COPY);
+    expect(result.current.error).toBeNull();
+    expect(result.current.busy).toBe(false);
   });
 
   it("does not set an optimistic installed flag before authoritative get", async () => {
@@ -401,9 +531,7 @@ describe("useAgentLifecycleAction", () => {
       await result.current.run("install");
     });
 
-    expect(result.current.error).toBe(
-      "另一个安装任务正在进行，请完成后再试。",
-    );
+    expect(result.current.error).toBe("另一个安装任务正在进行，请完成后再试。");
     expect(result.current.reasonCode).toBe("operation_conflict");
     expect(result.current.success).toBeNull();
     expect(port.get).toHaveBeenCalledWith("qoderwork");
@@ -519,6 +647,7 @@ describe("useAgentLifecycleAction", () => {
 
   it("runs update when that is the derived primary action", async () => {
     const installed = readiness({
+      agentId: "opencode",
       installState: "installed",
       updateState: "update_available",
       allowedActions: ["update"],
@@ -526,12 +655,17 @@ describe("useAgentLifecycleAction", () => {
     const port = createPort({
       get: vi.fn(async () => installed),
       startAction: vi.fn(async () =>
-        actionResult({ action: "update", jobId: null, stage: "succeeded" }),
+        actionResult({
+          agentId: "opencode",
+          action: "update",
+          jobId: null,
+          stage: "succeeded",
+        }),
       ),
     });
     const { result } = renderHook(() =>
       useAgentLifecycleAction({
-        agentId: "qoderwork",
+        agentId: "opencode",
         port,
         readiness: installed,
         target: lifecycleTarget("update"),
@@ -543,7 +677,7 @@ describe("useAgentLifecycleAction", () => {
       await result.current.runPrimary();
     });
     expect(port.startAction).toHaveBeenCalledWith({
-      agentId: "qoderwork",
+      agentId: "opencode",
       action: "update",
       expectedReleaseId: installed.releaseId,
       inventoryId: `i1:${"a".repeat(32)}`,
@@ -790,7 +924,7 @@ describe("useAgentLifecycleAction", () => {
     expect(result.current.success).toBe(AGENT_LIFECYCLE_SUCCEEDED_COPY);
   });
 
-  it("runs a CLI install without an inventory target", async () => {
+  it("binds a live CLI destination before install", async () => {
     const current = readiness({
       agentId: "grokbuild",
       sourceKind: "cli_tooling",
@@ -819,10 +953,53 @@ describe("useAgentLifecycleAction", () => {
       await result.current.run("install");
     });
 
+    expect(port.getInventory).toHaveBeenCalledWith("grokbuild", undefined);
     expect(port.startAction).toHaveBeenCalledWith({
       agentId: "grokbuild",
       action: "install",
       expectedReleaseId: current.releaseId,
+      inventoryId: `i1:${"a".repeat(32)}`,
+      targetId: `d1:${"b".repeat(32)}`,
+      expectedTargetRevision: `r1:${"c".repeat(64)}`,
+    });
+    expect(result.current.success).toBe(AGENT_LIFECYCLE_SUCCEEDED_COPY);
+  });
+
+  it("replaces a stale inventory triplet before startAction", async () => {
+    const live = installationInventory("qoderwork");
+    live.inventoryId = `i1:${"f".repeat(32)}`;
+    live.freshDestinations[0] = {
+      ...live.freshDestinations[0],
+      destinationId: `d1:${"e".repeat(32)}`,
+      destinationRevision: `r1:${"d".repeat(64)}`,
+    };
+    const port = createPort({
+      get: vi.fn(async () => readiness()),
+      getInventory: vi.fn(async () => live),
+      startAction: vi.fn(async () =>
+        actionResult({ jobId: null, stage: "succeeded" }),
+      ),
+    });
+    const { result } = renderHook(() =>
+      useAgentLifecycleAction({
+        agentId: "qoderwork",
+        port,
+        readiness: readiness(),
+        target: lifecycleTarget(),
+      }),
+    );
+
+    await act(async () => {
+      await result.current.run("install");
+    });
+
+    expect(port.startAction).toHaveBeenCalledWith({
+      agentId: "qoderwork",
+      action: "install",
+      expectedReleaseId: readiness().releaseId,
+      inventoryId: `i1:${"f".repeat(32)}`,
+      targetId: `d1:${"e".repeat(32)}`,
+      expectedTargetRevision: `r1:${"d".repeat(64)}`,
     });
     expect(result.current.success).toBe(AGENT_LIFECYCLE_SUCCEEDED_COPY);
   });

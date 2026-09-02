@@ -4,6 +4,7 @@ import { MemoryRouter, useLocation } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
 import { AgentsPage } from "@/v2/pages/agents/Page";
+import { AGENT_LIFECYCLE_VENDOR_HANDOFF_COPY } from "@/v2/pages/agents/useAgentLifecycleAction";
 import {
   AGENT_ACTION_CONTRACT_VERSION,
   AGENT_INSTALL_READINESS_CONTRACT_VERSION,
@@ -741,11 +742,93 @@ describe("V3 Agent directory and configuration shell", () => {
     expect(configureButton("QoderWork CN")).toBeDisabled();
   });
 
-  it("offers 一键更新 only when installed, update_available, and backend allows it", async () => {
+  it("keeps official-installer window copy on the directory card after Windows handoff", async () => {
+    const user = userEvent.setup();
+    const ports = configuredPorts();
+    const postActionRead = deferred<AgentInstallReadiness>();
+    let scanComplete = false;
+    ports.agentInstallReadiness.get = vi.fn(async (agentId: AgentCatalogId) => {
+      if (scanComplete && agentId === "qoderwork")
+        return postActionRead.promise;
+      if (agentId === "qoderwork") {
+        return readiness("qoderwork", "not_installed", {
+          allowedActions: ["install"],
+          releaseId: `v1:${"c".repeat(64)}`,
+        });
+      }
+      return readiness(agentId, "installed");
+    });
+    ports.agentInstallReadiness.startAction = vi.fn(
+      async (): Promise<AgentActionResult> => ({
+        contractVersion: AGENT_ACTION_CONTRACT_VERSION,
+        agentId: "qoderwork",
+        action: "install",
+        jobId: "job-vendor",
+        stage: "launching_installer",
+        reasonCode: null,
+      }),
+    );
+    ports.agentInstallReadiness.getActionJob = vi.fn(
+      async (): Promise<AgentActionJobSnapshot> => ({
+        contractVersion: AGENT_ACTION_CONTRACT_VERSION,
+        jobId: "job-vendor",
+        agentId: "qoderwork",
+        action: "install",
+        stage: "succeeded",
+        cancellable: false,
+        reasonCode: null,
+        transfer: null,
+      }),
+    );
+    renderPage(ports);
+    expect(
+      await screen.findByRole("button", { name: "重新扫描" }),
+    ).toBeEnabled();
+    scanComplete = true;
+
+    await user.click(
+      within(directoryArticle("QoderWork CN")).getByRole("button", {
+        name: "一键安装",
+      }),
+    );
+    expect(
+      await within(directoryArticle("QoderWork CN")).findByText(
+        "正在更新安装状态",
+      ),
+    ).toBeVisible();
+
+    postActionRead.resolve(
+      readiness("qoderwork", "not_installed", { allowedActions: ["install"] }),
+    );
+    expect(
+      await within(directoryArticle("QoderWork CN")).findByText(
+        AGENT_LIFECYCLE_VENDOR_HANDOFF_COPY,
+      ),
+    ).toBeVisible();
+    expect(
+      within(directoryArticle("QoderWork CN")).getByRole("button", {
+        name: "一键安装",
+      }),
+    ).toBeVisible();
+  });
+
+  it("offers 一键更新 only when the product allows it, installed, update_available, and backend allows it", async () => {
     const ports = configuredPorts();
     ports.agentInstallReadiness.get = vi.fn(async (agentId: AgentCatalogId) => {
+      if (agentId === "opencode") {
+        return readiness("opencode", "installed", {
+          updateState: "update_available",
+          allowedActions: ["update"],
+        });
+      }
       if (agentId === "workbuddy") {
         return readiness("workbuddy", "installed", {
+          updateState: "update_available",
+          allowedActions: ["update"],
+        });
+      }
+      if (agentId === "trae-work") {
+        return readiness("trae-work", "installed", {
           updateState: "update_available",
           allowedActions: ["update"],
         });
@@ -753,7 +836,7 @@ describe("V3 Agent directory and configuration shell", () => {
       if (agentId === "qoderwork") {
         return readiness("qoderwork", "installed", {
           updateState: "update_available",
-          allowedActions: [],
+          allowedActions: ["update"],
         });
       }
       return readiness(agentId, "installed");
@@ -764,16 +847,28 @@ describe("V3 Agent directory and configuration shell", () => {
       await screen.findByRole("button", { name: "重新扫描" }),
     ).toBeEnabled();
     expect(
-      within(directoryArticle("WorkBuddy")).getByRole("button", {
+      within(directoryArticle("OpenCode")).getByRole("button", {
         name: "一键更新",
       }),
     ).toBeVisible();
-    expect(configureButton("WorkBuddy")).toBeEnabled();
+    expect(configureButton("OpenCode")).toBeEnabled();
+    expect(
+      within(directoryArticle("WorkBuddy")).queryByRole("button", {
+        name: "一键更新",
+      }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(directoryArticle("TRAE Work CN")).queryByRole("button", {
+        name: "一键更新",
+      }),
+    ).not.toBeInTheDocument();
     expect(
       within(directoryArticle("QoderWork CN")).queryByRole("button", {
         name: "一键更新",
       }),
     ).not.toBeInTheDocument();
+    expect(configureButton("WorkBuddy")).toBeEnabled();
+    expect(configureButton("TRAE Work CN")).toBeEnabled();
     expect(configureButton("QoderWork CN")).toBeEnabled();
   });
 
@@ -872,8 +967,7 @@ describe("V3 Agent directory and configuration shell", () => {
     const ports = configuredPorts();
     ports.agentInstallReadiness.get = vi.fn(async (agentId) =>
       readiness(agentId, "installed", {
-        sourceKind:
-          agentId === "grokbuild" ? "cli_tooling" : "managed_desktop",
+        sourceKind: agentId === "grokbuild" ? "cli_tooling" : "managed_desktop",
         allowedActions:
           agentId === "opencode" ? ["launch"] : ["update", "launch"],
       }),
@@ -902,7 +996,9 @@ describe("V3 Agent directory and configuration shell", () => {
       name: "Codex 配置",
     });
     expect(
-      within(configuration).getByRole("region", { name: "Codex Desktop 安装器" }),
+      within(configuration).getByRole("region", {
+        name: "Codex Desktop 安装器",
+      }),
     ).toBeVisible();
     expect(
       within(configuration).queryByRole("region", { name: "安装与更新" }),

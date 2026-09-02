@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Download,
-  Copy,
   Info,
   Loader2,
   RefreshCw,
@@ -9,7 +8,6 @@ import {
   CheckCircle2,
   AlertCircle,
   ArrowUpCircle,
-  ChevronDown,
   Stethoscope,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -28,7 +26,6 @@ import appIcon from "@/assets/icons/app-icon.png";
 import { APP_ICON_MAP } from "@/config/appConfig";
 import type { AppId } from "@/lib/api/types";
 import { extractErrorMessage } from "@/utils/errorUtils";
-import { isMac, isWindows } from "@/lib/platform";
 import { isUpdateAvailable } from "@/lib/version";
 import { ToolUpgradeConfirmDialog } from "./ToolUpgradeConfirmDialog";
 import { ToolInstallRow } from "./ToolInstallRow";
@@ -51,60 +48,7 @@ type ToolName = (typeof TOOL_NAMES)[number];
 type ToolLifecycleAction = "install" | "update" | "install_official_npm";
 
 const isLifecycleWritableTool = (toolName: ToolName): boolean =>
-  toolName !== "codex";
-
-const LIFECYCLE_TOOLS = TOOL_NAMES.filter(isLifecycleWritableTool);
-
-const macosScriptInstallCommand = (url: string) =>
-  `bash -c 'tmp=$(mktemp) && curl -fsSL ${url} -o $tmp && bash $tmp; status=$?; rm -f $tmp; exit $status'`;
-
-const HERMES_WINDOWS_INSTALL_SCRIPT =
-  "irm https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.ps1 | iex";
-
-const powershellEncodedCommand = (script: string): string => {
-  let binary = "";
-  for (let i = 0; i < script.length; i += 1) {
-    const code = script.charCodeAt(i);
-    binary += String.fromCharCode(code & 0xff, code >> 8);
-  }
-  return btoa(binary);
-};
-
-const HERMES_WINDOWS_INSTALL_COMMAND = `powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand ${powershellEncodedCommand(
-  HERMES_WINDOWS_INSTALL_SCRIPT,
-)}`;
-
-const MACOS_ONE_CLICK_INSTALL_COMMANDS = `# Claude Code
-${macosScriptInstallCommand("https://claude.ai/install.sh")} || npm i -g @anthropic-ai/claude-code@latest
-# Gemini CLI
-npm i -g @google/gemini-cli@latest
-# Grok Build
-npm i -g @xai-official/grok@latest
-# OpenCode
-${macosScriptInstallCommand("https://opencode.ai/install")} || npm i -g opencode-ai@latest
-# OpenClaw
-npm i -g openclaw@latest
-# Hermes
-${macosScriptInstallCommand("https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh")}`;
-
-const WINDOWS_ONE_CLICK_INSTALL_COMMANDS = `# Claude Code
-npm i -g @anthropic-ai/claude-code@latest
-# Gemini CLI
-npm i -g @google/gemini-cli@latest
-# Grok Build
-npm i -g @xai-official/grok@latest
-# OpenCode
-npm i -g opencode-ai@latest
-# OpenClaw
-npm i -g openclaw@latest
-# Hermes
-${HERMES_WINDOWS_INSTALL_COMMAND}`;
-
-const ONE_CLICK_INSTALL_COMMANDS = isWindows()
-  ? WINDOWS_ONE_CLICK_INSTALL_COMMANDS
-  : isMac()
-    ? MACOS_ONE_CLICK_INSTALL_COMMANDS
-    : null;
+  toolName === "grok";
 
 const TOOL_DISPLAY_NAMES: Record<ToolName, string> = {
   claude: "Claude Code",
@@ -185,7 +129,6 @@ export function AboutSection({
   const [batchAction, setBatchAction] = useState<ToolLifecycleAction | null>(
     null,
   );
-  const [showInstallCommands, setShowInstallCommands] = useState(false);
 
   const [loadingTools, setLoadingTools] = useState<Record<string, boolean>>({});
   // 多处安装冲突诊断结果：按工具存储，有冲突的工具会在其卡片下方展示。
@@ -203,7 +146,7 @@ export function AboutSection({
   // 升级 preflight(probe 阶段)的 in-flight 工具集合。
   // probeToolInstallations 是个 1-3 秒级别的跨进程探测(对每个工具跑 --version + canonicalize),
   // 在它返回之前 toolActions / batchAction 都还没被置位 → 按钮不会 disabled → 用户快速双击
-  // 会并发开两轮 probe,各自再触发 executeRun(并发的 `npm i -g` / 官方 installer,写冲突)。
+  // 会并发开两轮 probe,各自再触发 executeRun(并发的 Grok 生命周期写入,写冲突)。
   // 把 probe 期间的工具登记在这里、纳入 isAnyBusy 派生,关掉这个并发窗口。
   // 用 Set 而非 boolean:单卡片升级 & 批量升级可能在不同工具上独立 preflight,
   // 精确反映到各自卡片按钮的 disabled。
@@ -214,15 +157,6 @@ export function AboutSection({
   const toolVersionByName = useMemo(() => {
     return new Map(toolVersions.map((tool) => [tool.name, tool]));
   }, [toolVersions]);
-
-  const updatableToolNames = useMemo(
-    () =>
-      LIFECYCLE_TOOLS.filter((toolName) => {
-        const tool = toolVersionByName.get(toolName);
-        return isUpdateAvailable(tool?.version, tool?.latest_version);
-      }),
-    [toolVersionByName],
-  );
 
   const refreshToolVersions = useCallback(
     async (toolNames: ToolName[]): Promise<ToolVersion[]> => {
@@ -334,17 +268,6 @@ export function AboutSection({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleCopyInstallCommands = useCallback(async () => {
-    if (!ONE_CLICK_INSTALL_COMMANDS) return;
-    try {
-      await navigator.clipboard.writeText(ONE_CLICK_INSTALL_COMMANDS);
-      toast.success(t("settings.installCommandsCopied"), { closeButton: true });
-    } catch (error) {
-      console.error("[AboutSection] Failed to copy install commands", error);
-      toast.error(t("settings.installCommandsCopyFailed"));
-    }
-  }, [t]);
-
   // 升级后自动补诊单个工具：静默后台执行。有冲突写入结果；无冲突则清掉该工具可能残留
   // 的过期冲突展示（外部卸载/修复后冲突可能已消失，不清会一直显示旧列表）。不弹 toast、
   // 不报错打扰——与用户主动点的全量诊断区别对待。
@@ -401,7 +324,10 @@ export function AboutSection({
   // 实际执行安装/升级的串行循环（已通过任何必要的确认后才调用）。
   const executeRun = useCallback(
     async (toolNames: ToolName[], action: ToolLifecycleAction) => {
-      const isBatch = toolNames.length > 1;
+      const writableNames = toolNames.filter(isLifecycleWritableTool);
+      if (writableNames.length === 0) return;
+
+      const isBatch = writableNames.length > 1;
       if (isBatch) {
         setBatchAction(action);
       }
@@ -418,7 +344,7 @@ export function AboutSection({
       }[] = [];
       let succeeded = 0;
 
-      for (const toolName of toolNames) {
+      for (const toolName of writableNames) {
         setToolActions((prev) => ({ ...prev, [toolName]: action }));
         try {
           const previousTool = toolVersionByName.get(toolName);
@@ -568,9 +494,10 @@ export function AboutSection({
   // 单脚本」,跨两次 IPC 并发会破坏它。
   const handleRunToolAction = useCallback(
     async (toolNames: ToolName[], action: ToolLifecycleAction) => {
-      if (toolNames.length === 0) return;
+      const writableNames = toolNames.filter(isLifecycleWritableTool);
+      if (writableNames.length === 0) return;
       if (
-        toolNames.some(
+        writableNames.some(
           (name) => preflightTools.has(name) || toolActions[name] !== undefined,
         )
       ) {
@@ -580,33 +507,33 @@ export function AboutSection({
       // 原 Set 会让 React 复用引用、跳过 re-render);finally 块负责异常路径解锁。
       setPreflightTools((prev) => {
         const next = new Set(prev);
-        toolNames.forEach((name) => next.add(name));
+        writableNames.forEach((name) => next.add(name));
         return next;
       });
       try {
         if (action === "install" || action === "install_official_npm") {
-          await executeRun(toolNames, action);
+          await executeRun(writableNames, action);
           return;
         }
         let reports: ToolInstallationReport[];
         try {
-          reports = await settingsApi.probeToolInstallations(toolNames);
+          reports = await settingsApi.probeToolInstallations(writableNames);
         } catch (error) {
           // 探测失败不应阻断升级：退回直接执行（等同旧行为）。
           console.error("[AboutSection] probeToolInstallations failed", error);
-          await executeRun(toolNames, action);
+          await executeRun(writableNames, action);
           return;
         }
         const needConfirm = reports.filter((r) => r.needs_confirmation);
         if (needConfirm.length === 0) {
-          await executeRun(toolNames, action);
+          await executeRun(writableNames, action);
           return;
         }
-        setPendingUpgrade({ toolNames, plans: needConfirm });
+        setPendingUpgrade({ toolNames: writableNames, plans: needConfirm });
       } finally {
         setPreflightTools((prev) => {
           const next = new Set(prev);
-          toolNames.forEach((name) => next.delete(name));
+          writableNames.forEach((name) => next.delete(name));
           return next;
         });
       }
@@ -735,23 +662,6 @@ export function AboutSection({
               />
               {isLoadingTools ? t("common.refreshing") : t("common.refresh")}
             </Button>
-            <Button
-              size="sm"
-              className="h-7 gap-1.5 text-xs"
-              onClick={() => handleRunToolAction(updatableToolNames, "update")}
-              disabled={
-                isLoadingTools || isAnyBusy || updatableToolNames.length === 0
-              }
-            >
-              {batchAction === "update" ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <ArrowUpCircle className="h-3.5 w-3.5" />
-              )}
-              {t("settings.updateAllTools", {
-                count: updatableToolNames.length,
-              })}
-            </Button>
           </div>
         </div>
 
@@ -787,8 +697,9 @@ export function AboutSection({
                     ? "update"
                     : null;
             const runningAction = toolActions[toolName];
-            const title = tool?.version || tool?.error || t("common.unknown");
+            const title = tool?.version ?? t("common.unknown");
             const conflicts = toolDiagnostics[toolName];
+            const canManageLifecycle = isLifecycleWritableTool(toolName);
 
             return (
               <motion.div
@@ -810,7 +721,7 @@ export function AboutSection({
                   {isToolVersionLoading ? (
                     <Loader2 className="mt-1 h-4 w-4 animate-spin text-muted-foreground" />
                   ) : tool?.version ? (
-                    isOutdated ? (
+                    isOutdated && canManageLifecycle ? (
                       <span className="mt-1 shrink-0 rounded-full border border-yellow-500/20 bg-yellow-500/10 px-1.5 py-0.5 text-[10px] text-yellow-600 dark:text-yellow-400">
                         {t("settings.updateAvailableShort")}
                       </span>
@@ -864,11 +775,6 @@ export function AboutSection({
                       </span>
                     </div>
                   ) : null}
-                  {!isToolVersionLoading && !tool?.version && tool?.error && (
-                    <div className="truncate text-[11px] text-muted-foreground">
-                      {tool.error}
-                    </div>
-                  )}
                 </div>
 
                 {/* 多处安装冲突诊断结果：仅在懒触发后有数据时渲染。 */}
@@ -881,8 +787,8 @@ export function AboutSection({
                       {t("settings.toolConflictHint")}
                     </p>
                     <ul className="space-y-1.5">
-                      {conflicts.map((inst) => (
-                        <li key={inst.path}>
+                      {conflicts.map((inst, index) => (
+                        <li key={`${toolName}-${inst.source}-${index}`}>
                           <ToolInstallRow inst={inst} />
                         </li>
                       ))}
@@ -896,11 +802,10 @@ export function AboutSection({
                       {t("common.loading")}
                     </span>
                   ) : installedButBroken ? (
-                    // 已安装但跑不起来：重装无济于事，不给按钮，给一句指向环境的提示。
                     <span className="text-xs text-yellow-600 dark:text-yellow-400">
                       {t("settings.toolCheckEnv")}
                     </span>
-                  ) : (
+                  ) : canManageLifecycle ? (
                     <>
                       {action ? (
                         <Button
@@ -919,8 +824,6 @@ export function AboutSection({
                           ) : (
                             <ArrowUpCircle className="h-3.5 w-3.5" />
                           )}
-                          {/* loading 时文案保持不变、仅图标切换为 spinner，
-                          按钮宽度恒定，避免"升级"→"升级中…"导致的抖动。 */}
                           {action === "install"
                             ? t("settings.toolInstall")
                             : t("settings.toolUpdate")}
@@ -930,8 +833,7 @@ export function AboutSection({
                           {t("settings.toolReady")}
                         </span>
                       )}
-                      {toolName === "grok" &&
-                      tool?.distribution_owner !== "official_npm" &&
+                      {tool?.distribution_owner !== "official_npm" &&
                       (!tool?.version || Boolean(tool.error)) ? (
                         <Button
                           size="sm"
@@ -954,57 +856,13 @@ export function AboutSection({
                         </Button>
                       ) : null}
                     </>
-                  )}
+                  ) : null}
                 </div>
               </motion.div>
             );
           })}
         </div>
       </div>
-
-      {ONE_CLICK_INSTALL_COMMANDS && (
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, delay: 0.3 }}
-          className="space-y-3"
-        >
-          <button
-            type="button"
-            onClick={() => setShowInstallCommands((v) => !v)}
-            aria-expanded={showInstallCommands}
-            className="flex w-full items-center gap-1.5 px-1 text-sm font-medium text-foreground transition-colors hover:text-primary"
-          >
-            <ChevronDown
-              className={`h-3.5 w-3.5 transition-transform ${
-                showInstallCommands ? "" : "-rotate-90"
-              }`}
-            />
-            {t("settings.manualInstallCommands")}
-          </button>
-          {showInstallCommands && (
-            <div className="rounded-xl border border-border bg-gradient-to-br from-card/80 to-card/40 p-4 space-y-3 shadow-sm">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-xs text-muted-foreground">
-                  {t("settings.oneClickInstallHint")}
-                </p>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={handleCopyInstallCommands}
-                  className="h-7 gap-1.5 text-xs"
-                >
-                  <Copy className="h-3.5 w-3.5" />
-                  {t("common.copy")}
-                </Button>
-              </div>
-              <pre className="text-xs font-mono bg-background/80 px-3 py-2.5 rounded-lg border border-border/60 overflow-x-auto">
-                {ONE_CLICK_INSTALL_COMMANDS}
-              </pre>
-            </div>
-          )}
-        </motion.div>
-      )}
 
       <ToolUpgradeConfirmDialog
         isOpen={pendingUpgrade !== null}

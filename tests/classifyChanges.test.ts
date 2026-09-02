@@ -243,7 +243,7 @@ describe("repository change classifier", () => {
     ],
     [
       "backend repository task",
-      ["scripts/tasks/rust.mjs"],
+      ["scripts/tasks/rust.mjs", "scripts/tasks/windows-msvc-cross.mjs"],
       domains("contracts", "backend", "windowsNative"),
     ],
     [

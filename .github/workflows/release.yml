@@ -2066,21 +2066,41 @@ jobs:
 
           remote_root="$transaction_root/remote-release-attachments"
           mkdir "$remote_root"
-          while IFS=$'\t' read -r asset_id asset_name; do
-            [[ "$asset_id" =~ ^[1-9][0-9]*$ ]]
-            [[ "$asset_name" =~ ^[A-Za-z0-9._-]+$ ]]
-            download_status="$(curl --silent --show-error --location \
-              --output "$remote_root/$asset_name" --write-out '%{http_code}' \
-              "${api_headers[@]}" -H 'Accept: application/octet-stream' \
-              "$api_root/repos/$repository/releases/assets/$asset_id")"
-            [ "$download_status" = 200 ] || {
-              echo "Re-download failed for $asset_name with HTTP $download_status" >&2
-              exit 1
-            }
+          downloads_verified=false
+          for download_attempt in 1 2 3 4; do
+            rm -f "$remote_root"/*
+            download_failed=false
+            while IFS=$'\t' read -r asset_id asset_name; do
+              [[ "$asset_id" =~ ^[1-9][0-9]*$ ]]
+              [[ "$asset_name" =~ ^[A-Za-z0-9._-]+$ ]]
+              download_status="$(curl --silent --show-error --location \
+                --output "$remote_root/$asset_name" --write-out '%{http_code}' \
+                -H "Authorization: Bearer $GH_TOKEN" \
+                -H "X-GitHub-Api-Version: 2022-11-28" \
+                -H 'Accept: application/octet-stream' \
+                "$api_root/repos/$repository/releases/assets/$asset_id")"
+              if [ "$download_status" != 200 ]; then
+                echo "Re-download attempt $download_attempt failed for $asset_name with HTTP $download_status" >&2
+                download_failed=true
+                break
+              fi
+            done < <(jq -r '.[] | [.id, .name] | @tsv' "$assets_json")
 
-          done < <(jq -r '.[] | [.id, .name] | @tsv' "$assets_json")
-          node scripts/release/prepare-release-publication.mjs verify-downloads \
-            release-attachments "$remote_root" "$APP_VERSION"
+            if [ "$download_failed" = false ] &&
+              node scripts/release/prepare-release-publication.mjs verify-downloads \
+                release-attachments "$remote_root" "$APP_VERSION"; then
+              downloads_verified=true
+              break
+            fi
+            if [ "$download_attempt" -lt 4 ]; then
+              echo "Release asset re-download is not stable yet; retrying after a bounded delay" >&2
+              sleep 5
+            fi
+          done
+          [ "$downloads_verified" = true ] || {
+            echo 'Re-downloaded Release attachments did not converge to the verified local payload' >&2
+            exit 1
+          }
 
           prepublish_json="$transaction_root/prepublish.json"
           prepublish_status="$(curl --silent --show-error \

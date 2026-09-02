@@ -39,7 +39,7 @@ name = "fyagent-user-helper"
 version.workspace = true
 ```
 
-- `src-tauri/Cargo.toml [workspace.package].version` is the only manually
+- `src-tauri/Cargo.toml` at `[workspace.package].version` is the only manually
   maintained application-version literal.
 - The workspace contains exactly the root package and `user-helper`, in that
   order. Both package manifests inherit `workspace.package.version` through

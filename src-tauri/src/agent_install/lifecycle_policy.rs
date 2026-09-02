@@ -293,7 +293,7 @@ mod tests {
     }
 
     #[test]
-    fn domestic_products_disable_update_on_the_legal_desktop_surface() {
+    fn managed_desktop_products_admit_install_update_and_launch_on_desktop_only() {
         for agent_id in [
             AgentCatalogId::QoderWork,
             AgentCatalogId::TraeWork,

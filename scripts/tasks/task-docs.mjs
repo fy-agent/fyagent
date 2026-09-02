@@ -30,7 +30,7 @@ const SECTIONS = Object.freeze([
         "check:contracts:prearchive",
         "check:prearchive",
         "supported-platform:check",
-      ].includes(name),
+      ].includes(name) || name.startsWith("system:check:"),
   ],
   [
     "Development and Native Build",

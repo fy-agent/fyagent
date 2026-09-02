@@ -39,11 +39,12 @@ function NavigationLink({
     <NavLink
       to={destination}
       end
+      data-selection-material="text-only"
       className={({ isActive, isPending }) =>
         classNames(
           "fy-side-navigation-item",
           isActive && "fy-side-navigation-item-selected",
-          isPending && "fy-side-navigation-item-pending",
+          isPending && !isActive && "fy-side-navigation-item-pending",
         )
       }
     >
@@ -173,6 +174,7 @@ export function SideNavigation() {
     >
       <SelectionLensGroup
         id="side-navigation"
+        geometry="position"
         layoutKey={configurationExpanded}
         className="fy-side-navigation-track"
         inset={1}
@@ -240,6 +242,14 @@ export function SideNavigation() {
                     id={groupLabelId}
                     type="button"
                     data-active={groupActive || undefined}
+                    data-collapsed-active={visuallyActive ? "true" : undefined}
+                    data-selection-material={
+                      visuallyActive
+                        ? "text-only"
+                        : groupActive
+                          ? "context-frame"
+                          : undefined
+                    }
                     data-testid="configuration-management-toggle"
                   >
                     <SelectionLens active={visuallyActive} />

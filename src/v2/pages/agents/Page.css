@@ -151,11 +151,17 @@
 }
 
 .fy-agent-directory-card-feedback {
-  flex-basis: 100%;
   margin: 0;
-  color: var(--fy-danger-text);
   font-size: 11px;
   line-height: 1.45;
+}
+
+.fy-agent-directory-card-feedback[data-tone="error"] {
+  color: var(--fy-danger-text);
+}
+
+.fy-agent-directory-card-feedback[data-tone="info"] {
+  color: var(--fy-text-secondary);
 }
 
 .fy-agent-models-list {

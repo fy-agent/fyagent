@@ -88,14 +88,18 @@ describe("Rust modular architecture boundaries", () => {
     }
     expect(toolingService).not.toMatch(/\bfn build_tool_lifecycle_command\b/u);
     expect(toolingService).not.toMatch(/\benum ToolLifecycleAction\b/u);
-    for (const lifecyclePrivateMarker of [
-      "powershell_encoded_command",
+    const grokRules = read("src-tauri/user-helper/src/grok.rs");
+    expect(grokRules).toContain("fn powershell_encoded_command");
+    expect(grokRules).toContain("GROK_NATIVE_WINDOWS_INSTALL_SCRIPT");
+    expect(toolingLifecycle).toContain("fn grok_install_windows_command");
+    for (const movedGrokRule of [
+      "fn powershell_encoded_command",
       "GROK_INSTALL_WINDOWS_SCRIPT",
-      "HERMES_INSTALL_WINDOWS_SCRIPT",
+      "GROK_NATIVE_WINDOWS_INSTALL_SCRIPT",
     ]) {
-      expect(toolingCommands).not.toContain(lifecyclePrivateMarker);
-      expect(toolingLifecycle).toContain(lifecyclePrivateMarker);
-      expect(toolingService).not.toContain(lifecyclePrivateMarker);
+      expect(toolingCommands).not.toContain(movedGrokRule);
+      expect(toolingLifecycle).not.toContain(movedGrokRule);
+      expect(toolingService).not.toContain(movedGrokRule);
     }
     expect(toolingService).toMatch(
       /#\[cfg\(target_os = "macos"\)\]\s+use lifecycle::\{[\s\S]*?npm_install_command_for,[\s\S]*?\};/u,
