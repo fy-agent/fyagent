@@ -46,18 +46,18 @@ The screenshots below use Simplified Chinese. The left navigation opens AI softw
 <table>
   <tr>
     <td align="center" width="50%">
-      <img src="assets/screenshots/main-zh-2.png" alt="FyAgent Skills management page">
+      <img src="assets/screenshots/skills.png" alt="FyAgent Skills management page">
       <br><em>Skills</em>
     </td>
     <td align="center" width="50%">
-      <img src="assets/screenshots/main-zh-3.png" alt="FyAgent MCP management page">
-      <br><em>MCP</em>
+      <img src="assets/screenshots/models.png" alt="FyAgent model management page">
+      <br><em>Models</em>
     </td>
   </tr>
   <tr>
     <td align="center" colspan="2">
-      <img src="assets/screenshots/main-zh-1.png" alt="FyAgent WorkBuddy model configuration page">
-      <br><em>Models</em>
+      <img src="assets/screenshots/home.png" alt="FyAgent AI software configuration page">
+      <br><em>Home</em>
     </td>
   </tr>
 </table>

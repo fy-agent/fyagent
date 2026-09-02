@@ -46,18 +46,18 @@ Provider、MCP、Prompt といった用語を先に理解する必要はあり�
 <table>
   <tr>
     <td align="center" width="50%">
-      <img src="assets/screenshots/main-zh-2.png" alt="FyAgent の Skills 管理画面">
+      <img src="assets/screenshots/skills.png" alt="FyAgent の Skills 管理画面">
       <br><em>Skills</em>
     </td>
     <td align="center" width="50%">
-      <img src="assets/screenshots/main-zh-3.png" alt="FyAgent の MCP 管理画面">
-      <br><em>MCP</em>
+      <img src="assets/screenshots/models.png" alt="FyAgent のモデル管理画面">
+      <br><em>モデル管理</em>
     </td>
   </tr>
   <tr>
     <td align="center" colspan="2">
-      <img src="assets/screenshots/main-zh-1.png" alt="FyAgent の WorkBuddy モデル設定画面">
-      <br><em>モデル管理</em>
+      <img src="assets/screenshots/home.png" alt="FyAgent の AI ソフトウェア設定画面">
+      <br><em>AI ソフトウェア設定</em>
     </td>
   </tr>
 </table>
