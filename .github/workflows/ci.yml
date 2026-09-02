@@ -350,7 +350,7 @@ jobs:
       - name: Unit tests
         id: tests
         if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
-        # These four host-integration suites exercise the real local mise API.
+        # These five host-integration suites exercise the real local mise API.
         # Their pure Node contracts still run above; the real mise boundary is
         # owned by the canonical local check rather than GitHub Actions.
         run: |
@@ -358,7 +358,8 @@ jobs:
             --exclude tests/developmentEnvironment.test.ts \
             --exclude tests/miseTaskContract.test.ts \
             --exclude tests/systemCheck.test.ts \
-            --exclude tests/taskDocs.test.ts
+            --exclude tests/taskDocs.test.ts \
+            --exclude tests/windowsMsvcCross.test.ts
 
       - name: Locale key parity
         id: locale
