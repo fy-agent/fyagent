@@ -46,18 +46,18 @@ FyAgent 面向正在使用 AI Agent、AI Worker 和智能助手的人。它把�
 <table>
   <tr>
     <td align="center" width="50%">
-      <img src="assets/screenshots/main-zh-2.png" alt="FyAgent Skills 管理页">
+      <img src="assets/screenshots/skills.png" alt="FyAgent Skills 管理页">
       <br><em>Skills</em>
     </td>
     <td align="center" width="50%">
-      <img src="assets/screenshots/main-zh-3.png" alt="FyAgent MCP 管理页">
-      <br><em>MCP</em>
+      <img src="assets/screenshots/models.png" alt="FyAgent 模型管理页">
+      <br><em>模型管理</em>
     </td>
   </tr>
   <tr>
     <td align="center" colspan="2">
-      <img src="assets/screenshots/main-zh-1.png" alt="FyAgent WorkBuddy 模型配置页">
-      <br><em>模型管理</em>
+      <img src="assets/screenshots/home.png" alt="FyAgent AI 软件配置页">
+      <br><em>AI 软件配置</em>
     </td>
   </tr>
 </table>
