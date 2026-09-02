@@ -46,9 +46,9 @@
 
 ## Phase E — Finish
 
-- [ ] 提交事实校准的 SPEC/task 变更。
-- [ ] 将 follow-up 任务转为 completed 并归档。
-- [ ] 提交归档生命周期记录，确认最终工作树干净。
+- [x] 提交事实校准的 SPEC/task 变更（`f0479ac1`）。
+- [x] 将 follow-up 任务转为 completed 并归档（`89f027ec`）。
+- [x] 提交归档生命周期记录并复核最终工作树状态。
 
 ## Rollback points
 
