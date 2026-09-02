@@ -487,10 +487,14 @@ export type AgentSection = (typeof AGENT_SECTION_IDS)[number];
   visibly means the native package/app is being prepared and remains
   cancellable. On macOS, `installing` is the non-cancellable commit boundary.
   On Windows, `launching_installer` is the non-cancellable side-effect boundary
-  and `awaiting_user` tells the user to complete the vendor UI/UAC flow.
-  `incomplete` is terminal and non-green: the installer may still be running or
-  no unique authoritative result could be read. It never becomes success from
-  process launch or exit code alone. System
+  and `awaiting_user` tells the user to complete the vendor UI/UAC flow in the
+  official installer window. Job `succeeded` after that handoff means the
+  official installer was opened, not that inventory now has a trusted
+  candidate. Directory cards and readiness notices must keep that
+  vendor-window copy after handoff success; they must not say the product is
+  already installed. `incomplete` is terminal and
+  non-green when launch itself could not be confirmed. It never becomes
+  installed from process exit code. System
   targets disabled by native policy remain visible with
   `authorization_required`; the UI must not silently select or relabel a
   user-scope destination. `installer_user_cancelled`,
@@ -840,8 +844,14 @@ fetch/save controls.
   target binding. A target-free legacy launch is used only when backend
   readiness says selection is unnecessary.
 - Job-stage/reason copy is closed and outcome-specific. `staging` is distinct
-  from download and install; `launching_installer` / `awaiting_user` expose
-  Windows vendor ownership without inventing a percent, `incomplete` is a
+  from download and install. Windows vendor-UI copy is exact:
+  `launching_installer` → 「正在打开官方安装窗口，请在该窗口中完成安装」;
+  `awaiting_user` → 「请在弹出的官方安装窗口中完成安装」; handoff success
+  (`AGENT_LIFECYCLE_VENDOR_HANDOFF_COPY`) →
+  「官方安装窗口已打开，请在该窗口中完成安装。」 Directory cards must render
+  that success in the copy column (info, not only errors) and must not say the
+  product is already installed. Generic launch/other success stays 「操作已完成。」
+  `incomplete` is a
   terminal non-success, and the four Windows installer reason codes remain
   distinguishable. `authorization_required` and helper-not-ready codes explain
   that the selected system target cannot be automated and will not move
@@ -966,6 +976,8 @@ fetch/save controls.
 | Generic Agent job omits `staging` or treats it as non-cancellable                                                                 | Parser/hook test fails; staging remains cancellable until the native commit transition                                |
 | Windows Agent job omits `launching_installer` / `awaiting_user` or still offers cancel after launch                               | Parser/hook test fails; vendor UI launch is the non-cancellable side-effect boundary                                  |
 | Native result is `incomplete`                                                                                                     | Stop polling, reread readiness/inventory, and show non-green unconfirmed-result copy                                  |
+| Windows job `succeeded` after vendor-wizard handoff                                                                               | Show 「官方安装窗口已打开，请在该窗口中完成安装。」; reread inventory; do not paint installed unless readiness says so |
+| Directory card hides vendor-handoff success and only shows errors                                                                 | Page test fails; success uses the info notice in the copy column                                                      |
 | Windows result is user-cancelled, unobservable, timed out, or nonzero-exit                                                        | Render its distinct closed reason; do not collapse to generic success/failure or claim the installer was killed       |
 | Windows artifact staging/capability fails                                                                                         | Show local artifact/permission guidance; never label the executor unimplemented                                       |
 | Disabled `/Applications` target is hidden or silently replaced by `~/Applications`                                                | Picker/page test fails; show `authorization_required` and preserve the selected scope                                 |
@@ -1171,6 +1183,7 @@ Required focused coverage includes:
   as the display control source,
   `staging` parser/progress copy and cancellation semantics,
   `launching_installer` / `awaiting_user` non-cancellable vendor-UI copy,
+  directory-card vendor-handoff success copy,
   terminal `incomplete` semantics, distinct installer cancellation/
   unobservable/timeout/nonzero-exit copy,
   `authorization_required` no-scope-fallback copy,

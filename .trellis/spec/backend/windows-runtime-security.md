@@ -292,7 +292,8 @@ IShellFolderViewDual.Application -> IShellDispatch2`.
 | Formal elevated Windows Grok Build observe/install/update                                        | Closed `grok-tool` helper action under the frozen Explorer user; helper failure must not fall back to elevated CLI.                                                          |
 | The installer helper accepts URL, path, shell string, scope, silent switch, or raw child stdout  | Contract/static test fails; only exact Codex MSIX, Agent EXE product, or Grok tool actions are registered.                                                                   |
 | Helper `Hello(action)` differs from the parent-selected action/product                           | Reject before bridge control/admission; zero installer launch.                                                                                                               |
-| Agent EXE helper receives no process handle after ShellExecuteEx                                 | Closed `installer_process_unobservable`; authoritative inventory reread, never immediate success.                                                                            |
+| Agent EXE helper `ShellExecuteEx` succeeds, including a missing process handle | Job `succeeded` (vendor-wizard handoff); do not wait, kill, or delete the PackageBridge EXE leaf. |
+| Agent EXE helper launch uses a null verb or inherits the helper console          | Contract/static test fails; fMask is `SEE_MASK_NOCLOSEPROCESS` plus `SEE_MASK_NO_CONSOLE` and `lpVerb` is `open`. |
 | Non-Windows platform                                                                             | Preserve its existing path resolver, Store/window-state plugin, and single-instance behavior.                                                                                |
 
 ## 5. Good / Base / Bad Cases
@@ -655,7 +656,11 @@ silently downgrade the inventory leaf.
   `INVENTORY_PARENT_READ`. Caller-controlled child names are length/charset
   validated, then opened `READ_VALUES`.
 - Optional parent `NotFound` is absence and does not mark the aggregate
-  incomplete. Access, enumeration, registry-link, bound, or frozen
+  incomplete. A rejected registry-link on an optional parent is also absence:
+  WOW64 shared keys such as machine `App Paths` open as `SymbolicLinkValue`
+  under `REG_OPTION_OPEN_LINK` in the 32-bit view, which is the same location
+  already enumerated in the 64-bit view. The link is never followed. Access
+  (including raw OS access-denied), enumeration, bound, or frozen
   Shell-context errors keep the aggregate incomplete.
 - Registry values remain hints. They are never executed. Link rejection and
   no-follow reopen are unchanged.
@@ -668,7 +673,8 @@ silently downgrade the inventory leaf.
 | --- | --- |
 | Parent opened `READ_VALUES` then `enum_keys` | Real hive access fails; inventory `unknown` |
 | Optional parent missing | Absence; remaining views may still be complete |
-| Parent/child access, link, bound, or Shell drift | Incomplete aggregate; no false `not_installed` |
+| Optional parent is a rejected WOW64 shared-key link | Absence; the 64-bit view still enumerates that location; link is not followed |
+| Parent/child access, bound, or Shell drift | Incomplete aggregate; no false `not_installed` |
 | Child name fails length/charset validation | Skip/reject that child; do not open by raw string |
 | Parent or child granted create/set | Contract failure |
 
@@ -679,13 +685,15 @@ silently downgrade the inventory leaf.
   `not_installed`.
 - **Base:** Environment/Run keep their existing query/set FyAgent-policy
   rights; inventory does not reuse `UPDATE_VALUES`.
-- **Bad:** `KEY_READ` convenience, WinGet, or treating a permission error as
-  “no software installed”.
+- **Bad:** `KEY_READ` convenience, WinGet, or treating a raw OS access-denied
+  as “no software installed”.
 
 ### 6. Tests Required
 
 - `registry.rs`: parent leaf records `INVENTORY_PARENT_READ`; mask has
-  enumerate without create/set; children stay `READ_VALUES`.
+  enumerate without create/set; children stay `READ_VALUES`. Rejected WOW64
+  shared-key `SymbolicLinkValue` is classified separately from raw OS
+  access-denied.
 - `inventory.rs`: complete/no-candidate keeps fresh destinations;
   incomplete discovery is `Unknown` + `native_projection_unavailable` with
   ineligible destinations.

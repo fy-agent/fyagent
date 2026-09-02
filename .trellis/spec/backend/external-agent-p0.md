@@ -524,17 +524,31 @@ input.
   Do not use a query-only parent and then call subkey enumeration: that makes
   every real view fail and collapses supported products to `unknown`.
   registry paths, `UninstallString`, and App Paths values are evidence only and
-  are never executed. The production EXE inspector uses Win32 version-resource
+  are never executed. ARP `InstallLocation` (`ARPINSTALLLOCATION`) is optional;
+  electron-builder NSIS writes it to `Software\<APP_GUID>` rather than the
+  Uninstall subkey, and may set `DisplayIcon` to `$INSTDIR\uninstallerIcon.ico`.
+  When Uninstall `DisplayName` matches the closed ProductName list, derive
+  `$INSTDIR` from the parent of the first path in `UninstallString` or
+  `DisplayIcon` (quoted-path parse only) and join the closed exe basename.
+  Do not execute those strings, guess extra Program Files relative layers, or
+  open `Software\<APP_GUID>` as a new inventory parent. The production EXE
+  inspector uses Win32 version-resource
   APIs, stable file identity, architecture, `WinVerifyTrust`, exactly one
   top-level signer, and `CryptMsgGetAndVerifySigner` for the signer leaf.
   Stale/mismatched records remain visible but non-actionable. Any inaccessible
-  view, unsafe child, enumeration error/bound, or frozen Shell-context drift
-  makes the inventory `unknown`, adds `native_projection_unavailable`, and
-  disables fresh destinations; it must not become a false `not_installed`.
-  Conversely, when every optional parent is absent or enumerates successfully,
-  the Shell context remains stable, known roots are checked, and no trusted
-  candidate exists, the complete result is `not_installed` and may expose the
-  already-reviewed fresh install destination for QoderWork/TRAE Work/WorkBuddy.
+  view, unsafe child, enumeration error/bound, raw access-denied, or frozen
+  Shell-context drift makes the inventory `unknown`, adds
+  `native_projection_unavailable`, and disables fresh destinations; it must not
+  become a false `not_installed`. A rejected registry-link on an optional
+  parent is absence, not incompleteness: WOW64 shared keys such as machine
+  `App Paths` appear as `SymbolicLinkValue` when opened with
+  `REG_OPTION_OPEN_LINK` in the 32-bit view, and that view is the same location
+  already enumerated in the 64-bit view. The link is never followed. Conversely,
+  when every optional parent is absent, is a rejected shared-view alias, or
+  enumerates successfully, the Shell context remains stable, known roots are
+  checked, and no trusted candidate exists, the complete result is
+  `not_installed` and may expose the already-reviewed fresh install destination
+  for QoderWork/TRAE Work/WorkBuddy.
   These three reviewed products are EXE-only and have no guessed PFN/AUMID or
   PackageManager identity. Codex keeps its separate MSIX owner.
 - Jobs: one in-process slot. Second non-terminal start →
@@ -542,7 +556,7 @@ input.
   app are being inspected before the old target is moved. Cancellation remains
   available through `staging`; the backend atomically crosses the commit
   boundary by changing to `installing`, after which `cancellable=false`.
-  Download or copy success is not installed. The post-commit verifier must
+  Download or copy success is not installed. On macOS, the post-commit verifier must
   re-enumerate the closed identity and prove the exact selected canonical path,
   scope and product-comparable local version, while rejecting a newly created
   undeclared cross-scope copy. Verification failure restores and re-verifies
@@ -553,12 +567,13 @@ input.
   `downloading` / `staging` / `launching_installer` / `awaiting_user` /
   `installing`. On Windows, `launching_installer` is the side-effect boundary
   and immediately makes the job non-cancellable; `awaiting_user` means the
-  vendor UI/UAC owns interaction. A missing process handle or wait timeout is
-  `incomplete`, not success; FyAgent stops waiting without killing the vendor
-  installer. User/UAC cancellation is a distinct cancelled reason and a
-  nonzero process exit is only a failure hint. Every helper outcome is followed
-  by a fresh inventory readback: exactly one expected trusted candidate must
-  appear/change, otherwise success is forbidden. After a closed identity is bound (macOS
+  vendor UI/UAC owns interaction. Successful `ShellExecute` of the official EXE
+  is job `succeeded` (vendor-wizard handoff). FyAgent does not wait for the
+  wizard to finish, does not require a trusted inventory candidate, does
+  not kill the vendor installer, and does not delete the PackageBridge EXE
+  leaf during that successful settlement. UAC/launch cancellation remains cancelled or
+  failed. macOS DMG still verifies the deployed bundle before `succeeded`.
+  After a closed identity is bound (macOS
   `CFBundleIdentifier` or Windows PE `ProductName` at a closed relative
   `.exe` path under Alice `LocalAppData\Programs` and machine Program
   Files), absence on macOS/Windows is `not_installed`. Linux development
@@ -567,10 +582,14 @@ input.
 - Windows EXE/NSIS uses vendor UI only. Qoder's reviewed User-x64 artifact
   binds the current-user destination; TRAE and WorkBuddy remain
   vendor-choice/unknown-scope because no stable silent/scope contract is
-  documented. Unsupported architecture remains disabled. Installer admission
-  requires the reviewed closed ProductName and actual signer leaf for the
-  selected product; it never treats registry `Publisher` or the CDN host as a
-  signer. No silent switches are inferred. macOS DMG remains the managed
+  documented. Unsupported architecture remains disabled. Official Windows
+  x64/User-x64 vendor setup EXEs may be PE32 i386 NSIS/electron-builder
+  stubs; installer admission allows that stub (and a host-matching PE) after
+  closed ProductName, Authenticode, and signer-leaf checks. Installed
+  application discovery still requires AMD64 or ARM64 so a 32-bit uninstaller
+  cannot become launchable. Cross-arch AMD64 vs ARM64 installers remain
+  `platform_unsupported`. Installer admission never treats registry
+  `Publisher` or the CDN host as a signer. No silent switches are inferred. macOS DMG remains the managed
   rollback-capable path. Qoder compares the mounted app to the exact yml
   version, TRAE uses bounded non-symlink `product.json.tronBuildVersion`, and
   WorkBuddy permits only the reviewed dotted marketing-version prefix against
@@ -637,20 +656,20 @@ input.
 | Selected macOS application is still running                                         | `application_running`; zero staging/replace write                           |
 | macOS staging or target permission is denied                                        | `permission_denied`; preserve the original target                           |
 | Post-install readback rejects path/scope/version or sees a new duplicate            | restore and reverify old target; `rollback_restored` or `recovery_required` |
+| Official x64/User-x64 vendor EXE is PE32 i386 NSIS stub                             | Admit after ProductName/Authenticode/signer; do not map to `platform_unsupported` |
 | Windows ARM64 desktop source, or unsupported arch                                   | `platform_unsupported`                                                      |
 | Windows inventory has an inaccessible/erroring registry view or Shell-context drift | `unknown` + `native_projection_unavailable`; disable fresh destinations     |
+| Windows optional parent is a rejected WOW64 shared-key registry link                | skip that view as absence; do not mark the aggregate incomplete             |
 | Windows installer signature/trust/signer/product/architecture admission fails       | `source_not_verified` / `platform_unsupported`; zero helper launch          |
 | Windows artifact cannot be staged/reopened through the retained capability          | `installer_artifact_unavailable`; zero helper launch                        |
 | Helper image/SID/pipe/bridge/action binding drifts                                  | Fail before admission; zero installer launch                                |
 | User cancels UAC/vendor installer launch                                            | `cancelled` + `installer_user_cancelled`                                    |
-| Windows returns no observable process handle                                        | `incomplete` + `installer_process_unobservable`; still reread inventory     |
-| Vendor installer wait reaches its bound                                             | `incomplete` + `installer_timed_out`; do not kill the installer             |
-| Installer exits nonzero and readback has no expected trusted result                 | `failed` + `installer_exited_nonzero`                                       |
-| Installer exits/returns success but readback is absent/ambiguous/drifted            | `incomplete` / `installation_verification_failed`; never optimistic success |
+| Windows official EXE `ShellExecute` succeeds                                        | job `succeeded`; inventory may still be `not_installed` until a later scan  |
 | Closed desktop identity absent on macOS/Windows                                     | `not_installed`                                                             |
 | Vendor config directory without closed bundle/exe                                   | `not_installed`; not treated as launchable                                  |
 | Formal elevated Windows Claude/OpenCode CLI/auth                                    | `interactive_user_unavailable` / `executor_not_implemented`                 |
 | Formal elevated Windows Grok Build observe/install/update                           | Closed `grok-tool` helper; no elevated fallback                             |
+| Windows Grok CLI reports not installed / not executable                             | `not_installed` + `install`; never `unavailable` / `interactive_user_unavailable` |
 | Second overlapping job, unknown `jobId`, or cancel after `installing`               | `operation_conflict`                                                        |
 | TRAE `data.manifest` / `TraeCode_*` selected                                        | `source_not_verified`; Work package not started                             |
 | Secret/token/URL appears in DTO, error, log, or DOM                                 | Security regression                                                         |
@@ -699,8 +718,10 @@ input.
   `WinVerifyTrust`, one signer leaf, reviewed signer subject, x64-only product
   policies, retained package capability, PackageBridge hash-while-copy,
   fixed action/product helper CLI, Hello-action binding, Alice SID/image/nonce/
-  pipe/control checks, UAC cancel, missing process handle, timeout, nonzero exit,
-  and authoritative post-install candidate comparison. No MSIX identity or
+  pipe/control checks, UAC cancel, and `ShellExecute` vendor-wizard handoff
+  (`SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NO_CONSOLE`, fixed `open`).
+  Missing handle, wait, or exit code is not install authority. Helper success
+  retains the PackageBridge EXE leaf. No MSIX identity or
   silent switch is guessed for the three EXE products.
 - Jobs: single-flight, `staging` remains cancellable, refuse cancel after
   `launching_installer` or `installing`, `awaiting_user` remains non-cancellable,
@@ -1070,7 +1091,9 @@ Claude     macos CFBundleIdentifier = com.anthropic.claudefordesktop
   child query-only. Missing optional parents are absence, while access,
   enumeration, link, bound, or Shell-context errors make the aggregate
   incomplete.
-  Registry values are hints only. A candidate becomes actionable only after a
+  Registry values are hints only. Matched Uninstall rows may recover `$INSTDIR`
+  from `UninstallString` / `DisplayIcon` path parents when `InstallLocation` is
+  empty; those strings are never launched. A candidate becomes actionable only after a
   regular no-reparse file is opened, stable file identity is captured, Win32
   version resources match the closed ProductName list, architecture is
   supported, `WinVerifyTrust` succeeds, and the actual signer leaf matches the
@@ -1093,7 +1116,8 @@ Claude     macos CFBundleIdentifier = com.anthropic.claudefordesktop
 | Bundle id / ProductName matches closed table                    | `installed` + sanitized version                          |
 | Folder named WorkBuddy.app with the wrong bundle id             | Not installed                                            |
 | `.exe` at the closed relative path with the wrong ProductName   | Not installed                                            |
-| Matching ProductName at a different relative path               | Not installed                                            |
+| Matching ProductName at a guessed extra Program Files relative, without Uninstall/App Paths path evidence | Not installed |
+| Uninstall DisplayName match; `$INSTDIR` from `UninstallString`/`DisplayIcon` parent; closed basename + ProductName/signer admit | `installed` |
 | Vendor config directory exists, no bundle/exe                   | Not installed; launch `installed_not_runnable`           |
 | Closed identity absent on macOS/Windows                         | `not_installed`                                          |
 | Complete Windows inventory has no trusted candidate             | `not_installed`; existing fresh install destination may be offered |
@@ -1120,8 +1144,12 @@ Claude     macos CFBundleIdentifier = com.anthropic.claudefordesktop
   rejected. TRAE local version prefers `tronBuildVersion` over plist
   `0.1.51`.
 - Windows: Registry/App Paths/known roots plus Win32 ProductName, stable file
-  identity, trusted signer leaf, and supported architecture; stale/wrong
-  ProductName/wrong signer/wrong path/reparse entries are non-actionable.
+  identity, trusted signer leaf, and supported architecture; UninstallString
+  parent recovers NSIS `$INSTDIR` when ARP `InstallLocation` is empty;
+  vendor installer admission allows PE32 i386 NSIS stubs on x64/ARM64 hosts;
+  installed apps still require AMD64/ARM64;
+  stale/wrong ProductName/wrong signer/wrong path/reparse entries are
+  non-actionable.
   Isolation uses `FYAGENT_TEST_HOME`, not the real Alice profile. TRAE local
   version prefers `resources/app/product.json`. Prove inventory-parent
   query+enumerate separately from child query-only; complete/no-candidate

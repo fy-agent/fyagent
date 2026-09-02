@@ -286,36 +286,42 @@ Before helper launch, the parent:
 5. revalidates Alice's frozen context and bridges only the pinned file.
 
 The helper rechecks the bridge/action, then invokes `ShellExecuteExW` with
-`SEE_MASK_NOCLOSEPROCESS`, fixed `open`, no arguments, and the bridge-owned
-path. Windows owns UAC. `ERROR_CANCELLED` is user cancellation. Missing
-`hProcess` is `installer_process_unobservable`; it is never immediate success.
-When a handle exists, the helper waits within the bounded operation deadline,
-does not kill the vendor installer, reads `GetExitCodeProcess`, and returns one
-closed terminal hint. A nonzero exit is a failure hint, not installation
-authority.
+`SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NO_CONSOLE`, `lpVerb` exactly `open`
+(not a null default verb), no arguments, `SW_SHOWNORMAL`, and the
+bridge-owned path. `SEE_MASK_NO_CONSOLE` is required: Qoder's NSIS
+`System.dll` access-violates (`0xC0000005`) when it inherits the helper's
+Explorer-launched console. The parent helper operation deadline is five
+minutes (launch/UAC bound), not a wizard-duration wait. Windows owns UAC.
+`ERROR_CANCELLED` is user cancellation. Successful `ShellExecute` is
+vendor-wizard handoff: the helper closes any process handle without waiting,
+does not read `GetExitCodeProcess`, and does not treat a missing handle,
+timeout, or later nonzero exit as installation authority. FyAgent must not
+kill the vendor installer. Successful vendor EXE settlement must not delete
+the PackageBridge EXE leaf; the official NSIS stub can still be reading that
+file after `ShellExecute` returns. Opportunistic orphan cleanup may remove an
+unused leaf later. Immediate settlement cleanup stays on MSIX and on failed
+or cancelled helper runs.
 
-Agent job stages are:
+Agent job stages on Windows EXE install are:
 
 ```text
 checking -> downloading -> staging -> launching_installer
-         -> awaiting_user -> verifying_installation
-         -> succeeded | failed | cancelled | incomplete
+         -> awaiting_user -> succeeded | failed | cancelled | incomplete
 ```
 
 `launching_installer` is the non-cancellable side-effect boundary.
 `awaiting_user` means the vendor UI/UAC owns interaction. `incomplete` is a
-terminal, non-green outcome used when the installer may still be running or
-the result cannot be observed uniquely. “Cancel” before launch cancels waiting
-and download; after launch FyAgent offers no false “cancel installation”.
+terminal, non-green outcome used when launch itself could not be confirmed.
+“Cancel” before launch cancels waiting and download; after launch FyAgent
+offers no false “cancel installation”.
 
-Every helper outcome is followed by a fresh Agent inventory readback. Fresh
-Qoder install requires one new current-user trusted candidate. TRAE/WorkBuddy
-vendor-choice install requires exactly one new trusted candidate in any
-observed scope. Update requires the selected candidate to remain at the same
-canonical path/scope and change authoritative identity/version. An absent,
-unchanged, duplicate, scope-drifted, or version-incompatible result cannot
-succeed even when the helper reports exit 0. EXE vendor UI is assisted and has
-no rollback claim.
+Every helper launch success is job `succeeded`. It is not proof that a trusted
+candidate exists. The directory rereads inventory afterward and may still show
+`not_installed` until a later scan observes the closed identity. Fresh Qoder /
+TRAE / WorkBuddy inventory rules are unchanged for discovery and launch. Update
+still requires a selected candidate when that action exists. An assisted EXE
+vendor UI has no rollback claim. macOS DMG install still verifies the deployed
+bundle before `succeeded`.
 
 The three current products have no reviewed MSIX/PFN/AUMID contract, so Agent
 inventory does not query or guess PackageManager identities for them. Codex is
@@ -436,11 +442,14 @@ required or rejected.
 | PackageBridge hash-while-copy digest does not match the download-stream digest | Fail closed with `CHECKSUM_MISMATCH`; do not add a second full-file SHA pass after copy. |
 | Windows post-install inventory has exactly one changed record | Select that dynamic record after operational shape validation, without comparing it to maintained publication constants. |
 | Windows post-install inventory has multiple changed records or no unique usable result | Fail with structured ambiguity/installation verification error; never guess. |
-| Agent EXE local ProductName, architecture, WinVerifyTrust, signer count, or signer leaf subject fails | `source_not_verified` / `platform_unsupported`; do not launch the helper. |
+| Agent EXE local ProductName, WinVerifyTrust, signer count, or signer leaf subject fails | `source_not_verified`; do not launch the helper. |
+| Official x64/User-x64 vendor setup EXE is PE32 i386 NSIS/electron-builder stub on an x64 or ARM64 host | Admit as installer only; installed-app discovery still requires AMD64/ARM64. |
+| Cross-arch AMD64 vs ARM64 vendor installer, or a 32-bit host | `platform_unsupported`; do not launch the helper. |
 | Helper Hello action/product differs from the parent request | Fail before bridge control/admission; zero installer launch. |
-| User cancels UAC/vendor launch | `installer_user_cancelled`; inventory reread still determines whether an install actually appeared. |
-| ShellExecuteEx returns no process handle or the wait deadline expires | `installer_process_unobservable` / `installer_timed_out`; stop waiting without killing the installer, then reread inventory. |
-| Vendor EXE exits zero/nonzero | Treat only as a hint; authoritative Agent inventory readback decides success. |
+| User cancels UAC/vendor launch | `installer_user_cancelled`. |
+| ShellExecuteEx succeeds, including a missing process handle | Job `succeeded` (vendor-wizard handoff); do not wait, do not read exit code, do not delete the PackageBridge EXE leaf. |
+| Helper launch fails (not user cancel) | `installer_launch_failed` / existing mapped helper error; failed/cancelled settlement may still clean the bridge. |
+| Vendor EXE later exits zero/nonzero | Not installation authority; a later inventory scan may still show `not_installed`. |
 | macOS mount has no unique direct top-level `.app`, escapes containment, or staged/installed local identity changes | Fail with the corresponding local mount/path/transaction error and run the bounded detach/rollback path. |
 | Managed-Agent DMG resolves another product identity or the reviewed local version does not match the selected release | `source_not_verified`; do not move the selected target. |
 | Managed-Agent update targets `/Applications` without a reviewed authorization adapter | `authorization_required`; do not fall back to `~/Applications`. |
@@ -489,9 +498,10 @@ Tests must prove:
 - helper authentication, action-bound Hello v3, ACL, no-follow, file-ID,
   PackageBridge, terminal, quarantine, and cleanup protections remain covered;
 - Agent EXE tests cover signer-leaf resolution, wrong signer/product/arch,
-  Qoder current-user versus TRAE/WorkBuddy vendor-choice policy, UAC cancel,
-  missing process handle, timeout, nonzero exit, no-kill behavior, and
-  post-install unique-candidate readback;
+  PE32 i386 NSIS stub admitted only as a vendor installer, Qoder current-user
+  versus TRAE/WorkBuddy vendor-choice policy, UAC cancel, no-wait handoff,
+  no-kill behavior, retained PackageBridge EXE leaf on helper success, and
+  that missing handle/timeout/exit code is not install authority;
 - macOS mount discovery, executable containment, generated path safety, atomic
   replacement, exact expected cleanup, rollback, and detach remain covered;
 - managed-Agent exact selected-path update, no scope fallback, bundle identity,
@@ -545,6 +555,20 @@ native_install(&artifact)?;
 let installed = select_unique_dynamic_install_result(before, after)?;
 verify_operational_shape(&installed)?;
 ```
+
+Wrong: wait on the vendor wizard, treat a missing process handle as
+`installer_process_unobservable`, map a later exit code to job failure, reject
+a PE32 i386 NSIS stub as `platform_unsupported`, or delete the PackageBridge
+EXE leaf as soon as `ShellExecute` returns.
+
+```rust
+WaitForSingleObject(h_process, THIRTY_MINUTES)?;
+bridge.cleanup()?;
+```
+
+Correct: `ShellExecuteExW` with `SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NO_CONSOLE`
+and verb `open` is handoff; close the handle without waiting; retain the EXE
+leaf on helper success; admit i386 stubs only as installers.
 
 ## Scenario: Agent Catalog managed-desktop reuse
 
@@ -631,7 +655,9 @@ Rust-only field and is never on the Agent DTO.
 - Agent source/job tests live under `agent_install` and must not weaken
   Codex `expectedReleaseId` or helper-CLI contracts.
 - Helper tests prove exact CLI/action codes, Hello-action binding, bridge
-  artifact kind, process-handle/exit mapping, and no arbitrary arguments.
+  artifact kind, `SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NO_CONSOLE` plus fixed
+  `open`, no wait/`GetExitCodeProcess` on vendor EXE launch, EXE settlement
+  retains the PackageBridge leaf, and no arbitrary arguments.
 - Negative scan: no renderer/helper URL/path/hash/bypass input on either
   surface.
 
@@ -652,5 +678,5 @@ if agent_id == AgentCatalogId::Codex && matches!(action, Install | Update) {
 }
 let product = AgentInstallerProduct::try_from(agent_id)?;
 run_verified_agent_exe_installer(product, prepared_package, progress)?;
-verify_agent_inventory_readback(agent_id, selected_target)?;
+// ShellExecute success is terminal. Do not wait or reread inventory here.
 ```
