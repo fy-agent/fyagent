@@ -1963,3 +1963,25 @@ Rewrote audited frontend and public-documentation copy, added an indexed user-fa
 ### Next Steps
 
 - Windows 原生 HIL：真实已安装/未安装、UAC/vendor UI、自定义路径和桌面启动
+
+
+## Session 61: Nav jank and domestic update
+<!-- trellis-session: v=2 fp=c58e7c1ab93cd3d5 -->
+
+**Date**: 2026-09-02
+**Task**: Nav jank and domestic update
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Visited primary routes stay mounted with visibility-gated queries so leaving AI software config no longer hitch-unloads the scan tree. Primary-nav lens no longer paints a scan-time highlight. Qoder/TRAE/WorkBuddy FyAgent one-click update is closed in lifecycle_policy plus a shared directory capability slot.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `34359cae` | fix(v2): keep visited config pages alive and close domestic one-click update |
+
+### Status
+
+[OK] **Completed**
