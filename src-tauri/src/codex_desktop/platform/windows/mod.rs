@@ -107,7 +107,7 @@ impl WindowsHelperDeadlines {
 
     const AGENT_EXE_INSTALL: Self = Self {
         connect: Duration::from_secs(30),
-        operation: Duration::from_secs(31 * 60),
+        operation: Duration::from_secs(5 * 60),
         terminal_close: Duration::from_secs(5),
     };
 

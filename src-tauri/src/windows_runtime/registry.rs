@@ -5,6 +5,22 @@
 //! already verified handle with `REG_OPTION_OPEN_LINK` so a registry link
 //! cannot redirect an elevated operation into another hive.
 
+use std::io;
+
+pub(crate) const REJECTED_SYMBOLIC_LINK_COMPONENT: &str =
+    "registry symbolic-link component rejected";
+
+/// WOW64 shared keys (notably HKLM App Paths) surface as registry links when
+/// opened with `REG_OPTION_OPEN_LINK` in the 32-bit view. That is the same
+/// location already enumerated in the 64-bit view, not an access failure.
+pub(crate) fn is_rejected_symbolic_link_component(error: &io::Error) -> bool {
+    error.kind() == io::ErrorKind::PermissionDenied
+        && error.raw_os_error().is_none()
+        && error
+            .get_ref()
+            .is_some_and(|inner| inner.to_string() == REJECTED_SYMBOLIC_LINK_COMPONENT)
+}
+
 #[cfg(any(target_os = "windows", test))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ShellUserRegistryLocation {
@@ -366,7 +382,7 @@ mod windows {
             RegistryTraversalError::Backend(error) => error,
             RegistryTraversalError::SymbolicLinkComponent => io::Error::new(
                 io::ErrorKind::PermissionDenied,
-                "registry symbolic-link component rejected",
+                super::REJECTED_SYMBOLIC_LINK_COMPONENT,
             ),
         }
     }
@@ -474,7 +490,7 @@ mod windows {
             Ok(false) => Ok(child),
             Ok(true) => Err(io::Error::new(
                 io::ErrorKind::PermissionDenied,
-                "registry symbolic-link component rejected",
+                super::REJECTED_SYMBOLIC_LINK_COMPONENT,
             )),
             Err(error) => Err(error),
         }
@@ -1169,5 +1185,26 @@ mod tests {
             ),
             Err(RegistryTraversalError::Backend("inspection failed"))
         );
+    }
+}
+
+#[cfg(test)]
+mod rejected_link_classification_tests {
+    use super::{is_rejected_symbolic_link_component, REJECTED_SYMBOLIC_LINK_COMPONENT};
+    use std::io::{Error, ErrorKind};
+
+    #[test]
+    fn rejected_symbolic_link_is_not_a_raw_access_denied() {
+        let rejected = Error::new(
+            ErrorKind::PermissionDenied,
+            REJECTED_SYMBOLIC_LINK_COMPONENT,
+        );
+        assert!(is_rejected_symbolic_link_component(&rejected));
+        assert!(!is_rejected_symbolic_link_component(&Error::from(
+            ErrorKind::NotFound
+        )));
+        assert!(!is_rejected_symbolic_link_component(
+            &Error::from_raw_os_error(5)
+        ));
     }
 }

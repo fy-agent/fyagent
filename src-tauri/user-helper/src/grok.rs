@@ -601,5 +601,7 @@ mod tests {
         assert_eq!(encoded, "YQA=");
         assert!(grok_native_windows_powershell_command()
             .starts_with("powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand "));
+        assert!(GROK_NATIVE_WINDOWS_INSTALL_SCRIPT.contains("https://x.ai/cli/install.ps1"));
+        assert!(!GROK_NATIVE_WINDOWS_INSTALL_SCRIPT.contains("npm"));
     }
 }

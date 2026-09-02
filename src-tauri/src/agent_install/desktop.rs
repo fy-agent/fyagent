@@ -556,6 +556,7 @@ pub(super) fn verify_windows_deployment_candidates(
 }
 
 #[cfg(target_os = "windows")]
+#[allow(dead_code)]
 pub(super) fn verify_windows_deployment(
     agent_id: AgentCatalogId,
     baseline: &DesktopInstallationBaseline,

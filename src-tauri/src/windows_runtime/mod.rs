@@ -18,6 +18,7 @@ use std::{
 mod native;
 mod registry;
 
+pub(crate) use registry::is_rejected_symbolic_link_component;
 #[cfg(target_os = "windows")]
 pub(crate) use registry::{
     create_or_open_shell_user_environment_update, open_inventory_child_read,

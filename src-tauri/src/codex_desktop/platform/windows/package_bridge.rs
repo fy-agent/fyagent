@@ -383,6 +383,10 @@ impl ProtectedPackageBridge {
         self.control
     }
 
+    pub(super) const fn artifact_kind(&self) -> PackageBridgeArtifactKind {
+        self.artifact_kind
+    }
+
     pub(super) const fn identity(&self) -> PinnedPackageIdentity {
         self.control.package()
     }

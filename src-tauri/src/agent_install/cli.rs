@@ -30,9 +30,11 @@ pub struct CliObservation {
 
 impl CliObservation {
     pub fn from_tool_version(version: &ToolVersion) -> Self {
-        let unavailable = version.error().is_some()
-            && version.local_version().is_none()
-            && !version.installed_but_broken();
+        let unavailable = cli_unavailable(
+            version.error(),
+            version.local_version().is_some(),
+            version.installed_but_broken(),
+        );
         Self {
             detected: version.is_detected(),
             runnable: version.local_version().is_some() && !version.installed_but_broken(),
@@ -41,6 +43,21 @@ impl CliObservation {
             unavailable,
         }
     }
+}
+
+fn cli_unavailable(error: Option<&str>, has_local: bool, installed_but_broken: bool) -> bool {
+    if has_local || installed_but_broken {
+        return false;
+    }
+    match error {
+        Some(message) if cli_error_is_absence(message) => false,
+        Some(_) => true,
+        None => false,
+    }
+}
+
+fn cli_error_is_absence(message: &str) -> bool {
+    message.to_ascii_lowercase().contains("not installed")
 }
 
 pub async fn observe_cli(agent_id: AgentCatalogId) -> Option<CliObservation> {
@@ -110,5 +127,43 @@ mod tests {
             assert_ne!(tool, "openclaw");
             assert_ne!(tool, "codex");
         }
+    }
+
+    #[test]
+    fn absent_cli_is_installable_not_unavailable() {
+        assert!(!cli_unavailable(
+            Some("not installed or not executable"),
+            false,
+            false
+        ));
+        assert!(!cli_unavailable(
+            Some("Grok Build is not installed for the current user"),
+            false,
+            false
+        ));
+        assert!(!cli_unavailable(None, false, false));
+        assert!(!cli_unavailable(Some("host missing"), true, false));
+        assert!(!cli_unavailable(Some("host missing"), false, true));
+    }
+
+    #[test]
+    fn inspection_boundary_errors_stay_unavailable() {
+        assert!(cli_unavailable(
+            Some(
+                "CLI inspection and lifecycle actions are unavailable in the elevated Windows release."
+            ),
+            false,
+            false
+        ));
+        assert!(cli_unavailable(
+            Some("Grok Build is unavailable for the current Windows user."),
+            false,
+            false
+        ));
+        assert!(cli_unavailable(
+            Some("The official Grok Build host is unavailable"),
+            false,
+            false
+        ));
     }
 }

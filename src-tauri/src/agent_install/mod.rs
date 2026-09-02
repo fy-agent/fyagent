@@ -16,8 +16,6 @@ mod windows;
 
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
-#[cfg(target_os = "windows")]
-use std::time::Duration;
 
 pub use auth_sessions::{
     auth_observation_for, get_active_agent_auth_session, get_agent_auth_session,
@@ -39,8 +37,8 @@ use auth_actions::observe_auth_state;
 use cli::{observe_cli, run_cli_lifecycle};
 #[cfg(target_os = "windows")]
 use desktop::{
-    capture_desktop_installation_baseline, download_windows_exe_to_job, verify_windows_deployment,
-    verify_windows_exe_source, WindowsDeploymentExpectation,
+    capture_desktop_installation_baseline, download_windows_exe_to_job, verify_windows_exe_source,
+    WindowsDeploymentExpectation,
 };
 use desktop::{
     launch_desktop_installation, readiness_source_codes, resolve_desktop_source, source_reason,
@@ -811,13 +809,10 @@ async fn run_windows_desktop_install_job(
     target: inventory::DesktopDeploymentTarget,
     cancel: Arc<AtomicBool>,
 ) {
-    let expectation = match windows_deployment_expectation(target) {
-        Ok(expectation) => expectation,
-        Err(reason) => {
-            let _ = jobs.transition(&job_id, AgentActionJobStage::Failed, Some(reason));
-            return;
-        }
-    };
+    if let Err(reason) = windows_deployment_expectation(target) {
+        let _ = jobs.transition(&job_id, AgentActionJobStage::Failed, Some(reason));
+        return;
+    }
     let baseline = capture_desktop_installation_baseline(source.product);
     if !baseline.complete() {
         let _ = jobs.transition(
@@ -961,46 +956,8 @@ async fn run_windows_desktop_install_job(
             );
         }
         WindowsInstallerOutcome::Invoked(helper_result) => {
-            let _ = jobs.transition(&job_id, AgentActionJobStage::VerifyingInstallation, None);
-            let verified = wait_for_windows_deployment(
-                source.product,
-                &baseline,
-                &expectation,
-                source.display_version.as_deref(),
-            )
-            .await;
-            if verified.is_ok() {
-                let _ = jobs.transition(&job_id, AgentActionJobStage::Succeeded, None);
-                return;
-            }
-            let verification_reason = verified
-                .err()
-                .unwrap_or(AgentReasonCode::InstallationVerificationFailed);
-            match helper_result {
-                Err(AgentReasonCode::InstallerUserCancelled) => {
-                    let _ = jobs.transition(
-                        &job_id,
-                        AgentActionJobStage::Cancelled,
-                        Some(AgentReasonCode::InstallerUserCancelled),
-                    );
-                }
-                Err(
-                    reason @ (AgentReasonCode::InstallerProcessUnobservable
-                    | AgentReasonCode::InstallerTimedOut),
-                ) => {
-                    let _ = jobs.transition(&job_id, AgentActionJobStage::Incomplete, Some(reason));
-                }
-                Err(reason) => {
-                    let _ = jobs.transition(&job_id, AgentActionJobStage::Failed, Some(reason));
-                }
-                Ok(()) => {
-                    let _ = jobs.transition(
-                        &job_id,
-                        AgentActionJobStage::Incomplete,
-                        Some(verification_reason),
-                    );
-                }
-            }
+            let (stage, reason) = settle_windows_vendor_installer_outcome(helper_result);
+            let _ = jobs.transition(&job_id, stage, reason);
         }
     }
 }
@@ -1092,24 +1049,22 @@ fn map_windows_installer_error_parts(
     }
 }
 
-#[cfg(target_os = "windows")]
-async fn wait_for_windows_deployment(
-    agent_id: AgentCatalogId,
-    baseline: &desktop::DesktopInstallationBaseline,
-    expectation: &WindowsDeploymentExpectation,
-    expected_local_version: Option<&str>,
-) -> Result<(), AgentReasonCode> {
-    let mut last_reason = AgentReasonCode::InstallationVerificationFailed;
-    for attempt in 0..=90_u8 {
-        match verify_windows_deployment(agent_id, baseline, expectation, expected_local_version) {
-            Ok(()) => return Ok(()),
-            Err(reason) => last_reason = reason,
-        }
-        if attempt < 90 {
-            tokio::time::sleep(Duration::from_secs(1)).await;
-        }
+#[cfg(any(target_os = "windows", test))]
+fn settle_windows_vendor_installer_outcome(
+    helper_result: Result<(), AgentReasonCode>,
+) -> (AgentActionJobStage, Option<AgentReasonCode>) {
+    match helper_result {
+        Ok(()) => (AgentActionJobStage::Succeeded, None),
+        Err(AgentReasonCode::InstallerUserCancelled) => (
+            AgentActionJobStage::Cancelled,
+            Some(AgentReasonCode::InstallerUserCancelled),
+        ),
+        Err(
+            reason @ (AgentReasonCode::InstallerProcessUnobservable
+            | AgentReasonCode::InstallerTimedOut),
+        ) => (AgentActionJobStage::Incomplete, Some(reason)),
+        Err(reason) => (AgentActionJobStage::Failed, Some(reason)),
     }
-    Err(last_reason)
 }
 
 fn immediate_result(
@@ -1277,6 +1232,37 @@ mod tests {
                 AgentUpdateState::Unknown
             );
         }
+    }
+
+    #[test]
+    fn windows_vendor_installer_handoff_succeeds_without_inventory_proof() {
+        assert_eq!(
+            settle_windows_vendor_installer_outcome(Ok(())),
+            (AgentActionJobStage::Succeeded, None)
+        );
+        assert_eq!(
+            settle_windows_vendor_installer_outcome(Err(AgentReasonCode::InstallerUserCancelled)),
+            (
+                AgentActionJobStage::Cancelled,
+                Some(AgentReasonCode::InstallerUserCancelled)
+            )
+        );
+        assert_eq!(
+            settle_windows_vendor_installer_outcome(Err(
+                AgentReasonCode::InstallerProcessUnobservable
+            )),
+            (
+                AgentActionJobStage::Incomplete,
+                Some(AgentReasonCode::InstallerProcessUnobservable)
+            )
+        );
+        assert_eq!(
+            settle_windows_vendor_installer_outcome(Err(AgentReasonCode::InstallerExitedNonzero)),
+            (
+                AgentActionJobStage::Failed,
+                Some(AgentReasonCode::InstallerExitedNonzero)
+            )
+        );
     }
 
     #[test]

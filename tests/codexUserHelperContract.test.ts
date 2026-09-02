@@ -631,16 +631,18 @@ describe("Codex current-user helper static contract", () => {
     for (const boundary of [
       "SHELLEXECUTEINFOW",
       "SEE_MASK_NOCLOSEPROCESS",
+      "SEE_MASK_NO_CONSOLE",
+      'OsStr::new("open")',
+      "lpVerb",
       "ShellExecuteExW",
       "ERROR_CANCELLED",
-      "InstallerProcessUnobservable",
-      "WaitForSingleObject",
-      "GetExitCodeProcess",
-      "InstallerTimedOut",
-      "InstallerExitedNonzero",
+      "send_progress(10)",
     ]) {
       expect(exeRunner, boundary).toContain(boundary);
     }
+    expect(exeRunner).not.toMatch(
+      /WaitForSingleObject|GetExitCodeProcess|InstallerTimedOut|InstallerExitedNonzero|InstallerProcessUnobservable/u,
+    );
     expect(exeRunner).not.toMatch(
       /lpParameters|lpDirectory|runas|TerminateProcess|Command::new|CreateProcess/iu,
     );

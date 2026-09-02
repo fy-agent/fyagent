@@ -23,8 +23,9 @@ use fyagent_user_helper::{
     admission_event_name, cancel_event_name, decode_frame, layout::pipe_name,
     AgentInstallerProduct, CanonicalJobId, GrokOwner, GrokToolAction, HelperErrorCode,
     HelperMessage, HelperProtocolAction, HelperProtocolSequence, HelperProtocolTerminal,
-    PackageBridgeControl, PinnedPackageIdentity, PipeNonce, ToolOperationResult, UserHelperAction,
-    BRIDGE_CONTROL_BYTES, MAX_FRAME_BYTES, TOOL_OPERATION_STARTED_IDENTITY,
+    PackageBridgeArtifactKind, PackageBridgeControl, PinnedPackageIdentity, PipeNonce,
+    ToolOperationResult, UserHelperAction, BRIDGE_CONTROL_BYTES, MAX_FRAME_BYTES,
+    TOOL_OPERATION_STARTED_IDENTITY,
 };
 use windows::{
     core::{HRESULT, PCWSTR, PWSTR},
@@ -1253,6 +1254,13 @@ fn accept_protocol_message(
         .map_err(|_| helper_pipe_error("the user-helper message sequence was invalid"))
 }
 
+fn retain_package_bridge_after_settlement(
+    helper_ok: bool,
+    artifact_kind: Option<PackageBridgeArtifactKind>,
+) -> bool {
+    helper_ok && matches!(artifact_kind, Some(PackageBridgeArtifactKind::Exe))
+}
+
 fn finish_settled(
     gate: HelperGateLease,
     mut lifetime: HelperLifetime,
@@ -1260,7 +1268,18 @@ fn finish_settled(
 ) -> Result<(), InstallerError> {
     lifetime.mark_settled();
     let result = protocol_terminal_result(terminal);
-    lifetime.cleanup_bridge();
+    let retain_vendor_exe = retain_package_bridge_after_settlement(
+        result.is_ok(),
+        lifetime
+            .bridge
+            .as_ref()
+            .map(ProtectedPackageBridge::artifact_kind),
+    );
+    if retain_vendor_exe {
+        drop(lifetime);
+    } else {
+        lifetime.cleanup_bridge();
+    }
     gate.finish();
     result
 }
@@ -1883,6 +1902,26 @@ mod tests {
             PinnedPackageIdentity::new(7, 11, 14),
             BRIDGE_IDENTITY
         ));
+    }
+
+    #[test]
+    fn vendor_exe_success_retains_package_bridge_leaf() {
+        assert!(retain_package_bridge_after_settlement(
+            true,
+            Some(PackageBridgeArtifactKind::Exe),
+        ));
+        assert!(!retain_package_bridge_after_settlement(
+            false,
+            Some(PackageBridgeArtifactKind::Exe),
+        ));
+        assert!(!retain_package_bridge_after_settlement(
+            true,
+            Some(PackageBridgeArtifactKind::Msix),
+        ));
+        assert!(!retain_package_bridge_after_settlement(true, None));
+        let source = production_source();
+        assert!(source.contains("retain_package_bridge_after_settlement("));
+        assert!(source.contains("if retain_vendor_exe"));
     }
 
     #[test]

@@ -83,7 +83,8 @@ use windows::{
         UI::Shell::{
             FOLDERID_LocalAppData, FOLDERID_Profile, FOLDERID_ProgramData, FOLDERID_RoamingAppData,
             FOLDERID_System, PathCreateFromUrlW, SHGetKnownFolderPath, ShellExecuteExW,
-            UrlCreateFromPathW, KF_FLAG_DEFAULT, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW,
+            UrlCreateFromPathW, KF_FLAG_DEFAULT, SEE_MASK_NOCLOSEPROCESS, SEE_MASK_NO_CONSOLE,
+            SHELLEXECUTEINFOW,
         },
         UI::WindowsAndMessaging::SW_SHOWNORMAL,
     },
@@ -118,7 +119,6 @@ use fyagent_user_helper::{
 // raw-first-frame identity admission, and a bounded authentication margin.
 const ADMISSION_TIMEOUT: Duration = Duration::from_secs(75);
 const DEPLOYMENT_TIMEOUT: Duration = Duration::from_secs(9 * 60);
-const EXE_INSTALLER_TIMEOUT: Duration = Duration::from_secs(30 * 60);
 const WAIT_SLICE: Duration = Duration::from_millis(250);
 const PIPE_IO_TIMEOUT: Duration = Duration::from_secs(5);
 const BA_FULL_MASK: u32 = 0x001f_01ff;
@@ -796,8 +796,8 @@ fn run_verified_exe_installer(
     product: AgentInstallerProduct,
     channel: &PipeChannel,
 ) -> Result<(), DeploymentFailure> {
-    // The product is deliberately a closed semantic selector. It never
-    // becomes an executable name, argument vector, verb, or working directory.
+    // Launch the official vendor wizard and return. FyAgent does not wait
+    // for process exit or treat an exit code as installation authority.
     match product {
         AgentInstallerProduct::QoderWork
         | AgentInstallerProduct::TraeWork
@@ -818,9 +818,15 @@ fn run_verified_exe_installer(
         .encode_wide()
         .chain(Some(0))
         .collect::<Vec<_>>();
+    let wide_verb = OsStr::new("open")
+        .encode_wide()
+        .chain(Some(0))
+        .collect::<Vec<_>>();
+    // Contract verb is fixed `open`. Do not inherit the helper console into the vendor GUI.
     let mut execute = SHELLEXECUTEINFOW {
         cbSize: size_of::<SHELLEXECUTEINFOW>() as u32,
-        fMask: SEE_MASK_NOCLOSEPROCESS,
+        fMask: SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NO_CONSOLE,
+        lpVerb: PCWSTR(wide_verb.as_ptr()),
         lpFile: PCWSTR(wide_path.as_ptr()),
         nShow: SW_SHOWNORMAL.0,
         ..Default::default()
@@ -837,49 +843,12 @@ fn run_verified_exe_installer(
     channel
         .send_progress(10)
         .map_err(|_| DeploymentFailure::Pipe)?;
-    if execute.hProcess.is_invalid() || execute.hProcess.0.is_null() {
-        return Err(DeploymentFailure::Operation(
-            HelperErrorCode::InstallerProcessUnobservable,
-        ));
+    let process_valid = !execute.hProcess.is_invalid() && !execute.hProcess.0.is_null();
+    if process_valid {
+        // Close the wait handle without waiting. The vendor wizard owns the rest.
+        let _ = OwnedKernelHandle::new(execute.hProcess);
     }
-    let process = OwnedKernelHandle::new(execute.hProcess)
-        .map_err(|_| DeploymentFailure::Operation(HelperErrorCode::InstallerLaunchFailed))?;
-    let deadline = Instant::now() + EXE_INSTALLER_TIMEOUT;
-    loop {
-        let Some(remaining) = deadline.checked_duration_since(Instant::now()) else {
-            return Err(DeploymentFailure::Operation(
-                HelperErrorCode::InstallerTimedOut,
-            ));
-        };
-        let wait = remaining.min(WAIT_SLICE);
-        let result = unsafe { WaitForSingleObject(process.raw(), duration_millis(wait)) };
-        if result == WAIT_OBJECT_0 {
-            let mut exit_code = u32::MAX;
-            unsafe { GetExitCodeProcess(process.raw(), &mut exit_code) }.map_err(|_| {
-                DeploymentFailure::Operation(HelperErrorCode::InstallerProcessUnobservable)
-            })?;
-            channel
-                .send_progress(90)
-                .map_err(|_| DeploymentFailure::Pipe)?;
-            return if exit_code == 0 {
-                Ok(())
-            } else {
-                Err(DeploymentFailure::Operation(
-                    HelperErrorCode::InstallerExitedNonzero,
-                ))
-            };
-        }
-        if result == WAIT_FAILED {
-            return Err(DeploymentFailure::Operation(
-                HelperErrorCode::InstallerLaunchFailed,
-            ));
-        }
-        if result != WAIT_TIMEOUT {
-            return Err(DeploymentFailure::Operation(
-                HelperErrorCode::InstallerLaunchFailed,
-            ));
-        }
-    }
+    Ok(())
 }
 
 fn validate_deployment_result(result: DeploymentResult) -> Result<(), DeploymentFailure> {

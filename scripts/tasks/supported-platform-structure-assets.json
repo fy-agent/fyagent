@@ -55,7 +55,7 @@
     ],
     [
       "src-tauri/src/agent_install/desktop.rs",
-      "ce7aaa4e0724365161b69b1ea1c86955341410f25f30060983c4300a1402ace5"
+      "06dbd60c5c5fe4651158f507b5659e97bbbbdbe5a72cad6d5ff5bfd656d542ad"
     ],
     [
       "src-tauri/src/agent_install/inventory.rs",
@@ -67,7 +67,7 @@
     ],
     [
       "src-tauri/src/agent_install/mod.rs",
-      "c3038c7e655050e33ead07fc420d6c051997f5bbc6ad304587beda2ca2f68eb6"
+      "fad09f6182705f6b0dd84d4f629121ad94208bf5a0372028207d4c6696afcaad"
     ],
     [
       "src-tauri/src/agent_install/sources/mod.rs",
@@ -75,7 +75,7 @@
     ],
     [
       "src-tauri/src/agent_install/windows.rs",
-      "3772dd9e81692b77902ae5e98b082ac4a11de15719d4472e1fef4e20729df903"
+      "3ac09ac837da3b9fe05c59193a9cbdd21ca944bcf0ce28d99dd66eea9f9cada2"
     ],
     [
       "src-tauri/src/app_store.rs",
@@ -127,7 +127,7 @@
     ],
     [
       "src-tauri/src/codex_desktop/platform/windows/mod.rs",
-      "d5d36df9f89eeb1bb7c1d5aeca1cc7b2e1ce6b7d20a53349c845d349be950aca"
+      "cd9f9515361f100c4cbc32a38fbd4ea8b22b5f034754236ae148d510789bce21"
     ],
     [
       "src-tauri/src/codex_desktop/temp.rs",
@@ -263,7 +263,7 @@
     ],
     [
       "src-tauri/src/services/tooling/grok.rs",
-      "2e038c1b85e80a1cbf0bc302f009c954cd8f497777ad1c56918e0ec1c7acb469"
+      "dc79a13a4358035d41105f5f79196fa1c26e53558a9c6b5e4f31a8f8f79a9497"
     ],
     [
       "src-tauri/src/services/tooling/lifecycle.rs",
@@ -307,11 +307,11 @@
     ],
     [
       "src-tauri/src/windows_runtime/mod.rs",
-      "9ba92cbc89aa61c968880a18e6a099ffcba3ad43d7ce6b05ac21feca0d521505"
+      "f1c5c7d9ead7f1b5727959cce44cbb2f5245b2c5765c39362acacfa61805515f"
     ],
     [
       "src-tauri/src/windows_runtime/registry.rs",
-      "7b2d081bf5ea9bd4a49578f386cdb813448eedfb7be0eb78c5d88d0ac1489d66"
+      "16fe7d8526f1913366afb35386896c36430029ceca216a26ccd11f1cfa3ee03e"
     ],
     [
       "src-tauri/src/windows_window_state.rs",
@@ -383,7 +383,7 @@
     ],
     [
       "tests/codexUserHelperContract.test.ts",
-      "b57714c5acd42413ebf8c62cef246d234cedaa32b4b6eaa020efa49a8db245bb"
+      "51b4cd4af87df936598d5be77f4f5354807272d32ff8a9fdc1f15ee170e3368d"
     ],
     [
       "tests/codexWindowsUserScopeContract.test.ts",

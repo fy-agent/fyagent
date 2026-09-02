@@ -94,7 +94,7 @@ pub(super) enum GrokOwnerObservation {
     Absent,
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", test))]
 impl GrokOwnerObservation {
     fn owner(self) -> Option<GrokDistributionOwner> {
         match self {
@@ -104,6 +104,7 @@ impl GrokOwnerObservation {
         }
     }
 
+    #[cfg(target_os = "macos")]
     fn wire(self) -> Option<&'static str> {
         self.owner().map(GrokDistributionOwner::as_str)
     }
