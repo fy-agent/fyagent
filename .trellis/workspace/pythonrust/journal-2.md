@@ -75,3 +75,25 @@ Audited all 43 pre-refresh Specs; split three cross-domain monoliths into focuse
 ### Next Steps
 
 - Use the focused backend/frontend indexes for task-scoped Spec discovery; compatibility router paths remain historical references only.
+
+
+## Session 64: 全面刷新并校准 Trellis Spec
+<!-- trellis-session: v=2 fp=7d9cef5d5a975bd0 -->
+
+**Date**: 2026-09-02
+**Task**: 全面刷新并校准 Trellis Spec
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+全面审查 64 份 SPEC；建立聚焦合同与兼容路由，补齐数据库、代理、Agent、Skills、MCP、Models、导航、窗口与本地化合同；再按当前源码和测试校准 Port、DTO、非原子写入、敏感值、错误码及路径事实。结构扫描、check:contracts、V2 474 项测试和精确 prearchive gate 全部通过。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f0479ac1` | docs: align Trellis specs with implementation facts |
+
+### Status
+
+[OK] **Completed**
