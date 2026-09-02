@@ -1,0 +1,10 @@
+{"file":".agents/skills/trellis-update-spec/SKILL.md","reason":"核对新增/重写 Spec 的可执行合同和七段式质量。"}
+{"file":".trellis/tasks/09-02-comprehensive-spec-refresh/prd.md","reason":"核对全量覆盖、事实校准、兼容和验收标准。"}
+{"file":".trellis/tasks/09-02-comprehensive-spec-refresh/design.md","reason":"核对拆分边界、单一权威和兼容路由。"}
+{"file":".trellis/tasks/09-02-comprehensive-spec-refresh/research.md","reason":"核对 43 份原始 Spec 均有处置结论。"}
+{"file":".trellis/spec/backend/index.md","reason":"核对后端索引覆盖和 owner 路由。"}
+{"file":".trellis/spec/frontend/index.md","reason":"核对前端索引覆盖和 owner 路由。"}
+{"file":".trellis/spec/guides/index.md","reason":"核对 Guide 仍短小且不承载实现权威。"}
+{"file":"tests/architecture/rustModuleBoundaries.test.ts","reason":"核对 Rust 模块可见性和 transport/service 边界。"}
+{"file":"tests/config/localeKeyParity.test.ts","reason":"核对支持语言的键集合和 leaf schema。"}
+{"file":"tests/classifyChanges.test.ts","reason":"核对旧兼容路径仍满足变更分类 fixture。"}

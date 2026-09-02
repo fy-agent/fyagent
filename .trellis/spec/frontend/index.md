@@ -1,9 +1,9 @@
 # Frontend Development Guidelines
 
-This directory defines renderer architecture, state, UI quality, copy, reuse,
-and the current V2 feature contracts. The index only routes readers; concrete
-ports, DTO parsers, page behavior, failure states, and tests belong in the
-linked spec.
+This directory defines renderer architecture, state, UI quality, copy,
+localization, and the current V2 feature contracts. The index only routes
+readers; concrete Ports, DTO parsers, page behavior, failure states, and test
+assertions belong in the linked owner.
 
 ## Reading order
 
@@ -16,7 +16,9 @@ linked spec.
    [Hook Guidelines](./hook-guidelines.md),
    [Quality Guidelines](./quality-guidelines.md), and
    [User-Facing Copy](./user-facing-copy.md).
-4. For V2 work, read [V2 Shell](./v2-shell.md) and the owning feature contract.
+4. For V2 work, read the focused navigation/window-shell contract plus the
+   owning feature contract. Use compatibility routers only for archived broad
+   references.
 
 ## Foundation contracts
 
@@ -26,31 +28,51 @@ linked spec.
 | [Renderer Modular Boundaries](./modular-boundaries.md) | Renderer/host, V2/leftover, feature/platform, and import boundaries. |
 | [Type Safety](./type-safety.md) | `unknown` parsing, DTO validation, exhaustive unions, and prohibition on scattered casts. |
 | [State Management](./state-management.md) | Server, URL, local draft, secret, and derived-state ownership. |
-| [Frontend Reuse](./reuse.md) | Reuse order, shared owner registry, component placement, dependency review, and anti-clone rules. |
+| [Frontend Reuse](./reuse.md) | Reuse order, shared-owner registry, component placement, dependency review, and anti-clone rules. |
 | [Component Guidelines](./component-guidelines.md) | Component APIs, semantics, accessibility, composition, and presentation ownership. |
 | [Hook Guidelines](./hook-guidelines.md) | Hook responsibilities, lifecycle, query/effect ownership, and stable return shapes. |
 | [Quality Guidelines](./quality-guidelines.md) | Loading/error/empty states, test levels, deterministic behavior, and acceptance evidence. |
-| [User-Facing Copy](./user-facing-copy.md) | Human-readable copy, evidence strength, errors, labels, Settings/Grok-only installer copy, and prohibition on internal/GPT-style narration. |
+| [User-Facing Copy](./user-facing-copy.md) | Evidence-correct copy, errors, labels, installer wording, and prohibition on internal/GPT-style narration. |
+| [Frontend Localization](./localization.md) | Leftover locale authority, exact key parity, detection, fallback, and V2 import boundary. |
 
-## V2 contracts
+## V2 architecture and shell
 
 | Contract | Owns |
 | --- | --- |
-| [V2 Shell](./v2-shell.md) | Route registry, persistent left navigation, SelectionLens geometry modes, native title-bar chrome, layout, motion owner, and route lifecycle. |
-| [V2 Agent Directory and Models](./v2-agent-models.md) | Agent catalog v5, scan-driven directory order, desktop-only Claude/OpenCode lifecycle projections, Auth, Models setup, write confirmation, and Change Plan UI. |
-| [V2 Skills and MCP](./v2-skills-mcp.md) | Skills/MCP ports, discovery, assignment, shared feature UI, secret-safe configuration, and authoritative reread. |
-| [V2 Prompts and Memory](./v2-prompts-memory.md) | Prompt/native memory ports, CRUD/enable flows, directory operations, and Agent prompt delegation. |
+| [V2 Navigation and Persistent Route](./v2-navigation.md) | Hash route registry, literal lazy loaders, persistent page lifetime, hidden query isolation, blockers, sidebar state, and closed Agent return state. |
+| [V2 Window Shell and Interaction](./v2-window-shell.md) | AppShell/TopBar, native-overlay boundary, selection geometry, shared motion/collapse, external opening, and V2 architecture imports. |
+
+## V2 feature contracts
+
+| Contract | Owns |
+| --- | --- |
+| [V2 Agent Directory](./v2-agent-directory.md) | Catalog/readiness scan, order, cards, capability projection, lifecycle UI, and Agent return links. |
+| [V2 External Agent Auth UI](./v2-agent-auth.md) | Auth observation, active-session recovery, polling, desktop target selection, and evidence-correct status UI. |
+| [V2 Models](./v2-models.md) | Target selection, drafts/tests, typed preview/apply, quick setup, WorkBuddy, TRAE, OpenCode, and Codex model flows. |
+| [V2 Shared Assignment](./v2-assignments.md) | Seven-target presentation order, shared AssignmentPanel API, serialized mutation, and authoritative reread. |
+| [V2 Skills](./v2-skills.md) | Installed/discovery views, SkillHub/repository sources, pagination, install targets, backups, and Skill assignments. |
+| [V2 MCP](./v2-mcp.md) | Installed/discovery views, launch parsing, security projection, presets, install, and MCP assignments. |
+| [V2 Prompts and Memory](./v2-prompts-memory.md) | Prompt/native-memory Ports, CRUD/enable flows, directory operations, and Agent prompt delegation. |
+
+## Compatibility routers
+
+- [V2 Shell](./v2-shell.md)
+- [V2 Agents and Models](./v2-agent-models.md)
+- [V2 Skills and MCP](./v2-skills-mcp.md)
+
+These paths preserve archived references only. New work cites the focused
+contract above and must not add detailed behavior back to a router.
 
 ## Maintenance rules
 
-- A feature contract owns its exact UI/port behavior. Foundation specs should
-  state reusable principles and link instead of copying feature matrices.
-- Integrate the current rule into the body; do not accumulate dated override
+- A feature contract owns its exact UI/Port behavior. Foundation specs state
+  reusable rules and link instead of copying feature matrices.
+- Integrate the current rule into the owning body; do not stack dated override
   blocks above contradictory text.
-- V2 production code must use the approved shared/platform boundaries. A test
-  fixture or browser preview never becomes desktop authority.
-- Keep secret, native-only, readback, rollback, accessibility, and responsive
-  failure cases explicit even when they make a feature contract longer.
+- V2 production code uses approved shared/platform boundaries. A test fixture
+  or browser preview never becomes desktop authority.
+- Keep native-only, readback, partial-result, accessibility, responsive, and
+  secret/error-redaction cases explicit even when a feature contract is longer.
 
 ## Quality Check
 
