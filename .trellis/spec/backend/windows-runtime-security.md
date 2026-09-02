@@ -368,7 +368,10 @@ IShellFolderViewDual.Application -> IShellDispatch2`.
   the closed `grok-tool` helper path and the absence of elevated fallback.
   Installer-helper tests must prove exact action/product CLI, v3 Hello-action
   binding, Grok wire codes 5–13, fixed bridge artifact kind, and no
-  tool/URL/path argv. Existing Tooling formal-build fail-closed tests remain
+  tool/URL/path argv. Agent EXE helper tests must prove
+  `SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NO_CONSOLE` plus fixed `open`, no
+  wait/`GetExitCodeProcess`, and that helper success retains the PackageBridge
+  EXE leaf. Existing Tooling formal-build fail-closed tests remain
   authoritative.
   Bob/Alice/UAC installer HIL remains unverified.
 - A real current-host Tauri click may prove only the external-link path it
