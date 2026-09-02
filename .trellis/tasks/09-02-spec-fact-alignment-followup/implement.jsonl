@@ -1,0 +1,2 @@
+{"file":".trellis/spec/README.md","reason":"Defines focused-contract, compatibility-router, authority, and maintenance rules for the spec-only change."}
+{"file":".trellis/tasks/09-02-spec-fact-alignment-followup/research/spec-fact-audit.md","reason":"Contains the source-backed file-level findings that the implementation must preserve."}

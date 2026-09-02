@@ -779,7 +779,7 @@ continues to terminate the complete child process group. Linux and Windows keep
 their previous native task behavior.
 
 The repository does not contain a developer-machine PKCS#12 path or password.
-`scripts/tasks/macos-signed-dev.mjs configure` writes a mode-0600 configuration
+`scripts/tasks/macos-signed-dev.mjs` subcommand `configure` writes a mode-0600 configuration
 under the user's FyAgent Application Support directory that references a local
 PKCS#12 and credentials file. `mise run dev` consumes only that fixed local
 configuration; callers cannot override signing paths or credentials through

@@ -1,241 +1,399 @@
-# V2 Models and Change Plan UI Contract
+# V2 Model Configuration Contract
 
 ## 1. Scope / Trigger
 
-Read this contract before changing the V2 Models route, model/provider
-selection, product-specific model panels, endpoint preflight, OpenCode model
-edits, WorkBuddy/Codex model configuration, quick setup, or Change Plan
-preview/confirmation/execution UI.
+Read this contract before changing the V2 Models route, target selection,
+provider quick setup, model discovery/probing, write confirmation, Codex or
+WorkBuddy Change Plans, OpenCode revisioned writes, TRAE observation, or model
+credential handling.
 
-Primary owners:
+Primary owners are:
 
-- `src/v2/pages/models/**`
-- `src/v2/shared/features/models.ts`
-- `src/v2/shared/features/change-plans.ts`
-- `src/v2/shared/features/ports.ts`
-- desktop `ModelPorts` and `ChangePlanPorts` adapters
+- `src/v2/pages/models/Page.tsx` and `OpenCodeModelsPanel.tsx` for current
+  product-specific page behavior;
+- `src/v2/pages/models/QoderModelsPanel.tsx` and `TraeModelsPanel.tsx` for the
+  unsupported/read-only targets;
+- `src/v2/pages/models/quickSetup.ts`, `workBuddyModels.ts`, and the apply
+  workspace modules for validation, drafts, preview, apply, and polling;
+- `src/v2/shared/features/models.ts`, `change-plans.ts`, and `ports.ts` for the
+  DTOs and five actual Port owners;
+- `src/v2/shared/platform/tauri/feature-ports/models.ts`, `changePlans.ts`, and
+  `qoderTrae.ts` for the desktop IPC boundaries.
 
-Native product owners include:
+Native ownership remains split by operation:
 
-- [External Agent Model Integration](../backend/external-agent-models.md)
-- [WorkBuddy Configuration](../backend/workbuddy-configuration.md)
 - [Codex Provider Configuration](../backend/codex-provider-configuration.md)
-- [Change Plan Executor](../backend/change-plan-executor.md)
+  owns Codex provider/auth projection and readback;
+- [WorkBuddy Configuration](../backend/workbuddy-configuration.md) owns
+  WorkBuddy revisioned model writes;
+- [External Agent Model Integration](../backend/external-agent-models.md) owns
+  TRAE observation/preflight and OpenCode model persistence;
+- [Change Plan Typed Executor](../backend/change-plan-executor.md) owns Codex
+  and WorkBuddy preview/apply/recovery semantics.
+
+There is no aggregate `ModelPorts` or `ChangePlanPorts` type. New code uses the
+focused Ports already present in `FeaturePorts`.
 
 ## 2. Signatures
 
-Route:
+### Closed route targets
+
+`MODEL_TARGETS` is derived from `MODEL_DIRECTORY_IDS` and has this exact order:
 
 ```text
-/models
+qoderwork | trae | workbuddy | grokbuild | codex | claude | opencode
 ```
 
-`ModelPorts` is the only renderer access to model/provider read, validation,
-probe/fetch and save operations. `ChangePlanPorts` is the only access to plan
-preview, confirmation and execution. Components do not call Tauri `invoke`
-directly and do not read/write vendor files, SQLite, environment variables or
-secret stores.
+The `target` search parameter accepts only those values. The persistent route
+keeps the last valid visible target; absent/invalid input defaults to
+`qoderwork`.
 
-Product selection uses the canonical Agent/catalog identity. Feature rows may
-expose only the product-specific operations admitted by the parsed capability
-contract; page code does not create a second model-support matrix.
+### Actual Port surface
 
-Representative native surfaces are:
+```ts
+interface ProvidersPort {
+  getSummary(app: "claude" | "codex" | "grokbuild"):
+    Promise<ProviderSummaryQueryData>;
+  applyQuickSetupWithResult(
+    request: ProviderQuickSetupRequest,
+    app: "claude" | "codex" | "grokbuild",
+  ): Promise<ProviderMutationResult<ProviderSwitchResult>>;
+  fetchModels(baseUrl: string, apiKey: string): Promise<FetchedModelRef[]>;
+  checkReachability(baseUrl: string): Promise<ReachabilityResult>;
+  checkModel(request: ModelProbeRequest): Promise<ModelProbeResult>;
+}
+
+interface WorkBuddyPort {
+  getStatus(): Promise<WorkBuddyStatus>;
+  getModelIds(): Promise<WorkBuddyModelIdsResult>;
+  fetchModels(request: WorkBuddyFetchModelsRequest):
+    Promise<WorkBuddyFetchModelsResult>;
+  saveModels(request: WorkBuddySaveModelsRequest):
+    Promise<WorkBuddySaveModelsResult>;
+  checkReachability(baseUrl: string): Promise<ReachabilityResult>;
+  checkModel(request: ModelProbeRequest): Promise<ModelProbeResult>;
+}
+
+interface OpenCodeModelsPort {
+  getSnapshot(): Promise<OpenCodeModelSnapshot>;
+  fetchProviderModels(request: OpenCodeFetchModelsRequest):
+    Promise<FetchedModelList>;
+  saveModels(request: OpenCodeSaveModelsRequest):
+    Promise<OpenCodeSaveModelsResult>;
+  checkReachability(baseUrl: string): Promise<ReachabilityResult>;
+  checkModel(request: ModelProbeRequest): Promise<ModelProbeResult>;
+}
+
+interface TraeWorkPort {
+  validateModelConfig(request: TraeWorkModelRequest):
+    Promise<TraeModelValidationResult>;
+  testModelEndpoint(requestId: string, request: TraeWorkModelRequest):
+    Promise<TraeModelProbeResult>;
+  cancelModelEndpoint(requestId: string): Promise<CancelTraeModelProbeResult>;
+  getModelIds(): Promise<TraeWorkModelIdsResult>;
+}
+
+interface ChangePlansPort {
+  createCodexProviderSwitchPlan(targetProviderId: string): Promise<ChangePlan>;
+  createCodexProviderUpsertPlan(request: ProviderQuickSetupRequest):
+    Promise<ChangePlan>;
+  createWorkBuddySavePlan(request: WorkBuddySaveModelsRequest):
+    Promise<ChangePlan>;
+  applyChangePlan(input: { planId: string; planDigest: string }):
+    Promise<ApplyChangePlanOutcome>;
+  cancelChangeJob(jobId: string): Promise<CancelChangeJobOutcome>;
+  getChangeJob(jobId: string): Promise<ChangeJobSnapshot>;
+  listRecoverableChangeJobs(): Promise<ChangeJobSnapshot[]>;
+}
+```
+
+The current `/models` page uses only `traeWork.getModelIds()`. TRAE validation,
+probe, and cancellation are real shared/native capabilities, but this route
+does not currently expose them as model-management controls.
+
+### Core write DTOs
+
+Provider quick setup is:
+
+```ts
+interface ProviderQuickSetupRequest {
+  name: string;
+  baseUrl: string;
+  apiKey: string;
+  modelId: string;
+  codexFeatures?: { imageExtension?: boolean; websockets?: boolean };
+}
+```
+
+WorkBuddy/OpenCode writes include the current authoritative revision and may
+return one of:
 
 ```text
-WorkBuddy revisioned config/model snapshot and save
-Codex provider/auth/model read + revisioned transaction
-TRAE endpoint validate/test/cancel + observed model IDs
-OpenCode model snapshot/fetch/save
-Change Plan create/read/confirm/execute with compensation ledger
+saved
+overwrite_confirmation_required { token, existingIds }
+concurrent_modification
 ```
 
-Secret-bearing edit requests remain local DTOs and never become query data,
-URL state, local storage or serializable diagnostics.
+Change Plan apply accepts only `{planId, planDigest}` from a previously parsed
+plan. The UI never re-sends the preview's write set or credential material as
+an apply instruction.
 
 ## 3. Contracts
 
-### Selection and query ownership
+### Routing, persistence, and query ownership
 
-- The Models page derives product order/identity from the same strict catalog
-  owner used by Agents. Unknown/unsupported products show a closed unavailable
-  state and issue no product mutation.
-- URL state may select a canonical product/model subsection when useful, but
-  parsed server snapshots stay in query cache and secret drafts stay in local
-  state.
-- Every query key contains the canonical product plus resource/revision scope
-  required to prevent data from one product/provider/model appearing in
-  another panel.
-- Switching product/provider/model clears validation output, overwrite
-  capability, endpoint request ID and secret draft that belong to the previous
-  selection.
+- The route selector order comes from the shared product directory. A page must
+  not maintain a competing target list or introduce Gemini/Hermes merely
+  because native provider code supports other products elsewhere.
+- `usePersistentSearchParams` and `useStickyVisibleValue` own the visible
+  target. Hidden persistent trees must not rewrite the Models query string.
+- Provider, WorkBuddy, TRAE, and OpenCode observations have separate query keys
+  and are enabled only when their panel is active. A cached result from one
+  target is never projected into another target's UI.
+- QoderWork renders the current explicit product statement that third-party
+  model configuration is unsupported. It exposes no fetch, probe, save, path,
+  or external-settings action.
+- TRAE renders only `getModelIds()` observation and guidance that FyAgent does
+  not write the local cache. It exposes no fetch/save action in this route.
 
-### Strict DTO and capability projection
+### Claude, Grok Build, and Codex provider flows
 
-- Parse all native model/provider/config/change-plan DTOs in
-  `shared/features/**` before rendering. Unknown fields, duplicate IDs, invalid
-  enum values, malformed revisions or impossible tagged unions fail closed.
-- Unsupported/read-only operations are absent/disabled from the parsed
-  capability state. The renderer must not expose a save button merely because
-  it has form fields.
-- `unverified` and `handoff_only` are visible evidence states. A successful
-  endpoint probe or application launch cannot upgrade a catalog write mode.
-- Raw paths, provider documents, CLI output, database rows, request/response
-  bodies and secrets never enter component props or error copy.
+- `ProviderPanel` is shared only by `claude`, `grokbuild`, and `codex`. It owns
+  local `name`, `baseUrl`, API key, `modelId`, fetched model IDs, connectivity
+  tests, write confirmation, and per-target warning state.
+- Fetching models calls `providers.fetchModels(baseUrl, apiKey)` and keeps the
+  API key in the current draft so the same credential can be used for probe or
+  save. Fetch success is not a persisted configuration.
+- The save confirmation shows the native `writeTargets` returned by
+  `getSummary`; React never constructs target or backup paths.
+- Claude and Grok Build call `applyQuickSetupWithResult`, then reread
+  `getSummary`. They claim the new provider is current only when the reread
+  `currentId` equals the closed quick-setup provider ID.
+- `APPLY_FAILED_ROLLED_BACK` is the only direct-provider error currently treated
+  as confirmed baseline restoration. An unclassified failure or
+  `ROLLBACK_PARTIAL_STATE_UNKNOWN` blocks further writes for that target until
+  the owning `/models` page is unmounted/remounted and authority can be reread.
+  `blockedProviderWrites` lives on `ModelsPage`; switching targets or merely
+  remounting a child Provider panel does not clear the block.
+- Codex does not call the direct apply path. It creates a parsed Change Plan
+  through `createCodexProviderUpsertPlan`, shows the closed preview, and applies
+  only its `planId` and `planDigest` through the Change Plan workspace.
+- Codex image-extension and WebSocket choices exist only in the Codex request.
+  The page sanitizes returned warning codes against the closed
+  `CodexProviderMutationWarning` union.
 
-### Product-specific behavior
+### WorkBuddy flow
 
-#### TRAE Work CN
+- WorkBuddy reads `getStatus()` and `getModelIds()` separately. A read is
+  authoritative only when both queries succeed; refreshing one cannot confirm
+  the other.
+- Model fetch accepts `allowNoApiKey`, keeps the submitted key in the draft,
+  rejects a returned model ID containing that key, and records whether the
+  native list was truncated.
+- Draft IDs preserve order and uniqueness; fetched and manual IDs are split in
+  the write request. A model ID containing the submitted API key is rejected
+  before save.
+- Normal save captures the current draft revision and native expected revision,
+  shows `ModelsWriteConfirmDialog`, creates a WorkBuddy Change Plan, and applies
+  through `ChangePlansPort`. A stale plan is regenerated rather than retried
+  with an old digest.
+- Terminal Change Plan handling rereads both WorkBuddy queries. An unconfirmed
+  job keeps writes blocked; success/warning commits the captured draft revision
+  only when the job is not an unconfirmed authority state.
+- Deleting an existing model is a distinct confirmed action that calls
+  `workbuddy.saveModels` directly with `removedModelIds`. If that direct call
+  returns an overwrite token, the already confirmed delete may resubmit once
+  with the token; this is not the normal add/save flow.
 
-- Endpoint preflight uses one backend-generated request ID: validate, then
-  test/cancel using the same ID. The page never performs fetch/DNS itself.
-- API key lives only in the current draft/request and is cleared on every
-  terminal/cancel/error/product-change/unmount path.
-- Results display only the closed terminal state/reason/duration/status class.
-  Do not expose URL, key, body, headers or raw transport diagnostics.
-- Model IDs are observation-only from the native TRAE cache. There is no
-  renderer save/fetch-to-TRAE action, and observed presence is not proof that
-  the vendor cloud accepted a new model.
+### OpenCode flow
 
-#### OpenCode
+- OpenCode reads a strict `OpenCodeModelSnapshot` containing providers,
+  revision, path/backupPath, and existence. Current UI edits the first provider
+  snapshot.
+- Fetch uses `fetchProviderModels`, preserves the key for later save, and keeps
+  ordered unique model IDs plus `ownedBy` metadata for local icons/grouping.
+- Normal save includes `expectedRevision`, shows the native write target, and
+  calls `saveModels`. `concurrent_modification` requires reread. An initial
+  `overwrite_confirmation_required` opens an explicit overwrite confirmation;
+  only its matching token may be resubmitted.
+- Delete is separately confirmed and may use one native overwrite token after
+  that confirmation. An expired/invalid token becomes a failed operation and
+  requires reread; the UI does not manufacture success.
+- Every terminal direct write performs authoritative snapshot reread when the
+  operation semantics permit it. The saved result alone is not a replacement
+  for current revision/path/provider state.
 
-- Snapshot and save preserve the native revision/overwrite-capability
-  transaction. The page patches the selected provider/model fields and does
-  not rebuild the full `opencode.json` document.
-- GET snapshots contain no `apiKey`. A key may exist only in the edit draft and
-  current fetch/save request, then is cleared.
-- Fetch-models is a bounded native action. Its success does not write the
-  document until the user reviews and saves.
-- Revision drift shows an explicit compare/overwrite decision; do not retry
-  automatically with an old snapshot.
+### Runtime parsing boundary
 
-#### WorkBuddy
+- `changePlans.ts` strictly validates request identity, plan/job exact keys,
+  closed enums, plan digest, resource sets, and result state before UI use.
+- `qoderTrae.ts` strictly validates TRAE requests/results, canonical UUID v4
+  request IDs, closed reason/state combinations, and the model-ID snapshot.
+- `models.ts` strictly parses provider summaries, fetched provider refs,
+  reachability/model-probe results, and OpenCode snapshot/fetch/save results.
+- `parseModelProbeResult` validates the result shape and closed status, but it
+  does not currently bind `modelUsed` back to `request.modelId`. Do not claim
+  cross-request identity protection at this Port boundary; adding it requires
+  an adapter regression test and a deliberate native-alias policy.
+- The current adapter still forwards these responses with compile-time typing
+  only: `providers.applyQuickSetupWithResult`, `workbuddy.getStatus`,
+  `workbuddy.getModelIds`, `workbuddy.fetchModels`, and
+  `workbuddy.saveModels`. Do not document them as runtime-validated until a
+  parser is actually added at the Port boundary.
+- Components do not cast arbitrary IPC values or call `invoke()` directly.
 
-- Use the one revisioned WorkBuddy config owner and its model catalog/storage
-  modes. Do not write guessed `model_providers.json` or a second renderer copy.
-- Unsupported existing storage shapes, revision drift and post-write readback
-  disagreement remain explicit blocking/uncertain states.
+### API key and sensitive-state boundary
 
-#### Codex
+- API keys live in controlled input state plus a ref for the mounted panel. They
+  are never placed in route/search params, query keys, local/session storage,
+  analytics, visible error text, or model IDs.
+- Fetch/probe intentionally retain the key for the remaining draft. A terminal
+  save clears it only when the submitted draft revision is still current;
+  unmount also clears the ref/state by destroying the panel.
+- A base URL must be HTTP(S), have a hostname, and contain no username,
+  password, query, or fragment.
+- Provider Quick Setup additionally rejects the API key when it appears in the
+  normalized URL host/path, configuration name, selected model ID, or reserved
+  quick-setup provider ID. WorkBuddy rejects key collisions in its normalized
+  URL and model IDs. OpenCode rejects fetched/selected model IDs that equal or
+  contain the key, but the current renderer/native save path does not apply the
+  same text-collision rule to OpenCode `providerName` or `baseUrl`; do not claim
+  that broader guard exists.
+- Port requests currently carry the plaintext API key to trusted native code.
+  This renderer boundary is not a `SecretRef` contract and must not be described
+  as one.
+- Fetch/probe/write failures render closed generic copy. Native diagnostics,
+  response bodies, credentials, and raw provider errors do not enter the DOM.
 
-- Codex provider/auth/model changes use the existing ordered provider
-  transaction. Model choice is not an isolated renderer write when config and
-  auth documents must remain consistent.
-- Local `/v1/models` probing is optional/unverified evidence; failure never
-  destroys stored fallback IDs or a valid existing config.
+### Connectivity tests and preview evidence
 
-#### Products without reviewed model writes
-
-- QoderWork, Claude, Grok Build or any product whose parsed capability does not
-  admit a model write remains read-only, unavailable or handoff-only as
-  reported. Do not add a generic editor or infer a write path from vendor files.
-
-### Change Plan preview and execution
-
-- Multi-document/provider changes use `ChangePlanPorts`. The renderer presents
-  the native plan's ordered steps, owned fields, expected revisions, evidence
-  and rollback scope; it does not generate executable filesystem/SQL commands.
-- Destructive/overwrite/secret-affecting execution requires explicit
-  confirmation bound to the current plan/revision. A changed plan requires a
-  new preview and confirmation.
-- Execution status comes from the native ledger. Partial apply, compensated,
-  rollback failed and recovery required are not rendered as success.
-- After a terminal result, invalidate/reread every affected model/provider
-  query. Optimistic form state cannot become authoritative configuration.
-
-### UX and copy
-
-- Preserve a stable three-state screen for loading, parsed content and error;
-  empty/unsupported is distinct from loading and parse failure.
-- Validation errors stay next to the owning field and focus the first invalid
-  control. Native transaction errors render an alert with evidence-correct,
-  localized copy and retry only when safe.
-- Secret inputs do not prefill from native reads, do not expose copy buttons by
-  default and clear deterministically.
+- Reachability and model probes are separate operations. Model probe is offered
+  only after candidate IDs exist and uses the selected ID plus the current
+  draft revision; changing the owning draft invalidates a stale result.
+- A successful fetch/probe proves only the native request result. It does not
+  prove the configuration was saved or that a vendor process reloaded it.
+- `ModelsWriteConfirmDialog` is a target/path confirmation, while a Change Plan
+  preview is a neutral, parsed plan. Neither is an apply result.
+- Change Plan job UI derives status, compensation, recovery, live-config, and
+  usage evidence only from the parsed job snapshot. It never infers provider
+  use from a successful write.
 
 ## 4. Validation & Error Matrix
 
-| Condition | Required UI result |
+| Condition | Required result |
 | --- | --- |
-| Unknown product or model DTO version/shape | Fail closed; no partial editor/mutation. |
-| Capability is read-only/unverified/handoff-only | Render exact mode; do not expose reviewed write as green. |
-| Product/provider selection changes | Clear product-scoped drafts, request IDs, overwrite tokens and errors. |
-| TRAE request ID mismatch/expired/cancelled | Stop current probe, clear secret, show closed result; no renderer fallback fetch. |
-| TRAE observed IDs are empty/unavailable | Show observation state; never offer local SQLite save. |
-| OpenCode/WorkBuddy/Codex revision drift | Require fresh snapshot/explicit overwrite flow; do not silently retry. |
-| Fetch/probe succeeds | Show reviewed result only; do not persist without explicit save/plan. |
-| Change Plan changed after confirmation | Invalidate confirmation and require new preview. |
-| Change Plan is partially applied/compensated/recovery-required | Render exact native terminal state and reread affected resources. |
-| GET or query data contains plaintext secret | Security regression. |
-| Native error includes raw document/path/body | Map/redact at adapter; do not render raw value. |
-| Save reports success but authoritative reread differs | Show uncertain/failure; do not keep optimistic saved state. |
+| Unknown/absent route target | Use the closed default `qoderwork`; do not mount an arbitrary panel. |
+| QoderWork selected | Show unsupported guidance only; issue no model IPC. |
+| TRAE selected | Read/display model IDs only; do not expose local save controls. |
+| Base URL contains credentials/query/fragment or is not HTTP(S) | Reject before fetch, probe, plan, or write. |
+| API key is empty where `allowNoApiKey` is false/absent | Reject before fetch, probe, plan, or write and focus the key field. |
+| Provider Quick Setup key collides with name/URL/model/reserved provider ID | Reject locally before the request. |
+| WorkBuddy key collides with normalized URL or any returned/manual/selected model ID | Reject in the renderer/native owner before display or persistence. |
+| OpenCode key collides with a fetched/selected model ID | Reject in the native fetch/save owner. Do not infer an equivalent `providerName`/`baseUrl` text-collision check. |
+| Fetch/probe fails | Show generic safe failure and keep the current draft/key for correction. |
+| Model probe returns a structurally valid result with a different `modelUsed` | The current adapter accepts the shape; do not present this as an implemented request-binding guard. A hardening change must define alias policy and add a regression test. |
+| Direct provider reread does not confirm `currentId` | Report saved/pending confirmation; do not claim current provider. |
+| Direct provider error is not confirmed rollback | Mark authority unknown and block further writes for that target. |
+| Codex/WorkBuddy plan is stale | Require regenerate; never apply the old digest. |
+| Change Plan is preview-only | Do not show success or mutate until `applyChangePlan` admits a job. |
+| Change Plan terminal state is unconfirmed | Reread and keep writes blocked; do not commit the draft. |
+| WorkBuddy one of status/model-ID rereads fails | Treat authoritative reread as failed. |
+| Returned WorkBuddy/manual model ID contains the submitted key | Reject and never persist/display it as a model. |
+| OpenCode/WorkBuddy revision changed | Return/show concurrent modification and reread before retry. |
+| Initial OpenCode overwrite is required | Show explicit confirmation and reuse only the issued token. |
+| Overwrite token is expired/invalid | Fail, reread, and require a new confirmation. |
+| Panel unmounts | Destroy unsaved panel-local key and draft state. |
+| Raw native error/body/key reaches DOM, URL, storage, or logs | Security regression. |
 
 ## 5. Good / Base / Bad Cases
 
-- **Good:** TRAE validation returns a request ID; one probe runs through the
-  port; terminal state renders sanitized evidence and the key is cleared.
-- **Good:** OpenCode snapshot revision drifts; the page asks for a fresh review
-  instead of overwriting unknown provider fields.
-- **Good:** a multi-document Codex change is previewed as a native Change Plan,
-  confirmed and rendered from its compensation ledger.
-- **Base:** a product is handoff-only or read-only; the page provides guidance
-  without manufacturing editable fields.
-- **Bad:** fetch from React, store API key in query/local storage, write TRAE
-  SQLite, rebuild `opencode.json`, treat endpoint reachability as vendor
-  acceptance, or paint compensated/recovery-required execution green.
+- **Good:** fetch Claude model refs, select one, confirm native write targets,
+  apply quick setup, then claim current only after the provider summary reread
+  returns the expected provider ID.
+- **Good:** create a Codex or WorkBuddy Change Plan, render its neutral preview,
+  apply only `{planId, planDigest}`, poll the parsed job, and reread authority
+  before committing the draft.
+- **Good:** OpenCode reports concurrent modification; keep the draft, reread the
+  snapshot, and require a fresh save/overwrite decision.
+- **Base:** QoderWork shows no configurable controls; TRAE displays a truncated
+  or empty observed list with honest guidance.
+- **Base:** a model fetch succeeds and keeps the API key so the user can probe or
+  save; no persistence claim is made.
+- **Bad:** introduce a fake `ModelPorts`, route every product through Change
+  Plans, call TRAE write controls from this page, call WorkBuddy direct save for
+  its normal add flow, retry a stale plan/token, or clear the key after fetch
+  while claiming the draft is preserved.
 
 ## 6. Tests Required
 
-```bash
-mise run typecheck:v2
-mise run test:v2
-mise run test:v2:browser
-```
+Run the focused V2 checks through the repository task runner. Required
+assertion owners include:
 
-Required assertions:
+- `tests/v2/pages/models/Page.test.tsx`: exact target order/default,
+  Qoder/TRAE non-write behavior, provider/WorkBuddy/OpenCode fetch-save-delete
+  flows, key retention/clearing, write blocking, authoritative reread, partial
+  rollback, truncation, warnings, target confirmation, and connectivity probes;
+- `tests/v2/pages/models/quickSetup.test.ts`: closed target parsing, URL/key
+  validation, exact minimal provider request, Codex feature payload, and manual
+  model ID parsing;
+- `tests/v2/pages/models/ModelConnectivityTest.test.tsx` and
+  `workBuddyModels.test.ts`: draft-revision probe invalidation, search/grouping,
+  ordered uniqueness, and fetched/manual split;
+- `tests/v2/platform/featurePorts.test.ts`: exact Provider, WorkBuddy, OpenCode,
+  and TRAE command/payload mappings plus every runtime parser currently owned by
+  the adapter. Reachability payload tests pass URL only; a future model-probe
+  request/response identity check needs an explicit mismatched-`modelUsed`
+  regression;
+- `tests/v2/features/change-plans.test.ts` and
+  `tests/v2/platform/changePlansPort.test.ts`: exact plan/job parsing, request
+  validation, digest/ID binding, and command names;
+- `tests/v2/pages/models/apply/*.test.tsx`: neutral preview, one apply under
+  repeated/StrictMode clicks, stale regeneration, job polling, recovery/
+  compensation copy, and no secret/backend diagnostics;
+- `tests/v2/app/router-shell.test.tsx`: persistent Models lifetime and hidden
+  route/query isolation.
 
-- product/catalog identity and all model/provider/change-plan DTOs parse
-  strictly with closed enums/tags/revisions;
-- query keys isolate product/provider/model; selection changes clear every
-  product-scoped draft/request/overwrite capability;
-- TRAE validate→test/cancel request-ID flow, no renderer networking, no local
-  write and complete API-key cleanup;
-- OpenCode unknown-field preservation, revision conflict/overwrite review,
-  fetch-vs-save separation and no `apiKey` in GET/query/DOM;
-- WorkBuddy delegates to the revisioned native owner; Codex delegates to the
-  ordered provider transaction;
-- unsupported products do not expose a generic write path;
-- Change Plan preview/confirmation binding, exact terminal/compensation states,
-  affected-query reread and no client-generated executable steps;
-- loading/empty/error, field focus, keyboard behavior and secret input cleanup;
-- browser fixtures demonstrate UI only and do not count as endpoint/vendor or
-  native-write HIL evidence.
+Native writer, rollback, file/readback, and real-provider behavior remain owned
+by the linked backend contracts and native/HIL tests. Renderer tests do not
+prove a vendor process reloaded or used a model.
 
 ## 7. Wrong vs Correct
 
 Wrong:
 
-```tsx
-const save = async () => {
-  localStorage.setItem("model-api-key", apiKey);
-  await fetch(baseUrl + "/models", { headers: { Authorization: apiKey } });
-  await invoke("write_vendor_model_file", { product, form });
-};
+```ts
+const result = await ports.models.save(target, form);
+setSaved(true); // No such Port; target protocols and evidence differ.
 ```
 
 Correct:
 
-```tsx
-try {
-  const validated = await ports.models.validate(product, draft);
-  const preview = await ports.changePlans.preview(validated.change);
-  await confirmAndExecute(preview);
-  await invalidateAffectedModelQueries(preview);
-} finally {
-  clearSecretDrafts();
+```ts
+if (target === "codex") {
+  const plan = await ports.changePlans.createCodexProviderUpsertPlan(request);
+  // Show parsed preview; apply later with plan.planId + plan.planDigest only.
+} else if (target === "claude" || target === "grokbuild") {
+  await ports.providers.applyQuickSetupWithResult(request, target);
+  const reread = await summaryQuery.refetch();
+  // Claim current only when reread.data.currentId is the expected closed ID.
 }
 ```
 
-The exact port method names remain those exported by `ModelPorts` and
-`ChangePlanPorts`; page components coordinate typed results and never create a
-parallel native transaction.
+Wrong:
+
+```ts
+localStorage.setItem("model-api-key", apiKey);
+const plan = { ...preview, apiKey };
+await ports.changePlans.applyChangePlan(plan);
+```
+
+Correct:
+
+```ts
+apiKeyRef.current = apiKey; // Mounted draft only; never URL/storage/query data.
+const outcome = await ports.changePlans.applyChangePlan({
+  planId: plan.planId,
+  planDigest: plan.planDigest,
+});
+// Clear the key only at the owning terminal/current-revision boundary.
+```

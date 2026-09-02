@@ -145,7 +145,7 @@ design, research, or review artifact.
 | Condition | Required result |
 | --- | --- |
 | A service duplicates an existing parser/archive/path/security/transaction owner | Reject; delegate to the established owner |
-| A new crate is added without checking current `Cargo.toml` capabilities | Reject; perform the adopted-dependency search first |
+| A new crate is added without checking current `src-tauri/Cargo.toml` capabilities | Reject; perform the adopted-dependency search first |
 | No current capability exists and non-trivial bespoke code is added without open-source candidate review | Reject or record why external reuse is inapplicable before merge |
 | A new crate duplicates the existing HTTP/TLS/serialization/runtime stack without a concrete gap | Reject; reuse the current stack |
 | A dependency has incompatible license/platform/toolchain/security characteristics | Reject that candidate |

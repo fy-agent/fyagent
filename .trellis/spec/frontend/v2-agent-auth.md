@@ -2,191 +2,258 @@
 
 ## 1. Scope / Trigger
 
-Read this contract before changing the Agent Auth status panel, login/logout/
-connect-provider controls, Auth session polling, desktop target selection,
-Auth wording, or cleanup of sensitive/transient Auth state.
+Read this contract before changing Agent authentication status, login/logout or
+provider-connection actions, active-session recovery, polling, stop-waiting,
+desktop-target selection, or authentication copy on the V2 Agents page.
 
-Primary owners:
+Primary owners are:
 
-- `src/v2/pages/agents/AgentAuthStatusPanel.tsx`
-- `src/v2/pages/agents/useAgentAuthSession.ts`
-- `src/v2/shared/features/agent-auth.ts`
-- desktop `AgentAuthPorts` adapter in `src/v2/platform/desktop/ports.ts`
+- `src/v2/shared/features/agent-auth.ts` for closed DTOs, strict parsers, and
+  `AgentAuthPort`;
+- `src/v2/shared/platform/tauri/feature-ports/agentAuth.ts` for Tauri IPC
+  adaptation;
+- `src/v2/shared/platform/tauri/features.ts` for desktop Port composition;
+- `src/v2/pages/agents/AgentAuthStatusPanel.tsx` for product-specific Auth UI;
+- `src/v2/pages/agents/useAgentAuthSession.ts` for recovery, polling, and
+  lifecycle state.
 
-Native authority is [External Agent Auth](../backend/external-agent-auth.md).
-Installation/action UI remains in
-[V2 Agent Directory](./v2-agent-directory.md).
+Native observation/session semantics are owned by
+[External Agent Auth](../backend/external-agent-auth.md). Agent ordering,
+capability admission, lifecycle actions, and return navigation remain in
+[V2 Agent Directory](./v2-agent-directory.md) and
+[V2 Navigation](./v2-navigation.md).
 
 ## 2. Signatures
 
-The renderer uses `AgentAuthPorts` for exactly these behaviors:
+`AgentAuthPort` is the only V2 access to the native Auth surface:
 
-```text
-observe(agentId)
-start(request)
-get(sessionId)
-getActive(agentId)
-stopWaiting(sessionId)
+```ts
+interface AgentAuthPort {
+  getObservation(agentId: AgentCatalogId): Promise<AgentAuthObservation>;
+  getActiveSession(
+    agentId: AgentCatalogId,
+  ): Promise<AgentAuthSessionSnapshot | null>;
+  startSession(
+    request: StartAgentAuthSessionRequest,
+  ): Promise<AgentAuthSessionSnapshot>;
+  getSession(sessionId: string): Promise<AgentAuthSessionSnapshot>;
+  stopWaiting(sessionId: string): Promise<AgentAuthSessionSnapshot>;
+}
 ```
 
-All results pass the strict v1 parsers in
-`src/v2/shared/features/agent-auth.ts`. The page sends only:
+The observation union is closed:
 
 ```text
+account              -> state: logged_in | logged_out | unknown
+provider_connections -> state: configured | empty | unknown, providers[]
+handoff_only          -> unverified Agent-owned handoff
+fyagent_managed       -> verified destination: auth_center
+unavailable           -> unavailable authority
+```
+
+Every observation also carries:
+
+```text
+contractVersion = 1
 agentId
-intent = login | logout | connect_provider
-providerId?                         // opaque native capability
-inventoryId? + targetId? + expectedTargetRevision? // complete triplet
+ownership: fyagent_managed | agent_owned | provider_owned | unavailable
+authority: verified | unverified | unavailable
+allowedIntents: login | logout | connect_provider
+checkedAt
+reasonCodes[]
 ```
 
-Auth stages remain closed:
+Session requests and snapshots are:
+
+```ts
+interface StartAgentAuthSessionRequest {
+  agentId: AgentCatalogId;
+  intent: "login" | "logout" | "connect_provider";
+  providerId?: string;
+  inventoryId?: string;
+  targetId?: string;
+  expectedTargetRevision?: string;
+}
+
+interface AgentAuthSessionSnapshot {
+  contractVersion: 1;
+  sessionId: string;
+  agentId: AgentCatalogId;
+  intent: AgentAuthIntent;
+  stage:
+    | "preparing" | "launching" | "awaiting_user" | "verifying"
+    | "verified" | "handoff_complete" | "failed" | "cancelled"
+    | "timed_out";
+  canStopWaiting: boolean;
+  outcome: AgentAuthSessionOutcome | null;
+  observation: AgentAuthObservation;
+  reasonCode: AgentAuthReasonCode | null;
+}
+```
+
+`useAgentAuthSession({ agentId, port, enabled?, onTerminal? })` returns:
 
 ```text
-preparing | launching | awaiting_user | verifying |
-verified | handoff_complete | failed | cancelled | timed_out
+snapshot, error, submitting, recovering, busy,
+start(request), stopWaiting(), resetTerminal()
 ```
 
-Observation authority remains tagged rather than one global boolean:
-
-```text
-account | provider_connections | handoff_only |
-fyagent_managed | unavailable
-```
+The page never invokes native Auth commands directly.
 
 ## 3. Contracts
 
-### One shared panel and one hook
+### Strict transport parsing
 
-- All Agent detail pages use the shared Auth panel and `useAgentAuthSession`;
-  do not create product-specific login polling loops in cards/pages.
-- The hook owns active-session recovery, bounded polling, terminal cleanup and
-  stop-waiting interaction. Query/server state stays in the query layer;
-  transient confirmation and selected provider/target stay local.
-- A second start while a non-terminal session exists surfaces the native
-  conflict/existing session. The UI does not manufacture a parallel session or
-  overwrite the current session ID.
-- Route unmount stops local polling and clears transient sensitive state. It
-  does not claim to stop the external browser/application/CLI flow.
+- The Tauri adapter passes `unknown` responses through the parser in
+  `agent-auth.ts`. Contract version, exact keys, closed enums, ISO timestamp,
+  and duplicate-free lists are strict for all five commands.
+- `getObservation(agentId)` and `getActiveSession(agentId)` additionally bind
+  the parsed response `agentId` to the requested Agent and reject a mismatch.
+  `startSession(request)` validates the request ID and strictly parses the
+  returned snapshot, but the current adapter does not perform that second
+  request/response equality check. Do not claim this guard is already present;
+  a change touching this path should add the check and a regression test before
+  treating cross-Agent start responses as fail-closed.
+- `getSession` and `stopWaiting` are addressed by `sessionId`, not by a second
+  caller Agent ID. The hook keeps the returned session chain; callers must not
+  substitute a snapshot from a different interaction.
+- A malformed response, or a mismatch on an adapter path that implements the
+  binding check, becomes the generic unavailable error. A component must not
+  partially trust fields from an invalid DTO.
+- Provider summaries expose only `providerId` and `label`. Credentials, tokens,
+  command output, vendor config paths, and raw diagnostic payloads never enter
+  the public observation or session snapshot.
 
-### Evidence-correct product behavior
+### Evidence-correct observation
 
-- Claude login/logout may render confirmed only when the native session reaches
-  `verified` with the matching verified outcome.
-- OpenCode is provider-level. The UI lists sanitized provider observations and
-  passes one opaque provider ID for connect/logout; it never paints a global
-  logged-in state from “some provider exists.”
-- Grok Build and QoderWork/TRAE Work/WorkBuddy desktop flows remain
-  handoff-only. `handoff_complete` is described as “opened/continue in vendor
-  UI,” not “logged in/out.”
-- Codex `fyagent_managed` routes to the existing Auth Center and does not start
-  an external Agent Auth session.
-- Unavailable/unsupported authority shows the closed native reason and offers
-  only allowed guidance. The renderer does not infer account state from files,
-  processes or prior successful handoff.
+- Account state and provider-connection state are different authorities.
+  `configured` is not `logged_in`; `empty` is not proof of logout.
+- `handoff_only` says FyAgent can launch/guide the vendor flow but cannot verify
+  the resulting account state. The UI must not convert it to success.
+- `fyagent_managed` routes to the closed `auth_center` destination rather than
+  duplicating provider configuration inside the Agent card.
+- `unknown`, `unverified`, and `unavailable` remain visible states with reason
+  copy. Absence of evidence is never rendered as logged out or healthy.
+- Only an intent present in `allowedIntents` may be offered.
 
-### Desktop target binding
+### Session lifecycle
 
-- Desktop Auth uses the same opaque inventory target contract as lifecycle.
-  Multiple candidates require explicit selection; target capabilities are not
-  parsed or persisted.
-- The complete target triplet is forwarded unchanged. Partial target state
-  disables start and prompts a fresh scan.
-- A native `refresh_required`, expired target or target drift clears the local
-  selection and rereads inventory. It never retries against the stale target.
+- When enabled, the hook first calls `getActiveSession(agentId)` so a remounted
+  page resumes a native session instead of launching a duplicate flow.
+- A non-terminal snapshot is polled with `getSession(sessionId)` until its stage
+  is `verified`, `handoff_complete`, `failed`, `cancelled`, or `timed_out`.
+  Polling uses hook-owned timers and stops on unmount or terminal state.
+- `start(request)` submits through `AgentAuthPort.startSession`, stores the
+  returned snapshot, and calls `onTerminal` immediately only when the returned
+  snapshot is already terminal.
+- A terminal callback can be reached from immediate start/stop results,
+  recovered snapshots, or the polling effect. Consumers must make terminal
+  side effects idempotent by `sessionId`; `AgentAuthStatusPanel` keeps the last
+  handled terminal session before refetching observation.
+- `stopWaiting()` is available only when the current snapshot has
+  `canStopWaiting = true`. It calls the native command and preserves the
+  terminal result; it is not a generic process kill.
+- `resetTerminal()` clears only a terminal local snapshot and error. It does
+  not alter native Auth/provider state.
+- `busy` covers active recovery, submission, or a non-terminal session. While
+  busy, the UI must not start a second incompatible Auth action.
 
-### Secrets, errors and cleanup
+### Target/provider selection and navigation
 
-- The panel never asks for or persists vendor passwords/tokens/cookies. An
-  OpenCode provider capability is not a credential and must not be expanded
-  into one.
-- Raw CLI output, paths, commands, registry/bundle identity and environment
-  never render. Map closed reasons/stages to localized copy.
-- Stop waiting is explicit user action and is worded as stopping FyAgent
-  monitoring. Do not label it vendor logout or external cancellation.
-- Terminal success, failure, timeout, cancellation, target change, Agent
-  change and unmount clear provider/target confirmation and any sensitive
-  draft.
+- Provider selection is required only when the native contract returns the
+  matching reason/capability. Pages pass the provider ID, not credentials.
+- A desktop action that requires an installed target passes the native
+  `inventoryId`, opaque `targetId`, and expected revision supplied by lifecycle
+  observation. React never constructs an executable path or application ID.
+- Route/section return state uses the closed navigation descriptor; Auth
+  requests do not accept a free-form return URL.
+- After a terminal result, the page rereads the observation/catalog state used
+  for display. A session outcome is evidence for that session, not permission
+  to manufacture unrelated Agent readiness or installation claims.
 
 ## 4. Validation & Error Matrix
 
-| Condition | Required UI result |
+| Condition | Required result |
 | --- | --- |
-| v1 parser/version/enum failure | Fail closed; do not spread/render raw Auth DTO. |
-| Observation is `fyagent_managed` | Link to Auth Center; do not start external session. |
-| Observation is `handoff_only` | Render handoff limitations before user action. |
-| OpenCode has multiple providers | Require/select one opaque provider; no global success. |
-| Desktop inventory is multiple | Require explicit opaque target. |
-| Target triplet is partial/stale | Disable/refresh; do not call start. |
-| Existing non-terminal session | Resume/show it or surface conflict; no second local session. |
-| Stage is `awaiting_user`/`verifying` | Keep pending state; do not mark logged in/out. |
-| Stage is `handoff_complete` | Report handoff only. |
-| Stage is `timed_out` | Explain verification timed out; do not state vendor flow failed/cancelled. |
-| User chooses stop waiting | Stop native monitoring and local polling; external flow may continue. |
-| Agent/route changes | Clear transient target/provider/session presentation and sensitive draft. |
-| Raw secret/output/path appears | Security regression. |
+| Response contract version or exact keys are wrong | Reject the whole response as unavailable. |
+| Observation or active-session response `agentId` differs from the requested Agent | Reject in the adapter; do not attach another Agent's Auth state. |
+| `startSession` returns a strict snapshot for another known Agent | The current adapter does not rebind it to the request. Do not rely on rejection; add the equality check and regression test before changing/claiming this boundary. |
+| Duplicate/unknown intent, stage, outcome, ownership, authority, or reason | Reject the whole DTO. |
+| Observation is `provider_connections/configured` | Say provider configured; do not say account logged in. |
+| Observation is `handoff_only` | Offer only the admitted handoff and retain unverified wording. |
+| `getActiveSession` fails | End recovery, expose retry/error state, and do not start automatically. |
+| A non-terminal poll fails | Keep the last snapshot, expose the error, and continue only through the hook-owned retry loop. |
+| User starts while recovery/submission/session is busy | Disable/reject the duplicate action. |
+| `stopWaiting` when `canStopWaiting` is false | No native call; return no result. |
+| Desktop target/revision is stale | Preserve the native reason and require lifecycle reread/reselection. |
+| Terminal session arrives | Stop polling; deduplicate callback side effects by `sessionId` and reread display authority. |
+| Secret/raw command output appears in UI or route state | Security regression. |
 
 ## 5. Good / Base / Bad Cases
 
-- **Good:** Claude remains pending until native structured status verifies the
-  requested login state, then the panel renders confirmed.
-- **Good:** OpenCode logout sends one opaque provider ID and updates only after
-  native provider-set verification.
-- **Base:** WorkBuddy opens and returns handoff complete; the panel tells the
-  user to finish in WorkBuddy without claiming account status.
-- **Base:** the user stops waiting; monitoring ends while the browser/app may
-  remain open.
-- **Bad:** infer auth from `~/.vendor`, accept a token in the form, mark success
-  after launch, retry stale desktop target, or use the install-action mutation
-  for login/logout.
+- **Good:** remount an Agent card, recover its `awaiting_user` session, continue
+  polling by `sessionId`, then render the terminal verified observation returned
+  by native code.
+- **Good:** a provider-owned Agent shows configured provider labels and offers
+  `connect_provider` without claiming an account login.
+- **Base:** no active session exists; recovery completes with `snapshot=null`
+  and normal observation/actions remain available.
+- **Base:** the action is handoff-only; launch it, show `handoff_complete`, and
+  retain unverified status until a future observer provides stronger evidence.
+- **Base:** a strict `startSession` payload contains another known Agent ID.
+  This is a documented current hardening gap, not an accepted semantic success;
+  code touching the adapter must close it rather than extending the assumption.
+- **Bad:** call `useAgentAuthSession(agentId)` without the Port, poll with a
+  component interval, infer logged-in from a provider row, claim every Auth
+  command already enforces request/response Agent binding, or put a token/path
+  in route/query state.
 
 ## 6. Tests Required
 
-```bash
-mise run typecheck:v2
-mise run test:v2
-mise run test:v2:browser
-```
+Required assertion owners include:
 
-Required assertions:
+- `tests/v2/platform/agentAuthPort.test.ts`: exact command/payload mapping,
+  closed Agent IDs, strict response parsing, contract-version/key mismatch, and
+  `agentId` binding for observation/active-session reads. A product change that
+  hardens `startSession` must add the corresponding mismatch regression;
+- `tests/v2/pages/agents/AgentAuthStatusPanel.test.tsx`: allowed-intent UI,
+  provider selection, active-session recovery, terminal polling, stop-waiting,
+  terminal-session deduplication, handoff/unknown/unavailable copy, and no
+  secret/raw diagnostic display;
+- `src-tauri/src/services/external_agents/**` and command tests named by
+  [External Agent Auth](../backend/external-agent-auth.md): native state,
+  session conflicts, target revision, timeout/cancel, and redacted DTOs;
+- architecture tests: the page imports the shared Port/types and never Tauri
+  internals or native path/process APIs.
 
-- strict v1 observation/session/request parsing, closed stages/outcomes/reasons
-  and forbidden URL/path/command/token/env fields;
-- one shared panel/hook, active-session recovery and no per-product polling
-  implementation;
-- Claude verified-only success, OpenCode provider-specific behavior, Grok/
-  desktop handoff-only behavior and Codex Auth-Center routing;
-- target selection, complete triplet forwarding, stale-target refresh and no
-  persisted opaque capability;
-- stop-waiting wording and behavior do not claim external cancellation;
-- timeout/poll/unmount paths clear sensitive/transient state and do not leave
-  stale green status;
-- accessibility: focus moves to actionable/error status, controls have names,
-  and progress/status is not color-only.
+Mock/browser tests prove renderer state transitions only. Real vendor login,
+logout, and provider effects require the native/HIL evidence named by the
+backend contract.
 
 ## 7. Wrong vs Correct
 
 Wrong:
 
-```tsx
-const login = async () => {
-  await ports.agentInstallReadiness.startAction({
-    agentId,
-    action: "login" as never,
-  });
-  setLoggedIn(true);
-};
+```ts
+const auth = useAgentAuthSession(agentId);
+setInterval(() => invoke("get_agent_auth_session", { sessionId }), 750);
+setLoggedIn(true);
 ```
 
 Correct:
 
-```tsx
-const auth = useAgentAuthSession(agentId);
-
-await auth.start({
+```ts
+const lastTerminalSession = useRef<string | null>(null);
+const auth = useAgentAuthSession({
   agentId,
-  intent: "login",
-  ...selectedOpaqueTarget,
+  port: ports.agentAuth,
+  onTerminal: (snapshot) => {
+    if (lastTerminalSession.current === snapshot.sessionId) return;
+    lastTerminalSession.current = snapshot.sessionId;
+    void observationQuery.refetch();
+  },
 });
 
-// Render by native stage/authority; only verified is confirmed.
+await auth.start({ agentId, intent: "login" });
+// The hook owns recovery/polling; UI renders the parsed snapshot/observation.
 ```

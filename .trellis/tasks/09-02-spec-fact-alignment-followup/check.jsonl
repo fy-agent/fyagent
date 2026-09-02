@@ -1,0 +1,4 @@
+{"file":".trellis/spec/README.md","reason":"Global ownership and document-class rules for reviewing the final spec changes."}
+{"file":".trellis/spec/backend/index.md","reason":"Backend retrieval map and quality gate for the changed native contracts."}
+{"file":".trellis/spec/frontend/index.md","reason":"Frontend retrieval map and quality gate for the changed V2 contracts."}
+{"file":".trellis/tasks/09-02-spec-fact-alignment-followup/research/spec-fact-audit.md","reason":"Source-backed assertions to verify against the final diff."}

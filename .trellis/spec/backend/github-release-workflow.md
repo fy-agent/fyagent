@@ -744,7 +744,7 @@ the original app from that ticket. Do not emit a ZIP.
 - `tests/releaseWorkflow.test.ts` asserts exactly one `notarytool submit`,
   presence of `notarytool info` and `notarytool log`, no `xcrun notarytool wait`
   invocation, `FYAGENT_NOTARY_WAIT_SECONDS`,
-  `scripts/release/macos-developer-id.sh notarize-dmg`,
+  `scripts/release/macos-developer-id.sh` subcommand `notarize-dmg`,
   `staple-app`, `timeout-minutes: 360` on `build-macos`, the DMG Applications
   symlink, styled layout scripts, and the absence of `macOS.zip`.
 - Local tests do not call Apple; a successful unit run is not notarization

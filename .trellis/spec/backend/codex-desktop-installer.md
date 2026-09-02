@@ -448,7 +448,7 @@ required or rejected.
 | Helper Hello action/product differs from the parent request | Fail before bridge control/admission; zero installer launch. |
 | User cancels UAC/vendor launch | `installer_user_cancelled`. |
 | ShellExecuteEx succeeds, including a missing process handle | Job `succeeded` (vendor-wizard handoff); do not wait, do not read exit code, do not delete the PackageBridge EXE leaf. |
-| Helper launch fails (not user cancel) | `installer_launch_failed` / existing mapped helper error; failed/cancelled settlement may still clean the bridge. |
+| Helper launch fails (not user cancel) | Internal `HelperErrorCode::InstallerLaunchFailed` maps to `InstallerErrorCode::LaunchFailed`; the Agent action exposes `interactive_user_unavailable`. Failed/cancelled settlement may still clean the bridge. |
 | Vendor EXE later exits zero/nonzero | Not installation authority; a later inventory scan may still show `not_installed`. |
 | macOS mount has no unique direct top-level `.app`, escapes containment, or staged/installed local identity changes | Fail with the corresponding local mount/path/transaction error and run the bounded detach/rollback path. |
 | Managed-Agent DMG resolves another product identity or the reviewed local version does not match the selected release | `source_not_verified`; do not move the selected target. |

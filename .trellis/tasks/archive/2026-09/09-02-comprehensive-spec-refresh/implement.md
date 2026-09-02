@@ -36,9 +36,9 @@
 ## Phase E — Finish
 
 - [x] Run `mise run check:contracts:prearchive --exclude-active-task .trellis/tasks/09-02-comprehensive-spec-refresh`.
-- [ ] Commit the Spec/task changes with a focused public-repository message.
-- [ ] Archive the Trellis task, update the developer journal and commit lifecycle artifacts.
-- [ ] Confirm final status and report checks, commits and residual HIL limits.
+- [x] Commit the Spec/task changes with a focused public-repository message.
+- [x] Archive the Trellis task, update the developer journal and commit lifecycle artifacts.
+- [x] Confirm final status and report checks, commits and residual HIL limits.
 
 ## Risky files and rollback points
 

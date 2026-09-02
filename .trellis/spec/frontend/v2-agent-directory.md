@@ -47,8 +47,10 @@ Runtime status         tri-state detected/running plus sanitized metadata
 ```
 
 All native access goes through the typed ports assembled in
-`src/v2/platform/desktop/ports.ts`. Components do not call `invoke()` or mock
-native behavior directly.
+`src/v2/shared/platform/tauri/features.ts`, including the focused adapters in
+`src/v2/shared/platform/tauri/feature-ports/agents.ts` and
+`agentInstallReadiness.ts`. Components do not call `invoke()` or mock native
+behavior directly.
 
 The renderer sends only closed values:
 
@@ -231,7 +233,7 @@ await ports.agentInstallReadiness.startAction({
   action: "launch",
   inventoryId: inventory.data?.inventoryId,
   targetId: selectedTarget?.targetId,
-  expectedTargetRevision: selectedTarget?.revision,
+  expectedTargetRevision: selectedTarget?.expectedTargetRevision,
 });
 ```
 

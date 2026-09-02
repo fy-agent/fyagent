@@ -299,6 +299,6 @@ rejected.
 XPC waiting is operation-specific. Read-only status uses a short bounded wait.
 Mutating commit/remove operations use their own bounded waits. A mutating wait
 expiry means the root operation may still be running and therefore maps to
-`recovery_required` and an `Incomplete` job, never to an ordinary
-`helper_unavailable` or `Failed` result. Recovery and authoritative inventory
+`recovery_required` and an `Incomplete` job, never to the missing-client
+`helper_not_packaged` reason or a `Failed` result. Recovery and authoritative inventory
 re-read remain mandatory before another mutation.
