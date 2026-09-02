@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/external-agent-p0.md", "reason": "Windows EXE job settlement vs macOS DMG verify"}
+{"file": ".trellis/spec/backend/windows-runtime-security.md", "reason": "Alice helper ShellExecute and PackageBridge boundary"}
+{"file": ".trellis/spec/frontend/v2-agent-models.md", "reason": "Directory job-stage copy and Windows vendor-UI ownership"}
+{"file": ".trellis/spec/backend/codex-desktop-installer.md", "reason": "ShellExecute handoff, PE32 stub admission, retain PackageBridge EXE leaf"}
