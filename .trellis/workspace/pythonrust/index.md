@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 62
+- **Total Sessions**: 63
 - **Last Active**: 2026-09-02
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~51 | Active |
+| `journal-2.md` | ~77 | Active |
 | `journal-1.md` | ~1987 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 63 | 2026-09-02 | Comprehensive Trellis Spec refresh | `c3899e1282882ea09aa3e64ccea788ea0bb9ab8c` | `dev/laiyongjie` |
 | 62 | 2026-09-02 | Windows vendor installer handoff | `780b5eb8`, `d1152999`, `e533e848` | `dev/laiyongjie` |
 | 61 | 2026-09-02 | Nav jank and domestic update | `34359cae` | `dev/laiyongjie` |
 | 60 | 2026-09-01 | 跨平台 AI 软件生命周期与开发检查 | `cbd01281`, `c9e3e571`, `37fb36b7`, `b975bfc3`, `a5fac9d8`, `cd96bdd0` | `dev/laiyongjie` |

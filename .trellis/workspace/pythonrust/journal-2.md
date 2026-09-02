@@ -49,3 +49,29 @@ Windows Qoder/TRAE/WorkBuddy 一点安装在 ShellExecute 成功后交接官方�
 
 - Windows 原生 HIL：真实官方窗口、UAC 取消、安装完成后库存回读
 - 未推送远程
+
+
+## Session 63: Comprehensive Trellis Spec refresh
+<!-- trellis-session: v=2 fp=9f9124142986f04c -->
+
+**Date**: 2026-09-02
+**Task**: Comprehensive Trellis Spec refresh
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Audited all 43 pre-refresh Specs; split three cross-domain monoliths into focused backend/frontend owners; added persistence, proxy, and localization contracts; preserved historical paths as compatibility routers; refreshed indexes and Rust modular boundaries; passed structural, focused, V2, Rust, and Trellis contract checks.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c3899e1282882ea09aa3e64ccea788ea0bb9ab8c` | chore(task): archive 09-02-comprehensive-spec-refresh |
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- Use the focused backend/frontend indexes for task-scoped Spec discovery; compatibility router paths remain historical references only.
