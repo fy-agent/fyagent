@@ -75,7 +75,7 @@
     ],
     [
       "src-tauri/src/agent_install/windows.rs",
-      "3ac09ac837da3b9fe05c59193a9cbdd21ca944bcf0ce28d99dd66eea9f9cada2"
+      "66944a0420409638e1fc0e22f8da07d13e471c9f154d4122065df9b80a582dc1"
     ],
     [
       "src-tauri/src/app_store.rs",
@@ -307,7 +307,7 @@
     ],
     [
       "src-tauri/src/windows_runtime/mod.rs",
-      "f1c5c7d9ead7f1b5727959cce44cbb2f5245b2c5765c39362acacfa61805515f"
+      "6387a30c7442aba7710b4232ccffd2516dee6ba9590471ab493fd5a5b12f1dca"
     ],
     [
       "src-tauri/src/windows_runtime/registry.rs",

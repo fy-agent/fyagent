@@ -309,7 +309,7 @@ fn display_icon_path(value: &str) -> Option<PathBuf> {
 
 /// Parent of a registered file path. ARP `UninstallString` / `DisplayIcon` are
 /// NSIS `$INSTDIR\file` evidence and must never be executed.
-#[cfg(any(target_os = "windows", test))]
+#[cfg(target_os = "windows")]
 fn install_dir_from_registered_path_value(value: &str) -> Option<PathBuf> {
     let path = display_icon_path(value)?;
     let parent = path.parent()?;
@@ -1276,6 +1276,7 @@ mod tests {
         assert!(display_icon_path("\"C:\\Apps\\WorkBuddy.exe -flag").is_none());
     }
 
+    #[cfg(target_os = "windows")]
     #[test]
     fn nsis_uninstall_string_parent_is_install_dir() {
         assert_eq!(

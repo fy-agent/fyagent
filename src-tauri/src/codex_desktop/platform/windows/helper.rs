@@ -1855,6 +1855,16 @@ mod tests {
             .0
     }
 
+    fn pinned_runner_source() -> &'static str {
+        production_source()
+            .split_once("fn run_pinned_user_helper(")
+            .expect("the pinned helper runner must exist")
+            .1
+            .split_once("\nfn generate_nonce(")
+            .expect("the pinned helper runner must end before nonce generation")
+            .0
+    }
+
     fn started(identity: PinnedPackageIdentity) -> HelperMessage {
         HelperMessage::Started { package: identity }
     }
@@ -1937,7 +1947,7 @@ mod tests {
 
     #[test]
     fn parent_runner_orders_authenticated_hello_before_control_and_admission() {
-        let source = production_source();
+        let source = pinned_runner_source();
         let raw_read = source.find("read_frame(first_frame_timeout)").unwrap();
         let client_validation = source.find("validate_client(").unwrap();
         let hello_acceptance = source.find("sequence.accept(first_message)").unwrap();
