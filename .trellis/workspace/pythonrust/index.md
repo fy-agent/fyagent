@@ -7,8 +7,8 @@
 ## Current Status
 
 <!-- @@@auto:current-status -->
-- **Active File**: `journal-1.md`
-- **Total Sessions**: 61
+- **Active File**: `journal-2.md`
+- **Total Sessions**: 62
 - **Last Active**: 2026-09-02
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,8 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1987 | Active |
+| `journal-2.md` | ~51 | Active |
+| `journal-1.md` | ~1987 | Archived |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 62 | 2026-09-02 | Windows vendor installer handoff | `780b5eb8`, `d1152999`, `e533e848` | `dev/laiyongjie` |
 | 61 | 2026-09-02 | Nav jank and domestic update | `34359cae` | `dev/laiyongjie` |
 | 60 | 2026-09-01 | 跨平台 AI 软件生命周期与开发检查 | `cbd01281`, `c9e3e571`, `37fb36b7`, `b975bfc3`, `a5fac9d8`, `cd96bdd0` | `dev/laiyongjie` |
 | 59 | 2026-09-01 | Windows Agent 安装面统一与 Codex 日志治理 | `40eeaa6f`, `f32787da`, `4dd7668e` | `dev/laiyongjie` |
