@@ -19,11 +19,11 @@
 
 ## Acceptance Criteria
 
-- [ ] browser flow 校验 loopback host/path/state/PKCE、端口和超时，且日志不含 code/token。
-- [ ] Device Code 回退可取消、可恢复并遵守服务端轮询间隔。
-- [ ] Codex 官方连接和第三方 Provider 状态独立展示与存储。
-- [ ] 所有第三方切换路径均不能删除/覆盖官方 Auth。
-- [ ] 真实 Codex HIL 覆盖登录、刷新、切换第三方、切回、重启和外部 token 更新。
+- [x] browser flow 校验 loopback host/path/state/PKCE、端口和超时，且日志不含 code/token。
+- [x] Device Code 回退可取消、可恢复并遵守服务端轮询间隔。
+- [x] Codex 官方连接和第三方 Provider 状态独立展示与存储。
+- [x] 所有第三方切换路径均不能删除/覆盖官方 Auth。
+- [ ] 真实 Codex HIL 覆盖登录、刷新、切换第三方、切回、重启和外部 token 更新。生产 file/keyring 投影保持 fail-closed。
 
 ## Out of Scope
 
