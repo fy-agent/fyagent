@@ -97,3 +97,43 @@ Audited all 43 pre-refresh Specs; split three cross-domain monoliths into focuse
 ### Status
 
 [OK] **Completed**
+
+
+## Session 65: Grok 大陆 npm 一键安装与 OpenCode Windows 源
+<!-- trellis-session: v=2 fp=66ea120882cabf9c -->
+
+**Date**: 2026-09-03
+**Task**: Grok 大陆 npm 一键安装与 OpenCode Windows 源
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+默认 Grok 一键安装改为官方 npm 精确版本清单加大陆镜像链，禁止 @latest；官方命令行只作显式动作。OpenCode Windows x64 接到稳定 NSIS 源和 helper product 14，身份仍 fail-closed。精确 prearchive 已通过。
+
+### Main Changes
+
+- Grok 默认 install 走 GrokNpmInstallPlan 与内置 1.0.13 清单，Windows helper 无计划拒绝
+- OpenCode Windows 使用 windows-x64-nsis，GitHub latest 不再阻断安装解析
+- Settings/Agent 主按钮为 npm，原生与换归属不自动；失败文案不再泄漏 registry URL
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a189ff40` | feat: install Grok via official npm and add OpenCode Windows source |
+| `7dd216ab` | style: format Grok owner panel for prettier |
+| `0f766831` | fix: keep Grok npm plans on product hosts |
+| `c7cd6906` | fix: split Grok platform package lookup by product OS |
+
+### Testing
+
+- [OK] mise run check:prearchive --exclude-active-task .trellis/tasks/09-03-remove-grok-install-opencode-windows 通过
+- [OK] fyagent-user-helper 61、typecheck:v2、test:v2、focused vitest 通过
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- macOS 实装、Windows 11 helper npm、阻断 x.ai/GCS、OpenCode WinVerifyTrust 仍待 HIL；未推送
