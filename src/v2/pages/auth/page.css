@@ -1,0 +1,584 @@
+.fy-auth-page {
+  gap: 0;
+}
+
+.fy-auth-page-header {
+  flex: 0 0 auto;
+  margin-bottom: 12px;
+}
+
+.fy-auth-page-header h1,
+.fy-auth-detail h2,
+.fy-auth-detail h3,
+.fy-auth-detail h4 {
+  margin: 0;
+}
+
+.fy-auth-page-header > div:first-child {
+  min-width: 0;
+}
+
+.fy-auth-page-header p,
+.fy-auth-detail-title p,
+.fy-auth-section-heading p,
+.fy-auth-connection-card-heading p,
+.fy-auth-consumer-header p,
+.fy-auth-login-stage-heading p,
+.fy-auth-login-confirmation p,
+.fy-auth-consumer-connection > p {
+  margin: 4px 0 0;
+  color: var(--fy-text-secondary);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.fy-auth-overview-strip {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.fy-auth-overview-strip > .fy-feature-tabs {
+  margin-bottom: 0;
+}
+
+.fy-auth-overview-strip > span {
+  color: var(--fy-text-secondary);
+  font-size: 12px;
+}
+
+.fy-auth-overview-strip > span[data-attention="true"] {
+  color: var(--fy-warning-text);
+  font-weight: 650;
+}
+
+.fy-auth-session-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+}
+
+.fy-auth-view-panel:not([hidden]) {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.fy-auth-master-detail {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+.fy-auth-rail,
+.fy-auth-detail {
+  min-height: 100%;
+}
+
+.fy-auth-account-toolbar {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.fy-auth-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.fy-auth-filter-row button {
+  min-height: 28px;
+  padding: 3px 10px;
+  border: 1px solid var(--fy-border);
+  border-radius: 999px;
+  color: var(--fy-text-secondary);
+  font: inherit;
+  font-size: 11px;
+  background: var(--fy-surface-soft);
+  cursor: pointer;
+}
+
+.fy-auth-filter-row button:hover,
+.fy-auth-filter-row button[aria-pressed="true"] {
+  border-color: var(--fy-selected-border);
+  color: var(--fy-text);
+  background: var(--fy-selected-bg);
+}
+
+.fy-auth-filter-row button:focus-visible,
+.fy-auth-list-item:focus-visible,
+.fy-auth-login-options button:focus-visible,
+.fy-auth-account-choice label:has(input:focus-visible),
+.fy-auth-login-use label:has(input:focus-visible) {
+  outline: 2px solid var(--fy-focus);
+  outline-offset: 2px;
+}
+
+.fy-auth-list-item {
+  position: relative;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  min-height: 62px;
+  padding: 9px 10px;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  color: var(--fy-text);
+  text-align: left;
+  background: transparent;
+  cursor: pointer;
+}
+
+.fy-auth-list-item:hover,
+.fy-auth-list-item[aria-current="true"] {
+  border-color: var(--fy-selected-border);
+  background: var(--fy-selected-bg);
+}
+
+.fy-auth-list-item-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.fy-auth-list-item-copy strong,
+.fy-auth-list-item-copy > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fy-auth-list-item-copy > span {
+  color: var(--fy-text-secondary);
+  font-size: 11px;
+}
+
+.fy-auth-list-item-trailing {
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
+.fy-auth-provider-mark,
+.fy-auth-consumer-mark {
+  display: inline-grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border: 1px solid var(--fy-border);
+  border-radius: 11px;
+  color: var(--fy-text);
+  background: var(--fy-surface-soft);
+}
+
+.fy-auth-provider-mark[data-size="detail"] {
+  width: 58px;
+  height: 58px;
+  border-radius: 15px;
+}
+
+.fy-auth-provider-mark img,
+.fy-auth-provider-mark svg {
+  display: block;
+  width: 23px;
+  height: 23px;
+  object-fit: contain;
+}
+
+.fy-auth-provider-mark[data-size="detail"] img,
+.fy-auth-provider-mark[data-size="detail"] svg {
+  width: 34px;
+  height: 34px;
+}
+
+.fy-auth-consumer-mark {
+  border-radius: 50%;
+  font-size: 14px;
+  font-weight: 750;
+}
+
+.fy-auth-detail {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+}
+
+.fy-auth-detail-header,
+.fy-auth-consumer-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.fy-auth-detail-header {
+  justify-content: flex-start;
+}
+
+.fy-auth-detail-title {
+  min-width: 0;
+}
+
+.fy-auth-detail-title-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.fy-auth-detail-title-line h2 {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.fy-auth-section,
+.fy-auth-consumer-connection,
+.fy-auth-connection-card {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--fy-border);
+  border-radius: 13px;
+  background: rgba(16, 40, 64, 0.2);
+}
+
+.fy-auth-section-heading,
+.fy-auth-connection-card-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.fy-auth-definition {
+  padding-top: 2px;
+}
+
+.fy-auth-connection-grid,
+.fy-auth-consumer-connections {
+  display: grid;
+  gap: 10px;
+}
+
+.fy-auth-connection-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.fy-auth-connection-identity,
+.fy-auth-login-provider-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.fy-auth-danger-section {
+  border-color: var(--fy-danger-border);
+}
+
+.fy-auth-reason-list {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding-left: 18px;
+  color: var(--fy-warning-text);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.fy-auth-mobile-back {
+  display: none;
+  width: max-content;
+}
+
+.fy-auth-login-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.fy-auth-login-options button {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+  min-width: 0;
+  min-height: 150px;
+  padding: 14px;
+  border: 1px solid var(--fy-border);
+  border-radius: 13px;
+  color: var(--fy-text);
+  text-align: left;
+  background: var(--fy-surface-soft);
+  cursor: pointer;
+}
+
+.fy-auth-login-options button:hover:not(:disabled),
+.fy-auth-login-options button[aria-pressed="true"] {
+  border-color: var(--fy-selected-border);
+  background: var(--fy-selected-bg);
+}
+
+.fy-auth-login-options button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.fy-auth-login-options button > span:last-child,
+.fy-auth-login-provider-summary > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.fy-auth-login-options small,
+.fy-auth-login-provider-summary span,
+.fy-auth-account-choice small {
+  color: var(--fy-text-secondary);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.fy-auth-login-use,
+.fy-auth-login-confirmation,
+.fy-auth-login-session,
+.fy-auth-impact-preview {
+  display: grid;
+  gap: 14px;
+}
+
+.fy-auth-login-use fieldset,
+.fy-auth-account-choice {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--fy-border);
+  border-radius: 11px;
+}
+
+.fy-auth-login-use legend,
+.fy-auth-account-choice legend {
+  padding: 0 5px;
+  color: var(--fy-text-secondary);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.fy-auth-login-use label,
+.fy-auth-account-choice label {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  padding: 8px;
+  border-radius: 9px;
+  cursor: pointer;
+}
+
+.fy-auth-login-use label:hover,
+.fy-auth-account-choice label:hover {
+  background: var(--fy-selected-bg);
+}
+
+.fy-auth-account-choice label > span:last-child {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.fy-auth-login-confirmation {
+  grid-template-columns: 58px minmax(0, 1fr);
+  align-items: start;
+}
+
+.fy-auth-login-stage-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.fy-auth-login-stage-heading h3 {
+  margin: 0;
+}
+
+.fy-auth-login-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: var(--fy-text-secondary);
+  font-size: 12px;
+}
+
+.fy-auth-device-code {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--fy-border);
+  border-radius: 12px;
+  background: rgba(16, 40, 64, 0.2);
+}
+
+.fy-auth-device-code > p {
+  margin: 0;
+  color: var(--fy-text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.fy-auth-device-code > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 9px;
+}
+
+.fy-auth-device-code code {
+  padding: 8px 12px;
+  border: 1px solid var(--fy-border);
+  border-radius: 9px;
+  color: var(--fy-text);
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 23px;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  background: var(--fy-surface);
+  user-select: text;
+}
+
+.fy-auth-dialog-loading {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--fy-text-secondary);
+}
+
+.fy-auth-impact-preview section {
+  display: grid;
+  gap: 8px;
+}
+
+.fy-auth-impact-preview h3 {
+  margin: 0;
+  font-size: 13px;
+}
+
+.fy-auth-impact-preview ul {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fy-auth-impact-preview li {
+  display: grid;
+  gap: 2px;
+  padding: 9px 10px;
+  border: 1px solid var(--fy-border);
+  border-radius: 9px;
+}
+
+.fy-auth-impact-preview li span {
+  color: var(--fy-text-secondary);
+  font-size: 11px;
+}
+
+.fy-control-button-danger-subtle {
+  color: var(--fy-danger-text);
+}
+
+@media (max-width: 980px) {
+  .fy-auth-connection-grid,
+  .fy-auth-login-options {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .fy-auth-login-options button {
+    grid-template-columns: 58px minmax(0, 1fr);
+    align-items: center;
+    min-height: 0;
+  }
+}
+
+@media (max-width: 760px) {
+  .fy-auth-page {
+    overflow: auto;
+  }
+
+  .fy-auth-page-header {
+    align-items: flex-start;
+  }
+
+  .fy-auth-session-banner {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .fy-auth-view-panel:not([hidden]) {
+    overflow: visible;
+  }
+
+  .fy-auth-page[data-mobile-detail="false"]
+    .fy-auth-view-panel:not([hidden])
+    .fy-split-pane[data-index="1"],
+  .fy-auth-page[data-mobile-detail="true"]
+    .fy-auth-view-panel:not([hidden])
+    .fy-split-pane[data-index="0"] {
+    display: none;
+  }
+
+  .fy-auth-page[data-mobile-detail="true"] .fy-auth-mobile-back {
+    display: inline-flex;
+  }
+
+  .fy-auth-connection-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .fy-auth-detail-header,
+  .fy-auth-consumer-header,
+  .fy-auth-section-heading,
+  .fy-auth-connection-card-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .fy-auth-device-code code {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    font-size: 19px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fy-auth-page,
+  .fy-auth-list-item,
+  .fy-auth-provider-mark,
+  .fy-auth-consumer-mark,
+  .fy-auth-filter-row button,
+  .fy-auth-login-options button,
+  .fy-auth-consumer-connection,
+  .fy-auth-connection-card {
+    animation: none;
+    scroll-behavior: auto;
+    transition: none;
+  }
+}

@@ -7,6 +7,7 @@ const repositoryRoot = path.resolve(scriptDirectory, "..");
 
 export const V2_ROUTE_ENTRIES = Object.freeze([
   "v2/pages/agents/Page.tsx",
+  "v2/pages/auth/Page.tsx",
   "v2/pages/models/Page.tsx",
   "v2/pages/skills/Page.tsx",
   "v2/pages/mcp/Page.tsx",
@@ -86,7 +87,7 @@ export async function verifyV2RouteChunks({
     V2_ROUTE_ENTRIES.some((route) => !dynamicRoutes.has(route))
   ) {
     throw new Error(
-      "V2 bootstrap must dynamically import exactly six product pages",
+      `V2 bootstrap must dynamically import exactly ${V2_ROUTE_ENTRIES.length} product pages`,
     );
   }
 

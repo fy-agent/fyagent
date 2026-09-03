@@ -14,6 +14,18 @@ export function createBrowserFeaturePorts(): FeaturePorts {
     catalog: {
       get: rejectNativeOnly,
     },
+    managedAuth: {
+      getOverview: rejectNativeOnly,
+      startLogin: rejectNativeOnly,
+      getLoginSession: rejectNativeOnly,
+      cancelLogin: rejectNativeOnly,
+      reopenLogin: rejectNativeOnly,
+      switchLoginMethod: rejectNativeOnly,
+      setDefaultAccount: rejectNativeOnly,
+      previewAccountRemoval: rejectNativeOnly,
+      removeAccount: rejectNativeOnly,
+      applyConnectionAction: rejectNativeOnly,
+    },
     agentAuth: {
       getObservation: rejectNativeOnly,
       getActiveSession: rejectNativeOnly,

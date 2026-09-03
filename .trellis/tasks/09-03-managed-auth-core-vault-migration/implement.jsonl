@@ -1,0 +1,12 @@
+{"file": ".trellis/tasks/09-03-unified-agent-auth-management/prd.md", "reason": "父任务产品目标、范围和验收。"}
+{"file": ".trellis/tasks/09-03-unified-agent-auth-management/design.md", "reason": "共享架构、数据模型、刷新所有权和 consumer 边界。"}
+{"file": ".trellis/tasks/09-03-unified-agent-auth-management/research/auth-source-and-reuse-review.md", "reason": "第一方协议、许可证和复用边界。"}
+{"file": ".trellis/tasks/09-03-unified-agent-auth-management/research/review-gates.md", "reason": "实施安全、迁移、HIL 和停止门禁。"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "现有 owner 与成熟依赖优先。"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "完整数据流、readback 和秘密边界。"}
+{"file": ".trellis/tasks/09-03-unified-agent-auth-management/research/current-fyagent-integration-seams.md", "reason": "本子任务 owning contract/research。"}
+{"file": ".trellis/spec/backend/secretref-backend.md", "reason": "本子任务 owning contract/research。"}
+{"file": ".trellis/spec/backend/database-persistence.md", "reason": "本子任务 owning contract/research。"}
+{"file": ".trellis/spec/backend/reuse.md", "reason": "本子任务 owning contract/research。"}
+{"file": ".trellis/spec/backend/modular-boundaries.md", "reason": "本子任务 owning contract/research。"}
+{"file": ".trellis/spec/backend/proxy-runtime.md", "reason": "本子任务 owning contract/research。"}

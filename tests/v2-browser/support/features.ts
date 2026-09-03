@@ -682,6 +682,177 @@ export async function installRichTauriFeatureFixture(
       updatedAt: 5,
     });
 
+    const managedAuthAccountIds = {
+      openai: `ma1:${"1".repeat(32)}`,
+      xai: `ma1:${"2".repeat(32)}`,
+    } as const;
+    const managedAuthConnectionIds = {
+      codex: `mc1:${"3".repeat(32)}`,
+      proxy: `mc1:${"4".repeat(32)}`,
+      grok: `mc1:${"5".repeat(32)}`,
+      opencode: `mc1:${"6".repeat(32)}`,
+    } as const;
+    const managedRevision = (value: string) => `mr1:${value.repeat(64)}`;
+    const managedNow = "2026-09-03T08:00:00Z";
+    const managedAuthOverview = {
+      contractVersion: 1,
+      checkedAt: managedNow,
+      providers: [
+        {
+          provider: "openai",
+          available: true,
+          loginMethods: ["browser_loopback", "device_code"],
+          consumers: ["codex", "opencode", "fyagent_proxy"],
+          reasonCodes: [],
+        },
+        {
+          provider: "xai",
+          available: true,
+          loginMethods: ["device_code"],
+          consumers: ["grokbuild", "opencode", "fyagent_proxy"],
+          reasonCodes: [],
+        },
+        {
+          provider: "github_copilot",
+          available: true,
+          loginMethods: ["device_code"],
+          consumers: ["opencode", "fyagent_proxy"],
+          reasonCodes: [],
+        },
+      ],
+      accounts: [
+        {
+          accountId: managedAuthAccountIds.openai,
+          revision: managedRevision("a"),
+          provider: "openai",
+          login: "browser-fixture@example.com",
+          displayName: "Browser Fixture",
+          health: "ready",
+          isDefault: true,
+          lastAuthenticatedAt: "2026-09-03T07:30:00Z",
+          connectedConsumerCount: 2,
+          planSummary: "ChatGPT Plus",
+          quotaSummary: "额度正常",
+          allowedActions: ["reauthenticate", "refresh", "remove"],
+          reasonCodes: [],
+        },
+        {
+          accountId: managedAuthAccountIds.xai,
+          revision: managedRevision("c"),
+          provider: "xai",
+          login: "browser-xai@example.com",
+          displayName: null,
+          health: "ready",
+          isDefault: true,
+          lastAuthenticatedAt: "2026-09-02T20:00:00Z",
+          connectedConsumerCount: 2,
+          planSummary: null,
+          quotaSummary: null,
+          allowedActions: ["reauthenticate", "refresh", "remove"],
+          reasonCodes: [],
+        },
+      ],
+      connections: [
+        {
+          connectionId: managedAuthConnectionIds.codex,
+          revision: managedRevision("b"),
+          consumer: "codex",
+          targetId: "target:codex:browser",
+          targetLabel: "Codex",
+          provider: "openai",
+          accountId: managedAuthAccountIds.openai,
+          authStatus: "connected",
+          credentialManager: "codex",
+          requestMode: "third_party_api",
+          requestProviderLabel: "DeepSeek API",
+          officialSessionPreserved: true,
+          pendingRestart: false,
+          allowedActions: [
+            "switch_account",
+            "disconnect",
+            "refresh",
+            "switch_to_official",
+            "open_consumer",
+          ],
+          checkedAt: managedNow,
+          reasonCodes: [],
+        },
+        {
+          connectionId: managedAuthConnectionIds.proxy,
+          revision: managedRevision("d"),
+          consumer: "fyagent_proxy",
+          targetId: null,
+          targetLabel: null,
+          provider: "openai",
+          accountId: managedAuthAccountIds.openai,
+          authStatus: "connected",
+          credentialManager: "fyagent",
+          requestMode: "official_subscription",
+          requestProviderLabel: "OpenAI / Codex 订阅",
+          officialSessionPreserved: null,
+          pendingRestart: false,
+          allowedActions: ["switch_account", "disconnect", "refresh"],
+          checkedAt: managedNow,
+          reasonCodes: [],
+        },
+        {
+          connectionId: managedAuthConnectionIds.grok,
+          revision: managedRevision("e"),
+          consumer: "grokbuild",
+          targetId: "target:grokbuild:browser",
+          targetLabel: "Grok Build",
+          provider: "xai",
+          accountId: managedAuthAccountIds.xai,
+          authStatus: "connected",
+          credentialManager: "grokbuild",
+          requestMode: "official_subscription",
+          requestProviderLabel: "xAI 官方账号",
+          officialSessionPreserved: null,
+          pendingRestart: false,
+          allowedActions: ["disconnect", "refresh", "open_consumer"],
+          checkedAt: managedNow,
+          reasonCodes: [],
+        },
+        {
+          connectionId: managedAuthConnectionIds.opencode,
+          revision: managedRevision("f"),
+          consumer: "opencode",
+          targetId: "target:opencode:browser",
+          targetLabel: "OpenCode Desktop",
+          provider: "xai",
+          accountId: managedAuthAccountIds.xai,
+          authStatus: "connected",
+          credentialManager: "opencode",
+          requestMode: "provider_connections",
+          requestProviderLabel: "xAI Provider",
+          officialSessionPreserved: null,
+          pendingRestart: false,
+          allowedActions: [
+            "switch_account",
+            "disconnect",
+            "refresh",
+            "open_consumer",
+          ],
+          checkedAt: managedNow,
+          reasonCodes: [],
+        },
+      ],
+      activeSessions: [] as Array<Record<string, unknown>>,
+      reasonCodes: [],
+    };
+    const managedAuthSessions = new Map<
+      string,
+      { snapshot: Record<string, unknown>; polls: number }
+    >();
+    const managedMutation = () => ({
+      contractVersion: 1,
+      operationId: crypto.randomUUID(),
+      outcome: "completed",
+      overview: structuredClone(managedAuthOverview),
+      pendingRestartConsumers: [],
+      reasonCode: null,
+    });
+
     window.__FYAGENT_FEATURE_FIXTURE__ = { calls };
     window.__TAURI_EVENT_PLUGIN_INTERNALS__ = {
       unregisterListener: () => undefined,
@@ -701,6 +872,130 @@ export async function installRichTauriFeatureFixture(
           payload: structuredClone(payload),
         });
         switch (command) {
+          case "managed_auth_get_overview":
+            return structuredClone(managedAuthOverview);
+          case "managed_auth_start_login": {
+            const request = payload.request as {
+              provider: "openai" | "xai" | "github_copilot";
+              purpose: "save_only" | "connect_consumer" | "reauthenticate";
+              consumer: string | null;
+              method: "browser_loopback" | "device_code";
+              accountId: string | null;
+            };
+            const sessionId = crypto.randomUUID();
+            const host =
+              request.provider === "openai"
+                ? "auth.openai.com"
+                : request.provider === "xai"
+                  ? "auth.x.ai"
+                  : "github.com";
+            const snapshot: Record<string, unknown> = {
+              contractVersion: 1,
+              sessionId,
+              provider: request.provider,
+              purpose: request.purpose,
+              consumer: request.consumer,
+              method: request.method,
+              stage:
+                request.method === "browser_loopback"
+                  ? "opening_browser"
+                  : "awaiting_user",
+              canCancel: true,
+              canRetry: false,
+              canSwitchToDeviceCode:
+                request.provider === "openai" &&
+                request.method === "browser_loopback",
+              officialHost: host,
+              userCode:
+                request.method === "device_code" ? "BROWSER-2026" : null,
+              verificationUri:
+                request.method === "device_code"
+                  ? request.provider === "openai"
+                    ? "https://auth.openai.com/codex/device"
+                    : request.provider === "xai"
+                      ? "https://auth.x.ai/device"
+                      : "https://github.com/login/device"
+                  : null,
+              expiresAt:
+                request.method === "device_code"
+                  ? "2026-09-03T08:15:00Z"
+                  : null,
+              accountId: request.accountId,
+              connectionId: null,
+              reasonCode: null,
+              terminal: false,
+            };
+            managedAuthSessions.set(sessionId, { snapshot, polls: 0 });
+            managedAuthOverview.activeSessions = [structuredClone(snapshot)];
+            return structuredClone(snapshot);
+          }
+          case "managed_auth_get_login_session": {
+            const record = managedAuthSessions.get(String(payload.sessionId));
+            if (!record)
+              throw new Error("fixture managed auth session not found");
+            record.polls += 1;
+            return structuredClone(record.snapshot);
+          }
+          case "managed_auth_cancel_login": {
+            const record = managedAuthSessions.get(String(payload.sessionId));
+            if (!record)
+              throw new Error("fixture managed auth session not found");
+            record.snapshot = {
+              ...record.snapshot,
+              stage: "cancelled",
+              canCancel: false,
+              canSwitchToDeviceCode: false,
+              reasonCode: "cancelled",
+              terminal: true,
+            };
+            managedAuthOverview.activeSessions = [];
+            return structuredClone(record.snapshot);
+          }
+          case "managed_auth_reopen_login": {
+            const record = managedAuthSessions.get(String(payload.sessionId));
+            if (!record)
+              throw new Error("fixture managed auth session not found");
+            return structuredClone(record.snapshot);
+          }
+          case "managed_auth_switch_login_method": {
+            const record = managedAuthSessions.get(String(payload.sessionId));
+            if (!record)
+              throw new Error("fixture managed auth session not found");
+            record.snapshot = {
+              ...record.snapshot,
+              method: "device_code",
+              stage: "awaiting_user",
+              canSwitchToDeviceCode: false,
+              userCode: "BROWSER-2026",
+              verificationUri: "https://auth.openai.com/codex/device",
+              expiresAt: "2026-09-03T08:15:00Z",
+            };
+            managedAuthOverview.activeSessions = [
+              structuredClone(record.snapshot),
+            ];
+            return structuredClone(record.snapshot);
+          }
+          case "managed_auth_set_default_account":
+          case "managed_auth_apply_connection_action":
+            return managedMutation();
+          case "managed_auth_preview_account_removal": {
+            const request = payload.request as {
+              accountId: string;
+              expectedRevision: string;
+            };
+            return {
+              contractVersion: 1,
+              previewId: `mp1:${"7".repeat(32)}`,
+              accountId: request.accountId,
+              expectedRevision: request.expectedRevision,
+              disconnects: [],
+              preserved: [],
+              canApply: true,
+              reasonCodes: [],
+            };
+          }
+          case "managed_auth_remove_account":
+            return managedMutation();
           case "get_agent_catalog":
             if (fixtureOptions.catalogFailure) {
               throw new Error("fixture catalog unavailable");

@@ -58,11 +58,11 @@ afterEach(async () => {
 });
 
 describe("verifyV2RouteChunks", () => {
-  it("accepts six distinct route chunks outside the bounded initial graph", async () => {
+  it("accepts seven distinct route chunks outside the bounded initial graph", async () => {
     const distributionDirectory = await fixture();
     const result = await verifyV2RouteChunks({ distributionDirectory });
 
-    expect(result.routeChunks).toHaveLength(6);
+    expect(result.routeChunks).toHaveLength(7);
     expect(result.initialChunks.map((chunk) => chunk.file).sort()).toEqual([
       "assets/index.js",
       "assets/main.js",

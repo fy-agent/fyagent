@@ -30,8 +30,15 @@ The primary registry is a closed literal union:
 
 ```ts
 type NavigationItem = {
-  id: "agents" | "models" | "skills" | "mcp" | "prompts" | "memory";
-  path: "/agents" | "/models" | "/skills" | "/mcp" | "/prompts" | "/memory";
+  id: "agents" | "auth" | "models" | "skills" | "mcp" | "prompts" | "memory";
+  path:
+    | "/agents"
+    | "/auth"
+    | "/models"
+    | "/skills"
+    | "/mcp"
+    | "/prompts"
+    | "/memory";
   label: string;
 };
 
@@ -86,7 +93,7 @@ arbitrary return URL, serialized history entry, or free-form navigation state.
   labels, grouping, and collapsibility. `navigationItems` is derived from it;
   the router and sidebar do not maintain separate route arrays.
 - The root index and unknown production paths redirect with replacement to
-  `/agents`. The six primary paths remain hash-router paths so browser and
+  `/agents`. The seven primary paths remain hash-router paths so browser and
   Tauri startup share one routing model.
 - `__dev/ui-lab` exists only when `import.meta.env.DEV` is true. It must not
   enter production navigation, production bundles as an eager route, or
@@ -124,7 +131,7 @@ arbitrary return URL, serialized history entry, or free-form navigation state.
 - `SideNavigation` renders semantic links from the registry and derives active
   state from the router. Exactly one primary link is `aria-current="page"` for
   a valid primary path.
-- The configuration group is the only collapsible primary group. Collapsing it
+- The AI software group exposes `/agents` and `/auth` as direct controls. The configuration group is the only collapsible primary group. Collapsing it
   may retain a visually active group trigger, but must not leave hidden child
   links keyboard-focusable or produce a second current page.
 - Arrow Up/Down wrap through currently available navigation controls; Home and
@@ -152,19 +159,19 @@ arbitrary return URL, serialized history entry, or free-form navigation state.
 
 ## 4. Validation & Error Matrix
 
-| Condition | Required result |
-| --- | --- |
-| root index or unknown production route is opened | Replace with `/agents`; do not leave a blank shell or add the path to persistence. |
-| a new primary item lacks a literal page loader or route match | Architecture tests fail; do not ship a navigation-only or loader-only entry. |
-| a primary page has never been visited | Keep it unmounted even after global prefetch. |
-| a visited primary page becomes inactive | Keep it mounted but hidden, inert, aria-hidden, and without retained descendant focus. |
-| a hidden page calls its persistent search setter | Ignore the write; preserve the active route's query. |
-| a hidden page receives a global focus/refetch signal | Its visibility-aware owner must suppress active-only work. |
-| configuration navigation is collapsed | Remove child links from the available keyboard sequence while preserving one honest active indication. |
-| Arrow/Home/End is pressed in sidebar navigation | Move among currently available navigation controls with the reviewed wrap/boundary behavior. |
-| a feature has an active unsaved-change blocker | Hold the transition until the owning confirmation proceeds or resets it. |
-| Agent return tuple is incomplete, duplicated, unknown, or contains extra Agent-page keys | Return `null`/ignore it; never construct a partial or arbitrary return path. |
-| a valid Agent return tuple crosses management pages | Preserve the two closed fields and each destination's unrelated route-owned query fields. |
+| Condition                                                                                | Required result                                                                                        |
+| ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| root index or unknown production route is opened                                         | Replace with `/agents`; do not leave a blank shell or add the path to persistence.                     |
+| a new primary item lacks a literal page loader or route match                            | Architecture tests fail; do not ship a navigation-only or loader-only entry.                           |
+| a primary page has never been visited                                                    | Keep it unmounted even after global prefetch.                                                          |
+| a visited primary page becomes inactive                                                  | Keep it mounted but hidden, inert, aria-hidden, and without retained descendant focus.                 |
+| a hidden page calls its persistent search setter                                         | Ignore the write; preserve the active route's query.                                                   |
+| a hidden page receives a global focus/refetch signal                                     | Its visibility-aware owner must suppress active-only work.                                             |
+| configuration navigation is collapsed                                                    | Remove child links from the available keyboard sequence while preserving one honest active indication. |
+| Arrow/Home/End is pressed in sidebar navigation                                          | Move among currently available navigation controls with the reviewed wrap/boundary behavior.           |
+| a feature has an active unsaved-change blocker                                           | Hold the transition until the owning confirmation proceeds or resets it.                               |
+| Agent return tuple is incomplete, duplicated, unknown, or contains extra Agent-page keys | Return `null`/ignore it; never construct a partial or arbitrary return path.                           |
+| a valid Agent return tuple crosses management pages                                      | Preserve the two closed fields and each destination's unrelated route-owned query fields.              |
 
 ## 5. Good / Base / Bad Cases
 
@@ -172,13 +179,13 @@ arbitrary return URL, serialized history entry, or free-form navigation state.
   Models tree remains mounted but inert while hidden, its query snapshot stays
   isolated, and its draft is still present.
 - Good: an Agent detail links to MCP with `{ agentId: "workbuddy", section:
-  "mcp" }`; sidebar navigation among management pages retains the closed tuple,
+"mcp" }`; sidebar navigation among management pages retains the closed tuple,
   and the Agents link reconstructs only the reviewed Agent path.
 - Base: route chunks are prefetched at startup, but no unvisited page component
   mounts and no feature query starts until the route is visited.
 - Base: an unknown hash route redirects to `/agents` with exactly one current
   sidebar link.
-- Bad: derive imports from arbitrary route strings, render all six pages at
+- Bad: derive imports from arbitrary route strings, render all seven pages at
   startup, let a hidden page call the live `setSearchParams`, put a full return
   URL in query state, or leave collapsed child links focusable.
 

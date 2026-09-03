@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import type {
   AgentAuthIntent,
@@ -15,6 +16,11 @@ import {
   useAgentInstallationInventory,
 } from "../../shared/features/queries";
 import { useFeatures } from "../../shared/features/provider";
+import {
+  appendAgentReturnToPath,
+  agentReturnDescriptorFromSearch,
+} from "../../shared/features/agent-navigation";
+import type { ManagedAuthConsumer } from "../../shared/features/managed-auth";
 import type { AgentCatalogId } from "../../shared/features/types";
 import { LifecycleTargetPicker } from "../../shared/ui/LifecycleTargetPicker";
 import { Button, InlineNotice, Spinner } from "../../shared/ui/primitives";
@@ -29,6 +35,27 @@ const DESKTOP_HANDOFF_AGENTS = new Set<AgentCatalogId>([
   "trae-work",
   "workbuddy",
 ]);
+
+const MANAGED_AUTH_CONSUMER_BY_AGENT: Partial<
+  Record<AgentCatalogId, ManagedAuthConsumer>
+> = {
+  codex: "codex",
+  grokbuild: "grokbuild",
+  opencode: "opencode",
+};
+
+function managedAuthActionLabel(consumer: ManagedAuthConsumer): string {
+  switch (consumer) {
+    case "codex":
+      return "管理账号";
+    case "grokbuild":
+      return "管理登录";
+    case "opencode":
+      return "管理连接";
+    case "fyagent_proxy":
+      return "管理账号";
+  }
+}
 
 function observationSummary(observation: AgentAuthObservation): string {
   switch (observation.kind) {
@@ -46,7 +73,7 @@ function observationSummary(observation: AgentAuthObservation): string {
     case "handoff_only":
       return "请在官方应用中登录";
     case "fyagent_managed":
-      return "请在 FyAgent 认证中心管理";
+      return "请在“账号与认证”中管理";
     case "unavailable":
       return "当前无法读取认证状态";
   }
@@ -63,7 +90,7 @@ function observationDescription(observation: AgentAuthObservation): string {
     case "handoff_only":
       return "FyAgent 会打开官方应用或 CLI。完成登录后请返回并刷新状态。";
     case "fyagent_managed":
-      return "Codex 账号请在现有认证中心管理。";
+      return "官方账号与软件连接请在“账号与认证”中管理。";
     case "unavailable":
       return "暂时无法检查登录状态。FyAgent 不会读取厂商保存的凭据。";
   }
@@ -128,7 +155,7 @@ function reasonCopy(reason: AgentAuthReasonCode | null): string | null {
     case "handoff_only":
       return "登录入口已打开。完成后请刷新状态。";
     case "managed_by_auth_center":
-      return "请在现有认证中心管理此账号。";
+      return "请在“账号与认证”中管理此账号。";
     case "target_selection_required":
       return "检测到多个安装，请选择要登录的应用。";
     case "target_changed":
@@ -180,6 +207,9 @@ function AgentAuthStatusPanelInner({
   enabled?: boolean;
 }) {
   const { ports } = useFeatures();
+  const navigate = useNavigate();
+  const { search } = useLocation();
+  const managedConsumer = MANAGED_AUTH_CONSUMER_BY_AGENT[agentId] ?? null;
   const observationQuery = useAgentAuthObservation(agentId, enabled);
   const desktopTarget = DESKTOP_HANDOFF_AGENTS.has(agentId);
   const inventoryQuery = useAgentInstallationInventory(
@@ -193,7 +223,7 @@ function AgentAuthStatusPanelInner({
   const session = useAgentAuthSession({
     agentId,
     port: ports.agentAuth,
-    enabled,
+    enabled: enabled && managedConsumer === null,
     onTerminal: (snapshot) => {
       if (lastTerminalSession.current === snapshot.sessionId) return;
       lastTerminalSession.current = snapshot.sessionId;
@@ -254,6 +284,31 @@ function AgentAuthStatusPanelInner({
       <span className="fy-agent-auth-compact" data-auth-kind={observation.kind}>
         认证：{observationSummary(observation)}
       </span>
+    );
+  }
+
+  if (managedConsumer) {
+    const returnDescriptor = agentReturnDescriptorFromSearch(search);
+    const basePath = `/auth?consumer=${encodeURIComponent(managedConsumer)}&view=connections`;
+    const destination = returnDescriptor
+      ? appendAgentReturnToPath(basePath, returnDescriptor)
+      : basePath;
+    return (
+      <section className="fy-agent-section" aria-label="认证状态">
+        <div className="fy-agent-section-heading">
+          <div>
+            <h3>账号与认证</h3>
+            <p>账号、软件连接和当前模型来源在同一页面管理。</p>
+          </div>
+          <Button onClick={() => navigate(destination)}>
+            {managedAuthActionLabel(managedConsumer)}
+          </Button>
+        </div>
+        <div className="fy-agent-auth-panel" data-auth-kind={observation.kind}>
+          <strong>{observationSummary(observation)}</strong>
+          <p>{observationDescription(observation)}</p>
+        </div>
+      </section>
     );
   }
 

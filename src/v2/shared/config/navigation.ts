@@ -1,6 +1,13 @@
 export type NavigationItem = {
-  id: "agents" | "models" | "skills" | "mcp" | "prompts" | "memory";
-  path: "/agents" | "/models" | "/skills" | "/mcp" | "/prompts" | "/memory";
+  id: "agents" | "auth" | "models" | "skills" | "mcp" | "prompts" | "memory";
+  path:
+    | "/agents"
+    | "/auth"
+    | "/models"
+    | "/skills"
+    | "/mcp"
+    | "/prompts"
+    | "/memory";
   label: string;
 };
 
@@ -16,7 +23,10 @@ export const navigationGroups = [
     id: "agent-configuration",
     label: "AI软件配置",
     collapsible: false,
-    items: [{ id: "agents", path: "/agents", label: "AI软件配置" }],
+    items: [
+      { id: "agents", path: "/agents", label: "AI软件配置" },
+      { id: "auth", path: "/auth", label: "账号与认证" },
+    ],
   },
   {
     id: "configuration-management",

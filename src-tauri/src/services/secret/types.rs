@@ -135,12 +135,17 @@ impl SecretHandle {
     pub(crate) fn version(&self) -> &SecretVersion {
         &self.version
     }
+
+    pub(crate) fn rotate(&self) -> Self {
+        Self::new(self.secret_ref.clone(), SecretVersion::generate())
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) enum SecretPurpose {
     CodexApiKey,
+    ManagedOAuthCredential,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]

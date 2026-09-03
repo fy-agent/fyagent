@@ -1,0 +1,25 @@
+{"file":".trellis/tasks/09-03-unified-agent-auth-management/prd.md","reason":"前端优先的产品目标、用户流程、边界和完成定义。"}
+{"file":".trellis/tasks/09-03-unified-agent-auth-management/design.md","reason":"统一 Auth 控制面、SecretRef、刷新所有权、consumer adapter 与事务设计。"}
+{"file":".trellis/tasks/09-03-unified-agent-auth-management/implement.md","reason":"按前端合同先行、后端分阶段接入、HIL 门禁执行。"}
+{"file":".trellis/tasks/09-03-unified-agent-auth-management/research/auth-source-and-reuse-review.md","reason":"第一方协议、开源许可证、现有 FyAgent owner 与未验证 HIL 项。"}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"每个新增抽象和依赖必须先证明不能复用现有 owner。"}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"保证 UI、wire、service、storage、native projection 与 readback 全链路闭合。"}
+{"file":".trellis/spec/frontend/v2-agent-auth.md","reason":"当前 V2 Auth 严格 DTO、backend session 和 Agent Auth 交互合同；实施后需收敛更新。"}
+{"file":".trellis/spec/frontend/v2-agent-directory.md","reason":"Agent 目录、详情、deep link、inventory 与生命周期 UI owner。"}
+{"file":".trellis/spec/frontend/v2-navigation.md","reason":"新增 /auth 主路由时复用现有导航、lazy/prefetch/persistent surface 合同。"}
+{"file":".trellis/spec/frontend/reuse.md","reason":"V2 shared UI/FeaturePort 复用优先与禁止导入 V1 的规则。"}
+{"file":".trellis/spec/frontend/state-management.md","reason":"Query、dialog draft、backend-owned session 与隐藏页面生命周期边界。"}
+{"file":".trellis/spec/frontend/user-facing-copy.md","reason":"账号、连接、请求来源、未知和失败状态的证据化文案。"}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"严格 exact-key wire parser、闭集枚举和 forbidden-field 要求。"}
+{"file":".trellis/spec/backend/external-agent-auth.md","reason":"现有 Auth observation/session owner 与旧禁止第二 OAuth 的迁移基线。"}
+{"file":".trellis/spec/backend/secretref-backend.md","reason":"OS-native SecretRef 首个生产 consumer、恢复和 entitlement 门禁。"}
+{"file":".trellis/spec/backend/proxy-runtime.md","reason":"Proxy token resolver、路由生命周期和 live restore owner。"}
+{"file":".trellis/spec/backend/database-persistence.md","reason":"SQLite schema/version/migration/backup 的长期合同。"}
+{"file":".trellis/spec/backend/reuse.md","reason":"后端现有 owner、成熟依赖与反重复实现规则。"}
+{"file":".trellis/spec/backend/modular-boundaries.md","reason":"command/service/proxy/native adapter 的依赖与可见性边界。"}
+{"file":".trellis/tasks/09-03-unified-agent-auth-management/research/current-fyagent-integration-seams.md","reason":"聚焦列出当前前端、Auth manager、SecretRef、DB、Proxy 与 consumer 的真实迁移接缝。"}
+{"file":".trellis/tasks/09-03-unified-agent-auth-management/research/review-gates.md","reason":"实现每个阶段前自检产品、架构、安全、并发、迁移和 HIL 硬门禁。"}
+{"file": ".trellis/tasks/09-03-unified-agent-auth-management/research/review-rounds.md", "reason": "实施前复核五轮 finding、父任务拆分策略与 remaining uncertainties。"}
+{"file": ".trellis/spec/backend/external-agent-lifecycle.md", "reason": "保持 Grok Tooling 与 OpenCode Desktop 生命周期 owner，认证不得复制安装/版本/目标逻辑。"}
+{"file": ".trellis/tasks/archive/2026-09/09-03-remove-grok-install-opencode-windows/research/current-state-and-upstream-evidence.md", "reason": "加载最新 Grok 官方 npm 与 OpenCode Desktop source 边界，保持安装和认证分离。"}
+{"file": ".trellis/tasks/09-03-unified-agent-auth-management/research/frontend-experience-blueprint.md", "reason": "以前端可执行蓝图实现页面层次、账号/连接卡片、登录向导、状态文案、响应式和验收场景。"}

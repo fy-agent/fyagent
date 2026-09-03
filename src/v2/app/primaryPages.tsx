@@ -18,6 +18,9 @@ const primaryPageLoaders = {
   agents: cachedLoader(async () => ({
     default: (await import("../pages/agents/Page")).AgentsPage,
   })),
+  auth: cachedLoader(async () => ({
+    default: (await import("../pages/auth/Page")).AuthPage,
+  })),
   models: cachedLoader(async () => ({
     default: (await import("../pages/models/Page")).ModelsPage,
   })),
@@ -43,6 +46,7 @@ export const primaryPages: Record<
   LazyExoticComponent<ComponentType>
 > = {
   agents: lazy(primaryPageLoaders.agents),
+  auth: lazy(primaryPageLoaders.auth),
   models: lazy(primaryPageLoaders.models),
   skills: lazy(primaryPageLoaders.skills),
   mcp: lazy(primaryPageLoaders.mcp),
