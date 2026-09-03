@@ -22,8 +22,11 @@ Related owners:
   Claude/desktop handoff façade; it must not grow a second OAuth store.
 - OpenAI browser loopback PKCE and Device Code are owned by
   `services/managed_auth/providers/openai.rs` plus backend login sessions.
-  Codex native file projection stays fail-closed until matching-host HIL.
-  xAI/Grok and OpenCode Desktop adapters remain later slices.
+  xAI Device Code is owned by `providers/xai.rs`. Codex native file
+  projection and Grok helper/`auth.json` writes stay fail-closed until
+  matching-host HIL. OpenCode Desktop observation and `auth.json`
+  projection live in `consumers/opencode.rs`; live Desktop pickup stays
+  `pending_restart` until HIL.
 
 This is the first production consumer of `services::secret`. Do not introduce a
 second keyring, a plaintext JSON token authority, or a `shared` refresh owner.
@@ -56,11 +59,11 @@ managed_auth_remove_account({ previewId, accountId, expectedRevision })
 
 managed_auth_start_login / get_login_session / cancel_login /
 reopen_login / switch_login_method
-  -> OpenAI snapshots after request validation; xAI/Copilot stay
-     provider_not_supported
+  -> OpenAI (loopback + device) and xAI (device) snapshots after
+     request validation; Copilot stays provider_not_supported
 managed_auth_apply_connection_action
-  -> Codex refresh/disconnect/connect metadata; projection remains
-     native_projection_unavailable until HIL
+  -> Codex/Grok metadata with native projection fail-closed until HIL;
+     OpenCode closed slots observe/project and may return pending_restart
 ```
 
 `operationId` on mutation results is a canonical UUID v4 string (hyphenated).
@@ -185,7 +188,11 @@ legacy-copilot-auth-v3  <- copilot_auth.json
   vault session exists. Unmigrated / blocked sources may still use the old
   manager path.
 - Native-owned sessions (`codex_native` / `grok_native` / `opencode`) are
-  never refreshed by Proxy.
+  never refreshed by Proxy. OpenCode Path B projection writes an
+  independent `purpose=opencode_provider` session into official
+  `auth.json`, then sets `refresh_owner=opencode`. Codex/Proxy refresh
+  lineages are never copied. Live Desktop hot-reload of an external
+  write is unproven; successful FyAgent writes stay `pending_restart`.
 - V1 `commands/auth.rs` may list vault accounts only after that provider's
   JSON store is sealed. Otherwise JSON remains the live compatibility path.
 - Renderer DTOs, logs, and overview JSON must not contain tokens, SecretRef,
@@ -215,8 +222,10 @@ metadata and must never include token columns.
 | migration hash changes after prepare | stale/blocked; do not rename |
 | finalize rename fails after DB completed | retry rename on next startup; JSON is not writable authority |
 | login/session command for OpenAI | backend-owned snapshot; success only after SecretRef readback |
-| login for xAI/Copilot | `provider_not_supported` |
-| Codex connect without HIL file projection | `partial` + `native_projection_unavailable`; no auth.json write |
+| login for xAI Device Code | backend-owned snapshot; Grok native projection stays fail-closed |
+| login for Copilot | `provider_not_supported` |
+| Codex/Grok connect without HIL file projection | `partial` + `native_projection_unavailable`; no vendor auth.json write |
+| OpenCode Path B write while live Desktop hot-reload is unproven | file write + readback may succeed; status stays `pending_restart` |
 | mutation `operationId` is not UUID v4 | frontend parser rejects the result |
 | DTO/log/debug contains token/secretRef | test failure / NO-GO |
 | `shared` refresh owner in schema or enum | reject implementation |

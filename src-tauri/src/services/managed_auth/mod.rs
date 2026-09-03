@@ -479,6 +479,13 @@ impl ManagedAuthErrorDto {
         }
     }
 
+    pub(crate) fn with_reason(reason_code: ManagedAuthReasonCode) -> Self {
+        Self {
+            contract_version: MANAGED_AUTH_CONTRACT_VERSION,
+            reason_code,
+        }
+    }
+
     pub(crate) fn from_core(error: ManagedAuthCoreError) -> Self {
         Self {
             contract_version: MANAGED_AUTH_CONTRACT_VERSION,

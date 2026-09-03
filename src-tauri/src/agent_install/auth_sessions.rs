@@ -26,7 +26,8 @@ use super::{
         validate_auth_session_id, validate_opaque_auth_provider_id, AgentActionId,
         AgentAuthAccountState, AgentAuthIntent, AgentAuthObservationDto, AgentAuthReasonCode,
         AgentAuthSessionOutcome, AgentAuthSessionSnapshot, AgentAuthSessionStage, AgentReasonCode,
-        StartAgentActionRequest, StartAgentAuthSessionRequest, AGENT_AUTH_CONTRACT_VERSION,
+        AgentSurface, StartAgentActionRequest, StartAgentAuthSessionRequest,
+        AGENT_AUTH_CONTRACT_VERSION,
     },
 };
 use crate::{services::external_agents::AgentCatalogId, store::AppState};
@@ -458,6 +459,9 @@ async fn validate_auth_target(
     let has_binding = request.inventory_id.is_some()
         || request.target_id.is_some()
         || request.expected_target_revision.is_some();
+    if request.agent_id == AgentCatalogId::OpenCode {
+        return validate_opencode_auth_target(request, state, has_binding).await;
+    }
     if !matches!(
         request.agent_id,
         AgentCatalogId::QoderWork | AgentCatalogId::TraeWork | AgentCatalogId::WorkBuddy
@@ -488,6 +492,42 @@ async fn validate_auth_target(
         .cloned()
         .map(AuthLaunchTarget::Desktop)
         .ok_or(AgentAuthReasonCode::TargetNotExecutable)
+}
+
+async fn validate_opencode_auth_target(
+    request: &StartAgentAuthSessionRequest,
+    state: &AppState,
+    has_binding: bool,
+) -> Result<AuthLaunchTarget, AgentAuthReasonCode> {
+    match request.intent {
+        AgentAuthIntent::Logout => {
+            if has_binding {
+                Err(AgentAuthReasonCode::TargetChanged)
+            } else {
+                Ok(AuthLaunchTarget::None)
+            }
+        }
+        AgentAuthIntent::ConnectProvider => {
+            let compatibility = StartAgentActionRequest {
+                agent_id: request.agent_id,
+                action: AgentActionId::Launch,
+                expected_release_id: None,
+                inventory_id: request.inventory_id.clone(),
+                target_id: request.target_id.clone(),
+                expected_target_revision: request.expected_target_revision.clone(),
+                surface: Some(AgentSurface::Desktop),
+            };
+            let target = validate_action_target(&compatibility, state)
+                .await
+                .map_err(map_target_reason)?;
+            target
+                .desktop_path()
+                .cloned()
+                .map(AuthLaunchTarget::Desktop)
+                .ok_or(AgentAuthReasonCode::TargetNotExecutable)
+        }
+        _ => Err(AgentAuthReasonCode::ExecutorNotImplemented),
+    }
 }
 
 fn map_target_reason(reason: AgentReasonCode) -> AgentAuthReasonCode {
@@ -526,7 +566,14 @@ async fn run_auth_session(
     {
         return;
     }
-    let disposition = match launch_session_action(request.agent_id, request.intent, target).await {
+    let disposition = match launch_session_action(
+        request.agent_id,
+        request.intent,
+        target,
+        request.provider_id.clone(),
+    )
+    .await
+    {
         Ok(disposition) => disposition,
         Err(reason) => {
             let _ = store.transition(
@@ -625,19 +672,52 @@ async fn launch_session_action(
     agent_id: AgentCatalogId,
     intent: AgentAuthIntent,
     target: AuthLaunchTarget,
+    provider_id: Option<String>,
 ) -> Result<AuthLaunchDisposition, AgentAuthReasonCode> {
     match target {
         AuthLaunchTarget::Desktop(path) => tokio::task::spawn_blocking(move || {
             launch_desktop_installation(agent_id, &path)
-                .map(|_| AuthLaunchDisposition::HandoffComplete)
+                .map(|_| {
+                    if agent_id == AgentCatalogId::OpenCode
+                        && intent == AgentAuthIntent::ConnectProvider
+                    {
+                        AuthLaunchDisposition::AwaitingVerification
+                    } else {
+                        AuthLaunchDisposition::HandoffComplete
+                    }
+                })
                 .map_err(map_target_reason)
         })
         .await
         .unwrap_or(Err(AgentAuthReasonCode::InteractiveUserUnavailable)),
         AuthLaunchTarget::None => {
-            tokio::task::spawn_blocking(move || launch_auth_action(agent_id, intent))
+            if agent_id == AgentCatalogId::OpenCode && intent == AgentAuthIntent::Logout {
+                let provider_id =
+                    provider_id.ok_or(AgentAuthReasonCode::ProviderSelectionRequired)?;
+                tokio::task::spawn_blocking(move || {
+                    crate::services::managed_auth::consumers::opencode::remove_capability(
+                        &crate::opencode_config::get_opencode_auth_json_path(),
+                        &provider_id,
+                        None,
+                    )
+                    .map(|_| AuthLaunchDisposition::AwaitingVerification)
+                    .map_err(|error| match error {
+                        crate::services::managed_auth::consumers::opencode::OpencodeAuthError::NotFound => {
+                            AgentAuthReasonCode::ProviderChanged
+                        }
+                        crate::services::managed_auth::consumers::opencode::OpencodeAuthError::Stale => {
+                            AgentAuthReasonCode::ProviderChanged
+                        }
+                        _ => AgentAuthReasonCode::CommandFailed,
+                    })
+                })
                 .await
                 .unwrap_or(Err(AgentAuthReasonCode::InteractiveUserUnavailable))
+            } else {
+                tokio::task::spawn_blocking(move || launch_auth_action(agent_id, intent))
+                    .await
+                    .unwrap_or(Err(AgentAuthReasonCode::InteractiveUserUnavailable))
+            }
         }
     }
 }

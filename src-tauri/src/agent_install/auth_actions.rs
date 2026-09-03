@@ -4,14 +4,12 @@
 //! official status surfaces. Raw output, backing credential paths, account
 //! identifiers and secrets never cross the Agent-auth DTO boundary.
 
-use std::{collections::HashSet, sync::OnceLock, time::Duration};
+use std::{collections::HashSet, path::Path, time::Duration};
 
 use chrono::{SecondsFormat, Utc};
-use regex::Regex;
-use sha2::{Digest, Sha256};
 
 use super::{
-    cli::{CLAUDE_TOOL_ID, GROK_TOOL_ID, OPENCODE_TOOL_ID},
+    cli::{CLAUDE_TOOL_ID, GROK_TOOL_ID},
     types::{
         AgentAuthAccountState, AgentAuthAuthority, AgentAuthIntent, AgentAuthManagedDestination,
         AgentAuthObservationDto, AgentAuthOwnership, AgentAuthProviderConnectionState,
@@ -30,8 +28,6 @@ const AUTH_OUTPUT_LIMIT: usize = 64 * 1024;
 const AUTH_PROBE_OUTPUT_LIMIT: usize = 8 * 1024;
 const MAX_CLAUDE_STATUS_FIELDS: usize = 16;
 const MAX_STATUS_STRING_CHARS: usize = 512;
-const MAX_PROVIDER_CONNECTIONS: usize = 64;
-const MAX_PROVIDER_LABEL_CHARS: usize = 80;
 
 const CLAUDE_STATUS_FIELDS: &[&str] = &[
     "loggedIn",
@@ -113,20 +109,19 @@ pub fn observe_auth_state(
     cli_detected: bool,
     cli_unavailable: bool,
 ) -> AgentAuthState {
-    if cli_unavailable {
+    if cli_unavailable && agent_id != AgentCatalogId::OpenCode {
         return AgentAuthState::Unavailable;
     }
     match agent_id {
         AgentCatalogId::ClaudeCode if cli_detected => {
             legacy_state_from_observation(&observe_claude_account())
         }
-        AgentCatalogId::OpenCode if cli_detected => AgentAuthState::ProviderConnectionRequired,
+        AgentCatalogId::OpenCode => AgentAuthState::ProviderConnectionRequired,
         AgentCatalogId::ClaudeCode
         | AgentCatalogId::GrokBuild
         | AgentCatalogId::QoderWork
         | AgentCatalogId::TraeWork
         | AgentCatalogId::WorkBuddy
-        | AgentCatalogId::OpenCode
         | AgentCatalogId::Codex => AgentAuthState::Unknown,
     }
 }
@@ -145,20 +140,10 @@ pub(super) fn launch_auth_action(
             Ok(AuthLaunchDisposition::AwaitingVerification)
         }
         (AgentCatalogId::OpenCode, AgentAuthIntent::ConnectProvider) => {
-            launch_closed_cli(
-                OPENCODE_TOOL_ID,
-                "opencode auth login",
-                "opencode_auth_login",
-            )?;
-            Ok(AuthLaunchDisposition::AwaitingVerification)
+            Err(AgentAuthReasonCode::TargetSelectionRequired)
         }
         (AgentCatalogId::OpenCode, AgentAuthIntent::Logout) => {
-            launch_closed_cli(
-                OPENCODE_TOOL_ID,
-                "opencode auth logout",
-                "opencode_auth_logout",
-            )?;
-            Ok(AuthLaunchDisposition::AwaitingVerification)
+            Err(AgentAuthReasonCode::ProviderSelectionRequired)
         }
         (AgentCatalogId::GrokBuild, AgentAuthIntent::Login) => {
             launch_closed_cli(GROK_TOOL_ID, "grok login", "grok_login")?;
@@ -225,42 +210,34 @@ fn observe_claude_account() -> AgentAuthObservationDto {
 }
 
 fn observe_opencode_providers() -> AgentAuthObservationDto {
-    let output = match run_bounded(OPENCODE_TOOL_ID, &["auth", "list"]) {
-        Ok(output) => output,
-        Err(reason) => {
-            return unavailable_observation(
-                AgentCatalogId::OpenCode,
-                AgentAuthOwnership::ProviderOwned,
-                reason,
-            )
-        }
-    };
-    if !output.status.success() {
+    observe_opencode_auth_json(&crate::opencode_config::get_opencode_auth_json_path())
+}
+
+fn observe_opencode_auth_json(path: &Path) -> AgentAuthObservationDto {
+    let observed = crate::services::managed_auth::consumers::opencode::observe_auth_store(path);
+    if !observed.readable {
         return provider_observation(
             AgentAuthAuthority::Unverified,
             AgentAuthProviderConnectionState::Unknown,
             Vec::new(),
-            vec![AgentAuthReasonCode::AuthStateUnknown],
+            vec![AgentAuthReasonCode::AuthOutputInvalid],
         );
     }
-    match parse_opencode_auth_list(&output.stdout) {
-        Some(providers) => provider_observation(
-            AgentAuthAuthority::Verified,
-            if providers.is_empty() {
-                AgentAuthProviderConnectionState::Empty
-            } else {
-                AgentAuthProviderConnectionState::Configured
-            },
-            providers,
-            Vec::new(),
-        ),
-        None => provider_observation(
-            AgentAuthAuthority::Unverified,
-            AgentAuthProviderConnectionState::Unknown,
-            Vec::new(),
-            vec![AgentAuthReasonCode::AuthOutputInvalid],
-        ),
-    }
+    let providers =
+        crate::services::managed_auth::consumers::opencode::agent_auth_providers(&observed)
+            .into_iter()
+            .map(|(provider_id, label)| AgentAuthProviderSummaryDto { provider_id, label })
+            .collect::<Vec<_>>();
+    provider_observation(
+        AgentAuthAuthority::Verified,
+        if providers.is_empty() {
+            AgentAuthProviderConnectionState::Empty
+        } else {
+            AgentAuthProviderConnectionState::Configured
+        },
+        providers,
+        Vec::new(),
+    )
 }
 
 fn parse_claude_status_output(
@@ -298,98 +275,6 @@ fn parse_claude_status_output(
         (Some(1), false) => Some(AgentAuthAccountState::LoggedOut),
         _ => None,
     }
-}
-
-fn parse_opencode_auth_list(stdout: &[u8]) -> Option<Vec<AgentAuthProviderSummaryDto>> {
-    if stdout.len() > AUTH_OUTPUT_LIMIT {
-        return None;
-    }
-    let text = std::str::from_utf8(stdout).ok()?;
-    let stripped = ansi_escape_regex().replace_all(text, "");
-    if stripped
-        .chars()
-        .any(|character| character.is_control() && !matches!(character, '\r' | '\n' | '\t'))
-    {
-        return None;
-    }
-
-    let mut saw_header = false;
-    let mut expected_count = None;
-    let mut providers = Vec::new();
-    let mut labels = HashSet::new();
-
-    for line in stripped.lines() {
-        let line = trim_clack_chrome(line);
-        if line.is_empty() {
-            continue;
-        }
-        if !saw_header {
-            if line.starts_with("Credentials ") || line == "Credentials" {
-                saw_header = true;
-            }
-            continue;
-        }
-        if let Some(count) = credential_count(line) {
-            expected_count = Some(count);
-            break;
-        }
-        let (label, credential_type) = line.rsplit_once(char::is_whitespace)?;
-        if !matches!(credential_type, "api" | "oauth" | "wellknown") {
-            return None;
-        }
-        let label = label.trim();
-        if label.is_empty()
-            || label.chars().count() > MAX_PROVIDER_LABEL_CHARS
-            || label.chars().any(char::is_control)
-            || label.contains(['/', '\\', '\0'])
-        {
-            return None;
-        }
-        let normalized = label.to_lowercase();
-        if !labels.insert(normalized.clone()) || providers.len() >= MAX_PROVIDER_CONNECTIONS {
-            return None;
-        }
-        providers.push(AgentAuthProviderSummaryDto {
-            provider_id: provider_id(&normalized),
-            label: label.to_string(),
-        });
-    }
-
-    let expected_count = expected_count?;
-    (saw_header && expected_count == providers.len()).then_some(providers)
-}
-
-fn ansi_escape_regex() -> &'static Regex {
-    static ANSI: OnceLock<Regex> = OnceLock::new();
-    ANSI.get_or_init(|| Regex::new(r"\x1b\[[0-9;?]*[ -/]*[@-~]").expect("valid ANSI regex"))
-}
-
-fn trim_clack_chrome(line: &str) -> &str {
-    line.trim().trim_start_matches(|character: char| {
-        character.is_whitespace()
-            || matches!(
-                character,
-                '┌' | '└' | '│' | '├' | '─' | '◇' | '◆' | '●' | '○' | '▲' | '■'
-            )
-    })
-}
-
-fn credential_count(line: &str) -> Option<usize> {
-    line.strip_suffix(" credentials")
-        .or_else(|| line.strip_suffix(" credential"))?
-        .trim()
-        .parse::<usize>()
-        .ok()
-        .filter(|count| *count <= MAX_PROVIDER_CONNECTIONS)
-}
-
-fn provider_id(normalized_label: &str) -> String {
-    let digest = Sha256::digest(normalized_label.as_bytes());
-    let suffix = digest[..16]
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect::<String>();
-    format!("p1:{suffix}")
 }
 
 fn run_bounded(tool: &str, args: &[&str]) -> Result<std::process::Output, AgentAuthReasonCode> {
@@ -595,41 +480,82 @@ mod tests {
     }
 
     #[test]
-    fn opencode_list_returns_only_bounded_provider_labels() {
-        let output = b"\x1b[0m\n\xe2\x94\x8c  Credentials \x1b[90m/Users/alice/.local/share/opencode/auth.json\n\xe2\x94\x82\n\xe2\x94\x82  OpenAI oauth\n\xe2\x94\x82  Anthropic api\n\xe2\x94\x94  2 credentials\n\n";
-        let providers = parse_opencode_auth_list(output).expect("valid provider output");
-        assert_eq!(
-            providers
-                .iter()
-                .map(|provider| provider.label.as_str())
-                .collect::<Vec<_>>(),
-            ["OpenAI", "Anthropic"]
-        );
-        assert!(providers.iter().all(|provider| {
-            super::super::types::validate_opaque_auth_provider_id(&provider.provider_id)
-        }));
-        let encoded = serde_json::to_string(&providers).unwrap();
-        assert!(!encoded.contains("/Users/alice"));
-        assert!(!encoded.contains("oauth"));
-        assert!(!encoded.contains("api\""));
+    fn opencode_auth_json_observation_does_not_require_cli_and_hides_secrets() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("auth.json");
+        std::fs::write(
+            &path,
+            serde_json::to_vec_pretty(&serde_json::json!({
+                "openai": {
+                    "type": "oauth",
+                    "refresh": "rt-secret",
+                    "access": "at-secret",
+                    "expires": 9
+                },
+                "anthropic": {
+                    "type": "api",
+                    "key": "sk-secret"
+                }
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let observation = observe_opencode_auth_json(&path);
+        let encoded = serde_json::to_string(&observation).unwrap();
+        match observation {
+            AgentAuthObservationDto::ProviderConnections {
+                authority,
+                state,
+                providers,
+                reason_codes,
+                ..
+            } => {
+                assert_eq!(authority, AgentAuthAuthority::Verified);
+                assert_eq!(state, AgentAuthProviderConnectionState::Configured);
+                assert!(reason_codes.is_empty());
+                let labels: Vec<_> = providers
+                    .iter()
+                    .map(|provider| provider.label.as_str())
+                    .collect();
+                assert!(labels.contains(&"OpenAI"));
+                assert!(labels.contains(&"anthropic"));
+                assert!(providers.iter().all(|provider| {
+                    super::super::types::validate_opaque_auth_provider_id(&provider.provider_id)
+                }));
+            }
+            other => panic!("expected provider connections, got {other:?}"),
+        }
+        assert!(!encoded.contains("rt-secret"));
+        assert!(!encoded.contains("sk-secret"));
+        assert!(!encoded.contains("auth.json"));
+        assert!(!encoded.to_ascii_lowercase().contains("access_token"));
     }
 
     #[test]
-    fn opencode_list_rejects_count_drift_paths_and_unbounded_rows() {
-        assert!(parse_opencode_auth_list(
-            b"Credentials /tmp/auth.json\nProvider api\n2 credentials\n"
-        )
-        .is_none());
-        assert!(parse_opencode_auth_list(
-            b"Credentials /tmp/auth.json\n../auth.json api\n1 credential\n"
-        )
-        .is_none());
-        let rows = (0..=MAX_PROVIDER_CONNECTIONS)
-            .map(|index| format!("Provider {index} api"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        let output = format!("Credentials /tmp/auth.json\n{rows}\n65 credentials\n");
-        assert!(parse_opencode_auth_list(output.as_bytes()).is_none());
+    fn opencode_missing_auth_json_is_empty_not_observer_unavailable() {
+        let dir = tempfile::tempdir().unwrap();
+        let observation = observe_opencode_auth_json(&dir.path().join("auth.json"));
+        match observation {
+            AgentAuthObservationDto::ProviderConnections {
+                authority,
+                state,
+                providers,
+                ..
+            } => {
+                assert_eq!(authority, AgentAuthAuthority::Verified);
+                assert_eq!(state, AgentAuthProviderConnectionState::Empty);
+                assert!(providers.is_empty());
+            }
+            other => panic!("expected empty providers, got {other:?}"),
+        }
+        assert_eq!(
+            observe_auth_state(AgentCatalogId::OpenCode, false, false),
+            AgentAuthState::ProviderConnectionRequired
+        );
+        assert_eq!(
+            observe_auth_state(AgentCatalogId::OpenCode, false, true),
+            AgentAuthState::ProviderConnectionRequired
+        );
     }
 
     #[test]
@@ -638,7 +564,9 @@ mod tests {
             AgentAuthAuthority::Verified,
             AgentAuthProviderConnectionState::Configured,
             vec![AgentAuthProviderSummaryDto {
-                provider_id: provider_id("openai"),
+                provider_id: crate::services::managed_auth::consumers::opencode::capability_id(
+                    "openai",
+                ),
                 label: "OpenAI".into(),
             }],
             Vec::new(),

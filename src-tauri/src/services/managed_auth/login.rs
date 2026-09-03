@@ -173,6 +173,9 @@ where
         request: &super::ManagedAuthConnectionActionRequest,
     ) -> Result<ManagedAuthMutationResult, ManagedAuthErrorDto> {
         let grok_slot = stable_connection_id(ManagedAuthConsumer::Grokbuild, "", "xai");
+        if super::consumers::opencode::slot_for_connection_id(&request.connection_id).is_some() {
+            return self.apply_opencode_connection_action(request);
+        }
         if request.connection_id == grok_slot
             || self
                 .repository
