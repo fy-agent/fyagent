@@ -1139,7 +1139,7 @@ impl OneShotPipeServer {
         match unsafe {
             WriteFile(
                 self.raw(),
-                Some(&bytes),
+                Some(bytes),
                 Some(&mut transferred),
                 Some(&mut overlapped),
             )
