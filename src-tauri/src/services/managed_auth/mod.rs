@@ -9,6 +9,7 @@ use chrono::SecondsFormat;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+pub(crate) mod consumers;
 mod core;
 mod migration;
 mod repository;
@@ -472,6 +473,13 @@ impl ManagedAuthErrorDto {
         Self {
             contract_version: MANAGED_AUTH_CONTRACT_VERSION,
             reason_code: ManagedAuthReasonCode::InvalidResponse,
+        }
+    }
+
+    pub(crate) fn with_reason(reason_code: ManagedAuthReasonCode) -> Self {
+        Self {
+            contract_version: MANAGED_AUTH_CONTRACT_VERSION,
+            reason_code,
         }
     }
 

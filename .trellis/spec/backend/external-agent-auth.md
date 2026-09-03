@@ -89,6 +89,13 @@ verified | handoff_complete | failed | cancelled | timed_out
   `claude auth status --json` output plus its documented exit semantics to
   reach the requested state. Launching a terminal/browser alone remains
   `awaiting_user`.
+- OpenCode observation is Desktop-first. The Agent Auth façade reads
+  sanitized provider metadata produced by the Managed Auth OpenCode
+  consumer from official `Global.Path.data/auth.json`. A missing PATH
+  `opencode` CLI must not yield `AuthObserverUnavailable`. Connect
+  launches a trusted Desktop target; logout removes one `auth.json`
+  key through that consumer. Tokens, keys, paths and sidecar ports
+  still do not cross IPC.
 - OpenCode uses provider-level official auth operations. Observation exposes
   sanitized provider labels and opaque `p1:` IDs, never a global “logged in”
   boolean. Connect succeeds only when the intended provider appears; logout
@@ -106,7 +113,9 @@ verified | handoff_complete | failed | cancelled | timed_out
 
 - FyAgent never reads vendor token files, browser cookies, Keychain entries,
   Windows Credential Manager entries or arbitrary home-directory markers to
-  infer external Auth state.
+  infer external Auth state, except OpenCode provider observation which
+  consumes Managed Auth consumer metadata from `auth.json` and still
+  forbids tokens, keys and paths on the Agent Auth DTO.
 - Observation returns only sanitized account/provider/handoff metadata and
   closed authority/reason enums. Token, email when not required by the closed
   DTO, raw CLI output, path, command and environment details do not cross IPC.

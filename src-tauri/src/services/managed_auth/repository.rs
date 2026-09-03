@@ -73,6 +73,25 @@ impl ManagedAuthRepository {
             .map_err(ManagedAuthCoreError::from)
     }
 
+    pub(crate) fn transfer_refresh_owner(
+        &self,
+        credential_id: &str,
+        expected_generation: u64,
+        from: RefreshOwner,
+        to: RefreshOwner,
+        updated_at: i64,
+    ) -> Result<bool, ManagedAuthCoreError> {
+        self.db
+            .managed_auth_transfer_refresh_owner(
+                credential_id,
+                expected_generation,
+                from,
+                to,
+                updated_at,
+            )
+            .map_err(ManagedAuthCoreError::from)
+    }
+
     #[allow(dead_code)]
     pub(crate) fn reconcile_secret(
         &self,

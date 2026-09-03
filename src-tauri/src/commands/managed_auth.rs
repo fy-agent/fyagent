@@ -103,7 +103,8 @@ pub fn managed_auth_remove_account(
 #[tauri::command(rename_all = "camelCase")]
 pub fn managed_auth_apply_connection_action(
     request: ManagedAuthConnectionActionRequest,
+    state: State<'_, ManagedAuthState>,
 ) -> Result<ManagedAuthMutationResult, ManagedAuthErrorDto> {
     request.validate()?;
-    Err(ManagedAuthErrorDto::unavailable())
+    state.0.apply_connection_action(&request)
 }

@@ -306,6 +306,34 @@ impl Database {
         Ok(updated == 1)
     }
 
+    pub(crate) fn managed_auth_transfer_refresh_owner(
+        &self,
+        credential_id: &str,
+        expected_generation: u64,
+        from: RefreshOwner,
+        to: RefreshOwner,
+        updated_at: i64,
+    ) -> Result<bool, AppError> {
+        let expected_generation = i64::try_from(expected_generation)
+            .map_err(|_| AppError::Database("managed auth generation overflow".to_string()))?;
+        let conn = lock_conn!(self.conn);
+        let updated = conn
+            .execute(
+                "UPDATE managed_auth_credentials
+                 SET refresh_owner = ?4, updated_at = ?5
+                 WHERE credential_id = ?1 AND generation = ?2 AND refresh_owner = ?3",
+                params![
+                    credential_id,
+                    expected_generation,
+                    from.as_str(),
+                    to.as_str(),
+                    updated_at,
+                ],
+            )
+            .map_err(|error| database_error("transfer managed auth refresh owner", error))?;
+        Ok(updated == 1)
+    }
+
     #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn managed_auth_reconcile_secret(
         &self,

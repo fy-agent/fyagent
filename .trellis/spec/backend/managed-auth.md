@@ -20,9 +20,12 @@ Related owners:
 - [V2 Managed Accounts](../frontend/v2-managed-auth.md) owns renderer Ports.
 - [External Agent Auth](./external-agent-auth.md) remains the Agent-owned
   Claude/desktop handoff façade; it must not grow a second OAuth store.
-- OpenAI browser PKCE, Codex native projection, xAI/Grok consumer adapters,
-  and OpenCode Desktop projection are later slices. Login/session commands
-  currently remain closed `unavailable`.
+- OpenAI browser PKCE, Codex native projection, and xAI/Grok consumer
+  adapters remain later slices. OpenCode Desktop observation and
+  `auth.json` projection live in
+  `services/managed_auth/consumers/opencode.rs`. Login/session commands
+  currently remain closed `unavailable`. Connection actions other than
+  OpenCode slots remain `unavailable`.
 
 This is the first production consumer of `services::secret`. Do not introduce a
 second keyring, a plaintext JSON token authority, or a `shared` refresh owner.
@@ -54,8 +57,10 @@ managed_auth_remove_account({ previewId, accountId, expectedRevision })
   -> ManagedAuthMutationResult
 
 managed_auth_start_login / get_login_session / cancel_login /
-reopen_login / switch_login_method / apply_connection_action
+reopen_login / switch_login_method
   -> unavailable after request validation
+managed_auth_apply_connection_action
+  -> OpenCode closed slots only; other connection IDs unavailable
 ```
 
 `operationId` on mutation results is a canonical UUID v4 string (hyphenated).
@@ -180,7 +185,11 @@ legacy-copilot-auth-v3  <- copilot_auth.json
   vault session exists. Unmigrated / blocked sources may still use the old
   manager path.
 - Native-owned sessions (`codex_native` / `grok_native` / `opencode`) are
-  never refreshed by Proxy.
+  never refreshed by Proxy. OpenCode Path B projection writes an
+  independent `purpose=opencode_provider` session into official
+  `auth.json`, then sets `refresh_owner=opencode`. Codex/Proxy refresh
+  lineages are never copied. Live Desktop hot-reload of an external
+  write is unproven; successful FyAgent writes stay `pending_restart`.
 - V1 `commands/auth.rs` may list vault accounts only after that provider's
   JSON store is sealed. Otherwise JSON remains the live compatibility path.
 - Renderer DTOs, logs, and overview JSON must not contain tokens, SecretRef,
@@ -209,7 +218,9 @@ metadata and must never include token columns.
 | Copilot v1 JSON without identity | that source `blocked`; other sources continue |
 | migration hash changes after prepare | stale/blocked; do not rename |
 | finalize rename fails after DB completed | retry rename on next startup; JSON is not writable authority |
-| login/session/connection-action command | validated then `unavailable` until later children |
+| login/session command | validated then `unavailable` until later children |
+| connection-action on a non-OpenCode slot | validated then `unavailable` |
+| OpenCode Path B write while live Desktop hot-reload is unproven | file write + readback may succeed; status stays `pending_restart` |
 | mutation `operationId` is not UUID v4 | frontend parser rejects the result |
 | DTO/log/debug contains token/secretRef | test failure / NO-GO |
 | `shared` refresh owner in schema or enum | reject implementation |

@@ -14,6 +14,7 @@ use crate::services::secret::{
     SecretPurpose, SecretRef, SecretService, SecretVersion,
 };
 
+use super::consumers::opencode::{self, ProjectionEntry};
 use super::migration::{
     self, LegacyCredentialInput, CODEX_MIGRATION_ID, COPILOT_MIGRATION_ID, XAI_MIGRATION_ID,
 };
@@ -22,8 +23,9 @@ use super::{
     ConnectionRecord, ConnectionStatus, CredentialPurpose, CredentialRecord, CredentialStatus,
     CredentialWithIdentity, IdentityRecord, ManagedAuthAccountAction,
     ManagedAuthAccountRemovalImpact, ManagedAuthAccountRemovalPreview, ManagedAuthAccountSummary,
-    ManagedAuthConnectionState, ManagedAuthConnectionSummary, ManagedAuthConsumer,
-    ManagedAuthCoreError, ManagedAuthCredentialManager, ManagedAuthHealth,
+    ManagedAuthConnectionAction, ManagedAuthConnectionActionRequest, ManagedAuthConnectionState,
+    ManagedAuthConnectionSummary, ManagedAuthConsumer, ManagedAuthCoreError,
+    ManagedAuthCredentialManager, ManagedAuthErrorDto, ManagedAuthHealth,
     ManagedAuthMutationOutcome, ManagedAuthMutationResult, ManagedAuthOverview,
     ManagedAuthProvider, ManagedAuthProviderSummary, ManagedAuthReasonCode, ManagedAuthRepository,
     ManagedAuthRequestMode, ManagedAuthSecretBundle, ManagedAuthSecretBundleParts, MigrationStatus,
@@ -342,6 +344,30 @@ where
             self.remove_credential_record(&row.credential)?;
         }
         Ok(self.mutation_result(ManagedAuthMutationOutcome::Completed, None))
+    }
+
+    pub(crate) fn apply_connection_action(
+        &self,
+        request: &ManagedAuthConnectionActionRequest,
+    ) -> Result<ManagedAuthMutationResult, ManagedAuthErrorDto> {
+        let provider = opencode::slot_for_connection_id(&request.connection_id)
+            .ok_or_else(ManagedAuthErrorDto::unavailable)?;
+        match request.action {
+            ManagedAuthConnectionAction::Refresh => {
+                Ok(self.mutation_result(ManagedAuthMutationOutcome::Completed, None))
+            }
+            ManagedAuthConnectionAction::Disconnect => {
+                self.opencode_disconnect(provider, &request.expected_revision)
+            }
+            ManagedAuthConnectionAction::ConnectAccount
+            | ManagedAuthConnectionAction::SwitchAccount => {
+                self.opencode_connect(provider, request)
+            }
+            ManagedAuthConnectionAction::Restart => {
+                self.opencode_ack_restart(provider, &request.expected_revision)
+            }
+            _ => Err(ManagedAuthErrorDto::unavailable()),
+        }
     }
 
     pub(crate) fn compatibility_accounts(
@@ -919,10 +945,11 @@ where
                 provider_summary(ManagedAuthProvider::GithubCopilot, &fail),
             ],
             accounts,
-            connections: connections
-                .iter()
-                .map(|connection| connection_summary(connection, &rows))
-                .collect(),
+            connections: merge_opencode_connections(
+                &self.opencode_auth_path(),
+                &rows,
+                &connections,
+            ),
             active_sessions: Vec::new(),
             reason_codes,
         })
@@ -975,14 +1002,216 @@ where
         outcome: ManagedAuthMutationOutcome,
         reason_code: Option<ManagedAuthReasonCode>,
     ) -> ManagedAuthMutationResult {
+        self.mutation_result_with(outcome, reason_code, Vec::new())
+    }
+
+    fn mutation_result_with(
+        &self,
+        outcome: ManagedAuthMutationOutcome,
+        reason_code: Option<ManagedAuthReasonCode>,
+        pending_restart_consumers: Vec<ManagedAuthConsumer>,
+    ) -> ManagedAuthMutationResult {
         ManagedAuthMutationResult {
             contract_version: MANAGED_AUTH_CONTRACT_VERSION,
             operation_id: uuid::Uuid::new_v4().to_string(),
             outcome,
             overview: self.overview(),
-            pending_restart_consumers: Vec::new(),
+            pending_restart_consumers,
             reason_code,
         }
+    }
+
+    fn opencode_auth_path(&self) -> PathBuf {
+        #[cfg(test)]
+        {
+            self.config_dir.join("opencode-data").join("auth.json")
+        }
+        #[cfg(not(test))]
+        {
+            opencode::default_auth_json_path()
+        }
+    }
+
+    fn opencode_disconnect(
+        &self,
+        provider: ManagedAuthProvider,
+        expected_revision: &str,
+    ) -> Result<ManagedAuthMutationResult, ManagedAuthErrorDto> {
+        let path = self.opencode_auth_path();
+        let receipt = opencode::remove_file_key(
+            &path,
+            opencode::file_key_for(provider),
+            Some(expected_revision),
+        )
+        .map_err(map_opencode_error)?;
+        self.upsert_opencode_connection(provider, None, &receipt.revision, receipt.pending_restart)
+            .map_err(ManagedAuthErrorDto::from_core)?;
+        Ok(self.opencode_write_result(receipt.pending_restart))
+    }
+
+    fn opencode_connect(
+        &self,
+        provider: ManagedAuthProvider,
+        request: &ManagedAuthConnectionActionRequest,
+    ) -> Result<ManagedAuthMutationResult, ManagedAuthErrorDto> {
+        let account_id = request
+            .account_id
+            .as_deref()
+            .ok_or_else(ManagedAuthErrorDto::invalid_request)?;
+        let rows = self
+            .credentials_for_account(account_id)
+            .map_err(ManagedAuthErrorDto::from_core)?;
+        let independent = rows.iter().find(|row| {
+            row.credential.provider == provider
+                && row.credential.purpose == CredentialPurpose::OpencodeProvider
+                && row.credential.status == CredentialStatus::Ready
+        });
+        let Some(selected) = independent else {
+            let copied_lineage = rows.iter().any(|row| {
+                row.credential.provider == provider
+                    && matches!(
+                        row.credential.purpose,
+                        CredentialPurpose::ProxyUpstream
+                            | CredentialPurpose::CodexNative
+                            | CredentialPurpose::GrokNative
+                            | CredentialPurpose::Copilot
+                    )
+            });
+            return Err(ManagedAuthErrorDto::with_reason(if copied_lineage {
+                ManagedAuthReasonCode::ProviderNotSupported
+            } else {
+                ManagedAuthReasonCode::NativeProjectionUnavailable
+            }));
+        };
+        if matches!(
+            selected.credential.refresh_owner,
+            RefreshOwner::CodexNative | RefreshOwner::GrokNative
+        ) {
+            return Err(ManagedAuthErrorDto::with_reason(
+                ManagedAuthReasonCode::ProviderNotSupported,
+            ));
+        }
+        let bundle = self
+            .readback_bundle(&selected.credential.secret_handle)
+            .map_err(ManagedAuthErrorDto::from_core)?;
+        let entry = projection_from_bundle(provider, &bundle).ok_or_else(|| {
+            ManagedAuthErrorDto::with_reason(ManagedAuthReasonCode::NativeProjectionUnavailable)
+        })?;
+        let path = self.opencode_auth_path();
+        let receipt = opencode::upsert_projection(
+            &path,
+            provider,
+            &entry,
+            Some(request.expected_revision.as_str()),
+        )
+        .map_err(map_opencode_error)?;
+        if selected.credential.refresh_owner != RefreshOwner::Opencode {
+            let transferred = self
+                .repository
+                .transfer_refresh_owner(
+                    &selected.credential.credential_id,
+                    selected.credential.generation,
+                    selected.credential.refresh_owner,
+                    RefreshOwner::Opencode,
+                    chrono::Utc::now().timestamp(),
+                )
+                .map_err(ManagedAuthErrorDto::from_core)?;
+            if !transferred {
+                return Ok(self.mutation_result_with(
+                    ManagedAuthMutationOutcome::Partial,
+                    Some(ManagedAuthReasonCode::PartialCompletion),
+                    vec![ManagedAuthConsumer::Opencode],
+                ));
+            }
+        }
+        self.upsert_opencode_connection(
+            provider,
+            Some(selected.credential.credential_id.clone()),
+            &receipt.revision,
+            receipt.pending_restart,
+        )
+        .map_err(ManagedAuthErrorDto::from_core)?;
+        Ok(self.opencode_write_result(receipt.pending_restart))
+    }
+
+    fn opencode_write_result(&self, pending_restart: bool) -> ManagedAuthMutationResult {
+        if pending_restart {
+            self.mutation_result_with(
+                ManagedAuthMutationOutcome::Completed,
+                Some(ManagedAuthReasonCode::PendingRestart),
+                vec![ManagedAuthConsumer::Opencode],
+            )
+        } else {
+            self.mutation_result(ManagedAuthMutationOutcome::Completed, None)
+        }
+    }
+
+    fn opencode_ack_restart(
+        &self,
+        provider: ManagedAuthProvider,
+        expected_revision: &str,
+    ) -> Result<ManagedAuthMutationResult, ManagedAuthErrorDto> {
+        let path = self.opencode_auth_path();
+        let observed = opencode::observe_auth_store(&path);
+        if observed.revision != expected_revision {
+            return Err(ManagedAuthErrorDto::from_core(ManagedAuthCoreError::Stale));
+        }
+        if observed.closed_kind(provider).is_none() {
+            return Err(ManagedAuthErrorDto::from_core(
+                ManagedAuthCoreError::NotFound,
+            ));
+        }
+        let stored = self
+            .repository
+            .list_connections()
+            .map_err(ManagedAuthErrorDto::from_core)?
+            .into_iter()
+            .find(|row| {
+                row.consumer == ManagedAuthConsumer::Opencode
+                    && row.provider_slot == provider.as_str()
+            });
+        self.upsert_opencode_connection(
+            provider,
+            stored.and_then(|row| row.credential_id),
+            &observed.revision,
+            false,
+        )
+        .map_err(ManagedAuthErrorDto::from_core)?;
+        Ok(self.mutation_result(ManagedAuthMutationOutcome::Completed, None))
+    }
+
+    fn upsert_opencode_connection(
+        &self,
+        provider: ManagedAuthProvider,
+        credential_id: Option<String>,
+        revision: &str,
+        pending_restart: bool,
+    ) -> Result<(), ManagedAuthCoreError> {
+        let now = chrono::Utc::now().timestamp();
+        let connection_id = opencode::slot_connection_id(provider);
+        let status = if pending_restart {
+            ConnectionStatus::PendingRestart
+        } else if credential_id.is_some() {
+            ConnectionStatus::Connected
+        } else {
+            ConnectionStatus::Disconnected
+        };
+        self.repository.upsert_connection(&ConnectionRecord {
+            connection_id: connection_id.clone(),
+            consumer: ManagedAuthConsumer::Opencode,
+            target_id: String::new(),
+            provider_slot: provider.as_str().to_string(),
+            credential_id,
+            desired_revision: revision.to_string(),
+            observed_revision: Some(revision.to_string()),
+            status,
+            request_mode: ManagedAuthRequestMode::ProviderConnections,
+            request_provider_label: Some(provider.as_str().to_string()),
+            official_session_preserved: Some(true),
+            pending_restart,
+            created_at: now,
+            updated_at: now,
+        })
     }
 
     fn secret_backend_ready(&self) -> bool {
@@ -1266,6 +1495,51 @@ fn connection_summary(
         checked_at: now_timestamp(),
         reason_codes: vec![ManagedAuthReasonCode::NativeProjectionUnavailable],
     }
+}
+
+fn merge_opencode_connections(
+    auth_path: &std::path::Path,
+    rows: &[CredentialWithIdentity],
+    connections: &[ConnectionRecord],
+) -> Vec<ManagedAuthConnectionSummary> {
+    let observation = opencode::observe_auth_store(auth_path);
+    let mut summaries: Vec<_> = connections
+        .iter()
+        .filter(|connection| connection.consumer != ManagedAuthConsumer::Opencode)
+        .map(|connection| connection_summary(connection, rows))
+        .collect();
+    summaries.extend(opencode::connection_summaries(
+        &observation,
+        rows,
+        connections,
+        now_timestamp(),
+    ));
+    summaries
+}
+
+fn projection_from_bundle(
+    provider: ManagedAuthProvider,
+    bundle: &ManagedAuthSecretBundle,
+) -> Option<ProjectionEntry> {
+    match (bundle.refresh_token(), bundle.access_token()) {
+        (Some(refresh), Some(access)) => Some(ProjectionEntry::Oauth {
+            refresh: Zeroizing::new(refresh.to_string()),
+            access: Zeroizing::new(access.to_string()),
+            expires: opencode::opencode_expires_ms(bundle.expires_at()),
+            account_id: None,
+        }),
+        (None, Some(access)) => Some(ProjectionEntry::Api {
+            key: Zeroizing::new(access.to_string()),
+        }),
+        _ => {
+            let _ = provider;
+            None
+        }
+    }
+}
+
+fn map_opencode_error(error: opencode::OpencodeAuthError) -> ManagedAuthErrorDto {
+    ManagedAuthErrorDto::from_core(ManagedAuthCoreError::from(error))
 }
 
 #[cfg(test)]
@@ -1789,5 +2063,141 @@ mod tests {
         assert!(source.exists());
         assert!(!service.legacy_store_sealed(CODEX_MIGRATION_ID));
         assert!(service.overview().accounts.is_empty());
+    }
+
+    fn opencode_input(legacy: &str) -> LegacyCredentialInput {
+        LegacyCredentialInput {
+            migration_id: "test-opencode-provider",
+            provider: ManagedAuthProvider::Openai,
+            purpose: CredentialPurpose::OpencodeProvider,
+            consumer: Some(ManagedAuthConsumer::Opencode),
+            legacy_account_id: legacy.to_string(),
+            provider_subject: "opencode-subject".to_string(),
+            provider_tenant: String::new(),
+            login: "opencode@example.com".to_string(),
+            display_name: None,
+            avatar_url: None,
+            access_token: Some(Zeroizing::new("at-opencode".to_string())),
+            refresh_token: Some(Zeroizing::new("rt-opencode".to_string())),
+            id_token: None,
+            desired_status: CredentialStatus::Ready,
+            refresh_owner: RefreshOwner::Fyagent,
+            authenticated_at: 1_700_000_000,
+            make_default: false,
+        }
+    }
+
+    #[test]
+    fn opencode_overview_observes_auth_json_without_leaking_tokens() {
+        let (service, dir) = service_with_memory();
+        let path = dir.path().join("opencode-data").join("auth.json");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(
+            &path,
+            serde_json::to_vec_pretty(&serde_json::json!({
+                "openai": {
+                    "type": "oauth",
+                    "refresh": "rt-secret",
+                    "access": "at-secret",
+                    "expires": 9
+                }
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let overview = service.overview();
+        let opencode = overview
+            .connections
+            .iter()
+            .filter(|row| row.consumer == ManagedAuthConsumer::Opencode)
+            .collect::<Vec<_>>();
+        assert_eq!(opencode.len(), 3);
+        assert!(opencode.iter().any(|row| {
+            row.provider == Some(ManagedAuthProvider::Openai)
+                && row.auth_status == ManagedAuthConnectionState::Connected
+        }));
+        let text = serde_json::to_string(&overview)
+            .unwrap()
+            .to_ascii_lowercase();
+        assert!(!text.contains("rt-secret"));
+        assert!(!text.contains("at-secret"));
+        assert!(!text.contains("auth.json"));
+    }
+
+    #[test]
+    fn opencode_connect_projects_independent_session_and_rejects_proxy_lineage() {
+        let (service, dir) = service_with_memory();
+        let proxy = service
+            .provision_legacy_credential(sample_input("proxy-lineage", "refresh-value", true))
+            .expect("proxy");
+        let independent = service
+            .provision_legacy_credential(opencode_input("opencode-session"))
+            .expect("opencode");
+        let overview = service.overview();
+        let openai = overview
+            .connections
+            .iter()
+            .find(|row| {
+                row.consumer == ManagedAuthConsumer::Opencode
+                    && row.provider == Some(ManagedAuthProvider::Openai)
+            })
+            .expect("openai slot");
+        let proxy_err = service
+            .apply_connection_action(&ManagedAuthConnectionActionRequest {
+                connection_id: openai.connection_id.clone(),
+                expected_revision: openai.revision.clone(),
+                action: ManagedAuthConnectionAction::ConnectAccount,
+                account_id: Some(proxy.identity_id.clone()),
+            })
+            .expect_err("proxy lineage");
+        assert_eq!(
+            proxy_err.reason_code,
+            ManagedAuthReasonCode::ProviderNotSupported
+        );
+        assert!(!dir.path().join("opencode-data").join("auth.json").exists());
+
+        let result = service
+            .apply_connection_action(&ManagedAuthConnectionActionRequest {
+                connection_id: openai.connection_id.clone(),
+                expected_revision: openai.revision.clone(),
+                action: ManagedAuthConnectionAction::ConnectAccount,
+                account_id: Some(independent.identity_id.clone()),
+            })
+            .expect("project");
+        assert_eq!(result.outcome, ManagedAuthMutationOutcome::Completed);
+        assert!(result
+            .pending_restart_consumers
+            .contains(&ManagedAuthConsumer::Opencode));
+        let raw: serde_json::Value = serde_json::from_slice(
+            &std::fs::read(dir.path().join("opencode-data").join("auth.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(raw["openai"]["type"], "oauth");
+        assert_eq!(raw["openai"]["refresh"], "rt-opencode");
+        let owner = service
+            .repository
+            .get_credential(&independent.credential_id)
+            .unwrap()
+            .unwrap()
+            .refresh_owner;
+        assert_eq!(owner, RefreshOwner::Opencode);
+        let openai = result
+            .overview
+            .connections
+            .iter()
+            .find(|row| {
+                row.consumer == ManagedAuthConsumer::Opencode
+                    && row.provider == Some(ManagedAuthProvider::Openai)
+            })
+            .expect("projected");
+        assert!(openai.pending_restart);
+        assert_eq!(
+            openai.auth_status,
+            ManagedAuthConnectionState::PendingRestart
+        );
+        let text = serde_json::to_string(&result.overview)
+            .unwrap()
+            .to_ascii_lowercase();
+        assert!(!text.contains("rt-opencode"));
     }
 }
