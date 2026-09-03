@@ -151,7 +151,8 @@ pub async fn copilot_logout(state: State<'_, CopilotAuthState>) -> Result<(), St
 
 /// 获取有效的 Copilot Token（向后兼容：使用第一个账号）
 ///
-/// 内部使用，用于代理请求
+/// 内部使用，用于代理请求。V2 账号页不得依赖此命令；本切片不新增
+/// 向 renderer 返回 token 的命令。
 #[tauri::command]
 pub async fn copilot_get_token(state: State<'_, CopilotAuthState>) -> Result<String, String> {
     let auth_manager = state.0.read().await;

@@ -22,6 +22,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
 
@@ -132,14 +133,14 @@ struct DevicePollSuccess {
 }
 
 /// OAuth Token 响应
-#[derive(Debug, Clone, Deserialize)]
-struct OAuthTokenResponse {
-    access_token: String,
-    refresh_token: Option<String>,
+#[derive(Clone, Deserialize)]
+pub(crate) struct OAuthTokenResponse {
+    pub(crate) access_token: String,
+    pub(crate) refresh_token: Option<String>,
     #[serde(default)]
-    id_token: Option<String>,
+    pub(crate) id_token: Option<String>,
     #[serde(default)]
-    expires_in: Option<i64>,
+    pub(crate) expires_in: Option<i64>,
 }
 
 /// 解析后的 JWT claims（仅关心 chatgpt_account_id 等字段）
@@ -277,6 +278,7 @@ pub struct CodexOAuthManager {
     login_lock: Mutex<()>,
     storage_path: PathBuf,
     store_loaded: bool,
+    json_store_sealed: AtomicBool,
 }
 
 impl CodexOAuthManager {
@@ -292,6 +294,7 @@ impl CodexOAuthManager {
             login_lock: Mutex::new(()),
             storage_path,
             store_loaded: false,
+            json_store_sealed: AtomicBool::new(false),
         };
 
         match manager.load_from_disk_sync() {
@@ -304,6 +307,10 @@ impl CodexOAuthManager {
 
     pub fn store_loaded(&self) -> bool {
         self.store_loaded
+    }
+
+    pub fn seal_json_store(&self) {
+        self.json_store_sealed.store(true, Ordering::SeqCst);
     }
 
     // ==================== 设备码流程 ====================
@@ -503,9 +510,9 @@ impl CodexOAuthManager {
             .map_err(|e| CodexOAuthError::ParseError(e.to_string()))
     }
 
-    /// 用 refresh_token 刷新 access_token
-    async fn refresh_with_token(
-        &self,
+    /// Refresh an OpenAI grant. Callers must already own the unique refresh
+    /// lease for the credential lineage.
+    pub(crate) async fn refresh_with_token(
         refresh_token: &str,
     ) -> Result<OAuthTokenResponse, CodexOAuthError> {
         let response = send_bounded(
@@ -579,7 +586,7 @@ impl CodexOAuthManager {
                 .ok_or_else(|| CodexOAuthError::AccountNotFound(account_id.to_string()))?
         };
 
-        let new_tokens = self.refresh_with_token(&refresh_token).await?;
+        let new_tokens = Self::refresh_with_token(&refresh_token).await?;
 
         // 如果服务端返回了新的 refresh_token，更新存储
         if let Some(new_refresh) = new_tokens.refresh_token.clone() {
@@ -969,6 +976,10 @@ impl CodexOAuthManager {
     }
 
     async fn save_to_disk(&self) -> Result<(), CodexOAuthError> {
+        if self.json_store_sealed.load(Ordering::SeqCst) {
+            log::info!("[CodexOAuth] vault owns credentials; skipping plaintext store write");
+            return Ok(());
+        }
         let accounts = self.accounts.read().await.clone();
         let default = self.resolve_default_account_id().await;
 

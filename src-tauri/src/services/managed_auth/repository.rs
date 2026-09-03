@@ -3,9 +3,9 @@ use std::sync::Arc;
 use crate::database::Database;
 
 use super::{
-    CredentialPurpose, CredentialRecord, CredentialStatus, CredentialWithIdentity,
-    ManagedAuthConsumer, ManagedAuthCoreError, ManagedAuthProvider, MigrationRecord,
-    NewCredential, RefreshOwner,
+    ConnectionRecord, CredentialPurpose, CredentialRecord, CredentialStatus,
+    CredentialWithIdentity, ManagedAuthConsumer, ManagedAuthCoreError, ManagedAuthProvider,
+    MigrationRecord, NewCredential, RefreshOwner,
 };
 use crate::services::secret::SecretVersion;
 
@@ -73,6 +73,7 @@ impl ManagedAuthRepository {
             .map_err(ManagedAuthCoreError::from)
     }
 
+    #[allow(dead_code)]
     pub(crate) fn reconcile_secret(
         &self,
         credential_id: &str,
@@ -122,12 +123,7 @@ impl ManagedAuthRepository {
         legacy_account_id: &str,
     ) -> Result<Option<CredentialRecord>, ManagedAuthCoreError> {
         self.db
-            .managed_auth_get_credential_by_legacy(
-                provider,
-                purpose,
-                consumer,
-                legacy_account_id,
-            )
+            .managed_auth_get_credential_by_legacy(provider, purpose, consumer, legacy_account_id)
             .map_err(ManagedAuthCoreError::from)
     }
 
@@ -159,13 +155,7 @@ impl ManagedAuthRepository {
         updated_at: i64,
     ) -> Result<bool, ManagedAuthCoreError> {
         self.db
-            .managed_auth_set_default(
-                provider,
-                purpose,
-                consumer,
-                credential_id,
-                updated_at,
-            )
+            .managed_auth_set_default(provider, purpose, consumer, credential_id, updated_at)
             .map_err(ManagedAuthCoreError::from)
     }
 
@@ -212,6 +202,46 @@ impl ManagedAuthRepository {
     ) -> Result<Vec<CredentialRecord>, ManagedAuthCoreError> {
         self.db
             .managed_auth_list_provisioning()
+            .map_err(ManagedAuthCoreError::from)
+    }
+
+    pub(crate) fn list_credentials_by_migration(
+        &self,
+        migration_id: &str,
+    ) -> Result<Vec<CredentialRecord>, ManagedAuthCoreError> {
+        self.db
+            .managed_auth_list_credentials_by_migration(migration_id)
+            .map_err(ManagedAuthCoreError::from)
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn list_migrations(&self) -> Result<Vec<MigrationRecord>, ManagedAuthCoreError> {
+        self.db
+            .managed_auth_list_migrations()
+            .map_err(ManagedAuthCoreError::from)
+    }
+
+    pub(crate) fn upsert_connection(
+        &self,
+        connection: &ConnectionRecord,
+    ) -> Result<(), ManagedAuthCoreError> {
+        self.db
+            .managed_auth_upsert_connection(connection)
+            .map_err(ManagedAuthCoreError::from)
+    }
+
+    pub(crate) fn list_connections(&self) -> Result<Vec<ConnectionRecord>, ManagedAuthCoreError> {
+        self.db
+            .managed_auth_list_connections()
+            .map_err(ManagedAuthCoreError::from)
+    }
+
+    pub(crate) fn delete_connections_for_credential(
+        &self,
+        credential_id: &str,
+    ) -> Result<(), ManagedAuthCoreError> {
+        self.db
+            .managed_auth_delete_connections_for_credential(credential_id)
             .map_err(ManagedAuthCoreError::from)
     }
 }

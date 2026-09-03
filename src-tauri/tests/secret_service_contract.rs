@@ -6,8 +6,9 @@ use std::collections::HashSet;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use secret::NativeSecretBackend;
 use secret::{
-    MaterialMatches, MemoryFailureMode, MemorySecretBackend, SecretAvailability, SecretBackend,
-    SecretErrorCode, SecretMaterial, SecretPresence, SecretPurpose, SecretRef, SecretService,
+    DecodeSecret, MaterialMatches, MemoryFailureMode, MemorySecretBackend, SecretAvailability,
+    SecretBackend, SecretErrorCode, SecretMaterial, SecretPresence, SecretPurpose, SecretRef,
+    SecretService, UnavailableSecretBackend,
 };
 use serde_json::Value;
 use uuid::Uuid;
@@ -89,7 +90,10 @@ fn memory_backend_covers_crud_readback_and_version_rotation() {
         .with_material(
             &first,
             SecretPurpose::CodexApiKey,
-            MaterialMatches::new(canary_v1.as_bytes()),
+            DecodeSecret::new({
+                let expected = canary_v1.clone().into_bytes();
+                move |bytes: &[u8]| bytes == expected.as_slice()
+            }),
         )
         .expect("read"));
 
@@ -131,6 +135,35 @@ fn memory_backend_covers_crud_readback_and_version_rotation() {
             .code(),
         SecretErrorCode::Missing
     );
+}
+
+#[test]
+fn unavailable_backend_is_fail_closed_for_every_operation() {
+    let backend = UnavailableSecretBackend::new();
+    let secret_ref = SecretRef::generate();
+    let payload = material("unavailable-runtime-canary");
+    assert_eq!(backend.kind(), secret::SecretBackendKind::OsKeyring);
+    for code in [
+        backend
+            .create_new(&secret_ref, &payload)
+            .expect_err("create")
+            .code(),
+        backend
+            .replace(&secret_ref, &payload)
+            .expect_err("replace")
+            .code(),
+        backend
+            .read(&secret_ref, SecretPurpose::CodexApiKey)
+            .expect_err("read")
+            .code(),
+        backend
+            .probe(&secret_ref, SecretPurpose::CodexApiKey)
+            .expect_err("probe")
+            .code(),
+        backend.delete(&secret_ref).expect_err("delete").code(),
+    ] {
+        assert_eq!(code, SecretErrorCode::BackendUnavailable);
+    }
 }
 
 #[test]
@@ -292,7 +325,9 @@ fn native_leaf_sources_keep_reviewed_store_and_cleanup_guards() {
     assert!(windows.contains("CREDENTIAL_LOCK\n            .lock()"));
     let windows_write = section(windows, "    fn write_locked(", "\n}\n\nimpl SecretBackend");
     assert!(windows_write.contains("CredWriteW(&credential, 0)"));
-    assert!(windows_write.contains("self.read_locked(secret_ref, CredentialOperation::Read)?"));
+    assert!(windows_write.contains("self.read_locked("));
+    assert!(windows_write.contains("CredentialOperation::Read"));
+    assert!(windows_write.contains("material.purpose()"));
     assert!(
         !windows_write.contains("CredDeleteW("),
         "failed Windows readback must not blindly delete an unproven value"

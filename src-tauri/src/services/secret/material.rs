@@ -1,7 +1,9 @@
 use std::fmt;
 
 use subtle::ConstantTimeEq;
-use zeroize::{Zeroize, Zeroizing};
+#[cfg(test)]
+use zeroize::Zeroize;
+use zeroize::Zeroizing;
 
 use super::{SecretPurpose, SecretServiceError};
 
@@ -11,7 +13,10 @@ use super::{SecretPurpose, SecretServiceError};
 /// but not on Windows.
 pub(crate) const MAX_SECRET_BYTES: usize = 2_560;
 
-pub(crate) struct SecretMaterial(Zeroizing<Vec<u8>>);
+pub(crate) struct SecretMaterial {
+    bytes: Zeroizing<Vec<u8>>,
+    purpose: SecretPurpose,
+}
 
 impl SecretMaterial {
     pub(crate) fn from_native_input(
@@ -29,19 +34,24 @@ impl SecretMaterial {
         {
             return Err(SecretServiceError::invalid_input());
         }
-        Ok(Self(bytes))
+        Ok(Self { bytes, purpose })
     }
 
     pub(crate) fn as_bytes(&self) -> &[u8] {
-        self.0.as_slice()
+        self.bytes.as_slice()
+    }
+
+    pub(crate) const fn purpose(&self) -> SecretPurpose {
+        self.purpose
     }
 
     pub(crate) fn ct_eq_slice(&self, other: &[u8]) -> bool {
-        bool::from(self.0.as_slice().ct_eq(other))
+        bool::from(self.bytes.as_slice().ct_eq(other))
     }
 
+    #[cfg(test)]
     pub(crate) fn zeroize_now(&mut self) {
-        self.0.zeroize();
+        self.bytes.zeroize();
     }
 }
 

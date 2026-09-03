@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
 
@@ -88,15 +89,15 @@ struct DeviceCodeResponse {
     interval: u64,
 }
 
-#[derive(Debug, Clone, Deserialize)]
-struct OAuthTokenResponse {
-    access_token: String,
+#[derive(Clone, Deserialize)]
+pub(crate) struct OAuthTokenResponse {
+    pub(crate) access_token: String,
     #[serde(default)]
-    refresh_token: Option<String>,
+    pub(crate) refresh_token: Option<String>,
     #[serde(default)]
-    id_token: Option<String>,
+    pub(crate) id_token: Option<String>,
     #[serde(default)]
-    expires_in: Option<i64>,
+    pub(crate) expires_in: Option<i64>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -131,7 +132,7 @@ struct PendingDeviceCode {
     next_poll_at_ms: i64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 struct XaiAccountData {
     account_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -140,6 +141,18 @@ struct XaiAccountData {
     authenticated_at: i64,
     #[serde(default)]
     requires_reauth: bool,
+}
+
+impl std::fmt::Debug for XaiAccountData {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("XaiAccountData")
+            .field("account_id", &self.account_id)
+            .field("login", &self.login)
+            .field("refresh_token", &"<redacted>")
+            .field("authenticated_at", &self.authenticated_at)
+            .field("requires_reauth", &self.requires_reauth)
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -196,6 +209,7 @@ pub struct XaiOAuthManager {
     discovered_endpoints: Arc<RwLock<Option<OAuthEndpoints>>>,
     mutation_lock: Arc<Mutex<()>>,
     storage_path: PathBuf,
+    json_store_sealed: AtomicBool,
 }
 
 impl XaiOAuthManager {
@@ -209,12 +223,17 @@ impl XaiOAuthManager {
             discovered_endpoints: Arc::new(RwLock::new(None)),
             mutation_lock: Arc::new(Mutex::new(())),
             storage_path: data_dir.join("xai_oauth_auth.json"),
+            json_store_sealed: AtomicBool::new(false),
         };
 
         if let Err(error) = manager.load_from_disk_sync() {
             log::warn!("[XaiOAuth] 加载存储失败: {error}");
         }
         manager
+    }
+
+    pub fn seal_json_store(&self) {
+        self.json_store_sealed.store(true, Ordering::SeqCst);
     }
 
     pub async fn start_device_flow(&self) -> Result<GitHubDeviceCodeResponse, XaiOAuthError> {
@@ -484,30 +503,7 @@ impl XaiOAuthManager {
         if let Some(endpoints) = self.discovered_endpoints.read().await.clone() {
             return Ok(endpoints);
         }
-        let response = crate::proxy::http_client::get()
-            .get(XAI_DISCOVERY_URL)
-            .header("User-Agent", XAI_USER_AGENT)
-            .send()
-            .await?;
-        let status = response.status();
-        let value = read_json_response(response).await?;
-        if !status.is_success() {
-            return Err(XaiOAuthError::NetworkError(format!(
-                "xAI discovery 请求失败: HTTP {status}"
-            )));
-        }
-        let document = parse_discovery_document(value)?;
-        if document.issuer.trim_end_matches('/') != XAI_ISSUER {
-            return Err(XaiOAuthError::ParseError(
-                "xAI discovery issuer 不匹配".to_string(),
-            ));
-        }
-        validate_xai_endpoint(&document.token_endpoint)?;
-        validate_xai_endpoint(&document.device_authorization_endpoint)?;
-        let endpoints = OAuthEndpoints {
-            token_endpoint: document.token_endpoint,
-            device_authorization_endpoint: document.device_authorization_endpoint,
-        };
+        let endpoints = discover_xai_endpoints().await?;
         *self.discovered_endpoints.write().await = Some(endpoints.clone());
         Ok(endpoints)
     }
@@ -517,40 +513,14 @@ impl XaiOAuthManager {
         refresh_token: &str,
     ) -> Result<OAuthTokenResponse, XaiOAuthError> {
         let endpoints = self.discover_endpoints().await?;
-        let response = crate::proxy::http_client::get()
-            .post(&endpoints.token_endpoint)
-            .header("User-Agent", XAI_USER_AGENT)
-            .form(&[
-                ("grant_type", "refresh_token"),
-                ("client_id", XAI_CLIENT_ID),
-                ("refresh_token", refresh_token),
-                ("scope", XAI_SCOPE),
-            ])
-            .send()
-            .await?;
-        let status = response.status();
-        let value_result = read_json_response(response).await;
-        // Invalid credentials must transition the account to re-auth even when
-        // the provider sends an empty, HTML, or otherwise malformed error body.
-        if refresh_response_requires_reauth(status, value_result.is_err()) {
-            return Err(XaiOAuthError::RefreshTokenInvalid);
-        }
-        let value = value_result?;
-        let error_code = oauth_error_code(&value);
-        if matches!(
-            error_code.as_deref(),
-            Some("invalid_grant" | "invalid_token")
-        ) {
-            return Err(XaiOAuthError::RefreshTokenInvalid);
-        }
-        if !status.is_success() || error_code.is_some() {
-            return Err(XaiOAuthError::TokenFetchFailed(format_oauth_error(
-                status, &value,
-            )));
-        }
-        let tokens = parse_token_response(value)?;
-        validate_access_token(&tokens.access_token)?;
-        Ok(tokens)
+        refresh_xai_grant(&endpoints.token_endpoint, refresh_token).await
+    }
+
+    pub(crate) async fn refresh_oauth_grant(
+        refresh_token: &str,
+    ) -> Result<OAuthTokenResponse, XaiOAuthError> {
+        let endpoints = discover_xai_endpoints().await?;
+        refresh_xai_grant(&endpoints.token_endpoint, refresh_token).await
     }
 
     async fn add_account_internal(
@@ -671,6 +641,12 @@ impl XaiOAuthManager {
         accounts: HashMap<String, XaiAccountData>,
         default_account_id: Option<String>,
     ) -> Result<(), XaiOAuthError> {
+        if self.json_store_sealed.load(Ordering::SeqCst) {
+            log::info!("[XaiOAuth] vault owns credentials; skipping plaintext store write");
+            *self.accounts.write().await = accounts;
+            *self.default_account_id.write().await = default_account_id;
+            return Ok(());
+        }
         let store = XaiOAuthStore {
             version: 1,
             accounts: accounts.clone(),
@@ -886,6 +862,71 @@ fn validate_access_token(access_token: &str) -> Result<(), XaiOAuthError> {
     Ok(())
 }
 
+async fn discover_xai_endpoints() -> Result<OAuthEndpoints, XaiOAuthError> {
+    let response = crate::proxy::http_client::get()
+        .get(XAI_DISCOVERY_URL)
+        .header("User-Agent", XAI_USER_AGENT)
+        .send()
+        .await?;
+    let status = response.status();
+    let value = read_json_response(response).await?;
+    if !status.is_success() {
+        return Err(XaiOAuthError::NetworkError(format!(
+            "xAI discovery 请求失败: HTTP {status}"
+        )));
+    }
+    let document = parse_discovery_document(value)?;
+    if document.issuer.trim_end_matches('/') != XAI_ISSUER {
+        return Err(XaiOAuthError::ParseError(
+            "xAI discovery issuer 不匹配".to_string(),
+        ));
+    }
+    validate_xai_endpoint(&document.token_endpoint)?;
+    validate_xai_endpoint(&document.device_authorization_endpoint)?;
+    Ok(OAuthEndpoints {
+        token_endpoint: document.token_endpoint,
+        device_authorization_endpoint: document.device_authorization_endpoint,
+    })
+}
+
+async fn refresh_xai_grant(
+    token_endpoint: &str,
+    refresh_token: &str,
+) -> Result<OAuthTokenResponse, XaiOAuthError> {
+    let response = crate::proxy::http_client::get()
+        .post(token_endpoint)
+        .header("User-Agent", XAI_USER_AGENT)
+        .form(&[
+            ("grant_type", "refresh_token"),
+            ("client_id", XAI_CLIENT_ID),
+            ("refresh_token", refresh_token),
+            ("scope", XAI_SCOPE),
+        ])
+        .send()
+        .await?;
+    let status = response.status();
+    let value_result = read_json_response(response).await;
+    if refresh_response_requires_reauth(status, value_result.is_err()) {
+        return Err(XaiOAuthError::RefreshTokenInvalid);
+    }
+    let value = value_result?;
+    let error_code = oauth_error_code(&value);
+    if matches!(
+        error_code.as_deref(),
+        Some("invalid_grant" | "invalid_token")
+    ) {
+        return Err(XaiOAuthError::RefreshTokenInvalid);
+    }
+    if !status.is_success() || error_code.is_some() {
+        return Err(XaiOAuthError::TokenFetchFailed(format_oauth_error(
+            status, &value,
+        )));
+    }
+    let tokens = parse_token_response(value)?;
+    validate_access_token(&tokens.access_token)?;
+    Ok(tokens)
+}
+
 fn parse_device_code_response(
     value: serde_json::Value,
 ) -> Result<DeviceCodeResponse, XaiOAuthError> {
@@ -1053,7 +1094,10 @@ mod tests {
             "refresh_token": "another-secret",
             "expires_in": "refresh_token=third-secret"
         }));
-        let error = result.unwrap_err().to_string();
+        let error = match result {
+            Ok(_) => panic!("token response must be rejected"),
+            Err(error) => error.to_string(),
+        };
         assert_eq!(error, "解析错误: OAuth Token 响应字段无效");
         assert!(!error.contains("secret"));
         assert!(validate_access_token("  ").is_err());

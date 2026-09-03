@@ -322,7 +322,7 @@ impl MacOsSecretBackend {
         secret_ref: &SecretRef,
         expected: &SecretMaterial,
     ) -> Result<(), SecretServiceError> {
-        let actual = self.read_locked(secret_ref, SecretPurpose::ManagedOAuthCredential)?;
+        let actual = self.read_locked(secret_ref, expected.purpose())?;
         if actual.ct_eq_slice(expected.as_bytes()) {
             Ok(())
         } else {
@@ -407,7 +407,11 @@ impl SecretBackend for MacOsSecretBackend {
         self.read_locked(secret_ref, purpose)
     }
 
-    fn probe(&self, secret_ref: &SecretRef) -> Result<BackendProbe, SecretServiceError> {
+    fn probe(
+        &self,
+        secret_ref: &SecretRef,
+        _purpose: SecretPurpose,
+    ) -> Result<BackendProbe, SecretServiceError> {
         let _guard = self.lock()?;
         let service = cf_string(SERVICE)?;
         let account = cf_string(secret_ref.as_str())?;

@@ -42,7 +42,11 @@ impl SecretBackend for UnavailableSecretBackend {
         Err(SecretServiceError::backend_unavailable())
     }
 
-    fn probe(&self, _secret_ref: &SecretRef) -> Result<BackendProbe, SecretServiceError> {
+    fn probe(
+        &self,
+        _secret_ref: &SecretRef,
+        _purpose: SecretPurpose,
+    ) -> Result<BackendProbe, SecretServiceError> {
         Err(SecretServiceError::backend_unavailable())
     }
 

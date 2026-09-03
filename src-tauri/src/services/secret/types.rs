@@ -228,6 +228,7 @@ impl SecretSummaryDto {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn handle(&self) -> SecretHandle {
         SecretHandle::new(self.secret_ref.clone(), self.version.clone())
     }

@@ -13,11 +13,11 @@ binding journals, or hardware-backed secret stores.
 ## 2. Signatures
 
 The private service source lives under `src-tauri/src/services/secret/`. The
-core slice is compiled through its integration contract and matching-host HIL,
-but it is intentionally not registered in `services/mod.rs` until the first
-production consumer lands. Registering a dormant module would create a large
-dead-code surface and weaken the repository's warnings-denied discipline. The
-core slice exposes no Tauri command.
+first production consumer is [Managed Auth Core](./managed-auth.md), which
+registers `services::secret` and constructs `SecretService<NativeSecretBackend>`
+in the application composition root. The leaf still exposes no Tauri command;
+renderer traffic stays on Managed Auth DTOs that never include SecretRef or
+secret material.
 
 Durable identities are opaque random references:
 
@@ -74,12 +74,11 @@ instead of silently replacing it. Create/replace must read back and compare the
 material in constant time. A failed create verification must not blindly delete
 the item: after the add returns, a same-access-group process could have raced an
 update, and FyAgent may delete only a value whose ownership is still proven.
-With the current dormant core API this can leave an unreachable native item if
-`SecItemAdd` succeeds but authoritative readback does not settle successfully.
-That is preferable to destructive compensation, but it is not a complete
-production lifecycle. The first production consumer must retain the generated
-`SecretRef` in a durable admission/recovery boundary until verification settles,
-or provide an equivalent ownership-safe reconciliation mechanism.
+If `SecItemAdd` succeeds but authoritative readback does not settle, do not
+blindly delete the item. Managed Auth retains the generated `SecretRef` in a
+SQLite `provisioning` / `secret_missing` row until verification settles, then
+recovers or marks the session unusable. Do not drop a native-created handle
+from memory without a durable admission record.
 
 ### Windows Credential Manager
 
@@ -121,16 +120,18 @@ Credential Manager memory returned by `CredReadW` is always released with
 - Every native HIL creates a random reference, creates/reads/replaces/reads/
   deletes it, then verifies the reference is missing. No persistent test secret
   may remain after a successful run.
-- The first production consumer must register `services::secret` in the same
-  reviewed integration change; do not pre-register it with broad dead-code or
-  unused-import lint allowances.
-- That consumer also owns create admission/recovery so a native create that
-  succeeded but could not be authoritatively read back does not become an
-  unrecoverable hidden lifecycle state.
-- The first macOS production consumer must also prove the signed FyAgent host
-  carries an authorized data-protection-keychain access group. The current
-  Developer ID/notarization chain must not be assumed to provide that identity
-  merely because the app is signed.
+- `services::secret` is registered and constructed only because Managed Auth
+  consumes it. Do not keep the module with `allow(dead_code)` if that consumer
+  is removed.
+- Managed Auth owns create admission/recovery so a native create that succeeded
+  but could not be authoritatively read back remains a durable
+  `provisioning`/`secret_missing` row instead of an unreachable native item.
+- macOS production activation still requires signed-app HIL for the
+  Data Protection Keychain access group
+  `HY446996QX.com.fyagent.desktop` declared in
+  `src-tauri/entitlements.macos.plist`. Adding the entitlement is not itself
+  matching-host evidence. Unsigned `cargo test` `errSecMissingEntitlement`
+  remains expected fail-closed evidence.
 
 ## 4. Validation & Error Matrix
 
@@ -141,14 +142,14 @@ Credential Manager memory returned by `CredReadW` is always released with
 | macOS query uses `kSecAttrAccessible` without Data Protection Keychain | reject implementation; accessibility contract is invalid on macOS |
 | macOS duplicate create | return stable already-exists error; no overwrite |
 | plain cargo test returns `errSecMissingEntitlement` with DPK enabled | classify the harness as unauthorized; do not fall back to file-based keychain and do not count it as native DPK acceptance |
-| first production consumer lacks signed-app provisioning/access-group evidence | block macOS SecretRef activation |
+| macOS SecretRef claimed supported without signed-app access-group HIL | block the capability claim; entitlement plist alone is not evidence |
 | Windows create sees an existing target | return stable already-exists error before `CredWriteW` |
 | Windows documentation/code claims `CredWriteW` is atomic create-only | reject; Win32 specifies create-or-replace semantics |
 | native store locked/denied/unavailable | source-free stable error/probe; no fallback |
 | create/replace readback differs | fail verification; never delete an unproven current value; production activation additionally requires recoverable create ownership |
 | serialized DTO/error/debug contains secret canary | test failure / NO-GO |
 | Windows matching-host HIL did not execute | Windows SecretRef merge gate remains incomplete |
-| dormant SecretRef module requires `allow(dead_code)` to stay registered | remove premature registration; register with the first real consumer instead |
+| SecretRef module requires `allow(dead_code)` to stay registered | remove dead registration or restore a real consumer |
 
 ## 5. Good / Base / Bad Cases
 

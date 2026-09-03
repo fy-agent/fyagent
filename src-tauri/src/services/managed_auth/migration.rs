@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -9,8 +9,7 @@ use zeroize::Zeroizing;
 
 use super::{
     CredentialPurpose, CredentialStatus, ManagedAuthConsumer, ManagedAuthCoreError,
-    ManagedAuthProvider, ManagedAuthService, ManagedSecretKind, MigrationRecord, MigrationStatus,
-    RefreshOwner,
+    ManagedAuthProvider, ManagedAuthService, MigrationRecord, MigrationStatus, RefreshOwner,
 };
 
 const MAX_LEGACY_STORE_BYTES: u64 = 1024 * 1024;
@@ -18,27 +17,28 @@ const MAX_IDENTITY_TEXT: usize = 512;
 const MAX_LOGIN_TEXT: usize = 320;
 const MAX_TOKEN_TEXT: usize = 2_200;
 
-const CODEX_MIGRATION_ID: &str = "legacy-codex-oauth-v2";
-const XAI_MIGRATION_ID: &str = "legacy-xai-oauth-v1";
-const COPILOT_MIGRATION_ID: &str = "legacy-copilot-auth-v3";
+pub(crate) const CODEX_MIGRATION_ID: &str = "legacy-codex-oauth-v2";
+pub(crate) const XAI_MIGRATION_ID: &str = "legacy-xai-oauth-v1";
+pub(crate) const COPILOT_MIGRATION_ID: &str = "legacy-copilot-auth-v3";
 
-pub(super) struct LegacyCredentialInput {
-    pub(super) migration_id: &'static str,
-    pub(super) provider: ManagedAuthProvider,
-    pub(super) purpose: CredentialPurpose,
-    pub(super) consumer: Option<ManagedAuthConsumer>,
-    pub(super) legacy_account_id: String,
-    pub(super) provider_subject: String,
-    pub(super) provider_tenant: String,
-    pub(super) login: String,
-    pub(super) display_name: Option<String>,
-    pub(super) avatar_url: Option<String>,
-    pub(super) secret_kind: ManagedSecretKind,
-    pub(super) token: Zeroizing<String>,
-    pub(super) status: CredentialStatus,
-    pub(super) refresh_owner: RefreshOwner,
-    pub(super) authenticated_at: i64,
-    pub(super) make_default: bool,
+pub(crate) struct LegacyCredentialInput {
+    pub(crate) migration_id: &'static str,
+    pub(crate) provider: ManagedAuthProvider,
+    pub(crate) purpose: CredentialPurpose,
+    pub(crate) consumer: Option<ManagedAuthConsumer>,
+    pub(crate) legacy_account_id: String,
+    pub(crate) provider_subject: String,
+    pub(crate) provider_tenant: String,
+    pub(crate) login: String,
+    pub(crate) display_name: Option<String>,
+    pub(crate) avatar_url: Option<String>,
+    pub(crate) access_token: Option<Zeroizing<String>>,
+    pub(crate) refresh_token: Option<Zeroizing<String>>,
+    pub(crate) id_token: Option<Zeroizing<String>>,
+    pub(crate) desired_status: CredentialStatus,
+    pub(crate) refresh_owner: RefreshOwner,
+    pub(crate) authenticated_at: i64,
+    pub(crate) make_default: bool,
 }
 
 struct LegacySource {
@@ -69,22 +69,35 @@ const SOURCES: &[LegacySource] = &[
     },
 ];
 
-pub(super) fn prepare_legacy_stores(
-    service: &ManagedAuthService,
+pub(super) fn prepare_legacy_stores<B: crate::services::secret::SecretBackend>(
+    service: &ManagedAuthService<B>,
     config_dir: &Path,
 ) -> Result<(), ManagedAuthCoreError> {
+    let mut blocked = false;
     for source in SOURCES {
         let path = config_dir.join(source.filename);
         if !path.exists() {
             continue;
         }
-        prepare_source(service, source, &path)?;
+        match prepare_source(service, source, &path) {
+            Ok(()) => {}
+            Err(ManagedAuthCoreError::SecretUnavailable) => {
+                return Err(ManagedAuthCoreError::SecretUnavailable);
+            }
+            Err(_) => {
+                blocked = true;
+            }
+        }
     }
-    Ok(())
+    if blocked {
+        Err(ManagedAuthCoreError::MigrationBlocked)
+    } else {
+        Ok(())
+    }
 }
 
-fn prepare_source(
-    service: &ManagedAuthService,
+fn prepare_source<B: crate::services::secret::SecretBackend>(
+    service: &ManagedAuthService<B>,
     source: &LegacySource,
     path: &Path,
 ) -> Result<(), ManagedAuthCoreError> {
@@ -103,6 +116,30 @@ fn prepare_source(
         }
     }
 
+    let credentials = match (source.parse)(&bytes) {
+        Ok(credentials) if credentials.is_empty() => {
+            // An empty live store has nothing to admit into the vault.
+            // Leave the file in place so a later login can still persist.
+            return Ok(());
+        }
+        Ok(credentials) => credentials,
+        Err(error) => {
+            let now = chrono::Utc::now().timestamp();
+            let _ = service.repository().upsert_migration(&MigrationRecord {
+                migration_id: source.migration_id.to_string(),
+                source_kind: source.source_kind.to_string(),
+                source_hash: source_hash.clone(),
+                status: MigrationStatus::Blocked,
+                reason_code: Some("migration_blocked".to_string()),
+                backup_name: None,
+                created_at: now,
+                updated_at: now,
+                completed_at: None,
+            });
+            return Err(error);
+        }
+    };
+
     let now = chrono::Utc::now().timestamp();
     service.repository().upsert_migration(&MigrationRecord {
         migration_id: source.migration_id.to_string(),
@@ -116,12 +153,12 @@ fn prepare_source(
         completed_at: None,
     })?;
 
-    let result = (source.parse)(&bytes).and_then(|credentials| {
+    let result = (|| {
         for credential in credentials {
             service.provision_legacy_credential(credential)?;
         }
         Ok(())
-    });
+    })();
 
     match result {
         Ok(()) => {
@@ -157,8 +194,8 @@ fn prepare_source(
     }
 }
 
-pub(super) fn finalize_legacy_store(
-    service: &ManagedAuthService,
+pub(super) fn finalize_legacy_store<B: crate::services::secret::SecretBackend>(
+    service: &ManagedAuthService<B>,
     config_dir: &Path,
     migration_id: &str,
 ) -> Result<(), ManagedAuthCoreError> {
@@ -170,29 +207,73 @@ pub(super) fn finalize_legacy_store(
     let Some(mut migration) = service.repository().get_migration(migration_id)? else {
         return Err(ManagedAuthCoreError::NotFound);
     };
-    if migration.status == MigrationStatus::Completed {
-        return Ok(());
-    }
-    if migration.status != MigrationStatus::Prepared || !path.exists() {
-        return Err(ManagedAuthCoreError::MigrationBlocked);
-    }
-    let bytes = read_bounded(&path)?;
-    if sha256_hex(&bytes) != migration.source_hash {
-        return Err(ManagedAuthCoreError::Stale);
-    }
-    service.recover_credentials()?;
-
     let backup_name = format!("{}.managed-auth-v1.bak", source.filename);
     let backup_path = config_dir.join(&backup_name);
-    if backup_path.exists() {
-        return Err(ManagedAuthCoreError::Conflict);
+
+    if migration.status == MigrationStatus::Completed {
+        if path.exists() && !backup_path.exists() {
+            std::fs::rename(&path, &backup_path).map_err(|_| ManagedAuthCoreError::Io)?;
+        }
+        return Ok(());
     }
-    std::fs::rename(&path, &backup_path).map_err(|_| ManagedAuthCoreError::Io)?;
+    if migration.status != MigrationStatus::Prepared {
+        return Err(ManagedAuthCoreError::MigrationBlocked);
+    }
+
+    service.recover_credentials()?;
+    let credentials = service
+        .repository()
+        .list_credentials_by_migration(migration_id)?;
+    if credentials.is_empty() {
+        return Err(ManagedAuthCoreError::MigrationBlocked);
+    }
+    for credential in &credentials {
+        if !matches!(
+            credential.status,
+            CredentialStatus::Ready | CredentialStatus::RequiresReauth
+        ) {
+            return Err(ManagedAuthCoreError::MigrationBlocked);
+        }
+        let bundle = service.readback_bundle(&credential.secret_handle)?;
+        if bundle.credential_id() != credential.credential_id {
+            return Err(ManagedAuthCoreError::InvalidData);
+        }
+    }
+
+    if path.exists() {
+        let bytes = read_bounded(&path)?;
+        if sha256_hex(&bytes) != migration.source_hash {
+            return Err(ManagedAuthCoreError::Stale);
+        }
+    } else if backup_path.exists() {
+        let bytes = read_bounded(&backup_path)?;
+        if sha256_hex(&bytes) != migration.source_hash {
+            return Err(ManagedAuthCoreError::Stale);
+        }
+    } else {
+        return Err(ManagedAuthCoreError::MigrationBlocked);
+    }
+
+    if backup_path.exists() {
+        let bytes = read_bounded(&backup_path)?;
+        if sha256_hex(&bytes) != migration.source_hash {
+            return Err(ManagedAuthCoreError::Conflict);
+        }
+    }
+
+    let now = chrono::Utc::now().timestamp();
     migration.status = MigrationStatus::Completed;
-    migration.backup_name = Some(backup_name);
-    migration.updated_at = chrono::Utc::now().timestamp();
-    migration.completed_at = Some(migration.updated_at);
-    service.repository().upsert_migration(&migration)
+    migration.backup_name = Some(backup_name.clone());
+    migration.updated_at = now;
+    migration.completed_at = Some(now);
+    service.repository().upsert_migration(&migration)?;
+
+    if path.exists() && !backup_path.exists() {
+        if let Err(error) = std::fs::rename(&path, &backup_path) {
+            log::warn!("[ManagedAuth] backup rename deferred: {error}");
+        }
+    }
+    Ok(())
 }
 
 fn read_bounded(path: &Path) -> Result<Vec<u8>, ManagedAuthCoreError> {
@@ -200,9 +281,10 @@ fn read_bounded(path: &Path) -> Result<Vec<u8>, ManagedAuthCoreError> {
     if !metadata.file_type().is_file() || metadata.len() > MAX_LEGACY_STORE_BYTES {
         return Err(ManagedAuthCoreError::InvalidData);
     }
-    let mut file = File::open(path).map_err(|_| ManagedAuthCoreError::Io)?;
     let mut bytes = Vec::with_capacity(metadata.len() as usize);
-    file.take(MAX_LEGACY_STORE_BYTES + 1)
+    File::open(path)
+        .map_err(|_| ManagedAuthCoreError::Io)?
+        .take(MAX_LEGACY_STORE_BYTES + 1)
         .read_to_end(&mut bytes)
         .map_err(|_| ManagedAuthCoreError::Io)?;
     if bytes.is_empty() || bytes.len() as u64 > MAX_LEGACY_STORE_BYTES {
@@ -291,13 +373,13 @@ fn parse_codex_store(bytes: &[u8]) -> Result<Vec<LegacyCredentialInput>, Managed
             login,
             display_name: None,
             avatar_url: None,
-            secret_kind: ManagedSecretKind::RefreshToken,
-            token: Zeroizing::new(account.refresh_token),
-            status: CredentialStatus::Ready,
+            access_token: None,
+            refresh_token: Some(Zeroizing::new(account.refresh_token)),
+            id_token: None,
+            desired_status: CredentialStatus::Ready,
             refresh_owner: RefreshOwner::Fyagent,
             authenticated_at: account.authenticated_at,
-            make_default: store.default_account_id.as_deref()
-                == Some(legacy_account_id.as_str()),
+            make_default: store.default_account_id.as_deref() == Some(legacy_account_id.as_str()),
         });
     }
     Ok(result)
@@ -354,9 +436,10 @@ fn parse_xai_store(bytes: &[u8]) -> Result<Vec<LegacyCredentialInput>, ManagedAu
             login,
             display_name: None,
             avatar_url: None,
-            secret_kind: ManagedSecretKind::RefreshToken,
-            token: Zeroizing::new(account.refresh_token),
-            status: if account.requires_reauth {
+            access_token: None,
+            refresh_token: Some(Zeroizing::new(account.refresh_token)),
+            id_token: None,
+            desired_status: if account.requires_reauth {
                 CredentialStatus::RequiresReauth
             } else {
                 CredentialStatus::Ready
@@ -428,9 +511,10 @@ fn parse_copilot_store(bytes: &[u8]) -> Result<Vec<LegacyCredentialInput>, Manag
             login: account.user.login,
             display_name: None,
             avatar_url: account.user.avatar_url,
-            secret_kind: ManagedSecretKind::AccessToken,
-            token: Zeroizing::new(account.github_token),
-            status: CredentialStatus::Ready,
+            access_token: Some(Zeroizing::new(account.github_token)),
+            refresh_token: None,
+            id_token: None,
+            desired_status: CredentialStatus::Ready,
             refresh_owner: RefreshOwner::Fyagent,
             authenticated_at: account.authenticated_at,
             make_default: store.default_account_id.as_deref() == Some(map_key.as_str()),

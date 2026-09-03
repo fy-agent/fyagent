@@ -195,7 +195,65 @@ pub(crate) struct MigrationRecord {
 pub(crate) struct NewCredential {
     pub(crate) identity: IdentityRecord,
     pub(crate) credential: CredentialRecord,
-    pub(crate) make_default: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ConnectionStatus {
+    Disconnected,
+    Connected,
+    Checking,
+    RequiresReauth,
+    PendingRestart,
+    ExternalChangeDetected,
+    RecoveryRequired,
+    Unavailable,
+}
+
+impl ConnectionStatus {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::Disconnected => "disconnected",
+            Self::Connected => "connected",
+            Self::Checking => "checking",
+            Self::RequiresReauth => "requires_reauth",
+            Self::PendingRestart => "pending_restart",
+            Self::ExternalChangeDetected => "external_change_detected",
+            Self::RecoveryRequired => "recovery_required",
+            Self::Unavailable => "unavailable",
+        }
+    }
+
+    pub(crate) fn parse(value: &str) -> Result<Self, ManagedAuthCoreError> {
+        match value {
+            "disconnected" => Ok(Self::Disconnected),
+            "connected" => Ok(Self::Connected),
+            "checking" => Ok(Self::Checking),
+            "requires_reauth" => Ok(Self::RequiresReauth),
+            "pending_restart" => Ok(Self::PendingRestart),
+            "external_change_detected" => Ok(Self::ExternalChangeDetected),
+            "recovery_required" => Ok(Self::RecoveryRequired),
+            "unavailable" => Ok(Self::Unavailable),
+            _ => Err(ManagedAuthCoreError::InvalidData),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ConnectionRecord {
+    pub(crate) connection_id: String,
+    pub(crate) consumer: ManagedAuthConsumer,
+    pub(crate) target_id: String,
+    pub(crate) provider_slot: String,
+    pub(crate) credential_id: Option<String>,
+    pub(crate) desired_revision: String,
+    pub(crate) observed_revision: Option<String>,
+    pub(crate) status: ConnectionStatus,
+    pub(crate) request_mode: super::ManagedAuthRequestMode,
+    pub(crate) request_provider_label: Option<String>,
+    pub(crate) official_session_preserved: Option<bool>,
+    pub(crate) pending_restart: bool,
+    pub(crate) created_at: i64,
+    pub(crate) updated_at: i64,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -275,6 +333,29 @@ impl ManagedAuthProvider {
             "openai" => Ok(Self::Openai),
             "xai" => Ok(Self::Xai),
             "github_copilot" => Ok(Self::GithubCopilot),
+            _ => Err(ManagedAuthCoreError::InvalidData),
+        }
+    }
+}
+
+impl super::ManagedAuthRequestMode {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::OfficialSubscription => "official_subscription",
+            Self::ThirdPartyApi => "third_party_api",
+            Self::ProviderConnections => "provider_connections",
+            Self::None => "none",
+            Self::Unknown => "unknown",
+        }
+    }
+
+    pub(crate) fn parse(value: &str) -> Result<Self, ManagedAuthCoreError> {
+        match value {
+            "official_subscription" => Ok(Self::OfficialSubscription),
+            "third_party_api" => Ok(Self::ThirdPartyApi),
+            "provider_connections" => Ok(Self::ProviderConnections),
+            "none" => Ok(Self::None),
+            "unknown" => Ok(Self::Unknown),
             _ => Err(ManagedAuthCoreError::InvalidData),
         }
     }

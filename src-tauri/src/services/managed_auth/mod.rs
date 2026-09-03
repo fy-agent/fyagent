@@ -16,13 +16,17 @@ mod secret_bundle;
 mod service;
 
 pub(crate) use core::{
-    CredentialPurpose, CredentialRecord, CredentialStatus, CredentialWithIdentity,
-    IdentityRecord, ManagedAuthCoreError, MigrationRecord, MigrationStatus, NewCredential,
-    RefreshOwner, stable_connection_id, stable_credential_id, stable_identity_id,
-    stable_revision,
+    stable_connection_id, stable_credential_id, stable_identity_id, stable_revision,
+    ConnectionRecord, ConnectionStatus, CredentialPurpose, CredentialRecord, CredentialStatus,
+    CredentialWithIdentity, IdentityRecord, ManagedAuthCoreError, MigrationRecord, MigrationStatus,
+    NewCredential, RefreshOwner,
 };
-pub(crate) use secret_bundle::{ManagedAuthSecretBundle, ManagedSecretKind};
-pub(crate) use service::ManagedAuthService;
+pub(crate) use migration::{CODEX_MIGRATION_ID, COPILOT_MIGRATION_ID, XAI_MIGRATION_ID};
+pub(crate) use repository::ManagedAuthRepository;
+pub(crate) use secret_bundle::{ManagedAuthSecretBundle, ManagedAuthSecretBundleParts};
+pub(crate) use service::{
+    AccessMaterial, CompatibilityAccount, ManagedAuthService, NativeManagedAuthService,
+};
 
 pub const MANAGED_AUTH_CONTRACT_VERSION: u8 = 1;
 
@@ -470,6 +474,13 @@ impl ManagedAuthErrorDto {
             reason_code: ManagedAuthReasonCode::InvalidResponse,
         }
     }
+
+    pub(crate) fn from_core(error: ManagedAuthCoreError) -> Self {
+        Self {
+            contract_version: MANAGED_AUTH_CONTRACT_VERSION,
+            reason_code: error.reason_code(),
+        }
+    }
 }
 
 pub fn validate_session_id(value: &str) -> Result<(), ManagedAuthErrorDto> {
@@ -497,7 +508,7 @@ fn valid_prefixed_hex(value: &str, prefix: &str, length: usize) -> bool {
     })
 }
 
-fn now_timestamp() -> String {
+pub(crate) fn now_timestamp() -> String {
     chrono::Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true)
 }
 
@@ -533,6 +544,10 @@ mod tests {
             "refresh_token",
             "id_token",
             "authorization_code",
+            "device_code",
+            "secretref",
+            "verifier",
+            "secret_ref",
         ] {
             assert!(!text.contains(forbidden));
         }

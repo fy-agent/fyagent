@@ -2,12 +2,12 @@
 
 ## Checklist
 
-1. [ ] 冻结 schema/DTO/error 合同。
-2. [ ] 扩展 SecretPurpose 和生产组合根。
-3. [ ] 新增 auth metadata tables/DAO/service。
-4. [ ] 实现旧 store 读入、SecretRef 写入、metadata commit、readback、旧文件封存的可恢复迁移。
-5. [ ] 重定向兼容命令和 token resolver。
-6. [ ] 运行 backend/contract/native focused checks。
+1. [x] 冻结 schema/DTO/error 合同。
+2. [x] 扩展 SecretPurpose 和生产组合根。
+3. [x] 新增 auth metadata tables/DAO/service。
+4. [x] 实现旧 store 读入、SecretRef 写入、metadata commit、readback、旧文件封存的可恢复迁移。
+5. [x] 重定向兼容命令和 token resolver。
+6. [x] 运行 backend/contract/native focused checks。
 
 
 ## Validation

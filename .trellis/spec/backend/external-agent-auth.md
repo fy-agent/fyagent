@@ -73,8 +73,10 @@ verified | handoff_complete | failed | cancelled | timed_out
 
 - `start_agent_action` does not implement Auth actions and must return the
   closed unsupported/executor reason without launching a session.
-- Codex Auth remains `fyagent_managed` and routes the user to the existing Auth
-  Center. This façade does not add a second Codex OAuth flow.
+- Codex Auth remains `fyagent_managed` and routes the user to the V2 `/auth`
+  page owned by [V2 Managed Accounts](../frontend/v2-managed-auth.md). Native
+  account/secret ownership is [Managed Auth Core](./managed-auth.md). This
+  façade does not add a second Codex OAuth flow.
 - Auth session state is process-local, bounded and single-flight per Agent.
   Terminal snapshots are immutable and can be polled safely.
 - Session IDs are canonical backend-generated UUIDs. OpenCode provider IDs are

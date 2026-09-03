@@ -122,6 +122,13 @@ constraints, hooks, or error mapping.
 - Sync export omits local-only operational tables, and sync import restores
   the corresponding local snapshot. The exact skip/preserve sets in
   `backup.rs` are one contract and must be updated and tested together.
+- Managed Auth metadata (`managed_auth_identities`,
+  `managed_auth_credentials`, `managed_auth_defaults`,
+  `managed_auth_connections`, `managed_auth_migrations`) is local-only.
+  Those rows hold opaque SecretRef handles that are meaningless on another
+  device; they must be skipped on sync export and preserved on sync import
+  together. Token material never has a SQLite column. Domain meaning of the
+  rows is owned by [Managed Auth Core](./managed-auth.md).
 - Periodic pruning, rollup, backup retention, and incremental vacuum are
   maintenance. Disabling automatic backup must not disable unrelated pruning
   or rollup work.

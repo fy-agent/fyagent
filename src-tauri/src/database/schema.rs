@@ -1716,9 +1716,7 @@ impl Database {
         Self::create_managed_auth_tables_on_conn(conn)
     }
 
-    pub(crate) fn create_managed_auth_tables_on_conn(
-        conn: &Connection,
-    ) -> Result<(), AppError> {
+    pub(crate) fn create_managed_auth_tables_on_conn(conn: &Connection) -> Result<(), AppError> {
         conn.execute_batch(
             r#"
             CREATE TABLE IF NOT EXISTS managed_auth_identities (
@@ -1754,6 +1752,9 @@ impl Database {
                 FOREIGN KEY (identity_id) REFERENCES managed_auth_identities(identity_id) ON DELETE CASCADE,
                 UNIQUE(provider, purpose, consumer, legacy_account_id)
             );
+            -- Identity CASCADE deletes credential metadata only. OS vault
+            -- secrets are not in SQLite and must be deleted by ManagedAuthService
+            -- before the credential/identity rows are removed.
             CREATE TABLE IF NOT EXISTS managed_auth_defaults (
                 provider TEXT NOT NULL CHECK (provider IN ('openai','xai','github_copilot')),
                 purpose TEXT NOT NULL CHECK (purpose IN ('proxy_upstream','codex_native','grok_native','opencode_provider','copilot')),
@@ -3374,6 +3375,47 @@ mod tests {
         .map_err(|error| AppError::Database(error.to_string()))
     }
 
+    fn managed_auth_table_count(conn: &Connection) -> Result<i64, AppError> {
+        conn.query_row(
+            "SELECT COUNT(*) FROM sqlite_master
+             WHERE type='table' AND name IN (
+                'managed_auth_identities',
+                'managed_auth_credentials',
+                'managed_auth_defaults',
+                'managed_auth_connections',
+                'managed_auth_migrations'
+             )",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|error| AppError::Database(error.to_string()))
+    }
+
+    fn assert_managed_auth_contract(conn: &Connection) -> Result<(), AppError> {
+        assert_eq!(managed_auth_table_count(conn)?, 5);
+        for forbidden in ["access_token", "refresh_token", "id_token", "github_token"] {
+            assert!(
+                !Database::has_column(conn, "managed_auth_credentials", forbidden)?,
+                "credentials must not persist {forbidden}"
+            );
+            assert!(!Database::has_column(
+                conn,
+                "managed_auth_identities",
+                forbidden
+            )?);
+        }
+        let sql: String = conn.query_row(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='managed_auth_credentials'",
+            [],
+            |row| row.get(0),
+        )?;
+        assert!(
+            !sql.contains("'shared'"),
+            "refresh_owner must not admit a shared owner"
+        );
+        Ok(())
+    }
+
     #[test]
     fn schema_v20_change_plan_helper_is_shared_idempotent_and_nullable() -> Result<(), AppError> {
         let conn = Connection::open_in_memory()?;
@@ -3391,30 +3433,44 @@ mod tests {
     }
 
     #[test]
-    fn schema_zero_and_v19_upgrade_to_v20_and_future_rejects() -> Result<(), AppError> {
+    fn schema_zero_and_v19_upgrade_to_current_and_future_rejects() -> Result<(), AppError> {
         let fresh = Connection::open_in_memory()?;
         Database::create_tables_on_conn(&fresh)?;
         Database::set_user_version(&fresh, 0)?;
         Database::apply_schema_migrations_on_conn(&fresh)?;
-        assert_eq!(Database::get_user_version(&fresh)?, 20);
+        assert_eq!(Database::get_user_version(&fresh)?, SCHEMA_VERSION);
         assert_eq!(change_plan_table_count(&fresh)?, 3);
+        assert_managed_auth_contract(&fresh)?;
 
         let v19 = Connection::open_in_memory()?;
         Database::set_user_version(&v19, 19)?;
         Database::apply_schema_migrations_on_conn(&v19)?;
-        assert_eq!(Database::get_user_version(&v19)?, 20);
+        assert_eq!(Database::get_user_version(&v19)?, SCHEMA_VERSION);
         assert_eq!(change_plan_table_count(&v19)?, 3);
+        assert_managed_auth_contract(&v19)?;
 
         let future = Connection::open_in_memory()?;
-        Database::set_user_version(&future, 21)?;
+        Database::set_user_version(&future, SCHEMA_VERSION + 1)?;
         let error = Database::apply_schema_migrations_on_conn(&future)
             .expect_err("future schema must fail closed");
         assert!(error.to_string().contains("数据库版本过新"));
-        assert_eq!(Database::get_user_version(&future)?, 21);
+        assert_eq!(Database::get_user_version(&future)?, SCHEMA_VERSION + 1);
 
         let memory = Database::memory()?;
         let memory_conn = lock_conn!(memory.conn);
         assert_eq!(change_plan_table_count(&memory_conn)?, 3);
+        assert_managed_auth_contract(&memory_conn)?;
+        Ok(())
+    }
+
+    #[test]
+    fn migrate_v20_to_v21_creates_managed_auth_tables_without_token_columns() -> Result<(), AppError>
+    {
+        let conn = Connection::open_in_memory()?;
+        Database::set_user_version(&conn, 20)?;
+        Database::apply_schema_migrations_on_conn(&conn)?;
+        assert_eq!(Database::get_user_version(&conn)?, SCHEMA_VERSION);
+        assert_managed_auth_contract(&conn)?;
         Ok(())
     }
 

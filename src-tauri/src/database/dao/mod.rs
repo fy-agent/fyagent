@@ -3,8 +3,8 @@
 //! Database access operations for each domain
 
 pub(crate) mod change_plan;
-pub(crate) mod managed_auth;
 pub mod failover;
+pub(crate) mod managed_auth;
 pub mod mcp;
 pub mod profiles;
 pub mod prompts;

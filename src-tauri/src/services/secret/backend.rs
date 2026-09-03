@@ -1,3 +1,4 @@
+#[cfg(test)]
 use subtle::ConstantTimeEq;
 
 use super::{
@@ -22,7 +23,11 @@ pub(crate) trait SecretBackend: Send + Sync {
         secret_ref: &SecretRef,
         purpose: SecretPurpose,
     ) -> Result<SecretMaterial, SecretServiceError>;
-    fn probe(&self, secret_ref: &SecretRef) -> Result<BackendProbe, SecretServiceError>;
+    fn probe(
+        &self,
+        secret_ref: &SecretRef,
+        purpose: SecretPurpose,
+    ) -> Result<BackendProbe, SecretServiceError>;
     fn delete(&self, secret_ref: &SecretRef) -> Result<(), SecretServiceError>;
 }
 
@@ -90,6 +95,7 @@ where
         ))
     }
 
+    #[cfg(test)]
     pub(crate) fn create(
         &self,
         material: SecretMaterial,
@@ -99,6 +105,8 @@ where
         self.create_reserved(&handle, material, purpose)
     }
 
+    #[cfg(test)]
+    #[allow(dead_code)]
     pub(crate) fn replace(
         &self,
         handle: &SecretHandle,
@@ -133,7 +141,7 @@ where
         handle: &SecretHandle,
         purpose: SecretPurpose,
     ) -> Result<SecretSummaryDto, SecretServiceError> {
-        let probe = match self.backend.probe(handle.secret_ref()) {
+        let probe = match self.backend.probe(handle.secret_ref(), purpose) {
             Ok(probe) => probe,
             Err(error) => error.as_probe().ok_or(error)?,
         };
@@ -168,11 +176,13 @@ where
 }
 
 #[cfg(test)]
+#[allow(dead_code)]
 pub(crate) struct MaterialMatches<'a> {
     expected: &'a [u8],
 }
 
 #[cfg(test)]
+#[allow(dead_code)]
 impl<'a> MaterialMatches<'a> {
     pub(crate) fn new(expected: &'a [u8]) -> Self {
         Self { expected }

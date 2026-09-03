@@ -82,6 +82,11 @@ const SYNC_SKIP_TABLES: &[&str] = &[
     "change_plans",
     "change_jobs",
     "change_job_events",
+    "managed_auth_identities",
+    "managed_auth_credentials",
+    "managed_auth_defaults",
+    "managed_auth_connections",
+    "managed_auth_migrations",
 ];
 
 /// Tables whose local data is preserved (restored from local snapshot) during WebDAV import.
@@ -94,6 +99,11 @@ const SYNC_PRESERVE_TABLES: &[&str] = &[
     "change_plans",
     "change_jobs",
     "change_job_events",
+    "managed_auth_identities",
+    "managed_auth_credentials",
+    "managed_auth_defaults",
+    "managed_auth_connections",
+    "managed_auth_migrations",
 ];
 
 /// A database backup entry for the UI
@@ -1881,6 +1891,90 @@ mod tests {
         assert_eq!(
             preserved,
             ("plan-local".into(), "job-local".into(), "job-local".into())
+        );
+        Ok(())
+    }
+
+    #[test]
+    #[serial]
+    fn sync_skips_and_preserves_managed_auth_metadata_rows() -> Result<(), AppError> {
+        fn insert_managed_auth(db: &Database, suffix: &str) -> Result<(), AppError> {
+            let conn = crate::database::lock_conn!(db.conn);
+            conn.execute(
+                "INSERT INTO providers (id, app_type, name, settings_config, meta)
+                 VALUES (?1, 'codex', 'Sync Fixture', '{}', '{}')",
+                [format!("provider-{suffix}")],
+            )?;
+            let identity_id = format!("ma1:{suffix:0<32}");
+            let credential_id = format!("mcred1:{suffix:0<32}");
+            conn.execute(
+                "INSERT INTO managed_auth_identities (
+                    identity_id, provider, provider_subject, provider_tenant,
+                    login, display_name, avatar_url, created_at, updated_at
+                 ) VALUES (?1, 'openai', ?2, '', 'person@example.com', NULL, NULL, 1, 1)",
+                rusqlite::params![identity_id, format!("subject-{suffix}")],
+            )?;
+            conn.execute(
+                "INSERT INTO managed_auth_credentials (
+                    credential_id, identity_id, provider, purpose, consumer,
+                    legacy_account_id, secret_ref, secret_version, refresh_owner,
+                    generation, access_expires_at, status, authenticated_at,
+                    refreshed_at, migration_id, created_at, updated_at
+                 ) VALUES (?1, ?2, 'openai', 'proxy_upstream', 'fyagent_proxy',
+                    ?3, 'sec_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                    'sv_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'fyagent', 1, NULL,
+                    'ready', 1, NULL, 'legacy-codex-oauth-v2', 1, 1)",
+                rusqlite::params![credential_id, identity_id, format!("legacy-{suffix}")],
+            )?;
+            conn.execute(
+                "INSERT INTO managed_auth_defaults (
+                    provider, purpose, consumer, credential_id, updated_at
+                 ) VALUES ('openai', 'proxy_upstream', 'fyagent_proxy', ?1, 1)",
+                rusqlite::params![credential_id],
+            )?;
+            conn.execute(
+                "INSERT INTO managed_auth_migrations (
+                    migration_id, source_kind, source_hash, status, reason_code,
+                    backup_name, created_at, updated_at, completed_at
+                 ) VALUES (?1, 'codex_oauth_v2', 'abc', 'completed', NULL, NULL, 1, 1, 1)",
+                rusqlite::params![format!("migration-{suffix}")],
+            )?;
+            Ok(())
+        }
+
+        let remote = Database::memory()?;
+        insert_managed_auth(&remote, "remote")?;
+        let sync_sql = remote.export_sql_string_for_sync()?;
+        assert!(
+            !sync_sql.to_ascii_lowercase().contains("access_token"),
+            "sync export must not invent token columns"
+        );
+        let exported = Connection::open_in_memory()?;
+        exported.execute_batch(&sync_sql)?;
+        let exported_counts: (i64, i64, i64) = exported.query_row(
+            "SELECT
+                (SELECT COUNT(*) FROM managed_auth_identities),
+                (SELECT COUNT(*) FROM managed_auth_credentials),
+                (SELECT COUNT(*) FROM managed_auth_migrations)",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )?;
+        assert_eq!(exported_counts, (0, 0, 0));
+
+        let local = Database::memory()?;
+        insert_managed_auth(&local, "local")?;
+        local.import_sql_string_for_sync(&sync_sql)?;
+        let conn = crate::database::lock_conn!(local.conn);
+        let preserved: (String, String) = conn.query_row(
+            "SELECT
+                (SELECT login FROM managed_auth_identities),
+                (SELECT legacy_account_id FROM managed_auth_credentials)",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        assert_eq!(
+            preserved,
+            ("person@example.com".into(), "legacy-local".into())
         );
         Ok(())
     }

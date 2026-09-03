@@ -30,17 +30,36 @@ evidence.
 ```ts
 interface ManagedAuthPort {
   getOverview(): Promise<ManagedAuthOverview>;
-  getActiveLoginSession(): Promise<ManagedAuthLoginSessionSnapshot | null>;
   startLogin(request: StartManagedAuthLoginRequest): Promise<ManagedAuthLoginSessionSnapshot>;
   getLoginSession(sessionId: string): Promise<ManagedAuthLoginSessionSnapshot>;
-  reopenLogin(sessionId: string): Promise<ManagedAuthLoginSessionSnapshot>;
-  switchLoginMethod(sessionId: string, method: ManagedAuthLoginMethod): Promise<ManagedAuthLoginSessionSnapshot>;
   cancelLogin(sessionId: string): Promise<ManagedAuthLoginSessionSnapshot>;
-  previewAccountRemoval(accountId: string, expectedRevision: string): Promise<ManagedAuthAccountRemovalPreview>;
-  mutateAccount(request: ManagedAuthAccountMutationRequest): Promise<ManagedAuthMutationResult>;
-  mutateConnection(request: ManagedAuthConnectionMutationRequest): Promise<ManagedAuthMutationResult>;
+  reopenLogin(sessionId: string): Promise<ManagedAuthLoginSessionSnapshot>;
+  switchLoginMethod(
+    sessionId: string,
+    method: ManagedAuthLoginMethod,
+  ): Promise<ManagedAuthLoginSessionSnapshot>;
+  setDefaultAccount(
+    accountId: string,
+    expectedRevision: string,
+  ): Promise<ManagedAuthMutationResult>;
+  previewAccountRemoval(
+    accountId: string,
+    expectedRevision: string,
+  ): Promise<ManagedAuthAccountRemovalPreview>;
+  removeAccount(
+    previewId: string,
+    accountId: string,
+    expectedRevision: string,
+  ): Promise<ManagedAuthMutationResult>;
+  applyConnectionAction(
+    request: ManagedAuthConnectionActionRequest,
+  ): Promise<ManagedAuthMutationResult>;
 }
 ```
+
+There is no `getActiveLoginSession`, `mutateAccount`, or `mutateConnection`
+method. Active login sessions arrive on `overview.activeSessions`. Mutation
+`operationId` is a hyphenated UUID v4.
 
 The closed provider set is:
 
@@ -175,8 +194,9 @@ request mode is a third-party API.
 - **Good:** an OpenAI browser login finishes credential storage but Codex still
   needs restart; the dialog reports partial completion and offers restart or
   later handling.
-- **Base:** native managed-auth is not activated. `/auth` remains reachable and
-  explains that account management is unavailable without simulating data.
+- **Base:** OpenAI login/session commands are still native-unavailable. `/auth`
+  remains reachable, may list vault-migrated accounts, and must not simulate a
+  completed official login.
 - **Bad:** display `已登录` because an account record exists, display `已连接`
   because a file write returned, or display `OpenAI Official` while the active
   provider is third-party.
