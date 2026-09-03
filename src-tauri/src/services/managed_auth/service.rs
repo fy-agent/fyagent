@@ -9,6 +9,8 @@ use crate::database::Database;
 use crate::proxy::providers::codex_oauth_auth::CodexOAuthManager;
 use crate::proxy::providers::copilot_auth::exchange_github_token_for_copilot;
 use crate::proxy::providers::xai_oauth_auth::XaiOAuthManager;
+use crate::services::managed_auth::login_sessions::LoginSessionStore;
+use crate::services::managed_auth::providers::xai::XaiLoginHooks;
 use crate::services::secret::{
     DecodeSecret, SecretAvailability, SecretBackend, SecretErrorCode, SecretHandle, SecretPresence,
     SecretPurpose, SecretRef, SecretService, SecretVersion,
@@ -23,7 +25,7 @@ use super::{
     CredentialWithIdentity, IdentityRecord, ManagedAuthAccountAction,
     ManagedAuthAccountRemovalImpact, ManagedAuthAccountRemovalPreview, ManagedAuthAccountSummary,
     ManagedAuthConnectionState, ManagedAuthConnectionSummary, ManagedAuthConsumer,
-    ManagedAuthCoreError, ManagedAuthCredentialManager, ManagedAuthHealth,
+    ManagedAuthCoreError, ManagedAuthCredentialManager, ManagedAuthHealth, ManagedAuthLoginMethod,
     ManagedAuthMutationOutcome, ManagedAuthMutationResult, ManagedAuthOverview,
     ManagedAuthProvider, ManagedAuthProviderSummary, ManagedAuthReasonCode, ManagedAuthRepository,
     ManagedAuthRequestMode, ManagedAuthSecretBundle, ManagedAuthSecretBundleParts, MigrationStatus,
@@ -77,9 +79,9 @@ pub(crate) struct CompatibilityAccount {
     pub(crate) github_domain: String,
 }
 
-struct FailClosedState {
-    secret_unavailable: bool,
-    migration_blocked: bool,
+pub(crate) struct FailClosedState {
+    pub(crate) secret_unavailable: bool,
+    pub(crate) migration_blocked: bool,
 }
 
 struct RefreshCoordinator {
@@ -106,11 +108,13 @@ pub(crate) struct ManagedAuthService<B>
 where
     B: SecretBackend,
 {
-    repository: ManagedAuthRepository,
+    pub(crate) repository: ManagedAuthRepository,
     secrets: SecretService<B>,
     config_dir: PathBuf,
     refresh: RefreshCoordinator,
     fail_closed: Mutex<FailClosedState>,
+    pub(crate) login_sessions: LoginSessionStore,
+    pub(crate) xai_hooks: Mutex<XaiLoginHooks>,
 }
 
 impl<B> ManagedAuthService<B>
@@ -127,11 +131,21 @@ where
                 secret_unavailable: false,
                 migration_blocked: false,
             }),
+            login_sessions: LoginSessionStore::default(),
+            xai_hooks: Mutex::new(XaiLoginHooks::default()),
         }
     }
 
     pub(crate) fn repository(&self) -> &ManagedAuthRepository {
         &self.repository
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_xai_login_hooks(&self, hooks: XaiLoginHooks) {
+        *self
+            .xai_hooks
+            .lock()
+            .unwrap_or_else(|error| error.into_inner()) = hooks;
     }
 
     pub(crate) fn startup(&self) -> Result<(), ManagedAuthCoreError> {
@@ -677,7 +691,7 @@ where
         Ok(true)
     }
 
-    async fn resolve_credential_access(
+    pub(crate) async fn resolve_credential_access(
         &self,
         credential: CredentialRecord,
     ) -> Result<AccessMaterial, ManagedAuthCoreError> {
@@ -849,7 +863,7 @@ where
         }
     }
 
-    fn upsert_proxy_connections(&self) -> Result<(), ManagedAuthCoreError> {
+    pub(crate) fn upsert_proxy_connections(&self) -> Result<(), ManagedAuthCoreError> {
         let now = chrono::Utc::now().timestamp();
         let rows = self.repository.list_all_credentials()?;
         for provider in [
@@ -919,16 +933,13 @@ where
                 provider_summary(ManagedAuthProvider::GithubCopilot, &fail),
             ],
             accounts,
-            connections: connections
-                .iter()
-                .map(|connection| connection_summary(connection, &rows))
-                .collect(),
-            active_sessions: Vec::new(),
+            connections: merge_grok_connection(&rows, &connections),
+            active_sessions: self.login_sessions.active_snapshots(),
             reason_codes,
         })
     }
 
-    fn credentials_for_account(
+    pub(crate) fn credentials_for_account(
         &self,
         account_id: &str,
     ) -> Result<Vec<CredentialWithIdentity>, ManagedAuthCoreError> {
@@ -970,7 +981,7 @@ where
         Ok(())
     }
 
-    fn mutation_result(
+    pub(crate) fn mutation_result(
         &self,
         outcome: ManagedAuthMutationOutcome,
         reason_code: Option<ManagedAuthReasonCode>,
@@ -1010,7 +1021,7 @@ where
         state.migration_blocked |= migration_blocked;
     }
 
-    fn fail_closed_snapshot(&self) -> FailClosedState {
+    pub(crate) fn fail_closed_snapshot(&self) -> FailClosedState {
         let state = self
             .fail_closed
             .lock()
@@ -1198,8 +1209,8 @@ fn provider_summary(
     if fail.secret_unavailable {
         reason_codes.push(ManagedAuthReasonCode::SecretUnavailable);
     }
-    if reason_codes.is_empty() {
-        reason_codes.push(ManagedAuthReasonCode::NativeProjectionUnavailable);
+    if fail.migration_blocked {
+        reason_codes.push(ManagedAuthReasonCode::MigrationBlocked);
     }
     let consumers = match provider {
         ManagedAuthProvider::Openai => vec![
@@ -1217,17 +1228,49 @@ fn provider_summary(
             ManagedAuthConsumer::FyagentProxy,
         ],
     };
+    let xai_ready =
+        provider == ManagedAuthProvider::Xai && !fail.secret_unavailable && !fail.migration_blocked;
+    if !xai_ready && reason_codes.is_empty() {
+        reason_codes.push(ManagedAuthReasonCode::NativeProjectionUnavailable);
+    }
     ManagedAuthProviderSummary {
         provider,
-        // Login methods stay empty until the OpenAI/xAI child owns PKCE
-        // and Device Code. The V2 parser forbids available=true with no
-        // methods, so this slice lists migrated accounts without claiming
-        // a working login wizard.
-        available: false,
-        login_methods: Vec::new(),
+        available: xai_ready,
+        login_methods: if xai_ready {
+            vec![ManagedAuthLoginMethod::DeviceCode]
+        } else {
+            Vec::new()
+        },
         consumers,
         reason_codes,
     }
+}
+
+fn merge_grok_connection(
+    rows: &[CredentialWithIdentity],
+    connections: &[ConnectionRecord],
+) -> Vec<crate::services::managed_auth::ManagedAuthConnectionSummary> {
+    let account = rows.iter().find(|row| {
+        row.credential.purpose == CredentialPurpose::GrokNative
+            && row.credential.status == CredentialStatus::Ready
+    });
+    let stored = connections
+        .iter()
+        .find(|connection| connection.consumer == ManagedAuthConsumer::Grokbuild);
+    let mut summaries: Vec<_> = connections
+        .iter()
+        .filter(|connection| connection.consumer != ManagedAuthConsumer::Grokbuild)
+        .map(|connection| connection_summary(connection, rows))
+        .collect();
+    summaries.insert(
+        0,
+        crate::services::managed_auth::consumers::grok::connection_summary(
+            account,
+            stored,
+            now_timestamp(),
+        ),
+    );
+    summaries
 }
 
 fn connection_summary(
@@ -1490,6 +1533,72 @@ mod tests {
     }
 
     #[test]
+    fn resolver_rejects_grok_native_purpose_even_with_fyagent_owner() {
+        let (service, _dir) = service_with_memory();
+        let mut input = sample_input("xai-user-1", "refresh-proxy", false);
+        input.provider = ManagedAuthProvider::Xai;
+        input.purpose = CredentialPurpose::GrokNative;
+        input.consumer = Some(ManagedAuthConsumer::Grokbuild);
+        input.refresh_owner = RefreshOwner::Fyagent;
+        let credential = service
+            .provision_legacy_credential(input)
+            .expect("provision");
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+        let error = runtime
+            .block_on(service.resolve_credential_access(credential))
+            .expect_err("grok native");
+        assert!(matches!(error, ManagedAuthCoreError::Conflict));
+        let overview = service.overview();
+        let xai = overview
+            .providers
+            .iter()
+            .find(|provider| provider.provider == ManagedAuthProvider::Xai)
+            .expect("xai");
+        assert!(xai.available);
+        assert_eq!(
+            xai.login_methods,
+            vec![crate::services::managed_auth::ManagedAuthLoginMethod::DeviceCode]
+        );
+        let grok = overview
+            .connections
+            .iter()
+            .find(|connection| connection.consumer == ManagedAuthConsumer::Grokbuild)
+            .expect("grok");
+        assert_ne!(
+            grok.auth_status,
+            crate::services::managed_auth::ManagedAuthConnectionState::Connected
+        );
+        assert!(grok
+            .reason_codes
+            .contains(&ManagedAuthReasonCode::NativeProjectionUnavailable));
+    }
+
+    #[test]
+    fn proxy_and_grok_sessions_stay_separate_lineages() {
+        let (service, _dir) = service_with_memory();
+        let mut proxy = sample_input("xai-user-1", "refresh-proxy", true);
+        proxy.provider = ManagedAuthProvider::Xai;
+        let mut grok = sample_input("xai-user-1", "refresh-grok", false);
+        grok.provider = ManagedAuthProvider::Xai;
+        grok.purpose = CredentialPurpose::GrokNative;
+        grok.consumer = Some(ManagedAuthConsumer::Grokbuild);
+        let proxy_cred = service.provision_legacy_credential(proxy).expect("proxy");
+        let grok_cred = service.provision_legacy_credential(grok).expect("grok");
+        assert_ne!(proxy_cred.credential_id, grok_cred.credential_id);
+        let proxy_bundle = service
+            .readback_bundle(&proxy_cred.secret_handle)
+            .expect("proxy bundle");
+        let grok_bundle = service
+            .readback_bundle(&grok_cred.secret_handle)
+            .expect("grok bundle");
+        assert_eq!(proxy_bundle.refresh_token(), Some("refresh-proxy"));
+        assert_eq!(grok_bundle.refresh_token(), Some("refresh-grok"));
+    }
+
+    #[test]
     fn overview_has_no_secret_fields() {
         let (service, _dir) = service_with_memory();
         service
@@ -1502,7 +1611,7 @@ mod tests {
             "refresh_token",
             "id_token",
             "authorization_code",
-            "device_code",
+            "\"devicecode\"",
             "secretref",
             "secret_ref",
             "verifier",
