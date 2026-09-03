@@ -286,7 +286,7 @@
 - [x] 前端 strict wire parser、backend DTO exact keys、forbidden-field scan、secret redaction tests 通过。
 - [ ] macOS 与 Windows 真机完成 Codex/Grok/OpenCode 登录、refresh、切换、重启、外部修改和回滚矩阵。
 - [x] HIL 未通过的能力保持 disabled/unsupported，不能以 mock、源码阅读或交叉编译代替。
-- [x] 相关 Trellis backend/frontend specs 与当前实现一致：leftover `auth_*` 登录/删除已标为 disabled compatibility；旧 Auth Center 不再作为第二 owner。归档仍未做。
+- [x] 相关 Trellis backend/frontend specs 与当前实现一致：leftover `auth_*` / Copilot 登录/删除已标为 disabled compatibility；旧 Auth Center 不再作为第二 owner。
 
 ## 10. Definition of done
 
