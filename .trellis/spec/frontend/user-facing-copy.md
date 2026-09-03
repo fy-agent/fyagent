@@ -93,8 +93,12 @@ not user copy.
 - Native CLI install and owner switches are explicit secondary actions.
 - Windows vendor-wizard success copy states that the installer opened and the
   user should finish it, then refresh. It must not say the product is installed.
-- OpenCode Windows x64 must not be described as supported until a reviewed
-  Windows identity HIL exists. ARM64 remains unavailable.
+- OpenCode Windows x64 may be offered as a current-user official installer.
+  ARM64 remains unavailable. Catalog description states Skills/MCP/Hooks
+  only; do not add 「本机识别和启动暂无法确认」. Claude still uses that
+  sentence until its Windows identity exists. Destination labels may use the
+  display name and must not be treated as the scanned folder
+  (`@opencode-aidesktop`).
 - Conflict and upgrade dialogs may show source/version/default, never an
   absolute path, SID, package family, or the command that will run.
 - Public `docs/user-manual/**` must match that policy. Agent Desktop products

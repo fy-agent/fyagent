@@ -76,10 +76,10 @@ const DESKTOP_PRODUCTS: &[DesktopProduct] = &[
     DesktopProduct {
         agent_id: AgentCatalogId::OpenCode,
         macos_bundle_id: "ai.opencode.desktop",
-        // Windows ProductName / relative EXE / signer stay empty until
-        // WinVerifyTrust HIL freezes identity. Source mapping is independent.
-        windows_product_names: &[],
-        windows_relative_exes: &[],
+        // Frozen from the official windows-x64-nsis installer and the
+        // installed current-user target after WinVerifyTrust Valid.
+        windows_product_names: &["OpenCode"],
+        windows_relative_exes: &["@opencode-aidesktop/OpenCode.exe", "OpenCode/OpenCode.exe"],
     },
     DesktopProduct {
         agent_id: AgentCatalogId::ClaudeCode,
@@ -1145,15 +1145,12 @@ mod tests {
     fn opencode_is_a_managed_desktop_product_with_official_bundle_id() {
         let item = product(AgentCatalogId::OpenCode);
         assert_eq!(item.macos_bundle_id, "ai.opencode.desktop");
-        assert!(
-            item.windows_product_names.is_empty(),
-            "Windows ProductName stays empty until WinVerifyTrust HIL"
+        assert_eq!(item.windows_product_names, &["OpenCode"]);
+        assert_eq!(
+            item.windows_relative_exes,
+            &["@opencode-aidesktop/OpenCode.exe", "OpenCode/OpenCode.exe",]
         );
-        assert!(
-            item.windows_relative_exes.is_empty(),
-            "Windows relative EXE paths stay empty until installed-target HIL"
-        );
-        assert!(!windows_exe_install_admitted(AgentCatalogId::OpenCode));
+        assert!(windows_exe_install_admitted(AgentCatalogId::OpenCode));
         assert!(windows_exe_install_admitted(AgentCatalogId::WorkBuddy));
         assert!(windows_exe_install_admitted(AgentCatalogId::QoderWork));
         assert!(windows_exe_install_admitted(AgentCatalogId::TraeWork));

@@ -693,7 +693,7 @@ const AGENT_CATALOG: [AgentCatalogEntry; 7] = [
         id: AgentCatalogId::OpenCode,
         variant_id: AgentVariantId::OpenCode,
         display_name: "OpenCode",
-        description: "支持 Skills、模型配置与 MCP；不支持 Hooks。本机识别和启动暂无法确认。",
+        description: "支持 Skills、模型配置与 MCP；不支持 Hooks。",
         official_links: &OPENCODE_OFFICIAL_LINKS,
         capabilities: &OPENCODE_CAPABILITIES,
     },
@@ -819,6 +819,7 @@ mod tests {
         let trae = &catalog.agents[1];
         let grok = &catalog.agents[3];
         let codex = &catalog.agents[4];
+        let opencode = &catalog.agents[6];
         assert_eq!(
             qoder
                 .capabilities
@@ -993,6 +994,7 @@ mod tests {
         assert!(!qoder.description.contains("本机识别和启动暂无法确认"));
         assert!(!trae.description.contains("本机识别和启动暂无法确认"));
         assert!(!workbuddy.description.contains("本机识别和启动暂无法确认"));
+        assert!(!opencode.description.contains("本机识别和启动暂无法确认"));
         assert!(grok.description.contains("本机识别和启动暂无法确认"));
         assert_eq!(grok.display_name, "Grok Build");
         assert_eq!(grok.official_links[0].label, "打开 Grok Build 官方页面");
@@ -1044,7 +1046,6 @@ mod tests {
             )
         );
         let claude = &catalog.agents[5];
-        let opencode = &catalog.agents[6];
         assert_eq!(claude.display_name, "Claude Code");
         assert_eq!(
             claude

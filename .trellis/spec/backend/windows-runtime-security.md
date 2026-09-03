@@ -19,8 +19,8 @@ one-operation
 package bridge is a separate executable-installer object with no state, lease,
 HMAC, activation, or startup-admission role. Codex MSIX and the reviewed
 Agent EXE products (`qoderwork | trae-work | workbuddy | opencode`) reuse it
-through separate closed helper actions. OpenCode remains fail-closed on
-Windows until a reviewed WinVerifyTrust identity exists. Grok
+through separate closed helper actions. OpenCode Windows x64 uses the
+reviewed WinVerifyTrust identity; ARM64 remains unsupported. Grok
 Build observe/install/update reuses the same helper executable and pipe
 handshake but does not use PackageBridge. The
 application bridge module owns
@@ -231,7 +231,8 @@ execution when the helper fails. Auth observation/session is unchanged and
 still does not gain a helper verb.
 The ordinary-user helper has three closed action families: Codex MSIX, Agent
 EXE with the product enum `qoderwork | trae-work | workbuddy | opencode`
-(OpenCode identity is empty until HIL), and Grok tool with
+(OpenCode uses the reviewed WinVerifyTrust identity on x64; ARM64 remains
+unsupported), and Grok tool with
 `observe | install | update` plus optional `none | native | npm` owner.
 Default Grok install is official npm. After Hello, the host writes an
 80-byte `GrokNpmInstallPlan` control (exact version, closed registry index,
@@ -263,9 +264,11 @@ IShellFolderViewDual.Application -> IShellDispatch2`.
   `IShellDispatch2::ShellExecute`, so the system browser receives a foreground-
   eligible normal-show request. The fixed installer-helper launch retains its
   separate empty show argument and action-owned exact argument contract.
-- Closed desktop-agent `.exe` paths (WorkBuddy / QoderWork CN / TRAE Work CN)
-  use the same Explorer `ShellExecute` route after the observer proves PE
-  `ProductName` at a closed relative path. The launch boundary accepts only an
+- Closed desktop-agent `.exe` paths (WorkBuddy / QoderWork CN / TRAE Work CN /
+  OpenCode) use the same Explorer `ShellExecute` route after the observer
+  proves PE `ProductName` at a closed relative path. OpenCode's installed
+  relative is `@opencode-aidesktop/OpenCode.exe` in addition to
+  `OpenCode/OpenCode.exe`. The launch boundary accepts only an
   absolute `.exe` with no arguments, `..`, or NUL. Identity proof stays in
   the observer; this module never scans vendor config directories.
 - There is no `ShellExecuteW`, `Command::new`, `cmd`, PowerShell, arbitrary
@@ -588,7 +591,9 @@ fyagent-user-helper.exe
 | Formal elevated Windows Claude/OpenCode CLI or Auth session | `interactive_user_unavailable` / `executor_not_implemented`; no probe or child process |
 | Formal elevated Windows Grok Build lifecycle                | Closed `grok-tool` helper; no elevated fallback                                        |
 | Grok npm helper has no plan, `@latest`, or unknown registry     | Fail closed; no npm child process                                                      |
+| OpenCode Windows x64 ProductName/relative EXE/signer is reviewed | Admit current-user NSIS handoff; ARM64 remains unsupported |
 | OpenCode Windows ProductName/relative EXE/signer is empty     | `windows_exe_install_admitted` rejects download and install; do not claim supported     |
+| OpenCode helper product is admitted but scan relatives omit `@opencode-aidesktop` | Inventory miss after a real current-user install; helper admission is not scan identity |
 | Helper argv contains URL/path/shell string/free tool name   | Contract test fails; no child process                                                  |
 | Installer helper gains Claude/OpenCode tool verbs           | Architecture regression                                                                |
 | Non-formal/non-Windows Tooling lifecycle                    | Existing Tooling behavior unchanged; Grok remains the only writable CLI                |
@@ -602,7 +607,9 @@ fyagent-user-helper.exe
   update through the helper when the Explorer user is available.
 - Bad: `fyagent-user-helper.exe run --cmd <renderer string>`.
 - Bad: helper npm install without a host plan, or with `@latest`.
-- Bad: claim OpenCode Windows is supported while identity fields are empty.
+- Bad: claim OpenCode Windows is supported while identity fields are empty, or
+  treat helper product `opencode` as proof that `OpenCode/OpenCode.exe` is the
+  installed folder.
 
 ### 6. Tests Required
 

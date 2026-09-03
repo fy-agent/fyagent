@@ -142,8 +142,12 @@ or bypass flag.
   Native-owned installs may offer “改用官方 npm 方式”; that must not auto-run.
 - Windows vendor-wizard success uses
   `官方安装窗口已打开。完成安装后请刷新安装状态。` It must not say the product
-  is installed. OpenCode Windows x64 must not be described as supported until
-  identity HIL exists.
+  is installed. OpenCode Windows ARM64 remains unavailable.
+- OpenCode catalog description must not say 「本机识别和启动暂无法确认」
+  once Windows identity is admitted. After a complete native scan with a
+  trusted candidate, including a user-run official NSIS, show Launch from
+  `allowedActions`. Do not keep a previous `not_installed` card because the
+  user did not install through FyAgent.
 
 ### State, errors and accessibility
 
@@ -214,7 +218,9 @@ Required assertions:
 - Grok default install stays on official npm; native/owner-switch controls
   are explicit and do not auto-run; renderer never sends registry/version/hash;
 - Windows vendor-wizard success copy reports an opened installer, not an
-  installed product; OpenCode Windows is not described as supported without HIL;
+  installed product; OpenCode Windows ARM64 remains unavailable;
+- OpenCode catalog copy omits 「本机识别和启动暂无法确认」; a later inventory
+  that reports `installed` must render Launch after a manual official install;
 - keyboard/focus/label/status semantics and localized closed-reason copy;
 - browser suites use fixtures only for layout/interaction and keep native HIL
   claims separate.
