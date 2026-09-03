@@ -18,11 +18,11 @@
 
 ## Acceptance Criteria
 
-- [ ] `/auth` 可从主导航进入并支持直接链接、返回 Agent 上下文和页面 keep-alive。
-- [ ] 账号、软件连接、当前请求来源三类状态在视觉和文案上不可混淆。
-- [ ] 登录/刷新/重登/断开/删除/重启等待等状态均有可操作、可恢复且不夸大的 UI。
-- [ ] 所有跨层响应经 exact-key 闭集解析；token、路径、命令、raw error 不进入 React 状态或 DOM。
-- [ ] 键盘、焦点、ARIA、窄窗和 reduced-motion 测试通过。
+- [x] `/auth` 可从主导航进入并支持直接链接、返回 Agent 上下文和页面 keep-alive。
+- [x] 账号、软件连接、当前请求来源三类状态在视觉和文案上不可混淆。
+- [x] 登录/刷新/重登/断开/删除/重启等待等状态均有可操作、可恢复且不夸大的 UI。
+- [x] 所有跨层响应经 exact-key 闭集解析；token、路径、命令、raw error 不进入 React 状态或 DOM。
+- [x] 键盘、焦点、ARIA、窄窗和 reduced-motion 测试通过。
 
 ## Out of Scope
 

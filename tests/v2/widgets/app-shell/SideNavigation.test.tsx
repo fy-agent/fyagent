@@ -34,7 +34,7 @@ function renderNavigation(initialEntry = "/agents") {
 }
 
 describe("SideNavigation", () => {
-  it("derives the stable six route leaves from three typed groups", () => {
+  it("derives the stable seven route leaves from three typed groups", () => {
     expect(
       navigationGroups.map(({ id, label, collapsible, items }) => ({
         id,
@@ -47,7 +47,10 @@ describe("SideNavigation", () => {
         id: "agent-configuration",
         label: "AI软件配置",
         collapsible: false,
-        items: [{ id: "agents", label: "AI软件配置" }],
+        items: [
+          { id: "agents", label: "AI软件配置" },
+          { id: "auth", label: "账号与认证" },
+        ],
       },
       {
         id: "configuration-management",
@@ -69,6 +72,7 @@ describe("SideNavigation", () => {
     ]);
     expect(navigationItems.map(({ id, path }) => ({ id, path }))).toEqual([
       { id: "agents", path: "/agents" },
+      { id: "auth", path: "/auth" },
       { id: "models", path: "/models" },
       { id: "skills", path: "/skills" },
       { id: "mcp", path: "/mcp" },
@@ -77,7 +81,7 @@ describe("SideNavigation", () => {
     ]);
   });
 
-  it("renders exactly three approved top-level controls without duplicate copy", () => {
+  it("renders exactly four approved top-level controls without duplicate copy", () => {
     renderNavigation();
 
     const navigation = screen.getByRole("navigation", { name: "主导航" });
@@ -87,7 +91,7 @@ describe("SideNavigation", () => {
 
     expect(
       Array.from(topLevelControls, (control) => control.textContent?.trim()),
-    ).toEqual(["AI软件配置", "配置管理", "记忆模块"]);
+    ).toEqual(["AI软件配置", "账号与认证", "配置管理", "记忆模块"]);
     expect(
       within(navigation).getByRole("link", { name: "AI软件配置" }),
     ).toHaveAttribute("href", "/agents");

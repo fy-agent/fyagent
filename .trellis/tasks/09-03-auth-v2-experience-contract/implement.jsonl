@@ -10,3 +10,4 @@
 {"file": ".trellis/spec/frontend/reuse.md", "reason": "本子任务 owning contract/research。"}
 {"file": ".trellis/spec/frontend/state-management.md", "reason": "本子任务 owning contract/research。"}
 {"file": ".trellis/spec/frontend/user-facing-copy.md", "reason": "本子任务 owning contract/research。"}
+{"file": ".trellis/spec/frontend/v2-managed-auth.md", "reason": "中央账号与认证页面、严格 Port 和交互的 owning contract。"}

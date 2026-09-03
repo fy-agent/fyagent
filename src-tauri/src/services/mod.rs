@@ -7,6 +7,7 @@ pub(crate) mod config;
 pub(crate) mod env_checker;
 pub(crate) mod env_manager;
 pub(crate) mod external_agents;
+pub(crate) mod managed_auth;
 pub(crate) mod mcp;
 pub(crate) mod model_fetch;
 pub(crate) mod model_pricing;

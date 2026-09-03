@@ -22,37 +22,38 @@ assertions belong in the linked owner.
 
 ## Foundation contracts
 
-| Contract | Owns |
-| --- | --- |
-| [Directory Structure](./directory-structure.md) | Renderer directory roles and placement. |
-| [Renderer Modular Boundaries](./modular-boundaries.md) | Renderer/host, V2/leftover, feature/platform, and import boundaries. |
-| [Type Safety](./type-safety.md) | `unknown` parsing, DTO validation, exhaustive unions, and prohibition on scattered casts. |
-| [State Management](./state-management.md) | Server, URL, local draft, secret, and derived-state ownership. |
-| [Frontend Reuse](./reuse.md) | Reuse order, shared-owner registry, component placement, dependency review, and anti-clone rules. |
-| [Component Guidelines](./component-guidelines.md) | Component APIs, semantics, accessibility, composition, and presentation ownership. |
-| [Hook Guidelines](./hook-guidelines.md) | Hook responsibilities, lifecycle, query/effect ownership, and stable return shapes. |
-| [Quality Guidelines](./quality-guidelines.md) | Loading/error/empty states, test levels, deterministic behavior, and acceptance evidence. |
-| [User-Facing Copy](./user-facing-copy.md) | Evidence-correct copy, errors, labels, installer wording, and prohibition on internal/GPT-style narration. |
-| [Frontend Localization](./localization.md) | Leftover locale authority, exact key parity, detection, fallback, and V2 import boundary. |
+| Contract                                               | Owns                                                                                                       |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- |
+| [Directory Structure](./directory-structure.md)        | Renderer directory roles and placement.                                                                    |
+| [Renderer Modular Boundaries](./modular-boundaries.md) | Renderer/host, V2/leftover, feature/platform, and import boundaries.                                       |
+| [Type Safety](./type-safety.md)                        | `unknown` parsing, DTO validation, exhaustive unions, and prohibition on scattered casts.                  |
+| [State Management](./state-management.md)              | Server, URL, local draft, secret, and derived-state ownership.                                             |
+| [Frontend Reuse](./reuse.md)                           | Reuse order, shared-owner registry, component placement, dependency review, and anti-clone rules.          |
+| [Component Guidelines](./component-guidelines.md)      | Component APIs, semantics, accessibility, composition, and presentation ownership.                         |
+| [Hook Guidelines](./hook-guidelines.md)                | Hook responsibilities, lifecycle, query/effect ownership, and stable return shapes.                        |
+| [Quality Guidelines](./quality-guidelines.md)          | Loading/error/empty states, test levels, deterministic behavior, and acceptance evidence.                  |
+| [User-Facing Copy](./user-facing-copy.md)              | Evidence-correct copy, errors, labels, installer wording, and prohibition on internal/GPT-style narration. |
+| [Frontend Localization](./localization.md)             | Leftover locale authority, exact key parity, detection, fallback, and V2 import boundary.                  |
 
 ## V2 architecture and shell
 
-| Contract | Owns |
-| --- | --- |
+| Contract                                                 | Owns                                                                                                                                                 |
+| -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [V2 Navigation and Persistent Route](./v2-navigation.md) | Hash route registry, literal lazy loaders, persistent page lifetime, hidden query isolation, blockers, sidebar state, and closed Agent return state. |
-| [V2 Window Shell and Interaction](./v2-window-shell.md) | AppShell/TopBar, native-overlay boundary, selection geometry, shared motion/collapse, external opening, and V2 architecture imports. |
+| [V2 Window Shell and Interaction](./v2-window-shell.md)  | AppShell/TopBar, native-overlay boundary, selection geometry, shared motion/collapse, external opening, and V2 architecture imports.                 |
 
 ## V2 feature contracts
 
-| Contract | Owns |
-| --- | --- |
-| [V2 Agent Directory](./v2-agent-directory.md) | Catalog/readiness scan, order, cards, capability projection, lifecycle UI, and Agent return links. |
-| [V2 External Agent Auth UI](./v2-agent-auth.md) | Auth observation, active-session recovery, polling, desktop target selection, and evidence-correct status UI. |
-| [V2 Models](./v2-models.md) | Target selection, drafts/tests, typed preview/apply, quick setup, WorkBuddy, TRAE, OpenCode, and Codex model flows. |
-| [V2 Shared Assignment](./v2-assignments.md) | Seven-target presentation order, shared AssignmentPanel API, serialized mutation, and authoritative reread. |
-| [V2 Skills](./v2-skills.md) | Installed/discovery views, SkillHub/repository sources, pagination, install targets, backups, and Skill assignments. |
-| [V2 MCP](./v2-mcp.md) | Installed/discovery views, launch parsing, security projection, presets, install, and MCP assignments. |
-| [V2 Prompts and Memory](./v2-prompts-memory.md) | Prompt/native-memory Ports, CRUD/enable flows, directory operations, and Agent prompt delegation. |
+| Contract                                                       | Owns                                                                                                                                       |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| [V2 Agent Directory](./v2-agent-directory.md)                  | Catalog/readiness scan, order, cards, capability projection, lifecycle UI, and Agent return links.                                         |
+| [V2 External Agent Auth UI](./v2-agent-auth.md)                | Agent-card Auth summaries, Agent-owned session recovery/polling, desktop target selection, and managed-account routing.                    |
+| [V2 Managed Accounts and Authentication](./v2-managed-auth.md) | Central `/auth` account/connection/request-source UI, strict ManagedAuthPort, login sessions, impact previews, and responsive interaction. |
+| [V2 Models](./v2-models.md)                                    | Target selection, drafts/tests, typed preview/apply, quick setup, WorkBuddy, TRAE, OpenCode, and Codex model flows.                        |
+| [V2 Shared Assignment](./v2-assignments.md)                    | Seven-target presentation order, shared AssignmentPanel API, serialized mutation, and authoritative reread.                                |
+| [V2 Skills](./v2-skills.md)                                    | Installed/discovery views, SkillHub/repository sources, pagination, install targets, backups, and Skill assignments.                       |
+| [V2 MCP](./v2-mcp.md)                                          | Installed/discovery views, launch parsing, security projection, presets, install, and MCP assignments.                                     |
+| [V2 Prompts and Memory](./v2-prompts-memory.md)                | Prompt/native-memory Ports, CRUD/enable flows, directory operations, and Agent prompt delegation.                                          |
 
 ## Compatibility routers
 

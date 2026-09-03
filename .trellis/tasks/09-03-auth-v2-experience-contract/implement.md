@@ -2,11 +2,11 @@
 
 ## Checklist
 
-1. [ ] 读取父任务前端蓝图和 V2 相关 Spec。
-2. [ ] 先补严格 DTO/Port/fixtures 和失败测试。
-3. [ ] 新增导航、route loader、page shell、账号列表/详情/连接组件及登录会话对话框。
-4. [ ] 让 Agent 卡片仅显示摘要并链接中央页。
-5. [ ] 运行 mise 的 V2 lint/type/test/browser/build 检查。
+1. [x] 读取父任务前端蓝图和 V2 相关 Spec。
+2. [x] 先补严格 DTO/Port/fixtures 和失败测试。
+3. [x] 新增导航、route loader、page shell、账号列表/详情/连接组件及登录会话对话框。
+4. [x] 让 Agent 卡片仅显示摘要并链接中央页。
+5. [x] 运行 mise 的 V2 lint/type/test/browser/build 检查。
 
 
 ## Validation

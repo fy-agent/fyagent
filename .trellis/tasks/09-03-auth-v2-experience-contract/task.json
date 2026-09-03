@@ -3,8 +3,8 @@
   "name": "auth-v2-experience-contract",
   "title": "建立 V2 账号与认证主体验及严格前端合同",
   "description": "建立前端优先的账号与认证主路由、账号/连接/请求来源信息架构、登录会话交互、严格 DTO/Port 与浏览器验收，不接入未完成的原生写入。",
-  "status": "planning",
-  "dev_type": null,
+  "status": "in_progress",
+  "dev_type": "fullstack",
   "scope": "unified-agent-auth",
   "package": null,
   "priority": "P0",
@@ -20,7 +20,22 @@
   "subtasks": [],
   "children": [],
   "parent": "09-03-unified-agent-auth-management",
-  "relatedFiles": [],
-  "notes": "",
-  "meta": {}
+  "relatedFiles": [
+    ".trellis/spec/frontend/v2-managed-auth.md",
+    "src/v2/shared/features/managed-auth.ts",
+    "src/v2/shared/platform/tauri/feature-ports/managedAuth.ts",
+    "src/v2/pages/auth/",
+    "src/v2/pages/agents/AgentAuthStatusPanel.tsx",
+    "src-tauri/src/services/managed_auth/",
+    "src-tauri/src/commands/managed_auth.rs",
+    "tests/v2/pages/auth/",
+    "tests/v2-browser/auth.spec.ts"
+  ],
+  "notes": "Frontend-first slice complete. The V2 experience, strict wire contract, route, Agent routing, browser fixtures and fail-closed native façade are implemented and verified. Production OAuth/vault/vendor projection remain owned by the later backend child tasks.",
+  "meta": {
+    "native_backend": "fail-closed-facade-only",
+    "v2_tests": "490-passed",
+    "browser_tests": "160-passed",
+    "frontend_unit_tests": "1573-passed"
+  }
 }

@@ -21,6 +21,7 @@
     "allow-external-agent-endpoint-probe",
     "allow-change-plan",
     "allow-agent-install-readiness",
-    "allow-agent-auth"
+    "allow-agent-auth",
+    "allow-managed-auth"
   ]
 }

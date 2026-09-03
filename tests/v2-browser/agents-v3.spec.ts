@@ -344,7 +344,7 @@ test("Agent V3 restores deep links and keeps model and prompt capability boundar
   await expectHealthyPage(page, health);
 });
 
-test("Agent Auth distinguishes verified sessions, handoff-only flows, and Auth Center ownership", async ({
+test("Agent Auth keeps Claude local verification and routes managed consumers centrally", async ({
   page,
 }) => {
   await installFixture(page);
@@ -360,16 +360,31 @@ test("Agent Auth distinguishes verified sessions, handoff-only flows, and Auth C
 
   await openV2Page(page, "/agents?target=grokbuild&section=models");
   const grok = page.getByRole("region", { name: "Grok Build 配置" });
-  await grok.getByRole("button", { name: "登录", exact: true }).click();
-  await expect(grok.getByText("已交给官方认证入口")).toBeVisible();
-  await expect(grok.getByText("登录状态已更新")).toHaveCount(0);
+  await expect(grok.getByText("请在官方应用中登录")).toBeVisible();
+  await grok.getByRole("button", { name: "管理登录" }).click();
+  await expect(page).toHaveURL(
+    /#\/auth\?consumer=grokbuild&view=connections&agentReturn=grokbuild&agentSection=models$/,
+  );
 
   await openV2Page(page, "/agents?target=codex&section=models");
   const codex = page.getByRole("region", { name: "Codex 配置" });
-  await expect(codex.getByText("请在 FyAgent 认证中心管理")).toBeVisible();
+  await expect(
+    codex.getByText("请在“账号与认证”中管理", { exact: true }),
+  ).toBeVisible();
   await expect(
     codex.getByRole("button", { name: "登录", exact: true }),
   ).toHaveCount(0);
+  await codex.getByRole("button", { name: "管理账号" }).click();
+  await expect(page).toHaveURL(
+    /#\/auth\?consumer=codex&view=connections&agentReturn=codex&agentSection=models$/,
+  );
+
+  await openV2Page(page, "/agents?target=opencode&section=models");
+  const opencode = page.getByRole("region", { name: "OpenCode 配置" });
+  await opencode.getByRole("button", { name: "管理连接" }).click();
+  await expect(page).toHaveURL(
+    /#\/auth\?consumer=opencode&view=connections&agentReturn=opencode&agentSection=models$/,
+  );
 
   const calls = await featureFixtureCalls(page);
   expect(
@@ -384,14 +399,9 @@ test("Agent Auth distinguishes verified sessions, handoff-only flows, and Auth C
     calls.some(
       (call) =>
         call.command === "start_agent_auth_session" &&
-        (call.payload.request as { agentId?: string }).agentId === "grokbuild",
-    ),
-  ).toBe(true);
-  expect(
-    calls.some(
-      (call) =>
-        call.command === "start_agent_auth_session" &&
-        (call.payload.request as { agentId?: string }).agentId === "codex",
+        ["grokbuild", "codex", "opencode"].includes(
+          (call.payload.request as { agentId?: string }).agentId ?? "",
+        ),
     ),
   ).toBe(false);
   await expectNoHorizontalOverflow(page);

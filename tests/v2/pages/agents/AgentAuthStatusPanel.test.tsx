@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
 import { AgentAuthStatusPanel } from "@/v2/pages/agents/AgentAuthStatusPanel";
@@ -46,6 +47,16 @@ function session(
   };
 }
 
+function LocationProbe() {
+  const location = useLocation();
+  return (
+    <output data-testid="test-location">
+      {location.pathname}
+      {location.search}
+    </output>
+  );
+}
+
 function renderPanel(
   agentId: AgentAuthObservation["agentId"],
   port: AgentAuthPort,
@@ -53,18 +64,25 @@ function renderPanel(
 ) {
   const ports: FeaturePorts = createBrowserFeaturePorts();
   ports.agentAuth = port;
+  const initialEntry = `/agents?target=${agentId}&section=models`;
   const result = render(
-    <FeatureProvider ports={ports}>
-      <AgentAuthStatusPanel agentId={agentId} enabled={enabled} />
-    </FeatureProvider>,
+    <MemoryRouter initialEntries={[initialEntry]}>
+      <FeatureProvider ports={ports}>
+        <AgentAuthStatusPanel agentId={agentId} enabled={enabled} />
+      </FeatureProvider>
+      <LocationProbe />
+    </MemoryRouter>,
   );
   return {
     ...result,
     rerenderPanel(nextEnabled: boolean) {
       result.rerender(
-        <FeatureProvider ports={ports}>
-          <AgentAuthStatusPanel agentId={agentId} enabled={nextEnabled} />
-        </FeatureProvider>,
+        <MemoryRouter initialEntries={[initialEntry]}>
+          <FeatureProvider ports={ports}>
+            <AgentAuthStatusPanel agentId={agentId} enabled={nextEnabled} />
+          </FeatureProvider>
+          <LocationProbe />
+        </MemoryRouter>,
       );
     },
   };
@@ -112,8 +130,8 @@ describe("AgentAuthStatusPanel", () => {
     expect(screen.getByText("未登录")).toBeVisible();
   });
 
-  it("disconnects one OpenCode provider instead of claiming a global logout", async () => {
-    const before: AgentAuthObservation = {
+  it("routes OpenCode provider management to the central page", async () => {
+    const observation: AgentAuthObservation = {
       kind: "provider_connections",
       contractVersion: 1,
       agentId: "opencode",
@@ -125,40 +143,26 @@ describe("AgentAuthStatusPanel", () => {
       checkedAt: "2026-08-30T00:00:00Z",
       reasonCodes: [],
     };
-    const after: AgentAuthObservation = {
-      ...before,
-      state: "empty",
-      providers: [],
-    };
-    const startSession = vi.fn(async () =>
-      session(after, {
-        agentId: "opencode",
-        intent: "logout",
-        stage: "verified",
-        outcome: "verified_provider_change",
-      }),
-    );
+    const startSession = vi.fn();
+    const getActiveSession = vi.fn(async () => null);
     renderPanel("opencode", {
-      getObservation: vi.fn(async () => before),
-      getActiveSession: vi.fn(async () => null),
+      getObservation: vi.fn(async () => observation),
+      getActiveSession,
       startSession,
       getSession: vi.fn(),
       stopWaiting: vi.fn(),
     });
 
     expect(await screen.findByText("已连接 1 个 Provider")).toBeVisible();
-    fireEvent.click(screen.getByRole("button", { name: "断开" }));
-    await waitFor(() =>
-      expect(startSession).toHaveBeenCalledWith({
-        agentId: "opencode",
-        intent: "logout",
-        providerId: PROVIDER_ID,
-      }),
+    fireEvent.click(screen.getByRole("button", { name: "管理连接" }));
+    expect(screen.getByTestId("test-location")).toHaveTextContent(
+      "/auth?consumer=opencode&view=connections&agentReturn=opencode&agentSection=models",
     );
-    expect(await screen.findByText("登录状态已更新")).toBeVisible();
+    expect(startSession).not.toHaveBeenCalled();
+    expect(getActiveSession).not.toHaveBeenCalled();
   });
 
-  it("renders Grok as handoff-only and never as verified", async () => {
+  it("routes Grok login management centrally without claiming verification", async () => {
     const observation: AgentAuthObservation = {
       kind: "handoff_only",
       contractVersion: 1,
@@ -169,27 +173,25 @@ describe("AgentAuthStatusPanel", () => {
       checkedAt: "2026-08-30T00:00:00Z",
       reasonCodes: ["handoff_only"],
     };
+    const startSession = vi.fn();
     renderPanel("grokbuild", {
       getObservation: vi.fn(async () => observation),
       getActiveSession: vi.fn(async () => null),
-      startSession: vi.fn(async () =>
-        session(observation, {
-          agentId: "grokbuild",
-          stage: "handoff_complete",
-          outcome: "handoff_only",
-          reasonCode: "handoff_only",
-        }),
-      ),
+      startSession,
       getSession: vi.fn(),
       stopWaiting: vi.fn(),
     });
 
-    fireEvent.click(await screen.findByRole("button", { name: "登录" }));
-    expect(await screen.findByText("已交给官方认证入口")).toBeVisible();
+    expect(await screen.findByText("请在官方应用中登录")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "管理登录" }));
+    expect(screen.getByTestId("test-location")).toHaveTextContent(
+      "/auth?consumer=grokbuild&view=connections&agentReturn=grokbuild&agentSection=models",
+    );
+    expect(startSession).not.toHaveBeenCalled();
     expect(screen.queryByText("登录状态已更新")).not.toBeInTheDocument();
   });
 
-  it("keeps Codex delegated to the existing Auth Center", async () => {
+  it("routes Codex to the central account and connection page", async () => {
     const observation: AgentAuthObservation = {
       kind: "fyagent_managed",
       contractVersion: 1,
@@ -201,20 +203,23 @@ describe("AgentAuthStatusPanel", () => {
       checkedAt: "2026-08-30T00:00:00Z",
       reasonCodes: ["managed_by_auth_center"],
     };
+    const startSession = vi.fn();
     renderPanel("codex", {
       getObservation: vi.fn(async () => observation),
       getActiveSession: vi.fn(async () => null),
-      startSession: vi.fn(),
+      startSession,
       getSession: vi.fn(),
       stopWaiting: vi.fn(),
     });
 
-    expect(await screen.findByText("请在 FyAgent 认证中心管理")).toBeVisible();
+    expect(await screen.findByText("请在“账号与认证”中管理")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "管理账号" }));
+    expect(screen.getByTestId("test-location")).toHaveTextContent(
+      "/auth?consumer=codex&view=connections&agentReturn=codex&agentSection=models",
+    );
+    expect(startSession).not.toHaveBeenCalled();
     expect(
       screen.queryByRole("button", { name: "登录" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "连接 Provider" }),
     ).not.toBeInTheDocument();
   });
 

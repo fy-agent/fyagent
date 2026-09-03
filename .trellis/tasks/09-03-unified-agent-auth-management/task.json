@@ -14,7 +14,7 @@
   "completedAt": null,
   "branch": "feat/unified-agent-auth-management",
   "base_branch": "dev/laiyongjie",
-  "worktree_path": "/Users/pythonrust/.devspace/worktrees/fyagent-6b2c91ea",
+  "worktree_path": null,
   "commit": null,
   "pr_url": null,
   "subtasks": [],

@@ -21,6 +21,7 @@ function useVisibleEnabled(enabled = true): boolean {
 
 export const featureKeys = {
   agentCatalog: ["v2", "agents", "catalog"] as const,
+  managedAuthOverview: ["v2", "managed-auth", "overview"] as const,
   agentAuthObservation: (agentId: AgentCatalogId) =>
     ["v2", "agents", agentId, "auth-observation"] as const,
   agentInstallReadiness: (agentId: AgentCatalogId) =>
@@ -53,6 +54,15 @@ export const featureKeys = {
     ["v2", "memory", "daily", "search", query] as const,
   settings: ["v2", "settings"] as const,
 };
+
+export function useManagedAuthOverview(enabled = true) {
+  const { ports } = useFeatures();
+  return useQuery({
+    queryKey: featureKeys.managedAuthOverview,
+    queryFn: ports.managedAuth.getOverview,
+    enabled: useVisibleEnabled(enabled),
+  });
+}
 
 export function useAgentCatalog(enabled = true) {
   const { ports } = useFeatures();
