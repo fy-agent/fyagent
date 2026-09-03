@@ -27,7 +27,7 @@
     ],
     [
       "scripts/tasks/supported-platform-check.mjs",
-      "fe593bb315088f3a3c922d163216a13c04e9c5972a2b139afc787aec09b21547"
+      "f76d3ea08005e6afc748e76e790ff53778936d9e34f98ae18477f9c6c6a38a15"
     ],
     [
       "scripts/tasks/system-check.mjs",
@@ -55,7 +55,7 @@
     ],
     [
       "src-tauri/src/agent_install/desktop.rs",
-      "06dbd60c5c5fe4651158f507b5659e97bbbbdbe5a72cad6d5ff5bfd656d542ad"
+      "b366ed0a934a4b21d03fbc69b7d36b8efdf11282a13db01790c848a5e932d771"
     ],
     [
       "src-tauri/src/agent_install/inventory.rs",
@@ -67,7 +67,7 @@
     ],
     [
       "src-tauri/src/agent_install/mod.rs",
-      "fad09f6182705f6b0dd84d4f629121ad94208bf5a0372028207d4c6696afcaad"
+      "ad8db4ff0669917666a3f47d543d53617dc54a06891ef232827e35c8ae49e8a6"
     ],
     [
       "src-tauri/src/agent_install/sources/mod.rs",
@@ -75,7 +75,7 @@
     ],
     [
       "src-tauri/src/agent_install/windows.rs",
-      "66944a0420409638e1fc0e22f8da07d13e471c9f154d4122065df9b80a582dc1"
+      "45d810410f6395effb6a28b10356bbd0235aa9aa9c6e2beb39b585e5cc753ef9"
     ],
     [
       "src-tauri/src/app_store.rs",
@@ -255,7 +255,7 @@
     ],
     [
       "src-tauri/src/services/tooling.rs",
-      "d558705db0a746f7b15b172b8aa6b812897b02b843c0fa36c6a10f6b9ec59bfb"
+      "66b2e1faa0f0bdfb89ef4ce11efa680d31dc99c1cdf426841f3d6c831bef7ac8"
     ],
     [
       "src-tauri/src/services/tooling/discovery.rs",
@@ -263,11 +263,11 @@
     ],
     [
       "src-tauri/src/services/tooling/grok.rs",
-      "dc79a13a4358035d41105f5f79196fa1c26e53558a9c6b5e4f31a8f8f79a9497"
+      "f8625abff41aae6a1875e9683b2db07281de8150a77ddd5900cd671ea5b79125"
     ],
     [
       "src-tauri/src/services/tooling/lifecycle.rs",
-      "0a9dab81117c15eab7fe93e01aff862aaff955c9577e94d1f44e09d7a002d298"
+      "5394ab12acb1ea5738f62aa994774afd55b11b026a865d5c61d424da8f02924a"
     ],
     [
       "src-tauri/src/services/tooling/terminal.rs",
@@ -275,7 +275,7 @@
     ],
     [
       "src-tauri/src/services/tooling/versions.rs",
-      "c8f0ae3fb9d6af8e260b146180f9a3c0ddb4d0718252cca9ab64fc2a70db035b"
+      "1546e8411e9fb3bbc5ca0a779ad61a5b9f71b88014b8d333bfbe857e2d060051"
     ],
     [
       "src-tauri/src/services/traework_models.rs",
@@ -347,7 +347,11 @@
     ],
     [
       "src-tauri/user-helper/src/cli.rs",
-      "39189b99cda90507f3fa4c1cdb6a5d489a4b3c8c1a5f713f4f507fa753c607b9"
+      "4fc8a9eedee87a1fb994d14e0b5fe9d0bf829349deb1de1e97f9838170ba6b81"
+    ],
+    [
+      "src-tauri/user-helper/src/grok_npm.rs",
+      "744287be3de01f94bede033cd25399f986b62090903e10fa307afba26146b699"
     ],
     [
       "src-tauri/user-helper/src/layout.rs",
@@ -355,7 +359,7 @@
     ],
     [
       "src-tauri/user-helper/src/main.rs",
-      "b5caa84fc3a58fdb58dd88cbdd0cc78981bc0fccb0bcf43d743e7c8cc9205fc1"
+      "c05d2d588e014347392e5936530523d7895d9709d7afe8879ac5aa42ba328b0e"
     ],
     [
       "src/App.tsx",
@@ -379,11 +383,11 @@
     ],
     [
       "tests/architecture/rustModuleBoundaries.test.ts",
-      "338f69cd6a294aa955735fd0f075116a01c6195546bf022fb39ecbeba4ebf2aa"
+      "33d71c723e7816c450e5efee2e4f60d3eaa47b8ecb48f37fc7ea8640f065e8c7"
     ],
     [
       "tests/codexUserHelperContract.test.ts",
-      "51b4cd4af87df936598d5be77f4f5354807272d32ff8a9fdc1f15ee170e3368d"
+      "62651c2d7ee86b0f4d1523ed9e61ca4185a5b33a82d64bc5779a00dbeb24ff48"
     ],
     [
       "tests/codexWindowsUserScopeContract.test.ts",
@@ -407,7 +411,7 @@
     ],
     [
       "tests/remainingPlatformSurface.test.ts",
-      "5c22ee4f526ca9915d2974d78e833495e683be88ec253e279609a6fa2a058241"
+      "9b16266e4aa8bd64aa104ec492c2c0447b04b664f2e2441e886f084f303d5e01"
     ],
     [
       "tests/singleInstanceActivationContract.test.ts",

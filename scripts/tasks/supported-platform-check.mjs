@@ -375,6 +375,12 @@ export const RUST_ALLOWANCE_CONTRACT = Object.freeze([
     next: "{",
   }),
   Object.freeze({
+    id: "grok-native-install-unsupported-host",
+    file: "src-tauri/src/services/tooling.rs",
+    condition: '#[cfg(not(any(target_os = "macos", target_os = "windows")))]',
+    next: "{",
+  }),
+  Object.freeze({
     id: "windows-inventory-test-host-fallback",
     file: "src-tauri/src/agent_install/windows.rs",
     condition: '#[cfg(not(target_os = "windows"))]',
@@ -524,7 +530,7 @@ const RUST_CFG_MACRO_CONTRACT = Object.freeze(
       'cfg!(target_os="macos")',
       1,
       [
-        'let installable = (cfg!(target_os = "macos") && resolved.format == PackageFormat::Dmg && resolved.platform == sources::AgentPlatform::Macos) || (cfg!(target_os = "windows") && resolved.format == PackageFormat::Exe && resolved.platform == sources::AgentPlatform::Windows);',
+        'let installable = (cfg!(target_os = "macos") && resolved.format == PackageFormat::Dmg && resolved.platform == sources::AgentPlatform::Macos) || (cfg!(target_os = "windows") && resolved.format == PackageFormat::Exe && resolved.platform == sources::AgentPlatform::Windows && desktop::windows_exe_install_admitted(agent_id));',
       ],
     ],
     [
@@ -532,7 +538,7 @@ const RUST_CFG_MACRO_CONTRACT = Object.freeze(
       'cfg!(target_os="windows")',
       1,
       [
-        'let installable = (cfg!(target_os = "macos") && resolved.format == PackageFormat::Dmg && resolved.platform == sources::AgentPlatform::Macos) || (cfg!(target_os = "windows") && resolved.format == PackageFormat::Exe && resolved.platform == sources::AgentPlatform::Windows);',
+        'let installable = (cfg!(target_os = "macos") && resolved.format == PackageFormat::Dmg && resolved.platform == sources::AgentPlatform::Macos) || (cfg!(target_os = "windows") && resolved.format == PackageFormat::Exe && resolved.platform == sources::AgentPlatform::Windows && desktop::windows_exe_install_admitted(agent_id));',
       ],
     ],
   ].map(([file, expression, count, anchors]) =>

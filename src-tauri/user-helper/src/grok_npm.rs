@@ -285,14 +285,21 @@ fn parse_release_tuple(version: &str) -> Option<(u64, u64, u64)> {
 }
 
 pub fn current_platform_package() -> Option<&'static str> {
-    match (std::env::consts::OS, std::env::consts::ARCH) {
-        ("macos", "aarch64") => Some("@xai-official/grok-darwin-arm64"),
-        ("macos", "x86_64") => Some("@xai-official/grok-darwin-x64"),
-        ("windows", "x86_64") => Some("@xai-official/grok-win32-x64"),
-        ("windows", "aarch64") => Some("@xai-official/grok-win32-arm64"),
-        ("linux", "x86_64") => Some("@xai-official/grok-linux-x64"),
-        ("linux", "aarch64") => Some("@xai-official/grok-linux-arm64"),
-        _ => None,
+    #[cfg(target_os = "macos")]
+    {
+        return match std::env::consts::ARCH {
+            "aarch64" => Some("@xai-official/grok-darwin-arm64"),
+            "x86_64" => Some("@xai-official/grok-darwin-x64"),
+            _ => None,
+        };
+    }
+    #[cfg(target_os = "windows")]
+    {
+        return match std::env::consts::ARCH {
+            "x86_64" => Some("@xai-official/grok-win32-x64"),
+            "aarch64" => Some("@xai-official/grok-win32-arm64"),
+            _ => None,
+        };
     }
 }
 
@@ -544,6 +551,15 @@ mod tests {
         assert_eq!(
             GrokNpmInstallPlan::for_execution("@latest", GrokNpmRegistry::Npmmirror, false),
             Err(GrokNpmPlanError::LatestForbidden)
+        );
+    }
+
+    #[test]
+    fn current_platform_package_is_a_product_host_optional() {
+        let package = current_platform_package().expect("product host");
+        assert!(
+            package.starts_with("@xai-official/grok-darwin-")
+                || package.starts_with("@xai-official/grok-win32-")
         );
     }
 
