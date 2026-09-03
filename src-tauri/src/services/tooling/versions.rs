@@ -78,24 +78,23 @@ pub(super) async fn fetch_grok_latest_with_owner(
     {
         let observation = super::grok::observe_installed_grok_owner();
         let owner = super::grok::owner_observation_wire(observation).map(str::to_string);
+        let _ = client;
         let latest = match observation {
             super::grok::GrokOwnerObservation::NativeInternal => {
                 super::grok::native_latest_from_update_check(local)
             }
-            super::grok::GrokOwnerObservation::OfficialNpm => {
-                fetch_npm_latest_for_tool(client, "@xai-official/grok", "grok", local).await
+            super::grok::GrokOwnerObservation::OfficialNpm
+            | super::grok::GrokOwnerObservation::Absent => {
+                super::grok_npm::bundled_manifest_version()
             }
-            super::grok::GrokOwnerObservation::Ambiguous
-            | super::grok::GrokOwnerObservation::Absent => None,
+            super::grok::GrokOwnerObservation::Ambiguous => None,
         };
         (latest, owner)
     }
     #[cfg(not(target_os = "macos"))]
     {
-        (
-            fetch_npm_latest_for_tool(client, "@xai-official/grok", "grok", local).await,
-            None,
-        )
+        let _ = (client, local);
+        (super::grok_npm::bundled_manifest_version(), None)
     }
 }
 

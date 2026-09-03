@@ -375,11 +375,104 @@ export const RUST_ALLOWANCE_CONTRACT = Object.freeze([
     next: "{",
   }),
   Object.freeze({
+    id: "grok-native-install-unsupported-host",
+    file: "src-tauri/src/services/tooling.rs",
+    condition: '#[cfg(not(any(target_os = "macos", target_os = "windows")))]',
+    next: "{",
+  }),
+  Object.freeze({
     id: "windows-inventory-test-host-fallback",
     file: "src-tauri/src/agent_install/windows.rs",
     condition: '#[cfg(not(target_os = "windows"))]',
     next: "pub(super) fn discover_windows_installations(",
     nextPrefix: true,
+  }),
+  Object.freeze({
+    id: "opencode-data-dir-unsupported-host",
+    file: "src-tauri/src/opencode_config.rs",
+    condition: '#[cfg(not(any(target_os = "macos", target_os = "windows")))]',
+    next: "pub(crate) fn get_opencode_data_dir() -> PathBuf {",
+  }),
+  Object.freeze({
+    id: "grok-auth-lock-acquire-unix",
+    file: "src-tauri/src/services/managed_auth/consumers/grok.rs",
+    condition: "#[cfg(unix)]",
+    next: "{",
+  }),
+  Object.freeze({
+    id: "grok-auth-lock-try-acquire-unix",
+    file: "src-tauri/src/services/managed_auth/consumers/grok.rs",
+    condition: "#[cfg(unix)]",
+    next: "{",
+  }),
+  Object.freeze({
+    id: "grok-auth-lock-drop-unix",
+    file: "src-tauri/src/services/managed_auth/consumers/grok.rs",
+    condition: "#[cfg(unix)]",
+    next: "{",
+  }),
+  Object.freeze({
+    id: "grok-auth-json-atomic-unix",
+    file: "src-tauri/src/services/managed_auth/consumers/grok.rs",
+    condition: "#[cfg(unix)]",
+    next: "{",
+  }),
+  Object.freeze({
+    id: "grok-auth-lock-contention-unix",
+    file: "src-tauri/src/services/managed_auth/consumers/grok.rs",
+    condition: "#[cfg(unix)]",
+    next: "{",
+  }),
+  Object.freeze({
+    id: "grok-auth-lock-contention-non-unix",
+    file: "src-tauri/src/services/managed_auth/consumers/grok.rs",
+    condition: "#[cfg(not(unix))]",
+    next: "{",
+  }),
+  Object.freeze({
+    id: "opencode-auth-json-mode-unix",
+    file: "src-tauri/src/services/managed_auth/consumers/opencode.rs",
+    condition: "#[cfg(unix)]",
+    next: "{",
+  }),
+  Object.freeze({
+    id: "opencode-auth-json-mode-assert-unix",
+    file: "src-tauri/src/services/managed_auth/consumers/opencode.rs",
+    condition: "#[cfg(unix)]",
+    next: "{",
+  }),
+  Object.freeze({
+    id: "openai-browser-unsupported-host",
+    file: "src-tauri/src/services/managed_auth/providers/openai.rs",
+    condition: '#[cfg(not(any(target_os = "macos", target_os = "windows")))]',
+    next: "{",
+  }),
+  Object.freeze({
+    id: "secret-unavailable-backend-export",
+    file: "src-tauri/src/services/secret/mod.rs",
+    condition:
+      '#[cfg(any(test, not(any(target_os = "macos", target_os = "windows"))))]',
+    next: "pub(crate) use platform::UnavailableSecretBackend;",
+  }),
+  Object.freeze({
+    id: "secret-unavailable-platform-mod",
+    file: "src-tauri/src/services/secret/platform/mod.rs",
+    condition:
+      '#[cfg(any(test, not(any(target_os = "macos", target_os = "windows"))))]',
+    next: "mod unavailable;",
+  }),
+  Object.freeze({
+    id: "secret-native-backend-unsupported-host",
+    file: "src-tauri/src/services/secret/platform/mod.rs",
+    condition: '#[cfg(not(any(target_os = "macos", target_os = "windows")))]',
+    next: "pub(crate) use unavailable::UnavailableSecretBackend as NativeSecretBackend;",
+  }),
+  Object.freeze({
+    id: "secret-unavailable-backend-reexport",
+    file: "src-tauri/src/services/secret/platform/mod.rs",
+    condition:
+      '#[cfg(any(test, not(any(target_os = "macos", target_os = "windows"))))]',
+    next: "pub(crate) use unavailable::UnavailableSecretBackend;",
   }),
 ]);
 const RUST_CFG_MACRO_CONTRACT = Object.freeze(
@@ -524,7 +617,7 @@ const RUST_CFG_MACRO_CONTRACT = Object.freeze(
       'cfg!(target_os="macos")',
       1,
       [
-        'let installable = (cfg!(target_os = "macos") && resolved.format == PackageFormat::Dmg && resolved.platform == sources::AgentPlatform::Macos) || (cfg!(target_os = "windows") && resolved.format == PackageFormat::Exe && resolved.platform == sources::AgentPlatform::Windows);',
+        'let installable = (cfg!(target_os = "macos") && resolved.format == PackageFormat::Dmg && resolved.platform == sources::AgentPlatform::Macos) || (cfg!(target_os = "windows") && resolved.format == PackageFormat::Exe && resolved.platform == sources::AgentPlatform::Windows && desktop::windows_exe_install_admitted(agent_id));',
       ],
     ],
     [
@@ -532,7 +625,7 @@ const RUST_CFG_MACRO_CONTRACT = Object.freeze(
       'cfg!(target_os="windows")',
       1,
       [
-        'let installable = (cfg!(target_os = "macos") && resolved.format == PackageFormat::Dmg && resolved.platform == sources::AgentPlatform::Macos) || (cfg!(target_os = "windows") && resolved.format == PackageFormat::Exe && resolved.platform == sources::AgentPlatform::Windows);',
+        'let installable = (cfg!(target_os = "macos") && resolved.format == PackageFormat::Dmg && resolved.platform == sources::AgentPlatform::Macos) || (cfg!(target_os = "windows") && resolved.format == PackageFormat::Exe && resolved.platform == sources::AgentPlatform::Windows && desktop::windows_exe_install_admitted(agent_id));',
       ],
     ],
   ].map(([file, expression, count, anchors]) =>
@@ -1139,9 +1232,8 @@ function structureSourceCandidate(relativePath, source) {
   return PLATFORM_STRUCTURE_PATTERN.test(source);
 }
 
-export function validateStructureAssetInventory(
+export function collectStructureAssetCandidates(
   currentPaths,
-  indexModes,
   { root = ROOT, io = fs, activeTask } = {},
 ) {
   const candidates = [];
@@ -1161,10 +1253,6 @@ export function validateStructureAssetInventory(
     try {
       stat = io.lstatSync(absolute);
     } catch (error) {
-      // `git ls-files --cached` includes tracked deletions until the caller
-      // stages them. Treat an absent working-tree path as deleted; a deleted
-      // sealed candidate still fails below when the candidate inventory no
-      // longer matches the reviewed manifest.
       if (error && typeof error === "object" && error.code === "ENOENT") {
         continue;
       }
@@ -1182,6 +1270,18 @@ export function validateStructureAssetInventory(
     buffers.set(relativePath, buffer);
   }
   candidates.sort((left, right) => left.localeCompare(right, "en"));
+  return { candidates, buffers };
+}
+
+export function validateStructureAssetInventory(
+  currentPaths,
+  indexModes,
+  { root = ROOT, io = fs, activeTask } = {},
+) {
+  const { candidates, buffers } = collectStructureAssetCandidates(
+    currentPaths,
+    { root, io, activeTask },
+  );
   const expected = STRUCTURE_ASSET_CONTRACT.map((asset) => asset.path);
   if (
     candidates.length !== expected.length ||

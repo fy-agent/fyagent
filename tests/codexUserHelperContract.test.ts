@@ -183,7 +183,7 @@ describe("Codex current-user helper static contract", () => {
     expect(cli).toContain(
       "UserHelperAction::AgentExeInstall(AgentInstallerProduct::parse(&raw[2])?)",
     );
-    for (const product of ["qoderwork", "trae-work", "workbuddy"])
+    for (const product of ["qoderwork", "trae-work", "workbuddy", "opencode"])
       expect(cli).toContain(`"${product}"`);
     expect(cli).toContain("UserHelperAction::CodexMsixInstall");
     expect(cli).toContain("UserHelperAction::AgentExeInstall");
@@ -501,8 +501,9 @@ describe("Codex current-user helper static contract", () => {
       "fn run_grok_tool_session",
       "\nfn execute_grok_tool",
     );
-    expect(grokSession).toContain("acknowledge_tool_control");
+    expect(grokSession).toContain("read_grok_npm_plan");
     expect(grokSession).toContain("TOOL_OPERATION_STARTED_IDENTITY");
+    expect(grokSession).not.toContain("acknowledge_tool_control");
     expect(grokSession).not.toContain("PinnedPackageFile");
     expect(grokSession).not.toContain("read_bridge_control");
   });

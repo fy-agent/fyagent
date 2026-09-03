@@ -511,17 +511,18 @@ describe("AgentInstallReadinessSection", () => {
     stage = "succeeded";
   });
 
-  it("shows Grok official npm as an explicit choice and does not auto-run it", async () => {
+  it("shows Grok official native as an explicit choice and does not auto-run it", async () => {
     const grokTooling = {
       getSnapshot: vi.fn(async () => ({
         localVersion: null,
-        latestVersion: "1.0.6",
+        latestVersion: "1.0.13",
         distributionOwner: null,
-        latestSource: "native_internal" as const,
+        latestSource: "official_npm" as const,
         installedButBroken: false,
         error: null,
       })),
       installOfficialNpm: vi.fn(async () => undefined),
+      installNative: vi.fn(async () => undefined),
     };
     render(
       <AgentInstallReadinessSection
@@ -530,65 +531,51 @@ describe("AgentInstallReadinessSection", () => {
         grokTooling={grokTooling}
       />,
     );
-    expect(await screen.findByText("使用官方 npm 方式")).toBeVisible();
-    expect(screen.getByText("官方命令行最新")).toBeVisible();
+    expect(await screen.findByText("使用官方命令行安装")).toBeVisible();
+    expect(
+      screen.getByText(/安装按钮会安装官方 npm 包/),
+    ).toBeVisible();
+    expect(screen.getByText("官方 npm 最新")).toBeVisible();
+    expect(grokTooling.installNative).not.toHaveBeenCalled();
     expect(grokTooling.installOfficialNpm).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "使用官方 npm 方式" }));
+    fireEvent.click(screen.getByRole("button", { name: "使用官方命令行安装" }));
     await waitFor(() =>
-      expect(grokTooling.installOfficialNpm).toHaveBeenCalledTimes(1),
+      expect(grokTooling.installNative).toHaveBeenCalledTimes(1),
     );
     expect(
       screen.queryByRole("button", { name: "打开软件" }),
     ).not.toBeInTheDocument();
   });
 
-  it("offers 改用官方 npm 方式 only after a native failure and does not auto-run it", async () => {
+  it("offers 改用官方 npm 方式 for a native install and does not auto-run it", async () => {
     const installed: AgentInstallReadiness = {
       ...readiness("grokbuild"),
       installState: "installed",
       updateState: "update_available",
       localVersion: "1.0.5",
-      remoteVersion: "1.0.6",
+      remoteVersion: "1.0.13",
       allowedActions: ["update"],
     };
     const grokTooling = {
       getSnapshot: vi.fn(async () => ({
         localVersion: "1.0.5",
-        latestVersion: "1.0.6",
+        latestVersion: "1.0.13",
         distributionOwner: "native_internal" as const,
         latestSource: "native_internal" as const,
         installedButBroken: false,
         error: null,
       })),
       installOfficialNpm: vi.fn(async () => undefined),
-    };
-    const port: AgentInstallReadinessPort = {
-      get: vi.fn(async () => installed),
-      getInventory: vi.fn(async () => inventory("grokbuild")),
-      startAction: vi.fn(async () => {
-        const error = new Error("failed") as Error & {
-          reasonCode: "source_not_verified";
-        };
-        error.reasonCode = "source_not_verified";
-        throw error;
-      }),
-      cancelAction: vi.fn(),
-      getActionJob: vi.fn(),
+      installNative: vi.fn(async () => undefined),
     };
     render(
       <AgentInstallReadinessSection
         agentId="grokbuild"
-        port={port}
+        port={portFor(installed)}
         grokTooling={grokTooling}
       />,
     );
     expect(await screen.findByText("官方命令行")).toBeVisible();
-    expect(
-      screen.queryByRole("button", { name: "改用官方 npm 方式" }),
-    ).not.toBeInTheDocument();
-    fireEvent.click(
-      await screen.findByRole("button", { name: "更新到最新版" }),
-    );
     expect(
       await screen.findByRole("button", { name: "改用官方 npm 方式" }),
     ).toBeVisible();

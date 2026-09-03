@@ -261,6 +261,9 @@ FILE_SHARE_DELETE` but never `FILE_SHARE_WRITE`, records its identity and
   case-sensitive IDs, stable first occurrence, exactly 1,000/1,001 IDs,
   truncation plus a later malformed element, empty-key header omission, and a
   malicious successful response that echoes the submitted credential as an ID.
+  Total-timeout mapping coverage must be deterministic: it may inject a pending
+  fetch future, but it must not require loopback I/O to be scheduled before a
+  deliberately short timeout expires.
 - Persistence tests cover empty/new files, legacy-array input and root-shape
   preservation, object-root input including a missing `models` field,
   top-level/model-key ordering and unknown-field preservation, invalid roots /

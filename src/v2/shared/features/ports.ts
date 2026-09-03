@@ -67,6 +67,7 @@ import type {
 } from "./types";
 import type { AgentInstallReadinessPort } from "./agent-install-readiness";
 import type { AgentAuthPort } from "./agent-auth";
+import type { ManagedAuthPort } from "./managed-auth";
 import type { ChangePlansPort } from "./change-plans";
 import type { GrokToolingPort } from "./grok-tooling";
 
@@ -242,6 +243,7 @@ export interface MemoryPort {
 export interface FeaturePorts {
   catalog: AgentCatalogPort;
   agentAuth: AgentAuthPort;
+  managedAuth: ManagedAuthPort;
   agentInstallReadiness: AgentInstallReadinessPort;
   changePlans: ChangePlansPort;
   externalAgents: ExternalAgentsPort;

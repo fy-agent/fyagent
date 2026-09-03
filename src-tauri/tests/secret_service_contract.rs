@@ -6,8 +6,9 @@ use std::collections::HashSet;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use secret::NativeSecretBackend;
 use secret::{
-    MaterialMatches, MemoryFailureMode, MemorySecretBackend, SecretAvailability, SecretBackend,
-    SecretErrorCode, SecretMaterial, SecretPresence, SecretPurpose, SecretRef, SecretService,
+    DecodeSecret, MaterialMatches, MemoryFailureMode, MemorySecretBackend, SecretAvailability,
+    SecretBackend, SecretErrorCode, SecretMaterial, SecretPresence, SecretPurpose, SecretRef,
+    SecretService, UnavailableSecretBackend,
 };
 use serde_json::Value;
 use uuid::Uuid;
@@ -86,7 +87,14 @@ fn memory_backend_covers_crud_readback_and_version_rotation() {
     assert_eq!(created.presence(), SecretPresence::Present);
     assert_eq!(created.availability(), SecretAvailability::Ready);
     assert!(service
-        .with_material(&first, MaterialMatches::new(canary_v1.as_bytes()))
+        .with_material(
+            &first,
+            SecretPurpose::CodexApiKey,
+            DecodeSecret::new({
+                let expected = canary_v1.clone().into_bytes();
+                move |bytes: &[u8]| bytes == expected.as_slice()
+            }),
+        )
         .expect("read"));
 
     let replaced = service
@@ -96,7 +104,11 @@ fn memory_backend_covers_crud_readback_and_version_rotation() {
     assert_eq!(first.secret_ref(), second.secret_ref());
     assert_ne!(first.version().as_str(), second.version().as_str());
     assert!(service
-        .with_material(&second, MaterialMatches::new(canary_v2.as_bytes()))
+        .with_material(
+            &second,
+            SecretPurpose::CodexApiKey,
+            MaterialMatches::new(canary_v2.as_bytes()),
+        )
         .expect("read replacement"));
 
     let probed = service
@@ -114,11 +126,44 @@ fn memory_backend_covers_crud_readback_and_version_rotation() {
     assert_eq!(missing.availability(), SecretAvailability::Missing);
     assert_eq!(
         service
-            .with_material(&second, MaterialMatches::new(canary_v2.as_bytes()))
+            .with_material(
+                &second,
+                SecretPurpose::CodexApiKey,
+                MaterialMatches::new(canary_v2.as_bytes()),
+            )
             .expect_err("missing read")
             .code(),
         SecretErrorCode::Missing
     );
+}
+
+#[test]
+fn unavailable_backend_is_fail_closed_for_every_operation() {
+    let backend = UnavailableSecretBackend::new();
+    let secret_ref = SecretRef::generate();
+    let payload = material("unavailable-runtime-canary");
+    assert_eq!(backend.kind(), secret::SecretBackendKind::OsKeyring);
+    for code in [
+        backend
+            .create_new(&secret_ref, &payload)
+            .expect_err("create")
+            .code(),
+        backend
+            .replace(&secret_ref, &payload)
+            .expect_err("replace")
+            .code(),
+        backend
+            .read(&secret_ref, SecretPurpose::CodexApiKey)
+            .expect_err("read")
+            .code(),
+        backend
+            .probe(&secret_ref, SecretPurpose::CodexApiKey)
+            .expect_err("probe")
+            .code(),
+        backend.delete(&secret_ref).expect_err("delete").code(),
+    ] {
+        assert_eq!(code, SecretErrorCode::BackendUnavailable);
+    }
 }
 
 #[test]
@@ -188,6 +233,7 @@ fn locked_denied_and_unavailable_are_source_free_and_never_fallback() {
         let error = service
             .with_material(
                 &handle,
+                SecretPurpose::CodexApiKey,
                 MaterialMatches::new(b"failure-mode-runtime-canary"),
             )
             .expect_err("fail closed read");
@@ -279,7 +325,9 @@ fn native_leaf_sources_keep_reviewed_store_and_cleanup_guards() {
     assert!(windows.contains("CREDENTIAL_LOCK\n            .lock()"));
     let windows_write = section(windows, "    fn write_locked(", "\n}\n\nimpl SecretBackend");
     assert!(windows_write.contains("CredWriteW(&credential, 0)"));
-    assert!(windows_write.contains("self.read_locked(secret_ref, CredentialOperation::Read)?"));
+    assert!(windows_write.contains("self.read_locked("));
+    assert!(windows_write.contains("CredentialOperation::Read"));
+    assert!(windows_write.contains("material.purpose()"));
     assert!(
         !windows_write.contains("CredDeleteW("),
         "failed Windows readback must not blindly delete an unproven value"
@@ -305,13 +353,21 @@ fn native_os_backend_crud_readback() {
     let first = created.handle();
 
     let result = (|| {
-        if !service.with_material(&first, MaterialMatches::new(first_canary.as_bytes()))? {
+        if !service.with_material(
+            &first,
+            SecretPurpose::CodexApiKey,
+            MaterialMatches::new(first_canary.as_bytes()),
+        )? {
             return Err(secret::SecretServiceError::verify_failed());
         }
         let replaced =
             service.replace(&first, material(&second_canary), SecretPurpose::CodexApiKey)?;
         let second = replaced.handle();
-        if !service.with_material(&second, MaterialMatches::new(second_canary.as_bytes()))? {
+        if !service.with_material(
+            &second,
+            SecretPurpose::CodexApiKey,
+            MaterialMatches::new(second_canary.as_bytes()),
+        )? {
             return Err(secret::SecretServiceError::verify_failed());
         }
         Ok::<_, secret::SecretServiceError>(second)

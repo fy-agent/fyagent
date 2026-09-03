@@ -304,13 +304,17 @@ impl MacOsSecretBackend {
             .map_err(|_| SecretServiceError::internal())
     }
 
-    fn read_locked(&self, secret_ref: &SecretRef) -> Result<SecretMaterial, SecretServiceError> {
+    fn read_locked(
+        &self,
+        secret_ref: &SecretRef,
+        purpose: SecretPurpose,
+    ) -> Result<SecretMaterial, SecretServiceError> {
         let service = cf_string(SERVICE)?;
         let account = cf_string(secret_ref.as_str())?;
         let query = read_query(service.raw(), account.raw())?;
         let result =
             copy_matching(&query).map_err(|status| map_status(status, KeychainOperation::Read))?;
-        SecretMaterial::from_native_input(copy_data(result.raw())?, SecretPurpose::CodexApiKey)
+        SecretMaterial::from_native_input(copy_data(result.raw())?, purpose)
     }
 
     fn verify_locked(
@@ -318,7 +322,7 @@ impl MacOsSecretBackend {
         secret_ref: &SecretRef,
         expected: &SecretMaterial,
     ) -> Result<(), SecretServiceError> {
-        let actual = self.read_locked(secret_ref)?;
+        let actual = self.read_locked(secret_ref, expected.purpose())?;
         if actual.ct_eq_slice(expected.as_bytes()) {
             Ok(())
         } else {
@@ -394,12 +398,20 @@ impl SecretBackend for MacOsSecretBackend {
         self.verify_locked(secret_ref, material)
     }
 
-    fn read(&self, secret_ref: &SecretRef) -> Result<SecretMaterial, SecretServiceError> {
+    fn read(
+        &self,
+        secret_ref: &SecretRef,
+        purpose: SecretPurpose,
+    ) -> Result<SecretMaterial, SecretServiceError> {
         let _guard = self.lock()?;
-        self.read_locked(secret_ref)
+        self.read_locked(secret_ref, purpose)
     }
 
-    fn probe(&self, secret_ref: &SecretRef) -> Result<BackendProbe, SecretServiceError> {
+    fn probe(
+        &self,
+        secret_ref: &SecretRef,
+        _purpose: SecretPurpose,
+    ) -> Result<BackendProbe, SecretServiceError> {
         let _guard = self.lock()?;
         let service = cf_string(SERVICE)?;
         let account = cf_string(secret_ref.as_str())?;

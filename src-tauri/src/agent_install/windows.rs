@@ -14,7 +14,7 @@ use std::path::Path;
 use super::desktop::{DesktopInstallationEvidence, DesktopProduct};
 
 #[cfg(any(target_os = "windows", test))]
-use super::sources::AgentArch;
+use super::sources::{bounded_version, AgentArch};
 #[cfg(any(target_os = "windows", test))]
 use super::types::{
     AgentReasonCode, InstallationEvidenceCode, InstallationOwner, InstallationPackageKind,
@@ -105,12 +105,37 @@ fn product_policy(product: &DesktopProduct) -> WindowsProductPolicy {
         crate::services::external_agents::AgentCatalogId::WorkBuddy => {
             &["Tencent Technology (Shenzhen) Company Limited"]
         }
+        crate::services::external_agents::AgentCatalogId::OpenCode => {
+            &["Anomaly Innovations, Inc https://anoma.ly/"]
+        }
         _ => &[],
     };
     WindowsProductPolicy {
         product_names: product.windows_product_names,
         signer_subjects,
     }
+}
+
+/// Uninstall DisplayName matches a closed ProductName exactly (ASCII-case
+/// insensitive) or `{name} {bounded_version}`. Channel suffixes such as
+/// `Dev`/`Beta` and prerelease versions are not identity.
+#[cfg(any(target_os = "windows", test))]
+fn uninstall_display_name_matches(display_name: &str, product_names: &[&str]) -> bool {
+    product_names.iter().any(|expected| {
+        if display_name.eq_ignore_ascii_case(expected) {
+            return true;
+        }
+        let Some(head) = display_name.get(..expected.len()) else {
+            return false;
+        };
+        if !head.eq_ignore_ascii_case(expected) {
+            return false;
+        }
+        display_name
+            .get(expected.len()..)
+            .and_then(|suffix| suffix.strip_prefix(' '))
+            .is_some_and(|version| bounded_version(version).is_some())
+    })
 }
 
 #[cfg(target_os = "windows")]
@@ -566,10 +591,8 @@ mod native {
             let Some(display_name) = bounded_registry_string(display_name) else {
                 continue;
             };
-            let matched = product
-                .windows_product_names
-                .iter()
-                .any(|expected| display_name.eq_ignore_ascii_case(expected));
+            let matched =
+                super::uninstall_display_name_matches(&display_name, product.windows_product_names);
             if !matched {
                 continue;
             }
@@ -1300,11 +1323,50 @@ mod tests {
     }
 
     #[test]
+    fn uninstall_display_name_matches_closed_name_or_bounded_version_suffix() {
+        assert!(uninstall_display_name_matches("OpenCode", &["OpenCode"]));
+        assert!(uninstall_display_name_matches(
+            "OpenCode 1.18.27",
+            &["OpenCode"]
+        ));
+        assert!(!uninstall_display_name_matches(
+            "OpenCode Dev",
+            &["OpenCode"]
+        ));
+        assert!(!uninstall_display_name_matches(
+            "OpenCode Beta",
+            &["OpenCode"]
+        ));
+        assert!(!uninstall_display_name_matches("OpenCodeAI", &["OpenCode"]));
+        assert!(!uninstall_display_name_matches(
+            "OpenCode 1.18.27-beta",
+            &["OpenCode"]
+        ));
+    }
+
+    #[test]
+    fn opencode_windows_identity_is_frozen_from_winverifytrust_hil() {
+        let product = crate::agent_install::desktop::desktop_product(AgentCatalogId::OpenCode)
+            .expect("OpenCode is a managed desktop product");
+        let policy = product_policy(product);
+        assert_eq!(product.windows_product_names, &["OpenCode"]);
+        assert_eq!(
+            product.windows_relative_exes,
+            &["@opencode-aidesktop/OpenCode.exe", "OpenCode/OpenCode.exe",]
+        );
+        assert_eq!(
+            policy.signer_subjects,
+            &["Anomaly Innovations, Inc https://anoma.ly/"]
+        );
+    }
+
+    #[test]
     fn current_products_have_reviewed_signer_subjects() {
         for agent_id in [
             AgentCatalogId::QoderWork,
             AgentCatalogId::TraeWork,
             AgentCatalogId::WorkBuddy,
+            AgentCatalogId::OpenCode,
         ] {
             let product = crate::agent_install::desktop::desktop_product(agent_id)
                 .expect("every managed desktop agent has one closed product policy");

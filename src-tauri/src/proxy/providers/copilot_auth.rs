@@ -20,6 +20,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
 
@@ -310,10 +311,10 @@ impl CopilotToken {
 }
 
 /// Copilot Token API 响应
-#[derive(Debug, Deserialize)]
-struct CopilotTokenResponse {
-    token: String,
-    expires_at: i64,
+#[derive(Deserialize)]
+pub(crate) struct CopilotTokenResponse {
+    pub(crate) token: String,
+    pub(crate) expires_at: i64,
     #[allow(dead_code)]
     refresh_in: Option<i64>,
 }
@@ -433,6 +434,7 @@ pub struct CopilotAuthManager {
     pending_migration: Arc<RwLock<Option<String>>>,
     /// 旧认证数据迁移失败时的状态消息
     migration_error: Arc<RwLock<Option<String>>>,
+    json_store_sealed: AtomicBool,
 }
 
 impl CopilotAuthManager {
@@ -451,6 +453,7 @@ impl CopilotAuthManager {
             storage_path,
             pending_migration: Arc::new(RwLock::new(None)),
             migration_error: Arc::new(RwLock::new(None)),
+            json_store_sealed: AtomicBool::new(false),
         };
 
         // 尝试从磁盘加载（同步，不发起网络请求）
@@ -459,6 +462,10 @@ impl CopilotAuthManager {
         }
 
         manager
+    }
+
+    pub fn seal_json_store(&self) {
+        self.json_store_sealed.store(true, Ordering::SeqCst);
     }
 
     // ==================== 多账号管理方法 ====================
@@ -1340,35 +1347,7 @@ impl CopilotAuthManager {
     ) -> Result<(), CopilotAuthError> {
         log::debug!("[CopilotAuth] 获取账号 {account_id} 的 Copilot Token (domain: {domain})");
 
-        let response = crate::proxy::http_client::get()
-            .get(copilot_token_url(domain))
-            .header("Authorization", format!("token {github_token}"))
-            .header("User-Agent", COPILOT_USER_AGENT)
-            .header("Editor-Version", COPILOT_EDITOR_VERSION)
-            .header("Editor-Plugin-Version", COPILOT_PLUGIN_VERSION)
-            .send()
-            .await?;
-
-        if response.status() == reqwest::StatusCode::UNAUTHORIZED {
-            return Err(CopilotAuthError::GitHubTokenInvalid);
-        }
-
-        if response.status() == reqwest::StatusCode::FORBIDDEN {
-            return Err(CopilotAuthError::NoCopilotSubscription);
-        }
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let text = response.text().await.unwrap_or_default();
-            return Err(CopilotAuthError::CopilotTokenFetchFailed(format!(
-                "{status}: {text}"
-            )));
-        }
-
-        let token_response: CopilotTokenResponse = response
-            .json()
-            .await
-            .map_err(|e| CopilotAuthError::ParseError(e.to_string()))?;
+        let token_response = exchange_github_token_for_copilot(github_token, domain).await?;
 
         log::info!(
             "[CopilotAuth] 账号 {} 的 Copilot Token 获取成功，过期时间: {}",
@@ -1486,6 +1465,10 @@ impl CopilotAuthManager {
 
     /// 保存到磁盘
     async fn save_to_disk(&self) -> Result<(), CopilotAuthError> {
+        if self.json_store_sealed.load(Ordering::SeqCst) {
+            log::info!("[CopilotAuth] vault owns credentials; skipping plaintext store write");
+            return Ok(());
+        }
         let accounts = self.accounts.read().await.clone();
         let default_account_id = self.resolve_default_account_id().await;
 
@@ -1509,6 +1492,41 @@ impl CopilotAuthManager {
 
         Ok(())
     }
+}
+
+pub(crate) async fn exchange_github_token_for_copilot(
+    github_token: &str,
+    domain: &str,
+) -> Result<CopilotTokenResponse, CopilotAuthError> {
+    let response = crate::proxy::http_client::get()
+        .get(copilot_token_url(domain))
+        .header("Authorization", format!("token {github_token}"))
+        .header("User-Agent", COPILOT_USER_AGENT)
+        .header("Editor-Version", COPILOT_EDITOR_VERSION)
+        .header("Editor-Plugin-Version", COPILOT_PLUGIN_VERSION)
+        .send()
+        .await?;
+
+    if response.status() == reqwest::StatusCode::UNAUTHORIZED {
+        return Err(CopilotAuthError::GitHubTokenInvalid);
+    }
+
+    if response.status() == reqwest::StatusCode::FORBIDDEN {
+        return Err(CopilotAuthError::NoCopilotSubscription);
+    }
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let text = response.text().await.unwrap_or_default();
+        return Err(CopilotAuthError::CopilotTokenFetchFailed(format!(
+            "{status}: {text}"
+        )));
+    }
+
+    response
+        .json()
+        .await
+        .map_err(|e| CopilotAuthError::ParseError(e.to_string()))
 }
 
 #[cfg(test)]

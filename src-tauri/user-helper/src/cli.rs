@@ -90,6 +90,7 @@ pub enum AgentInstallerProduct {
     QoderWork,
     TraeWork,
     WorkBuddy,
+    OpenCode,
 }
 
 impl AgentInstallerProduct {
@@ -98,6 +99,7 @@ impl AgentInstallerProduct {
             Self::QoderWork => "qoderwork",
             Self::TraeWork => "trae-work",
             Self::WorkBuddy => "workbuddy",
+            Self::OpenCode => "opencode",
         }
     }
 
@@ -106,6 +108,7 @@ impl AgentInstallerProduct {
             "qoderwork" => Ok(Self::QoderWork),
             "trae-work" => Ok(Self::TraeWork),
             "workbuddy" => Ok(Self::WorkBuddy),
+            "opencode" => Ok(Self::OpenCode),
             _ => Err(CliError::InvalidProduct),
         }
     }
@@ -134,6 +137,7 @@ impl UserHelperAction {
             Self::AgentExeInstall(AgentInstallerProduct::QoderWork) => 2,
             Self::AgentExeInstall(AgentInstallerProduct::TraeWork) => 3,
             Self::AgentExeInstall(AgentInstallerProduct::WorkBuddy) => 4,
+            Self::AgentExeInstall(AgentInstallerProduct::OpenCode) => 14,
             Self::GrokTool {
                 action,
                 expected_owner,
@@ -148,6 +152,7 @@ impl UserHelperAction {
             3 => Some(Self::AgentExeInstall(AgentInstallerProduct::TraeWork)),
             4 => Some(Self::AgentExeInstall(AgentInstallerProduct::WorkBuddy)),
             5..=13 => grok_tool_from_wire(value),
+            14 => Some(Self::AgentExeInstall(AgentInstallerProduct::OpenCode)),
             _ => None,
         }
     }
@@ -410,6 +415,7 @@ mod tests {
             ("qoderwork", AgentInstallerProduct::QoderWork),
             ("trae-work", AgentInstallerProduct::TraeWork),
             ("workbuddy", AgentInstallerProduct::WorkBuddy),
+            ("opencode", AgentInstallerProduct::OpenCode),
         ] {
             let request = parse_cli_args([
                 AGENT_EXE_INSTALL_ACTION,
@@ -528,7 +534,21 @@ mod tests {
                 expected_owner: Some(GrokOwner::Npm),
             })
         );
-        assert_eq!(UserHelperAction::from_wire(14), None);
+        assert_eq!(
+            UserHelperAction::from_wire(14),
+            Some(UserHelperAction::AgentExeInstall(
+                AgentInstallerProduct::OpenCode
+            ))
+        );
+        assert_eq!(
+            UserHelperAction::AgentExeInstall(AgentInstallerProduct::OpenCode).wire_code(),
+            14
+        );
+        assert!(
+            UserHelperAction::AgentExeInstall(AgentInstallerProduct::OpenCode)
+                .requires_package_bridge()
+        );
+        assert_eq!(UserHelperAction::from_wire(15), None);
         assert_eq!(
             UserHelperAction::GrokTool {
                 action: GrokToolAction::Install,
@@ -537,6 +557,13 @@ mod tests {
             .command_line(&job_id, &nonce),
             format!(
                 "{GROK_TOOL_ACTION} --action install --owner native --job-id {JOB_ID} --pipe {NONCE}"
+            )
+        );
+        assert_eq!(
+            UserHelperAction::AgentExeInstall(AgentInstallerProduct::OpenCode)
+                .command_line(&job_id, &nonce),
+            format!(
+                "{AGENT_EXE_INSTALL_ACTION} --product opencode --job-id {JOB_ID} --pipe {NONCE}"
             )
         );
         assert!(!UserHelperAction::GrokTool {

@@ -63,7 +63,7 @@ use crate::codex_desktop::temp::JobTempRoot;
 use crate::codex_desktop::types::LocalInstallStatus;
 use crate::services::external_agents::AgentCatalogId;
 use crate::store::AppState;
-#[cfg(target_os = "windows")]
+#[cfg(any(target_os = "windows", test))]
 use fyagent_user_helper::AgentInstallerProduct;
 
 fn desktop_versions_equivalent(local: &str, remote: &str) -> bool {
@@ -278,7 +278,8 @@ async fn desktop_readiness(
                         && resolved.platform == sources::AgentPlatform::Macos)
                         || (cfg!(target_os = "windows")
                             && resolved.format == PackageFormat::Exe
-                            && resolved.platform == sources::AgentPlatform::Windows);
+                            && resolved.platform == sources::AgentPlatform::Windows
+                            && desktop::windows_exe_install_admitted(agent_id));
                     (
                         Some(resolved.release_id.clone()),
                         resolved.display_version.clone(),
@@ -982,7 +983,7 @@ fn windows_deployment_expectation(
     }
 }
 
-#[cfg(target_os = "windows")]
+#[cfg(any(target_os = "windows", test))]
 fn agent_helper_product(
     agent_id: AgentCatalogId,
 ) -> Result<AgentInstallerProduct, AgentReasonCode> {
@@ -990,6 +991,7 @@ fn agent_helper_product(
         AgentCatalogId::QoderWork => Ok(AgentInstallerProduct::QoderWork),
         AgentCatalogId::TraeWork => Ok(AgentInstallerProduct::TraeWork),
         AgentCatalogId::WorkBuddy => Ok(AgentInstallerProduct::WorkBuddy),
+        AgentCatalogId::OpenCode => Ok(AgentInstallerProduct::OpenCode),
         _ => Err(AgentReasonCode::ExecutorNotImplemented),
     }
 }
@@ -1667,6 +1669,35 @@ mod tests {
                 "command": "codex install"
             }))
             .is_err()
+        );
+    }
+
+    #[test]
+    fn opencode_routes_to_closed_helper_exe_product_without_reusing_grok_wire() {
+        use fyagent_user_helper::UserHelperAction;
+
+        assert_eq!(
+            agent_helper_product(AgentCatalogId::OpenCode),
+            Ok(AgentInstallerProduct::OpenCode)
+        );
+        let action = UserHelperAction::AgentExeInstall(AgentInstallerProduct::OpenCode);
+        assert_eq!(action.wire_code(), 14);
+        assert!(action.requires_package_bridge());
+        assert_eq!(
+            UserHelperAction::from_wire(5).map(UserHelperAction::wire_code),
+            Some(5)
+        );
+        assert_eq!(
+            UserHelperAction::from_wire(13).map(UserHelperAction::wire_code),
+            Some(13)
+        );
+        assert_eq!(
+            agent_helper_product(AgentCatalogId::ClaudeCode),
+            Err(AgentReasonCode::ExecutorNotImplemented)
+        );
+        assert_eq!(
+            agent_helper_product(AgentCatalogId::GrokBuild),
+            Err(AgentReasonCode::ExecutorNotImplemented)
         );
     }
 }

@@ -379,9 +379,9 @@ pub struct AppSettings {
     /// Whether to show the project profile switcher on the main page header
     #[serde(default = "default_show_profile_switcher")]
     pub show_profile_switcher: bool,
-    /// Keep Codex ChatGPT login material in auth.json when switching to third-party providers.
-    /// Opt-in: defaults to false so third-party switches cleanly overwrite auth.json.
-    #[serde(default)]
+    /// Legacy compatibility field. Third-party Codex switches always preserve
+    /// official ChatGPT login material; this value is ignored.
+    #[serde(default = "default_preserve_codex_official_auth_on_switch")]
     pub preserve_codex_official_auth_on_switch: bool,
     /// Run official Codex providers under the shared "custom" model_provider id
     /// so official sessions share one resume-history bucket with third-party
@@ -503,6 +503,10 @@ fn default_show_profile_switcher() -> bool {
     true
 }
 
+fn default_preserve_codex_official_auth_on_switch() -> bool {
+    true
+}
+
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
@@ -518,7 +522,7 @@ impl Default for AppSettings {
             usage_dashboard_refresh_interval_ms: None,
             enable_failover_toggle: false,
             show_profile_switcher: true,
-            preserve_codex_official_auth_on_switch: false,
+            preserve_codex_official_auth_on_switch: true,
             unify_codex_session_history: false,
             unify_codex_migrate_existing: None,
             failover_confirmed: None,
@@ -1026,14 +1030,16 @@ pub fn get_hermes_override_dir() -> Option<PathBuf> {
         .map(|p| resolve_override_path(p))
 }
 
+#[allow(dead_code)]
 pub fn preserve_codex_official_auth_on_switch() -> bool {
-    settings_store()
+    let _ = settings_store()
         .read()
         .unwrap_or_else(|e| {
             log::warn!("设置锁已毒化，使用恢复值: {e}");
             e.into_inner()
         })
-        .preserve_codex_official_auth_on_switch
+        .preserve_codex_official_auth_on_switch;
+    true
 }
 
 pub fn unify_codex_session_history() -> bool {

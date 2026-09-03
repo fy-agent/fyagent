@@ -5,6 +5,8 @@ export type ManagedAuthProvider =
   | "codex_oauth"
   | "xai_oauth";
 
+export const LEGACY_AUTH_MUTATION_DISABLED = "legacy_auth_mutation_disabled";
+
 export interface ManagedAuthAccount {
   id: string;
   provider: ManagedAuthProvider;
@@ -35,26 +37,23 @@ export interface ManagedAuthDeviceCodeResponse {
   interval: number;
 }
 
+function denyLegacyAuthMutation(): never {
+  throw new Error(LEGACY_AUTH_MUTATION_DISABLED);
+}
+
 export async function authStartLogin(
-  authProvider: ManagedAuthProvider,
-  githubDomain?: string,
+  _authProvider: ManagedAuthProvider,
+  _githubDomain?: string,
 ): Promise<ManagedAuthDeviceCodeResponse> {
-  return invoke<ManagedAuthDeviceCodeResponse>("auth_start_login", {
-    authProvider,
-    githubDomain: githubDomain || null,
-  });
+  denyLegacyAuthMutation();
 }
 
 export async function authPollForAccount(
-  authProvider: ManagedAuthProvider,
-  deviceCode: string,
-  githubDomain?: string,
+  _authProvider: ManagedAuthProvider,
+  _deviceCode: string,
+  _githubDomain?: string,
 ): Promise<ManagedAuthAccount | null> {
-  return invoke<ManagedAuthAccount | null>("auth_poll_for_account", {
-    authProvider,
-    deviceCode,
-    githubDomain: githubDomain || null,
-  });
+  denyLegacyAuthMutation();
 }
 
 export async function authListAccounts(
@@ -74,41 +73,30 @@ export async function authGetStatus(
 }
 
 export async function authRemoveAccount(
-  authProvider: ManagedAuthProvider,
-  accountId: string,
+  _authProvider: ManagedAuthProvider,
+  _accountId: string,
 ): Promise<void> {
-  return invoke("auth_remove_account", {
-    authProvider,
-    accountId,
-  });
+  denyLegacyAuthMutation();
 }
 
 export async function authSetDefaultAccount(
-  authProvider: ManagedAuthProvider,
-  accountId: string,
+  _authProvider: ManagedAuthProvider,
+  _accountId: string,
 ): Promise<void> {
-  return invoke("auth_set_default_account", {
-    authProvider,
-    accountId,
-  });
+  denyLegacyAuthMutation();
 }
 
 export async function authLogout(
-  authProvider: ManagedAuthProvider,
+  _authProvider: ManagedAuthProvider,
 ): Promise<void> {
-  return invoke("auth_logout", {
-    authProvider,
-  });
+  denyLegacyAuthMutation();
 }
 
 export async function authCancelLogin(
-  authProvider: ManagedAuthProvider,
-  deviceCode?: string | null,
+  _authProvider: ManagedAuthProvider,
+  _deviceCode?: string | null,
 ): Promise<void> {
-  return invoke("auth_cancel_login", {
-    authProvider,
-    deviceCode: deviceCode || null,
-  });
+  denyLegacyAuthMutation();
 }
 
 export const authApi = {

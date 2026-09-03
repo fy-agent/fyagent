@@ -1744,8 +1744,10 @@ mod tests {
             let stored_key = stored.settings_config["auth"]["OPENAI_API_KEY"]
                 .as_str()
                 .unwrap();
-            let live_auth: Value =
-                serde_json::from_slice(&fs::read(get_codex_auth_path()).unwrap()).unwrap();
+            assert!(
+                !get_codex_auth_path().exists(),
+                "Quick Setup must not create auth.json for a third-party key"
+            );
             for candidate in ["first.example.test", "second.example.test"] {
                 assert_eq!(
                     stored_config.contains(candidate),
@@ -1753,7 +1755,10 @@ mod tests {
                     "DB and live must describe the same winning request"
                 );
             }
-            assert_eq!(live_auth["OPENAI_API_KEY"], stored_key);
+            assert!(
+                live_config.contains(&format!("experimental_bearer_token = \"{stored_key}\"")),
+                "Quick Setup must project the provider key into config.toml"
+            );
         });
     }
 
@@ -1896,10 +1901,13 @@ requires_openai_auth = true
                 Some("keep-me")
             );
             assert!(custom.get("supports_websockets").is_none());
-            assert!(custom.get("experimental_bearer_token").is_none());
+            assert_eq!(
+                custom["experimental_bearer_token"].as_str(),
+                Some("new-key")
+            );
 
             let live_auth: Value = serde_json::from_slice(&fs::read(&auth_path).unwrap()).unwrap();
-            assert_eq!(live_auth["OPENAI_API_KEY"], "new-key");
+            assert_eq!(live_auth["OPENAI_API_KEY"], "old-key");
             assert_eq!(live_auth["tokens"]["access_token"], "keep-login");
             assert_eq!(live_auth["account_id"], "keep-account");
 
@@ -1907,9 +1915,9 @@ requires_openai_auth = true
                 fs::read(crate::config::rolling_backup_path(&config_path)).unwrap(),
                 original_config.as_bytes()
             );
-            assert_eq!(
-                fs::read(crate::config::rolling_backup_path(&auth_path)).unwrap(),
-                original_auth_bytes
+            assert!(
+                !crate::config::rolling_backup_path(&auth_path).exists(),
+                "config-only Quick Setup must not rewrite or back up auth.json"
             );
         });
     }
@@ -4180,11 +4188,7 @@ impl ProviderService {
         let paths = match app_type {
             AppType::Claude => vec![crate::config::get_claude_settings_path()],
             AppType::Codex => {
-                let mut paths = vec![crate::codex_config::get_codex_config_path()];
-                if !crate::settings::preserve_codex_official_auth_on_switch() {
-                    paths.push(crate::codex_config::get_codex_auth_path());
-                }
-                paths
+                vec![crate::codex_config::get_codex_config_path()]
             }
             AppType::GrokBuild => vec![crate::grok_config::get_grok_config_path()],
             _ => {

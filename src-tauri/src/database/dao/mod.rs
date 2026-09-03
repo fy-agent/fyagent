@@ -4,6 +4,7 @@
 
 pub(crate) mod change_plan;
 pub mod failover;
+pub(crate) mod managed_auth;
 pub mod mcp;
 pub mod profiles;
 pub mod prompts;

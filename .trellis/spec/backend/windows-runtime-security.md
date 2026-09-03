@@ -17,8 +17,10 @@ the authenticated activation pipe are retired and must not be recreated. The
 one-operation
 `%ProgramData%\FyAgent.PackageBridge-{96F39D37-0F42-486F-8C86-3631C12171C5}\v1`
 package bridge is a separate executable-installer object with no state, lease,
-HMAC, activation, or startup-admission role. Codex MSIX and the three reviewed
-Agent EXE products reuse it through separate closed helper actions. Grok
+HMAC, activation, or startup-admission role. Codex MSIX and the reviewed
+Agent EXE products (`qoderwork | trae-work | workbuddy | opencode`) reuse it
+through separate closed helper actions. OpenCode Windows x64 uses the
+reviewed WinVerifyTrust identity; ARM64 remains unsupported. Grok
 Build observe/install/update reuses the same helper executable and pipe
 handshake but does not use PackageBridge. The
 application bridge module owns
@@ -228,8 +230,15 @@ for the closed `grok-tool` action and must not fall back to elevated CLI
 execution when the helper fails. Auth observation/session is unchanged and
 still does not gain a helper verb.
 The ordinary-user helper has three closed action families: Codex MSIX, Agent
-EXE with the product enum `qoderwork | trae-work | workbuddy`, and Grok tool
-with `observe | install | update` plus optional `none | native | npm` owner.
+EXE with the product enum `qoderwork | trae-work | workbuddy | opencode`
+(OpenCode uses the reviewed WinVerifyTrust identity on x64; ARM64 remains
+unsupported), and Grok tool with
+`observe | install | update` plus optional `none | native | npm` owner.
+Default Grok install is official npm. After Hello, the host writes an
+80-byte `GrokNpmInstallPlan` control (exact version, closed registry index,
+allow-scripts flag). The helper does not resolve `@latest`, does not invent a
+registry, and refuses npm install when the plan is missing or invalid.
+Native install is only the explicit `install_native` / native owner path.
 It accepts no free CLI tool name, command, URL, package path, working
 directory, verb, scope, silent switch, environment block, or raw argument
 vector. Helper stdout/stderr is discarded after local bounded parsing and never
@@ -255,9 +264,11 @@ IShellFolderViewDual.Application -> IShellDispatch2`.
   `IShellDispatch2::ShellExecute`, so the system browser receives a foreground-
   eligible normal-show request. The fixed installer-helper launch retains its
   separate empty show argument and action-owned exact argument contract.
-- Closed desktop-agent `.exe` paths (WorkBuddy / QoderWork CN / TRAE Work CN)
-  use the same Explorer `ShellExecute` route after the observer proves PE
-  `ProductName` at a closed relative path. The launch boundary accepts only an
+- Closed desktop-agent `.exe` paths (WorkBuddy / QoderWork CN / TRAE Work CN /
+  OpenCode) use the same Explorer `ShellExecute` route after the observer
+  proves PE `ProductName` at a closed relative path. OpenCode's installed
+  relative is `@opencode-aidesktop/OpenCode.exe` in addition to
+  `OpenCode/OpenCode.exe`. The launch boundary accepts only an
   absolute `.exe` with no arguments, `..`, or NUL. Identity proof stays in
   the observer; this module never scans vendor config directories.
 - There is no `ShellExecuteW`, `Command::new`, `cmd`, PowerShell, arbitrary
@@ -533,8 +544,10 @@ start_agent_action({ agentId: claude-code|opencode, surface: cli, ... })
 run_tool_lifecycle_action(tools=["claude"|"opencode"|...], action)
   -> error before any side effect unless tool == "grok"
 
-run_tool_lifecycle_action(tools=["grok"], action=install|update|install_official_npm)
+run_tool_lifecycle_action(tools=["grok"], action=install|update|install_official_npm|install_native)
   formal Windows -> grok-tool helper; no elevated fallback
+  default install -> official npm exact-version plan (no @latest)
+  install_native -> official x.ai/PowerShell installer
   development Windows / macOS -> existing Tooling owner, same Grok rules
 
 get_agent_auth_observation({ agentId: claude-code|grokbuild|opencode })
@@ -545,10 +558,12 @@ get_active_agent_auth_session({ agentId })
 
 fyagent-user-helper.exe
   codex-msix-install --job-id <uuid> --pipe <nonce>
-  agent-exe-install --product qoderwork|trae-work|workbuddy
+  agent-exe-install --product qoderwork|trae-work|workbuddy|opencode
                     --job-id <uuid> --pipe <nonce>
   grok-tool --action observe|install|update [--owner native|npm]
             --job-id <uuid> --pipe <nonce>
+  // After Hello: host writes 80-byte GrokNpmInstallPlan. Missing/invalid/@latest
+  // plan => helper refuses npm. Native install does not consume the npm plan.
 ```
 
 
@@ -575,6 +590,10 @@ fyagent-user-helper.exe
 | ------------------------------------------------------ | --------------------------------------------------------- |
 | Formal elevated Windows Claude/OpenCode CLI or Auth session | `interactive_user_unavailable` / `executor_not_implemented`; no probe or child process |
 | Formal elevated Windows Grok Build lifecycle                | Closed `grok-tool` helper; no elevated fallback                                        |
+| Grok npm helper has no plan, `@latest`, or unknown registry     | Fail closed; no npm child process                                                      |
+| OpenCode Windows x64 ProductName/relative EXE/signer is reviewed | Admit current-user NSIS handoff; ARM64 remains unsupported |
+| OpenCode Windows ProductName/relative EXE/signer is empty     | `windows_exe_install_admitted` rejects download and install; do not claim supported     |
+| OpenCode helper product is admitted but scan relatives omit `@opencode-aidesktop` | Inventory miss after a real current-user install; helper admission is not scan identity |
 | Helper argv contains URL/path/shell string/free tool name   | Contract test fails; no child process                                                  |
 | Installer helper gains Claude/OpenCode tool verbs           | Architecture regression                                                                |
 | Non-formal/non-Windows Tooling lifecycle                    | Existing Tooling behavior unchanged; Grok remains the only writable CLI                |
@@ -587,6 +606,10 @@ fyagent-user-helper.exe
   actions and keeps official-page fallback; Grok Build can observe/install/
   update through the helper when the Explorer user is available.
 - Bad: `fyagent-user-helper.exe run --cmd <renderer string>`.
+- Bad: helper npm install without a host plan, or with `@latest`.
+- Bad: claim OpenCode Windows is supported while identity fields are empty, or
+  treat helper product `opencode` as proof that `OpenCode/OpenCode.exe` is the
+  installed folder.
 
 ### 6. Tests Required
 

@@ -100,19 +100,24 @@ use fyagent_user_helper::{
         grok_native_windows_powershell_command, grok_windows_executable_names, infer_source_marker,
         observe_owner_from_candidates, owner_from_install_paths, parse_cli_installer_hint,
         parse_normalized_version, plan_grok_operation, GROK_LIFECYCLE_TIMEOUT_SECS,
-        GROK_LOCAL_APP_DATA_BIN_SEGMENTS, GROK_NPM_INSTALL_SPEC, GROK_OUTPUT_LIMIT,
-        GROK_PROFILE_BIN_SEGMENTS, GROK_ROAMING_APP_DATA_BIN_SEGMENTS, GROK_VERSION_TIMEOUT_SECS,
+        GROK_LOCAL_APP_DATA_BIN_SEGMENTS, GROK_OUTPUT_LIMIT, GROK_PROFILE_BIN_SEGMENTS,
+        GROK_ROAMING_APP_DATA_BIN_SEGMENTS, GROK_VERSION_TIMEOUT_SECS,
         TOOL_OPERATION_STARTED_IDENTITY,
+    },
+    grok_npm::{
+        decode_plan_control, npm_install_argv_or_reject, parse_npm_major, version_is_at_least,
+        GROK_NPM_PLAN_CONTROL_BYTES, GROK_NPM_REGISTRY_ENV,
     },
     helper_error_code_for_deployment_hresult,
     layout::{
         pipe_name, USER_HELPER_CONTROL_EVENT_ACCESS_MASK, USER_HELPER_EXECUTABLE_FILE_NAME,
         USER_HELPER_PIPE_CLIENT_ACCESS_MASK,
     },
-    AgentInstallerProduct, BridgeOperationId, GrokOwner, GrokPlanFailure, GrokPlanKind,
-    GrokToolAction, HelperErrorCode, HelperMessage, InstallRequest, PackageBridgeArtifactKind,
-    PackageBridgeControl, PinnedPackageIdentity, ToolOperationResult, UserHelperAction,
-    BRIDGE_CONTROL_BYTES, PACKAGE_BRIDGE_ROOT_DIRECTORY, PACKAGE_BRIDGE_VERSION_DIRECTORY,
+    AgentInstallerProduct, BridgeOperationId, GrokNpmInstallPlan, GrokOwner, GrokPlanFailure,
+    GrokPlanKind, GrokToolAction, HelperErrorCode, HelperMessage, InstallRequest,
+    PackageBridgeArtifactKind, PackageBridgeControl, PinnedPackageIdentity, ToolOperationResult,
+    UserHelperAction, BRIDGE_CONTROL_BYTES, PACKAGE_BRIDGE_ROOT_DIRECTORY,
+    PACKAGE_BRIDGE_VERSION_DIRECTORY,
 };
 
 // Covers the parent's 30-second Explorer COM launch wait, pipe connection,
@@ -265,17 +270,20 @@ fn run_grok_tool_session(
             HelperErrorCode::InstallLayoutInvalid,
         ));
     };
-    if let Err(error) = channel.acknowledge_tool_control() {
-        let _ = channel.send_prestart_error(HelperErrorCode::ParentAdmissionFailed);
-        return Err(error);
-    }
+    let npm_plan = match channel.read_grok_npm_plan() {
+        Ok(plan) => plan,
+        Err(error) => {
+            let _ = channel.send_prestart_error(HelperErrorCode::ParentAdmissionFailed);
+            return Err(error);
+        }
+    };
     channel.send_started(TOOL_OPERATION_STARTED_IDENTITY)?;
     if let Err(code) = controls.wait_for_admission(ADMISSION_TIMEOUT) {
         channel.send_terminal(HelperMessage::error(code))?;
         return Err(HelperRunError::OperationFailed(code));
     }
     channel.mark_admitted()?;
-    match execute_grok_tool(tool_action, expected_owner) {
+    match execute_grok_tool(tool_action, expected_owner, npm_plan) {
         Ok(result) => {
             let _ = channel.send_progress(100);
             channel.send_terminal(HelperMessage::ToolResult(result))
@@ -295,6 +303,7 @@ struct GrokCandidate {
 fn execute_grok_tool(
     action: GrokToolAction,
     expected_owner: Option<GrokOwner>,
+    npm_plan: Option<GrokNpmInstallPlan>,
 ) -> Result<ToolOperationResult, HelperErrorCode> {
     let (observation, candidates) = discover_grok_candidates()?;
     let plan =
@@ -317,7 +326,7 @@ fn execute_grok_tool(
             finalize_after_mutation(GrokToolAction::Update, expected_owner)
         }
         GrokPlanKind::OfficialNpm => {
-            run_official_npm_install()?;
+            run_official_npm_install(action, &candidates, npm_plan.as_ref())?;
             finalize_after_mutation(action, expected_owner)
         }
     }
@@ -475,14 +484,88 @@ fn run_native_fresh_install() -> Result<(), HelperErrorCode> {
     .map(|_| ())
 }
 
-fn run_official_npm_install() -> Result<(), HelperErrorCode> {
-    let npm = find_path_program(&["npm.cmd", "npm.exe"]).ok_or(HelperErrorCode::ToolHostMissing)?;
-    run_grok_binary(
+fn run_official_npm_install(
+    action: GrokToolAction,
+    candidates: &[GrokCandidate],
+    plan: Option<&GrokNpmInstallPlan>,
+) -> Result<(), HelperErrorCode> {
+    let plan = plan.ok_or(HelperErrorCode::ToolExecutionFailed)?;
+    let is_update = matches!(action, GrokToolAction::Update);
+    let npm = if is_update {
+        let grok = preferred_candidate(candidates, GrokOwner::Npm)
+            .ok_or(HelperErrorCode::ToolNotDetected)?;
+        sibling_npm(&grok.path).ok_or(HelperErrorCode::ToolHostMissing)?
+    } else {
+        find_path_program(&["npm.cmd", "npm.exe"]).ok_or(HelperErrorCode::ToolHostMissing)?
+    };
+    let major = npm_major_from(&npm)?;
+    let plan = plan.clone().with_npm_major(major);
+    let argv = npm_install_argv_or_reject(Some(&plan))
+        .map_err(|_| HelperErrorCode::ToolExecutionFailed)?;
+    if is_update {
+        if let Some(local) = preferred_candidate(candidates, GrokOwner::Npm).and_then(|candidate| {
+            run_grok_binary(&candidate.path, &["--version"], grok_version_timeout())
+                .ok()
+                .and_then(|(output, _)| parse_normalized_version(&output))
+        }) {
+            if version_is_at_least(&local, plan.version()) {
+                return Ok(());
+            }
+        }
+    }
+    let arg_refs: Vec<&str> = argv.iter().map(String::as_str).collect();
+    run_grok_binary_with_env(
         &npm,
-        &["i", "-g", GROK_NPM_INSTALL_SPEC],
+        &arg_refs,
         grok_lifecycle_timeout(),
-    )
-    .map(|_| ())
+        &[(GROK_NPM_REGISTRY_ENV, plan.registry_url())],
+    )?;
+    let (_, after) = discover_grok_candidates()?;
+    let observed = preferred_candidate(&after, GrokOwner::Npm).and_then(|candidate| {
+        run_grok_binary(&candidate.path, &["--version"], grok_version_timeout())
+            .ok()
+            .and_then(|(output, _)| parse_normalized_version(&output))
+    });
+    if observed.as_deref() != Some(plan.version()) {
+        return Err(HelperErrorCode::ToolExecutionFailed);
+    }
+    Ok(())
+}
+
+fn sibling_npm(grok_path: &Path) -> Option<PathBuf> {
+    let directory = grok_path.parent()?;
+    for name in ["npm.cmd", "npm.exe"] {
+        let candidate = directory.join(name);
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+fn npm_major_from(npm: &Path) -> Result<u32, HelperErrorCode> {
+    let (output, _) = run_grok_binary(npm, &["--version"], grok_version_timeout())?;
+    parse_npm_major(&output).ok_or(HelperErrorCode::ToolHostMissing)
+}
+
+fn run_grok_binary_with_env(
+    program: &Path,
+    args: &[&str],
+    timeout: Duration,
+    extra_env: &[(&str, &str)],
+) -> Result<(String, i32), HelperErrorCode> {
+    let extension = program
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or("")
+        .eq_ignore_ascii_case("cmd");
+    if extension {
+        let cmd = system_command_processor()?;
+        let command_line = format!("{} {}", quote_windows_path(program), args.join(" "));
+        run_program_with_env(&cmd, &["/D", "/S", "/C", &command_line], timeout, extra_env)
+    } else {
+        run_program_with_env(program, args, timeout, extra_env)
+    }
 }
 
 fn run_grok_binary(
@@ -509,6 +592,15 @@ fn run_program(
     args: &[&str],
     timeout: Duration,
 ) -> Result<(String, i32), HelperErrorCode> {
+    run_program_with_env(program, args, timeout, &[])
+}
+
+fn run_program_with_env(
+    program: &Path,
+    args: &[&str],
+    timeout: Duration,
+    extra_env: &[(&str, &str)],
+) -> Result<(String, i32), HelperErrorCode> {
     let mut command = Command::new(program);
     command
         .args(args)
@@ -516,6 +608,9 @@ fn run_program(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .creation_flags(CREATE_NO_WINDOW);
+    for (key, value) in extra_env {
+        command.env(key, value);
+    }
     let mut child = command
         .spawn()
         .map_err(|_| HelperErrorCode::ToolHostMissing)?;
@@ -801,7 +896,8 @@ fn run_verified_exe_installer(
     match product {
         AgentInstallerProduct::QoderWork
         | AgentInstallerProduct::TraeWork
-        | AgentInstallerProduct::WorkBuddy => {}
+        | AgentInstallerProduct::WorkBuddy
+        | AgentInstallerProduct::OpenCode => {}
     }
 
     let path = package_pin.executable_path()?;
@@ -2169,13 +2265,19 @@ impl PipeChannel {
         Ok(control)
     }
 
-    fn acknowledge_tool_control(&self) -> Result<(), HelperRunError> {
+    fn read_grok_npm_plan(&self) -> Result<Option<GrokNpmInstallPlan>, HelperRunError> {
         let mut state = self.lock_state()?;
         if state.state != ChannelState::HelloSent {
             return self.fail_write();
         }
+        let mut bytes = [0_u8; GROK_NPM_PLAN_CONTROL_BYTES];
+        read_exact_overlapped(&state.handle, &mut bytes, ADMISSION_TIMEOUT).map_err(|_| {
+            self.write_failed.store(true, Ordering::Release);
+            HelperRunError::PipeWriteFailed
+        })?;
+        let plan = decode_plan_control(&bytes).map_err(|_| parent_admission_error())?;
         state.state = ChannelState::ControlReceived;
-        Ok(())
+        Ok(plan)
     }
 
     fn send_started(&self, package: PinnedPackageIdentity) -> Result<(), HelperRunError> {

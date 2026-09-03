@@ -8,6 +8,7 @@
 pub mod bridge_control;
 pub mod cli;
 pub mod grok;
+pub mod grok_npm;
 pub mod layout;
 pub mod protocol;
 
@@ -21,7 +22,11 @@ pub use cli::{
 };
 pub use grok::{
     GrokOutcome, GrokOwner, GrokOwnerObservation, GrokPlanFailure, GrokPlanKind, GrokToolAction,
-    ToolOperationResult, GROK_NPM_INSTALL_SPEC, TOOL_OPERATION_STARTED_IDENTITY,
+    ToolOperationResult, GROK_NPM_PACKAGE, TOOL_OPERATION_STARTED_IDENTITY,
+};
+pub use grok_npm::{
+    decode_plan_control, encode_plan_control, npm_install_argv_or_reject, GrokNpmInstallPlan,
+    GrokNpmPlanError, GrokNpmRegistry, GROK_NPM_PLAN_CONTROL_BYTES, GROK_NPM_REGISTRY_ENV,
 };
 pub use layout::{
     admission_event_name, cancel_event_name, derive_install_layout, InstallLayout, LayoutError,

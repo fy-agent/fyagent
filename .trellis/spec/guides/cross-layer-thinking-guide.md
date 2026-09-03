@@ -74,6 +74,10 @@ semantics. Do not put those details into this guide.
   writes stay `authorization_required` while
   `macos_system_commit::production_enabled()` is false. Helper code may exist
   without claiming a delivered system one-click.
+- Before claiming a Windows desktop product is installed or missing: freeze
+  the installed current-user relative and Uninstall DisplayName matching, not
+  only the downloaded installer stub. KnownPath Missing is dropped. See
+  [External Agent Lifecycle](../backend/external-agent-lifecycle.md).
 
 ## Common failures
 

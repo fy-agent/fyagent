@@ -1639,14 +1639,35 @@ pub fn run() {
             app.manage(services::qoderwork::QoderHooksState::new());
             app.manage(services::traework::TraeEndpointProbeState::default());
 
+            let app_config_dir = crate::config::get_app_config_dir();
+            let managed_auth = {
+                use crate::services::managed_auth::ManagedAuthService;
+                use crate::services::secret::{NativeSecretBackend, SecretService};
+                let db = app.state::<AppState>().db.clone();
+                let service = Arc::new(ManagedAuthService::new(
+                    db,
+                    SecretService::new(NativeSecretBackend::new()),
+                    app_config_dir.clone(),
+                ));
+                if let Err(error) = service.startup() {
+                    log::warn!("[ManagedAuth] startup failed closed: {error}");
+                }
+                app.manage(commands::ManagedAuthState(service.clone()));
+                log::info!("✓ ManagedAuthService initialized");
+                service
+            };
+
             // 初始化 CopilotAuthManager
             {
                 use crate::proxy::providers::copilot_auth::CopilotAuthManager;
+                use crate::services::managed_auth::COPILOT_MIGRATION_ID;
                 use commands::CopilotAuthState;
                 use tokio::sync::RwLock;
 
-                let app_config_dir = crate::config::get_app_config_dir();
-                let copilot_auth_manager = CopilotAuthManager::new(app_config_dir);
+                let copilot_auth_manager = CopilotAuthManager::new(app_config_dir.clone());
+                if managed_auth.legacy_store_sealed(COPILOT_MIGRATION_ID) {
+                    copilot_auth_manager.seal_json_store();
+                }
                 app.manage(CopilotAuthState(Arc::new(RwLock::new(copilot_auth_manager))));
                 log::info!("✓ CopilotAuthManager initialized");
             }
@@ -1654,11 +1675,14 @@ pub fn run() {
             // 初始化 CodexOAuthManager (ChatGPT Plus/Pro 反代)
             {
                 use crate::proxy::providers::codex_oauth_auth::CodexOAuthManager;
+                use crate::services::managed_auth::CODEX_MIGRATION_ID;
                 use commands::CodexOAuthState;
                 use tokio::sync::RwLock;
 
-                let app_config_dir = crate::config::get_app_config_dir();
-                let codex_oauth_manager = CodexOAuthManager::new(app_config_dir);
+                let codex_oauth_manager = CodexOAuthManager::new(app_config_dir.clone());
+                if managed_auth.legacy_store_sealed(CODEX_MIGRATION_ID) {
+                    codex_oauth_manager.seal_json_store();
+                }
                 codex_oauth_manager.remap_provider_bindings();
                 app.manage(CodexOAuthState(Arc::new(RwLock::new(codex_oauth_manager))));
                 log::info!("✓ CodexOAuthManager initialized");
@@ -1667,11 +1691,14 @@ pub fn run() {
             // 初始化 xAI OAuthManager (Grok API 反代)
             {
                 use crate::proxy::providers::xai_oauth_auth::XaiOAuthManager;
+                use crate::services::managed_auth::XAI_MIGRATION_ID;
                 use commands::XaiOAuthState;
                 use tokio::sync::RwLock;
 
-                let app_config_dir = crate::config::get_app_config_dir();
                 let xai_oauth_manager = XaiOAuthManager::new(app_config_dir);
+                if managed_auth.legacy_store_sealed(XAI_MIGRATION_ID) {
+                    xai_oauth_manager.seal_json_store();
+                }
                 app.manage(XaiOAuthState(Arc::new(RwLock::new(xai_oauth_manager))));
                 log::info!("✓ XaiOAuthManager initialized");
             }
@@ -1848,6 +1875,16 @@ pub fn run() {
             commands::get_agent_auth_session,
             commands::get_active_agent_auth_session,
             commands::stop_waiting_for_agent_auth,
+            commands::managed_auth_get_overview,
+            commands::managed_auth_start_login,
+            commands::managed_auth_get_login_session,
+            commands::managed_auth_cancel_login,
+            commands::managed_auth_reopen_login,
+            commands::managed_auth_switch_login_method,
+            commands::managed_auth_set_default_account,
+            commands::managed_auth_preview_account_removal,
+            commands::managed_auth_remove_account,
+            commands::managed_auth_apply_connection_action,
             commands::get_agent_install_readiness,
             commands::get_agent_installation_inventory,
             commands::start_agent_action,

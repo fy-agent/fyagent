@@ -32,3 +32,19 @@ commands.allow = [
   "get_active_agent_auth_session",
   "stop_waiting_for_agent_auth",
 ]
+
+[[permission]]
+identifier = "allow-managed-auth"
+description = "Allows the main local webview to read and operate the bounded unified managed-auth control plane."
+commands.allow = [
+  "managed_auth_get_overview",
+  "managed_auth_start_login",
+  "managed_auth_get_login_session",
+  "managed_auth_cancel_login",
+  "managed_auth_reopen_login",
+  "managed_auth_switch_login_method",
+  "managed_auth_set_default_account",
+  "managed_auth_preview_account_removal",
+  "managed_auth_remove_account",
+  "managed_auth_apply_connection_action",
+]

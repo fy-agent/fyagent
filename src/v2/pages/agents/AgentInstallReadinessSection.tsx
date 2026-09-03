@@ -375,13 +375,7 @@ function ReadinessSummary({
   );
 }
 
-function GrokOwnerPanel({
-  port,
-  nativeFailed,
-}: {
-  port: GrokToolingPort;
-  nativeFailed: boolean;
-}) {
+function GrokOwnerPanel({ port }: { port: GrokToolingPort }) {
   const [snapshot, setSnapshot] = useState<GrokToolSnapshot | null>(null);
   const [unavailable, setUnavailable] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -417,17 +411,26 @@ function GrokOwnerPanel({
     };
   }, [port]);
 
-  const runOfficialNpm = async () => {
+  const runAction = async (kind: "npm" | "native") => {
     if (busy) return;
     setBusy(true);
     setError(null);
     setSuccess(null);
     try {
-      await port.installOfficialNpm();
-      setSuccess("官方 npm 包已安装，安装状态已更新。");
+      if (kind === "npm") {
+        await port.installOfficialNpm();
+        setSuccess("官方 npm 包已安装，安装状态已更新。");
+      } else {
+        await port.installNative();
+        setSuccess("官方命令行已安装，安装状态已更新。");
+      }
       refresh();
     } catch {
-      setError("官方 npm 安装未完成。原安装方式未改动。");
+      setError(
+        kind === "npm"
+          ? "官方 npm 安装未完成。原安装方式未改动。"
+          : "官方命令行安装未完成。原安装方式未改动。",
+      );
     } finally {
       setBusy(false);
     }
@@ -444,9 +447,9 @@ function GrokOwnerPanel({
 
   const notInstalled =
     snapshot.localVersion === null && !snapshot.installedButBroken;
-  const showNpmChoice =
-    notInstalled ||
-    (nativeFailed && snapshot.distributionOwner !== "official_npm");
+  const showNativeChoice =
+    notInstalled || snapshot.distributionOwner === "official_npm";
+  const showNpmSwitch = snapshot.distributionOwner === "native_internal";
 
   return (
     <div className="fy-agent-grok-owner">
@@ -466,24 +469,29 @@ function GrokOwnerPanel({
       </dl>
       {notInstalled ? (
         <p className="fy-agent-install-readiness-note">
-          首次安装建议使用官方命令行。也可改用官方 npm
-          包，两种方式不会自动切换。
+          安装按钮会安装官方 npm
+          包。登录和在线服务是否可用取决于你的网络。也可改用官方命令行，两种方式不会自动切换。
         </p>
       ) : null}
       {busy ? (
         <div className="fy-agent-install-readiness-loading">
-          <Spinner label="正在安装官方 npm 包" />
-          <span>正在安装官方 npm 包</span>
+          <Spinner label="正在安装 Grok Build" />
+          <span>正在安装 Grok Build</span>
         </div>
       ) : null}
       {error ? <InlineNotice tone="warning">{error}</InlineNotice> : null}
       {success ? <InlineNotice tone="info">{success}</InlineNotice> : null}
-      {showNpmChoice && !busy ? (
+      {showNativeChoice && !busy ? (
         <div className="fy-agent-action-row">
-          <Button onClick={() => void runOfficialNpm()}>
-            {nativeFailed && !notInstalled
-              ? "改用官方 npm 方式"
-              : "使用官方 npm 方式"}
+          <Button onClick={() => void runAction("native")}>
+            {notInstalled ? "使用官方命令行安装" : "改用官方命令行"}
+          </Button>
+        </div>
+      ) : null}
+      {showNpmSwitch && !busy ? (
+        <div className="fy-agent-action-row">
+          <Button onClick={() => void runAction("npm")}>
+            改用官方 npm 方式
           </Button>
         </div>
       ) : null}
@@ -697,12 +705,7 @@ function AgentInstallReadinessContent({
             onCancel={() => void lifecycle.cancel()}
             extra={
               agentId === "grokbuild" && grokTooling ? (
-                <GrokOwnerPanel
-                  port={grokTooling}
-                  nativeFailed={Boolean(
-                    lifecycle.error && lifecycle.reasonCode !== "cancelled",
-                  )}
-                />
+                <GrokOwnerPanel port={grokTooling} />
               ) : null
             }
           />

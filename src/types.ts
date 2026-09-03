@@ -371,7 +371,8 @@ export interface Settings {
   enableFailoverToggle?: boolean;
   // Whether to show the project profile switcher on the main page header
   showProfileSwitcher?: boolean;
-  // Preserve Codex ChatGPT login in auth.json when switching third-party providers
+  // Legacy compatibility field. Third-party Codex switches always preserve
+  // official ChatGPT login; this value is ignored by writers.
   preserveCodexOfficialAuthOnSwitch?: boolean;
   // Run official Codex under the shared "custom" provider id so future
   // sessions share one resume-history bucket with third-party providers

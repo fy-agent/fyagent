@@ -661,6 +661,11 @@ mod tests {
                     crate::cli::AgentInstallerProduct::WorkBuddy,
                 ),
             },
+            HelperMessage::Hello {
+                action: UserHelperAction::AgentExeInstall(
+                    crate::cli::AgentInstallerProduct::OpenCode,
+                ),
+            },
             HelperMessage::Started {
                 package: PINNED_PACKAGE,
             },

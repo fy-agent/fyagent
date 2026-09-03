@@ -39,7 +39,7 @@ describe("ToolUpgradeConfirmDialog", () => {
             tool: "grok",
             is_conflict: true,
             needs_confirmation: true,
-            command: "npm i -g @xai-official/grok@latest",
+            command: "npm i -g @xai-official/grok@1.0.13 --registry=https://mirrors.tencent.com/npm/",
             anchored: true,
             installs: [
               {

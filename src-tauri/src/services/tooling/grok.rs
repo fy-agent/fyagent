@@ -174,6 +174,7 @@ impl GrokLifecycleSnapshot {
         self.reason.as_deref()
     }
 
+    #[allow(dead_code)]
     pub fn redacted_log(&self) -> &str {
         &self.redacted_log
     }
@@ -204,13 +205,9 @@ pub(super) fn last_grok_lifecycle_error() -> Option<String> {
     if !stage.is_terminal() || matches!(stage, GrokLifecycleStage::Succeeded) {
         return None;
     }
-    let copy = grok_fail_copy(snapshot.reason().unwrap_or("cancelled"));
-    let log = snapshot.redacted_log();
-    Some(if log.is_empty() {
-        format!("Grok Build 未完成。{copy}")
-    } else {
-        format!("Grok Build 未完成。{copy}\n{log}")
-    })
+    Some(grok_user_facing_failure(
+        snapshot.reason().unwrap_or("cancelled"),
+    ))
 }
 
 static LAST_GROK_JOB: Mutex<Option<GrokLifecycleSnapshot>> = Mutex::new(None);
@@ -377,6 +374,10 @@ pub(super) fn grok_plan_from_installs(
             fyagent_user_helper::GrokToolAction::Install,
             Some(fyagent_user_helper::GrokOwner::Npm),
         ),
+        ToolLifecycleAction::InstallNative => (
+            fyagent_user_helper::GrokToolAction::Install,
+            Some(fyagent_user_helper::GrokOwner::Native),
+        ),
         ToolLifecycleAction::Update => (fyagent_user_helper::GrokToolAction::Update, None),
     };
     match fyagent_user_helper::grok::plan_grok_operation(
@@ -539,6 +540,7 @@ fn action_wire(action: ToolLifecycleAction) -> String {
         ToolLifecycleAction::Install => "install".to_string(),
         ToolLifecycleAction::Update => "update".to_string(),
         ToolLifecycleAction::InstallOfficialNpm => "install_official_npm".to_string(),
+        ToolLifecycleAction::InstallNative => "install_native".to_string(),
     }
 }
 
@@ -553,6 +555,10 @@ fn grok_fail_copy(reason: &str) -> &'static str {
         "cancelled" => "操作已取消。",
         _ => "操作未完成。",
     }
+}
+
+fn grok_user_facing_failure(reason: &str) -> String {
+    format!("Grok Build 未完成。{}", grok_fail_copy(reason))
 }
 
 #[cfg(target_os = "macos")]
@@ -590,17 +596,12 @@ fn fail_job(
         action: action_wire(action),
         owner: owner.map(GrokDistributionOwner::as_str).map(str::to_string),
         reason: Some(reason.to_string()),
-        redacted_log: redacted.clone(),
+        redacted_log: redacted,
         exit_code,
         timed_out,
         source_category: source_category.map(str::to_string),
     });
-    let copy = grok_fail_copy(reason);
-    if redacted.is_empty() {
-        format!("Grok Build 未完成。{copy}")
-    } else {
-        format!("Grok Build 未完成。{copy}\n{redacted}")
-    }
+    grok_user_facing_failure(reason)
 }
 
 #[cfg(any(target_os = "macos", test))]
@@ -859,46 +860,78 @@ async fn run_official_npm(
     action: ToolLifecycleAction,
     bin_path: Option<String>,
 ) -> Result<(), String> {
-    let client = crate::proxy::http_client::get();
-    let frozen = super::versions::fetch_npm_latest_for_package(&client, "@xai-official/grok").await;
-    let Some(frozen) = frozen else {
+    let is_update = matches!(action, ToolLifecycleAction::Update);
+    if is_update && bin_path.is_none() {
         return Err(fail_job(
             action,
             Some(GrokDistributionOwner::OfficialNpm),
-            "official_source_unreachable",
-            "官方 npm 包版本不可用",
-            None,
-            false,
-            Some("official_npm"),
-        ));
-    };
-    if !frozen
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_'))
-    {
-        return Err(fail_job(
-            action,
-            Some(GrokDistributionOwner::OfficialNpm),
-            "official_source_unreachable",
-            "官方 npm 包版本无法使用",
+            "post_install_not_observed",
+            "未找到可锚定的 npm，不能用 PATH 上的 npm 做更新",
             None,
             false,
             Some("official_npm"),
         ));
     }
 
-    tokio::task::spawn_blocking(move || execute_official_npm(action, bin_path, frozen))
-        .await
-        .map_err(|error| format!("tool lifecycle task join error: {error}"))?
+    let manifest = match super::grok_npm::bundled_manifest() {
+        Ok(manifest) => manifest,
+        Err(_) => {
+            return Err(fail_job(
+                action,
+                Some(GrokDistributionOwner::OfficialNpm),
+                "official_source_unreachable",
+                "官方 npm 版本清单不可用",
+                None,
+                false,
+                Some("official_npm"),
+            ));
+        }
+    };
+
+    let client = crate::proxy::http_client::get();
+    let matching = super::grok_npm::registries_matching_manifest(&client, &manifest).await;
+    if matching.is_empty() {
+        return Err(fail_job(
+            action,
+            Some(GrokDistributionOwner::OfficialNpm),
+            "source_exhausted",
+            "官方 npm 镜像都未能提供匹配的版本",
+            None,
+            false,
+            Some("official_npm"),
+        ));
+    }
+
+    tokio::task::spawn_blocking(move || {
+        execute_official_npm(action, bin_path, manifest.version().to_string(), matching)
+    })
+    .await
+    .map_err(|error| format!("tool lifecycle task join error: {error}"))?
 }
 
 #[cfg(target_os = "macos")]
 fn execute_official_npm(
     action: ToolLifecycleAction,
     bin_path: Option<String>,
-    frozen: String,
+    target_version: String,
+    registries: Vec<fyagent_user_helper::GrokNpmRegistry>,
 ) -> Result<(), String> {
     let before = grok_post_observe().ok();
+    if let Some(local) = before
+        .as_ref()
+        .and_then(|observed| observed.version.as_deref())
+    {
+        if fyagent_user_helper::grok_npm::version_is_at_least(local, &target_version) {
+            succeed_job(
+                action,
+                GrokDistributionOwner::OfficialNpm,
+                &format!("already current {local}"),
+                Some("official_npm"),
+            );
+            return Ok(());
+        }
+    }
+
     store_stage(
         GrokLifecycleStage::Executing,
         action,
@@ -906,26 +939,120 @@ fn execute_official_npm(
         Some("official_npm"),
     );
 
-    let package = format!("@xai-official/grok@{frozen}");
-    let command = match bin_path
-        .as_deref()
-        .and_then(|path| anchored_npm_command(path, &format!("i -g {package}")))
+    let is_update = matches!(action, ToolLifecycleAction::Update);
+    if is_update
+        && bin_path
+            .as_deref()
+            .and_then(|path| super::anchored_npm_command(path, "--version"))
+            .is_none()
     {
-        Some(anchored) => anchored,
-        None => format!("npm i -g {package}"),
-    };
-
-    let output = run_login_bash(&command, GROK_UPDATE_TIMEOUT);
-    let result = finish_native_command(
-        action,
-        GrokDistributionOwner::OfficialNpm,
-        output,
-        Some("official_npm"),
-    );
-    if result.is_err() {
-        let _ = before;
+        return Err(fail_job(
+            action,
+            Some(GrokDistributionOwner::OfficialNpm),
+            "post_install_not_observed",
+            "未找到可锚定的 npm，不能用 PATH 上的 npm 做更新",
+            None,
+            false,
+            Some("official_npm"),
+        ));
     }
-    result
+
+    let npm_major = detect_npm_major(bin_path.as_deref());
+    let mut last_detail = String::from("官方 npm 安装未完成");
+    for registry in registries {
+        let Ok(plan) = fyagent_user_helper::GrokNpmInstallPlan::for_execution(
+            &target_version,
+            registry,
+            npm_major.is_some_and(fyagent_user_helper::grok_npm::npm_major_allows_scripts),
+        ) else {
+            continue;
+        };
+        let output = run_npm_install_plan(bin_path.as_deref(), &plan);
+        match output {
+            Ok(output) if output.status.success() => {
+                if grok_version_matches_target(&target_version) {
+                    return finish_native_command(
+                        action,
+                        GrokDistributionOwner::OfficialNpm,
+                        Ok(output),
+                        Some("official_npm"),
+                    );
+                }
+                last_detail = format!(
+                    "grok --version 与清单版本 {} 不一致\n{}\n{}",
+                    target_version,
+                    decode_command_output(&output.stdout),
+                    decode_command_output(&output.stderr)
+                );
+            }
+            Ok(output) => {
+                last_detail = format!(
+                    "{}\n{}",
+                    decode_command_output(&output.stdout),
+                    decode_command_output(&output.stderr)
+                );
+            }
+            Err(error) => last_detail = error,
+        }
+    }
+
+    let _ = before;
+    Err(fail_job(
+        action,
+        Some(GrokDistributionOwner::OfficialNpm),
+        "source_exhausted",
+        &last_detail,
+        None,
+        false,
+        Some("official_npm"),
+    ))
+}
+
+#[cfg(target_os = "macos")]
+fn detect_npm_major(bin_path: Option<&str>) -> Option<u32> {
+    let command = match bin_path.and_then(|path| super::anchored_npm_command(path, "--version")) {
+        Some(command) => command,
+        None => "npm --version".to_string(),
+    };
+    let output = run_login_bash(&command, GROK_CHECK_TIMEOUT).ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    fyagent_user_helper::grok_npm::parse_npm_major(&decode_command_output(&output.stdout))
+}
+
+#[cfg(target_os = "macos")]
+fn run_npm_install_plan(
+    bin_path: Option<&str>,
+    plan: &fyagent_user_helper::GrokNpmInstallPlan,
+) -> Result<std::process::Output, String> {
+    let args = plan.npm_argv().join(" ");
+    let env = format!(
+        "{}={}",
+        fyagent_user_helper::GROK_NPM_REGISTRY_ENV,
+        shell_single_quote_for_env(plan.registry_url())
+    );
+    let command = match bin_path.and_then(|path| super::anchored_npm_command(path, &args)) {
+        Some(command) => format!("{env} {command}"),
+        None => format!("{env} npm {args}"),
+    };
+    run_login_bash(&command, GROK_UPDATE_TIMEOUT)
+}
+
+#[cfg(target_os = "macos")]
+fn shell_single_quote_for_env(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+#[cfg(target_os = "macos")]
+fn grok_version_matches_target(target: &str) -> bool {
+    grok_post_observe()
+        .ok()
+        .and_then(|observed| observed.version)
+        .is_some_and(|version| {
+            fyagent_user_helper::grok::parse_normalized_version(&version).as_deref() == Some(target)
+                || version == target
+        })
 }
 
 #[cfg(target_os = "macos")]
@@ -1179,18 +1306,67 @@ pub(super) async fn run_windows_grok_helper_lifecycle(
     action: ToolLifecycleAction,
 ) -> Result<(), String> {
     let (tool_action, expected_owner) = grok_helper_request(action);
+    let plans = windows_npm_plans_for_action(action).await;
+    let requires_npm_plan = matches!(
+        action,
+        ToolLifecycleAction::Install | ToolLifecycleAction::InstallOfficialNpm
+    );
     tokio::task::spawn_blocking(move || {
         let context = crate::windows_runtime::require_interactive_user_context();
-        crate::codex_desktop::platform::windows::run_grok_tool_operation(
-            context,
-            tool_action,
-            expected_owner,
-        )
-        .map_err(map_grok_helper_error)?;
-        Ok(())
+        if requires_npm_plan && plans.is_empty() {
+            return Err("官方 npm 镜像都未能提供匹配的版本".to_string());
+        }
+        if plans.is_empty() {
+            return crate::codex_desktop::platform::windows::run_grok_tool_operation(
+                context,
+                tool_action,
+                expected_owner,
+                None,
+            )
+            .map(|_| ())
+            .map_err(map_grok_helper_error);
+        }
+        let mut last_error = None;
+        for plan in plans {
+            match crate::codex_desktop::platform::windows::run_grok_tool_operation(
+                context,
+                tool_action,
+                expected_owner,
+                Some(plan),
+            ) {
+                Ok(_) => return Ok(()),
+                Err(error) => last_error = Some(error),
+            }
+        }
+        Err(map_grok_helper_error(
+            last_error.expect("at least one plan"),
+        ))
     })
     .await
     .map_err(|error| format!("tool lifecycle task join error: {error}"))?
+}
+
+#[cfg(target_os = "windows")]
+async fn windows_npm_plans_for_action(
+    action: ToolLifecycleAction,
+) -> Vec<fyagent_user_helper::GrokNpmInstallPlan> {
+    if matches!(action, ToolLifecycleAction::InstallNative)
+        || matches!(
+            grok_helper_request(action).0,
+            fyagent_user_helper::GrokToolAction::Observe
+        )
+    {
+        return Vec::new();
+    }
+    let Ok(manifest) = super::grok_npm::bundled_manifest() else {
+        return Vec::new();
+    };
+    let client = crate::proxy::http_client::get();
+    let matching = super::grok_npm::registries_matching_manifest(&client, &manifest).await;
+    matching
+        .into_iter()
+        .filter_map(|registry| super::grok_npm::plan_for_registry(&manifest, registry, false).ok())
+        .collect()
 }
 
 #[cfg(target_os = "windows")]
@@ -1201,6 +1377,7 @@ pub(super) async fn observe_windows_grok_via_helper(
         crate::codex_desktop::platform::windows::run_grok_tool_operation(
             context,
             fyagent_user_helper::GrokToolAction::Observe,
+            None,
             None,
         )
         .map_err(map_grok_helper_error)
@@ -1221,6 +1398,10 @@ fn grok_helper_request(
         ToolLifecycleAction::InstallOfficialNpm => (
             fyagent_user_helper::GrokToolAction::Install,
             Some(fyagent_user_helper::GrokOwner::Npm),
+        ),
+        ToolLifecycleAction::InstallNative => (
+            fyagent_user_helper::GrokToolAction::Install,
+            Some(fyagent_user_helper::GrokOwner::Native),
         ),
         ToolLifecycleAction::Update => (fyagent_user_helper::GrokToolAction::Update, None),
     }
@@ -1355,6 +1536,24 @@ mod tests {
     }
 
     #[test]
+    fn default_absent_install_uses_official_npm() {
+        let plan = grok_plan_from_installs(ToolLifecycleAction::Install, &[], None)
+            .expect("default install");
+        assert_eq!(plan, GrokPlan::OfficialNpm { bin_path: None });
+        let native = grok_plan_from_installs(ToolLifecycleAction::InstallNative, &[], None)
+            .expect("explicit native");
+        assert_eq!(plan_kind_name(&native), "native");
+    }
+
+    fn plan_kind_name(plan: &GrokPlan) -> &'static str {
+        match plan {
+            GrokPlan::NativeFresh => "native",
+            GrokPlan::NativeUpdate { .. } => "native-update",
+            GrokPlan::OfficialNpm { .. } => "npm",
+        }
+    }
+
+    #[test]
     fn default_install_does_not_convert_existing_npm() {
         let installs = [install(
             "/Users/me/.nvm/versions/node/v22.14.0/bin/grok",
@@ -1447,6 +1646,29 @@ mod tests {
     }
 
     #[test]
+    fn renderer_facing_grok_errors_omit_registry_urls_and_npm_commands() {
+        let message = fail_job(
+            ToolLifecycleAction::Install,
+            Some(GrokDistributionOwner::OfficialNpm),
+            "source_exhausted",
+            "npm i -g @xai-official/grok@1.0.13 --registry=https://mirrors.tencent.com/npm/\nERR!",
+            Some(1),
+            false,
+            Some("official_npm"),
+        );
+        assert!(message.contains("官方来源都不可用"));
+        assert!(!message.contains("https://"));
+        assert!(!message.contains("--registry"));
+        assert!(!message.contains("npm i"));
+        assert!(!message.contains("mirrors.tencent.com"));
+        let error = last_grok_lifecycle_error().expect("renderer error");
+        assert!(!error.contains("https://"));
+        assert!(!error.contains("npm i"));
+        let stored = last_grok_lifecycle_snapshot().expect("snapshot");
+        assert!(stored.redacted_log().contains("npm i -g"));
+    }
+
+    #[test]
     fn failed_snapshot_is_terminal_and_persists() {
         let message = fail_job(
             ToolLifecycleAction::Update,
@@ -1459,6 +1681,7 @@ mod tests {
         );
         assert!(message.contains("官方来源都不可用"));
         assert!(!message.contains("source_exhausted"));
+        assert!(!message.contains("exit 1 from official updater"));
         let stored = last_grok_lifecycle_snapshot().expect("snapshot");
         assert_eq!(stored.stage(), "failed");
         assert_eq!(stored.reason(), Some("source_exhausted"));

@@ -101,8 +101,9 @@ describe("Rust modular architecture boundaries", () => {
       expect(toolingLifecycle).not.toContain(movedGrokRule);
       expect(toolingService).not.toContain(movedGrokRule);
     }
+    expect(toolingService).toContain("mod grok_npm;");
     expect(toolingService).toMatch(
-      /#\[cfg\(target_os = "macos"\)\]\s+use lifecycle::\{[\s\S]*?npm_install_command_for,[\s\S]*?\};/u,
+      /#\[cfg\(target_os = "macos"\)\]\s+use lifecycle::GROK_INSTALL_UNIX;/u,
     );
     for (const implementationMarker of [
       "fetch_npm_latest_for_tool",

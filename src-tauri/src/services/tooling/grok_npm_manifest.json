@@ -1,0 +1,13 @@
+{
+  "channel": "stable",
+  "package": "@xai-official/grok",
+  "version": "1.0.13",
+  "published_at": "2026-08-28T00:00:00Z",
+  "integrity": {
+    "@xai-official/grok": "sha512-rBMEx/7ND5DaBRGwzi6fEyf4ZWy4yStPnZ38UaIM2smZzg4E0fieDfLKPK8eRF4l2Xe4+5kSdCAVop99+whG4A==",
+    "@xai-official/grok-win32-x64": "sha512-IAoQ+fDQVUzwzl1gYK+CMka2cH4yN5nbcsyodyvYTvkxSPixDIzzWeRtrOESOCPlft6YYpvFfdqisJppPOHekA==",
+    "@xai-official/grok-win32-arm64": "sha512-J+USAEgMyy7TaDRir2HvS1rj8yG8HjjtewK0qxz1dl2E7jjdqMjaKuN6H6l563ASvXwNDx17ye+1fkwwpjyKdg==",
+    "@xai-official/grok-darwin-x64": "sha512-trI+fm4ZY/2skF05XLfCYCMQgk/NUj6jYVV1stL4jPafhYj41yDYxu0PHgLxEy6f8UtA8XCfZN084/KxgiYDKw==",
+    "@xai-official/grok-darwin-arm64": "sha512-Nctnwkzj550E512RZ+n+IUuhqGPZ2L7z/ZTIlZdVn0KqZHfzC58vIZPMBzdcOkoK42IrJlLD6GS7Eo6c1y+VGw=="
+  }
+}

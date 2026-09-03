@@ -19,6 +19,7 @@ pub(super) enum ToolLifecycleAction {
     Install,
     Update,
     InstallOfficialNpm,
+    InstallNative,
 }
 
 impl FromStr for ToolLifecycleAction {
@@ -29,6 +30,7 @@ impl FromStr for ToolLifecycleAction {
             "install" => Ok(Self::Install),
             "update" => Ok(Self::Update),
             "install_official_npm" => Ok(Self::InstallOfficialNpm),
+            "install_native" => Ok(Self::InstallNative),
             _ => Err(format!("Unsupported tool action: {value}")),
         }
     }
@@ -87,11 +89,9 @@ pub(super) fn tool_display_name(tool: &str) -> &'static str {
     }
 }
 
-#[cfg(target_os = "macos")]
 pub(super) const GROK_INSTALL_UNIX: &str =
     "bash -c 'tmp=$(mktemp) && curl -fsSL https://x.ai/cli/install.sh -o $tmp && bash $tmp; status=$?; rm -f $tmp; exit $status'";
 
-#[cfg(target_os = "windows")]
 pub(super) fn grok_install_windows_command() -> String {
     fyagent_user_helper::grok::grok_native_windows_powershell_command()
 }
@@ -104,13 +104,13 @@ pub(super) enum LifecycleCommandShell {
     WindowsBatch,
 }
 
-pub(super) fn npm_install_command_for(tool: &str) -> Option<&'static str> {
+pub(super) fn npm_install_command_for(tool: &str) -> Option<String> {
     if !is_lifecycle_writable(tool) {
         return None;
     }
 
     match tool {
-        "grok" => Some("npm i -g @xai-official/grok@latest"),
+        "grok" => super::grok_npm::default_install_command(),
         _ => None,
     }
 }
@@ -149,30 +149,23 @@ pub(super) fn tool_action_shell_command_for_shell(
         return None;
     }
 
-    #[cfg(target_os = "windows")]
-    if tool == "grok"
-        && matches!(action, ToolLifecycleAction::Install)
-        && matches!(shell, LifecycleCommandShell::WindowsBatch)
-    {
-        return Some(grok_install_windows_command());
+    if tool == "grok" && matches!(action, ToolLifecycleAction::InstallNative) {
+        return Some(match shell {
+            LifecycleCommandShell::Posix => GROK_INSTALL_UNIX.to_string(),
+            LifecycleCommandShell::WindowsBatch => grok_install_windows_command(),
+        });
     }
 
     let install = npm_install_command_for(tool)?;
     match action {
-        ToolLifecycleAction::Install => Some(install.to_string()),
-        ToolLifecycleAction::InstallOfficialNpm => {
-            if tool == "grok" {
-                Some(install.to_string())
-            } else {
-                None
-            }
-        }
+        ToolLifecycleAction::Install | ToolLifecycleAction::InstallOfficialNpm => Some(install),
+        ToolLifecycleAction::InstallNative => None,
         ToolLifecycleAction::Update => match prefers_official_update(tool, shell)
             .then(|| bare_official_update_command(tool))
             .flatten()
         {
-            Some(update) => Some(chain_update_commands(update, install.to_string(), shell)),
-            None => Some(install.to_string()),
+            Some(update) => Some(chain_update_commands(update, install, shell)),
+            None => Some(install),
         },
     }
 }
@@ -192,7 +185,6 @@ fn grok_official_npm_command(tool: &str) -> Result<String, String> {
         return Err("install_official_npm is only valid for Grok Build".to_string());
     }
     npm_install_command_for("grok")
-        .map(str::to_string)
         .ok_or_else(|| "Official npm install is unavailable for Grok Build".to_string())
 }
 
@@ -210,6 +202,7 @@ fn build_tool_action_line(tool: &str, action: ToolLifecycleAction) -> Result<Str
                 static_fallback_command_for(tool, ToolLifecycleAction::Install)
             }
             ToolLifecycleAction::InstallOfficialNpm => grok_official_npm_command(tool)?,
+            ToolLifecycleAction::InstallNative => grok_install_windows_command(),
         };
         if command.is_empty() {
             return Err(format!("Unsupported tool action target: {tool}"));
@@ -225,8 +218,9 @@ fn build_tool_action_line(tool: &str, action: ToolLifecycleAction) -> Result<Str
                 installs_anchored_command(tool, &installs)
                     .unwrap_or_else(|| static_fallback_command(tool))
             }
-            ToolLifecycleAction::Install => install_command_for(tool),
+            ToolLifecycleAction::Install => npm_install_command_for(tool).unwrap_or_default(),
             ToolLifecycleAction::InstallOfficialNpm => grok_official_npm_command(tool)?,
+            ToolLifecycleAction::InstallNative => GROK_INSTALL_UNIX.to_string(),
         };
         if command.is_empty() {
             return Err(format!("Unsupported tool action target: {tool}"));
@@ -251,11 +245,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn grok_windows_install_uses_official_powershell_without_npm_fallback() {
+    fn grok_windows_default_install_uses_npm_plan_not_powershell() {
         let install = static_fallback_command_for("grok", ToolLifecycleAction::Install);
-        let native = grok_install_windows_command();
-        assert_eq!(install, native);
-        assert!(!install.contains("npm"));
+        assert!(install.contains("@xai-official/grok@"));
+        assert!(install.contains("--registry="));
+        assert!(!install.contains("@latest"));
+        assert!(!install.contains("powershell"));
+    }
+
+    #[test]
+    fn grok_windows_explicit_native_install_uses_official_powershell() {
+        let native = static_fallback_command_for("grok", ToolLifecycleAction::InstallNative);
+        assert_eq!(native, grok_install_windows_command());
+        assert!(!native.contains("npm"));
         assert_eq!(
             native,
             fyagent_user_helper::grok::grok_native_windows_powershell_command()

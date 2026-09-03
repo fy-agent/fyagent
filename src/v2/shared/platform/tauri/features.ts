@@ -8,11 +8,13 @@ import { createContentFeaturePorts } from "./feature-ports/content";
 import { createModelFeaturePorts } from "./feature-ports/models";
 import { createQoderTraeFeaturePorts } from "./feature-ports/qoderTrae";
 import { createGrokToolingPort } from "./feature-ports/grokTooling";
+import { createManagedAuthPort } from "./feature-ports/managedAuth";
 import { createSimpleFeaturePorts } from "./feature-ports/simple";
 
 export function createTauriFeaturePorts(): FeaturePorts {
   return {
     agentAuth: createAgentAuthPort(),
+    managedAuth: createManagedAuthPort(),
     agentInstallReadiness: createAgentInstallReadinessPort(),
     changePlans: createChangePlansPort(),
     ...createAgentFeaturePorts(),

@@ -5,7 +5,8 @@
 Read this contract before changing external-Agent login/logout/provider
 handoff, Auth observation, session polling, desktop target selection, or Auth
 result wording. Auth is a separate bounded façade from Agent install jobs and
-from FyAgent's existing Codex Auth Center.
+from FyAgent's central V2 `/auth` page owned by
+[V2 Managed Accounts](../frontend/v2-managed-auth.md).
 
 Primary owners:
 
@@ -73,8 +74,10 @@ verified | handoff_complete | failed | cancelled | timed_out
 
 - `start_agent_action` does not implement Auth actions and must return the
   closed unsupported/executor reason without launching a session.
-- Codex Auth remains `fyagent_managed` and routes the user to the existing Auth
-  Center. This façade does not add a second Codex OAuth flow.
+- Codex Auth remains `fyagent_managed` and routes the user to the V2 `/auth`
+  page owned by [V2 Managed Accounts](../frontend/v2-managed-auth.md). Native
+  account/secret ownership is [Managed Auth Core](./managed-auth.md). This
+  façade does not add a second Codex OAuth flow.
 - Auth session state is process-local, bounded and single-flight per Agent.
   Terminal snapshots are immutable and can be polled safely.
 - Session IDs are canonical backend-generated UUIDs. OpenCode provider IDs are
@@ -87,13 +90,24 @@ verified | handoff_complete | failed | cancelled | timed_out
   `claude auth status --json` output plus its documented exit semantics to
   reach the requested state. Launching a terminal/browser alone remains
   `awaiting_user`.
+- OpenCode observation is Desktop-first. The Agent Auth façade reads
+  sanitized provider metadata produced by the Managed Auth OpenCode
+  consumer from official `Global.Path.data/auth.json`. A missing PATH
+  `opencode` CLI must not yield `AuthObserverUnavailable`. Connect
+  launches a trusted Desktop target; logout removes one `auth.json`
+  key through that consumer. Tokens, keys, paths and sidecar ports
+  still do not cross IPC.
 - OpenCode uses provider-level official auth operations. Observation exposes
   sanitized provider labels and opaque `p1:` IDs, never a global “logged in”
   boolean. Connect succeeds only when the intended provider appears; logout
   succeeds only when the selected provider disappears. Before/after provider
   set drift fails closed.
 - Grok Build has no reviewed structured status surface. A successful official
-  login/logout entry is `handoff_complete`, not verified.
+  login/logout entry is `handoff_complete`, not verified. Managed Auth may
+  hold a vault `purpose=grok_native` session, but this façade still returns
+  `handoff_only` and must not treat vault metadata as a verified Grok
+  CLI/Desktop login. Native Grok `auth.json` and `auth_provider_command`
+  writes stay production-disabled in Managed Auth.
 - QoderWork, TRAE Work and WorkBuddy open one selected trusted desktop target
   and are also handoff-only. Opening the application does not prove account
   state.
@@ -104,7 +118,9 @@ verified | handoff_complete | failed | cancelled | timed_out
 
 - FyAgent never reads vendor token files, browser cookies, Keychain entries,
   Windows Credential Manager entries or arbitrary home-directory markers to
-  infer external Auth state.
+  infer external Auth state, except OpenCode provider observation which
+  consumes Managed Auth consumer metadata from `auth.json` and still
+  forbids tokens, keys and paths on the Agent Auth DTO.
 - Observation returns only sanitized account/provider/handoff metadata and
   closed authority/reason enums. Token, email when not required by the closed
   DTO, raw CLI output, path, command and environment details do not cross IPC.
@@ -145,8 +161,9 @@ verified | handoff_complete | failed | cancelled | timed_out
   overclaim.
 - **Base:** stopping monitoring leaves the external browser/app flow running.
 - **Bad:** infer login from `~/.claude`, serialize CLI stdout, launch the first
-  installed desktop candidate, report verified after opening a terminal, or
-  run Codex OAuth through this façade.
+  installed desktop candidate, report verified after opening a terminal, run
+  Codex OAuth through this façade, or treat a missing PATH `opencode` binary
+  as OpenCode Auth unavailable.
 
 ## 6. Tests Required
 
@@ -165,13 +182,19 @@ Required assertions:
   IDs;
 - per-Agent single-flight, bounded polling, immutable terminal snapshots and
   stop-waiting semantics;
-- no URL/path/command/token/env/hash/bypass fields and no vendor credential
-  file reads;
+- no URL/path/command/token/env/hash/bypass fields on Agent Auth DTOs;
+  OpenCode observation reads official `auth.json` only through the Managed
+  Auth consumer and still forbids tokens, keys, paths and sidecar ports on
+  the wire;
 - Claude structured status verifies both login and logout; process launch by
   itself never verifies;
-- OpenCode before/after provider-set checks bind the selected provider;
-- Grok and desktop products remain handoff-only; Codex remains Auth-Center
-  managed;
+- OpenCode observation does not require PATH `opencode`; missing CLI with a
+  readable or missing `auth.json` is `provider_connections`, not
+  `AuthObserverUnavailable`; before/after provider-set checks bind the
+  selected opaque `p1:` id;
+- Grok and desktop products remain handoff-only; Codex remains managed by
+  the central `/auth` page; leftover `auth_start_login` is not an Agent
+  Auth path;
 - desktop target expiry/ambiguity/drift produces zero launch side effects;
 - renderer clears sensitive/local session state on terminal, route unmount and
   retry paths. Browser mocks do not prove native Auth success.

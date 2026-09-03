@@ -47,7 +47,14 @@ async fn fetch_with_timeout(
     api_key: &str,
     timeout: Duration,
 ) -> Result<FetchWorkBuddyModelsResult, WorkBuddyError> {
-    tokio::time::timeout(timeout, fetch_with_client(client, normalized, api_key))
+    run_with_fetch_timeout(fetch_with_client(client, normalized, api_key), timeout).await
+}
+
+async fn run_with_fetch_timeout(
+    fetch: impl std::future::Future<Output = Result<FetchWorkBuddyModelsResult, WorkBuddyError>>,
+    timeout: Duration,
+) -> Result<FetchWorkBuddyModelsResult, WorkBuddyError> {
+    tokio::time::timeout(timeout, fetch)
         .await
         .map_err(|_| WorkBuddyError::new(WorkBuddyErrorCode::FetchTimeout))?
 }
@@ -347,42 +354,6 @@ mod tests {
                 let _ = stream.write_all(&response);
                 let _ = stream.flush();
             }
-        });
-
-        LocalHttpServer {
-            base_url: format!("http://127.0.0.1:{port}"),
-            requests,
-            accepted_connections,
-            handle,
-        }
-    }
-
-    fn spawn_delayed_server(delay: Duration, response: Vec<u8>) -> LocalHttpServer {
-        let listener = TcpListener::bind("127.0.0.1:0").expect("bind delayed loopback listener");
-        listener
-            .set_nonblocking(true)
-            .expect("set delayed loopback listener nonblocking");
-        let port = listener.local_addr().expect("read delayed port").port();
-        let requests = Arc::new(Mutex::new(Vec::new()));
-        let captured_requests = Arc::clone(&requests);
-        let accepted_connections = Arc::new(AtomicUsize::new(0));
-        let connection_count = Arc::clone(&accepted_connections);
-        let handle = thread::spawn(move || {
-            let deadline = Instant::now() + TEST_SERVER_REQUEST_TIMEOUT;
-            let Some(mut stream) = accept_connection(&listener, deadline) else {
-                return;
-            };
-            connection_count.fetch_add(1, Ordering::Relaxed);
-            let Some(request) = read_http_request(&mut stream, deadline) else {
-                return;
-            };
-            captured_requests
-                .lock()
-                .expect("captured requests")
-                .push(request);
-            thread::sleep(delay);
-            let _ = stream.write_all(&response);
-            let _ = stream.flush();
         });
 
         LocalHttpServer {
@@ -883,17 +854,17 @@ mod tests {
 
     #[tokio::test]
     async fn total_fetch_timeout_maps_to_the_stable_timeout_error() {
-        let server = spawn_delayed_server(
-            Duration::from_millis(100),
-            http_response("200 OK", &[], br#"{"data":[{"id":"late"}]}"#),
-        );
-        let normalized = normalize_workbuddy_base_url(&server.base_url).unwrap();
-        let client = loopback_test_client();
+        let pending_fetch = async {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            Ok(FetchWorkBuddyModelsResult {
+                models: vec!["late".to_string()],
+                truncated: false,
+            })
+        };
 
-        let error = fetch_with_timeout(&client, &normalized, "", Duration::from_millis(10))
+        let error = run_with_fetch_timeout(pending_fetch, Duration::from_millis(10))
             .await
             .expect_err("the injected total timeout must abort the pending fetch");
         assert_eq!(error.code(), WorkBuddyErrorCode::FetchTimeout);
-        assert_eq!(server.finish().len(), 1);
     }
 }

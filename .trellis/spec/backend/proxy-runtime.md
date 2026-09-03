@@ -13,7 +13,10 @@ retry/failover, streaming, response processing, and usage attribution are owned
 by [Local Proxy Pipeline](./local-proxy-pipeline.md). Provider document
 mutation remains owned by the relevant Provider/configuration contract, and
 persistence mechanics remain owned by
-[Database Persistence](./database-persistence.md).
+[Database Persistence](./database-persistence.md). Upstream OAuth access
+tokens for Codex/xAI/Copilot come from
+[Managed Auth Core](./managed-auth.md) when a fyagent-owned vault session
+exists; the forwarder must not grow a second token store.
 
 ## 2. Signatures
 

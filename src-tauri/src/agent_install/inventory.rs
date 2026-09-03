@@ -1017,7 +1017,7 @@ fn desktop_destinations(_agent_id: AgentCatalogId) -> Vec<ProbeDestination> {
         let agent_id = _agent_id;
         let name = agent_display_name(agent_id);
         return match agent_id {
-            AgentCatalogId::QoderWork => vec![destination(
+            AgentCatalogId::QoderWork | AgentCatalogId::OpenCode => vec![destination(
                 &format!("windows:{agent_id:?}:current-user"),
                 InstallationScope::CurrentUser,
                 InstallationPackageKind::Exe,
@@ -1328,6 +1328,7 @@ mod tests {
             AgentCatalogId::QoderWork,
             AgentCatalogId::TraeWork,
             AgentCatalogId::WorkBuddy,
+            AgentCatalogId::OpenCode,
         ] {
             let probe = project_desktop_discovery(
                 agent_id,

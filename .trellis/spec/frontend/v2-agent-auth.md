@@ -3,7 +3,7 @@
 ## 1. Scope / Trigger
 
 Read this contract before changing Agent authentication status, login/logout or
-provider-connection actions, active-session recovery, polling, stop-waiting,
+provider-connection actions, managed-account routing, active-session recovery, polling, stop-waiting,
 desktop-target selection, or authentication copy on the V2 Agents page.
 
 Primary owners are:
@@ -81,8 +81,14 @@ interface AgentAuthSessionSnapshot {
   agentId: AgentCatalogId;
   intent: AgentAuthIntent;
   stage:
-    | "preparing" | "launching" | "awaiting_user" | "verifying"
-    | "verified" | "handoff_complete" | "failed" | "cancelled"
+    | "preparing"
+    | "launching"
+    | "awaiting_user"
+    | "verifying"
+    | "verified"
+    | "handoff_complete"
+    | "failed"
+    | "cancelled"
     | "timed_out";
   canStopWaiting: boolean;
   outcome: AgentAuthSessionOutcome | null;
@@ -130,11 +136,33 @@ The page never invokes native Auth commands directly.
   `configured` is not `logged_in`; `empty` is not proof of logout.
 - `handoff_only` says FyAgent can launch/guide the vendor flow but cannot verify
   the resulting account state. The UI must not convert it to success.
-- `fyagent_managed` routes to the closed `auth_center` destination rather than
-  duplicating provider configuration inside the Agent card.
+- `fyagent_managed` remains a backend observation compatibility variant. Codex, Grok Build and OpenCode detail panels route to the central `/auth` page instead of duplicating account/connection mutations inside the Agent card.
 - `unknown`, `unverified`, and `unavailable` remain visible states with reason
   copy. Absence of evidence is never rendered as logged out or healthy.
 - Only an intent present in `allowedIntents` may be offered.
+
+### Managed consumer routing
+
+- Codex, Grok Build and OpenCode map to the closed managed consumers `codex`,
+  `grokbuild` and `opencode`. Their detail panels render the current Agent Auth
+  observation only as a summary and offer one central management button.
+  OpenCode observation is `provider_connections` from official `auth.json`
+  metadata; a missing PATH CLI is not `unavailable`. Grok Agent observation
+  remains `handoff_only` until Managed Auth helper or file projection is
+  HIL-proven; the `/auth` Grok card stays `native_projection_unavailable` and
+  must not be shown as connected.
+  After an OpenCode Path B write, `/auth` must show `pending_restart` until
+  matching-host Desktop HIL proves live pickup.
+- The destination is `/auth?consumer=<id>&view=connections` with an optional
+  closed `agentReturn`/`agentSection` tuple. The page does not pass a token,
+  command, path, arbitrary provider name or free-form return URL.
+- These managed-consumer panels disable `useAgentAuthSession` recovery and
+  start operations. Clicking their management button must issue zero
+  `start_agent_auth_session` calls. Claude and the current desktop handoff
+  products retain the Agent-owned session flow until their backend ownership
+  changes.
+- Account/connection/request-source semantics on the destination are owned by
+  [V2 Managed Accounts and Authentication](./v2-managed-auth.md).
 
 ### Session lifecycle
 
@@ -173,21 +201,21 @@ The page never invokes native Auth commands directly.
 
 ## 4. Validation & Error Matrix
 
-| Condition | Required result |
-| --- | --- |
-| Response contract version or exact keys are wrong | Reject the whole response as unavailable. |
-| Observation or active-session response `agentId` differs from the requested Agent | Reject in the adapter; do not attach another Agent's Auth state. |
-| `startSession` returns a strict snapshot for another known Agent | The current adapter does not rebind it to the request. Do not rely on rejection; add the equality check and regression test before changing/claiming this boundary. |
-| Duplicate/unknown intent, stage, outcome, ownership, authority, or reason | Reject the whole DTO. |
-| Observation is `provider_connections/configured` | Say provider configured; do not say account logged in. |
-| Observation is `handoff_only` | Offer only the admitted handoff and retain unverified wording. |
-| `getActiveSession` fails | End recovery, expose retry/error state, and do not start automatically. |
-| A non-terminal poll fails | Keep the last snapshot, expose the error, and continue only through the hook-owned retry loop. |
-| User starts while recovery/submission/session is busy | Disable/reject the duplicate action. |
-| `stopWaiting` when `canStopWaiting` is false | No native call; return no result. |
-| Desktop target/revision is stale | Preserve the native reason and require lifecycle reread/reselection. |
-| Terminal session arrives | Stop polling; deduplicate callback side effects by `sessionId` and reread display authority. |
-| Secret/raw command output appears in UI or route state | Security regression. |
+| Condition                                                                         | Required result                                                                                                                                                     |
+| --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Response contract version or exact keys are wrong                                 | Reject the whole response as unavailable.                                                                                                                           |
+| Observation or active-session response `agentId` differs from the requested Agent | Reject in the adapter; do not attach another Agent's Auth state.                                                                                                    |
+| `startSession` returns a strict snapshot for another known Agent                  | The current adapter does not rebind it to the request. Do not rely on rejection; add the equality check and regression test before changing/claiming this boundary. |
+| Duplicate/unknown intent, stage, outcome, ownership, authority, or reason         | Reject the whole DTO.                                                                                                                                               |
+| Observation is `provider_connections/configured`                                  | Say provider configured; do not say account logged in.                                                                                                              |
+| Observation is `handoff_only`                                                     | Offer only the admitted handoff and retain unverified wording.                                                                                                      |
+| `getActiveSession` fails                                                          | End recovery, expose retry/error state, and do not start automatically.                                                                                             |
+| A non-terminal poll fails                                                         | Keep the last snapshot, expose the error, and continue only through the hook-owned retry loop.                                                                      |
+| User starts while recovery/submission/session is busy                             | Disable/reject the duplicate action.                                                                                                                                |
+| `stopWaiting` when `canStopWaiting` is false                                      | No native call; return no result.                                                                                                                                   |
+| Desktop target/revision is stale                                                  | Preserve the native reason and require lifecycle reread/reselection.                                                                                                |
+| Terminal session arrives                                                          | Stop polling; deduplicate callback side effects by `sessionId` and reread display authority.                                                                        |
+| Secret/raw command output appears in UI or route state                            | Security regression.                                                                                                                                                |
 
 ## 5. Good / Base / Bad Cases
 

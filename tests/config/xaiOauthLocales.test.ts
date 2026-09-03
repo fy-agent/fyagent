@@ -24,6 +24,7 @@ const requiredKeys = [
   "xaiOauth.retry",
   "xaiOauth.logoutAll",
   "xaiOauth.loginRequired",
+  "settings.authCenter.providerBindingHint",
   "managedAuth.selectedAccountNeedsReauth",
   "managedAuth.selectedAccountUnavailable",
   "providerForm.providerKeyStatusLoading",

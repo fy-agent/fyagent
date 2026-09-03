@@ -132,7 +132,7 @@ describe("AboutSection", () => {
       ).not.toBeInTheDocument();
       expect(
         within(card).queryByRole("button", {
-          name: "settings.grokUseOfficialNpm",
+          name: "settings.grokUseOfficialNative",
         }),
       ).not.toBeInTheDocument();
     }
@@ -189,7 +189,7 @@ describe("AboutSection", () => {
     ]);
   });
 
-  it("installs Grok via official npm only when the user chooses that action", async () => {
+  it("installs Grok via official npm by default and native only when chosen", async () => {
     const user = userEvent.setup();
     mocks.getToolVersions.mockImplementation(async (tools: string[]) =>
       tools.map((name) =>
@@ -197,11 +197,11 @@ describe("AboutSection", () => {
           ? {
               name,
               version: null,
-              latest_version: "1.0.6",
+              latest_version: "1.0.13",
               error: null,
               installed_but_broken: false,
               distribution_owner: null,
-              latest_source: "native_internal",
+              latest_source: "official_npm",
             }
           : toolVersion(name),
       ),
@@ -211,28 +211,40 @@ describe("AboutSection", () => {
     await waitFor(() => {
       expect(
         within(card).getByRole("button", {
-          name: "settings.grokUseOfficialNpm",
+          name: "settings.grokUseOfficialNative",
         }),
       ).toBeEnabled();
       expect(
         within(card).getByRole("button", { name: "settings.toolInstall" }),
       ).toBeEnabled();
     });
+    expect(
+      within(card).getByText("settings.grokInstallNetworkNote"),
+    ).toBeInTheDocument();
+    await user.click(
+      within(card).getByRole("button", { name: "settings.toolInstall" }),
+    );
+    await waitFor(() => {
+      expect(mocks.runToolLifecycleAction).toHaveBeenCalledWith(
+        ["grok"],
+        "install",
+      );
+    });
+    expect(mocks.runToolLifecycleAction).not.toHaveBeenCalledWith(
+      ["grok"],
+      "install_native",
+    );
     await user.click(
       within(card).getByRole("button", {
-        name: "settings.grokUseOfficialNpm",
+        name: "settings.grokUseOfficialNative",
       }),
     );
     await waitFor(() => {
       expect(mocks.runToolLifecycleAction).toHaveBeenCalledWith(
         ["grok"],
-        "install_official_npm",
+        "install_native",
       );
     });
-    expect(mocks.runToolLifecycleAction).not.toHaveBeenCalledWith(
-      ["grok"],
-      "install",
-    );
   });
 
   it("does not render absolute paths when diagnosing Grok conflicts", async () => {
@@ -243,7 +255,7 @@ describe("AboutSection", () => {
         tool: "grok",
         is_conflict: true,
         needs_confirmation: false,
-        command: "npm i -g @xai-official/grok@latest",
+        command: "npm i -g @xai-official/grok@1.0.13 --registry=https://mirrors.tencent.com/npm/",
         anchored: true,
         installs: [
           {

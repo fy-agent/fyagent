@@ -6,10 +6,12 @@ use std::{
 use zeroize::Zeroizing;
 
 use super::{
-    BackendProbe, SecretBackend, SecretBackendKind, SecretMaterial, SecretRef, SecretServiceError,
+    BackendProbe, SecretBackend, SecretBackendKind, SecretMaterial, SecretPurpose, SecretRef,
+    SecretServiceError,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[allow(dead_code)]
 pub(crate) enum MemoryFailureMode {
     Healthy,
     Locked,
@@ -39,10 +41,12 @@ impl MemorySecretBackend {
         }
     }
 
+    #[allow(dead_code)]
     pub(crate) fn set_mode(&self, mode: MemoryFailureMode) {
         self.state.lock().expect("memory secret backend lock").mode = mode;
     }
 
+    #[allow(dead_code)]
     pub(crate) fn operation_count(&self) -> usize {
         self.state
             .lock()
@@ -50,6 +54,7 @@ impl MemorySecretBackend {
             .operation_count
     }
 
+    #[allow(dead_code)]
     pub(crate) fn contains(&self, secret_ref: &SecretRef) -> bool {
         self.state
             .lock()
@@ -107,18 +112,23 @@ impl SecretBackend for MemorySecretBackend {
         Ok(())
     }
 
-    fn read(&self, secret_ref: &SecretRef) -> Result<SecretMaterial, SecretServiceError> {
+    fn read(
+        &self,
+        secret_ref: &SecretRef,
+        purpose: SecretPurpose,
+    ) -> Result<SecretMaterial, SecretServiceError> {
         let state = self.checked_state()?;
         let Some(record) = state.records.get(secret_ref) else {
             return Err(SecretServiceError::missing());
         };
-        SecretMaterial::from_native_input(
-            record.as_slice().to_vec(),
-            super::SecretPurpose::CodexApiKey,
-        )
+        SecretMaterial::from_native_input(record.as_slice().to_vec(), purpose)
     }
 
-    fn probe(&self, secret_ref: &SecretRef) -> Result<BackendProbe, SecretServiceError> {
+    fn probe(
+        &self,
+        secret_ref: &SecretRef,
+        _purpose: SecretPurpose,
+    ) -> Result<BackendProbe, SecretServiceError> {
         let state = self.checked_state()?;
         Ok(if state.records.contains_key(secret_ref) {
             BackendProbe::ready()
