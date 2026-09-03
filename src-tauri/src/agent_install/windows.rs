@@ -105,6 +105,10 @@ fn product_policy(product: &DesktopProduct) -> WindowsProductPolicy {
         crate::services::external_agents::AgentCatalogId::WorkBuddy => {
             &["Tencent Technology (Shenzhen) Company Limited"]
         }
+        crate::services::external_agents::AgentCatalogId::OpenCode => {
+            // Research-time signer/ProductName are not a WinVerifyTrust HIL.
+            &[]
+        }
         _ => &[],
     };
     WindowsProductPolicy {
@@ -1297,6 +1301,16 @@ mod tests {
             ),
             Some(PathBuf::from(r"C:\Program Files\WorkBuddy"))
         );
+    }
+
+    #[test]
+    fn opencode_windows_identity_stays_fail_closed_until_hil() {
+        let product = crate::agent_install::desktop::desktop_product(AgentCatalogId::OpenCode)
+            .expect("OpenCode is a managed desktop product");
+        let policy = product_policy(product);
+        assert!(product.windows_product_names.is_empty());
+        assert!(product.windows_relative_exes.is_empty());
+        assert!(policy.signer_subjects.is_empty());
     }
 
     #[test]

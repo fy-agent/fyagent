@@ -171,6 +171,7 @@ export function createBrowserFeaturePorts(): FeaturePorts {
     tooling: {
       getSnapshot: rejectNativeOnly,
       installOfficialNpm: rejectNativeOnly,
+      installNative: rejectNativeOnly,
     },
   };
 }

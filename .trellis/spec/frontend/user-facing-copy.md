@@ -87,6 +87,14 @@ not user copy.
 - Settings/Tooling may show install/update controls only for Grok Build.
   Claude, Gemini, OpenCode, OpenClaw, Hermes, and Codex must not present
   npm, Shell, PowerShell, WinGet, copy-all, or remote-script install bundles.
+- Grok default install copy may say the official npm package is used. It must
+  not claim that Grok sign-in or inference works on mainland networks. Do not
+  show registry URLs, integrity hashes, or npm command lines.
+- Native CLI install and owner switches are explicit secondary actions.
+- Windows vendor-wizard success copy states that the installer opened and the
+  user should finish it, then refresh. It must not say the product is installed.
+- OpenCode Windows x64 must not be described as supported until a reviewed
+  Windows identity HIL exists. ARM64 remains unavailable.
 - Conflict and upgrade dialogs may show source/version/default, never an
   absolute path, SID, package family, or the command that will run.
 - Public `docs/user-manual/**` must match that policy. Agent Desktop products

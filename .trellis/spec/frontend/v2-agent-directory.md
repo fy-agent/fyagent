@@ -136,6 +136,14 @@ or bypass flag.
   duplicate the installer.
 - Auth uses the shared Auth panel/hook and remains separate from lifecycle
   actions. Do not put `login` or `logout` into `start_agent_action`.
+- Grok CLI install/update stays on the Tooling owner. The Agent Grok panel
+  must not send a registry, version, hash, or npm command. Default one-click
+  install is official npm; official CLI is an explicit secondary control.
+  Native-owned installs may offer “改用官方 npm 方式”; that must not auto-run.
+- Windows vendor-wizard success uses
+  `官方安装窗口已打开。完成安装后请刷新安装状态。` It must not say the product
+  is installed. OpenCode Windows x64 must not be described as supported until
+  identity HIL exists.
 
 ### State, errors and accessibility
 
@@ -203,6 +211,10 @@ Required assertions:
 - polling survives active native jobs without synthetic failure, transfer
   totals remain raw, and cancel respects `cancellable`;
 - success/error invalidation/reread clears stale installed/update state;
+- Grok default install stays on official npm; native/owner-switch controls
+  are explicit and do not auto-run; renderer never sends registry/version/hash;
+- Windows vendor-wizard success copy reports an opened installer, not an
+  installed product; OpenCode Windows is not described as supported without HIL;
 - keyboard/focus/label/status semantics and localized closed-reason copy;
 - browser suites use fixtures only for layout/interaction and keep native HIL
   claims separate.

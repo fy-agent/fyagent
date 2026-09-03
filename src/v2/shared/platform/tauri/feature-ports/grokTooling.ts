@@ -17,5 +17,11 @@ export function createGrokToolingPort(): GrokToolingPort {
         action: "install_official_npm",
       });
     },
+    installNative: async () => {
+      await invoke("run_tool_lifecycle_action", {
+        tools: ["grok"],
+        action: "install_native",
+      });
+    },
   };
 }

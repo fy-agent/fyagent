@@ -5,12 +5,15 @@ use std::str::FromStr;
 
 mod discovery;
 mod grok;
+mod grok_npm;
 mod lifecycle;
 mod terminal;
 mod versions;
 
 #[cfg(target_os = "windows")]
 use lifecycle::build_tool_lifecycle_command;
+#[cfg(target_os = "macos")]
+use lifecycle::GROK_INSTALL_UNIX;
 #[cfg(test)]
 use lifecycle::*;
 use lifecycle::{
@@ -19,8 +22,6 @@ use lifecycle::{
 };
 #[cfg(target_os = "windows")]
 use lifecycle::{grok_install_windows_command, win_double_quote, windows_cmd_double_quote_arg};
-#[cfg(target_os = "macos")]
-use lifecycle::{npm_install_command_for, GROK_INSTALL_UNIX};
 
 #[cfg(target_os = "windows")]
 use versions::fetch_grok_latest_with_owner;
@@ -203,14 +204,11 @@ pub async fn run_tool_lifecycle_action(tools: Vec<String>, action: String) -> Re
     if requested.iter().any(|tool| *tool != "grok") {
         return Err(GROK_CLI_LIFECYCLE_ONLY_MESSAGE.to_string());
     }
-    if matches!(action, ToolLifecycleAction::InstallOfficialNpm)
-        && requested.iter().any(|tool| *tool != "grok")
-    {
-        return Err("install_official_npm is only valid for Grok Build".to_string());
-    }
 
     let label = match action {
-        ToolLifecycleAction::Install | ToolLifecycleAction::InstallOfficialNpm => "tool_install",
+        ToolLifecycleAction::Install
+        | ToolLifecycleAction::InstallOfficialNpm
+        | ToolLifecycleAction::InstallNative => "tool_install",
         ToolLifecycleAction::Update => "tool_update",
     };
 
@@ -1615,7 +1613,7 @@ fn sibling_bin(bin_path: &str, exe: &str) -> Option<String> {
 /// user directory. Prefixing npm's sibling directory makes both npm and its
 /// transitive Node interpreter resolve to the installation we selected.
 #[cfg(target_os = "macos")]
-fn anchored_npm_command(bin_path: &str, args: &str) -> Option<String> {
+pub(super) fn anchored_npm_command(bin_path: &str, args: &str) -> Option<String> {
     let dir = parent_dir(bin_path);
     if dir.is_empty() {
         return None;
@@ -1640,19 +1638,17 @@ fn anchored_official_update_command(tool: &str, bin_path: &str) -> Option<String
 
 /// Grok Build 原生安装的升级命令。macOS 只锚定官方 `grok update --check`；
 /// 冻结版本与 `--version` 由 owner-bound executor 执行，不再 `||` 官方 installer
-/// 或 npm。Windows 仍保留 `update ||` 官方 PowerShell installer（本任务不改 Windows）。
+/// 或 npm。Windows 只锚定 `grok update`，官方 installer 不是更新回退。
 #[cfg(target_os = "macos")]
 fn grok_native_update_command(update: String) -> String {
     format!("{update} --check")
 }
 
-/// Windows 版同上，fallback 换成官方 PowerShell installer。
-/// **不走 `chain_update_commands`**：它会给 `||` 右侧加 `call`，而这里的 fallback 是
-/// `powershell.exe`（不是 `.cmd`/`.bat`），不需要 `call`——与 `hermes_update_windows_command`
-/// 同一理由。
+/// Windows native Grok update is anchored `grok update` only. The official
+/// installer is never an update fallback.
 #[cfg(target_os = "windows")]
 fn grok_native_update_command(update: String) -> String {
-    format!("{update} || {}", grok_install_windows_command())
+    update
 }
 
 /// 哪些工具的"官方 self-update"优先于包管理器升级（生成 `<tool> update || <pkg-mgr>`）。
@@ -1680,6 +1676,9 @@ fn package_manager_anchored_command_from_paths(
     bin_path: &str,
     real_target: &str,
 ) -> Option<String> {
+    if tool == "grok" {
+        return grok_npm_anchored_command(bin_path);
+    }
     if let Some(formula) = brew_formula_from_path(real_target) {
         let brew = sibling_bin(bin_path, "brew")?;
         return Some(format!("{} upgrade {formula}", quote_path_if_spaced(&brew)));
@@ -1704,6 +1703,19 @@ fn package_manager_anchored_command_from_paths(
         _ => return None,
     }
     anchored_npm_command(bin_path, &format!("i -g {pkg}@latest"))
+}
+
+#[cfg(target_os = "macos")]
+fn grok_npm_anchored_command(bin_path: &str) -> Option<String> {
+    let command = grok_npm::default_install_command()?;
+    let args = command.strip_prefix("npm ")?;
+    let registry = fyagent_user_helper::GrokNpmRegistry::Tencent.as_str();
+    let npm = anchored_npm_command(bin_path, args)?;
+    Some(format!(
+        "{}={} {npm}",
+        fyagent_user_helper::GROK_NPM_REGISTRY_ENV,
+        shell_single_quote(registry)
+    ))
 }
 
 /// 给定工具、原始 bin 路径（命令行命中的入口）、canonicalize 后的真身路径，
@@ -1773,6 +1785,9 @@ fn anchored_command_from_paths(tool: &str, bin_path: &str, real_target: &str) ->
 
 #[cfg(target_os = "windows")]
 fn package_manager_anchored_command_from_paths(tool: &str, bin_path: &str) -> Option<String> {
+    if tool == "grok" {
+        return grok_npm_anchored_command(bin_path);
+    }
     let pkg = npm_package_for(tool)?;
 
     match infer_install_source(Path::new(bin_path)) {
@@ -1802,7 +1817,14 @@ fn package_manager_anchored_command_from_paths(tool: &str, bin_path: &str) -> Op
     }
 }
 
-/// Windows 版锚定命令生成。对平台确认可静默运行的工具优先使用官方 CLI 自升级；
+#[cfg(target_os = "windows")]
+fn grok_npm_anchored_command(bin_path: &str) -> Option<String> {
+    let npm = sibling_bin_with_ext(bin_path, "npm", &["cmd", "exe"])?;
+    let command = grok_npm::default_install_command()?;
+    let args = command.strip_prefix("npm ")?;
+    Some(format!("{} {args}", win_quote_path_for_batch(&npm)))
+}
+
 /// 对 npm/Volta/pnpm 这类可确认写回位置的安装，再接一个包管理器 fallback。不存在 brew/bun/claude-native
 /// (Windows 没 Homebrew、Bun for Windows 仍 preview；Grok native 使用 PowerShell installer)。
 /// Scoop/Chocolatey/winget/nvm-windows/MS Store node 都归 npm 类——它们都只是"如何装
@@ -2215,17 +2237,28 @@ fn installs_anchored_command(tool: &str, installs: &[ToolInstallation]) -> Optio
     anchored_command_from_paths(tool, &inst.path, &real)
 }
 
-/// 静态命令（= 平台可安全静默执行的官方 CLI 自升级 || `npm i -g <pkg>@latest` /
-/// 官方 installer）。锚定探不到默认安装时回退到它；npm fallback 仍等同于
-/// "装到 PATH 第一个 npm"的旧行为。
+/// 静态命令。Grok 默认新装走官方 npm 计划；显式原生安装才用官方 installer。
+/// 更新没有静态新装回退：缺少已安装锚点时返回空命令，由上层失败。
 fn static_fallback_command_for(tool: &str, action: ToolLifecycleAction) -> String {
-    #[cfg(target_os = "macos")]
     if tool == "grok" {
         return match action {
-            ToolLifecycleAction::Install => GROK_INSTALL_UNIX.to_string(),
-            ToolLifecycleAction::InstallOfficialNpm => npm_install_command_for("grok")
-                .unwrap_or_default()
-                .to_string(),
+            ToolLifecycleAction::Install | ToolLifecycleAction::InstallOfficialNpm => {
+                grok_npm::default_install_command().unwrap_or_default()
+            }
+            ToolLifecycleAction::InstallNative => {
+                #[cfg(target_os = "macos")]
+                {
+                    GROK_INSTALL_UNIX.to_string()
+                }
+                #[cfg(target_os = "windows")]
+                {
+                    grok_install_windows_command()
+                }
+                #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+                {
+                    String::new()
+                }
+            }
             ToolLifecycleAction::Update => String::new(),
         };
     }
@@ -2249,12 +2282,12 @@ fn static_fallback_command(tool: &str) -> String {
 ///   `python` shim 问题;更新路径若能锚定已安装 CLI,则走 `<hermes> update`。
 ///   **Hermes 没有 npm 包,install 端不享受 `||` 降级**——上游 installer 不可达就只能等。
 ///
-/// macOS Grok 首次安装只走官方 installer。官方 npm 是独立动作
-/// `install_official_npm`，不得作为 native 失败后的自动 fallback。
+/// macOS Grok 默认首次安装走官方 npm 计划。官方原生 installer 是独立动作
+/// `install_native`，不得作为 npm 失败后的自动 fallback。
 #[cfg(all(test, target_os = "macos"))]
 fn posix_install_command_for(tool: &str) -> String {
     match tool {
-        "grok" => GROK_INSTALL_UNIX.to_string(),
+        "grok" => grok_npm::default_install_command().unwrap_or_default(),
         _ => String::new(),
     }
 }
@@ -2841,27 +2874,41 @@ mod tests {
         assert_eq!(normalize_requested_tools(&requested), vec!["grok"]);
         assert_eq!(tool_display_name("grok"), "Grok Build");
         assert_eq!(npm_package_for("grok"), Some("@xai-official/grok"));
-        assert_eq!(
-            npm_install_command_for("grok"),
-            Some("npm i -g @xai-official/grok@latest")
-        );
+        let grok_npm = grok_npm::default_install_command().expect("grok npm plan");
+        assert_eq!(npm_install_command_for("grok"), Some(grok_npm.clone()));
+        assert!(!grok_npm.contains("@latest"));
+        assert!(grok_npm.contains("--registry="));
+        assert!(!grok_npm.contains("npm config"));
+        assert!(!grok_npm.contains("dangerously-allow-all"));
         assert_eq!(official_update_args("grok"), Some("update"));
 
         for action in [ToolLifecycleAction::Install, ToolLifecycleAction::Update] {
             assert_eq!(
-                tool_action_shell_command_for_shell("grok", action, LifecycleCommandShell::Posix)
-                    .as_deref(),
-                Some("npm i -g @xai-official/grok@latest")
+                tool_action_shell_command_for_shell("grok", action, LifecycleCommandShell::Posix),
+                Some(grok_npm.clone())
             );
+            let command =
+                tool_action_shell_command_for_shell("grok", action, LifecycleCommandShell::Posix)
+                    .expect("posix grok command");
+            assert!(!command.contains("||"), "{command}");
+            assert!(!command.contains("@latest"), "{command}");
         }
         assert_eq!(
             tool_action_shell_command_for_shell(
                 "grok",
                 ToolLifecycleAction::InstallOfficialNpm,
                 LifecycleCommandShell::Posix
+            ),
+            Some(grok_npm.clone())
+        );
+        assert_eq!(
+            tool_action_shell_command_for_shell(
+                "grok",
+                ToolLifecycleAction::InstallNative,
+                LifecycleCommandShell::Posix
             )
             .as_deref(),
-            Some("npm i -g @xai-official/grok@latest")
+            Some(GROK_INSTALL_UNIX)
         );
 
         // Static update remains package-manager based. Only a path positively
@@ -2871,10 +2918,10 @@ mod tests {
                 "grok",
                 ToolLifecycleAction::Update,
                 LifecycleCommandShell::WindowsBatch,
-            )
-            .as_deref(),
-            Some("npm i -g @xai-official/grok@latest")
+            ),
+            Some(grok_npm)
         );
+        assert!(static_fallback_command_for("grok", ToolLifecycleAction::Update).is_empty());
     }
 
     #[test]
@@ -2933,7 +2980,12 @@ mod tests {
     #[tokio::test]
     async fn non_grok_lifecycle_ipc_is_rejected_before_side_effects() {
         for tool in ["claude", "gemini", "opencode", "openclaw", "hermes"] {
-            for action in ["install", "update", "install_official_npm"] {
+            for action in [
+                "install",
+                "update",
+                "install_official_npm",
+                "install_native",
+            ] {
                 let result =
                     run_tool_lifecycle_action(vec![tool.to_string()], action.to_string()).await;
                 assert_eq!(
@@ -3160,49 +3212,49 @@ mod tests {
             }
         }
 
+        fn grok_npm_windows_command(quoted_npm: &str) -> String {
+            let args = grok_npm::default_install_command()
+                .expect("grok npm plan")
+                .strip_prefix("npm ")
+                .expect("npm argv")
+                .to_string();
+            format!("{quoted_npm} {args}")
+        }
+
         #[test]
         fn grok_windows_anchors_to_sibling_npm() {
             let (_dir, sub, bin_path) = setup_sibling("v22.0.0", "grok.cmd", &["npm.cmd"]);
             let cmd = anchored_command_from_paths("grok", &bin_path, &bin_path);
             let npm_full = format!("{}\\npm.cmd", sub.to_string_lossy());
-            let expected = format!(
-                "{} i -g @xai-official/grok@latest",
-                expect_quoted_path(&npm_full)
-            );
+            let expected = grok_npm_windows_command(&expect_quoted_path(&npm_full));
             assert_eq!(cmd.as_deref(), Some(expected.as_str()));
+            assert!(!expected.contains("@latest"));
         }
 
         #[test]
-        fn grok_native_windows_uses_self_update_with_installer_fallback() {
-            // sibling 有 npm.cmd 也**不能**拿它当 fallback:`grok update` 本身就是靠 npm
-            // 分发的(见 grok_native_update_command doc),npm fallback 与 primary 同源、
-            // 会一起失败。fallback 必须是官方 PowerShell installer —— 唯一不经 npm 的路径。
+        fn grok_native_windows_uses_self_update_without_installer_fallback() {
             let (_dir, _sub, bin_path) = setup_sibling(".grok/bin", "grok.exe", &["npm.cmd"]);
             let cmd = anchored_command_from_paths("grok", &bin_path, &bin_path).unwrap();
-            let expected = format!(
-                "{} update || {}",
-                expect_quoted_path(&bin_path),
-                grok_install_windows_command()
-            );
+            let expected = format!("{} update", expect_quoted_path(&bin_path));
             assert_eq!(cmd, expected);
-            // fallback 是 powershell.exe 不是 .cmd/.bat —— `||` 右侧不该有 `call`。
             assert!(
-                !cmd.contains("|| call"),
-                "powershell needs no `call`: {cmd}"
+                !cmd.contains("||"),
+                "must not compose installer fallback: {cmd}"
             );
             assert!(!cmd.contains("npm"), "npm must not be the fallback: {cmd}");
+            assert!(
+                !cmd.contains("powershell"),
+                "installer is not an update fallback: {cmd}"
+            );
         }
 
         #[test]
         fn windows_no_sibling_uses_cli_update_without_package_fallback() {
             let (_dir, _sub, bin_path) = setup_sibling(".grok/bin", "grok.exe", &[]);
             let cmd = anchored_command_from_paths("grok", &bin_path, &bin_path).unwrap();
-            let expected = format!(
-                "{} update || {}",
-                expect_quoted_path(&bin_path),
-                grok_install_windows_command()
-            );
+            let expected = format!("{} update", expect_quoted_path(&bin_path));
             assert_eq!(cmd, expected);
+            assert!(!cmd.contains("||"), "{cmd}");
         }
 
         #[test]
@@ -3210,10 +3262,7 @@ mod tests {
             let (_dir, sub, bin_path) = setup_sibling("Program Files", "grok.cmd", &["npm.cmd"]);
             let cmd = anchored_command_from_paths("grok", &bin_path, &bin_path);
             let npm_full = format!("{}\\npm.cmd", sub.to_string_lossy());
-            let expected = format!(
-                "{} i -g @xai-official/grok@latest",
-                expect_quoted_path(&npm_full)
-            );
+            let expected = grok_npm_windows_command(&expect_quoted_path(&npm_full));
             assert_eq!(cmd.as_deref(), Some(expected.as_str()));
         }
 
@@ -3224,8 +3273,8 @@ mod tests {
             let batch_line = format!("call {anchored}");
             let npm_full = format!("{}\\npm.cmd", sub.to_string_lossy());
             let expected = format!(
-                "call {} i -g @xai-official/grok@latest",
-                expect_quoted_path(&npm_full)
+                "call {}",
+                grok_npm_windows_command(&expect_quoted_path(&npm_full))
             );
             assert_eq!(batch_line, expected);
             assert!(
@@ -3530,6 +3579,17 @@ mod tests {
             assert_eq!(cmd.as_deref(), Some("/Users/me/bin/grok update --check"));
         }
 
+        fn grok_npm_posix_anchor(bin_dir: &str, npm: &str) -> String {
+            let args = grok_npm::default_install_command()
+                .expect("grok npm plan")
+                .strip_prefix("npm ")
+                .expect("npm argv")
+                .to_string();
+            format!(
+                "GROK_NPM_REGISTRY='https://mirrors.tencent.com/npm/' PATH='{bin_dir}':\"$PATH\" {npm} {args}"
+            )
+        }
+
         #[test]
         fn grok_nvm_anchors_to_npm_without_cli_update() {
             let cmd = anchored_command_from_paths(
@@ -3540,7 +3600,11 @@ mod tests {
             assert_eq!(
                 cmd.as_deref(),
                 Some(
-                    "PATH='/Users/me/.nvm/versions/node/v22.14.0/bin':\"$PATH\" /Users/me/.nvm/versions/node/v22.14.0/bin/npm i -g @xai-official/grok@latest"
+                    grok_npm_posix_anchor(
+                        "/Users/me/.nvm/versions/node/v22.14.0/bin",
+                        "/Users/me/.nvm/versions/node/v22.14.0/bin/npm"
+                    )
+                    .as_str()
                 )
             );
         }
@@ -3554,7 +3618,7 @@ mod tests {
             );
             assert_eq!(
                 cmd.as_deref(),
-                Some("PATH='/opt/homebrew/bin':\"$PATH\" /opt/homebrew/bin/npm i -g @xai-official/grok@latest")
+                Some(grok_npm_posix_anchor("/opt/homebrew/bin", "/opt/homebrew/bin/npm").as_str())
             );
         }
 
@@ -3567,7 +3631,10 @@ mod tests {
             );
             assert_eq!(
                 cmd.as_deref(),
-                Some("/Users/me/.volta/bin/volta install @xai-official/grok")
+                Some(
+                    grok_npm_posix_anchor("/Users/me/.volta/bin", "/Users/me/.volta/bin/npm")
+                        .as_str()
+                )
             );
         }
 
@@ -3580,7 +3647,9 @@ mod tests {
             );
             assert_eq!(
                 cmd.as_deref(),
-                Some("/Users/me/.bun/bin/bun add -g @xai-official/grok@latest")
+                Some(
+                    grok_npm_posix_anchor("/Users/me/.bun/bin", "/Users/me/.bun/bin/npm").as_str()
+                )
             );
         }
 
@@ -3593,7 +3662,13 @@ mod tests {
             );
             assert_eq!(
                 cmd.as_deref(),
-                Some("'/Users/my name/.volta/bin/volta' install @xai-official/grok")
+                Some(
+                    grok_npm_posix_anchor(
+                        "/Users/my name/.volta/bin",
+                        "'/Users/my name/.volta/bin/npm'"
+                    )
+                    .as_str()
+                )
             );
         }
 
@@ -3606,7 +3681,13 @@ mod tests {
             );
             assert_eq!(
                 cmd.as_deref(),
-                Some("'/Users/my name/.bun/bin/bun' add -g @xai-official/grok@latest")
+                Some(
+                    grok_npm_posix_anchor(
+                        "/Users/my name/.bun/bin",
+                        "'/Users/my name/.bun/bin/npm'"
+                    )
+                    .as_str()
+                )
             );
         }
 
@@ -3620,7 +3701,11 @@ mod tests {
             assert_eq!(
                 cmd.as_deref(),
                 Some(
-                    "PATH='/Users/me/.local/share/fnm_multishells/12345_abc/bin':\"$PATH\" /Users/me/.local/share/fnm_multishells/12345_abc/bin/npm i -g @xai-official/grok@latest"
+                    grok_npm_posix_anchor(
+                        "/Users/me/.local/share/fnm_multishells/12345_abc/bin",
+                        "/Users/me/.local/share/fnm_multishells/12345_abc/bin/npm"
+                    )
+                    .as_str()
                 )
             );
         }
@@ -3634,7 +3719,13 @@ mod tests {
             );
             assert_eq!(
                 cmd.as_deref(),
-                Some("PATH='/Users/my name/.nvm/versions/node/v22/bin':\"$PATH\" '/Users/my name/.nvm/versions/node/v22/bin/npm' i -g @xai-official/grok@latest")
+                Some(
+                    grok_npm_posix_anchor(
+                        "/Users/my name/.nvm/versions/node/v22/bin",
+                        "'/Users/my name/.nvm/versions/node/v22/bin/npm'"
+                    )
+                    .as_str()
+                )
             );
         }
 
@@ -3841,43 +3932,53 @@ mod tests {
         use super::super::*;
 
         #[test]
-        fn grok_install_uses_official_installer_without_npm_fallback() {
+        fn grok_default_install_uses_official_npm_plan() {
             let cmd = install_command_for("grok");
+            let expected = grok_npm::default_install_command().expect("grok npm plan");
+            assert_eq!(cmd, expected);
+            assert!(cmd.contains("@xai-official/grok@"), "{cmd}");
+            assert!(cmd.contains("--registry="), "{cmd}");
+            assert!(!cmd.contains("@latest"), "{cmd}");
+            assert!(!cmd.contains("||"), "{cmd}");
+            assert!(!cmd.contains("install.sh"), "{cmd}");
+            assert!(!cmd.contains("npm config"), "{cmd}");
+        }
+
+        #[test]
+        fn grok_lifecycle_command_does_not_compose_native_fallback() {
+            let install = build_tool_lifecycle_command(&["grok"], ToolLifecycleAction::Install)
+                .expect("grok install plan");
+            assert!(install.contains("@xai-official/grok@"), "{install}");
+            assert!(install.contains("--registry="), "{install}");
+            assert!(!install.contains("||"), "{install}");
+            assert!(!install.contains("install.sh"), "{install}");
+            assert!(!install.contains("@latest"), "{install}");
+        }
+
+        #[test]
+        fn grok_explicit_npm_install_matches_default_plan() {
+            let cmd = static_fallback_command_for("grok", ToolLifecycleAction::InstallOfficialNpm);
+            let expected = grok_npm::default_install_command().expect("grok npm plan");
+            assert_eq!(cmd, expected);
+            let built =
+                build_tool_lifecycle_command(&["grok"], ToolLifecycleAction::InstallOfficialNpm)
+                    .expect("explicit npm plan");
+            assert!(built.contains(&expected), "{built}");
+            assert!(!built.contains("install.sh"), "{built}");
+        }
+
+        #[test]
+        fn grok_explicit_native_install_uses_official_installer() {
+            let cmd = static_fallback_command_for("grok", ToolLifecycleAction::InstallNative);
             assert!(
                 cmd.contains("https://x.ai/cli/install.sh"),
                 "should include official installer URL: {cmd}"
             );
-            assert!(
-                !cmd.contains("||"),
-                "must not auto-fallback across owners: {cmd}"
-            );
-            assert!(
-                !cmd.contains("@xai-official/grok"),
-                "npm is an explicit separate action: {cmd}"
-            );
-        }
-
-        #[test]
-        fn grok_lifecycle_command_does_not_compose_npm_fallback() {
-            let install = build_tool_lifecycle_command(&["grok"], ToolLifecycleAction::Install)
-                .expect("grok install plan");
-            assert!(install.contains("https://x.ai/cli/install.sh"), "{install}");
-            assert!(!install.contains("||"), "{install}");
-            assert!(!install.contains("@xai-official/grok"), "{install}");
-        }
-
-        #[test]
-        fn grok_explicit_npm_install_is_a_separate_action() {
-            let cmd = static_fallback_command_for("grok", ToolLifecycleAction::InstallOfficialNpm);
-            assert_eq!(cmd, "npm i -g @xai-official/grok@latest");
-            let built =
-                build_tool_lifecycle_command(&["grok"], ToolLifecycleAction::InstallOfficialNpm)
-                    .expect("explicit npm plan");
-            assert!(
-                built.contains("npm i -g @xai-official/grok@latest"),
-                "{built}"
-            );
-            assert!(!built.contains("install.sh"), "{built}");
+            assert!(!cmd.contains("@xai-official/grok"), "{cmd}");
+            let built = build_tool_lifecycle_command(&["grok"], ToolLifecycleAction::InstallNative)
+                .expect("explicit native plan");
+            assert!(built.contains("https://x.ai/cli/install.sh"), "{built}");
+            assert!(!built.contains("@xai-official/grok"), "{built}");
         }
 
         #[test]

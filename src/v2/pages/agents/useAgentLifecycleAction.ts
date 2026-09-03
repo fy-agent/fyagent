@@ -29,7 +29,7 @@ export const AGENT_LIFECYCLE_INCOMPLETE_COPY =
   "无法确认操作结果。请刷新安装状态后再试。";
 export const AGENT_LIFECYCLE_SUCCEEDED_COPY = "操作已完成。";
 export const AGENT_LIFECYCLE_VENDOR_HANDOFF_COPY =
-  "官方安装窗口已打开，请在该窗口中完成安装。";
+  "官方安装窗口已打开。完成安装后请刷新安装状态。";
 export const AGENT_LIFECYCLE_TIMEOUT_COPY =
   "安装仍在进行。可稍后刷新安装状态。";
 

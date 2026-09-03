@@ -45,7 +45,11 @@ const TOOL_NAMES = [
   "hermes",
 ] as const;
 type ToolName = (typeof TOOL_NAMES)[number];
-type ToolLifecycleAction = "install" | "update" | "install_official_npm";
+type ToolLifecycleAction =
+  | "install"
+  | "update"
+  | "install_official_npm"
+  | "install_native";
 
 const isLifecycleWritableTool = (toolName: ToolName): boolean =>
   toolName === "grok";
@@ -511,7 +515,11 @@ export function AboutSection({
         return next;
       });
       try {
-        if (action === "install" || action === "install_official_npm") {
+        if (
+          action === "install" ||
+          action === "install_official_npm" ||
+          action === "install_native"
+        ) {
           await executeRun(writableNames, action);
           return;
         }
@@ -833,8 +841,26 @@ export function AboutSection({
                           {t("settings.toolReady")}
                         </span>
                       )}
-                      {tool?.distribution_owner !== "official_npm" &&
-                      (!tool?.version || Boolean(tool.error)) ? (
+                      {!tool?.version ||
+                      tool?.distribution_owner === "official_npm" ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 gap-1.5 text-xs"
+                          onClick={() =>
+                            handleRunToolAction(["grok"], "install_native")
+                          }
+                          disabled={isAnyBusy}
+                        >
+                          {runningAction === "install_native" ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : null}
+                          {!tool?.version
+                            ? t("settings.grokUseOfficialNative")
+                            : t("settings.grokSwitchToOfficialNative")}
+                        </Button>
+                      ) : null}
+                      {tool?.distribution_owner === "native_internal" ? (
                         <Button
                           size="sm"
                           variant="outline"
@@ -850,10 +876,13 @@ export function AboutSection({
                           {runningAction === "install_official_npm" ? (
                             <Loader2 className="h-3.5 w-3.5 animate-spin" />
                           ) : null}
-                          {!tool?.version
-                            ? t("settings.grokUseOfficialNpm")
-                            : t("settings.grokSwitchToOfficialNpm")}
+                          {t("settings.grokSwitchToOfficialNpm")}
                         </Button>
+                      ) : null}
+                      {!tool?.version ? (
+                        <span className="text-xs text-muted-foreground">
+                          {t("settings.grokInstallNetworkNote")}
+                        </span>
                       ) : null}
                     </>
                   ) : null}

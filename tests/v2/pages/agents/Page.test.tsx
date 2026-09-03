@@ -247,6 +247,7 @@ function configuredPorts(): FeaturePorts {
     error: null,
   }));
   ports.tooling.installOfficialNpm = vi.fn();
+  ports.tooling.installNative = vi.fn();
 
   const skills = [
     {

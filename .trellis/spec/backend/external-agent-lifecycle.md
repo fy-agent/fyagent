@@ -140,7 +140,7 @@ command, argument vector, token, hash, package format, signer or bypass flags.
 
 | Product | Owner and current lifecycle policy |
 | --- | --- |
-| Grok Build | CLI Tooling owner; install/update use the reviewed `grok` lifecycle only. |
+| Grok Build | CLI Tooling owner; default fresh install uses the official `@xai-official/grok` npm package, a bundled exact-version manifest, and a mainland-first registry chain. Native `x.ai` install is an explicit secondary action. Updates preserve the observed `native_internal` or `official_npm` owner. |
 | Codex | Dedicated Codex Desktop installer; Agent action returns `managed_by_codex_desktop` and does not occupy the Agent job slot. |
 | QoderWork CN | Managed desktop; install/launch admitted, FyAgent update disabled. Source is the reviewed first-party `/qoder-work-cn/releases/latest/` aliases and same-host Electron-builder version feed. |
 | TRAE Work CN | Managed desktop; install/launch admitted, FyAgent update disabled. Resolve `data.solo` with `region=cn`; never TRAE Code/`data.manifest`. |
@@ -160,7 +160,10 @@ command, argument vector, token, hash, package format, signer or bypass flags.
   dotted marketing version may equal a longer remote product-version prefix;
   same-length differing segments remain an update.
 - Claude metadata cannot replace the code-owned artifact authority. OpenCode
-  uses the reviewed stable architecture-specific Desktop artifact aliases.
+  uses the reviewed locale-neutral stable Desktop aliases, including
+  `windows-x64-nsis` on Windows x64. GitHub latest is display-only and must not
+  gate installability. Windows OpenCode install remains fail-closed until a
+  reviewed WinVerifyTrust identity contract exists.
 - A missing/drifted source schema, host, redirect or release capability returns
   `source_not_verified`/official-page guidance. Never pin a package URL copied
   from an investigation or infer a version from ETag, Last-Modified or prose.
@@ -234,8 +237,12 @@ identity examples include:
   leaf during successful settlement.
 - Grok Build on formal elevated Windows uses the closed ordinary-user
   `grok-tool` helper and never falls back to running the user CLI elevated.
+  Default install executes a host-supplied exact-version npm plan; the helper
+  does not resolve `@latest`. Native install is `install_native` only.
   Installed updates preserve the observed `native_internal` or
   `official_npm` owner; switching owner is a separate explicit action.
+  Installing the CLI does not claim that Grok sign-in or inference works on
+  the user's network.
 
 ## 4. Validation & Error Matrix
 
@@ -259,6 +266,8 @@ identity examples include:
 | Windows EXE product/signer/trust/arch/helper/pipe binding fails | Fail before installer launch. |
 | User cancels Windows UAC/vendor launch | Cancelled/installer-user-cancelled result. |
 | Windows official EXE ShellExecute succeeds | Job succeeded as handoff; do not claim installed proof. |
+| OpenCode Windows identity fields are empty | Reject EXE download/install; GitHub latest must not gate the stable source. |
+| Grok default install has no native expected owner | Plan official npm from the bundled exact-version manifest; never `@latest`. |
 | Cancel after `launching_installer`/`installing` | `operation_conflict`; do not kill external/commit operation. |
 | Secret/path/raw native identity reaches DTO/log/DOM | Security regression. |
 
@@ -279,6 +288,11 @@ identity examples include:
 - **Bad:** use a researched CDN URL, infer install from a config directory,
   update Qoder/TRAE/WorkBuddy, choose the first candidate, fake percent without
   total bytes, or label Windows wizard handoff as installed evidence.
+- **Bad:** install Grok with `@latest`, change the user's global npmrc, or
+  claim mainland sign-in/inference because the CLI installed.
+- **Bad:** treat GitHub latest failure as OpenCode uninstallable, or describe
+  Windows OpenCode as supported while ProductName/relative EXE/signer stay
+  empty.
 
 ## 6. Tests Required
 

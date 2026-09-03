@@ -16,6 +16,7 @@ export interface GrokToolSnapshot {
 export interface GrokToolingPort {
   getSnapshot(): Promise<GrokToolSnapshot>;
   installOfficialNpm(): Promise<void>;
+  installNative(): Promise<void>;
 }
 
 const GROK_TOOL_NAME = "grok";

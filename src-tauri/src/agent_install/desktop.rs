@@ -76,6 +76,8 @@ const DESKTOP_PRODUCTS: &[DesktopProduct] = &[
     DesktopProduct {
         agent_id: AgentCatalogId::OpenCode,
         macos_bundle_id: "ai.opencode.desktop",
+        // Windows ProductName / relative EXE / signer stay empty until
+        // WinVerifyTrust HIL freezes identity. Source mapping is independent.
         windows_product_names: &[],
         windows_relative_exes: &[],
     },
@@ -91,6 +93,12 @@ pub(super) fn desktop_product(agent_id: AgentCatalogId) -> Option<&'static Deskt
     DESKTOP_PRODUCTS
         .iter()
         .find(|product| product.agent_id == agent_id)
+}
+
+/// Windows EXE install is admitted only after closed ProductName identity exists.
+/// Source resolution can succeed without this; inventory stays fail-closed.
+pub(super) fn windows_exe_install_admitted(agent_id: AgentCatalogId) -> bool {
+    desktop_product(agent_id).is_some_and(|product| !product.windows_product_names.is_empty())
 }
 
 /// Platform evidence stays on the struct for install verification; this AND
@@ -250,6 +258,9 @@ pub async fn download_windows_exe_to_job(
     progress: &dyn DownloadProgressSink,
 ) -> Result<DownloadedArtifact, AgentReasonCode> {
     if source.platform != AgentPlatform::Windows || source.format != PackageFormat::Exe {
+        return Err(AgentReasonCode::PlatformUnsupported);
+    }
+    if !windows_exe_install_admitted(source.product) {
         return Err(AgentReasonCode::PlatformUnsupported);
     }
     let hosts = artifact_download_hosts(source.product)?;
@@ -1134,8 +1145,19 @@ mod tests {
     fn opencode_is_a_managed_desktop_product_with_official_bundle_id() {
         let item = product(AgentCatalogId::OpenCode);
         assert_eq!(item.macos_bundle_id, "ai.opencode.desktop");
-        assert!(item.windows_product_names.is_empty());
-        assert!(item.windows_relative_exes.is_empty());
+        assert!(
+            item.windows_product_names.is_empty(),
+            "Windows ProductName stays empty until WinVerifyTrust HIL"
+        );
+        assert!(
+            item.windows_relative_exes.is_empty(),
+            "Windows relative EXE paths stay empty until installed-target HIL"
+        );
+        assert!(!windows_exe_install_admitted(AgentCatalogId::OpenCode));
+        assert!(windows_exe_install_admitted(AgentCatalogId::WorkBuddy));
+        assert!(windows_exe_install_admitted(AgentCatalogId::QoderWork));
+        assert!(windows_exe_install_admitted(AgentCatalogId::TraeWork));
+        assert!(!windows_exe_install_admitted(AgentCatalogId::ClaudeCode));
     }
 
     #[test]

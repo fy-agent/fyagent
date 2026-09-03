@@ -8,7 +8,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke }));
 describe("Tauri Grok tooling port", () => {
   beforeEach(() => invoke.mockReset());
 
-  it("reads grok versions through the existing command and installs official npm without a fifth command", async () => {
+  it("reads grok versions through the existing command and installs via closed lifecycle actions", async () => {
     invoke.mockResolvedValueOnce([
       {
         name: "grok",
@@ -21,17 +21,23 @@ describe("Tauri Grok tooling port", () => {
       },
     ]);
     invoke.mockResolvedValueOnce(undefined);
+    invoke.mockResolvedValueOnce(undefined);
     const port = createGrokToolingPort();
     await expect(port.getSnapshot()).resolves.toMatchObject({
       distributionOwner: "native_internal",
       latestSource: "native_internal",
     });
     await port.installOfficialNpm();
+    await port.installNative();
     expect(invoke.mock.calls).toEqual([
       ["get_tool_versions", { tools: ["grok"] }],
       [
         "run_tool_lifecycle_action",
         { tools: ["grok"], action: "install_official_npm" },
+      ],
+      [
+        "run_tool_lifecycle_action",
+        { tools: ["grok"], action: "install_native" },
       ],
     ]);
   });

@@ -20,11 +20,11 @@ use std::{
 };
 
 use fyagent_user_helper::{
-    admission_event_name, cancel_event_name, decode_frame, layout::pipe_name,
-    AgentInstallerProduct, CanonicalJobId, GrokOwner, GrokToolAction, HelperErrorCode,
-    HelperMessage, HelperProtocolAction, HelperProtocolSequence, HelperProtocolTerminal,
-    PackageBridgeArtifactKind, PackageBridgeControl, PinnedPackageIdentity, PipeNonce,
-    ToolOperationResult, UserHelperAction, BRIDGE_CONTROL_BYTES, MAX_FRAME_BYTES,
+    admission_event_name, cancel_event_name, decode_frame, encode_plan_control, layout::pipe_name,
+    AgentInstallerProduct, CanonicalJobId, GrokNpmInstallPlan, GrokOwner, GrokToolAction,
+    HelperErrorCode, HelperMessage, HelperProtocolAction, HelperProtocolSequence,
+    HelperProtocolTerminal, PackageBridgeArtifactKind, PackageBridgeControl, PinnedPackageIdentity,
+    PipeNonce, ToolOperationResult, UserHelperAction, BRIDGE_CONTROL_BYTES, MAX_FRAME_BYTES,
     TOOL_OPERATION_STARTED_IDENTITY,
 };
 use windows::{
@@ -183,6 +183,7 @@ pub(crate) fn run_grok_tool_operation(
     context: &InteractiveUserContext,
     action: GrokToolAction,
     expected_owner: Option<GrokOwner>,
+    npm_plan: Option<GrokNpmInstallPlan>,
 ) -> Result<ToolOperationResult, InstallerError> {
     let job_id = CanonicalJobId::parse(&uuid::Uuid::new_v4().to_string())
         .map_err(|_| helper_identity_error())?;
@@ -193,6 +194,7 @@ pub(crate) fn run_grok_tool_operation(
             expected_owner,
         },
         &job_id,
+        npm_plan,
         Arc::new(|_: JobProgress| {}),
         WindowsHelperDeadlines::GROK_TOOL,
     )
@@ -202,6 +204,7 @@ fn run_unpinned_tool_helper(
     context: &InteractiveUserContext,
     action: UserHelperAction,
     job_id: &CanonicalJobId,
+    npm_plan: Option<GrokNpmInstallPlan>,
     progress: PlatformProgressSink,
     deadlines: WindowsHelperDeadlines,
 ) -> Result<ToolOperationResult, InstallerError> {
@@ -300,6 +303,23 @@ fn run_unpinned_tool_helper(
             gate,
             lifetime,
             helper_pipe_error("the helper tool control transition was invalid"),
+        )
+        .map(|_| unreachable!());
+    }
+    let grok_plan_timeout = match remaining_until(operation_deadline) {
+        Ok(remaining) => remaining.min(deadlines.connect),
+        Err(error) => return fail_before_admission(gate, lifetime, error).map(|_| unreachable!()),
+    };
+    let control = encode_plan_control(npm_plan.as_ref());
+    if lifetime
+        .server()
+        .write_control_bytes(&control, grok_plan_timeout)
+        .is_err()
+    {
+        return fail_before_admission(
+            gate,
+            lifetime,
+            helper_pipe_error("the grok npm plan could not be sent to the helper"),
         )
         .map(|_| unreachable!());
     }
@@ -1106,7 +1126,10 @@ impl OneShotPipeServer {
         control: PackageBridgeControl,
         timeout: Duration,
     ) -> Result<(), InstallerError> {
-        let bytes = control.encode();
+        self.write_control_bytes(&control.encode(), timeout)
+    }
+
+    fn write_control_bytes(&self, bytes: &[u8], timeout: Duration) -> Result<(), InstallerError> {
         let event = OwnedEvent::new()?;
         let mut overlapped = OVERLAPPED {
             hEvent: event.raw(),

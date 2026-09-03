@@ -261,7 +261,7 @@ export const settingsApi = {
 
   async runToolLifecycleAction(
     tools: string[],
-    action: "install" | "update" | "install_official_npm",
+    action: "install" | "update" | "install_official_npm" | "install_native",
   ): Promise<void> {
     await invoke("run_tool_lifecycle_action", { tools, action });
   },

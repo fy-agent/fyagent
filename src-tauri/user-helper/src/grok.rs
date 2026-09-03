@@ -5,7 +5,6 @@
 //! no filesystem I/O, and no command/URL fields.
 
 pub const GROK_NPM_PACKAGE: &str = "@xai-official/grok";
-pub const GROK_NPM_INSTALL_SPEC: &str = "@xai-official/grok@latest";
 pub const GROK_NATIVE_WINDOWS_INSTALL_SCRIPT: &str = "irm https://x.ai/cli/install.ps1 | iex";
 pub const MAX_NORMALIZED_VERSION_BYTES: usize = 32;
 pub const GROK_OUTPUT_LIMIT: usize = 32 * 1024;
@@ -414,9 +413,10 @@ fn plan_install(
         },
         None => match observation {
             GrokOwnerObservation::Npm => Err(GrokPlanFailure::OwnerMismatch),
-            GrokOwnerObservation::Native
-            | GrokOwnerObservation::Absent
-            | GrokOwnerObservation::Ambiguous => Ok(GrokPlanKind::NativeFresh),
+            GrokOwnerObservation::Absent => Ok(GrokPlanKind::OfficialNpm),
+            GrokOwnerObservation::Native | GrokOwnerObservation::Ambiguous => {
+                Ok(GrokPlanKind::NativeFresh)
+            }
         },
     }
 }
@@ -555,6 +555,22 @@ mod tests {
     fn plan_preserves_observed_owner_and_rejects_silent_native_to_npm_install() {
         assert_eq!(
             plan_grok_operation(GrokToolAction::Install, GrokOwnerObservation::Absent, None),
+            Ok(GrokPlanKind::OfficialNpm)
+        );
+        assert_eq!(
+            plan_grok_operation(
+                GrokToolAction::Install,
+                GrokOwnerObservation::Absent,
+                Some(GrokOwner::Npm)
+            ),
+            Ok(GrokPlanKind::OfficialNpm)
+        );
+        assert_eq!(
+            plan_grok_operation(
+                GrokToolAction::Install,
+                GrokOwnerObservation::Absent,
+                Some(GrokOwner::Native)
+            ),
             Ok(GrokPlanKind::NativeFresh)
         );
         assert_eq!(

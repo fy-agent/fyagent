@@ -1,0 +1,12 @@
+{"file": ".trellis/tasks/09-03-remove-grok-install-opencode-windows/prd.md", "reason": "检查需求与实现是否一致"}
+{"file": ".trellis/tasks/09-03-remove-grok-install-opencode-windows/design.md", "reason": "检查架构复用与安全边界"}
+{"file": ".trellis/tasks/09-03-remove-grok-install-opencode-windows/implement.md", "reason": "检查实施范围与并行文件边界"}
+{"file": ".trellis/tasks/09-03-remove-grok-install-opencode-windows/research/grok-mainland-npm-install.md", "reason": "核对 npm 镜像与精确版本合同"}
+{"file": ".trellis/tasks/09-03-remove-grok-install-opencode-windows/research/current-state-and-upstream-evidence.md", "reason": "核对官方与源码证据"}
+{"file": ".trellis/tasks/09-03-remove-grok-install-opencode-windows/research/review-record.md", "reason": "核对规划评审结论"}
+{"file": ".trellis/spec/backend/external-agent-lifecycle.md", "reason": "检查 lifecycle/source/inventory 合同"}
+{"file": ".trellis/tasks/09-03-remove-grok-install-opencode-windows/research/windows-runtime-relevant-contract.md", "reason": "检查 helper 与 elevated boundary，并对照原 SPEC"}
+{"file": ".trellis/spec/backend/reuse.md", "reason": "检查未引入第二套安装框架"}
+{"file": ".trellis/spec/frontend/user-facing-copy.md", "reason": "检查 UI 与文档不夸大能力"}
+{"file": ".trellis/spec/frontend/v2-agent-directory.md", "reason": "检查 Agent 前端投影"}
+{"file": ".trellis/spec/backend/windows-runtime-security.md", "reason": "检查 helper npm 计划、OpenCode product 与 fail-closed 身份"}
