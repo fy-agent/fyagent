@@ -2,11 +2,15 @@
 
 ## Checklist
 
-1. [ ] 刷新 xAI/Grok 官方证据。
-2. [ ] 迁移现有 xAI manager 到 ManagedAuth adapter。
+1. [x] 刷新 xAI/Grok 官方证据。
+2. [x] 迁移现有 xAI manager 到 ManagedAuth adapter。
 3. [ ] 实现 Grok consumer capability probe、projection/helper、readback。
 4. [ ] 接入 UI 与 Agent observation。
 5. [ ] 执行并发/刷新/外部修改测试及 native HIL。
+
+第 3–5 项保持未完成：生产 helper / `auth.json` 写入门禁为 false；
+Agent Grok 仍为 HandoffOnly；无 macOS/Windows Grok Auth HIL。
+Vault 侧 CAS 不能替代 Grok 原生 store 对账。
 
 
 ## Validation

@@ -126,6 +126,10 @@ pub(crate) fn write_grok_auth_store(
     home: &Path,
     store: &GrokAuthStore,
 ) -> Result<(), GrokStoreError> {
+    #[cfg(not(test))]
+    if !file_projection_enabled() {
+        return Err(GrokStoreError::Unsupported);
+    }
     fs::create_dir_all(home).map_err(|_| GrokStoreError::Io)?;
     let lock = GrokAuthLock::acquire(&home.join(AUTH_LOCK_NAME))?;
     let path = home.join(AUTH_JSON_NAME);

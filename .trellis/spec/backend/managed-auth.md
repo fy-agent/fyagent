@@ -215,6 +215,40 @@ legacy-copilot-auth-v3  <- copilot_auth.json
   file projection stays closed without matching-host HIL (`partial` +
   `native_projection_unavailable`).
 
+### xAI Device Code and Grok fail-closed consumer
+
+- xAI login is Device Code only. Browser loopback is rejected at request
+  validation. Discovery and token/device endpoints must be HTTPS
+  `auth.x.ai:443` with empty userinfo. Polling is backend-owned and classifies
+  `authorization_pending`, `slow_down` (interval +5s, capped),
+  `access_denied`, and `expired_token`. Cancel bumps session generation so a
+  late poll cannot save a credential.
+- Migrated / Proxy xAI sessions use `purpose=proxy_upstream` and
+  `refresh_owner=fyagent`. A Grok-purpose login creates a separate
+  `purpose=grok_native` Credential Session with its own credential ID. While
+  helper and file projection are disabled that session still uses
+  `refresh_owner=fyagent` and stays in the OS vault; it is never Proxy-resolved
+  and never copied into Grok `auth.json`.
+- Production gates in `consumers/grok.rs` stay false until matching-host HIL:
+
+```text
+GROK_AUTH_PROVIDER_COMMAND_ENABLED = false
+GROK_FILE_PROJECTION_PRODUCTION_ENABLED = false
+```
+
+- `project_grok_native` returns `Unsupported` and writes no vendor file.
+  Connect or login-to-connect finishes `partial` +
+  `native_projection_unavailable`. Overview Grok cards must not report
+  `connected`.
+- Windows `auth.json.lock` identity and `GROK_HOME` / multi-home targeting
+  remain unproven. Do not enable file writes. External Grok refresh versus
+  FyAgent generation reconcile is not a live path until a native write is
+  HIL-proven; vault CAS still discards stale generations for fyagent-owned
+  sessions.
+- Agent Auth observation for Grok Build remains `handoff_only`. Vault
+  `grok_native` metadata must not be painted as a verified Grok CLI/Desktop
+  login. CLI install success is not login evidence.
+
 ### Sync and export
 
 `managed_auth_*` tables are local-only in the WebDAV skip/preserve sets.
@@ -239,6 +273,8 @@ metadata and must never include token columns.
 | login for xAI Device Code | backend-owned snapshot; Grok native projection stays fail-closed |
 | login for Copilot | `provider_not_supported` |
 | Codex/Grok connect without HIL file projection | `partial` + `native_projection_unavailable`; no vendor auth.json write |
+| Grok helper or `auth.json` write while production gates are false | `Unsupported` / `partial` + `native_projection_unavailable`; no vendor file |
+| Proxy resolve of `purpose=grok_native` | conflict; no refresh |
 | OpenCode Path B write while live Desktop hot-reload is unproven | file write + readback may succeed; status stays `pending_restart` |
 | mutation `operationId` is not UUID v4 | frontend parser rejects the result |
 | DTO/log/debug contains token/secretRef | test failure / NO-GO |
@@ -288,6 +324,12 @@ Required assertions:
 - OpenAI loopback callback host/path/state/PKCE, `1455`→`1457`→Device Code,
   cancel drops a late result, and reopen opens the official page without
   putting the authorize URL on the snapshot;
+- xAI Device Code discovery allowlist, pending/`slow_down`/expiry/deny
+  classification, cancel drops a late grant, and grok_native vs
+  proxy_upstream isolation; Proxy resolver rejects grok purpose even with
+  `refresh_owner=fyagent`;
+- Grok helper and file-projection constants remain false;
+  `project_grok_native` writes nothing;
 - Codex file projection remains closed without HIL; connect/login-to-connect
   finishes `partial` with `native_projection_unavailable`;
 - third-party Codex writers never overwrite official `auth.json`;

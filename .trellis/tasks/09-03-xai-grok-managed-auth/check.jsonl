@@ -4,6 +4,7 @@
 {"file": ".trellis/tasks/09-03-unified-agent-auth-management/research/review-gates.md", "reason": "实施安全、迁移、HIL 和停止门禁。"}
 {"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "现有 owner 与成熟依赖优先。"}
 {"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "完整数据流、readback 和秘密边界。"}
+{"file": ".trellis/spec/backend/managed-auth.md", "reason": "xAI Device Code、Grok fail-closed 投影和用途隔离合同。"}
 {"file": ".trellis/spec/backend/secretref-backend.md", "reason": "本子任务 owning contract/research。"}
 {"file": ".trellis/spec/backend/external-agent-auth.md", "reason": "本子任务 owning contract/research。"}
 {"file": ".trellis/spec/backend/external-agent-lifecycle.md", "reason": "本子任务 owning contract/research。"}

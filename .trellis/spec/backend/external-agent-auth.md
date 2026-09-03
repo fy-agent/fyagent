@@ -102,7 +102,11 @@ verified | handoff_complete | failed | cancelled | timed_out
   succeeds only when the selected provider disappears. Before/after provider
   set drift fails closed.
 - Grok Build has no reviewed structured status surface. A successful official
-  login/logout entry is `handoff_complete`, not verified.
+  login/logout entry is `handoff_complete`, not verified. Managed Auth may
+  hold a vault `purpose=grok_native` session, but this façade still returns
+  `handoff_only` and must not treat vault metadata as a verified Grok
+  CLI/Desktop login. Native Grok `auth.json` and `auth_provider_command`
+  writes stay production-disabled in Managed Auth.
 - QoderWork, TRAE Work and WorkBuddy open one selected trusted desktop target
   and are also handoff-only. Opening the application does not prove account
   state.

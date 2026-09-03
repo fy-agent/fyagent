@@ -19,11 +19,17 @@
 
 ## Acceptance Criteria
 
-- [ ] xAI Device Code 遵守 discovery、issuer/endpoint allowlist、slow_down/expiry/cancel。
+- [x] xAI Device Code 遵守 discovery、issuer/endpoint allowlist、slow_down/expiry/cancel。
 - [ ] Grok 连接写入或 helper 绑定后必须 readback；失败可回滚或报告恢复需要。
-- [ ] Grok/FyAgent Proxy 默认使用用途隔离 session。
+- [x] Grok/FyAgent Proxy 默认使用用途隔离 session。
 - [ ] 外部 Grok 刷新不会被旧 FyAgent generation 覆盖。
 - [ ] macOS/Windows Grok HIL 证明登录、刷新、断开和重新连接。
+
+自动化目前只证明 Device Code 协议与用途隔离。Grok helper /
+`GROK_FILE_PROJECTION_PRODUCTION_ENABLED` 保持 `false`，因此写入后
+readback、外部 Grok 刷新与 generation 对账、以及 macOS/Windows Grok Auth
+HIL 均未完成，不得勾选。Agent 侧 Grok 观察仍为 `handoff_only`。
+CLI 安装成功不是登录证据。`refresh_owner` 不允许 `shared`。
 
 ## Out of Scope
 

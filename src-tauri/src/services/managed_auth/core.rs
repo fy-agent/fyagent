@@ -471,4 +471,13 @@ mod tests {
         assert_eq!(revision.len(), REVISION_PREFIX.len() + 64);
         assert_ne!(account, credential);
     }
+
+    #[test]
+    fn refresh_owner_rejects_shared() {
+        assert!(RefreshOwner::parse("shared").is_err());
+        assert!(CredentialPurpose::parse("shared").is_err());
+        assert_eq!(RefreshOwner::GrokNative.as_str(), "grok_native");
+        assert_eq!(CredentialPurpose::GrokNative.as_str(), "grok_native");
+        assert_eq!(CredentialPurpose::ProxyUpstream.as_str(), "proxy_upstream");
+    }
 }

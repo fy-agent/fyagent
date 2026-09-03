@@ -429,8 +429,17 @@ mod tests {
     }
 
     async fn spawn_issuer(pending_polls: u32, slow_down_once: bool) -> String {
+        spawn_issuer_with_token_error(pending_polls, slow_down_once, None).await
+    }
+
+    async fn spawn_issuer_with_token_error(
+        pending_polls: u32,
+        slow_down_once: bool,
+        token_error: Option<&'static str>,
+    ) -> String {
         let remaining = Arc::new(AtomicU32::new(pending_polls));
         let slow_down = Arc::new(std::sync::atomic::AtomicBool::new(slow_down_once));
+        let forced_error = token_error;
         let app = Router::new()
             .route(
                 "/oauth2/device/code",
@@ -456,6 +465,12 @@ mod tests {
                             let grant = form.get("grant_type").cloned().unwrap_or_default();
                             if grant == "refresh_token" {
                                 return (StatusCode::OK, Json(token_json()));
+                            }
+                            if let Some(code) = forced_error {
+                                return (
+                                    StatusCode::BAD_REQUEST,
+                                    Json(serde_json::json!({"error": code})),
+                                );
                             }
                             if slow_down.swap(false, Ordering::SeqCst) {
                                 return (
@@ -502,7 +517,15 @@ mod tests {
         service: &ManagedAuthService<MemorySecretBackend>,
         session_id: &str,
     ) -> ManagedAuthLoginSessionSnapshot {
-        for _ in 0..200 {
+        wait_terminal_for(service, session_id, 200).await
+    }
+
+    async fn wait_terminal_for(
+        service: &ManagedAuthService<MemorySecretBackend>,
+        session_id: &str,
+        attempts: usize,
+    ) -> ManagedAuthLoginSessionSnapshot {
+        for _ in 0..attempts {
             let snapshot = service.get_login_session(session_id).expect("session");
             if snapshot.terminal {
                 return snapshot;
@@ -635,5 +658,124 @@ mod tests {
             "xai-user-1",
         );
         assert_ne!(proxy, grok);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn cancel_drops_late_xai_device_result() {
+        let issuer = spawn_issuer(8, false).await;
+        let (service, _dir) = service();
+        service.set_xai_login_hooks(XaiLoginHooks {
+            endpoints: Some(XaiOAuthEndpoints::for_issuer(&issuer)),
+        });
+        let snapshot = service
+            .start_login(StartManagedAuthLoginRequest {
+                provider: ManagedAuthProvider::Xai,
+                purpose: ManagedAuthLoginPurpose::SaveOnly,
+                consumer: None,
+                method: ManagedAuthLoginMethod::DeviceCode,
+                account_id: None,
+            })
+            .expect("start");
+        for _ in 0..40 {
+            let current = service
+                .get_login_session(&snapshot.session_id)
+                .expect("poll");
+            if current.user_code.is_some() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+        let cancelled = service.cancel_login(&snapshot.session_id).expect("cancel");
+        assert_eq!(cancelled.stage, ManagedAuthLoginStage::Cancelled);
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        assert!(service
+            .repository
+            .list_all_credentials()
+            .unwrap()
+            .is_empty());
+        let again = service.get_login_session(&snapshot.session_id).unwrap();
+        assert_eq!(again.stage, ManagedAuthLoginStage::Cancelled);
+        let json = serde_json::to_string(&again).unwrap().to_ascii_lowercase();
+        assert!(!json.contains("secret-device-code"));
+        assert!(!json.contains("refresh-xai-login"));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn expired_device_code_does_not_save_account() {
+        let issuer = spawn_issuer_with_token_error(0, false, Some("expired_token")).await;
+        let (service, _dir) = service();
+        service.set_xai_login_hooks(XaiLoginHooks {
+            endpoints: Some(XaiOAuthEndpoints::for_issuer(&issuer)),
+        });
+        let snapshot = service
+            .start_login(StartManagedAuthLoginRequest {
+                provider: ManagedAuthProvider::Xai,
+                purpose: ManagedAuthLoginPurpose::SaveOnly,
+                consumer: None,
+                method: ManagedAuthLoginMethod::DeviceCode,
+                account_id: None,
+            })
+            .expect("start");
+        let finished = wait_terminal(&service, &snapshot.session_id).await;
+        assert_eq!(finished.stage, ManagedAuthLoginStage::Expired);
+        assert_eq!(
+            finished.reason_code,
+            Some(ManagedAuthReasonCode::DeviceCodeExpired)
+        );
+        assert!(service
+            .repository
+            .list_all_credentials()
+            .unwrap()
+            .is_empty());
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn access_denied_cancels_without_saving() {
+        let issuer = spawn_issuer_with_token_error(0, false, Some("access_denied")).await;
+        let (service, _dir) = service();
+        service.set_xai_login_hooks(XaiLoginHooks {
+            endpoints: Some(XaiOAuthEndpoints::for_issuer(&issuer)),
+        });
+        let snapshot = service
+            .start_login(StartManagedAuthLoginRequest {
+                provider: ManagedAuthProvider::Xai,
+                purpose: ManagedAuthLoginPurpose::SaveOnly,
+                consumer: None,
+                method: ManagedAuthLoginMethod::DeviceCode,
+                account_id: None,
+            })
+            .expect("start");
+        let finished = wait_terminal(&service, &snapshot.session_id).await;
+        assert_eq!(finished.stage, ManagedAuthLoginStage::Cancelled);
+        assert_eq!(finished.reason_code, Some(ManagedAuthReasonCode::Cancelled));
+        assert!(service
+            .repository
+            .list_all_credentials()
+            .unwrap()
+            .is_empty());
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn slow_down_then_grant_saves_proxy_session() {
+        let issuer = spawn_issuer(0, true).await;
+        let (service, _dir) = service();
+        service.set_xai_login_hooks(XaiLoginHooks {
+            endpoints: Some(XaiOAuthEndpoints::for_issuer(&issuer)),
+        });
+        let snapshot = service
+            .start_login(StartManagedAuthLoginRequest {
+                provider: ManagedAuthProvider::Xai,
+                purpose: ManagedAuthLoginPurpose::SaveOnly,
+                consumer: None,
+                method: ManagedAuthLoginMethod::DeviceCode,
+                account_id: None,
+            })
+            .expect("start");
+        let finished = wait_terminal_for(&service, &snapshot.session_id, 400).await;
+        assert_eq!(finished.stage, ManagedAuthLoginStage::Completed);
+        let rows = service.repository.list_all_credentials().expect("rows");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].credential.purpose, CredentialPurpose::ProxyUpstream);
+        assert_eq!(rows[0].credential.refresh_owner, RefreshOwner::Fyagent);
     }
 }

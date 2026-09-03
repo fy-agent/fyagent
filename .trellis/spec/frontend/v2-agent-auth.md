@@ -146,6 +146,9 @@ The page never invokes native Auth commands directly.
 - Codex, Grok Build and OpenCode map to the closed managed consumers `codex`,
   `grokbuild` and `opencode`. Their detail panels render the current Agent Auth
   observation only as a summary and offer one central management button.
+  Grok Agent observation remains `handoff_only` until Managed Auth helper or
+  file projection is HIL-proven; the `/auth` Grok card stays
+  `native_projection_unavailable` and must not be shown as connected.
 - The destination is `/auth?consumer=<id>&view=connections` with an optional
   closed `agentReturn`/`agentSection` tuple. The page does not pass a token,
   command, path, arbitrary provider name or free-form return URL.
