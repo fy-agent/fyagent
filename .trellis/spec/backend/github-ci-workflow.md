@@ -4,10 +4,11 @@
 
 This contract owns `.github/workflows/ci.yml`,
 `.github/workflows/commit-convention-push.yml`,
-`scripts/ci/classify-changes.mjs`, `scripts/ci/required-gate.mjs`,
-`scripts/ci/verify-commit-messages.mjs`, and their fixture suites. It applies to
-pull requests, merge queue candidates, lightweight branch-push commit policy,
-and manual diagnostics.
+`.github/workflows/codeql-security.yml`, `scripts/ci/classify-changes.mjs`,
+`scripts/ci/required-gate.mjs`, `scripts/ci/verify-commit-messages.mjs`, and their
+fixture suites. It applies to pull requests, merge queue candidates, lightweight
+branch-push commit policy, scheduled/manual security scanning, and manual
+diagnostics.
 
 This workflow owns scheduling and aggregation, not the underlying product
 behavior. Windows installer/runtime review guidance is recorded in
@@ -51,6 +52,19 @@ It checks only Conventional Commit history and emits `Commit Convention / Push`.
 It does not classify domains, install frontend/Python/Rust dependencies, run
 product tests, or emit `CI / Required`. Queue-ref pushes are excluded because
 `merge_group` is the sole Required CI authority for Merge Queue candidates.
+
+Security CodeQL is deliberately outside the PR/merge-queue hot path. The
+repository-owned advanced workflow runs only on a weekly schedule and explicit
+`workflow_dispatch`; it has no `pull_request`, `push`, or `merge_group` trigger
+and never emits `CI / Required`. GitHub CodeQL default setup and GitHub Code
+Quality repository setup remain disabled while this workflow owns scanning,
+because either managed setup would independently create dynamic PR analyses.
+The scheduled matrix scans `rust`, `javascript-typescript`, and `actions` using
+no-build mode on Linux. Swift is intentionally excluded from this low-frequency
+workflow because its CodeQL analysis requires macOS autobuild/manual build,
+which is materially more expensive and is not part of merge-readiness evidence.
+Existing code-scanning findings remain security-review inputs; moving scanning
+off the hot path does not reclassify or dismiss those findings.
 
 Repository branch protection, rulesets, merge methods, and the Trellis
 merge-readiness lifecycle are outside this workflow and are owned by

@@ -2,9 +2,10 @@
 
 ## 1. Scope / Trigger
 
-Read this contract before changing Managed Auth metadata, Credential Session
-lifecycle, OS-native secret bundles, legacy JSON migration, Proxy token
-resolution, or the thin Tauri façade in `commands/managed_auth.rs`.
+Read this contract before changing Managed Auth account/credential metadata,
+OS-native secret bundles, legacy JSON migration, refresh ownership, account
+default/removal semantics, Proxy token resolution, or the core Tauri façade in
+`commands/managed_auth.rs`.
 
 Primary owners:
 
@@ -20,13 +21,10 @@ Related owners:
 - [V2 Managed Accounts](../frontend/v2-managed-auth.md) owns renderer Ports.
 - [External Agent Auth](./external-agent-auth.md) remains the Agent-owned
   Claude/desktop handoff façade; it must not grow a second OAuth store.
-- OpenAI browser loopback PKCE and Device Code are owned by
-  `services/managed_auth/providers/openai.rs` plus backend login sessions.
-  xAI Device Code is owned by `providers/xai.rs`. Codex native file
-  projection and Grok helper/`auth.json` writes stay fail-closed until
-  matching-host HIL. OpenCode Desktop observation and `auth.json`
-  projection live in `consumers/opencode.rs`; live Desktop pickup stays
-  `pending_restart` until HIL.
+- [Managed Auth Login](./managed-auth-login.md) owns backend login sessions,
+  OpenAI browser/Device Code, xAI Device Code, cancellation and reopen.
+- [Managed Auth Consumers](./managed-auth-consumers.md) owns Codex/Grok/OpenCode
+  connection observation, native projection gates, readback and restart state.
 
 This is the first production consumer of `services::secret`. Do not introduce a
 second keyring, a plaintext JSON token authority, or a `shared` refresh owner.
@@ -46,7 +44,7 @@ Startup failure is fail-closed overview (`secret_unavailable` /
 `migration_blocked`). It must not crash the app and must not fall back to a
 file or environment secret store.
 
-Current V2 commands:
+Core V2 commands:
 
 ```text
 managed_auth_get_overview() -> ManagedAuthOverview
@@ -56,15 +54,13 @@ managed_auth_preview_account_removal({ accountId, expectedRevision })
   -> ManagedAuthAccountRemovalPreview
 managed_auth_remove_account({ previewId, accountId, expectedRevision })
   -> ManagedAuthMutationResult
-
-managed_auth_start_login / get_login_session / cancel_login /
-reopen_login / switch_login_method
-  -> OpenAI (loopback + device) and xAI (device) snapshots after
-     request validation; Copilot stays provider_not_supported
-managed_auth_apply_connection_action
-  -> Codex/Grok metadata with native projection fail-closed until HIL;
-     OpenCode closed slots observe/project and may return pending_restart
 ```
+
+Login-session command signatures are owned by
+[Managed Auth Login](./managed-auth-login.md). Connection-action signatures are
+owned by [Managed Auth Consumers](./managed-auth-consumers.md). This contract
+owns their shared opaque IDs, credential metadata and mutation readback shape,
+not their provider/consumer protocol details.
 
 Leftover `commands/auth.rs` (not a second owner):
 
@@ -129,7 +125,7 @@ ManagedAuthService::resolve_access_material(provider, legacy_account_id?)
 ```
 
 OpenAI/xAI migrated sessions use `purpose=proxy_upstream`. Copilot uses
-`purpose=copilot`. Both require `refresh_owner=fyagent`. The resolver never
+`purpose=copilot`. All three use `refresh_owner=fyagent`. The resolver never
 returns a refresh token or SecretRef.
 
 ## 3. Contracts
@@ -178,6 +174,24 @@ Delete order: clear connections → delete SecretRef → delete credential /
 identity metadata. SQLite `ON DELETE CASCADE` is not a license to skip the
 native delete.
 
+### Default and account removal
+
+- Default selection accepts only a `Ready` credential under the account's
+  exact current revision. A stale revision, missing account, or account without
+  a ready credential fails before updating `managed_auth_defaults`.
+- Removal is two-step. `preview_account_removal` rereads the account revision
+  and lists every connection whose credential belongs to the account.
+  `remove_account` recomputes that preview and accepts only the matching
+  `previewId + accountId + expectedRevision`; it never trusts a renderer-owned
+  impact list.
+- Successful removal clears connection references, deletes each native
+  SecretRef, then removes credential/orphan identity metadata. Any incomplete
+  delete remains an error/recovery state; the overview must not hide a still
+  authoritative credential.
+- Mutation success returns a newly generated operation UUID and a freshly
+  computed overview. The renderer must not infer success from the command
+  returning without an error.
+
 ### Legacy JSON migration
 
 Sources, one journal row each:
@@ -202,21 +216,19 @@ legacy-copilot-auth-v3  <- copilot_auth.json
 - `legacy_store_sealed(id)` is true only for that source's
   `prepared|completed` journal. Vault unavailable or a foreign source failure
   must not seal remaining JSON stores.
-- After a source is sealed, the matching manager `seal_json_store()` and must
-  not write new tokens to plaintext JSON. Unsealed sources remain readable
-  JSON until they migrate.
+- After a source is sealed, startup must call the matching manager's
+  `seal_json_store()` and that manager must not write new tokens to plaintext
+  JSON. Unsealed sources remain readable until they migrate.
 
 ### Proxy and compatibility commands
 
 - `proxy/forwarder.rs` prefers `resolve_access_material` when a fyagent-owned
   vault session exists. Unmigrated / blocked sources may still use the old
   manager path.
-- Native-owned sessions (`codex_native` / `grok_native` / `opencode`) are
-  never refreshed by Proxy. OpenCode Path B projection writes an
-  independent `purpose=opencode_provider` session into official
-  `auth.json`, then sets `refresh_owner=opencode`. Codex/Proxy refresh
-  lineages are never copied. Live Desktop hot-reload of an external
-  write is unproven; successful FyAgent writes stay `pending_restart`.
+- Any credential whose purpose is not `proxy_upstream`, or whose refresh owner
+  is not `fyagent`, is rejected by Proxy. Consumer-specific purpose changes,
+  native projection and ownership transfer are governed by
+  [Managed Auth Consumers](./managed-auth-consumers.md).
 - V1 `commands/auth.rs` may list vault accounts only after that provider's
   JSON store is sealed. Otherwise JSON remains the live **read-only**
   compatibility path for `auth_list_accounts` / `auth_get_status`.
@@ -248,91 +260,21 @@ auth_cancel_login
   Proxy must resolve Copilot material natively, never through renderer IPC.
   Leftover Copilot list/status/models/usage may remain read-only.
 
-### Login sessions
+### Login and consumer boundary
 
-- OpenAI browser loopback PKCE is the default. Ports are only the first-party
-  registered `1455` then `1457`; unknown processes are never cancelled. Both
-  busy falls back to Device Code.
-- Device Code polling is backend-owned and uses the server interval. Cancel
-  bumps generation so a late poll cannot save a credential.
-- `reopen_login` re-opens the process-private official URL for a non-terminal
-  session. The snapshot never includes the authorization URL, callback URL,
-  code, state, or verifier.
-- Success is published only after SecretRef + metadata readback. Codex native
-  file projection stays closed without matching-host HIL (`partial` +
-  `native_projection_unavailable`).
-
-### xAI Device Code and Grok fail-closed consumer
-
-- xAI login is Device Code only. Browser loopback is rejected at request
-  validation. Discovery and token/device endpoints must be HTTPS
-  `auth.x.ai:443` with empty userinfo. Polling is backend-owned and classifies
-  `authorization_pending`, `slow_down` (interval +5s, capped),
-  `access_denied`, and `expired_token`. Cancel bumps session generation so a
-  late poll cannot save a credential.
-- Migrated / Proxy xAI sessions use `purpose=proxy_upstream` and
-  `refresh_owner=fyagent`. A Grok-purpose login creates a separate
-  `purpose=grok_native` Credential Session with its own credential ID. While
-  helper and file projection are disabled that session still uses
-  `refresh_owner=fyagent` and stays in the OS vault; it is never Proxy-resolved
-  and never copied into Grok `auth.json`.
-- Production gates in `consumers/grok.rs` stay false until matching-host HIL:
-
-```text
-GROK_AUTH_PROVIDER_COMMAND_ENABLED = false
-GROK_FILE_PROJECTION_PRODUCTION_ENABLED = false
-```
-
-- `project_grok_native` returns `Unsupported` and writes no vendor file.
-  Connect or login-to-connect finishes `partial` +
-  `native_projection_unavailable`. Overview Grok cards must not report
-  `connected`.
-- Windows `auth.json.lock` identity and `GROK_HOME` / multi-home targeting
-  remain unproven. Do not enable file writes. External Grok refresh versus
-  FyAgent generation reconcile is not a live path until a native write is
-  HIL-proven; vault CAS still discards stale generations for fyagent-owned
-  sessions.
-- Agent Auth observation for Grok Build remains `handoff_only`. Vault
-  `grok_native` metadata must not be painted as a verified Grok CLI/Desktop
-  login. CLI install success is not login evidence.
-
-### OpenCode Desktop `auth.json` consumer
-
-Path and schema follow official OpenCode `Global.Path.data/auth.json`
-(`consumers/opencode.rs` via `opencode_config::get_opencode_auth_json_path`).
-This consumer is Desktop-first:
-
-- Observation and Path B projection never require a PATH `opencode` CLI.
-- The private Desktop sidecar (ephemeral loopback port and
-  `OPENCODE_SERVER_PASSWORD`) is not a control plane. Do not probe, guess, or
-  persist sidecar ports or passwords.
-- Closed file keys are `openai`, `xai`, and `github-copilot`. Other keys stay
-  in the raw object. Read-modify-write must preserve unknown providers,
-  undecodable values, `wellknown` entries, and extra official fields on keys
-  FyAgent is not replacing.
-- Environment-variable / `OPENCODE_AUTH_CONTENT` providers are not `auth.json`
-  rows. Projection must not invent or delete them.
-- Writes use the existing atomic file owner, then `0600` on Unix, then
-  byte-equal readback. Readback mismatch restores the exact preimage or
-  deletes a newly created file. Success is never inferred from `atomic_write`
-  returning Ok.
-- Live Desktop pickup of an **external** write is unproven.
-  `OPENCODE_EXTERNAL_WRITE_HOT_RELOAD_PROVEN` stays `false`. After a successful
-  FyAgent write, connection `authStatus` is `pending_restart` with reason
-  `pending_restart`. Do not also emit `native_projection_unavailable` (that
-  reason means FyAgent could not write). Do not paint `connected` as hot.
-- `connect_consumer` / reauthenticate with `consumer=opencode` creates a
-  separate `purpose=opencode_provider` Credential Session. Proxy, Codex,
-  Grok, and Copilot purposes are rejected as lineage copies. After a
-  successful file readback, `refresh_owner` becomes `opencode`. A failed
-  owner transfer still records the connection as `pending_restart` so the
-  file write cannot look like a live Path A login.
-- Copilot login remains `provider_not_supported`. Copilot v1 JSON without a
-  stable identity stays `blocked`. Do not project that token into
-  `github-copilot`.
-- Matching-host Desktop HIL for connect, refresh, disconnect, external
-  change, and restart is still required before flipping the hot-reload gate
-  or claiming production live pickup.
+- Provider authorization, process-private session state, callback/device
+  polling, cancellation generation and provider-origin validation are owned by
+  [Managed Auth Login](./managed-auth-login.md).
+- Codex/Grok/OpenCode connection compatibility, auth-file projection,
+  consumer-specific purpose, native refresh-owner transfer and
+  `pending_restart` evidence are owned by
+  [Managed Auth Consumers](./managed-auth-consumers.md).
+- Both layers must enter this core through typed credential admission and
+  closed mutation APIs. Account/default/removal revision enforcement stays in
+  this core; consumer-specific revision coverage and its residuals stay in
+  [Managed Auth Consumers](./managed-auth-consumers.md). Neither layer may
+  write an alternate token store, bypass SecretRef readback, or return secret
+  material through IPC.
 
 ### Sync and export
 
@@ -354,18 +296,10 @@ metadata and must never include token columns.
 | Copilot v1 JSON without identity | that source `blocked`; other sources continue |
 | migration hash changes after prepare | stale/blocked; do not rename |
 | finalize rename fails after DB completed | retry rename on next startup; JSON is not writable authority |
-| login/session command for OpenAI | backend-owned snapshot; success only after SecretRef readback |
-| login for xAI Device Code | backend-owned snapshot; Grok native projection stays fail-closed |
-| login for Copilot | `provider_not_supported` |
-| Codex/Grok connect without HIL file projection | `partial` + `native_projection_unavailable`; no vendor auth.json write |
-| Grok helper or `auth.json` write while production gates are false | `Unsupported` / `partial` + `native_projection_unavailable`; no vendor file |
-| Proxy resolve of `purpose=grok_native` | conflict; no refresh |
-| OpenCode Path B write while live Desktop hot-reload is unproven | file write + readback may succeed; status stays `pending_restart`; do not emit `native_projection_unavailable` |
-| OpenCode login/connect with `consumer=opencode` | new `purpose=opencode_provider` session; never copy Proxy/Codex/Grok/Copilot refresh lineage |
-| OpenCode connect using only `purpose=proxy_upstream`/`codex_native`/`copilot` | `provider_not_supported`; no `auth.json` write |
-| OpenCode observe with Desktop data dir and no PATH CLI | sanitized provider list from `auth.json`; not `AuthObserverUnavailable` |
-| OpenCode RMW of one closed key | unknown/undecodable/other provider keys unchanged |
-| sidecar port/password supplied or scanned | reject; no network probe |
+| set-default revision is stale or no ready credential exists | reject; leave defaults unchanged |
+| removal preview ID/revision no longer matches | stale; delete neither SecretRef nor metadata |
+| removal cannot clear/delete every credential authority | report failure/recovery; do not fabricate an empty overview |
+| Proxy resolves a non-`proxy_upstream` purpose | conflict; no refresh |
 | mutation `operationId` is not UUID v4 | frontend parser rejects the result |
 | DTO/log/debug contains token/secretRef | test failure / NO-GO |
 | leftover `auth_start_login` / `auth_poll_for_account` / `auth_remove_account` / `auth_set_default_account` / `auth_logout` / `auth_cancel_login` | `legacy_auth_mutation_disabled`; no Device Code, JSON write, or vault delete |
@@ -379,15 +313,13 @@ metadata and must never include token columns.
   is renamed to a bounded `.bak`.
 - **Good:** Copilot v1 is blocked while a valid Codex store still finalizes.
 - **Base:** keychain/Credential Manager unavailable. Overview reports
-  `secret_unavailable`; plaintext JSON remains the live store.
-- **Base:** OpenAI login succeeds only after SecretRef + metadata readback.
-  Connecting Codex without HIL-proven file projection ends `partial` with
-  `native_projection_unavailable`. Migrated accounts remain visible.
-- **Good:** OpenCode `connect_consumer` login writes an independent
-  `purpose=opencode_provider` oauth/api entry, transfers `refresh_owner` to
-  `opencode`, and overview stays `pending_restart` until Desktop HIL proves
-  live pickup.
-- **Base:** missing `auth.json` is empty providers, not observer failure.
+  `secret_unavailable`; an unsealed legacy JSON manager may remain a read-only
+  compatibility/resolver source but never becomes a new writable authority.
+- **Good:** account removal preview names the current dependent connections;
+  apply recomputes the same revision/preview before deleting native secrets and
+  metadata.
+- **Base:** a stale default/removal request preserves the current overview and
+  asks the caller to reread rather than choosing another credential.
 - **Bad:** write refresh tokens back to JSON after that source is sealed.
 - **Bad:** seal every JSON store because one source failed.
 - **Bad:** pre-mark credentials `Ready` in the parser before vault readback.
@@ -401,7 +333,6 @@ mise run rust:clippy
 mise run rust:test -- managed_auth
 mise run rust:test -- leftover_legacy_auth
 mise run rust:test -- leftover_copilot_login
-mise run rust:test -- opencode
 mise run rust:test -- --test secret_service_contract
 mise run typecheck:v2
 ```
@@ -419,29 +350,11 @@ Required assertions:
   Copilot v1 does not block Codex finalize;
 - vault unavailable does not seal JSON;
 - stale generation cannot overwrite; resolver rejects native refresh owners;
+- set-default accepts only a ready credential under exact revision;
+  removal preview/apply recomputes impact and rejects stale preview IDs;
+  native secrets are deleted before credential/identity metadata;
 - overview/DTO leak scan includes `access_token`, `refresh_token`, `id_token`,
   `authorization_code`, `device_code`, `secretRef` / `secret_ref`, `verifier`;
-- OpenAI loopback callback host/path/state/PKCE, `1455`→`1457`→Device Code,
-  cancel drops a late result, and reopen opens the official page without
-  putting the authorize URL on the snapshot;
-- xAI Device Code discovery allowlist, pending/`slow_down`/expiry/deny
-  classification, cancel drops a late grant, and grok_native vs
-  proxy_upstream isolation; Proxy resolver rejects grok purpose even with
-  `refresh_owner=fyagent`;
-- Grok helper and file-projection constants remain false;
-  `project_grok_native` writes nothing;
-- Codex file projection remains closed without HIL; connect/login-to-connect
-  finishes `partial` with `native_projection_unavailable`;
-- third-party Codex writers never overwrite official `auth.json`;
-- OpenCode observation does not call PATH CLI; missing CLI is not
-  `AuthObserverUnavailable`;
-- OpenCode RMW preserves unknown/undecodable keys and `0600`; stale CAS
-  leaves the file unchanged; readback mismatch restores the preimage;
-- OpenAI/xAI `consumer=opencode` login creates `purpose=opencode_provider`
-  and does not copy Proxy/Codex/Grok/Copilot lineage; successful writes stay
-  `pending_restart` while `OPENCODE_EXTERNAL_WRITE_HOT_RELOAD_PROVEN` is
-  false;
-- Copilot v1 without identity stays blocked and is not projected;
 - leftover `auth_*` login/remove/default/logout/cancel helpers return
   `legacy_auth_mutation_disabled` without Tauri State;
 - leftover `copilot_start_device_flow` / poll / remove / set_default /
@@ -506,20 +419,4 @@ leftover copilot_start_device_flow / poll / remove / set_default / logout
   -> legacy_auth_mutation_disabled
 managed_auth_* owns login, default, and removal with preview
 auth_list_accounts / auth_get_status remain read-only
-```
-
-Wrong:
-
-```text
-missing PATH opencode -> AuthObserverUnavailable
-OpenCode connect uses proxy_upstream refresh token
-auth.json write Ok -> authStatus=connected
-```
-
-Correct:
-
-```text
-read Global.Path.data/auth.json; missing file is empty providers
-new purpose=opencode_provider session, then RMW + readback
-OPENCODE_EXTERNAL_WRITE_HOT_RELOAD_PROVEN=false -> pending_restart
 ```

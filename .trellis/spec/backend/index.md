@@ -14,9 +14,11 @@ error matrices, tests, paths, and security rules belong in the linked owner.
    [Database Persistence](./database-persistence.md) when changing shared
    runtime or repository infrastructure.
 3. Read the focused feature contract that owns the data, filesystem, process,
-   network, secret, or IPC behavior being changed. Account metadata, OAuth
-   secret bundles, and JSON-to-vault migration are
-   [Managed Auth Core](./managed-auth.md).
+   network, secret, or IPC behavior being changed. Managed Auth is split into
+   [core/vault/migration](./managed-auth.md),
+   [provider login sessions](./managed-auth-login.md), and
+   [consumer projection](./managed-auth-consumers.md); cite only the owner of
+   the behavior being changed.
 4. For platform or delivery work, also read the matching Windows/macOS and
    CI/release governance contracts.
 
@@ -41,6 +43,8 @@ error matrices, tests, paths, and security rules belong in the linked owner.
 | --- | --- |
 | [SecretRef Native Backend](./secretref-backend.md) | Secret storage, opaque references, DTO redaction, and native evidence. |
 | [Managed Auth Core](./managed-auth.md) | Account metadata, Credential Sessions, SecretRef vault admission, JSON migration, refresh ownership, and Proxy token resolution. |
+| [Managed Auth Login](./managed-auth-login.md) | Backend login sessions, OpenAI browser/Device Code, xAI Device Code, cancellation, reopen, and grant admission. |
+| [Managed Auth Consumers](./managed-auth-consumers.md) | Codex/Grok/OpenCode connection observation, native projection gates, readback, ownership transfer, and restart evidence. |
 | [Deep-Link Import Security](./deeplink-import-security.md) | Untrusted deep-link parsing, confirmation, import capabilities, and side-effect limits. |
 | [Change Plan Typed Executor](./change-plan-executor.md) | Typed plans, idempotency, execution phases, compensation, and partial results. |
 | [Codex Provider Configuration](./codex-provider-configuration.md) | Codex provider/auth projection, writer serialization, backup, rollback, and readback. |

@@ -9,14 +9,19 @@ the Codex Provider Change Plan ledger/readback path.
 It owns the Codex provider configuration domain only. Trusted Codex Desktop
 discovery, installation, process restart, and launch are owned by
 [Codex Desktop Installer](./codex-desktop-installer.md); application version and
-release metadata are owned by their dedicated contracts. Managed ChatGPT
-OAuth accounts, `credential_id` vs `chatgpt_account_id` routing identity,
-and native `auth.json` projection are owned with
-[Managed Auth Core](./managed-auth.md) and
-[External Agent P0 Safety](./external-agent-p0.md).
+release metadata are owned by their dedicated contracts. Managed ChatGPT OAuth
+account identity, refresh ownership and JSON-to-vault migration are owned by
+[Managed Auth Core](./managed-auth.md). Managed Codex connection admission and
+its production projection gate are owned by
+[Managed Auth Consumers](./managed-auth-consumers.md). This contract owns only
+the Codex Provider binding boundary plus the existing Codex config/auth writer
+semantics; Agent install/launch remains in the focused lifecycle contracts.
 The unsealed Codex JSON manager remains a compatibility store until
 migration seals that source. Provider rows store
 `ProviderMeta.authBinding.accountId` as an opaque account/credential id only.
+Legacy binding remap runs only after `CodexOAuthManager` reports a successful
+store load. A parse or I/O failure is not an empty account set and must leave
+every existing Provider binding unchanged.
 Native file projection is allowed only when live `cli_auth_credentials_store`
 is explicitly `file`; `keyring`, `auto`, `ephemeral`, unset, and unknown fail
 closed. Workspace/account IDs are never HashMap keys.
@@ -251,6 +256,7 @@ CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED
 | Two ChatGPT users share one workspace/account routing ID                                             | Store two `credential_id` rows; never use the workspace ID as the HashMap key.                                          |
 | Provider `authBinding.accountId` still holds a v1 workspace ID that maps to exactly one credential   | Remap that binding to the new `credential_id`.                                                                          |
 | Provider `authBinding.accountId` is missing, already a credential, or maps to multiple credentials   | Unbind; never guess the default or another account.                                                                     |
+| Codex compatibility OAuth store parse/I/O load fails before binding remap                            | Skip remap and preserve every existing Provider binding; empty memory is not evidence of an empty store.                |
 | Bound managed credential is missing/expired during proxy forwarding                                  | Fail closed; do not send another account's token.                                                                       |
 | Live `cli_auth_credentials_store` is `keyring`, `auto`, `ephemeral`, unset, invalid, or unknown      | `native_projection_available=false`; do not write `auth.json` to fake a switch.                                         |
 | Native projection writes `auth.json` because the file already exists                                 | Contract regression; file existence is not a store hint.                                                                |
@@ -317,7 +323,8 @@ CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED
   [Change Plan Typed Executor](./change-plan-executor.md).
 - Codex OAuth store tests cover v2 `credential_id` keys, same-workspace two
   users, v1 backup + idempotent migrate, unique vs ambiguous Provider binding
-  remap, bound-missing fail-closed forwarding, leftover `auth_*` mutations
+  remap, corrupt/I/O load failure keeping `store_loaded=false` and preserving
+  all bindings, bound-missing fail-closed forwarding, leftover `auth_*` mutations
   returning `legacy_auth_mutation_disabled`, Debug/DTO token redaction, explicit `file`
   native projection, and fail-closed `keyring`/`auto`/`ephemeral`/unset/unknown
   without consulting `auth.json` existence.
@@ -350,6 +357,8 @@ managed ChatGPT account map key = credential_id
   + chatgpt_account_id is routing metadata only
   + Provider.authBinding.accountId = credential_id
 native projection only when cli_auth_credentials_store = "file"
+successful OAuth store load -> remap legacy Provider bindings
+OAuth store load failure -> preserve all bindings; do not treat memory as empty authority
 ```
 
 ## Scenario: V2 Codex Quick Setup targeted live write
@@ -556,224 +565,3 @@ stored auth.OPENAI_API_KEY = apiKey
 live config.toml experimental_bearer_token = apiKey
 live auth.json unchanged
 ```
-
-## Scenario: Codex managed credential identity and native projection
-
-### 1. Scope / Trigger
-
-- Trigger: the managed ChatGPT OAuth store, Provider binding IDs, proxy
-  routing headers, leftover read-only status DTO, and native `auth.json`
-  projection all changed together. This is a persisted-schema plus
-  cross-layer command contract, so code-spec depth is mandatory.
-- Owner: live token and Credential Session authority is
-  [Managed Auth Core](./managed-auth.md). `proxy/providers/codex_oauth_auth.rs`
-  remains the unsealed JSON compatibility store until that source is migrated.
-  `ProviderMeta.authBinding` stores IDs only. Native file projection is
-  `codex_config/credential_store.rs` plus existing
-  `codex_config/{auth,storage}.rs` writers. Agent Catalog install actions
-  are owned by [External Agent P0 Safety](./external-agent-p0.md).
-
-### 2. Signatures
-
-```text
-CodexOAuthStore v2 {
-  version: 2,
-  accounts: HashMap<credential_id, CodexAccountData>,
-  default_account_id?: credential_id
-}
-
-CodexAccountData {
-  credential_id,            // FyAgent UUID; map key; never workspace id
-  chatgpt_account_id,       // upstream routing/workspace identity only
-  email?,
-  refresh_token,            // disk only; never DTO/log/Debug
-  authenticated_at
-}
-
-ManagedAuthAccount {
-  id,                       // credential_id
-  provider, login, avatar_url?, authenticated_at,
-  is_default, github_domain, requires_reauth,
-  chatgpt_account_id?       // routing metadata for display; not a key
-}
-
-ManagedAuthStatus {
-  provider, authenticated, default_account_id?,
-  migration_error?, accounts,
-  native_projection_available?   // Codex only; true only for explicit file
-}
-
-auth_list_accounts(authProvider)
-auth_get_status(authProvider)          // read-only leftover compatibility
-auth_start_login / auth_poll_for_account / auth_remove_account /
-auth_set_default_account / auth_logout / auth_cancel_login
-  -> always `legacy_auth_mutation_disabled`
-                                       // leftover Device Code/remove/default
-                                       // are not a second owner; use
-                                       // managed_auth_* + impact preview
-
-parse_cli_auth_credentials_store(config_toml)
-  -> File | Keyring | Auto | Ephemeral | Unset | Unknown | ConfigInvalid
-
-native_file_projection_allowed(config_toml) -> bool
-overlay_cli_auth_credentials_store(outgoing, current_live) -> toml
-```
-
-`authProvider` remains `github_copilot | codex_oauth | xai_oauth`. No second
-leftover Auth Center login owner. No environment key.
-
-### 3. Contracts
-
-- Credential identity and ChatGPT workspace/account identity are different
-  fields. Login completion generates a random `credential_id`. Duplicate
-  rows from repeated logins are accepted; merging people by workspace ID is
-  forbidden until a verified stable user claim exists.
-- Provider rows keep `authBinding.authProvider = "codex_oauth"` and
-  `authBinding.accountId = credential_id`. They never copy access/refresh
-  tokens.
-- Proxy `ChatGPT-Account-Id` is the routing id looked up from the bound
-  credential. Missing/empty routing id fails closed. A bound credential that
-  disappears does not fall back to default or another account.
-- v1→v2 migration: backup `codex_oauth_auth.json.v1.bak` once (keep it),
-  assign a new UUID per row, preserve the old workspace id as
-  `chatgpt_account_id`, remap a Provider binding only when the old id maps
-  to exactly one new credential, otherwise unbind. Lost collision data is
-  not reconstructed. Re-running on an already-v2 store is a no-op.
-  Remap runs only after a successful store load (`store_loaded=true`); a
-  parse/IO failure must not treat the empty in-memory map as “no accounts”
-  and clear every Codex `authBinding`.
-- Credential source and upstream destination stay independent. Official vs
-  custom endpoint, proxy takeover, and managed-account binding must not be
-  collapsed into one `is_official` boolean.
-- Native Codex projection writes `auth.json` only when live
-  `cli_auth_credentials_store` is the string `file`. `keyring`, `auto`,
-  source-visible `ephemeral`, unset, non-string, and future values set
-  `native_projection_available=false` and tell the user to use Codex login.
-  Existence of `auth.json` is never a store selector.
-- Empty official snapshots that omit `cli_auth_credentials_store` must
-  overlay the current live value so a later switch cannot silently drop
-  file-mode projection.
-- Leftover `auth_cancel_login` / `auth_start_login` / `auth_poll_for_account`
-  and leftover Copilot login/remove/default/logout IPC always return
-  `legacy_auth_mutation_disabled`. Live OpenAI Device Code cancel belongs
-  on `managed_auth_cancel_login`, which bumps session generation so a late
-  poll cannot save a credential.
-- Leftover Provider forms distinguish “managed account usable for FyAgent
-  routing” from “native Codex projection available” via the read-only
-  status DTO. They must not start leftover login or display workspace
-  routing IDs. Refresh-token remaining source of truth is the managed
-  store once that source is sealed; unsealed JSON remains a read-only
-  compatibility store until migration. Reconciling a Codex-rotated refresh
-  token into that store before file-mode projection is still residual:
-  identity must match first; production file/keyring projection stays
-  fail-closed without matching-host HIL. OAuth HTTP errors may include the
-  status code and must not echo the response body.
-
-### 4. Validation & Error Matrix
-
-| Condition | Required result |
-| --- | --- |
-| Store keyed by `chatgpt_account_id` | Schema/test fails |
-| Bound credential missing during forward | Auth error; no other account |
-| Ambiguous v1 workspace binding | Unbind; do not pick default |
-| Non-file credential store | No `auth.json` write; UI shows native projection unavailable |
-| Invalid `config.toml` while resolving store | Treat as not-file; do not guess |
-| Token in DTO, log, Debug, ledger, DOM | Security regression |
-| OAuth HTTP failure embeds response body | Security regression; errors may include status only |
-| Store load failed (`store_loaded=false`) then remap bindings | Forbidden; empty in-memory map must not unbind every Provider |
-| leftover `auth_start_login` / `auth_cancel_login` starts or continues Device Code | Contract regression; must return `legacy_auth_mutation_disabled` |
-
-### 5. Good/Base/Bad Cases
-
-- Good: Alice and Bob in workspace `ws-shared` persist as two UUID keys
-  with the same `chatgpt_account_id`.
-- Base: a file-store user can project the selected managed credential
-  through the existing atomic `auth.json` + `config.toml` writer.
-- Bad: CC Switch-style unconditional `auth.json` overwrite under `keyring`,
-  or infer file mode because `auth.json` exists.
-
-### 6. Tests Required
-
-- `same_workspace_two_users_coexist_under_distinct_credential_ids`
-- v1 fixture migrates, writes `.v1.bak` once, and is idempotent on v2
-- unique vs many-to-one Provider `authBinding` remap
-- forwarder fail-closed when routing id is missing
-- `only_explicit_file_allows_native_projection` plus
-  `auth_json_existence_is_not_consulted`
-- overlay preserves live `cli_auth_credentials_store` when outgoing omits it
-- Debug redacts `refresh_token`
-- Leftover status DTO has `id` + optional `chatgpt_account_id` and no
-  token fields; leftover login/remove IPC is fail-closed
-
-### 7. Wrong vs Correct
-
-#### Wrong
-
-```rust
-accounts.insert(chatgpt_account_id, account);
-if Path::new("~/.codex/auth.json").exists() {
-    write_auth_json(token_package)?;
-}
-```
-
-#### Correct
-
-```rust
-accounts.insert(credential_id, CodexAccountData { credential_id, chatgpt_account_id, .. });
-if parse_cli_auth_credentials_store(&live_toml)? == CodexCredentialStore::File {
-    project_auth_json_for_credential(&credential_id)?;
-} else {
-    return native_projection_unavailable();
-}
-```
-
-### Design Decision: credential UUID instead of workspace map key
-
-**Context**: ChatGPT Team/Business `chatgpt_account_id` is a workspace routing
-id. Two people in one workspace collided when it was the store key
-(CC Switch #5885 class). OpenAI tokens do not currently prove a stable user
-claim we can use as identity.
-
-**Options Considered**:
-
-1. Keep workspace id as the map key
-2. Deduplicate on email
-3. Generate a FyAgent `credential_id` UUID at login
-
-**Decision**: Option 3. Duplicate rows from repeated logins are safer than
-merging distinct people. Provider bindings store that UUID only.
-
-**Example**:
-
-```text
-accounts[credential_uuid] = { credential_id, chatgpt_account_id: "ws-shared", refresh_token }
-ProviderMeta.authBinding.accountId = credential_uuid
-```
-
-**Extensibility**: Later dedup requires positive identity evidence, not
-workspace or email heuristics.
-
-### Common Mistake: 存储没加载成功就 remap binding
-
-**Symptom**: Codex OAuth JSON is unreadable, then every Provider
-`authBinding` disappears.
-
-**Cause**: remap saw an empty in-memory map and treated every old workspace
-id as ambiguous/missing.
-
-**Fix**: set `store_loaded` only after a successful read; skip remap otherwise.
-
-**Prevention**: tests must cover corrupt/missing store without mutating
-Provider bindings.
-
-### Common Mistake: 用 auth.json 是否存在判断 Codex store
-
-**Symptom**: `keyring`/`auto` users appear to switch native Codex accounts,
-then Codex ignores `auth.json`.
-
-**Cause**: File existence is not `cli_auth_credentials_store`.
-
-**Fix**: Parse the live TOML field. Only explicit `file` may project.
-
-**Prevention**: `native_file_projection_allowed` must not take a filesystem
-path to `auth.json`.

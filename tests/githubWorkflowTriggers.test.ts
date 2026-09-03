@@ -203,6 +203,49 @@ describe("GitHub workflow trigger policy", () => {
     ]);
   });
 
+  it("keeps CodeQL security scanning off the PR and merge-queue hot path", () => {
+    const source = readWorkflow("codeql-security.yml");
+    const triggerSection = readHeaderBefore(source, "\npermissions:");
+
+    expect(triggerSection).toBe(
+      [
+        "name: CodeQL Security / Scheduled",
+        "",
+        "on:",
+        "  schedule:",
+        '    - cron: "17 3 * * 1"',
+        "  workflow_dispatch:",
+      ].join("\n"),
+    );
+    expect(triggerSection).not.toMatch(/pull_request|merge_group|push/);
+    expect(source).not.toContain("CI / Required");
+    expect(source).toContain("runs-on: ubuntu-24.04");
+    expect(source).toContain("timeout-minutes: 30");
+    expect(source).toContain("security-events: write");
+    expect(source).not.toMatch(
+      /^\s+(?:checks|pull-requests|id-token):\s+write/m,
+    );
+    expect(source).toContain(
+      "- language: actions\n            build-mode: none",
+    );
+    expect(source).toContain(
+      "- language: javascript-typescript\n            build-mode: none",
+    );
+    expect(source).toContain("- language: rust\n            build-mode: none");
+    expect(source).not.toContain("language: swift");
+    expect(source).not.toContain("language: c-cpp");
+    expect(source).not.toContain("language: python");
+
+    const uses = [...source.matchAll(/^\s+uses:\s+(.+)$/gm)].map(
+      (match) => match[1],
+    );
+    expect(uses).toEqual([
+      "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1",
+      "github/codeql-action/init@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4",
+      "github/codeql-action/analyze@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4",
+    ]);
+  });
+
   it("keeps frontend labeling scoped to frontend-owned tests", () => {
     const source = fs
       .readFileSync(path.resolve(WORKFLOWS_DIR, "..", "labeler.yml"), "utf8")

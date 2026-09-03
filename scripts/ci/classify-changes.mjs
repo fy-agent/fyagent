@@ -69,6 +69,7 @@ const RELEASE_CONTROL_FILES = new Set([
 
 const GITHUB_CONTRACT_FILES = new Set([
   ".github/labeler.yml",
+  ".github/workflows/codeql-security.yml",
   ".github/workflows/labeler.yml",
   ".github/workflows/star-history.yml",
 ]);

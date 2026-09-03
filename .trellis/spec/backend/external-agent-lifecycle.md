@@ -148,6 +148,18 @@ command, argument vector, token, hash, package format, signer or bypass flags.
 | Claude Desktop | Desktop only; use the reviewed source and closed bundle identity on supported hosts. No public Claude CLI installer. |
 | OpenCode Desktop | Desktop only; use reviewed stable desktop artifacts and closed bundle identity on supported hosts. No public OpenCode CLI installer. |
 
+- Grok npm optional-package admission is resolved by the signed product on the
+  product host. The closed mappings are Darwin x64/arm64 and Windows x64/arm64;
+  an unsupported architecture produces no install plan, while a product build
+  for an operating system other than macOS/Windows is rejected at compile time.
+  The bundled manifest contains no Linux optional package and no generic
+  `std::env::consts::OS` fallback.
+- Before execution, the product matches both `@xai-official/grok` and the
+  current platform package SHA-512 against one allowed registry. On formal
+  Windows it then sends only the compact exact-version/registry/allow-scripts
+  control to the ordinary-user helper. The helper validates and executes that
+  closed control; it does not resolve registry metadata, choose a platform
+  package, or invent `@latest`.
 - Qoder display version comes only from an unindented top-level `version:` in
   bounded same-host `latest.yml`/`latest-mac.yml`. The feed ZIP and `sha512`
   are metadata, not admitted artifacts. Windows ARM64 remains unsupported
@@ -294,6 +306,9 @@ leaf:
 | OpenCode Uninstall DisplayName is `OpenCode Dev`, `OpenCodeAI`, or a prerelease version | Skip that ARP entry. |
 | OpenCode KnownPath relative is missing | Drop the observation; do not retain KnownPath Missing. |
 | Grok default install has no native expected owner | Plan official npm from the bundled exact-version manifest; never `@latest`. |
+| Grok macOS/Windows architecture has no closed platform package or manifest integrity | Produce no npm plan/action; do not fall back to Linux or another product package. |
+| Grok product is compiled for a non-macOS/non-Windows target | Compile-time rejection; do not add a generic OS fallback. |
+| Grok registry metadata does not match both root and current-platform SHA-512 | Skip that registry; fail with source exhaustion when none match. |
 | Cancel after `launching_installer`/`installing` | `operation_conflict`; do not kill external/commit operation. |
 | Secret/path/raw native identity reaches DTO/log/DOM | Security regression. |
 
@@ -357,7 +372,10 @@ Assertion points:
 - job single-flight, terminal slot release, transfer monotonicity, unknown
   total, cancel refusal after side-effect boundary and unknown job ID;
 - Grok owner-preserving lifecycle and ordinary-user helper with no elevated
-  fallback;
+  fallback; product-host cfg maps only Darwin/Windows x64/arm64, the bundled
+  manifest has no Linux optional package, registry admission matches both
+  package integrities, and the helper receives only the compact host-selected
+  plan;
 - renderer polls until a terminal native stage and does not paint a poll cap
   as failure while a job remains active. Browser fixtures do not prove native
   inventory, installer or signing behavior.
