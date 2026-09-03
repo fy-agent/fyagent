@@ -9,9 +9,24 @@ use chrono::SecondsFormat;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+mod core;
+mod migration;
+mod repository;
+mod secret_bundle;
+mod service;
+
+pub(crate) use core::{
+    CredentialPurpose, CredentialRecord, CredentialStatus, CredentialWithIdentity,
+    IdentityRecord, ManagedAuthCoreError, MigrationRecord, MigrationStatus, NewCredential,
+    RefreshOwner, stable_connection_id, stable_credential_id, stable_identity_id,
+    stable_revision,
+};
+pub(crate) use secret_bundle::{ManagedAuthSecretBundle, ManagedSecretKind};
+pub(crate) use service::ManagedAuthService;
+
 pub const MANAGED_AUTH_CONTRACT_VERSION: u8 = 1;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ManagedAuthProvider {
     Openai,
@@ -19,7 +34,7 @@ pub enum ManagedAuthProvider {
     GithubCopilot,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ManagedAuthConsumer {
     Codex,

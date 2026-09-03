@@ -3,7 +3,7 @@
   "name": "managed-auth-core-vault-migration",
   "title": "建立统一 Managed Auth Core、SecretRef 与迁移基础",
   "description": "收敛现有 Codex/xAI/Copilot 管理器到统一账号元数据、Credential Session、OS-native SecretRef、刷新所有权和可恢复迁移基础。",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": "unified-agent-auth",
   "package": null,

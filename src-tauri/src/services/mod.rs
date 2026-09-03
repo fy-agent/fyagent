@@ -27,6 +27,7 @@ pub(crate) mod session_usage_codex;
 pub(crate) mod session_usage_gemini;
 pub(crate) mod session_usage_grokbuild;
 pub(crate) mod session_usage_opencode;
+pub(crate) mod secret;
 pub(crate) mod skill;
 pub(crate) mod speedtest;
 pub(crate) mod sql_helpers;

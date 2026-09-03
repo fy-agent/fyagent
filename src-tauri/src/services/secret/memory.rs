@@ -6,7 +6,8 @@ use std::{
 use zeroize::Zeroizing;
 
 use super::{
-    BackendProbe, SecretBackend, SecretBackendKind, SecretMaterial, SecretRef, SecretServiceError,
+    BackendProbe, SecretBackend, SecretBackendKind, SecretMaterial, SecretPurpose, SecretRef,
+    SecretServiceError,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -107,15 +108,16 @@ impl SecretBackend for MemorySecretBackend {
         Ok(())
     }
 
-    fn read(&self, secret_ref: &SecretRef) -> Result<SecretMaterial, SecretServiceError> {
+    fn read(
+        &self,
+        secret_ref: &SecretRef,
+        purpose: SecretPurpose,
+    ) -> Result<SecretMaterial, SecretServiceError> {
         let state = self.checked_state()?;
         let Some(record) = state.records.get(secret_ref) else {
             return Err(SecretServiceError::missing());
         };
-        SecretMaterial::from_native_input(
-            record.as_slice().to_vec(),
-            super::SecretPurpose::CodexApiKey,
-        )
+        SecretMaterial::from_native_input(record.as_slice().to_vec(), purpose)
     }
 
     fn probe(&self, secret_ref: &SecretRef) -> Result<BackendProbe, SecretServiceError> {

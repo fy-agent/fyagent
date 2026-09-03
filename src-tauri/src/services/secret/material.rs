@@ -5,7 +5,11 @@ use zeroize::{Zeroize, Zeroizing};
 
 use super::{SecretPurpose, SecretServiceError};
 
-const MAX_SECRET_BYTES: usize = 2_560;
+/// Windows Credential Manager caps a generic credential blob at
+/// `CRED_MAX_CREDENTIAL_BLOB_SIZE` (5 * 512 bytes). Keep one cross-platform
+/// ceiling so callers never create a secret that can be persisted on macOS
+/// but not on Windows.
+pub(crate) const MAX_SECRET_BYTES: usize = 2_560;
 
 pub(crate) struct SecretMaterial(Zeroizing<Vec<u8>>);
 
@@ -15,8 +19,10 @@ impl SecretMaterial {
         purpose: SecretPurpose,
     ) -> Result<Self, SecretServiceError> {
         let bytes = Zeroizing::new(bytes);
-        if purpose != SecretPurpose::CodexApiKey
-            || bytes.is_empty()
+        if !matches!(
+            purpose,
+            SecretPurpose::CodexApiKey | SecretPurpose::ManagedOAuthCredential
+        ) || bytes.is_empty()
             || bytes.len() > MAX_SECRET_BYTES
             || bytes.contains(&0)
             || std::str::from_utf8(bytes.as_slice()).is_err()

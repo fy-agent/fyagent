@@ -89,6 +89,7 @@ impl WindowsSecretBackend {
         &self,
         secret_ref: &SecretRef,
         operation: CredentialOperation,
+        purpose: SecretPurpose,
     ) -> Result<SecretMaterial, SecretServiceError> {
         let target = target(secret_ref);
         let mut raw = ptr::null_mut();
@@ -113,11 +114,15 @@ impl WindowsSecretBackend {
             )
         }
         .to_vec();
-        SecretMaterial::from_native_input(bytes, SecretPurpose::CodexApiKey)
+        SecretMaterial::from_native_input(bytes, purpose)
     }
 
     fn probe_locked(&self, secret_ref: &SecretRef) -> Result<BackendProbe, SecretServiceError> {
-        match self.read_locked(secret_ref, CredentialOperation::Probe) {
+        match self.read_locked(
+            secret_ref,
+            CredentialOperation::Probe,
+            SecretPurpose::ManagedOAuthCredential,
+        ) {
             Ok(_) => Ok(BackendProbe::ready()),
             Err(error) if error.code() == super::super::SecretErrorCode::Missing => {
                 Ok(BackendProbe::missing())
@@ -147,7 +152,11 @@ impl WindowsSecretBackend {
         if written == 0 {
             return Err(map_last_error(unsafe { GetLastError() }, operation));
         }
-        let actual = self.read_locked(secret_ref, CredentialOperation::Read)?;
+        let actual = self.read_locked(
+            secret_ref,
+            CredentialOperation::Read,
+            SecretPurpose::ManagedOAuthCredential,
+        )?;
         if actual.ct_eq_slice(material.as_bytes()) {
             return Ok(());
         }
@@ -197,9 +206,13 @@ impl SecretBackend for WindowsSecretBackend {
         }
     }
 
-    fn read(&self, secret_ref: &SecretRef) -> Result<SecretMaterial, SecretServiceError> {
+    fn read(
+        &self,
+        secret_ref: &SecretRef,
+        purpose: SecretPurpose,
+    ) -> Result<SecretMaterial, SecretServiceError> {
         let _guard = self.lock()?;
-        self.read_locked(secret_ref, CredentialOperation::Read)
+        self.read_locked(secret_ref, CredentialOperation::Read, purpose)
     }
 
     fn probe(&self, secret_ref: &SecretRef) -> Result<BackendProbe, SecretServiceError> {

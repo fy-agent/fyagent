@@ -86,7 +86,11 @@ fn memory_backend_covers_crud_readback_and_version_rotation() {
     assert_eq!(created.presence(), SecretPresence::Present);
     assert_eq!(created.availability(), SecretAvailability::Ready);
     assert!(service
-        .with_material(&first, MaterialMatches::new(canary_v1.as_bytes()))
+        .with_material(
+            &first,
+            SecretPurpose::CodexApiKey,
+            MaterialMatches::new(canary_v1.as_bytes()),
+        )
         .expect("read"));
 
     let replaced = service
@@ -96,7 +100,11 @@ fn memory_backend_covers_crud_readback_and_version_rotation() {
     assert_eq!(first.secret_ref(), second.secret_ref());
     assert_ne!(first.version().as_str(), second.version().as_str());
     assert!(service
-        .with_material(&second, MaterialMatches::new(canary_v2.as_bytes()))
+        .with_material(
+            &second,
+            SecretPurpose::CodexApiKey,
+            MaterialMatches::new(canary_v2.as_bytes()),
+        )
         .expect("read replacement"));
 
     let probed = service
@@ -114,7 +122,11 @@ fn memory_backend_covers_crud_readback_and_version_rotation() {
     assert_eq!(missing.availability(), SecretAvailability::Missing);
     assert_eq!(
         service
-            .with_material(&second, MaterialMatches::new(canary_v2.as_bytes()))
+            .with_material(
+                &second,
+                SecretPurpose::CodexApiKey,
+                MaterialMatches::new(canary_v2.as_bytes()),
+            )
             .expect_err("missing read")
             .code(),
         SecretErrorCode::Missing
@@ -188,6 +200,7 @@ fn locked_denied_and_unavailable_are_source_free_and_never_fallback() {
         let error = service
             .with_material(
                 &handle,
+                SecretPurpose::CodexApiKey,
                 MaterialMatches::new(b"failure-mode-runtime-canary"),
             )
             .expect_err("fail closed read");
@@ -305,13 +318,21 @@ fn native_os_backend_crud_readback() {
     let first = created.handle();
 
     let result = (|| {
-        if !service.with_material(&first, MaterialMatches::new(first_canary.as_bytes()))? {
+        if !service.with_material(
+            &first,
+            SecretPurpose::CodexApiKey,
+            MaterialMatches::new(first_canary.as_bytes()),
+        )? {
             return Err(secret::SecretServiceError::verify_failed());
         }
         let replaced =
             service.replace(&first, material(&second_canary), SecretPurpose::CodexApiKey)?;
         let second = replaced.handle();
-        if !service.with_material(&second, MaterialMatches::new(second_canary.as_bytes()))? {
+        if !service.with_material(
+            &second,
+            SecretPurpose::CodexApiKey,
+            MaterialMatches::new(second_canary.as_bytes()),
+        )? {
             return Err(secret::SecretServiceError::verify_failed());
         }
         Ok::<_, secret::SecretServiceError>(second)

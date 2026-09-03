@@ -332,6 +332,10 @@ impl Database {
         // 20. Change Plan local-only ledger.
         Self::create_change_plan_tables_on_conn(conn)?;
 
+        // 21. Managed Auth metadata. Secret material remains in the native
+        // credential store and is referenced only by opaque SecretRef values.
+        Self::create_managed_auth_tables_on_conn(conn)?;
+
         // 修复跑过未发布开发版的库：current 标记曾是全局 key，现按应用分组
         // （随 v12 定稿为 current_profile_id_<scope>，不单独 bump 版本）
         if conn
@@ -541,6 +545,11 @@ impl Database {
                         log::info!("迁移数据库从 v19 到 v20（添加 Change Plan 本地变更账本）");
                         Self::migrate_v19_to_v20(conn)?;
                         Self::set_user_version(conn, 20)?;
+                    }
+                    20 => {
+                        log::info!("迁移数据库从 v20 到 v21（添加 Managed Auth 元数据）");
+                        Self::migrate_v20_to_v21(conn)?;
+                        Self::set_user_version(conn, 21)?;
                     }
                     _ => {
                         return Err(AppError::Database(format!(
@@ -1699,6 +1708,101 @@ impl Database {
             "#,
         )
         .map_err(|error| AppError::Database(format!("创建 Change Plan 表失败: {error}")))
+    }
+
+    /// v20 -> v21: add credential-free Managed Auth metadata and migration
+    /// journals. Fresh databases and upgrades share this exact helper.
+    fn migrate_v20_to_v21(conn: &Connection) -> Result<(), AppError> {
+        Self::create_managed_auth_tables_on_conn(conn)
+    }
+
+    pub(crate) fn create_managed_auth_tables_on_conn(
+        conn: &Connection,
+    ) -> Result<(), AppError> {
+        conn.execute_batch(
+            r#"
+            CREATE TABLE IF NOT EXISTS managed_auth_identities (
+                identity_id TEXT PRIMARY KEY,
+                provider TEXT NOT NULL CHECK (provider IN ('openai','xai','github_copilot')),
+                provider_subject TEXT NOT NULL,
+                provider_tenant TEXT NOT NULL DEFAULT '',
+                login TEXT NOT NULL,
+                display_name TEXT,
+                avatar_url TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                UNIQUE(provider, provider_subject, provider_tenant)
+            );
+            CREATE TABLE IF NOT EXISTS managed_auth_credentials (
+                credential_id TEXT PRIMARY KEY,
+                identity_id TEXT NOT NULL,
+                provider TEXT NOT NULL CHECK (provider IN ('openai','xai','github_copilot')),
+                purpose TEXT NOT NULL CHECK (purpose IN ('proxy_upstream','codex_native','grok_native','opencode_provider','copilot')),
+                consumer TEXT NOT NULL DEFAULT '' CHECK (consumer IN ('','codex','grokbuild','opencode','fyagent_proxy')),
+                legacy_account_id TEXT NOT NULL,
+                secret_ref TEXT NOT NULL,
+                secret_version TEXT NOT NULL,
+                refresh_owner TEXT NOT NULL CHECK (refresh_owner IN ('fyagent','codex_native','grok_native','opencode','unavailable')),
+                generation INTEGER NOT NULL CHECK (generation >= 1),
+                access_expires_at INTEGER,
+                status TEXT NOT NULL CHECK (status IN ('provisioning','ready','requires_reauth','secret_missing','migration_blocked','revoked')),
+                authenticated_at INTEGER NOT NULL,
+                refreshed_at INTEGER,
+                migration_id TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                FOREIGN KEY (identity_id) REFERENCES managed_auth_identities(identity_id) ON DELETE CASCADE,
+                UNIQUE(provider, purpose, consumer, legacy_account_id)
+            );
+            CREATE TABLE IF NOT EXISTS managed_auth_defaults (
+                provider TEXT NOT NULL CHECK (provider IN ('openai','xai','github_copilot')),
+                purpose TEXT NOT NULL CHECK (purpose IN ('proxy_upstream','codex_native','grok_native','opencode_provider','copilot')),
+                consumer TEXT NOT NULL DEFAULT '' CHECK (consumer IN ('','codex','grokbuild','opencode','fyagent_proxy')),
+                credential_id TEXT NOT NULL,
+                updated_at INTEGER NOT NULL,
+                PRIMARY KEY (provider, purpose, consumer),
+                FOREIGN KEY (credential_id) REFERENCES managed_auth_credentials(credential_id) ON DELETE CASCADE
+            );
+            CREATE TABLE IF NOT EXISTS managed_auth_connections (
+                connection_id TEXT PRIMARY KEY,
+                consumer TEXT NOT NULL CHECK (consumer IN ('codex','grokbuild','opencode','fyagent_proxy')),
+                target_id TEXT NOT NULL DEFAULT '',
+                provider_slot TEXT NOT NULL,
+                credential_id TEXT,
+                desired_revision TEXT NOT NULL,
+                observed_revision TEXT,
+                status TEXT NOT NULL CHECK (status IN ('disconnected','connected','checking','requires_reauth','pending_restart','external_change_detected','recovery_required','unavailable')),
+                request_mode TEXT NOT NULL CHECK (request_mode IN ('official_subscription','third_party_api','provider_connections','none','unknown')),
+                request_provider_label TEXT,
+                official_session_preserved INTEGER,
+                pending_restart INTEGER NOT NULL DEFAULT 0,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                FOREIGN KEY (credential_id) REFERENCES managed_auth_credentials(credential_id) ON DELETE SET NULL,
+                UNIQUE(consumer, target_id, provider_slot)
+            );
+            CREATE TABLE IF NOT EXISTS managed_auth_migrations (
+                migration_id TEXT PRIMARY KEY,
+                source_kind TEXT NOT NULL CHECK (source_kind IN ('codex_oauth_v2','xai_oauth_v1','copilot_auth_v3')),
+                source_hash TEXT NOT NULL,
+                status TEXT NOT NULL CHECK (status IN ('copying','prepared','completed','blocked')),
+                reason_code TEXT,
+                backup_name TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                completed_at INTEGER
+            );
+            CREATE INDEX IF NOT EXISTS idx_managed_auth_credentials_identity
+                ON managed_auth_credentials(identity_id, status);
+            CREATE INDEX IF NOT EXISTS idx_managed_auth_credentials_provider
+                ON managed_auth_credentials(provider, purpose, consumer, status);
+            CREATE INDEX IF NOT EXISTS idx_managed_auth_connections_credential
+                ON managed_auth_connections(credential_id, status);
+            CREATE INDEX IF NOT EXISTS idx_managed_auth_migrations_status
+                ON managed_auth_migrations(status, updated_at);
+            "#,
+        )
+        .map_err(|error| AppError::Database(format!("创建 Managed Auth 表失败: {error}")))
     }
 
     /// 插入默认模型定价数据
