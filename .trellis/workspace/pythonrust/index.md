@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 67
+- **Total Sessions**: 68
 - **Last Active**: 2026-09-03
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~202 | Active |
+| `journal-2.md` | ~241 | Active |
 | `journal-1.md` | ~1987 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 68 | 2026-09-03 | Auth recovery copy and dialog focus | `e8807cde` | `dev/laiyongjie` |
 | 67 | 2026-09-03 | 收敛 leftover Auth 并归档统一认证任务 | `53476b86`, `cbb8d7a5` | `dev/laiyongjie` |
 | 66 | 2026-09-03 | Managed Auth core vault migration | `d82ffed8` | `dev/laiyongjie` |
 | 65 | 2026-09-03 | Grok 大陆 npm 一键安装与 OpenCode Windows 源 | `a189ff40`, `7dd216ab`, `0f766831`, `c7cd6906` | `dev/laiyongjie` |

@@ -200,3 +200,42 @@ Leftover auth_* 与 Copilot 登录/删除 IPC 永久 fail-closed，Provider 表�
 - 未密封 leftover JSON 仍可读明文，待迁移密封
 - macOS/Windows 真机 HIL 未做；Codex/Grok 生产投影与 OpenCode 热加载保持关闭
 - 故障恢复 UX、键盘/a11y 自动化与 NOTICE 完整性仍待后续；未推送
+
+
+## Session 68: Auth recovery copy and dialog focus
+<!-- trellis-session: v=2 fp=8239f3483b1d7052 -->
+
+**Date**: 2026-09-03
+**Task**: Auth recovery copy and dialog focus
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Overview reasonCodes 改为闭集恢复文案加刷新；登录 Dialog 保持挂载并在关闭后把焦点还给触发按钮。
+
+### Main Changes
+
+- Overview reasonCodes 渲染闭集文案和刷新状态，去掉泛化暂时无法确认横幅
+- 共享 Dialog 关闭后下一帧恢复打开前焦点；LoginDialog 不再在 open=false 时整棵卸载
+- 补齐 /auth 键盘 Escape、隐藏路由暂停轮询、reduced-motion 与窄窗自动化
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e8807cde` | fix(auth): surface recovery reasons and restore dialog focus |
+
+### Testing
+
+- [OK] mise run lint:v2 typecheck:v2 format:check 通过
+- [OK] mise run test:v2 497 passed
+- [OK] playwright tests/v2-browser/auth.spec.ts 20 passed across four viewports
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- leftover JSON 密封、Codex/Grok 生产投影、OpenCode 热加载、NOTICE 与 macOS/Windows HIL 仍未做
+- 不要打开生产投影或把 mock 当成 HIL
