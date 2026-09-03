@@ -1,0 +1,21 @@
+{"file":".trellis/tasks/09-03-unified-agent-auth-management/prd.md","reason":"检查用户模型、前端主路径、无损切换、边界和验收是否完整。"}
+{"file":".trellis/tasks/09-03-unified-agent-auth-management/design.md","reason":"检查单一 owner、refresh lineage、SecretRef、事务、回滚与 native HIL。"}
+{"file":".trellis/tasks/09-03-unified-agent-auth-management/implement.md","reason":"检查阶段顺序、退出门禁、验证命令和禁止提前启用。"}
+{"file":".trellis/tasks/09-03-unified-agent-auth-management/research/auth-source-and-reuse-review.md","reason":"核对事实、exact source、许可证、推断与未验证项。"}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"检查加载/错误/空状态、可访问性、测试与用户可操作性。"}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"检查页面组合、shared component 抽取、对话框和交互职责。"}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"检查 exact-key parser、closed enum、raw error/secret 禁止字段。"}
+{"file":".trellis/spec/frontend/modular-boundaries.md","reason":"检查 V2 不导入 V1/Tauri，FeaturePort 依赖方向正确。"}
+{"file":".trellis/spec/frontend/v2-agent-auth.md","reason":"检查新中央页面与现有 Agent Auth 不形成双 authority。"}
+{"file":".trellis/spec/frontend/user-facing-copy.md","reason":"检查账号/连接/请求来源不混淆，未知状态不伪装成功。"}
+{"file":".trellis/spec/backend/reuse.md","reason":"检查未复制现有 manager、SecretRef、Proxy、DB 与 session owner。"}
+{"file":".trellis/spec/backend/modular-boundaries.md","reason":"检查 command、service、proxy、consumer/native adapter 分层。"}
+{"file":".trellis/spec/backend/secretref-backend.md","reason":"检查 OS vault、first consumer recovery、signed app 证据和无明文 fallback。"}
+{"file":".trellis/spec/backend/external-agent-auth.md","reason":"检查旧合同被明确迁移且没有第二套 OAuth/session owner。"}
+{"file":".trellis/spec/backend/database-persistence.md","reason":"检查 schema migration、FK、backup/export 和 future-version fail-closed。"}
+{"file":".trellis/tasks/09-03-unified-agent-auth-management/research/current-fyagent-integration-seams.md","reason":"核对最终代码确实迁移现有 owner，而不是建立平行实现。"}
+{"file":".trellis/tasks/09-03-unified-agent-auth-management/research/review-gates.md","reason":"逐项执行产品、架构、安全、并发、consumer、回滚与证据复审。"}
+{"file": ".trellis/tasks/09-03-unified-agent-auth-management/research/review-rounds.md", "reason": "核对五轮复审 finding 均由最终代码、测试、HIL 与 Spec 收敛落实。"}
+{"file": ".trellis/spec/backend/external-agent-lifecycle.md", "reason": "检查 Auth 变更未侵入 Grok/OpenCode 安装、版本、来源和目标 owner。"}
+{"file": ".trellis/tasks/archive/2026-09/09-03-remove-grok-install-opencode-windows/research/current-state-and-upstream-evidence.md", "reason": "核对最新生命周期事实与本任务基线一致。"}
+{"file": ".trellis/tasks/09-03-unified-agent-auth-management/research/frontend-experience-blueprint.md", "reason": "逐场景检查中央账号页和登录/连接体验符合前端优先设计。"}
