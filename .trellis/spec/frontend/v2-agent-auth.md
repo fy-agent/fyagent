@@ -3,8 +3,9 @@
 ## 1. Scope / Trigger
 
 Read this contract before changing Agent authentication status, login/logout or
-provider-connection actions, managed-account routing, active-session recovery, polling, stop-waiting,
-desktop-target selection, or authentication copy on the V2 Agents page.
+provider-connection actions, managed-account routing, active-session recovery,
+polling, stop-waiting, desktop-target selection, or authentication copy on the
+V2 Agents page.
 
 Primary owners are:
 
@@ -47,9 +48,13 @@ The observation union is closed:
 account              -> state: logged_in | logged_out | unknown
 provider_connections -> state: configured | empty | unknown, providers[]
 handoff_only          -> unverified Agent-owned handoff
-fyagent_managed       -> verified destination: auth_center
+fyagent_managed       -> verified compatibility destination: auth_center
 unavailable           -> unavailable authority
 ```
+
+`auth_center` is the closed wire-compatibility destination token used by the
+Agent Auth DTO. It is not a route literal; the renderer maps it to the current
+central `/auth` page.
 
 Every observation also carries:
 
@@ -136,7 +141,10 @@ The page never invokes native Auth commands directly.
   `configured` is not `logged_in`; `empty` is not proof of logout.
 - `handoff_only` says FyAgent can launch/guide the vendor flow but cannot verify
   the resulting account state. The UI must not convert it to success.
-- `fyagent_managed` remains a backend observation compatibility variant. Codex, Grok Build and OpenCode detail panels route to the central `/auth` page instead of duplicating account/connection mutations inside the Agent card.
+- `fyagent_managed` remains a backend observation compatibility variant.
+  Codex, Grok Build and OpenCode detail panels route to the central `/auth`
+  page instead of duplicating account/connection mutations inside the Agent
+  card.
 - `unknown`, `unverified`, and `unavailable` remain visible states with reason
   copy. Absence of evidence is never rendered as logged out or healthy.
 - Only an intent present in `allowedIntents` may be offered.

@@ -76,7 +76,9 @@ verified | handoff_complete | failed | cancelled | timed_out
   closed unsupported/executor reason without launching a session.
 - Codex Auth remains `fyagent_managed` and routes the user to the V2 `/auth`
   page owned by [V2 Managed Accounts](../frontend/v2-managed-auth.md). Native
-  account/secret ownership is [Managed Auth Core](./managed-auth.md). This
+  account/secret ownership is [Managed Auth Core](./managed-auth.md), provider
+  login is [Managed Auth Login](./managed-auth-login.md), and connection
+  projection is [Managed Auth Consumers](./managed-auth-consumers.md). This
   façade does not add a second Codex OAuth flow.
 - Auth session state is process-local, bounded and single-flight per Agent.
   Terminal snapshots are immutable and can be polled safely.
@@ -91,8 +93,9 @@ verified | handoff_complete | failed | cancelled | timed_out
   reach the requested state. Launching a terminal/browser alone remains
   `awaiting_user`.
 - OpenCode observation is Desktop-first. The Agent Auth façade reads
-  sanitized provider metadata produced by the Managed Auth OpenCode
-  consumer from official `Global.Path.data/auth.json`. A missing PATH
+  sanitized provider metadata produced by
+  [Managed Auth Consumers](./managed-auth-consumers.md) from official
+  `Global.Path.data/auth.json`. A missing PATH
   `opencode` CLI must not yield `AuthObserverUnavailable`. Connect
   launches a trusted Desktop target; logout removes one `auth.json`
   key through that consumer. Tokens, keys, paths and sidecar ports
@@ -107,7 +110,8 @@ verified | handoff_complete | failed | cancelled | timed_out
   hold a vault `purpose=grok_native` session, but this façade still returns
   `handoff_only` and must not treat vault metadata as a verified Grok
   CLI/Desktop login. Native Grok `auth.json` and `auth_provider_command`
-  writes stay production-disabled in Managed Auth.
+  writes stay production-disabled under
+  [Managed Auth Consumers](./managed-auth-consumers.md).
 - QoderWork, TRAE Work and WorkBuddy open one selected trusted desktop target
   and are also handoff-only. Opening the application does not prove account
   state.

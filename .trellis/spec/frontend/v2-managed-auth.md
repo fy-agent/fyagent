@@ -18,10 +18,12 @@ Primary renderer owners:
 
 External Agent-owned authentication remains under
 [V2 External Agent Auth UI](./v2-agent-auth.md). Native credential, OAuth,
-consumer projection, refresh ownership and recovery semantics are owned by the
-backend managed-auth contract once activated; this frontend contract does not
-make browser fixtures or an unavailable native façade into authentication
-evidence.
+refresh ownership and recovery semantics are owned by
+[Managed Auth Core](../backend/managed-auth.md); provider login sessions by
+[Managed Auth Login](../backend/managed-auth-login.md); and software projection
+by [Managed Auth Consumers](../backend/managed-auth-consumers.md). This
+frontend contract does not make browser fixtures or mock IPC into native
+authentication evidence.
 
 ## 2. Signatures
 
@@ -117,8 +119,10 @@ request mode is a third-party API.
   exact contract version and exact key set, and accepts only closed enums,
   bounded labels, canonical opaque IDs/revisions and valid timestamps.
 - The overview parser validates cross-resource references, unique IDs,
-  connected-account counts, active-session uniqueness and provider/consumer
-  compatibility. A malformed reference rejects the complete snapshot.
+  connected-account counts, at most eight uniquely identified active sessions,
+  and provider/consumer compatibility. The backend admits at most one
+  non-terminal session per provider, while one OpenAI and one xAI session may
+  coexist. A malformed reference rejects the complete snapshot.
 - Login snapshots never expose authorization URLs, callback URLs, OAuth code,
   state, verifier, device authorization ID, token, native path or raw error.
   A device-code snapshot may expose only a bounded user code and a validated
@@ -136,9 +140,12 @@ request mode is a third-party API.
 - Login-session polling/recovery is owned by one hook. Remount resumes the
   backend session instead of starting a duplicate. Polling stops while the
   persistent route is hidden and on terminal/unmount.
-- Account and connection mutations are revision-bound. Positive UI state comes
-  only from the mutation result's freshly parsed overview/readback; the page
-  does not patch an optimistic success.
+- Account default/removal and OpenCode file mutations are revision-enforced by
+  their backend owners. Every connection request still carries the displayed
+  revision, but Codex/Grok metadata-only paths do not yet provide independent
+  stale-revision CAS. Positive UI state therefore comes only from the mutation
+  result's freshly parsed overview/readback; the page does not patch an
+  optimistic success or claim stronger concurrency protection.
 - `reopenLogin` asks the backend to open the official page for the current
   non-terminal session. The renderer never receives an authorization URL.
 - Account removal requires a backend impact preview. Failure to disconnect all
@@ -147,6 +154,11 @@ request mode is a third-party API.
 - `pendingRestart`, partial completion, external change, unavailable authority
   and recovery-required remain explicit states. Starting a browser, writing a
   credential or launching software is not sufficient to paint success.
+- The current backend may return a Codex connection with
+  `authStatus=connected` and `native_projection_unavailable` merely because a
+  ready `codex_native` credential exists. This is a named backend evidence
+  mismatch, not proof of native pickup. The renderer must preserve the reason
+  and must not use that combination for HIL or stronger success claims.
 
 ### Agent integration
 
@@ -184,9 +196,14 @@ request mode is a third-party API.
 | Connection references a missing account/provider | Reject the complete response. |
 | Account says two connections but only one references it | Reject the complete response. |
 | Device verification URI has query, fragment, wrong host or non-HTTPS scheme | Reject the login snapshot. |
-| A second active login session appears | Reject the overview/session chain; never poll both. |
+| More than eight active sessions or a duplicate session ID appears | Reject the overview/session chain. |
+| OpenAI and xAI each have one active session | Accept both; the UI follows the selected opaque session ID and must not merge them. |
+| A second start is attempted for a provider with a non-terminal session | Preserve `operation_conflict`; recover the existing provider session. |
 | Page is hidden by persistent routing | Pause automatic queries and polling; retain selected UI state. |
 | Mutation returns no authoritative overview/readback | Keep prior state and show uncertainty; do not claim success. |
+| Account/default/removal or OpenCode file mutation has a stale revision | Preserve stale error, reread, and require an explicit retry. |
+| Codex/Grok metadata action completes from an older displayed revision | Render only the returned overview; do not infer that the backend performed stale-write rejection. |
+| Codex is `connected` and also `native_projection_unavailable` | Preserve the unavailable reason and treat the pair as a known evidence mismatch; do not claim proven native login. |
 | Account removal preview fails | Do not expose the destructive confirmation. |
 | Connection needs restart | Show saved/pending-restart separately; do not say the consumer is already using it. |
 | Managed Agent summary is clicked | Navigate to `/auth?consumer=<closed-id>`; do not start the old Agent Auth session. |
@@ -194,15 +211,17 @@ request mode is a third-party API.
 
 ## 5. Good / Base / Bad Cases
 
-- **Good:** Codex displays an OpenAI account connection, `DeepSeek API` as the
-  current request source and `官方登录已保留` as a separate fact.
-- **Good:** an OpenAI browser login finishes credential storage but Codex still
-  needs restart; the dialog reports partial completion and offers restart or
-  later handling.
+- **Good:** Codex displays selected OpenAI account metadata, `DeepSeek API` as
+  the current request source and `官方登录已保留` as separate facts; it does not
+  use credential presence alone as proof of native Codex pickup.
+- **Good:** an OpenCode login finishes credential storage plus file readback,
+  then reports `pending_restart`; the dialog distinguishes “saved” from live
+  Desktop pickup and offers restart or later handling.
 - **Base:** OpenAI login snapshots come from backend sessions. Browser PKCE and
   Device Code can complete an account after SecretRef readback. Codex file
   projection remains `native_projection_unavailable` until HIL, so connect
-  finishes `partial` rather than claiming a live native login.
+  finishes `partial`. A simultaneous credential-derived `connected` summary is
+  the named backend residual, not a live native-login claim.
 - **Base:** OpenCode Path B file write + readback is not a live Desktop
   connection. Show `pending_restart` / “等待重启”. Do not show `已连接`
   while `OPENCODE_EXTERNAL_WRITE_HOT_RELOAD_PROVEN` is false.
@@ -230,12 +249,18 @@ mise run build:renderer
 Required assertions include:
 
 - all valid closed overview/session/mutation variants and strict rejection of
-  unknown keys, invalid references, wrong revisions and forbidden fields;
+  unknown keys, invalid references, malformed revisions and forbidden fields;
+- maximum-eight/unique session parsing plus backend per-provider single-flight
+  and cross-provider coexistence;
 - Tauri command/payload mapping and request/response identity binding;
 - `/auth` routing, navigation selection, primary-route keep-alive and browser
   native-only behavior;
 - account/connection/request-source separation, login recovery, device-code
   copy, destructive preview, readback-only success and pending-restart states;
+- stale account/OpenCode mutations reread before retry; Codex/Grok metadata
+  actions render only the returned overview and tests do not claim full CAS;
+- Codex `connected + native_projection_unavailable` remains visible as
+  contradictory residual evidence and is never counted as native pickup/HIL;
 - managed Agent cards navigate to the central page while Claude and desktop
   handoff retain their existing owner;
 - leftover Provider OAuth sections remain picker-only and leftover

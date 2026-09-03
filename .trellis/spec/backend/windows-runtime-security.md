@@ -563,7 +563,10 @@ fyagent-user-helper.exe
   grok-tool --action observe|install|update [--owner native|npm]
             --job-id <uuid> --pipe <nonce>
   // After Hello: host writes 80-byte GrokNpmInstallPlan. Missing/invalid/@latest
-  // plan => helper refuses npm. Native install does not consume the npm plan.
+  // plan => helper refuses npm. The Windows product has already selected and
+  // integrity-checked the win32 x64/arm64 optional package; platform package
+  // and registry metadata resolution never move into the helper. Native
+  // install does not consume the npm plan.
 ```
 
 
@@ -578,6 +581,11 @@ fyagent-user-helper.exe
 - Helper stdout/stderr, environment, browser URL, device code, executable
   path, and command line must never return to the elevated parent or
   renderer.
+- The Windows product host is the platform-package authority. It maps only the
+  current x64/arm64 architecture to the corresponding `grok-win32-*` manifest
+  entry, validates root and platform SHA-512 at an allowed registry, and then
+  sends the compact exact-version/registry/allow-scripts control. The helper
+  must not select Darwin/Linux packages or fetch registry metadata.
 - Catalog desktop EXE install uses the separate protected package bridge and
   closed product action; this does not authorize CLI tools. There is no generic
   `ShellExecute` of a renderer/download path from Bob. Launch of an
@@ -591,6 +599,7 @@ fyagent-user-helper.exe
 | Formal elevated Windows Claude/OpenCode CLI or Auth session | `interactive_user_unavailable` / `executor_not_implemented`; no probe or child process |
 | Formal elevated Windows Grok Build lifecycle                | Closed `grok-tool` helper; no elevated fallback                                        |
 | Grok npm helper has no plan, `@latest`, or unknown registry     | Fail closed; no npm child process                                                      |
+| Windows product has no matching `grok-win32-*` package/integrity or no registry matches both hashes | Produce no helper plan; no npm child process |
 | OpenCode Windows x64 ProductName/relative EXE/signer is reviewed | Admit current-user NSIS handoff; ARM64 remains unsupported |
 | OpenCode Windows ProductName/relative EXE/signer is empty     | `windows_exe_install_admitted` rejects download and install; do not claim supported     |
 | OpenCode helper product is admitted but scan relatives omit `@opencode-aidesktop` | Inventory miss after a real current-user install; helper admission is not scan identity |
@@ -621,6 +630,11 @@ fyagent-user-helper.exe
   `interactive_user_unavailable` / `executor_not_implemented`.
 - Negative scan: no generic CLI/Auth helper verb, no path/URL argv, no raw
   stdout DTO. Closed `grok-tool` is the only Tooling helper action.
+- Windows product-host tests admit only `grok-win32-x64`/`grok-win32-arm64`,
+  reject absent platform integrity, and prove the 80-byte helper control
+  carries, besides fixed framing/version bytes, only exact package version,
+  registry index and the allow-scripts bit. The helper does not resolve
+  optional-package metadata.
 - Bob/Alice/UAC HIL remains unverified residual risk.
 
 ### 7. Wrong vs Correct
