@@ -284,22 +284,21 @@ fn parse_release_tuple(version: &str) -> Option<(u64, u64, u64)> {
     Some((major, minor, patch))
 }
 
+#[cfg(target_os = "macos")]
 pub fn current_platform_package() -> Option<&'static str> {
-    #[cfg(target_os = "macos")]
-    {
-        return match std::env::consts::ARCH {
-            "aarch64" => Some("@xai-official/grok-darwin-arm64"),
-            "x86_64" => Some("@xai-official/grok-darwin-x64"),
-            _ => None,
-        };
+    match std::env::consts::ARCH {
+        "aarch64" => Some("@xai-official/grok-darwin-arm64"),
+        "x86_64" => Some("@xai-official/grok-darwin-x64"),
+        _ => None,
     }
-    #[cfg(target_os = "windows")]
-    {
-        return match std::env::consts::ARCH {
-            "x86_64" => Some("@xai-official/grok-win32-x64"),
-            "aarch64" => Some("@xai-official/grok-win32-arm64"),
-            _ => None,
-        };
+}
+
+#[cfg(target_os = "windows")]
+pub fn current_platform_package() -> Option<&'static str> {
+    match std::env::consts::ARCH {
+        "x86_64" => Some("@xai-official/grok-win32-x64"),
+        "aarch64" => Some("@xai-official/grok-win32-arm64"),
+        _ => None,
     }
 }
 
