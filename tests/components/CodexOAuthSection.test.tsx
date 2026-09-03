@@ -19,14 +19,6 @@ vi.mock("@/components/CodexOauthAccountQuota", () => ({
   },
 }));
 
-vi.mock("@/components/providers/forms/CopilotAuthSection", () => ({
-  CopilotAuthSection: () => <div />,
-}));
-
-vi.mock("@/components/providers/forms/XaiOAuthSection", () => ({
-  XaiOAuthSection: () => <div />,
-}));
-
 describe("CodexOAuthSection", () => {
   beforeEach(() => {
     mocks.useCodexOauth.mockReturnValue({
@@ -84,11 +76,21 @@ describe("CodexOAuthSection", () => {
     expect(screen.queryByTestId("account-quota")).not.toBeInTheDocument();
   });
 
-  it("renders account quota in Auth Center", () => {
-    render(<AuthCenterPanel />);
+  it("renders account quota when the leftover form requests it", () => {
+    render(<CodexOAuthSection showAccountQuota />);
 
     expect(mocks.renderAccountQuota).toHaveBeenCalledWith("account-1");
     expect(screen.getByTestId("account-quota")).toHaveTextContent("account-1");
+  });
+
+  it("leftover Auth Center is a compatibility shell without a second login owner", () => {
+    render(<AuthCenterPanel />);
+
+    expect(mocks.renderAccountQuota).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("account-quota")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 3 })).toHaveTextContent(
+      "账号与认证",
+    );
   });
 
   it("distinguishes managed routing from native Codex projection", () => {

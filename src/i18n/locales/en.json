@@ -323,8 +323,8 @@
     "tabAdvanced": "Advanced",
     "tabProxy": "Routing",
     "authCenter": {
-      "title": "OAuth Authentication Center",
-      "description": "Use your other subscriptions in Claude Code — please be mindful of compliance risks.",
+      "title": "Accounts & authentication",
+      "description": "Official accounts, software connections, and the current request source are managed on the Accounts & authentication page. This leftover panel no longer signs in or polls tokens.",
       "beta": "Beta",
       "copilotDescription": "Manage GitHub Copilot accounts",
       "codexOauthDescription": "Manage ChatGPT accounts",

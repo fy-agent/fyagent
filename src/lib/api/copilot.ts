@@ -113,12 +113,10 @@ export interface CopilotModel {
 /**
  * 获取有效的 Copilot Token
  *
- * 内部使用，用于代理请求。
- *
- * @returns Copilot Token
+ * Renderer IPC is fail-closed. Native proxy code must not use this wrapper.
  */
 export async function copilotGetToken(): Promise<string> {
-  return invoke<string>("copilot_get_token");
+  throw new Error("copilot_token_not_exposed");
 }
 
 /**
@@ -218,15 +216,12 @@ export async function copilotSetDefaultAccount(
 /**
  * 获取指定账号的有效 Copilot Token
  *
- * 内部使用，用于代理请求。
- *
- * @param accountId - GitHub 用户 ID
- * @returns Copilot Token
+ * Renderer IPC is fail-closed. Native proxy code must not use this wrapper.
  */
 export async function copilotGetTokenForAccount(
-  accountId: string,
+  _accountId: string,
 ): Promise<string> {
-  return invoke<string>("copilot_get_token_for_account", { accountId });
+  throw new Error("copilot_token_not_exposed");
 }
 
 /**

@@ -13,6 +13,15 @@ use tokio::sync::RwLock;
 /// Copilot 认证状态
 pub struct CopilotAuthState(pub Arc<RwLock<CopilotAuthManager>>);
 
+/// Renderer IPC must never receive Copilot access tokens. Proxy refresh stays
+/// on the native manager path; leftover `copilot_get_token*` commands stay
+/// registered only so old clients fail closed instead of leaking.
+pub(crate) const COPILOT_TOKEN_IPC_DENIED: &str = "copilot_token_not_exposed";
+
+fn deny_copilot_token_ipc() -> Result<String, String> {
+    Err(COPILOT_TOKEN_IPC_DENIED.to_string())
+}
+
 // ==================== 设备码流程 ====================
 
 /// 启动设备码流程
@@ -151,28 +160,20 @@ pub async fn copilot_logout(state: State<'_, CopilotAuthState>) -> Result<(), St
 
 /// 获取有效的 Copilot Token（向后兼容：使用第一个账号）
 ///
-/// 内部使用，用于代理请求。V2 账号页不得依赖此命令；本切片不新增
-/// 向 renderer 返回 token 的命令。
+/// 已对 renderer 永久关闭。V2 账号页不得依赖此命令；不要新增向
+/// renderer 返回 token 的命令。
 #[tauri::command]
-pub async fn copilot_get_token(state: State<'_, CopilotAuthState>) -> Result<String, String> {
-    let auth_manager = state.0.read().await;
-    auth_manager
-        .get_valid_token()
-        .await
-        .map_err(|e| e.to_string())
+pub async fn copilot_get_token(_state: State<'_, CopilotAuthState>) -> Result<String, String> {
+    deny_copilot_token_ipc()
 }
 
 /// 获取指定账号的有效 Copilot Token
 #[tauri::command(rename_all = "camelCase")]
 pub async fn copilot_get_token_for_account(
-    account_id: String,
-    state: State<'_, CopilotAuthState>,
+    _account_id: String,
+    _state: State<'_, CopilotAuthState>,
 ) -> Result<String, String> {
-    let auth_manager = state.0.read().await;
-    auth_manager
-        .get_valid_token_for_account(&account_id)
-        .await
-        .map_err(|e| e.to_string())
+    deny_copilot_token_ipc()
 }
 
 // ==================== 模型和使用量 ====================
@@ -219,4 +220,17 @@ pub async fn copilot_get_usage_for_account(
         .fetch_usage_for_account(&account_id)
         .await
         .map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::deny_copilot_token_ipc;
+
+    #[test]
+    fn copilot_token_ipc_is_fail_closed() {
+        let error = deny_copilot_token_ipc().expect_err("renderer token ipc");
+        assert_eq!(error, super::COPILOT_TOKEN_IPC_DENIED);
+        assert!(!error.to_ascii_lowercase().contains("gho_"));
+        assert!(!error.to_ascii_lowercase().contains("token="));
+    }
 }

@@ -323,8 +323,8 @@
     "tabAdvanced": "詳細",
     "tabProxy": "ルーティング",
     "authCenter": {
-      "title": "OAuth 認証センター",
-      "description": "Claude Code で他のサブスクリプションをご利用いただけます。コンプライアンスリスクにご注意ください。",
+      "title": "アカウントと認証",
+      "description": "公式アカウント、ソフト接続、現在のリクエスト元は「アカウントと認証」ページで一括管理します。この画面ではログインやトークン取得を行いません。",
       "beta": "Beta",
       "copilotDescription": "GitHub Copilot アカウントを管理します",
       "codexOauthDescription": "ChatGPT アカウントを管理します",

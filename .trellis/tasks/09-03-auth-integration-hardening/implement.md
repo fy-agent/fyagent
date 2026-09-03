@@ -2,11 +2,17 @@
 
 ## Checklist
 
-1. [ ] 复核前序子任务和剩余双 owner。
+1. [x] 复核前序子任务和剩余双 owner。
 2. [ ] 迁移/删除旧 UI、command 和直接 manager 调用。
 3. [ ] 完成恢复、安全、a11y、性能和整库测试。
 4. [ ] 执行 native HIL，记录脱敏证据。
 5. [ ] 更新 Specs，逐任务归档，提交归档/journal，确认 clean。
+
+已完成的第一刀：`copilot_get_token*` 对 renderer 永久 fail-closed；leftover
+Settings 认证页改为兼容说明，不再作为第二套登录 owner；Managed Auth 相关
+Rust cfg 已写入 supported-platform allowance，非 macOS/Windows 浏览器打开
+保持 `Unsupported`。V1 Provider 表单里的 Copilot/Codex/xAI 区块、JSON
+manager 兼容路径、故障恢复 UX 和 native HIL 仍未做。
 
 
 ## Validation

@@ -323,8 +323,8 @@
     "tabAdvanced": "進階",
     "tabProxy": "路由",
     "authCenter": {
-      "title": "OAuth 驗證中心",
-      "description": "在 Claude Code 中使用您的其他訂閱，請注意合規風險。",
+      "title": "帳號與認證",
+      "description": "官方帳號、軟體連線和目前請求來源在「帳號與認證」頁面統一管理。這裡不再單獨登入或輪詢權杖。",
       "beta": "Beta",
       "copilotDescription": "管理 GitHub Copilot 帳號",
       "codexOauthDescription": "管理 ChatGPT 帳號",

@@ -197,9 +197,10 @@ legacy-copilot-auth-v3  <- copilot_auth.json
   JSON store is sealed. Otherwise JSON remains the live compatibility path.
 - Renderer DTOs, logs, and overview JSON must not contain tokens, SecretRef,
   `device_code`, verifier, or authorization codes.
-- `copilot_get_token*` still returns a token string to the leftover V1 Copilot
-  UI. Do not add new token-returning commands. Later hardening should retire
-  that IPC.
+- `copilot_get_token*` remains registered for leftover clients but always
+  returns `copilot_token_not_exposed`. Do not add new token-returning
+  commands. Proxy must resolve Copilot material natively, never through
+  renderer IPC.
 
 ### Login sessions
 

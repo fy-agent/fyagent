@@ -372,23 +372,27 @@ async fn write_callback_response(
 }
 
 pub(crate) fn open_system_browser(url: &str) -> Result<(), ErrorKind> {
-    let result = {
-        #[cfg(target_os = "macos")]
-        {
-            std::process::Command::new("open").arg(url).spawn()
-        }
-        #[cfg(target_os = "windows")]
-        {
-            std::process::Command::new("cmd")
-                .args(["/C", "start", "", url])
-                .spawn()
-        }
-        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-        {
-            std::process::Command::new("xdg-open").arg(url).spawn()
-        }
-    };
-    result.map(|_| ()).map_err(|error| error.kind())
+    #[cfg(target_os = "macos")]
+    {
+        return std::process::Command::new("open")
+            .arg(url)
+            .spawn()
+            .map(|_| ())
+            .map_err(|error| error.kind());
+    }
+    #[cfg(target_os = "windows")]
+    {
+        return std::process::Command::new("cmd")
+            .args(["/C", "start", "", url])
+            .spawn()
+            .map(|_| ())
+            .map_err(|error| error.kind());
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        let _ = url;
+        Err(ErrorKind::Unsupported)
+    }
 }
 
 #[derive(Clone, Deserialize)]

@@ -207,7 +207,9 @@ request mode is a third-party API.
   because a file write returned, or display `OpenAI Official` while the active
   provider is third-party.
 - **Bad:** copy the leftover `AuthCenterPanel` into V2 or let Agent cards keep a
-  second managed-account workflow.
+  second managed-account workflow. The leftover Settings auth tab is a
+  compatibility shell only: it must not poll, login, or display a second
+  account owner.
 
 ## 6. Tests Required
 
