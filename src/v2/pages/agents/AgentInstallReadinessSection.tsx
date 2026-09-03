@@ -375,11 +375,7 @@ function ReadinessSummary({
   );
 }
 
-function GrokOwnerPanel({
-  port,
-}: {
-  port: GrokToolingPort;
-}) {
+function GrokOwnerPanel({ port }: { port: GrokToolingPort }) {
   const [snapshot, setSnapshot] = useState<GrokToolSnapshot | null>(null);
   const [unavailable, setUnavailable] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -473,7 +469,8 @@ function GrokOwnerPanel({
       </dl>
       {notInstalled ? (
         <p className="fy-agent-install-readiness-note">
-          安装按钮会安装官方 npm 包。登录和在线服务是否可用取决于你的网络。也可改用官方命令行，两种方式不会自动切换。
+          安装按钮会安装官方 npm
+          包。登录和在线服务是否可用取决于你的网络。也可改用官方命令行，两种方式不会自动切换。
         </p>
       ) : null}
       {busy ? (
@@ -493,7 +490,9 @@ function GrokOwnerPanel({
       ) : null}
       {showNpmSwitch && !busy ? (
         <div className="fy-agent-action-row">
-          <Button onClick={() => void runAction("npm")}>改用官方 npm 方式</Button>
+          <Button onClick={() => void runAction("npm")}>
+            改用官方 npm 方式
+          </Button>
         </div>
       ) : null}
     </div>
