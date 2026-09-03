@@ -221,6 +221,7 @@ describe("repository change classifier", () => {
       "GitHub repository automation",
       [
         ".github/labeler.yml",
+        ".github/workflows/codeql-security.yml",
         ".github/workflows/labeler.yml",
         ".github/workflows/star-history.yml",
       ],
