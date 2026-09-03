@@ -2,12 +2,12 @@
 
 ## Checklist
 
-1. [ ] 刷新 OpenAI 官方登录源码证据。
-2. [ ] 实现 backend-owned login session 与 loopback server。
-3. [ ] 接入统一 vault/repository。
-4. [ ] 实现 Codex consumer observation/connect/disconnect/reconcile。
-5. [ ] 修改 Provider switch invariant 和设置迁移。
-6. [ ] 接入 V2 flow，运行 focused/full checks 与 native HIL。
+1. [x] 刷新 OpenAI 官方登录源码证据。
+2. [x] 实现 backend-owned login session 与 loopback server。
+3. [x] 接入统一 vault/repository。
+4. [x] 实现 Codex consumer observation；file projection 保持 fail-closed。
+5. [x] 修改 Provider switch invariant 和设置迁移。
+6. [x] 接入 V2 login commands；focused mise 通过。Native Codex HIL 未做，能力保持 closed。
 
 
 ## Validation

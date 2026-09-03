@@ -22,7 +22,7 @@ pub(crate) const XAI_MIGRATION_ID: &str = "legacy-xai-oauth-v1";
 pub(crate) const COPILOT_MIGRATION_ID: &str = "legacy-copilot-auth-v3";
 
 pub(crate) struct LegacyCredentialInput {
-    pub(crate) migration_id: &'static str,
+    pub(crate) migration_id: Option<&'static str>,
     pub(crate) provider: ManagedAuthProvider,
     pub(crate) purpose: CredentialPurpose,
     pub(crate) consumer: Option<ManagedAuthConsumer>,
@@ -363,7 +363,7 @@ fn parse_codex_store(bytes: &[u8]) -> Result<Vec<LegacyCredentialInput>, Managed
         });
         validate_text(&login, MAX_LOGIN_TEXT)?;
         result.push(LegacyCredentialInput {
-            migration_id: CODEX_MIGRATION_ID,
+            migration_id: Some(CODEX_MIGRATION_ID),
             provider: ManagedAuthProvider::Openai,
             purpose: CredentialPurpose::ProxyUpstream,
             consumer: Some(ManagedAuthConsumer::FyagentProxy),
@@ -426,7 +426,7 @@ fn parse_xai_store(bytes: &[u8]) -> Result<Vec<LegacyCredentialInput>, ManagedAu
         });
         validate_text(&login, MAX_LOGIN_TEXT)?;
         result.push(LegacyCredentialInput {
-            migration_id: XAI_MIGRATION_ID,
+            migration_id: Some(XAI_MIGRATION_ID),
             provider: ManagedAuthProvider::Xai,
             purpose: CredentialPurpose::ProxyUpstream,
             consumer: Some(ManagedAuthConsumer::FyagentProxy),
@@ -501,7 +501,7 @@ fn parse_copilot_store(bytes: &[u8]) -> Result<Vec<LegacyCredentialInput>, Manag
         validate_text(&account.github_domain, MAX_IDENTITY_TEXT)?;
         validate_token(&account.github_token)?;
         result.push(LegacyCredentialInput {
-            migration_id: COPILOT_MIGRATION_ID,
+            migration_id: Some(COPILOT_MIGRATION_ID),
             provider: ManagedAuthProvider::GithubCopilot,
             purpose: CredentialPurpose::Copilot,
             consumer: Some(ManagedAuthConsumer::FyagentProxy),

@@ -194,9 +194,10 @@ request mode is a third-party API.
 - **Good:** an OpenAI browser login finishes credential storage but Codex still
   needs restart; the dialog reports partial completion and offers restart or
   later handling.
-- **Base:** OpenAI login/session commands are still native-unavailable. `/auth`
-  remains reachable, may list vault-migrated accounts, and must not simulate a
-  completed official login.
+- **Base:** OpenAI login snapshots come from backend sessions. Browser PKCE and
+  Device Code can complete an account after SecretRef readback. Codex file
+  projection remains `native_projection_unavailable` until HIL, so connect
+  finishes `partial` rather than claiming a live native login.
 - **Bad:** display `已登录` because an account record exists, display `已连接`
   because a file write returned, or display `OpenAI Official` while the active
   provider is third-party.

@@ -20,9 +20,10 @@ Related owners:
 - [V2 Managed Accounts](../frontend/v2-managed-auth.md) owns renderer Ports.
 - [External Agent Auth](./external-agent-auth.md) remains the Agent-owned
   Claude/desktop handoff façade; it must not grow a second OAuth store.
-- OpenAI browser PKCE, Codex native projection, xAI/Grok consumer adapters,
-  and OpenCode Desktop projection are later slices. Login/session commands
-  currently remain closed `unavailable`.
+- OpenAI browser loopback PKCE and Device Code are owned by
+  `services/managed_auth/providers/openai.rs` plus backend login sessions.
+  Codex native file projection stays fail-closed until matching-host HIL.
+  xAI/Grok and OpenCode Desktop adapters remain later slices.
 
 This is the first production consumer of `services::secret`. Do not introduce a
 second keyring, a plaintext JSON token authority, or a `shared` refresh owner.
@@ -54,8 +55,12 @@ managed_auth_remove_account({ previewId, accountId, expectedRevision })
   -> ManagedAuthMutationResult
 
 managed_auth_start_login / get_login_session / cancel_login /
-reopen_login / switch_login_method / apply_connection_action
-  -> unavailable after request validation
+reopen_login / switch_login_method
+  -> OpenAI snapshots after request validation; xAI/Copilot stay
+     provider_not_supported
+managed_auth_apply_connection_action
+  -> Codex refresh/disconnect/connect metadata; projection remains
+     native_projection_unavailable until HIL
 ```
 
 `operationId` on mutation results is a canonical UUID v4 string (hyphenated).
@@ -209,7 +214,9 @@ metadata and must never include token columns.
 | Copilot v1 JSON without identity | that source `blocked`; other sources continue |
 | migration hash changes after prepare | stale/blocked; do not rename |
 | finalize rename fails after DB completed | retry rename on next startup; JSON is not writable authority |
-| login/session/connection-action command | validated then `unavailable` until later children |
+| login/session command for OpenAI | backend-owned snapshot; success only after SecretRef readback |
+| login for xAI/Copilot | `provider_not_supported` |
+| Codex connect without HIL file projection | `partial` + `native_projection_unavailable`; no auth.json write |
 | mutation `operationId` is not UUID v4 | frontend parser rejects the result |
 | DTO/log/debug contains token/secretRef | test failure / NO-GO |
 | `shared` refresh owner in schema or enum | reject implementation |
@@ -222,8 +229,9 @@ metadata and must never include token columns.
 - **Good:** Copilot v1 is blocked while a valid Codex store still finalizes.
 - **Base:** keychain/Credential Manager unavailable. Overview reports
   `secret_unavailable`; plaintext JSON remains the live store.
-- **Base:** OpenAI login commands stay unavailable; migrated accounts are
-  still visible and removable.
+- **Base:** OpenAI login succeeds only after SecretRef + metadata readback.
+  Connecting Codex without HIL-proven file projection ends `partial` with
+  `native_projection_unavailable`. Migrated accounts remain visible.
 - **Bad:** write refresh tokens back to JSON after that source is sealed.
 - **Bad:** seal every JSON store because one source failed.
 - **Bad:** pre-mark credentials `Ready` in the parser before vault readback.

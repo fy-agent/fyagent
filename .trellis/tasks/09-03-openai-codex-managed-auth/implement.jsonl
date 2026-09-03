@@ -8,3 +8,5 @@
 {"file": ".trellis/spec/backend/codex-provider-configuration.md", "reason": "本子任务 owning contract/research。"}
 {"file": ".trellis/spec/backend/external-agent-auth.md", "reason": "本子任务 owning contract/research。"}
 {"file": ".trellis/spec/frontend/v2-agent-auth.md", "reason": "本子任务 owning contract/research。"}
+{"file": ".trellis/spec/backend/managed-auth.md", "reason": "Current Managed Auth core/vault contract after the previous child."}
+{"file": ".trellis/tasks/09-03-openai-codex-managed-auth/research/codex-official-auth-writer-inventory.md", "reason": "Third-party Codex auth.json writer inventory; preserve must become a hard invariant."}

@@ -6,9 +6,11 @@ use chrono::SecondsFormat;
 use zeroize::Zeroizing;
 
 use crate::database::Database;
-use crate::proxy::providers::codex_oauth_auth::CodexOAuthManager;
 use crate::proxy::providers::copilot_auth::exchange_github_token_for_copilot;
 use crate::proxy::providers::xai_oauth_auth::XaiOAuthManager;
+use crate::services::managed_auth::login::LoginHooks;
+use crate::services::managed_auth::login_sessions::LoginSessionStore;
+use crate::services::managed_auth::providers::openai;
 use crate::services::secret::{
     DecodeSecret, SecretAvailability, SecretBackend, SecretErrorCode, SecretHandle, SecretPresence,
     SecretPurpose, SecretRef, SecretService, SecretVersion,
@@ -77,9 +79,9 @@ pub(crate) struct CompatibilityAccount {
     pub(crate) github_domain: String,
 }
 
-struct FailClosedState {
-    secret_unavailable: bool,
-    migration_blocked: bool,
+pub(crate) struct FailClosedState {
+    pub(crate) secret_unavailable: bool,
+    pub(crate) migration_blocked: bool,
 }
 
 struct RefreshCoordinator {
@@ -106,11 +108,13 @@ pub(crate) struct ManagedAuthService<B>
 where
     B: SecretBackend,
 {
-    repository: ManagedAuthRepository,
+    pub(crate) repository: ManagedAuthRepository,
     secrets: SecretService<B>,
     config_dir: PathBuf,
     refresh: RefreshCoordinator,
     fail_closed: Mutex<FailClosedState>,
+    pub(crate) login_sessions: LoginSessionStore,
+    pub(crate) login_hooks: Mutex<LoginHooks>,
 }
 
 impl<B> ManagedAuthService<B>
@@ -127,11 +131,21 @@ where
                 secret_unavailable: false,
                 migration_blocked: false,
             }),
+            login_sessions: LoginSessionStore::default(),
+            login_hooks: Mutex::new(LoginHooks::default()),
         }
     }
 
     pub(crate) fn repository(&self) -> &ManagedAuthRepository {
         &self.repository
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_login_hooks(&self, hooks: LoginHooks) {
+        *self
+            .login_hooks
+            .lock()
+            .unwrap_or_else(|error| error.into_inner()) = hooks;
     }
 
     pub(crate) fn startup(&self) -> Result<(), ManagedAuthCoreError> {
@@ -479,7 +493,7 @@ where
                 status: CredentialStatus::Provisioning,
                 authenticated_at: input.authenticated_at,
                 refreshed_at: None,
-                migration_id: Some(input.migration_id.to_string()),
+                migration_id: input.migration_id.map(str::to_string),
                 created_at: now,
                 updated_at: now,
             },
@@ -738,7 +752,7 @@ where
             .to_string();
         let refreshed = match current.provider {
             ManagedAuthProvider::Openai => {
-                let token = CodexOAuthManager::refresh_with_token(&refresh_token)
+                let token = openai::refresh_oauth_grant(&refresh_token)
                     .await
                     .map_err(map_refresh_error)?;
                 RefreshedGrant {
@@ -910,6 +924,17 @@ where
         if fail.secret_unavailable {
             reason_codes.push(ManagedAuthReasonCode::SecretUnavailable);
         }
+        let connection_summaries = merge_codex_connection(&self.codex_home(), &rows, &connections);
+        for account in &mut accounts {
+            account.connected_consumer_count = connection_summaries
+                .iter()
+                .filter(|connection| {
+                    connection.account_id.as_deref() == Some(account.account_id.as_str())
+                })
+                .map(|connection| connection.consumer)
+                .collect::<std::collections::HashSet<_>>()
+                .len();
+        }
         Ok(ManagedAuthOverview {
             contract_version: MANAGED_AUTH_CONTRACT_VERSION,
             checked_at: now_timestamp(),
@@ -919,16 +944,13 @@ where
                 provider_summary(ManagedAuthProvider::GithubCopilot, &fail),
             ],
             accounts,
-            connections: connections
-                .iter()
-                .map(|connection| connection_summary(connection, &rows))
-                .collect(),
-            active_sessions: Vec::new(),
+            connections: connection_summaries,
+            active_sessions: self.login_sessions.active_snapshots(),
             reason_codes,
         })
     }
 
-    fn credentials_for_account(
+    pub(crate) fn credentials_for_account(
         &self,
         account_id: &str,
     ) -> Result<Vec<CredentialWithIdentity>, ManagedAuthCoreError> {
@@ -970,7 +992,7 @@ where
         Ok(())
     }
 
-    fn mutation_result(
+    pub(crate) fn mutation_result(
         &self,
         outcome: ManagedAuthMutationOutcome,
         reason_code: Option<ManagedAuthReasonCode>,
@@ -982,6 +1004,17 @@ where
             overview: self.overview(),
             pending_restart_consumers: Vec::new(),
             reason_code,
+        }
+    }
+
+    fn codex_home(&self) -> PathBuf {
+        #[cfg(test)]
+        {
+            self.config_dir.join("codex-home")
+        }
+        #[cfg(not(test))]
+        {
+            crate::codex_config::get_codex_config_dir()
         }
     }
 
@@ -1010,7 +1043,7 @@ where
         state.migration_blocked |= migration_blocked;
     }
 
-    fn fail_closed_snapshot(&self) -> FailClosedState {
+    pub(crate) fn fail_closed_snapshot(&self) -> FailClosedState {
         let state = self
             .fail_closed
             .lock()
@@ -1053,13 +1086,9 @@ fn access_expired(expires_at: Option<i64>) -> bool {
     }
 }
 
-fn map_refresh_error(
-    error: crate::proxy::providers::codex_oauth_auth::CodexOAuthError,
-) -> ManagedAuthCoreError {
+fn map_refresh_error(error: openai::OpenAiOAuthError) -> ManagedAuthCoreError {
     match error {
-        crate::proxy::providers::codex_oauth_auth::CodexOAuthError::RefreshTokenInvalid => {
-            ManagedAuthCoreError::InvalidData
-        }
+        openai::OpenAiOAuthError::RefreshTokenInvalid => ManagedAuthCoreError::InvalidData,
         _ => ManagedAuthCoreError::InvalidData,
     }
 }
@@ -1128,6 +1157,7 @@ fn account_summary(
     }
     let mut allowed_actions = Vec::new();
     if health == ManagedAuthHealth::Ready {
+        allowed_actions.push(ManagedAuthAccountAction::Reauthenticate);
         allowed_actions.push(ManagedAuthAccountAction::SetDefault);
         allowed_actions.push(ManagedAuthAccountAction::Remove);
     }
@@ -1198,8 +1228,8 @@ fn provider_summary(
     if fail.secret_unavailable {
         reason_codes.push(ManagedAuthReasonCode::SecretUnavailable);
     }
-    if reason_codes.is_empty() {
-        reason_codes.push(ManagedAuthReasonCode::NativeProjectionUnavailable);
+    if fail.migration_blocked {
+        reason_codes.push(ManagedAuthReasonCode::MigrationBlocked);
     }
     let consumers = match provider {
         ManagedAuthProvider::Openai => vec![
@@ -1217,17 +1247,61 @@ fn provider_summary(
             ManagedAuthConsumer::FyagentProxy,
         ],
     };
+    let openai_ready = provider == ManagedAuthProvider::Openai
+        && !fail.secret_unavailable
+        && !fail.migration_blocked;
+    if openai_ready {
+        reason_codes.clear();
+    } else if reason_codes.is_empty() && provider != ManagedAuthProvider::Openai {
+        reason_codes.push(ManagedAuthReasonCode::ProviderNotSupported);
+    } else if reason_codes.is_empty() {
+        reason_codes.push(ManagedAuthReasonCode::SecretUnavailable);
+    }
     ManagedAuthProviderSummary {
         provider,
-        // Login methods stay empty until the OpenAI/xAI child owns PKCE
-        // and Device Code. The V2 parser forbids available=true with no
-        // methods, so this slice lists migrated accounts without claiming
-        // a working login wizard.
-        available: false,
-        login_methods: Vec::new(),
+        available: openai_ready,
+        login_methods: if openai_ready {
+            vec![
+                crate::services::managed_auth::ManagedAuthLoginMethod::BrowserLoopback,
+                crate::services::managed_auth::ManagedAuthLoginMethod::DeviceCode,
+            ]
+        } else {
+            Vec::new()
+        },
         consumers,
         reason_codes,
     }
+}
+
+fn merge_codex_connection(
+    codex_home: &std::path::Path,
+    rows: &[CredentialWithIdentity],
+    connections: &[ConnectionRecord],
+) -> Vec<crate::services::managed_auth::ManagedAuthConnectionSummary> {
+    let observation =
+        crate::services::managed_auth::consumers::codex::observe_codex_home(codex_home);
+    let account = rows.iter().find(|row| {
+        row.credential.purpose == CredentialPurpose::CodexNative
+            && row.credential.status == CredentialStatus::Ready
+    });
+    let stored = connections
+        .iter()
+        .find(|connection| connection.consumer == ManagedAuthConsumer::Codex);
+    let mut summaries: Vec<_> = connections
+        .iter()
+        .filter(|connection| connection.consumer != ManagedAuthConsumer::Codex)
+        .map(|connection| connection_summary(connection, rows))
+        .collect();
+    summaries.insert(
+        0,
+        crate::services::managed_auth::consumers::codex::connection_summary(
+            &observation,
+            account,
+            stored,
+            now_timestamp(),
+        ),
+    );
+    summaries
 }
 
 fn connection_summary(
@@ -1287,7 +1361,7 @@ mod tests {
 
     fn sample_input(legacy: &str, token: &str, make_default: bool) -> LegacyCredentialInput {
         LegacyCredentialInput {
-            migration_id: CODEX_MIGRATION_ID,
+            migration_id: Some(CODEX_MIGRATION_ID),
             provider: ManagedAuthProvider::Openai,
             purpose: CredentialPurpose::ProxyUpstream,
             consumer: Some(ManagedAuthConsumer::FyagentProxy),
@@ -1502,7 +1576,7 @@ mod tests {
             "refresh_token",
             "id_token",
             "authorization_code",
-            "device_code",
+            "device_auth_id",
             "secretref",
             "secret_ref",
             "verifier",

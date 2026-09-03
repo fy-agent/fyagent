@@ -787,17 +787,7 @@ fn write_quick_setup_codex_live(provider: &Provider) -> Result<(), AppError> {
     } else {
         String::new()
     };
-    let auth_path = crate::codex_config::get_codex_auth_path();
-    let should_write_auth = !crate::settings::preserve_codex_official_auth_on_switch();
-    // Config-only preservation must not turn an untouched auth.json into a
-    // parse prerequisite. The Change Plan inspector has its own authoritative
-    // read boundary; the writer only needs auth bytes when it will mutate auth.
-    let current_auth = if should_write_auth && auth_path.exists() {
-        read_json_file::<Value>(&auth_path)?
-    } else {
-        json!({})
-    };
-    let current_live = json!({ "auth": current_auth, "config": current_config });
+    let current_live = json!({ "auth": json!({}), "config": current_config });
     let projected = build_codex_quick_setup_live_projection(&current_live, provider)?;
     let patched_config = projected
         .get("config")
@@ -805,18 +795,8 @@ fn write_quick_setup_codex_live(provider: &Provider) -> Result<(), AppError> {
         .ok_or_else(|| {
             AppError::Config("Codex Quick Setup projection is missing config".to_string())
         })?;
-    let merged_auth =
-        should_write_auth.then(|| projected.get("auth").cloned().unwrap_or_else(|| json!({})));
-
-    if should_write_auth {
-        backup_existing_file(&auth_path)?;
-    }
     backup_existing_file(&config_path)?;
-
-    match merged_auth {
-        Some(auth) => crate::codex_config::write_codex_live_atomic(&auth, Some(patched_config)),
-        None => crate::codex_config::write_codex_live_config_atomic(Some(patched_config)),
-    }
+    crate::codex_config::write_codex_live_config_atomic(Some(patched_config))
 }
 
 /// Pure projection for the fixed Codex Quick Setup provider.
@@ -850,31 +830,13 @@ pub(crate) fn build_codex_quick_setup_live_projection(
     let patched_config =
         crate::codex_config::patch_codex_quick_setup_live_config(current_config, desired_config)?;
 
-    let should_write_auth = !crate::settings::preserve_codex_official_auth_on_switch();
-    let patched_config = if should_write_auth {
-        patched_config
-    } else {
-        crate::codex_config::prepare_codex_provider_live_config(desired_auth, &patched_config)?
-    };
-    let projected_auth = if should_write_auth {
-        let mut auth = current_live
-            .get("auth")
-            .cloned()
-            .unwrap_or_else(|| json!({}));
-        let auth_obj = auth.as_object_mut().ok_or_else(|| {
-            AppError::Config("Codex auth.json root must be an object".to_string())
-        })?;
-        auth_obj.insert(
-            "OPENAI_API_KEY".to_string(),
-            Value::String(desired_key.to_string()),
-        );
-        auth
-    } else {
-        current_live
-            .get("auth")
-            .cloned()
-            .unwrap_or_else(|| json!({}))
-    };
+    let _ = desired_key;
+    let patched_config =
+        crate::codex_config::prepare_codex_provider_live_config(desired_auth, &patched_config)?;
+    let projected_auth = current_live
+        .get("auth")
+        .cloned()
+        .unwrap_or_else(|| json!({}));
 
     Ok(json!({ "auth": projected_auth, "config": patched_config }))
 }

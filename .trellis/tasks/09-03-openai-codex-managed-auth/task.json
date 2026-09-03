@@ -3,7 +3,7 @@
   "name": "openai-codex-managed-auth",
   "title": "实现 OpenAI 官方登录与 Codex 无损切换",
   "description": "复用 OpenAI 官方协议实现 browser-loopback PKCE 与 Device Code 回退，接入 Codex 原生凭据，并保证官方登录与第三方 Provider 切换正交。",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": "unified-agent-auth",
   "package": null,

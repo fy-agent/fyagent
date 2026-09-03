@@ -21,43 +21,47 @@ pub fn managed_auth_get_overview(state: State<'_, ManagedAuthState>) -> ManagedA
 #[tauri::command(rename_all = "camelCase")]
 pub fn managed_auth_start_login(
     request: StartManagedAuthLoginRequest,
+    state: State<'_, ManagedAuthState>,
 ) -> Result<ManagedAuthLoginSessionSnapshot, ManagedAuthErrorDto> {
     request.validate()?;
-    Err(ManagedAuthErrorDto::unavailable())
+    state.0.start_login(request)
 }
 
 #[tauri::command(rename_all = "camelCase")]
 pub fn managed_auth_get_login_session(
     session_id: String,
+    state: State<'_, ManagedAuthState>,
 ) -> Result<ManagedAuthLoginSessionSnapshot, ManagedAuthErrorDto> {
     validate_session_id(&session_id)?;
-    Err(ManagedAuthErrorDto::unavailable())
+    state.0.get_login_session(&session_id)
 }
 
 #[tauri::command(rename_all = "camelCase")]
 pub fn managed_auth_cancel_login(
     session_id: String,
+    state: State<'_, ManagedAuthState>,
 ) -> Result<ManagedAuthLoginSessionSnapshot, ManagedAuthErrorDto> {
     validate_session_id(&session_id)?;
-    Err(ManagedAuthErrorDto::unavailable())
+    state.0.cancel_login(&session_id)
 }
 
 #[tauri::command(rename_all = "camelCase")]
 pub fn managed_auth_reopen_login(
     session_id: String,
+    state: State<'_, ManagedAuthState>,
 ) -> Result<ManagedAuthLoginSessionSnapshot, ManagedAuthErrorDto> {
     validate_session_id(&session_id)?;
-    Err(ManagedAuthErrorDto::unavailable())
+    state.0.reopen_login(&session_id)
 }
 
 #[tauri::command(rename_all = "camelCase")]
 pub fn managed_auth_switch_login_method(
     session_id: String,
     method: ManagedAuthLoginMethod,
+    state: State<'_, ManagedAuthState>,
 ) -> Result<ManagedAuthLoginSessionSnapshot, ManagedAuthErrorDto> {
     validate_session_id(&session_id)?;
-    let _ = method;
-    Err(ManagedAuthErrorDto::unavailable())
+    state.0.switch_login_method(&session_id, method)
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -103,7 +107,8 @@ pub fn managed_auth_remove_account(
 #[tauri::command(rename_all = "camelCase")]
 pub fn managed_auth_apply_connection_action(
     request: ManagedAuthConnectionActionRequest,
+    state: State<'_, ManagedAuthState>,
 ) -> Result<ManagedAuthMutationResult, ManagedAuthErrorDto> {
     request.validate()?;
-    Err(ManagedAuthErrorDto::unavailable())
+    state.0.apply_connection_action(&request)
 }

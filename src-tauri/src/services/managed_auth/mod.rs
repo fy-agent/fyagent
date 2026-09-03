@@ -9,8 +9,12 @@ use chrono::SecondsFormat;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+pub(crate) mod consumers;
 mod core;
+mod login;
+mod login_sessions;
 mod migration;
+pub(crate) mod providers;
 mod repository;
 mod secret_bundle;
 mod service;

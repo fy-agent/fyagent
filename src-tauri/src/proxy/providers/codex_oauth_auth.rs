@@ -27,38 +27,40 @@ use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
 
 use super::copilot_auth::{GitHubAccount, GitHubDeviceCodeResponse};
+use crate::services::managed_auth::providers::openai::{
+    self, OpenAiOAuthEndpoints, OpenAiOAuthError,
+};
 
-/// OpenAI OAuth 客户端 ID（OpenCode 使用，与官方 Codex CLI 相同）
+#[allow(dead_code)]
 const CODEX_CLIENT_ID: &str = "app_EMoamEEZ73f0CkXaXp7hrann";
-
-/// Device Code 启动 URL
+#[allow(dead_code)]
 const DEVICE_AUTH_USERCODE_URL: &str = "https://auth.openai.com/api/accounts/deviceauth/usercode";
-
-/// Device Code 轮询 URL
+#[allow(dead_code)]
 const DEVICE_AUTH_TOKEN_URL: &str = "https://auth.openai.com/api/accounts/deviceauth/token";
-
-/// OAuth Token URL（用于 code 换 token 和 refresh token）
+#[allow(dead_code)]
 const OAUTH_TOKEN_URL: &str = "https://auth.openai.com/oauth/token";
 
 /// Device Code 验证 URL（向用户展示）
 const DEVICE_VERIFICATION_URL: &str = "https://auth.openai.com/codex/device";
 
-/// Device Code 流程的 redirect_uri（OpenAI 服务端约定）
+#[allow(dead_code)]
 const DEVICE_REDIRECT_URI: &str = "https://auth.openai.com/deviceauth/callback";
 
 /// Token 刷新提前量（毫秒）
 const TOKEN_REFRESH_BUFFER_MS: i64 = 60_000;
 
-/// Device Code 默认有效时长（秒），OpenAI 文档约定 15 分钟
+#[allow(dead_code)]
 const DEVICE_CODE_DEFAULT_EXPIRES_IN: u64 = 900;
 
-/// 轮询间隔安全余量（秒）
+#[allow(dead_code)]
 const POLLING_SAFETY_MARGIN_SECS: u64 = 3;
 
-/// User-Agent
+#[allow(dead_code)]
 const CODEX_USER_AGENT: &str = "fyagent-codex-oauth";
+#[allow(dead_code)]
 const OAUTH_HTTP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
 
+#[allow(dead_code)]
 async fn send_bounded(
     request: reqwest::RequestBuilder,
 ) -> Result<reqwest::Response, CodexOAuthError> {
@@ -114,8 +116,27 @@ impl From<std::io::Error> for CodexOAuthError {
     }
 }
 
+impl From<OpenAiOAuthError> for CodexOAuthError {
+    fn from(error: OpenAiOAuthError) -> Self {
+        match error {
+            OpenAiOAuthError::AuthorizationPending => Self::AuthorizationPending,
+            OpenAiOAuthError::AccessDenied => Self::AccessDenied,
+            OpenAiOAuthError::ExpiredToken => Self::ExpiredToken,
+            OpenAiOAuthError::TokenFetchFailed => {
+                Self::TokenFetchFailed("token exchange failed".into())
+            }
+            OpenAiOAuthError::RefreshTokenInvalid => Self::RefreshTokenInvalid,
+            OpenAiOAuthError::NetworkError => Self::NetworkError("oauth network failed".into()),
+            OpenAiOAuthError::ParseError => Self::ParseError("oauth parse failed".into()),
+            OpenAiOAuthError::IoError => Self::IoError("oauth io failed".into()),
+            OpenAiOAuthError::Cancelled => Self::Cancelled,
+        }
+    }
+}
+
 /// OpenAI Device Code 响应
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 struct DeviceCodeResponse {
     device_auth_id: String,
     user_code: String,
@@ -126,6 +147,7 @@ struct DeviceCodeResponse {
 }
 
 /// OpenAI Device Code 轮询响应（成功）
+#[allow(dead_code)]
 #[derive(Debug, Clone, Deserialize)]
 struct DevicePollSuccess {
     authorization_code: String,
@@ -324,29 +346,9 @@ impl CodexOAuthManager {
     pub async fn start_device_flow(&self) -> Result<GitHubDeviceCodeResponse, CodexOAuthError> {
         log::info!("[CodexOAuth] 启动 Device Code 流程");
 
-        let response = send_bounded(
-            crate::proxy::http_client::get()
-                .post(DEVICE_AUTH_USERCODE_URL)
-                .header("Content-Type", "application/json")
-                .header("User-Agent", CODEX_USER_AGENT)
-                .json(&serde_json::json!({ "client_id": CODEX_CLIENT_ID })),
-        )
-        .await?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            return Err(CodexOAuthError::NetworkError(format!(
-                "Device Code 请求失败 ({status})"
-            )));
-        }
-
-        let device: DeviceCodeResponse = response
-            .json()
-            .await
-            .map_err(|e| CodexOAuthError::ParseError(e.to_string()))?;
-
-        let interval = parse_interval(device.interval.as_ref());
-        let expires_in = device.expires_in.unwrap_or(DEVICE_CODE_DEFAULT_EXPIRES_IN);
+        let device = openai::request_device_usercode(&OpenAiOAuthEndpoints::production()).await?;
+        let interval = device.interval;
+        let expires_in = device.expires_in;
         let expires_at_ms = chrono::Utc::now().timestamp_millis() + (expires_in as i64) * 1000;
 
         // 记录 device_auth_id -> 用户码映射；同时清理所有已过期的条目，
@@ -406,45 +408,17 @@ impl CodexOAuthManager {
 
         log::debug!("[CodexOAuth] 轮询 Device Code");
 
-        let poll_response = send_bounded(
-            crate::proxy::http_client::get()
-                .post(DEVICE_AUTH_TOKEN_URL)
-                .header("Content-Type", "application/json")
-                .header("User-Agent", CODEX_USER_AGENT)
-                .json(&serde_json::json!({
-                    "device_auth_id": device_code,
-                    "user_code": user_code,
-                })),
+        let (authorization_code, code_verifier) = openai::poll_device_authorization(
+            &OpenAiOAuthEndpoints::production(),
+            device_code,
+            &user_code,
         )
         .await?;
 
-        let status = poll_response.status();
-
-        // 403/404 表示用户未完成授权，继续轮询
-        if status == reqwest::StatusCode::FORBIDDEN || status == reqwest::StatusCode::NOT_FOUND {
-            return Err(CodexOAuthError::AuthorizationPending);
-        }
-
-        if status == reqwest::StatusCode::GONE {
-            return Err(CodexOAuthError::ExpiredToken);
-        }
-
-        if !status.is_success() {
-            return Err(CodexOAuthError::TokenFetchFailed(format!(
-                "OAuth 轮询失败 ({status})"
-            )));
-        }
-
-        let success: DevicePollSuccess = poll_response
-            .json()
-            .await
-            .map_err(|e| CodexOAuthError::ParseError(e.to_string()))?;
-
         log::info!("[CodexOAuth] 用户已授权，正在换取 OAuth Token");
 
-        // 用 authorization_code + code_verifier 换 token
         let tokens = self
-            .exchange_code_for_tokens(&success.authorization_code, &success.code_verifier)
+            .exchange_code_for_tokens(&authorization_code, &code_verifier)
             .await?;
 
         {
@@ -482,32 +456,19 @@ impl CodexOAuthManager {
         code: &str,
         code_verifier: &str,
     ) -> Result<OAuthTokenResponse, CodexOAuthError> {
-        let response = send_bounded(
-            crate::proxy::http_client::get()
-                .post(OAUTH_TOKEN_URL)
-                .header("Content-Type", "application/x-www-form-urlencoded")
-                .header("User-Agent", CODEX_USER_AGENT)
-                .form(&[
-                    ("grant_type", "authorization_code"),
-                    ("code", code),
-                    ("redirect_uri", DEVICE_REDIRECT_URI),
-                    ("client_id", CODEX_CLIENT_ID),
-                    ("code_verifier", code_verifier),
-                ]),
+        let grant = openai::exchange_authorization_code(
+            &OpenAiOAuthEndpoints::production(),
+            code,
+            code_verifier,
+            openai::OPENAI_DEVICE_REDIRECT_URI,
         )
         .await?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            return Err(CodexOAuthError::TokenFetchFailed(format!(
-                "Token 交换失败 ({status})"
-            )));
-        }
-
-        response
-            .json()
-            .await
-            .map_err(|e| CodexOAuthError::ParseError(e.to_string()))
+        Ok(OAuthTokenResponse {
+            access_token: grant.access_token,
+            refresh_token: grant.refresh_token,
+            id_token: grant.id_token,
+            expires_in: grant.expires_in,
+        })
     }
 
     /// Refresh an OpenAI grant. Callers must already own the unique refresh
@@ -515,35 +476,13 @@ impl CodexOAuthManager {
     pub(crate) async fn refresh_with_token(
         refresh_token: &str,
     ) -> Result<OAuthTokenResponse, CodexOAuthError> {
-        let response = send_bounded(
-            crate::proxy::http_client::get()
-                .post(OAUTH_TOKEN_URL)
-                .header("Content-Type", "application/x-www-form-urlencoded")
-                .header("User-Agent", CODEX_USER_AGENT)
-                .form(&[
-                    ("grant_type", "refresh_token"),
-                    ("refresh_token", refresh_token),
-                    ("client_id", CODEX_CLIENT_ID),
-                    ("scope", "openid profile email"),
-                ]),
-        )
-        .await?;
-
-        let status = response.status();
-        if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
-            return Err(CodexOAuthError::RefreshTokenInvalid);
-        }
-
-        if !status.is_success() {
-            return Err(CodexOAuthError::TokenFetchFailed(format!(
-                "Refresh 失败 ({status})"
-            )));
-        }
-
-        response
-            .json()
-            .await
-            .map_err(|e| CodexOAuthError::ParseError(e.to_string()))
+        let grant = openai::refresh_oauth_grant(refresh_token).await?;
+        Ok(OAuthTokenResponse {
+            access_token: grant.access_token,
+            refresh_token: grant.refresh_token,
+            id_token: grant.id_token,
+            expires_in: grant.expires_in,
+        })
     }
 
     // ==================== Token 获取（含自动刷新） ====================
@@ -1143,6 +1082,7 @@ pub struct CodexOAuthStatus {
 /// 解析 OpenAI Device Code 响应中的 interval 字段
 ///
 /// 服务端可能返回字符串或数字，需要兼容
+#[allow(dead_code)]
 fn parse_interval(value: Option<&serde_json::Value>) -> u64 {
     let raw = match value {
         Some(serde_json::Value::Number(n)) => n.as_u64().unwrap_or(5),

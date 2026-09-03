@@ -2109,28 +2109,20 @@ impl ProxyService {
     }
 
     fn cleanup_codex_takeover_placeholders_in_live(&self) -> Result<(), String> {
-        let mut config = self.read_codex_live()?;
-
-        if let Some(auth) = config.get_mut("auth").and_then(|v| v.as_object_mut()) {
-            if auth.get("OPENAI_API_KEY").and_then(|v| v.as_str()) == Some(PROXY_TOKEN_PLACEHOLDER)
-            {
-                auth.remove("OPENAI_API_KEY");
-            }
-        }
-
-        if let Some(cfg_str) = config.get("config").and_then(|v| v.as_str()) {
-            let updated = Self::remove_local_toml_base_url(cfg_str);
-            let updated =
-                crate::codex_config::remove_codex_experimental_bearer_token_if(&updated, |token| {
-                    token == PROXY_TOKEN_PLACEHOLDER
-                })
-                .map_err(|e| format!("清理 Codex 接管占位符失败: {e}"))?;
-            let updated = crate::codex_config::remove_codex_official_proxy_route(&updated)
-                .map_err(|e| format!("清理 Codex 官方接管路由失败: {e}"))?;
-            config["config"] = json!(updated);
-        }
-
-        self.write_codex_live(&config)?;
+        let config = self.read_codex_live()?;
+        let Some(cfg_str) = config.get("config").and_then(|v| v.as_str()) else {
+            return Ok(());
+        };
+        let updated = Self::remove_local_toml_base_url(cfg_str);
+        let updated =
+            crate::codex_config::remove_codex_experimental_bearer_token_if(&updated, |token| {
+                token == PROXY_TOKEN_PLACEHOLDER
+            })
+            .map_err(|e| format!("清理 Codex 接管占位符失败: {e}"))?;
+        let updated = crate::codex_config::remove_codex_official_proxy_route(&updated)
+            .map_err(|e| format!("清理 Codex 官方接管路由失败: {e}"))?;
+        crate::codex_config::write_codex_live_config_atomic(Some(&updated))
+            .map_err(|e| format!("清理 Codex 接管占位符失败: {e}"))?;
         Ok(())
     }
 
@@ -2891,22 +2883,19 @@ impl ProxyService {
         provider: Option<&Provider>,
     ) -> Result<(), String> {
         let Some(provider) = provider else {
-            if crate::settings::preserve_codex_official_auth_on_switch() {
-                if let (Some(auth), Some(config_str)) = (
-                    config.get("auth"),
-                    config.get("config").and_then(|v| v.as_str()),
-                ) {
-                    if auth.get("OPENAI_API_KEY").and_then(|v| v.as_str())
-                        == Some(PROXY_TOKEN_PLACEHOLDER)
-                    {
-                        let live_config = crate::codex_config::prepare_codex_provider_live_config(
-                            auth, config_str,
-                        )
-                        .map_err(|e| format!("写入 Codex 配置失败: {e}"))?;
-                        crate::codex_config::write_codex_live_config_atomic(Some(&live_config))
+            if let (Some(auth), Some(config_str)) = (
+                config.get("auth"),
+                config.get("config").and_then(|v| v.as_str()),
+            ) {
+                if auth.get("OPENAI_API_KEY").and_then(|v| v.as_str())
+                    == Some(PROXY_TOKEN_PLACEHOLDER)
+                {
+                    let live_config =
+                        crate::codex_config::prepare_codex_provider_live_config(auth, config_str)
                             .map_err(|e| format!("写入 Codex 配置失败: {e}"))?;
-                        return Ok(());
-                    }
+                    crate::codex_config::write_codex_live_config_atomic(Some(&live_config))
+                        .map_err(|e| format!("写入 Codex 配置失败: {e}"))?;
+                    return Ok(());
                 }
             }
 
@@ -3012,31 +3001,25 @@ impl ProxyService {
             .map_err(|e| format!("写入 Codex 配置失败: {e}"))?;
 
         match (auth, prepared_cfg.as_deref()) {
-            (Some(auth), Some(cfg)) => {
-                if auth.as_object().is_some_and(|obj| obj.is_empty()) {
-                    // An empty provider snapshot must not destroy an existing
-                    // Codex login. This is especially important when takeover
-                    // switches from an API-key-backed official session to the
-                    // built-in empty `codex-official` seed.
-                    let config_path = get_codex_config_path();
-                    crate::config::write_text_file(&config_path, cfg)
-                        .map_err(|e| format!("写入 Codex config 失败: {e}"))?;
-                } else {
-                    crate::codex_config::write_codex_live_atomic(auth, Some(cfg))
-                        .map_err(|e| format!("写入 Codex 配置失败: {e}"))?;
-                }
+            (Some(auth), Some(cfg))
+                if crate::codex_config::codex_auth_has_oauth_login_material(auth) =>
+            {
+                crate::codex_config::write_codex_live_atomic(auth, Some(cfg))
+                    .map_err(|e| format!("写入 Codex 配置失败: {e}"))?;
             }
-            (Some(auth), None) => {
+            (Some(auth), None)
+                if crate::codex_config::codex_auth_has_oauth_login_material(auth) =>
+            {
                 let auth_path = get_codex_auth_path();
                 write_json_file(&auth_path, auth)
                     .map_err(|e| format!("写入 Codex auth 失败: {e}"))?;
             }
-            (None, Some(cfg)) => {
+            (_, Some(cfg)) => {
                 let config_path = get_codex_config_path();
                 crate::config::write_text_file(&config_path, cfg)
                     .map_err(|e| format!("写入 Codex config 失败: {e}"))?;
             }
-            (None, None) => {}
+            (_, None) => {}
         }
 
         Ok(())
@@ -4985,14 +4968,14 @@ experimental_bearer_token = "PROXY_MANAGED"
 
     #[test]
     #[serial]
-    fn codex_custom_provider_live_write_can_overwrite_auth_when_preserve_disabled() {
+    fn codex_custom_provider_live_write_never_overwrites_official_auth() {
         let _home = TempHome::new();
         crate::settings::reload_settings().expect("reload settings");
         crate::settings::update_settings(crate::settings::AppSettings {
             preserve_codex_official_auth_on_switch: false,
             ..Default::default()
         })
-        .expect("disable Codex official auth preservation");
+        .expect("legacy preserve field remains readable");
 
         let db = Arc::new(Database::memory().expect("init db"));
         let service = ProxyService::new(db);
@@ -5055,18 +5038,15 @@ wire_api = "responses"
             crate::config::read_json_file(&crate::codex_config::get_codex_auth_path())
                 .expect("read live auth");
         assert_eq!(
-            live_auth,
-            json!({
-                "OPENAI_API_KEY": PROXY_TOKEN_PLACEHOLDER
-            }),
-            "disabled preservation should let third-party switches overwrite auth.json"
+            live_auth, oauth_auth,
+            "third-party writes must keep the official ChatGPT login even when the legacy toggle is off"
         );
 
         let live_config = std::fs::read_to_string(crate::codex_config::get_codex_config_path())
             .expect("read live config");
         assert!(
-            !live_config.contains("experimental_bearer_token"),
-            "provider token should stay in auth.json when preservation is disabled"
+            live_config.contains("experimental_bearer_token"),
+            "third-party keys must land in config.toml instead of auth.json"
         );
 
         crate::settings::update_settings(crate::settings::AppSettings::default())

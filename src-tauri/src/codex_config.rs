@@ -24,7 +24,8 @@ pub(crate) use auth::codex_auth_has_credential_login_material;
 use auth::codex_live_auth_is_stale_third_party_residue;
 pub use auth::{
     clear_stale_codex_live_auth_after_official_switch, codex_auth_has_login_material,
-    extract_codex_auth_api_key, should_restore_codex_provider_token_for_backfill,
+    codex_auth_has_oauth_login_material, extract_codex_auth_api_key,
+    should_restore_codex_provider_token_for_backfill,
 };
 pub(crate) use credential_store::{
     native_file_projection_allowed, overlay_cli_auth_credentials_store,
@@ -704,9 +705,10 @@ pub fn strip_codex_mcp_servers_from_settings(settings: &mut Value) -> Result<(),
 
 /// Route a Codex live write between full auth+config or config-only.
 ///
-/// Official providers with usable login material own `auth.json`. Third-party
-/// providers only touch `config.toml` when the compatibility setting is enabled
-/// so the user's ChatGPT login cache survives provider switches.
+/// Official providers with usable login material may write `auth.json` only
+/// when the live credential store is an explicit `file` store. Third-party
+/// providers are always config-only so a ChatGPT login cache cannot be
+/// deleted or overwritten.
 ///
 /// 统一会话开关开启时，官方配置在落盘前注入共享的 `custom` 路由
 /// （见 `inject_codex_unified_session_bucket`）。
@@ -731,9 +733,8 @@ pub fn write_codex_live_for_provider(
     let native_file_store = parse_cli_auth_credentials_store(&current_live)
         .map(CodexCredentialStore::allows_native_file_projection)
         .unwrap_or(false);
-    let should_write_auth = ((category == Some("official") && codex_auth_has_login_material(auth))
-        || (category != Some("official")
-            && !crate::settings::preserve_codex_official_auth_on_switch()))
+    let should_write_auth = category == Some("official")
+        && codex_auth_has_login_material(auth)
         && (!oauth_native_projection || native_file_store);
 
     if should_write_auth {
