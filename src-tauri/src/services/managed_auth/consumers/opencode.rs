@@ -310,9 +310,6 @@ fn slot_summary(
     if pending_restart {
         reason_codes.push(ManagedAuthReasonCode::PendingRestart);
     }
-    if connected && !OPENCODE_EXTERNAL_WRITE_HOT_RELOAD_PROVEN && pending_restart {
-        reason_codes.push(ManagedAuthReasonCode::NativeProjectionUnavailable);
-    }
     let mut allowed_actions = vec![ManagedAuthConnectionAction::Refresh];
     if connected {
         allowed_actions.push(ManagedAuthConnectionAction::Disconnect);

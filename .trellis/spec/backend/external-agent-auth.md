@@ -160,8 +160,9 @@ verified | handoff_complete | failed | cancelled | timed_out
   overclaim.
 - **Base:** stopping monitoring leaves the external browser/app flow running.
 - **Bad:** infer login from `~/.claude`, serialize CLI stdout, launch the first
-  installed desktop candidate, report verified after opening a terminal, or
-  run Codex OAuth through this façade.
+  installed desktop candidate, report verified after opening a terminal, run
+  Codex OAuth through this façade, or treat a missing PATH `opencode` binary
+  as OpenCode Auth unavailable.
 
 ## 6. Tests Required
 
@@ -180,11 +181,16 @@ Required assertions:
   IDs;
 - per-Agent single-flight, bounded polling, immutable terminal snapshots and
   stop-waiting semantics;
-- no URL/path/command/token/env/hash/bypass fields and no vendor credential
-  file reads;
+- no URL/path/command/token/env/hash/bypass fields on Agent Auth DTOs;
+  OpenCode observation reads official `auth.json` only through the Managed
+  Auth consumer and still forbids tokens, keys, paths and sidecar ports on
+  the wire;
 - Claude structured status verifies both login and logout; process launch by
   itself never verifies;
-- OpenCode before/after provider-set checks bind the selected provider;
+- OpenCode observation does not require PATH `opencode`; missing CLI with a
+  readable or missing `auth.json` is `provider_connections`, not
+  `AuthObserverUnavailable`; before/after provider-set checks bind the
+  selected opaque `p1:` id;
 - Grok and desktop products remain handoff-only; Codex remains Auth-Center
   managed;
 - desktop target expiry/ambiguity/drift produces zero launch side effects;

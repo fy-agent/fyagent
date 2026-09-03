@@ -530,6 +530,16 @@ where
                 reason = Some(ManagedAuthReasonCode::NativeProjectionUnavailable);
             }
         }
+        if request.purpose == ManagedAuthLoginPurpose::ConnectConsumer
+            && request.consumer == Some(ManagedAuthConsumer::Opencode)
+        {
+            self.set_stage(handle, ManagedAuthLoginStage::ConnectingConsumer, None)?;
+            let (next_connection, next_stage, next_reason) =
+                self.finish_opencode_connect_after_login(ManagedAuthProvider::Openai, &account_id);
+            connection_id = next_connection;
+            stage = next_stage;
+            reason = next_reason;
+        }
         self.set_stage(handle, ManagedAuthLoginStage::Verifying, None)?;
         self.login_sessions
             .finish(
@@ -648,19 +658,28 @@ fn purpose_for_login(
                 Some(ManagedAuthConsumer::Codex),
             )
         }
-        ManagedAuthLoginPurpose::Reauthenticate => {
-            if request.consumer == Some(ManagedAuthConsumer::Codex) {
-                (
-                    CredentialPurpose::CodexNative,
-                    Some(ManagedAuthConsumer::Codex),
-                )
-            } else {
-                (
-                    CredentialPurpose::ProxyUpstream,
-                    Some(ManagedAuthConsumer::FyagentProxy),
-                )
-            }
+        ManagedAuthLoginPurpose::ConnectConsumer
+            if request.consumer == Some(ManagedAuthConsumer::Opencode) =>
+        {
+            (
+                CredentialPurpose::OpencodeProvider,
+                Some(ManagedAuthConsumer::Opencode),
+            )
         }
+        ManagedAuthLoginPurpose::Reauthenticate => match request.consumer {
+            Some(ManagedAuthConsumer::Codex) => (
+                CredentialPurpose::CodexNative,
+                Some(ManagedAuthConsumer::Codex),
+            ),
+            Some(ManagedAuthConsumer::Opencode) => (
+                CredentialPurpose::OpencodeProvider,
+                Some(ManagedAuthConsumer::Opencode),
+            ),
+            _ => (
+                CredentialPurpose::ProxyUpstream,
+                Some(ManagedAuthConsumer::FyagentProxy),
+            ),
+        },
         _ => (
             CredentialPurpose::ProxyUpstream,
             Some(ManagedAuthConsumer::FyagentProxy),
@@ -676,6 +695,7 @@ fn bind_port(port: u16) -> std::io::Result<super::providers::openai::LoopbackLis
 mod tests {
     use super::*;
     use crate::database::Database;
+    use crate::services::managed_auth::ManagedAuthConnectionState;
     use crate::services::secret::{MemorySecretBackend, SecretService};
     use axum::extract::Form;
     use axum::http::StatusCode;
@@ -836,6 +856,116 @@ mod tests {
         let overview = serde_json::to_value(service.overview()).unwrap();
         assert_eq!(overview["providers"][0]["available"], true);
         assert_eq!(overview["accounts"].as_array().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn purpose_for_login_isolates_opencode_from_proxy_and_codex() {
+        let request = StartManagedAuthLoginRequest {
+            provider: ManagedAuthProvider::Openai,
+            purpose: ManagedAuthLoginPurpose::ConnectConsumer,
+            consumer: Some(ManagedAuthConsumer::Opencode),
+            method: ManagedAuthLoginMethod::DeviceCode,
+            account_id: None,
+        };
+        assert_eq!(
+            purpose_for_login(&request),
+            (
+                CredentialPurpose::OpencodeProvider,
+                Some(ManagedAuthConsumer::Opencode)
+            )
+        );
+        let proxy = StartManagedAuthLoginRequest {
+            consumer: None,
+            purpose: ManagedAuthLoginPurpose::SaveOnly,
+            ..request
+        };
+        assert_eq!(
+            purpose_for_login(&proxy),
+            (
+                CredentialPurpose::ProxyUpstream,
+                Some(ManagedAuthConsumer::FyagentProxy)
+            )
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn device_code_connects_opencode_with_independent_session_and_pending_restart() {
+        let issuer = spawn_issuer(0).await;
+        let (service, dir) = service();
+        service.set_login_hooks(LoginHooks {
+            endpoints: OpenAiOAuthEndpoints::for_issuer(&issuer),
+            open_browser: silent_browser,
+            occupy_preferred: true,
+            occupy_fallback: true,
+            bind_ephemeral: false,
+            fixed_state: None,
+            fixed_pkce: None,
+            bound_port: Arc::new(std::sync::Mutex::new(None)),
+            open_count: Arc::new(AtomicU32::new(0)),
+        });
+        let snapshot = service
+            .start_login(StartManagedAuthLoginRequest {
+                provider: ManagedAuthProvider::Openai,
+                purpose: ManagedAuthLoginPurpose::ConnectConsumer,
+                consumer: Some(ManagedAuthConsumer::Opencode),
+                method: ManagedAuthLoginMethod::BrowserLoopback,
+                account_id: None,
+            })
+            .expect("start");
+        let finished = wait_terminal(&service, &snapshot.session_id).await;
+        assert_eq!(finished.stage, ManagedAuthLoginStage::Completed);
+        assert_eq!(
+            finished.reason_code,
+            Some(ManagedAuthReasonCode::PendingRestart)
+        );
+        let rows = service.repository.list_all_credentials().expect("rows");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(
+            rows[0].credential.purpose,
+            CredentialPurpose::OpencodeProvider
+        );
+        assert_eq!(
+            rows[0].credential.consumer,
+            Some(ManagedAuthConsumer::Opencode)
+        );
+        assert_eq!(rows[0].credential.refresh_owner, RefreshOwner::Opencode);
+        let raw: serde_json::Value = serde_json::from_slice(
+            &std::fs::read(dir.path().join("opencode-data").join("auth.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(raw["openai"]["type"], "oauth");
+        assert_eq!(raw["openai"]["refresh"], "refresh-login");
+        let openai = service
+            .overview()
+            .connections
+            .into_iter()
+            .find(|row| {
+                row.consumer == ManagedAuthConsumer::Opencode
+                    && row.provider == Some(ManagedAuthProvider::Openai)
+            })
+            .expect("slot");
+        assert_eq!(
+            openai.auth_status,
+            ManagedAuthConnectionState::PendingRestart
+        );
+        assert!(openai.pending_restart);
+        assert!(openai
+            .reason_codes
+            .contains(&ManagedAuthReasonCode::PendingRestart));
+        assert!(!openai
+            .reason_codes
+            .contains(&ManagedAuthReasonCode::NativeProjectionUnavailable));
+        let json = serde_json::to_string(&finished)
+            .unwrap()
+            .to_ascii_lowercase();
+        for forbidden in [
+            "refresh-login",
+            "device-auth-1",
+            "secretref",
+            "access_token",
+        ] {
+            assert!(!json.contains(forbidden), "leaked {forbidden}");
+        }
     }
 
     #[tokio::test(flavor = "multi_thread")]

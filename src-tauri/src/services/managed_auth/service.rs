@@ -29,10 +29,11 @@ use super::{
     ManagedAuthConnectionAction, ManagedAuthConnectionActionRequest, ManagedAuthConnectionState,
     ManagedAuthConnectionSummary, ManagedAuthConsumer, ManagedAuthCoreError,
     ManagedAuthCredentialManager, ManagedAuthErrorDto, ManagedAuthHealth, ManagedAuthLoginMethod,
-    ManagedAuthMutationOutcome, ManagedAuthMutationResult, ManagedAuthOverview,
-    ManagedAuthProvider, ManagedAuthProviderSummary, ManagedAuthReasonCode, ManagedAuthRepository,
-    ManagedAuthRequestMode, ManagedAuthSecretBundle, ManagedAuthSecretBundleParts, MigrationStatus,
-    NewCredential, RefreshOwner, MANAGED_AUTH_CONTRACT_VERSION,
+    ManagedAuthLoginStage, ManagedAuthMutationOutcome, ManagedAuthMutationResult,
+    ManagedAuthOverview, ManagedAuthProvider, ManagedAuthProviderSummary, ManagedAuthReasonCode,
+    ManagedAuthRepository, ManagedAuthRequestMode, ManagedAuthSecretBundle,
+    ManagedAuthSecretBundleParts, MigrationStatus, NewCredential, RefreshOwner,
+    MANAGED_AUTH_CONTRACT_VERSION,
 };
 
 pub(crate) type NativeManagedAuthService =
@@ -1153,9 +1154,8 @@ where
             Some(request.expected_revision.as_str()),
         )
         .map_err(map_opencode_error)?;
-        if selected.credential.refresh_owner != RefreshOwner::Opencode {
-            let transferred = self
-                .repository
+        let transferred = if selected.credential.refresh_owner != RefreshOwner::Opencode {
+            self.repository
                 .transfer_refresh_owner(
                     &selected.credential.credential_id,
                     selected.credential.generation,
@@ -1163,15 +1163,10 @@ where
                     RefreshOwner::Opencode,
                     chrono::Utc::now().timestamp(),
                 )
-                .map_err(ManagedAuthErrorDto::from_core)?;
-            if !transferred {
-                return Ok(self.mutation_result_with(
-                    ManagedAuthMutationOutcome::Partial,
-                    Some(ManagedAuthReasonCode::PartialCompletion),
-                    vec![ManagedAuthConsumer::Opencode],
-                ));
-            }
-        }
+                .map_err(ManagedAuthErrorDto::from_core)?
+        } else {
+            true
+        };
         self.upsert_opencode_connection(
             provider,
             Some(selected.credential.credential_id.clone()),
@@ -1179,7 +1174,73 @@ where
             receipt.pending_restart,
         )
         .map_err(ManagedAuthErrorDto::from_core)?;
+        if !transferred {
+            return Ok(self.mutation_result_with(
+                ManagedAuthMutationOutcome::Partial,
+                Some(ManagedAuthReasonCode::PartialCompletion),
+                vec![ManagedAuthConsumer::Opencode],
+            ));
+        }
         Ok(self.opencode_write_result(receipt.pending_restart))
+    }
+
+    pub(crate) fn finish_opencode_connect_after_login(
+        &self,
+        provider: ManagedAuthProvider,
+        account_id: &str,
+    ) -> (
+        Option<String>,
+        ManagedAuthLoginStage,
+        Option<ManagedAuthReasonCode>,
+    ) {
+        match self.project_saved_opencode_session(provider, account_id) {
+            Ok(result) => {
+                let connection_id = Some(opencode::slot_connection_id(provider));
+                if result.outcome == ManagedAuthMutationOutcome::Partial {
+                    (
+                        connection_id,
+                        ManagedAuthLoginStage::Partial,
+                        result
+                            .reason_code
+                            .or(Some(ManagedAuthReasonCode::PartialCompletion)),
+                    )
+                } else if result
+                    .pending_restart_consumers
+                    .contains(&ManagedAuthConsumer::Opencode)
+                    || result.reason_code == Some(ManagedAuthReasonCode::PendingRestart)
+                {
+                    (
+                        connection_id,
+                        ManagedAuthLoginStage::Completed,
+                        Some(ManagedAuthReasonCode::PendingRestart),
+                    )
+                } else {
+                    (connection_id, ManagedAuthLoginStage::Completed, None)
+                }
+            }
+            Err(error) => (
+                None,
+                ManagedAuthLoginStage::Partial,
+                Some(error.reason_code),
+            ),
+        }
+    }
+
+    fn project_saved_opencode_session(
+        &self,
+        provider: ManagedAuthProvider,
+        account_id: &str,
+    ) -> Result<ManagedAuthMutationResult, ManagedAuthErrorDto> {
+        let observed = opencode::observe_auth_store(&self.opencode_auth_path());
+        self.opencode_connect(
+            provider,
+            &ManagedAuthConnectionActionRequest {
+                connection_id: opencode::slot_connection_id(provider),
+                expected_revision: observed.revision,
+                action: ManagedAuthConnectionAction::ConnectAccount,
+                account_id: Some(account_id.to_string()),
+            },
+        )
     }
 
     fn opencode_write_result(&self, pending_restart: bool) -> ManagedAuthMutationResult {
@@ -2321,6 +2382,37 @@ mod tests {
         );
         assert!(!dir.path().join("opencode-data").join("auth.json").exists());
 
+        let mut copilot_input = sample_input("copilot-lineage", "copilot-refresh", false);
+        copilot_input.migration_id = None;
+        copilot_input.provider = ManagedAuthProvider::GithubCopilot;
+        copilot_input.purpose = CredentialPurpose::Copilot;
+        copilot_input.consumer = Some(ManagedAuthConsumer::FyagentProxy);
+        copilot_input.provider_subject = "github-copilot-user".to_string();
+        copilot_input.login = "copilot@example.com".to_string();
+        let copilot = service
+            .provision_legacy_credential(copilot_input)
+            .expect("copilot");
+        let github = overview
+            .connections
+            .iter()
+            .find(|row| {
+                row.consumer == ManagedAuthConsumer::Opencode
+                    && row.provider == Some(ManagedAuthProvider::GithubCopilot)
+            })
+            .expect("github slot");
+        let copilot_err = service
+            .apply_connection_action(&ManagedAuthConnectionActionRequest {
+                connection_id: github.connection_id.clone(),
+                expected_revision: github.revision.clone(),
+                action: ManagedAuthConnectionAction::ConnectAccount,
+                account_id: Some(copilot.identity_id.clone()),
+            })
+            .expect_err("copilot lineage");
+        assert_eq!(
+            copilot_err.reason_code,
+            ManagedAuthReasonCode::ProviderNotSupported
+        );
+
         let result = service
             .apply_connection_action(&ManagedAuthConnectionActionRequest {
                 connection_id: openai.connection_id.clone(),
@@ -2360,6 +2452,12 @@ mod tests {
             openai.auth_status,
             ManagedAuthConnectionState::PendingRestart
         );
+        assert!(openai
+            .reason_codes
+            .contains(&ManagedAuthReasonCode::PendingRestart));
+        assert!(!openai
+            .reason_codes
+            .contains(&ManagedAuthReasonCode::NativeProjectionUnavailable));
         let text = serde_json::to_string(&result.overview)
             .unwrap()
             .to_ascii_lowercase();

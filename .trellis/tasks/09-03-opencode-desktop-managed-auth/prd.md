@@ -19,10 +19,10 @@
 
 ## Acceptance Criteria
 
-- [ ] Desktop 已安装但 CLI 缺失时仍可读取和管理支持的 Provider。
-- [ ] 未知/环境变量/配置来源 Provider 不被误删或覆盖。
-- [ ] 写入保留未知条目、权限和其他 Provider，失败不制造乐观成功。
-- [ ] 同一 OpenAI/xAI identity 默认使用 OpenCode 独立 Credential Session。
+- [x] Desktop 已安装但 CLI 缺失时仍可读取和管理支持的 Provider。
+- [x] 未知/环境变量/配置来源 Provider 不被误删或覆盖。
+- [x] 写入保留未知条目、权限和其他 Provider，失败不制造乐观成功。
+- [x] 同一 OpenAI/xAI identity 默认使用 OpenCode 独立 Credential Session。
 - [ ] 真实 Desktop HIL 覆盖连接、刷新、断开、外部变更和重启。
 
 ## Out of Scope

@@ -55,7 +55,11 @@ where
         if request.purpose == ManagedAuthLoginPurpose::ConnectConsumer
             && !matches!(
                 request.consumer,
-                Some(ManagedAuthConsumer::Grokbuild | ManagedAuthConsumer::FyagentProxy)
+                Some(
+                    ManagedAuthConsumer::Grokbuild
+                        | ManagedAuthConsumer::FyagentProxy
+                        | ManagedAuthConsumer::Opencode
+                )
             )
         {
             return Err(ManagedAuthErrorDto::from_reason(
@@ -327,6 +331,16 @@ where
             stage = ManagedAuthLoginStage::Partial;
             reason = Some(ManagedAuthReasonCode::NativeProjectionUnavailable);
         }
+        if request.purpose == ManagedAuthLoginPurpose::ConnectConsumer
+            && request.consumer == Some(ManagedAuthConsumer::Opencode)
+        {
+            self.set_stage(handle, ManagedAuthLoginStage::ConnectingConsumer, None)?;
+            let (next_connection, next_stage, next_reason) =
+                self.finish_opencode_connect_after_login(ManagedAuthProvider::Xai, &account_id);
+            connection_id = next_connection;
+            stage = next_stage;
+            reason = next_reason;
+        }
         self.set_stage(handle, ManagedAuthLoginStage::Verifying, None)?;
         self.login_sessions
             .finish(
@@ -391,6 +405,22 @@ fn purpose_for_xai_login(
                 Some(ManagedAuthConsumer::Grokbuild),
             )
         }
+        ManagedAuthLoginPurpose::ConnectConsumer
+            if request.consumer == Some(ManagedAuthConsumer::Opencode) =>
+        {
+            (
+                CredentialPurpose::OpencodeProvider,
+                Some(ManagedAuthConsumer::Opencode),
+            )
+        }
+        ManagedAuthLoginPurpose::Reauthenticate
+            if request.consumer == Some(ManagedAuthConsumer::Opencode) =>
+        {
+            (
+                CredentialPurpose::OpencodeProvider,
+                Some(ManagedAuthConsumer::Opencode),
+            )
+        }
         _ => (
             CredentialPurpose::ProxyUpstream,
             Some(ManagedAuthConsumer::FyagentProxy),
@@ -402,6 +432,7 @@ fn purpose_for_xai_login(
 mod tests {
     use super::*;
     use crate::database::Database;
+    use crate::services::managed_auth::ManagedAuthConnectionState;
     use crate::services::secret::{MemorySecretBackend, SecretService};
     use axum::extract::Form;
     use axum::http::StatusCode;
@@ -626,6 +657,91 @@ mod tests {
             .await
             .expect_err("grok native must not resolve for proxy");
         assert!(matches!(error, ManagedAuthCoreError::Conflict));
+    }
+
+    #[test]
+    fn purpose_for_xai_login_isolates_opencode_from_proxy_and_grok() {
+        let request = StartManagedAuthLoginRequest {
+            provider: ManagedAuthProvider::Xai,
+            purpose: ManagedAuthLoginPurpose::ConnectConsumer,
+            consumer: Some(ManagedAuthConsumer::Opencode),
+            method: ManagedAuthLoginMethod::DeviceCode,
+            account_id: None,
+        };
+        assert_eq!(
+            purpose_for_xai_login(&request),
+            (
+                CredentialPurpose::OpencodeProvider,
+                Some(ManagedAuthConsumer::Opencode)
+            )
+        );
+        let grok = StartManagedAuthLoginRequest {
+            consumer: Some(ManagedAuthConsumer::Grokbuild),
+            ..request.clone()
+        };
+        assert_eq!(
+            purpose_for_xai_login(&grok),
+            (
+                CredentialPurpose::GrokNative,
+                Some(ManagedAuthConsumer::Grokbuild)
+            )
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn opencode_connect_uses_independent_session_and_pending_restart() {
+        let issuer = spawn_issuer(0, false).await;
+        let (service, dir) = service();
+        service.set_xai_login_hooks(XaiLoginHooks {
+            endpoints: Some(XaiOAuthEndpoints::for_issuer(&issuer)),
+        });
+        let snapshot = service
+            .start_login(StartManagedAuthLoginRequest {
+                provider: ManagedAuthProvider::Xai,
+                purpose: ManagedAuthLoginPurpose::ConnectConsumer,
+                consumer: Some(ManagedAuthConsumer::Opencode),
+                method: ManagedAuthLoginMethod::DeviceCode,
+                account_id: None,
+            })
+            .expect("start");
+        let finished = wait_terminal(&service, &snapshot.session_id).await;
+        assert_eq!(finished.stage, ManagedAuthLoginStage::Completed);
+        assert_eq!(
+            finished.reason_code,
+            Some(ManagedAuthReasonCode::PendingRestart)
+        );
+        let rows = service.repository.list_all_credentials().expect("rows");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(
+            rows[0].credential.purpose,
+            CredentialPurpose::OpencodeProvider
+        );
+        assert_eq!(
+            rows[0].credential.consumer,
+            Some(ManagedAuthConsumer::Opencode)
+        );
+        assert_eq!(rows[0].credential.refresh_owner, RefreshOwner::Opencode);
+        let raw: serde_json::Value = serde_json::from_slice(
+            &std::fs::read(dir.path().join("opencode-data").join("auth.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(raw["xai"]["type"], "oauth");
+        assert_eq!(raw["xai"]["refresh"], "refresh-xai-login");
+        let xai = service
+            .overview()
+            .connections
+            .into_iter()
+            .find(|row| {
+                row.consumer == ManagedAuthConsumer::Opencode
+                    && row.provider == Some(ManagedAuthProvider::Xai)
+            })
+            .expect("slot");
+        assert_eq!(xai.auth_status, ManagedAuthConnectionState::PendingRestart);
+        assert!(xai.pending_restart);
+        assert!(!xai
+            .reason_codes
+            .contains(&ManagedAuthReasonCode::NativeProjectionUnavailable));
+        assert!(!dir.path().join("auth.json").exists());
     }
 
     #[test]

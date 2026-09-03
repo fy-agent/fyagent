@@ -249,6 +249,44 @@ GROK_FILE_PROJECTION_PRODUCTION_ENABLED = false
   `grok_native` metadata must not be painted as a verified Grok CLI/Desktop
   login. CLI install success is not login evidence.
 
+### OpenCode Desktop `auth.json` consumer
+
+Path and schema follow official OpenCode `Global.Path.data/auth.json`
+(`consumers/opencode.rs` via `opencode_config::get_opencode_auth_json_path`).
+This consumer is Desktop-first:
+
+- Observation and Path B projection never require a PATH `opencode` CLI.
+- The private Desktop sidecar (ephemeral loopback port and
+  `OPENCODE_SERVER_PASSWORD`) is not a control plane. Do not probe, guess, or
+  persist sidecar ports or passwords.
+- Closed file keys are `openai`, `xai`, and `github-copilot`. Other keys stay
+  in the raw object. Read-modify-write must preserve unknown providers,
+  undecodable values, `wellknown` entries, and extra official fields on keys
+  FyAgent is not replacing.
+- Environment-variable / `OPENCODE_AUTH_CONTENT` providers are not `auth.json`
+  rows. Projection must not invent or delete them.
+- Writes use the existing atomic file owner, then `0600` on Unix, then
+  byte-equal readback. Readback mismatch restores the exact preimage or
+  deletes a newly created file. Success is never inferred from `atomic_write`
+  returning Ok.
+- Live Desktop pickup of an **external** write is unproven.
+  `OPENCODE_EXTERNAL_WRITE_HOT_RELOAD_PROVEN` stays `false`. After a successful
+  FyAgent write, connection `authStatus` is `pending_restart` with reason
+  `pending_restart`. Do not also emit `native_projection_unavailable` (that
+  reason means FyAgent could not write). Do not paint `connected` as hot.
+- `connect_consumer` / reauthenticate with `consumer=opencode` creates a
+  separate `purpose=opencode_provider` Credential Session. Proxy, Codex,
+  Grok, and Copilot purposes are rejected as lineage copies. After a
+  successful file readback, `refresh_owner` becomes `opencode`. A failed
+  owner transfer still records the connection as `pending_restart` so the
+  file write cannot look like a live Path A login.
+- Copilot login remains `provider_not_supported`. Copilot v1 JSON without a
+  stable identity stays `blocked`. Do not project that token into
+  `github-copilot`.
+- Matching-host Desktop HIL for connect, refresh, disconnect, external
+  change, and restart is still required before flipping the hot-reload gate
+  or claiming production live pickup.
+
 ### Sync and export
 
 `managed_auth_*` tables are local-only in the WebDAV skip/preserve sets.
@@ -275,7 +313,12 @@ metadata and must never include token columns.
 | Codex/Grok connect without HIL file projection | `partial` + `native_projection_unavailable`; no vendor auth.json write |
 | Grok helper or `auth.json` write while production gates are false | `Unsupported` / `partial` + `native_projection_unavailable`; no vendor file |
 | Proxy resolve of `purpose=grok_native` | conflict; no refresh |
-| OpenCode Path B write while live Desktop hot-reload is unproven | file write + readback may succeed; status stays `pending_restart` |
+| OpenCode Path B write while live Desktop hot-reload is unproven | file write + readback may succeed; status stays `pending_restart`; do not emit `native_projection_unavailable` |
+| OpenCode login/connect with `consumer=opencode` | new `purpose=opencode_provider` session; never copy Proxy/Codex/Grok/Copilot refresh lineage |
+| OpenCode connect using only `purpose=proxy_upstream`/`codex_native`/`copilot` | `provider_not_supported`; no `auth.json` write |
+| OpenCode observe with Desktop data dir and no PATH CLI | sanitized provider list from `auth.json`; not `AuthObserverUnavailable` |
+| OpenCode RMW of one closed key | unknown/undecodable/other provider keys unchanged |
+| sidecar port/password supplied or scanned | reject; no network probe |
 | mutation `operationId` is not UUID v4 | frontend parser rejects the result |
 | DTO/log/debug contains token/secretRef | test failure / NO-GO |
 | `shared` refresh owner in schema or enum | reject implementation |
@@ -291,6 +334,11 @@ metadata and must never include token columns.
 - **Base:** OpenAI login succeeds only after SecretRef + metadata readback.
   Connecting Codex without HIL-proven file projection ends `partial` with
   `native_projection_unavailable`. Migrated accounts remain visible.
+- **Good:** OpenCode `connect_consumer` login writes an independent
+  `purpose=opencode_provider` oauth/api entry, transfers `refresh_owner` to
+  `opencode`, and overview stays `pending_restart` until Desktop HIL proves
+  live pickup.
+- **Base:** missing `auth.json` is empty providers, not observer failure.
 - **Bad:** write refresh tokens back to JSON after that source is sealed.
 - **Bad:** seal every JSON store because one source failed.
 - **Bad:** pre-mark credentials `Ready` in the parser before vault readback.
@@ -302,6 +350,7 @@ mise run rust:fmt:check
 mise run rust:check
 mise run rust:clippy
 mise run rust:test -- managed_auth
+mise run rust:test -- opencode
 mise run rust:test -- --test secret_service_contract
 mise run typecheck:v2
 ```
@@ -333,6 +382,15 @@ Required assertions:
 - Codex file projection remains closed without HIL; connect/login-to-connect
   finishes `partial` with `native_projection_unavailable`;
 - third-party Codex writers never overwrite official `auth.json`;
+- OpenCode observation does not call PATH CLI; missing CLI is not
+  `AuthObserverUnavailable`;
+- OpenCode RMW preserves unknown/undecodable keys and `0600`; stale CAS
+  leaves the file unchanged; readback mismatch restores the preimage;
+- OpenAI/xAI `consumer=opencode` login creates `purpose=opencode_provider`
+  and does not copy Proxy/Codex/Grok/Copilot lineage; successful writes stay
+  `pending_restart` while `OPENCODE_EXTERNAL_WRITE_HOT_RELOAD_PROVEN` is
+  false;
+- Copilot v1 without identity stays blocked and is not projected;
 - unsigned `cargo test` DPK `errSecMissingEntitlement` is fail-closed
   evidence, not product acceptance. Matching-host HIL remains `#[ignore]`
   until a signed app with `HY446996QX.com.fyagent.desktop` access-group
@@ -374,4 +432,20 @@ per-source journal
 Ready only after typed readback
 DB completed + backup_name, then rename
 seal only that source
+```
+
+Wrong:
+
+```text
+missing PATH opencode -> AuthObserverUnavailable
+OpenCode connect uses proxy_upstream refresh token
+auth.json write Ok -> authStatus=connected
+```
+
+Correct:
+
+```text
+read Global.Path.data/auth.json; missing file is empty providers
+new purpose=opencode_provider session, then RMW + readback
+OPENCODE_EXTERNAL_WRITE_HOT_RELOAD_PROVEN=false -> pending_restart
 ```

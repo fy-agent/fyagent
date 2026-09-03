@@ -2,11 +2,15 @@
 
 ## Checklist
 
-1. [ ] 冻结当前 OpenCode 官方 schema/路径/权限事实。
-2. [ ] 实现 capability/observation 和严格 parser。
-3. [ ] 实现 connection transaction、CAS/readback/rollback。
-4. [ ] 接入中央 UI 和 Agent 摘要。
+1. [x] 冻结当前 OpenCode 官方 schema/路径/权限事实。
+2. [x] 实现 capability/observation 和严格 parser。
+3. [x] 实现 connection transaction、CAS/readback/rollback。
+4. [x] 接入中央 UI 和 Agent 摘要。
 5. [ ] 删除 Desktop Auth 对 CLI 的依赖并运行跨平台测试/HIL。
+
+PATH CLI 依赖已从观察/断开路径移除。条目 5 仍未勾选：真实 Desktop HIL
+（连接、刷新、断开、外部变更、重启）未做；
+`OPENCODE_EXTERNAL_WRITE_HOT_RELOAD_PROVEN` 保持 `false`。
 
 
 ## Validation
