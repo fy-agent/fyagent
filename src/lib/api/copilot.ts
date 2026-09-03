@@ -6,6 +6,7 @@
  */
 
 import { invoke } from "@tauri-apps/api/core";
+import { LEGACY_AUTH_MUTATION_DISABLED } from "@/lib/api/auth";
 
 /**
  * GitHub 设备码响应
@@ -52,27 +53,24 @@ export interface CopilotAuthStatus {
   accounts: GitHubAccount[];
 }
 
-/**
- * 启动 GitHub OAuth 设备码流程
- *
- * @returns 设备码响应，包含用户码和验证 URL
- */
-export async function copilotStartDeviceFlow(): Promise<CopilotDeviceCodeResponse> {
-  return invoke<CopilotDeviceCodeResponse>("copilot_start_device_flow");
+function denyLegacyCopilotMutation(): never {
+  throw new Error(LEGACY_AUTH_MUTATION_DISABLED);
 }
 
 /**
- * 轮询 OAuth Token
- *
- * 使用设备码轮询 GitHub，等待用户完成授权。
- *
- * @param deviceCode - 设备码
- * @returns true 表示认证成功，false 表示仍在等待用户授权
+ * Leftover Device Code entry. Login owner is Managed Auth.
  */
-export async function copilotPollForAuth(deviceCode: string): Promise<boolean> {
-  return invoke<boolean>("copilot_poll_for_auth", {
-    deviceCode,
-  });
+export async function copilotStartDeviceFlow(): Promise<CopilotDeviceCodeResponse> {
+  denyLegacyCopilotMutation();
+}
+
+/**
+ * Leftover poll entry. Login owner is Managed Auth.
+ */
+export async function copilotPollForAuth(
+  _deviceCode: string,
+): Promise<boolean> {
+  denyLegacyCopilotMutation();
 }
 
 /**
@@ -85,10 +83,10 @@ export async function copilotGetAuthStatus(): Promise<CopilotAuthStatus> {
 }
 
 /**
- * 注销 Copilot 认证
+ * Leftover logout-all. Account removal is V2 `/auth`.
  */
 export async function copilotLogout(): Promise<void> {
-  return invoke("copilot_logout");
+  denyLegacyCopilotMutation();
 }
 
 /**
@@ -177,40 +175,28 @@ export async function copilotListAccounts(): Promise<GitHubAccount[]> {
 }
 
 /**
- * 轮询 OAuth Token（多账号版本）
- *
- * 使用设备码轮询 GitHub，等待用户完成授权。
- * 授权成功后返回新添加的账号信息。
- *
- * @param deviceCode - 设备码
- * @returns 新添加的账号信息，如果仍在等待则返回 null
+ * Leftover multi-account poll. Login owner is Managed Auth.
  */
 export async function copilotPollForAccount(
-  deviceCode: string,
+  _deviceCode: string,
 ): Promise<GitHubAccount | null> {
-  return invoke<GitHubAccount | null>("copilot_poll_for_account", {
-    deviceCode,
-  });
+  denyLegacyCopilotMutation();
 }
 
 /**
- * 移除指定的 GitHub 账号
- *
- * @param accountId - GitHub 用户 ID
+ * Leftover remove. Destructive account removal is V2 `/auth`.
  */
-export async function copilotRemoveAccount(accountId: string): Promise<void> {
-  return invoke("copilot_remove_account", { accountId });
+export async function copilotRemoveAccount(_accountId: string): Promise<void> {
+  denyLegacyCopilotMutation();
 }
 
 /**
- * 设置默认 GitHub 账号
- *
- * @param accountId - GitHub 用户 ID
+ * Leftover default-account write. Defaults are owned by Managed Auth.
  */
 export async function copilotSetDefaultAccount(
-  accountId: string,
+  _accountId: string,
 ): Promise<void> {
-  return invoke("copilot_set_default_account", { accountId });
+  denyLegacyCopilotMutation();
 }
 
 /**

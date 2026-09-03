@@ -1,6 +1,6 @@
 # PRD：统一 Agent 官方登录与账号管理体验
 
-> 状态：Planning
+> 状态：Implementation
 > 优先级：P0
 > 产品顺序：**前端操作体验 > 正确性与安全 > 后端复用与扩展性 > 功能覆盖速度**
 
@@ -262,31 +262,31 @@
 
 ### 前端验收
 
-- [ ] V2 存在唯一“账号与认证”主要入口，并能从 Codex/Grok/OpenCode Agent 卡片深链进入和返回。
-- [ ] 账号页清楚分离账号、软件连接、当前请求 Provider；Codex 第三方模式明确显示官方登录仍保留。
-- [ ] OpenAI browser PKCE、Device Code fallback、xAI Device Code 三条交互都有完整准备/等待/成功/取消/超时/失败状态。
-- [ ] OpenCode Desktop 不因系统 PATH 无 CLI 而显示认证不可用。
-- [ ] 多账号可设默认、重新登录、连接、切换、移除；破坏性操作显示影响范围。
-- [ ] 任何 UI、DOM、事件、错误和测试快照都不包含 token、code、verifier、SecretRef 或原始路径。
+- [x] V2 存在唯一“账号与认证”主要入口，并能从 Codex/Grok/OpenCode Agent 卡片深链进入和返回。
+- [x] 账号页清楚分离账号、软件连接、当前请求 Provider；Codex 第三方模式明确显示官方登录仍保留。
+- [x] OpenAI browser PKCE、Device Code fallback、xAI Device Code 三条交互都有完整准备/等待/成功/取消/超时/失败状态（V2 + backend session 自动化；真机成功仍待 HIL）。
+- [x] OpenCode Desktop 不因系统 PATH 无 CLI 而显示认证不可用。
+- [x] 多账号可设默认、重新登录、连接、切换、移除；破坏性操作显示影响范围。
+- [x] 任何 UI、DOM、事件、错误和测试快照都不包含 token、code、verifier、SecretRef 或原始路径。
 - [ ] 键盘、focus、screen-reader label、窄窗口、reduced-motion、隐藏路由暂停/恢复均有自动化覆盖。
 
 ### 后端验收
 
-- [ ] 现有 Codex/xAI manager 已收敛到一个 managed-auth owner；Proxy/Agent/页面复用同一服务。
-- [ ] OAuth secret 已迁入 OS-native SecretRef；数据库/普通 JSON 无 refresh/access/id token 明文。
-- [ ] 一个 Credential Session 只有一个 refresh owner；并发、晚到 refresh、外部写回与 generation CAS 有测试。
-- [ ] Codex 第三方切换从所有写路径证明不会删除/覆盖官方 session；切回有效账号无需重新登录。
-- [ ] Grok 与 OpenCode 原生 store 更新为 merge + atomic write + lock/readback，未知字段/Provider 不丢失。
-- [ ] 不支持的 credential-store/平台组合返回闭集不可操作状态，不做明文或 CLI fallback。
-- [ ] 旧 JSON 迁移幂等、失败可恢复、Provider binding 不悬空。
+- [x] 现有 Codex/xAI manager 已收敛到一个 managed-auth owner；Proxy/Agent/页面复用同一服务。Leftover `auth_*` / Copilot 登录/删除已 fail-closed；未密封 JSON 仍是只读兼容源。
+- [ ] OAuth secret 已迁入 OS-native SecretRef；数据库/普通 JSON 无 refresh/access/id token 明文。未迁移源在密封前仍可读明文 JSON。
+- [x] 一个 Credential Session 只有一个 refresh owner；并发、晚到 refresh、外部写回与 generation CAS 有测试。
+- [x] Codex 第三方切换从所有写路径证明不会删除/覆盖官方 session；切回有效账号无需重新登录。
+- [ ] Grok 与 OpenCode 原生 store 更新为 merge + atomic write + lock/readback，未知字段/Provider 不丢失。Grok helper/file 生产写入保持关闭；OpenCode 外部写热加载未 HIL 证明。
+- [x] 不支持的 credential-store/平台组合返回闭集不可操作状态，不做明文或 CLI fallback。
+- [x] 旧 JSON 迁移幂等、失败可恢复、Provider binding 不悬空。
 
 ### 工程与证据验收
 
 - [ ] 第一方/OSS exact source、license、NOTICE、修改记录和 dependency lock 完整。
-- [ ] 前端 strict wire parser、backend DTO exact keys、forbidden-field scan、secret redaction tests 通过。
+- [x] 前端 strict wire parser、backend DTO exact keys、forbidden-field scan、secret redaction tests 通过。
 - [ ] macOS 与 Windows 真机完成 Codex/Grok/OpenCode 登录、refresh、切换、重启、外部修改和回滚矩阵。
-- [ ] HIL 未通过的能力保持 disabled/unsupported，不能以 mock、源码阅读或交叉编译代替。
-- [ ] 相关 Trellis backend/frontend specs 与最终实现一致，旧合同中的 handoff/第二 owner 描述已收口。
+- [x] HIL 未通过的能力保持 disabled/unsupported，不能以 mock、源码阅读或交叉编译代替。
+- [x] 相关 Trellis backend/frontend specs 与当前实现一致：leftover `auth_*` 登录/删除已标为 disabled compatibility；旧 Auth Center 不再作为第二 owner。归档仍未做。
 
 ## 10. Definition of done
 

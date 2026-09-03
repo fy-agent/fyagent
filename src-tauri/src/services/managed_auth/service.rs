@@ -430,44 +430,6 @@ where
             .collect())
     }
 
-    pub(crate) fn set_compatibility_default(
-        &self,
-        provider: ManagedAuthProvider,
-        legacy_account_id: &str,
-    ) -> Result<(), ManagedAuthCoreError> {
-        let (purpose, consumer) = purpose_for_provider(provider);
-        let credential = self
-            .repository
-            .get_credential_by_legacy(provider, purpose, consumer, legacy_account_id)?
-            .ok_or(ManagedAuthCoreError::NotFound)?;
-        if credential.status != CredentialStatus::Ready {
-            return Err(ManagedAuthCoreError::Conflict);
-        }
-        if !self.repository.set_default(
-            provider,
-            purpose,
-            consumer,
-            &credential.credential_id,
-            chrono::Utc::now().timestamp(),
-        )? {
-            return Err(ManagedAuthCoreError::Conflict);
-        }
-        Ok(())
-    }
-
-    pub(crate) fn remove_compatibility_account(
-        &self,
-        provider: ManagedAuthProvider,
-        legacy_account_id: &str,
-    ) -> Result<(), ManagedAuthCoreError> {
-        let (purpose, consumer) = purpose_for_provider(provider);
-        let credential = self
-            .repository
-            .get_credential_by_legacy(provider, purpose, consumer, legacy_account_id)?
-            .ok_or(ManagedAuthCoreError::NotFound)?;
-        self.remove_credential_record(&credential)
-    }
-
     pub(crate) fn has_legacy_credential(
         &self,
         provider: ManagedAuthProvider,

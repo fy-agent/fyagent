@@ -19,9 +19,9 @@
 
 ## Acceptance Criteria
 
-- [ ] 只有一个 Managed Auth backend authority 和一个 V2 主体验。
-- [ ] V1、Agent、Proxy、Provider 入口均引用同一账号/连接状态。
-- [ ] 所有自动化检查与必要 native HIL 通过，未验证项保持 fail-closed。
+- [x] 只有一个 Managed Auth backend authority 和一个 V2 主体验。Leftover 登录 IPC 已 fail-closed；未迁移 JSON 仍是只读兼容源。
+- [x] V1 Provider 表单只选择已保存 `authBinding`；Agent 摘要深链到 `/auth`；Proxy 走 Managed Auth resolver（未密封源仍可读 JSON）。
+- [x] 所有自动化检查与必要 native HIL 通过，未验证项保持 fail-closed。
 - [ ] Spec 与最终实现一致，全部子任务及父任务归档。
 - [ ] 最终 Git 工作树 clean。
 

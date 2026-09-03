@@ -22,76 +22,40 @@ fn deny_copilot_token_ipc() -> Result<String, String> {
     Err(COPILOT_TOKEN_IPC_DENIED.to_string())
 }
 
+/// Leftover Copilot login/remove IPC stays registered so old clients fail
+/// closed instead of starting a second Device Code owner.
+const LEGACY_COPILOT_MUTATION_DISABLED: &str = "legacy_auth_mutation_disabled";
+
+fn deny_legacy_copilot_mutation<T>() -> Result<T, String> {
+    Err(LEGACY_COPILOT_MUTATION_DISABLED.to_string())
+}
+
 // ==================== 设备码流程 ====================
 
-/// 启动设备码流程
-///
-/// 返回设备码和用户码，用于 OAuth 认证
+/// Leftover Device Code entry. Login owner is `managed_auth_start_login`.
 #[tauri::command]
 pub async fn copilot_start_device_flow(
-    github_domain: Option<String>,
-    state: State<'_, CopilotAuthState>,
+    _github_domain: Option<String>,
 ) -> Result<GitHubDeviceCodeResponse, String> {
-    let auth_manager = state.0.read().await;
-    auth_manager
-        .start_device_flow(github_domain.as_deref())
-        .await
-        .map_err(|e| e.to_string())
+    deny_legacy_copilot_mutation()
 }
 
-/// 轮询 OAuth Token（向后兼容）
-///
-/// 使用设备码轮询 GitHub，等待用户完成授权
-/// 返回 true 表示授权成功，false 表示等待中
+/// Leftover poll entry. Login owner is Managed Auth.
 #[tauri::command(rename_all = "camelCase")]
 pub async fn copilot_poll_for_auth(
-    device_code: String,
-    github_domain: Option<String>,
-    state: State<'_, CopilotAuthState>,
+    _device_code: String,
+    _github_domain: Option<String>,
 ) -> Result<bool, String> {
-    let auth_manager = state.0.write().await;
-    match auth_manager
-        .poll_for_token(&device_code, github_domain.as_deref())
-        .await
-    {
-        Ok(Some(_account)) => {
-            log::info!("[CopilotAuth] 用户已授权");
-            Ok(true)
-        }
-        Ok(None) => Ok(false),
-        Err(crate::proxy::providers::copilot_auth::CopilotAuthError::AuthorizationPending) => {
-            Ok(false)
-        }
-        Err(e) => {
-            log::error!("[CopilotAuth] 轮询失败: {e}");
-            Err(e.to_string())
-        }
-    }
+    deny_legacy_copilot_mutation()
 }
 
-/// 轮询 OAuth Token（多账号版本）
-///
-/// 返回新添加的账号信息，如果授权成功
+/// Leftover multi-account poll entry. Login owner is Managed Auth.
 #[tauri::command(rename_all = "camelCase")]
 pub async fn copilot_poll_for_account(
-    device_code: String,
-    github_domain: Option<String>,
-    state: State<'_, CopilotAuthState>,
+    _device_code: String,
+    _github_domain: Option<String>,
 ) -> Result<Option<GitHubAccount>, String> {
-    let auth_manager = state.0.write().await;
-    match auth_manager
-        .poll_for_token(&device_code, github_domain.as_deref())
-        .await
-    {
-        Ok(account) => Ok(account),
-        Err(crate::proxy::providers::copilot_auth::CopilotAuthError::AuthorizationPending) => {
-            Ok(None)
-        }
-        Err(e) => {
-            log::error!("[CopilotAuth] 轮询失败: {e}");
-            Err(e.to_string())
-        }
-    }
+    deny_legacy_copilot_mutation()
 }
 
 // ==================== 多账号管理 ====================
@@ -105,30 +69,16 @@ pub async fn copilot_list_accounts(
     Ok(auth_manager.list_accounts().await)
 }
 
-/// 移除指定账号
+/// Leftover remove entry. Destructive account removal is V2 `/auth`.
 #[tauri::command(rename_all = "camelCase")]
-pub async fn copilot_remove_account(
-    account_id: String,
-    state: State<'_, CopilotAuthState>,
-) -> Result<(), String> {
-    let auth_manager = state.0.write().await;
-    auth_manager
-        .remove_account(&account_id)
-        .await
-        .map_err(|e| e.to_string())
+pub async fn copilot_remove_account(_account_id: String) -> Result<(), String> {
+    deny_legacy_copilot_mutation()
 }
 
-/// 设置默认账号
+/// Leftover default-account entry. Defaults are owned by Managed Auth.
 #[tauri::command(rename_all = "camelCase")]
-pub async fn copilot_set_default_account(
-    account_id: String,
-    state: State<'_, CopilotAuthState>,
-) -> Result<(), String> {
-    let auth_manager = state.0.write().await;
-    auth_manager
-        .set_default_account(&account_id)
-        .await
-        .map_err(|e| e.to_string())
+pub async fn copilot_set_default_account(_account_id: String) -> Result<(), String> {
+    deny_legacy_copilot_mutation()
 }
 
 // ==================== 状态查询 ====================
@@ -149,11 +99,10 @@ pub async fn copilot_is_authenticated(state: State<'_, CopilotAuthState>) -> Res
     Ok(auth_manager.is_authenticated().await)
 }
 
-/// 注销所有 Copilot 认证
+/// Leftover logout-all entry. Account removal is V2 `/auth`.
 #[tauri::command]
-pub async fn copilot_logout(state: State<'_, CopilotAuthState>) -> Result<(), String> {
-    let auth_manager = state.0.write().await;
-    auth_manager.clear_auth().await.map_err(|e| e.to_string())
+pub async fn copilot_logout() -> Result<(), String> {
+    deny_legacy_copilot_mutation()
 }
 
 // ==================== Token 获取 ====================
@@ -232,5 +181,30 @@ mod tests {
         assert_eq!(error, super::COPILOT_TOKEN_IPC_DENIED);
         assert!(!error.to_ascii_lowercase().contains("gho_"));
         assert!(!error.to_ascii_lowercase().contains("token="));
+    }
+
+    #[tokio::test]
+    async fn leftover_copilot_login_ipc_is_fail_closed() {
+        let start = super::copilot_start_device_flow(None).await;
+        let poll_auth = super::copilot_poll_for_auth("device-code".into(), None).await;
+        let poll_account = super::copilot_poll_for_account("device-code".into(), None).await;
+        let remove = super::copilot_remove_account("account-1".into()).await;
+        let set_default = super::copilot_set_default_account("account-1".into()).await;
+        let logout = super::copilot_logout().await;
+
+        for error in [
+            start.unwrap_err(),
+            poll_auth.unwrap_err(),
+            poll_account.unwrap_err(),
+            remove.unwrap_err(),
+            set_default.unwrap_err(),
+            logout.unwrap_err(),
+        ] {
+            assert_eq!(error, super::LEGACY_COPILOT_MUTATION_DISABLED);
+            let lower = error.to_ascii_lowercase();
+            assert!(!lower.contains("gho_"));
+            assert!(!lower.contains("token="));
+            assert!(!lower.contains("device_code"));
+        }
     }
 }

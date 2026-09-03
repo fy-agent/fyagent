@@ -35,18 +35,6 @@ describe("CodexOAuthSection", () => {
       ],
       defaultAccountId: "account-1",
       hasAnyAccount: true,
-      pollingState: "idle",
-      deviceCode: null,
-      error: null,
-      isPolling: false,
-      isAddingAccount: false,
-      isRemovingAccount: false,
-      isSettingDefaultAccount: false,
-      addAccount: vi.fn(),
-      removeAccount: vi.fn(),
-      setDefaultAccount: vi.fn(),
-      cancelAuth: vi.fn(),
-      logout: vi.fn(),
       authStatus: {
         provider: "codex_oauth",
         authenticated: true,
@@ -93,6 +81,33 @@ describe("CodexOAuthSection", () => {
     );
   });
 
+  it("is a picker-only leftover surface without login or remove actions", () => {
+    render(
+      <CodexOAuthSection
+        selectedAccountId="account-1"
+        onAccountSelect={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByText(/登录、重新登录和移除账号请到「账号与认证」页面完成/u),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: /使用 ChatGPT 登录/u }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /添加其他账号/u }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /设为默认/u }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /移除账号/u }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/工作区路由 ID/u)).not.toBeInTheDocument();
+    expect(screen.queryByText("ws-shared")).not.toBeInTheDocument();
+  });
+
   it("distinguishes managed routing from native Codex projection", () => {
     mocks.useCodexOauth.mockReturnValue({
       ...mocks.useCodexOauth(),
@@ -121,7 +136,6 @@ describe("CodexOAuthSection", () => {
       screen.getByText(/Codex 当前不使用 auth\.json 保存凭据/u),
     ).toBeVisible();
     expect(screen.getByText(/这里的账号只用于 FyAgent 路由/u)).toBeVisible();
-    expect(screen.getByText(/工作区路由 ID/u)).toBeVisible();
-    expect(screen.getByText(/ws-shared/u)).toBeVisible();
+    expect(screen.queryByText(/工作区路由 ID/u)).not.toBeInTheDocument();
   });
 });

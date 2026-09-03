@@ -325,6 +325,7 @@
     "authCenter": {
       "title": "Accounts & authentication",
       "description": "Official accounts, software connections, and the current request source are managed on the Accounts & authentication page. This leftover panel no longer signs in or polls tokens.",
+      "providerBindingHint": "Add, re-authenticate, or remove accounts on the Accounts & authentication page. This form only selects a saved account for the current provider binding.",
       "beta": "Beta",
       "copilotDescription": "Manage GitHub Copilot accounts",
       "codexOauthDescription": "Manage ChatGPT accounts",
@@ -1323,7 +1324,7 @@
     "logoutAll": "Logout all accounts",
     "retry": "Retry",
     "copyCode": "Copy code",
-    "migrationFailed": "Legacy auth migration failed: {{error}}",
+    "migrationFailed": "Legacy account migration failed. Finish recovery on the Accounts & authentication page.",
     "loadModelsFailed": "Failed to load Copilot models",
     "deploymentType": "GitHub Deployment Type",
     "deploymentGitHubCom": "GitHub.com",

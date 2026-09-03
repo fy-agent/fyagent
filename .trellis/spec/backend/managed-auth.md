@@ -66,6 +66,30 @@ managed_auth_apply_connection_action
      OpenCode closed slots observe/project and may return pending_restart
 ```
 
+Leftover `commands/auth.rs` (not a second owner):
+
+```text
+auth_list_accounts / auth_get_status
+  -> read-only; vault after that source is sealed, else JSON
+auth_start_login / auth_poll_for_account / auth_remove_account /
+auth_set_default_account / auth_logout / auth_cancel_login
+  -> always `legacy_auth_mutation_disabled`
+```
+
+Leftover `commands/copilot.rs` (not a second login owner):
+
+```text
+copilot_start_device_flow / copilot_poll_for_auth /
+copilot_poll_for_account / copilot_remove_account /
+copilot_set_default_account / copilot_logout
+  -> always `legacy_auth_mutation_disabled`
+copilot_get_token*
+  -> always `copilot_token_not_exposed`
+copilot_list_accounts / copilot_get_auth_status /
+copilot_is_authenticated / copilot_get_models* / copilot_get_usage*
+  -> leftover read-only quota/model compatibility
+```
+
 `operationId` on mutation results is a canonical UUID v4 string (hyphenated).
 Account IDs are `ma1:` + 32 lowercase hex. Credential IDs are `mcred1:` + 32
 lowercase hex. Connection IDs are `mc1:` + 32 lowercase hex. Revisions are
@@ -194,13 +218,35 @@ legacy-copilot-auth-v3  <- copilot_auth.json
   lineages are never copied. Live Desktop hot-reload of an external
   write is unproven; successful FyAgent writes stay `pending_restart`.
 - V1 `commands/auth.rs` may list vault accounts only after that provider's
-  JSON store is sealed. Otherwise JSON remains the live compatibility path.
+  JSON store is sealed. Otherwise JSON remains the live **read-only**
+  compatibility path for `auth_list_accounts` / `auth_get_status`.
+- Leftover mutations stay registered for old clients but always return
+  `legacy_auth_mutation_disabled` and must not start Device Code, poll,
+  delete accounts, write a second JSON default, logout-all, or cancel a
+  leftover login:
+
+```text
+auth_start_login
+auth_poll_for_account
+auth_remove_account
+auth_set_default_account
+auth_logout
+auth_cancel_login
+```
+
+  Login, reauth, default-account, and removal belong on `managed_auth_*`
+  with impact preview. Leftover Provider forms may select an existing
+  opaque `authBinding.accountId` from the read-only list; they must not
+  call leftover mutation IPC.
 - Renderer DTOs, logs, and overview JSON must not contain tokens, SecretRef,
   `device_code`, verifier, or authorization codes.
 - `copilot_get_token*` remains registered for leftover clients but always
-  returns `copilot_token_not_exposed`. Do not add new token-returning
-  commands. Proxy must resolve Copilot material natively, never through
-  renderer IPC.
+  returns `copilot_token_not_exposed`. Leftover `copilot_start_device_flow`,
+  `copilot_poll_for_auth`, `copilot_poll_for_account`, `copilot_remove_account`,
+  `copilot_set_default_account`, and `copilot_logout` return
+  `legacy_auth_mutation_disabled`. Do not add new token-returning commands.
+  Proxy must resolve Copilot material natively, never through renderer IPC.
+  Leftover Copilot list/status/models/usage may remain read-only.
 
 ### Login sessions
 
@@ -322,6 +368,8 @@ metadata and must never include token columns.
 | sidecar port/password supplied or scanned | reject; no network probe |
 | mutation `operationId` is not UUID v4 | frontend parser rejects the result |
 | DTO/log/debug contains token/secretRef | test failure / NO-GO |
+| leftover `auth_start_login` / `auth_poll_for_account` / `auth_remove_account` / `auth_set_default_account` / `auth_logout` / `auth_cancel_login` | `legacy_auth_mutation_disabled`; no Device Code, JSON write, or vault delete |
+| leftover `copilot_start_device_flow` / `copilot_poll_for_*` / `copilot_remove_account` / `copilot_set_default_account` / `copilot_logout` | `legacy_auth_mutation_disabled`; list/status/models/usage remain readable |
 | `shared` refresh owner in schema or enum | reject implementation |
 
 ## 5. Good / Base / Bad Cases
@@ -351,6 +399,8 @@ mise run rust:fmt:check
 mise run rust:check
 mise run rust:clippy
 mise run rust:test -- managed_auth
+mise run rust:test -- leftover_legacy_auth
+mise run rust:test -- leftover_copilot_login
 mise run rust:test -- opencode
 mise run rust:test -- --test secret_service_contract
 mise run typecheck:v2
@@ -392,6 +442,11 @@ Required assertions:
   `pending_restart` while `OPENCODE_EXTERNAL_WRITE_HOT_RELOAD_PROVEN` is
   false;
 - Copilot v1 without identity stays blocked and is not projected;
+- leftover `auth_*` login/remove/default/logout/cancel helpers return
+  `legacy_auth_mutation_disabled` without Tauri State;
+- leftover `copilot_start_device_flow` / poll / remove / set_default /
+  logout helpers return `legacy_auth_mutation_disabled`; `copilot_get_token*`
+  returns `copilot_token_not_exposed`;
 - unsigned `cargo test` DPK `errSecMissingEntitlement` is fail-closed
   evidence, not product acceptance. Matching-host HIL remains `#[ignore]`
   until a signed app with `HY446996QX.com.fyagent.desktop` access-group
@@ -433,6 +488,24 @@ per-source journal
 Ready only after typed readback
 DB completed + backup_name, then rename
 seal only that source
+```
+
+Wrong:
+
+```text
+auth_start_login -> start JSON Device Code
+auth_set_default_account -> write a second JSON default
+```
+
+Correct:
+
+```text
+leftover auth_start_login / poll / remove / set_default / logout / cancel
+  -> legacy_auth_mutation_disabled
+leftover copilot_start_device_flow / poll / remove / set_default / logout
+  -> legacy_auth_mutation_disabled
+managed_auth_* owns login, default, and removal with preview
+auth_list_accounts / auth_get_status remain read-only
 ```
 
 Wrong:

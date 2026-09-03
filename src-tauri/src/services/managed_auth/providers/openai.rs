@@ -374,19 +374,19 @@ async fn write_callback_response(
 pub(crate) fn open_system_browser(url: &str) -> Result<(), ErrorKind> {
     #[cfg(target_os = "macos")]
     {
-        return std::process::Command::new("open")
+        std::process::Command::new("open")
             .arg(url)
             .spawn()
             .map(|_| ())
-            .map_err(|error| error.kind());
+            .map_err(|error| error.kind())
     }
     #[cfg(target_os = "windows")]
     {
-        return std::process::Command::new("cmd")
+        std::process::Command::new("cmd")
             .args(["/C", "start", "", url])
             .spawn()
             .map(|_| ())
-            .map_err(|error| error.kind());
+            .map_err(|error| error.kind())
     }
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {

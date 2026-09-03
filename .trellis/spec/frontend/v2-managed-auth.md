@@ -209,7 +209,10 @@ request mode is a third-party API.
 - **Bad:** copy the leftover `AuthCenterPanel` into V2 or let Agent cards keep a
   second managed-account workflow. The leftover Settings auth tab is a
   compatibility shell only: it must not poll, login, or display a second
-  account owner.
+  account owner. Leftover Provider `CodexOAuthSection` /
+  `XaiOAuthSection` / `CopilotAuthSection` may select an existing
+  `authBinding` account from `authGetStatus`; they must not start Device
+  Code, open a verification URL, remove accounts, or poll leftover login.
 
 ## 6. Tests Required
 
@@ -232,6 +235,10 @@ Required assertions include:
   copy, destructive preview, readback-only success and pending-restart states;
 - managed Agent cards navigate to the central page while Claude and desktop
   handoff retain their existing owner;
+- leftover Provider OAuth sections remain picker-only and leftover
+  `authStartLogin` / `authPollForAccount` / `authRemoveAccount` /
+  `copilotStartDeviceFlow` / `copilotLogout` throw
+  `legacy_auth_mutation_disabled` without invoking Tauri;
 - keyboard/focus/ARIA, narrow viewport and reduced-motion behavior.
 
 Browser and mock tests prove renderer behavior only. Real OAuth, OS keyring,

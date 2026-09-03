@@ -223,7 +223,7 @@
     ],
     [
       "src-tauri/src/services/managed_auth/providers/openai.rs",
-      "c9d0a11dd4da99b5955c737a6e26ffcb8c915b2fe282e2d692605faafade0214"
+      "b31d8d394be49de472398bbd433c7941787793fe20ca9b23bda245fbd8e825ec"
     ],
     [
       "src-tauri/src/services/model_probe.rs",

@@ -5,7 +5,8 @@
 Read this contract before changing external-Agent login/logout/provider
 handoff, Auth observation, session polling, desktop target selection, or Auth
 result wording. Auth is a separate bounded façade from Agent install jobs and
-from FyAgent's existing Codex Auth Center.
+from FyAgent's central V2 `/auth` page owned by
+[V2 Managed Accounts](../frontend/v2-managed-auth.md).
 
 Primary owners:
 
@@ -191,8 +192,9 @@ Required assertions:
   readable or missing `auth.json` is `provider_connections`, not
   `AuthObserverUnavailable`; before/after provider-set checks bind the
   selected opaque `p1:` id;
-- Grok and desktop products remain handoff-only; Codex remains Auth-Center
-  managed;
+- Grok and desktop products remain handoff-only; Codex remains managed by
+  the central `/auth` page; leftover `auth_start_login` is not an Agent
+  Auth path;
 - desktop target expiry/ambiguity/drift produces zero launch side effects;
 - renderer clears sensitive/local session state on terminal, route unmount and
   retry paths. Browser mocks do not prove native Auth success.

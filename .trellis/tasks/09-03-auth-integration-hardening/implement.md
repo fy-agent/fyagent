@@ -3,16 +3,24 @@
 ## Checklist
 
 1. [x] 复核前序子任务和剩余双 owner。
-2. [ ] 迁移/删除旧 UI、command 和直接 manager 调用。
+2. [x] leftover `auth_*` 与 leftover Copilot 登录/轮询/删除/设默认/注销 IPC 永久 fail-closed；leftover Provider OAuth 区块改为只读 picker。未迁移 JSON manager 仍可作为 list/status 只读回退。
 3. [ ] 完成恢复、安全、a11y、性能和整库测试。
 4. [ ] 执行 native HIL，记录脱敏证据。
-5. [ ] 更新 Specs，逐任务归档，提交归档/journal，确认 clean。
+5. [x] owning specs 已按 leftover fail-closed 更新。任务归档、提交和工作树清洁仍未做。
 
-已完成的第一刀：`copilot_get_token*` 对 renderer 永久 fail-closed；leftover
-Settings 认证页改为兼容说明，不再作为第二套登录 owner；Managed Auth 相关
-Rust cfg 已写入 supported-platform allowance，非 macOS/Windows 浏览器打开
-保持 `Unsupported`。V1 Provider 表单里的 Copilot/Codex/xAI 区块、JSON
-manager 兼容路径、故障恢复 UX 和 native HIL 仍未做。
+已完成：`copilot_get_token*` 对 renderer 永久 fail-closed；leftover
+Settings 认证页是兼容说明；leftover `auth_start_login` /
+`auth_poll_for_account` / `auth_remove_account` / `auth_set_default_account`
+/ `auth_logout` / `auth_cancel_login` 以及 leftover
+`copilot_start_device_flow` / `copilot_poll_for_auth` /
+`copilot_poll_for_account` / `copilot_remove_account` /
+`copilot_set_default_account` / `copilot_logout` 返回
+`legacy_auth_mutation_disabled`；Provider 表单 Copilot/Codex/xAI 区块不再
+登录、轮询或删除账号。Managed Auth 相关 Rust cfg 已写入
+supported-platform allowance。
+
+仍未做：未迁移 JSON manager 的密封与删除、故障恢复 UX、macOS/Windows
+native HIL、任务归档与提交。
 
 
 ## Validation

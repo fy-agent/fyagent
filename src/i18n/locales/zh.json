@@ -325,6 +325,7 @@
     "authCenter": {
       "title": "账号与认证",
       "description": "官方账号、软件连接和当前请求来源在「账号与认证」页面统一管理。这里不再单独登录或轮询令牌。",
+      "providerBindingHint": "登录、重新登录和移除账号请到「账号与认证」页面完成。这里只能选择已保存账号用于当前供应商绑定。",
       "beta": "Beta",
       "copilotDescription": "管理 GitHub Copilot 账号",
       "codexOauthDescription": "管理 ChatGPT 账号",
@@ -1323,7 +1324,7 @@
     "logoutAll": "注销所有账号",
     "retry": "重试",
     "copyCode": "复制代码",
-    "migrationFailed": "旧认证数据迁移失败：{{error}}",
+    "migrationFailed": "旧认证数据迁移失败。请到「账号与认证」页面处理。",
     "loadModelsFailed": "加载 Copilot 模型列表失败",
     "deploymentType": "GitHub 部署类型",
     "deploymentGitHubCom": "GitHub.com",

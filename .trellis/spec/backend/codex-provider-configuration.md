@@ -317,8 +317,8 @@ CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED
   [Change Plan Typed Executor](./change-plan-executor.md).
 - Codex OAuth store tests cover v2 `credential_id` keys, same-workspace two
   users, v1 backup + idempotent migrate, unique vs ambiguous Provider binding
-  remap, bound-missing fail-closed forwarding, `auth_cancel_login` actually
-  dropping the pending device flow, Debug/DTO token redaction, explicit `file`
+  remap, bound-missing fail-closed forwarding, leftover `auth_*` mutations
+  returning `legacy_auth_mutation_disabled`, Debug/DTO token redaction, explicit `file`
   native projection, and fail-closed `keyring`/`auto`/`ephemeral`/unset/unknown
   without consulting `auth.json` existence.
 
@@ -562,9 +562,9 @@ live auth.json unchanged
 ### 1. Scope / Trigger
 
 - Trigger: the managed ChatGPT OAuth store, Provider binding IDs, proxy
-  routing headers, Auth Center DTO, and native `auth.json` projection all
-  changed together. This is a persisted-schema plus cross-layer command
-  contract, so code-spec depth is mandatory.
+  routing headers, leftover read-only status DTO, and native `auth.json`
+  projection all changed together. This is a persisted-schema plus
+  cross-layer command contract, so code-spec depth is mandatory.
 - Owner: live token and Credential Session authority is
   [Managed Auth Core](./managed-auth.md). `proxy/providers/codex_oauth_auth.rs`
   remains the unsealed JSON compatibility store until that source is migrated.
@@ -603,14 +603,14 @@ ManagedAuthStatus {
   native_projection_available?   // Codex only; true only for explicit file
 }
 
-auth_start_login(authProvider, githubDomain?)
-auth_poll_for_account(authProvider, deviceCode, githubDomain?)
 auth_list_accounts(authProvider)
-auth_get_status(authProvider)
-auth_remove_account(authProvider, accountId)   // accountId = credential_id
-auth_set_default_account(authProvider, accountId)
-auth_logout(authProvider)
-auth_cancel_login(authProvider, deviceCode?)   // Codex: abort pending device flow
+auth_get_status(authProvider)          // read-only leftover compatibility
+auth_start_login / auth_poll_for_account / auth_remove_account /
+auth_set_default_account / auth_logout / auth_cancel_login
+  -> always `legacy_auth_mutation_disabled`
+                                       // leftover Device Code/remove/default
+                                       // are not a second owner; use
+                                       // managed_auth_* + impact preview
 
 parse_cli_auth_credentials_store(config_toml)
   -> File | Keyring | Auto | Ephemeral | Unset | Unknown | ConfigInvalid
@@ -619,8 +619,8 @@ native_file_projection_allowed(config_toml) -> bool
 overlay_cli_auth_credentials_store(outgoing, current_live) -> toml
 ```
 
-`authProvider` remains `github_copilot | codex_oauth | xai_oauth`. No new
-Auth Center. No environment key.
+`authProvider` remains `github_copilot | codex_oauth | xai_oauth`. No second
+leftover Auth Center login owner. No environment key.
 
 ### 3. Contracts
 
@@ -653,16 +653,21 @@ Auth Center. No environment key.
 - Empty official snapshots that omit `cli_auth_credentials_store` must
   overlay the current live value so a later switch cannot silently drop
   file-mode projection.
-- `auth_cancel_login` for `codex_oauth` must drop the pending device-code
-  poll. GitHub Copilot / xAI currently no-op rather than invent a second
-  cancel protocol.
-- Auth Center distinguishes “managed account usable for FyAgent routing”
-  from “native Codex projection available”. Refresh-token remaining source
-  of truth is the managed store. Reconciling a Codex-rotated refresh token
-  into that store before file-mode projection is still residual: identity
-  must match first; this iteration does not implement the full live
-  readback path. OAuth HTTP errors may include the status code and must
-  not echo the response body.
+- Leftover `auth_cancel_login` / `auth_start_login` / `auth_poll_for_account`
+  and leftover Copilot login/remove/default/logout IPC always return
+  `legacy_auth_mutation_disabled`. Live OpenAI Device Code cancel belongs
+  on `managed_auth_cancel_login`, which bumps session generation so a late
+  poll cannot save a credential.
+- Leftover Provider forms distinguish “managed account usable for FyAgent
+  routing” from “native Codex projection available” via the read-only
+  status DTO. They must not start leftover login or display workspace
+  routing IDs. Refresh-token remaining source of truth is the managed
+  store once that source is sealed; unsealed JSON remains a read-only
+  compatibility store until migration. Reconciling a Codex-rotated refresh
+  token into that store before file-mode projection is still residual:
+  identity must match first; production file/keyring projection stays
+  fail-closed without matching-host HIL. OAuth HTTP errors may include the
+  status code and must not echo the response body.
 
 ### 4. Validation & Error Matrix
 
@@ -676,7 +681,7 @@ Auth Center. No environment key.
 | Token in DTO, log, Debug, ledger, DOM | Security regression |
 | OAuth HTTP failure embeds response body | Security regression; errors may include status only |
 | Store load failed (`store_loaded=false`) then remap bindings | Forbidden; empty in-memory map must not unbind every Provider |
-| `auth_cancel_login` leaves Codex device poll running | Contract regression |
+| leftover `auth_start_login` / `auth_cancel_login` starts or continues Device Code | Contract regression; must return `legacy_auth_mutation_disabled` |
 
 ### 5. Good/Base/Bad Cases
 
@@ -697,8 +702,8 @@ Auth Center. No environment key.
   `auth_json_existence_is_not_consulted`
 - overlay preserves live `cli_auth_credentials_store` when outgoing omits it
 - Debug redacts `refresh_token`
-- Auth Center/status DTO has `id` + optional `chatgpt_account_id` and no
-  token fields
+- Leftover status DTO has `id` + optional `chatgpt_account_id` and no
+  token fields; leftover login/remove IPC is fail-closed
 
 ### 7. Wrong vs Correct
 
