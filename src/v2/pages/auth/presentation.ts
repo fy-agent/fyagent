@@ -85,6 +85,20 @@ export function managedAuthReasonCopy(
   return reason === null ? null : reasonCopies[reason];
 }
 
+export function uniqueManagedAuthReasonCopies(
+  reasons: ManagedAuthReasonCode[],
+): string[] {
+  const copies: string[] = [];
+  const seen = new Set<string>();
+  for (const reason of reasons) {
+    const copy = managedAuthReasonCopy(reason);
+    if (copy === null || seen.has(copy)) continue;
+    seen.add(copy);
+    copies.push(copy);
+  }
+  return copies;
+}
+
 export function accountHealthPresentation(health: ManagedAuthHealth): {
   label: string;
   tone: AuthTone;

@@ -30,6 +30,7 @@ import { AccountView } from "./AccountView";
 import { ConnectionsView } from "./ConnectionsView";
 import { LoginDialog } from "./LoginDialog";
 import { ConnectionActionDialog, RemoveAccountDialog } from "./MutationDialogs";
+import { ReasonList } from "./common";
 import { managedAuthConsumerLabel, sessionSummary } from "./presentation";
 import { useManagedAuthLoginSession } from "./useManagedAuthLoginSession";
 import "./page.css";
@@ -405,7 +406,10 @@ export function AuthPage() {
       ) : null}
       {overview.reasonCodes.length > 0 ? (
         <InlineNotice tone="warning">
-          部分账号状态暂时无法确认，请刷新后再进行危险操作。
+          <span className="fy-auth-session-banner">
+            <ReasonList reasons={overview.reasonCodes} />
+            <Button onClick={() => void refetchOverview()}>刷新状态</Button>
+          </span>
         </InlineNotice>
       ) : null}
       {loginController.snapshot && !loginOpen ? (

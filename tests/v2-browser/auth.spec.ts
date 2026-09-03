@@ -112,3 +112,20 @@ test("uses one-pane mobile navigation without horizontal overflow", async ({
   await expect(pageRoot).toHaveAttribute("data-mobile-detail", "false");
   await expectHealthyPage(page, health);
 });
+
+test("restores focus to add account after Escape closes the login dialog", async ({
+  page,
+}) => {
+  const health = monitorPageHealth(page);
+  await openV2Page(page, "/auth");
+
+  const addAccount = page.getByRole("button", { name: "添加账号" }).first();
+  await addAccount.click();
+  const dialog = page.getByRole("dialog", { name: "添加官方账号" });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "取消" }).focus();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect(addAccount).toBeFocused();
+  await expectHealthyPage(page, health);
+});

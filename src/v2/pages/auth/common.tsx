@@ -11,7 +11,7 @@ import { Badge } from "../../shared/ui/primitives";
 import {
   accountHealthPresentation,
   managedAuthProviderLabel,
-  managedAuthReasonCopy,
+  uniqueManagedAuthReasonCopies,
   type AuthTone,
 } from "./presentation";
 
@@ -83,7 +83,9 @@ export function AuthListItem({
         type="button"
         className="fy-auth-list-item"
         aria-current={selected ? "true" : undefined}
-        aria-label={label}
+        aria-label={
+          typeof summary === "string" ? `${label}，${summary}` : label
+        }
         onClick={onSelect}
         data-testid={testId}
       >
@@ -117,11 +119,12 @@ export function DefinitionRow({
 }
 
 export function ReasonList({ reasons }: { reasons: ManagedAuthReasonCode[] }) {
-  if (reasons.length === 0) return null;
+  const copies = uniqueManagedAuthReasonCopies(reasons);
+  if (copies.length === 0) return null;
   return (
     <ul className="fy-auth-reason-list">
-      {reasons.map((reason) => (
-        <li key={reason}>{managedAuthReasonCopy(reason)}</li>
+      {copies.map((copy) => (
+        <li key={copy}>{copy}</li>
       ))}
     </ul>
   );

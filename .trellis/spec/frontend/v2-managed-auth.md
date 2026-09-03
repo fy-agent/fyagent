@@ -167,7 +167,10 @@ request mode is a third-party API.
   or stable Chinese accessible names according to the current V2 language
   policy.
 - Dialog focus is restored to the invoking control. Copy feedback does not move
-  focus. Reduced-motion mode disables non-essential animation.
+  focus. Reduced-motion mode disables non-essential animation. Keep the shared
+  `Dialog` mounted while closed so Radix can dismiss on Escape and return
+  focus after `aria-hidden` is cleared; do not `return null` when `open` is
+  false, and do not wrap login in a second focus owner.
 - Copy says what is complete, pending or unknown and gives one safe next step.
   It must not claim login, connection or request routing beyond backend
   readback evidence.
@@ -239,7 +242,13 @@ Required assertions include:
   `authStartLogin` / `authPollForAccount` / `authRemoveAccount` /
   `copilotStartDeviceFlow` / `copilotLogout` throw
   `legacy_auth_mutation_disabled` without invoking Tauri;
-- keyboard/focus/ARIA, narrow viewport and reduced-motion behavior.
+- keyboard/focus/ARIA, narrow viewport and reduced-motion behavior;
+- overview `reasonCodes` render closed-set recovery copy
+  (`secret_unavailable`, `migration_blocked`, `pending_restart`,
+  `external_change_detected`) plus a refresh action, never a generic
+  “temporarily unavailable” banner;
+- login-session polling stops while the persistent `/auth` route is hidden
+  and resumes without starting a second session.
 
 Browser and mock tests prove renderer behavior only. Real OAuth, OS keyring,
 consumer projection, token renewal and restart evidence require the native/HIL
@@ -268,3 +277,20 @@ const session = await ports.managedAuth.startLogin({
 // One session hook resumes/polls the opaque session ID. A terminal mutation
 // result replaces the overview only after strict parsing of native readback.
 ```
+
+Wrong:
+
+```tsx
+if (!open) return null;
+return <Dialog open={open} onOpenChange={onOpenChange} />;
+```
+
+Correct:
+
+```tsx
+return <Dialog open={open} onOpenChange={onOpenChange} />;
+```
+
+Unmounting the shared Dialog while closed skips Radix dismiss and focus
+return. The primitive records the invoking control and restores it on the
+next frame after close.

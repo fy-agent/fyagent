@@ -1,5 +1,7 @@
 import {
   forwardRef,
+  useEffect,
+  useRef,
   type ButtonHTMLAttributes,
   type InputHTMLAttributes,
   type ReactNode,
@@ -218,9 +220,24 @@ export function Dialog({
   large?: boolean;
 }) {
   const visible = usePersistentVisibility();
+  const presented = open && visible;
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (presented) return;
+    const save = (event: FocusEvent) => {
+      const target = event.target;
+      if (target instanceof HTMLElement) {
+        restoreFocusRef.current = target;
+      }
+    };
+    document.addEventListener("focusin", save, true);
+    return () => document.removeEventListener("focusin", save, true);
+  }, [presented]);
+
   return (
     <DialogPrimitive.Root
-      open={open && visible}
+      open={presented}
       onOpenChange={(next) => {
         if (!visible) return;
         onOpenChange(next);
@@ -233,6 +250,13 @@ export function Dialog({
             "fy-control-dialog",
             large && "fy-control-dialog-large",
           )}
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            const node = restoreFocusRef.current;
+            window.requestAnimationFrame(() => {
+              if (node?.isConnected) node.focus();
+            });
+          }}
         >
           <header>
             <DialogPrimitive.Title>{title}</DialogPrimitive.Title>

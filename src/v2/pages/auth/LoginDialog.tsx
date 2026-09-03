@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type {
   ManagedAuthAccountSummary,
@@ -50,7 +50,6 @@ interface LoginDialogProps {
 }
 
 export function LoginDialog(props: LoginDialogProps) {
-  if (!props.open) return null;
   const key = `${props.reauthenticateAccount?.accountId ?? "new"}:${props.initialConsumer ?? "none"}`;
   return <LoginDialogContent key={key} {...props} />;
 }
@@ -95,6 +94,15 @@ function LoginDialogContent({
       : "device_code",
   );
   const [copied, setCopied] = useState(false);
+  const wasOpen = useRef(open);
+
+  useEffect(() => {
+    const justOpened = open && !wasOpen.current;
+    wasOpen.current = open;
+    if (!justOpened || controller.snapshot) return;
+    setStep(reauthenticateAccount || initialConsumer ? 2 : 1);
+    setCopied(false);
+  }, [controller.snapshot, initialConsumer, open, reauthenticateAccount]);
 
   useEffect(() => {
     if (!copied) return;
