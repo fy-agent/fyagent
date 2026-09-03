@@ -12,8 +12,11 @@ discovery, installation, process restart, and launch are owned by
 release metadata are owned by their dedicated contracts. Managed ChatGPT
 OAuth accounts, `credential_id` vs `chatgpt_account_id` routing identity,
 and native `auth.json` projection are owned with
-[External Agent P0 Safety](./external-agent-p0.md) and the Codex OAuth store:
-Provider rows store `ProviderMeta.authBinding.accountId = credential_id` only.
+[Managed Auth Core](./managed-auth.md) and
+[External Agent P0 Safety](./external-agent-p0.md).
+The unsealed Codex JSON manager remains a compatibility store until
+migration seals that source. Provider rows store
+`ProviderMeta.authBinding.accountId` as an opaque account/credential id only.
 Native file projection is allowed only when live `cli_auth_credentials_store`
 is explicitly `file`; `keyring`, `auto`, `ephemeral`, unset, and unknown fail
 closed. Workspace/account IDs are never HashMap keys.
@@ -103,7 +106,11 @@ CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED
   or delete `auth.json`. `prepare_codex_provider_live_config` projects the
   stored API key onto `experimental_bearer_token` so Codex can authenticate
   without touching the ChatGPT login cache. This is a hard invariant, not the
-  leftover `preserveCodexOfficialAuthOnSwitch` setting.
+  leftover `preserveCodexOfficialAuthOnSwitch` setting. Proxy restore
+  (`write_codex_live_verbatim`) follows the same split: ChatGPT OAuth login
+  material may rewrite `auth.json`; any other stored `auth.OPENAI_API_KEY`
+  is projected onto live `experimental_bearer_token` and must not recreate
+  `auth.json`.
 - Official live writes with ChatGPT login material may still write `auth.json`
   only when the live credential store is an explicit `file` store.
   `project_codex_live_config_when_openai_auth_disabled` injects a bearer token
@@ -239,6 +246,7 @@ CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED
 | Codex image-extension is enabled (`requires_openai_auth = false`) and the Provider has an API key    | Stored and live `[model_providers.<id>]` contain `experimental_bearer_token` equal to `auth.OPENAI_API_KEY`.            |
 | Codex image-extension is disabled (`requires_openai_auth = true`)                                    | Stored TOML has no image-mode bearer token; the stored Provider still keeps `auth.OPENAI_API_KEY`.                      |
 | Third-party Codex live write (any leftover preserve setting)                                         | Config-only; live `auth.json` bytes unchanged; API key projected to `experimental_bearer_token`.                        |
+| Restore a third-party Codex backup whose `auth` is only `OPENAI_API_KEY`                             | Config-only; do not write `auth.json`; project the key onto live `experimental_bearer_token`.                           |
 | Official live write, `requires_openai_auth` missing or `true`                                        | Do not inject a bearer token via the official helper; file-store official writes may still update `auth.json`.          |
 | Two ChatGPT users share one workspace/account routing ID                                             | Store two `credential_id` rows; never use the workspace ID as the HashMap key.                                          |
 | Provider `authBinding.accountId` still holds a v1 workspace ID that maps to exactly one credential   | Remap that binding to the new `credential_id`.                                                                          |
@@ -293,9 +301,10 @@ CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED
   `experimental_bearer_token` and stored `auth.OPENAI_API_KEY`, image-off
   stored TOML omitting the bearer field, third-party live switches never
   rewriting `auth.json` while projecting the key to
-  `experimental_bearer_token`, the official helper injecting the token only
-  when `requires_openai_auth = false`, and leftover preserve=false not
-  restoring overwrite.
+  `experimental_bearer_token`, Proxy `write_codex_live_verbatim` restore of a
+  third-party `OPENAI_API_KEY` backup leaving ChatGPT `auth.json` unchanged,
+  the official helper injecting the token only when `requires_openai_auth =
+  false`, and leftover preserve=false not restoring overwrite.
 - Change Plan tests cover 0/v19 to schema 20, sync skip/local preserve,
   zero-side-effect planning, 15-minute expiry, concurrent single admission,
   writer exactly once/zero on rejection, same-plan idempotent replay,
@@ -524,6 +533,10 @@ project_codex_live_config_when_openai_auth_disabled(auth, config_text) -> config
 - `project_live_config_injects_bearer_token_only_when_openai_auth_is_disabled`
 - `provider_service_switch_codex_projects_bearer_token_when_openai_auth_disabled`
 - `provider_service_switch_codex_default_preserves_official_auth`
+- `hot_switch_codex_provider_preserves_provider_model_provider_in_backup_and_restore`
+- `hot_switch_codex_chat_provider_updates_live_provider_display`
+- `write_codex_live_verbatim_third_party_key_does_not_replace_oauth_login`
+- `codex_empty_restore_snapshot_does_not_delete_existing_auth_json`
 
 ### 7. Wrong vs Correct
 
@@ -552,7 +565,9 @@ live auth.json unchanged
   routing headers, Auth Center DTO, and native `auth.json` projection all
   changed together. This is a persisted-schema plus cross-layer command
   contract, so code-spec depth is mandatory.
-- Owner: `proxy/providers/codex_oauth_auth.rs` is the only token SSOT.
+- Owner: live token and Credential Session authority is
+  [Managed Auth Core](./managed-auth.md). `proxy/providers/codex_oauth_auth.rs`
+  remains the unsealed JSON compatibility store until that source is migrated.
   `ProviderMeta.authBinding` stores IDs only. Native file projection is
   `codex_config/credential_store.rs` plus existing
   `codex_config/{auth,storage}.rs` writers. Agent Catalog install actions

@@ -2965,7 +2965,7 @@ impl ProxyService {
     }
 
     fn write_codex_live_verbatim(&self, config: &Value) -> Result<(), String> {
-        use crate::codex_config::{get_codex_auth_path, get_codex_config_path};
+        use crate::codex_config::get_codex_auth_path;
 
         let auth = config.get("auth");
         let config_str = config.get("config").and_then(|v| v.as_str());
@@ -3014,9 +3014,15 @@ impl ProxyService {
                 write_json_file(&auth_path, auth)
                     .map_err(|e| format!("写入 Codex auth 失败: {e}"))?;
             }
+            (Some(auth), Some(cfg)) => {
+                let live_config =
+                    crate::codex_config::prepare_codex_provider_live_config(auth, cfg)
+                        .map_err(|e| format!("写入 Codex 配置失败: {e}"))?;
+                crate::codex_config::write_codex_live_config_atomic(Some(&live_config))
+                    .map_err(|e| format!("写入 Codex 配置失败: {e}"))?;
+            }
             (_, Some(cfg)) => {
-                let config_path = get_codex_config_path();
-                crate::config::write_text_file(&config_path, cfg)
+                crate::codex_config::write_codex_live_config_atomic(Some(cfg))
                     .map_err(|e| format!("写入 Codex config 失败: {e}"))?;
             }
             (_, None) => {}
@@ -4325,6 +4331,73 @@ wire_api = "responses"
             crate::config::read_json_file(&crate::codex_config::get_codex_auth_path())
                 .expect("read auth");
         assert_eq!(live_auth, auth);
+    }
+
+    #[test]
+    #[serial]
+    fn write_codex_live_verbatim_third_party_key_does_not_replace_oauth_login() {
+        let _home = TempHome::new();
+        crate::settings::reload_settings().expect("reload settings");
+        let db = Arc::new(Database::memory().expect("init db"));
+        let service = ProxyService::new(db);
+        let oauth_auth = json!({
+            "auth_mode": "chatgpt",
+            "tokens": {
+                "id_token": "oauth-id",
+                "access_token": "oauth-access"
+            }
+        });
+        crate::codex_config::write_codex_live_atomic(
+            &oauth_auth,
+            Some(
+                r#"model_provider = "openai"
+model = "gpt-5.4"
+"#,
+            ),
+        )
+        .expect("seed official ChatGPT login");
+
+        service
+            .write_codex_live_verbatim(&json!({
+                "auth": {
+                    "OPENAI_API_KEY": "aihubmix-key"
+                },
+                "config": r#"model_provider = "aihubmix"
+model = "gpt-5.4"
+
+[model_providers.aihubmix]
+name = "AiHubMix"
+base_url = "https://aihubmix.example/v1"
+wire_api = "responses"
+requires_openai_auth = true
+"#
+            }))
+            .expect("restore third-party provider backup");
+
+        let live_auth: Value =
+            crate::config::read_json_file(&crate::codex_config::get_codex_auth_path())
+                .expect("read official auth.json");
+        assert_eq!(
+            live_auth, oauth_auth,
+            "verbatim third-party restore must keep the ChatGPT login cache"
+        );
+
+        let live_config = std::fs::read_to_string(crate::codex_config::get_codex_config_path())
+            .expect("read restored config.toml");
+        let parsed: toml::Value = toml::from_str(&live_config).expect("parse restored config");
+        assert_eq!(
+            parsed
+                .get("model_providers")
+                .and_then(|v| v.get("aihubmix"))
+                .and_then(|v| v.get("experimental_bearer_token"))
+                .and_then(|v| v.as_str()),
+            Some("aihubmix-key"),
+            "third-party key must land on experimental_bearer_token"
+        );
+        assert!(
+            !live_config.contains("oauth-access"),
+            "config.toml must not receive OAuth material"
+        );
     }
 
     #[tokio::test]
@@ -6098,6 +6171,19 @@ requires_openai_auth = true
             None,
         );
 
+        let oauth_auth = json!({
+            "auth_mode": "chatgpt",
+            "tokens": {
+                "id_token": "oauth-id",
+                "access_token": "oauth-access"
+            }
+        });
+        crate::codex_config::write_codex_live_atomic(
+            &oauth_auth,
+            Some("model_provider = \"openai\"\nmodel = \"gpt-5.4\"\n"),
+        )
+        .expect("seed official ChatGPT login before takeover");
+
         db.save_provider("codex", &provider_a)
             .expect("save provider a");
         db.save_provider("codex", &provider_b)
@@ -6213,11 +6299,18 @@ requires_openai_auth = true
             "restored Codex live config should preserve the provider's model_provider"
         );
         assert_eq!(
-            live.get("auth")
-                .and_then(|auth| auth.get("OPENAI_API_KEY"))
+            live.get("auth"),
+            Some(&oauth_auth),
+            "restore must keep the ChatGPT login cache instead of copying aihubmix-key"
+        );
+        assert_eq!(
+            parsed_live
+                .get("model_providers")
+                .and_then(|v| v.get("aihubmix"))
+                .and_then(|v| v.get("experimental_bearer_token"))
                 .and_then(|v| v.as_str()),
             Some("aihubmix-key"),
-            "restore should still use the hot-switched provider auth"
+            "restored third-party auth should live on experimental_bearer_token"
         );
     }
 
@@ -6272,6 +6365,19 @@ requires_openai_auth = true
             api_format: Some("openai_chat".to_string()),
             ..Default::default()
         });
+
+        let oauth_auth = json!({
+            "auth_mode": "chatgpt",
+            "tokens": {
+                "id_token": "oauth-id",
+                "access_token": "oauth-access"
+            }
+        });
+        crate::codex_config::write_codex_live_atomic(
+            &oauth_auth,
+            Some("model_provider = \"openai\"\nmodel = \"gpt-5.4\"\n"),
+        )
+        .expect("seed official ChatGPT login before chat hot switch");
 
         db.save_provider("codex", &provider_a)
             .expect("save provider a");
@@ -6341,10 +6447,18 @@ requires_openai_auth = true
             Some("deepseek-v4-flash")
         );
         assert_eq!(
-            live.get("auth")
-                .and_then(|auth| auth.get("OPENAI_API_KEY"))
+            live.get("auth"),
+            Some(&oauth_auth),
+            "hot switch must keep the ChatGPT login cache instead of writing deepseek-key"
+        );
+        assert_eq!(
+            parsed_live
+                .get("model_providers")
+                .and_then(|v| v.get("deepseek"))
+                .and_then(|v| v.get("experimental_bearer_token"))
                 .and_then(|v| v.as_str()),
-            Some(PROXY_TOKEN_PLACEHOLDER)
+            Some(PROXY_TOKEN_PLACEHOLDER),
+            "taken-over chat-provider live config should keep the proxy placeholder on experimental_bearer_token"
         );
     }
 
