@@ -159,3 +159,44 @@ Completed 09-03-managed-auth-core-vault-migration: ManagedAuthService + SecretRe
 ### Status
 
 [OK] **Completed**
+
+
+## Session 67: 收敛 leftover Auth 并归档统一认证任务
+<!-- trellis-session: v=2 fp=5d505773efbb449d -->
+
+**Date**: 2026-09-03
+**Task**: 收敛 leftover Auth 并归档统一认证任务
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Leftover auth_* 与 Copilot 登录/删除 IPC 永久 fail-closed，Provider 表单只选已保存绑定；check:prearchive 通过后归档 hardening 与父任务。未密封 JSON、故障恢复 UX、a11y 自动化与 macOS/Windows HIL 保持未勾，生产投影门禁仍关闭。
+
+### Main Changes
+
+- leftover auth_* 与 Copilot 登录/轮询/删除/设默认/注销返回 legacy_auth_mutation_disabled
+- leftover Provider OAuth 区块改为只读 picker；Copilot 迁移失败改闭集文案
+- copilot_get_token* 对 renderer 保持 copilot_token_not_exposed
+- updated managed-auth、codex-provider-configuration、v2-managed-auth specs 与诚实 PRD
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `53476b86` | fix(auth): fail-close leftover login IPC and keep Provider forms picker-only |
+| `cbb8d7a5` | fix(auth): fail-close Copilot token IPC and collapse leftover Auth Center |
+
+### Testing
+
+- [OK] mise run check:prearchive --exclude-active-task .trellis/tasks/09-03-auth-integration-hardening 通过
+- [OK] leftover authApi / Codex / xAI / Copilot AuthSection 单测通过
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 未密封 leftover JSON 仍可读明文，待迁移密封
+- macOS/Windows 真机 HIL 未做；Codex/Grok 生产投影与 OpenCode 热加载保持关闭
+- 故障恢复 UX、键盘/a11y 自动化与 NOTICE 完整性仍待后续；未推送
