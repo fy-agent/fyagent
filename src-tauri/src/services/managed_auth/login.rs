@@ -1,6 +1,7 @@
 //! Backend-owned OpenAI login workers.
 
 use std::io::ErrorKind;
+use std::sync::atomic::{AtomicU32, Ordering as AtomicOrdering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -39,6 +40,7 @@ pub(crate) struct LoginHooks {
     pub fixed_state: Option<String>,
     pub fixed_pkce: Option<PkceCodes>,
     pub bound_port: std::sync::Arc<std::sync::Mutex<Option<u16>>>,
+    pub open_count: Arc<AtomicU32>,
 }
 
 impl Default for LoginHooks {
@@ -52,6 +54,7 @@ impl Default for LoginHooks {
             fixed_state: None,
             fixed_pkce: None,
             bound_port: std::sync::Arc::new(std::sync::Mutex::new(None)),
+            open_count: Arc::new(AtomicU32::new(0)),
         }
     }
 }
@@ -119,6 +122,16 @@ where
         &self,
         session_id: &str,
     ) -> Result<ManagedAuthLoginSessionSnapshot, ManagedAuthErrorDto> {
+        let snapshot = self.login_sessions.get(session_id)?;
+        if snapshot.terminal {
+            return Ok(snapshot);
+        }
+        if let Some(url) = self.login_sessions.reopen_target(session_id)? {
+            let hooks = self.login_hooks();
+            if (hooks.open_browser)(&url).is_ok() {
+                hooks.open_count.fetch_add(1, AtomicOrdering::SeqCst);
+            }
+        }
         self.login_sessions.get(session_id)
     }
 
@@ -153,16 +166,6 @@ where
             method: ManagedAuthLoginMethod::DeviceCode,
             account_id: current.account_id.clone(),
         };
-        let (cancel, cancel_rx) = tokio::sync::watch::channel(false);
-        let _ = cancel;
-        let handle = LoginSessionHandle {
-            session_id: session_id.to_string(),
-            generation,
-            cancel: cancel_rx,
-            expected_generation: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(generation)),
-        };
-        // Re-bind cancel to the store's new generation channel.
-        let _ = handle;
         let handle = self.login_sessions.handle_for(session_id, generation)?;
         self.spawn_login(request, ManagedAuthLoginMethod::DeviceCode, handle);
         Ok(snapshot)
@@ -301,9 +304,17 @@ where
         let state = hooks.fixed_state.clone().unwrap_or_else(generate_state);
         let redirect_uri = loopback_redirect_uri(port);
         let authorize_url = build_authorize_url(&hooks.endpoints, &redirect_uri, &pkce, &state);
+        self.login_sessions
+            .set_reopen_target(&handle.session_id, handle.generation, authorize_url.clone())
+            .map_err(|_| {
+                (
+                    ManagedAuthLoginStage::Cancelled,
+                    ManagedAuthReasonCode::Cancelled,
+                )
+            })?;
         self.set_stage(handle, ManagedAuthLoginStage::OpeningBrowser, None)?;
-        if (hooks.open_browser)(&authorize_url).is_err() {
-            // Keep the official host visible; the user can switch to device code.
+        if (hooks.open_browser)(&authorize_url).is_ok() {
+            hooks.open_count.fetch_add(1, AtomicOrdering::SeqCst);
         }
         self.set_stage(handle, ManagedAuthLoginStage::AwaitingUser, None)?;
         let decision = accept_one_callback(
@@ -383,6 +394,11 @@ where
                     ManagedAuthReasonCode::Cancelled,
                 )
             })?;
+        let _ = self.login_sessions.set_reopen_target(
+            &handle.session_id,
+            handle.generation,
+            OPENAI_DEVICE_VERIFICATION_URL.to_string(),
+        );
         let deadline = Utc::now() + chrono::TimeDelta::seconds(grant.expires_in as i64);
         loop {
             if !handle.is_current() {
@@ -667,7 +683,7 @@ mod tests {
     use axum::{Json, Router};
     use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
     use std::collections::HashMap;
-    use std::sync::atomic::{AtomicU32, Ordering};
+    use std::sync::atomic::Ordering;
     use tempfile::tempdir;
 
     fn jwt(payload: &str) -> String {
@@ -785,6 +801,7 @@ mod tests {
             fixed_state: None,
             fixed_pkce: None,
             bound_port: Arc::new(std::sync::Mutex::new(None)),
+            open_count: Arc::new(AtomicU32::new(0)),
         });
         let snapshot = service
             .start_login(StartManagedAuthLoginRequest {
@@ -836,6 +853,7 @@ mod tests {
             fixed_state: Some(state.clone()),
             fixed_pkce: Some(generate_pkce()),
             bound_port: Arc::clone(&bound_port),
+            open_count: Arc::new(AtomicU32::new(0)),
         });
         let snapshot = service
             .start_login(StartManagedAuthLoginRequest {
@@ -867,6 +885,71 @@ mod tests {
         let rows = service.repository.list_all_credentials().expect("rows");
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].credential.purpose, CredentialPurpose::CodexNative);
+        let json = serde_json::to_string(&finished)
+            .unwrap()
+            .to_ascii_lowercase();
+        for forbidden in [
+            "browser-code",
+            "fixed-state-value-32bytes-aaaa",
+            "code_verifier",
+            "secretref",
+            "access_token",
+        ] {
+            assert!(!json.contains(forbidden), "leaked {forbidden}");
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn reopen_browser_login_opens_official_page_again_without_leaking_url() {
+        let issuer = spawn_issuer(0).await;
+        let (service, _dir) = service();
+        let state = "fixed-state-value-32bytes-bbbb".to_string();
+        let bound_port = Arc::new(std::sync::Mutex::new(None));
+        let open_count = Arc::new(AtomicU32::new(0));
+        service.set_login_hooks(LoginHooks {
+            endpoints: OpenAiOAuthEndpoints::for_issuer(&issuer),
+            open_browser: silent_browser,
+            occupy_preferred: false,
+            occupy_fallback: false,
+            bind_ephemeral: true,
+            fixed_state: Some(state.clone()),
+            fixed_pkce: Some(generate_pkce()),
+            bound_port: Arc::clone(&bound_port),
+            open_count: Arc::clone(&open_count),
+        });
+        let snapshot = service
+            .start_login(StartManagedAuthLoginRequest {
+                provider: ManagedAuthProvider::Openai,
+                purpose: ManagedAuthLoginPurpose::SaveOnly,
+                consumer: None,
+                method: ManagedAuthLoginMethod::BrowserLoopback,
+                account_id: None,
+            })
+            .expect("start");
+        for _ in 0..40 {
+            if bound_port.lock().unwrap().is_some() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+        assert!(bound_port.lock().unwrap().is_some(), "loopback bound");
+        for _ in 0..40 {
+            if open_count.load(Ordering::SeqCst) >= 1 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+        assert!(open_count.load(Ordering::SeqCst) >= 1);
+        let reopened = service.reopen_login(&snapshot.session_id).expect("reopen");
+        assert!(!reopened.terminal);
+        assert_eq!(open_count.load(Ordering::SeqCst), 2);
+        let json = serde_json::to_string(&reopened)
+            .unwrap()
+            .to_ascii_lowercase();
+        assert!(!json.contains("/oauth/authorize"));
+        assert!(!json.contains("code_challenge"));
+        assert!(!json.contains(&state.to_ascii_lowercase()));
+        service.cancel_login(&snapshot.session_id).expect("cancel");
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -882,6 +965,7 @@ mod tests {
             fixed_state: None,
             fixed_pkce: None,
             bound_port: Arc::new(std::sync::Mutex::new(None)),
+            open_count: Arc::new(AtomicU32::new(0)),
         });
         let snapshot = service
             .start_login(StartManagedAuthLoginRequest {

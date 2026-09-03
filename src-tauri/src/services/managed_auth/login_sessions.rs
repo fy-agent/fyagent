@@ -25,6 +25,8 @@ pub(crate) struct LoginSessionRecord {
     pub snapshot: ManagedAuthLoginSessionSnapshot,
     pub generation: u64,
     pub cancel: watch::Sender<bool>,
+    pub expected_generation: Arc<AtomicU64>,
+    pub reopen_target: Option<String>,
 }
 
 pub(crate) struct LoginSessionStore {
@@ -68,6 +70,7 @@ impl LoginSessionStore {
         let session_id = Uuid::new_v4().hyphenated().to_string();
         let generation = self.next_generation.fetch_add(1, Ordering::SeqCst);
         let (cancel, cancel_rx) = watch::channel(false);
+        let expected_generation = Arc::new(AtomicU64::new(generation));
         let snapshot = build_snapshot(
             session_id.clone(),
             request.provider,
@@ -88,6 +91,8 @@ impl LoginSessionStore {
                 snapshot: snapshot.clone(),
                 generation,
                 cancel,
+                expected_generation: Arc::clone(&expected_generation),
+                reopen_target: None,
             },
         );
         Ok((
@@ -96,7 +101,7 @@ impl LoginSessionStore {
                 session_id,
                 generation,
                 cancel: cancel_rx,
-                expected_generation: Arc::new(AtomicU64::new(generation)),
+                expected_generation,
             },
         ))
     }
@@ -132,6 +137,10 @@ impl LoginSessionStore {
         }
         let _ = record.cancel.send(true);
         record.generation = record.generation.saturating_add(1);
+        record
+            .expected_generation
+            .store(record.generation, Ordering::SeqCst);
+        record.reopen_target = None;
         record.snapshot = apply_stage(
             &record.snapshot,
             ManagedAuthLoginStage::Cancelled,
@@ -149,9 +158,44 @@ impl LoginSessionStore {
             .ok_or_else(ManagedAuthErrorDto::invalid_request)?;
         let _ = record.cancel.send(true);
         record.generation = record.generation.saturating_add(1);
+        record
+            .expected_generation
+            .store(record.generation, Ordering::SeqCst);
+        record.reopen_target = None;
         let (cancel, _) = watch::channel(false);
         record.cancel = cancel;
         Ok(record.generation)
+    }
+
+    pub(crate) fn set_reopen_target(
+        &self,
+        session_id: &str,
+        expected_generation: u64,
+        target: String,
+    ) -> Result<(), ManagedAuthErrorDto> {
+        let mut sessions = self.lock();
+        let record = sessions
+            .get_mut(session_id)
+            .ok_or_else(ManagedAuthErrorDto::invalid_request)?;
+        if record.generation != expected_generation {
+            return Err(ManagedAuthErrorDto::from_reason(
+                ManagedAuthReasonCode::OperationConflict,
+            ));
+        }
+        record.reopen_target = Some(target);
+        Ok(())
+    }
+
+    pub(crate) fn reopen_target(
+        &self,
+        session_id: &str,
+    ) -> Result<Option<String>, ManagedAuthErrorDto> {
+        Ok(self
+            .lock()
+            .get(session_id)
+            .ok_or_else(ManagedAuthErrorDto::invalid_request)?
+            .reopen_target
+            .clone())
     }
 
     pub(crate) fn update(
@@ -212,7 +256,7 @@ impl LoginSessionStore {
             session_id: session_id.to_string(),
             generation,
             cancel: record.cancel.subscribe(),
-            expected_generation: Arc::new(AtomicU64::new(generation)),
+            expected_generation: Arc::clone(&record.expected_generation),
         })
     }
 

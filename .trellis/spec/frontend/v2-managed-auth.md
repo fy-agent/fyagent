@@ -139,6 +139,8 @@ request mode is a third-party API.
 - Account and connection mutations are revision-bound. Positive UI state comes
   only from the mutation result's freshly parsed overview/readback; the page
   does not patch an optimistic success.
+- `reopenLogin` asks the backend to open the official page for the current
+  non-terminal session. The renderer never receives an authorization URL.
 - Account removal requires a backend impact preview. Failure to disconnect all
   dependents keeps the account visible and recoverable; the page never hides a
   still-referenced account.

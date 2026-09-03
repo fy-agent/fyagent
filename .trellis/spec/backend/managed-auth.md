@@ -201,6 +201,20 @@ legacy-copilot-auth-v3  <- copilot_auth.json
   UI. Do not add new token-returning commands. Later hardening should retire
   that IPC.
 
+### Login sessions
+
+- OpenAI browser loopback PKCE is the default. Ports are only the first-party
+  registered `1455` then `1457`; unknown processes are never cancelled. Both
+  busy falls back to Device Code.
+- Device Code polling is backend-owned and uses the server interval. Cancel
+  bumps generation so a late poll cannot save a credential.
+- `reopen_login` re-opens the process-private official URL for a non-terminal
+  session. The snapshot never includes the authorization URL, callback URL,
+  code, state, or verifier.
+- Success is published only after SecretRef + metadata readback. Codex native
+  file projection stays closed without matching-host HIL (`partial` +
+  `native_projection_unavailable`).
+
 ### Sync and export
 
 `managed_auth_*` tables are local-only in the WebDAV skip/preserve sets.
@@ -271,6 +285,12 @@ Required assertions:
 - stale generation cannot overwrite; resolver rejects native refresh owners;
 - overview/DTO leak scan includes `access_token`, `refresh_token`, `id_token`,
   `authorization_code`, `device_code`, `secretRef` / `secret_ref`, `verifier`;
+- OpenAI loopback callback host/path/state/PKCE, `1455`→`1457`→Device Code,
+  cancel drops a late result, and reopen opens the official page without
+  putting the authorize URL on the snapshot;
+- Codex file projection remains closed without HIL; connect/login-to-connect
+  finishes `partial` with `native_projection_unavailable`;
+- third-party Codex writers never overwrite official `auth.json`;
 - unsigned `cargo test` DPK `errSecMissingEntitlement` is fail-closed
   evidence, not product acceptance. Matching-host HIL remains `#[ignore]`
   until a signed app with `HY446996QX.com.fyagent.desktop` access-group
