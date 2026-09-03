@@ -16,7 +16,8 @@ use tokio::sync::{Mutex, RwLock};
 
 use super::copilot_auth::GitHubDeviceCodeResponse;
 
-const XAI_ISSUER: &str = "https://auth.x.ai";
+pub(crate) const XAI_ISSUER: &str = "https://auth.x.ai";
+pub(crate) const XAI_OFFICIAL_HOST: &str = "auth.x.ai";
 const XAI_DISCOVERY_URL: &str = "https://auth.x.ai/.well-known/openid-configuration";
 const XAI_CLIENT_ID: &str = "b1a00492-073a-47ea-816f-4c329264a828";
 const XAI_SCOPE: &str = "openid profile email offline_access grok-cli:access api:access";
@@ -72,9 +73,50 @@ struct DiscoveryDocument {
 }
 
 #[derive(Debug, Clone)]
-struct OAuthEndpoints {
-    token_endpoint: String,
-    device_authorization_endpoint: String,
+pub(crate) struct XaiOAuthEndpoints {
+    pub(crate) token_endpoint: String,
+    pub(crate) device_authorization_endpoint: String,
+}
+
+impl XaiOAuthEndpoints {
+    #[cfg(test)]
+    pub(crate) fn for_issuer(base: &str) -> Self {
+        let base = base.trim_end_matches('/');
+        Self {
+            token_endpoint: format!("{base}/oauth2/token"),
+            device_authorization_endpoint: format!("{base}/oauth2/device/code"),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub(crate) struct XaiDeviceCodeGrant {
+    pub device_code: String,
+    pub user_code: String,
+    pub verification_uri: String,
+    pub expires_in: u64,
+    pub interval: u64,
+    pub token_endpoint: String,
+}
+
+impl std::fmt::Debug for XaiDeviceCodeGrant {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("XaiDeviceCodeGrant")
+            .field("device_code", &"<redacted>")
+            .field("user_code", &self.user_code)
+            .field("verification_uri", &self.verification_uri)
+            .field("expires_in", &self.expires_in)
+            .field("interval", &self.interval)
+            .field("token_endpoint", &self.token_endpoint)
+            .finish()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct XaiIdentity {
+    pub subject: String,
+    pub tenant: String,
+    pub login: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -98,6 +140,13 @@ pub(crate) struct OAuthTokenResponse {
     pub(crate) id_token: Option<String>,
     #[serde(default)]
     pub(crate) expires_in: Option<i64>,
+}
+
+#[derive(Clone)]
+pub(crate) enum XaiDeviceTokenPoll {
+    Pending,
+    SlowDown,
+    Granted(OAuthTokenResponse),
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -206,7 +255,7 @@ pub struct XaiOAuthManager {
     access_tokens: Arc<RwLock<HashMap<String, CachedAccessToken>>>,
     refresh_locks: Arc<RwLock<HashMap<String, Arc<Mutex<()>>>>>,
     pending_device_codes: Arc<RwLock<HashMap<String, PendingDeviceCode>>>,
-    discovered_endpoints: Arc<RwLock<Option<OAuthEndpoints>>>,
+    discovered_endpoints: Arc<RwLock<Option<XaiOAuthEndpoints>>>,
     mutation_lock: Arc<Mutex<()>>,
     storage_path: PathBuf,
     json_store_sealed: AtomicBool,
@@ -237,55 +286,33 @@ impl XaiOAuthManager {
     }
 
     pub async fn start_device_flow(&self) -> Result<GitHubDeviceCodeResponse, XaiOAuthError> {
-        let endpoints = self.discover_endpoints().await?;
-        let response = crate::proxy::http_client::get()
-            .post(&endpoints.device_authorization_endpoint)
-            .header("User-Agent", XAI_USER_AGENT)
-            .form(&[("client_id", XAI_CLIENT_ID), ("scope", XAI_SCOPE)])
-            .send()
-            .await?;
-
-        let status = response.status();
-        let value = read_json_response(response).await?;
-        if !status.is_success() {
-            return Err(XaiOAuthError::TokenFetchFailed(format_oauth_error(
-                status, &value,
-            )));
-        }
-        let device = parse_device_code_response(value)?;
-        let interval = device
-            .interval
-            .clamp(1, MAX_POLL_INTERVAL_SECS)
-            .saturating_add(POLLING_SAFETY_MARGIN_SECS);
-        let expires_in = device.expires_in.clamp(1, MAX_DEVICE_CODE_LIFETIME_SECS);
+        let grant = request_xai_device_code().await?;
         let now_ms = chrono::Utc::now().timestamp_millis();
 
         {
             let mut pending = self.pending_device_codes.write().await;
             pending.retain(|_, entry| entry.expires_at_ms > now_ms);
             pending.insert(
-                device.device_code.clone(),
+                grant.device_code.clone(),
                 PendingDeviceCode {
-                    token_endpoint: endpoints.token_endpoint,
+                    token_endpoint: grant.token_endpoint,
                     expires_at_ms: now_ms.saturating_add(
-                        i64::try_from(expires_in)
+                        i64::try_from(grant.expires_in)
                             .unwrap_or(i64::MAX)
                             .saturating_mul(1_000),
                     ),
-                    interval_secs: interval,
+                    interval_secs: grant.interval,
                     next_poll_at_ms: now_ms,
                 },
             );
         }
 
         Ok(GitHubDeviceCodeResponse {
-            device_code: device.device_code,
-            user_code: device.user_code,
-            verification_uri: device
-                .verification_uri_complete
-                .unwrap_or(device.verification_uri),
-            expires_in,
-            interval,
+            device_code: grant.device_code,
+            user_code: grant.user_code,
+            verification_uri: grant.verification_uri,
+            expires_in: grant.expires_in,
+            interval: grant.interval,
         })
     }
 
@@ -312,58 +339,16 @@ impl XaiOAuthManager {
         self.schedule_next_poll(device_code, entry.interval_secs)
             .await;
 
-        let response = crate::proxy::http_client::get()
-            .post(&entry.token_endpoint)
-            .header("User-Agent", XAI_USER_AGENT)
-            .form(&[
-                ("grant_type", "urn:ietf:params:oauth:grant-type:device_code"),
-                ("client_id", XAI_CLIENT_ID),
-                ("device_code", device_code),
-            ])
-            .send()
-            .await?;
-        let status = response.status();
-        let value = read_json_response(response).await?;
-
-        if let Some(error_code) = oauth_error_code(&value) {
-            return match error_code.as_str() {
-                "authorization_pending" => Err(XaiOAuthError::AuthorizationPending),
-                "slow_down" => {
-                    self.increase_poll_interval(device_code).await;
-                    Err(XaiOAuthError::AuthorizationPending)
-                }
-                "access_denied" => {
-                    self.pending_device_codes.write().await.remove(device_code);
-                    Err(XaiOAuthError::AccessDenied)
-                }
-                "expired_token" => {
-                    self.pending_device_codes.write().await.remove(device_code);
-                    Err(XaiOAuthError::ExpiredToken)
-                }
-                _ => Err(XaiOAuthError::TokenFetchFailed(format_oauth_error(
-                    status, &value,
-                ))),
-            };
-        }
-        if !status.is_success() {
-            return Err(XaiOAuthError::TokenFetchFailed(format_oauth_error(
-                status, &value,
-            )));
-        }
-
-        let tokens = parse_token_response(value)?;
-        validate_access_token(&tokens.access_token)?;
-        let refresh_token = tokens
-            .refresh_token
-            .as_deref()
-            .filter(|token| !token.trim().is_empty())
-            .map(ToString::to_string)
-            .ok_or_else(|| {
-                XaiOAuthError::TokenFetchFailed("成功响应缺少 refresh_token".to_string())
-            })?;
-        let (account_id, login) = extract_identity_from_tokens(&tokens).ok_or_else(|| {
-            XaiOAuthError::ParseError("xAI token 缺少稳定的 sub claim，未保存账号".to_string())
-        })?;
+        let tokens = match poll_xai_device_token(&entry.token_endpoint, device_code).await? {
+            XaiDeviceTokenPoll::Pending => return Err(XaiOAuthError::AuthorizationPending),
+            XaiDeviceTokenPoll::SlowDown => {
+                self.increase_poll_interval(device_code).await;
+                return Err(XaiOAuthError::AuthorizationPending);
+            }
+            XaiDeviceTokenPoll::Granted(tokens) => tokens,
+        };
+        let refresh_token = required_refresh_token(&tokens)?;
+        let identity = extract_xai_identity(&tokens)?;
 
         let cached_access_token = CachedAccessToken {
             token: tokens.access_token,
@@ -371,8 +356,8 @@ impl XaiOAuthManager {
         };
         let account = self
             .add_account_internal(
-                account_id,
-                login,
+                identity.subject,
+                Some(identity.login).filter(|login| !login.is_empty()),
                 refresh_token,
                 Some(device_code),
                 Some(cached_access_token),
@@ -499,7 +484,7 @@ impl XaiOAuthManager {
         Ok(())
     }
 
-    async fn discover_endpoints(&self) -> Result<OAuthEndpoints, XaiOAuthError> {
+    async fn discover_endpoints(&self) -> Result<XaiOAuthEndpoints, XaiOAuthError> {
         if let Some(endpoints) = self.discovered_endpoints.read().await.clone() {
             return Ok(endpoints);
         }
@@ -692,10 +677,7 @@ impl XaiOAuthManager {
 
     async fn increase_poll_interval(&self, device_code: &str) {
         if let Some(entry) = self.pending_device_codes.write().await.get_mut(device_code) {
-            entry.interval_secs = entry
-                .interval_secs
-                .saturating_add(5)
-                .min(MAX_POLL_INTERVAL_SECS + POLLING_SAFETY_MARGIN_SECS);
+            entry.interval_secs = next_xai_poll_interval(entry.interval_secs);
             entry.next_poll_at_ms = chrono::Utc::now().timestamp_millis().saturating_add(
                 i64::try_from(entry.interval_secs)
                     .unwrap_or(i64::MAX)
@@ -862,7 +844,7 @@ fn validate_access_token(access_token: &str) -> Result<(), XaiOAuthError> {
     Ok(())
 }
 
-async fn discover_xai_endpoints() -> Result<OAuthEndpoints, XaiOAuthError> {
+async fn discover_xai_endpoints() -> Result<XaiOAuthEndpoints, XaiOAuthError> {
     let response = crate::proxy::http_client::get()
         .get(XAI_DISCOVERY_URL)
         .header("User-Agent", XAI_USER_AGENT)
@@ -883,10 +865,129 @@ async fn discover_xai_endpoints() -> Result<OAuthEndpoints, XaiOAuthError> {
     }
     validate_xai_endpoint(&document.token_endpoint)?;
     validate_xai_endpoint(&document.device_authorization_endpoint)?;
-    Ok(OAuthEndpoints {
+    Ok(XaiOAuthEndpoints {
         token_endpoint: document.token_endpoint,
         device_authorization_endpoint: document.device_authorization_endpoint,
     })
+}
+
+pub(crate) async fn request_xai_device_code() -> Result<XaiDeviceCodeGrant, XaiOAuthError> {
+    let endpoints = discover_xai_endpoints().await?;
+    request_xai_device_code_at(&endpoints).await
+}
+
+pub(crate) async fn request_xai_device_code_at(
+    endpoints: &XaiOAuthEndpoints,
+) -> Result<XaiDeviceCodeGrant, XaiOAuthError> {
+    let response = crate::proxy::http_client::get()
+        .post(&endpoints.device_authorization_endpoint)
+        .header("User-Agent", XAI_USER_AGENT)
+        .form(&[("client_id", XAI_CLIENT_ID), ("scope", XAI_SCOPE)])
+        .send()
+        .await?;
+
+    let status = response.status();
+    let value = read_json_response(response).await?;
+    if !status.is_success() {
+        return Err(XaiOAuthError::TokenFetchFailed(format_oauth_error(
+            status, &value,
+        )));
+    }
+    let device = parse_device_code_response(value)?;
+    let interval = device
+        .interval
+        .clamp(1, MAX_POLL_INTERVAL_SECS)
+        .saturating_add(POLLING_SAFETY_MARGIN_SECS);
+    let expires_in = device.expires_in.clamp(1, MAX_DEVICE_CODE_LIFETIME_SECS);
+    Ok(XaiDeviceCodeGrant {
+        device_code: device.device_code,
+        user_code: sanitize_user_code(&device.user_code),
+        verification_uri: device
+            .verification_uri_complete
+            .unwrap_or(device.verification_uri),
+        expires_in,
+        interval,
+        token_endpoint: endpoints.token_endpoint.clone(),
+    })
+}
+
+pub(crate) async fn poll_xai_device_token(
+    token_endpoint: &str,
+    device_code: &str,
+) -> Result<XaiDeviceTokenPoll, XaiOAuthError> {
+    let response = crate::proxy::http_client::get()
+        .post(token_endpoint)
+        .header("User-Agent", XAI_USER_AGENT)
+        .form(&[
+            ("grant_type", "urn:ietf:params:oauth:grant-type:device_code"),
+            ("client_id", XAI_CLIENT_ID),
+            ("device_code", device_code),
+        ])
+        .send()
+        .await?;
+    let status = response.status();
+    let value = read_json_response(response).await?;
+    classify_xai_device_token_payload(status, value)
+}
+
+pub(crate) fn classify_xai_device_token_payload(
+    status: reqwest::StatusCode,
+    value: serde_json::Value,
+) -> Result<XaiDeviceTokenPoll, XaiOAuthError> {
+    if let Some(error_code) = oauth_error_code(&value) {
+        return match error_code.as_str() {
+            "authorization_pending" => Ok(XaiDeviceTokenPoll::Pending),
+            "slow_down" => Ok(XaiDeviceTokenPoll::SlowDown),
+            "access_denied" => Err(XaiOAuthError::AccessDenied),
+            "expired_token" => Err(XaiOAuthError::ExpiredToken),
+            _ => Err(XaiOAuthError::TokenFetchFailed(format_oauth_error(
+                status, &value,
+            ))),
+        };
+    }
+    if !status.is_success() {
+        return Err(XaiOAuthError::TokenFetchFailed(format_oauth_error(
+            status, &value,
+        )));
+    }
+    let tokens = parse_token_response(value)?;
+    validate_access_token(&tokens.access_token)?;
+    Ok(XaiDeviceTokenPoll::Granted(tokens))
+}
+
+pub(crate) fn extract_xai_identity(
+    tokens: &OAuthTokenResponse,
+) -> Result<XaiIdentity, XaiOAuthError> {
+    let (subject, login) = extract_identity_from_tokens(tokens).ok_or_else(|| {
+        XaiOAuthError::ParseError("xAI token 缺少稳定的 sub claim，未保存账号".to_string())
+    })?;
+    Ok(XaiIdentity {
+        subject: subject.clone(),
+        tenant: String::new(),
+        login: login.unwrap_or(subject),
+    })
+}
+
+pub(crate) fn required_refresh_token(tokens: &OAuthTokenResponse) -> Result<String, XaiOAuthError> {
+    tokens
+        .refresh_token
+        .as_deref()
+        .filter(|token| !token.trim().is_empty())
+        .map(ToString::to_string)
+        .ok_or_else(|| XaiOAuthError::TokenFetchFailed("成功响应缺少 refresh_token".to_string()))
+}
+
+fn sanitize_user_code(value: &str) -> String {
+    value
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric() || *ch == '-')
+        .collect()
+}
+
+pub(crate) fn next_xai_poll_interval(current: u64) -> u64 {
+    current
+        .saturating_add(5)
+        .min(MAX_POLL_INTERVAL_SECS + POLLING_SAFETY_MARGIN_SECS)
 }
 
 async fn refresh_xai_grant(
@@ -978,7 +1079,7 @@ fn extract_identity_from_tokens(tokens: &OAuthTokenResponse) -> Option<(String, 
     Some((account_id, login))
 }
 
-fn validate_xai_endpoint(value: &str) -> Result<(), XaiOAuthError> {
+pub(crate) fn validate_xai_endpoint(value: &str) -> Result<(), XaiOAuthError> {
     let url = reqwest::Url::parse(value)
         .map_err(|_| XaiOAuthError::ParseError("xAI 认证端点 URL 无效".to_string()))?;
     if url.scheme() != "https"
@@ -1167,6 +1268,43 @@ mod tests {
         assert!(validate_xai_endpoint("https://auth.x.ai:8443/oauth2/token").is_err());
         assert!(validate_xai_endpoint("https://user@auth.x.ai/oauth2/token").is_err());
         assert!(validate_xai_endpoint("https://attacker.example/token").is_err());
+    }
+
+    #[test]
+    fn device_token_poll_classifies_pending_slow_down_and_expiry() {
+        assert!(matches!(
+            classify_xai_device_token_payload(
+                reqwest::StatusCode::BAD_REQUEST,
+                serde_json::json!({"error": "authorization_pending"}),
+            ),
+            Ok(XaiDeviceTokenPoll::Pending)
+        ));
+        assert!(matches!(
+            classify_xai_device_token_payload(
+                reqwest::StatusCode::BAD_REQUEST,
+                serde_json::json!({"error": "slow_down"}),
+            ),
+            Ok(XaiDeviceTokenPoll::SlowDown)
+        ));
+        assert!(matches!(
+            classify_xai_device_token_payload(
+                reqwest::StatusCode::BAD_REQUEST,
+                serde_json::json!({"error": "expired_token"}),
+            ),
+            Err(XaiOAuthError::ExpiredToken)
+        ));
+        assert!(matches!(
+            classify_xai_device_token_payload(
+                reqwest::StatusCode::BAD_REQUEST,
+                serde_json::json!({"error": "access_denied"}),
+            ),
+            Err(XaiOAuthError::AccessDenied)
+        ));
+        assert_eq!(next_xai_poll_interval(5), 10);
+        assert_eq!(
+            next_xai_poll_interval(MAX_POLL_INTERVAL_SECS + POLLING_SAFETY_MARGIN_SECS),
+            MAX_POLL_INTERVAL_SECS + POLLING_SAFETY_MARGIN_SECS
+        );
     }
 
     #[tokio::test]

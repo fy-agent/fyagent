@@ -1,7 +1,7 @@
 //! Process-local Managed Auth login sessions.
 //!
 //! Dialog close and hidden routes do not cancel. App restart drops this store
-//! and never restores verifier, state, or authorization codes.
+//! and never restores verifier, state, device codes, or authorization codes.
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -15,6 +15,7 @@ use super::{
     ManagedAuthLoginPurpose, ManagedAuthLoginSessionSnapshot, ManagedAuthLoginStage,
     ManagedAuthProvider, ManagedAuthReasonCode, MANAGED_AUTH_CONTRACT_VERSION,
 };
+use crate::proxy::providers::xai_oauth_auth::XAI_OFFICIAL_HOST;
 use crate::services::managed_auth::providers::openai::OPENAI_OFFICIAL_HOST;
 
 const MAX_SESSIONS: usize = 8;
@@ -344,7 +345,7 @@ pub(crate) fn is_terminal(stage: ManagedAuthLoginStage) -> bool {
 pub(crate) fn official_host(provider: ManagedAuthProvider) -> &'static str {
     match provider {
         ManagedAuthProvider::Openai => OPENAI_OFFICIAL_HOST,
-        ManagedAuthProvider::Xai => "auth.x.ai",
+        ManagedAuthProvider::Xai => XAI_OFFICIAL_HOST,
         ManagedAuthProvider::GithubCopilot => "github.com",
     }
 }
@@ -380,6 +381,41 @@ pub(crate) fn map_openai_reason(
         ),
         OpenAiOAuthError::AuthorizationPending => (
             ManagedAuthLoginStage::AwaitingUser,
+            ManagedAuthReasonCode::LoginFailed,
+        ),
+    }
+}
+
+pub(crate) fn map_xai_reason(
+    error: crate::proxy::providers::xai_oauth_auth::XaiOAuthError,
+) -> (ManagedAuthLoginStage, ManagedAuthReasonCode) {
+    use crate::proxy::providers::xai_oauth_auth::XaiOAuthError;
+    match error {
+        XaiOAuthError::AuthorizationPending => (
+            ManagedAuthLoginStage::AwaitingUser,
+            ManagedAuthReasonCode::LoginFailed,
+        ),
+        XaiOAuthError::AccessDenied => (
+            ManagedAuthLoginStage::Cancelled,
+            ManagedAuthReasonCode::Cancelled,
+        ),
+        XaiOAuthError::ExpiredToken => (
+            ManagedAuthLoginStage::Expired,
+            ManagedAuthReasonCode::DeviceCodeExpired,
+        ),
+        XaiOAuthError::ParseError(_) => (
+            ManagedAuthLoginStage::Failed,
+            ManagedAuthReasonCode::IdentityMismatch,
+        ),
+        XaiOAuthError::RefreshTokenInvalid | XaiOAuthError::ReauthRequired(_) => (
+            ManagedAuthLoginStage::Failed,
+            ManagedAuthReasonCode::LoginFailed,
+        ),
+        XaiOAuthError::TokenFetchFailed(_)
+        | XaiOAuthError::NetworkError(_)
+        | XaiOAuthError::IoError(_)
+        | XaiOAuthError::AccountNotFound(_) => (
+            ManagedAuthLoginStage::Failed,
             ManagedAuthReasonCode::LoginFailed,
         ),
     }
@@ -434,6 +470,43 @@ mod tests {
         assert!(snapshot.user_code.is_none());
         assert!(snapshot.verification_uri.is_none());
         assert!(snapshot.expires_at.is_none());
+    }
+
+    #[test]
+    fn xai_device_snapshot_keeps_user_code_and_hides_switch() {
+        let snapshot = build_snapshot(
+            Uuid::new_v4().hyphenated().to_string(),
+            ManagedAuthProvider::Xai,
+            ManagedAuthLoginPurpose::SaveOnly,
+            None,
+            ManagedAuthLoginMethod::DeviceCode,
+            ManagedAuthLoginStage::AwaitingUser,
+            Some("ABCD-EFGH".into()),
+            Some("https://auth.x.ai/device".into()),
+            Some(now_timestamp()),
+            None,
+            None,
+            None,
+        );
+        assert!(snapshot.can_cancel);
+        assert!(!snapshot.can_retry);
+        assert!(!snapshot.can_switch_to_device_code);
+        assert!(!snapshot.terminal);
+        assert_eq!(snapshot.official_host, XAI_OFFICIAL_HOST);
+        assert_eq!(snapshot.user_code.as_deref(), Some("ABCD-EFGH"));
+        assert_eq!(
+            snapshot.verification_uri.as_deref(),
+            Some("https://auth.x.ai/device")
+        );
+        let text = serde_json::to_string(&snapshot)
+            .unwrap()
+            .to_ascii_lowercase();
+        assert_eq!(snapshot.method, ManagedAuthLoginMethod::DeviceCode);
+        assert!(
+            !text.contains("\"devicecode\""),
+            "snapshot must not expose the OAuth device_code grant"
+        );
+        assert!(!text.contains("refresh_token"));
     }
 
     #[test]

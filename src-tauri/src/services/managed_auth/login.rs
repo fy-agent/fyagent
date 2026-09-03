@@ -65,6 +65,9 @@ where
         request: StartManagedAuthLoginRequest,
     ) -> Result<ManagedAuthLoginSessionSnapshot, ManagedAuthErrorDto> {
         request.validate()?;
+        if request.provider == ManagedAuthProvider::Xai {
+            return self.start_xai_login(request);
+        }
         if request.provider != ManagedAuthProvider::Openai {
             return Err(ManagedAuthErrorDto::from_reason(
                 ManagedAuthReasonCode::ProviderNotSupported,
@@ -169,6 +172,21 @@ where
         &self,
         request: &super::ManagedAuthConnectionActionRequest,
     ) -> Result<ManagedAuthMutationResult, ManagedAuthErrorDto> {
+        let grok_slot = stable_connection_id(ManagedAuthConsumer::Grokbuild, "", "xai");
+        if request.connection_id == grok_slot
+            || self
+                .repository
+                .list_connections()
+                .ok()
+                .into_iter()
+                .flatten()
+                .any(|row| {
+                    row.connection_id == request.connection_id
+                        && row.consumer == ManagedAuthConsumer::Grokbuild
+                })
+        {
+            return self.apply_grok_connection_action(request);
+        }
         match request.action {
             super::ManagedAuthConnectionAction::Refresh => {
                 Ok(self.mutation_result(ManagedAuthMutationOutcome::Completed, None))
@@ -512,7 +530,7 @@ where
         Ok(())
     }
 
-    fn set_stage(
+    pub(crate) fn set_stage(
         &self,
         handle: &LoginSessionHandle,
         stage: ManagedAuthLoginStage,
