@@ -137,3 +137,25 @@ Audited all 43 pre-refresh Specs; split three cross-domain monoliths into focuse
 ### Next Steps
 
 - macOS 实装、Windows 11 helper npm、阻断 x.ai/GCS、OpenCode WinVerifyTrust 仍待 HIL；未推送
+
+
+## Session 66: Managed Auth core vault migration
+<!-- trellis-session: v=2 fp=3aefb90654473ed5 -->
+
+**Date**: 2026-09-03
+**Task**: Managed Auth core vault migration
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+Completed 09-03-managed-auth-core-vault-migration: ManagedAuthService + SecretRef production vault, per-source JSON migration, Proxy resolver, and owning specs. Login PKCE and consumer native projection remain later children. Native SecretRef HIL not claimed.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d82ffed8` | feat(auth): activate Managed Auth core, SecretRef vault, and JSON migration |
+
+### Status
+
+[OK] **Completed**

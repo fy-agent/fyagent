@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 65
+- **Total Sessions**: 66
 - **Last Active**: 2026-09-03
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~139 | Active |
+| `journal-2.md` | ~161 | Active |
 | `journal-1.md` | ~1987 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 66 | 2026-09-03 | Managed Auth core vault migration | `d82ffed8` | `dev/laiyongjie` |
 | 65 | 2026-09-03 | Grok 大陆 npm 一键安装与 OpenCode Windows 源 | `a189ff40`, `7dd216ab`, `0f766831`, `c7cd6906` | `dev/laiyongjie` |
 | 64 | 2026-09-02 | 全面刷新并校准 Trellis Spec | `f0479ac1` | `dev/laiyongjie` |
 | 63 | 2026-09-02 | Comprehensive Trellis Spec refresh | `c3899e1282882ea09aa3e64ccea788ea0bb9ab8c` | `dev/laiyongjie` |
