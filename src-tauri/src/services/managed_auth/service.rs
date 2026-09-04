@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use chrono::SecondsFormat;
+use tauri::Manager;
 use zeroize::Zeroizing;
 
 use crate::database::Database;
@@ -120,6 +121,7 @@ where
     pub(crate) login_sessions: LoginSessionStore,
     pub(crate) login_hooks: Mutex<LoginHooks>,
     pub(crate) xai_hooks: Mutex<XaiLoginHooks>,
+    app_handle: Mutex<Option<tauri::AppHandle>>,
 }
 
 impl<B> ManagedAuthService<B>
@@ -139,7 +141,28 @@ where
             login_sessions: LoginSessionStore::default(),
             login_hooks: Mutex::new(LoginHooks::default()),
             xai_hooks: Mutex::new(XaiLoginHooks::default()),
+            app_handle: Mutex::new(None),
         }
+    }
+
+    pub(crate) fn attach_app_handle(&self, handle: tauri::AppHandle) {
+        *self
+            .app_handle
+            .lock()
+            .unwrap_or_else(|error| error.into_inner()) = Some(handle);
+    }
+
+    pub(crate) fn with_app_state<R>(
+        &self,
+        callback: impl FnOnce(&crate::store::AppState) -> R,
+    ) -> Option<R> {
+        let guard = self
+            .app_handle
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let handle = guard.as_ref()?;
+        let state = handle.try_state::<crate::store::AppState>()?;
+        Some(callback(&state))
     }
 
     pub(crate) fn repository(&self) -> &ManagedAuthRepository {
@@ -649,7 +672,7 @@ where
             .map_err(|_| ManagedAuthCoreError::InvalidData)
     }
 
-    fn replace_bundle_cas_locked(
+    pub(crate) fn replace_bundle_cas_locked(
         &self,
         credential_id: &str,
         expected_generation: u64,
@@ -1041,7 +1064,7 @@ where
         }
     }
 
-    fn codex_home(&self) -> PathBuf {
+    pub(crate) fn codex_home(&self) -> PathBuf {
         #[cfg(test)]
         {
             self.config_dir.join("codex-home")
@@ -1050,6 +1073,159 @@ where
         {
             crate::codex_config::get_codex_config_dir()
         }
+    }
+
+    pub(crate) fn materialize_codex_document_for(
+        &self,
+        selected: &CredentialWithIdentity,
+    ) -> Result<
+        crate::services::managed_auth::consumers::codex::CodexChatGptAuthDocument,
+        ManagedAuthReasonCode,
+    > {
+        use crate::services::managed_auth::consumers::codex::{
+            materialize_from_bundle, CodexChatGptAuthDocument,
+        };
+        let lock = self.refresh.lock_for(&selected.credential.credential_id);
+        let _guard = tokio::task::block_in_place(|| lock.blocking_lock());
+        let current = self
+            .repository
+            .get_credential(&selected.credential.credential_id)
+            .map_err(|_| ManagedAuthReasonCode::SecretUnavailable)?
+            .ok_or(ManagedAuthReasonCode::SecretUnavailable)?;
+        let bundle = self
+            .readback_bundle(&current.secret_handle)
+            .map_err(|_| ManagedAuthReasonCode::SecretUnavailable)?;
+        match materialize_from_bundle(&bundle, &selected.identity.provider_subject) {
+            Ok(document) => Ok(document),
+            Err(ManagedAuthReasonCode::RequiresReauth) => {
+                let refresh = bundle
+                    .refresh_token()
+                    .ok_or(ManagedAuthReasonCode::RequiresReauth)?
+                    .to_string();
+                let refreshed = futures::executor::block_on(async {
+                    openai::refresh_oauth_grant(&refresh).await
+                })
+                .map_err(|_| ManagedAuthReasonCode::RequiresReauth)?;
+                let id_token = refreshed
+                    .id_token
+                    .clone()
+                    .or_else(|| bundle.id_token().map(str::to_string))
+                    .ok_or(ManagedAuthReasonCode::RequiresReauth)?;
+                let access = refreshed.access_token.clone();
+                let new_refresh = refreshed.refresh_token.clone().unwrap_or(refresh);
+                CodexChatGptAuthDocument::from_tokens(
+                    &id_token,
+                    &access,
+                    &new_refresh,
+                    Some(selected.identity.provider_subject.as_str()),
+                    Some(chrono::Utc::now().timestamp()),
+                )
+                .ok_or(ManagedAuthReasonCode::RequiresReauth)
+            }
+            Err(other) => Err(other),
+        }
+    }
+
+    /// When live Codex auth is a managed ChatGPT account we are about to leave,
+    /// absorb Codex-rotated tokens into SecretRef and return refresh ownership
+    /// to FyAgent. Unknown / non-unique identities are left untouched.
+    pub(crate) fn reconcile_outgoing_codex_live_tokens(
+        &self,
+        codex_home: &std::path::Path,
+        target_provider_subject: &str,
+    ) -> Result<(), ManagedAuthReasonCode> {
+        use crate::services::managed_auth::consumers::codex::{
+            auth_path_in, capture_auth_preimage, live_chatgpt_account_id, observe_codex_home,
+            CodexChatGptAuthDocument,
+        };
+
+        let live = observe_codex_home(codex_home);
+        let Some(live_account) = live_chatgpt_account_id(&live.auth_state) else {
+            return Ok(());
+        };
+        if live_account == target_provider_subject {
+            return Ok(());
+        }
+        let rows = self
+            .repository
+            .list_all_credentials()
+            .map_err(|_| ManagedAuthReasonCode::PartialCompletion)?;
+        let matches: Vec<_> = rows
+            .iter()
+            .filter(|row| {
+                row.credential.purpose == CredentialPurpose::CodexNative
+                    && row.identity.provider_subject == live_account
+            })
+            .collect();
+        if matches.len() != 1 {
+            return Ok(());
+        }
+        let row = matches[0];
+        if row.credential.refresh_owner != RefreshOwner::CodexNative {
+            return Ok(());
+        }
+        let auth_path = auth_path_in(codex_home);
+        let Some(bytes) = capture_auth_preimage(&auth_path)
+            .map_err(|_| ManagedAuthReasonCode::PartialCompletion)?
+        else {
+            return Ok(());
+        };
+        let Some(document) = CodexChatGptAuthDocument::try_from_live_bytes(&bytes) else {
+            // Live identity matched but material is incomplete — refuse overwrite.
+            return Err(ManagedAuthReasonCode::RequiresReauth);
+        };
+        if !document.identity_matches(live_account) {
+            return Err(ManagedAuthReasonCode::IdentityMismatch);
+        }
+
+        let lock = self.refresh.lock_for(&row.credential.credential_id);
+        let _guard = tokio::task::block_in_place(|| lock.blocking_lock());
+        let current = self
+            .repository
+            .get_credential(&row.credential.credential_id)
+            .map_err(|_| ManagedAuthReasonCode::SecretUnavailable)?
+            .ok_or(ManagedAuthReasonCode::SecretUnavailable)?;
+        if current.generation != row.credential.generation
+            || current.refresh_owner != RefreshOwner::CodexNative
+        {
+            return Ok(());
+        }
+        let previous = self
+            .readback_bundle(&current.secret_handle)
+            .map_err(|_| ManagedAuthReasonCode::SecretUnavailable)?;
+        let next_generation = current.generation.saturating_add(1);
+        let next_bundle = ManagedAuthSecretBundle::new(ManagedAuthSecretBundleParts {
+            credential_id: current.credential_id.clone(),
+            provider: current.provider,
+            generation: next_generation,
+            access_token: Some(document.access_token().to_string()),
+            refresh_token: Some(document.refresh_token().to_string()),
+            id_token: Some(document.id_token().to_string()),
+            token_type: Some("Bearer".to_string()),
+            granted_scopes: Vec::new(),
+            issued_at: Some(chrono::Utc::now().timestamp()),
+            expires_at: previous.expires_at(),
+        })
+        .map_err(|_| ManagedAuthReasonCode::RequiresReauth)?;
+        let replaced = self
+            .replace_bundle_cas_locked(
+                &current.credential_id,
+                current.generation,
+                RefreshOwner::CodexNative,
+                next_bundle,
+            )
+            .map_err(|_| ManagedAuthReasonCode::PartialCompletion)?;
+        if !replaced {
+            return Ok(());
+        }
+        let _ = self.repository.transfer_refresh_owner(
+            &current.credential_id,
+            next_generation,
+            RefreshOwner::CodexNative,
+            RefreshOwner::Fyagent,
+            chrono::Utc::now().timestamp(),
+        );
+        Ok(())
     }
 
     fn opencode_auth_path(&self) -> PathBuf {
@@ -1613,6 +1789,7 @@ fn merge_consumer_connections(
             connections
                 .iter()
                 .find(|connection| connection.consumer == ManagedAuthConsumer::Codex),
+            rows,
             checked_at.clone(),
         ),
     );

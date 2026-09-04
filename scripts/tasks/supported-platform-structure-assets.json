@@ -27,7 +27,7 @@
     ],
     [
       "scripts/tasks/supported-platform-check.mjs",
-      "126744f8f5f66b99fdb8902fec2bc47818e5e2d7ef2fcba89dda71ecaf9ce67c"
+      "44f1120b01e08cc9ff995cfd638e2c68d63edcf977375946cfa845cc185885f7"
     ],
     [
       "scripts/tasks/system-check.mjs",
@@ -159,7 +159,7 @@
     ],
     [
       "src-tauri/src/lib.rs",
-      "fa961aea582bb1e28c7a3a309b1352b78b1d8da2c6521778220dcf64b2b714e0"
+      "51585225fe7b8b21063b9cd900316b911f0c79e74c6b7ead4df1e9eb13d709a5"
     ],
     [
       "src-tauri/src/lightweight.rs",
@@ -231,7 +231,7 @@
     ],
     [
       "src-tauri/src/services/provider/mod.rs",
-      "6061d9d41a25fe2d199587b223e8ae4c673a9ab2d398c12ad99d31fe0edc2605"
+      "b04555ef9f1d6b02afa1c170ffb96d540dc0f912f44ddeba732aee215a3295cf"
     ],
     [
       "src-tauri/src/services/qoderwork.rs",

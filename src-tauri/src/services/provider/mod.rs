@@ -5444,6 +5444,76 @@ impl ProviderService {
         Self::switch_with_lock_held(state, app_type, id)
     }
 
+    /// Backfill the current live config into the current provider DB row.
+    ///
+    /// Callers that are about to overwrite Codex `auth.json` (Managed Auth
+    /// projection) must invoke this under the same per-app mutation guard so a
+    /// legacy third-party API key is recoverable before the live file changes.
+    /// Returns `true` when a backfill write succeeded.
+    pub(crate) fn backfill_current_live_under_lock(
+        state: &AppState,
+        app_type: AppType,
+    ) -> Result<bool, AppError> {
+        if app_type.is_additive_mode() {
+            return Ok(false);
+        }
+        let providers = state.db.get_all_providers(app_type.as_str())?;
+        let Some(current_id) =
+            crate::settings::get_effective_current_provider(&state.db, &app_type)?
+        else {
+            return Ok(false);
+        };
+        let mut warnings = SwitchResult::default();
+        Ok(Self::backfill_current_provider_from_live(
+            state,
+            &app_type,
+            &providers,
+            &current_id,
+            &mut warnings,
+        ))
+    }
+
+    fn backfill_current_provider_from_live(
+        state: &AppState,
+        app_type: &AppType,
+        providers: &IndexMap<String, Provider>,
+        current_id: &str,
+        result: &mut SwitchResult,
+    ) -> bool {
+        let Ok(live_config) = read_live_settings(app_type.clone()) else {
+            return false;
+        };
+        let Some(mut current_provider) = providers.get(current_id).cloned() else {
+            return false;
+        };
+        // 切走前先把 live 里的可共享改动（含用户直接在应用内
+        // 装插件/加 hook/改偏好）同步进通用配置片段，再做剥离回填。
+        // 详见 sync_common_config_snippet_from_live 的文档。
+        Self::sync_common_config_snippet_from_live(
+            state,
+            app_type,
+            &current_provider,
+            &live_config,
+            result,
+        );
+
+        current_provider.settings_config = strip_common_config_from_live_settings(
+            state.db.as_ref(),
+            app_type,
+            &current_provider,
+            live_config,
+        );
+        if let Err(e) = state.db.save_provider(app_type.as_str(), &current_provider) {
+            log::warn!("Backfill failed: {e}");
+            result
+                .warnings
+                .push(format!("backfill_failed:{current_id}"));
+            false
+        } else {
+            true
+        }
+    }
+
     /// Provider switch implementation for callers that already hold the
     /// per-app mutation guard. This is crate-visible only so Change Plan can
     /// keep admission, the single writer call and readback under one guard.
@@ -5451,6 +5521,28 @@ impl ProviderService {
         state: &AppState,
         app_type: AppType,
         id: &str,
+    ) -> Result<SwitchResult, AppError> {
+        Self::switch_with_lock_held_inner(state, app_type, id, true)
+    }
+
+    /// Like [`switch_with_lock_held`], but skips live→DB backfill.
+    ///
+    /// Managed Auth uses this after it has already backfilled (and possibly
+    /// replaced) `auth.json`, so a second backfill would capture ChatGPT
+    /// tokens into the outgoing third-party provider row.
+    pub(crate) fn switch_with_lock_held_skipping_backfill(
+        state: &AppState,
+        app_type: AppType,
+        id: &str,
+    ) -> Result<SwitchResult, AppError> {
+        Self::switch_with_lock_held_inner(state, app_type, id, false)
+    }
+
+    fn switch_with_lock_held_inner(
+        state: &AppState,
+        app_type: AppType,
+        id: &str,
+        perform_backfill: bool,
     ) -> Result<SwitchResult, AppError> {
         // Check if provider exists
         let providers = state.db.get_all_providers(app_type.as_str())?;
@@ -5460,18 +5552,18 @@ impl ProviderService {
 
         // OMO providers are switched through their own exclusive path.
         if matches!(app_type, AppType::OpenCode) && _provider.category.as_deref() == Some("omo") {
-            return Self::switch_normal(state, app_type, id, &providers);
+            return Self::switch_normal(state, app_type, id, &providers, perform_backfill);
         }
 
         // OMO Slim providers are switched through their own exclusive path.
         if matches!(app_type, AppType::OpenCode)
             && _provider.category.as_deref() == Some("omo-slim")
         {
-            return Self::switch_normal(state, app_type, id, &providers);
+            return Self::switch_normal(state, app_type, id, &providers, perform_backfill);
         }
 
         if matches!(app_type, AppType::ClaudeDesktop) {
-            return Self::switch_normal(state, app_type, id, &providers);
+            return Self::switch_normal(state, app_type, id, &providers, perform_backfill);
         }
 
         // Backup or live placeholders mean the live file is owned by proxy
@@ -5533,7 +5625,7 @@ impl ProviderService {
         }
 
         // Normal mode: full switch with Live config write
-        Self::switch_normal(state, app_type, id, &providers)
+        Self::switch_normal(state, app_type, id, &providers, perform_backfill)
     }
 
     /// Normal switch flow (non-proxy mode)
@@ -5542,6 +5634,7 @@ impl ProviderService {
         app_type: AppType,
         id: &str,
         providers: &indexmap::IndexMap<String, Provider>,
+        perform_backfill: bool,
     ) -> Result<SwitchResult, AppError> {
         let provider = providers
             .get(id)
@@ -5573,46 +5666,24 @@ impl ProviderService {
         let current_id = crate::settings::get_effective_current_provider(&state.db, &app_type)?;
 
         let mut backfill_completed = false;
-        if let Some(current_id) = current_id {
-            if current_id != id {
-                // Additive mode apps - all providers coexist in the same file,
-                // no backfill needed (backfill is for exclusive mode apps like Claude/Codex/Gemini)
-                if !app_type.is_additive_mode() {
-                    // Only backfill when switching to a different provider
-                    if let Ok(live_config) = read_live_settings(app_type.clone()) {
-                        if let Some(mut current_provider) = providers.get(&current_id).cloned() {
-                            // 切走前先把 live 里的可共享改动（含用户直接在应用内
-                            // 装插件/加 hook/改偏好）同步进通用配置片段，再做剥离回填。
-                            // 详见 sync_common_config_snippet_from_live 的文档。
-                            Self::sync_common_config_snippet_from_live(
-                                state,
-                                &app_type,
-                                &current_provider,
-                                &live_config,
-                                &mut result,
-                            );
-
-                            current_provider.settings_config =
-                                strip_common_config_from_live_settings(
-                                    state.db.as_ref(),
-                                    &app_type,
-                                    &current_provider,
-                                    live_config,
-                                );
-                            if let Err(e) =
-                                state.db.save_provider(app_type.as_str(), &current_provider)
-                            {
-                                log::warn!("Backfill failed: {e}");
-                                result
-                                    .warnings
-                                    .push(format!("backfill_failed:{current_id}"));
-                            } else {
-                                backfill_completed = true;
-                            }
-                        }
-                    }
+        if perform_backfill {
+            if let Some(current_id) = current_id {
+                if current_id != id && !app_type.is_additive_mode() {
+                    // Only backfill when switching to a different exclusive-mode provider.
+                    backfill_completed = Self::backfill_current_provider_from_live(
+                        state,
+                        &app_type,
+                        providers,
+                        &current_id,
+                        &mut result,
+                    );
                 }
             }
+        } else if matches!(app_type, AppType::Codex) {
+            // Managed Auth already proved recoverability before replacing auth.json.
+            // Treat backfill as completed so stale third-party auth cleanup can run
+            // when the target is official and the live file is now ChatGPT material.
+            backfill_completed = true;
         }
 
         // Additive mode apps skip setting is_current (no such concept)

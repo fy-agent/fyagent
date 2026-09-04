@@ -1649,6 +1649,7 @@ pub fn run() {
                     SecretService::new(NativeSecretBackend::new()),
                     app_config_dir.clone(),
                 ));
+                service.attach_app_handle(app.handle().clone());
                 if let Err(error) = service.startup() {
                     log::warn!("[ManagedAuth] startup failed closed: {error}");
                 }

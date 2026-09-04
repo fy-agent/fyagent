@@ -1,8 +1,9 @@
 //! Effective Codex `cli_auth_credentials_store` resolver.
 //!
-//! Native `auth.json` projection is allowed only for an explicit `file`
-//! value. Unset, `auto`, `keyring`, source-visible `ephemeral`, invalid, and
-//! future values fail closed. Existence of `auth.json` is never a store hint.
+//! Native `auth.json` projection is allowed for an explicit `file` value and
+//! for unset (OpenAI Codex defaults unset to file). Explicit `auto`,
+//! `keyring`, `ephemeral`, invalid, and future values fail closed. Existence
+//! of `auth.json` is never a store hint.
 
 use toml_edit::DocumentMut;
 
@@ -31,8 +32,10 @@ impl CodexCredentialStore {
         }
     }
 
+    /// OpenAI Codex treats an unset store as file. Explicit non-file values
+    /// remain unsupported for FyAgent native projection.
     pub const fn allows_native_file_projection(self) -> bool {
-        matches!(self, Self::File)
+        matches!(self, Self::File | Self::Unset)
     }
 }
 
@@ -98,7 +101,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn only_explicit_file_allows_native_projection() {
+    fn unset_and_explicit_file_allow_native_projection() {
         assert_eq!(
             parse_cli_auth_credentials_store("cli_auth_credentials_store = \"file\"\n").unwrap(),
             CodexCredentialStore::File
@@ -110,9 +113,9 @@ mod tests {
         assert_eq!(CodexCredentialStore::Unset.as_str(), "unset");
         assert_eq!(CodexCredentialStore::Unknown.as_str(), "unknown");
         assert!(native_file_projection_allowed("cli_auth_credentials_store = \"file\"\n").unwrap());
+        assert!(native_file_projection_allowed("").unwrap());
+        assert!(native_file_projection_allowed("model = \"gpt-5\"\n").unwrap());
         for sample in [
-            "",
-            "model = \"gpt-5\"\n",
             "cli_auth_credentials_store = \"keyring\"\n",
             "cli_auth_credentials_store = \"auto\"\n",
             "cli_auth_credentials_store = \"ephemeral\"\n",
@@ -136,7 +139,7 @@ mod tests {
             parse_cli_auth_credentials_store("model = \"gpt-5\"\n# auth.json may exist on disk\n")
                 .unwrap();
         assert_eq!(parsed, CodexCredentialStore::Unset);
-        assert!(!parsed.allows_native_file_projection());
+        assert!(parsed.allows_native_file_projection());
     }
 
     #[test]

@@ -251,24 +251,20 @@ export function AuthPage() {
 
   const confirmRemoveAccount = async () => {
     if (!removalAccount || !removalPreview) return;
-    try {
-      const result = await runMutation(
-        () =>
-          ports.managedAuth.removeAccount(
-            removalPreview.previewId,
-            removalAccount.accountId,
-            removalPreview.expectedRevision,
-          ),
-        `${removalAccount.login} 已移除`,
-      );
-      if (!result) return;
-      setRemovalAccount(null);
-      setRemovalPreview(null);
-      if (requestedAccountId === removalAccount.accountId) {
-        updateRoute({ account: null });
-      }
-    } catch (cause) {
-      throw cause;
+    const result = await runMutation(
+      () =>
+        ports.managedAuth.removeAccount(
+          removalPreview.previewId,
+          removalAccount.accountId,
+          removalPreview.expectedRevision,
+        ),
+      `${removalAccount.login} 已移除`,
+    );
+    if (!result) return;
+    setRemovalAccount(null);
+    setRemovalPreview(null);
+    if (requestedAccountId === removalAccount.accountId) {
+      updateRoute({ account: null });
     }
   };
 

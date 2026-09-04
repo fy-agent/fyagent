@@ -62,10 +62,21 @@ function consumerSummary(connections: ManagedAuthConnectionSummary[]) {
   if (projected > 0) {
     return `${projected} 条已连接`;
   }
-  const saved = connections.filter(
-    (connection) => connection.authStatus === "connected",
+  const savedNotProjected = connections.filter(
+    (connection) =>
+      connection.authStatus === "disconnected" &&
+      connection.accountId !== null &&
+      !connection.reasonCodes.includes("native_projection_unavailable"),
   ).length;
-  if (saved > 0) {
+  if (savedNotProjected > 0) {
+    return "账号已保存，尚未写入软件";
+  }
+  const legacySaved = connections.filter(
+    (connection) =>
+      connection.authStatus === "connected" &&
+      connection.reasonCodes.includes("native_projection_unavailable"),
+  ).length;
+  if (legacySaved > 0) {
     return "账号已保存，尚未写入软件";
   }
   return consumerStatus(connections).label;
@@ -90,10 +101,20 @@ function ConnectionCard({
         (candidate) => candidate.accountId === connection.accountId,
       )
     : null;
-  const status = connectionStatusPresentation(
-    connection.authStatus,
-    connection.reasonCodes,
-  );
+  const status = (() => {
+    const base = connectionStatusPresentation(
+      connection.authStatus,
+      connection.reasonCodes,
+    );
+    if (
+      connection.authStatus === "disconnected" &&
+      account &&
+      !connection.reasonCodes.includes("native_projection_unavailable")
+    ) {
+      return { label: "账号已保存", tone: "warning" as const };
+    }
+    return base;
+  })();
   return (
     <article className="fy-auth-consumer-connection">
       <div className="fy-auth-connection-card-heading">
