@@ -101,6 +101,41 @@ describe("managed auth wire contract", () => {
       outcome: "completed",
       reasonCode: null,
     });
+    expect(
+      parseManagedAuthMutationResult({
+        ...mutationResultFixture(),
+        reasonCode: "pending_restart",
+        pendingRestartConsumers: ["codex"],
+      }),
+    ).toMatchObject({
+      outcome: "completed",
+      reasonCode: "pending_restart",
+      pendingRestartConsumers: ["codex"],
+    });
+    expect(() =>
+      parseManagedAuthMutationResult({
+        ...mutationResultFixture(),
+        reasonCode: "secret_unavailable",
+      }),
+    ).toThrow("账号与认证数据不可用");
+    expect(
+      parseManagedAuthLoginSession(
+        deviceLoginSessionFixture({
+          stage: "completed",
+          terminal: true,
+          canCancel: false,
+          userCode: null,
+          verificationUri: null,
+          expiresAt: null,
+          accountId: OPENAI_ACCOUNT_ID,
+          connectionId: CODEX_CONNECTION_ID,
+          reasonCode: "pending_restart",
+        }),
+      ),
+    ).toMatchObject({
+      stage: "completed",
+      reasonCode: "pending_restart",
+    });
   });
 
   it("validates closed mutation requests before native IPC", () => {

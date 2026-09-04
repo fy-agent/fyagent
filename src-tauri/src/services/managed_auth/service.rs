@@ -1086,7 +1086,7 @@ where
             materialize_from_bundle, CodexChatGptAuthDocument,
         };
         let lock = self.refresh.lock_for(&selected.credential.credential_id);
-        let _guard = tokio::task::block_in_place(|| lock.blocking_lock());
+        let _guard = lock.blocking_lock();
         let current = self
             .repository
             .get_credential(&selected.credential.credential_id)
@@ -1102,7 +1102,7 @@ where
                     .refresh_token()
                     .ok_or(ManagedAuthReasonCode::RequiresReauth)?
                     .to_string();
-                let refreshed = futures::executor::block_on(async {
+                let refreshed = tauri::async_runtime::block_on(async {
                     openai::refresh_oauth_grant(&refresh).await
                 })
                 .map_err(|_| ManagedAuthReasonCode::RequiresReauth)?;
@@ -1113,6 +1113,29 @@ where
                     .ok_or(ManagedAuthReasonCode::RequiresReauth)?;
                 let access = refreshed.access_token.clone();
                 let new_refresh = refreshed.refresh_token.clone().unwrap_or(refresh);
+                if let Ok(next_bundle) =
+                    ManagedAuthSecretBundle::new(ManagedAuthSecretBundleParts {
+                        credential_id: current.credential_id.clone(),
+                        provider: current.provider,
+                        generation: current.generation.saturating_add(1),
+                        access_token: Some(access.clone()),
+                        refresh_token: Some(new_refresh.clone()),
+                        id_token: Some(id_token.clone()),
+                        token_type: None,
+                        granted_scopes: Vec::new(),
+                        issued_at: Some(chrono::Utc::now().timestamp()),
+                        expires_at: refreshed
+                            .expires_in
+                            .map(|secs| chrono::Utc::now().timestamp() + secs),
+                    })
+                {
+                    let _ = self.replace_bundle_cas_locked(
+                        &current.credential_id,
+                        current.generation,
+                        current.refresh_owner,
+                        next_bundle,
+                    );
+                }
                 CodexChatGptAuthDocument::from_tokens(
                     &id_token,
                     &access,

@@ -387,9 +387,23 @@ impl MacOsSecretBackend {
     ) -> Result<SecretMaterial, SecretServiceError> {
         let service = cf_string(SERVICE)?;
         let account = cf_string(secret_ref.as_str())?;
-        let query = read_query(service.raw(), account.raw(), use_data_protection_keychain())?;
-        let result =
-            copy_matching(&query).map_err(|status| map_status(status, KeychainOperation::Read))?;
+        let dpk = use_data_protection_keychain();
+        let query = read_query(service.raw(), account.raw(), dpk)?;
+        let result = match copy_matching(&query) {
+            Ok(res) => Ok(res),
+            Err(ERR_ITEM_NOT_FOUND) if dpk && running_inside_app_bundle() => {
+                let fallback = read_query(service.raw(), account.raw(), false)?;
+                match copy_matching(&fallback) {
+                    Ok(res) => {
+                        disable_data_protection_keychain();
+                        Ok(res)
+                    }
+                    Err(status) => Err(status),
+                }
+            }
+            Err(status) => Err(status),
+        };
+        let result = result.map_err(|status| map_status(status, KeychainOperation::Read))?;
         SecretMaterial::from_native_input(copy_data(result.raw())?, purpose)
     }
 
@@ -478,7 +492,8 @@ impl SecretBackend for MacOsSecretBackend {
         let _guard = self.lock()?;
         let service = cf_string(SERVICE)?;
         let account = cf_string(secret_ref.as_str())?;
-        let query = identity_query(service.raw(), account.raw(), use_data_protection_keychain())?;
+        let dpk = use_data_protection_keychain();
+        let query = identity_query(service.raw(), account.raw(), dpk)?;
         let data = cf_data(material.as_bytes())?;
         let updates = unsafe { cf_dictionary(&[(kSecValueData as CFTypeRef, data.raw())])? };
         let status = unsafe {
@@ -486,6 +501,21 @@ impl SecretBackend for MacOsSecretBackend {
                 query.raw() as CFDictionaryRef,
                 updates.raw() as CFDictionaryRef,
             )
+        };
+        let status = if status == ERR_ITEM_NOT_FOUND && dpk && running_inside_app_bundle() {
+            let fallback = identity_query(service.raw(), account.raw(), false)?;
+            let status = unsafe {
+                SecItemUpdate(
+                    fallback.raw() as CFDictionaryRef,
+                    updates.raw() as CFDictionaryRef,
+                )
+            };
+            if status == ERR_SUCCESS {
+                disable_data_protection_keychain();
+            }
+            status
+        } else {
+            status
         };
         if status != ERR_SUCCESS {
             return Err(map_status(status, KeychainOperation::Replace));
@@ -510,8 +540,23 @@ impl SecretBackend for MacOsSecretBackend {
         let _guard = self.lock()?;
         let service = cf_string(SERVICE)?;
         let account = cf_string(secret_ref.as_str())?;
-        let query = probe_query(service.raw(), account.raw(), use_data_protection_keychain())?;
-        match copy_matching(&query) {
+        let dpk = use_data_protection_keychain();
+        let query = probe_query(service.raw(), account.raw(), dpk)?;
+        let res = match copy_matching(&query) {
+            Ok(res) => Ok(res),
+            Err(ERR_ITEM_NOT_FOUND) if dpk && running_inside_app_bundle() => {
+                let fallback = probe_query(service.raw(), account.raw(), false)?;
+                match copy_matching(&fallback) {
+                    Ok(res) => {
+                        disable_data_protection_keychain();
+                        Ok(res)
+                    }
+                    Err(status) => Err(status),
+                }
+            }
+            Err(status) => Err(status),
+        };
+        match res {
             Ok(_) => Ok(BackendProbe::ready()),
             Err(ERR_ITEM_NOT_FOUND) => Ok(BackendProbe::missing()),
             Err(status) => Err(map_status(status, KeychainOperation::Probe)),
@@ -522,9 +567,21 @@ impl SecretBackend for MacOsSecretBackend {
         let _guard = self.lock()?;
         let service = cf_string(SERVICE)?;
         let account = cf_string(secret_ref.as_str())?;
-        let query = identity_query(service.raw(), account.raw(), use_data_protection_keychain())?;
+        let dpk = use_data_protection_keychain();
+        let query = identity_query(service.raw(), account.raw(), dpk)?;
         let status = unsafe { SecItemDelete(query.raw() as CFDictionaryRef) };
-        if status == ERR_SUCCESS {
+        let status = if (status == ERR_ITEM_NOT_FOUND
+            || status == ERR_AUTH_FAILED
+            || status == ERR_MISSING_ENTITLEMENT)
+            && dpk
+            && running_inside_app_bundle()
+        {
+            let fallback = identity_query(service.raw(), account.raw(), false)?;
+            unsafe { SecItemDelete(fallback.raw() as CFDictionaryRef) }
+        } else {
+            status
+        };
+        if status == ERR_SUCCESS || status == ERR_ITEM_NOT_FOUND {
             Ok(())
         } else {
             Err(map_status(status, KeychainOperation::Delete))
