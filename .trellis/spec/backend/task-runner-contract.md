@@ -150,6 +150,14 @@ RAW_TASKS = dev | dev:renderer | test:unit:watch | test:v2:watch
 executeTauriTask({ operation: "dev", runForegroundCommand })
   -> runForeground(pnpm, ["exec", "tauri", "dev", ...])
 
+signalExitCode(signal)
+  SIGINT  -> 130
+  SIGTERM -> 143
+  SIGHUP  -> 129
+  SIGQUIT -> 131
+  SIGKILL -> 137
+  other   -> 1
+
 killProcessTree(pid, platform)
   win32  -> spawnSync("taskkill.exe", ["/pid", pid, "/t", "/f"])
   darwin | linux -> process.kill(-pid, SIGTERM then SIGKILL)
@@ -164,6 +172,19 @@ killProcessTree(pid, platform)
 - `dev` uses `runForeground` (`spawn`, `stdio: "inherit"`,
   `windowsHide: false`). Other Tauri operations keep `run` /
   `spawnSync` / `windowsHide: true`.
+- On first interrupt signal (`SIGINT` / `SIGTERM`), `runForeground` initiates
+  graceful shutdown via `killProcessTree` and starts an unref fallback force-kill
+  timer (default 3000ms).
+- Repeated interrupt signals (such as a second `Ctrl+C`) during shutdown
+  immediately re-signal the tree and force-exit the process with standard exit
+  code (130 for `SIGINT`).
+- Normal signal exits assign standard exit codes (`signalExitCode`, e.g. 130
+  for `SIGINT`, 143 for `SIGTERM`) instead of generic failure exit code 1.
+- Synchronous task runner `run()` terminates with `signalExitCode` on `SIGINT`
+  (130) and `SIGTERM` (143) instead of throwing unhandled signal errors.
+- macOS development helper build script (`build-macos-privileged-helper.sh`)
+  traps `INT` and `TERM` to exit 130 immediately, preventing orphaned child build
+  processes during `mise run dev` preflight.
 - POSIX hosts (`darwin`, `linux`) start a new process group with
   `detached: true` and kill `-pid`. Windows stays attached
   (`detached: false`) and
@@ -185,6 +206,8 @@ killProcessTree(pid, platform)
 | `dev` uses `run` / `spawnSync`                       | `miseTaskContract` fails                       |
 | Windows tree kill uses POSIX `kill(-pid)`            | Child GUI survives; contract test fails        |
 | POSIX group kill uses `taskkill.exe`                 | Contract test fails                            |
+| Repeated Ctrl+C during dev task shutdown             | Immediate termination with exit code 130       |
+| Child process terminated by SIGINT                   | Process exitCode set to 130                    |
 | `platform !== "win32"` fallback                      | `supported-platform:check` fails               |
 | NSIS script contains `taskkill`                      | Windows installer contract fails               |
 | Unsupported `process.platform`                       | Throw `Unsupported task host`; no silent POSIX |
@@ -192,7 +215,7 @@ killProcessTree(pid, platform)
 #### 5. Good/Base/Bad Cases
 
 - Good: `mise run dev` on macOS or Windows; Ctrl+C or closing the terminal
-  stops Tauri and its children.
+  stops Tauri and its children. A second Ctrl+C immediately force-quits with code 130.
 - Base: `mise run build` still uses the hidden `run()` helper.
 - Bad: only fix Darwin because the author is on a Mac; Windows keeps
   `spawnSync` / `windowsHide: true`.
@@ -203,6 +226,9 @@ killProcessTree(pid, platform)
   `raw=true`.
 - `executeTauriTask({ operation: "dev" })` calls `runForegroundCommand`,
   not `run`.
+- `signalExitCode` maps signals to standard exit codes (130 for SIGINT, 143 for SIGTERM).
+- `runForeground` force-kills and exits with 130 on repeated SIGINT.
+- Child exit on signal yields standard signal exit code.
 - `killProcessTree` on `win32` records `taskkill.exe /pid /t /f`; on
   `darwin` and `linux` signals `-pid`; on any other host throws.
 - `supported-platform:check` rejects implicit non-Windows branches in

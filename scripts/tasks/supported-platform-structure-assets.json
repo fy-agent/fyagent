@@ -19,7 +19,7 @@
     ],
     [
       "scripts/tasks/lib.mjs",
-      "6c39036ff571f97e5f58db2cce0cedf05db27eb8d9aabcb1045cfd59aab2b0cb"
+      "c2da8afb728fc046cbf01a9706502e99255d200a6234e94bb73754980ca946f9"
     ],
     [
       "scripts/tasks/macos-signed-dev-cargo.mjs",
@@ -411,7 +411,7 @@
     ],
     [
       "tests/miseTaskContract.test.ts",
-      "9ba620e8d8eeb8dc1b443676800d67966291e3fc2e8acc3f68f71230249629f8"
+      "e8722853a342a190bb1e09b050a06079df4e89c74a12f829a3ae44d16779661e"
     ],
     [
       "tests/releaseWorkflow.test.ts",

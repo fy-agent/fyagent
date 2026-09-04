@@ -6,6 +6,7 @@
 # implementation stay shared. This script does not sign, notarize, or embed.
 
 set -euo pipefail
+trap 'exit 130' INT TERM
 
 export LC_ALL=C
 export MACOSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-12.0}"
