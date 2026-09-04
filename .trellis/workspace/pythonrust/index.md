@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 68
-- **Last Active**: 2026-09-03
+- **Total Sessions**: 69
+- **Last Active**: 2026-09-04
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~241 | Active |
+| `journal-2.md` | ~264 | Active |
 | `journal-1.md` | ~1987 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 69 | 2026-09-04 | Codex 官方账号与第三方 API 凭据切换实现与归档 | `f76f3ab1`, `a10e4b9f` | `dev/laiyongjie` |
 | 68 | 2026-09-03 | Auth recovery copy and dialog focus | `e8807cde` | `dev/laiyongjie` |
 | 67 | 2026-09-03 | 收敛 leftover Auth 并归档统一认证任务 | `53476b86`, `cbb8d7a5` | `dev/laiyongjie` |
 | 66 | 2026-09-03 | Managed Auth core vault migration | `d82ffed8` | `dev/laiyongjie` |

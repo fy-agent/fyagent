@@ -1,15 +1,18 @@
-import type {
-  ManagedAuthAccountSummary,
-  ManagedAuthConnectionState,
-  ManagedAuthConnectionSummary,
-  ManagedAuthConsumer,
-  ManagedAuthCredentialManager,
-  ManagedAuthHealth,
-  ManagedAuthLoginSessionSnapshot,
-  ManagedAuthLoginStage,
-  ManagedAuthProvider,
-  ManagedAuthReasonCode,
-  ManagedAuthRequestMode,
+import { errorMessage } from "../../shared/features/helpers";
+import {
+  parseManagedAuthCommandError,
+  type ManagedAuthAccountSummary,
+  type ManagedAuthConnectionAction,
+  type ManagedAuthConnectionState,
+  type ManagedAuthConnectionSummary,
+  type ManagedAuthConsumer,
+  type ManagedAuthCredentialManager,
+  type ManagedAuthHealth,
+  type ManagedAuthLoginSessionSnapshot,
+  type ManagedAuthLoginStage,
+  type ManagedAuthProvider,
+  type ManagedAuthReasonCode,
+  type ManagedAuthRequestMode,
 } from "../../shared/features/managed-auth";
 
 export type AuthTone = "neutral" | "accent" | "warning";
@@ -44,7 +47,7 @@ const reasonCopies: Record<ManagedAuthReasonCode, string> = {
   secret_unavailable: "系统凭据库暂时不可用。",
   connection_unavailable: "暂时无法确认软件连接状态。",
   native_projection_unavailable:
-    "当前软件的凭据存储方式不允许由 FyAgent 更新。",
+    "账号已保存在 FyAgent。还不能改写该软件的本地登录和模型来源，所以本机配置不会变。",
   target_selection_required: "检测到多个安装实例，请先选择要管理的软件。",
   target_changed: "软件安装状态已变化，请刷新后重试。",
   pending_restart: "凭据已更新，软件需要重新启动后才能使用。",
@@ -85,6 +88,11 @@ export function managedAuthReasonCopy(
   return reason === null ? null : reasonCopies[reason];
 }
 
+export function managedAuthCommandErrorCopy(error: unknown): string {
+  const reason = parseManagedAuthCommandError(error);
+  return reason === null ? errorMessage(error) : reasonCopies[reason];
+}
+
 export function uniqueManagedAuthReasonCopies(
   reasons: ManagedAuthReasonCode[],
 ): string[] {
@@ -119,7 +127,14 @@ export function accountHealthPresentation(health: ManagedAuthHealth): {
 
 export function connectionStatusPresentation(
   state: ManagedAuthConnectionState,
+  reasonCodes: readonly ManagedAuthReasonCode[] = [],
 ): { label: string; tone: AuthTone } {
+  if (
+    state === "connected" &&
+    reasonCodes.includes("native_projection_unavailable")
+  ) {
+    return { label: "账号已保存", tone: "warning" };
+  }
   switch (state) {
     case "connected":
       return { label: "已连接", tone: "accent" };
@@ -276,6 +291,94 @@ export function loginStagePresentation(stage: ManagedAuthLoginStage): {
         description: "请重新发起登录。",
       };
   }
+}
+
+export function connectionActionLabel(
+  action: ManagedAuthConnectionAction,
+): string {
+  switch (action) {
+    case "connect_account":
+      return "连接账号";
+    case "switch_account":
+      return "切换账号";
+    case "disconnect":
+      return "断开";
+    case "refresh":
+      return "刷新状态";
+    case "restart":
+      return "立即重启";
+    case "open_consumer":
+      return "打开软件";
+    case "switch_to_official":
+      return "切回官方";
+  }
+}
+
+export function accountPageConnectionActionLabel(
+  action: ManagedAuthConnectionAction,
+): string {
+  switch (action) {
+    case "connect_account":
+      return "用此账号连接";
+    case "switch_account":
+      return "切换到此账号";
+    case "switch_to_official":
+      return "切回官方";
+    default:
+      return connectionActionLabel(action);
+  }
+}
+
+const ACCOUNT_PAGE_CONNECTION_ACTIONS: ManagedAuthConnectionAction[] = [
+  "switch_to_official",
+  "connect_account",
+  "switch_account",
+];
+
+export function accountPageConnectionActions(
+  connection: ManagedAuthConnectionSummary,
+  accountId: string,
+): ManagedAuthConnectionAction[] {
+  return ACCOUNT_PAGE_CONNECTION_ACTIONS.filter((action) => {
+    if (!connection.allowedActions.includes(action)) return false;
+    if (action === "switch_to_official") {
+      return connection.accountId === accountId;
+    }
+    return connection.accountId !== accountId;
+  });
+}
+
+export function connectableConnectionsForAccount(
+  account: ManagedAuthAccountSummary,
+  connections: ManagedAuthConnectionSummary[],
+): ManagedAuthConnectionSummary[] {
+  if (account.health !== "ready") return [];
+  return connections.filter((connection) => {
+    if (connection.provider !== account.provider) return false;
+    if (connection.accountId === account.accountId) return false;
+    return (
+      connection.allowedActions.includes("connect_account") ||
+      connection.allowedActions.includes("switch_account")
+    );
+  });
+}
+
+export function loginRequiredConnectionsForAccount(
+  account: ManagedAuthAccountSummary,
+  connections: ManagedAuthConnectionSummary[],
+): ManagedAuthConnectionSummary[] {
+  if (account.health !== "ready") return [];
+  const connectableIds = new Set(
+    connectableConnectionsForAccount(account, connections).map(
+      (connection) => connection.connectionId,
+    ),
+  );
+  return connections.filter((connection) => {
+    if (connection.provider !== account.provider) return false;
+    if (connection.accountId !== null) return false;
+    if (connectableIds.has(connection.connectionId)) return false;
+    return true;
+  });
 }
 
 export function sessionSummary(

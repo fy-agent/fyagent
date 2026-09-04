@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
+import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -447,6 +448,107 @@ describe("canonical mise task API", () => {
     ).toThrow(/Unsupported task host: freebsd/);
   });
 
+  it("maps POSIX termination signals to standard exit codes", () => {
+    const signalExitCode = taskLibModule.signalExitCode as (
+      signal?: string,
+    ) => number;
+    expect(signalExitCode("SIGHUP")).toBe(129);
+    expect(signalExitCode("SIGINT")).toBe(130);
+    expect(signalExitCode("SIGQUIT")).toBe(131);
+    expect(signalExitCode("SIGKILL")).toBe(137);
+    expect(signalExitCode("SIGTERM")).toBe(143);
+    expect(signalExitCode("UNKNOWN")).toBe(1);
+    expect(signalExitCode(undefined)).toBe(1);
+  });
+
+  it("handles foreground interrupts, force-kills on repeated SIGINT, and exits with 130", () => {
+    const runForeground = taskLibModule.runForeground as (
+      command: string,
+      args?: string[],
+      options?: Record<string, unknown>,
+    ) => unknown;
+
+    class MockChild extends EventEmitter {
+      pid = 8888;
+    }
+
+    const mockChild = new MockChild();
+    const posixSignals: Array<{ pid: number; signal: string }> = [];
+    let exitCodeCalled: number | null = null;
+
+    runForeground("node", ["mock-server.js"], {
+      platform: "darwin",
+      spawn: () => mockChild,
+      exit: (code: number) => {
+        exitCodeCalled = code;
+      },
+      posixKill: (pid: number, signal: string) => {
+        posixSignals.push({ pid, signal });
+      },
+    });
+
+    // First SIGINT: triggers process group kill
+    process.emit("SIGINT", "SIGINT");
+    expect(posixSignals).toEqual([
+      { pid: -8888, signal: "SIGTERM" },
+      { pid: -8888, signal: "SIGKILL" },
+    ]);
+    expect(exitCodeCalled).toBeNull();
+
+    // Second SIGINT: immediate force-kill and exit(130)
+    process.emit("SIGINT", "SIGINT");
+    expect(exitCodeCalled).toBe(130);
+    expect(posixSignals.length).toBe(4);
+  });
+
+  it("assigns standard signal exit code 130 when child terminates on SIGINT", () => {
+    const runForeground = taskLibModule.runForeground as (
+      command: string,
+      args?: string[],
+      options?: Record<string, unknown>,
+    ) => unknown;
+
+    class MockChild extends EventEmitter {
+      pid = 9999;
+    }
+
+    const mockChild = new MockChild();
+    const originalExitCode = process.exitCode;
+
+    try {
+      runForeground("node", ["mock-server.js"], {
+        platform: "darwin",
+        spawn: () => mockChild,
+        exit: () => {},
+        posixKill: () => {},
+      });
+
+      // Child terminates by signal SIGINT
+      mockChild.emit("exit", null, "SIGINT");
+      expect(process.exitCode).toBe(130);
+    } finally {
+      process.exitCode = originalExitCode;
+    }
+  });
+
+  it("handles interrupted synchronous run commands with standard exit code", () => {
+    const run = taskLibModule.run as (
+      command: string,
+      args?: string[],
+      options?: Record<string, unknown>,
+    ) => { status: number };
+
+    let exitCalledWith: number | null = null;
+    const result = run("node", ["-e", "process.kill(process.pid, 'SIGINT')"], {
+      allowSignal: true,
+      exit: (code: number) => {
+        exitCalledWith = code;
+      },
+    });
+    expect(result.status).toBe(130);
+    expect(exitCalledWith).toBeNull();
+  });
+
   it("forwards a unit-test file filter through the real mise usage parser", () => {
     const result = mise("test:unit", "tests/developmentEnvironment.test.ts");
     expect(result.status, output(result)).toBe(0);
@@ -740,7 +842,7 @@ describe("canonical mise task API", () => {
       expectedDevCalls.push(
         {
           command: process.execPath,
-          args: [signedDevAppRunner, "machine-preflight"],
+          args: [signedDevAppRunner, "machine-preflight", "--keep-session"],
         },
         {
           command: "/bin/bash",
@@ -881,6 +983,10 @@ describe("canonical mise task API", () => {
     expect(appRunner).toContain('"default-keychain"');
     expect(appRunner).toContain("signing.keychain-db");
     expect(appRunner).toContain('"set-key-partition-list"');
+    expect(appRunner).toContain("isTransientCodesignFailure");
+    expect(appRunner).toContain("--keep-session");
+    expect(appRunner).toContain("restore-session");
+    expect(appRunner).not.toContain("reactivateSigningKeychain");
     expect(appRunner).toContain('"p12_password"');
     expect(appRunner).not.toMatch(/\/Users\/[^/"']+\/Documents(?:\/|["'])/u);
     for (const forbidden of [
@@ -906,6 +1012,9 @@ describe("canonical mise task API", () => {
     expect(machinePreflight).toBeGreaterThanOrEqual(0);
     expect(helperBuildCall).toBeGreaterThan(machinePreflight);
     expect(artifactPreflight).toBeGreaterThan(helperBuildCall);
+    expect(hostNative).toContain("restore-session");
+    expect(hostNative).toContain("--keep-session");
+    expect(hostNative).toContain('child.on("exit"');
 
     expect(helperBuild).toContain("BUILD_FINGERPRINT=");
     expect(helperBuild).toContain("version-specific compiler define");

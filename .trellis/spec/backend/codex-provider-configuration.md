@@ -11,8 +11,8 @@ discovery, installation, process restart, and launch are owned by
 [Codex Desktop Installer](./codex-desktop-installer.md); application version and
 release metadata are owned by their dedicated contracts. Managed ChatGPT OAuth
 account identity, refresh ownership and JSON-to-vault migration are owned by
-[Managed Auth Core](./managed-auth.md). Managed Codex connection admission and
-its production projection gate are owned by
+[Managed Auth Core](./managed-auth.md). Managed Codex projection admission,
+account delta, and connection outcome are owned by
 [Managed Auth Consumers](./managed-auth-consumers.md). This contract owns only
 the Codex Provider binding boundary plus the existing Codex config/auth writer
 semantics; Agent install/launch remains in the focused lifecycle contracts.
@@ -22,9 +22,12 @@ migration seals that source. Provider rows store
 Legacy binding remap runs only after `CodexOAuthManager` reports a successful
 store load. A parse or I/O failure is not an empty account set and must leave
 every existing Provider binding unchanged.
-Native file projection is allowed only when live `cli_auth_credentials_store`
-is explicitly `file`; `keyring`, `auto`, `ephemeral`, unset, and unknown fail
-closed. Workspace/account IDs are never HashMap keys.
+The configuration layer reports the effective credential-store fact consumed
+by Managed Auth: explicit `file` and unset (the upstream default) are
+file-capable; `keyring`, `auto`, `ephemeral`, invalid, and unknown values are
+not. This layer never rewrites the key to manufacture capability, and it does
+not decide whether a particular account has complete, identity-matched
+material. Workspace/account IDs are never HashMap keys.
 
 ## 2. Signatures
 
@@ -258,7 +261,8 @@ CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED
 | Provider `authBinding.accountId` is missing, already a credential, or maps to multiple credentials   | Unbind; never guess the default or another account.                                                                     |
 | Codex compatibility OAuth store parse/I/O load fails before binding remap                            | Skip remap and preserve every existing Provider binding; empty memory is not evidence of an empty store.                |
 | Bound managed credential is missing/expired during proxy forwarding                                  | Fail closed; do not send another account's token.                                                                       |
-| Live `cli_auth_credentials_store` is `keyring`, `auto`, `ephemeral`, unset, invalid, or unknown      | `native_projection_available=false`; do not write `auth.json` to fake a switch.                                         |
+| Live `cli_auth_credentials_store` is unset or explicitly `file`                                     | Report a file-capable store; Managed Auth still owns credential/identity admission, and unset does not backfill a key.   |
+| Live `cli_auth_credentials_store` is `keyring`, `auto`, `ephemeral`, invalid, or unknown             | Report a non-file-capable store; do not write `auth.json` or rewrite the store to fake a switch.                          |
 | Native projection writes `auth.json` because the file already exists                                 | Contract regression; file existence is not a store hint.                                                                |
 | Auth DTO/log/Debug serializes access/refresh tokens                                                  | Security regression.                                                                                                    |
 
@@ -356,7 +360,8 @@ third-party live write -> config-only + live experimental_bearer_token
 managed ChatGPT account map key = credential_id
   + chatgpt_account_id is routing metadata only
   + Provider.authBinding.accountId = credential_id
-native projection only when cli_auth_credentials_store = "file"
+effective store is file-capable when cli_auth_credentials_store is unset or explicit "file"
+Managed Auth separately proves complete material, identity, revision, and readback
 successful OAuth store load -> remap legacy Provider bindings
 OAuth store load failure -> preserve all bindings; do not treat memory as empty authority
 ```

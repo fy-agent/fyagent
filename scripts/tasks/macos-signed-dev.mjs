@@ -40,6 +40,8 @@ const SESSION_KEYCHAIN_PASSWORD = path.join(
   SIGNING_CACHE,
   "keychain.password",
 );
+const SESSION_STATE_SCHEMA = "fyagent-macos-signed-dev-session/v1";
+const SESSION_STATE_PATH = path.join(SIGNING_CACHE, "active-session.json");
 const DEVELOPER_ID_INTERMEDIATE = path.join(
   ROOT,
   "scripts",
@@ -55,6 +57,10 @@ const APPLE_ROOT_CA = path.join(
 
 function fail(message) {
   throw new Error(`macos-signed-dev: ${message}`);
+}
+
+function isTransientCodesignFailure(detail) {
+  return /errSecInternalComponent|unable to build chain/i.test(detail);
 }
 
 function run(command, args = [], options = {}) {
@@ -224,7 +230,63 @@ function parseDeveloperIdIdentity(output) {
   return identities[0];
 }
 
+function sessionStateFromCapture(session) {
+  return {
+    schema: SESSION_STATE_SCHEMA,
+    originalKeychains: session.originalKeychains,
+    originalDefaultKeychain: session.originalDefaultKeychain,
+    restoreKeychains: session.restoreKeychains,
+  };
+}
+
+function readSessionState() {
+  if (!fs.existsSync(SESSION_STATE_PATH)) return null;
+  try {
+    const value = JSON.parse(fs.readFileSync(SESSION_STATE_PATH, "utf8"));
+    if (
+      value?.schema !== SESSION_STATE_SCHEMA ||
+      typeof value.originalDefaultKeychain !== "string" ||
+      !Array.isArray(value.restoreKeychains) ||
+      value.restoreKeychains.length === 0
+    ) {
+      return null;
+    }
+    return {
+      originalKeychains: Array.isArray(value.originalKeychains)
+        ? value.originalKeychains
+        : [],
+      originalDefaultKeychain: value.originalDefaultKeychain,
+      restoreKeychains: value.restoreKeychains,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeSessionState(session) {
+  fs.mkdirSync(SIGNING_CACHE, { recursive: true, mode: 0o700 });
+  fs.writeFileSync(
+    SESSION_STATE_PATH,
+    `${JSON.stringify(sessionStateFromCapture(session), null, 2)}\n`,
+    { mode: 0o600 },
+  );
+  fs.chmodSync(SESSION_STATE_PATH, 0o600);
+}
+
+function clearSessionState() {
+  fs.rmSync(SESSION_STATE_PATH, { force: true });
+}
+
+function restorePersistedSession() {
+  const persisted = readSessionState();
+  if (!persisted) return;
+  restoreUserKeychains(persisted);
+  clearSessionState();
+}
+
 function captureUserKeychains() {
+  const persisted = readSessionState();
+  if (persisted) return persisted;
   const originalKeychains = run("/usr/bin/security", [
     "list-keychains",
     "-d",
@@ -297,6 +359,19 @@ function unlockSessionKeychain(keychain, password) {
     "21600",
     keychain,
   ]);
+  spawnSync(
+    "/usr/bin/security",
+    [
+      "set-key-partition-list",
+      "-S",
+      "apple-tool:,apple:,codesign:",
+      "-s",
+      "-k",
+      password,
+      keychain,
+    ],
+    { stdio: "ignore", windowsHide: true },
+  );
   return true;
 }
 
@@ -444,6 +519,10 @@ function activateSessionKeychain(keychain, session) {
   ]);
 }
 
+function preparedIdentity(identity, keychain, session, cleanup) {
+  return { ...identity, keychain, session, cleanup };
+}
+
 function discardUnusedSessionKeychain(keychain, session) {
   // Removing the file without `security delete-keychain` avoids the macOS 26
   // codesign poison: deleting a keychain that just signed with this identity
@@ -451,9 +530,13 @@ function discardUnusedSessionKeychain(keychain, session) {
   // errSecInternalComponent / "unable to build chain to self-signed root".
   restoreUserKeychains(session);
   fs.rmSync(keychain, { force: true });
+  clearSessionState();
 }
 
-function prepareTemporarySigningIdentity() {
+function prepareTemporarySigningIdentity({
+  keepSession = false,
+  requireSmoke = true,
+} = {}) {
   const config = loadSigningConfig();
   const { password: p12Password } = parseSigningCredentials(
     config.credentialsFile,
@@ -465,6 +548,7 @@ function prepareTemporarySigningIdentity() {
   const session = captureUserKeychains();
   const cleanup = () => {
     restoreUserKeychains(session);
+    clearSessionState();
   };
 
   try {
@@ -481,8 +565,25 @@ function prepareTemporarySigningIdentity() {
               "codesigning",
             ]).stdout,
           );
-          return { ...identity, keychain, cleanup };
-        } catch {
+          const prepared = preparedIdentity(
+            identity,
+            keychain,
+            session,
+            cleanup,
+          );
+          if (keepSession) writeSessionState(session);
+          if (requireSmoke) smokeSignIdentity(prepared);
+          return prepared;
+        } catch (error) {
+          const detail = String(
+            error instanceof Error ? error.message : error,
+          );
+          // Recreating the keychain after errSecInternalComponent was proven
+          // useless: the replacement also failed immediately. Keep the cache
+          // and fail this process so the next command can reuse it.
+          if (isTransientCodesignFailure(detail)) {
+            throw error;
+          }
           discardUnusedSessionKeychain(keychain, session);
         }
       } else {
@@ -511,19 +612,22 @@ function prepareTemporarySigningIdentity() {
       run("/usr/bin/security", ["find-identity", "-v", "-p", "codesigning"])
         .stdout,
     );
-    return { ...identity, keychain, cleanup };
+    const prepared = preparedIdentity(identity, keychain, session, cleanup);
+    if (keepSession) writeSessionState(session);
+    if (requireSmoke) smokeSignIdentity(prepared);
+    return prepared;
   } catch (error) {
     cleanup();
     throw error;
   }
 }
 
-function withSigningIdentity(callback) {
-  const identity = prepareTemporarySigningIdentity();
+function withSigningIdentity(callback, options = {}) {
+  const identity = prepareTemporarySigningIdentity(options);
   try {
     return callback(identity);
   } finally {
-    identity.cleanup();
+    if (!options.keepSession) identity.cleanup();
   }
 }
 
@@ -634,6 +738,13 @@ function writeInfoPlist(file, manifest, executableName, version) {
 }
 
 function sign(pathname, identity, identifier, entitlements) {
+  // Replacing an existing Developer ID signature can fail with
+  // errSecInternalComponent / "unable to build chain to self-signed root"
+  // even when the same identity can sign an unsigned file. Strip first.
+  spawnSync("/usr/bin/codesign", ["--remove-signature", pathname], {
+    encoding: "utf8",
+    windowsHide: true,
+  });
   const args = [
     "--force",
     "--sign",
@@ -648,11 +759,21 @@ function sign(pathname, identity, identifier, entitlements) {
   ];
   if (entitlements) args.push("--entitlements", entitlements);
   args.push(pathname);
-  const result = spawnSync("/usr/bin/codesign", args, {
-    encoding: "utf8",
-    windowsHide: true,
-  });
-  const stderr = `${result.stderr ?? ""}${result.stdout ?? ""}`.trim();
+  const attempt = () =>
+    spawnSync("/usr/bin/codesign", args, {
+      encoding: "utf8",
+      windowsHide: true,
+    });
+  let result = attempt();
+  let stderr = `${result.stderr ?? ""}${result.stdout ?? ""}`.trim();
+  if (
+    result.status !== 0 &&
+    /errSecInternalComponent|unable to build chain/i.test(stderr)
+  ) {
+    unlockSessionKeychain(identity.keychain, sessionKeychainPassword());
+    result = attempt();
+    stderr = `${result.stderr ?? ""}${result.stdout ?? ""}`.trim();
+  }
   if (result.error) throw result.error;
   if (result.status !== 0) {
     fail(
@@ -770,19 +891,22 @@ function buildSignedApp(target, executable) {
   );
 
   try {
-    withSigningIdentity((identity) => {
-      sign(client, identity, DEV_CLIENT_IDENTIFIER);
-      sign(helper, identity, DEV_HELPER_IDENTIFIER);
-      sign(
-        temporaryApp,
-        identity,
-        DEV_APP_IDENTIFIER,
-        path.join(ROOT, "src-tauri", "entitlements.macos.plist"),
-      );
-      verifySignature(client, DEV_CLIENT_IDENTIFIER);
-      verifySignature(helper, DEV_HELPER_IDENTIFIER);
-      verifySignature(temporaryApp, DEV_APP_IDENTIFIER);
-    });
+    withSigningIdentity(
+      (identity) => {
+        sign(client, identity, DEV_CLIENT_IDENTIFIER);
+        sign(helper, identity, DEV_HELPER_IDENTIFIER);
+        sign(
+          temporaryApp,
+          identity,
+          DEV_APP_IDENTIFIER,
+          path.join(ROOT, "src-tauri", "entitlements.macos.plist"),
+        );
+        verifySignature(client, DEV_CLIENT_IDENTIFIER);
+        verifySignature(helper, DEV_HELPER_IDENTIFIER);
+        verifySignature(temporaryApp, DEV_APP_IDENTIFIER);
+      },
+      { requireSmoke: false },
+    );
     run("/usr/bin/codesign", [
       "--verify",
       "--deep",
@@ -811,14 +935,16 @@ function smokeSignIdentity(identity) {
   }
 }
 
-function machinePreflight() {
+function machinePreflight({ keepSession = false } = {}) {
   assertFullXcode();
-  withSigningIdentity((identity) => {
-    smokeSignIdentity(identity);
-    process.stdout.write(
-      `Signed macOS development identity ready: ${identity.authority} [${identity.hash}]\n`,
-    );
-  });
+  withSigningIdentity(
+    (identity) => {
+      process.stdout.write(
+        `Signed macOS development identity ready: ${identity.authority} [${identity.hash}]\n`,
+      );
+    },
+    { keepSession, requireSmoke: true },
+  );
 }
 
 function preflight() {
@@ -880,8 +1006,16 @@ function main() {
     configure(args);
     return;
   }
-  if (command === "machine-preflight" && args.length === 0) {
-    machinePreflight();
+  if (command === "machine-preflight") {
+    const keepSession = args[0] === "--keep-session";
+    if (args.length > 1 || (args.length === 1 && !keepSession)) {
+      fail("machine-preflight accepts only optional --keep-session");
+    }
+    machinePreflight({ keepSession });
+    return;
+  }
+  if (command === "restore-session" && args.length === 0) {
+    restorePersistedSession();
     return;
   }
   if (command === "preflight" && args.length === 0) {
@@ -909,7 +1043,7 @@ function main() {
     });
   }
   fail(
-    "expected configure, machine-preflight, preflight, verify-artifacts, or app-runner",
+    "expected configure, machine-preflight, restore-session, preflight, verify-artifacts, or app-runner",
   );
 }
 

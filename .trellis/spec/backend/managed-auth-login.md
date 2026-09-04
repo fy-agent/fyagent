@@ -106,15 +106,25 @@ malformed or zero-version UUID.
   credential ready. Opening a browser or receiving a provider grant is not
   success by itself.
 - After account storage, an unavailable Codex/Grok native projection ends
-  `partial` with its consumer-owned reason. A successful OpenCode file write
-  and readback may instead end `completed` with `pending_restart`, because the
-  write is proven while live Desktop pickup is not.
+  `partial` with its consumer-owned reason. A successful Codex or OpenCode file
+  write and readback may instead end `completed` with `pending_restart`,
+  because persistence is proven while live consumer pickup is not.
+- A `completed` login snapshot may carry only `reasonCode=null` or
+  `reasonCode=pending_restart`. The latter is a positive terminal state: the
+  account and projection readback completed, but the consumer may need a
+  restart. Every other non-null reason requires a non-completed stage and is a
+  wire-contract violation.
 
 ### OpenAI browser loopback and Device Code
 
 - Browser loopback is the default OpenAI method. Bind only the first-party
   registered ports `1455`, then `1457`; do not terminate an unknown listener.
   When both are busy, start Device Code instead of choosing an arbitrary port.
+- Bind with `std::net::TcpListener` on the Tauri IPC thread that runs
+  `managed_auth_start_login`. Convert with `tokio::net::TcpListener::from_std`
+  only inside the async `accept_one_callback` worker. That IPC thread has no
+  Tokio reactor; converting on the command thread panics with
+  `there is no reactor running` and never opens the browser.
 - The callback path is `/auth/callback`. Validate loopback host, bound port,
   method/path, OAuth state, PKCE exchange, body bounds, and callback deadline
   before accepting a code.
@@ -153,8 +163,10 @@ malformed or zero-version UUID.
 | Condition | Required result |
 | --- | --- |
 | vault unavailable | `secret_unavailable`; no provider worker |
+| login vault create is denied before a Keychain item exists | `secret_unavailable`; credential stays `secret_missing`; never `migration_blocked` |
 | migration blocks admission | `migration_blocked`; no provider worker |
 | OpenAI loopback ports `1455` and `1457` are busy | switch to Device Code; do not kill listeners or bind an arbitrary port |
+| `TcpListener::from_std` runs on the IPC command thread | panic `there is no reactor running`; convert only inside the async accept worker |
 | callback host/path/state/PKCE/body/deadline is invalid | fail the session; store no grant |
 | user cancels while callback/poll is in flight | generation changes; late result is discarded |
 | switch method is not OpenAI browser-loopback → Device Code | `invalid_response`; session unchanged |
@@ -165,15 +177,18 @@ malformed or zero-version UUID.
 | second non-terminal session for the same provider | `operation_conflict`; return no new session |
 | OpenAI and xAI each have one non-terminal session | both may coexist; retain unique backend UUIDs |
 | grant is received but SecretRef readback fails | never publish `completed`; retain the core recovery state |
+| JWT identity parses but the encoded vault bundle still exceeds 2560 after omitting optional tokens | `login_failed`; never publish `completed` |
 | Codex/Grok native projection is unavailable after storage | `partial` with the consumer-owned reason |
-| OpenCode file write/readback succeeds but live pickup is unproven | `completed` + `pending_restart`; do not relabel the write unavailable |
+| Codex/OpenCode file write/readback succeeds but live pickup is unproven | `completed` + `pending_restart`; do not relabel the write unavailable or ask for a generic retry |
+| completed snapshot carries a non-null reason other than `pending_restart` | reject the wire shape; do not render success |
 | snapshot/error/log contains URL secrets, codes, tokens, verifier, SecretRef, or HTTP body | security regression |
 
 ## 5. Good / Base / Bad Cases
 
 - **Good:** an OpenAI `save_only` login binds `1455`, validates state and PKCE,
   stores the bundle, rereads it, and only then publishes a completed account
-  ID.
+  ID. The same grant then refreshes FyAgent Local Proxy connection rows the
+  same way startup `upsert_proxy_connections` does.
 - **Good:** both registered loopback ports are occupied, so the same request
   becomes a Device Code session without touching either process.
 - **Base:** a valid xAI Device Code flow stores a separate `grok_native`
@@ -203,6 +218,8 @@ Required assertions:
 - maximum-eight retention, per-provider single-flight, cross-provider
   coexistence, UUID/session lookup rejection and terminal-session stability;
 - OpenAI callback host/path/state/PKCE/body/deadline validation;
+- loopback bind does not require a current Tokio `Handle`; `from_std` happens
+  only in the async accept worker;
 - `1455` → `1457` → Device Code fallback without process cancellation;
 - Device Code interval/expiry plus cancel/switch generation races;
 - reopen uses the process-private official URL and the snapshot has no URL;
@@ -210,6 +227,8 @@ Required assertions:
 - `grok_native` versus `proxy_upstream` isolation;
 - SecretRef readback gates success and a failed consumer projection remains
   partial rather than completed;
+- Codex/OpenCode projection readback may finish `completed` with only
+  `pending_restart`; every other completed/non-null reason is rejected;
 - DTO/Debug/log leak scans cover callback/code/state/verifier/device/token and
   raw HTTP body fields.
 
@@ -226,6 +245,7 @@ renderer receives authorizeUrl + verifier
 renderer polls token endpoint
 grant received -> completed
 cancel only changes visible UI state
+TcpListener::from_std(std_listener) on managed_auth_start_login IPC thread
 ```
 
 Correct:
@@ -233,6 +253,7 @@ Correct:
 ```text
 backend owns URL, callback, polling, verifier, and generation
 grant -> reserve metadata -> native vault write -> typed readback
-consumer projection/readback -> completed or partial
+consumer projection/readback -> completed, completed + pending_restart, or partial
 cancel/switch bumps generation so late work cannot commit
+hold std::net::TcpListener across IPC; from_std only inside accept_one_callback
 ```

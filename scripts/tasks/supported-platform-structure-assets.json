@@ -15,11 +15,11 @@
     ],
     [
       "scripts/tasks/host-native.mjs",
-      "f9e987c889d59619d72ad7d4d44c080e1857fa94ca88e75794b23a77776c26e1"
+      "d580175558e8fd277646da8505c66409a4c7b37b0041bb7d99110979a5d81181"
     ],
     [
       "scripts/tasks/lib.mjs",
-      "6c39036ff571f97e5f58db2cce0cedf05db27eb8d9aabcb1045cfd59aab2b0cb"
+      "c2da8afb728fc046cbf01a9706502e99255d200a6234e94bb73754980ca946f9"
     ],
     [
       "scripts/tasks/macos-signed-dev-cargo.mjs",
@@ -27,7 +27,7 @@
     ],
     [
       "scripts/tasks/supported-platform-check.mjs",
-      "126744f8f5f66b99fdb8902fec2bc47818e5e2d7ef2fcba89dda71ecaf9ce67c"
+      "44f1120b01e08cc9ff995cfd638e2c68d63edcf977375946cfa845cc185885f7"
     ],
     [
       "scripts/tasks/system-check.mjs",
@@ -159,7 +159,7 @@
     ],
     [
       "src-tauri/src/lib.rs",
-      "fa961aea582bb1e28c7a3a309b1352b78b1d8da2c6521778220dcf64b2b714e0"
+      "51585225fe7b8b21063b9cd900316b911f0c79e74c6b7ead4df1e9eb13d709a5"
     ],
     [
       "src-tauri/src/lightweight.rs",
@@ -223,7 +223,7 @@
     ],
     [
       "src-tauri/src/services/managed_auth/providers/openai.rs",
-      "b31d8d394be49de472398bbd433c7941787793fe20ca9b23bda245fbd8e825ec"
+      "8327871323df55e2ed6e4898473a8e46a1f6db2131e2cf146dc757edf045d7b6"
     ],
     [
       "src-tauri/src/services/model_probe.rs",
@@ -231,7 +231,7 @@
     ],
     [
       "src-tauri/src/services/provider/mod.rs",
-      "6061d9d41a25fe2d199587b223e8ae4c673a9ab2d398c12ad99d31fe0edc2605"
+      "b04555ef9f1d6b02afa1c170ffb96d540dc0f912f44ddeba732aee215a3295cf"
     ],
     [
       "src-tauri/src/services/qoderwork.rs",
@@ -239,7 +239,7 @@
     ],
     [
       "src-tauri/src/services/secret/mod.rs",
-      "5831f17c50ae08cb899b12771b268916f956e16e9a168a7df4b0f875421cda59"
+      "e80ab01741fb441a7de04688ceca1342399b31a2fdbff993a98d67bfe1d1c32e"
     ],
     [
       "src-tauri/src/services/secret/platform/mod.rs",
@@ -335,7 +335,7 @@
     ],
     [
       "src-tauri/tests/secret_service_contract.rs",
-      "ae8f0f7631e408a7f3a3b750ce862512d8b0ddb2228aba672e695716caf3ff16"
+      "c5a25d1135bd64578eadfe33a9546876fb74a21bd45c162ef13e3fb8767c90a0"
     ],
     [
       "src-tauri/tests/skill_sync.rs",
@@ -411,7 +411,7 @@
     ],
     [
       "tests/miseTaskContract.test.ts",
-      "9ba620e8d8eeb8dc1b443676800d67966291e3fc2e8acc3f68f71230249629f8"
+      "0a6da47b2dde8ef7e670b7b952b6df58656b17d0af96b88084f04c8f036ac98e"
     ],
     [
       "tests/releaseWorkflow.test.ts",
@@ -419,7 +419,7 @@
     ],
     [
       "tests/remainingPlatformSurface.test.ts",
-      "8dfd51bb515152cc8d1d1e428c5975ac97f15cf0759fa2b2bb81094d2bcd0b58"
+      "d0415f1ca78fad6e1a30527b5475f0dc0826c8ab7645b8c33750f77846872ec1"
     ],
     [
       "tests/singleInstanceActivationContract.test.ts",

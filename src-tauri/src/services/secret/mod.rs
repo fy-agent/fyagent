@@ -13,6 +13,8 @@ pub(crate) use backend::MaterialMatches;
 pub(crate) use backend::{SecretBackend, SecretService};
 pub(crate) use error::{SecretErrorCode, SecretServiceError};
 pub(crate) use material::SecretMaterial;
+#[allow(unused_imports)]
+pub(crate) use material::MAX_SECRET_BYTES;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(crate) use memory::MemoryFailureMode;

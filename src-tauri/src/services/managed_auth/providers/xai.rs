@@ -293,10 +293,6 @@ where
                 ManagedAuthLoginStage::Failed,
                 ManagedAuthReasonCode::SecretUnavailable,
             ),
-            ManagedAuthCoreError::InvalidData => (
-                ManagedAuthLoginStage::Failed,
-                ManagedAuthReasonCode::IdentityMismatch,
-            ),
             _ => (
                 ManagedAuthLoginStage::Failed,
                 ManagedAuthReasonCode::LoginFailed,

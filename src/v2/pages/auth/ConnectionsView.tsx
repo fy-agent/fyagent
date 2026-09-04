@@ -11,7 +11,7 @@ import {
   CatalogMasterDetail,
   CatalogRail,
 } from "../../shared/ui/catalog";
-import { Button, EmptyState, InlineNotice } from "../../shared/ui/primitives";
+import { Button, EmptyState } from "../../shared/ui/primitives";
 import {
   AuthListItem,
   DefinitionRow,
@@ -20,6 +20,7 @@ import {
   StatusBadge,
 } from "./common";
 import {
+  connectionActionLabel,
   connectionStatusPresentation,
   managedAuthConsumerLabel,
   managedAuthManagerLabel,
@@ -40,33 +41,45 @@ function consumerStatus(connections: ManagedAuthConnectionSummary[]) {
   if (connections.length === 0) {
     return connectionStatusPresentation("unavailable");
   }
-  return connectionStatusPresentation(
-    connections
-      .slice()
-      .sort(
-        (left, right) =>
-          statusRank[left.authStatus] - statusRank[right.authStatus],
-      )[0].authStatus,
-  );
+  const primary = connections
+    .slice()
+    .sort(
+      (left, right) =>
+        statusRank[left.authStatus] - statusRank[right.authStatus],
+    )[0];
+  return connectionStatusPresentation(primary.authStatus, primary.reasonCodes);
 }
 
-function actionLabel(action: ManagedAuthConnectionAction): string {
-  switch (action) {
-    case "connect_account":
-      return "连接账号";
-    case "switch_account":
-      return "切换账号";
-    case "disconnect":
-      return "断开";
-    case "refresh":
-      return "刷新状态";
-    case "restart":
-      return "立即重启";
-    case "open_consumer":
-      return "打开软件";
-    case "switch_to_official":
-      return "切回官方";
+function consumerSummary(connections: ManagedAuthConnectionSummary[]) {
+  if (connections.length === 0) {
+    return "暂时没有可管理的连接";
   }
+  const projected = connections.filter(
+    (connection) =>
+      connection.authStatus === "connected" &&
+      !connection.reasonCodes.includes("native_projection_unavailable"),
+  ).length;
+  if (projected > 0) {
+    return `${projected} 条已连接`;
+  }
+  const savedNotProjected = connections.filter(
+    (connection) =>
+      connection.authStatus === "disconnected" &&
+      connection.accountId !== null &&
+      !connection.reasonCodes.includes("native_projection_unavailable"),
+  ).length;
+  if (savedNotProjected > 0) {
+    return "账号已保存，尚未写入软件";
+  }
+  const legacySaved = connections.filter(
+    (connection) =>
+      connection.authStatus === "connected" &&
+      connection.reasonCodes.includes("native_projection_unavailable"),
+  ).length;
+  if (legacySaved > 0) {
+    return "账号已保存，尚未写入软件";
+  }
+  return consumerStatus(connections).label;
 }
 
 function ConnectionCard({
@@ -88,7 +101,20 @@ function ConnectionCard({
         (candidate) => candidate.accountId === connection.accountId,
       )
     : null;
-  const status = connectionStatusPresentation(connection.authStatus);
+  const status = (() => {
+    const base = connectionStatusPresentation(
+      connection.authStatus,
+      connection.reasonCodes,
+    );
+    if (
+      connection.authStatus === "disconnected" &&
+      account &&
+      !connection.reasonCodes.includes("native_projection_unavailable")
+    ) {
+      return { label: "账号已保存", tone: "warning" as const };
+    }
+    return base;
+  })();
   return (
     <article className="fy-auth-consumer-connection">
       <div className="fy-auth-connection-card-heading">
@@ -145,7 +171,7 @@ function ConnectionCard({
               disabled={mutationBusy}
               onClick={() => onAction(connection, action)}
             >
-              {actionLabel(action)}
+              {connectionActionLabel(action)}
             </Button>
           ))}
         </div>
@@ -191,9 +217,6 @@ export function ConnectionsView({
               (connection) => connection.consumer === consumer,
             );
             const status = consumerStatus(connections);
-            const connected = connections.filter(
-              (connection) => connection.authStatus === "connected",
-            ).length;
             return (
               <AuthListItem
                 key={consumer}
@@ -204,13 +227,7 @@ export function ConnectionsView({
                     {managedAuthConsumerLabel(consumer).slice(0, 1)}
                   </span>
                 }
-                summary={
-                  connections.length === 0
-                    ? "暂时没有可管理的连接"
-                    : connected > 0
-                      ? `${connected} 条已连接`
-                      : status.label
-                }
+                summary={consumerSummary(connections)}
                 trailing={<StatusBadge {...status} />}
                 onSelect={() => onSelectConsumer(consumer)}
                 testId={`managed-auth-consumer-${consumer}`}
@@ -252,13 +269,6 @@ export function ConnectionsView({
               ))}
             </div>
           )}
-          {selectedConnections.some(
-            (connection) => connection.targetId === null,
-          ) ? (
-            <InlineNotice tone="warning">
-              未检测到可管理的安装实例。账号页面不会自动安装软件。
-            </InlineNotice>
-          ) : null}
         </CatalogDetail>
       ) : (
         <CatalogDetail ariaLabel="软件连接详情" className="fy-auth-detail">

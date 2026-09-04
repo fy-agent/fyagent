@@ -38,6 +38,23 @@ export function resolveTaskExecutable(command, platform = process.platform) {
   throw new Error(`Unsupported task host: ${platform}`);
 }
 
+export function signalExitCode(signal) {
+  switch (signal) {
+    case "SIGHUP":
+      return 129;
+    case "SIGINT":
+      return 130;
+    case "SIGQUIT":
+      return 131;
+    case "SIGKILL":
+      return 137;
+    case "SIGTERM":
+      return 143;
+    default:
+      return 1;
+  }
+}
+
 export function run(command, args = [], options = {}) {
   const result = spawnSync(resolveTaskExecutable(command), args, {
     cwd: ROOT,
@@ -47,6 +64,45 @@ export function run(command, args = [], options = {}) {
     windowsHide: true,
   });
   if (result.error) throw result.error;
+  if (result.signal) {
+    if (options.allowSignal) {
+      return {
+        status: signalExitCode(result.signal),
+        signal: result.signal,
+        stdout: (result.stdout ?? "").trim(),
+        stderr: (result.stderr ?? "").trim(),
+      };
+    }
+    if (result.signal === "SIGINT" || result.signal === "SIGTERM") {
+      const exitFn = options.exit ?? process.exit.bind(process);
+      exitFn(signalExitCode(result.signal));
+      return {
+        status: signalExitCode(result.signal),
+        signal: result.signal,
+        stdout: (result.stdout ?? "").trim(),
+        stderr: (result.stderr ?? "").trim(),
+      };
+    }
+    const detail = options.capture
+      ? `\n${(result.stderr || result.stdout || "").trim()}`
+      : "";
+    throw new Error(
+      `${command} ${args.join(" ")} terminated by ${result.signal}${detail}`,
+    );
+  }
+  if (
+    (result.status === 130 || result.status === 143) &&
+    !options.allowFailure &&
+    !options.allowSignal
+  ) {
+    const exitFn = options.exit ?? process.exit.bind(process);
+    exitFn(result.status);
+    return {
+      status: result.status,
+      stdout: (result.stdout ?? "").trim(),
+      stderr: (result.stderr ?? "").trim(),
+    };
+  }
   if (result.status !== 0 && !options.allowFailure) {
     const detail = options.capture
       ? `\n${(result.stderr || result.stdout || "").trim()}`
@@ -109,7 +165,8 @@ export function runForeground(command, args = [], options = {}) {
   } else {
     throw new Error(`Unsupported task host: ${platform}`);
   }
-  const child = spawn(resolveTaskExecutable(command, platform), args, {
+  const spawnCommand = options.spawn ?? spawn;
+  const child = spawnCommand(resolveTaskExecutable(command, platform), args, {
     cwd: ROOT,
     env: { ...process.env, ...(options.env ?? {}) },
     stdio: "inherit",
@@ -121,31 +178,85 @@ export function runForeground(command, args = [], options = {}) {
     throw new Error(`${command} failed to start`);
   }
   const treePid = child.pid;
+  let receivedSignal = null;
   let shuttingDown = false;
-  const shutdown = () => {
-    if (shuttingDown) return;
-    shuttingDown = true;
+  let forceKillTimer = null;
+
+  const killTree = () => {
     killProcessTree(treePid, platform, options.runner, options.posixKill);
   };
-  for (const signal of signals) {
-    process.on(signal, shutdown);
-  }
-  process.on("exit", shutdown);
-  child.on("exit", (status, signal) => {
+
+  const cleanup = () => {
     for (const name of signals) {
-      process.removeListener(name, shutdown);
+      process.removeListener(name, onSignal);
     }
-    process.removeListener("exit", shutdown);
-    if (signal) {
-      process.exitCode = 1;
+    process.removeListener("exit", onProcessExit);
+    if (forceKillTimer) {
+      clearTimeout(forceKillTimer);
+      forceKillTimer = null;
+    }
+  };
+
+  const onProcessExit = () => {
+    killTree();
+  };
+
+  const onSignal = (signal) => {
+    const exitFn = options.exit ?? process.exit.bind(process);
+    if (shuttingDown) {
+      killTree();
+      cleanup();
+      exitFn(signalExitCode(signal ?? receivedSignal ?? "SIGINT"));
       return;
     }
-    process.exitCode = status ?? 1;
+    shuttingDown = true;
+    receivedSignal = signal;
+    killTree();
+
+    const timeoutMs = options.forceKillTimeoutMs ?? 3000;
+    if (timeoutMs > 0 && typeof setTimeout === "function") {
+      forceKillTimer = setTimeout(() => {
+        killTree();
+        cleanup();
+        exitFn(signalExitCode(receivedSignal ?? "SIGINT"));
+      }, timeoutMs);
+      if (typeof forceKillTimer?.unref === "function") {
+        forceKillTimer.unref();
+      }
+    }
+  };
+
+  for (const signal of signals) {
+    process.on(signal, onSignal);
+  }
+  process.on("exit", onProcessExit);
+
+  child.on("exit", (status, signal) => {
+    cleanup();
+    const effectiveSignal = receivedSignal ?? signal;
+    if (effectiveSignal) {
+      const code = signalExitCode(effectiveSignal);
+      process.exitCode = code;
+      if (options.exitOnChildExit) {
+        (options.exit ?? process.exit.bind(process))(code);
+      }
+      return;
+    }
+    process.exitCode = status ?? 0;
+    if (options.exitOnChildExit) {
+      (options.exit ?? process.exit.bind(process))(status ?? 0);
+    }
   });
+
   child.on("error", () => {
-    shutdown();
+    cleanup();
+    killTree();
     process.exitCode = 1;
+    if (options.exitOnChildExit) {
+      (options.exit ?? process.exit.bind(process))(1);
+    }
   });
+
   return child;
 }
 

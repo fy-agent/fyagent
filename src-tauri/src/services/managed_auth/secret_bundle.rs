@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use zeroize::{Zeroize, Zeroizing};
 
-use crate::services::secret::{SecretMaterial, SecretPurpose};
+use crate::services::secret::{SecretMaterial, SecretPurpose, MAX_SECRET_BYTES};
 
 use super::{ManagedAuthCoreError, ManagedAuthProvider};
 
@@ -139,7 +139,7 @@ impl ManagedAuthSecretBundle {
         Ok(self)
     }
 
-    pub(crate) fn encode(self) -> Result<SecretMaterial, ManagedAuthCoreError> {
+    fn encoded_bytes(&self) -> Result<Vec<u8>, ManagedAuthCoreError> {
         let raw = RawSecretBundleRef {
             schema_version: SECRET_BUNDLE_SCHEMA_VERSION,
             credential_id: &self.credential_id,
@@ -153,7 +153,24 @@ impl ManagedAuthSecretBundle {
             issued_at: self.issued_at,
             expires_at: self.expires_at,
         };
-        let encoded = serde_json::to_vec(&raw).map_err(|_| ManagedAuthCoreError::InvalidData)?;
+        serde_json::to_vec(&raw).map_err(|_| ManagedAuthCoreError::InvalidData)
+    }
+
+    pub(crate) fn encode(self) -> Result<SecretMaterial, ManagedAuthCoreError> {
+        let mut bundle = self;
+        let mut encoded = bundle.encoded_bytes()?;
+        if encoded.len() > MAX_SECRET_BYTES
+            && bundle.id_token.take().is_some()
+            && (bundle.access_token.is_some() || bundle.refresh_token.is_some())
+        {
+            encoded = bundle.encoded_bytes()?;
+        }
+        if encoded.len() > MAX_SECRET_BYTES
+            && bundle.access_token.take().is_some()
+            && bundle.refresh_token.is_some()
+        {
+            encoded = bundle.encoded_bytes()?;
+        }
         SecretMaterial::from_native_input(encoded, SecretPurpose::ManagedOAuthCredential)
             .map_err(ManagedAuthCoreError::from)
     }
@@ -278,6 +295,55 @@ mod tests {
         })
         .expect("shape is valid before encoding");
         assert!(bundle.encode().is_err());
+    }
+
+    #[test]
+    fn encode_omits_id_token_when_openai_sized_grant_exceeds_limit() {
+        let bundle = ManagedAuthSecretBundle::new(ManagedAuthSecretBundleParts {
+            credential_id: "mcred1:0123456789abcdef0123456789abcdef".to_string(),
+            provider: ManagedAuthProvider::Openai,
+            generation: 1,
+            access_token: Some("a".repeat(1884)),
+            refresh_token: Some("r".repeat(196)),
+            id_token: Some("i".repeat(1858)),
+            token_type: None,
+            granted_scopes: Vec::new(),
+            issued_at: Some(1_700_000_000),
+            expires_at: None,
+        })
+        .expect("shape is valid before encoding");
+        let encoded = bundle
+            .encode()
+            .expect("omit id token to fit Windows blob cap");
+        assert!(encoded.as_bytes().len() <= MAX_SECRET_BYTES);
+        let decoded = ManagedAuthSecretBundle::decode(encoded.as_bytes()).expect("decode");
+        assert_eq!(decoded.access_token().map(str::len), Some(1884));
+        assert_eq!(decoded.refresh_token().map(str::len), Some(196));
+        assert!(decoded.id_token().is_none());
+    }
+
+    #[test]
+    fn encode_omits_access_token_when_refresh_is_the_only_fitting_field() {
+        let bundle = ManagedAuthSecretBundle::new(ManagedAuthSecretBundleParts {
+            credential_id: "mcred1:0123456789abcdef0123456789abcdef".to_string(),
+            provider: ManagedAuthProvider::Openai,
+            generation: 1,
+            access_token: Some("a".repeat(2400)),
+            refresh_token: Some("r".repeat(196)),
+            id_token: None,
+            token_type: None,
+            granted_scopes: Vec::new(),
+            issued_at: None,
+            expires_at: None,
+        })
+        .expect("shape is valid before encoding");
+        let encoded = bundle
+            .encode()
+            .expect("omit access token when refresh still fits");
+        assert!(encoded.as_bytes().len() <= MAX_SECRET_BYTES);
+        let decoded = ManagedAuthSecretBundle::decode(encoded.as_bytes()).expect("decode");
+        assert!(decoded.access_token().is_none());
+        assert_eq!(decoded.refresh_token().map(str::len), Some(196));
     }
 
     #[test]

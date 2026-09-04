@@ -8,7 +8,9 @@ use std::time::Duration;
 use chrono::{SecondsFormat, Utc};
 use zeroize::Zeroizing;
 
-use super::consumers::codex::file_projection_enabled;
+use super::consumers::codex::{
+    file_projection_enabled, project_codex_official_account, CodexChatGptAuthDocument,
+};
 use super::core::{stable_connection_id, stable_revision, ConnectionRecord, ConnectionStatus};
 use super::login_sessions::{map_openai_reason, LoginSessionHandle};
 use super::migration::LegacyCredentialInput;
@@ -208,6 +210,7 @@ where
                     let mut cleared = connection;
                     cleared.credential_id = None;
                     cleared.status = ConnectionStatus::Disconnected;
+                    cleared.pending_restart = false;
                     cleared.updated_at = chrono::Utc::now().timestamp();
                     self.repository
                         .upsert_connection(&cleared)
@@ -216,38 +219,130 @@ where
                 Ok(self.mutation_result(ManagedAuthMutationOutcome::Completed, None))
             }
             super::ManagedAuthConnectionAction::ConnectAccount
-            | super::ManagedAuthConnectionAction::SwitchAccount => {
-                let account_id = request
-                    .account_id
-                    .as_deref()
-                    .ok_or_else(ManagedAuthErrorDto::invalid_request)?;
-                let rows = self
-                    .credentials_for_account(account_id)
-                    .map_err(ManagedAuthErrorDto::from_core)?;
-                let Some(selected) = rows.iter().find(|row| {
-                    row.credential.purpose == CredentialPurpose::CodexNative
-                        && row.credential.status == CredentialStatus::Ready
-                }) else {
-                    return Err(ManagedAuthErrorDto::from_reason(
-                        ManagedAuthReasonCode::NativeProjectionUnavailable,
-                    ));
-                };
-                if !file_projection_enabled() {
-                    self.upsert_codex_connection_metadata(selected, false)
+            | super::ManagedAuthConnectionAction::SwitchAccount
+            | super::ManagedAuthConnectionAction::SwitchToOfficial => {
+                self.apply_codex_official_projection(request)
+            }
+            super::ManagedAuthConnectionAction::Restart => {
+                if let Some(mut connection) = self
+                    .repository
+                    .list_connections()
+                    .map_err(ManagedAuthErrorDto::from_core)?
+                    .into_iter()
+                    .find(|row| row.connection_id == request.connection_id)
+                {
+                    connection.pending_restart = false;
+                    connection.status = ConnectionStatus::Connected;
+                    connection.updated_at = chrono::Utc::now().timestamp();
+                    self.repository
+                        .upsert_connection(&connection)
                         .map_err(ManagedAuthErrorDto::from_core)?;
-                    return Ok(self.mutation_result(
-                        ManagedAuthMutationOutcome::Partial,
-                        Some(ManagedAuthReasonCode::NativeProjectionUnavailable),
-                    ));
                 }
-                Err(ManagedAuthErrorDto::from_reason(
-                    ManagedAuthReasonCode::NativeProjectionUnavailable,
-                ))
+                Ok(self.mutation_result(ManagedAuthMutationOutcome::Completed, None))
             }
             _ => Err(ManagedAuthErrorDto::from_reason(
                 ManagedAuthReasonCode::ProviderNotSupported,
             )),
         }
+    }
+
+    fn apply_codex_official_projection(
+        &self,
+        request: &super::ManagedAuthConnectionActionRequest,
+    ) -> Result<ManagedAuthMutationResult, ManagedAuthErrorDto> {
+        let selected = self.resolve_codex_target_account(request)?.ok_or_else(|| {
+            ManagedAuthErrorDto::from_reason(ManagedAuthReasonCode::TargetSelectionRequired)
+        })?;
+        if !file_projection_enabled() {
+            return Err(ManagedAuthErrorDto::from_reason(
+                ManagedAuthReasonCode::NativeProjectionUnavailable,
+            ));
+        }
+        let document = self
+            .materialize_codex_auth_document(&selected)
+            .map_err(ManagedAuthErrorDto::from_reason)?;
+        let Some(app_state_result) = self.with_app_state(|app_state| {
+            let codex_home = self.codex_home();
+            let live = super::consumers::codex::observe_codex_home(&codex_home);
+            // Absorb Codex-rotated tokens for the outgoing managed account
+            // before covering live auth.json.
+            let _ = self.reconcile_outgoing_codex_live_tokens(
+                &codex_home,
+                &selected.identity.provider_subject,
+            );
+            project_codex_official_account(
+                app_state,
+                &codex_home,
+                &selected.identity.provider_subject,
+                &document,
+                live.auth_revision.as_deref(),
+            )
+        }) else {
+            // Tests and early startup without AppHandle: persist metadata only.
+            self.upsert_codex_connection_metadata(&selected, false)
+                .map_err(ManagedAuthErrorDto::from_core)?;
+            return Ok(self.mutation_result(
+                ManagedAuthMutationOutcome::Partial,
+                Some(ManagedAuthReasonCode::PartialCompletion),
+            ));
+        };
+        let outcome = app_state_result.map_err(ManagedAuthErrorDto::from_reason)?;
+        self.upsert_codex_connection_metadata(&selected, outcome.pending_restart)
+            .map_err(ManagedAuthErrorDto::from_core)?;
+        if outcome.wrote_auth || outcome.switched_provider {
+            let _ = self.repository.transfer_refresh_owner(
+                &selected.credential.credential_id,
+                selected.credential.generation,
+                selected.credential.refresh_owner,
+                RefreshOwner::CodexNative,
+                chrono::Utc::now().timestamp(),
+            );
+        }
+        Ok(self.mutation_result(outcome.outcome, outcome.reason))
+    }
+
+    fn resolve_codex_target_account(
+        &self,
+        request: &super::ManagedAuthConnectionActionRequest,
+    ) -> Result<Option<CredentialWithIdentity>, ManagedAuthErrorDto> {
+        if request.action == super::ManagedAuthConnectionAction::SwitchToOfficial {
+            let connection = self
+                .repository
+                .list_connections()
+                .map_err(ManagedAuthErrorDto::from_core)?
+                .into_iter()
+                .find(|row| row.connection_id == request.connection_id);
+            let Some(credential_id) = connection.and_then(|row| row.credential_id) else {
+                return Ok(None);
+            };
+            let rows = self
+                .repository
+                .list_all_credentials()
+                .map_err(ManagedAuthErrorDto::from_core)?;
+            return Ok(rows.into_iter().find(|row| {
+                row.credential.credential_id == credential_id
+                    && row.credential.purpose == CredentialPurpose::CodexNative
+                    && row.credential.status == CredentialStatus::Ready
+            }));
+        }
+        let account_id = request
+            .account_id
+            .as_deref()
+            .ok_or_else(ManagedAuthErrorDto::invalid_request)?;
+        let rows = self
+            .credentials_for_account(account_id)
+            .map_err(ManagedAuthErrorDto::from_core)?;
+        Ok(rows.into_iter().find(|row| {
+            row.credential.purpose == CredentialPurpose::CodexNative
+                && row.credential.status == CredentialStatus::Ready
+        }))
+    }
+
+    fn materialize_codex_auth_document(
+        &self,
+        selected: &CredentialWithIdentity,
+    ) -> Result<CodexChatGptAuthDocument, ManagedAuthReasonCode> {
+        self.materialize_codex_document_for(selected)
     }
 
     fn spawn_login(
@@ -313,19 +408,23 @@ where
                 )
             })?;
         self.set_stage(handle, ManagedAuthLoginStage::OpeningBrowser, None)?;
-        if (hooks.open_browser)(&authorize_url).is_ok() {
-            hooks.open_count.fetch_add(1, AtomicOrdering::SeqCst);
+        if (hooks.open_browser)(&authorize_url).is_err() {
+            return Err((
+                ManagedAuthLoginStage::Failed,
+                ManagedAuthReasonCode::CallbackUnavailable,
+            ));
         }
+        hooks.open_count.fetch_add(1, AtomicOrdering::SeqCst);
         self.set_stage(handle, ManagedAuthLoginStage::AwaitingUser, None)?;
-        let decision = accept_one_callback(
+        let decision_res = accept_one_callback(
             listener,
             state,
             handle.generation,
             handle.expected_generation.clone(),
             handle.cancel.clone(),
         )
-        .await
-        .map_err(map_openai_reason)?;
+        .await;
+        let decision = decision_res.map_err(map_openai_reason)?;
         if !handle.is_current() {
             return Err((
                 ManagedAuthLoginStage::Cancelled,
@@ -356,7 +455,8 @@ where
         )
         .await
         .map_err(map_openai_reason)?;
-        self.save_grant(request, handle, grant).await
+        let save_res = self.save_grant(request, handle, grant).await;
+        save_res
     }
 
     async fn run_device_login(
@@ -465,9 +565,10 @@ where
             ));
         }
         self.set_stage(handle, ManagedAuthLoginStage::SavingAccount, None)?;
-        let identity = extract_identity(&grant).map_err(map_openai_reason)?;
+        let identity_res = extract_identity(&grant);
+        let identity = identity_res.map_err(map_openai_reason)?;
         let (purpose, consumer) = purpose_for_login(request);
-        let admitted = tokio::task::block_in_place(|| {
+        let provision_res = tokio::task::block_in_place(|| {
             self.provision_legacy_credential(LegacyCredentialInput {
                 migration_id: None,
                 provider: ManagedAuthProvider::Openai,
@@ -487,21 +588,20 @@ where
                 authenticated_at: chrono::Utc::now().timestamp(),
                 make_default: true,
             })
-        })
-        .map_err(|error| match error {
+        });
+        let admitted = provision_res.map_err(|error| match error {
             ManagedAuthCoreError::SecretUnavailable | ManagedAuthCoreError::SecretMissing => (
                 ManagedAuthLoginStage::Failed,
                 ManagedAuthReasonCode::SecretUnavailable,
-            ),
-            ManagedAuthCoreError::InvalidData => (
-                ManagedAuthLoginStage::Failed,
-                ManagedAuthReasonCode::IdentityMismatch,
             ),
             _ => (
                 ManagedAuthLoginStage::Failed,
                 ManagedAuthReasonCode::LoginFailed,
             ),
         })?;
+        if purpose == CredentialPurpose::ProxyUpstream {
+            let _ = self.upsert_proxy_connections();
+        }
         let account_id = admitted.identity_id.clone();
         let mut connection_id = None;
         let mut stage = ManagedAuthLoginStage::Completed;
@@ -518,16 +618,76 @@ where
                         .find(|row| row.credential.credential_id == admitted.credential_id)
                 });
             if let Some(row) = row {
-                let _ = self.upsert_codex_connection_metadata(&row, false);
                 connection_id = Some(stable_connection_id(
                     ManagedAuthConsumer::Codex,
                     "",
                     "openai",
                 ));
-            }
-            if !file_projection_enabled() {
-                stage = ManagedAuthLoginStage::Partial;
-                reason = Some(ManagedAuthReasonCode::NativeProjectionUnavailable);
+                // Prefer the just-received grant so we never block on the
+                // credential lock from inside the Tokio login worker.
+                let document = CodexChatGptAuthDocument::from_grant(&grant).or_else(|| {
+                    CodexChatGptAuthDocument::from_tokens(
+                        grant.id_token.as_deref().unwrap_or(""),
+                        &grant.access_token,
+                        grant.refresh_token.as_deref().unwrap_or(""),
+                        Some(row.identity.provider_subject.as_str()),
+                        Some(chrono::Utc::now().timestamp()),
+                    )
+                });
+                match document {
+                    Some(document) => {
+                        let projected = self.with_app_state(|app_state| {
+                            let codex_home = self.codex_home();
+                            let live = super::consumers::codex::observe_codex_home(&codex_home);
+                            let _ = self.reconcile_outgoing_codex_live_tokens(
+                                &codex_home,
+                                &row.identity.provider_subject,
+                            );
+                            project_codex_official_account(
+                                app_state,
+                                &codex_home,
+                                &row.identity.provider_subject,
+                                &document,
+                                live.auth_revision.as_deref(),
+                            )
+                        });
+                        match projected {
+                            Some(Ok(outcome)) => {
+                                let _ = self.upsert_codex_connection_metadata(
+                                    &row,
+                                    outcome.pending_restart,
+                                );
+                                if outcome.pending_restart {
+                                    stage = ManagedAuthLoginStage::Completed;
+                                    reason = Some(ManagedAuthReasonCode::PendingRestart);
+                                } else if outcome.outcome == ManagedAuthMutationOutcome::Partial {
+                                    stage = ManagedAuthLoginStage::Partial;
+                                    reason = outcome.reason;
+                                } else {
+                                    stage = ManagedAuthLoginStage::Completed;
+                                    reason = outcome.reason;
+                                }
+                            }
+                            Some(Err(code)) => {
+                                let _ = self.upsert_codex_connection_metadata(&row, false);
+                                stage = ManagedAuthLoginStage::Partial;
+                                reason = Some(code);
+                            }
+                            None => {
+                                // Unit tests / pre-attach startup: account is saved
+                                // but Provider-guarded projection is unavailable.
+                                let _ = self.upsert_codex_connection_metadata(&row, false);
+                                stage = ManagedAuthLoginStage::Partial;
+                                reason = Some(ManagedAuthReasonCode::PartialCompletion);
+                            }
+                        }
+                    }
+                    None => {
+                        let _ = self.upsert_codex_connection_metadata(&row, false);
+                        stage = ManagedAuthLoginStage::Partial;
+                        reason = Some(ManagedAuthReasonCode::RequiresReauth);
+                    }
+                }
             }
         }
         if request.purpose == ManagedAuthLoginPurpose::ConnectConsumer
@@ -1009,7 +1169,7 @@ mod tests {
         assert_eq!(finished.stage, ManagedAuthLoginStage::Partial);
         assert_eq!(
             finished.reason_code,
-            Some(ManagedAuthReasonCode::NativeProjectionUnavailable)
+            Some(ManagedAuthReasonCode::PartialCompletion)
         );
         assert!(finished.account_id.is_some());
         let rows = service.repository.list_all_credentials().expect("rows");

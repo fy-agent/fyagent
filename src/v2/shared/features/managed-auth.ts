@@ -698,7 +698,9 @@ export function parseManagedAuthLoginSession(
     (value.purpose === "connect_consumer" && value.consumer === null) ||
     (value.purpose === "reauthenticate" && accountId === null) ||
     (value.stage === "completed" &&
-      (accountId === null || value.reasonCode !== null)) ||
+      (accountId === null ||
+        (value.reasonCode !== null &&
+          value.reasonCode !== "pending_restart"))) ||
     (value.stage === "partial" && accountId === null) ||
     ((["failed", "cancelled", "expired"] as ManagedAuthLoginStage[]).includes(
       value.stage,
@@ -888,7 +890,9 @@ export function parseManagedAuthMutationResult(
     MANAGED_AUTH_CONSUMERS,
   );
   if (
-    (value.outcome === "completed" && value.reasonCode !== null) ||
+    (value.outcome === "completed" &&
+      value.reasonCode !== null &&
+      value.reasonCode !== "pending_restart") ||
     (value.outcome !== "completed" && value.reasonCode === null)
   ) {
     dataError();
@@ -1030,4 +1034,18 @@ export function assertManagedAuthLoginMethod(
 ): ManagedAuthLoginMethod {
   if (!MANAGED_AUTH_LOGIN_METHODS.includes(method)) requestError();
   return method;
+}
+
+export function parseManagedAuthCommandError(
+  value: unknown,
+): ManagedAuthReasonCode | null {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, ["contractVersion", "reasonCode"]) ||
+    value.contractVersion !== MANAGED_AUTH_CONTRACT_VERSION ||
+    !isOneOf(value.reasonCode, MANAGED_AUTH_REASON_CODES)
+  ) {
+    return null;
+  }
+  return value.reasonCode;
 }
