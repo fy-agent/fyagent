@@ -411,7 +411,7 @@
     ],
     [
       "tests/miseTaskContract.test.ts",
-      "9e53ff2ea02324ebfa260fa8f7219213df2ef93c1345f56e588dda7a6ed45550"
+      "0a6da47b2dde8ef7e670b7b952b6df58656b17d0af96b88084f04c8f036ac98e"
     ],
     [
       "tests/releaseWorkflow.test.ts",
@@ -419,7 +419,7 @@
     ],
     [
       "tests/remainingPlatformSurface.test.ts",
-      "8dfd51bb515152cc8d1d1e428c5975ac97f15cf0759fa2b2bb81094d2bcd0b58"
+      "d0415f1ca78fad6e1a30527b5475f0dc0826c8ab7645b8c33750f77846872ec1"
     ],
     [
       "tests/singleInstanceActivationContract.test.ts",

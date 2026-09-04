@@ -194,9 +194,8 @@ function ConnectionActionDialogContent({
     : overview.accounts.filter((account) => account.health === "ready");
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(
     requiresAccount
-      ? (candidates.find(
-          (account) => account.accountId === preferredAccountId,
-        )?.accountId ??
+      ? (candidates.find((account) => account.accountId === preferredAccountId)
+          ?.accountId ??
           candidates.find(
             (account) => account.accountId !== connection.accountId,
           )?.accountId ??

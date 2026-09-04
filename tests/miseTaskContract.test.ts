@@ -546,6 +546,7 @@ describe("canonical mise task API", () => {
       },
     });
     expect(result.status).toBe(130);
+    expect(exitCalledWith).toBeNull();
   });
 
   it("forwards a unit-test file filter through the real mise usage parser", () => {
