@@ -165,11 +165,12 @@ request mode is a third-party API.
 - `pendingRestart`, partial completion, external change, unavailable authority
   and recovery-required remain explicit states. Starting a browser, writing a
   credential or launching software is not sufficient to paint success.
-- The current backend may return a Codex connection with
-  `authStatus=connected` and `native_projection_unavailable` merely because a
-  ready `codex_native` credential exists. This is a named backend evidence
-  mismatch, not proof of native pickup. The renderer must preserve the reason
-  and must not use that combination for HIL or stronger success claims.
+- The current backend reports Codex `connected` only when live ChatGPT
+  identity matches the connection-bound credential. A ready SecretRef with a
+  different or missing live identity is saved-not-projected / disconnected.
+  Explicit non-file stores still surface `native_projection_unavailable`.
+  The renderer must not use credential presence alone for HIL or stronger
+  success claims.
 
 ### Agent integration
 
@@ -214,7 +215,9 @@ request mode is a third-party API.
 | Mutation returns no authoritative overview/readback | Keep prior state and show uncertainty; do not claim success. |
 | Account/default/removal or OpenCode file mutation has a stale revision | Preserve stale error, reread, and require an explicit retry. |
 | Codex/Grok metadata action completes from an older displayed revision | Render only the returned overview; do not infer that the backend performed stale-write rejection. |
-| Codex is `connected` and also `native_projection_unavailable` | Preserve the unavailable reason and treat the pair as a known evidence mismatch; do not claim proven native login. Present “账号已保存”, not “已连接”. |
+| Codex is `disconnected` with a saved account, or still carries a legacy
+  `connected` + `native_projection_unavailable` residual | Present “账号已保存”,
+  not “已连接”; never count as proven native pickup |
 | Account removal preview fails | Do not expose the destructive confirmation. |
 | Connection needs restart | Show saved/pending-restart separately; do not say the consumer is already using it. |
 | Managed Agent summary is clicked | Navigate to `/auth?consumer=<closed-id>`; do not start the old Agent Auth session. |
@@ -230,9 +233,9 @@ request mode is a third-party API.
   Desktop pickup and offers restart or later handling.
 - **Base:** OpenAI login snapshots come from backend sessions. Browser PKCE and
   Device Code can complete an account after SecretRef readback. Codex file
-  projection remains `native_projection_unavailable` until HIL, so connect
-  finishes `partial`. A simultaneous credential-derived `connected` summary is
-  the named backend residual, not a live native-login claim.
+  projection is capability-gated by effective store, complete material, and
+  live identity readback. A ready credential with a different or missing live
+  identity is saved-not-projected / disconnected, never connected.
 - **Base:** OpenCode Path B file write + readback is not a live Desktop
   connection. Show `pending_restart` / “等待重启”. Do not show `已连接`
   while `OPENCODE_EXTERNAL_WRITE_HOT_RELOAD_PROVEN` is false.
@@ -270,9 +273,9 @@ Required assertions include:
   copy, destructive preview, readback-only success and pending-restart states;
 - stale account/OpenCode mutations reread before retry; Codex/Grok metadata
   actions render only the returned overview and tests do not claim full CAS;
-- Codex `connected + native_projection_unavailable` remains visible as
-  contradictory residual evidence, is presented as “账号已保存” not “已连接”,
-  and is never counted as native pickup/HIL;
+- Codex `disconnected` with a saved account (and any legacy
+  `connected + native_projection_unavailable` residual) is presented as
+  “账号已保存” not “已连接”, and is never counted as native pickup/HIL;
 - account detail lists matching unlinked slots and exposes connect/switch from
   that page; purpose-mismatch Codex slots start `connect_consumer` login with
   no `accountId`;

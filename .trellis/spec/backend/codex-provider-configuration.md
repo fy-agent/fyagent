@@ -22,9 +22,10 @@ migration seals that source. Provider rows store
 Legacy binding remap runs only after `CodexOAuthManager` reports a successful
 store load. A parse or I/O failure is not an empty account set and must leave
 every existing Provider binding unchanged.
-Native file projection is allowed only when live `cli_auth_credentials_store`
-is explicitly `file`; `keyring`, `auto`, `ephemeral`, unset, and unknown fail
-closed. Workspace/account IDs are never HashMap keys.
+Native file projection is allowed when live `cli_auth_credentials_store`
+is explicitly `file` or unset (Codex upstream defaults unset to `file`);
+`keyring`, `auto`, `ephemeral`, and unknown values fail closed without
+rewriting configuration. Workspace/account IDs are never HashMap keys.
 
 ## 2. Signatures
 
@@ -258,7 +259,8 @@ CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED
 | Provider `authBinding.accountId` is missing, already a credential, or maps to multiple credentials   | Unbind; never guess the default or another account.                                                                     |
 | Codex compatibility OAuth store parse/I/O load fails before binding remap                            | Skip remap and preserve every existing Provider binding; empty memory is not evidence of an empty store.                |
 | Bound managed credential is missing/expired during proxy forwarding                                  | Fail closed; do not send another account's token.                                                                       |
-| Live `cli_auth_credentials_store` is `keyring`, `auto`, `ephemeral`, unset, invalid, or unknown      | `native_projection_available=false`; do not write `auth.json` to fake a switch.                                         |
+| Live `cli_auth_credentials_store` is unset or explicitly `file`                                     | `native_projection_available=true` when valid credentials and identity exist; unset does not backfill a store key.      |
+| Live `cli_auth_credentials_store` is `keyring`, `auto`, `ephemeral`, invalid, or unknown           | `native_projection_available=false`; do not write `auth.json` or rewrite store to fake a switch.                         |
 | Native projection writes `auth.json` because the file already exists                                 | Contract regression; file existence is not a store hint.                                                                |
 | Auth DTO/log/Debug serializes access/refresh tokens                                                  | Security regression.                                                                                                    |
 
@@ -356,7 +358,7 @@ third-party live write -> config-only + live experimental_bearer_token
 managed ChatGPT account map key = credential_id
   + chatgpt_account_id is routing metadata only
   + Provider.authBinding.accountId = credential_id
-native projection only when cli_auth_credentials_store = "file"
+native projection when cli_auth_credentials_store is unset (default file) or explicit "file"
 successful OAuth store load -> remap legacy Provider bindings
 OAuth store load failure -> preserve all bindings; do not treat memory as empty authority
 ```
