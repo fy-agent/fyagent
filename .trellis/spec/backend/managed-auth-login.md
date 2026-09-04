@@ -106,9 +106,14 @@ malformed or zero-version UUID.
   credential ready. Opening a browser or receiving a provider grant is not
   success by itself.
 - After account storage, an unavailable Codex/Grok native projection ends
-  `partial` with its consumer-owned reason. A successful OpenCode file write
-  and readback may instead end `completed` with `pending_restart`, because the
-  write is proven while live Desktop pickup is not.
+  `partial` with its consumer-owned reason. A successful Codex or OpenCode file
+  write and readback may instead end `completed` with `pending_restart`,
+  because persistence is proven while live consumer pickup is not.
+- A `completed` login snapshot may carry only `reasonCode=null` or
+  `reasonCode=pending_restart`. The latter is a positive terminal state: the
+  account and projection readback completed, but the consumer may need a
+  restart. Every other non-null reason requires a non-completed stage and is a
+  wire-contract violation.
 
 ### OpenAI browser loopback and Device Code
 
@@ -174,7 +179,8 @@ malformed or zero-version UUID.
 | grant is received but SecretRef readback fails | never publish `completed`; retain the core recovery state |
 | JWT identity parses but the encoded vault bundle still exceeds 2560 after omitting optional tokens | `login_failed`; never publish `completed` |
 | Codex/Grok native projection is unavailable after storage | `partial` with the consumer-owned reason |
-| OpenCode file write/readback succeeds but live pickup is unproven | `completed` + `pending_restart`; do not relabel the write unavailable |
+| Codex/OpenCode file write/readback succeeds but live pickup is unproven | `completed` + `pending_restart`; do not relabel the write unavailable or ask for a generic retry |
+| completed snapshot carries a non-null reason other than `pending_restart` | reject the wire shape; do not render success |
 | snapshot/error/log contains URL secrets, codes, tokens, verifier, SecretRef, or HTTP body | security regression |
 
 ## 5. Good / Base / Bad Cases
@@ -221,6 +227,8 @@ Required assertions:
 - `grok_native` versus `proxy_upstream` isolation;
 - SecretRef readback gates success and a failed consumer projection remains
   partial rather than completed;
+- Codex/OpenCode projection readback may finish `completed` with only
+  `pending_restart`; every other completed/non-null reason is rejected;
 - DTO/Debug/log leak scans cover callback/code/state/verifier/device/token and
   raw HTTP body fields.
 
@@ -245,7 +253,7 @@ Correct:
 ```text
 backend owns URL, callback, polling, verifier, and generation
 grant -> reserve metadata -> native vault write -> typed readback
-consumer projection/readback -> completed or partial
+consumer projection/readback -> completed, completed + pending_restart, or partial
 cancel/switch bumps generation so late work cannot commit
 hold std::net::TcpListener across IPC; from_std only inside accept_one_callback
 ```

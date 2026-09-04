@@ -49,7 +49,9 @@ locators, raw OS errors, and credentials never cross that boundary.
 - Observation is restricted to the sealed native callback/service boundary;
   buffers are zeroized when dropped.
 - A backend failure never selects a plaintext, environment, Provider-field, or
-  second-backend fallback.
+  app-owned second backend. Choosing between macOS Security.framework's Data
+  Protection Keychain and file-based login keychain remains one native
+  `OsKeyring` backend, not a FyAgent file-store fallback.
 
 ### macOS Keychain
 
@@ -74,17 +76,29 @@ queries that identify a DPK item. This is required for the macOS
 behavior. Do not replace it with `kSecAttrSynchronizable=true` merely to make
 the accessibility attribute apply. Do not set `kSecAttrAccessible` without DPK.
 
-A Developer ID or signed-dev `.app` without `keychain-access-groups` and an
-embedded provisioning profile receives `errSecMissingEntitlement` (-34018) on
-every DPK `SecItem*` call. That host uses the file-based login keychain for the
-same generic-password identity (`service`, `account`, non-sync) and omits both
-DPK and `kSecAttrAccessible`. This is still the OS Keychain, not a FyAgent-owned
-file or environment store. Reads, probes, updates, and deletes in that process
-must use the same flavor as create.
+`MacOsSecretBackend` starts with an unknown process-wide DPK mode and caches the
+result of a bounded capability probe. An unpackaged test binary stays fail
+closed when DPK returns `errSecMissingEntitlement` (-34018). For an executable
+inside `.app/Contents/MacOS/`:
 
-Do not declare the restricted `keychain-access-groups` entitlement in
-`src-tauri/entitlements.macos.plist` without an embedded provisioning profile,
-or AMFI will kill the process on launch with SIGKILL (-413 no matching profile).
+- a capability probe or create that returns -34018 disables DPK for the
+  process; create retries once with the same service/account/non-sync identity
+  and omits both DPK and `kSecAttrAccessible`;
+- a DPK read, probe, or replace that reports item-not-found retries the same
+  identity in the file-based login keychain, so an item created earlier in the
+  signed-app mode remains discoverable; a successful retry latches that mode;
+- delete may retry the file-based identity after item-not-found, auth-failed,
+  or missing-entitlement and remains idempotent when neither flavor has an
+  item.
+
+Once DPK is disabled, subsequent create/read/probe/replace/delete operations in
+that process use the file-based login-keychain flavor. This is still the OS
+Keychain, never a FyAgent-owned plaintext file or environment store.
+
+The repository's current signed-app entitlement file intentionally omits
+`keychain-access-groups`. Do not add that restricted entitlement unless the
+packaging path also embeds a provisioning profile that authorizes the group;
+an entitlement-plist edit alone is not DPK activation and may prevent launch.
 
 Create uses `SecItemAdd`, so an existing composite identity returns duplicate
 instead of silently replacing it. Create/replace must read back and compare the
@@ -143,15 +157,11 @@ Credential Manager memory returned by `CredReadW` is always released with
 - Managed Auth owns create admission/recovery so a native create that succeeded
   but could not be authoritatively read back remains a durable
   `provisioning`/`secret_missing` row instead of an unreachable native item.
-- macOS production activation still requires signed-app HIL for the
-  Data Protection Keychain under the Developer ID signed host whose
-  access-group entitlements are authorized by an embedded provisioning profile.
-  Unsigned `cargo test` `errSecMissingEntitlement` remains expected fail-closed
-  evidence for DPK, not a reason to switch that harness to the file-based
-  login keychain.
-  Do not declare the restricted `keychain-access-groups` entitlement in
-  `src-tauri/entitlements.macos.plist` without an embedded provisioning profile,
-  or AMFI will kill the process on launch with SIGKILL (-413 no matching profile).
+- A signed-app CRUD run that selects the file-based login keychain proves only
+  that residual mode. DPK production acceptance still requires an app-like host
+  whose access-group entitlement is authorized by an embedded provisioning
+  profile. Plain `cargo test` -34018 remains fail-closed DPK evidence and must
+  not opt into the signed-app residual path.
 
 ## 4. Validation & Error Matrix
 
@@ -162,7 +172,9 @@ Credential Manager memory returned by `CredReadW` is always released with
 | macOS query uses `kSecAttrAccessible` without Data Protection Keychain | reject implementation; accessibility contract is invalid on macOS |
 | macOS duplicate create | return stable already-exists error; no overwrite |
 | plain cargo test returns `errSecMissingEntitlement` with DPK enabled | classify the harness as unauthorized; do not fall back to file-based keychain and do not count it as native DPK acceptance |
-| signed `.app` without access-group profile returns `errSecMissingEntitlement` on DPK | use the file-based login keychain for the same generic-password identity; omit DPK and Accessible; do not invent a FyAgent file store |
+| bundled app capability probe/create returns `errSecMissingEntitlement` on DPK | latch the file-based login-keychain mode; create retries once with the same identity and without DPK/Accessible |
+| bundled app DPK read/probe/replace misses an existing file-based item | retry the same identity without DPK; latch the mode only after successful discovery/update |
+| bundled app DPK delete returns missing/auth-failed/missing-entitlement | retry non-DPK delete; missing after both attempts remains idempotent success |
 | macOS SecretRef claimed supported without signed-app HIL | block the DPK capability claim; entitlement plist alone is not DPK evidence; file-based login keychain is a residual host path, not DPK HIL |
 | Windows create sees an existing target | return stable already-exists error before `CredWriteW` |
 | Windows documentation/code claims `CredWriteW` is atomic create-only | reject; Win32 specifies create-or-replace semantics |
@@ -175,8 +187,8 @@ Credential Manager memory returned by `CredReadW` is always released with
 ## 5. Good / Base / Bad Cases
 
 - **Good:** random SecretRef, one native backend, bounded zeroizing material,
-  constant-time readback, source-free errors, Data Protection Keychain on
-  macOS, and explicit Windows Credential Manager CRUD HIL.
+  constant-time readback, source-free errors, process-latched macOS Keychain
+  mode, and explicit matching-host CRUD HIL for the mode being claimed.
 - **Base:** Windows cannot make `CredWriteW` atomically create-only. State the
   limitation accurately and use random identities + process-global serialization +
   later lifecycle CAS rather than inventing an OS guarantee.
@@ -201,8 +213,9 @@ mise run check:contracts
 ```
 
 The focused contract suite also source-checks the target-gated native leaves so
-DPK/non-sync query selection and the no-blind-compensation rule remain
-executable on hosts that cannot access the opposite platform credential store.
+DPK/non-sync query selection, app-bundle-only file-keychain residual, and the
+no-blind-compensation rule remain executable on hosts that cannot access the
+opposite platform credential store.
 
 The local native-HIL command proves only the current host and, on macOS, only
 when the host process has the required authorized access-group identity.

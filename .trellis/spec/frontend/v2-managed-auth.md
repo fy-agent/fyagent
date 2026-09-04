@@ -142,6 +142,12 @@ request mode is a third-party API.
 - Request payloads contain opaque IDs, expected revisions and closed actions.
   The renderer does not send credentials, filesystem locations, commands,
   arguments, environment variables or arbitrary URLs.
+- A completed login stage or completed mutation outcome accepts only
+  `reasonCode=null` or `reasonCode=pending_restart`. `pending_restart` is a
+  successful save/readback that still awaits consumer pickup, not a failed
+  operation. Any other non-null completed reason rejects the whole response.
+  The freshly parsed overview, not `pendingRestartConsumers` alone, decides
+  which connection is pending.
 
 ### State and mutations
 
@@ -165,6 +171,9 @@ request mode is a third-party API.
 - `pendingRestart`, partial completion, external change, unavailable authority
   and recovery-required remain explicit states. Starting a browser, writing a
   credential or launching software is not sufficient to paint success.
+- `completed + pending_restart` keeps the positive result and presents a
+  restart-specific next step. It must not become “请稍后重试”, an optimistic
+  connected badge, or a generic failure banner.
 - The current backend reports Codex `connected` only when live ChatGPT
   identity matches the connection-bound credential. A ready SecretRef with a
   different or missing live identity is saved-not-projected / disconnected.
@@ -215,9 +224,9 @@ request mode is a third-party API.
 | Mutation returns no authoritative overview/readback | Keep prior state and show uncertainty; do not claim success. |
 | Account/default/removal or OpenCode file mutation has a stale revision | Preserve stale error, reread, and require an explicit retry. |
 | Codex/Grok metadata action completes from an older displayed revision | Render only the returned overview; do not infer that the backend performed stale-write rejection. |
-| Codex is `disconnected` with a saved account, or still carries a legacy
-  `connected` + `native_projection_unavailable` residual | Present “账号已保存”,
-  not “已连接”; never count as proven native pickup |
+| Codex is `disconnected` with a saved account but live identity is absent or different | Present “账号已保存”, not “已连接”; never count it as proven native pickup. |
+| Completed login/mutation has `reasonCode=pending_restart` | Accept the response, render the returned overview, and offer restart-specific guidance; do not show a generic retry. |
+| Completed login/mutation has another non-null reason | Reject the response as invalid managed-auth data. |
 | Account removal preview fails | Do not expose the destructive confirmation. |
 | Connection needs restart | Show saved/pending-restart separately; do not say the consumer is already using it. |
 | Managed Agent summary is clicked | Navigate to `/auth?consumer=<closed-id>`; do not start the old Agent Auth session. |
@@ -228,9 +237,10 @@ request mode is a third-party API.
 - **Good:** Codex displays selected OpenAI account metadata, `DeepSeek API` as
   the current request source and `官方登录已保留` as separate facts; it does not
   use credential presence alone as proof of native Codex pickup.
-- **Good:** an OpenCode login finishes credential storage plus file readback,
-  then reports `pending_restart`; the dialog distinguishes “saved” from live
-  Desktop pickup and offers restart or later handling.
+- **Good:** a Codex or OpenCode login finishes credential storage plus file
+  readback, then reports `completed + pending_restart`; the dialog
+  distinguishes “saved” from live consumer pickup and offers restart or later
+  handling.
 - **Base:** OpenAI login snapshots come from backend sessions. Browser PKCE and
   Device Code can complete an account after SecretRef readback. Codex file
   projection is capability-gated by effective store, complete material, and
@@ -273,9 +283,11 @@ Required assertions include:
   copy, destructive preview, readback-only success and pending-restart states;
 - stale account/OpenCode mutations reread before retry; Codex/Grok metadata
   actions render only the returned overview and tests do not claim full CAS;
-- Codex `disconnected` with a saved account (and any legacy
-  `connected + native_projection_unavailable` residual) is presented as
-  “账号已保存” not “已连接”, and is never counted as native pickup/HIL;
+- Codex `disconnected` with a saved account is presented as “账号已保存”, not
+  “已连接”, and is never counted as native pickup/HIL;
+- strict parsers accept completed login/mutation responses with only null or
+  `pending_restart`, reject every other completed/non-null reason, and keep
+  pending restart distinct from generic retry;
 - account detail lists matching unlinked slots and exposes connect/switch from
   that page; purpose-mismatch Codex slots start `connect_consumer` login with
   no `accountId`;

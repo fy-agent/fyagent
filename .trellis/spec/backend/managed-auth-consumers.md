@@ -9,11 +9,13 @@ projection; refresh-owner transfer; pending-restart behavior; or
 
 Primary owners:
 
-- `src-tauri/src/services/managed_auth/consumers/codex*`
+- `src-tauri/src/services/managed_auth/consumers/codex/mod.rs`
+- `src-tauri/src/services/managed_auth/consumers/codex/{auth_document,delta,observation,project,swap}.rs`
 - `src-tauri/src/services/managed_auth/consumers/grok.rs`
 - `src-tauri/src/services/managed_auth/consumers/opencode.rs`
-- consumer orchestration in `services/managed_auth/{login,service,providers/xai}.rs`
-- the connection action in `commands/managed_auth.rs`
+- consumer orchestration in
+  `src-tauri/src/services/managed_auth/{login,service,providers/xai}.rs`
+- the connection action in `src-tauri/src/commands/managed_auth.rs`
 
 [Managed Auth Core](./managed-auth.md) owns account/credential metadata,
 SecretRef material and refresh CAS. [Managed Auth Login](./managed-auth-login.md)
@@ -26,7 +28,7 @@ observation and handoff semantics remain in
 ## 2. Signatures
 
 ```text
-managed_auth_apply_connection_action({
+async managed_auth_apply_connection_action({
   connectionId: mc1:<32-lowercase-hex>,
   expectedRevision: mr1:<64-lowercase-hex>,
   action: connect_account | switch_account | disconnect | refresh |
@@ -39,11 +41,16 @@ managed_auth_apply_connection_action({
 `switch_to_official` requires an explicit connection-bound credential; it must
 not pick an implicit default account. Every positive result contains a freshly
 reread overview; the renderer does not patch a connection optimistically.
+The command validates the closed request before offloading the synchronous
+service call through `tauri::async_runtime::spawn_blocking`. The Tauri command
+thread must not directly run the blocking credential locks, filesystem work,
+or nested runtime bridge used by the consumer coordinator. A blocking-task
+join failure maps to source-free `invalid_response`.
 
 Consumer boundaries:
 
 ```text
-codex::observe_managed_auth(path) -> CodexManagedAuthObservation
+codex::observe_codex_home(path) -> CodexManagedAuthObservation
 codex::plan_codex_managed_auth_delta(live, target) -> Noop|AuthOnly|ProviderOnly|AuthThenProvider
 codex::project_codex_official_account(app_state, home, subject, doc, expected_rev)
   -> CodexProjectionOutcome
@@ -74,6 +81,11 @@ CODEX_EXTERNAL_WRITE_HOT_RELOAD_PROVEN = false
 
 - A managed account and a software connection are separate resources. A ready
   credential does not prove that the consumer has accepted or is using it.
+- The connection-action IPC boundary is asynchronous, but the service method
+  remains synchronous. Validate before `spawn_blocking`; run the complete
+  service call inside that worker; and never move secret material or native
+  paths into an async/renderer payload merely to avoid blocking the command
+  thread.
 - Every connection request carries a syntactically valid `expectedRevision`,
   but enforcement is consumer-specific. OpenCode connect/switch/disconnect
   compares the current `auth.json` revision under its process-wide writer lock,
@@ -89,8 +101,11 @@ CODEX_EXTERNAL_WRITE_HOT_RELOAD_PROVEN = false
   connection.
 - A successful file API call is not enough. Readback, owner transfer, external
   pickup evidence and recovery state jointly determine connection status and
-  mutation outcome. A completed mutation may still truthfully require
-  `pending_restart`; a partial mutation is not a connected state.
+  mutation outcome. When file write/readback succeeds but live pickup is not
+  proven, the exact positive wire shape is `outcome=completed` with
+  `reasonCode=pending_restart`. The returned overview remains authoritative
+  about which connection is pending; a partial mutation is not a connected
+  state.
 - Codex, Grok, and OpenCode summaries currently emit `target_id: None`. That is
   not lifecycle install discovery and is not evidence the software is missing.
   `requestMode` is observation of the consumer's current model source (for
@@ -116,15 +131,18 @@ CODEX_EXTERNAL_WRITE_HOT_RELOAD_PROVEN = false
   - other/missing account + official route → auth.json only
   - target account + third-party route → Provider official switch only
   - other/missing account + third-party route → auth then Provider switch
-- Provider route changes reuse `ProviderService::switch_with_lock_held` under
-  the existing Codex mutation guard. Auth-only paths take the same guard but
-  do not call the Provider writer. No new Change Plan operation is added.
+- Provider route changes reuse
+  `ProviderService::switch_with_lock_held_skipping_backfill` under the existing
+  Codex mutation guard. Auth-only paths take the same guard but do not call the
+  Provider writer. No new Change Plan operation is added.
 - Legacy API-key-only live auth must be recoverable via Provider current
   backfill before auth overwrite. Official→third-party continues the existing
   Provider/Change Plan path and must keep `auth.json` bytes equal.
-- After a successful auth write while hot reload is unproven, report
-  `pending_restart`. Do not emit `native_projection_unavailable` for a
-  successful write.
+- After a successful auth write while hot reload is unproven, return
+  `completed` + `pending_restart`, and persist the Codex connection itself as
+  pending in the authoritative overview. Do not emit
+  `native_projection_unavailable` for a successful write, and do not translate
+  this positive state into a generic retry failure.
 - `switch_to_official` is advertised only when live identity already matches
   the bound credential and the route is third-party under a supported store.
 
@@ -178,6 +196,7 @@ CODEX_EXTERNAL_WRITE_HOT_RELOAD_PROVEN = false
 | Condition | Required result |
 | --- | --- |
 | connection/account/revision is malformed | reject before dispatch; no file or metadata mutation |
+| synchronous connection service runs directly on the Tauri command thread | contract regression; validate first, then use `spawn_blocking`; map join failure to `invalid_response` |
 | OpenCode write/delete/restart sees a stale revision | reject; leave the official file and connection metadata unchanged |
 | Codex auth swap sees a stale auth revision | reject; zero auth write |
 | OpenCode is offered Proxy/Codex/Grok/Copilot lineage | `provider_not_supported`; do not copy lineage |
@@ -192,7 +211,7 @@ CODEX_EXTERNAL_WRITE_HOT_RELOAD_PROVEN = false
 | OpenCode data dir exists but PATH CLI does not | observe `auth.json`; not `AuthObserverUnavailable` |
 | OpenCode `auth.json` is missing | empty provider set; not observer failure |
 | OpenCode readback differs | restore exact preimage or remove new file; report failure/recovery |
-| OpenCode/Codex write succeeds while hot reload is unproven | `pending_restart`; not `native_projection_unavailable` |
+| OpenCode/Codex write and readback succeed while hot reload is unproven | `completed` + `pending_restart`; returned overview marks the connection pending; not `native_projection_unavailable` |
 | token, SecretRef, auth bytes, native path, or raw helper output reaches DTO/log/DOM | security regression |
 
 ## 5. Good / Base / Bad Cases
@@ -225,11 +244,23 @@ mise run test:v2 -- tests/v2/features/managed-auth.test.ts \
 
 Required assertions:
 
+- the native command validates before `spawn_blocking`, does not run the
+  synchronous service on the IPC command thread, and maps blocking-task join
+  failure to `invalid_response`;
 - Codex effective file defaults, delta matrix, auth swap 0600/readback/CAS,
   Provider-only auth byte-equality, and saved-not-projected overview status;
 - Grok production gates remain false and write zero vendor bytes;
 - Codex/Grok/OpenCode `target_id` is currently `None`;
-- OpenCode observation/write/readback/owner-transfer contracts remain as before;
+- OpenCode missing-file and no-PATH observation; closed-key read/modify/write
+  preserves unrelated, undecodable, `wellknown`, and extra official fields;
+- OpenCode stale revisions, readback mismatch, exact-preimage recovery, Unix
+  `0600`, purpose isolation, and owner transfer only after file readback;
+- OpenCode owner-transfer CAS miss returns partial with pending evidence, while
+  a hard repository error keeps its documented recovery residual explicit;
+- Codex and OpenCode positive writes use `completed + pending_restart`, and
+  strict V2 parsing rejects every other non-null reason on a completed result;
+- native sidecar/password discovery stays absent, and DTO/log/DOM leak tests
+  cover tokens, SecretRef, raw auth bytes, paths, and helper output;
 - Codex HIL remains optional smoke evidence, not a runtime production gate.
 
 ## 7. Wrong vs Correct
@@ -241,6 +272,7 @@ select any ready account -> copy its refresh token into consumer auth.json
 atomic_write Ok -> connected
 credential present -> Codex connected
 CODEX_FILE_PROJECTION_PRODUCTION_ENABLED=false forever
+sync Tauri command -> blocking credential/file coordinator
 ```
 
 Correct:
@@ -251,4 +283,5 @@ consumer-specific write -> readback -> refresh-owner transfer
 external pickup unproven -> pending_restart
 Codex live identity match -> connected; otherwise saved-not-projected
 Codex capability from effective store + complete material + readback
+async Tauri command -> validate -> spawn_blocking(sync service) -> strict result
 ```

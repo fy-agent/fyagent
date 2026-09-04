@@ -263,25 +263,15 @@ packages. It has three backend-selected runtime modes:
 - `DevelopmentSigned`: `mise run dev` builds the existing Swift helper/client,
   links the client C ABI into the Rust executable, assembles a real
   `com.fyagent.desktop.dev` app bundle, and signs every nested executable
-  inside-out with the existing
-  `Developer ID Application: William Wang (HY446996QX)` identity. The local
-  task extracts the configured PKCS#12 into a 0700 extract directory, converts
-  the same private key to traditional RSA PEM for macOS Keychain import, and
-  imports that key plus the leaf, pinned Developer ID G2, and Apple Root public
-  certificates only into a 0700 cache keychain under
-  `~/Library/Caches/FyAgent/DevelopmentSigning`. It signs by the resolved
-  identity hash, sets that cache keychain as the user default for the sign, then
-  restores the original default and search list. `mise run dev` must not restore
-  between preflight and nested app signing: restoring after a successful
-  `codesign` makes the next process fail with `errSecInternalComponent`.
-  Recreating the cache keychain after that error does not recover it. It does
-  not call
-  `security delete-keychain` on a used identity: on macOS 26 that also makes the
-  next `codesign` of the same certificate fail with `errSecInternalComponent`.
-  Extracted PEM files are deleted after import. The repository contains neither
-  the PKCS#12 path nor its password; a
-  permission-restricted user-local configuration points to those files.
-  Development signing does not notarize or staple the app.
+  inside-out with the reviewed Developer ID identity. The
+  [Repository Task Runner](./task-runner-contract.md) is the sole owner of
+  PKCS#12 extraction/import, the 0700 cache keychain, the
+  `machine-preflight --keep-session` lifetime, early-failure cleanup, and final
+  keychain restoration. This contract consumes the resulting signed
+  helper/client/bundle and must not duplicate or override that signing-session
+  state machine. The repository contains neither the PKCS#12 path nor its
+  password; a permission-restricted user-local configuration points to those
+  files. Development signing does not notarize or staple the app.
 - `FormalRelease`: the production helper/client can be linked and packaged, but
   transaction admission remains closed until a Developer ID, notarized HIL
   candidate passes Bless, root XPC, fresh install, update, rollback, recovery,

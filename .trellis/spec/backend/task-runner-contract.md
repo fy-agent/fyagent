@@ -182,9 +182,11 @@ killProcessTree(pid, platform)
   for `SIGINT`, 143 for `SIGTERM`) instead of generic failure exit code 1.
 - Synchronous task runner `run()` terminates with `signalExitCode` on `SIGINT`
   (130) and `SIGTERM` (143) instead of throwing unhandled signal errors.
-- macOS development helper build script (`build-macos-privileged-helper.sh`)
-  traps `INT` and `TERM` to exit 130 immediately, preventing orphaned child build
-  processes during `mise run dev` preflight.
+- The macOS development helper build script
+  (`build-macos-privileged-helper.sh`) traps `INT` and `TERM` and exits
+  promptly, preventing orphaned build children during `mise run dev`
+  preflight. The outer task runner still owns the user-visible standard signal
+  exit code.
 - POSIX hosts (`darwin`, `linux`) start a new process group with
   `detached: true` and kill `-pid`. Windows stays attached
   (`detached: false`) and
@@ -229,6 +231,8 @@ killProcessTree(pid, platform)
 - `signalExitCode` maps signals to standard exit codes (130 for SIGINT, 143 for SIGTERM).
 - `runForeground` force-kills and exits with 130 on repeated SIGINT.
 - Child exit on signal yields standard signal exit code.
+- the macOS helper source traps INT/TERM, while the outer runner remains the
+  owner of final `signalExitCode` mapping;
 - `killProcessTree` on `win32` records `taskkill.exe /pid /t /f`; on
   `darwin` and `linux` signals `-pid`; on any other host throws.
 - `supported-platform:check` rejects implicit non-Windows branches in
@@ -778,27 +782,19 @@ the emitted debug executable in a real development app bundle before launch.
 The chain performs, in order:
 
 1. fixed-path full-Xcode plus user-local Developer ID PKCS#12 preflight through
-   a reusable 0700 cache keychain; the task extracts the same certificate/private
-   key into a temporary 0700 directory, imports the leaf and traditional RSA
-   private key separately alongside the pinned Apple Root and Developer ID G2
-   public certificates, never permanently installs the release private key into
-   the login keychain, sets the cache keychain as the user default while signing
-   (matching the formal Developer ID script), restores the user's default and
-   search list, and deletes the extracted PEM files. It must not
-   `security delete-keychain` a keychain that just signed this identity: macOS 26
-   then fails the next `codesign` with `errSecInternalComponent`. Preflight also
-   smoke-signs a copy of `/usr/bin/true` so a broken chain fails before the Swift
-   helper build. `mise run dev` keeps that cache keychain as the user default
-   from preflight through app-bundle signing (`machine-preflight --keep-session`).
-   The detached `pnpm tauri dev` spawn returns immediately, so the host must not
-   restore the user's keychain in the same turn as that spawn: doing so drops
-   the signing identity before Cargo's app-runner runs and the next `codesign`
-   fails with `errSecInternalComponent`. Recreating the cache keychain after
-   that error does not recover it. Immediate unlock retries do not recover it
-   either. App-runner restores after nested signing; `restore-session` also
-   runs if setup fails or when the Tauri process later exits. A standalone
-   `machine-preflight` without `--keep-session` still restores immediately.
-   `restore-session` is a no-op when no session is active.
+   a reusable 0700 cache keychain. The task extracts the same certificate and
+   private key into a temporary 0700 directory, imports the leaf and traditional
+   RSA private key alongside the pinned Apple Root and Developer ID G2 public
+   certificates, never installs the release private key permanently in the
+   login keychain, and smoke-signs a copy of `/usr/bin/true` before the Swift
+   helper build. `machine-preflight --keep-session` keeps the cache keychain as
+   the user default through the detached Tauri spawn and nested app-runner
+   signing. App-runner or `restore-session` restores the original default and
+   search list after nested signing, setup failure, or Tauri process exit. A
+   standalone preflight restores immediately, and `restore-session` is
+   idempotent when no session is active. Never restore early or delete a
+   keychain after it has signed with this identity; delete only the temporary
+   extracted PEM files after import.
 2. development-flavor universal privileged helper/client build and embedded
    plist verification;
 3. Tauri dev compilation with the privileged-client Cargo feature;
