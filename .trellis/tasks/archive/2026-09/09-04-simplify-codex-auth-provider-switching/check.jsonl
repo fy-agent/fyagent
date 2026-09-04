@@ -1,0 +1,8 @@
+{"file": ".trellis/spec/backend/change-plan-executor.md", "reason": "Verify closed operation/resources, no secret ledger, idempotency and no writer replay"}
+{"file": ".trellis/spec/backend/modular-boundaries.md", "reason": "Reject a second Provider/file/transaction owner or unreviewed visibility expansion"}
+{"file": ".trellis/spec/frontend/v2-managed-auth.md", "reason": "Verify strict wire parsing, authoritative readback and user-visible states"}
+{"file": ".trellis/tasks/09-04-simplify-codex-auth-provider-switching/research/openai-codex-first-party-contract.md", "reason": "Review against pinned first-party schema, defaults, permissions and refresh semantics"}
+{"file": ".trellis/tasks/09-04-simplify-codex-auth-provider-switching/research/current-repository-inventory.md", "reason": "Confirm existing owners and Provider backfill order were reused"}
+{"file": ".trellis/tasks/09-04-simplify-codex-auth-provider-switching/research/change-plan-reuse.md", "reason": "Confirm Change Plan remains the only durable transaction executor"}
+{"file": ".trellis/tasks/09-04-simplify-codex-auth-provider-switching/research/reuse-and-alternatives.md", "reason": "Reject duplicate writers, implicit store rewrite and unreviewed dependencies"}
+{"file": ".trellis/tasks/09-04-simplify-codex-auth-provider-switching/research/hil-policy-review.md", "reason": "Confirm HIL is non-blocking while real machine-verifiable gates remain"}

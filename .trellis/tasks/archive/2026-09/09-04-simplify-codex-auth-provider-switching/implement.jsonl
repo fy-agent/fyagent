@@ -1,0 +1,12 @@
+{"file": ".trellis/spec/backend/change-plan-executor.md", "reason": "Existing durable transaction, idempotency, cancellation, resource and recovery contract to extend"}
+{"file": ".trellis/spec/backend/managed-auth-consumers.md", "reason": "Codex consumer capability, observation, owner and projection contract"}
+{"file": ".trellis/spec/backend/managed-auth.md", "reason": "Managed credential, generation, refresh owner and mutation result contract"}
+{"file": ".trellis/spec/backend/managed-auth-login.md", "reason": "OpenAI login/session completion and Codex connect contract"}
+{"file": ".trellis/spec/backend/reuse.md", "reason": "Mandatory reuse and dependency-review order"}
+{"file": ".trellis/spec/backend/modular-boundaries.md", "reason": "Command/service/filesystem side-effect ownership"}
+{"file": ".trellis/spec/frontend/v2-managed-auth.md", "reason": "V2 account/connection/request-mode strict UI contract"}
+{"file": ".trellis/tasks/09-04-simplify-codex-auth-provider-switching/research/current-repository-inventory.md", "reason": "Focused owner inventory and critical Provider backfill ordering"}
+{"file": ".trellis/tasks/09-04-simplify-codex-auth-provider-switching/research/openai-codex-first-party-contract.md", "reason": "Pinned first-party schema, defaults, permissions, refresh and policy evidence"}
+{"file": ".trellis/tasks/09-04-simplify-codex-auth-provider-switching/research/change-plan-reuse.md", "reason": "Approved durable transaction reuse and credential-aware adapter boundary"}
+{"file": ".trellis/tasks/09-04-simplify-codex-auth-provider-switching/research/reuse-and-alternatives.md", "reason": "No-new-dependency and rejected-alternative decision"}
+{"file": ".trellis/tasks/09-04-simplify-codex-auth-provider-switching/research/hil-policy-review.md", "reason": "Replacement policy for the retired HIL release gate"}
