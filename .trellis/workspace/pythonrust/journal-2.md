@@ -239,3 +239,26 @@ Overview reasonCodes 改为闭集恢复文案加刷新；登录 Dialog 保持挂
 
 - leftover JSON 密封、Codex/Grok 生产投影、OpenCode 热加载、NOTICE 与 macOS/Windows HIL 仍未做
 - 不要打开生产投影或把 mock 当成 HIL
+
+
+## Session 69: Codex 官方账号与第三方 API 凭据切换实现与归档
+<!-- trellis-session: v=2 fp=e6636eae98cdabeb -->
+
+**Date**: 2026-09-04
+**Task**: Codex 官方账号与第三方 API 凭据切换实现与归档
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+移除 Codex file 凭据投影的 HIL 生产硬门控，依据上游源码修正 unset->file 及 missing model_provider->openai 默认值，实现 auth.json 原子交换与写后身份读回。复用 ProviderService 现有切换和回填 seam，更新 Code-Spec 并通过全部自动化门禁，完成任务归档。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f76f3ab1` | feat(auth): simplify codex auth provider switching and minimal projection |
+| `a10e4b9f` | docs(spec): update codex auth projection and provider configuration specs |
+
+### Status
+
+[OK] **Completed**
