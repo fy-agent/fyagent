@@ -15,7 +15,7 @@
     ],
     [
       "scripts/tasks/host-native.mjs",
-      "f9e987c889d59619d72ad7d4d44c080e1857fa94ca88e75794b23a77776c26e1"
+      "d580175558e8fd277646da8505c66409a4c7b37b0041bb7d99110979a5d81181"
     ],
     [
       "scripts/tasks/lib.mjs",
@@ -223,7 +223,7 @@
     ],
     [
       "src-tauri/src/services/managed_auth/providers/openai.rs",
-      "b31d8d394be49de472398bbd433c7941787793fe20ca9b23bda245fbd8e825ec"
+      "8327871323df55e2ed6e4898473a8e46a1f6db2131e2cf146dc757edf045d7b6"
     ],
     [
       "src-tauri/src/services/model_probe.rs",
@@ -239,7 +239,7 @@
     ],
     [
       "src-tauri/src/services/secret/mod.rs",
-      "5831f17c50ae08cb899b12771b268916f956e16e9a168a7df4b0f875421cda59"
+      "e80ab01741fb441a7de04688ceca1342399b31a2fdbff993a98d67bfe1d1c32e"
     ],
     [
       "src-tauri/src/services/secret/platform/mod.rs",
@@ -335,7 +335,7 @@
     ],
     [
       "src-tauri/tests/secret_service_contract.rs",
-      "ae8f0f7631e408a7f3a3b750ce862512d8b0ddb2228aba672e695716caf3ff16"
+      "c5a25d1135bd64578eadfe33a9546876fb74a21bd45c162ef13e3fb8767c90a0"
     ],
     [
       "src-tauri/tests/skill_sync.rs",
@@ -411,7 +411,7 @@
     ],
     [
       "tests/miseTaskContract.test.ts",
-      "e8722853a342a190bb1e09b050a06079df4e89c74a12f829a3ae44d16779661e"
+      "9e53ff2ea02324ebfa260fa8f7219213df2ef93c1345f56e588dda7a6ed45550"
     ],
     [
       "tests/releaseWorkflow.test.ts",

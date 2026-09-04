@@ -788,7 +788,17 @@ The chain performs, in order:
    `security delete-keychain` a keychain that just signed this identity: macOS 26
    then fails the next `codesign` with `errSecInternalComponent`. Preflight also
    smoke-signs a copy of `/usr/bin/true` so a broken chain fails before the Swift
-   helper build;
+   helper build. `mise run dev` keeps that cache keychain as the user default
+   from preflight through app-bundle signing (`machine-preflight --keep-session`).
+   The detached `pnpm tauri dev` spawn returns immediately, so the host must not
+   restore the user's keychain in the same turn as that spawn: doing so drops
+   the signing identity before Cargo's app-runner runs and the next `codesign`
+   fails with `errSecInternalComponent`. Recreating the cache keychain after
+   that error does not recover it. Immediate unlock retries do not recover it
+   either. App-runner restores after nested signing; `restore-session` also
+   runs if setup fails or when the Tauri process later exits. A standalone
+   `machine-preflight` without `--keep-session` still restores immediately.
+   `restore-session` is a no-op when no session is active.
 2. development-flavor universal privileged helper/client build and embedded
    plist verification;
 3. Tauri dev compilation with the privileged-client Cargo feature;

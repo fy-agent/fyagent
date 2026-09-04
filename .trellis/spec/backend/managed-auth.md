@@ -114,8 +114,12 @@ grantedScopes, issuedAt?, expiresAt?
 ```
 
 At least one of access/refresh/id is required. Encoded UTF-8 JSON must fit
-`MAX_SECRET_BYTES` (2560). Oversized material fails closed; it is never
-truncated or spilled to a second file.
+`MAX_SECRET_BYTES` (2560), the Windows generic-credential blob cap. Tokens
+are never truncated and never spilled to a second file. When the encoded
+bundle would exceed 2560, omit `idToken` first, then `accessToken` if a
+`refreshToken` remains. Identity stays in SQLite metadata; a missing access
+token is re-minted from refresh. Fail closed if the remaining fields still
+exceed 2560 or contain NUL.
 
 Proxy resolution:
 
@@ -188,6 +192,14 @@ native delete.
   SecretRef, then removes credential/orphan identity metadata. Any incomplete
   delete remains an error/recovery state; the overview must not hide a still
   authoritative credential.
+- `Ready` credentials that fail native delete stay fail-closed. Credentials
+  whose status is already `secret_missing`, `provisioning`, `revoked`, or
+  `migration_blocked` (a leftover admission that never stored a vault item)
+  still expose `remove` and may finish SQLite cleanup when native delete is
+  denied. Do not rewrite status on that path: a revision bump poisons the
+  preview.
+- A login vault write that fails before `SecItemAdd` succeeds is
+  `secret_missing` plus `secret_unavailable`, not `migration_blocked`.
 - Mutation success returns a newly generated operation UUID and a freshly
   computed overview. The renderer must not infer success from the command
   returning without an error.
@@ -290,7 +302,7 @@ metadata and must never include token columns.
 | unsupported host / locked / denied vault | fail-closed overview; old JSON not renamed |
 | reserved SecretRef not yet in SQLite | reject; do not call native create |
 | create/replace readback or typed decode fails | keep provisioning/secret_missing; no plaintext fallback |
-| bundle exceeds 2560 bytes or contains NUL | reject before native write |
+| encoded bundle still exceeds 2560 after omitting optional id/access tokens, or contains NUL | reject before native write |
 | refresh_owner is not `fyagent` | resolver conflict; no refresh |
 | CAS generation/owner mismatch | discard late result; store unchanged |
 | Copilot v1 JSON without identity | that source `blocked`; other sources continue |
@@ -299,6 +311,9 @@ metadata and must never include token columns.
 | set-default revision is stale or no ready credential exists | reject; leave defaults unchanged |
 | removal preview ID/revision no longer matches | stale; delete neither SecretRef nor metadata |
 | removal cannot clear/delete every credential authority | report failure/recovery; do not fabricate an empty overview |
+| native delete is denied for `secret_missing` / `provisioning` / `revoked` / `migration_blocked` | still advertise `remove` and finish SQLite cleanup; do not rewrite status |
+| native delete is denied for a `Ready` credential | fail-closed; do not hide the credential |
+| login vault create is denied before a Keychain item exists | `secret_missing` + `secret_unavailable`; never `migration_blocked` |
 | Proxy resolves a non-`proxy_upstream` purpose | conflict; no refresh |
 | mutation `operationId` is not UUID v4 | frontend parser rejects the result |
 | DTO/log/debug contains token/secretRef | test failure / NO-GO |
@@ -343,6 +358,7 @@ Required assertions:
   closed; CHECK excludes `shared`; no token columns;
 - WebDAV skip/preserve include all `managed_auth_*` tables together;
 - bundle 7.2 round-trip, wrong schema rejected, oversized fail-closed,
+  OpenAI-sized grants omit `idToken` to fit 2560;
   Debug redaction;
 - admission: SecretRef row exists before native create; recover after
   create-without-mark_ready;
@@ -353,6 +369,11 @@ Required assertions:
 - set-default accepts only a ready credential under exact revision;
   removal preview/apply recomputes impact and rejects stale preview IDs;
   native secrets are deleted before credential/identity metadata;
+  non-ready accounts still advertise `remove`; vault delete denial on those
+  statuses still completes SQLite cleanup; Ready delete failure stays
+  fail-closed;
+  login vault create denial before an item exists is `secret_missing` /
+  `secret_unavailable`, never `migration_blocked`;
 - overview/DTO leak scan includes `access_token`, `refresh_token`, `id_token`,
   `authorization_code`, `device_code`, `secretRef` / `secret_ref`, `verifier`;
 - leftover `auth_*` login/remove/default/logout/cancel helpers return

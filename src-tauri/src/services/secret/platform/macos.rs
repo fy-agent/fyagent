@@ -1,6 +1,13 @@
 #![allow(non_camel_case_types, non_upper_case_globals)]
 
-use std::{ffi::c_void, ptr, sync::Mutex};
+use std::{
+    ffi::c_void,
+    ptr,
+    sync::{
+        atomic::{AtomicI8, Ordering},
+        Mutex,
+    },
+};
 
 use super::super::{
     BackendProbe, SecretBackend, SecretBackendKind, SecretMaterial, SecretPurpose, SecretRef,
@@ -9,6 +16,10 @@ use super::super::{
 
 const SERVICE: &str = "com.fyagent.secrets.v1";
 static KEYCHAIN_LOCK: Mutex<()> = Mutex::new(());
+const DPK_UNKNOWN: i8 = -1;
+const DPK_DISABLED: i8 = 0;
+const DPK_ENABLED: i8 = 1;
+static DPK_MODE: AtomicI8 = AtomicI8::new(DPK_UNKNOWN);
 
 const ERR_SUCCESS: i32 = 0;
 const ERR_USER_CANCELED: i32 = -128;
@@ -192,31 +203,57 @@ fn cf_dictionary(pairs: &[(CFTypeRef, CFTypeRef)]) -> Result<CfOwned, SecretServ
     CfOwned::new(raw)
 }
 
-fn identity_query(service: CFTypeRef, account: CFTypeRef) -> Result<CfOwned, SecretServiceError> {
-    unsafe {
-        cf_dictionary(&[
-            (
-                kSecClass as CFTypeRef,
-                kSecClassGenericPassword as CFTypeRef,
-            ),
-            (kSecAttrService as CFTypeRef, service),
-            (kSecAttrAccount as CFTypeRef, account),
-            (
-                kSecAttrSynchronizable as CFTypeRef,
-                kCFBooleanFalse as CFTypeRef,
-            ),
-            (
-                kSecUseDataProtectionKeychain as CFTypeRef,
-                kCFBooleanTrue as CFTypeRef,
-            ),
-            (kSecMatchLimit as CFTypeRef, kSecMatchLimitOne as CFTypeRef),
-        ])
+fn running_inside_app_bundle() -> bool {
+    std::env::current_exe()
+        .ok()
+        .and_then(|path| {
+            path.to_str()
+                .map(|value| value.contains(".app/Contents/MacOS/"))
+        })
+        .unwrap_or(false)
+}
+
+fn probe_dpk_copy_status() -> Option<OSStatus> {
+    let service = cf_string(SERVICE).ok()?;
+    let account = cf_string("sec_dpk_capability_probe").ok()?;
+    let query = probe_query(service.raw(), account.raw(), true).ok()?;
+    match copy_matching(&query) {
+        Ok(_) => Some(ERR_SUCCESS),
+        Err(status) => Some(status),
     }
 }
 
-fn read_query(service: CFTypeRef, account: CFTypeRef) -> Result<CfOwned, SecretServiceError> {
+fn use_data_protection_keychain() -> bool {
+    match DPK_MODE.load(Ordering::Relaxed) {
+        DPK_DISABLED => false,
+        DPK_ENABLED => true,
+        _ => {
+            let in_app = running_inside_app_bundle();
+            let probe_status = probe_dpk_copy_status();
+            // Signed app without an authorized access-group uses the file-based
+            // login keychain. Unpackaged cargo-test binaries keep DPK so
+            // errSecMissingEntitlement stays fail-closed HIL evidence.
+            let enabled = !matches!(probe_status, Some(ERR_MISSING_ENTITLEMENT) if in_app);
+            DPK_MODE.store(
+                if enabled { DPK_ENABLED } else { DPK_DISABLED },
+                Ordering::Relaxed,
+            );
+            enabled
+        }
+    }
+}
+
+fn disable_data_protection_keychain() {
+    DPK_MODE.store(DPK_DISABLED, Ordering::Relaxed);
+}
+
+fn identity_query(
+    service: CFTypeRef,
+    account: CFTypeRef,
+    use_dpk: bool,
+) -> Result<CfOwned, SecretServiceError> {
     unsafe {
-        cf_dictionary(&[
+        let mut pairs = vec![
             (
                 kSecClass as CFTypeRef,
                 kSecClassGenericPassword as CFTypeRef,
@@ -227,19 +264,55 @@ fn read_query(service: CFTypeRef, account: CFTypeRef) -> Result<CfOwned, SecretS
                 kSecAttrSynchronizable as CFTypeRef,
                 kCFBooleanFalse as CFTypeRef,
             ),
-            (
+            (kSecMatchLimit as CFTypeRef, kSecMatchLimitOne as CFTypeRef),
+        ];
+        if use_dpk {
+            pairs.push((
                 kSecUseDataProtectionKeychain as CFTypeRef,
                 kCFBooleanTrue as CFTypeRef,
+            ));
+        }
+        cf_dictionary(&pairs)
+    }
+}
+
+fn read_query(
+    service: CFTypeRef,
+    account: CFTypeRef,
+    use_dpk: bool,
+) -> Result<CfOwned, SecretServiceError> {
+    unsafe {
+        let mut pairs = vec![
+            (
+                kSecClass as CFTypeRef,
+                kSecClassGenericPassword as CFTypeRef,
+            ),
+            (kSecAttrService as CFTypeRef, service),
+            (kSecAttrAccount as CFTypeRef, account),
+            (
+                kSecAttrSynchronizable as CFTypeRef,
+                kCFBooleanFalse as CFTypeRef,
             ),
             (kSecMatchLimit as CFTypeRef, kSecMatchLimitOne as CFTypeRef),
             (kSecReturnData as CFTypeRef, kCFBooleanTrue as CFTypeRef),
-        ])
+        ];
+        if use_dpk {
+            pairs.push((
+                kSecUseDataProtectionKeychain as CFTypeRef,
+                kCFBooleanTrue as CFTypeRef,
+            ));
+        }
+        cf_dictionary(&pairs)
     }
 }
 
-fn probe_query(service: CFTypeRef, account: CFTypeRef) -> Result<CfOwned, SecretServiceError> {
+fn probe_query(
+    service: CFTypeRef,
+    account: CFTypeRef,
+    use_dpk: bool,
+) -> Result<CfOwned, SecretServiceError> {
     unsafe {
-        cf_dictionary(&[
+        let mut pairs = vec![
             (
                 kSecClass as CFTypeRef,
                 kSecClassGenericPassword as CFTypeRef,
@@ -249,17 +322,20 @@ fn probe_query(service: CFTypeRef, account: CFTypeRef) -> Result<CfOwned, Secret
             (
                 kSecAttrSynchronizable as CFTypeRef,
                 kCFBooleanFalse as CFTypeRef,
-            ),
-            (
-                kSecUseDataProtectionKeychain as CFTypeRef,
-                kCFBooleanTrue as CFTypeRef,
             ),
             (kSecMatchLimit as CFTypeRef, kSecMatchLimitOne as CFTypeRef),
             (
                 kSecReturnAttributes as CFTypeRef,
                 kCFBooleanTrue as CFTypeRef,
             ),
-        ])
+        ];
+        if use_dpk {
+            pairs.push((
+                kSecUseDataProtectionKeychain as CFTypeRef,
+                kCFBooleanTrue as CFTypeRef,
+            ));
+        }
+        cf_dictionary(&pairs)
     }
 }
 
@@ -311,7 +387,7 @@ impl MacOsSecretBackend {
     ) -> Result<SecretMaterial, SecretServiceError> {
         let service = cf_string(SERVICE)?;
         let account = cf_string(secret_ref.as_str())?;
-        let query = read_query(service.raw(), account.raw())?;
+        let query = read_query(service.raw(), account.raw(), use_data_protection_keychain())?;
         let result =
             copy_matching(&query).map_err(|status| map_status(status, KeychainOperation::Read))?;
         SecretMaterial::from_native_input(copy_data(result.raw())?, purpose)
@@ -345,30 +421,49 @@ impl SecretBackend for MacOsSecretBackend {
         let service = cf_string(SERVICE)?;
         let account = cf_string(secret_ref.as_str())?;
         let data = cf_data(material.as_bytes())?;
-        let attributes = unsafe {
-            cf_dictionary(&[
-                (
-                    kSecClass as CFTypeRef,
-                    kSecClassGenericPassword as CFTypeRef,
-                ),
-                (kSecAttrService as CFTypeRef, service.raw()),
-                (kSecAttrAccount as CFTypeRef, account.raw()),
-                (
-                    kSecAttrSynchronizable as CFTypeRef,
-                    kCFBooleanFalse as CFTypeRef,
-                ),
-                (
-                    kSecUseDataProtectionKeychain as CFTypeRef,
-                    kCFBooleanTrue as CFTypeRef,
-                ),
-                (
-                    kSecAttrAccessible as CFTypeRef,
-                    kSecAttrAccessibleWhenUnlockedThisDeviceOnly as CFTypeRef,
-                ),
-                (kSecValueData as CFTypeRef, data.raw()),
-            ])?
+        let mut use_dpk = use_data_protection_keychain();
+        let mut retried_without_dpk = false;
+        let status = loop {
+            let attributes = unsafe {
+                let mut pairs = vec![
+                    (
+                        kSecClass as CFTypeRef,
+                        kSecClassGenericPassword as CFTypeRef,
+                    ),
+                    (kSecAttrService as CFTypeRef, service.raw()),
+                    (kSecAttrAccount as CFTypeRef, account.raw()),
+                    (
+                        kSecAttrSynchronizable as CFTypeRef,
+                        kCFBooleanFalse as CFTypeRef,
+                    ),
+                    (kSecValueData as CFTypeRef, data.raw()),
+                ];
+                if use_dpk {
+                    pairs.push((
+                        kSecUseDataProtectionKeychain as CFTypeRef,
+                        kCFBooleanTrue as CFTypeRef,
+                    ));
+                    pairs.push((
+                        kSecAttrAccessible as CFTypeRef,
+                        kSecAttrAccessibleWhenUnlockedThisDeviceOnly as CFTypeRef,
+                    ));
+                }
+                cf_dictionary(&pairs)?
+            };
+            let status =
+                unsafe { SecItemAdd(attributes.raw() as CFDictionaryRef, ptr::null_mut()) };
+            if status == ERR_MISSING_ENTITLEMENT
+                && use_dpk
+                && running_inside_app_bundle()
+                && !retried_without_dpk
+            {
+                disable_data_protection_keychain();
+                use_dpk = false;
+                retried_without_dpk = true;
+                continue;
+            }
+            break status;
         };
-        let status = unsafe { SecItemAdd(attributes.raw() as CFDictionaryRef, ptr::null_mut()) };
         if status != ERR_SUCCESS {
             return Err(map_status(status, KeychainOperation::Create));
         }
@@ -383,7 +478,7 @@ impl SecretBackend for MacOsSecretBackend {
         let _guard = self.lock()?;
         let service = cf_string(SERVICE)?;
         let account = cf_string(secret_ref.as_str())?;
-        let query = identity_query(service.raw(), account.raw())?;
+        let query = identity_query(service.raw(), account.raw(), use_data_protection_keychain())?;
         let data = cf_data(material.as_bytes())?;
         let updates = unsafe { cf_dictionary(&[(kSecValueData as CFTypeRef, data.raw())])? };
         let status = unsafe {
@@ -415,7 +510,7 @@ impl SecretBackend for MacOsSecretBackend {
         let _guard = self.lock()?;
         let service = cf_string(SERVICE)?;
         let account = cf_string(secret_ref.as_str())?;
-        let query = probe_query(service.raw(), account.raw())?;
+        let query = probe_query(service.raw(), account.raw(), use_data_protection_keychain())?;
         match copy_matching(&query) {
             Ok(_) => Ok(BackendProbe::ready()),
             Err(ERR_ITEM_NOT_FOUND) => Ok(BackendProbe::missing()),
@@ -427,7 +522,7 @@ impl SecretBackend for MacOsSecretBackend {
         let _guard = self.lock()?;
         let service = cf_string(SERVICE)?;
         let account = cf_string(secret_ref.as_str())?;
-        let query = identity_query(service.raw(), account.raw())?;
+        let query = identity_query(service.raw(), account.raw(), use_data_protection_keychain())?;
         let status = unsafe { SecItemDelete(query.raw() as CFDictionaryRef) };
         if status == ERR_SUCCESS {
             Ok(())

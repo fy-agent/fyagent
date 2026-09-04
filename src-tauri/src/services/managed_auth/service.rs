@@ -321,7 +321,8 @@ where
         let Some(selected) = rows.first() else {
             return Err(ManagedAuthCoreError::NotFound);
         };
-        if account_revision(selected) != expected_revision {
+        let actual_revision = account_revision(selected);
+        if actual_revision != expected_revision {
             return Err(ManagedAuthCoreError::Stale);
         }
         let connections = self.repository.list_connections()?;
@@ -498,15 +499,10 @@ where
                 updated_at: now,
             },
         };
-        let stored = self.repository.begin_provisioning(&new_credential)?;
-        if matches!(
-            stored.status,
-            CredentialStatus::Ready | CredentialStatus::RequiresReauth
-        ) {
-            return Ok(stored);
-        }
+        let stored_res = self.repository.begin_provisioning(&new_credential);
+        let stored = stored_res?;
         let handle = stored.secret_handle.clone();
-        let bundle = ManagedAuthSecretBundle::new(ManagedAuthSecretBundleParts {
+        let bundle_res = ManagedAuthSecretBundle::new(ManagedAuthSecretBundleParts {
             credential_id: stored.credential_id.clone(),
             provider: stored.provider,
             generation: stored.generation,
@@ -517,12 +513,15 @@ where
             granted_scopes: Vec::new(),
             issued_at: Some(input.authenticated_at),
             expires_at: None,
-        })?;
-        match self.secrets.create_reserved(
+        });
+        let bundle = bundle_res?;
+        let encoded_res = bundle.encode();
+        let create_res = self.secrets.create_reserved(
             &handle,
-            bundle.encode()?,
+            encoded_res?,
             SecretPurpose::ManagedOAuthCredential,
-        ) {
+        );
+        match create_res {
             Ok(_) => {}
             Err(error) if error.code() == SecretErrorCode::AlreadyExists => {}
             Err(error) if error.code() == SecretErrorCode::Missing => {
@@ -533,31 +532,38 @@ where
                 )?;
                 return Err(error.into());
             }
-            Err(error) => {
+            Err(error)
                 if matches!(
                     error.code(),
                     SecretErrorCode::BackendUnavailable
                         | SecretErrorCode::Locked
                         | SecretErrorCode::PermissionDenied
-                ) {
-                    self.repository.set_status(
-                        &stored.credential_id,
-                        CredentialStatus::MigrationBlocked,
-                        now,
-                    )?;
-                    return Err(ManagedAuthCoreError::SecretUnavailable);
-                }
+                ) =>
+            {
+                // create_reserved never wrote an item. Do not mark
+                // migration_blocked: that health hid Remove and trapped
+                // login leftovers.
+                self.repository.set_status(
+                    &stored.credential_id,
+                    CredentialStatus::SecretMissing,
+                    now,
+                )?;
+                return Err(ManagedAuthCoreError::SecretUnavailable);
+            }
+            Err(error) => {
                 return Err(error.into());
             }
         }
-        self.readback_bundle(&handle)?;
-        let marked = self.repository.mark_ready(
+        let readback_res = self.readback_bundle(&handle);
+        readback_res?;
+        let marked_res = self.repository.mark_ready(
             &stored.credential_id,
             stored.generation,
             handle.version(),
             desired_status,
             now,
-        )?;
+        );
+        let marked = marked_res?;
         if !marked {
             return Err(ManagedAuthCoreError::Stale);
         }
@@ -981,7 +987,21 @@ where
         match self.secrets.delete(&credential.secret_handle) {
             Ok(_) => {}
             Err(error) if error.code() == SecretErrorCode::Missing => {}
-            Err(_) => {
+            Err(_error)
+                if matches!(
+                    credential.status,
+                    CredentialStatus::SecretMissing
+                        | CredentialStatus::Provisioning
+                        | CredentialStatus::Revoked
+                        | CredentialStatus::MigrationBlocked
+                ) =>
+            {
+                // Vault is already unusable. errSecMissingEntitlement (-34018)
+                // must not block SQLite cleanup, and must not rewrite status
+                // (that would change revision and poison the preview).
+                // Login leftovers marked migration_blocked never stored an item.
+            }
+            Err(_error) => {
                 self.repository.set_status(
                     &credential.credential_id,
                     CredentialStatus::SecretMissing,
@@ -1427,6 +1447,11 @@ fn account_summary(
         allowed_actions.push(ManagedAuthAccountAction::Reauthenticate);
         allowed_actions.push(ManagedAuthAccountAction::SetDefault);
         allowed_actions.push(ManagedAuthAccountAction::Remove);
+    } else {
+        if health == ManagedAuthHealth::RequiresReauth {
+            allowed_actions.push(ManagedAuthAccountAction::Reauthenticate);
+        }
+        allowed_actions.push(ManagedAuthAccountAction::Remove);
     }
     ManagedAuthAccountSummary {
         account_id: row.identity.identity_id.clone(),
@@ -1666,7 +1691,7 @@ fn map_opencode_error(error: opencode::OpencodeAuthError) -> ManagedAuthErrorDto
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::services::secret::MemorySecretBackend;
+    use crate::services::secret::{MemoryFailureMode, MemorySecretBackend};
     use tempfile::tempdir;
 
     fn service_with_memory() -> (ManagedAuthService<MemorySecretBackend>, tempfile::TempDir) {
@@ -1678,6 +1703,22 @@ mod tests {
             dir.path().to_path_buf(),
         );
         (service, dir)
+    }
+
+    fn service_with_shared_memory() -> (
+        ManagedAuthService<MemorySecretBackend>,
+        tempfile::TempDir,
+        MemorySecretBackend,
+    ) {
+        let dir = tempdir().expect("tempdir");
+        let db = Arc::new(Database::memory().expect("db"));
+        let backend = MemorySecretBackend::new();
+        let service = ManagedAuthService::new(
+            db,
+            SecretService::new(backend.clone()),
+            dir.path().to_path_buf(),
+        );
+        (service, dir, backend)
     }
 
     fn sample_input(legacy: &str, token: &str, make_default: bool) -> LegacyCredentialInput {
@@ -2424,5 +2465,133 @@ mod tests {
             .unwrap()
             .to_ascii_lowercase();
         assert!(!text.contains("rt-opencode"));
+    }
+
+    #[test]
+    fn secret_missing_account_can_be_removed_when_vault_delete_is_denied() {
+        let (service, _dir, backend) = service_with_shared_memory();
+        service
+            .provision_legacy_credential(sample_input("legacy-credential", "refresh-value", true))
+            .expect("provision first");
+        service
+            .provision_legacy_credential(sample_input(
+                "legacy-credential-2",
+                "refresh-value-2",
+                false,
+            ))
+            .expect("provision second");
+        let rows = service.repository.list_all_credentials().expect("rows");
+        assert_eq!(rows.len(), 2);
+        let now = chrono::Utc::now().timestamp();
+        for row in &rows {
+            service
+                .repository
+                .set_status(
+                    &row.credential.credential_id,
+                    CredentialStatus::SecretMissing,
+                    now,
+                )
+                .expect("mark missing");
+        }
+        backend.set_mode(MemoryFailureMode::Denied);
+        let account = service
+            .overview()
+            .accounts
+            .into_iter()
+            .find(|account| account.login == "person@example.com")
+            .expect("account");
+        let preview = service
+            .preview_account_removal(&account.account_id, &account.revision)
+            .expect("preview");
+        let result = service
+            .remove_account(
+                &preview.preview_id,
+                &account.account_id,
+                &preview.expected_revision,
+            )
+            .expect("remove unusable account despite vault PermissionDenied");
+        assert_eq!(result.outcome, ManagedAuthMutationOutcome::Completed);
+        assert!(result.overview.accounts.is_empty());
+        assert!(service
+            .repository
+            .list_all_credentials()
+            .expect("rows")
+            .is_empty());
+    }
+
+    #[test]
+    fn migration_blocked_account_can_be_removed_when_vault_delete_is_denied() {
+        let (service, _dir, backend) = service_with_shared_memory();
+        service
+            .provision_legacy_credential(sample_input("legacy-credential", "refresh-value", true))
+            .expect("provision");
+        let rows = service.repository.list_all_credentials().expect("rows");
+        let now = chrono::Utc::now().timestamp();
+        service
+            .repository
+            .set_status(
+                &rows[0].credential.credential_id,
+                CredentialStatus::MigrationBlocked,
+                now,
+            )
+            .expect("mark blocked");
+        backend.set_mode(MemoryFailureMode::Denied);
+        let account = service
+            .overview()
+            .accounts
+            .into_iter()
+            .next()
+            .expect("account");
+        assert_eq!(account.health, ManagedAuthHealth::MigrationBlocked);
+        assert!(account
+            .allowed_actions
+            .contains(&ManagedAuthAccountAction::Remove));
+        let preview = service
+            .preview_account_removal(&account.account_id, &account.revision)
+            .expect("preview");
+        let result = service
+            .remove_account(
+                &preview.preview_id,
+                &account.account_id,
+                &preview.expected_revision,
+            )
+            .expect("remove leftover login admission despite vault PermissionDenied");
+        assert_eq!(result.outcome, ManagedAuthMutationOutcome::Completed);
+        assert!(result.overview.accounts.is_empty());
+    }
+
+    #[test]
+    fn ready_account_stays_when_vault_delete_is_denied() {
+        let (service, _dir, backend) = service_with_shared_memory();
+        service
+            .provision_legacy_credential(sample_input("legacy-credential", "refresh-value", true))
+            .expect("provision");
+        backend.set_mode(MemoryFailureMode::Denied);
+        let account = service
+            .overview()
+            .accounts
+            .into_iter()
+            .next()
+            .expect("account");
+        let preview = service
+            .preview_account_removal(&account.account_id, &account.revision)
+            .expect("preview");
+        let error = service
+            .remove_account(
+                &preview.preview_id,
+                &account.account_id,
+                &preview.expected_revision,
+            )
+            .expect_err("authoritative credential must stay");
+        assert!(matches!(error, ManagedAuthCoreError::SecretUnavailable));
+        assert_eq!(service.overview().accounts.len(), 1);
+        assert_eq!(
+            service
+                .repository
+                .list_all_credentials()
+                .expect("rows")
+                .len(),
+            1
+        );
     }
 }

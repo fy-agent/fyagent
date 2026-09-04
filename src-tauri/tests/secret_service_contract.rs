@@ -304,7 +304,7 @@ fn native_leaf_sources_keep_reviewed_store_and_cleanup_guards() {
             .matches("kSecUseDataProtectionKeychain as CFTypeRef")
             .count(),
         4,
-        "every macOS item-identity/read/probe/create query must select DPK"
+        "identity/read/probe/create sites must still be able to select DPK"
     );
     assert_eq!(
         macos.matches("kSecAttrSynchronizable as CFTypeRef").count(),
@@ -312,6 +312,14 @@ fn native_leaf_sources_keep_reviewed_store_and_cleanup_guards() {
         "every macOS item-identity/read/probe/create query must stay non-sync"
     );
     assert!(macos.contains("kSecAttrAccessibleWhenUnlockedThisDeviceOnly as CFTypeRef"));
+    assert!(
+        macos.contains(".app/Contents/MacOS/"),
+        "file-based login keychain residual is limited to signed app bundles"
+    );
+    assert!(
+        macos.contains("ERR_MISSING_ENTITLEMENT"),
+        "signed-app residual must detect DPK missing entitlement"
+    );
     let macos_create = section(macos, "    fn create_new(", "    fn replace(");
     assert!(macos_create.contains("SecItemAdd("));
     assert!(macos_create.contains("self.verify_locked(secret_ref, material)"));

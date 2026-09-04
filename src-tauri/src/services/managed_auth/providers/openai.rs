@@ -176,7 +176,7 @@ pub(crate) fn bind_registered_loopback() -> Result<LoopbackListener, LoopbackBin
 
 pub(crate) struct LoopbackListener {
     pub port: u16,
-    pub(crate) listener: TcpListener,
+    pub(crate) listener: std::net::TcpListener,
 }
 
 pub(crate) fn bind_loopback_port(port: u16) -> std::io::Result<LoopbackListener> {
@@ -187,10 +187,9 @@ fn bind_loopback(port: u16) -> std::io::Result<LoopbackListener> {
     let std_listener = std::net::TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], port)))?;
     std_listener.set_nonblocking(true)?;
     let actual = std_listener.local_addr()?.port();
-    let listener = TcpListener::from_std(std_listener)?;
     Ok(LoopbackListener {
         port: actual,
-        listener,
+        listener: std_listener,
     })
 }
 
@@ -275,6 +274,8 @@ pub(crate) async fn accept_one_callback(
     cancel: tokio::sync::watch::Receiver<bool>,
 ) -> Result<CallbackDecision, OpenAiOAuthError> {
     let port = listener.port;
+    let listener =
+        TcpListener::from_std(listener.listener).map_err(|_| OpenAiOAuthError::IoError)?;
     let accept = tokio::time::timeout(CALLBACK_DEADLINE, async {
         loop {
             if *cancel.borrow()
@@ -285,13 +286,19 @@ pub(crate) async fn accept_one_callback(
             tokio::select! {
                 biased;
                 _ = tokio::time::sleep(Duration::from_millis(50)) => {}
-                accepted = listener.listener.accept() => {
+                accepted = listener.accept() => {
                     let (mut stream, _) = accepted.map_err(|_| OpenAiOAuthError::IoError)?;
                     let mut buf = vec![0u8; MAX_CALLBACK_BYTES + 1];
-                    let read = tokio::time::timeout(Duration::from_secs(2), stream.read(&mut buf))
-                        .await
-                        .map_err(|_| OpenAiOAuthError::NetworkError)?
-                        .map_err(|_| OpenAiOAuthError::IoError)?;
+                    let read_res = tokio::time::timeout(Duration::from_secs(2), stream.read(&mut buf)).await;
+                    let read = match read_res {
+                        Ok(Ok(n)) => n,
+                        Ok(Err(_)) => {
+                            return Err(OpenAiOAuthError::IoError);
+                        }
+                        Err(_) => {
+                            return Err(OpenAiOAuthError::NetworkError);
+                        }
+                    };
                     if read == 0 || read > MAX_CALLBACK_BYTES {
                         let _ = write_callback_response(&mut stream, 400, "Bad Request").await;
                         return Ok(CallbackDecision::Invalid);

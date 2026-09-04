@@ -107,9 +107,94 @@ describe("AuthPage", () => {
     expect(
       within(connectedSection!).getByText("由 Codex 自动续期"),
     ).toBeVisible();
+    expect(
+      within(connectedSection!).getByRole("button", { name: "切回官方" }),
+    ).toBeVisible();
     expect(document.body.textContent).not.toMatch(
       /access[_ ]?token|refresh[_ ]?token|authorization[_ ]?code|secretRef/iu,
     );
+  });
+
+  it("connects matching software from the account detail with this account preselected", async () => {
+    const user = userEvent.setup();
+    const overview = managedAuthOverviewFixture();
+    overview.connections[0] = {
+      ...overview.connections[0],
+      accountId: null,
+      authStatus: "disconnected",
+      requestMode: "none",
+      requestProviderLabel: null,
+      allowedActions: ["connect_account", "refresh"],
+    };
+    overview.accounts[0] = {
+      ...overview.accounts[0],
+      connectedConsumerCount: 1,
+    };
+    const applyConnectionAction = vi.fn(async () => {
+      const next = managedAuthOverviewFixture();
+      return mutationResultFixture(next);
+    });
+    renderPage(
+      managedPorts({
+        getOverview: vi.fn(async () => overview),
+        applyConnectionAction,
+      }),
+    );
+
+    const connectSection = (
+      await screen.findByRole("heading", { name: "连接到软件" })
+    ).closest("section");
+    expect(connectSection).not.toBeNull();
+    await user.click(
+      within(connectSection!).getByRole("button", { name: "用此账号连接" }),
+    );
+    const dialog = screen.getByRole("dialog", { name: "连接 Codex 账号" });
+    await user.click(within(dialog).getByRole("button", { name: "确认" }));
+
+    expect(applyConnectionAction).toHaveBeenCalledWith({
+      connectionId: CODEX_CONNECTION_ID,
+      expectedRevision: CONNECTION_REVISION,
+      action: "connect_account",
+      accountId: OPENAI_ACCOUNT_ID,
+    });
+  });
+
+  it("starts a Codex connection login when the saved account cannot connect yet", async () => {
+    const user = userEvent.setup();
+    const overview = managedAuthOverviewFixture();
+    overview.connections[0] = {
+      ...overview.connections[0],
+      accountId: null,
+      authStatus: "disconnected",
+      requestMode: "none",
+      requestProviderLabel: null,
+      allowedActions: ["refresh"],
+    };
+    overview.accounts[0] = {
+      ...overview.accounts[0],
+      connectedConsumerCount: 1,
+    };
+    const startLogin = vi.fn(async () => deviceLoginSessionFixture());
+    renderPage(
+      managedPorts({
+        getOverview: vi.fn(async () => overview),
+        startLogin,
+      }),
+    );
+
+    await user.click(await screen.findByRole("button", { name: "连接 Codex" }));
+    const dialog = screen.getByRole("dialog", { name: "添加官方账号" });
+    expect(within(dialog).getByLabelText("连接 Codex")).toBeChecked();
+    await user.click(within(dialog).getByRole("button", { name: "下一步" }));
+    await user.click(within(dialog).getByRole("button", { name: "继续" }));
+
+    expect(startLogin).toHaveBeenCalledWith({
+      provider: "openai",
+      purpose: "connect_consumer",
+      consumer: "codex",
+      method: "browser_loopback",
+      accountId: null,
+    });
   });
 
   it("opens the consumer deep link and preserves the three-state explanation", async () => {
@@ -127,6 +212,56 @@ describe("AuthPage", () => {
     expect(screen.getByTestId("test-location")).toHaveTextContent(
       "agentReturn=codex",
     );
+  });
+
+  it("does not treat an unbound Codex slot as a missing installation", async () => {
+    const overview = managedAuthOverviewFixture();
+    overview.connections[0] = {
+      ...overview.connections[0],
+      targetId: null,
+      targetLabel: null,
+    };
+    renderPage(
+      managedPorts({
+        getOverview: vi.fn(async () => overview),
+      }),
+      "/auth?consumer=codex&view=connections",
+    );
+
+    expect(await screen.findByRole("heading", { name: "Codex" })).toBeVisible();
+    expect(screen.getByText("OpenAI · person@example.com")).toBeVisible();
+    expect(
+      screen.queryByText("未检测到可管理的安装实例。账号页面不会自动安装软件。"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("does not claim Codex is using the saved account when native projection is unavailable", async () => {
+    const overview = managedAuthOverviewFixture();
+    overview.connections[0] = {
+      ...overview.connections[0],
+      reasonCodes: ["native_projection_unavailable"],
+      requestMode: "third_party_api",
+      requestProviderLabel: "custom",
+    };
+    renderPage(
+      managedPorts({
+        getOverview: vi.fn(async () => overview),
+      }),
+      "/auth?consumer=codex&view=connections",
+    );
+
+    const detail = await screen.findByRole("region", {
+      name: "Codex 连接详情",
+    });
+    expect(within(detail).getAllByText("账号已保存").length).toBeGreaterThan(0);
+    expect(screen.getByText("账号已保存，尚未写入软件")).toBeVisible();
+    expect(within(detail).getByText("custom")).toBeVisible();
+    expect(
+      within(detail).getByText(
+        "账号已保存在 FyAgent。还不能改写该软件的本地登录和模型来源，所以本机配置不会变。",
+      ),
+    ).toBeVisible();
+    expect(within(detail).queryByText("已连接")).not.toBeInTheDocument();
   });
 
   it("starts the selected official device-code flow without exposing callback data", async () => {
@@ -204,6 +339,29 @@ describe("AuthPage", () => {
     await waitFor(() =>
       expect(screen.queryByText("person@example.com")).not.toBeInTheDocument(),
     );
+  });
+
+  it("shows managed-auth reason copy when account removal returns a command error", async () => {
+    const user = userEvent.setup();
+    const removeAccount = vi.fn(async () => {
+      throw {
+        contractVersion: 1,
+        reasonCode: "secret_unavailable",
+      };
+    });
+    const ports = managedPorts({ removeAccount });
+    renderPage(ports);
+
+    await user.click(await screen.findByRole("button", { name: "移除账号" }));
+    const dialog = await screen.findByRole("dialog", {
+      name: "移除 person@example.com？",
+    });
+    await user.click(within(dialog).getByRole("button", { name: "移除账号" }));
+
+    expect(
+      await screen.findAllByText("系统凭据库暂时不可用。"),
+    ).not.toHaveLength(0);
+    expect(screen.queryByText("请稍后重试。")).not.toBeInTheDocument();
   });
 
   it("confirms switching Codex back to the official account separately from its current provider", async () => {

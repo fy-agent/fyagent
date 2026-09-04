@@ -31,7 +31,11 @@ import { ConnectionsView } from "./ConnectionsView";
 import { LoginDialog } from "./LoginDialog";
 import { ConnectionActionDialog, RemoveAccountDialog } from "./MutationDialogs";
 import { ReasonList } from "./common";
-import { managedAuthConsumerLabel, sessionSummary } from "./presentation";
+import {
+  managedAuthCommandErrorCopy,
+  managedAuthConsumerLabel,
+  sessionSummary,
+} from "./presentation";
 import { useManagedAuthLoginSession } from "./useManagedAuthLoginSession";
 import "./page.css";
 
@@ -98,6 +102,7 @@ export function AuthPage() {
   const [connectionAction, setConnectionAction] = useState<{
     connection: ManagedAuthConnectionSummary;
     action: ManagedAuthConnectionAction;
+    preferredAccountId?: string | null;
   } | null>(null);
 
   const refetchOverview = overviewQuery.refetch;
@@ -176,7 +181,7 @@ export function AuthPage() {
       commitMutationResult(result, successTitle);
       return result;
     } catch (cause) {
-      const message = errorMessage(cause);
+      const message = managedAuthCommandErrorCopy(cause);
       setMutationError(message);
       notify({ tone: "error", title: "账号操作未完成", description: message });
       return null;
@@ -238,7 +243,7 @@ export function AuthPage() {
       );
       setRemovalPreview(preview);
     } catch (cause) {
-      setMutationError(errorMessage(cause));
+      setMutationError(managedAuthCommandErrorCopy(cause));
     } finally {
       setRemovalPreviewLoading(false);
     }
@@ -246,20 +251,24 @@ export function AuthPage() {
 
   const confirmRemoveAccount = async () => {
     if (!removalAccount || !removalPreview) return;
-    const result = await runMutation(
-      () =>
-        ports.managedAuth.removeAccount(
-          removalPreview.previewId,
-          removalAccount.accountId,
-          removalPreview.expectedRevision,
-        ),
-      `${removalAccount.login} 已移除`,
-    );
-    if (!result) return;
-    setRemovalAccount(null);
-    setRemovalPreview(null);
-    if (requestedAccountId === removalAccount.accountId) {
-      updateRoute({ account: null });
+    try {
+      const result = await runMutation(
+        () =>
+          ports.managedAuth.removeAccount(
+            removalPreview.previewId,
+            removalAccount.accountId,
+            removalPreview.expectedRevision,
+          ),
+        `${removalAccount.login} 已移除`,
+      );
+      if (!result) return;
+      setRemovalAccount(null);
+      setRemovalPreview(null);
+      if (requestedAccountId === removalAccount.accountId) {
+        updateRoute({ account: null });
+      }
+    } catch (cause) {
+      throw cause;
     }
   };
 
@@ -284,6 +293,7 @@ export function AuthPage() {
   const requestConnectionAction = (
     connection: ManagedAuthConnectionSummary,
     action: ManagedAuthConnectionAction,
+    preferredAccountId?: string | null,
   ) => {
     if (
       action === "refresh" ||
@@ -293,7 +303,7 @@ export function AuthPage() {
       void applyConnectionAction(connection, action, null);
       return;
     }
-    setConnectionAction({ connection, action });
+    setConnectionAction({ connection, action, preferredAccountId });
   };
 
   if (overviewQuery.isPending) {
@@ -450,6 +460,12 @@ export function AuthPage() {
           onReauthenticate={(account) => openLogin(account, null)}
           onSetDefault={(account) => void setDefaultAccount(account)}
           onRemove={(account) => void beginRemoveAccount(account)}
+          onConnectionAction={(connection, action) =>
+            requestConnectionAction(connection, action, selectedAccountId)
+          }
+          onConnectViaLogin={(connection) => {
+            openLogin(null, connection.consumer);
+          }}
         />
       </FeatureTabPanel>
 
@@ -498,6 +514,7 @@ export function AuthPage() {
         action={connectionAction?.action ?? null}
         overview={overview}
         pending={mutationBusy}
+        preferredAccountId={connectionAction?.preferredAccountId}
         onCancel={() => setConnectionAction(null)}
         onConfirm={(accountId) => {
           if (!connectionAction) return;

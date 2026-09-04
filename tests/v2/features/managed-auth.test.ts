@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   assertManagedAuthConnectionActionRequest,
   assertStartManagedAuthLoginRequest,
+  parseManagedAuthCommandError,
   parseManagedAuthLoginSession,
   parseManagedAuthMutationResult,
   parseManagedAuthOverview,
@@ -146,5 +147,23 @@ describe("managed auth wire contract", () => {
         accountId: OPENAI_ACCOUNT_ID,
       }),
     ).toThrow("账号与认证请求无效");
+  });
+
+  it("parses managed-auth command errors without treating them as generic failures", () => {
+    expect(
+      parseManagedAuthCommandError({
+        contractVersion: 1,
+        reasonCode: "secret_unavailable",
+      }),
+    ).toBe("secret_unavailable");
+    expect(
+      parseManagedAuthCommandError({
+        contractVersion: 1,
+        reasonCode: "external_change_detected",
+      }),
+    ).toBe("external_change_detected");
+    expect(parseManagedAuthCommandError({ reasonCode: "secret_unavailable" })).toBe(
+      null,
+    );
   });
 });

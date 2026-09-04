@@ -1,5 +1,6 @@
 import type {
   ManagedAuthAccountSummary,
+  ManagedAuthConnectionAction,
   ManagedAuthConnectionSummary,
   ManagedAuthConsumer,
   ManagedAuthOverview,
@@ -27,7 +28,11 @@ import {
 } from "./common";
 import {
   accountHealthPresentation,
+  accountPageConnectionActionLabel,
+  accountPageConnectionActions,
+  connectableConnectionsForAccount,
   connectionStatusPresentation,
+  loginRequiredConnectionsForAccount,
   formatAuthenticatedAt,
   managedAuthConsumerLabel,
   managedAuthManagerLabel,
@@ -45,10 +50,26 @@ const PROVIDER_FILTERS: Array<ManagedAuthProvider | "all"> = [
 
 function AccountConnection({
   connection,
+  mutationBusy,
+  actions,
+  onAction,
+  loginConnectLabel,
+  onLoginConnect,
 }: {
   connection: ManagedAuthConnectionSummary;
+  mutationBusy: boolean;
+  actions: ManagedAuthConnectionAction[];
+  onAction: (
+    connection: ManagedAuthConnectionSummary,
+    action: ManagedAuthConnectionAction,
+  ) => void;
+  loginConnectLabel?: string;
+  onLoginConnect?: () => void;
 }) {
-  const status = connectionStatusPresentation(connection.authStatus);
+  const status = connectionStatusPresentation(
+    connection.authStatus,
+    connection.reasonCodes,
+  );
   return (
     <article className="fy-auth-connection-card">
       <div className="fy-auth-connection-card-heading">
@@ -77,6 +98,24 @@ function AccountConnection({
         </DefinitionRow>
       </dl>
       <ReasonList reasons={connection.reasonCodes} />
+      {actions.length > 0 || loginConnectLabel ? (
+        <div className="fy-feature-actions">
+          {actions.map((action) => (
+            <Button
+              key={action}
+              disabled={mutationBusy}
+              onClick={() => onAction(connection, action)}
+            >
+              {accountPageConnectionActionLabel(action)}
+            </Button>
+          ))}
+          {loginConnectLabel ? (
+            <Button disabled={mutationBusy} onClick={onLoginConnect}>
+              {loginConnectLabel}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
     </article>
   );
 }
@@ -89,6 +128,8 @@ function AccountDetail({
   onReauthenticate,
   onSetDefault,
   onRemove,
+  onConnectionAction,
+  onConnectViaLogin,
 }: {
   account: ManagedAuthAccountSummary;
   connections: ManagedAuthConnectionSummary[];
@@ -97,10 +138,26 @@ function AccountDetail({
   onReauthenticate: (account: ManagedAuthAccountSummary) => void;
   onSetDefault: (account: ManagedAuthAccountSummary) => void;
   onRemove: (account: ManagedAuthAccountSummary) => void;
+  onConnectionAction: (
+    connection: ManagedAuthConnectionSummary,
+    action: ManagedAuthConnectionAction,
+  ) => void;
+  onConnectViaLogin: (connection: ManagedAuthConnectionSummary) => void;
 }) {
   const canReauthenticate = account.allowedActions.includes("reauthenticate");
   const canSetDefault = account.allowedActions.includes("set_default");
   const canRemove = account.allowedActions.includes("remove");
+  const linkedConnections = connections.filter(
+    (connection) => connection.accountId === account.accountId,
+  );
+  const connectableConnections = connectableConnectionsForAccount(
+    account,
+    connections,
+  );
+  const loginRequiredConnections = loginRequiredConnectionsForAccount(
+    account,
+    connections,
+  );
   return (
     <CatalogDetail
       ariaLabel={`${account.login} 账号详情`}
@@ -184,19 +241,67 @@ function AccountDetail({
             <p>这里显示账号连接和软件当前请求来源，两者可能不同。</p>
           </div>
         </div>
-        {connections.length === 0 ? (
+        {linkedConnections.length === 0 ? (
           <InlineNotice>此账号尚未连接任何软件。</InlineNotice>
         ) : (
           <div className="fy-auth-connection-grid">
-            {connections.map((connection) => (
+            {linkedConnections.map((connection) => (
               <AccountConnection
                 key={connection.connectionId}
                 connection={connection}
+                mutationBusy={mutationBusy}
+                actions={accountPageConnectionActions(
+                  connection,
+                  account.accountId,
+                )}
+                onAction={onConnectionAction}
               />
             ))}
           </div>
         )}
       </section>
+
+      {connectableConnections.length > 0 ||
+      loginRequiredConnections.length > 0 ? (
+        <section
+          className="fy-auth-section"
+          aria-labelledby="fy-auth-account-connect"
+        >
+          <div className="fy-auth-section-heading">
+            <div>
+              <h3 id="fy-auth-account-connect">连接到软件</h3>
+              <p>
+                登录成功后不会自动改写软件，需要在这里选择要使用此账号的软件。
+              </p>
+            </div>
+          </div>
+          <div className="fy-auth-connection-grid">
+            {connectableConnections.map((connection) => (
+              <AccountConnection
+                key={connection.connectionId}
+                connection={connection}
+                mutationBusy={mutationBusy}
+                actions={accountPageConnectionActions(
+                  connection,
+                  account.accountId,
+                )}
+                onAction={onConnectionAction}
+              />
+            ))}
+            {loginRequiredConnections.map((connection) => (
+              <AccountConnection
+                key={connection.connectionId}
+                connection={connection}
+                mutationBusy={mutationBusy}
+                actions={[]}
+                onAction={onConnectionAction}
+                loginConnectLabel={`连接 ${managedAuthConsumerLabel(connection.consumer)}`}
+                onLoginConnect={() => onConnectViaLogin(connection)}
+              />
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <section
         className="fy-auth-section fy-auth-danger-section"
@@ -237,6 +342,8 @@ export function AccountView({
   onReauthenticate,
   onSetDefault,
   onRemove,
+  onConnectionAction,
+  onConnectViaLogin,
 }: {
   overview: ManagedAuthOverview;
   selectedAccountId: string | null;
@@ -252,6 +359,11 @@ export function AccountView({
   onReauthenticate: (account: ManagedAuthAccountSummary) => void;
   onSetDefault: (account: ManagedAuthAccountSummary) => void;
   onRemove: (account: ManagedAuthAccountSummary) => void;
+  onConnectionAction: (
+    connection: ManagedAuthConnectionSummary,
+    action: ManagedAuthConnectionAction,
+  ) => void;
+  onConnectViaLogin: (connection: ManagedAuthConnectionSummary) => void;
 }) {
   const normalizedSearch = search.trim().toLocaleLowerCase();
   const sortedAccounts = sortManagedAuthAccounts(
@@ -271,11 +383,6 @@ export function AccountView({
   const selectedAccount = overview.accounts.find(
     (account) => account.accountId === selectedAccountId,
   );
-  const selectedConnections = selectedAccount
-    ? overview.connections.filter(
-        (connection) => connection.accountId === selectedAccount.accountId,
-      )
-    : [];
 
   if (overview.accounts.length === 0) {
     return (
@@ -368,12 +475,14 @@ export function AccountView({
       {selectedAccount ? (
         <AccountDetail
           account={selectedAccount}
-          connections={selectedConnections}
+          connections={overview.connections}
           mutationBusy={mutationBusy}
           onBack={onClearSelection}
           onReauthenticate={onReauthenticate}
           onSetDefault={onSetDefault}
           onRemove={onRemove}
+          onConnectionAction={onConnectionAction}
+          onConnectViaLogin={onConnectViaLogin}
         />
       ) : (
         <CatalogDetail ariaLabel="账号详情" className="fy-auth-detail">

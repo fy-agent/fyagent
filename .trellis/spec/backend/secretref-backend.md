@@ -58,16 +58,33 @@ FyAgent stores generic-password items with:
 ```text
 service = com.fyagent.secrets.v1
 account = full SecretRef
-kSecUseDataProtectionKeychain = true
 kSecAttrSynchronizable = false
+```
+
+Prefer Data Protection Keychain when the process can use it:
+
+```text
+kSecUseDataProtectionKeychain = true
 kSecAttrAccessible = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
 ```
 
 `kSecUseDataProtectionKeychain=true` is included on add/read/probe/update/delete
-queries that identify the item. This is required for the macOS
+queries that identify a DPK item. This is required for the macOS
 `kSecAttrAccessible` contract while retaining device-local, non-iCloud
 behavior. Do not replace it with `kSecAttrSynchronizable=true` merely to make
-the accessibility attribute apply.
+the accessibility attribute apply. Do not set `kSecAttrAccessible` without DPK.
+
+A Developer ID or signed-dev `.app` without `keychain-access-groups` and an
+embedded provisioning profile receives `errSecMissingEntitlement` (-34018) on
+every DPK `SecItem*` call. That host uses the file-based login keychain for the
+same generic-password identity (`service`, `account`, non-sync) and omits both
+DPK and `kSecAttrAccessible`. This is still the OS Keychain, not a FyAgent-owned
+file or environment store. Reads, probes, updates, and deletes in that process
+must use the same flavor as create.
+
+Do not declare the restricted `keychain-access-groups` entitlement in
+`src-tauri/entitlements.macos.plist` without an embedded provisioning profile,
+or AMFI will kill the process on launch with SIGKILL (-413 no matching profile).
 
 Create uses `SecItemAdd`, so an existing composite identity returns duplicate
 instead of silently replacing it. Create/replace must read back and compare the
@@ -127,12 +144,14 @@ Credential Manager memory returned by `CredReadW` is always released with
   but could not be authoritatively read back remains a durable
   `provisioning`/`secret_missing` row instead of an unreachable native item.
 - macOS production activation still requires signed-app HIL for the
-  Data Protection Keychain under the Developer ID signed host.
+  Data Protection Keychain under the Developer ID signed host whose
+  access-group entitlements are authorized by an embedded provisioning profile.
+  Unsigned `cargo test` `errSecMissingEntitlement` remains expected fail-closed
+  evidence for DPK, not a reason to switch that harness to the file-based
+  login keychain.
   Do not declare the restricted `keychain-access-groups` entitlement in
   `src-tauri/entitlements.macos.plist` without an embedded provisioning profile,
   or AMFI will kill the process on launch with SIGKILL (-413 no matching profile).
-  Unsigned `cargo test` `errSecMissingEntitlement` remains expected fail-closed
-  evidence.
 
 ## 4. Validation & Error Matrix
 
@@ -143,7 +162,8 @@ Credential Manager memory returned by `CredReadW` is always released with
 | macOS query uses `kSecAttrAccessible` without Data Protection Keychain | reject implementation; accessibility contract is invalid on macOS |
 | macOS duplicate create | return stable already-exists error; no overwrite |
 | plain cargo test returns `errSecMissingEntitlement` with DPK enabled | classify the harness as unauthorized; do not fall back to file-based keychain and do not count it as native DPK acceptance |
-| macOS SecretRef claimed supported without signed-app HIL | block the capability claim; entitlement plist alone is not evidence |
+| signed `.app` without access-group profile returns `errSecMissingEntitlement` on DPK | use the file-based login keychain for the same generic-password identity; omit DPK and Accessible; do not invent a FyAgent file store |
+| macOS SecretRef claimed supported without signed-app HIL | block the DPK capability claim; entitlement plist alone is not DPK evidence; file-based login keychain is a residual host path, not DPK HIL |
 | Windows create sees an existing target | return stable already-exists error before `CredWriteW` |
 | Windows documentation/code claims `CredWriteW` is atomic create-only | reject; Win32 specifies create-or-replace semantics |
 | native store locked/denied/unavailable | source-free stable error/probe; no fallback |
@@ -216,10 +236,18 @@ kSecAttrSynchronizable = false
 # no kSecUseDataProtectionKeychain
 ```
 
-Correct:
+Correct DPK path (authorized access-group host):
 
 ```text
 kSecUseDataProtectionKeychain = true
 kSecAttrSynchronizable = false
 kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+```
+
+Correct residual path (signed `.app` whose DPK `SecItem*` returns -34018):
+
+```text
+kSecAttrSynchronizable = false
+# omit kSecUseDataProtectionKeychain
+# omit kSecAttrAccessible
 ```

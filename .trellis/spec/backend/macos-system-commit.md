@@ -271,9 +271,13 @@ packages. It has three backend-selected runtime modes:
   certificates only into a 0700 cache keychain under
   `~/Library/Caches/FyAgent/DevelopmentSigning`. It signs by the resolved
   identity hash, sets that cache keychain as the user default for the sign, then
-  restores the original default and search list. It does not call
-  `security delete-keychain` on a used identity: on macOS 26 that makes the next
-  `codesign` of the same certificate fail with `errSecInternalComponent`.
+  restores the original default and search list. `mise run dev` must not restore
+  between preflight and nested app signing: restoring after a successful
+  `codesign` makes the next process fail with `errSecInternalComponent`.
+  Recreating the cache keychain after that error does not recover it. It does
+  not call
+  `security delete-keychain` on a used identity: on macOS 26 that also makes the
+  next `codesign` of the same certificate fail with `errSecInternalComponent`.
   Extracted PEM files are deleted after import. The repository contains neither
   the PKCS#12 path nor its password; a
   permission-restricted user-local configuration points to those files.

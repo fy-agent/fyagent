@@ -313,19 +313,16 @@ where
                 )
             })?;
         self.set_stage(handle, ManagedAuthLoginStage::OpeningBrowser, None)?;
-        if (hooks.open_browser)(&authorize_url).is_ok() {
-            hooks.open_count.fetch_add(1, AtomicOrdering::SeqCst);
-        }
         self.set_stage(handle, ManagedAuthLoginStage::AwaitingUser, None)?;
-        let decision = accept_one_callback(
+        let decision_res = accept_one_callback(
             listener,
             state,
             handle.generation,
             handle.expected_generation.clone(),
             handle.cancel.clone(),
         )
-        .await
-        .map_err(map_openai_reason)?;
+        .await;
+        let decision = decision_res.map_err(map_openai_reason)?;
         if !handle.is_current() {
             return Err((
                 ManagedAuthLoginStage::Cancelled,
@@ -356,7 +353,8 @@ where
         )
         .await
         .map_err(map_openai_reason)?;
-        self.save_grant(request, handle, grant).await
+        let save_res = self.save_grant(request, handle, grant).await;
+        save_res
     }
 
     async fn run_device_login(
@@ -465,9 +463,10 @@ where
             ));
         }
         self.set_stage(handle, ManagedAuthLoginStage::SavingAccount, None)?;
-        let identity = extract_identity(&grant).map_err(map_openai_reason)?;
+        let identity_res = extract_identity(&grant);
+        let identity = identity_res.map_err(map_openai_reason)?;
         let (purpose, consumer) = purpose_for_login(request);
-        let admitted = tokio::task::block_in_place(|| {
+        let provision_res = tokio::task::block_in_place(|| {
             self.provision_legacy_credential(LegacyCredentialInput {
                 migration_id: None,
                 provider: ManagedAuthProvider::Openai,
@@ -487,21 +486,20 @@ where
                 authenticated_at: chrono::Utc::now().timestamp(),
                 make_default: true,
             })
-        })
-        .map_err(|error| match error {
+        });
+        let admitted = provision_res.map_err(|error| match error {
             ManagedAuthCoreError::SecretUnavailable | ManagedAuthCoreError::SecretMissing => (
                 ManagedAuthLoginStage::Failed,
                 ManagedAuthReasonCode::SecretUnavailable,
-            ),
-            ManagedAuthCoreError::InvalidData => (
-                ManagedAuthLoginStage::Failed,
-                ManagedAuthReasonCode::IdentityMismatch,
             ),
             _ => (
                 ManagedAuthLoginStage::Failed,
                 ManagedAuthReasonCode::LoginFailed,
             ),
         })?;
+        if purpose == CredentialPurpose::ProxyUpstream {
+            let _ = self.upsert_proxy_connections();
+        }
         let account_id = admitted.identity_id.clone();
         let mut connection_id = None;
         let mut stage = ManagedAuthLoginStage::Completed;

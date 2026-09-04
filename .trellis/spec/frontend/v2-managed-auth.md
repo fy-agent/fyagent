@@ -107,9 +107,20 @@ request mode is a third-party API.
 - Account rows show provider identity, login label, health, default state and
   connection count. Quota/profile availability does not redefine login health
   or reorder accounts by short-lived usage.
+- Account detail lists already-linked software and matching unlinked software
+  for the same provider. Linked cards expose the closed connection actions
+  that switch official usage (`switch_to_official`, `switch_account`). Unlinked
+  matching slots expose `connect_account` when the backend advertises it. A
+  ready account may also start a `connect_consumer` login for a matching
+  consumer that is not yet connectable from the saved credential purpose. The
+  page does not auto-connect on login and does not install software.
 - Connection rows show the connected official account/provider slot, current
   request source, whether an official session is preserved, credential-renewal
   owner as user-facing copy, pending restart and closed available actions.
+- A connection `targetId` of `null` means the slot is not bound to a lifecycle
+  install target. It is not evidence that the software is missing. Do not show
+  “未检测到可管理的安装实例” from that null; the auth page still never
+  installs software as a side effect.
 - Internal terms such as SecretRef, credential ID, refresh-token lineage,
   projection generation and native path never appear in product copy or DOM.
 
@@ -203,7 +214,7 @@ request mode is a third-party API.
 | Mutation returns no authoritative overview/readback | Keep prior state and show uncertainty; do not claim success. |
 | Account/default/removal or OpenCode file mutation has a stale revision | Preserve stale error, reread, and require an explicit retry. |
 | Codex/Grok metadata action completes from an older displayed revision | Render only the returned overview; do not infer that the backend performed stale-write rejection. |
-| Codex is `connected` and also `native_projection_unavailable` | Preserve the unavailable reason and treat the pair as a known evidence mismatch; do not claim proven native login. |
+| Codex is `connected` and also `native_projection_unavailable` | Preserve the unavailable reason and treat the pair as a known evidence mismatch; do not claim proven native login. Present “账号已保存”, not “已连接”. |
 | Account removal preview fails | Do not expose the destructive confirmation. |
 | Connection needs restart | Show saved/pending-restart separately; do not say the consumer is already using it. |
 | Managed Agent summary is clicked | Navigate to `/auth?consumer=<closed-id>`; do not start the old Agent Auth session. |
@@ -260,7 +271,12 @@ Required assertions include:
 - stale account/OpenCode mutations reread before retry; Codex/Grok metadata
   actions render only the returned overview and tests do not claim full CAS;
 - Codex `connected + native_projection_unavailable` remains visible as
-  contradictory residual evidence and is never counted as native pickup/HIL;
+  contradictory residual evidence, is presented as “账号已保存” not “已连接”,
+  and is never counted as native pickup/HIL;
+- account detail lists matching unlinked slots and exposes connect/switch from
+  that page; purpose-mismatch Codex slots start `connect_consumer` login with
+  no `accountId`;
+- a connection `targetId` of `null` does not render “未检测到可管理的安装实例”;
 - managed Agent cards navigate to the central page while Claude and desktop
   handoff retain their existing owner;
 - leftover Provider OAuth sections remain picker-only and leftover

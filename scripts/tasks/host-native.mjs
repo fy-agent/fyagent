@@ -874,30 +874,58 @@ export function prepareMacosSignedDevelopment({
   runCommand = run,
   nodeExecutable = process.execPath,
   environment,
+  keepSession = false,
 }) {
   const signedEnvironment = {
     ...(environment ?? {}),
     DEVELOPER_DIR: MACOS_XCODE_DEVELOPER_DIR,
   };
+  const preflightArgs = keepSession
+    ? [MACOS_SIGNED_DEV_APP_RUNNER, "machine-preflight", "--keep-session"]
+    : [MACOS_SIGNED_DEV_APP_RUNNER, "machine-preflight"];
+  try {
+    runCommand(nodeExecutable, preflightArgs, {
+      env: signedEnvironment,
+    });
+    runCommand(
+      "/bin/bash",
+      [MACOS_PRIVILEGED_BUILD_SCRIPT, "--variant", "development"],
+      {
+        env: signedEnvironment,
+      },
+    );
+    runCommand(
+      nodeExecutable,
+      [MACOS_SIGNED_DEV_APP_RUNNER, "verify-artifacts"],
+      {
+        env: signedEnvironment,
+      },
+    );
+  } catch (error) {
+    if (keepSession) {
+      restoreMacosSignedDevelopmentKeychain({
+        runCommand,
+        nodeExecutable,
+        environment: signedEnvironment,
+      });
+    }
+    throw error;
+  }
+}
+
+export function restoreMacosSignedDevelopmentKeychain({
+  runCommand = run,
+  nodeExecutable = process.execPath,
+  environment,
+}) {
   runCommand(
     nodeExecutable,
-    [MACOS_SIGNED_DEV_APP_RUNNER, "machine-preflight"],
+    [MACOS_SIGNED_DEV_APP_RUNNER, "restore-session"],
     {
-      env: signedEnvironment,
-    },
-  );
-  runCommand(
-    "/bin/bash",
-    [MACOS_PRIVILEGED_BUILD_SCRIPT, "--variant", "development"],
-    {
-      env: signedEnvironment,
-    },
-  );
-  runCommand(
-    nodeExecutable,
-    [MACOS_SIGNED_DEV_APP_RUNNER, "verify-artifacts"],
-    {
-      env: signedEnvironment,
+      env: {
+        ...(environment ?? {}),
+        DEVELOPER_DIR: MACOS_XCODE_DEVELOPER_DIR,
+      },
     },
   );
 }
@@ -1065,15 +1093,43 @@ export function executeTauriTask({
   const signedMacosDevelopment = operation === "dev" && platform === "darwin";
   if (signedMacosDevelopment) {
     prepareMacosSignedDevelopment({
+      keepSession: true,
       runCommand: runSetupCommand,
       nodeExecutable: process.execPath,
       environment: commandEnvironment,
     });
   }
-  start(plan.command, plan.args, {
-    env: commandEnvironment,
-    platform,
-  });
+  let child;
+  try {
+    child = start(plan.command, plan.args, {
+      env: commandEnvironment,
+      platform,
+    });
+  } catch (error) {
+    if (signedMacosDevelopment) {
+      restoreMacosSignedDevelopmentKeychain({
+        runCommand: runSetupCommand,
+        nodeExecutable: process.execPath,
+        environment: commandEnvironment,
+      });
+    }
+    throw error;
+  }
+  // runForeground returns as soon as `pnpm tauri dev` is spawned. Restoring
+  // here would drop the signing keychain before Cargo's app-runner signs.
+  if (
+    signedMacosDevelopment &&
+    child &&
+    typeof child.on === "function"
+  ) {
+    child.on("exit", () => {
+      restoreMacosSignedDevelopmentKeychain({
+        runCommand: runSetupCommand,
+        nodeExecutable: process.execPath,
+        environment: commandEnvironment,
+      });
+    });
+  }
   return plan;
 }
 

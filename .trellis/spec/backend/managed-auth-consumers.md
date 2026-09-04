@@ -86,6 +86,11 @@ OPENCODE_EXTERNAL_WRITE_HOT_RELOAD_PROVEN = false
   pickup evidence and recovery state jointly determine connection status and
   mutation outcome. A completed mutation may still truthfully require
   `pending_restart`; a partial mutation is not a connected state.
+- Codex, Grok, and OpenCode summaries currently emit `target_id: None`. That is
+  not lifecycle install discovery and is not evidence the software is missing.
+  `requestMode` is observation of the consumer's current model source (for
+  Codex, `config.toml`); it does not prove that managed auth rewrote
+  `auth.json` or `model_provider`.
 
 ### Known Codex/Grok summary residual
 
@@ -108,9 +113,11 @@ OPENCODE_EXTERNAL_WRITE_HOT_RELOAD_PROVEN = false
   matching-host file-store HIL proves write/readback and Codex pickup.
 - Without that evidence, connect or login-to-connect stores the managed
   credential but ends `partial` with `native_projection_unavailable` and writes
-  no vendor `auth.json`. The current summary may nevertheless report
+  no vendor `auth.json`. Production Codex also does not advertise
+  `switch_to_official`. The current summary may nevertheless report
   `connected` from credential presence as described above; that value is not
-  live Codex evidence.
+  live Codex evidence and must not be used to rewrite `~/.codex/auth.json` or
+  switch `model_provider`.
 - Codex Provider third-party API-key switches remain config-only under the
   Codex Provider contract. They do not become evidence for a managed ChatGPT
   connection.
@@ -174,7 +181,8 @@ OPENCODE_EXTERNAL_WRITE_HOT_RELOAD_PROVEN = false
 | Codex/Grok metadata action carries a stale-but-well-formed revision | current path does not independently compare it; trust only the returned reread overview and retain this as hardening residual |
 | OpenCode is offered Proxy/Codex/Grok/Copilot lineage | `provider_not_supported`; do not copy lineage |
 | Codex/Grok has no purpose-compatible ready credential | `native_projection_unavailable`; no vendor file write |
-| Codex projection gate is false | `partial` + `native_projection_unavailable`; no vendor file write |
+| Codex projection gate is false | `partial` + `native_projection_unavailable`; no vendor file write; no `switch_to_official` |
+| Codex/Grok/OpenCode summary has `target_id: None` | slot is unbound to a lifecycle install; not missing-install evidence |
 | Codex has a ready `codex_native` credential while projection is unavailable | current summary may contain `connected` + `native_projection_unavailable`; known evidence mismatch, not native pickup |
 | Grok has a ready `grok_native` credential while projection is unavailable | current summary is `unavailable` + `native_projection_unavailable`; not native pickup |
 | credential exists but no connection row names it | current Codex/Grok overview may still expose that account; do not treat it as an explicit connection |
@@ -224,6 +232,9 @@ Required assertions:
   OpenCode stale file revisions reject under the writer lock; Codex/Grok tests
   must not claim full CAS until their metadata paths compare current revision;
 - Codex and Grok production gates remain false and write zero vendor bytes;
+  production Codex does not advertise `switch_to_official`;
+- Codex/Grok/OpenCode `target_id` is currently `None` and tests must not treat
+  that as missing-install evidence;
 - credential-only Codex/Grok summaries are not used as HIL evidence; before
   resolving the named Codex mismatch, add a regression that derives account
   linkage from the connection row and gates `connected` on projection/pickup;

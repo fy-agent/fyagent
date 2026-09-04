@@ -841,7 +841,7 @@ describe("canonical mise task API", () => {
       expectedDevCalls.push(
         {
           command: process.execPath,
-          args: [signedDevAppRunner, "machine-preflight"],
+          args: [signedDevAppRunner, "machine-preflight", "--keep-session"],
         },
         {
           command: "/bin/bash",
@@ -982,6 +982,10 @@ describe("canonical mise task API", () => {
     expect(appRunner).toContain('"default-keychain"');
     expect(appRunner).toContain("signing.keychain-db");
     expect(appRunner).toContain('"set-key-partition-list"');
+    expect(appRunner).toContain("isTransientCodesignFailure");
+    expect(appRunner).toContain("--keep-session");
+    expect(appRunner).toContain("restore-session");
+    expect(appRunner).not.toContain("reactivateSigningKeychain");
     expect(appRunner).toContain('"p12_password"');
     expect(appRunner).not.toMatch(/\/Users\/[^/"']+\/Documents(?:\/|["'])/u);
     for (const forbidden of [
@@ -1007,6 +1011,9 @@ describe("canonical mise task API", () => {
     expect(machinePreflight).toBeGreaterThanOrEqual(0);
     expect(helperBuildCall).toBeGreaterThan(machinePreflight);
     expect(artifactPreflight).toBeGreaterThan(helperBuildCall);
+    expect(hostNative).toContain("restore-session");
+    expect(hostNative).toContain("--keep-session");
+    expect(hostNative).toContain('child.on("exit"');
 
     expect(helperBuild).toContain("BUILD_FINGERPRINT=");
     expect(helperBuild).toContain("version-specific compiler define");

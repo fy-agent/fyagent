@@ -153,13 +153,14 @@ interface ConnectionActionDialogProps {
   action: ManagedAuthConnectionAction | null;
   overview: ManagedAuthOverview;
   pending: boolean;
+  preferredAccountId?: string | null;
   onCancel: () => void;
   onConfirm: (accountId: string | null) => void;
 }
 
 export function ConnectionActionDialog(props: ConnectionActionDialogProps) {
   if (!props.connection || !props.action) return null;
-  const key = `${props.connection.connectionId}:${props.action}`;
+  const key = `${props.connection.connectionId}:${props.action}:${props.preferredAccountId ?? ""}`;
   return (
     <ConnectionActionDialogContent
       key={key}
@@ -175,6 +176,7 @@ function ConnectionActionDialogContent({
   action,
   overview,
   pending,
+  preferredAccountId,
   onCancel,
   onConfirm,
 }: Omit<ConnectionActionDialogProps, "connection" | "action"> & {
@@ -193,8 +195,11 @@ function ConnectionActionDialogContent({
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(
     requiresAccount
       ? (candidates.find(
-          (account) => account.accountId !== connection.accountId,
+          (account) => account.accountId === preferredAccountId,
         )?.accountId ??
+          candidates.find(
+            (account) => account.accountId !== connection.accountId,
+          )?.accountId ??
           candidates[0]?.accountId ??
           null)
       : null,

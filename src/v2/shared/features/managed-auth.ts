@@ -1031,3 +1031,17 @@ export function assertManagedAuthLoginMethod(
   if (!MANAGED_AUTH_LOGIN_METHODS.includes(method)) requestError();
   return method;
 }
+
+export function parseManagedAuthCommandError(
+  value: unknown,
+): ManagedAuthReasonCode | null {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, ["contractVersion", "reasonCode"]) ||
+    value.contractVersion !== MANAGED_AUTH_CONTRACT_VERSION ||
+    !isOneOf(value.reasonCode, MANAGED_AUTH_REASON_CODES)
+  ) {
+    return null;
+  }
+  return value.reasonCode;
+}
