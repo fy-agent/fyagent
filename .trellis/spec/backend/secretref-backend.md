@@ -127,11 +127,12 @@ Credential Manager memory returned by `CredReadW` is always released with
   but could not be authoritatively read back remains a durable
   `provisioning`/`secret_missing` row instead of an unreachable native item.
 - macOS production activation still requires signed-app HIL for the
-  Data Protection Keychain access group
-  `HY446996QX.com.fyagent.desktop` declared in
-  `src-tauri/entitlements.macos.plist`. Adding the entitlement is not itself
-  matching-host evidence. Unsigned `cargo test` `errSecMissingEntitlement`
-  remains expected fail-closed evidence.
+  Data Protection Keychain under the Developer ID signed host.
+  Do not declare the restricted `keychain-access-groups` entitlement in
+  `src-tauri/entitlements.macos.plist` without an embedded provisioning profile,
+  or AMFI will kill the process on launch with SIGKILL (-413 no matching profile).
+  Unsigned `cargo test` `errSecMissingEntitlement` remains expected fail-closed
+  evidence.
 
 ## 4. Validation & Error Matrix
 
@@ -142,7 +143,7 @@ Credential Manager memory returned by `CredReadW` is always released with
 | macOS query uses `kSecAttrAccessible` without Data Protection Keychain | reject implementation; accessibility contract is invalid on macOS |
 | macOS duplicate create | return stable already-exists error; no overwrite |
 | plain cargo test returns `errSecMissingEntitlement` with DPK enabled | classify the harness as unauthorized; do not fall back to file-based keychain and do not count it as native DPK acceptance |
-| macOS SecretRef claimed supported without signed-app access-group HIL | block the capability claim; entitlement plist alone is not evidence |
+| macOS SecretRef claimed supported without signed-app HIL | block the capability claim; entitlement plist alone is not evidence |
 | Windows create sees an existing target | return stable already-exists error before `CredWriteW` |
 | Windows documentation/code claims `CredWriteW` is atomic create-only | reject; Win32 specifies create-or-replace semantics |
 | native store locked/denied/unavailable | source-free stable error/probe; no fallback |
