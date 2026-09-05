@@ -4,6 +4,7 @@
   min-width: 0;
   min-height: 100%;
   padding: 20px;
+  overflow-wrap: anywhere;
 }
 
 .fy-feature-route-loading {
@@ -29,6 +30,12 @@
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 16px;
+}
+.fy-feature-header > *,
+.fy-feature-detail-title > *,
+.fy-feature-actions > * {
+  min-width: 0;
+  max-width: 100%;
 }
 .fy-feature-actions {
   display: flex;
@@ -77,22 +84,26 @@
   margin-bottom: 14px;
   padding: 4px;
   border: 1px solid var(--fy-border);
-  border-radius: 12px;
+  border-radius: var(--fy-radius-item);
   background: var(--fy-surface-soft);
   width: max-content;
+  max-width: 100%;
 }
 .fy-feature-tabs-list {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
 }
 .fy-feature-tabs-list-semantic {
   display: contents;
 }
 .fy-feature-tab {
+  min-width: 0;
+  overflow-wrap: anywhere;
   min-height: 34px;
   padding: 0 15px;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--fy-radius-control);
   color: var(--fy-text-secondary);
   background: transparent;
 }
@@ -118,8 +129,9 @@
   min-width: 0;
   padding: 14px;
   border: 1px solid var(--fy-border);
-  border-radius: 15px;
+  border-radius: var(--fy-radius-panel);
   background: var(--fy-surface-soft);
+  overflow-wrap: anywhere;
 }
 .fy-feature-panel h2,
 .fy-feature-panel h3 {
@@ -138,7 +150,7 @@
   min-width: 0;
   padding: 11px 12px;
   border: 1px solid transparent;
-  border-radius: 10px;
+  border-radius: var(--fy-radius-item);
   color: var(--fy-text);
   text-align: left;
   background: transparent;
@@ -273,7 +285,7 @@
   margin: 0;
   padding: 8px 10px;
   border: 1px solid transparent;
-  border-radius: 10px;
+  border-radius: var(--fy-radius-item);
   background: transparent;
   color: inherit;
   font: inherit;
@@ -354,7 +366,7 @@
   min-width: 0;
   padding: 16px;
   border: 1px solid var(--fy-border);
-  border-radius: 12px;
+  border-radius: var(--fy-radius-panel);
   background: rgba(229, 246, 255, 0.06);
 }
 .fy-feature-info-card h3 {
@@ -390,7 +402,7 @@
   min-height: 32px;
   padding: 4px 10px 4px 7px;
   border: 1px solid var(--fy-border);
-  border-radius: 999px;
+  border-radius: var(--fy-radius-pill);
   background: rgba(229, 246, 255, 0.1);
   color: var(--fy-text);
   font-size: 13px;
@@ -409,7 +421,7 @@
   height: 100%;
   padding: 15px;
   border: 1px solid var(--fy-border);
-  border-radius: 14px;
+  border-radius: var(--fy-radius-panel);
   background: var(--fy-surface-soft);
 }
 .fy-feature-card-meta {
@@ -490,7 +502,7 @@
 .fy-feature-progress {
   height: 6px;
   overflow: hidden;
-  border-radius: 999px;
+  border-radius: var(--fy-radius-pill);
   background: rgba(9, 29, 48, 0.24);
 }
 .fy-feature-progress > span {
@@ -510,7 +522,7 @@
   width: 190px;
   padding: 6px;
   border: 1px solid var(--fy-border-strong);
-  border-radius: 11px;
+  border-radius: var(--fy-radius-panel);
   background-color: rgba(49, 77, 104, 0.96);
   background-image: linear-gradient(
     155deg,

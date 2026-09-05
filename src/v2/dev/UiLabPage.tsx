@@ -4,7 +4,7 @@ import { useFrontendReady } from "../shared/platform/useFrontendReady";
 import { CheckIcon } from "@phosphor-icons/react/dist/csr/Check";
 import { SparkleIcon } from "@phosphor-icons/react/dist/csr/Sparkle";
 
-import { LiquidGlassLens } from "../shared/ui/LiquidGlassLens";
+import { LiquidGlassLens } from "../shared/ui/GlassMaterial";
 import { GlassButton, IconButton, Tooltip } from "../shared/ui/primitives";
 import { SelectionLens, SelectionLensGroup } from "../shared/ui/SelectionLens";
 import { PopoverPrimitive, TabsPrimitive } from "../shared/ui/vendor";

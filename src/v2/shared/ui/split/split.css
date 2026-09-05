@@ -86,7 +86,7 @@
   bottom: 12px;
   left: 50%;
   width: 1px;
-  border-radius: 1px;
+  border-radius: var(--fy-radius-separator);
   background: var(--fy-border);
   transform: translateX(-50%);
 }

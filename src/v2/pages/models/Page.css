@@ -66,7 +66,7 @@
   margin: -14px -14px 0;
   padding: 14px;
   border-bottom: 1px solid var(--fy-border);
-  border-radius: 15px 15px 0 0;
+  border-radius: var(--fy-radius-panel) var(--fy-radius-panel) 0 0;
   background: var(--fy-surface);
   backdrop-filter: blur(16px) saturate(1.12);
   -webkit-backdrop-filter: blur(16px) saturate(1.12);
@@ -108,7 +108,7 @@
   min-width: 0;
   padding: 14px;
   border: 1px solid var(--fy-border);
-  border-radius: 14px;
+  border-radius: var(--fy-radius-panel);
   background: rgba(16, 40, 64, 0.22);
 }
 
@@ -168,7 +168,7 @@
   min-width: 0;
   padding: 10px 11px;
   border: 1px solid transparent;
-  border-radius: 10px;
+  border-radius: var(--fy-radius-control);
 }
 
 @keyframes fy-models-feedback-in {
@@ -194,7 +194,7 @@
   min-width: 0;
   padding: 10px;
   border: 1px solid var(--fy-border);
-  border-radius: 10px;
+  border-radius: var(--fy-radius-control);
   background: rgba(16, 40, 64, 0.22);
 }
 
@@ -211,8 +211,30 @@
 
 .fy-models-form {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
+  gap: var(--fy-space-md);
+}
+
+@container fy-detail (max-width: 500px) {
+  .fy-models-commit-heading {
+    position: static;
+    flex-wrap: wrap;
+  }
+  .fy-models-commit-heading > *,
+  .fy-models-status-grid > * {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .fy-models-commit-button {
+    white-space: normal;
+  }
+  .fy-models-status-grid,
+  .fy-models-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .fy-models-form-wide {
+    grid-column: auto;
+  }
 }
 
 .fy-models-form-wide {
@@ -273,7 +295,7 @@
   height: 20px;
   padding: 0;
   border: 0;
-  border-radius: 50%;
+  border-radius: var(--fy-radius-circle);
   color: var(--fy-text-secondary);
   line-height: 0;
   background: transparent;
@@ -314,7 +336,7 @@
   min-height: 26px;
   padding: 3px 10px;
   border: 1px solid var(--fy-border);
-  border-radius: 999px;
+  border-radius: var(--fy-radius-pill);
   color: var(--fy-text-secondary);
   font: inherit;
   font-size: 12px;
@@ -362,7 +384,7 @@
   padding: 8px;
   overflow: auto;
   border: 1px solid var(--fy-border);
-  border-radius: 10px;
+  border-radius: var(--fy-radius-item);
   list-style: none;
 }
 
@@ -372,7 +394,7 @@
   gap: 9px;
   min-width: 0;
   padding: 7px 8px;
-  border-radius: 8px;
+  border-radius: var(--fy-radius-control);
   color: var(--fy-text-secondary);
   font-size: 12px;
   background: rgba(16, 40, 64, 0.18);
@@ -415,7 +437,7 @@
   gap: 12px;
   min-height: 40px;
   padding: 2px 4px;
-  border-radius: 8px;
+  border-radius: var(--fy-radius-control);
   font-size: 13px;
 }
 
@@ -491,7 +513,7 @@
   min-height: 26px;
   padding: 3px 8px;
   border: 1px solid var(--fy-border);
-  border-radius: 999px;
+  border-radius: var(--fy-radius-pill);
   background: rgba(16, 40, 64, 0.28);
 }
 
@@ -507,7 +529,7 @@
   width: 14px;
   height: 14px;
   flex: 0 0 auto;
-  border-radius: 3px;
+  border-radius: var(--fy-radius-compact);
   object-fit: contain;
 }
 
@@ -552,7 +574,7 @@
   height: 16px;
   padding: 0;
   border: 0;
-  border-radius: 50%;
+  border-radius: var(--fy-radius-circle);
   color: var(--fy-text-secondary);
   background: rgba(255, 255, 255, 0.08);
   cursor: pointer;

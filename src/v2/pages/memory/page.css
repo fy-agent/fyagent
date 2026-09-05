@@ -170,7 +170,7 @@
   overflow: auto;
   resize: none;
   border: 1px solid var(--fy-border);
-  border-radius: 10px;
+  border-radius: var(--fy-radius-control);
   outline: 0;
   color: var(--fy-text);
   font-family: ui-monospace, Consolas, monospace;

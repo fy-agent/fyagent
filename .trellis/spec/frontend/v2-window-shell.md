@@ -14,7 +14,7 @@ Primary owners are:
 - `src/v2/shared/platform/runtime.ts` and the platform Port surface for runtime
   detection, frontend readiness, window/native effects, and external opening;
 - `src/v2/shared/ui/SelectionLens.tsx`, `selection-lens.css`,
-  `LiquidGlassLens.tsx`, `motion.ts`, and `Collapsible.tsx` for shared
+  `GlassMaterial.tsx`, `motion.ts`, and `Collapsible.tsx` for shared
   interaction material and motion;
 - `src/v2/shared/features/controls/ExternalLinkButton.tsx` and
   `src/v2/shared/features/provider.tsx` for HTTP(S) opening and shared feedback;
@@ -154,9 +154,13 @@ opener, or direct `@tauri-apps/*` capability through these components.
   motion. Consumers own open state and semantic labels; they do not directly
   manipulate the motion value.
 - `@samasante/liquid-glass` is imported only by
-  `shared/ui/LiquidGlassLens.tsx`. Production callers use the adapter so optics,
+  `shared/ui/GlassMaterial.tsx`. Production callers use the adapter so optics,
   live/filter behavior, accessibility and future dependency replacement remain
   reviewable in one owner.
+- Modal backing uses `FrostedSurface` from that adapter in the library's bare
+  material mode, not its DOM-copy/video path. Form text remains outside the
+  decorative layer. Material, contrast and container fallback are owned by
+  [Surfaces and Container Response](./surfaces-responsive.md).
 - Visual glass/lens material never carries selected meaning by itself. Host
   attributes, labels, focus, controls and route state remain the semantic
   source of truth when effects are unavailable.

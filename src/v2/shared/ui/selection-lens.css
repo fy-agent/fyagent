@@ -58,7 +58,7 @@
   gap: 3px;
   padding: 3px;
   border: 1px solid var(--fy-border);
-  border-radius: 11px;
+  border-radius: var(--fy-radius-item);
   background: var(--fy-glass-ambient);
   backdrop-filter: blur(14px) saturate(1.12);
   -webkit-backdrop-filter: blur(14px) saturate(1.12);

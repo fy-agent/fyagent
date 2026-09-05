@@ -27,6 +27,11 @@ Both components remain in `shared/ui/primitives.tsx`; Radix owns modality,
 focus trapping and announcements. Widths are capped at 480/720/900px and the
 viewport minus 32px. Login uses comfortable; rich editors use wide.
 
+Semantic radius, backing/foreground separation and container behavior are
+defined by [Surfaces and Container Response](./surfaces-responsive.md).
+Radius consistency means the same role uses the same token, not that a circle,
+button, item and dialog all use a numerically identical radius.
+
 ## 3. Contracts
 
 - Dialog title and description have explicit role classes. Keep one scrolling

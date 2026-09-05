@@ -1,11 +1,11 @@
 :root {
   color-scheme: dark;
-  --fy-bg: #324d69;
-  --fy-bg-mid: #567495;
-  --fy-bg-air: #7b99b8;
+  --fy-bg: #172b40;
+  --fy-bg-mid: #223e56;
+  --fy-bg-air: #2e4e68;
   --fy-text: #f6fbff;
-  --fy-text-secondary: rgba(239, 248, 255, 0.78);
-  --fy-text-tertiary: rgba(232, 244, 255, 0.62);
+  --fy-text-secondary: #d8e7f2;
+  --fy-text-tertiary: #bdcfe0;
   --fy-text-disabled: rgba(232, 244, 255, 0.42);
   --fy-brand-blue: #9bd6ff;
   --fy-brand-cyan: #8ce8f2;
@@ -13,19 +13,19 @@
   --fy-accent-hover: #c4ebff;
   --fy-accent-text: #f8fcff;
   --fy-accent-ink: #173d5a;
-  --fy-glass-ambient: rgba(222, 241, 255, 0.1);
-  --fy-glass-structural: rgba(222, 241, 255, 0.16);
-  --fy-glass-interactive: rgba(229, 246, 255, 0.22);
+  --fy-glass-ambient: rgba(17, 38, 58, 0.3);
+  --fy-glass-structural: rgba(26, 49, 71, 0.68);
+  --fy-glass-interactive: rgba(48, 77, 101, 0.74);
   --fy-surface: var(--fy-glass-structural);
   --fy-surface-strong: var(--fy-glass-interactive);
   --fy-surface-soft: var(--fy-glass-ambient);
   --fy-border: rgba(236, 248, 255, 0.22);
   --fy-divider: rgba(236, 248, 255, 0.18);
-  --fy-border-strong: rgba(240, 250, 255, 0.34);
+  --fy-border-strong: rgba(198, 223, 244, 0.7);
   --fy-highlight: rgba(255, 255, 255, 0.54);
-  --fy-selected: rgba(218, 241, 255, 0.2);
-  --fy-selected-bg: rgba(222, 242, 255, 0.17);
-  --fy-selected-border: rgba(239, 250, 255, 0.44);
+  --fy-selected: rgba(68, 113, 145, 0.42);
+  --fy-selected-bg: rgba(68, 113, 145, 0.32);
+  --fy-selected-border: #b7deef;
   --fy-selected-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 7px 18px rgba(8, 29, 48, 0.18);
   --fy-danger-soft: rgba(255, 121, 126, 0.18);
@@ -43,7 +43,7 @@
   --fy-top-bar-height: 68px;
   --fy-titlebar-drag-height: 28px;
   --fy-titlebar-traffic-light-width: 78px;
-  --fy-content-radius: 22px;
+  --fy-content-radius: var(--fy-radius-panel);
   --fy-font-page-title: 22px;
   --fy-font-section-title: 16px;
   --fy-font-dialog-title: 16px;
@@ -54,8 +54,30 @@
   --fy-line-heading: 1.35;
   --fy-weight-medium: 500;
   --fy-weight-semibold: 600;
-  --fy-radius-control: 10px;
-  --fy-radius-dialog: 18px;
-  --fy-radius-navigation: 999px;
-  --fy-dialog-surface: rgba(48, 73, 97, 0.98);
+  --fy-radius-compact: 8px;
+  --fy-radius-control: 12px;
+  --fy-radius-item: 16px;
+  --fy-radius-panel: 22px;
+  --fy-radius-dialog: 28px;
+  --fy-radius-pill: 999px;
+  --fy-radius-circle: 50%;
+  --fy-radius-brand: 22%;
+  --fy-radius-separator: 1px;
+  --fy-radius-navigation: var(--fy-radius-pill);
+  --fy-space-xs: 4px;
+  --fy-space-sm: 8px;
+  --fy-space-md: 12px;
+  --fy-space-lg: 16px;
+  --fy-space-xl: 24px;
+  --fy-dialog-surface: rgba(39, 65, 89, 0.68);
+  --fy-surface-opaque: #233e56;
+  --fy-surface-input: rgba(12, 31, 49, 0.56);
+  --fy-modal-scrim: rgba(7, 19, 31, 0.3);
+  --fy-modal-blur: 10px;
+  --fy-surface-blur: 20px;
+  --fy-glass-sheen: linear-gradient(
+    145deg,
+    rgba(223, 244, 255, 0.09),
+    rgba(148, 195, 226, 0.015) 65%
+  );
 }

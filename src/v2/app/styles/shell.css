@@ -106,7 +106,7 @@
   min-height: 0;
   padding: 12px 10px;
   border: 1px solid var(--fy-border);
-  border-radius: 18px;
+  border-radius: var(--fy-radius-panel);
   background-color: var(--fy-glass-structural);
   background-image: linear-gradient(
     155deg,
@@ -280,7 +280,7 @@
 .fy-liquid-glass-lens {
   height: 36px;
   border: 1px solid var(--fy-border-strong);
-  border-radius: 18px;
+  border-radius: var(--fy-radius-pill);
   color: inherit;
   background-color: var(--fy-glass-interactive);
   background-image: linear-gradient(
@@ -327,7 +327,7 @@
   width: 38px;
   height: 38px;
   padding: 0;
-  border-radius: 19px;
+  border-radius: var(--fy-radius-circle);
 }
 
 .fy-icon-button:hover {
@@ -429,7 +429,7 @@
 
 .fy-tooltip {
   padding: 6px 9px;
-  border-radius: 8px;
+  border-radius: var(--fy-radius-compact);
   font-size: 12px;
   font-weight: 550;
 }
@@ -463,7 +463,7 @@
   gap: 7px;
   padding: 0 14px;
   border-color: var(--fy-border-strong);
-  border-radius: 12px;
+  border-radius: var(--fy-radius-control);
   color: var(--fy-accent-text);
   font-size: 14px;
   font-weight: 600;
@@ -519,7 +519,7 @@
   min-width: 0;
   padding: 18px;
   border: 1px solid var(--fy-border);
-  border-radius: 17px;
+  border-radius: var(--fy-radius-panel);
   background-color: var(--fy-glass-ambient);
   background-image: linear-gradient(
     150deg,
@@ -552,14 +552,14 @@
 .fy-ui-lab-lens-specimen {
   height: 38px;
   padding: 0 14px;
-  border-radius: 19px;
+  border-radius: var(--fy-radius-pill);
   line-height: 36px;
 }
 
 .fy-popover {
   max-width: min(280px, calc(100vw - 32px));
   padding: 12px 14px;
-  border-radius: 12px;
+  border-radius: var(--fy-radius-panel);
   font-size: 13px;
 }
 
@@ -568,7 +568,7 @@
   gap: 3px;
   padding: 3px;
   border: 1px solid var(--fy-border);
-  border-radius: 11px;
+  border-radius: var(--fy-radius-item);
   background: var(--fy-glass-ambient);
   backdrop-filter: blur(14px) saturate(1.12);
   -webkit-backdrop-filter: blur(14px) saturate(1.12);
@@ -578,7 +578,7 @@
   min-height: 32px;
   padding: 0 12px;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: var(--fy-radius-control);
   color: var(--fy-text-secondary);
   background: transparent;
 }
@@ -601,7 +601,7 @@
   width: 40px;
   height: 28px;
   border: 1px solid var(--fy-border-strong);
-  border-radius: 9px;
+  border-radius: var(--fy-radius-compact);
 }
 
 .fy-swatch-accent {
@@ -623,7 +623,7 @@
   height: 34px;
   margin-top: 16px;
   border: 1px solid var(--fy-selected-border);
-  border-radius: 50%;
+  border-radius: var(--fy-radius-circle);
   color: var(--fy-accent-text);
   font-size: 12px;
   font-weight: 700;

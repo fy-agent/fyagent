@@ -1,3 +1,6 @@
+.fy-catalog-detail {
+  container: fy-detail / inline-size;
+}
 .fy-catalog-master-detail {
   --fy-catalog-rail-width: clamp(220px, 24vw, 268px);
   --fy-catalog-gap: 14px;
@@ -54,7 +57,7 @@
   min-height: var(--fy-catalog-row-min-height);
   padding: 9px 11px;
   border: 1px solid transparent;
-  border-radius: 11px;
+  border-radius: var(--fy-radius-item);
   color: var(--fy-text);
   text-align: left;
   background: transparent;
@@ -122,11 +125,11 @@
 }
 
 .fy-catalog-brand-frame[data-corner="soft"] {
-  border-radius: 22%;
+  border-radius: var(--fy-radius-brand);
 }
 
 .fy-catalog-brand-frame[data-corner="rounded"] {
-  border-radius: 50%;
+  border-radius: var(--fy-radius-circle);
 }
 
 .fy-catalog-brand-artwork {

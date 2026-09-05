@@ -26,6 +26,8 @@ For URL classification, dynamic text, configuration merges and standalone
 HTML parsing, also read [Security Boundaries](./security-boundaries.md).
 For the shared type scale, dialog sizing/focus and navigation shape, read
 [Desktop Visual Hierarchy](./visual-language.md).
+For material backing, semantic radii, contrast evidence and narrow containers,
+read [Surfaces and Container Response](./surfaces-responsive.md).
 
 | Contract                                               | Owns                                                                                                       |
 | ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- |

@@ -264,7 +264,7 @@ describe("FyAgent V2 architecture boundary", () => {
   });
 
   it("keeps the liquid-glass dependency behind its shared adapter", () => {
-    const adapterPath = "shared/ui/LiquidGlassLens.tsx";
+    const adapterPath = "shared/ui/GlassMaterial.tsx";
     const violations = parsedModules.flatMap(({ references }) =>
       references.flatMap(({ file, line, specifier }) =>
         specifier === "@samasante/liquid-glass" &&

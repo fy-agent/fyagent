@@ -9,6 +9,7 @@ import {
 
 import { classNames } from "../design-system/classNames";
 import { usePersistentVisibility } from "./PersistentSurface";
+import { FrostedSurface } from "./GlassMaterial";
 import {
   CheckboxPrimitive,
   DialogPrimitive,
@@ -292,6 +293,7 @@ export function Dialog({
             });
           }}
         >
+          <FrostedSurface />
           <div className="fy-control-dialog-content">
             <header className="fy-control-dialog-header">
               <DialogPrimitive.Title className="fy-control-dialog-title">
