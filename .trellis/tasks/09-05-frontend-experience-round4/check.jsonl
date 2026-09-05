@@ -1,0 +1,3 @@
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Full scope frontend validation, unchanged budgets and failure evidence"}
+{"file":".trellis/spec/frontend/visual-language.md","reason":"Existing typography, dialog focus and sizing must not regress"}
+{"file":".trellis/tasks/09-05-frontend-experience-round4/research/audit.md","reason":"Separate confirmed baseline from unmeasured hypotheses"}

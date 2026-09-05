@@ -1,0 +1,3 @@
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Viewport, content pressure and accessible checks"}
+{"file":".trellis/spec/frontend/visual-language.md","reason":"Text hierarchy, focus visibility and dialog actions"}
+{"file":".trellis/spec/frontend/reuse.md","reason":"No alternate renderer or hidden business side effects"}

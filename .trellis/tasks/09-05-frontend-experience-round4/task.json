@@ -1,0 +1,30 @@
+{
+  "id": "frontend-experience-round4",
+  "name": "frontend-experience-round4",
+  "title": "第四轮前端动效、材质与响应性能整合",
+  "description": "保留业务流程，统筹路由性能、容器响应、对比度和玻璃材质、统一动效与命名契约；分任务验收后归档",
+  "status": "planning",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P1",
+  "creator": "pythonrust",
+  "assignee": "pythonrust",
+  "createdAt": "2026-09-05",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "09-05-frontend-navigation-performance",
+    "09-05-frontend-surfaces-responsive",
+    "09-05-frontend-motion-system"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}
