@@ -21,12 +21,10 @@ import {
 } from "../../shared/features/queries";
 import { FeatureTabPanel, FeatureTabs } from "../../shared/ui/FeatureTabs";
 import { usePersistentSearchParams } from "../../shared/ui/usePersistentSearchParams";
-import {
-  Button,
-  EmptyState,
-  InlineNotice,
-  Spinner,
-} from "../../shared/ui/primitives";
+import { Button } from "../../shared/ui/Button";
+import { AnimatePresence } from "../../shared/ui/motion";
+import { useDialogState } from "../../shared/ui/useDialogState";
+import { EmptyState, InlineNotice, Spinner } from "../../shared/ui/primitives";
 import { AccountView } from "./AccountView";
 import { ConnectionsView } from "./ConnectionsView";
 import { CodexRequestSource } from "./CodexRequestSource";
@@ -73,6 +71,7 @@ function consumerForAgent(value: string | null): ManagedAuthConsumer | null {
 }
 
 export function AuthPage() {
+  const dialogOriginRef = useRef<HTMLElement | null>(null);
   const queryClient = useQueryClient();
   const { ports, notify } = useFeatures();
   const { visible, searchParams, setSearchParams } =
@@ -109,11 +108,12 @@ export function AuthPage() {
   const [removalPreview, setRemovalPreview] =
     useState<ManagedAuthAccountRemovalPreview | null>(null);
   const [removalPreviewLoading, setRemovalPreviewLoading] = useState(false);
-  const [connectionAction, setConnectionAction] = useState<{
-    connection: ManagedAuthConnectionSummary;
-    action: ManagedAuthConnectionAction;
-    preferredAccountId?: string | null;
-  } | null>(null);
+  const [connectionAction, setConnectionAction, connectionActionKey] =
+    useDialogState<{
+      connection: ManagedAuthConnectionSummary;
+      action: ManagedAuthConnectionAction;
+      preferredAccountId?: string | null;
+    }>(null);
 
   const refetchOverview = overviewQuery.refetch;
   const invalidateRequestSources = useCallback(() => {
@@ -412,6 +412,7 @@ export function AuthPage() {
           <Button
             className="fy-control-button-primary"
             disabled={mutationBusy || loginController.busy || sourceBusy}
+            dialogOriginRef={dialogOriginRef}
             onClick={() => openLogin(null, requestedConsumer)}
           >
             添加账号
@@ -473,7 +474,10 @@ export function AuthPage() {
         >
           <span className="fy-auth-session-banner">
             <span>{sessionSummary(loginController.snapshot)}</span>
-            <Button onClick={() => setLoginOpen(true)}>
+            <Button
+              dialogOriginRef={dialogOriginRef}
+              onClick={() => setLoginOpen(true)}
+            >
               {loginController.snapshot.terminal ? "查看结果" : "继续登录"}
             </Button>
           </span>
@@ -487,6 +491,7 @@ export function AuthPage() {
         className="fy-auth-view-panel"
       >
         <AccountView
+          originRef={dialogOriginRef}
           overview={overview}
           selectedAccountId={selectedAccountId}
           preferredConsumer={requestedConsumer}
@@ -526,6 +531,7 @@ export function AuthPage() {
         className="fy-auth-view-panel"
       >
         <ConnectionsView
+          originRef={dialogOriginRef}
           overview={overview}
           selectedConsumer={selectedConsumer}
           mutationBusy={
@@ -562,6 +568,7 @@ export function AuthPage() {
       </FeatureTabPanel>
 
       <LoginDialog
+        originRef={dialogOriginRef}
         open={loginOpen}
         providers={overview.providers}
         initialConsumer={loginConsumer}
@@ -571,6 +578,7 @@ export function AuthPage() {
         onFinished={finishLogin}
       />
       <RemoveAccountDialog
+        originRef={dialogOriginRef}
         account={removalAccount}
         preview={removalPreview}
         loading={removalPreviewLoading}
@@ -583,22 +591,28 @@ export function AuthPage() {
         }}
         onConfirm={() => void confirmRemoveAccount()}
       />
-      <ConnectionActionDialog
-        connection={connectionAction?.connection ?? null}
-        action={connectionAction?.action ?? null}
-        overview={overview}
-        pending={mutationBusy}
-        preferredAccountId={connectionAction?.preferredAccountId}
-        onCancel={() => setConnectionAction(null)}
-        onConfirm={(accountId) => {
-          if (!connectionAction) return;
-          void applyConnectionAction(
-            connectionAction.connection,
-            connectionAction.action,
-            accountId,
-          );
-        }}
-      />
+      <AnimatePresence>
+        {connectionAction && (
+          <ConnectionActionDialog
+            key={connectionActionKey}
+            originRef={dialogOriginRef}
+            connection={connectionAction?.connection ?? null}
+            action={connectionAction?.action ?? null}
+            overview={overview}
+            pending={mutationBusy}
+            preferredAccountId={connectionAction?.preferredAccountId}
+            onCancel={() => setConnectionAction(null)}
+            onConfirm={(accountId) => {
+              if (!connectionAction) return;
+              void applyConnectionAction(
+                connectionAction.connection,
+                connectionAction.action,
+                accountId,
+              );
+            }}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

@@ -7,12 +7,10 @@ import type {
   ManagedAuthConnectionSummary,
   ManagedAuthOverview,
 } from "../../shared/features/managed-auth";
-import {
-  Button,
-  Dialog,
-  InlineNotice,
-  Spinner,
-} from "../../shared/ui/primitives";
+import { Button } from "../../shared/ui/Button";
+import { Dialog } from "../../shared/ui/Dialog";
+import type { DialogOriginRef } from "../../shared/ui/dialogOrigin";
+import { InlineNotice, Spinner } from "../../shared/ui/primitives";
 import { ProviderMark } from "./common";
 import {
   managedAuthConsumerLabel,
@@ -22,6 +20,7 @@ import {
 } from "./presentation";
 
 export function RemoveAccountDialog({
+  originRef,
   account,
   preview,
   loading,
@@ -31,6 +30,7 @@ export function RemoveAccountDialog({
   onConfirm,
 }: {
   account: ManagedAuthAccountSummary | null;
+  originRef?: DialogOriginRef;
   preview: ManagedAuthAccountRemovalPreview | null;
   loading: boolean;
   pending: boolean;
@@ -41,6 +41,7 @@ export function RemoveAccountDialog({
   const cancelRef = useRef<HTMLButtonElement>(null);
   return (
     <Dialog
+      originRef={originRef}
       open={account !== null}
       initialFocusRef={cancelRef}
       onOpenChange={(next) => !next && !pending && onCancel()}
@@ -151,6 +152,7 @@ function connectionActionCopy(
 }
 
 interface ConnectionActionDialogProps {
+  originRef?: DialogOriginRef;
   connection: ManagedAuthConnectionSummary | null;
   action: ManagedAuthConnectionAction | null;
   overview: ManagedAuthOverview;
@@ -174,6 +176,7 @@ export function ConnectionActionDialog(props: ConnectionActionDialogProps) {
 }
 
 function ConnectionActionDialogContent({
+  originRef,
   connection,
   action,
   overview,
@@ -209,6 +212,7 @@ function ConnectionActionDialogContent({
   const copy = connectionActionCopy(connection, action);
   return (
     <Dialog
+      originRef={originRef}
       open
       initialFocusRef={cancelRef}
       onOpenChange={(next) => !next && !pending && onCancel()}

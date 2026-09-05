@@ -21,7 +21,8 @@ import {
   type AgentCatalogId,
 } from "../../shared/features/types";
 import { BrandIconFrame } from "../../shared/ui/catalog";
-import { Button, InlineNotice } from "../../shared/ui/primitives";
+import { Button } from "../../shared/ui/Button";
+import { InlineNotice } from "../../shared/ui/primitives";
 
 import {
   AgentLifecycleActionSlot,

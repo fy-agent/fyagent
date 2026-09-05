@@ -9,7 +9,8 @@ import {
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import { Button, ConfirmDialog, Dialog } from "@/v2/shared/ui/primitives";
+import { Button } from "@/v2/shared/ui/Button";
+import { ConfirmDialog, Dialog } from "@/v2/shared/ui/Dialog";
 import { PersistentSurface } from "@/v2/shared/ui/PersistentSurface";
 import { TabsPrimitive } from "@/v2/shared/ui/vendor";
 

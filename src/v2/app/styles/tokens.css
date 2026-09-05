@@ -69,6 +69,15 @@
   --fy-space-md: 12px;
   --fy-space-lg: 16px;
   --fy-space-xl: 24px;
+  --fy-motion-press: 80ms;
+  --fy-motion-control: 160ms;
+  --fy-motion-content: 240ms;
+  --fy-motion-dialog-enter: 420ms;
+  --fy-motion-dialog-exit: 320ms;
+  --fy-motion-toast: 240ms;
+  --fy-motion-spinner: 900ms;
+  --fy-motion-spinner-reduced: 1800ms;
+  --fy-motion-ease: cubic-bezier(0.16, 1, 0.3, 1);
   --fy-dialog-surface: rgba(39, 65, 89, 0.68);
   --fy-surface-opaque: #233e56;
   --fy-surface-input: rgba(12, 31, 49, 0.56);

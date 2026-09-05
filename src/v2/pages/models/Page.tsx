@@ -26,10 +26,10 @@ import type {
   ProviderAppId,
   ProviderQuickSetupRequest,
 } from "../../shared/features/types";
+import { Button } from "../../shared/ui/Button";
+import { Dialog } from "../../shared/ui/Dialog";
 import {
-  Button,
   Checkbox,
-  Dialog,
   InlineNotice,
   Input,
   SecretInput,
@@ -154,6 +154,7 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
   const { notices, show, clear, dismiss } =
     useFieldNotices<WorkBuddyNoticeField>();
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const deleteOriginRef = useRef<HTMLElement | null>(null);
   const writeConfirm = useModelsWriteConfirm<{
     request: WorkBuddySaveRequest;
     revision: number;
@@ -599,6 +600,7 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
             )
           }
           onClick={startSave}
+          dialogOriginRef={writeConfirm.originRef}
         >
           {busy === "save" ? "保存中…" : "保存并应用"}
         </Button>
@@ -664,6 +666,7 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
               ids={filteredExistingIds}
               removable
               removeDisabled={busy !== null || loading || readFailed}
+              removeOriginRef={deleteOriginRef}
               onRemove={(modelId) => {
                 if (busy !== null || writeLock.current) return;
                 setPendingDeleteId(modelId);
@@ -862,6 +865,7 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
 
       <Dialog
         open={pendingDeleteId !== null}
+        originRef={deleteOriginRef}
         onOpenChange={(open) => {
           if (!open && busy !== "delete") setPendingDeleteId(null);
         }}
@@ -894,6 +898,7 @@ function WorkBuddyPanel({ active }: { active: boolean }) {
         ) : null}
       </Dialog>
       <ModelsWriteConfirmDialog
+        originRef={writeConfirm.originRef}
         open={writeConfirm.open}
         targets={writeConfirm.pending?.targets ?? []}
         onConfirm={confirmWrite}
@@ -1345,6 +1350,7 @@ function ProviderPanel({
             (summaryQuery.data?.writeTargets.length ?? 0) === 0
           }
           onClick={requestSave}
+          dialogOriginRef={writeConfirm.originRef}
         >
           {busy
             ? "配置中…"
@@ -1639,6 +1645,7 @@ function ProviderPanel({
         </InlineNotice>
       )}
       <ModelsWriteConfirmDialog
+        originRef={writeConfirm.originRef}
         open={writeConfirm.open}
         targets={writeConfirm.pending?.targets ?? []}
         onConfirm={confirmWrite}

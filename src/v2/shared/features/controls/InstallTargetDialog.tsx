@@ -2,7 +2,9 @@ import { useState } from "react";
 
 import { SKILL_TARGETS, type SkillTargetId } from "../directory";
 import { AssignmentPanel } from "../../ui/AssignmentPanel";
-import { Button, Dialog } from "../../ui/primitives";
+import { Button } from "../../ui/Button";
+import { Dialog } from "../../ui/Dialog";
+import type { DialogOriginRef } from "../../ui/dialogOrigin";
 
 export function skillTargetLabel(id: SkillTargetId): string {
   return SKILL_TARGETS.find((app) => app.id === id)?.label ?? "Claude Code";
@@ -29,6 +31,7 @@ export function InstallPathPreview({
 }
 
 export function InstallTargetDialog({
+  originRef,
   title,
   description = "选择要安装到的应用。",
   busy,
@@ -40,6 +43,7 @@ export function InstallTargetDialog({
   onConfirm,
 }: {
   title: string;
+  originRef?: DialogOriginRef;
   description?: string;
   busy: boolean;
   defaultTarget: SkillTargetId;
@@ -56,6 +60,7 @@ export function InstallTargetDialog({
   return (
     <Dialog
       open
+      originRef={originRef}
       title={title}
       description={
         picking

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 
 import {
   MCP_CATALOG,
@@ -21,12 +21,11 @@ import { currentMcpLaunchPlatform } from "../../shared/features/mcpLaunch";
 import { ExternalLinkButton } from "../../shared/features/controls/ExternalLinkButton";
 import { FeatureSearch } from "../../shared/ui/FeatureSearch";
 import { InstallTargetDialog } from "../../shared/features/controls/InstallTargetDialog";
-import {
-  Badge,
-  Button,
-  ConfirmDialog,
-  EmptyState,
-} from "../../shared/ui/primitives";
+import { Button } from "../../shared/ui/Button";
+import { ConfirmDialog } from "../../shared/ui/Dialog";
+import { useDialogState } from "../../shared/ui/useDialogState";
+import { AnimatePresence } from "../../shared/ui/motion";
+import { Badge, EmptyState } from "../../shared/ui/primitives";
 import type { McpServer, McpTargetId } from "../../shared/features/types";
 
 const REQUIREMENT_LABEL: Record<
@@ -59,15 +58,17 @@ export function McpDiscovery({
   onPickTarget: (target: McpTargetId) => void;
   onViewInstalled: (id: string) => void;
 }) {
+  const originRef = useRef<HTMLElement | null>(null);
   const platform = currentMcpLaunchPlatform();
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<McpCatalogFilterId>("all");
-  const [dialogItem, setDialogItem] = useState<McpCatalogItem | null>(null);
+  const [dialogItem, setDialogItem, dialogSession] =
+    useDialogState<McpCatalogItem>();
   const [overwrite, setOverwrite] = useState(false);
-  const [pendingTarget, setPendingTarget] = useState<{
+  const [pendingTarget, setPendingTarget, targetSession] = useDialogState<{
     item: McpCatalogItem;
     overwrite: boolean;
-  } | null>(null);
+  }>();
   const [confirmItem, setConfirmItem] = useState<McpCatalogItem | null>(null);
   const [installingId, setInstallingId] = useState<string | null>(null);
   const installedById = useMemo(
@@ -227,6 +228,7 @@ export function McpDiscovery({
                         className="fy-control-button-primary"
                         disabled={pending}
                         onClick={() => setConfirmItem(item)}
+                        dialogOriginRef={originRef}
                       >
                         重新配置
                       </Button>
@@ -236,6 +238,7 @@ export function McpDiscovery({
                       className="fy-control-button-primary"
                       disabled={pending}
                       onClick={() => startInstall(item, false)}
+                      dialogOriginRef={originRef}
                     >
                       {pending
                         ? "安装中…"
@@ -260,40 +263,47 @@ export function McpDiscovery({
           })}
         </div>
       )}
-      {dialogItem && (
-        <InstallDialog
-          key={`${dialogItem.id}:${overwrite ? "overwrite" : "new"}`}
-          item={dialogItem}
-          busy={busy || installingId === dialogItem.id}
-          overwrite={overwrite}
-          defaultTarget={defaultTarget}
-          onClose={closeDialog}
-          onInstall={(values, apps) =>
-            installWithValues(dialogItem, values, apps, overwrite)
-          }
-        />
-      )}
-      {pendingTarget && (
-        <InstallTargetDialog
-          key={`${pendingTarget.item.id}:${pendingTarget.overwrite ? "overwrite" : "new"}`}
-          title={
-            pendingTarget.overwrite
-              ? `重新配置 ${pendingTarget.item.name}`
-              : `安装 ${pendingTarget.item.name}`
-          }
-          busy={busy || installingId === pendingTarget.item.id}
-          defaultTarget={defaultTarget}
-          confirmVerb={pendingTarget.overwrite ? "确认覆盖安装" : "确认安装"}
-          pathForTarget={(target) => mcpInstallDestination(target, platform)}
-          onCancel={() => setPendingTarget(null)}
-          onConfirm={(target) => {
-            const { item } = pendingTarget;
-            setPendingTarget(null);
-            void installBuilt(item.build({}, [target], platform), target);
-          }}
-        />
-      )}
+      <AnimatePresence>
+        {dialogItem && (
+          <InstallDialog
+            key={dialogSession}
+            originRef={originRef}
+            item={dialogItem}
+            busy={busy || installingId === dialogItem.id}
+            overwrite={overwrite}
+            defaultTarget={defaultTarget}
+            onClose={closeDialog}
+            onInstall={(values, apps) =>
+              installWithValues(dialogItem, values, apps, overwrite)
+            }
+          />
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {pendingTarget && (
+          <InstallTargetDialog
+            key={targetSession}
+            originRef={originRef}
+            title={
+              pendingTarget.overwrite
+                ? `重新配置 ${pendingTarget.item.name}`
+                : `安装 ${pendingTarget.item.name}`
+            }
+            busy={busy || installingId === pendingTarget.item.id}
+            defaultTarget={defaultTarget}
+            confirmVerb={pendingTarget.overwrite ? "确认覆盖安装" : "确认安装"}
+            pathForTarget={(target) => mcpInstallDestination(target, platform)}
+            onCancel={() => setPendingTarget(null)}
+            onConfirm={(target) => {
+              const { item } = pendingTarget;
+              setPendingTarget(null);
+              void installBuilt(item.build({}, [target], platform), target);
+            }}
+          />
+        )}
+      </AnimatePresence>
       <ConfirmDialog
+        originRef={originRef}
         open={confirmItem !== null}
         title={`重新配置 ${confirmItem?.name ?? "MCP"}`}
         description="将覆盖现有配置。已填写的密钥以外的手动修改不会保留。"

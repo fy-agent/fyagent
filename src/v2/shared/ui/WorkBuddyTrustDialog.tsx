@@ -1,4 +1,5 @@
-import { Button, Dialog } from "./primitives";
+import { Button } from "./Button";
+import { Dialog } from "./Dialog";
 
 export function WorkBuddyTrustDialog({
   open,

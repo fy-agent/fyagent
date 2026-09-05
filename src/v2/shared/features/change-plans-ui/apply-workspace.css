@@ -194,7 +194,7 @@
 .fy-apply-step[data-status="running"] .fy-apply-step-mark {
   border-color: var(--fy-accent-text);
   border-top-color: transparent;
-  animation: fy-apply-spin 900ms linear infinite;
+  animation: fy-apply-spin var(--fy-motion-spinner) linear infinite;
 }
 
 .fy-apply-step[data-status="succeeded"] .fy-apply-step-mark {

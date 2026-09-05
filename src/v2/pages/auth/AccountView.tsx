@@ -12,12 +12,9 @@ import {
   CatalogMasterDetail,
   CatalogRail,
 } from "../../shared/ui/catalog";
-import {
-  Button,
-  EmptyState,
-  Input,
-  InlineNotice,
-} from "../../shared/ui/primitives";
+import { Button } from "../../shared/ui/Button";
+import type { DialogOriginRef } from "../../shared/ui/dialogOrigin";
+import { EmptyState, Input, InlineNotice } from "../../shared/ui/primitives";
 import {
   AccountHealthBadge,
   AuthListItem,
@@ -49,6 +46,7 @@ const PROVIDER_FILTERS: Array<ManagedAuthProvider | "all"> = [
 ];
 
 function AccountConnection({
+  originRef,
   connection,
   mutationBusy,
   actions,
@@ -64,6 +62,7 @@ function AccountConnection({
     action: ManagedAuthConnectionAction,
   ) => void;
   loginConnectLabel?: string;
+  originRef?: DialogOriginRef;
   onLoginConnect?: () => void;
 }) {
   const status = connectionStatusPresentation(
@@ -103,6 +102,7 @@ function AccountConnection({
           {actions.map((action) => (
             <Button
               key={action}
+              dialogOriginRef={originRef}
               disabled={mutationBusy}
               onClick={() => onAction(connection, action)}
             >
@@ -110,7 +110,11 @@ function AccountConnection({
             </Button>
           ))}
           {loginConnectLabel ? (
-            <Button disabled={mutationBusy} onClick={onLoginConnect}>
+            <Button
+              dialogOriginRef={originRef}
+              disabled={mutationBusy}
+              onClick={onLoginConnect}
+            >
               {loginConnectLabel}
             </Button>
           ) : null}
@@ -121,6 +125,7 @@ function AccountConnection({
 }
 
 function AccountDetail({
+  originRef,
   account,
   connections,
   mutationBusy,
@@ -132,6 +137,7 @@ function AccountDetail({
   onConnectViaLogin,
 }: {
   account: ManagedAuthAccountSummary;
+  originRef?: DialogOriginRef;
   connections: ManagedAuthConnectionSummary[];
   mutationBusy: boolean;
   onBack: () => void;
@@ -199,6 +205,7 @@ function AccountDetail({
               <Button
                 disabled={mutationBusy}
                 onClick={() => onReauthenticate(account)}
+                dialogOriginRef={originRef}
               >
                 重新登录
               </Button>
@@ -255,6 +262,7 @@ function AccountDetail({
                   account.accountId,
                 )}
                 onAction={onConnectionAction}
+                originRef={originRef}
               />
             ))}
           </div>
@@ -286,6 +294,7 @@ function AccountDetail({
                   account.accountId,
                 )}
                 onAction={onConnectionAction}
+                originRef={originRef}
               />
             ))}
             {loginRequiredConnections.map((connection) => (
@@ -296,6 +305,7 @@ function AccountDetail({
                 actions={[]}
                 onAction={onConnectionAction}
                 loginConnectLabel={`连接 ${managedAuthConsumerLabel(connection.consumer)}`}
+                originRef={originRef}
                 onLoginConnect={() => onConnectViaLogin(connection)}
               />
             ))}
@@ -317,6 +327,7 @@ function AccountDetail({
               className="fy-control-button-danger"
               disabled={mutationBusy}
               onClick={() => onRemove(account)}
+              dialogOriginRef={originRef}
             >
               移除账号
             </Button>
@@ -328,6 +339,7 @@ function AccountDetail({
 }
 
 export function AccountView({
+  originRef,
   overview,
   selectedAccountId,
   preferredConsumer,
@@ -346,6 +358,7 @@ export function AccountView({
   onConnectViaLogin,
 }: {
   overview: ManagedAuthOverview;
+  originRef?: DialogOriginRef;
   selectedAccountId: string | null;
   preferredConsumer: ManagedAuthConsumer | null;
   search: string;
@@ -397,7 +410,11 @@ export function AccountView({
             ? "添加账号后可以直接连接到 Codex。"
             : "添加 OpenAI、xAI 或 GitHub Copilot 账号后，可以在支持的软件之间管理连接。"
         }
-        actions={<Button onClick={onAddAccount}>添加账号</Button>}
+        actions={
+          <Button dialogOriginRef={originRef} onClick={onAddAccount}>
+            添加账号
+          </Button>
+        }
       />
     );
   }
@@ -474,6 +491,7 @@ export function AccountView({
       </CatalogRail>
       {selectedAccount ? (
         <AccountDetail
+          originRef={originRef}
           account={selectedAccount}
           connections={overview.connections}
           mutationBusy={mutationBusy}

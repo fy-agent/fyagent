@@ -1,4 +1,6 @@
 {"file":".trellis/spec/frontend/v2-window-shell.md","reason":"Shared Motion owner, reduced motion and measured selection"}
 {"file":".trellis/spec/frontend/visual-language.md","reason":"Preserve third-round focus safeguards"}
 {"file":".trellis/spec/frontend/reuse.md","reason":"Radix and adopted Motion, pure UI responsibility"}
+{"file":".trellis/spec/frontend/motion-system.md","reason":"Concrete press/origin/presence/session and live preference contracts"}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Native Request and DOM AbortSignal test boundary and verification scope"}
 {"file":".trellis/tasks/09-05-frontend-experience-round4/research/sources.md","reason":"Official presence/spring guidance and locked-version boundaries"}

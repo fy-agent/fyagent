@@ -13,13 +13,12 @@ import {
 } from "@/v2/shared/ui/SelectionLens";
 
 describe("SelectionLens", () => {
-  it("keeps the source L1 control spring", () => {
+  it("uses the shared selection spring without mixing in overriding physics parameters", () => {
     expect(selectionLensTransition).toBe(fySpringTransition);
     expect(selectionLensTransition).toEqual({
       type: "spring",
-      stiffness: 520,
-      damping: 42,
-      mass: 0.62,
+      visualDuration: 0.26,
+      bounce: 0.07,
     });
   });
 

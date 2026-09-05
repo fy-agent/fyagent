@@ -19,16 +19,20 @@ import type {
   MemoryDocumentId,
   OpenClawDirectory,
 } from "../../shared/features/types";
+import { Button } from "../../shared/ui/Button";
+import { ConfirmDialog } from "../../shared/ui/Dialog";
+import type { DialogOriginRef } from "../../shared/ui/dialogOrigin";
 import {
   Badge,
-  Button,
-  ConfirmDialog,
   EmptyState,
   InlineNotice,
   Spinner,
   Switch,
 } from "../../shared/ui/primitives";
-import { usePrimaryBlocker } from "../../shared/ui/PrimaryBlocker";
+import {
+  usePrimaryBlocker,
+  usePrimaryBlockerOrigin,
+} from "../../shared/ui/PrimaryBlocker";
 import { FeatureList, FeatureListItem } from "../../shared/ui/FeatureList";
 import { FeatureSearch } from "../../shared/ui/FeatureSearch";
 import { FeatureTabPanel, FeatureTabs } from "../../shared/ui/FeatureTabs";
@@ -144,6 +148,7 @@ function NativeOrErrorState({
 }
 
 export function MemoryPage() {
+  const dialogOriginRef = useRef<HTMLElement | null>(null);
   const [activeTab, setActiveTab] = useState<MemoryTab>("long-term");
   const [dirty, setDirty] = useState(false);
   const [discardIntent, setDiscardIntent] = useState<DiscardIntent>(null);
@@ -153,6 +158,7 @@ export function MemoryPage() {
     [dirty],
   );
   const blocker = usePrimaryBlocker(shouldBlockNavigation);
+  const navigationOriginRef = usePrimaryBlockerOrigin();
   const activeDiscardIntent: DiscardIntent =
     discardIntent ?? (blocker.state === "blocked" ? { kind: "route" } : null);
 
@@ -200,6 +206,7 @@ export function MemoryPage() {
         <h1 className="fy-memory-page-title">记忆模块</h1>
       </header>
       <FeatureTabs
+        originRef={dialogOriginRef}
         id="memory-type-tabs"
         className="fy-memory-type-tabs"
         label="记忆类型"
@@ -218,17 +225,24 @@ export function MemoryPage() {
       >
         {activeTab === "long-term" ? (
           <LongTermView
+            originRef={dialogOriginRef}
             onDirtyChange={setDirty}
             requestTransition={requestTransition}
           />
         ) : (
           <DailyView
+            originRef={dialogOriginRef}
             onDirtyChange={setDirty}
             requestTransition={requestTransition}
           />
         )}
       </FeatureTabPanel>
       <ConfirmDialog
+        originRef={
+          activeDiscardIntent?.kind === "local"
+            ? dialogOriginRef
+            : navigationOriginRef
+        }
         open={activeDiscardIntent !== null}
         title="放弃未保存的更改？"
         description="当前编辑内容尚未保存，继续后这些更改将丢失。"
@@ -240,9 +254,11 @@ export function MemoryPage() {
 }
 
 function LongTermView({
+  originRef,
   onDirtyChange,
   requestTransition,
 }: {
+  originRef?: DialogOriginRef;
   onDirtyChange: (dirty: boolean) => void;
   requestTransition: TransitionRequest;
 }) {
@@ -406,6 +422,7 @@ function LongTermView({
                   (document) => document.source === source,
                 ).map((document) => (
                   <FeatureListItem
+                    originRef={originRef}
                     key={document.id}
                     selected={document.id === selectedId}
                     title={document.listLabel}
@@ -580,9 +597,11 @@ function LongTermEditor({
 }
 
 function DailyView({
+  originRef,
   onDirtyChange,
   requestTransition,
 }: {
+  originRef?: DialogOriginRef;
   onDirtyChange: (dirty: boolean) => void;
   requestTransition: TransitionRequest;
 }) {
@@ -771,6 +790,7 @@ function DailyView({
           className="fy-control-button-primary"
           disabled={busyOperation !== null}
           onClick={() => selectFile(todayFilename())}
+          dialogOriginRef={originRef}
         >
           创建或打开今天
         </Button>
@@ -797,6 +817,7 @@ function DailyView({
             <Button
               className="fy-control-button-primary"
               onClick={() => selectFile(todayFilename())}
+              dialogOriginRef={originRef}
             >
               创建或打开今天
             </Button>
@@ -827,6 +848,7 @@ function DailyView({
             >
               {rows.map((file) => (
                 <FeatureListItem
+                  originRef={originRef}
                   key={file.filename}
                   selected={file.filename === resolvedFile}
                   title={file.filename}
@@ -861,6 +883,7 @@ function DailyView({
               </section>
             ) : (
               <DailyEditor
+                originRef={originRef}
                 key={`${resolvedFile}:${editorReset}`}
                 busy={busyOperation !== null}
                 filename={resolvedFile}
@@ -887,6 +910,7 @@ function DailyView({
         </SplitPanes>
       )}
       <ConfirmDialog
+        originRef={originRef}
         open={deleteTarget !== null}
         title={`删除 ${deleteTarget ?? "每日记忆"}？`}
         description="该 OpenClaw 每日记忆文件将从本机删除。"
@@ -899,6 +923,7 @@ function DailyView({
 }
 
 function DailyEditor({
+  originRef,
   busy,
   filename,
   initialContent,
@@ -906,6 +931,7 @@ function DailyEditor({
   onDirtyChange,
   onSave,
 }: {
+  originRef?: DialogOriginRef;
   busy: boolean;
   filename: string;
   initialContent: string | null;
@@ -970,6 +996,7 @@ function DailyEditor({
                 className="fy-control-button-danger"
                 disabled={busy}
                 onClick={onDelete}
+                dialogOriginRef={originRef}
               >
                 删除
               </Button>

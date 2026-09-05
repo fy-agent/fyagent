@@ -6,6 +6,7 @@ import {
   type HTMLAttributes,
   type ReactNode,
 } from "react";
+import { classNames } from "../design-system/classNames";
 
 type HiddenRootProps = HTMLAttributes<HTMLDivElement> & { inert?: "" };
 
@@ -42,7 +43,11 @@ export function PersistentSurface({
 
   return (
     <PersistentVisibilityContext.Provider value={visible}>
-      <div ref={ref} className={className} {...hiddenProps}>
+      <div
+        ref={ref}
+        className={classNames("fy-persistent-surface", className)}
+        {...hiddenProps}
+      >
         {children}
       </div>
     </PersistentVisibilityContext.Provider>

@@ -9,9 +9,9 @@ import type {
   OpenCodeSaveModelsRequest,
 } from "../../shared/features/types";
 import { CatalogDetail } from "../../shared/ui/catalog";
+import { Button } from "../../shared/ui/Button";
+import { Dialog } from "../../shared/ui/Dialog";
 import {
-  Button,
-  Dialog,
   InlineNotice,
   Input,
   SecretInput,
@@ -79,6 +79,7 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
     revision: number;
   } | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const deleteOriginRef = useRef<HTMLElement | null>(null);
   const writeConfirm = useModelsWriteConfirm<{
     request: OpenCodeSaveModelsRequest;
     revision: number;
@@ -461,6 +462,7 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
           className="fy-control-button-primary fy-models-commit-button"
           disabled={busy !== null || loading || readFailed}
           onClick={startSave}
+          dialogOriginRef={writeConfirm.originRef}
         >
           {busy === "save" ? "保存中…" : "保存并应用"}
         </Button>
@@ -516,6 +518,7 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
               ids={filteredExistingIds}
               removable
               removeDisabled={busy !== null || loading || readFailed}
+              removeOriginRef={deleteOriginRef}
               onRemove={(modelId) => {
                 if (busy !== null || writeLock.current) return;
                 setPendingDeleteId(modelId);
@@ -726,6 +729,7 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
 
       <Dialog
         open={Boolean(pendingOverwrite)}
+        originRef={writeConfirm.originRef}
         onOpenChange={(open) => {
           if (!open && busy === null) setPendingOverwrite(null);
         }}
@@ -757,6 +761,7 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
       </Dialog>
       <Dialog
         open={pendingDeleteId !== null}
+        originRef={deleteOriginRef}
         onOpenChange={(open) => {
           if (!open && busy !== "delete") setPendingDeleteId(null);
         }}
@@ -789,6 +794,7 @@ export function OpenCodeModelsPanel({ active }: { active: boolean }) {
         ) : null}
       </Dialog>
       <ModelsWriteConfirmDialog
+        originRef={writeConfirm.originRef}
         open={writeConfirm.open}
         targets={writeConfirm.pending?.targets ?? []}
         onConfirm={confirmWrite}

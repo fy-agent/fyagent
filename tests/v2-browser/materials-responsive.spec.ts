@@ -156,6 +156,7 @@ test("glass has blurred backing, readable fallback and fixed reachable actions",
     .click();
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();
+  await expect(dialog).toHaveAttribute("data-motion-settled", "true");
   const overlay = page.locator(".fy-control-dialog-overlay");
   expect(
     await overlay.evaluate(
@@ -170,18 +171,38 @@ test("glass has blurred backing, readable fallback and fixed reachable actions",
   ).toMatch(/0\.68/);
   // The fallback is intentionally independent of library/WebView SVG support.
   await page.emulateMedia({ reducedMotion: "reduce", forcedColors: "active" });
-  expect(
-    await glass.evaluate((element) => getComputedStyle(element).backdropFilter),
-  ).toBe("none");
+  await expect(dialog).toHaveAttribute("data-motion-settled", "true");
+  await expect
+    .poll(() =>
+      glass.evaluate((element) => getComputedStyle(element).backdropFilter),
+    )
+    .toBe("none");
   await expect(dialog.getByRole("button", { name: "下一步" })).toBeInViewport();
-  await page.emulateMedia({ forcedColors: "none" });
+  await page.emulateMedia({ reducedMotion: "reduce", forcedColors: "none" });
   const session = await page.context().newCDPSession(page);
-  await session.send("Emulation.setEmulatedMedia", {
-    features: [{ name: "prefers-reduced-transparency", value: "reduce" }],
-  });
-  expect(
-    await glass.evaluate((element) => getComputedStyle(element).backdropFilter),
-  ).toBe("none");
-  const samples = await sampleTextContrast(page, ".fy-control-dialog");
-  expect(samples.filter((sample) => sample.ratio < 4.5)).toEqual([]);
+  try {
+    await session.send("Emulation.setEmulatedMedia", {
+      // CDP replaces the complete feature set. Retain reduced motion while
+      // checking a static material/contrast state rather than a new entrance.
+      features: [
+        { name: "prefers-reduced-transparency", value: "reduce" },
+        { name: "prefers-reduced-motion", value: "reduce" },
+        { name: "forced-colors", value: "none" },
+      ],
+    });
+    await expect(dialog).toHaveAttribute("data-motion-settled", "true");
+    await expect
+      .poll(() =>
+        glass.evaluate((element) => getComputedStyle(element).backdropFilter),
+      )
+      .toBe("none");
+    await expect(dialog.locator(".fy-dialog-foreground")).toHaveCSS(
+      "opacity",
+      "1",
+    );
+    const samples = await sampleTextContrast(page, ".fy-control-dialog");
+    expect(samples.filter((sample) => sample.ratio < 4.5)).toEqual([]);
+  } finally {
+    await session.detach();
+  }
 });

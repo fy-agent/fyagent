@@ -9,7 +9,7 @@ import type { ProductDirectoryEntry } from "../../shared/features/directory";
 import type { AgentCatalogEntry } from "../../shared/features/types";
 import { FeatureTabPanel, FeatureTabs } from "../../shared/ui/FeatureTabs";
 import { BrandIconFrame } from "../../shared/ui/catalog";
-import { Button } from "../../shared/ui/primitives";
+import { Button } from "../../shared/ui/Button";
 
 import { AgentMcpSection, AgentSkillsSection } from "./AgentAssignmentSections";
 import { AgentAuthStatusPanel } from "./AgentAuthStatusPanel";

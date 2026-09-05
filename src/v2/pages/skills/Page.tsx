@@ -39,12 +39,15 @@ import {
   type SkillHubSkill,
   type SkillTargetId,
 } from "../../shared/features/types";
+import { Button } from "../../shared/ui/Button";
+import { AnimatePresence } from "../../shared/ui/motion";
+import type { DialogOriginRef } from "../../shared/ui/dialogOrigin";
+import { useDialogState } from "../../shared/ui/useDialogState";
+import { PopoverPrimitive } from "../../shared/ui/vendor";
+import { ConfirmDialog, Dialog } from "../../shared/ui/Dialog";
 import {
   Badge,
-  Button,
   Checkbox,
-  ConfirmDialog,
-  Dialog,
   EmptyState,
   InlineNotice,
   Spinner,
@@ -172,6 +175,7 @@ const invalidations = [
 ];
 
 function Detail({
+  originRef,
   skill,
   update,
   busy,
@@ -180,6 +184,7 @@ function Detail({
   onUninstall,
   showAssignment,
 }: {
+  originRef?: DialogOriginRef;
   skill: InstalledSkill;
   update?: { remoteHash: string };
   busy: boolean;
@@ -236,6 +241,7 @@ function Detail({
             className="fy-control-button-danger"
             disabled={busy}
             onClick={onUninstall}
+            dialogOriginRef={originRef}
           >
             卸载
           </Button>
@@ -337,20 +343,22 @@ function Detail({
 }
 
 export function SkillsPage() {
+  const dialogOriginRef = useRef<HTMLElement | null>(null);
   const queryClient = useQueryClient();
   const { ports, installTarget, setInstallTarget, notify } = useFeatures();
   const wideLayout = useWideFeatureLayout();
   const [tab, setTab] = useState<SkillsTab>("installed");
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [dialog, setDialog] = useState<DialogName>(null);
+  const [dialog, setDialog, dialogKey] =
+    useDialogState<Exclude<DialogName, null>>();
   const [confirm, setConfirm] = useState<
     | { kind: "uninstall"; skill: InstalledSkill }
     | { kind: "backup"; backup: SkillBackupEntry }
     | null
   >(null);
   const [busy, setBusy] = useState(false);
-  const [pendingZipPath, setPendingZipPath] = useState<string | null>(null);
+  const [pendingZipPath, setPendingZipPath, zipKey] = useDialogState<string>();
   const [progress, setProgress] = useState<{
     done: number;
     total: number;
@@ -512,31 +520,52 @@ export function SkillsPage() {
               更新全部 · {updates.length}
             </Button>
           )}
-          <div className="fy-feature-menu">
-            <Button
-              aria-expanded={dialog === "more"}
-              onClick={() => setDialog(dialog === "more" ? null : "more")}
-            >
-              更多
-            </Button>
-            {dialog === "more" && (
-              <div className="fy-feature-menu-popover">
-                <Button onClick={() => setDialog("unmanaged")}>
+          <PopoverPrimitive.Root
+            open={dialog === "more"}
+            onOpenChange={(open) =>
+              setDialog((current) =>
+                open ? "more" : current === "more" ? null : current,
+              )
+            }
+          >
+            <PopoverPrimitive.Trigger asChild>
+              <Button>更多</Button>
+            </PopoverPrimitive.Trigger>
+            <PopoverPrimitive.Portal>
+              <PopoverPrimitive.Content
+                className="fy-feature-menu-popover"
+                align="end"
+                sideOffset={8}
+                aria-label="更多 Skill 操作"
+              >
+                <Button
+                  dialogOriginRef={dialogOriginRef}
+                  onClick={() => setDialog("unmanaged")}
+                >
                   导入本地 Skill
                 </Button>
                 <Button
                   disabled={busy}
                   onClick={() => void pickAndInstallZip()}
+                  dialogOriginRef={dialogOriginRef}
                 >
                   从 ZIP 安装
                 </Button>
-                <Button onClick={() => setDialog("backups")}>备份恢复</Button>
-                <Button onClick={() => setDialog("settings")}>
+                <Button
+                  dialogOriginRef={dialogOriginRef}
+                  onClick={() => setDialog("backups")}
+                >
+                  备份恢复
+                </Button>
+                <Button
+                  dialogOriginRef={dialogOriginRef}
+                  onClick={() => setDialog("settings")}
+                >
                   Skill 设置
                 </Button>
-              </div>
-            )}
-          </div>
+              </PopoverPrimitive.Content>
+            </PopoverPrimitive.Portal>
+          </PopoverPrimitive.Root>
         </div>
       </header>
       {progress && (
@@ -636,6 +665,7 @@ export function SkillsPage() {
                   </section>
                   {selected && (
                     <Detail
+                      originRef={dialogOriginRef}
                       key={selected.id}
                       skill={selected}
                       update={updatesById.get(selected.id)}
@@ -712,34 +742,44 @@ export function SkillsPage() {
           }}
         />
       </FeatureTabPanel>
-      {pendingZipPath ? (
-        <InstallTargetDialog
-          title="从 ZIP 安装"
-          busy={busy}
-          defaultTarget={installTarget}
-          pathForTarget={(target) => skillInstallDestination(target)}
-          pathNote="具体文件夹名由 ZIP 内的 Skill 决定。"
-          onCancel={() => setPendingZipPath(null)}
-          onConfirm={(target) => {
-            const path = pendingZipPath;
-            setPendingZipPath(null);
-            setInstallTarget(target);
-            void write("ZIP 安装完成", async () => {
-              await ports.skills.installFromZip(path, target);
-            });
-          }}
-        />
-      ) : null}
-      <AuxiliaryDialogs
-        key={dialog ?? "closed"}
-        name={dialog}
-        close={() => setDialog(null)}
-        installTarget={installTarget}
-        busy={busy}
-        write={write}
-        setConfirm={setConfirm}
-      />
+      <AnimatePresence>
+        {pendingZipPath ? (
+          <InstallTargetDialog
+            key={zipKey}
+            originRef={dialogOriginRef}
+            title="从 ZIP 安装"
+            busy={busy}
+            defaultTarget={installTarget}
+            pathForTarget={(target) => skillInstallDestination(target)}
+            pathNote="具体文件夹名由 ZIP 内的 Skill 决定。"
+            onCancel={() => setPendingZipPath(null)}
+            onConfirm={(target) => {
+              const path = pendingZipPath;
+              setPendingZipPath(null);
+              setInstallTarget(target);
+              void write("ZIP 安装完成", async () => {
+                await ports.skills.installFromZip(path, target);
+              });
+            }}
+          />
+        ) : null}
+      </AnimatePresence>
+      <AnimatePresence>
+        {dialog && dialog !== "more" && (
+          <AuxiliaryDialogs
+            key={dialogKey}
+            originRef={dialogOriginRef}
+            name={dialog}
+            close={() => setDialog(null)}
+            installTarget={installTarget}
+            busy={busy}
+            write={write}
+            setConfirm={setConfirm}
+          />
+        )}
+      </AnimatePresence>
       <ConfirmDialog
+        originRef={dialogOriginRef}
         open={confirm !== null}
         title={
           confirm?.kind === "uninstall"
@@ -774,12 +814,14 @@ export function SkillsPage() {
 }
 
 function DiscoveryCard({
+  originRef,
   busy,
   isInstalled,
   skill,
   onInstall,
   onOpenDetail,
 }: {
+  originRef?: DialogOriginRef;
   busy: boolean;
   isInstalled: boolean;
   skill: DiscoverySkill;
@@ -811,10 +853,13 @@ function DiscoveryCard({
           className="fy-control-button-primary"
           disabled={busy || isInstalled}
           onClick={() => onInstall(skill)}
+          dialogOriginRef={originRef}
         >
           {isInstalled ? "已安装" : "安装"}
         </Button>
-        <Button onClick={() => onOpenDetail(skill)}>详情</Button>
+        <Button dialogOriginRef={originRef} onClick={() => onOpenDetail(skill)}>
+          详情
+        </Button>
         {docs ? (
           <ExternalLinkButton url={docs.url}>{docs.label}</ExternalLinkButton>
         ) : null}
@@ -832,14 +877,17 @@ function Discovery({
   defaultTarget: SkillTargetId;
   onInstall: (skill: DiscoverySkill, target: SkillTargetId) => Promise<void>;
 }) {
+  const originRef = useRef<HTMLElement | null>(null);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [category, setCategory] = useState<SkillHubCategoryFilter>(
     SKILLHUB_CATEGORY_ALL,
   );
   const [page, setPage] = useState(1);
-  const [detailSkill, setDetailSkill] = useState<DiscoverySkill | null>(null);
-  const [pendingSkill, setPendingSkill] = useState<DiscoverySkill | null>(null);
+  const [detailSkill, setDetailSkill, detailKey] =
+    useDialogState<DiscoverySkill>();
+  const [pendingSkill, setPendingSkill, installKey] =
+    useDialogState<DiscoverySkill>();
   const resultsTop = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -923,6 +971,7 @@ function Discovery({
           <div className="fy-feature-grid">
             {skills.map((skill) => (
               <DiscoveryCard
+                originRef={originRef}
                 key={skill.key}
                 busy={busy}
                 isInstalled={isDiscoverableInstalled(skill, installedItems)}
@@ -942,46 +991,54 @@ function Discovery({
         ariaLabel="Skill 市场分页"
         onPageChange={goToPage}
       />
-      {detailSkill ? (
-        <Dialog
-          open
-          title={detailSkill.name}
-          description={skillDetailMeta(detailSkill) || "Skill 详情"}
-          onOpenChange={(open) => {
-            if (!open) setDetailSkill(null);
-          }}
-          actions={<Button onClick={() => setDetailSkill(null)}>关闭</Button>}
-        >
-          <p className="fy-feature-intro">{skillDetailBody(detailSkill)}</p>
-        </Dialog>
-      ) : null}
-      {pendingSkill ? (
-        <InstallTargetDialog
-          key={pendingSkill.key}
-          title={`安装 ${pendingSkill.name}`}
-          busy={busy}
-          defaultTarget={defaultTarget}
-          pathForTarget={(target) =>
-            skillInstallDestination(
-              target,
-              pendingSkill.directory ||
-                pendingSkill.slug ||
-                pendingSkill.repoName,
-            )
-          }
-          onCancel={() => setPendingSkill(null)}
-          onConfirm={(target) => {
-            const skill = pendingSkill;
-            setPendingSkill(null);
-            void onInstall(skill, target);
-          }}
-        />
-      ) : null}
+      <AnimatePresence>
+        {detailSkill ? (
+          <Dialog
+            key={detailKey}
+            originRef={originRef}
+            open
+            title={detailSkill.name}
+            description={skillDetailMeta(detailSkill) || "Skill 详情"}
+            onOpenChange={(open) => {
+              if (!open) setDetailSkill(null);
+            }}
+            actions={<Button onClick={() => setDetailSkill(null)}>关闭</Button>}
+          >
+            <p className="fy-feature-intro">{skillDetailBody(detailSkill)}</p>
+          </Dialog>
+        ) : null}
+      </AnimatePresence>
+      <AnimatePresence>
+        {pendingSkill ? (
+          <InstallTargetDialog
+            key={installKey}
+            originRef={originRef}
+            title={`安装 ${pendingSkill.name}`}
+            busy={busy}
+            defaultTarget={defaultTarget}
+            pathForTarget={(target) =>
+              skillInstallDestination(
+                target,
+                pendingSkill.directory ||
+                  pendingSkill.slug ||
+                  pendingSkill.repoName,
+              )
+            }
+            onCancel={() => setPendingSkill(null)}
+            onConfirm={(target) => {
+              const skill = pendingSkill;
+              setPendingSkill(null);
+              void onInstall(skill, target);
+            }}
+          />
+        ) : null}
+      </AnimatePresence>
     </section>
   );
 }
 
 function AuxiliaryDialogs({
+  originRef,
   name,
   close,
   installTarget,
@@ -989,6 +1046,7 @@ function AuxiliaryDialogs({
   write,
   setConfirm,
 }: {
+  originRef?: DialogOriginRef;
   name: DialogName;
   close: () => void;
   installTarget: SkillTargetId;
@@ -998,6 +1056,7 @@ function AuxiliaryDialogs({
     value: { kind: "backup"; backup: SkillBackupEntry } | null,
   ) => void;
 }) {
+  const migrationOriginRef = useRef<HTMLElement | null>(null);
   const queryClient = useQueryClient();
   const { ports, setInstallTarget } = useFeatures();
   const unmanaged = useUnmanagedSkills(name === "unmanaged");
@@ -1029,6 +1088,7 @@ function AuxiliaryDialogs({
   if (name === "unmanaged")
     return (
       <Dialog
+        originRef={originRef}
         open
         title="导入本地 Skills"
         description="选择要管理的 Skills。系统会根据支持情况预设可用应用，你仍可逐项调整。"
@@ -1129,6 +1189,7 @@ function AuxiliaryDialogs({
   if (name === "backups")
     return (
       <Dialog
+        originRef={originRef}
         open
         title="备份恢复"
         description="选择要恢复到的应用。"
@@ -1187,6 +1248,7 @@ function AuxiliaryDialogs({
                     className="fy-control-button-danger"
                     disabled={busy}
                     onClick={() => setConfirm({ kind: "backup", backup })}
+                    dialogOriginRef={originRef}
                   >
                     删除
                   </Button>
@@ -1200,6 +1262,7 @@ function AuxiliaryDialogs({
   return (
     <>
       <Dialog
+        originRef={originRef}
         open
         title="Skill 设置"
         description="选择同步方式，并将已安装的 Skills 迁移到所选位置。"
@@ -1242,10 +1305,18 @@ function AuxiliaryDialogs({
           >
             保存同步方式
           </Button>
-          <Button disabled={busy} onClick={() => setMigrationTarget("fyagent")}>
+          <Button
+            dialogOriginRef={migrationOriginRef}
+            disabled={busy}
+            onClick={() => setMigrationTarget("fyagent")}
+          >
             迁移到 FyAgent
           </Button>
-          <Button disabled={busy} onClick={() => setMigrationTarget("unified")}>
+          <Button
+            dialogOriginRef={migrationOriginRef}
+            disabled={busy}
+            onClick={() => setMigrationTarget("unified")}
+          >
             迁移到统一目录
           </Button>
         </div>
@@ -1262,6 +1333,7 @@ function AuxiliaryDialogs({
         )}
       </Dialog>
       <ConfirmDialog
+        originRef={migrationOriginRef}
         open={migrationTarget !== null}
         title="确认迁移 Skill 存储"
         description={

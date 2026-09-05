@@ -7,7 +7,8 @@ import {
   appendAgentReturnToPath,
   agentReturnDescriptorFromManagementSearch,
 } from "../../shared/features/agent-navigation";
-import { Button, InlineNotice, Spinner } from "../../shared/ui/primitives";
+import { Button } from "../../shared/ui/Button";
+import { InlineNotice, Spinner } from "../../shared/ui/primitives";
 
 /** Account management owns source selection; Models still owns configuration editing. */
 export function CodexRequestSource({

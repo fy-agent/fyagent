@@ -1,4 +1,6 @@
-import { Children, type CSSProperties, type ReactNode } from "react";
+import { Children, useRef, type CSSProperties, type ReactNode } from "react";
+import { usePressFeedback } from "../usePressFeedback";
+import type { DialogOriginRef } from "../dialogOrigin";
 
 import type { AgentBrandAsset } from "../../assets/agents";
 import { classNames } from "../../design-system/classNames";
@@ -134,6 +136,7 @@ export function BrandIconFrame({
 }
 
 interface CatalogListItemProps {
+  originRef?: DialogOriginRef;
   asset: AgentBrandAsset;
   label: string;
   summary?: ReactNode;
@@ -144,6 +147,7 @@ interface CatalogListItemProps {
 }
 
 export function CatalogListItem({
+  originRef,
   asset,
   label,
   summary,
@@ -152,19 +156,26 @@ export function CatalogListItem({
   testId,
   disabled,
 }: CatalogListItemProps) {
+  const ref = useRef<HTMLButtonElement>(null);
+  const labelRef = useRef<HTMLSpanElement>(null);
+  usePressFeedback(ref, disabled, labelRef);
   return (
     <div role="listitem">
       <button
+        ref={ref}
         type="button"
         className="fy-catalog-list-item"
         aria-current={selected ? "true" : undefined}
         data-testid={testId}
         disabled={disabled}
-        onClick={onSelect}
+        onClick={(event) => {
+          if (originRef) originRef.current = event.currentTarget;
+          onSelect();
+        }}
       >
         <SelectionLens active={selected} />
         <BrandIconFrame asset={asset} size="list" />
-        <span className="fy-catalog-list-copy">
+        <span ref={labelRef} className="fy-catalog-list-copy">
           <strong>{label}</strong>
           {summary ? <span>{summary}</span> : null}
         </span>

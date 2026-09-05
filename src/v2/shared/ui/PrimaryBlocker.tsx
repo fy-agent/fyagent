@@ -11,6 +11,7 @@ import {
 import { useBlocker, type BlockerFunction } from "react-router-dom";
 
 import { usePersistentVisibility } from "./PersistentSurface";
+import type { DialogOriginRef } from "./dialogOrigin";
 
 type BlockerRule = boolean | BlockerFunction;
 type RouteBlocker = ReturnType<typeof useBlocker>;
@@ -19,6 +20,8 @@ interface PrimaryBlockerContextValue {
   blocker: RouteBlocker;
   register: (id: string, rule: BlockerRule) => void;
   unregister: (id: string) => void;
+  originRef: DialogOriginRef;
+  captureOrigin: (element: HTMLElement, destination: string) => void;
 }
 
 const PrimaryBlockerContext = createContext<PrimaryBlockerContextValue | null>(
@@ -38,9 +41,27 @@ const idleBlocker = {
 
 export function PrimaryBlockerProvider({ children }: { children: ReactNode }) {
   const rules = useRef(new Map<string, BlockerRule>());
+  const originRef = useRef<HTMLElement | null>(null);
+  const intent = useRef<{ element: HTMLElement; destination: string } | null>(
+    null,
+  );
+  const captureOrigin = useCallback(
+    (element: HTMLElement, destination: string) => {
+      intent.current = { element, destination };
+    },
+    [],
+  );
   const shouldBlock = useCallback<BlockerFunction>((transition) => {
+    const pending = intent.current;
+    intent.current = null;
+    originRef.current = null;
     for (const rule of rules.current.values()) {
-      if (typeof rule === "function" ? rule(transition) : rule) return true;
+      if (typeof rule === "function" ? rule(transition) : rule) {
+        const destination = `${transition.nextLocation.pathname}${transition.nextLocation.search}`;
+        if (pending?.destination === destination)
+          originRef.current = pending.element;
+        return true;
+      }
     }
     return false;
   }, []);
@@ -52,8 +73,8 @@ export function PrimaryBlockerProvider({ children }: { children: ReactNode }) {
     rules.current.delete(id);
   }, []);
   const value = useMemo(
-    () => ({ blocker, register, unregister }),
-    [blocker, register, unregister],
+    () => ({ blocker, register, unregister, originRef, captureOrigin }),
+    [blocker, register, unregister, captureOrigin],
   );
 
   return (
@@ -61,6 +82,21 @@ export function PrimaryBlockerProvider({ children }: { children: ReactNode }) {
       {children}
     </PrimaryBlockerContext.Provider>
   );
+}
+
+const ignoreOrigin = () => undefined;
+
+/** A scoped navigation intent, consumed once by the existing blocker. It does
+ * not observe global clicks or change route admission/confirmation policy. */
+export function usePrimaryNavigationOrigin() {
+  return useContext(PrimaryBlockerContext)?.captureOrigin ?? ignoreOrigin;
+}
+
+export function usePrimaryBlockerOrigin(): DialogOriginRef {
+  const context = useContext(PrimaryBlockerContext);
+  if (!context)
+    throw new Error("usePrimaryBlockerOrigin requires PrimaryBlockerProvider");
+  return context.originRef;
 }
 
 export function usePrimaryBlocker(rule: BlockerRule): RouteBlocker {

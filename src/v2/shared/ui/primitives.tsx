@@ -1,57 +1,17 @@
-import {
-  forwardRef,
-  useRef,
-  type ButtonHTMLAttributes,
-  type InputHTMLAttributes,
-  type ReactNode,
-  type RefObject,
-} from "react";
-
+import { forwardRef, type InputHTMLAttributes, type ReactNode } from "react";
 import { classNames } from "../design-system/classNames";
-import { usePersistentVisibility } from "./PersistentSurface";
-import { FrostedSurface } from "./GlassMaterial";
-import {
-  CheckboxPrimitive,
-  DialogPrimitive,
-  SwitchPrimitive,
-  TooltipPrimitive,
-} from "./vendor";
+import { PressableButton } from "./Button";
+import { CheckboxPrimitive, SwitchPrimitive, TooltipPrimitive } from "./vendor";
 
-type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement>;
-
-export const GlassButton = forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, type = "button", ...props }, ref) => (
-    <button
-      ref={ref}
-      type={type}
-      className={classNames("fy-glass-button", className)}
-      {...props}
-    />
-  ),
-);
-
-GlassButton.displayName = "GlassButton";
-
-export const IconButton = forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, type = "button", ...props }, ref) => (
-    <button
-      ref={ref}
-      type={type}
-      className={classNames("fy-icon-button", className)}
-      {...props}
-    />
-  ),
-);
-
-IconButton.displayName = "IconButton";
-
-interface TooltipProps {
+export function Tooltip({
+  label,
+  children,
+  testId,
+}: {
   label: ReactNode;
   children: ReactNode;
   testId?: string;
-}
-
-export function Tooltip({ label, children, testId }: TooltipProps) {
+}) {
   return (
     <TooltipPrimitive.Root delayDuration={250}>
       <TooltipPrimitive.Trigger asChild>{children}</TooltipPrimitive.Trigger>
@@ -68,20 +28,7 @@ export function Tooltip({ label, children, testId }: TooltipProps) {
     </TooltipPrimitive.Root>
   );
 }
-
 export const TooltipProvider = TooltipPrimitive.Provider;
-
-export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, type = "button", ...props }, ref) => (
-    <button
-      ref={ref}
-      type={type}
-      className={classNames("fy-control-button", className)}
-      {...props}
-    />
-  ),
-);
-Button.displayName = "Button";
 
 export const Input = forwardRef<
   HTMLInputElement,
@@ -94,7 +41,6 @@ export const Input = forwardRef<
   />
 ));
 Input.displayName = "Input";
-
 export { SecretInput, type SecretInputProps } from "./SecretInput";
 
 export function Badge({
@@ -124,13 +70,16 @@ export function Switch({
 }) {
   return (
     <SwitchPrimitive.Root
+      asChild
       className="fy-control-switch"
       checked={checked}
       onCheckedChange={onCheckedChange}
       aria-label={label}
       disabled={disabled}
     >
-      <SwitchPrimitive.Thumb className="fy-control-switch-thumb" />
+      <PressableButton>
+        <SwitchPrimitive.Thumb className="fy-control-switch-thumb" />
+      </PressableButton>
     </SwitchPrimitive.Root>
   );
 }
@@ -148,13 +97,16 @@ export function Checkbox({
 }) {
   return (
     <CheckboxPrimitive.Root
+      asChild
       className="fy-control-checkbox"
       checked={checked}
       onCheckedChange={(value) => onCheckedChange(value === true)}
       aria-label={label}
       disabled={disabled}
     >
-      <CheckboxPrimitive.Indicator>✓</CheckboxPrimitive.Indicator>
+      <PressableButton>
+        <CheckboxPrimitive.Indicator>✓</CheckboxPrimitive.Indicator>
+      </PressableButton>
     </CheckboxPrimitive.Root>
   );
 }
@@ -200,161 +152,5 @@ export function EmptyState({
       {children}
       {actions && <div>{actions}</div>}
     </div>
-  );
-}
-
-export function Dialog({
-  open,
-  onOpenChange,
-  title,
-  description,
-  children,
-  actions,
-  size = "standard",
-  initialFocusRef,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  title: string;
-  description?: string;
-  children?: ReactNode;
-  actions?: ReactNode;
-  size?: "standard" | "comfortable" | "wide";
-  initialFocusRef?: RefObject<HTMLElement>;
-}) {
-  const visible = usePersistentVisibility();
-  const presented = open && visible;
-  const restoreFocusRef = useRef<HTMLElement | null>(null);
-  const restoreFrameRef = useRef<number | null>(null);
-
-  return (
-    <DialogPrimitive.Root
-      open={presented}
-      onOpenChange={(next) => {
-        if (!visible) return;
-        onOpenChange(next);
-      }}
-    >
-      <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fy-control-dialog-overlay" />
-        <DialogPrimitive.Content
-          className={classNames(
-            "fy-control-dialog",
-            size !== "standard" && `fy-control-dialog-${size}`,
-          )}
-          {...(!description ? { "aria-describedby": undefined } : {})}
-          onOpenAutoFocus={(event) => {
-            if (restoreFrameRef.current !== null) {
-              window.cancelAnimationFrame(restoreFrameRef.current);
-              restoreFrameRef.current = null;
-            }
-            const focused = document.activeElement;
-            if (focused instanceof HTMLElement && focused !== document.body) {
-              restoreFocusRef.current = focused;
-            }
-            const initial = initialFocusRef?.current;
-            if (initial && !initial.matches(":disabled")) {
-              event.preventDefault();
-              initial.focus();
-            }
-          }}
-          onCloseAutoFocus={(event) => {
-            event.preventDefault();
-            const origin = restoreFocusRef.current;
-            if (restoreFrameRef.current !== null)
-              window.cancelAnimationFrame(restoreFrameRef.current);
-            restoreFrameRef.current = window.requestAnimationFrame(() => {
-              restoreFrameRef.current = null;
-              // Focusing a rejected automatic tab would request the same
-              // transition again. Restore the tablist's current selection.
-              const node = origin?.matches(
-                '[role="tab"][aria-selected="false"]',
-              )
-                ? origin
-                    .closest('[role="tablist"]')
-                    ?.querySelector<HTMLElement>(
-                      '[role="tab"][aria-selected="true"]',
-                    )
-                : origin;
-              if (
-                !node?.isConnected ||
-                node.closest("[hidden], [inert]") ||
-                node.matches(":disabled")
-              )
-                return;
-              // Another modal may have opened before the old close frame ran.
-              // Radix owns its focus trap; never compete with that new owner.
-              const dialogs = document.querySelectorAll(
-                '[role="dialog"][data-state="open"]',
-              );
-              if (Array.from(dialogs).some((dialog) => !dialog.contains(node)))
-                return;
-              node.focus({ preventScroll: true });
-            });
-          }}
-        >
-          <FrostedSurface />
-          <div className="fy-control-dialog-content">
-            <header className="fy-control-dialog-header">
-              <DialogPrimitive.Title className="fy-control-dialog-title">
-                {title}
-              </DialogPrimitive.Title>
-              {description && (
-                <DialogPrimitive.Description className="fy-control-dialog-description">
-                  {description}
-                </DialogPrimitive.Description>
-              )}
-            </header>
-            {children != null && (
-              <div className="fy-control-dialog-body">{children}</div>
-            )}
-          </div>
-          {actions && (
-            <footer className="fy-control-dialog-actions">{actions}</footer>
-          )}
-        </DialogPrimitive.Content>
-      </DialogPrimitive.Portal>
-    </DialogPrimitive.Root>
-  );
-}
-
-export function ConfirmDialog({
-  open,
-  title,
-  description,
-  pending,
-  onConfirm,
-  onCancel,
-}: {
-  open: boolean;
-  title: string;
-  description: string;
-  pending?: boolean;
-  onConfirm: () => void;
-  onCancel: () => void;
-}) {
-  const cancelRef = useRef<HTMLButtonElement>(null);
-  return (
-    <Dialog
-      open={open}
-      initialFocusRef={cancelRef}
-      onOpenChange={(next) => !next && !pending && onCancel()}
-      title={title}
-      description={description}
-      actions={
-        <>
-          <Button ref={cancelRef} onClick={onCancel} disabled={pending}>
-            取消
-          </Button>
-          <Button
-            className="fy-control-button-danger"
-            onClick={onConfirm}
-            disabled={pending}
-          >
-            {pending ? "处理中…" : "确认"}
-          </Button>
-        </>
-      }
-    />
   );
 }

@@ -146,6 +146,8 @@ opener, or direct `@tauri-apps/*` capability through these components.
 - `src/v2/shared/ui/motion.ts` is the only direct `framer-motion` import owner.
   Shared components consume its exports and transition helpers; pages do not
   invent unrelated spring literals or import Framer Motion directly.
+  Role durations, bounded presses, explicit modal origins, exit lifecycle and
+  live preferences are specified in [Motion and Dialog Presence](./motion-system.md).
 - `Collapsible` wraps the Radix primitive. Its content remains mounted for
   measured animation, but a closed panel is inert and `aria-hidden`; hidden
   controls must not remain reachable by pointer, focus, or assistive technology.

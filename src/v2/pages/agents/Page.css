@@ -930,7 +930,7 @@
   height: 100%;
   border-radius: inherit;
   background: var(--fy-accent);
-  transition: width 130ms ease-out;
+  transition: width var(--fy-motion-content) var(--fy-motion-ease);
 }
 
 .fy-codex-installer-actions {

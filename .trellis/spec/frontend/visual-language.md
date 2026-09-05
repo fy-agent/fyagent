@@ -19,11 +19,13 @@ Dialog({
   open, onOpenChange, title, description?, children?, actions?,
   size?: "standard" | "comfortable" | "wide",
   initialFocusRef?: RefObject<HTMLElement>,
+  originRef?: DialogOriginRef,
 })
-ConfirmDialog({ open, title, description, pending?, onConfirm, onCancel })
+ConfirmDialog({ open, title, description, pending?, onConfirm, onCancel, originRef? })
 ```
 
-Both components remain in `shared/ui/primitives.tsx`; Radix owns modality,
+Both components live in `shared/ui/Dialog.tsx`; native pressable buttons live
+in `shared/ui/Button.tsx`. Radix owns modality,
 focus trapping and announcements. Widths are capped at 480/720/900px and the
 viewport minus 32px. Login uses comfortable; rich editors use wide.
 
@@ -31,6 +33,8 @@ Semantic radius, backing/foreground separation and container behavior are
 defined by [Surfaces and Container Response](./surfaces-responsive.md).
 Radius consistency means the same role uses the same token, not that a circle,
 button, item and dialog all use a numerically identical radius.
+Origin geometry, conditional-session keys and enter/exit timing are owned by
+[Motion and Dialog Presence](./motion-system.md), not page-local animation code.
 
 ## 3. Contracts
 

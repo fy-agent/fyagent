@@ -210,7 +210,7 @@
   background: var(--fy-text);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
   transform: translateX(2px);
-  transition: transform 130ms ease-out;
+  transition: transform var(--fy-motion-content) var(--fy-motion-ease);
 }
 .fy-control-switch[data-state="checked"] .fy-control-switch-thumb {
   background: var(--fy-accent-ink);
@@ -256,7 +256,7 @@
   border: 2px solid var(--fy-border-strong);
   border-top-color: var(--fy-accent);
   border-radius: var(--fy-radius-circle);
-  animation: fy-spin 0.7s linear infinite;
+  animation: fy-spin var(--fy-motion-spinner) linear infinite;
 }
 .fy-control-empty {
   display: grid;
@@ -292,18 +292,37 @@
   flex-direction: column;
   width: min(480px, calc(100vw - 32px));
   max-height: min(84vh, 760px);
-  overflow: hidden;
-  border: 1px solid var(--fy-border-strong);
+  overflow: visible;
+  border: 1px solid transparent;
   border-radius: var(--fy-radius-dialog);
   color: var(--fy-text);
   font-size: var(--fy-font-control);
   line-height: var(--fy-line-body);
   isolation: isolate;
   background: transparent;
+  transform: translate(-50%, -50%);
+}
+.fy-dialog-material {
+  position: absolute;
+  inset: -1px;
+  z-index: -1;
+  isolation: isolate;
+  pointer-events: none;
+  border: 1px solid var(--fy-border-strong);
+  border-radius: inherit;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.18),
     0 22px 70px rgba(8, 25, 42, 0.44);
-  transform: translate(-50%, -50%);
+}
+.fy-dialog-foreground {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  max-height: inherit;
+  border-radius: inherit;
+  overflow: hidden;
 }
 .fy-control-dialog-wide {
   width: min(900px, calc(100vw - 32px));
@@ -474,7 +493,7 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .fy-control-spinner {
-    animation-duration: 1.8s;
+    animation-duration: var(--fy-motion-spinner-reduced);
   }
   .fy-control-switch-thumb {
     transition: none;

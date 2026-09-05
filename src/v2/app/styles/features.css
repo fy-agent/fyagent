@@ -171,9 +171,13 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.fy-feature-list-item span {
+.fy-feature-list-copy > span {
   color: var(--fy-text-secondary);
   font-size: 12px;
+}
+.fy-feature-list-copy > strong {
+  color: var(--fy-text);
+  font-size: var(--fy-font-control);
 }
 .fy-feature-detail {
   display: grid;
@@ -514,10 +518,7 @@
   position: relative;
 }
 .fy-feature-menu-popover {
-  position: absolute;
   z-index: 20;
-  top: calc(100% + 6px);
-  right: 0;
   display: grid;
   width: 190px;
   padding: 6px;
@@ -532,6 +533,17 @@
   box-shadow: 0 12px 30px rgba(8, 25, 42, 0.34);
   backdrop-filter: blur(18px) saturate(1.16);
   -webkit-backdrop-filter: blur(18px) saturate(1.16);
+}
+.fy-feature-tab-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+.fy-feature-list-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
 }
 .fy-feature-menu-popover button {
   justify-content: flex-start;

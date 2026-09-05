@@ -1,5 +1,5 @@
 import { useFrontendReady } from "../shared/platform/useFrontendReady";
-import { Button } from "../shared/ui/primitives";
+import { Button } from "../shared/ui/Button";
 
 export function RootError() {
   useFrontendReady();

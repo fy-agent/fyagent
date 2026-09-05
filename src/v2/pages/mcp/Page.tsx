@@ -26,11 +26,13 @@ import {
   type McpServerSpec,
   type McpTargetId,
 } from "../../shared/features/types";
+import { Button } from "../../shared/ui/Button";
+import { AnimatePresence } from "../../shared/ui/motion";
+import type { DialogOriginRef } from "../../shared/ui/dialogOrigin";
+import { useDialogState } from "../../shared/ui/useDialogState";
+import { ConfirmDialog, Dialog } from "../../shared/ui/Dialog";
 import {
   Badge,
-  Button,
-  ConfirmDialog,
-  Dialog,
   EmptyState,
   InlineNotice,
   Input,
@@ -63,6 +65,7 @@ function assignedMcpTargets(server: McpServer) {
 const INSTALLED_SPLIT_LABELS = ["调整列表与详情的宽度", "调整详情与分配的宽度"];
 
 function ServerDetail({
+  originRef,
   server,
   busy,
   onToggle,
@@ -70,6 +73,7 @@ function ServerDetail({
   onDelete,
   showAssignment,
 }: {
+  originRef?: DialogOriginRef;
   server: McpServer;
   busy: boolean;
   onToggle: (app: McpTargetId, enabled: boolean) => void;
@@ -101,12 +105,13 @@ function ServerDetail({
         </div>
         <p className="fy-feature-intro">{description}</p>
         <div className="fy-feature-actions">
-          <Button onClick={onEdit} disabled={busy}>
+          <Button dialogOriginRef={originRef} onClick={onEdit} disabled={busy}>
             编辑
           </Button>
           <Button
             className="fy-control-button-danger"
             onClick={onDelete}
+            dialogOriginRef={originRef}
             disabled={busy}
           >
             删除
@@ -257,6 +262,7 @@ function ServerDetail({
 }
 
 export function McpPage() {
+  const dialogOriginRef = useRef<HTMLElement | null>(null);
   const queryClient = useQueryClient();
   const { ports, notify, installTarget, setInstallTarget } = useFeatures();
   const wideLayout = useWideFeatureLayout();
@@ -265,7 +271,7 @@ export function McpPage() {
   const [tab, setTab] = useState<"installed" | "discovery">("installed");
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [editing, setEditing] = useState<McpServer | "new" | null>(null);
+  const [editing, setEditing, editingKey] = useDialogState<McpServer | "new">();
   const [deleteTarget, setDeleteTarget] = useState<McpServer | null>(null);
   const [busy, setBusy] = useState(false);
   const [workbuddyTrustOpen, setWorkbuddyTrustOpen] = useState(false);
@@ -379,6 +385,7 @@ export function McpPage() {
             className="fy-control-button-primary"
             disabled={busy}
             onClick={() => setEditing("new")}
+            dialogOriginRef={dialogOriginRef}
           >
             添加 MCP
           </Button>
@@ -520,6 +527,7 @@ export function McpPage() {
                 </section>
                 {selected && (
                   <ServerDetail
+                    originRef={dialogOriginRef}
                     server={selected}
                     busy={busy}
                     onToggle={(app, enabled) => toggle(selected, app, enabled)}
@@ -567,29 +575,33 @@ export function McpPage() {
           </div>
         )}
       </FeatureTabPanel>
-      {editing !== null && (
-        <McpEditor
-          key={editing === "new" ? "new" : editing.id}
-          initial={editing === "new" ? null : editing}
-          existingIds={new Set(servers.map((server) => server.id))}
-          busy={busy}
-          onClose={() => setEditing(null)}
-          onSave={(server) => {
-            const wasAssigned =
-              editing !== "new" && Boolean(editing.apps.workbuddy);
-            void write(
-              editing === "new" ? "MCP 已添加" : "MCP 已更新",
-              async () => {
-                await ports.mcp.upsert(server);
-                setEditing(null);
-              },
-              () => {
-                if (server.apps.workbuddy && !wasAssigned) noteWorkBuddyTrust();
-              },
-            );
-          }}
-        />
-      )}
+      <AnimatePresence>
+        {editing !== null && (
+          <McpEditor
+            key={editingKey}
+            originRef={dialogOriginRef}
+            initial={editing === "new" ? null : editing}
+            existingIds={new Set(servers.map((server) => server.id))}
+            busy={busy}
+            onClose={() => setEditing(null)}
+            onSave={(server) => {
+              const wasAssigned =
+                editing !== "new" && Boolean(editing.apps.workbuddy);
+              void write(
+                editing === "new" ? "MCP 已添加" : "MCP 已更新",
+                async () => {
+                  await ports.mcp.upsert(server);
+                  setEditing(null);
+                },
+                () => {
+                  if (server.apps.workbuddy && !wasAssigned)
+                    noteWorkBuddyTrust();
+                },
+              );
+            }}
+          />
+        )}
+      </AnimatePresence>
       <WorkBuddyTrustDialog
         open={workbuddyTrustOpen}
         onOpenChange={(open) => {
@@ -597,6 +609,7 @@ export function McpPage() {
         }}
       />
       <ConfirmDialog
+        originRef={dialogOriginRef}
         open={deleteTarget !== null}
         title={`删除 ${deleteTarget?.name ?? "MCP"}`}
         description="将从管理列表及已启用的应用中删除。"
@@ -618,12 +631,14 @@ export function McpPage() {
 type Mode = "quick" | "advanced";
 
 function McpEditor({
+  originRef,
   initial,
   existingIds,
   busy,
   onClose,
   onSave,
 }: {
+  originRef?: DialogOriginRef;
   initial: McpServer | null;
   existingIds: Set<string>;
   busy: boolean;
@@ -796,6 +811,7 @@ function McpEditor({
   };
   return (
     <Dialog
+      originRef={originRef}
       open
       onOpenChange={(next) => !next && !busy && onClose()}
       title={initial ? `编辑 ${initial.name}` : "添加 MCP"}

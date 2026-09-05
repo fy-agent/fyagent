@@ -67,6 +67,8 @@ usePersistentSearchParams(): {
 }
 useStickyVisibleValue<T>(visible, explicit, fallback): T
 usePrimaryBlocker(rule): ReturnType<typeof useBlocker>
+usePrimaryNavigationOrigin(): (element: HTMLElement, destination: string) => void
+usePrimaryBlockerOrigin(): DialogOriginRef
 ```
 
 The only cross-page Agent return value is:
@@ -143,6 +145,13 @@ arbitrary return URL, serialized history entry, or free-form navigation state.
   visibility deliberately. Component mount alone is not an active-page signal.
 
 ### Sidebar and route blocking
+
+The shared blocker may carry one explicit sidebar control/destination intent
+for confirmation animation. It consumes that intent on the next transition,
+matches the exact destination and otherwise exposes no source. This does not
+alter blocker rules or router authority. Native/history/programmatic changes
+without a matching intent use neutral presentation; see
+[Motion and Dialog Presence](./motion-system.md).
 
 - `SideNavigation` renders semantic links from the registry and derives active
   state from the router. Exactly one primary link is `aria-current="page"` for

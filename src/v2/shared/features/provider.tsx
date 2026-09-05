@@ -14,13 +14,7 @@ import { createFeaturePorts } from "../platform/features";
 import { errorMessage } from "./helpers";
 import type { FeaturePorts } from "./ports";
 import type { SkillTargetId } from "./types";
-
-interface ToastMessage {
-  id: number;
-  tone: "success" | "error" | "info";
-  title: string;
-  description?: string;
-}
+import { ToastViewport, type ToastMessage } from "../ui/ToastViewport";
 
 interface FeatureContextValue {
   ports: FeaturePorts;
@@ -119,18 +113,7 @@ export function FeatureProvider({
       <FeatureContext.Provider value={value}>
         <ExternalOpenContext.Provider value={openValue}>
           {children}
-          <div className="fy-toast-host" aria-live="polite" aria-atomic="false">
-            {toasts.map((toast) => (
-              <div
-                key={toast.id}
-                className={`fy-toast fy-toast-${toast.tone}`}
-                role="status"
-              >
-                <strong>{toast.title}</strong>
-                {toast.description && <span>{toast.description}</span>}
-              </div>
-            ))}
-          </div>
+          <ToastViewport messages={toasts} />
         </ExternalOpenContext.Provider>
       </FeatureContext.Provider>
     </QueryClientProvider>

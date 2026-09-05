@@ -8,7 +8,8 @@ import type {
 import { useFeatures } from "../provider";
 import { useRecoverableChangeJobs } from "../queries";
 import type { ProviderSummaryMap } from "../models";
-import { Button, InlineNotice } from "../../ui/primitives";
+import { Button } from "../../ui/Button";
+import { InlineNotice } from "../../ui/primitives";
 import { ApplyWorkspace } from "./ApplyWorkspace";
 import { changePlanErrorCode, isActiveJobStatus } from "./changePlanErrors";
 import { useChangeJob } from "./useChangeJob";

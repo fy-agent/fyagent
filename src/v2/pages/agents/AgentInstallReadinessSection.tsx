@@ -22,7 +22,8 @@ import {
 import { visibleAllowedActions } from "../../shared/features/agent-lifecycle-capabilities";
 import type { AgentCatalogId } from "../../shared/features/types";
 import { LifecycleTargetPicker } from "../../shared/ui/LifecycleTargetPicker";
-import { Button, InlineNotice, Spinner } from "../../shared/ui/primitives";
+import { Button } from "../../shared/ui/Button";
+import { InlineNotice, Spinner } from "../../shared/ui/primitives";
 
 import {
   jobStageCopy,

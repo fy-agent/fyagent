@@ -14,8 +14,8 @@ import { useFeatures } from "../../shared/features/provider";
 import type { McpServer } from "../../shared/features/types";
 import { FeatureSearch } from "../../shared/ui/FeatureSearch";
 import { WorkBuddyTrustDialog } from "../../shared/ui/WorkBuddyTrustDialog";
+import { Button } from "../../shared/ui/Button";
 import {
-  Button,
   EmptyState,
   InlineNotice,
   Spinner,

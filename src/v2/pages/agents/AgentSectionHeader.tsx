@@ -1,4 +1,4 @@
-import { Button } from "../../shared/ui/primitives";
+import { Button } from "../../shared/ui/Button";
 
 export function AgentSectionHeader({
   title,

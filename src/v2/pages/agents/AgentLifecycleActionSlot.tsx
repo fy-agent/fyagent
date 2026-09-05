@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
-import { Button, Spinner } from "../../shared/ui/primitives";
+import { Button } from "../../shared/ui/Button";
+import { Spinner } from "../../shared/ui/primitives";
 
 function directoryPrimaryActionLabel(action: "install" | "update"): string {
   return action === "install" ? "一键安装" : "一键更新";

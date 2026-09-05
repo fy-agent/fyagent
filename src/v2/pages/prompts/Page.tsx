@@ -34,17 +34,21 @@ import {
   CatalogMasterDetail,
   CatalogRail,
 } from "../../shared/ui/catalog";
+import { Button } from "../../shared/ui/Button";
+import { ConfirmDialog } from "../../shared/ui/Dialog";
+import type { DialogOriginRef } from "../../shared/ui/dialogOrigin";
 import {
   Badge,
-  Button,
-  ConfirmDialog,
   EmptyState,
   InlineNotice,
   Input,
   Spinner,
   Switch,
 } from "../../shared/ui/primitives";
-import { usePrimaryBlocker } from "../../shared/ui/PrimaryBlocker";
+import {
+  usePrimaryBlocker,
+  usePrimaryBlockerOrigin,
+} from "../../shared/ui/PrimaryBlocker";
 import { FeatureList, FeatureListItem } from "../../shared/ui/FeatureList";
 import { FeatureSearch } from "../../shared/ui/FeatureSearch";
 import { SplitPanes } from "../../shared/ui/split";
@@ -166,6 +170,7 @@ function searchPrompts(
 }
 
 export function PromptsPage() {
+  const dialogOriginRef = useRef<HTMLElement | null>(null);
   const queryClient = useQueryClient();
   const { ports, notify } = useFeatures();
   const [app, setApp] = useState<PromptAppId>("claude");
@@ -215,6 +220,7 @@ export function PromptsPage() {
     [editorDirty],
   );
   const blocker = usePrimaryBlocker(shouldBlockNavigation);
+  const navigationOriginRef = usePrimaryBlockerOrigin();
   const activeDiscardIntent: DiscardIntent =
     discardIntent ?? (blocker.state === "blocked" ? { kind: "route" } : null);
   const activeEditor = resolveEditor(editor, selected);
@@ -452,6 +458,7 @@ export function PromptsPage() {
             className="fy-control-button-primary"
             disabled={busy}
             onClick={requestNew}
+            dialogOriginRef={dialogOriginRef}
           >
             新建提示词
           </Button>
@@ -492,6 +499,7 @@ export function PromptsPage() {
             ) : null}
             {filtered.map((prompt) => (
               <FeatureListItem
+                originRef={dialogOriginRef}
                 key={prompt.id}
                 selected={prompt.id === selected?.id}
                 title={prompt.name}
@@ -506,6 +514,7 @@ export function PromptsPage() {
         </section>
         {activeEditor ? (
           <PromptEditorPane
+            originRef={dialogOriginRef}
             appLabel={APP_LABELS[app]}
             busy={busy}
             editor={activeEditor}
@@ -560,6 +569,7 @@ export function PromptsPage() {
             className="fy-control-button-primary"
             disabled={busy || nativeUnavailable}
             onClick={requestNew}
+            dialogOriginRef={dialogOriginRef}
           >
             新建提示词
           </Button>
@@ -590,6 +600,7 @@ export function PromptsPage() {
             <CatalogList>
               {PROMPT_APP_IDS.map((id) => (
                 <CatalogListItem
+                  originRef={dialogOriginRef}
                   key={id}
                   asset={getPromptAppBrand(id)}
                   label={APP_LABELS[id]}
@@ -628,6 +639,7 @@ export function PromptsPage() {
       </div>
 
       <ConfirmDialog
+        originRef={dialogOriginRef}
         open={deleteTarget !== null}
         title={`删除 ${deleteTarget?.name ?? "提示词"}`}
         description="删除后无法从提示词库恢复；只有未启用的提示词可以删除。"
@@ -644,6 +656,11 @@ export function PromptsPage() {
       />
 
       <ConfirmDialog
+        originRef={
+          activeDiscardIntent && activeDiscardIntent.kind !== "route"
+            ? dialogOriginRef
+            : navigationOriginRef
+        }
         open={activeDiscardIntent !== null}
         title="放弃未保存的提示词更改"
         description="当前编辑内容尚未保存。确认放弃后再继续切换或离开页面。"
@@ -696,6 +713,7 @@ function PromptIdentityFields({
 }
 
 function PromptEditorPane({
+  originRef,
   appLabel,
   busy,
   editor,
@@ -709,6 +727,7 @@ function PromptEditorPane({
   onSave,
   onToggle,
 }: {
+  originRef?: DialogOriginRef;
   appLabel: string;
   busy: boolean;
   editor: EditorState;
@@ -773,7 +792,12 @@ function PromptEditorPane({
               {busy ? "保存中…" : "保存"}
             </Button>
             {editor.mode === "new" ? (
-              <Button disabled={busy} onClick={onCloseNew} type="button">
+              <Button
+                dialogOriginRef={originRef}
+                disabled={busy}
+                onClick={onCloseNew}
+                type="button"
+              >
                 取消
               </Button>
             ) : (
@@ -781,6 +805,7 @@ function PromptEditorPane({
                 className="fy-control-button-danger"
                 disabled={busy}
                 onClick={onDelete}
+                dialogOriginRef={originRef}
                 type="button"
               >
                 删除

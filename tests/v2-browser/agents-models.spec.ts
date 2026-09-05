@@ -106,6 +106,15 @@ test("Agent directory keeps exact native order and accessible configuration entr
   const traeDetailFrame = agentItem(page, "TRAE Work CN").locator(
     '[data-size="detail"]',
   );
+  // Logical branding dimensions are asserted at rest, not against a
+  // sub-pixel translated arrival frame. Keep the exact 48/64px assertions.
+  await page.getByTestId("agents-page").evaluate(async (element) => {
+    const surface = element.closest(".fy-persistent-surface");
+    if (surface)
+      await Promise.all(
+        surface.getAnimations().map((animation) => animation.finished),
+      );
+  });
   await traeDetailFrame
     .locator("img")
     .evaluate((image: HTMLImageElement) => image.decode());
@@ -596,7 +605,7 @@ test("Codex quick setup locks duplicate submission and sends exact provider payl
   page,
 }) => {
   await installRichTauriFeatureFixture(page, {
-    providerWriteDelayMs: 250,
+    holdProviderWrite: true,
   });
   const health = monitorPageHealth(page);
   const apiKey = "browser-codex-secret";
@@ -610,9 +619,17 @@ test("Codex quick setup locks duplicate submission and sends exact provider payl
   const submit = page.getByRole("button", { name: "保存并设为当前配置" });
   await submit.click();
   await confirmSaveDisclosure(page);
-  const busySubmit = page.getByRole("button", { name: "配置中…" });
+  // Radix correctly hides background controls while the confirmation exits.
+  // Hold IPC deterministically rather than racing a 250ms simulated request.
+  const busySubmit = page.getByRole("button", {
+    name: "配置中…",
+    includeHidden: true,
+  });
   await expect(busySubmit).toBeDisabled();
   await busySubmit.dispatchEvent("click");
+  await page.evaluate(() =>
+    window.__FYAGENT_FEATURE_FIXTURE__.releaseProviderWrite(),
+  );
   const saveWorkspace = page.getByRole("region", {
     name: "保存 Codex Provider",
   });

@@ -12,7 +12,9 @@ import {
   CatalogMasterDetail,
   CatalogRail,
 } from "../../shared/ui/catalog";
-import { Button, EmptyState } from "../../shared/ui/primitives";
+import { Button } from "../../shared/ui/Button";
+import type { DialogOriginRef } from "../../shared/ui/dialogOrigin";
+import { EmptyState } from "../../shared/ui/primitives";
 import { PersistentSurface } from "../../shared/ui/PersistentSurface";
 import {
   AuthListItem,
@@ -85,12 +87,14 @@ function consumerSummary(connections: ManagedAuthConnectionSummary[]) {
 }
 
 function ConnectionCard({
+  originRef,
   connection,
   overview,
   mutationBusy,
   onAction,
 }: {
   connection: ManagedAuthConnectionSummary;
+  originRef?: DialogOriginRef;
   overview: ManagedAuthOverview;
   mutationBusy: boolean;
   onAction: (
@@ -165,6 +169,7 @@ function ConnectionCard({
           {connection.allowedActions.map((action) => (
             <Button
               key={action}
+              dialogOriginRef={originRef}
               className={
                 action === "disconnect"
                   ? "fy-control-button-danger-subtle"
@@ -183,6 +188,7 @@ function ConnectionCard({
 }
 
 export function ConnectionsView({
+  originRef,
   overview,
   selectedConsumer,
   mutationBusy,
@@ -193,6 +199,7 @@ export function ConnectionsView({
 }: {
   overview: ManagedAuthOverview;
   selectedConsumer: ManagedAuthConsumer | null;
+  originRef?: DialogOriginRef;
   mutationBusy: boolean;
   onSelectConsumer: (consumer: ManagedAuthConsumer) => void;
   onClearSelection: () => void;
@@ -269,6 +276,7 @@ export function ConnectionsView({
               <div className="fy-auth-consumer-connections">
                 {selectedConnections.map((connection) => (
                   <ConnectionCard
+                    originRef={originRef}
                     key={connection.connectionId}
                     connection={connection}
                     overview={overview}

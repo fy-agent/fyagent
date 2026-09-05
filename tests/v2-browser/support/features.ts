@@ -12,6 +12,7 @@ export interface RichFeatureFixtureOptions {
   existingQuickSetup?: "codex" | "claude";
   providerMutation?: "success" | "save_failure" | "switch_failure";
   providerWriteDelayMs?: number;
+  holdProviderWrite?: boolean;
   workBuddySave?:
     | "saved"
     | "overwrite_then_saved"
@@ -24,6 +25,7 @@ declare global {
   interface Window {
     __FYAGENT_FEATURE_FIXTURE__: {
       calls: FeatureFixtureCall[];
+      releaseProviderWrite: () => void;
     };
     __TAURI_INTERNALS__: {
       metadata: {
@@ -47,6 +49,10 @@ export async function installRichTauriFeatureFixture(
   options: RichFeatureFixtureOptions = {},
 ): Promise<void> {
   await page.addInitScript((fixtureOptions: RichFeatureFixtureOptions) => {
+    let releaseProviderWrite: () => void = () => undefined;
+    const providerWriteGate = new Promise<void>((resolve) => {
+      releaseProviderWrite = resolve;
+    });
     const mcpAssignments = (enabled: string[]) =>
       Object.fromEntries(
         [
@@ -853,7 +859,7 @@ export async function installRichTauriFeatureFixture(
       reasonCode: null,
     });
 
-    window.__FYAGENT_FEATURE_FIXTURE__ = { calls };
+    window.__FYAGENT_FEATURE_FIXTURE__ = { calls, releaseProviderWrite };
     window.__TAURI_EVENT_PLUGIN_INTERNALS__ = {
       unregisterListener: () => undefined,
     };
@@ -1279,7 +1285,8 @@ export async function installRichTauriFeatureFixture(
             };
           }
           case "create_codex_provider_upsert_plan": {
-            await delay(fixtureOptions.providerWriteDelayMs);
+            if (fixtureOptions.holdProviderWrite) await providerWriteGate;
+            else await delay(fixtureOptions.providerWriteDelayMs);
             const request = payload.request as
               | Record<string, unknown>
               | undefined;

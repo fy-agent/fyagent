@@ -28,6 +28,8 @@ For the shared type scale, dialog sizing/focus and navigation shape, read
 [Desktop Visual Hierarchy](./visual-language.md).
 For material backing, semantic radii, contrast evidence and narrow containers,
 read [Surfaces and Container Response](./surfaces-responsive.md).
+For press gestures, explicit modal origins, live reduced motion and exit
+lifetimes, read [Motion and Dialog Presence](./motion-system.md).
 
 | Contract                                               | Owns                                                                                                       |
 | ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- |

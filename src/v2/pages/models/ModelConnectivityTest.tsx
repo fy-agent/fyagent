@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 
 import { classNames } from "../../shared/design-system/classNames";
 import type { ModelProbeResult } from "../../shared/features/types";
-import { Button, Dialog } from "../../shared/ui/primitives";
+import { Button } from "../../shared/ui/Button";
+import { Dialog } from "../../shared/ui/Dialog";
 import { FieldFeedback, type Notice } from "./feedback";
 import { GroupedModelChips, ModelSearchField } from "./modelChips";
 import { noticeFromModelProbe } from "./modelsShared";
@@ -31,6 +32,7 @@ export function ModelConnectivityTest({
   onBusyChange?: (busy: boolean) => void;
   resetVersion?: string | number;
 }) {
+  const originRef = useRef<HTMLElement | null>(null);
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [groupFilter, setGroupFilter] = useState<string | null>(null);
@@ -106,11 +108,16 @@ export function ModelConnectivityTest({
 
   return (
     <div className="fy-models-probe">
-      <Button disabled={disabled || probing} onClick={openDialog}>
+      <Button
+        dialogOriginRef={originRef}
+        disabled={disabled || probing}
+        onClick={openDialog}
+      >
         {probing ? "测试中…" : "测试连通"}
       </Button>
       <Dialog
         open={open}
+        originRef={originRef}
         onOpenChange={closeDialog}
         size="wide"
         title="选择要测试的模型"

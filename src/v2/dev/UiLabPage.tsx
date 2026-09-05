@@ -5,7 +5,8 @@ import { CheckIcon } from "@phosphor-icons/react/dist/csr/Check";
 import { SparkleIcon } from "@phosphor-icons/react/dist/csr/Sparkle";
 
 import { LiquidGlassLens } from "../shared/ui/GlassMaterial";
-import { GlassButton, IconButton, Tooltip } from "../shared/ui/primitives";
+import { GlassButton, IconButton } from "../shared/ui/Button";
+import { Tooltip } from "../shared/ui/primitives";
 import { SelectionLens, SelectionLensGroup } from "../shared/ui/SelectionLens";
 import { PopoverPrimitive, TabsPrimitive } from "../shared/ui/vendor";
 

@@ -8,12 +8,10 @@ import type {
   ManagedAuthProviderSummary,
 } from "../../shared/features/managed-auth";
 import { useFeatures, useOpenExternal } from "../../shared/features/provider";
-import {
-  Button,
-  Dialog,
-  InlineNotice,
-  Spinner,
-} from "../../shared/ui/primitives";
+import { Button } from "../../shared/ui/Button";
+import { Dialog } from "../../shared/ui/Dialog";
+import type { DialogOriginRef } from "../../shared/ui/dialogOrigin";
+import { InlineNotice, Spinner } from "../../shared/ui/primitives";
 import { ProviderMark, StatusBadge } from "./common";
 import {
   loginStagePresentation,
@@ -40,6 +38,7 @@ function preferredMethod(
 }
 
 interface LoginDialogProps {
+  originRef?: DialogOriginRef;
   open: boolean;
   providers: ManagedAuthProviderSummary[];
   initialConsumer: ManagedAuthConsumer | null;
@@ -55,6 +54,7 @@ export function LoginDialog(props: LoginDialogProps) {
 }
 
 function LoginDialogContent({
+  originRef,
   open,
   providers,
   initialConsumer,
@@ -272,6 +272,7 @@ function LoginDialogContent({
 
   return (
     <Dialog
+      originRef={originRef}
       open={open}
       initialFocusRef={session?.terminal ? finishRef : undefined}
       onOpenChange={onOpenChange}

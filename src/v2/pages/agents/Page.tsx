@@ -4,12 +4,8 @@ import { PRODUCT_DIRECTORY } from "../../shared/features/directory";
 import { useAgentCatalog } from "../../shared/features/queries";
 import { useFrontendReady } from "../../shared/platform/useFrontendReady";
 import { usePersistentSearchParams } from "../../shared/ui/usePersistentSearchParams";
-import {
-  Button,
-  EmptyState,
-  InlineNotice,
-  Spinner,
-} from "../../shared/ui/primitives";
+import { Button } from "../../shared/ui/Button";
+import { EmptyState, InlineNotice, Spinner } from "../../shared/ui/primitives";
 
 import { AgentConfiguration } from "./AgentConfiguration";
 import { AgentDirectory } from "./AgentDirectory";

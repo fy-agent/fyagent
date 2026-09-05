@@ -2,7 +2,8 @@ import type {
   AgentActionId,
   AgentInstallationTarget,
 } from "../features/agent-install-readiness";
-import { Button, InlineNotice, Spinner } from "./primitives";
+import { Button } from "./Button";
+import { InlineNotice, Spinner } from "./primitives";
 
 function scopeCopy(scope: AgentInstallationTarget["scope"]): string {
   switch (scope) {

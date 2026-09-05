@@ -7,13 +7,10 @@ import { classNames } from "../../shared/design-system/classNames";
 import type { ModelWriteTarget } from "../../shared/features/types";
 import { CatalogDetail } from "../../shared/ui/catalog";
 import { CopyablePath } from "../../shared/features/controls/CopyablePath";
-import {
-  Badge,
-  Button,
-  Checkbox,
-  Dialog,
-  Tooltip,
-} from "../../shared/ui/primitives";
+import { Button } from "../../shared/ui/Button";
+import { Dialog } from "../../shared/ui/Dialog";
+import type { DialogOriginRef } from "../../shared/ui/dialogOrigin";
+import { Badge, Checkbox, Tooltip } from "../../shared/ui/primitives";
 import { FieldFeedback, type Notice } from "./feedback";
 import type {
   ModelProbeResult,
@@ -53,6 +50,7 @@ export function useModelsDraftCommit() {
 }
 
 export function useModelsWriteConfirm<T>() {
+  const originRef = useRef<HTMLElement | null>(null);
   const [pending, setPending] = useState<T | null>(null);
   const pendingRef = useRef<T | null>(null);
 
@@ -70,6 +68,7 @@ export function useModelsWriteConfirm<T>() {
 
   return {
     open: pending !== null,
+    originRef,
     pending,
     requestConfirm,
     takePending,
@@ -111,12 +110,14 @@ export function ModelsWriteDisclosure({
 }
 
 export function ModelsWriteConfirmDialog({
+  originRef,
   open,
   targets,
   onConfirm,
   onCancel,
 }: {
   open: boolean;
+  originRef?: DialogOriginRef;
   targets: readonly ModelWriteTarget[];
   onConfirm: () => void;
   onCancel: () => void;
@@ -125,6 +126,7 @@ export function ModelsWriteConfirmDialog({
   return (
     <Dialog
       open={open}
+      originRef={originRef}
       initialFocusRef={cancelRef}
       onOpenChange={(next) => {
         if (!next) onCancel();

@@ -7,12 +7,8 @@ import { useFeatures } from "../../shared/features/provider";
 import type { PromptAppId } from "../../shared/features/types";
 import { FeatureList, FeatureListItem } from "../../shared/ui/FeatureList";
 import { FeatureSearch } from "../../shared/ui/FeatureSearch";
-import {
-  Button,
-  EmptyState,
-  InlineNotice,
-  Spinner,
-} from "../../shared/ui/primitives";
+import { Button } from "../../shared/ui/Button";
+import { EmptyState, InlineNotice, Spinner } from "../../shared/ui/primitives";
 
 import { AgentSectionHeader } from "./AgentSectionHeader";
 

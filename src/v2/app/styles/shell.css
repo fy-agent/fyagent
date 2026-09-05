@@ -158,11 +158,10 @@
   text-decoration: none;
   white-space: nowrap;
   transition:
-    color 130ms ease,
-    background-color 150ms ease,
-    border-color 150ms ease,
-    opacity 120ms ease,
-    transform 90ms ease;
+    color var(--fy-motion-control) ease,
+    background-color var(--fy-motion-control) ease,
+    border-color var(--fy-motion-control) ease,
+    opacity var(--fy-motion-control) ease;
 }
 
 .fy-side-navigation-toggle {
@@ -234,11 +233,6 @@
 .fy-side-navigation-item:hover {
   color: var(--fy-text);
   background: rgba(229, 246, 255, 0.1);
-}
-
-.fy-side-navigation-toggle:active,
-.fy-side-navigation-item:active {
-  transform: translateY(1px) scale(0.99);
 }
 
 .fy-side-navigation-item-selected,

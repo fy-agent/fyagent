@@ -1,7 +1,7 @@
 import { useId, useRef, useState } from "react";
 
 import type { ChangeJobSnapshot, ChangePlan } from "../change-plans";
-import { Button } from "../../ui/primitives";
+import { Button } from "../../ui/Button";
 import {
   createApplyViewModel,
   type ApplyStepPresentation,

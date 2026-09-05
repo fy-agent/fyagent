@@ -28,3 +28,21 @@ it("keeps border-radius roles in tokens, including icon and separator exceptions
   }
   expect(violations).toEqual([]);
 });
+
+it("keeps CSS transition and animation timings in shared motion tokens", () => {
+  const violations: string[] = [];
+  for (const file of cssFiles("src/v2")) {
+    if (file.endsWith("/tokens.css")) continue;
+    postcss
+      .parse(fs.readFileSync(file, "utf8"), { from: file })
+      .walkDecls((declaration) => {
+        if (
+          /^(transition|animation)(-|$)/.test(declaration.prop) &&
+          /\b\d+(?:\.\d+)?m?s\b/.test(declaration.value)
+        ) {
+          violations.push(`${file}:${declaration.prop}: ${declaration.value}`);
+        }
+      });
+  }
+  expect(violations).toEqual([]);
+});

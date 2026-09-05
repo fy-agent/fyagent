@@ -13,13 +13,10 @@ import {
   InstallPathPreview,
   skillTargetLabel,
 } from "../../shared/features/controls/InstallTargetDialog";
-import {
-  Button,
-  Checkbox,
-  Dialog,
-  InlineNotice,
-  Input,
-} from "../../shared/ui/primitives";
+import { Button } from "../../shared/ui/Button";
+import { Dialog } from "../../shared/ui/Dialog";
+import type { DialogOriginRef } from "../../shared/ui/dialogOrigin";
+import { Checkbox, InlineNotice, Input } from "../../shared/ui/primitives";
 
 function emptyValues(fields: readonly McpInstallField[]): McpInstallValues {
   return Object.fromEntries(
@@ -41,6 +38,7 @@ function requirementLabel(item: McpCatalogItem): string {
 }
 
 export function InstallDialog({
+  originRef,
   item,
   busy,
   overwrite,
@@ -49,6 +47,7 @@ export function InstallDialog({
   onInstall,
 }: {
   item: McpCatalogItem;
+  originRef?: DialogOriginRef;
   busy: boolean;
   overwrite: boolean;
   defaultTarget: McpTargetId;
@@ -90,6 +89,7 @@ export function InstallDialog({
   return (
     <Dialog
       open
+      originRef={originRef}
       onOpenChange={(next) => {
         if (!next && !busy) onClose();
       }}

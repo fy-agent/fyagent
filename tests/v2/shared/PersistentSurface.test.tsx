@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { PersistentSurface } from "@/v2/shared/ui/PersistentSurface";
-import { Dialog } from "@/v2/shared/ui/primitives";
+import { Dialog } from "@/v2/shared/ui/Dialog";
 
 describe("PersistentSurface", () => {
   it("hides portaled dialogs while inactive without treating hide as dismiss", () => {

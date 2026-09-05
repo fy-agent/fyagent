@@ -7,7 +7,8 @@ import {
   type LocalVersionState,
   type RemoteVersionState,
 } from "@/shared/codex-desktop";
-import { Button, InlineNotice, Spinner } from "../ui/primitives";
+import { Button } from "../ui/Button";
+import { InlineNotice, Spinner } from "../ui/primitives";
 import { useCodexDesktopInstaller } from "./useCodexDesktopInstaller";
 
 const stateLabels: Readonly<Record<InstallerViewState, string>> = {

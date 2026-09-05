@@ -153,7 +153,8 @@
 }
 
 .fy-models-feedback-error {
-  animation: fy-models-feedback-in 180ms ease-out;
+  animation: fy-models-feedback-in var(--fy-motion-content)
+    var(--fy-motion-ease);
 }
 
 .fy-models-action-block {
@@ -474,7 +475,7 @@
 
 .fy-models-caret {
   flex: 0 0 auto;
-  transition: transform 140ms ease-out;
+  transition: transform var(--fy-motion-control) var(--fy-motion-ease);
 }
 
 .fy-models-caret-collapsed {

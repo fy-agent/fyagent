@@ -13,7 +13,7 @@ const surfaceOptics: Partial<GlassOptics> = {
 };
 
 /** A decorative backing only: never clone a page, credential form or live text. */
-export function FrostedSurface() {
+export function FrostedSurface({ enhanced = true }: { enhanced?: boolean }) {
   const optics = useMemo(() => {
     const blur =
       typeof document === "undefined"
@@ -31,7 +31,8 @@ export function FrostedSurface() {
   const canRenderLens =
     typeof ResizeObserver !== "undefined" &&
     typeof CanvasRenderingContext2D !== "undefined";
-  if (!canRenderLens) return <div className="fy-frosted-surface" aria-hidden />;
+  if (!canRenderLens || !enhanced)
+    return <div className="fy-frosted-surface" aria-hidden />;
   return (
     <Glass className="fy-frosted-surface" optics={optics} aria-hidden>
       {/* Bare wrapping selects the library's material mode, not DOM-copy mode. */}

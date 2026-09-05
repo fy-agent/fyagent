@@ -1,4 +1,6 @@
-import type { HTMLAttributes, ReactNode } from "react";
+import { useRef, type HTMLAttributes, type ReactNode } from "react";
+import { usePressFeedback } from "./usePressFeedback";
+import type { DialogOriginRef } from "./dialogOrigin";
 
 import { classNames } from "../design-system/classNames";
 import { SelectionLens, SelectionLensTrack } from "./SelectionLens";
@@ -22,6 +24,7 @@ export function featureTabPanelId(tabsId: string, value: string): string {
 }
 
 export function FeatureTabs<T extends string>({
+  originRef,
   id,
   label,
   value,
@@ -30,6 +33,7 @@ export function FeatureTabs<T extends string>({
   activationMode = "automatic",
   className,
 }: {
+  originRef?: DialogOriginRef;
   id: string;
   label: string;
   value: T;
@@ -46,7 +50,13 @@ export function FeatureTabs<T extends string>({
       orientation="horizontal"
       onValueChange={(nextValue) => {
         const option = options.find((candidate) => candidate.id === nextValue);
-        if (option) onChange(option.id);
+        if (option) {
+          if (originRef)
+            originRef.current = document.getElementById(
+              featureTabTriggerId(id, option.id),
+            );
+          onChange(option.id);
+        }
       }}
     >
       <SelectionLensTrack id={id} className="fy-feature-tabs-list">
@@ -54,25 +64,46 @@ export function FeatureTabs<T extends string>({
           {options.map((option) => {
             const selected = option.id === value;
             return (
-              <Tabs.Trigger
+              <FeatureTabTrigger
                 key={option.id}
                 id={featureTabTriggerId(id, option.id)}
                 value={option.id}
                 className="fy-feature-tab"
                 aria-controls={featureTabPanelId(id, option.id)}
+                selected={selected}
               >
-                <SelectionLens active={selected} />
-                {typeof option.label === "string" ? (
-                  <span>{option.label}</span>
-                ) : (
-                  option.label
-                )}
-              </Tabs.Trigger>
+                {option.label}
+              </FeatureTabTrigger>
             );
           })}
         </Tabs.List>
       </SelectionLensTrack>
     </Tabs.Root>
+  );
+}
+
+function FeatureTabTrigger({
+  selected,
+  children,
+  ...props
+}: {
+  selected: boolean;
+  children: ReactNode;
+  id: string;
+  value: string;
+  className: string;
+  "aria-controls": string;
+}) {
+  const ref = useRef<HTMLButtonElement>(null);
+  const labelRef = useRef<HTMLSpanElement>(null);
+  usePressFeedback(ref, false, labelRef);
+  return (
+    <Tabs.Trigger {...props} ref={ref}>
+      <SelectionLens active={selected} />
+      <span ref={labelRef} className="fy-feature-tab-label">
+        {children}
+      </span>
+    </Tabs.Trigger>
   );
 }
 
@@ -99,7 +130,7 @@ export function FeatureTabPanel<T extends string>({
       id={featureTabPanelId(tabsId, value)}
       role="tabpanel"
       aria-labelledby={featureTabTriggerId(tabsId, value)}
-      className={className}
+      className={classNames("fy-feature-tab-panel", className)}
       hidden={!active}
       tabIndex={0}
       {...props}

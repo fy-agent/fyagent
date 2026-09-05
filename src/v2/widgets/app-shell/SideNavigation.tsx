@@ -1,6 +1,8 @@
 import { CaretDownIcon } from "@phosphor-icons/react/dist/csr/CaretDown";
 import { useRef, useState, type KeyboardEvent } from "react";
 import { NavLink, useLocation } from "react-router-dom";
+import { usePressFeedback } from "../../shared/ui/usePressFeedback";
+import { usePrimaryNavigationOrigin } from "../../shared/ui/PrimaryBlocker";
 
 import {
   navigationGroups,
@@ -35,9 +37,26 @@ function NavigationLink({
   destination?: string;
   visuallyAvailable?: boolean;
 }) {
+  const linkRef = useRef<HTMLAnchorElement>(null);
+  const captureOrigin = usePrimaryNavigationOrigin();
+  const labelRef = useRef<HTMLSpanElement>(null);
+  usePressFeedback(linkRef, !visuallyAvailable, labelRef);
   return (
     <NavLink
+      ref={linkRef}
       to={destination}
+      onClick={(event) => {
+        if (
+          !event.defaultPrevented &&
+          event.button === 0 &&
+          !event.metaKey &&
+          !event.ctrlKey &&
+          !event.altKey &&
+          !event.shiftKey
+        ) {
+          captureOrigin(event.currentTarget, destination);
+        }
+      }}
       end
       data-selection-material="text-only"
       className={({ isActive, isPending }) =>
@@ -51,7 +70,9 @@ function NavigationLink({
       {({ isActive }) => {
         const visuallyActive = isActive && visuallyAvailable;
         const label = (
-          <span className="fy-side-navigation-item-label">{item.label}</span>
+          <span ref={labelRef} className="fy-side-navigation-item-label">
+            {item.label}
+          </span>
         );
 
         return (
@@ -85,6 +106,8 @@ export function SideNavigation() {
   const { pathname, search } = useLocation();
   const navigationRef = useRef<HTMLElement>(null);
   const configurationToggleRef = useRef<HTMLButtonElement>(null);
+  const configurationLabelRef = useRef<HTMLSpanElement>(null);
+  usePressFeedback(configurationToggleRef, false, configurationLabelRef);
   const configurationItemsRef = useRef<HTMLUListElement>(null);
   const [configurationExpanded, setConfigurationExpanded] = useState(true);
   const agentReturnDescriptor =
@@ -203,7 +226,10 @@ export function SideNavigation() {
             (item) => item.path === pathname,
           );
           const content = (
-            <span className="fy-side-navigation-toggle-content">
+            <span
+              ref={configurationLabelRef}
+              className="fy-side-navigation-toggle-content"
+            >
               <span>{group.label}</span>
               <CollapsibleCaret
                 open={configurationExpanded}

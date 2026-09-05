@@ -55,6 +55,18 @@ TanStack Query create a client with retries disabled so failures are immediate.
 
 ### V2 Warning and Lifecycle Evidence
 
+`tests/v2/app/setup.ts` keeps Node's native Request/fetch and translates only
+DOM `addEventListener` signal options when the adopted jsdom environment and
+Node use different AbortSignal realms. A WeakMap reuses one real DOM controller
+per native signal; cancellation and the original reason propagate, including
+already-aborted signals. Both EventTarget prototype listeners and Vitest's
+bound window listener are covered and restored after the suite. Never drop
+`options.signal`, replace native fetch/Request, or skip press tests to hide a
+realm error. This narrow upstream-compatible bridge is removable when the
+adopted test environment provides it. `tests/v2/app/abortSignalRealm.test.ts`
+must prove window/element cancellation, multiple targets and native Request
+abort reasons before it is changed.
+
 Targeted V2 interaction suites must fail on unexpected React warnings rather
 than filtering stderr or globally mocking `console.error`. Async state changes
 are awaited through Testing Library async helpers, `act`, or controlled fake
