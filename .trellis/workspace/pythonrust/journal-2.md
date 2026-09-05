@@ -262,3 +262,36 @@ Overview reasonCodes 改为闭集恢复文案加刷新；登录 Dialog 保持挂
 ### Status
 
 [OK] **Completed**
+
+
+## Session 70: 架构债务审查与成熟实现复用
+<!-- trellis-session: v=2 fp=717ac3123013e6f0 -->
+
+**Date**: 2026-09-05
+**Task**: 架构债务审查与成熟实现复用
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+完成仓库级候选审查与四项机制复用重构，更新七份 SPEC，归档任务并通过归档前后门禁。
+
+### Main Changes
+
+- 复用锁定 semver；统一 S3/WebDAV 调度并注入数据库 dirty listener；三个 MCP 适配器复用 JSON 文档拥有者；模型保存共用编排与 Query 轮询。
+- 新增并发、隐藏生命周期、GC、旧 WebView、同步抑制、备份失败及架构防回流测试；严格保留原生安全与补偿边界。
+- 归档位于 .trellis/tasks/archive/2026-09/09-05-architecture-debt-reuse；修正归档上下文自引用；重复块 79→70，重复行 3096→2668。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a051c098` | refactor: consolidate shared architecture mechanisms |
+
+### Testing
+
+- [OK] 通用前端 1589 passed/1 skipped；V2 511 passed；浏览器 164 passed；Rust 3469 passed/6 ignored。
+- [OK] typecheck/lint、renderer build、完整 check:prearchive、归档后无排除参数 check:contracts、归档上下文 validate 均通过；未进行 Windows 真机、签名或 live 云端/凭证 HIL。
+
+### Status
+
+[OK] **Completed**
