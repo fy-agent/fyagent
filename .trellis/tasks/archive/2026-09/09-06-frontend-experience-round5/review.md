@@ -73,10 +73,15 @@ Rust3472通过/0失败/6既有忽略；类型、格式、Clippy和仓库契约�
 父任务最终V2类型/lint/578项单测与精确排除本任务的完整prearchive已退出0。
 根1620通过/1既有跳过，Rust3472通过/0失败/6既有忽略，契约611通过/1既有跳过，
 native-fetch4项通过。日志为 `/tmp/fyagent-round5-parent-{types,lint,unit,prearchive}.log`。
-源码/测试指纹仍与244项浏览器和生产6项通过的版本一致。已检查修改的SPEC没有
+源码指纹仍与244项浏览器和生产6项通过的版本一致。已检查修改的SPEC没有
 失效相对链接，本轮文本没有参考项目的本机路径或项目名。
-剩余关闭步骤为父任务提交归档、修复移动后的上下文、补齐三个完整工作commit，
-无排除contracts、journal与空工作树复核；这些后置步骤成功前不报告最终交付。
+父任务已提交7908893e并归档，两个子任务均completed。两个动效自引用及七条
+父目录研究引用均已按实际归档路径修正；三个task.py validate全部通过，三个
+完整工作commit均已回填并验证属于当前Git历史。
+归档后无排除 `mise run check:contracts` 已退出0，日志为
+`/tmp/fyagent-round5-postarchive-contracts.log`。最后按顺序提交本记录、通过
+add_session.py写journal，再检查git status为空及没有活动任务；任何后置条件
+失败都不能把本轮报告成工作树干净的交付。
 
 ## 未执行与保留边界
 

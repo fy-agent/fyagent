@@ -11,8 +11,8 @@
 - [x] 三组1x/4x各42回访、20暖态模态和冷态/清理检查通过；保留资源竞争导致的失败样本及隔离复测，不扩大预算。
 - [x] 最终V2检查及 `check:prearchive --exclude-active-task .trellis/tasks/09-06-frontend-experience-round5` 退出0，只排除直接绑定的本任务。
 - [x] 各所属SPEC/签名/测试已在工作提交中更新，集成复核完成；父工作提交及归档由关闭命令确认。
-- [ ] 修复归档目录改变造成的有效上下文链接，填写完整工作commit；对三个任务运行task.py validate及祖先关系检查。
-- [ ] 无排除 `mise run check:contracts`；只提交本轮记录，add_session.py记录journal，最后验证无活动任务、工作树干净。
+- [x] 归档目录上下文已修正，三个完整工作commit已填写；三个task.py validate及Git祖先关系检查通过。
+- [x] 无排除 `mise run check:contracts` 退出0；记录提交、journal和空工作树作为最终关闭命令后置条件，失败时不报告交付。
 
 每个实现阶段都先加载trellis-before-dev，再按trellis-check、trellis-update-spec、
 Phase3.4提交和trellis-finish-work收尾。手工文件修改使用补丁，环境/脚本走mise。
