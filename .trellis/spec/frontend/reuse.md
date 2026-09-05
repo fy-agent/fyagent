@@ -56,6 +56,9 @@ through a UI barrel to conceal that dependency.
   `FeaturePagination`;
 - assignment/install flows: `AssignmentPanel`, `InstallTargetDialog`, shared
   confirmation/dialog primitives;
+- Change Plan workflows: Models-specific `SavePlanWorkspace` adapters plus
+  shared `ApplyWorkspace`, `ChangePlanWorkspace`, and `useChangeJob`; see
+  [V2 Change Plan Workspaces](./v2-change-plan-workspaces.md);
 - download/progress projection: Codex + Agent job transfer share
   `projectTransferPresentation` in `src/shared/codex-desktop/snapshots.ts`
   (Agent adapter: `src/v2/shared/features/transfer-projection.ts`);
@@ -73,12 +76,12 @@ through a UI barrel to conceal that dependency.
 - primary-route module table: `prefetchPrimaryRoutes` / `primaryPages` in
   `app/primaryPages.tsx`.
 
-Their exact behavior belongs in the feature/shell specs that use them:
-[V2 Shell](./v2-shell.md),
-[V2 Agent and Models](./v2-agent-models.md),
-[V2 Skills and MCP](./v2-skills-mcp.md), and
-[V2 Prompts and Memory](./v2-prompts-memory.md). This list is an owner map, not
-a duplicate API contract.
+Their exact behavior belongs in the focused shell/workflow/feature owners
+routed by the [Frontend Index](./index.md), especially
+[V2 Window Shell and Interaction](./v2-window-shell.md) and
+[V2 Change Plan Workspaces](./v2-change-plan-workspaces.md). Compatibility
+routers are retained only for archived references. This list is an owner map,
+not a duplicate API contract.
 
 ## 3. Contracts
 

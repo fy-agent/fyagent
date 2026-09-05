@@ -10,7 +10,8 @@ the smallest focused contract below instead of adding detailed behavior here.
 | --- | --- |
 | Agent directory scan, ordering, cards, capability projection, lifecycle UI and return links | [V2 Agent Directory](./v2-agent-directory.md) |
 | Agent Auth observation, sessions, polling and evidence-correct status UI | [V2 External Agent Auth UI](./v2-agent-auth.md) |
-| Models target selection, drafts, tests, typed preview/apply, quick setup, WorkBuddy and Codex model flows | [V2 Models](./v2-models.md) |
+| Models target selection, drafts, tests, quick setup, credentials, WorkBuddy and Codex model flows | [V2 Models](./v2-models.md) |
+| Shared Renderer Change Plan preview/apply, save/source-switch ownership, job observation and terminal reconciliation | [V2 Change Plan Workspaces](./v2-change-plan-workspaces.md) |
 | Route registration, keep-alive visibility, sidebar and closed Agent return query | [V2 Navigation and Persistent Route](./v2-navigation.md) |
 | Shared shell, native-overlay chrome, selection material, motion and external opening | [V2 Window Shell and Interaction](./v2-window-shell.md) |
 | Native Agent catalog/runtime observation and generic launch | [External Agent Catalog and Runtime](../backend/external-agent-catalog-runtime.md) |

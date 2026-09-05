@@ -13,11 +13,10 @@ Primary owners are:
   product-specific page behavior;
 - `src/v2/pages/models/QoderModelsPanel.tsx` and `TraeModelsPanel.tsx` for the
   unsupported/read-only targets;
-- `src/v2/pages/models/quickSetup.ts`, `workBuddyModels.ts`, and the apply
-  workspace modules for validation, drafts, preview, apply, and polling;
-- `apply/SavePlanWorkspace.tsx` for the shared Codex/WorkBuddy save controller;
-- `src/v2/shared/features/change-plans-ui/**` for reusable apply presentation,
-  automatic Query-owned job reads, error mapping and saved-source switching;
+- `src/v2/pages/models/quickSetup.ts` and `workBuddyModels.ts` for validation
+  and draft shaping;
+- `src/v2/pages/models/apply/**` for Models-specific Codex/WorkBuddy save
+  adapters over the shared Change Plan workspace;
 - `src/v2/shared/features/models.ts`, `change-plans.ts`, and `ports.ts` for the
   DTOs and five actual Port owners;
 - `src/v2/shared/platform/tauri/feature-ports/models.ts`, `changePlans.ts`, and
@@ -33,6 +32,10 @@ Native ownership remains split by operation:
   TRAE observation/preflight and OpenCode model persistence;
 - [Change Plan Typed Executor](../backend/change-plan-executor.md) owns Codex
   and WorkBuddy preview/apply/recovery semantics.
+
+Shared Renderer preview/apply presentation, job observation, admission, cache,
+and cross-route source-switch ownership are defined by
+[V2 Change Plan Workspaces](./v2-change-plan-workspaces.md).
 
 There is no aggregate `ModelPorts` or `ChangePlanPorts` type. New code uses the
 focused Ports already present in `FeaturePorts`.
@@ -224,52 +227,23 @@ an apply instruction.
 
 Models owns editing/adding/testing and saving a configuration. Saving still
 activates the submitted configuration and its button/copy must say so; this
-refactor does not invent a draft-only native API. Switching an already-saved
-Codex source lives only in Auth's software-connections detail through
-`CodexRequestSource` and the shared `ChangePlanWorkspace`. Models links there
-with `consumer=codex&view=connections` and preserves the validated Agent return
-tuple. It must not mount a second switch workspace. See
+contract does not invent a draft-only native API. Codex and WorkBuddy wrappers
+supply typed request/create callbacks and product copy to one
+`SavePlanWorkspace`; product-specific terminal callbacks still perform the
+readbacks defined above before committing draft state.
+
+Switching an already-saved Codex source lives only in Auth's
+software-connections detail. Models links there with
+`consumer=codex&view=connections`, preserves the validated Agent return tuple,
+and must not mount a second switch workspace. See
 [Managed Accounts](./v2-managed-auth.md#saved-codex-request-source).
 
-Codex and WorkBuddy save wrappers supply typed request/create callbacks and
-product copy to `SavePlanWorkspace`. Their one-shot writes stay local and
-imperative: do not put API-key-bearing requests in `useMutation` variables,
-Query keys/data, or a second persistent workflow store. Synchronous admission
-prevents same-tick duplicate submission; closing/unmounting invalidates pending
-UI replies. Terminal callbacks are delivered at most once per job in the
-mounted save workspace. This does not cancel the native operation.
-
-Both saves and the Codex switch workspace use:
-
-```text
-useChangeJob(port: ChangePlansPort, active: boolean)
-  // -> { job: ChangeJobSnapshot | null, error: {code} | null, setJob, refetch }
-featureKeys.changeJob(jobId) // ["v2", "change-plans", "job", jobId]
-```
-
-Only the job ID is local state; parsed/redacted snapshots live in Query.
-Automatic reads are enabled only while the caller is active and its persistent
-surface is visible. A running/planned job polls every second through Query's
-single-flight lifecycle, with retry/focus/reconnect disabled. Terminal state or
-a sanitized read error stops polling; an error retains the last snapshot and
-must not manufacture success. A lower native `revision` cannot replace a newer
-cached snapshot. The immediate authoritative reread after apply remains part of
-the explicit operation while `busy`; it is not a second automatic timer.
-
-The read consumes Query's abort signal so a late IPC response is not accepted
-after its observer is canceled. IPC itself is not abortable by this signal.
-Use `signal.aborted` and Query's exported `CancelledError`, not newer
-`AbortSignal.throwIfAborted`, to avoid raising the minimum native WebView API.
-Hiding a workspace cancels only inactive queries; closing one observer cannot
-cancel a read still owned by another visible observer. No `setInterval` or
-custom promise/cache scheduler belongs in these workspaces.
-
-Set a single `featureKeys.changeJobs` family default with `gcTime: 0` **before**
-the first `setQueryData` seed, and use the same lifetime in the observer.
-Otherwise the seed creates a default-lived query and its longest configured GC
-time survives a later shorter setting. After all observers are removed the job
-cache is eligible for immediate collection. Do not add per-job defaults or a
-custom eviction timer, and never cache raw native error diagnostics.
+The shared identity-only apply contract, same-tick admission, secret-bearing
+request boundary, Query-owned observation, revision ordering, cancellation,
+zero-retention cache, and terminal delivery rules live in
+[V2 Change Plan Workspaces](./v2-change-plan-workspaces.md). Keep this heading
+as the compatibility anchor for archived references; do not duplicate that
+shared lifecycle here.
 
 ### OpenCode flow
 
@@ -420,15 +394,14 @@ assertion owners include:
   `tests/v2/platform/changePlansPort.test.ts`: exact plan/job parsing, request
   validation, digest/ID binding, and command names;
 - `tests/v2/pages/models/apply/*.test.tsx`: neutral preview, one apply under
-  repeated/StrictMode clicks, stale regeneration, job polling, recovery/
-  compensation copy, and no secret/backend diagnostics;
-- `tests/v2/pages/models/apply/useChangeJob.test.tsx`: slow-read single flight,
-  terminal/error stop, hidden cancellation/resumption, concurrent observers,
-  lower-revision rejection, stale replies after close, zero-retention collection,
-  and sanitized cache; `apply/architecture.test.ts` guards shared orchestration
-  and Query ownership;
+  repeated/StrictMode clicks, stale regeneration, Models-specific terminal
+  callbacks, recovery/compensation copy, and no secret/backend diagnostics;
 - `tests/v2/app/router-shell.test.tsx`: persistent Models lifetime and hidden
   route/query isolation.
+
+Shared observer, source-switch, Query ownership, and cross-route regressions
+are listed in
+[V2 Change Plan Workspaces](./v2-change-plan-workspaces.md#6-tests-required).
 
 Native writer, rollback, file/readback, and real-provider behavior remain owned
 by the linked backend contracts and native/HIL tests. Renderer tests do not
@@ -456,27 +429,6 @@ if (target === "codex") {
 }
 ```
 
-Wrong:
-
-```ts
-localStorage.setItem("model-api-key", apiKey);
-const plan = { ...preview, apiKey };
-await ports.changePlans.applyChangePlan(plan);
-```
-
-Correct:
-
-```ts
-apiKeyRef.current = apiKey; // Mounted draft only; never URL/storage/query data.
-const outcome = await ports.changePlans.applyChangePlan({
-  planId: plan.planId,
-  planDigest: plan.planDigest,
-});
-// Clear the key only at the owning terminal/current-revision boundary.
-```
-
-Wrong: clone an async `setInterval` for each save workflow or place its request
-in the mutation cache merely to reuse a loading flag.
-
-Correct: keep typed product write callbacks in `SavePlanWorkspace` and use
-`useChangeJob` for redacted snapshot observation, visibility, and cancellation.
+Credential lifetime remains owned by the API-key boundary above. Identity-only
+apply, Query observation, and their wrong/correct examples live in
+[V2 Change Plan Workspaces](./v2-change-plan-workspaces.md#7-wrong-vs-correct).

@@ -2,10 +2,10 @@
 
 `mise run typecheck`, `format:check`, and `test:unit` cover leftover renderer
 and shared non-V2 tests. `vitest.config.ts` excludes `tests/v2/**` and
-`tests/v2-browser/**`; V2 changes must use the gates in
-[V2 Shell](./v2-shell.md). V2 copy is hardcoded Chinese and is not part of
-the four-locale `t(...)` contract below. New UI must follow
-[Frontend Reuse](./reuse.md): reuse existing shared owners; if a new
+`tests/v2-browser/**`; V2 changes use the affected focused contract's tests and
+the [Frontend Quality Check](./index.md#quality-check). V2 copy is hardcoded
+Chinese and is not part of the four-locale `t(...)` contract below. New UI must
+follow [Frontend Reuse](./reuse.md): reuse existing shared owners; if a new
 component will be used by another module, put it in `shared/` on the first
 commit.
 

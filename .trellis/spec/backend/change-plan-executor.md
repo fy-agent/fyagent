@@ -19,6 +19,10 @@ never appear in plan, job, event, or log payloads.
 
 Schema v20 remains canonical. `change_plans`, `change_jobs`, and
 `change_job_events` stay local-only and are not redefined by executor changes.
+Renderer preview/apply presentation, Query-owned job observation, and
+Models/Auth workflow placement are defined by
+[V2 Change Plan Workspaces](../frontend/v2-change-plan-workspaces.md); that UI
+contract does not redefine native execution authority.
 
 ## 2. Signatures
 

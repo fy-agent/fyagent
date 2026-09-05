@@ -132,29 +132,27 @@ request mode is a third-party API.
 `shared/features/change-plans-ui/ChangePlanWorkspace.tsx`. It is the sole
 saved Codex Provider-switch entry; Models remains the editor, not a second
 account manager. A source switch does not itself change the official login
-identity. Both native protocols and their confirmation requirements remain.
+identity. Shared preview/apply admission, Query observation, cancellation,
+cache, and terminal-delivery rules are owned by
+[V2 Change Plan Workspaces](./v2-change-plan-workspaces.md).
 
 - ConnectionsView keeps the Codex workspace mounted across consumer/tab
   changes under `PersistentSurface`; automatic reads stop when hidden.
-- Apply uses only `{planId, planDigest}`. Same-tick admission is guarded. A
-  running, unknown-admission, failed-read or unreconciled terminal operation
-  blocks further source and account writes. No automatic write retry occurs.
 - A terminal job rereads both provider summary and managed-auth overview.
   Either failure retains the job, blocking state and a read-only retry action.
   A changed `currentId` must not hide the job that caused the change.
 - Official-account mutations/login invalidate affected provider summaries and
   OpenCode model snapshots. Active owners reread; hidden owners stay stale
   until reactivated. Cached errors do not tear down an in-flight source job.
-- Shared apply presentation uses `useId`, not global static IDs, because
-  visited Models and Auth routes can both remain mounted.
 - Models/Auth navigation carries only the validated Agent-return tuple. It
   does not accept an arbitrary return URL, secret or path.
 
 Required regressions: `tests/v2/pages/auth/CodexRequestSource.test.tsx` covers
 one apply, both readbacks, failure/retry without rewriting, unknown admission,
 hidden reads and return context. `AuthPage` tests verify reverse invalidation
-after switching back to official. Shared workspace/architecture tests retain
-one read controller and prohibit configuration-page installer duplication.
+after switching back to official. Shared workspace and observer regressions are
+listed in
+[V2 Change Plan Workspaces](./v2-change-plan-workspaces.md#6-tests-required).
 
 ### Strict wire boundary
 

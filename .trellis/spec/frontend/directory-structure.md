@@ -1,8 +1,10 @@
 # Directory Structure
 
 The production renderer is V2. `src/index.html` loads `src/v2/main.tsx`. Put
-new product-shell and feature-page code under `src/v2/**` and follow
-[V2 Shell](./v2-shell.md).
+new product-shell and feature-page code under `src/v2/**`; follow
+[V2 Navigation and Persistent Route](./v2-navigation.md),
+[V2 Window Shell and Interaction](./v2-window-shell.md), and the owning focused
+feature contract from the [Frontend Index](./index.md).
 
 `src/App.tsx`, `src/components/**`, `src/hooks/**`, `src/lib/**`,
 `src/i18n/**`, and `src/main.tsx` are leftover V1. They are not the product

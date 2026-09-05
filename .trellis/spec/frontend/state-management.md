@@ -3,7 +3,9 @@
 This page describes the leftover V1 renderer (`src/App.tsx`, `src/hooks/`,
 `src/lib/query/`). Production V2 owns selection in the hash router, keeps
 session-only feature state in `FeatureProvider`, and uses a V2-owned
-QueryClient; see [V2 Shell](./v2-shell.md) and the feature contracts.
+QueryClient; see
+[V2 Navigation and Persistent Route](./v2-navigation.md) and the focused
+feature contracts in [this index](./index.md#v2-feature-contracts).
 
 The leftover renderer uses React local state and Context for UI state, plus
 TanStack React Query for data read from or written to the Tauri backend. There
@@ -44,8 +46,8 @@ remain available only when the owning surface is active.
 Change Plan save/switch workspaces use the shared Query-owned job observer,
 not component intervals. Their zero-retention cache, multi-observer cancellation,
 revision ordering, and explicit secret-bearing write boundary are defined by
-[V2 Models](./v2-models.md#change-plan-workspace-lifecycle). Do not generalize
-that feature's no-retention policy to every resource query.
+[V2 Change Plan Workspaces](./v2-change-plan-workspaces.md). Do not generalize
+that workflow's no-retention policy to every resource query.
 
 ## State Categories
 

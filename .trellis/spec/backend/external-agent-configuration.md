@@ -12,7 +12,8 @@ must cite the focused owner below.
 | TRAE endpoint preflight, TRAE Work CN observed model IDs, and OpenCode model snapshot/fetch/save | [External Agent Model Integration](./external-agent-models.md) |
 | WorkBuddy revisioned model/config writes | [WorkBuddy Configuration](./workbuddy-configuration.md) |
 | Codex/Provider auth/model transaction | [Codex Provider Configuration](./codex-provider-configuration.md) |
-| Renderer model composition and Change Plan UI | [V2 Models and Change Plan UI](../frontend/v2-models.md) |
+| Renderer model composition, drafts, validation and product-specific readback | [V2 Models](../frontend/v2-models.md) |
+| Shared Renderer Change Plan preview/apply, job observation and source-switch ownership | [V2 Change Plan Workspaces](../frontend/v2-change-plan-workspaces.md) |
 
 ## Shared invariants
 
@@ -28,4 +29,4 @@ must cite the focused owner below.
 - Unknown or unsupported live document shapes fail closed instead of being
   normalized to a minimal template.
 - Keep this router short. Detailed signatures, validation, cases and tests
-  belong only in the two focused contracts.
+  belong only in the focused contracts above.
