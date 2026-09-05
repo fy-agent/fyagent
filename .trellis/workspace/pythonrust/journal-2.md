@@ -331,3 +331,28 @@ Overview reasonCodes 改为闭集恢复文案加刷新；登录 Dialog 保持挂
 ### Next Steps
 
 - 合并后重新扫描远端告警；凭证所有者核查Context7历史样例并按需轮换；保留Windows等原生验收边界。
+
+
+## Session 72: 第三轮前端体验与架构整合
+<!-- trellis-session: v=2 fp=e1737fd848f692ad -->
+
+**Date**: 2026-09-05
+**Task**: 第三轮前端体验与架构整合
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+完成第三轮前端体验治理：统一视觉层级与弹窗交互，消除配置页重复安装入口并集中账号/来源管理，修正首屏就绪与原生窗口展示时序，补齐焦点竞争回归、SPEC、完整验证和任务归档。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c27c9bd536c352c8a8184e1cccd127d2582c5498` | refactor(ui): unify desktop hierarchy and dialog interaction |
+| `54b1c0f666afa28d580112746778e3e458c6abd9` | refactor(ui): unify account and configuration workflow ownership |
+| `a239fe0d6799e1a747995ed496cef1f46d8b3ff2` | fix(ui): reveal the main window after initial content is ready |
+| `463962bd32a61613461fc74112409901c23cba67` | fix(ui): preserve dialog focus across guarded transitions |
+
+### Status
+
+[OK] **Completed**
