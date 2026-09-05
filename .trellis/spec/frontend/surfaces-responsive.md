@@ -11,7 +11,7 @@ does not redesign the seven primary routes or native window geometry.
 
 ```ts
 // shared/ui/GlassMaterial.tsx — sole @samasante/liquid-glass import owner
-FrostedSurface(): JSX.Element
+FrostedSurface({ enhanced?: boolean }): JSX.Element // defaults to true
 LiquidGlassLens({ children, className? }): JSX.Element // UI Lab specimen
 ```
 
@@ -32,7 +32,12 @@ parameters remain in that adapter, not in feature pages.
 
 - Modal content is transparent and isolated. `FrostedSurface` is an absolute,
   pointer-inert, aria-hidden backing; text and controls remain outside it.
-  Do not apply opacity or refraction to the entire form or clone credential DOM.
+  Do not lower steady-state form opacity to simulate glass, refract text or
+  clone credential DOM. The bounded foreground arrival transition is owned by
+  [Motion and Dialog Presence](./motion-system.md), not the material adapter.
+- `enhanced=false` retains the standard CSS frost while the dialog's separate
+  backing plane travels. Once its geometry settles, the adapter can enable
+  the library material. This does not change dialog semantics or copy forms.
 - Bare library wrapping selects material mode. Do not pass `refract`, video,
   animated geometry or `filterResolution` just to render a modal background;
   those select different, more expensive paths in the adopted version.
@@ -91,6 +96,12 @@ glass.
 - `support/visual.ts` samples finite raster backgrounds with glyph paint hidden
   but unchanged layout. It supplements axe's incomplete gradient/filter cases;
   it is not a replacement accessibility engine or blanket WCAG certification.
+- Static material/contrast evidence waits for `data-motion-settled="true"`
+  and the actual expected computed filter/foreground state. A CDP media feature
+  override supplies the complete intended set, including reduced motion while
+  testing reduced transparency; do not accidentally restart an entrance and
+  treat a transient alpha sample as a stable color. Motion itself remains
+  covered by real-time and interrupted-animation browser tests.
 - Production bundle smoke/chunk budgets and final motion+material performance
   must still pass. A dev-only screenshot does not prove native WebView/GPU
   behavior, every long document or every contrast pair.

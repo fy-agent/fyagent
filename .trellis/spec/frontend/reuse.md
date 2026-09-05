@@ -61,7 +61,11 @@ through a UI barrel to conceal that dependency.
   (Agent adapter: `src/v2/shared/features/transfer-projection.ts`);
 - layouts: `SplitPanes`, `CatalogMasterDetail`, feature page/panel chrome;
 - external and secret controls: `ExternalLinkButton`, `SecretInput`;
-- shell motion/selection primitives owned under `shared/ui`;
+- shell motion/selection primitives owned under `shared/ui`; pressable buttons
+  live in `Button.tsx`, modal/presence in `Dialog.tsx`, origin measurement in
+  `dialogOrigin.ts`, and conditional session identity in `useDialogState.ts`.
+  Pure `ToastViewport` receives messages; feature state/timers stay at their
+  original owner. See [Motion and Dialog Presence](./motion-system.md);
 - visited-route visibility: `PersistentSurface`, `usePersistentSearchParams`,
   `useStickyVisibleValue`;
 - Agent directory lifecycle chrome: `AgentLifecycleActionSlot` plus closed

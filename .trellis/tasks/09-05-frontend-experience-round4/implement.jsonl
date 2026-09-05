@@ -1,4 +1,6 @@
 {"file":".trellis/spec/frontend/reuse.md","reason":"Existing owner and adopted library before new framework"}
 {"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Production measurements, browser/native evidence and complete gates"}
 {"file":".trellis/spec/frontend/modular-boundaries.md","reason":"Naming and composition must preserve dependency direction"}
+{"file":".trellis/spec/frontend/motion-system.md","reason":"Integrated source, presence, press and session lifetime contracts"}
+{"file":".trellis/spec/frontend/surfaces-responsive.md","reason":"Shared frosted backing, contrast fallback and container invariants"}
 {"file":".trellis/tasks/09-05-frontend-experience-round4/research/sources.md","reason":"Official motion, material and accessibility selection"}

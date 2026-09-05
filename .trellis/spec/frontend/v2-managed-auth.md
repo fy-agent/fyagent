@@ -232,10 +232,13 @@ one read controller and prohibit configuration-page installer duplication.
   or stable Chinese accessible names according to the current V2 language
   policy.
 - Dialog focus is restored to the invoking control. Copy feedback does not move
-  focus. Reduced-motion mode disables non-essential animation. Keep the shared
-  `Dialog` mounted while closed so Radix can dismiss on Escape and return
-  focus after `aria-hidden` is cleared; do not `return null` when `open` is
-  false, and do not wrap login in a second focus owner.
+  focus. Reduced-motion mode disables non-essential animation. Keep controlled
+  Dialog wrappers mounted, or use the reviewed `AnimatePresence` boundary with
+  a fresh conditional session key. The shared layer removes form/actions on
+  close and lets Radix release modality/focus after the backing exits. Do not
+  abruptly `return null` from an unprotected login wrapper or add another focus
+  owner. Pass the actual action's origin ref before asynchronous work; see
+  [Motion and Dialog Presence](./motion-system.md).
 - Copy says what is complete, pending or unknown and gives one safe next step.
   It must not claim login, connection or request routing beyond backend
   readback evidence.
@@ -379,6 +382,8 @@ Correct:
 return <Dialog open={open} onOpenChange={onOpenChange} />;
 ```
 
-Unmounting the shared Dialog while closed skips Radix dismiss and focus
-return. The primitive records the invoking control and restores it on the
-next frame after close.
+Abruptly unmounting an unprotected wrapper bypasses the reviewed exit lifetime.
+Controlled wrappers remain mounted, while conditional editors use a propagated
+presence boundary and fresh session key. The primitive retains Radix ownership
+through the inert backing's exit and restores a still-valid invoking control
+after dismissal. Hidden route removal is an intentional immediate exception.
