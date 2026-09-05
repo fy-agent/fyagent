@@ -45,9 +45,13 @@
 | Gitleaks 基线全 refs 历史               | 2769 commits、32 候选；无历史重写                                                                               |
 | GitHub 告警                             | 51 Dependabot / 66 CodeQL / 2 Secret scanning，全部在 alert-disposition.md 建立处置映射；没有关闭或远端复扫声明 |
 | 最终完整 prearchive                     | 通过，exit=0；最新 CI 分类及全部源码修复均已包含；release-contract 子集 611 passed / 1 skipped                  |
-| 归档后无排除 contracts                  | 归档后执行并记录                                                                                                |
+| 归档后无排除 contracts                  | `mise run check:contracts` 通过，exit=0；归档 manifest 路径修正后 validate 通过                                 |
 
 本机临时日志位于 `/tmp/fyagent-round2-*`，它们不是项目运行依赖。长期结论保留在本任务文件，不依赖临时文件仍在。
+
+工作提交 `5bbfb24d6ccc01b27fa720cb3579a39c8f6cba04`；归档提交 `1e0e5ab7`。
+归档脚本未自动迁移三个 task-local manifest 引用，因此在独立 bookkeeping
+提交中修正并复验。未推送、发布、运行新 CodeQL 或修改远端告警状态。
 
 ## 残余与后续
 

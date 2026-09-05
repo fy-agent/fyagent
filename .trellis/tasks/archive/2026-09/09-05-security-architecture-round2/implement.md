@@ -8,7 +8,9 @@
 - [x] 真实 TS 依赖图扫描、修复架构边界、加入防回退门禁。
 - [x] 集成评审、补扫、更新所属 SPEC 和平台身份摘要。
 - [x] 完成所有受影响门禁和完整 prearchive（最终源码与 CI 分类检查，退出 0）。
-- [ ] 工作提交、归档、日志及无排除 postarchive 校验。
+- [x] 工作提交、归档及无排除 postarchive 校验。
+
+会话日志由 Trellis finish-work 最后独立写入 `.trellis/workspace/pythonrust/`，引用本任务工作提交，不把归档提交冒充代码提交。
 
 ## 验证入口
 

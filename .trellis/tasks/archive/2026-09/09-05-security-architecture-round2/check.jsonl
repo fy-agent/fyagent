@@ -2,7 +2,7 @@
 {"file":".trellis/spec/frontend/modular-boundaries.md","reason":"Review real dependency graph and compatibility facades"}
 {"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Frontend tests and evidence boundaries"}
 {"file":".trellis/spec/backend/development-environment.md","reason":"Locked dependency and native evidence checks"}
-{"file":".trellis/tasks/09-05-security-architecture-round2/research/sources.md","reason":"No blanket ignore, no secret exposure or false zero claims"}
+{"file":".trellis/tasks/archive/2026-09/09-05-security-architecture-round2/research/sources.md","reason":"No blanket ignore, no secret exposure or false zero claims"}
 {"file":".trellis/spec/backend/security-review.md","reason":"Native diagnostics, dependency and credential triage rules"}
 {"file":".trellis/spec/frontend/security-boundaries.md","reason":"HTML/URL and structural configuration contracts"}
-{"file":".trellis/tasks/09-05-security-architecture-round2/research/alert-disposition.md","reason":"Complete remote-alert map and residual reachability evidence"}
+{"file":".trellis/tasks/archive/2026-09/09-05-security-architecture-round2/research/alert-disposition.md","reason":"Complete remote-alert map and residual reachability evidence"}

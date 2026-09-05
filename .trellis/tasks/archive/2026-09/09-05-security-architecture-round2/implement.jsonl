@@ -3,4 +3,4 @@
 {"file":".trellis/spec/frontend/modular-boundaries.md","reason":"V2/leftover/neutral import boundaries"}
 {"file":".trellis/spec/frontend/reuse.md","reason":"Reuse mature primitives without parallel owners"}
 {"file":".trellis/spec/backend/development-environment.md","reason":"Locked dependency/toolchain changes and current-host evidence"}
-{"file":".trellis/tasks/09-05-security-architecture-round2/research/sources.md","reason":"Security advisories and verified scanner limits"}
+{"file":".trellis/tasks/archive/2026-09/09-05-security-architecture-round2/research/sources.md","reason":"Security advisories and verified scanner limits"}
