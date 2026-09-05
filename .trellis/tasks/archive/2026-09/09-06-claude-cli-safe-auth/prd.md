@@ -27,7 +27,7 @@
 - [x] Auth account switching leaves an unrelated, commented Codex config byte-identical; a saved login is not mistaken for a request-source change.
 - [x] Missing provider credentials, stale previews, cancellation, failed backup and failed replacement have zero destructive primary-file effects.
 - [x] Users see real targets and backup locations before confirmation and can recover the retained preimage without overwriting an external change.
-- [ ] Both children pass their focused tests and the final applicable prearchive gate; specs, task records and commits are complete.
+- [x] Both children pass their focused tests and the final applicable prearchive gate; specs, task records and commits are complete.
 
 ## Out of Scope
 

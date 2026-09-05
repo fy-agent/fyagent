@@ -8,4 +8,4 @@
 - [x] Review no desktop fallback, no global npm config mutation, owner-preserving updates and no elevated user-CLI execution.
 - [x] Update specs and record [verification and native evidence limits](../09-06-claude-cli-safe-auth/verification.md).
 - [x] Pass `mise run check:prearchive --exclude-active-task .trellis/tasks/09-06-claude-code-cli` with the matching session task active.
-- [ ] Commit work and archive this child.
+- [x] Commit work in `6d8ffc9c` and archive this child after SPEC and prearchive validation.

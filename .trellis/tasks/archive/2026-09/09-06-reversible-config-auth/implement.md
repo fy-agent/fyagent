@@ -8,6 +8,6 @@
 - [x] Run focused Rust/V2 checks and full `mise run check`; record [verification](../09-06-claude-cli-safe-auth/verification.md).
 - [x] Update owning specs before archival.
 - [x] Pass `mise run check:prearchive --exclude-active-task .trellis/tasks/09-06-reversible-config-auth` with the matching session task active.
-- [ ] Commit work and archive this child.
+- [x] Commit work in `6d8ffc9c` and archive this child after SPEC and prearchive validation.
 
 Review checkpoints: no token/raw output in DTOs; no renderer paths in writes; no silent keyring conversion; no backup omission on direct auth writers; no rollback that overwrites a later external edit.
