@@ -1,4 +1,4 @@
 {"file":".trellis/spec/frontend/v2-navigation.md","reason":"One route owner, persistent pages, errors and return context"}
 {"file":".trellis/spec/frontend/state-management.md","reason":"Hidden query gating and local secret/draft lifetime"}
 {"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Production chunk and performance evidence"}
-{"file":".trellis/tasks/09-05-frontend-experience-round4/research/audit.md","reason":"Inspect hot paths instead of guessing a cause"}
+{"file":".trellis/tasks/archive/2026-09/09-05-frontend-experience-round4/research/audit.md","reason":"Inspect hot paths instead of guessing a cause"}

@@ -3,4 +3,4 @@
 {"file":".trellis/spec/frontend/reuse.md","reason":"Radix and adopted Motion, pure UI responsibility"}
 {"file":".trellis/spec/frontend/motion-system.md","reason":"Concrete press/origin/presence/session and live preference contracts"}
 {"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Native Request and DOM AbortSignal test boundary and verification scope"}
-{"file":".trellis/tasks/09-05-frontend-experience-round4/research/sources.md","reason":"Official presence/spring guidance and locked-version boundaries"}
+{"file":".trellis/tasks/archive/2026-09/09-05-frontend-experience-round4/research/sources.md","reason":"Official presence/spring guidance and locked-version boundaries"}

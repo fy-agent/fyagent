@@ -15,7 +15,7 @@
   "branch": "dev/laiyongjie",
   "base_branch": "main",
   "worktree_path": null,
-  "commit": null,
+  "commit": "87654f0745bea54e9defe2adf792ac5388d5b3f2",
   "pr_url": null,
   "subtasks": [],
   "children": [

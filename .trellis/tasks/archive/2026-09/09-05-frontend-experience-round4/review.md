@@ -64,8 +64,25 @@
 大块体积告警保留，没有提高警告阈值或混称生产路由包体。
 
 所有回归按现有mise runner执行，不新增检查豁免、不提高预算、不操作真实账号或
-外部安装。归档后的无排除contracts、四任务commit和上下文、journal与工作树核验
-由最终关闭步骤记录；归档状态本身不替代这些检查。
+外部安装。归档状态本身不替代最终检查。
+
+## 归档关闭核验
+
+四任务均为completed，归档到`.trellis/tasks/archive/2026-09/`。父任务移动造成的
+五条活动目录上下文引用已修正；四任务`task.py validate`均通过。每个task.json记录
+完整工作commit，且`git merge-base --is-ancestor`证明四个commit均在当前分支历史中。
+
+| 任务                            | 工作提交                                 |
+| ------------------------------- | ---------------------------------------- |
+| frontend-navigation-performance | bfa5bef80e1cec47ebcdbeef1b1adf1e1d953c8c |
+| frontend-surfaces-responsive    | 1edbb6faaa7c529e5cb3a2bf589a0bf592dfaa6b |
+| frontend-motion-system          | d50c8bb4eb89ca31fb701b16264a527b257c5042 |
+| frontend-experience-round4      | 87654f0745bea54e9defe2adf792ac5388d5b3f2 |
+
+无任务排除参数的`mise run check:contracts`已实际退出0，日志为
+`/tmp/fyagent-round4-postarchive-contracts.log`，含611项契约测试通过、1项既有跳过
+及4项native-fetch回归。最终关闭依次提交本证据、通过`add_session.py`记录会话，
+然后强制核验`git status --porcelain`为空及没有活动任务；失败时不报告完成。
 
 ## 限制与残余
 
