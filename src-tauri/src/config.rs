@@ -8,6 +8,35 @@ use std::path::{Component, Path, PathBuf};
 
 use crate::error::AppError;
 
+mod recovery;
+
+pub(crate) use recovery::{
+    file_mutation_scope, file_recovery, restore_file_recovery, FileRecovery,
+};
+
+/// Native-resolved display metadata. It is deliberately Serialize-only: a
+/// renderer must never supply a filesystem path as write authority.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileWriteTarget {
+    pub path: String,
+    pub backup_path: String,
+    pub exists: bool,
+}
+
+pub(crate) fn file_write_target(path: &Path) -> Result<FileWriteTarget, AppError> {
+    recovery::validate_file_leaf(path)?;
+    let backup = rolling_backup_path(path);
+    recovery::validate_file_leaf(&backup)?;
+    Ok(FileWriteTarget {
+        exists: path
+            .try_exists()
+            .map_err(|error| AppError::io(path, error))?,
+        path: display_user_path(path),
+        backup_path: display_user_path(&backup),
+    })
+}
+
 /// 获取用户主目录。
 ///
 /// ## Windows 注意事项
@@ -69,34 +98,19 @@ pub fn rolling_backup_path(path: &Path) -> PathBuf {
     path.with_file_name(format!("{file_name}.fyagent.backup"))
 }
 
-/// Replace the single rolling backup with the immediately previous source
-/// bytes. A missing source has no preimage and therefore creates no backup.
-/// The primary caller must abort if this function returns an error.
-pub fn backup_existing_file(path: &Path) -> Result<Option<PathBuf>, AppError> {
-    backup_existing_file_to(path, &rolling_backup_path(path))
-}
-
-/// Same safety contract as [`backup_existing_file`], but lets an existing
-/// domain keep its historical fixed backup filename.
+/// Back up an existing source into a domain's historical fixed backup filename.
+/// Ordinary configuration writes already retain the rolling backup by default.
 pub fn backup_existing_file_to(
     path: &Path,
     backup_path: &Path,
 ) -> Result<Option<PathBuf>, AppError> {
+    recovery::validate_file_leaf(path)?;
     let bytes = match fs::read(path) {
         Ok(bytes) => bytes,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(error) => return Err(AppError::io(path, error)),
     };
-    atomic_write(backup_path, &bytes)?;
-
-    #[cfg(target_os = "macos")]
-    {
-        let metadata = fs::metadata(path).map_err(|error| AppError::io(path, error))?;
-        if let Err(error) = fs::set_permissions(backup_path, metadata.permissions()) {
-            let _ = fs::remove_file(backup_path);
-            return Err(AppError::io(backup_path, error));
-        }
-    }
+    atomic_write_unbacked(backup_path, &bytes, true)?;
 
     Ok(Some(backup_path.to_path_buf()))
 }
@@ -386,8 +400,33 @@ pub(crate) fn read_bounded_file(path: &Path, max_bytes: usize) -> std::io::Resul
     Ok(bytes)
 }
 
-/// 原子写入：写入临时文件后 rename 替换，避免半写状态
+/// Managed writes always retain a recoverable preimage. Feature callers must
+/// not have to remember a separate backup call before changing a user file.
 pub fn atomic_write(path: &Path, data: &[u8]) -> Result<(), AppError> {
+    recovery::write(path, Some(data), false)
+}
+
+/// Credential files are private from temporary-file creation, not chmod'ed
+/// only after a new token has already become visible at the destination.
+pub(crate) fn atomic_write_private(path: &Path, data: &[u8]) -> Result<(), AppError> {
+    recovery::write(path, Some(data), true)
+}
+
+/// Domain compensation restores its captured preimage without rotating the
+/// useful undo backup to the failed intermediate contents. Not an IPC API.
+pub(crate) fn restore_file_preimage(path: &Path, bytes: Option<&[u8]>) -> Result<(), AppError> {
+    recovery::restore_preimage(path, bytes)
+}
+
+/// An already-captured backup is recovery material, not a new user-config
+/// mutation. Keep this explicit so backup writers cannot recursively back up
+/// backups or emit misleading undo records beside historical backup files.
+pub(crate) fn write_backup_file(path: &Path, data: &[u8]) -> Result<(), AppError> {
+    atomic_write_unbacked(path, data, true)
+}
+
+fn atomic_write_unbacked(path: &Path, data: &[u8], private: bool) -> Result<(), AppError> {
+    recovery::validate_file_leaf(path)?;
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| AppError::io(parent, e))?;
     }
@@ -413,11 +452,14 @@ pub fn atomic_write(path: &Path, data: &[u8]) -> Result<(), AppError> {
                 "{file_name}.tmp.{}.{ts}.{counter}",
                 std::process::id()
             ));
-            match fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&candidate)
+            let mut options = fs::OpenOptions::new();
+            options.write(true).create_new(true);
+            #[cfg(target_os = "macos")]
             {
+                use std::os::unix::fs::OpenOptionsExt;
+                options.mode(0o600);
+            }
+            match options.open(&candidate) {
                 Ok(file) => return Ok((candidate, file)),
                 Err(source) if source.kind() == std::io::ErrorKind::AlreadyExists => {
                     last_collision = Some((candidate, source));
@@ -430,7 +472,7 @@ pub fn atomic_write(path: &Path, data: &[u8]) -> Result<(), AppError> {
         Err(AppError::io(&candidate, source))
     })()?;
 
-    if let Err(source) = file.write_all(data).and_then(|_| file.flush()) {
+    if let Err(source) = file.write_all(data).and_then(|_| file.sync_all()) {
         drop(file);
         let _ = fs::remove_file(&tmp);
         return Err(AppError::io(&tmp, source));
@@ -440,11 +482,26 @@ pub fn atomic_write(path: &Path, data: &[u8]) -> Result<(), AppError> {
     #[cfg(target_os = "macos")]
     {
         use std::os::unix::fs::PermissionsExt;
-        if let Ok(meta) = fs::metadata(path) {
-            let perm = meta.permissions().mode();
-            let _ = fs::set_permissions(&tmp, fs::Permissions::from_mode(perm));
+        let mode = if private {
+            0o600
+        } else {
+            match fs::metadata(path) {
+                Ok(meta) => meta.permissions().mode(),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => 0o600,
+                Err(error) => {
+                    let _ = fs::remove_file(&tmp);
+                    return Err(AppError::io(path, error));
+                }
+            }
+        };
+        if let Err(error) = fs::set_permissions(&tmp, fs::Permissions::from_mode(mode)) {
+            let _ = fs::remove_file(&tmp);
+            return Err(AppError::io(&tmp, error));
         }
     }
+
+    #[cfg(target_os = "windows")]
+    let _ = private; // Windows replacement retains the destination's ACL.
 
     #[cfg(windows)]
     {
@@ -527,6 +584,9 @@ pub fn atomic_write(path: &Path, data: &[u8]) -> Result<(), AppError> {
                 source,
             });
         }
+        fs::File::open(parent)
+            .and_then(|directory| directory.sync_all())
+            .map_err(|error| AppError::io(parent, error))?;
     }
     Ok(())
 }
@@ -562,7 +622,7 @@ mod tests {
             .open(&path)
             .unwrap();
 
-        let result = atomic_write(&path, b"new contents");
+        let result = atomic_write_unbacked(&path, b"new contents", false);
 
         assert!(result.is_err());
         drop(held_file);
@@ -716,19 +776,13 @@ mod tests {
 
 /// 复制文件
 pub fn copy_file(from: &Path, to: &Path) -> Result<(), AppError> {
-    fs::copy(from, to).map_err(|e| AppError::IoContext {
-        context: format!("复制文件失败 ({} -> {})", from.display(), to.display()),
-        source: e,
-    })?;
-    Ok(())
+    let bytes = fs::read(from).map_err(|error| AppError::io(from, error))?;
+    atomic_write(to, &bytes)
 }
 
 /// 删除文件
 pub fn delete_file(path: &Path) -> Result<(), AppError> {
-    if path.exists() {
-        fs::remove_file(path).map_err(|e| AppError::io(path, e))?;
-    }
-    Ok(())
+    recovery::write(path, None, false)
 }
 
 /// 检查 Claude Code 配置状态

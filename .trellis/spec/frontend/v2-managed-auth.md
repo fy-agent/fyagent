@@ -57,7 +57,11 @@ interface ManagedAuthPort {
   ): Promise<ManagedAuthMutationResult>;
   applyConnectionAction(
     request: ManagedAuthConnectionActionRequest,
+    previewId?: string,
   ): Promise<ManagedAuthMutationResult>;
+  previewConnectionAction(
+    request: ManagedAuthConnectionActionRequest,
+  ): Promise<ManagedAuthConnectionActionPreview>;
 }
 ```
 
@@ -111,7 +115,8 @@ request mode is a third-party API.
   or reorder accounts by short-lived usage.
 - Account detail lists already-linked software and matching unlinked software
   for the same provider. Linked cards expose the closed connection actions
-  that switch official usage (`switch_to_official`, `switch_account`). Unlinked
+  that change the bound account (`switch_account`). `switch_to_official` is a
+  retained wire value, not a currently advertised account mutation. Unlinked
   matching slots expose `connect_account` when the backend advertises it. A
   ready account may also start a `connect_consumer` login for a matching
   consumer that is not yet connectable from the saved credential purpose. The
@@ -124,7 +129,9 @@ request mode is a third-party API.
   “未检测到可管理的安装实例” from that null; the auth page still never
   installs software as a side effect.
 - Internal terms such as SecretRef, credential ID, refresh-token lineage,
-  projection generation and native path never appear in product copy or DOM.
+  projection generation never appear in product copy or DOM. Native-resolved
+  display paths are shown only by explicit file-impact/recovery controls;
+  paths never become renderer-controlled write destinations.
 
 ### Saved Codex request source
 
@@ -146,6 +153,10 @@ cache, and terminal-delivery rules are owned by
   until reactivated. Cached errors do not tear down an in-flight source job.
 - Models/Auth navigation carries only the validated Agent-return tuple. It
   does not accept an arbitrary return URL, secret or path.
+- The selected source's native `writeTargets` are frozen with the preview and
+  displayed before applying. A generated model catalog is a separate disclosed
+  file. Account selection does not rewrite this config, and source selection
+  does not replace the official account's auth file.
 
 Required regressions: `tests/v2/pages/auth/CodexRequestSource.test.tsx` covers
 one apply, both readbacks, failure/retry without rewriting, unknown admission,
@@ -181,18 +192,37 @@ listed in
 
 ### State and mutations
 
+- Connecting, switching or disconnecting an account first requests a native
+  impact preview. The dialog shows changed/created files, backup locations and
+  unchanged paths through shared `FileWriteDisclosure`. It cannot confirm
+  while the preview is absent, stale, failed or disallowed. The one-shot
+  confirmation submits the same request plus its opaque `previewId`; neither
+  selection nor opening/cancelling the dialog performs a file write.
+- A changed account selection gets a new Query-owned preview. Previews stop
+  fetching when hidden and are not reused after confirmation. The native
+  owner independently enforces expiry, request/path binding and single use.
+- OAuth completion says `账号已保存`, not connected. A consumer-purpose login
+  still requires a separate impact preview and explicit connection action.
+- `FileRecoveryButton` composes the closed recovery port. It loads only on
+  request, shows actual source/backup paths, explicitly distinguishes restoring
+  an old file from deleting a first-created file, and requires confirmation.
+  Changed external files or backups disable automatic restore. Successful
+  restore rereads affected feature state; it is not account deletion, Provider
+  deletion, server-side token revocation or proven live consumer pickup.
+  The native contract is [Reversible User Configuration](../backend/reversible-user-config.md).
+
 - TanStack Query owns the overview and active-session snapshots. URL state owns
   the selected view/account/consumer. Secret or OAuth material never enters
   Query state, route state or localStorage.
 - Login-session polling/recovery is owned by one hook. Remount resumes the
   backend session instead of starting a duplicate. Polling stops while the
   persistent route is hidden and on terminal/unmount.
-- Account default/removal and OpenCode file mutations are revision-enforced by
-  their backend owners. Every connection request still carries the displayed
-  revision, but Codex/Grok metadata-only paths do not yet provide independent
-  stale-revision CAS. Positive UI state therefore comes only from the mutation
-  result's freshly parsed overview/readback; the page does not patch an
-  optimistic success or claim stronger concurrency protection.
+- Account default/removal and connection actions are revision-checked by
+  their native owners. Codex uses the combined observed config/auth revision;
+  OpenCode uses the current auth-file observation rather than an old persisted
+  revision. Positive UI state still comes only from the freshly parsed
+  overview/readback; a preview is not proof the external process picked up a
+  file, and the UI does not manufacture connected state.
 - `reopenLogin` asks the backend to open the official page for the current
   non-terminal session. The renderer never receives an authorization URL.
 - Account removal requires a backend impact preview. Failure to disconnect all
@@ -256,7 +286,7 @@ listed in
 | Page is hidden by persistent routing                                                  | Pause automatic queries and polling; retain selected UI state.                                                       |
 | Mutation returns no authoritative overview/readback                                   | Keep prior state and show uncertainty; do not claim success.                                                         |
 | Account/default/removal or OpenCode file mutation has a stale revision                | Preserve stale error, reread, and require an explicit retry.                                                         |
-| Codex/Grok metadata action completes from an older displayed revision                 | Render only the returned overview; do not infer that the backend performed stale-write rejection.                    |
+| Displayed connection revision or native preview no longer matches                     | Reject/reread and require a fresh explicit confirmation; no optimistic success                                       |
 | Codex is `disconnected` with a saved account but live identity is absent or different | Present “账号已保存”, not “已连接”; never count it as proven native pickup.                                          |
 | Completed login/mutation has `reasonCode=pending_restart`                             | Accept the response, render the returned overview, and offer restart-specific guidance; do not show a generic retry. |
 | Completed login/mutation has another non-null reason                                  | Reject the response as invalid managed-auth data.                                                                    |

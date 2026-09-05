@@ -5,9 +5,7 @@ import type { ManagedAuthPort } from "@/v2/shared/features/managed-auth";
 import { useManagedAuthLoginSession } from "@/v2/pages/auth/useManagedAuthLoginSession";
 import { deviceLoginSessionFixture } from "../../fixtures/managedAuth";
 
-function loginPort(
-  overrides: Partial<ManagedAuthPort> = {},
-): ManagedAuthPort {
+function loginPort(overrides: Partial<ManagedAuthPort> = {}): ManagedAuthPort {
   return {
     getOverview: vi.fn(),
     startLogin: vi.fn(async () => deviceLoginSessionFixture()),
@@ -19,6 +17,7 @@ function loginPort(
     previewAccountRemoval: vi.fn(),
     removeAccount: vi.fn(),
     applyConnectionAction: vi.fn(),
+    previewConnectionAction: vi.fn(),
     ...overrides,
   };
 }

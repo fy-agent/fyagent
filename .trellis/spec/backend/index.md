@@ -41,9 +41,17 @@ secret handling, native source checks, and residual-risk reporting.
 | [Application Brand Assets](./application-brand-assets.md)                 | Canonical icons, asset derivation, platform packaging, and byte-level validation.                                               |
 | [Application Version and Installer Assets](./fyagent-version-contract.md) | Canonical version source, package versions, and installer filename contract.                                                    |
 | [Main Window Layout](./main-window-layout.md)                             | Native geometry, maximize/work-area behavior, and renderer chrome boundary.                                                     |
-| [Main Window Presentation](./window-presentation.md)                     | Hidden startup, content readiness, queued reveal, silent mode and failure recovery.                                             |
+| [Main Window Presentation](./window-presentation.md)                      | Hidden startup, content readiness, queued reveal, silent mode and failure recovery.                                             |
 
 ## Product, configuration, and runtime security
+
+[Reversible User Configuration](./reversible-user-config.md) owns the default
+backup/atomic-write/undo mechanism, closed recovery commands and disclosure
+metadata. Read it before any user-file write; domain-specific locks and native
+path protections remain with the focused contracts below.
+
+[Claude Code CLI](./claude-code-cli.md) owns the CLI-only distribution contract
+and reuse of Grok's npm mirrors and ordinary-user execution boundary.
 
 | Contract                                                                  | Owns                                                                                                                             |
 | ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |

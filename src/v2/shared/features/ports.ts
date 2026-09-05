@@ -241,6 +241,7 @@ export interface MemoryPort {
 }
 
 export interface FeaturePorts {
+  configRecovery: import("./config-recovery").ConfigRecoveryPort;
   catalog: AgentCatalogPort;
   agentAuth: AgentAuthPort;
   managedAuth: ManagedAuthPort;

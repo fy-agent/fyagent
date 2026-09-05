@@ -22,6 +22,7 @@
     "allow-change-plan",
     "allow-agent-install-readiness",
     "allow-agent-auth",
-    "allow-managed-auth"
+    "allow-managed-auth",
+    "allow-user-config-recovery"
   ]
 }

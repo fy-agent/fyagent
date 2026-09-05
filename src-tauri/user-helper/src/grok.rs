@@ -237,17 +237,12 @@ pub fn parse_cli_installer_hint(config_text: &str) -> Option<GrokOwner> {
 }
 
 pub fn parse_normalized_version(raw: &str) -> Option<String> {
-    let bytes = raw.as_bytes();
-    let mut index = 0;
-    while index < bytes.len() {
-        if let Some((version, consumed)) = match_version_at(&raw[index..]) {
+    for (index, _) in raw.char_indices() {
+        if let Some((version, _)) = match_version_at(&raw[index..]) {
             if version.len() <= MAX_NORMALIZED_VERSION_BYTES {
                 return Some(version);
             }
-            index += consumed;
-            continue;
         }
-        index += 1;
     }
     None
 }
@@ -448,6 +443,15 @@ fn plan_update(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn version_parser_handles_non_ascii_cli_banners_without_panicking() {
+        assert_eq!(
+            parse_normalized_version("Claude 启动完成 2.1.261 (Claude Code)"),
+            Some("2.1.261".to_string())
+        );
+        assert_eq!(parse_normalized_version("尚未安装"), None);
+    }
 
     #[test]
     fn native_path_markers_are_slash_normalized() {

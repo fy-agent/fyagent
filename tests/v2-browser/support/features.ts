@@ -235,8 +235,8 @@ export async function installRichTauriFeatureFixture(
           officialLinks: [
             {
               id: "desktop",
-              label: "Claude Desktop",
-              url: "https://claude.com/download",
+              label: "Claude Code CLI 安装说明",
+              url: "https://code.claude.com/docs/en/setup",
             },
           ],
           capabilities: catalogCapabilities("claude-code"),
@@ -984,6 +984,29 @@ export async function installRichTauriFeatureFixture(
           case "managed_auth_set_default_account":
           case "managed_auth_apply_connection_action":
             return managedMutation();
+          case "managed_auth_preview_connection_action": {
+            const request = payload.request as {
+              connectionId: string;
+              expectedRevision: string;
+              action: string;
+              accountId: string | null;
+            };
+            return {
+              contractVersion: 1,
+              previewId: "323e4567-e89b-42d3-a456-426614174000",
+              ...request,
+              writeTargets: [
+                {
+                  path: "~/.codex/auth.json",
+                  backupPath: "~/.codex/auth.json.fyagent.backup",
+                  exists: true,
+                },
+              ],
+              preservedPaths: ["~/.codex/config.toml"],
+              canApply: true,
+              reasonCodes: [],
+            };
+          }
           case "managed_auth_preview_account_removal": {
             const request = payload.request as {
               accountId: string;
@@ -1241,16 +1264,22 @@ export async function installRichTauriFeatureFixture(
                 `fixture ${app} Provider observation unavailable`,
               );
             }
+            const writeTargets = [
+              {
+                path: `~/.config/${app}/config`,
+                backupPath: `~/.config/${app}/config.fyagent.backup`,
+                exists: true,
+              },
+            ];
             return {
-              providers: structuredClone(providers[app] ?? {}),
+              providers: Object.fromEntries(
+                Object.entries(providers[app] ?? {}).map(([id, provider]) => [
+                  id,
+                  { ...structuredClone(provider), writeTargets },
+                ]),
+              ),
               currentId: currentProviderIds[app] ?? "",
-              writeTargets: [
-                {
-                  path: `~/.config/${app}/config`,
-                  backupPath: `~/.config/${app}/config.fyagent.backup`,
-                  exists: true,
-                },
-              ],
+              writeTargets,
             };
           }
           case "list_recoverable_change_jobs":

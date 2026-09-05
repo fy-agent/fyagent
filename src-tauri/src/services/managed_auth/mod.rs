@@ -9,6 +9,7 @@ use chrono::SecondsFormat;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+mod connection_actions;
 pub(crate) mod consumers;
 mod core;
 mod login;
@@ -334,6 +335,21 @@ pub struct ManagedAuthAccountRemovalPreview {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ManagedAuthConnectionActionPreview {
+    pub contract_version: u8,
+    pub preview_id: String,
+    pub connection_id: String,
+    pub expected_revision: String,
+    pub action: ManagedAuthConnectionAction,
+    pub account_id: Option<String>,
+    pub write_targets: Vec<crate::config::FileWriteTarget>,
+    pub preserved_paths: Vec<String>,
+    pub can_apply: bool,
+    pub reason_codes: Vec<ManagedAuthReasonCode>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ManagedAuthMutationResult {
     pub contract_version: u8,
     pub operation_id: String,
@@ -427,7 +443,7 @@ impl ManagedAuthAccountRemovalRequest {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ManagedAuthConnectionActionRequest {
     pub connection_id: String,

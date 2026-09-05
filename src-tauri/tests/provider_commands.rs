@@ -436,11 +436,10 @@ command = "say"
         .get("config")
         .and_then(|v| v.as_str())
         .unwrap_or_default();
-    // 供应商配置应该包含在 live 文件中
-    // 注意：live 文件还会包含 MCP 同步后的内容
+    // A request-source switch does not import unrelated MCP from a saved snapshot.
     assert!(
-        config_text.contains("mcp_servers.latest"),
-        "live file should contain provider's original config"
+        !config_text.contains("mcp_servers.latest"),
+        "source switching must not overwrite user MCP from the Provider snapshot"
     );
     assert!(
         new_config_text.contains("mcp_servers.latest"),

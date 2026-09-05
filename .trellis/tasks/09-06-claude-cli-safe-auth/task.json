@@ -1,0 +1,29 @@
+{
+  "id": "claude-cli-safe-auth",
+  "name": "claude-cli-safe-auth",
+  "title": "Claude CLI 与用户配置可逆修改",
+  "description": "独立工作树交付 Claude Code CLI 镜像安装及官方登录入口，并修复认证切换的配置覆盖、修改披露与可撤销备份底线",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "pythonrust",
+  "assignee": "pythonrust",
+  "createdAt": "2026-09-06",
+  "completedAt": null,
+  "branch": "feat/claude-cli-safe-auth",
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "09-06-reversible-config-auth",
+    "09-06-claude-code-cli"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

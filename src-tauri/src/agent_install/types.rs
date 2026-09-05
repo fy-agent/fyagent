@@ -367,6 +367,8 @@ pub enum AgentSourceKind {
 pub enum AgentReasonCode {
     OfficialPageOnly,
     SourceNotVerified,
+    ToolHostMissing,
+    ToolOwnerUnsupported,
     PlatformUnsupported,
     InteractiveUserUnavailable,
     InstalledNotRunnable,
@@ -886,17 +888,17 @@ mod tests {
         );
         assert_eq!(
             default_surface(AgentCatalogId::ClaudeCode),
-            AgentSurface::Desktop
+            AgentSurface::Cli
         );
         assert!(!surface_is_legal(
             AgentCatalogId::QoderWork,
             AgentSurface::Cli
         ));
-        assert!(!surface_is_legal(
+        assert!(surface_is_legal(
             AgentCatalogId::ClaudeCode,
             AgentSurface::Cli
         ));
-        assert!(surface_is_legal(
+        assert!(!surface_is_legal(
             AgentCatalogId::ClaudeCode,
             AgentSurface::Desktop
         ));
@@ -906,7 +908,7 @@ mod tests {
         );
         assert_eq!(
             resolve_requested_surface(AgentCatalogId::ClaudeCode, Some(AgentSurface::Cli)),
-            Err(AgentReasonCode::SurfaceNotSupported)
+            Ok(AgentSurface::Cli)
         );
         assert_eq!(
             resolve_requested_surface(AgentCatalogId::QoderWork, Some(AgentSurface::Cli)),

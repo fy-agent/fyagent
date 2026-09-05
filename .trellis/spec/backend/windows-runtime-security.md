@@ -29,6 +29,12 @@ runtime nor NSIS may reinterpret it as the former runtime tree.
 
 ## 2. Signatures
 
+Claude CLI lifecycle also uses the existing ordinary-user helper with the
+closed `claude-tool --action observe|install|update` action. Its independent
+action identity, exact npm plan and native verification are owned by
+[Claude Code CLI](./claude-code-cli.md); it does not weaken the parent process's
+elevated CLI execution prohibition or admit Auth commands.
+
 ```rust
 pub fn initialize_windows_user_context()
     -> Result<(), WindowsStartupErrorCode>;
@@ -303,8 +309,8 @@ IShellFolderViewDual.Application -> IShellDispatch2`.
 | Formal elevated Windows Grok Build observe/install/update                                        | Closed `grok-tool` helper action under the frozen Explorer user; helper failure must not fall back to elevated CLI.                                                          |
 | The installer helper accepts URL, path, shell string, scope, silent switch, or raw child stdout  | Contract/static test fails; only exact Codex MSIX, Agent EXE product, or Grok tool actions are registered.                                                                   |
 | Helper `Hello(action)` differs from the parent-selected action/product                           | Reject before bridge control/admission; zero installer launch.                                                                                                               |
-| Agent EXE helper `ShellExecuteEx` succeeds, including a missing process handle | Job `succeeded` (vendor-wizard handoff); do not wait, kill, or delete the PackageBridge EXE leaf. |
-| Agent EXE helper launch uses a null verb or inherits the helper console          | Contract/static test fails; fMask is `SEE_MASK_NOCLOSEPROCESS` plus `SEE_MASK_NO_CONSOLE` and `lpVerb` is `open`. |
+| Agent EXE helper `ShellExecuteEx` succeeds, including a missing process handle                   | Job `succeeded` (vendor-wizard handoff); do not wait, kill, or delete the PackageBridge EXE leaf.                                                                            |
+| Agent EXE helper launch uses a null verb or inherits the helper console                          | Contract/static test fails; fMask is `SEE_MASK_NOCLOSEPROCESS` plus `SEE_MASK_NO_CONSOLE` and `lpVerb` is `open`.                                                            |
 | Non-Windows platform                                                                             | Preserve its existing path resolver, Store/window-state plugin, and single-instance behavior.                                                                                |
 
 ## 5. Good / Base / Bad Cases
@@ -352,7 +358,7 @@ IShellFolderViewDual.Application -> IShellDispatch2`.
   a final link, newly created keys, and the required no-follow reopen after an
   existing create result. Inventory-parent tests prove Uninstall/App Paths
   leaves use `INVENTORY_PARENT_READ` (`KEY_QUERY_VALUE |
-  KEY_ENUMERATE_SUB_KEYS`, no create/set), that the constant stays distinct
+KEY_ENUMERATE_SUB_KEYS`, no create/set), that the constant stays distinct
   from `TRAVERSE` even when the current mask is identical, and that enumerated
   children stay `READ_VALUES`. Native registry-link HIL remains unexecuted. Any
   future, separately authorized runtime validation must use only disposable
@@ -569,7 +575,6 @@ fyagent-user-helper.exe
   // install does not consume the npm plan.
 ```
 
-
 ### 3. Contracts
 
 - Catalog CLI lifecycle and Auth observation/session reuse `services/tooling`.
@@ -594,18 +599,18 @@ fyagent-user-helper.exe
 
 ### 4. Validation & Error Matrix
 
-| Condition                                              | Required result                                           |
-| ------------------------------------------------------ | --------------------------------------------------------- |
-| Formal elevated Windows Claude/OpenCode CLI or Auth session | `interactive_user_unavailable` / `executor_not_implemented`; no probe or child process |
-| Formal elevated Windows Grok Build lifecycle                | Closed `grok-tool` helper; no elevated fallback                                        |
-| Grok npm helper has no plan, `@latest`, or unknown registry     | Fail closed; no npm child process                                                      |
-| Windows product has no matching `grok-win32-*` package/integrity or no registry matches both hashes | Produce no helper plan; no npm child process |
-| OpenCode Windows x64 ProductName/relative EXE/signer is reviewed | Admit current-user NSIS handoff; ARM64 remains unsupported |
-| OpenCode Windows ProductName/relative EXE/signer is empty     | `windows_exe_install_admitted` rejects download and install; do not claim supported     |
-| OpenCode helper product is admitted but scan relatives omit `@opencode-aidesktop` | Inventory miss after a real current-user install; helper admission is not scan identity |
-| Helper argv contains URL/path/shell string/free tool name   | Contract test fails; no child process                                                  |
-| Installer helper gains Claude/OpenCode tool verbs           | Architecture regression                                                                |
-| Non-formal/non-Windows Tooling lifecycle                    | Existing Tooling behavior unchanged; Grok remains the only writable CLI                |
+| Condition                                                                                           | Required result                                                                         |
+| --------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| Formal elevated Windows Claude/OpenCode CLI or Auth session                                         | `interactive_user_unavailable` / `executor_not_implemented`; no probe or child process  |
+| Formal elevated Windows Grok Build lifecycle                                                        | Closed `grok-tool` helper; no elevated fallback                                         |
+| Grok npm helper has no plan, `@latest`, or unknown registry                                         | Fail closed; no npm child process                                                       |
+| Windows product has no matching `grok-win32-*` package/integrity or no registry matches both hashes | Produce no helper plan; no npm child process                                            |
+| OpenCode Windows x64 ProductName/relative EXE/signer is reviewed                                    | Admit current-user NSIS handoff; ARM64 remains unsupported                              |
+| OpenCode Windows ProductName/relative EXE/signer is empty                                           | `windows_exe_install_admitted` rejects download and install; do not claim supported     |
+| OpenCode helper product is admitted but scan relatives omit `@opencode-aidesktop`                   | Inventory miss after a real current-user install; helper admission is not scan identity |
+| Helper argv contains URL/path/shell string/free tool name                                           | Contract test fails; no child process                                                   |
+| Installer helper gains Claude/OpenCode tool verbs                                                   | Architecture regression                                                                 |
+| Non-formal/non-Windows Tooling lifecycle                                                            | Existing Tooling behavior unchanged; Grok remains the only writable CLI                 |
 
 ### 5. Good/Base/Bad Cases
 
@@ -709,14 +714,14 @@ silently downgrade the inventory leaf.
 
 ### 4. Validation & Error Matrix
 
-| Condition | Required result |
-| --- | --- |
-| Parent opened `READ_VALUES` then `enum_keys` | Real hive access fails; inventory `unknown` |
-| Optional parent missing | Absence; remaining views may still be complete |
+| Condition                                           | Required result                                                               |
+| --------------------------------------------------- | ----------------------------------------------------------------------------- |
+| Parent opened `READ_VALUES` then `enum_keys`        | Real hive access fails; inventory `unknown`                                   |
+| Optional parent missing                             | Absence; remaining views may still be complete                                |
 | Optional parent is a rejected WOW64 shared-key link | Absence; the 64-bit view still enumerates that location; link is not followed |
-| Parent/child access, bound, or Shell drift | Incomplete aggregate; no false `not_installed` |
-| Child name fails length/charset validation | Skip/reject that child; do not open by raw string |
-| Parent or child granted create/set | Contract failure |
+| Parent/child access, bound, or Shell drift          | Incomplete aggregate; no false `not_installed`                                |
+| Child name fails length/charset validation          | Skip/reject that child; do not open by raw string                             |
+| Parent or child granted create/set                  | Contract failure                                                              |
 
 ### 5. Good/Base/Bad Cases
 

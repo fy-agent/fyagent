@@ -720,7 +720,10 @@ impl ChangePlanService {
                 ));
             }
         };
-        let observed = adapter.precheck()?;
+        let observed = match adapter.precheck() {
+            Ok(observed) => observed,
+            Err(error) => return Ok(ApplyChangePlanOutcome::rejected(error)),
+        };
         if prove_codex_target_credential_capability(&observed)
             != SecretCapabilityResult::NoNewCredentialMaterial
         {
@@ -1391,6 +1394,20 @@ impl CodexSwitchInspection {
     }
 }
 
+fn codex_live_projection_digest(home: &std::path::Path, projection: &Value) -> String {
+    // A configuration-directory change must invalidate a preview even when the
+    // new directory happens to contain the same routing/model values. Neither
+    // the physical path nor credential bytes are persisted in the public plan.
+    let destination = digest_json(
+        "fyagent.change-plan.codex-destination.v1",
+        &json!(home.to_string_lossy()),
+    );
+    digest_json(
+        "fyagent.change-plan.codex-live.v3",
+        &json!({ "destination": destination, "projection": projection }),
+    )
+}
+
 pub(crate) fn inspect_codex_switch(
     state: &AppState,
     target_provider_id: &str,
@@ -1448,14 +1465,14 @@ pub(crate) fn inspect_codex_intended_provider(
     let environment = inspect_codex_switch_environment(state)
         .map_err(|_| ChangePlanErrorCode::SecretDependencyUnavailable)?;
     let live_projection = credential_neutral_codex_projection(&environment.live_settings)?;
-    let live_projection_digest = digest_json("fyagent.change-plan.codex-live.v2", &live_projection);
+    let codex_home = crate::codex_config::get_codex_config_dir();
+    let live_projection_digest = codex_live_projection_digest(&codex_home, &live_projection);
     let live_projection_available = true;
     let target_live_projection =
         build_codex_switch_target_live_projection(state, &target, &environment)
-            .map_err(|_| ChangePlanErrorCode::Internal)?;
+            .map_err(|_| ChangePlanErrorCode::SecretDependencyUnavailable)?;
     let target_projection = credential_neutral_codex_projection(&target_live_projection)?;
-    let target_projection_digest =
-        digest_json("fyagent.change-plan.codex-live.v2", &target_projection);
+    let target_projection_digest = codex_live_projection_digest(&codex_home, &target_projection);
     let baseline_digest = digest_serializable(
         "fyagent.change-plan.baseline.v2",
         &BaselineDigestInput {
@@ -1627,14 +1644,10 @@ fn prove_codex_target_credential_capability(
     let target_has_key =
         crate::codex_config::extract_codex_api_key(Some(auth), Some(config_text)).is_some();
     if crate::proxy::providers::is_codex_official_provider(provider) {
-        let target_has_strict_login =
-            crate::codex_config::codex_auth_has_credential_login_material(auth);
-        let target_auth_would_replace_preserved_login =
-            crate::codex_config::codex_auth_has_login_material(auth);
-        return if target_has_key
-            || target_has_strict_login
-            || (!target_auth_would_replace_preserved_login && inspection.preserved_strict_login)
-        {
+        // Request-source selection never projects a Provider's saved login.
+        // Official credentials must already exist in the consumer; selecting a
+        // different account goes through the separately confirmed Auth action.
+        return if inspection.preserved_strict_login {
             SecretCapabilityResult::NoNewCredentialMaterial
         } else {
             SecretCapabilityResult::SecretDependencyUnavailable
@@ -2488,7 +2501,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn official_target_requires_own_material_or_strict_preserved_login() {
+    fn official_source_requires_preserved_login_and_never_uses_saved_provider_credentials() {
         let (_home, _guard, db, state, _current, _target) = setup_switch_state();
         let mut official = provider(
             crate::database::CODEX_OFFICIAL_PROVIDER_ID,
@@ -2496,6 +2509,7 @@ mod tests {
             "gpt-official",
         );
         official.category = Some("official".to_string());
+        official.settings_config["config"] = json!("model = 'gpt-official'\n");
         official.settings_config["auth"] = json!({});
         db.save_provider(AppType::Codex.as_str(), &official)
             .unwrap();
@@ -2517,29 +2531,7 @@ mod tests {
             json!({"last_refresh": "metadata", "tokens": {"account_id": "metadata-only"}});
         db.save_provider(AppType::Codex.as_str(), &official)
             .unwrap();
-        assert_eq!(
-            ChangePlanService::plan_codex_switch_at(&state, &official.id, 102),
-            Err(ChangePlanErrorCode::SecretDependencyUnavailable)
-        );
-        let metadata_calls = AtomicUsize::new(0);
-        let metadata_outcome = ChangePlanService::apply_codex_switch_at_with_writer(
-            &state,
-            &plan.plan_id,
-            &plan.plan_digest,
-            103,
-            |_| {
-                metadata_calls.fetch_add(1, Ordering::SeqCst);
-                Ok::<_, ()>(WriterReceipt {
-                    live_config_changed: false,
-                })
-            },
-        )
-        .unwrap();
-        assert_eq!(
-            metadata_outcome.error_code,
-            Some(ChangePlanErrorCode::SecretDependencyUnavailable)
-        );
-        assert_eq!(metadata_calls.load(Ordering::SeqCst), 0);
+        assert!(ChangePlanService::plan_codex_switch_at(&state, &official.id, 102).is_ok());
 
         official.settings_config["auth"] = json!({});
         db.save_provider(AppType::Codex.as_str(), &official)
@@ -2580,12 +2572,18 @@ mod tests {
         official.settings_config["auth"] = json!({"tokens": {"refresh_token": "target-login"}});
         db.save_provider(AppType::Codex.as_str(), &official)
             .unwrap();
-        assert!(ChangePlanService::plan_codex_switch_at(&state, &official.id, 200).is_ok());
+        assert_eq!(
+            ChangePlanService::plan_codex_switch_at(&state, &official.id, 200),
+            Err(ChangePlanErrorCode::SecretDependencyUnavailable)
+        );
 
         official.settings_config["auth"] = json!({"OPENAI_API_KEY": "target-key"});
         db.save_provider(AppType::Codex.as_str(), &official)
             .unwrap();
-        assert!(ChangePlanService::plan_codex_switch_at(&state, &official.id, 201).is_ok());
+        assert_eq!(
+            ChangePlanService::plan_codex_switch_at(&state, &official.id, 201),
+            Err(ChangePlanErrorCode::SecretDependencyUnavailable)
+        );
 
         official.settings_config["auth"] = json!({});
         official.meta = Some(crate::provider::ProviderMeta {

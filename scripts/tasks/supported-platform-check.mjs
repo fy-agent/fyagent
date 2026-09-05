@@ -430,20 +430,8 @@ export const RUST_ALLOWANCE_CONTRACT = Object.freeze([
     next: "{",
   }),
   Object.freeze({
-    id: "opencode-auth-json-mode-unix",
-    file: "src-tauri/src/services/managed_auth/consumers/opencode.rs",
-    condition: "#[cfg(unix)]",
-    next: "{",
-  }),
-  Object.freeze({
     id: "opencode-auth-json-mode-assert-unix",
     file: "src-tauri/src/services/managed_auth/consumers/opencode.rs",
-    condition: "#[cfg(unix)]",
-    next: "{",
-  }),
-  Object.freeze({
-    id: "codex-auth-json-mode-unix",
-    file: "src-tauri/src/services/managed_auth/consumers/codex/swap.rs",
     condition: "#[cfg(unix)]",
     next: "{",
   }),

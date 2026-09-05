@@ -14,6 +14,8 @@ import {
   type ManagedAuthProvider,
 } from "../../shared/features/managed-auth";
 import { useFeatures } from "../../shared/features/provider";
+import { CONFIG_RECOVERY_TARGETS } from "../../shared/features/config-recovery";
+import { FileRecoveryButton } from "../../shared/features/controls/FileRecoveryButton";
 import { useFrontendReady } from "../../shared/platform/useFrontendReady";
 import {
   featureKeys,
@@ -309,15 +311,19 @@ export function AuthPage() {
     connection: ManagedAuthConnectionSummary,
     action: ManagedAuthConnectionAction,
     accountId: string | null,
+    previewId?: string,
   ) => {
     const result = await runMutation(
       () =>
-        ports.managedAuth.applyConnectionAction({
-          connectionId: connection.connectionId,
-          expectedRevision: connection.revision,
-          action,
-          accountId,
-        }),
+        ports.managedAuth.applyConnectionAction(
+          {
+            connectionId: connection.connectionId,
+            expectedRevision: connection.revision,
+            action,
+            accountId,
+          },
+          previewId,
+        ),
       `${managedAuthConsumerLabel(connection.consumer)} 状态已更新`,
     );
     if (result) setConnectionAction(null);
@@ -409,6 +415,33 @@ export function AuthPage() {
           <p>登录官方账号，切换软件账号与模型来源。</p>
         </div>
         <div className="fy-feature-actions">
+          <FileRecoveryButton
+            targets={CONFIG_RECOVERY_TARGETS}
+            disabled={
+              mutationBusy ||
+              loginController.busy ||
+              sourceBusy ||
+              connectionAction !== null ||
+              removalAccount !== null
+            }
+            onRestored={async () => {
+              await refetchOverview();
+              await Promise.all([
+                queryClient.invalidateQueries({
+                  queryKey: featureKeys.providerSummary("codex"),
+                }),
+                queryClient.invalidateQueries({
+                  queryKey: featureKeys.providerSummary("claude"),
+                }),
+                queryClient.invalidateQueries({
+                  queryKey: featureKeys.providerSummary("grokbuild"),
+                }),
+                queryClient.invalidateQueries({
+                  queryKey: featureKeys.openCodeModelSnapshot,
+                }),
+              ]);
+            }}
+          />
           <Button
             className="fy-control-button-primary"
             disabled={mutationBusy || loginController.busy || sourceBusy}
@@ -602,12 +635,13 @@ export function AuthPage() {
             pending={mutationBusy}
             preferredAccountId={connectionAction?.preferredAccountId}
             onCancel={() => setConnectionAction(null)}
-            onConfirm={(accountId) => {
+            onConfirm={(accountId, previewId) => {
               if (!connectionAction) return;
               void applyConnectionAction(
                 connectionAction.connection,
                 connectionAction.action,
                 accountId,
+                previewId,
               );
             }}
           />

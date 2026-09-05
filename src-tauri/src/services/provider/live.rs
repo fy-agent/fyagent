@@ -10,8 +10,7 @@ use toml_edit::{DocumentMut, Item, TableLike};
 use crate::app_config::AppType;
 use crate::codex_config::{get_codex_auth_path, get_codex_config_path};
 use crate::config::{
-    backup_existing_file, delete_file, get_claude_settings_path, read_json_file, write_json_file,
-    write_text_file,
+    delete_file, get_claude_settings_path, read_json_file, write_json_file, write_text_file,
 };
 use crate::database::Database;
 use crate::error::AppError;
@@ -776,7 +775,6 @@ fn write_quick_setup_claude_live(provider: &Provider) -> Result<(), AppError> {
         current_env.insert(key.to_string(), value.clone());
     }
 
-    backup_existing_file(&path)?;
     write_json_file(&path, &current)
 }
 
@@ -795,7 +793,6 @@ fn write_quick_setup_codex_live(provider: &Provider) -> Result<(), AppError> {
         .ok_or_else(|| {
             AppError::Config("Codex Quick Setup projection is missing config".to_string())
         })?;
-    backup_existing_file(&config_path)?;
     crate::codex_config::write_codex_live_config_atomic(Some(patched_config))
 }
 
@@ -921,7 +918,6 @@ fn write_quick_setup_grok_live(provider: &Provider) -> Result<(), AppError> {
 
     let patched = target.to_string();
     crate::grok_config::validate_config_toml(&patched)?;
-    backup_existing_file(&path)?;
     write_text_file(&path, &patched)
 }
 

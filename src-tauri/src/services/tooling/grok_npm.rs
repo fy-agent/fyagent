@@ -1,4 +1,4 @@
-//! Host-owned Grok npm manifest loading and registry selection.
+//! Shared host-owned Grok/Claude npm manifests and registry selection.
 //!
 //! Version and SHA-512 truth come from the bundled JSON compiled into the
 //! signed application. Registry metadata is compared against that manifest;
@@ -7,12 +7,15 @@
 use std::collections::BTreeMap;
 use std::time::Duration;
 
-use fyagent_user_helper::{
-    grok_npm::{current_platform_package, GrokNpmInstallPlan, GrokNpmPlanError, GrokNpmRegistry},
-    GROK_NPM_PACKAGE,
+use fyagent_user_helper::grok_npm::{
+    current_platform_package, GrokNpmInstallPlan, GrokNpmPlanError, GrokNpmRegistry,
+    OfficialNpmTool,
 };
+#[cfg(test)]
+use fyagent_user_helper::GROK_NPM_PACKAGE;
 
 const MANIFEST_JSON: &str = include_str!("grok_npm_manifest.json");
+const CLAUDE_MANIFEST_JSON: &str = include_str!("claude_npm_manifest.json");
 const METADATA_TIMEOUT: Duration = Duration::from_secs(20);
 const METADATA_MAX_BYTES: usize = 1024 * 1024;
 
@@ -20,6 +23,7 @@ const METADATA_MAX_BYTES: usize = 1024 * 1024;
 pub(super) struct GrokNpmManifest {
     version: String,
     integrity: BTreeMap<String, String>,
+    tool: OfficialNpmTool,
 }
 
 impl GrokNpmManifest {
@@ -28,7 +32,7 @@ impl GrokNpmManifest {
     }
 
     pub(super) fn package_integrity(&self) -> Option<&str> {
-        self.integrity.get(GROK_NPM_PACKAGE).map(String::as_str)
+        self.integrity.get(self.tool.package()).map(String::as_str)
     }
 
     pub(super) fn platform_integrity(&self, platform_package: &str) -> Option<&str> {
@@ -40,17 +44,32 @@ pub(super) fn bundled_manifest() -> Result<GrokNpmManifest, GrokNpmPlanError> {
     parse_manifest(MANIFEST_JSON)
 }
 
+pub(super) fn claude_manifest() -> Result<GrokNpmManifest, GrokNpmPlanError> {
+    parse_manifest_for(OfficialNpmTool::Claude, CLAUDE_MANIFEST_JSON)
+}
+
+pub(super) fn claude_manifest_version() -> Option<String> {
+    claude_manifest().ok().map(|manifest| manifest.version)
+}
+
 pub(super) fn bundled_manifest_version() -> Option<String> {
     bundled_manifest().ok().map(|manifest| manifest.version)
 }
 
 pub(super) fn parse_manifest(json: &str) -> Result<GrokNpmManifest, GrokNpmPlanError> {
+    parse_manifest_for(OfficialNpmTool::Grok, json)
+}
+
+fn parse_manifest_for(
+    tool: OfficialNpmTool,
+    json: &str,
+) -> Result<GrokNpmManifest, GrokNpmPlanError> {
     let value: serde_json::Value =
         serde_json::from_str(json).map_err(|_| GrokNpmPlanError::Missing)?;
     if value.get("channel").and_then(|value| value.as_str()) != Some("stable") {
         return Err(GrokNpmPlanError::Missing);
     }
-    if value.get("package").and_then(|value| value.as_str()) != Some(GROK_NPM_PACKAGE) {
+    if value.get("package").and_then(|value| value.as_str()) != Some(tool.package()) {
         return Err(GrokNpmPlanError::InvalidPlatformPackage);
     }
     let version = value
@@ -64,26 +83,32 @@ pub(super) fn parse_manifest(json: &str) -> Result<GrokNpmManifest, GrokNpmPlanE
     let mut map = BTreeMap::new();
     for (name, hash) in integrity {
         let hash = hash.as_str().ok_or(GrokNpmPlanError::InvalidIntegrity)?;
+        use base64::Engine;
+        let encoded = hash
+            .strip_prefix("sha512-")
+            .ok_or(GrokNpmPlanError::InvalidIntegrity)?;
+        let decoded = base64::engine::general_purpose::STANDARD
+            .decode(encoded)
+            .map_err(|_| GrokNpmPlanError::InvalidIntegrity)?;
+        if decoded.len() != 64 {
+            return Err(GrokNpmPlanError::InvalidIntegrity);
+        }
         map.insert(name.clone(), hash.to_string());
     }
-    if !map.contains_key(GROK_NPM_PACKAGE) {
+    if !map.contains_key(tool.package()) {
         return Err(GrokNpmPlanError::InvalidIntegrity);
     }
-    let platform = current_platform_package().ok_or(GrokNpmPlanError::InvalidPlatformPackage)?;
+    let platform = tool
+        .current_platform_package()
+        .ok_or(GrokNpmPlanError::InvalidPlatformPackage)?;
     if !map.contains_key(platform) {
         return Err(GrokNpmPlanError::InvalidPlatformPackage);
     }
-    GrokNpmInstallPlan::new(
-        version,
-        GrokNpmRegistry::Npmjs,
-        map.get(GROK_NPM_PACKAGE).cloned().unwrap_or_default(),
-        platform,
-        map.get(platform).cloned().unwrap_or_default(),
-        false,
-    )?;
+    GrokNpmInstallPlan::for_execution(version, GrokNpmRegistry::Npmjs, false)?;
     Ok(GrokNpmManifest {
         version: version.to_string(),
         integrity: map,
+        tool,
     })
 }
 
@@ -92,6 +117,13 @@ pub(super) fn plan_for_registry(
     registry: GrokNpmRegistry,
     allow_install_scripts: bool,
 ) -> Result<GrokNpmInstallPlan, GrokNpmPlanError> {
+    if manifest.tool == OfficialNpmTool::Claude {
+        return GrokNpmInstallPlan::for_execution(
+            manifest.version(),
+            registry,
+            allow_install_scripts,
+        );
+    }
     let platform = current_platform_package().ok_or(GrokNpmPlanError::InvalidPlatformPackage)?;
     GrokNpmInstallPlan::new(
         manifest.version(),
@@ -107,6 +139,17 @@ pub(super) fn default_install_command() -> Option<String> {
     let manifest = bundled_manifest().ok()?;
     let plan = plan_for_registry(&manifest, GrokNpmRegistry::Tencent, false).ok()?;
     Some(format!("npm {}", plan.npm_argv().join(" ")))
+}
+
+fn metadata_client() -> Option<reqwest::Client> {
+    let builder = reqwest::Client::builder()
+        .https_only(true)
+        .redirect(reqwest::redirect::Policy::none())
+        .timeout(METADATA_TIMEOUT);
+    crate::proxy::http_client::apply_installer_proxy(builder)
+        .ok()?
+        .build()
+        .ok()
 }
 
 #[cfg(test)]
@@ -137,13 +180,15 @@ pub(super) fn matching_registries_in_order(
 }
 
 pub(super) async fn registries_matching_manifest(
-    client: &reqwest::Client,
     manifest: &GrokNpmManifest,
 ) -> Vec<GrokNpmRegistry> {
+    let Some(client) = metadata_client() else {
+        return Vec::new();
+    };
     let Some(expected_package) = manifest.package_integrity() else {
         return Vec::new();
     };
-    let Some(platform) = current_platform_package() else {
+    let Some(platform) = manifest.tool.current_platform_package() else {
         return Vec::new();
     };
     let Some(expected_platform) = manifest.platform_integrity(platform) else {
@@ -152,8 +197,9 @@ pub(super) async fn registries_matching_manifest(
     let mut matching = Vec::new();
     for registry in GrokNpmRegistry::ALL {
         if registry_matches(
-            client,
+            &client,
             registry,
+            manifest.tool.package(),
             manifest.version(),
             expected_package,
             platform,
@@ -170,12 +216,13 @@ pub(super) async fn registries_matching_manifest(
 async fn registry_matches(
     client: &reqwest::Client,
     registry: GrokNpmRegistry,
+    package: &str,
     version: &str,
     expected_package: &str,
     platform_package: &str,
     expected_platform: &str,
 ) -> bool {
-    let package_ok = fetch_integrity(client, registry, GROK_NPM_PACKAGE, version)
+    let package_ok = fetch_integrity(client, registry, package, version)
         .await
         .is_some_and(|integrity| integrity == expected_package);
     if !package_ok {
@@ -196,21 +243,33 @@ async fn fetch_integrity(
         return None;
     }
     let url = metadata_url(registry, package, version)?;
-    let response = client
+    let mut response = client
         .get(url)
         .timeout(METADATA_TIMEOUT)
         .send()
         .await
         .ok()?;
-    if !response.status().is_success() {
+    if !response.status().is_success()
+        || response
+            .content_length()
+            .is_some_and(|length| length > METADATA_MAX_BYTES as u64)
+    {
         return None;
     }
-    let bytes = response.bytes().await.ok()?;
-    if bytes.is_empty() || bytes.len() > METADATA_MAX_BYTES {
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response.chunk().await.ok()? {
+        if bytes.len().checked_add(chunk.len())? > METADATA_MAX_BYTES {
+            return None;
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    if bytes.is_empty() {
         return None;
     }
     let json: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
-    if json.get("version").and_then(|value| value.as_str()) != Some(version) {
+    if json.get("version").and_then(|value| value.as_str()) != Some(version)
+        || json.get("name").and_then(|value| value.as_str()) != Some(package)
+    {
         return None;
     }
     json.get("dist")?
@@ -231,6 +290,34 @@ fn metadata_url(registry: GrokNpmRegistry, package: &str, version: &str) -> Opti
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn claude_manifest_has_only_reviewed_product_platforms_and_rejects_other_packages() {
+        let manifest = claude_manifest().unwrap();
+        assert_eq!(manifest.tool, OfficialNpmTool::Claude);
+        assert_eq!(manifest.integrity.len(), 5);
+        assert_eq!(
+            manifest
+                .integrity
+                .keys()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+            [
+                "@anthropic-ai/claude-code",
+                "@anthropic-ai/claude-code-darwin-arm64",
+                "@anthropic-ai/claude-code-darwin-x64",
+                "@anthropic-ai/claude-code-win32-arm64",
+                "@anthropic-ai/claude-code-win32-x64",
+            ]
+        );
+        assert!(parse_manifest_for(OfficialNpmTool::Grok, CLAUDE_MANIFEST_JSON).is_err());
+        assert!(parse_manifest_for(OfficialNpmTool::Claude, MANIFEST_JSON).is_err());
+        assert!(parse_manifest_for(
+            OfficialNpmTool::Claude,
+            &CLAUDE_MANIFEST_JSON.replace("sha512-", "sha256-")
+        )
+        .is_err());
+    }
 
     #[test]
     fn bundled_manifest_is_exact_and_has_current_platform() {

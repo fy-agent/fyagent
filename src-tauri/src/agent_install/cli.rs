@@ -26,6 +26,7 @@ pub struct CliObservation {
     pub local_version: Option<String>,
     pub latest_version: Option<String>,
     pub unavailable: bool,
+    pub update_supported: bool,
 }
 
 impl CliObservation {
@@ -41,6 +42,8 @@ impl CliObservation {
             local_version: version.local_version().map(str::to_string),
             latest_version: version.latest_version().map(str::to_string),
             unavailable,
+            update_supported: version.name() != CLAUDE_TOOL_ID
+                || version.distribution_owner() == Some("official_npm"),
         }
     }
 }
@@ -82,6 +85,27 @@ pub async fn run_cli_lifecycle(
         super::types::AgentActionId::Update => "update",
         _ => return Err(super::types::AgentReasonCode::ExecutorNotImplemented),
     };
+    if agent_id == AgentCatalogId::ClaudeCode {
+        return tooling::run_claude_cli_lifecycle(lifecycle)
+            .await
+            .map_err(|error| {
+                use super::types::AgentReasonCode;
+                use tooling::ClaudeLifecycleError;
+                match error {
+                    ClaudeLifecycleError::UnsupportedAction => AgentReasonCode::ActionNotSupported,
+                    ClaudeLifecycleError::OperationConflict => AgentReasonCode::OperationConflict,
+                    ClaudeLifecycleError::HostMissing => AgentReasonCode::ToolHostMissing,
+                    ClaudeLifecycleError::OwnerUnsupported => AgentReasonCode::ToolOwnerUnsupported,
+                    ClaudeLifecycleError::SourceUnverified => AgentReasonCode::SourceNotVerified,
+                    ClaudeLifecycleError::ExecutionFailed => {
+                        AgentReasonCode::InstallerExitedNonzero
+                    }
+                    ClaudeLifecycleError::VerificationFailed => {
+                        AgentReasonCode::InstallationVerificationFailed
+                    }
+                }
+            });
+    }
     tooling::run_tool_lifecycle_action(vec![tool.to_string()], lifecycle.to_string())
         .await
         .map_err(|error| {

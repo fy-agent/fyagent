@@ -7,7 +7,7 @@ import type {
 } from "../change-plans";
 import { useFeatures } from "../provider";
 import { useRecoverableChangeJobs } from "../queries";
-import type { ProviderSummaryMap } from "../models";
+import type { ModelWriteTarget, ProviderSummaryMap } from "../models";
 import { Button } from "../../ui/Button";
 import { InlineNotice } from "../../ui/primitives";
 import { ApplyWorkspace } from "./ApplyWorkspace";
@@ -19,6 +19,7 @@ export function ChangePlanWorkspace({
   active,
   providers,
   currentId,
+  writeTargets,
   disabled = false,
   onBusyChange,
   onTerminal,
@@ -26,6 +27,7 @@ export function ChangePlanWorkspace({
   active: boolean;
   providers: ProviderSummaryMap;
   currentId: string;
+  writeTargets: readonly ModelWriteTarget[];
   disabled?: boolean;
   onBusyChange?: (busy: boolean) => void;
   onTerminal?: (job: ChangeJobSnapshot) => Promise<void>;
@@ -38,6 +40,7 @@ export function ChangePlanWorkspace({
   );
   const [targetId, setTargetId] = useState("");
   const [plan, setPlan] = useState<ChangePlan | null>(null);
+  const [planWriteTargets, setPlanWriteTargets] = useState(writeTargets);
   const [error, setError] = useState<{
     code: ChangePlanErrorCode;
     message?: string;
@@ -60,7 +63,7 @@ export function ChangePlanWorkspace({
     writePending ||
     admissionUnknown ||
     Boolean(readError || settlementError || (error && job));
-  const locked = busy || disabled || unresolved;
+  const locked = busy || disabled || unresolved || writeTargets.length === 0;
 
   useEffect(() => {
     onBusyChange?.(unresolved);
@@ -129,7 +132,12 @@ export function ChangePlanWorkspace({
         await ports.changePlans.createCodexProviderSwitchPlan(
           effectiveTargetId,
         );
-      if (requestRevision.current === revision) setPlan(nextPlan);
+      if (requestRevision.current === revision) {
+        setPlanWriteTargets(
+          providers[effectiveTargetId]?.writeTargets ?? writeTargets,
+        );
+        setPlan(nextPlan);
+      }
     } catch (cause) {
       if (requestRevision.current === revision)
         setError({ code: changePlanErrorCode(cause) });
@@ -262,6 +270,7 @@ export function ChangePlanWorkspace({
 
       {visiblePlan || visibleJob || displayError ? (
         <ApplyWorkspace
+          writeTargets={planWriteTargets}
           plan={visiblePlan}
           job={visibleJob}
           busy={locked}

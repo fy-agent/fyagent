@@ -263,12 +263,13 @@ export function loginStagePresentation(stage: ManagedAuthLoginStage): {
     case "verifying":
       return {
         title: "正在确认最终状态",
-        description: "只有软件重新读取成功后才会显示完成。",
+        description: "正在检查账号是否已保存。",
       };
     case "completed":
       return {
-        title: "账号已添加并连接",
-        description: "最终状态已经确认。",
+        title: "账号已保存",
+        description:
+          "尚未替换软件的认证文件。请在软件连接中检查文件影响并确认连接。",
       };
     case "partial":
       return {

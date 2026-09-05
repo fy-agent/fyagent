@@ -173,7 +173,7 @@ where
         Ok(snapshot)
     }
 
-    pub(crate) fn apply_connection_action(
+    pub(super) fn apply_prepared_connection_action(
         &self,
         request: &super::ManagedAuthConnectionActionRequest,
     ) -> Result<ManagedAuthMutationResult, ManagedAuthErrorDto> {
@@ -219,8 +219,7 @@ where
                 Ok(self.mutation_result(ManagedAuthMutationOutcome::Completed, None))
             }
             super::ManagedAuthConnectionAction::ConnectAccount
-            | super::ManagedAuthConnectionAction::SwitchAccount
-            | super::ManagedAuthConnectionAction::SwitchToOfficial => {
+            | super::ManagedAuthConnectionAction::SwitchAccount => {
                 self.apply_codex_official_projection(request)
             }
             super::ManagedAuthConnectionAction::Restart => {
@@ -263,7 +262,6 @@ where
             .map_err(ManagedAuthErrorDto::from_reason)?;
         let Some(app_state_result) = self.with_app_state(|app_state| {
             let codex_home = self.codex_home();
-            let live = super::consumers::codex::observe_codex_home(&codex_home);
             // Absorb Codex-rotated tokens for the outgoing managed account
             // before covering live auth.json.
             let _ = self.reconcile_outgoing_codex_live_tokens(
@@ -275,7 +273,7 @@ where
                 &codex_home,
                 &selected.identity.provider_subject,
                 &document,
-                live.auth_revision.as_deref(),
+                &request.expected_revision,
             )
         }) else {
             // Tests and early startup without AppHandle: persist metadata only.
@@ -289,7 +287,7 @@ where
         let outcome = app_state_result.map_err(ManagedAuthErrorDto::from_reason)?;
         self.upsert_codex_connection_metadata(&selected, outcome.pending_restart)
             .map_err(ManagedAuthErrorDto::from_core)?;
-        if outcome.wrote_auth || outcome.switched_provider {
+        if outcome.wrote_auth {
             let _ = self.repository.transfer_refresh_owner(
                 &selected.credential.credential_id,
                 selected.credential.generation,
@@ -603,112 +601,18 @@ where
             let _ = self.upsert_proxy_connections();
         }
         let account_id = admitted.identity_id.clone();
-        let mut connection_id = None;
-        let mut stage = ManagedAuthLoginStage::Completed;
-        let mut reason = None;
-        if request.purpose == ManagedAuthLoginPurpose::ConnectConsumer
-            && request.consumer == Some(ManagedAuthConsumer::Codex)
-        {
-            self.set_stage(handle, ManagedAuthLoginStage::ConnectingConsumer, None)?;
-            let row = self
-                .credentials_for_account(&account_id)
-                .ok()
-                .and_then(|rows| {
-                    rows.into_iter()
-                        .find(|row| row.credential.credential_id == admitted.credential_id)
-                });
-            if let Some(row) = row {
-                connection_id = Some(stable_connection_id(
-                    ManagedAuthConsumer::Codex,
-                    "",
-                    "openai",
-                ));
-                // Prefer the just-received grant so we never block on the
-                // credential lock from inside the Tokio login worker.
-                let document = CodexChatGptAuthDocument::from_grant(&grant).or_else(|| {
-                    CodexChatGptAuthDocument::from_tokens(
-                        grant.id_token.as_deref().unwrap_or(""),
-                        &grant.access_token,
-                        grant.refresh_token.as_deref().unwrap_or(""),
-                        Some(row.identity.provider_subject.as_str()),
-                        Some(chrono::Utc::now().timestamp()),
-                    )
-                });
-                match document {
-                    Some(document) => {
-                        let projected = self.with_app_state(|app_state| {
-                            let codex_home = self.codex_home();
-                            let live = super::consumers::codex::observe_codex_home(&codex_home);
-                            let _ = self.reconcile_outgoing_codex_live_tokens(
-                                &codex_home,
-                                &row.identity.provider_subject,
-                            );
-                            project_codex_official_account(
-                                app_state,
-                                &codex_home,
-                                &row.identity.provider_subject,
-                                &document,
-                                live.auth_revision.as_deref(),
-                            )
-                        });
-                        match projected {
-                            Some(Ok(outcome)) => {
-                                let _ = self.upsert_codex_connection_metadata(
-                                    &row,
-                                    outcome.pending_restart,
-                                );
-                                if outcome.pending_restart {
-                                    stage = ManagedAuthLoginStage::Completed;
-                                    reason = Some(ManagedAuthReasonCode::PendingRestart);
-                                } else if outcome.outcome == ManagedAuthMutationOutcome::Partial {
-                                    stage = ManagedAuthLoginStage::Partial;
-                                    reason = outcome.reason;
-                                } else {
-                                    stage = ManagedAuthLoginStage::Completed;
-                                    reason = outcome.reason;
-                                }
-                            }
-                            Some(Err(code)) => {
-                                let _ = self.upsert_codex_connection_metadata(&row, false);
-                                stage = ManagedAuthLoginStage::Partial;
-                                reason = Some(code);
-                            }
-                            None => {
-                                // Unit tests / pre-attach startup: account is saved
-                                // but Provider-guarded projection is unavailable.
-                                let _ = self.upsert_codex_connection_metadata(&row, false);
-                                stage = ManagedAuthLoginStage::Partial;
-                                reason = Some(ManagedAuthReasonCode::PartialCompletion);
-                            }
-                        }
-                    }
-                    None => {
-                        let _ = self.upsert_codex_connection_metadata(&row, false);
-                        stage = ManagedAuthLoginStage::Partial;
-                        reason = Some(ManagedAuthReasonCode::RequiresReauth);
-                    }
-                }
-            }
-        }
-        if request.purpose == ManagedAuthLoginPurpose::ConnectConsumer
-            && request.consumer == Some(ManagedAuthConsumer::Opencode)
-        {
-            self.set_stage(handle, ManagedAuthLoginStage::ConnectingConsumer, None)?;
-            let (next_connection, next_stage, next_reason) =
-                self.finish_opencode_connect_after_login(ManagedAuthProvider::Openai, &account_id);
-            connection_id = next_connection;
-            stage = next_stage;
-            reason = next_reason;
-        }
+        // Obtaining a grant authorizes saving the account, not replacing a
+        // consumer's files. Connection requires a fresh impact preview and a
+        // separate explicit confirmation after login completes.
         self.set_stage(handle, ManagedAuthLoginStage::Verifying, None)?;
         self.login_sessions
             .finish(
                 &handle.session_id,
                 handle.generation,
-                stage,
-                reason,
+                ManagedAuthLoginStage::Completed,
+                None,
                 Some(account_id),
-                connection_id,
+                None,
             )
             .map_err(|_| {
                 (
@@ -1049,7 +953,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn device_code_connects_opencode_with_independent_session_and_pending_restart() {
+    async fn device_code_saves_independent_opencode_session_without_writing_vendor_files() {
         let issuer = spawn_issuer(0).await;
         let (service, dir) = service();
         service.set_login_hooks(LoginHooks {
@@ -1074,10 +978,8 @@ mod tests {
             .expect("start");
         let finished = wait_terminal(&service, &snapshot.session_id).await;
         assert_eq!(finished.stage, ManagedAuthLoginStage::Completed);
-        assert_eq!(
-            finished.reason_code,
-            Some(ManagedAuthReasonCode::PendingRestart)
-        );
+        assert_eq!(finished.reason_code, None);
+        assert_eq!(finished.connection_id, None);
         let rows = service.repository.list_all_credentials().expect("rows");
         assert_eq!(rows.len(), 1);
         assert_eq!(
@@ -1088,13 +990,8 @@ mod tests {
             rows[0].credential.consumer,
             Some(ManagedAuthConsumer::Opencode)
         );
-        assert_eq!(rows[0].credential.refresh_owner, RefreshOwner::Opencode);
-        let raw: serde_json::Value = serde_json::from_slice(
-            &std::fs::read(dir.path().join("opencode-data").join("auth.json")).unwrap(),
-        )
-        .unwrap();
-        assert_eq!(raw["openai"]["type"], "oauth");
-        assert_eq!(raw["openai"]["refresh"], "refresh-login");
+        assert_eq!(rows[0].credential.refresh_owner, RefreshOwner::Fyagent);
+        assert!(!dir.path().join("opencode-data").join("auth.json").exists());
         let openai = service
             .overview()
             .connections
@@ -1104,14 +1001,11 @@ mod tests {
                     && row.provider == Some(ManagedAuthProvider::Openai)
             })
             .expect("slot");
-        assert_eq!(
-            openai.auth_status,
-            ManagedAuthConnectionState::PendingRestart
-        );
-        assert!(openai.pending_restart);
+        assert_eq!(openai.auth_status, ManagedAuthConnectionState::Disconnected);
+        assert!(!openai.pending_restart);
         assert!(openai
-            .reason_codes
-            .contains(&ManagedAuthReasonCode::PendingRestart));
+            .allowed_actions
+            .contains(&super::super::ManagedAuthConnectionAction::ConnectAccount));
         assert!(!openai
             .reason_codes
             .contains(&ManagedAuthReasonCode::NativeProjectionUnavailable));
@@ -1129,9 +1023,9 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn browser_callback_saves_separate_codex_purpose_as_partial() {
+    async fn browser_callback_saves_codex_purpose_without_automatic_projection() {
         let issuer = spawn_issuer(0).await;
-        let (service, _dir) = service();
+        let (service, dir) = service();
         let state = "fixed-state-value-32bytes-aaaa".to_string();
         let bound_port = Arc::new(std::sync::Mutex::new(None));
         service.set_login_hooks(LoginHooks {
@@ -1166,11 +1060,11 @@ mod tests {
         let url = format!("http://127.0.0.1:{port}/auth/callback?code=browser-code&state={state}");
         reqwest::get(url).await.expect("callback");
         let finished = wait_terminal(&service, &snapshot.session_id).await;
-        assert_eq!(finished.stage, ManagedAuthLoginStage::Partial);
-        assert_eq!(
-            finished.reason_code,
-            Some(ManagedAuthReasonCode::PartialCompletion)
-        );
+        assert_eq!(finished.stage, ManagedAuthLoginStage::Completed);
+        assert_eq!(finished.reason_code, None);
+        assert_eq!(finished.connection_id, None);
+        assert!(!dir.path().join("codex-home").join("auth.json").exists());
+        assert!(!dir.path().join("codex-home").join("config.toml").exists());
         assert!(finished.account_id.is_some());
         let rows = service.repository.list_all_credentials().expect("rows");
         assert_eq!(rows.len(), 1);

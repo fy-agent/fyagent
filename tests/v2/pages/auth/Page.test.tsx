@@ -18,6 +18,7 @@ import {
   managedAuthOverviewFixture,
   mutationResultFixture,
   removalPreviewFixture,
+  connectionPreviewFixture,
 } from "../../fixtures/managedAuth";
 
 function LocationProbe() {
@@ -52,6 +53,9 @@ function managedPorts(
     previewAccountRemoval: vi.fn(async () => removalPreviewFixture()),
     removeAccount: vi.fn(async () => mutationResultFixture()),
     applyConnectionAction: vi.fn(async () => mutationResultFixture()),
+    previewConnectionAction: vi.fn(async (request) =>
+      connectionPreviewFixture(request),
+    ),
     ...overrides,
   };
   return ports;
@@ -151,12 +155,15 @@ describe("AuthPage", () => {
     const dialog = screen.getByRole("dialog", { name: "连接 Codex 账号" });
     await user.click(within(dialog).getByRole("button", { name: "确认" }));
 
-    expect(applyConnectionAction).toHaveBeenCalledWith({
-      connectionId: CODEX_CONNECTION_ID,
-      expectedRevision: CONNECTION_REVISION,
-      action: "connect_account",
-      accountId: OPENAI_ACCOUNT_ID,
-    });
+    expect(applyConnectionAction).toHaveBeenCalledWith(
+      {
+        connectionId: CODEX_CONNECTION_ID,
+        expectedRevision: CONNECTION_REVISION,
+        action: "connect_account",
+        accountId: OPENAI_ACCOUNT_ID,
+      },
+      "323e4567-e89b-42d3-a456-426614174000",
+    );
   });
 
   it("starts a Codex connection login when the saved account cannot connect yet", async () => {
@@ -401,12 +408,15 @@ describe("AuthPage", () => {
     expect(dialog).toHaveTextContent("DeepSeek API");
     await user.click(within(dialog).getByRole("button", { name: "切换" }));
 
-    expect(applyConnectionAction).toHaveBeenCalledWith({
-      connectionId: CODEX_CONNECTION_ID,
-      expectedRevision: CONNECTION_REVISION,
-      action: "switch_to_official",
-      accountId: null,
-    });
+    expect(applyConnectionAction).toHaveBeenCalledWith(
+      {
+        connectionId: CODEX_CONNECTION_ID,
+        expectedRevision: CONNECTION_REVISION,
+        action: "switch_to_official",
+        accountId: null,
+      },
+      "323e4567-e89b-42d3-a456-426614174000",
+    );
     await waitFor(() => {
       const detail = screen.getByRole("region", {
         name: "Codex 连接详情",

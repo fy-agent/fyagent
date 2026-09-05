@@ -95,8 +95,8 @@ not user copy.
   user should finish it, then refresh. It must not say the product is installed.
 - OpenCode Windows x64 may be offered as a current-user official installer.
   ARM64 remains unavailable. Catalog description states Skills/MCP/Hooks
-  only; do not add 「本机识别和启动暂无法确认」. Claude still uses that
-  sentence until its Windows identity exists. Destination labels may use the
+  only; do not add 「本机识别和启动暂无法确认」. Claude Code now uses its
+  CLI-only lifecycle and must not promise Claude Desktop support. Destination labels may use the
   display name and must not be treated as the scanned folder
   (`@opencode-aidesktop`).
 - Conflict and upgrade dialogs may show source/version/default, never an
@@ -124,6 +124,15 @@ Examples:
   technology.
 
 ### Confirmation and safety copy
+
+Claude's Agent card may offer the closed CLI installer and official login
+confirmation. This is separate from the leftover Settings command-table
+restrictions. A completed managed login says the account is saved and requires
+separate confirmation before replacing consumer credentials. File-impact
+dialogs show actual changed/created and preserved paths plus backup locations.
+File undo must not be described as server-side OAuth revocation, and a
+vendor-owned login/logout must not be promised to be reversible by FyAgent's
+file backup.
 
 Explain:
 

@@ -126,10 +126,27 @@ pub(crate) fn build_codex_switch_target_live_projection(
         );
     }
     let mut effective_settings = effective_provider.settings_config;
-    crate::codex_config::apply_codex_unified_session_bucket_to_settings(
+    let config = crate::codex_config::patch_codex_source_config(
+        environment
+            .live_settings
+            .get("config")
+            .and_then(Value::as_str)
+            .unwrap_or_default(),
         provider.category.as_deref(),
-        &mut effective_settings,
+        effective_settings.get("auth").unwrap_or(&Value::Null),
+        effective_settings
+            .get("config")
+            .and_then(Value::as_str)
+            .unwrap_or_default(),
+        &crate::codex_config::get_codex_config_dir(),
+        crate::settings::unify_codex_session_history(),
     )?;
+    effective_settings["config"] = Value::String(config);
+    effective_settings["auth"] = environment
+        .live_settings
+        .get("auth")
+        .cloned()
+        .unwrap_or_else(|| serde_json::json!({}));
     Ok(effective_settings)
 }
 
@@ -199,22 +216,7 @@ const QUICK_SETUP_CLAUDE_PROVIDER_ID: &str = "fyagent-v2-quick-setup-claude";
 pub(crate) const QUICK_SETUP_CODEX_PROVIDER_ID: &str = "fyagent-v2-quick-setup-codex";
 const QUICK_SETUP_GROKBUILD_PROVIDER_ID: &str = "fyagent-v2-quick-setup-grokbuild";
 
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct QuickSetupWriteTarget {
-    pub path: String,
-    pub backup_path: String,
-    pub exists: bool,
-}
-
-fn quick_setup_write_target(path: PathBuf) -> QuickSetupWriteTarget {
-    let backup_path = crate::config::rolling_backup_path(&path);
-    QuickSetupWriteTarget {
-        exists: path.exists(),
-        path: crate::config::display_user_path(&path),
-        backup_path: crate::config::display_user_path(&backup_path),
-    }
-}
+pub use crate::config::FileWriteTarget as QuickSetupWriteTarget;
 
 fn is_quick_setup_provider_id(app_type: &AppType, provider_id: &str) -> bool {
     matches!(
@@ -347,10 +349,7 @@ impl QuickSetupFileSnapshot {
     }
 
     fn restore(&self) -> Result<(), AppError> {
-        match &self.bytes {
-            Some(bytes) => crate::config::atomic_write(&self.path, bytes),
-            None => crate::config::delete_file(&self.path),
-        }
+        crate::config::restore_file_preimage(&self.path, self.bytes.as_deref())
     }
 
     fn matches_current(&self) -> Result<bool, AppError> {
@@ -411,10 +410,7 @@ fn clear_codex_live_config(snapshot: &CodexLiveConfigSnapshot) -> Result<(), App
 }
 
 fn restore_codex_live_config(snapshot: &CodexLiveConfigSnapshot) -> Result<(), AppError> {
-    match &snapshot.bytes {
-        Some(bytes) => crate::config::atomic_write(&snapshot.path, bytes),
-        None => crate::config::delete_file(&snapshot.path),
-    }
+    crate::config::restore_file_preimage(&snapshot.path, snapshot.bytes.as_deref())
 }
 
 fn rollback_current_codex_delete(
@@ -758,6 +754,40 @@ mod tests {
             .expect("set database current provider");
         crate::settings::set_current_provider(&AppType::Codex, Some(id))
             .expect("set local current provider");
+    }
+
+    #[test]
+    #[serial]
+    fn source_targets_disclose_catalog_without_adding_it_to_config_only_quick_setup() {
+        with_test_home(|_, _| {
+            let mut provider = Provider::with_id(
+                "catalog-source".to_string(),
+                "Catalog source".to_string(),
+                json!({"auth": {"OPENAI_API_KEY": "test-key"}, "config": "model = 'test-model'\n", "modelCatalog": {"models": [{"model": "test-model"}]}}),
+                None,
+            );
+            let targets =
+                ProviderService::source_write_targets(&AppType::Codex, &provider).unwrap();
+            assert_eq!(targets.len(), 2);
+            assert!(targets[0].path.ends_with("config.toml"));
+            assert!(targets[1].path.ends_with("fyagent-model-catalog.json"));
+            assert!(targets
+                .iter()
+                .all(|target| !target.path.ends_with("auth.json")));
+            provider.id = QUICK_SETUP_CODEX_PROVIDER_ID.to_string();
+            assert_eq!(
+                ProviderService::source_write_targets(&AppType::Codex, &provider)
+                    .unwrap()
+                    .len(),
+                1
+            );
+            assert_eq!(
+                ProviderService::quick_setup_write_targets(&AppType::Codex)
+                    .unwrap()
+                    .len(),
+                1
+            );
+        });
     }
 
     fn write_test_codex_live_config(bytes: &[u8]) {
@@ -1554,6 +1584,7 @@ mod tests {
                 None,
             );
             provider.category = Some("official".to_string());
+            provider.settings_config["config"] = json!("model = 'gpt-5'\n");
             state.db.save_provider("codex", &provider).unwrap();
             state
                 .db
@@ -4197,7 +4228,26 @@ impl ProviderService {
                 ))
             }
         };
-        Ok(paths.into_iter().map(quick_setup_write_target).collect())
+        paths
+            .into_iter()
+            .map(|path| crate::config::file_write_target(&path))
+            .collect()
+    }
+
+    pub(crate) fn source_write_targets(
+        app_type: &AppType,
+        provider: &Provider,
+    ) -> Result<Vec<QuickSetupWriteTarget>, AppError> {
+        let mut targets = Self::quick_setup_write_targets(app_type)?;
+        if matches!(app_type, AppType::Codex)
+            && !is_quick_setup_provider_id(app_type, &provider.id)
+            && crate::codex_config::codex_model_catalog_write_required(&provider.settings_config)
+        {
+            targets.push(crate::config::file_write_target(
+                &crate::codex_config::get_codex_model_catalog_path(),
+            )?);
+        }
+        Ok(targets)
     }
 
     /// Execute a provider mutation and derive the restart-relevant live result
@@ -4213,6 +4263,7 @@ impl ProviderService {
         app_type: AppType,
         mutation: impl FnOnce() -> Result<T, AppError>,
     ) -> Result<ProviderMutationResult<T>, AppError> {
+        let _file_scope = crate::config::file_mutation_scope();
         let before = matches!(app_type, AppType::Codex)
             .then(read_codex_live_config_bytes)
             .transpose()?;
@@ -4644,6 +4695,7 @@ impl ProviderService {
         app_type: AppType,
         mut provider: Provider,
     ) -> Result<ProviderMutationResult<SwitchResult>, QuickSetupApplyError> {
+        let _file_scope = crate::config::file_mutation_scope();
         let existing_provider = state
             .db
             .get_provider_by_id(&provider.id, app_type.as_str())
@@ -5444,35 +5496,6 @@ impl ProviderService {
         Self::switch_with_lock_held(state, app_type, id)
     }
 
-    /// Backfill the current live config into the current provider DB row.
-    ///
-    /// Callers that are about to overwrite Codex `auth.json` (Managed Auth
-    /// projection) must invoke this under the same per-app mutation guard so a
-    /// legacy third-party API key is recoverable before the live file changes.
-    /// Returns `true` when a backfill write succeeded.
-    pub(crate) fn backfill_current_live_under_lock(
-        state: &AppState,
-        app_type: AppType,
-    ) -> Result<bool, AppError> {
-        if app_type.is_additive_mode() {
-            return Ok(false);
-        }
-        let providers = state.db.get_all_providers(app_type.as_str())?;
-        let Some(current_id) =
-            crate::settings::get_effective_current_provider(&state.db, &app_type)?
-        else {
-            return Ok(false);
-        };
-        let mut warnings = SwitchResult::default();
-        Ok(Self::backfill_current_provider_from_live(
-            state,
-            &app_type,
-            &providers,
-            &current_id,
-            &mut warnings,
-        ))
-    }
-
     fn backfill_current_provider_from_live(
         state: &AppState,
         app_type: &AppType,
@@ -5522,20 +5545,8 @@ impl ProviderService {
         app_type: AppType,
         id: &str,
     ) -> Result<SwitchResult, AppError> {
+        let _file_scope = crate::config::file_mutation_scope();
         Self::switch_with_lock_held_inner(state, app_type, id, true)
-    }
-
-    /// Like [`switch_with_lock_held`], but skips live→DB backfill.
-    ///
-    /// Managed Auth uses this after it has already backfilled (and possibly
-    /// replaced) `auth.json`, so a second backfill would capture ChatGPT
-    /// tokens into the outgoing third-party provider row.
-    pub(crate) fn switch_with_lock_held_skipping_backfill(
-        state: &AppState,
-        app_type: AppType,
-        id: &str,
-    ) -> Result<SwitchResult, AppError> {
-        Self::switch_with_lock_held_inner(state, app_type, id, false)
     }
 
     fn switch_with_lock_held_inner(
@@ -5549,6 +5560,22 @@ impl ProviderService {
         let _provider = providers
             .get(id)
             .ok_or_else(|| AppError::Message(format!("供应商 {id} 不存在")))?;
+
+        if matches!(app_type, AppType::Codex) && !is_quick_setup_provider_id(&app_type, id) {
+            let settings = build_effective_settings_with_common_config(
+                state.db.as_ref(),
+                &app_type,
+                _provider,
+            )?;
+            crate::codex_config::validate_codex_source_config(
+                _provider.category.as_deref(),
+                settings.get("auth").unwrap_or(&Value::Null),
+                settings
+                    .get("config")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default(),
+            )?;
+        }
 
         // OMO providers are switched through their own exclusive path.
         if matches!(app_type, AppType::OpenCode) && _provider.category.as_deref() == Some("omo") {

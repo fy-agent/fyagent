@@ -8,6 +8,7 @@ const rejectNativeOnly = async (): Promise<never> => {
 
 export function createBrowserFeaturePorts(): FeaturePorts {
   return {
+    configRecovery: { list: rejectNativeOnly, restore: rejectNativeOnly },
     // The native command is the only Agent capability authority. Browser
     // preview renders the controlled unavailable state instead of carrying a
     // second capability matrix that could drift into a support claim.
@@ -25,6 +26,7 @@ export function createBrowserFeaturePorts(): FeaturePorts {
       previewAccountRemoval: rejectNativeOnly,
       removeAccount: rejectNativeOnly,
       applyConnectionAction: rejectNativeOnly,
+      previewConnectionAction: rejectNativeOnly,
     },
     agentAuth: {
       getObservation: rejectNativeOnly,

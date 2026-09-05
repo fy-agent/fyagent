@@ -113,6 +113,21 @@ describe("AgentAuthStatusPanel", () => {
 
     expect(await screen.findByText("未登录")).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "登录" }));
+    expect(
+      await screen.findByRole("dialog", {
+        name: "打开 Claude Code 官方登录？",
+      }),
+    ).toHaveTextContent("不能通过文件备份撤销");
+    expect(port.startSession).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(port.startSession).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "登录" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "确认打开官方登录" }),
+    );
     expect(await screen.findByText("等待你完成官方认证")).toBeVisible();
     expect(
       await screen.findByText("登录状态已更新", {}, { timeout: 2500 }),
@@ -121,6 +136,7 @@ describe("AgentAuthStatusPanel", () => {
       agentId: "claude-code",
       intent: "login",
     });
+    expect(port.startSession).toHaveBeenCalledTimes(1);
     expect(port.getSession).toHaveBeenCalledWith(SESSION_ID);
 
     fireEvent.click(screen.getByRole("button", { name: "刷新状态" }));

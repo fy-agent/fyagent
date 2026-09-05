@@ -12,10 +12,10 @@ pub(crate) use observation::{
     CodexManagedAuthObservation,
 };
 pub(crate) use project::{materialize_from_bundle, project_codex_official_account};
-pub(crate) use swap::{auth_path_in, capture_auth_preimage};
+pub(crate) use swap::{auth_path_in, capture_auth_preimage, restore_auth_recovery};
 
 use crate::services::managed_auth::{
-    stable_connection_id, stable_revision, ConnectionRecord, CredentialPurpose, CredentialStatus,
+    stable_connection_id, ConnectionRecord, CredentialPurpose, CredentialStatus,
     CredentialWithIdentity, ManagedAuthConnectionAction, ManagedAuthConnectionState,
     ManagedAuthConnectionSummary, ManagedAuthConsumer, ManagedAuthCredentialManager,
     ManagedAuthProvider, ManagedAuthReasonCode,
@@ -109,8 +109,15 @@ pub(crate) fn connection_summary(
     let mut allowed_actions = vec![ManagedAuthConnectionAction::Refresh];
     if live_matches_bound {
         allowed_actions.push(ManagedAuthConnectionAction::Disconnect);
-        if !observation.provider_route.is_official() && store_ready {
-            allowed_actions.push(ManagedAuthConnectionAction::SwitchToOfficial);
+        if store_ready
+            && all_accounts.iter().any(|row| {
+                row.credential.purpose == CredentialPurpose::CodexNative
+                    && row.credential.status == CredentialStatus::Ready
+                    && bound
+                        .is_none_or(|bound| row.identity.identity_id != bound.identity.identity_id)
+            })
+        {
+            allowed_actions.push(ManagedAuthConnectionAction::SwitchAccount);
         }
     } else if account_connectable(ready_saved) && store_ready {
         allowed_actions.push(ManagedAuthConnectionAction::ConnectAccount);
@@ -130,16 +137,7 @@ pub(crate) fn connection_summary(
     let connection_id = connection
         .map(|row| row.connection_id.clone())
         .unwrap_or_else(|| stable_connection_id(ManagedAuthConsumer::Codex, "", "openai"));
-    let revision = connection
-        .and_then(|row| row.observed_revision.clone())
-        .or_else(|| observation.auth_revision.clone())
-        .unwrap_or_else(|| {
-            stable_revision(&[
-                "codex-observation",
-                observation.request_mode_label(),
-                observation.effective_store.as_str(),
-            ])
-        });
+    let revision = observation.connection_revision();
 
     ManagedAuthConnectionSummary {
         connection_id,
@@ -170,22 +168,6 @@ fn account_connectable(account: Option<&CredentialWithIdentity>) -> bool {
         row.credential.purpose == CredentialPurpose::CodexNative
             && row.credential.status == CredentialStatus::Ready
     })
-}
-
-impl CodexManagedAuthObservation {
-    fn request_mode_label(&self) -> &'static str {
-        match self.request_mode {
-            crate::services::managed_auth::ManagedAuthRequestMode::OfficialSubscription => {
-                "official"
-            }
-            crate::services::managed_auth::ManagedAuthRequestMode::ThirdPartyApi => "third_party",
-            crate::services::managed_auth::ManagedAuthRequestMode::ProviderConnections => {
-                "providers"
-            }
-            crate::services::managed_auth::ManagedAuthRequestMode::None => "none",
-            crate::services::managed_auth::ManagedAuthRequestMode::Unknown => "unknown",
-        }
-    }
 }
 
 #[allow(dead_code)]

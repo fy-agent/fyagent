@@ -3,12 +3,27 @@
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
+mod claude;
 mod discovery;
 mod grok;
 mod grok_npm;
 mod lifecycle;
+#[cfg(target_os = "macos")]
+mod npm_runtime;
 mod terminal;
 mod versions;
+
+pub(crate) use claude::ClaudeLifecycleError;
+static CLI_LIFECYCLE_WRITER: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+pub(crate) async fn run_claude_cli_lifecycle(action: &str) -> Result<(), ClaudeLifecycleError> {
+    let action = ToolLifecycleAction::from_str(action)
+        .map_err(|_| ClaudeLifecycleError::UnsupportedAction)?;
+    let _guard = CLI_LIFECYCLE_WRITER
+        .try_lock()
+        .map_err(|_| ClaudeLifecycleError::OperationConflict)?;
+    claude::run(action).await
+}
 
 #[cfg(target_os = "windows")]
 use lifecycle::build_tool_lifecycle_command;
@@ -172,6 +187,8 @@ pub async fn get_tool_versions(tools: Option<Vec<String>>) -> Result<Vec<ToolVer
         for tool in requested {
             if tool == "grok" {
                 results.push(formal_windows_grok_version().await);
+            } else if tool == "claude" {
+                results.push(claude::version().await);
             } else {
                 results.push(elevated_windows_tool_version_unavailable(tool));
             }
@@ -182,13 +199,22 @@ pub async fn get_tool_versions(tools: Option<Vec<String>>) -> Result<Vec<ToolVer
     let mut results = Vec::new();
 
     for tool in requested {
-        results.push(get_single_tool_version_impl(tool).await);
+        results.push(if tool == "claude" {
+            claude::version().await
+        } else {
+            get_single_tool_version_impl(tool).await
+        });
     }
 
     Ok(results)
 }
 
 pub async fn run_tool_lifecycle_action(tools: Vec<String>, action: String) -> Result<(), String> {
+    if tools.len() == 1 && tools[0] == "claude" {
+        return run_claude_cli_lifecycle(&action)
+            .await
+            .map_err(|error| error.message().to_string());
+    }
     if let Some(tool) = tools
         .iter()
         .find(|tool| !is_lifecycle_writable(tool.as_str()))
@@ -204,6 +230,9 @@ pub async fn run_tool_lifecycle_action(tools: Vec<String>, action: String) -> Re
     if requested.iter().any(|tool| *tool != "grok") {
         return Err(GROK_CLI_LIFECYCLE_ONLY_MESSAGE.to_string());
     }
+    let _guard = CLI_LIFECYCLE_WRITER
+        .try_lock()
+        .map_err(|_| "另一个 CLI 安装或更新正在进行。".to_string())?;
 
     let label = match action {
         ToolLifecycleAction::Install
@@ -2978,8 +3007,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn non_grok_lifecycle_ipc_is_rejected_before_side_effects() {
-        for tool in ["claude", "gemini", "opencode", "openclaw", "hermes"] {
+    async fn unsupported_lifecycle_ipc_is_rejected_before_side_effects() {
+        for tool in ["gemini", "opencode", "openclaw", "hermes"] {
             for action in [
                 "install",
                 "update",

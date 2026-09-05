@@ -9,8 +9,6 @@ use super::observation::{auth_matches_account, CodexManagedAuthObservation, Code
 pub(crate) enum CodexManagedAuthDelta {
     Noop,
     AuthOnly,
-    ProviderOnly,
-    AuthThenProvider,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -71,13 +69,13 @@ pub(crate) fn plan_codex_managed_auth_delta(
     }
 
     let account_matches = auth_matches_account(&live.auth_state, target_provider_subject);
-    let route_official = live.provider_route.is_official();
-
-    Ok(match (account_matches, route_official) {
-        (true, true) => CodexManagedAuthDelta::Noop,
-        (false, true) => CodexManagedAuthDelta::AuthOnly,
-        (true, false) => CodexManagedAuthDelta::ProviderOnly,
-        (false, false) => CodexManagedAuthDelta::AuthThenProvider,
+    // Credentials do not own model routing. A custom route remains custom
+    // even after an official account is selected; only an explicit source
+    // operation may change config.toml.
+    Ok(if account_matches {
+        CodexManagedAuthDelta::Noop
+    } else {
+        CodexManagedAuthDelta::AuthOnly
     })
 }
 
@@ -119,7 +117,7 @@ mod tests {
     }
 
     #[test]
-    fn delta_matrix_covers_four_branches() {
+    fn account_delta_is_independent_of_request_route() {
         assert_eq!(
             plan_codex_managed_auth_delta(&live(Some("A"), true), "A").unwrap(),
             CodexManagedAuthDelta::Noop
@@ -130,15 +128,15 @@ mod tests {
         );
         assert_eq!(
             plan_codex_managed_auth_delta(&live(Some("A"), false), "A").unwrap(),
-            CodexManagedAuthDelta::ProviderOnly
+            CodexManagedAuthDelta::Noop
         );
         assert_eq!(
             plan_codex_managed_auth_delta(&live(Some("A"), false), "B").unwrap(),
-            CodexManagedAuthDelta::AuthThenProvider
+            CodexManagedAuthDelta::AuthOnly
         );
         assert_eq!(
             plan_codex_managed_auth_delta(&live(None, false), "B").unwrap(),
-            CodexManagedAuthDelta::AuthThenProvider
+            CodexManagedAuthDelta::AuthOnly
         );
     }
 

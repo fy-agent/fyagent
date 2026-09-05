@@ -299,53 +299,20 @@ where
             ),
         })?;
         let account_id = admitted.identity_id.clone();
-        let mut connection_id = None;
-        let mut stage = ManagedAuthLoginStage::Completed;
-        let mut reason = None;
         if purpose == CredentialPurpose::ProxyUpstream {
             let _ = self.upsert_proxy_connections();
         }
-        if request.purpose == ManagedAuthLoginPurpose::ConnectConsumer
-            && request.consumer == Some(ManagedAuthConsumer::Grokbuild)
-        {
-            self.set_stage(handle, ManagedAuthLoginStage::ConnectingConsumer, None)?;
-            let row = self
-                .credentials_for_account(&account_id)
-                .ok()
-                .and_then(|rows| {
-                    rows.into_iter()
-                        .find(|row| row.credential.credential_id == admitted.credential_id)
-                });
-            if let Some(row) = row {
-                let _ = self.upsert_grok_connection_metadata(&row, false);
-                connection_id = Some(stable_connection_id(
-                    ManagedAuthConsumer::Grokbuild,
-                    "",
-                    "xai",
-                ));
-            }
-            stage = ManagedAuthLoginStage::Partial;
-            reason = Some(ManagedAuthReasonCode::NativeProjectionUnavailable);
-        }
-        if request.purpose == ManagedAuthLoginPurpose::ConnectConsumer
-            && request.consumer == Some(ManagedAuthConsumer::Opencode)
-        {
-            self.set_stage(handle, ManagedAuthLoginStage::ConnectingConsumer, None)?;
-            let (next_connection, next_stage, next_reason) =
-                self.finish_opencode_connect_after_login(ManagedAuthProvider::Xai, &account_id);
-            connection_id = next_connection;
-            stage = next_stage;
-            reason = next_reason;
-        }
+        // A completed grant does not consent to modifying consumer files.
+        // The account remains saved until the user confirms a connection.
         self.set_stage(handle, ManagedAuthLoginStage::Verifying, None)?;
         self.login_sessions
             .finish(
                 &handle.session_id,
                 handle.generation,
-                stage,
-                reason,
+                ManagedAuthLoginStage::Completed,
+                None,
                 Some(account_id),
-                connection_id,
+                None,
             )
             .map_err(|_| {
                 (
@@ -634,11 +601,9 @@ mod tests {
             })
             .expect("start");
         let finished = wait_terminal(&service, &snapshot.session_id).await;
-        assert_eq!(finished.stage, ManagedAuthLoginStage::Partial);
-        assert_eq!(
-            finished.reason_code,
-            Some(ManagedAuthReasonCode::NativeProjectionUnavailable)
-        );
+        assert_eq!(finished.stage, ManagedAuthLoginStage::Completed);
+        assert_eq!(finished.reason_code, None);
+        assert_eq!(finished.connection_id, None);
         let rows = service.repository.list_all_credentials().expect("rows");
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].credential.purpose, CredentialPurpose::GrokNative);
@@ -685,7 +650,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn opencode_connect_uses_independent_session_and_pending_restart() {
+    async fn opencode_login_saves_independent_session_without_projecting_files() {
         let issuer = spawn_issuer(0, false).await;
         let (service, dir) = service();
         service.set_xai_login_hooks(XaiLoginHooks {
@@ -702,10 +667,8 @@ mod tests {
             .expect("start");
         let finished = wait_terminal(&service, &snapshot.session_id).await;
         assert_eq!(finished.stage, ManagedAuthLoginStage::Completed);
-        assert_eq!(
-            finished.reason_code,
-            Some(ManagedAuthReasonCode::PendingRestart)
-        );
+        assert_eq!(finished.reason_code, None);
+        assert_eq!(finished.connection_id, None);
         let rows = service.repository.list_all_credentials().expect("rows");
         assert_eq!(rows.len(), 1);
         assert_eq!(
@@ -716,13 +679,8 @@ mod tests {
             rows[0].credential.consumer,
             Some(ManagedAuthConsumer::Opencode)
         );
-        assert_eq!(rows[0].credential.refresh_owner, RefreshOwner::Opencode);
-        let raw: serde_json::Value = serde_json::from_slice(
-            &std::fs::read(dir.path().join("opencode-data").join("auth.json")).unwrap(),
-        )
-        .unwrap();
-        assert_eq!(raw["xai"]["type"], "oauth");
-        assert_eq!(raw["xai"]["refresh"], "refresh-xai-login");
+        assert_eq!(rows[0].credential.refresh_owner, RefreshOwner::Fyagent);
+        assert!(!dir.path().join("opencode-data").join("auth.json").exists());
         let xai = service
             .overview()
             .connections
@@ -732,8 +690,8 @@ mod tests {
                     && row.provider == Some(ManagedAuthProvider::Xai)
             })
             .expect("slot");
-        assert_eq!(xai.auth_status, ManagedAuthConnectionState::PendingRestart);
-        assert!(xai.pending_restart);
+        assert_eq!(xai.auth_status, ManagedAuthConnectionState::Disconnected);
+        assert!(!xai.pending_restart);
         assert!(!xai
             .reason_codes
             .contains(&ManagedAuthReasonCode::NativeProjectionUnavailable));

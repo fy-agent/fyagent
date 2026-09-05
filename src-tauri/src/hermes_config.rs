@@ -372,7 +372,7 @@ fn create_hermes_backup(source: &str) -> Result<PathBuf, AppError> {
         counter += 1;
     }
 
-    atomic_write(&backup_path, source.as_bytes())?;
+    crate::config::write_backup_file(&backup_path, source.as_bytes())?;
     cleanup_hermes_backups(&backup_dir)?;
     Ok(backup_path)
 }

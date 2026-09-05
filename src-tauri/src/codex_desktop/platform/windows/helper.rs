@@ -200,6 +200,23 @@ pub(crate) fn run_grok_tool_operation(
     )
 }
 
+pub(crate) fn run_claude_tool_operation(
+    context: &InteractiveUserContext,
+    action: GrokToolAction,
+    npm_plan: Option<GrokNpmInstallPlan>,
+) -> Result<ToolOperationResult, InstallerError> {
+    let job_id = CanonicalJobId::parse(&uuid::Uuid::new_v4().to_string())
+        .map_err(|_| helper_identity_error())?;
+    run_unpinned_tool_helper(
+        context,
+        UserHelperAction::ClaudeTool { action },
+        &job_id,
+        npm_plan,
+        Arc::new(|_: JobProgress| {}),
+        WindowsHelperDeadlines::GROK_TOOL,
+    )
+}
+
 fn run_unpinned_tool_helper(
     context: &InteractiveUserContext,
     action: UserHelperAction,

@@ -1,6 +1,8 @@
 import { useId, useRef, useState } from "react";
 
 import type { ChangeJobSnapshot, ChangePlan } from "../change-plans";
+import type { FileWriteTarget } from "../file-writes";
+import { FileWriteDisclosure } from "../controls/FileWriteDisclosure";
 import { Button } from "../../ui/Button";
 import {
   createApplyViewModel,
@@ -15,6 +17,7 @@ export type ConfirmChangePlanInput = {
 };
 
 export type ApplyWorkspaceProps = {
+  readonly writeTargets?: readonly FileWriteTarget[];
   readonly plan: ChangePlan | null;
   readonly job: ChangeJobSnapshot | null;
   readonly busy: boolean;
@@ -41,6 +44,7 @@ function ApplyStep({ step }: { readonly step: ApplyStepPresentation }) {
 }
 
 export function ApplyWorkspace({
+  writeTargets,
   plan,
   job,
   busy,
@@ -91,6 +95,12 @@ export function ApplyWorkspace({
         </span>
       </header>
 
+      {view.preview && writeTargets ? (
+        <section className="fy-apply-pane" aria-label="文件与备份">
+          <h3>文件与备份</h3>
+          <FileWriteDisclosure targets={writeTargets} />
+        </section>
+      ) : null}
       {view.preview ? (
         <div className="fy-apply-preview" aria-label="配置更改预览">
           <section className="fy-apply-pane" aria-labelledby={`${id}-semantic`}>

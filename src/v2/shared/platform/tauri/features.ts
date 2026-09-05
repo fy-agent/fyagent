@@ -10,9 +10,11 @@ import { createQoderTraeFeaturePorts } from "./feature-ports/qoderTrae";
 import { createGrokToolingPort } from "./feature-ports/grokTooling";
 import { createManagedAuthPort } from "./feature-ports/managedAuth";
 import { createSimpleFeaturePorts } from "./feature-ports/simple";
+import { createConfigRecoveryPort } from "./feature-ports/configRecovery";
 
 export function createTauriFeaturePorts(): FeaturePorts {
   return {
+    configRecovery: createConfigRecoveryPort(),
     agentAuth: createAgentAuthPort(),
     managedAuth: createManagedAuthPort(),
     agentInstallReadiness: createAgentInstallReadinessPort(),

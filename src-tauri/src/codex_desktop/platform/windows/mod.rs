@@ -52,7 +52,9 @@ pub use deployment::SystemWindowsDiskSpaceProbe;
 pub use deployment::SystemWindowsPackageManager;
 #[cfg(target_os = "windows")]
 #[cfg_attr(test, allow(unused_imports))]
-pub(crate) use helper::{run_grok_tool_operation, run_verified_agent_exe_installer};
+pub(crate) use helper::{
+    run_claude_tool_operation, run_grok_tool_operation, run_verified_agent_exe_installer,
+};
 
 trait WindowsVerifiedFilePin: Send {
     fn recheck(&self) -> Result<(), InstallerError>;

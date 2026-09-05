@@ -45,6 +45,14 @@ or Tauri façades unless an owning contract names a narrow bridge.
 
 Current shared owner families include:
 
+File-impact and recovery controls (`FileWriteDisclosure`, `FileRecoveryButton`)
+live under `shared/features/controls`; Models, Auth and Change Plan reuse their
+ports/parsers and presentation rather than importing a Models page component.
+Their strict file/recovery schemas use the existing `zod/mini` subpath so the
+native feature-port composition does not pull the classic method surface into
+the startup bundle. Keep the same validation tests, dependency lock and seven
+lazy product-page entrypoints; do not relax the initial-chunk budget.
+
 Feature-aware controls (`ExternalLinkButton`, `CopyablePath`,
 `InstallTargetDialog`) live in `shared/features/controls`, not `shared/ui`.
 They may consume feature context and compose pure visual primitives. Pure
@@ -132,6 +140,9 @@ platform architecture rather than introduce a second UI/state framework.
   exist only for Grok Build and call the existing Tooling action port.
 - Do not duplicate Grok install/update in a second Agent CLI card. Desktop
   products stay on the Agent directory owner.
+- Claude Code's CLI-only Agent lifecycle is an explicit Tooling-backed product
+  flow, not permission to restore a Settings shell/npm command table. Reuse the
+  closed Agent jobs and native Tooling owner; no page constructs npm argv.
 
 ### Preserve dependency direction
 

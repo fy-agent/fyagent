@@ -129,6 +129,8 @@ export function isLegalAgentSurface(
 export const AGENT_REASON_CODES = [
   "official_page_only",
   "source_not_verified",
+  "tool_host_missing",
+  "tool_owner_unsupported",
   "platform_unsupported",
   "interactive_user_unavailable",
   "installed_not_runnable",

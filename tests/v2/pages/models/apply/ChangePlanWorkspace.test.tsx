@@ -47,6 +47,13 @@ describe("Models Change Plan connection", () => {
     render(
       <FeatureProvider ports={ports}>
         <ChangePlanWorkspace
+          writeTargets={[
+            {
+              path: "~/.codex/config.toml",
+              backupPath: "~/.codex/config.toml.fyagent.backup",
+              exists: true,
+            },
+          ]}
           active
           currentId="current"
           providers={{
@@ -130,6 +137,13 @@ describe("Models Change Plan connection", () => {
     render(
       <FeatureProvider ports={ports}>
         <ChangePlanWorkspace
+          writeTargets={[
+            {
+              path: "~/.codex/config.toml",
+              backupPath: "~/.codex/config.toml.fyagent.backup",
+              exists: true,
+            },
+          ]}
           active
           currentId="current"
           providers={{

@@ -89,9 +89,14 @@ verified | handoff_complete | failed | cancelled | timed_out
 
 - Claude may invoke only the reviewed official `claude auth login/logout`
   flow. A positive result requires the bounded official
-  `claude auth status --json` output plus its documented exit semantics to
+  `claude auth status` default-JSON output plus its documented exit semantics to
   reach the requested state. Launching a terminal/browser alone remains
   `awaiting_user`.
+- Claude login/logout requires a renderer confirmation explaining the vendor
+  credential/keychain effects. FyAgent invokes the official command; it does
+  not synthesize an auth file or read/copy the Keychain. Vendor login/logout
+  cannot be promised as reversible file undo; re-login is the recovery path.
+  Installation is owned by the CLI-only lifecycle, never Claude Desktop.
 - OpenCode observation is Desktop-first. The Agent Auth façade reads
   sanitized provider metadata produced by
   [Managed Auth Consumers](./managed-auth-consumers.md) from official
@@ -115,8 +120,9 @@ verified | handoff_complete | failed | cancelled | timed_out
 - QoderWork, TRAE Work and WorkBuddy open one selected trusted desktop target
   and are also handoff-only. Opening the application does not prove account
   state.
-- Formal elevated Windows Claude/OpenCode CLI/Auth automation stays
-  unavailable until a separately reviewed ordinary-user boundary exists.
+- Formal elevated Windows Claude/OpenCode Auth automation remains unavailable.
+  Claude's new ordinary-user helper admits detection/install/update only;
+  those lifecycle verbs do not authorize login/logout or a generic CLI command.
 
 ### Observation, target and secret boundaries
 
@@ -139,20 +145,20 @@ verified | handoff_complete | failed | cancelled | timed_out
 
 ## 4. Validation & Error Matrix
 
-| Condition | Required result |
-| --- | --- |
-| Unknown Agent, intent or extra request field | Reject; no process/session. |
-| URL/path/command/token/env/hash/bypass supplied | Reject; no process/session. |
-| Desktop target triplet is partial, malformed, expired or changed | Closed refresh/target error; zero launch. |
-| Multiple desktop candidates and no selected target | `target_selection_required`; never launch the first. |
-| Second non-terminal session for the same Agent | Return the existing/conflict result; do not start another flow. |
-| Claude command opens but structured status never reaches requested state | Remain awaiting/verifying, then `timed_out`; never verified. |
-| OpenCode provider list is unavailable or provider set drifts | Closed observer/provider-changed error; never global success. |
-| Grok or desktop app opens | `handoff_complete` + handoff-only authority. |
-| Codex session requested through this façade | `managed_by_auth_center`; no external session. |
-| User stops waiting | Session becomes cancelled/monitoring-stopped; external flow may continue. |
-| Terminal snapshot is updated again | Contract regression; terminal state is immutable. |
-| Secret/raw auth output reaches DTO, log, DOM or persisted query cache | Security regression. |
+| Condition                                                                | Required result                                                           |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------------- |
+| Unknown Agent, intent or extra request field                             | Reject; no process/session.                                               |
+| URL/path/command/token/env/hash/bypass supplied                          | Reject; no process/session.                                               |
+| Desktop target triplet is partial, malformed, expired or changed         | Closed refresh/target error; zero launch.                                 |
+| Multiple desktop candidates and no selected target                       | `target_selection_required`; never launch the first.                      |
+| Second non-terminal session for the same Agent                           | Return the existing/conflict result; do not start another flow.           |
+| Claude command opens but structured status never reaches requested state | Remain awaiting/verifying, then `timed_out`; never verified.              |
+| OpenCode provider list is unavailable or provider set drifts             | Closed observer/provider-changed error; never global success.             |
+| Grok or desktop app opens                                                | `handoff_complete` + handoff-only authority.                              |
+| Codex session requested through this façade                              | `managed_by_auth_center`; no external session.                            |
+| User stops waiting                                                       | Session becomes cancelled/monitoring-stopped; external flow may continue. |
+| Terminal snapshot is updated again                                       | Contract regression; terminal state is immutable.                         |
+| Secret/raw auth output reaches DTO, log, DOM or persisted query cache    | Security regression.                                                      |
 
 ## 5. Good / Base / Bad Cases
 
