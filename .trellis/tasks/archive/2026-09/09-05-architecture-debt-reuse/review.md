@@ -52,3 +52,5 @@
 ## 交付收口
 
 SPEC 已对齐数据库/同步/MCP/模型生命周期的签名、行为、错误矩阵、断言和复用规则。完整 prearchive 已通过；按工作提交、Trellis 归档、归档后无排除参数 canonical contracts、会话记录的顺序收口。最终 Git 状态、提交哈希与归档位置以任务元数据、会话记录和实际命令输出为准。不推送、不发布、不清理用户数据。
+
+实际工作提交为 `a051c09846a2a600c2fc513335e10e1fc15a93f0`，任务于 2026-09-05 归档，归档提交为 `42acc3a6`。归档后 `mise run check:contracts` 无排除参数执行成功（exit 0），日志 `/tmp/fyagent-architecture-postarchive-contracts.log`。归档脚本没有改写 JSONL 内两个指向任务自身的路径，已在归档记录中将其改为真实 archive 路径并复验上下文；该修正不改源码、全局脚本或历史运行命令。

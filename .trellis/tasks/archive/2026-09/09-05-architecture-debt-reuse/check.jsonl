@@ -1,7 +1,7 @@
 {"file":".trellis/spec/backend/modular-boundaries.md","reason":"Native architecture review"}
 {"file":".trellis/spec/backend/database-persistence.md","reason":"No persistence/transaction regression"}
 {"file":".trellis/spec/backend/auto-sync.md","reason":"Nonblocking listener, independent workers and paused-time regression"}
-{"file":".trellis/tasks/09-05-architecture-debt-reuse/review.md","reason":"Integrated evidence, reviewed platform identity changes and final lifecycle gate"}
+{"file":".trellis/tasks/archive/2026-09/09-05-architecture-debt-reuse/review.md","reason":"Integrated evidence, reviewed platform identity changes and final lifecycle gate"}
 {"file":".trellis/spec/backend/mcp-management.md","reason":"Projection compatibility"}
 {"file":".trellis/spec/frontend/modular-boundaries.md","reason":"Renderer imports and owner checks"}
 {"file":".trellis/spec/frontend/v2-models.md","reason":"Authoritative readback and secrets"}
