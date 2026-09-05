@@ -1,0 +1,6 @@
+{"file":".trellis/spec/backend/reuse.md","reason":"Prefer adopted crates and preserve security owners"}
+{"file":".trellis/spec/backend/modular-boundaries.md","reason":"Native dependency direction and IPC closure"}
+{"file":".trellis/spec/frontend/modular-boundaries.md","reason":"V2/leftover/neutral import boundaries"}
+{"file":".trellis/spec/frontend/reuse.md","reason":"Reuse mature primitives without parallel owners"}
+{"file":".trellis/spec/backend/development-environment.md","reason":"Locked dependency/toolchain changes and current-host evidence"}
+{"file":".trellis/tasks/09-05-security-architecture-round2/research/sources.md","reason":"Security advisories and verified scanner limits"}

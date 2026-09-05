@@ -24,6 +24,10 @@ error matrices, tests, paths, and security rules belong in the linked owner.
 
 ## Core architecture and repository infrastructure
 
+Security-alert triage and independent scan evidence are owned by
+[Security Review](./security-review.md), including dependency reachability,
+secret handling, native source checks, and residual-risk reporting.
+
 | Contract                                                                  | Owns                                                                                                                            |
 | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | [Rust Host Modular Boundaries](./modular-boundaries.md)                   | Module responsibilities, dependency direction, command/service/platform separation, and top-level composition.                  |

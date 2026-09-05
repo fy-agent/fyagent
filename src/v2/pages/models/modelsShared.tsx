@@ -6,7 +6,7 @@ import { useCallback, useRef, useState, type ReactNode } from "react";
 import { classNames } from "../../shared/design-system/classNames";
 import type { ModelWriteTarget } from "../../shared/features/types";
 import { CatalogDetail } from "../../shared/ui/catalog";
-import { CopyablePath } from "../../shared/ui/CopyablePath";
+import { CopyablePath } from "../../shared/features/controls/CopyablePath";
 import {
   Badge,
   Button,

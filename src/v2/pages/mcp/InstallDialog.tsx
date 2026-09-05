@@ -12,7 +12,7 @@ import { AssignmentPanel } from "../../shared/ui/AssignmentPanel";
 import {
   InstallPathPreview,
   skillTargetLabel,
-} from "../../shared/ui/InstallTargetDialog";
+} from "../../shared/features/controls/InstallTargetDialog";
 import {
   Button,
   Checkbox,

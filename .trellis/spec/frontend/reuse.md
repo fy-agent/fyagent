@@ -28,14 +28,14 @@ existing FyAgent owner
 
 V2 placement roles are:
 
-| Location | Owner |
-| --- | --- |
-| `src/v2/shared/ui/**` | Reusable visual/interaction primitives with no page business authority. |
-| `src/v2/shared/features/**` | Shared feature types, ports, query keys/hooks, projections, and reusable feature workflows. |
-| `src/v2/shared/platform/**` | Browser/Tauri adapters and `unknown` wire parsing; only approved Tauri adapters import `@tauri-apps/**`. |
-| `src/v2/widgets/**` | App-shell or multi-page composition whose owner is above one route. |
-| `src/v2/pages/<route>/**` | Route composition and genuinely route-specific presentation. |
-| `src/shared/**` | Explicit renderer-neutral bridge approved by an owning feature/backend contract. |
+| Location                                                          | Owner                                                                                                                   |
+| ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `src/v2/shared/ui/**`                                             | Reusable visual/interaction primitives with no page business authority.                                                 |
+| `src/v2/shared/features/**`                                       | Shared feature types, ports, query keys/hooks, projections, and reusable feature workflows.                             |
+| `src/v2/shared/platform/**`                                       | Browser/Tauri adapters and `unknown` wire parsing; only approved Tauri adapters import `@tauri-apps/**`.                |
+| `src/v2/widgets/**`                                               | App-shell or multi-page composition whose owner is above one route.                                                     |
+| `src/v2/pages/<route>/**`                                         | Route composition and genuinely route-specific presentation.                                                            |
+| `src/shared/**`                                                   | Explicit renderer-neutral bridge approved by an owning feature/backend contract.                                        |
 | Leftover `src/components/common/**`, `src/hooks/**`, `src/lib/**` | Reuse within leftover V1 only, following [Directory Structure](./directory-structure.md); never a direct V2 dependency. |
 
 Leftover work reuses the existing leftover owner rather than creating another
@@ -44,6 +44,13 @@ component library. V2 must not import leftover components, hooks, state, i18n,
 or Tauri façades unless an owning contract names a narrow bridge.
 
 Current shared owner families include:
+
+Feature-aware controls (`ExternalLinkButton`, `CopyablePath`,
+`InstallTargetDialog`) live in `shared/features/controls`, not `shared/ui`.
+They may consume feature context and compose pure visual primitives. Pure
+`shared/ui` never imports back through the feature or platform layer; the
+dependency-cruiser gate enforces this direction. Do not re-export these controls
+through a UI barrel to conceal that dependency.
 
 - feature controls and lists: `FeatureTabs`, `FeatureSearch`, `FeatureList`,
   `FeaturePagination`;
@@ -141,17 +148,17 @@ content/ports.
 
 ## 4. Validation & Error Matrix
 
-| Condition | Required result |
-| --- | --- |
-| A shared owner already provides the capability | Extend/reuse it or document why its contract is unsuitable. |
-| Two pages create near-identical controls or reducers | Promote one owner before merging the second copy. |
-| A page directly imports Tauri or parses a shared raw payload | Move the boundary to the approved platform/feature owner. |
-| V2 imports leftover UI/hook/state without an explicit bridge | Architecture test fails; use V2 owners/ports. |
-| A new package duplicates an adopted primitive | Reject unless the task records a concrete capability gap and review. |
-| A dependency fails license/security/platform/footprint review | Do not adopt it. |
-| Sharing needs speculative flags for one consumer | Keep the implementation local and revisit with a concrete second use. |
-| Shared UI begins owning filesystem, network, query, secret, or capability policy | Split authority back into the feature/platform owner. |
-| A reusable component changes accessible name/order/keyboard behavior per page | Define one semantic API and test every supported variant. |
+| Condition                                                                        | Required result                                                       |
+| -------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| A shared owner already provides the capability                                   | Extend/reuse it or document why its contract is unsuitable.           |
+| Two pages create near-identical controls or reducers                             | Promote one owner before merging the second copy.                     |
+| A page directly imports Tauri or parses a shared raw payload                     | Move the boundary to the approved platform/feature owner.             |
+| V2 imports leftover UI/hook/state without an explicit bridge                     | Architecture test fails; use V2 owners/ports.                         |
+| A new package duplicates an adopted primitive                                    | Reject unless the task records a concrete capability gap and review.  |
+| A dependency fails license/security/platform/footprint review                    | Do not adopt it.                                                      |
+| Sharing needs speculative flags for one consumer                                 | Keep the implementation local and revisit with a concrete second use. |
+| Shared UI begins owning filesystem, network, query, secret, or capability policy | Split authority back into the feature/platform owner.                 |
+| A reusable component changes accessible name/order/keyboard behavior per page    | Define one semantic API and test every supported variant.             |
 
 ## 5. Good / Base / Bad Cases
 

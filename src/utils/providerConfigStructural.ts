@@ -5,6 +5,19 @@ export const isPlainObject = (value: unknown): value is Record<string, any> =>
 
 const FORBIDDEN_MERGE_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 
+function setOwnValue(
+  target: Record<string, any>,
+  key: string,
+  value: any,
+): void {
+  Object.defineProperty(target, key, {
+    value,
+    enumerable: true,
+    configurable: true,
+    writable: true,
+  });
+}
+
 /**
  * Strip prototype-pollution keys before structural read-side comparison.
  * Write-side JSON operations keep their own defensive key checks too.
@@ -16,7 +29,7 @@ export const sanitizeSnippet = (value: any): any => {
   const cleaned: Record<string, any> = {};
   for (const [key, child] of Object.entries(value)) {
     if (FORBIDDEN_MERGE_KEYS.has(key)) continue;
-    cleaned[key] = sanitizeSnippet(child);
+    setOwnValue(cleaned, key, sanitizeSnippet(child));
   }
   return cleaned;
 };
@@ -47,10 +60,14 @@ export const deepMerge = (
     if (FORBIDDEN_MERGE_KEYS.has(key)) return;
 
     if (isPlainObject(value)) {
-      if (!isPlainObject(target[key])) target[key] = {};
+      if (
+        !Object.prototype.hasOwnProperty.call(target, key) ||
+        !isPlainObject(target[key])
+      )
+        setOwnValue(target, key, {});
       deepMerge(target[key], value);
     } else {
-      target[key] = value;
+      setOwnValue(target, key, value);
     }
   });
   return target;
@@ -62,7 +79,7 @@ export const deepRemove = (
 ): void => {
   Object.entries(source).forEach(([key, value]) => {
     if (FORBIDDEN_MERGE_KEYS.has(key)) return;
-    if (!(key in target)) return;
+    if (!Object.prototype.hasOwnProperty.call(target, key)) return;
 
     if (isPlainObject(value) && isPlainObject(target[key])) {
       deepRemove(target[key], value);

@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { FeatureProvider } from "@/v2/shared/features/provider";
 import { createBrowserFeaturePorts } from "@/v2/shared/platform/browser/features";
-import { ExternalLinkButton } from "@/v2/shared/ui/ExternalLinkButton";
+import { ExternalLinkButton } from "@/v2/shared/features/controls/ExternalLinkButton";
 
 describe("ExternalLinkButton", () => {
   it("opens through settings.openExternal and holds one in-flight lock", async () => {

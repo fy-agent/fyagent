@@ -17,7 +17,7 @@ import {
 import { parseGrokBuildConfig } from "@/utils/grokBuildConfig";
 import JsonEditor from "./JsonEditor";
 import * as prettier from "prettier/standalone";
-import * as parserBabel from "prettier/parser-babel";
+import * as parserBabel from "prettier/plugins/babel";
 import * as pluginEstree from "prettier/plugins/estree";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

@@ -10,6 +10,22 @@ import {
 export const CODEX_OFFICIAL_PROVIDER_ID = "codex-official";
 export const GROKBUILD_OFFICIAL_PROVIDER_ID = "grokbuild-official";
 
+/** UI identity hint only. Credential routing remains a native provider policy. */
+export function isCopilotEndpoint(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (
+      url.protocol === "https:" &&
+      url.username === "" &&
+      url.password === "" &&
+      (url.hostname === "githubcopilot.com" ||
+        url.hostname.endsWith(".githubcopilot.com"))
+    );
+  } catch {
+    return false;
+  }
+}
+
 /** Keep the UI capability rule aligned with the Rust takeover policy. */
 export function supportsOfficialProxyTakeover(
   appId: AppId,

@@ -23,8 +23,9 @@ src/
    |- shared/
    |  |- config/              # navigation source
    |  |- assets/              # agent and app icons
-   |  |- ui/                  # primitives, catalog, split, SelectionLens, FeatureTabs/Search/List/Pagination, ExternalLinkButton
+   |  |- ui/                  # pure visual primitives, catalog, split, SelectionLens, FeatureTabs/Search/List/Pagination
    |  |- features/            # ports, types, queries, FeatureProvider
+   |  |  `- controls/         # feature-aware ExternalLinkButton, CopyablePath, InstallTargetDialog
    |  |- platform/            # tauri/browser adapters, runtime, lifecycle
    |  |- design-system/
    |  `- codex-desktop/       # V2 panel/hook over @/shared/codex-desktop

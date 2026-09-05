@@ -19,7 +19,7 @@
     ],
     [
       "scripts/tasks/lib.mjs",
-      "c2da8afb728fc046cbf01a9706502e99255d200a6234e94bb73754980ca946f9"
+      "f3e693710f56de54e991c31a1a9ee93c5f654e38831c6fd3fbb8cf7f7a392e94"
     ],
     [
       "scripts/tasks/macos-signed-dev-cargo.mjs",
@@ -27,7 +27,7 @@
     ],
     [
       "scripts/tasks/supported-platform-check.mjs",
-      "44f1120b01e08cc9ff995cfd638e2c68d63edcf977375946cfa845cc185885f7"
+      "d986e9578bfbf999f89cb9b124ce304303d770bc8eb228ca3838f942f8785a9b"
     ],
     [
       "scripts/tasks/system-check.mjs",
@@ -51,7 +51,7 @@
     ],
     [
       "src-tauri/Cargo.toml",
-      "f1a1ecf19e8546fa15694b912c1949b5ee2326fd8b5956edcb56d3731f006648"
+      "c730974ca8ec5859347db7b4a0818087f8dbf86cccca95d5283473855e1c7cb7"
     ],
     [
       "src-tauri/src/agent_install/desktop.rs",
@@ -199,11 +199,11 @@
     ],
     [
       "src-tauri/src/proxy/providers/codex_oauth_auth.rs",
-      "04d7f501b96a212b7a56894202e17de6a1942559a632d066c45c1ed955816eb5"
+      "fb3fba3eb4aac05450ee9e2f9bf038349e4c2b3d13a5c72520ac865ba0b1344d"
     ],
     [
       "src-tauri/src/proxy/providers/copilot_auth.rs",
-      "bfc93519e6826752037c9d0e984c5ffca5553938ebc845a97fd014adec9d5565"
+      "d32f136064da7843448917e4c9224ec69e905267b0488372701e9881bb972715"
     ],
     [
       "src-tauri/src/proxy/providers/xai_oauth_auth.rs",
@@ -251,7 +251,7 @@
     ],
     [
       "src-tauri/src/services/session_usage_grokbuild.rs",
-      "496de86a305c4185a4380a0127b990de2d7aedbe2a9865ae75217e3be5398a3a"
+      "c0487b6f48d5560904fe82245bdf53df6daab7870279d4b7f09568a9fec551fa"
     ],
     [
       "src-tauri/src/services/skill.rs",
@@ -259,7 +259,7 @@
     ],
     [
       "src-tauri/src/services/subscription.rs",
-      "c67063e2b7fb49f65635d70b01a6afd21fa7cc0f722ea3fe404b7e164c983a4e"
+      "28cbe71ded9292ffa3ae9291fd5817507122c50a974b79e3ba312c50e4a093ba"
     ],
     [
       "src-tauri/src/services/tooling.rs",
@@ -395,7 +395,7 @@
     ],
     [
       "tests/codexUserHelperContract.test.ts",
-      "62651c2d7ee86b0f4d1523ed9e61ca4185a5b33a82d64bc5779a00dbeb24ff48"
+      "b0b89b72e1c5f56586fea3e8b28310415d2fd9064330ba0b7fce7841131e80aa"
     ],
     [
       "tests/codexWindowsUserScopeContract.test.ts",
@@ -415,11 +415,11 @@
     ],
     [
       "tests/releaseWorkflow.test.ts",
-      "b2970dce7d1cbb9fcf461c1f1ab547db37d548c419d620d5c7034ec7149b93a7"
+      "cf2895671508f226301bcb183ebb15501e26e523f71ce939933d8078a6ca4a8e"
     ],
     [
       "tests/remainingPlatformSurface.test.ts",
-      "d0415f1ca78fad6e1a30527b5475f0dc0826c8ab7645b8c33750f77846872ec1"
+      "5a976d8b43e12a73d09ea62c6117d2945a6e2ef0227603d862cc30f3d0aa002d"
     ],
     [
       "tests/singleInstanceActivationContract.test.ts",
@@ -435,7 +435,7 @@
     ],
     [
       "tests/v2/scripts/build-v2-preview.test.ts",
-      "1d1b61b3d187323bb7117cedb96d34dd6da028950aff470cc552285e6f457fec"
+      "44a388e477088115be8d3a32fd8de391c485302da3cb6b49592bff08886524c0"
     ],
     [
       "tests/windowsMsvcCross.test.ts",

@@ -67,6 +67,9 @@ describe("generated mise task documentation", () => {
   });
 
   it("escapes Markdown pipes and normalizes multiline metadata", () => {
+    expect(generator.escapeMarkdownCell(String.raw`path\|next`)).toBe(
+      String.raw`path\\\|next`,
+    );
     expect(generator.escapeMarkdownCell("left|right\n next")).toBe(
       "left\\|right next",
     );

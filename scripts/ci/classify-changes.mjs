@@ -144,6 +144,7 @@ const WINDOWS_NATIVE_TEST =
   /^tests\/(?:codexDesktopDtoContract|codexUserHelperContract|codexWindowsUserScopeContract|desktopSecurityBoundary|windowsNsisContract|fixtures\/windows-nsis)/u;
 
 const FRONTEND_TEST_PREFIXES = Object.freeze([
+  "tests/architecture/",
   "tests/components/",
   "tests/config/",
   "tests/hooks/",
@@ -154,15 +155,21 @@ const FRONTEND_TEST_PREFIXES = Object.freeze([
 ]);
 
 const FRONTEND_ROOT_FILES = new Set([
+  ".dependency-cruiser.cjs",
   "components.json",
   "deplink.html",
   "eslint.v2.config.mjs",
   "playwright.v2.config.ts",
   "postcss.config.cjs",
   "scripts/build-v2-preview.mjs",
+  "scripts/build-v2-preview.d.mts",
+  "scripts/preview-html.mjs",
+  "scripts/preview-html.d.mts",
   "scripts/verify-v2-route-chunks.d.mts",
   "scripts/verify-v2-route-chunks.mjs",
   "tailwind.config.cjs",
+  "tests/deeplinkPlayground.test.ts",
+  "tests/previewHtml.test.ts",
   "tsconfig.json",
   "tsconfig.node.json",
   "tsconfig.v2.json",

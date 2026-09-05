@@ -22,6 +22,9 @@ assertions belong in the linked owner.
 
 ## Foundation contracts
 
+For URL classification, dynamic text, configuration merges and standalone
+HTML parsing, also read [Security Boundaries](./security-boundaries.md).
+
 | Contract                                               | Owns                                                                                                       |
 | ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- |
 | [Directory Structure](./directory-structure.md)        | Renderer directory roles and placement.                                                                    |

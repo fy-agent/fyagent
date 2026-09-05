@@ -67,7 +67,10 @@ import {
   setCodexModelName as setCodexModelNameInConfig,
 } from "@/utils/providerConfigUtils";
 import { isNonNegativeDecimalString } from "@/types/usage";
-import { CODEX_OFFICIAL_PROVIDER_ID } from "@/utils/providerCapabilities";
+import {
+  CODEX_OFFICIAL_PROVIDER_ID,
+  isCopilotEndpoint,
+} from "@/utils/providerCapabilities";
 import { getCodexCustomTemplate } from "@/config/codexTemplates";
 import CodexConfigEditor from "./CodexConfigEditor";
 import { CommonConfigEditor } from "./CommonConfigEditor";
@@ -1169,7 +1172,7 @@ function ProviderFormFull({
     const isCopilotProvider =
       presetProviderType === "github_copilot" ||
       initialData?.meta?.providerType === "github_copilot" ||
-      baseUrl.includes("githubcopilot.com");
+      isCopilotEndpoint(baseUrl);
     const isCodexOauthProvider =
       presetProviderType === "codex_oauth" ||
       initialData?.meta?.providerType === "codex_oauth";
@@ -1361,7 +1364,7 @@ function ProviderFormFull({
     const isCopilotProvider =
       presetProviderType === "github_copilot" ||
       initialData?.meta?.providerType === "github_copilot" ||
-      baseUrl.includes("githubcopilot.com");
+      isCopilotEndpoint(baseUrl);
     const isCodexOauthProvider =
       presetProviderType === "codex_oauth" ||
       initialData?.meta?.providerType === "codex_oauth";
@@ -2213,7 +2216,7 @@ function ProviderFormFull({
               isCopilotPreset={
                 presetProviderType === "github_copilot" ||
                 initialData?.meta?.providerType === "github_copilot" ||
-                baseUrl.includes("githubcopilot.com")
+                isCopilotEndpoint(baseUrl)
               }
               isCodexOauthPreset={
                 presetProviderType === "codex_oauth" ||
@@ -2227,7 +2230,7 @@ function ProviderFormFull({
                 templatePreset?.requiresOAuth === true ||
                 presetProviderType === "github_copilot" ||
                 initialData?.meta?.providerType === "github_copilot" ||
-                baseUrl.includes("githubcopilot.com") ||
+                isCopilotEndpoint(baseUrl) ||
                 presetProviderType === "codex_oauth" ||
                 initialData?.meta?.providerType === "codex_oauth" ||
                 presetProviderType === "xai_oauth" ||

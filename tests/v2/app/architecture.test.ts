@@ -385,7 +385,9 @@ describe("FyAgent V2 architecture boundary", () => {
     const violations = pages.flatMap(({ relative, owners, forbidden }) => {
       const source = fs.readFileSync(path.join(v2Root, relative), "utf8");
       const missing = owners.flatMap((owner) =>
-        source.includes(`from "../../shared/ui/${owner}"`)
+        source.includes(
+          `from "../../shared/${owner === "InstallTargetDialog" ? "features/controls" : "ui"}/${owner}"`,
+        )
           ? []
           : [`${relative} does not import ${owner}`],
       );

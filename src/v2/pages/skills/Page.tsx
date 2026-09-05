@@ -50,9 +50,9 @@ import {
   Spinner,
 } from "../../shared/ui/primitives";
 import { AssignmentPanel } from "../../shared/ui/AssignmentPanel";
-import { InstallTargetDialog } from "../../shared/ui/InstallTargetDialog";
-import { CopyablePath } from "../../shared/ui/CopyablePath";
-import { ExternalLinkButton } from "../../shared/ui/ExternalLinkButton";
+import { InstallTargetDialog } from "../../shared/features/controls/InstallTargetDialog";
+import { CopyablePath } from "../../shared/features/controls/CopyablePath";
+import { ExternalLinkButton } from "../../shared/features/controls/ExternalLinkButton";
 import { FeatureList, FeatureListItem } from "../../shared/ui/FeatureList";
 import { FeaturePagination } from "../../shared/ui/FeaturePagination";
 import { FeatureSearch } from "../../shared/ui/FeatureSearch";

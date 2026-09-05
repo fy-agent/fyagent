@@ -1,13 +1,8 @@
-import {
-  mkdtemp,
-  readFile,
-  realpath,
-  rm,
-  writeFile,
-} from "node:fs/promises";
+import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { htmlAttribute, htmlElements, scriptContent } from "./preview-html.mjs";
 
 const scriptPath = fileURLToPath(import.meta.url);
 const scriptDirectory = path.dirname(scriptPath);
@@ -19,40 +14,23 @@ const defaultOutputPath = path.join(
   "FyAgent-前端交互预览.html",
 );
 
-function htmlAttribute(tag, name) {
-  const pattern = new RegExp(
-    `\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s"'=<>` +
-      "`" +
-      "]+))",
-    "i",
-  );
-  const match = tag.match(pattern);
-  return match ? (match[1] ?? match[2] ?? match[3] ?? "") : undefined;
-}
-
 export function parseDistributionEntryAssets(indexHtml) {
   const entries = [];
-  const tagPattern =
-    /<script\b[^>]*>[\s\S]*?<\/script\s*>|<link\b[^>]*>/gi;
+  for (const element of htmlElements(indexHtml, ["script", "link"])) {
+    const { startOffset: start, endOffset: end } = element.sourceCodeLocation;
 
-  for (const match of indexHtml.matchAll(tagPattern)) {
-    const tag = match[0];
-    const start = match.index ?? 0;
-
-    if (/^<script\b/i.test(tag)) {
-      const type = htmlAttribute(tag, "type")?.toLocaleLowerCase();
-      const source = htmlAttribute(tag, "src");
+    if (element.tagName === "script") {
+      const type = htmlAttribute(element, "type")?.toLowerCase();
+      const source = htmlAttribute(element, "src");
+      const content = scriptContent(indexHtml, element);
       if (type === "module" && source) {
         entries.push({
           kind: "script",
           source,
           start,
-          end: start + tag.length,
+          end,
         });
       } else if (type === "module") {
-        const content = tag
-          .replace(/^<script\b[^>]*>/i, "")
-          .replace(/<\/script\s*>$/i, "");
         const bootstrap = parseViteBootstrapEntries(content);
         if (!bootstrap) {
           throw new Error(
@@ -63,30 +41,29 @@ export function parseDistributionEntryAssets(indexHtml) {
           kind: "vite-bootstrap",
           ...bootstrap,
           start,
-          end: start + tag.length,
+          end,
         });
       }
       continue;
     }
 
-    const relations = (htmlAttribute(tag, "rel") ?? "")
-      .toLocaleLowerCase()
+    const relations = (htmlAttribute(element, "rel") ?? "")
+      .toLowerCase()
       .split(/\s+/);
-    const source = htmlAttribute(tag, "href");
+    const source = htmlAttribute(element, "href");
     if (relations.includes("stylesheet") && source) {
       entries.push({
         kind: "stylesheet",
         source,
         start,
-        end: start + tag.length,
+        end,
       });
     }
   }
 
   if (
     !entries.some(
-      (entry) =>
-        entry.kind === "script" || entry.kind === "vite-bootstrap",
+      (entry) => entry.kind === "script" || entry.kind === "vite-bootstrap",
     )
   ) {
     throw new Error(
@@ -197,20 +174,13 @@ export async function resolveDistributionAsset(
       realpath(path.resolve(relativeToDirectory)),
     ]);
   const resolvedPath = decodedSource.startsWith("/")
-    ? path.resolve(
-        canonicalDistributionPath,
-        decodedSource.replace(/^\/+/, ""),
-      )
+    ? path.resolve(canonicalDistributionPath, decodedSource.replace(/^\/+/, ""))
     : path.resolve(canonicalRelativeDirectory, decodedSource);
 
   assertContainedPath(canonicalDistributionPath, resolvedPath, source);
 
   const canonicalAssetPath = await realpath(resolvedPath);
-  assertContainedPath(
-    canonicalDistributionPath,
-    canonicalAssetPath,
-    source,
-  );
+  assertContainedPath(canonicalDistributionPath, canonicalAssetPath, source);
 
   return canonicalAssetPath;
 }
@@ -312,9 +282,7 @@ async function replaceAsync(source, pattern, replacer) {
 
 function shouldInlineReference(source) {
   return (
-    source.length > 0 &&
-    !source.startsWith("#") &&
-    !isRemoteReference(source)
+    source.length > 0 && !source.startsWith("#") && !isRemoteReference(source)
   );
 }
 
@@ -456,10 +424,7 @@ async function inlineKnownViteBootstrap(
     scriptPath,
     distributionDirectory,
   );
-  assertNoResidualImportMetaUrl(
-    inlinedScriptContent,
-    bootstrap.scriptSource,
-  );
+  assertNoResidualImportMetaUrl(inlinedScriptContent, bootstrap.scriptSource);
   const script = renderInlineEntry("script", inlinedScriptContent);
 
   return [...styles, script].join("\n");
@@ -495,11 +460,7 @@ async function inlineEntriesForStandalone(
       replacements.push(
         renderInlineEntry(
           "stylesheet",
-          await inlineCssAssets(
-            content,
-            assetPath,
-            distributionDirectory,
-          ),
+          await inlineCssAssets(content, assetPath, distributionDirectory),
         ),
       );
       continue;
@@ -509,8 +470,7 @@ async function inlineEntriesForStandalone(
     if (externalViteBootstrap) {
       const executableEntryCount = entries.filter(
         (candidate) =>
-          candidate.kind === "script" ||
-          candidate.kind === "vite-bootstrap",
+          candidate.kind === "script" || candidate.kind === "vite-bootstrap",
       ).length;
       if (executableEntryCount !== 1) {
         throw new Error(
@@ -533,11 +493,7 @@ async function inlineEntriesForStandalone(
     replacements.push(
       renderInlineEntry(
         "script",
-        await inlineJavaScriptAssets(
-          content,
-          assetPath,
-          distributionDirectory,
-        ),
+        await inlineJavaScriptAssets(content, assetPath, distributionDirectory),
       ),
     );
   }
@@ -549,13 +505,26 @@ async function inlineEntriesForStandalone(
 }
 
 function stripDistributionFileRedirect(indexHtml) {
-  return indexHtml.replace(
-    /<script\b[^>]*>[\s\S]*?<\/script\s*>/gi,
-    (tag) =>
-      tag.includes("FyAgent-前端交互预览.html") &&
-      tag.includes("window.location.protocol")
-        ? ""
-        : tag,
+  const entries = [];
+  for (const element of htmlElements(indexHtml, ["script"])) {
+    if (htmlAttribute(element, "data-fyagent-file-redirect") !== undefined) {
+      if (
+        htmlAttribute(element, "src") !== undefined ||
+        htmlAttribute(element, "type") !== undefined
+      ) {
+        throw new Error(
+          "The owned file redirect must be an inline classic script.",
+        );
+      }
+      scriptContent(indexHtml, element);
+      const location = element.sourceCodeLocation;
+      entries.push({ start: location.startOffset, end: location.endOffset });
+    }
+  }
+  return replaceEntryTags(
+    indexHtml,
+    entries,
+    entries.map(() => ""),
   );
 }
 
@@ -567,33 +536,39 @@ function addStandaloneBootstrap(indexHtml) {
       if (!window.location.hash) window.location.hash = "#/prompts";
     </script>`;
 
-  if (!/<\/head\s*>/i.test(indexHtml)) {
+  const head = htmlElements(indexHtml, ["head"])[0];
+  const offset = head?.sourceCodeLocation.endTag?.startOffset;
+  if (offset === undefined) {
     throw new Error("dist/index.html does not contain a closing head tag.");
   }
-  return indexHtml.replace(/<\/head\s*>/i, `${bootstrap}\n  </head>`);
+  return `${indexHtml.slice(0, offset)}${bootstrap}\n  ${indexHtml.slice(offset)}`;
 }
 
 async function inlineHtmlImageLinks(indexHtml, distributionDirectory) {
-  return replaceAsync(indexHtml, /<link\b[^>]*>/gi, async (match) => {
-    const tag = match[0];
-    const relations = (htmlAttribute(tag, "rel") ?? "")
-      .toLocaleLowerCase()
+  const entries = [];
+  const replacements = [];
+  for (const element of htmlElements(indexHtml, ["link"])) {
+    const relations = (htmlAttribute(element, "rel") ?? "")
+      .toLowerCase()
       .split(/\s+/);
-    const source = htmlAttribute(tag, "href");
+    const source = htmlAttribute(element, "href");
     if (
       !relations.includes("icon") ||
       !source ||
       !shouldInlineReference(source)
     ) {
-      return tag;
+      continue;
     }
 
     const assetPath = await resolveDistributionAsset(
       distributionDirectory,
       source,
     );
-    return tag.replace(source, await assetDataUrl(assetPath));
-  });
+    const location = element.sourceCodeLocation.attrs.href;
+    entries.push({ start: location.startOffset, end: location.endOffset });
+    replacements.push(`href="${await assetDataUrl(assetPath)}"`);
+  }
+  return replaceEntryTags(indexHtml, entries, replacements);
 }
 
 export async function buildV2Preview({
@@ -625,8 +600,7 @@ export async function buildV2Preview({
   return {
     outputPath,
     scriptEntryCount: entries.filter(
-      (entry) =>
-        entry.kind === "script" || entry.kind === "vite-bootstrap",
+      (entry) => entry.kind === "script" || entry.kind === "vite-bootstrap",
     ).length,
     stylesheetEntryCount: entries.reduce(
       (count, entry) =>

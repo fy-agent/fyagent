@@ -253,9 +253,7 @@ describe("Codex current-user helper static contract", () => {
       /pub enum HelperMessage\s*\{([\s\S]*?)\n\}/u,
     )?.[1];
     expect(messageEnum).toBeDefined();
-    expect(messageEnum).toMatch(
-      /\bHello\b[\s\S]*action:\s*UserHelperAction/u,
-    );
+    expect(messageEnum).toMatch(/\bHello\b[\s\S]*action:\s*UserHelperAction/u);
     expect(messageEnum).toMatch(
       /\bStarted\b[\s\S]*package:\s*PinnedPackageIdentity/u,
     );
@@ -728,7 +726,7 @@ describe("Codex current-user helper static contract", () => {
       "acl.Sbz1 != 0",
       "acl.Sbz2 != 0",
       "information.AceCount != expected.len()",
-      "ace.Header.AceFlags != 0",
+      "header.AceFlags != 0",
       "sid_length != encoded_sid_length",
       "length != ace_size",
     ]) {

@@ -1,7 +1,7 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 
-import { useOpenExternal } from "../features/provider";
-import { Button } from "./primitives";
+import { useOpenExternal } from "../provider";
+import { Button } from "../../ui/primitives";
 
 type ExternalLinkButtonProps = {
   url?: string;

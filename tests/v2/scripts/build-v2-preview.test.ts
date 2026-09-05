@@ -10,7 +10,6 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-// @ts-expect-error The standalone builder intentionally remains runtime JavaScript.
 import * as previewBuilder from "../../../scripts/build-v2-preview.mjs";
 
 const {
@@ -79,9 +78,7 @@ describe("V2 standalone preview builder", () => {
 
     await buildV2Preview(fixture);
 
-    expect(await readFile(fixture.outputPath, "utf8")).not.toMatch(
-      /^[\t ]+$/m,
-    );
+    expect(await readFile(fixture.outputPath, "utf8")).not.toMatch(/^[\t ]+$/m);
   });
 
   it("inlines every direct module script and stylesheet in HTML order", async () => {
@@ -111,10 +108,15 @@ describe("V2 standalone preview builder", () => {
     ];
     const distributionBefore = new Map(
       await Promise.all(
-        distributionFiles.map(async (fileName) => [
-          fileName,
-          await readFile(path.join(fixture.distributionDirectory, fileName)),
-        ] as const),
+        distributionFiles.map(
+          async (fileName) =>
+            [
+              fileName,
+              await readFile(
+                path.join(fixture.distributionDirectory, fileName),
+              ),
+            ] as const,
+        ),
       ),
     );
     const result = await buildV2Preview(fixture);
@@ -163,7 +165,7 @@ describe("V2 standalone preview builder", () => {
   it("supports zero stylesheets without treating arbitrary asset strings as modules", async () => {
     const fixture = await createDistributionFixture(
       `<!doctype html><html><head>
-  <script>
+  <script data-fyagent-file-redirect>
     if (window.location.protocol === "file:") {
       window.location.replace("../FyAgent-前端交互预览.html");
     }
@@ -186,7 +188,9 @@ describe("V2 standalone preview builder", () => {
     expect(standalone).toContain(
       '<meta name="fyagent-preview" content="standalone-v2-native-preview" />',
     );
-    expect(standalone).toContain("window.__FYAGENT_STANDALONE_PREVIEW__ = true");
+    expect(standalone).toContain(
+      "window.__FYAGENT_STANDALONE_PREVIEW__ = true",
+    );
     expect(standalone).toContain("window.currentGraphLoaded");
     expect(standalone).toContain('"large.js"');
     expect(standalone).toContain('"theme.css"');
@@ -196,10 +200,28 @@ describe("V2 standalone preview builder", () => {
     expect(await readFile(indexPath)).toEqual(indexBefore);
   });
 
+  it("removes only the explicitly owned redirect, not text matching its old heuristic", async () => {
+    const fixture = await createDistributionFixture(
+      `<!doctype html><html><head>
+        <script data-fyagent-file-redirect>window.location.replace("owned");</script>
+        <script>window.keepPreviewText = "FyAgent-前端交互预览.html window.location.protocol";</script>
+        <script type="module" src="./assets/entry.js"></script>
+      </head><body><div id="root"></div></body></html>`,
+      { "entry.js": "window.entryLoaded = true;" },
+    );
+    await buildV2Preview(fixture);
+    const standalone = await readFile(fixture.outputPath, "utf8");
+    expect(standalone).not.toContain('window.location.replace("owned")');
+    expect(standalone).toContain(
+      'window.keepPreviewText = "FyAgent-前端交互预览.html window.location.protocol"',
+    );
+    expect(standalone).toContain("window.entryLoaded");
+  });
+
   it("inlines the known Vite bootstrap as CSS then its mapped JS entry", async () => {
     const fixture = await createDistributionFixture(
       `<!doctype html><html><head>
-  <script>
+  <script data-fyagent-file-redirect>
     if (window.location.protocol === "file:") {
       window.location.replace("../FyAgent-前端交互预览.html");
     }
@@ -213,8 +235,7 @@ describe("V2 standalone preview builder", () => {
       {
         "main.js":
           'window.viteMainMarker = new URL("./logo.png", import.meta.url).href;',
-        "main.css":
-          '.vite-css-marker { background-image: url("./logo.png"); }',
+        "main.css": '.vite-css-marker { background-image: url("./logo.png"); }',
         "logo.png": "vite-fixture-image",
       },
     );
@@ -226,10 +247,15 @@ describe("V2 standalone preview builder", () => {
     ];
     const distributionBefore = new Map(
       await Promise.all(
-        distributionFiles.map(async (fileName) => [
-          fileName,
-          await readFile(path.join(fixture.distributionDirectory, fileName)),
-        ] as const),
+        distributionFiles.map(
+          async (fileName) =>
+            [
+              fileName,
+              await readFile(
+                path.join(fixture.distributionDirectory, fileName),
+              ),
+            ] as const,
+        ),
       ),
     );
 
@@ -240,7 +266,9 @@ describe("V2 standalone preview builder", () => {
       scriptEntryCount: 1,
       stylesheetEntryCount: 1,
     });
-    expect(standalone).toContain("window.__FYAGENT_STANDALONE_PREVIEW__ = true");
+    expect(standalone).toContain(
+      "window.__FYAGENT_STANDALONE_PREVIEW__ = true",
+    );
     expect(standalone).toContain("vite-css-marker");
     expect(standalone).toContain("viteMainMarker");
     expect(standalone).toContain("data:image/png;base64,");
@@ -329,8 +357,7 @@ describe("V2 standalone preview builder", () => {
       {
         "index.js":
           'const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["./main.js","./main.css"])))=>i.map(i=>d[i]); preload(()=>import("./main.js"),__vite__mapDeps([0,1]),import.meta.url);',
-        "main.js":
-          'window.mainLoaded = true; void import("./chunk.js");',
+        "main.js": 'window.mainLoaded = true; void import("./chunk.js");',
         "main.css": "body { color: black; }",
         "chunk.js": "window.chunkLoaded = true;",
       },
@@ -425,10 +452,7 @@ describe("V2 standalone preview builder", () => {
     );
 
     await expect(
-      resolveDistributionAsset(
-        fixture.distributionDirectory,
-        "../outside.js",
-      ),
+      resolveDistributionAsset(fixture.distributionDirectory, "../outside.js"),
     ).rejects.toThrow(/escapes the distribution directory/i);
     await expect(buildV2Preview(fixture)).rejects.toThrow(
       /escapes the distribution directory/i,

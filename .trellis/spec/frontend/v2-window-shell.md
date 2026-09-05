@@ -16,7 +16,7 @@ Primary owners are:
 - `src/v2/shared/ui/SelectionLens.tsx`, `selection-lens.css`,
   `LiquidGlassLens.tsx`, `motion.ts`, and `Collapsible.tsx` for shared
   interaction material and motion;
-- `src/v2/shared/ui/ExternalLinkButton.tsx` and
+- `src/v2/shared/features/controls/ExternalLinkButton.tsx` and
   `src/v2/shared/features/provider.tsx` for HTTP(S) opening and shared feedback;
 - `tests/v2/app/architecture.test.ts` for enforceable V2 dependency and
   ownership boundaries.
@@ -161,21 +161,21 @@ opener, or direct `@tauri-apps/*` capability through these components.
 
 ## 4. Validation & Error Matrix
 
-| Condition | Required result |
-| --- | --- |
-| frontend readiness signalling rejects | Log the bounded failure; do not claim native lifecycle readiness or crash the shell solely to hide it. |
-| runtime is browser, Windows, or unknown native | Do not render the macOS overlay drag strip. |
-| runtime is native macOS | Render the reviewed traffic-light reserve and one TopBar drag surface; do not add custom caption buttons. |
-| a feature tries to declare `data-tauri-drag-region` | Architecture check fails; move the drag region to the shell owner. |
-| active selection host changes | Register one host and move one lens; retain selected semantics on the host. |
-| selected host or ancestor is hidden then revealed | Re-measure after reveal and animate/snap from the host origin without stale track geometry. |
-| `layoutKey` changes during collapse/reflow | Re-sample through the bounded settle loop; cancel the superseded loop on cleanup. |
-| reduced motion is enabled | Settle lens/collapse geometry without spring travel while preserving state and accessibility. |
-| collapsible content is closed | Keep measured content mounted only behind inert and aria-hidden state; remove hidden controls from interaction. |
-| liquid-glass or Framer Motion is imported outside its shared owner | Architecture check fails; use the reviewed adapter/export. |
-| an external open is already in flight | Ignore/disable another request until the shared lock releases. |
-| native external opening rejects | Clear busy state and emit the shared bounded error toast; do not report success. |
-| V2 imports legacy/root UI, direct Tauri outside platform/tauri, or a prohibited cross-layer module | Architecture check fails. |
+| Condition                                                                                          | Required result                                                                                                 |
+| -------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| frontend readiness signalling rejects                                                              | Log the bounded failure; do not claim native lifecycle readiness or crash the shell solely to hide it.          |
+| runtime is browser, Windows, or unknown native                                                     | Do not render the macOS overlay drag strip.                                                                     |
+| runtime is native macOS                                                                            | Render the reviewed traffic-light reserve and one TopBar drag surface; do not add custom caption buttons.       |
+| a feature tries to declare `data-tauri-drag-region`                                                | Architecture check fails; move the drag region to the shell owner.                                              |
+| active selection host changes                                                                      | Register one host and move one lens; retain selected semantics on the host.                                     |
+| selected host or ancestor is hidden then revealed                                                  | Re-measure after reveal and animate/snap from the host origin without stale track geometry.                     |
+| `layoutKey` changes during collapse/reflow                                                         | Re-sample through the bounded settle loop; cancel the superseded loop on cleanup.                               |
+| reduced motion is enabled                                                                          | Settle lens/collapse geometry without spring travel while preserving state and accessibility.                   |
+| collapsible content is closed                                                                      | Keep measured content mounted only behind inert and aria-hidden state; remove hidden controls from interaction. |
+| liquid-glass or Framer Motion is imported outside its shared owner                                 | Architecture check fails; use the reviewed adapter/export.                                                      |
+| an external open is already in flight                                                              | Ignore/disable another request until the shared lock releases.                                                  |
+| native external opening rejects                                                                    | Clear busy state and emit the shared bounded error toast; do not report success.                                |
+| V2 imports legacy/root UI, direct Tauri outside platform/tauri, or a prohibited cross-layer module | Architecture check fails.                                                                                       |
 
 ## 5. Good / Base / Bad Cases
 
@@ -246,7 +246,7 @@ Wrong:
 
 ```ts
 import { invoke } from "@tauri-apps/api/core"; // page/widget
-import { motion } from "framer-motion";        // feature page
+import { motion } from "framer-motion"; // feature page
 ```
 
 Correct:

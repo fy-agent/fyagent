@@ -37,8 +37,8 @@ import {
   Spinner,
 } from "../../shared/ui/primitives";
 import { AssignmentPanel } from "../../shared/ui/AssignmentPanel";
-import { CopyablePath } from "../../shared/ui/CopyablePath";
-import { ExternalLinkButton } from "../../shared/ui/ExternalLinkButton";
+import { CopyablePath } from "../../shared/features/controls/CopyablePath";
+import { ExternalLinkButton } from "../../shared/features/controls/ExternalLinkButton";
 import { FeatureList, FeatureListItem } from "../../shared/ui/FeatureList";
 import { FeatureSearch } from "../../shared/ui/FeatureSearch";
 import { FeatureTabPanel, FeatureTabs } from "../../shared/ui/FeatureTabs";

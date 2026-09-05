@@ -1,8 +1,8 @@
 import { useState } from "react";
 
-import { SKILL_TARGETS, type SkillTargetId } from "../features/types";
-import { AssignmentPanel } from "./AssignmentPanel";
-import { Button, Dialog } from "./primitives";
+import { SKILL_TARGETS, type SkillTargetId } from "../directory";
+import { AssignmentPanel } from "../../ui/AssignmentPanel";
+import { Button, Dialog } from "../../ui/primitives";
 
 export function skillTargetLabel(id: SkillTargetId): string {
   return SKILL_TARGETS.find((app) => app.id === id)?.label ?? "Claude Code";

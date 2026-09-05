@@ -18,9 +18,9 @@ import {
 import { InstallDialog } from "./InstallDialog";
 import { mcpInstallDestination } from "../../shared/features/helpers";
 import { currentMcpLaunchPlatform } from "../../shared/features/mcpLaunch";
-import { ExternalLinkButton } from "../../shared/ui/ExternalLinkButton";
+import { ExternalLinkButton } from "../../shared/features/controls/ExternalLinkButton";
 import { FeatureSearch } from "../../shared/ui/FeatureSearch";
-import { InstallTargetDialog } from "../../shared/ui/InstallTargetDialog";
+import { InstallTargetDialog } from "../../shared/features/controls/InstallTargetDialog";
 import {
   Badge,
   Button,

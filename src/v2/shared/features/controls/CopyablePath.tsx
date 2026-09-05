@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
-import { useFeatures } from "../features/provider";
-import { Button } from "./primitives";
+import { useFeatures } from "../provider";
+import { Button } from "../../ui/primitives";
 
 export function CopyablePath({
   value,

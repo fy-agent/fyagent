@@ -63,7 +63,7 @@ pub fn sync_gemini_usage(db: &Database) -> Result<SessionSyncResult, AppError> {
             }
             Err(e) => {
                 let msg = format!("Gemini 会话文件解析失败 {}: {e}", file_path.display());
-                log::warn!("[GEMINI-SYNC] {msg}");
+                log::warn!("[GEMINI-SYNC] 会话文件解析失败；详细信息仅返回当前同步结果");
                 result.errors.push(msg);
             }
         }
@@ -203,8 +203,8 @@ fn sync_single_gemini_file(db: &Database, file_path: &Path) -> Result<(u32, u32)
         ) {
             Ok(true) => imported += 1,
             Ok(false) => skipped += 1,
-            Err(e) => {
-                log::warn!("[GEMINI-SYNC] 插入失败 ({}): {e}", request_id);
+            Err(_) => {
+                log::warn!("[GEMINI-SYNC] 会话用量记录插入失败");
                 skipped += 1;
             }
         }

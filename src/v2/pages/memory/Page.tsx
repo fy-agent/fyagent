@@ -32,7 +32,7 @@ import { usePrimaryBlocker } from "../../shared/ui/PrimaryBlocker";
 import { FeatureList, FeatureListItem } from "../../shared/ui/FeatureList";
 import { FeatureSearch } from "../../shared/ui/FeatureSearch";
 import { FeatureTabPanel, FeatureTabs } from "../../shared/ui/FeatureTabs";
-import { CopyablePath } from "../../shared/ui/CopyablePath";
+import { CopyablePath } from "../../shared/features/controls/CopyablePath";
 import { SplitPanes } from "../../shared/ui/split";
 
 import "./page.css";

@@ -122,9 +122,8 @@ impl RequestContext {
         let session_id = session_result.session_id.clone();
 
         log::debug!(
-            "[{}] Session ID: {} (from {:?}, client_provided: {})",
+            "[{}] Session source: {:?}, client_provided: {}",
             tag,
-            session_id,
             session_result.source,
             session_result.client_provided
         );
@@ -149,12 +148,11 @@ impl RequestContext {
             .ok_or(ProxyError::NoAvailableProvider)?;
 
         log::debug!(
-            "[{}] Provider: {}, model: {}, failover chain: {} providers, session: {}",
+            "[{}] Provider: {}, model: {}, failover chain: {} providers",
             tag,
             provider.name,
             request_model,
-            providers.len(),
-            session_id
+            providers.len()
         );
 
         Ok(Self {

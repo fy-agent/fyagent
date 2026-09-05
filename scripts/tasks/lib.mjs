@@ -62,6 +62,7 @@ export function run(command, args = [], options = {}) {
     encoding: "utf8",
     stdio: options.capture ? "pipe" : "inherit",
     windowsHide: true,
+    shell: false,
   });
   if (result.error) throw result.error;
   if (result.signal) {

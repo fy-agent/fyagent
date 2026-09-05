@@ -3086,7 +3086,9 @@ export function scanJavaScriptImplicitPredicates(entries) {
       if (conditionEnd === undefined) continue;
       const condition = source.slice(conditionStart + 1, conditionEnd);
       if (
-        !new RegExp(`^\s*${PROCESS_PLATFORM_SELECTOR}\s*$`, "u").test(condition)
+        !new RegExp(`^\\s*${PROCESS_PLATFORM_SELECTOR}\\s*$`, "u").test(
+          condition,
+        )
       ) {
         continue;
       }

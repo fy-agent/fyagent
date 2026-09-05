@@ -1148,6 +1148,22 @@ describe("durable supported-platform surface contract", () => {
     ).toEqual([]);
   });
 
+  it("recognizes whitespace around a computed platform switch selector", () => {
+    const result = checker.scanJavaScriptImplicitPredicates([
+      {
+        path: "src/whitespace-switch.ts",
+        source:
+          'switch ( \n process["platform"] \t ) { case "win32": return windows(); default: return generic(); }',
+      },
+    ]);
+    expect(result).toContainEqual(
+      expect.objectContaining({
+        path: "src/whitespace-switch.ts",
+        rule: "js:implicit-target",
+      }),
+    );
+  });
+
   it("runs every production scanner against the current repository snapshot without lifecycle exclusions", () => {
     const indexModes = checker.listCurrentIndexModes(ROOT);
     const runner = (

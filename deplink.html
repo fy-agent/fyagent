@@ -509,11 +509,11 @@
                         <span class="param-tag optional">可选</span> enabled
                     </div>
                     <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-                        <a href="fyagent://v1/import?resource=mcp&apps=claude,codex&config=eyJtY3BTZXJ2ZXJzIjp7ImNvbnRleHQ3Ijp7ImNvbW1hbmQiOiJidW54IiwiYXJncyI6WyIteSIsIkB1cHN0YXNoL2NvbnRleHQ3LW1jcCIsIi0tYXBpLWtleSIsImN0eDdzay00ZGRkNGY2Ni1lNzUyLTQwMjItYjFmNi1jOGNmNjI3OWI4MGQiXSwiZW52Ijp7fX0sInNlcXVlbnRpYWwtdGhpbmtpbmciOnsiY29tbWFuZCI6Im5weCIsImFyZ3MiOlsiLXkiLCJAbW9kZWxjb250ZXh0cHJvdG9jb2wvc2VydmVyLXNlcXVlbnRpYWwtdGhpbmtpbmciXSwiZW52Ijp7fX19fQ==&enabled=true"
+                        <a href="fyagent://v1/import?resource=mcp&apps=claude,codex&config=eyJtY3BTZXJ2ZXJzIjp7ImNvbnRleHQ3Ijp7ImNvbW1hbmQiOiJidW54IiwiYXJncyI6WyIteSIsIkB1cHN0YXNoL2NvbnRleHQ3LW1jcCIsIi0tYXBpLWtleSIsIlJFUExBQ0VfV0lUSF9ZT1VSX0NPTlRFWFQ3X0FQSV9LRVkiXSwiZW52Ijp7fX0sInNlcXVlbnRpYWwtdGhpbmtpbmciOnsiY29tbWFuZCI6Im5weCIsImFyZ3MiOlsiLXkiLCJAbW9kZWxjb250ZXh0cHJvdG9jb2wvc2VydmVyLXNlcXVlbnRpYWwtdGhpbmtpbmciXSwiZW52Ijp7fX19fQ==&enabled=true"
                             class="deep-link">📥 批量导入 2 个 MCP Servers</a>
                         <button class="deep-link"
                             style="background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%); cursor: pointer; border: none;"
-                            onclick="copyDeepLink('fyagent://v1/import?resource=mcp&apps=claude,codex&config=eyJtY3BTZXJ2ZXJzIjp7ImNvbnRleHQ3Ijp7ImNvbW1hbmQiOiJidW54IiwiYXJncyI6WyIteSIsIkB1cHN0YXNoL2NvbnRleHQ3LW1jcCIsIi0tYXBpLWtleSIsImN0eDdzay00ZGRkNGY2Ni1lNzUyLTQwMjItYjFmNi1jOGNmNjI3OWI4MGQiXSwiZW52Ijp7fX0sInNlcXVlbnRpYWwtdGhpbmtpbmciOnsiY29tbWFuZCI6Im5weCIsImFyZ3MiOlsiLXkiLCJAbW9kZWxjb250ZXh0cHJvdG9jb2wvc2VydmVyLXNlcXVlbnRpYWwtdGhpbmtpbmciXSwiZW52Ijp7fX19fQ==&enabled=true', this)">📋
+                            onclick="copyDeepLink('fyagent://v1/import?resource=mcp&apps=claude,codex&config=eyJtY3BTZXJ2ZXJzIjp7ImNvbnRleHQ3Ijp7ImNvbW1hbmQiOiJidW54IiwiYXJncyI6WyIteSIsIkB1cHN0YXNoL2NvbnRleHQ3LW1jcCIsIi0tYXBpLWtleSIsIlJFUExBQ0VfV0lUSF9ZT1VSX0NPTlRFWFQ3X0FQSV9LRVkiXSwiZW52Ijp7fX0sInNlcXVlbnRpYWwtdGhpbmtpbmciOnsiY29tbWFuZCI6Im5weCIsImFyZ3MiOlsiLXkiLCJAbW9kZWxjb250ZXh0cHJvdG9jb2wvc2VydmVyLXNlcXVlbnRpYWwtdGhpbmtpbmciXSwiZW52Ijp7fX19fQ==&enabled=true', this)">📋
                             复制</button>
                     </div>
 
@@ -529,7 +529,7 @@
         "-y",
         "@upstash/context7-mcp",
         "--api-key",
-        "ctx7sk-4ddd4f66-e752-4022-b1f6-c8cf6279b80d"
+        "REPLACE_WITH_YOUR_CONTEXT7_API_KEY"
       ],
       "env": {}
     },
@@ -1513,6 +1513,35 @@ requires_openai_auth = true`;
             });
         }
 
+        // The offline inspector renders untrusted input through native DOM text APIs.
+        function createParsedCard(title, background, border) {
+            const card = document.createElement('section');
+            Object.assign(card.style, {
+                background, borderLeft: `4px solid ${border}`, padding: '16px',
+                borderRadius: '8px', marginBottom: '12px', color: '#2c3e50',
+            });
+            const heading = document.createElement('h4');
+            heading.textContent = title;
+            heading.style.marginBottom = '12px';
+            card.append(heading);
+            return card;
+        }
+
+        function appendParsedValue(parent, label, value) {
+            const row = document.createElement('div');
+            Object.assign(row.style, {
+                display: 'grid', gridTemplateColumns: 'minmax(100px, 150px) minmax(0, 1fr)',
+                gap: '8px', marginBottom: '8px', fontSize: '13px',
+            });
+            const name = document.createElement('strong');
+            name.textContent = `${label}:`;
+            const content = document.createElement('pre');
+            content.textContent = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+            Object.assign(content.style, { margin: '0', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' });
+            row.append(name, content);
+            parent.append(row);
+        }
+
         // 深链接解析器
         function parseDeepLink() {
             const urlInput = document.getElementById('parseUrl').value.trim();
@@ -1538,284 +1567,75 @@ requires_openai_auth = true`;
 
                 // 解析查询参数
                 const params = new URLSearchParams(url.search);
-                const paramsObj = {};
-                params.forEach((value, key) => {
-                    paramsObj[key] = value;
-                });
+                const paramsObj = Object.fromEntries(params);
 
-                // 构建基本信息 HTML
-                let basicInfoHtml = `
-                    <div style="background: #e8f4f8; padding: 16px; border-radius: 8px; border-left: 4px solid #3498db;">
-                        <h4 style="margin-bottom: 12px; color: #2c3e50;">📋 基本信息</h4>
-                        <div style="display: grid; grid-template-columns: 120px 1fr; gap: 8px; font-size: 14px;">
-                            <div style="color: #7f8c8d;">协议版本:</div>
-                            <div style="font-weight: 600; color: #2c3e50;">${version}</div>
-                            <div style="color: #7f8c8d;">路径:</div>
-                            <div style="font-weight: 600; color: #2c3e50;">${path}</div>
-                            <div style="color: #7f8c8d;">资源类型:</div>
-                            <div style="font-weight: 600; color: #2c3e50;">${paramsObj.resource || '-'}</div>
-                            <div style="color: #7f8c8d;">应用类型:</div>
-                            <div style="font-weight: 600; color: #2c3e50; text-transform: capitalize;">${paramsObj.app || '-'}</div>
-                            <div style="color: #7f8c8d;">供应商名称:</div>
-                            <div style="font-weight: 600; color: #2c3e50;">${paramsObj.name || '-'}</div>
-                        </div>
-                    </div>
-                `;
+                // Parsed values are always text nodes, never HTML or executable script.
+                const basic = createParsedCard('📋 基本信息', '#e8f4f8', '#3498db');
+                for (const [label, value] of [
+                    ['协议版本', version], ['路径', path],
+                    ['资源类型', paramsObj.resource], ['应用类型', paramsObj.app],
+                    ['供应商名称', paramsObj.name],
+                ]) appendParsedValue(basic, label, value || '-');
 
-                // 构建 URL 参数 HTML
-                let urlParamsHtml = `
-                    <div style="background: #fff3cd; padding: 16px; border-radius: 8px; border-left: 4px solid #ffc107;">
-                        <h4 style="margin-bottom: 12px; color: #856404;">🔗 URL 参数</h4>
-                        <div style="display: grid; grid-template-columns: 150px 1fr; gap: 8px; font-size: 13px;">
-                `;
-
-                // 常规参数（排除 endpoint，单独处理）
-                const regularParams = ['homepage', 'apiKey', 'model', 'notes'];
-                regularParams.forEach(key => {
-                    if (paramsObj[key]) {
-                        let displayValue = paramsObj[key];
-                        // API Key 掩码处理
-                        if (key === 'apiKey') {
-                            displayValue = displayValue.substring(0, 10) + '****';
-                        }
-                        urlParamsHtml += `
-                            <div style="color: #856404; font-weight: 500;">${key}:</div>
-                            <div style="color: #856404; word-break: break-all; font-family: monospace; font-size: 12px;">${displayValue}</div>
-                        `;
-                    }
-                });
-
-                // 单独处理 endpoint（支持多端点）
-                if (paramsObj.endpoint) {
-                    const endpoints = paramsObj.endpoint.split(',').map(e => e.trim()).filter(e => e);
-                    if (endpoints.length === 1) {
-                        // 单个端点
-                        urlParamsHtml += `
-                            <div style="color: #856404; font-weight: 500;">endpoint:</div>
-                            <div style="color: #856404; word-break: break-all; font-family: monospace; font-size: 12px;">${endpoints[0]}</div>
-                        `;
-                    } else {
-                        // 多个端点
-                        urlParamsHtml += `
-                            <div style="color: #856404; font-weight: 500;">endpoints:</div>
-                            <div style="color: #856404; word-break: break-all; font-family: monospace; font-size: 12px;">
-                        `;
-                        endpoints.forEach((ep, idx) => {
-                            const label = idx === 0 ? '🔹 主端点' : `└ 备用 ${idx}`;
-                            urlParamsHtml += `
-                                <div style="margin-bottom: 4px; ${idx === 0 ? 'font-weight: 600;' : 'color: #a08040;'}">
-                                    ${label}: ${ep}
-                                </div>
-                            `;
-                        });
-                        urlParamsHtml += `
-                                <div style="margin-top: 8px; padding: 6px 10px; background: #fff8e1; border-radius: 4px; font-size: 11px; color: #856404;">
-                                    💡 共 ${endpoints.length} 个端点，第一个为主端点，其余为备用端点
-                                </div>
-                            </div>
-                        `;
-                    }
+                const parameters = createParsedCard('🔗 URL 参数', '#fff3cd', '#ffc107');
+                for (const key of ['homepage', 'apiKey', 'model', 'notes', 'haikuModel', 'sonnetModel', 'opusModel']) {
+                    if (paramsObj[key]) appendParsedValue(parameters, key, key === 'apiKey' ? '****' : paramsObj[key]);
                 }
+                const endpoints = (paramsObj.endpoint || '').split(',').map(value => value.trim()).filter(Boolean);
+                endpoints.forEach((value, index) => appendParsedValue(parameters,
+                    endpoints.length === 1 ? 'endpoint' : index === 0 ? '主端点' : `备用 ${index}`, value));
 
-                // Claude 专用模型参数
-                const claudeModelParams = ['haikuModel', 'sonnetModel', 'opusModel'];
-                claudeModelParams.forEach(key => {
-                    if (paramsObj[key]) {
-                        urlParamsHtml += `
-                            <div style="color: #856404; font-weight: 500;">${key}:</div>
-                            <div style="color: #856404; word-break: break-all; font-family: monospace; font-size: 12px;">${paramsObj[key]}</div>
-                        `;
-                    }
-                });
-
-                urlParamsHtml += '</div></div>';
-
-                // 配置文件解析
-                let configHtml = '';
+                const configuration = document.createDocumentFragment();
                 if (paramsObj.config) {
                     try {
-                        // 解码 Base64
-                        const decoded = b64_to_utf8(paramsObj.config);
-                        const configObj = JSON.parse(decoded);
-
-                        configHtml = `
-                            <div style="background: #d1ecf1; padding: 16px; border-radius: 8px; border-left: 4px solid #17a2b8;">
-                                <h4 style="margin-bottom: 12px; color: #0c5460;">📄 配置文件内容 (${paramsObj.configFormat?.toUpperCase() || 'JSON'})</h4>
-                        `;
-
-                        // 根据应用类型解析配置
-                        if (paramsObj.app === 'claude') {
-                            const env = configObj.env || {};
-                            configHtml += `
-                                <div style="background: #fff; padding: 12px; border-radius: 6px; margin-bottom: 12px;">
-                                    <div style="font-size: 12px; color: #0c5460; margin-bottom: 8px; font-weight: 600;">Claude 环境变量:</div>
-                                    <div style="display: grid; grid-template-columns: 250px 1fr; gap: 6px; font-size: 12px; font-family: monospace;">
-                            `;
-                            Object.keys(env).forEach(key => {
-                                let value = env[key];
-                                if (key.includes('TOKEN') || key.includes('KEY')) {
-                                    value = value.substring(0, 10) + '****';
-                                }
-                                configHtml += `
-                                    <div style="color: #0c5460; font-weight: 500;">${key}:</div>
-                                    <div style="color: #0c5460;">${value}</div>
-                                `;
-                            });
-                            configHtml += '</div></div>';
-                        } else if (paramsObj.app === 'codex') {
-                            const auth = configObj.auth || {};
-                            const config = configObj.config || '';
-
-                            configHtml += `
-                                <div style="background: #fff; padding: 12px; border-radius: 6px; margin-bottom: 12px;">
-                                    <div style="font-size: 12px; color: #0c5460; margin-bottom: 8px; font-weight: 600;">Codex 认证信息:</div>
-                                    <div style="display: grid; grid-template-columns: 200px 1fr; gap: 6px; font-size: 12px; font-family: monospace;">
-                            `;
-                            Object.keys(auth).forEach(key => {
-                                let value = auth[key];
-                                if (key.includes('KEY')) {
-                                    value = value.substring(0, 10) + '****';
-                                }
-                                configHtml += `
-                                    <div style="color: #0c5460; font-weight: 500;">${key}:</div>
-                                    <div style="color: #0c5460;">${value}</div>
-                                `;
-                            });
-                            configHtml += '</div></div>';
-
-                            if (config) {
-                                configHtml += `
-                                    <div style="background: #fff; padding: 12px; border-radius: 6px;">
-                                        <div style="font-size: 12px; color: #0c5460; margin-bottom: 8px; font-weight: 600;">TOML 配置:</div>
-                                        <pre style="margin: 0; font-size: 11px; color: #0c5460; white-space: pre-wrap; word-break: break-all;">${config}</pre>
-                                    </div>
-                                `;
+                        const config = JSON.parse(b64_to_utf8(paramsObj.config));
+                        const card = createParsedCard(`📄 配置文件内容 (${paramsObj.configFormat?.toUpperCase() || 'JSON'})`, '#d1ecf1', '#17a2b8');
+                        const values = paramsObj.app === 'claude' ? config?.env
+                            : paramsObj.app === 'codex' ? config?.auth
+                            : paramsObj.app === 'gemini' ? config : null;
+                        if (values && typeof values === 'object' && !Array.isArray(values)) {
+                            for (const [key, value] of Object.entries(values)) {
+                                appendParsedValue(card, key, /TOKEN|KEY|SECRET|PASSWORD/i.test(key) ? '****' : value);
                             }
-                        } else if (paramsObj.app === 'gemini') {
-                            configHtml += `
-                                <div style="background: #fff; padding: 12px; border-radius: 6px;">
-                                    <div style="font-size: 12px; color: #0c5460; margin-bottom: 8px; font-weight: 600;">Gemini 环境变量:</div>
-                                    <div style="display: grid; grid-template-columns: 200px 1fr; gap: 6px; font-size: 12px; font-family: monospace;">
-                            `;
-                            Object.keys(configObj).forEach(key => {
-                                let value = configObj[key];
-                                if (key.includes('KEY')) {
-                                    value = value.substring(0, 10) + '****';
-                                }
-                                configHtml += `
-                                    <div style="color: #0c5460; font-weight: 500;">${key}:</div>
-                                    <div style="color: #0c5460;">${value}</div>
-                                `;
-                            });
-                            configHtml += '</div></div>';
                         }
-
-                        // 原始 JSON
-                        configHtml += `
-                            <details style="margin-top: 12px;">
-                                <summary style="cursor: pointer; color: #0c5460; font-size: 12px; font-weight: 600;">查看原始 JSON →</summary>
-                                <pre style="margin-top: 8px; padding: 12px; background: #f8f9fa; border-radius: 6px; font-size: 11px; overflow-x: auto; border: 1px solid #dee2e6;">${JSON.stringify(configObj, null, 2)}</pre>
-                            </details>
-                        `;
-
-                        configHtml += '</div>';
-                    } catch (e) {
-                        configHtml = `
-                            <div style="background: #f8d7da; padding: 16px; border-radius: 8px; border-left: 4px solid #dc3545;">
-                                <h4 style="margin-bottom: 8px; color: #721c24;">❌ 配置文件解析失败</h4>
-                                <div style="color: #721c24; font-size: 13px;">${e.message}</div>
-                            </div>
-                        `;
+                        if (paramsObj.app === 'codex' && config?.config) appendParsedValue(card, 'TOML 配置', config.config);
+                        const details = document.createElement('details');
+                        const summary = document.createElement('summary');
+                        summary.textContent = '查看原始 JSON →';
+                        details.append(summary);
+                        appendParsedValue(details, '原始 JSON（可能包含凭证）', JSON.stringify(config, null, 2));
+                        card.append(details);
+                        configuration.append(card);
+                    } catch {
+                        const error = createParsedCard('❌ 配置文件解析失败', '#f8d7da', '#dc3545');
+                        appendParsedValue(error, '说明', '请检查 Base64 编码和 JSON 格式。');
+                        configuration.append(error);
                     }
                 }
-
-                // 用量查询配置解析 (v3.9+)
-                let usageHtml = '';
                 if (paramsObj.usageEnabled || paramsObj.usageScript || paramsObj.usageBaseUrl) {
-                    usageHtml = `
-                        <div style="background: #f0fff4; padding: 16px; border-radius: 8px; border-left: 4px solid #27ae60; margin-top: 16px;">
-                            <h4 style="margin-bottom: 12px; color: #27ae60;">📊 用量查询配置 (v3.9+)</h4>
-                            <div style="display: grid; grid-template-columns: 150px 1fr; gap: 8px; font-size: 13px;">
-                    `;
-
-                    if (paramsObj.usageEnabled) {
-                        usageHtml += `
-                            <div style="color: #27ae60; font-weight: 500;">启用状态:</div>
-                            <div style="color: #27ae60;">${paramsObj.usageEnabled === 'true' ? '✅ 已启用' : '❌ 已禁用'}</div>
-                        `;
+                    const usage = createParsedCard('📊 用量查询配置 (v3.9+)', '#f0fff4', '#27ae60');
+                    for (const [key, label] of [
+                        ['usageEnabled', '启用状态'], ['usageBaseUrl', 'Base URL'],
+                        ['usageApiKey', 'API Key'], ['usageAutoInterval', '自动查询间隔（分钟）'],
+                        ['usageAccessToken', 'Access Token'], ['usageUserId', 'User ID'],
+                    ]) {
+                        if (paramsObj[key]) appendParsedValue(usage, label,
+                            key === 'usageApiKey' || key === 'usageAccessToken' ? '****' : paramsObj[key]);
                     }
-
-                    if (paramsObj.usageBaseUrl) {
-                        usageHtml += `
-                            <div style="color: #27ae60; font-weight: 500;">Base URL:</div>
-                            <div style="color: #27ae60; word-break: break-all; font-family: monospace; font-size: 12px;">${paramsObj.usageBaseUrl}</div>
-                        `;
-                    }
-
-                    if (paramsObj.usageApiKey) {
-                        usageHtml += `
-                            <div style="color: #27ae60; font-weight: 500;">API Key:</div>
-                            <div style="color: #27ae60; font-family: monospace; font-size: 12px;">${paramsObj.usageApiKey.substring(0, 10)}****</div>
-                        `;
-                    }
-
-                    if (paramsObj.usageAutoInterval) {
-                        usageHtml += `
-                            <div style="color: #27ae60; font-weight: 500;">自动查询间隔:</div>
-                            <div style="color: #27ae60;">${paramsObj.usageAutoInterval} 分钟</div>
-                        `;
-                    }
-
-                    if (paramsObj.usageAccessToken) {
-                        usageHtml += `
-                            <div style="color: #27ae60; font-weight: 500;">Access Token:</div>
-                            <div style="color: #27ae60; font-family: monospace; font-size: 12px;">${paramsObj.usageAccessToken.substring(0, 10)}****</div>
-                        `;
-                    }
-
-                    if (paramsObj.usageUserId) {
-                        usageHtml += `
-                            <div style="color: #27ae60; font-weight: 500;">User ID:</div>
-                            <div style="color: #27ae60; font-family: monospace; font-size: 12px;">${paramsObj.usageUserId}</div>
-                        `;
-                    }
-
-                    usageHtml += '</div>';
-
-                    // 解析用量脚本
                     if (paramsObj.usageScript) {
                         try {
-                            // URL-safe Base64 解码
-                            let scriptB64 = paramsObj.usageScript
-                                .replace(/-/g, '+')
-                                .replace(/_/g, '/');
-                            // 补齐 padding
-                            while (scriptB64.length % 4) {
-                                scriptB64 += '=';
-                            }
-                            const scriptContent = b64_to_utf8(scriptB64);
-                            usageHtml += `
-                                <div style="margin-top: 12px;">
-                                    <div style="font-size: 12px; color: #27ae60; margin-bottom: 8px; font-weight: 600;">用量查询脚本:</div>
-                                    <pre style="margin: 0; padding: 12px; background: #fff; border-radius: 6px; font-size: 11px; overflow-x: auto; white-space: pre-wrap; word-break: break-all; border: 1px solid #27ae60;">${scriptContent}</pre>
-                                </div>
-                            `;
-                        } catch (e) {
-                            usageHtml += `
-                                <div style="margin-top: 12px; color: #dc3545; font-size: 12px;">
-                                    ⚠️ 脚本解码失败: ${e.message}
-                                </div>
-                            `;
+                            let encoded = paramsObj.usageScript.replace(/-/g, '+').replace(/_/g, '/');
+                            while (encoded.length % 4) encoded += '=';
+                            appendParsedValue(usage, '用量查询脚本', b64_to_utf8(encoded));
+                        } catch {
+                            appendParsedValue(usage, '说明', '脚本解码失败，请检查 Base64 编码。');
                         }
                     }
-
-                    usageHtml += '</div>';
+                    configuration.append(usage);
                 }
-
-                // 显示结果
-                document.getElementById('parseBasicInfo').innerHTML = basicInfoHtml;
-                document.getElementById('parseUrlParams').innerHTML = urlParamsHtml;
-                document.getElementById('parseConfigContent').innerHTML = configHtml + usageHtml;
+                document.getElementById('parseBasicInfo').replaceChildren(basic);
+                document.getElementById('parseUrlParams').replaceChildren(parameters);
+                document.getElementById('parseConfigContent').replaceChildren(configuration);
                 document.getElementById('parseResult').style.display = 'block';
 
                 // 滚动到结果
@@ -1826,7 +1646,6 @@ requires_openai_auth = true`;
 
             } catch (e) {
                 alert('❌ 深链接解析失败：' + e.message);
-                console.error('Parse error:', e);
             }
         }
 
