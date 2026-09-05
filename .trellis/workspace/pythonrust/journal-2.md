@@ -295,3 +295,39 @@ Overview reasonCodes 改为闭集恢复文案加刷新；登录 Dialog 保持挂
 ### Status
 
 [OK] **Completed**
+
+
+## Session 71: 第二轮安全与架构治理
+<!-- trellis-session: v=2 fp=fad2344673a647db -->
+
+**Date**: 2026-09-05
+**Task**: 第二轮安全与架构治理
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+完成安全依赖整改、parse5/标准 URL/DOM 文本边界、运行时依赖图与 CI 分类门禁；任务归档，明确保留上游、候选执行信任与凭证所有者风险。
+
+### Main Changes
+
+- 修复真实风险并建立51项Dependabot、66项CodeQL和2项Secret scanning逐组处置记录；没有关闭远端告警。
+- 复用parse5和dependency-cruiser，分离业务控件与纯UI，维护10份SPEC和归档上下文。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `5bbfb24d` | refactor: harden security and architecture boundaries |
+
+### Testing
+
+- [OK] 完整prearchive和无排除postarchive通过；前端1618、V2 512、Rust3469和浏览器164项通过，既有显式skip/ignore保留。
+- [OK] npm审计0；cargo-audit漏洞0但17维护性及2条件性警告保留；依赖图736模块2846条边无违规；Gitleaks当前15项候选分类保留。
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 合并后重新扫描远端告警；凭证所有者核查Context7历史样例并按需轮换；保留Windows等原生验收边界。

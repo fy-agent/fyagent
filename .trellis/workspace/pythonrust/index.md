@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 70
+- **Total Sessions**: 71
 - **Last Active**: 2026-09-05
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~297 | Active |
+| `journal-2.md` | ~333 | Active |
 | `journal-1.md` | ~1987 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 71 | 2026-09-05 | 第二轮安全与架构治理 | `5bbfb24d` | `dev/laiyongjie` |
 | 70 | 2026-09-05 | 架构债务审查与成熟实现复用 | `a051c098` | `dev/laiyongjie` |
 | 69 | 2026-09-04 | Codex 官方账号与第三方 API 凭据切换实现与归档 | `f76f3ab1`, `a10e4b9f` | `dev/laiyongjie` |
 | 68 | 2026-09-03 | Auth recovery copy and dialog focus | `e8807cde` | `dev/laiyongjie` |
