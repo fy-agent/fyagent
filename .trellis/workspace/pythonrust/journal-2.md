@@ -356,3 +356,28 @@ Overview reasonCodes 改为闭集恢复文案加刷新；登录 Dialog 保持挂
 ### Status
 
 [OK] **Completed**
+
+
+## Session 73: 第四轮前端性能、玻璃材质与来源动效整合
+<!-- trellis-session: v=2 fp=25b5cfd3e1385b2d -->
+
+**Date**: 2026-09-05
+**Task**: 第四轮前端性能、玻璃材质与来源动效整合
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+完成并归档第四轮父任务和三个子任务；修复生产分包初始化与隐藏页渲染，统一玻璃/圆角/可读性及容器响应，复用Motion/Radix实现来源弹窗、受控按压和退出焦点安全。V2 554、浏览器232、根单元1620及Rust3472项通过；父子完整prearchive、归档后无排除contracts、四任务上下文与commit均校验通过。生产42次回访p95为42.1ms/58.2ms（1x/4x），不冒充原生首帧证据。未推送、发布、部署或操作真实账号。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `bfa5bef80e1cec47ebcdbeef1b1adf1e1d953c8c` | fix(ui): repair production chunks and isolate route rendering |
+| `1edbb6faaa7c529e5cb3a2bf589a0bf592dfaa6b` | refactor(ui): unify frosted surfaces and container readability |
+| `d50c8bb4eb89ca31fb701b16264a527b257c5042` | refactor(ui): centralize source-aware motion and press feedback |
+| `87654f0745bea54e9defe2adf792ac5388d5b3f2` | docs(ui): align round-four integration contracts and evidence |
+
+### Status
+
+[OK] **Completed**
