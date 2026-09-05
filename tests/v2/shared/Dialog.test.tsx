@@ -1,12 +1,118 @@
 import { useState } from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { Button, ConfirmDialog, Dialog } from "@/v2/shared/ui/primitives";
 import { PersistentSurface } from "@/v2/shared/ui/PersistentSurface";
+import { TabsPrimitive } from "@/v2/shared/ui/vendor";
 
 describe("shared desktop dialog", () => {
+  it("returns a rejected automatic tab change to the selected tab without reopening confirmation", async () => {
+    const user = userEvent.setup();
+    const frames: FrameRequestCallback[] = [];
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    function Example() {
+      const [value, setValue] = useState("one");
+      const [candidate, setCandidate] = useState<string | null>(null);
+      return (
+        <>
+          <TabsPrimitive.Root
+            value={value}
+            onValueChange={(next) => {
+              if (next !== value) setCandidate(next);
+            }}
+          >
+            <TabsPrimitive.List aria-label="编辑视图">
+              <TabsPrimitive.Trigger value="one">
+                当前编辑
+              </TabsPrimitive.Trigger>
+              <TabsPrimitive.Trigger value="two">
+                其他编辑
+              </TabsPrimitive.Trigger>
+            </TabsPrimitive.List>
+          </TabsPrimitive.Root>
+          <ConfirmDialog
+            open={candidate !== null}
+            title="放弃更改？"
+            description="编辑尚未保存。"
+            onCancel={() => setCandidate(null)}
+            onConfirm={() => {
+              if (candidate) setValue(candidate);
+              setCandidate(null);
+            }}
+          />
+        </>
+      );
+    }
+    render(<Example />);
+    await user.tab();
+    expect(screen.getByRole("tab", { name: "当前编辑" })).toHaveFocus();
+    await user.keyboard("{ArrowRight}");
+    await user.click(await screen.findByRole("button", { name: "取消" }));
+    await waitFor(() => expect(frames.length).toBeGreaterThan(0));
+    await act(async () => {
+      frames.splice(0).forEach((callback) => callback(0));
+    });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.getByRole("tab", { name: "当前编辑" })).toHaveFocus();
+    expect(screen.getByRole("tab", { name: "当前编辑" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+  });
+
+  it("does not let an old close frame steal focus from a newly opened dialog", async () => {
+    const user = userEvent.setup();
+    const frames: FrameRequestCallback[] = [];
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    function Example() {
+      const [first, setFirst] = useState(false);
+      const [second, setSecond] = useState(false);
+      return (
+        <>
+          <Button onClick={() => setFirst(true)}>打开第一个</Button>
+          <Dialog open={first} onOpenChange={setFirst} title="第一个">
+            <Button
+              onClick={() => {
+                setFirst(false);
+                setSecond(true);
+              }}
+            >
+              转到第二个
+            </Button>
+          </Dialog>
+          <Dialog open={second} onOpenChange={setSecond} title="第二个">
+            <input aria-label="第二个输入" />
+          </Dialog>
+        </>
+      );
+    }
+    render(<Example />);
+    const trigger = screen.getByRole("button", { name: "打开第一个" });
+    await user.click(trigger);
+    await user.click(screen.getByRole("button", { name: "转到第二个" }));
+    await screen.findByRole("dialog", { name: "第二个" });
+    await waitFor(() => expect(frames.length).toBeGreaterThan(0));
+    const focus = vi.spyOn(trigger, "focus");
+    await act(async () => {
+      frames.splice(0).forEach((callback) => callback(0));
+    });
+    expect(focus).not.toHaveBeenCalled();
+    expect(screen.getByRole("textbox", { name: "第二个输入" })).toHaveFocus();
+  });
   it("uses the decision description without a filler body and restores focus", async () => {
     const user = userEvent.setup();
     function Example() {

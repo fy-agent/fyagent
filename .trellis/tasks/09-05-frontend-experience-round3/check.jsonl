@@ -1,0 +1,3 @@
+{"file":".trellis/spec/frontend/visual-language.md","reason":"Verify actual keyboard interactions, not screenshots alone"}
+{"file":".trellis/spec/frontend/modular-boundaries.md","reason":"Shared owners and no page-to-shared inversion"}
+{"file":".trellis/spec/backend/window-presentation.md","reason":"Keep portable evidence distinct from native first paint"}

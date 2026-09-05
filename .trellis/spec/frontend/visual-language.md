@@ -40,6 +40,15 @@ viewport minus 32px. Login uses comfortable; rich editors use wide.
   before Radix's opening event and bypass trigger capture. The wrapper records
   focus on opening, restores only a connected/non-hidden target on closing,
   and does not install a document listener for each closed dialog.
+- Returning focus to an unselected automatic tab can repeat a rejected dirty
+  transition. At close, resolve that origin to the currently selected tab in
+  the same tablist; confirmed transitions already have the requested tab
+  selected. Do not guess a target from an unrelated tablist or reactivate the
+  cancelled destination.
+- A reopen cancels the pending close frame. Before a deferred focus return,
+  check connected/visible/enabled state and any currently open dialog. Never
+  move focus outside a newer modal or scroll the underlying page as a side
+  effect. Radix still owns the focus trap; no second global focus owner.
 - A dialog without description explicitly omits `aria-describedby`; when a
   description exists, keep Radix's own paired ID. Do not override only one
   side of that pairing or silence missing-description warnings.
@@ -53,15 +62,17 @@ viewport minus 32px. Login uses comfortable; rich editors use wide.
 
 ## 4. Validation & Error Matrix
 
-| Condition                                 | Required behavior                                                           |
-| ----------------------------------------- | --------------------------------------------------------------------------- |
-| Dialog has no body                        | Render header and actions without empty padded content.                     |
-| Content exceeds viewport                  | Content scrolls; footer remains reachable.                                  |
-| Cancel-first interaction                  | Focus requested ref after recording the trigger; preserve Tab trap and Esc. |
-| Description absent                        | No dangling ARIA description or Radix warning.                              |
-| Target removed/hidden while dialog closes | Do not focus stale or invisible content.                                    |
-| Sidebar selected item moves               | One overlay follows final host box/radius, including reduced motion.        |
-| Page lacks explicit title sizing          | Role fallback prevents default 2em headings.                                |
+| Condition                                   | Required behavior                                                           |
+| ------------------------------------------- | --------------------------------------------------------------------------- |
+| Dialog has no body                          | Render header and actions without empty padded content.                     |
+| Content exceeds viewport                    | Content scrolls; footer remains reachable.                                  |
+| Cancel-first interaction                    | Focus requested ref after recording the trigger; preserve Tab trap and Esc. |
+| Description absent                          | No dangling ARIA description or Radix warning.                              |
+| Target removed/hidden while dialog closes   | Do not focus stale or invisible content.                                    |
+| Cancel an automatic tab transition          | Restore the selected tab, not the rejected target; no second confirmation.  |
+| Another dialog opens before the close frame | Do not attempt to focus its outside trigger.                                |
+| Sidebar selected item moves                 | One overlay follows final host box/radius, including reduced motion.        |
+| Page lacks explicit title sizing            | Role fallback prevents default 2em headings.                                |
 
 ## 5. Good / Base / Bad Cases
 
@@ -75,6 +86,8 @@ Bad: a page overrides every shared control, adds a second focus trap, or uses
 
 - `tests/v2/shared/Dialog.test.tsx`: description pairing, no filler, cancel
   focus, trigger restoration, pending lock and hidden portal behavior.
+  Controlled close-frame tests also assert automatic-tab cancellation and
+  protection against a previous dialog stealing focus from its successor.
 - `tests/v2-browser/experience.spec.ts`: actual computed title/button scale,
   capped widths, visible footer, selected host/lens geometry and screenshots.
 - Existing multi-viewport shell, account, model/editor and keyboard tests;

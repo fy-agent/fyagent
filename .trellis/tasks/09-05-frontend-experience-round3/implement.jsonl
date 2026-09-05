@@ -1,0 +1,4 @@
+{"file":".trellis/spec/frontend/visual-language.md","reason":"Dialog hierarchy, focus safety and pill geometry"}
+{"file":".trellis/spec/frontend/v2-managed-auth.md","reason":"One account/source owner and safe write readbacks"}
+{"file":".trellis/spec/frontend/v2-navigation.md","reason":"Persistent routes and unchanged layout workflow"}
+{"file":".trellis/spec/backend/window-presentation.md","reason":"Initial readiness, silent startup and recovery semantics"}

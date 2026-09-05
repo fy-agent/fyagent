@@ -224,6 +224,7 @@ export function Dialog({
   const visible = usePersistentVisibility();
   const presented = open && visible;
   const restoreFocusRef = useRef<HTMLElement | null>(null);
+  const restoreFrameRef = useRef<number | null>(null);
 
   return (
     <DialogPrimitive.Root
@@ -242,6 +243,10 @@ export function Dialog({
           )}
           {...(!description ? { "aria-describedby": undefined } : {})}
           onOpenAutoFocus={(event) => {
+            if (restoreFrameRef.current !== null) {
+              window.cancelAnimationFrame(restoreFrameRef.current);
+              restoreFrameRef.current = null;
+            }
             const focused = document.activeElement;
             if (focused instanceof HTMLElement && focused !== document.body) {
               restoreFocusRef.current = focused;
@@ -254,11 +259,36 @@ export function Dialog({
           }}
           onCloseAutoFocus={(event) => {
             event.preventDefault();
-            const node = restoreFocusRef.current;
-            window.requestAnimationFrame(() => {
-              if (node?.isConnected && !node.closest("[hidden], [inert]")) {
-                node.focus();
-              }
+            const origin = restoreFocusRef.current;
+            if (restoreFrameRef.current !== null)
+              window.cancelAnimationFrame(restoreFrameRef.current);
+            restoreFrameRef.current = window.requestAnimationFrame(() => {
+              restoreFrameRef.current = null;
+              // Focusing a rejected automatic tab would request the same
+              // transition again. Restore the tablist's current selection.
+              const node = origin?.matches(
+                '[role="tab"][aria-selected="false"]',
+              )
+                ? origin
+                    .closest('[role="tablist"]')
+                    ?.querySelector<HTMLElement>(
+                      '[role="tab"][aria-selected="true"]',
+                    )
+                : origin;
+              if (
+                !node?.isConnected ||
+                node.closest("[hidden], [inert]") ||
+                node.matches(":disabled")
+              )
+                return;
+              // Another modal may have opened before the old close frame ran.
+              // Radix owns its focus trap; never compete with that new owner.
+              const dialogs = document.querySelectorAll(
+                '[role="dialog"][data-state="open"]',
+              );
+              if (Array.from(dialogs).some((dialog) => !dialog.contains(node)))
+                return;
+              node.focus({ preventScroll: true });
             });
           }}
         >
