@@ -3,14 +3,14 @@
 - [x] 读取当前提交、SPEC、实际桌面时序实现及成熟方案官方资料。
 - [x] 创建父任务及两个可独立验收子任务，完成需求/设计/研究/上下文。
 - [x] 使用现有生产测试采集未更改产品代码的导航基线。
-- [ ] 最终规划摘要获确认后，按顺序启动子任务；每条命令沿用本会话TRELLIS_CONTEXT_ID。
-- [ ] 材质子任务：先固化颜色/材质/模态帧性能对照，再修改、回归、更新所属SPEC、提交、归档。
-- [ ] 动效子任务：复用实际阶段时序，验证来源/目标/内容和返回；更新SPEC、提交、归档。
-- [ ] 启动父任务，审查完整diff、主题状态矩阵、命名/引用、材质与动效组合及秘密生命周期。
-- [ ] 复跑 `mise run typecheck:v2`、`mise run lint:v2`、`mise run test:v2`、`mise run test:v2:browser`、`mise run build:renderer`。
-- [ ] 以同一生产构建/CPU/夹具方法复测导航及模态暖态20次循环、冷访、残留资源；性能退步须解释并优化。
-- [ ] 执行 `mise run check:prearchive --exclude-active-task .trellis/tasks/09-06-frontend-experience-round5`，只排除直接绑定的当前任务。
-- [ ] 更新父任务涉及的SPEC/索引和集成记录，提交工作后归档父任务。
+- [x] 最终规划已批准，两个子任务沿同一TRELLIS_CONTEXT_ID依序实施。
+- [x] 材质任务完成图像/对比度/容器回归，更新SPEC后提交097dd80f并归档。
+- [x] 动效任务完成实际来源/时序/反转/取消与秘密清理，更新SPEC后提交04485a94并归档。
+- [x] 父任务已启动，完成组合态、命名/引用、材质和动效安全交叉复核。
+- [x] 实现冻结快照的V2类型/lint/578项单测、244项浏览器及Renderer/生产分包构建通过；源文件指纹无漂移。
+- [x] 三组1x/4x各42回访、20暖态模态和冷态/清理检查通过；保留资源竞争导致的失败样本及隔离复测，不扩大预算。
+- [x] 最终V2检查及 `check:prearchive --exclude-active-task .trellis/tasks/09-06-frontend-experience-round5` 退出0，只排除直接绑定的本任务。
+- [x] 各所属SPEC/签名/测试已在工作提交中更新，集成复核完成；父工作提交及归档由关闭命令确认。
 - [ ] 修复归档目录改变造成的有效上下文链接，填写完整工作commit；对三个任务运行task.py validate及祖先关系检查。
 - [ ] 无排除 `mise run check:contracts`；只提交本轮记录，add_session.py记录journal，最后验证无活动任务、工作树干净。
 
