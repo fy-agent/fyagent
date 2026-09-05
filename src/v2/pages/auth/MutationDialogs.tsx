@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import type {
   ManagedAuthAccountRemovalPreview,
@@ -38,15 +38,17 @@ export function RemoveAccountDialog({
   onCancel: () => void;
   onConfirm: () => void;
 }) {
+  const cancelRef = useRef<HTMLButtonElement>(null);
   return (
     <Dialog
       open={account !== null}
+      initialFocusRef={cancelRef}
       onOpenChange={(next) => !next && !pending && onCancel()}
       title={account ? `移除 ${account.login}？` : "移除账号"}
       description="账号只有在所有连接都安全处理后才会从列表中移除。"
       actions={
         <>
-          <Button autoFocus disabled={pending} onClick={onCancel}>
+          <Button ref={cancelRef} disabled={pending} onClick={onCancel}>
             取消
           </Button>
           <Button
@@ -183,6 +185,7 @@ function ConnectionActionDialogContent({
   connection: ManagedAuthConnectionSummary;
   action: ManagedAuthConnectionAction;
 }) {
+  const cancelRef = useRef<HTMLButtonElement>(null);
   const requiresAccount =
     action === "connect_account" || action === "switch_account";
   const candidates = connection.provider
@@ -207,12 +210,13 @@ function ConnectionActionDialogContent({
   return (
     <Dialog
       open
+      initialFocusRef={cancelRef}
       onOpenChange={(next) => !next && !pending && onCancel()}
       title={copy.title}
       description={copy.description}
       actions={
         <>
-          <Button autoFocus disabled={pending} onClick={onCancel}>
+          <Button ref={cancelRef} disabled={pending} onClick={onCancel}>
             取消
           </Button>
           <Button

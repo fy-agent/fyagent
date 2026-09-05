@@ -6,7 +6,7 @@
 .fy-models-page-heading h1 {
   margin: 0;
   color: var(--fy-text);
-  font-size: 20px;
+  font-size: var(--fy-font-page-title);
   line-height: 1.25;
   letter-spacing: -0.015em;
 }

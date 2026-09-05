@@ -800,7 +800,7 @@ function McpEditor({
       onOpenChange={(next) => !next && !busy && onClose()}
       title={initial ? `编辑 ${initial.name}` : "添加 MCP"}
       description="可使用表单或 JSON 编辑服务配置。敏感信息仅在此窗口显示。"
-      large
+      size="wide"
       actions={
         <>
           <Button onClick={onClose} disabled={busy}>

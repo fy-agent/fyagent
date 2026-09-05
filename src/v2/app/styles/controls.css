@@ -6,10 +6,11 @@
   gap: 7px;
   padding: 0 13px;
   border: 1px solid var(--fy-border-strong);
-  border-radius: 10px;
+  border-radius: var(--fy-radius-control);
   color: var(--fy-accent-text);
-  font-size: 13px;
-  font-weight: 620;
+  font-size: var(--fy-font-control);
+  font-weight: var(--fy-weight-medium);
+  line-height: 1.35;
   background: var(--fy-surface-strong);
   cursor: pointer;
 }
@@ -62,6 +63,11 @@
 .fy-control-textarea[aria-invalid="true"] {
   border-color: var(--fy-danger-text);
   box-shadow: 0 0 0 1px var(--fy-danger-border);
+}
+.fy-control-input::placeholder,
+.fy-control-textarea::placeholder {
+  color: var(--fy-text-secondary);
+  opacity: 0.85;
 }
 .fy-control-secret {
   position: relative;
@@ -255,7 +261,7 @@
 }
 .fy-control-empty h2 {
   margin: 0;
-  font-size: 20px;
+  font-size: var(--fy-font-section-title);
 }
 .fy-control-empty p {
   max-width: 520px;
@@ -275,12 +281,15 @@
   left: 50%;
   display: flex;
   flex-direction: column;
-  width: min(520px, calc(100vw - 32px));
+  width: min(480px, calc(100vw - 32px));
   max-height: min(84vh, 760px);
   overflow: hidden;
   border: 1px solid var(--fy-border-strong);
-  border-radius: 18px;
-  background-color: rgba(46, 72, 98, 0.96);
+  border-radius: var(--fy-radius-dialog);
+  color: var(--fy-text);
+  font-size: var(--fy-font-control);
+  line-height: var(--fy-line-body);
+  background-color: var(--fy-dialog-surface);
   background-image: linear-gradient(
     155deg,
     rgba(238, 249, 255, 0.12),
@@ -293,35 +302,57 @@
   -webkit-backdrop-filter: blur(24px) saturate(1.2);
   transform: translate(-50%, -50%);
 }
-.fy-control-dialog-large {
+.fy-control-dialog-wide {
   width: min(900px, calc(100vw - 32px));
 }
-.fy-control-dialog > header {
-  padding: 20px 22px 14px;
-  border-bottom: 1px solid var(--fy-border);
+.fy-control-dialog-comfortable {
+  width: min(720px, calc(100vw - 32px));
 }
-.fy-control-dialog > header h2 {
+.fy-control-dialog-content {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  overflow-wrap: anywhere;
+  scrollbar-gutter: stable;
+}
+.fy-control-dialog-content:last-child {
+  padding-bottom: 20px;
+}
+.fy-control-dialog-header {
+  padding: 20px 24px 0;
+}
+.fy-control-dialog-title {
   margin: 0;
-  font-size: 18px;
+  font-size: var(--fy-font-dialog-title);
+  font-weight: var(--fy-weight-semibold);
+  line-height: var(--fy-line-heading);
 }
-.fy-control-dialog > header p {
-  margin: 6px 0 0;
+.fy-control-dialog-description {
+  margin: 8px 0 0;
   color: var(--fy-text-secondary);
-  font-size: 13px;
+  font-size: var(--fy-font-control);
+  line-height: var(--fy-line-body);
+  overflow-wrap: anywhere;
 }
 .fy-control-dialog-body {
-  min-height: 0;
-  padding: 18px 22px;
-  overflow: auto;
+  padding: 16px 24px 0;
 }
-.fy-control-dialog > footer {
+.fy-control-dialog-body > :first-child {
+  margin-top: 0;
+}
+.fy-control-dialog-body > :last-child {
+  margin-bottom: 0;
+}
+.fy-control-dialog-actions {
   display: flex;
+  flex: 0 0 auto;
   flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 9px;
-  padding: 13px 22px;
-  border-top: 1px solid var(--fy-border);
-  background: rgba(225, 243, 255, 0.07);
+  gap: 8px;
+  padding: 20px 24px;
+}
+.fy-control-dialog-actions > .fy-control-button {
+  min-width: 72px;
 }
 .fy-toast-host {
   position: fixed;

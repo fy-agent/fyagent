@@ -26,6 +26,8 @@ queries are owned by
 [V2 Navigation and Persistent Route](./v2-navigation.md). Native window
 geometry and maximize/work-area policy are owned by the backend
 [Main Window Layout](../backend/main-window-layout.md) contract.
+Shared typography, dialog surfaces and sidebar radius are specified in
+[Desktop Visual Hierarchy](./visual-language.md).
 
 ## 2. Signatures
 

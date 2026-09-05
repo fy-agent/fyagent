@@ -95,6 +95,15 @@ function LoginDialogContent({
   );
   const [copied, setCopied] = useState(false);
   const wasOpen = useRef(open);
+  const finishRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!open || !controller.snapshot?.terminal) return;
+    const frame = window.requestAnimationFrame(() =>
+      finishRef.current?.focus(),
+    );
+    return () => window.cancelAnimationFrame(frame);
+  }, [open, controller.snapshot?.terminal]);
 
   useEffect(() => {
     const justOpened = open && !wasOpen.current;
@@ -177,7 +186,11 @@ function LoginDialogContent({
                 重新登录
               </Button>
             ) : null}
-            <Button autoFocus onClick={finish}>
+            <Button
+              className="fy-control-button-primary"
+              ref={finishRef}
+              onClick={finish}
+            >
               完成
             </Button>
           </>
@@ -215,7 +228,11 @@ function LoginDialogContent({
       return (
         <>
           <Button onClick={() => onOpenChange(false)}>取消</Button>
-          <Button disabled={provider === null} onClick={() => setStep(2)}>
+          <Button
+            className="fy-control-button-primary"
+            disabled={provider === null}
+            onClick={() => setStep(2)}
+          >
             下一步
           </Button>
         </>
@@ -229,7 +246,11 @@ function LoginDialogContent({
           ) : (
             <Button onClick={() => onOpenChange(false)}>取消</Button>
           )}
-          <Button disabled={!canContinueFromUse} onClick={() => setStep(3)}>
+          <Button
+            className="fy-control-button-primary"
+            disabled={!canContinueFromUse}
+            onClick={() => setStep(3)}
+          >
             下一步
           </Button>
         </>
@@ -239,6 +260,7 @@ function LoginDialogContent({
       <>
         <Button onClick={() => setStep(2)}>上一步</Button>
         <Button
+          className="fy-control-button-primary"
           disabled={controller.submitting}
           onClick={() => void startLogin()}
         >
@@ -251,6 +273,7 @@ function LoginDialogContent({
   return (
     <Dialog
       open={open}
+      initialFocusRef={session?.terminal ? finishRef : undefined}
       onOpenChange={onOpenChange}
       title={
         reauthenticateAccount
@@ -263,7 +286,7 @@ function LoginDialogContent({
           : "选择账号类型和这次登录的用途。"
       }
       actions={actions}
-      large
+      size="comfortable"
     >
       {session && sessionPresentation ? (
         <div className="fy-auth-login-session" data-stage={session.stage}>

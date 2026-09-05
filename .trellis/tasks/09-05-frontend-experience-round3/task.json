@@ -1,0 +1,30 @@
+{
+  "id": "frontend-experience-round3",
+  "name": "frontend-experience-round3",
+  "title": "第三轮前端体验与架构整合",
+  "description": "保留现有导航布局和扫描配置流程，统筹视觉层级、组件复用、职责单一和启动体验，完成分任务验证与归档",
+  "status": "planning",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "pythonrust",
+  "assignee": "pythonrust",
+  "createdAt": "2026-09-05",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "09-05-frontend-visual-hierarchy",
+    "09-05-frontend-workflow-ownership",
+    "09-05-frontend-startup-readiness"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

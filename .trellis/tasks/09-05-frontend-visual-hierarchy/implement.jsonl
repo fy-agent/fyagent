@@ -1,0 +1,4 @@
+{"file":".trellis/spec/frontend/v2-window-shell.md","reason":"Keep navigation, persistent visibility and focus semantics"}
+{"file":".trellis/spec/frontend/reuse.md","reason":"Shared primitives and feature controls ownership"}
+{"file":".trellis/spec/frontend/user-facing-copy.md","reason":"Task-oriented confirmation and reduced repetition"}
+{"file":".trellis/tasks/09-05-frontend-experience-round3/research.md","reason":"Official guidance and scope"}

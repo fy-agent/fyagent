@@ -7,6 +7,15 @@
   margin-bottom: 12px;
 }
 
+.fy-auth-page-header h1 {
+  font-size: var(--fy-font-page-title);
+}
+
+.fy-auth-detail h2,
+.fy-auth-detail h3 {
+  font-size: var(--fy-font-section-title);
+}
+
 .fy-auth-page-header h1,
 .fy-auth-detail h2,
 .fy-auth-detail h3,

@@ -20,6 +20,8 @@ html {
     -apple-system, BlinkMacSystemFont, "Segoe UI Variable", "Segoe UI",
     "PingFang SC", "Microsoft YaHei UI", sans-serif;
   color: var(--fy-text);
+  font-size: var(--fy-font-body);
+  line-height: var(--fy-line-body);
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
 }
@@ -52,6 +54,28 @@ a {
 
 button {
   color: inherit;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  line-height: var(--fy-line-heading);
+  font-weight: var(--fy-weight-semibold);
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-size: var(--fy-font-page-title);
+}
+
+h2 {
+  font-size: var(--fy-font-section-title);
+}
+
+h3,
+h4 {
+  font-size: var(--fy-font-body);
 }
 
 :focus-visible {

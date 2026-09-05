@@ -121,9 +121,11 @@ export function ModelsWriteConfirmDialog({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
+  const cancelRef = useRef<HTMLButtonElement>(null);
   return (
     <Dialog
       open={open}
+      initialFocusRef={cancelRef}
       onOpenChange={(next) => {
         if (!next) onCancel();
       }}
@@ -131,7 +133,7 @@ export function ModelsWriteConfirmDialog({
       description="本次只修改下列配置文件中的相关模型字段，并在写入前保留一份滚动备份。"
       actions={
         <>
-          <Button autoFocus onClick={onCancel}>
+          <Button ref={cancelRef} onClick={onCancel}>
             取消
           </Button>
           <Button className="fy-control-button-primary" onClick={onConfirm}>

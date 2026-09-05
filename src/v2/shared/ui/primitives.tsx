@@ -1,10 +1,10 @@
 import {
   forwardRef,
-  useEffect,
   useRef,
   type ButtonHTMLAttributes,
   type InputHTMLAttributes,
   type ReactNode,
+  type RefObject,
 } from "react";
 
 import { classNames } from "../design-system/classNames";
@@ -209,31 +209,21 @@ export function Dialog({
   description,
   children,
   actions,
-  large = false,
+  size = "standard",
+  initialFocusRef,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title: string;
   description?: string;
-  children: ReactNode;
+  children?: ReactNode;
   actions?: ReactNode;
-  large?: boolean;
+  size?: "standard" | "comfortable" | "wide";
+  initialFocusRef?: RefObject<HTMLElement>;
 }) {
   const visible = usePersistentVisibility();
   const presented = open && visible;
   const restoreFocusRef = useRef<HTMLElement | null>(null);
-
-  useEffect(() => {
-    if (presented) return;
-    const save = (event: FocusEvent) => {
-      const target = event.target;
-      if (target instanceof HTMLElement) {
-        restoreFocusRef.current = target;
-      }
-    };
-    document.addEventListener("focusin", save, true);
-    return () => document.removeEventListener("focusin", save, true);
-  }, [presented]);
 
   return (
     <DialogPrimitive.Root
@@ -248,26 +238,48 @@ export function Dialog({
         <DialogPrimitive.Content
           className={classNames(
             "fy-control-dialog",
-            large && "fy-control-dialog-large",
+            size !== "standard" && `fy-control-dialog-${size}`,
           )}
+          {...(!description ? { "aria-describedby": undefined } : {})}
+          onOpenAutoFocus={(event) => {
+            const focused = document.activeElement;
+            if (focused instanceof HTMLElement && focused !== document.body) {
+              restoreFocusRef.current = focused;
+            }
+            const initial = initialFocusRef?.current;
+            if (initial && !initial.matches(":disabled")) {
+              event.preventDefault();
+              initial.focus();
+            }
+          }}
           onCloseAutoFocus={(event) => {
             event.preventDefault();
             const node = restoreFocusRef.current;
             window.requestAnimationFrame(() => {
-              if (node?.isConnected) node.focus();
+              if (node?.isConnected && !node.closest("[hidden], [inert]")) {
+                node.focus();
+              }
             });
           }}
         >
-          <header>
-            <DialogPrimitive.Title>{title}</DialogPrimitive.Title>
-            {description && (
-              <DialogPrimitive.Description>
-                {description}
-              </DialogPrimitive.Description>
+          <div className="fy-control-dialog-content">
+            <header className="fy-control-dialog-header">
+              <DialogPrimitive.Title className="fy-control-dialog-title">
+                {title}
+              </DialogPrimitive.Title>
+              {description && (
+                <DialogPrimitive.Description className="fy-control-dialog-description">
+                  {description}
+                </DialogPrimitive.Description>
+              )}
+            </header>
+            {children != null && (
+              <div className="fy-control-dialog-body">{children}</div>
             )}
-          </header>
-          <div className="fy-control-dialog-body">{children}</div>
-          {actions && <footer>{actions}</footer>}
+          </div>
+          {actions && (
+            <footer className="fy-control-dialog-actions">{actions}</footer>
+          )}
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>
@@ -289,15 +301,17 @@ export function ConfirmDialog({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
+  const cancelRef = useRef<HTMLButtonElement>(null);
   return (
     <Dialog
       open={open}
+      initialFocusRef={cancelRef}
       onOpenChange={(next) => !next && !pending && onCancel()}
       title={title}
       description={description}
       actions={
         <>
-          <Button autoFocus onClick={onCancel} disabled={pending}>
+          <Button ref={cancelRef} onClick={onCancel} disabled={pending}>
             取消
           </Button>
           <Button
@@ -309,8 +323,6 @@ export function ConfirmDialog({
           </Button>
         </>
       }
-    >
-      <p>此操作需要你的明确确认。</p>
-    </Dialog>
+    />
   );
 }

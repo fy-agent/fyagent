@@ -28,6 +28,15 @@
 }
 
 .fy-side-navigation-track > .fy-selection-lens {
+  border-color: rgba(239, 250, 255, 0.27);
+  background-image: linear-gradient(
+    155deg,
+    rgba(255, 255, 255, 0.1),
+    rgba(180, 226, 251, 0.025)
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    0 3px 10px rgba(8, 29, 48, 0.12);
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }

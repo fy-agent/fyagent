@@ -67,7 +67,7 @@
 
 .fy-agent-directory-header h1,
 .fy-agent-config-header h1 {
-  font-size: 22px;
+  font-size: var(--fy-font-page-title);
 }
 
 .fy-agent-config-section-header h2 {

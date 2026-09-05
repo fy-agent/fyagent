@@ -44,4 +44,18 @@
   --fy-titlebar-drag-height: 28px;
   --fy-titlebar-traffic-light-width: 78px;
   --fy-content-radius: 22px;
+  --fy-font-page-title: 22px;
+  --fy-font-section-title: 16px;
+  --fy-font-dialog-title: 16px;
+  --fy-font-body: 14px;
+  --fy-font-control: 13px;
+  --fy-font-caption: 12px;
+  --fy-line-body: 1.6;
+  --fy-line-heading: 1.35;
+  --fy-weight-medium: 500;
+  --fy-weight-semibold: 600;
+  --fy-radius-control: 10px;
+  --fy-radius-dialog: 18px;
+  --fy-radius-navigation: 999px;
+  --fy-dialog-surface: rgba(48, 73, 97, 0.98);
 }

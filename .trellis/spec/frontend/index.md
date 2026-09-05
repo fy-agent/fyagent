@@ -24,6 +24,8 @@ assertions belong in the linked owner.
 
 For URL classification, dynamic text, configuration merges and standalone
 HTML parsing, also read [Security Boundaries](./security-boundaries.md).
+For the shared type scale, dialog sizing/focus and navigation shape, read
+[Desktop Visual Hierarchy](./visual-language.md).
 
 | Contract                                               | Owns                                                                                                       |
 | ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- |
