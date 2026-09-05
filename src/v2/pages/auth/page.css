@@ -267,7 +267,7 @@
   padding: 14px;
   border: 1px solid var(--fy-border);
   border-radius: var(--fy-radius-panel);
-  background: rgba(16, 40, 64, 0.2);
+  background: var(--fy-surface-inset);
 }
 
 .fy-auth-section-heading,
@@ -474,7 +474,7 @@
   padding: 14px;
   border: 1px solid var(--fy-border);
   border-radius: var(--fy-radius-panel);
-  background: rgba(16, 40, 64, 0.2);
+  background: var(--fy-surface-inset);
 }
 
 .fy-auth-device-code > p {

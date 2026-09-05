@@ -11,7 +11,7 @@ does not redesign the seven primary routes or native window geometry.
 
 ```ts
 // shared/ui/GlassMaterial.tsx — sole @samasante/liquid-glass import owner
-FrostedSurface({ enhanced?: boolean }): JSX.Element // defaults to true
+FrostedSurface({ enhanced?: boolean }): JSX.Element // stable CSS backing, true by default
 LiquidGlassLens({ children, className? }): JSX.Element // UI Lab specimen
 ```
 
@@ -25,8 +25,11 @@ they happen to be numerically equal.
 `--fy-dialog-surface`, `--fy-modal-scrim`, `--fy-modal-blur`,
 `--fy-surface-blur`, `--fy-surface-opaque`, `--fy-surface-input` and
 `--fy-glass-sheen` separate foreground backing, page dimming and filter roles.
-The material adapter reads the shared blur token on mount; its static optical
-parameters remain in that adapter, not in feature pages.
+The default palette is light blue-grey with dark ink. `--fy-surface-inset`,
+`--fy-surface-raised`, `--fy-surface-hover` and `--fy-surface-popup` pair local
+surfaces with readable text; pages must not retain dark-theme fills or white
+foreground assumptions. The content viewport is not a nested backdrop sampler.
+CSS consumes the blur/rim/sheen tokens directly, including preference changes.
 
 ## 3. Contracts
 
@@ -35,17 +38,17 @@ parameters remain in that adapter, not in feature pages.
   Do not lower steady-state form opacity to simulate glass, refract text or
   clone credential DOM. The bounded foreground arrival transition is owned by
   [Motion and Dialog Presence](./motion-system.md), not the material adapter.
-- `enhanced=false` retains the standard CSS frost while the dialog's separate
-  backing plane travels. Once its geometry settles, the adapter can enable
-  the library material. This does not change dialog semantics or copy forms.
-- Bare library wrapping selects material mode. Do not pass `refract`, video,
-  animated geometry or `filterResolution` just to render a modal background;
-  those select different, more expensive paths in the adopted version.
+- `FrostedSurface` preserves the same backing and static rim nodes during
+  travel and at rest. `enhanced` only crossfades the rim emphasis; it must not
+  replace the material at the last frame. Large business dialogs use CSS tint,
+  thin frost and layered highlights, not SDF/displacement-map generation.
+  The installed liquid-glass package remains isolated to the UI Lab specimen.
+  No `refract`, video, canvas, copied DOM or live optical RAF belongs in a form.
 - The normal surface is translucent, with a separate blurred/dimmed overlay.
   Do not hide the effect behind an almost opaque tint. Readability has priority
   over maximizing transparency; retain solid primary and readable secondary
   text roles instead of repeated low-alpha white layers.
-- Missing canvas/ResizeObserver uses the CSS backing. Missing backdrop-filter,
+- The business backing does not require canvas/ResizeObserver. Missing backdrop-filter,
   reduced transparency and forced colors keep a readable solid fallback.
   The fallback must override library inline filters when necessary; it never
   removes dialog semantics, labels, focus or actions.
@@ -70,7 +73,7 @@ parameters remain in that adapter, not in feature pages.
 | Pane is narrow in a wide window                      | Form stacks based on container; long text remains within its pane.                 |
 | URL/identity has no natural breaks                   | Wrap in detail; no horizontal escape or lost action.                               |
 | Standard/comfortable dialog at small viewport        | Body scrolls as needed; footer actions remain reachable.                           |
-| Canvas/ResizeObserver is absent                      | CSS material fallback, not startup failure.                                        |
+| Canvas/ResizeObserver is absent                      | Same stable CSS material, not startup failure.                                     |
 | Filter absent, reduced transparency or forced colors | Readable backing, native semantic colors where appropriate, no invisible controls. |
 | Transparent/gradient background                      | Review composited result, not just isolated token color values.                    |
 | New raw radius declaration outside tokens            | `designTokens.test.ts` fails; assign the appropriate role.                         |
@@ -88,6 +91,8 @@ glass.
 
 - `tests/v2/shared/designTokens.test.ts` uses PostCSS to reject scattered radius
   literals; do not invent a CSS parser or skip component files.
+- `tests/v2/shared/GlassMaterial.test.tsx` proves stable node identity across
+  enhancement and absence of canvas/SVG/form copies in business backing.
 - `tests/v2-browser/materials-responsive.spec.ts`: seven page surfaces, actual
   composited text samples, axe contrast/label checks, critical input boundaries,
   a 320px detail independent of viewport width, 760px boundary sides, a 616px

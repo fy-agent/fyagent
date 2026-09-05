@@ -14,6 +14,11 @@ leading 1.35, medium weight 500 and semibold 600. Pages use the role tokens
 instead of browser-default oversized headings. This is the reviewed desktop
 scale, not an instruction to suppress browser zoom or user text scaling.
 
+The default visual treatment pairs clear blue-grey surfaces with dark blue
+ink; all important and supporting text, focus, hover and warning/error roles
+must be checked together. Do not brighten the page with a whole-root filter
+or retain white foregrounds solely because an earlier surface was dark.
+
 ```ts
 Dialog({
   open, onOpenChange, title, description?, children?, actions?,

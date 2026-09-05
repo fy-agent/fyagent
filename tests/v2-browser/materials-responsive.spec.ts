@@ -26,6 +26,10 @@ test("keeps actual text readable on blended surfaces and dialogs", async ({
     await openV2Page(page, `/${route}`);
     const id = route.split("?")[0];
     await expect(page.getByTestId(`${id}-page`)).toBeVisible();
+    await info.attach(`surface-${id}.png`, {
+      body: await page.screenshot(),
+      contentType: "image/png",
+    });
     const scope = `[data-testid="${id}-page"]`;
     const scan = await new AxeBuilder({ page })
       .include(scope)
@@ -168,7 +172,14 @@ test("glass has blurred backing, readable fallback and fixed reachable actions",
     await glass.evaluate(
       (element) => getComputedStyle(element).backgroundColor,
     ),
-  ).toMatch(/0\.68/);
+  ).toBe("rgba(237, 246, 253, 0.74)");
+  await expect(glass.locator(".fy-glass-rim")).toHaveCount(1);
+  expect(
+    await glass
+      .locator(".fy-glass-rim")
+      .evaluate((element) => getComputedStyle(element).boxShadow),
+  ).toContain("inset");
+  await expect(glass.locator("canvas, svg, input, textarea")).toHaveCount(0);
   // The fallback is intentionally independent of library/WebView SVG support.
   await page.emulateMedia({ reducedMotion: "reduce", forcedColors: "active" });
   await expect(dialog).toHaveAttribute("data-motion-settled", "true");

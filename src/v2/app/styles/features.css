@@ -157,7 +157,7 @@
   cursor: pointer;
 }
 .fy-feature-list-item:hover {
-  background: rgba(229, 246, 255, 0.1);
+  background: var(--fy-surface-hover);
 }
 .fy-feature-list-item[aria-current="true"],
 .fy-feature-list-item[aria-current="true"]:hover {
@@ -407,7 +407,7 @@
   padding: 4px 10px 4px 7px;
   border: 1px solid var(--fy-border);
   border-radius: var(--fy-radius-pill);
-  background: rgba(229, 246, 255, 0.1);
+  background: var(--fy-surface-hover);
   color: var(--fy-text);
   font-size: 13px;
 }
@@ -507,7 +507,7 @@
   height: 6px;
   overflow: hidden;
   border-radius: var(--fy-radius-pill);
-  background: rgba(9, 29, 48, 0.24);
+  background: var(--fy-surface-inset);
 }
 .fy-feature-progress > span {
   display: block;
@@ -524,7 +524,7 @@
   padding: 6px;
   border: 1px solid var(--fy-border-strong);
   border-radius: var(--fy-radius-panel);
-  background-color: rgba(49, 77, 104, 0.96);
+  background-color: var(--fy-surface-popup);
   background-image: linear-gradient(
     155deg,
     rgba(238, 249, 255, 0.13),

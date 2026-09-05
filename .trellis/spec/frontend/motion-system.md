@@ -106,9 +106,9 @@ within the same spring definition.
 - `data-motion-phase` reports open/exit and `data-motion-settled="true"`
   identifies a settled open surface for geometry/contrast evidence. Neither
   attribute is a native success or security signal.
-- Enhanced glass runs at rest. During motion the same backing's standard
-  frosted styling remains, avoiding expensive source copying or a second
-  rendering engine.
+- The same CSS glass backing remains through motion and rest; enhancement
+  changes rim emphasis only. Never swap in a displacement renderer at the last
+  frame or copy page/form content into the optical layer.
 
 ### Accessibility and failure behavior
 

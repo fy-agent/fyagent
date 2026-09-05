@@ -65,7 +65,7 @@
 }
 
 .fy-catalog-list-item:hover:not(:disabled) {
-  background: rgba(229, 246, 255, 0.1);
+  background: var(--fy-surface-hover);
 }
 
 .fy-catalog-list-item[aria-current="true"],
@@ -121,7 +121,7 @@
 }
 
 .fy-catalog-brand-frame[data-background="surface"] {
-  background: rgba(229, 246, 255, 0.1);
+  background: var(--fy-surface-hover);
 }
 
 .fy-catalog-brand-frame[data-corner="soft"] {

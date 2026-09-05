@@ -159,9 +159,10 @@ opener, or direct `@tauri-apps/*` capability through these components.
   `shared/ui/GlassMaterial.tsx`. Production callers use the adapter so optics,
   live/filter behavior, accessibility and future dependency replacement remain
   reviewable in one owner.
-- Modal backing uses `FrostedSurface` from that adapter in the library's bare
-  material mode, not its DOM-copy/video path. Form text remains outside the
-  decorative layer. Material, contrast and container fallback are owned by
+- Modal backing uses the adapter's stable CSS `FrostedSurface`, not a dynamic
+  displacement renderer or DOM-copy/video path. The optional library specimen
+  remains in UI Lab. Form text stays outside the decorative layer; material,
+  contrast and container fallback are owned by
   [Surfaces and Container Response](./surfaces-responsive.md).
 - Visual glass/lens material never carries selected meaning by itself. Host
   attributes, labels, focus, controls and route state remain the semantic

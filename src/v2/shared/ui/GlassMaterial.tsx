@@ -1,43 +1,15 @@
-import { Glass, type GlassOptics } from "@samasante/liquid-glass";
-import { useMemo, type ReactNode } from "react";
+import { Glass } from "@samasante/liquid-glass";
+import type { ReactNode } from "react";
 
 import { classNames } from "../design-system/classNames";
 
-const surfaceOptics: Partial<GlassOptics> = {
-  strength: 0.012,
-  dispersion: 0,
-  brightness: 0,
-  glow: 0,
-  sheen: 0.12,
-  specular: 0.3,
-};
-
-/** A decorative backing only: never clone a page, credential form or live text. */
+/** Stable CSS material for large business surfaces. The same backing and rim
+ * survive the motion handoff; no displacement-map rebuild or DOM snapshot. */
 export function FrostedSurface({ enhanced = true }: { enhanced?: boolean }) {
-  const optics = useMemo(() => {
-    const blur =
-      typeof document === "undefined"
-        ? 0
-        : Number.parseFloat(
-            getComputedStyle(document.documentElement).getPropertyValue(
-              "--fy-surface-blur",
-            ),
-          );
-    return {
-      ...surfaceOptics,
-      frost: Number.isFinite(blur) ? Math.max(0, blur) : 0,
-    };
-  }, []);
-  const canRenderLens =
-    typeof ResizeObserver !== "undefined" &&
-    typeof CanvasRenderingContext2D !== "undefined";
-  if (!canRenderLens || !enhanced)
-    return <div className="fy-frosted-surface" aria-hidden />;
   return (
-    <Glass className="fy-frosted-surface" optics={optics} aria-hidden>
-      {/* Bare wrapping selects the library's material mode, not DOM-copy mode. */}
-      <span />
-    </Glass>
+    <div className="fy-frosted-surface" data-enhanced={enhanced} aria-hidden>
+      <span className="fy-glass-rim" />
+    </div>
   );
 }
 

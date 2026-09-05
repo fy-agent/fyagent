@@ -232,7 +232,7 @@
 .fy-side-navigation-toggle:hover,
 .fy-side-navigation-item:hover {
   color: var(--fy-text);
-  background: rgba(229, 246, 255, 0.1);
+  background: var(--fy-surface-hover);
 }
 
 .fy-side-navigation-item-selected,
@@ -370,9 +370,9 @@
   height: 100%;
   min-height: 0;
   overflow: auto;
-  border: 1px solid rgba(238, 249, 255, 0.14);
+  border: 1px solid var(--fy-border);
   border-radius: var(--fy-content-radius);
-  background-color: rgba(212, 235, 251, 0.06);
+  background-color: var(--fy-glass-ambient);
   background-image: linear-gradient(
     155deg,
     rgba(255, 255, 255, 0.07),
@@ -381,8 +381,9 @@
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.13),
     0 20px 50px rgba(11, 30, 48, 0.18);
-  backdrop-filter: blur(12px) saturate(1.08);
-  -webkit-backdrop-filter: blur(12px) saturate(1.08);
+  /* The content plane is not another nested optical surface. */
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .fy-content-viewport:has(
@@ -408,7 +409,7 @@
   z-index: 100;
   border: 1px solid var(--fy-border-strong);
   color: var(--fy-text);
-  background-color: rgba(66, 94, 123, 0.74);
+  background-color: var(--fy-surface-popup);
   background-image: linear-gradient(
     155deg,
     rgba(236, 249, 255, 0.18),
@@ -430,7 +431,7 @@
 
 .fy-tooltip-arrow,
 .fy-popover-arrow {
-  fill: rgba(92, 122, 151, 0.9);
+  fill: var(--fy-surface-opaque);
 }
 
 .fy-root-error {

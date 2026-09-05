@@ -310,9 +310,7 @@
   pointer-events: none;
   border: 1px solid var(--fy-border-strong);
   border-radius: inherit;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.18),
-    0 22px 70px rgba(8, 25, 42, 0.44);
+  box-shadow: var(--fy-glass-shadow);
 }
 .fy-dialog-foreground {
   display: flex;
@@ -341,6 +339,21 @@
 .fy-frosted-surface > span {
   display: block;
   height: 100%;
+}
+.fy-glass-rim {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow:
+    inset 0 1px 0 1px var(--fy-glass-rim),
+    inset 0 -1px 0 1px var(--fy-glass-rim-lower),
+    inset 1px 0 0 var(--fy-glass-rim),
+    inset -1px 0 0 rgba(255, 255, 255, 0.44);
+  opacity: 0.75;
+  transition: opacity var(--fy-motion-content) var(--fy-motion-ease);
+}
+.fy-frosted-surface[data-enhanced="true"] .fy-glass-rim {
+  opacity: 1;
 }
 .fy-control-input::placeholder,
 .fy-control-textarea::placeholder {
@@ -469,7 +482,7 @@
   border-radius: var(--fy-radius-panel);
   color: var(--fy-text);
   font-size: 12px;
-  background-color: rgba(49, 77, 104, 0.94);
+  background-color: var(--fy-surface-popup);
   background-image: linear-gradient(
     155deg,
     rgba(238, 249, 255, 0.13),

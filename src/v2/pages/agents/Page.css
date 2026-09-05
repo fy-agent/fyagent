@@ -45,8 +45,8 @@
   align-items: center;
   padding: 2px 8px;
   border-radius: var(--fy-radius-pill);
-  background: rgba(157, 220, 255, 0.16);
-  border: 1px solid rgba(157, 220, 255, 0.35);
+  background: var(--fy-selected-bg);
+  border: 1px solid var(--fy-selected-border);
   color: var(--fy-accent-text);
   font-size: 11px;
   font-weight: 650;
@@ -107,13 +107,13 @@
   overflow: hidden;
   border: 0;
   border-radius: var(--fy-radius-pill);
-  background: rgba(226, 243, 255, 0.12);
+  background: var(--fy-surface-hover);
   accent-color: var(--fy-accent);
 }
 
 .fy-agent-directory-progress progress::-webkit-progress-bar {
   border-radius: inherit;
-  background: rgba(226, 243, 255, 0.12);
+  background: var(--fy-surface-hover);
 }
 
 .fy-agent-directory-progress progress::-webkit-progress-value {
@@ -231,7 +231,7 @@
   align-items: center;
   padding: 1px 6px;
   border-radius: var(--fy-radius-compact);
-  background: rgba(226, 243, 255, 0.08);
+  background: var(--fy-surface-raised);
   border: 1px solid var(--fy-border);
   color: var(--fy-text-secondary);
   font-size: 11px;
@@ -295,7 +295,7 @@
   border: 1px solid var(--fy-border);
   border-radius: var(--fy-radius-pill);
   color: var(--fy-text-secondary);
-  background: rgba(9, 29, 48, 0.16);
+  background: var(--fy-surface-inset);
   font-size: 11px;
   font-weight: 650;
 }
@@ -312,7 +312,7 @@
 
 .fy-agent-directory-status[data-status="warning"],
 .fy-agent-directory-status[data-status="unknown"] {
-  border-color: rgba(157, 220, 255, 0.35);
+  border-color: var(--fy-selected-border);
   color: var(--fy-accent-text);
 }
 
@@ -380,7 +380,7 @@
   padding: 15px;
   border: 1px solid var(--fy-border);
   border-radius: var(--fy-radius-panel);
-  background: rgba(9, 29, 48, 0.12);
+  background: var(--fy-surface-inset);
 }
 
 .fy-agent-config-section {
@@ -468,7 +468,7 @@
   overflow: auto;
   border: 1px solid var(--fy-border);
   border-radius: var(--fy-radius-control);
-  background: rgba(9, 29, 48, 0.2);
+  background: var(--fy-surface-inset);
   color: var(--fy-text);
   font: inherit;
   font-size: 12px;
@@ -564,7 +564,7 @@
   padding: 12px;
   border: 1px solid var(--fy-border);
   border-radius: var(--fy-radius-panel);
-  background: rgba(226, 243, 255, 0.05);
+  background: var(--fy-surface-raised);
 }
 
 .fy-agent-install-readiness-summary,
@@ -588,7 +588,7 @@
   min-width: 0;
   padding: 8px 9px;
   border-radius: var(--fy-radius-control);
-  background: rgba(9, 29, 48, 0.16);
+  background: var(--fy-surface-inset);
 }
 
 .fy-agent-install-readiness-grid dt {
@@ -712,7 +712,7 @@
   padding: 9px 10px;
   border: 1px solid var(--fy-border);
   border-radius: var(--fy-radius-item);
-  background: rgba(9, 29, 48, 0.13);
+  background: var(--fy-surface-inset);
   cursor: pointer;
 }
 
@@ -781,7 +781,7 @@
   padding: 12px;
   border: 1px solid var(--fy-border);
   border-radius: var(--fy-radius-panel);
-  background: rgba(226, 243, 255, 0.06);
+  background: var(--fy-surface-raised);
 }
 
 .fy-agent-observation-grid {
@@ -797,7 +797,7 @@
   min-width: 0;
   padding: 9px 10px;
   border-radius: var(--fy-radius-control);
-  background: rgba(9, 29, 48, 0.16);
+  background: var(--fy-surface-inset);
 }
 
 .fy-agent-observation-grid dt {
@@ -878,7 +878,7 @@
   padding: 12px;
   border: 1px solid var(--fy-border);
   border-radius: var(--fy-radius-panel);
-  background: rgba(226, 243, 255, 0.06);
+  background: var(--fy-surface-raised);
 }
 
 .fy-codex-installer-versions {
@@ -894,7 +894,7 @@
   min-width: 0;
   padding: 9px 10px;
   border-radius: var(--fy-radius-control);
-  background: rgba(9, 29, 48, 0.16);
+  background: var(--fy-surface-inset);
 }
 
 .fy-codex-installer-versions dt {
@@ -922,7 +922,7 @@
   height: 6px;
   overflow: hidden;
   border-radius: var(--fy-radius-pill);
-  background: rgba(226, 243, 255, 0.12);
+  background: var(--fy-surface-hover);
 }
 
 .fy-codex-installer-progress-track span {
@@ -959,7 +959,7 @@
   min-width: 0;
   border: 1px solid var(--fy-border);
   border-radius: var(--fy-radius-control);
-  background: rgba(226, 243, 255, 0.04);
+  background: var(--fy-surface-raised);
 }
 
 .fy-agent-unsupported > summary {
@@ -990,7 +990,7 @@
   padding: 12px;
   border: 1px solid var(--fy-border);
   border-radius: var(--fy-radius-panel);
-  background: rgba(226, 243, 255, 0.05);
+  background: var(--fy-surface-raised);
 }
 
 .fy-agent-hook-grid {
@@ -1013,7 +1013,7 @@
 .fy-agent-hooks-preview > div {
   padding: 10px;
   border-radius: var(--fy-radius-control);
-  background: rgba(9, 29, 48, 0.16);
+  background: var(--fy-surface-inset);
 }
 
 .fy-agent-hooks-preview span {
@@ -1038,7 +1038,7 @@
   padding: 12px;
   border: 1px solid var(--fy-border);
   border-radius: var(--fy-radius-panel);
-  background: rgba(226, 243, 255, 0.05);
+  background: var(--fy-surface-raised);
 }
 
 .fy-agent-mcp-result > ul {
@@ -1060,7 +1060,7 @@
   padding: 10px;
   overflow: auto;
   border-radius: var(--fy-radius-compact);
-  background: rgba(9, 29, 48, 0.2);
+  background: var(--fy-surface-inset);
   color: var(--fy-text-secondary);
   font-size: 11px;
   white-space: pre-wrap;
