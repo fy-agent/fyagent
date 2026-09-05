@@ -10,6 +10,7 @@ export function Brand() {
     >
       <img
         className="fy-brand-mark"
+        data-fy-startup-image=""
         src={markUrl}
         alt=""
         width="28"

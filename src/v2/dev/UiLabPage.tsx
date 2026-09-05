@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useFrontendReady } from "../shared/platform/useFrontendReady";
 
 import { CheckIcon } from "@phosphor-icons/react/dist/csr/Check";
 import { SparkleIcon } from "@phosphor-icons/react/dist/csr/Sparkle";
@@ -9,6 +10,7 @@ import { SelectionLens, SelectionLensGroup } from "../shared/ui/SelectionLens";
 import { PopoverPrimitive, TabsPrimitive } from "../shared/ui/vendor";
 
 export function UiLabPage() {
+  useFrontendReady();
   const [tab, setTab] = useState("one");
   const [popoverOpen, setPopoverOpen] = useState(false);
 

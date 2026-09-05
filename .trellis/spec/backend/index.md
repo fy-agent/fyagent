@@ -41,6 +41,7 @@ secret handling, native source checks, and residual-risk reporting.
 | [Application Brand Assets](./application-brand-assets.md)                 | Canonical icons, asset derivation, platform packaging, and byte-level validation.                                               |
 | [Application Version and Installer Assets](./fyagent-version-contract.md) | Canonical version source, package versions, and installer filename contract.                                                    |
 | [Main Window Layout](./main-window-layout.md)                             | Native geometry, maximize/work-area behavior, and renderer chrome boundary.                                                     |
+| [Main Window Presentation](./window-presentation.md)                     | Hidden startup, content readiness, queued reveal, silent mode and failure recovery.                                             |
 
 ## Product, configuration, and runtime security
 

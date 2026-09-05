@@ -18,6 +18,10 @@ This is a host geometry contract. Do not fix native window overflow in
 Overlay, React, or CSS. The V2 shell does not own maximize, restore,
 min-size, or work-area clamping.
 
+The separate [Window Presentation](./window-presentation.md) contract waits
+for this hidden-window preparation and committed renderer content before
+ordinary show/focus. It does not change geometry or persistence policy.
+
 ## 2. Signatures
 
 ```rust
@@ -76,14 +80,14 @@ debounce: 150ms after Moved or ScaleFactorChanged
 
 ## 4. Validation & Error Matrix
 
-| Condition | Required result |
-| --------- | --------------- |
-| `maximized == true` or `fullscreen == true` | `should_apply_runtime_geometry_constraints` is false; no `set_min_size` / `set_size` / `set_position` |
-| User maximizes on Windows | Window stays maximized; origin stays the system maximize origin (about `-8,-8`); UI remains in the work area |
-| User restores from maximize | Previous normal rectangle returns; not the maximized client size at the old origin |
-| `Moved` / DPI while maximized | Emit `layout-mode-changed` only; skip geometry mutation |
-| Saved geometry off-screen or non-finite | `clamp_window_geometry` keeps `maximized` and fits the **normal** rect into the work area |
-| Layout refresh error | Log at debug; do not panic or force-unmaximize |
+| Condition                                   | Required result                                                                                              |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `maximized == true` or `fullscreen == true` | `should_apply_runtime_geometry_constraints` is false; no `set_min_size` / `set_size` / `set_position`        |
+| User maximizes on Windows                   | Window stays maximized; origin stays the system maximize origin (about `-8,-8`); UI remains in the work area |
+| User restores from maximize                 | Previous normal rectangle returns; not the maximized client size at the old origin                           |
+| `Moved` / DPI while maximized               | Emit `layout-mode-changed` only; skip geometry mutation                                                      |
+| Saved geometry off-screen or non-finite     | `clamp_window_geometry` keeps `maximized` and fits the **normal** rect into the work area                    |
+| Layout refresh error                        | Log at debug; do not panic or force-unmaximize                                                               |
 
 ## 5. Good / Base / Bad Cases
 

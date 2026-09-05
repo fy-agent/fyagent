@@ -14,6 +14,7 @@ import {
   type ManagedAuthProvider,
 } from "../../shared/features/managed-auth";
 import { useFeatures } from "../../shared/features/provider";
+import { useFrontendReady } from "../../shared/platform/useFrontendReady";
 import {
   featureKeys,
   useManagedAuthOverview,
@@ -77,6 +78,7 @@ export function AuthPage() {
   const { visible, searchParams, setSearchParams } =
     usePersistentSearchParams();
   const overviewQuery = useManagedAuthOverview(visible);
+  useFrontendReady(!overviewQuery.isPending);
   const requestedConsumer =
     authConsumer(searchParams.get("consumer")) ??
     consumerForAgent(searchParams.get("agentReturn"));

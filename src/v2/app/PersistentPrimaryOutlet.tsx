@@ -6,7 +6,16 @@ import {
   type NavigationItem,
 } from "../shared/config/navigation";
 import { PersistentSurface } from "../shared/ui/PersistentSurface";
+import { useFrontendReady } from "../shared/platform/useFrontendReady";
 import { primaryPages } from "./primaryPages";
+
+function CommittedPrimaryPage({ id }: { id: NavigationItem["id"] }) {
+  // These two pages wait for their small local initial snapshot. Other pages
+  // already have usable local navigation/forms while optional data loads.
+  useFrontendReady(id !== "agents" && id !== "auth");
+  const Page = primaryPages[id];
+  return <Page />;
+}
 
 function isPrimaryPath(pathname: string): pathname is NavigationItem["path"] {
   return navigationItems.some((item) => item.path === pathname);
@@ -60,10 +69,9 @@ export function PersistentPrimaryOutlet() {
       {navigationItems
         .filter((item) => mountedPaths.has(item.path) || item.path === pathname)
         .map((item) => {
-          const RoutedPage = primaryPages[item.id];
           return (
             <PersistentSurface key={item.id} active={item.path === pathname}>
-              {lazyPage(<RoutedPage />)}
+              {lazyPage(<CommittedPrimaryPage id={item.id} />)}
             </PersistentSurface>
           );
         })}

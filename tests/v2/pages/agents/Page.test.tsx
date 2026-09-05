@@ -4,6 +4,7 @@ import { MemoryRouter, useLocation } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
 import { AgentsPage } from "@/v2/pages/agents/Page";
+import * as frontendLifecycle from "@/v2/shared/platform/lifecycle";
 import { AGENT_LIFECYCLE_VENDOR_HANDOFF_COPY } from "@/v2/pages/agents/useAgentLifecycleAction";
 import {
   AGENT_ACTION_CONTRACT_VERSION,
@@ -459,6 +460,25 @@ function configureButton(name: (typeof CATALOG_NAMES)[number]) {
 }
 
 describe("V3 Agent directory and configuration shell", () => {
+  it("waits for the local directory snapshot before announcing a usable startup surface", async () => {
+    const signal = vi
+      .spyOn(frontendLifecycle, "signalFrontendReady")
+      .mockResolvedValue(undefined);
+    const ports = configuredPorts();
+    let release!: (value: ReturnType<typeof catalog>) => void;
+    ports.catalog.get = vi.fn(
+      () =>
+        new Promise<ReturnType<typeof catalog>>((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderPage(ports);
+    await waitFor(() => expect(ports.catalog.get).toHaveBeenCalledTimes(1));
+    expect(signal).not.toHaveBeenCalled();
+    release(catalog());
+    await waitFor(() => expect(signal).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole("region", { name: "AI 软件目录" })).toBeVisible();
+  });
   it("shows all catalog rows immediately and settles readiness progressively", async () => {
     const ports = configuredPorts();
     const reads = {} as Record<
@@ -977,8 +997,12 @@ describe("V3 Agent directory and configuration shell", () => {
     const configuration = await screen.findByRole("region", {
       name: "OpenCode 配置",
     });
-    expect(within(configuration).queryByRole("region", { name: "安装与更新" })).toBeNull();
-    expect(within(configuration).getByRole("button", { name: "返回" })).toBeVisible();
+    expect(
+      within(configuration).queryByRole("region", { name: "安装与更新" }),
+    ).toBeNull();
+    expect(
+      within(configuration).getByRole("button", { name: "返回" }),
+    ).toBeVisible();
     expect(ports.agentInstallReadiness.startAction).not.toHaveBeenCalled();
   });
 

@@ -54,6 +54,8 @@ Routing/lifetime boundaries are:
 
 ```ts
 createAppRouter(): ReturnType<typeof createHashRouter>
+initialPrimaryPageId(hash: string): NavigationItem["id"]
+preloadInitialPrimaryRoute(hash: string): Promise<void>
 prefetchPrimaryRoutes(): void
 PersistentPrimaryOutlet(): JSX.Element
 PersistentSurface({ active, children, className }): JSX.Element
@@ -104,6 +106,15 @@ arbitrary return URL, serialized history entry, or free-form navigation state.
 - `prefetchPrimaryRoutes` warms those same cached loaders. Prefetch must not
   create a second module map, render a page, start native queries, or turn a
   failed optional preload into a false successful route transition.
+- Startup awaits only the initial hash route's cached module before mounting
+  the router, then prefetches the other literal loaders. Unknown paths warm
+  Agents, leaving the router's existing redirect authority unchanged. Query
+  parameters never become module paths. No new eager bundle or fixed delay.
+- Optional prefetch catches rejection and clears only its failed cached
+  promise so actual navigation may try loading the module. Actual route or
+  initial-load failure renders `RootError` with a reload action; it is not
+  silently replaced with a successful page. Readiness comes from the committed
+  surface, never the outer shell/Suspense fallback (see Window Shell).
 
 ### Persistent primary pages
 

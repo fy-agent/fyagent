@@ -454,6 +454,9 @@ pub(crate) fn prepare_main_webview(window: &tauri::WebviewWindow) {
         log::warn!("Unable to apply main-window layout policy: {error}");
     }
     install_main_window_layout_listener(window);
+    if with_activation_inbox(ActivationInbox::mark_window_prepared) {
+        drain_pending_activations(window.app_handle());
+    }
 }
 
 const FRONTEND_DEEPLINK_READY_EVENT: &str = "frontend-deeplink-ready";
@@ -490,8 +493,11 @@ fn should_exit_lightweight_mode(is_lightweight: bool, activation: &PendingActiva
 #[derive(Debug, Default)]
 struct ActivationInbox {
     renderer_ready: bool,
+    window_prepared: bool,
     draining: bool,
     pending: VecDeque<PendingActivation>,
+    load_generation: u64,
+    recovery_armed: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -528,7 +534,7 @@ impl ActivationInbox {
         }
 
         self.pending.push_back(activation);
-        if self.renderer_ready && !self.draining {
+        if self.renderer_ready && self.window_prepared && !self.draining {
             self.draining = true;
             ActivationEnqueueResult::StartDrain
         } else {
@@ -538,7 +544,17 @@ impl ActivationInbox {
 
     fn mark_ready(&mut self) -> bool {
         self.renderer_ready = true;
-        if self.pending.is_empty() || self.draining {
+        self.start_ready_drain()
+    }
+
+    fn mark_window_prepared(&mut self) -> bool {
+        self.window_prepared = true;
+        self.start_ready_drain()
+    }
+
+    fn start_ready_drain(&mut self) -> bool {
+        if !self.renderer_ready || !self.window_prepared || self.pending.is_empty() || self.draining
+        {
             false
         } else {
             self.draining = true;
@@ -548,10 +564,37 @@ impl ActivationInbox {
 
     fn mark_unready(&mut self) {
         self.renderer_ready = false;
+        self.load_generation = self.load_generation.wrapping_add(1);
+        self.recovery_armed = false;
+    }
+
+    fn can_recover(&self, generation: u64) -> bool {
+        self.load_generation == generation
+            && !self.renderer_ready
+            && self
+                .pending
+                .iter()
+                .any(PendingActivation::should_wake_main_window)
+    }
+
+    fn arm_recovery(&mut self) -> Option<u64> {
+        if self.recovery_armed || !self.can_recover(self.load_generation) {
+            return None;
+        }
+        self.recovery_armed = true;
+        Some(self.load_generation)
+    }
+
+    fn finish_recovery(&mut self, generation: u64) -> bool {
+        if self.load_generation != generation {
+            return false;
+        }
+        self.recovery_armed = false;
+        self.can_recover(generation)
     }
 
     fn take_next(&mut self) -> Option<PendingActivation> {
-        if !self.renderer_ready {
+        if !self.renderer_ready || !self.window_prepared {
             self.draining = false;
             return None;
         }
@@ -581,6 +624,10 @@ pub(crate) fn mark_activation_renderer_unready() {
 
 fn show_and_focus_main_window(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
+        #[cfg(target_os = "windows")]
+        let _ = window.set_skip_taskbar(false);
+        #[cfg(target_os = "macos")]
+        tray::apply_tray_policy(app, true);
         let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();
@@ -668,6 +715,52 @@ fn submit_activation(app: &tauri::AppHandle, activation: PendingActivation) {
             log::error!("退出轻量模式重建窗口失败: {error}");
         }
     }
+    schedule_frontend_recovery(app);
+}
+
+/// All ordinary window reveals use the existing semantic activation queue.
+pub(crate) fn request_main_window_focus(app: &tauri::AppHandle) {
+    submit_activation(app, PendingActivation::Focus);
+}
+
+fn schedule_frontend_recovery(app: &tauri::AppHandle) {
+    let Some(generation) = with_activation_inbox(ActivationInbox::arm_recovery) else {
+        return;
+    };
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        // Failure recovery only. Time passing never authorizes a success reveal.
+        tokio::time::sleep(std::time::Duration::from_secs(15)).await;
+        if !with_activation_inbox(|inbox| inbox.can_recover(generation)) {
+            return;
+        }
+        let retry_app = app.clone();
+        app.dialog()
+            .message("主界面未能及时完成加载。可以重新加载界面；正在运行的后台服务不会被重启。")
+            .title("FyAgent 界面加载未完成")
+            .kind(MessageDialogKind::Error)
+            .buttons(MessageDialogButtons::OkCancelCustom(
+                "重新加载界面".into(),
+                "稍后处理".into(),
+            ))
+            .show(move |retry| {
+                let still_waiting =
+                    with_activation_inbox(|inbox| inbox.finish_recovery(generation));
+                if retry && still_waiting {
+                    if let Some(window) = retry_app.get_webview_window("main") {
+                        mark_activation_renderer_unready();
+                        if window.reload().is_err() {
+                            log::error!("Unable to reload the main interface");
+                        }
+                        schedule_frontend_recovery(&retry_app);
+                    } else if crate::lightweight::is_lightweight_mode()
+                        && crate::lightweight::exit_lightweight_mode(&retry_app).is_err()
+                    {
+                        log::error!("Unable to recreate the main interface");
+                    }
+                }
+            });
+    });
 }
 
 fn emit_safe_deeplink_error(app: &tauri::AppHandle) {
@@ -742,6 +835,7 @@ fn handle_deeplink_url(
 /// user's absolute LocalAppData directory after disabling Tauri's automatic
 /// config-window creation; this bypasses the elevated process path resolver.
 pub(crate) fn create_main_webview(app: &tauri::AppHandle) -> tauri::Result<tauri::WebviewWindow> {
+    with_activation_inbox(|inbox| inbox.window_prepared = false);
     let window_config = app
         .config()
         .app
@@ -859,6 +953,7 @@ pub fn run() {
                 && matches!(payload.event(), tauri::webview::PageLoadEvent::Started)
             {
                 mark_activation_renderer_unready();
+                schedule_frontend_recovery(webview.app_handle());
             }
         })
         // 注册 deep-link 插件（处理 macOS AppleEvent 和 Windows URI 激活）
@@ -1863,9 +1958,9 @@ pub fn run() {
                     tray::apply_tray_policy(app.handle(), false);
                     log::info!("静默启动模式：主窗口已隐藏");
                 } else {
-                    // 正常启动模式：显示窗口
-                    let _ = window.show();
-                    log::info!("正常启动模式：主窗口已显示");
+                    // Geometry is ready; reveal only after the first usable
+                    // renderer surface has committed and acknowledged readiness.
+                    request_main_window_focus(app.handle());
 
                 }
             }
@@ -2424,20 +2519,7 @@ pub fn run() {
             match event {
                 // macOS 在 Dock 图标被点击并重新激活应用时会触发 Reopen 事件，这里手动恢复主窗口
                 RunEvent::Reopen { .. } => {
-                    if let Some(window) = app_handle.get_webview_window("main") {
-                        #[cfg(target_os = "windows")]
-                        {
-                            let _ = window.set_skip_taskbar(false);
-                        }
-                        let _ = window.unminimize();
-                        let _ = window.show();
-                        let _ = window.set_focus();
-                        tray::apply_tray_policy(app_handle, true);
-                    } else if crate::lightweight::is_lightweight_mode() {
-                        if let Err(e) = crate::lightweight::exit_lightweight_mode(app_handle) {
-                            log::error!("退出轻量模式重建窗口失败: {e}");
-                        }
-                    }
+                    request_main_window_focus(app_handle);
                 }
                 // 处理通过自定义 URL 协议触发的打开事件（例如 fyagent://...）
                 RunEvent::Opened { urls } => {
@@ -3268,6 +3350,7 @@ mod tests {
     #[test]
     fn semantic_activation_queue_waits_for_ready_and_drains_fifo() {
         let mut inbox = ActivationInbox::default();
+        assert!(!inbox.mark_window_prepared());
         let request = crate::deeplink::DeepLinkImportRequest {
             version: "v1".to_owned(),
             resource: "provider".to_owned(),
@@ -3437,6 +3520,7 @@ mod tests {
     fn renderer_reload_pauses_drain_without_losing_the_next_semantic() {
         let mut inbox = ActivationInbox {
             renderer_ready: true,
+            window_prepared: true,
             ..ActivationInbox::default()
         };
         assert_eq!(
@@ -3460,6 +3544,87 @@ mod tests {
             Some(PendingActivation::InvalidDeepLink { .. })
         ));
         assert!(inbox.take_next().is_none());
+    }
+
+    #[test]
+    fn presentation_waits_for_both_geometry_and_content_in_either_order() {
+        for renderer_first in [false, true] {
+            let mut inbox = ActivationInbox::default();
+            assert_eq!(
+                inbox.enqueue(PendingActivation::Focus),
+                ActivationEnqueueResult::Queued
+            );
+            let first = if renderer_first {
+                inbox.mark_ready()
+            } else {
+                inbox.mark_window_prepared()
+            };
+            assert!(!first);
+            assert!(inbox.take_next().is_none());
+            let second = if renderer_first {
+                inbox.mark_window_prepared()
+            } else {
+                inbox.mark_ready()
+            };
+            assert!(second);
+            assert!(!inbox.mark_ready());
+            assert!(matches!(inbox.take_next(), Some(PendingActivation::Focus)));
+            assert!(inbox.take_next().is_none());
+            assert_eq!(
+                inbox.enqueue(PendingActivation::Focus),
+                ActivationEnqueueResult::StartDrain
+            );
+        }
+    }
+
+    #[test]
+    fn recovery_is_opt_in_by_wake_request_and_deduplicated_per_load() {
+        let mut inbox = ActivationInbox::default();
+        inbox.mark_window_prepared();
+        assert!(
+            inbox.arm_recovery().is_none(),
+            "silent startup must not show recovery"
+        );
+        inbox.enqueue(PendingActivation::InvalidDeepLink {
+            focus_main_window: false,
+        });
+        assert!(inbox.arm_recovery().is_none());
+        inbox.enqueue(PendingActivation::Focus);
+        let generation = inbox
+            .arm_recovery()
+            .expect("explicit wake enables watchdog");
+        assert!(inbox.can_recover(generation));
+        assert!(inbox.arm_recovery().is_none(), "no second timer/dialog");
+        assert!(inbox.finish_recovery(generation));
+        assert!(!inbox.renderer_ready, "timeout is never readiness");
+        assert!(
+            inbox.take_next().is_none(),
+            "timeout cannot reveal a loading surface"
+        );
+        assert!(
+            inbox.arm_recovery().is_some(),
+            "a later explicit wake may retry"
+        );
+        assert!(inbox.mark_ready());
+        assert!(!inbox.can_recover(generation));
+        assert!(
+            !inbox.finish_recovery(generation),
+            "late dialog response cannot reload a ready UI"
+        );
+    }
+
+    #[test]
+    fn superseded_recovery_cannot_reload_or_disarm_a_new_webview() {
+        let mut inbox = ActivationInbox::default();
+        inbox.enqueue(PendingActivation::Focus);
+        let old = inbox.arm_recovery().unwrap();
+        inbox.mark_unready();
+        let new = inbox.arm_recovery().unwrap();
+        assert_ne!(old, new);
+        assert!(!inbox.can_recover(old));
+        assert!(!inbox.finish_recovery(old));
+        assert!(inbox.recovery_armed);
+        assert!(inbox.can_recover(new));
     }
 
     #[test]

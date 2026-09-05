@@ -124,6 +124,7 @@ export function BrandIconFrame({
     >
       <img
         className="fy-catalog-brand-artwork"
+        data-fy-startup-image=""
         src={asset.iconUrl}
         alt={accessibilityLabel ?? ""}
         aria-hidden={decorative ? "true" : undefined}

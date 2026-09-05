@@ -1,0 +1,5 @@
+{"file":".trellis/spec/frontend/v2-navigation.md","reason":"Literal lazy loaders, initial routing and persistent visibility"}
+{"file":".trellis/spec/frontend/v2-window-shell.md","reason":"Native readiness and shell responsibility"}
+{"file":".trellis/spec/backend/main-window-layout.md","reason":"Geometry stays host owned and prepares while hidden"}
+{"file":".trellis/spec/backend/deeplink-import-security.md","reason":"Reuse semantic activation queue without changing secret or routing policy"}
+{"file":".trellis/spec/backend/window-presentation.md","reason":"Reviewed readiness, silent mode and bounded failure contracts"}

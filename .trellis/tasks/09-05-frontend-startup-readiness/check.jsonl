@@ -1,0 +1,4 @@
+{"file":".trellis/spec/frontend/v2-navigation.md","reason":"Loading/rejection/hidden route evidence"}
+{"file":".trellis/spec/frontend/v2-window-shell.md","reason":"Readiness must follow content commit"}
+{"file":".trellis/spec/backend/main-window-layout.md","reason":"Do not replace native geometry or silent startup"}
+{"file":".trellis/spec/backend/window-presentation.md","reason":"Both arrival orders, failure-only watchdog and no silent-mode reveal"}

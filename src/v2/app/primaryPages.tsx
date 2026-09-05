@@ -1,6 +1,9 @@
 import { lazy, type ComponentType, type LazyExoticComponent } from "react";
 
-import type { NavigationItem } from "../shared/config/navigation";
+import {
+  navigationItems,
+  type NavigationItem,
+} from "../shared/config/navigation";
 
 type PrimaryPageModule = { default: ComponentType };
 
@@ -9,7 +12,10 @@ function cachedLoader(
 ): () => Promise<PrimaryPageModule> {
   let promise: Promise<PrimaryPageModule> | null = null;
   return () => {
-    promise ??= load();
+    promise ??= load().catch((error: unknown) => {
+      promise = null;
+      throw error;
+    });
     return promise;
   };
 }
@@ -56,6 +62,17 @@ export const primaryPages: Record<
 
 export function prefetchPrimaryRoutes(): void {
   for (const load of Object.values(primaryPageLoaders)) {
-    void load();
+    // Prefetch is optional. A failed warm-up must not poison a later visit
+    // or create an unhandled rejection; actual navigation still shows errors.
+    void load().catch(() => undefined);
   }
+}
+
+export function initialPrimaryPageId(hash: string): NavigationItem["id"] {
+  const pathname = hash.replace(/^#/, "").split(/[?#]/, 1)[0];
+  return navigationItems.find((item) => item.path === pathname)?.id ?? "agents";
+}
+
+export async function preloadInitialPrimaryRoute(hash: string): Promise<void> {
+  await primaryPageLoaders[initialPrimaryPageId(hash)]();
 }

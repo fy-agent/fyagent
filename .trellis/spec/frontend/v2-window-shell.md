@@ -38,6 +38,7 @@ detectNativePlatform(navigatorIdentity?): "windows" | "macos" | "unknown"
 detectRuntime(scope?): RuntimeEnvironment
 shouldShowMacOverlayDragStrip(runtime?): boolean
 signalFrontendReady(): Promise<void>
+useFrontendReady(ready?: boolean): void
 ```
 
 `AppShell` composes one `TooltipProvider`, one `TopBar`, one
@@ -82,9 +83,24 @@ opener, or direct `@tauri-apps/*` capability through these components.
 
 ### Shell and native-window boundary
 
-- `AppShell` is the single production shell root. It signals frontend readiness
-  once after mount and logs a failure as a failure; the Renderer does not infer
-  native readiness from having painted the shell.
+- `AppShell` is the single production shell root, not the readiness source.
+  `useFrontendReady` signals the existing payload-free event after an active
+  usable/error route commits; the lifecycle facade deduplicates StrictMode.
+  Agents waits for its first local catalog snapshot, Auth for its local
+  overview. Other primary routes signal from inside Suspense after content
+  commits, not from its fallback. Later background refresh and directory scans
+  never delay initial display. RootError and the development lab also signal
+  from their actual committed content.
+- Shared Brand/BrandIconFrame marks bundled startup artwork; readiness uses
+  native image decode for that current local snapshot, not remote/lazy images.
+  Failed decoration does not prevent display and stale decode completion after
+  hiding/unmount cannot signal. The host recovery handles a truly stalled load.
+- A hidden native WebView may not advance animation frames. Do not wait for
+  `requestAnimationFrame` or document visibility to authorize initial display.
+  A failed signal logs a fixed diagnostic; it does not mark native readiness.
+  The host still owns geometry preparation, silent startup, actual show/focus
+  and bounded failure recovery. See
+  [Window Presentation](../backend/window-presentation.md).
 - `shouldShowMacOverlayDragStrip` is true only for a native macOS runtime. The
   macOS overlay adds traffic-light spacing plus one native drag surface. Browser,
   Windows, and unknown-native runtimes do not receive that overlay markup.

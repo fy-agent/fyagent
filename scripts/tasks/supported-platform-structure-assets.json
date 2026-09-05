@@ -159,11 +159,11 @@
     ],
     [
       "src-tauri/src/lib.rs",
-      "d79759545271861d4ffc82ff9637ff2e27b11f954a57c49b5c4220a7ad98c88b"
+      "0362fe6aac6760d9cd63057baa47f4243eb99fed6b7745bdc461a88cea22b57c"
     ],
     [
       "src-tauri/src/lightweight.rs",
-      "5533e695fc4a3164f6e4d193771fb8ced39bc1e18e71d197b1924f38dd0175c3"
+      "26afdcaaeb3281ffa63e439eef9becd3ad40743dc186247e245c0307f2dc5b3e"
     ],
     [
       "src-tauri/src/macos_system_commit/ffi.rs",
@@ -311,7 +311,7 @@
     ],
     [
       "src-tauri/src/tray.rs",
-      "2878182c66b413522f2593d62fb58512334a0e10334681c247d88e27f4cc7a01"
+      "1a8b9a373912bd31aacdf812f432f8176bfe4bd8a1f9527d539f917d5409a607"
     ],
     [
       "src-tauri/src/windows_runtime/mod.rs",

@@ -32,19 +32,9 @@ pub fn enter_lightweight_mode(app: &tauri::AppHandle) -> Result<(), String> {
 }
 
 pub fn exit_lightweight_mode(app: &tauri::AppHandle) -> Result<(), String> {
-    if let Some(window) = app.get_webview_window("main") {
-        let _ = window.unminimize();
-        let _ = window.show();
-        let _ = window.set_focus();
-        #[cfg(target_os = "windows")]
-        {
-            let _ = window.set_skip_taskbar(false);
-        }
-        #[cfg(target_os = "macos")]
-        {
-            crate::tray::apply_tray_policy(app, true);
-        }
+    if app.get_webview_window("main").is_some() {
         LIGHTWEIGHT_MODE.store(false, Ordering::Release);
+        crate::request_main_window_focus(app);
         crate::tray::refresh_tray_menu(app);
         log::info!("退出轻量模式");
         return Ok(());
@@ -54,24 +44,8 @@ pub fn exit_lightweight_mode(app: &tauri::AppHandle) -> Result<(), String> {
     let window = crate::create_main_webview(app).map_err(|e| format!("创建主窗口失败: {e}"))?;
     crate::prepare_main_webview(&window);
 
-    if let Some(window) = app.get_webview_window("main") {
-        let _ = window.unminimize();
-        let _ = window.show();
-        let _ = window.set_focus();
-    }
-
-    #[cfg(target_os = "windows")]
-    {
-        if let Some(window) = app.get_webview_window("main") {
-            let _ = window.set_skip_taskbar(false);
-        }
-    }
-    #[cfg(target_os = "macos")]
-    {
-        crate::tray::apply_tray_policy(app, true);
-    }
-
     LIGHTWEIGHT_MODE.store(false, Ordering::Release);
+    crate::request_main_window_focus(app);
     crate::tray::refresh_tray_menu(app);
     log::info!("退出轻量模式");
     Ok(())

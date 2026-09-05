@@ -106,6 +106,9 @@ test("Agent directory keeps exact native order and accessible configuration entr
   const traeDetailFrame = agentItem(page, "TRAE Work CN").locator(
     '[data-size="detail"]',
   );
+  await traeDetailFrame
+    .locator("img")
+    .evaluate((image: HTMLImageElement) => image.decode());
   expect(
     await traeDetailFrame.evaluate((frame) => {
       const image = frame.querySelector("img") as HTMLImageElement;
@@ -255,9 +258,7 @@ test("Codex configuration loads safely without unsolicited mutation", async ({
 
   await expect(page.getByRole("region", { name: "Codex 配置" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "当前模型" })).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "管理模型" }),
-  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "管理模型" })).toBeVisible();
   await expect(page.getByRole("button", { name: "返回" })).toBeVisible();
   await expect(page.getByText("单 Agent 配置")).toHaveCount(0);
   await expect(page.getByText("安装、登录与启动能力")).toHaveCount(0);

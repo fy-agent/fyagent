@@ -2,6 +2,7 @@ import { useEffect } from "react";
 
 import { PRODUCT_DIRECTORY } from "../../shared/features/directory";
 import { useAgentCatalog } from "../../shared/features/queries";
+import { useFrontendReady } from "../../shared/platform/useFrontendReady";
 import { usePersistentSearchParams } from "../../shared/ui/usePersistentSearchParams";
 import {
   Button,
@@ -24,6 +25,7 @@ export function AgentsPage() {
   const { visible, searchParams, setSearchParams } =
     usePersistentSearchParams();
   const catalogQuery = useAgentCatalog();
+  useFrontendReady(!catalogQuery.isPending);
   const scanController = useAgentDirectoryScan({
     autoStart: true,
     active: visible,
