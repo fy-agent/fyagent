@@ -77,6 +77,21 @@ initial-chunk budget; do not raise Vite's warning threshold to hide a
 monolithic entry. Vendor budgets must name their source and remain separate
 from the app route budget.
 
+The browser gate also boots the production bundle and visits all seven routes
+through `playwright.v2-performance.config.ts` (the `production boots` case).
+Passing Vite dev-server tests or producing a manifest does not prove bundled
+module initialization. `vite.config.ts` uses Rollup's dependency-aware named
+entry groups, not a catch-all node_modules path partition that can split React
+initialization from its helpers and produce cross-chunk cycles.
+
+For navigation profiling run `mise exec -- pnpm exec playwright test --config
+playwright.v2-performance.config.ts`. It uses a serial production server,
+1232×700 viewport, 42 revisits at 1× and 4× CPU cost, CPU profiles and long-task
+records. The normal-speed local target is p95 ≤100ms from semantic link
+activation to the frame after visible destination DOM; it excludes OS input
+dispatch, data freshness and animation settling. Report those limits, not a
+claim about all native WebViews. Do not raise the existing build budgets.
+
 ```tsx
 // tests/utils/testQueryClient.ts
 export const createTestQueryClient = () =>

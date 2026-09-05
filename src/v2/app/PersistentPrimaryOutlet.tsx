@@ -1,5 +1,5 @@
 import { Outlet, useLocation } from "react-router-dom";
-import { Suspense, useState, type ReactNode } from "react";
+import { memo, Suspense, useState, type ReactNode } from "react";
 
 import {
   navigationItems,
@@ -9,13 +9,17 @@ import { PersistentSurface } from "../shared/ui/PersistentSurface";
 import { useFrontendReady } from "../shared/platform/useFrontendReady";
 import { primaryPages } from "./primaryPages";
 
-function CommittedPrimaryPage({ id }: { id: NavigationItem["id"] }) {
+const CommittedPrimaryPage = memo(function CommittedPrimaryPage({
+  id,
+}: {
+  id: NavigationItem["id"];
+}) {
   // These two pages wait for their small local initial snapshot. Other pages
   // already have usable local navigation/forms while optional data loads.
   useFrontendReady(id !== "agents" && id !== "auth");
   const Page = primaryPages[id];
   return <Page />;
-}
+});
 
 function isPrimaryPath(pathname: string): pathname is NavigationItem["path"] {
   return navigationItems.some((item) => item.path === pathname);

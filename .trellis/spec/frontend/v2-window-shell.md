@@ -127,6 +127,11 @@ opener, or direct `@tauri-apps/*` capability through these components.
   selected controls keep a stable size may use `geometry="position"`; the
   primary sidebar uses that mode so movement does not introduce scale
   distortion during collapse/reflow.
+- Lens movement uses Motion `x`/`y` transforms rather than updating CSS
+  `left`/`top` each frame. Width/height remain fixed in position-only mode.
+  The registration context is memoized, so a measured box update does not
+  unregister and register every active marker again. Geometry/hidden/reduced-
+  motion behavior remains covered by the existing browser and unit tests.
 - First positioning and reveal after a hidden ancestor collapse begin at the
   selected host's own origin via `selectionLensCollapsedOrigin`; they do not
   collapse to the track's top-left corner.

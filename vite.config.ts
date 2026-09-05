@@ -27,21 +27,24 @@ export default defineConfig(({ command, mode }) => {
               inlineDynamicImports: true,
             }
           : {
-              manualChunks(id) {
-                if (!id.includes("node_modules")) return undefined;
-                if (
-                  id.includes("/react/") ||
-                  id.includes("/react-dom/") ||
-                  id.includes("/react-router") ||
-                  id.includes("/scheduler/")
-                ) {
-                  return "vendor-react";
-                }
-                if (id.includes("/@tanstack/")) return "vendor-query";
-                if (id.includes("/framer-motion/")) return "vendor-motion";
-                if (id.includes("/@radix-ui/")) return "vendor-radix";
-                if (id.includes("/@tauri-apps/")) return "vendor-tauri";
-                return "vendor-shared";
+              // Let Rollup keep each named entry's dependency closure together.
+              // A path-based catch-all split React's helpers from React and put
+              // hook consumers in the reverse dependency, breaking production.
+              manualChunks: {
+                "vendor-react": ["react", "react-dom", "react-router-dom"],
+                "vendor-query": ["@tanstack/react-query"],
+                "vendor-motion": ["framer-motion"],
+                "vendor-radix": [
+                  "@radix-ui/react-dialog",
+                  "@radix-ui/react-checkbox",
+                  "@radix-ui/react-popover",
+                  "@radix-ui/react-select",
+                  "@radix-ui/react-switch",
+                  "@radix-ui/react-tabs",
+                  "@radix-ui/react-tooltip",
+                  "@radix-ui/react-collapsible",
+                ],
+                "vendor-tauri": ["@tauri-apps/api"],
               },
             },
       },

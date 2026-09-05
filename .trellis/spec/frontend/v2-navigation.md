@@ -118,6 +118,11 @@ arbitrary return URL, serialized history entry, or free-form navigation state.
 
 ### Persistent primary pages
 
+- `CommittedPrimaryPage` is memoized at the stable route-ID boundary. A parent
+  route change must not re-render an unrelated hidden page solely by creating
+  a fresh JSX element. Visibility, actual route-context consumers, Query state
+  and local state still update normally; this is not a frozen router context.
+
 - A primary page is lazy until its first visit. Once visited, it remains
   mounted behind `PersistentSurface` so draft/UI state can survive switching
   among primary routes.

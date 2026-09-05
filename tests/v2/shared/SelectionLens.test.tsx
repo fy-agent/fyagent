@@ -221,7 +221,7 @@ describe("SelectionLens", () => {
       });
 
       await waitFor(() => {
-        expect(lens).toHaveStyle({ top: "40px" });
+        expect(lens.style.transform).toContain("translateY(40px)");
       });
 
       mockBox(host, { x: 8, y: 120, width: 184, height: 36 });
@@ -232,7 +232,7 @@ describe("SelectionLens", () => {
       });
 
       await waitFor(() => {
-        expect(lens).toHaveStyle({ top: "120px" });
+        expect(lens.style.transform).toContain("translateY(120px)");
       });
     } finally {
       vi.unstubAllGlobals();

@@ -13,6 +13,7 @@ const viewports = [
 
 export default defineConfig({
   testDir: "./tests/v2-browser",
+  testIgnore: "navigation-performance.spec.ts",
   outputDir: path.join(artifactRoot, "artifacts"),
   fullyParallel: true,
   forbidOnly: true,

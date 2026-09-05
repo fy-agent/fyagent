@@ -24,7 +24,7 @@
     "test:unit:watch": "node --throw-deprecation ./node_modules/vitest/vitest.mjs watch",
     "test:v2": "node --throw-deprecation ./node_modules/vitest/vitest.mjs run --config vitest.v2.config.ts",
     "test:v2:watch": "node --throw-deprecation ./node_modules/vitest/vitest.mjs watch --config vitest.v2.config.ts",
-    "test:v2:browser": "pnpm build:preview && playwright test --config playwright.v2.config.ts",
+    "test:v2:browser": "pnpm build:preview && playwright test --config playwright.v2-performance.config.ts --grep 'production boots' && playwright test --config playwright.v2.config.ts",
     "test:i18n": "node --throw-deprecation ./node_modules/vitest/vitest.mjs run tests/config/localeKeyParity.test.ts",
     "test:desktop:mock": "node --throw-deprecation ./node_modules/vitest/vitest.mjs run tests/desktop-acceptance && node --throw-deprecation scripts/desktop-acceptance/verify-mock-contract.mjs",
     "test:native-fetch": "node --pending-deprecation --throw-deprecation ./node_modules/vitest/vitest.mjs run tests/msw/nativeFetchTauriMock.test.ts",

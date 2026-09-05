@@ -160,6 +160,7 @@ const FRONTEND_ROOT_FILES = new Set([
   "deplink.html",
   "eslint.v2.config.mjs",
   "playwright.v2.config.ts",
+  "playwright.v2-performance.config.ts",
   "postcss.config.cjs",
   "scripts/build-v2-preview.mjs",
   "scripts/build-v2-preview.d.mts",

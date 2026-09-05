@@ -117,6 +117,7 @@ describe("repository change classifier", () => {
       [
         "eslint.v2.config.mjs",
         "playwright.v2.config.ts",
+        "playwright.v2-performance.config.ts",
         "scripts/build-v2-preview.mjs",
         "scripts/verify-v2-route-chunks.d.mts",
         "scripts/verify-v2-route-chunks.mjs",

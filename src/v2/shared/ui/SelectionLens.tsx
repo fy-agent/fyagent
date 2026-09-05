@@ -3,6 +3,7 @@ import {
   useCallback,
   useContext,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type HTMLAttributes,
@@ -332,8 +333,12 @@ export function SelectionLensGroup({
     };
   }, [box, geometry, height, left, reduceMotion, revealKey, top, width]);
 
+  const context = useMemo(
+    () => ({ register, unregister }),
+    [register, unregister],
+  );
   return (
-    <SelectionLensContext.Provider value={{ register, unregister }}>
+    <SelectionLensContext.Provider value={context}>
       <div
         ref={scopeRef}
         className={classNames("fy-selection-lens-scope", className)}
@@ -345,8 +350,10 @@ export function SelectionLensGroup({
           <motion.div
             className="fy-selection-lens"
             style={{
-              left,
-              top,
+              left: 0,
+              top: 0,
+              x: left,
+              y: top,
               width,
               height,
               borderRadius: box.borderRadius,
