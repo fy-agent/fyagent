@@ -2,6 +2,19 @@
   flex: 0 0 auto;
   margin-bottom: 14px;
 }
+.fy-models-source-entry {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin: 12px 0;
+}
+.fy-models-source-entry p {
+  flex: 1 1 260px;
+  margin: 0;
+  color: var(--fy-text-secondary);
+  font-size: var(--fy-font-caption);
+}
 
 .fy-models-page-heading h1 {
   margin: 0;

@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { errorMessage } from "../../shared/features/helpers";
 import {
@@ -28,6 +28,7 @@ import {
 } from "../../shared/ui/primitives";
 import { AccountView } from "./AccountView";
 import { ConnectionsView } from "./ConnectionsView";
+import { CodexRequestSource } from "./CodexRequestSource";
 import { LoginDialog } from "./LoginDialog";
 import { ConnectionActionDialog, RemoveAccountDialog } from "./MutationDialogs";
 import { ReasonList } from "./common";
@@ -93,6 +94,13 @@ export function AuthPage() {
   const [loginConsumer, setLoginConsumer] =
     useState<ManagedAuthConsumer | null>(null);
   const [mutationBusy, setMutationBusy] = useState(false);
+  const mutationBusyRef = useRef(false);
+  const sourceBusyRef = useRef(false);
+  const [sourceBusy, setSourceBusy] = useState(false);
+  const handleSourceBusy = useCallback((busy: boolean) => {
+    sourceBusyRef.current = busy;
+    setSourceBusy(busy);
+  }, []);
   const [mutationError, setMutationError] = useState<string | null>(null);
   const [removalAccount, setRemovalAccount] =
     useState<ManagedAuthAccountSummary | null>(null);
@@ -106,9 +114,25 @@ export function AuthPage() {
   } | null>(null);
 
   const refetchOverview = overviewQuery.refetch;
+  const invalidateRequestSources = useCallback(() => {
+    // Auth actions may change the native request source. Refresh its other
+    // observers too; hidden observers remain stale until their next visit.
+    for (const queryKey of [
+      featureKeys.providerSummary("codex"),
+      featureKeys.providerSummary("grokbuild"),
+      featureKeys.openCodeModelSnapshot,
+    ]) {
+      void queryClient.invalidateQueries({ queryKey });
+    }
+  }, [queryClient]);
+  const refreshSourceOverview = useCallback(
+    () => refetchOverview({ throwOnError: true }),
+    [refetchOverview],
+  );
   const handleLoginTerminal = useCallback(() => {
     void refetchOverview();
-  }, [refetchOverview]);
+    invalidateRequestSources();
+  }, [refetchOverview, invalidateRequestSources]);
   const loginController = useManagedAuthLoginSession({
     port: ports.managedAuth,
     active: visible,
@@ -155,6 +179,7 @@ export function AuthPage() {
         featureKeys.managedAuthOverview,
         result.overview,
       );
+      invalidateRequestSources();
       setMutationError(null);
       notify({
         tone: result.outcome === "completed" ? "success" : "info",
@@ -167,13 +192,21 @@ export function AuthPage() {
             : undefined,
       });
     },
-    [notify, queryClient],
+    [notify, queryClient, invalidateRequestSources],
   );
 
   const runMutation = async (
     action: () => Promise<ManagedAuthMutationResult>,
     successTitle: string,
   ) => {
+    if (
+      !visible ||
+      overviewQuery.isError ||
+      mutationBusyRef.current ||
+      sourceBusyRef.current
+    )
+      return null;
+    mutationBusyRef.current = true;
     setMutationBusy(true);
     setMutationError(null);
     try {
@@ -186,6 +219,7 @@ export function AuthPage() {
       notify({ tone: "error", title: "账号操作未完成", description: message });
       return null;
     } finally {
+      mutationBusyRef.current = false;
       setMutationBusy(false);
     }
   };
@@ -194,6 +228,7 @@ export function AuthPage() {
     account: ManagedAuthAccountSummary | null,
     consumer: ManagedAuthConsumer | null,
   ) => {
+    if (mutationBusyRef.current || sourceBusyRef.current) return;
     if (loginController.snapshot && !loginController.snapshot.terminal) {
       setLoginOpen(true);
       return;
@@ -319,7 +354,7 @@ export function AuthPage() {
     );
   }
 
-  if (overviewQuery.isError || !overviewQuery.data) {
+  if (!overviewQuery.data) {
     return (
       <div
         className="fy-feature-page fy-auth-page"
@@ -369,11 +404,12 @@ export function AuthPage() {
       <header className="fy-feature-header fy-auth-page-header">
         <div>
           <h1>账号与认证</h1>
-          <p>管理官方账号、软件连接和每个软件当前使用的模型来源。</p>
+          <p>登录官方账号，切换软件账号与模型来源。</p>
         </div>
         <div className="fy-feature-actions">
           <Button
-            disabled={mutationBusy || loginController.busy}
+            className="fy-control-button-primary"
+            disabled={mutationBusy || loginController.busy || sourceBusy}
             onClick={() => openLogin(null, requestedConsumer)}
           >
             添加账号
@@ -410,6 +446,17 @@ export function AuthPage() {
       {mutationError ? (
         <InlineNotice tone="warning">{mutationError}</InlineNotice>
       ) : null}
+      {overviewQuery.isError ? (
+        <InlineNotice tone="warning">
+          账号状态更新失败，正在显示上次读取的结果。
+          <Button onClick={() => void refetchOverview()}>刷新账号状态</Button>
+        </InlineNotice>
+      ) : null}
+      {sourceBusy ? (
+        <InlineNotice tone="info">
+          Codex 配置切换尚未确认完成，请先在软件连接中检查结果。
+        </InlineNotice>
+      ) : null}
       {overview.reasonCodes.length > 0 ? (
         <InlineNotice tone="warning">
           <span className="fy-auth-session-banner">
@@ -443,7 +490,12 @@ export function AuthPage() {
           preferredConsumer={requestedConsumer}
           search={accountSearch}
           providerFilter={providerFilter}
-          mutationBusy={mutationBusy || loginController.busy}
+          mutationBusy={
+            mutationBusy ||
+            loginController.busy ||
+            sourceBusy ||
+            overviewQuery.isError
+          }
           onSearchChange={setAccountSearch}
           onProviderFilterChange={(next) => {
             if (next === "all" || MANAGED_AUTH_PROVIDERS.includes(next)) {
@@ -474,7 +526,31 @@ export function AuthPage() {
         <ConnectionsView
           overview={overview}
           selectedConsumer={selectedConsumer}
-          mutationBusy={mutationBusy || loginController.busy}
+          mutationBusy={
+            mutationBusy ||
+            loginController.busy ||
+            sourceBusy ||
+            overviewQuery.isError
+          }
+          codexSourceControls={
+            <CodexRequestSource
+              active={
+                visible &&
+                view === "connections" &&
+                selectedConsumer === "codex"
+              }
+              disabled={
+                mutationBusy ||
+                loginController.busy ||
+                loginOpen ||
+                connectionAction !== null ||
+                removalAccount !== null ||
+                overviewQuery.isError
+              }
+              onBusyChange={handleSourceBusy}
+              onRefreshOverview={refreshSourceOverview}
+            />
+          }
           onSelectConsumer={(consumer) =>
             updateRoute({ consumer, view: "connections" })
           }

@@ -1,10 +1,7 @@
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 
-import type {
-  ChangeJobSnapshot,
-  ChangePlan,
-} from "../../../shared/features/change-plans";
-import { Button } from "../../../shared/ui/primitives";
+import type { ChangeJobSnapshot, ChangePlan } from "../change-plans";
+import { Button } from "../../ui/primitives";
 import {
   createApplyViewModel,
   type ApplyStepPresentation,
@@ -52,6 +49,7 @@ export function ApplyWorkspace({
   onRegenerate,
   onClose,
 }: ApplyWorkspaceProps) {
+  const id = useId();
   const planKey = plan ? `${plan.planId}:${plan.planDigest}` : null;
   const confirmLockRef = useRef<string | null>(null);
   const [lockedPlanKey, setLockedPlanKey] = useState<string | null>(null);
@@ -79,13 +77,13 @@ export function ApplyWorkspace({
       className="fy-apply-workspace"
       data-mode={view.mode}
       data-tone={view.tone}
-      aria-labelledby="fy-apply-title"
+      aria-labelledby={`${id}-title`}
       aria-busy={busy}
     >
       <header className="fy-apply-header">
         <div>
           <p className="fy-apply-eyebrow">配置确认</p>
-          <h2 id="fy-apply-title">{view.title}</h2>
+          <h2 id={`${id}-title`}>{view.title}</h2>
           <p>{view.description}</p>
         </div>
         <span className="fy-apply-status" data-tone={view.tone}>
@@ -95,11 +93,8 @@ export function ApplyWorkspace({
 
       {view.preview ? (
         <div className="fy-apply-preview" aria-label="配置更改预览">
-          <section
-            className="fy-apply-pane"
-            aria-labelledby="fy-apply-semantic-title"
-          >
-            <h3 id="fy-apply-semantic-title">将要更改</h3>
+          <section className="fy-apply-pane" aria-labelledby={`${id}-semantic`}>
+            <h3 id={`${id}-semantic`}>将要更改</h3>
             <p>{view.preview.semantic.summary}</p>
             <dl className="fy-apply-plan-details">
               <div>
@@ -116,11 +111,8 @@ export function ApplyWorkspace({
               </div>
             </dl>
           </section>
-          <section
-            className="fy-apply-pane"
-            aria-labelledby="fy-apply-risk-title"
-          >
-            <h3 id="fy-apply-risk-title">需要注意</h3>
+          <section className="fy-apply-pane" aria-labelledby={`${id}-risk`}>
+            <h3 id={`${id}-risk`}>需要注意</h3>
             <dl className="fy-apply-plan-details">
               <div>
                 <dt>应用后</dt>
@@ -139,11 +131,8 @@ export function ApplyWorkspace({
               </ul>
             )}
           </section>
-          <section
-            className="fy-apply-pane"
-            aria-labelledby="fy-apply-scope-title"
-          >
-            <h3 id="fy-apply-scope-title">影响范围</h3>
+          <section className="fy-apply-pane" aria-labelledby={`${id}-scope`}>
+            <h3 id={`${id}-scope`}>影响范围</h3>
             <dl className="fy-apply-plan-details">
               <div>
                 <dt>会检查</dt>
@@ -163,11 +152,8 @@ export function ApplyWorkspace({
               </div>
             </dl>
           </section>
-          <section
-            className="fy-apply-pane"
-            aria-labelledby="fy-apply-recovery-title"
-          >
-            <h3 id="fy-apply-recovery-title">失败或中断时</h3>
+          <section className="fy-apply-pane" aria-labelledby={`${id}-recovery`}>
+            <h3 id={`${id}-recovery`}>失败或中断时</h3>
             <dl className="fy-apply-plan-details">
               <div>
                 <dt>保存失败</dt>
@@ -185,11 +171,8 @@ export function ApplyWorkspace({
       )}
 
       <div className="fy-apply-grid">
-        <section
-          className="fy-apply-pane"
-          aria-labelledby="fy-apply-progress-title"
-        >
-          <h3 id="fy-apply-progress-title">执行进度</h3>
+        <section className="fy-apply-pane" aria-labelledby={`${id}-progress`}>
+          <h3 id={`${id}-progress`}>执行进度</h3>
           {view.steps.length > 0 ? (
             <ol className="fy-apply-step-list" aria-label="配置应用步骤">
               {view.steps.map((step) => (
@@ -203,9 +186,9 @@ export function ApplyWorkspace({
 
         <section
           className="fy-apply-pane fy-apply-result"
-          aria-labelledby="fy-apply-result-title"
+          aria-labelledby={`${id}-result`}
         >
-          <h3 id="fy-apply-result-title">应用结果</h3>
+          <h3 id={`${id}-result`}>应用结果</h3>
           <p className="fy-apply-live" aria-live="polite">
             {view.statusLabel}
           </p>

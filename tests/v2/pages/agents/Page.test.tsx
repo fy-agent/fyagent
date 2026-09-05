@@ -964,7 +964,7 @@ describe("V3 Agent directory and configuration shell", () => {
     );
   });
 
-  it("shows the install region on configuration as one OpenCode desktop component", async () => {
+  it("keeps OpenCode installation in the directory rather than configuration", async () => {
     const ports = configuredPorts();
     ports.agentInstallReadiness.get = vi.fn(async (agentId) =>
       readiness(agentId, "installed", {
@@ -977,30 +977,22 @@ describe("V3 Agent directory and configuration shell", () => {
     const configuration = await screen.findByRole("region", {
       name: "OpenCode 配置",
     });
-    const install = within(configuration).getByRole("region", {
-      name: "安装与更新",
-    });
-    expect(
-      within(install).queryByRole("heading", { name: "命令行" }),
-    ).not.toBeInTheDocument();
-    expect(
-      within(install).getByRole("button", { name: "打开软件" }),
-    ).toBeVisible();
-    expect(install.querySelector('[data-surface="cli"]')).toBeNull();
-    expect(install.querySelector('[data-surface="desktop"]')).not.toBeNull();
+    expect(within(configuration).queryByRole("region", { name: "安装与更新" })).toBeNull();
+    expect(within(configuration).getByRole("button", { name: "返回" })).toBeVisible();
+    expect(ports.agentInstallReadiness.startAction).not.toHaveBeenCalled();
   });
 
-  it("uses the dedicated Codex installer on the configuration page", async () => {
+  it("keeps the dedicated Codex installer out of the configuration page", async () => {
     const ports = configuredPorts();
     renderPage(ports, "/agents?target=codex&section=models");
     const configuration = await screen.findByRole("region", {
       name: "Codex 配置",
     });
     expect(
-      within(configuration).getByRole("region", {
+      within(configuration).queryByRole("region", {
         name: "Codex Desktop 安装器",
       }),
-    ).toBeVisible();
+    ).toBeNull();
     expect(
       within(configuration).queryByRole("region", { name: "安装与更新" }),
     ).not.toBeInTheDocument();

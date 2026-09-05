@@ -1,3 +1,27 @@
+.fy-source-switch {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--fy-divider);
+}
+.fy-source-switch h3,
+.fy-source-switch > p {
+  margin: 0;
+}
+.fy-source-switch > p {
+  color: var(--fy-text-secondary);
+  font-size: var(--fy-font-control);
+}
+.fy-source-switch-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+}
+.fy-source-switch-fields > label {
+  flex: 1 1 180px;
+}
 .fy-apply-workspace {
   display: grid;
   gap: 18px;

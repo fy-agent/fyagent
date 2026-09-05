@@ -7,9 +7,12 @@ import type {
 } from "../../../shared/features/change-plans";
 import { useFeatures } from "../../../shared/features/provider";
 import { usePersistentVisibility } from "../../../shared/ui/PersistentSurface";
-import { ApplyWorkspace } from "./ApplyWorkspace";
-import { changePlanErrorCode, isActiveJobStatus } from "./changePlanErrors";
-import { useChangeJob } from "./useChangeJob";
+import { ApplyWorkspace } from "../../../shared/features/change-plans-ui/ApplyWorkspace";
+import {
+  changePlanErrorCode,
+  isActiveJobStatus,
+} from "../../../shared/features/change-plans-ui/changePlanErrors";
+import { useChangeJob } from "../../../shared/features/change-plans-ui/useChangeJob";
 
 export interface SavePlanWorkspaceProps<Request> {
   active: boolean;

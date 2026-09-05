@@ -1,6 +1,11 @@
 .fy-auth-page {
   gap: 0;
 }
+.fy-auth-source-help {
+  margin: 14px 0 8px;
+  color: var(--fy-text-secondary);
+  font-size: var(--fy-font-caption);
+}
 
 .fy-auth-page-header {
   flex: 0 0 auto;

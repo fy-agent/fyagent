@@ -126,6 +126,13 @@ or bypass flag.
 
 ### Product and feature navigation
 
+The directory owns install/update/launch controls. `AgentConfiguration` does
+not mount a second `AgentInstallReadinessSection` or Codex installer; it keeps
+the selected Models/Skills/MCP/Prompts section and authentication handoff.
+Managed consumers show one compact status plus the central Auth entry, not
+stacked duplicate descriptions. Back returns to the existing directory and its
+installation controls. Configuration navigation never starts an installation.
+
 - “Open product” calls the closed native launch destination; it never sends a
   path/URL or shells out from the renderer.
 - Skills, Hooks, Models and MCP navigation appears only when the parsed catalog
@@ -164,20 +171,20 @@ or bypass flag.
 
 ## 4. Validation & Error Matrix
 
-| Condition | Required UI result |
-| --- | --- |
-| Catalog/version/order/parser failure | Fail the catalog boundary visibly; do not render a partial/legacy catalog. |
-| Unknown Agent route | Render unavailable/not-found; issue no native action. |
-| Runtime value is `null` | Render unknown/unverified, not absent/stopped. |
-| Inventory is `multiple` | Require explicit target selection; no implicit first candidate. |
-| Inventory is `unknown`/expired or target drifts | Refresh guidance; no action retry with stale capability. |
-| Action is absent from `allowedActions` | Hide/disable with closed reason; do not call native. |
-| Native returns `operation_conflict` | Preserve native job/other-operation state; do not create a local parallel action. |
-| Background job remains active after UI poll budget | Stop/slow UI polling as designed, but do not mark failed. |
-| Cancel is no longer permitted | Disable cancel and preserve active/terminal state. |
-| Windows vendor wizard handoff succeeds but inventory remains absent | Explain handoff/completion scope; do not paint installed. |
-| Native DTO contains unknown/excess/forbidden field | Strict parser failure; never spread raw object into UI. |
-| Route changes/unmounts | Clear transient selection/confirmation; do not cancel native work unless user explicitly requested it. |
+| Condition                                                           | Required UI result                                                                                     |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Catalog/version/order/parser failure                                | Fail the catalog boundary visibly; do not render a partial/legacy catalog.                             |
+| Unknown Agent route                                                 | Render unavailable/not-found; issue no native action.                                                  |
+| Runtime value is `null`                                             | Render unknown/unverified, not absent/stopped.                                                         |
+| Inventory is `multiple`                                             | Require explicit target selection; no implicit first candidate.                                        |
+| Inventory is `unknown`/expired or target drifts                     | Refresh guidance; no action retry with stale capability.                                               |
+| Action is absent from `allowedActions`                              | Hide/disable with closed reason; do not call native.                                                   |
+| Native returns `operation_conflict`                                 | Preserve native job/other-operation state; do not create a local parallel action.                      |
+| Background job remains active after UI poll budget                  | Stop/slow UI polling as designed, but do not mark failed.                                              |
+| Cancel is no longer permitted                                       | Disable cancel and preserve active/terminal state.                                                     |
+| Windows vendor wizard handoff succeeds but inventory remains absent | Explain handoff/completion scope; do not paint installed.                                              |
+| Native DTO contains unknown/excess/forbidden field                  | Strict parser failure; never spread raw object into UI.                                                |
+| Route changes/unmounts                                              | Clear transient selection/confirmation; do not cancel native work unless user explicitly requested it. |
 
 ## 5. Good / Base / Bad Cases
 

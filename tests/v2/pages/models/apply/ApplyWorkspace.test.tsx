@@ -4,8 +4,8 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
-import { ApplyWorkspace } from "@/v2/pages/models/apply/ApplyWorkspace";
-import { createApplyViewModel } from "@/v2/pages/models/apply/view-model";
+import { ApplyWorkspace } from "@/v2/shared/features/change-plans-ui/ApplyWorkspace";
+import { createApplyViewModel } from "@/v2/shared/features/change-plans-ui/view-model";
 import type {
   ChangeJobSnapshot,
   ChangePlan,
@@ -28,13 +28,7 @@ const plan: ChangePlan = {
     adapterId: "codex_provider_switch",
     adapterVersion: "1",
     operationType: "codex_provider_switch",
-    phases: [
-      "precheck",
-      "snapshot",
-      "managed_write",
-      "readback",
-      "finalize",
-    ],
+    phases: ["precheck", "snapshot", "managed_write", "readback", "finalize"],
     readSet: [
       "provider_db_current",
       "device_current",
@@ -49,10 +43,7 @@ const plan: ChangePlan = {
     idempotencyScope: "plan",
     cancelMode: "before_managed_write",
     compensationMode: "writer_owned_rollback",
-    faultPoints: [
-      "before_managed_write",
-      "after_managed_write_before_record",
-    ],
+    faultPoints: ["before_managed_write", "after_managed_write_before_record"],
   },
   currentProviderCode: "provider-before",
   targetProviderCode: "provider-1",
@@ -414,8 +405,12 @@ describe("ApplyWorkspace", () => {
     expect(screen.getByRole("heading", { name: "影响范围" })).toBeVisible();
     expect(screen.getByRole("heading", { name: "失败或中断时" })).toBeVisible();
     expect(screen.getByText("没有其他需要确认的事项")).toBeVisible();
-    expect(screen.queryByText(plan.currentProviderCode)).not.toBeInTheDocument();
-    expect(screen.getByText("不会自动再次修改", { exact: false })).toBeVisible();
+    expect(
+      screen.queryByText(plan.currentProviderCode),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText("不会自动再次修改", { exact: false }),
+    ).toBeVisible();
     expect(
       screen.queryByRole("button", { name: "取消" }),
     ).not.toBeInTheDocument();
@@ -441,16 +436,18 @@ describe("ApplyWorkspace", () => {
     expect(screen.queryByText(/后端事件序号/)).not.toBeInTheDocument();
     expect(screen.getByText("2")).toBeVisible();
     expect(screen.getByText("重新检查当前配置")).toBeVisible();
-    expect(
-      screen.getAllByText("FyAgent 当前 Provider").length,
-    ).toBeGreaterThan(0);
+    expect(screen.getAllByText("FyAgent 当前 Provider").length).toBeGreaterThan(
+      0,
+    );
   });
 
   it("keeps prohibited prototype controls and data sources out of product code", () => {
-    const sourceDir = resolve("src/v2/pages/models/apply");
-    const sources = ["ApplyWorkspace.tsx", "view-model.ts", "index.ts"]
-      .map((name) => readFileSync(resolve(sourceDir, name), "utf8"))
-      .join("\n");
+    const sourceDir = resolve("src/v2/shared/features/change-plans-ui");
+    const sources =
+      ["ApplyWorkspace.tsx", "view-model.ts"]
+        .map((name) => readFileSync(resolve(sourceDir, name), "utf8"))
+        .join("\n") +
+      readFileSync(resolve("src/v2/pages/models/apply/index.ts"), "utf8");
 
     expect(sources).not.toMatch(
       /\bscenario\b|\bfake\b|\bcancel\b|\bbackup\b|\brestore\b/i,

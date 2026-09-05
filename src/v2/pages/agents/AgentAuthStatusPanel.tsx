@@ -298,15 +298,11 @@ function AgentAuthStatusPanelInner({
         <div className="fy-agent-section-heading">
           <div>
             <h3>账号与认证</h3>
-            <p>账号、软件连接和当前模型来源在同一页面管理。</p>
+            <p>{observationSummary(observation)}</p>
           </div>
           <Button onClick={() => navigate(destination)}>
             {managedAuthActionLabel(managedConsumer)}
           </Button>
-        </div>
-        <div className="fy-agent-auth-panel" data-auth-kind={observation.kind}>
-          <strong>{observationSummary(observation)}</strong>
-          <p>{observationDescription(observation)}</p>
         </div>
       </section>
     );

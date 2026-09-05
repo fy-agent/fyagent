@@ -1,5 +1,10 @@
 import { CaretDownIcon } from "@phosphor-icons/react/dist/csr/CaretDown";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+import {
+  appendAgentReturnToPath,
+  agentReturnDescriptorFromManagementSearch,
+} from "../../shared/features/agent-navigation";
 
 import { getAgentBrand, type AgentIconId } from "../../shared/assets/agents";
 import { classNames } from "../../shared/design-system/classNames";
@@ -80,12 +85,11 @@ import { OpenCodeModelsPanel } from "./OpenCodeModelsPanel";
 import { QoderModelsPanel } from "./QoderModelsPanel";
 import { TraeModelsPanel } from "./TraeModelsPanel";
 import {
-  ChangePlanWorkspace,
   CodexSavePlanWorkspace,
   WorkBuddySavePlanWorkspace,
   hasUnconfirmedAuthority,
 } from "./apply";
-import { changePlanErrorCode } from "./apply/changePlanErrors";
+import { changePlanErrorCode } from "../../shared/features/change-plans-ui/changePlanErrors";
 import {
   addUniqueModelIds,
   filterModelIds,
@@ -945,6 +949,8 @@ function ProviderPanel({
   writesBlocked: boolean;
   onBlockWrites: (app: ProviderAppId) => void;
 }) {
+  const navigate = useNavigate();
+  const { search } = useLocation();
   const { ports } = useFeatures();
   const summaryQuery = useProviderSummary(app, active);
   const [name, setName] = useState(PROVIDER_DEFAULT_NAMES[app]);
@@ -1372,6 +1378,23 @@ function ProviderPanel({
 
       {app === "codex" && summaryQuery.data ? (
         <>
+          <div className="fy-models-source-entry">
+            <p>
+              此处编辑模型参数，保存后将启用本次配置。登录账号或切换已有配置请前往账号管理。
+            </p>
+            <Button
+              onClick={() => {
+                const descriptor =
+                  agentReturnDescriptorFromManagementSearch(search);
+                const path = "/auth?consumer=codex&view=connections";
+                navigate(
+                  descriptor ? appendAgentReturnToPath(path, descriptor) : path,
+                );
+              }}
+            >
+              管理 Codex 账号与来源
+            </Button>
+          </div>
           <CodexSavePlanWorkspace
             key={codexSavePlan?.planId ?? "codex-save-preview"}
             active={active}
@@ -1381,11 +1404,6 @@ function ProviderPanel({
             onPlanChange={handleCodexSavePlanChange}
             onTerminal={handleCodexSaveTerminal}
             onDismiss={handleCodexSaveDismiss}
-          />
-          <ChangePlanWorkspace
-            active={active}
-            providers={summaryQuery.data.providers}
-            currentId={summaryQuery.data.currentId}
           />
         </>
       ) : null}

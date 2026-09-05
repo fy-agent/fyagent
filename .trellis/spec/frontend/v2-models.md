@@ -15,8 +15,9 @@ Primary owners are:
   unsupported/read-only targets;
 - `src/v2/pages/models/quickSetup.ts`, `workBuddyModels.ts`, and the apply
   workspace modules for validation, drafts, preview, apply, and polling;
-- `apply/SavePlanWorkspace.tsx` for the shared Codex/WorkBuddy save controller,
-  and `apply/useChangeJob.ts` for automatic Query-owned job reads;
+- `apply/SavePlanWorkspace.tsx` for the shared Codex/WorkBuddy save controller;
+- `src/v2/shared/features/change-plans-ui/**` for reusable apply presentation,
+  automatic Query-owned job reads, error mapping and saved-source switching;
 - `src/v2/shared/features/models.ts`, `change-plans.ts`, and `ports.ts` for the
   DTOs and five actual Port owners;
 - `src/v2/shared/platform/tauri/feature-ports/models.ts`, `changePlans.ts`, and
@@ -221,6 +222,15 @@ an apply instruction.
 
 ### Change Plan workspace lifecycle
 
+Models owns editing/adding/testing and saving a configuration. Saving still
+activates the submitted configuration and its button/copy must say so; this
+refactor does not invent a draft-only native API. Switching an already-saved
+Codex source lives only in Auth's software-connections detail through
+`CodexRequestSource` and the shared `ChangePlanWorkspace`. Models links there
+with `consumer=codex&view=connections` and preserves the validated Agent return
+tuple. It must not mount a second switch workspace. See
+[Managed Accounts](./v2-managed-auth.md#saved-codex-request-source).
+
 Codex and WorkBuddy save wrappers supply typed request/create callbacks and
 product copy to `SavePlanWorkspace`. Their one-shot writes stay local and
 imperative: do not put API-key-bearing requests in `useMutation` variables,
@@ -233,7 +243,7 @@ Both saves and the Codex switch workspace use:
 
 ```text
 useChangeJob(port: ChangePlansPort, active: boolean)
-  // -> { job: ChangeJobSnapshot | null, error: {code} | null, setJob }
+  // -> { job: ChangeJobSnapshot | null, error: {code} | null, setJob, refetch }
 featureKeys.changeJob(jobId) // ["v2", "change-plans", "job", jobId]
 ```
 

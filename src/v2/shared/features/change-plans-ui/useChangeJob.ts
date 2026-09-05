@@ -5,12 +5,9 @@ import {
 } from "@tanstack/react-query";
 import { useCallback, useEffect, useState } from "react";
 
-import type {
-  ChangeJobSnapshot,
-  ChangePlansPort,
-} from "../../../shared/features/change-plans";
-import { featureKeys } from "../../../shared/features/queries";
-import { usePersistentVisibility } from "../../../shared/ui/PersistentSurface";
+import type { ChangeJobSnapshot, ChangePlansPort } from "../change-plans";
+import { featureKeys } from "../queries";
+import { usePersistentVisibility } from "../../ui/PersistentSurface";
 import {
   changePlanErrorCode,
   isActiveJobStatus,
@@ -91,6 +88,7 @@ export function useChangeJob(port: ChangePlansPort, active: boolean) {
   );
 
   return {
+    refetch: query.refetch,
     job: jobId ? (query.data ?? null) : null,
     error:
       jobId && query.error ? { code: changePlanErrorCode(query.error) } : null,

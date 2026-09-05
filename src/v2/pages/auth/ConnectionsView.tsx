@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import {
   MANAGED_AUTH_CONSUMERS,
   type ManagedAuthConnectionAction,
@@ -12,6 +13,7 @@ import {
   CatalogRail,
 } from "../../shared/ui/catalog";
 import { Button, EmptyState } from "../../shared/ui/primitives";
+import { PersistentSurface } from "../../shared/ui/PersistentSurface";
 import {
   AuthListItem,
   DefinitionRow,
@@ -187,12 +189,14 @@ export function ConnectionsView({
   onSelectConsumer,
   onClearSelection,
   onAction,
+  codexSourceControls,
 }: {
   overview: ManagedAuthOverview;
   selectedConsumer: ManagedAuthConsumer | null;
   mutationBusy: boolean;
   onSelectConsumer: (consumer: ManagedAuthConsumer) => void;
   onClearSelection: () => void;
+  codexSourceControls?: ReactNode;
   onAction: (
     connection: ManagedAuthConnectionSummary,
     action: ManagedAuthConnectionAction,
@@ -236,48 +240,55 @@ export function ConnectionsView({
           })}
         </CatalogList>
       </CatalogRail>
-      {selectedConsumer ? (
-        <CatalogDetail
-          ariaLabel={`${managedAuthConsumerLabel(selectedConsumer)} 连接详情`}
-          className="fy-auth-detail"
-        >
-          <Button className="fy-auth-mobile-back" onClick={onClearSelection}>
-            返回软件连接列表
-          </Button>
-          <header className="fy-auth-consumer-header">
-            <div>
-              <h2>{managedAuthConsumerLabel(selectedConsumer)}</h2>
-              <p>账号连接、当前模型来源和续期方式分别显示。</p>
-            </div>
-            <StatusBadge {...consumerStatus(selectedConnections)} />
-          </header>
-          {selectedConnections.length === 0 ? (
-            <EmptyState
-              title="暂时没有可管理的连接"
-              description="安装或配置状态更新后，请刷新此页面。"
-            />
-          ) : (
-            <div className="fy-auth-consumer-connections">
-              {selectedConnections.map((connection) => (
-                <ConnectionCard
-                  key={connection.connectionId}
-                  connection={connection}
-                  overview={overview}
-                  mutationBusy={mutationBusy}
-                  onAction={onAction}
-                />
-              ))}
-            </div>
-          )}
-        </CatalogDetail>
-      ) : (
-        <CatalogDetail ariaLabel="软件连接详情" className="fy-auth-detail">
+      <CatalogDetail
+        ariaLabel={
+          selectedConsumer
+            ? `${managedAuthConsumerLabel(selectedConsumer)} 连接详情`
+            : "软件连接详情"
+        }
+        className="fy-auth-detail"
+      >
+        {selectedConsumer ? (
+          <>
+            <Button className="fy-auth-mobile-back" onClick={onClearSelection}>
+              返回软件连接列表
+            </Button>
+            <header className="fy-auth-consumer-header">
+              <div>
+                <h2>{managedAuthConsumerLabel(selectedConsumer)}</h2>
+                <p>选择登录账号，并管理软件当前使用的模型来源。</p>
+              </div>
+              <StatusBadge {...consumerStatus(selectedConnections)} />
+            </header>
+            {selectedConnections.length === 0 ? (
+              <EmptyState
+                title="暂时没有可管理的连接"
+                description="安装或配置状态更新后，请刷新此页面。"
+              />
+            ) : (
+              <div className="fy-auth-consumer-connections">
+                {selectedConnections.map((connection) => (
+                  <ConnectionCard
+                    key={connection.connectionId}
+                    connection={connection}
+                    overview={overview}
+                    mutationBusy={mutationBusy}
+                    onAction={onAction}
+                  />
+                ))}
+              </div>
+            )}
+          </>
+        ) : (
           <EmptyState
             title="选择一个软件"
             description="查看账号连接、当前模型来源和需要处理的状态。"
           />
-        </CatalogDetail>
-      )}
+        )}
+        <PersistentSurface active={selectedConsumer === "codex"}>
+          {codexSourceControls}
+        </PersistentSurface>
+      </CatalogDetail>
     </CatalogMasterDetail>
   );
 }

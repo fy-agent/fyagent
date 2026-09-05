@@ -1,4 +1,4 @@
-import type { ChangePlanErrorCode } from "../../../shared/features/change-plans";
+import type { ChangePlanErrorCode } from "../change-plans";
 
 export const CHANGE_PLAN_ERROR_CODES = new Set<ChangePlanErrorCode>([
   "unsupported_operation",

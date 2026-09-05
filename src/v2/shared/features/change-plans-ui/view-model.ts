@@ -1,7 +1,4 @@
-import type {
-  ChangeJobSnapshot,
-  ChangePlan,
-} from "../../../shared/features/change-plans";
+import type { ChangeJobSnapshot, ChangePlan } from "../change-plans";
 
 export type ApplyTone =
   | "neutral"

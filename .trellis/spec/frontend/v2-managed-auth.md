@@ -32,7 +32,9 @@ authentication evidence.
 ```ts
 interface ManagedAuthPort {
   getOverview(): Promise<ManagedAuthOverview>;
-  startLogin(request: StartManagedAuthLoginRequest): Promise<ManagedAuthLoginSessionSnapshot>;
+  startLogin(
+    request: StartManagedAuthLoginRequest,
+  ): Promise<ManagedAuthLoginSessionSnapshot>;
   getLoginSession(sessionId: string): Promise<ManagedAuthLoginSessionSnapshot>;
   cancelLogin(sessionId: string): Promise<ManagedAuthLoginSessionSnapshot>;
   reopenLogin(sessionId: string): Promise<ManagedAuthLoginSessionSnapshot>;
@@ -124,6 +126,36 @@ request mode is a third-party API.
 - Internal terms such as SecretRef, credential ID, refresh-token lineage,
   projection generation and native path never appear in product copy or DOM.
 
+### Saved Codex request source
+
+`pages/auth/CodexRequestSource.tsx` composes the provider-summary query and
+`shared/features/change-plans-ui/ChangePlanWorkspace.tsx`. It is the sole
+saved Codex Provider-switch entry; Models remains the editor, not a second
+account manager. A source switch does not itself change the official login
+identity. Both native protocols and their confirmation requirements remain.
+
+- ConnectionsView keeps the Codex workspace mounted across consumer/tab
+  changes under `PersistentSurface`; automatic reads stop when hidden.
+- Apply uses only `{planId, planDigest}`. Same-tick admission is guarded. A
+  running, unknown-admission, failed-read or unreconciled terminal operation
+  blocks further source and account writes. No automatic write retry occurs.
+- A terminal job rereads both provider summary and managed-auth overview.
+  Either failure retains the job, blocking state and a read-only retry action.
+  A changed `currentId` must not hide the job that caused the change.
+- Official-account mutations/login invalidate affected provider summaries and
+  OpenCode model snapshots. Active owners reread; hidden owners stay stale
+  until reactivated. Cached errors do not tear down an in-flight source job.
+- Shared apply presentation uses `useId`, not global static IDs, because
+  visited Models and Auth routes can both remain mounted.
+- Models/Auth navigation carries only the validated Agent-return tuple. It
+  does not accept an arbitrary return URL, secret or path.
+
+Required regressions: `tests/v2/pages/auth/CodexRequestSource.test.tsx` covers
+one apply, both readbacks, failure/retry without rewriting, unknown admission,
+hidden reads and return context. `AuthPage` tests verify reverse invalidation
+after switching back to official. Shared workspace/architecture tests retain
+one read controller and prohibit configuration-page installer duplication.
+
 ### Strict wire boundary
 
 - `managed-auth.ts` parses every native response from `unknown`, requires the
@@ -210,27 +242,27 @@ request mode is a third-party API.
 
 ## 4. Validation & Error Matrix
 
-| Condition | Required result |
-| --- | --- |
-| Browser/non-native runtime | Render the controlled desktop-only state; never seed authenticated accounts. |
-| Overview has an extra token/path/raw-error field | Reject the complete response. |
-| Connection references a missing account/provider | Reject the complete response. |
-| Account says two connections but only one references it | Reject the complete response. |
-| Device verification URI has query, fragment, wrong host or non-HTTPS scheme | Reject the login snapshot. |
-| More than eight active sessions or a duplicate session ID appears | Reject the overview/session chain. |
-| OpenAI and xAI each have one active session | Accept both; the UI follows the selected opaque session ID and must not merge them. |
-| A second start is attempted for a provider with a non-terminal session | Preserve `operation_conflict`; recover the existing provider session. |
-| Page is hidden by persistent routing | Pause automatic queries and polling; retain selected UI state. |
-| Mutation returns no authoritative overview/readback | Keep prior state and show uncertainty; do not claim success. |
-| Account/default/removal or OpenCode file mutation has a stale revision | Preserve stale error, reread, and require an explicit retry. |
-| Codex/Grok metadata action completes from an older displayed revision | Render only the returned overview; do not infer that the backend performed stale-write rejection. |
-| Codex is `disconnected` with a saved account but live identity is absent or different | Present “账号已保存”, not “已连接”; never count it as proven native pickup. |
-| Completed login/mutation has `reasonCode=pending_restart` | Accept the response, render the returned overview, and offer restart-specific guidance; do not show a generic retry. |
-| Completed login/mutation has another non-null reason | Reject the response as invalid managed-auth data. |
-| Account removal preview fails | Do not expose the destructive confirmation. |
-| Connection needs restart | Show saved/pending-restart separately; do not say the consumer is already using it. |
-| Managed Agent summary is clicked | Navigate to `/auth?consumer=<closed-id>`; do not start the old Agent Auth session. |
-| Token/code/state/verifier/path/command reaches DTO, cache, route or DOM | Security regression. |
+| Condition                                                                             | Required result                                                                                                      |
+| ------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| Browser/non-native runtime                                                            | Render the controlled desktop-only state; never seed authenticated accounts.                                         |
+| Overview has an extra token/path/raw-error field                                      | Reject the complete response.                                                                                        |
+| Connection references a missing account/provider                                      | Reject the complete response.                                                                                        |
+| Account says two connections but only one references it                               | Reject the complete response.                                                                                        |
+| Device verification URI has query, fragment, wrong host or non-HTTPS scheme           | Reject the login snapshot.                                                                                           |
+| More than eight active sessions or a duplicate session ID appears                     | Reject the overview/session chain.                                                                                   |
+| OpenAI and xAI each have one active session                                           | Accept both; the UI follows the selected opaque session ID and must not merge them.                                  |
+| A second start is attempted for a provider with a non-terminal session                | Preserve `operation_conflict`; recover the existing provider session.                                                |
+| Page is hidden by persistent routing                                                  | Pause automatic queries and polling; retain selected UI state.                                                       |
+| Mutation returns no authoritative overview/readback                                   | Keep prior state and show uncertainty; do not claim success.                                                         |
+| Account/default/removal or OpenCode file mutation has a stale revision                | Preserve stale error, reread, and require an explicit retry.                                                         |
+| Codex/Grok metadata action completes from an older displayed revision                 | Render only the returned overview; do not infer that the backend performed stale-write rejection.                    |
+| Codex is `disconnected` with a saved account but live identity is absent or different | Present “账号已保存”, not “已连接”; never count it as proven native pickup.                                          |
+| Completed login/mutation has `reasonCode=pending_restart`                             | Accept the response, render the returned overview, and offer restart-specific guidance; do not show a generic retry. |
+| Completed login/mutation has another non-null reason                                  | Reject the response as invalid managed-auth data.                                                                    |
+| Account removal preview fails                                                         | Do not expose the destructive confirmation.                                                                          |
+| Connection needs restart                                                              | Show saved/pending-restart separately; do not say the consumer is already using it.                                  |
+| Managed Agent summary is clicked                                                      | Navigate to `/auth?consumer=<closed-id>`; do not start the old Agent Auth session.                                   |
+| Token/code/state/verifier/path/command reaches DTO, cache, route or DOM               | Security regression.                                                                                                 |
 
 ## 5. Good / Base / Bad Cases
 

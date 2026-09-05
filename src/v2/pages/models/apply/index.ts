@@ -2,8 +2,7 @@ export {
   ApplyWorkspace,
   type ApplyWorkspaceProps,
   type ConfirmChangePlanInput,
-} from "./ApplyWorkspace";
-export { ChangePlanWorkspace } from "./ChangePlanWorkspace";
+} from "../../../shared/features/change-plans-ui/ApplyWorkspace";
 export { CodexSavePlanWorkspace } from "./CodexSavePlanWorkspace";
 export { WorkBuddySavePlanWorkspace } from "./WorkBuddySavePlanWorkspace";
 export {
@@ -11,4 +10,4 @@ export {
   hasUnconfirmedAuthority,
   type ApplyPresentation,
   type ApplyWorkspaceError,
-} from "./view-model";
+} from "../../../shared/features/change-plans-ui/view-model";

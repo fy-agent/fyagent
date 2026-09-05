@@ -49,7 +49,7 @@ describe("executable runtime dependency graph", () => {
     for (const required of [
       "src/App.tsx",
       "src/v2/shared/features/queries.ts",
-      "src/v2/pages/models/apply/useChangeJob.ts",
+      "src/v2/shared/features/change-plans-ui/useChangeJob.ts",
       "scripts/build-v2-preview.mjs",
     ])
       expect(paths).toContain(required);

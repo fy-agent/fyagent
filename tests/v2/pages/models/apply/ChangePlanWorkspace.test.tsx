@@ -1,7 +1,13 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ChangePlanWorkspace } from "@/v2/pages/models/apply/ChangePlanWorkspace";
+import { ChangePlanWorkspace } from "@/v2/shared/features/change-plans-ui/ChangePlanWorkspace";
 import { FeatureProvider } from "@/v2/shared/features/provider";
 import { createBrowserFeaturePorts } from "@/v2/shared/platform/browser/features";
 import { changeJobWire, changePlanWire } from "../../../fixtures/changePlans";
@@ -71,7 +77,9 @@ describe("Models Change Plan connection", () => {
     fireEvent.click(screen.getByRole("button", { name: "应用更改" }));
     await waitFor(() => expect(get).toHaveBeenCalledWith("job-1"));
     expect(screen.getByText("请重新生成预览")).toBeVisible();
-    expect(screen.queryByText("等待确认")).toBeNull();
+    expect(screen.getByRole("button", { name: "预览更改" })).toBeDisabled();
+    expect(target).toBeDisabled();
+    expect(screen.getByRole("button", { name: "关闭" })).toBeDisabled();
     expect(apply).toHaveBeenCalledWith({
       planId: "plan-targetB",
       planDigest: changePlanWire.planDigest,
@@ -133,9 +141,7 @@ describe("Models Change Plan connection", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "预览更改" }));
-    fireEvent.click(
-      await screen.findByRole("button", { name: "应用更改" }),
-    );
+    fireEvent.click(await screen.findByRole("button", { name: "应用更改" }));
     await waitFor(() => expect(get).toHaveBeenCalledTimes(1));
     expect(screen.getAllByText("进行中").length).toBeGreaterThan(0);
 

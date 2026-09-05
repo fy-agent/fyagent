@@ -231,7 +231,9 @@ describe("AuthPage", () => {
     expect(await screen.findByRole("heading", { name: "Codex" })).toBeVisible();
     expect(screen.getByText("OpenAI · person@example.com")).toBeVisible();
     expect(
-      screen.queryByText("未检测到可管理的安装实例。账号页面不会自动安装软件。"),
+      screen.queryByText(
+        "未检测到可管理的安装实例。账号页面不会自动安装软件。",
+      ),
     ).not.toBeInTheDocument();
   });
 
@@ -366,7 +368,9 @@ describe("AuthPage", () => {
 
   it("confirms switching Codex back to the official account separately from its current provider", async () => {
     const user = userEvent.setup();
+    let currentId = "third-party";
     const applyConnectionAction = vi.fn(async () => {
+      currentId = "official";
       const overview = managedAuthOverviewFixture();
       overview.connections[0] = {
         ...overview.connections[0],
@@ -375,9 +379,19 @@ describe("AuthPage", () => {
       };
       return mutationResultFixture(overview);
     });
-    renderPage(
-      managedPorts({ applyConnectionAction }),
-      "/auth?consumer=codex&view=connections",
+    const ports = managedPorts({ applyConnectionAction });
+    ports.providers.getSummary = vi.fn(async () => ({
+      currentId,
+      providers: {
+        official: { id: "official", name: "Official" },
+        "third-party": { id: "third-party", name: "Third-party API" },
+      },
+      writeTargets: [],
+    }));
+    ports.changePlans.listRecoverableChangeJobs = vi.fn(async () => []);
+    renderPage(ports, "/auth?consumer=codex&view=connections");
+    expect(await screen.findByRole("combobox", { name: "切换到" })).toHaveValue(
+      "official",
     );
 
     await user.click(await screen.findByRole("button", { name: "切回官方" }));
@@ -399,6 +413,12 @@ describe("AuthPage", () => {
       });
       expect(detail).toHaveTextContent("OpenAI 官方订阅");
     });
+    await waitFor(() =>
+      expect(ports.providers.getSummary).toHaveBeenCalledTimes(2),
+    );
+    expect(screen.getByRole("combobox", { name: "切换到" })).toHaveValue(
+      "third-party",
+    );
   });
 
   it("shows recovery reasons with a refresh action instead of a generic unavailable banner", async () => {
@@ -420,9 +440,7 @@ describe("AuthPage", () => {
     const getOverview = vi.fn(async () => overview);
     renderPage(managedPorts({ getOverview }));
 
-    expect(
-      await screen.findByText("系统凭据库暂时不可用。"),
-    ).toBeVisible();
+    expect(await screen.findByText("系统凭据库暂时不可用。")).toBeVisible();
     expect(
       screen.getAllByText("旧账号数据尚未完成安全迁移。").length,
     ).toBeGreaterThan(0);
@@ -433,9 +451,9 @@ describe("AuthPage", () => {
     const accountDetail = screen.getByRole("region", {
       name: "person@example.com 账号详情",
     });
-    expect(within(accountDetail).getAllByText("等待重启").length).toBeGreaterThan(
-      0,
-    );
+    expect(
+      within(accountDetail).getAllByText("等待重启").length,
+    ).toBeGreaterThan(0);
     expect(
       screen.getAllByText(
         "检测到软件在 FyAgent 外部修改了登录信息，请刷新确认。",
@@ -443,7 +461,9 @@ describe("AuthPage", () => {
     ).toBeGreaterThan(0);
 
     await user.click(screen.getByRole("button", { name: "刷新状态" }));
-    await waitFor(() => expect(getOverview.mock.calls.length).toBeGreaterThan(1));
+    await waitFor(() =>
+      expect(getOverview.mock.calls.length).toBeGreaterThan(1),
+    );
   });
 
   it("moves between account and connection tabs with the keyboard", async () => {
@@ -457,9 +477,7 @@ describe("AuthPage", () => {
     const connectionsTab = screen.getByRole("tab", { name: /软件连接 4/ });
     expect(connectionsTab).toHaveFocus();
     expect(connectionsTab).toHaveAttribute("aria-selected", "true");
-    expect(
-      screen.getByRole("region", { name: "软件连接列表" }),
-    ).toBeVisible();
+    expect(screen.getByRole("region", { name: "软件连接列表" })).toBeVisible();
   });
 
   it("closes the login dialog with Escape without leaving a second login owner", async () => {
@@ -467,9 +485,7 @@ describe("AuthPage", () => {
     renderPage(managedPorts());
 
     await user.click(await screen.findByRole("button", { name: "添加账号" }));
-    expect(
-      screen.getByRole("dialog", { name: "添加官方账号" }),
-    ).toBeVisible();
+    expect(screen.getByRole("dialog", { name: "添加官方账号" })).toBeVisible();
     await user.keyboard("{Escape}");
     await waitFor(() => {
       expect(

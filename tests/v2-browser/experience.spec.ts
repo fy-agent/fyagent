@@ -4,6 +4,32 @@ import { expect, test } from "@playwright/test";
 import { openV2Page, expectNoHorizontalOverflow } from "./support";
 import { installRichTauriFeatureFixture } from "./support/features";
 
+test("keeps saved-source switching in Auth and preserves the Agent return route", async ({
+  page,
+}) => {
+  await installRichTauriFeatureFixture(page);
+  await openV2Page(
+    page,
+    "/models?target=codex&agentReturn=codex&agentSection=skills",
+  );
+  await expect(page.getByTestId("models-page")).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "切换已保存配置" }),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "管理 Codex 账号与来源" }).click();
+  await expect(page).toHaveURL(
+    /#\/auth\?consumer=codex&view=connections&agentReturn=codex&agentSection=skills/,
+  );
+  await expect(
+    page.getByRole("region", { name: "切换已保存配置" }),
+  ).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+  await page.getByRole("button", { name: "编辑 Codex 模型配置" }).click();
+  await expect(page).toHaveURL(
+    /#\/models\?target=codex&agentReturn=codex&agentSection=skills/,
+  );
+});
+
 test("keeps shared hierarchy, rounded navigation and account dialog geometry consistent", async ({
   page,
 }, info) => {

@@ -3,7 +3,7 @@ import { act, cleanup, renderHook } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { useChangeJob } from "@/v2/pages/models/apply/useChangeJob";
+import { useChangeJob } from "@/v2/shared/features/change-plans-ui/useChangeJob";
 import type {
   ChangeJobSnapshot,
   ChangePlansPort,

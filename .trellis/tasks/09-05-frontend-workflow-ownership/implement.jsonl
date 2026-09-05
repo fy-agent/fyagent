@@ -1,0 +1,4 @@
+{"file":".trellis/spec/frontend/v2-managed-auth.md","reason":"Single managed account owner and truthful connection/request-source split"}
+{"file":".trellis/spec/frontend/v2-models.md","reason":"Preserve write preview, readback, revision and secret lifetimes"}
+{"file":".trellis/spec/frontend/v2-agent-directory.md","reason":"Directory owns installation and scan flow"}
+{"file":".trellis/spec/frontend/modular-boundaries.md","reason":"Promote actual shared apply UI without reverse page dependencies"}
