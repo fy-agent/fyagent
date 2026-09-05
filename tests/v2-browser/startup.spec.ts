@@ -13,11 +13,16 @@ test("prioritizes the initial module and never emits readiness from its loading 
   const moduleGate = new Promise<void>((resolve) => {
     release = resolve;
   });
-  await page.route("**/v2/pages/agents/Page.tsx", async (route) => {
-    intercepted = true;
-    await moduleGate;
-    await route.continue();
-  });
+  // Vite may append its cache-busting timestamp after a module changes. Match
+  // the actual module pathname so the delay/failure injection still takes effect.
+  await page.route(
+    (url) => url.pathname === "/v2/pages/agents/Page.tsx",
+    async (route) => {
+      intercepted = true;
+      await moduleGate;
+      await route.continue();
+    },
+  );
   try {
     await page.goto("/#/agents", { waitUntil: "domcontentloaded" });
     await expect.poll(() => intercepted).toBe(true);
@@ -61,10 +66,13 @@ test("optional module preload failure does not break the initial page or become 
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   let aborted = false;
-  await page.route("**/v2/pages/models/Page.tsx", async (route) => {
-    aborted = true;
-    await route.abort();
-  });
+  await page.route(
+    (url) => url.pathname === "/v2/pages/models/Page.tsx",
+    async (route) => {
+      aborted = true;
+      await route.abort();
+    },
+  );
   await page.goto("/#/agents", { waitUntil: "domcontentloaded" });
   await expect.poll(() => aborted).toBe(true);
   await expect(page.locator(".fy-agent-directory-card")).toHaveCount(7);
@@ -79,7 +87,10 @@ test("a failed initial module shows a recoverable error rather than a permanent 
   page,
 }) => {
   await installRichTauriFeatureFixture(page);
-  await page.route("**/v2/pages/agents/Page.tsx", (route) => route.abort());
+  await page.route(
+    (url) => url.pathname === "/v2/pages/agents/Page.tsx",
+    (route) => route.abort(),
+  );
   await page.goto("/#/agents", { waitUntil: "domcontentloaded" });
   await expect(
     page.getByRole("heading", { name: "页面暂时无法打开" }),

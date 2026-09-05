@@ -8,7 +8,7 @@ tokens. Geometry and navigation authority remain with their existing owners;
 animation never controls whether a native operation succeeded.
 
 Owners are `shared/ui/motion.ts`, `Button.tsx`, `usePressFeedback.ts`,
-`Dialog.tsx`, `dialogOrigin.ts`, `useDialogState.ts`, `useMediaQuery.ts`, `ToastViewport.tsx`, and
+`Dialog.tsx`, `dialogPresentation.ts`, `dialogOrigin.ts`, `useDialogState.ts`, `useMediaQuery.ts`, `ToastViewport.tsx`, and
 `app/styles/{tokens,motion,controls}.css`. Glass optics and readable backing
 remain in [Surfaces and Container Response](./surfaces-responsive.md);
 typography and focus-return rules remain in [Visual Language](./visual-language.md).
@@ -25,6 +25,7 @@ Dialog({
   open, onOpenChange, title, description?, children?, actions?,
   size?: "standard" | "comfortable" | "wide",
   initialFocusRef?: RefObject<HTMLElement>, originRef?: DialogOriginRef,
+  exitContent?: "clear" | "fade", // clear by default; reviewed non-credential content only
 })
 ConfirmDialog({ open, title, description, pending?, onConfirm, onCancel, originRef? })
 useDialogState<T>(initial?: T | null)
@@ -33,16 +34,24 @@ dialogOriginGeometry(source: HTMLElement | null, destination: DOMRect)
   // -> { x, y, scaleX, scaleY, sourced }
 useMediaQuery(query: string, fallback?: boolean): boolean
 useReducedMotion(): boolean
+parseMotionDuration(value: string): number // seconds; invalid input -> 0
 motionDuration(role: "press" | "dialog-enter" | "dialog-exit" | "content" | "toast"): number
+fySelectionTransition // tween; shared spatial curve, not a spring
+runDialogPresentation({ planes, source, windowNode, entering, first, duration })
+  // duration is milliseconds; -> { finished, contentFinished, cancel }
 ToastViewport({ messages: readonly ToastMessage[] })
 ```
 
 `motion.ts` is the sole direct Motion import owner. It exports the selection
-spring, press recovery spring, bounded press scale and common surface curve.
-CSS owns named duration tokens; `motionDuration` reads milliseconds and returns
-seconds at the interaction boundary. Missing/invalid durations mean no travel,
-not a guessed delay. Do not mix stiffness/damping/mass with duration/bounce
-within the same spring definition.
+tween, press recovery spring, bounded press scale and shared `.32,.72,0,1`
+spatial curve. `fySpatialEasing` derives the native CSS string from that tuple;
+the CSS token must match and is checked in tests. CSS owns named duration
+tokens; `parseMotionDuration` accepts one finite nonnegative `ms` or `s` value
+and returns seconds. Optimizers may serialize `420ms` as `.42s`; `parseFloat`
+followed by unconditional division by 1000 is prohibited. Missing, compound,
+unitless, negative or nonfinite durations mean no travel, not a guessed delay.
+Native WAAPI receives milliseconds only at its adapter boundary. Do not mix
+stiffness/damping/mass with duration/bounce within a spring definition.
 
 ## 3. Contracts
 
@@ -59,7 +68,8 @@ within the same spring definition.
   `fyPressRecovery`. The accepted maximum is below 1.005. Transform changes
   must not change layout slots or move neighbouring controls. A quick click
   may finish a small dip visually, but the action is not delayed until rebound.
-- Selection/collapse use the shared selection spring. Tooltips/popovers use
+- Selection/collapse use `fySelectionTransition` (300ms tween) and the shared
+  spatial curve. Do not retain a misleading spring alias. Tooltips/popovers use
   Radix CSS presence with their own transform origins. Content arrival does
   not delay route commit or keep an outgoing page interactive. Window resize
   is not slowed by a decorative transition.
@@ -83,21 +93,46 @@ within the same spring definition.
 - At entry and return, measure the referenced element. Disconnected, zero-size,
   hidden/inert, transparent, off-window, or clipped/scrolled-away sources use
   a neutral transition. Do not fly toward a different control with similar text.
-- Only `.fy-dialog-material` maps full source position and scale. Form/text
-  remains a separate foreground, using a small translation/fade rather than
-  stretching a whole credential form into a button. Do not copy DOM, labels,
-  pixels, inputs or credentials to a transition store.
+  Bounds admit at most one device pixel of rounding tolerance, not a general
+  allowance for genuinely clipped sources.
+- Only `.fy-dialog-material` interpolates source position, width, height and
+  four corner radii, inside a layout/style-contained decorative subtree. The
+  actual Radix window and text keep final layout; do not scale-compress forms.
+  Source/target material and foreground opacity have separate native tracks.
+  Only allowlisted CSS material strings are sampled; resource URLs, DOM,
+  labels, pixels, input values and credentials are not copied or retained.
+- A sourced first entrance gives the real press up to 80ms of visual lead,
+  inside the same 420ms presentation. Geometry then reaches its destination;
+  foreground handoff runs from 252 to 420ms. This never delays the initiating
+  business action. Exit lasts 360ms: foreground yields in at most 80ms,
+  geometry starts after 16ms, and material returns to the real source across
+  the final 90ms. Relative track timings follow retuned duration tokens, while
+  optional content retention remains capped at 80ms.
 - Radix retains modal, focus and scroll ownership until the decorative exit
-  completes. The business `open` state is already false; exiting form/action
-  DOM disappears immediately and cannot submit again. The final measured
-  material rectangle may remain briefly, not an editable stale form.
+  completes. Business close/cancel runs immediately and actions disappear.
+  Default `exitContent="clear"` immediately removes the body, especially for
+  credential/session/editor content. Only reviewed non-credential presentation
+  may opt into `"fade"`: its original body stays inert, aria-hidden and event-
+  blocked for at most 80ms, then is destroyed. No presentation copy is created.
+  The pre-session login provider picker is the reviewed opt-in; live login
+  sessions/device codes and MCP editors are not. Never widen this to preserve
+  secrets for cosmetic continuity.
 - Start from the committed Content node: Radix Portal can mount after its
   parent's initial layout effect. Immediate/zero-layout completion crosses
   one microtask commit boundary before `safeToRemove`, because Motion records
   exiting keys in a parent layout effect. This is not a fixed animation delay.
-- Cancel superseded generations on reopen/cleanup. Resize settles existing
+- During entrance, invisible controls are inert and event-blocked; focus stays
+  on Radix Content until handoff completes, then moves to the requested cancel
+  or first usable control only if focus still belongs to that root. Escape can
+  cancel an unfinished entrance. Reduced/no-animation environments retain
+  immediate access. Do not wait for animation to report native readiness.
+- Cancel superseded generations on reopen/cleanup. Preserve current computed
+  geometry/opacity before cancellation when reversing; do not reset to a
+  fully open rectangle. Every already-started track is cancelled if a later
+  track throws, and rejected finished promises are handled. Resize settles existing
   geometry without stretching stale coordinates. A hidden persistent route
-  removes the portal immediately instead of animating into another page.
+  removes the portal immediately instead of animating into another page;
+  document visibility loss also settles rather than waiting on suspended frames.
 - A conditionally mounted dialog owner must be under `AnimatePresence`, with
   nested Dialog propagation enabled. Use a fresh session key for a reopened
   editor; retaining an old exiting component must not resurrect discarded
@@ -124,25 +159,28 @@ within the same spring definition.
 
 ## 4. Validation & Error Matrix
 
-| Condition                                             | Required result                                                          |
-| ----------------------------------------------------- | ------------------------------------------------------------------------ |
-| Source control opens a dialog after async work        | Use that explicit original source, not whichever element is now focused. |
-| Source moved, vanished or scrolled out before close   | Re-measure; return to the current valid box or use neutral exit.         |
-| Close occurs while entering                           | Cancel superseded animations; remove form/actions and finish one exit.   |
-| Same conditional editor is reopened                   | Fresh session key; no old draft/secret resurrection.                     |
-| System reduced-motion changes during travel           | Settle current visuals and release any completed exit.                   |
-| Portal commits after parent mount                     | Committed node starts the animation; no silent skipped entrance.         |
-| Zero-duration exit                                    | Complete after presence bookkeeping; do not leave a focus/scroll lock.   |
-| Right click, secondary touch, disabled/hidden control | No duplicate action or new press admission.                              |
-| Another modal opens during old focus return           | Never focus outside the newer modal.                                     |
-| Navigation occurs during a transition                 | Preserve URL/selection authority and hidden-route query isolation.       |
+| Condition                                             | Required result                                                                |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Source control opens a dialog after async work        | Use that explicit original source, not whichever element is now focused.       |
+| Source moved, vanished or scrolled out before close   | Re-measure; return to the current valid box or use neutral exit.               |
+| Close occurs while entering                           | Freeze current geometry, revoke interaction/secrets and finish one exit.       |
+| Explicit non-credential fade exit                     | Inert/aria-hidden body retires within 80ms; action DOM disappears immediately. |
+| CSS optimizer emits seconds instead of milliseconds   | Preserve physical duration; production timing test must still see 420ms.       |
+| A later native animation track throws                 | Cancel all started tracks, handle rejection and settle safely.                 |
+| Same conditional editor is reopened                   | Fresh session key; no old draft/secret resurrection.                           |
+| System reduced-motion changes during travel           | Settle current visuals and release any completed exit.                         |
+| Portal commits after parent mount                     | Committed node starts the animation; no silent skipped entrance.               |
+| Zero-duration exit                                    | Complete after presence bookkeeping; do not leave a focus/scroll lock.         |
+| Right click, secondary touch, disabled/hidden control | No duplicate action or new press admission.                                    |
+| Another modal opens during old focus return           | Never focus outside the newer modal.                                           |
+| Navigation occurs during a transition                 | Preserve URL/selection authority and hidden-route query isolation.             |
 
 ## 5. Good / Base / Bad Cases
 
 Good: an account action passes one source ref through its view into Dialog;
 closing removes the form, returns only the backing, then restores focus.
 Base: an automatic status dialog has no actionable origin and uses neutral
-fade/limited scale. Bad: infer origin from the last global click, animate a
+fade/limited geometry. Bad: infer origin from the last global click, animate a
 screen capture of a password form, or wait for an animation before admitting
 the actual business action.
 
@@ -154,9 +192,17 @@ the actual business action.
   programmatic neutral fallback and unchanged blocked navigation.
 - Dialog tests retain third-round keyboard/focus safeguards and zero-duration
   unmount. Tests must verify actual modal/scroll cleanup, not only callbacks.
-- Browser motion tests sample material transforms, verify foreground scale,
+- `motionDuration.test.ts` covers ms/s/exponents and invalid input;
+  `dialogPresentation.test.ts` checks track endpoints, no content/resource
+  copying, cancellation, partial-start failures and the 80ms exit cap.
+- Browser motion tests sample material geometry, verify unscaled foreground,
   press limits and unchanged neighbour boxes, and exercise mouse, Enter,
   Space, touch, reduced motion, invalid sources and interrupted exits.
+- `presentation-choreography.spec.ts` pauses real native tracks at source,
+  handoff and return frames. `presentation-performance.spec.ts` runs the actual
+  production build, verifies physical time units, separates cold entry from
+  20 warm open/close cycles at 1x/4x CPU cost, and checks cleanup. Normal warm
+  frame interval p95 target is 33.4ms. Do not disable animations to meet it.
 - Re-run existing form/confirmation security tests, all four browser viewports,
   production boot and navigation performance, route chunk checks and full gates.
   Compare latency to the same method's baseline; animation end is not the

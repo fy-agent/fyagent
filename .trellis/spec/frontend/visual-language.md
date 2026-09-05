@@ -25,6 +25,7 @@ Dialog({
   size?: "standard" | "comfortable" | "wide",
   initialFocusRef?: RefObject<HTMLElement>,
   originRef?: DialogOriginRef,
+  exitContent?: "clear" | "fade",
 })
 ConfirmDialog({ open, title, description, pending?, onConfirm, onCancel, originRef? })
 ```
@@ -54,6 +55,11 @@ Origin geometry, conditional-session keys and enter/exit timing are owned by
   before Radix's opening event and bypass trigger capture. The wrapper records
   focus on opening, restores only a connected/non-hidden target on closing,
   and does not install a document listener for each closed dialog.
+  During a normal spatial entrance, Radix Content holds focus until the
+  foreground is usable; it then transfers to the requested control only while
+  focus still belongs to the Content root. Escape remains available during
+  entrance. Exit interaction and sensitive-body cleanup are immediate; the
+  reviewed non-credential fade exception is defined in the motion contract.
 - Returning focus to an unselected automatic tab can repeat a rejected dirty
   transition. At close, resolve that origin to the currently selected tab in
   the same tablist; confirmed transitions already have the requested tab

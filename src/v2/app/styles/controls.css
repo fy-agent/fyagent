@@ -308,8 +308,23 @@
   z-index: -1;
   isolation: isolate;
   pointer-events: none;
-  border: 1px solid var(--fy-border-strong);
+  border: 0;
   border-radius: inherit;
+  contain: layout style;
+}
+.fy-dialog-source-material,
+.fy-dialog-target-material {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  isolation: isolate;
+}
+.fy-dialog-source-material {
+  opacity: 0;
+}
+.fy-dialog-target-material {
+  border: 1px solid var(--fy-border-strong);
   box-shadow: var(--fy-glass-shadow);
 }
 .fy-dialog-foreground {

@@ -84,4 +84,16 @@ describe("explicit dialog origin geometry", () => {
     );
     expect(dialogOriginGeometry(source, destination).sourced).toBe(true);
   });
+
+  it("accepts at most one device-pixel rounding edge, not actual clipped content", () => {
+    const scroller = measuredElement(new DOMRect(500, 100, 240, 180), "div");
+    scroller.style.overflowY = "hidden";
+    const source = measuredElement(new DOMRect(520, 99.5, 100, 40));
+    scroller.append(source);
+    expect(dialogOriginGeometry(source, destination).sourced).toBe(true);
+    vi.mocked(source.getBoundingClientRect).mockReturnValue(
+      new DOMRect(520, 97, 100, 40),
+    );
+    expect(dialogOriginGeometry(source, destination).sourced).toBe(false);
+  });
 });

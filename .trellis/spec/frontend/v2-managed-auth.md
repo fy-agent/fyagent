@@ -232,9 +232,12 @@ listed in
 - Dialog focus is restored to the invoking control. Copy feedback does not move
   focus. Reduced-motion mode disables non-essential animation. Keep controlled
   Dialog wrappers mounted, or use the reviewed `AnimatePresence` boundary with
-  a fresh conditional session key. The shared layer removes form/actions on
-  close and lets Radix release modality/focus after the backing exits. Do not
-  abruptly `return null` from an unprotected login wrapper or add another focus
+  a fresh conditional session key. Close immediately removes actions and clears
+  session/device-code content. The non-credential provider/purpose chooser may
+  use `exitContent="fade"` for at most 80ms of original inert/aria-hidden content,
+  never a DOM copy or delayed session cancellation. Radix releases modality and
+  focus after the backing exits. Do not abruptly `return null` from an
+  unprotected login wrapper or add another focus
   owner. Pass the actual action's origin ref before asynchronous work; see
   [Motion and Dialog Presence](./motion-system.md).
 - Copy says what is complete, pending or unknown and gives one safe next step.

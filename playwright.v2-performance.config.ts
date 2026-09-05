@@ -6,7 +6,10 @@ import { defineConfig, devices } from "@playwright/test";
 // This is supplemental profiling, not a substitute for native WebView evidence.
 export default defineConfig({
   testDir: "./tests/v2-browser",
-  testMatch: "navigation-performance.spec.ts",
+  testMatch: [
+    "navigation-performance.spec.ts",
+    "presentation-performance.spec.ts",
+  ],
   outputDir: path.join(os.tmpdir(), "fyagent-v2-performance"),
   workers: 1,
   retries: 0,

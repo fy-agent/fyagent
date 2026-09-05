@@ -12,7 +12,7 @@ import {
 import { classNames } from "../design-system/classNames";
 import {
   animate,
-  fySpringTransition,
+  fySelectionTransition,
   motion,
   useMotionValue,
   useReducedMotion,
@@ -20,7 +20,7 @@ import {
 
 import "./selection-lens.css";
 
-export { fySpringTransition as selectionLensTransition };
+export { fySelectionTransition as selectionLensTransition };
 
 type LensBox = {
   x: number;
@@ -317,13 +317,13 @@ export function SelectionLensGroup({
     }
 
     const controls = [
-      animate(left, box.x, fySpringTransition),
-      animate(top, box.y, fySpringTransition),
+      animate(left, box.x, fySelectionTransition),
+      animate(top, box.y, fySelectionTransition),
     ];
     if (geometry === "size-and-position") {
       controls.push(
-        animate(width, box.width, fySpringTransition),
-        animate(height, box.height, fySpringTransition),
+        animate(width, box.width, fySelectionTransition),
+        animate(height, box.height, fySelectionTransition),
       );
     }
     return () => {

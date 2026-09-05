@@ -1,6 +1,7 @@
 import {
   useCallback,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -11,9 +12,12 @@ import { Button } from "./Button";
 import { FrostedSurface } from "./GlassMaterial";
 import { dialogOriginGeometry, type DialogOriginRef } from "./dialogOrigin";
 import {
-  animate,
+  runDialogPresentation,
+  settleDialogPlanes,
+  type DialogPlanes,
+} from "./dialogPresentation";
+import {
   AnimatePresence,
-  fySurfaceEase,
   motionDuration,
   usePresence,
   useReducedMotion,
@@ -31,11 +35,13 @@ export interface DialogProps {
   size?: "standard" | "comfortable" | "wide";
   initialFocusRef?: RefObject<HTMLElement>;
   originRef?: DialogOriginRef;
+  /** Only reviewed non-credential presentation can opt in. Interaction is
+   * revoked immediately; original content may fade for at most 80ms. */
+  exitContent?: "clear" | "fade";
 }
 
 export function Dialog(props: DialogProps) {
   const visible = usePersistentVisibility();
-  // A hidden route is not a user close: remove its portal immediately.
   if (!visible) return null;
   return (
     <AnimatePresence propagate>
@@ -53,27 +59,26 @@ function DialogLayer({
   size = "standard",
   initialFocusRef,
   originRef,
+  exitContent = "clear",
 }: DialogProps) {
   const [present, safeToRemove] = usePresence();
   const reduce = useReducedMotion();
-  // Radix mounts its portal after the parent layer's initial layout effect.
-  // Track the committed node, rather than assuming the ref exists on mount.
   const contentRef = useRef<HTMLDivElement | null>(null);
   const committedNodeRef = useRef<HTMLDivElement | null>(null);
   const [mountVersion, setMountVersion] = useState(0);
   const setContent = useCallback((node: HTMLDivElement | null) => {
-    if (contentRef.current === node) return;
     contentRef.current = node;
-    // Radix can detach/recompose refs without replacing the underlying node.
-    // Those transient null callbacks must not create another mount generation.
+    // Ignore Radix's transient ref recomposition of the same mounted node.
     if (node && committedNodeRef.current !== node) {
       committedNodeRef.current = node;
       setMountVersion((version) => version + 1);
     }
   }, []);
-  const backing = useRef<HTMLDivElement>(null);
-  const foreground = useRef<HTMLDivElement>(null);
-  const overlay = useRef<HTMLDivElement>(null);
+  const materialRef = useRef<HTMLDivElement>(null);
+  const sourceMaterialRef = useRef<HTMLDivElement>(null);
+  const targetMaterialRef = useRef<HTMLDivElement>(null);
+  const foregroundRef = useRef<HTMLDivElement>(null);
+  const overlayRef = useRef<HTMLDivElement>(null);
   const lastBox = useRef<DOMRect | null>(null);
   const source = useRef<HTMLElement | null>(null);
   const wasPresent = useRef(false);
@@ -82,9 +87,20 @@ function DialogLayer({
   const resizeTransition = useRef<(() => void) | null>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
   const restoreFrameRef = useRef<number | null>(null);
-  const phaseKey = `${mountVersion}:${present}:${reduce}`;
-  const [settledPhase, setSettledPhase] = useState<string | null>(null);
-  const enhanced = present && settledPhase === phaseKey;
+  // A true→false→true cycle must not reuse an already-settled boolean key.
+  const phase = useMemo(
+    () => ({ present, reduce, mountVersion }),
+    [present, reduce, mountVersion],
+  );
+  const [settledPhase, setSettledPhase] = useState<typeof phase | null>(null);
+  const [retiredPhase, setRetiredPhase] = useState<typeof phase | null>(null);
+  const settled = settledPhase === phase;
+  const nativeAnimation =
+    typeof Element !== "undefined" &&
+    typeof Element.prototype.animate === "function";
+  const interactive = present && (settled || reduce || !nativeAnimation);
+  const keepBody =
+    present || (exitContent === "fade" && retiredPhase !== phase);
   const remove = useRef(safeToRemove);
   const requestedSource = useRef(originRef);
   useLayoutEffect(() => {
@@ -101,7 +117,8 @@ function DialogLayer({
       lastBox.current = next;
       if (
         previous &&
-        (previous.width !== next.width || previous.height !== next.height)
+        (Math.abs(previous.width - next.width) > 0.5 ||
+          Math.abs(previous.height - next.height) > 0.5)
       )
         resizeTransition.current?.();
     };
@@ -113,17 +130,29 @@ function DialogLayer({
   }, [present, mountVersion]);
 
   useLayoutEffect(() => {
-    const element = contentRef.current,
-      material = backing.current,
-      text = foreground.current,
-      scrim = overlay.current;
-    if (!element || !material || !text || !scrim) return;
+    const element = contentRef.current;
+    if (
+      !element ||
+      !mountVersion ||
+      !materialRef.current ||
+      !sourceMaterialRef.current ||
+      !targetMaterialRef.current ||
+      !foregroundRef.current ||
+      !overlayRef.current
+    )
+      return;
+    const planes: DialogPlanes = {
+      material: materialRef.current,
+      sourceMaterial: sourceMaterialRef.current,
+      targetMaterial: targetMaterialRef.current,
+      foreground: foregroundRef.current,
+      overlay: overlayRef.current,
+    };
     const revision = ++epoch.current;
     if (present && !wasPresent.current)
       source.current = requestedSource.current?.current ?? null;
     wasPresent.current = present;
     if (!present && lastBox.current?.height) {
-      // Discard form DOM immediately; only its inert material retains geometry.
       element.style.height = `${lastBox.current.height}px`;
       element.style.width = `${Math.min(lastBox.current.width, innerWidth - 32)}px`;
     } else {
@@ -131,128 +160,89 @@ function DialogLayer({
       element.style.removeProperty("width");
     }
     const box = element.getBoundingClientRect();
-    const origin = dialogOriginGeometry(source.current, box);
-    element.dataset.motionOrigin = origin.sourced ? "trigger" : "neutral";
-    const duration = motionDuration(present ? "dialog-enter" : "dialog-exit");
+    element.dataset.motionOrigin = dialogOriginGeometry(source.current, box)
+      .sourced
+      ? "trigger"
+      : "neutral";
+    const duration =
+      motionDuration(present ? "dialog-enter" : "dialog-exit") * 1000;
+    let handle: ReturnType<typeof runDialogPresentation> | null = null;
     const settle = () => {
-      material.style.transform = "none";
-      material.style.opacity = "1";
-      text.style.transform = "none";
-      text.style.opacity = "1";
-      scrim.style.opacity = "1";
-      // Presence records exiting keys in its parent layout effect. Completion
-      // crosses that commit barrier and cannot complete a superseded phase.
+      handle?.cancel(false);
+      if (present) settleDialogPlanes(planes);
+      else {
+        planes.material.style.opacity = "0";
+        planes.foreground.style.opacity = "0";
+        planes.overlay.style.opacity = "0";
+      }
+      // Parent Presence registers exit keys after child layout effects.
       void Promise.resolve().then(() => {
         if (revision !== epoch.current) return;
-        if (!present) remove.current?.();
-        else if (box.width && box.height) setSettledPhase(phaseKey);
+        if (present && box.width && box.height) setSettledPhase(phase);
+        else if (!present) remove.current?.();
       });
     };
-    // A zero-layout surface cannot produce meaningful spatial animation.
-    if (reduce || !box.width || !box.height || duration === 0) {
+    if (
+      reduce ||
+      document.hidden ||
+      !box.width ||
+      !box.height ||
+      !nativeAnimation ||
+      !duration
+    ) {
       settle();
       return () => {
         epoch.current += 1;
       };
     }
-    const first = !hasAnimated.current;
-    hasAnimated.current = true;
-    const ease: [number, number, number, number] = [...fySurfaceEase];
-    const animations: ReturnType<typeof animate>[] = [];
     try {
-      if (present) {
-        animations.push(
-          animate(
-            material,
-            {
-              x: [first ? origin.x : null, 0],
-              y: [first ? origin.y : null, 0],
-              scaleX: [first ? origin.scaleX : null, 1],
-              scaleY: [first ? origin.scaleY : null, 1],
-              opacity: [first ? 0 : null, 1],
-            },
-            { duration, ease },
-          ),
-        );
-        animations.push(
-          animate(
-            text,
-            { opacity: [first ? 0 : null, 1], y: [first ? 6 : null, 0] },
-            {
-              duration: motionDuration("content"),
-              delay: first ? duration * 0.22 : 0,
-              ease,
-            },
-          ),
-        );
-        animations.push(
-          animate(
-            scrim,
-            { opacity: [first ? 0 : null, 1] },
-            { duration: motionDuration("content"), ease },
-          ),
-        );
-      } else {
-        animations.push(
-          animate(
-            material,
-            {
-              x: origin.x,
-              y: origin.y,
-              scaleX: origin.scaleX,
-              scaleY: origin.scaleY,
-              opacity: 0,
-            },
-            { duration, ease },
-          ),
-        );
-        animations.push(
-          animate(text, { opacity: 0 }, { duration: duration * 0.35, ease }),
-        );
-        animations.push(animate(scrim, { opacity: 0 }, { duration, ease }));
-      }
+      handle = runDialogPresentation({
+        planes,
+        source: source.current,
+        windowNode: element,
+        entering: present,
+        first: !hasAnimated.current,
+        duration,
+      });
+      hasAnimated.current = true;
+      void handle.contentFinished.then((completed) => {
+        if (completed && !present && revision === epoch.current)
+          setRetiredPhase(phase);
+      });
+      void handle.finished.then((completed) => {
+        if (completed && revision === epoch.current) settle();
+      });
     } catch {
-      // A later layer can fail after an earlier animation has started. Stop
-      // every started handle before settling; never leave an orphan writer.
-      animations.forEach((animation) => animation.stop());
       console.warn("Dialog animation unavailable; settled without motion");
       settle();
-      return;
     }
-    void Promise.all(animations).then(
-      () => {
-        if (revision !== epoch.current) return;
-        if (present) setSettledPhase(phaseKey);
-        else {
-          // Presence registers descendants in passive effects. Complete a zero-
-          // duration exit after registration, rather than racing it in layout.
-          const completionEpoch = epoch.current;
-          void Promise.resolve().then(() => {
-            if (epoch.current === completionEpoch) remove.current?.();
-          });
-        }
-      },
-      () => {
-        if (revision === epoch.current) settle();
-      },
-    );
-    const resized = () => {
-      animations.forEach((animation) => animation.stop());
-      settle();
+    resizeTransition.current = settle;
+    const visibility = () => {
+      if (document.hidden) settle();
     };
-    resizeTransition.current = resized;
-    window.addEventListener("resize", resized);
+    window.addEventListener("resize", settle);
+    document.addEventListener("visibilitychange", visibility);
     return () => {
       epoch.current += 1;
-      animations.forEach((animation) => animation.stop());
+      handle?.cancel();
       resizeTransition.current = null;
-      window.removeEventListener("resize", resized);
+      window.removeEventListener("resize", settle);
+      document.removeEventListener("visibilitychange", visibility);
     };
-  }, [present, reduce, mountVersion, phaseKey]);
+  }, [present, reduce, mountVersion, nativeAnimation, phase]);
+
+  useLayoutEffect(() => {
+    const root = contentRef.current;
+    if (!interactive || !root || document.activeElement !== root) return;
+    const target =
+      initialFocusRef?.current ??
+      root.querySelector<HTMLElement>(
+        'input:not(:disabled), textarea:not(:disabled), select:not(:disabled), button:not(:disabled), [tabindex="0"]',
+      );
+    target?.focus({ preventScroll: true });
+  }, [interactive, initialFocusRef]);
 
   return (
-    // Radix retains modal/scroll/focus ownership until Motion removes the layer.
-    // Business open state is already false while its decorative material exits.
     <DialogPrimitive.Root
       open
       onOpenChange={(next) => {
@@ -261,32 +251,32 @@ function DialogLayer({
     >
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay
-          ref={overlay}
+          ref={overlayRef}
           className="fy-control-dialog-overlay"
         />
         <DialogPrimitive.Content
           ref={setContent}
           data-motion-phase={present ? "open" : "exit"}
-          data-motion-settled={present && enhanced ? "true" : undefined}
+          data-motion-settled={present && settled ? "true" : undefined}
           className={classNames(
             "fy-control-dialog",
             size !== "standard" && `fy-control-dialog-${size}`,
           )}
           {...(!description ? { "aria-describedby": undefined } : {})}
           onPointerDownCapture={(event) => {
-            if (!present) {
+            if (!interactive) {
               event.preventDefault();
               event.stopPropagation();
             }
           }}
           onClickCapture={(event) => {
-            if (!present) {
+            if (!interactive) {
               event.preventDefault();
               event.stopPropagation();
             }
           }}
           onKeyDownCapture={(event) => {
-            if (!present && event.key !== "Tab") {
+            if (!interactive && event.key !== "Tab" && event.key !== "Escape") {
               event.preventDefault();
               event.stopPropagation();
             }
@@ -297,10 +287,15 @@ function DialogLayer({
             const focused = originRef?.current ?? document.activeElement;
             if (focused instanceof HTMLElement && focused !== document.body)
               restoreFocusRef.current = focused;
-            const initial = initialFocusRef?.current;
-            if (initial && !initial.matches(":disabled")) {
+            if (nativeAnimation && !reduce) {
               event.preventDefault();
-              initial.focus();
+              contentRef.current?.focus({ preventScroll: true });
+            } else if (
+              initialFocusRef?.current &&
+              !initialFocusRef.current.matches(":disabled")
+            ) {
+              event.preventDefault();
+              initialFocusRef.current.focus();
             }
           }}
           onCloseAutoFocus={(event) => {
@@ -334,10 +329,20 @@ function DialogLayer({
             });
           }}
         >
-          <div ref={backing} className="fy-dialog-material" aria-hidden>
-            <FrostedSurface enhanced={enhanced} />
+          <div ref={materialRef} className="fy-dialog-material" aria-hidden>
+            <div
+              ref={sourceMaterialRef}
+              className="fy-dialog-source-material"
+            />
+            <div ref={targetMaterialRef} className="fy-dialog-target-material">
+              <FrostedSurface enhanced={settled} />
+            </div>
           </div>
-          <div ref={foreground} className="fy-dialog-foreground">
+          <div
+            ref={foregroundRef}
+            className="fy-dialog-foreground"
+            {...(!interactive ? { inert: "", "aria-hidden": true } : {})}
+          >
             <div className="fy-control-dialog-content">
               <header className="fy-control-dialog-header">
                 <DialogPrimitive.Title className="fy-control-dialog-title">
@@ -349,7 +354,7 @@ function DialogLayer({
                   </DialogPrimitive.Description>
                 )}
               </header>
-              {present && children != null && (
+              {keepBody && children != null && (
                 <div className="fy-control-dialog-body">{children}</div>
               )}
             </div>

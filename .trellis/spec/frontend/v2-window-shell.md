@@ -54,9 +54,9 @@ SelectionLensGroup({ id, inset?, geometry?, layoutKey?, children })
 SelectionLensTrack({ id, geometry?, layoutKey?, children })
 SelectionLens({ active })
 selectionLensCollapsedOrigin({ x, y })
-selectionLensTransition // alias of fySpringTransition
+selectionLensTransition // alias of fySelectionTransition
 
-fySpringTransition
+fySelectionTransition
 fyMotionTransition(reduceMotion: boolean)
 
 Collapsible({ open, onOpenChange, children, ... })

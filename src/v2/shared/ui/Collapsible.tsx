@@ -14,7 +14,7 @@ import { classNames } from "../design-system/classNames";
 import {
   animate,
   fyMotionTransition,
-  fySpringTransition,
+  fySelectionTransition,
   motion,
   useMotionValue,
   useReducedMotion,
@@ -99,7 +99,7 @@ function CollapsibleMotionPanel({
       if (height.get() === "auto") {
         height.set(0);
       }
-      const controls = animate(height, target, fySpringTransition);
+      const controls = animate(height, target, fySelectionTransition);
       void controls.then(() => {
         if (generationRef.current !== generation) {
           return;
@@ -113,7 +113,7 @@ function CollapsibleMotionPanel({
 
     const current = height.get();
     height.set(current === "auto" ? lastOpenHeightRef.current : current);
-    const controls = animate(height, 0, fySpringTransition);
+    const controls = animate(height, 0, fySelectionTransition);
     return () => {
       controls.stop();
     };

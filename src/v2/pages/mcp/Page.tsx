@@ -473,6 +473,7 @@ export function McpPage() {
                 <Button
                   className="fy-control-button-primary"
                   onClick={() => setEditing("new")}
+                  dialogOriginRef={dialogOriginRef}
                 >
                   添加 MCP
                 </Button>{" "}

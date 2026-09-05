@@ -273,6 +273,7 @@ function LoginDialogContent({
   return (
     <Dialog
       originRef={originRef}
+      exitContent={session ? "clear" : "fade"}
       open={open}
       initialFocusRef={session?.terminal ? finishRef : undefined}
       onOpenChange={onOpenChange}

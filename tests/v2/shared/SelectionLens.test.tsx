@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 
-import { fySpringTransition } from "@/v2/shared/ui/motion";
+import { fySelectionTransition } from "@/v2/shared/ui/motion";
 import {
   SelectionLens,
   SelectionLensGroup,
@@ -13,12 +13,12 @@ import {
 } from "@/v2/shared/ui/SelectionLens";
 
 describe("SelectionLens", () => {
-  it("uses the shared selection spring without mixing in overriding physics parameters", () => {
-    expect(selectionLensTransition).toBe(fySpringTransition);
+  it("uses the shared spatial tween without competing physics parameters", () => {
+    expect(selectionLensTransition).toBe(fySelectionTransition);
     expect(selectionLensTransition).toEqual({
-      type: "spring",
-      visualDuration: 0.26,
-      bounce: 0.07,
+      type: "tween",
+      duration: 0.3,
+      ease: [0.32, 0.72, 0, 1],
     });
   });
 
@@ -96,7 +96,7 @@ describe("SelectionLens", () => {
     expect(screen.getByTestId("selection-lens")).toBeVisible();
   });
 
-  it("replays the appear spring after a hidden ancestor is shown again", async () => {
+  it("replays the appearance transition after a hidden ancestor is shown again", async () => {
     function Track({ hide }: { hide: boolean }) {
       return (
         <div hidden={hide ? true : undefined}>

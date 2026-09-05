@@ -104,6 +104,24 @@ activation to the frame after visible destination DOM; it excludes OS input
 dispatch, data freshness and animation settling. Report those limits, not a
 claim about all native WebViews. Do not raise the existing build budgets.
 
+The same production configuration also runs `presentation-performance.spec.ts`.
+The `production boots` timing case must see actual 420ms entry and 360ms exit after
+CSS optimization; `.42s` and `420ms` are equivalent units, not different timings.
+Supplemental presentation sampling separates a cold cycle from 20 warm cycles
+at 1x/4x CPU cost, reports frame intervals/JS/layout/long tasks and verifies cleanup.
+The 1x warm-frame p95 target is 33.4ms. Normalize only sub-nanosecond floating-point
+subtraction noise; never increase the frame budget or replace real motion with
+test-only no-animation code. Background machine load is reported, not hidden.
+
+Static geometry/contrast assertions wait for actual settled state. Paused native
+keyframes verify source/80ms press lead/252–420ms content handoff and reverse
+tracks, alongside real-time mouse/keyboard/touch, interruption and resource checks.
+Event dispatch/focus completion does not imply Router's state commit completed;
+await the exact selected-state assertion rather than arbitrary sleeps.
+Startup module delay/abort fixtures match exact URL pathnames independently
+of Vite cache-busting queries; still assert that interception actually occurred.
+Keep production-bundle startup tests separate from those dev-module fixtures.
+
 ```tsx
 // tests/utils/testQueryClient.ts
 export const createTestQueryClient = () =>

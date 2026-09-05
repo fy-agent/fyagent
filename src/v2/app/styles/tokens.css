@@ -77,11 +77,11 @@
   --fy-motion-control: 160ms;
   --fy-motion-content: 240ms;
   --fy-motion-dialog-enter: 420ms;
-  --fy-motion-dialog-exit: 320ms;
+  --fy-motion-dialog-exit: 360ms;
   --fy-motion-toast: 240ms;
   --fy-motion-spinner: 900ms;
   --fy-motion-spinner-reduced: 1800ms;
-  --fy-motion-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --fy-motion-ease: cubic-bezier(0.32, 0.72, 0, 1);
   --fy-dialog-surface: rgba(237, 246, 253, 0.74);
   --fy-surface-opaque: #e8f1f8;
   --fy-surface-input: rgba(251, 253, 255, 0.82);

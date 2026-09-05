@@ -476,8 +476,14 @@ describe("AuthPage", () => {
 
     const connectionsTab = screen.getByRole("tab", { name: /软件连接 4/ });
     expect(connectionsTab).toHaveFocus();
-    expect(connectionsTab).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByRole("region", { name: "软件连接列表" })).toBeVisible();
+    // Radix moves focus synchronously; selected state is owned by a separate
+    // Router update. Await that commit rather than racing an effect under load.
+    await waitFor(() => {
+      expect(connectionsTab).toHaveAttribute("aria-selected", "true");
+      expect(
+        screen.getByRole("region", { name: "软件连接列表" }),
+      ).toBeVisible();
+    });
   });
 
   it("closes the login dialog with Escape without leaving a second login owner", async () => {

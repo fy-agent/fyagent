@@ -16,13 +16,17 @@ export function dialogOriginGeometry(
   )
     return neutral;
   const box = source.getBoundingClientRect();
+  // Native focus/scroll and device-pixel rounding can leave a half-pixel edge
+  // outside an overflow box. Do not discard a visibly intact source for that
+  // quantization, but keep genuinely clipped/scrolled-away sources neutral.
+  const edgeTolerance = 1 / Math.max(1, window.devicePixelRatio || 1);
   if (
     !box.width ||
     !box.height ||
-    box.left < 0 ||
-    box.top < 0 ||
-    box.right > innerWidth ||
-    box.bottom > innerHeight
+    box.left < -edgeTolerance ||
+    box.top < -edgeTolerance ||
+    box.right > innerWidth + edgeTolerance ||
+    box.bottom > innerHeight + edgeTolerance
   )
     return neutral;
   for (let node: HTMLElement | null = source; node; node = node.parentElement) {
@@ -37,12 +41,14 @@ export function dialogOriginGeometry(
     const bounds = node.getBoundingClientRect();
     if (
       /(auto|scroll|hidden|clip)/.test(style.overflowY) &&
-      (box.top < bounds.top || box.bottom > bounds.bottom)
+      (box.top < bounds.top - edgeTolerance ||
+        box.bottom > bounds.bottom + edgeTolerance)
     )
       return neutral;
     if (
       /(auto|scroll|hidden|clip)/.test(style.overflowX) &&
-      (box.left < bounds.left || box.right > bounds.right)
+      (box.left < bounds.left - edgeTolerance ||
+        box.right > bounds.right + edgeTolerance)
     )
       return neutral;
   }

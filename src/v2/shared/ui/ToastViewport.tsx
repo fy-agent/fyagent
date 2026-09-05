@@ -1,7 +1,7 @@
 import { classNames } from "../design-system/classNames";
 import {
   AnimatePresence,
-  fySurfaceEase,
+  fySpatialEase,
   motion,
   motionDuration,
   useIsPresent,
@@ -25,7 +25,7 @@ function ToastItem({ message }: { message: ToastMessage }) {
       initial={duration === 0 ? false : { opacity: 0, y: 8, scale: 0.98 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, y: reduce ? 0 : 4, scale: reduce ? 1 : 0.98 }}
-      transition={{ duration, ease: [...fySurfaceEase] }}
+      transition={{ duration, ease: [...fySpatialEase] }}
       className={classNames("fy-toast", `fy-toast-${message.tone}`)}
       role="status"
       aria-hidden={present ? undefined : true}

@@ -100,7 +100,7 @@ test("shared press feedback is bounded, leaves adjacent layout still and preserv
   await expectHealthyPage(page, health);
 });
 
-test("modal material has a real origin, exit drops controls immediately and focus returns only after dismissal", async ({
+test("modal material has a real origin, exit revokes actions and focus returns only after dismissal", async ({
   page,
 }, info) => {
   await installRichTauriFeatureFixture(page);
@@ -115,23 +115,21 @@ test("modal material has a real origin, exit drops controls immediately and focu
       time: number;
       x: number;
       y: number;
-      scaleX: number;
-      scaleY: number;
+      width: number;
+      height: number;
     }> = [];
     const started = performance.now();
     await new Promise<void>((resolve) => {
       const sample = () => {
         const material = document.querySelector(".fy-dialog-material");
         if (material) {
-          const matrix = new DOMMatrixReadOnly(
-            getComputedStyle(material).transform,
-          );
+          const box = material.getBoundingClientRect();
           samples.push({
             time: performance.now() - started,
-            x: matrix.e,
-            y: matrix.f,
-            scaleX: matrix.a,
-            scaleY: matrix.d,
+            x: box.x,
+            y: box.y,
+            width: box.width,
+            height: box.height,
           });
         }
         if (performance.now() - started < 1100) requestAnimationFrame(sample);
@@ -144,28 +142,23 @@ test("modal material has a real origin, exit drops controls immediately and focu
   await trigger.click();
   const dialog = page.getByRole("dialog", { name: "添加官方账号" });
   await expect(dialog).toHaveAttribute("data-motion-origin", "trigger");
-  const material = dialog.locator(".fy-dialog-material");
-  await expect
-    .poll(async () =>
-      material.evaluate((node) => {
-        const matrix = new DOMMatrixReadOnly(getComputedStyle(node).transform);
-        return Math.max(
-          Math.abs(matrix.a - 1),
-          Math.abs(matrix.d - 1),
-          Math.abs(matrix.e),
-          Math.abs(matrix.f),
-        );
-      }),
-    )
-    .toBeLessThan(0.01);
+  await expect(dialog).toHaveAttribute("data-motion-settled", "true");
+  const destination = await dialog.boundingBox();
+  expect(destination).not.toBeNull();
   const samples = await samplesPromise;
   expect(
     samples.some(
-      (sample) => Math.abs(sample.x) > 10 || Math.abs(sample.y) > 10,
+      (sample) =>
+        Math.abs(sample.x - destination!.x) > 10 ||
+        Math.abs(sample.y - destination!.y) > 10,
     ),
   ).toBe(true);
   expect(
-    samples.some((sample) => sample.scaleX < 0.9 && sample.scaleY < 0.9),
+    samples.some(
+      (sample) =>
+        sample.width < destination!.width * 0.9 &&
+        sample.height < destination!.height * 0.9,
+    ),
   ).toBe(true);
   await info.attach("modal-material-frames", {
     body: JSON.stringify(samples),
@@ -185,7 +178,7 @@ test("modal material has a real origin, exit drops controls immediately and focu
     ),
   ).toHaveCount(0);
   await expect(
-    page.locator('.fy-control-dialog[data-motion-phase="exit"] button'),
+    page.locator('.fy-control-dialog[data-motion-phase="exit"] footer button'),
   ).toHaveCount(0);
   await expect(dialog).toHaveCount(0);
   await expect(trigger).toBeFocused();
@@ -245,7 +238,7 @@ test("reduced motion disables press travel without disabling native buttons", as
 
 test("a conditional editor gets a fresh form on programmatic rapid reopen while its previous material exits", async ({
   page,
-}) => {
+}, info) => {
   await installRichTauriFeatureFixture(page);
   const health = monitorPageHealth(page);
   await openV2Page(page, "/mcp");
@@ -256,6 +249,32 @@ test("a conditional editor gets a fresh form on programmatic rapid reopen while 
     node.setAttribute("data-test-reopen-source", "true"),
   );
   await trigger.click();
+  await info.attach("source-geometry", {
+    body: JSON.stringify(
+      await page
+        .locator('[data-test-reopen-source="true"]')
+        .evaluate((node) => {
+          const parents = [];
+          for (
+            let element: Element | null = node;
+            element;
+            element = element.parentElement
+          ) {
+            const style = getComputedStyle(element);
+            const rect = element.getBoundingClientRect();
+            parents.push({
+              className: element.className,
+              rect: rect.toJSON(),
+              overflow: [style.overflowX, style.overflowY],
+              opacity: style.opacity,
+              visibility: style.visibility,
+            });
+          }
+          return parents;
+        }),
+    ),
+    contentType: "application/json",
+  });
   const dialog = page.locator('.fy-control-dialog[data-motion-phase="open"]');
   await expect(dialog).toHaveAttribute("data-motion-origin", "trigger");
   await dialog
