@@ -1,0 +1,4 @@
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Full visual and composited contrast evidence"}
+{"file":".trellis/spec/frontend/surfaces-responsive.md","reason":"Four viewports, narrow panes and reduced transparency"}
+{"file":".trellis/tasks/09-06-frontend-experience-round5/research/audit.md","reason":"Before-change visual and performance baseline"}
+

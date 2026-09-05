@@ -1,0 +1,29 @@
+{
+  "id": "frontend-experience-round5",
+  "name": "frontend-experience-round5",
+  "title": "第五轮明亮玻璃与连续交互体验整合",
+  "description": "保留既有布局与业务流程，整合清亮色彩、受控玻璃材质、来源外壳与内容交接及性能验收",
+  "status": "planning",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P1",
+  "creator": "pythonrust",
+  "assignee": "pythonrust",
+  "createdAt": "2026-09-06",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "09-06-frontend-luminous-materials",
+    "09-06-frontend-presentation-choreography"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

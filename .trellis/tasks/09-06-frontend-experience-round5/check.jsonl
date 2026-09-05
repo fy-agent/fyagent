@@ -1,0 +1,4 @@
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Actual measurements, full gates and evidence limits"}
+{"file":".trellis/spec/frontend/v2-navigation.md","reason":"No regression to route identity, hidden-page isolation or blockers"}
+{"file":".trellis/tasks/09-06-frontend-experience-round5/research/audit.md","reason":"Separate verified baseline from proposed improvements"}
+

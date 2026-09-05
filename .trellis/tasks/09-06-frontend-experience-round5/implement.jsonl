@@ -1,0 +1,6 @@
+{"file":".trellis/spec/frontend/reuse.md","reason":"Single shared owners and no duplicate animation or optical engine"}
+{"file":".trellis/spec/frontend/motion-system.md","reason":"Existing explicit origins, sensitive teardown and focus/presence guarantees"}
+{"file":".trellis/spec/frontend/surfaces-responsive.md","reason":"Paired palette, glass adapter and container fallbacks"}
+{"file":".trellis/tasks/09-06-frontend-experience-round5/research/sources.md","reason":"Primary-source material and animation compatibility decisions"}
+{"file":".trellis/tasks/09-06-frontend-experience-round5/research/desktop-choreography.md","reason":"Verified desktop timing and safe adaptation boundary"}
+
