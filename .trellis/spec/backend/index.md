@@ -24,55 +24,56 @@ error matrices, tests, paths, and security rules belong in the linked owner.
 
 ## Core architecture and repository infrastructure
 
-| Contract | Owns |
-| --- | --- |
-| [Rust Host Modular Boundaries](./modular-boundaries.md) | Module responsibilities, dependency direction, command/service/platform separation, and top-level composition. |
-| [Backend Reuse](./reuse.md) | Existing-owner, adopted-dependency, open-source, adapter, and bespoke implementation order. |
-| [Development Environment](./development-environment.md) | Toolchain authority, bootstrap, host support, locks, optional macOS Windows-MSVC diagnostics, and environment verification. |
-| [Optional Codex Development Hooks](./development-hooks.md) | Optional Codex hook files, timeout/failure behavior, and Trellis-version ownership. |
-| [Repository Task Runner](./task-runner-contract.md) | Public `mise run` API, effects, parameter transport, host guards, mutation policy, and platform diagnostics. |
-| [Database Persistence](./database-persistence.md) | SQLite path, schema version, startup lifecycle, migrations, import/backup/restore, DAO placement, and transactional boundaries. |
-| [Application Identity](./application-identity.md) | Product names, identifiers, license/provenance identity, and migration boundaries. |
-| [Application Brand Assets](./application-brand-assets.md) | Canonical icons, asset derivation, platform packaging, and byte-level validation. |
-| [Application Version and Installer Assets](./fyagent-version-contract.md) | Canonical version source, package versions, and installer filename contract. |
-| [Main Window Layout](./main-window-layout.md) | Native geometry, maximize/work-area behavior, and renderer chrome boundary. |
+| Contract                                                                  | Owns                                                                                                                            |
+| ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| [Rust Host Modular Boundaries](./modular-boundaries.md)                   | Module responsibilities, dependency direction, command/service/platform separation, and top-level composition.                  |
+| [Backend Reuse](./reuse.md)                                               | Existing-owner, adopted-dependency, open-source, adapter, and bespoke implementation order.                                     |
+| [Development Environment](./development-environment.md)                   | Toolchain authority, bootstrap, host support, locks, optional macOS Windows-MSVC diagnostics, and environment verification.     |
+| [Optional Codex Development Hooks](./development-hooks.md)                | Optional Codex hook files, timeout/failure behavior, and Trellis-version ownership.                                             |
+| [Repository Task Runner](./task-runner-contract.md)                       | Public `mise run` API, effects, parameter transport, host guards, mutation policy, and platform diagnostics.                    |
+| [Database Persistence](./database-persistence.md)                         | SQLite path, schema version, startup lifecycle, migrations, import/backup/restore, DAO placement, and transactional boundaries. |
+| [Automatic Cloud Sync Scheduling](./auto-sync.md)                         | Injected database hints, independent S3/WebDAV workers, bounded debounce, suppression, and upload lifecycle.                    |
+| [Application Identity](./application-identity.md)                         | Product names, identifiers, license/provenance identity, and migration boundaries.                                              |
+| [Application Brand Assets](./application-brand-assets.md)                 | Canonical icons, asset derivation, platform packaging, and byte-level validation.                                               |
+| [Application Version and Installer Assets](./fyagent-version-contract.md) | Canonical version source, package versions, and installer filename contract.                                                    |
+| [Main Window Layout](./main-window-layout.md)                             | Native geometry, maximize/work-area behavior, and renderer chrome boundary.                                                     |
 
 ## Product, configuration, and runtime security
 
-| Contract | Owns |
-| --- | --- |
-| [SecretRef Native Backend](./secretref-backend.md) | Secret storage, opaque references, DTO redaction, and native evidence. |
-| [Managed Auth Core](./managed-auth.md) | Account metadata, Credential Sessions, SecretRef vault admission, JSON migration, refresh ownership, and Proxy token resolution. |
-| [Managed Auth Login](./managed-auth-login.md) | Backend login sessions, OpenAI browser/Device Code, xAI Device Code, cancellation, reopen, and grant admission. |
-| [Managed Auth Consumers](./managed-auth-consumers.md) | Codex/Grok/OpenCode connection observation, native projection gates, readback, ownership transfer, and restart evidence. |
-| [Deep-Link Import Security](./deeplink-import-security.md) | Untrusted deep-link parsing, confirmation, import capabilities, and side-effect limits. |
-| [Change Plan Typed Executor](./change-plan-executor.md) | Typed plans, idempotency, execution phases, compensation, and partial results. |
-| [Codex Provider Configuration](./codex-provider-configuration.md) | Codex provider/auth projection, writer serialization, backup, rollback, and readback. |
-| [One-click Executable Software Installer](./codex-desktop-installer.md) | Codex desktop discovery/install/update, PackageBridge/helper, signing, and transaction safety. |
-| [Codex Session Usage Sync](./codex-session-usage.md) | Codex JSONL usage import, typed deferred reasons, retry/fingerprint separation, and bounded logging. |
-| [WorkBuddy Configuration](./workbuddy-configuration.md) | Revisioned WorkBuddy model/config writes, overwrite capabilities, backup, and reread. |
-| [External Agent Catalog and Runtime](./external-agent-catalog-runtime.md) | Static Agent catalog, capability/evidence projection, runtime observation, trusted launch, and ACL. |
-| [External Agent Lifecycle](./external-agent-lifecycle.md) | Readiness, inventory, opaque targets, install/update/launch jobs, source verification, and recovery. |
-| [External Agent Auth](./external-agent-auth.md) | Login/logout/provider observation, Auth sessions, desktop target binding, and handoff semantics. |
-| [QoderWork Hooks Configuration](./qoderwork-hooks.md) | QoderWork Hooks snapshot, revisioned writes, allowed hooks, backup, and reread. |
-| [External Agent Model Integration](./external-agent-models.md) | TRAE model preflight/observation and OpenCode model persistence. |
-| [Skill Management](./skill-management.md) | Skill SSOT, discovery, install/update/uninstall, backups, imports, archive safety, and target assignment. |
-| [MCP Management](./mcp-management.md) | MCP CRUD, validation, import, assignment, database state, and vendor live-file projection. |
-| [Proxy Runtime and Control](./proxy-runtime.md) | Tauri commands, listener lifecycle, takeover, provider switching, crash recovery, and breaker administration. |
-| [Local Proxy Request Pipeline](./local-proxy-pipeline.md) | Listener admission, request routing, permits, provider transforms, retry/streaming, and usage recording. |
+| Contract                                                                  | Owns                                                                                                                             |
+| ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| [SecretRef Native Backend](./secretref-backend.md)                        | Secret storage, opaque references, DTO redaction, and native evidence.                                                           |
+| [Managed Auth Core](./managed-auth.md)                                    | Account metadata, Credential Sessions, SecretRef vault admission, JSON migration, refresh ownership, and Proxy token resolution. |
+| [Managed Auth Login](./managed-auth-login.md)                             | Backend login sessions, OpenAI browser/Device Code, xAI Device Code, cancellation, reopen, and grant admission.                  |
+| [Managed Auth Consumers](./managed-auth-consumers.md)                     | Codex/Grok/OpenCode connection observation, native projection gates, readback, ownership transfer, and restart evidence.         |
+| [Deep-Link Import Security](./deeplink-import-security.md)                | Untrusted deep-link parsing, confirmation, import capabilities, and side-effect limits.                                          |
+| [Change Plan Typed Executor](./change-plan-executor.md)                   | Typed plans, idempotency, execution phases, compensation, and partial results.                                                   |
+| [Codex Provider Configuration](./codex-provider-configuration.md)         | Codex provider/auth projection, writer serialization, backup, rollback, and readback.                                            |
+| [One-click Executable Software Installer](./codex-desktop-installer.md)   | Codex desktop discovery/install/update, PackageBridge/helper, signing, and transaction safety.                                   |
+| [Codex Session Usage Sync](./codex-session-usage.md)                      | Codex JSONL usage import, typed deferred reasons, retry/fingerprint separation, and bounded logging.                             |
+| [WorkBuddy Configuration](./workbuddy-configuration.md)                   | Revisioned WorkBuddy model/config writes, overwrite capabilities, backup, and reread.                                            |
+| [External Agent Catalog and Runtime](./external-agent-catalog-runtime.md) | Static Agent catalog, capability/evidence projection, runtime observation, trusted launch, and ACL.                              |
+| [External Agent Lifecycle](./external-agent-lifecycle.md)                 | Readiness, inventory, opaque targets, install/update/launch jobs, source verification, and recovery.                             |
+| [External Agent Auth](./external-agent-auth.md)                           | Login/logout/provider observation, Auth sessions, desktop target binding, and handoff semantics.                                 |
+| [QoderWork Hooks Configuration](./qoderwork-hooks.md)                     | QoderWork Hooks snapshot, revisioned writes, allowed hooks, backup, and reread.                                                  |
+| [External Agent Model Integration](./external-agent-models.md)            | TRAE model preflight/observation and OpenCode model persistence.                                                                 |
+| [Skill Management](./skill-management.md)                                 | Skill SSOT, discovery, install/update/uninstall, backups, imports, archive safety, and target assignment.                        |
+| [MCP Management](./mcp-management.md)                                     | MCP CRUD, validation, import, assignment, database state, and vendor live-file projection.                                       |
+| [Proxy Runtime and Control](./proxy-runtime.md)                           | Tauri commands, listener lifecycle, takeover, provider switching, crash recovery, and breaker administration.                    |
+| [Local Proxy Request Pipeline](./local-proxy-pipeline.md)                 | Listener admission, request routing, permits, provider transforms, retry/streaming, and usage recording.                         |
 
 ## Native platforms and distribution
 
-| Contract | Owns |
-| --- | --- |
-| [Windows Shell-user Runtime](./windows-runtime-security.md) | Explorer-user authority, per-user paths/HKU, registry masks, single-instance input, COM launch, and helper boundary. |
-| [Windows Installer](./windows-installer.md) | NSIS mechanics, bounded cleanup, signing evidence, uninstall ownership, and native diagnostics. |
-| [macOS Privileged System-Commit Helper](./macos-system-commit.md) | Blessed helper, C ABI, product/slot integers, `MacSystemCommitPort`, and production enablement gates. |
-| [macOS Styled DMG Layout](./macos-dmg-layout.md) | DMG contents, Finder metadata, retries, byte preservation, and layout verification. |
-| [GitHub CI Workflow](./github-ci-workflow.md) | Change classification, domain jobs, required aggregation, runner/toolchain evidence, and failure semantics. |
-| [GitHub Release Workflow](./github-release-workflow.md) | Release identity, native builds, signing/notarization, assets, attestation, draft recovery, and publication. |
-| [GitHub Merge Governance](./github-merge-governance.md) | Merge Queue, merge method, task/spec lifecycle, and merge-readiness governance. |
-| [CC Switch Upstream Synchronization](./upstream-sync.md) | Immutable upstream identity, ancestry-preserving merge, conflict precedence, and provenance handoff. |
+| Contract                                                          | Owns                                                                                                                 |
+| ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| [Windows Shell-user Runtime](./windows-runtime-security.md)       | Explorer-user authority, per-user paths/HKU, registry masks, single-instance input, COM launch, and helper boundary. |
+| [Windows Installer](./windows-installer.md)                       | NSIS mechanics, bounded cleanup, signing evidence, uninstall ownership, and native diagnostics.                      |
+| [macOS Privileged System-Commit Helper](./macos-system-commit.md) | Blessed helper, C ABI, product/slot integers, `MacSystemCommitPort`, and production enablement gates.                |
+| [macOS Styled DMG Layout](./macos-dmg-layout.md)                  | DMG contents, Finder metadata, retries, byte preservation, and layout verification.                                  |
+| [GitHub CI Workflow](./github-ci-workflow.md)                     | Change classification, domain jobs, required aggregation, runner/toolchain evidence, and failure semantics.          |
+| [GitHub Release Workflow](./github-release-workflow.md)           | Release identity, native builds, signing/notarization, assets, attestation, draft recovery, and publication.         |
+| [GitHub Merge Governance](./github-merge-governance.md)           | Merge Queue, merge method, task/spec lifecycle, and merge-readiness governance.                                      |
+| [CC Switch Upstream Synchronization](./upstream-sync.md)          | Immutable upstream identity, ancestry-preserving merge, conflict precedence, and provenance handoff.                 |
 
 ## Compatibility entry points
 

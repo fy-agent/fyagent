@@ -9,6 +9,39 @@ function read(relativePath: string): string {
 }
 
 describe("Rust modular architecture boundaries", () => {
+  it("keeps sync scheduling out of adapters and cloud consumers out of SQLite", () => {
+    const database = read("src-tauri/src/database/mod.rs");
+    expect(database).toContain("fn set_change_listener");
+    expect(database).not.toMatch(/services::(?:s3|webdav)_auto_sync/u);
+    expect(read("src-tauri/src/lib.rs")).toContain("db.set_change_listener");
+    expect(read("src-tauri/src/services/mod.rs")).toMatch(/^mod auto_sync;$/mu);
+    for (const name of ["s3_auto_sync", "webdav_auto_sync"]) {
+      const source = read(`src-tauri/src/services/${name}.rs`);
+      expect(source).toContain("AUTO_SYNC.start(");
+      expect(source).not.toMatch(
+        /tokio::(?:sync|time)|AtomicUsize|OnceLock|crate::commands::/u,
+      );
+    }
+  });
+
+  it("requires mature version parsing and one private MCP document owner", () => {
+    const versions = read("src-tauri/src/services/tooling/versions.rs");
+    expect(versions).toContain("semver::Version::parse");
+    expect(versions).toContain("cmp_precedence");
+    expect(versions).not.toMatch(/fn parse_semver/u);
+    expect(read("src-tauri/src/mcp/mod.rs")).toMatch(/^mod json_document;$/mu);
+    for (const name of ["workbuddy", "qoderwork", "traework"]) {
+      const source = read(`src-tauri/src/mcp/${name}.rs`).split(
+        "#[cfg(test)]\nmod tests",
+      )[0];
+      expect(source).toContain("super::json_document::");
+      expect(source).toContain("write_servers(");
+      expect(source).not.toMatch(
+        /serde_json::(?:from_str|to_string_pretty)|atomic_write\(|object\.remove\(/u,
+      );
+    }
+  });
+
   it("keeps service implementation modules crate-scoped", () => {
     const services = read("src-tauri/src/services/mod.rs");
     const declarations = [
@@ -75,7 +108,9 @@ describe("Rust modular architecture boundaries", () => {
       "open_provider_terminal",
     ]);
     expect(services).toContain("pub(crate) mod tooling;");
-    for (const implementationMarker of ["ELEVATED_WINDOWS_CLI_BOUNDARY_MESSAGE"]) {
+    for (const implementationMarker of [
+      "ELEVATED_WINDOWS_CLI_BOUNDARY_MESSAGE",
+    ]) {
       expect(toolingCommands).not.toContain(implementationMarker);
       expect(toolingService).toContain(implementationMarker);
     }
@@ -164,7 +199,9 @@ describe("Rust modular architecture boundaries", () => {
     expect(codex).toContain("mod storage;");
     expect(codexCatalog).toContain("CODEX_MODEL_CATALOG_TEMPLATE_CACHE");
     expect(codexCatalog).toContain("fn codex_model_catalog_from_settings");
-    expect(codexCatalog).toContain("fn prepare_codex_config_text_with_model_catalog");
+    expect(codexCatalog).toContain(
+      "fn prepare_codex_config_text_with_model_catalog",
+    );
     expect(codex).not.toMatch(/\bfn codex_model_catalog_from_settings\b/u);
     expect(codex).not.toMatch(
       /\bfn prepare_codex_config_text_with_model_catalog\b/u,

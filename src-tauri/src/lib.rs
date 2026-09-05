@@ -1622,6 +1622,10 @@ pub fn run() {
             }
 
             let _tray = tray_builder.build(app)?;
+            app_state.db.set_change_listener(|table| {
+                crate::services::webdav_auto_sync::notify_db_changed(table);
+                crate::services::s3_auto_sync::notify_db_changed(table);
+            })?;
             crate::services::webdav_auto_sync::start_worker(
                 app_state.db.clone(),
                 app.handle().clone(),

@@ -1,0 +1,8 @@
+{"file":".trellis/spec/backend/modular-boundaries.md","reason":"Native command/service/database dependency direction"}
+{"file":".trellis/spec/backend/reuse.md","reason":"Adopted crates and shared owner policy"}
+{"file":".trellis/spec/backend/auto-sync.md","reason":"Shared bounded scheduler and isolated suppression contract"}
+{"file":".trellis/spec/backend/database-persistence.md","reason":"SQLite hook and lifecycle invariants"}
+{"file":".trellis/spec/backend/mcp-management.md","reason":"Vendor projection and backup invariants"}
+{"file":".trellis/spec/frontend/v2-models.md","reason":"Change Plan and secret-state contracts"}
+{"file":".trellis/spec/frontend/state-management.md","reason":"Query ownership and persistent visibility"}
+{"file":".trellis/tasks/09-05-architecture-debt-reuse/research/audit.md","reason":"Primary-source choices and scope evidence"}

@@ -81,19 +81,27 @@ pub struct Database {
     pub(crate) conn: Mutex<Connection>,
 }
 
-fn register_db_change_hook(conn: &Connection) {
-    conn.update_hook(Some(
-        |action: Action, _database: &str, table: &str, _row_id: i64| match action {
-            Action::SQLITE_INSERT | Action::SQLITE_UPDATE | Action::SQLITE_DELETE => {
-                crate::services::webdav_auto_sync::notify_db_changed(table);
-                crate::services::s3_auto_sync::notify_db_changed(table);
-            }
-            _ => {}
-        },
-    ));
-}
-
 impl Database {
+    /// Install the composition root's nonblocking change listener.
+    /// This is a dirty hint, not a commit notification; never reenter this DB in the callback.
+    pub(crate) fn set_change_listener(
+        &self,
+        listener: impl Fn(&str) + Send + 'static,
+    ) -> Result<(), AppError> {
+        let conn = lock_conn!(self.conn);
+        conn.update_hook(Some(
+            move |action: Action, _database: &str, table: &str, _row_id: i64| {
+                if matches!(
+                    action,
+                    Action::SQLITE_INSERT | Action::SQLITE_UPDATE | Action::SQLITE_DELETE
+                ) {
+                    listener(table);
+                }
+            },
+        ));
+        Ok(())
+    }
+
     /// 初始化数据库连接并创建表
     ///
     /// 数据库文件位于 `~/.fyagent/fyagent.db`
@@ -117,8 +125,6 @@ impl Database {
             conn.execute("PRAGMA auto_vacuum = INCREMENTAL;", [])
                 .map_err(|e| AppError::Database(e.to_string()))?;
         }
-        register_db_change_hook(&conn);
-
         let db = Self {
             conn: Mutex::new(conn),
         };
@@ -191,8 +197,6 @@ impl Database {
             .map_err(|e| AppError::Database(e.to_string()))?;
         conn.execute("PRAGMA auto_vacuum = INCREMENTAL;", [])
             .map_err(|e| AppError::Database(e.to_string()))?;
-        register_db_change_hook(&conn);
-
         let db = Self {
             conn: Mutex::new(conn),
         };

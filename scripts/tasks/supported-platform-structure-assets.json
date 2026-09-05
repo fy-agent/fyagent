@@ -51,7 +51,7 @@
     ],
     [
       "src-tauri/Cargo.toml",
-      "9e6595b7f55d5ec2f2cbab64f57ac077165baaf306cfda7824ce05c7021336a9"
+      "f1a1ecf19e8546fa15694b912c1949b5ee2326fd8b5956edcb56d3731f006648"
     ],
     [
       "src-tauri/src/agent_install/desktop.rs",
@@ -159,7 +159,7 @@
     ],
     [
       "src-tauri/src/lib.rs",
-      "51585225fe7b8b21063b9cd900316b911f0c79e74c6b7ead4df1e9eb13d709a5"
+      "d79759545271861d4ffc82ff9637ff2e27b11f954a57c49b5c4220a7ad98c88b"
     ],
     [
       "src-tauri/src/lightweight.rs",
@@ -179,7 +179,7 @@
     ],
     [
       "src-tauri/src/mcp/traework.rs",
-      "6663adfc080a2df15d15eb360afa791e5b61808817abc590c6d69cb83b7d61a9"
+      "b59906679e7b89354997fe186c80443ae0a10d64ed76142572538cff1a053a32"
     ],
     [
       "src-tauri/src/opencode_config.rs",
@@ -283,7 +283,7 @@
     ],
     [
       "src-tauri/src/services/tooling/versions.rs",
-      "1546e8411e9fb3bbc5ca0a779ad61a5b9f71b88014b8d333bfbe857e2d060051"
+      "2347eeef354cd9a09008646fc635151de9ececeacbad2c981d89a5970cca2e48"
     ],
     [
       "src-tauri/src/services/traework_models.rs",
@@ -391,7 +391,7 @@
     ],
     [
       "tests/architecture/rustModuleBoundaries.test.ts",
-      "33d71c723e7816c450e5efee2e4f60d3eaa47b8ecb48f37fc7ea8640f065e8c7"
+      "585e9d2903ad568ef129c665116f95858c778167b9b89ffdf9a1c45a99c182ce"
     ],
     [
       "tests/codexUserHelperContract.test.ts",

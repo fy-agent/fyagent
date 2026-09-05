@@ -16,6 +16,7 @@ mod codex;
 mod gemini;
 mod grokbuild;
 mod hermes;
+mod json_document;
 mod opencode;
 mod qoderwork;
 mod traework;

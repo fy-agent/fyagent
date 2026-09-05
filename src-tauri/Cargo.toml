@@ -34,6 +34,7 @@ tauri-build = { version = "2.4.0", features = [] }
 [dependencies]
 serde_json = { version = "1.0", features = ["preserve_order"] }
 serde = { version = "1.0", features = ["derive"] }
+semver = "1.0"
 log = "0.4"
 chrono = { version = "0.4", features = ["serde"] }
 tauri = { version = "2.8.2", features = ["tray-icon", "protocol-asset", "image-png"] }
@@ -170,3 +171,4 @@ strip = "symbols"
 [dev-dependencies]
 serial_test = "3"
 tempfile = "3"
+tokio = { version = "1", features = ["test-util"] }

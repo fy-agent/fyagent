@@ -117,53 +117,11 @@ fn npm_prerelease_tags(tool: &str) -> &'static [&'static str] {
     }
 }
 
-fn parse_semver(v: &str) -> Option<([u64; 3], Vec<String>)> {
-    let core_and_pre = v.trim().split('+').next().unwrap_or("");
-    let (core, pre) = match core_and_pre.split_once('-') {
-        Some((c, p)) => (c, Some(p)),
-        None => (core_and_pre, None),
-    };
-    let mut parts = core.split('.');
-    let major = parts.next()?.parse::<u64>().ok()?;
-    let minor = parts.next()?.parse::<u64>().ok()?;
-    let patch = parts.next()?.parse::<u64>().ok()?;
-    if parts.next().is_some() {
-        return None;
-    }
-    let pre_segments = pre
-        .map(|p| p.split('.').map(|s| s.to_string()).collect())
-        .unwrap_or_default();
-    Some(([major, minor, patch], pre_segments))
-}
-
 pub(super) fn compare_semver(a: &str, b: &str) -> Option<std::cmp::Ordering> {
-    use std::cmp::Ordering;
-    let (ac, ap) = parse_semver(a)?;
-    let (bc, bp) = parse_semver(b)?;
-    for i in 0..3 {
-        match ac[i].cmp(&bc[i]) {
-            Ordering::Equal => continue,
-            other => return Some(other),
-        }
-    }
-    match (ap.is_empty(), bp.is_empty()) {
-        (true, true) => return Some(Ordering::Equal),
-        (true, false) => return Some(Ordering::Greater),
-        (false, true) => return Some(Ordering::Less),
-        (false, false) => {}
-    }
-    for (x, y) in ap.iter().zip(bp.iter()) {
-        let ord = match (x.parse::<u64>(), y.parse::<u64>()) {
-            (Ok(xv), Ok(yv)) => xv.cmp(&yv),
-            (Ok(_), Err(_)) => Ordering::Less,
-            (Err(_), Ok(_)) => Ordering::Greater,
-            (Err(_), Err(_)) => x.as_str().cmp(y.as_str()),
-        };
-        if ord != Ordering::Equal {
-            return Some(ord);
-        }
-    }
-    Some(ap.len().cmp(&bp.len()))
+    let a = semver::Version::parse(a.trim()).ok()?;
+    let b = semver::Version::parse(b.trim()).ok()?;
+    // Version's total ordering includes build metadata; upgrade precedence must not.
+    Some(a.cmp_precedence(&b))
 }
 
 pub(super) fn pick_latest_version(
@@ -298,6 +256,53 @@ pub(super) fn extract_version(raw: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn semver_precedence_matches_the_standard_and_ignores_build_metadata() {
+        use std::cmp::Ordering;
+        let versions = [
+            "1.0.0-alpha",
+            "1.0.0-alpha.1",
+            "1.0.0-alpha.beta",
+            "1.0.0-beta",
+            "1.0.0-beta.2",
+            "1.0.0-beta.11",
+            "1.0.0-rc.1",
+            "1.0.0",
+        ];
+        for pair in versions.windows(2) {
+            assert_eq!(compare_semver(pair[0], pair[1]), Some(Ordering::Less));
+            assert_eq!(compare_semver(pair[1], pair[0]), Some(Ordering::Greater));
+        }
+        assert_eq!(
+            compare_semver(" 1.2.3+build.9 ", "1.2.3+build.1"),
+            Some(Ordering::Equal)
+        );
+        assert_eq!(
+            compare_semver("1.0.0-99999999999999999999", "1.0.0-100000000000000000000"),
+            Some(Ordering::Less)
+        );
+    }
+
+    #[test]
+    fn semver_rejects_invalid_versions_in_either_operand() {
+        for invalid in [
+            "",
+            "1.0",
+            "1.2.3.4",
+            "01.2.3",
+            "1.2.3-",
+            "1.2.3+",
+            "1.2.3-01",
+            "1.2.3-a..b",
+            "1.2.3-a_b",
+            "1.2.3+bad+metadata",
+            "v1.2.3",
+        ] {
+            assert_eq!(compare_semver(invalid, "1.2.3"), None, "{invalid}");
+            assert_eq!(compare_semver("1.2.3", invalid), None, "{invalid}");
+        }
+    }
 
     #[test]
     fn github_latest_tag_parser_is_fixed_repo_and_rejects_drafts() {

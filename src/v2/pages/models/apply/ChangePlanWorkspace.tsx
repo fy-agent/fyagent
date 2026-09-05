@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import type {
-  ChangeJobSnapshot,
   ChangePlan,
   ChangePlanErrorCode,
 } from "../../../shared/features/change-plans";
@@ -10,11 +9,8 @@ import { useRecoverableChangeJobs } from "../../../shared/features/queries";
 import type { ProviderSummaryMap } from "../../../shared/features/types";
 import { Button, InlineNotice } from "../../../shared/ui/primitives";
 import { ApplyWorkspace } from "./ApplyWorkspace";
-import {
-  changePlanErrorCode,
-  isActiveJobStatus,
-  JOB_REFRESH_INTERVAL_MS,
-} from "./changePlanErrors";
+import { changePlanErrorCode } from "./changePlanErrors";
+import { useChangeJob } from "./useChangeJob";
 
 export function ChangePlanWorkspace({
   active,
@@ -33,13 +29,25 @@ export function ChangePlanWorkspace({
   );
   const [targetId, setTargetId] = useState("");
   const [plan, setPlan] = useState<ChangePlan | null>(null);
-  const [job, setJob] = useState<ChangeJobSnapshot | null>(null);
   const [error, setError] = useState<{
     code: ChangePlanErrorCode;
     message?: string;
   } | null>(null);
   const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
   const requestRevision = useRef(0);
+  const {
+    job,
+    error: readError,
+    setJob,
+  } = useChangeJob(ports.changePlans, active && !busy);
+  const displayError = error ?? readError;
+  useEffect(
+    () => () => {
+      requestRevision.current += 1;
+    },
+    [],
+  );
   const recoverableJobs = useRecoverableChangeJobs(active);
   const effectiveTargetId = targets.some((target) => target.id === targetId)
     ? targetId
@@ -57,7 +65,8 @@ export function ChangePlanWorkspace({
   };
 
   const createPlan = async () => {
-    if (!effectiveTargetId || busy) return;
+    if (!active || !effectiveTargetId || busyRef.current) return;
+    busyRef.current = true;
     const revision = ++requestRevision.current;
     setBusy(true);
     setPlan(null);
@@ -73,7 +82,10 @@ export function ChangePlanWorkspace({
       if (requestRevision.current === revision)
         setError({ code: changePlanErrorCode(cause) });
     } finally {
-      if (requestRevision.current === revision) setBusy(false);
+      if (requestRevision.current === revision) {
+        busyRef.current = false;
+        setBusy(false);
+      }
     }
   };
 
@@ -81,7 +93,8 @@ export function ChangePlanWorkspace({
     readonly planId: string;
     readonly planDigest: string;
   }) => {
-    if (busy) return;
+    if (!active || busyRef.current) return;
+    busyRef.current = true;
     const revision = ++requestRevision.current;
     setBusy(true);
     setError(null);
@@ -104,34 +117,12 @@ export function ChangePlanWorkspace({
       if (requestRevision.current === revision)
         setError({ code: changePlanErrorCode(cause) });
     } finally {
-      if (requestRevision.current === revision) setBusy(false);
+      if (requestRevision.current === revision) {
+        busyRef.current = false;
+        setBusy(false);
+      }
     }
   };
-
-  useEffect(() => {
-    const jobId = visibleJob?.jobId;
-    const status = visibleJob?.status;
-    if (busy || !jobId || !status || !isActiveJobStatus(status)) return;
-    const revision = requestRevision.current;
-    let disposed = false;
-    const timer = window.setInterval(() => {
-      void (async () => {
-        try {
-          const refreshed = await ports.changePlans.getChangeJob(jobId);
-          if (disposed || requestRevision.current !== revision) return;
-          setJob(refreshed);
-        } catch (cause) {
-          if (disposed || requestRevision.current !== revision) return;
-          setError({ code: changePlanErrorCode(cause) });
-          window.clearInterval(timer);
-        }
-      })();
-    }, JOB_REFRESH_INTERVAL_MS);
-    return () => {
-      disposed = true;
-      window.clearInterval(timer);
-    };
-  }, [busy, ports.changePlans, visibleJob?.jobId, visibleJob?.status]);
 
   return (
     <section className="fy-models-section" aria-label="切换 Provider">
@@ -172,16 +163,17 @@ export function ChangePlanWorkspace({
         <InlineNotice tone="info">没有可切换的已保存 Provider。</InlineNotice>
       )}
 
-      {visiblePlan || visibleJob || error ? (
+      {visiblePlan || visibleJob || displayError ? (
         <ApplyWorkspace
           plan={visiblePlan}
           job={visibleJob}
           busy={busy}
-          error={error}
+          error={displayError}
           onConfirm={applyPlan}
           onRegenerate={() => void createPlan()}
           onClose={() => {
             requestRevision.current += 1;
+            busyRef.current = false;
             setPlan(null);
             setJob(null);
             setError(null);

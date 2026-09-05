@@ -29,6 +29,8 @@ Important entry points are:
 ```text
 Database::init() -> Result<Database, AppError>
 Database::memory() -> Result<Database, AppError>
+Database::set_change_listener(listener: impl Fn(&str) + Send + 'static)
+  -> Result<(), AppError> // crate-private; composition-root wiring
 Database::stored_user_version_exceeds_supported(path)
   -> Result<Option<i32>, AppError>
 
@@ -56,15 +58,18 @@ constraints, hooks, or error mapping.
 ### Initialization and connection ownership
 
 - `Database::init` creates the application directory, opens only
-  `fyagent.db`, enables `PRAGMA foreign_keys = ON`, registers the database
-  change hook, creates the current table set, then applies ordered migrations.
+  `fyagent.db`, enables `PRAGMA foreign_keys = ON`, creates the current table
+  set, then applies ordered migrations. It does not install a global service
+  listener. The production composition root injects its change listener before
+  starting automatic sync workers; registration failure aborts before spawning.
 - A brand-new file selects incremental auto-vacuum before tables are created.
   An existing non-incremental database may be backed up and rebuilt with
   `VACUUM`; failure to establish the requested mode is logged as maintenance
   degradation rather than reinterpreted as a successful rebuild.
 - `Database::memory` provides the production schema and required seeds in an
   in-memory connection for tests. It must not silently omit constraints that
-  production DAO code relies on.
+  production DAO code relies on. It has no process-global cloud notification
+  side effects; tests that observe writes explicitly inject a listener.
 - Mutex poisoning and SQLite failures become `AppError`; production code must
   not use `unwrap` to acquire the shared connection or serialize persisted
   JSON.
@@ -97,8 +102,14 @@ constraints, hooks, or error mapping.
 - Multi-row or cross-table invariants are committed in one transaction. A
   caller must not reproduce DAO SQL in a command/service to gain a second
   mutation path.
-- Insert, update, and delete hooks notify both WebDAV and S3 auto-sync owners.
-  Notifications are post-SQLite change hints, not a remote-commit guarantee.
+- Insert, update, and delete hooks invoke the connection-local listener injected
+  by `set_change_listener`. The callback runs under the connection lock and must
+  not block or reenter the database. The composition root alone fans hints out
+  to WebDAV/S3; database modules must not import these service consumers.
+- Notifications are SQLite change hints, not commit or remote-sync guarantees.
+  A write later rolled back can still notify. Replacing a listener replaces the
+  prior connection callback. Batching, allowlisted tables, and import suppression
+  are owned by [Automatic Cloud Sync Scheduling](./auto-sync.md).
 - Tables, indexes, foreign keys, uniqueness constraints, and CHECK clauses are
   part of the public persistence contract. A Rust enum/DTO change is incomplete
   until stored legacy values and schema constraints have a deliberate decode or
@@ -135,18 +146,20 @@ constraints, hooks, or error mapping.
 
 ## 4. Validation & Error Matrix
 
-| Condition | Required result |
-| --- | --- |
-| stored `user_version` is newer than `SCHEMA_VERSION` | Fail closed and report the stored version; no downgrade or destructive reset. |
-| a migration step or version update fails | Roll back the migration boundary; do not expose a partially current schema. |
-| JSON migration fails after some domain rows | Roll back the whole JSON migration transaction. |
-| dry-run is requested | Validate against an in-memory current schema; write no application database or backup. |
-| imported SQL has the wrong header, unsafe authorization action, unsupported trigger, or invalid schema | Reject before replacing the main database. |
-| SQL/binary restore fails after safety preparation | Keep or restore the prior main database as defined by the SQLite backup transaction; surface an error, never success. |
-| backup filename contains path components or resolves outside the backup directory | Reject the request. |
-| sync payload contains rows for local-only tables | Omit them on export and preserve the local snapshot on import. |
-| a DAO write succeeds | Emit database-change hints for the changed table; do not claim remote sync has completed. |
-| cleanup, pricing-file sync, or incremental vacuum fails during otherwise valid startup | Log the bounded maintenance failure without fabricating completion; preserve the authoritative database. |
+| Condition                                                                                              | Required result                                                                                                       |
+| ------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
+| stored `user_version` is newer than `SCHEMA_VERSION`                                                   | Fail closed and report the stored version; no downgrade or destructive reset.                                         |
+| a migration step or version update fails                                                               | Roll back the migration boundary; do not expose a partially current schema.                                           |
+| JSON migration fails after some domain rows                                                            | Roll back the whole JSON migration transaction.                                                                       |
+| dry-run is requested                                                                                   | Validate against an in-memory current schema; write no application database or backup.                                |
+| imported SQL has the wrong header, unsafe authorization action, unsupported trigger, or invalid schema | Reject before replacing the main database.                                                                            |
+| SQL/binary restore fails after safety preparation                                                      | Keep or restore the prior main database as defined by the SQLite backup transaction; surface an error, never success. |
+| backup filename contains path components or resolves outside the backup directory                      | Reject the request.                                                                                                   |
+| sync payload contains rows for local-only tables                                                       | Omit them on export and preserve the local snapshot on import.                                                        |
+| a DAO write succeeds                                                                                   | Emit database-change hints for the changed table; do not claim remote sync has completed.                             |
+| a transaction changes rows then rolls back                                                             | A listener may already have received dirty hints; do not treat those as commit events.                                |
+| a memory database has no injected listener                                                             | No global cloud notification is emitted.                                                                              |
+| cleanup, pricing-file sync, or incremental vacuum fails during otherwise valid startup                 | Log the bounded maintenance failure without fabricating completion; preserve the authoritative database.              |
 
 ## 5. Good / Base / Bad Cases
 
@@ -172,7 +185,8 @@ constraints, hooks, or error mapping.
 - JSON migration tests prove all-domain atomicity and disk-free dry-run.
 - DAO tests cover uniqueness/foreign-key/CHECK failures, transaction rollback,
   concurrent access through the shared owner, and database-change hints where
-  observable.
+  observable. Listener tests assert connection isolation, replacement,
+  INSERT/UPDATE/DELETE, and hints for rolled-back writes.
 - SQL import/export tests cover genuine and legacy supported exports, wrong
   product header, ATTACH/cross-file statements, persistent triggers, malformed
   late statements, exact main-database preservation, and sync skip/preserve
@@ -191,6 +205,7 @@ Wrong:
 open fyagent.db directly in a service
 execute imported SQL against the live connection
 advance PRAGMA user_version without the matching predecessor fixture/migration
+import cloud service consumers into the SQLite update hook
 ```
 
 Correct:
@@ -199,4 +214,5 @@ Correct:
 service -> Database DAO -> one checked transaction
 untrusted SQL -> validate/authorize temp DB -> safety backup -> SQLite copy
 schema change -> fresh schema + ordered forward migration + rollback fixtures
+composition root -> inject connection-local nonblocking dirty-hint listener
 ```

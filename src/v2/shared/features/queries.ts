@@ -19,6 +19,8 @@ function useVisibleEnabled(enabled = true): boolean {
   return enabled && visible;
 }
 
+const changeJobsKey = ["v2", "change-plans", "job"] as const;
+
 export const featureKeys = {
   agentCatalog: ["v2", "agents", "catalog"] as const,
   managedAuthOverview: ["v2", "managed-auth", "overview"] as const,
@@ -29,6 +31,8 @@ export const featureKeys = {
   agentInstallationInventory: (agentId: AgentCatalogId) =>
     ["v2", "agents", agentId, "installation-inventory"] as const,
   recoverableChangeJobs: ["v2", "change-plans", "recoverable"] as const,
+  changeJobs: changeJobsKey,
+  changeJob: (jobId: string | null) => [...changeJobsKey, jobId] as const,
   providerSummary: (app: ProviderAppId) =>
     ["v2", "providers", app, "summary"] as const,
   workbuddyStatus: ["v2", "workbuddy", "status"] as const,

@@ -12,7 +12,8 @@ Primary owners are:
 - `src-tauri/src/services/mcp.rs` for CRUD, assignment ordering, locking,
   import, and multi-target synchronization;
 - `src-tauri/src/mcp/**` for target-specific parse/write/remove adapters and
-  shared server-spec validation;
+  shared server-spec validation; private `mcp/json_document.rs` owns the common
+  QoderWork/TRAE Work/WorkBuddy JSON document read/backup/write mechanics;
 - `src-tauri/src/database/dao/mcp.rs` for the durable row and nine assignment
   flags;
 - `src-tauri/src/commands/traework.rs` and
@@ -149,6 +150,21 @@ the unified commands.
 - QoderWork, TRAE Work, and WorkBuddy adapters resolve their native roots,
   preserve unrelated entries, create the adapter-owned backup where specified,
   and skip creating a brand-new vendor file when the product/root is absent.
+  They delegate `mcpServers` JSON mechanics to private `json_document` rather
+  than copying parsers or writers. WorkBuddy's hidden-file import fallback and
+  QoderWork's `streamable-http` import normalization remain adapter policy.
+- `json_document::read_servers(path)` preserves existing missing/non-object-map
+  read behavior. `write_servers(path, backup, root_error, servers)` validates the
+  root and every server object before backup or mutation, preserves unrelated
+  root and executable fields, and removes only top-level FyAgent metadata:
+  `enabled`, `source`, `id`, `name`, `description`, `tags`, `homepage`, `docs`.
+  Nested fields with the same names are not metadata and must survive.
+- The common writer uses the existing config reader, `serde_json` pretty
+  serialization, exact-byte backup, and `config::atomic_write`. Preserve JSON
+  key ordering; do not replace it with the generic recursively sorted writer.
+  Invalid JSON/root/server or backup failure must not overwrite the original.
+  This document owner adds no cross-file transaction or symlink guarantee and
+  does not change the unified upsert validation boundary described above.
 - Import parses each supported live source independently and commits a batch
   atomically per target. The same server ID with materially different
   executable specs is not silently merged across sources.
@@ -175,20 +191,21 @@ the unified commands.
 
 ## 4. Validation & Error Matrix
 
-| Condition | Required result |
-| --- | --- |
-| A live-source parse or target projection sees a non-object server, unknown type, missing stdio command, or missing HTTP/SSE URL | Reject at the adapter boundary. If unified upsert already saved the row, return error and treat durable/live state as divergent; do not claim pre-save rejection. |
-| Direct unified upsert has no enabled target | The row can currently be saved without adapter validation. Do not use that success as proof that the spec is executable; a future centralized validator must be introduced deliberately. |
-| Unknown target ID | Reject before lock or mutation. |
-| Upsert cannot remove a newly disabled live entry | Abort before saving the disabled row. |
-| Upsert saves row but an enabled-target projection fails | Return error; durable/live state may differ and requires repair/reread. |
-| Enable toggle writes DB but live projection fails | Return error; do not claim rollback or vendor activation. |
-| Disable live removal fails | Keep the database flag enabled and return error. |
-| Delete cannot remove one owned live entry | Keep the database row and return error for retry. |
-| Imported ID has a materially different executable spec | Keep source conflict explicit; do not merge by ID alone. |
-| One target sync fails during full reconciliation | Attempt independent targets, aggregate failures, and avoid global success. |
-| External validation receives an unsupported Agent | Reject; only qoderwork/trae-work are valid. |
-| Secret env/header value reaches ordinary UI, errors, logs, analytics, copy, export, or preflight result | Security regression. Raw values are permitted only in the explicit existing-server editor/query boundary documented by V2 MCP. |
+| Condition                                                                                                                       | Required result                                                                                                                                                                          |
+| ------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A live-source parse or target projection sees a non-object server, unknown type, missing stdio command, or missing HTTP/SSE URL | Reject at the adapter boundary. If unified upsert already saved the row, return error and treat durable/live state as divergent; do not claim pre-save rejection.                        |
+| Direct unified upsert has no enabled target                                                                                     | The row can currently be saved without adapter validation. Do not use that success as proof that the spec is executable; a future centralized validator must be introduced deliberately. |
+| Unknown target ID                                                                                                               | Reject before lock or mutation.                                                                                                                                                          |
+| Upsert cannot remove a newly disabled live entry                                                                                | Abort before saving the disabled row.                                                                                                                                                    |
+| Upsert saves row but an enabled-target projection fails                                                                         | Return error; durable/live state may differ and requires repair/reread.                                                                                                                  |
+| Enable toggle writes DB but live projection fails                                                                               | Return error; do not claim rollback or vendor activation.                                                                                                                                |
+| Disable live removal fails                                                                                                      | Keep the database flag enabled and return error.                                                                                                                                         |
+| Delete cannot remove one owned live entry                                                                                       | Keep the database row and return error for retry.                                                                                                                                        |
+| Imported ID has a materially different executable spec                                                                          | Keep source conflict explicit; do not merge by ID alone.                                                                                                                                 |
+| Shared JSON projection has an invalid root/server or cannot create the backup                                                   | Return error without overwriting the original file; validation failures also preserve the previous backup.                                                                               |
+| One target sync fails during full reconciliation                                                                                | Attempt independent targets, aggregate failures, and avoid global success.                                                                                                               |
+| External validation receives an unsupported Agent                                                                               | Reject; only qoderwork/trae-work are valid.                                                                                                                                              |
+| Secret env/header value reaches ordinary UI, errors, logs, analytics, copy, export, or preflight result                         | Security regression. Raw values are permitted only in the explicit existing-server editor/query boundary documented by V2 MCP.                                                           |
 
 ## 5. Good / Base / Bad Cases
 
@@ -223,6 +240,10 @@ assertion owners include:
 - `src-tauri/src/mcp/**`: each adapter preserves unrelated entries, maps the
   supported transport correctly, removes only the owned ID, and keeps backup/
   absent-product behavior explicit;
+- `src-tauri/src/mcp/json_document.rs`: exact original backup bytes, unknown and
+  nested executable fields, all eight metadata keys, missing reads, invalid
+  root/entry preservation, and backup failure before write. Architecture tests
+  keep document mechanics private and prevent adapter-local copies;
 - `src-tauri/src/database/dao/mcp.rs`: all nine flags round-trip, missing-row
   updates do not insert, and failed batch import rolls back that target batch;
 - `src-tauri/src/services/traework.rs` and V2 platform tests: external MCP

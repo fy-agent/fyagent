@@ -15,6 +15,8 @@ Primary owners are:
   unsupported/read-only targets;
 - `src/v2/pages/models/quickSetup.ts`, `workBuddyModels.ts`, and the apply
   workspace modules for validation, drafts, preview, apply, and polling;
+- `apply/SavePlanWorkspace.tsx` for the shared Codex/WorkBuddy save controller,
+  and `apply/useChangeJob.ts` for automatic Query-owned job reads;
 - `src/v2/shared/features/models.ts`, `change-plans.ts`, and `ports.ts` for the
   DTOs and five actual Port owners;
 - `src/v2/shared/platform/tauri/feature-ports/models.ts`, `changePlans.ts`, and
@@ -52,8 +54,9 @@ keeps the last valid visible target; absent/invalid input defaults to
 
 ```ts
 interface ProvidersPort {
-  getSummary(app: "claude" | "codex" | "grokbuild"):
-    Promise<ProviderSummaryQueryData>;
+  getSummary(
+    app: "claude" | "codex" | "grokbuild",
+  ): Promise<ProviderSummaryQueryData>;
   applyQuickSetupWithResult(
     request: ProviderQuickSetupRequest,
     app: "claude" | "codex" | "grokbuild",
@@ -66,41 +69,52 @@ interface ProvidersPort {
 interface WorkBuddyPort {
   getStatus(): Promise<WorkBuddyStatus>;
   getModelIds(): Promise<WorkBuddyModelIdsResult>;
-  fetchModels(request: WorkBuddyFetchModelsRequest):
-    Promise<WorkBuddyFetchModelsResult>;
-  saveModels(request: WorkBuddySaveModelsRequest):
-    Promise<WorkBuddySaveModelsResult>;
+  fetchModels(
+    request: WorkBuddyFetchModelsRequest,
+  ): Promise<WorkBuddyFetchModelsResult>;
+  saveModels(
+    request: WorkBuddySaveModelsRequest,
+  ): Promise<WorkBuddySaveModelsResult>;
   checkReachability(baseUrl: string): Promise<ReachabilityResult>;
   checkModel(request: ModelProbeRequest): Promise<ModelProbeResult>;
 }
 
 interface OpenCodeModelsPort {
   getSnapshot(): Promise<OpenCodeModelSnapshot>;
-  fetchProviderModels(request: OpenCodeFetchModelsRequest):
-    Promise<FetchedModelList>;
-  saveModels(request: OpenCodeSaveModelsRequest):
-    Promise<OpenCodeSaveModelsResult>;
+  fetchProviderModels(
+    request: OpenCodeFetchModelsRequest,
+  ): Promise<FetchedModelList>;
+  saveModels(
+    request: OpenCodeSaveModelsRequest,
+  ): Promise<OpenCodeSaveModelsResult>;
   checkReachability(baseUrl: string): Promise<ReachabilityResult>;
   checkModel(request: ModelProbeRequest): Promise<ModelProbeResult>;
 }
 
 interface TraeWorkPort {
-  validateModelConfig(request: TraeWorkModelRequest):
-    Promise<TraeModelValidationResult>;
-  testModelEndpoint(requestId: string, request: TraeWorkModelRequest):
-    Promise<TraeModelProbeResult>;
+  validateModelConfig(
+    request: TraeWorkModelRequest,
+  ): Promise<TraeModelValidationResult>;
+  testModelEndpoint(
+    requestId: string,
+    request: TraeWorkModelRequest,
+  ): Promise<TraeModelProbeResult>;
   cancelModelEndpoint(requestId: string): Promise<CancelTraeModelProbeResult>;
   getModelIds(): Promise<TraeWorkModelIdsResult>;
 }
 
 interface ChangePlansPort {
   createCodexProviderSwitchPlan(targetProviderId: string): Promise<ChangePlan>;
-  createCodexProviderUpsertPlan(request: ProviderQuickSetupRequest):
-    Promise<ChangePlan>;
-  createWorkBuddySavePlan(request: WorkBuddySaveModelsRequest):
-    Promise<ChangePlan>;
-  applyChangePlan(input: { planId: string; planDigest: string }):
-    Promise<ApplyChangePlanOutcome>;
+  createCodexProviderUpsertPlan(
+    request: ProviderQuickSetupRequest,
+  ): Promise<ChangePlan>;
+  createWorkBuddySavePlan(
+    request: WorkBuddySaveModelsRequest,
+  ): Promise<ChangePlan>;
+  applyChangePlan(input: {
+    planId: string;
+    planDigest: string;
+  }): Promise<ApplyChangePlanOutcome>;
   cancelChangeJob(jobId: string): Promise<CancelChangeJobOutcome>;
   getChangeJob(jobId: string): Promise<ChangeJobSnapshot>;
   listRecoverableChangeJobs(): Promise<ChangeJobSnapshot[]>;
@@ -205,6 +219,48 @@ an apply instruction.
   returns an overwrite token, the already confirmed delete may resubmit once
   with the token; this is not the normal add/save flow.
 
+### Change Plan workspace lifecycle
+
+Codex and WorkBuddy save wrappers supply typed request/create callbacks and
+product copy to `SavePlanWorkspace`. Their one-shot writes stay local and
+imperative: do not put API-key-bearing requests in `useMutation` variables,
+Query keys/data, or a second persistent workflow store. Synchronous admission
+prevents same-tick duplicate submission; closing/unmounting invalidates pending
+UI replies. Terminal callbacks are delivered at most once per job in the
+mounted save workspace. This does not cancel the native operation.
+
+Both saves and the Codex switch workspace use:
+
+```text
+useChangeJob(port: ChangePlansPort, active: boolean)
+  // -> { job: ChangeJobSnapshot | null, error: {code} | null, setJob }
+featureKeys.changeJob(jobId) // ["v2", "change-plans", "job", jobId]
+```
+
+Only the job ID is local state; parsed/redacted snapshots live in Query.
+Automatic reads are enabled only while the caller is active and its persistent
+surface is visible. A running/planned job polls every second through Query's
+single-flight lifecycle, with retry/focus/reconnect disabled. Terminal state or
+a sanitized read error stops polling; an error retains the last snapshot and
+must not manufacture success. A lower native `revision` cannot replace a newer
+cached snapshot. The immediate authoritative reread after apply remains part of
+the explicit operation while `busy`; it is not a second automatic timer.
+
+The read consumes Query's abort signal so a late IPC response is not accepted
+after its observer is canceled. IPC itself is not abortable by this signal.
+Use `signal.aborted` and Query's exported `CancelledError`, not newer
+`AbortSignal.throwIfAborted`, to avoid raising the minimum native WebView API.
+Hiding a workspace cancels only inactive queries; closing one observer cannot
+cancel a read still owned by another visible observer. No `setInterval` or
+custom promise/cache scheduler belongs in these workspaces.
+
+Set a single `featureKeys.changeJobs` family default with `gcTime: 0` **before**
+the first `setQueryData` seed, and use the same lifetime in the observer.
+Otherwise the seed creates a default-lived query and its longest configured GC
+time survives a later shorter setting. After all observers are removed the job
+cache is eligible for immediate collection. Do not add per-job defaults or a
+custom eviction timer, and never cache raw native error diagnostics.
+
 ### OpenCode flow
 
 - OpenCode reads a strict `OpenCodeModelSnapshot` containing providers,
@@ -280,30 +336,36 @@ an apply instruction.
 
 ## 4. Validation & Error Matrix
 
-| Condition | Required result |
-| --- | --- |
-| Unknown/absent route target | Use the closed default `qoderwork`; do not mount an arbitrary panel. |
-| QoderWork selected | Show unsupported guidance only; issue no model IPC. |
-| TRAE selected | Read/display model IDs only; do not expose local save controls. |
-| Base URL contains credentials/query/fragment or is not HTTP(S) | Reject before fetch, probe, plan, or write. |
-| API key is empty where `allowNoApiKey` is false/absent | Reject before fetch, probe, plan, or write and focus the key field. |
-| Provider Quick Setup key collides with name/URL/model/reserved provider ID | Reject locally before the request. |
-| WorkBuddy key collides with normalized URL or any returned/manual/selected model ID | Reject in the renderer/native owner before display or persistence. |
-| OpenCode key collides with a fetched/selected model ID | Reject in the native fetch/save owner. Do not infer an equivalent `providerName`/`baseUrl` text-collision check. |
-| Fetch/probe fails | Show generic safe failure and keep the current draft/key for correction. |
-| Model probe returns a structurally valid result with a different `modelUsed` | The current adapter accepts the shape; do not present this as an implemented request-binding guard. A hardening change must define alias policy and add a regression test. |
-| Direct provider reread does not confirm `currentId` | Report saved/pending confirmation; do not claim current provider. |
-| Direct provider error is not confirmed rollback | Mark authority unknown and block further writes for that target. |
-| Codex/WorkBuddy plan is stale | Require regenerate; never apply the old digest. |
-| Change Plan is preview-only | Do not show success or mutate until `applyChangePlan` admits a job. |
-| Change Plan terminal state is unconfirmed | Reread and keep writes blocked; do not commit the draft. |
-| WorkBuddy one of status/model-ID rereads fails | Treat authoritative reread as failed. |
-| Returned WorkBuddy/manual model ID contains the submitted key | Reject and never persist/display it as a model. |
-| OpenCode/WorkBuddy revision changed | Return/show concurrent modification and reread before retry. |
-| Initial OpenCode overwrite is required | Show explicit confirmation and reuse only the issued token. |
-| Overwrite token is expired/invalid | Fail, reread, and require a new confirmation. |
-| Panel unmounts | Destroy unsaved panel-local key and draft state. |
-| Raw native error/body/key reaches DOM, URL, storage, or logs | Security regression. |
+| Condition                                                                           | Required result                                                                                                                                                            |
+| ----------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Unknown/absent route target                                                         | Use the closed default `qoderwork`; do not mount an arbitrary panel.                                                                                                       |
+| QoderWork selected                                                                  | Show unsupported guidance only; issue no model IPC.                                                                                                                        |
+| TRAE selected                                                                       | Read/display model IDs only; do not expose local save controls.                                                                                                            |
+| Base URL contains credentials/query/fragment or is not HTTP(S)                      | Reject before fetch, probe, plan, or write.                                                                                                                                |
+| API key is empty where `allowNoApiKey` is false/absent                              | Reject before fetch, probe, plan, or write and focus the key field.                                                                                                        |
+| Provider Quick Setup key collides with name/URL/model/reserved provider ID          | Reject locally before the request.                                                                                                                                         |
+| WorkBuddy key collides with normalized URL or any returned/manual/selected model ID | Reject in the renderer/native owner before display or persistence.                                                                                                         |
+| OpenCode key collides with a fetched/selected model ID                              | Reject in the native fetch/save owner. Do not infer an equivalent `providerName`/`baseUrl` text-collision check.                                                           |
+| Fetch/probe fails                                                                   | Show generic safe failure and keep the current draft/key for correction.                                                                                                   |
+| Model probe returns a structurally valid result with a different `modelUsed`        | The current adapter accepts the shape; do not present this as an implemented request-binding guard. A hardening change must define alias policy and add a regression test. |
+| Direct provider reread does not confirm `currentId`                                 | Report saved/pending confirmation; do not claim current provider.                                                                                                          |
+| Direct provider error is not confirmed rollback                                     | Mark authority unknown and block further writes for that target.                                                                                                           |
+| Codex/WorkBuddy plan is stale                                                       | Require regenerate; never apply the old digest.                                                                                                                            |
+| Change Plan is preview-only                                                         | Do not show success or mutate until `applyChangePlan` admits a job.                                                                                                        |
+| Change Plan terminal state is unconfirmed                                           | Reread and keep writes blocked; do not commit the draft.                                                                                                                   |
+| Automatic job read exceeds its polling interval                                     | Share the in-flight read; do not start overlapping interval requests.                                                                                                      |
+| Workspace is hidden or inactive                                                     | Pause automatic reads; ignore its canceled late result without canceling the native job or another active observer.                                                        |
+| Job read returns an error                                                           | Cache only a closed error code, retain the last snapshot, stop automatic polling.                                                                                          |
+| A snapshot has a lower native revision                                              | Retain the newer cached authority.                                                                                                                                         |
+| Save is clicked twice before React commits state                                    | Admit one write using the synchronous operation guard.                                                                                                                     |
+| Last job observer is removed                                                        | Cancel acceptance of its obsolete read and collect the zero-retention query.                                                                                               |
+| WorkBuddy one of status/model-ID rereads fails                                      | Treat authoritative reread as failed.                                                                                                                                      |
+| Returned WorkBuddy/manual model ID contains the submitted key                       | Reject and never persist/display it as a model.                                                                                                                            |
+| OpenCode/WorkBuddy revision changed                                                 | Return/show concurrent modification and reread before retry.                                                                                                               |
+| Initial OpenCode overwrite is required                                              | Show explicit confirmation and reuse only the issued token.                                                                                                                |
+| Overwrite token is expired/invalid                                                  | Fail, reread, and require a new confirmation.                                                                                                                              |
+| Panel unmounts                                                                      | Destroy unsaved panel-local key and draft state.                                                                                                                           |
+| Raw native error/body/key reaches DOM, URL, storage, or logs                        | Security regression.                                                                                                                                                       |
 
 ## 5. Good / Base / Bad Cases
 
@@ -350,6 +412,11 @@ assertion owners include:
 - `tests/v2/pages/models/apply/*.test.tsx`: neutral preview, one apply under
   repeated/StrictMode clicks, stale regeneration, job polling, recovery/
   compensation copy, and no secret/backend diagnostics;
+- `tests/v2/pages/models/apply/useChangeJob.test.tsx`: slow-read single flight,
+  terminal/error stop, hidden cancellation/resumption, concurrent observers,
+  lower-revision rejection, stale replies after close, zero-retention collection,
+  and sanitized cache; `apply/architecture.test.ts` guards shared orchestration
+  and Query ownership;
 - `tests/v2/app/router-shell.test.tsx`: persistent Models lifetime and hidden
   route/query isolation.
 
@@ -397,3 +464,9 @@ const outcome = await ports.changePlans.applyChangePlan({
 });
 // Clear the key only at the owning terminal/current-revision boundary.
 ```
+
+Wrong: clone an async `setInterval` for each save workflow or place its request
+in the mutation cache merely to reuse a loading flag.
+
+Correct: keep typed product write callbacks in `SavePlanWorkspace` and use
+`useChangeJob` for redacted snapshot observation, visibility, and cancellation.

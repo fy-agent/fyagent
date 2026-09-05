@@ -1,4 +1,11 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { QueryClient, useQueryClient } from "@tanstack/react-query";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { CodexSavePlanWorkspace } from "@/v2/pages/models/apply/CodexSavePlanWorkspace";
@@ -10,21 +17,89 @@ import {
 } from "../../../fixtures/changePlans";
 
 describe("Codex save Change Plan workspace", () => {
-  it("confirms with planId and digest only and has no cancel control", async () => {
-    const apply = vi.fn(async (input: { planId: string; planDigest: string }) => {
-      expect(Object.keys(input).sort()).toEqual(["planDigest", "planId"]);
-      return {
-        kind: "admitted" as const,
-        job: {
-          ...changeJobWire,
-          planId: changePlanUpsertWire.planId,
-          idempotencyKey: changePlanUpsertWire.planId,
-          targetProviderId: changePlanUpsertWire.targetProviderId,
-          status: "succeeded" as const,
-          resultCode: "applied" as const,
-        },
-      };
+  it("admits one same-tick submit, never caches the secret request, and ignores completion after unmount", async () => {
+    const ports = createBrowserFeaturePorts();
+    let complete!: (
+      value: Awaited<ReturnType<typeof ports.changePlans.applyChangePlan>>,
+    ) => void;
+    const pending = new Promise<
+      Awaited<ReturnType<typeof ports.changePlans.applyChangePlan>>
+    >((resolve) => {
+      complete = resolve;
     });
+    const apply = vi.fn(() => pending);
+    const read = vi.fn();
+    ports.changePlans.applyChangePlan = apply;
+    ports.changePlans.getChangeJob = read;
+    const onPlanChange = vi.fn();
+    const onTerminal = vi.fn();
+    let client: QueryClient | undefined;
+    function CaptureClient() {
+      client = useQueryClient();
+      return null;
+    }
+    const secret = "never-cache-this-submitted-key";
+    const view = render(
+      <FeatureProvider ports={ports}>
+        <CaptureClient />
+        <CodexSavePlanWorkspace
+          active
+          request={{
+            name: "Gateway",
+            baseUrl: "https://example.com/v1",
+            apiKey: secret,
+            modelId: "model",
+          }}
+          plan={changePlanUpsertWire}
+          previewError={null}
+          onPlanChange={onPlanChange}
+          onTerminal={onTerminal}
+          onDismiss={vi.fn()}
+        />
+      </FeatureProvider>,
+    );
+    const button = screen.getByRole("button", { name: "应用更改" });
+    act(() => {
+      button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(apply).toHaveBeenCalledTimes(1);
+    expect(client?.getMutationCache().getAll()).toEqual([]);
+    expect(
+      JSON.stringify(
+        client
+          ?.getQueryCache()
+          .getAll()
+          .map((query) => query.state),
+      ),
+    ).not.toContain(secret);
+    view.unmount();
+    await act(async () => {
+      complete({ kind: "admitted", job: changeJobWire });
+      await pending;
+    });
+    expect(onPlanChange).not.toHaveBeenCalled();
+    expect(onTerminal).not.toHaveBeenCalled();
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it("confirms with planId and digest only and has no cancel control", async () => {
+    const apply = vi.fn(
+      async (input: { planId: string; planDigest: string }) => {
+        expect(Object.keys(input).sort()).toEqual(["planDigest", "planId"]);
+        return {
+          kind: "admitted" as const,
+          job: {
+            ...changeJobWire,
+            planId: changePlanUpsertWire.planId,
+            idempotencyKey: changePlanUpsertWire.planId,
+            targetProviderId: changePlanUpsertWire.targetProviderId,
+            status: "succeeded" as const,
+            resultCode: "applied" as const,
+          },
+        };
+      },
+    );
     const get = vi.fn(async () => ({
       ...changeJobWire,
       planId: changePlanUpsertWire.planId,
@@ -34,11 +109,36 @@ describe("Codex save Change Plan workspace", () => {
       resultCode: "applied" as const,
       eventSeq: 5,
       events: [
-        { sequence: 1, phase: "precheck" as const, reasonCode: "ok", createdAt: 1 },
-        { sequence: 2, phase: "snapshot" as const, reasonCode: "ok", createdAt: 2 },
-        { sequence: 3, phase: "managed_write" as const, reasonCode: "ok", createdAt: 3 },
-        { sequence: 4, phase: "readback" as const, reasonCode: "ok", createdAt: 4 },
-        { sequence: 5, phase: "finalize" as const, reasonCode: "ok", createdAt: 5 },
+        {
+          sequence: 1,
+          phase: "precheck" as const,
+          reasonCode: "ok",
+          createdAt: 1,
+        },
+        {
+          sequence: 2,
+          phase: "snapshot" as const,
+          reasonCode: "ok",
+          createdAt: 2,
+        },
+        {
+          sequence: 3,
+          phase: "managed_write" as const,
+          reasonCode: "ok",
+          createdAt: 3,
+        },
+        {
+          sequence: 4,
+          phase: "readback" as const,
+          reasonCode: "ok",
+          createdAt: 4,
+        },
+        {
+          sequence: 5,
+          phase: "finalize" as const,
+          reasonCode: "ok",
+          createdAt: 5,
+        },
       ],
     }));
     const create = vi.fn(async () => changePlanUpsertWire);

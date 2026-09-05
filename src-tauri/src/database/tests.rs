@@ -11,6 +11,44 @@ use serde_json::json;
 use std::collections::HashMap;
 use tempfile::NamedTempFile;
 
+#[test]
+fn injected_change_listener_is_connection_local_and_reports_dirty_hints() {
+    use std::sync::{Arc, Mutex};
+    let db = Database::memory().unwrap();
+    let other = Database::memory().unwrap();
+    let observed = Arc::new(Mutex::new(Vec::new()));
+    let events = observed.clone();
+    db.set_change_listener(move |table| events.lock().unwrap().push(table.to_owned()))
+        .unwrap();
+    for database in [&db, &other] {
+        let conn = database.conn.lock().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE listener_test(id INTEGER PRIMARY KEY, value TEXT);
+            INSERT INTO listener_test VALUES (1, 'first');
+            UPDATE listener_test SET value = 'second' WHERE id = 1;
+            DELETE FROM listener_test WHERE id = 1;
+            BEGIN; INSERT INTO listener_test VALUES (2, 'rolled back'); ROLLBACK;",
+        )
+        .unwrap();
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM listener_test", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 0);
+    }
+    // SQLite update hooks are change hints, not commit acknowledgements.
+    assert_eq!(*observed.lock().unwrap(), vec!["listener_test"; 4]);
+    db.set_change_listener(|_| {}).unwrap();
+    db.conn
+        .lock()
+        .unwrap()
+        .execute(
+            "INSERT INTO listener_test VALUES (3, 'replacement listener')",
+            [],
+        )
+        .unwrap();
+    assert_eq!(observed.lock().unwrap().len(), 4);
+}
+
 const LEGACY_SCHEMA_SQL: &str = r#"
     CREATE TABLE providers (
         id TEXT NOT NULL,

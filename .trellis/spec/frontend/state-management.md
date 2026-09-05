@@ -21,14 +21,14 @@ rewrite the active URL. A cross-route native job remains backend-owned.
 
 V2 classifies state before choosing persistence:
 
-| State | Owner | Route-leave behavior |
-| --- | --- | --- |
-| current route, target or shareable tab | hash router/query parameter | restored from URL when the page is visible; hidden pages freeze their last search |
-| backend resource | TanStack Query + FeaturePort/backend | cached/reread authoritatively; queries disabled while hidden |
-| install/Auth/change-plan job | backend job/session + query | continues without the page being visible |
-| unsaved non-secret business draft | route/domain draft controller | keep-alive may retain it on a visited primary route; in-page target switches still unmount |
-| transient visual state | local component | may reset on unmount |
-| secret input | narrow local state | clear according to the owning security contract |
+| State                                  | Owner                                | Route-leave behavior                                                                       |
+| -------------------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------ |
+| current route, target or shareable tab | hash router/query parameter          | restored from URL when the page is visible; hidden pages freeze their last search          |
+| backend resource                       | TanStack Query + FeaturePort/backend | cached/reread authoritatively; queries disabled while hidden                               |
+| install/Auth/change-plan job           | backend job/session + query          | continues without the page being visible                                                   |
+| unsaved non-secret business draft      | route/domain draft controller        | keep-alive may retain it on a visited primary route; in-page target switches still unmount |
+| transient visual state                 | local component                      | may reset on unmount                                                                       |
+| secret input                           | narrow local state                   | clear according to the owning security contract                                            |
 
 Do not synchronize a derived router value with `setState` during render except
 the reviewed keep-alive path registration and hidden-search snapshot in
@@ -40,6 +40,12 @@ Every V2 query or polling hook that can remain mounted behind a conditional
 surface accepts/derives an `enabled`/`active` condition. Disabling a query must
 also stop its automatic fetch/refetch/poll behavior; explicit user refetch may
 remain available only when the owning surface is active.
+
+Change Plan save/switch workspaces use the shared Query-owned job observer,
+not component intervals. Their zero-retention cache, multi-observer cancellation,
+revision ordering, and explicit secret-bearing write boundary are defined by
+[V2 Models](./v2-models.md#change-plan-workspace-lifecycle). Do not generalize
+that feature's no-retention policy to every resource query.
 
 ## State Categories
 
