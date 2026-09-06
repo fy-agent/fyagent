@@ -11,7 +11,7 @@
       command contracts, current docs/SPEC/effective JSONL references together.
 - [x] Add root governance and collected-suite/path-resolution regression;
       prove active graph/source traversal and autoprefixer rather than empty success.
-- [ ] Run canonical typecheck/lint/unit/build/browser; separate serial production
+- [x] Run canonical typecheck/lint/unit/build/browser; separate serial production
       performance. Preserve flags, budgets, native API/lockfiles and runtime behavior.
-- [ ] Remove only verified OS/temporary residuals, re-scan root and references,
+- [x] Remove only verified OS/temporary residuals, re-scan root and references,
       update SPEC/review; full check:prearchive, commit, work_commit and archive.
