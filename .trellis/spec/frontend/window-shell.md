@@ -45,6 +45,11 @@ useFrontendReady(ready?: boolean): void
 `PrimaryBlockerProvider`, one `SideNavigation`, and one `ContentViewport`.
 Only `TopBar.tsx` may declare `data-tauri-drag-region` in Renderer production code.
 
+The chrome row contains the brand and one trailing `ThemeToggle` outside the
+native drag strip. It is the first keyboard action in shell document order;
+the existing navigation follows unchanged. [Appearance](./appearance.md) owns
+the paired palettes, preference and radial transition.
+
 Shared selection/motion APIs are:
 
 ```ts

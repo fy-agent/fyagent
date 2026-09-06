@@ -24,6 +24,7 @@ focused feature owner. Apply [Component Guidelines](./component-guidelines.md),
 | [Quality Guidelines](./quality-guidelines.md)               | Correctness, browser/production measurements and evidence limits.          |
 | [Localization](./localization.md)                           | Current Chinese UI, manual languages and future locale admission.          |
 | [Visual Language](./visual-language.md)                     | Typography, density, focus and shared hierarchy.                           |
+| [Blue Appearance](./appearance.md)                          | Paired themes, preference, native synchronization and radial reveal.       |
 | [Surfaces and Container Response](./surfaces-responsive.md) | Material, contrast, roundness and library-backed stable panes.             |
 | [Motion and Dialog Presence](./motion-system.md)            | Press, source geometry, time units, teardown and focus return.             |
 

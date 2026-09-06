@@ -64,27 +64,34 @@ async function promptsFixture(page: Page, populated: boolean) {
   }, populated);
 }
 
-test("selected shared tabs paint actual glyphs above the glass, including after switching", async ({
-  page,
-}) => {
-  await installRichTauriFeatureFixture(page);
-  const health = monitorPageHealth(page);
-  for (const route of ["/auth", "/skills", "/mcp"]) {
-    await openRendererPage(page, route);
-    const scope = page.getByTestId(`${route.slice(1)}-page`);
-    const tabs = scope.locator(".fy-feature-tab");
-    await expect(tabs.first()).toBeVisible();
-    for (let index = 0; index < Math.min(2, await tabs.count()); index++) {
-      await tabs.nth(index).click();
-      const selected = scope
-        .locator('.fy-feature-tab[aria-selected="true"] .fy-feature-tab-label')
-        .first();
-      await expect(selected).toBeVisible();
-      expect(await paintedInk(page, selected)).toBeGreaterThan(10);
+for (const theme of ["light", "dark"] as const)
+  test(`selected shared tabs paint actual glyphs above the glass in ${theme}, including after switching`, async ({
+    page,
+  }) => {
+    await page.addInitScript(
+      (theme) => localStorage.setItem("fyagent-theme", theme),
+      theme,
+    );
+    await installRichTauriFeatureFixture(page);
+    const health = monitorPageHealth(page);
+    for (const route of ["/auth", "/skills", "/mcp"]) {
+      await openRendererPage(page, route);
+      const scope = page.getByTestId(`${route.slice(1)}-page`);
+      const tabs = scope.locator(".fy-feature-tab");
+      await expect(tabs.first()).toBeVisible();
+      for (let index = 0; index < Math.min(2, await tabs.count()); index++) {
+        await tabs.nth(index).click();
+        const selected = scope
+          .locator(
+            '.fy-feature-tab[aria-selected="true"] .fy-feature-tab-label',
+          )
+          .first();
+        await expect(selected).toBeVisible();
+        expect(await paintedInk(page, selected)).toBeGreaterThan(10);
+      }
     }
-  }
-  await expectHealthyPage(page, health);
-});
+    await expectHealthyPage(page, health);
+  });
 
 for (const populated of [false, true])
   test(`prompts keep usable containers with ${populated ? "populated" : "empty"} data`, async ({

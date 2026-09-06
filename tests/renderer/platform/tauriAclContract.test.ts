@@ -124,7 +124,8 @@ describe("Native ACL contract", () => {
     const allowed = activeAclCommands();
 
     expect(renderer.dynamicInvokes).toEqual([]);
-    expect(renderer.commands.size).toBe(107);
+    expect(renderer.commands.size).toBe(108);
+    expect(renderer.commands.has("set_window_theme")).toBe(true);
     expect(
       [...renderer.commands].filter((command) => !registered.has(command)),
     ).toEqual([]);

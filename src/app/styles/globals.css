@@ -29,16 +29,8 @@ html {
 body {
   overflow: hidden;
   background:
-    radial-gradient(
-      circle at 18% -12%,
-      rgba(190, 228, 255, 0.3),
-      transparent 42%
-    ),
-    radial-gradient(
-      circle at 86% 9%,
-      rgba(112, 204, 231, 0.22),
-      transparent 35%
-    ),
+    radial-gradient(circle at 18% -12%, var(--fy-ambient-sky), transparent 42%),
+    radial-gradient(circle at 86% 9%, var(--fy-ambient-cyan), transparent 35%),
     linear-gradient(
       145deg,
       var(--fy-bg) 0%,

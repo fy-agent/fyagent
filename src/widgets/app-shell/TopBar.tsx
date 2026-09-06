@@ -1,6 +1,7 @@
 import { classNames } from "../../shared/design-system/classNames";
 import { shouldShowMacOverlayDragStrip } from "../../shared/platform";
 import { Brand } from "./Brand";
+import { ThemeToggle } from "./ThemeToggle";
 
 export function TopBar() {
   const showMacOverlayDragStrip = shouldShowMacOverlayDragStrip();
@@ -26,6 +27,7 @@ export function TopBar() {
         <div className="fy-top-bar-leading">
           <Brand />
         </div>
+        <ThemeToggle />
       </div>
     </header>
   );

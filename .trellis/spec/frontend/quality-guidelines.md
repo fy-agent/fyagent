@@ -107,6 +107,10 @@ dispatch, data freshness and animation settling. Report those limits, not a
 claim about all native WebViews. Do not raise the existing build budgets.
 
 The same production configuration also runs `presentation-performance.spec.ts`.
+`theme-performance.spec.ts` separately records capture preparation and each
+third of the radial reveal. Functional browser configuration excludes all
+`*-performance.spec.ts` files: a parallel development-server run cannot serve
+as production performance evidence. See [Appearance](./appearance.md).
 The `production boots` timing case must see actual 420ms entry and 360ms exit after
 CSS optimization; `.42s` and `420ms` are equivalent units, not different timings.
 Supplemental presentation sampling separates a cold cycle from 20 warm cycles

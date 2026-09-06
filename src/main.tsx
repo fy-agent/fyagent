@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { RouterProvider } from "react-router-dom";
 
 import { createAppRouter } from "./app/router";
+import { initializeAppearance } from "./app/appearance";
 import {
   prefetchPrimaryRoutes,
   preloadInitialPrimaryRoute,
@@ -10,6 +11,7 @@ import {
 import { RootError } from "./app/RootError";
 import "./app/styles/index.css";
 
+initializeAppearance();
 const rootElement = document.getElementById("root");
 
 if (!rootElement) {

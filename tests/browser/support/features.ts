@@ -1628,6 +1628,10 @@ export async function installRichTauriFeatureFixture(
           }
           case "get_settings":
             return { skillSyncMethod: "auto", skillStorageLocation: "fyagent" };
+          case "set_window_theme":
+            if (!["light", "dark", "system"].includes(String(payload.theme)))
+              throw new Error("Invalid theme preference");
+            return undefined;
           case "plugin:event|listen":
             return payload.handler;
           case "plugin:event|emit":

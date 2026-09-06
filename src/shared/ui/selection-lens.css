@@ -14,12 +14,7 @@
   box-sizing: border-box;
   border: 1px solid var(--fy-border-strong);
   background-color: var(--fy-glass-interactive);
-  background-image: linear-gradient(
-    155deg,
-    rgba(255, 255, 255, 0.2),
-    rgba(180, 226, 251, 0.05) 58%,
-    rgba(255, 255, 255, 0.12)
-  );
+  background-image: var(--fy-selection-sheen);
   box-shadow:
     inset 0 1px 0 var(--fy-highlight),
     inset 0 -1px 0 rgba(159, 208, 238, 0.16),

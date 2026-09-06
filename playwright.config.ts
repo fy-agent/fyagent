@@ -13,10 +13,7 @@ const viewports = [
 
 export default defineConfig({
   testDir: "./tests/browser",
-  testIgnore: [
-    "navigation-performance.spec.ts",
-    "presentation-performance.spec.ts",
-  ],
+  testIgnore: ["*-performance.spec.ts"],
   outputDir: path.join(artifactRoot, "artifacts"),
   fullyParallel: true,
   forbidOnly: true,
@@ -47,6 +44,7 @@ export default defineConfig({
     {
       name: "webkit-1232x700",
       testMatch: [
+        "blue-themes.spec.ts",
         "layout-integrity.spec.ts",
         "auth.spec.ts",
         "presentation-choreography.spec.ts",

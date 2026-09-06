@@ -27,10 +27,14 @@ they happen to be numerically equal.
 `--fy-dialog-surface`, `--fy-modal-scrim`, `--fy-modal-blur`,
 `--fy-surface-blur`, `--fy-surface-opaque`, `--fy-surface-input` and
 `--fy-glass-sheen` separate foreground backing, page dimming and filter roles.
-The default palette is light blue-grey with dark ink. `--fy-surface-inset`,
+The default palette is light blue-grey with dark ink; the optional mist-blue
+dark palette and preference lifecycle are owned by [Appearance](./appearance.md).
+`--fy-surface-inset`,
 `--fy-surface-raised`, `--fy-surface-hover` and `--fy-surface-popup` pair local
-surfaces with readable text; pages must not retain dark-theme fills or white
-foreground assumptions. The content viewport is not a nested backdrop sampler.
+surfaces with readable text; pages must not hardcode a theme's fills or white
+foreground assumptions. Selection/control sheen also has paired token roles so
+stacked translucent highlights do not wash out dark-mode text.
+The content viewport is not a nested backdrop sampler.
 CSS consumes the blur/rim/sheen tokens directly, including preference changes.
 
 ## 3. Contracts

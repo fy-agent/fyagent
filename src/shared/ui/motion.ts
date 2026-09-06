@@ -52,7 +52,13 @@ export function parseMotionDuration(value: string): number {
 
 /** CSS owns duration tokens; callers read them when an interaction starts. */
 export function motionDuration(
-  role: "press" | "dialog-enter" | "dialog-exit" | "content" | "toast",
+  role:
+    | "press"
+    | "dialog-enter"
+    | "dialog-exit"
+    | "content"
+    | "toast"
+    | "theme",
 ): number {
   if (typeof document === "undefined") return 0;
   return parseMotionDuration(

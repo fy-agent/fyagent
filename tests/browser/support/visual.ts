@@ -11,10 +11,16 @@ export function sampleControlBoundaryContrast(page: Page, selector: string) {
   return sampleContrast(page, selector, "boundary");
 }
 
+/** Opaque filled buttons are identified by their whole silhouette, not by a
+ * border contrasted against their identical fill. Inputs still use both sides. */
+export function sampleFilledControlContrast(page: Page, selector: string) {
+  return sampleContrast(page, selector, "fill");
+}
+
 async function sampleContrast(
   page: Page,
   selector: string,
-  kind: "text" | "boundary",
+  kind: "text" | "boundary" | "fill",
 ) {
   const records = await page.evaluate(
     ({ selector, kind }) => {
@@ -28,7 +34,7 @@ async function sampleContrast(
         points: number[][];
         adjacent?: number[][];
       }[] = [];
-      if (kind === "boundary") {
+      if (kind !== "text") {
         for (const element of document.querySelectorAll<HTMLElement>(
           selector,
         )) {
@@ -47,18 +53,27 @@ async function sampleContrast(
           )
             continue;
           const style = getComputedStyle(element);
-          const color = style.borderTopColor.match(/[\d.]+/g)?.map(Number);
+          const color = (
+            kind === "fill" ? style.backgroundColor : style.borderTopColor
+          )
+            .match(/[\d.]+/g)
+            ?.map(Number);
           if (!color || parseFloat(style.borderTopWidth) < 1) continue;
+          if (kind === "fill" && (color[3] ?? 1) !== 1)
+            throw new Error("Filled contrast requires an opaque control");
           const x = rect.x + rect.width / 2;
           records.push({
             text: `${element.tagName} boundary`,
             color,
             opacity: color[3] ?? 1,
             points: [[x, rect.top + 0.5]],
-            adjacent: [
-              [x, rect.top - 2],
-              [x, rect.top + 2],
-            ],
+            adjacent:
+              kind === "fill"
+                ? [[x, rect.top - 2]]
+                : [
+                    [x, rect.top - 2],
+                    [x, rect.top + 2],
+                  ],
           });
         }
       }
@@ -75,17 +90,39 @@ async function sampleContrast(
           continue;
         const range = document.createRange();
         range.selectNodeContents(text);
-        const rect = Array.from(range.getClientRects()).find(
+        const rangeRect = Array.from(range.getClientRects()).find(
           (rect) => rect.width > 2 && rect.height > 2,
         );
-        if (
-          !rect ||
-          rect.x < 0 ||
-          rect.right > innerWidth ||
-          rect.y < 0 ||
-          rect.bottom > innerHeight
-        )
-          continue;
+        if (!rangeRect) continue;
+        // Range geometry includes text hidden by ellipsis/overflow. Sampling
+        // that unpainted tail measures a neighbouring badge or pane instead.
+        let left = Math.max(0, rangeRect.left);
+        let right = Math.min(innerWidth, rangeRect.right);
+        let top = Math.max(0, rangeRect.top);
+        let bottom = Math.min(innerHeight, rangeRect.bottom);
+        for (
+          let ancestor: HTMLElement | null = parent;
+          ancestor;
+          ancestor = ancestor.parentElement
+        ) {
+          const style = getComputedStyle(ancestor);
+          const bounds = ancestor.getBoundingClientRect();
+          if (style.overflowX !== "visible") {
+            left = Math.max(left, bounds.left);
+            right = Math.min(right, bounds.right);
+          }
+          if (style.overflowY !== "visible") {
+            top = Math.max(top, bounds.top);
+            bottom = Math.min(bottom, bounds.bottom);
+          }
+        }
+        if (right - left <= 2 || bottom - top <= 2) continue;
+        const rect = {
+          x: left,
+          y: top,
+          width: right - left,
+          height: bottom - top,
+        };
         const painted = document.elementFromPoint(
           rect.x + rect.width / 2,
           rect.y + rect.height / 2,

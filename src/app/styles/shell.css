@@ -49,12 +49,20 @@
 
 .fy-top-bar-chrome {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   width: 100%;
   min-width: 0;
   height: var(--fy-top-bar-height);
   padding: 0 20px;
+  -webkit-app-region: no-drag;
+}
+
+.fy-control-button.fy-theme-toggle {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border-radius: var(--fy-radius-circle);
   -webkit-app-region: no-drag;
 }
 
@@ -277,12 +285,7 @@
   border-radius: var(--fy-radius-pill);
   color: inherit;
   background-color: var(--fy-glass-interactive);
-  background-image: linear-gradient(
-    155deg,
-    rgba(255, 255, 255, 0.2),
-    rgba(180, 226, 251, 0.05) 58%,
-    rgba(255, 255, 255, 0.12)
-  );
+  background-image: var(--fy-selection-sheen);
   box-shadow:
     inset 0 1px 0 var(--fy-highlight),
     inset 0 -1px 0 rgba(159, 208, 238, 0.16),
@@ -304,11 +307,7 @@
   border: 1px solid var(--fy-border);
   color: var(--fy-text-secondary);
   background-color: var(--fy-glass-interactive);
-  background-image: linear-gradient(
-    150deg,
-    rgba(255, 255, 255, 0.13),
-    rgba(183, 221, 245, 0.03)
-  );
+  background-image: var(--fy-control-sheen);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.2),
     0 5px 15px rgba(11, 29, 48, 0.13);

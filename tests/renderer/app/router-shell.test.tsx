@@ -215,6 +215,7 @@ describe("FyAgent shell accessibility", () => {
     expectSystemOwnedChrome();
 
     const expectedTabOrder = [
+      screen.getByRole("button", { name: /切换为.*蓝/ }),
       routeLinks[0],
       routeLinks[1],
       configurationToggle,
