@@ -194,14 +194,3 @@ both rates, and step frame p95 was 33.4ms / 50.0ms. Normal step maximum was
 50.1ms; stress navigation long tasks were 101ms and 51ms, with a 55ms modal
 long task. Theme thirds remained 16.7–16.8ms. These final results supplement,
 not erase, the failed run and do not prove stable native GPU performance.
-
-The final isolated main-checkout run completed **35/35 passed**
-(`/tmp/fyagent-round8-main-isolated-performance.log`) after other validation
-processes ended. Normal/4x navigation p95 is28.2/47.5ms; modal-frame p95 is33.4ms
-at both rates; step-frame p95 is33.4/50ms; theme thirds remain16.7–16.8ms.
-Stress long tasks up to101ms for navigation and55ms for presentation, and a
-50.1ms individual normal step frame, are retained rather than averaged away.
-The application/test/configuration tree still exactly matches `a929195a`.
-This supplements the two earlier complete passing isolated runs without
-discarding either failed measurement. No further implementation change or
-task phase resulted; only this final evidence is added to the completed archive.
