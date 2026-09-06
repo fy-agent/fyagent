@@ -119,6 +119,15 @@ dispatch, data freshness and animation settling. Report those limits, not a
 claim about all native WebViews. Do not raise the existing build budgets.
 
 The same production configuration also runs `presentation-performance.spec.ts`.
+It also selects `dialog-origins.spec.ts` and `mcp-followup-origins.spec.ts`:
+production CSS/chunks must preserve asynchronous entry timing, transient-source
+handoff and complete teardown. A source data attribute alone is not evidence
+of a visible entrance. Keep physical wheel/keyboard reachability under
+`scroll-ownership.spec.ts`; ownership rules live in
+[Surfaces](./surfaces-responsive.md) and [Motion](./motion-system.md).
+When relocating configuration, compare exact project/file/test-name collection
+before and after, not just totals; follow
+[Repository Layout](../backend/repository-layout.md) for discovery boundaries.
 `state-performance.spec.ts` independently exercises one cold and twenty warm
 next/back pairs in the same login dialog at 1x/4x CPU cost, requiring real
 intermediate heights and cleanup. Normal frame p95 remains 33.4ms. Layout
