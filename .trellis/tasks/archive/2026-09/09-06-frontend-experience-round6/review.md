@@ -116,7 +116,15 @@ scroll diagnostic. Product source and lock are unchanged from the final
 351-case browser and three production-performance runs. All five focused
 task context validations now pass without the oversized-injection warning.
 
-Parent complete prearchive and final archival bookkeeping are required before
-delivery. Work commit metadata, task parent/child reciprocity, effective JSONL
-references, the no-exclusion contract gate, journal and clean worktree are
-verified after relocation; none is inferred from the preceding child checks.
+The parent and all four children are completed under `archive/2026-09`.
+All five full work-commit metadata values resolve to commits in HEAD ancestry;
+all four child-to-parent relationships are reciprocal. Five relocated parent
+research references were repaired explicitly, and all five archived tasks
+passed context validation. The effective manifest audit remains zero newly
+broken/active broken references, with the disclosed historical debt unchanged.
+
+The no-exclusion `mise run check:contracts` returned exit 0 after relocation
+(`/tmp/fyagent-round6-postarchive-contracts.log`); no active tasks remain.
+Final delivery records the five work commits in the developer journal after
+the archive-evidence commit, then verifies the actual clean checkout. No
+source or native behavior is changed during this bookkeeping.
