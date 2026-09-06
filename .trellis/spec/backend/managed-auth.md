@@ -44,7 +44,7 @@ Startup failure is fail-closed overview (`secret_unavailable` /
 `migration_blocked`). It must not crash the app and must not fall back to a
 file or environment secret store.
 
-Core V2 commands:
+Core renderer-facing commands:
 
 ```text
 managed_auth_get_overview() -> ManagedAuthOverview
@@ -259,9 +259,10 @@ auth_cancel_login
 ```
 
 Login, reauth, default-account, and removal belong on `managed_auth_*`
-with impact preview. Leftover Provider forms may select an existing
-opaque `authBinding.accountId` from the read-only list; they must not
-call leftover mutation IPC.
+with impact preview. Retained Provider metadata may bind an opaque
+`authBinding.accountId`; the retired Provider forms and Settings auth tab are
+not current renderer entrypoints. Compatibility clients must not call legacy
+mutation IPC or create another account authority.
 
 - Renderer DTOs, logs, and overview JSON must not contain tokens, SecretRef,
   `device_code`, verifier, or authorization codes.

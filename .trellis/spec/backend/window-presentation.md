@@ -45,7 +45,7 @@ policy. A later explicit activation may show it after readiness. The existing
 database-version recovery branch still forces its recovery UI visible and
 retains close-to-exit behavior; it is not blocked by this normal-startup policy.
 
-V2 readiness is a content-commit acknowledgement, not a claim about compositor
+Renderer readiness is a content-commit acknowledgement, not a claim about compositor
 paint or native HIL. Agents waits for the local catalog snapshot and Auth for
 its local overview to settle; errors are valid presentable outcomes. Do not
 wait for all installed-software scans, remote models, accounts' network work,

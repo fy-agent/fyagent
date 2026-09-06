@@ -38,7 +38,9 @@ or RAF; this would reintroduce a hidden-window startup deadlock. Route visibilit
 is a different lifecycle boundary and continues to gate nonvisible pages.
 
 Use shared key factories for reads and mutation invalidation, including prefixes.
-The current in-memory namespace is `renderer`. Persisted provider identifiers,
+The current in-memory namespace is `fyagent`, owned by `featureKeys` in
+`shared/features/queries.ts`; consumers use that factory rather than literals.
+Persisted provider identifiers,
 native jobs and wire versions are not renamed with the cache namespace.
 Wait for authoritative rereads where the feature requires them; a successful
 mutation promise alone does not prove the effective configuration changed.
@@ -48,8 +50,9 @@ multi-observer cancellation and secret-write rules in
 [Change Plan Workspaces](./change-plan-workspaces.md). Do not generalize that
 resource-specific cache policy to every query or add component interval owners.
 
-Avoid render-phase state synchronization except the reviewed keep-alive route
-registration/hidden-search snapshot owners. No second `currentView` store.
+Avoid render-phase state synchronization except the reviewed keep-alive route,
+hidden-search snapshot and Dialog presence-registration owners. Their guarded
+adjustments preserve a specific lifetime, not a second `currentView` store.
 The host updater remains removed: do not add an update provider, automatic
 download, migration bypass or renderer-written native settings during cleanup.
 

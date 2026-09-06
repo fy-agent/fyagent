@@ -224,7 +224,7 @@ killProcessTree(pid, platform)
 
 #### 6. Tests Required
 
-- `RAW_TASKS` equals the four interactive tasks; every interactive task has
+- `RAW_TASKS` equals the three interactive tasks above; every interactive task has
   `raw=true`.
 - `executeTauriTask({ operation: "dev" })` calls `runForegroundCommand`,
   not `run`.

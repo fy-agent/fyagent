@@ -60,13 +60,6 @@ SelectionLensTrack({ id, geometry?, layoutKey?, children })
 SelectionLens({ active })
 selectionLensTransition // alias of fySelectionTransition
 
-fySelectionTransition
-fyMotionTransition(reduceMotion: boolean)
-
-Collapsible({ open, onOpenChange, children, ... })
-CollapsibleTrigger
-CollapsibleContent({ open, children, ... })
-CollapsibleCaret({ open, children, ... })
 ```
 
 External opening is exposed as:
@@ -154,26 +147,13 @@ opener, or direct `@tauri-apps/*` capability through these components.
 
 ### Motion, collapse, and material adapters
 
-- `src/shared/ui/motion.ts` is the only direct `framer-motion` import owner.
-  Shared components consume its exports and transition helpers; pages do not
-  invent unrelated spring literals or import Framer Motion directly.
-  Role durations, bounded presses, explicit modal origins, exit lifecycle and
-  live preferences are specified in [Motion and Dialog Presence](./motion-system.md).
-- `Collapsible` wraps the Radix primitive. Its content remains mounted for
-  measured animation, but a closed panel is inert and `aria-hidden`; hidden
-  controls must not remain reachable by pointer, focus, or assistive technology.
-- Height transitions delegate `auto`/zero conversion and interruption to Motion's
-  declarative animation. There is no independent height cache or completion write.
-  Consumers own open state and semantic labels, not interpolation internals.
-- `@samasante/liquid-glass` is imported only by
-  `shared/ui/GlassMaterial.tsx`. Production callers use the adapter so optics,
-  live/filter behavior, accessibility and future dependency replacement remain
-  reviewable in one owner.
-- Modal backing uses the adapter's stable CSS `FrostedSurface`, not a dynamic
-  displacement renderer or DOM-copy/video path. The optional library specimen
-  remains in UI Lab. Form text stays outside the decorative layer; material,
-  contrast and container fallback are owned by
-  [Surfaces and Container Response](./surfaces-responsive.md).
+- [Shared Motion](./motion-system.md) owns the single dependency adapter,
+  press/disclosure/preferences and time units. [Dialog Lifecycle](./dialog-lifecycle.md)
+  owns modal source, sessions, focus and teardown. The shell composes those
+  owners; it does not redefine their signatures or interpolation.
+- [Surfaces](./surfaces-responsive.md) owns the GlassMaterial adapter, stable
+  CSS backing and UI-Lab-only optical specimen. Shell code must not introduce
+  another blur/refraction or copied-form layer.
 - Visual glass/lens material never carries selected meaning by itself. Host
   attributes, labels, focus, controls and route state remain the semantic
   source of truth when effects are unavailable.

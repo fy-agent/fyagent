@@ -26,9 +26,11 @@ their change.
 - Discovery/catalog metadata is untrusted display input until the owning native
   installer/validator admits it. A homepage or repository URL is not an
   executable install capability.
-- Commands, environment fields and headers are parsed and redacted before
-  display. Secrets never round-trip as page state, logs, query parameters, or
-  change-plan prose.
+- Ordinary MCP detail/search redact recognized sensitive arguments and URLs
+  and exclude env/header values. The existing native DTO, installed Query and
+  explicit editor still carry raw env/header fields; see [MCP](./mcp.md#current-sensitive-value-boundary).
+  That narrow editing boundary is not permission to log, export, animate-copy
+  or put secrets in route state or Change Plan prose.
 - Assignments are read back from the authoritative target after mutation.
   Optimistic UI may show progress but cannot invent persisted success.
 - Keep this router short; detailed validation, cases and tests belong in the

@@ -113,7 +113,8 @@ Classification invariants:
 
 - renderer graph configuration (`config/dependency-cruiser.cjs`) and standalone
   parser/builder modules/declarations trigger contracts plus frontend, as do
-  the root-level preview/deep-link inspector tests. `tests/architecture/**`
+  retained deletion/rename names for the retired preview/deep-link inspector
+  tests. No offline preview is a current product deliverable. `tests/architecture/**`
   triggers the frontend unit-test owner, not only the smaller release-contract
   test subset. Adding a new guard must include an isolated-path scheduling test;
   other files in the same PR cannot be relied on to enable its job;
@@ -258,7 +259,11 @@ The requested job mapping is exact:
 | `windows-native-contracts`    | `windowsNative`              |
 | `backend-macos`               | `backend`                    |
 
-Every domain job needs `changes` and may run only after classifier success.
+Every domain job needs `changes`. After classifier success, the table above
+selects its domains; a non-cancelled classifier failure instead admits all
+domain jobs for independent diagnostics, but Required still fails. See
+[Job and toolchain contracts](#7-job-and-toolchain-contracts) for the execution
+and aggregation rules.
 `changes` needs `commit-convention` and may run only after commit validation
 success. Docs/spec-only changes therefore execute the repository contracts gate
 but do not start frontend, Rust, macOS, or Windows-heavy jobs. The contracts

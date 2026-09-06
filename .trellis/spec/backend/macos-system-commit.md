@@ -14,10 +14,12 @@ job stages, and user-scope `~/Applications` transactions stay on
 [External Agent P0 Safety](./external-agent-p0.md). Renderer IPC stays on the
 existing closed Agent/Codex actions; this module adds no Tauri command.
 
-Production `/Applications` actions stay disabled until formal Developer ID
+Formal-production `/Applications` actions stay disabled until Developer ID
 signing, notarization, and real-machine HIL. Code plus portable tests may
 exist while `production_enabled() == false`. That state is not a delivered
-system one-click install.
+system one-click install. The separately signed development runtime described
+below has its own namespace/admission; a formal closed gate does not mean
+`DevelopmentSigned` is the same runtime mode.
 
 The Swift package is not a Cargo workspace member. Workspace members remain
 exactly `[".", "user-helper"]`.
@@ -101,7 +103,8 @@ Product integers (C ABI / XPC; display names never travel):
 Codex slots: `1` = ChatGPT.app (fresh default), `2` = Codex.app (existing
 only). Every other product uses slot `1` as its single fresh-default basename.
 Unknown product/slot is rejected before mutation. Claude Desktop is not in
-this table; user-scope Claude install stays on the Agent desktop path.
+this table or the admitted Agent lifecycle; Claude Code is CLI-only under
+[Claude Code CLI](./claude-code-cli.md).
 
 ## 3. Contracts
 
@@ -134,7 +137,7 @@ this table; user-scope Claude install stays on the Agent desktop path.
   `admin` rule with `shared` credentials and a 300-second timeout. Do not
   leave them as canned `authenticateAsAdmin` (timeout 0): the app can then
   succeed off a shared Bless credential in milliseconds while the daemon
-  recheck fails with `errAuthorizationInteractionNotAllowed`.   Recheck runs
+  recheck fails with `errAuthorizationInteractionNotAllowed`. Recheck runs
   before any slot mutation, so that failure is `operation_authorization_invalid`
   (or cancelled), never `helper_protocol_incompatible` or `recovery_required`.
   `KnownApplicationCommitResult` failed pairs include those authorization
@@ -185,7 +188,7 @@ this table; user-scope Claude install stays on the Agent desktop path.
 
 ## 6. Tests Required
 
-- `cargo test --lib macos_system_commit`: product/slot table, production
+- `mise run rust:test -- macos_system_commit`: product/slot table, production
   `production_enabled() == false`, `system_scope_rejection()` is
   `authorization_required`.
 - `swift run PrivilegedHelperTests` in `src-tauri/macos-privileged-helper`

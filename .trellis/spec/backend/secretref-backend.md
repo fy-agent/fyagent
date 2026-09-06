@@ -165,24 +165,24 @@ Credential Manager memory returned by `CredReadW` is always released with
 
 ## 4. Validation & Error Matrix
 
-| Condition | Required result |
-| --- | --- |
-| malformed/non-v4/uppercase SecretRef | reject before native access |
-| empty/NUL/non-UTF8/oversized material | reject before native write |
-| macOS query uses `kSecAttrAccessible` without Data Protection Keychain | reject implementation; accessibility contract is invalid on macOS |
-| macOS duplicate create | return stable already-exists error; no overwrite |
-| plain cargo test returns `errSecMissingEntitlement` with DPK enabled | classify the harness as unauthorized; do not fall back to file-based keychain and do not count it as native DPK acceptance |
-| bundled app capability probe/create returns `errSecMissingEntitlement` on DPK | latch the file-based login-keychain mode; create retries once with the same identity and without DPK/Accessible |
-| bundled app DPK read/probe/replace misses an existing file-based item | retry the same identity without DPK; latch the mode only after successful discovery/update |
-| bundled app DPK delete returns missing/auth-failed/missing-entitlement | retry non-DPK delete; missing after both attempts remains idempotent success |
-| macOS SecretRef claimed supported without signed-app HIL | block the DPK capability claim; entitlement plist alone is not DPK evidence; file-based login keychain is a residual host path, not DPK HIL |
-| Windows create sees an existing target | return stable already-exists error before `CredWriteW` |
-| Windows documentation/code claims `CredWriteW` is atomic create-only | reject; Win32 specifies create-or-replace semantics |
-| native store locked/denied/unavailable | source-free stable error/probe; no fallback |
-| create/replace readback differs | fail verification; never delete an unproven current value; production activation additionally requires recoverable create ownership |
-| serialized DTO/error/debug contains secret canary | test failure / NO-GO |
-| Windows matching-host HIL did not execute | Windows SecretRef merge gate remains incomplete |
-| SecretRef module requires `allow(dead_code)` to stay registered | remove dead registration or restore a real consumer |
+| Condition                                                                     | Required result                                                                                                                             |
+| ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| malformed/non-v4/uppercase SecretRef                                          | reject before native access                                                                                                                 |
+| empty/NUL/non-UTF8/oversized material                                         | reject before native write                                                                                                                  |
+| macOS query uses `kSecAttrAccessible` without Data Protection Keychain        | reject implementation; accessibility contract is invalid on macOS                                                                           |
+| macOS duplicate create                                                        | return stable already-exists error; no overwrite                                                                                            |
+| plain cargo test returns `errSecMissingEntitlement` with DPK enabled          | classify the harness as unauthorized; do not fall back to file-based keychain and do not count it as native DPK acceptance                  |
+| bundled app capability probe/create returns `errSecMissingEntitlement` on DPK | latch the file-based login-keychain mode; create retries once with the same identity and without DPK/Accessible                             |
+| bundled app DPK read/probe/replace misses an existing file-based item         | retry the same identity without DPK; latch the mode only after successful discovery/update                                                  |
+| bundled app DPK delete returns missing/auth-failed/missing-entitlement        | retry non-DPK delete; missing after both attempts remains idempotent success                                                                |
+| macOS SecretRef claimed supported without signed-app HIL                      | block the DPK capability claim; entitlement plist alone is not DPK evidence; file-based login keychain is a residual host path, not DPK HIL |
+| Windows create sees an existing target                                        | return stable already-exists error before `CredWriteW`                                                                                      |
+| Windows documentation/code claims `CredWriteW` is atomic create-only          | reject; Win32 specifies create-or-replace semantics                                                                                         |
+| native store locked/denied/unavailable                                        | source-free stable error/probe; no fallback                                                                                                 |
+| create/replace readback differs                                               | fail verification; never delete an unproven current value; production activation additionally requires recoverable create ownership         |
+| serialized DTO/error/debug contains secret canary                             | test failure / NO-GO                                                                                                                        |
+| Windows matching-host HIL did not execute                                     | Windows SecretRef merge gate remains incomplete                                                                                             |
+| SecretRef module requires `allow(dead_code)` to stay registered               | remove dead registration or restore a real consumer                                                                                         |
 
 ## 5. Good / Base / Bad Cases
 
@@ -201,16 +201,19 @@ Credential Manager memory returned by `CredReadW` is always released with
 
 ```bash
 mise run rust:fmt:check
-cargo test --locked --manifest-path src-tauri/Cargo.toml --test secret_service_contract
-# This command is useful only inside an authorized app-like macOS host; a plain
-# cargo test binary is expected to fail DPK access with missing entitlement.
-FYAGENT_NATIVE_SECRET_TEST=1 cargo test --locked --manifest-path src-tauri/Cargo.toml --test secret_service_contract native_os_backend_crud_readback -- --ignored --exact --nocapture --test-threads=1
+mise run rust:test
 mise run test:unit -- tests/ciWorkflow.test.ts
 mise run rust:check
 mise run rust:clippy
 mise run supported-platform:check
 mise run check:contracts
 ```
+
+The canonical local `rust:test` accepts at most one test-name filter, not Cargo
+options such as `--test` or `--ignored`. The explicitly opted-in ignored native
+CRUD invocation is owned by the matching Windows CI job. macOS DPK acceptance
+needs the authorized signed app-like host above; a plain Cargo executable is
+not a substitute and no local command here opts into real credential-store use.
 
 The focused contract suite also source-checks the target-gated native leaves so
 DPK/non-sync query selection, app-bundle-only file-keychain residual, and the

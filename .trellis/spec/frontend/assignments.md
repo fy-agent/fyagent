@@ -150,6 +150,12 @@ McpPort.toggleApp(serverId, targetId, enabled) -> void
 - `AgentMcpSection` binds the same closed Agent assignment target, uses the MCP
   server ID as the pending item, calls `ports.mcp.toggleApp`, refetches the MCP
   map, and reads `server.apps[target]`.
+- These two current `readValue` adapters coerce a missing item/flag with
+  `Boolean(...)` to `false`. The helper can reject `undefined`, but these
+  adapters do not preserve it: an absent row can match a requested disable.
+  Do not claim explicit row-presence validation at these call sites. Changing
+  that behavior requires a separate implementation and missing-row regression,
+  not a documentation assertion that it already happens.
 - Management pages may use `AssignmentPanel` for a resource-wide target matrix,
   but the panel remains presentation-only. Real mutations still require the
   domain Port and authoritative reread behavior documented here or in the

@@ -74,6 +74,13 @@ Do not preserve a stale statement merely because an old task cited it.
 Conversely, do not promote an unverified observation or proposed behavior into
 a durable contract.
 
+Distinguish an implemented contract from an admission requirement or known
+limitation. A registered native command or retained Port does not prove a
+current UI caller; a TypeScript annotation does not prove runtime validation.
+When the source falls short of an intended invariant, state that gap and its
+required evidence instead of documenting the intended behavior as implemented.
+Do not silently waive security policy by rewriting it to match a defect.
+
 Prefer references to code-owned constants over duplicating volatile versions,
 remote release locators, hashes, or timestamps. Freeze a literal in a spec only
 when the literal itself is an interoperability or security boundary and tests
@@ -112,6 +119,12 @@ testable behavior.
 
 - Every non-index spec is reachable from its layer index.
 - Relative links resolve and concrete repository paths exist.
+- Check route/query keys, exact callback/DTO fields, effective defaults and
+  current caller reachability against source and tests, not only link existence.
+- After a renderer migration, retire obsolete UI/test claims while preserving
+  real wire schemas, persisted identifiers and compatibility command behavior.
+- A split updates the index and all effective links; shared callers link to the
+  focused owner rather than copying its lifecycle or permission rules.
 - New infrastructure and cross-layer contracts contain all seven sections.
 - Tests name observable assertions, not only commands to run.
 - `TODO`, `TBD`, phase plans, stale dates, and one-off acceptance logs are not

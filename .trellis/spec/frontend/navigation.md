@@ -151,7 +151,7 @@ for confirmation animation. It consumes that intent on the next transition,
 matches the exact destination and otherwise exposes no source. This does not
 alter blocker rules or router authority. Native/history/programmatic changes
 without a matching intent use neutral presentation; see
-[Motion and Dialog Presence](./motion-system.md).
+[Dialog Lifecycle](./dialog-lifecycle.md).
 
 - `SideNavigation` renders semantic links from the registry and derives active
   state from the router. Exactly one primary link is `aria-current="page"` for

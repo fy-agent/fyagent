@@ -5,7 +5,7 @@
 Read this contract before changing external-Agent login/logout/provider
 handoff, Auth observation, session polling, desktop target selection, or Auth
 result wording. Auth is a separate bounded façade from Agent install jobs and
-from FyAgent's central V2 `/auth` page owned by
+from FyAgent's central `/auth` page owned by
 [Managed Accounts](../frontend/managed-auth.md).
 
 Primary owners:
@@ -74,7 +74,7 @@ verified | handoff_complete | failed | cancelled | timed_out
 
 - `start_agent_action` does not implement Auth actions and must return the
   closed unsupported/executor reason without launching a session.
-- Codex Auth remains `fyagent_managed` and routes the user to the V2 `/auth`
+- Codex Auth remains `fyagent_managed` and routes the user to the central `/auth`
   page owned by [Managed Accounts](../frontend/managed-auth.md). Native
   account/secret ownership is [Managed Auth Core](./managed-auth.md), provider
   login is [Managed Auth Login](./managed-auth-login.md), and connection
@@ -120,9 +120,11 @@ verified | handoff_complete | failed | cancelled | timed_out
 - QoderWork, TRAE Work and WorkBuddy open one selected trusted desktop target
   and are also handoff-only. Opening the application does not prove account
   state.
-- Formal elevated Windows Claude/OpenCode Auth automation remains unavailable.
-  Claude's new ordinary-user helper admits detection/install/update only;
-  those lifecycle verbs do not authorize login/logout or a generic CLI command.
+- Formal elevated Windows CLI-based Auth automation remains unavailable.
+  OpenCode's bounded file observation and trusted Desktop provider handoff are
+  separate paths, not user-CLI execution. Claude's ordinary-user helper admits
+  lifecycle observe/install/update only; it does not authorize login/logout,
+  CLI account-status commands or generic execution.
 
 ### Observation, target and secret boundaries
 
@@ -228,7 +230,7 @@ setStatus("logged_in");
 Correct:
 
 ```ts
-const session = await ports.agentAuth.start({
+const session = await ports.agentAuth.startSession({
   agentId: "claude-code",
   intent: "login",
 });

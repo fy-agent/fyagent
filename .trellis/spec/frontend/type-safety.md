@@ -30,9 +30,14 @@ const baseUrl =
 
 ## 3. Contracts
 
-Native responses start as unknown at `shared/platform/tauri/feature-ports`.
-Parse before storing them in Query or exposing them to components. Reuse the
-owner's strict schema/parser, including excess-field rejection where required.
+New or changed untrusted native response boundaries start as `unknown` at
+`shared/platform/tauri/feature-ports`. Parse before exposing them to components;
+reuse the owner's schema, including excess-field rejection where required.
+This is not a claim that every existing Port already parses at runtime:
+Skills/MCP `simple.ts` and the WorkBuddy/direct-provider methods enumerated in
+[Models](./models.md#runtime-parsing-boundary) retain typed-only boundaries.
+Their focused specs name the gap; do not manufacture validation evidence from
+TypeScript annotations or broaden those exceptions to new inputs.
 Closed discriminants, reason codes, revision ordering and opaque IDs retain
 their native wire meaning during source moves. `v1:` IDs and versioned DTO
 schemas are protocols, not renderer-generation names to replace.

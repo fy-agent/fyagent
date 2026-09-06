@@ -245,7 +245,7 @@ Focused Vitest coverage must prove:
 - existing ACL registration/permission coverage, with no new capability entry.
 
 Run the complete Renderer and desktop gates listed by
-[Renderer Shell Contract](./shell.md), then run `mise run check`. Build and boot
+[Quality Guidelines](./quality-guidelines.md), then run `mise run check`. Build and boot
 the ordinary production HTTP entry; no offline HTML generator is retained.
 A real native smoke is read-only on
 the current profile; actual write HIL is not required without an isolated

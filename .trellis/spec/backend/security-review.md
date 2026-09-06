@@ -103,13 +103,16 @@ commit is isolated from other workflows.
 - Re-run whole lockfile audit after remediation; preserve warnings and failure
   exit statuses in the evidence summary.
 - Run redacted current-tree and history secret scans with explicit input scope.
-- Run normal frontend/V2/Rust/build/browser/prearchive gates for touched owners.
+- Run normal renderer/Rust/build/browser gates for touched owners, and the
+  active-task prearchive gate only when a directly active task requires it.
 - `tests/architecture/nativeSecurityOrdering.test.ts` requires the host ACE
   common header and minimum SID-size guard before the allowed-ACE reference.
   It also rejects the specific retired account/session diagnostic patterns;
   these source checks are not a replacement for whole-program taint analysis.
-- Credential examples must round-trip through their actual encoding and retain
-  explicit placeholders (`tests/deeplinkPlayground.test.ts`).
+- Portable credential-preview examples retain placeholders and redaction
+  (`tests/domain/serialization/deepLinkConfigPreview.test.ts`). The deleted
+  offline playground and its old tests are not current product evidence;
+  native parsing/import coverage is owned by [Deep-link Security](./deeplink-import-security.md).
 
 ## 7. Wrong vs Correct
 

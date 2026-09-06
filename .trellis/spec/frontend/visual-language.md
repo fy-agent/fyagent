@@ -40,7 +40,7 @@ defined by [Surfaces and Container Response](./surfaces-responsive.md).
 Radius consistency means the same role uses the same token, not that a circle,
 button, item and dialog all use a numerically identical radius.
 Origin geometry, conditional-session keys and enter/exit timing are owned by
-[Motion and Dialog Presence](./motion-system.md), not page-local animation code.
+[Dialog Lifecycle](./dialog-lifecycle.md), not page-local animation code.
 
 ## 3. Contracts
 

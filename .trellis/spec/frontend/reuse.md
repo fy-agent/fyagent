@@ -84,8 +84,9 @@ through a UI barrel to conceal that dependency.
 - shell motion/selection primitives owned under `shared/ui`; pressable buttons
   live in `Button.tsx`, modal/presence in `Dialog.tsx`, origin measurement in
   `dialogOrigin.ts`, and conditional session identity in `useDialogState.ts`.
+  Their entry/resize/teardown contract is [Dialog Lifecycle](./dialog-lifecycle.md).
   Pure `ToastViewport` receives messages; feature state/timers stay at their
-  original owner. See [Motion and Dialog Presence](./motion-system.md);
+  original owner. See [Shared Motion](./motion-system.md);
 - visited-route visibility: `PersistentSurface`, `usePersistentSearchParams`,
   `useStickyVisibleValue`;
 - Agent directory lifecycle chrome: `AgentLifecycleActionSlot` plus closed

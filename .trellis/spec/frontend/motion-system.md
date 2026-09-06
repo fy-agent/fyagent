@@ -1,358 +1,109 @@
-# Motion, Press Feedback and Dialog Presence
+# Shared Motion, Press Feedback and Preferences
 
 ## 1. Scope / Trigger
 
-Read before changing Renderer press gestures, modal origin/exit, conditional dialog
-sessions, live motion preferences, notification presentation or transition
-tokens. Geometry and navigation authority remain with their existing owners;
-animation never controls whether a native operation succeeded.
+Read before changing press, selection, disclosure, notification or shared timing.
+`shared/ui/motion.ts` is the sole direct Motion import owner; `Button.tsx`,
+`usePressFeedback.ts`, `Collapsible.tsx`, `useMediaQuery.ts` and
+`ToastViewport.tsx` compose it. CSS roles live in `app/styles/tokens.css`.
 
-Owners are `shared/ui/motion.ts`, `Button.tsx`, `usePressFeedback.ts`,
-`Dialog.tsx`, `dialogPresentation.ts`, `useDialogResize.ts`, `dialogOrigin.ts`, `useDialogState.ts`, `useMediaQuery.ts`, `ToastViewport.tsx`, and
-`app/styles/{tokens,motion,controls}.css`. Glass optics and readable backing
-remain in [Surfaces and Container Response](./surfaces-responsive.md);
-typography and focus-return rules remain in [Visual Language](./visual-language.md).
+Modal source capture, presence, cancellation, focus and content resize now have
+one focused owner: [Dialog Lifecycle](./dialog-lifecycle.md). Selection geometry
+belongs to [Window Shell](./window-shell.md), theme reveal to
+[Appearance](./appearance.md), and readable backing to [Surfaces](./surfaces-responsive.md).
+These are code-spec owners, not additional runtime layers.
 
 ## 2. Signatures
 
 ```ts
-interface DialogOriginRef {
-  current: HTMLElement | null;
-  snapshot?: DialogOriginSnapshot; // one-use transient opening geometry/material only
-  returnTarget?: HTMLElement | null; // explicitly supplied persistent control
-}
-
-Button / GlassButton / IconButton / PressableButton({
-  ...nativeButtonProps, dialogOriginRef?: DialogOriginRef,
-  dialogReturnRef?: RefObject<HTMLElement>,
-  pressVisualRef?: RefObject<HTMLElement>,
-})
-Dialog({
-  open, onOpenChange, title, description?, children?, actions?,
-  size?: "standard" | "comfortable" | "wide",
-  initialFocusRef?: RefObject<HTMLElement>, originRef: DialogOriginRef | undefined,
-  presentationKey?: string | number, // content stage, never editor/session identity
-  exitContent?: "clear" | "fade", // clear by default; reviewed non-credential content only
-})
-ConfirmDialog({ open, title, description, pending?, onConfirm, onCancel, originRef? })
-  // onConfirm: MouseEventHandler<HTMLButtonElement>; native click, no synthetic dispatch
-captureDialogOrigin(ref: DialogOriginRef, source: HTMLElement, returnTarget?: HTMLElement | null): void
-useDialogState<T>(initial?: T | null)
-  // -> [value, stable React setter, fresh-session key]
-dialogOriginGeometry(source: HTMLElement | null, destination: DOMRect)
-  // -> { x, y, scaleX, scaleY, sourced }
 useMediaQuery(query: string, fallback?: boolean): boolean
 useReducedMotion(): boolean
-parseMotionDuration(value: string): number // seconds; invalid input -> 0
+parseMotionDuration(value: string): number // seconds; invalid -> 0
 motionDuration(role: "press" | "dialog-enter" | "dialog-exit" | "dialog-resize" | "content" | "toast" | "theme"): number
-fySelectionTransition // tween; shared spatial curve, not a spring
-runDialogPresentation({ planes, source, windowNode, entering, first, duration, capturedOrigin? })
-  // duration is milliseconds; -> { finished, contentFinished, retarget, cancel }
-runDialogResize({ windowNode, contentNode, from, target, duration })
-  // -> { finished, cancel(freeze?: boolean) }; same session, no scale/copy
+fySelectionTransition // 300ms tween, not a spring
+fyPressRecovery       // bounded recovery spring
+fyPressScale          // target .96; hard visual maximum 1.004
 ToastViewport({ messages: readonly ToastMessage[] })
 ```
 
-`motion.ts` is the sole direct Motion import owner. It exports the selection
-tween, press recovery spring, bounded press scale and shared `.32,.72,0,1`
-spatial curve. `fySpatialEasing` derives the native CSS string from that tuple;
-the CSS token must match and is checked in tests. CSS owns named duration
-tokens; `parseMotionDuration` accepts one finite nonnegative `ms` or `s` value
-and returns seconds. Optimizers may serialize `420ms` as `.42s`; `parseFloat`
-followed by unconditional division by 1000 is prohibited. Missing, compound,
-unitless, negative or nonfinite durations mean no travel, not a guessed delay.
-Native WAAPI receives milliseconds only at its adapter boundary. Do not mix
-stiffness/damping/mass with duration/bounce within a spring definition.
+`fySpatialEasing` derives a native CSS curve from the shared `.32,.72,0,1`
+tuple; the CSS easing token must match. CSS owns duration tokens. The parser
+accepts one finite, nonnegative `ms` or `s` value and returns seconds; native
+WAAPI converts to milliseconds at its adapter, exactly once. Unitless,
+compound, negative, nonfinite or missing values mean no travel, not a guessed
+delay. Do not mix stiffness/damping/mass with duration/bounce in one spring.
 
 ## 3. Contracts
 
-### Press and transition roles
-
-- Native buttons/links remain the semantic action owners. Motion's `press`
-  filters non-primary pointers and supplies Enter feedback; native button
-  Space adds visual feedback only. Never synthesize a second business click.
-- `usePressFeedback` registers one gesture per host, uses live admission refs
-  for disabled/hidden/reduced state and cancels animations on cleanup. A
-  separate visual target allows a navigation label to compress without
-  corrupting its measured SelectionLens host rectangle.
-- Press target and hard visual limits come from `fyPressScale`; release uses
-  `fyPressRecovery`. Target is 0.96 with bounded maximum 1.004; a fast press
-  must visibly dip and recover, not only a long hold. Transform changes
-  must not change layout slots or move neighbouring controls. A quick click
-  may finish a small dip visually, but the action is not delayed until rebound.
-- A positioned/geometry-measured host uses `pressVisualRef` for its existing
-  inner visual element. SecretInput and search clear controls retain their
-  centering transform; list hosts retain SelectionLens geometry. Feature
-  buttons reuse PressableButton rather than duplicating pointer/key handlers.
-- Motion style subscriptions must be per element: disposing one control must
-  not cancel another control's ongoing styles. The locked same-major upstream
-  dependency fixes an older shared-cleanup closure defect. Keep
-  `pressIsolation.test.tsx` when changing dependencies; do not patch node_modules
-  or write a replacement interpolation engine.
-- Selection/collapse use `fySelectionTransition` (300ms tween) and the shared
-  spatial curve. Do not retain a misleading spring alias. Tooltips/popovers use
-  Radix CSS presence with their own transform origins. Content arrival does
-  not delay route commit or keep an outgoing page interactive. Window resize
+- Buttons/links own the business action. Motion `press` filters non-primary
+  pointers and supplies Enter feedback; native Space adds visual feedback only.
+  Never synthesize another click or wait for rebound before executing a click.
+- One `usePressFeedback` registration per host uses live disabled/hidden/reduced
+  admission refs and cancels its effects on cleanup. A fast click must visibly
+  dip/recover, not only a long hold. Scale must not change layout or neighbours.
+- Positioned or measured hosts use `pressVisualRef` for the existing inner
+  visual. Secret/search controls preserve centering; selection hosts preserve
+  lens geometry. Feature buttons reuse PressableButton, not copied gestures.
+- Style subscriptions are independent: unmounting one control must not cancel
+  another. Keep the upstream cleanup regression; no node_modules patch or local
+  interpolation engine substitutes for the adopted dependency.
+- Selection/disclosure use the shared spatial tween. Tooltips/popovers retain
+  Radix CSS presence and their own transform origins. Persistent page/tab
+  arrival changes opacity only; ancestor position tweens must not displace
+  measured hosts. Route commit and native readiness do not wait for animation.
+- Initial/re-shown lenses adopt real geometry rather than growing from zero.
+  Real selection changes travel; layout observations correct geometry without
+  restarting motion on every frame of a sibling disclosure. Window resizing
   is not slowed by a decorative transition.
-- Persistent page/tab arrival uses opacity only; a second ancestor position
-  tween must not move measured selection hosts during route re-entry. Initial
-  or re-shown lenses adopt actual geometry without growing from zero. Actual
-  selection changes travel; resize/reflow observations correct geometry without
-  restarting a tween for every new frame of a sibling collapse.
-- Collapsible reuses Motion's declarative `height: open ? "auto" : 0`, with
-  `initial={false}` and the shared spatial transition. Do not restore a local
-  scrollHeight cache, generation loop or Promise that writes auto at the end.
-  Radix retains the same content tree; closed content is immediately inert and
-  aria-hidden. Read-only model-ID disclosures share ModelsExistingSection.
-- `ToastViewport` owns presentation only. FeatureProvider retains its timer,
-  message state and cleanup; exiting messages stop accessibility announcements.
-  Zero-duration and reduced-motion toasts appear without an invisible frame.
-
-### Explicit modal origin and presentation
-
-- A caller records its actual control before changing open state or awaiting
-  work. `Button.dialogOriginRef` captures `event.currentTarget`; shared tabs
-  may resolve their own exact semantic trigger. An asynchronous dialog keeps
-  that original reference. No document-wide last-click cache or arbitrary
-  `activeElement` guess supplies animation geometry.
-- Every production Dialog/wrapper call supplies `originRef` explicitly; automatic
-  cases pass undefined deliberately, not by an omitted prop. The TypeScript/AST
-  coverage check complements physical frame tests; a trigger data attribute
-  alone cannot prove that its animation was not immediately cancelled.
-- Transient menu or asynchronous-reflow controls may call `captureDialogOrigin` with their explicitly
-  owned persistent return control (`Button.dialogReturnRef`). Only a finite
-  visible rectangle, four corner radii and allowlisted non-resource CSS material
-  are retained. No DOM clone, text, identity label, credential value or image is
-  copied. The first matching opening consumes the capture once. Exits remeasure
-  the real source or explicit return target; invalid targets remain neutral.
-  Revalidate captured finite geometry against the current viewport at consumption:
-  an async picker/preview can outlive a resize, so old snapshot admission is not
-  permanent permission to fly outside the visible window.
-- Switch uses the existing PressableButton asChild capture before Radix's
-  checked-change handler. A modal-producing switch opts into bounded click
-  geometry with its own element as the return anchor: async status feedback can
-  move the live control outside a compact viewport before the dialog opens.
-  This does not relax capture or return bounds. WorkBuddy assignment/trust and bulk controls carry
-  the actual initiating ref through async work. A chained confirmation captures
-  its own confirm control before it unmounts, with the original persistent
-  control as its return anchor, rather than attributing the next dialog to an
-  unrelated last click.
-- MCP discovery install and editor save explicitly hand their final submit
-  source into the follow-up trust notice. `InstallTargetDialog.onConfirm`
-  receives `(target, MouseEvent<HTMLButtonElement>)`; MCP InstallDialog's
-  `onInstall` receives `(values, apps, event)`. Business owners capture that
-  control with the known catalog/editor return anchor before awaiting writes.
-  The notice consumes an operation-owned origin copy, not an unrelated page
-  ref. Ordinary callbacks may ignore the event; no duplicate click or new
-  native authorization is introduced. Multi-step install dialogs supply
-  `presentationKey={step}` just as the login dialog does.
-- Guarded sidebar navigation carries one explicit destination-matched intent
-  through the existing PrimaryBlocker context. `usePrimaryNavigationOrigin`
-  records the actual owned link, the blocker consumes it once, and
-  `usePrimaryBlockerOrigin` supplies the confirmation source. Unmatched or
-  programmatic/history transitions remain neutral; blocker rules and route
-  admission are unchanged. Do not promote this to a global last-click store.
-- At entry and return, measure the referenced element. Disconnected, zero-size,
-  hidden/inert, transparent, off-window, or clipped/scrolled-away sources use
-  a neutral transition. Do not fly toward a different control with similar text.
-  Bounds admit at most one device pixel of rounding tolerance, not a general
-  allowance for genuinely clipped sources.
-- Only `.fy-dialog-material` interpolates source position, width, height and
-  four corner radii, inside a layout/style-contained decorative subtree. The
-  actual Radix window and text keep final layout; do not scale-compress forms.
-  Source/target material and foreground opacity have separate native tracks.
-  Only allowlisted CSS material strings are sampled; resource URLs, DOM,
-  labels, pixels, input values and credentials are not copied or retained.
-- A sourced first entrance gives the real press up to 80ms of visual lead,
-  inside the same 420ms presentation. Geometry then reaches its destination;
-  foreground handoff runs from 252 to 420ms. This never delays the initiating
-  business action. Exit lasts 360ms: foreground yields in at most 80ms,
-  geometry starts after 16ms, and material returns to the real source across
-  the final 90ms. Relative track timings follow retuned duration tokens, while
-  optional content retention remains capped at 80ms.
-- Radix retains modal, focus and scroll ownership until the decorative exit
-  completes. Business close/cancel runs immediately and actions disappear.
-  Default `exitContent="clear"` immediately removes the body, especially for
-  credential/session/editor content. Only reviewed non-credential presentation
-  may opt into `"fade"`: its original body stays inert, aria-hidden and event-
-  blocked for at most 80ms, then is destroyed. No presentation copy is created.
-  The pre-session login provider picker is the reviewed opt-in; live login
-  sessions/device codes and MCP editors are not. Never widen this to preserve
-  secrets for cosmetic continuity.
-- Start from the committed Content node: Radix Portal can mount after its
-  parent's initial layout effect. Immediate/zero-layout completion crosses
-  one microtask commit boundary before `safeToRemove`, because Motion records
-  exiting keys in a parent layout effect. This is not a fixed animation delay.
-- During entrance, invisible controls are inert and event-blocked; focus stays
-  on Radix Content until handoff completes, then moves to the requested cancel
-  or first usable control only if focus still belongs to that root. Escape can
-  cancel an unfinished entrance. Reduced/no-animation environments retain
-  immediate access. Do not wait for animation to report native readiness.
-- Cancel superseded generations on reopen/cleanup. Preserve current computed
-  geometry/opacity before cancellation when reversing; do not reset to a
-  fully open rectangle. Every already-started track is cancelled if a later
-  track throws, and rejected finished promises are handled. Resize settles existing
-  geometry without stretching stale coordinates. A hidden persistent route
-  removes the portal immediately instead of animating into another page;
-  document visibility loss also settles rather than waiting on suspended frames.
-- A conditionally mounted dialog owner must be under `AnimatePresence`, with
-  nested Dialog propagation enabled. Use a fresh session key for a reopened
-  editor; retaining an old exiting component must not resurrect discarded
-  field values. Permanent controlled dialogs retain only their existing,
-  explicitly owned reset/recovery policy.
-- A closed, empty Dialog does not enroll in its ancestor's propagation barrier.
-  Keep participation while an actual layer opens/exits and release it from
-  onExitComplete. Otherwise a never-opened sibling confirmation can retain an
-  invisible, completed modal and its scroll lock forever. Prop-state adjustment
-  is guarded before children render, not a cascading synchronization effect.
-- `data-motion-phase` reports open/exit and `data-motion-settled="true"`
-  identifies a settled open surface for geometry/contrast evidence. Neither
-  attribute is a native success or security signal.
-- The same CSS glass backing remains through motion and rest; enhancement
-  changes rim emphasis only. Never swap in a displacement renderer at the last
-  frame or copy page/form content into the optical layer.
-
-### Same-session content changes
-
-- Login `presentationKey` identifies the step/session stage; a changed stage
-  or dialog size variant does not reopen/remount the session. `useDialogResize`
-  captures actual current size, measures the new natural target and invokes
-  `runDialogResize` for 320ms from the shared token.
-- Unlike source opening, the fixed dialog's actual width/height change here.
-  Foreground text is never scale-projected. Only body opacity moves from 0.5 to
-  1; actions stay visible, usable and within the window while their own press
-  feedback plays. No outgoing input/value/DOM snapshot is retained.
-- Observe intrinsic header/body/action rows, not the animated root itself.
-  Notifications caused by the current size animation update observations but
-  do not start another animation. On completion reconcile natural content once.
-  Explicit stage changes work even without ResizeObserver.
-- During source entrance, intrinsic async content changes retarget the existing
-  geometry track instead of invoking the viewport-settle shortcut. Rebase local
-  coordinates against old/new centered window positions before paint; preserve
-  the remaining entry deadline and independent foreground/overlay handoff.
-  Do not cancel/recreate all tracks, restart 420ms, delay native preview delivery
-  or add a minimum loading timer. Real viewport changes still settle promptly.
-- A settled dialog's non-semantic width change is a CSS viewport clamp, not a
-  content-height transition. `useDialogResize` settles it without tweening back
-  to the old width. WebKit may deliver this observation before the window resize
-  event; writing the old width inside that delivery would resize the observed
-  body again and report an observer loop. Explicit size/presentationKey changes
-  and intrinsic height changes still animate; entry retargeting is unchanged.
-- Reversal captures the intermediate rect before cancelling old effects.
-  Closing freezes current size for the existing return track while immediately
-  revoking actions and sensitive content. Resize, reduced motion and document
-  hiding settle; old completions cannot alter a newer session.
-- `data-content-motion="resizing"` and absence of `data-motion-settled` expose
-  presentation state for evidence only. They confer no business write authority.
-
-### Accessibility and failure behavior
-
-- Live system reduced-motion changes settle travel/rebound immediately; use
-  the existing media subscription owner, not periodic polling. CSS and JS
-  must agree. Do not defer native readiness behind animation frames.
-- Preserve cancel-first focus, selected-tab restoration after rejected
-  navigation, and protection against an old close frame stealing focus from
-  a newer modal. Focus restoration uses `preventScroll` and rejects hidden,
-  disconnected or disabled targets.
-- A queued close-focus callback cannot override an explicit newer editor focus,
-  even when there is no newer modal. Keep the original focus-at-close identity
-  and check before applying deferred restoration.
-- Engine failure settles the surface with a bounded diagnostic. It must not
-  strand a modal lock, fabricate action success or expose raw business errors.
+- Collapsible uses Motion `height: open ? "auto" : 0`, `initial={false}` and
+  the shared transition. Do not restore a scrollHeight cache, generation loop
+  or final Promise write. Radix retains content; closed content immediately
+  becomes inert/aria-hidden. Read-only model disclosures share ModelsExistingSection.
+- Live reduced-motion preferences settle travel/rebound immediately through
+  the shared media subscription, not polling. CSS and JS must agree. The real
+  control stays usable even without animation APIs.
+- ToastViewport presents only: FeatureProvider owns timers/state/cleanup.
+  Exiting messages stop announcements; zero-duration/reduced-motion messages
+  appear without an invisible frame. No toast proves native success by itself.
 
 ## 4. Validation & Error Matrix
 
-| Condition                                             | Required result                                                                   |
-| ----------------------------------------------------- | --------------------------------------------------------------------------------- |
-| Source control opens a dialog after async work        | Use that explicit original source, not whichever element is now focused.          |
-| Source moved, vanished or scrolled out before close   | Re-measure; return to the current valid box or use neutral exit.                  |
-| Close occurs while entering                           | Freeze current geometry, revoke interaction/secrets and finish one exit.          |
-| Explicit non-credential fade exit                     | Inert/aria-hidden body retires within 80ms; action DOM disappears immediately.    |
-| CSS optimizer emits seconds instead of milliseconds   | Preserve physical duration; production timing test must still see 420ms.          |
-| A later native animation track throws                 | Cancel all started tracks, handle rejection and settle safely.                    |
-| Same conditional editor is reopened                   | Fresh session key; no old draft/secret resurrection.                              |
-| System reduced-motion changes during travel           | Settle current visuals and release any completed exit.                            |
-| Portal commits after parent mount                     | Committed node starts the animation; no silent skipped entrance.                  |
-| Zero-duration exit                                    | Complete after presence bookkeeping; do not leave a focus/scroll lock.            |
-| Right click, secondary touch, disabled/hidden control | No duplicate action or new press admission.                                       |
-| Another modal opens during old focus return           | Never focus outside the newer modal.                                              |
-| Navigation occurs during a transition                 | Preserve URL/selection authority and hidden-route query isolation.                |
-| A step changes inside an open dialog                  | Keep session identity; animate actual size with unscaled text and bounded footer. |
-| Step reverses or closes during size change            | Continue from current geometry; revoke cancelled interactions immediately.        |
-| One button unmounts                                   | Other controls keep their independent Motion style subscriptions.                 |
+| Condition                                   | Required result                                                 |
+| ------------------------------------------- | --------------------------------------------------------------- |
+| Optimizer changes `420ms` to `.42s`         | Same physical duration, tested in production assets.            |
+| Disabled/hidden/right-click/secondary touch | No new press admission or duplicate action.                     |
+| Positioned control is pressed               | Only its visual scales; centering and neighbours remain stable. |
+| One control unmounts                        | Other style subscriptions still update.                         |
+| Live preference changes mid-motion          | Settle promptly, preserve action semantics and cleanup.         |
+| A kept-alive page returns                   | No zero-size lens replay or ancestor position jump.             |
+| Motion unavailable or zero duration         | Usable final state; no invisible toast or stranded modal.       |
 
 ## 5. Good / Base / Bad Cases
 
-Good: an account action passes one source ref through its view into Dialog;
-closing removes the form, returns only the backing, then restores focus.
-Base: an automatic status dialog has no actionable origin and uses neutral
-fade/limited geometry. Bad: infer origin from the last global click, animate a
-screen capture of a password form, or wait for an animation before admitting
-the actual business action.
+Good: quick pointer/Enter/Space activation produces one action and a bounded
+dip/rebound without moving adjacent controls. Base: reduced motion renders
+the same semantic control without spatial travel. Bad: lengthen motion to hide
+route CPU work, duplicate click handling or scale the whole credential form.
 
 ## 6. Tests Required
 
-- `mcp-followup-origins.spec.ts` exercises catalog installation and editor-save
-  follow-up notices with one synthetic authoritative write, actual sourced
-  presentation and complete modal cleanup in Chromium and WebKit.
+`motionDuration.test.ts` covers both units, exponents and invalid values;
+production timing checks preserve optimized 420ms entry/360ms exit.
+`pressIsolation.test.tsx` uses two real style subscriptions. Browser press tests
+sample fractional bounding boxes for quick pointer/Enter/Space/touch, clipping,
+disabled/hidden state, adjacent geometry and live preferences. Integer
+offsetWidth cannot measure a sub-percent rebound budget.
 
-- `dialog-origins.spec.ts` checks immediate/120/300ms removal preview delivery,
-  actual completed entry duration, zero unintended mutations, cancelled preview
-  isolation, both WorkBuddy assignment paths and transient-menu return/focus in
-  Chromium/WebKit. Cover chained confirmation handoff as well as persistent
-  buttons. The production wrapper inventory must remain nonempty and complete.
-- `dialogPresentation.test.ts` verifies viewport-coordinate rebasing, remaining
-  duration, same-track ownership and cancellation. Dialog tests verify a
-  never-opened sibling cannot hold the outer presence barrier, and an old close
-  frame cannot steal newly chosen editor focus. No warning suppression replaces
-  these lifetime assertions.
-
-- Shared origin/session tests cover exact geometry, clipping, hidden/removal,
-  remeasurement and fresh conditional sessions.
-  `PrimaryBlockerOrigin.test.tsx` verifies matching, one-shot consumption,
-  programmatic neutral fallback and unchanged blocked navigation.
-- Dialog tests retain third-round keyboard/focus safeguards and zero-duration
-  unmount. Tests must verify actual modal/scroll cleanup, not only callbacks.
-- `motionDuration.test.ts` covers ms/s/exponents and invalid input;
-  `dialogPresentation.test.ts` checks track endpoints, no content/resource
-  copying, cancellation, partial-start failures and the 80ms exit cap.
-- Browser motion tests sample material geometry, verify unscaled foreground,
-  press limits and unchanged neighbour boxes, and exercise mouse, Enter,
-  Space, touch, reduced motion, invalid sources and interrupted exits.
-- `pressIsolation.test.tsx` reproduces independent cleanup using two real
-  styleEffect subscriptions. Fast pointer/Enter/Space browser tests require
-  a perceptible dip/rebound and one click. Compare fractional bounding boxes,
-  not integer offsetWidth, when the rebound budget is below half a percent.
-- `state-motion.spec.ts` covers intermediate step frames, unchanged dialog
-  identity/choice, reverse/close, missing observer, declarative disclosure and
-  lens revisit versus true tab travel. `state-performance.spec.ts` samples a
-  cold and twenty warm next/back pairs at 1x/4x, separately from opening/closing;
-  normal warm frame p95 remains 33.4ms, with layout costs reported explicitly.
-- `presentation-choreography.spec.ts` pauses real native tracks at source,
-  handoff and return frames. `presentation-performance.spec.ts` runs the actual
-  production build, verifies physical time units, separates cold entry from
-  20 warm open/close cycles at 1x/4x CPU cost, and checks cleanup. Normal warm
-  frame interval p95 target is 33.4ms. Do not disable animations to meet it.
-- Re-run existing form/confirmation security tests, all four browser viewports,
-  production boot and navigation performance, route chunk checks and full gates.
-  Compare latency to the same method's baseline; animation end is not the
-  definition of input/route readiness.
-- Contrast screenshots use settled geometry. Sampling browser fixtures is
-  not proof of minimum native WebView/GPU behavior or all real-user data.
+`state-motion.spec.ts` proves declarative disclosure and lens revisit versus
+actual selection travel. Dialog tests and 320ms same-session resize belong to
+[Dialog Lifecycle](./dialog-lifecycle.md). Complete browser, production boot,
+route chunk and serial performance gates remain in [Quality](./quality-guidelines.md);
+sampled browser frames are not all-device GPU or native WebView evidence.
 
 ## 7. Wrong vs Correct
 
-```tsx
-// Wrong: last global click + a copied animated credential form.
-// Correct: capture the actual owned control, forward only its element ref.
-const originRef = useRef<HTMLElement | null>(null);
-<Button dialogOriginRef={originRef} onClick={openEditor}>Edit</Button>
-<Dialog open={open} originRef={originRef} onOpenChange={setOpen} title="Edit">
-  <FeatureOwnedForm />
-</Dialog>
-```
-
-Wrong: call `safeToRemove` synchronously from the child's first exit layout
-effect or leave closed editors mounted under an unchanged reusable key.
-Correct: respect Motion's presence registration order and use fresh keys for
-conditional editor sessions; Radix remains the sole modal/focus owner.
+Wrong: `parseFloat(cssTime) / 1000`, a misleading spring alias for a tween, or
+copying handlers into each page. Correct: parse the unit through the shared
+owner and compose the semantic Button/Collapsible with its owned visual target.
+Modal callers must additionally follow the explicit source/session contract in
+[Dialog Lifecycle](./dialog-lifecycle.md), rather than infer a last global click.

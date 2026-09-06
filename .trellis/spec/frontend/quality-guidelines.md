@@ -95,8 +95,8 @@ timers. A dependency warning may be allowlisted only by one exact message and
 reviewed version, with an upstream reference and removal condition; broad
 regular-expression suppression is prohibited.
 
-Route/lifecycle tests prove both sides of lazy ownership: an unvisited route
-module is not requested and does not create queries/observers; a visited
+Route/lifecycle tests prove both sides of lazy ownership: prefetch may request
+an unvisited module, but its page is not mounted and creates no queries/observers; a visited
 primary route stays mounted behind `PersistentSurface` with queries disabled
 while hidden; returning to it must not flash 「正在加载页面」. Browser tests
 also exercise semantic selected state with the decorative Lens disabled,
@@ -182,12 +182,12 @@ jsdom realm. A global-existence assertion or `instanceof` check alone is not a
 replacement for these requests.
 
 All ordinary Vitest and desktop contract package scripts launch Node
-with the portable `--throw-deprecation` flag. The focused command adds the
-pending gate:
+with the portable `--throw-deprecation` flag. The focused transport command adds
+the pending-deprecation gate:
 
 ```bash
 mise run test:unit
-mise run release:check
+mise run test:native-fetch
 ```
 
 The focused pending probe is deliberately supplemental. The Node runtime

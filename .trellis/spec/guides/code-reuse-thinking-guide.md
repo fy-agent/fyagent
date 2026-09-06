@@ -83,7 +83,7 @@ parameters.
 
 ## Stop signs
 
-- Copying leftover renderer UI into V2 instead of using V2 owners/ports.
+- Restoring a retired renderer tree instead of reusing current shared owners/ports.
 - Creating page-local tabs, search, pagination, dialog, assignment, or split
   layout while a shared owner exists.
 - Parsing the same Tauri/event/config payload independently in multiple files.

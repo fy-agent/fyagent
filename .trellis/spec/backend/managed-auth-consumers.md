@@ -287,7 +287,7 @@ Required assertions:
 - OpenCode owner-transfer CAS miss returns partial with pending evidence, while
   a hard repository error keeps its documented recovery residual explicit;
 - Codex and OpenCode positive writes use `completed + pending_restart`, and
-  strict V2 parsing rejects every other non-null reason on a completed result;
+  strict renderer parsing rejects every other non-null reason on a completed result;
 - native sidecar/password discovery stays absent, and DTO/log/DOM leak tests
   cover tokens, SecretRef, raw auth bytes and helper output; only the explicit
   impact/recovery DTO permits native-owned display paths;

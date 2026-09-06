@@ -97,8 +97,8 @@ src-tauri/icons/tray/macos/statusbar_template_3x.png 3x template
 
 ## 5. Good / Base / Bad Cases
 
-- Good: one approved RGBA source regenerates all Tauri outputs, the About copy
-  matches 32px exactly, the three tray templates pass their mask contract, and
+- Good: one approved RGBA source regenerates all Tauri outputs, the three tray
+  templates pass their mask contract, the separate renderer mark is unchanged, and
   only application-brand files change.
 - Base: a future approved vector revision updates the audited digest and
   regenerates `assets/fyagent.png`; consumer paths stay unchanged.
@@ -121,8 +121,8 @@ src-tauri/icons/tray/macos/statusbar_template_3x.png 3x template
   `icon.ico` frames, with no default, extra, or unreferenced icon resources.
   [Windows installer](./windows-installer.md#6-tests-required) owns the PE
   resource parser, adversarial layout limits, and final setup verifier details.
-- Assert the About file is byte-identical to `32x32.png` and all configured
-  paths resolve.
+- Assert the retired About file is not recreated and all current configured
+  icon paths resolve; the renderer chrome mark stays outside the generator.
 - Assert each tray template size, visible RGB, alpha range, and centered content
   bounds.
 - Compare the application-brand generator write set against the pre-change
@@ -156,7 +156,7 @@ Copy one PNG over icon.png and assume every package surface inherits it.
 Correct:
 
 ```text
-Preserve the approved source, run the Tauri generator, derive the About and
-macOS template assets, validate every consumer, then perform native visual
+Preserve the approved source, run the Tauri generator, derive the macOS
+template assets, validate every current consumer, then perform native visual
 acceptance separately.
 ```

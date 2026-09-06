@@ -62,9 +62,10 @@ mode=formal` or the equivalent Actions API request); dispatching the current
   publication gate; the Release compile is the proof.
 - `main` is the trusted workflow branch for preflight and the observed formal
   mainline branch.
-  Runtime eligibility does not infer publication from branch protection, a
-  ruleset, merge settings, or a separate provenance workflow, and this project
-  does not claim that those administrator controls exist.
+  Runtime eligibility does not infer publication from branch protection,
+  rulesets, merge settings or a separate provenance workflow. Mainline merge
+  protection is independently owned by [Merge Governance](./github-merge-governance.md);
+  those controls are not formal tag-release eligibility evidence.
 - no branch push, manual signed mode, partial target mode, cross-architecture
   substitute, local publish path, or published update-in-place path exists.
 
@@ -690,7 +691,8 @@ published Release exists, but a stale draft from another source fails closed.
 Only a same-source failed draft with independently verified Actions
 run/attempt/job provenance can be deleted and recreated. A published Release
 is immutable.
-Cache `~/.cargo/registry` and `~/.cargo/git` from `Cargo.lock`. Submit the
+Release restores/saves no Actions dependency or compiler cache. Download-only
+Cargo caching is a separate CI policy, not a Release exception. Submit the
 signed DMG once without `--wait`, poll `notarytool info` on that submission
 id until `Accepted` / `Invalid` or the wait budget, then staple the DMG and
 the original app from that ticket. Do not emit a ZIP.

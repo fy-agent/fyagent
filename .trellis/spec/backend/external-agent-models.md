@@ -142,7 +142,7 @@ authorization headers, or private config fragments. User-visible `path` /
   preservation, rolling backup, atomic replacement, and authoritative reread.
 - Command/ACL tests freeze the exact native command set and reject generic
   filesystem/network/process permission widening.
-- V2 Models port/page tests prove TRAE is observation/vendor-guidance only,
+- Renderer Models port/page tests prove TRAE is observation/vendor-guidance only,
   OpenCode uses its dedicated port, and credentials never enter query cache or
   public snapshots.
 

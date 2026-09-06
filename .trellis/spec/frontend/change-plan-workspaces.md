@@ -49,9 +49,9 @@ useChangeJob(port: ChangePlansPort, active: boolean)
      }
 
 featureKeys.changeJobs
-  = ["v2", "change-plans", "job"]
+  = ["fyagent", "change-plans", "job"]
 featureKeys.changeJob(jobId)
-  = ["v2", "change-plans", "job", jobId]
+  = ["fyagent", "change-plans", "job", jobId]
 ```
 
 `SavePlanWorkspace<Request>` receives a typed request/create callback and
@@ -152,20 +152,20 @@ apply still sends only the existing opaque plan identity/digest.
 
 ## 4. Validation & Error Matrix
 
-| Condition                                                                                                                                                    | Required result                                                                                  |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
-| Apply receives anything beyond parsed `planId + planDigest`                                                                                                  | Reject the design; native paths, secrets, commands, and write bodies stay out of Renderer apply. |
-| Confirm is activated twice before React commits disabled state                                                                                               | Admit one operation through the synchronous plan/controller lock.                                |
-| Workspace is hidden or inactive                                                                                                                              | Pause automatic reads; keep the native job and last parsed snapshot.                             |
-| A slow automatic read exceeds 1,000 ms                                                                                                                       | Share the in-flight Query request; do not overlap interval reads.                                |
-| One of several observers closes                                                                                                                              | Preserve a read still owned by another visible observer.                                         |
-| Canceled observer's IPC result arrives late                                                                                                                  | Reject acceptance with `CancelledError`; do not overwrite current authority.                     |
-| Snapshot revision is lower than cached authority                                                                                                             | Retain the newer snapshot.                                                                       |
-| Job read fails                                                                                                                                               | Cache only a closed error code, retain the last snapshot, and stop automatic polling.            |
-| Final observer leaves                                                                                                                                        | Cancel obsolete acceptance and make the zero-retention job query collectible.                    |
-| Saved-source apply admission is unknown                                                                                                                      | Block subsequent source/account writes; require reopen/reread, never automatic apply retry.      |
-| Terminal owner readback fails                                                                                                                                | Keep the operation visible and blocked; offer read-only reconciliation retry.                    |
-| Raw native error, path, write body, or token reaches Query/Mutation cache, route, DOM, or log; or a credential escapes its owning secret input/mounted draft | Security regression.                                                                             |
+| Condition                                                                                                                      | Required result                                                                                                      |
+| ------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
+| Apply receives anything beyond parsed `planId + planDigest`                                                                    | Reject the design; native paths, secrets, commands, and write bodies stay out of Renderer apply.                     |
+| Confirm is activated twice before React commits disabled state                                                                 | Admit one operation through the synchronous plan/controller lock.                                                    |
+| Workspace is hidden or inactive                                                                                                | Pause automatic reads; keep the native job and last parsed snapshot.                                                 |
+| A slow automatic read exceeds 1,000 ms                                                                                         | Share the in-flight Query request; do not overlap interval reads.                                                    |
+| One of several observers closes                                                                                                | Preserve a read still owned by another visible observer.                                                             |
+| Canceled observer's IPC result arrives late                                                                                    | Reject acceptance with `CancelledError`; do not overwrite current authority.                                         |
+| Snapshot revision is lower than cached authority                                                                               | Retain the newer snapshot.                                                                                           |
+| Job read fails                                                                                                                 | Cache only a closed error code, retain the last snapshot, and stop automatic polling.                                |
+| Final observer leaves                                                                                                          | Cancel obsolete acceptance and make the zero-retention job query collectible.                                        |
+| Saved-source apply admission is unknown                                                                                        | Block subsequent source/account writes; require reopen/reread, never automatic apply retry.                          |
+| Terminal owner readback fails                                                                                                  | Keep the operation visible and blocked; offer read-only reconciliation retry.                                        |
+| A raw diagnostic, credential or executable write request escapes its owning draft into a cache, route, ordinary display or log | Security regression; parsed native `writeTargets` remain explicitly allowed display metadata, never apply authority. |
 
 ## 5. Good / Base / Bad Cases
 

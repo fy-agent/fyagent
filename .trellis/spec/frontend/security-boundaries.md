@@ -16,8 +16,11 @@ validated at the appropriate native port; a domain substring is not an origin
 check. Configuration objects are decoded from `unknown` before field access.
 Own-key structural merge/removal must not mutate prototypes or inherited values.
 Pure deep-link preview/redaction code lives in `domain`; decoding never grants
-permission to import or run scripts. Native parsing, bounded payloads, explicit
-confirmation and side-effect admission remain unchanged.
+permission to import or run scripts. Native parsing, payload validation and
+provider activation checks remain; the current renderer has no import event
+consumer or confirmation UI. The native approval flag is not itself proof of
+human consent. Any future UI must meet the linked native contract's explicit
+confirmation and stale-result requirements before introducing an import Port.
 
 Production asset paths remain confined to the Vite distribution. The route
 chunk verifier walks the actual static entry closure, requires exactly seven
@@ -31,17 +34,18 @@ contracts are checked by TypeScript and do not become runtime dependencies.
 Keep negative fixtures: a scanner that silently loses its parser must fail.
 Source migrations update all effective import, test, build and SPEC references.
 
-| Failure                                           | Required handling                                                   |
-| ------------------------------------------------- | ------------------------------------------------------------------- |
-| Invalid/non-object configuration                  | Explicit safe rejection; do not spread arbitrary input.             |
-| Dangerous own key or inherited setter             | Treat as data without prototype mutation or implicit execution.     |
-| Untrusted URL or external redirect                | Enforce the owning port's exact protocol/host/admission contract.   |
-| Deep link carries code/credentials                | Preserve native confirmation, redaction and no implicit enablement. |
-| Generator/standalone HTML is reintroduced         | Repository entry/retirement regression fails.                       |
-| Dependency cycle, unresolved import or empty scan | Fail the architecture gate; do not add broad exclusions.            |
+| Failure                                           | Required handling                                                                                        |
+| ------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| Invalid/non-object configuration                  | Explicit safe rejection; do not spread arbitrary input.                                                  |
+| Dangerous own key or inherited setter             | Treat as data without prototype mutation or implicit execution.                                          |
+| Untrusted URL or external redirect                | Enforce the owning port's exact protocol/host/admission contract.                                        |
+| Deep link carries code/credentials                | Preserve redaction/native validation; never invent a current import UI or infer consent from URL fields. |
+| Generator/standalone HTML is reintroduced         | Repository entry/retirement regression fails.                                                            |
+| Dependency cycle, unresolved import or empty scan | Fail the architecture gate; do not add broad exclusions.                                                 |
 
-Good: reuse the platform port and a pure redacted preview, then let native
-confirmation authorize a write. Bad: ask users to run an HTML test page or
+Good: keep native import validation and portable redacted preview separately
+tested; add explicit confirmation before any future renderer import Port.
+Bad: ask users to run an HTML test page or
 copy secret form values into an animation/debug snapshot.
 
 ## Tests required

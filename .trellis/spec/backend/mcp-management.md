@@ -33,7 +33,7 @@ claude | codex | gemini | grokbuild | opencode | hermes |
 qoderwork | trae-work | workbuddy
 ```
 
-The V2 presentation subset is the seven catalog-aligned targets documented by
+The renderer presentation subset is the seven catalog-aligned targets documented by
 [Shared Assignment](../frontend/assignments.md). QoderWork, TRAE Work,
 and WorkBuddy are direct target IDs rather than `AppType` conversions.
 
@@ -81,7 +81,7 @@ validate_external_mcp_config(
 `upsert_claude_mcp_server`, `delete_claude_mcp_server`,
 `validate_mcp_command`, `get_mcp_config`,
 `upsert_mcp_server_in_config`, `delete_mcp_server_in_config`, and
-`set_mcp_enabled` are compatibility surfaces. New V2 work uses `McpPort` and
+`set_mcp_enabled` are compatibility surfaces. Renderer work uses `McpPort` and
 the unified commands.
 
 ## 3. Contracts
@@ -205,7 +205,7 @@ the unified commands.
 | Shared JSON projection has an invalid root/server or cannot create the backup                                                   | Return error without overwriting the original file; validation failures also preserve the previous backup.                                                                               |
 | One target sync fails during full reconciliation                                                                                | Attempt independent targets, aggregate failures, and avoid global success.                                                                                                               |
 | External validation receives an unsupported Agent                                                                               | Reject; only qoderwork/trae-work are valid.                                                                                                                                              |
-| Secret env/header value reaches ordinary UI, errors, logs, analytics, copy, export, or preflight result                         | Security regression. Raw values are permitted only in the explicit existing-server editor/query boundary documented by V2 MCP.                                                           |
+| Secret env/header value reaches ordinary UI, errors, logs, analytics, copy, export, or preflight result                         | Security regression. Raw values are permitted only in the explicit existing-server editor/query boundary documented by Renderer MCP.                                                     |
 
 ## 5. Good / Base / Bad Cases
 
@@ -227,7 +227,7 @@ the unified commands.
 
 ## 6. Tests Required
 
-Run the focused backend/V2 gates named by the repository task runner. Required
+Run the focused backend/renderer gates named by the repository task runner. Required
 assertion owners include:
 
 - `src-tauri/src/mcp/validation.rs` and adapter tests: closed type set, required
@@ -246,7 +246,7 @@ assertion owners include:
   keep document mechanics private and prevent adapter-local copies;
 - `src-tauri/src/database/dao/mcp.rs`: all nine flags round-trip, missing-row
   updates do not insert, and failed batch import rolls back that target batch;
-- `src-tauri/src/services/traework.rs` and V2 platform tests: external MCP
+- `src-tauri/src/services/traework.rs` and renderer platform tests: external MCP
   Agent/transport/reason enums are closed, executable resolution is
   non-executing, DTOs are redacted, and invoke payloads use `agentId/config`;
 - `tests/renderer/features/authoritativeAssignment.test.tsx` and MCP page/Port tests:

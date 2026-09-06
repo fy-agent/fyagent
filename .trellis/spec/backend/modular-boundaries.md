@@ -165,29 +165,30 @@ Pure domain functions receive values/traits and can be tested without
 
 ### No parallel legacy implementation
 
-- V2 routes may coexist with leftover routes, but both must delegate to the
-  same backend/service authority. Do not fork database, provider, Skill, MCP,
-  Agent or Proxy behavior to make one UI easier.
-- Compatibility exports/routes are thin adapters or routers. They do not retain
+- The product has one renderer; the retired route tree is not a supported
+  parallel UI. Retained native compatibility commands still delegate to the
+  same domain owner or deliberately fail closed. Do not fork database,
+  Provider, Skill, MCP, Agent or Proxy behavior for a replacement interface.
+- Compatibility exports and SPEC reading routers are thin adapters/maps. They do not retain
   a second transaction, schema, catalog or policy table.
 - Delete unused private code after its callers move; do not expose it merely to
   avoid the move.
 
 ## 4. Validation & Error Matrix
 
-| Condition                                                               | Required result                                                                            |
-| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| Renderer feature needs native operation                                 | Add/reuse one typed command and service owner; no raw generic bridge.                      |
-| Command contains SQL, vendor HTTP, archive extraction or process launch | Move side effect into DAO/service/native adapter.                                          |
-| New module is marked `pub` without an actual cross-module consumer      | Keep private or `pub(crate)`; architecture review fails.                                   |
-| Existing Proxy/select command module is public                          | Preserve only the tested intentional surface; do not privatize mechanically.               |
-| New Agent code uses `auth`/`source` old owner names                     | Reject; use current `auth_actions`, `auth_sessions`, `sources` and correct command façade. |
-| Command registered but permission/adapter missing                       | Contract failure; feature is incomplete.                                                   |
-| Permission added but handler not registered                             | Contract failure; dead/wrong authority.                                                    |
-| Capability manifest union drops unrelated handler                       | Reject even if the new feature works locally.                                              |
-| One Tauri command invokes another                                       | Extract/call the shared service method instead.                                            |
-| V2 and leftover paths implement separate writes                         | Consolidate under one backend/service owner.                                               |
-| Domain helper requires `AppHandle` only to read config/emit UI event    | Pass a narrow value/trait or move shell behavior to adapter.                               |
+| Condition                                                               | Required result                                                                                   |
+| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| Renderer feature needs native operation                                 | Add/reuse one typed command and service owner; no raw generic bridge.                             |
+| Command contains SQL, vendor HTTP, archive extraction or process launch | Move side effect into DAO/service/native adapter.                                                 |
+| New module is marked `pub` without an actual cross-module consumer      | Keep private or `pub(crate)`; architecture review fails.                                          |
+| Existing Proxy/select command module is public                          | Preserve only the tested intentional surface; do not privatize mechanically.                      |
+| New Agent code uses `auth`/`source` old owner names                     | Reject; use current `auth_actions`, `auth_sessions`, `sources` and correct command façade.        |
+| Command registered but permission/adapter missing                       | Contract failure; feature is incomplete.                                                          |
+| Permission added but handler not registered                             | Contract failure; dead/wrong authority.                                                           |
+| Capability manifest union drops unrelated handler                       | Reject even if the new feature works locally.                                                     |
+| One Tauri command invokes another                                       | Extract/call the shared service method instead.                                                   |
+| Current and compatibility commands implement separate writes            | Consolidate under one backend/service owner or preserve explicit disabled compatibility behavior. |
+| Domain helper requires `AppHandle` only to read config/emit UI event    | Pass a narrow value/trait or move shell behavior to adapter.                                      |
 
 ## 5. Good / Base / Bad Cases
 
@@ -200,7 +201,7 @@ Pure domain functions receive values/traits and can be tested without
   narrower than a public API and still requires no renderer authority beyond
   registered commands.
 - **Bad:** mark every service/proxy module public, put `rusqlite` or `reqwest`
-  logic in a command, expose `{ operation, payload }`, or create a V2-only
+  logic in a command, expose `{ operation, payload }`, or create a renderer-only
   native implementation parallel to the existing owner.
 
 ## 6. Tests Required
@@ -226,8 +227,9 @@ Required assertions:
   remain a complete disjoint union;
 - integration tests call the public Rust surface intentionally rather than
   requiring accidental publication of unrelated internals;
-- feature tests prove both V2 and leftover routes share the same native owner
-  when both remain supported.
+- feature tests prove current renderer adapters use their native owner;
+  compatibility command tests preserve their explicit read-only/disabled or
+  delegated behavior without restoring deleted route tests.
 
 ## 7. Wrong vs Correct
 

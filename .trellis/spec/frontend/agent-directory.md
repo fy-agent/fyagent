@@ -26,7 +26,7 @@ Routes:
 
 ```text
 /agents
-/agents/:agentId
+/agents?target=<AgentCatalogId>&section=<AgentSection>
 ```
 
 The page accepts only the seven closed catalog IDs:
@@ -72,8 +72,11 @@ or bypass flag.
 - Render products, names, links, capability IDs and order from the parsed
   native catalog. Do not merge local storage, a hard-coded second list or a
   legacy fallback catalog.
-- An unknown route ID renders the existing unavailable/not-found state and
-  starts no native scan or action.
+- An unknown `target` is cleared with replace navigation and shows the normal
+  directory. A known target without a valid section normalizes to `models`.
+  An unknown pathname falls through the router's `/agents` redirect; there is
+  no `/agents/:agentId` route. Directory catalog/runtime reads can still run,
+  but an invalid target never supplies native action authority.
 - Catalog parse is all-or-nothing. Wrong version/order, duplicate IDs,
   unknown/excess keys, invalid capability mode/reason/evidence, or official
   link ID/order drift against the native v5 table does not degrade to
@@ -184,7 +187,7 @@ installation controls. Configuration navigation never starts an installation.
 | Condition                                                           | Required UI result                                                                                     |
 | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
 | Catalog/version/order/parser failure                                | Fail the catalog boundary visibly; do not render a partial/legacy catalog.                             |
-| Unknown Agent route                                                 | Render unavailable/not-found; issue no native action.                                                  |
+| Unknown Agent target                                                | Replace invalid search with the directory; never issue an action for the unknown ID.                   |
 | Runtime value is `null`                                             | Render unknown/unverified, not absent/stopped.                                                         |
 | Inventory is `multiple`                                             | Require explicit target selection; no implicit first candidate.                                        |
 | Inventory is `unknown`/expired or target drifts                     | Refresh guidance; no action retry with stale capability.                                               |
@@ -214,9 +217,9 @@ installation controls. Configuration navigation never starts an installation.
 
 ```bash
 mise run typecheck
+mise run lint
 mise run test:unit
 mise run test:browser
-mise run test:unit
 ```
 
 Required assertions:

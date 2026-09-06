@@ -13,20 +13,21 @@ focused feature owner. Apply [Component Guidelines](./component-guidelines.md),
 
 ## Shared contracts
 
-| Contract                                                    | Owns                                                                       |
-| ----------------------------------------------------------- | -------------------------------------------------------------------------- |
-| [Directory Structure](./directory-structure.md)             | Single entry, role placement and test environments.                        |
-| [Modular Boundaries](./modular-boundaries.md)               | Domain, renderer layers, native ports and import constraints.              |
-| [Type Safety](./type-safety.md)                             | Unknown input, guards, closed DTOs and exhaustive states.                  |
-| [State Management](./state-management.md)                   | URL/query/draft/secret and native authority ownership.                     |
-| [Reuse](./reuse.md)                                         | Adopted primitive/shared owner registry and anti-clone rules.              |
-| [Security Boundaries](./security-boundaries.md)             | Structured input, production entry, dependency graphs and test boundaries. |
-| [Quality Guidelines](./quality-guidelines.md)               | Correctness, browser/production measurements and evidence limits.          |
-| [Localization](./localization.md)                           | Current Chinese UI, manual languages and future locale admission.          |
-| [Visual Language](./visual-language.md)                     | Typography, density, focus and shared hierarchy.                           |
-| [Blue Appearance](./appearance.md)                          | Paired themes, preference, native synchronization and radial reveal.       |
-| [Surfaces and Container Response](./surfaces-responsive.md) | Material, contrast, roundness and library-backed stable panes.             |
-| [Motion and Dialog Presence](./motion-system.md)            | Press, source geometry, time units, teardown and focus return.             |
+| Contract                                                    | Owns                                                                        |
+| ----------------------------------------------------------- | --------------------------------------------------------------------------- |
+| [Directory Structure](./directory-structure.md)             | Single entry, role placement and test environments.                         |
+| [Modular Boundaries](./modular-boundaries.md)               | Domain, renderer layers, native ports and import constraints.               |
+| [Type Safety](./type-safety.md)                             | Unknown input, guards, closed DTOs and exhaustive states.                   |
+| [State Management](./state-management.md)                   | URL/query/draft/secret and native authority ownership.                      |
+| [Reuse](./reuse.md)                                         | Adopted primitive/shared owner registry and anti-clone rules.               |
+| [Security Boundaries](./security-boundaries.md)             | Structured input, production entry, dependency graphs and test boundaries.  |
+| [Quality Guidelines](./quality-guidelines.md)               | Correctness, browser/production measurements and evidence limits.           |
+| [Localization](./localization.md)                           | Current Chinese UI, manual languages and future locale admission.           |
+| [Visual Language](./visual-language.md)                     | Typography, density, focus and shared hierarchy.                            |
+| [Blue Appearance](./appearance.md)                          | Paired themes, preference, native synchronization and radial reveal.        |
+| [Surfaces and Container Response](./surfaces-responsive.md) | Material, contrast, roundness and library-backed stable panes.              |
+| [Shared Motion](./motion-system.md)                         | Time units, press, media preferences, disclosure and notification motion.   |
+| [Dialog Lifecycle](./dialog-lifecycle.md)                   | Source geometry, content resize, session teardown and focus/scroll release. |
 
 ## Shell and feature owners
 

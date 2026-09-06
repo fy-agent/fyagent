@@ -84,7 +84,7 @@ CSS consumes the blur/rim/sheen tokens directly, including preference changes.
   pointer-inert, aria-hidden backing; text and controls remain outside it.
   Do not lower steady-state form opacity to simulate glass, refract text or
   clone credential DOM. The bounded foreground arrival transition is owned by
-  [Motion and Dialog Presence](./motion-system.md), not the material adapter.
+  [Dialog Lifecycle](./dialog-lifecycle.md), not the material adapter.
 - `FrostedSurface` preserves the same backing and static rim nodes during
   travel and at rest. `enhanced` only crossfades the rim emphasis; it must not
   replace the material at the last frame. Large business dialogs use CSS tint,

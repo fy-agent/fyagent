@@ -31,7 +31,7 @@ qoderwork | trae-work | workbuddy
 ```
 
 QoderWork, TRAE Work, and WorkBuddy are direct `SkillTargetId` values. They do
-not convert to the general `AppType` enum. The V2 presentation subset is the
+not convert to the general `AppType` enum. The renderer presentation subset is the
 seven catalog-aligned targets documented by
 [Shared Assignment](../frontend/assignments.md); Gemini and Hermes remain
 native/compatibility targets.
@@ -68,7 +68,7 @@ remove_skill_repo(owner, name) -> bool
 ```
 
 `search_skills_sh`, `get_skills*`, `install_skill*`, and `uninstall_skill*`
-remain compatibility/leftover commands. New V2 work uses the unified command
+remain compatibility commands. Renderer work uses the unified command
 family through `SkillsPort`; it must not add another page-specific command set.
 
 Key DTO contracts are:
@@ -204,12 +204,12 @@ filesystem/database result into success.
 
 ## 6. Tests Required
 
-Run the focused backend/V2 gates named by the repository task runner. Required
+Run the focused backend/renderer gates named by the repository task runner. Required
 assertion owners include:
 
 - `src-tauri/src/services/skill.rs`: repository-coordinate and archive-URL
   validation, entry/size/traversal budgets, temporary cleanup, observed Skill
-  merging, every V2 target toggle, direct-copy targets, uninstall/restore path
+  merging, every renderer target toggle, direct-copy targets, uninstall/restore path
   confinement, invalid-stored-directory database-only uninstall, discovery
   filtering, and migration result semantics;
 - `src-tauri/src/services/skill/assignment.rs`: live effect before SQLite flag

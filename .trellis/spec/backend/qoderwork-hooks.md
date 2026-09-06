@@ -20,7 +20,7 @@ This is not the QoderWork CN Skills/MCP path. Skills and MCP use
 
 ```text
 get_qoderwork_hooks()
-  -> secret-free snapshot {
+  -> supported configuration snapshot {
        exists,
        supported hook projection,
        revision,
@@ -32,10 +32,13 @@ save_qoderwork_hooks(request)
 ```
 
 The exact request/response field names and closed hook event/group enums are
-owned by `commands/qoderwork.rs`. The mutation includes the expected revision
+owned by `services/qoderwork.rs`; `commands/qoderwork.rs` is the transport.
+The mutation includes the expected revision
 and may include only an opaque overwrite token previously issued for the exact
 conflicting request. It never accepts a file path, arbitrary JSON document,
-backup path, command to execute, or validation bypass.
+backup path, a command for FyAgent itself to execute, or validation bypass.
+Supported hook command strings are configuration data for Qoder, not an
+execution capability in the FyAgent host.
 
 Revisions are native HMAC capabilities over the authoritative preimage. An
 overwrite token is opaque, request-digest-bound, current-conflict-bound,
@@ -51,9 +54,14 @@ reviewed file, and is parsed before projection. Unsupported or unknown hook
 content is preserved as document data but is never silently converted into a
 supported editor state.
 
-The read DTO exposes only the supported Hooks projection, revision, existence,
-and bounded status needed by the UI. It does not return unrelated private
-settings, raw bytes, secret values, or executable content.
+The read DTO exposes the supported Hooks projection (`groups`, including
+`QoderHookCommand.command`), revision, existence and bounded status. It does
+not return unrelated settings or raw document bytes. Command/matcher text may
+contain user-sensitive data: Debug output redacts it, but serialization does
+not. Do not describe this native DTO as secret-free or log/export its payload.
+The renderer retains the typed `qoderwork.getHooks/saveHooks` Port and parsers,
+but has no current Hooks editor. Port/native support alone is not evidence
+that a confirmation UI is shipped.
 
 ### Revision and overwrite authorization
 
@@ -88,18 +96,18 @@ file-safety owner. A safe-looking lexical path is not sufficient proof.
 
 ## 4. Validation & Error Matrix
 
-| Condition | Required result |
-| --- | --- |
-| Settings file exceeds 2 MiB, is malformed, or is not a reviewed regular file | Controlled unavailable/error; no partial projection or write |
-| Expected revision matches | Apply the bounded Hooks mutation through backup/atomic write |
-| Expected revision differs | Return conflict plus exact overwrite capability; do not write |
-| Overwrite token is expired, reused, for another request, or for another preimage | Reject before backup/write |
-| Backup creation/replacement fails | Abort; primary bytes remain unchanged |
-| Unknown top-level fields exist | Preserve them byte/semantic-equivalently outside the managed Hooks field |
-| Atomic replacement or reread fails | Non-success; report recovery state without claiming save |
-| Reread projection differs from request | Fail closed; do not show committed success |
-| Windows path resolves through unsafe reparse/hardlink identity | Reject before write |
-| Renderer sends a path, whole settings document, or force boolean | API review/parser fails; such fields are not admitted |
+| Condition                                                                        | Required result                                                          |
+| -------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Settings file exceeds 2 MiB, is malformed, or is not a reviewed regular file     | Controlled unavailable/error; no partial projection or write             |
+| Expected revision matches                                                        | Apply the bounded Hooks mutation through backup/atomic write             |
+| Expected revision differs                                                        | Return conflict plus exact overwrite capability; do not write            |
+| Overwrite token is expired, reused, for another request, or for another preimage | Reject before backup/write                                               |
+| Backup creation/replacement fails                                                | Abort; primary bytes remain unchanged                                    |
+| Unknown top-level fields exist                                                   | Preserve them byte/semantic-equivalently outside the managed Hooks field |
+| Atomic replacement or reread fails                                               | Non-success; report recovery state without claiming save                 |
+| Reread projection differs from request                                           | Fail closed; do not show committed success                               |
+| Windows path resolves through unsafe reparse/hardlink identity                   | Reject before write                                                      |
+| Renderer sends a path, whole settings document, or force boolean                 | API review/parser fails; such fields are not admitted                    |
 
 ## 5. Good / Base / Bad Cases
 
@@ -124,8 +132,9 @@ file-safety owner. A safe-looking lexical path is not sufficient proof.
   containment alone cannot authorize a write.
 - Command/adapter tests assert exact camel-case payloads, closed event/group
   values, no raw settings/path fields, and secret-safe errors.
-- UI tests keep the conflict dialog tied to one frozen request and do not retain
-  a force capability after the terminal outcome.
+- Any future UI tests must keep conflict consent tied to one frozen request
+  and clear overwrite capabilities on the terminal outcome; retired UI tests
+  are not current coverage.
 
 ## 7. Wrong vs Correct
 
@@ -144,8 +153,8 @@ only the exact conflict capability after explicit confirmation.
 
 ```ts
 const request = freezeHookRequest(draft, snapshot.revision);
-const result = await ports.qoderWork.saveHooks(request);
-if (result.kind === "conflict" && confirmed) {
-  await ports.qoderWork.saveHooks({ ...request, overwriteToken: result.token });
+const result = await ports.qoderwork.saveHooks(request);
+if (result.state === "overwrite_confirmation_required" && confirmed) {
+  await ports.qoderwork.saveHooks({ ...request, overwriteToken: result.token });
 }
 ```

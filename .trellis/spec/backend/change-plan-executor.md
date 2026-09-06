@@ -187,7 +187,7 @@ faultPoints        = before_managed_write,
 
 | Condition                                           | Required result                                                                       |
 | --------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| unknown adapter/operation/resource/cancel enum      | Reject at Rust registry or V2 strict parser; do not execute                           |
+| unknown adapter/operation/resource/cancel enum      | Reject at Rust registry or renderer strict parser; do not execute                     |
 | same plan + same digest after admission             | Return existing execution as `idempotent_replay`; writer +0                           |
 | same plan + changed digest                          | `invalid_digest`; writer +0                                                           |
 | old contract/adapter after executor version change  | `stale`; writer +0                                                                    |
@@ -227,8 +227,9 @@ faultPoints        = before_managed_write,
 - DAO tests insert legacy v1 `apply/reconcile` JSON/events directly and prove
   public normalization without rewriting the raw row.
 - Shared `tests/fixtures/changePlanDtoContract.v2.json` must match Rust serde
-  and pass the V2 strict parser for plan/job/cancel/event-hint fields.
-- V2 tests cover idempotent replay, cancel DTO validation, five-phase labels,
+  and pass the renderer strict parser for plan/job/cancel/event-hint fields.
+  Its `v2` suffix names the wire protocol, not a second frontend generation.
+- Renderer tests cover idempotent replay, cancel DTO validation, five-phase labels,
   compensated state, cancelled/interrupted/recovered result copy, and browser
   native-only behavior.
 - Run `mise run rust:fmt:check`, `mise run rust:clippy`, `mise run rust:test`,

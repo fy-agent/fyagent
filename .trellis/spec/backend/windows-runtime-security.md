@@ -211,8 +211,9 @@ expose the Shell SID or paths and does not decide which user owns state.
 
 `formal_windows_build` remains a compile-time manifest fact. In a formal
 elevated build, the elevated parent does not probe or execute a user CLI.
-Grok Build observe/install/update is the only policy-legal exception and uses
-the closed ordinary-user helper; helper failure must not fall back to elevated
+Grok Build and the dedicated Claude CLI façade delegate observe/install/update
+to distinct closed ordinary-user helper actions; neither is permission to run
+the CLI in the elevated parent. Helper failure must not fall back to elevated
 CLI execution. The Codex model-catalog CLI fallback is skipped completely. A non-formal build
 may execute Alice's discovered Codex entry only after clearing the inherited
 environment and rebuilding a narrow environment from the frozen Alice paths
@@ -226,20 +227,20 @@ command-level check.
 It no longer selects a machine runtime or requires the process SID to equal the
 Shell SID. Legacy Run-value cleanup is known-name-only, runs after primary
 instance admission, and is best-effort; its failure must not block startup.
-Agent Catalog CLI lifecycle and the separate Auth-session façade still reuse
-the Tooling gate. Claude and OpenCode Agent CLI surfaces remain unavailable on
-a formal elevated Windows build (`interactive_user_unavailable` /
-`executor_not_implemented`) and must not inspect or launch a user CLI from the
-elevated parent. Grok Build observe/install/update is the sole policy-legal
-CLI lifecycle: the elevated coordinator asks the existing ordinary-user helper
-for the closed `grok-tool` action and must not fall back to elevated CLI
-execution when the helper fails. Auth observation/session is unchanged and
-still does not gain a helper verb.
-The ordinary-user helper has three closed action families: Codex MSIX, Agent
+The generic Tooling lifecycle endpoint remains Grok-only; Claude's Agent
+lifecycle uses the separate `services/tooling/claude.rs` owner and
+`claude-tool` action documented in [Claude Code CLI](./claude-code-cli.md).
+OpenCode CLI lifecycle is not admitted. Auth operations that require a user
+CLI still fail closed on formal Windows; no login/logout/status verb is added
+to either tool helper. OpenCode's bounded credential-file observation and
+trusted Desktop handoff have their separate [Auth](./external-agent-auth.md)
+contract and are not user-CLI execution.
+The ordinary-user helper has four closed action families: Codex MSIX, Agent
 EXE with the product enum `qoderwork | trae-work | workbuddy | opencode`
 (OpenCode uses the reviewed WinVerifyTrust identity on x64; ARM64 remains
-unsupported), and Grok tool with
-`observe | install | update` plus optional `none | native | npm` owner.
+unsupported), Grok tool and Claude tool. Their tool verbs are only
+`observe | install | update`; Grok retains its optional `none | native | npm`
+owner, while Claude's independent owner/plan rules are in its focused spec.
 Default Grok install is official npm. After Hello, the host writes an
 80-byte `GrokNpmInstallPlan` control (exact version, closed registry index,
 allow-scripts flag). The helper does not resolve `@latest`, does not invent a
@@ -305,9 +306,10 @@ IShellFolderViewDual.Application -> IShellDispatch2`.
 | Explorer COM acquisition or `ShellExecute` fails                                                 | Return controlled `INTERACTIVE_USER_UNAVAILABLE`; do not try a command, direct shell, renderer, or elevated-user fallback.                                                   |
 | Closed desktop-agent `.exe` is relative, contains `..` or NUL, or is not `.exe`                  | `external_launch_invalid_windows_exe`; Explorer is not invoked.                                                                                                              |
 | Closed desktop-agent `.exe` is observer-proven under Alice Programs or machine Program Files     | Explorer `ShellExecute` as Alice; never `CreateProcess` / `ShellExecuteW` from Bob.                                                                                          |
-| Formal elevated Windows Claude/OpenCode CLI or any Auth session                                  | Return `interactive_user_unavailable` / `executor_not_implemented`; do not inspect, observe, or launch the user tool.                                                        |
+| Formal elevated Windows direct user-CLI execution or CLI-based Auth                              | Fail closed before probing/launching; OpenCode file observation/Desktop handoff is not a CLI exception.                                                                      |
 | Formal elevated Windows Grok Build observe/install/update                                        | Closed `grok-tool` helper action under the frozen Explorer user; helper failure must not fall back to elevated CLI.                                                          |
-| The installer helper accepts URL, path, shell string, scope, silent switch, or raw child stdout  | Contract/static test fails; only exact Codex MSIX, Agent EXE product, or Grok tool actions are registered.                                                                   |
+| Formal Windows Claude Agent lifecycle                                                            | Dedicated Claude owner uses closed `claude-tool`; never the generic Tooling endpoint or an Auth verb.                                                                        |
+| The installer helper accepts URL, path, shell string, scope, silent switch, or raw child stdout  | Contract/static test fails; only exact Codex MSIX, Agent EXE, Grok tool and Claude tool families are registered.                                                             |
 | Helper `Hello(action)` differs from the parent-selected action/product                           | Reject before bridge control/admission; zero installer launch.                                                                                                               |
 | Agent EXE helper `ShellExecuteEx` succeeds, including a missing process handle                   | Job `succeeded` (vendor-wizard handoff); do not wait, kill, or delete the PackageBridge EXE leaf.                                                                            |
 | Agent EXE helper launch uses a null verb or inherits the helper console                          | Contract/static test fails; fMask is `SEE_MASK_NOCLOSEPROCESS` plus `SEE_MASK_NO_CONSOLE` and `lpVerb` is `open`.                                                            |
@@ -379,9 +381,10 @@ KEY_ENUMERATE_SUB_KEYS`, no create/set), that the constant stays distinct
   must click a real Tauri catalog action and observe the target in the
   interactive user's foreground browser; process creation or a successful
   HRESULT alone is insufficient.
-- Agent Catalog CLI/Auth-session tests must map formal elevated Windows Claude
-  and OpenCode to `interactive_user_unavailable` / `executor_not_implemented`
-  and must not register a generic command helper. Grok Build tests must prove
+- Agent tests distinguish dedicated Claude lifecycle from still-blocked
+  direct CLI/Auth execution and unsupported OpenCode CLI. No generic command
+  helper is registered. Claude helper identity/plan tests live in its focused
+  contract. Grok Build tests must prove
   the closed `grok-tool` helper path and the absence of elevated fallback.
   Installer-helper tests must prove exact action/product CLI, v3 Hello-action
   binding, Grok wire codes 5–13, fixed bridge artifact kind, and no
@@ -528,24 +531,28 @@ crate::platform::process_launch::launch_trusted_windows_exe_as_user(exe)
 
 ### 1. Scope / Trigger
 
-- Trigger: Agent Catalog starts Claude/OpenCode Desktop install through the
-  Agent façade, Grok Build install/update through Tooling, and Auth through
+- Trigger: Agent Catalog starts OpenCode Desktop install through the
+  Agent façade, Claude CLI through its dedicated owner, Grok Build through
+  generic Tooling, and Auth through
   the separate Auth-session façade.
   Formal elevated Windows still forbids launching a user CLI from the elevated
-  parent. Grok Build is the only policy-legal CLI lifecycle and must use the
-  closed ordinary-user helper. Neither surface may grow a generic command/path
+  parent. Both admitted CLI lifecycle owners must use their distinct
+  closed ordinary-user helper actions. Neither surface may grow a generic command/path
   helper.
 
 ### 2. Signatures
 
 No generic Windows command helper is registered. The existing installer helper
-keeps closed MSIX and Agent-EXE actions and adds one Grok-only tool family.
-Claude/OpenCode Agent CLI and every Auth session remain unavailable on formal
-elevated Windows.
+keeps closed MSIX and Agent-EXE actions plus separate Grok and Claude tool
+families. Direct CLI-based Auth remains unavailable on formal elevated Windows;
+OpenCode Desktop provider observation/connect is owned separately.
 
 ```text
-start_agent_action({ agentId: claude-code|opencode, surface: cli, ... })
+start_agent_action({ agentId: opencode, surface: cli, ... })
   -> surface_not_supported
+
+start_agent_action({ agentId: claude-code, surface: cli, action: install|update, ... })
+  -> dedicated Claude lifecycle -> claude-tool helper
 
 run_tool_lifecycle_action(tools=["claude"|"opencode"|...], action)
   -> error before any side effect unless tool == "grok"
@@ -556,11 +563,9 @@ run_tool_lifecycle_action(tools=["grok"], action=install|update|install_official
   install_native -> official x.ai/PowerShell installer
   development Windows / macOS -> existing Tooling owner, same Grok rules
 
-get_agent_auth_observation({ agentId: claude-code|grokbuild|opencode })
-start_agent_auth_session({ agentId, intent })
-get_active_agent_auth_session({ agentId })
+CLI-backed Auth observation/session
   -> unavailable / interactive_user_unavailable on formal Windows
-     // Auth does not gain a helper verb
+     // No Auth helper verb. OpenCode file/desktop paths are not CLI-backed.
 
 fyagent-user-helper.exe
   codex-msix-install --job-id <uuid> --pipe <nonce>
@@ -568,6 +573,7 @@ fyagent-user-helper.exe
                     --job-id <uuid> --pipe <nonce>
   grok-tool --action observe|install|update [--owner native|npm]
             --job-id <uuid> --pipe <nonce>
+  claude-tool --action observe|install|update --job-id <uuid> --pipe <nonce>
   // After Hello: host writes 80-byte GrokNpmInstallPlan. Missing/invalid/@latest
   // plan => helper refuses npm. The Windows product has already selected and
   // integrity-checked the win32 x64/arm64 optional package; platform package
@@ -577,12 +583,10 @@ fyagent-user-helper.exe
 
 ### 3. Contracts
 
-- Catalog CLI lifecycle and Auth observation/session reuse `services/tooling`.
-  The formal-build gate still stops elevated inspection of Claude/OpenCode and
-  of every Auth session before a user tool is launched. Grok Build
-  observe/install/update go through the closed helper, not the elevated parent.
-- Updating Claude's official Windows `install.ps1` / WinGet fact does not
-  remove the elevated boundary or add a Claude helper verb.
+- Generic Tooling and direct CLI execution keep their formal-build gate.
+  Grok and the separate Claude lifecycle delegate to their closed helper
+  actions. The Claude addition does not authorize elevated probing, Auth
+  execution, PowerShell/WinGet installation or arbitrary helper commands.
 - Helper stdout/stderr, environment, browser URL, device code, executable
   path, and command line must never return to the elevated parent or
   renderer.
@@ -599,26 +603,25 @@ fyagent-user-helper.exe
 
 ### 4. Validation & Error Matrix
 
-| Condition                                                                                           | Required result                                                                         |
-| --------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| Formal elevated Windows Claude/OpenCode CLI or Auth session                                         | `interactive_user_unavailable` / `executor_not_implemented`; no probe or child process  |
-| Formal elevated Windows Grok Build lifecycle                                                        | Closed `grok-tool` helper; no elevated fallback                                         |
-| Grok npm helper has no plan, `@latest`, or unknown registry                                         | Fail closed; no npm child process                                                       |
-| Windows product has no matching `grok-win32-*` package/integrity or no registry matches both hashes | Produce no helper plan; no npm child process                                            |
-| OpenCode Windows x64 ProductName/relative EXE/signer is reviewed                                    | Admit current-user NSIS handoff; ARM64 remains unsupported                              |
-| OpenCode Windows ProductName/relative EXE/signer is empty                                           | `windows_exe_install_admitted` rejects download and install; do not claim supported     |
-| OpenCode helper product is admitted but scan relatives omit `@opencode-aidesktop`                   | Inventory miss after a real current-user install; helper admission is not scan identity |
-| Helper argv contains URL/path/shell string/free tool name                                           | Contract test fails; no child process                                                   |
-| Installer helper gains Claude/OpenCode tool verbs                                                   | Architecture regression                                                                 |
-| Non-formal/non-Windows Tooling lifecycle                                                            | Existing Tooling behavior unchanged; Grok remains the only writable CLI                 |
+| Condition                                                                                           | Required result                                                                           |
+| --------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Formal elevated Windows direct CLI/Auth execution                                                   | Fail before a user process; dedicated lifecycle helper actions are separate.              |
+| Formal elevated Windows Grok Build lifecycle                                                        | Closed `grok-tool` helper; no elevated fallback                                           |
+| Grok npm helper has no plan, `@latest`, or unknown registry                                         | Fail closed; no npm child process                                                         |
+| Windows product has no matching `grok-win32-*` package/integrity or no registry matches both hashes | Produce no helper plan; no npm child process                                              |
+| OpenCode Windows x64 ProductName/relative EXE/signer is reviewed                                    | Admit current-user NSIS handoff; ARM64 remains unsupported                                |
+| OpenCode Windows ProductName/relative EXE/signer is empty                                           | `windows_exe_install_admitted` rejects download and install; do not claim supported       |
+| OpenCode helper product is admitted but scan relatives omit `@opencode-aidesktop`                   | Inventory miss after a real current-user install; helper admission is not scan identity   |
+| Helper argv contains URL/path/shell string/free tool name                                           | Contract test fails; no child process                                                     |
+| Helper gains OpenCode or a generic tool/Auth command                                                | Architecture regression; Claude's closed action has independent identity/plan tests.      |
+| Generic Tooling lifecycle                                                                           | Grok remains its only writable CLI; dedicated Claude is not a generic endpoint expansion. |
 
 ### 5. Good/Base/Bad Cases
 
-- Good: macOS Grok install still uses the Tooling owner; Claude/OpenCode Agent
-  surfaces stay Desktop-only.
-- Base: formal Windows Agent detail shows unavailable Claude/OpenCode CLI
-  actions and keeps official-page fallback; Grok Build can observe/install/
-  update through the helper when the Explorer user is available.
+- Good: Grok uses generic Tooling, Claude uses its dedicated CLI owner, and
+  OpenCode stays Desktop-only; none runs a user CLI in the elevated parent.
+- Base: formal Windows CLI-based Auth stays unavailable, while admitted
+  lifecycle actions can use their closed helpers when Explorer is available.
 - Bad: `fyagent-user-helper.exe run --cmd <renderer string>`.
 - Bad: helper npm install without a host plan, or with `@latest`.
 - Bad: claim OpenCode Windows is supported while identity fields are empty, or
@@ -631,10 +634,11 @@ fyagent-user-helper.exe
   remains green: non-Grok tools stay fail-closed; Grok uses
   `OrdinaryUserHelper` on formal Windows and `LocalProcess` only on
   development builds.
-- Agent Claude/OpenCode CLI and Auth-session paths map elevated failures to
-  `interactive_user_unavailable` / `executor_not_implemented`.
+- Direct CLI/Auth paths map elevated failures to
+  `interactive_user_unavailable` / `executor_not_implemented`; Claude lifecycle
+  tests separately prove its closed helper route.
 - Negative scan: no generic CLI/Auth helper verb, no path/URL argv, no raw
-  stdout DTO. Closed `grok-tool` is the only Tooling helper action.
+  stdout DTO. Closed `grok-tool` and `claude-tool` actions are not generic execution.
 - Windows product-host tests admit only `grok-win32-x64`/`grok-win32-arm64`,
   reject absent platform integrity, and prove the 80-byte helper control
   carries, besides fixed framing/version bytes, only exact package version,
@@ -654,10 +658,10 @@ helper -> raw child stdout back to renderer
 #### Correct
 
 ```text
-formal elevated Windows Claude/OpenCode CLI and Auth -> interactive_user_unavailable
-installer helper -> exact Codex MSIX, Agent EXE product, or Grok tool action
+formal elevated Windows direct CLI/Auth -> interactive_user_unavailable
+installer helper -> exact Codex MSIX, Agent EXE, Grok tool, or Claude tool action
 Grok Build lifecycle -> grok-tool helper; no elevated fallback
-Claude/OpenCode helper verbs and generic command argv remain forbidden
+Claude lifecycle -> claude-tool helper; no Auth verbs or generic command argv
 ```
 
 ## Scenario: Inventory parent registry enumeration rights

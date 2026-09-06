@@ -274,44 +274,44 @@ listed in
   focus after the backing exits. Do not abruptly `return null` from an
   unprotected login wrapper or add another focus
   owner. Pass the actual action's origin ref before asynchronous work; see
-  [Motion and Dialog Presence](./motion-system.md).
+  [Dialog Lifecycle](./dialog-lifecycle.md).
 - Copy says what is complete, pending or unknown and gives one safe next step.
   It must not claim login, connection or request routing beyond backend
   readback evidence.
 
 ## 4. Validation & Error Matrix
 
-| Condition                                                                             | Required result                                                                                                      |
-| ------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| Browser/non-native runtime                                                            | Render the controlled desktop-only state; never seed authenticated accounts.                                         |
-| Overview has an extra token/path/raw-error field                                      | Reject the complete response.                                                                                        |
-| Connection references a missing account/provider                                      | Reject the complete response.                                                                                        |
-| Account says two connections but only one references it                               | Reject the complete response.                                                                                        |
-| Device verification URI has query, fragment, wrong host or non-HTTPS scheme           | Reject the login snapshot.                                                                                           |
-| More than eight active sessions or a duplicate session ID appears                     | Reject the overview/session chain.                                                                                   |
-| OpenAI and xAI each have one active session                                           | Accept both; the UI follows the selected opaque session ID and must not merge them.                                  |
-| A second start is attempted for a provider with a non-terminal session                | Preserve `operation_conflict`; recover the existing provider session.                                                |
-| Page is hidden by persistent routing                                                  | Pause automatic queries and polling; retain selected UI state.                                                       |
-| Mutation returns no authoritative overview/readback                                   | Keep prior state and show uncertainty; do not claim success.                                                         |
-| Account/default/removal or OpenCode file mutation has a stale revision                | Preserve stale error, reread, and require an explicit retry.                                                         |
-| Displayed connection revision or native preview no longer matches                     | Reject/reread and require a fresh explicit confirmation; no optimistic success                                       |
-| Codex is `disconnected` with a saved account but live identity is absent or different | Present “账号已保存”, not “已连接”; never count it as proven native pickup.                                          |
-| Completed login/mutation has `reasonCode=pending_restart`                             | Accept the response, render the returned overview, and offer restart-specific guidance; do not show a generic retry. |
-| Completed login/mutation has another non-null reason                                  | Reject the response as invalid managed-auth data.                                                                    |
-| Account removal preview fails                                                         | Do not expose the destructive confirmation.                                                                          |
-| Connection needs restart                                                              | Show saved/pending-restart separately; do not say the consumer is already using it.                                  |
-| Managed Agent summary is clicked                                                      | Navigate to `/auth?consumer=<closed-id>`; do not start the old Agent Auth session.                                   |
-| Token/code/state/verifier/path/command reaches DTO, cache, route or DOM               | Security regression.                                                                                                 |
+| Condition                                                                                                             | Required result                                                                                                                                         |
+| --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Browser/non-native runtime                                                                                            | Render the controlled desktop-only state; never seed authenticated accounts.                                                                            |
+| Overview has an extra token/path/raw-error field                                                                      | Reject the complete response.                                                                                                                           |
+| Connection references a missing account/provider                                                                      | Reject the complete response.                                                                                                                           |
+| Account says two connections but only one references it                                                               | Reject the complete response.                                                                                                                           |
+| Device verification URI has query, fragment, wrong host or non-HTTPS scheme                                           | Reject the login snapshot.                                                                                                                              |
+| More than eight active sessions or a duplicate session ID appears                                                     | Reject the overview/session chain.                                                                                                                      |
+| OpenAI and xAI each have one active session                                                                           | Accept both; the UI follows the selected opaque session ID and must not merge them.                                                                     |
+| A second start is attempted for a provider with a non-terminal session                                                | Preserve `operation_conflict`; recover the existing provider session.                                                                                   |
+| Page is hidden by persistent routing                                                                                  | Pause automatic queries and polling; retain selected UI state.                                                                                          |
+| Mutation returns no authoritative overview/readback                                                                   | Keep prior state and show uncertainty; do not claim success.                                                                                            |
+| Account/default/removal or OpenCode file mutation has a stale revision                                                | Preserve stale error, reread, and require an explicit retry.                                                                                            |
+| Displayed connection revision or native preview no longer matches                                                     | Reject/reread and require a fresh explicit confirmation; no optimistic success                                                                          |
+| Codex is `disconnected` with a saved account but live identity is absent or different                                 | Present “账号已保存”, not “已连接”; never count it as proven native pickup.                                                                             |
+| Completed login/mutation has `reasonCode=pending_restart`                                                             | Accept the response, render the returned overview, and offer restart-specific guidance; do not show a generic retry.                                    |
+| Completed login/mutation has another non-null reason                                                                  | Reject the response as invalid managed-auth data.                                                                                                       |
+| Account removal preview fails                                                                                         | Do not expose the destructive confirmation.                                                                                                             |
+| Connection needs restart                                                                                              | Show saved/pending-restart separately; do not say the consumer is already using it.                                                                     |
+| Managed Agent summary is clicked                                                                                      | Navigate to `/auth?consumer=<closed-id>`; do not start the old Agent Auth session.                                                                      |
+| Access/refresh token, OAuth authorization code, PKCE verifier, raw state/command or unapproved path escapes its owner | Security regression; allowlisted device `userCode`/verification URI and parsed file-impact display metadata are intentional, not credentials to replay. |
 
 ## 5. Good / Base / Bad Cases
 
 - **Good:** Codex displays selected OpenAI account metadata, `DeepSeek API` as
   the current request source and `官方登录已保留` as separate facts; it does not
   use credential presence alone as proof of native Codex pickup.
-- **Good:** a Codex or OpenCode login finishes credential storage plus file
-  readback, then reports `completed + pending_restart`; the dialog
-  distinguishes “saved” from live consumer pickup and offers restart or later
-  handling.
+- **Good:** login stores and reads back the credential, reports an account
+  saved with no connection ID, and performs no consumer-file projection. A
+  separately confirmed connection can then report `pending_restart`; storage,
+  connection and live consumer pickup remain distinct facts.
 - **Base:** OpenAI login snapshots come from backend sessions. Browser PKCE and
   Device Code can complete an account after SecretRef readback. Codex file
   projection is capability-gated by effective store, complete material, and
@@ -323,13 +323,10 @@ listed in
 - **Bad:** display `已登录` because an account record exists, display `已连接`
   because a file write returned, or display `OpenAI Official` while the active
   provider is third-party.
-- **Bad:** restore the retired `AuthCenterPanel` or let Agent cards keep a
-  second managed-account workflow. The leftover Settings auth tab is a
-  compatibility shell only: it must not poll, login, or display a second
-  account owner. Leftover Provider `CodexOAuthSection` /
-  `XaiOAuthSection` / `CopilotAuthSection` may select an existing
-  `authBinding` account from `authGetStatus`; they must not start Device
-  Code, open a verification URL, remove accounts, or poll leftover login.
+- **Bad:** restore the deleted AuthCenterPanel, Settings auth tab or Provider
+  OAuth sections as a second account owner. Only retained native compatibility
+  commands remain; mutation commands fail with `legacy_auth_mutation_disabled`.
+  A compatibility API is not evidence of an existing renderer picker or login UI.
 
 ## 6. Tests Required
 
@@ -365,10 +362,9 @@ Required assertions include:
 - a connection `targetId` of `null` does not render “未检测到可管理的安装实例”;
 - managed Agent cards navigate to the central page while Claude and desktop
   handoff retain their existing owner;
-- leftover Provider OAuth sections remain picker-only and leftover
-  `authStartLogin` / `authPollForAccount` / `authRemoveAccount` /
-  `copilotStartDeviceFlow` / `copilotLogout` throw
-  `legacy_auth_mutation_disabled` without invoking Tauri;
+- current renderer code has no retired Provider OAuth or Settings account
+  entry; native `commands/auth.rs` and `commands/copilot.rs` tests prove retained
+  mutation compatibility commands fail closed with `legacy_auth_mutation_disabled`;
 - keyboard/focus/ARIA, narrow viewport and reduced-motion behavior;
 - overview `reasonCodes` render closed-set recovery copy
   (`secret_unavailable`, `migration_blocked`, `pending_restart`,
@@ -409,17 +405,29 @@ Wrong:
 
 ```tsx
 if (!open) return null;
-return <Dialog open={open} onOpenChange={onOpenChange} />;
+return (
+  <Dialog
+    open={open}
+    originRef={originRef}
+    onOpenChange={onOpenChange}
+    title="确认操作"
+  />
+);
 ```
 
 Correct:
 
 ```tsx
-return <Dialog open={open} onOpenChange={onOpenChange} />;
+return (
+  <Dialog
+    open={open}
+    originRef={originRef}
+    onOpenChange={onOpenChange}
+    title="确认操作"
+  />
+);
 ```
 
 Abruptly unmounting an unprotected wrapper bypasses the reviewed exit lifetime.
-Controlled wrappers remain mounted, while conditional editors use a propagated
-presence boundary and fresh session key. The primitive retains Radix ownership
-through the inert backing's exit and restores a still-valid invoking control
-after dismissal. Hidden route removal is an intentional immediate exception.
+Controlled wrappers stay mounted; conditional editors follow the propagated
+presence/fresh-session rules in [Dialog Lifecycle](./dialog-lifecycle.md).

@@ -52,7 +52,10 @@ patch_codex_provider_features(app: "codex", provider, intent, isNew?)
 
 get_provider_summary({ app: "codex" })
   -> {
-       providers: Record<string, { id: string; name: string }>;
+       providers: Record<string, {
+         id: string; name: string;
+         writeTargets?: Array<{ path: string; backupPath: string; exists: boolean }>;
+       }>;
        currentId: string;
        writeTargets: Array<{ path: string; backupPath: string; exists: boolean }>;
      }
@@ -61,7 +64,7 @@ get_provider_summary({ app: "codex" })
 Feature commands reject every `app` other than Codex. No provider command may
 accept a renderer-controlled filesystem path. Generic mutation results never
 return a filesystem path, process identifier, launch command,
-credential-bearing diagnostic, or generic application-version field. The V2
+credential-bearing diagnostic, or generic application-version field. The renderer
 sanitized summary is the narrow exception: it may return user-visible
 `writeTargets` path/backup metadata owned by native path resolution. Paths under
 the frozen user home use `~`; the DTO contains no file bytes, digest, Provider
@@ -78,8 +81,9 @@ CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED
 
 ### Lossless TOML and native capabilities
 
-- Every Codex Provider exposes image-extension and WebSocket controls in the
-  existing, initially collapsed advanced region. Provider ID, `base_url`,
+- The native analysis/patch capability applies to every valid Codex Provider,
+  not only the current Quick Setup form's initially collapsed controls. The
+  retired general Provider editor is not a second current renderer. Provider ID, `base_url`,
   credentials, official/managed classification, OAuth type, proxy takeover,
   `wire_api`, and `meta.apiFormat` do not make a valid TOML draft ineligible.
 - A fixed official Provider is identified only by `category == "official"` or
@@ -224,7 +228,7 @@ CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED
   digest requests invoke it zero times. A same-digest replay of a consumed v2
   plan returns the existing execution snapshot as an idempotent replay and
   likewise invokes the writer zero additional times.
-- When the target is the fixed V2 Codex Quick Setup Provider, Change Plan must
+- When the target is the reserved Codex Quick Setup Provider, Change Plan must
   derive `target_projection_digest` from the **same pure targeted-patch
   projection** consumed by the real Quick Setup writer. The current live
   document is part of that projection so unrelated user comments, fields,
@@ -286,7 +290,7 @@ CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED
 - Bad: derive official-provider identity from display name, rewrite invalid TOML
   from form state, use proxy preservation as proof of WebSocket transport, or
   quote an unsafe persisted session ID into a command string.
-- Good: V2 Codex quick setup with `codexFeatures.imageExtension = true` writes
+- Good: Codex quick setup with `codexFeatures.imageExtension = true` writes
   `requires_openai_auth = false`, the managed image header, and
   `experimental_bearer_token` equal to the request `apiKey`, while still
   storing `auth.OPENAI_API_KEY`.
@@ -337,9 +341,10 @@ CODEX_WEBSOCKET_PROXY_MAY_BE_UNSUPPORTED
   users, v1 backup + idempotent migrate, unique vs ambiguous Provider binding
   remap, corrupt/I/O load failure keeping `store_loaded=false` and preserving
   all bindings, bound-missing fail-closed forwarding, leftover `auth_*` mutations
-  returning `legacy_auth_mutation_disabled`, Debug/DTO token redaction, explicit `file`
-  native projection, and fail-closed `keyring`/`auto`/`ephemeral`/unset/unknown
-  without consulting `auth.json` existence.
+  returning `legacy_auth_mutation_disabled`, Debug/DTO token redaction, explicit
+  `file` or unset effective-store capability, and fail-closed
+  `keyring`/`auto`/`ephemeral`/invalid/unknown without consulting `auth.json`
+  existence. File capability alone still does not admit an account projection.
 
 ## 7. Wrong vs Correct
 
@@ -374,11 +379,13 @@ successful OAuth store load -> remap legacy Provider bindings
 OAuth store load failure -> preserve all bindings; do not treat memory as empty authority
 ```
 
-## Scenario: V2 Codex Quick Setup targeted live write
+## Scenario: Codex Quick Setup targeted live write
 
 ### 1. Scope / Trigger
 
-- Trigger: the fixed V2 Quick Setup Provider ID is written or switched to live.
+- Trigger: the reserved Quick Setup Provider ID is written or switched to live.
+  Its persisted `fyagent-v2-*` identifier is compatibility identity, not a
+  second renderer generation; this documentation cleanup does not rename it.
 - The stored Provider remains a minimum snapshot. It is **not** the authority
   for unrelated user-owned `config.toml` or `auth.json` fields.
 - Imported/saved request-source switches also preserve unowned live content
@@ -526,7 +533,7 @@ project_codex_live_config_when_openai_auth_disabled(auth, config_text) -> config
 
 ### 3. Contracts
 
-- Request: V2 `apiKey` plus optional `codexFeatures.imageExtension`.
+- Request: Quick Setup `apiKey` plus optional `codexFeatures.imageExtension`.
 - Stored Codex shape always keeps `auth.OPENAI_API_KEY`.
 - Image on: `[model_providers.custom].requires_openai_auth = false` and
   stored `experimental_bearer_token` equals the same `apiKey`.
