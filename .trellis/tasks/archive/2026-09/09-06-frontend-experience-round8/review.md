@@ -172,3 +172,36 @@ repository recorder with the implementation and integrated-verification commits.
 The final bookkeeping commit contains only this archive evidence and the journal;
 the final delivery check verifies no active tasks, a clean main checkout and no
 linked-worktree or implementation-branch residue.
+
+## Supplemental merged profiling
+
+An additional main-checkout run on implementation `a929195a`
+(`/tmp/fyagent-round8-main-final-performance.log`) passed 34 cases and rejected
+the normal step-resize frame budget: 49.9ms p95 versus 33.4ms. This overlaps the
+postarchive contract runner recorded in `/tmp/fyagent-round8-postarchive-contracts.log`;
+the overlap is observed, not proof of a GPU or scheduler root cause. All ten
+density cases and the remaining source, navigation, modal and theme cases passed.
+Do not replace this failed run with the two earlier passing isolated runs or
+describe every measurement as passing.
+
+The final main-checkout run waited until three consecutive process-admission
+samples found no competing verification job. It then passed all 35 cases with
+exit code 0 (`/tmp/fyagent-round8-main-isolated-performance.log`). Product code,
+test assertions and build configuration still match implementation `a929195a`;
+no budget, timeout, animation or assertion was changed for the rerun.
+Navigation p95 was 28.2ms / 47.5ms at 1x / 4x, modal frame p95 was 33.4ms at
+both rates, and step frame p95 was 33.4ms / 50.0ms. Normal step maximum was
+50.1ms; stress navigation long tasks were 101ms and 51ms, with a 55ms modal
+long task. Theme thirds remained 16.7–16.8ms. These final results supplement,
+not erase, the failed run and do not prove stable native GPU performance.
+
+The final isolated main-checkout run completed **35/35 passed**
+(`/tmp/fyagent-round8-main-isolated-performance.log`) after other validation
+processes ended. Normal/4x navigation p95 is28.2/47.5ms; modal-frame p95 is33.4ms
+at both rates; step-frame p95 is33.4/50ms; theme thirds remain16.7–16.8ms.
+Stress long tasks up to101ms for navigation and55ms for presentation, and a
+50.1ms individual normal step frame, are retained rather than averaged away.
+The application/test/configuration tree still exactly matches `a929195a`.
+This supplements the two earlier complete passing isolated runs without
+discarding either failed measurement. No further implementation change or
+task phase resulted; only this final evidence is added to the completed archive.
