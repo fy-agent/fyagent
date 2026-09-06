@@ -41,3 +41,10 @@ this worktree's targeted tests. Archive only after that gate. Supplemental
 browser tests keep ports isolated or wait for the other owned run; no existing
 server is silently reused or killed. Root Finder metadata is checked/removed
 individually during integration, not via git clean.
+
+Final reference review also aligns the Type Safety compiler-scope description
+with `config/**/*.ts`. An experimental config under ignored node_modules/.cache
+was rejected by Node's TypeScript-loader boundary; it is not a product-config
+failure and is not used for acceptance. Verification uses the checked-in
+configurations directly, waiting for occupied test ports rather than adding
+an alternative config, loader flag or relaxed server reuse.

@@ -23,6 +23,7 @@
   "relatedFiles": [],
   "notes": "",
   "meta": {
-    "execution_owner": "isolated refactor/round7-root-governance; workspace fyagent-df58b1c3; do not implement concurrently in main checkout"
+    "execution_owner": "isolated refactor/round7-root-governance; workspace fyagent-df58b1c3; do not implement concurrently in main checkout",
+    "work_commit": "e4c0c03812bb7d72cbb53cbfbf4ce246a69b5779"
   }
 }
