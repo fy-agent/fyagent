@@ -18,7 +18,7 @@
       simultaneous compilation/functional browsers. Do not loosen budgets.
 - [x] Update actual current SPEC and review; run full check:prearchive with the
       exact parent exclusion only. Commit integrated work, then archive parent.
-- [ ] Repair parent-move JSONL references, set work_commit hashes, validate all
+- [x] Repair parent-move JSONL references, set work_commit hashes, validate all
       four archived tasks/ancestry/relationships, and run no-exclusion check:contracts.
-- [ ] Record Journal and verify no active task and git status Clean. Report
+- [x] Record Journal and verify no active task and git status Clean. Report
       failures and environment limits truthfully; no push/release or real account use.
