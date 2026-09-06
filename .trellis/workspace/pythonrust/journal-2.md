@@ -475,3 +475,28 @@ Completed and archived all five round-six tasks: single renderer and offline HTM
 ### Status
 
 [OK] **Completed**
+
+
+## Session 77: Round-seven scroll, dialog origins and repository governance
+<!-- trellis-session: v=2 fp=c47b2a46050d7924 -->
+
+**Date**: 2026-09-06
+**Task**: Round-seven scroll, dialog origins and repository governance
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+完成第七轮：修复有界滚动和异步/瞬态弹窗来源，迁移六项根工具配置，更新SPEC；476项浏览器、25项生产、1560项单元及3495项Rust通过，四任务归档并修正上下文，独立worktree完整合并且已安全清理。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `fa2684d0` | fix(ui): restore bounded page and tab scrolling |
+| `a483d8d9` | fix(ui): preserve dialog origins through asynchronous and transient flows |
+| `e4c0c038` | refactor(tooling): centralize explicit configurations and preserve discovery contracts |
+| `75cc8ed3` | chore(ui): verify round-seven integrated interaction and tooling contracts |
+
+### Status
+
+[OK] **Completed**
