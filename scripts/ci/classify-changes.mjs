@@ -162,16 +162,16 @@ const FRONTEND_TEST_PREFIXES = Object.freeze([
 ]);
 
 const FRONTEND_ROOT_FILES = new Set([
-  ".dependency-cruiser.cjs",
+  "config/dependency-cruiser.cjs",
+  "config/vite.config.ts",
+  "config/vitest.config.ts",
+  "config/playwright.config.ts",
+  "config/playwright.performance.config.ts",
+  "config/postcss.config.cjs",
   "eslint.config.mjs",
-  "playwright.config.ts",
-  "playwright.performance.config.ts",
-  "postcss.config.cjs",
   "scripts/verify-route-chunks.d.mts",
   "scripts/verify-route-chunks.mjs",
   "tsconfig.json",
-  "vite.config.ts",
-  "vitest.config.ts",
 ]);
 
 const DOCUMENTATION_ROOT_FILES = new Set([
@@ -202,6 +202,13 @@ const LEGACY_DOCUMENTATION_ROOT_FILES = new Set([
 // Name-status diffs include deleted paths. Keep the retired generated
 // standalone preview owned so untracking it is not an unknown path.
 const LEGACY_FRONTEND_ROOT_FILES = new Set([
+  // Retired config paths still classify their deletion/rename side.
+  ".dependency-cruiser.cjs",
+  "vite.config.ts",
+  "vitest.config.ts",
+  "playwright.config.ts",
+  "playwright.performance.config.ts",
+  "postcss.config.cjs",
   "FyAgent-前端交互预览.html",
   "deplink.html",
   "components.json",

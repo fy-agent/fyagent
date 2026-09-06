@@ -111,12 +111,16 @@ JSON plan consumed by Required CI.
 
 Classification invariants:
 
-- renderer graph configuration (`.dependency-cruiser.cjs`) and standalone
+- renderer graph configuration (`config/dependency-cruiser.cjs`) and standalone
   parser/builder modules/declarations trigger contracts plus frontend, as do
   the root-level preview/deep-link inspector tests. `tests/architecture/**`
   triggers the frontend unit-test owner, not only the smaller release-contract
   test subset. Adding a new guard must include an isolated-path scheduling test;
   other files in the same PR cannot be relied on to enable its job;
+
+- the six explicit `config/` files individually reach contracts plus frontend;
+  their retired root names remain recognized for deletion/rename sides. Active
+  source/deprecation scans include the directory. See [Repository Layout](./repository-layout.md);
 
 - CI authority that can change Required CI scheduling, classification,
   aggregation, collected step outcomes, or CI toolchain admission sets

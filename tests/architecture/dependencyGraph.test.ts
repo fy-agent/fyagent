@@ -9,7 +9,7 @@ const cli = path.join(
   root,
   "node_modules/dependency-cruiser/bin/dependency-cruise.mjs",
 );
-const config = path.join(root, ".dependency-cruiser.cjs");
+const config = path.join(root, "config/dependency-cruiser.cjs");
 
 function scan(cwd: string, directories: string[]) {
   const args = [

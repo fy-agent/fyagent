@@ -100,7 +100,7 @@ describe("GitHub workflow trigger policy", () => {
     expect(source).toContain("needs: commit-convention");
     expect(source).toContain("desktop-acceptance-contract:");
     expect(source).toContain(
-      "run: node --throw-deprecation ./node_modules/vitest/vitest.mjs run tests/desktop-acceptance",
+      "run: node --throw-deprecation ./node_modules/vitest/vitest.mjs run --config config/vitest.config.ts tests/desktop-acceptance",
     );
     expect(source).toContain(
       "run: node --throw-deprecation scripts/desktop-acceptance/verify-mock-contract.mjs",

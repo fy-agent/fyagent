@@ -35,6 +35,7 @@ secret handling, native source checks, and residual-risk reporting.
 | [Development Environment](./development-environment.md)                   | Toolchain authority, bootstrap, host support, locks, optional macOS Windows-MSVC diagnostics, and environment verification.     |
 | [Optional Codex Development Hooks](./development-hooks.md)                | Optional Codex hook files, timeout/failure behavior, and Trellis-version ownership.                                             |
 | [Repository Task Runner](./task-runner-contract.md)                       | Public `mise run` API, effects, parameter transport, host guards, mutation policy, and platform diagnostics.                    |
+| [Repository Root and Tool Configuration](./repository-layout.md)          | Root discovery exceptions, explicit config locations, cwd/alias invariants and placement verification.                          |
 | [Database Persistence](./database-persistence.md)                         | SQLite path, schema version, startup lifecycle, migrations, import/backup/restore, DAO placement, and transactional boundaries. |
 | [Automatic Cloud Sync Scheduling](./auto-sync.md)                         | Injected database hints, independent S3/WebDAV workers, bounded debounce, suppression, and upload lifecycle.                    |
 | [Application Identity](./application-identity.md)                         | Product names, identifiers, license/provenance identity, and migration boundaries.                                              |

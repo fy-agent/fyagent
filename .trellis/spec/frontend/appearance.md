@@ -92,7 +92,7 @@ contrasted against identical internal fill. Text samples must intersect overflow
 clipping: an ellipsized Range includes unpainted tails. The independent
 `contrast-sampling.spec.ts` protects these distinctions without lowering budgets.
 
-Performance tests belong only to `playwright.performance.config.ts`, one worker,
+Performance tests belong only to `config/playwright.performance.config.ts`, one worker,
 production build and no concurrent compile/browser suites. Functional config
 excludes `*-performance.spec.ts`. Separate preparation from reveal thirds, one
 cold and twenty warm cycles at 1x/4x CPU cost; warm 1x frame p95 stays at 33.4ms.

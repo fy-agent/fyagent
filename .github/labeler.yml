@@ -5,6 +5,13 @@ frontend:
   - changed-files:
       - any-glob-to-any-file:
           - "src/**"
+          - "config/**"
+          - "eslint.config.mjs"
+          - "tests/renderer/**"
+          - "tests/browser/**"
+          - "tests/domain/**"
+          - "tests/architecture/**"
+          # Retired paths below also label deletion sides of migration PRs.
           - "index.html"
           - "vite.config.ts"
           - "vitest.config.ts"
@@ -56,6 +63,8 @@ documentation:
 mcp:
   - changed-files:
       - any-glob-to-any-file:
+          - "src/pages/mcp/**"
+          - "src/shared/features/mcp*"
           - "src/components/mcp/**"
           - "src/lib/api/mcp.ts"
           - "src-tauri/src/mcp/**"
@@ -66,6 +75,8 @@ mcp:
 skills:
   - changed-files:
       - any-glob-to-any-file:
+          - "src/pages/skills/**"
+          - "src/shared/features/skills*"
           - "src/components/skills/**"
           - "src/lib/api/skills.ts"
           - "src-tauri/src/commands/skill.rs"

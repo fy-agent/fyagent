@@ -67,6 +67,12 @@ afterAll(() => {
 describe("repository change classifier", () => {
   it("schedules frontend checks for each standalone and architecture boundary file", () => {
     for (const file of [
+      "config/dependency-cruiser.cjs",
+      "config/vite.config.ts",
+      "config/vitest.config.ts",
+      "config/playwright.config.ts",
+      "config/playwright.performance.config.ts",
+      "config/postcss.config.cjs",
       ".dependency-cruiser.cjs",
       "scripts/build-v2-preview.d.mts",
       "scripts/preview-html.mjs",

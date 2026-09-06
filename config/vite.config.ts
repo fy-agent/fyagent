@@ -1,11 +1,16 @@
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { codeInspectorPlugin } from "code-inspector-plugin";
 
+const sourceRoot = fileURLToPath(new URL("../src", import.meta.url));
+
 export default defineConfig(({ command }) => {
   return {
-    root: "src",
+    root: sourceRoot,
+    envDir: sourceRoot,
+    css: { postcss: fileURLToPath(new URL(".", import.meta.url)) },
     plugins: [
       command === "serve" &&
         codeInspectorPlugin({
@@ -49,7 +54,7 @@ export default defineConfig(({ command }) => {
     },
     resolve: {
       alias: {
-        "@": path.resolve(__dirname, "./src"),
+        "@": path.resolve(sourceRoot),
       },
     },
     clearScreen: false,

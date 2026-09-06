@@ -1,6 +1,6 @@
 # Quality Guidelines
 
-One `vitest.config.ts` runs renderer and domain/contract tests through separate
+One `config/vitest.config.ts` runs renderer and domain/contract tests through separate
 environment projects, not product generations. `mise run typecheck`, `lint`,
 `format:check` and `test:unit` cover the current renderer and retained contracts.
 Use the [Frontend Quality Check](./index.md#quality-check). Product copy is
@@ -104,14 +104,14 @@ monolithic entry. Vendor budgets must name their source and remain separate
 from the app route budget.
 
 The browser gate also boots the production bundle and visits all seven routes
-through `playwright.performance.config.ts` (the `production boots` case).
+through `config/playwright.performance.config.ts` (the `production boots` case).
 Passing Vite dev-server tests or producing a manifest does not prove bundled
-module initialization. `vite.config.ts` uses Rollup's dependency-aware named
+module initialization. `config/vite.config.ts` uses Rollup's dependency-aware named
 entry groups, not a catch-all node_modules path partition that can split React
 initialization from its helpers and produce cross-chunk cycles.
 
 For navigation profiling run `mise exec -- pnpm exec playwright test --config
-playwright.performance.config.ts`. It uses a serial production server,
+config/playwright.performance.config.ts`. It uses a serial production server,
 1232×700 viewport, 42 revisits at 1× and 4× CPU cost, CPU profiles and long-task
 records. The normal-speed local target is p95 ≤100ms from semantic link
 activation to the frame after visible destination DOM; it excludes OS input
@@ -219,7 +219,7 @@ native environment guard to make a noncanonical test invocation pass.
 
 - [package.json](../../../package.json) defines the runnable type-check,
   formatting, unit-test, browser and desktop-acceptance scripts.
-- [vitest.config.ts](../../../vitest.config.ts) configures the `jsdom`
+- [vitest.config.ts](../../../config/vitest.config.ts) configures the `jsdom`
   environment and shared setup files.
 - [tests/setupTests.ts](../../../tests/setupTests.ts) manages Testing Library,
   MSW, cleanup, and mock reset lifecycle.
