@@ -14,5 +14,5 @@
       cancellation and fresh account sessions; preserve no-copy credential handling.
 - [x] Run canonical unit/type/lint and four-size Chromium/WebKit browsers;
       run real production motion/navigation/theme/step budgets serially.
-- [ ] Update motion/shared/page SPEC and review with actual failure/fix records,
+- [x] Update motion/shared/page SPEC and review with actual failure/fix records,
       full check:prearchive, commit, work_commit metadata, archive this child.
