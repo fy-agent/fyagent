@@ -3,7 +3,7 @@
   "name": "renderer-consolidation",
   "title": "单一前端源码与工程入口收敛",
   "description": "移除离线HTML测试交付和迁移代次前缀，按可达性处置旧渲染器，合并工程检查并迁移全部有效引用",
-  "status": "in_progress",
+  "status": "completed",
   "dev_type": null,
   "scope": null,
   "package": null,
@@ -11,7 +11,7 @@
   "creator": "pythonrust",
   "assignee": "pythonrust",
   "createdAt": "2026-09-06",
-  "completedAt": null,
+  "completedAt": "2026-09-06",
   "branch": "dev/laiyongjie",
   "base_branch": "main",
   "worktree_path": null,
@@ -22,5 +22,7 @@
   "parent": "09-06-frontend-experience-round6",
   "relatedFiles": [],
   "notes": "",
-  "meta": {}
+  "meta": {
+    "work_commit": "e7227e8a65fa39975059c482f0c313a806bf3587"
+  }
 }
