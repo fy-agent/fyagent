@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 79
+- **Total Sessions**: 80
 - **Last Active**: 2026-09-07
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~557 | Active |
+| `journal-2.md` | ~583 | Active |
 | `journal-1.md` | ~1987 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 80 | 2026-09-07 | Validate integration subjects using real Git merge parents | `3a350fa299138b44c63468fc449f8acc930fd72f` | `dev/laiyongjie` |
 | 79 | 2026-09-07 | Review September 6 integration and all executable specifications | `41b700e6cf69115a9eb8665350d0162c6119638e` | `dev/laiyongjie` |
 | 78 | 2026-09-07 | Round-eight responsive assignments and content density | `a929195a`, `b8bdaeba` | `dev/laiyongjie` |
 | 77 | 2026-09-06 | Round-seven scroll, dialog origins and repository governance | `fa2684d0`, `a483d8d9`, `e4c0c038`, `75cc8ed3` | `dev/laiyongjie` |

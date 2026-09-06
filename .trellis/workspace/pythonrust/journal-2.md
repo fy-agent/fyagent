@@ -555,3 +555,29 @@ Completed and archived all five round-six tasks: single renderer and offline HTM
 ### Status
 
 [OK] **Completed**
+
+
+## Session 80: Validate integration subjects using real Git merge parents
+<!-- trellis-session: v=2 fp=375927c1e08e277e -->
+
+**Date**: 2026-09-07
+**Task**: Validate integration subjects using real Git merge parents
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+PR181首轮CI因既有双父merge提交的自定义标题失败；复用现有验证器读取Git父提交，只接受真实多父集成标题，普通提交、PR标题、空标题和不合规侧分支仍拒绝。保留历史与Required门禁。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `3a350fa299138b44c63468fc449f8acc930fd72f` | fix(ci): validate explicit integration subjects against merge parents |
+
+### Testing
+
+- [OK] 11 commit-convention cases passed; exact 85-commit PR and 60-commit push ranges pass; full check:contracts, TypeScript and ESLint passed.
+
+### Status
+
+[OK] **Completed**
