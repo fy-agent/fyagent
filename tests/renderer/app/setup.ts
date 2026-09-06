@@ -8,9 +8,14 @@ const DOMAbortController = window.AbortController;
 const DOMAbortSignal = window.AbortSignal;
 const originalAddEventListener = window.EventTarget.prototype.addEventListener;
 const originalWindowAddEventListener = window.addEventListener;
+const originalScrollTo = window.scrollTo;
 let consoleErrorGuard: ReturnType<typeof vi.spyOn> | null = null;
 
 beforeAll(() => {
+  // jsdom has no layout/scroll implementation. Motion's auto-height resolver
+  // restores scroll after measurement; record that call without claiming a
+  // real viewport moved. Browser regressions retain the actual scrolling API.
+  window.scrollTo = vi.fn();
   const originalConsoleError = console.error.bind(console);
   consoleErrorGuard = vi
     .spyOn(console, "error")
@@ -35,6 +40,7 @@ afterAll(() => {
   consoleErrorGuard = null;
   window.EventTarget.prototype.addEventListener = originalAddEventListener;
   window.addEventListener = originalWindowAddEventListener;
+  window.scrollTo = originalScrollTo;
 });
 
 try {

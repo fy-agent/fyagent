@@ -22,5 +22,7 @@
   "parent": "09-06-frontend-experience-round6",
   "relatedFiles": [],
   "notes": "",
-  "meta": {}
+  "meta": {
+    "work_commit": "bcceba7ecbddceef8b3c061fc34ea0da2198f768"
+  }
 }

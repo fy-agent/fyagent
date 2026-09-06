@@ -55,6 +55,11 @@ Component tests use React Testing Library (`render`, `screen`, events, and
 role-based queries). Hook tests use `renderHook` and `act`. Tests that need
 TanStack Query create a client with retries disabled so failures are immediate.
 
+Reusable motion/observer tests must also cover lifecycle isolation: dispose one
+control while another still updates, and re-register a selected host after its
+decorative overlay already exists. Passing initial-mount geometry alone does
+not prove independent cleanup or that an observer excludes its own output.
+
 ### Renderer Warning and Lifecycle Evidence
 
 `tests/renderer/app/setup.ts` keeps Node's native Request/fetch and translates only
@@ -68,6 +73,13 @@ realm error. This narrow upstream-compatible bridge is removable when the
 adopted test environment provides it. `tests/renderer/app/abortSignalRealm.test.ts`
 must prove window/element cancellation, multiple targets and native Request
 abort reasons before it is changed.
+
+The jsdom renderer setup explicitly records `window.scrollTo` as a test double
+and restores the original at suite teardown. Motion's auto-height measurement
+may restore viewport scroll, but jsdom has no real layout/scroll implementation.
+Do not interpret this double as scrolling evidence or suppress console errors
+to hide unsupported APIs. Browser focus, anchored controls and overflow tests
+continue to use the real browser implementation.
 
 Targeted Renderer interaction suites must fail on unexpected React warnings rather
 than filtering stderr or globally mocking `console.error`. Async state changes
