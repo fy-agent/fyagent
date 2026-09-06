@@ -580,11 +580,16 @@ never src-tauri/target, never RUSTC_WRAPPER / sccache
   branch synchronization contract; branch maintenance is outside Required CI.
 - Owner: `.github/workflows/commit-convention-push.yml` before
   `scripts/ci/verify-commit-messages.mjs`.
+- The same verifier checks PR/merge-group ranges. It distinguishes a real
+  integration object from an ordinary commit that merely claims to be a merge;
+  this avoids rewriting shared history to normalize an integration title.
 
 ### 2. Signatures
 
 - Workflow resolves `base_sha` / `head_sha`, then
   `node scripts/ci/verify-commit-messages.mjs --base <sha> --head <sha>`.
+- `listCommitSubjectsInRange` returns `{sha, parents: string[], subject}` from
+  Git `%H`, `%P`, `%s` for the full range or the current HEAD-only comparison.
 
 ### 3. Contracts
 
@@ -592,6 +597,13 @@ never src-tauri/target, never RUSTC_WRAPPER / sccache
 - `push` event `before` that is not `${base_sha}^{commit}` in the clone ->
   `base_sha = head_sha` (empty comparison).
 - this fallback never invokes the domain classifier or `CI / Required`.
+- Normal commit types and PR-title validation remain unchanged. An explicit
+  `merge: <nonempty description>` integration subject is accepted only on a
+  Git object with at least two distinct parents. It is not a general allowed
+  type, a subject-only exemption or an allowlist of historical hashes.
+- All side-branch commits remain enumerated and validated; no first-parent or
+  no-merges filter hides bad subjects. Existing generated merge/revert subject
+  rules remain separate. New merges may simply use a conventional `chore:` title.
 
 ### 4. Validation & Error Matrix
 
@@ -599,6 +611,10 @@ never src-tauri/target, never RUSTC_WRAPPER / sccache
   commit subject validation only.
 - Missing PR/merge-group SHA remains a Required classifier failure in
   `.github/workflows/ci.yml`.
+- Real multi-parent object with the explicit integration subject -> accept;
+  the same subject on a single-parent commit or a PR title -> reject.
+- An empty/nonstandard merge subject or an invalid side-branch commit -> reject;
+  a valid integration header never exempts the merged work itself.
 
 ### 5. Good / Base / Bad Cases
 
@@ -608,6 +624,8 @@ never src-tauri/target, never RUSTC_WRAPPER / sccache
   not a commit in the clone and validates `head` against `head`.
 - Bad: use branch push as a second Required CI authority or start product-domain
   jobs merely to enforce commit-message policy.
+- Bad: add `merge` to all normal commit types or disable convention checks to
+  admit an existing integration; use verified topology for the narrow case.
 
 ### 6. Tests Required
 
@@ -615,6 +633,9 @@ never src-tauri/target, never RUSTC_WRAPPER / sccache
   fallback, queue-ref exclusion, and absence of `CI / Required` in the push
   workflow.
 - Local tests do not clone GitHub's unreachable `before` objects.
+- `tests/verifyCommitMessages.test.ts` creates real temporary Git histories to
+  check genuine merge parents, HEAD-only merge checks, single-parent impostors,
+  PR titles, empty/nonstandard merge subjects and invalid side-branch commits.
 
 ### 7. Wrong vs Correct
 
