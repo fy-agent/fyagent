@@ -523,3 +523,35 @@ Completed and archived all five round-six tasks: single renderer and offline HTM
 ### Status
 
 [OK] **Completed**
+
+
+## Session 79: Review September 6 integration and all executable specifications
+<!-- trellis-session: v=2 fp=a9698a8b41921e74 -->
+
+**Date**: 2026-09-07
+**Task**: Review September 6 integration and all executable specifications
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+审查东八区9月6日47个可达提交及全部80份现行SPEC；修改46份并拆出Dialog生命周期，修正认证/来源/工具配置与退役UI的事实漂移。81份规范、415条本地链接和索引覆盖通过；完整mise run check通过。
+
+### Main Changes
+
+- Reviewed every spec; preserved cohesive security/release contracts and real protocol/persisted version identities.
+- Aligned native versus renderer capability, account-saved versus connected state, query keys, effective stores, helper authority and actual test owners.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `41b700e6cf69115a9eb8665350d0162c6119638e` | docs(spec): align current contracts and isolate dialog lifecycle |
+
+### Testing
+
+- [OK] Full current-host mise run check passed; 177 unit files, 1565 tests plus one existing skip; 3495 Rust passed, zero failed, six existing ignored.
+- [OK] Adopted Markdown parser: all 81 specs reachable, 415 local links resolve and no outstanding anchor candidates; source/test/config/lock unchanged by SPEC governance.
+
+### Status
+
+[OK] **Completed**
