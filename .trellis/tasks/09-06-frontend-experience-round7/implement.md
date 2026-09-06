@@ -1,11 +1,24 @@
-# 实施与交付
+# Round-seven execution and close
 
-- [x] 核实基线、现有未提交规划及用户新增账号移除案例。
-- [x] 读取现行SPEC，调研官方滚动/模态/配置发现合同，完善三子任务工件。
-- [ ] 滚动子任务：真实wheel/键盘失败复现、所有权修复、回归、SPEC、提交归档。
-- [ ] 来源子任务：触发链路清单、账号移除与瞬态/异步/嵌套回归、修复、SPEC、提交归档。
-- [ ] 根目录子任务：配置与用途清单、移动/内联/删除、引用与CI检查、SPEC、提交归档。
-- [ ] 组合type/lint/unit/browser/生产性能及完整check:prearchive，不放宽门槛。
-- [ ] 父任务提交、归档；修复有效上下文引用、无排除check:contracts、Journal、Clean。
-
-所有检查通过mise运行；不同时运行生产性能与全量编译。仅清理本任务临时进程。
+- [x] Read current checkout/AGENTS/workflow, applicable SPEC and official sources.
+- [x] Reproduce Skills wheel failure and account-removal entrance cancellation
+      in both Chromium/WebKit production bundles; inspect all Dialog invocations.
+- [x] Classify root files and known consumers; write three child plans.
+- [ ] Present the complete plan including the user's added removal case; obtain
+      explicit approval in a subsequent turn before task.py start/product edits.
+- [ ] Start, implement, fully review, update SPEC, commit and archive scroll child.
+- [ ] Do the same for dialog-origin child; complete every classified trigger
+      branch, delayed response case and transient/nested-source regression.
+- [ ] Do the same for root-governance child; compare test collection and graph
+      traversal before/after relocation, not only build return codes.
+- [ ] Start parent; verify requirement evidence, UI regressions across content
+      size/viewport/theme/input/lifecycle, config discovery/CI and preserved native behavior.
+- [ ] Run mise run typecheck, lint, format:check, test:unit, test:browser and
+      build:renderer using canonical tasks. Run test:performance serially without
+      simultaneous compilation/functional browsers. Do not loosen budgets.
+- [ ] Update actual current SPEC and review; run full check:prearchive with the
+      exact parent exclusion only. Commit integrated work, then archive parent.
+- [ ] Repair parent-move JSONL references, set work_commit hashes, validate all
+      four archived tasks/ancestry/relationships, and run no-exclusion check:contracts.
+- [ ] Record Journal and verify no active task and git status Clean. Report
+      failures and environment limits truthfully; no push/release or real account use.

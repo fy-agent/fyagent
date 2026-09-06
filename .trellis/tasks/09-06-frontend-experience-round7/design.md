@@ -1,19 +1,34 @@
-# 第七轮设计
+# Round-seven boundaries and integration
 
-从4f8973ef继续，保留所有现有业务和第六轮native合同。三个独立子任务按滚动、
-弹窗来源、根目录治理顺序完成；父任务只做跨任务审查、全量门禁和归档。
+Three independently verifiable deliverables, in order: scroll ownership,
+dialog-origin continuity, root configuration governance. The parent owns the
+requirement matrix and final integration, not a fourth product implementation.
+The user's account-removal example is included in the dialog deliverable.
 
-滚动使用原生overflow和现有FeatureTabPanel/SplitPanes，明确页/页签/分栏的
-高度链与唯一滚动所有者；不引入滚轮事件拦截、自制滚动库或全局overflow补丁。
-来源动效沿用Radix/Motion/WAAPI，盘点静态接入和真实点击结果，重点验证快速
-异步响应、菜单消失、同会话内容变更。来源不可用时保持诚实的中性降级；不得
-复制表单或使用全局最近点击推断。复现后将根因和选择写入子设计。
+No native command/permission/schema/signature changes are planned. Keep the
+single renderer, seven routes, two blue themes, current installation/login and
+reversible-write behavior. Apply the smallest shared-layer correction that
+explains actual production evidence, then cover its business callers.
 
-根目录按工具发现契约而非扩展名治理。保留包/锁/工具版本/TS与ESLint自动发现
-入口、许可证和仓库文档；显式可寻址的Vite/Vitest/Playwright/依赖图配置归入
-config/，同步cwd、alias、testDir、脚本、CI、SPEC。PostCSS唯一autoprefixer
-通过Vite内联现有插件配置，不留下空代理。确认无用的本机Finder缓存可删除。
+Scroll: explicit bounded tab/workspace roles replace implicit direct-child CSS
+assumptions. Existing native overflow and library-backed panes remain owners.
+Dialog: one presentation lifecycle coordinates origin entry, intrinsic content
+changes, viewport changes and close. Transient sources are captured by their
+own component, never by global event history or copied form content.
+Root: six optional tool configs move to config/ using supported --config/search
+options, while package/toolchain/TypeScript/ESLint/public discovery stays intact.
 
-不重写Git历史、不删除真实协议版本、不改七主导航或凭据/权限/取消行为。
-用户已要求执行并多次继续；无需再次请求相同实施授权。每个子任务先失败回归，
-修复后完整检查、SPEC/工作提交/归档；父任务补引用和Journal，最后核实Clean。
+Controls/scroll changes are verified before moving test configuration, so a
+path regression cannot conceal a UI regression. Moving files updates runtime,
+CI, tests, docs and effective SPEC/context references together without legacy
+forwarders. Research paths and evidence are baseline facts, not promises that
+all runtime branches are already tested.
+
+Each child has its own work commit + SPEC + archive. Rollback by a coherent
+child revert, never by restoring an earlier-round checkout or rewriting Git
+history. Integration measures the final production build serially and checks
+all new tests are collected. Full repo gate and no-exclusion postarchive
+contracts precede the final clean checkout. No push/release/deployment.
+
+Unmeasured minimum native WebView, physical GPU, real credentials and OS picker
+HIL remain explicitly unverified; synthetic browser cases cannot close them.

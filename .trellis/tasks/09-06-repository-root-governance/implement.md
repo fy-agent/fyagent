@@ -1,6 +1,16 @@
-# 执行
+# Execute root governance
 
-- [ ] 盘点根文件与调用点、冻结受影响脚本/CI/测试清单。
-- [ ] 移位并更新每个路径解析/发现合同，保持唯一入口。
-- [ ] 更新工具链与root回归；运行完整type/lint/unit/build/browser。
-- [ ] 同步SPEC/有效引用，完整prearchive通过，工作提交归档。
+- [ ] Wait for both UI children and final-plan approval; start task and load
+      current frontend directory/quality plus CI/development-environment contracts.
+- [ ] Reinventory actual/tracked/untracked root files against parent table and
+      collect exact unit/browser suite baselines; classify new files before touching.
+- [ ] Move six reviewed config implementations with all internal path bases;
+      update package/mise and browser server commands to supported explicit config.
+- [ ] Update TypeScript/ESLint scope, graph/safety scans, CI classifiers/labeler,
+      command contracts, current docs/SPEC/effective JSONL references together.
+- [ ] Add root governance and collected-suite/path-resolution regression;
+      prove active graph/source traversal and autoprefixer rather than empty success.
+- [ ] Run canonical typecheck/lint/unit/build/browser; separate serial production
+      performance. Preserve flags, budgets, native API/lockfiles and runtime behavior.
+- [ ] Remove only verified OS/temporary residuals, re-scan root and references,
+      update SPEC/review; full check:prearchive, commit, work_commit and archive.

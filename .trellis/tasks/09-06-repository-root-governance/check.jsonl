@@ -1,3 +1,2 @@
-{"file":".trellis/spec/backend/github-ci-workflow.md","reason":"Keep changed-file scheduling effective"}
-{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Unified test projects and production boot"}
-
+{"file":".trellis/spec/backend/development-environment.md","reason":"Preserve canonical environment and task API guardrails"}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Verify collection, actual production boot and combined gates after moves"}

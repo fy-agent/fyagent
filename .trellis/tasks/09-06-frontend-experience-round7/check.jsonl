@@ -1,3 +1,2 @@
-{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Full gates and honest production evidence"}
-{"file":".trellis/spec/backend/window-presentation.md","reason":"Preserve native-hidden startup authority"}
-
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Unified correctness, browser and production performance acceptance"}
+{"file":".trellis/spec/backend/window-presentation.md","reason":"Retain native startup readiness and hidden-window boundary"}
