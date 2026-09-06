@@ -1,5 +1,6 @@
 .fy-selection-lens-scope {
   position: relative;
+  isolation: isolate;
 }
 
 .fy-selection-lens-target {
@@ -78,6 +79,9 @@
 .fy-feature-tab,
 .fy-lab-tabs [role="tab"] {
   position: relative;
+  /* display:contents does not give the semantic tablist a stacking box.
+     The actual controls must paint above the decorative backdrop. */
+  z-index: 1;
 }
 
 @media (prefers-reduced-motion: reduce) {

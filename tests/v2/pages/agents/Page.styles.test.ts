@@ -62,14 +62,11 @@ describe("shared V2 catalog presentation styles", () => {
     expect(rule(splitCss, ".fy-split-panes")).toMatch(
       /--fy-split-gap:\s*14px;/,
     );
-    expect(rule(splitCss, '.fy-split-panes[data-panes="2"]')).toMatch(
-      /grid-template-columns:\s*var\(--fy-split-pane-0\)\s+var\(--fy-split-gap\)\s+minmax\(0,\s*1fr\);/,
+    expect(rule(splitCss, '.fy-split-panes[data-stacked="true"]')).toMatch(
+      /overflow:\s*auto;/,
     );
     expect(splitCss).toMatch(
-      /@media\s*\(max-width:\s*760px\)[\s\S]*?\.fy-split-panes\[data-panes="2"\][\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\);/,
-    );
-    expect(splitCss).toMatch(
-      /@media\s*\(max-width:\s*760px\)[\s\S]*?\.fy-split-resize-handle[\s\S]*?display:\s*none;/,
+      /data-stacked="true"[\s\S]*?visibility:\s*hidden;/,
     );
     expect(rule(catalogCss, ".fy-feature-page.fy-catalog-page")).toMatch(
       /gap:\s*0;/,

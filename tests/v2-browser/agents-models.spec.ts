@@ -172,8 +172,10 @@ test("Agent directory and Models keep their responsive 760px boundaries", async 
     desktopCard.locator('[data-size="detail"]'),
     "Agent directory artwork",
   );
-  expect(desktopFrame.width).toBe(64);
-  expect(desktopFrame.height).toBe(64);
+  // A translated ancestor can produce 63.999984px after rectangle subtraction.
+  // Keep sub-millipixel precision rather than requiring binary float equality.
+  expect(desktopFrame.width).toBeCloseTo(64, 3);
+  expect(desktopFrame.height).toBeCloseTo(64, 3);
 
   await page.setViewportSize({ width: 760, height: 900 });
   await openV2Page(page, "/agents");
@@ -211,28 +213,19 @@ test("Agent directory and Models keep their responsive 760px boundaries", async 
   await expect(page.getByRole("heading", { name: "OpenCode" })).toBeVisible();
   const desktopSplit = page.locator(".fy-split-panes");
   await expect(desktopSplit).toBeVisible();
-  expect(
-    await desktopSplit.evaluate((split) => {
-      const computed = getComputedStyle(split).gridTemplateColumns.trim();
-      return computed.split(/\s+/).length;
-    }),
-  ).toBe(3);
+  // Split admission uses its actual container, not the window's breakpoint.
+  await expect(desktopSplit).toHaveAttribute("data-stacked", "true");
 
   await page.setViewportSize({ width: 760, height: 900 });
   await openV2Page(page, "/models?target=opencode");
   const stackedSplit = page.locator(".fy-split-panes");
   await expect(stackedSplit).toBeVisible();
-  expect(
-    await stackedSplit.evaluate((split) => {
-      const computed = getComputedStyle(split).gridTemplateColumns.trim();
-      return computed.split(/\s+/).length;
-    }),
-  ).toBe(1);
+  await expect(stackedSplit).toHaveAttribute("data-stacked", "true");
   await expect(
     page.getByRole("separator", { name: "调整目录与详情的宽度" }),
   ).toBeHidden();
 
-  await page.setViewportSize({ width: 761, height: 900 });
+  await page.setViewportSize({ width: 1232, height: 900 });
   await openV2Page(page, "/models?target=opencode");
   await expect(
     page.getByRole("separator", { name: "调整目录与详情的宽度" }),

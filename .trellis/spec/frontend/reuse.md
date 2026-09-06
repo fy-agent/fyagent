@@ -71,6 +71,10 @@ through a UI barrel to conceal that dependency.
   `projectTransferPresentation` in `src/shared/codex-desktop/snapshots.ts`
   (Agent adapter: `src/v2/shared/features/transfer-projection.ts`);
 - layouts: `SplitPanes`, `CatalogMasterDetail`, feature page/panel chrome;
+  `SplitPanes` adapts `react-resizable-panels` through `split/vendor.ts`; no
+  independent pointer/keyboard resize implementation belongs in a page or
+  catalog wrapper. Container admission and stable editor lifetime are defined
+  in [Surfaces and Container Response](./surfaces-responsive.md).
 - external and secret controls: `ExternalLinkButton`, `SecretInput`;
 - shell motion/selection primitives owned under `shared/ui`; pressable buttons
   live in `Button.tsx`, modal/presence in `Dialog.tsx`, origin measurement in

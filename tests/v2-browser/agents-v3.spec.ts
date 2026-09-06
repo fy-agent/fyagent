@@ -86,8 +86,11 @@ async function installAgentV3Overrides(page: Page): Promise<void> {
   });
 }
 
-async function installFixture(page: Page): Promise<void> {
-  await installRichTauriFeatureFixture(page);
+async function installFixture(
+  page: Page,
+  holdAgentAuth = false,
+): Promise<void> {
+  await installRichTauriFeatureFixture(page, { holdAgentAuth });
   await installAgentV3Overrides(page);
 }
 
@@ -347,14 +350,29 @@ test("Agent V3 restores deep links and keeps model and prompt capability boundar
 test("Agent Auth keeps Claude local verification and routes managed consumers centrally", async ({
   page,
 }) => {
-  await installFixture(page);
+  await installFixture(page, true);
   const health = monitorPageHealth(page);
 
   await openV2Page(page, "/agents?target=claude-code&section=models");
   const claude = page.getByRole("region", { name: "Claude Code 配置" });
   await expect(claude.getByText("未登录")).toBeVisible();
   await claude.getByRole("button", { name: "登录", exact: true }).click();
+  const confirmation = page.getByRole("dialog", {
+    name: "打开 Claude Code 官方登录？",
+  });
+  await expect(confirmation).toContainText("不能通过文件备份撤销");
+  expect(
+    (await featureFixtureCalls(page)).filter(
+      (call) => call.command === "start_agent_auth_session",
+    ),
+  ).toEqual([]);
+  await confirmation.getByRole("button", { name: "确认打开官方登录" }).click();
   await expect(claude.getByText("等待你完成官方认证")).toBeVisible();
+  // An external login remains pending until the synthetic user completes it;
+  // do not race the confirmation's decorative exit against instant fixture IO.
+  await page.evaluate(() =>
+    window.__FYAGENT_FEATURE_FIXTURE__.releaseAgentAuth(),
+  );
   await expect(claude.getByText("登录状态已更新")).toBeVisible();
   await expect(claude.getByText("已登录")).toBeVisible();
 

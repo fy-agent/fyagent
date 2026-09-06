@@ -98,13 +98,23 @@ for (const feature of [
     );
 
     const paneCount = await page
-      .locator(".fy-split-panes > .fy-split-pane")
+      .getByTestId(feature.pageTestId)
+      .locator(".fy-split-panes > .fy-split-group > [data-panel]")
       .count();
     expect(paneCount).toBe(page.viewportSize()!.width > 1180 ? 3 : 2);
-    if ((page.viewportSize()?.width ?? 0) > 760) {
+    const stacked = await page
+      .getByTestId(feature.pageTestId)
+      .locator(".fy-split-panes")
+      .first()
+      .getAttribute("data-stacked");
+    if (stacked === "false") {
       await expect(
         page.getByRole("separator", { name: "调整列表与详情的宽度" }),
       ).toBeVisible();
+    } else {
+      await expect(
+        page.getByRole("separator", { name: "调整列表与详情的宽度" }),
+      ).toBeHidden();
     }
     const assignmentOverflow = await page
       .locator(".fy-split-pane .fy-feature-assignment")

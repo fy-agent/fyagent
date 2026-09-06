@@ -32,17 +32,31 @@ export default defineConfig({
     trace: "retain-on-failure",
     video: "off",
   },
-  projects: viewports.map(({ name, width, height }) => ({
-    name: `chromium-${name}`,
-    use: {
-      ...devices["Desktop Chrome"],
-      channel:
-        process.env.FYAGENT_PLAYWRIGHT_CHANNEL === "chrome"
-          ? "chrome"
-          : undefined,
-      viewport: { width, height },
+  projects: [
+    ...viewports.map(({ name, width, height }) => ({
+      name: `chromium-${name}`,
+      use: {
+        ...devices["Desktop Chrome"],
+        channel:
+          process.env.FYAGENT_PLAYWRIGHT_CHANNEL === "chrome"
+            ? "chrome"
+            : undefined,
+        viewport: { width, height },
+      },
+    })),
+    {
+      name: "webkit-1232x700",
+      testMatch: [
+        "layout-integrity.spec.ts",
+        "auth.spec.ts",
+        "presentation-choreography.spec.ts",
+      ],
+      use: {
+        ...devices["Desktop Safari"],
+        viewport: { width: 1232, height: 700 },
+      },
     },
-  })),
+  ],
   webServer: {
     command: "pnpm dev:renderer --host 127.0.0.1 --port 4173 --strictPort",
     url: "http://127.0.0.1:4173/#/agents",

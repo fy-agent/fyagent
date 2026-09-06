@@ -13,6 +13,8 @@ does not redesign the seven primary routes or native window geometry.
 // shared/ui/GlassMaterial.tsx — sole @samasante/liquid-glass import owner
 FrostedSurface({ enhanced?: boolean }): JSX.Element // stable CSS backing, true by default
 LiquidGlassLens({ children, className? }): JSX.Element // UI Lab specimen
+// shared/ui/split/SplitPanes.tsx — product adapter; split/vendor.ts owns the library import
+SplitPanes({ children, className?, minWidths?, maxWidths?, separatorLabels?, paneCssVars? })
 ```
 
 Radius roles are compact/control/item/panel/dialog/pill/circle/brand/separator.
@@ -33,6 +35,21 @@ CSS consumes the blur/rim/sheen tokens directly, including preference changes.
 
 ## 3. Contracts
 
+- `SplitPanes` delegates pointer admission, keyboard resizing, ARIA values,
+  cursor management and constraints to `react-resizable-panels`. Its own
+  responsibility is product minimum/default sizes, semantic labels and the
+  actual available container width. Do not add page-local drag handlers or
+  override the library group's layout with Grid/Flex declarations.
+- Insufficient width stacks the same Panel tree vertically with local scrolling;
+  it does not remount editors or assume the viewport is as wide as a nested
+  pane. Zero-size/hidden groups cannot admit resize gestures and retain their
+  last orientation until measurable. Leading columns preserve pixels, the
+  final column consumes remaining space. Keep the vendor import at the split
+  boundary rather than the eagerly imported global primitive facade.
+- Selection material is a decorative sibling below the real controls. A
+  `display:contents` semantic wrapper is not a stacking box; assign content
+  stacking to the real buttons/labels. A pointer-inert backdrop can still
+  obscure text, so DOM presence/hit testing alone is not paint evidence.
 - Modal content is transparent and isolated. `FrostedSurface` is an absolute,
   pointer-inert, aria-hidden backing; text and controls remain outside it.
   Do not lower steady-state form opacity to simulate glass, refract text or
@@ -101,6 +118,11 @@ glass.
 - `support/visual.ts` samples finite raster backgrounds with glyph paint hidden
   but unchanged layout. It supplements axe's incomplete gradient/filter cases;
   it is not a replacement accessibility engine or blanket WCAG certification.
+- `layout-integrity.spec.ts` additionally checks actual selected-label raster
+  ink in Chromium/WebKit, meaningful prompt detail/search/editor widths with
+  empty and populated data, real pointer/keyboard min/max/reset behavior and
+  unsaved draft identity across narrow/wide container changes. No horizontal
+  overflow alone is insufficient: an unusable 30px pane can pass that check.
 - Static material/contrast evidence waits for `data-motion-settled="true"`
   and the actual expected computed filter/foreground state. A CDP media feature
   override supplies the complete intended set, including reduced motion while

@@ -13,6 +13,7 @@ export interface RichFeatureFixtureOptions {
   providerMutation?: "success" | "save_failure" | "switch_failure";
   providerWriteDelayMs?: number;
   holdProviderWrite?: boolean;
+  holdAgentAuth?: boolean;
   workBuddySave?:
     | "saved"
     | "overwrite_then_saved"
@@ -26,6 +27,7 @@ declare global {
     __FYAGENT_FEATURE_FIXTURE__: {
       calls: FeatureFixtureCall[];
       releaseProviderWrite: () => void;
+      releaseAgentAuth: () => void;
     };
     __TAURI_INTERNALS__: {
       metadata: {
@@ -50,6 +52,7 @@ export async function installRichTauriFeatureFixture(
 ): Promise<void> {
   await page.addInitScript((fixtureOptions: RichFeatureFixtureOptions) => {
     let releaseProviderWrite: () => void = () => undefined;
+    let agentAuthHeld = fixtureOptions.holdAgentAuth === true;
     const providerWriteGate = new Promise<void>((resolve) => {
       releaseProviderWrite = resolve;
     });
@@ -234,7 +237,7 @@ export async function installRichTauriFeatureFixture(
           description: "支持 Skills、模型配置与 MCP；不支持 Hooks。",
           officialLinks: [
             {
-              id: "desktop",
+              id: "product",
               label: "Claude Code CLI 安装说明",
               url: "https://code.claude.com/docs/en/setup",
             },
@@ -859,7 +862,13 @@ export async function installRichTauriFeatureFixture(
       reasonCode: null,
     });
 
-    window.__FYAGENT_FEATURE_FIXTURE__ = { calls, releaseProviderWrite };
+    window.__FYAGENT_FEATURE_FIXTURE__ = {
+      calls,
+      releaseProviderWrite,
+      releaseAgentAuth: () => {
+        agentAuthHeld = false;
+      },
+    };
     window.__TAURI_EVENT_PLUGIN_INTERNALS__ = {
       unregisterListener: () => undefined,
     };
@@ -1585,7 +1594,7 @@ export async function installRichTauriFeatureFixture(
             const record = authSessions.get(sessionId);
             if (!record) throw { reasonCode: "operation_conflict" };
             record.polls += 1;
-            if (record.polls >= 1) {
+            if (record.polls >= 1 && !agentAuthHeld) {
               const intent = String(record.snapshot.intent);
               authAccountStates.set(
                 "claude-code",
