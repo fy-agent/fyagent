@@ -124,3 +124,39 @@ not a deleted result or permission to widen budgets.
 Next: commit this verified implementation, fast-forward the clean main branch,
 run the complete repository prearchive and final functional browser task there,
 then record those exact outcomes before archival and non-forced cleanup.
+
+## Merged repository and cleanup
+
+Implementation commit `a929195aeaef7756266d503f6f3f8302d260b017` was fast-forwarded
+into the previously clean `dev/laiyongjie` checkout. Its exact source/config/test
+tree is unchanged after the isolated production runs. The main checkout's full
+`check:prearchive` exited0 (`/tmp/fyagent-round8-merged-prearchive.log`):177 unit
+files,1,565 passes/one existing skip; Rust3,495 passes/zero failures/six existing
+ignores; desktop mock7, release contracts611/one skip, native Fetch4, plus strict
+types, lint, formatting, graph/build/toolchain checks. The current task context
+was explicitly passed to the gate, not bypassed after its initial missing-pointer
+refusal. Final functional execution on the merged checkout is recorded below.
+
+All three registered linked worktrees were clean and their heads were verified
+as ancestors of the main checkout before removal. The implementation tree held
+only generated ignored dependencies/build/Python/session state; the two detached
+baseline copies had no tracked, untracked or ignored additions. No live process
+used those working directories. Non-forced `git worktree remove` removed each;
+`git branch -d` removed only the merged implementation branch. The registry now
+contains only the main checkout and dry-run pruning reports no stale entries.
+No arbitrary clean/reset, force deletion, history rewrite or unrelated branch
+deletion was used.
+
+The merged checkout's canonical `mise run test:browser` also exited0:
+production boot/timing2 and **526 functional cases passed**
+(`/tmp/fyagent-round8-merged-browser.log`). All newly tightened cancellation
+readiness and enlarged-font bounds are included. Source, tests, configuration
+and scripts still match implementation commit `a929195a`; only task evidence
+is changed for archival. Six updated SPEC files have43 valid relative links,
+and all nine context entries resolve. No native source or dependency lock
+changed relative to the approved baseline.
+
+The task now enters administrative closure: preserve the full implementation
+commit in both evidence fields, archive, repair the three self-research context
+references, run no-exclusion contracts, record the journal, and verify a clean
+main checkout with no active task or linked-worktree residue.

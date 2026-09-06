@@ -39,8 +39,8 @@
 - [x] Update actual SPEC signatures, role boundaries and negative cases;
       align assignment docs with existing API, not a speculative variant.
       Revalidate all task contexts and changed SPEC relative links.
-- [ ] Run full `mise run check:prearchive --exclude-active-task
-  .trellis/tasks/09-06-frontend-experience-round8`; commit only this task's
+- [x] Run full `mise run check:prearchive --exclude-active-task
+.trellis/tasks/09-06-frontend-experience-round8`; commit only this task's
       verified implementation/SPEC, set work_commit and archive.
 - [ ] Merge any owned worktree, confirm all work commits are ancestors, clean
       safely without force, repair relocated task contexts, run no-exclusion
