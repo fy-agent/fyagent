@@ -500,3 +500,26 @@ Completed and archived all five round-six tasks: single renderer and offline HTM
 ### Status
 
 [OK] **Completed**
+
+
+## Session 78: Round-eight responsive assignments and content density
+<!-- trellis-session: v=2 fp=880207cb7f3c0255 -->
+
+**Date**: 2026-09-07
+**Task**: Round-eight responsive assignments and content density
+**Branch**: `dev/laiyongjie`
+
+### Summary
+
+修复 Skills/MCP 缩放后的分配行错排，复用共享批量操作与中间弹性分栏，统一详情卡片和元数据宽度；修复 WebKit 窗口限宽被误动画导致的观察器循环。6份SPEC同步，177文件1565项单元、526项浏览器和两次各35项生产验证通过，Rust3495项通过；任务归档、worktree安全清理。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a929195a` | fix(ui): stabilize responsive assignments and prioritize detail space |
+| `b8bdaeba` | chore(task): verify merged round-eight responsive changes |
+
+### Status
+
+[OK] **Completed**

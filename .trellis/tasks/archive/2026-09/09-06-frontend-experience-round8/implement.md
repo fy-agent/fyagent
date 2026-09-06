@@ -42,7 +42,7 @@
 - [x] Run full `mise run check:prearchive --exclude-active-task
 .trellis/tasks/09-06-frontend-experience-round8`; commit only this task's
       verified implementation/SPEC, set work_commit and archive.
-- [ ] Merge any owned worktree, confirm all work commits are ancestors, clean
+- [x] Merge any owned worktree, confirm all work commits are ancestors, clean
       safely without force, repair relocated task contexts, run no-exclusion
       `mise run check:contracts`, record Journal and verify clean Git state,
       no active task and no owned worktree/branch residue. No push or release.

@@ -160,3 +160,15 @@ The task now enters administrative closure: preserve the full implementation
 commit in both evidence fields, archive, repair the three self-research context
 references, run no-exclusion contracts, record the journal, and verify a clean
 main checkout with no active task or linked-worktree residue.
+
+## Closure evidence
+
+The task is completed and archived. Its three self-research context references
+now resolve under the archive directory; all nine entries validate and both
+work-commit fields point to the existing ancestor `a929195a`. No-exclusion
+`mise run check:contracts` exited0 after archival
+(`/tmp/fyagent-round8-postarchive-contracts.log`). Session78 was written by the
+repository recorder with the implementation and integrated-verification commits.
+The final bookkeeping commit contains only this archive evidence and the journal;
+the final delivery check verifies no active tasks, a clean main checkout and no
+linked-worktree or implementation-branch residue.
