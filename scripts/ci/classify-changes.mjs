@@ -144,6 +144,13 @@ const WINDOWS_NATIVE_TEST =
   /^tests\/(?:codexDesktopDtoContract|codexUserHelperContract|codexWindowsUserScopeContract|desktopSecurityBoundary|windowsNsisContract|fixtures\/windows-nsis)/u;
 
 const FRONTEND_TEST_PREFIXES = Object.freeze([
+  "tests/renderer/",
+  "tests/browser/",
+  "tests/domain/",
+  "tests/shared/",
+  // Deleted-side paths must remain classifiable against pre-consolidation main.
+  "tests/v2/",
+  "tests/v2-browser/",
   "tests/architecture/",
   "tests/components/",
   "tests/config/",
@@ -156,27 +163,15 @@ const FRONTEND_TEST_PREFIXES = Object.freeze([
 
 const FRONTEND_ROOT_FILES = new Set([
   ".dependency-cruiser.cjs",
-  "components.json",
-  "deplink.html",
-  "eslint.v2.config.mjs",
-  "playwright.v2.config.ts",
-  "playwright.v2-performance.config.ts",
+  "eslint.config.mjs",
+  "playwright.config.ts",
+  "playwright.performance.config.ts",
   "postcss.config.cjs",
-  "scripts/build-v2-preview.mjs",
-  "scripts/build-v2-preview.d.mts",
-  "scripts/preview-html.mjs",
-  "scripts/preview-html.d.mts",
-  "scripts/verify-v2-route-chunks.d.mts",
-  "scripts/verify-v2-route-chunks.mjs",
-  "tailwind.config.cjs",
-  "tests/deeplinkPlayground.test.ts",
-  "tests/previewHtml.test.ts",
+  "scripts/verify-route-chunks.d.mts",
+  "scripts/verify-route-chunks.mjs",
   "tsconfig.json",
-  "tsconfig.node.json",
-  "tsconfig.v2.json",
   "vite.config.ts",
   "vitest.config.ts",
-  "vitest.v2.config.ts",
 ]);
 
 const DOCUMENTATION_ROOT_FILES = new Set([
@@ -206,7 +201,26 @@ const LEGACY_DOCUMENTATION_ROOT_FILES = new Set([
 
 // Name-status diffs include deleted paths. Keep the retired generated
 // standalone preview owned so untracking it is not an unknown path.
-const LEGACY_FRONTEND_ROOT_FILES = new Set(["FyAgent-前端交互预览.html"]);
+const LEGACY_FRONTEND_ROOT_FILES = new Set([
+  "FyAgent-前端交互预览.html",
+  "deplink.html",
+  "components.json",
+  "eslint.v2.config.mjs",
+  "playwright.v2.config.ts",
+  "playwright.v2-performance.config.ts",
+  "scripts/build-v2-preview.mjs",
+  "scripts/build-v2-preview.d.mts",
+  "scripts/preview-html.mjs",
+  "scripts/preview-html.d.mts",
+  "scripts/verify-v2-route-chunks.mjs",
+  "scripts/verify-v2-route-chunks.d.mts",
+  "tailwind.config.cjs",
+  "tsconfig.node.json",
+  "tsconfig.v2.json",
+  "vitest.v2.config.ts",
+  "tests/deeplinkPlayground.test.ts",
+  "tests/previewHtml.test.ts",
+]);
 
 // These trees are gone from this branch but still exist on older main
 // history. Name-status diffs include the deleted side, so they must stay

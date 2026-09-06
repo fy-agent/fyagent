@@ -119,8 +119,8 @@ executing a user-writable npm from the elevated Windows parent.
 
 ## 6. Tests Required
 
-Run `mise run rust:test`, `mise run rust:clippy`, `mise run typecheck:v2`,
-`mise run test:v2`, and the existing user-helper/ACL/architecture suites.
+Run `mise run rust:test`, `mise run rust:clippy`, `mise run typecheck`,
+`mise run test:unit`, and the existing user-helper/ACL/architecture suites.
 Assert product-specific wire identity, closed arguments, exact package and
 scope registry, narrow script allowance, platform/SRI admission, no downgrade,
 owner/prefix rejection, CLI-only policy and post-install observation. Mirror

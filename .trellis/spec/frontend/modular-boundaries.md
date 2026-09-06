@@ -2,193 +2,87 @@
 
 ## 1. Scope / Trigger
 
-Read this before moving code between `src/v2/**`, leftover `src/**`, or
-renderer-neutral `src/shared/**`, before adding a Tauri call, or when splitting
-a large leftover renderer module.
+Read before moving source roles, adding native calls or splitting a shared
+contract. The renderer is single-generation; role names describe ownership,
+not old/new implementations. See [Directory Structure](./directory-structure.md).
 
-FyAgent intentionally has three ownership zones during migration:
-
-```text
-src/v2/**       production V2 renderer
-src/**          leftover renderer / compatibility code outside V2
-src/shared/**   renderer-generation-neutral domain/serialization logic
-```
-
-Do not erase those boundaries with cosmetic directory moves.
-
-## 2. Signatures
-
-`src/shared/**` has no React or Tauri runtime dependency. Leftover components
-call platform facades such as:
-
-```ts
-systemApi.getMigrationResult(): Promise<boolean>;
-systemApi.setWindowTheme(theme: "light" | "dark" | "system"): Promise<void>;
-systemApi.exit(): Promise<void>;
-
-deeplinkApi.onImport(handler): Promise<() => void>;
-deeplinkApi.onError(handler): Promise<() => void>;
-deeplinkApi.notifyFrontendReady(): Promise<void>;
-```
-
-V2 keeps its stricter FeaturePorts / `shared/platform/tauri` signatures from
-the V2 Shell Contract. `src/shared/codex-desktop/**` remains its deliberate
-renderer-neutral tree-external exception.
-
-The V2 Tauri facade stays stable:
+## 2. Signatures and owners
 
 ```ts
 createTauriFeaturePorts(): FeaturePorts;
+// shared/platform/tauri/features.ts composes capability-owned feature-ports.
+
+// Portable parsing/serialization, no React or native runtime:
+import { parseJobSnapshot } from "@/domain/codex-desktop";
+import { updateCommonConfigSnippet } from
+  "@/domain/configuration/serialization/providerConfigUtils";
 ```
 
-`src/v2/shared/platform/tauri/features.ts` is the composition point; capability
-validation/parsing/invoke implementations live under its `feature-ports/**`
-owner tree.
+`shared/features/types.ts` remains an explicit named-export facade; product
+DTOs/constants belong to `agents`, `models`, `skills`, `mcp`, `prompts`, `memory`,
+`settings` and their focused contract modules. It has no wildcard export or
+new implementation. Domain files do not import this facade back from UI.
 
-V2 feature contracts are product-domain owned under
-`src/v2/shared/features/**`. The compatibility path remains available:
+## 3. Dependency and state contracts
 
-```ts
-import type { InstalledSkill, ProviderSummary } from "./types";
-```
+- `app` composes pages/widgets/shared/dev; `main.tsx` composes application startup.
+- `pages` imports the same route, shared and domain, not widgets/app/dev.
+- `widgets` imports shared and sibling widgets, not pages/app/dev.
+- `shared` imports shared/domain, not pages/widgets/app/dev.
+- `domain` imports only domain or runtime-neutral dependencies. It has no React,
+  Tauri, notification, renderer-cache or UI-lifetime ownership.
+- `shared/ui` does not import feature/platform runtime. Feature-aware controls
+  such as CopyablePath, ExternalLinkButton and FileRecoveryButton belong to
+  `shared/features/controls`.
+- Tauri package imports, native command literals and boundary decoding live in
+  `shared/platform/tauri/**`. The root facade composes ports; capability-owned
+  modules validate payloads and parse native responses. ACL tests scan the
+  entire adapter tree, not just the facade.
+- Motion and glass dependencies have reviewed shared owners; the resize library
+  has its own `shared/ui/split/vendor.ts` owner so chrome does not eagerly load
+  pane implementation through a ubiquitous vendor barrel.
+- Preserve native command names, DTO/schema versions, persisted provider IDs,
+  one-shot startup readiness, cancellation and authoritative rereads during
+  moves. An in-memory query namespace may change as one transaction; use the
+  shared key factory, including prefix invalidations.
 
-but `types.ts` is only an explicit named-export facade. New contract logic
-belongs in the owning files such as `assignments.ts`, `skills.ts`, `mcp.ts`,
-`agents.ts`, `models.ts`, `prompts.ts`, `memory.ts`, and `settings.ts`.
+The provider-config facade re-exports JSON and Codex TOML owners. Structural
+operations use `Record<string, unknown>` and guards; own-property writes must
+not recurse into prototypes or trigger inherited setters. The JSON encoder
+supplies compatible basic-string escapes for TOML values. Replacement callbacks
+preserve literal `$&`/`$1` tokens instead of interpreting replacement syntax.
 
-Leftover provider-config imports also keep one compatibility path:
+A large route root can remain large when it is the single owner of selection,
+draft and dirty-blocker state. Extract a cohesive module with an explicit props
+boundary, not arbitrary JSX slices made only to satisfy a line limit.
 
-```ts
-import {
-  updateCommonConfigSnippet,
-  extractCodexBaseUrl,
-  setCodexModelName,
-} from "@/utils/providerConfigUtils";
-```
+## 4. Failure matrix
 
-That file is a re-export facade, not the implementation owner.
+| Condition                                               | Required result                                                                   |
+| ------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| Import points to a retired root or unknown source role  | Type/build and architecture checks fail.                                          |
+| Domain imports React/Tauri/shared runtime               | Ownership gate fails, move runtime back to its adapter.                           |
+| Shared UI owns a query or native workflow               | Move feature-aware behavior to its feature owner.                                 |
+| Platform facade grows payload parsers                   | Keep parsing in its capability-owned module.                                      |
+| Query prefix invalidation names a previous namespace    | Fix the shared key factory consumer and rerun behavior tests.                     |
+| Migration scanner reads zero files from an old path     | Positive entry/coverage assertions fail; never report this as clean architecture. |
+| A native write or error changes during a directory move | Stop and treat it as a behavior change, not cosmetic cleanup.                     |
 
-## 3. Contracts
+## 5. Good / Bad cases
 
-- V2 must not import leftover `components`, `hooks`, `lib`, or `i18n` code.
-- Shared UI must not import feature/platform runtime. Controls that consume
-  FeatureProvider, domain target catalogues or external-open coordination live
-  in `shared/features/controls` (`CopyablePath`, `ExternalLinkButton`,
-  `InstallTargetDialog`); pages reuse those owners. Visual primitives and
-  catalog geometry remain under `shared/ui` without a reverse re-export.
-- `src/shared/**` must not import V2, leftover renderer modules, React, or
-  `@tauri-apps/*`.
-- Leftover `src/components/**` must not import `@tauri-apps/*`; use
-  `src/lib/api/**` or an owning hook.
-- `src/v2/shared/platform/tauri/features.ts` composes `FeaturePorts` only.
-  Command literals, request validation and native-response parsing live in
-  capability-owned `feature-ports/**` modules. ACL/adapter tests must scan the
-  whole adapter tree rather than assuming every command string lives in the
-  root facade.
-- `src/v2/shared/features/types.ts` is a compatibility facade only. It may use
-  explicit named re-exports and compatibility aliases, but it must not own new
-  feature DTOs/constants/functions and must not use `export *`. Domain contract
-  files must not import back through `types.ts`, which would invert ownership
-  and risk cycles. Existing consumers may keep the facade path during gradual
-  migration; new code should prefer the narrow owning domain contract when it
-  does not create unnecessary churn.
-- `src/main.tsx` is the reviewed bootstrap exception for process lifecycle.
-- `App.tsx` is a composition root. Cross-feature startup/event/cache
-  coordination belongs in an owning hook such as `useAppRuntimeEffects`.
-- Specialized provider forms depend on `ProviderForm.types.ts` and pure model
-  helpers, not on the `ProviderForm.tsx` composition root.
-- Leftover provider configuration keeps `src/utils/providerConfigUtils.ts` as
-  the stable compatibility facade. Implementation ownership is split by
-  configuration language:
-  - `providerConfigJsonUtils.ts`: JSON common-config merge/remove, API-key
-    fields and template substitution;
-  - `codexConfigUtils.ts`: Codex TOML inspection/editing and wire/model/base URL
-    helpers;
-  - `providerConfigStructural.ts`: prototype-pollution-safe structural
-    sanitize/merge/remove/subset primitives shared by JSON and TOML readers.
-    Do not migrate dozens of consumers merely to change import paths; change the
-    facade only when its external API intentionally changes.
-- A long V2 route root may remain long when it is the single owner of route
-  selection/query/dirty-blocker state and its internal panels are already
-  cohesive. Extract a route-local module only when an explicit props boundary
-  and independent test seam improve change locality; do not split JSX by line
-  count alone.
-- Refactors preserve command names, payloads, event cleanup, cache
-  invalidation, one-shot migration semantics and user-visible errors.
+Good: `shared/codex-desktop` reuses the independent `domain/codex-desktop`
+parsers and the existing native port. Bad: move hooks into `domain` just to
+make an import pass, or keep a hidden second application under another name.
 
-## 4. Validation & Error Matrix
+## 6. Tests required
 
-| Condition                                                             | Required result                                                                                                              |
-| --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| V2 imports leftover implementation                                    | Architecture test fails; port/extract through an approved boundary                                                           |
-| `src/shared/**` imports React/Tauri/V2/leftover code                  | Architecture test fails; move runtime code back to its generation                                                            |
-| Leftover component imports Tauri                                      | Architecture test fails; use an API/hook facade                                                                              |
-| Specialized provider form imports `./ProviderForm`                    | Architecture test fails; depend on types/model modules                                                                       |
-| `providerConfigUtils.ts` regrows JSON/TOML implementation logic       | `frontendModuleBoundaries` fails; keep it a compatibility re-export facade                                                   |
-| V2 Tauri root facade regrows capability parsing/validation            | Reject; move logic to the owning `feature-ports/**` module and keep root composition-only                                    |
-| V2 feature `types.ts` adds a DTO/constant/function or wildcard export | V2 architecture test fails; put the contract in its product-domain owner and explicitly re-export only compatibility surface |
-| A product-domain feature contract imports `./types`                   | Reject; domain owners may depend on neutral directory/assignment primitives, never on their compatibility facade             |
-| Event facade does not return unlisten                                 | Reject; cleanup semantics must remain intact                                                                                 |
+`tests/renderer/app/architecture.test.ts` parses actual TS import syntax and
+requires known production/domain roots plus positive coverage. It checks layer
+direction, native access, package ownership and feature facades. The independent
+dependency-cruiser test requires TypeScript support and actual current entry
+coverage, rejects runtime cycles/unresolved imports and retains negative fixtures.
+`tests/architecture/frontendModuleBoundaries.test.ts` checks the pure facade;
+domain configuration tests retain escaping, sanitation and prototype defenses.
 
-## 5. Good / Base / Bad Cases
-
-- **Good:** `DeepLinkImportDialog` subscribes through `deeplinkApi` while the
-  facade owns Tauri events and returns unlisten.
-- **Good:** `src/shared/codex-desktop/**` contains neutral DTO/state parsing;
-  V2 UI remains inside V2.
-- **Good:** existing callers keep importing `@/utils/providerConfigUtils`, while
-  JSON, Codex TOML and structural-safety implementations have separate owners.
-- **Good:** one V2 Tauri composition facade returns `FeaturePorts` while each
-  capability adapter owns its wire validation/parser.
-- **Good:** Skills, Agents, Models, MCP, Prompts, Memory and Settings contracts
-  live in their own files while `types.ts` remains a small explicit
-  compatibility facade.
-- **Base:** leftover `src/lib/api/**` may import Tauri because it is the
-  leftover platform facade.
-- **Base:** a large route page may remain one file when moving its panels would
-  only relocate JSX while making route-state ownership less obvious.
-- **Bad:** a V2 page imports `@/hooks/useSettings`.
-- **Bad:** React hooks are moved into `src/shared/**` only so both generations
-  can import them.
-- **Bad:** split a file solely to satisfy a line-count target, then add a barrel
-  or cross-module state plumbing that increases dependency surface.
-
-## 6. Tests Required
-
-```bash
-mise run typecheck
-mise run test:unit -- tests/architecture/rendererBoundaries.test.ts tests/architecture/frontendModuleBoundaries.test.ts
-mise run test:unit -- tests/architecture/dependencyGraph.test.ts
-mise run lint:v2
-mise run typecheck:v2
-mise run test:v2
-```
-
-The architecture test asserts neutral shared imports, leftover Tauri access,
-provider-form dependency direction, the provider-config compatibility facade,
-and V2 feature-contract facade ownership. Run nearest feature/integration tests
-too; dependency tests do not prove behavior. The dependency-cruiser gate checks
-real TypeScript coverage, runtime cycles/unresolved edges and layer direction;
-it also has negative fixtures so missing parser support cannot silently pass.
-See [Renderer and Build Input Security](./security-boundaries.md).
-
-## 7. Wrong vs Correct
-
-Wrong:
-
-```tsx
-import { invoke } from "@tauri-apps/api/core";
-await invoke("get_migration_result");
-```
-
-Correct:
-
-```tsx
-import { systemApi } from "@/lib/api";
-await systemApi.getMigrationResult();
-```
-
-Wrong: put React/Tauri adapters into `src/shared/**`.
-
-Correct: keep shared code runtime-neutral and put adapters in the owning
-leftover or V2 runtime layer.
+Run the unified type/lint/unit gate, affected feature tests and production boot.
+Import graphs are not proof of business correctness or native runtime behavior.

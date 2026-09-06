@@ -1,6 +1,6 @@
 {"file":".trellis/spec/frontend/motion-system.md","reason":"Reuse gestures, explicit source and safe current dialog lifetime"}
-{"file":".trellis/spec/frontend/v2-window-shell.md","reason":"Selection geometry, readiness and one Motion owner"}
-{"file":".trellis/spec/frontend/v2-managed-auth.md","reason":"Login cancellation and secret/session lifetimes cannot wait for motion"}
+{"file":".trellis/spec/frontend/window-shell.md","reason":"Selection geometry, readiness and one Motion owner"}
+{"file":".trellis/spec/frontend/managed-auth.md","reason":"Login cancellation and secret/session lifetimes cannot wait for motion"}
 {"file":".trellis/tasks/archive/2026-09/09-06-frontend-experience-round5/research/desktop-choreography.md","reason":"Exact desktop geometry/material/content timing to adapt"}
 {"file":".trellis/tasks/archive/2026-09/09-06-frontend-experience-round5/research/sources.md","reason":"Motion/WAAPI completion, cancellation and isolated geometry costs"}
 {"file":".trellis/tasks/archive/2026-09/09-06-frontend-presentation-choreography/research/unit-boundary.md","reason":"Generated CSS seconds must preserve actual source millisecond durations"}

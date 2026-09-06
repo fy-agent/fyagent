@@ -6,15 +6,15 @@ Read this contract before changing external-Agent login/logout/provider
 handoff, Auth observation, session polling, desktop target selection, or Auth
 result wording. Auth is a separate bounded façade from Agent install jobs and
 from FyAgent's central V2 `/auth` page owned by
-[V2 Managed Accounts](../frontend/v2-managed-auth.md).
+[Managed Accounts](../frontend/managed-auth.md).
 
 Primary owners:
 
 - `src-tauri/src/agent_install/auth_actions.rs`
 - `src-tauri/src/agent_install/auth_sessions.rs`
 - `src-tauri/src/commands/agent_auth.rs`
-- `src/v2/shared/features/agent-auth.ts`
-- `src/v2/pages/agents/useAgentAuthSession.ts`
+- `src/shared/features/agent-auth.ts`
+- `src/pages/agents/useAgentAuthSession.ts`
 
 Desktop target capability and launch admission are shared with
 [External Agent Lifecycle](./external-agent-lifecycle.md). Secret material
@@ -75,7 +75,7 @@ verified | handoff_complete | failed | cancelled | timed_out
 - `start_agent_action` does not implement Auth actions and must return the
   closed unsupported/executor reason without launching a session.
 - Codex Auth remains `fyagent_managed` and routes the user to the V2 `/auth`
-  page owned by [V2 Managed Accounts](../frontend/v2-managed-auth.md). Native
+  page owned by [Managed Accounts](../frontend/managed-auth.md). Native
   account/secret ownership is [Managed Auth Core](./managed-auth.md), provider
   login is [Managed Auth Login](./managed-auth-login.md), and connection
   projection is [Managed Auth Consumers](./managed-auth-consumers.md). This
@@ -181,8 +181,8 @@ verified | handoff_complete | failed | cancelled | timed_out
 mise run rust:fmt:check
 mise run rust:clippy
 mise run rust:test
-mise run typecheck:v2
-mise run test:v2
+mise run typecheck
+mise run test:unit
 ```
 
 Required assertions:

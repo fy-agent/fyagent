@@ -2,7 +2,7 @@
 
 ## 1. Scope / Trigger
 
-Read before changing V2 typography, shared confirmation/dialog layout, sidebar
+Read before changing Renderer typography, shared confirmation/dialog layout, sidebar
 selection shape, or a page-specific visual override. The existing navigation,
 catalog/master-detail structure and workflows are not redesigned by a token change.
 
@@ -104,14 +104,14 @@ Bad: a page overrides every shared control, adds a second focus trap, or uses
 
 ## 6. Tests Required
 
-- `tests/v2/shared/Dialog.test.tsx`: description pairing, no filler, cancel
+- `tests/renderer/shared/Dialog.test.tsx`: description pairing, no filler, cancel
   focus, trigger restoration, pending lock and hidden portal behavior.
   Controlled close-frame tests also assert automatic-tab cancellation and
   protection against a previous dialog stealing focus from its successor.
-- `tests/v2-browser/experience.spec.ts`: actual computed title/button scale,
+- `tests/browser/experience.spec.ts`: actual computed title/button scale,
   capped widths, visible footer, selected host/lens geometry and screenshots.
 - Existing multi-viewport shell, account, model/editor and keyboard tests;
-  `mise run typecheck:v2`, `lint:v2`, `test:v2`, `test:v2:browser`.
+  `mise run typecheck`, `mise run lint`, `mise run test:unit`, `mise run test:browser`.
 - Browser fixture images do not prove native window chrome, platform fonts on
   every host, all contrast pairs, or subjective final-product acceptance.
 

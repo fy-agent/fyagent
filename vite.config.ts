@@ -3,9 +3,7 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { codeInspectorPlugin } from "code-inspector-plugin";
 
-export default defineConfig(({ command, mode }) => {
-  const standalonePreview = mode === "standalone-preview";
-
+export default defineConfig(({ command }) => {
   return {
     root: "src",
     plugins: [
@@ -20,33 +18,29 @@ export default defineConfig(({ command, mode }) => {
       outDir: "../dist",
       emptyOutDir: true,
       manifest: true,
-      cssCodeSplit: !standalonePreview,
+      cssCodeSplit: true,
       rollupOptions: {
-        output: standalonePreview
-          ? {
-              inlineDynamicImports: true,
-            }
-          : {
-              // Let Rollup keep each named entry's dependency closure together.
-              // A path-based catch-all split React's helpers from React and put
-              // hook consumers in the reverse dependency, breaking production.
-              manualChunks: {
-                "vendor-react": ["react", "react-dom", "react-router-dom"],
-                "vendor-query": ["@tanstack/react-query"],
-                "vendor-motion": ["framer-motion"],
-                "vendor-radix": [
-                  "@radix-ui/react-dialog",
-                  "@radix-ui/react-checkbox",
-                  "@radix-ui/react-popover",
-                  "@radix-ui/react-select",
-                  "@radix-ui/react-switch",
-                  "@radix-ui/react-tabs",
-                  "@radix-ui/react-tooltip",
-                  "@radix-ui/react-collapsible",
-                ],
-                "vendor-tauri": ["@tauri-apps/api"],
-              },
-            },
+        output: {
+          // Let Rollup keep each named entry's dependency closure together.
+          // A path-based catch-all split React's helpers from React and put
+          // hook consumers in the reverse dependency, breaking production.
+          manualChunks: {
+            "vendor-react": ["react", "react-dom", "react-router-dom"],
+            "vendor-query": ["@tanstack/react-query"],
+            "vendor-motion": ["framer-motion"],
+            "vendor-radix": [
+              "@radix-ui/react-dialog",
+              "@radix-ui/react-checkbox",
+              "@radix-ui/react-popover",
+              "@radix-ui/react-select",
+              "@radix-ui/react-switch",
+              "@radix-ui/react-tabs",
+              "@radix-ui/react-tooltip",
+              "@radix-ui/react-collapsible",
+            ],
+            "vendor-tauri": ["@tauri-apps/api"],
+          },
+        },
       },
     },
     server: {

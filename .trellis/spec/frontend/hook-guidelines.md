@@ -1,86 +1,54 @@
 # Hook Guidelines
 
-These conventions apply to leftover `src/hooks/` and feature-local hooks
-outside `src/v2`. V2 feature data crosses `FeaturePorts` and V2 query hooks
-under `src/v2/shared/features/`; pages must not import leftover hooks. See
-[V2 Shell](./v2-shell.md) and [Frontend Reuse](./reuse.md). Reuse is the
-default: if a new hook will be used by another module, put it in
-`src/v2/shared/features/` (or leftover `src/hooks/` for leftover-only
-surfaces) on the first commit.
+## Placement and API
 
-## Location and Naming
+Route-only hooks live beside their route. Shared visual hooks live in
+`shared/ui`; shared feature queries/workflows live in `shared/features`.
+Native subscriptions cross a typed port, not a page import of Tauri. Pure
+`domain` modules never contain hooks. Reuse an existing owner before creating
+a second one; promote a hook when a concrete second consumer needs it.
 
-Custom hooks are exported functions whose names start with `use`. Cross-feature
-generic hooks normally live in `src/hooks/`; a hook that belongs to a cohesive
-policy/module may remain beside that module, such as
-`src/lib/layout/useWindowLayoutMode.ts`. Hooks private to a feature may be
-co-located beneath that feature and re-exported from a local barrel. Do not move
-a feature-private hook to `src/hooks/` unless a second feature needs it, or a
-sibling leftover feature is expected to need it next. In that second case, place
-it in `src/hooks/` on the first commit rather than copying it later.
+Use a `use`-prefixed function and explicit typed arguments. Return named state
+and actions rather than positional tuples for complex workflows. Preserve the
+owning discriminated state machine; do not collapse unknown/error/stale into
+booleans that imply success.
 
-```tsx
-// src/hooks/useDebouncedValue.ts
-export function useDebouncedValue<T>(value: T, delay: number): T {
-  const [debouncedValue, setDebouncedValue] = useState<T>(value);
-  useEffect(() => {
-    const timer = setTimeout(() => setDebouncedValue(value), delay);
-    return () => clearTimeout(timer);
-  }, [value, delay]);
-  return debouncedValue;
-}
-```
+## Effects, visibility and cleanup
 
-`src/components/providers/forms/hooks/index.ts` is the local barrel for the
-provider-form hooks. `src/components/mcp/useMcpValidation.ts` is another
-feature-local hook that stays beside its MCP UI.
+Timers, observers, event listeners and animations require cleanup. Async native
+subscription setup must release the resolved unlisten function even when its
+effect was already disposed. Guard late resolutions and errors against the
+current session/operation identity; StrictMode and repeated open/close are
+normal lifecycle cases, not reasons to suppress warnings.
 
-## Effects and Native Events
+Persistent routes stay mounted. Query/polling hooks therefore use
+`usePersistentVisibility()` or an explicit active/allowed condition rather than
+relying on unmount. Hidden surfaces cannot retain interactive portals. Native
+jobs remain backend-owned; animation completion cannot authorize a mutation.
+See [State Management](./state-management.md) and
+[Change Plan Workspaces](./change-plan-workspaces.md).
 
-Hooks that create timers, observers, or native listeners return the cleanup
-from their effect. The Tauri event wrapper also guards an asynchronously
-created unsubscribe function so it is released even when unmount happens
-before `listen()` resolves.
+Native startup readiness intentionally does not wait for RAF or document
+visibility. `shared/platform/useFrontendReady.ts` signals only after usable/error
+content commits; preserve the hidden-window bootstrap exception.
 
-`useWindowLayoutMode` uses renderer width as a browser-preview/fake-test
-fallback, but accepts only a validated native `layout-mode-changed` work-area
-event when the desktop host provides one. Keep its resize debounce, event
-validation, and cleanup with the layout policy rather than duplicating the
-normal/constrained decision in a component.
+## Concrete owners
 
-```tsx
-// Pattern from src/hooks/useTauriEvent.ts
-useEffect(() => {
-  let disposed = false;
-  let unlisten: UnlistenFn | undefined;
-  // await listen(...), then retain or immediately call the unlisten function
-  return () => {
-    disposed = true;
-    unlisten?.();
-  };
-}, [eventName]);
-```
+`pages/agents/useAgentAuthSession.ts` owns external-auth sessions;
+`pages/auth/useManagedAuthLoginSession.ts` owns managed login observation;
+`shared/features/change-plans-ui/useChangeJob.ts` owns Query-based change-job
+observation. `shared/ui/useDialogState.ts` owns conditional dialog session
+identity, while `usePersistentSearchParams.ts` owns route snapshots. Extend
+these contracts instead of introducing duplicate timers/state in components.
 
-## Stateful Hook Shape
+## Verification
 
-Hooks keep feature-specific transient state and expose named values plus
-handlers. `useApiKeyState` returns `apiKey`, `setApiKey`,
-`handleApiKeyChange`, and `showApiKey`; it synchronizes a form field with an
-editable JSON configuration while retaining the feature's validation rules.
-Use a named return object when a hook exposes multiple related values.
+Run unified type/lint/unit gates and the affected browser interaction suite.
+Cover delayed subscription resolution, unmount/hidden cleanup, stale results,
+reopen, duplicated action attempts and reduced motion where relevant. Tests
+must wait for real state transitions with `act`/async assertions or controlled
+promises, not add arbitrary sleeps or blanket console suppression.
 
-Resource hooks that use TanStack Query retain their query key and invalidation
-logic with the owning domain. For example, `useOpenClaw.ts` groups its hooks
-and shared keys together instead of scattering key literals across components.
-
-## Evidence
-
-- [src/hooks/useDebouncedValue.ts](../../../src/hooks/useDebouncedValue.ts)
-  shows a generic hook with an effect cleanup.
-- [src/hooks/useTauriEvent.ts](../../../src/hooks/useTauriEvent.ts) handles
-  asynchronous native subscription setup and teardown.
-- [src/components/providers/forms/hooks/useApiKeyState.ts](../../../src/components/providers/forms/hooks/useApiKeyState.ts)
-  demonstrates a co-located form-state hook with typed inputs and a named
-  return object.
-- [src/lib/layout/useWindowLayoutMode.ts](../../../src/lib/layout/useWindowLayoutMode.ts)
-  shows a policy-adjacent hook with native-event authority and a safe fallback.
+Wrong: a page interval continuously polls a hidden native job.
+Correct: reuse the owning visibility-aware query/session hook and reconcile
+authoritative state when the page becomes active.

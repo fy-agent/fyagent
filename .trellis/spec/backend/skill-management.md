@@ -17,8 +17,8 @@ Primary owners are:
 - `src-tauri/src/app_config.rs` for `InstalledSkill`, `SkillApps`, and
   `SkillTargetId`.
 
-Renderer behavior is owned by [V2 Skills](../frontend/v2-skills.md) and
-[V2 Shared Assignment](../frontend/v2-assignments.md). SQLite lifecycle and
+Renderer behavior is owned by [Skills](../frontend/skills.md) and
+[Shared Assignment](../frontend/assignments.md). SQLite lifecycle and
 migration rules are owned by [Database Persistence](./database-persistence.md).
 
 ## 2. Signatures
@@ -33,7 +33,7 @@ qoderwork | trae-work | workbuddy
 QoderWork, TRAE Work, and WorkBuddy are direct `SkillTargetId` values. They do
 not convert to the general `AppType` enum. The V2 presentation subset is the
 seven catalog-aligned targets documented by
-[V2 Shared Assignment](../frontend/v2-assignments.md); Gemini and Hermes remain
+[Shared Assignment](../frontend/assignments.md); Gemini and Hermes remain
 native/compatibility targets.
 
 The current unified Tauri commands are:
@@ -169,20 +169,20 @@ filesystem/database result into success.
 
 ## 4. Validation & Error Matrix
 
-| Condition | Required result |
-| --- | --- |
-| Unknown target ID | Reject before any filesystem/database mutation. |
-| A new request or backup metadata contains a directory that escapes an owned root | Reject as invalid input; do not inspect/remove the escaped path. |
-| An existing installed row has an invalid `directory` during uninstall | Treat it as database-only recovery: touch no filesystem target/source, create no backup, delete only the row, and return no backup path. |
-| Repository owner/name/branch can alter the expected archive host/path | Reject before saving/downloading and leave the discovery cache/state unchanged. |
-| Archive exceeds entry/size budget or contains traversal | Abort extraction, remove temporary/partial output, and persist nothing. |
-| Installed read observes the same directory in several targets | Return one Skill with merged flags; do not duplicate rows during observation. |
-| Target projection/removal fails during toggle | Return error and leave the SQLite flag unchanged. |
-| SQLite flag update fails after live target effect | Return error and treat state as divergent/unconfirmed; require reread/reconciliation. |
-| Uninstall has no safe backup source | Return `backupPath = None`; do not invent a recovery location. |
-| Restore backup ID/metadata is invalid | Reject without writing the managed or target directory. |
-| One migration item fails | Preserve per-item error and accurate migrated/skipped counts; do not report full success. |
-| Vendor app reload is unobserved | Say assigned/synchronized by FyAgent, not loaded/executed by the vendor. |
+| Condition                                                                        | Required result                                                                                                                          |
+| -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Unknown target ID                                                                | Reject before any filesystem/database mutation.                                                                                          |
+| A new request or backup metadata contains a directory that escapes an owned root | Reject as invalid input; do not inspect/remove the escaped path.                                                                         |
+| An existing installed row has an invalid `directory` during uninstall            | Treat it as database-only recovery: touch no filesystem target/source, create no backup, delete only the row, and return no backup path. |
+| Repository owner/name/branch can alter the expected archive host/path            | Reject before saving/downloading and leave the discovery cache/state unchanged.                                                          |
+| Archive exceeds entry/size budget or contains traversal                          | Abort extraction, remove temporary/partial output, and persist nothing.                                                                  |
+| Installed read observes the same directory in several targets                    | Return one Skill with merged flags; do not duplicate rows during observation.                                                            |
+| Target projection/removal fails during toggle                                    | Return error and leave the SQLite flag unchanged.                                                                                        |
+| SQLite flag update fails after live target effect                                | Return error and treat state as divergent/unconfirmed; require reread/reconciliation.                                                    |
+| Uninstall has no safe backup source                                              | Return `backupPath = None`; do not invent a recovery location.                                                                           |
+| Restore backup ID/metadata is invalid                                            | Reject without writing the managed or target directory.                                                                                  |
+| One migration item fails                                                         | Preserve per-item error and accurate migrated/skipped counts; do not report full success.                                                |
+| Vendor app reload is unobserved                                                  | Say assigned/synchronized by FyAgent, not loaded/executed by the vendor.                                                                 |
 
 ## 5. Good / Base / Bad Cases
 
@@ -216,7 +216,7 @@ assertion owners include:
   update and best-effort per-row target reconciliation;
 - `src-tauri/src/database/dao/skills.rs`: all nine flags round-trip and metadata
   updates do not resurrect an uninstalled generation;
-- `tests/v2/features/authoritativeAssignment.test.tsx`: serialized toggle,
+- `tests/renderer/features/authoritativeAssignment.test.tsx`: serialized toggle,
   explicit-false/error rejection, reread authority, and pending cleanup for the
   Agent-bound shared helper;
 - Skill page/Port tests: current native `true`/throw mapping, page-wide query

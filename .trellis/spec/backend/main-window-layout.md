@@ -8,8 +8,8 @@ Read this contract before changing `src-tauri/src/window_layout.rs`,
 `windows_window_state` restore/save.
 
 The V2 app-shell Overlay chrome is a renderer React widget under
-`src/v2/widgets/app-shell/` (window chrome, not a feature route). The
-[V2 Shell Contract](../frontend/v2-shell.md) owns that composition,
+`src/widgets/app-shell/` (window chrome, not a feature route). The
+[Shell Contract](../frontend/shell.md) owns that composition,
 including the macOS Overlay drag strip. **V2-owned chrome** means that
 React widget only. It does not mean V2 owns host geometry, and it does
 not place Overlay outside the V2 tree.

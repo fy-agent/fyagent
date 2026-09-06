@@ -1,7 +1,7 @@
 {"file":".trellis/spec/frontend/index.md","reason":"Renderer pre-development routing and current V2 feature/spec ownership."}
-{"file":".trellis/spec/frontend/v2-shell.md","reason":"V2 isolation, platform boundary, responsive shell, architecture and browser-preview contracts."}
-{"file":".trellis/spec/frontend/v2-agent-models.md","reason":"Versioned Agent catalog, official-link, five-candidate, asset and Models behavior contract."}
-{"file":".trellis/spec/frontend/v2-skills-mcp.md","reason":"Six-app assignment identity, single-panel, responsive and authoritative-state contract."}
+{"file":".trellis/spec/frontend/shell.md","reason":"V2 isolation, platform boundary, responsive shell, architecture and browser-preview contracts."}
+{"file":".trellis/spec/frontend/agent-models.md","reason":"Versioned Agent catalog, official-link, five-candidate, asset and Models behavior contract."}
+{"file":".trellis/spec/frontend/skills-mcp.md","reason":"Six-app assignment identity, single-panel, responsive and authoritative-state contract."}
 {"file":".trellis/spec/frontend/type-safety.md","reason":"Cross-layer Tauri DTO typing and runtime boundary guidance."}
 {"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Frontend test, accessibility, desktop mock and visual evidence requirements."}
 {"file":".trellis/spec/backend/codex-desktop-installer.md","reason":"Installer commands, DTOs, job events, progress, redaction, platform authority and HIL limits."}

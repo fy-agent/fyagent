@@ -5,26 +5,26 @@ const read = (path: string) => fs.readFileSync(path, "utf8");
 
 describe("main-window presentation ownership", () => {
   it("warms the initial module before rendering and never signals from the shell", () => {
-    const main = read("src/v2/main.tsx");
+    const main = read("src/main.tsx");
     expect(main.indexOf("void preloadInitialPrimaryRoute")).toBeLessThan(
       main.indexOf("root.render("),
     );
     expect(main.indexOf("root.render(")).toBeLessThan(
       main.indexOf("prefetchPrimaryRoutes();"),
     );
-    expect(read("src/v2/widgets/app-shell/AppShell.tsx")).not.toContain(
+    expect(read("src/widgets/app-shell/AppShell.tsx")).not.toContain(
       "signalFrontendReady",
     );
-    expect(read("src/v2/shared/platform/useFrontendReady.ts")).not.toMatch(
+    expect(read("src/shared/platform/useFrontendReady.ts")).not.toMatch(
       /requestAnimationFrame|visibilityState|setTimeout/,
     );
-    expect(read("src/v2/app/RootError.tsx")).toContain("useFrontendReady()");
-    expect(read("src/v2/shared/features/provider.tsx")).toContain(
+    expect(read("src/app/RootError.tsx")).toContain("useFrontendReady()");
+    expect(read("src/shared/features/provider.tsx")).toContain(
       "focusManager.setFocused(true)",
     );
-    expect(
-      read("src/v2/shared/platform/tauri/feature-ports/agents.ts"),
-    ).toMatch(/"claude-code": \["product"\]/);
+    expect(read("src/shared/platform/tauri/feature-ports/agents.ts")).toMatch(
+      /"claude-code": \["product"\]/,
+    );
   });
 
   it("keeps ordinary reveals behind the existing activation gate", () => {

@@ -136,15 +136,15 @@ types/routers/handlers. That visibility is intentional but bounded:
 
 ### Side-effect ownership
 
-| Side effect | Required owner |
-| --- | --- |
-| SQLite schema/version/SQL | `database/schema.rs` and owning DAO/service |
-| Filesystem document transaction | owning service/native adapter with trusted paths |
-| HTTP/vendor source | owning source/provider service with closed policy |
-| Process/installer/native launch | reviewed native/lifecycle adapter |
-| Secret resolution | native SecretService/SecretRef boundary |
-| Proxy socket/protocol/failover | `proxy/**` + `services/proxy.rs` |
-| Tauri state/event/window | command/app shell adapter, not domain core |
+| Side effect                     | Required owner                                    |
+| ------------------------------- | ------------------------------------------------- |
+| SQLite schema/version/SQL       | `database/schema.rs` and owning DAO/service       |
+| Filesystem document transaction | owning service/native adapter with trusted paths  |
+| HTTP/vendor source              | owning source/provider service with closed policy |
+| Process/installer/native launch | reviewed native/lifecycle adapter                 |
+| Secret resolution               | native SecretService/SecretRef boundary           |
+| Proxy socket/protocol/failover  | `proxy/**` + `services/proxy.rs`                  |
+| Tauri state/event/window        | command/app shell adapter, not domain core        |
 
 Pure domain functions receive values/traits and can be tested without
 `AppHandle`, global state, network, filesystem or process execution.
@@ -175,19 +175,19 @@ Pure domain functions receive values/traits and can be tested without
 
 ## 4. Validation & Error Matrix
 
-| Condition | Required result |
-| --- | --- |
-| Renderer feature needs native operation | Add/reuse one typed command and service owner; no raw generic bridge. |
-| Command contains SQL, vendor HTTP, archive extraction or process launch | Move side effect into DAO/service/native adapter. |
-| New module is marked `pub` without an actual cross-module consumer | Keep private or `pub(crate)`; architecture review fails. |
-| Existing Proxy/select command module is public | Preserve only the tested intentional surface; do not privatize mechanically. |
-| New Agent code uses `auth`/`source` old owner names | Reject; use current `auth_actions`, `auth_sessions`, `sources` and correct command façade. |
-| Command registered but permission/adapter missing | Contract failure; feature is incomplete. |
-| Permission added but handler not registered | Contract failure; dead/wrong authority. |
-| Capability manifest union drops unrelated handler | Reject even if the new feature works locally. |
-| One Tauri command invokes another | Extract/call the shared service method instead. |
-| V2 and leftover paths implement separate writes | Consolidate under one backend/service owner. |
-| Domain helper requires `AppHandle` only to read config/emit UI event | Pass a narrow value/trait or move shell behavior to adapter. |
+| Condition                                                               | Required result                                                                            |
+| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Renderer feature needs native operation                                 | Add/reuse one typed command and service owner; no raw generic bridge.                      |
+| Command contains SQL, vendor HTTP, archive extraction or process launch | Move side effect into DAO/service/native adapter.                                          |
+| New module is marked `pub` without an actual cross-module consumer      | Keep private or `pub(crate)`; architecture review fails.                                   |
+| Existing Proxy/select command module is public                          | Preserve only the tested intentional surface; do not privatize mechanically.               |
+| New Agent code uses `auth`/`source` old owner names                     | Reject; use current `auth_actions`, `auth_sessions`, `sources` and correct command façade. |
+| Command registered but permission/adapter missing                       | Contract failure; feature is incomplete.                                                   |
+| Permission added but handler not registered                             | Contract failure; dead/wrong authority.                                                    |
+| Capability manifest union drops unrelated handler                       | Reject even if the new feature works locally.                                              |
+| One Tauri command invokes another                                       | Extract/call the shared service method instead.                                            |
+| V2 and leftover paths implement separate writes                         | Consolidate under one backend/service owner.                                               |
+| Domain helper requires `AppHandle` only to read config/emit UI event    | Pass a narrow value/trait or move shell behavior to adapter.                               |
 
 ## 5. Good / Base / Bad Cases
 
@@ -206,7 +206,7 @@ Pure domain functions receive values/traits and can be tested without
 ## 6. Tests Required
 
 ```bash
-mise run typecheck:v2
+mise run typecheck
 mise run test:unit -- tests/architecture/rustModuleBoundaries.test.ts
 mise run rust:fmt:check
 mise run rust:clippy

@@ -1,35 +1,53 @@
-import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { configDefaults, defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 
+// One runner, split only by environment ownership. Product renderer tests are
+// part of the normal unit/check aggregate, not a parallel generation opt-in.
 export default defineConfig({
   plugins: [react()],
-  resolve: {
-    alias: {
-      "@": path.resolve(__dirname, "./src"),
-    },
-  },
+  build: { assetsInlineLimit: 0 },
+  resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
   test: {
-    environment: "jsdom",
-    setupFiles: ["./tests/setupGlobals.ts", "./tests/setupTests.ts"],
-    globals: true,
-    // The version contract uses Node's native test runner. Keep those tests
-    // out of Vitest discovery so both runners can coexist in the project-level
-    // test command.
-    // V2 owns dedicated Vitest and Playwright projects. Keep both suites out of
-    // the legacy aggregate so their environment setup and runner globals cannot
-    // leak into one another.
-    exclude: [
-      ...configDefaults.exclude,
-      // Git-ignored local worktrees contain complete dependency graphs and
-      // test suites. Discovering them duplicates tests and React runtimes.
-      "**/.worktrees/**",
-      "**/*.test.mjs",
-      "tests/v2/**",
-      "tests/v2-browser/**",
+    projects: [
+      {
+        extends: true,
+        test: {
+          name: "contracts",
+          environment: "jsdom",
+          setupFiles: ["./tests/setupGlobals.ts", "./tests/setupTests.ts"],
+          globals: true,
+          include: [
+            "tests/**/*.{test,spec}.{ts,tsx}",
+            "src/domain/**/*.{test,spec}.{ts,tsx}",
+          ],
+          exclude: [
+            ...configDefaults.exclude,
+            "**/.worktrees/**",
+            "**/*.test.mjs",
+            "tests/renderer/**",
+            "tests/browser/**",
+          ],
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: "renderer",
+          environment: "jsdom",
+          environmentOptions: { jsdom: { url: "http://localhost/" } },
+          setupFiles: [
+            "./tests/setupGlobals.ts",
+            "./tests/renderer/app/setup.ts",
+          ],
+          include: ["tests/renderer/**/*.{test,spec}.{ts,tsx}"],
+          exclude: [...configDefaults.exclude, "tests/browser/**"],
+          globals: true,
+          clearMocks: true,
+          restoreMocks: true,
+        },
+      },
     ],
-    coverage: {
-      reporter: ["text", "lcov"],
-    },
+    coverage: { reporter: ["text", "lcov"] },
   },
 });

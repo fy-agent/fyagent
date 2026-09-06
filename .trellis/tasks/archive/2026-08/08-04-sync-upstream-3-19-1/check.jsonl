@@ -6,5 +6,5 @@
 {"file":"tests/releaseWorkflow.test.ts","reason":"Guard FyAgent artifact names, no-updater behavior, and platform release structure."}
 {"file":"tests/githubWorkflowTriggers.test.ts","reason":"Guard manual-only CI and release trigger policy."}
 {"file":"tests/macosCrossWorkflow.test.ts","reason":"Guard WSL macOS cross-build supply-chain and experimental artifact boundary."}
-{"file":"tests/integration/App.test.tsx","reason":"Verify App/query/WorkBuddy integration after upstream query and dead-code convergence."}
+{"file":"docs/fyagent/development/renderer-migration.md","reason":"Verify App/query/WorkBuddy integration after upstream query and dead-code convergence."}
 {"file":"src-tauri/tests/provider_service.rs","reason":"Verify upstream Provider changes compile against fyagent_lib and preserve local Provider behavior."}

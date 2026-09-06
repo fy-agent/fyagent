@@ -361,15 +361,25 @@ jobs:
             --exclude tests/taskDocs.test.ts \
             --exclude tests/windowsMsvcCross.test.ts
 
-      - name: Locale key parity
-        id: locale
+      - name: Renderer lint
+        id: lint
         if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
-        run: pnpm test:i18n
+        run: pnpm lint
+
+      - name: Install browser engines
+        id: browsers
+        if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
+        run: pnpm exec playwright install --with-deps chromium webkit
+
+      - name: Production boot and browser regressions
+        id: browser-tests
+        if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
+        run: pnpm test:browser
 
       - name: Evaluate collected diagnostics
         if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
         env:
-          CI_REQUIRED_STEPS: setup-pnpm,setup-node,toolchain-facts,setup-uv,sync-python,install-frontend,toolchains,version,typecheck,formatting,tests,locale
+          CI_REQUIRED_STEPS: setup-pnpm,setup-node,toolchain-facts,setup-uv,sync-python,install-frontend,toolchains,version,typecheck,formatting,tests,lint,browsers,browser-tests
           CI_STEP_RESULTS: ${{ toJSON(steps) }}
         run: node scripts/ci/evaluate-step-outcomes.mjs
 

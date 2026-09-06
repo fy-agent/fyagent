@@ -18,7 +18,7 @@ Primary owners:
 [Managed Auth Core](./managed-auth.md) owns SecretRef admission, credential
 metadata, refresh CAS, and legacy migration. [Managed Auth Consumers](./managed-auth-consumers.md)
 owns Codex/Grok/OpenCode connection projection after a login grant has been
-stored. [V2 Managed Accounts](../frontend/v2-managed-auth.md) owns renderer
+stored. [Managed Accounts](../frontend/managed-auth.md) owns renderer
 polling and presentation. Do not duplicate provider protocol state in either
 consumer adapters or the renderer.
 
@@ -207,9 +207,9 @@ mise run rust:fmt:check
 mise run rust:check
 mise run rust:clippy
 mise run rust:test -- managed_auth
-mise run typecheck:v2
-mise run test:v2 -- tests/v2/features/managed-auth.test.ts \
-  tests/v2/platform/managedAuthPort.test.ts
+mise run typecheck
+mise run test:unit -- tests/renderer/features/managed-auth.test.ts \
+  tests/renderer/platform/managedAuthPort.test.ts
 ```
 
 Required assertions:

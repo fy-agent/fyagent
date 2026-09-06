@@ -2,7 +2,7 @@
 
 ## 1. Scope / Trigger
 
-Read before changing V2 palette, translucent surfaces, material dependencies,
+Read before changing Renderer palette, translucent surfaces, material dependencies,
 radius/spacing, narrow forms or overflow behavior. `tokens.css` owns visual
 roles; `controls.css`, feature CSS and catalog/split CSS compose them. This
 does not redesign the seven primary routes or native window geometry.
@@ -106,11 +106,11 @@ glass.
 
 ## 6. Tests Required
 
-- `tests/v2/shared/designTokens.test.ts` uses PostCSS to reject scattered radius
+- `tests/renderer/shared/designTokens.test.ts` uses PostCSS to reject scattered radius
   literals; do not invent a CSS parser or skip component files.
-- `tests/v2/shared/GlassMaterial.test.tsx` proves stable node identity across
+- `tests/renderer/shared/GlassMaterial.test.tsx` proves stable node identity across
   enhancement and absence of canvas/SVG/form copies in business backing.
-- `tests/v2-browser/materials-responsive.spec.ts`: seven page surfaces, actual
+- `tests/browser/materials-responsive.spec.ts`: seven page surfaces, actual
   composited text samples, axe contrast/label checks, critical input boundaries,
   a 320px detail independent of viewport width, 760px boundary sides, a 616px
   viewport as horizontal 200%-zoom pressure, and forced-color/transparency

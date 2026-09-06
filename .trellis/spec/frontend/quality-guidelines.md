@@ -1,10 +1,10 @@
 # Quality Guidelines
 
-`mise run typecheck`, `format:check`, and `test:unit` cover leftover renderer
-and shared non-V2 tests. `vitest.config.ts` excludes `tests/v2/**` and
-`tests/v2-browser/**`; V2 changes use the affected focused contract's tests and
-the [Frontend Quality Check](./index.md#quality-check). V2 copy is hardcoded
-Chinese and is not part of the four-locale `t(...)` contract below. New UI must
+One `vitest.config.ts` runs renderer and domain/contract tests through separate
+environment projects, not product generations. `mise run typecheck`, `lint`,
+`format:check` and `test:unit` cover the current renderer and retained contracts.
+Use the [Frontend Quality Check](./index.md#quality-check). Product copy is
+Simplified Chinese; manuals in other languages are not a locale runtime. New UI must
 follow [Frontend Reuse](./reuse.md): reuse existing shared owners; if a new
 component will be used by another module, put it in `shared/` on the first
 commit.
@@ -15,6 +15,7 @@ For an ordinary renderer change, start with the repository task API:
 
 ```bash
 mise run typecheck
+mise run lint
 mise run format:check
 mise run test:unit
 ```
@@ -44,18 +45,19 @@ and macOS `rust:test` cannot close that acceptance gap. See
 
 ## Test Setup and Patterns
 
-Vitest runs in `jsdom` and loads `tests/setupGlobals.ts` plus
-`tests/setupTests.ts`. The shared setup installs Testing Library matchers,
-initializes a minimal i18n instance, starts MSW, cleans up rendered trees, and
-resets handlers/mocks after each test.
+Vitest projects explicitly define setup rather than inheriting one another.
+The contracts project loads `tests/setupGlobals.ts` and `tests/setupTests.ts`;
+MSW/native-fetch fixtures retain their transport setup and cleanup. The renderer
+project loads `tests/renderer/app/setup.ts`, preserving its jsdom/native signal
+bridge and cleanup. Removed i18n setup must not reappear as a phantom dependency.
 
 Component tests use React Testing Library (`render`, `screen`, events, and
 role-based queries). Hook tests use `renderHook` and `act`. Tests that need
 TanStack Query create a client with retries disabled so failures are immediate.
 
-### V2 Warning and Lifecycle Evidence
+### Renderer Warning and Lifecycle Evidence
 
-`tests/v2/app/setup.ts` keeps Node's native Request/fetch and translates only
+`tests/renderer/app/setup.ts` keeps Node's native Request/fetch and translates only
 DOM `addEventListener` signal options when the adopted jsdom environment and
 Node use different AbortSignal realms. A WeakMap reuses one real DOM controller
 per native signal; cancellation and the original reason propagate, including
@@ -63,11 +65,11 @@ already-aborted signals. Both EventTarget prototype listeners and Vitest's
 bound window listener are covered and restored after the suite. Never drop
 `options.signal`, replace native fetch/Request, or skip press tests to hide a
 realm error. This narrow upstream-compatible bridge is removable when the
-adopted test environment provides it. `tests/v2/app/abortSignalRealm.test.ts`
+adopted test environment provides it. `tests/renderer/app/abortSignalRealm.test.ts`
 must prove window/element cancellation, multiple targets and native Request
 abort reasons before it is changed.
 
-Targeted V2 interaction suites must fail on unexpected React warnings rather
+Targeted Renderer interaction suites must fail on unexpected React warnings rather
 than filtering stderr or globally mocking `console.error`. Async state changes
 are awaited through Testing Library async helpers, `act`, or controlled fake
 timers. A dependency warning may be allowlisted only by one exact message and
@@ -90,14 +92,14 @@ monolithic entry. Vendor budgets must name their source and remain separate
 from the app route budget.
 
 The browser gate also boots the production bundle and visits all seven routes
-through `playwright.v2-performance.config.ts` (the `production boots` case).
+through `playwright.performance.config.ts` (the `production boots` case).
 Passing Vite dev-server tests or producing a manifest does not prove bundled
 module initialization. `vite.config.ts` uses Rollup's dependency-aware named
 entry groups, not a catch-all node_modules path partition that can split React
 initialization from its helpers and produce cross-chunk cycles.
 
 For navigation profiling run `mise exec -- pnpm exec playwright test --config
-playwright.v2-performance.config.ts`. It uses a serial production server,
+playwright.performance.config.ts`. It uses a serial production server,
 1232×700 viewport, 42 revisits at 1× and 4× CPU cost, CPU profiles and long-task
 records. The normal-speed local target is p95 ≤100ms from semantic link
 activation to the frame after visible destination DOM; it excludes OS input
@@ -122,14 +124,8 @@ Startup module delay/abort fixtures match exact URL pathnames independently
 of Vite cache-busting queries; still assert that interception actually occurred.
 Keep production-bundle startup tests separate from those dev-module fixtures.
 
-```tsx
-// tests/utils/testQueryClient.ts
-export const createTestQueryClient = () =>
-  new QueryClient({ defaultOptions: { queries: { retry: false } } });
-```
-
-Test organization is primarily mirrored under `tests/components/`,
-`tests/hooks/`, `tests/lib/`, `tests/config/`, and `tests/integration/`.
+Test organization is mirrored under `tests/renderer/`, `tests/browser/` and
+`tests/domain/`; native/tooling contracts remain in their established suites.
 Use the closest existing test as the fixture/mocking model for the behavior
 being changed; this repository has no documented universal coverage threshold.
 
@@ -149,7 +145,7 @@ empty response mapped to `undefined`, and `Headers` created in a separate
 jsdom realm. A global-existence assertion or `instanceof` check alone is not a
 replacement for these requests.
 
-All ordinary Vitest, locale, and desktop contract package scripts launch Node
+All ordinary Vitest and desktop contract package scripts launch Node
 with the portable `--throw-deprecation` flag. The focused command adds the
 pending gate:
 
@@ -181,47 +177,32 @@ execution script.
 Never use `NODE_NO_WARNINGS`, `--no-warnings`, `--no-deprecation`,
 `--disable-warning=DEP0040`, or stderr filtering to make these gates pass.
 
-## Leftover UI Text and Accessible Primitives
+## UI Text and Accessible Primitives
 
-When a leftover renderer change adds or changes user-visible text, use `t(...)`
-and update the four locales registered by `src/i18n/index.ts`:
-
-```text
-src/i18n/locales/en.json
-src/i18n/locales/ja.json
-src/i18n/locales/zh.json
-src/i18n/locales/zh-TW.json
-```
+Follow [Localization](./localization.md) and
+[User-Facing Copy](./user-facing-copy.md) for the current Chinese product UI.
+Retired locale assertions are recorded as retired scope, not relabelled as
+passing current coverage. Browser fixtures never claim native locale evidence.
 
 Shared primitives already carry focus-visible styling and form ARIA linkage.
 Preserve those properties when editing them, and test interactive behavior
 through accessible roles where the nearby tests do so.
 
-### Locale Schema Parity
+### Canonical task invocation
 
-`tests/config/localeKeyParity.test.ts` treats `zh.json` as the key-schema
-baseline and requires `en.json`, `ja.json`, and `zh-TW.json` to have the exact
-same leaf-key set. When adding, renaming, or deleting user-visible text:
-
-- change all four locale files in the same patch;
-- keep nested keys as objects and translation leaves as strings; and
-- run `mise run test:i18n` (or the focused
-  `mise run test:unit -- tests/config/localeKeyParity.test.ts`) before
-  relying on fallback text.
-
-Do not add a locale-specific key merely to silence a rendering issue. Fix the
-shared key shape so a missing translation cannot become a production fallback.
+Use `mise run test:unit` rather than the package-manager executable shim for
+host-integration gates. The shim can inject `NODE_PATH`; native tasks correctly
+reject loader overrides before processing Cargo arguments. Do not weaken the
+native environment guard to make a noncanonical test invocation pass.
 
 ## Evidence
 
 - [package.json](../../../package.json) defines the runnable type-check,
-  formatting, unit-test, locale, and desktop-acceptance scripts.
+  formatting, unit-test, browser and desktop-acceptance scripts.
 - [vitest.config.ts](../../../vitest.config.ts) configures the `jsdom`
   environment and shared setup files.
 - [tests/setupTests.ts](../../../tests/setupTests.ts) manages Testing Library,
-  i18n, MSW, cleanup, and mock reset lifecycle.
-- [tests/config/localeKeyParity.test.ts](../../../tests/config/localeKeyParity.test.ts)
-  enforces the registered locale key schema.
+  MSW, cleanup, and mock reset lifecycle.
 - [tests/msw/nativeFetchTauriMock.test.ts](../../../tests/msw/nativeFetchTauriMock.test.ts)
   exercises native Fetch, MSW, Tauri mock parsing, and cross-realm headers.
 - [scripts/tasks/dep0040-check.mjs](../../../scripts/tasks/dep0040-check.mjs)

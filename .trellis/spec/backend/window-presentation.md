@@ -80,18 +80,18 @@ user declines. No credential, configuration or background service is reset.
 
 ## 4. Validation & Error Matrix
 
-| Condition                                            | Result                                                         |
-| ---------------------------------------------------- | -------------------------------------------------------------- |
-| Renderer acknowledges before native layout finishes  | Preserve queue; do not show until prepared.                    |
-| Layout finishes before chunk/local snapshot          | Preserve hidden window; wait for committed surface.            |
-| Duplicate readiness/Focus                            | No duplicate drain; reuse existing coalescing.                 |
-| Silent startup without explicit wake                 | No automatic show or watchdog dialog.                          |
+| Condition                                            | Result                                                                                                                                            |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Renderer acknowledges before native layout finishes  | Preserve queue; do not show until prepared.                                                                                                       |
+| Layout finishes before chunk/local snapshot          | Preserve hidden window; wait for committed surface.                                                                                               |
+| Duplicate readiness/Focus                            | No duplicate drain; reuse existing coalescing.                                                                                                    |
+| Silent startup without explicit wake                 | No automatic show or watchdog dialog.                                                                                                             |
 | Module/local snapshot fails                          | Show recoverable error content when committed. Query must settle to error while the WebView is still hidden; do not remain `fetchStatus: paused`. |
-| Catalog/overview fetch fails before reveal           | `useFrontendReady(!isPending)` still acknowledges the error surface; the 15s watchdog is not the success path. |
-| Renderer never acknowledges                          | Native recovery dialog for pending wake, not a success reveal. |
-| User reloads/destroys WebView while watchdog waits   | Old generation cannot act on replacement.                      |
-| Renderer becomes ready while recovery dialog is open | Late retry does not reload the ready page.                     |
-| Post-write/native job continues in background        | Do not stop it for a frontend reload.                          |
+| Catalog/overview fetch fails before reveal           | `useFrontendReady(!isPending)` still acknowledges the error surface; the 15s watchdog is not the success path.                                    |
+| Renderer never acknowledges                          | Native recovery dialog for pending wake, not a success reveal.                                                                                    |
+| User reloads/destroys WebView while watchdog waits   | Old generation cannot act on replacement.                                                                                                         |
+| Renderer becomes ready while recovery dialog is open | Late retry does not reload the ready page.                                                                                                        |
+| Post-write/native job continues in background        | Do not stop it for a frontend reload.                                                                                                             |
 
 ## 5. Good / Base / Bad Cases
 
@@ -107,8 +107,8 @@ bypass silent mode, or discard queued deep-link semantics.
 
 ## 6. Tests Required
 
-Run `mise run typecheck:v2`, `mise run lint:v2`, `mise run test:v2`,
-`mise run test:v2:browser`, `mise run build:renderer`, `mise run check:backend`
+Run `mise run typecheck`, `mise run lint`, `mise run test:unit`,
+`mise run test:browser`, `mise run build:renderer`, `mise run check:backend`
 and the full active-task prearchive gate.
 
 - `lib.rs` tests assert both arrival orders, reload/FIFO, silent/non-waking
@@ -117,12 +117,12 @@ and the full active-task prearchive gate.
 - `tests/frontendStartupContract.test.ts` guards entry ordering, no shell
   readiness, centralized native show, failure-only recovery, and native
   `focusManager.setFocused(true)` on the FeatureProvider QueryClient.
-- `tests/v2/platform/featurePorts.test.ts` freezes catalog official-link IDs
+- `tests/renderer/platform/featurePorts.test.ts` freezes catalog official-link IDs
   against the native v5 table, including Claude `product` (not Desktop).
-- `tests/v2/platform/frontendReady.test.tsx` guards suspended/hidden content,
+- `tests/renderer/platform/frontendReady.test.tsx` guards suspended/hidden content,
   local pending, error fallback and closed hash selection.
-- `tests/v2/pages/agents/Page.test.tsx` delays the local catalog snapshot.
-- `tests/v2-browser/startup.spec.ts` delays/aborts the real route import and
+- `tests/renderer/pages/agents/Page.test.tsx` delays the local catalog snapshot.
+- `tests/browser/startup.spec.ts` delays/aborts the real route import and
   asserts no premature event or loading shell, one readiness signal and
   recovery action across four sizes.
 - Native Windows/macOS first-paint, tray/Dock and lightweight interaction must

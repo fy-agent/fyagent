@@ -12,7 +12,6 @@ const ROOT = path.resolve(__dirname, "..");
 const CANONICAL_VECTOR = path.join(ROOT, "assets", "fyagent-y-gate.svg");
 const CANONICAL_PNG = path.join(ROOT, "assets", "fyagent.png");
 const ICONS = path.join(ROOT, "src-tauri", "icons");
-const ABOUT = path.join(ROOT, "src", "assets", "icons", "app-icon.png");
 const OLD_APPLICATION_ICON_SHA256 =
   "352e3695331eb12c44946be46512489a595d11031c9bcb312deb1141b9bf24be";
 const EXPECTED_VECTOR_SHA256 =
@@ -55,10 +54,13 @@ describe("FyAgent application brand assets", () => {
     expect(result.signal).toBeGreaterThan(80_000);
   });
 
-  it("keeps About byte-identical to generated 32px and validates ICO frames", () => {
-    expect(fs.readFileSync(ABOUT)).toEqual(
-      fs.readFileSync(path.join(ICONS, "32x32.png")),
-    );
+  it("retains generated 32px package art and all ICO frames without a retired About duplicate", () => {
+    const icon = fs.readFileSync(path.join(ICONS, "32x32.png"));
+    expect(icon.subarray(12, 16).toString("ascii")).toBe("IHDR");
+    expect([icon.readUInt32BE(16), icon.readUInt32BE(20)]).toEqual([32, 32]);
+    expect(
+      fs.existsSync(path.join(ROOT, "src", "assets", "icons", "app-icon.png")),
+    ).toBe(false);
     const frames = parseIcoFrames(
       fs.readFileSync(path.join(ICONS, "icon.ico")),
     );

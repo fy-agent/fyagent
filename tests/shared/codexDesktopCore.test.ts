@@ -2,21 +2,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
-  comparePlatformVersions as compareLegacyPlatformVersions,
-  displayPlatformVersion as displayLegacyPlatformVersion,
-} from "@/types/codexDesktop";
-import {
-  deriveLocalVersionState as deriveLegacyLocalVersionState,
-  deriveRemoteVersionState as deriveLegacyRemoteVersionState,
-} from "@/components/codex/versionState";
-import {
-  comparePlatformVersions,
   createDownloadSpeedState,
   deriveInstallerActionState,
   deriveInstallerViewState,
   deriveLocalVersionState,
   deriveRemoteVersionState,
-  displayPlatformVersion,
   parseJobSnapshot,
   projectInstallerProgress,
   shouldAcceptJobSnapshot,
@@ -24,7 +14,7 @@ import {
   type JobSnapshot,
   type LocalInstallStatus,
   type RemoteReleaseStatus,
-} from "@/shared/codex-desktop";
+} from "@/domain/codex-desktop";
 
 const remote: RemoteReleaseStatus = {
   releaseId: `v1:${"a".repeat(64)}`,
@@ -86,15 +76,8 @@ function makeDownloadJob(
 }
 
 describe("neutral Codex Desktop core", () => {
-  it("keeps legacy imports as compatibility re-exports", () => {
-    expect(compareLegacyPlatformVersions).toBe(comparePlatformVersions);
-    expect(displayLegacyPlatformVersion).toBe(displayPlatformVersion);
-    expect(deriveLegacyLocalVersionState).toBe(deriveLocalVersionState);
-    expect(deriveLegacyRemoteVersionState).toBe(deriveRemoteVersionState);
-  });
-
   it("contains no Tauri, React, UI, i18n, toast, or platform imports", () => {
-    const root = path.resolve("src/shared/codex-desktop");
+    const root = path.resolve("src/domain/codex-desktop");
     const sources = fs
       .readdirSync(root)
       .filter((file) => file.endsWith(".ts"))
@@ -309,7 +292,7 @@ describe("shared transfer projector", () => {
       projectTransferPresentation,
       selectDownloadBytesPerSecondFromSample,
       updateDownloadSpeedFromSample,
-    } = await import("@/shared/codex-desktop");
+    } = await import("@/domain/codex-desktop");
 
     expect(formatTransferPercent(37.44)).toBe("37.4%");
     expect(formatTransferPercent(50)).toBe("50%");

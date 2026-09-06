@@ -264,9 +264,9 @@ mise run rust:check
 mise run rust:clippy
 mise run rust:test -- managed_auth
 mise run rust:test -- opencode
-mise run typecheck:v2
-mise run test:v2 -- tests/v2/features/managed-auth.test.ts \
-  tests/v2/pages/agents/AgentAuthStatusPanel.test.tsx
+mise run typecheck
+mise run test:unit -- tests/renderer/features/managed-auth.test.ts \
+  tests/renderer/pages/agents/AgentAuthStatusPanel.test.tsx
 ```
 
 Required assertions:

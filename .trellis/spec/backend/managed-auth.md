@@ -18,7 +18,7 @@ Related owners:
 - [SecretRef Native Backend](./secretref-backend.md) owns the OS vault leaf.
 - [Database Persistence](./database-persistence.md) owns schema/migration
   mechanics and the WebDAV skip/preserve sets.
-- [V2 Managed Accounts](../frontend/v2-managed-auth.md) owns renderer Ports.
+- [Managed Accounts](../frontend/managed-auth.md) owns renderer Ports.
 - [External Agent Auth](./external-agent-auth.md) remains the Agent-owned
   Claude/desktop handoff façade; it must not grow a second OAuth store.
 - [Managed Auth Login](./managed-auth-login.md) owns backend login sessions,
@@ -258,10 +258,11 @@ auth_logout
 auth_cancel_login
 ```
 
-  Login, reauth, default-account, and removal belong on `managed_auth_*`
-  with impact preview. Leftover Provider forms may select an existing
-  opaque `authBinding.accountId` from the read-only list; they must not
-  call leftover mutation IPC.
+Login, reauth, default-account, and removal belong on `managed_auth_*`
+with impact preview. Leftover Provider forms may select an existing
+opaque `authBinding.accountId` from the read-only list; they must not
+call leftover mutation IPC.
+
 - Renderer DTOs, logs, and overview JSON must not contain tokens, SecretRef,
   `device_code`, verifier, or authorization codes.
 - `copilot_get_token*` remains registered for leftover clients but always
@@ -297,29 +298,29 @@ metadata and must never include token columns.
 
 ## 4. Validation & Error Matrix
 
-| Condition | Required result |
-| --- | --- |
-| unsupported host / locked / denied vault | fail-closed overview; old JSON not renamed |
-| reserved SecretRef not yet in SQLite | reject; do not call native create |
-| create/replace readback or typed decode fails | keep provisioning/secret_missing; no plaintext fallback |
-| encoded bundle still exceeds 2560 after omitting optional id/access tokens, or contains NUL | reject before native write |
-| refresh_owner is not `fyagent` | resolver conflict; no refresh |
-| CAS generation/owner mismatch | discard late result; store unchanged |
-| Copilot v1 JSON without identity | that source `blocked`; other sources continue |
-| migration hash changes after prepare | stale/blocked; do not rename |
-| finalize rename fails after DB completed | retry rename on next startup; JSON is not writable authority |
-| set-default revision is stale or no ready credential exists | reject; leave defaults unchanged |
-| removal preview ID/revision no longer matches | stale; delete neither SecretRef nor metadata |
-| removal cannot clear/delete every credential authority | report failure/recovery; do not fabricate an empty overview |
-| native delete is denied for `secret_missing` / `provisioning` / `revoked` / `migration_blocked` | still advertise `remove` and finish SQLite cleanup; do not rewrite status |
-| native delete is denied for a `Ready` credential | fail-closed; do not hide the credential |
-| login vault create is denied before a Keychain item exists | `secret_missing` + `secret_unavailable`; never `migration_blocked` |
-| Proxy resolves a non-`proxy_upstream` purpose | conflict; no refresh |
-| mutation `operationId` is not UUID v4 | frontend parser rejects the result |
-| DTO/log/debug contains token/secretRef | test failure / NO-GO |
+| Condition                                                                                                                                        | Required result                                                              |
+| ------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------- |
+| unsupported host / locked / denied vault                                                                                                         | fail-closed overview; old JSON not renamed                                   |
+| reserved SecretRef not yet in SQLite                                                                                                             | reject; do not call native create                                            |
+| create/replace readback or typed decode fails                                                                                                    | keep provisioning/secret_missing; no plaintext fallback                      |
+| encoded bundle still exceeds 2560 after omitting optional id/access tokens, or contains NUL                                                      | reject before native write                                                   |
+| refresh_owner is not `fyagent`                                                                                                                   | resolver conflict; no refresh                                                |
+| CAS generation/owner mismatch                                                                                                                    | discard late result; store unchanged                                         |
+| Copilot v1 JSON without identity                                                                                                                 | that source `blocked`; other sources continue                                |
+| migration hash changes after prepare                                                                                                             | stale/blocked; do not rename                                                 |
+| finalize rename fails after DB completed                                                                                                         | retry rename on next startup; JSON is not writable authority                 |
+| set-default revision is stale or no ready credential exists                                                                                      | reject; leave defaults unchanged                                             |
+| removal preview ID/revision no longer matches                                                                                                    | stale; delete neither SecretRef nor metadata                                 |
+| removal cannot clear/delete every credential authority                                                                                           | report failure/recovery; do not fabricate an empty overview                  |
+| native delete is denied for `secret_missing` / `provisioning` / `revoked` / `migration_blocked`                                                  | still advertise `remove` and finish SQLite cleanup; do not rewrite status    |
+| native delete is denied for a `Ready` credential                                                                                                 | fail-closed; do not hide the credential                                      |
+| login vault create is denied before a Keychain item exists                                                                                       | `secret_missing` + `secret_unavailable`; never `migration_blocked`           |
+| Proxy resolves a non-`proxy_upstream` purpose                                                                                                    | conflict; no refresh                                                         |
+| mutation `operationId` is not UUID v4                                                                                                            | frontend parser rejects the result                                           |
+| DTO/log/debug contains token/secretRef                                                                                                           | test failure / NO-GO                                                         |
 | leftover `auth_start_login` / `auth_poll_for_account` / `auth_remove_account` / `auth_set_default_account` / `auth_logout` / `auth_cancel_login` | `legacy_auth_mutation_disabled`; no Device Code, JSON write, or vault delete |
-| leftover `copilot_start_device_flow` / `copilot_poll_for_*` / `copilot_remove_account` / `copilot_set_default_account` / `copilot_logout` | `legacy_auth_mutation_disabled`; list/status/models/usage remain readable |
-| `shared` refresh owner in schema or enum | reject implementation |
+| leftover `copilot_start_device_flow` / `copilot_poll_for_*` / `copilot_remove_account` / `copilot_set_default_account` / `copilot_logout`        | `legacy_auth_mutation_disabled`; list/status/models/usage remain readable    |
+| `shared` refresh owner in schema or enum                                                                                                         | reject implementation                                                        |
 
 ## 5. Good / Base / Bad Cases
 
@@ -349,7 +350,7 @@ mise run rust:test -- managed_auth
 mise run rust:test -- leftover_legacy_auth
 mise run rust:test -- leftover_copilot_login
 mise run rust:test -- --test secret_service_contract
-mise run typecheck:v2
+mise run typecheck
 ```
 
 Required assertions:

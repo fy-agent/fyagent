@@ -47,33 +47,38 @@ describe("executable runtime dependency graph", () => {
     expect(result.summary.environment.issues ?? []).toEqual([]);
     const paths = result.modules.map((module) => module.source);
     for (const required of [
-      "src/App.tsx",
-      "src/v2/shared/features/queries.ts",
-      "src/v2/shared/features/change-plans-ui/useChangeJob.ts",
-      "scripts/build-v2-preview.mjs",
+      "src/main.tsx",
+      "src/shared/features/queries.ts",
+      "src/shared/features/change-plans-ui/useChangeJob.ts",
+      "src/domain/codex-desktop/parsers.ts",
+      "scripts/verify-route-chunks.mjs",
     ])
       expect(paths).toContain(required);
-    expect(paths.length).toBeGreaterThan(500);
+    // Required roots plus positive coverage prevent an empty old-tree scanner
+    // from passing after the explicitly retired renderer is removed.
+    expect(
+      paths.filter((source) => source.startsWith("src/")).length,
+    ).toBeGreaterThan(200);
     expect(result.summary.violations).toEqual([]);
   }, 30_000);
 
-  it("fails on cycles, unresolved imports and an upward V2 dependency", () => {
+  it("fails on cycles, unresolved imports and an upward shared dependency", () => {
     const temporary = fs.mkdtempSync(path.join(os.tmpdir(), "fyagent-graph-"));
     try {
-      fs.mkdirSync(path.join(temporary, "src/v2/shared/ui"), {
+      fs.mkdirSync(path.join(temporary, "src/shared/ui"), {
         recursive: true,
       });
-      fs.mkdirSync(path.join(temporary, "src/v2/pages"), { recursive: true });
+      fs.mkdirSync(path.join(temporary, "src/pages"), { recursive: true });
       fs.writeFileSync(
         path.join(temporary, "tsconfig.json"),
         '{"compilerOptions":{"module":"esnext"}}',
       );
       fs.writeFileSync(
-        path.join(temporary, "src/v2/shared/ui/a.ts"),
+        path.join(temporary, "src/shared/ui/a.ts"),
         'import "../../pages/b"; import "./missing";',
       );
       fs.writeFileSync(
-        path.join(temporary, "src/v2/pages/b.ts"),
+        path.join(temporary, "src/pages/b.ts"),
         'import "../shared/ui/a";',
       );
       const rules = scan(temporary, ["src"]).summary.violations.map(
@@ -81,7 +86,7 @@ describe("executable runtime dependency graph", () => {
       );
       expect(rules).toContain("no-runtime-cycle");
       expect(rules).toContain("no-unresolved-runtime-import");
-      expect(rules).toContain("v2-shared-does-not-import-pages-or-widgets");
+      expect(rules).toContain("shared-does-not-import-pages-widgets-or-app");
     } finally {
       fs.rmSync(temporary, { recursive: true, force: true });
     }

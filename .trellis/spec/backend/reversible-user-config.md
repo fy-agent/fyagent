@@ -132,8 +132,8 @@ over newer external bytes, or presenting OAuth logout as reversible file undo.
 ## 6. Tests Required
 
 Run `mise run rust:test`, `mise run rust:clippy`, `mise run test:unit --
-tests/architecture/rustModuleBoundaries.test.ts`, `mise run typecheck:v2` and
-`mise run test:v2`. Core tests cover exact bytes, backup failure, no-op history,
+tests/architecture/rustModuleBoundaries.test.ts`, `mise run typecheck` and
+`mise run test:unit`. Core tests cover exact bytes, backup failure, no-op history,
 creation/deletion, stale receipts, corruption, symlink/permissions, failed-write
 compensation and scoped rewrites. Facade/parser/UI tests cover closed targets,
 path metadata without credentials, cancel-before-write, one-shot confirmation,

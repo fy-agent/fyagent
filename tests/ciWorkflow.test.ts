@@ -182,9 +182,7 @@ describe("automatic CI workflow", () => {
       "runs-on: ubuntu-24.04",
     );
     expect(jobBlock("changes")).toContain("runs-on: ubuntu-24.04");
-    expect(jobBlock("commit-convention")).toContain(
-      "runs-on: ubuntu-24.04",
-    );
+    expect(jobBlock("commit-convention")).toContain("runs-on: ubuntu-24.04");
     expect(jobBlock("backend-windows")).toContain("runs-on: windows-2025");
     expect(jobBlock("windows-native-contracts")).toContain(
       "runs-on: ${{ matrix.runner }}",
@@ -435,7 +433,9 @@ describe("automatic CI workflow", () => {
         "TypeScript type check",
         "Check formatting",
         "Unit tests",
-        "Locale key parity",
+        "Renderer lint",
+        "Install browser engines",
+        "Production boot and browser regressions",
       ],
       "desktop-acceptance-contract": [
         "Setup pnpm",

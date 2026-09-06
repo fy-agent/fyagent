@@ -2,7 +2,7 @@
 
 This contract applies to text that a product user or repository visitor reads:
 
-- production V2 headings, descriptions, notices, dialogs, progress text,
+- production Renderer headings, descriptions, notices, dialogs, progress text,
   controls, tooltips, and accessible names;
 - leftover renderer translations in the four registered locales;
 - root READMEs and public documentation under `docs/**`.
@@ -201,7 +201,7 @@ on those facts.
 
 ## Translation rules
 
-- Production V2 remains hardcoded Chinese until an explicit i18n migration is
+- Production Renderer remains hardcoded Chinese until an explicit i18n migration is
   approved.
 - Leftover renderer copy must update `en`, `ja`, `zh`, and `zh-TW` keys
   together.
@@ -226,7 +226,7 @@ Before merging user-visible text, verify:
 - [ ] A README/document section serves a reader task rather than explaining the
       author's framing or writing process.
 - [ ] Leftover locale changes are complete in all four languages.
-- [ ] Relevant unit/browser assertions and the V2 user-facing copy contract
+- [ ] Relevant unit/browser assertions and the Renderer user-facing copy contract
       pass.
 
 ## Validation
@@ -234,14 +234,14 @@ Before merging user-visible text, verify:
 Run the checks that cover the changed surface:
 
 ```bash
-mise run lint:v2
-mise run typecheck:v2
-mise run test:v2
-mise run test:v2:browser
+mise run lint
+mise run typecheck
+mise run test:unit
+mise run test:browser
 mise run build:renderer
 mise run format:check
 ```
 
-The V2 test suite contains a focused source contract for reviewed forbidden
+The Renderer test suite contains a focused source contract for reviewed forbidden
 phrases. It is a regression guard for known implementation narration, not a
 substitute for human review of meaning and context.

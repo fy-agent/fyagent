@@ -21,7 +21,7 @@ Schema v20 remains canonical. `change_plans`, `change_jobs`, and
 `change_job_events` stay local-only and are not redefined by executor changes.
 Renderer preview/apply presentation, Query-owned job observation, and
 Models/Auth workflow placement are defined by
-[V2 Change Plan Workspaces](../frontend/v2-change-plan-workspaces.md); that UI
+[Change Plan Workspaces](../frontend/change-plan-workspaces.md); that UI
 contract does not redefine native execution authority.
 
 ## 2. Signatures
@@ -185,19 +185,19 @@ faultPoints        = before_managed_write,
 
 ## 4. Validation & Error Matrix
 
-| Condition | Required result |
-| --- | --- |
-| unknown adapter/operation/resource/cancel enum | Reject at Rust registry or V2 strict parser; do not execute |
-| same plan + same digest after admission | Return existing execution as `idempotent_replay`; writer +0 |
-| same plan + changed digest | `invalid_digest`; writer +0 |
-| old contract/adapter after executor version change | `stale`; writer +0 |
-| cancel wins before managed-write claim | `cancelled_before_write`; public `cancelled`; stored v20 status stays legal; writer 0 |
-| cancel arrives after managed-write claim | `commit_point_passed`; execution continues authoritatively |
-| crash before managed write; baseline confirmed | `interrupted_before_write`; no replay |
-| crash after write; target confirmed | warning `recovered_target_reached`; no replay |
-| writer fails and writer-owned rollback is confirmed | failed + `writer_failed_baseline_restored`; `managed_write=compensated` |
-| target/readback mixed or unavailable | `recovery_required`; partial result lists unverified/remaining work |
-| observer receives `{jobId,eventSeq}` | the matching SQLite snapshot/event sequence is already committed |
+| Condition                                           | Required result                                                                       |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| unknown adapter/operation/resource/cancel enum      | Reject at Rust registry or V2 strict parser; do not execute                           |
+| same plan + same digest after admission             | Return existing execution as `idempotent_replay`; writer +0                           |
+| same plan + changed digest                          | `invalid_digest`; writer +0                                                           |
+| old contract/adapter after executor version change  | `stale`; writer +0                                                                    |
+| cancel wins before managed-write claim              | `cancelled_before_write`; public `cancelled`; stored v20 status stays legal; writer 0 |
+| cancel arrives after managed-write claim            | `commit_point_passed`; execution continues authoritatively                            |
+| crash before managed write; baseline confirmed      | `interrupted_before_write`; no replay                                                 |
+| crash after write; target confirmed                 | warning `recovered_target_reached`; no replay                                         |
+| writer fails and writer-owned rollback is confirmed | failed + `writer_failed_baseline_restored`; `managed_write=compensated`               |
+| target/readback mixed or unavailable                | `recovery_required`; partial result lists unverified/remaining work                   |
+| observer receives `{jobId,eventSeq}`                | the matching SQLite snapshot/event sequence is already committed                      |
 
 ## 5. Good / Base / Bad Cases
 
@@ -232,7 +232,7 @@ faultPoints        = before_managed_write,
   compensated state, cancelled/interrupted/recovered result copy, and browser
   native-only behavior.
 - Run `mise run rust:fmt:check`, `mise run rust:clippy`, `mise run rust:test`,
-  `mise run typecheck:v2`, `mise run test:v2`, browser tests, repository
+  `mise run typecheck`, `mise run test:unit`, browser tests, repository
   contracts, then the full prearchive gate.
 
 ## 7. Wrong vs Correct

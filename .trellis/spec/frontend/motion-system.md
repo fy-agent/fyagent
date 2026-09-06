@@ -2,7 +2,7 @@
 
 ## 1. Scope / Trigger
 
-Read before changing V2 press gestures, modal origin/exit, conditional dialog
+Read before changing Renderer press gestures, modal origin/exit, conditional dialog
 sessions, live motion preferences, notification presentation or transition
 tokens. Geometry and navigation authority remain with their existing owners;
 animation never controls whether a native operation succeeded.

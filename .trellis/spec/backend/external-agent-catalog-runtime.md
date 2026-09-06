@@ -15,8 +15,8 @@ Primary evidence:
 - `src-tauri/src/services/external_agents/**`
 - `src-tauri/src/commands/agent_catalog.rs`
 - `src-tauri/capabilities/**`
-- `src/v2/shared/features/agents.ts`
-- catalog/runtime tests under `tests/v2/**` and `src-tauri/src/services/external_agents/**`
+- `src/shared/features/agents.ts`
+- catalog/runtime tests under `tests/renderer/**` and `src-tauri/src/services/external_agents/**`
 
 ## 2. Signatures
 
@@ -61,10 +61,10 @@ hooks.read hooks.write models.validate models.write mcp.validate mcp.write
 ```
 
 Capability mode/reason/evidence enums are closed in Rust and parsed strictly
-at `src/v2/shared/features/agents.ts`.
+at `src/shared/features/agents.ts`.
 
 Official link IDs are frozen per product and must match
-`EXPECTED_AGENT_LINK_IDS` in `src/v2/shared/platform/tauri/feature-ports/agents.ts`:
+`EXPECTED_AGENT_LINK_IDS` in `src/shared/platform/tauri/feature-ports/agents.ts`:
 
 ```text
 qoderwork     ["product"]
@@ -145,19 +145,19 @@ Parser drift against this table rejects the whole catalog.
 
 ## 4. Validation & Error Matrix
 
-| Condition | Required result |
-| --- | --- |
-| Unknown/legacy Agent ID | Reject the request; do not map to another product. |
-| Catalog version, product order, capability order or enum drifts | Strict Rust/TypeScript parser rejects the whole catalog. |
-| Duplicate product/capability/link ID | Reject the catalog; do not deduplicate in the UI. |
-| Official link is non-HTTPS, unexpected or malformed | Reject the catalog entry/catalog according to the strict parser. |
-| Claude official link is `desktop`, `cli`, or both   | Reject the whole catalog. Native v5 is one `product` CLI setup link. |
-| Runtime adapter cannot answer | Return `null`/closed unknown reason; never manufacture `false`. |
-| Renderer supplies path, URL, command, executable or extra field | Reject before filesystem/process/network side effect. |
-| Launch identity is missing, ambiguous or untrusted | Controlled unavailable/unverified result; start nothing. |
-| Browser/app launch completes | Report handoff/launch only; do not report installed, configured or authenticated. |
-| Catalog/status/launch permission is omitted from ACL union | Permission contract test fails. |
-| Pi appears in catalog/runtime/UI tests | Contract regression. |
+| Condition                                                       | Required result                                                                   |
+| --------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| Unknown/legacy Agent ID                                         | Reject the request; do not map to another product.                                |
+| Catalog version, product order, capability order or enum drifts | Strict Rust/TypeScript parser rejects the whole catalog.                          |
+| Duplicate product/capability/link ID                            | Reject the catalog; do not deduplicate in the UI.                                 |
+| Official link is non-HTTPS, unexpected or malformed             | Reject the catalog entry/catalog according to the strict parser.                  |
+| Claude official link is `desktop`, `cli`, or both               | Reject the whole catalog. Native v5 is one `product` CLI setup link.              |
+| Runtime adapter cannot answer                                   | Return `null`/closed unknown reason; never manufacture `false`.                   |
+| Renderer supplies path, URL, command, executable or extra field | Reject before filesystem/process/network side effect.                             |
+| Launch identity is missing, ambiguous or untrusted              | Controlled unavailable/unverified result; start nothing.                          |
+| Browser/app launch completes                                    | Report handoff/launch only; do not report installed, configured or authenticated. |
+| Catalog/status/launch permission is omitted from ACL union      | Permission contract test fails.                                                   |
+| Pi appears in catalog/runtime/UI tests                          | Contract regression.                                                              |
 
 ## 5. Good / Base / Bad Cases
 
@@ -178,14 +178,14 @@ Parser drift against this table rejects the whole catalog.
 mise run rust:fmt:check
 mise run rust:clippy
 mise run rust:test
-mise run typecheck:v2
-mise run test:v2
+mise run typecheck
+mise run test:unit
 ```
 
 Required assertion points:
 
 - exact contract version, product order, capability order, link IDs and closed
-  enums in Rust and `src/v2/shared/features/agents.ts`;
+  enums in Rust and `src/shared/features/agents.ts`;
 - `EXPECTED_AGENT_LINK_IDS` matches the native v5 table; Claude Desktop and
   Claude CLI+Desktop payloads fail closed;
 - unknown/excess fields, duplicate IDs and legacy/future versions fail closed;

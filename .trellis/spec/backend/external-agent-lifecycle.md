@@ -345,9 +345,9 @@ leaf:
 mise run rust:fmt:check
 mise run rust:clippy
 mise run rust:test
-mise run typecheck:v2
-mise run test:v2
-mise run test:v2:browser
+mise run typecheck
+mise run test:unit
+mise run test:browser
 ```
 
 Assertion points:

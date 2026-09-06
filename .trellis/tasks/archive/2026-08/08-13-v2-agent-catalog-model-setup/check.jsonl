@@ -1,4 +1,4 @@
-{"file":".trellis/spec/frontend/v2-shell.md","reason":"Review route content, architecture isolation, accessibility, responsive behavior, and V2-specific gates."}
+{"file":".trellis/spec/frontend/shell.md","reason":"Review route content, architecture isolation, accessibility, responsive behavior, and V2-specific gates."}
 {"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Review test patterns, UI semantics, renderer evidence, and mock/native claim boundaries."}
 {"file":".trellis/spec/frontend/type-safety.md","reason":"Review TypeScript/Rust DTO parity and unsafe dynamic payload handling."}
 {"file":".trellis/spec/backend/workbuddy-configuration.md","reason":"Audit API-key lifetime, query isolation, revision/token concurrency, safe errors, and atomic persistence reuse."}

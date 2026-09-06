@@ -29,7 +29,6 @@ The direct consumers are:
 ```text
 src-tauri/tauri.conf.json                         Tauri bundle icon list
 src-tauri/tauri.windows.conf.json                 Windows setup/uninstaller ICO
-src/assets/icons/app-icon.png                     renderer About icon
 src-tauri/src/lib.rs                              embedded macOS 3x tray template
 src-tauri/icons/tray/macos/statusTemplate.png     1x template
 src-tauri/icons/tray/macos/statusTemplate@2x.png  2x template
@@ -51,10 +50,10 @@ src-tauri/icons/tray/macos/statusbar_template_3x.png 3x template
   those outputs.
 - Keep every existing generated path, including `64x64.png`, unless a reviewed
   Tauri/toolchain migration explicitly changes the inventory.
-- Copy `src-tauri/icons/32x32.png` byte-for-byte to
-  `src/assets/icons/app-icon.png` for the About surface.
-- `src/v2/shared/assets/fyagent-y-mark-transparent-128.png` is a separately
-  reviewed V2 chrome mark. It is identity-sealed in the raster inventory and
+- The retired About icon is no longer a generator output or renderer consumer.
+  Keep the canonical Tauri icon outputs; do not regenerate a deleted UI tree.
+- `src/shared/assets/fyagent-y-mark-transparent-128.png` is a separately
+  reviewed renderer chrome mark. It is identity-sealed in the raster inventory and
   is not produced or overwritten by `assets:icons`. An application-icon
   regeneration must leave it unchanged unless a separate reviewed visual
   update includes it.
@@ -81,20 +80,20 @@ src-tauri/icons/tray/macos/statusbar_template_3x.png 3x template
 
 ## 4. Validation & Error Matrix
 
-| Condition                                                                         | Required result                                                                       |
-| --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| Vector is missing, digest-different, executable, or remotely linked               | Stop before rendering                                                                 |
-| Rendered source is not 1024px RGBA, has opaque corners, or lacks the Y signal     | Stop before Tauri generation                                                          |
-| Stored source differs from a fresh vector render                                  | Reject the change                                                                     |
-| A previously tracked generated icon path is missing                               | Reject the inventory                                                                  |
-| A generated PNG, ICO, or ICNS container cannot be decoded                         | Reject the output                                                                     |
-| About icon differs from generated `32x32.png`                                     | Reject the renderer asset                                                             |
-| Tray template has the wrong size, non-black visible RGB, or no partial alpha      | Reject the template                                                                   |
-| Application-brand generator output includes third-party artwork, a screenshot, the DMG background, or the V2 128px chrome mark | Remove it from the generator write set; independently reviewed catalog/chrome assets belong to their own task |
-| Static/build checks pass but native shell or Dock appearance is unobserved        | Keep native visual acceptance pending                                                 |
-| Canonically sorted complete ICNS chunks differ across repeat generation            | Reject even if decoded pixels match; this pipeline requires canonical container-byte stability          |
-| A tracked raster asset differs from the reviewed path-and-digest inventory        | Reject until it is decoded, visually reviewed, and the reviewed inventory is updated  |
-| A Windows setup has a default/extra group or frames that differ from `icon.ico`   | Reject raw setup before upload; reject sealed setup before attestation or publication |
+| Condition                                                                                                                            | Required result                                                                                               |
+| ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------- |
+| Vector is missing, digest-different, executable, or remotely linked                                                                  | Stop before rendering                                                                                         |
+| Rendered source is not 1024px RGBA, has opaque corners, or lacks the Y signal                                                        | Stop before Tauri generation                                                                                  |
+| Stored source differs from a fresh vector render                                                                                     | Reject the change                                                                                             |
+| A previously tracked generated icon path is missing                                                                                  | Reject the inventory                                                                                          |
+| A generated PNG, ICO, or ICNS container cannot be decoded                                                                            | Reject the output                                                                                             |
+| Generator attempts to recreate the retired About icon                                                                                | Remove the stale consumer from the generator write set.                                                       |
+| Tray template has the wrong size, non-black visible RGB, or no partial alpha                                                         | Reject the template                                                                                           |
+| Application-brand generator output includes third-party artwork, a screenshot, the DMG background, or the renderer 128px chrome mark | Remove it from the generator write set; independently reviewed catalog/chrome assets belong to their own task |
+| Static/build checks pass but native shell or Dock appearance is unobserved                                                           | Keep native visual acceptance pending                                                                         |
+| Canonically sorted complete ICNS chunks differ across repeat generation                                                              | Reject even if decoded pixels match; this pipeline requires canonical container-byte stability                |
+| A tracked raster asset differs from the reviewed path-and-digest inventory                                                           | Reject until it is decoded, visually reviewed, and the reviewed inventory is updated                          |
+| A Windows setup has a default/extra group or frames that differ from `icon.ico`                                                      | Reject raw setup before upload; reject sealed setup before attestation or publication                         |
 
 ## 5. Good / Base / Bad Cases
 

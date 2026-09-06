@@ -6,8 +6,8 @@
 {"file":"scripts/tasks/windows-msvc-cross.mjs","reason":"实现 advisory、strict preflight 与 fixed cargo-xwin Clippy plan。"}
 {"file":".mise/tasks/core.toml","reason":"bootstrap 只接入 read-only non-failing advisory。"}
 {"file":".mise/tasks/rust.toml","reason":"cross Clippy 保持 dependency-environment 与 default-no。"}
-{"file":"src/v2/shared/ui/SelectionLens.tsx","reason":"增加默认兼容的 position-only geometry mode。"}
-{"file":"src/v2/widgets/app-shell/SideNavigation.tsx","reason":"复用单一 lens 并输出 collapsed material 状态。"}
-{"file":"src/v2/app/styles/shell.css","reason":"移除重复 active frame 并降低折叠状态色阶。"}
+{"file":"src/shared/ui/SelectionLens.tsx","reason":"增加默认兼容的 position-only geometry mode。"}
+{"file":"src/widgets/app-shell/SideNavigation.tsx","reason":"复用单一 lens 并输出 collapsed material 状态。"}
+{"file":"src/app/styles/shell.css","reason":"移除重复 active frame 并降低折叠状态色阶。"}
 {"file":"tests/windowsMsvcCross.test.ts","reason":"覆盖工具、版本、DAG、override、argv、advisory 与无副作用。"}
-{"file":"tests/v2-browser/agents-v3.spec.ts","reason":"覆盖扫描期间导航 lens 几何稳定性。"}
+{"file":"tests/browser/agent-directory.spec.ts","reason":"覆盖扫描期间导航 lens 几何稳定性。"}

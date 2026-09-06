@@ -48,9 +48,9 @@ Current compatibility routers include:
 
 - `backend/external-agent-p0.md`
 - `backend/external-agent-configuration.md`
-- `frontend/v2-agent-models.md`
-- `frontend/v2-skills-mcp.md`
-- `frontend/v2-shell.md`
+- `frontend/agent-models.md`
+- `frontend/skills-mcp.md`
+- `frontend/shell.md`
 
 ### Thinking guide
 

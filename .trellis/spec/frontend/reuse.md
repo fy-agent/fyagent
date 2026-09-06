@@ -5,7 +5,7 @@
 Read this contract before adding a renderer component, hook, feature helper,
 platform adapter, dependency, page-local UI pattern, or repeated state/DTO
 logic. Reuse means preserving one semantic owner and adapting at explicit
-boundaries; it does not mean bypassing V2/leftover, renderer/native, secret, or
+boundaries; it does not mean bypassing domain/UI, renderer/native, secret, or
 platform separation.
 
 Binding placement and import rules also live in
@@ -26,22 +26,20 @@ existing FyAgent owner
   -> justified local implementation
 ```
 
-V2 placement roles are:
+Current placement roles are:
 
-| Location                                                          | Owner                                                                                                                   |
-| ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `src/v2/shared/ui/**`                                             | Reusable visual/interaction primitives with no page business authority.                                                 |
-| `src/v2/shared/features/**`                                       | Shared feature types, ports, query keys/hooks, projections, and reusable feature workflows.                             |
-| `src/v2/shared/platform/**`                                       | Browser/Tauri adapters and `unknown` wire parsing; only approved Tauri adapters import `@tauri-apps/**`.                |
-| `src/v2/widgets/**`                                               | App-shell or multi-page composition whose owner is above one route.                                                     |
-| `src/v2/pages/<route>/**`                                         | Route composition and genuinely route-specific presentation.                                                            |
-| `src/shared/**`                                                   | Explicit renderer-neutral bridge approved by an owning feature/backend contract.                                        |
-| Leftover `src/components/common/**`, `src/hooks/**`, `src/lib/**` | Reuse within leftover V1 only, following [Directory Structure](./directory-structure.md); never a direct V2 dependency. |
+| Location                 | Owner                                                                                                 |
+| ------------------------ | ----------------------------------------------------------------------------------------------------- |
+| `src/shared/ui/**`       | Reusable visual/interaction primitives with no page business authority.                               |
+| `src/shared/features/**` | Shared feature types, ports, query keys/hooks, projections, and reusable feature workflows.           |
+| `src/shared/platform/**` | Browser/Tauri adapters and unknown wire parsing; only approved Tauri adapters import native packages. |
+| `src/widgets/**`         | App-shell or multi-page composition whose owner is above one route.                                   |
+| `src/pages/<route>/**`   | Route composition and genuinely route-specific presentation.                                          |
+| `src/domain/**`          | Portable configuration/serialization/installer contracts with no React or native runtime.             |
 
-Leftover work reuses the existing leftover owner rather than creating another
-local copy. That tree may provide behavior evidence for V2, but it is not a V2
-component library. V2 must not import leftover components, hooks, state, i18n,
-or Tauri façades unless an owning contract names a narrow bridge.
+The retired renderer is no longer a source tree or dependency. Historical
+commits may provide behavior evidence; still-needed pure logic and security
+tests live in `domain`. Do not restore old UI/state/i18n facades as bridges.
 
 Current shared owner families include:
 
@@ -66,10 +64,10 @@ through a UI barrel to conceal that dependency.
   confirmation/dialog primitives;
 - Change Plan workflows: Models-specific `SavePlanWorkspace` adapters plus
   shared `ApplyWorkspace`, `ChangePlanWorkspace`, and `useChangeJob`; see
-  [V2 Change Plan Workspaces](./v2-change-plan-workspaces.md);
+  [Renderer Change Plan Workspaces](./change-plan-workspaces.md);
 - download/progress projection: Codex + Agent job transfer share
-  `projectTransferPresentation` in `src/shared/codex-desktop/snapshots.ts`
-  (Agent adapter: `src/v2/shared/features/transfer-projection.ts`);
+  `projectTransferPresentation` in `src/domain/codex-desktop/snapshots.ts`
+  (Agent adapter: `src/shared/features/transfer-projection.ts`);
 - layouts: `SplitPanes`, `CatalogMasterDetail`, feature page/panel chrome;
   `SplitPanes` adapts `react-resizable-panels` through `split/vendor.ts`; no
   independent pointer/keyboard resize implementation belongs in a page or
@@ -90,8 +88,8 @@ through a UI barrel to conceal that dependency.
 
 Their exact behavior belongs in the focused shell/workflow/feature owners
 routed by the [Frontend Index](./index.md), especially
-[V2 Window Shell and Interaction](./v2-window-shell.md) and
-[V2 Change Plan Workspaces](./v2-change-plan-workspaces.md). Compatibility
+[Renderer Window Shell and Interaction](./window-shell.md) and
+[Renderer Change Plan Workspaces](./change-plan-workspaces.md). Compatibility
 routers are retained only for archived references. This list is an owner map,
 not a duplicate API contract.
 
@@ -139,11 +137,10 @@ platform architecture rather than introduce a second UI/state framework.
 
 ### Settings CLI lifecycle owner
 
-- Leftover Settings (`AboutSection` / `ToolInstallRow`) must not keep a
-  page-local npm/Shell/PowerShell command table. Writable lifecycle buttons
-  exist only for Grok Build and call the existing Tooling action port.
-- Do not duplicate Grok install/update in a second Agent CLI card. Desktop
-  products stay on the Agent directory owner.
+- Agent lifecycle UI delegates to closed native action jobs and the existing
+  Tooling owner; pages never construct npm/Shell/PowerShell argv.
+- Do not duplicate install/update in a second Settings/CLI card. Desktop and
+  CLI products keep their reviewed Agent directory owner.
 - Claude Code's CLI-only Agent lifecycle is an explicit Tooling-backed product
   flow, not permission to restore a Settings shell/npm command table. Reuse the
   closed Agent jobs and native Tooling owner; no page constructs npm argv.
@@ -175,7 +172,7 @@ content/ports.
 | A shared owner already provides the capability                                   | Extend/reuse it or document why its contract is unsuitable.           |
 | Two pages create near-identical controls or reducers                             | Promote one owner before merging the second copy.                     |
 | A page directly imports Tauri or parses a shared raw payload                     | Move the boundary to the approved platform/feature owner.             |
-| V2 imports leftover UI/hook/state without an explicit bridge                     | Architecture test fails; use V2 owners/ports.                         |
+| A source role imports a retired or upward UI/state module                        | Architecture test fails; use the current shared/domain owner.         |
 | A new package duplicates an adopted primitive                                    | Reject unless the task records a concrete capability gap and review.  |
 | A dependency fails license/security/platform/footprint review                    | Do not adopt it.                                                      |
 | Sharing needs speculative flags for one consumer                                 | Keep the implementation local and revisit with a concrete second use. |
@@ -200,7 +197,7 @@ content/ports.
 
 ## 6. Tests Required
 
-- Import-boundary tests keep V2, leftover, pages/widgets, shared features/UI,
+- Import-boundary tests keep domain, pages/widgets, shared features/UI,
   and platform adapters in the approved direction.
 - Shared owner tests cover semantic variants, keyboard/focus/accessibility,
   pending/disabled behavior, and maintained responsive viewports where

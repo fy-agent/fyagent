@@ -92,10 +92,11 @@ env = { FYAGENT_TASK_EFFECT = "read-only" }
 run = "node scripts/tasks/prearchive-check.mjs full"
 
 ["check:frontend"]
-description = "Run frontend type, formatting, unit, i18n, desktop mock, and visual preflight checks"
+description = "Run unified frontend type, lint, formatting, renderer/domain units, desktop mocks and visual preflight"
 env = { FYAGENT_TASK_EFFECT = "read-only" }
 run = [
   { task = "typecheck" },
+  { task = "lint" },
   { task = "format:check" },
   { task = "test" },
 ]

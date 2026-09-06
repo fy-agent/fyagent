@@ -4,5 +4,5 @@
 {"file":".trellis/tasks/archive/2026-09/09-05-architecture-debt-reuse/review.md","reason":"Integrated evidence, reviewed platform identity changes and final lifecycle gate"}
 {"file":".trellis/spec/backend/mcp-management.md","reason":"Projection compatibility"}
 {"file":".trellis/spec/frontend/modular-boundaries.md","reason":"Renderer imports and owner checks"}
-{"file":".trellis/spec/frontend/v2-models.md","reason":"Authoritative readback and secrets"}
+{"file":".trellis/spec/frontend/models.md","reason":"Authoritative readback and secrets"}
 {"file":".trellis/spec/frontend/state-management.md","reason":"Hidden lifecycle and backend query ownership"}

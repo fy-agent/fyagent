@@ -27,7 +27,7 @@
     ],
     [
       "scripts/tasks/supported-platform-check.mjs",
-      "1e750b36b1dc26f4b47b19ad935be6a3858c3e07db58b233a4a0547641c065bb"
+      "1dc9568d77f556679c83ce330253cb4129674ca4e6cd0c7a2abb5942ff6e8ced"
     ],
     [
       "scripts/tasks/system-check.mjs",
@@ -378,26 +378,6 @@
       "db936818fd317eba4c13cb0ef82d8ee5bc2da54b29c58b7775bf2268176ac63a"
     ],
     [
-      "src/App.tsx",
-      "26366da5a63ad2a52189517e15200bb7dd4096b2195176638cccf32d277dd928"
-    ],
-    [
-      "src/components/common/FullScreenPanel.tsx",
-      "b63bb66f3ddda8d19d29519788cf7e508b676300ce03d41285f13a577bed31bb"
-    ],
-    [
-      "src/components/sessions/SessionManagerPage.tsx",
-      "b5137154ad5d561569b5c6e2fae3b67dc9386f05605b0417b6fbf137abf0e478"
-    ],
-    [
-      "src/components/settings/TerminalSettings.tsx",
-      "6da3eabff63b75d4c061e18c3bff6b3d9911c9923362b1022102355da51835e9"
-    ],
-    [
-      "src/lib/platform.ts",
-      "220bae4f18ccd08a041f5ad2c1982722a35b268934cf9a025b4af7148184139e"
-    ],
-    [
       "tests/architecture/rustModuleBoundaries.test.ts",
       "768aa8676416515561053298c2f606858c1fc7a5e31fd8c88f59567c66b79694"
     ],
@@ -414,10 +394,6 @@
       "c03244446296c5fe98b7d8a66bebc2646a6830dca1f1a35431ae05bd839127ea"
     ],
     [
-      "tests/lib/platform.test.ts",
-      "51b29f5a2b1626b9a2a7cc5b8b69add76644028b4aff900732aa6e62a3d3bfb9"
-    ],
-    [
       "tests/miseTaskContract.test.ts",
       "0a6da47b2dde8ef7e670b7b952b6df58656b17d0af96b88084f04c8f036ac98e"
     ],
@@ -427,11 +403,11 @@
     ],
     [
       "tests/remainingPlatformSurface.test.ts",
-      "acf1efc526245ea899f34e4eb8423c1fd870f76ea599b1a73520e98b16e54f13"
+      "48c38a874c93b6955d2c2ab96c9a022215255c2f20acd5f88ebcc495f9a276d6"
     ],
     [
       "tests/singleInstanceActivationContract.test.ts",
-      "c6cc20a529d30a9ba171175d26ff6ffb09a81b526b6ddfcdd2f9d294b819f358"
+      "16321b7816625446c36de1d0c66e52503b9d5bbed60d83f712f6bf8f6c3c4229"
     ],
     [
       "tests/systemCheck.test.ts",
@@ -440,10 +416,6 @@
     [
       "tests/taskAtomicWriter.test.ts",
       "805bbcc0a269f88662d77061e9777cb4334433a2b494f7761056bee6cb73a9d2"
-    ],
-    [
-      "tests/v2/scripts/build-v2-preview.test.ts",
-      "44a388e477088115be8d3a32fd8de391c485302da3cb6b49592bff08886524c0"
     ],
     [
       "tests/windowsMsvcCross.test.ts",

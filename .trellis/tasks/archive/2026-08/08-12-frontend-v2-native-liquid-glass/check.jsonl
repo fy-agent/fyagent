@@ -1,5 +1,5 @@
 {"file":".trellis/spec/frontend/index.md","reason":"Run the full frontend quality checklist across every V2 and package change."}
-{"file":".trellis/spec/frontend/v2-shell.md","reason":"Verify native chrome ownership, route semantics, material fallback, accessibility, and responsive gates."}
+{"file":".trellis/spec/frontend/shell.md","reason":"Verify native chrome ownership, route semantics, material fallback, accessibility, and responsive gates."}
 {"file":".trellis/spec/frontend/type-safety.md","reason":"Check strict compilation, import direction, and internal type ownership after deleting WindowFramePort."}
 {"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Verify unit/browser/full-project commands and keep native evidence claims correctly scoped."}
 {"file":".trellis/spec/backend/development-environment.md","reason":"Confirm the lock and all reported checks use the canonical current-host Mise toolchain."}

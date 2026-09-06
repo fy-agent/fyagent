@@ -20,8 +20,8 @@ Primary owners are:
   `src-tauri/src/services/traework.rs` for non-executing Qoder/TRAE external MCP
   validation.
 
-Renderer behavior is owned by [V2 MCP](../frontend/v2-mcp.md) and
-[V2 Shared Assignment](../frontend/v2-assignments.md). SQLite lifecycle is
+Renderer behavior is owned by [MCP](../frontend/mcp.md) and
+[Shared Assignment](../frontend/assignments.md). SQLite lifecycle is
 owned by [Database Persistence](./database-persistence.md).
 
 ## 2. Signatures
@@ -34,7 +34,7 @@ qoderwork | trae-work | workbuddy
 ```
 
 The V2 presentation subset is the seven catalog-aligned targets documented by
-[V2 Shared Assignment](../frontend/v2-assignments.md). QoderWork, TRAE Work,
+[Shared Assignment](../frontend/assignments.md). QoderWork, TRAE Work,
 and WorkBuddy are direct target IDs rather than `AppType` conversions.
 
 The current unified Tauri commands are:
@@ -187,7 +187,7 @@ the unified commands.
   Ordinary list/detail/search, errors, logs, analytics, copy/export, and the
   external preflight DTO must redact or omit those values. The exact editor
   exception and renderer lifetime are owned by
-  [V2 MCP](../frontend/v2-mcp.md).
+  [MCP](../frontend/mcp.md).
 
 ## 4. Validation & Error Matrix
 
@@ -249,7 +249,7 @@ assertion owners include:
 - `src-tauri/src/services/traework.rs` and V2 platform tests: external MCP
   Agent/transport/reason enums are closed, executable resolution is
   non-executing, DTOs are redacted, and invoke payloads use `agentId/config`;
-- `tests/v2/features/authoritativeAssignment.test.tsx` and MCP page/Port tests:
+- `tests/renderer/features/authoritativeAssignment.test.tsx` and MCP page/Port tests:
   one serialized mutation, reread authority, exact seven-target order, and no
   direct Tauri/vendor serialization in the page.
 

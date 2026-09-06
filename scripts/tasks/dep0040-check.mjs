@@ -28,7 +28,9 @@ const WATCHED_GRAPH_PACKAGES = new Set([
 const ACTIVE_MODULE_ROOTS = Object.freeze(["src", "tests", "scripts"]);
 const ACTIVE_ROOT_MODULES = Object.freeze([
   "postcss.config.cjs",
-  "tailwind.config.cjs",
+  "eslint.config.mjs",
+  "playwright.config.ts",
+  "playwright.performance.config.ts",
   "vite.config.ts",
   "vitest.config.ts",
 ]);

@@ -4,6 +4,6 @@
 {"file":".trellis/spec/backend/windows-runtime-security.md","reason":"Explorer/Shell SID, elevated boundary, process launch, and Windows runtime protections that must remain while content gates are removed."}
 {"file":".trellis/spec/frontend/index.md","reason":"Frontend layer routing and cross-layer change checklist."}
 {"file":".trellis/spec/frontend/type-safety.md","reason":"Strict Rust-to-TypeScript DTO/parser/fixture synchronization requirements."}
-{"file":".trellis/spec/frontend/v2-agent-models.md","reason":"V2 Codex installer port, controller, state, and native-only boundary."}
+{"file":".trellis/spec/frontend/agent-models.md","reason":"V2 Codex installer port, controller, state, and native-only boundary."}
 {"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Required cross-layer review for release DTO, job state, error, and UI changes."}
 {"file":".trellis/tasks/08-15-codex-windows-download-validation/research/current-installer-validation-map.md","reason":"Concise current-code map of upstream-coupled validators, preserved operational protections, affected tests, and stop conditions."}

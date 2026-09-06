@@ -1,4 +1,4 @@
-/** Runtime architecture boundaries; TypeScript-only contracts do not create runtime edges. */
+/** Runtime ownership; type-only contracts are checked separately by TypeScript. */
 module.exports = {
   forbidden: [
     {
@@ -14,30 +14,36 @@ module.exports = {
       to: { couldNotResolve: true },
     },
     {
-      name: "v2-does-not-import-leftover-renderer",
+      name: "domain-does-not-import-renderer-or-native-runtime",
       severity: "error",
-      from: { path: "^src/v2/" },
-      to: { path: "^src/(?!v2/|shared/)" },
-    },
-    {
-      name: "neutral-does-not-import-renderer-or-native-runtime",
-      severity: "error",
-      from: { path: "^src/shared/" },
+      from: { path: "^src/domain/" },
       to: {
-        path: "^src/(?!shared/)|(?:^|/)node_modules/(?:react(?:-dom)?|@tauri-apps)(?:/|$)",
+        path: "^src/(?!domain/)|(?:^|/)node_modules/(?:react(?:-dom)?|@tauri-apps)(?:/|$)",
       },
     },
     {
-      name: "v2-shared-does-not-import-pages-or-widgets",
+      name: "shared-does-not-import-pages-widgets-or-app",
       severity: "error",
-      from: { path: "^src/v2/shared/" },
-      to: { path: "^src/v2/(?:pages|widgets)/" },
+      from: { path: "^src/shared/" },
+      to: { path: "^src/(?:pages|widgets|app|dev)/" },
     },
     {
-      name: "v2-ui-does-not-own-feature-runtime",
+      name: "ui-does-not-own-feature-runtime",
       severity: "error",
-      from: { path: "^src/v2/shared/ui/" },
-      to: { path: "^src/v2/shared/(?:features|platform)/" },
+      from: { path: "^src/shared/ui/" },
+      to: { path: "^src/shared/(?:features|platform)/" },
+    },
+    {
+      name: "pages-do-not-import-composition-roots",
+      severity: "error",
+      from: { path: "^src/pages/" },
+      to: { path: "^src/(?:widgets|app|dev)/" },
+    },
+    {
+      name: "widgets-do-not-import-pages-or-app",
+      severity: "error",
+      from: { path: "^src/widgets/" },
+      to: { path: "^src/(?:pages|app|dev)/" },
     },
   ],
   options: {
