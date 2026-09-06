@@ -61,6 +61,7 @@ describe("FeatureTabs", () => {
             <FeatureTabPanel
               key={option.id}
               tabsId="keyboard-tabs"
+              layout="flow"
               value={option.id}
               active={value === option.id}
             >

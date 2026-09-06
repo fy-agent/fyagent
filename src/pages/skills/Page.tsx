@@ -488,7 +488,7 @@ export function SkillsPage() {
 
   return (
     <div
-      className={`fy-feature-page fy-split-page fy-skills-page${tab === "discovery" ? " fy-skills-page-discovery" : ""}`}
+      className="fy-feature-page fy-split-page fy-skills-page"
       data-testid="skills-page"
       aria-label="Skills"
     >
@@ -588,6 +588,7 @@ export function SkillsPage() {
       <FeatureTabPanel
         tabsId="skills-view-tabs"
         value="installed"
+        layout="workspace"
         active={tab === "installed"}
         unmountOnExit
       >
@@ -727,6 +728,7 @@ export function SkillsPage() {
       <FeatureTabPanel
         tabsId="skills-view-tabs"
         value="discovery"
+        layout="workspace"
         active={tab === "discovery"}
         unmountOnExit
       >

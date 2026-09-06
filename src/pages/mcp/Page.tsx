@@ -413,6 +413,7 @@ export function McpPage() {
       <FeatureTabPanel
         tabsId="mcp-view-tabs"
         value="discovery"
+        layout="workspace"
         active={tab === "discovery"}
         unmountOnExit
       >
@@ -450,6 +451,7 @@ export function McpPage() {
       <FeatureTabPanel
         tabsId="mcp-view-tabs"
         value="installed"
+        layout="workspace"
         active={tab === "installed"}
         unmountOnExit
       >
@@ -917,6 +919,7 @@ function McpEditor({
         <FeatureTabPanel
           tabsId="mcp-editor-mode-tabs"
           value="quick"
+          layout="flow"
           active={mode === "quick"}
           unmountOnExit
           className="fy-feature-form-tab-panel"
@@ -996,6 +999,7 @@ function McpEditor({
         <FeatureTabPanel
           tabsId="mcp-editor-mode-tabs"
           value="advanced"
+          layout="flow"
           active={mode === "advanced"}
           unmountOnExit
           className="fy-feature-form-tab-panel"

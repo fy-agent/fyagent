@@ -44,6 +44,7 @@ export default defineConfig({
     {
       name: "webkit-1232x700",
       testMatch: [
+        "scroll-ownership.spec.ts",
         "state-motion.spec.ts",
         "press-feedback.spec.ts",
         "blue-themes.spec.ts",

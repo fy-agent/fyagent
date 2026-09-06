@@ -177,6 +177,13 @@ test("revisiting a page keeps its lens size while real tab changes still interpo
     .click();
   const widths = await lens.evaluate(async (node) => {
     const widths: number[] = [];
+    // Router commits asynchronously. Start at the first visible frame, not
+    // the hidden previous route's zero-layout box. Do not wait for settling.
+    let attempts = 0;
+    while (node.closest("[hidden]")) {
+      if (++attempts > 120) throw new Error("Auth route did not become active");
+      await new Promise(requestAnimationFrame);
+    }
     for (let i = 0; i < 24; i++) {
       await new Promise(requestAnimationFrame);
       widths.push(node.getBoundingClientRect().width);

@@ -1,3 +1,2 @@
-{"file":".trellis/spec/frontend/surfaces-responsive.md","reason":"Existing pane and scroll geometry owners"}
-{"file":".trellis/tasks/09-06-frontend-experience-round7/research.md","reason":"Native overflow and actual user-input evidence"}
-
+{"file":".trellis/spec/frontend/surfaces-responsive.md","reason":"Native scroll, stable panes, narrow containers and fallback"}
+{"file":".trellis/tasks/09-06-frontend-experience-round7/research/current-audit.md","reason":"Reproduced unbounded tab and seven-route coverage matrix"}

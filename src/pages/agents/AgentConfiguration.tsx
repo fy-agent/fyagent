@@ -88,6 +88,7 @@ export function AgentConfiguration({
 
       <FeatureTabPanel
         tabsId="agent-configuration-sections"
+        layout="flow"
         value={section}
         active
         className="fy-agent-config-body"

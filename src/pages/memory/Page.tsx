@@ -219,6 +219,7 @@ export function MemoryPage() {
       />
       <FeatureTabPanel
         tabsId="memory-type-tabs"
+        layout="workspace"
         value={activeTab}
         active
         className="fy-feature-workspace"

@@ -60,7 +60,7 @@ export function usePressFeedback<T extends HTMLElement>(
       };
       // Down/up within one frame still receives a short dip. The native click
       // and business action never wait for this decorative recovery.
-      if (scale.get() > 0.985) {
+      if (scale.get() > fyPressScale.target + 0.002) {
         animation.current = animate(scale, fyPressScale.target, {
           duration: motionDuration("press"),
           ease: "easeOut",

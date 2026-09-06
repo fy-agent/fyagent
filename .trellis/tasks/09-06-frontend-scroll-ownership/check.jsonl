@@ -1,3 +1,2 @@
-{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Real browser regression requirements"}
-{"file":".trellis/spec/frontend/state-management.md","reason":"Hidden routes and draft lifetime"}
-
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Real wheel, keyboard, browser and production evidence"}
+{"file":".trellis/spec/frontend/navigation.md","reason":"Hidden route ownership, drafts and focus preservation"}

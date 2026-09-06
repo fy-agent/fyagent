@@ -13,13 +13,9 @@ const pageSource = readFileSync(
 );
 
 describe("Skills discovery page scroll", () => {
-  it("lets the Skills feature page scroll as a whole on discovery", () => {
-    expect(pageCss).toMatch(
-      /\.fy-skills-page\.fy-skills-page-discovery\.fy-feature-page:has\(\s*\.fy-feature-workspace\s*\)\s*\{[^}]*overflow:\s*auto;/s,
-    );
-    expect(pageCss).toMatch(
-      /\.fy-skills-page\.fy-skills-page-discovery\s+\.fy-feature-discovery-scroll\s*\{[^}]*overflow:\s*visible;/s,
-    );
+  it("uses bounded shared workspace tabs instead of a discovery-only overflow override", () => {
+    expect(pageSource.match(/layout="workspace"/g)).toHaveLength(2);
+    expect(pageCss).not.toContain("fy-skills-page-discovery");
   });
 });
 

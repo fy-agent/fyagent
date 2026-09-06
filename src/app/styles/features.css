@@ -20,8 +20,26 @@
   min-height: 0;
   overflow: hidden;
 }
-.fy-feature-page:has(.fy-feature-workspace) > :not(.fy-feature-workspace) {
+.fy-feature-page:has(.fy-feature-workspace)
+  > :not(.fy-feature-workspace):not(
+    .fy-feature-tab-panel[data-layout="workspace"]
+  ) {
   flex: 0 0 auto;
+}
+/* Preserve the bounded height through the semantic tabpanel wrapper. A plain
+   block here expands to its list and leaves clipping ancestors unscrollable. */
+.fy-feature-tab-panel[data-layout="workspace"]:not([hidden]) {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.fy-feature-tab-panel[data-layout="workspace"] > .fy-feature-workspace {
+  flex: 1 1 0;
+  overflow: hidden;
 }
 .fy-feature-header {
   display: flex;

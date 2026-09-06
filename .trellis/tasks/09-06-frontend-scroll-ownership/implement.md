@@ -1,6 +1,15 @@
-# 执行
+# Execute scroll ownership
 
-- [ ] 固化长数据wheel/keyboard回归并记录失败。
-- [ ] 修共享高度链与页面接入，检查七页各滚动owner。
-- [ ] typecheck/lint/unit及四尺寸Chromium/WebKit浏览器回归。
-- [ ] 更新SPEC与review，完整check:prearchive后工作提交、归档。
+- [x] Obtain final-plan approval; start this task and read before-dev plus
+      parent evidence, surfaces-responsive, navigation and page-owner contracts.
+- [x] Add failing physical wheel/keyboard regressions for long Skills installed
+      and discovery content, then survey the parent seven-route scroll matrix.
+- [x] Fix bounded tab/workspace roles and competing page CSS at shared owners.
+- [x] Validate long/error/empty data, nested and narrow panes, four sizes,
+      both themes, WebKit, reduced-motion and post-dialog/route-return behavior.
+- [x] Run mise run typecheck, lint, test:unit, test:browser; review actual
+      rendered last-item reachability and focus instead of auto-scrolling locators.
+- [x] Run production navigation/presentation budgets serially; update relevant
+      SPEC and task review; full check:prearchive with exact task exclusion.
+- [x] Commit only owned code/SPEC/task changes, set work_commit, archive;
+      preserve parent references for final integration repair.

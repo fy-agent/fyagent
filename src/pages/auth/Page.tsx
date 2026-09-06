@@ -520,6 +520,7 @@ export function AuthPage() {
       <FeatureTabPanel
         tabsId="managed-auth-views"
         value="accounts"
+        layout="workspace"
         active={view === "accounts"}
         className="fy-auth-view-panel"
       >
@@ -560,6 +561,7 @@ export function AuthPage() {
       <FeatureTabPanel
         tabsId="managed-auth-views"
         value="connections"
+        layout="workspace"
         active={view === "connections"}
         className="fy-auth-view-panel"
       >

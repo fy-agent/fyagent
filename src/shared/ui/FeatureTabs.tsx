@@ -112,6 +112,7 @@ export function FeatureTabPanel<T extends string>({
   value,
   active,
   unmountOnExit = false,
+  layout,
   className,
   children,
   ...props
@@ -120,6 +121,8 @@ export function FeatureTabPanel<T extends string>({
   value: T;
   active: boolean;
   unmountOnExit?: boolean;
+  /** A page workspace fills the remaining height; ordinary form tabs stay in flow. */
+  layout: "flow" | "workspace";
   children: ReactNode;
 }) {
   if (!active && unmountOnExit) {
@@ -131,6 +134,7 @@ export function FeatureTabPanel<T extends string>({
       role="tabpanel"
       aria-labelledby={featureTabTriggerId(tabsId, value)}
       className={classNames("fy-feature-tab-panel", className)}
+      data-layout={layout}
       hidden={!active}
       tabIndex={0}
       {...props}

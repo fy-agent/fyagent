@@ -8,6 +8,10 @@ The only production component tree lives under `app`, `pages`, `widgets` and
 FeaturePorts belong to `shared/features/controls`, never a reverse UI barrel.
 Portable serialization belongs to `domain`, not component helpers.
 
+Every `FeatureTabPanel` declares a layout role: `workspace` for bounded page
+content and `flow` for ordinary forms. Shared height/scroll ownership lives in
+[Surfaces](./surfaces-responsive.md); do not drop a plain block into that chain.
+
 Use the existing `Button`, `Dialog`, `FeatureTabs`, `FeatureList`, `FeatureSearch`,
 `FeaturePagination`, `AssignmentPanel`, `SecretInput`, `CatalogMasterDetail` and
 `SplitPanes` owners. Reuse Phosphor icons, adopted Radix primitives, semantic

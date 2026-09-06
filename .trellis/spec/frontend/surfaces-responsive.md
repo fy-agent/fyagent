@@ -15,6 +15,7 @@ FrostedSurface({ enhanced?: boolean }): JSX.Element // stable CSS backing, true 
 LiquidGlassLens({ children, className? }): JSX.Element // UI Lab specimen
 // shared/ui/split/SplitPanes.tsx — product adapter; split/vendor.ts owns the library import
 SplitPanes({ children, className?, minWidths?, maxWidths?, separatorLabels?, paneCssVars? })
+FeatureTabPanel({ tabsId, value, active, layout: "flow" | "workspace", ... })
 ```
 
 Radius roles are compact/control/item/panel/dialog/pill/circle/brand/separator.
@@ -39,6 +40,17 @@ CSS consumes the blur/rim/sheen tokens directly, including preference changes.
 
 ## 3. Contracts
 
+- Page-level tabs declare `layout="workspace"` to propagate bounded remaining
+  height through the semantic panel to its workspace/panes. Form/ordinary content
+  tabs explicitly declare `"flow"`. The prop is required so a new tab cannot
+  silently become an unconstrained block above an overflow-hidden ancestor.
+  Headers remain nonshrinking; workspace panels use min-height:0 and flex-basis:0,
+  with native overflow for error/empty fallbacks. Discovery/list panes own their
+  own scrolling, not a Skills-only whole-page overflow override.
+- Scroll reachability requires native wheel and keyboard evidence using long
+  fixtures. Programmatic scrollTop, scrollIntoView and Playwright click's automatic
+  positioning cannot prove a user can scroll to an action. Do not intercept wheel
+  or build a second scroll implementation to compensate for a broken height chain.
 - `SplitPanes` delegates pointer admission, keyboard resizing, ARIA values,
   cursor management and constraints to `react-resizable-panels`. Its own
   responsibility is product minimum/default sizes, semantic labels and the
@@ -115,6 +127,9 @@ glass.
 
 ## 6. Tests Required
 
+- `scroll-ownership.spec.ts` covers long Skills/MCP installed lists with wheel
+  and End, discovery scrolling, revisits, both themes and Chromium/WebKit. Static
+  type checking requires every FeatureTabPanel to choose its layout role.
 - `tests/renderer/shared/designTokens.test.ts` uses PostCSS to reject scattered radius
   literals; do not invent a CSS parser or skip component files.
 - `tests/renderer/shared/GlassMaterial.test.tsx` proves stable node identity across

@@ -1,9 +1,32 @@
-# 滚动所有权
+# Bounded layout, native scrolling
 
-检查page→tabpanel→workspace→pane的实际高度链。共享页签提供明确的容器模式，
-workspace模式填满剩余空间，原生可滚动区域具有确定高度；普通内容页签不强制
-改成分栏。去除只为Skills发现页绕过共享规则的反向覆盖。用真实wheel/键盘
-验证各owner，不使用全局body滚动补丁，不改变数据页大小或查询时机。
+The available-height chain is shell -> persistent route -> feature page ->
+active tab -> workspace -> split pane -> scrollable content. Every flex boundary
+must pass a bounded slot with min-width/min-height:0; content that intentionally
+flows must instead belong to an explicitly scrollable owner.
 
-影响范围为FeatureTabs/共享feature CSS、Skills/MCP必要接入、浏览器回归和
-surfaces/components/quality规范。复杂原生协议和业务逻辑不在范围内。
+Give workspace-bearing FeatureTabPanel an explicit layout role rather than
+depending on the child being the workspace itself. Do not make every semantic
+tab a scrolling/flex box: nested auth/model tabs and compact headers have
+different responsibilities. Resolve the page-level direct-child nonshrinking
+rule and Skills discovery override against this role, including hidden panels.
+
+Reuse native overflow and the installed SplitPanes/react-resizable-panels
+adapter. No scroll listeners that cancel wheel input, no new scrollbar engine,
+no magic viewport height calculations duplicated per page. Full-height panes
+own long list/detail scrolling; flow/error/header content has a reachable
+bounded owner rather than being silently clipped when short windows fill up.
+
+Preserve existing stable editor node lifetime, semantic tabs, keep-alive query
+ownership, focus and two themes. A breakpoint must not remount a draft or
+reintroduce two different data sources. Retain missing-ResizeObserver fallback.
+
+Use existing browser fixtures extended with deterministic 40+ row/long-text
+data. Start physical wheel at the rendered list/reading surface and assert
+scroll offset changed AND the last item/action is in the visible clipped area.
+Keyboard focuses real scroll/interactive owners; scrolling one pane must not
+move unrelated pane headers. Test after opening/closing a dialog to detect a
+leftover modal scroll lock. No extra package selected: the defect is sizing.
+
+Rollback is a shared-layout child revert with its styles/tests; do not revert
+the previous-round split library or silently weaken min-size constraints.
