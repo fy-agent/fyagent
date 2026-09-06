@@ -22,5 +22,7 @@
   "parent": "09-06-frontend-experience-round7",
   "relatedFiles": [],
   "notes": "",
-  "meta": {}
+  "meta": {
+    "execution_owner": "isolated refactor/round7-root-governance; workspace fyagent-df58b1c3; do not implement concurrently in main checkout"
+  }
 }

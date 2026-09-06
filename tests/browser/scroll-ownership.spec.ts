@@ -12,20 +12,51 @@ async function installLongFixture(page: Page) {
     const invoke = window.__TAURI_INTERNALS__.invoke;
     window.__TAURI_INTERNALS__.invoke = async (command, payload) => {
       if (command === "get_prompts") {
-        return Object.fromEntries(Array.from({ length: 40 }, (_, i) => [
-          `scroll-${i}`, { id: `scroll-${i}`, name: `Scroll Prompt ${i}`,
-            content: "Long prompt line\n".repeat(250), enabled: false },
-        ]));
+        return Object.fromEntries(
+          Array.from({ length: 40 }, (_, i) => [
+            `scroll-${i}`,
+            {
+              id: `scroll-${i}`,
+              name: `Scroll Prompt ${i}`,
+              content: "Long prompt line\n".repeat(250),
+              enabled: false,
+            },
+          ]),
+        );
       }
       if (command === "get_current_prompt_file_content") return null;
       if (command === "read_workspace_file" || command === "get_hermes_memory")
         return "Long memory fixture line\n".repeat(250);
       if (command === "list_daily_memory_files") return [];
       if (command === "get_hermes_memory_limits")
-        return { memory: 2200, user: 1400, memoryEnabled: true, userEnabled: true };
+        return {
+          memory: 2200,
+          user: 1400,
+          memoryEnabled: true,
+          userEnabled: true,
+        };
       const result = await invoke(command, payload);
+      if (command === "managed_auth_get_overview") {
+        const overview = result as { accounts: Array<Record<string, unknown>> };
+        return {
+          ...overview,
+          accounts: [
+            ...overview.accounts,
+            ...Array.from({ length: 38 }, (_, i) => ({
+              ...overview.accounts[0],
+              accountId: `ma1:${(i + 1).toString(16).padStart(32, "0")}`,
+              login: `scroll-account-${i}@example.test`,
+              isDefault: false,
+              connectedConsumerCount: 0,
+            })),
+          ],
+        };
+      }
       if (command === "get_workbuddy_model_ids")
-        return { ...(result as Record<string, unknown>), ids: Array.from({ length: 80 }, (_, i) => `fixture-model-${i}`) };
+        return {
+          ...(result as Record<string, unknown>),
+          ids: Array.from({ length: 80 }, (_, i) => `fixture-model-${i}`),
+        };
       if (command === "get_installed_skills") {
         const sample = (result as Array<Record<string, unknown>>)[0];
         return Array.from({ length: 40 }, (_, i) => ({
@@ -156,35 +187,89 @@ test("Skills discovery keeps its own bounded scroll region after tab switches", 
   await expectHealthyPage(page, health);
 });
 
-for (const route of ["agents", "auth", "models?target=workbuddy", "prompts", "memory"]) {
-  test(`${route} has a reachable native scroll owner for its populated content`, async ({ page }, info) => {
+for (const route of [
+  "agents",
+  "auth",
+  "models?target=workbuddy",
+  "prompts",
+  "memory",
+]) {
+  test(`${route} has a reachable native scroll owner for its populated content`, async ({
+    page,
+  }, info) => {
     await installLongFixture(page);
     await openRendererPage(page, `/${route}`);
     const root = page.getByTestId(`${route.split("?")[0]}-page`);
     await expect(root).toBeVisible();
     if (route.startsWith("models")) {
-      await root.getByRole("button", { name: /当前已有的第三方模型 ID/ }).click();
-      await expect(root.getByText("fixture-model-79", { exact: true })).toBeAttached();
+      await root
+        .getByRole("button", { name: /当前已有的第三方模型 ID/ })
+        .click();
+      await expect(
+        root.getByText("fixture-model-79", { exact: true }),
+      ).toBeAttached();
+      await expect
+        .poll(() =>
+          root
+            .locator(".fy-collapsible-panel")
+            .first()
+            .evaluate((n) => (n as HTMLElement).style.height),
+        )
+        .toBe("auto");
     }
     // Read layout to choose an actual overflowing owner. Never change scrollTop
     // or force auto-positioning; the only movement comes from physical wheel.
     // Flow pages deliberately scroll their ancestor viewport; include it,
     // rather than incorrectly requiring every route to add a nested scroller.
-    const owners = page.getByTestId("content-viewport").locator(":scope, *");
-    const eligible = async () => owners.evaluateAll(nodes => nodes.map((node, index) => {
-      const element = node as HTMLElement;
-      const b = element.getBoundingClientRect();
-      return { index, name: element.className, overflow: getComputedStyle(element).overflowY,
-        excess: element.scrollHeight - element.clientHeight, top: b.top, bottom: b.bottom, width: b.width, height: b.height };
-    }).filter(b => /auto|scroll/.test(b.overflow) && b.excess > 80 && b.width > 30 && b.height > 60 && b.top < innerHeight - 70 && b.bottom > 140));
+    const owners = page.locator(
+      '[data-testid="content-viewport"], [data-testid="content-viewport"] *',
+    );
+    const eligible = async () =>
+      owners.evaluateAll((nodes) =>
+        nodes
+          .map((node, index) => {
+            const element = node as HTMLElement;
+            const b = element.getBoundingClientRect();
+            return {
+              index,
+              name: element.className,
+              overflow: getComputedStyle(element).overflowY,
+              excess: element.scrollHeight - element.clientHeight,
+              top: b.top,
+              bottom: b.bottom,
+              width: b.width,
+              height: b.height,
+            };
+          })
+          .filter(
+            (b) =>
+              /auto|scroll/.test(b.overflow) &&
+              b.excess > 80 &&
+              b.width > 30 &&
+              b.height > 60 &&
+              b.top < innerHeight - 70 &&
+              b.bottom > 140,
+          ),
+      );
     await expect.poll(async () => (await eligible()).length).toBeGreaterThan(0);
     const candidates = await eligible();
     const owner = owners.nth(candidates.at(-1)!.index);
-    await info.attach("native-scroll-owner", { body: JSON.stringify(candidates), contentType: "application/json" });
+    await info.attach("native-scroll-owner", {
+      body: JSON.stringify(candidates),
+      contentType: "application/json",
+    });
     await wheelInside(page, owner, 100_000);
-    await expect.poll(() => owner.evaluate(n => n.scrollTop)).toBeGreaterThan(20);
-    await expect.poll(() => owner.evaluate(n => Math.abs(n.scrollHeight - n.clientHeight - n.scrollTop))).toBeLessThan(2);
+    await expect
+      .poll(() => owner.evaluate((n) => n.scrollTop))
+      .toBeGreaterThan(20);
+    await expect
+      .poll(() =>
+        owner.evaluate((n) =>
+          Math.abs(n.scrollHeight - n.clientHeight - n.scrollTop),
+        ),
+      )
+      .toBeLessThan(2);
     await wheelInside(page, owner, -100_000);
-    await expect.poll(() => owner.evaluate(n => n.scrollTop)).toBeLessThan(2);
+    await expect.poll(() => owner.evaluate((n) => n.scrollTop)).toBeLessThan(2);
   });
 }
